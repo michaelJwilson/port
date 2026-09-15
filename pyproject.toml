@@ -3,36 +3,18 @@ requires = ["maturin>=1,<2"]
 build-backend = "maturin"
 
 [project]
-name = "snakes_and_ladders"
-# Single source of truth for the version is Cargo.toml's [package].version;
-# maturin reads it from there when `dynamic = ["version"]` is set, so the
-# two files can't silently drift out of sync.
+name = "port"
 dynamic = ["version"]
 description = ""
 authors = [{ name = "M. J. Wilson" }]
 license = "MIT"
 requires-python = ">=3.12.2"
 readme = "README.md"
-# snakes_and_ladders.sim imports numpy (simulation) and pyyaml (the fixture files
-# loading) directly; snakes_and_ladders.qa imports matplotlib to render the figures
-# docs/tex/ includes; snakes_and_ladders.likelihood.pruning_torch imports torch, the
-# autodiff backend CLAUDE.md's Performance section already decided on --
-# added here, by the first PR whose code imports it, per that section's
-# note. All four are core dependencies rather than front-loaded ahead of
-# need (see CLAUDE.md, "keep dependencies minimal"). matplotlib has 21k+
-# GitHub stars and torch 90k+, both well above the 1,000-star review bar.
-# Add further entries only as real code depends on them.
 dependencies = [
     "matplotlib>=3.9.0",
-    # 10k+ GitHub stars; carries the deterministic Potts kernels
-    # (search/kernels.py), whose pin against the Python oracle is bitwise.
     "numba>=0.61.0",
     "numpy>=1.26.0",
     "pyyaml>=6.0.3",
-    # 13k+ GitHub stars; the referee for three hand-rolled implementations
-    # (the Hadamard transform, UPGMA against neighbor joining, the minimizer
-    # on the continuous test functions), declared by the release audit of
-    # issue #376 when the maintainer approved it.
     "scipy>=1.13.0",
     "torch>=2.4.0",
 ]
@@ -43,29 +25,17 @@ dev = [
     "mypy>=1.0.0",
     "pre-commit>=3.5.0",
     "pip-audit>=2.7",
-    # 919 GitHub stars as of 2026-09-02, below DEV.md's 1,000-star bar --
-    # flagged per CLAUDE.md/DEV.md dependency rules; see PR description.
     "towncrier>=24.8.0",
     "types-PyYAML>=6.0",
 ]
 docs = [
     "sphinx>=7,<9",
 ]
-# Executing the committed notebooks, so their numbers cannot rot (issue
-# #203). Deliberately its own extra rather than part of `test`: a normal
-# `pip install .` and the per-pull-request suite do not need a kernel, and
-# `infra/check_notebooks.py` is the only consumer.
 notebooks = [
     "nbclient>=0.10",
     "nbformat>=5.10",
     "ipykernel>=6.29",
 ]
-# External frameworks that front or referee a hand-rolled implementation
-# (issue #322). An extra rather than a core dependency: the core install and
-# the per-pull-request suite pull none of them, and every test that needs one
-# `importorskip`s it. All four are OSI-licensed (MIT, Apache-2.0, MIT, MIT);
-# rustworkx sits near the 1,000-star bar and was flagged and approved on the
-# ticket.
 frameworks = [
     "gymnasium>=1.0",
     "rustworkx>=0.15",
@@ -73,25 +43,15 @@ frameworks = [
     "torch_geometric>=2.5",
 ]
 test = [
-    # >=9.0.3 is the fix for PYSEC-2026-1845; the previous <9 cap blocked it.
     "pytest>=9.0.3",
     "pytest-cov>=4.0.0",
     "pytest-benchmark>=4",
-    # The CI tier at three workers, like-for-like: 993.7 s against 361.9 s,
-    # 2.75x (issue #405, measured under #530). MIT, 1.9k stars, so neither
-    # dependency rule in CLAUDE.md is triggered. It never runs the benchmarks:
-    # pytest-benchmark disables itself when a run is distributed, so the two
-    # are separate invocations and `tests/conftest.py` fails a benchmark that
-    # reaches a distributed one.
     "pytest-xdist>=3.6",
 ]
 
-[project.scripts]
-run_snakes_and_ladders = "snakes_and_ladders.scripts.run_snakes_and_ladders:main"
-
 [tool.maturin]
 python-source = "python"
-module-name = "snakes_and_ladders.oxi_snakes_and_ladders"
+module-name = "port.oxiport"
 
 [tool.ruff]
 target-version = "py312"
@@ -103,8 +63,6 @@ ignore = [
   "PLR2004", # magic value in assert
   "ANN",  # annotation presence is enforced by mypy --strict, not ruff
 ]
-# NPY002 (legacy np.random calls) is deliberately NOT ignored: seeded
-# `np.random.default_rng` is the reproducibility convention here.
 
 extend-select = [
   "B",           # flake8-bugbear
@@ -140,8 +98,6 @@ unfixable = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-# Tests are linted like the rest of the repo -- scientific correctness lives
-# here. Only rules that fight normal pytest style are relaxed.
 "tests/**" = [
   "S101",    # asserts are the point of a test
   "PLR2004", # literal expected values are the point of a regression test
@@ -149,56 +105,30 @@ unfixable = [
 
 [tool.mypy]
 strict = true
-# `infra/` is checked too: `select_tests.py` decides what CI runs, so a type
-# error there is a test that silently did not run. `mypy_path` lets the test
-# module import it the same way CI does. The kind names `gate_changed_tests.py`
-# needs live in `infra/test_kinds.py` for the same reason: putting
-# `tests/regression` on this path made `test_test_kinds.py` reachable under two
-# module names and `--strict` refused the whole tree.
 files = ["python", "tests", "infra"]
 mypy_path = "infra"
 
 [[tool.mypy.overrides]]
-# pytest-benchmark ships no py.typed marker.
 module = "pytest_benchmark.*"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
-# numba ships no type information; its decorator returns an untyped callable.
 module = "numba.*"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
-# scipy ships no py.typed marker; `scipy-stubs` is a separate package and one
-# import does not justify a fifth development dependency.
 module = "scipy.*"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
-# `nbformat` ships type information but leaves `read` and `write` untyped, so
-# --strict rejects a correct call site. Narrowed to the one module that reads
-# notebooks rather than relaxed globally.
 module = "check_notebooks"
 disallow_untyped_calls = false
 
 [[tool.mypy.overrides]]
-# The `lint` job syncs `--extra test`, not `--extra notebooks`, so these are
-# absent where mypy runs and every import of them is `import-not-found`.
-# Moving the imports into the functions that execute a notebook does not help:
-# mypy resolves an import wherever it appears. They are optional dependencies
-# of one developer script, so the type checker is told they may be missing
-# rather than the job made to install a Jupyter kernel to type-check three
-# lines. Where they *are* installed -- a developer environment, the
-# `notebooks` job -- mypy still checks against the real thing.
 module = ["nbformat.*", "nbclient.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
-# The `frameworks` extra (issue #322) is absent where the `lint` job runs, so
-# its imports resolve to nothing there; and torchrl, tensordict,
-# torch_geometric and networkx ship no type information where they are
-# present. gymnasium and rustworkx do, and are checked against it wherever
-# they are installed.
 module = [
     "gymnasium.*",
     "rustworkx.*",
@@ -210,9 +140,7 @@ module = [
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
-# Where gymnasium is absent its `Env` is `Any`, and --strict refuses to
-# subclass `Any`; where it is present the class is checked in full.
-module = "snakes_and_ladders.search.gym"
+module = "port.search.gym"
 disallow_subclassing_any = false
 
 [tool.towncrier]
@@ -250,30 +178,10 @@ showcontent = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-# Two axes, and they are independent (issue #237). A *kind* says what a test is
-# checked against; `critical` says whether it gates early. A test is critical
-# *and* an oracle test, never instead of one, so folding them into one flat set
-# would force a choice the scheme has no basis for. `release` is a third,
-# older axis and says when a test runs. `CLAUDE.md`'s Testing section states
-# the principle; the list below is written from `infra/gates.py`, where the
-# names and their text live, by `infra/ledgers.sh` (issue #470).
 addopts = "--strict-markers"
-# BEGIN GENERATED markers (infra/gates.py, via infra/ledgers.sh)
-markers = [
-    "release: long-running scientific validity test, run on release rather than per PR (DEV.md CI & Performance Budget)",
-    "oracle: checked against an independent exact answer -- enumeration, brute force, a closed form, or a published value",
-    "simulated_truth: checked against the parameters that generated the data",
-    "mathematical: checked against a property the model must satisfy regardless of implementation",
-    "edge_case: checked at a boundary, or that an unusable input is refused",
-    "structural: checked against an invariant this repository chose -- the import graph, a protocol, a documented contract, or a guard's own trigger",
-    "critical: gates early; fast, and its failure invalidates what runs after it",
-    "stress: same claim at a size the 5-minute CI budget cannot hold; run with `-m stress` inside the 10-minute developer budget (DEV.md CI & Performance Budget)",
-    "key: the key fixture's full test -- the largest declared instance whose simulate-fit-assert run fits SAL_KEY_DURATION_CAP, 120 s; run in CI's full tier and selected locally only when its inputs change (DEV.md CI & Performance Budget)",
-]
-# END GENERATED markers
 
 [tool.coverage.run]
-source = ["snakes_and_ladders"]
+source = ["port"]
 
 [tool.coverage.report]
 exclude_lines = [
