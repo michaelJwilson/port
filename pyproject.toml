@@ -17,13 +17,10 @@ dependencies = [
     "pyyaml>=6.0.3",
 ]
 
-[tool.uv.sources]
-snakes_and_ladders = { git = "https://github.com/michaelJwilson/snakes_and_ladders", branch = "main" }
-
 [project.optional-dependencies]
 dev = [
     "ruff>=0.9.9,<0.10",
-    "mypy>=1.0.0",
+    "mypy>=1.15,<3",
     "pre-commit>=3.5.0",
     "pip-audit>=2.7",
     "towncrier>=24.8.0",
@@ -44,6 +41,9 @@ test = [
     "pytest-xdist>=3.6",
 ]
 
+[tool.uv.sources]
+snakes_and_ladders = { git = "https://github.com/michaelJwilson/snakes_and_ladders", branch = "main" }
+
 [tool.maturin]
 python-source = "python"
 module-name = "port.oxiport"
@@ -53,10 +53,12 @@ target-version = "py312"
 
 [tool.ruff.lint]
 ignore = [
-  "G004", # f-string in logger
-  "T201", # print statements
-  "PLR2004", # magic value in assert
-  "ANN",  # annotation presence is enforced by mypy --strict, not ruff
+  "G004",     # f-string in logger
+  "T201",     # print statements
+  "PLR2004",  # magic value in assert
+  "ANN",      # annotation presence is enforced by mypy --strict, not ruff
+  "PLR09",    # Too many <...>
+  "ISC001",   # Conflicts with formatter
 ]
 
 extend-select = [
@@ -82,10 +84,6 @@ extend-select = [
   "EXE",         # flake8-executable
   "NPY",         # NumPy specific rules
   "PD",          # pandas-vet
-]
-extend-ignore = [
-  "PLR09",    # Too many <...>
-  "ISC001",   # Conflicts with formatter
 ]
 unfixable = [
   "T20",  # Removes print statements
@@ -124,6 +122,7 @@ module = ["nbformat.*", "nbclient.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
+module = ["*"]
 ignore_missing_imports = true
 
 [tool.towncrier]
