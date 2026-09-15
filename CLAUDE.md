@@ -84,3 +84,19 @@ rather than waiting on them.
     decides whether the comparison is worth having. Where the correspondence
     holds only in part, say which measurements were taken in the regime
     where it holds.
+*   **An optimization arrives with its patch, its validation and its
+    numbers:** a pull request proposing one carries the change itself, the
+    tests pinning it against the behaviour it replaces, and the benchmark it
+    is claimed on, at the sizes upstream's Measurement rule requires. None of
+    the three substitutes for another: a ratio with no pinned output has not
+    been shown to compute the same thing, and a patch with no ratio has not
+    been shown to be worth its diff.
+*   **Reach for what `snakes_and_ladders` already carries:** an optimization
+    is considered first as functionality that exists upstream, then as one
+    that could, and only then as one written here. Which of the three it is
+    belongs in the pull request, because it decides who maintains the result.
+*   **Simplification needs no speedup; a speedup claim needs 2x:** a patch
+    that makes the existing code plainer is worth landing on its evidence of
+    equivalence alone. A patch offered as faster is held to the bar upstream
+    sets, measured at a stress size, and below it the simpler code wins and
+    the change is reverted rather than kept.
