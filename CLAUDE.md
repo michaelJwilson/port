@@ -76,3 +76,11 @@ rather than waiting on them.
     a change, report it here with the evidence and leave landing it to that
     repository. A pin this repository controls is the lever; their history
     is not.
+*   **An audit names its upstream correspondence:** a ticket auditing a
+    dependency states what `snakes_and_ladders` would have to change for the
+    problem to be expressible there, or records that it would not and why.
+    Measuring one implementation against itself is a profile; the referee is
+    what makes it an audit, and the cost of the upstream change is what
+    decides whether the comparison is worth having. Where the correspondence
+    holds only in part, say which measurements were taken in the regime
+    where it holds.
