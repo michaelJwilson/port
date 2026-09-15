@@ -1,0 +1,22 @@
+# Rust
+/target/
+
+# Python
+__pycache__/
+*.pyc
+.venv
+.venv/
+.pytest_cache/
+.benchmarks/
+.coverage
+*.egg-info/
+.ruff_cache/
+.mypy_cache/
+
+# In-place compiled extension from an editable install
+python/port/*.so
+python/port/*.pyd
+python/port/*.dylib
+
+# Sphinx build output
+docs/_build/

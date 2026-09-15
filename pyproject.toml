@@ -15,6 +15,10 @@ dependencies = [
     "numba>=0.61.0",
     "numpy>=1.26.0",
     "pyyaml>=6.0.3",
+    # Pulled from git, not PyPI -- see [tool.uv.sources] below, which pins it
+    # to the `main` branch. Declaring it here is what makes that source entry
+    # take effect; without it uv silently ignores the entry.
+    "snakes_and_ladders",
 ]
 
 [project.optional-dependencies]
@@ -98,8 +102,7 @@ unfixable = [
 
 [tool.mypy]
 strict = true
-files = ["python", "tests", "infra"]
-mypy_path = "infra"
+files = ["python", "tests"]
 
 [[tool.mypy.overrides]]
 module = "pytest_benchmark.*"
@@ -114,15 +117,7 @@ module = "scipy.*"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
-module = "check_notebooks"
-disallow_untyped_calls = false
-
-[[tool.mypy.overrides]]
 module = ["nbformat.*", "nbclient.*"]
-ignore_missing_imports = true
-
-[[tool.mypy.overrides]]
-module = ["*"]
 ignore_missing_imports = true
 
 [tool.towncrier]
