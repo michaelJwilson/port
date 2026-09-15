@@ -36,12 +36,6 @@ notebooks = [
     "nbformat>=5.10",
     "ipykernel>=6.29",
 ]
-frameworks = [
-    "gymnasium>=1.0",
-    "rustworkx>=0.15",
-    "torchrl>=0.6",
-    "torch_geometric>=2.5",
-]
 test = [
     "pytest>=9.0.3",
     "pytest-cov>=4.0.0",
