@@ -70,3 +70,38 @@ def test_upstream_forward_baseline(benchmark: BenchmarkFixture) -> None:
         n_sequences=GATE_SEQUENCES,
     )
     benchmark(upstream_total_log_likelihood, fixture)
+
+
+@pytest.mark.benchmark
+def test_cnaster_phased_forward_baseline(benchmark: BenchmarkFixture) -> None:
+    """`cnaster`'s phased lattice, which reassembles its transfer matrix per position."""
+    from tests.adapters import cnaster_phased_total_log_likelihood, from_phased_chains
+    from tests.fixtures import phased_chains
+
+    fixture = phased_chains(
+        n_copy_states=GATE_STATES,
+        sequence_length=GATE_LENGTH,
+        n_sequences=GATE_SEQUENCES,
+    )
+    inputs = from_phased_chains(fixture)
+    benchmark(cnaster_phased_total_log_likelihood, inputs)
+
+
+@pytest.mark.benchmark
+def test_upstream_phased_forward_baseline(benchmark: BenchmarkFixture) -> None:
+    """The same recursion upstream, at the assembled constant transition.
+
+    The gap between the two is the cost of reassembling a `2K x 2K` matrix
+    at every position where the kernel is constant and one matrix would do.
+    """
+    from tests.adapters import from_phased_chains
+    from tests.fixtures import phased_chains
+    from tests.test_hmm_phased import upstream_phased_total_log_likelihood
+
+    fixture = phased_chains(
+        n_copy_states=GATE_STATES,
+        sequence_length=GATE_LENGTH,
+        n_sequences=GATE_SEQUENCES,
+    )
+    inputs = from_phased_chains(fixture)
+    benchmark(upstream_phased_total_log_likelihood, fixture, inputs)

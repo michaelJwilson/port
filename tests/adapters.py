@@ -21,7 +21,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from tests.fixtures import NegativeBinomialChains
+from tests.fixtures import NegativeBinomialChains, PhasedChains
 
 N_CHANNELS = 2
 """`cnaster` packs a count and a success into `single_X`'s middle axis."""
@@ -178,5 +178,88 @@ def cnaster_total_log_likelihood(inputs: CnasterChainInputs) -> float:
         inputs.log_sitewise_transmat,
     )
 
+    ends = np.cumsum(inputs.lengths) - 1
+    return float(sum(logsumexp(log_alpha[:, end]) for end in ends))
+
+
+@dataclass(frozen=True)
+class CnasterPhasedInputs:
+    """`cnaster`'s arguments for the phased lattice.
+
+    `hmm_phased.forward_lattice` takes the `K x K` base and assembles the
+    `2K x 2K` matrix per position from the sitewise kernel, so the base and
+    the kernel are carried separately here rather than pre-combined.
+
+    The emission arrives as an array. That is the lattice's own contract,
+    and it is also what keeps this rung testable: `cnaster`'s phased emission
+    raises before it returns (issue #9), so supplying the scores directly is
+    what separates the transfer matrix from a defect below it.
+    """
+
+    log_emission: np.ndarray
+    lengths: np.ndarray
+    log_startprob: np.ndarray
+    log_transmat: np.ndarray
+    log_sitewise_transmat: np.ndarray
+    penalize_phase_only_on_same_cnv: bool
+
+    @property
+    def n_paired_states(self) -> int:
+        """`2K`, the number of (copy state, phase) pairs."""
+        return int(self.log_emission.shape[0])
+
+
+def from_phased_chains(
+    fixture: PhasedChains,
+    *,
+    switch: float | None = None,
+) -> CnasterPhasedInputs:
+    """Lay a phased fixture out as `hmm_phased.forward_lattice` expects it.
+
+    Parameters
+    ----------
+    switch : float | None
+        Overrides the fixture's constant phase kernel, so a test can show
+        the lattice reads it. `None` keeps the one the draw used, which is
+        the only value the upstream comparison is valid at: a kernel that
+        varies by position, or differs from the one that generated the data,
+        is not the matrix upstream was handed.
+    """
+    import torch
+
+    observations = fixture.dataset.observations
+    n_sequences, sequence_length = observations.shape
+    n_obs = n_sequences * sequence_length
+
+    density = fixture.family.log_density(
+        torch.as_tensor(observations, dtype=torch.float64)
+    )
+    log_emission = density.numpy().reshape(n_obs, fixture.n_paired_states).T[:, :, None]
+
+    effective_switch = fixture.switch if switch is None else switch
+
+    return CnasterPhasedInputs(
+        log_emission=log_emission,
+        lengths=np.full(n_sequences, sequence_length, dtype=int),
+        log_startprob=np.log(fixture.initial),
+        log_transmat=np.log(fixture.base_transition),
+        log_sitewise_transmat=np.full(n_obs, np.log(effective_switch)),
+        penalize_phase_only_on_same_cnv=fixture.penalize_phase_only_on_same_cnv,
+    )
+
+
+def cnaster_phased_total_log_likelihood(inputs: CnasterPhasedInputs) -> float:
+    """The summed forward log-likelihood from `cnaster`'s phased lattice."""
+    from cnaster.hmm_phased import hmm_phased
+    from scipy.special import logsumexp
+
+    log_alpha = hmm_phased.forward_lattice(
+        inputs.lengths,
+        inputs.log_transmat,
+        inputs.log_startprob,
+        inputs.log_emission,
+        inputs.log_sitewise_transmat,
+        inputs.penalize_phase_only_on_same_cnv,
+    )
     ends = np.cumsum(inputs.lengths) - 1
     return float(sum(logsumexp(log_alpha[:, end]) for end in ends))
