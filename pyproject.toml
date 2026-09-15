@@ -19,6 +19,9 @@ dependencies = [
     # to the `main` branch. Declaring it here is what makes that source entry
     # take effect; without it uv silently ignores the entry.
     "snakes_and_ladders",
+    # Pulled from git, not PyPI -- see [tool.uv.sources] below, which pins it
+    # to the `finish_annotation_mushift3` branch.
+    "cnaster",
 ]
 
 [project.optional-dependencies]
@@ -47,6 +50,7 @@ test = [
 
 [tool.uv.sources]
 snakes_and_ladders = { git = "https://github.com/michaelJwilson/snakes_and_ladders", branch = "main" }
+cnaster = { git = "https://github.com/michaelJwilson/cnaster", branch = "finish_annotation_mushift3" }
 
 [tool.maturin]
 python-source = "python"
