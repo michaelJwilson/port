@@ -15,15 +15,16 @@ dependencies = [
     "numba>=0.61.0",
     "numpy>=1.26.0",
     "pyyaml>=6.0.3",
+    # Pulled from git, not PyPI -- see [tool.uv.sources] below, which pins it
+    # to the `main` branch. Declaring it here is what makes that source entry
+    # take effect; without it uv silently ignores the entry.
+    "snakes_and_ladders",
 ]
-
-[tool.uv.sources]
-snakes_and_ladders = { git = "https://github.com/michaelJwilson/snakes_and_ladders", branch = "main" }
 
 [project.optional-dependencies]
 dev = [
     "ruff>=0.9.9,<0.10",
-    "mypy>=1.0.0",
+    "mypy>=1.15,<3",
     "pre-commit>=3.5.0",
     "pip-audit>=2.7",
     "towncrier>=24.8.0",
@@ -44,6 +45,9 @@ test = [
     "pytest-xdist>=3.6",
 ]
 
+[tool.uv.sources]
+snakes_and_ladders = { git = "https://github.com/michaelJwilson/snakes_and_ladders", branch = "main" }
+
 [tool.maturin]
 python-source = "python"
 module-name = "port.oxiport"
@@ -53,10 +57,12 @@ target-version = "py312"
 
 [tool.ruff.lint]
 ignore = [
-  "G004", # f-string in logger
-  "T201", # print statements
-  "PLR2004", # magic value in assert
-  "ANN",  # annotation presence is enforced by mypy --strict, not ruff
+  "G004",     # f-string in logger
+  "T201",     # print statements
+  "PLR2004",  # magic value in assert
+  "ANN",      # annotation presence is enforced by mypy --strict, not ruff
+  "PLR09",    # Too many <...>
+  "ISC001",   # Conflicts with formatter
 ]
 
 extend-select = [
@@ -83,10 +89,6 @@ extend-select = [
   "NPY",         # NumPy specific rules
   "PD",          # pandas-vet
 ]
-extend-ignore = [
-  "PLR09",    # Too many <...>
-  "ISC001",   # Conflicts with formatter
-]
 unfixable = [
   "T20",  # Removes print statements
   "F841", # Removes unused variables
@@ -100,8 +102,7 @@ unfixable = [
 
 [tool.mypy]
 strict = true
-files = ["python", "tests", "infra"]
-mypy_path = "infra"
+files = ["python", "tests"]
 
 [[tool.mypy.overrides]]
 module = "pytest_benchmark.*"
@@ -116,14 +117,7 @@ module = "scipy.*"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
-module = "check_notebooks"
-disallow_untyped_calls = false
-
-[[tool.mypy.overrides]]
 module = ["nbformat.*", "nbclient.*"]
-ignore_missing_imports = true
-
-[[tool.mypy.overrides]]
 ignore_missing_imports = true
 
 [tool.towncrier]

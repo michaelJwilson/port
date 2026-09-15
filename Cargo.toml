@@ -1,0 +1,23 @@
+[package]
+name = "oxiport"
+# Single source of truth for the version: pyproject.toml sets
+# `dynamic = ["version"]`, so maturin reads it from here and the two files
+# cannot silently drift apart.
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/michaelJwilson/port"
+
+[lib]
+# The crate name must match the last component of `module-name` in
+# pyproject.toml (`port.oxiport`) and the `#[pymodule]` function in
+# src/lib.rs.
+name = "oxiport"
+# "rlib" (alongside "cdylib") lets benches/ and tests/ link this crate
+# normally as a Rust library; "cdylib" alone is only linkable by Python.
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+# Add `numpy` here when a binding first takes or returns an array; nothing
+# does yet, and an unused dependency is build time paid for nothing.
+pyo3 = { version = "0.29", features = ["extension-module"] }
