@@ -69,3 +69,10 @@ rather than waiting on them.
     `main` branch by `[tool.uv.sources]`. It is a git source, so a lockfile
     is what makes a build reproducible; regenerate and commit it with any
     dependency change.
+*   **Dependency repositories are read only:** `snakes_and_ladders`,
+    `cnaster` and anything else `[tool.uv.sources]` names are cloned to read
+    and to pin, never to write. Do not branch, push or open a pull request
+    against them, and do not ask for the access to. Where one of them needs
+    a change, report it here with the evidence and leave landing it to that
+    repository. A pin this repository controls is the lever; their history
+    is not.
