@@ -20,13 +20,8 @@ dependencies = [
     # take effect; without it uv silently ignores the entry.
     "snakes_and_ladders",
     # Pulled from git, not PyPI -- see [tool.uv.sources] below, which pins it
-    # to the `finish_annotation_mushift3` branch. Marked macOS-only because
-    # cnaster requires `jax-metal`, which publishes macOS wheels alone:
-    # unmarked, `uv sync` fails on Linux with no wheel for the platform.
-    # The marker governs installation, not resolution -- cnaster's `numpy<2`
-    # still caps the lockfile on every platform, which is why numpy resolves
-    # to 1.26.4 here and not 2.x. Lifting that cap needs a change in cnaster.
-    "cnaster; sys_platform == 'darwin'",
+    # to the `finish_annotation_mushift3` branch.
+    "cnaster",
 ]
 
 [project.optional-dependencies]
