@@ -15,8 +15,6 @@ dependencies = [
     "numba>=0.61.0",
     "numpy>=1.26.0",
     "pyyaml>=6.0.3",
-    "scipy>=1.13.0",
-    "torch>=2.4.0",
 ]
 
 [project.optional-dependencies]
@@ -123,19 +121,7 @@ module = ["nbformat.*", "nbclient.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
-module = [
-    "gymnasium.*",
-    "rustworkx.*",
-    "torchrl.*",
-    "tensordict.*",
-    "torch_geometric.*",
-    "networkx.*",
-]
 ignore_missing_imports = true
-
-[[tool.mypy.overrides]]
-module = "port.search.gym"
-disallow_subclassing_any = false
 
 [tool.towncrier]
 directory = "changelog.d"
