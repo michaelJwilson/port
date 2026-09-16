@@ -19,6 +19,14 @@ comparison here measures.
 """
 
 
+MIN_PHASE_SWITCH_PROB = 1e-10
+"""Floor `compute_numbat_phase_switch_prob` clamps to when none is passed.
+
+Far below any distance the fixtures use, so the clamp is observable as a
+floor rather than mistaken for a computed value.
+"""
+
+
 @pytest.fixture
 def cnaster_config() -> Iterator[None]:
     """Install a minimal `cnaster` global config, and put back what was there."""
@@ -26,7 +34,22 @@ def cnaster_config() -> Iterator[None]:
 
     previous = get_global_config()
     set_global_config(
-        YAMLConfig({"hmm": {"compression_decimals": COMPRESSION_DECIMALS}})
+        YAMLConfig(
+            {
+                "phasing": {"min_prob": MIN_PHASE_SWITCH_PROB},
+                # NB `hmm_utils` reads the solver name and then the
+                #    `em_`-prefixed option for each keyword that solver takes.
+                "hmm": {
+                    "compression_decimals": COMPRESSION_DECIMALS,
+                    "solver": "L-BFGS-B",
+                    "em_maxiter": 100,
+                    "em_ftol": 1e-6,
+                    "em_disp": 0,
+                    "em_xrtol": 1e-5,
+                    "em_xtol": 1e-5,
+                },
+            }
+        )
     )
     try:
         yield

@@ -129,6 +129,13 @@ module = "scipy.*"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
+# `pandas-stubs` is a separate distribution, and the only pandas here builds
+# a reference table for one dependency's interpolation. A development
+# dependency for that is not the trade `CLAUDE.md` asks for.
+module = "pandas.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
 module = ["nbformat.*", "nbclient.*"]
 ignore_missing_imports = true
 
@@ -197,8 +204,8 @@ source = [
 ]
 
 [tool.coverage.report]
-# The floor the tests reach against the whole of `cnaster`: 317 of 5,545
-# statements, 5.72 per cent. Low by construction -- the denominator is
+# The floor the tests reach against the whole of `cnaster`: 623 of 5,545
+# statements, 11.24 per cent. Low by construction -- the denominator is
 # every file the package ships, and most of them have no test yet. That is
 # the point: the number says how much of the subject is validated, and it
 # rises only by validating more of it.
@@ -207,7 +214,7 @@ source = [
 # pull request. Unlike a denominator of the imported modules, this one does
 # not fall for bringing a new module under test, so there is no case where
 # lowering it is legitimate.
-fail_under = 5.7
+fail_under = 11.2
 precision = 2
 exclude_lines = [
     "pragma: no cover",
