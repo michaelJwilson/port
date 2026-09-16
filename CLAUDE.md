@@ -63,12 +63,19 @@ names documents that do not exist here yet:
 
 | Document | Job |
 | --- | --- |
-| `README.md` | Project overview and installation |
+| `README.md` | Project overview, installation, and the index to the rest |
 | `CLAUDE.md` | This file |
+| `ROADMAP.md` | The stages, and the loop a change passes through |
+| `TICKETS.md` | What is filed and not done, grouped by milestone |
+| `STATUS.md` | What has landed, with the measurement that established it |
+
+The last three carry one list of milestones between them, and
+`tests/test_planning_documents_agree.py` refuses a change that edits it in
+one file alone. A planning document that can drift silently is one that
+will.
 
 Add a document from the upstream map when the repository has the content
-for it, not ahead of it -- `ROADMAP.md` and `TICKETS.md` when work is
-planned past the current change, `DEV.md` and `INSTALL.md` when `README.md`
+for it, not ahead of it -- `DEV.md` and `INSTALL.md` when `README.md`
 can no longer carry both, `CHANGELOG.md` when `towncrier` has a release to
 build, `REFERENCES.md` when the citations outgrow **The application**.
 `pyproject.toml` already configures `towncrier`, `sphinx`, `mypy --strict`
