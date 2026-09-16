@@ -11,9 +11,13 @@ which is the one rung whose correspondence with `cnaster` is exact today.
 """
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 import numpy as np
 from snakes_and_ladders.emissions import BetaBinomialEmission, NegativeBinomialEmission
+
+if TYPE_CHECKING:
+    from snakes_and_ladders.sim.graph import BoundaryCondition, PottsGraph
 from snakes_and_ladders.sim.hmm import (
     HmmParams,
     SimulatedHmmDataset,
@@ -22,6 +26,15 @@ from snakes_and_ladders.sim.hmm import (
 
 DEFAULT_SEED = 11
 """The seed every builder defaults to, so a bare call is reproducible."""
+
+MAX_ENUMERABLE_LABELLINGS = 200_000
+"""The ceiling :func:`enumerate_minimum_energy` refuses to search past.
+
+`3 ** 10` is 59,049 and `3 ** 11` is 177,147, so this admits a lattice of
+ten or eleven sites at three labels and refuses twelve. Chosen so the
+exhaustive test runs in the per-pull-request budget rather than so it covers
+an interesting lattice -- an enumerable fixture is small by definition, and
+saying so here keeps the limit one number rather than a habit."""
 
 
 @dataclass(frozen=True)
@@ -571,3 +584,220 @@ def planted_posterior(
     np.put_along_axis(indicator, states[..., None], 1.0, axis=-1)
 
     return (1.0 - smoothing) * indicator + smoothing / n_states
+
+
+@dataclass(frozen=True)
+class PottsLabels:
+    """A spatial labelling problem, and the truth that built it.
+
+    The rung issue #40 needs. A label solver takes a unary field and a graph
+    and returns a labelling, so what validates it is an instance whose graph
+    is declared and whose optimum is computable rather than approximable.
+
+    Parameters
+    ----------
+    graph : PottsGraph
+        The lattice, carrying its edges once each and a coupling per edge.
+        `cnaster` describes the same object as a symmetric CSR adjacency; the
+        adapter converts, and a test pins the two equal.
+    labels : np.ndarray
+        The planted labelling, shape `(n_nodes,)`. **Not the optimum.** It is
+        what the field was drawn around, and at a low signal-to-noise the
+        energy-minimising labelling is a different one -- which is the
+        difference between a recovery claim and an optimality claim, and the
+        reason the two are asserted separately.
+    field : np.ndarray
+        The unary, shape `(n_nodes, n_clones)`. `cnaster`'s
+        `single_llf`, upstream's `field_values`, and a per-spot per-clone log
+        likelihood in the application.
+    coupling : float
+        `J`, uniform over the edges.
+    spatial_weight : float
+        `cnaster` multiplies its edge weights by this and upstream folds it
+        into the coupling, so the two carry the same product differently.
+        Held separately here so a test can vary one and hold the other.
+    shape : tuple[int, ...]
+        The lattice extent. Carried because a failure naming a node index is
+        unreadable without it.
+    seed : int
+        The draw's seed.
+    """
+
+    graph: "PottsGraph"
+    labels: np.ndarray
+    field: np.ndarray
+    coupling: float
+    spatial_weight: float
+    shape: tuple[int, ...]
+    seed: int
+
+    @property
+    def n_nodes(self) -> int:
+        """The number of sites."""
+        return int(self.field.shape[0])
+
+    @property
+    def n_clones(self) -> int:
+        """The number of labels."""
+        return int(self.field.shape[1])
+
+    @property
+    def edge_coupling(self) -> float:
+        """`spatial_weight * J`, the product both implementations score with."""
+        return self.spatial_weight * self.coupling
+
+
+def potts_labels(
+    *,
+    shape: tuple[int, ...] = (6, 6),
+    n_clones: int = 3,
+    coupling: float = 1.0,
+    spatial_weight: float = 1.0,
+    signal: float = 2.0,
+    noise: float = 1.0,
+    boundary: "BoundaryCondition | None" = None,
+    seed: int = DEFAULT_SEED,
+) -> PottsLabels:
+    """Plant contiguous label domains on a lattice and draw a field around them.
+
+    The field is **planted, not inferred**, for the reason
+    :func:`planted_posterior` gives: it is the input to the step under test,
+    so deriving it from an emission would make a defect in the emission look
+    like a defect in the solver. The emission-derived field belongs to issue
+    #4, which is where the whole inference is refereed.
+
+    The domains are contiguous slabs along the first axis rather than an
+    independent draw per node. That is the regime the paper's solver argument
+    is about: `wolff.tex` claims single-site descent freezes large same-label
+    regions into spurious disjoint clusters, and a labelling with no large
+    regions cannot exhibit it. An i.i.d. labelling would make every solver
+    agree and the comparison empty.
+
+    Parameters
+    ----------
+    signal : float
+        How far the planted label's field entry sits above the others, before
+        noise. The axis every claim here is stated against: at `signal` far
+        above `noise` the unary decides alone and the coupling is decoration,
+        and at zero the field is pure noise and no method can recover
+        anything.
+    noise : float
+        Standard deviation of the Gaussian added to every entry. `signal /
+        noise` is the quantity to report, not either alone.
+    coupling, spatial_weight : float
+        Their product is what both implementations score with. At zero the
+        problem separates per node and every solver must return the field's
+        argmax, which is the degenerate case a test uses to check the harness
+        before it checks a solver.
+
+    Raises
+    ------
+    ValueError
+        If `n_clones` is below two, where there is nothing to label; if
+        `noise` is negative; or if `shape` has fewer sites than clones, where
+        a planted labelling cannot use them all.
+    """
+    from snakes_and_ladders.sim.graph import BoundaryCondition, lattice_graph
+
+    if n_clones < 2:
+        msg = f"n_clones must be at least two, got {n_clones}"
+        raise ValueError(msg)
+    if noise < 0.0:
+        msg = f"noise must not be negative, got {noise}"
+        raise ValueError(msg)
+
+    n_nodes = int(np.prod(shape))
+    if n_nodes < n_clones:
+        msg = f"shape {shape} has {n_nodes} sites, fewer than n_clones={n_clones}"
+        raise ValueError(msg)
+
+    if boundary is None:
+        boundary = BoundaryCondition.OPEN
+
+    graph = lattice_graph(tuple(shape), boundary, coupling)
+
+    # NB contiguous slabs along the first axis, sized as evenly as the extent
+    #    allows, so every clone is present and the domains are large.
+    first_axis = shape[0]
+    per_node = n_nodes // first_axis
+    slab_of_row = np.floor_divide(np.arange(first_axis) * n_clones, first_axis)
+    labels = np.repeat(slab_of_row, per_node).astype(np.int64)
+
+    rng = np.random.default_rng(seed)
+    field = rng.normal(loc=0.0, scale=noise, size=(n_nodes, n_clones))
+    field[np.arange(n_nodes), labels] += signal
+
+    return PottsLabels(
+        graph=graph,
+        labels=labels,
+        field=field,
+        coupling=coupling,
+        spatial_weight=spatial_weight,
+        shape=tuple(shape),
+        seed=seed,
+    )
+
+
+def enumerate_minimum_energy(fixture: PottsLabels) -> tuple[np.ndarray, float]:
+    """The exact minimiser of the Potts energy, by exhaustive search.
+
+    The referee `CLAUDE.md` names first among independent sources, and the
+    one this rung can actually have: a label solver returns the best of what
+    it visited, and without the true optimum there is no way to tell a good
+    search from a lucky one.
+
+    Returns the labelling and its energy, under upstream's sign convention
+    (`energy` is minimised). Cost is `n_clones ** n_nodes`, so this is for
+    fixtures built to be enumerable and nothing else.
+
+    Raises
+    ------
+    ValueError
+        If the search space exceeds `MAX_ENUMERABLE_LABELLINGS`. Refusing is
+        the point: an enumeration that silently takes an hour is a test that
+        will be deleted rather than fixed, and a fixture too large to
+        enumerate needs a different referee rather than more patience.
+    """
+    from snakes_and_ladders.search.alpha_expansion import energy
+
+    n_nodes, n_clones = fixture.n_nodes, fixture.n_clones
+    total = n_clones**n_nodes
+
+    if total > MAX_ENUMERABLE_LABELLINGS:
+        msg = (
+            f"{n_clones}**{n_nodes} = {total} labellings exceeds "
+            f"{MAX_ENUMERABLE_LABELLINGS}; use a smaller fixture"
+        )
+        raise ValueError(msg)
+
+    graph = _scaled_graph(fixture)
+
+    best_labelling, best_energy = None, np.inf
+    for index in range(total):
+        labelling = np.array(
+            [(index // n_clones**position) % n_clones for position in range(n_nodes)],
+            dtype=np.int64,
+        )
+        value = energy(graph, fixture.field, labelling)
+        if value < best_energy:
+            best_labelling, best_energy = labelling, value
+
+    assert best_labelling is not None
+    return best_labelling, float(best_energy)
+
+
+def _scaled_graph(fixture: PottsLabels) -> "PottsGraph":
+    """The fixture's graph with `spatial_weight` folded into the coupling.
+
+    `cnaster` carries the weight outside the adjacency and multiplies at
+    scoring time; upstream carries one number per edge. Folding here is what
+    makes the two score the same objective, and doing it in one place is what
+    stops a test folding it twice.
+    """
+    from snakes_and_ladders.sim.graph import PottsGraph
+
+    return PottsGraph(
+        n_nodes=fixture.graph.n_nodes,
+        edges=fixture.graph.edges,
+        coupling=tuple(fixture.spatial_weight * j for j in fixture.graph.coupling),
+    )
