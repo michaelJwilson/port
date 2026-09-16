@@ -238,11 +238,11 @@ omit = [
 ]
 
 [tool.coverage.report]
-# The floor the tests reach against the whole of `cnaster`: 1,266 of 5,544
-# statements, 22.84 per cent. The jump from 13.82 came from one test: driving
-# `run_core_inference` end to end on a planted instance reaches the
+# The floor the tests reach against the whole of `cnaster`: 1,415 of 5,544
+# statements, 25.52 per cent. Two tests moved it from 13.82: driving
+# `run_core_inference` end to end on a planted instance, which reaches the
 # pseudobulk, the initializer, the EM loop, the emission producer and the
-# label solver in one call, which no per-function test had.
+# label solver in one call; and binning a pre-image back through `omics`.
 #
 # Low by construction -- the denominator is
 # every module the package ships at top level, and most of them have no test
@@ -256,7 +256,7 @@ omit = [
 # pull request. Unlike a denominator of the imported modules, this one does
 # not fall for bringing a new module under test, so there is no case where
 # lowering it is legitimate.
-fail_under = 22.8
+fail_under = 25.5
 precision = 2
 exclude_lines = [
     "pragma: no cover",
