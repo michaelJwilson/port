@@ -138,6 +138,13 @@ module = "scipy.*"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
+# `scikit-learn` is `cnaster`'s dependency, not this repository's, and its
+# stubs are a separate distribution. Used here only for `adjusted_rand_score`,
+# which is a referee rather than a dependency of the package.
+module = "sklearn.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
 # `pandas-stubs` is a separate distribution, and the only pandas here builds
 # a reference table for one dependency's interpolation. A development
 # dependency for that is not the trade `CLAUDE.md` asks for.
@@ -184,18 +191,41 @@ showcontent = true
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "--strict-markers"
-# Every test names what it is checked against (CLAUDE.md, Testing & Quality
-# Assurance). The marker is the referee, not the subject: `upstream` means a
-# second implementation decided the expected value, `planted` means the
-# fixture's own truth did, and `analytic` means a property that holds by
-# construction did.
 markers = [
-    "upstream: checked against the snakes_and_ladders implementation",
+    # --- kinds: what decided the expected value -------------------------
+    #
+    # Every test names its referee (CLAUDE.md, Testing & Quality Assurance).
+    # The kind is the referee, never the subject, and every test carries one
+    # -- `tests/test_marker_discipline.py` refuses one that does not.
+    #
+    # `oracle` and `upstream_oracle` mirror `snakes_and_ladders`' vocabulary
+    # and are kept apart because a closed form and a second implementation
+    # are not the same witness: an exact answer cannot be wrong, and an
+    # implementation agreeing with another can be wrong in the same way
+    # twice. #69 is why the second one is named at all -- upstream is used
+    # here in two roles, and only one of them referees.
+    "oracle: checked against an independent exact answer -- enumeration, brute force, a closed form, or a published value",
+    "upstream_oracle: checked against snakes_and_ladders as a second implementation of the same model -- agreement, to a stated tolerance, in a regime where the correspondence is established",
+    "upstream: snakes_and_ladders was used and did not decide the value -- it drew the instance, or its acceptance of an input is itself the claim",
     "cnaster: checked against the cnaster implementation",
     "planted: checked against the fixture's planted truth",
     "analytic: checked against an analytic property or an invariant",
+    # --- tiers: when a test runs, and how long it is allowed to take -----
     "release: over the per-pull-request budget; runs for a release",
+    # NB `preprocessing` names a subject rather than a referee, as `release`
+    #    and `benchmark` do. It selects the input path -- `load_input_data`,
+    #    the binning, the pre-image that round-trips through them -- which is
+    #    the stage whose failures are slowest to attribute and the one worth
+    #    running alone while changing it.
+    "preprocessing: exercises the input path from files to bins",
     "benchmark: records a baseline; asserts no ratio",
+    # NB `critical` is a second axis rather than a kind, and upstream states
+    #    the rule this repository adopts: a test is critical *and* refereed
+    #    by something, never instead of it. What gates is a test whose
+    #    referee is outside the implementation -- `oracle`, `upstream_oracle`,
+    #    `cnaster` or `planted` -- and that carries no scale marker, so the
+    #    early gate cannot silently become the slow tier.
+    "critical: gates early; fast, and its failure means the rest is not worth running",
 ]
 
 [tool.coverage.run]
@@ -246,7 +276,7 @@ omit = [
 ]
 
 [tool.coverage.report]
-# The floor the tests reach: 1,371 of 5,676 statements, 24.15 per cent. The
+# The floor the tests reach: 1,977 of 5,676 statements, 34.83 per cent. The
 # denominator is `cnaster` plus `python/port`, so a module added here moves
 # both the numerator and the denominator -- `port.integer_copy` added 98
 # statements and `port.patch.hmrf_field` 32, and the figure rose for each,
@@ -267,7 +297,7 @@ omit = [
 # pull request. Unlike a denominator of the imported modules, this one does
 # not fall for bringing a new module under test, so there is no case where
 # lowering it is legitimate.
-fail_under = 24.1
+fail_under = 34.8
 precision = 2
 exclude_lines = [
     "pragma: no cover",

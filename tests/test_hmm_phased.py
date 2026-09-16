@@ -61,7 +61,8 @@ def upstream_phased_total_log_likelihood(
     )
 
 
-@pytest.mark.upstream
+@pytest.mark.cnaster
+@pytest.mark.critical
 @pytest.mark.parametrize("penalize", ASSEMBLIES)
 @pytest.mark.parametrize("n_copy_states", [1, 2, 3, 4])
 def test_combined_transition_matches_cnaster_construction(
@@ -116,7 +117,8 @@ def test_combined_transition_is_row_stochastic(
     np.testing.assert_allclose(combined.sum(axis=1), 1.0, rtol=0.0, atol=1e-14)
 
 
-@pytest.mark.upstream
+@pytest.mark.upstream_oracle
+@pytest.mark.critical
 @pytest.mark.parametrize("penalize", ASSEMBLIES)
 @pytest.mark.parametrize("drift", [0.3, 0.5, 0.7])
 @pytest.mark.parametrize("n_sequences", [1, 3])
@@ -189,7 +191,7 @@ def test_switch_outside_the_unit_interval_is_refused() -> None:
         )
 
 
-@pytest.mark.upstream
+@pytest.mark.analytic
 @pytest.mark.xfail(
     strict=True,
     reason=(

@@ -204,3 +204,40 @@ def cnaster_config_switch(tmp_path: Path) -> Iterator[Callable[[float, int], Non
         yield switch
     finally:
         set_global_config(previous)
+
+
+_COLLECTED: list[pytest.Item] = []
+"""Every test collected this session, before any `-m` deselected one.
+
+`session.items` is the *selected* slice, so a guard reading it under
+`-m critical` would see only the tier it is supposed to be auditing and pass
+for that reason.
+"""
+
+
+@pytest.hookimpl(tryfirst=True)
+def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
+    """Record the collection before pytest's own mark deselection runs."""
+    _COLLECTED[:] = items
+
+
+@pytest.fixture
+def collected_items() -> list[pytest.Item]:
+    """The whole suite's items, or a skip when the run is a narrowed one.
+
+    Selecting a file or a `-k` expression collects less than the tree, and a
+    guard over that subset would say something weaker than it claims while
+    reporting green. The claim is about the suite, so it is made only when
+    the suite is what was collected.
+    """
+    items = list(_COLLECTED)
+    collected_modules = {item.nodeid.split("::")[0] for item in items}
+    on_disk = {
+        f"tests/{path.name}" for path in (Path(__file__).parent).glob("test_*.py")
+    }
+
+    missing = on_disk - collected_modules
+    if missing:
+        pytest.skip(f"narrowed collection; {len(missing)} test module(s) absent")
+
+    return items
