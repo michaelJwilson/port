@@ -245,12 +245,13 @@ omit = [
 ]
 
 [tool.coverage.report]
-# The floor the tests reach: 977 of 5,738 statements, 17.03 per cent. The
+# The floor the tests reach: 1,079 of 5,778 statements, 18.67 per cent. The
 # denominator is `cnaster` plus `python/port`, so a module added here moves
 # both the numerator and the denominator -- `port.integer_copy` added 98
 # statements, `port.patch.hmrf_field` 32, `port.patch.hmrf_fused_field` 25,
-# `port.patch.hmrf_adjacency` 9 and `port.patch.hmrf_invariants` 28, and the
-# figure rose for each, which is the arithmetic working.
+# `port.patch.hmrf_adjacency` 9, `port.patch.hmrf_invariants` 28 and
+# `port.patch.icm_interface` 40, and the figure rose for each, which is the
+# arithmetic working.
 #
 # Low by construction -- the denominator is
 # every module the package ships at top level, and most of them have no test
@@ -264,7 +265,7 @@ omit = [
 # pull request. Unlike a denominator of the imported modules, this one does
 # not fall for bringing a new module under test, so there is no case where
 # lowering it is legitimate.
-fail_under = 17.0
+fail_under = 18.6
 precision = 2
 exclude_lines = [
     "pragma: no cover",
