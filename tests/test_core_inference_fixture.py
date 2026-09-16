@@ -89,7 +89,12 @@ def test_each_entry_is_a_negative_binomial_draw() -> None:
     which is #78.
     """
     truth = core_inference_truth(
-        n_obs=3000, lattice=(20, 20), n_segments=6, depth=(1.0, 1.0), reads=(40, 41)
+        n_obs=3000,
+        lattice=(20, 20),
+        n_segments=6,
+        exposure="constant",
+        depth=(1.0, 1.0),
+        reads=(40, 41),
     )
     per_spot = truth.states[truth.labels].T
     state = 1
@@ -121,7 +126,12 @@ def test_each_entry_is_a_beta_binomial_draw() -> None:
     than an accident of the sampler.
     """
     truth = core_inference_truth(
-        n_obs=3000, lattice=(20, 20), n_segments=6, depth=(1.0, 1.0), reads=(40, 41)
+        n_obs=3000,
+        lattice=(20, 20),
+        n_segments=6,
+        exposure="constant",
+        depth=(1.0, 1.0),
+        reads=(40, 41),
     )
     per_spot = truth.states[truth.labels].T
     state = 2

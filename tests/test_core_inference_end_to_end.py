@@ -147,25 +147,30 @@ def test_the_run_recovers_the_planted_labelling(cnaster_config: None) -> None:
 def test_the_run_recovers_the_extreme_states_and_not_the_middle_one(
     cnaster_config: None,
 ) -> None:
-    """Two of three states come back; the middle allele state collapses.
+    """The allele extremes come back; the expression does not, at all.
 
-    Measured on this instance, planted `mu` `[0.50, 2.75, 5.00]` and
-    `p_binom` `[0.52, 0.70, 0.88]`:
+    Measured on this instance -- planted `mu` `[0.50, 2.75, 5.00]`, `p_binom`
+    `[0.52, 0.70, 0.88]`, under the Weierstrass exposure #4's fixture plants:
 
     | budget | fitted `mu` | fitted `p_binom` |
     | --- | --- | --- |
-    | 2 outer, 10 EM | 0.499, 3.155, 4.873 | 0.520, 0.880, 0.885 |
-    | 3 outer, 30 EM | 0.499, 1.402, 4.873 | 0.520, 0.880, 0.887 |
+    | 2 outer, 10 EM | 0.498, 4.880, 10.657 | 0.521, 0.880, 0.884 |
+    | 3 outer, 30 EM | 0.498, 4.880, 7.731 | 0.521, 0.880, 0.888 |
 
-    Two things are asserted because two things are established. The extremes
-    are recovered in both channels. The middle allele state is **not** -- it
-    lands on the upper one, leaving two of the three indistinguishable -- and
-    more iterations do not fix it: they move `mu`'s worst relative error from
-    0.147 to 0.490.
+    Three things are established and each is asserted.
 
-    That is the shape #30 predicts from the other end, and it is pinned here
-    rather than hidden under a tolerance wide enough to pass. A fix upstream
-    turns the second assertion red, which is the point of writing it as one.
+    The **allele** extremes are recovered to 0.02 and the middle state is not
+    -- `0.70` lands on `0.880`, leaving two of three indistinguishable.
+
+    The **expression** is not recovered beyond the lowest state: the worst
+    relative error is 1.131, and at ten times the budget it is still 0.775.
+    Under an exposure drawn i.i.d. over both axes the same fit reached 0.147,
+    so what breaks it is not that the exposure varies but that it varies
+    **along the bin axis**, where it aliases with the state path instead of
+    averaging out.
+
+    More iterations do not fix either channel. That is #82, and the numbers
+    here are the sharper version of it.
     """
     truth = core_inference_truth(
         n_clones=2, n_states=3, lattice=(30, 20), n_obs=300, n_segments=4
@@ -177,13 +182,20 @@ def test_the_run_recovers_the_extreme_states_and_not_the_middle_one(
     planted_mu = np.sort(np.exp(truth.log_mu))
     planted_p = np.sort(truth.p_binom)
 
-    np.testing.assert_allclose(fitted_mu[[0, -1]], planted_mu[[0, -1]], rtol=0.05)
     np.testing.assert_allclose(fitted_p[[0, -1]], planted_p[[0, -1]], atol=0.02)
 
     middle_gap = abs(fitted_p[1] - planted_p[1])
     assert middle_gap > 0.1, (
         f"the middle allele state now recovers to {middle_gap:.3f}; if that is "
         "a fix upstream, this assertion is what should change"
+    )
+
+    np.testing.assert_allclose(fitted_mu[0], planted_mu[0], rtol=0.05)
+
+    expression_error = float(np.abs(fitted_mu / planted_mu - 1.0).max())
+    assert expression_error > 0.5, (
+        f"the expression now recovers to {expression_error:.3f} under a "
+        "bin-varying exposure; a fix upstream is what should change this"
     )
 
 
