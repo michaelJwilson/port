@@ -887,3 +887,58 @@ def core_inference_truth(
         self_transition=self_transition,
         seed=seed,
     )
+
+
+def dev_instance(**overrides: object) -> CoreInferenceTruth:
+    """The instance to develop against: small enough to fail fast.
+
+    `K = 10` as the key instance has, a tenth of its `G`, a third of its `S`,
+    and **four** clones rather than ten. Four because of the floor, not taste:
+    `icm_sweep_deque` merges any clone under 200 spots and does not expose the
+    threshold (#81), so ten clones cannot exist below `S = 2,000` and a
+    development instance that small would measure the merge rather than the
+    model. Four over 1,000 spots leaves 250 each.
+
+    The point is wall time. An error found in 20 s is an error found; the same
+    error at 310 s is a reason to stop looking.
+    """
+    settings: dict[str, object] = {
+        "n_clones": 4,
+        "n_states": 10,
+        "lattice": (10, 100),
+        "n_obs": 1_000,
+        "n_segments": 10,
+    }
+    settings.update(overrides)
+    return core_inference_truth(**settings)  # type: ignore[arg-type]
+
+
+def key_instance(**overrides: object) -> CoreInferenceTruth:
+    """The instance final validation and benchmarking are reported at.
+
+    `M = K = 10`, `G = 10,000`, `S = 3,000`. The declared `M`, `K` and `G`
+    (#87), with `S` at 3,000 rather than 5,000 because that is what fits.
+
+    Measured, `run_core_inference` completing one outer iteration:
+
+    | `G` | `S` | emission | wall | peak RSS | clones out |
+    | ---: | ---: | ---: | ---: | ---: | ---: |
+    | 750 | 2,000 | 0.24 GB | 21.6 s | 1.19 GB | 10 |
+    | 1,500 | 2,000 | 0.48 GB | 38.6 s | 1.55 GB | 10 |
+    | 4,000 | 2,000 | 1.28 GB | 90.9 s | 2.77 GB | 10 |
+    | 10,000 | 2,000 | 3.20 GB | 222.5 s | 5.68 GB | 10 |
+    | **10,000** | **3,000** | **4.80 GB** | **310.3 s** | **7.98 GB** | **10** |
+
+    `S = 5,000` puts the emission at 8.00 GB and the peak near 18, against 15
+    available. `S` is the extent that gives: `G` is the axis the copy-state
+    profile lives on, and `M` and `K` are the model.
+    """
+    settings: dict[str, object] = {
+        "n_clones": 10,
+        "n_states": 10,
+        "lattice": (30, 100),
+        "n_obs": 10_000,
+        "n_segments": 10,
+    }
+    settings.update(overrides)
+    return core_inference_truth(**settings)  # type: ignore[arg-type]

@@ -130,6 +130,13 @@ module = "scipy.*"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
+# `scikit-learn` is `cnaster`'s dependency, not this repository's, and its
+# stubs are a separate distribution. Used here only for `adjusted_rand_score`,
+# which is a referee rather than a dependency of the package.
+module = "sklearn.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
 # `pandas-stubs` is a separate distribution, and the only pandas here builds
 # a reference table for one dependency's interpolation. A development
 # dependency for that is not the trade `CLAUDE.md` asks for.

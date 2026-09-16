@@ -25,7 +25,15 @@ import numpy as np
 import pytest
 
 from tests.adapters import from_core_inference_truth
-from tests.fixtures import CoreInferenceTruth, core_inference_truth
+from tests.fixtures import (
+    CoreInferenceTruth,
+    core_inference_truth,
+    dev_instance,
+    key_instance,
+)
+
+DECLARED_SPOTS = 5_000
+"""`S` at the scale #87 names, and the one the inference does not fit in."""
 
 MIN_CLONE_SPOTS = 200
 """`icm_sweep_deque`'s default, which `run_core_inference` does not expose.
@@ -48,6 +56,32 @@ def _run(truth: CoreInferenceTruth, **kwargs: object) -> Any:
             hmmclass=hmm_nophasing,
             **kwargs,
         )
+
+
+def _adjusted_rand_index(planted: np.ndarray, fitted: np.ndarray) -> float:
+    """Agreement between two partitions, invariant to how either is labelled.
+
+    Written here rather than taken from `scikit-learn`: it is `cnaster`'s
+    dependency and not this repository's, and a referee that arrives through
+    the subject is not independent of it.
+
+    Ten classes have 3.6 million permutations, so the exact-permutation
+    accuracy below does not scale; this counts agreeing pairs instead and
+    corrects for the agreement expected by chance.
+    """
+    from math import comb
+
+    table = np.zeros((int(planted.max()) + 1, int(fitted.max()) + 1), dtype=np.int64)
+    np.add.at(table, (planted, fitted), 1)
+
+    pairs = sum(comb(int(n), 2) for n in table.ravel())
+    by_planted = sum(comb(int(n), 2) for n in table.sum(axis=1))
+    by_fitted = sum(comb(int(n), 2) for n in table.sum(axis=0))
+    total = comb(int(planted.size), 2)
+
+    expected = by_planted * by_fitted / total
+    maximum = 0.5 * (by_planted + by_fitted)
+    return float((pairs - expected) / (maximum - expected))
 
 
 def _best_permutation_accuracy(fitted: np.ndarray, planted: np.ndarray) -> float:
@@ -246,3 +280,66 @@ def test_the_declared_scale_is_out_of_reach_of_a_single_run_here() -> None:
 
     assert truth.emission_gigabytes < 0.01
     assert declared == pytest.approx(8.0), f"{declared:.2f} GB"
+
+
+@pytest.mark.planted
+@pytest.mark.release
+def test_the_key_instance_runs_end_to_end(cnaster_config: None) -> None:
+    """The key instance: `M = K = 10`, `G = 10,000`, `S = 3,000`.
+
+    What final validation and benchmarking are reported at. 310 s and 7.98 GB
+    for one outer iteration, so it is run deliberately rather than while
+    working -- `test_the_dev_instance_recovers_its_labelling` is the one to
+    iterate against.
+
+    What is asserted is the labelling, by adjusted Rand index so the clone
+    names do not matter: ten classes have 3.6 million permutations and the
+    partition is what the model determines.
+
+    The emission parameters are **not** asserted here. #82 and #86 establish
+    that they are not recovered at three states, and asserting it at ten would
+    restate those findings at forty minutes a run rather than adding to them.
+    """
+    truth = key_instance()
+
+    assert truth.n_spots == 3_000
+    assert min(index.size for index in truth.clone_index) >= MIN_CLONE_SPOTS
+    assert truth.emission_gigabytes == pytest.approx(4.8)
+
+    result = _run(truth, max_iter_outer=1, max_iter=3)
+    fitted = np.asarray(result.assignment.new_assignment)
+
+    assert np.unique(fitted).size == truth.n_clones, (
+        f"{np.unique(fitted).size} clones survived of {truth.n_clones}"
+    )
+
+    agreement = _adjusted_rand_index(truth.labels, fitted)
+    assert agreement > 0.9, f"adjusted Rand index {agreement:.3f}"
+
+
+@pytest.mark.planted
+@pytest.mark.release
+def test_the_dev_instance_recovers_its_labelling(cnaster_config: None) -> None:
+    """The dev instance, and it recovers the labelling exactly.
+
+    `M = 4`, `K = 10`, `G = 1,000`, `S = 1,000`: 15.8 s and 1.07 GB against
+    the key instance's 310 s and 7.98 GB, at an adjusted Rand index of
+    **1.000**. That combination is what makes it worth having -- an instance
+    that failed to recover would give a developer nothing to work against, and
+    one that took five minutes would stop them looking.
+
+    Marked `release` with the key one because both drive the whole pipeline;
+    the difference is that this is the one to run by hand while changing
+    something.
+    """
+    truth = dev_instance()
+
+    assert (truth.n_clones, truth.n_states) == (4, 10)
+    assert (truth.n_obs, truth.n_spots) == (1_000, 1_000)
+    assert min(index.size for index in truth.clone_index) >= MIN_CLONE_SPOTS
+
+    result = _run(truth, max_iter_outer=1, max_iter=3)
+    fitted = np.asarray(result.assignment.new_assignment)
+
+    assert np.unique(fitted).size == truth.n_clones
+    assert _adjusted_rand_index(truth.labels, fitted) == pytest.approx(1.0)
