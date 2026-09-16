@@ -121,6 +121,27 @@ rather than waiting on them.
     kernel goes untested. Where a test exists only to reach a compiled
     kernel, say so in its docstring, because the report will not.
 
+## The paper
+
+[`cna-maste-paper`](https://github.com/michaelJwilson/cna-maste-paper) is the
+statement of methods and results that `cnaster` implements: the likelihood
+and its Potts spatial prior, the hidden Markov formulation, phasing and
+genome segmentation, the efficient emission evaluation, the label solvers,
+initialization, model selection, integer copy numbers and the expected
+runtime.
+
+It is the third reference this repository works against, and the only one
+that says what the code is *supposed* to do rather than what some
+implementation does. Where `cnaster` and the paper disagree, neither is
+automatically right: the paper may describe an intent the code has not
+reached, or the code may have learned something the paper has not recorded.
+Say which, with the evidence, rather than assuming the text is the
+specification or that the implementation is the truth.
+
+It is read only on the same terms as the dependencies, and it is not a
+dependency: nothing here imports it, and the pin that governs it is a
+citation rather than a lockfile.
+
 ## Scientific validation
 
 Restated from upstream rather than adopted by reference. These are the rules
