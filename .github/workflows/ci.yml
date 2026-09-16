@@ -34,7 +34,15 @@ jobs:
       - run: uv run --no-sync mypy
       # NB the coverage gate is enforced here rather than in `addopts`, so a
       #    local `pytest` stays fast and the floor still binds on every change.
-      - run: uv run --no-sync pytest --cov --cov-report=term
+      #
+      #    `-m "not release"` is what makes that marker mean anything. Without
+      #    it the marker is documentation: `pyproject.toml` defines `release`
+      #    as "over the per-pull-request budget", and the job ran the
+      #    stress benchmarks it marks -- 78 seconds of them -- on every
+      #    change. The floor is measured against this selection, and the
+      #    release-marked tests contribute no statements of their own, so
+      #    deselecting them does not move it.
+      - run: uv run --no-sync pytest -m "not release" --cov --cov-report=term
 
   rust:
     name: Rust (lint, format)
