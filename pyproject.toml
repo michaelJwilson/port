@@ -245,13 +245,17 @@ omit = [
 ]
 
 [tool.coverage.report]
-# The floor the tests reach: 982 of 5,680 statements, 17.29 per cent. The
+# The floor the tests reach: 1,079 of 5,778 statements, 18.67 per cent. The
 # denominator is `cnaster` plus `python/port`, so a module added here moves
-# both -- `port.patch.icm_interface` added 40 statements and the figure rose
-# 1.69 points, because pinning the reduced interface runs `cnaster.icm`'s
-# solver rather than only importing it. Low by construction -- the
-# denominator is every module the package ships at top level, and most of
-# them have no test yet. That is the point: the number says how much of the subject is
+# both the numerator and the denominator -- `port.integer_copy` added 98
+# statements, `port.patch.hmrf_field` 32, `port.patch.hmrf_fused_field` 25,
+# `port.patch.hmrf_adjacency` 9, `port.patch.hmrf_invariants` 28 and
+# `port.patch.icm_interface` 40, and the figure rose for each, which is the
+# arithmetic working.
+#
+# Low by construction -- the denominator is
+# every module the package ships at top level, and most of them have no test
+# yet. That is the point: the number says how much of the subject is
 # validated, and it rises only by validating more of it.
 #
 # Measured with `-m "not release"`, the per-pull-request selection. The
@@ -261,7 +265,7 @@ omit = [
 # pull request. Unlike a denominator of the imported modules, this one does
 # not fall for bringing a new module under test, so there is no case where
 # lowering it is legitimate.
-fail_under = 17.2
+fail_under = 18.6
 precision = 2
 exclude_lines = [
     "pragma: no cover",
