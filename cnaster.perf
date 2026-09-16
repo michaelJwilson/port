@@ -1,0 +1,2 @@
+row_index	timestamp	model	optimizer	size	num_states	default_start_params	runtime	iterations	fcalls	converged	llf
+1	2026-09-16 01:48:20	Weighted_BetaBinom_mix	L-BFGS-B                                	7200	3	True	0.4919	43	385	True	-7.872082e+03

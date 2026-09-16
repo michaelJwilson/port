@@ -20,8 +20,9 @@ load-bearing and each is pinned by a test rather than assumed:
 from dataclasses import dataclass
 
 import numpy as np
+from snakes_and_ladders.emissions import BetaBinomialEmission
 
-from tests.fixtures import NegativeBinomialChains, PhasedChains
+from tests.fixtures import BetaBinomialChains, NegativeBinomialChains, PhasedChains
 
 N_CHANNELS = 2
 """`cnaster` packs a count and a success into `single_X`'s middle axis."""
@@ -263,3 +264,197 @@ def cnaster_phased_total_log_likelihood(inputs: CnasterPhasedInputs) -> float:
     )
     ends = np.cumsum(inputs.lengths) - 1
     return float(sum(logsumexp(log_alpha[:, end]) for end in ends))
+
+
+@dataclass(frozen=True)
+class MStepResult:
+    """One re-estimation, at the parameterization both sides share.
+
+    `snakes_and_ladders` returns a `Reestimate` carrying what its inner
+    solve had to report; `cnaster` returns an `OptimizationResult` carrying
+    a different set. This is the intersection, so a comparison reads as one
+    table rather than two.
+
+    Parameters
+    ----------
+    alpha, beta : np.ndarray
+        The re-estimated pair, shape `(n_states,)`.
+    converged : bool
+        Whether the inner solve settled. Both sides report it; neither
+        reports it the same way, which is why it is carried rather than
+        asserted inside the adapter.
+    iterations : int
+        Iterations the solve took, or `-1` where the implementation does not
+        say. Never compared -- the two solve by different methods, so the
+        counts are not commensurate and only their finiteness means anything.
+    seconds : float
+        Wall time for the call, for the benchmark. Measured here so the
+        comparison times the same span on both sides: the solve and nothing
+        around it.
+    """
+
+    alpha: np.ndarray
+    beta: np.ndarray
+    converged: bool
+    iterations: int
+    seconds: float
+
+    @property
+    def success_probability(self) -> np.ndarray:
+        """`alpha / (alpha + beta)`."""
+        return np.asarray(self.alpha / (self.alpha + self.beta), dtype=np.float64)
+
+    @property
+    def concentration(self) -> np.ndarray:
+        """`alpha + beta`."""
+        return np.asarray(self.alpha + self.beta, dtype=np.float64)
+
+
+def upstream_beta_binomial_m_step(
+    fixture: BetaBinomialChains, posterior: np.ndarray
+) -> MStepResult:
+    """`BetaBinomialEmission.reestimate`, as the referee.
+
+    The family is rebuilt at the fixture's planted parameters rather than
+    reused, so the starting point is stated here and a caller cannot leave a
+    previous step's answer in it.
+    """
+    import time
+
+    import torch
+
+    family = BetaBinomialEmission(
+        trials=np.full(fixture.n_states, float(fixture.trials), dtype=np.float64),
+        alpha=fixture.alpha,
+        beta=fixture.beta,
+    )
+    observations = torch.as_tensor(np.asarray(fixture.dataset.observations))
+    weights = torch.as_tensor(np.asarray(posterior), dtype=torch.float64)
+
+    start = time.perf_counter()
+    result = family.reestimate(observations, weights)
+    seconds = time.perf_counter() - start
+
+    return MStepResult(
+        alpha=np.asarray(result.emissions.alpha, dtype=np.float64),
+        beta=np.asarray(result.emissions.beta, dtype=np.float64),
+        converged=bool(result.converged),
+        iterations=int(result.iterations),
+        seconds=seconds,
+    )
+
+
+def cnaster_beta_binomial_design(
+    fixture: BetaBinomialChains, posterior: np.ndarray
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """`(endog, exog, weights, exposure)` for `Weighted_BetaBinom_mix`.
+
+    `cnaster` takes the M step as a *regression*: one row per
+    `(observation, state)` pair, the state written into a one-hot `exog`, and
+    the posterior for that pair as the row's weight. The upstream family
+    takes the same problem as an array of observations and a posterior with
+    a trailing state axis. Flattening one into the other is the whole of the
+    correspondence, and it is exact rather than approximate -- the two
+    objectives are the same sum, written with the state index in a different
+    place.
+
+    The row order is `(observation, state)`, so `weights` is the posterior
+    read in C order and needs no permutation. Stated because getting it
+    wrong permutes the states rather than failing: the fit would still
+    converge, to the wrong assignment.
+    """
+    observations = np.asarray(fixture.dataset.observations).reshape(-1)
+    n_obs, n_states = observations.size, fixture.n_states
+
+    endog = np.repeat(observations.astype(np.float64), n_states)
+    exog = np.tile(np.eye(n_states, dtype=np.float64), (n_obs, 1))
+    weights = np.asarray(posterior, dtype=np.float64).reshape(-1)
+    exposure = np.full(n_obs * n_states, float(fixture.trials), dtype=np.float64)
+
+    return endog, exog, weights, exposure
+
+
+def cnaster_beta_binomial_m_step(
+    fixture: BetaBinomialChains,
+    posterior: np.ndarray,
+    *,
+    shared_dispersion: bool = False,
+) -> MStepResult:
+    """`Weighted_BetaBinom_mix.fit`, driven as the live caller drives it.
+
+    The solver options come from `cnaster.hmm_utils.get_em_solver_params`,
+    which is what `normal_spot.normal_baf_bin_filter` splats into `fit` on
+    the `run_cnaster` path. Passing them rather than relying on `fit`'s own
+    defaults is not a convenience: `fit` reads `kwargs.get("ftol", None)` and
+    hands `None` to `L-BFGS-B`, which divides by it. The live route never
+    hits that because it always supplies the settings, and neither does this.
+
+    Parameters
+    ----------
+    shared_dispersion : bool
+        `False` gives one `tau` per state, which is the upstream family's
+        shape and the only branch the comparison can be exact on. `cnaster`
+        defaults to `True`; the live caller fits one state, where the two
+        branches are the same parameter, so neither is the more live of the
+        two.
+    """
+    import time
+
+    from cnaster.hmm_emission import Weighted_BetaBinom_mix, compute_bb_ab
+    from cnaster.hmm_utils import get_em_solver_params
+
+    endog, exog, weights, exposure = cnaster_beta_binomial_design(fixture, posterior)
+
+    model = Weighted_BetaBinom_mix(
+        endog, exog, weights, exposure, shared_dispersion=shared_dispersion
+    )
+
+    start = time.perf_counter()
+    result = model.fit(**get_em_solver_params())
+    seconds = time.perf_counter() - start
+
+    params = np.asarray(result.params, dtype=np.float64)
+    if shared_dispersion:
+        params = np.concatenate(
+            [params[:-1], np.full(fixture.n_states, params[-1], dtype=np.float64)]
+        )
+
+    alpha, beta = compute_bb_ab(np.eye(fixture.n_states, dtype=np.float64), params)
+
+    return MStepResult(
+        alpha=np.asarray(alpha, dtype=np.float64),
+        beta=np.asarray(beta, dtype=np.float64),
+        converged=bool(result.converged),
+        iterations=int(result.iterations if result.iterations is not None else -1),
+        seconds=seconds,
+    )
+
+
+def cnaster_beta_binomial_objective(
+    fixture: BetaBinomialChains,
+    posterior: np.ndarray,
+    alpha: np.ndarray,
+    beta: np.ndarray,
+) -> float:
+    """`cnaster`'s weighted negative log-likelihood at a given `(alpha, beta)`.
+
+    The objective its M step minimises, evaluated through `cnaster`'s own
+    `nloglikeobs` so a monotonicity claim is made against the function that
+    was optimized rather than against a restatement of it.
+    """
+    from cnaster.hmm_emission import Weighted_BetaBinom_mix, betabinom_logpmf_zp
+
+    endog, exog, weights, exposure = cnaster_beta_binomial_design(fixture, posterior)
+
+    model = Weighted_BetaBinom_mix(
+        endog, exog, weights, exposure, shared_dispersion=False
+    )
+    model.zero_point = betabinom_logpmf_zp(model.endog, model.exposure)
+
+    concentration = np.asarray(alpha, dtype=np.float64) + np.asarray(
+        beta, dtype=np.float64
+    )
+    params = np.concatenate(
+        [np.asarray(alpha, dtype=np.float64) / concentration, concentration]
+    )
+    return float(model.nloglikeobs(params))

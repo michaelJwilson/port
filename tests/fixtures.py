@@ -13,7 +13,7 @@ which is the one rung whose correspondence with `cnaster` is exact today.
 from dataclasses import dataclass
 
 import numpy as np
-from snakes_and_ladders.emissions import NegativeBinomialEmission
+from snakes_and_ladders.emissions import BetaBinomialEmission, NegativeBinomialEmission
 from snakes_and_ladders.sim.hmm import (
     HmmParams,
     SimulatedHmmDataset,
@@ -382,3 +382,192 @@ def phased_chains(
         penalize_phase_only_on_same_cnv=penalize_phase_only_on_same_cnv,
         seed=seed,
     )
+
+
+@dataclass(frozen=True)
+class BetaBinomialChains:
+    """Chains of successes out of a fixed number of trials, and their truth.
+
+    The rung issue #24 needs. The M step is the one part of the fit that is
+    itself an optimization on both sides, so what validates it is a draw
+    whose `(alpha, beta)` are known and whose posterior can be set rather
+    than inferred: given a posterior, re-estimation is a self-contained
+    problem two implementations can be handed independently.
+
+    Parameters
+    ----------
+    dataset : SimulatedHmmDataset
+        The draw: planted `states`, `observations`, and the `initial` and
+        `transition` they were drawn under.
+    family : BetaBinomialEmission
+        The emission the observations came from, one `(alpha, beta)` per
+        state at a common number of trials.
+    alpha, beta : np.ndarray
+        The family's parameters, shape `(n_states,)`.
+    trials : int
+        The number of trials every observation was drawn at. Constant along
+        the chain for the reason `adapters` gives for exposure: `cnaster`
+        carries one exposure per observation and the upstream family one per
+        state, so only a constant is the same problem on both sides.
+    seed : int
+        The draw's seed.
+    """
+
+    dataset: SimulatedHmmDataset
+    family: BetaBinomialEmission
+    alpha: np.ndarray
+    beta: np.ndarray
+    trials: int
+    seed: int
+
+    @property
+    def n_states(self) -> int:
+        """`K`, the number of hidden states."""
+        return int(self.alpha.shape[0])
+
+    @property
+    def success_probability(self) -> np.ndarray:
+        """`alpha / (alpha + beta)`, the mean of each state's beta.
+
+        The parameterization both implementations share: `cnaster` carries
+        `(p, tau)` and reads `a = p tau`, `b = (1 - p) tau` in
+        `hmm_emission.compute_bb_ab`, so `p` is this and `tau` the sum.
+        """
+        return np.asarray(self.alpha / (self.alpha + self.beta), dtype=np.float64)
+
+    @property
+    def concentration(self) -> np.ndarray:
+        """`alpha + beta`, `cnaster`'s `tau`."""
+        return np.asarray(self.alpha + self.beta, dtype=np.float64)
+
+
+def beta_binomial_chains(
+    *,
+    n_states: int = 3,
+    sequence_length: int = 400,
+    n_sequences: int = 6,
+    trials: int = 40,
+    success_probability: np.ndarray | None = None,
+    concentration: float = 16.0,
+    self_transition: float = 0.7,
+    drift: float = 0.3,
+    seed: int = DEFAULT_SEED,
+) -> BetaBinomialChains:
+    """Draw `n_sequences` chains of beta-binomial counts.
+
+    Parameters
+    ----------
+    success_probability : np.ndarray, optional
+        One `p` per state. Defaults to `n_states` values spread evenly
+        inside `(0, 1)`, which keeps the states separated without putting
+        any of them against the `(EPSILON, 1 - EPSILON)` bound
+        `Weighted_BetaBinom_mix.get_bounds` imposes -- a state at the bound
+        is a boundary case rather than a comparison, and issue #24 asks for
+        that one separately.
+    concentration : float
+        `alpha + beta`, shared across states. Shared rather than per-state
+        because it is the regime where `cnaster`'s `shared_dispersion`
+        branch and its per-state branch describe one problem, so a test may
+        use either and say which.
+    trials : int
+        Constant, for the reason the class docstring gives.
+
+    Raises
+    ------
+    ValueError
+        If `concentration` or `trials` is not positive, or a supplied
+        `success_probability` leaves `(0, 1)` or does not have one entry per
+        state -- each of which is a family the draw cannot be taken from
+        rather than a hard case.
+    """
+    if concentration <= 0.0:
+        msg = f"concentration must be positive, got {concentration}"
+        raise ValueError(msg)
+    if trials <= 0:
+        msg = f"trials must be positive, got {trials}"
+        raise ValueError(msg)
+
+    if success_probability is None:
+        success_probability = (1.0 + np.arange(n_states, dtype=np.float64)) / (
+            n_states + 1.0
+        )
+    success_probability = np.asarray(success_probability, dtype=np.float64)
+
+    if success_probability.shape != (n_states,):
+        msg = (
+            f"success_probability must have shape ({n_states},), "
+            f"got {success_probability.shape}"
+        )
+        raise ValueError(msg)
+    if not np.all((success_probability > 0.0) & (success_probability < 1.0)):
+        msg = f"success_probability must lie strictly in (0, 1), got {success_probability}"
+        raise ValueError(msg)
+
+    alpha = success_probability * concentration
+    beta = (1.0 - success_probability) * concentration
+    family = BetaBinomialEmission(
+        trials=np.full(n_states, float(trials), dtype=np.float64),
+        alpha=alpha,
+        beta=beta,
+    )
+
+    transition = drift_transition(n_states, self_transition, drift)
+    initial = np.full(n_states, 1.0 / n_states, dtype=np.float64)
+
+    dataset = simulate_sequences(
+        HmmParams(
+            n_states=n_states,
+            sequence_length=sequence_length,
+            n_sequences=n_sequences,
+            initial=initial,
+            transition=transition,
+            emissions=family,
+            seed=seed,
+            tolerance=1e-8,
+        )
+    )
+    return BetaBinomialChains(
+        dataset=dataset,
+        family=family,
+        alpha=alpha,
+        beta=beta,
+        trials=trials,
+        seed=seed,
+    )
+
+
+def planted_posterior(
+    fixture: BetaBinomialChains, *, smoothing: float = 0.0
+) -> np.ndarray:
+    """The posterior an M step is handed, built from the planted states.
+
+    Shape `(n_sequences, sequence_length, n_states)`. At `smoothing = 0` this
+    is the indicator of the truth, so the M step it drives is the
+    complete-data maximum likelihood and its answer is comparable with the
+    planted parameters. Above zero it is mixed with the uniform, which is
+    what an EM posterior looks like and what gives **every** state weight at
+    **every** observation -- a state whose weight is exactly zero somewhere
+    is not a harder problem, it is a smaller one, and it would let a
+    per-state solve that ignores its weights pass.
+
+    Planting the posterior rather than running a forward-backward pass is
+    deliberate: it is the input to the step under test, so inferring it here
+    would make a defect in the lattice look like a defect in the M step.
+
+    Raises
+    ------
+    ValueError
+        If `smoothing` is not in `[0, 1)`; at one the posterior is uniform
+        and carries no information about the states at all.
+    """
+    if not 0.0 <= smoothing < 1.0:
+        msg = f"smoothing must lie in [0, 1), got {smoothing}"
+        raise ValueError(msg)
+
+    states = np.asarray(fixture.dataset.states)
+    n_states = fixture.n_states
+
+    indicator = np.zeros((*states.shape, n_states), dtype=np.float64)
+    np.put_along_axis(indicator, states[..., None], 1.0, axis=-1)
+
+    return (1.0 - smoothing) * indicator + smoothing / n_states

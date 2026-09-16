@@ -196,11 +196,14 @@ markers = [
 # importing less.
 #
 # What that denominator actually is, measured rather than assumed: the 37
-# top-level modules, 5,545 statements. It is not every file the wheel
+# top-level modules, 5,544 statements. It is not every file the wheel
 # ships. `cnaster` carries no `__init__.py` anywhere, so coverage's scan of
 # a source *directory* does not descend into its subdirectories, and
-# `deprecated/` (19 modules) and `scripts/` (4) are outside the figure
-# whatever `omit` says.
+# `scripts/` (4 modules) is outside the figure whatever `omit` says.
+#
+# `deprecated/` (19 modules) was outside it for the same reason, and is now
+# outside the wheel as well. Dropping it moved the denominator by one
+# statement, which is the measurement that proves it was never counted.
 #
 # For `deprecated/` that is the answer this repository wants and `omit`
 # below states it on purpose. For `scripts/` it is a gap: those four modules
@@ -233,17 +236,20 @@ omit = [
 ]
 
 [tool.coverage.report]
-# The floor the tests reach against the whole of `cnaster`: 623 of 5,545
-# statements, 11.24 per cent. Low by construction -- the denominator is
-# every file the package ships, and most of them have no test yet. That is
-# the point: the number says how much of the subject is validated, and it
-# rises only by validating more of it.
+# The floor the tests reach against the whole of `cnaster`: 766 of 5,544
+# statements, 13.82 per cent. Low by construction -- the denominator is
+# every module the package ships at top level, and most of them have no test
+# yet. That is the point: the number says how much of the subject is
+# validated, and it rises only by validating more of it.
+#
+# Measured with `-m "not release"`, the per-pull-request selection. The
+# release-marked benchmarks add no statements of their own.
 #
 # Upstream's rule governs it: maintained or raised, never lowered to pass a
 # pull request. Unlike a denominator of the imported modules, this one does
 # not fall for bringing a new module under test, so there is no case where
 # lowering it is legitimate.
-fail_under = 11.2
+fail_under = 13.8
 precision = 2
 exclude_lines = [
     "pragma: no cover",

@@ -133,10 +133,14 @@ rather than waiting on them.
 *   **A dependency's `sandbox/` and `deprecated/` are out of scope:** they
     hold work that repository has set aside. `port` validates what a user of
     the dependency gets, so neither is tested, measured nor counted by
-    default. The reason differs by tree and only one of them is about
-    packaging -- `cnaster`'s `sandbox/` ships no file at all, while its
-    `deprecated/` ships seventy-four -- so being in the wheel is not what
-    puts code in scope. Being reachable is.
+    default. Being in the wheel is not what puts code in scope; being
+    reachable from an installed entry point is. `cnaster` made the case:
+    when this rule was written its `sandbox/` shipped no file at all while
+    its `deprecated/` shipped seventy-four, so the two trees a reader would
+    call equally set aside were on opposite sides of the packaging line. It
+    has since excluded both, which settles that instance and not the rule --
+    a dependency that ships a set-aside tree is still out of scope for
+    shipping it.
     Out of scope is a default, not a prohibition: either is fair game when
     the work requires it, and asking for a name is the usual way that
     happens. What the rule forbids is reaching in silently. A measurement,
