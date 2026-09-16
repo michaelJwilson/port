@@ -182,27 +182,32 @@ markers = [
 ]
 
 [tool.coverage.run]
-# `cnaster` is measured alongside `port` because it is the subject: these
-# tests exist to exercise a dependency, and a gate over `port` alone would
-# read as full while covering none of what is under test.
+# The subject is `cnaster`, so the denominator is the whole of `cnaster` --
+# every file it ships, not the modules a test happens to import. Naming the
+# installed directory rather than the package is what makes coverage count
+# the files it never loaded; naming the package counts only what ran, which
+# reads as progress for importing less.
 #
-# Named as packages, coverage measures the modules the suite imports rather
-# than every file `cnaster` ships. The denominator therefore grows when a
-# new module is first imported, which can lower the percentage for bringing
-# something *into* test. That is the one case where the gate below is
-# adjusted downward, and it is adjusted with the new module's own coverage
-# stated; it is never lowered to make a red suite pass.
-source_pkgs = ["port", "cnaster"]
+# `tests/test_coverage_scope.py` fails if this path stops being the
+# installed package, so a Python version bump is a red test rather than a
+# gate silently measuring a fraction of the subject.
+source = [
+    "python/port",
+    ".venv/lib/python3.12/site-packages/cnaster",
+]
 
 [tool.coverage.report]
-# The floor the HMM fixtures reach today: 243 of 743 statements, 32.70 per
-# cent, over `cnaster`'s config, count_encoder, hmm_nophasing, hmm_phased
-# and logger. Set just under the achieved figure so ordinary variation does
-# not fail a suite that covered no less than before.
+# The floor the tests reach against the whole of `cnaster`: 317 of 5,545
+# statements, 5.72 per cent. Low by construction -- the denominator is
+# every file the package ships, and most of them have no test yet. That is
+# the point: the number says how much of the subject is validated, and it
+# rises only by validating more of it.
 #
-# Upstream's rule governs it: maintained or raised, and never lowered to
-# pass a pull request.
-fail_under = 32
+# Upstream's rule governs it: maintained or raised, never lowered to pass a
+# pull request. Unlike a denominator of the imported modules, this one does
+# not fall for bringing a new module under test, so there is no case where
+# lowering it is legitimate.
+fail_under = 5.7
 precision = 2
 exclude_lines = [
     "pragma: no cover",
