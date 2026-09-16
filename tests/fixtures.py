@@ -898,15 +898,21 @@ def core_inference_truth(
     rng = np.random.default_rng(seed)
     n_spots = rows * columns
 
-    # Spread across a decade of expression and either side of balance, so the
-    # states are separable by the data rather than by their index.
-    log_mu = np.log(np.linspace(0.5, 5.0, n_states))
+    # State zero is diploid and balanced: `mu = 1`, `p = 0.5`. It is planted
+    # rather than left to chance because two stages of `run_cnaster` require
+    # one to exist -- `find_diploid_balanced_state` raises "No candidate
+    # diploid balanced state found!" without it, and the normal-spot path
+    # tests every bin against a beta-binomial with `p` forced to 0.5 (#106).
+    # A fixture with no normal state asks both for something it never planted.
+    #
+    # The rest spread across a decade of expression and above balance:
+    # `run_core_inference` calls `gmm_init` with `only_minor=False` because,
+    # as `cnaster`'s own comment says, with no phasing the states have to sit
+    # at or above 0.5. A state planted below it is asking the initializer for
+    # something the model does not carry.
+    log_mu = np.concatenate(([0.0], np.log(np.linspace(1.5, 5.0, n_states - 1))))
     alphas = np.full(n_states, 1.0 / 6.0)
-    # Above balance: `run_core_inference` calls `gmm_init` with
-    # `only_minor=False` because, as its own comment says, with no phasing the
-    # states have to sit above 0.5. A fixture planted below it is asking the
-    # initializer for something the model does not carry.
-    p_binom = np.linspace(0.52, 0.88, n_states)
+    p_binom = np.concatenate(([0.5], np.linspace(0.58, 0.88, n_states - 1)))
     taus = np.full(n_states, 30.0)
 
     row_of = np.arange(n_spots) // columns

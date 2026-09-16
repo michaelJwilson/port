@@ -126,29 +126,24 @@ def test_the_pipeline_completes_from_files(tmp_path: Path) -> None:
 @pytest.mark.analytic
 @pytest.mark.preprocessing
 @pytest.mark.release
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "the dev instance plants no diploid balanced state, so "
-        "`find_diploid_balanced_state` raises `No candidate diploid balanced "
-        "state found!` at the integer-copy stage (#106). Written as the test "
-        "that should pass, strict so it fails the day #106 lands rather than "
-        "sitting green and unread."
-    ),
-)
 def test_the_pipeline_completes_on_the_dev_instance(tmp_path: Path) -> None:
     """The same, at the instance the component-wise tests are written against.
 
     `M = 4`, `K = 10`, `G = 1,000`, `S = 1,000`, ten unequal chromosomes.
+    **31 s at a peak of 5.89 GB**, fitting five states.
 
-    Two things stop it today and both are measurements rather than guesses.
-    At the planted ten states the run is killed by the kernel -- 15 GB is not
-    enough, which is #90's subject. At five states it survives that and
-    reaches the integer-copy stage, where it raises because no planted state
-    is diploid and balanced (#106).
+    Five and not the planted ten because ten does not fit: the kernel kills
+    the run, and 15 GB is what this host has (#90). Five is therefore also a
+    statement about `cnaster` -- the fit is asked for fewer states than the
+    data carries, which is what a real run does and is why the copy-number
+    output is worth looking at rather than assuming.
 
-    Release-marked on wall clock as well: #104 measures the core at 81 s
-    before any figure is drawn.
+    It reaches the end only because state zero is planted diploid and
+    balanced. Without one `find_diploid_balanced_state` raises, which is how
+    #106 was found.
+
+    The figures this writes are the ones committed under `docs/plots/`;
+    `python -m tests.generate_plots` is the same call with the copy.
     """
     output = _run(dev_instance(), tmp_path, max_iter_outer=1, max_iter=3, n_states=5)
     tables, figures = _artifacts(output)
