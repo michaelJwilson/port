@@ -20,7 +20,7 @@ caller pays -- but it does mean the ratio is not a per-operation speed and
 must not be quoted as one.
 
 The runs use `cnaster_converged_config`, not `cnaster_config`. At the
-shipped `em_ftol` the solve stops early (issue #25), so timing it would
+shipped `em_ftol` the solve stops early (issue #30), so timing it would
 report the cost of a fit that has not reached its answer and would read as
 `cnaster` being several times faster than it is. That is the single most
 misleading number this module could produce, so it is not produced.

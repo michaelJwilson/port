@@ -296,7 +296,7 @@ def test_the_design_carries_the_posterior_to_the_right_state(
 @pytest.mark.xfail(
     strict=True,
     reason=(
-        "issue #25: get_em_solver_params hands L-BFGS-B a *relative* ftol, so "
+        "issue #30: get_em_solver_params hands L-BFGS-B a *relative* ftol, so "
         "the effective absolute criterion scales with the objective's "
         "magnitude and the solve stops several nats short of its maximum "
         "while reporting that it converged"
@@ -322,7 +322,7 @@ def test_m_step_agrees_with_upstream_at_cnaster_s_own_settings(
 
     What is failing, measured: at the default fixture the shipped criterion
     ends the solve eleven iterations in, 7.5 nats below the maximum, at an
-    `alpha` a fifth away from it, with `converged` `True`. Issue #25 carries
+    `alpha` a fifth away from it, with `converged` `True`. Issue #30 carries
     the sizes and the fix.
     """
     posterior = planted_posterior(chains, smoothing=0.1)
