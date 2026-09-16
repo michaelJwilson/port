@@ -71,6 +71,7 @@ def sitewise_kernel(
 
 
 @pytest.mark.cnaster
+@pytest.mark.critical
 @pytest.mark.parametrize("n_states", [2, 5])
 def test_every_block_is_cnasters_own(n_states: int) -> None:
     """Each slice is what `cnaster` builds at that site, bitwise.

@@ -59,7 +59,8 @@ def upstream_total_log_likelihood(fixture: NegativeBinomialChains) -> float:
     )
 
 
-@pytest.mark.upstream
+@pytest.mark.upstream_oracle
+@pytest.mark.critical
 @pytest.mark.parametrize("n_states", [1, 2, 3, 5])
 @pytest.mark.parametrize("separation", [1.5, 2.5])
 def test_emission_matches_upstream(n_states: int, separation: float) -> None:
@@ -75,7 +76,8 @@ def test_emission_matches_upstream(n_states: int, separation: float) -> None:
     )
 
 
-@pytest.mark.upstream
+@pytest.mark.upstream_oracle
+@pytest.mark.critical
 @pytest.mark.parametrize("n_sequences", [1, 4])
 @pytest.mark.parametrize("sequence_length", [1, 60])
 def test_total_log_likelihood_matches_upstream(
@@ -96,7 +98,8 @@ def test_total_log_likelihood_matches_upstream(
     )
 
 
-@pytest.mark.upstream
+@pytest.mark.upstream_oracle
+@pytest.mark.critical
 @pytest.mark.parametrize("drift", [0.2, 0.8])
 def test_total_log_likelihood_matches_upstream_asymmetric(drift: float) -> None:
     """The totals agree under a transition that is not symmetric.

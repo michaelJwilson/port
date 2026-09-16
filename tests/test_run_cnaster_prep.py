@@ -132,6 +132,7 @@ def test_the_blocks_are_one_per_planted_bin(tmp_path: Path) -> None:
     )
 
 
+@pytest.mark.critical
 def test_the_derived_segmentation_is_the_planted_one(tmp_path: Path) -> None:
     """`lengths`, as a vector, from coordinates alone.
 

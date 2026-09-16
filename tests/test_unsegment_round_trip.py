@@ -39,6 +39,7 @@ def _rebin(pre_image: Unsegmented) -> Any:
 
 @pytest.mark.preprocessing
 @pytest.mark.cnaster
+@pytest.mark.critical
 @pytest.mark.parametrize("n_obs", [60, 240])
 def test_the_round_trip_returns_the_binned_fixture(n_obs: int) -> None:
     """Both channels come back bitwise, at two bin counts.

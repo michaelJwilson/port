@@ -36,7 +36,13 @@ include =
     */snakes_and_ladders/sim/spatio_sequential.py
     */snakes_and_ladders/sim/graph.py
     */snakes_and_ladders/sim/hmm.py
-# 698 of 2,085 statements. Three modules sit at zero -- `forward_backward`,
+# 698 of 2,085 statements. Of that, the 42 tests marked `upstream_oracle` --
+# the agreement claims, where upstream decided the expected value -- reach
+# 33.38 per cent on their own, so every other test in the suite adds two
+# statements. The surface is the referee's and not the fixture's, measured
+# rather than asserted, which is what #69 asks for.
+#
+# Three modules sit at zero -- `forward_backward`,
 # `likelihood.spatio_sequential` and `search.spatio_sequential` -- and they
 # are exactly the oracle role #70 says is blocked upstream. The floor rises
 # when that lands and the rungs are built, and never by importing more.

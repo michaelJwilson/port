@@ -94,6 +94,7 @@ def test_the_spots_come_back_in_the_order_they_were_written(tmp_path: Path) -> N
 
 @pytest.mark.preprocessing
 @pytest.mark.cnaster
+@pytest.mark.critical
 def test_the_loaded_files_bin_back_to_the_planted_fixture(tmp_path: Path) -> None:
     """The whole trip: bins to files, files to arrays, arrays to bins.
 

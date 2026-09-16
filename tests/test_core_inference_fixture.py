@@ -62,6 +62,7 @@ def _recover(truth: CoreInferenceTruth) -> dict[str, np.ndarray]:
 
 
 @pytest.mark.planted
+@pytest.mark.critical
 def test_the_draw_recovers_the_planted_parameters() -> None:
     """Every planted parameter is recovered from the counts it generated.
 
@@ -151,7 +152,8 @@ def test_each_entry_is_a_beta_binomial_draw() -> None:
     assert pvalue > CHI_SQUARE_ALPHA, f"chi2 = {chi:.1f}, p = {pvalue:.2e}"
 
 
-@pytest.mark.upstream
+@pytest.mark.upstream_oracle
+@pytest.mark.critical
 def test_cnaster_scores_the_fixture_as_upstream_does() -> None:
     """Two implementations of the emission, on the instance one of them drew.
 
