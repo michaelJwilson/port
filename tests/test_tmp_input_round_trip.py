@@ -99,7 +99,8 @@ def test_the_loaded_files_bin_back_to_the_planted_fixture(tmp_path: Path) -> Non
 
     The allele channel is carried through `load_input_data`'s own output
     rather than through the pre-image, so what is binned is what the loader
-    returned and not what was written. The expression channel is binned from
+    returned and not what was written -- and it is taken from the **A** file,
+    which is the one `cnaster` reads into the channel it scores as B. The expression channel is binned from
     the loader's `adata` for the same reason.
     """
     from cnaster.omics import summarize_counts_for_bins
@@ -109,7 +110,10 @@ def test_the_loaded_files_bin_back_to_the_planted_fixture(tmp_path: Path) -> Non
 
     n_blocks = pre_image.block_single_X.shape[0]
     block_X = np.zeros((n_blocks, 2, truth.n_spots), dtype=np.int64)
-    block_X[:, 1, :] = loaded.cell_snp_Ballele.T
+    # `cell_snp_Aallele` is what `summarize_counts_for_blocks` reads into
+    # channel 1 (`omics.py:468`), so the file named A carries the haplotype
+    # the model scores as B.
+    block_X[:, 1, :] = loaded.cell_snp_Aallele.T
     block_total = (loaded.cell_snp_Aallele + loaded.cell_snp_Ballele).T
 
     rebinned = summarize_counts_for_bins(

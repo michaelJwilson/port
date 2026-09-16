@@ -26,6 +26,8 @@ assertion until it was right, and they are recorded because none is documented:
     the global config, none of which `run_core_inference` needs.
 """
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -36,6 +38,19 @@ import scipy.sparse as sp
 
 from tests.fixtures import CoreInferenceTruth
 from tests.unsegment import Unsegmented
+
+GENE_SPACING = 200_000
+"""Base pairs between one planted bin's gene interval and the next.
+
+Wide enough that `assign_initial_blocks` -- which merges **overlapping** gene
+intervals -- leaves each bin its own block, and well inside
+`create_bin_ranges`' 5 Mb cap. It is what makes `cnaster`'s own binning land
+on the planted partition, which is the thing #92 asks to be asserted rather
+than assumed.
+"""
+
+GENE_LENGTH = 20_000
+"""Each interval's extent. Any value below the spacing works; this is a gene."""
 
 SAMPLE_ID = "S1"
 """One slice. Multi-slice alignment is a separate concern and a separate fixture."""
@@ -50,6 +65,7 @@ class WrittenInputs:
 
     root: Path
     sample_sheet: Path
+    hgtable: Path
     barcodes: list[str]
     snp_ids: np.ndarray
     allele_a: np.ndarray
@@ -59,7 +75,14 @@ class WrittenInputs:
     def config(self) -> dict[str, Any]:
         """The global config the loader reads, and nothing beyond it."""
         return {
-            "paths": {"sample_sheet": str(self.sample_sheet)},
+            "paths": {
+                "sample_sheet": str(self.sample_sheet),
+                "output_dir": str(self.root / "output"),
+            },
+            # `run.legacy` selects the tab-separated gene table over a GTF;
+            # `run.cache` off, or a second call reads the first one's pickle
+            # and the round trip measures the cache.
+            "run": {"legacy": True, "cache": False},
             "visium": {"filtered_feature_name": FILTERED_FEATURE_NAME},
             "quality": {
                 "local_outlier_filter": False,
@@ -86,14 +109,50 @@ def write_tmp_inputs(
     barcodes = [f"BC{spot:05d}-1" for spot in range(n_spots)]
     (snp_dir / "barcodes.txt").write_text("\n".join(barcodes) + "\n")
 
-    n_blocks = pre_image.block_single_X.shape[0]
+    # Genomic coordinates: one interval per planted bin, chromosomes taken
+    # from the planted segmentation so `lengths` is recoverable.
+    chromosome_of, index_within = [], []
+    for chromosome, extent in enumerate(truth.lengths, start=1):
+        chromosome_of += [chromosome] * int(extent)
+        index_within += list(range(int(extent)))
+
+    table = pre_image.df_gene_snp
+    genes = table[table.gene.notna() & table.bin_id.notna()]
+    pd.DataFrame(
+        [
+            {
+                "name": row.gene,
+                "name2": row.gene,
+                # `get_reference_genes` keeps `chr1`..`chr22` and reads the
+                # integer back off the string, so the names are real ones.
+                "chrom": f"chr{chromosome_of[int(row.bin_id)]}",
+                "cdsStart": index_within[int(row.bin_id)] * GENE_SPACING,
+                "cdsEnd": index_within[int(row.bin_id)] * GENE_SPACING + GENE_LENGTH,
+            }
+            for row in genes.itertuples()
+        ]
+    ).set_index("name").to_csv(root / "hgtable.tsv", sep="\t")
+
+    # `form_gene_snp_table` parses the contig as `int(x.split("_")[0])`, so the
+    # id carries a bare integer and not `chr1`.
+    snp_rows = table[table.snp_id.notna()].sort_values("block_id")
     snp_ids = np.array(
-        [f"chr1_{1000 + block}_A_T" for block in range(n_blocks)], dtype=object
+        [
+            f"{chromosome_of[int(row.bin_id)]}_"
+            f"{index_within[int(row.bin_id)] * GENE_SPACING + 1000 + int(row.block_id) % 97}"
+            "_A_T"
+            for row in snp_rows.itertuples()
+        ],
+        dtype=object,
     )
     np.save(snp_dir / "unique_snp_ids.npy", snp_ids, allow_pickle=True)
 
-    allele_b = pre_image.block_single_X[:, 1, :].T
-    allele_a = pre_image.block_single_total_bb_RD.T - allele_b
+    # `summarize_counts_for_blocks` reads **`cell_snp_Aallele`** into
+    # `single_X[:, 1, :]` (`omics.py:468`), which everything downstream scores
+    # as the B allele. So the file named A carries the haplotype the model
+    # calls B. Written the way the code reads it, with the inversion stated.
+    allele_a = pre_image.block_single_X[:, 1, :].T
+    allele_b = pre_image.block_single_total_bb_RD.T - allele_a
     sp.save_npz(snp_dir / "cell_snp_Aallele.npz", sp.csr_matrix(allele_a))
     sp.save_npz(snp_dir / "cell_snp_Ballele.npz", sp.csr_matrix(allele_b))
 
@@ -130,6 +189,7 @@ def write_tmp_inputs(
     return WrittenInputs(
         root=root,
         sample_sheet=sample_sheet,
+        hgtable=root / "hgtable.tsv",
         barcodes=barcodes,
         snp_ids=snp_ids,
         allele_a=allele_a,
@@ -138,14 +198,30 @@ def write_tmp_inputs(
     )
 
 
-def load_written(written: WrittenInputs) -> Any:
-    """Run `cnaster.io.load_input_data` against what was written."""
+@contextmanager
+def written_config(written: WrittenInputs) -> Iterator[None]:
+    """Install the global config `cnaster` reads, and put back what was there.
+
+    A context manager rather than a call, because the prep chain is several
+    functions long and each of them reads the global -- `form_gene_snp_table`
+    alone wants `paths.output_dir` and `run.cache`. Restoring after the first
+    one would leave the rest without a config.
+    """
     from cnaster.config import YAMLConfig, get_global_config, set_global_config
-    from cnaster.io import load_input_data
 
     previous = get_global_config()
     try:
         set_global_config(YAMLConfig(written.config()))
-        return load_input_data(get_global_config())
+        yield
     finally:
         set_global_config(previous)
+
+
+def load_written(written: WrittenInputs) -> Any:
+    """Run `cnaster.io.load_input_data` against what was written."""
+    from cnaster.io import load_input_data
+
+    with written_config(written):
+        from cnaster.config import get_global_config
+
+        return load_input_data(get_global_config())

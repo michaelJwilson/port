@@ -150,9 +150,15 @@ def unsegment(
     ----------
     flip_every : int
         Every `flip_every`-th block is stored on the opposite haplotype with
-        `phase_indicator` false, so the binner has to apply
-        `total - B` to recover it. A fixture with no flipped block would pass
-        under a binner that ignored `phase_indicator` entirely.
+        `phase_indicator` false, so the binner has to apply `total - B` to
+        recover it. A fixture with no flipped block would pass under a binner
+        that ignored `phase_indicator` entirely.
+
+        **Zero flips none.** The files `run_cnaster` reads carry allele counts
+        and not a phase, and the phase is `cnaster`'s to infer, so a fixture
+        written out for that path stores the true B count everywhere. The
+        flipped form is exercised where it belongs, at the binner
+        (`tests/test_unsegment_round_trip.py`).
 
     Raises
     ------
@@ -219,7 +225,7 @@ def unsegment(
 
         for part in range(parts):
             block_total[block] = totals[part]
-            if block % flip_every == 0:
+            if flip_every > 0 and block % flip_every == 0:
                 phase_indicator[block] = False
                 block_X[block, 1, :] = totals[part] - b_counts[part]
             else:
