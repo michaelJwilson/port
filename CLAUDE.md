@@ -76,6 +76,19 @@ rather than waiting on them.
     a change, report it here with the evidence and leave landing it to that
     repository. A pin this repository controls is the lever; their history
     is not.
+*   **The paper, `cnaster` and `snakes_and_ladders` agree, to a stated
+    tolerance:** the paper states the method, `cnaster` implements it, and
+    upstream implements the parts of it that are not application specific.
+    Where all three describe one quantity, all three compute it, and the
+    agreement is reported as a number rather than as the word "matches" -- a
+    comparison without its tolerance, its seed and the size it was taken at
+    has not been reported. The exception is a difference in the problem
+    itself, and it counts only once it is **raised**: named in a ticket,
+    with which reference differs, in what regime, and why that is a choice
+    rather than a defect. An unraised difference is a defect by default,
+    whichever side it favours. Silence is what the rule exists to prevent,
+    because three references that were never compared look exactly like
+    three that agree.
 *   **An audit names its upstream correspondence:** a ticket auditing a
     dependency states what `snakes_and_ladders` would have to change for the
     problem to be expressible there, or records that it would not and why.
