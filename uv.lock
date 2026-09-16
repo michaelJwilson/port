@@ -3429,7 +3429,7 @@ wheels = [
 [[package]]
 name = "snakes-and-ladders"
 version = "0.3.0"
-source = { git = "https://github.com/michaelJwilson/snakes_and_ladders?branch=main#07a1785f811a9d829849fdd2e57635a67ed817db" }
+source = { git = "https://github.com/michaelJwilson/snakes_and_ladders?branch=main#c9f42501dbd3d84a91bc8683f3b725cada82a1d2" }
 dependencies = [
     { name = "matplotlib" },
     { name = "numba" },
