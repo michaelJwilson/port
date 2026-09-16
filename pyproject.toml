@@ -182,6 +182,7 @@ addopts = "--strict-markers"
 # construction did.
 markers = [
     "upstream: checked against the snakes_and_ladders implementation",
+    "cnaster: checked against the cnaster implementation",
     "planted: checked against the fixture's planted truth",
     "analytic: checked against an analytic property or an invariant",
     "release: over the per-pull-request budget; runs for a release",
@@ -236,8 +237,10 @@ omit = [
 ]
 
 [tool.coverage.report]
-# The floor the tests reach against the whole of `cnaster`: 766 of 5,544
-# statements, 13.82 per cent. Low by construction -- the denominator is
+# The floor the tests reach: 863 of 5,642 statements, 15.30 per cent. The
+# denominator is `cnaster` plus `python/port`, so a module added here moves
+# both the numerator and the denominator -- `port.integer_copy` added 98
+# statements and the figure rose, which is the arithmetic working. Low by construction -- the denominator is
 # every module the package ships at top level, and most of them have no test
 # yet. That is the point: the number says how much of the subject is
 # validated, and it rises only by validating more of it.
@@ -249,7 +252,7 @@ omit = [
 # pull request. Unlike a denominator of the imported modules, this one does
 # not fall for bringing a new module under test, so there is no case where
 # lowering it is legitimate.
-fail_under = 13.8
+fail_under = 15.2
 precision = 2
 exclude_lines = [
     "pragma: no cover",
