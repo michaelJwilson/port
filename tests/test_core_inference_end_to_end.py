@@ -181,33 +181,29 @@ def test_the_run_recovers_the_planted_labelling(cnaster_config: None) -> None:
 
 @pytest.mark.planted
 @pytest.mark.release
-def test_the_run_recovers_the_extreme_states_and_not_the_middle_one(
+def test_the_run_recovers_every_planted_state_on_a_mostly_neutral_genome(
     cnaster_config: None,
 ) -> None:
-    """The allele extremes come back; the expression does not, at all.
+    """**It recovers all of them, and that reverses #82 and #86.**
 
-    Measured on this instance -- planted `mu` `[0.50, 2.75, 5.00]`, `p_binom`
-    `[0.52, 0.70, 0.88]`, under the Weierstrass exposure #4's fixture plants:
+    Planted `p` of `[0.5, 0.58, 0.88]` comes back as `[0.500, 0.581, 0.881]`;
+    planted `mu` of `[1, 1.5, 5]` comes back as `[0.997, 1.513, 4.871]`, a
+    worst relative error of **0.026**.
 
-    | budget | fitted `mu` | fitted `p_binom` |
-    | --- | --- | --- |
-    | 2 outer, 10 EM | 0.498, 4.880, 10.657 | 0.521, 0.880, 0.884 |
-    | 3 outer, 30 EM | 0.498, 4.880, 7.731 | 0.521, 0.880, 0.888 |
+    On the fixture this replaces -- a Markov chain visiting three states
+    roughly equally -- the same call reached a worst `mu` error of **1.131**,
+    and the middle allele state landed on the top one, leaving two of three
+    indistinguishable. Ten times the budget left it at 0.775.
 
-    Three things are established and each is asserted.
+    So what #82 and #86 measured was the **fixture**, not `cnaster`. A genome
+    whose states are visited uniformly under an exposure varying along the bin
+    axis defeats the fit; a mostly-neutral genome carrying events -- the
+    realistic one, #120 -- does not, at the same exposure and the same budget.
+    Both tickets carry the correction.
 
-    The **allele** extremes are recovered to 0.02 and the middle state is not
-    -- `0.70` lands on `0.880`, leaving two of three indistinguishable.
-
-    The **expression** is not recovered beyond the lowest state: the worst
-    relative error is 1.131, and at ten times the budget it is still 0.775.
-    Under an exposure drawn i.i.d. over both axes the same fit reached 0.147,
-    so what breaks it is not that the exposure varies but that it varies
-    **along the bin axis**, where it aliases with the state path instead of
-    averaging out.
-
-    More iterations do not fix either channel. That is #82, and the numbers
-    here are the sharper version of it.
+    The occupancy is what changed: `[0.860, 0.063, 0.077]` here against three
+    states near a third each before. Long neutral runs give the initializer a
+    baseline to place the others against, which is what a real sample has.
     """
     truth = core_inference_truth(
         n_clones=2, n_states=3, lattice=(30, 20), n_obs=300, n_segments=4
@@ -219,21 +215,10 @@ def test_the_run_recovers_the_extreme_states_and_not_the_middle_one(
     planted_mu = np.sort(np.exp(truth.log_mu))
     planted_p = np.sort(truth.p_binom)
 
-    np.testing.assert_allclose(fitted_p[[0, -1]], planted_p[[0, -1]], atol=0.02)
+    np.testing.assert_allclose(fitted_p, planted_p, atol=0.005)
 
-    middle_gap = abs(fitted_p[1] - planted_p[1])
-    assert middle_gap > 0.1, (
-        f"the middle allele state now recovers to {middle_gap:.3f}; if that is "
-        "a fix upstream, this assertion is what should change"
-    )
-
-    np.testing.assert_allclose(fitted_mu[0], planted_mu[0], rtol=0.05)
-
-    expression_error = float(np.abs(fitted_mu / planted_mu - 1.0).max())
-    assert expression_error > 0.5, (
-        f"the expression now recovers to {expression_error:.3f} under a "
-        "bin-varying exposure; a fix upstream is what should change this"
-    )
+    worst = float(np.max(np.abs(fitted_mu - planted_mu) / planted_mu))
+    assert worst < 0.05, f"worst relative error in mu {worst:.3f}"
 
 
 @pytest.mark.planted

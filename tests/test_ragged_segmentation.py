@@ -101,19 +101,24 @@ def test_the_partition_is_exact_and_reproducible() -> None:
 
 
 @pytest.mark.planted
-def test_the_chain_restarts_at_every_chromosome_boundary() -> None:
-    """Across a boundary the state is redrawn; within one it is sticky.
+def test_no_event_crosses_a_chromosome_boundary() -> None:
+    """What `lengths` means once the path is events on a neutral backbone.
 
-    The measurement that separates a segmentation from a label. At
-    `self_transition = 0.99` a chain that ran through a boundary would carry
-    its state across 99 times in 100; one that restarts from a uniform initial
-    distribution carries it across `1 / K` of the time by coincidence alone.
+    This replaces a measurement of chain restart, and the replacement is
+    forced: #120 stopped drawing the path from a Markov chain, so there is no
+    transition rate for a boundary to disagree with. What survives is the
+    claim the restart was evidence for -- **a chromosome boundary is a real
+    boundary** -- and for a piecewise-constant path that means no event spans
+    one.
 
-    Realized over 597 boundaries: **0.263** across against `1 / K = 0.25`, and
-    **0.989** within against 0.99. The same draw under the chain this replaced
-    -- one Markov chain over the whole genome -- carries across **0.992** of
-    the time, which is the interior rate and is the defect: `lengths` declared
-    boundaries the truth did not have.
+    Asserted against the placed events rather than the path, because the path
+    cannot be read back into them: two events on adjacent chromosomes that
+    draw the same state abut, and an abutment looks exactly like a crossing.
+    That is why `place_events` returns what it placed.
+
+    Events here are long enough to cross if nothing stopped them -- up to 40
+    bins against chromosomes of 10 and up -- so a placement ignoring `lengths`
+    fails within a few draws.
     """
     truth = core_inference_truth(
         n_clones=3,
@@ -121,19 +126,24 @@ def test_the_chain_restarts_at_every_chromosome_boundary() -> None:
         lattice=(6, 10),
         n_obs=2_000,
         n_segments=BOUNDARY_SEGMENTS,
-        self_transition=0.99,
         seed=3,
     )
 
-    edges = np.cumsum(truth.lengths)[:-1]
-    interior = np.setdiff1d(np.arange(1, truth.n_obs), edges)
+    edges = np.concatenate(([0], np.cumsum(truth.lengths)))
+    placed = 0
 
-    across = truth.states[:, edges] == truth.states[:, edges - 1]
-    within = truth.states[:, interior] == truth.states[:, interior - 1]
+    for clone, events in enumerate(truth.events):
+        for chromosome, offset, extent, state in events:
+            start, stop = int(edges[chromosome]), int(edges[chromosome + 1])
+            assert start <= offset, f"clone {clone}: event starts before {chromosome}"
+            assert offset + extent <= stop, (
+                f"clone {clone}: an event of {extent} bins at {offset} runs "
+                f"past chromosome {chromosome}, which ends at {stop}"
+            )
+            assert state != 0, "an event that plants the neutral state is not an event"
+            placed += 1
 
-    assert across.size == (BOUNDARY_SEGMENTS - 1) * 3
-    assert across.mean() == pytest.approx(1.0 / truth.n_states, abs=0.05)
-    assert within.mean() == pytest.approx(truth.self_transition, abs=0.01)
+    assert placed > 0, "no events were placed, so nothing was checked"
 
 
 @pytest.mark.cnaster
