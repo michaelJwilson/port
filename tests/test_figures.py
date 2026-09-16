@@ -90,7 +90,9 @@ def test_the_smoother_leaves_a_gap_where_there_is_no_coverage() -> None:
 
 
 @pytest.mark.analytic
-def test_the_validation_metrics_load_and_render(tmp_path: Path) -> None:
+def test_the_validation_metrics_load_and_render(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """`load_validation_stats` reads a directory of YAMLs, and `plot_metrics` draws it.
 
     The YAMLs are synthesized here because nothing in this repository writes
@@ -98,7 +100,14 @@ def test_the_validation_metrics_load_and_render(tmp_path: Path) -> None:
     The names follow the pattern `plot_metrics` parses --
     `numcnas{n}_cnasize{s}_ploidy{p}_random{r}` -- since a name it cannot
     parse leaves every extracted column NaN and the grouping empty.
+
+    **`output_dir` is accepted and never read.** `plot_validation_stats.py:207`
+    writes `Path(".") / f"{method}_validation.pdf"`, so the figure lands in the
+    caller's working directory whatever is passed -- which is how this test
+    first rewrote a tracked file in the repository root. The directory is
+    changed rather than the argument trusted.
     """
+    monkeypatch.chdir(tmp_path)
     import yaml
     from cnaster.plot_validation_stats import load_validation_stats, plot_metrics
 
