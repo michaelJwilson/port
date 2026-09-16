@@ -92,6 +92,24 @@ def install_cnaster_config(tmp_path: Path, em_ftol: float, em_maxiter: int) -> N
                     "em_disp": 0,
                     "em_xrtol": 1e-5,
                     "em_xtol": 1e-5,
+                    # NB `gmm_init` clips the observed allele share before
+                    #    fitting, and reads the bounds from here rather than
+                    #    taking them as arguments (`hmm_initialize.py:362`).
+                    #    Wide enough to clip nothing a fixture plants, so the
+                    #    initializer's start is the data's and not the clip's.
+                    "gmm_min_binom_prob": 0.01,
+                    "gmm_max_binom_prob": 0.99,
+                    "gmm_maxiter": 100,
+                },
+                # NB `run_core_inference` reads the outer loop's own settings
+                #    from here: `inertia` decides whether a uniform prior over
+                #    clones is added to the field, `fixed_assignment` whether
+                #    the label solve runs at all, and `ari_tolerance` when the
+                #    loop stops. All three are the shipped defaults.
+                "hmrf": {
+                    "inertia": False,
+                    "fixed_assignment": False,
+                    "ari_tolerance": 0.99,
                 },
                 "betabinom": {
                     "start_params": BETABINOM_START_PARAMS,

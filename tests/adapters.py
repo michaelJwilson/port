@@ -22,7 +22,12 @@ from dataclasses import dataclass
 import numpy as np
 from snakes_and_ladders.emissions import BetaBinomialEmission
 
-from tests.fixtures import BetaBinomialChains, NegativeBinomialChains, PhasedChains
+from tests.fixtures import (
+    BetaBinomialChains,
+    CoreInferenceTruth,
+    NegativeBinomialChains,
+    PhasedChains,
+)
 
 N_CHANNELS = 2
 """`cnaster` packs a count and a success into `single_X`'s middle axis."""
@@ -458,3 +463,100 @@ def cnaster_beta_binomial_objective(
         [np.asarray(alpha, dtype=np.float64) / concentration, concentration]
     )
     return float(model.nloglikeobs(params))
+
+
+@dataclass(frozen=True)
+class CnasterCoreInputs:
+    """A planted instance as `cnaster.hmrf.run_core_inference`'s arguments.
+
+    Issue #4. The adapter is the reusable artefact: every rung of #14 converts
+    the same truth, so a disagreement is attributable to the rung and not to
+    two fixtures that differ.
+
+    `single_X` is `(n_obs, 2, n_spots)` with channel 0 the total and channel 1
+    the successes, which is the layout `hmrf.py` reads and `pseudobulk.py`
+    sums over.
+    """
+
+    single_X: np.ndarray
+    lengths: np.ndarray
+    single_base_nb_mean: np.ndarray
+    single_total_bb_RD: np.ndarray
+    initial_clone_index: list[np.ndarray]
+    n_states: int
+    log_sitewise_transmat: np.ndarray
+    smooth_mat: object
+    adjacency_mat: object
+    sample_ids: np.ndarray
+
+    def as_kwargs(self) -> dict[str, object]:
+        """The keyword form `run_core_inference` takes, so a caller adds only knobs."""
+        return {
+            "single_X": self.single_X,
+            "lengths": self.lengths,
+            "single_base_nb_mean": self.single_base_nb_mean,
+            "single_total_bb_RD": self.single_total_bb_RD,
+            "single_tumor_prop": None,
+            "initial_clone_index": self.initial_clone_index,
+            "n_states": self.n_states,
+            "log_sitewise_transmat": self.log_sitewise_transmat,
+            "smooth_mat": self.smooth_mat,
+            "adjacency_mat": self.adjacency_mat,
+            "sample_ids": self.sample_ids,
+        }
+
+
+def lattice_adjacency(lattice: tuple[int, int]) -> object:
+    """Four-neighbour adjacency over the fixture's lattice, as `cnaster` takes it.
+
+    Symmetric CSR with unit weights. `cnaster` keeps `spatial_weight` outside
+    the matrix, so the couplings here are 1 and the temperature is the caller's
+    (#44 pinned that correspondence).
+    """
+    from scipy.sparse import coo_matrix
+
+    rows, columns = lattice
+    edges: list[tuple[int, int]] = []
+    for row in range(rows):
+        for column in range(columns):
+            node = row * columns + column
+            if column + 1 < columns:
+                edges.append((node, node + 1))
+            if row + 1 < rows:
+                edges.append((node, node + columns))
+
+    source = np.array([edge[0] for edge in edges] + [edge[1] for edge in edges])
+    target = np.array([edge[1] for edge in edges] + [edge[0] for edge in edges])
+    weight = np.ones(source.size)
+
+    return coo_matrix(
+        (weight, (source, target)), shape=(rows * columns, rows * columns)
+    ).tocsr()
+
+
+def from_core_inference_truth(truth: CoreInferenceTruth) -> CnasterCoreInputs:
+    """Convert a `CoreInferenceTruth` without moving a single number.
+
+    The counts, the exposure and the trial count are handed over as drawn:
+    `cnaster` conditions on all three and fits none of them, so the instance it
+    sees is the instance that was planted.
+    """
+    from scipy.sparse import eye as sparse_eye
+
+    single_X = np.stack([truth.counts_nb, truth.counts_bb], axis=1)
+
+    return CnasterCoreInputs(
+        single_X=single_X,
+        lengths=truth.lengths,
+        single_base_nb_mean=truth.base_nb_mean,
+        single_total_bb_RD=truth.total_bb_RD,
+        initial_clone_index=truth.clone_index,
+        n_states=truth.n_states,
+        log_sitewise_transmat=np.log(truth.switch_prob),
+        # Identity smoothing: the fixture plants what it wants scored, and a
+        # neighbourhood that pooled counts would make the planted truth a
+        # statement about the pooled data rather than about the draw.
+        smooth_mat=sparse_eye(truth.n_spots, format="csr"),
+        adjacency_mat=lattice_adjacency(truth.lattice),
+        sample_ids=np.zeros(truth.n_spots, dtype=int),
+    )
