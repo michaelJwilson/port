@@ -916,10 +916,14 @@ def dev_instance(**overrides: object) -> CoreInferenceTruth:
 def key_instance(**overrides: object) -> CoreInferenceTruth:
     """The instance final validation and benchmarking are reported at.
 
-    `M = K = 10`, `G = 10,000`, `S = 3,000`. The declared `M`, `K` and `G`
-    (#87), with `S` at 3,000 rather than 5,000 because that is what fits.
+    `M = K = 10`, `G = 10,000`, `S = 5,000` -- the declared scale (#87),
+    unreduced. It builds here in 16.6 s at 2.09 GB and every planted parameter
+    is recovered from it.
 
-    Measured, `run_core_inference` completing one outer iteration:
+    **The inference on it does not fit**, and that is #90 rather than a reason
+    to redefine the instance. `cnaster` materializes `(n_states, n_obs,
+    n_spots)` twice per outer iteration -- 8.00 GB here, against 15 GB
+    available -- and measured, one outer iteration at `M = K = 10`:
 
     | `G` | `S` | emission | wall | peak RSS | clones out |
     | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -927,16 +931,18 @@ def key_instance(**overrides: object) -> CoreInferenceTruth:
     | 1,500 | 2,000 | 0.48 GB | 38.6 s | 1.55 GB | 10 |
     | 4,000 | 2,000 | 1.28 GB | 90.9 s | 2.77 GB | 10 |
     | 10,000 | 2,000 | 3.20 GB | 222.5 s | 5.68 GB | 10 |
-    | **10,000** | **3,000** | **4.80 GB** | **310.3 s** | **7.98 GB** | **10** |
+    | 10,000 | 3,000 | 4.80 GB | 310.3 s | 7.98 GB | 10 |
+    | **10,000** | **5,000** | **8.00 GB** | — | ~18 GB projected | — |
 
-    `S = 5,000` puts the emission at 8.00 GB and the peak near 18, against 15
-    available. `S` is the extent that gives: `G` is the axis the copy-state
-    profile lives on, and `M` and `K` are the model.
+    Peak tracks the emission at about 1.6x plus a fixed 0.5 GB, so the array
+    is the whole story and the last row is an interpolation rather than a
+    guess. #61 is the one written patch that removes the array rather than
+    reading it faster.
     """
     settings: dict[str, object] = {
         "n_clones": 10,
         "n_states": 10,
-        "lattice": (30, 100),
+        "lattice": (50, 100),
         "n_obs": 10_000,
         "n_segments": 10,
     }

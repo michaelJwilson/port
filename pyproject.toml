@@ -194,6 +194,12 @@ markers = [
     "planted: checked against the fixture's planted truth",
     "analytic: checked against an analytic property or an invariant",
     "release: over the per-pull-request budget; runs for a release",
+    # NB `preprocessing` names a subject rather than a referee, as `release`
+    #    and `benchmark` do. It selects the input path -- `load_input_data`,
+    #    the binning, the pre-image that round-trips through them -- which is
+    #    the stage whose failures are slowest to attribute and the one worth
+    #    running alone while changing it.
+    "preprocessing: exercises the input path from files to bins",
     "benchmark: records a baseline; asserts no ratio",
 ]
 

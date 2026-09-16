@@ -13,9 +13,12 @@ recorded as tests rather than as prose:
     `pipeline_clone_assignment` does not pass one, so every clone below that
     size is merged away and no labelling can be recovered under it.
 
-The declared scale -- `M = K = 10`, `G = 10,000`, `S = 5,000` -- carries the
-`release` marker and the reason is in `test_the_declared_scale_is_out_of
-_reach_here`: the emission alone is 8.00 GB per outer iteration.
+`dev_instance` is what these run against: 15.8 s, and it recovers its
+labelling exactly, so a failure here is a failure of the code rather than of
+the instance. `key_instance` is the declared scale, `M = K = 10`, `G = 10,000`,
+`S = 5,000`. Its fixture is exercised here; **the inference on it is not**,
+because it does not fit in memory (#90). That run is its own change and its
+own pull request.
 """
 
 import warnings
@@ -242,9 +245,7 @@ def test_the_declared_scale_plants_and_recovers_its_parameters() -> None:
     recovered from the counts it generated. What is **not** asserted here is
     `run_core_inference` on it, for the reason the next test measures.
     """
-    truth = core_inference_truth(
-        n_clones=10, n_states=10, lattice=(50, 100), n_obs=10_000, n_segments=20
-    )
+    truth = key_instance(n_segments=20)
 
     assert (truth.n_clones, truth.n_states) == (10, 10)
     assert (truth.n_obs, truth.n_spots) == (10_000, 5_000)
@@ -280,41 +281,6 @@ def test_the_declared_scale_is_out_of_reach_of_a_single_run_here() -> None:
 
     assert truth.emission_gigabytes < 0.01
     assert declared == pytest.approx(8.0), f"{declared:.2f} GB"
-
-
-@pytest.mark.planted
-@pytest.mark.release
-def test_the_key_instance_runs_end_to_end(cnaster_config: None) -> None:
-    """The key instance: `M = K = 10`, `G = 10,000`, `S = 3,000`.
-
-    What final validation and benchmarking are reported at. 310 s and 7.98 GB
-    for one outer iteration, so it is run deliberately rather than while
-    working -- `test_the_dev_instance_recovers_its_labelling` is the one to
-    iterate against.
-
-    What is asserted is the labelling, by adjusted Rand index so the clone
-    names do not matter: ten classes have 3.6 million permutations and the
-    partition is what the model determines.
-
-    The emission parameters are **not** asserted here. #82 and #86 establish
-    that they are not recovered at three states, and asserting it at ten would
-    restate those findings at forty minutes a run rather than adding to them.
-    """
-    truth = key_instance()
-
-    assert truth.n_spots == 3_000
-    assert min(index.size for index in truth.clone_index) >= MIN_CLONE_SPOTS
-    assert truth.emission_gigabytes == pytest.approx(4.8)
-
-    result = _run(truth, max_iter_outer=1, max_iter=3)
-    fitted = np.asarray(result.assignment.new_assignment)
-
-    assert np.unique(fitted).size == truth.n_clones, (
-        f"{np.unique(fitted).size} clones survived of {truth.n_clones}"
-    )
-
-    agreement = _adjusted_rand_index(truth.labels, fitted)
-    assert agreement > 0.9, f"adjusted Rand index {agreement:.3f}"
 
 
 @pytest.mark.planted
