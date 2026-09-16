@@ -182,9 +182,28 @@ markers = [
 ]
 
 [tool.coverage.run]
-source = ["port"]
+# `cnaster` is measured alongside `port` because it is the subject: these
+# tests exist to exercise a dependency, and a gate over `port` alone would
+# read as full while covering none of what is under test.
+#
+# Named as packages, coverage measures the modules the suite imports rather
+# than every file `cnaster` ships. The denominator therefore grows when a
+# new module is first imported, which can lower the percentage for bringing
+# something *into* test. That is the one case where the gate below is
+# adjusted downward, and it is adjusted with the new module's own coverage
+# stated; it is never lowered to make a red suite pass.
+source_pkgs = ["port", "cnaster"]
 
 [tool.coverage.report]
+# The floor the HMM fixtures reach today: 243 of 743 statements, 32.70 per
+# cent, over `cnaster`'s config, count_encoder, hmm_nophasing, hmm_phased
+# and logger. Set just under the achieved figure so ordinary variation does
+# not fail a suite that covered no less than before.
+#
+# Upstream's rule governs it: maintained or raised, and never lowered to
+# pass a pull request.
+fail_under = 32
+precision = 2
 exclude_lines = [
     "pragma: no cover",
     "if __name__ == .__main__.:",
