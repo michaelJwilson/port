@@ -107,6 +107,13 @@ rather than waiting on them.
     as a regression for bringing a new module under test. The figure is low
     and is meant to be: it states how much of the subject is validated, and
     it rises only by validating more of it.
+*   **A dependency's `sandbox/` is out of scope:** it holds work that
+    repository has set aside -- unpackaged, absent from the wheel, and
+    unreachable from an install. `port` validates what a user of the
+    dependency gets, so sandbox code is not tested, not measured and not
+    counted, unless it is asked for by name. Where a ticket needs something
+    that lives there, the dependency is on that code moving into the
+    installed tree, and the ticket says so rather than reaching in.
 *   **A compiled kernel is tested even where coverage cannot see it:**
     `numba` reports nothing, so `@njit` functions read as uncovered however
     hard they are exercised. They carry tests regardless, against an
