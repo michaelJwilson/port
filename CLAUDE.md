@@ -80,12 +80,22 @@ rather than waiting on them.
     tolerance:** the paper states the method, `cnaster` implements it, and
     upstream implements the parts of it that are not application specific.
     Where all three describe one quantity, all three compute it, and the
-    agreement is reported as a number rather than as the word "matches" -- a
-    comparison without its tolerance, its seed and the size it was taken at
-    has not been reported. The exception is a difference in the problem
-    itself, and it counts only once it is **raised**: named in a ticket,
-    with which reference differs, in what regime, and why that is a choice
-    rather than a defect. An unraised difference is a defect by default,
+    agreement is reported as a number rather than as the word "matches".
+    What a tolerance is, and what counts as having stated one, is upstream's
+    to define -- its **Testing & Quality Assurance** pins expected values
+    against analytic properties, brute force or a second implementation
+    *with stated tolerances*, and makes the tolerance of a mixed-precision
+    comparison the higher precision's; its **Writing Style** requires a
+    claim to be backed by numbers; its **High Performance frameworks**
+    section says which sizes a ratio may be read at. Those are the governing
+    statements, restated under Scientific validation below for a reader of
+    this repository alone.
+    The exception is a difference in the problem itself, and it counts once
+    it is **stated where the work is** -- a plan, a pull request, a commit
+    message, a docstring, a ticket -- naming which reference differs, in
+    what regime, and why it is a choice rather than a defect. It does not
+    need a ticket of its own; it needs to be findable by whoever reads the
+    comparison next. An unstated difference is a defect by default,
     whichever side it favours. Silence is what the rule exists to prevent,
     because three references that were never compared look exactly like
     three that agree.
