@@ -100,3 +100,44 @@ rather than waiting on them.
     equivalence alone. A patch offered as faster is held to the bar upstream
     sets, measured at a stress size, and below it the simpler code wins and
     the change is reverted rather than kept.
+*   **Coverage is measured against the whole of `cnaster`, not what is
+    imported:** this repository exists to validate a dependency, so the
+    denominator is every file that dependency ships. A gate over the modules
+    a test happens to load reads as progress for importing less, and reads
+    as a regression for bringing a new module under test. The figure is low
+    and is meant to be: it states how much of the subject is validated, and
+    it rises only by validating more of it.
+*   **A compiled kernel is tested even where coverage cannot see it:**
+    `numba` reports nothing, so `@njit` functions read as uncovered however
+    hard they are exercised. They carry tests regardless, against an
+    independent reference, and the coverage figure is never the reason a
+    kernel goes untested. Where a test exists only to reach a compiled
+    kernel, say so in its docstring, because the report will not.
+
+## Scientific validation
+
+Restated from upstream rather than adopted by reference. These are the rules
+this repository exists to apply to a dependency, and the one place a reader
+of `port` alone must not have to follow a link to find them.
+
+*   **Simulate component-wise.** Build fixtures across a set of sizes, from a
+    known generative model with a seeded generator. Test components
+    individually and in combination.
+*   **Fixtures carry their own truth.** Oracles, and recovery of known
+    parameters and configurations, are what validate; they are required, not
+    optional.
+*   **Pin to independent sources.** Validate expected values against analytic
+    properties, brute-force computations, or a second implementation, with
+    stated tolerances.
+*   **Check known mathematical properties:** limits, invariants, conservation.
+*   **Cross-precision agreement is a tolerance.** Given `float32` and
+    `float64`, the tolerance is the higher precision's.
+*   **No coverage theatre.** A test asserting only output shapes or the
+    absence of an exception is forbidden. Document the gaps it leaves and
+    track them with a ticket.
+*   **Every test says what it is checked against.** A marker names the
+    referee, and `pyproject.toml` registers the names.
+
+Correctness and reproducibility of numerical results are required, despite
+inconvenience. A test that cannot say what would have to be wrong for it to
+fail is not yet a test.
