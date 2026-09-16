@@ -113,6 +113,14 @@ module = "pytest_benchmark.*"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
+# `@njit` erases the signature it decorates, so a patch kernel cannot be
+# annotated in a way --strict accepts. These are pinned bitwise against
+# cnaster instead, which is a stronger claim than a type.
+module = "port.patch.*"
+disallow_untyped_defs = false
+disallow_untyped_calls = false
+
+[[tool.mypy.overrides]]
 # cnaster ships no py.typed marker, so --strict refuses every import of it.
 # Narrowed to that package rather than relaxed globally: the tests score
 # cnaster against a typed upstream, and silencing the upstream's types too
@@ -237,10 +245,13 @@ omit = [
 ]
 
 [tool.coverage.report]
-# The floor the tests reach: 863 of 5,642 statements, 15.30 per cent. The
+# The floor the tests reach: 922 of 5,676 statements, 16.24 per cent. The
 # denominator is `cnaster` plus `python/port`, so a module added here moves
 # both the numerator and the denominator -- `port.integer_copy` added 98
-# statements and the figure rose, which is the arithmetic working. Low by construction -- the denominator is
+# statements and `port.patch.hmrf_field` 32, and the figure rose for each,
+# which is the arithmetic working.
+#
+# Low by construction -- the denominator is
 # every module the package ships at top level, and most of them have no test
 # yet. That is the point: the number says how much of the subject is
 # validated, and it rises only by validating more of it.
@@ -252,7 +263,7 @@ omit = [
 # pull request. Unlike a denominator of the imported modules, this one does
 # not fall for bringing a new module under test, so there is no case where
 # lowering it is legitimate.
-fail_under = 15.2
+fail_under = 16.2
 precision = 2
 exclude_lines = [
     "pragma: no cover",
