@@ -438,7 +438,7 @@ wheels = [
 [[package]]
 name = "cnaster"
 version = "0.1.0"
-source = { git = "https://github.com/michaelJwilson/cnaster?branch=finish_annotation_mushift3#6139e27847bf680fdbb750ae57f3b18a868658cc" }
+source = { git = "https://github.com/michaelJwilson/cnaster?branch=finish_annotation_mushift3#4adad4d829ac58ac234685d71a8dbf26fd8ff3bb" }
 dependencies = [
     { name = "anndata" },
     { name = "hmmlearn" },
