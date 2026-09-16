@@ -113,6 +113,14 @@ module = "pytest_benchmark.*"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
+# cnaster ships no py.typed marker, so --strict refuses every import of it.
+# Narrowed to that package rather than relaxed globally: the tests score
+# cnaster against a typed upstream, and silencing the upstream's types too
+# would lose the half that is checkable.
+module = "cnaster.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
 module = "numba.*"
 ignore_missing_imports = true
 
@@ -160,6 +168,18 @@ showcontent = true
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "--strict-markers"
+# Every test names what it is checked against (CLAUDE.md, Testing & Quality
+# Assurance). The marker is the referee, not the subject: `upstream` means a
+# second implementation decided the expected value, `planted` means the
+# fixture's own truth did, and `analytic` means a property that holds by
+# construction did.
+markers = [
+    "upstream: checked against the snakes_and_ladders implementation",
+    "planted: checked against the fixture's planted truth",
+    "analytic: checked against an analytic property or an invariant",
+    "release: over the per-pull-request budget; runs for a release",
+    "benchmark: records a baseline; asserts no ratio",
+]
 
 [tool.coverage.run]
 source = ["port"]
