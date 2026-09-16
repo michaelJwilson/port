@@ -43,6 +43,16 @@ jobs:
       #    release-marked tests contribute no statements of their own, so
       #    deselecting them does not move it.
       - run: uv run --no-sync pytest -m "not release" --cov --cov-report=term
+      # NB the referee's own floor, measured separately and over its own
+      #    denominator. One figure covering both would rise for importing more
+      #    of upstream, which is not validating more of the subject.
+      #    `preprocessing` is deselected: the input path has no upstream
+      #    referee, so those tests would dilute the oracle's denominator with
+      #    work it was never asked to do.
+      - run: >
+          uv run --no-sync coverage run --rcfile=.coveragerc-oracle
+          -m pytest -m "not release and not preprocessing" -q --no-cov
+      - run: uv run --no-sync coverage report --rcfile=.coveragerc-oracle
 
   rust:
     name: Rust (lint, format)
