@@ -6,12 +6,17 @@ Issues #29 and #32, together. They are two directions of one correspondence:
 
 Paper at `0478c74`; upstream at the `main` pin; `cnaster` at `4adad4d`.
 
+**Everything upstream is missing is one capability: it cannot take
+per-observation exogenous data.** All four confirmed gaps are covariates --
+exposure on the count mean, trials on the allele channel, and the switch
+probability on the transition. Nothing else in #32's list survived: one item
+was wrong, two were answered, one is cheaper as a test here, and one is a
+policy decision rather than code.
+
 **Upstream carries more of the paper than the paper's own implementation
 does.** Every solver `wolff.tex` argues about is implemented there, behind
 one enum, with a Rust backend -- and `search/ground_state.py` is a
 budget-charged harness that already answers the question the paper asserts.
-Against that, four gaps block a referee, and one of them is smaller than #32
-recorded.
 
 One finding is against `port` rather than either dependency: PR #44
 reimplemented an enumeration limit upstream already ships, at the same value.
@@ -149,6 +154,42 @@ is corrected. Items 8 and 9 are answered and can close.**
 | 8 | upstream's dtype policy | **answered** |
 | 9 | a stress size upstream runs | **answered** |
 
+## B0. All four gaps are one missing capability
+
+Stated here because the list above reads as four unrelated features and is
+not. Upstream's model is **position-independent by construction**: an
+emission family carries one mean per state, and a recursion carries one
+`(m, m)` for the whole chain. Every confirmed gap is the same consequence.
+
+| item | the covariate | where it enters |
+| ---: | --- | --- |
+| 1 | exposure | the negative binomial's mean, `lam = exposure[i] * mu` |
+| 2 | trials | the beta-binomial's `n_gn` |
+| 3 | switch probability | the transition, per position |
+| 4 | -- | the structured case of 3 |
+
+Items 3 and 4 look like a different kind of thing and are not.
+`hmm_phased`'s kernel varies along the chain **because** `recomb.py` computes
+it from per-position genetic distance through Haldane's mapping function. It
+is a covariate on the transition exactly as exposure is a covariate on the
+mean, and upstream takes a single transition for the same reason
+`NegativeBinomialEmission` takes a single mean -- both assume the parameters
+do not vary with position.
+
+**One concept, two code changes.** Items 1 and 2 are emission-side: an offset
+threaded through `log_density`, `sample` and `reestimate`. Items 3 and 4 are
+recursion-side: `forward_log_likelihood` and its backward and EM counterparts
+taking a sequence of transitions rather than one. Different modules,
+different tests. They should land as two tickets even though they answer one
+question, and the emission pair should land first -- it unblocks #4's second
+tier, #9's runtime half and #24's varying-trials regime, where the recursion
+pair unblocks only the phased rung.
+
+**Nothing else upstream is required.** A3's sufficient statistics are worth
+having and block nothing; item 7 is a decision; items 5, 6, 8 and 9 resolve
+to no upstream change at all. So the whole of what `port` needs from
+upstream, to referee the whole of `cnaster`, is covariates.
+
 ## B1. Item 6 was wrong
 
 #32 said: "Whether upstream's `opt/` carries the Potts problem is
@@ -270,10 +311,14 @@ rule asks for.
 **Close now:** #32 items 8 and 9, answered. #32 item 6, wrong -- upstream
 carries the spatial layer in full.
 
-**Open upstream, as one ticket:** the exposure-aware count family and
-exogenous beta-binomial trials (#32 items 1, 2). As a second: the
-position-varying transition and its structured case (items 3, 4), argued on
-expressiveness, never on speed (#16).
+**Open upstream, two tickets, and they are one concept:** covariates. First
+the emission pair -- exposure on the count mean, trials on the allele channel
+(#32 items 1, 2) -- which unblocks the most. Then the recursion pair -- a
+transition that varies by position, with the phased matrix as its structured
+case (items 3, 4) -- argued on expressiveness, never on speed (#16).
+
+**That is the complete list of upstream work.** Everything else resolves to
+no change: see B0.
 
 **Do not open upstream:** integer copy number (#25's enumeration is better),
 phasing and segmentation, H&E, the joint M step (#37 is cheaper).
