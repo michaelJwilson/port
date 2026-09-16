@@ -189,11 +189,25 @@ markers = [
 ]
 
 [tool.coverage.run]
-# The subject is `cnaster`, so the denominator is the whole of `cnaster` --
-# every file it ships, not the modules a test happens to import. Naming the
-# installed directory rather than the package is what makes coverage count
-# the files it never loaded; naming the package counts only what ran, which
-# reads as progress for importing less.
+# The subject is `cnaster`, so the denominator is `cnaster` rather than the
+# modules a test happens to import. Naming the installed directory rather
+# than the package is what makes coverage count the files it never loaded;
+# naming the package counts only what ran, which reads as progress for
+# importing less.
+#
+# What that denominator actually is, measured rather than assumed: the 37
+# top-level modules, 5,545 statements. It is not every file the wheel
+# ships. `cnaster` carries no `__init__.py` anywhere, so coverage's scan of
+# a source *directory* does not descend into its subdirectories, and
+# `deprecated/` (19 modules) and `scripts/` (4) are outside the figure
+# whatever `omit` says.
+#
+# For `deprecated/` that is the answer this repository wants and `omit`
+# below states it on purpose. For `scripts/` it is a gap: those four modules
+# are the console entry points the wheel installs, the most live code
+# `cnaster` has, and the gate is silent about them. Closing it needs the
+# subdirectory named as its own source root, and the floor recut against the
+# larger denominator.
 #
 # `tests/test_coverage_scope.py` fails if this path stops being the
 # installed package, so a Python version bump is a red test rather than a
@@ -201,6 +215,21 @@ markers = [
 source = [
     "python/port",
     ".venv/lib/python3.12/site-packages/cnaster",
+]
+# `deprecated/` and `sandbox/` are out of scope, so they are out of the
+# denominator too. Leaving them in would hold the figure down with code no
+# test will ever reach, which reads as an unvalidated subject rather than as
+# a subject that was set aside.
+#
+# Both are no-ops today: neither subdirectory reaches the report in the
+# first place, for the reason above. They are written down so that the
+# exclusion is a decision rather than a side effect of a missing
+# `__init__.py`, and so that naming `scripts/` as a source root later --
+# which is what the gap above needs -- does not quietly pull `deprecated/`
+# in with it.
+omit = [
+    "*/cnaster/deprecated/*",
+    "*/cnaster/sandbox/*",
 ]
 
 [tool.coverage.report]

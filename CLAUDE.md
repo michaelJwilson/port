@@ -130,13 +130,28 @@ rather than waiting on them.
     as a regression for bringing a new module under test. The figure is low
     and is meant to be: it states how much of the subject is validated, and
     it rises only by validating more of it.
-*   **A dependency's `sandbox/` is out of scope:** it holds work that
-    repository has set aside -- unpackaged, absent from the wheel, and
-    unreachable from an install. `port` validates what a user of the
-    dependency gets, so sandbox code is not tested, not measured and not
-    counted, unless it is asked for by name. Where a ticket needs something
-    that lives there, the dependency is on that code moving into the
-    installed tree, and the ticket says so rather than reaching in.
+*   **A dependency's `sandbox/` and `deprecated/` are out of scope:** they
+    hold work that repository has set aside. `port` validates what a user of
+    the dependency gets, so neither is tested, measured nor counted by
+    default. The reason differs by tree and only one of them is about
+    packaging -- `cnaster`'s `sandbox/` ships no file at all, while its
+    `deprecated/` ships seventy-four -- so being in the wheel is not what
+    puts code in scope. Being reachable is.
+    Out of scope is a default, not a prohibition: either is fair game when
+    the work requires it, and asking for a name is the usual way that
+    happens. What the rule forbids is reaching in silently. A measurement,
+    benchmark or test that touches one says which tree it touched and why
+    the question could not be answered from the installed path, so a reader
+    can tell a deliberate excursion from a wrong turn. Where a ticket *needs*
+    something that lives there, the dependency is on that code moving into
+    the live tree, and the ticket says so rather than treating the excursion
+    as the answer.
+    A name appearing in one of these trees does not settle where it lives:
+    `Weighted_BetaBinom_mix` is defined in both `cnaster/hmm_emission.py` and
+    `cnaster/deprecated/hmm_emission.py`, and the live copy is reached from a
+    console script through a `partial` alias under another name. Scope is
+    decided by tracing the live import to the definition, not by matching
+    the identifier.
 *   **A compiled kernel is tested even where coverage cannot see it:**
     `numba` reports nothing, so `@njit` functions read as uncovered however
     hard they are exercised. They carry tests regardless, against an
