@@ -91,8 +91,7 @@ def chains() -> BetaBinomialChains:
     return beta_binomial_chains()
 
 
-@pytest.mark.upstream_oracle
-@pytest.mark.critical
+@pytest.mark.upstream
 @pytest.mark.usefixtures("cnaster_converged_config", "cnaster_perf_sink")
 def test_m_step_agrees_with_upstream(chains: BetaBinomialChains) -> None:
     """Both M steps land on the same `(alpha, beta)` from the same posterior.
@@ -120,7 +119,7 @@ def test_m_step_agrees_with_upstream(chains: BetaBinomialChains) -> None:
     np.testing.assert_allclose(cnaster.beta, upstream.beta, rtol=SOLVER_AGREEMENT)
 
 
-@pytest.mark.upstream_oracle
+@pytest.mark.upstream
 @pytest.mark.usefixtures("cnaster_converged_config", "cnaster_perf_sink")
 def test_m_step_agrees_on_the_success_probability_more_tightly(
     chains: BetaBinomialChains,
@@ -224,8 +223,7 @@ def test_m_step_does_not_increase_its_own_objective(chains: BetaBinomialChains) 
     )
 
 
-@pytest.mark.upstream_oracle
-@pytest.mark.critical
+@pytest.mark.upstream
 @pytest.mark.usefixtures("cnaster_converged_config", "cnaster_perf_sink")
 def test_the_two_dispersion_branches_coincide_at_one_state() -> None:
     """At `K = 1`, `shared_dispersion` is the same parameter either way.
@@ -294,7 +292,7 @@ def test_the_design_carries_the_posterior_to_the_right_state(
     )
 
 
-@pytest.mark.upstream_oracle
+@pytest.mark.upstream
 @pytest.mark.xfail(
     strict=True,
     reason=(
@@ -341,7 +339,7 @@ def test_m_step_agrees_with_upstream_at_cnaster_s_own_settings(
     np.testing.assert_allclose(cnaster.beta, upstream.beta, rtol=SOLVER_AGREEMENT)
 
 
-@pytest.mark.oracle
+@pytest.mark.upstream
 @pytest.mark.usefixtures("cnaster_config", "cnaster_perf_sink")
 def test_the_shipped_solver_options_carry_a_key_scipy_rejects(
     chains: BetaBinomialChains,

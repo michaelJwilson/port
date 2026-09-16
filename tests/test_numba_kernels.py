@@ -19,8 +19,7 @@ from scipy.stats import betabinom, nbinom
 TOLERANCE = 1e-10
 
 
-@pytest.mark.oracle
-@pytest.mark.critical
+@pytest.mark.analytic
 @pytest.mark.parametrize("count", [0, 1, 7, 50])
 @pytest.mark.parametrize(
     ("dispersion", "probability"), [(1.0, 0.5), (8.0, 0.2), (0.5, 0.9)]
@@ -36,8 +35,7 @@ def test_negative_binomial_kernel_matches_scipy(
     )
 
 
-@pytest.mark.oracle
-@pytest.mark.critical
+@pytest.mark.analytic
 @pytest.mark.parametrize("successes", [0, 3, 10])
 @pytest.mark.parametrize(("trials", "alpha", "beta"), [(10, 2.0, 2.0), (10, 0.5, 5.0)])
 def test_beta_binomial_kernel_matches_scipy(
@@ -51,8 +49,7 @@ def test_beta_binomial_kernel_matches_scipy(
     )
 
 
-@pytest.mark.oracle
-@pytest.mark.critical
+@pytest.mark.analytic
 def test_numba_logsumexp_matches_scipy() -> None:
     """`numba_logsumexp` is stable where a naive sum is not.
 

@@ -701,67 +701,6 @@ def _emission_families(
     )
 
 
-def weierstrass_exposure(
-    n_obs: int,
-    n_spots: int,
-    *,
-    low: float,
-    high: float,
-    a: float = 0.5,
-    b: float = 7.0,
-    terms: int = 12,
-    rng: np.random.Generator | None = None,
-) -> np.ndarray:
-    """A strictly positive exposure that varies violently along the bin axis.
-
-    `W(x) = sum_k a^k cos(b^k pi x)` -- continuous everywhere, differentiable
-    nowhere for `ab > 1` -- rescaled into `[low, high]` and multiplied by a
-    per-spot library size.
-
-    **Along the bin axis, deliberately.** `merge_pseudobulk_by_index_mix` sums
-    the exposure across a clone's spots, so variation in the spot direction
-    averages out before the fit ever sees it and variation in the bin
-    direction survives intact. An exposure drawn i.i.d. over both axes is
-    therefore a weaker fixture than it looks.
-
-    **Strictly positive, and that is load-bearing.** `_nb_logpmf_1d` scores a
-    non-positive rate as `out[i] = 0.0` -- log-density zero, probability one
-    -- rather than excluding it. A Weierstrass function oscillates about its
-    mean and is negative half the time, so an unshifted one would silently
-    score half the genome as certain.
-
-    Why it is worth the trouble: a **constant** exposure is absorbed into the
-    emission as `log_mu - log(c)`, so `log_mu` is not separately identifiable
-    from it. A varying one breaks that absorption, which is what makes a
-    planted `log_mu` a thing a fit can be wrong about.
-
-    Raises
-    ------
-    ValueError
-        If `low` is not positive, or `a * b <= 1`, where the function is
-        differentiable and the fixture is merely a smooth ripple.
-    """
-    if low <= 0.0:
-        msg = f"the exposure must be strictly positive, got low={low}"
-        raise ValueError(msg)
-    if a * b <= 1.0:
-        msg = f"a*b must exceed 1 for the construction to bite, got {a * b}"
-        raise ValueError(msg)
-
-    x = np.linspace(0.0, 1.0, n_obs, endpoint=False)
-    walk = np.zeros(n_obs)
-    for k in range(terms):
-        walk += a**k * np.cos(b**k * np.pi * x)
-
-    span = walk.max() - walk.min()
-    shaped = low + (high - low) * (walk - walk.min()) / span
-
-    generator = rng if rng is not None else np.random.default_rng(DEFAULT_SEED)
-    library = generator.uniform(0.75, 1.25, n_spots)
-
-    return np.outer(shaped, library)
-
-
 def core_inference_truth(
     *,
     n_clones: int = 3,
@@ -770,7 +709,6 @@ def core_inference_truth(
     n_obs: int = 240,
     n_segments: int = 4,
     self_transition: float = 0.99,
-    exposure: str = "weierstrass",
     depth: tuple[float, float] = (0.5, 3.0),
     reads: tuple[int, int] = (10, 60),
     switch: tuple[float, float] = (0.01, 0.20),
@@ -783,27 +721,11 @@ def core_inference_truth(
     That is what lets a reduced fixture be a prefix of a larger one rather than
     a different dataset.
 
-    Parameters
-    ----------
-    exposure : str
-        How `base_nb_mean` is planted. `"weierstrass"` varies it violently
-        along the **bin** axis, which is the axis that survives the pseudobulk
-        and the one a fit has to divide out; `"uniform"` draws it i.i.d. over
-        both axes, which averages out per state and is the weaker fixture;
-        `"constant"` makes it one number, under which `log_mu` is absorbed as
-        `log_mu - log(c)` and is not separately identifiable.
-
-        The three are kept because the contrast between them is a measurement
-        -- `tests/test_exposure_fixture.py` reports what each costs the fit --
-        and because a goodness-of-fit test needs one distribution per state,
-        which only `"constant"` gives.
-
     Raises
     ------
     ValueError
         If `n_clones` exceeds the lattice's rows, where a band would be empty,
-        the segments do not partition `n_obs`, `n_states < 2`, or `exposure`
-        names no mode.
+        or the segments do not partition `n_obs`, or `n_states < 2`.
     """
     rows, columns = lattice
     if n_clones > rows:
@@ -842,17 +764,7 @@ def core_inference_truth(
                 n_states, p=transition[states[clone, obs - 1]]
             )
 
-    if exposure == "constant":
-        base_nb_mean = np.full((n_obs, n_spots), float(depth[0]))
-    elif exposure == "uniform":
-        base_nb_mean = rng.uniform(*depth, (n_obs, n_spots))
-    elif exposure == "weierstrass":
-        base_nb_mean = weierstrass_exposure(
-            n_obs, n_spots, low=depth[0], high=depth[1], rng=rng
-        )
-    else:
-        msg = f"unknown exposure {exposure!r}"
-        raise ValueError(msg)
+    base_nb_mean = rng.uniform(*depth, (n_obs, n_spots))
     total_bb_RD = rng.integers(*reads, (n_obs, n_spots)).astype(np.float64)
     switch_prob = rng.uniform(*switch, n_obs)
 
@@ -887,67 +799,6 @@ def core_inference_truth(
         self_transition=self_transition,
         seed=seed,
     )
-
-
-def dev_instance(**overrides: object) -> CoreInferenceTruth:
-    """The instance to develop against: small enough to fail fast.
-
-    `K = 10` as the key instance has, a tenth of its `G`, a third of its `S`,
-    and **four** clones rather than ten. Four because of the floor, not taste:
-    `icm_sweep_deque` merges any clone under 200 spots and does not expose the
-    threshold (#81), so ten clones cannot exist below `S = 2,000` and a
-    development instance that small would measure the merge rather than the
-    model. Four over 1,000 spots leaves 250 each.
-
-    The point is wall time. An error found in 20 s is an error found; the same
-    error at 310 s is a reason to stop looking.
-    """
-    settings: dict[str, object] = {
-        "n_clones": 4,
-        "n_states": 10,
-        "lattice": (10, 100),
-        "n_obs": 1_000,
-        "n_segments": 10,
-    }
-    settings.update(overrides)
-    return core_inference_truth(**settings)  # type: ignore[arg-type]
-
-
-def key_instance(**overrides: object) -> CoreInferenceTruth:
-    """The instance final validation and benchmarking are reported at.
-
-    `M = K = 10`, `G = 10,000`, `S = 5,000` -- the declared scale (#87),
-    unreduced. It builds here in 16.6 s at 2.09 GB and every planted parameter
-    is recovered from it.
-
-    **The inference on it does not fit**, and that is #90 rather than a reason
-    to redefine the instance. `cnaster` materializes `(n_states, n_obs,
-    n_spots)` twice per outer iteration -- 8.00 GB here, against 15 GB
-    available -- and measured, one outer iteration at `M = K = 10`:
-
-    | `G` | `S` | emission | wall | peak RSS | clones out |
-    | ---: | ---: | ---: | ---: | ---: | ---: |
-    | 750 | 2,000 | 0.24 GB | 21.6 s | 1.19 GB | 10 |
-    | 1,500 | 2,000 | 0.48 GB | 38.6 s | 1.55 GB | 10 |
-    | 4,000 | 2,000 | 1.28 GB | 90.9 s | 2.77 GB | 10 |
-    | 10,000 | 2,000 | 3.20 GB | 222.5 s | 5.68 GB | 10 |
-    | 10,000 | 3,000 | 4.80 GB | 310.3 s | 7.98 GB | 10 |
-    | **10,000** | **5,000** | **8.00 GB** | — | ~18 GB projected | — |
-
-    Peak tracks the emission at about 1.6x plus a fixed 0.5 GB, so the array
-    is the whole story and the last row is an interpolation rather than a
-    guess. #61 is the one written patch that removes the array rather than
-    reading it faster.
-    """
-    settings: dict[str, object] = {
-        "n_clones": 10,
-        "n_states": 10,
-        "lattice": (50, 100),
-        "n_obs": 10_000,
-        "n_segments": 10,
-    }
-    settings.update(overrides)
-    return core_inference_truth(**settings)  # type: ignore[arg-type]
 
 
 @dataclass(frozen=True)

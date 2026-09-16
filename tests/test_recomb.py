@@ -32,8 +32,7 @@ def one_chromosome(n_positions: int) -> list[tuple[int, int]]:
     return [(1, 100 * (i + 1)) for i in range(n_positions)]
 
 
-@pytest.mark.oracle
-@pytest.mark.critical
+@pytest.mark.analytic
 @pytest.mark.parametrize("nu", [0.5, 1.0, 2.0])
 def test_switch_probability_is_the_mapping_function(nu: float) -> None:
     """Interior positions take the closed form exactly."""
@@ -165,8 +164,7 @@ def reference_table() -> pd.DataFrame:
     )
 
 
-@pytest.mark.oracle
-@pytest.mark.critical
+@pytest.mark.analytic
 def test_centimorgans_are_exact_at_reference_positions() -> None:
     """A position in the table returns that row's value."""
     from cnaster.recomb import assign_centiMorgans
@@ -176,8 +174,7 @@ def test_centimorgans_are_exact_at_reference_positions() -> None:
     np.testing.assert_allclose(assigned, [3.0, 5.0, 6.0], rtol=0.0, atol=TOLERANCE)
 
 
-@pytest.mark.oracle
-@pytest.mark.critical
+@pytest.mark.analytic
 def test_centimorgans_interpolate_linearly_between_them() -> None:
     """Halfway between two rows is halfway between their values."""
     from cnaster.recomb import assign_centiMorgans

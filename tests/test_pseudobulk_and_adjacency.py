@@ -10,8 +10,7 @@ import numpy as np
 import pytest
 
 
-@pytest.mark.oracle
-@pytest.mark.critical
+@pytest.mark.analytic
 @pytest.mark.parametrize("n_clones", [1, 3])
 def test_pseudobulk_sums_the_spots_of_each_clone(n_clones: int) -> None:
     """A clone's column is the sum over the spots assigned to it.

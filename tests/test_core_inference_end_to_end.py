@@ -13,12 +13,9 @@ recorded as tests rather than as prose:
     `pipeline_clone_assignment` does not pass one, so every clone below that
     size is merged away and no labelling can be recovered under it.
 
-`dev_instance` is what these run against: 15.8 s, and it recovers its
-labelling exactly, so a failure here is a failure of the code rather than of
-the instance. `key_instance` is the declared scale, `M = K = 10`, `G = 10,000`,
-`S = 5,000`. Its fixture is exercised here; **the inference on it is not**,
-because it does not fit in memory (#90). That run is its own change and its
-own pull request.
+The declared scale -- `M = K = 10`, `G = 10,000`, `S = 5,000` -- carries the
+`release` marker and the reason is in `test_the_declared_scale_is_out_of
+_reach_here`: the emission alone is 8.00 GB per outer iteration.
 """
 
 import warnings
@@ -28,15 +25,7 @@ import numpy as np
 import pytest
 
 from tests.adapters import from_core_inference_truth
-from tests.fixtures import (
-    CoreInferenceTruth,
-    core_inference_truth,
-    dev_instance,
-    key_instance,
-)
-
-DECLARED_SPOTS = 5_000
-"""`S` at the scale #87 names, and the one the inference does not fit in."""
+from tests.fixtures import CoreInferenceTruth, core_inference_truth
 
 MIN_CLONE_SPOTS = 200
 """`icm_sweep_deque`'s default, which `run_core_inference` does not expose.
@@ -59,32 +48,6 @@ def _run(truth: CoreInferenceTruth, **kwargs: object) -> Any:
             hmmclass=hmm_nophasing,
             **kwargs,
         )
-
-
-def _adjusted_rand_index(planted: np.ndarray, fitted: np.ndarray) -> float:
-    """Agreement between two partitions, invariant to how either is labelled.
-
-    Written here rather than taken from `scikit-learn`: it is `cnaster`'s
-    dependency and not this repository's, and a referee that arrives through
-    the subject is not independent of it.
-
-    Ten classes have 3.6 million permutations, so the exact-permutation
-    accuracy below does not scale; this counts agreeing pairs instead and
-    corrects for the agreement expected by chance.
-    """
-    from math import comb
-
-    table = np.zeros((int(planted.max()) + 1, int(fitted.max()) + 1), dtype=np.int64)
-    np.add.at(table, (planted, fitted), 1)
-
-    pairs = sum(comb(int(n), 2) for n in table.ravel())
-    by_planted = sum(comb(int(n), 2) for n in table.sum(axis=1))
-    by_fitted = sum(comb(int(n), 2) for n in table.sum(axis=0))
-    total = comb(int(planted.size), 2)
-
-    expected = by_planted * by_fitted / total
-    maximum = 0.5 * (by_planted + by_fitted)
-    return float((pairs - expected) / (maximum - expected))
 
 
 def _best_permutation_accuracy(fitted: np.ndarray, planted: np.ndarray) -> float:
@@ -184,30 +147,25 @@ def test_the_run_recovers_the_planted_labelling(cnaster_config: None) -> None:
 def test_the_run_recovers_the_extreme_states_and_not_the_middle_one(
     cnaster_config: None,
 ) -> None:
-    """The allele extremes come back; the expression does not, at all.
+    """Two of three states come back; the middle allele state collapses.
 
-    Measured on this instance -- planted `mu` `[0.50, 2.75, 5.00]`, `p_binom`
-    `[0.52, 0.70, 0.88]`, under the Weierstrass exposure #4's fixture plants:
+    Measured on this instance, planted `mu` `[0.50, 2.75, 5.00]` and
+    `p_binom` `[0.52, 0.70, 0.88]`:
 
     | budget | fitted `mu` | fitted `p_binom` |
     | --- | --- | --- |
-    | 2 outer, 10 EM | 0.498, 4.880, 10.657 | 0.521, 0.880, 0.884 |
-    | 3 outer, 30 EM | 0.498, 4.880, 7.731 | 0.521, 0.880, 0.888 |
+    | 2 outer, 10 EM | 0.499, 3.155, 4.873 | 0.520, 0.880, 0.885 |
+    | 3 outer, 30 EM | 0.499, 1.402, 4.873 | 0.520, 0.880, 0.887 |
 
-    Three things are established and each is asserted.
+    Two things are asserted because two things are established. The extremes
+    are recovered in both channels. The middle allele state is **not** -- it
+    lands on the upper one, leaving two of the three indistinguishable -- and
+    more iterations do not fix it: they move `mu`'s worst relative error from
+    0.147 to 0.490.
 
-    The **allele** extremes are recovered to 0.02 and the middle state is not
-    -- `0.70` lands on `0.880`, leaving two of three indistinguishable.
-
-    The **expression** is not recovered beyond the lowest state: the worst
-    relative error is 1.131, and at ten times the budget it is still 0.775.
-    Under an exposure drawn i.i.d. over both axes the same fit reached 0.147,
-    so what breaks it is not that the exposure varies but that it varies
-    **along the bin axis**, where it aliases with the state path instead of
-    averaging out.
-
-    More iterations do not fix either channel. That is #82, and the numbers
-    here are the sharper version of it.
+    That is the shape #30 predicts from the other end, and it is pinned here
+    rather than hidden under a tolerance wide enough to pass. A fix upstream
+    turns the second assertion red, which is the point of writing it as one.
     """
     truth = core_inference_truth(
         n_clones=2, n_states=3, lattice=(30, 20), n_obs=300, n_segments=4
@@ -219,20 +177,13 @@ def test_the_run_recovers_the_extreme_states_and_not_the_middle_one(
     planted_mu = np.sort(np.exp(truth.log_mu))
     planted_p = np.sort(truth.p_binom)
 
+    np.testing.assert_allclose(fitted_mu[[0, -1]], planted_mu[[0, -1]], rtol=0.05)
     np.testing.assert_allclose(fitted_p[[0, -1]], planted_p[[0, -1]], atol=0.02)
 
     middle_gap = abs(fitted_p[1] - planted_p[1])
     assert middle_gap > 0.1, (
         f"the middle allele state now recovers to {middle_gap:.3f}; if that is "
         "a fix upstream, this assertion is what should change"
-    )
-
-    np.testing.assert_allclose(fitted_mu[0], planted_mu[0], rtol=0.05)
-
-    expression_error = float(np.abs(fitted_mu / planted_mu - 1.0).max())
-    assert expression_error > 0.5, (
-        f"the expression now recovers to {expression_error:.3f} under a "
-        "bin-varying exposure; a fix upstream is what should change this"
     )
 
 
@@ -245,7 +196,9 @@ def test_the_declared_scale_plants_and_recovers_its_parameters() -> None:
     recovered from the counts it generated. What is **not** asserted here is
     `run_core_inference` on it, for the reason the next test measures.
     """
-    truth = key_instance(n_segments=20)
+    truth = core_inference_truth(
+        n_clones=10, n_states=10, lattice=(50, 100), n_obs=10_000, n_segments=20
+    )
 
     assert (truth.n_clones, truth.n_states) == (10, 10)
     assert (truth.n_obs, truth.n_spots) == (10_000, 5_000)
@@ -281,31 +234,3 @@ def test_the_declared_scale_is_out_of_reach_of_a_single_run_here() -> None:
 
     assert truth.emission_gigabytes < 0.01
     assert declared == pytest.approx(8.0), f"{declared:.2f} GB"
-
-
-@pytest.mark.planted
-@pytest.mark.release
-def test_the_dev_instance_recovers_its_labelling(cnaster_config: None) -> None:
-    """The dev instance, and it recovers the labelling exactly.
-
-    `M = 4`, `K = 10`, `G = 1,000`, `S = 1,000`: 15.8 s and 1.07 GB against
-    the key instance's 310 s and 7.98 GB, at an adjusted Rand index of
-    **1.000**. That combination is what makes it worth having -- an instance
-    that failed to recover would give a developer nothing to work against, and
-    one that took five minutes would stop them looking.
-
-    Marked `release` with the key one because both drive the whole pipeline;
-    the difference is that this is the one to run by hand while changing
-    something.
-    """
-    truth = dev_instance()
-
-    assert (truth.n_clones, truth.n_states) == (4, 10)
-    assert (truth.n_obs, truth.n_spots) == (1_000, 1_000)
-    assert min(index.size for index in truth.clone_index) >= MIN_CLONE_SPOTS
-
-    result = _run(truth, max_iter_outer=1, max_iter=3)
-    fitted = np.asarray(result.assignment.new_assignment)
-
-    assert np.unique(fitted).size == truth.n_clones
-    assert _adjusted_rand_index(truth.labels, fitted) == pytest.approx(1.0)

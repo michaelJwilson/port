@@ -48,8 +48,7 @@ def draw(seed: int, n_states: int, clone_lengths: list[int]) -> tuple[np.ndarray
     )
 
 
-@pytest.mark.oracle
-@pytest.mark.critical
+@pytest.mark.analytic
 @pytest.mark.parametrize(
     "clone_lengths", [[10], [10, 10], [1, 19], [7, 3, 10]], ids=str
 )
