@@ -10,6 +10,7 @@ the first: a single chain, no spatial layer and no factored state space,
 which is the one rung whose correspondence with `cnaster` is exact today.
 """
 
+import itertools
 from dataclasses import dataclass
 
 import numpy as np
@@ -19,6 +20,7 @@ from snakes_and_ladders.emissions import (
     EmissionFamily,
     NegativeBinomialEmission,
 )
+from snakes_and_ladders.ragged import MINIMUM_LENGTH, Ragged
 from snakes_and_ladders.sim.hmm import (
     HmmParams,
     SimulatedHmmDataset,
@@ -130,8 +132,7 @@ def negative_binomial_chains(
     dataset = simulate_sequences(
         HmmParams(
             n_states=n_states,
-            sequence_length=sequence_length,
-            n_sequences=n_sequences,
+            lengths=(sequence_length,) * n_sequences,
             initial=initial,
             transition=transition,
             emissions=family,
@@ -368,8 +369,7 @@ def phased_chains(
     dataset = simulate_sequences(
         HmmParams(
             n_states=n_paired,
-            sequence_length=sequence_length,
-            n_sequences=n_sequences,
+            lengths=(sequence_length,) * n_sequences,
             initial=paired_initial,
             transition=combined,
             emissions=family,
@@ -522,8 +522,7 @@ def beta_binomial_chains(
     dataset = simulate_sequences(
         HmmParams(
             n_states=n_states,
-            sequence_length=sequence_length,
-            n_sequences=n_sequences,
+            lengths=(sequence_length,) * n_sequences,
             initial=initial,
             transition=transition,
             emissions=family,
@@ -664,6 +663,30 @@ class CoreInferenceTruth:
         return [np.flatnonzero(self.labels == c) for c in range(self.n_clones)]
 
     @property
+    def ragged(self) -> Ragged:
+        """The planted genome as upstream's batch shape.
+
+        Constructing it is the check, not a conversion for its own sake:
+        `Ragged` refuses a `lengths` that does not tile the array and a
+        chromosome under two bins, so a fixture that got its own segmentation
+        wrong fails where the shape is declared rather than inside a fit.
+        """
+        return Ragged(
+            values=self.counts_nb, lengths=tuple(int(x) for x in self.lengths)
+        )
+
+    def stacked_lengths(self, n_clones: int | None = None) -> np.ndarray:
+        """`lengths` as the clone-stacked HMM sees it.
+
+        `cnaster` stacks clones along the genomic axis and tiles the
+        segmentation with them (`hmrf_utils.py:51`), so the fit runs over
+        `n_clones * n_segments` chains rather than `n_segments`. Ragged
+        chromosomes make that the shape upstream's `Ragged` carries and the
+        rectangular route cannot.
+        """
+        return np.tile(self.lengths, self.n_clones if n_clones is None else n_clones)
+
+    @property
     def emission_gigabytes(self) -> float:
         """What `cnaster` allocates per outer iteration for both channels.
 
@@ -762,6 +785,64 @@ def weierstrass_exposure(
     return np.outer(shaped, library)
 
 
+MINIMUM_SEGMENT = MINIMUM_LENGTH
+"""The shortest chromosome the fixture may plant, which is upstream's floor.
+
+Aliased rather than re-stated so that a change upstream is a change here, and
+so the reason travels with it: one position carries no transition.
+"""
+
+
+def ragged_lengths(
+    n_obs: int,
+    n_segments: int,
+    *,
+    rng: np.random.Generator,
+    concentration: float = 2.0,
+) -> np.ndarray:
+    """A partition of `n_obs` into `n_segments` unequal parts.
+
+    Chromosomes are not the same size, and until #667 landed `Ragged` there was
+    no upstream shape that could say so -- `np.full(n_segments, n_obs //
+    n_segments)` was the whole of this function, and it forced `n_segments` to
+    divide `n_obs`.
+
+    Dirichlet weights over a floor of `MINIMUM_SEGMENT`, with the floor's
+    residual handed out to the largest fractional parts, so the result is
+    integral and sums exactly. `concentration` sets the spread: smaller is more
+    unequal, and 2.0 puts the dev instance's extremes about 3x apart.
+
+    The floor is upstream's and not this repository's: a segment of one
+    position is an initial distribution and no transition, and `Ragged` refuses
+    it where the shape is declared.
+
+    Raises
+    ------
+    ValueError
+        If the floor alone exceeds `n_obs`, where no partition exists.
+    """
+    if n_segments * MINIMUM_SEGMENT > n_obs:
+        msg = (
+            f"{n_segments} segments of at least {MINIMUM_SEGMENT} do not fit "
+            f"in {n_obs} observations"
+        )
+        raise ValueError(msg)
+
+    free = n_obs - n_segments * MINIMUM_SEGMENT
+    weights = rng.dirichlet(np.full(n_segments, concentration))
+
+    exact = weights * free
+    lengths = np.floor(exact).astype(int)
+    residual = free - int(lengths.sum())
+    if residual:
+        # NB largest fractional parts first, so the rounding is a rule rather
+        #    than an artefact of the order the segments happen to be in.
+        order = np.argsort(exact - lengths)[::-1]
+        lengths[order[:residual]] += 1
+
+    return lengths + MINIMUM_SEGMENT
+
+
 def core_inference_truth(
     *,
     n_clones: int = 3,
@@ -769,6 +850,7 @@ def core_inference_truth(
     lattice: tuple[int, int] = (12, 10),
     n_obs: int = 240,
     n_segments: int = 4,
+    segmentation: str = "ragged",
     self_transition: float = 0.99,
     exposure: str = "weierstrass",
     depth: tuple[float, float] = (0.5, 3.0),
@@ -809,9 +891,6 @@ def core_inference_truth(
     if n_clones > rows:
         msg = f"{n_clones} bands over {rows} rows leaves one empty"
         raise ValueError(msg)
-    if n_obs % n_segments:
-        msg = f"{n_segments} segments do not partition {n_obs} observations"
-        raise ValueError(msg)
     if n_states < 2:
         msg = f"a chain needs at least two states, got {n_states}"
         raise ValueError(msg)
@@ -833,14 +912,34 @@ def core_inference_truth(
     row_of = np.arange(n_spots) // columns
     labels = np.minimum(row_of * n_clones // rows, n_clones - 1).astype(np.int64)
 
+    if segmentation == "ragged":
+        lengths = ragged_lengths(n_obs, n_segments, rng=rng)
+    elif segmentation == "equal":
+        if n_obs % n_segments:
+            msg = f"{n_segments} equal segments do not partition {n_obs}"
+            raise ValueError(msg)
+        lengths = np.full(n_segments, n_obs // n_segments, dtype=int)
+    else:
+        msg = f"unknown segmentation {segmentation!r}"
+        raise ValueError(msg)
+
     transition = circulant_transition(n_states, self_transition)
     states = np.empty((n_clones, n_obs), dtype=np.int64)
+    # NB the chain restarts at every chromosome boundary, which is what makes
+    #    `lengths` the truth rather than a label beside it. Before #667 this
+    #    drew one chain over the whole genome and handed `cnaster` a `lengths`
+    #    the draw did not honour: the fitted model restarts at each boundary
+    #    (`Ragged`: "the recursions restart at each boundary, at the initial
+    #    distribution rather than at the transition") and the planted one did
+    #    not, so the two disagreed at every boundary.
+    edges = np.concatenate(([0], np.cumsum(lengths)))
     for clone in range(n_clones):
-        states[clone, 0] = rng.integers(n_states)
-        for obs in range(1, n_obs):
-            states[clone, obs] = rng.choice(
-                n_states, p=transition[states[clone, obs - 1]]
-            )
+        for start, stop in itertools.pairwise(edges):
+            states[clone, start] = rng.integers(n_states)
+            for obs in range(start + 1, stop):
+                states[clone, obs] = rng.choice(
+                    n_states, p=transition[states[clone, obs - 1]]
+                )
 
     if exposure == "constant":
         base_nb_mean = np.full((n_obs, n_spots), float(depth[0]))
@@ -881,7 +980,7 @@ def core_inference_truth(
         alphas=alphas,
         p_binom=p_binom,
         taus=taus,
-        lengths=np.full(n_segments, n_obs // n_segments, dtype=int),
+        lengths=lengths,
         switch_prob=switch_prob,
         lattice=lattice,
         self_transition=self_transition,

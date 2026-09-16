@@ -168,10 +168,16 @@ def unsegment(
     import anndata
 
     n_obs, n_spots = truth.n_obs, truth.n_spots
-    bins_per_chromosome = int(truth.lengths[0])
-    if bins_per_chromosome < 1:
+    if truth.lengths.min() < 1:
         msg = f"lengths {truth.lengths} leaves a chromosome with no bin"
         raise ValueError(msg)
+
+    # NB which chromosome each bin belongs to, read off `lengths` rather than
+    #    divided out of it. The chromosomes are unequal since #667 gave the
+    #    fixture a shape that can say so, and `bin_id // bins_per_chromosome`
+    #    silently re-cut a ragged genome into equal pieces -- it returned six
+    #    chromosomes of [45, 45, 45, 45, 45, 15] for a planted [45, 96, 35, 64].
+    chromosome_of_bin = np.repeat(np.arange(1, truth.lengths.size + 1), truth.lengths)
 
     counts_nb = truth.counts_nb.astype(np.int64)
     counts_bb = truth.counts_bb.astype(np.int64)
@@ -238,7 +244,7 @@ def unsegment(
     # --- the table the binner groups by -----------------------------------
     rows: list[dict[str, object]] = []
     for bin_id in range(n_obs):
-        chromosome = f"chr{bin_id // bins_per_chromosome + 1}"
+        chromosome = f"chr{chromosome_of_bin[bin_id]}"
         for part, name in enumerate(gene_of_bin[bin_id]):
             rows.append(
                 {

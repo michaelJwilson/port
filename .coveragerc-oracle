@@ -13,7 +13,9 @@
 # `tests/test_coverage_scope.py` refuses a test that imports one this list
 # does not name.
 #
-# `ragged` is absent because #667 has not landed; it joins when it does.
+# `ragged` joined when #667 landed, and `tests/test_coverage_scope.py` is
+# what said so: the first fixture import of it failed the guard that
+# refuses a referee the surface does not name.
 #
 # `source` names the installed **directory** and `include` narrows it to the
 # surface, for the reason `pyproject.toml` gives: naming modules instead lets
@@ -29,6 +31,7 @@ source =
 include =
     */snakes_and_ladders/emissions.py
     */snakes_and_ladders/opt/hmm.py
+    */snakes_and_ladders/ragged.py
     */snakes_and_ladders/likelihood/forward_backward.py
     */snakes_and_ladders/likelihood/spatio_sequential.py
     */snakes_and_ladders/search/spatio_sequential.py
@@ -36,7 +39,11 @@ include =
     */snakes_and_ladders/sim/spatio_sequential.py
     */snakes_and_ladders/sim/graph.py
     */snakes_and_ladders/sim/hmm.py
-# 698 of 2,085 statements. Of that, the 42 tests marked `upstream_oracle` --
+# 771 of 2,211 statements, 34.87 per cent. `ragged.py` joined the surface at
+# 68.42 per cent when #667 landed and the fixture began planting unequal
+# chromosomes against it.
+#
+# Of the figure before that, the 42 tests marked `upstream_oracle` --
 # the agreement claims, where upstream decided the expected value -- reach
 # 33.38 per cent on their own, so every other test in the suite adds two
 # statements. The surface is the referee's and not the fixture's, measured
@@ -46,5 +53,5 @@ include =
 # `likelihood.spatio_sequential` and `search.spatio_sequential` -- and they
 # are exactly the oracle role #70 says is blocked upstream. The floor rises
 # when that lands and the rungs are built, and never by importing more.
-fail_under = 33.4
+fail_under = 34.8
 precision = 2
