@@ -268,13 +268,16 @@ omit = [
 ]
 
 [tool.coverage.report]
-# The floor the tests reach against the whole of `cnaster`: 1,872 of 5,544
-# statements, 33.77 per cent. Four round trips moved it from 13.82: driving
-# `run_core_inference` end to end on a planted instance, which reaches the
-# pseudobulk, the initializer, the EM loop, the emission producer and the
-# label solver in one call; binning a pre-image back through `omics`; writing
-# that pre-image as files and loading it through `io`; and letting `cnaster`
-# derive its own bins from those files.
+# The floor the tests reach against the whole of `cnaster`: 3,255 of 5,843
+# statements, 55.71 per cent. It was 33.77 until `run_cnaster` itself ran end
+# to end from temporary files (#87): one call reaches the plotting, the
+# phasing, the clone initializer, the normal baseline and the integer-copy
+# solver, none of which any component test had touched.
+#
+# The denominator grew with it, 5,544 to 5,843, and the growth is the gap the
+# note below predicted closing: `scripts/run_cnaster.py` is 299 statements
+# that a directory scan never descended into, and importing it to run it puts
+# them in the figure. They sit at 89.97 per cent.
 #
 # Low by construction -- the denominator is
 # every module the package ships at top level, and most of them have no test
@@ -288,7 +291,7 @@ omit = [
 # pull request. Unlike a denominator of the imported modules, this one does
 # not fall for bringing a new module under test, so there is no case where
 # lowering it is legitimate.
-fail_under = 33.7
+fail_under = 55.7
 precision = 2
 exclude_lines = [
     "pragma: no cover",
