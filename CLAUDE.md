@@ -205,7 +205,9 @@ a test.
     math models must update, in the same PR, whichever documents it makes
     inaccurate: `README.md`, `CLAUDE.md`, and whichever of the upstream map
     exist by then. If the change is user-visible, add a fragment under
-    `changelog.d/`.
+    `changelog.d/`, whose `README.md` states what counts as user-visible here
+    -- a narrow set, because most of what this repository produces is not
+    visible to an importer of `port`.
 *   **Code Standards:** Use type hints where possible. Do not introduce
     silent behaviour changes, e.g. default parameters. Keep dependencies
     minimal and justify additions.

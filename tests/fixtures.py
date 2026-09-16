@@ -799,3 +799,162 @@ def core_inference_truth(
         self_transition=self_transition,
         seed=seed,
     )
+
+
+@dataclass(frozen=True)
+class SpotCloneField:
+    """The inputs to `cnaster`'s HMM/spatial boundary, from a known model.
+
+    Issue #59. `compute_loglike_spot_assignment` reduces a per-state emission
+    over a clone's decoded profile into a `(n_spots, n_clones)` field. What it
+    costs depends on two things the array shapes do not carry, so both are
+    planted here rather than drawn arbitrarily.
+
+    Parameters
+    ----------
+    log_emission_rdr, log_emission_baf : np.ndarray
+        Shape `(n_states, n_obs, n_spots)`, which is the layout `cnaster`
+        produces and states at `hmrf.py:244`. Real log-densities, scored from
+        the fixture's own families rather than filled with noise.
+    pred : np.ndarray
+        The decoded copy-state profile per clone, shape `(n_obs, n_clones)`.
+        **Drawn from a Markov chain, not uniformly.** A real profile is
+        piecewise constant because the HMM's self-transition is near one, and
+        a uniform draw maximises the spread of state indices in the inner
+        loop -- so it measures a access pattern no run produces. `segments`
+        below is the knob.
+    segments : int
+        Runs in clone zero's profile. The data-dependence `CLAUDE.md` names:
+        a near-constant profile and a fragmented one are different problems
+        at identical shapes, and a ratio from one is not a ratio from the
+        other.
+    """
+
+    log_emission_rdr: np.ndarray
+    log_emission_baf: np.ndarray
+    pred: np.ndarray
+    segments: int
+    seed: int
+
+    @property
+    def n_states(self) -> int:
+        """`K`."""
+        return int(self.log_emission_rdr.shape[0])
+
+    @property
+    def n_obs(self) -> int:
+        """`G`, genomic bins."""
+        return int(self.log_emission_rdr.shape[1])
+
+    @property
+    def n_spots(self) -> int:
+        """`N`."""
+        return int(self.log_emission_rdr.shape[2])
+
+    @property
+    def n_clones(self) -> int:
+        """`M`."""
+        return int(self.pred.shape[1])
+
+    @property
+    def megabytes(self) -> float:
+        """One emission channel's footprint, which is what decides the size."""
+        return self.log_emission_rdr.nbytes / 1e6
+
+    def spot_major(self) -> tuple[np.ndarray, np.ndarray]:
+        """The same emissions as `(n_states, n_spots, n_obs)`, contiguous.
+
+        Kept for the record rather than used: issue #59 item 1 landed as a
+        loop reorder at `cnaster`'s own layout, which measured 36.1 ms against
+        the transposed kernel's 61.8 ms at `(7, 3000, 5000)` with seven
+        clones, and needs nothing from the producer. A transposed layout fixes
+        the contiguity and leaves the scalar reduction; reordering fixes both.
+
+        Retained so that comparison stays reproducible, and because the
+        transpose is the obvious patch a reader will propose.
+        """
+        return (
+            np.ascontiguousarray(self.log_emission_rdr.transpose(0, 2, 1)),
+            np.ascontiguousarray(self.log_emission_baf.transpose(0, 2, 1)),
+        )
+
+
+def spot_clone_field(
+    *,
+    n_states: int = 5,
+    n_obs: int = 240,
+    n_spots: int = 160,
+    n_clones: int = 3,
+    self_transition: float = 0.99,
+    trials: int = 30,
+    seed: int = DEFAULT_SEED,
+) -> SpotCloneField:
+    """Build the boundary's inputs, with the profile's segmentation controlled.
+
+    Parameters
+    ----------
+    self_transition : float
+        The chain's diagonal, which sets `segments`. `cnaster` runs at
+        `1 - 1e-4`, giving one segment in three thousand bins; a real profile
+        has more structure than that, so the default here is lower and a
+        benchmark sweeps it.
+
+    Raises
+    ------
+    ValueError
+        If `n_clones` exceeds `n_states`, where a clone's profile could not
+        be drawn from the state space, or any extent is below one.
+    """
+    if n_clones < 1 or n_states < 1 or n_obs < 1 or n_spots < 1:
+        msg = "every extent must be at least one"
+        raise ValueError(msg)
+
+    profiles = negative_binomial_chains(
+        n_states=n_states,
+        sequence_length=n_obs,
+        n_sequences=n_clones,
+        self_transition=self_transition,
+        seed=seed,
+    )
+    pred = np.ascontiguousarray(np.asarray(profiles.dataset.states, dtype=np.int64).T)
+
+    # NB observations per (bin, spot), drawn from the family so the emission
+    #    is a log-density rather than noise shaped like one.
+    counts = negative_binomial_chains(
+        n_states=n_states,
+        sequence_length=n_obs,
+        n_sequences=n_spots,
+        self_transition=self_transition,
+        seed=seed + 1,
+    )
+    observations = np.asarray(counts.dataset.observations, dtype=np.int64).T
+
+    allele = beta_binomial_chains(
+        n_states=n_states,
+        sequence_length=n_obs,
+        n_sequences=n_spots,
+        trials=trials,
+        seed=seed + 2,
+    )
+    successes = np.asarray(allele.dataset.observations, dtype=np.int64).T
+
+    import torch
+
+    rdr = np.ascontiguousarray(
+        np.asarray(
+            profiles.family.log_density(torch.as_tensor(observations)), dtype=np.float64
+        ).transpose(2, 0, 1)
+    )
+    baf = np.ascontiguousarray(
+        np.asarray(
+            allele.family.log_density(torch.as_tensor(successes)), dtype=np.float64
+        ).transpose(2, 0, 1)
+    )
+
+    return SpotCloneField(
+        log_emission_rdr=rdr,
+        log_emission_baf=baf,
+        pred=pred,
+        segments=int(1 + np.sum(pred[1:, 0] != pred[:-1, 0])),
+        seed=seed,
+    )
