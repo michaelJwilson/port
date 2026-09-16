@@ -15,6 +15,10 @@
 #
 # `ragged` is absent because #667 has not landed; it joins when it does.
 #
+# `opt/fit.py` joined with `main`'s `test_integer_copy.py`, which referees
+# against it. The guard in `tests/test_coverage_scope.py` is what caught the
+# omission on the merge, which is the job it was written for.
+#
 # `source` names the installed **directory** and `include` narrows it to the
 # surface, for the reason `pyproject.toml` gives: naming modules instead lets
 # coverage drop the ones no test imported, and the three at zero would leave
@@ -29,6 +33,7 @@ source =
 include =
     */snakes_and_ladders/emissions.py
     */snakes_and_ladders/opt/hmm.py
+    */snakes_and_ladders/opt/fit.py
     */snakes_and_ladders/likelihood/forward_backward.py
     */snakes_and_ladders/likelihood/spatio_sequential.py
     */snakes_and_ladders/search/spatio_sequential.py
@@ -36,9 +41,9 @@ include =
     */snakes_and_ladders/sim/spatio_sequential.py
     */snakes_and_ladders/sim/graph.py
     */snakes_and_ladders/sim/hmm.py
-# 698 of 2,085 statements. Of that, the 42 tests marked `upstream_oracle` --
+# 792 of 2,183 statements. Of that, the 42 tests marked `upstream_oracle` --
 # the agreement claims, where upstream decided the expected value -- reach
-# 33.38 per cent on their own, so every other test in the suite adds two
+# 31.88 per cent on their own, so every other test in the suite adds 96
 # statements. The surface is the referee's and not the fixture's, measured
 # rather than asserted, which is what #69 asks for.
 #
@@ -46,5 +51,5 @@ include =
 # `likelihood.spatio_sequential` and `search.spatio_sequential` -- and they
 # are exactly the oracle role #70 says is blocked upstream. The floor rises
 # when that lands and the rungs are built, and never by importing more.
-fail_under = 33.4
+fail_under = 36.2
 precision = 2
