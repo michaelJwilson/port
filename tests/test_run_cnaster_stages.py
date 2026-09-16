@@ -27,6 +27,32 @@ pytestmark = pytest.mark.preprocessing
 LATTICE = (25, 40)
 """Rows and columns. A thousand spots, which is `icm_sweep_deque`'s floor times five."""
 
+FLIP_EVERY = 3
+"""Every third block is stored on the other haplotype, for the phasing test."""
+
+BALANCED_STATE = 0
+"""The planted diploid balanced state, which casts no phase vote (#106)."""
+
+PHASE_AGREEMENT = 0.85
+"""How much of the planted phase the majority vote recovers, pinned.
+
+**Realized 0.857 over the 28 blocks that carry a phase, and 0.925 over the 40
+where some clone is strongly imbalanced.** Neither is 1.0, and the gap is a
+property of `cnaster` rather than of the fixture: every one of the four
+mismatches has a clone at a planted BAF of 0.58, the least imbalanced state
+above balance, which the fit reads as normal-like and which then casts no
+vote. Three blocks with a strongly imbalanced clone are wrong as well, and
+that part is unexplained.
+
+Pinned rather than tuned to pass. #108 carries the finding.
+"""
+
+STRONG_MARGIN = 0.1
+"""How far from balance a planted state has to sit to count as strong."""
+
+STRONG_AGREEMENT = 0.9
+"""What is recovered on those blocks. Realized 0.925 over 40 of 60."""
+
 
 @pytest.fixture(scope="module")
 def planted() -> CoreInferenceTruth:
@@ -191,3 +217,140 @@ def test_the_clone_label_table_carries_every_spot_once(
     np.testing.assert_array_equal(
         np.sort(table.clone_label.to_numpy()), np.sort(planted.labels)
     )
+
+
+@pytest.fixture(scope="module")
+def flipped(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Any]:
+    """An instance whose files store every third block on the other haplotype.
+
+    One block per bin (`blocks_per_bin=(1, 2)` draws from `[1, 2)`), so a
+    flipped block is a flipped bin and the planted phase is a vector over the
+    segmentation `cnaster` derives. With several blocks to a bin the planted
+    phase would be ambiguous wherever they disagreed, which is a fixture
+    question rather than a phasing one.
+    """
+    from cnaster.config import YAMLConfig, get_global_config, set_global_config
+    from cnaster.io import load_input_data
+
+    # NB `self_transition` is loosened from the default 0.99: over sixty bins
+    #    a 0.99 chain barely leaves the state it starts in, and starting in
+    #    the balanced one leaves no block that carries a phase at all.
+    truth = core_inference_truth(
+        n_clones=2,
+        n_states=3,
+        lattice=LATTICE,
+        n_obs=60,
+        n_segments=2,
+        self_transition=0.85,
+        seed=5,
+    )
+    pre_image = unsegment(
+        truth, blocks_per_bin=(1, 2), unassigned_genes=0, flip_every=FLIP_EVERY
+    )
+
+    root: Path = tmp_path_factory.mktemp("phasing")
+    written = write_tmp_inputs(truth, pre_image, root)
+    config_path = write_run_cnaster_config(written, truth)
+
+    previous = get_global_config()
+    set_global_config(None)
+    set_global_config(YAMLConfig.from_file(config_path))
+    try:
+        yield truth, pre_image, load_input_data(get_global_config()), written
+    finally:
+        set_global_config(None)
+        set_global_config(previous)
+
+
+@pytest.mark.planted
+def test_the_phasing_recovers_the_planted_haplotype(flipped: Any) -> None:
+    """Every block stored on the other haplotype is the one phasing flips back.
+
+    The claim `phasing.py` exists to support, and the one the round trip
+    cannot make: it drives the stage but compares nothing. Written against a
+    fixture that plants the answer -- `unsegment(flip_every=3)` stores every
+    third block's B count as `total - B`, and nothing in the files says which
+    ones.
+
+    **Two regimes are excluded, both by `cnaster`'s own rule.** A block whose
+    state is balanced gets no vote -- `phase_profiles[i, assumed_normal] = -1`
+    and the majority defaults to zero -- so a planted flip there is
+    unrecoverable by construction, and state zero is planted balanced (#106).
+    And phase is defined up to a global complement, so the comparison is taken
+    both ways and the better one reported.
+    """
+    from cnaster.hmm_nophasing import get_log_transmat
+    from cnaster.omics import (
+        assign_initial_blocks,
+        form_gene_snp_table,
+        summarize_counts_for_blocks,
+    )
+    from cnaster.phasing import initial_phase_given_partition
+
+    truth, pre_image, loaded, written = flipped
+    alleles = (loaded.cell_snp_Aallele, loaded.cell_snp_Ballele)
+
+    table = form_gene_snp_table(
+        loaded.unique_snp_ids, str(written.hgtable), loaded.adata
+    )
+    table = assign_initial_blocks(
+        table, loaded.adata, *alleles, loaded.unique_snp_ids, initial_min_umi=1
+    )
+    blocks = summarize_counts_for_blocks(
+        table, loaded.adata, *alleles, loaded.unique_snp_ids
+    )
+
+    _, recovered, refined = initial_phase_given_partition(
+        blocks.X,
+        blocks.lengths,
+        # NB BAF only: a zero exposure is what `run_cnaster` passes here too,
+        #    and it is `(n_obs, n_spots)` rather than a vector.
+        np.zeros_like(blocks.total_bb_RD),
+        blocks.total_bb_RD,
+        None,
+        # NB the planted partition, as `run_cnaster` passes `initialize_clones`'
+        #    output. One clone over every spot pools clones whose states
+        #    differ, and the imbalance the vote reads washes out in the mix.
+        truth.clone_index,
+        truth.n_states,
+        get_log_transmat(truth.n_states, 1.0 - 1e-6),
+        np.zeros(blocks.X.shape[0]),
+        "sp",
+        1.0 - 1e-6,
+        0,
+        fix_NB_dispersion=False,
+        shared_NB_dispersion=True,
+        fix_BB_dispersion=False,
+        shared_BB_dispersion=True,
+        max_iter=100,
+        tol=1e-3,
+        threshold=0.5,
+    )
+
+    planted = ~pre_image.phase_indicator
+    assert recovered.shape == planted.shape
+
+    def recovered_on(mask: np.ndarray) -> float:
+        """Agreement over `mask`, taking phase up to a global complement."""
+        return max(
+            float(np.mean(recovered[mask] == planted[mask])),
+            float(np.mean(recovered[mask] != planted[mask])),
+        )
+
+    # The blocks the rule can speak for: those whose planted state is not the
+    # balanced one, since a balanced block casts no vote.
+    per_block = truth.states[:, : recovered.size]
+    speakable = np.all(per_block != BALANCED_STATE, axis=0)
+    assert speakable.sum() > 0.25 * recovered.size, "too few blocks carry a phase"
+    assert recovered_on(speakable) >= PHASE_AGREEMENT, (
+        f"phase agreement {recovered_on(speakable):.3f} over {speakable.sum()} blocks"
+    )
+
+    # And the subset a fit cannot mistake for balance.
+    strong = np.any(np.abs(truth.p_binom - 0.5)[per_block] >= STRONG_MARGIN, axis=0)
+    assert recovered_on(strong) >= STRONG_AGREEMENT, (
+        f"strong-block agreement {recovered_on(strong):.3f} over {strong.sum()}"
+    )
+
+    assert refined.sum() == blocks.X.shape[0], "the refinement lost a block"
+    assert len(refined) >= len(blocks.lengths)
