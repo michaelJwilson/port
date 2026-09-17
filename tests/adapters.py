@@ -18,6 +18,7 @@ load-bearing and each is pinned by a test rather than assumed:
 """
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 import numpy as np
 from snakes_and_ladders.emissions import BetaBinomialEmission
@@ -27,7 +28,11 @@ from tests.fixtures import (
     CoreInferenceTruth,
     NegativeBinomialChains,
     PhasedChains,
+    PottsLabels,
 )
+
+if TYPE_CHECKING:
+    from scipy.sparse import csr_matrix
 
 N_CHANNELS = 2
 """`cnaster` packs a count and a success into `single_X`'s middle axis."""
@@ -560,3 +565,170 @@ def from_core_inference_truth(truth: CoreInferenceTruth) -> CnasterCoreInputs:
         adjacency_mat=lattice_adjacency(truth.lattice),
         sample_ids=np.zeros(truth.n_spots, dtype=int),
     )
+
+
+def cnaster_potts_adjacency(fixture: PottsLabels) -> "csr_matrix":
+    """The fixture's graph as `cnaster`'s symmetric CSR adjacency.
+
+    `icm_sweep_deque` walks `adj_indptr[i]` to `adj_indptr[i + 1]` and reads
+    `adj_indices[k]`, so **both directions of every edge must be present**:
+    the row for `i` is the whole of what that node knows about its
+    neighbourhood. Upstream's `PottsGraph.edges` carries each undirected edge
+    once, so the conversion doubles the entries and does not double the
+    physics -- `calc_assignment_cost` divides its pairwise term by two for
+    exactly this reason.
+
+    Getting that wrong is silent in both directions. Emitting one direction
+    halves every neighbourhood and biases the solver toward the field;
+    forgetting the `/ 2` doubles every coupling. A test pins the edge set and
+    another pins the energy, because neither catches both.
+
+    The data carry `coupling` alone. `spatial_weight` stays outside, where
+    `cnaster` keeps it and applies it as `spatial_temp_factor`.
+    """
+    import numpy as np
+    from scipy.sparse import coo_matrix
+
+    rows: list[int] = []
+    cols: list[int] = []
+    data: list[float] = []
+    for (left, right), j in zip(
+        fixture.graph.edges, fixture.graph.coupling, strict=True
+    ):
+        rows.extend((left, right))
+        cols.extend((right, left))
+        data.extend((j, j))
+
+    n_nodes = fixture.n_nodes
+    matrix = coo_matrix(
+        (np.asarray(data, dtype=np.float64), (rows, cols)), shape=(n_nodes, n_nodes)
+    ).tocsr()
+    matrix.sort_indices()
+    return matrix
+
+
+def cnaster_potts_coo(
+    fixture: PottsLabels,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """`(adj_spots, adj_neighbors, adj_weights)`, the form `calc_assignment_cost` takes.
+
+    `cnaster` carries two adjacency representations and the label path uses
+    both: `icm_sweep_deque` takes CSR, `calc_assignment_cost` takes parallel
+    arrays it masks with `adj_spots == i`. They are the same graph, and this
+    derives the second from the first so a test cannot compare a solver
+    against a cost function built on a different edge set.
+    """
+    import numpy as np
+
+    matrix = cnaster_potts_adjacency(fixture).tocoo()
+    return (
+        np.asarray(matrix.row, dtype=np.int64),
+        np.asarray(matrix.col, dtype=np.int64),
+        np.asarray(matrix.data, dtype=np.float64),
+    )
+
+
+def cnaster_assignment_cost(fixture: PottsLabels, labelling: np.ndarray) -> float:
+    """`cnaster`'s objective at a labelling, through its own `calc_assignment_cost`.
+
+    Evaluated through `cnaster`'s function rather than a restatement of it,
+    so an agreement claim is made against the thing the solver maximises.
+
+    `cnaster` **maximises**: the pairwise term is added where neighbours
+    agree. Upstream's `energy` is the negation, and a test pins the two
+    equal and opposite rather than either implementation's sign being
+    asserted here.
+    """
+    import numpy as np
+    from cnaster.icm import calc_assignment_cost
+
+    spots, neighbors, weights = cnaster_potts_coo(fixture)
+
+    return float(
+        calc_assignment_cost(
+            fixture.field,
+            spots,
+            neighbors,
+            weights,
+            np.asarray(labelling, dtype=np.int64),
+            fixture.spatial_weight,
+        )
+    )
+
+
+def upstream_potts_energy(fixture: PottsLabels, labelling: np.ndarray) -> float:
+    """Upstream's `energy` at a labelling, with `spatial_weight` folded in.
+
+    `-sum_i h_i[s_i] - sum_(ij) J_ij [s_i == s_j]`, which is the negation of
+    what `cnaster_assignment_cost` returns.
+    """
+    import numpy as np
+    from snakes_and_ladders.search.alpha_expansion import energy
+
+    from tests.fixtures import _scaled_graph
+
+    return float(
+        energy(
+            _scaled_graph(fixture),
+            fixture.field,
+            np.asarray(labelling, dtype=np.int64),
+        )
+    )
+
+
+def cnaster_icm_labelling(
+    fixture: PottsLabels,
+    start: np.ndarray,
+    *,
+    min_clone_spots: int = 0,
+    seed: int = 0,
+) -> tuple[np.ndarray, float, int]:
+    """Run `icm_sweep_deque`, returning `(labelling, reported cost, iterations)`.
+
+    Two things the caller cannot avoid knowing, both properties of the
+    solver rather than of this adapter.
+
+    **It mutates its input.** `new_assignment` is updated in place and the
+    return value carries only the cost and the iteration count, so `start` is
+    copied here and the copy is what comes back.
+
+    **It draws from the global `numpy` RNG.** `np.random.shuffle` sets the
+    visit order and is reseeded nowhere, so two runs of the same instance
+    return different labellings unless the caller seeds the legacy global
+    state. This does, and records the seed, because a solver comparison whose
+    result depends on unrecorded global state is not a comparison.
+
+    Parameters
+    ----------
+    min_clone_spots : int
+        Defaults to **zero**, not to `cnaster`'s 200. The default exceeds the
+        node count of every fixture here, so the occupancy guard would fire
+        on every call and the solver would be measured enforcing a constraint
+        rather than minimising an energy. Issue #8 takes the same position
+        for the same reason: the constraint is a global cardinality term,
+        outside the metric condition the comparison rests on, so the
+        comparison is made where it is slack and the slackness is asserted.
+    """
+    import numpy as np
+    from cnaster.icm import icm_sweep_deque
+
+    # NB the legacy global generator on purpose: `icm_sweep_deque` calls
+    #    `np.random.shuffle`, so seeding a `Generator` would leave the solver
+    #    reading whatever global state the process already had. NPY002's
+    #    advice is right in general and is the defect being reported here.
+    np.random.seed(seed)  # noqa: NPY002
+
+    adjacency = cnaster_potts_adjacency(fixture)
+    assignment = np.array(start, dtype=np.int64, copy=True)
+
+    iterations, cost = icm_sweep_deque(
+        single_llf=fixture.field,
+        adj_indptr=adjacency.indptr,
+        adj_indices=adjacency.indices,
+        adj_weights=adjacency.data,
+        new_assignment=assignment,
+        spatial_weight=fixture.spatial_weight,
+        posterior=None,
+        min_clone_spots=min_clone_spots,
+    )
+    return assignment, float(cost), int(iterations)
