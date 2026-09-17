@@ -114,6 +114,14 @@ module = "pytest_benchmark.*"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
+# `@njit` erases the signature it decorates, so a patch kernel cannot be
+# annotated in a way --strict accepts. These are pinned bitwise against
+# cnaster instead, which is a stronger claim than a type.
+module = "port.patch.*"
+disallow_untyped_defs = false
+disallow_untyped_calls = false
+
+[[tool.mypy.overrides]]
 # cnaster ships no py.typed marker, so --strict refuses every import of it.
 # Narrowed to that package rather than relaxed globally: the tests score
 # cnaster against a typed upstream, and silencing the upstream's types too
@@ -268,8 +276,8 @@ omit = [
 ]
 
 [tool.coverage.report]
-# The floor the tests reach against the whole of `cnaster`: 3,254 of 5,843
-# statements, 55.69 per cent. It was 33.77 until `run_cnaster` itself ran end
+# The floor the tests reach against the whole of `cnaster`: 3,506 of 5,975
+# statements, 58.68 per cent. It was 33.77 until `run_cnaster` itself ran end
 # to end from temporary files (#87): one call reaches the plotting, the
 # phasing, the clone initializer, the normal baseline and the integer-copy
 # solver, none of which any component test had touched.
@@ -291,7 +299,7 @@ omit = [
 # pull request. Unlike a denominator of the imported modules, this one does
 # not fall for bringing a new module under test, so there is no case where
 # lowering it is legitimate.
-fail_under = 58.4
+fail_under = 58.6
 precision = 2
 exclude_lines = [
     "pragma: no cover",
