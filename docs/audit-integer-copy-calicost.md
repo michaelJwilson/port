@@ -89,17 +89,29 @@ Same shape. What moved:
 
 | | CalicoST | `cnaster` |
 | --- | --- | --- |
-| RDR weight | `0.3`, literal | `rdr_relative_weight`, **`1.0` at `:343`, `0.3` at `:586`** |
+| RDR weight | `0.3`, literal, applied consistently | **three costs: `1.0`, `0.3`, and none** |
 | ordering penalties | always on | behind `enforce_order`, default `False` |
 | ploidy penalty | always on | always on, unchanged |
 | the weights' provenance | undocumented | `# MAGIC`, `# TODO HACK` |
 
-**The weight is inconsistent within the module.** `hill_climbing_integer_copynumber_fixdiploid`
-defaults `rdr_relative_weight=1.0  # MAGIC previously 0.3`; the MILP variant at
-`:586` defaults `rdr_relative_weight=0.3  # TODO HACK`. `run_cnaster` calls both
-(`run_cnaster.py:1393`, `:1406`), so one run decodes under two different
-weightings of the same trade-off and nothing reconciles them. Whichever is
-right, they cannot both be.
+**It is worse than an inconsistent weight: the three decoders optimize three
+different costs, and a ploidy config key picks between them.** #134.
+
+| decoder | RDR term | BAF term | ploidy penalty |
+| --- | --- | --- | --- |
+| `..._oneclone` (`:101`) | `\|1 - frac_rdr/mu\|`, **no weight** | `\|1 - frac_baf/p\|` | `\|1 - ratio\|` when `>` ploidy |
+| `..._fixdiploid` (`:330`) | `(w (mu - frac_rdr))^2`, **w = 1.0** | `(p - frac_baf)^2` | step at `ploidy + 0.5` |
+| `..._fixdiploid_milp` (`:571`) | `(w (mu - frac_rdr))^2`, **w = 0.3** | `(p - frac_baf)^2` | step at `ploidy + 0.5` |
+
+So the RDR channel is weighted 1.0, 0.3, or not at all, and the norm is L2 in
+two of three and relative L1 in the other. In `oneclone` the weighted squared
+form survives commented out directly above the live relative-L1 return.
+
+`run_cnaster.py:1391-1410` selects on `if max_medploidy is not None`, taking
+`oneclone` when a ploidy ceiling is configured and the MILP otherwise. **One
+run takes one branch**, so this is not two objectives per run -- it is a
+config key that reads as a ploidy cap silently choosing the cost function.
+`fixdiploid` is reachable from neither branch.
 
 Marking a constant `MAGIC` is an improvement on leaving it a literal -- it is
 findable. It does not answer the paper's charge, which is that the constant
@@ -181,9 +193,9 @@ would have rejected.
 
 ## Roadmap
 
-1. **Reconcile the two `rdr_relative_weight` defaults.** One value, one place,
-   or a derivation. This is a `cnaster` defect independent of the paper --
-   the same objective is being optimized two ways in one run.
+1. **Reconcile the three objectives, and make the selection explicit.** #134.
+   This is a `cnaster` defect independent of the paper: which cost decodes the
+   copy numbers currently depends on whether `max_medploidy` is set.
 2. **Derive the weight from the dispersions.** The paper's charge is that
    `0.3` is irrespective of `alphas` and `taus`. Both are fitted and available
    at the call site. A weight formed from the estimated variances of the RDR

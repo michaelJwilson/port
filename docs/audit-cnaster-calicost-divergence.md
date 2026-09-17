@@ -35,8 +35,9 @@ per-site proportion and kept the history in place. A dedicated module,
 
 `cnaster` has no `_mix` emission at all. `hmm_nophasing` defines
 `compute_emission_probability_nb_betabinom` and its `_coded` variant, both
-unmixed; the pipeline signature at `hmm_nophasing.py:797` reads
-`tumor_prop=None, # TODO`. What survives is the M step: `hmm_emission.py:258`
+unmixed; `optimize` at `hmm_nophasing.py:797` reads `tumor_prop=None, # TODO`
+and **the name occurs nowhere else in the function** -- while `hmm.py:110`
+threads a caller's proportion straight into it. #135. What survives is the M step: `hmm_emission.py:258`
 `Weighted_BetaBinom_mix` takes `tumor_prop` and uses it, and
 `pseudobulk.merge_pseudobulk_by_index_mix` threads a proportion through
 aggregation.
