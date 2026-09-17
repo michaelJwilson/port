@@ -1186,6 +1186,11 @@ class SpotCloneField:
         a uniform draw maximises the spread of state indices in the inner
         loop -- so it measures a access pattern no run produces. `segments`
         below is the knob.
+    counts_nb, base_nb_mean, counts_bb, total_bb_RD : np.ndarray
+        The raw `(n_obs, n_spots)` inputs the emissions were scored from, and
+        the per-state parameters beside them. Carried because issue #59 item
+        2 fuses the emission into the field, so a patch for it needs what the
+        emission was built from rather than the emission itself.
     segments : int
         Runs in clone zero's profile. The data-dependence `CLAUDE.md` names:
         a near-constant profile and a fragmented one are different problems
@@ -1198,11 +1203,24 @@ class SpotCloneField:
     pred: np.ndarray
     segments: int
     seed: int
+    counts_nb: np.ndarray
+    base_nb_mean: np.ndarray
+    counts_bb: np.ndarray
+    total_bb_RD: np.ndarray
+    log_mu: np.ndarray
+    alphas: np.ndarray
+    p_binom: np.ndarray
+    taus: np.ndarray
 
     @property
     def n_states(self) -> int:
         """`K`."""
         return int(self.log_emission_rdr.shape[0])
+
+    @property
+    def emission_gigabytes(self) -> float:
+        """Both emission channels together, which is what issue #59 item 2 removes."""
+        return 2.0 * self.log_emission_rdr.nbytes / 1e9
 
     @property
     def n_obs(self) -> int:
@@ -1320,4 +1338,12 @@ def spot_clone_field(
         pred=pred,
         segments=int(1 + np.sum(pred[1:, 0] != pred[:-1, 0])),
         seed=seed,
+        counts_nb=observations.astype(np.float64),
+        base_nb_mean=np.ones_like(observations, dtype=np.float64),
+        counts_bb=successes.astype(np.float64),
+        total_bb_RD=np.full(successes.shape, float(trials), dtype=np.float64),
+        log_mu=np.log(profiles.mean).reshape(-1, 1),
+        alphas=(1.0 / profiles.dispersion).reshape(-1, 1),
+        p_binom=allele.success_probability.reshape(-1, 1),
+        taus=allele.concentration.reshape(-1, 1),
     )
