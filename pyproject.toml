@@ -102,6 +102,7 @@ unfixable = [
 "tests/**" = [
   "S101",    # asserts are the point of a test
   "PLR2004", # literal expected values are the point of a regression test
+  "ARG001",  # a fixture requested for its side effect is an unused argument
 ]
 
 [tool.mypy]
@@ -245,13 +246,15 @@ omit = [
 ]
 
 [tool.coverage.report]
-# The floor the tests reach: 1,079 of 5,778 statements, 18.67 per cent. The
-# denominator is `cnaster` plus `python/port`, so a module added here moves
-# both the numerator and the denominator -- `port.integer_copy` added 98
-# statements, `port.patch.hmrf_field` 32, `port.patch.hmrf_fused_field` 25,
-# `port.patch.hmrf_adjacency` 9, `port.patch.hmrf_invariants` 28 and
-# `port.patch.icm_interface` 40, and the figure rose for each, which is the
-# arithmetic working.
+# The floor the tests reach: 1,472 of 5,778 statements,
+# 25.48 per cent. The denominator is `cnaster` plus `python/port`, so a
+# module added here moves both the numerator and the denominator --
+# `port.integer_copy` added 98 statements, `port.patch.hmrf_field` 32,
+# `port.patch.hmrf_fused_field` 25, `port.patch.hmrf_adjacency` 9,
+# `port.patch.hmrf_invariants` 28 and `port.patch.icm_interface` 40, and the
+# figure rose for each, which is the arithmetic working. A planted instance
+# of `run_core_inference` (#79) moved the numerator alone, reaching `cnaster`
+# code no test had entered, which is the only other way the figure rises.
 #
 # Low by construction -- the denominator is
 # every module the package ships at top level, and most of them have no test
@@ -265,7 +268,7 @@ omit = [
 # pull request. Unlike a denominator of the imported modules, this one does
 # not fall for bringing a new module under test, so there is no case where
 # lowering it is legitimate.
-fail_under = 18.6
+fail_under = 25.4
 precision = 2
 exclude_lines = [
     "pragma: no cover",

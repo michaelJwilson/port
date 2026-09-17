@@ -13,7 +13,12 @@ which is the one rung whose correspondence with `cnaster` is exact today.
 from dataclasses import dataclass
 
 import numpy as np
-from snakes_and_ladders.emissions import BetaBinomialEmission, NegativeBinomialEmission
+import torch
+from snakes_and_ladders.emissions import (
+    BetaBinomialEmission,
+    EmissionFamily,
+    NegativeBinomialEmission,
+)
 from snakes_and_ladders.sim.hmm import (
     HmmParams,
     SimulatedHmmDataset,
@@ -571,6 +576,229 @@ def planted_posterior(
     np.put_along_axis(indicator, states[..., None], 1.0, axis=-1)
 
     return (1.0 - smoothing) * indicator + smoothing / n_states
+
+
+@dataclass(frozen=True)
+class CoreInferenceTruth:
+    """A planted instance of the model `cnaster.hmrf.run_core_inference` fits.
+
+    Issue #4, and the decision #66 records: each `(segment, spot)` is **one
+    negative binomial draw** for the total channel and **one beta-binomial
+    draw** for the success channel, independently, through
+    `snakes_and_ladders`' own families. Not a hierarchical draw whose marginals
+    come out the same shape -- those are indistinguishable per spot and are a
+    different joint, which is why the form is recorded rather than left to
+    whatever a sampler happens to do.
+
+    Parameters
+    ----------
+    labels : np.ndarray
+        Clone of each spot, shape `(n_spots,)`. Contiguous bands, which is the
+        smooth labelling with the fewest boundary edges: the Potts prior is
+        ferromagnetic, so a labelling with no large regions would make the
+        prior fight the truth and the test would measure that fight.
+    states : np.ndarray
+        Copy state per clone and segment, shape `(n_clones, n_obs)`, drawn from
+        the circulant chain upstream declares.
+    counts_nb, counts_bb : np.ndarray
+        The drawn counts, shape `(n_obs, n_spots)`. `cnaster` reads them as
+        `single_X[:, 0, :]` and `single_X[:, 1, :]`.
+    base_nb_mean, total_bb_RD : np.ndarray
+        The exposure the total is scored against and the trial count the
+        successes are out of, shape `(n_obs, n_spots)`. **Data, not
+        parameters**: `cnaster` conditions on both and never fits them, so any
+        array here is a valid instance of its likelihood.
+    log_mu, alphas, p_binom, taus : np.ndarray
+        The planted emission parameters, shape `(n_states,)`, in `cnaster`'s
+        own parameterization. The mapping upstream is by identity, never by
+        fitting: `dispersion = 1 / alpha`, and `alpha, beta = p * tau,
+        (1 - p) * tau` is `_bb_logpmf_1d` verbatim.
+    lengths : np.ndarray
+        Segment extents summing to `n_obs`. `cnaster` restarts the chain at
+        each, so the count of them is a property of the problem and not a
+        detail (#67).
+    switch_prob : np.ndarray
+        Per-site phase-switch probability, shape `(n_obs,)`. `cnaster` takes
+        its log as `log_sitewise_transmat` and derives the complement.
+    """
+
+    labels: np.ndarray
+    states: np.ndarray
+    counts_nb: np.ndarray
+    counts_bb: np.ndarray
+    base_nb_mean: np.ndarray
+    total_bb_RD: np.ndarray
+    log_mu: np.ndarray
+    alphas: np.ndarray
+    p_binom: np.ndarray
+    taus: np.ndarray
+    lengths: np.ndarray
+    switch_prob: np.ndarray
+    lattice: tuple[int, int]
+    self_transition: float
+    seed: int
+
+    @property
+    def n_clones(self) -> int:
+        """`M`."""
+        return int(self.states.shape[0])
+
+    @property
+    def n_states(self) -> int:
+        """`K`."""
+        return int(self.log_mu.shape[0])
+
+    @property
+    def n_obs(self) -> int:
+        """`G`, genomic segments."""
+        return int(self.states.shape[1])
+
+    @property
+    def n_spots(self) -> int:
+        """`S`."""
+        return int(self.labels.shape[0])
+
+    @property
+    def clone_index(self) -> list[np.ndarray]:
+        """Spot indices per clone, which is `initial_clone_index`'s shape."""
+        return [np.flatnonzero(self.labels == c) for c in range(self.n_clones)]
+
+    @property
+    def emission_gigabytes(self) -> float:
+        """What `cnaster` allocates per outer iteration for both channels.
+
+        `(n_states, n_obs, n_spots)` twice, which is what decides whether an
+        end-to-end run fits before anything else does.
+        """
+        return 2.0 * self.n_states * self.n_obs * self.n_spots * 8 / 1e9
+
+
+def _emission_families(
+    log_mu: np.ndarray, alphas: np.ndarray, p_binom: np.ndarray, taus: np.ndarray
+) -> EmissionFamily:
+    """`cnaster`'s parameters as upstream's two-channel family.
+
+    The identity mapping, stated once so no test re-derives it.
+    """
+    from snakes_and_ladders.emissions import (
+        BetaBinomialEmission,
+        NegativeBinomialEmission,
+    )
+    from snakes_and_ladders.sim.count_pairs import IndependentCountPair
+
+    return IndependentCountPair(
+        NegativeBinomialEmission(
+            torch.as_tensor(1.0 / alphas, dtype=torch.float64),
+            torch.as_tensor(np.exp(log_mu), dtype=torch.float64),
+        ),
+        BetaBinomialEmission(
+            # Placeholder trials: the covariate overrides them per observation,
+            # and a family must still declare a positive count to be built.
+            torch.ones(p_binom.shape[0], dtype=torch.float64),
+            torch.as_tensor(p_binom * taus, dtype=torch.float64),
+            torch.as_tensor((1.0 - p_binom) * taus, dtype=torch.float64),
+        ),
+    )
+
+
+def core_inference_truth(
+    *,
+    n_clones: int = 3,
+    n_states: int = 4,
+    lattice: tuple[int, int] = (12, 10),
+    n_obs: int = 240,
+    n_segments: int = 4,
+    self_transition: float = 0.99,
+    depth: tuple[float, float] = (0.5, 3.0),
+    reads: tuple[int, int] = (10, 60),
+    switch: tuple[float, float] = (0.01, 0.20),
+    seed: int = DEFAULT_SEED,
+) -> CoreInferenceTruth:
+    """Plant an instance, drawing every count through upstream's families.
+
+    One stream per spot, `default_rng([seed, spot])`, so the draw is a function
+    of the seed and the spot alone and not of the order they are visited in.
+    That is what lets a reduced fixture be a prefix of a larger one rather than
+    a different dataset.
+
+    Raises
+    ------
+    ValueError
+        If `n_clones` exceeds the lattice's rows, where a band would be empty,
+        or the segments do not partition `n_obs`, or `n_states < 2`.
+    """
+    rows, columns = lattice
+    if n_clones > rows:
+        msg = f"{n_clones} bands over {rows} rows leaves one empty"
+        raise ValueError(msg)
+    if n_obs % n_segments:
+        msg = f"{n_segments} segments do not partition {n_obs} observations"
+        raise ValueError(msg)
+    if n_states < 2:
+        msg = f"a chain needs at least two states, got {n_states}"
+        raise ValueError(msg)
+
+    rng = np.random.default_rng(seed)
+    n_spots = rows * columns
+
+    # Spread across a decade of expression and either side of balance, so the
+    # states are separable by the data rather than by their index.
+    log_mu = np.log(np.linspace(0.5, 5.0, n_states))
+    alphas = np.full(n_states, 1.0 / 6.0)
+    # Above balance: `run_core_inference` calls `gmm_init` with
+    # `only_minor=False` because, as its own comment says, with no phasing the
+    # states have to sit above 0.5. A fixture planted below it is asking the
+    # initializer for something the model does not carry.
+    p_binom = np.linspace(0.52, 0.88, n_states)
+    taus = np.full(n_states, 30.0)
+
+    row_of = np.arange(n_spots) // columns
+    labels = np.minimum(row_of * n_clones // rows, n_clones - 1).astype(np.int64)
+
+    transition = circulant_transition(n_states, self_transition)
+    states = np.empty((n_clones, n_obs), dtype=np.int64)
+    for clone in range(n_clones):
+        states[clone, 0] = rng.integers(n_states)
+        for obs in range(1, n_obs):
+            states[clone, obs] = rng.choice(
+                n_states, p=transition[states[clone, obs - 1]]
+            )
+
+    base_nb_mean = rng.uniform(*depth, (n_obs, n_spots))
+    total_bb_RD = rng.integers(*reads, (n_obs, n_spots)).astype(np.float64)
+    switch_prob = rng.uniform(*switch, n_obs)
+
+    family = _emission_families(log_mu, alphas, p_binom, taus)
+    counts_nb = np.empty((n_obs, n_spots), dtype=np.float64)
+    counts_bb = np.empty((n_obs, n_spots), dtype=np.float64)
+
+    for spot in range(n_spots):
+        covariate = np.stack([base_nb_mean[:, spot], total_bb_RD[:, spot]], axis=-1)
+        drawn = family.sample(
+            states[labels[spot]],
+            np.random.default_rng([seed, spot]),
+            covariate=torch.as_tensor(covariate),
+        )
+        counts_nb[:, spot] = drawn[..., 0]
+        counts_bb[:, spot] = drawn[..., 1]
+
+    return CoreInferenceTruth(
+        labels=labels,
+        states=states,
+        counts_nb=counts_nb,
+        counts_bb=counts_bb,
+        base_nb_mean=base_nb_mean,
+        total_bb_RD=total_bb_RD,
+        log_mu=log_mu,
+        alphas=alphas,
+        p_binom=p_binom,
+        taus=taus,
+        lengths=np.full(n_segments, n_obs // n_segments, dtype=int),
+        switch_prob=switch_prob,
+        lattice=lattice,
+        self_transition=self_transition,
+        seed=seed,
+    )
 
 
 @dataclass(frozen=True)
