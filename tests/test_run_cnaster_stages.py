@@ -51,6 +51,16 @@ retired.
 STRONG_MARGIN = 0.1
 """How far from balance a planted state has to sit to count as strong."""
 
+SHIPPED_T_PHASEING = 0.99999
+"""`zenodo_sim_config.yaml`'s `hmm.t_phaseing`, which `run_cnaster` passes.
+
+Restated so the sweep below is against what ships rather than against a
+number this file chose. `hmm.t` is stickier still, 0.9999999.
+"""
+
+PHASING_SELF_TRANSITION = 1.0 - 1e-6
+"""What `phased` passes, between the two shipped values and representative."""
+
 PHASING_EPS_BAF = 0.1
 """`phasing.py:67`'s deadband, inside which a block casts no phase vote.
 
@@ -438,6 +448,230 @@ def test_the_phasing_recovers_the_planted_haplotype(phased: Any) -> None:
     assert strong_agreement > TRIVIAL_AGREEMENT, (
         f"strong-block agreement {strong_agreement:.3f} over {strong.sum()}"
     )
+
+
+@pytest.fixture(scope="module")
+def phase_inputs(flipped: Any) -> Any:
+    """The clone-stacked arrays and the initializer's output, as `phasing.py`
+    builds them (`:75`, `:100`, `:105`), so the tests below can take the fit
+    apart without re-deriving the pre-image.
+    """
+    from cnaster.hmm_initialize import gmm_init
+    from cnaster.hmm_nophasing import get_log_transmat
+    from cnaster.hmrf_utils import clone_stack_obs
+    from cnaster.omics import (
+        assign_initial_blocks,
+        form_gene_snp_table,
+        summarize_counts_for_blocks,
+    )
+    from cnaster.pseudobulk import merge_pseudobulk_by_index_mix
+
+    truth, _, loaded, written = flipped
+    alleles = (loaded.cell_snp_Aallele, loaded.cell_snp_Ballele)
+    table = form_gene_snp_table(
+        loaded.unique_snp_ids, str(written.hgtable), loaded.adata
+    )
+    table = assign_initial_blocks(
+        table, loaded.adata, *alleles, loaded.unique_snp_ids, initial_min_umi=1
+    )
+    blocks = summarize_counts_for_blocks(
+        table, loaded.adata, *alleles, loaded.unique_snp_ids
+    )
+
+    zero_exposure = np.zeros_like(blocks.total_bb_RD)
+    sitewise = np.zeros(blocks.X.shape[0])
+    pooled = merge_pseudobulk_by_index_mix(
+        blocks.X,
+        zero_exposure,
+        blocks.total_bb_RD,
+        truth.clone_index,
+        None,
+        threshold=0.5,
+    )
+    stacked = clone_stack_obs(*pooled[:3], blocks.lengths, sitewise, pooled[3])
+
+    init_log_mu, init_p_binom, _, _ = gmm_init(
+        truth.n_states,
+        *stacked[:3],
+        "sp",
+        stacked[3],
+        get_log_transmat(truth.n_states, PHASING_SELF_TRANSITION),
+        stacked[4],
+        random_state=0,
+        in_log_space=False,
+        only_minor=True,
+    )
+    n_clones = pooled[0].shape[2]
+
+    return truth, stacked, init_log_mu, init_p_binom, n_clones
+
+
+def _decode_occupancy(result: Any, n_states: int, n_clones: int) -> np.ndarray:
+    """How many clone-blocks decode to each base state, phase folded away."""
+    decoded = np.argmax(result["log_gamma"], axis=0).reshape(n_clones, -1)
+    return np.bincount((decoded % n_states).ravel(), minlength=n_states)
+
+
+def _fit(phase_inputs: Any, *, t: float, max_iter: int, planted: bool) -> Any:
+    """`phasing.py:121`'s call, with the starting point and `t` as knobs."""
+    from cnaster.hmm_phased import hmm_phased
+
+    truth, stacked, init_log_mu, init_p_binom, _ = phase_inputs
+    if planted:
+        init_log_mu = np.zeros((truth.n_states, 1))
+        init_p_binom = np.sort(np.minimum(truth.p_binom, 1.0 - truth.p_binom)).reshape(
+            -1, 1
+        )
+
+    return hmm_phased(params="sp", t=t).optimize(
+        stacked[0],
+        stacked[3],
+        truth.n_states,
+        stacked[1],
+        total_bb_RD=stacked[2],
+        log_sitewise_transmat=stacked[4],
+        fix_NB_dispersion=False,
+        shared_NB_dispersion=True,
+        fix_BB_dispersion=False,
+        shared_BB_dispersion=True,
+        init_log_mu=init_log_mu,
+        init_p_binom=init_p_binom,
+        max_iter=max_iter,
+        tol=1e-12,
+    )
+
+
+@pytest.mark.cnaster
+def test_the_phasing_refuses_a_non_zero_exposure(flipped: Any) -> None:
+    """**The BAF-only call is enforced, not chosen (#122).**
+
+    `phasing.py:64` opens with `assert np.all(single_base_nb_mean == 0)`, so
+    the zero exposure `run_cnaster` passes is the only exposure the function
+    accepts. That eliminates the first of #122's three candidates outright:
+    the collapse cannot be attributed to the call site, because no other call
+    is reachable.
+    """
+    from cnaster.phasing import initial_phase_given_partition
+
+    truth, _, _, _ = flipped
+
+    with pytest.raises(AssertionError):
+        initial_phase_given_partition(
+            np.zeros((4, 2, 1)),
+            np.array([4]),
+            np.ones((4, 1)),
+            np.ones((4, 1)),
+            None,
+            truth.clone_index,
+            truth.n_states,
+            np.zeros((truth.n_states, truth.n_states)),
+            np.zeros(4),
+            "sp",
+            PHASING_SELF_TRANSITION,
+            0,
+            fix_NB_dispersion=False,
+            shared_NB_dispersion=True,
+            fix_BB_dispersion=False,
+            shared_BB_dispersion=True,
+            max_iter=1,
+            tol=1e-3,
+            threshold=0.5,
+        )
+
+
+@pytest.mark.planted
+def test_the_initializer_recovers_the_planted_minor_bafs(phase_inputs: Any) -> None:
+    """**And the second candidate is eliminated: `gmm_init` is right (#122).**
+
+    Asked for a minor-BAF initialization (`only_minor=True`), it returns
+    `[0.1197, 0.4191, 0.5000]` against the planted minor BAFs of
+    `[0.12, 0.42, 0.50]` -- every state to within 0.001. Whatever destroys the
+    decode, it is not the starting point handed to the fit.
+    """
+    truth, _, _, init_p_binom, _ = phase_inputs
+
+    planted_minor = np.sort(np.minimum(truth.p_binom, 1.0 - truth.p_binom))
+    initialized = np.sort(np.asarray(init_p_binom).ravel())
+
+    np.testing.assert_allclose(initialized, planted_minor, atol=2e-3)
+
+
+@pytest.mark.cnaster
+def test_the_fit_collapses_the_decode_between_its_first_two_iterations(
+    phase_inputs: Any,
+) -> None:
+    """**So it is the fit, and it happens at iteration two (#122).**
+
+    Started from the planted minor BAFs, one Baum-Welch iteration still holds
+    them -- `[0.1198, 0.4194, 0.6961]` -- and the decode uses **all three**
+    states, 28 / 40 / 52 clone-blocks. Two iterations put every one of the 120
+    on a single state, and it never comes back: at 20 iterations the fit has
+    settled on `[0.1048, 0.5000, 1.0000]`, one state at the pooled mean and one
+    parked at the boundary with nothing assigned to it.
+
+    The truth is representable and decodable, then, and the fit walks away
+    from it. This is the attribution #122 asks for, and it holds from the
+    planted starting point, so it is not a basin the initializer chose.
+    """
+    truth, _, _, _, n_clones = phase_inputs
+
+    first = _decode_occupancy(
+        _fit(phase_inputs, t=SHIPPED_T_PHASEING, max_iter=1, planted=True),
+        truth.n_states,
+        n_clones,
+    )
+    second = _decode_occupancy(
+        _fit(phase_inputs, t=SHIPPED_T_PHASEING, max_iter=2, planted=True),
+        truth.n_states,
+        n_clones,
+    )
+
+    assert int((first > 0).sum()) == truth.n_states, f"first iteration {first}"
+    assert int((second > 0).sum()) == 1, f"second iteration {second}"
+
+
+@pytest.mark.cnaster
+@pytest.mark.parametrize("t", [SHIPPED_T_PHASEING, PHASING_SELF_TRANSITION, 0.99, 0.9])
+def test_the_collapse_holds_across_every_self_transition_that_ships(
+    phase_inputs: Any, t: float
+) -> None:
+    """What drives it: the fixed near-unity self-transition (#122).
+
+    `params="sp"` fits the start probabilities and the BAF states and leaves
+    the transition fixed, so `t` is imposed rather than learned. Across the
+    whole shipped range -- `zenodo_sim_config.yaml` sets
+    `t_phaseing = 0.99999` and `t = 0.9999999` -- the decode is one state.
+    `test_..._only_a_transition_no_configuration_ships_decodes_the_truth`
+    is the other end of the same sweep.
+    """
+    truth, _, _, _, n_clones = phase_inputs
+
+    occupancy = _decode_occupancy(
+        _fit(phase_inputs, t=t, max_iter=100, planted=True), truth.n_states, n_clones
+    )
+
+    assert int((occupancy > 0).sum()) == 1, f"t={t} decoded {occupancy}"
+
+
+@pytest.mark.cnaster
+def test_only_a_transition_no_configuration_ships_decodes_the_truth(
+    phase_inputs: Any,
+) -> None:
+    """At `t = 0.5` the decode recovers all three states: 27 / 66 / 27.
+
+    The contrast that makes the sweep above a finding rather than a list of
+    failures -- the fit is not incapable of the instance, it is prevented from
+    reaching it by a transition prior that forbids switching. `0.5` is four
+    orders of magnitude from anything `cnaster` ships, so this is a diagnosis
+    and not a proposed setting.
+    """
+    truth, _, _, _, n_clones = phase_inputs
+
+    occupancy = _decode_occupancy(
+        _fit(phase_inputs, t=0.5, max_iter=100, planted=True), truth.n_states, n_clones
+    )
+
+    assert int((occupancy > 0).sum()) == truth.n_states, f"decoded {occupancy}"
 
 
 @pytest.mark.cnaster
