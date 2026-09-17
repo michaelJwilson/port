@@ -33,25 +33,31 @@ FLIP_EVERY = 3
 BALANCED_STATE = 0
 """The planted diploid balanced state, which casts no phase vote (#106)."""
 
-PHASE_AGREEMENT = 0.85
-"""How much of the planted phase the majority vote recovers, pinned.
+TRIVIAL_AGREEMENT = 1.0 - 1.0 / FLIP_EVERY
+"""What an unphased answer scores, which is why a threshold is not a test.
 
-**Realized 0.857 over the 28 blocks that carry a phase, and 0.925 over the 40
-where some clone is strongly imbalanced.** Neither is 1.0, and the gap is a
-property of `cnaster` rather than of the fixture: every one of the four
-mismatches has a clone at a planted BAF of 0.58, the least imbalanced state
-above balance, which the fit reads as normal-like and which then casts no
-vote. Three blocks with a strongly imbalanced clone are wrong as well, and
-that part is unexplained.
+Phase is defined up to a global complement, so a comparison against the
+planted haplotype takes the better of the two directions. Against
+`flip_every=3` an identically-zero indicator therefore scores
+`max(2/3, 1/3)` = **0.667** having flipped nothing, and any pin below that
+measures the fixture's flip rate rather than the phasing.
 
-Pinned rather than tuned to pass. #108 carries the finding.
+The earlier pins here -- 0.65, realized 0.661 and 0.667 -- were exactly that
+(#122). The figures #108 recorded, 0.857 and 0.925, are above it and were
+measuring something; they were measured on the Markov-chain genome #120
+retired.
 """
 
 STRONG_MARGIN = 0.1
 """How far from balance a planted state has to sit to count as strong."""
 
-STRONG_AGREEMENT = 0.9
-"""What is recovered on those blocks. Realized 0.925 over 40 of 60."""
+PHASING_EPS_BAF = 0.1
+"""`phasing.py:67`'s deadband, inside which a block casts no phase vote.
+
+A local in `initial_phase_given_partition`, so it is restated rather than
+imported; `test_no_block_casts_a_vote_because_every_one_decodes_balanced`
+fails if the value drifts, since the count it pins depends on it.
+"""
 
 
 @pytest.fixture(scope="module")
@@ -235,13 +241,20 @@ def flipped(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Any]:
     # NB `self_transition` is loosened from the default 0.99: over sixty bins
     #    a 0.99 chain barely leaves the state it starts in, and starting in
     #    the balanced one leaves no block that carries a phase at all.
+    # NB a phase-rich genome, deliberately. Phase is defined only where the
+    #    allele share is imbalanced, and #120 made the default genome mostly
+    #    neutral -- 78 per cent of this instance's bins, which leaves two
+    #    blocks carrying a phase out of sixty. That is the right default and
+    #    the wrong instance for this test, so the events here cover the
+    #    genome instead of decorating it.
     truth = core_inference_truth(
         n_clones=2,
         n_states=3,
         lattice=LATTICE,
         n_obs=60,
         n_segments=2,
-        self_transition=0.85,
+        events=(8, 12),
+        event_bins=(10, 25),
         seed=5,
     )
     pre_image = unsegment(
@@ -262,22 +275,13 @@ def flipped(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Any]:
         set_global_config(previous)
 
 
-@pytest.mark.planted
-def test_the_phasing_recovers_the_planted_haplotype(flipped: Any) -> None:
-    """Every block stored on the other haplotype is the one phasing flips back.
+@pytest.fixture(scope="module")
+def phased(flipped: Any) -> Any:
+    """`initial_phase_given_partition` on the flipped instance, run once.
 
-    The claim `phasing.py` exists to support, and the one the round trip
-    cannot make: it drives the stage but compares nothing. Written against a
-    fixture that plants the answer -- `unsegment(flip_every=3)` stores every
-    third block's B count as `total - B`, and nothing in the files says which
-    ones.
-
-    **Two regimes are excluded, both by `cnaster`'s own rule.** A block whose
-    state is balanced gets no vote -- `phase_profiles[i, assumed_normal] = -1`
-    and the majority defaults to zero -- so a planted flip there is
-    unrecoverable by construction, and state zero is planted balanced (#106).
-    And phase is defined up to a global complement, so the comparison is taken
-    both ways and the better one reported.
+    The fit inside it is the expensive part, and the tests below read the same
+    output from three sides: the phase it returned, the decode that produced
+    it, and the segmentation it refined.
     """
     from cnaster.hmm_nophasing import get_log_transmat
     from cnaster.omics import (
@@ -300,7 +304,7 @@ def test_the_phasing_recovers_the_planted_haplotype(flipped: Any) -> None:
         table, loaded.adata, *alleles, loaded.unique_snp_ids
     )
 
-    _, recovered, refined = initial_phase_given_partition(
+    res, recovered, refined = initial_phase_given_partition(
         blocks.X,
         blocks.lengths,
         # NB BAF only: a zero exposure is what `run_cnaster` passes here too,
@@ -327,30 +331,125 @@ def test_the_phasing_recovers_the_planted_haplotype(flipped: Any) -> None:
         threshold=0.5,
     )
 
+    return truth, pre_image, blocks, res, recovered, refined
+
+
+def _recovered_on(
+    recovered: np.ndarray, planted: np.ndarray, mask: np.ndarray
+) -> float:
+    """Agreement over `mask`, taking phase up to a global complement.
+
+    Which is what makes an absolute threshold meaningless below
+    `TRIVIAL_AGREEMENT`: the better of the two directions is reported, so an
+    answer that flipped nothing still scores the fixture's unflipped fraction.
+    """
+    return max(
+        float(np.mean(recovered[mask] == planted[mask])),
+        float(np.mean(recovered[mask] != planted[mask])),
+    )
+
+
+@pytest.mark.cnaster
+def test_no_block_casts_a_vote_because_every_one_decodes_balanced(
+    phased: Any,
+) -> None:
+    """**`phase_indicator` comes back zero everywhere: nothing is phased (#122).**
+
+    Not an absence of signal. 114 of this instance's 120 clone-blocks are
+    planted in a non-balanced state, at `p` of 0.58 or 0.88. What happens is
+    that `phasing.py:121` fits the clone-stacked phased HMM, `:141` decodes it,
+    and **every block in both clones decodes to state 0**, whose fitted BAF is
+    0.50004. `:156` then reads a block within `EPS_BAF` of balance as
+    normal-like and `:162` sets its vote to `-1`, so nothing votes and `:174`
+    leaves the zero default in place.
+
+    The fit also drives the other two states to 0.99999 and 0.108, both at the
+    boundary of the parameter -- the same collapse seen from the parameters
+    rather than from the decode.
+
+    Pinned as `cnaster`'s behaviour, not as the method's: the referee is the
+    module's own arithmetic, and what the method claims is the next test.
+    """
+    truth, _, _, res, recovered, _ = phased
+
+    fitted_p = np.asarray(res["new_p_binom"]).ravel()
+    n_clones = len(truth.clone_index)
+    decoded = np.argmax(res["log_gamma"], axis=0).reshape(n_clones, recovered.size)
+    base_states = decoded % truth.n_states
+    phase_mask = decoded < truth.n_states
+    model_baf = np.where(phase_mask, fitted_p[base_states], 1.0 - fitted_p[base_states])
+
+    np.testing.assert_allclose(fitted_p[0], 0.5, atol=5e-4)
+    assert (base_states == BALANCED_STATE).all(), "some block decoded off balance"
+
+    silent = np.abs(model_baf - 0.5) < PHASING_EPS_BAF
+    assert silent.all(), f"{int(silent.size - silent.sum())} clone-blocks still vote"
+
+    per_block = truth.states[:, : recovered.size]
+    imbalanced = int((per_block != BALANCED_STATE).sum())
+    assert imbalanced > 0.9 * per_block.size, f"{imbalanced} of {per_block.size}"
+
+    np.testing.assert_array_equal(recovered, np.zeros_like(recovered))
+
+
+@pytest.mark.planted
+@pytest.mark.xfail(strict=True, reason="the vote returns no phase at all (#122)")
+def test_the_phasing_recovers_the_planted_haplotype(phased: Any) -> None:
+    """Every block stored on the other haplotype is the one phasing flips back.
+
+    The claim `phasing.py` exists to support, and the one the round trip
+    cannot make: it drives the stage but compares nothing. Written against a
+    fixture that plants the answer -- `unsegment(flip_every=3)` stores every
+    third block's B count as `total - B`, and nothing in the files says which
+    ones.
+
+    **The threshold is `TRIVIAL_AGREEMENT`, rather than a number beside it.**
+    An absolute pin is what let #122 sit here unnoticed: 0.661 cleared a
+    threshold of 0.65 while the indicator was constant. Recovery has to beat
+    what flipping nothing already scores, or it is not recovery.
+
+    Two regimes are still excluded by `cnaster`'s own rule: a block whose state
+    is balanced casts no vote (#106), and phase is defined up to a global
+    complement.
+
+    `strict`, so that a fix upstream turns this red rather than passing
+    quietly.
+    """
+    truth, pre_image, _, _, recovered, _ = phased
+
     planted = ~pre_image.phase_indicator
     assert recovered.shape == planted.shape
-
-    def recovered_on(mask: np.ndarray) -> float:
-        """Agreement over `mask`, taking phase up to a global complement."""
-        return max(
-            float(np.mean(recovered[mask] == planted[mask])),
-            float(np.mean(recovered[mask] != planted[mask])),
-        )
 
     # The blocks the rule can speak for: those whose planted state is not the
     # balanced one, since a balanced block casts no vote.
     per_block = truth.states[:, : recovered.size]
     speakable = np.all(per_block != BALANCED_STATE, axis=0)
     assert speakable.sum() > 0.25 * recovered.size, "too few blocks carry a phase"
-    assert recovered_on(speakable) >= PHASE_AGREEMENT, (
-        f"phase agreement {recovered_on(speakable):.3f} over {speakable.sum()} blocks"
+
+    agreement = _recovered_on(recovered, planted, speakable)
+    assert agreement > TRIVIAL_AGREEMENT, (
+        f"phase agreement {agreement:.3f} over {speakable.sum()} blocks, against "
+        f"{TRIVIAL_AGREEMENT:.3f} for flipping nothing"
     )
 
     # And the subset a fit cannot mistake for balance.
     strong = np.any(np.abs(truth.p_binom - 0.5)[per_block] >= STRONG_MARGIN, axis=0)
-    assert recovered_on(strong) >= STRONG_AGREEMENT, (
-        f"strong-block agreement {recovered_on(strong):.3f} over {strong.sum()}"
+    strong_agreement = _recovered_on(recovered, planted, strong)
+    assert strong_agreement > TRIVIAL_AGREEMENT, (
+        f"strong-block agreement {strong_agreement:.3f} over {strong.sum()}"
     )
+
+
+@pytest.mark.cnaster
+def test_the_refinement_conserves_every_block(phased: Any) -> None:
+    """The segmentation `initial_phase_given_partition` hands on.
+
+    Split from the recovery claim because it holds whatever the vote did: the
+    refinement redistributes blocks between contigs and is not allowed to lose
+    or invent one. Kept live rather than folded into the `xfail` above, which
+    would have taken this pin down with it.
+    """
+    _, _, blocks, _, _, refined = phased
 
     assert refined.sum() == blocks.X.shape[0], "the refinement lost a block"
     assert len(refined) >= len(blocks.lengths)

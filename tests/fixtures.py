@@ -10,7 +10,6 @@ the first: a single chain, no spatial layer and no factored state space,
 which is the one rung whose correspondence with `cnaster` is exact today.
 """
 
-import itertools
 from dataclasses import dataclass
 
 import numpy as np
@@ -163,6 +162,74 @@ def circulant_transition(n_states: int, self_transition: float) -> np.ndarray:
     transition = np.full((n_states, n_states), off, dtype=np.float64)
     np.fill_diagonal(transition, self_transition)
     return transition
+
+
+def place_events(
+    lengths: np.ndarray,
+    n_states: int,
+    *,
+    rng: np.random.Generator,
+    events: tuple[int, int],
+    event_bins: tuple[int, int],
+) -> tuple[np.ndarray, list[tuple[int, int, int, int]]]:
+    """A neutral genome with copy-number events placed on it.
+
+    The state path is state zero -- diploid, balanced, and **emitted** like any
+    other state -- everywhere except where an event is placed. Each event takes
+    a contiguous run of bins inside one chromosome and gives it a single
+    non-neutral state.
+
+    This is the generative model the shipped configuration's own instance names
+    describe: `numcnas3.3_cnasize5e7_ploidy2_random4` is a count of events and
+    an event size, not a transition rate.
+
+    **The path is piecewise constant, not a draw from the transition the HMM
+    fits**, and that is the trade #120 records. A Markov chain visiting ten
+    states uniformly leaves the genome a tenth neutral, which is
+    `find_diploid_balanced_state`'s own threshold, so whether the normal state
+    is a candidate comes down to the seed. A real genome is mostly neutral, and
+    a piecewise-constant path is what that looks like. The cost is that the
+    planted path is a *special case* of the fitted model rather than a draw
+    from it -- consistent with a very sticky chain, and not drawn from one.
+
+    Events are confined within a chromosome: a copy-number event does not span
+    a centromere-to-centromere boundary, and `lengths` is where the recursion
+    restarts.
+
+    Returns
+    -------
+    tuple[np.ndarray, list[tuple[int, int, int, int]]]
+        The state path, and the events as `(chromosome, offset, extent,
+        state)`. The events are returned rather than left implicit because the
+        path cannot be read back into them: two events on adjacent chromosomes
+        that draw the same state abut, and an abutment is indistinguishable
+        from a crossing by looking at the path.
+
+    Raises
+    ------
+    ValueError
+        If `n_states` leaves no non-neutral state to place.
+    """
+    if n_states < 2:
+        msg = f"an event needs a state other than the neutral one, got {n_states}"
+        raise ValueError(msg)
+
+    path = np.zeros(int(np.sum(lengths)), dtype=np.int64)
+    edges = np.concatenate(([0], np.cumsum(lengths)))
+    placed: list[tuple[int, int, int, int]] = []
+
+    for _ in range(int(rng.integers(*events))):
+        chromosome = int(rng.integers(lengths.size))
+        start, stop = int(edges[chromosome]), int(edges[chromosome + 1])
+
+        extent = min(int(rng.integers(*event_bins)), stop - start)
+        offset = int(rng.integers(start, stop - extent + 1))
+        state = int(rng.integers(1, n_states))
+
+        path[offset : offset + extent] = state
+        placed.append((chromosome, offset, extent, state))
+
+    return path, placed
 
 
 def drift_transition(n_states: int, self_transition: float, drift: float) -> np.ndarray:
@@ -632,6 +699,7 @@ class CoreInferenceTruth:
     p_binom: np.ndarray
     taus: np.ndarray
     lengths: np.ndarray
+    events: tuple[tuple[tuple[int, int, int, int], ...], ...]
     switch_prob: np.ndarray
     lattice: tuple[int, int]
     self_transition: float
@@ -851,6 +919,8 @@ def core_inference_truth(
     n_obs: int = 240,
     n_segments: int = 4,
     segmentation: str = "ragged",
+    events: tuple[int, int] = (3, 8),
+    event_bins: tuple[int, int] | None = None,
     self_transition: float = 0.99,
     exposure: str = "weierstrass",
     depth: tuple[float, float] = (0.5, 3.0),
@@ -929,23 +999,25 @@ def core_inference_truth(
         msg = f"unknown segmentation {segmentation!r}"
         raise ValueError(msg)
 
-    transition = circulant_transition(n_states, self_transition)
-    states = np.empty((n_clones, n_obs), dtype=np.int64)
-    # NB the chain restarts at every chromosome boundary, which is what makes
-    #    `lengths` the truth rather than a label beside it. Before #667 this
-    #    drew one chain over the whole genome and handed `cnaster` a `lengths`
-    #    the draw did not honour: the fitted model restarts at each boundary
-    #    (`Ragged`: "the recursions restart at each boundary, at the initial
-    #    distribution rather than at the transition") and the planted one did
-    #    not, so the two disagreed at every boundary.
-    edges = np.concatenate(([0], np.cumsum(lengths)))
-    for clone in range(n_clones):
-        for start, stop in itertools.pairwise(edges):
-            states[clone, start] = rng.integers(n_states)
-            for obs in range(start + 1, stop):
-                states[clone, obs] = rng.choice(
-                    n_states, p=transition[states[clone, obs - 1]]
-                )
+    # NB a neutral genome with events placed on it, rather than a chain
+    #    visiting every state equally (#120). Ten states visited uniformly
+    #    leave the genome a tenth neutral, which is
+    #    `find_diploid_balanced_state`'s own threshold, so whether the normal
+    #    state is a candidate at all came down to the seed. Events are
+    #    confined within a chromosome, which is also what makes `lengths` the
+    #    truth rather than a label: the recursion restarts there.
+    # NB the event size scales with the genome, so the neutral backbone
+    #    survives at any `n_obs`. Absolute sizes suit a real genome, where a
+    #    bin is a fixed number of bases -- but a fixture's `n_obs` is a budget
+    #    rather than a length, and events of five to forty bins that leave a
+    #    thousand-bin genome 89 per cent neutral bury a sixty-bin one.
+    extent = event_bins or (max(2, n_obs // 200), max(3, n_obs // 25))
+    placements = [
+        place_events(lengths, n_states, rng=rng, events=events, event_bins=extent)
+        for _ in range(n_clones)
+    ]
+    states = np.stack([path for path, _ in placements])
+    placed_events = tuple(tuple(placed) for _, placed in placements)
 
     if exposure == "constant":
         base_nb_mean = np.full((n_obs, n_spots), float(depth[0]))
@@ -987,11 +1059,48 @@ def core_inference_truth(
         p_binom=p_binom,
         taus=taus,
         lengths=lengths,
+        events=placed_events,
         switch_prob=switch_prob,
         lattice=lattice,
         self_transition=self_transition,
         seed=seed,
     )
+
+
+def critical_instance(**overrides: object) -> CoreInferenceTruth:
+    """The instance the early gate runs on: the smallest that is still a run.
+
+    `M = K = 2`, `G = 1,000`, `S = 500` -- two clones over a `20 x 25` lattice,
+    250 spots each, which clears `icm_sweep_deque`'s floor of 200 (#81) with
+    the least room to spare. Two states is one event state against the
+    neutral one, so a fit that cannot separate them has nothing else to
+    confuse them with, and a failure here is structural rather than
+    statistical.
+
+    The point is the budget. `critical` gates first and gates everything
+    (upstream's rule, mirrored in `pyproject.toml`), so the instance it fits
+    end to end has to cost seconds, not the 16 s `dev_instance` costs or the
+    minutes `key_instance` would. Reduce further and the labelling stops
+    being recoverable at all -- one clone under the floor is merged away
+    before the solver runs.
+
+    `events=(6, 10)` rather than the default `(3, 8)`, and the reason is
+    measured: at `K = 2` the one event state is the weakest the law plants
+    (`mu = 1.5`, `p = 0.58`), and at the default's 13.5 per cent occupancy
+    the solver merges the two clones into one. At 18.1 per cent it recovers
+    the labelling exactly, in about a second warm; deeper reads or a third
+    state do the same, and more events is the change that keeps `K = 2`.
+    """
+    settings: dict[str, object] = {
+        "n_clones": 2,
+        "n_states": 2,
+        "lattice": (20, 25),
+        "n_obs": 1_000,
+        "n_segments": 4,
+        "events": (6, 10),
+    }
+    settings.update(overrides)
+    return core_inference_truth(**settings)  # type: ignore[arg-type]
 
 
 def dev_instance(**overrides: object) -> CoreInferenceTruth:

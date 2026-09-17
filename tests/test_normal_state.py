@@ -58,44 +58,39 @@ def test_the_planted_normal_state_is_normal_by_cnasters_definition(
 
 @pytest.mark.cnaster
 @pytest.mark.critical
-def test_the_planted_normal_state_is_too_rare_to_be_a_candidate(
+def test_the_planted_normal_state_is_the_candidate_it_selects(
     planted: CoreInferenceTruth,
 ) -> None:
-    """Planting the state is not enough: it has to be common enough as well.
+    """The occupancy clause, which planting the state alone did not satisfy.
 
-    `find_diploid_balanced_state` requires a candidate to occupy at least
-    `min_prop_threshold = 0.1` of the genome, and the dev instance's normal
-    state occupies **0.0858**. So on the planted truth the selection raises,
-    with the same message #106 was opened for:
+    A candidate must occupy at least `min_prop_threshold = 0.1` of the genome.
+    Under the chain this fixture used to draw -- ten states visited uniformly
+    -- the normal state occupied **0.0858** and the selection raised, and the
+    round trip only reached the end because it fitted five states rather than
+    ten. #120 replaced that with a neutral genome carrying events, and the
+    normal state now occupies **0.892**.
 
-        ValueError: No candidate diploid balanced state found!
-
-    The round trip reaches the end anyway because it fits **five** states
-    against the ten planted (#90 is why), and a five-state fit concentrates
-    enough mass on a balanced state to clear the threshold. That is the fit
-    rescuing the fixture, not the fixture being right.
-
-    The fix is realism rather than a constant: a genome is mostly copy
-    neutral, and a chain that visits ten states uniformly puts each at about
-    a tenth -- exactly the threshold, so which side it lands on is a
-    coincidence of the seed. #106 carries the decision.
+    Both numbers are asserted: the one that matters and the margin over the
+    threshold, so a later change to the event rate that quietly ate the
+    backbone fails here rather than in the integer-copy solver.
     """
     from cnaster.integer_copy import find_diploid_balanced_state
 
     path = planted.states.reshape(-1)
     occupancy = np.bincount(path, minlength=planted.n_states) / path.size
 
-    assert occupancy[NORMAL_STATE] == pytest.approx(0.0858, abs=5e-4)
-    assert occupancy[NORMAL_STATE] < MIN_PROPORTION
+    assert occupancy[NORMAL_STATE] == pytest.approx(0.892, abs=5e-3)
+    assert occupancy[NORMAL_STATE] > MIN_PROPORTION
 
-    with pytest.raises(ValueError, match="No candidate diploid balanced state"):
-        find_diploid_balanced_state(
-            planted.log_mu,
-            planted.p_binom,
-            path,
-            min_prop_threshold=MIN_PROPORTION,
-            EPS_BAF=EPS_BAF,
-        )
+    chosen = find_diploid_balanced_state(
+        planted.log_mu,
+        planted.p_binom,
+        path,
+        min_prop_threshold=MIN_PROPORTION,
+        EPS_BAF=EPS_BAF,
+    )
+
+    assert chosen == NORMAL_STATE
 
 
 @pytest.mark.cnaster
