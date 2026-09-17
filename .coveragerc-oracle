@@ -1,0 +1,75 @@
+# The referee's own coverage, measured separately from the subject's.
+#
+# `pyproject.toml`'s gate measures `cnaster`, which is what this repository
+# validates. This one measures how much of `snakes_and_ladders` is
+# load-bearing for that validation -- how much of the oracle the claims
+# actually rest on. Two different questions, so two floors: a figure that
+# mixed them would rise for importing more upstream and read as progress.
+#
+# The denominator is the **oracle surface**, not all of upstream. Most of
+# `snakes_and_ladders` -- the RL, the search, the codes -- is never a referee
+# here, and a floor over 14,526 statements would be 7 per cent, unmovable, and
+# would say nothing. These are the modules a referee comes from, and
+# `tests/test_coverage_scope.py` refuses a test that imports one this list
+# does not name.
+#
+# `ragged` joined when #667 landed, and `tests/test_coverage_scope.py` is
+# what said so: the first fixture import of it failed the guard that
+# refuses a referee the surface does not name.
+#
+# `opt/fit.py` joined with `main`'s `test_integer_copy.py`, which referees
+# against it. The guard in `tests/test_coverage_scope.py` is what caught the
+# omission on the merge, which is the job it was written for.
+#
+# `source` names the installed **directory** and `include` narrows it to the
+# surface, for the reason `pyproject.toml` gives: naming modules instead lets
+# coverage drop the ones no test imported, and the three at zero would leave
+# the denominator rather than the floor. Measured: 2,085 statements by this
+# form, 1,659 by the other, and the difference is exactly the part the number
+# is supposed to be about.
+[run]
+source =
+    .venv/lib/python3.12/site-packages/snakes_and_ladders
+
+[report]
+include =
+    */snakes_and_ladders/emissions.py
+    */snakes_and_ladders/opt/hmm.py
+    */snakes_and_ladders/opt/fit.py
+    */snakes_and_ladders/ragged.py
+    */snakes_and_ladders/likelihood/forward_backward.py
+    */snakes_and_ladders/likelihood/ragged_rust.py
+    */snakes_and_ladders/likelihood/spatio_sequential.py
+    */snakes_and_ladders/search/spatio_sequential.py
+    */snakes_and_ladders/sim/count_pairs.py
+    */snakes_and_ladders/sim/spatio_sequential.py
+    */snakes_and_ladders/sim/graph.py
+    */snakes_and_ladders/sim/hmm.py
+    */snakes_and_ladders/search/alpha_expansion.py
+# 958 of 2,541 statements, 37.70 per cent. `ragged.py` joined the surface when
+# #667 landed and the fixture began planting unequal chromosomes against it;
+# `opt/fit.py` joined with `main`'s `test_integer_copy.py`.
+#
+# Of that, the 42 tests marked `upstream_oracle` -- the agreement claims,
+# where upstream decided the expected value -- reach 32.57 per cent on their
+# own, so every other test in the suite adds 172 statements. The surface is
+# the referee's and not the fixture's, measured rather than asserted, which is
+# what #69 asks for.
+#
+# Recut 35.7 -> 35.5 on the #674 re-pin, and the direction is the
+# denominator's rather than the numerator's: 801 covered of 2,238 became 803
+# of 2,257, so upstream grew by nineteen statements and this suite reached two
+# more of them. `CLAUDE.md`'s rule is that the floor is never lowered to pass
+# a pull request; it is lowered here to follow a dependency that got larger,
+# with the arithmetic stated so the distinction is checkable rather than
+# claimed.
+#
+# `forward_backward` left zero when #97's first rung landed: `ragged_rust`
+# referees `cnaster`'s forward recursion over the clone-stacked ragged batch
+# and reaches its oracle underneath, 19.67 per cent. **Two** modules sit at
+# zero now -- `likelihood.spatio_sequential` and `search.spatio_sequential` --
+# and they are the fit-level half of that rung, which waits on #77 item 1.
+# Upstream's #674 is the fix; the event that moves this figure is the pin
+# moving, not a test here failing.
+fail_under = 37.7
+precision = 2

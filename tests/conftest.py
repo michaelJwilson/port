@@ -92,6 +92,24 @@ def install_cnaster_config(tmp_path: Path, em_ftol: float, em_maxiter: int) -> N
                     "em_disp": 0,
                     "em_xrtol": 1e-5,
                     "em_xtol": 1e-5,
+                    # NB `gmm_init` clips the observed allele share before
+                    #    fitting, and reads the bounds from here rather than
+                    #    taking them as arguments (`hmm_initialize.py:362`).
+                    #    Wide enough to clip nothing a fixture plants, so the
+                    #    initializer's start is the data's and not the clip's.
+                    "gmm_min_binom_prob": 0.01,
+                    "gmm_max_binom_prob": 0.99,
+                    "gmm_maxiter": 100,
+                },
+                # NB `run_core_inference` reads the outer loop's own settings
+                #    from here: `inertia` decides whether a uniform prior over
+                #    clones is added to the field, `fixed_assignment` whether
+                #    the label solve runs at all, and `ari_tolerance` when the
+                #    loop stops. All three are the shipped defaults.
+                "hmrf": {
+                    "inertia": False,
+                    "fixed_assignment": False,
+                    "ari_tolerance": 0.99,
                 },
                 "betabinom": {
                     "start_params": BETABINOM_START_PARAMS,
@@ -186,3 +204,70 @@ def cnaster_config_switch(tmp_path: Path) -> Iterator[Callable[[float, int], Non
         yield switch
     finally:
         set_global_config(previous)
+
+
+_COLLECTED: list[pytest.Item] = []
+"""Every test collected this session, before any `-m` deselected one.
+
+`session.items` is the *selected* slice, so a guard reading it under
+`-m critical` would see only the tier it is supposed to be auditing and pass
+for that reason.
+"""
+
+
+@pytest.hookimpl(tryfirst=True)
+def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
+    """Record the collection before pytest's own mark deselection runs."""
+    _COLLECTED[:] = items
+
+
+@pytest.fixture
+def collected_items() -> list[pytest.Item]:
+    """The whole suite's items, or a skip when the run is a narrowed one.
+
+    Selecting a file or a `-k` expression collects less than the tree, and a
+    guard over that subset would say something weaker than it claims while
+    reporting green. The claim is about the suite, so it is made only when
+    the suite is what was collected.
+    """
+    items = list(_COLLECTED)
+    collected_modules = {item.nodeid.split("::")[0] for item in items}
+    on_disk = {
+        f"tests/{path.name}" for path in (Path(__file__).parent).glob("test_*.py")
+    }
+
+    missing = on_disk - collected_modules
+    if missing:
+        pytest.skip(f"narrowed collection; {len(missing)} test module(s) absent")
+
+    return items
+
+
+@pytest.fixture(autouse=True, scope="session")
+def _keep_the_perf_log_out_of_the_checkout(
+    tmp_path_factory: pytest.TempPathFactory,
+) -> Iterator[None]:
+    """Run the whole suite from a scratch directory.
+
+    `hmm_emission.flush_perf` opens the **literal relative path**
+    `"cnaster.perf"`, reading `config.paths.perf_path` only to count rows and
+    decide on a header, so every fit drops a timing log into whatever
+    directory pytest was started from. `cnaster_perf_sink` has handled that
+    for the tests that ask for it since the M-step work; the pipeline tests do
+    not ask, because they reach `fit` several stages down and have no reason
+    to know.
+
+    The result was a tracked `cnaster.perf` modified by every run. Making the
+    protection automatic is the fix: nothing in this suite resolves a path
+    relative to the working directory -- `tmp_path` is absolute and
+    `tests/test_coverage_scope.py` anchors on `__file__` -- so the directory
+    is free to move.
+    """
+    import os
+
+    previous = Path.cwd()
+    os.chdir(tmp_path_factory.mktemp("cwd"))
+    try:
+        yield
+    finally:
+        os.chdir(previous)

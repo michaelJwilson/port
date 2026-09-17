@@ -102,6 +102,7 @@ unfixable = [
 "tests/**" = [
   "S101",    # asserts are the point of a test
   "PLR2004", # literal expected values are the point of a regression test
+  "ARG001",  # a fixture requested for its side effect is an unused argument
 ]
 
 [tool.mypy]
@@ -111,6 +112,14 @@ files = ["python", "tests"]
 [[tool.mypy.overrides]]
 module = "pytest_benchmark.*"
 ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# `@njit` erases the signature it decorates, so a patch kernel cannot be
+# annotated in a way --strict accepts. These are pinned bitwise against
+# cnaster instead, which is a stronger claim than a type.
+module = "port.patch.*"
+disallow_untyped_defs = false
+disallow_untyped_calls = false
 
 [[tool.mypy.overrides]]
 # cnaster ships no py.typed marker, so --strict refuses every import of it.
@@ -126,6 +135,13 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = "scipy.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# `scikit-learn` is `cnaster`'s dependency, not this repository's, and its
+# stubs are a separate distribution. Used here only for `adjusted_rand_score`,
+# which is a referee rather than a dependency of the package.
+module = "sklearn.*"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
@@ -174,18 +190,48 @@ showcontent = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "--strict-markers"
-# Every test names what it is checked against (CLAUDE.md, Testing & Quality
-# Assurance). The marker is the referee, not the subject: `upstream` means a
-# second implementation decided the expected value, `planted` means the
-# fixture's own truth did, and `analytic` means a property that holds by
-# construction did.
+# NB `release` is deselected by default and has to be asked for, as upstream
+#    does: a bare `pytest` used to run the release tier, 288 s, and the
+#    per-pull-request tier was a matter of remembering `-m "not release"`.
+#    A later `-m` on the command line replaces this one, so `-m critical`
+#    still means exactly `-m critical`, and the release gate passes
+#    `-m "release or not release"`.
+addopts = '--strict-markers -m "not release"'
 markers = [
-    "upstream: checked against the snakes_and_ladders implementation",
+    # --- kinds: what decided the expected value -------------------------
+    #
+    # Every test names its referee (CLAUDE.md, Testing & Quality Assurance).
+    # The kind is the referee, never the subject, and every test carries one
+    # -- `tests/test_marker_discipline.py` refuses one that does not.
+    #
+    # `oracle` and `upstream_oracle` mirror `snakes_and_ladders`' vocabulary
+    # and are kept apart because a closed form and a second implementation
+    # are not the same witness: an exact answer cannot be wrong, and an
+    # implementation agreeing with another can be wrong in the same way
+    # twice. #69 is why the second one is named at all -- upstream is used
+    # here in two roles, and only one of them referees.
+    "oracle: checked against an independent exact answer -- enumeration, brute force, a closed form, or a published value",
+    "upstream_oracle: checked against snakes_and_ladders as a second implementation of the same model -- agreement, to a stated tolerance, in a regime where the correspondence is established",
+    "upstream: snakes_and_ladders was used and did not decide the value -- it drew the instance, or its acceptance of an input is itself the claim",
+    "cnaster: checked against the cnaster implementation",
     "planted: checked against the fixture's planted truth",
     "analytic: checked against an analytic property or an invariant",
+    # --- tiers: when a test runs, and how long it is allowed to take -----
     "release: over the per-pull-request budget; runs for a release",
+    # NB `preprocessing` names a subject rather than a referee, as `release`
+    #    and `benchmark` do. It selects the input path -- `load_input_data`,
+    #    the binning, the pre-image that round-trips through them -- which is
+    #    the stage whose failures are slowest to attribute and the one worth
+    #    running alone while changing it.
+    "preprocessing: exercises the input path from files to bins",
     "benchmark: records a baseline; asserts no ratio",
+    # NB `critical` is a second axis rather than a kind, and upstream states
+    #    the rule this repository adopts: a test is critical *and* refereed
+    #    by something, never instead of it. What gates is a test whose
+    #    referee is outside the implementation -- `oracle`, `upstream_oracle`,
+    #    `cnaster` or `planted` -- and that carries no scale marker, so the
+    #    early gate cannot silently become the slow tier.
+    "critical: gates early; fast, and its failure means the rest is not worth running -- structurally, or because the science it rests on is wrong",
 ]
 
 [tool.coverage.run]
@@ -233,11 +279,38 @@ source = [
 omit = [
     "*/cnaster/deprecated/*",
     "*/cnaster/sandbox/*",
+    # `sim.py` holds `load_tables_to_matrices` and nothing else, and its only
+    # caller is commented out in `scripts/run_cnaster.py:58`. That is the
+    # dependency setting a module aside in the only way a package with no
+    # `deprecated/` directory can, so the rule above -- reachable from an
+    # installed entry point -- resolves to no. #110.
+    #
+    # `wolff.py` is **not** omitted on the same argument, and #110 says why:
+    # it is reachable, `run_cnaster` branches into `initialize_clones_wolff`
+    # on a configuration key, and what stops it is `ImportError` at import
+    # (#71). Excluding it would hide a defect behind a figure that improved.
+    "*/cnaster/sim.py",
 ]
 
 [tool.coverage.report]
-# The floor the tests reach against the whole of `cnaster`: 851 of 5,544
-# statements, 15.35 per cent. Low by construction -- the denominator is
+# The floor the tests reach against the whole of `cnaster`: 4,241 of 6,218
+# statements, 68.21 per cent. It was 33.77 until `run_cnaster` itself ran end
+# to end from temporary files (#87): one call reaches the plotting, the
+# phasing, the clone initializer, the normal baseline and the integer-copy
+# solver, none of which any component test had touched.
+#
+# The denominator grew with it, 5,544 to 5,843, and the growth is the gap the
+# note below predicted closing: `scripts/run_cnaster.py` is 299 statements
+# that a directory scan never descended into, and importing it to run it puts
+# them in the figure. They sit at 89.97 per cent.
+#
+# The `port` side of the denominator: `port.integer_copy` 98 statements,
+# `port.patch.hmrf_field` 32, `port.patch.hmrf_fused_field` 25,
+# `port.patch.hmrf_adjacency` 9, `port.patch.hmrf_invariants` 28 and
+# `port.patch.icm_interface` 40 (#56, #60-#64). Each moved the numerator and
+# the denominator together, which is the arithmetic working.
+#
+# Low by construction -- the denominator is
 # every module the package ships at top level, and most of them have no test
 # yet. That is the point: the number says how much of the subject is
 # validated, and it rises only by validating more of it.
@@ -249,7 +322,7 @@ omit = [
 # pull request. Unlike a denominator of the imported modules, this one does
 # not fall for bringing a new module under test, so there is no case where
 # lowering it is legitimate.
-fail_under = 15.3
+fail_under = 68.2
 precision = 2
 exclude_lines = [
     "pragma: no cover",
