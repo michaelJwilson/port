@@ -190,7 +190,7 @@ showcontent = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "--strict-markers"
+addopts = '--strict-markers -m "not release"'
 markers = [
     # --- kinds: what decided the expected value -------------------------
     #
