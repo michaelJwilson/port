@@ -26,6 +26,21 @@ from tests.fixtures import (
     core_inference_truth,
 )
 
+LATTICE_SIDE = 6
+"""A 36-node lattice: enough for the spatial prior to bind, small enough to fit."""
+
+FIT_CLASSES = 2
+FIT_STATES = 2
+FIT_POSITIONS = 12
+FIT_SEGMENTS = (5, 7)
+"""Unequal segments, so the fit takes the ragged path rather than converting."""
+
+TRIALS = 40
+"""The pair's trial count, the covariate's second channel."""
+
+FIT_ACCURACY = 0.9
+"""What the label solver recovers of the planted labelling."""
+
 TOLERANCE = 1e-9
 """Absolute agreement required between the two recursions.
 
@@ -149,21 +164,25 @@ def test_the_two_recursions_agree_on_the_clone_stacked_batch(
 def test_a_covariate_carrying_its_own_channel_axis_is_refused_with_a_singleton() -> (
     None
 ):
-    """The shape `m_step` builds today, and why the fit-level rung is not here.
+    """The shape `m_step` used to build, and why the fit-level rung is not here.
 
-    #77 item 1: `search/spatio_sequential.py`'s `m_step` appends a trailing
+    #77 item 1: `search/spatio_sequential.py`'s `m_step` appended a trailing
     singleton unconditionally, so an `(S, V, 2)` covariate -- one that already
-    names the family's two channels -- arrives as `(S, V, 2, 1)`, whose last
-    axis names nothing. This pins that the family refuses it, which is the
-    refusal the block-ascent entry point hits.
+    names the family's two channels -- arrived as `(S, V, 2, 1)`, whose last
+    axis names nothing. This pins that the family refuses it.
 
-    **This is a characterization, not a tripwire.** Refusing a covariate whose
-    last axis names no channel is correct and stays correct; upstream's fix
-    (#674, closing its #670) is in the *caller*, which stops building this
-    shape. The event that unblocks the fit-level rung is therefore the pin
-    moving, not this test failing -- so the rung is `upstream` rather than
-    `upstream_oracle`, and nothing here is checked against a number.
+    **The fix has landed and this still passes, which is correct.** Upstream's
+    #674 changed the *caller*: `m_step` now calls `covariate_block` and moves
+    the axis, with a comment naming the defect, and the pin carries it.
+    Refusing a covariate whose last axis names no channel is right either way,
+    so what this guards now is the regression rather than the defect.
+
+    The rung #674 unblocks is #109 and is not here yet: a first covaried
+    ragged instance built from scratch reaches the negative binomial's M step
+    with `mean and weight must be positive, got nan and 0.0`, which is a
+    fixture-construction problem on this side rather than an upstream one.
     """
+    import torch
     from snakes_and_ladders.emissions import (
         BetaBinomialEmission,
         CovariateNotSupportedError,
@@ -177,8 +196,6 @@ def test_a_covariate_carrying_its_own_channel_axis_is_refused_with_a_singleton()
             trials=np.ones(2), alpha=np.array([15.0, 25.0]), beta=np.array([15.0, 5.0])
         ),
     )
-
-    import torch
 
     with pytest.raises(CovariateNotSupportedError):
         family.reestimate(
