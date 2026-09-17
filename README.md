@@ -43,12 +43,21 @@ resolves `snakes_and_ladders` from git against `uv.lock`. The first sync
 compiles two Rust crates and downloads PyTorch, so allow several minutes;
 later syncs are cached.
 
-To install a single extra rather than all four (`dev`, `test`, `docs`,
-`notebooks`):
+To install a single extra rather than all five (`dev`, `test`, `docs`,
+`notebooks`, `calicost`):
 
 ```
 uv sync --locked --extra test
 ```
+
+`calicost` is the odd one. It pins
+[CalicoST](https://github.com/raphael-group/CalicoST), the program `cnaster`
+was rewritten from, at a commit rather than a branch, because it is a
+reference this repository **reads and does not run** -- see
+`docs/audit-logmu-shift-calicost.md`,
+`docs/audit-integer-copy-calicost.md` and
+`docs/audit-cnaster-calicost-divergence.md`. It is an extra rather than a
+dependency because nothing on the default path imports it.
 
 Without `uv`, any PEP 517 front end works, but the git dependency is then
 unpinned and the extension is rebuilt rather than reused:
