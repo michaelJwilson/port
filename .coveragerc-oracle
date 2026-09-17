@@ -21,6 +21,24 @@
 # against it. The guard in `tests/test_coverage_scope.py` is what caught the
 # omission on the merge, which is the job it was written for.
 #
+# **The surface is matched one way, from `cnaster`.** A module joins because
+# the subject does something it referees, never because upstream ships it;
+# `tests/test_oracle_correspondence.py` records the counterpart for each entry
+# and refuses one without. Read the other way this denominator would grow on
+# someone else's commits, and the figure would fall for every module upstream
+# added.
+#
+# The rule bounds the opportunities as well as the entries. `emissions.py` is
+# the largest module here, 779 statements, and most of it is out of reach by
+# construction: 208 belong to the two families `cnaster` implements --
+# negative binomial and beta-binomial -- plus their shared base, and 377 to
+# Categorical, Gaussian, Poisson, Binomial and CountPair, which have no
+# counterpart to referee. So its ceiling is **59 uncovered statements, not
+# 401**. `CountPairEmission` is the instructive one: the fixtures draw counts
+# through it, but drawing is the `upstream` role rather than the
+# `upstream_oracle` one (#69), and a family that decides no expected value
+# does not enter.
+#
 # `source` names the installed **directory** and `include` narrows it to the
 # surface, for the reason `pyproject.toml` gives: naming modules instead lets
 # coverage drop the ones no test imported, and the three at zero would leave
@@ -46,13 +64,13 @@ include =
     */snakes_and_ladders/sim/graph.py
     */snakes_and_ladders/sim/hmm.py
     */snakes_and_ladders/search/alpha_expansion.py
-# 958 of 2,541 statements, 37.70 per cent. `ragged.py` joined the surface when
+# 960 of 2,541 statements, 37.78 per cent. `ragged.py` joined the surface when
 # #667 landed and the fixture began planting unequal chromosomes against it;
 # `opt/fit.py` joined with `main`'s `test_integer_copy.py`.
 #
 # Of that, the 42 tests marked `upstream_oracle` -- the agreement claims,
 # where upstream decided the expected value -- reach 32.57 per cent on their
-# own, so every other test in the suite adds 172 statements. The surface is
+# own, so every other test in the suite adds 174 statements. The surface is
 # the referee's and not the fixture's, measured rather than asserted, which is
 # what #69 asks for.
 #
