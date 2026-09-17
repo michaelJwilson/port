@@ -1110,20 +1110,31 @@ def critical_instance(**overrides: object) -> CoreInferenceTruth:
 def dev_instance(**overrides: object) -> CoreInferenceTruth:
     """The instance to develop against: small enough to fail fast.
 
-    `K = 10` as the key instance has, a tenth of its `G`, a third of its `S`,
-    and **four** clones rather than ten. Four because of the floor, not taste:
-    `icm_sweep_deque` merges any clone under 200 spots and does not expose the
-    threshold (#81), so ten clones cannot exist below `S = 2,000` and a
-    development instance that small would measure the merge rather than the
-    model. Four over 1,000 spots leaves 250 each.
+    `K = 10` as the key instance has, a tenth of its `G`, and **four** clones
+    rather than ten. Four because of the floor, not taste: `icm_sweep_deque`
+    merges any clone under 200 spots and does not expose the threshold (#81),
+    so ten clones cannot exist below `S = 2,000` and a development instance
+    that small would measure the merge rather than the model. Four over 1,600
+    spots leaves 400 each.
 
-    The point is wall time. An error found in 20 s is an error found; the same
-    error at 310 s is a reason to stop looking.
+    **Square, and that is the point (#137).** The lattice was `(10, 100)` -- a
+    ten-to-one strip whose four bands were 2.5 rows thick -- which contradicted
+    the reason `CoreInferenceTruth` gives for planting bands at all. Bands are
+    the labelling with the fewest boundary edges *for a given lattice*, and
+    that lattice then maximised boundary among the factorizations available:
+    300 edges at a perimeter-to-area of 1.20, against **120 edges at 0.30**
+    here. A spot's four neighbours are now the same distance away in both
+    directions, so the spatial plots read as a section rather than a ribbon.
+
+    The point is wall time, and squaring costs some: `S` rises from 1,000 to
+    1,600, so the instance is about 1.6x its old size. An error found in 30 s
+    is still an error found; the same error at 310 s is a reason to stop
+    looking, and that is the comparison that matters.
     """
     settings: dict[str, object] = {
         "n_clones": 4,
         "n_states": 10,
-        "lattice": (10, 100),
+        "lattice": (40, 40),
         "n_obs": 1_000,
         "n_segments": 10,
     }
