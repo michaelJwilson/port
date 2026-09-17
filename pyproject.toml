@@ -190,7 +190,13 @@ showcontent = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "--strict-markers"
+# NB `release` is deselected by default and has to be asked for, as upstream
+#    does: a bare `pytest` used to run the release tier, 288 s, and the
+#    per-pull-request tier was a matter of remembering `-m "not release"`.
+#    A later `-m` on the command line replaces this one, so `-m critical`
+#    still means exactly `-m critical`, and the release gate passes
+#    `-m "release or not release"`.
+addopts = '--strict-markers -m "not release"'
 markers = [
     # --- kinds: what decided the expected value -------------------------
     #
@@ -225,7 +231,7 @@ markers = [
     #    referee is outside the implementation -- `oracle`, `upstream_oracle`,
     #    `cnaster` or `planted` -- and that carries no scale marker, so the
     #    early gate cannot silently become the slow tier.
-    "critical: gates early; fast, and its failure means the rest is not worth running",
+    "critical: gates early; fast, and its failure means the rest is not worth running -- structurally, or because the science it rests on is wrong",
 ]
 
 [tool.coverage.run]

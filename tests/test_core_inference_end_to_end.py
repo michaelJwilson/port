@@ -31,6 +31,7 @@ from tests.adapters import from_core_inference_truth
 from tests.fixtures import (
     CoreInferenceTruth,
     core_inference_truth,
+    critical_instance,
     dev_instance,
     key_instance,
 )
@@ -287,6 +288,30 @@ def test_the_dev_instance_recovers_its_labelling(cnaster_config: None) -> None:
 
     assert (truth.n_clones, truth.n_states) == (4, 10)
     assert (truth.n_obs, truth.n_spots) == (1_000, 1_000)
+    assert min(index.size for index in truth.clone_index) >= MIN_CLONE_SPOTS
+
+    result = _run(truth, max_iter_outer=1, max_iter=3)
+    fitted = np.asarray(result.assignment.new_assignment)
+
+    assert np.unique(fitted).size == truth.n_clones
+    assert _adjusted_rand_index(truth.labels, fitted) == pytest.approx(1.0)
+
+
+@pytest.mark.planted
+@pytest.mark.critical
+def test_the_critical_instance_recovers_its_labelling(cnaster_config: None) -> None:
+    """The early gate's end-to-end run: `M = K = 2`, `G = 1,000`, `S = 500`.
+
+    The same claim as the dev instance's -- the planted labelling comes back
+    exactly, adjusted Rand index **1.000** -- at the smallest instance that
+    still clears the solver's clone floor. It is what `-m critical` runs so
+    that a broken pipeline is found in seconds; the dev and key instances say
+    whether it still holds at scale, and they are the tier for that.
+    """
+    truth = critical_instance()
+
+    assert (truth.n_clones, truth.n_states) == (2, 2)
+    assert (truth.n_obs, truth.n_spots) == (1_000, 500)
     assert min(index.size for index in truth.clone_index) >= MIN_CLONE_SPOTS
 
     result = _run(truth, max_iter_outer=1, max_iter=3)

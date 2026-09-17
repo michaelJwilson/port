@@ -1067,6 +1067,42 @@ def core_inference_truth(
     )
 
 
+def critical_instance(**overrides: object) -> CoreInferenceTruth:
+    """The instance the early gate runs on: the smallest that is still a run.
+
+    `M = K = 2`, `G = 1,000`, `S = 500` -- two clones over a `20 x 25` lattice,
+    250 spots each, which clears `icm_sweep_deque`'s floor of 200 (#81) with
+    the least room to spare. Two states is one event state against the
+    neutral one, so a fit that cannot separate them has nothing else to
+    confuse them with, and a failure here is structural rather than
+    statistical.
+
+    The point is the budget. `critical` gates first and gates everything
+    (upstream's rule, mirrored in `pyproject.toml`), so the instance it fits
+    end to end has to cost seconds, not the 16 s `dev_instance` costs or the
+    minutes `key_instance` would. Reduce further and the labelling stops
+    being recoverable at all -- one clone under the floor is merged away
+    before the solver runs.
+
+    `events=(6, 10)` rather than the default `(3, 8)`, and the reason is
+    measured: at `K = 2` the one event state is the weakest the law plants
+    (`mu = 1.5`, `p = 0.58`), and at the default's 13.5 per cent occupancy
+    the solver merges the two clones into one. At 18.1 per cent it recovers
+    the labelling exactly, in about a second warm; deeper reads or a third
+    state do the same, and more events is the change that keeps `K = 2`.
+    """
+    settings: dict[str, object] = {
+        "n_clones": 2,
+        "n_states": 2,
+        "lattice": (20, 25),
+        "n_obs": 1_000,
+        "n_segments": 4,
+        "events": (6, 10),
+    }
+    settings.update(overrides)
+    return core_inference_truth(**settings)  # type: ignore[arg-type]
+
+
 def dev_instance(**overrides: object) -> CoreInferenceTruth:
     """The instance to develop against: small enough to fail fast.
 
