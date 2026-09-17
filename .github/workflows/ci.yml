@@ -3,7 +3,9 @@ name: CI
 on:
   push:
     branches: [main]
+    tags: ["v*"]
   pull_request:
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -43,6 +45,29 @@ jobs:
       #    release-marked tests contribute no statements of their own, so
       #    deselecting them does not move it.
       - run: uv run --no-sync pytest -m "not release" --cov --cov-report=term
+
+  # The release tier. `CLAUDE.md` says the release gate runs everything, and
+  # until this job existed nothing did: `release` was a marker every job
+  # deselected and no job selected, which is the "marker is documentation"
+  # case it warns about. Runs on a version tag or by hand, never per pull
+  # request -- the tier is minutes by design.
+  release:
+    name: Python (release tier)
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - run: uv sync --locked --extra dev --extra test
+      # `-m` on the command line replaces `addopts`' `-m "not release"`, so
+      # this is the whole suite: the per-pull-request tier and the release
+      # tier together, as the release gate is defined.
+      - run: uv run --no-sync pytest -m "release or not release" -q --no-cov
 
   rust:
     name: Rust (lint, format)

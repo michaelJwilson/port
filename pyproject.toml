@@ -183,7 +183,14 @@ showcontent = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "--strict-markers"
+# NB `release` is deselected by default and has to be asked for, as upstream
+#    does. A bare `pytest` used to run the release tier -- 288 s of stress
+#    benchmarks and the dev and key instances -- and the per-pull-request
+#    tier was a matter of remembering `-m "not release"`. A later `-m` on
+#    the command line replaces this one, so `-m critical` still means
+#    exactly `-m critical`, and the release job passes
+#    `-m "release or not release"`.
+addopts = '--strict-markers -m "not release"'
 # Every test names what it is checked against (CLAUDE.md, Testing & Quality
 # Assurance). The marker is the referee, not the subject: `upstream` means a
 # second implementation decided the expected value, `planted` means the
