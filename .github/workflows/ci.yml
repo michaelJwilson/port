@@ -32,6 +32,19 @@ jobs:
       - run: uv run --no-sync ruff check .
       - run: uv run --no-sync ruff format --check .
       - run: uv run --no-sync mypy
+      # NB the early gate, upstream's #237 read for this repository. It runs
+      #    before the tier so a broken referee or a fixture that stopped
+      #    planting what it claims surfaces in eight seconds rather than after
+      #    the whole run. `--no-cov` because the floor in `pyproject.toml` is
+      #    measured against the tier: the gate reaches 18.74 per cent of
+      #    `cnaster` against the tier's 33.77, and applying the tier's floor
+      #    to it would fail a passing gate.
+      #
+      #    91 tests in 7.80 s on the development host, against the tier's
+      #    18.86 s. `tests/test_marker_discipline.py` is what keeps that ratio
+      #    from drifting: the gate takes only a test refereed from outside the
+      #    implementation and carrying no scale marker.
+      - run: uv run --no-sync pytest -m critical -q --no-cov
       # NB the coverage gate is enforced here rather than in `addopts`, so a
       #    local `pytest` stays fast and the floor still binds on every change.
       #
@@ -43,6 +56,16 @@ jobs:
       #    release-marked tests contribute no statements of their own, so
       #    deselecting them does not move it.
       - run: uv run --no-sync pytest -m "not release" --cov --cov-report=term
+      # NB the referee's own floor, measured separately and over its own
+      #    denominator. One figure covering both would rise for importing more
+      #    of upstream, which is not validating more of the subject.
+      #    `preprocessing` is deselected: the input path has no upstream
+      #    referee, so those tests would dilute the oracle's denominator with
+      #    work it was never asked to do.
+      - run: >
+          uv run --no-sync coverage run --rcfile=.coveragerc-oracle
+          -m pytest -m "not release and not preprocessing" -q --no-cov
+      - run: uv run --no-sync coverage report --rcfile=.coveragerc-oracle
 
   rust:
     name: Rust (lint, format)

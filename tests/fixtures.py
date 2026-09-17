@@ -19,6 +19,7 @@ from snakes_and_ladders.emissions import (
     EmissionFamily,
     NegativeBinomialEmission,
 )
+from snakes_and_ladders.ragged import MINIMUM_LENGTH, Ragged
 from snakes_and_ladders.sim.hmm import (
     HmmParams,
     SimulatedHmmDataset,
@@ -130,8 +131,7 @@ def negative_binomial_chains(
     dataset = simulate_sequences(
         HmmParams(
             n_states=n_states,
-            sequence_length=sequence_length,
-            n_sequences=n_sequences,
+            lengths=(sequence_length,) * n_sequences,
             initial=initial,
             transition=transition,
             emissions=family,
@@ -162,6 +162,74 @@ def circulant_transition(n_states: int, self_transition: float) -> np.ndarray:
     transition = np.full((n_states, n_states), off, dtype=np.float64)
     np.fill_diagonal(transition, self_transition)
     return transition
+
+
+def place_events(
+    lengths: np.ndarray,
+    n_states: int,
+    *,
+    rng: np.random.Generator,
+    events: tuple[int, int],
+    event_bins: tuple[int, int],
+) -> tuple[np.ndarray, list[tuple[int, int, int, int]]]:
+    """A neutral genome with copy-number events placed on it.
+
+    The state path is state zero -- diploid, balanced, and **emitted** like any
+    other state -- everywhere except where an event is placed. Each event takes
+    a contiguous run of bins inside one chromosome and gives it a single
+    non-neutral state.
+
+    This is the generative model the shipped configuration's own instance names
+    describe: `numcnas3.3_cnasize5e7_ploidy2_random4` is a count of events and
+    an event size, not a transition rate.
+
+    **The path is piecewise constant, not a draw from the transition the HMM
+    fits**, and that is the trade #120 records. A Markov chain visiting ten
+    states uniformly leaves the genome a tenth neutral, which is
+    `find_diploid_balanced_state`'s own threshold, so whether the normal state
+    is a candidate comes down to the seed. A real genome is mostly neutral, and
+    a piecewise-constant path is what that looks like. The cost is that the
+    planted path is a *special case* of the fitted model rather than a draw
+    from it -- consistent with a very sticky chain, and not drawn from one.
+
+    Events are confined within a chromosome: a copy-number event does not span
+    a centromere-to-centromere boundary, and `lengths` is where the recursion
+    restarts.
+
+    Returns
+    -------
+    tuple[np.ndarray, list[tuple[int, int, int, int]]]
+        The state path, and the events as `(chromosome, offset, extent,
+        state)`. The events are returned rather than left implicit because the
+        path cannot be read back into them: two events on adjacent chromosomes
+        that draw the same state abut, and an abutment is indistinguishable
+        from a crossing by looking at the path.
+
+    Raises
+    ------
+    ValueError
+        If `n_states` leaves no non-neutral state to place.
+    """
+    if n_states < 2:
+        msg = f"an event needs a state other than the neutral one, got {n_states}"
+        raise ValueError(msg)
+
+    path = np.zeros(int(np.sum(lengths)), dtype=np.int64)
+    edges = np.concatenate(([0], np.cumsum(lengths)))
+    placed: list[tuple[int, int, int, int]] = []
+
+    for _ in range(int(rng.integers(*events))):
+        chromosome = int(rng.integers(lengths.size))
+        start, stop = int(edges[chromosome]), int(edges[chromosome + 1])
+
+        extent = min(int(rng.integers(*event_bins)), stop - start)
+        offset = int(rng.integers(start, stop - extent + 1))
+        state = int(rng.integers(1, n_states))
+
+        path[offset : offset + extent] = state
+        placed.append((chromosome, offset, extent, state))
+
+    return path, placed
 
 
 def drift_transition(n_states: int, self_transition: float, drift: float) -> np.ndarray:
@@ -368,8 +436,7 @@ def phased_chains(
     dataset = simulate_sequences(
         HmmParams(
             n_states=n_paired,
-            sequence_length=sequence_length,
-            n_sequences=n_sequences,
+            lengths=(sequence_length,) * n_sequences,
             initial=paired_initial,
             transition=combined,
             emissions=family,
@@ -522,8 +589,7 @@ def beta_binomial_chains(
     dataset = simulate_sequences(
         HmmParams(
             n_states=n_states,
-            sequence_length=sequence_length,
-            n_sequences=n_sequences,
+            lengths=(sequence_length,) * n_sequences,
             initial=initial,
             transition=transition,
             emissions=family,
@@ -633,6 +699,7 @@ class CoreInferenceTruth:
     p_binom: np.ndarray
     taus: np.ndarray
     lengths: np.ndarray
+    events: tuple[tuple[tuple[int, int, int, int], ...], ...]
     switch_prob: np.ndarray
     lattice: tuple[int, int]
     self_transition: float
@@ -662,6 +729,30 @@ class CoreInferenceTruth:
     def clone_index(self) -> list[np.ndarray]:
         """Spot indices per clone, which is `initial_clone_index`'s shape."""
         return [np.flatnonzero(self.labels == c) for c in range(self.n_clones)]
+
+    @property
+    def ragged(self) -> Ragged:
+        """The planted genome as upstream's batch shape.
+
+        Constructing it is the check, not a conversion for its own sake:
+        `Ragged` refuses a `lengths` that does not tile the array and a
+        chromosome under two bins, so a fixture that got its own segmentation
+        wrong fails where the shape is declared rather than inside a fit.
+        """
+        return Ragged(
+            values=self.counts_nb, lengths=tuple(int(x) for x in self.lengths)
+        )
+
+    def stacked_lengths(self, n_clones: int | None = None) -> np.ndarray:
+        """`lengths` as the clone-stacked HMM sees it.
+
+        `cnaster` stacks clones along the genomic axis and tiles the
+        segmentation with them (`hmrf_utils.py:51`), so the fit runs over
+        `n_clones * n_segments` chains rather than `n_segments`. Ragged
+        chromosomes make that the shape upstream's `Ragged` carries and the
+        rectangular route cannot.
+        """
+        return np.tile(self.lengths, self.n_clones if n_clones is None else n_clones)
 
     @property
     def emission_gigabytes(self) -> float:
@@ -701,6 +792,125 @@ def _emission_families(
     )
 
 
+def weierstrass_exposure(
+    n_obs: int,
+    n_spots: int,
+    *,
+    low: float,
+    high: float,
+    a: float = 0.5,
+    b: float = 7.0,
+    terms: int = 12,
+    rng: np.random.Generator | None = None,
+) -> np.ndarray:
+    """A strictly positive exposure that varies violently along the bin axis.
+
+    `W(x) = sum_k a^k cos(b^k pi x)` -- continuous everywhere, differentiable
+    nowhere for `ab > 1` -- rescaled into `[low, high]` and multiplied by a
+    per-spot library size.
+
+    **Along the bin axis, deliberately.** `merge_pseudobulk_by_index_mix` sums
+    the exposure across a clone's spots, so variation in the spot direction
+    averages out before the fit ever sees it and variation in the bin
+    direction survives intact. An exposure drawn i.i.d. over both axes is
+    therefore a weaker fixture than it looks.
+
+    **Strictly positive, and that is load-bearing.** `_nb_logpmf_1d` scores a
+    non-positive rate as `out[i] = 0.0` -- log-density zero, probability one
+    -- rather than excluding it. A Weierstrass function oscillates about its
+    mean and is negative half the time, so an unshifted one would silently
+    score half the genome as certain.
+
+    Why it is worth the trouble: a **constant** exposure is absorbed into the
+    emission as `log_mu - log(c)`, so `log_mu` is not separately identifiable
+    from it. A varying one breaks that absorption, which is what makes a
+    planted `log_mu` a thing a fit can be wrong about.
+
+    Raises
+    ------
+    ValueError
+        If `low` is not positive, or `a * b <= 1`, where the function is
+        differentiable and the fixture is merely a smooth ripple.
+    """
+    if low <= 0.0:
+        msg = f"the exposure must be strictly positive, got low={low}"
+        raise ValueError(msg)
+    if a * b <= 1.0:
+        msg = f"a*b must exceed 1 for the construction to bite, got {a * b}"
+        raise ValueError(msg)
+
+    x = np.linspace(0.0, 1.0, n_obs, endpoint=False)
+    walk = np.zeros(n_obs)
+    for k in range(terms):
+        walk += a**k * np.cos(b**k * np.pi * x)
+
+    span = walk.max() - walk.min()
+    shaped = low + (high - low) * (walk - walk.min()) / span
+
+    generator = rng if rng is not None else np.random.default_rng(DEFAULT_SEED)
+    library = generator.uniform(0.75, 1.25, n_spots)
+
+    return np.outer(shaped, library)
+
+
+MINIMUM_SEGMENT = MINIMUM_LENGTH
+"""The shortest chromosome the fixture may plant, which is upstream's floor.
+
+Aliased rather than re-stated so that a change upstream is a change here, and
+so the reason travels with it: one position carries no transition.
+"""
+
+
+def ragged_lengths(
+    n_obs: int,
+    n_segments: int,
+    *,
+    rng: np.random.Generator,
+    concentration: float = 2.0,
+) -> np.ndarray:
+    """A partition of `n_obs` into `n_segments` unequal parts.
+
+    Chromosomes are not the same size, and until #667 landed `Ragged` there was
+    no upstream shape that could say so -- `np.full(n_segments, n_obs //
+    n_segments)` was the whole of this function, and it forced `n_segments` to
+    divide `n_obs`.
+
+    Dirichlet weights over a floor of `MINIMUM_SEGMENT`, with the floor's
+    residual handed out to the largest fractional parts, so the result is
+    integral and sums exactly. `concentration` sets the spread: smaller is more
+    unequal, and 2.0 puts the dev instance's extremes about 3x apart.
+
+    The floor is upstream's and not this repository's: a segment of one
+    position is an initial distribution and no transition, and `Ragged` refuses
+    it where the shape is declared.
+
+    Raises
+    ------
+    ValueError
+        If the floor alone exceeds `n_obs`, where no partition exists.
+    """
+    if n_segments * MINIMUM_SEGMENT > n_obs:
+        msg = (
+            f"{n_segments} segments of at least {MINIMUM_SEGMENT} do not fit "
+            f"in {n_obs} observations"
+        )
+        raise ValueError(msg)
+
+    free = n_obs - n_segments * MINIMUM_SEGMENT
+    weights = rng.dirichlet(np.full(n_segments, concentration))
+
+    exact = weights * free
+    lengths = np.floor(exact).astype(int)
+    residual = free - int(lengths.sum())
+    if residual:
+        # NB largest fractional parts first, so the rounding is a rule rather
+        #    than an artefact of the order the segments happen to be in.
+        order = np.argsort(exact - lengths)[::-1]
+        lengths[order[:residual]] += 1
+
+    return lengths + MINIMUM_SEGMENT
+
+
 def core_inference_truth(
     *,
     n_clones: int = 3,
@@ -708,7 +918,11 @@ def core_inference_truth(
     lattice: tuple[int, int] = (12, 10),
     n_obs: int = 240,
     n_segments: int = 4,
+    segmentation: str = "ragged",
+    events: tuple[int, int] = (3, 8),
+    event_bins: tuple[int, int] | None = None,
     self_transition: float = 0.99,
+    exposure: str = "weierstrass",
     depth: tuple[float, float] = (0.5, 3.0),
     reads: tuple[int, int] = (10, 60),
     switch: tuple[float, float] = (0.01, 0.20),
@@ -721,18 +935,31 @@ def core_inference_truth(
     That is what lets a reduced fixture be a prefix of a larger one rather than
     a different dataset.
 
+    Parameters
+    ----------
+    exposure : str
+        How `base_nb_mean` is planted. `"weierstrass"` varies it violently
+        along the **bin** axis, which is the axis that survives the pseudobulk
+        and the one a fit has to divide out; `"uniform"` draws it i.i.d. over
+        both axes, which averages out per state and is the weaker fixture;
+        `"constant"` makes it one number, under which `log_mu` is absorbed as
+        `log_mu - log(c)` and is not separately identifiable.
+
+        The three are kept because the contrast between them is a measurement
+        -- `tests/test_exposure_fixture.py` reports what each costs the fit --
+        and because a goodness-of-fit test needs one distribution per state,
+        which only `"constant"` gives.
+
     Raises
     ------
     ValueError
         If `n_clones` exceeds the lattice's rows, where a band would be empty,
-        or the segments do not partition `n_obs`, or `n_states < 2`.
+        the segments do not partition `n_obs`, `n_states < 2`, or `exposure`
+        names no mode.
     """
     rows, columns = lattice
     if n_clones > rows:
         msg = f"{n_clones} bands over {rows} rows leaves one empty"
-        raise ValueError(msg)
-    if n_obs % n_segments:
-        msg = f"{n_segments} segments do not partition {n_obs} observations"
         raise ValueError(msg)
     if n_states < 2:
         msg = f"a chain needs at least two states, got {n_states}"
@@ -741,30 +968,68 @@ def core_inference_truth(
     rng = np.random.default_rng(seed)
     n_spots = rows * columns
 
-    # Spread across a decade of expression and either side of balance, so the
-    # states are separable by the data rather than by their index.
-    log_mu = np.log(np.linspace(0.5, 5.0, n_states))
+    # State zero is diploid and balanced: `mu = 1`, `p = 0.5`. It is planted
+    # rather than left to chance because two stages of `run_cnaster` require
+    # one to exist -- `find_diploid_balanced_state` raises "No candidate
+    # diploid balanced state found!" without it, and the normal-spot path
+    # tests every bin against a beta-binomial with `p` forced to 0.5 (#106).
+    # A fixture with no normal state asks both for something it never planted.
+    #
+    # The rest spread across a decade of expression and above balance:
+    # `run_core_inference` calls `gmm_init` with `only_minor=False` because,
+    # as `cnaster`'s own comment says, with no phasing the states have to sit
+    # at or above 0.5. A state planted below it is asking the initializer for
+    # something the model does not carry.
+    log_mu = np.concatenate(([0.0], np.log(np.linspace(1.5, 5.0, n_states - 1))))
     alphas = np.full(n_states, 1.0 / 6.0)
-    # Above balance: `run_core_inference` calls `gmm_init` with
-    # `only_minor=False` because, as its own comment says, with no phasing the
-    # states have to sit above 0.5. A fixture planted below it is asking the
-    # initializer for something the model does not carry.
-    p_binom = np.linspace(0.52, 0.88, n_states)
+    p_binom = np.concatenate(([0.5], np.linspace(0.58, 0.88, n_states - 1)))
     taus = np.full(n_states, 30.0)
 
     row_of = np.arange(n_spots) // columns
     labels = np.minimum(row_of * n_clones // rows, n_clones - 1).astype(np.int64)
 
-    transition = circulant_transition(n_states, self_transition)
-    states = np.empty((n_clones, n_obs), dtype=np.int64)
-    for clone in range(n_clones):
-        states[clone, 0] = rng.integers(n_states)
-        for obs in range(1, n_obs):
-            states[clone, obs] = rng.choice(
-                n_states, p=transition[states[clone, obs - 1]]
-            )
+    if segmentation == "ragged":
+        lengths = ragged_lengths(n_obs, n_segments, rng=rng)
+    elif segmentation == "equal":
+        if n_obs % n_segments:
+            msg = f"{n_segments} equal segments do not partition {n_obs}"
+            raise ValueError(msg)
+        lengths = np.full(n_segments, n_obs // n_segments, dtype=int)
+    else:
+        msg = f"unknown segmentation {segmentation!r}"
+        raise ValueError(msg)
 
-    base_nb_mean = rng.uniform(*depth, (n_obs, n_spots))
+    # NB a neutral genome with events placed on it, rather than a chain
+    #    visiting every state equally (#120). Ten states visited uniformly
+    #    leave the genome a tenth neutral, which is
+    #    `find_diploid_balanced_state`'s own threshold, so whether the normal
+    #    state is a candidate at all came down to the seed. Events are
+    #    confined within a chromosome, which is also what makes `lengths` the
+    #    truth rather than a label: the recursion restarts there.
+    # NB the event size scales with the genome, so the neutral backbone
+    #    survives at any `n_obs`. Absolute sizes suit a real genome, where a
+    #    bin is a fixed number of bases -- but a fixture's `n_obs` is a budget
+    #    rather than a length, and events of five to forty bins that leave a
+    #    thousand-bin genome 89 per cent neutral bury a sixty-bin one.
+    extent = event_bins or (max(2, n_obs // 200), max(3, n_obs // 25))
+    placements = [
+        place_events(lengths, n_states, rng=rng, events=events, event_bins=extent)
+        for _ in range(n_clones)
+    ]
+    states = np.stack([path for path, _ in placements])
+    placed_events = tuple(tuple(placed) for _, placed in placements)
+
+    if exposure == "constant":
+        base_nb_mean = np.full((n_obs, n_spots), float(depth[0]))
+    elif exposure == "uniform":
+        base_nb_mean = rng.uniform(*depth, (n_obs, n_spots))
+    elif exposure == "weierstrass":
+        base_nb_mean = weierstrass_exposure(
+            n_obs, n_spots, low=depth[0], high=depth[1], rng=rng
+        )
+    else:
+        msg = f"unknown exposure {exposure!r}"
+        raise ValueError(msg)
     total_bb_RD = rng.integers(*reads, (n_obs, n_spots)).astype(np.float64)
     switch_prob = rng.uniform(*switch, n_obs)
 
@@ -793,12 +1058,110 @@ def core_inference_truth(
         alphas=alphas,
         p_binom=p_binom,
         taus=taus,
-        lengths=np.full(n_segments, n_obs // n_segments, dtype=int),
+        lengths=lengths,
+        events=placed_events,
         switch_prob=switch_prob,
         lattice=lattice,
         self_transition=self_transition,
         seed=seed,
     )
+
+
+def critical_instance(**overrides: object) -> CoreInferenceTruth:
+    """The instance the early gate runs on: the smallest that is still a run.
+
+    `M = K = 2`, `G = 1,000`, `S = 500` -- two clones over a `20 x 25` lattice,
+    250 spots each, which clears `icm_sweep_deque`'s floor of 200 (#81) with
+    the least room to spare. Two states is one event state against the
+    neutral one, so a fit that cannot separate them has nothing else to
+    confuse them with, and a failure here is structural rather than
+    statistical.
+
+    The point is the budget. `critical` gates first and gates everything
+    (upstream's rule, mirrored in `pyproject.toml`), so the instance it fits
+    end to end has to cost seconds, not the 16 s `dev_instance` costs or the
+    minutes `key_instance` would. Reduce further and the labelling stops
+    being recoverable at all -- one clone under the floor is merged away
+    before the solver runs.
+
+    `events=(6, 10)` rather than the default `(3, 8)`, and the reason is
+    measured: at `K = 2` the one event state is the weakest the law plants
+    (`mu = 1.5`, `p = 0.58`), and at the default's 13.5 per cent occupancy
+    the solver merges the two clones into one. At 18.1 per cent it recovers
+    the labelling exactly, in about a second warm; deeper reads or a third
+    state do the same, and more events is the change that keeps `K = 2`.
+    """
+    settings: dict[str, object] = {
+        "n_clones": 2,
+        "n_states": 2,
+        "lattice": (20, 25),
+        "n_obs": 1_000,
+        "n_segments": 4,
+        "events": (6, 10),
+    }
+    settings.update(overrides)
+    return core_inference_truth(**settings)  # type: ignore[arg-type]
+
+
+def dev_instance(**overrides: object) -> CoreInferenceTruth:
+    """The instance to develop against: small enough to fail fast.
+
+    `K = 10` as the key instance has, a tenth of its `G`, a third of its `S`,
+    and **four** clones rather than ten. Four because of the floor, not taste:
+    `icm_sweep_deque` merges any clone under 200 spots and does not expose the
+    threshold (#81), so ten clones cannot exist below `S = 2,000` and a
+    development instance that small would measure the merge rather than the
+    model. Four over 1,000 spots leaves 250 each.
+
+    The point is wall time. An error found in 20 s is an error found; the same
+    error at 310 s is a reason to stop looking.
+    """
+    settings: dict[str, object] = {
+        "n_clones": 4,
+        "n_states": 10,
+        "lattice": (10, 100),
+        "n_obs": 1_000,
+        "n_segments": 10,
+    }
+    settings.update(overrides)
+    return core_inference_truth(**settings)  # type: ignore[arg-type]
+
+
+def key_instance(**overrides: object) -> CoreInferenceTruth:
+    """The instance final validation and benchmarking are reported at.
+
+    `M = K = 10`, `G = 10,000`, `S = 5,000` -- the declared scale (#87),
+    unreduced. It builds here in 16.6 s at 2.09 GB and every planted parameter
+    is recovered from it.
+
+    **The inference on it does not fit**, and that is #90 rather than a reason
+    to redefine the instance. `cnaster` materializes `(n_states, n_obs,
+    n_spots)` twice per outer iteration -- 8.00 GB here, against 15 GB
+    available -- and measured, one outer iteration at `M = K = 10`:
+
+    | `G` | `S` | emission | wall | peak RSS | clones out |
+    | ---: | ---: | ---: | ---: | ---: | ---: |
+    | 750 | 2,000 | 0.24 GB | 21.6 s | 1.19 GB | 10 |
+    | 1,500 | 2,000 | 0.48 GB | 38.6 s | 1.55 GB | 10 |
+    | 4,000 | 2,000 | 1.28 GB | 90.9 s | 2.77 GB | 10 |
+    | 10,000 | 2,000 | 3.20 GB | 222.5 s | 5.68 GB | 10 |
+    | 10,000 | 3,000 | 4.80 GB | 310.3 s | 7.98 GB | 10 |
+    | **10,000** | **5,000** | **8.00 GB** | — | ~18 GB projected | — |
+
+    Peak tracks the emission at about 1.6x plus a fixed 0.5 GB, so the array
+    is the whole story and the last row is an interpolation rather than a
+    guess. #61 is the one written patch that removes the array rather than
+    reading it faster.
+    """
+    settings: dict[str, object] = {
+        "n_clones": 10,
+        "n_states": 10,
+        "lattice": (50, 100),
+        "n_obs": 10_000,
+        "n_segments": 10,
+    }
+    settings.update(overrides)
+    return core_inference_truth(**settings)  # type: ignore[arg-type]
 
 
 @dataclass(frozen=True)
