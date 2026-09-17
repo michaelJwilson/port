@@ -276,14 +276,16 @@ omit = [
 ]
 
 [tool.coverage.report]
-# The floor the tests reach: 1,977 of 5,676 statements, 34.83 per cent. The
-# denominator is `cnaster` plus `python/port`, so a module added here moves
-# both the numerator and the denominator -- `port.integer_copy` added 98
-# statements and `port.patch.hmrf_field` 32, and the figure rose for each,
-# which is the arithmetic working. This branch adds no module and moves the
-# numerator alone: a planted instance of `run_core_inference` reaches
-# `cnaster` code no test had entered, which is the only other way the figure
-# rises.
+# The floor the tests reach against the whole of `cnaster`: 3,506 of 5,975
+# statements, 58.68 per cent. It was 33.77 until `run_cnaster` itself ran end
+# to end from temporary files (#87): one call reaches the plotting, the
+# phasing, the clone initializer, the normal baseline and the integer-copy
+# solver, none of which any component test had touched.
+#
+# The denominator grew with it, 5,544 to 5,843, and the growth is the gap the
+# note below predicted closing: `scripts/run_cnaster.py` is 299 statements
+# that a directory scan never descended into, and importing it to run it puts
+# them in the figure. They sit at 89.97 per cent.
 #
 # Low by construction -- the denominator is
 # every module the package ships at top level, and most of them have no test
@@ -297,7 +299,7 @@ omit = [
 # pull request. Unlike a denominator of the imported modules, this one does
 # not fall for bringing a new module under test, so there is no case where
 # lowering it is legitimate.
-fail_under = 34.8
+fail_under = 58.6
 precision = 2
 exclude_lines = [
     "pragma: no cover",
