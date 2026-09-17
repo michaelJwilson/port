@@ -17,6 +17,10 @@
 # what said so: the first fixture import of it failed the guard that
 # refuses a referee the surface does not name.
 #
+# `opt/fit.py` joined with `main`'s `test_integer_copy.py`, which referees
+# against it. The guard in `tests/test_coverage_scope.py` is what caught the
+# omission on the merge, which is the job it was written for.
+#
 # `source` names the installed **directory** and `include` narrows it to the
 # surface, for the reason `pyproject.toml` gives: naming modules instead lets
 # coverage drop the ones no test imported, and the three at zero would leave
@@ -31,6 +35,7 @@ source =
 include =
     */snakes_and_ladders/emissions.py
     */snakes_and_ladders/opt/hmm.py
+    */snakes_and_ladders/opt/fit.py
     */snakes_and_ladders/ragged.py
     */snakes_and_ladders/likelihood/forward_backward.py
     */snakes_and_ladders/likelihood/ragged_rust.py
@@ -40,15 +45,15 @@ include =
     */snakes_and_ladders/sim/spatio_sequential.py
     */snakes_and_ladders/sim/graph.py
     */snakes_and_ladders/sim/hmm.py
-# 771 of 2,211 statements, 34.87 per cent. `ragged.py` joined the surface at
-# 68.42 per cent when #667 landed and the fixture began planting unequal
-# chromosomes against it.
+# 897 of 2,355 statements, 38.09 per cent. `ragged.py` joined the surface when
+# #667 landed and the fixture began planting unequal chromosomes against it;
+# `opt/fit.py` joined with `main`'s `test_integer_copy.py`.
 #
-# Of the figure before that, the 42 tests marked `upstream_oracle` --
-# the agreement claims, where upstream decided the expected value -- reach
-# 33.38 per cent on their own, so every other test in the suite adds two
-# statements. The surface is the referee's and not the fixture's, measured
-# rather than asserted, which is what #69 asks for.
+# Of that, the 42 tests marked `upstream_oracle` -- the agreement claims,
+# where upstream decided the expected value -- reach 32.57 per cent on their
+# own, so every other test in the suite adds 111 statements. The surface is
+# the referee's and not the fixture's, measured rather than asserted, which is
+# what #69 asks for.
 #
 # Recut 35.7 -> 35.5 on the #674 re-pin, and the direction is the
 # denominator's rather than the numerator's: 801 covered of 2,238 became 803
@@ -65,5 +70,5 @@ include =
 # and they are the fit-level half of that rung, which waits on #77 item 1.
 # Upstream's #674 is the fix; the event that moves this figure is the pin
 # moving, not a test here failing.
-fail_under = 35.5
+fail_under = 38.0
 precision = 2
