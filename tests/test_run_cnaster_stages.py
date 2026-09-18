@@ -650,50 +650,6 @@ def test_the_fit_collapses_the_decode_between_its_first_two_iterations(
     assert int((second > 0).sum()) == 1, f"second iteration {second}"
 
 
-@pytest.mark.warning
-@pytest.mark.parametrize("t", [SHIPPED_T_PHASEING, PHASING_SELF_TRANSITION, 0.99, 0.9])
-def test_the_collapse_holds_across_every_self_transition_that_ships(
-    phase_inputs: Any, t: float
-) -> None:
-    """What drives it: the fixed near-unity self-transition (#122).
-
-    `params="sp"` fits the start probabilities and the BAF states and leaves
-    the transition fixed, so `t` is imposed rather than learned. Across the
-    whole shipped range -- `zenodo_sim_config.yaml` sets
-    `t_phaseing = 0.99999` and `t = 0.9999999` -- the decode is one state.
-    `test_..._only_a_transition_no_configuration_ships_decodes_the_truth`
-    is the other end of the same sweep.
-    """
-    truth, _, _, _, n_clones = phase_inputs
-
-    occupancy = _decode_occupancy(
-        _fit(phase_inputs, t=t, max_iter=100, planted=True), truth.n_states, n_clones
-    )
-
-    assert int((occupancy > 0).sum()) == 1, f"t={t} decoded {occupancy}"
-
-
-@pytest.mark.snapshot
-def test_only_a_transition_no_configuration_ships_decodes_the_truth(
-    phase_inputs: Any,
-) -> None:
-    """At `t = 0.5` the decode recovers all three states: 27 / 66 / 27.
-
-    The contrast that makes the sweep above a finding rather than a list of
-    failures -- the fit is not incapable of the instance, it is prevented from
-    reaching it by a transition prior that forbids switching. `0.5` is four
-    orders of magnitude from anything `cnaster` ships, so this is a diagnosis
-    and not a proposed setting.
-    """
-    truth, _, _, _, n_clones = phase_inputs
-
-    occupancy = _decode_occupancy(
-        _fit(phase_inputs, t=0.5, max_iter=100, planted=True), truth.n_states, n_clones
-    )
-
-    assert int((occupancy > 0).sum()) == truth.n_states, f"decoded {occupancy}"
-
-
 @pytest.mark.snapshot
 def test_the_refinement_conserves_every_block(phased: Any) -> None:
     """The segmentation `initial_phase_given_partition` hands on.
@@ -710,16 +666,20 @@ def test_the_refinement_conserves_every_block(phased: Any) -> None:
 
 
 @pytest.mark.warning
-@pytest.mark.parametrize("t", [0.9999999, SHIPPED_T_PHASEING, 0.999, 0.99, 0.95, 0.9])
+@pytest.mark.parametrize(
+    "t",
+    [0.9999999, PHASING_SELF_TRANSITION, SHIPPED_T_PHASEING, 0.999, 0.99, 0.95, 0.9],
+)
 def test_the_decode_collapses_at_every_self_transition_down_to_nine_tenths(
     phase_inputs: Any, t: float
 ) -> None:
-    """Six values spanning seven orders of magnitude in `1 - t`, all collapsing.
+    """Seven values spanning seven orders of magnitude in `1 - t`, all collapsing.
 
-    #142. The sweep #129 opened was four values and too coarse to say anything
-    about where this ends. This is the upper band, and it reproduces: every
-    value here puts all 120 clone-blocks on one state on this machine and on a
-    GitHub runner alike.
+    #142, absorbing #129's four-value sweep: that test asserted the same
+    thing over a subset of these values with an identical body, so it is
+    gone and its one value #142 lacked -- `PHASING_SELF_TRANSITION` -- is
+    here. Every value puts all 120 clone-blocks on one state, on this
+    machine and on a GitHub runner alike.
 
     `0.9` implies a ten-bin segment, already *shorter* than the events the
     fixture plants, and it still collapses. Every value `cnaster` ships is in
@@ -799,3 +759,128 @@ def test_resolving_the_state_count_is_not_recovering_the_parameters(
     assert recovered < truth.n_states, (
         f"t={t} recovered every planted state after all: {folded} against {planted}"
     )
+
+
+NORMAL_BASELINE_TOLERANCE = 0.15
+"""Total variation between the fitted normal baseline and the planted one.
+
+Realized 0.101 on this fixture. The baseline is a per-bin **share** over the
+candidate spots, so the comparison is between two distributions over 1,000
+bins and total variation is what states it: a per-bin relative error is
+dominated by the low-count bins (median 12 per cent, 95th percentile 56) and
+says more about the draw than about the stage.
+"""
+
+
+@pytest.fixture(scope="module")
+def normal_stage(planted: Any, loaded: Any) -> tuple[Any, np.ndarray, np.ndarray]:
+    """The normal stage run once: its candidate mask and its baseline.
+
+    `determine_normal_candidates` reads a clone assignment and per-clone BAF
+    profiles; the fixture knows both, so neither is taken from a fit. That is
+    what makes the claims below end-to-end against planted truth rather than
+    an agreement between two of `cnaster`'s own stages.
+
+    Module-scoped because the three assertions are three claims about one
+    run, not three runs: repeating the stage per test would treble a
+    thirty-second call to restate the same arrays.
+    """
+    from cnaster.config import get_global_config
+    from cnaster.normal_spot import (
+        determine_normal_baseline,
+        determine_normal_candidates,
+    )
+    from scipy.sparse import eye as sparse_eye
+
+    truth = planted
+    config = get_global_config()
+    single_X = np.stack([truth.counts_nb, truth.counts_bb], axis=1)
+    single_X_rdr = single_X[:, 0, :].astype(float)
+
+    candidate = determine_normal_candidates(
+        config,
+        {"new_assignment": truth.labels},
+        truth.p_binom[truth.states],
+        single_X,
+        single_X_rdr,
+        sparse_eye(truth.n_spots, format="csr"),
+        None,
+    )
+    rdr_normal, _, _ = determine_normal_baseline(single_X_rdr.copy(), candidate, config)
+
+    return truth, np.asarray(candidate), np.asarray(rdr_normal).ravel()
+
+
+@pytest.mark.end2end
+def test_the_normal_candidates_are_the_planted_balanced_clone(
+    normal_stage: tuple[Any, np.ndarray, np.ndarray],
+) -> None:
+    """**The stage selects the clone the fixture planted as balanced (#160).**
+
+    `cnaster` picks by the smallest BAF deviation from 0.5, summed over the
+    genome with a 0.05 deadband. The fixture plants by copy state: one clone
+    sits at the balanced state in more of its bins than any other. The two
+    rules are different, so their agreeing is a claim rather than a tautology,
+    and it is the claim the whole normal-baseline path rests on.
+
+    Every candidate must come from that clone. A candidate drawn from a clone
+    carrying events would put tumour coverage into the baseline every later
+    stage divides by.
+    """
+    truth, candidate, _ = normal_stage
+
+    planted_balanced = int(
+        np.argmax(
+            [np.mean(truth.states[clone] == 0) for clone in range(truth.n_clones)]
+        )
+    )
+
+    assert candidate.sum() > 0, "the stage selected no normal spots at all"
+    assert set(np.unique(truth.labels[candidate]).tolist()) == {planted_balanced}, (
+        f"candidates came from clones {np.unique(truth.labels[candidate])}, "
+        f"and the planted balanced clone is {planted_balanced}"
+    )
+
+
+@pytest.mark.end2end
+def test_the_normal_baseline_follows_the_planted_exposure(
+    normal_stage: tuple[Any, np.ndarray, np.ndarray],
+) -> None:
+    """**The baseline is the planted exposure over the spots it selected (#160).**
+
+    `determine_normal_baseline` sums the read-depth channel over the candidate
+    spots and normalizes, so it estimates the per-bin share of the library the
+    normal population carries. The fixture planted that share as
+    `base_nb_mean`, and the normal clone sits at `mu = 1` in most of its bins,
+    so the planted expectation is the exposure itself.
+
+    Every later stage divides by this baseline, so an error here is an error
+    in every copy ratio the pipeline reports. Nothing checked it before.
+    """
+    truth, candidate, rdr_normal = normal_stage
+
+    planted_share = np.asarray(truth.base_nb_mean)[:, candidate].sum(axis=1)
+    planted_share = planted_share / planted_share.sum()
+
+    total_variation = 0.5 * float(np.abs(rdr_normal - planted_share).sum())
+
+    assert total_variation < NORMAL_BASELINE_TOLERANCE, (
+        f"the fitted baseline is {total_variation:.4f} from the planted one in "
+        f"total variation, over {rdr_normal.size} bins"
+    )
+
+
+@pytest.mark.analytic
+def test_the_normal_baseline_is_a_distribution_over_bins(
+    normal_stage: tuple[Any, np.ndarray, np.ndarray],
+) -> None:
+    """Conservation: the baseline is a share, so it sums to one.
+
+    Holds of any correct implementation -- the stage divides by its own total
+    -- and it is what makes the total-variation comparison above a comparison
+    between two distributions rather than between two scales.
+    """
+    _, _, rdr_normal = normal_stage
+
+    assert float(np.sum(rdr_normal)) == pytest.approx(1.0, abs=1e-12)
+    assert float(np.min(rdr_normal)) >= 0.0

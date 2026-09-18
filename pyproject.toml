@@ -328,10 +328,12 @@ omit = [
 ]
 
 [tool.coverage.report]
-# **The floor is what `end2end` and `oracle` reach** (#157): 2,315 of 5,919
-# statements, 39.11 per cent, over the 132 tests that judge a scientific
+# **The floor is what `end2end` and `oracle` reach** (#157): 2,371 of 5,919
+# statements, 40.06 per cent, over the 134 tests that judge a scientific
 # output against the truth that generated the data or against an independent
-# implementation. Running everything reaches 4,242 of 6,218, 68.22 per cent,
+# implementation. #160's first stage moved it: `normal_spot` went 0.00 to
+# 14.25 per cent -- 56 statements that ran on every CI cycle with nothing
+# checking the baseline every later stage divides by. Running everything reaches 4,242 of 6,218, 68.22 per cent,
 # and that figure is no longer a gate.
 #
 # **Eight of the ten markers do not count, on purpose.** `analytic`, `patch`,
@@ -375,7 +377,7 @@ omit = [
 # pull request. Unlike a denominator of the imported modules, this one does
 # not fall for bringing a new module under test, so there is no case where
 # lowering it is legitimate.
-fail_under = 39.1
+fail_under = 40.0
 precision = 2
 exclude_lines = [
     "pragma: no cover",
