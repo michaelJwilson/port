@@ -21,7 +21,8 @@ import pytest
 from pytest_benchmark.fixture import BenchmarkFixture
 
 from tests.test_load_input_data_patch import (
-    gate_config,  # noqa: F401  -- the fixture is used by name
+    gate_config,  # noqa: F401  -- used by name, and it needs the one below
+    planted_instance,  # noqa: F401  -- `gate_config` resolves it in this module
     range_filter_loop,
     synthetic_ranges,
 )
