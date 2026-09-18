@@ -98,8 +98,7 @@ def _artifacts(output: Path) -> tuple[set[str], list[Path]]:
     )
 
 
-@pytest.mark.infra
-@pytest.mark.analytic
+@pytest.mark.smoke
 @pytest.mark.preprocessing
 def test_the_pipeline_completes_from_files(tmp_path: Path) -> None:
     """Every stage runs, on the smallest instance that clears the floors.
@@ -124,8 +123,7 @@ def test_the_pipeline_completes_from_files(tmp_path: Path) -> None:
     assert list(output.rglob("*.npz")), "the final result was not written"
 
 
-@pytest.mark.infra
-@pytest.mark.analytic
+@pytest.mark.smoke
 @pytest.mark.preprocessing
 @pytest.mark.release
 def test_the_pipeline_completes_on_the_dev_instance(tmp_path: Path) -> None:

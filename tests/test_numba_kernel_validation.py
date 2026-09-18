@@ -138,8 +138,7 @@ def _installed_kernels() -> dict[str, str]:
     return kernels
 
 
-@pytest.mark.infra
-@pytest.mark.analytic
+@pytest.mark.smoke
 def test_every_compiled_kernel_is_classified() -> None:
     """A kernel is validated or it names the ticket that owns the gap.
 
@@ -160,8 +159,7 @@ def test_every_compiled_kernel_is_classified() -> None:
     )
 
 
-@pytest.mark.infra
-@pytest.mark.analytic
+@pytest.mark.smoke
 def test_every_named_validation_test_exists(
     collected_items: list[pytest.Item],
 ) -> None:
@@ -181,8 +179,7 @@ def test_every_named_validation_test_exists(
     assert not missing, f"registry points at tests that do not exist: {missing}"
 
 
-@pytest.mark.infra
-@pytest.mark.analytic
+@pytest.mark.smoke
 def test_every_gap_names_a_ticket() -> None:
     """An excuse without a ticket is a decision nobody will revisit."""
     import re
@@ -196,8 +193,7 @@ def test_every_gap_names_a_ticket() -> None:
     assert not unticketed, f"gaps with no ticket: {unticketed}"
 
 
-@pytest.mark.infra
-@pytest.mark.analytic
+@pytest.mark.smoke
 def test_the_registry_is_not_empty_and_the_scan_found_kernels() -> None:
     """Each assertion above passes trivially over an empty scan.
 

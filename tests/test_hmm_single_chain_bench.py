@@ -25,7 +25,6 @@ GATE_LENGTH = 200
 GATE_SEQUENCES = 8
 
 
-@pytest.mark.infra
 @pytest.mark.benchmark
 def test_cnaster_emission_baseline(benchmark: BenchmarkFixture) -> None:
     """`cnaster`'s emission over the gate-size fixture."""
@@ -38,7 +37,6 @@ def test_cnaster_emission_baseline(benchmark: BenchmarkFixture) -> None:
     benchmark(cnaster_emission, inputs)
 
 
-@pytest.mark.infra
 @pytest.mark.benchmark
 def test_upstream_emission_baseline(benchmark: BenchmarkFixture) -> None:
     """The same scores from upstream, for the ratio between them."""
@@ -51,7 +49,6 @@ def test_upstream_emission_baseline(benchmark: BenchmarkFixture) -> None:
     benchmark(fixture.family.log_density, observations)
 
 
-@pytest.mark.infra
 @pytest.mark.benchmark
 def test_cnaster_forward_baseline(benchmark: BenchmarkFixture) -> None:
     """`cnaster`'s emission and forward recursion together."""
@@ -64,7 +61,6 @@ def test_cnaster_forward_baseline(benchmark: BenchmarkFixture) -> None:
     benchmark(cnaster_total_log_likelihood, inputs)
 
 
-@pytest.mark.infra
 @pytest.mark.benchmark
 def test_upstream_forward_baseline(benchmark: BenchmarkFixture) -> None:
     """Upstream's emission and forward recursion together."""
@@ -76,7 +72,6 @@ def test_upstream_forward_baseline(benchmark: BenchmarkFixture) -> None:
     benchmark(upstream_total_log_likelihood, fixture)
 
 
-@pytest.mark.infra
 @pytest.mark.benchmark
 def test_cnaster_phased_forward_baseline(benchmark: BenchmarkFixture) -> None:
     """`cnaster`'s phased lattice, which reassembles its transfer matrix per position."""
@@ -92,7 +87,6 @@ def test_cnaster_phased_forward_baseline(benchmark: BenchmarkFixture) -> None:
     benchmark(cnaster_phased_total_log_likelihood, inputs)
 
 
-@pytest.mark.infra
 @pytest.mark.benchmark
 def test_upstream_phased_forward_baseline(benchmark: BenchmarkFixture) -> None:
     """The same recursion upstream, at the assembled constant transition.

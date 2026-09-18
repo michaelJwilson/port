@@ -65,7 +65,7 @@ jobs:
       #    counted or not.
       - run: >
           uv run --no-sync pytest
-          -m "not release and (end2end or oracle or equivalence or bug)"
+          -m "not release and (end2end or oracle)"
           --cov --cov-report=term
       # NB the referee's own floor, measured separately and over its own
       #    denominator. One figure covering both would rise for importing more

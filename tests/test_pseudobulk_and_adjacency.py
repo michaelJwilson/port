@@ -11,7 +11,6 @@ import pytest
 
 
 @pytest.mark.oracle
-@pytest.mark.exact
 @pytest.mark.critical
 @pytest.mark.parametrize("n_clones", [1, 3])
 def test_pseudobulk_sums_the_spots_of_each_clone(n_clones: int) -> None:
@@ -43,8 +42,7 @@ def test_pseudobulk_sums_the_spots_of_each_clone(n_clones: int) -> None:
         np.testing.assert_allclose(merged_total[:, clone], total[:, idx].sum(axis=-1))
 
 
-@pytest.mark.oracle
-@pytest.mark.property
+@pytest.mark.analytic
 def test_pseudobulk_conserves_the_total_over_a_partition() -> None:
     """Summing the clones returns the sum over every spot.
 
@@ -77,8 +75,7 @@ def square_grid(side: int, offset: float = 0.0) -> np.ndarray:
     )
 
 
-@pytest.mark.oracle
-@pytest.mark.property
+@pytest.mark.analytic
 def test_adjacency_is_symmetric_and_has_no_self_edges() -> None:
     """Neighbourhood is mutual, and a spot is not its own neighbour.
 
@@ -97,8 +94,7 @@ def test_adjacency_is_symmetric_and_has_no_self_edges() -> None:
     assert adjacency.diagonal().sum() == 0
 
 
-@pytest.mark.infra
-@pytest.mark.analytic
+@pytest.mark.smoke
 def test_adjacency_does_not_join_slices_by_default() -> None:
     """Two slices far apart share no edge unless one is supplied.
 
@@ -116,8 +112,7 @@ def test_adjacency_does_not_join_slices_by_default() -> None:
     assert adjacency[: len(first), len(first) :].nnz == 0
 
 
-@pytest.mark.infra
-@pytest.mark.analytic
+@pytest.mark.smoke
 def test_lattice_type_sets_the_coordination_number() -> None:
     """Naming a lattice is naming its neighbour count.
 

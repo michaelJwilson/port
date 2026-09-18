@@ -71,18 +71,14 @@ def stress() -> tuple[PottsLabels, "PottsGraph", np.ndarray]:
     return fixture, _graph(fixture), np.zeros(fixture.n_nodes, dtype=np.int64)
 
 
-@pytest.mark.cnaster
 @pytest.mark.benchmark
-@pytest.mark.subject
 def test_cnaster_icm_gate(benchmark: BenchmarkFixture, gate: Any) -> None:
     """`icm_sweep_deque` over 400 nodes."""
     fixture, _, start = gate
     benchmark(_cnaster_sweep, fixture, start)
 
 
-@pytest.mark.infra
 @pytest.mark.benchmark
-@pytest.mark.upstream
 def test_upstream_icm_gate(benchmark: BenchmarkFixture, gate: Any) -> None:
     """The same move set, upstream's implementation.
 
@@ -93,38 +89,30 @@ def test_upstream_icm_gate(benchmark: BenchmarkFixture, gate: Any) -> None:
     benchmark(_upstream_icm, fixture, graph)
 
 
-@pytest.mark.infra
 @pytest.mark.benchmark
-@pytest.mark.upstream
 def test_upstream_expansion_gate(benchmark: BenchmarkFixture, gate: Any) -> None:
     """The stronger move set, which is expected to cost more and find more."""
     fixture, graph, _ = gate
     benchmark(_upstream_expansion, fixture, graph)
 
 
-@pytest.mark.cnaster
 @pytest.mark.benchmark
 @pytest.mark.release
-@pytest.mark.subject
 def test_cnaster_icm_stress(benchmark: BenchmarkFixture, stress: Any) -> None:
     """3,600 nodes, nine times the gate."""
     fixture, _, start = stress
     benchmark(_cnaster_sweep, fixture, start)
 
 
-@pytest.mark.infra
 @pytest.mark.benchmark
 @pytest.mark.release
-@pytest.mark.upstream
 def test_upstream_icm_stress(benchmark: BenchmarkFixture, stress: Any) -> None:
     fixture, graph, _ = stress
     benchmark(_upstream_icm, fixture, graph)
 
 
-@pytest.mark.infra
 @pytest.mark.benchmark
 @pytest.mark.release
-@pytest.mark.upstream
 def test_upstream_expansion_stress(benchmark: BenchmarkFixture, stress: Any) -> None:
     fixture, graph, _ = stress
     benchmark(_upstream_expansion, fixture, graph)

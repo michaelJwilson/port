@@ -11,7 +11,6 @@ from port.oxiport import double as double_from_extension
 
 
 @pytest.mark.oracle
-@pytest.mark.exact
 @pytest.mark.critical
 def test_double() -> None:
     """The extension doubles, against the arithmetic it claims to do."""
@@ -20,8 +19,7 @@ def test_double() -> None:
     assert double_from_extension(-3) == -6
 
 
-@pytest.mark.infra
-@pytest.mark.analytic
+@pytest.mark.smoke
 def test_top_level_reexport_is_the_extension_function() -> None:
     """`port.__init__` re-exports the binding rather than shadowing it."""
     assert double is double_from_extension

@@ -95,9 +95,7 @@ def stress_instance() -> Any:
     return dev_instance()
 
 
-@pytest.mark.cnaster
 @pytest.mark.benchmark
-@pytest.mark.subject
 def test_cnaster_emission_gate(benchmark: BenchmarkFixture, gate_instance: Any) -> None:
     """`cnaster`'s two matched families over the reduced dev instance.
 
@@ -107,9 +105,7 @@ def test_cnaster_emission_gate(benchmark: BenchmarkFixture, gate_instance: Any) 
     benchmark(_cnaster_emission, inputs)
 
 
-@pytest.mark.infra
 @pytest.mark.benchmark
-@pytest.mark.upstream
 def test_upstream_emission_gate(
     benchmark: BenchmarkFixture, gate_instance: Any
 ) -> None:
@@ -122,10 +118,8 @@ def test_upstream_emission_gate(
     benchmark(family.log_density, observations, covariate)
 
 
-@pytest.mark.cnaster
 @pytest.mark.benchmark
 @pytest.mark.release
-@pytest.mark.subject
 def test_cnaster_emission_stress(
     benchmark: BenchmarkFixture, stress_instance: Any
 ) -> None:
@@ -138,10 +132,8 @@ def test_cnaster_emission_stress(
     benchmark(_cnaster_emission, inputs)
 
 
-@pytest.mark.infra
 @pytest.mark.benchmark
 @pytest.mark.release
-@pytest.mark.upstream
 def test_upstream_emission_stress(
     benchmark: BenchmarkFixture, stress_instance: Any
 ) -> None:

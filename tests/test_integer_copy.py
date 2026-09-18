@@ -44,8 +44,7 @@ TIGHT = np.diag([0.02**2, 0.01**2])
 """A covariance small enough that the decoding is unambiguous."""
 
 
-@pytest.mark.cnaster
-@pytest.mark.subject
+@pytest.mark.snapshot
 def test_the_lattice_is_the_one_cnaster_searches() -> None:
     """Pinned against `cnaster`'s construction, not against `get_ordered_acn`.
 
@@ -77,8 +76,7 @@ def test_the_lattice_is_the_one_cnaster_searches() -> None:
     assert (6, 0) not in cnaster_candidates
 
 
-@pytest.mark.cnaster
-@pytest.mark.subject
+@pytest.mark.snapshot
 def test_the_minor_allele_is_the_numerator() -> None:
     """`p = B / (A + B)`, which is `emission.tex`; `cnaster` uses the other one.
 
@@ -105,7 +103,6 @@ def test_the_minor_allele_is_the_numerator() -> None:
 
 
 @pytest.mark.end2end
-@pytest.mark.planted
 def test_decoding_recovers_the_planted_copies() -> None:
     """At the truth's own observables and a tight covariance, one pair survives."""
     mean = acn_observables([PLANTED])[0]
@@ -118,8 +115,7 @@ def test_decoding_recovers_the_planted_copies() -> None:
     assert result.distance == pytest.approx(0.0)
 
 
-@pytest.mark.oracle
-@pytest.mark.property
+@pytest.mark.analytic
 def test_the_credible_set_covers_at_its_nominal_rate() -> None:
     """The referee: 95 per cent of draws put the truth in the 95 per cent set.
 
@@ -153,8 +149,7 @@ def test_the_credible_set_covers_at_its_nominal_rate() -> None:
     assert 0.93 <= rate <= 0.96, f"coverage {rate:.4f} is not near the nominal 0.95"
 
 
-@pytest.mark.oracle
-@pytest.mark.property
+@pytest.mark.analytic
 def test_a_wider_covariance_admits_more() -> None:
     """The set grows monotonically with the uncertainty, and never shrinks.
 
@@ -179,8 +174,7 @@ def test_a_wider_covariance_admits_more() -> None:
     assert sizes[-1] > sizes[0]
 
 
-@pytest.mark.infra
-@pytest.mark.analytic
+@pytest.mark.smoke
 def test_no_integer_pair_explains_an_impossible_fit() -> None:
     """A mean far from every lattice point returns an empty set, not a winner.
 
@@ -201,7 +195,6 @@ def test_no_integer_pair_explains_an_impossible_fit() -> None:
 
 
 @pytest.mark.oracle
-@pytest.mark.exact
 def test_the_threshold_is_the_chi_square_quantile() -> None:
     """Two degrees of freedom, not one.
 
@@ -218,8 +211,7 @@ def test_the_threshold_is_the_chi_square_quantile() -> None:
     assert result.threshold == pytest.approx(5.9914645, abs=1e-6)
 
 
-@pytest.mark.infra
-@pytest.mark.analytic
+@pytest.mark.smoke
 def test_it_refuses_a_covariance_that_identifies_nothing() -> None:
     """A singular covariance raises rather than returning the whole lattice.
 
@@ -240,8 +232,7 @@ def test_it_refuses_a_covariance_that_identifies_nothing() -> None:
         decode_copy_state(mean, TIGHT, level=1.0)
 
 
-@pytest.mark.oracle
-@pytest.mark.property
+@pytest.mark.analytic
 def test_debias_satisfies_the_paper_s_constraint() -> None:
     """`sum_g lambda_g mubar_g / sum_g lambda_g == 1` after rescaling.
 
@@ -264,7 +255,6 @@ def test_debias_satisfies_the_paper_s_constraint() -> None:
 
 
 @pytest.mark.end2end
-@pytest.mark.planted
 def test_a_scale_error_empties_the_set_without_moving_the_argmin() -> None:
     """The missing de-biasing corrupts the confidence, not the answer.
 
@@ -325,8 +315,7 @@ def test_a_scale_error_empties_the_set_without_moving_the_argmin() -> None:
     assert distances[-1] > 50.0
 
 
-@pytest.mark.infra
-@pytest.mark.upstream
+@pytest.mark.smoke
 def test_the_covariance_comes_from_upstream() -> None:
     """End to end: fit with `snakes_and_ladders`, propagate, decode.
 

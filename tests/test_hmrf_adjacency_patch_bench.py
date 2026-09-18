@@ -43,21 +43,18 @@ def _cnaster_round_trip(matrix: csr_matrix) -> tuple[np.ndarray, ...]:
     return spots, neighbors, weights
 
 
-@pytest.mark.infra
 @pytest.mark.benchmark
 def test_cnaster_adjacency_round_trip_gate(benchmark: BenchmarkFixture) -> None:
     """Two Python passes over the non-zeros, at gate size."""
     benchmark(_cnaster_round_trip, _graph(GATE_SPOTS))
 
 
-@pytest.mark.infra
 @pytest.mark.benchmark
 def test_patched_adjacency_gate(benchmark: BenchmarkFixture) -> None:
     """Three `numpy` expressions, at gate size."""
     benchmark(adjacency_coo, _graph(GATE_SPOTS))
 
 
-@pytest.mark.infra
 @pytest.mark.benchmark
 @pytest.mark.release
 def test_cnaster_adjacency_round_trip_stress(benchmark: BenchmarkFixture) -> None:
@@ -65,7 +62,6 @@ def test_cnaster_adjacency_round_trip_stress(benchmark: BenchmarkFixture) -> Non
     benchmark(_cnaster_round_trip, _graph(STRESS_SPOTS))
 
 
-@pytest.mark.infra
 @pytest.mark.benchmark
 @pytest.mark.release
 def test_patched_adjacency_stress(benchmark: BenchmarkFixture) -> None:

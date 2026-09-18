@@ -39,8 +39,7 @@ def emission_and_inputs(**kwargs: object) -> tuple[np.ndarray, CnasterChainInput
     return log_emit_rdr + log_emit_baf, inputs
 
 
-@pytest.mark.oracle
-@pytest.mark.property
+@pytest.mark.analytic
 @pytest.mark.parametrize("n_states", [1, 2, 3, 5])
 @pytest.mark.parametrize("n_sequences", [1, 3])
 def test_forward_and_backward_agree_at_every_position(
@@ -81,8 +80,7 @@ def test_forward_and_backward_agree_at_every_position(
         start += length
 
 
-@pytest.mark.oracle
-@pytest.mark.property
+@pytest.mark.analytic
 @pytest.mark.parametrize("n_states", [2, 4])
 def test_state_posteriors_normalise(n_states: int) -> None:
     """The posteriors are a distribution over states at every position."""
@@ -100,8 +98,7 @@ def test_state_posteriors_normalise(n_states: int) -> None:
     np.testing.assert_allclose(np.exp(log_gamma).sum(axis=0), 1.0, rtol=0.0, atol=1e-9)
 
 
-@pytest.mark.infra
-@pytest.mark.analytic
+@pytest.mark.smoke
 def test_copy_states_fold_the_phase_only_when_asked() -> None:
     """`includes_phased` decides whether a phase index is folded away.
 

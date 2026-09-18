@@ -39,8 +39,7 @@ def _lattice(n_side: int, seed: int) -> csr_matrix:
     return csr_matrix((data, (rows, cols)), shape=(n_nodes, n_nodes))
 
 
-@pytest.mark.equivalence
-@pytest.mark.subject
+@pytest.mark.patch
 @pytest.mark.parametrize("n_side", [3, 8, 20])
 def test_the_triple_is_bitwise_cnasters(n_side: int) -> None:
     """All three arrays identical, and the dtypes with them.
@@ -60,8 +59,7 @@ def test_the_triple_is_bitwise_cnasters(n_side: int) -> None:
         assert reference.dtype == patched.dtype
 
 
-@pytest.mark.equivalence
-@pytest.mark.subject
+@pytest.mark.patch
 def test_the_triple_survives_an_empty_row() -> None:
     """A spot with no neighbours contributes nothing, rather than a zero.
 
@@ -82,8 +80,7 @@ def test_the_triple_survives_an_empty_row() -> None:
     assert 1 not in actual[0].tolist()
 
 
-@pytest.mark.infra
-@pytest.mark.analytic
+@pytest.mark.smoke
 def test_the_triple_is_the_graph_it_came_from() -> None:
     """Round trip: the triple rebuilds the matrix.
 
