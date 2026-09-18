@@ -315,8 +315,8 @@ omit = [
 ]
 
 [tool.coverage.report]
-# The floor the tests reach against the whole of `cnaster`: 4,241 of 6,218
-# statements, 68.21 per cent. It was 33.77 until `run_cnaster` itself ran end
+# The floor the tests reach against the whole of `cnaster`: 4,242 of 6,218
+# statements, 68.22 per cent. It was 33.77 until `run_cnaster` itself ran end
 # to end from temporary files (#87): one call reaches the plotting, the
 # phasing, the clone initializer, the normal baseline and the integer-copy
 # solver, none of which any component test had touched.
