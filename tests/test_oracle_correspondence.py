@@ -103,6 +103,7 @@ def _upstream_emissions_source() -> str:
     return Path(spec.origin).read_text()
 
 
+@pytest.mark.infra
 @pytest.mark.analytic
 def test_every_declared_module_names_the_cnaster_code_it_referees() -> None:
     """No module joins the surface without a counterpart on the subject's side.
@@ -120,6 +121,7 @@ def test_every_declared_module_names_the_cnaster_code_it_referees() -> None:
     assert not undeclared, f"matched but no longer declared: {undeclared}"
 
 
+@pytest.mark.infra
 @pytest.mark.analytic
 def test_every_cnaster_counterpart_still_exists() -> None:
     """A rename on the subject's side breaks the correspondence, loudly.
@@ -138,7 +140,8 @@ def test_every_cnaster_counterpart_still_exists() -> None:
     assert not missing, f"cnaster counterparts that no longer resolve: {missing}"
 
 
-@pytest.mark.cnaster
+@pytest.mark.warning
+@pytest.mark.subject
 def test_cnaster_implements_exactly_two_emission_families() -> None:
     """**Derived from `cnaster`, not asserted about it (#128).**
 
@@ -165,6 +168,7 @@ def test_cnaster_implements_exactly_two_emission_families() -> None:
     assert kernels == CNASTER_EMISSION_KERNELS, f"cnaster's kernels are {kernels}"
 
 
+@pytest.mark.infra
 @pytest.mark.analytic
 def test_the_unmatched_emission_families_are_the_ones_named() -> None:
     """The emission surface's reachable part, pinned as a set rather than a hope.
@@ -193,6 +197,7 @@ def test_the_unmatched_emission_families_are_the_ones_named() -> None:
     )
 
 
+@pytest.mark.infra
 @pytest.mark.analytic
 def test_every_unmatched_family_is_excluded_from_the_denominator() -> None:
     """The two lists cannot drift, which is what makes the figure stable.

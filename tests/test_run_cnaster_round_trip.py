@@ -98,6 +98,7 @@ def _artifacts(output: Path) -> tuple[set[str], list[Path]]:
     )
 
 
+@pytest.mark.infra
 @pytest.mark.analytic
 @pytest.mark.preprocessing
 def test_the_pipeline_completes_from_files(tmp_path: Path) -> None:
@@ -123,6 +124,7 @@ def test_the_pipeline_completes_from_files(tmp_path: Path) -> None:
     assert list(output.rglob("*.npz")), "the final result was not written"
 
 
+@pytest.mark.infra
 @pytest.mark.analytic
 @pytest.mark.preprocessing
 @pytest.mark.release

@@ -121,7 +121,8 @@ def _assert_same(
     assert expected[2] == actual[2], "the cost must be bitwise, not close"
 
 
-@pytest.mark.cnaster
+@pytest.mark.equivalence
+@pytest.mark.subject
 @pytest.mark.parametrize("seed", [11, 23])
 def test_the_reduced_call_is_bitwise_cnasters(seed: int) -> None:
     """Same labelling, same iteration count, same cost, on the plain problem.
@@ -139,7 +140,8 @@ def test_the_reduced_call_is_bitwise_cnasters(seed: int) -> None:
     assert not np.array_equal(actual[0], assignment), "the sweep must do something"
 
 
-@pytest.mark.cnaster
+@pytest.mark.equivalence
+@pytest.mark.subject
 def test_the_per_sample_weights_fold_bitwise() -> None:
     """`log_persample_weights[c, sample_ids[i]]`, added once instead of per visit.
 
@@ -173,7 +175,8 @@ def test_the_per_sample_weights_fold_bitwise() -> None:
     ), "the weights must change the answer, or this tests nothing"
 
 
-@pytest.mark.cnaster
+@pytest.mark.equivalence
+@pytest.mark.subject
 def test_the_allowed_clone_mask_folds_bitwise() -> None:
     """`onehot_allowed_clones`, folded as `-inf` rather than branched on.
 
@@ -205,7 +208,8 @@ def test_the_allowed_clone_mask_folds_bitwise() -> None:
     assert allowed[np.arange(N_SPOTS), actual[0]].all(), "a forbidden clone was chosen"
 
 
-@pytest.mark.cnaster
+@pytest.mark.equivalence
+@pytest.mark.subject
 @pytest.mark.parametrize("temp", [0.5, 2.0])
 def test_the_temperature_folds_into_the_coupling(temp: float) -> None:
     """`spatial_weight / temp` is the only use `temp` has.
@@ -222,7 +226,8 @@ def test_the_temperature_folds_into_the_coupling(temp: float) -> None:
     _assert_same(expected, actual)
 
 
-@pytest.mark.cnaster
+@pytest.mark.bug
+@pytest.mark.subject
 def test_the_posterior_argument_is_never_read_or_written() -> None:
     """The dropped parameter, shown dead rather than asserted to be.
 
@@ -246,7 +251,8 @@ def test_the_posterior_argument_is_never_read_or_written() -> None:
     _assert_same(with_none, with_array)
 
 
-@pytest.mark.cnaster
+@pytest.mark.equivalence
+@pytest.mark.subject
 def test_the_live_sweep_is_the_csr_one() -> None:
     """Which of the four `icm_sweep_deque` definitions `cnaster.icm` exports.
 
@@ -270,7 +276,8 @@ def test_the_live_sweep_is_the_csr_one() -> None:
     assert len(parameters) == 15
 
 
-@pytest.mark.cnaster
+@pytest.mark.bug
+@pytest.mark.subject
 def test_the_sweep_is_not_reproducible_without_seeding_a_global() -> None:
     """Why every comparison above seeds `np.random`.
 
@@ -294,6 +301,7 @@ def test_the_sweep_is_not_reproducible_without_seeding_a_global() -> None:
     assert not np.array_equal(first[0], second[0])
 
 
+@pytest.mark.infra
 @pytest.mark.analytic
 def test_the_mask_is_exact_under_the_edge_term() -> None:
     """`-inf + finite == -inf`, which is what makes the fold exact.
@@ -307,6 +315,7 @@ def test_the_mask_is_exact_under_the_edge_term() -> None:
     assert np.all(-np.inf + edge == -np.inf)
 
 
+@pytest.mark.infra
 @pytest.mark.analytic
 def test_the_fold_leaves_the_field_it_was_given() -> None:
     """A copy, not a write-through.
@@ -323,6 +332,7 @@ def test_the_fold_leaves_the_field_it_was_given() -> None:
     np.testing.assert_array_equal(witness, field)
 
 
+@pytest.mark.infra
 @pytest.mark.analytic
 @pytest.mark.parametrize(
     ("kwargs", "match"),
@@ -353,6 +363,7 @@ def test_the_fold_refuses_a_shape_it_cannot_index(
         fold_unary(field, **kwargs)
 
 
+@pytest.mark.infra
 @pytest.mark.analytic
 def test_the_graph_is_the_matrixs_own_arrays() -> None:
     """`CsrGraph.from_matrix` names the call site's expression, it does not copy.

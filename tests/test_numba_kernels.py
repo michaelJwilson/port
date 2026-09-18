@@ -20,6 +20,7 @@ TOLERANCE = 1e-10
 
 
 @pytest.mark.oracle
+@pytest.mark.exact
 @pytest.mark.critical
 @pytest.mark.parametrize("count", [0, 1, 7, 50])
 @pytest.mark.parametrize(
@@ -37,6 +38,7 @@ def test_negative_binomial_kernel_matches_scipy(
 
 
 @pytest.mark.oracle
+@pytest.mark.exact
 @pytest.mark.critical
 @pytest.mark.parametrize("successes", [0, 3, 10])
 @pytest.mark.parametrize(("trials", "alpha", "beta"), [(10, 2.0, 2.0), (10, 0.5, 5.0)])
@@ -52,6 +54,7 @@ def test_beta_binomial_kernel_matches_scipy(
 
 
 @pytest.mark.oracle
+@pytest.mark.exact
 @pytest.mark.critical
 def test_numba_logsumexp_matches_scipy() -> None:
     """`numba_logsumexp` is stable where a naive sum is not.
@@ -73,6 +76,7 @@ def test_numba_logsumexp_matches_scipy() -> None:
         )
 
 
+@pytest.mark.infra
 @pytest.mark.analytic
 def test_dense_and_single_observation_kernels_agree() -> None:
     """The dense kernels compute what the one-dimensional ones compute.
@@ -104,6 +108,7 @@ def test_dense_and_single_observation_kernels_agree() -> None:
         np.testing.assert_allclose(dense[state, :, 0], out, rtol=0.0, atol=TOLERANCE)
 
 
+@pytest.mark.infra
 @pytest.mark.analytic
 def test_negative_binomial_kernel_is_normalised() -> None:
     """The density sums to one over its support.

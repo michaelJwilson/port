@@ -75,6 +75,7 @@ def _run_patch(fixture: SpotCloneField) -> np.ndarray:
     return field
 
 
+@pytest.mark.infra
 @pytest.mark.benchmark
 def test_cnaster_field_gate(benchmark: BenchmarkFixture) -> None:
     """`cnaster`'s layout at gate size."""
@@ -83,6 +84,7 @@ def test_cnaster_field_gate(benchmark: BenchmarkFixture) -> None:
     benchmark(_run_cnaster, fixture)
 
 
+@pytest.mark.infra
 @pytest.mark.benchmark
 def test_patched_field_gate(benchmark: BenchmarkFixture) -> None:
     """The transposed layout at gate size, for the pair."""
@@ -91,6 +93,7 @@ def test_patched_field_gate(benchmark: BenchmarkFixture) -> None:
     benchmark(_run_patch, fixture)
 
 
+@pytest.mark.infra
 @pytest.mark.benchmark
 @pytest.mark.release
 def test_cnaster_field_stress(benchmark: BenchmarkFixture) -> None:
@@ -100,6 +103,7 @@ def test_cnaster_field_stress(benchmark: BenchmarkFixture) -> None:
     benchmark(_run_cnaster, fixture)
 
 
+@pytest.mark.infra
 @pytest.mark.benchmark
 @pytest.mark.release
 def test_patched_field_stress(benchmark: BenchmarkFixture) -> None:

@@ -220,22 +220,45 @@ testpaths = ["tests"]
 #    `-m "release or not release"`.
 addopts = '--strict-markers -m "not release"'
 markers = [
-    # --- kinds: what decided the expected value -------------------------
+    # --- types: what a test is for, and whether it counts ----------------
+    #
+    # #149. One per test, enforced by `tests/test_marker_discipline.py`. This
+    # is the axis the coverage gate selects on, because a figure that counts
+    # every test measures how much code ran rather than how much is
+    # validated, and `CLAUDE.md` forbids the second being reported as the
+    # first.
+    #
+    # Four count -- `end2end`, `oracle`, `equivalence`, `bug` -- and three do
+    # not. What separates them is whether something outside the subject
+    # decided the answer: a planted truth, upstream, an exact computation, or
+    # a reference the patch must reproduce. A snapshot of current behaviour
+    # decides nothing, however tight its tolerance.
+    "infra: port's own machinery, rules and plumbing; does not count toward coverage",
+    "end2end: drives cnaster through a real path and judges scientific output against planted truth",
+    "oracle: judges scientific output against snakes_and_ladders or an exact independent answer",
+    "equivalence: a port patch reproduces what it replaces, bitwise or to a stated tolerance",
+    "bug: pins a defect against the paper, the oracle, or cnaster's own contract; fails when cnaster is fixed",
+    "warning: pins behaviour that is defensible but suspicious; does not count toward coverage",
+    "cnaster: pins current behaviour with no judgement attached -- a snapshot; does not count toward coverage",
+    # --- kinds: what decided the expected value ---------------------------
     #
     # Every test names its referee (CLAUDE.md, Testing & Quality Assurance).
     # The kind is the referee, never the subject, and every test carries one
     # -- `tests/test_marker_discipline.py` refuses one that does not.
     #
-    # `oracle` and `upstream_oracle` mirror `snakes_and_ladders`' vocabulary
-    # and are kept apart because a closed form and a second implementation
-    # are not the same witness: an exact answer cannot be wrong, and an
-    # implementation agreeing with another can be wrong in the same way
-    # twice. #69 is why the second one is named at all -- upstream is used
-    # here in two roles, and only one of them referees.
-    "oracle: checked against an independent exact answer -- enumeration, brute force, a closed form, or a published value",
+    # `exact` and `upstream_oracle` are kept apart because a closed form and
+    # a second implementation are not the same witness: an exact answer
+    # cannot be wrong, and an implementation agreeing with another can be
+    # wrong in the same way twice. #69 is why the second is named at all --
+    # upstream is used here in two roles, and only one of them referees.
+    #
+    # `exact` was `oracle` and `subject` was `cnaster` until #149, which
+    # needed both names for the type axis above. The rename is mechanical and
+    # the meanings are unchanged.
+    "exact: checked against an independent exact answer -- enumeration, brute force, a closed form, or a published value",
     "upstream_oracle: checked against snakes_and_ladders as a second implementation of the same model -- agreement, to a stated tolerance, in a regime where the correspondence is established",
     "upstream: snakes_and_ladders was used and did not decide the value -- it drew the instance, or its acceptance of an input is itself the claim",
-    "cnaster: checked against the cnaster implementation",
+    "subject: checked against the cnaster implementation",
     "planted: checked against the fixture's planted truth",
     "analytic: checked against an analytic property or an invariant",
     # --- tiers: when a test runs, and how long it is allowed to take -----
@@ -250,11 +273,12 @@ markers = [
     # NB `critical` is a second axis rather than a kind, and upstream states
     #    the rule this repository adopts: a test is critical *and* refereed
     #    by something, never instead of it. What gates is a test whose
-    #    referee is outside the implementation -- `oracle`, `upstream_oracle`,
-    #    `cnaster` or `planted` -- and that carries no scale marker, so the
+    #    referee is outside the implementation -- `exact`, `upstream_oracle`,
+    #    `subject` or `planted` -- and that carries no scale marker, so the
     #    early gate cannot silently become the slow tier.
     "critical: gates early; fast, and its failure means the rest is not worth running -- structurally, or because the science it rests on is wrong",
 ]
+
 
 [tool.coverage.run]
 # The subject is `cnaster`, so the denominator is `cnaster` rather than the
@@ -315,16 +339,30 @@ omit = [
 ]
 
 [tool.coverage.report]
-# The floor the tests reach against the whole of `cnaster`: 4,242 of 6,218
-# statements, 68.22 per cent. It was 33.77 until `run_cnaster` itself ran end
-# to end from temporary files (#87): one call reaches the plotting, the
-# phasing, the clone initializer, the normal baseline and the integer-copy
-# solver, none of which any component test had touched.
+# **The floor is what the validated types reach, not what the suite runs**
+# (#149): 2,234 of 5,919 statements, 37.74 per cent, over the 165 tests marked
+# `end2end`, `oracle`, `equivalence` or `bug`. Running everything reaches
+# 4,242 of 6,218, 68.22 per cent, and that figure is no longer a gate.
 #
-# The denominator grew with it, 5,544 to 5,843, and the growth is the gap the
-# note below predicted closing: `scripts/run_cnaster.py` is 299 statements
-# that a directory scan never descended into, and importing it to run it puts
-# them in the figure. They sit at 89.97 per cent.
+# The 30.5-point drop is a measurement, not a regression. `CLAUDE.md` forbids
+# a test that asserts only shapes or the absence of an exception, and the
+# suite obeys that at the assertion level -- 171 numeric comparisons against
+# 49 structural ones. The theatre was one level up, in the referee: a test can
+# assert a tight tolerance on a quantity nothing outside `cnaster` ever
+# decided. 161 of 286 test functions turned out to be `infra`.
+#
+# The denominator moves with the selection, 6,218 to 5,919, and the 299
+# statements are exactly `scripts/run_cnaster.py`. That is the sharpest thing
+# the split found: **the only tests that reach the installed entry point are
+# ones this taxonomy does not count.** A directory scan never descends into
+# `scripts/` (the note above), so those statements enter the figure only when
+# something imports the script -- and today that is `test_run_cnaster_round_trip`
+# and `test_cold_inference`, both `infra`. The end-to-end coverage #87 was
+# credited with was real code executed and nothing judging the result.
+#
+# So the floor is stated against 5,919 deliberately. Recutting it against
+# 6,218 would mean counting a module no counted test enters, which is the
+# arithmetic this change exists to stop.
 #
 # The `port` side of the denominator: `port.integer_copy` 98 statements,
 # `port.patch.hmrf_field` 32, `port.patch.hmrf_fused_field` 25,
@@ -344,7 +382,7 @@ omit = [
 # pull request. Unlike a denominator of the imported modules, this one does
 # not fall for bringing a new module under test, so there is no case where
 # lowering it is legitimate.
-fail_under = 68.2
+fail_under = 37.7
 precision = 2
 exclude_lines = [
     "pragma: no cover",

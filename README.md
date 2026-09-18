@@ -110,7 +110,7 @@ not carry, not before.
 | Mechanism | What it refuses |
 | --- | --- |
 | Two CI jobs | A stale `uv.lock`, a lint or format failure, an untyped definition, a failing test, a `clippy` warning |
-| Registered markers | A test that does not name its referee: `upstream`, `cnaster`, `planted`, `analytic`, plus `benchmark` and `release` |
+| Registered markers | A test that does not name its referee (`upstream`, `subject`, `planted`, `analytic`, `exact`, `upstream_oracle`) or its type (`infra`, `end2end`, `oracle`, `equivalence`, `bug`, `warning`, `cnaster`), plus the tiers `benchmark`, `release`, `preprocessing` and `critical`. The type decides whether a test counts toward coverage (#149) |
 | `--cov-fail-under` over the whole of `cnaster` | A figure that rises for importing less. The denominator is the dependency, so the number says how much of the subject is validated |
 | [`tests/test_coverage_scope.py`](tests/test_coverage_scope.py) | A gate silently measuring a fraction of the subject after a Python version bump |
 | [`tests/test_planning_documents_agree.py`](tests/test_planning_documents_agree.py) | The three planning documents naming different work |

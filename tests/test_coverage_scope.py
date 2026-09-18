@@ -14,6 +14,7 @@ import pytest
 PROJECT_ROOT = pathlib.Path(__file__).resolve().parent.parent
 
 
+@pytest.mark.infra
 @pytest.mark.analytic
 def test_coverage_source_is_the_installed_cnaster() -> None:
     """The configured path is the package `import cnaster` resolves to."""
@@ -59,6 +60,7 @@ def _declared_oracle_modules() -> set[str]:
     }
 
 
+@pytest.mark.infra
 @pytest.mark.analytic
 def test_every_declared_oracle_module_is_the_installed_one() -> None:
     """The surface names real modules, from the package `import` resolves to.
@@ -87,6 +89,7 @@ def test_every_declared_oracle_module_is_the_installed_one() -> None:
         )
 
 
+@pytest.mark.infra
 @pytest.mark.analytic
 def test_no_test_referees_against_an_undeclared_upstream_module() -> None:
     """A test cannot use upstream as a referee without it being counted.
