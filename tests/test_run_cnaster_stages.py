@@ -58,6 +58,16 @@ Restated so the sweep below is against what ships rather than against a
 number this file chose. `hmm.t` is stickier still, 0.9999999.
 """
 
+RESOLVING_SELF_TRANSITION = 0.85
+"""The largest swept `t` at which the decode resolves three states (#142).
+
+Measured: it collapses to one at 0.9 and resolves three at 0.85, so the
+threshold lies between them. The implied segment length is `1 / (1 - t)`
+bins, 10 and 6.7 -- **shorter than the 10-to-25-bin events this fixture
+plants**, so the prior has to be weaker than the truth before the truth is
+recoverable, which is the finding rather than the number.
+"""
+
 PHASING_SELF_TRANSITION = 1.0 - 1e-6
 """What `phased` passes, between the two shipped values and representative."""
 
@@ -687,3 +697,79 @@ def test_the_refinement_conserves_every_block(phased: Any) -> None:
 
     assert refined.sum() == blocks.X.shape[0], "the refinement lost a block"
     assert len(refined) >= len(blocks.lengths)
+
+
+@pytest.mark.cnaster
+@pytest.mark.parametrize("t", [0.9999999, SHIPPED_T_PHASEING, 0.999, 0.99, 0.95, 0.9])
+def test_the_decode_collapses_at_every_self_transition_above_the_threshold(
+    phase_inputs: Any, t: float
+) -> None:
+    """Six values spanning seven orders of magnitude in `1 - t`, all collapsing.
+
+    #142. The sweep #129 opened was four values and too coarse to locate a
+    threshold; this is the upper half of the refined one. `0.9` implies a
+    ten-bin segment, which is *shorter* than the events the fixture plants,
+    and it still puts all 120 clone-blocks on one state.
+    """
+    truth, _, _, _, n_clones = phase_inputs
+
+    occupancy = _decode_occupancy(
+        _fit(phase_inputs, t=t, max_iter=100, planted=True), truth.n_states, n_clones
+    )
+
+    assert int((occupancy > 0).sum()) == 1, f"t={t} decoded {occupancy}"
+
+
+@pytest.mark.cnaster
+@pytest.mark.parametrize("t", [RESOLVING_SELF_TRANSITION, 0.8, 0.7, 0.6, 0.5])
+def test_the_decode_resolves_below_the_threshold(phase_inputs: Any, t: float) -> None:
+    """**The threshold is between 0.9 and 0.85**, and nothing shipped is near it.
+
+    Below it the decode uses all three states -- at `t = 0.8`, 27 / 66 / 27 of
+    120 clone-blocks. So the instance is decodable and the transition prior is
+    what prevents it, which is what makes #122's collapse attributable to the
+    fit rather than to the data.
+
+    `zenodo_sim_config.yaml` sets `t = 0.9999999` and `t_phaseing = 0.99999`,
+    implying segments of ten million and one hundred thousand bins against a
+    sixty-bin genome. Those are not priors on segment length; they assert one
+    segment.
+    """
+    truth, _, _, _, n_clones = phase_inputs
+
+    occupancy = _decode_occupancy(
+        _fit(phase_inputs, t=t, max_iter=100, planted=True), truth.n_states, n_clones
+    )
+
+    assert int((occupancy > 0).sum()) == truth.n_states, f"t={t} decoded {occupancy}"
+
+
+@pytest.mark.planted
+def test_a_smaller_self_transition_is_necessary_and_not_sufficient(
+    phase_inputs: Any,
+) -> None:
+    """Resolving three states is not recovering three parameters (#142).
+
+    At `t = 0.8` the fit returns minor BAFs of `[0.124, 0.499, 0.877]` against
+    planted `[0.12, 0.42, 0.50]`. Two are right: 0.124 for 0.12 and 0.499 for
+    0.50. The third is 0.877, which is `1 - 0.123` -- the **same** state in
+    the other phase, not the planted 0.42.
+
+    So lowering `t` buys the state count and not the middle parameter, and a
+    fix for #122 that stopped at the count would be measuring the wrong thing.
+    The weakest planted imbalance stays unrecovered at every `t` swept.
+    """
+    truth, _, _, _, _ = phase_inputs
+
+    fitted = np.sort(
+        np.asarray(
+            _fit(phase_inputs, t=0.8, max_iter=100, planted=True)["new_p_binom"]
+        ).ravel()
+    )
+    planted = np.sort(np.minimum(truth.p_binom, 1.0 - truth.p_binom))
+
+    assert fitted[0] == pytest.approx(planted[0], abs=0.01)
+    assert fitted[1] == pytest.approx(planted[2], abs=0.01)
+    assert min(abs(fitted - planted[1])) > 0.05, (
+        f"the middle state was recovered after all: {fitted} against {planted}"
+    )
