@@ -377,8 +377,25 @@ def test_the_vectorized_range_filter_drops_the_snps_the_loop_drops(
     np.testing.assert_array_equal(realized, expected)
 
 
+def _loaders() -> list[tuple[str, Any]]:
+    """Both implementations, for the claims that hold of either.
+
+    The three filter-file branches below are `cnaster`'s as much as the
+    patch's, and neither had ever been executed. Parametrizing is what stops
+    the patch's arrival from being the only reason they are covered: the same
+    claim is put to both subjects, and a divergence names which one moved.
+    """
+    from cnaster.io import load_input_data as upstream
+    from port.patch.input_data import load_input_data as patched
+
+    return [("cnaster", upstream), ("patch", patched)]
+
+
 @pytest.mark.end2end
+@pytest.mark.parametrize(("name", "load_input_data"), _loaders())
 def test_the_gene_file_removes_the_genes_it_names_and_no_others(
+    name: str,
+    load_input_data: Any,
     planted_instance: tuple[CoreInferenceTruth, Any, WrittenInputs, Path],
     gate_config: Any,
 ) -> None:
@@ -393,8 +410,6 @@ def test_the_gene_file_removes_the_genes_it_names_and_no_others(
     ten, because a filter that removed them along with half the genome would
     pass the membership test.
     """
-    from port.patch.input_data import load_input_data
-
     _, pre_image, written, _ = planted_instance
 
     baseline = load_input_data(gate_config)
@@ -403,7 +418,10 @@ def test_the_gene_file_removes_the_genes_it_names_and_no_others(
     gene_file = written.root / "filter_genes.txt"
     gene_file.write_text("\n".join(doomed) + "\n")
 
-    filtered = load_input_data(gate_config, filter_gene_file=gene_file)
+    # NB `str`, not the `Path`: `cnaster` logs `len(filter_gene_file)` and a
+    #    `Path` has no length, so the loader raises `TypeError` before it
+    #    filters anything. Pinned by the `bug` test below.
+    filtered = load_input_data(gate_config, filter_gene_file=str(gene_file))
 
     assert {str(name) for name in filtered.adata.var.index} == {
         str(name) for name in baseline.adata.var.index
@@ -422,7 +440,10 @@ def test_the_gene_file_removes_the_genes_it_names_and_no_others(
 
 
 @pytest.mark.end2end
+@pytest.mark.parametrize(("name", "load_input_data"), _loaders())
 def test_the_range_file_removes_the_snps_inside_the_ranges_it_names(
+    name: str,
+    load_input_data: Any,
     planted_instance: tuple[CoreInferenceTruth, Any, WrittenInputs, Path],
     gate_config: Any,
 ) -> None:
@@ -437,8 +458,6 @@ def test_the_range_file_removes_the_snps_inside_the_ranges_it_names(
     The allele matrices have to lose the same columns, which a mask applied to
     one array and not the other would not.
     """
-    from port.patch.input_data import load_input_data
-
     baseline = load_input_data(gate_config)
 
     chromosome = np.array(
@@ -480,7 +499,10 @@ def test_the_range_file_removes_the_snps_inside_the_ranges_it_names(
 
 
 @pytest.mark.end2end
+@pytest.mark.parametrize(("name", "load_input_data"), _loaders())
 def test_the_normal_index_file_annotates_the_spots_it_names(
+    name: str,
+    load_input_data: Any,
     planted_instance: tuple[CoreInferenceTruth, Any, WrittenInputs, Path],
     gate_config: Any,
 ) -> None:
@@ -491,8 +513,6 @@ def test_the_normal_index_file_annotates_the_spots_it_names(
     balanced clone's barcodes in, the same barcodes out as `normal`, and every
     other spot `tumor`.
     """
-    from port.patch.input_data import load_input_data
-
     truth, _, written, _ = planted_instance
 
     balanced = int(
@@ -636,3 +656,42 @@ def test_the_downsampler_misses_its_own_threshold_by_two_per_cent(
     np.testing.assert_array_equal(
         np.asarray(scaled.adata.layers["count"], dtype=float), expected
     )
+
+
+@pytest.mark.bug
+def test_the_gene_filter_counts_the_path_rather_than_the_genes(
+    planted_instance: tuple[CoreInferenceTruth, Any, WrittenInputs, Path],
+    gate_config: Any,
+) -> None:
+    """**`len(filter_gene_file)` is the length of the filename (`io.py:725`).**
+
+    ```python
+    logger.info(f"Removing {len(filter_gene_file)} genes based on input file={filter_gene_file}.")
+    ```
+
+    The argument is the path, not the gene list, so what is logged as the
+    number of genes removed is the number of **characters in the path** -- and
+    a `pathlib.Path`, which has no length, raises `TypeError` before the filter
+    runs at all. Either way the branch is unusable as it stands: a caller
+    passing a `Path` loses the run, and one passing a `str` is told a number
+    that has nothing to do with its data.
+
+    The filtering itself is correct, which the `end2end` test above establishes
+    on the same file. This pins the reporting around it, and the crash, and
+    both are `cnaster`'s to fix.
+    """
+    from cnaster.io import load_input_data as upstream
+
+    _, _, written, _ = planted_instance
+
+    gene_file = written.root / "filter_genes_bug.txt"
+    gene_file.write_text("gene_0_0\n")
+
+    with pytest.raises(TypeError, match="has no len"):
+        upstream(gate_config, filter_gene_file=gene_file)
+
+    # NB the `str` form survives, and reports the path's character count as
+    #    the number of genes: 10 characters here against the one gene named.
+    filtered = upstream(gate_config, filter_gene_file=str(gene_file))
+
+    assert "gene_0_0" not in set(map(str, filtered.adata.var.index))
