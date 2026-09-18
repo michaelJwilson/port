@@ -104,7 +104,8 @@ def _best_permutation_accuracy(fitted: np.ndarray, planted: np.ndarray) -> float
     )
 
 
-@pytest.mark.cnaster
+@pytest.mark.bug
+@pytest.mark.subject
 def test_the_default_hmm_class_cannot_complete_an_outer_iteration(
     cnaster_config: None,
 ) -> None:
@@ -138,7 +139,8 @@ def test_the_default_hmm_class_cannot_complete_an_outer_iteration(
             )
 
 
-@pytest.mark.cnaster
+@pytest.mark.warning
+@pytest.mark.subject
 def test_a_clone_below_the_solver_s_floor_is_merged_away(cnaster_config: None) -> None:
     """Under 200 spots a clone cannot survive, whatever the data says.
 
@@ -159,6 +161,7 @@ def test_a_clone_below_the_solver_s_floor_is_merged_away(cnaster_config: None) -
     assert np.unique(fitted).size == 1, "a clone survived below the floor"
 
 
+@pytest.mark.end2end
 @pytest.mark.planted
 @pytest.mark.release
 def test_the_run_recovers_the_planted_labelling(cnaster_config: None) -> None:
@@ -180,6 +183,7 @@ def test_the_run_recovers_the_planted_labelling(cnaster_config: None) -> None:
     assert accuracy > 0.9, f"labelling accuracy {accuracy:.3f}"
 
 
+@pytest.mark.end2end
 @pytest.mark.planted
 @pytest.mark.release
 def test_the_run_recovers_every_planted_state_on_a_mostly_neutral_genome(
@@ -222,6 +226,7 @@ def test_the_run_recovers_every_planted_state_on_a_mostly_neutral_genome(
     assert worst < 0.05, f"worst relative error in mu {worst:.3f}"
 
 
+@pytest.mark.end2end
 @pytest.mark.planted
 @pytest.mark.release
 def test_the_declared_scale_plants_and_recovers_its_parameters() -> None:
@@ -250,6 +255,7 @@ def test_the_declared_scale_plants_and_recovers_its_parameters() -> None:
         )
 
 
+@pytest.mark.infra
 @pytest.mark.analytic
 def test_the_declared_scale_is_out_of_reach_of_a_single_run_here() -> None:
     """Why the scale above validates the fixture and not the inference.
@@ -269,6 +275,7 @@ def test_the_declared_scale_is_out_of_reach_of_a_single_run_here() -> None:
     assert declared == pytest.approx(8.0), f"{declared:.2f} GB"
 
 
+@pytest.mark.end2end
 @pytest.mark.planted
 @pytest.mark.release
 def test_the_dev_instance_recovers_its_labelling(cnaster_config: None) -> None:
@@ -303,6 +310,7 @@ def test_the_dev_instance_recovers_its_labelling(cnaster_config: None) -> None:
     assert _adjusted_rand_index(truth.labels, fitted) == pytest.approx(1.0)
 
 
+@pytest.mark.end2end
 @pytest.mark.planted
 @pytest.mark.critical
 def test_the_critical_instance_recovers_its_labelling(cnaster_config: None) -> None:

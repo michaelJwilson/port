@@ -91,6 +91,7 @@ def chains() -> BetaBinomialChains:
     return beta_binomial_chains()
 
 
+@pytest.mark.oracle
 @pytest.mark.upstream_oracle
 @pytest.mark.critical
 @pytest.mark.usefixtures("cnaster_converged_config", "cnaster_perf_sink")
@@ -120,6 +121,7 @@ def test_m_step_agrees_with_upstream(chains: BetaBinomialChains) -> None:
     np.testing.assert_allclose(cnaster.beta, upstream.beta, rtol=SOLVER_AGREEMENT)
 
 
+@pytest.mark.oracle
 @pytest.mark.upstream_oracle
 @pytest.mark.usefixtures("cnaster_converged_config", "cnaster_perf_sink")
 def test_m_step_agrees_on_the_success_probability_more_tightly(
@@ -158,6 +160,7 @@ def test_m_step_agrees_on_the_success_probability_more_tightly(
     )
 
 
+@pytest.mark.end2end
 @pytest.mark.planted
 @pytest.mark.usefixtures("cnaster_converged_config", "cnaster_perf_sink")
 def test_m_step_recovers_the_planted_family(chains: BetaBinomialChains) -> None:
@@ -193,6 +196,7 @@ def test_m_step_recovers_the_planted_family(chains: BetaBinomialChains) -> None:
         )
 
 
+@pytest.mark.infra
 @pytest.mark.analytic
 @pytest.mark.usefixtures("cnaster_config", "cnaster_perf_sink")
 def test_m_step_does_not_increase_its_own_objective(chains: BetaBinomialChains) -> None:
@@ -224,6 +228,7 @@ def test_m_step_does_not_increase_its_own_objective(chains: BetaBinomialChains) 
     )
 
 
+@pytest.mark.oracle
 @pytest.mark.upstream_oracle
 @pytest.mark.critical
 @pytest.mark.usefixtures("cnaster_converged_config", "cnaster_perf_sink")
@@ -254,6 +259,7 @@ def test_the_two_dispersion_branches_coincide_at_one_state() -> None:
     np.testing.assert_allclose(shared.beta, upstream.beta, rtol=SOLVER_AGREEMENT)
 
 
+@pytest.mark.infra
 @pytest.mark.analytic
 def test_the_design_carries_the_posterior_to_the_right_state(
     chains: BetaBinomialChains,
@@ -294,6 +300,7 @@ def test_the_design_carries_the_posterior_to_the_right_state(
     )
 
 
+@pytest.mark.oracle
 @pytest.mark.upstream_oracle
 @pytest.mark.xfail(
     strict=True,
@@ -342,6 +349,7 @@ def test_m_step_agrees_with_upstream_at_cnaster_s_own_settings(
 
 
 @pytest.mark.oracle
+@pytest.mark.exact
 @pytest.mark.usefixtures("cnaster_config", "cnaster_perf_sink")
 def test_the_shipped_solver_options_carry_a_key_scipy_rejects(
     chains: BetaBinomialChains,

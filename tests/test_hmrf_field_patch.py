@@ -59,7 +59,8 @@ def _patched_field(fixture: SpotCloneField) -> np.ndarray:
     return field
 
 
-@pytest.mark.cnaster
+@pytest.mark.equivalence
+@pytest.mark.subject
 @pytest.mark.parametrize("self_transition", [0.999, 0.99, 0.9])
 def test_the_patch_is_bitwise_cnaster(self_transition: float) -> None:
     """Identical output, across the profile segmentation the cost depends on.
@@ -75,7 +76,8 @@ def test_the_patch_is_bitwise_cnaster(self_transition: float) -> None:
     np.testing.assert_array_equal(_cnaster_field(fixture), _patched_field(fixture))
 
 
-@pytest.mark.cnaster
+@pytest.mark.equivalence
+@pytest.mark.subject
 @pytest.mark.parametrize(("n_states", "n_clones"), [(2, 1), (5, 5), (7, 3)])
 def test_the_patch_is_bitwise_across_the_state_and_clone_counts(
     n_states: int, n_clones: int
@@ -91,7 +93,8 @@ def test_the_patch_is_bitwise_across_the_state_and_clone_counts(
     np.testing.assert_array_equal(_cnaster_field(fixture), _patched_field(fixture))
 
 
-@pytest.mark.cnaster
+@pytest.mark.equivalence
+@pytest.mark.subject
 def test_the_patch_carries_the_relative_channel_weight_unchanged() -> None:
     """The smoothed RDR weight is reproduced, not quietly dropped.
 
@@ -130,6 +133,7 @@ def test_the_patch_carries_the_relative_channel_weight_unchanged() -> None:
     np.testing.assert_array_equal(reference, patched)
 
 
+@pytest.mark.infra
 @pytest.mark.analytic
 def test_the_fixture_plants_a_segmented_profile_not_a_uniform_one() -> None:
     """`pred` is piecewise constant, which is what a decoded profile is.

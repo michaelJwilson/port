@@ -40,6 +40,7 @@ def planted() -> CoreInferenceTruth:
     return dev_instance()
 
 
+@pytest.mark.end2end
 @pytest.mark.planted
 @pytest.mark.critical
 def test_the_planted_normal_state_is_normal_by_cnasters_definition(
@@ -57,6 +58,7 @@ def test_the_planted_normal_state_is_normal_by_cnasters_definition(
 
 
 @pytest.mark.cnaster
+@pytest.mark.subject
 @pytest.mark.critical
 def test_the_planted_normal_state_is_the_candidate_it_selects(
     planted: CoreInferenceTruth,
@@ -94,6 +96,7 @@ def test_the_planted_normal_state_is_the_candidate_it_selects(
 
 
 @pytest.mark.cnaster
+@pytest.mark.subject
 def test_a_mostly_diploid_genome_is_the_candidate_it_wants(
     planted: CoreInferenceTruth,
 ) -> None:
@@ -123,6 +126,7 @@ def test_a_mostly_diploid_genome_is_the_candidate_it_wants(
     assert chosen == NORMAL_STATE
 
 
+@pytest.mark.warning
 @pytest.mark.analytic
 def test_the_planted_scale_is_cnasters_and_not_the_papers() -> None:
     """A stated difference: `mu = 1` means two things, and only one is tested.

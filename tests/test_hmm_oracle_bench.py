@@ -123,22 +123,25 @@ def stress() -> Any:
     return _instance(STRESS)
 
 
-@pytest.mark.benchmark
 @pytest.mark.cnaster
+@pytest.mark.benchmark
+@pytest.mark.subject
 def test_cnaster_forward_only_gate(benchmark: BenchmarkFixture, gate: Any) -> None:
     """`forward_lattice` over the concatenated batch, one call."""
     _, inputs, emission, _, _, _ = gate
     benchmark(_cnaster_forward, inputs, emission)
 
 
-@pytest.mark.benchmark
 @pytest.mark.cnaster
+@pytest.mark.benchmark
+@pytest.mark.subject
 def test_cnaster_forward_backward_gate(benchmark: BenchmarkFixture, gate: Any) -> None:
     """Both passes and the posterior, which is what the driver runs per iteration."""
     _, inputs, emission, _, _, _ = gate
     benchmark(_cnaster_both, inputs, emission)
 
 
+@pytest.mark.infra
 @pytest.mark.benchmark
 @pytest.mark.upstream
 def test_upstream_forward_backward_gate(benchmark: BenchmarkFixture, gate: Any) -> None:
@@ -151,9 +154,10 @@ def test_upstream_forward_backward_gate(benchmark: BenchmarkFixture, gate: Any) 
     benchmark(_upstream_both, densities, initial, transition)
 
 
+@pytest.mark.cnaster
 @pytest.mark.benchmark
 @pytest.mark.release
-@pytest.mark.cnaster
+@pytest.mark.subject
 def test_cnaster_forward_backward_stress(
     benchmark: BenchmarkFixture, stress: Any
 ) -> None:
@@ -161,6 +165,7 @@ def test_cnaster_forward_backward_stress(
     benchmark(_cnaster_both, inputs, emission)
 
 
+@pytest.mark.infra
 @pytest.mark.benchmark
 @pytest.mark.release
 @pytest.mark.upstream

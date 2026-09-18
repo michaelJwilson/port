@@ -45,6 +45,7 @@ def _milestones(name: str) -> list[str]:
     return MILESTONE.findall((ROOT / name).read_text())
 
 
+@pytest.mark.infra
 def test_every_document_carries_milestones() -> None:
     """Guards the parser: an empty match is not agreement.
 
@@ -55,6 +56,7 @@ def test_every_document_carries_milestones() -> None:
         assert len(_milestones(name)) >= 10, f"{name} parsed no milestones"
 
 
+@pytest.mark.infra
 def test_the_three_documents_name_the_same_milestones() -> None:
     """Same headings, same order, in all three."""
     roadmap = _milestones("ROADMAP.md")
@@ -70,6 +72,7 @@ def test_the_three_documents_name_the_same_milestones() -> None:
         assert other == roadmap, f"{name} orders the milestones differently"
 
 
+@pytest.mark.infra
 def test_the_milestones_are_numbered_in_order() -> None:
     """`1.1` before `1.2` before `2.1`, so a reader can find one by its number."""
     numbers = [
@@ -92,6 +95,7 @@ def _bullets(text: str) -> list[str]:
     return items
 
 
+@pytest.mark.infra
 def test_every_filed_ticket_is_cited_at_the_end_in_parentheses() -> None:
     """A bullet naming a filed issue ends with `(#n)`, and carries one.
 
@@ -121,6 +125,7 @@ def test_every_filed_ticket_is_cited_at_the_end_in_parentheses() -> None:
             )
 
 
+@pytest.mark.infra
 def test_the_documents_agree_with_the_readme_index() -> None:
     """`README.md` links all three, so a reader arrives at them.
 

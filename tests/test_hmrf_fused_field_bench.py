@@ -78,6 +78,7 @@ def _fused(fixture: SpotCloneField, weight: np.ndarray) -> np.ndarray:
     return field
 
 
+@pytest.mark.infra
 @pytest.mark.benchmark
 def test_two_step_gate(benchmark: BenchmarkFixture) -> None:
     """Producer plus reordered field, at gate size."""
@@ -87,6 +88,7 @@ def test_two_step_gate(benchmark: BenchmarkFixture) -> None:
     benchmark(_two_step, fixture, weight)
 
 
+@pytest.mark.infra
 @pytest.mark.benchmark
 def test_fused_gate(benchmark: BenchmarkFixture) -> None:
     """One pass, at gate size, for the pair."""
@@ -96,6 +98,7 @@ def test_fused_gate(benchmark: BenchmarkFixture) -> None:
     benchmark(_fused, fixture, weight)
 
 
+@pytest.mark.infra
 @pytest.mark.benchmark
 @pytest.mark.release
 def test_two_step_stress(benchmark: BenchmarkFixture) -> None:
@@ -106,6 +109,7 @@ def test_two_step_stress(benchmark: BenchmarkFixture) -> None:
     benchmark(_two_step, fixture, weight)
 
 
+@pytest.mark.infra
 @pytest.mark.benchmark
 @pytest.mark.release
 def test_fused_stress(benchmark: BenchmarkFixture) -> None:

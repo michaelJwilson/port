@@ -12,11 +12,26 @@ kind. A test is critical **and** refereed by something, never instead of it.
 import pytest
 
 KINDS = frozenset(
-    {"oracle", "upstream_oracle", "upstream", "cnaster", "planted", "analytic"}
+    {"exact", "upstream_oracle", "upstream", "subject", "planted", "analytic"}
 )
 """What may decide an expected value here."""
 
-EXTERNAL_REFEREES = frozenset({"oracle", "upstream_oracle", "cnaster", "planted"})
+TYPES = frozenset(
+    {"infra", "end2end", "oracle", "equivalence", "bug", "warning", "cnaster"}
+)
+"""What a test is for (#149). Exactly one per test, and the coverage axis."""
+
+COUNTING_TYPES = frozenset({"end2end", "oracle", "equivalence", "bug"})
+"""The types whose coverage is claimed as validation.
+
+Each is decided by something outside the subject -- a planted truth, upstream,
+an exact computation, or a reference a patch must reproduce. `infra`,
+`warning` and `cnaster` are excluded because a snapshot of current behaviour
+decides nothing, however tight its tolerance, and counting one as validation
+is what `CLAUDE.md` calls coverage theatre.
+"""
+
+EXTERNAL_REFEREES = frozenset({"exact", "upstream_oracle", "subject", "planted"})
 """The kinds that check a number against something outside the implementation.
 
 `analytic` and `upstream` referee the implementation against its own contract
@@ -34,6 +49,7 @@ def _own_markers(item: pytest.Item) -> set[str]:
     return {mark.name for mark in item.iter_markers()}
 
 
+@pytest.mark.infra
 @pytest.mark.analytic
 def test_every_test_carries_a_kind(collected_items: list[pytest.Item]) -> None:
     """No test runs without naming what decided its expected value.
@@ -57,6 +73,7 @@ def test_every_test_carries_a_kind(collected_items: list[pytest.Item]) -> None:
     )
 
 
+@pytest.mark.infra
 @pytest.mark.analytic
 def test_critical_is_never_instead_of_a_kind(
     collected_items: list[pytest.Item],
@@ -71,6 +88,7 @@ def test_critical_is_never_instead_of_a_kind(
     assert not kindless, f"critical without a kind: {kindless}"
 
 
+@pytest.mark.infra
 @pytest.mark.analytic
 def test_the_early_gate_admits_only_an_external_referee(
     collected_items: list[pytest.Item],
@@ -96,6 +114,7 @@ def test_the_early_gate_admits_only_an_external_referee(
     )
 
 
+@pytest.mark.infra
 @pytest.mark.analytic
 def test_the_early_gate_carries_no_scale_marker(
     collected_items: list[pytest.Item],
@@ -110,6 +129,7 @@ def test_the_early_gate_carries_no_scale_marker(
     assert not offenders, f"critical carrying a scale marker: {offenders}"
 
 
+@pytest.mark.infra
 @pytest.mark.analytic
 def test_the_early_gate_is_not_empty(collected_items: list[pytest.Item]) -> None:
     """A guard over an empty selection passes for the wrong reason.
@@ -123,3 +143,75 @@ def test_the_early_gate_is_not_empty(collected_items: list[pytest.Item]) -> None
         f"the early gate holds {len(critical)} tests; the guards above say "
         f"nothing about a tier this small"
     )
+
+
+@pytest.mark.infra
+@pytest.mark.analytic
+def test_every_test_carries_exactly_one_type(
+    collected_items: list[pytest.Item],
+) -> None:
+    """#149's axis, and the one the coverage gate selects on.
+
+    A test with no type would be silently excluded from the counted set and
+    read as deliberate; a test with two would be counted or not depending on
+    which marker an expression happened to name. Both are the failure this
+    catches, and neither shows up as a red test anywhere else.
+    """
+    wrong = {
+        item.nodeid: sorted(_own_markers(item) & TYPES)
+        for item in collected_items
+        if len(_own_markers(item) & TYPES) != 1
+    }
+
+    assert not wrong, f"{len(wrong)} test(s) without exactly one type: {wrong}"
+
+
+@pytest.mark.infra
+@pytest.mark.analytic
+def test_the_counted_types_are_refereed_from_outside(
+    collected_items: list[pytest.Item],
+) -> None:
+    """A counting type has to be checked against something outside `cnaster`.
+
+    The types decide the coverage figure, so this is what stops the figure
+    being recovered by relabelling: marking a snapshot `oracle` would count it
+    again, and it fails here unless a kind names a referee that is not the
+    subject.
+
+    `bug` and `equivalence` are exempt, because for both the subject *is* the
+    reference. A bug pins `cnaster` against its own contract -- a signature it
+    cannot satisfy (#143), an argument it returns unchanged (#146) -- and an
+    equivalence pins a `port` patch against the `cnaster` call it replaces,
+    which is the whole claim. Both carry the kind `subject` and both are
+    refereed from outside the code under test; the other two are not.
+    """
+    exempt = {"bug", "equivalence"}
+    offenders = {
+        item.nodeid: sorted(_own_markers(item) & KINDS)
+        for item in collected_items
+        if (_own_markers(item) & COUNTING_TYPES)
+        and not (_own_markers(item) & exempt)
+        and not (_own_markers(item) & (EXTERNAL_REFEREES - {"subject"}))
+    }
+
+    assert not offenders, (
+        f"{len(offenders)} counted test(s) refereed only against the subject: "
+        f"{offenders}"
+    )
+
+
+@pytest.mark.infra
+@pytest.mark.analytic
+def test_no_type_is_empty(collected_items: list[pytest.Item]) -> None:
+    """Every guard above is vacuous over a type nothing carries.
+
+    #149 splits `cnaster` four ways on the claim that the suite really does
+    hold all four. If one is empty the split was wrong, or the migration
+    missed it, and that should be visible rather than quietly true.
+    """
+    counts = {
+        name: sum(1 for item in collected_items if name in _own_markers(item))
+        for name in sorted(TYPES)
+    }
+
+    assert all(counts.values()), f"a type nothing carries: {counts}"

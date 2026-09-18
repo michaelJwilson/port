@@ -112,6 +112,7 @@ def _emission(truth: CoreInferenceTruth, stacked: Stacked) -> np.ndarray:
     return summed
 
 
+@pytest.mark.oracle
 @pytest.mark.upstream_oracle
 @pytest.mark.critical
 def test_the_two_recursions_agree_on_the_clone_stacked_batch(
@@ -160,6 +161,7 @@ def test_the_two_recursions_agree_on_the_clone_stacked_batch(
     )
 
 
+@pytest.mark.infra
 @pytest.mark.upstream
 def test_a_covariate_carrying_its_own_channel_axis_is_refused_with_a_singleton() -> (
     None

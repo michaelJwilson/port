@@ -25,6 +25,7 @@ count is the sample size, and 200 segments over three clones gives 597.
 """
 
 
+@pytest.mark.end2end
 @pytest.mark.planted
 @pytest.mark.critical
 def test_the_dev_instance_plants_unequal_chromosomes() -> None:
@@ -43,6 +44,7 @@ def test_the_dev_instance_plants_unequal_chromosomes() -> None:
     assert truth.lengths.max() / truth.lengths.min() == pytest.approx(3.64, abs=0.01)
 
 
+@pytest.mark.infra
 @pytest.mark.upstream
 def test_upstream_accepts_the_planted_genome() -> None:
     """The partition is a `Ragged`, and constructing it is the check.
@@ -66,6 +68,7 @@ def test_upstream_accepts_the_planted_genome() -> None:
     assert [len(segment) for segment in batch.segments()] == list(truth.lengths)
 
 
+@pytest.mark.infra
 @pytest.mark.upstream
 def test_a_chromosome_below_the_floor_is_refused() -> None:
     """One bin is an initial distribution and no transition, so upstream says no.
@@ -89,6 +92,7 @@ def test_a_chromosome_below_the_floor_is_refused() -> None:
         assert drawn.sum() == 30
 
 
+@pytest.mark.end2end
 @pytest.mark.planted
 def test_the_partition_is_exact_and_reproducible() -> None:
     """It sums to the genome, and the same seed gives the same chromosomes."""
@@ -100,6 +104,7 @@ def test_the_partition_is_exact_and_reproducible() -> None:
         assert first.sum() == 1000
 
 
+@pytest.mark.end2end
 @pytest.mark.planted
 def test_no_event_crosses_a_chromosome_boundary() -> None:
     """What `lengths` means once the path is events on a neutral backbone.
@@ -147,6 +152,7 @@ def test_no_event_crosses_a_chromosome_boundary() -> None:
 
 
 @pytest.mark.cnaster
+@pytest.mark.subject
 @pytest.mark.critical
 def test_the_clone_stacked_lengths_are_cnasters_own() -> None:
     """`stacked_lengths` is what `clone_stack_obs` builds, for a ragged genome.
@@ -174,6 +180,7 @@ def test_the_clone_stacked_lengths_are_cnasters_own() -> None:
     assert int(stacked.sum()) == n_clones * n_obs
 
 
+@pytest.mark.end2end
 @pytest.mark.planted
 def test_the_equal_mode_is_still_reachable_and_still_refuses() -> None:
     """A rectangular genome is a mode, not the default.

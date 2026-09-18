@@ -78,6 +78,7 @@ def _weight_inputs(n_spots: int) -> tuple[BoundaryInvariants, csr_matrix]:
     return boundary_invariants(base, total), _smooth(n_spots)
 
 
+@pytest.mark.infra
 @pytest.mark.benchmark
 def test_cnaster_counts_gate(benchmark: BenchmarkFixture) -> None:
     """Both passes at the gate fixture's shape: 0.041 ms."""
@@ -85,6 +86,7 @@ def test_cnaster_counts_gate(benchmark: BenchmarkFixture) -> None:
     benchmark(_cnaster_counts, base, total)
 
 
+@pytest.mark.infra
 @pytest.mark.benchmark
 def test_hoisted_weight_gate(benchmark: BenchmarkFixture) -> None:
     """What the hoist costs once, at the same shape: 0.018 ms."""
@@ -92,6 +94,7 @@ def test_hoisted_weight_gate(benchmark: BenchmarkFixture) -> None:
     benchmark(invariants.relative_channel_weight, smooth.indptr, smooth.indices)
 
 
+@pytest.mark.infra
 @pytest.mark.benchmark
 @pytest.mark.release
 def test_cnaster_counts_stress(benchmark: BenchmarkFixture) -> None:
@@ -100,6 +103,7 @@ def test_cnaster_counts_stress(benchmark: BenchmarkFixture) -> None:
     benchmark(_cnaster_counts, base, total)
 
 
+@pytest.mark.infra
 @pytest.mark.benchmark
 @pytest.mark.release
 def test_cnaster_counts_working(benchmark: BenchmarkFixture) -> None:
@@ -108,6 +112,7 @@ def test_cnaster_counts_working(benchmark: BenchmarkFixture) -> None:
     benchmark(_cnaster_counts, base, total)
 
 
+@pytest.mark.infra
 @pytest.mark.benchmark
 @pytest.mark.release
 def test_hoisted_weight_stress(benchmark: BenchmarkFixture) -> None:

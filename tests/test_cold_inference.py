@@ -57,6 +57,7 @@ def _graph(truth: CoreInferenceTruth) -> tuple[np.ndarray, np.ndarray, np.ndarra
     return csr.indptr, csr.indices, csr.data.astype(float)
 
 
+@pytest.mark.end2end
 @pytest.mark.planted
 @pytest.mark.critical
 def test_the_priority_queue_solver_finds_the_planted_labelling(
@@ -88,6 +89,7 @@ def test_the_priority_queue_solver_finds_the_planted_labelling(
 
 
 @pytest.mark.cnaster
+@pytest.mark.subject
 def test_the_merge_step_names_the_pair_it_would_join(
     planted: CoreInferenceTruth,
 ) -> None:
@@ -126,6 +128,7 @@ def test_the_merge_step_names_the_pair_it_would_join(
     assert result is not None
 
 
+@pytest.mark.oracle
 @pytest.mark.upstream_oracle
 def test_the_top_hat_sum_is_a_sliding_window(planted: CoreInferenceTruth) -> None:
     """`top_hat_sum` against the window it says it is.
@@ -157,6 +160,7 @@ def test_the_top_hat_sum_is_a_sliding_window(planted: CoreInferenceTruth) -> Non
     np.testing.assert_array_equal(top_hat_sum(vector, width), np.atleast_2d(vector))
 
 
+@pytest.mark.infra
 @pytest.mark.analytic
 def test_the_clone_label_cast_refuses_what_it_says_it_refuses() -> None:
     """`cast_clone_label` names the normal clone and bounds the rest."""
@@ -169,6 +173,7 @@ def test_the_clone_label_cast_refuses_what_it_says_it_refuses() -> None:
         cast_clone_label("clone4000")
 
 
+@pytest.mark.infra
 @pytest.mark.analytic
 def test_the_interval_decoder_returns_contiguous_runs() -> None:
     """`get_intervals` turns a state path into the runs a figure draws."""
@@ -182,6 +187,7 @@ def test_the_interval_decoder_returns_contiguous_runs() -> None:
 
 
 @pytest.mark.cnaster
+@pytest.mark.subject
 @pytest.mark.usefixtures("cnaster_config", "cnaster_perf_sink")
 def test_the_mixture_initializer_returns_the_declared_shapes(
     planted: CoreInferenceTruth,
