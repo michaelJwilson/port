@@ -145,16 +145,18 @@ def stress_blocks(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Any]:
         yield truth, blocks
 
 
-@pytest.mark.benchmark
 @pytest.mark.cnaster
+@pytest.mark.benchmark
+@pytest.mark.subject
 def test_phasing_gate(benchmark: BenchmarkFixture, gate_blocks: Any) -> None:
     """The dev instance over 200 bins. Realized **1,191 ms** minimum, 1,226 mean."""
     truth, blocks = gate_blocks
     benchmark(_phase, truth, blocks)
 
 
-@pytest.mark.benchmark
 @pytest.mark.cnaster
+@pytest.mark.benchmark
+@pytest.mark.subject
 def test_phasing_stress(benchmark: BenchmarkFixture, stress_blocks: Any) -> None:
     """The whole dev instance, 1,000 bins. Realized **6,448 ms** minimum.
 

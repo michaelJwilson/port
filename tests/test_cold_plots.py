@@ -69,6 +69,7 @@ def written(
         set_global_config(previous)
 
 
+@pytest.mark.infra
 @pytest.mark.analytic
 def test_the_adjacency_plot_renders(planted: CoreInferenceTruth) -> None:
     """`plot_adjacency` draws the graph the label solver runs on."""
@@ -83,6 +84,7 @@ def test_the_adjacency_plot_renders(planted: CoreInferenceTruth) -> None:
     assert plot_adjacency(coords, smooth, adjacency) is not None
 
 
+@pytest.mark.infra
 @pytest.mark.analytic
 def test_the_gene_and_snp_spatial_plot_renders(
     written: tuple[Any, Any], tmp_path: Path
@@ -114,6 +116,7 @@ def test_the_gene_and_snp_spatial_plot_renders(
     assert (tmp_path / "genes").exists()
 
 
+@pytest.mark.infra
 @pytest.mark.analytic
 def test_the_recombination_rate_plot_renders(written: tuple[Any, Any]) -> None:
     """`plot_recombination_rates` draws a rate the reference reader does not give it.
@@ -139,6 +142,7 @@ def test_the_recombination_rate_plot_renders(written: tuple[Any, Any]) -> None:
     assert plot_recombination_rates(rates) is not None
 
 
+@pytest.mark.infra
 @pytest.mark.analytic
 def test_the_copy_state_plot_renders(planted: CoreInferenceTruth) -> None:
     """`plot_copy_states` draws a per-state table, in the shape the run writes.
@@ -158,6 +162,7 @@ def test_the_copy_state_plot_renders(planted: CoreInferenceTruth) -> None:
     plot_copy_states(pd.DataFrame(columns))
 
 
+@pytest.mark.infra
 @pytest.mark.analytic
 def test_the_he_image_loads_and_renders(
     written: tuple[Any, Any], planted: CoreInferenceTruth
@@ -222,6 +227,7 @@ def test_the_he_image_loads_and_renders(
     assert plot_he(pixels) is not None
 
 
+@pytest.mark.infra
 @pytest.mark.analytic
 def test_the_clone_annotations_load_and_assign(
     written: tuple[Any, Any], planted: CoreInferenceTruth, tmp_path: Path

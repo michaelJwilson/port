@@ -105,6 +105,7 @@ def _upstream_forward_backward(
     )
 
 
+@pytest.mark.oracle
 @pytest.mark.upstream_oracle
 @pytest.mark.parametrize("n_sequences", [1, 3])
 def test_the_state_posterior_agrees_with_upstream(n_sequences: int) -> None:
@@ -138,6 +139,7 @@ def test_the_state_posterior_agrees_with_upstream(n_sequences: int) -> None:
         )
 
 
+@pytest.mark.oracle
 @pytest.mark.upstream_oracle
 def test_every_posterior_column_is_a_distribution() -> None:
     """What the comparison above would miss if both sides were unnormalized.
@@ -157,6 +159,7 @@ def test_every_posterior_column_is_a_distribution() -> None:
     )
 
 
+@pytest.mark.oracle
 @pytest.mark.upstream_oracle
 @pytest.mark.parametrize("n_sequences", [2, 4])
 def test_the_evidence_agrees_over_a_rectangular_batch(n_sequences: int) -> None:
@@ -267,6 +270,7 @@ def _fit(fixture: NegativeBinomialChains, inputs: CnasterChainInputs, max_iter: 
         )
 
 
+@pytest.mark.oracle
 @pytest.mark.upstream_oracle
 def test_baum_welch_does_not_lower_the_upstream_evidence(cnaster_config: None) -> None:
     """**Baum-Welch's defining guarantee, refereed rather than self-reported.**
@@ -300,6 +304,7 @@ def test_baum_welch_does_not_lower_the_upstream_evidence(cnaster_config: None) -
         )
 
 
+@pytest.mark.oracle
 @pytest.mark.upstream_oracle
 def test_baum_welch_reaches_a_fixed_point(cnaster_config: None) -> None:
     """More iterations stop moving the parameters, scored by upstream.
@@ -326,7 +331,8 @@ def test_baum_welch_reaches_a_fixed_point(cnaster_config: None) -> None:
     )
 
 
-@pytest.mark.cnaster
+@pytest.mark.bug
+@pytest.mark.subject
 def test_the_driver_cannot_initialize_itself(cnaster_config: None) -> None:
     """**`pipeline_baum_welch`'s own default raises (#143).**
 
@@ -462,7 +468,8 @@ def _fit_at(  # type: ignore[no-untyped-def]
         )
 
 
-@pytest.mark.cnaster
+@pytest.mark.bug
+@pytest.mark.subject
 @pytest.mark.parametrize("imposed", IMPOSED_SELF_TRANSITIONS)
 def test_the_m_step_returns_the_transition_it_was_given(
     cnaster_config: None, imposed: float
@@ -498,6 +505,7 @@ def test_the_m_step_returns_the_transition_it_was_given(
     )
 
 
+@pytest.mark.oracle
 @pytest.mark.upstream_oracle
 @pytest.mark.parametrize("imposed", IMPOSED_SELF_TRANSITIONS)
 def test_the_paper_would_move_the_transition_toward_the_truth(imposed: float) -> None:

@@ -69,6 +69,7 @@ def loaded(
         set_global_config(previous)
 
 
+@pytest.mark.end2end
 @pytest.mark.planted
 @pytest.mark.critical
 def test_the_count_fit_names_the_family_it_drew_from() -> None:
@@ -95,6 +96,7 @@ def test_the_count_fit_names_the_family_it_drew_from() -> None:
     assert negative.dispersion == pytest.approx(1.0 / number, rel=0.1)
 
 
+@pytest.mark.infra
 @pytest.mark.analytic
 def test_a_manifest_round_trips_through_yaml(
     planted: CoreInferenceTruth, loaded: tuple[Any, Any], tmp_path: Path
@@ -138,6 +140,7 @@ def _table(loaded: tuple[Any, Any]) -> Any:
     return form_gene_snp_table(data.unique_snp_ids, str(written.hgtable), data.adata)
 
 
+@pytest.mark.end2end
 @pytest.mark.planted
 @pytest.mark.critical
 def test_an_instance_generated_from_a_manifest_measures_back_to_it(
@@ -185,6 +188,7 @@ def test_an_instance_generated_from_a_manifest_measures_back_to_it(
 
 
 @pytest.mark.cnaster
+@pytest.mark.subject
 @pytest.mark.preprocessing
 def test_cnaster_loads_what_the_generator_wrote(
     planted: CoreInferenceTruth, loaded: tuple[Any, Any], tmp_path: Path
@@ -233,6 +237,7 @@ def test_cnaster_loads_what_the_generator_wrote(
         set_global_config(previous_config)
 
 
+@pytest.mark.infra
 @pytest.mark.analytic
 def test_the_entry_point_writes_into_the_current_directory(
     planted: CoreInferenceTruth, loaded: tuple[Any, Any], tmp_path: Path

@@ -26,7 +26,7 @@ from tests.fixtures import CoreInferenceTruth, core_inference_truth
 from tests.tmp_inputs import write_tmp_inputs, written_config
 from tests.unsegment import unsegment
 
-pytestmark = [pytest.mark.preprocessing, pytest.mark.cnaster]
+pytestmark = [pytest.mark.preprocessing, pytest.mark.subject]
 
 INITIAL_MIN_UMI = 1
 SECONDARY_MIN_UMI = 1
@@ -114,6 +114,7 @@ class Prepared:
     binned: Any
 
 
+@pytest.mark.cnaster
 def test_the_blocks_are_one_per_planted_bin(tmp_path: Path) -> None:
     """`assign_initial_blocks` merges overlapping intervals, and these do not.
 
@@ -132,6 +133,7 @@ def test_the_blocks_are_one_per_planted_bin(tmp_path: Path) -> None:
     )
 
 
+@pytest.mark.cnaster
 @pytest.mark.critical
 def test_the_derived_segmentation_is_the_planted_one(tmp_path: Path) -> None:
     """`lengths`, as a vector, from coordinates alone.
@@ -147,6 +149,7 @@ def test_the_derived_segmentation_is_the_planted_one(tmp_path: Path) -> None:
     np.testing.assert_array_equal(prepared.binned.lengths, truth.lengths)
 
 
+@pytest.mark.cnaster
 def test_the_counts_in_the_derived_bins_are_the_planted_ones(tmp_path: Path) -> None:
     """All three channels, bitwise, over a partition `cnaster` chose.
 

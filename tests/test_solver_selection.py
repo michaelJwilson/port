@@ -14,6 +14,7 @@ from tests.adapters import from_negative_binomial_chains
 from tests.fixtures import negative_binomial_chains
 
 
+@pytest.mark.infra
 @pytest.mark.usefixtures("cnaster_config")
 @pytest.mark.analytic
 def test_the_configured_solver_is_returned() -> None:
@@ -23,6 +24,7 @@ def test_the_configured_solver_is_returned() -> None:
     assert get_solver() == "L-BFGS-B"
 
 
+@pytest.mark.infra
 @pytest.mark.usefixtures("cnaster_config")
 @pytest.mark.analytic
 def test_solver_options_are_the_ones_that_solver_takes() -> None:
@@ -41,6 +43,7 @@ def test_solver_options_are_the_ones_that_solver_takes() -> None:
     assert all(isinstance(value, float) for value in params.values())
 
 
+@pytest.mark.infra
 @pytest.mark.analytic
 def test_an_unknown_solver_is_refused() -> None:
     """A name outside the supported set stops the fit rather than starting one."""
@@ -56,7 +59,8 @@ def test_an_unknown_solver_is_refused() -> None:
         set_global_config(previous)
 
 
-@pytest.mark.analytic
+@pytest.mark.oracle
+@pytest.mark.property
 @pytest.mark.parametrize("n_states", [2, 4])
 def test_copy_state_posterior_normalises_the_lattice(n_states: int) -> None:
     """`compute_copy_state_posterior` is the normalised forward-backward product.

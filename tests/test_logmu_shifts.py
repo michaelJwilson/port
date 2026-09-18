@@ -49,6 +49,7 @@ def draw(seed: int, n_states: int, clone_lengths: list[int]) -> tuple[np.ndarray
 
 
 @pytest.mark.oracle
+@pytest.mark.exact
 @pytest.mark.critical
 @pytest.mark.parametrize(
     "clone_lengths", [[10], [10, 10], [1, 19], [7, 3, 10]], ids=str
@@ -66,6 +67,7 @@ def test_matches_the_vectorized_reference(
     )
 
 
+@pytest.mark.infra
 @pytest.mark.analytic
 def test_is_constant_within_a_clone() -> None:
     """One shift per clone, broadcast over its positions.
@@ -88,7 +90,8 @@ def test_is_constant_within_a_clone() -> None:
         start += length
 
 
-@pytest.mark.analytic
+@pytest.mark.oracle
+@pytest.mark.property
 @pytest.mark.parametrize("offset", [-2.0, 0.5, 3.0])
 def test_shifts_with_log_mu(offset: float) -> None:
     """Scaling every mean by a constant moves the shift by its logarithm.
@@ -111,7 +114,8 @@ def test_shifts_with_log_mu(offset: float) -> None:
     np.testing.assert_allclose(moved, base + offset, rtol=0.0, atol=1e-12)
 
 
-@pytest.mark.analytic
+@pytest.mark.oracle
+@pytest.mark.property
 def test_normalised_weights_and_one_state_give_that_state() -> None:
     """With one state and weights summing to one, the shift is that state's mean.
 

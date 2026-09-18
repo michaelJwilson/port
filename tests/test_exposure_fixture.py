@@ -19,7 +19,8 @@ import pytest
 from tests.fixtures import core_inference_truth, weierstrass_exposure
 
 
-@pytest.mark.cnaster
+@pytest.mark.bug
+@pytest.mark.subject
 def test_a_non_positive_rate_scores_as_certain_rather_than_excluded() -> None:
     """Why the exposure has to be strictly positive, driven rather than argued.
 
@@ -43,6 +44,7 @@ def test_a_non_positive_rate_scores_as_certain_rather_than_excluded() -> None:
     assert out[2] == 0.0
 
 
+@pytest.mark.infra
 @pytest.mark.analytic
 def test_the_planted_exposure_is_strictly_positive() -> None:
     """So the branch above is never taken by the fixture.
@@ -56,6 +58,7 @@ def test_the_planted_exposure_is_strictly_positive() -> None:
     assert np.isfinite(truth.base_nb_mean).all()
 
 
+@pytest.mark.infra
 @pytest.mark.analytic
 def test_the_exposure_varies_on_the_axis_that_survives_aggregation() -> None:
     """Bin-axis variation survives the pseudobulk; spot-axis variation does not.
@@ -79,6 +82,7 @@ def test_the_exposure_varies_on_the_axis_that_survives_aggregation() -> None:
 
 
 @pytest.mark.cnaster
+@pytest.mark.subject
 def test_a_constant_exposure_is_absorbed_and_a_varying_one_is_not() -> None:
     """The identifiability claim the fixture exists to make.
 
@@ -115,7 +119,8 @@ def test_a_constant_exposure_is_absorbed_and_a_varying_one_is_not() -> None:
     )
 
 
-@pytest.mark.cnaster
+@pytest.mark.warning
+@pytest.mark.subject
 def test_the_binner_does_not_carry_the_exposure() -> None:
     """The gap the file round trip still has, pinned rather than assumed.
 
@@ -152,6 +157,7 @@ def test_the_binner_does_not_carry_the_exposure() -> None:
     )
 
 
+@pytest.mark.infra
 @pytest.mark.analytic
 @pytest.mark.parametrize(
     ("low", "a", "b", "match"),
@@ -173,6 +179,7 @@ def test_the_construction_refuses_what_would_not_bite(
         weierstrass_exposure(64, 8, low=low, high=2.0, a=a, b=b)
 
 
+@pytest.mark.infra
 @pytest.mark.analytic
 @pytest.mark.parametrize("mode", ["constant", "uniform", "weierstrass"])
 def test_every_exposure_mode_is_positive_and_the_right_shape(mode: str) -> None:
@@ -188,6 +195,7 @@ def test_every_exposure_mode_is_positive_and_the_right_shape(mode: str) -> None:
     assert truth.base_nb_mean.min() > 0.0
 
 
+@pytest.mark.infra
 @pytest.mark.analytic
 def test_only_the_weierstrass_mode_survives_aggregation_with_structure() -> None:
     """The measurement that justifies keeping three modes rather than one.
@@ -224,6 +232,7 @@ def test_only_the_weierstrass_mode_survives_aggregation_with_structure() -> None
     )
 
 
+@pytest.mark.infra
 @pytest.mark.analytic
 def test_an_unknown_exposure_mode_is_refused() -> None:
     """Naming a mode that does not exist is a silent default otherwise."""
