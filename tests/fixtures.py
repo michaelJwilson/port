@@ -11,6 +11,7 @@ which is the one rung whose correspondence with `cnaster` is exact today.
 """
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 import numpy as np
 import torch
@@ -19,11 +20,15 @@ from snakes_and_ladders.emissions import (
     EmissionFamily,
     NegativeBinomialEmission,
 )
+from snakes_and_ladders.ragged import MINIMUM_LENGTH, Ragged
 from snakes_and_ladders.sim.hmm import (
     HmmParams,
     SimulatedHmmDataset,
     simulate_sequences,
 )
+
+if TYPE_CHECKING:
+    from snakes_and_ladders.sim.graph import BoundaryCondition, PottsGraph
 
 DEFAULT_SEED = 11
 """The seed every builder defaults to, so a bare call is reproducible."""
@@ -130,8 +135,7 @@ def negative_binomial_chains(
     dataset = simulate_sequences(
         HmmParams(
             n_states=n_states,
-            sequence_length=sequence_length,
-            n_sequences=n_sequences,
+            lengths=(sequence_length,) * n_sequences,
             initial=initial,
             transition=transition,
             emissions=family,
@@ -162,6 +166,74 @@ def circulant_transition(n_states: int, self_transition: float) -> np.ndarray:
     transition = np.full((n_states, n_states), off, dtype=np.float64)
     np.fill_diagonal(transition, self_transition)
     return transition
+
+
+def place_events(
+    lengths: np.ndarray,
+    n_states: int,
+    *,
+    rng: np.random.Generator,
+    events: tuple[int, int],
+    event_bins: tuple[int, int],
+) -> tuple[np.ndarray, list[tuple[int, int, int, int]]]:
+    """A neutral genome with copy-number events placed on it.
+
+    The state path is state zero -- diploid, balanced, and **emitted** like any
+    other state -- everywhere except where an event is placed. Each event takes
+    a contiguous run of bins inside one chromosome and gives it a single
+    non-neutral state.
+
+    This is the generative model the shipped configuration's own instance names
+    describe: `numcnas3.3_cnasize5e7_ploidy2_random4` is a count of events and
+    an event size, not a transition rate.
+
+    **The path is piecewise constant, not a draw from the transition the HMM
+    fits**, and that is the trade #120 records. A Markov chain visiting ten
+    states uniformly leaves the genome a tenth neutral, which is
+    `find_diploid_balanced_state`'s own threshold, so whether the normal state
+    is a candidate comes down to the seed. A real genome is mostly neutral, and
+    a piecewise-constant path is what that looks like. The cost is that the
+    planted path is a *special case* of the fitted model rather than a draw
+    from it -- consistent with a very sticky chain, and not drawn from one.
+
+    Events are confined within a chromosome: a copy-number event does not span
+    a centromere-to-centromere boundary, and `lengths` is where the recursion
+    restarts.
+
+    Returns
+    -------
+    tuple[np.ndarray, list[tuple[int, int, int, int]]]
+        The state path, and the events as `(chromosome, offset, extent,
+        state)`. The events are returned rather than left implicit because the
+        path cannot be read back into them: two events on adjacent chromosomes
+        that draw the same state abut, and an abutment is indistinguishable
+        from a crossing by looking at the path.
+
+    Raises
+    ------
+    ValueError
+        If `n_states` leaves no non-neutral state to place.
+    """
+    if n_states < 2:
+        msg = f"an event needs a state other than the neutral one, got {n_states}"
+        raise ValueError(msg)
+
+    path = np.zeros(int(np.sum(lengths)), dtype=np.int64)
+    edges = np.concatenate(([0], np.cumsum(lengths)))
+    placed: list[tuple[int, int, int, int]] = []
+
+    for _ in range(int(rng.integers(*events))):
+        chromosome = int(rng.integers(lengths.size))
+        start, stop = int(edges[chromosome]), int(edges[chromosome + 1])
+
+        extent = min(int(rng.integers(*event_bins)), stop - start)
+        offset = int(rng.integers(start, stop - extent + 1))
+        state = int(rng.integers(1, n_states))
+
+        path[offset : offset + extent] = state
+        placed.append((chromosome, offset, extent, state))
+
+    return path, placed
 
 
 def drift_transition(n_states: int, self_transition: float, drift: float) -> np.ndarray:
@@ -368,8 +440,7 @@ def phased_chains(
     dataset = simulate_sequences(
         HmmParams(
             n_states=n_paired,
-            sequence_length=sequence_length,
-            n_sequences=n_sequences,
+            lengths=(sequence_length,) * n_sequences,
             initial=paired_initial,
             transition=combined,
             emissions=family,
@@ -522,8 +593,7 @@ def beta_binomial_chains(
     dataset = simulate_sequences(
         HmmParams(
             n_states=n_states,
-            sequence_length=sequence_length,
-            n_sequences=n_sequences,
+            lengths=(sequence_length,) * n_sequences,
             initial=initial,
             transition=transition,
             emissions=family,
@@ -633,6 +703,7 @@ class CoreInferenceTruth:
     p_binom: np.ndarray
     taus: np.ndarray
     lengths: np.ndarray
+    events: tuple[tuple[tuple[int, int, int, int], ...], ...]
     switch_prob: np.ndarray
     lattice: tuple[int, int]
     self_transition: float
@@ -662,6 +733,30 @@ class CoreInferenceTruth:
     def clone_index(self) -> list[np.ndarray]:
         """Spot indices per clone, which is `initial_clone_index`'s shape."""
         return [np.flatnonzero(self.labels == c) for c in range(self.n_clones)]
+
+    @property
+    def ragged(self) -> Ragged:
+        """The planted genome as upstream's batch shape.
+
+        Constructing it is the check, not a conversion for its own sake:
+        `Ragged` refuses a `lengths` that does not tile the array and a
+        chromosome under two bins, so a fixture that got its own segmentation
+        wrong fails where the shape is declared rather than inside a fit.
+        """
+        return Ragged(
+            values=self.counts_nb, lengths=tuple(int(x) for x in self.lengths)
+        )
+
+    def stacked_lengths(self, n_clones: int | None = None) -> np.ndarray:
+        """`lengths` as the clone-stacked HMM sees it.
+
+        `cnaster` stacks clones along the genomic axis and tiles the
+        segmentation with them (`hmrf_utils.py:51`), so the fit runs over
+        `n_clones * n_segments` chains rather than `n_segments`. Ragged
+        chromosomes make that the shape upstream's `Ragged` carries and the
+        rectangular route cannot.
+        """
+        return np.tile(self.lengths, self.n_clones if n_clones is None else n_clones)
 
     @property
     def emission_gigabytes(self) -> float:
@@ -762,6 +857,64 @@ def weierstrass_exposure(
     return np.outer(shaped, library)
 
 
+MINIMUM_SEGMENT = MINIMUM_LENGTH
+"""The shortest chromosome the fixture may plant, which is upstream's floor.
+
+Aliased rather than re-stated so that a change upstream is a change here, and
+so the reason travels with it: one position carries no transition.
+"""
+
+
+def ragged_lengths(
+    n_obs: int,
+    n_segments: int,
+    *,
+    rng: np.random.Generator,
+    concentration: float = 2.0,
+) -> np.ndarray:
+    """A partition of `n_obs` into `n_segments` unequal parts.
+
+    Chromosomes are not the same size, and until #667 landed `Ragged` there was
+    no upstream shape that could say so -- `np.full(n_segments, n_obs //
+    n_segments)` was the whole of this function, and it forced `n_segments` to
+    divide `n_obs`.
+
+    Dirichlet weights over a floor of `MINIMUM_SEGMENT`, with the floor's
+    residual handed out to the largest fractional parts, so the result is
+    integral and sums exactly. `concentration` sets the spread: smaller is more
+    unequal, and 2.0 puts the dev instance's extremes about 3x apart.
+
+    The floor is upstream's and not this repository's: a segment of one
+    position is an initial distribution and no transition, and `Ragged` refuses
+    it where the shape is declared.
+
+    Raises
+    ------
+    ValueError
+        If the floor alone exceeds `n_obs`, where no partition exists.
+    """
+    if n_segments * MINIMUM_SEGMENT > n_obs:
+        msg = (
+            f"{n_segments} segments of at least {MINIMUM_SEGMENT} do not fit "
+            f"in {n_obs} observations"
+        )
+        raise ValueError(msg)
+
+    free = n_obs - n_segments * MINIMUM_SEGMENT
+    weights = rng.dirichlet(np.full(n_segments, concentration))
+
+    exact = weights * free
+    lengths = np.floor(exact).astype(int)
+    residual = free - int(lengths.sum())
+    if residual:
+        # NB largest fractional parts first, so the rounding is a rule rather
+        #    than an artefact of the order the segments happen to be in.
+        order = np.argsort(exact - lengths)[::-1]
+        lengths[order[:residual]] += 1
+
+    return lengths + MINIMUM_SEGMENT
+
+
 def core_inference_truth(
     *,
     n_clones: int = 3,
@@ -769,6 +922,9 @@ def core_inference_truth(
     lattice: tuple[int, int] = (12, 10),
     n_obs: int = 240,
     n_segments: int = 4,
+    segmentation: str = "ragged",
+    events: tuple[int, int] = (3, 8),
+    event_bins: tuple[int, int] | None = None,
     self_transition: float = 0.99,
     exposure: str = "weierstrass",
     depth: tuple[float, float] = (0.5, 3.0),
@@ -809,9 +965,6 @@ def core_inference_truth(
     if n_clones > rows:
         msg = f"{n_clones} bands over {rows} rows leaves one empty"
         raise ValueError(msg)
-    if n_obs % n_segments:
-        msg = f"{n_segments} segments do not partition {n_obs} observations"
-        raise ValueError(msg)
     if n_states < 2:
         msg = f"a chain needs at least two states, got {n_states}"
         raise ValueError(msg)
@@ -819,28 +972,56 @@ def core_inference_truth(
     rng = np.random.default_rng(seed)
     n_spots = rows * columns
 
-    # Spread across a decade of expression and either side of balance, so the
-    # states are separable by the data rather than by their index.
-    log_mu = np.log(np.linspace(0.5, 5.0, n_states))
+    # State zero is diploid and balanced: `mu = 1`, `p = 0.5`. It is planted
+    # rather than left to chance because two stages of `run_cnaster` require
+    # one to exist -- `find_diploid_balanced_state` raises "No candidate
+    # diploid balanced state found!" without it, and the normal-spot path
+    # tests every bin against a beta-binomial with `p` forced to 0.5 (#106).
+    # A fixture with no normal state asks both for something it never planted.
+    #
+    # The rest spread across a decade of expression and above balance:
+    # `run_core_inference` calls `gmm_init` with `only_minor=False` because,
+    # as `cnaster`'s own comment says, with no phasing the states have to sit
+    # at or above 0.5. A state planted below it is asking the initializer for
+    # something the model does not carry.
+    log_mu = np.concatenate(([0.0], np.log(np.linspace(1.5, 5.0, n_states - 1))))
     alphas = np.full(n_states, 1.0 / 6.0)
-    # Above balance: `run_core_inference` calls `gmm_init` with
-    # `only_minor=False` because, as its own comment says, with no phasing the
-    # states have to sit above 0.5. A fixture planted below it is asking the
-    # initializer for something the model does not carry.
-    p_binom = np.linspace(0.52, 0.88, n_states)
+    p_binom = np.concatenate(([0.5], np.linspace(0.58, 0.88, n_states - 1)))
     taus = np.full(n_states, 30.0)
 
     row_of = np.arange(n_spots) // columns
     labels = np.minimum(row_of * n_clones // rows, n_clones - 1).astype(np.int64)
 
-    transition = circulant_transition(n_states, self_transition)
-    states = np.empty((n_clones, n_obs), dtype=np.int64)
-    for clone in range(n_clones):
-        states[clone, 0] = rng.integers(n_states)
-        for obs in range(1, n_obs):
-            states[clone, obs] = rng.choice(
-                n_states, p=transition[states[clone, obs - 1]]
-            )
+    if segmentation == "ragged":
+        lengths = ragged_lengths(n_obs, n_segments, rng=rng)
+    elif segmentation == "equal":
+        if n_obs % n_segments:
+            msg = f"{n_segments} equal segments do not partition {n_obs}"
+            raise ValueError(msg)
+        lengths = np.full(n_segments, n_obs // n_segments, dtype=int)
+    else:
+        msg = f"unknown segmentation {segmentation!r}"
+        raise ValueError(msg)
+
+    # NB a neutral genome with events placed on it, rather than a chain
+    #    visiting every state equally (#120). Ten states visited uniformly
+    #    leave the genome a tenth neutral, which is
+    #    `find_diploid_balanced_state`'s own threshold, so whether the normal
+    #    state is a candidate at all came down to the seed. Events are
+    #    confined within a chromosome, which is also what makes `lengths` the
+    #    truth rather than a label: the recursion restarts there.
+    # NB the event size scales with the genome, so the neutral backbone
+    #    survives at any `n_obs`. Absolute sizes suit a real genome, where a
+    #    bin is a fixed number of bases -- but a fixture's `n_obs` is a budget
+    #    rather than a length, and events of five to forty bins that leave a
+    #    thousand-bin genome 89 per cent neutral bury a sixty-bin one.
+    extent = event_bins or (max(2, n_obs // 200), max(3, n_obs // 25))
+    placements = [
+        place_events(lengths, n_states, rng=rng, events=events, event_bins=extent)
+        for _ in range(n_clones)
+    ]
+    states = np.stack([path for path, _ in placements])
+    placed_events = tuple(tuple(placed) for _, placed in placements)
 
     if exposure == "constant":
         base_nb_mean = np.full((n_obs, n_spots), float(depth[0]))
@@ -881,12 +1062,49 @@ def core_inference_truth(
         alphas=alphas,
         p_binom=p_binom,
         taus=taus,
-        lengths=np.full(n_segments, n_obs // n_segments, dtype=int),
+        lengths=lengths,
+        events=placed_events,
         switch_prob=switch_prob,
         lattice=lattice,
         self_transition=self_transition,
         seed=seed,
     )
+
+
+def critical_instance(**overrides: object) -> CoreInferenceTruth:
+    """The instance the early gate runs on: the smallest that is still a run.
+
+    `M = K = 2`, `G = 1,000`, `S = 500` -- two clones over a `20 x 25` lattice,
+    250 spots each, which clears `icm_sweep_deque`'s floor of 200 (#81) with
+    the least room to spare. Two states is one event state against the
+    neutral one, so a fit that cannot separate them has nothing else to
+    confuse them with, and a failure here is structural rather than
+    statistical.
+
+    The point is the budget. `critical` gates first and gates everything
+    (upstream's rule, mirrored in `pyproject.toml`), so the instance it fits
+    end to end has to cost seconds, not the 16 s `dev_instance` costs or the
+    minutes `key_instance` would. Reduce further and the labelling stops
+    being recoverable at all -- one clone under the floor is merged away
+    before the solver runs.
+
+    `events=(6, 10)` rather than the default `(3, 8)`, and the reason is
+    measured: at `K = 2` the one event state is the weakest the law plants
+    (`mu = 1.5`, `p = 0.58`), and at the default's 13.5 per cent occupancy
+    the solver merges the two clones into one. At 18.1 per cent it recovers
+    the labelling exactly, in about a second warm; deeper reads or a third
+    state do the same, and more events is the change that keeps `K = 2`.
+    """
+    settings: dict[str, object] = {
+        "n_clones": 2,
+        "n_states": 2,
+        "lattice": (20, 25),
+        "n_obs": 1_000,
+        "n_segments": 4,
+        "events": (6, 10),
+    }
+    settings.update(overrides)
+    return core_inference_truth(**settings)  # type: ignore[arg-type]
 
 
 def dev_instance(**overrides: object) -> CoreInferenceTruth:
@@ -972,6 +1190,11 @@ class SpotCloneField:
         a uniform draw maximises the spread of state indices in the inner
         loop -- so it measures a access pattern no run produces. `segments`
         below is the knob.
+    counts_nb, base_nb_mean, counts_bb, total_bb_RD : np.ndarray
+        The raw `(n_obs, n_spots)` inputs the emissions were scored from, and
+        the per-state parameters beside them. Carried because issue #59 item
+        2 fuses the emission into the field, so a patch for it needs what the
+        emission was built from rather than the emission itself.
     segments : int
         Runs in clone zero's profile. The data-dependence `CLAUDE.md` names:
         a near-constant profile and a fragmented one are different problems
@@ -984,11 +1207,24 @@ class SpotCloneField:
     pred: np.ndarray
     segments: int
     seed: int
+    counts_nb: np.ndarray
+    base_nb_mean: np.ndarray
+    counts_bb: np.ndarray
+    total_bb_RD: np.ndarray
+    log_mu: np.ndarray
+    alphas: np.ndarray
+    p_binom: np.ndarray
+    taus: np.ndarray
 
     @property
     def n_states(self) -> int:
         """`K`."""
         return int(self.log_emission_rdr.shape[0])
+
+    @property
+    def emission_gigabytes(self) -> float:
+        """Both emission channels together, which is what issue #59 item 2 removes."""
+        return 2.0 * self.log_emission_rdr.nbytes / 1e9
 
     @property
     def n_obs(self) -> int:
@@ -1106,4 +1342,232 @@ def spot_clone_field(
         pred=pred,
         segments=int(1 + np.sum(pred[1:, 0] != pred[:-1, 0])),
         seed=seed,
+        counts_nb=observations.astype(np.float64),
+        base_nb_mean=np.ones_like(observations, dtype=np.float64),
+        counts_bb=successes.astype(np.float64),
+        total_bb_RD=np.full(successes.shape, float(trials), dtype=np.float64),
+        log_mu=np.log(profiles.mean).reshape(-1, 1),
+        alphas=(1.0 / profiles.dispersion).reshape(-1, 1),
+        p_binom=allele.success_probability.reshape(-1, 1),
+        taus=allele.concentration.reshape(-1, 1),
+    )
+
+
+MAX_ENUMERABLE_LABELLINGS = 200_000
+
+
+@dataclass(frozen=True)
+class PottsLabels:
+    """A spatial labelling problem, and the truth that built it.
+
+    The rung issue #40 needs. A label solver takes a unary field and a graph
+    and returns a labelling, so what validates it is an instance whose graph
+    is declared and whose optimum is computable rather than approximable.
+
+    Parameters
+    ----------
+    graph : PottsGraph
+        The lattice, carrying its edges once each and a coupling per edge.
+        `cnaster` describes the same object as a symmetric CSR adjacency; the
+        adapter converts, and a test pins the two equal.
+    labels : np.ndarray
+        The planted labelling, shape `(n_nodes,)`. **Not the optimum.** It is
+        what the field was drawn around, and at a low signal-to-noise the
+        energy-minimising labelling is a different one -- which is the
+        difference between a recovery claim and an optimality claim, and the
+        reason the two are asserted separately.
+    field : np.ndarray
+        The unary, shape `(n_nodes, n_clones)`. `cnaster`'s
+        `single_llf`, upstream's `field_values`, and a per-spot per-clone log
+        likelihood in the application.
+    coupling : float
+        `J`, uniform over the edges.
+    spatial_weight : float
+        `cnaster` multiplies its edge weights by this and upstream folds it
+        into the coupling, so the two carry the same product differently.
+        Held separately here so a test can vary one and hold the other.
+    shape : tuple[int, ...]
+        The lattice extent. Carried because a failure naming a node index is
+        unreadable without it.
+    seed : int
+        The draw's seed.
+    """
+
+    graph: "PottsGraph"
+    labels: np.ndarray
+    field: np.ndarray
+    coupling: float
+    spatial_weight: float
+    shape: tuple[int, ...]
+    seed: int
+
+    @property
+    def n_nodes(self) -> int:
+        """The number of sites."""
+        return int(self.field.shape[0])
+
+    @property
+    def n_clones(self) -> int:
+        """The number of labels."""
+        return int(self.field.shape[1])
+
+    @property
+    def edge_coupling(self) -> float:
+        """`spatial_weight * J`, the product both implementations score with."""
+        return self.spatial_weight * self.coupling
+
+
+def potts_labels(
+    *,
+    shape: tuple[int, ...] = (6, 6),
+    n_clones: int = 3,
+    coupling: float = 1.0,
+    spatial_weight: float = 1.0,
+    signal: float = 2.0,
+    noise: float = 1.0,
+    boundary: "BoundaryCondition | None" = None,
+    seed: int = DEFAULT_SEED,
+) -> PottsLabels:
+    """Plant contiguous label domains on a lattice and draw a field around them.
+
+    The field is **planted, not inferred**, for the reason
+    :func:`planted_posterior` gives: it is the input to the step under test,
+    so deriving it from an emission would make a defect in the emission look
+    like a defect in the solver. The emission-derived field belongs to issue
+    #4, which is where the whole inference is refereed.
+
+    The domains are contiguous slabs along the first axis rather than an
+    independent draw per node. That is the regime the paper's solver argument
+    is about: `wolff.tex` claims single-site descent freezes large same-label
+    regions into spurious disjoint clusters, and a labelling with no large
+    regions cannot exhibit it. An i.i.d. labelling would make every solver
+    agree and the comparison empty.
+
+    Parameters
+    ----------
+    signal : float
+        How far the planted label's field entry sits above the others, before
+        noise. The axis every claim here is stated against: at `signal` far
+        above `noise` the unary decides alone and the coupling is decoration,
+        and at zero the field is pure noise and no method can recover
+        anything.
+    noise : float
+        Standard deviation of the Gaussian added to every entry. `signal /
+        noise` is the quantity to report, not either alone.
+    coupling, spatial_weight : float
+        Their product is what both implementations score with. At zero the
+        problem separates per node and every solver must return the field's
+        argmax, which is the degenerate case a test uses to check the harness
+        before it checks a solver.
+
+    Raises
+    ------
+    ValueError
+        If `n_clones` is below two, where there is nothing to label; if
+        `noise` is negative; or if `shape` has fewer sites than clones, where
+        a planted labelling cannot use them all.
+    """
+    from snakes_and_ladders.sim.graph import BoundaryCondition, lattice_graph
+
+    if n_clones < 2:
+        msg = f"n_clones must be at least two, got {n_clones}"
+        raise ValueError(msg)
+    if noise < 0.0:
+        msg = f"noise must not be negative, got {noise}"
+        raise ValueError(msg)
+
+    n_nodes = int(np.prod(shape))
+    if n_nodes < n_clones:
+        msg = f"shape {shape} has {n_nodes} sites, fewer than n_clones={n_clones}"
+        raise ValueError(msg)
+
+    if boundary is None:
+        boundary = BoundaryCondition.OPEN
+
+    graph = lattice_graph(tuple(shape), boundary, coupling)
+
+    # NB contiguous slabs along the first axis, sized as evenly as the extent
+    #    allows, so every clone is present and the domains are large.
+    first_axis = shape[0]
+    per_node = n_nodes // first_axis
+    slab_of_row = np.floor_divide(np.arange(first_axis) * n_clones, first_axis)
+    labels = np.repeat(slab_of_row, per_node).astype(np.int64)
+
+    rng = np.random.default_rng(seed)
+    field = rng.normal(loc=0.0, scale=noise, size=(n_nodes, n_clones))
+    field[np.arange(n_nodes), labels] += signal
+
+    return PottsLabels(
+        graph=graph,
+        labels=labels,
+        field=field,
+        coupling=coupling,
+        spatial_weight=spatial_weight,
+        shape=tuple(shape),
+        seed=seed,
+    )
+
+
+def enumerate_minimum_energy(fixture: PottsLabels) -> tuple[np.ndarray, float]:
+    """The exact minimiser of the Potts energy, by exhaustive search.
+
+    The referee `CLAUDE.md` names first among independent sources, and the
+    one this rung can actually have: a label solver returns the best of what
+    it visited, and without the true optimum there is no way to tell a good
+    search from a lucky one.
+
+    Returns the labelling and its energy, under upstream's sign convention
+    (`energy` is minimised). Cost is `n_clones ** n_nodes`, so this is for
+    fixtures built to be enumerable and nothing else.
+
+    Raises
+    ------
+    ValueError
+        If the search space exceeds `MAX_ENUMERABLE_LABELLINGS`. Refusing is
+        the point: an enumeration that silently takes an hour is a test that
+        will be deleted rather than fixed, and a fixture too large to
+        enumerate needs a different referee rather than more patience.
+    """
+    from snakes_and_ladders.search.alpha_expansion import energy
+
+    n_nodes, n_clones = fixture.n_nodes, fixture.n_clones
+    total = n_clones**n_nodes
+
+    if total > MAX_ENUMERABLE_LABELLINGS:
+        msg = (
+            f"{n_clones}**{n_nodes} = {total} labellings exceeds "
+            f"{MAX_ENUMERABLE_LABELLINGS}; use a smaller fixture"
+        )
+        raise ValueError(msg)
+
+    graph = _scaled_graph(fixture)
+
+    best_labelling, best_energy = None, np.inf
+    for index in range(total):
+        labelling = np.array(
+            [(index // n_clones**position) % n_clones for position in range(n_nodes)],
+            dtype=np.int64,
+        )
+        value = energy(graph, fixture.field, labelling)
+        if value < best_energy:
+            best_labelling, best_energy = labelling, value
+
+    assert best_labelling is not None
+    return best_labelling, float(best_energy)
+
+
+def _scaled_graph(fixture: PottsLabels) -> "PottsGraph":
+    """The fixture's graph with `spatial_weight` folded into the coupling.
+
+    `cnaster` carries the weight outside the adjacency and multiplies at
+    scoring time; upstream carries one number per edge. Folding here is what
+    makes the two score the same objective, and doing it in one place is what
+    stops a test folding it twice.
+    """
+    from snakes_and_ladders.sim.graph import PottsGraph
+
+    return PottsGraph(
+        n_nodes=fixture.graph.n_nodes,
+        edges=fixture.graph.edges,
+        coupling=tuple(fixture.spatial_weight * j for j in fixture.graph.coupling),
     )

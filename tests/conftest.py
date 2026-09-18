@@ -241,3 +241,33 @@ def collected_items() -> list[pytest.Item]:
         pytest.skip(f"narrowed collection; {len(missing)} test module(s) absent")
 
     return items
+
+
+@pytest.fixture(autouse=True, scope="session")
+def _keep_the_perf_log_out_of_the_checkout(
+    tmp_path_factory: pytest.TempPathFactory,
+) -> Iterator[None]:
+    """Run the whole suite from a scratch directory.
+
+    `hmm_emission.flush_perf` opens the **literal relative path**
+    `"cnaster.perf"`, reading `config.paths.perf_path` only to count rows and
+    decide on a header, so every fit drops a timing log into whatever
+    directory pytest was started from. `cnaster_perf_sink` has handled that
+    for the tests that ask for it since the M-step work; the pipeline tests do
+    not ask, because they reach `fit` several stages down and have no reason
+    to know.
+
+    The result was a tracked `cnaster.perf` modified by every run. Making the
+    protection automatic is the fix: nothing in this suite resolves a path
+    relative to the working directory -- `tmp_path` is absolute and
+    `tests/test_coverage_scope.py` anchors on `__file__` -- so the directory
+    is free to move.
+    """
+    import os
+
+    previous = Path.cwd()
+    os.chdir(tmp_path_factory.mktemp("cwd"))
+    try:
+        yield
+    finally:
+        os.chdir(previous)

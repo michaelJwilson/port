@@ -190,6 +190,12 @@ showcontent = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# NB `release` is deselected by default and has to be asked for, as upstream
+#    does: a bare `pytest` used to run the release tier, 288 s, and the
+#    per-pull-request tier was a matter of remembering `-m "not release"`.
+#    A later `-m` on the command line replaces this one, so `-m critical`
+#    still means exactly `-m critical`, and the release gate passes
+#    `-m "release or not release"`.
 addopts = '--strict-markers -m "not release"'
 markers = [
     # --- kinds: what decided the expected value -------------------------
@@ -225,7 +231,7 @@ markers = [
     #    referee is outside the implementation -- `oracle`, `upstream_oracle`,
     #    `cnaster` or `planted` -- and that carries no scale marker, so the
     #    early gate cannot silently become the slow tier.
-    "critical: gates early; fast, and its failure means the rest is not worth running",
+    "critical: gates early; fast, and its failure means the rest is not worth running -- structurally, or because the science it rests on is wrong",
 ]
 
 [tool.coverage.run]
@@ -273,17 +279,36 @@ source = [
 omit = [
     "*/cnaster/deprecated/*",
     "*/cnaster/sandbox/*",
+    # `sim.py` holds `load_tables_to_matrices` and nothing else, and its only
+    # caller is commented out in `scripts/run_cnaster.py:58`. That is the
+    # dependency setting a module aside in the only way a package with no
+    # `deprecated/` directory can, so the rule above -- reachable from an
+    # installed entry point -- resolves to no. #110.
+    #
+    # `wolff.py` is **not** omitted on the same argument, and #110 says why:
+    # it is reachable, `run_cnaster` branches into `initialize_clones_wolff`
+    # on a configuration key, and what stops it is `ImportError` at import
+    # (#71). Excluding it would hide a defect behind a figure that improved.
+    "*/cnaster/sim.py",
 ]
 
 [tool.coverage.report]
-# The floor the tests reach: 1,977 of 5,676 statements, 34.83 per cent. The
-# denominator is `cnaster` plus `python/port`, so a module added here moves
-# both the numerator and the denominator -- `port.integer_copy` added 98
-# statements and `port.patch.hmrf_field` 32, and the figure rose for each,
-# which is the arithmetic working. This branch adds no module and moves the
-# numerator alone: a planted instance of `run_core_inference` reaches
-# `cnaster` code no test had entered, which is the only other way the figure
-# rises.
+# The floor the tests reach against the whole of `cnaster`: 4,241 of 6,218
+# statements, 68.21 per cent. It was 33.77 until `run_cnaster` itself ran end
+# to end from temporary files (#87): one call reaches the plotting, the
+# phasing, the clone initializer, the normal baseline and the integer-copy
+# solver, none of which any component test had touched.
+#
+# The denominator grew with it, 5,544 to 5,843, and the growth is the gap the
+# note below predicted closing: `scripts/run_cnaster.py` is 299 statements
+# that a directory scan never descended into, and importing it to run it puts
+# them in the figure. They sit at 89.97 per cent.
+#
+# The `port` side of the denominator: `port.integer_copy` 98 statements,
+# `port.patch.hmrf_field` 32, `port.patch.hmrf_fused_field` 25,
+# `port.patch.hmrf_adjacency` 9, `port.patch.hmrf_invariants` 28 and
+# `port.patch.icm_interface` 40 (#56, #60-#64). Each moved the numerator and
+# the denominator together, which is the arithmetic working.
 #
 # Low by construction -- the denominator is
 # every module the package ships at top level, and most of them have no test
@@ -297,7 +322,7 @@ omit = [
 # pull request. Unlike a denominator of the imported modules, this one does
 # not fall for bringing a new module under test, so there is no case where
 # lowering it is legitimate.
-fail_under = 34.8
+fail_under = 68.2
 precision = 2
 exclude_lines = [
     "pragma: no cover",

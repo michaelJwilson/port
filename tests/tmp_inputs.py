@@ -52,6 +52,24 @@ than assumed.
 GENE_LENGTH = 20_000
 """Each interval's extent. Any value below the spacing works; this is a gene."""
 
+MARKER_SPACING = 500_000
+"""Base pairs between genetic-map markers.
+
+Real maps are denser than this; what matters for the interpolation
+`assign_centiMorgans` does is that a marker interval spans several gene
+intervals, so a position lands strictly between two rows rather than on one.
+"""
+
+CENTIMORGANS_PER_MEGABASE = (0.3, 2.5)
+"""The rate a marker interval is drawn from, in cM/Mb.
+
+The genome averages about one, and the spread is what makes the map a map
+rather than a straight line: a constant rate would make `assign_centiMorgans`
+an affine function of position and `compute_numbat_phase_switch_prob` a
+function of distance alone, which is the degenerate case the interpolation is
+there to handle.
+"""
+
 SAMPLE_ID = "S1"
 """One slice. Multi-slice alignment is a separate concern and a separate fixture."""
 
@@ -71,6 +89,7 @@ class WrittenInputs:
     allele_a: np.ndarray
     allele_b: np.ndarray
     gene_counts: np.ndarray
+    genetic_map: Path
 
     def config(self) -> dict[str, Any]:
         """The global config the loader reads, and nothing beyond it."""
@@ -89,6 +108,44 @@ class WrittenInputs:
                 "normalize_gene_outliers": False,
             },
         }
+
+
+def write_genetic_map(truth: CoreInferenceTruth, path: Path) -> Path:
+    """A recombination map over the planted chromosomes, at `path`.
+
+    `get_reference_recomb_rates` reads a tab-separated table with `chrom`,
+    `pos` and `pos_cm`, keeps `chr1`..`chr22`, and `assign_centiMorgans`
+    interpolates a position's centiMorgans linearly between the rows either
+    side of it. So the map has to span every gene interval the fixture writes,
+    or a block at the far end of a chromosome interpolates off the end of the
+    table.
+
+    Mocked rather than shipped, and semi-realistic in the one way that bites:
+    the rate varies per interval, drawn in `CENTIMORGANS_PER_MEGABASE` from the
+    fixture's own stream. A constant rate would make the map affine and the
+    interpolation exact by construction, which is the case that hides an error
+    in it.
+    """
+    rng = np.random.default_rng([truth.seed, MARKER_SPACING])
+    rows: list[dict[str, object]] = []
+
+    for chromosome, extent in enumerate(truth.lengths, start=1):
+        # One marker past the last gene interval, so every block has a row
+        # above it as well as below it.
+        span = int(extent) * GENE_SPACING + GENE_LENGTH
+        positions = np.arange(0, span + MARKER_SPACING, MARKER_SPACING)
+
+        rates = rng.uniform(*CENTIMORGANS_PER_MEGABASE, positions.size)
+        steps = rates[1:] * np.diff(positions) / 1e6
+        centimorgans = np.concatenate(([0.0], np.cumsum(steps)))
+
+        rows += [
+            {"chrom": f"chr{chromosome}", "pos": int(pos), "pos_cm": float(cm)}
+            for pos, cm in zip(positions, centimorgans, strict=True)
+        ]
+
+    pd.DataFrame(rows).to_csv(path, sep="\t", index=False)
+    return path
 
 
 def write_tmp_inputs(
@@ -189,6 +246,7 @@ def write_tmp_inputs(
     return WrittenInputs(
         root=root,
         sample_sheet=sample_sheet,
+        genetic_map=write_genetic_map(truth, root / "genetic_map.tab"),
         hgtable=root / "hgtable.tsv",
         barcodes=barcodes,
         snp_ids=snp_ids,
