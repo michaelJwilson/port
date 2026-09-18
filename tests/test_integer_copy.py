@@ -354,7 +354,17 @@ def test_the_covariance_comes_from_upstream() -> None:
         fixture.alpha,
         fixture.beta,
     )
-    fitted = fit(objective, start, max_iterations=400)
+    # NB the tolerance is stated rather than left to upstream's 1e-8 default,
+    #    which sits inside this objective's noise floor. At the optimum the
+    #    relative gradient is dominated by double-precision cancellation, and
+    #    where that floor lands is the platform's: this machine reaches
+    #    3.52e-9 in 4 iterations, a GitHub runner plateaus at 1.13e-8 through
+    #    all 400. Both find the *same* maximum -- value 16851.46390216068 on
+    #    both, agreeing to eleven significant figures -- so the default was
+    #    pinning which side of the noise the arithmetic fell on, not whether
+    #    the fit converged. 1e-7 is above the floor and still four orders
+    #    inside the curvature `parameter_covariance` needs.
+    fitted = fit(objective, start, max_iterations=400, gradient_tolerance=1e-7)
     assert fitted.converged
 
     covariance = np.asarray(parameter_covariance(objective, fitted.theta).detach())

@@ -36,6 +36,25 @@ dev = [
 docs = [
     "sphinx>=7,<9",
 ]
+# The third reference, read rather than run (#131). CalicoST is what `cnaster`
+# was rewritten from, so it is the only source that says which divergences
+# were decisions -- `docs/audit-*-calicost.md` are what it is for.
+#
+# **Optional, and the reason is measured.** Its `setup.py` pins
+# `numpy==1.24.4`, `scipy==1.11.3`, `numba==0.60.0` and `matplotlib==3.7.3`
+# against this project's `numpy>=1.26`, `numba>=0.61` and `matplotlib>=3.9`.
+# Those pins turn out to be dead metadata: its `pyproject.toml` carries a
+# PEP 621 `[project]` table with unpinned versions, which takes precedence,
+# so `uv lock` resolves in 12.5 s and adds two packages -- `calicost` and
+# `ete3`. It is an extra because nothing in the default path imports it and
+# `ete3` is a phylogenetics dependency this repository has no use for, not
+# because it could not resolve.
+#
+# OSI licence: BSD (its `pyproject.toml` classifier). Under 1,000 GitHub
+# stars, flagged as `CLAUDE.md` requires.
+calicost = [
+    "calicost",
+]
 notebooks = [
     "nbclient>=0.10",
     "nbformat>=5.10",
@@ -51,6 +70,9 @@ test = [
 [tool.uv.sources]
 snakes_and_ladders = { git = "https://github.com/michaelJwilson/snakes_and_ladders", branch = "main" }
 cnaster = { git = "https://github.com/michaelJwilson/cnaster", branch = "finish_annotation_mushift3" }
+# Pinned to a commit rather than a branch: this is a reference being read, so
+# a moving target would silently change what the audits describe.
+calicost = { git = "https://github.com/raphael-group/CalicoST", rev = "c1abcae" }
 
 [tool.maturin]
 python-source = "python"
@@ -293,8 +315,8 @@ omit = [
 ]
 
 [tool.coverage.report]
-# The floor the tests reach against the whole of `cnaster`: 4,241 of 6,218
-# statements, 68.21 per cent. It was 33.77 until `run_cnaster` itself ran end
+# The floor the tests reach against the whole of `cnaster`: 4,242 of 6,218
+# statements, 68.22 per cent. It was 33.77 until `run_cnaster` itself ran end
 # to end from temporary files (#87): one call reaches the plotting, the
 # phasing, the clone initializer, the normal baseline and the integer-copy
 # solver, none of which any component test had touched.
