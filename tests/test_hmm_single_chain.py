@@ -129,8 +129,8 @@ def test_drift_outside_the_unit_interval_is_refused() -> None:
         negative_binomial_chains(drift=0.0)
 
 
-@pytest.mark.infra
-@pytest.mark.analytic
+@pytest.mark.oracle
+@pytest.mark.property
 def test_beta_binomial_channel_is_inert_at_zero_depth() -> None:
     """The adapter isolates the count channel, rather than hoping to.
 
@@ -152,8 +152,8 @@ def test_beta_binomial_channel_is_inert_at_zero_depth() -> None:
     np.testing.assert_array_equal(cnaster_emission(inputs), cnaster_emission(perturbed))
 
 
-@pytest.mark.infra
-@pytest.mark.analytic
+@pytest.mark.oracle
+@pytest.mark.property
 @pytest.mark.parametrize("exposure", [0.5, 1.0, 7.0])
 def test_constant_exposure_is_absorbed(exposure: float) -> None:
     """A constant `base_nb_mean` leaves the scored model unchanged.

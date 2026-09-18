@@ -108,8 +108,8 @@ def test_every_block_is_cnasters_own(n_states: int) -> None:
         np.testing.assert_array_equal(kernels[step], expected)
 
 
-@pytest.mark.infra
-@pytest.mark.analytic
+@pytest.mark.oracle
+@pytest.mark.property
 @pytest.mark.parametrize("n_states", [2, 5])
 def test_every_block_is_a_transition_kernel(n_states: int) -> None:
     """Each row exponentiates to one, at every site.

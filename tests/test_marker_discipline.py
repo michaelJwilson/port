@@ -12,7 +12,15 @@ kind. A test is critical **and** refereed by something, never instead of it.
 import pytest
 
 KINDS = frozenset(
-    {"exact", "upstream_oracle", "upstream", "subject", "planted", "analytic"}
+    {
+        "exact",
+        "upstream_oracle",
+        "upstream",
+        "subject",
+        "planted",
+        "property",
+        "analytic",
+    }
 )
 """What may decide an expected value here."""
 
@@ -31,7 +39,9 @@ decides nothing, however tight its tolerance, and counting one as validation
 is what `CLAUDE.md` calls coverage theatre.
 """
 
-EXTERNAL_REFEREES = frozenset({"exact", "upstream_oracle", "subject", "planted"})
+EXTERNAL_REFEREES = frozenset(
+    {"exact", "upstream_oracle", "subject", "planted", "property"}
+)
 """The kinds that check a number against something outside the implementation.
 
 `analytic` and `upstream` referee the implementation against its own contract

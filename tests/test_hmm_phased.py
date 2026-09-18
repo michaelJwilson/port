@@ -95,8 +95,8 @@ def test_combined_transition_matches_cnaster_construction(
     )
 
 
-@pytest.mark.infra
-@pytest.mark.analytic
+@pytest.mark.oracle
+@pytest.mark.property
 @pytest.mark.parametrize("penalize", ASSEMBLIES)
 @pytest.mark.parametrize("switch", [0.01, 0.15, 0.5, 0.9])
 @pytest.mark.parametrize("n_copy_states", [1, 2, 5])
@@ -165,8 +165,8 @@ def test_sitewise_kernel_changes_the_score() -> None:
     assert abs(scored - perturbed) > 1.0
 
 
-@pytest.mark.infra
-@pytest.mark.analytic
+@pytest.mark.oracle
+@pytest.mark.property
 def test_zero_phase_switching_decouples_the_phases() -> None:
     """At a vanishing kernel the two phases stop exchanging mass.
 

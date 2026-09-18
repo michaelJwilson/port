@@ -196,8 +196,8 @@ def test_m_step_recovers_the_planted_family(chains: BetaBinomialChains) -> None:
         )
 
 
-@pytest.mark.infra
-@pytest.mark.analytic
+@pytest.mark.oracle
+@pytest.mark.property
 @pytest.mark.usefixtures("cnaster_config", "cnaster_perf_sink")
 def test_m_step_does_not_increase_its_own_objective(chains: BetaBinomialChains) -> None:
     """An M step does not leave the objective worse than it found it.

@@ -235,7 +235,7 @@ markers = [
     # decides nothing, however tight its tolerance.
     "infra: port's own machinery, rules and plumbing; does not count toward coverage",
     "end2end: drives cnaster through a real path and judges scientific output against planted truth",
-    "oracle: judges scientific output against snakes_and_ladders or an exact independent answer",
+    "oracle: judges scientific output against snakes_and_ladders, an exact independent answer, or a mathematical property the model must satisfy",
     "equivalence: a port patch reproduces what it replaces, bitwise or to a stated tolerance",
     "bug: pins a defect against the paper, the oracle, or cnaster's own contract; fails when cnaster is fixed",
     "warning: pins behaviour that is defensible but suspicious; does not count toward coverage",
@@ -260,7 +260,14 @@ markers = [
     "upstream: snakes_and_ladders was used and did not decide the value -- it drew the instance, or its acceptance of an input is itself the claim",
     "subject: checked against the cnaster implementation",
     "planted: checked against the fixture's planted truth",
-    "analytic: checked against an analytic property or an invariant",
+    # NB `property` and `analytic` were one marker until #151, and the split is
+    #    the whole of that ticket. `analytic` conflated two referees: a law the
+    #    *model* obeys whatever code computes it, and a property of the code's
+    #    own construction. Only the first is a referee -- the second is the
+    #    implementation agreeing with itself, and counting it is the theatre
+    #    #149 removed. 25 tests moved; 136 stayed.
+    "property: checked against a mathematical property the model must satisfy whatever the implementation does -- conservation, a limit, a symmetry, a monotonicity, a calibration",
+    "analytic: checked against a property of the implementation's own construction -- a round trip, a refused input, a shape the caller must supply",
     # --- tiers: when a test runs, and how long it is allowed to take -----
     "release: over the per-pull-request budget; runs for a release",
     # NB `preprocessing` names a subject rather than a referee, as `release`
@@ -340,16 +347,24 @@ omit = [
 
 [tool.coverage.report]
 # **The floor is what the validated types reach, not what the suite runs**
-# (#149): 2,234 of 5,919 statements, 37.74 per cent, over the 165 tests marked
+# (#149): 2,246 of 5,919 statements, 37.95 per cent, over the 231 tests marked
 # `end2end`, `oracle`, `equivalence` or `bug`. Running everything reaches
 # 4,242 of 6,218, 68.22 per cent, and that figure is no longer a gate.
 #
-# The 30.5-point drop is a measurement, not a regression. `CLAUDE.md` forbids
+# The 30.3-point drop is a measurement, not a regression. `CLAUDE.md` forbids
 # a test that asserts only shapes or the absence of an exception, and the
 # suite obeys that at the assertion level -- 171 numeric comparisons against
 # 49 structural ones. The theatre was one level up, in the referee: a test can
 # assert a tight tolerance on a quantity nothing outside `cnaster` ever
-# decided. 161 of 286 test functions turned out to be `infra`.
+# decided. 136 of 286 test functions are `infra`.
+#
+# #151 promoted 25 of them, the ones whose referee is a law the model obeys
+# rather than a property of the code's construction, and the figure moved
+# 37.74 -> 37.95. **Sixty-six more tests bought twelve statements**, because a
+# conservation law is usually checked on a path some other counted test
+# already walks. That is the expected shape and it is the argument for the
+# split: the promotion corrects who is credited with a claim, and the coverage
+# figure was never the reason to make it.
 #
 # The denominator moves with the selection, 6,218 to 5,919, and the 299
 # statements are exactly `scripts/run_cnaster.py`. That is the sharpest thing
@@ -382,7 +397,7 @@ omit = [
 # pull request. Unlike a denominator of the imported modules, this one does
 # not fall for bringing a new module under test, so there is no case where
 # lowering it is legitimate.
-fail_under = 37.7
+fail_under = 37.9
 precision = 2
 exclude_lines = [
     "pragma: no cover",
