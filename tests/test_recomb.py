@@ -53,8 +53,8 @@ def test_switch_probability_is_the_mapping_function(nu: float) -> None:
     )
 
 
-@pytest.mark.infra
-@pytest.mark.analytic
+@pytest.mark.oracle
+@pytest.mark.property
 def test_switch_probability_respects_the_limits() -> None:
     """Zero distance gives zero, unbounded distance gives one half.
 
@@ -76,8 +76,8 @@ def test_switch_probability_respects_the_limits() -> None:
     assert np.all(probability <= 0.5)
 
 
-@pytest.mark.infra
-@pytest.mark.analytic
+@pytest.mark.oracle
+@pytest.mark.property
 @pytest.mark.parametrize("nu", [0.5, 1.0, 2.0])
 def test_switch_probability_increases_with_distance(nu: float) -> None:
     """Further apart is more likely to have switched, at every rate."""

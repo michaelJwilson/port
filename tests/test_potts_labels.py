@@ -155,8 +155,8 @@ def test_cnaster_maximises_what_upstream_minimises(coupling: float) -> None:
         assert cost + energy == pytest.approx(0.0, abs=SIGN_TOLERANCE)
 
 
-@pytest.mark.infra
-@pytest.mark.analytic
+@pytest.mark.oracle
+@pytest.mark.property
 def test_at_zero_coupling_the_problem_separates(lattice: PottsLabels) -> None:
     """With no coupling, the optimum is the field's argmax, node by node.
 
@@ -224,8 +224,8 @@ def test_enumeration_refuses_what_it_cannot_search() -> None:
         enumerate_minimum_energy(too_large)
 
 
-@pytest.mark.infra
-@pytest.mark.analytic
+@pytest.mark.oracle
+@pytest.mark.exact
 def test_icm_reports_the_cost_of_the_labelling_it_returns(lattice: PottsLabels) -> None:
     """The returned cost is the objective's change, recomputed independently.
 
@@ -251,8 +251,8 @@ def test_icm_reports_the_cost_of_the_labelling_it_returns(lattice: PottsLabels) 
     assert reported == pytest.approx(after - before, abs=SIGN_TOLERANCE)
 
 
-@pytest.mark.infra
-@pytest.mark.analytic
+@pytest.mark.oracle
+@pytest.mark.property
 @pytest.mark.parametrize("signal", [0.5, 1.0, 2.0])
 def test_icm_never_lowers_the_objective_it_maximises(signal: float) -> None:
     """A descent method does not end worse than it began.

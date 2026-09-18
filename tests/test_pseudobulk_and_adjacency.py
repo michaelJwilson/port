@@ -43,8 +43,8 @@ def test_pseudobulk_sums_the_spots_of_each_clone(n_clones: int) -> None:
         np.testing.assert_allclose(merged_total[:, clone], total[:, idx].sum(axis=-1))
 
 
-@pytest.mark.infra
-@pytest.mark.analytic
+@pytest.mark.oracle
+@pytest.mark.property
 def test_pseudobulk_conserves_the_total_over_a_partition() -> None:
     """Summing the clones returns the sum over every spot.
 
@@ -77,8 +77,8 @@ def square_grid(side: int, offset: float = 0.0) -> np.ndarray:
     )
 
 
-@pytest.mark.infra
-@pytest.mark.analytic
+@pytest.mark.oracle
+@pytest.mark.property
 def test_adjacency_is_symmetric_and_has_no_self_edges() -> None:
     """Neighbourhood is mutual, and a spot is not its own neighbour.
 

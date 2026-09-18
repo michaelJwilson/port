@@ -39,8 +39,8 @@ def emission_and_inputs(**kwargs: object) -> tuple[np.ndarray, CnasterChainInput
     return log_emit_rdr + log_emit_baf, inputs
 
 
-@pytest.mark.infra
-@pytest.mark.analytic
+@pytest.mark.oracle
+@pytest.mark.property
 @pytest.mark.parametrize("n_states", [1, 2, 3, 5])
 @pytest.mark.parametrize("n_sequences", [1, 3])
 def test_forward_and_backward_agree_at_every_position(
@@ -81,8 +81,8 @@ def test_forward_and_backward_agree_at_every_position(
         start += length
 
 
-@pytest.mark.infra
-@pytest.mark.analytic
+@pytest.mark.oracle
+@pytest.mark.property
 @pytest.mark.parametrize("n_states", [2, 4])
 def test_state_posteriors_normalise(n_states: int) -> None:
     """The posteriors are a distribution over states at every position."""

@@ -267,8 +267,8 @@ def test_the_weight_is_bitwise_the_fields_under_a_mixed_tumor_proportion() -> No
     np.testing.assert_array_equal(expected, actual)
 
 
-@pytest.mark.infra
-@pytest.mark.analytic
+@pytest.mark.oracle
+@pytest.mark.exact
 def test_the_counts_match_a_per_spot_loop() -> None:
     """A brute-force referee, independent of `numpy`'s reduction.
 

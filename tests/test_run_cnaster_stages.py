@@ -211,8 +211,8 @@ def test_the_rectangular_partition_recovers_the_planted_bands(
     assert agreement == 1.0
 
 
-@pytest.mark.infra
-@pytest.mark.analytic
+@pytest.mark.oracle
+@pytest.mark.property
 def test_the_partition_covers_every_spot_exactly_once(
     planted: CoreInferenceTruth, loaded: Any
 ) -> None:

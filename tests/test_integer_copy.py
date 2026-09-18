@@ -118,8 +118,8 @@ def test_decoding_recovers_the_planted_copies() -> None:
     assert result.distance == pytest.approx(0.0)
 
 
-@pytest.mark.infra
-@pytest.mark.analytic
+@pytest.mark.oracle
+@pytest.mark.property
 def test_the_credible_set_covers_at_its_nominal_rate() -> None:
     """The referee: 95 per cent of draws put the truth in the 95 per cent set.
 
@@ -153,8 +153,8 @@ def test_the_credible_set_covers_at_its_nominal_rate() -> None:
     assert 0.93 <= rate <= 0.96, f"coverage {rate:.4f} is not near the nominal 0.95"
 
 
-@pytest.mark.infra
-@pytest.mark.analytic
+@pytest.mark.oracle
+@pytest.mark.property
 def test_a_wider_covariance_admits_more() -> None:
     """The set grows monotonically with the uncertainty, and never shrinks.
 
@@ -200,8 +200,8 @@ def test_no_integer_pair_explains_an_impossible_fit() -> None:
     assert result.distance > result.threshold
 
 
-@pytest.mark.infra
-@pytest.mark.analytic
+@pytest.mark.oracle
+@pytest.mark.exact
 def test_the_threshold_is_the_chi_square_quantile() -> None:
     """Two degrees of freedom, not one.
 
@@ -240,8 +240,8 @@ def test_it_refuses_a_covariance_that_identifies_nothing() -> None:
         decode_copy_state(mean, TIGHT, level=1.0)
 
 
-@pytest.mark.infra
-@pytest.mark.analytic
+@pytest.mark.oracle
+@pytest.mark.property
 def test_debias_satisfies_the_paper_s_constraint() -> None:
     """`sum_g lambda_g mubar_g / sum_g lambda_g == 1` after rescaling.
 

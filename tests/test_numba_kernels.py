@@ -108,8 +108,8 @@ def test_dense_and_single_observation_kernels_agree() -> None:
         np.testing.assert_allclose(dense[state, :, 0], out, rtol=0.0, atol=TOLERANCE)
 
 
-@pytest.mark.infra
-@pytest.mark.analytic
+@pytest.mark.oracle
+@pytest.mark.property
 def test_negative_binomial_kernel_is_normalised() -> None:
     """The density sums to one over its support.
 
