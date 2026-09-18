@@ -365,3 +365,173 @@ def test_the_driver_cannot_initialize_itself(cnaster_config: None) -> None:
                 params="sp",
                 max_iter=1,
             )
+
+
+IMPOSED_SELF_TRANSITIONS = [0.99999, 0.999, 0.99, 0.95, 0.9, 0.5]
+"""Wrong values spanning both sides of the fixture's 0.8 (#142).
+
+The first two are `zenodo_sim_config.yaml`'s `t_phaseing` and its
+neighbourhood; `0.5` is the diagnostic value #129 swept. All are wrong for
+this fixture, which generates from a self-transition of 0.8, and that is the
+point: the question is what each M step does when handed a wrong prior.
+"""
+
+
+def _uniform_transition(self_transition: float, n_states: int) -> np.ndarray:
+    """`cnaster`'s own shape: `t` on the diagonal, the rest spread evenly."""
+    transition = np.full(
+        (n_states, n_states), (1.0 - self_transition) / (n_states - 1), dtype=float
+    )
+    np.fill_diagonal(transition, self_transition)
+    return transition
+
+
+def _paper_transition_update(
+    fixture: NegativeBinomialChains, log_transition: np.ndarray
+) -> np.ndarray:
+    """The transition the paper's M step returns, assembled from upstream.
+
+    `hidden_markov.tex` states it as the expected transition counts,
+
+        T*_kl  is proportional to  sum_i sum_j  P(z_i = k, z_i+1 = l | x^j),
+
+    "which should be column normalized in order to provide an updated
+    transition matrix". Upstream's `forward_backward` returns exactly that
+    summand as `pairwise`, so the paper's update is a sum and a normalization
+    away and needs no second implementation of it -- which is what makes this
+    an `upstream_oracle` claim rather than a reimplementation grading itself.
+
+    Rows are the source state here, `cnaster`'s convention rather than the
+    paper's column one, so the normalization is over the row.
+    """
+    from snakes_and_ladders.likelihood.forward_backward import forward_backward
+
+    observations = np.asarray(fixture.dataset.observations)
+    log_initial = np.log(np.asarray(fixture.dataset.initial, dtype=float))
+
+    counts = np.zeros(log_transition.shape, dtype=float)
+    for chain in range(observations.shape[0]):
+        density = fixture.family.log_density(
+            torch.as_tensor(observations[chain], dtype=torch.float64)
+        )
+        counts += np.asarray(
+            forward_backward(
+                np.asarray(density, dtype=float), log_initial, log_transition
+            ).pairwise
+        ).sum(axis=0)
+    updated: np.ndarray = counts / counts.sum(axis=1, keepdims=True)
+    return updated
+
+
+def _fit_at(  # type: ignore[no-untyped-def]
+    fixture: NegativeBinomialChains,
+    inputs: CnasterChainInputs,
+    self_transition: float,
+    max_iter: int,
+):
+    """`_fit`, but with the self-transition imposed rather than taken from the fixture.
+
+    `params="stp"` rather than the default `"stmp"`: the `"m"` branch asserts a
+    normal baseline and `clone_lengths`, neither of which this fixture has
+    (`hmm_nophasing.py:835`). The `"t"` is what matters here and it is kept.
+    """
+    import warnings
+
+    from cnaster.hmm import pipeline_baum_welch
+    from cnaster.hmm_nophasing import hmm_nophasing
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        return pipeline_baum_welch(
+            None,
+            inputs.single_X,
+            inputs.lengths,
+            inputs.n_states,
+            inputs.base_nb_mean,
+            inputs.total_bb_RD,
+            inputs.log_sitewise_transmat,
+            hmmclass=hmm_nophasing,
+            params="stp",
+            t=self_transition,
+            init_log_mu=np.asarray(inputs.log_mu, dtype=float).reshape(-1, 1),
+            init_p_binom=np.asarray(inputs.p_binom, dtype=float).reshape(-1, 1),
+            init_alphas=np.asarray(inputs.alphas, dtype=float).reshape(-1, 1),
+            init_taus=np.asarray(inputs.taus, dtype=float).reshape(-1, 1),
+            max_iter=max_iter,
+            tol=1e-12,
+        )
+
+
+@pytest.mark.cnaster
+@pytest.mark.parametrize("imposed", IMPOSED_SELF_TRANSITIONS)
+def test_the_m_step_returns_the_transition_it_was_given(
+    cnaster_config: None, imposed: float
+) -> None:
+    """**The transition is imposed, not estimated, and `params` does not change that (#142).**
+
+    `hmm_nophasing.py:1131` returns `"new_log_transmat": log_transmat` -- the
+    argument, unmodified. `hmm_phased` has no transition update either, and
+    the `"t"` in the default `params="stmp"` is read nowhere in the package:
+    grepping `cnaster` for a test on `"t"` in `params` returns nothing. This
+    passes `params="stp"`, which asks for the transition to be fitted, and it
+    is still returned unchanged.
+
+    Eight iterations, because a frozen parameter and a converged one look
+    alike after one, and swept over values wrong by up to five orders of
+    magnitude in `1 - t`, because the claim is that *nothing* moves it.
+
+    So `t` is not a starting value the fit can leave, and #142's sweep found a
+    threshold rather than a gradient because the data is never allowed to
+    move it.
+    """
+    fixture = negative_binomial_chains(n_states=3, sequence_length=60, n_sequences=2)
+    inputs = from_negative_binomial_chains(fixture)
+
+    fitted = _fit_at(fixture, inputs, imposed, 8)
+
+    # NB compared in log space, which is the space the driver built it in:
+    #    `hmm_nophasing.get_log_transmat` takes one `np.log` and the identity
+    #    is exact there, where an `exp` round trip back is not.
+    np.testing.assert_array_equal(
+        np.asarray(fitted.params.new_log_transmat),
+        np.log(_uniform_transition(imposed, inputs.n_states)),
+    )
+
+
+@pytest.mark.upstream_oracle
+@pytest.mark.parametrize("imposed", IMPOSED_SELF_TRANSITIONS)
+def test_the_paper_would_move_the_transition_toward_the_truth(imposed: float) -> None:
+    """**The divergence, as a number: one paper M step roughly halves the error (#142).**
+
+    The test above shows `cnaster` returns the transition unchanged. That is a
+    defect only if the paper's update would have changed it, so this computes
+    `T*` from upstream's pairwise posterior on the same chains. Against a
+    fixture generating from 0.8, one iteration gives:
+
+        imposed   0.99999  0.999   0.99    0.95    0.9     0.8      0.5
+        paper     0.9003   0.8875  0.8755  0.8554  0.8397  0.79994  0.6435
+
+    It moves toward the truth from both sides and is a fixed point at it, to
+    6e-5. `cnaster` moves it by zero at every one of these.
+
+    That is what makes this a **modelling** divergence rather than a
+    configuration one, and it answers the question #142 left open: no value of
+    `t` in `zenodo_sim_config.yaml` is an estimate, because the M step the
+    paper specifies is not implemented. The fix is the missing update, not a
+    better constant.
+
+    Asserted as strict improvement rather than against the numbers above,
+    which would pin upstream's fixture instead of the finding.
+    """
+    fixture = negative_binomial_chains(n_states=3, sequence_length=60, n_sequences=2)
+
+    truth = float(np.diag(np.asarray(fixture.dataset.transition, dtype=float)).mean())
+    n_states = np.asarray(fixture.dataset.transition).shape[0]
+    updated = _paper_transition_update(
+        fixture, np.log(_uniform_transition(imposed, n_states))
+    )
+    paper = float(np.diag(updated).mean())
+
+    assert abs(paper - truth) < abs(imposed - truth), (
+        f"the paper's update did not improve on {imposed}: {paper} against {truth}"
+    )
