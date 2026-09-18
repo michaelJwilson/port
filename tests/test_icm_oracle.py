@@ -93,7 +93,6 @@ def enumerable() -> PottsLabels:
 
 
 @pytest.mark.oracle
-@pytest.mark.upstream_oracle
 @pytest.mark.parametrize("coupling", [0.5, 1.0, 2.0])
 def test_alpha_expansion_bounds_the_cnaster_sweep(coupling: float) -> None:
     """**The bound the whole rung rests on**, at three couplings.
@@ -123,7 +122,6 @@ def test_alpha_expansion_bounds_the_cnaster_sweep(coupling: float) -> None:
 
 
 @pytest.mark.oracle
-@pytest.mark.upstream_oracle
 def test_no_single_site_move_lowers_what_cnaster_returns(
     lattice: PottsLabels,
 ) -> None:
@@ -161,7 +159,6 @@ def test_no_single_site_move_lowers_what_cnaster_returns(
 
 
 @pytest.mark.oracle
-@pytest.mark.upstream_oracle
 def test_expansion_improves_on_the_sweep_it_is_started_from(
     lattice: PottsLabels,
 ) -> None:
@@ -194,7 +191,6 @@ def test_expansion_improves_on_the_sweep_it_is_started_from(
 
 
 @pytest.mark.oracle
-@pytest.mark.upstream_oracle
 def test_at_zero_coupling_both_solvers_return_the_field_argmax() -> None:
     """The one instance whose optimum is unique, so equality is assertable.
 
@@ -215,7 +211,6 @@ def test_at_zero_coupling_both_solvers_return_the_field_argmax() -> None:
 
 
 @pytest.mark.oracle
-@pytest.mark.exact
 def test_neither_solver_beats_the_exact_minimum(enumerable: PottsLabels) -> None:
     """Enumeration bounds both, which is what makes the chain a chain.
 
@@ -239,7 +234,6 @@ def test_neither_solver_beats_the_exact_minimum(enumerable: PottsLabels) -> None
 
 
 @pytest.mark.oracle
-@pytest.mark.upstream_oracle
 def test_the_sweep_improves_on_the_labelling_it_started_from(
     lattice: PottsLabels,
 ) -> None:

@@ -44,8 +44,7 @@ def named_parameters(n_states: int, n_spots: int = 1) -> dict[str, np.ndarray]:
     }
 
 
-@pytest.mark.infra
-@pytest.mark.analytic
+@pytest.mark.smoke
 @pytest.mark.parametrize("flags", FLAG_SETS)
 @pytest.mark.parametrize("n_states", [1, 2, 4])
 def test_unpacking_what_was_packed_returns_it(
@@ -96,8 +95,7 @@ def test_unpacking_what_was_packed_returns_it(
         )
 
 
-@pytest.mark.infra
-@pytest.mark.analytic
+@pytest.mark.smoke
 @pytest.mark.parametrize("flags", FLAG_SETS)
 @pytest.mark.parametrize("n_states", [1, 3])
 def test_bounds_match_the_packed_vector(flags: dict[str, bool], n_states: int) -> None:
@@ -126,8 +124,7 @@ def test_bounds_match_the_packed_vector(flags: dict[str, bool], n_states: int) -
         assert high is None or value <= high, f"{value} above its upper bound {high}"
 
 
-@pytest.mark.infra
-@pytest.mark.analytic
+@pytest.mark.smoke
 @pytest.mark.parametrize("n_states", [1, 3, 5])
 def test_initial_parameters_have_the_declared_shape(n_states: int) -> None:
     """The defaults are the shape the emission scores at.

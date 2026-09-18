@@ -33,7 +33,6 @@ def one_chromosome(n_positions: int) -> list[tuple[int, int]]:
 
 
 @pytest.mark.oracle
-@pytest.mark.exact
 @pytest.mark.critical
 @pytest.mark.parametrize("nu", [0.5, 1.0, 2.0])
 def test_switch_probability_is_the_mapping_function(nu: float) -> None:
@@ -53,8 +52,7 @@ def test_switch_probability_is_the_mapping_function(nu: float) -> None:
     )
 
 
-@pytest.mark.oracle
-@pytest.mark.property
+@pytest.mark.analytic
 def test_switch_probability_respects_the_limits() -> None:
     """Zero distance gives zero, unbounded distance gives one half.
 
@@ -76,8 +74,7 @@ def test_switch_probability_respects_the_limits() -> None:
     assert np.all(probability <= 0.5)
 
 
-@pytest.mark.oracle
-@pytest.mark.property
+@pytest.mark.analytic
 @pytest.mark.parametrize("nu", [0.5, 1.0, 2.0])
 def test_switch_probability_increases_with_distance(nu: float) -> None:
     """Further apart is more likely to have switched, at every rate."""
@@ -95,8 +92,7 @@ def test_switch_probability_increases_with_distance(nu: float) -> None:
     assert np.all(np.diff(interior) > 0.0)
 
 
-@pytest.mark.infra
-@pytest.mark.analytic
+@pytest.mark.smoke
 def test_a_chromosome_boundary_carries_no_distance() -> None:
     """Across contigs the kernel falls to its floor.
 
@@ -116,8 +112,7 @@ def test_a_chromosome_boundary_carries_no_distance() -> None:
     assert probability[1] > MIN_PHASE_SWITCH_PROB
 
 
-@pytest.mark.infra
-@pytest.mark.analytic
+@pytest.mark.smoke
 def test_an_unknown_distance_carries_no_distance() -> None:
     """A missing centimorgan value falls to the floor rather than propagating."""
     from cnaster.recomb import compute_numbat_phase_switch_prob
@@ -133,8 +128,7 @@ def test_an_unknown_distance_carries_no_distance() -> None:
     assert not np.any(np.isnan(probability))
 
 
-@pytest.mark.infra
-@pytest.mark.analytic
+@pytest.mark.smoke
 def test_the_last_position_has_no_successor() -> None:
     """Nothing follows the final position, so it takes the floor."""
     from cnaster.recomb import compute_numbat_phase_switch_prob
@@ -147,9 +141,8 @@ def test_the_last_position_has_no_successor() -> None:
     assert probability[-1] == pytest.approx(MIN_PHASE_SWITCH_PROB)
 
 
-@pytest.mark.infra
+@pytest.mark.smoke
 @pytest.mark.usefixtures("cnaster_config")
-@pytest.mark.analytic
 def test_the_floor_defaults_to_the_configured_one() -> None:
     """With no floor passed, the global configuration supplies it."""
     from cnaster.recomb import compute_numbat_phase_switch_prob
@@ -173,7 +166,6 @@ def reference_table() -> pd.DataFrame:
 
 
 @pytest.mark.oracle
-@pytest.mark.exact
 @pytest.mark.critical
 def test_centimorgans_are_exact_at_reference_positions() -> None:
     """A position in the table returns that row's value."""
@@ -185,7 +177,6 @@ def test_centimorgans_are_exact_at_reference_positions() -> None:
 
 
 @pytest.mark.oracle
-@pytest.mark.exact
 @pytest.mark.critical
 def test_centimorgans_interpolate_linearly_between_them() -> None:
     """Halfway between two rows is halfway between their values."""
@@ -198,8 +189,7 @@ def test_centimorgans_interpolate_linearly_between_them() -> None:
     np.testing.assert_allclose(assigned, [2.0, 4.0], rtol=0.0, atol=TOLERANCE)
 
 
-@pytest.mark.infra
-@pytest.mark.analytic
+@pytest.mark.smoke
 def test_centimorgans_sort_their_input_in_place() -> None:
     """The call reorders the list it is given.
 

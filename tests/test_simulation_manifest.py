@@ -70,7 +70,6 @@ def loaded(
 
 
 @pytest.mark.end2end
-@pytest.mark.planted
 @pytest.mark.critical
 def test_the_count_fit_names_the_family_it_drew_from() -> None:
     """`fit_counts` recovers a planted law and says which one it is.
@@ -96,8 +95,7 @@ def test_the_count_fit_names_the_family_it_drew_from() -> None:
     assert negative.dispersion == pytest.approx(1.0 / number, rel=0.1)
 
 
-@pytest.mark.infra
-@pytest.mark.analytic
+@pytest.mark.smoke
 def test_a_manifest_round_trips_through_yaml(
     planted: CoreInferenceTruth, loaded: tuple[Any, Any], tmp_path: Path
 ) -> None:
@@ -141,7 +139,6 @@ def _table(loaded: tuple[Any, Any]) -> Any:
 
 
 @pytest.mark.end2end
-@pytest.mark.planted
 @pytest.mark.critical
 def test_an_instance_generated_from_a_manifest_measures_back_to_it(
     planted: CoreInferenceTruth, loaded: tuple[Any, Any], tmp_path: Path
@@ -187,8 +184,7 @@ def test_an_instance_generated_from_a_manifest_measures_back_to_it(
         assert (generated.root / name).exists(), f"{name} was not written"
 
 
-@pytest.mark.cnaster
-@pytest.mark.subject
+@pytest.mark.snapshot
 @pytest.mark.preprocessing
 def test_cnaster_loads_what_the_generator_wrote(
     planted: CoreInferenceTruth, loaded: tuple[Any, Any], tmp_path: Path
@@ -237,8 +233,7 @@ def test_cnaster_loads_what_the_generator_wrote(
         set_global_config(previous_config)
 
 
-@pytest.mark.infra
-@pytest.mark.analytic
+@pytest.mark.smoke
 def test_the_entry_point_writes_into_the_current_directory(
     planted: CoreInferenceTruth, loaded: tuple[Any, Any], tmp_path: Path
 ) -> None:

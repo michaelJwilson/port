@@ -90,7 +90,6 @@ def _problem(
     return fixture, planted_posterior(fixture, smoothing=POSTERIOR_SMOOTHING)
 
 
-@pytest.mark.infra
 @pytest.mark.benchmark
 @pytest.mark.usefixtures("cnaster_converged_config", "cnaster_perf_sink")
 def test_cnaster_m_step_gate(benchmark: BenchmarkFixture) -> None:
@@ -99,7 +98,6 @@ def test_cnaster_m_step_gate(benchmark: BenchmarkFixture) -> None:
     benchmark(cnaster_beta_binomial_m_step, fixture, posterior)
 
 
-@pytest.mark.infra
 @pytest.mark.benchmark
 def test_upstream_m_step_gate(benchmark: BenchmarkFixture) -> None:
     """`BetaBinomialEmission.reestimate` at gate size, for the ratio."""
@@ -107,7 +105,6 @@ def test_upstream_m_step_gate(benchmark: BenchmarkFixture) -> None:
     benchmark(upstream_beta_binomial_m_step, fixture, posterior)
 
 
-@pytest.mark.infra
 @pytest.mark.benchmark
 @pytest.mark.release
 @pytest.mark.usefixtures("cnaster_converged_config", "cnaster_perf_sink")
@@ -120,7 +117,6 @@ def test_cnaster_m_step_stress(benchmark: BenchmarkFixture) -> None:
     benchmark(cnaster_beta_binomial_m_step, fixture, posterior)
 
 
-@pytest.mark.infra
 @pytest.mark.benchmark
 @pytest.mark.release
 def test_upstream_m_step_stress(benchmark: BenchmarkFixture) -> None:

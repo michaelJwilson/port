@@ -27,9 +27,8 @@ def _written(tmp_path: Path, n_obs: int = 20) -> tuple[Any, Any, Any]:
     return truth, pre_image, write_tmp_inputs(truth, pre_image, tmp_path)
 
 
-@pytest.mark.cnaster
+@pytest.mark.snapshot
 @pytest.mark.preprocessing
-@pytest.mark.subject
 def test_the_allele_matrices_come_back_bitwise(tmp_path: Path) -> None:
     """Both haplotypes, through `.npz` and `load_input_data`, unchanged.
 
@@ -44,9 +43,8 @@ def test_the_allele_matrices_come_back_bitwise(tmp_path: Path) -> None:
     np.testing.assert_array_equal(loaded.cell_snp_Ballele, written.allele_b)
 
 
-@pytest.mark.cnaster
+@pytest.mark.snapshot
 @pytest.mark.preprocessing
-@pytest.mark.subject
 def test_the_expression_comes_back_on_the_genes_the_loader_keeps(
     tmp_path: Path,
 ) -> None:
@@ -74,9 +72,8 @@ def test_the_expression_comes_back_on_the_genes_the_loader_keeps(
     assert written.gene_counts[:, dropped].sum() == 0, "a gene with counts was dropped"
 
 
-@pytest.mark.cnaster
+@pytest.mark.snapshot
 @pytest.mark.preprocessing
-@pytest.mark.subject
 def test_the_spots_come_back_in_the_order_they_were_written(tmp_path: Path) -> None:
     """Barcodes and coordinates line up with the lattice they were planted on.
 
@@ -95,9 +92,8 @@ def test_the_spots_come_back_in_the_order_they_were_written(tmp_path: Path) -> N
     np.testing.assert_array_equal(loaded.coords[:, 1], columns)
 
 
-@pytest.mark.cnaster
+@pytest.mark.end2end
 @pytest.mark.preprocessing
-@pytest.mark.subject
 @pytest.mark.critical
 def test_the_loaded_files_bin_back_to_the_planted_fixture(tmp_path: Path) -> None:
     """The whole trip: bins to files, files to arrays, arrays to bins.

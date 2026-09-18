@@ -20,7 +20,6 @@ from pathlib import Path
 
 import pytest
 
-pytestmark = pytest.mark.analytic
 """The referee is the documents against each other, which is an invariant."""
 
 ROOT = Path(__file__).resolve().parents[1]

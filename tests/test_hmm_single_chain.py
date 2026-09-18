@@ -60,7 +60,6 @@ def upstream_total_log_likelihood(fixture: NegativeBinomialChains) -> float:
 
 
 @pytest.mark.oracle
-@pytest.mark.upstream_oracle
 @pytest.mark.critical
 @pytest.mark.parametrize("n_states", [1, 2, 3, 5])
 @pytest.mark.parametrize("separation", [1.5, 2.5])
@@ -78,7 +77,6 @@ def test_emission_matches_upstream(n_states: int, separation: float) -> None:
 
 
 @pytest.mark.oracle
-@pytest.mark.upstream_oracle
 @pytest.mark.critical
 @pytest.mark.parametrize("n_sequences", [1, 4])
 @pytest.mark.parametrize("sequence_length", [1, 60])
@@ -101,7 +99,6 @@ def test_total_log_likelihood_matches_upstream(
 
 
 @pytest.mark.oracle
-@pytest.mark.upstream_oracle
 @pytest.mark.critical
 @pytest.mark.parametrize("drift", [0.2, 0.8])
 def test_total_log_likelihood_matches_upstream_asymmetric(drift: float) -> None:
@@ -121,16 +118,14 @@ def test_total_log_likelihood_matches_upstream_asymmetric(drift: float) -> None:
     )
 
 
-@pytest.mark.infra
-@pytest.mark.analytic
+@pytest.mark.smoke
 def test_drift_outside_the_unit_interval_is_refused() -> None:
     """The fixture refuses a drift that is not a share."""
     with pytest.raises(ValueError, match="drift"):
         negative_binomial_chains(drift=0.0)
 
 
-@pytest.mark.oracle
-@pytest.mark.property
+@pytest.mark.analytic
 def test_beta_binomial_channel_is_inert_at_zero_depth() -> None:
     """The adapter isolates the count channel, rather than hoping to.
 
@@ -152,8 +147,7 @@ def test_beta_binomial_channel_is_inert_at_zero_depth() -> None:
     np.testing.assert_array_equal(cnaster_emission(inputs), cnaster_emission(perturbed))
 
 
-@pytest.mark.oracle
-@pytest.mark.property
+@pytest.mark.analytic
 @pytest.mark.parametrize("exposure", [0.5, 1.0, 7.0])
 def test_constant_exposure_is_absorbed(exposure: float) -> None:
     """A constant `base_nb_mean` leaves the scored model unchanged.
@@ -171,8 +165,7 @@ def test_constant_exposure_is_absorbed(exposure: float) -> None:
     np.testing.assert_allclose(scored, reference, rtol=0.0, atol=TOLERANCE)
 
 
-@pytest.mark.cnaster
-@pytest.mark.analytic
+@pytest.mark.snapshot
 @pytest.mark.parametrize("n_states", [1, 2, 5])
 def test_transition_matches_cnaster_construction(n_states: int) -> None:
     """The fixture's transition is the one `cnaster` builds for itself.
@@ -189,8 +182,7 @@ def test_transition_matches_cnaster_construction(n_states: int) -> None:
     np.testing.assert_allclose(mine, theirs, rtol=0.0, atol=1e-15)
 
 
-@pytest.mark.infra
-@pytest.mark.analytic
+@pytest.mark.smoke
 def test_separation_below_one_is_refused() -> None:
     """The fixture refuses a separation that does not order the state means."""
     with pytest.raises(ValueError, match="separation"):

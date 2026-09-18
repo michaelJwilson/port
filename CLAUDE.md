@@ -175,7 +175,24 @@ full for that reason.
     absence of an exception is forbidden. Document the gaps it leaves and
     track them with a ticket.
 *   **Every test says what it is checked against.** A marker names the
-    referee, and `pyproject.toml` registers the names.
+    referee, exactly one, and `pyproject.toml` registers the names.
+*   **Only two of them count, and they are what to strive for.** `end2end`
+    and `oracle` judge a scientific output -- against the truth that
+    generated the data, or against an independent implementation of the same
+    model. `analytic`, `patch`, `backend`, `bug`, `warning`, `snapshot` and
+    `smoke` are all worth having and none of them counts: a mathematical
+    property holds of a model rather than of a run, a patch agrees with the
+    call it replaces without either being right, and a pinned defect says
+    what is wrong rather than what works.
+*   **What to aim those two at is the whole of `run_cnaster`, twice over:**
+    component by component, and once as the script a user invokes. A stage
+    judged in isolation does not establish that the pipeline composes, and a
+    script that completes does not establish that any stage was right. The
+    gap between the two is where this repository's defects have been found.
+*   **`infra` is for port's own rules, and stays sparing.** It is the one
+    marker that says nothing about the subject, so it is what a test drifts
+    into when it is hard to classify. A test that reaches `cnaster` at all is
+    `smoke` until something outside decides its value.
 *   **Time is money.** Test and build frameworks are justified against a
     time and computational budget.
 *   **The per-PR tier is the fast gate; the release gate runs everything.**

@@ -109,21 +109,18 @@ def _patched_call(problem: Problem) -> None:
     )
 
 
-@pytest.mark.infra
 @pytest.mark.benchmark
 def test_cnaster_sweep_gate(benchmark: BenchmarkFixture) -> None:
     """400 spots, 4 clones."""
     benchmark(_cnaster_call, _problem(GATE_SPOTS))
 
 
-@pytest.mark.infra
 @pytest.mark.benchmark
 def test_patched_sweep_gate(benchmark: BenchmarkFixture) -> None:
     """The same, through the reduced interface."""
     benchmark(_patched_call, _problem(GATE_SPOTS))
 
 
-@pytest.mark.infra
 @pytest.mark.benchmark
 @pytest.mark.release
 def test_cnaster_sweep_stress(benchmark: BenchmarkFixture) -> None:
@@ -131,7 +128,6 @@ def test_cnaster_sweep_stress(benchmark: BenchmarkFixture) -> None:
     benchmark(_cnaster_call, _problem(STRESS_SPOTS))
 
 
-@pytest.mark.infra
 @pytest.mark.benchmark
 @pytest.mark.release
 def test_patched_sweep_stress(benchmark: BenchmarkFixture) -> None:

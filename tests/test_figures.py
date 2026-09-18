@@ -52,8 +52,7 @@ def _result(truth: CoreInferenceTruth) -> dict[str, Any]:
     }
 
 
-@pytest.mark.infra
-@pytest.mark.analytic
+@pytest.mark.smoke
 def test_the_loh_density_renders(planted: CoreInferenceTruth) -> None:
     """`plot_loh_density` returns a figure for a planted instance."""
     from cnaster.plot_loh_density import plot_loh_density
@@ -73,8 +72,7 @@ def test_the_loh_density_renders(planted: CoreInferenceTruth) -> None:
     assert figure is not None
 
 
-@pytest.mark.infra
-@pytest.mark.analytic
+@pytest.mark.smoke
 def test_the_smoother_leaves_a_gap_where_there_is_no_coverage() -> None:
     """`nan_gaussian_filter1d` fills rather than propagates.
 
@@ -91,8 +89,7 @@ def test_the_smoother_leaves_a_gap_where_there_is_no_coverage() -> None:
     assert np.isfinite(smoothed).all()
 
 
-@pytest.mark.infra
-@pytest.mark.analytic
+@pytest.mark.smoke
 def test_the_validation_metrics_load_and_render(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

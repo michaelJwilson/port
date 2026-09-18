@@ -127,8 +127,7 @@ def _cnaster_weight(
     return recovered
 
 
-@pytest.mark.equivalence
-@pytest.mark.subject
+@pytest.mark.patch
 @pytest.mark.parametrize(("nb_rate", "bb_rate"), [(0.0, 0.0), (0.1, 0.4), (0.8, 0.3)])
 def test_the_counts_are_bitwise_cnasters(nb_rate: float, bb_rate: float) -> None:
     """Identical counts and identical dtype, across the dropout the data has.
@@ -151,8 +150,7 @@ def test_the_counts_are_bitwise_cnasters(nb_rate: float, bb_rate: float) -> None
     assert invariants.num_valid_bb_spotwise.dtype == expected_bb.dtype
 
 
-@pytest.mark.equivalence
-@pytest.mark.subject
+@pytest.mark.patch
 def test_the_counts_survive_the_iteration() -> None:
     """The hoist is legal: the iteration's read paths do not touch the data.
 
@@ -216,8 +214,7 @@ def test_the_counts_survive_the_iteration() -> None:
     )
 
 
-@pytest.mark.equivalence
-@pytest.mark.subject
+@pytest.mark.patch
 @pytest.mark.parametrize("seed", [17, 23])
 def test_the_weight_is_bitwise_the_fields(seed: int) -> None:
     """`relative_channel_weight` is the weight the field applies, exactly.
@@ -238,8 +235,7 @@ def test_the_weight_is_bitwise_the_fields(seed: int) -> None:
     np.testing.assert_array_equal(expected, actual)
 
 
-@pytest.mark.equivalence
-@pytest.mark.subject
+@pytest.mark.patch
 def test_the_weight_is_bitwise_the_fields_under_a_mixed_tumor_proportion() -> None:
     """Including the branch that skips `nan` neighbours.
 
@@ -268,7 +264,6 @@ def test_the_weight_is_bitwise_the_fields_under_a_mixed_tumor_proportion() -> No
 
 
 @pytest.mark.oracle
-@pytest.mark.exact
 def test_the_counts_match_a_per_spot_loop() -> None:
     """A brute-force referee, independent of `numpy`'s reduction.
 
@@ -289,8 +284,7 @@ def test_the_counts_match_a_per_spot_loop() -> None:
         assert int(invariants.num_valid_bb_spotwise[spot]) == bb_positive
 
 
-@pytest.mark.infra
-@pytest.mark.analytic
+@pytest.mark.smoke
 def test_a_shape_mismatch_is_refused() -> None:
     """Two arrays of different shape cannot describe one `(n_obs, n_spots)`.
 
@@ -301,8 +295,7 @@ def test_a_shape_mismatch_is_refused() -> None:
         boundary_invariants(np.ones((4, 3)), np.ones((4, 5)))
 
 
-@pytest.mark.infra
-@pytest.mark.analytic
+@pytest.mark.smoke
 def test_the_planted_dropout_makes_the_weight_bite() -> None:
     """Guards the fixture: without dropout every test above is vacuous.
 

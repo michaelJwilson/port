@@ -37,9 +37,8 @@ def _rebin(pre_image: Unsegmented) -> Any:
     )
 
 
-@pytest.mark.cnaster
+@pytest.mark.end2end
 @pytest.mark.preprocessing
-@pytest.mark.subject
 @pytest.mark.critical
 @pytest.mark.parametrize("n_obs", [60, 240])
 def test_the_round_trip_returns_the_binned_fixture(n_obs: int) -> None:
@@ -61,9 +60,8 @@ def test_the_round_trip_returns_the_binned_fixture(n_obs: int) -> None:
     )
 
 
-@pytest.mark.cnaster
+@pytest.mark.snapshot
 @pytest.mark.preprocessing
-@pytest.mark.subject
 def test_the_round_trip_returns_the_segmentation() -> None:
     """`lengths` comes back, which is what #67's decision is about.
 
@@ -79,9 +77,8 @@ def test_the_round_trip_returns_the_segmentation() -> None:
     np.testing.assert_array_equal(rebinned.lengths, truth.lengths)
 
 
-@pytest.mark.cnaster
+@pytest.mark.snapshot
 @pytest.mark.preprocessing
-@pytest.mark.subject
 def test_the_unassigned_genes_never_reach_a_bin() -> None:
     """Counts outside the table's assignment are dropped, not summed.
 
@@ -109,9 +106,8 @@ def test_the_unassigned_genes_never_reach_a_bin() -> None:
     np.testing.assert_array_equal(rebinned.X[:, 0, :].sum(), truth.counts_nb.sum())
 
 
-@pytest.mark.cnaster
+@pytest.mark.snapshot
 @pytest.mark.preprocessing
-@pytest.mark.subject
 def test_the_flipped_blocks_are_unflipped_by_the_binner() -> None:
     """`phase_indicator` is read, not assumed true.
 
@@ -137,9 +133,8 @@ def test_the_flipped_blocks_are_unflipped_by_the_binner() -> None:
     assert not np.array_equal(lying.X[:, 1, :], honest.X[:, 1, :])
 
 
-@pytest.mark.infra
+@pytest.mark.smoke
 @pytest.mark.preprocessing
-@pytest.mark.analytic
 def test_the_pre_image_is_a_partition_and_not_a_copy() -> None:
     """Each bin is split across several genes and blocks, and the counts vary.
 

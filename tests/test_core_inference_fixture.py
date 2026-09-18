@@ -62,7 +62,6 @@ def _recover(truth: CoreInferenceTruth) -> dict[str, np.ndarray]:
 
 
 @pytest.mark.end2end
-@pytest.mark.planted
 @pytest.mark.critical
 def test_the_draw_recovers_the_planted_parameters() -> None:
     """Every planted parameter is recovered from the counts it generated.
@@ -80,8 +79,7 @@ def test_the_draw_recovers_the_planted_parameters() -> None:
     np.testing.assert_allclose(got["rho"], 1.0 / (truth.taus + 1.0), rtol=0.15)
 
 
-@pytest.mark.infra
-@pytest.mark.analytic
+@pytest.mark.smoke
 def test_each_entry_is_a_negative_binomial_draw() -> None:
     """Not a mixture whose marginals are negative binomial -- the draw itself.
 
@@ -120,8 +118,7 @@ def test_each_entry_is_a_negative_binomial_draw() -> None:
     assert pvalue > CHI_SQUARE_ALPHA, f"chi2 = {chi:.1f}, p = {pvalue:.2e}"
 
 
-@pytest.mark.infra
-@pytest.mark.analytic
+@pytest.mark.smoke
 def test_each_entry_is_a_beta_binomial_draw() -> None:
     """The same for the success channel, against `betabinom(n, a, b)`.
 
@@ -156,7 +153,6 @@ def test_each_entry_is_a_beta_binomial_draw() -> None:
 
 
 @pytest.mark.oracle
-@pytest.mark.upstream_oracle
 @pytest.mark.critical
 def test_cnaster_scores_the_fixture_as_upstream_does() -> None:
     """Two implementations of the emission, on the instance one of them drew.
@@ -224,7 +220,6 @@ def test_cnaster_scores_the_fixture_as_upstream_does() -> None:
 
 
 @pytest.mark.end2end
-@pytest.mark.planted
 def test_the_field_recovers_the_planted_clone_assignment() -> None:
     """At the planted states, every spot's own clone wins its field row.
 
@@ -268,7 +263,6 @@ def test_the_field_recovers_the_planted_clone_assignment() -> None:
 
 
 @pytest.mark.end2end
-@pytest.mark.planted
 def test_the_pseudobulk_recovers_the_mean_and_not_the_dispersion() -> None:
     """#78, on the fixture rather than on a standalone draw.
 
@@ -309,8 +303,7 @@ def test_the_pseudobulk_recovers_the_mean_and_not_the_dispersion() -> None:
     )
 
 
-@pytest.mark.infra
-@pytest.mark.analytic
+@pytest.mark.smoke
 def test_a_spot_s_counts_come_from_its_own_stream() -> None:
     """Column `s` is drawn from `default_rng([seed, s])` and nothing else.
 
@@ -341,8 +334,7 @@ def test_a_spot_s_counts_come_from_its_own_stream() -> None:
     np.testing.assert_array_equal(drawn[..., 1], truth.counts_bb[:, spot])
 
 
-@pytest.mark.infra
-@pytest.mark.analytic
+@pytest.mark.smoke
 def test_the_fixture_is_bitwise_reproducible() -> None:
     """The same arguments give the same instance, every array of it."""
     first, second = core_inference_truth(), core_inference_truth()

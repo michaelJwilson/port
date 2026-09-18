@@ -19,9 +19,8 @@ from tests.adapters import cnaster_emission, from_negative_binomial_chains
 from tests.fixtures import negative_binomial_chains
 
 
-@pytest.mark.infra
+@pytest.mark.smoke
 @pytest.mark.usefixtures("cnaster_config")
-@pytest.mark.analytic
 @pytest.mark.parametrize("n_states", [1, 3, 5])
 @pytest.mark.parametrize("separation", [1.2, 2.5])
 def test_deduplicated_emission_matches_dense(n_states: int, separation: float) -> None:
@@ -60,9 +59,8 @@ def test_deduplicated_emission_matches_dense(n_states: int, separation: float) -
     np.testing.assert_array_equal(dense, coded)
 
 
-@pytest.mark.infra
+@pytest.mark.smoke
 @pytest.mark.usefixtures("cnaster_config")
-@pytest.mark.analytic
 def test_encoder_round_trip_is_the_identity() -> None:
     """Decoding what was encoded returns the original, position by position.
 
@@ -83,9 +81,8 @@ def test_encoder_round_trip_is_the_identity() -> None:
     np.testing.assert_array_equal(np.asarray(decoded).reshape(-1), counts)
 
 
-@pytest.mark.infra
+@pytest.mark.smoke
 @pytest.mark.usefixtures("cnaster_config")
-@pytest.mark.analytic
 def test_deduplication_finds_fewer_uniques_than_positions() -> None:
     """The encoder earns its place on this fixture.
 

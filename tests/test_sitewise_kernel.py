@@ -70,9 +70,7 @@ def sitewise_kernel(
     return kernels
 
 
-@pytest.mark.cnaster
-@pytest.mark.subject
-@pytest.mark.critical
+@pytest.mark.snapshot
 @pytest.mark.parametrize("n_states", [2, 5])
 def test_every_block_is_cnasters_own(n_states: int) -> None:
     """Each slice is what `cnaster` builds at that site, bitwise.
@@ -108,8 +106,7 @@ def test_every_block_is_cnasters_own(n_states: int) -> None:
         np.testing.assert_array_equal(kernels[step], expected)
 
 
-@pytest.mark.oracle
-@pytest.mark.property
+@pytest.mark.analytic
 @pytest.mark.parametrize("n_states", [2, 5])
 def test_every_block_is_a_transition_kernel(n_states: int) -> None:
     """Each row exponentiates to one, at every site.
@@ -130,8 +127,7 @@ def test_every_block_is_a_transition_kernel(n_states: int) -> None:
     np.testing.assert_allclose(rows, 1.0, rtol=0, atol=1e-12)
 
 
-@pytest.mark.infra
-@pytest.mark.analytic
+@pytest.mark.smoke
 def test_a_constant_rate_gives_a_constant_kernel() -> None:
     """With one switch probability everywhere, every step is the same block.
 
@@ -148,8 +144,7 @@ def test_a_constant_rate_gives_a_constant_kernel() -> None:
         np.testing.assert_array_equal(kernels[step], kernels[0])
 
 
-@pytest.mark.infra
-@pytest.mark.upstream
+@pytest.mark.smoke
 def test_upstream_accepts_the_kernel_and_scores_with_it() -> None:
     """The array reaches upstream's recursion, and the rate changes the answer.
 

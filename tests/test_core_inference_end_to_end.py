@@ -105,7 +105,6 @@ def _best_permutation_accuracy(fitted: np.ndarray, planted: np.ndarray) -> float
 
 
 @pytest.mark.bug
-@pytest.mark.subject
 def test_the_default_hmm_class_cannot_complete_an_outer_iteration(
     cnaster_config: None,
 ) -> None:
@@ -140,7 +139,6 @@ def test_the_default_hmm_class_cannot_complete_an_outer_iteration(
 
 
 @pytest.mark.warning
-@pytest.mark.subject
 def test_a_clone_below_the_solver_s_floor_is_merged_away(cnaster_config: None) -> None:
     """Under 200 spots a clone cannot survive, whatever the data says.
 
@@ -162,7 +160,6 @@ def test_a_clone_below_the_solver_s_floor_is_merged_away(cnaster_config: None) -
 
 
 @pytest.mark.end2end
-@pytest.mark.planted
 @pytest.mark.release
 def test_the_run_recovers_the_planted_labelling(cnaster_config: None) -> None:
     """Above the floor, the labelling comes back up to a permutation.
@@ -184,7 +181,6 @@ def test_the_run_recovers_the_planted_labelling(cnaster_config: None) -> None:
 
 
 @pytest.mark.end2end
-@pytest.mark.planted
 @pytest.mark.release
 def test_the_run_recovers_every_planted_state_on_a_mostly_neutral_genome(
     cnaster_config: None,
@@ -227,7 +223,6 @@ def test_the_run_recovers_every_planted_state_on_a_mostly_neutral_genome(
 
 
 @pytest.mark.end2end
-@pytest.mark.planted
 @pytest.mark.release
 def test_the_declared_scale_plants_and_recovers_its_parameters() -> None:
     """`M = K = 10`, `G = 10,000`, `S = 5,000`: the fixture, and its truth.
@@ -255,8 +250,7 @@ def test_the_declared_scale_plants_and_recovers_its_parameters() -> None:
         )
 
 
-@pytest.mark.infra
-@pytest.mark.analytic
+@pytest.mark.smoke
 def test_the_declared_scale_is_out_of_reach_of_a_single_run_here() -> None:
     """Why the scale above validates the fixture and not the inference.
 
@@ -276,7 +270,6 @@ def test_the_declared_scale_is_out_of_reach_of_a_single_run_here() -> None:
 
 
 @pytest.mark.end2end
-@pytest.mark.planted
 @pytest.mark.release
 def test_the_dev_instance_recovers_its_labelling(cnaster_config: None) -> None:
     """The dev instance, and it recovers the labelling exactly.
@@ -311,7 +304,6 @@ def test_the_dev_instance_recovers_its_labelling(cnaster_config: None) -> None:
 
 
 @pytest.mark.end2end
-@pytest.mark.planted
 @pytest.mark.critical
 def test_the_critical_instance_recovers_its_labelling(cnaster_config: None) -> None:
     """The early gate's end-to-end run: `M = K = 2`, `G = 1,000`, `S = 500`.

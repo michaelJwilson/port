@@ -26,7 +26,6 @@ count is the sample size, and 200 segments over three clones gives 597.
 
 
 @pytest.mark.end2end
-@pytest.mark.planted
 @pytest.mark.critical
 def test_the_dev_instance_plants_unequal_chromosomes() -> None:
     """Ten chromosomes, 50 to 182 bins, summing to the genome.
@@ -44,8 +43,7 @@ def test_the_dev_instance_plants_unequal_chromosomes() -> None:
     assert truth.lengths.max() / truth.lengths.min() == pytest.approx(3.64, abs=0.01)
 
 
-@pytest.mark.infra
-@pytest.mark.upstream
+@pytest.mark.smoke
 def test_upstream_accepts_the_planted_genome() -> None:
     """The partition is a `Ragged`, and constructing it is the check.
 
@@ -68,8 +66,7 @@ def test_upstream_accepts_the_planted_genome() -> None:
     assert [len(segment) for segment in batch.segments()] == list(truth.lengths)
 
 
-@pytest.mark.infra
-@pytest.mark.upstream
+@pytest.mark.smoke
 def test_a_chromosome_below_the_floor_is_refused() -> None:
     """One bin is an initial distribution and no transition, so upstream says no.
 
@@ -93,7 +90,6 @@ def test_a_chromosome_below_the_floor_is_refused() -> None:
 
 
 @pytest.mark.end2end
-@pytest.mark.planted
 def test_the_partition_is_exact_and_reproducible() -> None:
     """It sums to the genome, and the same seed gives the same chromosomes."""
     for seed in (0, 7, 11):
@@ -105,7 +101,6 @@ def test_the_partition_is_exact_and_reproducible() -> None:
 
 
 @pytest.mark.end2end
-@pytest.mark.planted
 def test_no_event_crosses_a_chromosome_boundary() -> None:
     """What `lengths` means once the path is events on a neutral backbone.
 
@@ -151,9 +146,7 @@ def test_no_event_crosses_a_chromosome_boundary() -> None:
     assert placed > 0, "no events were placed, so nothing was checked"
 
 
-@pytest.mark.cnaster
-@pytest.mark.subject
-@pytest.mark.critical
+@pytest.mark.snapshot
 def test_the_clone_stacked_lengths_are_cnasters_own() -> None:
     """`stacked_lengths` is what `clone_stack_obs` builds, for a ragged genome.
 
@@ -181,7 +174,6 @@ def test_the_clone_stacked_lengths_are_cnasters_own() -> None:
 
 
 @pytest.mark.end2end
-@pytest.mark.planted
 def test_the_equal_mode_is_still_reachable_and_still_refuses() -> None:
     """A rectangular genome is a mode, not the default.
 

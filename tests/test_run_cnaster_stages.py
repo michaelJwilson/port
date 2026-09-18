@@ -130,7 +130,6 @@ def loaded(
 
 
 @pytest.mark.end2end
-@pytest.mark.planted
 def test_the_sample_list_is_the_one_slice_the_fixture_wrote(
     planted: CoreInferenceTruth, loaded: Any
 ) -> None:
@@ -149,8 +148,7 @@ def test_the_sample_list_is_the_one_slice_the_fixture_wrote(
     assert set(np.unique(sample_ids)) == {0}
 
 
-@pytest.mark.infra
-@pytest.mark.analytic
+@pytest.mark.smoke
 def test_no_tumour_proportion_file_gives_no_proportion(loaded: Any) -> None:
     """`preprocessing.tumorprop_file: None` returns `None`, not zeros.
 
@@ -164,7 +162,6 @@ def test_no_tumour_proportion_file_gives_no_proportion(loaded: Any) -> None:
 
 
 @pytest.mark.end2end
-@pytest.mark.planted
 @pytest.mark.critical
 def test_the_rectangular_partition_recovers_the_planted_bands(
     planted: CoreInferenceTruth, loaded: Any
@@ -211,8 +208,7 @@ def test_the_rectangular_partition_recovers_the_planted_bands(
     assert agreement == 1.0
 
 
-@pytest.mark.oracle
-@pytest.mark.property
+@pytest.mark.analytic
 def test_the_partition_covers_every_spot_exactly_once(
     planted: CoreInferenceTruth, loaded: Any
 ) -> None:
@@ -237,7 +233,6 @@ def test_the_partition_covers_every_spot_exactly_once(
 
 
 @pytest.mark.end2end
-@pytest.mark.planted
 def test_the_clone_label_table_carries_every_spot_once(
     planted: CoreInferenceTruth, loaded: Any
 ) -> None:
@@ -385,7 +380,6 @@ def _recovered_on(
 
 
 @pytest.mark.warning
-@pytest.mark.subject
 def test_no_block_casts_a_vote_because_every_one_decodes_balanced(
     phased: Any,
 ) -> None:
@@ -429,7 +423,6 @@ def test_no_block_casts_a_vote_because_every_one_decodes_balanced(
 
 
 @pytest.mark.end2end
-@pytest.mark.planted
 @pytest.mark.xfail(strict=True, reason="the vote returns no phase at all (#122)")
 def test_the_phasing_recovers_the_planted_haplotype(phased: Any) -> None:
     """Every block stored on the other haplotype is the one phasing flips back.
@@ -569,7 +562,6 @@ def _fit(phase_inputs: Any, *, t: float, max_iter: int, planted: bool) -> Any:
 
 
 @pytest.mark.warning
-@pytest.mark.subject
 def test_the_phasing_refuses_a_non_zero_exposure(flipped: Any) -> None:
     """**The BAF-only call is enforced, not chosen (#122).**
 
@@ -608,7 +600,6 @@ def test_the_phasing_refuses_a_non_zero_exposure(flipped: Any) -> None:
 
 
 @pytest.mark.end2end
-@pytest.mark.planted
 def test_the_initializer_recovers_the_planted_minor_bafs(phase_inputs: Any) -> None:
     """**And the second candidate is eliminated: `gmm_init` is right (#122).**
 
@@ -626,7 +617,6 @@ def test_the_initializer_recovers_the_planted_minor_bafs(phase_inputs: Any) -> N
 
 
 @pytest.mark.bug
-@pytest.mark.subject
 def test_the_fit_collapses_the_decode_between_its_first_two_iterations(
     phase_inputs: Any,
 ) -> None:
@@ -661,7 +651,6 @@ def test_the_fit_collapses_the_decode_between_its_first_two_iterations(
 
 
 @pytest.mark.warning
-@pytest.mark.subject
 @pytest.mark.parametrize("t", [SHIPPED_T_PHASEING, PHASING_SELF_TRANSITION, 0.99, 0.9])
 def test_the_collapse_holds_across_every_self_transition_that_ships(
     phase_inputs: Any, t: float
@@ -684,8 +673,7 @@ def test_the_collapse_holds_across_every_self_transition_that_ships(
     assert int((occupancy > 0).sum()) == 1, f"t={t} decoded {occupancy}"
 
 
-@pytest.mark.cnaster
-@pytest.mark.subject
+@pytest.mark.snapshot
 def test_only_a_transition_no_configuration_ships_decodes_the_truth(
     phase_inputs: Any,
 ) -> None:
@@ -706,8 +694,7 @@ def test_only_a_transition_no_configuration_ships_decodes_the_truth(
     assert int((occupancy > 0).sum()) == truth.n_states, f"decoded {occupancy}"
 
 
-@pytest.mark.cnaster
-@pytest.mark.subject
+@pytest.mark.snapshot
 def test_the_refinement_conserves_every_block(phased: Any) -> None:
     """The segmentation `initial_phase_given_partition` hands on.
 
@@ -723,7 +710,6 @@ def test_the_refinement_conserves_every_block(phased: Any) -> None:
 
 
 @pytest.mark.warning
-@pytest.mark.subject
 @pytest.mark.parametrize("t", [0.9999999, SHIPPED_T_PHASEING, 0.999, 0.99, 0.95, 0.9])
 def test_the_decode_collapses_at_every_self_transition_down_to_nine_tenths(
     phase_inputs: Any, t: float
@@ -748,8 +734,7 @@ def test_the_decode_collapses_at_every_self_transition_down_to_nine_tenths(
     assert int((occupancy > 0).sum()) == 1, f"t={t} decoded {occupancy}"
 
 
-@pytest.mark.cnaster
-@pytest.mark.subject
+@pytest.mark.snapshot
 @pytest.mark.parametrize("t", RESOLVING_SELF_TRANSITIONS)
 def test_the_decode_resolves_once_the_prior_is_weak_enough(
     phase_inputs: Any, t: float
@@ -779,7 +764,6 @@ def test_the_decode_resolves_once_the_prior_is_weak_enough(
 
 
 @pytest.mark.end2end
-@pytest.mark.planted
 @pytest.mark.parametrize("t", RESOLVING_SELF_TRANSITIONS)
 def test_resolving_the_state_count_is_not_recovering_the_parameters(
     phase_inputs: Any, t: float

@@ -88,8 +88,7 @@ def _fused(fixture: SpotCloneField, weight: np.ndarray) -> np.ndarray:
     return field
 
 
-@pytest.mark.equivalence
-@pytest.mark.subject
+@pytest.mark.patch
 @pytest.mark.parametrize(("n_states", "n_clones"), [(7, 3), (5, 5), (3, 1)])
 def test_the_fused_field_is_bitwise_the_two_step(n_states: int, n_clones: int) -> None:
     """Identical output, including where every state is read.
@@ -106,8 +105,7 @@ def test_the_fused_field_is_bitwise_the_two_step(n_states: int, n_clones: int) -
     )
 
 
-@pytest.mark.equivalence
-@pytest.mark.subject
+@pytest.mark.patch
 def test_the_fused_field_carries_the_relative_channel_weight() -> None:
     """The RDR weight is applied, not dropped.
 
@@ -135,8 +133,7 @@ def test_the_fused_field_carries_the_relative_channel_weight() -> None:
     )
 
 
-@pytest.mark.infra
-@pytest.mark.analytic
+@pytest.mark.smoke
 def test_the_fused_field_allocates_no_emission_array() -> None:
     """The claim that does not depend on a ratio.
 
@@ -168,8 +165,7 @@ def test_the_fused_field_allocates_no_emission_array() -> None:
     )
 
 
-@pytest.mark.infra
-@pytest.mark.analytic
+@pytest.mark.smoke
 def test_the_fused_field_scores_only_the_decoded_states() -> None:
     """Changing a state the profiles never decode to does not move the field.
 

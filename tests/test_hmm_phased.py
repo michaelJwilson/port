@@ -61,9 +61,7 @@ def upstream_phased_total_log_likelihood(
     )
 
 
-@pytest.mark.cnaster
-@pytest.mark.subject
-@pytest.mark.critical
+@pytest.mark.snapshot
 @pytest.mark.parametrize("penalize", ASSEMBLIES)
 @pytest.mark.parametrize("n_copy_states", [1, 2, 3, 4])
 def test_combined_transition_matches_cnaster_construction(
@@ -95,8 +93,7 @@ def test_combined_transition_matches_cnaster_construction(
     )
 
 
-@pytest.mark.oracle
-@pytest.mark.property
+@pytest.mark.analytic
 @pytest.mark.parametrize("penalize", ASSEMBLIES)
 @pytest.mark.parametrize("switch", [0.01, 0.15, 0.5, 0.9])
 @pytest.mark.parametrize("n_copy_states", [1, 2, 5])
@@ -120,7 +117,6 @@ def test_combined_transition_is_row_stochastic(
 
 
 @pytest.mark.oracle
-@pytest.mark.upstream_oracle
 @pytest.mark.critical
 @pytest.mark.parametrize("penalize", ASSEMBLIES)
 @pytest.mark.parametrize("drift", [0.3, 0.5, 0.7])
@@ -147,8 +143,7 @@ def test_total_log_likelihood_matches_upstream(
     )
 
 
-@pytest.mark.infra
-@pytest.mark.analytic
+@pytest.mark.smoke
 def test_sitewise_kernel_changes_the_score() -> None:
     """The lattice reads the kernel it is handed.
 
@@ -165,8 +160,7 @@ def test_sitewise_kernel_changes_the_score() -> None:
     assert abs(scored - perturbed) > 1.0
 
 
-@pytest.mark.oracle
-@pytest.mark.property
+@pytest.mark.analytic
 def test_zero_phase_switching_decouples_the_phases() -> None:
     """At a vanishing kernel the two phases stop exchanging mass.
 
@@ -186,8 +180,7 @@ def test_zero_phase_switching_decouples_the_phases() -> None:
     )
 
 
-@pytest.mark.infra
-@pytest.mark.analytic
+@pytest.mark.smoke
 def test_switch_outside_the_unit_interval_is_refused() -> None:
     """The assembly refuses a kernel that is not a probability."""
     fixture = phased_chains()
@@ -197,8 +190,7 @@ def test_switch_outside_the_unit_interval_is_refused() -> None:
         )
 
 
-@pytest.mark.infra
-@pytest.mark.analytic
+@pytest.mark.smoke
 @pytest.mark.xfail(
     strict=True,
     reason=(
