@@ -66,9 +66,14 @@ UNMATCHED_FAMILIES = {
     "BinomialEmission",
     "CountPairEmission",
 }
-"""Upstream families with no `cnaster` counterpart: 377 statements, 255 of them
-uncovered. They are in the denominator because `include` is file-level and the
-module as a whole is refereed; they are **not** in the reachable ceiling.
+"""Upstream families with no `cnaster` counterpart: 377 statements, **excluded
+from the denominator** by `.coveragerc-oracle`'s `exclude_also`.
+
+The figure measures coverage against what `cnaster` can do, so capability
+upstream adds that the subject has no counterpart for must not dilute it.
+Excluding these took `emissions.py` from 779 statements to 402 and the surface
+from 2,541 to 2,164 -- 37.78 to 38.63 per cent, for no change in what is
+validated.
 
 `CountPairEmission` is the one worth naming twice. `port` uses it -- the
 fixtures draw counts through it -- but drawing is the `upstream` role and not
@@ -185,4 +190,33 @@ def test_the_unmatched_emission_families_are_the_ones_named() -> None:
 
     assert families - matched - base == UNMATCHED_FAMILIES, (
         f"upstream's families are {sorted(families)}"
+    )
+
+
+@pytest.mark.analytic
+def test_every_unmatched_family_is_excluded_from_the_denominator() -> None:
+    """The two lists cannot drift, which is what makes the figure stable.
+
+    `UNMATCHED_FAMILIES` is derived from the two sources;
+    `.coveragerc-oracle`'s `exclude_also` is what the report acts on. If they
+    disagree, the denominator either counts capability `cnaster` cannot
+    referee -- the dilution the exclusion exists to prevent -- or hides a
+    family that does have a counterpart.
+
+    With `test_the_unmatched_emission_families_are_the_ones_named`, a family
+    added upstream fails here until it is either matched to `cnaster` code or
+    excluded, so upstream growth cannot move this repository's number silently
+    in either direction.
+    """
+    parser = configparser.ConfigParser()
+    parser.read(ORACLE_CONFIG)
+    excluded = {
+        line.strip().removeprefix("^class ")
+        for line in parser["report"]["exclude_also"].splitlines()
+        if line.strip()
+    }
+
+    assert excluded == UNMATCHED_FAMILIES, (
+        f"exclude_also names {sorted(excluded)}, "
+        f"unmatched are {sorted(UNMATCHED_FAMILIES)}"
     )

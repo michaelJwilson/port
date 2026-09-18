@@ -13,7 +13,7 @@ recorded as tests rather than as prose:
     `pipeline_clone_assignment` does not pass one, so every clone below that
     size is merged away and no labelling can be recovered under it.
 
-`dev_instance` is what these run against: 15.8 s, and it recovers its
+`dev_instance` is what these run against: 35.4 s, and it recovers its
 labelling exactly, so a failure here is a failure of the code rather than of
 the instance. `key_instance` is the declared scale, `M = K = 10`, `G = 10,000`,
 `S = 5,000`. Its fixture is exercised here; **the inference on it is not**,
@@ -274,9 +274,15 @@ def test_the_declared_scale_is_out_of_reach_of_a_single_run_here() -> None:
 def test_the_dev_instance_recovers_its_labelling(cnaster_config: None) -> None:
     """The dev instance, and it recovers the labelling exactly.
 
-    `M = 4`, `K = 10`, `G = 1,000`, `S = 1,000`: 15.8 s and 1.07 GB against
-    the key instance's 310 s and 7.98 GB, at an adjusted Rand index of
-    **1.000**. That combination is what makes it worth having -- an instance
+    `M = 4`, `K = 10`, `G = 1,000`, `S = 1,600`: 35.4 s against the key
+    instance's 310 s, at an adjusted Rand index of **1.000**.
+
+    `S` is 1,600 rather than 1,000 because the lattice is square (#137): four
+    bands of 400 spots over `40 x 40`, at 120 boundary edges and a
+    perimeter-to-area of **0.300**, against the old strip's 300 edges and
+    1.200. The recovery is exact on both, so what squaring bought is not a
+    better number -- it is a number measured where the spatial prior is not
+    being asked to hold a ribbon. That combination is what makes it worth having -- an instance
     that failed to recover would give a developer nothing to work against, and
     one that took five minutes would stop them looking.
 
@@ -287,7 +293,7 @@ def test_the_dev_instance_recovers_its_labelling(cnaster_config: None) -> None:
     truth = dev_instance()
 
     assert (truth.n_clones, truth.n_states) == (4, 10)
-    assert (truth.n_obs, truth.n_spots) == (1_000, 1_000)
+    assert (truth.n_obs, truth.n_spots) == (1_000, 1_600)
     assert min(index.size for index in truth.clone_index) >= MIN_CLONE_SPOTS
 
     result = _run(truth, max_iter_outer=1, max_iter=3)

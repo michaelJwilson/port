@@ -85,7 +85,7 @@ def _cnaster_emission(inputs: dict[str, Any]) -> tuple[np.ndarray, np.ndarray]:
 
 @pytest.fixture(scope="module")
 def gate_instance() -> Any:
-    """`dev_instance` over `GATE_OBS` bins: `M = 4`, `K = 10`, `S = 1,000`."""
+    """`dev_instance` over `GATE_OBS` bins: `M = 4`, `K = 10`, `S = 1,600`."""
     return dev_instance(n_obs=GATE_OBS)
 
 
@@ -98,7 +98,10 @@ def stress_instance() -> Any:
 @pytest.mark.benchmark
 @pytest.mark.cnaster
 def test_cnaster_emission_gate(benchmark: BenchmarkFixture, gate_instance: Any) -> None:
-    """`cnaster`'s two matched families over the reduced dev instance."""
+    """`cnaster`'s two matched families over the reduced dev instance.
+
+    Realized **376 ms** minimum against upstream's 128 ms, a ratio of 2.9.
+    """
     inputs = _cnaster_inputs(gate_instance)
     benchmark(_cnaster_emission, inputs)
 
@@ -123,7 +126,11 @@ def test_upstream_emission_gate(
 def test_cnaster_emission_stress(
     benchmark: BenchmarkFixture, stress_instance: Any
 ) -> None:
-    """The whole dev instance: five times the bins of the gate."""
+    """The whole dev instance: five times the bins of the gate.
+
+    Realized **1,977 ms** against upstream's 930 ms, a ratio of 2.1. The gap
+    narrows with size, which is the encoder's constant factor being amortized.
+    """
     inputs = _cnaster_inputs(stress_instance)
     benchmark(_cnaster_emission, inputs)
 

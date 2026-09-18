@@ -1,10 +1,13 @@
 """What the phasing stage costs, on the dev instance (#96, #104, #122).
 
 **It is the most expensive stage of the prep chain, and #122 measures that it
-returns nothing.** At the whole dev instance the chain is 1.02 s to write and
-load the files, 1.16 s to summarize blocks and **3.78 s to phase** -- 63 per
-cent of the three, spent producing a `phase_indicator` that is identically
-zero.
+returns nothing.** At the whole dev instance it is **6.45 s to phase**, spent
+producing a `phase_indicator` that is identically zero -- more than the file
+write, the load and the block summary together.
+
+Re-measured on the square lattice (#137): the instance went from 1,000 spots
+on a 10:1 strip to 1,600 on a 40 x 40 square, and the stage went 3.78 s ->
+6.45 s, close to the 1.6x in spots.
 
 That pairing is the reason these live beside the attribution tests rather than
 in an audit: a stage that is wrong is a defect, and a stage that is wrong
@@ -145,7 +148,7 @@ def stress_blocks(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Any]:
 @pytest.mark.benchmark
 @pytest.mark.cnaster
 def test_phasing_gate(benchmark: BenchmarkFixture, gate_blocks: Any) -> None:
-    """The dev instance over 200 bins. Realized **892 ms** minimum, 1,034 mean."""
+    """The dev instance over 200 bins. Realized **1,191 ms** minimum, 1,226 mean."""
     truth, blocks = gate_blocks
     benchmark(_phase, truth, blocks)
 
@@ -153,12 +156,12 @@ def test_phasing_gate(benchmark: BenchmarkFixture, gate_blocks: Any) -> None:
 @pytest.mark.benchmark
 @pytest.mark.cnaster
 def test_phasing_stress(benchmark: BenchmarkFixture, stress_blocks: Any) -> None:
-    """The whole dev instance, 1,000 bins. Realized **3,778 ms** minimum.
+    """The whole dev instance, 1,000 bins. Realized **6,448 ms** minimum.
 
-    Five times the bins for **4.23 times** the wall, so the stage is close to
-    linear in blocks over this range -- which is what makes the 63 per cent
-    share above a property of the chain rather than of one size. A stage that
-    grew super-linearly would be a different ticket from #122.
+    Five times the bins for **5.41 times** the wall, so the stage is close to
+    linear in blocks over this range -- which is what makes it the chain's
+    dominant cost at any size rather than at one. A stage that grew
+    super-linearly would be a different ticket from #122.
     """
     truth, blocks = stress_blocks
     benchmark(_phase, truth, blocks)
