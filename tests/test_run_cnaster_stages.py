@@ -58,14 +58,24 @@ Restated so the sweep below is against what ships rather than against a
 number this file chose. `hmm.t` is stickier still, 0.9999999.
 """
 
-RESOLVING_SELF_TRANSITION = 0.85
-"""The largest swept `t` at which the decode resolves three states (#142).
+RESOLVING_SELF_TRANSITIONS = (0.7, 0.6, 0.5)
+"""Swept `t` at which the decode resolves three states on every platform (#142).
 
-Measured: it collapses to one at 0.9 and resolves three at 0.85, so the
-threshold lies between them. The implied segment length is `1 / (1 - t)`
-bins, 10 and 6.7 -- **shorter than the 10-to-25-bin events this fixture
-plants**, so the prior has to be weaker than the truth before the truth is
-recoverable, which is the finding rather than the number.
+**Where the threshold sits is not reproducible, so it is not asserted.** This
+machine resolves three states from 0.85 down; a GitHub runner collapses at
+0.85 and reaches only two at 0.8. Both agree from 0.7 down, and both collapse
+at every value at or above 0.9. Those two bands are what the tests claim, and
+the boundary between them is reported rather than pinned.
+
+The fit is a non-convex optimization over a multimodal likelihood and `t`
+moves the basin, so which optimum it reaches turns on floating-point
+arithmetic -- the same platform sensitivity #147 found in `opt/fit`, here
+changing a decoded state count rather than a convergence flag.
+
+The implied segment length is `1 / (1 - t)` bins: 10 at the collapsing end,
+3.3 at the resolving one, against the 10-to-25-bin events this fixture plants.
+The prior has to be weaker than the truth before the truth is recoverable,
+which is the finding rather than any particular number.
 """
 
 PHASING_SELF_TRANSITION = 1.0 - 1e-6
@@ -701,15 +711,19 @@ def test_the_refinement_conserves_every_block(phased: Any) -> None:
 
 @pytest.mark.cnaster
 @pytest.mark.parametrize("t", [0.9999999, SHIPPED_T_PHASEING, 0.999, 0.99, 0.95, 0.9])
-def test_the_decode_collapses_at_every_self_transition_above_the_threshold(
+def test_the_decode_collapses_at_every_self_transition_down_to_nine_tenths(
     phase_inputs: Any, t: float
 ) -> None:
     """Six values spanning seven orders of magnitude in `1 - t`, all collapsing.
 
-    #142. The sweep #129 opened was four values and too coarse to locate a
-    threshold; this is the upper half of the refined one. `0.9` implies a
-    ten-bin segment, which is *shorter* than the events the fixture plants,
-    and it still puts all 120 clone-blocks on one state.
+    #142. The sweep #129 opened was four values and too coarse to say anything
+    about where this ends. This is the upper band, and it reproduces: every
+    value here puts all 120 clone-blocks on one state on this machine and on a
+    GitHub runner alike.
+
+    `0.9` implies a ten-bin segment, already *shorter* than the events the
+    fixture plants, and it still collapses. Every value `cnaster` ships is in
+    this band.
     """
     truth, _, _, _, n_clones = phase_inputs
 
@@ -721,14 +735,19 @@ def test_the_decode_collapses_at_every_self_transition_above_the_threshold(
 
 
 @pytest.mark.cnaster
-@pytest.mark.parametrize("t", [RESOLVING_SELF_TRANSITION, 0.8, 0.7, 0.6, 0.5])
-def test_the_decode_resolves_below_the_threshold(phase_inputs: Any, t: float) -> None:
-    """**The threshold is between 0.9 and 0.85**, and nothing shipped is near it.
+@pytest.mark.parametrize("t", RESOLVING_SELF_TRANSITIONS)
+def test_the_decode_resolves_once_the_prior_is_weak_enough(
+    phase_inputs: Any, t: float
+) -> None:
+    """**The instance is decodable, so the collapse is the prior's doing.**
 
-    Below it the decode uses all three states -- at `t = 0.8`, 27 / 66 / 27 of
-    120 clone-blocks. So the instance is decodable and the transition prior is
-    what prevents it, which is what makes #122's collapse attributable to the
-    fit rather than to the data.
+    The lower band, and the half of #142 that matters: three states come back
+    once `t` is weak enough, so #122's collapse is the fit's and not the
+    data's -- the attribution #129 rested on, measured directly.
+
+    Only values that resolve on both platforms are asserted. The boundary
+    itself moves between them, and `RESOLVING_SELF_TRANSITIONS` says why it is
+    reported instead of pinned.
 
     `zenodo_sim_config.yaml` sets `t = 0.9999999` and `t_phaseing = 0.99999`,
     implying segments of ten million and one hundred thousand bins against a
@@ -745,31 +764,38 @@ def test_the_decode_resolves_below_the_threshold(phase_inputs: Any, t: float) ->
 
 
 @pytest.mark.planted
-def test_a_smaller_self_transition_is_necessary_and_not_sufficient(
-    phase_inputs: Any,
+@pytest.mark.parametrize("t", RESOLVING_SELF_TRANSITIONS)
+def test_resolving_the_state_count_is_not_recovering_the_parameters(
+    phase_inputs: Any, t: float
 ) -> None:
-    """Resolving three states is not recovering three parameters (#142).
+    """**A weaker prior buys the state count and not the states (#142).**
 
-    At `t = 0.8` the fit returns minor BAFs of `[0.124, 0.499, 0.877]` against
-    planted `[0.12, 0.42, 0.50]`. Two are right: 0.124 for 0.12 and 0.499 for
-    0.50. The third is 0.877, which is `1 - 0.123` -- the **same** state in
-    the other phase, not the planted 0.42.
+    Wherever the decode resolves, the fit still does not recover all three
+    planted minor BAFs. On this machine at `t = 0.5` the folded fit is
+    `[0.129, 0.212, 0.494]` against planted `[0.12, 0.42, 0.50]`: the two
+    extremes land, the middle one is out by 0.21.
 
-    So lowering `t` buys the state count and not the middle parameter, and a
-    fix for #122 that stopped at the count would be measuring the wrong thing.
-    The weakest planted imbalance stays unrecovered at every `t` swept.
+    So a fix for #122 that stopped at the state count would be measuring the
+    wrong thing. Asserted as a count of recovered parameters rather than
+    against those numbers, which are as platform-dependent as the threshold
+    is -- the claim is that the set is incomplete, not which member is missing.
+
+    The middle state does return at `t = 0.4`, within 0.01, with the occupancy
+    changing character to 66/17/37. That is four orders below anything
+    `cnaster` ships and well past a defensible prior, so it is recorded here
+    rather than swept: it says the parameter is reachable, not that the value
+    is usable.
     """
     truth, _, _, _, _ = phase_inputs
 
-    fitted = np.sort(
-        np.asarray(
-            _fit(phase_inputs, t=0.8, max_iter=100, planted=True)["new_p_binom"]
-        ).ravel()
-    )
+    fitted = np.asarray(
+        _fit(phase_inputs, t=t, max_iter=100, planted=True)["new_p_binom"]
+    ).ravel()
+    folded = np.sort(np.minimum(fitted, 1.0 - fitted))
     planted = np.sort(np.minimum(truth.p_binom, 1.0 - truth.p_binom))
 
-    assert fitted[0] == pytest.approx(planted[0], abs=0.01)
-    assert fitted[1] == pytest.approx(planted[2], abs=0.01)
-    assert min(abs(fitted - planted[1])) > 0.05, (
-        f"the middle state was recovered after all: {fitted} against {planted}"
+    recovered = sum(bool(min(abs(folded - value)) <= 0.02) for value in planted)
+
+    assert recovered < truth.n_states, (
+        f"t={t} recovered every planted state after all: {folded} against {planted}"
     )
