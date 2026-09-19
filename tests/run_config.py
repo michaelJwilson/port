@@ -78,11 +78,15 @@ def run_cnaster_config(
             #    `literal_eval` refuses -- "malformed node or string".
             # NB widened from the shipped (0.01, 0.99) so `normal_baf_bin_filter`
             #    removes nothing. It tests each bin's pooled normal-spot B count
-            #    against a beta-binomial with `p` forced to 0.5, and this fixture
-            #    plants every state above balance, so at the shipped interval the
-            #    filter removes nearly every bin. A removed bin then crashes the
-            #    gene-level output: `run_cnaster` casts `bin_id` to int over every
-            #    interval gene, and the filter sets the removed ones to None.
+            #    against a beta-binomial with `p` forced to 0.5, and at the
+            #    shipped interval it removes exactly the bins the normal clone
+            #    carries an event in -- 8 of 40 on the stages instance, measured
+            #    by `test_the_baf_filter_removes_the_imbalanced_bins_of_the_
+            #    normal_clone`. That is the filter working, and it is still a
+            #    removal: a removed bin crashes the gene-level output, since
+            #    `run_cnaster` casts `bin_id` to int over every interval gene and
+            #    the filter sets the removed ones to None. So the widening stays,
+            #    and what the pipeline does with 8 fewer bins is #105's question.
             #    Both the missing balanced clone and the crash are ticketed.
             "normal_allele_specific_confidence": "(0.0, 1.0)",
             "min_normal_count_perbin": 1,
