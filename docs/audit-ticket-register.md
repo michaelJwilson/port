@@ -1,9 +1,10 @@
 # Audit: 108 open tickets, what can close, and what should be one ticket
 
-**25 can close — 7 verified against their own "Done when", 12 on a landed test
-module and a merged pull request, 6 as superseded. Thirty-one more are one
-finding each against a read-only dependency and should be eight registers
-rather than thirty-one tickets. Nine carry a number that has since moved.**
+**7 verified and closed. Of the 18 filed for a read, 5 have been read and 3
+do not close — the original claim of 25 was too high, and the corrections are
+below. Thirty-one more are one finding each against a read-only dependency
+and should be eight registers rather than thirty-one tickets. Nine carry a
+number that has since moved.**
 
 Measured on `main` at `fa022ea`, against the 108 open at that commit.
 
@@ -50,16 +51,36 @@ clause, so each wants a one-minute read before closing.
 | 103 | A method for taking plotting out of the coverage denominator | The method is in `pyproject.toml` and four test modules cite it as the maintainer's stated exception |
 | 5 | Per-clone normalization of `log_mu` | `test_logmu_shifts.py`: a vectorized reference plus three invariants |
 
-## A3. Superseded — close with the reason, not as done
+## A3. Superseded — **three of these six were wrong**
 
-| # | Title | Superseded by |
+Re-read clause by clause at `bc2744e`, which A1 got and this tier did not.
+Three do not close, and the pattern is the same each time: a ticket was
+matched on its *title* against work that resembled it, rather than on its
+"Done when".
+
+| # | Title | Verdict on a read |
 | --- | --- | --- |
-| 94 | Where the remaining 3,672 uncovered statements are | The figure moved; #159 and #163 ask it better |
-| 110 | Dead code in the denominator | #161 carries `wolff.py`; `pyproject.toml` records the rest |
-| 132 | Collecting one module costs a later module ten statements | An artefact of the pre-#157 marker split |
-| 35 | The coverage gate cannot see the console entry points | #153 is the same question with a number |
-| 50 | Tickets and PRs exceed Writing Style's line limits | `.github/pull_request_template.md` now states and enforces the limit |
-| 72 | `CLAUDE.md` names `sphinx-build -W` and there is nothing to build | Duplicate of #71, which owns the docs build |
+| 110 | Dead code in the denominator | **Closes, and as done rather than superseded.** `pyproject.toml` omits `sim.py` with its reason and leaves `wolff.py` counted with a comment naming #71 — which is its "Done when", clause for clause |
+| 94 | Where the remaining 3,672 uncovered statements are | Not re-read. The figure has moved again (#223) |
+| 35 | The coverage gate cannot see the console entry points | Not re-read. #223 measured the 899 statements it is about |
+| 132 | Collecting one module costs a later module ten statements | **Does not close.** Its "Done when" is that the mechanism is *named* — a module-level cache, a global, a once-emitting logger, or coverage itself. Nothing named it, and `test_phasing_bench.py` still carries the `release` quarantine |
+| 50 | Tickets and PRs exceed Writing Style's line limits | **Does not close.** The PR template adopted option 2, but #50 asks for it in `CLAUDE.md` as a stated difference, and for a pass over the open tickets. `CLAUDE.md`'s Writing Style 1 still reads unamended |
+| 72 | `CLAUDE.md` names `sphinx-build -W` and there is nothing to build | **Does not close, and is not a duplicate.** #71 builds `cnaster`'s docs; #72 builds `port`'s, and says so — "beside #71's build". They share no `conf.py` by design |
+
+**#103 leaves A2 for the same reason.** Its "Done when" is that one of three
+options is chosen *and the reason is in `pyproject.toml`*. Measured: there is
+no plotting exclusion there, and all five modules are still in the
+denominator at 0.00 per cent. The method was cited, never adopted. #226 now
+carries the decision.
+
+### What this says about the audit
+
+A1 was read clause by clause and held. A2 and A3 were matched on resemblance,
+and at least four of the eighteen are wrong — which is the error rate #221
+was filed to catch and the reason it says "read before closing" rather than
+"close". The lesson is not that the tiers were too generous; it is that
+**a title is not a "Done when"**, and only one of these tiers was checked
+against one.
 
 ---
 
