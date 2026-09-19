@@ -208,6 +208,13 @@ def test_a_patched_run_reproduces_an_unpatched_one(tmp_path: Path) -> None:
     which reads exactly like a hang. It is also what production does: the
     entry point is what ships, so running it is a stronger claim than
     importing what it calls.
+
+    **The patched arm passes `--no-figures`**, because `FIGURE_SWAPS` is in
+    the entry point's default now and does not make this claim: a figure at
+    a different dpi is a different file by design (#195). `SWAPS` is the
+    table that reproduces `cnaster`, so `--no-figures` is what selects the
+    claim being tested rather than a weakening of it. Without this the arms
+    differ by every PNG and the assertion below fails by construction.
     """
     import subprocess
     import sys
@@ -240,7 +247,7 @@ def test_a_patched_run_reproduces_an_unpatched_one(tmp_path: Path) -> None:
     baseline = tmp_path / "baseline"
     shutil.move(str(output), str(baseline))
 
-    run()
+    run("--no-figures")
 
     same, differ = _compare(baseline, output)
 
