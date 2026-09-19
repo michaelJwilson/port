@@ -114,6 +114,14 @@ not carry, not before.
     **speedup** is established at stress sizes alone. A ratio read at a gate
     size decides nothing in either direction, and an optimization whose only
     evidence is a gate-sized benchmark has not been measured.
+*   **A measurement carries the conditions that decided it.** A ratio is a
+    statement about two implementations only where everything else was
+    equal, and what a report does not state is what nobody controlled. A
+    compilation cache, a page cache and the order the arms ran in each move
+    a figure by more than the change being measured. Warm what production
+    warms, say which state was measured, and where a first call *is* the
+    cost, report it as its own number rather than buried inside the stage
+    that paid it.
 *   **The Oracle.** Every accelerated kernel keeps its pure Python/NumPy
     implementation as an oracle. Regression tests pin the accelerated output
     against it, and recover known values on sims.

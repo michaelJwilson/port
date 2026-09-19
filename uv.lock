@@ -2486,6 +2486,7 @@ dependencies = [
     { name = "matplotlib" },
     { name = "numba" },
     { name = "numpy" },
+    { name = "polars" },
     { name = "pyyaml" },
     { name = "snakes-and-ladders" },
 ]
@@ -2529,6 +2530,7 @@ requires-dist = [
     { name = "numba", specifier = ">=0.61.0" },
     { name = "numpy", specifier = ">=1.26.0" },
     { name = "pip-audit", marker = "extra == 'dev'", specifier = ">=2.7" },
+    { name = "polars", specifier = ">=1.0" },
     { name = "pre-commit", marker = "extra == 'dev'", specifier = ">=3.5.0" },
     { name = "pytest", marker = "extra == 'test'", specifier = ">=9.0.3" },
     { name = "pytest-benchmark", marker = "extra == 'test'", specifier = ">=4" },
