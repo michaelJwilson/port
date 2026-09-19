@@ -384,7 +384,7 @@ omit = [
 # pull request. Unlike a denominator of the imported modules, this one does
 # not fall for bringing a new module under test, so there is no case where
 # lowering it is legitimate.
-fail_under = 40.0
+fail_under = 41.7
 precision = 2
 exclude_lines = [
     "pragma: no cover",

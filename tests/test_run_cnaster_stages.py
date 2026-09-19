@@ -19,7 +19,7 @@ import pytest
 
 from tests.fixtures import CoreInferenceTruth, core_inference_truth
 from tests.run_config import write_run_cnaster_config
-from tests.tmp_inputs import write_tmp_inputs
+from tests.tmp_inputs import WrittenInputs, write_tmp_inputs
 from tests.unsegment import unsegment
 
 pytestmark = pytest.mark.preprocessing
@@ -99,9 +99,21 @@ def planted() -> CoreInferenceTruth:
 
 
 @pytest.fixture(scope="module")
-def loaded(
+def written(
     planted: CoreInferenceTruth, tmp_path_factory: pytest.TempPathFactory
-) -> Iterator[Any]:
+) -> WrittenInputs:
+    """The fixture as files, written once for the module.
+
+    Separate from `loaded` because the prep chain needs the gene table's path
+    as well as what the loader returned, and a loader that also carried the
+    paths would be two things.
+    """
+    root: Path = tmp_path_factory.mktemp("stages")
+    return write_tmp_inputs(planted, unsegment(planted, flip_every=0), root)
+
+
+@pytest.fixture(scope="module")
+def loaded(planted: CoreInferenceTruth, written: WrittenInputs) -> Iterator[Any]:
     """`load_input_data`'s return, from files written once for the module.
 
     The configuration stays installed for the body of every test: these stages
@@ -111,8 +123,6 @@ def loaded(
     from cnaster.config import YAMLConfig, get_global_config, set_global_config
     from cnaster.io import load_input_data
 
-    root: Path = tmp_path_factory.mktemp("stages")
-    written = write_tmp_inputs(planted, unsegment(planted, flip_every=0), root)
     config_path = write_run_cnaster_config(written, planted)
 
     # The pipeline's own configuration rather than the loader's subset: these
@@ -765,7 +775,7 @@ NORMAL_BASELINE_TOLERANCE = 0.15
 """Total variation between the fitted normal baseline and the planted one.
 
 Realized 0.101 on this fixture. The baseline is a per-bin **share** over the
-candidate spots, so the comparison is between two distributions over 1,000
+candidate spots, so the comparison is between two distributions over its 40
 bins and total variation is what states it: a per-bin relative error is
 dominated by the low-count bins (median 12 per cent, 95th percentile 56) and
 says more about the draw than about the stage.
@@ -884,3 +894,324 @@ def test_the_normal_baseline_is_a_distribution_over_bins(
 
     assert float(np.sum(rdr_normal)) == pytest.approx(1.0, abs=1e-12)
     assert float(np.min(rdr_normal)) >= 0.0
+
+
+SHIPPED_NORMAL_CONFIDENCE = (0.01, 0.99)
+"""`zenodo_sim_config.yaml`'s `quality.normal_allele_specific_confidence`.
+
+`tests/run_config.py` widens it to `(0.0, 1.0)` so the fixture's bins survive
+into the round trip, so the shipped value is restated here and passed
+explicitly: what the filter does at what ships is the claim, and a test reading
+the widened configuration would be measuring the widening.
+"""
+
+
+def _prep_chain(loaded: Any, written: WrittenInputs) -> tuple[Any, Any, Any]:
+    """The five `omics` calls `run_cnaster` makes between loading and binning.
+
+    Returns the gene-SNP table, the binned counts, and the per-bin table the
+    normal stage reads. `tests/test_run_cnaster_prep.py` asserts this chain
+    recovers the planted segmentation and counts on its own instance; here it
+    is the input to the two filters, not the subject.
+    """
+    from cnaster.omics import (
+        assign_initial_blocks,
+        binned_gene_snp,
+        create_bin_ranges,
+        form_gene_snp_table,
+        summarize_counts_for_bins,
+        summarize_counts_for_blocks,
+    )
+
+    alleles = (loaded.cell_snp_Aallele, loaded.cell_snp_Ballele)
+    table = form_gene_snp_table(
+        loaded.unique_snp_ids, str(written.hgtable), loaded.adata
+    )
+    table = assign_initial_blocks(
+        table, loaded.adata, *alleles, loaded.unique_snp_ids, initial_min_umi=1
+    )
+    blocks = summarize_counts_for_blocks(
+        table, loaded.adata, *alleles, loaded.unique_snp_ids
+    )
+    table = create_bin_ranges(
+        table,
+        loaded.adata,
+        *alleles,
+        loaded.unique_snp_ids,
+        blocks.X,
+        blocks.total_bb_RD,
+        blocks.lengths,
+        secondary_min_umi=1,
+        secondary_min_snp_umi=1,
+        secondary_min_normal_umi=0,
+    )
+    binned = summarize_counts_for_bins(
+        table,
+        loaded.adata,
+        blocks.X,
+        blocks.total_bb_RD,
+        np.ones(int(table.block_id.dropna().nunique()), dtype=bool),
+        nu=1.0,
+        logphase_shift=0.0,
+        geneticmap_file=None,
+    )
+
+    return table, binned, binned_gene_snp(table)
+
+
+def _balanced_clone(truth: CoreInferenceTruth) -> int:
+    """Which clone the fixture planted at the balanced state in most bins."""
+    return int(
+        np.argmax(
+            [np.mean(truth.states[clone] == 0) for clone in range(truth.n_clones)]
+        )
+    )
+
+
+@pytest.fixture(scope="module")
+def prepared(loaded: Any, written: WrittenInputs) -> tuple[Any, Any, Any]:
+    """The prep chain run once, for every test below that needs bins."""
+    return _prep_chain(loaded, written)
+
+
+@pytest.fixture(scope="module")
+def baf_filtered(
+    planted: CoreInferenceTruth, prepared: tuple[Any, Any, Any]
+) -> tuple[Any, Any, np.ndarray]:
+    """`normal_baf_bin_filter` at the shipped interval, and what it removed.
+
+    The table is copied in: the function writes `None` into its caller's
+    `bin_id` column and then renumbers it, so a caller that kept the reference
+    has a different table afterwards (#89). Copying is what lets the removal
+    set be read off as the difference between the two.
+    """
+    from cnaster.normal_spot import normal_baf_bin_filter
+
+    truth, binned, _ = planted, *prepared[1:]
+    table = prepared[0]
+    index_normal = np.flatnonzero(truth.labels == _balanced_clone(truth))
+
+    filtered, counts = normal_baf_bin_filter(
+        table.copy(),
+        binned.X.copy(),
+        binned.base_nb_mean.copy(),
+        binned.total_bb_RD.copy(),
+        1.0,
+        0.0,
+        index_normal,
+        None,
+        confidence_interval=SHIPPED_NORMAL_CONFIDENCE,
+    )
+
+    dropped = filtered.bin_id.isna() & table.bin_id.notna()
+    removed = np.unique(table.loc[dropped, "bin_id"].to_numpy().astype(int))
+
+    return filtered, counts, removed
+
+
+@pytest.mark.end2end
+def test_the_baf_filter_removes_the_imbalanced_bins_of_the_normal_clone(
+    planted: CoreInferenceTruth, baf_filtered: tuple[Any, Any, np.ndarray]
+) -> None:
+    """**The removal set is exactly the planted non-balanced bins (#38, #160).**
+
+    The filter pools B-allele counts over the normal spots, fits a
+    beta-binomial with `p` forced to 0.5, and drops the bins whose pooled
+    count falls outside the interval. The fixture plants which bins those are:
+    the balanced clone sits at `p = 0.5` everywhere except inside its own
+    events, where the planted `p` is 0.58 or above.
+
+    So the two sets have to agree, and they do **exactly** -- eight bins
+    removed, eight planted, no bin either way. That is the claim the whole
+    filter exists to support, and nothing checked it before.
+
+    Set equality rather than a rate: a recall figure would let a filter that
+    removed the genome score well, and a precision figure alone would let one
+    that removed nothing.
+    """
+    _, _, removed = baf_filtered
+
+    planted_imbalanced = np.flatnonzero(planted.states[_balanced_clone(planted)] != 0)
+
+    np.testing.assert_array_equal(removed, planted_imbalanced)
+
+
+@pytest.mark.end2end
+def test_the_filtered_segmentation_is_the_planted_one_less_the_removals(
+    planted: CoreInferenceTruth, baf_filtered: tuple[Any, Any, np.ndarray]
+) -> None:
+    """The chromosomes shorten by what was removed from each, not by a total.
+
+    `lengths` is rebuilt from the surviving bins per chromosome, so a removal
+    charged to the wrong chromosome -- the error an off-by-one in the
+    renumbering would make -- moves the boundary without changing the total.
+    A scalar count of survivors cannot see it; the vector can.
+
+    Realized `[8, 17, 7]` against the planted `[10, 21, 9]`: two removals in
+    the first chromosome, four in the second, two in the third.
+    """
+    _, counts, removed = baf_filtered
+
+    chromosome_of_bin = np.repeat(
+        np.arange(planted.lengths.size), np.asarray(planted.lengths)
+    )
+    expected = np.asarray(planted.lengths) - np.bincount(
+        chromosome_of_bin[removed], minlength=planted.lengths.size
+    )
+
+    np.testing.assert_array_equal(np.asarray(counts.lengths), expected)
+    assert counts.X.shape[0] == int(expected.sum())
+
+
+@pytest.mark.analytic
+def test_the_surviving_bins_are_renumbered_onto_a_contiguous_range(
+    baf_filtered: tuple[Any, Any, np.ndarray],
+) -> None:
+    """Conservation: the survivors are relabelled `0 .. n-1`, once each.
+
+    Which is why a stage downstream of this filter cannot be refereed against
+    a planted bin index (#105): the label a bin carries afterwards is its rank
+    among the survivors, not the bin it was. Holds of any correct
+    implementation, so it says nothing about `cnaster` being right -- it says
+    the renumbering is a bijection, which is what makes the two claims above
+    readable.
+    """
+    filtered, counts, _ = baf_filtered
+
+    surviving = np.sort(filtered.bin_id.dropna().unique().astype(int))
+
+    np.testing.assert_array_equal(surviving, np.arange(counts.X.shape[0]))
+
+
+@pytest.fixture(scope="module")
+def one_gene_per_bin(
+    tmp_path_factory: pytest.TempPathFactory,
+) -> tuple[CoreInferenceTruth, np.ndarray, np.ndarray]:
+    """`filter_normal_diffexp` on an instance whose bins hold one gene each.
+
+    `genes_per_bin=(1, 2)` draws from `[1, 2)`, so every bin is one gene and
+    the bin's counts are the gene's. That is the instance on which the
+    filter's **selection** is what decides the answer, which the module
+    fixture's multi-gene instance is not: see the pinned defect below.
+
+    The configuration is installed for the body of this fixture alone and the
+    work is done inside it, because `filter_normal_diffexp` reads none of it
+    and the module already holds two instances whose globals would otherwise
+    interleave.
+    """
+    from cnaster.config import YAMLConfig, get_global_config, set_global_config
+    from cnaster.io import get_sample_list, load_input_data
+    from cnaster.normal_spot import filter_normal_diffexp
+
+    truth = core_inference_truth(
+        n_clones=2, n_states=3, lattice=LATTICE, n_obs=40, n_segments=3, seed=11
+    )
+    root: Path = tmp_path_factory.mktemp("one_gene")
+    written = write_tmp_inputs(
+        truth, unsegment(truth, flip_every=0, genes_per_bin=(1, 2)), root
+    )
+    config_path = write_run_cnaster_config(written, truth)
+
+    previous = get_global_config()
+    set_global_config(None)
+    set_global_config(YAMLConfig.from_file(config_path))
+    try:
+        loaded = load_input_data(get_global_config())
+        _, binned, df_bin_info = _prep_chain(loaded, written)
+        sample_list, sample_ids = get_sample_list(loaded.adata)
+        retained = np.asarray(
+            filter_normal_diffexp(
+                loaded.exp_counts,
+                df_bin_info,
+                truth.labels == _balanced_clone(truth),
+                sample_list=sample_list,
+                sample_ids=sample_ids,
+            )
+        )
+    finally:
+        set_global_config(None)
+        set_global_config(previous)
+
+    return truth, retained, np.asarray(binned.X[:, 0, :])
+
+
+@pytest.mark.end2end
+def test_the_expression_filter_keeps_every_planted_count_it_should(
+    one_gene_per_bin: tuple[CoreInferenceTruth, np.ndarray, np.ndarray],
+) -> None:
+    """**Nothing in this instance is differentially expressed, so nothing goes.**
+
+    The filter drops a gene whose expression differs between the normal
+    candidates and the rest by more than `logfcthreshold_t = 4` -- a factor of
+    16 -- among genes above the 80th percentile of total UMIs. The fixture's
+    widest planted contrast is `mu = 5` against `mu = 1`, a log fold change of
+    2.32, and the realized maximum over every gene is **2.47**. So the
+    prediction from the planted parameters is that the filter returns its
+    input unchanged, and it does, bitwise.
+
+    Asserted against `truth.counts_nb` rather than against the binner's output:
+    the planted counts are what the claim is about, and comparing two
+    `cnaster` stages to each other would pass equally well if both were wrong.
+
+    What this does **not** establish is that the selection fires correctly when
+    something is differentially expressed. It cannot on this fixture: the 13
+    genes above the UMI gate are every one of them an `unassigned_*` gene,
+    which carries no copy-number signal by construction, and no planted
+    contrast reaches 16-fold. A positive case needs a fixture with a wider
+    expression separation, and is #160's to place.
+    """
+    truth, retained, _ = one_gene_per_bin
+
+    np.testing.assert_array_equal(retained, truth.counts_nb.astype(float))
+
+
+@pytest.mark.bug
+def test_the_expression_filter_empties_every_bin_holding_more_than_one_gene(
+    planted: CoreInferenceTruth,
+    loaded: Any,
+    prepared: tuple[Any, Any, Any],
+) -> None:
+    """**A separator mismatch zeroes 32 of 40 bins, 82 per cent of the UMIs.**
+
+    `binned_gene_snp` writes `INCLUDED_GENES` as `",".join(...)`
+    (`omics.py:261`); `filter_normal_diffexp` reads it back with
+    `genestr.split(" ")` (`normal_spot.py:903`). So a bin holding more than one
+    gene yields a single name -- `"gene_0_0,gene_0_1"` -- that matches nothing
+    in `adata.var`, its gene set is empty, and its counts are summed over no
+    genes at all.
+
+    The result is not a filter doing too much: **no gene passes either
+    threshold on this instance** -- 0 of the 131 that survive
+    `sc.pp.filter_genes` -- and the bins still come back at zero. Bins holding
+    exactly
+    one gene carry no comma and survive bitwise, which is what identifies the
+    mechanism rather than merely pinning the symptom.
+
+    Gated behind `config.quality.filter_normal_diffexp`, which this fixture and
+    `zenodo_sim_config.yaml` leave off; a run that turns it on loses the read
+    depth of every multi-gene bin. Reported upstream; `port` does not land the
+    fix.
+    """
+    from cnaster.normal_spot import filter_normal_diffexp
+
+    _, binned, df_bin_info = prepared
+    genes_per_bin = np.array(
+        [len(text.split(",")) for text in df_bin_info.INCLUDED_GENES.to_numpy()]
+    )
+    assert genes_per_bin.max() > 1, "the instance holds no multi-gene bin to lose"
+
+    retained = np.asarray(
+        filter_normal_diffexp(
+            loaded.exp_counts,
+            df_bin_info,
+            planted.labels == _balanced_clone(planted),
+            sample_list=["S1"],
+            sample_ids=np.zeros(planted.n_spots, dtype=int),
+        )
+    )
+
+    emptied = retained.sum(axis=1) == 0
+    np.testing.assert_array_equal(emptied, genes_per_bin > 1)
+    np.testing.assert_array_equal(
+        retained[~emptied], np.asarray(binned.X[~emptied, 0, :], dtype=float)
+    )
