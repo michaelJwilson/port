@@ -156,6 +156,13 @@ module = "numba.*"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
+# `scanpy` is `cnaster`'s dependency and ships no py.typed marker. Read here
+# by one function, `_spaceranger_counts`, which reads the counts file itself
+# because the cost this patch removes is inside `cnaster`'s reader (#186).
+module = "scanpy.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
 module = "scipy.*"
 ignore_missing_imports = true
 
