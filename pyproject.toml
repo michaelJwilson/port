@@ -30,6 +30,13 @@ dependencies = [
     "cnaster",
 ]
 
+[project.scripts]
+# `cnaster`'s own pipeline with `port`'s replacements rebound into it -- the
+# table is `port.pipeline.SWAPS` and `--no-patch` is the baseline arm. It is
+# how the whole-run claim is measured, so it ships rather than living in a
+# scratch script.
+port-run-cnaster = "port.scripts.run_cnaster:main"
+
 [project.optional-dependencies]
 dev = [
     "ruff>=0.9.9,<0.10",
