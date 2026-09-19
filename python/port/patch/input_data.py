@@ -69,6 +69,60 @@ the same shape are not the same class.
 """
 
 
+BACKENDS = ("numpy", "rust")
+"""Which implementation the two reductions take. `numpy` is the default.
+
+The choice is a cost decision and not a numerical one: `tests/
+test_oxiport_loader.py` asserts the two return the same arrays, so a caller
+picks a backend for its time and its allocations and never for its answer.
+"""
+
+
+def _resolve(backend: str) -> str:
+    """Refuse an unknown backend by name rather than by falling back.
+
+    A silent fallback to `numpy` would make a typo look like a Rust backend
+    that bought nothing, which is the one failure a benchmark cannot see.
+    """
+    if backend not in BACKENDS:
+        msg = f"unknown backend {backend!r}, expected one of {BACKENDS}"
+        raise ValueError(msg)
+
+    return backend
+
+
+def _allele_umis_per_spot(a_matrix: Any, b_matrix: Any, backend: str) -> np.ndarray:
+    """Per-spot totals over both allele matrices, without forming their sum.
+
+    `cnaster` writes `(A + B).todense().sum(axis=1)`, which allocates a dense
+    `(spots, snps)` matrix to reduce it away. The `numpy` backend forms neither
+    the dense matrix nor the sparse sum -- each row's total in each matrix,
+    added -- and the `rust` backend folds the same values in one pass.
+
+    At 5,000 spots and 20,000 SNPs at two per cent density: 279 ms and 864 MB
+    for `cnaster`'s form, 47 ms and 80 MB for the sparse add, 1.59 ms and
+    0.2 MB for the `numpy` backend, and 0.72 ms for the kernel. **1.8x over
+    the reference, at the width of the measurement rather than above the 2x
+    bar** -- see #184.
+    """
+    if _resolve(backend) == "rust":
+        from port import oxiport
+
+        return np.asarray(
+            oxiport.csr_pair_row_sums(
+                a_matrix.data.astype(np.float64, copy=False),
+                a_matrix.indptr.astype(np.int64, copy=False),
+                b_matrix.data.astype(np.float64, copy=False),
+                b_matrix.indptr.astype(np.int64, copy=False),
+            )
+        )
+
+    return (
+        np.asarray(a_matrix.sum(axis=1)).ravel()
+        + np.asarray(b_matrix.sum(axis=1)).ravel()
+    )
+
+
 def _spot_umis(counts: Any) -> np.ndarray:
     """Per-spot totals, whether the counts are dense or sparse.
 
@@ -83,7 +137,7 @@ def _spot_umis(counts: Any) -> np.ndarray:
     return np.asarray(np.sum(counts, axis=1)).ravel()
 
 
-def _genes_expressed_in(counts: Any) -> np.ndarray:
+def _genes_expressed_in(counts: Any, backend: str = "numpy") -> np.ndarray:
     """How many spots express each gene.
 
     `cnaster` writes `np.sum(adata.X > 0, axis=0)`, which materializes a second
@@ -96,6 +150,19 @@ def _genes_expressed_in(counts: Any) -> np.ndarray:
     rather than assumed away.
     """
     if sp.issparse(counts):
+        if _resolve(backend) == "rust":
+            from port import oxiport
+
+            csr = counts.tocsr()
+
+            return np.asarray(
+                oxiport.csr_positive_per_column(
+                    csr.data.astype(np.float64, copy=False),
+                    csr.indices.astype(np.int64, copy=False),
+                    csr.shape[1],
+                )
+            )
+
         stored = counts.data
         if stored.size and not stored.all():
             return np.asarray((counts > 0).sum(axis=0)).ravel()
@@ -159,6 +226,7 @@ def load_input_data(
     min_percent_expressed_spots: float = 5.0e-3,
     *,
     sparse_counts: bool = False,
+    backend: str = "numpy",
 ) -> ProcessedData:
     """What `cnaster.io.load_input_data` returns, computed in fewer passes.
 
@@ -203,12 +271,12 @@ def load_input_data(
 
     assert cell_snp_Aallele.shape == cell_snp_Ballele.shape
 
-    # NB upstream writes `(A + B).todense().sum(axis=1)`, which allocates a
-    #    dense (spots, snps) matrix to reduce it away on the next call. The
-    #    sum is the same; only the intermediate is not built.
-    snp_umis_per_spot = np.asarray(
-        (cell_snp_Aallele + cell_snp_Ballele).sum(axis=1)
-    ).ravel()
+    # NB upstream writes `(A + B).todense().sum(axis=1)` here and recomputes
+    #    the same quantity at the UMI filter below. One helper, twice, and
+    #    neither call builds an intermediate.
+    snp_umis_per_spot = _allele_umis_per_spot(
+        cell_snp_Aallele, cell_snp_Ballele, backend
+    )
 
     logger.info(
         f"Read cell-snp A,B matrices of shape={cell_snp_Aallele.shape} with "
@@ -306,10 +374,7 @@ def load_input_data(
     #    it. The filter itself is unchanged -- transcript UMIs and SNP UMIs
     #    both at or above the floor.
     spot_umis = _spot_umis(adata.layers["count"])
-    allele_umis = (
-        np.asarray(cell_snp_Aallele.sum(axis=1)).ravel()
-        + np.asarray(cell_snp_Ballele.sum(axis=1)).ravel()
-    )
+    allele_umis = _allele_umis_per_spot(cell_snp_Aallele, cell_snp_Ballele, backend)
 
     indicator = (spot_umis >= min_snp_umis) & (allele_umis >= min_snp_umis)
 
@@ -338,7 +403,7 @@ def load_input_data(
     logger.info(f"Found total umi = {int(spot_umis.sum()):_} for input.")
     logger.info(f"Per-spot umi percentiles:\n{pairs}")
 
-    expressed_in = _genes_expressed_in(adata.X)
+    expressed_in = _genes_expressed_in(adata.X, backend)
     indicator = expressed_in >= min_percent_expressed_spots * adata.shape[0]
 
     logger.info(
