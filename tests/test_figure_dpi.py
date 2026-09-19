@@ -1,9 +1,14 @@
 """`write_fig` at a resolution the figures are read at (#195).
 
 **The one `port` replacement that changes its output**, so the claim here is
-in two halves. At the same `dpi` it is `cnaster`'s function byte for byte --
-which is what says the patch is a default and not a rewrite. At its own
-default it writes the same page with a coarser raster, which is the 4.39x.
+in two halves. At the same `dpi`, with the grouping put back, it is
+`cnaster`'s function byte for byte -- which is what says the patch is two
+defaults and not a rewrite. At its own defaults it writes the same page with
+a coarser raster, which is the 4.39x.
+
+The second default -- one rasterizing group per axes rather than one per
+artist -- is `tests/test_figure_groups.py`, because its referee is a pixel
+comparison rather than a byte one.
 """
 
 import re
@@ -60,17 +65,17 @@ def _written(tmp_path: Path, name: str, writer: Any, **keywords: Any) -> bytes:
 def test_at_the_same_dpi_it_is_cnasters_function_byte_for_byte(tmp_path: Path) -> None:
     """The patch is a default, not a rewrite.
 
-    Handed `cnaster`'s own `dpi=300` the two write identical files, so every
-    difference a run sees comes from the constant and none from the code.
-    That is what makes the change reviewable as a number rather than as a
-    diff, and what would catch a patch that quietly dropped `transparent` or
-    the tight bounding box along with the resolution.
+    Handed `cnaster`'s own `dpi=300`, and with the grouping put back, the two
+    write identical files, so every difference a run sees comes from the two
+    defaults and none from the code. That is what makes the change reviewable
+    as two numbers rather than as a diff, and what would catch a patch that
+    quietly dropped `transparent` or the tight bounding box along with them.
     """
     from cnaster.utils import write_fig as upstream
     from port.patch.figures import write_fig as patched
 
     assert _written(tmp_path, "upstream", upstream, dpi=300) == _written(
-        tmp_path, "patched", patched, dpi=300
+        tmp_path, "patched", patched, dpi=300, group_rasters=False
     )
 
 
@@ -93,7 +98,7 @@ def test_the_default_writes_the_same_page_with_a_coarser_raster(
     assert FIGURE_DPI < 300, "the default no longer lowers the resolution"
 
     at_300 = _written(tmp_path, "upstream", upstream)
-    at_default = _written(tmp_path, "patched", patched)
+    at_default = _written(tmp_path, "patched", patched, group_rasters=False)
 
     boxes = (MEDIA_BOX.search(at_300), MEDIA_BOX.search(at_default))
     assert all(boxes), "no page geometry found in one of the files"
