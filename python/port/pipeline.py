@@ -39,7 +39,16 @@ from dataclasses import dataclass
 from types import ModuleType
 from typing import Any
 
-__all__ = ["SWAPS", "Site", "Swap", "install", "instrumented", "patched", "swap_sites"]
+__all__ = [
+    "FIGURE_SWAPS",
+    "SWAPS",
+    "Site",
+    "Swap",
+    "install",
+    "instrumented",
+    "patched",
+    "swap_sites",
+]
 
 
 @dataclass(frozen=True)
@@ -135,6 +144,29 @@ SWAPS: tuple[Swap, ...] = (
 Ordered as a run reaches them. The `ticket` column is what makes each row
 answerable: it names the issue carrying the ratio and the referee, so a row
 cannot be added here without a measurement behind it.
+
+**Every row here reproduces `cnaster` bitwise.** That is the property the
+whole-run test asserts, and it is why `FIGURE_SWAPS` is a separate table
+rather than three more rows: a figure written at half the dpi is a different
+file by design, and mixing the two would make "the patched run reproduces
+the unpatched one" a claim nobody could state.
+"""
+
+
+FIGURE_SWAPS: tuple[Swap, ...] = (
+    Swap("cnaster.utils", "write_fig", "port.patch.figures:write_fig", 195),
+)
+"""The replacements that **change the output**, installed only on request.
+
+One row, and it is 47 per cent of a run (#195): `write_fig`'s `dpi=300`
+decides the resolution of every rasterized panel, and mixed-mode PDF
+allocates a full-figure `RendererAgg` per rasterizing group at that
+resolution.
+
+Separate from `SWAPS` because `CLAUDE.md` forbids a silent behaviour change
+and this is one: the figures are the same drawing at a coarser raster, not
+the same bytes. `run_cnaster_port --figures` is the opt in, and the flag is
+what makes the decision a reader's rather than a default's.
 """
 
 

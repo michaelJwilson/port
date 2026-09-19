@@ -22,7 +22,7 @@ import time
 from collections.abc import Sequence
 from contextlib import ExitStack
 
-from port.pipeline import SWAPS, Spent, instrumented, patched
+from port.pipeline import FIGURE_SWAPS, SWAPS, Spent, instrumented, patched
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -37,6 +37,15 @@ def _parser() -> argparse.ArgumentParser:
         "--no-patch",
         action="store_true",
         help="run the same pipeline with nothing rebound, for the baseline arm",
+    )
+    parser.add_argument(
+        "--figures",
+        action="store_true",
+        help=(
+            "also install the replacements that change the output: the figure "
+            "dpi (#195). Off by default, because every other swap reproduces "
+            "cnaster bitwise and this one does not."
+        ),
     )
     parser.add_argument(
         "--time-stages",
@@ -64,24 +73,45 @@ def main(argv: Sequence[str] | None = None) -> int:
     if arguments.list:
         for swap in SWAPS:
             print(f"{swap.module}.{swap.name} <- {swap.replacement}  (#{swap.ticket})")
+        for swap in FIGURE_SWAPS:
+            print(
+                f"{swap.module}.{swap.name} <- {swap.replacement}  "
+                f"(#{swap.ticket}, --figures only: changes the output)"
+            )
         return 0
 
     if arguments.config is None:
         _parser().error("a configuration is required unless --list is given")
 
     with ExitStack() as stack:
-        if arguments.no_patch:
-            print("run_cnaster_port: --no-patch, nothing rebound", file=sys.stderr)
-        else:
-            sites = stack.enter_context(patched())
+        # NB `--figures` is additive rather than a third mode, and it composes
+        #    with `--no-patch`: what a reader needs to know about a run is
+        #    which of the two tables produced it, not which flag was typed.
+        selected = SWAPS if not arguments.no_patch else ()
+        if arguments.figures:
+            selected = selected + FIGURE_SWAPS
+
+        if selected:
+            sites = stack.enter_context(patched(selected))
             print(
-                f"run_cnaster_port: {len(SWAPS)} replacements over {len(sites)} bindings",
+                f"run_cnaster_port: {len(selected)} replacements over "
+                f"{len(sites)} bindings"
+                + (", figures included" if arguments.figures else ""),
                 file=sys.stderr,
             )
+        else:
+            print("run_cnaster_port: --no-patch, nothing rebound", file=sys.stderr)
 
         # NB after the swaps, so the wrapper times whichever implementation
         #    the run is about to use.
-        spent = stack.enter_context(instrumented()) if arguments.time_stages else None
+        # NB the figure swap is timed whether or not it is installed, so the
+        #    two arms print the same rows and `write_fig` can be compared
+        #    against itself rather than inferred from the whole-run delta.
+        spent = (
+            stack.enter_context(instrumented(SWAPS + FIGURE_SWAPS))
+            if arguments.time_stages
+            else None
+        )
 
         started = time.perf_counter()
         pipeline.run_cnaster(arguments.config)
