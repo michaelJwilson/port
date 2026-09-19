@@ -50,7 +50,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--figures",
         action=argparse.BooleanOptionalAction,
-        default=True,
+        default=None,
         help=(
             "install the replacements that change the output: the figure dpi "
             "and the rasterizing groups (#195). **On by default**, because it "
@@ -116,16 +116,30 @@ def main(argv: Sequence[str] | None = None) -> int:
         #    asserting it, while a user who just runs the entry point gets
         #    the 47 per cent. Turning it on by merging the tables would have
         #    bought the same speed and cost the claim.
+        # NB `--no-patch` means nothing rebound, so it turns the figure
+        #    default off with it. Without this the baseline arm still
+        #    installs `write_fig` and stops being a baseline -- measured, and
+        #    not subtly: the unpatched arm ran 188.88 s at 11.35 GB before
+        #    the default moved and 142.36 s at 3.67 GB after, which reads as
+        #    the patch doing less good rather than the baseline getting the
+        #    win for free.
+        #
+        #    `default=None` is what makes that possible: it separates "not
+        #    asked" from "asked for off", so `--no-patch --figures` still
+        #    composes and still measures the figure swap on its own.
+        figures = (
+            not arguments.no_patch if arguments.figures is None else arguments.figures
+        )
+
         selected = SWAPS if not arguments.no_patch else ()
-        if arguments.figures:
+        if figures:
             selected = selected + FIGURE_SWAPS
 
         if selected:
             sites = stack.enter_context(patched(selected))
             print(
                 f"run_cnaster_port: {len(selected)} replacements over "
-                f"{len(sites)} bindings"
-                + (", figures included" if arguments.figures else ""),
+                f"{len(sites)} bindings" + (", figures included" if figures else ""),
                 file=sys.stderr,
             )
         else:
