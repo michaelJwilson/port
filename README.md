@@ -5,6 +5,7 @@
 [![all](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/michaelJwilson/port/main/.badges/coverage-reach.json)](#what-the-badges-mean)
 [![speed](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/michaelJwilson/port/main/.badges/run-speed.json)](#what-the-badges-mean)
 [![mem](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/michaelJwilson/port/main/.badges/run-mem.json)](#what-the-badges-mean)
+[![instance](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/michaelJwilson/port/main/.badges/instance.json)](#what-the-badges-mean)
 
 A scientific repository built on
 [`snakes_and_ladders`](https://github.com/michaelJwilson/snakes_and_ladders),
@@ -28,7 +29,7 @@ under `src/`, exposed to Python as `port.oxiport`.
 
 ## What the badges mean
 
-Five numbers, and each is a claim rather than a decoration.
+Six numbers, and each is a claim rather than a decoration.
 `.badges/measurements.json` holds every value with the selection, denominator
 and commit that produced it, `python -m tests.badges` derives the badges from
 it, and `tests/test_badges_agree.py` fails when the two disagree -- the same
@@ -47,9 +48,22 @@ badly** (#159):
 **`speed` and `mem`** are patched `run_cnaster` against `--no-patch`: wall
 time and peak resident memory, each arm in its own process, in ratio units.
 The label carries `@ stress` because `CLAUDE.md` is explicit that a ratio
-read at a gate size decides nothing; which instance that is lives in
-`.badges/measurements.json`, since the badge has room for the tier and not
-the shape.
+read at a gate size decides nothing.
+
+**`instance`** is what makes those two readable. `stress` is a *tier*, not a
+shape, and two instances at the same tier can differ by more than the patch
+being measured does -- so this badge carries the size the pair was read at,
+as `obs x spots x states`. It asserts nothing and is coloured blue for that
+reason. `tests/test_badges_agree.py` refuses a recorded ratio that does not
+name its instance, carry exactly two arms, and show both arms exiting 0: a
+ratio from an arm that did not complete is not a ratio.
+
+Neither ratio is re-measured by CI, and that is deliberate rather than
+pending. A whole `run_cnaster` on a shared two-core runner is moved more by
+the runner than by the patch, so a figure from there would be a number
+`CLAUDE.md` would not let this repository report. They are measured by hand
+on a quiet host, and the recorded commit is what says which tree they
+describe.
 
 **A badge reading `/` has no measurement yet**, and that is the point: not a
 zero, which is a claim, and not a last-known figure from a commit nobody can

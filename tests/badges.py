@@ -24,7 +24,7 @@ The cost is that they can go stale, and the test is what pays it.
 | badge | measured by | tier |
 | --- | --- | --- |
 | judged, oracle, reach | the three coverage guards | per pull request |
-| runtime, memory | a whole `run_cnaster`, both arms | `release` |
+| runtime, memory, instance | a whole `run_cnaster`, both arms | `release` |
 
 The two ratio badges carry the instance they were read at, because
 `CLAUDE.md` is explicit that a ratio read at a gate size decides nothing.
@@ -131,6 +131,23 @@ def _ratio_badge(name: str, axis: str, run: dict[str, Any]) -> Badge:
     return Badge(f"run-{name}", label, f"{value:.2f}X", _ratio_colour(value))
 
 
+def _instance_badge(run: dict[str, Any]) -> Badge:
+    """The shape the two ratio badges were read at.
+
+    `speed @ stress` and `mem @ stress` name the **tier** and have no room
+    for anything else, and a tier is not a shape: two instances both called
+    stress can differ by more than the patch being measured does. So this
+    carries the size, and it is what makes the other two readable rather
+    than decorative.
+
+    It asserts nothing, so it is blue rather than coloured by a threshold.
+    """
+    if not run.get("instance"):
+        return Badge("instance", "instance", UNMEASURED, "lightgrey")
+
+    return Badge("instance", "instance", f"{run['tier']}: {run['instance']}", "blue")
+
+
 def _coverage_badge(key: str, guard: dict[str, Any]) -> Badge:
     """One guard, or the fact that it has not been measured.
 
@@ -167,6 +184,7 @@ def badges(measurements: dict[str, Any] | None = None) -> tuple[Badge, ...]:
     rendered = [_coverage_badge(key, guard) for key, guard in guards.items()]
 
     rendered.extend(_ratio_badge(name, axis, run) for name, axis in RATIOS)
+    rendered.append(_instance_badge(run))
 
     return tuple(rendered)
 
