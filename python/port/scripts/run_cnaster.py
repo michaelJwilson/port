@@ -1,6 +1,6 @@
 """`run_cnaster`, with `port`'s replacements installed.
 
-`port-run-cnaster config.yaml` runs `cnaster`'s own pipeline, unmodified,
+`run_cnaster_port config.yaml` runs `cnaster`'s own pipeline, unmodified,
 with the names in `port.pipeline.SWAPS` rebound to `port`'s measured
 replacements. `--no-patch` runs the same call with nothing rebound, so the
 two arms of a comparison are one flag apart rather than two scripts.
@@ -27,7 +27,7 @@ from port.pipeline import SWAPS, Spent, instrumented, patched
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="port-run-cnaster",
+        prog="run_cnaster_port",
         description="Run cnaster's pipeline with port's replacements installed.",
     )
     parser.add_argument(
@@ -71,11 +71,11 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     with ExitStack() as stack:
         if arguments.no_patch:
-            print("port-run-cnaster: --no-patch, nothing rebound", file=sys.stderr)
+            print("run_cnaster_port: --no-patch, nothing rebound", file=sys.stderr)
         else:
             sites = stack.enter_context(patched())
             print(
-                f"port-run-cnaster: {len(SWAPS)} replacements over {len(sites)} bindings",
+                f"run_cnaster_port: {len(SWAPS)} replacements over {len(sites)} bindings",
                 file=sys.stderr,
             )
 
@@ -90,7 +90,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if spent is not None:
         _report(spent, wall, patched=not arguments.no_patch)
 
-    print(f"port-run-cnaster: {wall:.2f}s", file=sys.stderr)
+    print(f"run_cnaster_port: {wall:.2f}s", file=sys.stderr)
     return 0
 
 

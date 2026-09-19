@@ -87,10 +87,10 @@ compiled extension is typed by the hand-written stub
 ## Running the pipeline patched
 
 ```
-port-run-cnaster config.yaml                 # cnaster's pipeline, port's replacements
-port-run-cnaster --no-patch config.yaml      # the same run, nothing rebound
-port-run-cnaster --time-stages config.yaml   # what the replacements cost in the run
-port-run-cnaster --list                      # what would be rebound, and why
+run_cnaster_port config.yaml                 # cnaster's pipeline, port's replacements
+run_cnaster_port --no-patch config.yaml      # the same run, nothing rebound
+run_cnaster_port --time-stages config.yaml   # what the replacements cost in the run
+run_cnaster_port --list                      # what would be rebound, and why
 ```
 
 `port.pipeline.SWAPS` is the table -- one row per `cnaster` name `port`

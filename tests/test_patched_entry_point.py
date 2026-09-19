@@ -1,4 +1,4 @@
-"""`port-run-cnaster`: the pipeline with `port`'s replacements rebound into it.
+"""`run_cnaster_port`: the pipeline with `port`'s replacements rebound into it.
 
 **The claim is that installing every replacement changes nothing.** A whole
 `run_cnaster` run through the patched entry point writes the same five tables
