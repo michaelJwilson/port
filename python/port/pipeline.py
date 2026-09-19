@@ -256,10 +256,33 @@ def patched(swaps: tuple[Swap, ...] = SWAPS) -> Iterator[tuple[Site, ...]]:
 
 @dataclass
 class Spent:
-    """What one swapped name cost in a run."""
+    """What one swapped name cost in a run, first call kept apart.
+
+    **A compiled kernel's first call is not its cost, and reporting them
+    together is how a ratio becomes a statement about the host** (#204).
+    `port`'s field kernel compiles in 2.503 s against 0.031 s warm -- more
+    than every preprocessing saving in a run combined -- and `cnaster`'s
+    equivalent is served from a cache every earlier test filled. Summed into
+    one row, that reads as a kernel eighty times slower than it is.
+
+    `CLAUDE.md`: a measurement carries the conditions that decided it, and
+    where a first call *is* the cost it is reported as its own number rather
+    than buried inside the stage that paid it.
+    """
 
     calls: int = 0
     seconds: float = 0.0
+    first: float = 0.0
+    """The first call alone -- compilation, a cold cache, a lazy import."""
+
+    @property
+    def warm(self) -> float:
+        """Everything after the first call."""
+        return self.seconds - self.first
+
+    @property
+    def warm_calls(self) -> int:
+        return max(self.calls - 1, 0)
 
 
 @contextmanager
@@ -284,8 +307,14 @@ def instrumented(swaps: tuple[Swap, ...] = SWAPS) -> Iterator[dict[str, Spent]]:
             try:
                 return wrapped(*arguments, **keywords)
             finally:
-                spent[name].calls += 1
-                spent[name].seconds += time.perf_counter() - started
+                elapsed = time.perf_counter() - started
+                entry = spent[name]
+
+                if entry.calls == 0:
+                    entry.first = elapsed
+
+                entry.calls += 1
+                entry.seconds += elapsed
 
         return call
 

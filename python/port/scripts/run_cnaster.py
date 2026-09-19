@@ -132,19 +132,33 @@ def _report(spent: dict[str, Spent], wall: float, *, patched: bool) -> None:
 
     print(f"\n  {arm}: {wall:.2f}s whole run", file=sys.stderr)
     print(
-        f"  {'stage':<{width}} {'calls':>6} {'seconds':>9} {'share':>7}",
+        f"  {'stage':<{width}} {'calls':>6} {'seconds':>9} {'share':>7}"
+        f" {'first':>9} {'warm/call':>10}",
         file=sys.stderr,
     )
 
+    # NB the last two columns are #204: a compiled kernel's first call is
+    #    compilation, and summed into the total it reads as a kernel that is
+    #    eighty times slower than it is.
     for name, entry in sorted(spent.items(), key=lambda item: -item[1].seconds):
         share = 100.0 * entry.seconds / wall
+        per_warm = entry.warm / entry.warm_calls if entry.warm_calls else float("nan")
         print(
-            f"  {name:<{width}} {entry.calls:6d} {entry.seconds:9.3f} {share:6.2f}%",
+            f"  {name:<{width}} {entry.calls:6d} {entry.seconds:9.3f} {share:6.2f}%"
+            f" {entry.first:9.3f} {per_warm:10.3f}",
             file=sys.stderr,
         )
 
+    first = sum(entry.first for entry in spent.values())
     print(
-        f"  {'TOTAL':<{width}} {'':>6} {total:9.3f} {100.0 * total / wall:6.2f}%",
+        f"  {'TOTAL':<{width}} {'':>6} {total:9.3f} {100.0 * total / wall:6.2f}%"
+        f" {first:9.3f}",
+        file=sys.stderr,
+    )
+    print(
+        f"  of which first calls: {first:.3f}s "
+        f"({100.0 * first / total if total else 0.0:.1f}% of the swapped stages, "
+        f"{100.0 * first / wall:.1f}% of the run)",
         file=sys.stderr,
     )
 
