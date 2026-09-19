@@ -39,6 +39,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+UNMEASURED = "/"
+"""What a badge reads before its measurement exists.
+
+Not "0", which is a claim, and not a last-known figure from a commit nobody
+can name, which is the staleness this module exists to prevent. `/` is the
+one rendering that asserts nothing.
+"""
+
 ROOT = Path(__file__).resolve().parent.parent
 BADGES = ROOT / ".badges"
 MEASUREMENTS = BADGES / "measurements.json"
@@ -101,6 +109,28 @@ def _ratio_colour(value: float) -> str:
     return "brightgreen" if value >= 2.0 else "orange"
 
 
+RATIOS = (("speed", "runtime"), ("mem", "memory"))
+"""The badge name and the axis of `measurements.json` it reads."""
+
+
+def _ratio_badge(name: str, axis: str, run: dict[str, Any]) -> Badge:
+    """One whole-run ratio, or the fact that it has not been measured.
+
+    The label carries `@ stress` rather than a bare axis, because
+    `CLAUDE.md` is explicit that a ratio read at a gate size decides
+    nothing. Which instance "stress" is stays in `measurements.json` and in
+    the README's table -- the badge has room for the tier, not the shape.
+    """
+    label = f"{name} @ {run.get('tier', 'stress')}"
+
+    if run.get("ratio") is None:
+        return Badge(f"run-{name}", label, UNMEASURED, "lightgrey")
+
+    value = run["ratio"][axis]
+
+    return Badge(f"run-{name}", label, f"{value:.2f}X", _ratio_colour(value))
+
+
 def _coverage_badge(key: str, guard: dict[str, Any]) -> Badge:
     """One guard, or the fact that it has not been measured.
 
@@ -110,7 +140,7 @@ def _coverage_badge(key: str, guard: dict[str, Any]) -> Badge:
     from a commit nobody can name.
     """
     if guard.get("percent") is None:
-        return Badge(f"coverage-{key}", guard["label"], "not measured", "lightgrey")
+        return Badge(f"coverage-{key}", guard["label"], UNMEASURED, "lightgrey")
 
     return Badge(
         name=f"coverage-{key}",
@@ -136,28 +166,7 @@ def badges(measurements: dict[str, Any] | None = None) -> tuple[Badge, ...]:
 
     rendered = [_coverage_badge(key, guard) for key, guard in guards.items()]
 
-    if run.get("ratio") is None:
-        # NB a comparison that did not produce a ratio is not a zero, and a
-        #    badge that rendered it as one would be the worst kind of stale.
-        #    `note` says what happened instead.
-        rendered.extend(
-            [
-                Badge(f"run-{axis}", axis, run["note"], "lightgrey")
-                for axis in ("runtime", "memory")
-            ]
-        )
-    else:
-        rendered.extend(
-            [
-                Badge(
-                    name=f"run-{axis}",
-                    label=f"{axis} @ {run['instance']}",
-                    message=f"{run['ratio'][axis]:.2f}x",
-                    color=_ratio_colour(run["ratio"][axis]),
-                )
-                for axis in ("runtime", "memory")
-            ]
-        )
+    rendered.extend(_ratio_badge(name, axis, run) for name, axis in RATIOS)
 
     return tuple(rendered)
 

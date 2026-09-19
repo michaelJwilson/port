@@ -1,10 +1,10 @@
 # port
 
-[![judged coverage](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/michaelJwilson/port/main/.badges/coverage-judged.json)](#what-the-badges-mean)
-[![oracle surface](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/michaelJwilson/port/main/.badges/coverage-oracle.json)](#what-the-badges-mean)
-[![reach](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/michaelJwilson/port/main/.badges/coverage-reach.json)](#what-the-badges-mean)
-[![runtime ratio](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/michaelJwilson/port/main/.badges/run-runtime.json)](#what-the-badges-mean)
-[![memory ratio](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/michaelJwilson/port/main/.badges/run-memory.json)](#what-the-badges-mean)
+[![e2e](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/michaelJwilson/port/main/.badges/coverage-judged.json)](#what-the-badges-mean)
+[![oracle](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/michaelJwilson/port/main/.badges/coverage-oracle.json)](#what-the-badges-mean)
+[![all](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/michaelJwilson/port/main/.badges/coverage-reach.json)](#what-the-badges-mean)
+[![speed](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/michaelJwilson/port/main/.badges/run-speed.json)](#what-the-badges-mean)
+[![mem](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/michaelJwilson/port/main/.badges/run-mem.json)](#what-the-badges-mean)
 
 A scientific repository built on
 [`snakes_and_ladders`](https://github.com/michaelJwilson/snakes_and_ladders),
@@ -40,18 +40,21 @@ badly** (#159):
 
 | badge | selection | denominator | what it says |
 | --- | --- | --- | --- |
-| **judged** | `end2end or oracle` | `cnaster` | how much of the subject is **validated** -- only tests whose referee is outside `cnaster` count |
-| **oracle surface** | the referee's own reach | `snakes_and_ladders` | how much of upstream is used as a referee. Separate, so the figure cannot rise by importing more of upstream, which validates nothing |
-| **reach** | the other eight markers | `cnaster` | how much is merely **run**. The gap between this and judged is the interesting number |
+| **e2e** | `end2end or oracle` | `cnaster` | how much of the subject is **validated** -- only tests whose referee is outside `cnaster` count |
+| **oracle** | the referee's own reach | `snakes_and_ladders` | how much of upstream is used as a referee. Separate, so the figure cannot rise by importing more of upstream, which validates nothing |
+| **all** | the other eight markers | `cnaster` | how much is merely **run**. The gap between this and `e2e` is the interesting number |
 
-**Two ratio badges**, patched `run_cnaster` against `--no-patch`: wall time
-and peak resident memory, each arm in its own process. The label carries the
-instance, because `CLAUDE.md` is explicit that a ratio read at a gate size
-decides nothing -- a bare "1.15x" is the claim that rule forbids.
+**`speed` and `mem`** are patched `run_cnaster` against `--no-patch`: wall
+time and peak resident memory, each arm in its own process, in ratio units.
+The label carries `@ stress` because `CLAUDE.md` is explicit that a ratio
+read at a gate size decides nothing; which instance that is lives in
+`.badges/measurements.json`, since the badge has room for the tier and not
+the shape.
 
-A badge reading **not measured** is doing its job. `reach` is unwired (#159's
-"Done when" asks for it and is unmet) and the ratio pair is #91, so the
-README says so rather than carrying a figure from a commit nobody can name.
+**A badge reading `/` has no measurement yet**, and that is the point: not a
+zero, which is a claim, and not a last-known figure from a commit nobody can
+name. `all` is unwired (#159's "Done when" asks for it and is unmet) and the
+ratio pair is #91.
 
 ## Prerequisites
 
