@@ -1,6 +1,6 @@
 {
  "schemaVersion": 1,
  "label": "instance",
- "message": "/",
- "color": "lightgrey"
+ "message": "stress: 4000x1980x5",
+ "color": "blue"
 }

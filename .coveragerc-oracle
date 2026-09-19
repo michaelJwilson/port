@@ -52,7 +52,16 @@
 #    follows wants this run's data anyway -- but anything reading
 #    `.coverage` afterwards gets the oracle's numbers under the subject's
 #    name, which is what `tests/check_badges.py` was about to do.
-data_file = .coverage.oracle
+#
+#    **The hyphen is load-bearing.** `.coverage.oracle` would be read as a
+#    parallel-mode shard of `.coverage`, and `coverage erase` -- which
+#    pytest-cov runs at the start of every `--cov` session -- deletes those
+#    along with the main file. Measured: a `--cov` run removes a file named
+#    `.coverage.oracle` outright. Since CI's `end2end` step runs after this
+#    one, that named it for deletion and left `check_badges` reporting "no
+#    data" and passing, which is the silent skip this whole file exists to
+#    prevent.
+data_file = .coverage-oracle
 source =
     .venv/lib/python3.12/site-packages/snakes_and_ladders
 

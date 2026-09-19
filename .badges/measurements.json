@@ -3,12 +3,12 @@
  "coverage": {
   "judged": {
    "label": "e2e",
-   "percent": 45.69,
+   "percent": 44.81,
    "floor": 41.7,
-   "selection": "not release and (end2end or oracle)",
+   "selection": "not release and end2end",
    "denominator": "cnaster + python/port, 7030 statements",
-   "commit": "e820b26",
-   "note": "Guard 1. Only tests whose referee is outside cnaster count, so this says how much of the subject is validated rather than reached."
+   "commit": "6668aeb",
+   "note": "Guard 1. 3150 of 7030 statements, from the 58 tests that judge a scientific output against the truth that generated the data. **`oracle`-marked tests are excluded**, which is what makes the name honest -- the badge beside it already claims that word. Adding them reaches 45.69 per cent, so they are worth 62 statements and 0.88 points over an identical denominator. The floor is CI's, decided by #157 over `end2end or oracle`; this selection is a strict subset of that one and clears it by 3.11 points. Not subtractable from `all`: see #223."
   },
   "oracle": {
    "label": "oracle",
@@ -16,26 +16,78 @@
    "floor": 43.7,
    "selection": "not release and not preprocessing",
    "denominator": "snakes_and_ladders, 2164 statements",
-   "commit": "e820b26",
+   "commit": "6668aeb",
    "note": "Guard 2. Measured over its own denominator so the figure cannot rise by importing more of upstream, which validates nothing about cnaster. Sitting 0.06 points above its floor."
   },
   "reach": {
    "label": "all",
-   "percent": null,
+   "percent": 71.52,
    "floor": null,
    "selection": "not release and not (end2end or oracle)",
-   "denominator": "cnaster + python/port",
-   "commit": "e820b26",
-   "note": "Guard 3. Proposed by #159 and not wired into CI -- its 'Done when' asks for exactly that and is unmet. The 71.52 per cent read earlier came from a run with 5 failures, which was diagnosed here as test pollution and was not: re-run on its own the same selection is 524 passed, 1 skipped, 0 failed. The 5 were this module's own tests, failing because this file did not exist yet when that run collected them. The figure is being re-read against a clean run before it is badged."
+   "denominator": "cnaster + python/port, 7329 statements",
+   "commit": "6668aeb",
+   "note": "Guard 3. Proposed by #159 and not wired into CI -- its 'Done when' asks for exactly that and is unmet. 5,242 of 7,329 statements, from a clean run: 524 passed, 1 skipped, 0 failed. An earlier reading of the same figure came from a run with 5 failures and was diagnosed here as test pollution; it was not, and the record said so wrongly until baae1a3. Those 5 were the badge module's own tests, failing because this file did not exist yet when that run collected them. The denominator is 299 statements larger than guard 1's on the same tree, so the two are not subtractable: #223."
   }
  },
  "whole_run": {
-  "instance": null,
-  "commit": "e820b26",
-  "arms": [],
-  "ratio": null,
-  "_intent": "run_cnaster patched against --no-patch, wall time and peak RSS, each arm in its own process. key_instance (10,000 x 5,000) does not fit unpatched -- 8 GB of emission array against 15 GB available (#90) -- so the comparison runs at the largest instance both arms complete and the badge label carries it. This measurement is #91.",
+  "instance": "4000x1980x5",
   "tier": "stress",
-  "note": "not yet measured"
+  "commit": "6668aeb",
+  "shape": {
+   "n_obs": 4000,
+   "n_spots": 1980,
+   "n_states": 5,
+   "n_clones": 4
+  },
+  "arms": [
+   {
+    "arm": "cnaster",
+    "returncode": 0,
+    "seconds": 188.88674167800036,
+    "peak_rss_gb": 11.346794128417969,
+    "stderr_tail": [
+     "/home/user/port/.venv/lib/python3.12/site-packages/cnaster/plotting.py:263: ImplicitModificationWarning: Trying to modify attribute `.obsm` of view, initializing view as actual.",
+     "  shifted_coords[index, 0] = shifted_coords[index, 0] + x_offset",
+     "run_cnaster_port: 183.74s"
+    ]
+   },
+   {
+    "arm": "patched",
+    "returncode": 0,
+    "seconds": 156.6261311569997,
+    "peak_rss_gb": 11.26358413696289,
+    "stderr_tail": [
+     "/home/user/port/.venv/lib/python3.12/site-packages/cnaster/plotting.py:263: ImplicitModificationWarning: Trying to modify attribute `.obsm` of view, initializing view as actual.",
+     "  shifted_coords[index, 0] = shifted_coords[index, 0] + x_offset",
+     "run_cnaster_port: 151.17s"
+    ]
+   }
+  ],
+  "ratio": {
+   "runtime": 1.206,
+   "memory": 1.0019
+  },
+  "repetitions": [
+   {
+    "runtime": 1.1016,
+    "memory": 1.0019,
+    "cnaster_seconds": 188.88,
+    "patched_seconds": 171.46
+   },
+   {
+    "runtime": 1.206,
+    "memory": 1.0074,
+    "cnaster_seconds": 188.89,
+    "patched_seconds": 156.63
+   },
+   {
+    "runtime": 1.2068,
+    "memory": 1.0018,
+    "cnaster_seconds": 193.73,
+    "patched_seconds": 160.53
+   }
+  ],
+  "_intent": "run_cnaster patched against --no-patch, wall time and peak RSS, each arm in its own process. key_instance (10,000 x 5,000) does not fit unpatched -- 8 GB of emission array against 15 GB available (#90) -- so the comparison runs at the largest instance both arms complete and the badge label carries it. This measurement is #91.",
+  "note": "Median of 3 pairs, each arm in its own process, on an otherwise idle host. The median rather than the mean because the runtime ratios span 1.1016 to 1.2068 -- 10 per cent, the same order as the effect -- and nearly all of that is the patched arm (9.5 per cent spread against the unpatched arm's 2.6). Below CLAUDE.md's 2x bar, so this is a simplification rather than a speedup, and the badge is coloured to say so. Peak RSS does not move: at this instance the emission array is not what dominates, which is a fact about the instance rather than about the patch (#90)."
  }
 }

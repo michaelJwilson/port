@@ -77,6 +77,24 @@ jobs:
           uv run --no-sync coverage run --rcfile=.coveragerc-oracle
           -m pytest -m "not release and not preprocessing" -q --no-cov
       - run: uv run --no-sync coverage report --rcfile=.coveragerc-oracle
+      # NB the `e2e` badge measures `end2end` **alone**, which the gate above
+      #    does not: the gate is `end2end or oracle` at the floor #157
+      #    decided, and that floor is not this step's to move. The badge is
+      #    named `e2e` and there is a separate badge claiming `oracle`, so a
+      #    figure counting both under the first name was wrong however
+      #    defensible the union is as a gate.
+      #
+      #    `COVERAGE_FILE` keeps it off `.coverage`, hyphenated so it is not
+      #    read as a parallel shard and erased by a later `--cov` run;
+      #    `--cov-fail-under=0`
+      #    because the floor is the gate's job and failing twice on one
+      #    number tells nobody anything new. Measured: 44.81 per cent against
+      #    the gate's 45.69, so the oracle-marked tests are worth 62
+      #    statements over an identical denominator.
+      - run: >
+          COVERAGE_FILE=.coverage-e2e uv run --no-sync pytest
+          -m "not release and end2end"
+          --cov --cov-report=term --cov-fail-under=0
       # NB the badges. `tests/test_badges_agree.py` already refuses a badge
       #    that disagrees with `.badges/measurements.json`; what it cannot
       #    catch is a measurement that moved and was never written down, so

@@ -37,18 +37,29 @@ that would let a real movement hide.
 """
 
 GUARDS = (
-    ("judged", Path(".coverage"), None),
-    ("oracle", Path(".coverage.oracle"), Path(".coveragerc-oracle")),
+    ("judged", Path(".coverage-e2e"), None),
+    ("oracle", Path(".coverage-oracle"), Path(".coveragerc-oracle")),
 )
 """Each checkable guard, with the data file and config its CI step used.
 
-The two data files are distinct on purpose. Both runs defaulted to
-`.coverage` until this module needed to read them, and because the oracle
-step runs second it overwrote the subject's data -- so a check reading
-`.coverage` got the referee's percentage under the subject's name. The
-config matters for the same reason: the oracle's denominator is its
-`include` list, and reporting its data under `pyproject.toml`'s rules would
-measure `cnaster` against a run that never imported it.
+Each guard has its own data file, and neither is `.coverage`. Every run
+defaulted to that name until this module needed to read them, so whichever
+ran last silently owned it -- a check reading `.coverage` got the referee's
+percentage under the subject's name. The config matters for the same
+reason: the oracle's denominator is its `include` list, and reporting its
+data under `pyproject.toml`'s rules would measure `cnaster` against a run
+that never imported it.
+
+Both names are hyphenated rather than dotted, which is load-bearing:
+`.coverage.oracle` reads as a parallel-mode shard of `.coverage`, and the
+`coverage erase` that pytest-cov runs at the start of every `--cov` session
+deletes those with the main file. That is measured, not theoretical -- a
+`--cov` run removes a file of that name outright.
+
+`judged` reads `.coverage-e2e` rather than the gate's data because the two
+are no longer one selection. CI still gates on `end2end or oracle` at the
+floor #157 decided; the badge says `e2e`, so it measures `end2end` alone --
+a strict subset, worth 62 statements and 0.88 points less.
 """
 
 
@@ -88,7 +99,16 @@ def main() -> int:
         current = measured(data_file, config)
 
         if current is None:
-            print(f"{name}: no data at {data_file}; run this after its coverage step")
+            # NB a failure, not a skip. In CI a missing data file means the
+            #    step that writes it did not run, or something erased it --
+            #    which is exactly how `.coverage.oracle` used to disappear.
+            #    Passing quietly there would leave the guard unchecked and
+            #    look identical to a guard that agreed.
+            print(
+                f"{name}: no coverage data at {data_file}. Its step did not run, "
+                "or a later --cov run erased it."
+            )
+            failed += 1
             continue
 
         if abs(current - guard["percent"]) > TOLERANCE:

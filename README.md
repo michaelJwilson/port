@@ -41,7 +41,7 @@ badly** (#159):
 
 | badge | selection | denominator | what it says |
 | --- | --- | --- | --- |
-| **e2e** | `end2end or oracle` | `cnaster` | how much of the subject is **validated** -- only tests whose referee is outside `cnaster` count |
+| **e2e** | `end2end` | `cnaster` | how much of the subject is **validated end to end**, against the truth that generated the data. `oracle` is excluded because the badge beside it claims that word |
 | **oracle** | the referee's own reach | `snakes_and_ladders` | how much of upstream is used as a referee. Separate, so the figure cannot rise by importing more of upstream, which validates nothing |
 | **all** | the other eight markers | `cnaster` | how much is merely **run**, rather than judged against anything outside `cnaster` |
 
