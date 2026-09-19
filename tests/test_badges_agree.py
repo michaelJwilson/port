@@ -91,6 +91,25 @@ def test_every_measurement_carries_the_conditions_that_decided_it() -> None:
     else:
         assert set(run["ratio"]) == {"runtime", "memory"}
 
+        # NB the conditions, not just the keys. `instance` and `arms` are
+        #    checked for presence above, which a null value satisfies -- so
+        #    until this assertion a ratio could be recorded with no size and
+        #    no arms behind it, which is the claim `CLAUDE.md` forbids
+        #    outright. These two badges are the ones CI cannot re-measure: a
+        #    whole `run_cnaster` on a shared two-core runner is moved more by
+        #    the runner than by the patch. So the recorded conditions are the
+        #    whole of what makes them readable, and this is what enforces
+        #    them.
+        assert run["instance"], "a ratio must name the instance it was read at"
+
+        assert len(run["arms"]) == 2, (
+            f"a ratio is two arms; {len(run['arms'])} recorded"
+        )
+
+        assert all(arm["returncode"] == 0 for arm in run["arms"]), (
+            "a ratio from an arm that did not complete is not a ratio"
+        )
+
 
 @pytest.mark.infra
 def test_the_generator_is_idempotent(tmp_path: Path) -> None:
