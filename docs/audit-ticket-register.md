@@ -125,3 +125,22 @@ defect, and that is what actually tracks these.
 The 25 closable are 23 per cent of the tracker, and all but six are work that
 was done and never recorded. That is the number worth acting on: the register
 is not behind, it is mis-filed.
+
+---
+
+# Acted on
+
+**A1 is closed.** #17, #18, #19, #39, #59, #66 and #167, each with a comment
+naming what satisfied it -- a close with no evidence is the drift this audit
+exists to undo.
+
+The rest is filed rather than done, one ticket per section:
+
+| ticket | what it carries |
+| --- | --- |
+| #218 | #195's undone half: profile `phasing`, `integer_copy` and `hmrf`'s wrappers at a stress size |
+| #219 | Part B, the 31 into 8 registers -- blocked on one decision, eight tickets or one document |
+| #220 | Part C, the nine stale premises, including the #174/#203 contradiction and #90's single experiment |
+| #221 | A2 and A3, the eighteen that want a read before closing |
+
+Open at `fa022ea`: 108. Open after A1 and these four: **105**.
