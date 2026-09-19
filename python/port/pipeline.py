@@ -44,10 +44,12 @@ __all__ = [
     "SWAPS",
     "Site",
     "Swap",
+    "Warmed",
     "install",
     "instrumented",
     "patched",
     "swap_sites",
+    "warm",
 ]
 
 
@@ -338,3 +340,149 @@ def instrumented(swaps: tuple[Swap, ...] = SWAPS) -> Iterator[dict[str, Spent]]:
     finally:
         for module, name, original in reversed(undo):
             setattr(module, name, original)
+
+
+def _tiny(*shape: int) -> Any:
+    """A float64 array of the given shape, filled with ones."""
+    import numpy as np
+
+    return np.ones(shape, dtype=np.float64)
+
+
+def _kernels() -> tuple[tuple[str, Any], ...]:
+    """Every compiled kernel a run reaches, with arguments that compile it.
+
+    **`numba` specializes on types, not on sizes**, so a one-element array of
+    the right dtype and dimensionality compiles the specialization a whole
+    instance reuses. That is why this needs no fixture, no config and no
+    pipeline -- and why it does not warm by running a small instance, which
+    would compile whichever branches that instance took and hide the rest.
+
+    **Named rather than discovered.** Importing everything and warming
+    whatever carries a dispatcher compiles kernels no run reaches and still
+    misses the ones reached through a branch. A list is reviewable; a sweep
+    is not, and a sweep that silently warms nothing is worse than no warm-up
+    at all -- which is what an earlier draft of this did, because
+    `nopython_signatures` is empty until something has been compiled.
+
+    The arguments here are the live path's types. Where one is wrong the
+    warm-up compiles a specialization the run does not reuse, and the run's
+    own `first` column is what says so: after a warm-up those read near zero,
+    and a row that does not is a finding about this table.
+    """
+    import numpy as np
+
+    field_arguments = (
+        1,
+        _tiny(1),
+        _tiny(1),
+        _tiny(1),
+        False,
+        _tiny(1, 1, 1),
+        _tiny(1, 1, 1),
+        np.zeros(1, dtype=np.int64),
+        1,
+        1,
+        np.zeros(1, dtype=np.int64),
+        np.zeros(2, dtype=np.int64),
+        True,
+    )
+
+    return (
+        ("cnaster.hmrf:compute_loglike_spot_assignment", field_arguments),
+        (
+            "port.patch.hmrf_field:compute_loglike_spot_assignment_strided",
+            field_arguments,
+        ),
+        (
+            "cnaster.hmrf:pool_spatio_genomic_counts",
+            (
+                _tiny(1, 2, 1),
+                _tiny(1, 1),
+                _tiny(1, 1),
+                np.zeros(1, dtype=np.int64),
+                np.zeros(2, dtype=np.int64),
+                _tiny(1),
+                False,
+            ),
+        ),
+        (
+            "cnaster.hmm_nophasing:_dense_nb_logpmf",
+            (_tiny(1, 1), _tiny(1, 1), _tiny(1, 1), _tiny(1, 1)),
+        ),
+        (
+            "cnaster.hmm_nophasing:_dense_bb_logpmf",
+            (_tiny(1, 1), _tiny(1, 1), _tiny(1, 1), _tiny(1, 1)),
+        ),
+        (
+            "cnaster.hmm_nophasing:_nb_logpmf_1d",
+            (_tiny(1), _tiny(1), 1.0, 1.0, _tiny(1)),
+        ),
+        (
+            "cnaster.hmm_nophasing:_bb_logpmf_1d",
+            (_tiny(1), _tiny(1), 0.5, 1.0, _tiny(1)),
+        ),
+        (
+            "port.patch.hmrf_fused_field:fused_spot_clone_field",
+            (
+                _tiny(1, 1),
+                _tiny(1, 1),
+                _tiny(1, 1),
+                _tiny(1, 1),
+                _tiny(1, 1),
+                _tiny(1, 1),
+                _tiny(1, 1),
+                _tiny(1, 1),
+                np.zeros((1, 1), dtype=np.int64),
+                _tiny(1),
+            ),
+        ),
+    )
+
+
+@dataclass(frozen=True)
+class Warmed:
+    """What a warm-up compiled, and what it did not."""
+
+    seconds: float
+    compiled: tuple[str, ...]
+    missed: tuple[str, ...]
+
+    def report(self) -> str:
+        lines = [
+            f"warm-up: {len(self.compiled)} kernels in {self.seconds:.2f}s",
+            *(f"  missed {entry}" for entry in self.missed),
+        ]
+        return "\n".join(lines)
+
+
+def warm() -> Warmed:
+    """Compile every named kernel, and report what it cost and what it missed.
+
+    A miss is reported rather than raised: a kernel whose signature moved
+    costs a first call, not a run, and the list being wrong is a finding
+    about the list.
+    """
+    import time
+
+    started = time.perf_counter()
+    compiled: list[str] = []
+    missed: list[str] = []
+
+    for target, arguments in _kernels():
+        module_name, _, attribute = target.partition(":")
+
+        try:
+            __import__(module_name)
+            kernel = getattr(sys.modules[module_name], attribute)
+
+            if not hasattr(kernel, "nopython_signatures"):
+                missed.append(f"{target} (not a compiled kernel)")
+                continue
+
+            kernel(*arguments)
+            compiled.append(target)
+        except Exception as error:
+            missed.append(f"{target} ({type(error).__name__}: {error})")
+
+    return Warmed(time.perf_counter() - started, tuple(compiled), tuple(missed))
