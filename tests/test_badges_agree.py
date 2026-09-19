@@ -22,7 +22,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.badges import BADGES, MEASUREMENTS, badges, write
+from tests.badges import BADGES, MEASUREMENTS, UNMEASURED, badges, write
 
 README = Path(__file__).resolve().parent.parent / "README.md"
 
@@ -139,18 +139,31 @@ def test_the_generator_is_idempotent(tmp_path: Path) -> None:
 
 
 @pytest.mark.infra
-def test_a_ratio_badge_names_the_size_it_was_read_at() -> None:
+def test_a_ratio_is_never_rendered_without_its_instance() -> None:
     """`CLAUDE.md`: a ratio read at a gate size decides nothing.
 
-    So a badge reading `1.15x` with no instance beside it is the claim that
-    rule forbids, and the label is where the instance has to live — the
-    message is the number and has no room.
+    So `1.21X` on its own is the claim that rule forbids. The size used to
+    live in each ratio's label as `@ stress`, which named the tier rather
+    than the shape and spent the width twice; the `instance` badge carries
+    it now, and says `stress: 4000x1980x5`.
+
+    That makes the two badges a pair: this is what refuses a ratio rendered
+    while the instance beside it still reads as unmeasured, which is the
+    state the old `@ stress` label could not get into and this one can.
     """
     recorded = json.loads(MEASUREMENTS.read_text())
 
     if recorded["whole_run"].get("ratio") is None:
         pytest.skip("no ratio was produced; the badges carry the reason instead")
 
-    for badge in badges():
-        if badge.name.startswith("run-"):
-            assert "@" in badge.label, f"{badge.name} does not name its instance"
+    rendered = {badge.name: badge for badge in badges()}
+    instance = rendered["instance"]
+
+    assert instance.message != UNMEASURED, (
+        "a ratio is rendered but `instance` reads unmeasured, so the numbers "
+        "name no size"
+    )
+
+    for name, badge in rendered.items():
+        if name.startswith("run-"):
+            assert badge.message.endswith("X"), f"{name} is not in ratio units"

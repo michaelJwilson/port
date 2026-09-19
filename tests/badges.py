@@ -26,10 +26,10 @@ The cost is that they can go stale, and the test is what pays it.
 | judged, oracle, reach | the three coverage guards | per pull request |
 | runtime, memory, instance | a whole `run_cnaster`, both arms | `release` |
 
-The two ratio badges carry the instance they were read at, because
+The `instance` badge carries the size the two ratios were read at, because
 `CLAUDE.md` is explicit that a ratio read at a gate size decides nothing.
-A badge saying "1.15x" with no size on it is exactly the claim that rule
-forbids.
+A badge saying "1.15x" with no size beside it is exactly the claim that
+rule forbids, so the two are rendered together or not at all.
 """
 
 from __future__ import annotations
@@ -116,19 +116,21 @@ RATIOS = (("speed", "runtime"), ("mem", "memory"))
 def _ratio_badge(name: str, axis: str, run: dict[str, Any]) -> Badge:
     """One whole-run ratio, or the fact that it has not been measured.
 
-    The label carries `@ stress` rather than a bare axis, because
-    `CLAUDE.md` is explicit that a ratio read at a gate size decides
-    nothing. Which instance "stress" is stays in `measurements.json` and in
-    the README's table -- the badge has room for the tier, not the shape.
-    """
-    label = f"{name} @ {run.get('tier', 'stress')}"
+    The label is the bare axis. `CLAUDE.md` is explicit that a ratio read at
+    a gate size decides nothing, so one must never be shown without the size
+    beside it -- but the `instance` badge carries that now, and in more
+    detail than a tier name could. Repeating `@ stress` here said less than
+    `stress: 4000x1980x5` does one badge along, and cost the width twice.
 
+    `test_a_ratio_is_never_rendered_without_its_instance` is what keeps the
+    pair honest, so dropping the tier from the label did not drop the rule.
+    """
     if run.get("ratio") is None:
-        return Badge(f"run-{name}", label, UNMEASURED, "lightgrey")
+        return Badge(f"run-{name}", name, UNMEASURED, "lightgrey")
 
     value = run["ratio"][axis]
 
-    return Badge(f"run-{name}", label, f"{value:.2f}X", _ratio_colour(value))
+    return Badge(f"run-{name}", name, f"{value:.2f}X", _ratio_colour(value))
 
 
 def _instance_badge(run: dict[str, Any]) -> Badge:

@@ -115,8 +115,14 @@ def test_the_figure_swap_is_kept_out_of_the_default_table() -> None:
 
     Every row of `SWAPS` reproduces `cnaster` bitwise, which is what the
     whole-run test asserts. A figure written at half the dpi is a different
-    file by design, so it lives in `FIGURE_SWAPS` and installs only under
-    `run_cnaster_port --figures`.
+    file by design, so it lives in `FIGURE_SWAPS`.
+
+    **The entry point installs it by default now**, and this test is what
+    stops that becoming a merge of the two tables. The default decides what
+    a user gets; the table decides what can still be claimed. Keeping them
+    apart is what lets `run_cnaster_port` be 47 per cent faster while
+    `SWAPS` remains the set that reproduces `cnaster` -- and `--no-figures`
+    is the arm that does.
     """
     from port.pipeline import FIGURE_SWAPS, SWAPS
 

@@ -14,6 +14,7 @@ __pycache__/
 #    is here for the shards coverage writes in parallel mode.
 .coverage-e2e
 .coverage-oracle
+.coverage-reach
 .coverage.*
 *.egg-info/
 .ruff_cache/

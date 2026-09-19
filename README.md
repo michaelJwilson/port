@@ -47,16 +47,17 @@ badly** (#159):
 
 **`speed` and `mem`** are patched `run_cnaster` against `--no-patch`: wall
 time and peak resident memory, each arm in its own process, in ratio units.
-The label carries `@ stress` because `CLAUDE.md` is explicit that a ratio
-read at a gate size decides nothing.
 
-**`instance`** is what makes those two readable. `stress` is a *tier*, not a
-shape, and two instances at the same tier can differ by more than the patch
-being measured does -- so this badge carries the size the pair was read at,
-as `obs x spots x states`. It asserts nothing and is coloured blue for that
-reason. `tests/test_badges_agree.py` refuses a recorded ratio that does not
-name its instance, carry exactly two arms, and show both arms exiting 0: a
-ratio from an arm that did not complete is not a ratio.
+**`instance`** is what makes those two readable, and `CLAUDE.md` is explicit
+that a ratio read at a gate size decides nothing -- so the three are a set.
+It carries the size as `obs x spots x states`, which is what a tier name
+cannot: two instances both called stress can differ by more than the patch
+being measured does. It asserts nothing and is blue for that reason.
+
+`tests/test_badges_agree.py` is what keeps them together. It refuses a
+recorded ratio that does not name its instance, carry exactly two arms, and
+show both arms exiting 0 -- a ratio from an arm that did not complete is not
+a ratio -- and it refuses a ratio rendered while `instance` still reads `/`.
 
 Neither ratio is re-measured by CI, and that is deliberate rather than
 pending. A whole `run_cnaster` on a shared two-core runner is moved more by

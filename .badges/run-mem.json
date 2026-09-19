@@ -1,6 +1,6 @@
 {
  "schemaVersion": 1,
- "label": "mem @ stress",
+ "label": "mem",
  "message": "1.00X",
  "color": "orange"
 }
