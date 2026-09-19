@@ -1,0 +1,40 @@
+{
+ "_": "The values README.md's badges render. Regenerate with `python -m tests.badges`; tests/test_badges_agree.py refuses a drift.",
+ "coverage": {
+  "judged": {
+   "label": "judged",
+   "percent": 45.69,
+   "floor": 41.7,
+   "selection": "not release and (end2end or oracle)",
+   "denominator": "cnaster + python/port, 7030 statements",
+   "commit": "e820b26",
+   "note": "Guard 1. Only tests whose referee is outside cnaster count, so this says how much of the subject is validated rather than reached."
+  },
+  "oracle": {
+   "label": "oracle surface",
+   "percent": 43.76,
+   "floor": 43.7,
+   "selection": "not release and not preprocessing",
+   "denominator": "snakes_and_ladders, 2164 statements",
+   "commit": "e820b26",
+   "note": "Guard 2. Measured over its own denominator so the figure cannot rise by importing more of upstream, which validates nothing about cnaster. Sitting 0.06 points above its floor."
+  },
+  "reach": {
+   "label": "reach",
+   "percent": null,
+   "floor": null,
+   "selection": "not release and not (end2end or oracle)",
+   "denominator": "cnaster + python/port",
+   "commit": "e820b26",
+   "note": "Guard 3. Proposed by #159 and not wired into CI -- its 'Done when' asks for exactly that and it is unmet. #159 last recorded 67.37 per cent on 18 Sep, which predates roughly twenty merged pull requests and is not carried here."
+  }
+ },
+ "whole_run": {
+  "instance": null,
+  "commit": "e820b26",
+  "arms": [],
+  "ratio": null,
+  "note": "not yet measured",
+  "_intent": "run_cnaster patched against --no-patch, wall time and peak RSS, each arm in its own process. key_instance (10,000 x 5,000) does not fit unpatched -- 8 GB of emission array against 15 GB available (#90) -- so the comparison runs at the largest instance both arms complete and the badge label carries it. This measurement is #91."
+ }
+}

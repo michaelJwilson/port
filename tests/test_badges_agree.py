@@ -1,0 +1,119 @@
+"""The README's badges say what the measurements say, and nothing checks that but this.
+
+**A badge is a claim in the most-read file in the repository.** `CLAUDE.md`
+requires every claim to carry the number that established it and the
+conditions that decided it; a shields badge has room for neither, so
+`.badges/measurements.json` holds both and the badge is derived. This module
+is what refuses a drift between them.
+
+The failure it catches is silent by construction: a badge is a committed JSON
+file, nothing renders it during a test run, and a coverage guard that moved
+leaves the README reading the old figure indefinitely. That is the same
+failure `tests/test_planning_documents_agree.py` exists for, one file further
+out.
+
+`infra` throughout: this is `port`'s own bookkeeping and says nothing about
+whether `cnaster` computes anything correctly.
+"""
+
+import json
+import re
+from pathlib import Path
+
+import pytest
+
+from tests.badges import BADGES, MEASUREMENTS, badges, write
+
+README = Path(__file__).resolve().parent.parent / "README.md"
+
+ENDPOINT = re.compile(
+    r"!\[[^\]]*\]\(https://img\.shields\.io/endpoint\?url=[^)]*?/\.badges/([a-z-]+)\.json\)"
+)
+"""Each badge the README renders, by file name."""
+
+
+@pytest.mark.infra
+def test_every_badge_file_is_what_the_measurements_produce() -> None:
+    """The committed badges are the generator's output, not an earlier one.
+
+    Regenerating and comparing rather than spot-checking a value: a badge
+    whose colour is stale is as wrong as one whose number is, and the colour
+    is what says whether a floor is still being cleared.
+    """
+    for badge in badges():
+        path = BADGES / f"{badge.name}.json"
+
+        assert path.exists(), f"{path.name} is missing; run `python -m tests.badges`"
+
+        assert json.loads(path.read_text()) == badge.payload(), (
+            f"{path.name} is stale; run `python -m tests.badges`"
+        )
+
+
+@pytest.mark.infra
+def test_the_readme_renders_every_badge_and_no_others() -> None:
+    """A badge nobody renders is dead weight; one the README invents is a 404."""
+    rendered = set(ENDPOINT.findall(README.read_text()))
+    generated = {badge.name for badge in badges()}
+
+    assert rendered == generated, (
+        f"README renders {sorted(rendered)}, the generator makes {sorted(generated)}"
+    )
+
+
+@pytest.mark.infra
+def test_every_measurement_carries_the_conditions_that_decided_it() -> None:
+    """`CLAUDE.md`: what a report does not state is what nobody controlled.
+
+    A coverage guard needs the selection it was measured under and the
+    denominator it was measured against; a ratio needs the instance. Without
+    those a badge is a number with no claim attached, which is the thing this
+    repository exists to refuse.
+    """
+    recorded = json.loads(MEASUREMENTS.read_text())
+
+    for name, guard in recorded["coverage"].items():
+        for key in ("label", "percent", "floor", "selection", "denominator", "commit"):
+            assert key in guard, f"coverage guard {name} does not state {key}"
+
+        if guard["percent"] is None:
+            assert guard.get("note"), (
+                f"coverage guard {name} is unmeasured and does not say why"
+            )
+
+    run = recorded["whole_run"]
+
+    for key in ("instance", "commit", "arms"):
+        assert key in run, f"the whole-run measurement does not state {key}"
+
+    if run.get("ratio") is None:
+        assert run.get("note"), "a comparison with no ratio must say what happened"
+    else:
+        assert set(run["ratio"]) == {"runtime", "memory"}
+
+
+@pytest.mark.infra
+def test_the_generator_is_idempotent(tmp_path: Path) -> None:
+    """Running it twice writes the same bytes, so a no-op change is a no-op diff."""
+    before = {path.name: path.read_bytes() for path in write()}
+    after = {path.name: path.read_bytes() for path in write()}
+
+    assert before == after
+
+
+@pytest.mark.infra
+def test_a_ratio_badge_names_the_size_it_was_read_at() -> None:
+    """`CLAUDE.md`: a ratio read at a gate size decides nothing.
+
+    So a badge reading `1.15x` with no instance beside it is the claim that
+    rule forbids, and the label is where the instance has to live — the
+    message is the number and has no room.
+    """
+    recorded = json.loads(MEASUREMENTS.read_text())
+
+    if recorded["whole_run"].get("ratio") is None:
+        pytest.skip("no ratio was produced; the badges carry the reason instead")
+
+    for badge in badges():
+        if badge.name.startswith("run-"):
+            assert "@" in badge.label, f"{badge.name} does not name its instance"

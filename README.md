@@ -1,5 +1,11 @@
 # port
 
+[![judged coverage](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/michaelJwilson/port/main/.badges/coverage-judged.json)](#what-the-badges-mean)
+[![oracle surface](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/michaelJwilson/port/main/.badges/coverage-oracle.json)](#what-the-badges-mean)
+[![reach](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/michaelJwilson/port/main/.badges/coverage-reach.json)](#what-the-badges-mean)
+[![runtime ratio](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/michaelJwilson/port/main/.badges/run-runtime.json)](#what-the-badges-mean)
+[![memory ratio](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/michaelJwilson/port/main/.badges/run-memory.json)](#what-the-badges-mean)
+
 A scientific repository built on
 [`snakes_and_ladders`](https://github.com/michaelJwilson/snakes_and_ladders),
 holding the same separation of infrastructure from application and the same
@@ -19,6 +25,33 @@ on them, and lands nothing in either.
 
 Python lives under `python/port/`; the CPU-bound work belongs in the Rust crate
 under `src/`, exposed to Python as `port.oxiport`.
+
+## What the badges mean
+
+Five numbers, and each is a claim rather than a decoration.
+`.badges/measurements.json` holds every value with the selection, denominator
+and commit that produced it, `python -m tests.badges` derives the badges from
+it, and `tests/test_badges_agree.py` fails when the two disagree -- the same
+guard `tests/test_planning_documents_agree.py` puts on the planning
+documents.
+
+**Three coverage guards, because one figure would answer three questions
+badly** (#159):
+
+| badge | selection | denominator | what it says |
+| --- | --- | --- | --- |
+| **judged** | `end2end or oracle` | `cnaster` | how much of the subject is **validated** -- only tests whose referee is outside `cnaster` count |
+| **oracle surface** | the referee's own reach | `snakes_and_ladders` | how much of upstream is used as a referee. Separate, so the figure cannot rise by importing more of upstream, which validates nothing |
+| **reach** | the other eight markers | `cnaster` | how much is merely **run**. The gap between this and judged is the interesting number |
+
+**Two ratio badges**, patched `run_cnaster` against `--no-patch`: wall time
+and peak resident memory, each arm in its own process. The label carries the
+instance, because `CLAUDE.md` is explicit that a ratio read at a gate size
+decides nothing -- a bare "1.15x" is the claim that rule forbids.
+
+A badge reading **not measured** is doing its job. `reach` is unwired (#159's
+"Done when" asks for it and is unmet) and the ratio pair is #91, so the
+README says so rather than carrying a figure from a commit nobody can name.
 
 ## Prerequisites
 
