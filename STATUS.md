@@ -23,7 +23,7 @@ Measured on `main` at `9cd81f0`, `pytest -m "not release"`, one thread.
 | 2.2 The input path and the entry points | Not started, and invisible to the gate | Dropping `deprecated/` (19 modules) from the wheel moved the denominator by **one** statement, which proves the scan never reached it. `scripts/` is outside for the same reason and is worth +919 statements | — |
 | 3.1 The three references | Three audits written, all in flight | — | [#51](https://github.com/michaelJwilson/port/pull/51), [#52](https://github.com/michaelJwilson/port/pull/52), [#53](https://github.com/michaelJwilson/port/pull/53) |
 | 3.2 Runtime and memory audits | One landed as a profile; the input path not started | See 4.1 | — |
-| 4.1 The HMM/spatial boundary | Profiled, and five patches in flight | The emission producer is 93.0 per cent of the boundary; the field 0.3 per cent, the solve 0.2, the adjacency 0.1 | [#60](https://github.com/michaelJwilson/port/pull/60)–[#64](https://github.com/michaelJwilson/port/pull/64) |
+| 4.1 The HMM/spatial boundary | Landed. All five of #59's items install through `pipeline_clone_assignment` | The emission producer is 93.0 per cent of the boundary; the field 0.3 per cent, the solve 0.2, the adjacency 0.1. A whole patched run reproduces an unpatched one artifact by artifact | [#60](https://github.com/michaelJwilson/port/pull/60)–[#64](https://github.com/michaelJwilson/port/pull/64), [#212](https://github.com/michaelJwilson/port/pull/212) |
 | 4.2 The emission and the M step | Not started | The profile puts the time here, and nothing has been measured against the alternative | — |
 | 4.3 Defects found in the subject | Four found, none landed upstream | #30 measured; #45, #46 and the `wolff` import failure reproduced | [#31](https://github.com/michaelJwilson/port/pull/31) |
 | 5.1 Upstream reports | Four reports, each with a measurement | Upstream's `external_field` is bitwise unchanged by a covariate, max abs diff 0.000e+00; `baum_welch_family` raises on a two-channel family; `__init__.py` is worth +919 statements to the gate | — |
@@ -123,6 +123,16 @@ why the timings are second-pass.
 This reorders the audit's own ranking. Item 2 — scoring only the decoded states
 — is the only patch that touches the 93 per cent; the other four are
 simplifications and each says so rather than claiming a speedup.
+
+**All five items are installed (#206).** Each is a call-site edit inside
+`pipeline_clone_assignment`, which is itself a module-level name, so
+`port.patch.clone_assignment` rebinds it and carries them in: the fused field
+writing into a buffer, one graph crossing the seam in the form the solver
+reads, the COO triple built where it is consumed and by three array
+expressions, the loop invariants hoisted out of the outer loop, and a solver
+taking four arguments where `cnaster` passes fifteen. `#45`, `#58` and `#81`
+are pinned first, so a defect the seam already had cannot be mistaken for one
+the rewrite introduced.
 
 ## Milestone 4.2 — The emission and the M step
 

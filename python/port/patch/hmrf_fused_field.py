@@ -83,6 +83,7 @@ def fused_spot_clone_field(
     taus,
     pred,
     rel_valid_emision_weight,
+    out=None,
 ):
     """The `(n_spots, n_clones)` field, without an emission array.
 
@@ -95,11 +96,26 @@ def fused_spot_clone_field(
     `prange` runs over clones: each writes its own column and its own
     accumulators, so nothing reduces across threads. The spot loop is the
     vectorized one, as in item 1.
+
+    `out` is an `(n_spots, n_clones)` buffer to write into, or `None` to
+    allocate one. This is upstream's shape --
+    `oxi_snakes_and_ladders.external_field(..., field)` writes in place --
+    and it is carried here for that correspondence rather than for the
+    bytes: **the buffer is 400 KB at the declared scale**, against the 8 GB
+    the two-step materialized, so a caller that reuses it across outer
+    iterations saves an allocation and not a footprint. Every entry is
+    written before it is read, so a reused buffer needs no clearing.
     """
     n_obs, n_spots = counts_nb.shape
     n_clones = pred.shape[1]
 
-    field = np.zeros((n_spots, n_clones))
+    # NB SIM108's ternary would ask `numba` to unify `none` with an array
+    #    rather than specialize on which was passed, which is the whole
+    #    mechanism of the optional buffer.
+    if out is None:  # noqa: SIM108
+        field = np.zeros((n_spots, n_clones))
+    else:
+        field = out
 
     for c in prange(n_clones):
         accumulated_rdr = np.zeros(n_spots)

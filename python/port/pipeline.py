@@ -11,18 +11,27 @@ sum of component ratios.
 **What it can swap is what is a drop-in.** A replacement installs by
 rebinding a name, so it has to accept what the original accepted and return
 what the original returned. Eight preprocessing functions and one kernel
-qualify. The rest of `port`'s patches do not, and the reason is stated rather
-than left to be discovered:
+qualify directly.
 
-| patch | why it is not here |
+Four more are not drop-ins, and #206 got all four in anyway by rebinding one
+level up. `hmrf_fused_field` replaces a two-call sequence rather than a name,
+`hmrf_adjacency` removes a round trip between two call sites,
+`hmrf_invariants` hoists out of a loop body, and `icm_interface` is a
+narrower signature -- none of which a name can carry. Every one of them is a
+call-site edit **inside `pipeline_clone_assignment`**, which is itself a
+module-level name, so `port.patch.clone_assignment` rebinds it and takes them
+with it.
+
+| patch | where it installs |
 | --- | --- |
-| `hmrf_fused_field` | replaces a two-call sequence, not a name |
-| `hmrf_adjacency` | removes a round trip between two call sites |
-| `hmrf_invariants` | hoists out of `cnaster`'s own loop body |
-| `icm_interface` | a narrower signature, which is its point |
+| `hmrf_fused_field` | inside `clone_assignment`, writing into a buffer (#206) |
+| `hmrf_adjacency` | inside `clone_assignment`, under `merge` only (#206) |
+| `hmrf_invariants` | inside `clone_assignment`, hoisted across calls (#206) |
+| `icm_interface` | inside `clone_assignment` (#206) |
 
-Each needs a call-site edit inside `cnaster.hmrf`, and `CLAUDE.md` makes that
-repository read only. They are reported there and land there or not at all.
+None of them lands in `cnaster`, which `CLAUDE.md` makes read only. What
+rebinding the caller buys is that they can be **run** in a whole pipeline and
+measured there, which is what `tests/test_patched_entry_point.py` does.
 
 The rebinding follows a name wherever it has already been imported, not only
 where it is defined: `run_cnaster` does `from cnaster.omics import

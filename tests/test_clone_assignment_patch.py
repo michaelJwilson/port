@@ -143,3 +143,63 @@ def test_the_swap_is_in_the_default_table() -> None:
     assert len(rows) == 1
     assert rows[0].ticket == 206
     assert "pipeline_clone_assignment" not in {swap.name for swap in FIGURE_SWAPS}
+
+
+@pytest.mark.patch
+def test_the_boundary_invariants_are_computed_once_per_dataset() -> None:
+    """#59 item 4, hoisted across calls rather than out of a loop body.
+
+    The two valid-segment counts and the channel weight derived from them are
+    functions of the input data, which the outer loop never fits, and
+    `cnaster` recomputes all three on every iteration.
+    `port.patch.clone_assignment.boundary` returns the same object for the
+    same arrays, which is what "computed where they are constant" means when
+    the loop is inside a dependency this repository cannot edit.
+
+    The values are checked against a fresh computation too: a cache that
+    returned the same wrong answer twice would pass an identity check alone.
+    """
+    from port.patch.clone_assignment import boundary
+
+    generator = np.random.default_rng(13)
+
+    base_nb_mean = generator.integers(0, 3, (20, 9)).astype(np.float64)
+    total_bb_RD = generator.integers(0, 3, (20, 9)).astype(np.float64)
+
+    first = boundary(base_nb_mean, total_bb_RD, None)
+    second = boundary(base_nb_mean, total_bb_RD, None)
+
+    assert first is second, "the invariants were recomputed for the same arrays"
+
+    assert np.array_equal(first.valid_nb, (base_nb_mean > 0).sum(axis=0))
+    assert np.array_equal(first.valid_bb, (total_bb_RD > 0).sum(axis=0))
+    assert np.array_equal(first.weight, np.ones(9))
+
+
+@pytest.mark.smoke
+def test_the_invariant_cache_holds_the_arrays_it_is_keyed_on() -> None:
+    """Why the entry keeps references, and why there is only ever one.
+
+    The cache is keyed on `id()`, which is unique only while the object is
+    alive, so an entry that did not hold its arrays could be handed a
+    recycled address and answer with another dataset's counts. The arrays are
+    the pipeline's own inputs and outlive the loop regardless, so holding
+    them costs nothing.
+
+    One slot, because a run conditions on one dataset: a second entry would
+    mean something is calling the seam with data it did not load.
+    """
+    from port.patch.clone_assignment import _BOUNDARY, boundary
+
+    first = np.ones((4, 3))
+    second = np.ones((4, 3))
+
+    entry = boundary(first, second, None)
+
+    assert len(_BOUNDARY) == 1
+    assert entry.held[0] is first
+    assert entry.held[1] is second
+
+    boundary(np.ones((4, 3)), np.ones((4, 3)), None)
+
+    assert len(_BOUNDARY) == 1, "the cache grew past its one slot"

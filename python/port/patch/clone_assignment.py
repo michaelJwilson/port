@@ -1,27 +1,63 @@
 """`cnaster.hmrf.pipeline_clone_assignment`, without the array or the round trip.
 
 **The seam, rebound one level up (#206).** `port` has carried measured
-patches for #59 items 1-4 since [#125](https://github.com/michaelJwilson/port/pull/125)
+patches for #59's five items since [#125](https://github.com/michaelJwilson/port/pull/125)
 and could install none of them: each needs a call-site edit inside
 `cnaster.hmrf`, which `CLAUDE.md` makes read only. They install here,
 because `pipeline_clone_assignment` is itself a module-level name and
 rebinding *it* rebinds its call sites with it.
 
-Two changes, and neither moves a number:
+**All five of #59's items are installed here**, and none of them moves a
+number. #206's "done when" list, in its order:
 
-*   **The field is fused.** `cnaster` materializes
-    `(n_states, n_obs, n_spots)` per channel and then reduces it to
-    `(n_spots, n_clones)` by reading one decoded state per `(bin, clone)`.
-    `port.patch.hmrf_fused_field` does both in one pass and materializes
-    nothing -- 8 GB at the declared scale, twice per outer iteration (#90),
-    for an array whose only consumer is the reduction. Pinned **bitwise**
-    against `cnaster`'s two-step in `tests/test_hmrf_fused_field.py`.
-*   **The COO triple is built only when it is used.** `cast_csr` and
-    `unpack_adjacency` walk every non-zero in pure Python to produce
-    `adj_spots`, `adj_neighbors` and `adj_weights`, and the solver reads the
-    CSR arrays instead. Their one consumer is `merge_assignment`, inside
-    `while merge:` -- so on a run with `merge=False` the whole round trip is
-    computed and discarded (#59 item 3).
+*   **The field is written into a buffer rather than returned and reduced.**
+    `cnaster` materializes `(n_states, n_obs, n_spots)` per channel and then
+    reduces it to `(n_spots, n_clones)` by reading one decoded state per
+    `(bin, clone)`. `port.patch.hmrf_fused_field` does both in one pass,
+    materializes nothing, and writes into a caller's array -- upstream's
+    `external_field(..., field)` shape. 8 GB at the declared scale, twice
+    per outer iteration (#90), for an array whose only consumer is the
+    reduction. Pinned **bitwise** in `tests/test_hmrf_fused_field.py`.
+*   **The graph crosses the seam once, in the representation the solver
+    reads.** `CsrGraph` carries the three arrays that are meaningless apart.
+    The COO triple `merge_assignment` wants is built only where it is
+    consumed, and by `port.patch.hmrf_adjacency.adjacency_coo` -- three array
+    expressions against `cast_csr` plus `unpack_adjacency`, which walk every
+    non-zero in pure Python. On a run with `merge=False` `cnaster` computes
+    that round trip and discards it (#59 item 3).
+*   **The invariants are computed where they are constant.** The two
+    valid-segment counts and the channel weight derived from them are properties
+    of the input data, which the outer loop never fits, and `cnaster`
+    recomputes all three per iteration (#59 item 4). :func:`boundary` holds
+    them.
+*   **The solver takes the problem.** `fold_unary` folds the per-sample
+    weights and the allowed-clone mask into the field, and `icm_sweep` takes
+    a field, a graph, a labelling and a coupling -- against fifteen
+    parameters of which seven are not information the solver reads (#59 item
+    5).
+
+**#45, #58 and #81 are pinned first**, which is the rest of #206's list:
+`tests/test_external_field.py` for #58, `tests/test_seam_defects.py` for the
+other two. A seam rewritten without pinning them carries them into the
+rewrite, and then nothing can tell a defect that was always there from one
+the rewrite introduced.
+
+**Who would maintain each step**, which `CLAUDE.md` says decides whether an
+optimization is upstream's, could be upstream's, or is `port`'s:
+
+| step | class | why |
+| --- | --- | --- |
+| the fused field, written into a buffer | **could be upstream** | `oxi_snakes_and_ladders.external_field(totals, successes, ..., field)` is this function, in Rust, writing in place. What it cannot take is the per-observation exposure and trials, which is #32's covariate gap |
+| one graph across the seam | **exists upstream** | `single_site_sweeps(state, field, offsets, neighbours, couplings, ...)` takes the CSR directly |
+| the hoisted invariants | **`port`** | they are invariants of `cnaster`'s own loop, and upstream has no loop to hoist them out of |
+| the COO triple, built where it is consumed | **`port`** | upstream has no COO form to build; this is `cnaster`'s own round trip removed |
+| the reduced solver interface | **exists upstream** | upstream's solver already takes the problem rather than its call site, and `#141` refereed `cnaster`'s ICM against two of them |
+
+So three of the five are things this repository should be asking `cnaster`
+to take from upstream rather than from `port`, and the other two are reports
+about `cnaster`'s own loop and its own round trip. None of them lands here:
+`CLAUDE.md` makes both dependencies read only, and what `port` controls is
+the pin and the measurement.
 
 **What it does not do is reimplement the pipeline.** Everything else is
 `cnaster`'s: the pooling, the solver call, the merge loop, the likelihood
@@ -46,6 +82,7 @@ from __future__ import annotations
 
 import copy
 import time
+from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
@@ -53,7 +90,7 @@ from cnaster.config import get_global_config, start_time
 from cnaster.hmrf import pipeline_clone_assignment as UPSTREAM
 from cnaster.logger import get_logger
 
-__all__ = ["UPSTREAM", "pipeline_clone_assignment"]
+__all__ = ["UPSTREAM", "boundary", "pipeline_clone_assignment"]
 
 logger = get_logger(__name__, start_time=start_time)
 """`cnaster`'s own function, captured at import.
@@ -103,6 +140,78 @@ def _channel_weight(
     return weight
 
 
+@dataclass
+class _Boundary:
+    """What the seam recomputes per outer iteration and need not (#59 item 4).
+
+    `num_valid_nb_spotwise`, `num_valid_bb_spotwise` and the relative channel
+    weight derived from them are properties of the **input data**.
+    `single_base_nb_mean` and `single_total_bb_RD` are read by
+    `load_input_data` and conditioned on throughout -- `cnaster` never fits
+    them -- so none of the three can change while the outer loop runs, and
+    `cnaster` recomputes all three on every iteration anyway.
+
+    `held` is the point of the dataclass rather than an afterthought. The
+    cache is keyed on `id()`, and an `id()` is only unique while its object
+    is alive, so the entry keeps a reference to every array it was keyed on.
+    Those arrays are the pipeline's own inputs and outlive the loop regardless,
+    so this costs nothing and closes the one way an identity cache goes
+    wrong.
+    """
+
+    valid_nb: np.ndarray
+    valid_bb: np.ndarray
+    weight: np.ndarray
+    held: tuple[Any, ...]
+
+
+_BOUNDARY: dict[tuple[int, ...], _Boundary] = {}
+"""One slot. A run conditions on one dataset, so a second entry is a bug."""
+
+
+def boundary(
+    single_base_nb_mean: np.ndarray,
+    single_total_bb_RD: np.ndarray,
+    smooth_mat: Any,
+) -> _Boundary:
+    """The seam's loop invariants, computed once per dataset.
+
+    Measured as a **simplification** rather than a speedup: the two count
+    passes are 25.2 ms at 3,000 x 5,000 and under two tenths of a per cent of
+    the boundary (#59 item 4). What it buys is that a quantity which cannot
+    change stops being recomputed, `max_iter_outer` times.
+    """
+    key = (
+        id(single_base_nb_mean),
+        id(single_total_bb_RD),
+        id(smooth_mat) if smooth_mat is not None else 0,
+    )
+
+    cached = _BOUNDARY.get(key)
+
+    if cached is not None:
+        return cached
+
+    valid_nb = (single_base_nb_mean > 0).sum(axis=0)
+    valid_bb = (single_total_bb_RD > 0).sum(axis=0)
+
+    weight = (
+        _channel_weight(valid_nb, valid_bb, smooth_mat.indices, smooth_mat.indptr)
+        if smooth_mat is not None
+        else np.ones(single_base_nb_mean.shape[1], dtype=np.float64)
+    )
+
+    _BOUNDARY.clear()
+    _BOUNDARY[key] = _Boundary(
+        valid_nb=valid_nb,
+        valid_bb=valid_bb,
+        weight=weight,
+        held=(single_base_nb_mean, single_total_bb_RD, smooth_mat),
+    )
+
+    return _BOUNDARY[key]
+
+
 def _decoded(pred: np.ndarray, n_obs: int) -> np.ndarray:
     """`pred` as `(n_obs, n_clones)`, whichever form the caller passed.
 
@@ -148,7 +257,9 @@ def pipeline_clone_assignment(
     """What `cnaster.hmrf.pipeline_clone_assignment` returns, computed leaner."""
     import cnaster.hmrf as upstream
 
+    from port.patch.hmrf_adjacency import adjacency_coo
     from port.patch.hmrf_fused_field import fused_spot_clone_field
+    from port.patch.icm_interface import CsrGraph, fold_unary, icm_sweep
 
     reason = _delegates(single_tumor_prop, res["new_log_mu"])
 
@@ -206,14 +317,10 @@ def pipeline_clone_assignment(
         pooled_base_nb_mean = single_base_nb_mean.copy()
         pooled_total_bb_RD = single_total_bb_RD.copy()
 
-    valid_nb = (single_base_nb_mean > 0).sum(axis=0)
-    valid_bb = (single_total_bb_RD > 0).sum(axis=0)
-
-    weight = (
-        _channel_weight(valid_nb, valid_bb, smooth_mat.indices, smooth_mat.indptr)
-        if smooth_mat is not None
-        else np.ones(n_spots, dtype=np.float64)
-    )
+    # NB hoisted: all three are functions of the input data, which the outer
+    #    loop never fits, and `cnaster` recomputes them per iteration (#59
+    #    item 4).
+    invariants = boundary(single_base_nb_mean, single_total_bb_RD, smooth_mat)
 
     # NB the two steps `cnaster` runs here -- build (n_states, n_obs, n_spots)
     #    per channel, then read one decoded state per (bin, clone) out of it --
@@ -228,7 +335,15 @@ def pipeline_clone_assignment(
         res["new_p_binom"],
         res["new_taus"],
         decoded,
-        weight,
+        invariants.weight,
+        # NB the buffer is the caller's, which is upstream's shape --
+        #    `external_field(..., field)` writes in place. It is allocated per
+        #    call rather than reused, and that is deliberate: this function
+        #    *returns* the field, so a reused buffer would rewrite an array
+        #    its caller still holds, which is the defect
+        #    `tests/test_seam_defects.py` pins on the solver. At 400 KB at the
+        #    declared scale there is nothing to win by taking that risk.
+        np.empty((n_spots, n_clones)),
     )
 
     if get_global_config().hmrf.fixed_assignment:
@@ -236,28 +351,29 @@ def pipeline_clone_assignment(
     else:
         logger.info("Solving for updated clone assignment with icm_sweep_dequeue.")
 
-        niter, new_cost = upstream.icm_sweep_deque(
-            single_llf=field,
-            adj_indptr=adjacency_mat.indptr,
-            adj_indices=adjacency_mat.indices,
-            adj_weights=adjacency_mat.data,
-            new_assignment=new_assignment,
-            spatial_weight=spatial_weight,
-            posterior=None,
-            onehot_allowed_clones=None,
-            log_persample_weights=log_persample_weights,
-            sample_ids=sample_ids,
+        # NB the solver takes the problem -- a unary field, one graph, one
+        #    coupling -- rather than its call site (#59 item 5). The
+        #    per-sample weights fold into the field, which is where they were
+        #    added anyway, once per visit instead of once per sweep; the
+        #    three adjacency arrays travel as the one graph they are.
+        result = icm_sweep(
+            fold_unary(field, log_persample_weights, sample_ids),
+            CsrGraph.from_matrix(adjacency_mat),
+            new_assignment,
+            spatial_weight,
         )
+
+        niter, new_cost = result.niter, result.cost
 
         logger.info(f"Ready for potential merging of clones?  {merge}.")
 
-        # NB the COO triple is built here rather than above: `merge_assignment`
-        #    is its only consumer, and `cast_csr` plus `unpack_adjacency` are
-        #    two pure-Python passes over every non-zero (#59 item 3).
+        # NB the COO triple is built here rather than above, and by three
+        #    array expressions rather than two pure-Python passes over every
+        #    non-zero (#59 item 3). `merge_assignment` is its only consumer,
+        #    so on a run with `merge=False` `cnaster` computes the round trip
+        #    and discards it.
         if merge:
-            adj_spots, adj_neighbors, adj_weights = upstream.unpack_adjacency(
-                upstream.cast_csr(adjacency_mat)
-            )
+            adj_spots, adj_neighbors, adj_weights = adjacency_coo(adjacency_mat)
 
         while merge:
             new_cost, best_merge_cost, best_merge_pair = upstream.merge_assignment(
