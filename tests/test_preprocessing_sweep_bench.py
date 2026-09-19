@@ -31,7 +31,10 @@ function at a slide's read depth -- the one place a patch here allocates more
 than what it replaces.
 """
 
+from typing import Any
+
 import numpy as np
+import pandas as pd
 import pytest
 import scipy.stats
 from pytest_benchmark.fixture import BenchmarkFixture
@@ -50,6 +53,38 @@ A bin pools its B-allele counts across every normal spot, so the depth grows
 with the slide and the bin count does not. The stress row is where the
 summation is long enough for the tabulated log-gammas to matter.
 """
+
+
+@pytest.fixture(scope="module")
+def hgtable(tmp_path_factory: pytest.TempPathFactory) -> Any:
+    """A reference gene table of a given size, written once per size.
+
+    Synthetic rather than the fixture's own, because the claim is about a
+    human reference -- 250,000 transcripts against the dev instance's 1,213 --
+    and no fixture here carries one.
+    """
+    root = tmp_path_factory.mktemp("hgtable")
+    written: dict[int, Any] = {}
+
+    def of_size(rows: int) -> Any:
+        if rows not in written:
+            path = root / f"hgtable_{rows}.tsv"
+            generator = np.random.default_rng(3)
+
+            pd.DataFrame(
+                {
+                    "name": [f"tx_{index}" for index in range(rows)],
+                    "name2": [f"gene_{index}" for index in range(rows)],
+                    "chrom": [f"chr{1 + (index % 24)}" for index in range(rows)],
+                    "cdsStart": generator.integers(0, 250_000_000, rows),
+                    "cdsEnd": generator.integers(0, 250_000_000, rows),
+                }
+            ).to_csv(path, sep="\t", index=False)
+            written[rows] = path
+
+        return written[rows]
+
+    return of_size
 
 
 def _lattice(rows: int, columns: int) -> np.ndarray:
@@ -237,3 +272,49 @@ def test_the_vectorized_distribution_function_at_the_stress_depth(
     counts, totals = _bins(*STRESS_DEPTH)
 
     benchmark(lambda: cumulative_and_mass(counts, totals, 15.0, 15.0))
+
+
+@pytest.mark.benchmark
+def test_cnasters_reference_read_at_the_gate_size(
+    benchmark: BenchmarkFixture, hgtable: Any
+) -> None:
+    """`pd.read_csv` at 1,213 transcripts: 6.31 ms (#185)."""
+    from cnaster.reference import get_reference_genes
+
+    benchmark(lambda: get_reference_genes(str(hgtable(1_213))))
+
+
+@pytest.mark.benchmark
+def test_the_polars_reference_read_at_the_gate_size(
+    benchmark: BenchmarkFixture, hgtable: Any
+) -> None:
+    """`pl.read_csv`, handed back as a `pandas` frame: 1.51 ms, **4.2x**."""
+    from port.patch.reference import get_reference_genes
+
+    benchmark(lambda: get_reference_genes(str(hgtable(1_213))))
+
+
+@pytest.mark.benchmark
+@pytest.mark.release
+def test_cnasters_reference_read_at_the_stress_size(
+    benchmark: BenchmarkFixture, hgtable: Any
+) -> None:
+    """367.0 ms and 55.2 MB at 250,000 transcripts, a human reference's size."""
+    from cnaster.reference import get_reference_genes
+
+    benchmark(lambda: get_reference_genes(str(hgtable(250_000))))
+
+
+@pytest.mark.benchmark
+@pytest.mark.release
+def test_the_polars_reference_read_at_the_stress_size(
+    benchmark: BenchmarkFixture, hgtable: Any
+) -> None:
+    """27.7 ms and 23.3 MB: **13.3x**, and 2.4x less allocated.
+
+    Where the claim is made. The gate size's 4.2x is the fixture's 1,213
+    transcripts, where a multi-threaded parser has nothing to divide.
+    """
+    from port.patch.reference import get_reference_genes
+
+    benchmark(lambda: get_reference_genes(str(hgtable(250_000))))

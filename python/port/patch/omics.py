@@ -39,7 +39,8 @@ import numpy as np
 import pandas as pd
 from cnaster.config import start_time
 from cnaster.logger import get_logger
-from cnaster.reference import get_reference_genes
+
+from port.patch.reference import get_reference_genes
 
 logger = get_logger(__name__, start_time=start_time)
 
@@ -123,6 +124,9 @@ def form_gene_snp_table(
     """
     logger.info("Forming gene & snp meta data.")
 
+    # NB `port.patch.reference`, not `cnaster.reference`: the read is 13.3x
+    #    with `polars` at a human reference's size (#185), and the frame it
+    #    returns is bitwise the same.
     df_gene = get_reference_genes(hgtable_file)
 
     common_genes = set(df_gene.gene) & set(adata.var.index)
