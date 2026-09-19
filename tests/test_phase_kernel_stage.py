@@ -7,10 +7,10 @@ gene-SNP table the pipeline derived, the genetic map on disk, and the two
 configured constants, and returns the per-bin log switch probability the
 phasing HMM is written over.
 
-Running it on the fixture's own genome is what shows that **the kernel carries
-no phase information along a chromosome and asserts phase continuity across
-one** -- the two claims below, in that order: first that the arithmetic is the
-closed form, then what the closed form evaluates to at the shipped constants.
+Running it on the fixture's own genome is what shows that **every entry the
+phasing recursion reads is one half** -- the two claims below, in that order:
+first that the arithmetic is the closed form, then what the closed form
+evaluates to at the shipped constants.
 """
 
 from collections.abc import Iterator
@@ -197,30 +197,33 @@ def test_the_sitewise_kernel_is_the_mapping_function_on_the_derived_bins(
 
 
 @pytest.mark.warning
-def test_the_kernel_is_independent_along_a_chromosome_and_sticky_across_one(
+def test_every_entry_the_recursion_reads_carries_no_phase_information(
     planted: CoreInferenceTruth,
     binned_genome: tuple[WrittenInputs, Any, np.ndarray],
 ) -> None:
-    """**37 of 40 bins carry no phase information; the 3 that do are boundaries.**
+    """**All 37 entries the forward pass consumes are `log 0.5`.**
 
-    At the shipped constants the kernel is inverted with respect to the
-    biology it encodes:
+    At the shipped constants the kernel says the phase after a bin is
+    independent of the phase before it, everywhere it is used, which is the
+    same as having no kernel: the bins are 200 kb apart, the fixture's map puts
+    that at 0.174 cM, Haldane gives `p = 0.147`, `logphase_shift = -2`
+    multiplies it by `e^2 = 7.39` to 1.09, and the clip at one half takes it to
+    `p = 0.5`.
 
-    * **Along a chromosome** the bins are 200 kb apart, which the fixture's map
-      puts at 0.174 cM, so Haldane gives `p = 0.147`. `logphase_shift = -2`
-      multiplies it by `e^2 = 7.39` to 1.09, and the clip at one half takes it
-      to `p = 0.5`. The phase after a bin is independent of the phase before
-      it, which is the same as having no kernel.
-    * **Across a chromosome** `compute_numbat_phase_switch_prob` has no
-      distance to use and falls to `min_prob = 0.01`, the smallest value it
-      can take. Shifted, that is `p = 0.074`: the model asserts the phase
-      continues across a contig boundary more strongly than anywhere inside
-      one.
+    **The three entries that are not saturated are the three the recursion
+    never reads.** `forward_lattice` runs `for t in range(1, le)` over each
+    chromosome with `idx = cumlen + t - 1`, so the last index of every
+    chromosome is skipped -- and that is exactly where
+    `compute_numbat_phase_switch_prob` leaves `min_prob`, since it fills the
+    transition from each site to the next and a chromosome's last site has no
+    next within its own chain. Realized: the unsaturated indices are
+    `[9, 30, 39]` against lengths `[10, 21, 9]`, and the two sets are equal.
 
-    The threshold is where `log p - logphase_shift` meets `log 0.5`, at
-    `p = 1/(2e^2) = 0.0677`, which is `0.035 cM` -- about **80 kb** at this
-    map's 0.87 cM/Mb. Bins wider than that carry nothing. `zenodo_sim_config`
-    ships 5 Mb as the bin cap.
+    So the boundary value is padding rather than a claim about contiguity, and
+    the finding is the saturation alone. The threshold is where
+    `log p - logphase_shift` meets `log 0.5`, at `p = 1/(2e^2) = 0.0677`, which
+    is `0.035 cM` -- about **80 kb** at this map's 0.87 cM/Mb. Bins wider than
+    that carry nothing, and `zenodo_sim_config` ships 5 Mb as the bin cap.
 
     This is the kernel `initial_phase_given_partition` and the phasing HMM are
     written over, and it is a candidate root cause for #122, where the phasing
@@ -230,11 +233,20 @@ def test_the_kernel_is_independent_along_a_chromosome_and_sticky_across_one(
     _, _, kernel = binned_genome
 
     saturated = np.isclose(kernel, SATURATED)
-    boundary_value = np.log(MIN_PROB) - LOGPHASE_SHIFT
 
-    assert int(saturated.sum()) == planted.n_obs - planted.lengths.size
-    np.testing.assert_allclose(kernel[~saturated], boundary_value, rtol=0.0, atol=1e-12)
-    assert boundary_value < SATURATED, (
-        "the boundary value is no longer stickier than the interior, so the "
-        "inversion this pins has gone"
+    read_by_recursion: list[int] = []
+    start = 0
+    for length in np.asarray(planted.lengths):
+        read_by_recursion += list(range(start, start + int(length) - 1))
+        start += int(length)
+
+    assert saturated[read_by_recursion].all(), (
+        "an entry the recursion reads now carries phase information"
+    )
+    np.testing.assert_array_equal(
+        np.flatnonzero(~saturated),
+        np.setdiff1d(np.arange(planted.n_obs), read_by_recursion),
+    )
+    np.testing.assert_allclose(
+        kernel[~saturated], np.log(MIN_PROB) - LOGPHASE_SHIFT, rtol=0.0, atol=1e-12
     )
