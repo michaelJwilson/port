@@ -16,10 +16,27 @@ Two costs, not one:
 
 **`polars` is not a new dependency to install** -- `cnaster` already requires
 it and uses it for the Visium HD spatial reads -- but it is a new one to
-*declare*, and #185 carries the permission and the reasoning. What it is not
-is a route back to `pandas`: `DataFrame.to_pandas()` needs `pyarrow`, which
-is not installed, so the frame is rebuilt column by column through `numpy`.
-That is the conversion the 13.3x is measured with.
+*declare*, and #185 carries the permission and the reasoning.
+
+**`pyarrow` is a real install, and it buys memory rather than time.** The
+whole transform is one `select` and one `to_pandas()`, so the numeric columns
+cross by Arrow buffer instead of being pulled out as six `numpy` arrays and
+rebuilt into a dict. Measured at 250,000 transcripts, warm, best of five:
+
+    cnaster                430.65 ms   49.54 MB
+    column by column        42.84 ms   23.28 MB   10.1x, 2.1x less
+    through Arrow           60.53 ms   15.49 MB    7.1x, 3.2x less
+
+and at the dev instance's 1,213 transcripts, 3.94 / 1.90 / 4.03 ms.
+
+So it is **1.41x slower than the route it replaces at a stress size and a
+wash at a gate size**, for 33 per cent less peak and a function that is one
+expression rather than seven. `CLAUDE.md` is what decides which of those
+wins: a speedup claim needs 2x at a stress size and this is not offered as
+one; a simplification needs evidence of equivalence, which is the bitwise
+test. The cost is stated rather than buried -- `pyarrow` is 152 MB installed
+and the largest wheel in the environment, against 7.8 MB of peak saved on a
+stage that is 0.17 s of a whole run.
 
 The return is **bitwise** what `cnaster` returns -- values, index, column
 order and dtypes -- which `tests/test_reference_patch.py` pins.
@@ -29,7 +46,6 @@ from __future__ import annotations
 
 from typing import Any
 
-import pandas as pd
 import polars as pl
 from cnaster.config import get_global_config, start_time
 from cnaster.logger import get_logger
@@ -56,17 +72,22 @@ def get_reference_genes(hgtable_file: str) -> Any:
 
     logger.info_once(f"Assuming legacy gene annotation={hgtable_file}.")
 
-    table = pl.read_csv(hgtable_file, separator="\t").filter(
-        pl.col("chrom").is_in(AUTOSOMES)
+    # NB `snp_id` and `is_interval` are literals upstream sets on the frame
+    #    rather than columns of the file, and they carry `object` and `bool`
+    #    through Arrow as they do through `numpy` -- which the bitwise test
+    #    checks, dtypes included, because a `None` column is exactly where a
+    #    conversion is free to choose a different one.
+    frame: Any = (
+        pl.read_csv(hgtable_file, separator="\t")
+        .filter(pl.col("chrom").is_in(AUTOSOMES))
+        .select(
+            pl.col("chrom").str.slice(3).cast(pl.Int64).alias("CHR"),
+            pl.col("cdsStart").alias("START"),
+            pl.col("cdsEnd").alias("END"),
+            pl.lit(None).alias("snp_id"),
+            pl.col("name2").alias("gene"),
+            pl.lit(True).alias("is_interval"),
+        )
+        .to_pandas()
     )
-
-    return pd.DataFrame(
-        {
-            "CHR": table["chrom"].str.slice(3).cast(pl.Int64).to_numpy(),
-            "START": table["cdsStart"].to_numpy(),
-            "END": table["cdsEnd"].to_numpy(),
-            "snp_id": None,
-            "gene": table["name2"].to_numpy(),
-            "is_interval": True,
-        }
-    )
+    return frame
