@@ -28,9 +28,11 @@ change itself is the two lines in `removal_indicator`.
 from __future__ import annotations
 
 import ast
+from collections.abc import Iterator
 from typing import Any
 
 import numpy as np
+import scipy.special
 import scipy.stats
 from cnaster.config import get_global_config, start_time
 from cnaster.hmm_emission import Weighted_BetaBinom
@@ -48,6 +50,274 @@ concentration is floored here, both in `cnaster` and in this patch: #38 owns
 whether that is the right prior, and a patch that changed it would be
 answering a different question from the one it is measuring.
 """
+
+
+def _log_mass(
+    index: np.ndarray, totals: np.ndarray, alpha: float, beta: float
+) -> np.ndarray:
+    """`scipy`'s own beta-binomial log mass function, evaluated elementwise.
+
+    Written out rather than called because `scipy` reaches it one
+    distribution at a time; the formula is `betabinom._logpmf`, unchanged.
+    """
+    return np.asarray(
+        -np.log(totals + 1)
+        - scipy.special.betaln(totals - index + 1, index + 1)
+        + scipy.special.betaln(index + alpha, totals - index + beta)
+        - scipy.special.betaln(alpha, beta)
+    )
+
+
+TERM_BUDGET = 1 << 16
+"""How many mass-function terms are held at once: 65,536, about 5 MB of peak.
+
+The summation covers every bin, so its intermediate is the whole ragged
+evaluation -- `sum(min(k, n - k))` terms, which at a slide's read depth is
+tens of millions and hundreds of megabytes. Bins are taken in groups under
+this budget instead, which bounds the peak at a constant and leaves the
+arithmetic identical: `np.add.reduceat` never sums across bins, so where the
+groups fall cannot change a result, and the values are bitwise the same at
+every budget measured.
+
+**The small budget is also the fast one.** At 20,000 reads per bin: 112 ms and
+167 MB at four million terms, 72.7 ms and 4.6 MB at this one. The working set
+fits in cache, so chunking buys time rather than trading it for memory --
+which is why the budget is set here rather than at the largest size that fits.
+
+One bin whose own range exceeds the budget is still evaluated whole.
+Splitting it would mean summing its parts and adding them, which is a
+different association from what the values are reported against.
+"""
+
+
+def _chunks(lengths: np.ndarray) -> Iterator[np.ndarray]:
+    """Bin indices, in groups whose summation stays under `TERM_BUDGET`."""
+    start, running = 0, 0
+
+    for index, length in enumerate(lengths):
+        if running and running + int(length) > TERM_BUDGET:
+            yield np.arange(start, index)
+            start, running = index, 0
+
+        running += int(length)
+
+    if start < len(lengths):
+        yield np.arange(start, len(lengths))
+
+
+def _log_tables(max_total: int, alpha: float, beta: float) -> tuple[np.ndarray, ...]:
+    """Log-factorial and log-rising-factorial tables up to `max_total`.
+
+    Every term of a beta-binomial mass function is four log-gamma values at
+    integer offsets from `1`, `alpha` and `beta`:
+
+    ```
+    log pmf(i) = logGamma(n + 1)  - logGamma(i + 1)     - logGamma(n - i + 1)
+               + logGamma(i + a)  + logGamma(n - i + b) - logGamma(n + a + b)
+               - betaln(a, b)
+    ```
+
+    Those offsets are consecutive integers, so each family is a cumulative sum
+    of logarithms built once in `O(max_total)` and read thereafter by index.
+    `scipy` evaluates `betaln` twice per term instead, which is six log-gamma
+    calls where this is four gathers.
+
+    The tables are `(max_total + 2)` doubles each, three of them -- half a
+    megabyte at a slide's read depth, against the sum itself.
+    """
+    steps = np.arange(1, max_total + 2, dtype=float)
+
+    log_factorial = np.concatenate(([0.0], np.cumsum(np.log(steps))))
+    rising = [
+        np.concatenate(([0.0], np.cumsum(np.log(shift + np.arange(max_total + 1)))))
+        for shift in (alpha, beta)
+    ]
+
+    return log_factorial, rising[0], rising[1]
+
+
+def _log_mass_tabulated(
+    index: np.ndarray,
+    totals: np.ndarray,
+    alpha: float,
+    beta: float,
+    tables: tuple[np.ndarray, ...],
+) -> np.ndarray:
+    """`_log_mass`, read off the tables rather than evaluated.
+
+    `logGamma(a) + logGamma(b) - betaln(a, b)` is `logGamma(a + b)`, which is
+    why neither appears below: the two constants cancel into one.
+    """
+    log_factorial, rising_alpha, rising_beta = tables
+    complement = totals - index
+
+    return np.asarray(
+        log_factorial[totals]
+        - log_factorial[index]
+        - log_factorial[complement]
+        + rising_alpha[index]
+        + rising_beta[complement]
+        + scipy.special.gammaln(alpha + beta)
+        - scipy.special.gammaln(totals + alpha + beta)
+    )
+
+
+def _ragged_index(
+    starts: np.ndarray, lengths: np.ndarray
+) -> tuple[np.ndarray, np.ndarray]:
+    """One flat index array over ragged ranges, and which range each came from.
+
+    `[start_j, start_j + length_j)` laid end to end, so the whole ragged
+    evaluation is one `numpy` call and one segmented sum instead of one call
+    per bin.
+    """
+    offsets = np.concatenate(([0], np.cumsum(lengths)))
+    segment = np.repeat(np.arange(len(lengths)), lengths)
+    flat = (
+        np.arange(offsets[-1], dtype=np.int64) - offsets[:-1][segment] + starts[segment]
+    )
+
+    return flat, segment
+
+
+def cumulative_and_mass(
+    counts: np.ndarray, totals: np.ndarray, alpha: float, beta: float
+) -> tuple[np.ndarray, np.ndarray]:
+    """`cdf(counts)` and `pmf(counts)` for every bin, in one vectorized sweep.
+
+    **`scipy` has no vectorized beta-binomial distribution function.**
+    `betabinom.cdf` goes through `_cdf_single`, which sums the mass function
+    from zero for one element at a time under `np.vectorize`, so a call over
+    `B` bins is `B` Python-level calls. After #175 removed the quantile
+    inversion, these two calls are **90 per cent of what the filter costs**:
+    2.50 s of 2.76 s at 2,500 spots and 400 bins.
+
+    Three things change and none of them is the arithmetic:
+
+    *   **One call.** Every bin's summation range is laid end to end, the mass
+        function is evaluated once over the concatenation, and the sums come
+        back from `np.add.reduceat`.
+    *   **Tabulated log-gammas.** The mass function's four log-gamma values
+        sit at integer offsets from `1`, `alpha` and `beta`, so each family is
+        one cumulative sum of logarithms and every term is four gathers. That
+        is what makes the ratio hold as the read depth grows, where the single
+        call alone does not.
+    *   **A bounded intermediate.** The bins are taken in groups under
+        `TERM_BUDGET`, so the peak is a constant rather than the whole ragged
+        evaluation. `scipy` holds one bin's range at a time, and a vectorized
+        rewrite that held every bin's at once would buy time with memory.
+    *   **The shorter tail.** `cdf(k) = 1 - sf(k)`, so a bin sums
+        `min(k + 1, n - k)` terms rather than `k + 1`. The B-allele count of a
+        diploid bin sits near `n / 2`, which is exactly where the saving is
+        least and where it is still a factor of two on any bin above it.
+    *   **One sweep for both.** The caller needs `cdf(k)` and `cdf(k - 1)`,
+        which differ by `pmf(k)`, so the second comes from the first for the
+        cost of one term rather than a second summation.
+
+    **This is a tolerance and not an identity.** The terms are summed in a
+    different order and, on the upper branch, subtracted from one, so the
+    values agree to floating point rather than bitwise. The **mask** the
+    caller builds from them is asserted bitwise against `cnaster`; the values
+    are asserted to `1e-12`.
+    """
+    counts = np.asarray(counts, dtype=np.int64)
+    totals = np.asarray(totals, dtype=np.int64)
+
+    tables = _log_tables(int(totals.max(initial=0)), alpha, beta)
+
+    mass = np.where(
+        (counts >= 0) & (counts <= totals),
+        np.exp(
+            _log_mass_tabulated(np.clip(counts, 0, totals), totals, alpha, beta, tables)
+        ),
+        0.0,
+    )
+
+    # NB sum whichever tail is shorter; `upper` sums (k, n] and is subtracted
+    #    from one, `lower` sums [0, k].
+    upper = counts + 1 > totals - counts
+    starts = np.where(upper, counts + 1, 0)
+    lengths = np.where(upper, totals - counts, counts + 1)
+    lengths = np.clip(lengths, 0, None)
+
+    sums = np.zeros(len(counts), dtype=float)
+
+    for group in _chunks(lengths):
+        nonempty = group[lengths[group] > 0]
+
+        if not nonempty.size:
+            continue
+
+        spans = lengths[nonempty]
+        flat, segment = _ragged_index(starts[nonempty], spans)
+        terms = np.exp(
+            _log_mass_tabulated(flat, totals[nonempty][segment], alpha, beta, tables)
+        )
+
+        sums[nonempty] = np.add.reduceat(
+            terms, np.concatenate(([0], np.cumsum(spans)[:-1]))
+        )
+
+    cumulative = np.where(upper, 1.0 - sums, sums)
+
+    return np.clip(cumulative, 0.0, 1.0), mass
+
+
+DECISION_MARGIN = 1.0e-8
+"""How close to a threshold a bin has to be before `scipy` decides it.
+
+`cumulative_and_mass` sums the mass function in a different order from
+`scipy`, so its values agree to floating point rather than bitwise --
+`3e-9` at the deepest size measured. Both comparisons below are **strict**,
+so a bin whose distribution function sits within that of a threshold could
+fall either way on rounding alone, and the mask is what decides whether a
+genomic bin survives.
+
+The margin is wider than the largest error measured, and the bins inside it
+are recomputed with `scipy` itself, so the answer is `cnaster`'s wherever the
+decision is close and the fast path's wherever it is not. On the fixtures here
+the margin catches nothing; the case it exists for is an exact tie, which a
+symmetric beta-binomial reaches at its midpoint against a threshold of `0.5`.
+"""
+
+
+def _settle_near_thresholds(
+    counts: np.ndarray,
+    totals: np.ndarray,
+    alpha: float,
+    beta: float,
+    confidence_interval: tuple[float, float],
+    below: np.ndarray,
+    at_or_below: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Re-decide the bins within `DECISION_MARGIN` of a threshold, with `scipy`.
+
+    One `scipy` call over the uncertain bins, which is empty on every instance
+    measured -- so this costs a comparison and buys back the one thing the
+    faster summation could change.
+    """
+    uncertain = np.flatnonzero(
+        (np.abs(below - confidence_interval[0]) <= DECISION_MARGIN)
+        | (np.abs(at_or_below - confidence_interval[1]) <= DECISION_MARGIN)
+    )
+
+    if not uncertain.size:
+        return below, at_or_below
+
+    logger.info(
+        f"Deciding {uncertain.size} bin(s) within {DECISION_MARGIN} of a "
+        "confidence threshold with scipy."
+    )
+
+    below, at_or_below = below.copy(), at_or_below.copy()
+    below[uncertain] = scipy.stats.betabinom.cdf(
+        counts[uncertain], totals[uncertain], alpha, beta
+    )
+    at_or_below[uncertain] = scipy.stats.betabinom.cdf(
+        counts[uncertain] - 1, totals[uncertain], alpha, beta
+    )
+
+    return below, at_or_below
 
 
 def removal_indicator(
@@ -79,8 +349,12 @@ def removal_indicator(
     the mask is bitwise `cnaster`'s and not within a tolerance -- the
     equivalence test asserts exactly that.
     """
-    below = scipy.stats.betabinom.cdf(counts, totals, alpha, beta)
-    at_or_below = scipy.stats.betabinom.cdf(counts - 1, totals, alpha, beta)
+    below, mass = cumulative_and_mass(counts, totals, alpha, beta)
+    at_or_below = np.clip(below - mass, 0.0, 1.0)
+
+    below, at_or_below = _settle_near_thresholds(
+        counts, totals, alpha, beta, confidence_interval, below, at_or_below
+    )
 
     return np.asarray(
         (below < confidence_interval[0]) | (at_or_below >= confidence_interval[1]),
