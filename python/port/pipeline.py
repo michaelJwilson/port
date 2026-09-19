@@ -175,15 +175,16 @@ FIGURE_SWAPS: tuple[Swap, ...] = (
 )
 """The replacements that **change the output**, installed only on request.
 
-One row, and it is 47 per cent of a run (#195): `write_fig`'s `dpi=300`
-decides the resolution of every rasterized panel, and mixed-mode PDF
-allocates a full-figure `RendererAgg` per rasterizing group at that
-resolution.
+One row, and it is 47 per cent of a run (#195). `write_fig` carries two
+defaults `cnaster` does not: `dpi=150`, and one rasterizing group per axes
+rather than the two a gridline splits `cnaster`'s runs into. Together they
+take a run's plotting from 20.34 s to 3.84 s and its renderer buffers from
+8,287 MB to 1,036 MB.
 
 Separate from `SWAPS` because `CLAUDE.md` forbids a silent behaviour change
-and this is one: the figures are the same drawing at a coarser raster, not
-the same bytes. `run_cnaster_port --figures` is the opt in, and the flag is
-what makes the decision a reader's rather than a default's.
+and both of these are ones: a coarser raster, and gridlines that paint under
+the data instead of over it. `run_cnaster_port --figures` is the opt in, and
+the flag is what makes the decision a reader's rather than a default's.
 """
 
 
