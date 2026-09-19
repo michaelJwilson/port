@@ -90,6 +90,7 @@ compiled extension is typed by the hand-written stub
 run_cnaster_port config.yaml                 # cnaster's pipeline, port's replacements
 run_cnaster_port --no-patch config.yaml      # the same run, nothing rebound
 run_cnaster_port --time-stages config.yaml   # what the replacements cost in the run
+run_cnaster_port --figures config.yaml       # also lower the figure dpi (#195)
 run_cnaster_port --list                      # what would be rebound, and why
 ```
 
