@@ -84,6 +84,25 @@ compiled extension is typed by the hand-written stub
 `python/port/oxiport.pyi`, which must be kept in step with the
 `#[pyfunction]` definitions in `src/lib.rs`.
 
+## Running the pipeline patched
+
+```
+run_cnaster_port config.yaml                 # cnaster's pipeline, port's replacements
+run_cnaster_port --no-patch config.yaml      # the same run, nothing rebound
+run_cnaster_port --time-stages config.yaml   # what the replacements cost in the run
+run_cnaster_port --list                      # what would be rebound, and why
+```
+
+`port.pipeline.SWAPS` is the table -- one row per `cnaster` name `port`
+replaces, each naming the ticket that measured it -- and `patched()` is the
+context manager that installs and restores it. The rebinding follows a name
+wherever it has been imported, because `run_cnaster` holds its own
+`from cnaster.omics import ...`.
+
+A patched run is held to reproducing an unpatched one artifact by artifact
+(`tests/test_patched_entry_point.py`), which is the claim that makes the
+speed claims worth reading.
+
 ## Layout
 
 | Path | Contents |
