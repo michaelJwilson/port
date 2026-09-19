@@ -43,7 +43,7 @@ badly** (#159):
 | --- | --- | --- | --- |
 | **e2e** | `end2end or oracle` | `cnaster` | how much of the subject is **validated** -- only tests whose referee is outside `cnaster` count |
 | **oracle** | the referee's own reach | `snakes_and_ladders` | how much of upstream is used as a referee. Separate, so the figure cannot rise by importing more of upstream, which validates nothing |
-| **all** | the other eight markers | `cnaster` | how much is merely **run**. The gap between this and `e2e` is the interesting number |
+| **all** | the other eight markers | `cnaster` | how much is merely **run**, rather than judged against anything outside `cnaster` |
 
 **`speed` and `mem`** are patched `run_cnaster` against `--no-patch`: wall
 time and peak resident memory, each arm in its own process, in ratio units.
@@ -64,6 +64,20 @@ the runner than by the patch, so a figure from there would be a number
 `CLAUDE.md` would not let this repository report. They are measured by hand
 on a quiet host, and the recorded commit is what says which tree they
 describe.
+
+**`e2e` and `all` are not subtractable** (#223). They report against
+different denominators -- 7,030 and 7,329 statements on the same tree with
+the same config -- because a `cnaster` subdirectory module enters the figure
+only when some test imports it. `cnaster` carries no `__init__.py`, so
+coverage's directory scan never reaches `scripts/`, but the tracer measures
+whatever runs and the source prefix then admits it. The 299-statement
+difference is `scripts/run_cnaster.py`, which guard 3's selection imports
+and guard 1's does not.
+
+The direction is what makes it worth fixing rather than noting: bringing that
+entry point under an `end2end` test would add its statements to `e2e`'s
+denominator, and unless the test covered more than 45.69 per cent of them the
+guard would **fall** for validating the most live code the subject has.
 
 **A badge reading `/` has no measurement yet**, and that is the point: not a
 zero, which is a claim, and not a last-known figure from a commit nobody can
