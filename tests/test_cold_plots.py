@@ -197,14 +197,17 @@ def test_the_he_image_loads_and_renders(
     missing = inputs.root / "no-slide-here"
     assert get_he_image(str(missing), pos=positions) is positions
 
-    # With the files present it reads the slide and then raises, because
-    # `he.py:125` calls `to_pandas()` on a polars frame and that needs
-    # `pyarrow` -- which `cnaster` does not declare (it declares `polars`).
-    # So the H&E path is unreachable on an install that follows the package's
-    # own dependency list. Pinned rather than worked around by installing
-    # something: adding a dependency is a decision, not a test fixture.
-    with pytest.raises(ModuleNotFoundError, match="pyarrow"):
-        get_he_image(str(inputs.root / "spaceranger"), pos=positions)
+    # With the files present it reads the slide and returns the merged frame.
+    # **That is new, and it is a side effect rather than a fix**: `he.py:125`
+    # calls `to_pandas()` on a polars frame, which needs `pyarrow`, and until
+    # #185 declared `pyarrow` for the reference read this raised. The path is
+    # reachable here because `port` installs it, and stays unreachable for
+    # anyone installing `cnaster` alone -- which is now pinned as a statement
+    # about `cnaster`'s metadata rather than about this environment, below.
+    slide = get_he_image(str(inputs.root / "spaceranger"), pos=positions)
+
+    assert isinstance(slide, pd.DataFrame)
+    assert {"x", "y", "red", "green", "blue", "label"} <= set(slide.columns)
 
     # The drawing is still reachable: `plot_he` converts only when handed a
     # polars frame, so an equivalent pandas one takes the same path.
@@ -286,3 +289,33 @@ def test_the_clone_annotations_load_and_assign(
     assigned = assign_clone_ranges(table, frame)
 
     assert len(assigned) == len(table)
+
+
+@pytest.mark.bug
+def test_cnaster_needs_pyarrow_for_its_he_path_and_does_not_declare_it() -> None:
+    """`he.py` calls `to_pandas()`; the package's own dependency list does not.
+
+    The finding `test_the_he_image_loads_and_renders` used to carry as a
+    raised `ModuleNotFoundError`. It cannot be pinned that way any more --
+    #185 declares `pyarrow` for the reference read, so the import now
+    succeeds here -- and the defect is unchanged: an environment built from
+    `cnaster`'s requirements alone cannot reach `get_he_image`'s return.
+
+    Pinned against the installed metadata rather than against an import, so
+    it says what is wrong (the declaration) instead of what this repository
+    happens to have installed. Written to fail when `cnaster` declares
+    `pyarrow`, or stops needing it.
+    """
+    import importlib.metadata
+
+    declared = importlib.metadata.requires("cnaster") or []
+    names = {
+        requirement.split()[0].split(";")[0].split(">")[0].split("=")[0].strip()
+        for requirement in declared
+    }
+
+    assert "polars" in names, "cnaster no longer requires polars; re-read he.py"
+    assert "pyarrow" not in names, (
+        "cnaster now declares pyarrow -- the H&E path is reachable from its own "
+        "requirements and this pin is spent"
+    )
