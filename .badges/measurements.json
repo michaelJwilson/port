@@ -26,7 +26,7 @@
    "selection": "not release and not (end2end or oracle)",
    "denominator": "cnaster + python/port",
    "commit": "e820b26",
-   "note": "Guard 3. Proposed by #159 and not wired into CI -- its 'Done when' asks for exactly that and is unmet. Measured here at 71.52 per cent (2,087 of 7,329 missed), but in a run where **5 tests failed**: they pass in the full suite, so they depend on the end2end/oracle selection having run first. A figure from a run with failures is not a measurement, so the badge stays '/' until that pollution is found and fixed."
+   "note": "Guard 3. Proposed by #159 and not wired into CI -- its 'Done when' asks for exactly that and is unmet. The 71.52 per cent read earlier came from a run with 5 failures, which was diagnosed here as test pollution and was not: re-run on its own the same selection is 524 passed, 1 skipped, 0 failed. The 5 were this module's own tests, failing because this file did not exist yet when that run collected them. The figure is being re-read against a clean run before it is badged."
   }
  },
  "whole_run": {

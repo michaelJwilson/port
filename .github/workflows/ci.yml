@@ -77,6 +77,17 @@ jobs:
           uv run --no-sync coverage run --rcfile=.coveragerc-oracle
           -m pytest -m "not release and not preprocessing" -q --no-cov
       - run: uv run --no-sync coverage report --rcfile=.coveragerc-oracle
+      # NB the badges. `tests/test_badges_agree.py` already refuses a badge
+      #    that disagrees with `.badges/measurements.json`; what it cannot
+      #    catch is a measurement that moved and was never written down, so
+      #    this reads the two coverage runs above and fails the job when the
+      #    recorded figure is not the one just measured.
+      #
+      #    It refuses rather than commits. A job that rewrote the numbers and
+      #    pushed would make the badges always correct and always unreviewed,
+      #    which is the opposite of what a floor is for: a coverage change
+      #    should arrive in a diff someone reads.
+      - run: uv run --no-sync python -m tests.check_badges
 
   # The release tier. `CLAUDE.md` says the release gate runs everything, and
   # until this job existed nothing did: `release` was a marker every job
