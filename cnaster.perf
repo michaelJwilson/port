@@ -28,3 +28,23 @@ row_index	timestamp	model	optimizer	size	num_states	default_start_params	runtime
 1	2026-09-19 03:20:41	Weighted_BetaBinom_mix	L-BFGS-B                                	400	1	True	0.0019	2	15	True	-1.337495e+04
 row_index	timestamp	model	optimizer	size	num_states	default_start_params	runtime	iterations	fcalls	converged	llf
 1	2026-09-19 03:20:41	Weighted_BetaBinom_mix	L-BFGS-B                                	400	1	True	0.0049	2	15	True	-1.337495e+04
+row_index	timestamp	model	optimizer	size	num_states	default_start_params	runtime	iterations	fcalls	converged	llf
+1	2026-09-19 03:38:42	Weighted_BetaBinom_mix	L-BFGS-B                                	400	1	True	0.1441	2	15	True	-1.337495e+04
+row_index	timestamp	model	optimizer	size	num_states	default_start_params	runtime	iterations	fcalls	converged	llf
+1	2026-09-19 03:39:02	Weighted_BetaBinom_mix	L-BFGS-B                                	400	1	True	0.0021	2	15	True	-1.337495e+04
+row_index	timestamp	model	optimizer	size	num_states	default_start_params	runtime	iterations	fcalls	converged	llf
+1	2026-09-19 03:39:23	Weighted_BetaBinom_mix	L-BFGS-B                                	400	1	True	0.0020	2	15	True	-1.337495e+04
+row_index	timestamp	model	optimizer	size	num_states	default_start_params	runtime	iterations	fcalls	converged	llf
+1	2026-09-19 03:39:43	Weighted_BetaBinom_mix	L-BFGS-B                                	400	1	True	0.0019	2	15	True	-1.337495e+04
+row_index	timestamp	model	optimizer	size	num_states	default_start_params	runtime	iterations	fcalls	converged	llf
+1	2026-09-19 03:40:03	Weighted_BetaBinom_mix	L-BFGS-B                                	400	1	True	0.0054	2	15	True	-1.337495e+04
+row_index	timestamp	model	optimizer	size	num_states	default_start_params	runtime	iterations	fcalls	converged	llf
+1	2026-09-19 03:40:25	Weighted_BetaBinom_mix	L-BFGS-B                                	400	1	True	0.0020	2	15	True	-1.337495e+04
+row_index	timestamp	model	optimizer	size	num_states	default_start_params	runtime	iterations	fcalls	converged	llf
+1	2026-09-19 03:40:25	Weighted_BetaBinom_mix	L-BFGS-B                                	400	1	True	0.0019	2	15	True	-1.337495e+04
+row_index	timestamp	model	optimizer	size	num_states	default_start_params	runtime	iterations	fcalls	converged	llf
+1	2026-09-19 03:40:26	Weighted_BetaBinom_mix	L-BFGS-B                                	400	1	True	0.0019	2	15	True	-1.337495e+04
+row_index	timestamp	model	optimizer	size	num_states	default_start_params	runtime	iterations	fcalls	converged	llf
+1	2026-09-19 03:40:26	Weighted_BetaBinom_mix	L-BFGS-B                                	400	1	True	0.0019	2	15	True	-1.337495e+04
+row_index	timestamp	model	optimizer	size	num_states	default_start_params	runtime	iterations	fcalls	converged	llf
+1	2026-09-19 03:40:26	Weighted_BetaBinom_mix	L-BFGS-B                                	400	1	True	0.0049	2	15	True	-1.337495e+04

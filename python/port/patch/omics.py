@@ -278,12 +278,14 @@ def assign_initial_blocks(
     over a run of blocks is a difference of prefix sums, so the smallest `t`
     meeting the threshold is another one.
 
-    **What is not changed:** `summarize_blocks`, which `cnaster` calls twice
-    here and whose return value it discards -- it exists to log. That is 39%
-    of the function and it is left in place, because removing it would remove
-    its log lines too; #191 records it.
+    **The two `summarize_blocks` calls stay**, because their log lines are
+    the only thing they produce and removing them is a behaviour change. They
+    come from `port.patch.summaries` instead (#191), which logs the same lines
+    from two passes and a `bincount` rather than a fancy-indexed slice of the
+    count matrix per block -- 39% of this function, computed rather than
+    looped.
     """
-    from cnaster.omics import summarize_blocks
+    from port.patch.summaries import summarize_blocks
 
     if "known_id" in df_gene_snp.columns:
         from cnaster.omics import assign_initial_blocks as upstream
