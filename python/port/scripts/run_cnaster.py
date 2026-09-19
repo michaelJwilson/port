@@ -22,7 +22,7 @@ import time
 from collections.abc import Sequence
 from contextlib import ExitStack
 
-from port.pipeline import FIGURE_SWAPS, SWAPS, Spent, instrumented, patched
+from port.pipeline import FIGURE_SWAPS, SWAPS, Spent, instrumented, patched, warm
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -45,6 +45,15 @@ def _parser() -> argparse.ArgumentParser:
             "also install the replacements that change the output: the figure "
             "dpi (#195). Off by default, because every other swap reproduces "
             "cnaster bitwise and this one does not."
+        ),
+    )
+    parser.add_argument(
+        "--warm-up",
+        action="store_true",
+        help=(
+            "compile every kernel before the clock starts, so the timed run "
+            "measures the code and not the compiler (#211). Off by default: a "
+            "run whose first call really is the cost should be able to see it."
         ),
     )
     parser.add_argument(
@@ -101,6 +110,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
         else:
             print("run_cnaster_port: --no-patch, nothing rebound", file=sys.stderr)
+
+        # NB after the swaps and before the timer, so what is compiled is
+        #    what the run will call and none of it lands in the measurement.
+        if arguments.warm_up:
+            warmed = warm()
+            print(f"run_cnaster_port: {warmed.report()}", file=sys.stderr)
 
         # NB after the swaps, so the wrapper times whichever implementation
         #    the run is about to use.
