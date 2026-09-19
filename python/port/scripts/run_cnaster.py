@@ -10,8 +10,17 @@ changes an order; the entry point called is `cnaster.scripts.run_cnaster`,
 and if `cnaster` lands a patch upstream the row leaves `SWAPS` and this
 script keeps working.
 
-What a patched run should produce is what the unpatched run produced, and
-`tests/test_patched_entry_point.py` is what holds it to that.
+**`--figures` is on by default, so a default run does not reproduce
+`cnaster` byte for byte.** It is the largest measured win here -- 47 per
+cent of a run, and 8,287 MB of figure rendering down to 1,036 MB (#195) --
+and a figure written at a different dpi is a different file by design. Pass
+`--no-figures` for an arm that does reproduce bitwise.
+
+That property still holds of `port.pipeline.SWAPS`, which is unchanged and
+still what `install()` defaults to; only this entry point's default moved.
+So what `tests/test_patched_entry_point.py` asserts is what it always
+asserted -- every row of `SWAPS` reproducing `cnaster` -- and the table that
+does not make that claim is still the separate one.
 """
 
 from __future__ import annotations
@@ -40,11 +49,15 @@ def _parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--figures",
-        action="store_true",
+        action=argparse.BooleanOptionalAction,
+        default=None,
         help=(
-            "also install the replacements that change the output: the figure "
-            "dpi (#195). Off by default, because every other swap reproduces "
-            "cnaster bitwise and this one does not."
+            "install the replacements that change the output: the figure dpi "
+            "and the rasterizing groups (#195). **On by default**, because it "
+            "is the largest measured win port has -- 47 per cent of a run, and "
+            "8,287 MB of figure rendering down to 1,036 MB. Pass --no-figures "
+            "for an arm that reproduces cnaster bitwise, which every other "
+            "swap does and this one does not."
         ),
     )
     parser.add_argument(
@@ -85,7 +98,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         for swap in FIGURE_SWAPS:
             print(
                 f"{swap.module}.{swap.name} <- {swap.replacement}  "
-                f"(#{swap.ticket}, --figures only: changes the output)"
+                f"(#{swap.ticket}, changes the output; --no-figures to omit)"
             )
         return 0
 
@@ -96,16 +109,37 @@ def main(argv: Sequence[str] | None = None) -> int:
         # NB `--figures` is additive rather than a third mode, and it composes
         #    with `--no-patch`: what a reader needs to know about a run is
         #    which of the two tables produced it, not which flag was typed.
+        #
+        #    It is **on by default** and the two tables stay separate, which
+        #    is the whole point: `SWAPS` is still the set that reproduces
+        #    `cnaster` bitwise, so the tests that assert that property keep
+        #    asserting it, while a user who just runs the entry point gets
+        #    the 47 per cent. Turning it on by merging the tables would have
+        #    bought the same speed and cost the claim.
+        # NB `--no-patch` means nothing rebound, so it turns the figure
+        #    default off with it. Without this the baseline arm still
+        #    installs `write_fig` and stops being a baseline -- measured, and
+        #    not subtly: the unpatched arm ran 188.88 s at 11.35 GB before
+        #    the default moved and 142.36 s at 3.67 GB after, which reads as
+        #    the patch doing less good rather than the baseline getting the
+        #    win for free.
+        #
+        #    `default=None` is what makes that possible: it separates "not
+        #    asked" from "asked for off", so `--no-patch --figures` still
+        #    composes and still measures the figure swap on its own.
+        figures = (
+            not arguments.no_patch if arguments.figures is None else arguments.figures
+        )
+
         selected = SWAPS if not arguments.no_patch else ()
-        if arguments.figures:
+        if figures:
             selected = selected + FIGURE_SWAPS
 
         if selected:
             sites = stack.enter_context(patched(selected))
             print(
                 f"run_cnaster_port: {len(selected)} replacements over "
-                f"{len(sites)} bindings"
-                + (", figures included" if arguments.figures else ""),
+                f"{len(sites)} bindings" + (", figures included" if figures else ""),
                 file=sys.stderr,
             )
         else:

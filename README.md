@@ -1,5 +1,12 @@
 # port
 
+[![e2e](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/michaelJwilson/port/main/.badges/coverage-judged.json)](#what-the-badges-mean)
+[![oracle](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/michaelJwilson/port/main/.badges/coverage-oracle.json)](#what-the-badges-mean)
+[![all](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/michaelJwilson/port/main/.badges/coverage-reach.json)](#what-the-badges-mean)
+[![speed](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/michaelJwilson/port/main/.badges/run-speed.json)](#what-the-badges-mean)
+[![mem](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/michaelJwilson/port/main/.badges/run-mem.json)](#what-the-badges-mean)
+[![instance](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/michaelJwilson/port/main/.badges/instance.json)](#what-the-badges-mean)
+
 A scientific repository built on
 [`snakes_and_ladders`](https://github.com/michaelJwilson/snakes_and_ladders),
 holding the same separation of infrastructure from application and the same
@@ -19,6 +26,64 @@ on them, and lands nothing in either.
 
 Python lives under `python/port/`; the CPU-bound work belongs in the Rust crate
 under `src/`, exposed to Python as `port.oxiport`.
+
+## What the badges mean
+
+Six numbers, and each is a claim rather than a decoration.
+`.badges/measurements.json` holds every value with the selection, denominator
+and commit that produced it, `python -m tests.badges` derives the badges from
+it, and `tests/test_badges_agree.py` fails when the two disagree -- the same
+guard `tests/test_planning_documents_agree.py` puts on the planning
+documents.
+
+**Three coverage guards, because one figure would answer three questions
+badly** (#159):
+
+| badge | selection | denominator | what it says |
+| --- | --- | --- | --- |
+| **e2e** | `end2end` | `cnaster` | how much of the subject is **validated end to end**, against the truth that generated the data. `oracle` is excluded because the badge beside it claims that word |
+| **oracle** | the referee's own reach | `snakes_and_ladders` | how much of upstream is used as a referee. Separate, so the figure cannot rise by importing more of upstream, which validates nothing |
+| **all** | the other eight markers | `cnaster` | how much is merely **run**, rather than judged against anything outside `cnaster` |
+
+**`speed` and `mem`** are patched `run_cnaster` against `--no-patch`: wall
+time and peak resident memory, each arm in its own process, in ratio units.
+
+**`instance`** is what makes those two readable, and `CLAUDE.md` is explicit
+that a ratio read at a gate size decides nothing -- so the three are a set.
+It carries the size as `obs x spots x states`, which is what a tier name
+cannot: two instances both called stress can differ by more than the patch
+being measured does. It asserts nothing and is blue for that reason.
+
+`tests/test_badges_agree.py` is what keeps them together. It refuses a
+recorded ratio that does not name its instance, carry exactly two arms, and
+show both arms exiting 0 -- a ratio from an arm that did not complete is not
+a ratio -- and it refuses a ratio rendered while `instance` still reads `/`.
+
+Neither ratio is re-measured by CI, and that is deliberate rather than
+pending. A whole `run_cnaster` on a shared two-core runner is moved more by
+the runner than by the patch, so a figure from there would be a number
+`CLAUDE.md` would not let this repository report. They are measured by hand
+on a quiet host, and the recorded commit is what says which tree they
+describe.
+
+**`e2e` and `all` are not subtractable** (#223). They report against
+different denominators -- 7,030 and 7,329 statements on the same tree with
+the same config -- because a `cnaster` subdirectory module enters the figure
+only when some test imports it. `cnaster` carries no `__init__.py`, so
+coverage's directory scan never reaches `scripts/`, but the tracer measures
+whatever runs and the source prefix then admits it. The 299-statement
+difference is `scripts/run_cnaster.py`, which guard 3's selection imports
+and guard 1's does not.
+
+The direction is what makes it worth fixing rather than noting: bringing that
+entry point under an `end2end` test would add its statements to `e2e`'s
+denominator, and unless the test covered more than 45.69 per cent of them the
+guard would **fall** for validating the most live code the subject has.
+
+**A badge reading `/` has no measurement yet**, and that is the point: not a
+zero, which is a claim, and not a last-known figure from a commit nobody can
+name. `all` is unwired (#159's "Done when" asks for it and is unmet) and the
+ratio pair is #91.
 
 ## Prerequisites
 
@@ -89,8 +154,8 @@ compiled extension is typed by the hand-written stub
 ```
 run_cnaster_port config.yaml                 # cnaster's pipeline, port's replacements
 run_cnaster_port --no-patch config.yaml      # the same run, nothing rebound
+run_cnaster_port --no-figures config.yaml    # the replacements that reproduce bitwise
 run_cnaster_port --time-stages config.yaml   # what the replacements cost in the run
-run_cnaster_port --figures config.yaml       # also lower the figure dpi (#195)
 run_cnaster_port --list                      # what would be rebound, and why
 ```
 
@@ -100,9 +165,31 @@ context manager that installs and restores it. The rebinding follows a name
 wherever it has been imported, because `run_cnaster` holds its own
 `from cnaster.omics import ...`.
 
-A patched run is held to reproducing an unpatched one artifact by artifact
+**Every row of `SWAPS` reproduces `cnaster` artifact by artifact**
 (`tests/test_patched_entry_point.py`), which is the claim that makes the
-speed claims worth reading.
+speed claims worth reading. `FIGURE_SWAPS` is a second table that does not:
+lowering the dpi and merging the rasterizing groups writes a different file
+by design (#195). It is **in the default** because it is the largest win
+here, and `--no-figures` is the arm that reproduces bitwise.
+
+Measured at 4,000 x 1,980 x 5, against `--no-patch`:
+
+| installed | wall | peak RSS |
+| --- | ---: | ---: |
+| nothing | 192.06 s | 11.35 GB |
+| `SWAPS` | 156.63 s | 11.33 GB |
+| `SWAPS` + `FIGURE_SWAPS` | 120.48 s | 3.69 GB |
+
+So the figure swaps are most of the runtime win and all of the memory one.
+At this instance the emission array is about 0.3 GB against an 11.35 GB
+peak, which says plotting caps this run rather than the emission array --
+a different regime from #90's declared scale, not a contradiction of it.
+
+`cnaster` appends a fit record to `cnaster.perf` in the repository root on
+every run. It is **not tracked** (#222): nothing reads it, no test
+references it, and its rows carry no commit or instance, so it is a log
+rather than a measurement record. A tracked file that changes on every run
+trains a reader to ignore `git status`.
 
 ## Layout
 
