@@ -24,7 +24,7 @@ Measured on `main` at `9cd81f0`, `pytest -m "not release"`, one thread.
 | 3.1 The three references | Three audits written, all in flight | — | [#51](https://github.com/michaelJwilson/port/pull/51), [#52](https://github.com/michaelJwilson/port/pull/52), [#53](https://github.com/michaelJwilson/port/pull/53) |
 | 3.2 Runtime and memory audits | One landed as a profile; the input path not started | See 4.1 | — |
 | 4.1 The HMM/spatial boundary | Profiled, and five patches in flight | The emission producer is 93.0 per cent of the boundary; the field 0.3 per cent, the solve 0.2, the adjacency 0.1 | [#60](https://github.com/michaelJwilson/port/pull/60)–[#64](https://github.com/michaelJwilson/port/pull/64) |
-| 4.2 The emission and the M step | Not started | The profile puts the time here, and nothing has been measured against the alternative | — |
+| 4.2 The emission and the M step | The emission collapsed, bitwise; the M step not started | One recursion for `cnaster`'s four and one entry point for its two, each `np.array_equal` against what it replaces, writing into buffers instead of 1.34 GB per call at the stress size | [#207](https://github.com/michaelJwilson/port/pull/207), [#214](https://github.com/michaelJwilson/port/pull/214) |
 | 4.3 Defects found in the subject | Four found, none landed upstream | #30 measured; #45, #46 and the `wolff` import failure reproduced | [#31](https://github.com/michaelJwilson/port/pull/31) |
 | 5.1 Upstream reports | Four reports, each with a measurement | Upstream's `external_field` is bitwise unchanged by a covariate, max abs diff 0.000e+00; `baum_welch_family` raises on a two-channel family; `__init__.py` is worth +919 statements to the gate | — |
 | 5.2 The documents and the gate | Started. `CLAUDE.md` mirrors upstream; `changelog.d` and the docs builds do not exist | `CLAUDE.md` 213 to 335 lines, ten upstream headings in upstream's order | [#42](https://github.com/michaelJwilson/port/pull/42), [#55](https://github.com/michaelJwilson/port/pull/55) |
@@ -126,7 +126,15 @@ simplifications and each says so rather than claiming a speedup.
 
 ## Milestone 4.2 — The emission and the M step
 
-Where the profile puts the time, and where nothing has been measured.
+The M step is where the profile puts the time and nothing has been measured.
+The emission has been collapsed rather than sped up (#205): one recursion for
+`cnaster`'s four and one entry point for its two, each reproduced **bitwise**,
+writing into buffers the caller owns instead of allocating
+`(n_states, n_obs, n_spots)` per channel per call — 1.34 GB at the stress size
+measured, twice per outer iteration. #205's premise was corrected on the way:
+"nine density routines for two distributions" counted a three-rung shape
+hierarchy as duplication, and the one genuine duplicate agrees with its twin to
+4.1e-13.
 
 ## Milestone 4.3 — Defects found in the subject
 
