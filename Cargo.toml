@@ -18,6 +18,12 @@ name = "oxiport"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-# Add `numpy` here when a binding first takes or returns an array; nothing
-# does yet, and an unused dependency is build time paid for nothing.
 pyo3 = { version = "0.29", features = ["extension-module"] }
+# The first binding to take an array arrived with #184. `rust-numpy` is the
+# PyO3 project's own array bridge (BSD-2-Clause, ~1.2k stars) and is versioned
+# against the `pyo3` above, so the pair moves together or not at all.
+numpy = "0.29"
+# Data parallelism for the two kernels' folds. Apache-2.0/MIT, ~11k stars, and
+# a rust-lang project. It is the whole of the crate's threading: each kernel
+# validates, releases the GIL, and folds, so nothing here manages a pool.
+rayon = "1"
