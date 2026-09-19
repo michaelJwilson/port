@@ -154,8 +154,8 @@ compiled extension is typed by the hand-written stub
 ```
 run_cnaster_port config.yaml                 # cnaster's pipeline, port's replacements
 run_cnaster_port --no-patch config.yaml      # the same run, nothing rebound
+run_cnaster_port --no-figures config.yaml    # the replacements that reproduce bitwise
 run_cnaster_port --time-stages config.yaml   # what the replacements cost in the run
-run_cnaster_port --figures config.yaml       # also lower the figure dpi (#195)
 run_cnaster_port --list                      # what would be rebound, and why
 ```
 
@@ -165,9 +165,31 @@ context manager that installs and restores it. The rebinding follows a name
 wherever it has been imported, because `run_cnaster` holds its own
 `from cnaster.omics import ...`.
 
-A patched run is held to reproducing an unpatched one artifact by artifact
+**Every row of `SWAPS` reproduces `cnaster` artifact by artifact**
 (`tests/test_patched_entry_point.py`), which is the claim that makes the
-speed claims worth reading.
+speed claims worth reading. `FIGURE_SWAPS` is a second table that does not:
+lowering the dpi and merging the rasterizing groups writes a different file
+by design (#195). It is **in the default** because it is the largest win
+here, and `--no-figures` is the arm that reproduces bitwise.
+
+Measured at 4,000 x 1,980 x 5, against `--no-patch`:
+
+| installed | wall | peak RSS |
+| --- | ---: | ---: |
+| nothing | 192.06 s | 11.35 GB |
+| `SWAPS` | 156.63 s | 11.33 GB |
+| `SWAPS` + `FIGURE_SWAPS` | 120.48 s | 3.69 GB |
+
+So the figure swaps are most of the runtime win and all of the memory one.
+At this instance the emission array is about 0.3 GB against an 11.35 GB
+peak, which says plotting caps this run rather than the emission array --
+a different regime from #90's declared scale, not a contradiction of it.
+
+`cnaster` appends a fit record to `cnaster.perf` in the repository root on
+every run. It is **not tracked** (#222): nothing reads it, no test
+references it, and its rows carry no commit or instance, so it is a log
+rather than a measurement record. A tracked file that changes on every run
+trains a reader to ignore `git status`.
 
 ## Layout
 

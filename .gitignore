@@ -15,6 +15,14 @@ __pycache__/
 .coverage-e2e
 .coverage-oracle
 .coverage-reach
+# NB `cnaster` appends a fit record here on every run, so a tracked copy made
+#    `git status` dirty after any invocation of the suite (#222). Untracked
+#    rather than kept: nothing reads it, no test references it, and the rows
+#    carry no commit or instance, so they were a log rather than a
+#    measurement record. A tracked file that changes on every run trains a
+#    reader to ignore `git status`, and the once it carries something real it
+#    looks exactly like the noise.
+cnaster.perf
 .coverage.*
 *.egg-info/
 .ruff_cache/
