@@ -14,7 +14,6 @@ whole run says the pipeline still computes what it computed.
 import inspect
 import re
 import shutil
-import warnings
 from pathlib import Path
 from typing import Any
 
@@ -200,10 +199,18 @@ def test_a_patched_run_reproduces_an_unpatched_one(tmp_path: Path) -> None:
 
     `release` because it is two pipelines end to end. Nothing smaller makes
     this claim: the component tests each put one replacement to the call it
-    replaces, and what they cannot say is that eleven of them installed at
+    replaces, and what they cannot say is that twelve of them installed at
     once still compose into the same run.
+
+    **Each arm is its own process**, through the console entry point rather
+    than by importing the pipeline here. Two pipelines in one interpreter
+    peak past this host's 15 GB and the run is killed -- exit 137, no output,
+    which reads exactly like a hang. It is also what production does: the
+    entry point is what ships, so running it is a stronger claim than
+    importing what it calls.
     """
-    import cnaster.scripts.run_cnaster as pipeline
+    import subprocess
+    import sys
 
     from tests.fixtures import core_inference_truth
     from tests.run_config import write_run_cnaster_config
@@ -220,15 +227,20 @@ def test_a_patched_run_reproduces_an_unpatched_one(tmp_path: Path) -> None:
 
     output = written.root / "output"
 
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
+    def run(*flags: str) -> None:
+        completed = subprocess.run(
+            [sys.executable, "-m", "port.scripts.run_cnaster", *flags, str(config)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert completed.returncode == 0, completed.stderr[-4000:]
 
-        pipeline.run_cnaster(str(config))
-        baseline = tmp_path / "baseline"
-        shutil.move(str(output), str(baseline))
+    run("--no-patch")
+    baseline = tmp_path / "baseline"
+    shutil.move(str(output), str(baseline))
 
-        with patched():
-            pipeline.run_cnaster(str(config))
+    run()
 
     same, differ = _compare(baseline, output)
 

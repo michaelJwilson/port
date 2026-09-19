@@ -138,6 +138,12 @@ SWAPS: tuple[Swap, ...] = (
         "port.patch.hmrf_field:compute_loglike_spot_assignment_strided",
         59,
     ),
+    Swap(
+        "cnaster.hmrf",
+        "pipeline_clone_assignment",
+        "port.patch.clone_assignment:pipeline_clone_assignment",
+        206,
+    ),
 )
 """Every `cnaster` name `port` can replace by rebinding it.
 
