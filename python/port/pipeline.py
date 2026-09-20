@@ -50,6 +50,7 @@ from typing import Any
 
 __all__ = [
     "FIGURE_SWAPS",
+    "NUMERIC_SWAPS",
     "SWAPS",
     "Site",
     "Swap",
@@ -167,6 +168,36 @@ whole-run test asserts, and it is why `FIGURE_SWAPS` is a separate table
 rather than three more rows: a figure written at half the dpi is a different
 file by design, and mixing the two would make "the patched run reproduces
 the unpatched one" a claim nobody could state.
+"""
+
+
+NUMERIC_SWAPS: tuple[Swap, ...] = (
+    Swap(
+        "cnaster.hmm_nophasing",
+        "_nb_logpmf_1d",
+        "port.patch.nb_logpmf:nb_logpmf_1d",
+        240,
+    ),
+)
+"""The replacements that agree to a **tolerance** rather than bitwise.
+
+A third table for the same reason `FIGURE_SWAPS` is a second one: `SWAPS`
+carries a claim -- every row reproduces `cnaster` byte for byte -- and a row
+that agrees to 8.6e-13 does not make it. Putting it in `SWAPS` would not have
+made the claim false quietly; it would have made
+`tests/test_patched_entry_point.py` fail, which is the guard working. This is
+the honest place for it.
+
+**On by default**, because the agreement is round-off from a different
+summation order and a different `lgamma` implementation, not a modelling
+difference: `scipy.special.gammaln` over an array against libm's `lgamma` per
+element. `--no-approx` is the arm that reproduces bitwise.
+
+One row, measured 1.78x across ten states and 1.469x for a single call (#240).
+The spread is the `log(k!)` cache paying off across states, which is what a
+run does. **Below `CLAUDE.md`'s 2x bar either way**, so it lands on its
+evidence of equivalence; the 3.51x form needs a `k_max` bound and a fallback
+that nothing has measured.
 """
 
 

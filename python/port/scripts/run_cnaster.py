@@ -31,7 +31,15 @@ import time
 from collections.abc import Sequence
 from contextlib import ExitStack
 
-from port.pipeline import FIGURE_SWAPS, SWAPS, Spent, instrumented, patched, warm
+from port.pipeline import (
+    FIGURE_SWAPS,
+    NUMERIC_SWAPS,
+    SWAPS,
+    Spent,
+    instrumented,
+    patched,
+    warm,
+)
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -58,6 +66,18 @@ def _parser() -> argparse.ArgumentParser:
             "8,287 MB of figure rendering down to 1,036 MB. Pass --no-figures "
             "for an arm that reproduces cnaster bitwise, which every other "
             "swap does and this one does not."
+        ),
+    )
+    parser.add_argument(
+        "--approx",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help=(
+            "install the replacements that agree to a tolerance rather than "
+            "bitwise: the vectorized negative-binomial log-pmf (#240). On by "
+            "default -- the disagreement is 8.6e-13, round-off from scipy's "
+            "gammaln against libm's lgamma, not a modelling difference. Pass "
+            "--no-approx for an arm that reproduces cnaster byte for byte."
         ),
     )
     parser.add_argument(
@@ -95,6 +115,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     if arguments.list:
         for swap in SWAPS:
             print(f"{swap.module}.{swap.name} <- {swap.replacement}  (#{swap.ticket})")
+        for swap in NUMERIC_SWAPS:
+            print(
+                f"{swap.module}.{swap.name} <- {swap.replacement}  "
+                f"(#{swap.ticket}, agrees to a tolerance; --no-approx to omit)"
+            )
         for swap in FIGURE_SWAPS:
             print(
                 f"{swap.module}.{swap.name} <- {swap.replacement}  "
@@ -130,8 +155,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         figures = (
             not arguments.no_patch if arguments.figures is None else arguments.figures
         )
+        approx = (
+            not arguments.no_patch if arguments.approx is None else arguments.approx
+        )
 
         selected = SWAPS if not arguments.no_patch else ()
+        if approx:
+            selected = selected + NUMERIC_SWAPS
         if figures:
             selected = selected + FIGURE_SWAPS
 
@@ -139,7 +169,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             sites = stack.enter_context(patched(selected))
             print(
                 f"run_cnaster_port: {len(selected)} replacements over "
-                f"{len(sites)} bindings" + (", figures included" if figures else ""),
+                f"{len(sites)} bindings"
+                + (", figures included" if figures else "")
+                + (", approx included" if approx else ""),
                 file=sys.stderr,
             )
         else:
@@ -157,7 +189,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         #    two arms print the same rows and `write_fig` can be compared
         #    against itself rather than inferred from the whole-run delta.
         spent = (
-            stack.enter_context(instrumented(SWAPS + FIGURE_SWAPS))
+            stack.enter_context(instrumented(SWAPS + NUMERIC_SWAPS + FIGURE_SWAPS))
             if arguments.time_stages
             else None
         )
