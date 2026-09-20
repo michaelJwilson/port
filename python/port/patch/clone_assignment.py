@@ -260,6 +260,7 @@ def pipeline_clone_assignment(
     from port.patch.hmrf_adjacency import adjacency_coo
     from port.patch.hmrf_fused_field import fused_spot_clone_field
     from port.patch.icm_interface import CsrGraph, fold_unary, icm_sweep
+    from port.patch.label_solver import label_solver
 
     reason = _delegates(single_tumor_prop, res["new_log_mu"])
 
@@ -349,14 +350,24 @@ def pipeline_clone_assignment(
     if get_global_config().hmrf.fixed_assignment:
         logger.warning("Assuming a fixed clone assignment")
     else:
-        logger.info("Solving for updated clone assignment with icm_sweep_dequeue.")
+        solver = label_solver()
+
+        logger.info(f"Solving for updated clone assignment with {solver}.")
 
         # NB the solver takes the problem -- a unary field, one graph, one
         #    coupling -- rather than its call site (#59 item 5). The
         #    per-sample weights fold into the field, which is where they were
         #    added anyway, once per visit instead of once per sweep; the
         #    three adjacency arrays travel as the one graph they are.
-        result = icm_sweep(
+        sweep = (
+            icm_sweep
+            if solver == "icm"
+            else __import__(
+                "port.patch.alpha_expansion", fromlist=["alpha_expansion_sweep"]
+            ).alpha_expansion_sweep
+        )
+
+        result = sweep(
             fold_unary(field, log_persample_weights, sample_ids),
             CsrGraph.from_matrix(adjacency_mat),
             new_assignment,
