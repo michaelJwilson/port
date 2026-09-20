@@ -40,6 +40,8 @@ CORRESPONDENCE: dict[str, tuple[str, ...]] = {
     "snakes_and_ladders.sim.spatio_sequential": ("cnaster.hmrf",),
     "snakes_and_ladders.sim.graph": ("cnaster.hmrf_utils",),
     "snakes_and_ladders.sim.hmm": ("cnaster.hmm_nophasing",),
+    "snakes_and_ladders.opt.emission_mixture": ("cnaster.hmm_initialize",),
+    "snakes_and_ladders.opt.mixture": ("cnaster.hmm_initialize",),
 }
 """Each declared upstream module, and the `cnaster` code whose claim rests on it.
 
@@ -54,9 +56,12 @@ CNASTER_EMISSION_KERNELS = {"nb", "bb"}
 """The families `cnaster` implements, derived below rather than asserted.
 
 `hmm_nophasing` defines `_nb_logpmf_1d` and `_bb_logpmf_1d` and nothing else
-of the kind. Every other family upstream ships -- Categorical, Gaussian,
-Poisson, Binomial, CountPair -- has no counterpart, so none of them is
-refereeable and none of their statements belongs in an opportunity.
+of the kind. `CountPairEmission` is the two of them applied to one
+observation -- a depth and the successes within it -- so it is matched rather
+than unmatched, which #232 established by refereeing the densities against
+each other to 1.4e-13. Categorical, Gaussian, Poisson and Binomial have no
+counterpart, so none is refereeable and none of their statements belongs in
+an opportunity.
 """
 
 UNMATCHED_FAMILIES = {
@@ -64,10 +69,12 @@ UNMATCHED_FAMILIES = {
     "GaussianEmission",
     "PoissonEmission",
     "BinomialEmission",
-    "CountPairEmission",
 }
-"""Upstream families with no `cnaster` counterpart: 377 statements, **excluded
-from the denominator** by `.coveragerc-oracle`'s `exclude_also`.
+"""Upstream families with no `cnaster` counterpart, **excluded from the
+denominator** by `.coveragerc-oracle`'s `exclude_also`.
+
+`CountPairEmission` left this set on #232 and its statements entered the
+denominator with it, which is why the surface is 2,582 rather than 2,164.
 
 The figure measures coverage against what `cnaster` can do, so capability
 upstream adds that the subject has no counterpart for must not dilute it.
@@ -185,7 +192,16 @@ def test_the_unmatched_emission_families_are_the_ones_named() -> None:
         for node in tree.body
         if isinstance(node, ast.ClassDef) and node.name.endswith("Emission")
     }
-    matched = {"NegativeBinomialEmission", "BetaBinomialEmission"}
+    matched = {
+        "NegativeBinomialEmission",
+        "BetaBinomialEmission",
+        # NB joined on #232. `cnaster`'s two kernels applied to one
+        #    observation are this family, and
+        #    `tests/test_emission_mixture_oracle.py` referees them against it
+        #    to 1.4e-13. It decides an expected value now, which is the
+        #    `upstream_oracle` role it did not have when it only drew (#69).
+        "CountPairEmission",
+    }
     base = {"CountEmissionFamily", "EmissionFamily"}
 
     assert families - matched - base == UNMATCHED_FAMILIES, (
