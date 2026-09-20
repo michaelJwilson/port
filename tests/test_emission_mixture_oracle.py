@@ -31,6 +31,7 @@ from port.patch.emission_family import (
     constant_covariate,
     count_pair_family,
 )
+from snakes_and_ladders.emissions import CountPairEmission
 from snakes_and_ladders.opt.emission_mixture import (
     CountPairSeeding,
     expectation_maximization,
@@ -140,7 +141,13 @@ def test_upstreams_mixture_recovers_the_planted_state(
     #    binomial's, column 1 the beta-binomial's. Both are checked, because
     #    a fit that finds the depth and misses the allele fraction has found
     #    half the state.
-    fitted = np.asarray(fit.components.mean)
+    components = fit.components
+
+    assert isinstance(components, CountPairEmission), (
+        f"expected a CountPairEmission, got {type(components).__name__}"
+    )
+
+    fitted = np.asarray(components.mean)
 
     assert fitted.shape == (2, 2), (
         f"expected (n_states, n_channels), got {fitted.shape}"
