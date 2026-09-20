@@ -134,20 +134,27 @@ def _ratio_badge(name: str, axis: str, run: dict[str, Any]) -> Badge:
 
 
 def _instance_badge(run: dict[str, Any]) -> Badge:
-    """The shape the two ratio badges were read at.
+    """The tier the two ratio badges were read at.
 
-    `speed @ stress` and `mem @ stress` name the **tier** and have no room
-    for anything else, and a tier is not a shape: two instances both called
-    stress can differ by more than the patch being measured does. So this
-    carries the size, and it is what makes the other two readable rather
-    than decorative.
+    `speed` and `mem` carry a ratio and no context, and a ratio read at a
+    gate size decides nothing -- `CLAUDE.md`'s Measurement rule establishes
+    a speedup at a stress size alone. So this says which tier they came
+    from, and it is what makes the other two readable rather than
+    decorative.
+
+    **The tier alone, not the shape.** A tier is not a shape and two
+    instances both called stress can differ by more than the patch being
+    measured does, so the size stays in `.badges/measurements.json` and in
+    the README's table, where there is room to say what it means. A badge
+    reading `stress: 4000x1980x5` spent its width on digits nobody can
+    interpret in place.
 
     It asserts nothing, so it is blue rather than coloured by a threshold.
     """
     if not run.get("instance"):
         return Badge("instance", "instance", UNMEASURED, "lightgrey")
 
-    return Badge("instance", "instance", f"{run['tier']}: {run['instance']}", "blue")
+    return Badge("instance", "instance", str(run["tier"]), "blue")
 
 
 def _coverage_badge(key: str, guard: dict[str, Any]) -> Badge:
