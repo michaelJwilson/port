@@ -83,8 +83,13 @@ def test_a_clone_of_minus_infinities_stays_minus_infinity() -> None:
     )
     ours = shifts(log_mus, copy_states, normal_log_lambda, clone_lengths)
 
-    assert np.isneginf(theirs[0]) and np.isneginf(theirs[1])
-    assert np.isneginf(ours[0]) and np.isneginf(ours[1])
+    # NB one clone per assertion, so a failure names which of the two lost
+    #    its `-inf` rather than reporting that the conjunction is false
+    #    (`ruff` PT018).
+    assert np.isneginf(theirs[0])
+    assert np.isneginf(theirs[1])
+    assert np.isneginf(ours[0])
+    assert np.isneginf(ours[1])
     assert not np.any(np.isnan(ours)), "a nan here would be a silent wrong answer"
     assert np.allclose(theirs[2:], ours[2:], rtol=0.0, atol=EXACT)
 
