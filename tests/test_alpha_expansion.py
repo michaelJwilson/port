@@ -161,3 +161,60 @@ def test_the_icm_only_knobs_are_accepted_and_ignored() -> None:
 
     assert a.cost == b.cost, "min_clone_spots must not change the result"
     assert np.array_equal(first, second)
+
+
+@pytest.mark.analytic
+def test_zero_coupling_recovers_the_field_argmax() -> None:
+    """With no coupling the joint MAP factorizes, so the answer is known.
+
+    The pin for the sign. Upstream minimizes `-sum h[s] - sum J [s == s]`,
+    which already carries the negation, so `cnaster`'s log-likelihood field
+    is passed through unchanged. Negating it as well solves the mirror
+    problem: this test returned `argmin` before the fix, on every site.
+
+    It is here rather than folded into the energy comparisons because those
+    score both solvers through `potts_energy`, which shared the negation --
+    an oracle carrying the defect it referees cannot see it. An analytic
+    limit can: at `beta = 0` there is nothing to solve.
+    """
+    rng = np.random.default_rng(17)
+    n, n_states = 64, 4
+
+    field = rng.normal(size=(n, n_states))
+    graph = CsrGraph(
+        indptr=np.zeros(n + 1, dtype=np.int64),
+        indices=np.empty(0, dtype=np.int64),
+        weights=np.empty(0, dtype=float),
+    )
+
+    assignment = np.zeros(n, dtype=np.int64)
+    alpha_expansion_sweep(field, graph, assignment, 0.0)
+
+    expected = np.argmax(field, axis=1)
+    assert np.array_equal(assignment, expected), (
+        f"{int((assignment != expected).sum())} of {n} sites disagree with the "
+        f"per-site argmax; {int((assignment == np.argmin(field, axis=1)).sum())} "
+        f"match the argmin, which is the doubled-negation signature"
+    )
+
+
+@pytest.mark.patch
+def test_the_energy_is_minus_cnasters_objective_up_to_a_constant() -> None:
+    """What `potts_energy` has to be for "lower is better" to mean anything.
+
+    `cnaster`'s `icm_sweep_deque` maximizes
+    `sum_i field[i, s_i] + spatial_weight * sum_ij w_ij [s_i == s_j]`. This
+    asserts the referee is exactly the negation of that, offset by
+    `beta * sum(w)`, which is the same for every labelling and so cannot
+    change an ordering.
+    """
+    field, graph, planted, beta = _lattice(8, 3, seed=5, beta=1.25)
+    first, second, coupling = potts_graph_from(graph, beta).endpoints
+
+    for labels in (planted, np.argmax(field, axis=1).astype(np.int64)):
+        objective = float(field[np.arange(labels.size), labels].sum()) + float(
+            coupling[labels[first] == labels[second]].sum()
+        )
+        assert -potts_energy(field, graph, labels, beta) == pytest.approx(
+            objective, rel=1e-12
+        )

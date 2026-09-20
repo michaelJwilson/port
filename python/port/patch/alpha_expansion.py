@@ -23,13 +23,22 @@ same" but **which reaches the lower Potts energy** -- which
 That makes this one of the rare patches with an *absolute* referee. A lower
 energy is a better MAP solution under the same model, whoever produced it.
 
-## Sign convention, which is where this would go wrong
+## Sign convention, which is where this did go wrong
 
 `cnaster`'s `field` is a **log-likelihood**: larger is better, and
-`icm_sweep_deque` maximizes. Upstream's `field_values` is an **energy**:
-smaller is better, and `alpha_expansion` minimizes. So the field is negated
-on the way in. Getting this backwards produces a run that completes, reports
-a cost, and returns the worst labelling available.
+`icm_sweep_deque` maximizes. Upstream minimizes
+``E(s) = -sum_i h_i[s_i] - sum_ij J_ij [s_i == s_j]`` (`sim.potts.energies`),
+which **already carries the negation**. So `field` is passed through
+unchanged: `h = field` makes `-E` exactly `cnaster`'s objective up to the
+constant `sum J`.
+
+Negating it as well inverts the problem -- the run completes, reports a
+cost, and returns the *worst* labelling available, which is what the first
+version of this module did. `test_zero_coupling_recovers_the_field_argmax`
+is the pin: with no coupling the minimizer is `field.argmax(axis=1)`, and
+under the doubled negation it was `argmin`. The energy referee shared the
+negation, so a solver-against-solver comparison could not see it -- an
+oracle carrying the defect it refereed.
 
 ## What is not carried over
 
@@ -102,15 +111,17 @@ def potts_energy(
 ) -> float:
     """The Potts energy of a labelling, for comparing two solvers.
 
-    Takes `cnaster`'s field and negates it, so the number returned is
-    comparable across solvers and **lower is better**. This is the referee
-    #246 uses: it says which labelling is the better MAP solution without
-    needing either solver to be right.
+    `cnaster`'s field goes in unchanged: upstream's `energy` negates it
+    itself, so `-potts_energy(...)` is `cnaster`'s own objective up to the
+    constant `beta * sum(weights)`. **Lower is better.** This is the referee
+    #246 uses -- it says which labelling is the better MAP solution without
+    needing either solver to be right, which it can only do if it scores the
+    objective `cnaster` maximizes rather than its negation.
     """
     return float(
         energy(
             potts_graph_from(graph, beta),
-            -np.asarray(field, dtype=np.float64),
+            np.asarray(field, dtype=np.float64),
             np.asarray(assignment, dtype=np.int64),
         )
     )
@@ -141,7 +152,10 @@ def alpha_expansion_sweep(
     """
     del tol, epsilon, min_clone_spots, cost_zeropoint
 
-    values = -np.asarray(field, dtype=np.float64)
+    # NB *not* negated: upstream's energy is `-sum h[s] - sum J [s == s]`,
+    #    so `h = field` is already `cnaster`'s objective with the sign
+    #    upstream's minimizer wants. See the module docstring.
+    values = np.asarray(field, dtype=np.float64)
     n_states = int(values.shape[1])
 
     result = alpha_expansion(
