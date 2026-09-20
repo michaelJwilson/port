@@ -34,10 +34,11 @@
 # negative binomial and beta-binomial -- plus their shared base, and 377 to
 # Categorical, Gaussian, Poisson, Binomial and CountPair, which have no
 # counterpart to referee. So its ceiling is **59 uncovered statements, not
-# 401**. `CountPairEmission` is the instructive one: the fixtures draw counts
-# through it, but drawing is the `upstream` role rather than the
-# `upstream_oracle` one (#69), and a family that decides no expected value
-# does not enter.
+# 401**. `CountPairEmission` **entered** on #232: it now decides the expected
+# log-density that `cnaster`'s `_nb_logpmf_1d` and `_bb_logpmf_1d` are judged
+# against (`tests/test_emission_mixture_oracle.py`), which is the
+# `upstream_oracle` role rather than the drawing one it had before (#69). A
+# family that referees enters, and the rule did not change -- the claim did.
 #
 # `source` names the installed **directory** and `include` narrows it to the
 # surface, for the reason `pyproject.toml` gives: naming modules instead lets
@@ -80,9 +81,22 @@ include =
     */snakes_and_ladders/sim/graph.py
     */snakes_and_ladders/sim/hmm.py
     */snakes_and_ladders/search/alpha_expansion.py
-# 947 of 2,164 statements, 43.76 per cent. `ragged.py` joined the surface when
-# #667 landed and the fixture began planting unequal chromosomes against it;
-# `opt/fit.py` joined with `main`'s `test_integer_copy.py`.
+    */snakes_and_ladders/opt/emission_mixture.py
+    */snakes_and_ladders/opt/mixture.py
+# 1,209 of 2,582 statements, 46.82 per cent. `ragged.py` joined the surface
+# when #667 landed and the fixture began planting unequal chromosomes against
+# it; `opt/fit.py` joined with `main`'s `test_integer_copy.py`;
+# `opt/emission_mixture.py`, `opt/mixture.py` and `CountPairEmission`'s
+# statements joined on #232.
+#
+# **That join raised the figure rather than lowering it**, which was not the
+# prediction. #232 estimated 36.88 per cent on the assumption the joining
+# modules would arrive uncovered. Measured: the denominator grew by 418
+# statements and the covered count by 262, because the fixtures already draw
+# through `CountPairEmission` and `tests/test_emission_mixture_oracle.py`
+# exercises the mixture it joined for. 43.76 to 46.82, and the floor is
+# raised with it rather than left where a 3-point cushion would hide a
+# regression.
 #
 # Of that, the 64 tests marked `upstream_oracle` -- the agreement claims,
 # where upstream decided the expected value -- reach 38.54 per cent on their
@@ -105,7 +119,7 @@ include =
 # and they are the fit-level half of that rung, which waits on #77 item 1.
 # Upstream's #674 is the fix; the event that moves this figure is the pin
 # moving, not a test here failing.
-fail_under = 43.7
+fail_under = 46.7
 precision = 2
 # **Upstream capability with no `cnaster` counterpart leaves the denominator.**
 # The figure is coverage against what `cnaster` can do, not against what
@@ -131,5 +145,4 @@ exclude_also =
     ^class GaussianEmission
     ^class PoissonEmission
     ^class BinomialEmission
-    ^class CountPairEmission
 
