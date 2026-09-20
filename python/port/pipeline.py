@@ -188,16 +188,23 @@ made the claim false quietly; it would have made
 `tests/test_patched_entry_point.py` fail, which is the guard working. This is
 the honest place for it.
 
-**On by default**, because the agreement is round-off from a different
-summation order and a different `lgamma` implementation, not a modelling
-difference: `scipy.special.gammaln` over an array against libm's `lgamma` per
-element. `--no-approx` is the arm that reproduces bitwise.
+**Off by default, and the reason is a measurement rather than caution.** On
+the kernel it is 1.78x across ten states. On a **whole run** at
+4,000 x 1,980 x 5 it recovers **-1.04 s and -0.051 GB** -- nothing, within
+noise -- because the live path goes through `CountEncoder` dedup before
+reaching the kernel, which is what #240 flagged as the thing that could make
+the ratio not survive. It did not survive.
 
-One row, measured 1.78x across ten states and 1.469x for a single call (#240).
-The spread is the `log(k!)` cache paying off across states, which is what a
-run does. **Below `CLAUDE.md`'s 2x bar either way**, so it lands on its
-evidence of equivalence; the 3.51x form needs a `k_max` bound and a fallback
-that nothing has measured.
+And it is not free. The 8.6e-13 disagreement -- round-off from
+`scipy.special.gammaln` against libm's `lgamma` -- propagates through the EM
+to a 3.2e-3 change in the fitted parameters and **flips one segment's integer
+copy number by 3** (#244). A patch that changes a scientific output for no
+measured gain is not a default; `--approx` is how it is turned on to study
+that amplification, which is the only thing it is currently good for.
+
+The 3.51x prefix-sum form needs a `k_max` bound and a fallback nothing has
+measured, and would have to clear the same whole-run test before it could
+default either.
 """
 
 

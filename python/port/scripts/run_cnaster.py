@@ -74,10 +74,11 @@ def _parser() -> argparse.ArgumentParser:
         default=None,
         help=(
             "install the replacements that agree to a tolerance rather than "
-            "bitwise: the vectorized negative-binomial log-pmf (#240). On by "
-            "default -- the disagreement is 8.6e-13, round-off from scipy's "
-            "gammaln against libm's lgamma, not a modelling difference. Pass "
-            "--no-approx for an arm that reproduces cnaster byte for byte."
+            "bitwise: the vectorized negative-binomial log-pmf (#240). **Off "
+            "by default**: it is 1.78x on the kernel and nothing on a whole "
+            "run, and the 8.6e-13 disagreement moves one segment's integer "
+            "copy number by 3 (#244). Available for measuring that, not for "
+            "running production with."
         ),
     )
     parser.add_argument(
@@ -155,9 +156,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         figures = (
             not arguments.no_patch if arguments.figures is None else arguments.figures
         )
-        approx = (
-            not arguments.no_patch if arguments.approx is None else arguments.approx
-        )
+        # NB **off** unless asked for. Measured on a whole run at
+        #    4,000 x 1,980 x 5: it recovers -1.04 s and -0.051 GB -- nothing,
+        #    within noise -- while moving one segment's integer copy number by
+        #    3 (#244). The 1.78x kernel ratio does not survive `CountEncoder`
+        #    dedup, which is what #240 warned it might not.
+        approx = bool(arguments.approx)
 
         selected = SWAPS if not arguments.no_patch else ()
         if approx:
