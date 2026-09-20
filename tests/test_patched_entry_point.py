@@ -209,12 +209,16 @@ def test_a_patched_run_reproduces_an_unpatched_one(tmp_path: Path) -> None:
     entry point is what ships, so running it is a stronger claim than
     importing what it calls.
 
-    **The patched arm passes `--no-figures`**, because `FIGURE_SWAPS` is in
-    the entry point's default now and does not make this claim: a figure at
-    a different dpi is a different file by design (#195). `SWAPS` is the
-    table that reproduces `cnaster`, so `--no-figures` is what selects the
-    claim being tested rather than a weakening of it. Without this the arms
-    differ by every PNG and the assertion below fails by construction.
+    **The patched arm passes `--no-figures --no-approx`**, because two of the
+    three swap tables are in the entry point's default and neither makes this
+    claim: a figure at a different dpi is a different file by design (#195),
+    and the vectorized log-pmf agrees to 8.6e-13 rather than to the byte
+    (#240). `SWAPS` is the table that reproduces `cnaster`, so the two flags
+    select the claim being tested rather than weaken it.
+
+    That is the whole reason there are three tables. A row whose agreement is
+    a tolerance cannot live in `SWAPS` without making this assertion false,
+    and the assertion is what the speed claims are read against.
     """
     import subprocess
     import sys
@@ -247,7 +251,7 @@ def test_a_patched_run_reproduces_an_unpatched_one(tmp_path: Path) -> None:
     baseline = tmp_path / "baseline"
     shutil.move(str(output), str(baseline))
 
-    run("--no-figures")
+    run("--no-figures", "--no-approx")
 
     same, differ = _compare(baseline, output)
 
