@@ -234,6 +234,14 @@ ignore_missing_imports = true
 module = ["nbformat.*", "nbclient.*"]
 ignore_missing_imports = true
 
+[[tool.mypy.overrides]]
+# `aim` ships no type information, which `snakes_and_ladders` records for
+# itself on sal #778. It is an optional extra here, so on the ordinary sync it
+# is not installed at all and the only import of it -- inside
+# `port.tracking.tracking` -- has nothing to resolve against either way.
+module = "aim.*"
+ignore_missing_imports = true
+
 [tool.towncrier]
 directory = "changelog.d"
 filename = "CHANGELOG.md"

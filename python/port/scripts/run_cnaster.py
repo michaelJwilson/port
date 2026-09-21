@@ -40,6 +40,7 @@ from port.pipeline import (
     patched,
     warm,
 )
+from port.tracking import tracking
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -88,6 +89,19 @@ def _parser() -> argparse.ArgumentParser:
             "compile every kernel before the clock starts, so the timed run "
             "measures the code and not the compiler (#211). Off by default: a "
             "run whose first call really is the cost should be able to see it."
+        ),
+    )
+    parser.add_argument(
+        "--track",
+        metavar="REPO",
+        default=None,
+        help=(
+            "record every instrumented stage into an Aim run at REPO (#251): "
+            "the objective, the iteration count and the clone count per visit, "
+            "with the stage and solver as Aim context. **Off by default and it "
+            "changes no number** -- outside a track block `record` returns on "
+            "its first line. Needs the `track` extra; the run refuses rather "
+            "than quietly recording nothing if `aim` is absent."
         ),
     )
     parser.add_argument(
@@ -180,6 +194,20 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
         else:
             print("run_cnaster_port: --no-patch, nothing rebound", file=sys.stderr)
+
+        # NB after the swaps, so a recorded run records whichever
+        #    implementation is installed, and before the timer, because
+        #    opening the store is not part of what is being measured. The
+        #    store is stamped with what a reader needs to tell two runs
+        #    apart; `aim` is imported inside `tracking`, never here.
+        if arguments.track is not None:
+            run = stack.enter_context(tracking(arguments.track))
+            run["config"] = str(arguments.config)
+            run["swaps"] = len(selected)
+            run["figures"] = figures
+            run["approx"] = approx
+            run["patched"] = not arguments.no_patch
+            print(f"run_cnaster_port: tracking to {arguments.track}", file=sys.stderr)
 
         # NB after the swaps and before the timer, so what is compiled is
         #    what the run will call and none of it lands in the measurement.

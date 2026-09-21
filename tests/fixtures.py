@@ -1539,7 +1539,7 @@ def enumerate_minimum_energy(fixture: PottsLabels) -> tuple[np.ndarray, float]:
         will be deleted rather than fixed, and a fixture too large to
         enumerate needs a different referee rather than more patience.
     """
-    from snakes_and_ladders.search.alpha_expansion import energy
+    from snakes_and_ladders.sim.potts import energy
 
     n_nodes, n_clones = fixture.n_nodes, fixture.n_clones
     total = n_clones**n_nodes
