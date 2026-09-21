@@ -122,20 +122,26 @@ def test_the_context_manager_restores_every_binding() -> None:
     are installed for the whole session (`tests/conftest.py`), so they are
     already `port`'s on the way in and restoring them to upstream would be
     the leak rather than the fix.
+
+    Module bindings only. A default-argument site (`site.default`) is not
+    reachable by `getattr` on its module by construction, and
+    `test_a_frozen_default_is_rebound_and_restored` is what referees those.
     """
     import sys
 
     import cnaster.scripts.run_cnaster  # noqa: F401  -- imported for its bindings
 
+    attributes = [site for site in swap_sites() if site.default is None]
+
     before = {
         (site.module, site.name): getattr(sys.modules[site.module], site.name)
-        for site in swap_sites()
+        for site in attributes
     }
 
     chosen = {(swap.module, swap.name) for swap in SWAPS}
 
     with patched() as sites:
-        assert len(sites) == len(before)
+        assert len([site for site in sites if site.default is None]) == len(before)
 
         for (module, name), original in before.items():
             now = getattr(sys.modules[module], name)
@@ -151,6 +157,69 @@ def test_the_context_manager_restores_every_binding() -> None:
 
     for (module, name), original in before.items():
         assert getattr(sys.modules[module], name) is original
+
+
+@pytest.mark.infra
+def test_a_frozen_default_is_rebound() -> None:
+    """A name captured in a `def`'s defaults is a copy `setattr` cannot reach.
+
+    `cnaster/hmrf.py:424` writes `hmmclass=hmm_phased`, evaluated once when
+    the `def` runs. So whether `run_core_inference` uses `cnaster`'s class or
+    `port`'s was decided by whether `install` happened to run before
+    `cnaster.hmrf` imported -- and inside the suite it did not, so the
+    compatibility rows silently did not apply on that path. The symptom was
+    `tests/test_core_inference_end_to_end.py` passing alone and failing in a
+    suite (#259).
+
+    Two claims. That the site is found and reported, and that a run reaching
+    it gets `port`'s class -- which is the property the order was deciding.
+    """
+    import cnaster.hmrf
+    from port.patch.hmm_phased import hmm_phased
+
+    defaults = [site for site in swap_sites() if site.default is not None]
+
+    assert any(site.default == "run_core_inference(hmmclass)" for site in defaults), (
+        f"the default site is gone; {[site.default for site in defaults]}"
+    )
+
+    function = cnaster.hmrf.run_core_inference
+    positional = function.__code__.co_varnames[: function.__code__.co_argcount]
+    index = positional.index("hmmclass") - (
+        len(positional) - len(function.__defaults__ or ())
+    )
+
+    assert function.__defaults__[index] is hmm_phased, (
+        "the default still holds cnaster's class, so the fit takes the "
+        "unpatched path whatever the module attribute says"
+    )
+
+
+@pytest.mark.infra
+def test_a_default_is_restored_with_the_binding_it_was_read_from() -> None:
+    """`patched()` puts a rewritten default back, on a site it really owns.
+
+    Put through `port.pipeline` itself rather than `cnaster`: the machinery
+    searches the swap's own package and `port`, and a site in `port` is one
+    this repository can plant without writing to a dependency.
+    """
+    import cnaster.hmrf
+    from port import pipeline
+    from port.patch.clone_assignment import UPSTREAM
+
+    def holder(_: object = UPSTREAM) -> None: ...
+
+    pipeline._planted_default = holder  # type: ignore[attr-defined]
+
+    try:
+        with patched():
+            assert holder.__defaults__ == (cnaster.hmrf.pipeline_clone_assignment,), (
+                "the swap did not reach the frozen default"
+            )
+
+        assert holder.__defaults__ == (UPSTREAM,), "and it did not restore"
+    finally:
+        del pipeline._planted_default  # type: ignore[attr-defined]
 
 
 @pytest.mark.infra
