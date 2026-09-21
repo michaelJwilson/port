@@ -98,6 +98,14 @@ defect is not hidden by the exclusion.
 `e2e` fell 44.11 to 40.68 with no test removed, and **CI's floor did not
 move**: the gate reads 42.44 against the 41.7 it already had.
 
+Stage 2 then took it to 40.56 for a third reason, which will recur: **a swap
+row moves execution out of the subject.** Replacing one method cost
+`cnaster/hmm_nophasing` 21 covered statements and added 27 of `port`. The
+figure is not wrong -- an unpatched user still runs the upstream body and it
+is less validated than it was -- it is just not a progress metric for this
+repository. `pyproject.toml` says so beside the floor, so nobody fixes it by
+counting the replacement as the replaced.
+
 **A badge reading `/` has no measurement yet**, and that is the point: not a
 zero, which is a claim, and not a last-known figure from a commit nobody can
 name. `all` is unwired (#159's "Done when" asks for it and is unmet) and the

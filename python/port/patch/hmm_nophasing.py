@@ -47,6 +47,7 @@ from __future__ import annotations
 from typing import Any
 
 from cnaster.hmm_nophasing import hmm_nophasing as UPSTREAM
+
 from port.patch.hmm_single_spot import SingleSpot
 
 __all__ = ["UPSTREAM", "RenamedKeywords", "hmm_nophasing"]
