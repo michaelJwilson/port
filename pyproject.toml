@@ -385,11 +385,30 @@ omit = [
     # `deprecated/` directory can, so the rule above -- reachable from an
     # installed entry point -- resolves to no. #110.
     #
-    # `wolff.py` is **not** omitted on the same argument, and #110 says why:
-    # it is reachable, `run_cnaster` branches into `initialize_clones_wolff`
-    # on a configuration key, and what stops it is `ImportError` at import
-    # (#71). Excluding it would hide a defect behind a figure that improved.
+    # `wolff.py` **is** omitted as of #259, and it was not before. #110 kept
+    # it in on the grounds that `run_cnaster` branches into
+    # `initialize_clones_wolff` on a configuration key, so it was reachable
+    # and only `ImportError` stopped it (#71). That is not what the branch
+    # says. Measured on `cnaster`'s `port` branch:
+    #
+    #   * **0** modules in the package import it. `scripts/run_cnaster.py:62`
+    #     and `hmrf.py:12` both comment theirs out.
+    #   * the `initialize_clones_wolff(...)` call at `run_cnaster.py:257-273`
+    #     is inside a triple-quoted string. No configuration key reaches it.
+    #   * `import cnaster.wolff` raises, so no key could.
+    #
+    # So the rule above -- reachable from an installed entry point -- resolves
+    # to no, exactly as it does for `sim.py`. 159 statements at 3.77 per cent,
+    # holding the figure down with code nothing runs.
+    #
+    # #110's other reason was the real one: excluding it would hide a defect
+    # behind a figure that improved. That is answered rather than ignored.
+    # `test_the_sampling_module_does_not_import_and_nothing_notices` pins both
+    # halves -- the `ImportError` by its message, and the importer count at
+    # zero -- so the day either changes the test fails and this line comes
+    # out. A defect pinned by a test is not a defect hidden by a denominator.
     "*/cnaster/sim.py",
+    "*/cnaster/wolff.py",
 ]
 
 [tool.coverage.report]
@@ -446,21 +465,18 @@ omit = [
 # pull request. Unlike a denominator of the imported modules, this one does
 # not fall for bringing a new module under test.
 #
-# **It does fall when the denominator grows, and on #259 it did**: 41.7 to
-# 41.6, and the number is lower while the requirement is higher. The gate
-# measured 41.65 against 8,514 statements where it had measured 46.10 against
-# 7,554, because `cnaster/scripts/` (919 statements, 0.00 per cent) entered
-# the denominator with the pin move and no test was removed. In statements,
-# which is what the floor is really about:
+# **#259 moved the denominator twice and the floor not at all.**
+# `cnaster/scripts/` entered it -- 919 statements at 0.00 per cent, the four
+# console entry points the `port` branch made scannable -- and `wolff.py`
+# left it, 159 statements nothing can reach. The first alone would have taken
+# the gate to 41.65 and forced a recut; the second is the scope rule above
+# being applied rather than a rescue, and together they leave the gate clear
+# of the floor it already had.
 #
-#     old floor  41.7 per cent of 7,554  =  3,150 covered
-#     new floor  41.6 per cent of 8,514  =  3,542 covered
-#
-# So the recut asks for **392 more covered statements than the floor it
-# replaces**, and the covered count rose 3,482 to 3,546 to clear it. Recorded
-# here rather than argued in a pull request, because a floor that moved for a
-# reason nobody wrote down is a floor that will move again.
-fail_under = 41.6
+# The two are not interchangeable and the difference is the point: one is
+# code the subject runs and nothing judges, which belongs in the denominator
+# and is #260; the other is code the subject cannot run, which does not.
+fail_under = 41.7
 precision = 2
 exclude_lines = [
     "pragma: no cover",

@@ -84,14 +84,19 @@ does not -- and that module has exactly 299 statements.
 
 `cnaster`'s `port` branch ships `__init__.py`. The scan descends, `scripts/`
 is in the denominator for every selection, and the two guards read one
-number: **8,514**.
+number: **8,355**.
 
-What that cost is the honest part. 919 statements entered at **0.00 per
-cent** -- the four console entry points the wheel installs -- so `e2e` fell
-44.11 to 39.92 with no test removed, and CI's floor was recut 41.7 to 41.6
-against a denominator 960 statements larger. In statements the new floor asks
-for 392 more than the old one; in per cent it reads lower, which is what a
-larger denominator does to a ratio. Judging those entry points is #260.
+Two things moved it, in opposite directions, and the difference between them
+is the point. **919 statements entered at 0.00 per cent** -- the four console
+entry points the wheel installs, code the subject runs and nothing judges,
+which belongs in the denominator and is #260. **159 left**: `cnaster/wolff.py`,
+which no module in the package imports and which does not import at all, so
+the scope rule -- reachable from an installed entry point -- says no, as it
+already said for `sim.py`. A `bug` test pins both halves of that, so the
+defect is not hidden by the exclusion.
+
+`e2e` fell 44.11 to 40.68 with no test removed, and **CI's floor did not
+move**: the gate reads 42.44 against the 41.7 it already had.
 
 **A badge reading `/` has no measurement yet**, and that is the point: not a
 zero, which is a claim, and not a last-known figure from a commit nobody can

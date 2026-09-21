@@ -1,11 +1,15 @@
-"""Four signatures `cnaster`'s `port` branch broke, and the rows that carry them.
+"""Three signatures `cnaster`'s `port` branch broke, and the rows that carry them.
 
 **#259 stage 1.** Moving the pin from `finish_annotation_mushift3` to `port`
-found four defects. Three stop the pipeline before it fits anything and take
-a row; the fourth breaks a module nothing reaches and takes none. Each is a
+found three defects that stop the pipeline before it fits anything. Each is a
 call site and a signature disagreeing, and none is a calculation `port`
 replaces, so the rows say "the run happens" rather than "the number is
 better".
+
+A fourth is pinned here and is **not** one of them: `cnaster.wolff` does not
+import, which #71 recorded against the previous pin. It is kept beside these
+because it is the same shape of defect and because its tripwire is the
+importer count, not the pin.
 
 `bug`: each test pins a defect in the subject. They pass while the defect is
 there and **fail when `cnaster` fixes it**, which is the exit condition -- a
@@ -130,17 +134,20 @@ def test_the_shift_is_guarded_on_the_wrong_variable() -> None:
 
 @pytest.mark.bug
 def test_the_sampling_module_does_not_import_and_nothing_notices() -> None:
-    """A fourth defect, and the only one that owes no row.
+    """A defect that predates the pin move, and owes no row.
 
-    `cnaster/wolff.py` imports `get_clone_label_annotation` from
-    `cnaster.annotation`, which exports three names and not that one. So
-    `import cnaster.wolff` raises -- and no row is owed, because **nothing in
-    the package imports it**: `scripts/run_cnaster.py:62` and `hmrf.py:12`
-    comment theirs out and the only call site sits inside a string literal.
+    **#71 recorded it against `finish_annotation_mushift3`**, with the same
+    message: `cnaster/wolff.py` imports `get_clone_label_annotation` from
+    `cnaster.annotation`, which exports three names and not that one. So this
+    is not something the `port` branch broke, and `pyproject.toml`'s `omit`
+    list already declines to hide it behind a coverage figure.
 
-    Pinned here rather than patched: a module the entry point cannot reach is
-    out of `port`'s scope to replace, and in scope to report. #259's sampling
-    comment carries it upstream.
+    What is new is the second half. **Nothing in the package imports it** --
+    `scripts/run_cnaster.py:62` and `hmrf.py:12` comment theirs out and the
+    only call site sits inside a string literal -- so no row is owed and #71's
+    *"run_cnaster branches into initialize_clones_wolff on a configuration
+    key"* does not hold on this branch. That is what the importer count below
+    pins, and what makes it fail the day the module becomes reachable.
     """
     with pytest.raises(ImportError, match="get_clone_label_annotation"):
         import cnaster.wolff
