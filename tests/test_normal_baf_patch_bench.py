@@ -87,7 +87,7 @@ def test_the_distribution_function_at_the_gate_size(
     benchmark: BenchmarkFixture,
 ) -> None:
     """The same mask from two `cdf` calls: 95 ms, so **15x**."""
-    from port.patch.normal_baf import removal_indicator
+    from port.patch.normal_spot import removal_indicator
 
     counts, totals = _instance(*GATE)
 
@@ -115,7 +115,7 @@ def test_the_distribution_function_at_the_stress_size(
     benchmark: BenchmarkFixture,
 ) -> None:
     """919 ms against 13.95 s: **15.2x**, and the whole filter 14.3x."""
-    from port.patch.normal_baf import removal_indicator
+    from port.patch.normal_spot import removal_indicator
 
     counts, totals = _instance(*STRESS)
 

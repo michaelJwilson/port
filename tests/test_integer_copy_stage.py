@@ -10,7 +10,7 @@ That fixture plants copy *states* -- an expression ratio and an allele fraction
 per state -- and its values are not the image of any integer pair: state 1 has
 `mu = 1.5`, which is `(2, 1)`, against `p = 0.58`, which is not `1/3`. So a
 comparison against it would be asking the decoder for a pair that does not
-exist. What is planted here is the pair, and `port.integer_copy.acn_observables`
+exist. What is planted here is the pair, and `port.patch.integer_copy.acn_observables`
 maps it to the `(mubar, p)` the decoder reads -- the paper's map, already
 refereed against `emission.tex` in the module above.
 
@@ -22,7 +22,7 @@ from typing import Any
 
 import numpy as np
 import pytest
-from port.integer_copy import acn_observables
+from port.patch.integer_copy import acn_observables
 
 pytestmark = pytest.mark.preprocessing
 

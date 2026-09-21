@@ -16,7 +16,7 @@ and this is the first.
 
 import numpy as np
 import pytest
-from port.patch.hmrf_adjacency import adjacency_coo
+from port.patch.hmrf.adjacency import adjacency_coo
 from pytest_benchmark.fixture import BenchmarkFixture
 from scipy.sparse import csr_matrix
 

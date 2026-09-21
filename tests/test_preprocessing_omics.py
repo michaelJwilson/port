@@ -1,4 +1,4 @@
-"""`port.patch.omics.form_gene_snp_table` against `cnaster`'s (#190).
+"""`port.patch.omics.blocks.form_gene_snp_table` against `cnaster`'s (#190).
 
 **The same table, bitwise, without the per-SNP `pandas` write.** `cnaster`
 assigns each SNP to its gene by walking backwards through the sorted table in
@@ -35,7 +35,7 @@ def both_tables(
     """Both implementations run once on the planted instance."""
     from cnaster.io import load_input_data
     from cnaster.omics import form_gene_snp_table as upstream
-    from port.patch.omics import form_gene_snp_table as patched
+    from port.patch.omics.blocks import form_gene_snp_table as patched
 
     _, _, written, _ = planted_instance
     loaded = load_input_data(gate_config)
@@ -109,7 +109,7 @@ def test_the_window_takes_the_nearest_preceding_gene_and_stops_at_the_edges() ->
     numerically -- so an implementation that did not stop at the chromosome
     would assign it.
     """
-    from port.patch.omics import preceding_gene
+    from port.patch.omics.blocks import preceding_gene
 
     chromosome = np.array([1, 1, 1, 1, 2])
     start = np.array([100, 200, 250, 260, 250])
@@ -131,7 +131,7 @@ def test_the_window_does_not_reach_past_its_own_length() -> None:
     and the patch reproduces it: the alternative would be a different table,
     not a faster one.
     """
-    from port.patch.omics import preceding_gene
+    from port.patch.omics.blocks import preceding_gene
 
     filler = 8
     chromosome = np.ones(filler + 2, dtype=int)
@@ -189,7 +189,7 @@ def test_the_blocks_are_cnasters_blocks(
     (#189). That is also why this cannot be a fixture returning one result.
     """
     from cnaster.omics import assign_initial_blocks as upstream
-    from port.patch.omics import assign_initial_blocks as patched
+    from port.patch.omics.blocks import assign_initial_blocks as patched
 
     loaded, table, _ = staged
     alleles = (loaded.cell_snp_Aallele, loaded.cell_snp_Ballele)
@@ -218,7 +218,7 @@ def test_the_merge_sweep_restarts_at_every_chromosome() -> None:
     chromosome's genes sit **inside** the first chromosome's span by position,
     so an unreset sweep yields two intervals where the answer is four.
     """
-    from port.patch.omics import merged_gene_intervals
+    from port.patch.omics.blocks import merged_gene_intervals
 
     chromosome = np.array([1, 1, 2, 2])
     start = np.array([100, 5_000, 100, 5_000])
@@ -238,7 +238,7 @@ def test_the_merge_sweep_joins_a_chain_of_overlaps() -> None:
     first even though it misses the second. A sweep comparing against the
     previous row's end alone would split it.
     """
-    from port.patch.omics import merged_gene_intervals
+    from port.patch.omics.blocks import merged_gene_intervals
 
     chromosome = np.ones(4, dtype=int)
     start = np.array([0, 50, 70, 300])

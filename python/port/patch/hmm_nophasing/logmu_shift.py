@@ -48,7 +48,7 @@ from collections.abc import Sequence
 import numpy as np
 import scipy.special
 
-from port.patch.clone_stack import CloneStack
+from port.patch.hmrf_utils import CloneStack
 
 __all__ = ["shifts"]
 

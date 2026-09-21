@@ -72,7 +72,7 @@ def test_at_the_same_dpi_it_is_cnasters_function_byte_for_byte(tmp_path: Path) -
     quietly dropped `transparent` or the tight bounding box along with them.
     """
     from cnaster.utils import write_fig as upstream
-    from port.patch.figures import write_fig as patched
+    from port.patch.utils import write_fig as patched
 
     assert _written(tmp_path, "upstream", upstream, dpi=300) == _written(
         tmp_path, "patched", patched, dpi=300, group_rasters=False
@@ -92,8 +92,8 @@ def test_the_default_writes_the_same_page_with_a_coarser_raster(
     is invisible in a file size.
     """
     from cnaster.utils import write_fig as upstream
-    from port.patch.figures import FIGURE_DPI
-    from port.patch.figures import write_fig as patched
+    from port.patch.utils import FIGURE_DPI
+    from port.patch.utils import write_fig as patched
 
     assert FIGURE_DPI < 300, "the default no longer lowers the resolution"
 

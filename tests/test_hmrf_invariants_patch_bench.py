@@ -29,7 +29,7 @@ emission this benchmark never reads.
 
 import numpy as np
 import pytest
-from port.patch.hmrf_invariants import BoundaryInvariants, boundary_invariants
+from port.patch.hmrf.invariants import BoundaryInvariants, boundary_invariants
 from pytest_benchmark.fixture import BenchmarkFixture
 from scipy.sparse import csr_matrix
 

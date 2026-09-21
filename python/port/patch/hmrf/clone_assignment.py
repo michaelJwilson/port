@@ -13,7 +13,7 @@ number. #206's "done when" list, in its order:
 *   **The field is written into a buffer rather than returned and reduced.**
     `cnaster` materializes `(n_states, n_obs, n_spots)` per channel and then
     reduces it to `(n_spots, n_clones)` by reading one decoded state per
-    `(bin, clone)`. `port.patch.hmrf_fused_field` does both in one pass,
+    `(bin, clone)`. `port.patch.hmrf.fused_field` does both in one pass,
     materializes nothing, and writes into a caller's array -- upstream's
     `external_field(..., field)` shape. 8 GB at the declared scale, twice
     per outer iteration (#90), for an array whose only consumer is the
@@ -21,7 +21,7 @@ number. #206's "done when" list, in its order:
 *   **The graph crosses the seam once, in the representation the solver
     reads.** `CsrGraph` carries the three arrays that are meaningless apart.
     The COO triple `merge_assignment` wants is built only where it is
-    consumed, and by `port.patch.hmrf_adjacency.adjacency_coo` -- three array
+    consumed, and by `port.patch.hmrf.adjacency.adjacency_coo` -- three array
     expressions against `cast_csr` plus `unpack_adjacency`, which walk every
     non-zero in pure Python. On a run with `merge=False` `cnaster` computes
     that round trip and discards it (#59 item 3).
@@ -257,10 +257,10 @@ def pipeline_clone_assignment(
     """What `cnaster.hmrf.pipeline_clone_assignment` returns, computed leaner."""
     import cnaster.hmrf as upstream
 
-    from port.patch.hmrf_adjacency import adjacency_coo
-    from port.patch.hmrf_fused_field import fused_spot_clone_field
-    from port.patch.icm_interface import CsrGraph, fold_unary, icm_sweep
-    from port.patch.label_solver import label_solver
+    from port.patch.hmrf.adjacency import adjacency_coo
+    from port.patch.hmrf.fused_field import fused_spot_clone_field
+    from port.patch.icm.interface import CsrGraph, fold_unary, icm_sweep
+    from port.patch.icm.label_solver import label_solver
 
     reason = _delegates(single_tumor_prop, res["new_log_mu"])
 
@@ -363,7 +363,7 @@ def pipeline_clone_assignment(
             icm_sweep
             if solver == "icm"
             else __import__(
-                "port.patch.alpha_expansion", fromlist=["alpha_expansion_sweep"]
+                "port.patch.icm.alpha_expansion", fromlist=["alpha_expansion_sweep"]
             ).alpha_expansion_sweep
         )
 
