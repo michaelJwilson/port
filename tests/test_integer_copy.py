@@ -1,4 +1,4 @@
-"""`port.integer_copy`, the decoding `integer_copy_numbers.tex` specifies.
+"""`port.patch.integer_copy`, the decoding `integer_copy_numbers.tex` specifies.
 
 Issues #25 and #6. The paper defines a **one-to-many** map from a fitted copy
 state into the set of integer pairs consistent with its credible region;
@@ -21,7 +21,7 @@ getting it wrong costs. Issue #5 owns the fix.
 
 import numpy as np
 import pytest
-from port.integer_copy import (
+from port.patch.integer_copy import (
     CHANNELS,
     acn_lattice,
     acn_observables,

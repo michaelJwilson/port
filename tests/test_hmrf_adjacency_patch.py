@@ -1,6 +1,6 @@
 """The COO adjacency patch, pinned bitwise against `cnaster`'s round trip.
 
-Issue #59 item 3. `port.patch.hmrf_adjacency.adjacency_coo` replaces
+Issue #59 item 3. `port.patch.hmrf.adjacency.adjacency_coo` replaces
 `unpack_adjacency(cast_csr(m))` -- two pure-Python passes over the non-zeros
 -- with three `numpy` expressions on the CSR arrays already in hand.
 
@@ -12,7 +12,7 @@ records it; these tests decide it.
 
 import numpy as np
 import pytest
-from port.patch.hmrf_adjacency import adjacency_coo
+from port.patch.hmrf.adjacency import adjacency_coo
 from scipy.sparse import csr_matrix
 
 

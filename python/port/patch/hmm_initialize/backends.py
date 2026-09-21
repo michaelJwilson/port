@@ -36,15 +36,6 @@ from typing import Any
 import numpy as np
 from cnaster.hmm_nophasing import _bb_logpmf_1d, _nb_logpmf_1d
 
-MIRRORS: tuple[str, ...] = ("cnaster.hmm_initialize",)
-"""`hmm_initialize`'s two initializers, scored on one referee.
-
-The `cnaster` module this stands in for, or `()` where it stands in for
-none (#250). Declared rather than inferred: a reader holding a `cnaster`
-module open should be able to find `port`'s answer to it, and
-`tests/test_module_correspondence.py` reads this to check that every swap
-row lands in a module that admits to its target."""
-
 __all__ = [
     "Candidate",
     "Selection",
@@ -233,7 +224,7 @@ def sal_emission_backend(
         plus_plus_start,
     )
 
-    from port.patch.emission_family import constant_covariate
+    from port.emission_family import constant_covariate
 
     exposure = constant_covariate(np.asarray(base_nb_mean), "base_nb_mean")
     trials = constant_covariate(np.asarray(total_bb_RD), "total_bb_RD")

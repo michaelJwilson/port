@@ -17,7 +17,7 @@ from typing import Any
 import numpy as np
 import pytest
 from cnaster.hmm_nophasing import _nb_logpmf_1d
-from port.patch.nb_logpmf import log_factorial, nb_logpmf_1d
+from port.patch.hmm_nophasing.nb_logpmf import log_factorial, nb_logpmf_1d
 
 TOLERANCE = 1e-11
 """Two summation orders and two `lgamma` implementations over the same terms.

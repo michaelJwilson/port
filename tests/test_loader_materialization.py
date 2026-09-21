@@ -50,7 +50,7 @@ def test_the_gene_totals_agree_across_the_container(
     percentile, the target -- so a difference here is a different set of genes
     touched rather than a different number reported.
     """
-    from port.patch.input_data import _gene_umis
+    from port.patch.io import _gene_umis
 
     dense = _counts(rows, columns, density, seed=3)
 
@@ -73,7 +73,7 @@ def test_scaling_a_column_truncates_the_same_way_in_both_forms(
     The factors below are deliberately non-terminating in binary (a third, a
     seventh) so a count that truncates differs from one that rounds.
     """
-    from port.patch.input_data import _scaled_columns
+    from port.patch.io import _scaled_columns
 
     dense = _counts(rows, columns, density, seed=5)
     generator = np.random.default_rng(7)
@@ -99,7 +99,7 @@ def test_zeroing_a_column_removes_it_from_the_stored_values() -> None:
     in the structure would keep its memory and would make `getnnz` count it as
     expressed. The second is a wrong answer and not only a wasted byte.
     """
-    from port.patch.input_data import _gene_umis, _scaled_columns
+    from port.patch.io import _gene_umis, _scaled_columns
 
     dense = _counts(80, 12, 0.5, seed=11)
     sparse = sp.csr_matrix(dense)
@@ -123,7 +123,7 @@ def test_zeroing_a_column_removes_it_from_the_stored_values() -> None:
 @pytest.fixture(scope="module")
 def both_returns(gate_config: Any) -> tuple[Any, Any]:  # noqa: F811
     """The loader run once each way, on one instance."""
-    from port.patch.input_data import load_input_data
+    from port.patch.io import load_input_data
 
     return load_input_data(gate_config), load_input_data(
         gate_config, sparse_counts=True

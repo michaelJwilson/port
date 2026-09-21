@@ -126,7 +126,7 @@ simplifications and each says so rather than claiming a speedup.
 
 **All five items are installed (#206).** Each is a call-site edit inside
 `pipeline_clone_assignment`, which is itself a module-level name, so
-`port.patch.clone_assignment` rebinds it and carries them in: the fused field
+`port.patch.hmrf.clone_assignment` rebinds it and carries them in: the fused field
 writing into a buffer, one graph crossing the seam in the form the solver
 reads, the COO triple built where it is consumed and by three array
 expressions, the loop invariants hoisted out of the outer loop, and a solver

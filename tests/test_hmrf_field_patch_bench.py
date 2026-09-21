@@ -29,7 +29,7 @@ optimization -- and it is why the large row trades spots for bins.
 
 import numpy as np
 import pytest
-from port.patch.hmrf_field import compute_loglike_spot_assignment_strided
+from port.patch.hmrf.field import compute_loglike_spot_assignment_strided
 from pytest_benchmark.fixture import BenchmarkFixture
 
 from tests.fixtures import SpotCloneField, spot_clone_field

@@ -40,15 +40,6 @@ from cnaster.hmm_utils import get_em_solver_params
 from cnaster.logger import get_logger
 from cnaster.spatio_genomic_counts import SpatioGenomicCounts
 
-MIRRORS: tuple[str, ...] = ("cnaster.normal_spot",)
-"""`normal_spot.normal_baf_bin_filter`, installed by `SWAPS`.
-
-The `cnaster` module this stands in for, or `()` where it stands in for
-none (#250). Declared rather than inferred: a reader holding a `cnaster`
-module open should be able to find `port`'s answer to it, and
-`tests/test_module_correspondence.py` reads this to check that every swap
-row lands in a module that admits to its target."""
-
 logger = get_logger(__name__, start_time=start_time)
 
 MIN_BETABINOM_TAU = 30

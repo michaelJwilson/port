@@ -1,35 +1,45 @@
-"""Every patch says which `cnaster` module it stands in for, and the swaps agree.
+"""`python/port/patch/` is named for `cnaster`, so the replacement is obvious.
 
-**#250.** `port` exists to replace named pieces of `cnaster`, and a reader
-holding a `cnaster` module open should be able to find `port`'s answer to it.
-Three of 26 modules under `python/port/patch/` are named for the module they
-replace, and 7 of the 14 swap rows install into a module whose name does not
-say what it displaces, so the name cannot be the correspondence today.
+**#250.** A reader holding `cnaster/hmrf.py` open should find `port`'s answer
+to it at `port/patch/hmrf`, without grepping a swap table or a declaration.
+Before this, 17 of the 21 modules that stood in for exactly one `cnaster`
+module were named for the ticket that produced them instead.
 
-`MIRRORS` is the correspondence in the meantime: a tuple of `cnaster` module
-names per module, `()` where a module replaces nothing. Declared rather than
-inferred, because inferring it from imports gets `logger` and `config` wrong
-and cannot see a module that replaces something it does not import.
+The rule: **a module under `port.patch` is named for the `cnaster` module it
+replaces.** Where several patches address one `cnaster` module they are a
+package under that name, and its `__init__` re-exports them so a swap row
+names the package. Where a patch replaces nothing, it does not live under
+`patch/` at all.
 
-`infra`: these assert `port`'s own layout rule. None of them says anything
-about a scientific result, and none can fail because `cnaster` changed.
+Two modules are exceptions and declare `MIRRORS` because a name cannot carry
+what they do: `cnaster` defines
+`compute_emission_probability_nb_betabinom` in **both** `hmm_nophasing` and
+`hmm_phased`, and `forward_lattice` and `backward_lattice` in both, so
+`emission` and `lattice` each unify a duplicate pair and cannot be named for
+one half of it.
+
+`infra`: these assert `port`'s own layout. None says anything about a
+scientific result, and none can fail because `cnaster` changed.
 """
 
 from __future__ import annotations
 
+import ast
 import importlib
 import pkgutil
+from pathlib import Path
 
 import port.patch
 import pytest
 from port.pipeline import FIGURE_SWAPS, NUMERIC_SWAPS, SWAPS
 
-ALSO = ("port.integer_copy", "port.hmm_init_trials")
-"""Modules outside `port.patch` that shadow a `cnaster` module anyway.
+ROOT = Path(__file__).resolve().parents[1]
 
-Part of what #250 is about: the directory does not mean what it looks like it
-means, so a check that only walked `port.patch` would report a clean sweep
-over the wrong set.
+UNIFIERS = ("emission", "lattice")
+"""The two patches that replace a pair of `cnaster` modules rather than one.
+
+Named here rather than inferred so that adding a third is a decision someone
+makes in a diff, not a name that quietly stops meaning anything.
 """
 
 PRIVATE_SURFACE = frozenset(
@@ -43,112 +53,110 @@ PRIVATE_SURFACE = frozenset(
 
 `cnaster` publishes none of these, so each is a contract it never offered.
 Failure is loud rather than silent -- `pipeline.install` does a `getattr` and
-an absent name raises -- but nothing listed what `port` would lose if one were
-renamed, which is the gap this closes.
+an absent name raises -- but nothing listed what `port` would lose if one
+were renamed, which is the gap this closes.
 """
 
 
-def _modules() -> list[str]:
-    """Every module this rule covers, `port.patch` plus the two strays."""
-    found = [
-        f"port.patch.{info.name}"
+def _top_level() -> list[str]:
+    """Every name directly under `port.patch`, module or package."""
+    return sorted(
+        info.name
         for info in pkgutil.iter_modules(port.patch.__path__)
         if not info.name.startswith("_")
-    ]
-    return sorted(found) + list(ALSO)
+    )
 
 
 @pytest.mark.infra
-def test_every_patch_declares_what_it_mirrors() -> None:
-    """`MIRRORS` exists, is a tuple, and names `cnaster` modules that import.
+def test_every_patch_is_named_for_the_cnaster_module_it_replaces() -> None:
+    """The rule itself: every name under `patch/` is a `cnaster` module name.
 
-    A misspelled target would otherwise sit in the file reading correctly and
-    matching nothing, which is the failure mode a declared correspondence is
-    supposed to remove rather than relocate.
+    Importing the target rather than matching a string is what makes this
+    bite: a plausible-looking name that `cnaster` does not carry --
+    `hmrf_field`, `normal_baf`, `input_data` were all of them -- fails here.
     """
-    for name in _modules():
-        module = importlib.import_module(name)
+    for name in _top_level():
+        if name in UNIFIERS:
+            continue
 
-        declared = getattr(module, "MIRRORS", None)
+        importlib.import_module(f"cnaster.{name}")
 
-        assert isinstance(declared, tuple), f"{name} declares no MIRRORS tuple (#250)"
 
-        for target in declared:
-            assert target.startswith("cnaster."), (
-                f"{name} mirrors {target!r}, which is not a cnaster module"
-            )
+@pytest.mark.infra
+def test_a_unifier_declares_the_pair_it_replaces() -> None:
+    """The exception, held to the reason it exists.
+
+    A module exempt from the naming rule must say what it stands in for and
+    it must be **more than one** -- otherwise it is not a unifier, it is a
+    module that should have been renamed.
+    """
+    for name in UNIFIERS:
+        module = importlib.import_module(f"port.patch.{name}")
+
+        assert isinstance(module.MIRRORS, tuple), f"{name} declares no MIRRORS"
+        assert len(module.MIRRORS) > 1, (
+            f"{name} mirrors {module.MIRRORS}: one target is a rename, not an exception"
+        )
+
+        for target in module.MIRRORS:
             importlib.import_module(target)
 
 
 @pytest.mark.infra
-def test_every_swap_lands_in_a_module_that_admits_its_target() -> None:
-    """The strong one: a row's replacement must declare the module it displaces.
+def test_every_swap_lands_in_the_module_named_for_its_target() -> None:
+    """All 14 rows: `cnaster.X` is replaced from `port.patch.X`.
 
-    This is what makes `MIRRORS` load-bearing rather than a comment. A swap
-    moved to a different module, or a module's declaration left behind when
-    its function moved, fails here -- and both are how a correspondence table
-    rots when nothing reads it.
+    The load-bearing one. A swap moved to a different module, or a module
+    renamed without its rows, fails here -- and both are how a layout stops
+    meaning what it claims once nothing reads it.
     """
     for swap in SWAPS + NUMERIC_SWAPS + FIGURE_SWAPS:
         target, _, _ = swap.replacement.partition(":")
-        module = importlib.import_module(target)
+        expected = f"port.patch.{swap.module.rpartition('.')[2]}"
 
-        assert swap.module in module.MIRRORS, (
-            f"{swap.module}.{swap.name} is replaced by {target}, which declares "
-            f"{module.MIRRORS} and not {swap.module!r}"
+        assert target == expected, (
+            f"{swap.module}.{swap.name} is replaced from {target}, not {expected}"
         )
+
+        importlib.import_module(target)
 
 
 @pytest.mark.infra
-@pytest.mark.xfail(
-    strict=True,
-    reason="#250: 7 of 14 swap rows land in a module not named for their target",
-)
-def test_a_sole_mirror_names_the_module() -> None:
-    """The rule #250 asks for, asserted before it holds.
+def test_what_replaces_nothing_does_not_live_under_patch() -> None:
+    """`patch/` means "replaces `cnaster`", so a module that does not is elsewhere.
 
-    **Strict**, so the day the renames land this becomes an unexpected pass
-    and CI forces the marker off. A guard that has to be remembered is a guard
-    that will not be.
-
-    A module mirroring *several* `cnaster` modules is exempt, and that is a
-    finding rather than a loophole: `compute_emission_probability_nb_betabinom`
-    and the two lattice recursions are each defined in both `hmm_nophasing`
-    and `hmm_phased`, so `port.patch.emission` and `port.patch.lattice` unify
-    a duplicate pair and cannot be named for one half of it.
+    `emission_family` wraps `snakes_and_ladders`, `run_sim_gen` is proposed
+    for `cnaster` and written here (#116), and `simulation_manifest` and
+    `hmm_init_trials` are `port`'s own. All four sit at `port.` top level, and
+    none may appear in a swap row.
     """
-    offenders = []
+    installed = {
+        swap.replacement.partition(":")[0]
+        for swap in SWAPS + NUMERIC_SWAPS + FIGURE_SWAPS
+    }
 
-    for name in _modules():
-        module = importlib.import_module(name)
+    for name in (
+        "port.emission_family",
+        "port.run_sim_gen",
+        "port.simulation_manifest",
+        "port.hmm_init_trials",
+    ):
+        importlib.import_module(name)
 
-        if len(module.MIRRORS) != 1:
-            continue
-
-        expected = module.MIRRORS[0].rpartition(".")[2]
-
-        if name.rpartition(".")[2] != expected:
-            offenders.append(f"{name} mirrors {module.MIRRORS[0]}")
-
-    assert not offenders, "\n".join(offenders)
+        assert name not in installed, f"{name} is installed but lives outside patch/"
 
 
 @pytest.mark.infra
 def test_the_private_cnaster_surface_is_the_reviewed_one() -> None:
     """Every `_`-prefixed `cnaster` name `port` imports, against the list above.
 
-    A new private dependence is a decision -- it binds `port` to something
-    `cnaster` never published -- so it arrives in a diff that edits
-    `PRIVATE_SURFACE` and is read, rather than in one that edits an import
-    line and is not.
+    A new private dependence binds `port` to something `cnaster` never
+    published, so it arrives in a diff that edits `PRIVATE_SURFACE` and is
+    read, rather than in one that edits an import line and is not.
     """
-    import ast
-    from pathlib import Path
-
-    root = Path(__file__).resolve().parents[1] / "python" / "port"
     found = set()
 
-    for path in root.rglob("*.py"):
+    for path in (ROOT / "python" / "port").rglob("*.py"):
         for node in ast.walk(ast.parse(path.read_text())):
             if isinstance(node, ast.ImportFrom) and (node.module or "").startswith(
                 "cnaster"

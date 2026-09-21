@@ -1,4 +1,4 @@
-"""What `port.patch.input_data` costs against what it replaces.
+"""What `port.patch.io` costs against what it replaces.
 
 #167. Two measurements, and they say different things.
 
@@ -51,7 +51,7 @@ def test_cnasters_loader(benchmark: BenchmarkFixture, gate_config: Any) -> None:
 @pytest.mark.benchmark
 def test_the_patched_loader(benchmark: BenchmarkFixture, gate_config: Any) -> None:  # noqa: F811
     """52.4 ms, so 1.15x. Reported; no speedup is claimed from it."""
-    from port.patch.input_data import load_input_data
+    from port.patch.io import load_input_data
 
     benchmark(lambda: load_input_data(gate_config))
 
@@ -69,7 +69,7 @@ def test_the_vectorized_range_filter_at_the_gate_size(
     benchmark: BenchmarkFixture,
 ) -> None:
     """The same, vectorized at 7.4 ms: 35x at this size."""
-    from port.patch.input_data import _range_mask
+    from port.patch.io import _range_mask
 
     snp_ids, ranges = synthetic_ranges(*GATE_RANGES)
 
@@ -91,7 +91,7 @@ def test_the_vectorized_range_filter_at_the_stress_size(
     benchmark: BenchmarkFixture,
 ) -> None:
     """2.88 s against 73 ms: **39x**, and exact agreement."""
-    from port.patch.input_data import _range_mask
+    from port.patch.io import _range_mask
 
     snp_ids, ranges = synthetic_ranges(*STRESS_RANGES)
 

@@ -27,8 +27,8 @@ needs the memory -- but the arithmetic it rests on is asserted in
 
 import numpy as np
 import pytest
-from port.patch.hmrf_field import compute_loglike_spot_assignment_strided
-from port.patch.hmrf_fused_field import fused_spot_clone_field
+from port.patch.hmrf.field import compute_loglike_spot_assignment_strided
+from port.patch.hmrf.fused_field import fused_spot_clone_field
 from pytest_benchmark.fixture import BenchmarkFixture
 
 from tests.fixtures import SpotCloneField, spot_clone_field

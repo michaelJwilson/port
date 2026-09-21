@@ -48,16 +48,7 @@ from collections.abc import Sequence
 import numpy as np
 import scipy.special
 
-from port.patch.clone_stack import CloneStack
-
-MIRRORS: tuple[str, ...] = ("cnaster.hmm_nophasing",)
-"""`hmm_nophasing.compute_logmu_shifts`, as an axis reduction.
-
-The `cnaster` module this stands in for, or `()` where it stands in for
-none (#250). Declared rather than inferred: a reader holding a `cnaster`
-module open should be able to find `port`'s answer to it, and
-`tests/test_module_correspondence.py` reads this to check that every swap
-row lands in a module that admits to its target."""
+from port.patch.hmrf_utils import CloneStack
 
 __all__ = ["shifts"]
 

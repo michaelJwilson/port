@@ -1,6 +1,6 @@
 """The reduced label-solver interface, pinned bitwise against `cnaster`.
 
-Issue #59 item 5. `port.patch.icm_interface` presents
+Issue #59 item 5. `port.patch.icm.interface` presents
 `cnaster.icm.icm_sweep_deque`'s fifteen parameters as eight, by folding the
 terms the solver adds inside its own inner loop into the field it is given
 and by passing one graph as one argument.
@@ -19,7 +19,7 @@ rather than worked around silently.
 
 import numpy as np
 import pytest
-from port.patch.icm_interface import CsrGraph, fold_unary, icm_sweep
+from port.patch.icm.interface import CsrGraph, fold_unary, icm_sweep
 from scipy.sparse import csr_matrix
 
 N_SPOTS = 400

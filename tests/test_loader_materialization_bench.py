@@ -87,7 +87,7 @@ def test_the_dense_patch_at_the_gate_size(
     gate_config: Any,  # noqa: F811
 ) -> None:
     """The patch on `cnaster`'s type contract: 39.5 ms, so 1.09x."""
-    from port.patch.input_data import load_input_data
+    from port.patch.io import load_input_data
 
     benchmark(lambda: load_input_data(gate_config))
 
@@ -102,7 +102,7 @@ def test_the_sparse_patch_at_the_gate_size(
     A ratio at the gate size decides nothing, per the Measurement rule. It is
     here because a gate-sized regression is what a merge can be stopped on.
     """
-    from port.patch.input_data import load_input_data
+    from port.patch.io import load_input_data
 
     benchmark(lambda: load_input_data(gate_config, sparse_counts=True))
 
@@ -124,7 +124,7 @@ def test_the_dense_patch_at_the_stress_size(
     benchmark: BenchmarkFixture, stress_config: Any
 ) -> None:
     """The default return at 2,500 spots: 387.7 ms, and see the docstring."""
-    from port.patch.input_data import load_input_data
+    from port.patch.io import load_input_data
 
     benchmark(lambda: load_input_data(stress_config))
 
@@ -135,6 +135,6 @@ def test_the_sparse_patch_at_the_stress_size(
     benchmark: BenchmarkFixture, stress_config: Any
 ) -> None:
     """Where the claim is made: 149.3 ms, **2.00x** on `cnaster`."""
-    from port.patch.input_data import load_input_data
+    from port.patch.io import load_input_data
 
     benchmark(lambda: load_input_data(stress_config, sparse_counts=True))

@@ -1,6 +1,6 @@
 """The fused spot/clone field, pinned bitwise against `cnaster`'s two steps.
 
-Issue #59 item 2. `port.patch.hmrf_fused_field` replaces the pair at
+Issue #59 item 2. `port.patch.hmrf.fused_field` replaces the pair at
 `cnaster.hmrf`'s call site -- `compute_emission_probability_nb_betabinom`
 followed by `compute_loglike_spot_assignment` -- with one pass that
 materializes no `(n_states, n_obs, n_spots)` array.
@@ -18,8 +18,8 @@ not this file's.
 
 import numpy as np
 import pytest
-from port.patch.hmrf_field import compute_loglike_spot_assignment_strided
-from port.patch.hmrf_fused_field import fused_spot_clone_field
+from port.patch.hmrf.field import compute_loglike_spot_assignment_strided
+from port.patch.hmrf.fused_field import fused_spot_clone_field
 
 from tests.fixtures import SpotCloneField, spot_clone_field
 

@@ -19,7 +19,7 @@ level up. `hmrf_fused_field` replaces a two-call sequence rather than a name,
 `hmrf_invariants` hoists out of a loop body, and `icm_interface` is a
 narrower signature -- none of which a name can carry. Every one of them is a
 call-site edit **inside `pipeline_clone_assignment`**, which is itself a
-module-level name, so `port.patch.clone_assignment` rebinds it and takes them
+module-level name, so `port.patch.hmrf.clone_assignment` rebinds it and takes them
 with it.
 
 | patch | where it installs |
@@ -89,7 +89,7 @@ class Site:
 
 
 SWAPS: tuple[Swap, ...] = (
-    Swap("cnaster.io", "load_input_data", "port.patch.input_data:load_input_data", 186),
+    Swap("cnaster.io", "load_input_data", "port.patch.io:load_input_data", 186),
     Swap(
         "cnaster.reference",
         "get_reference_genes",
@@ -111,7 +111,7 @@ SWAPS: tuple[Swap, ...] = (
     Swap(
         "cnaster.omics",
         "summarize_blocks",
-        "port.patch.summaries:summarize_blocks",
+        "port.patch.omics:summarize_blocks",
         191,
     ),
     Swap(
@@ -141,19 +141,19 @@ SWAPS: tuple[Swap, ...] = (
     Swap(
         "cnaster.normal_spot",
         "normal_baf_bin_filter",
-        "port.patch.normal_baf:normal_baf_bin_filter",
+        "port.patch.normal_spot:normal_baf_bin_filter",
         174,
     ),
     Swap(
         "cnaster.hmrf",
         "compute_loglike_spot_assignment",
-        "port.patch.hmrf_field:compute_loglike_spot_assignment_strided",
+        "port.patch.hmrf:compute_loglike_spot_assignment_strided",
         59,
     ),
     Swap(
         "cnaster.hmrf",
         "pipeline_clone_assignment",
-        "port.patch.clone_assignment:pipeline_clone_assignment",
+        "port.patch.hmrf:pipeline_clone_assignment",
         206,
     ),
 )
@@ -175,7 +175,7 @@ NUMERIC_SWAPS: tuple[Swap, ...] = (
     Swap(
         "cnaster.hmm_nophasing",
         "_nb_logpmf_1d",
-        "port.patch.nb_logpmf:nb_logpmf_1d",
+        "port.patch.hmm_nophasing:nb_logpmf_1d",
         240,
     ),
 )
@@ -209,7 +209,7 @@ default either.
 
 
 FIGURE_SWAPS: tuple[Swap, ...] = (
-    Swap("cnaster.utils", "write_fig", "port.patch.figures:write_fig", 195),
+    Swap("cnaster.utils", "write_fig", "port.patch.utils:write_fig", 195),
 )
 """The replacements that **change the output**, and the biggest win here.
 
@@ -449,7 +449,7 @@ def _kernels() -> tuple[tuple[str, Any], ...]:
     return (
         ("cnaster.hmrf:compute_loglike_spot_assignment", field_arguments),
         (
-            "port.patch.hmrf_field:compute_loglike_spot_assignment_strided",
+            "port.patch.hmrf:compute_loglike_spot_assignment_strided",
             field_arguments,
         ),
         (
@@ -481,7 +481,7 @@ def _kernels() -> tuple[tuple[str, Any], ...]:
             (_tiny(1), _tiny(1), 0.5, 1.0, _tiny(1)),
         ),
         (
-            "port.patch.hmrf_fused_field:fused_spot_clone_field",
+            "port.patch.hmrf.fused_field:fused_spot_clone_field",
             (
                 _tiny(1, 1),
                 _tiny(1, 1),

@@ -1,4 +1,4 @@
-"""`port.patch.input_data.load_input_data` returns what `cnaster`'s does.
+"""`port.patch.io.load_input_data` returns what `cnaster`'s does.
 
 #167. The patch removes passes, not rows: every spot, gene and SNP that
 survives `cnaster`'s loader survives this one, and every count is the same
@@ -99,7 +99,7 @@ def gate_config(
 def both_loaders(gate_config: Any) -> tuple[Any, Any]:
     """Both loaders run once on the same instance."""
     from cnaster.io import load_input_data as upstream
-    from port.patch.input_data import load_input_data as patched
+    from port.patch.io import load_input_data as patched
 
     return upstream(gate_config), patched(gate_config)
 
@@ -261,7 +261,7 @@ def test_the_sparse_return_carries_the_same_matrix(gate_config: Any) -> None:
     changes is bytes, not values, and that is what this pins.
     """
     import scipy.sparse as sp
-    from port.patch.input_data import load_input_data as patched
+    from port.patch.io import load_input_data as patched
 
     dense = patched(gate_config)
     sparse = patched(gate_config, sparse_counts=True)
@@ -364,7 +364,7 @@ def test_the_vectorized_range_filter_drops_the_snps_the_loop_drops(
     output is a boolean vector, so the two implementations either select the
     same SNPs or they do not.
     """
-    from port.patch.input_data import _range_mask
+    from port.patch.io import _range_mask
 
     snp_ids, ranges = synthetic_ranges(n_snps, n_ranges)
 
@@ -386,7 +386,7 @@ def _loaders() -> list[tuple[str, Any]]:
     claim is put to both subjects, and a divergence names which one moved.
     """
     from cnaster.io import load_input_data as upstream
-    from port.patch.input_data import load_input_data as patched
+    from port.patch.io import load_input_data as patched
 
     return [("cnaster", upstream), ("patch", patched)]
 
@@ -608,7 +608,7 @@ def test_the_outlier_filter_leaves_every_planted_count_alone(
     than its own neighbour count -- which it does not report, since it logs
     "Removed 0 outlier genes" as though it had looked.
     """
-    from port.patch.input_data import load_input_data
+    from port.patch.io import load_input_data
 
     _, pre_image, written, _ = planted_instance
 
@@ -638,7 +638,7 @@ def test_the_downsampler_misses_its_own_threshold_by_two_per_cent(
     checking it. What a positive case needs is a planted gene an order of
     magnitude above the rest, which `unsegment` cannot express today.
     """
-    from port.patch.input_data import load_input_data
+    from port.patch.io import load_input_data
 
     _, pre_image, written, _ = planted_instance
 

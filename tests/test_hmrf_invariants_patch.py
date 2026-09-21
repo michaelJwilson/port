@@ -8,7 +8,7 @@ every outer iteration::
 
 and `compute_loglike_spot_assignment` then rebuilds
 `rel_valid_emision_weight` from them, per call, inside its own `prange`.
-`port.patch.hmrf_invariants` computes all three once.
+`port.patch.hmrf.invariants` computes all three once.
 
 **Two claims, and they are separate tests.** That the patch computes what
 `cnaster` computes is a bitwise comparison against `cnaster` itself. That the
@@ -23,7 +23,7 @@ ratio.
 
 import numpy as np
 import pytest
-from port.patch.hmrf_invariants import BoundaryInvariants, boundary_invariants
+from port.patch.hmrf.invariants import BoundaryInvariants, boundary_invariants
 from scipy.sparse import csr_matrix
 
 from tests.fixtures import SpotCloneField, spot_clone_field
