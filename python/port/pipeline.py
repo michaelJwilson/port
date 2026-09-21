@@ -156,6 +156,23 @@ SWAPS: tuple[Swap, ...] = (
         "port.patch.clone_assignment:pipeline_clone_assignment",
         206,
     ),
+    # NB not a replacement of a calculation: `cnaster`'s `port` branch renamed
+    #    this method's last parameter in `hmm_nophasing` and not in the
+    #    `hmm_phased` override, so the shared call site raises `TypeError` and
+    #    no phased fit completes. The row restores a run rather than changing
+    #    one, and comes out when upstream accepts the keyword itself (#259).
+    Swap(
+        "cnaster.hmm_phased",
+        "hmm_phased",
+        "port.patch.hmm_phased:hmm_phased",
+        259,
+    ),
+    Swap(
+        "cnaster.hmm_nophasing",
+        "hmm_nophasing",
+        "port.patch.hmm_nophasing:hmm_nophasing",
+        259,
+    ),
 )
 """Every `cnaster` name `port` can replace by rebinding it.
 
