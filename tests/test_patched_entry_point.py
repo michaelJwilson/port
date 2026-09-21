@@ -116,6 +116,12 @@ def test_the_context_manager_restores_every_binding() -> None:
     `port`'s own tests put a patch to the function it replaces. If `patched()`
     leaked, those would compare `port` with `port` and pass for the wrong
     reason -- which is the failure this exists to make impossible.
+
+    Stated as "inside, it is `port`'s; afterwards, it is whatever it was"
+    rather than "afterwards it differs from inside": the compatibility rows
+    are installed for the whole session (`tests/conftest.py`), so they are
+    already `port`'s on the way in and restoring them to upstream would be
+    the leak rather than the fix.
     """
     import sys
 
@@ -126,11 +132,22 @@ def test_the_context_manager_restores_every_binding() -> None:
         for site in swap_sites()
     }
 
+    chosen = {(swap.module, swap.name) for swap in SWAPS}
+
     with patched() as sites:
         assert len(sites) == len(before)
 
         for (module, name), original in before.items():
-            assert getattr(sys.modules[module], name) is not original
+            now = getattr(sys.modules[module], name)
+
+            assert now.__module__.startswith("port."), (
+                f"{module}.{name} is bound to {now.__module__}, not to port"
+            )
+
+            # NB a chosen row replaces a calculation, so it must also have
+            #    moved; a compatibility row changes nothing and need not.
+            if (module, name) in chosen:
+                assert now is not original
 
     for (module, name), original in before.items():
         assert getattr(sys.modules[module], name) is original

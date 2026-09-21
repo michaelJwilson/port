@@ -6,11 +6,11 @@ vectorized form it replaced. `CloneStack.per_clone` is that form. These pin
 that the two agree, which is what makes replacing the loop a refactor.
 
 `patch` throughout: this says the accessor and the loop agree, not that either
-is the right quantity. Whether `compute_logmu_shifts` should run at all is
-open — `hmm_nophasing.py:279` comments out its only call and logs
-`"logmu_shifts are not currently supported."`, which
-`test_the_consumer_this_accessor_is_for_does_not_run` pins so the day it is
-re-enabled is not silent.
+is the right quantity. Whether `compute_logmu_shifts` is *applied* is open —
+on the `port` branch the call is live but its result is never read
+(`# TODO fold in logmu_shifts`), which
+`test_the_shift_is_computed_and_then_discarded` pins so the day it is folded
+in is not silent.
 """
 
 from __future__ import annotations
@@ -66,17 +66,20 @@ def test_the_per_clone_reduction_reproduces_cnasters_loop() -> None:
     # NB the same quantity via the accessor, one clone at a time because the
     #    lengths differ -- which is exactly the case a rectangular view cannot
     #    hold, and is why `channels_of` takes one `n_obs` rather than a list.
-    ours = np.empty(n_segments)
+    #    One value per clone: the `port` branch returns `(n_clones,)` rather
+    #    than the segment-broadcast the branch before it returned (#259).
+    ours = np.empty(len(clone_lengths))
     start = 0
 
-    for length in clone_lengths:
+    for clone, length in enumerate(clone_lengths):
         block = (
             log_mus[copy_states[start : start + length]]
             + normal_log_lambda[start : start + length]
         )
-        ours[start : start + length] = scipy.special.logsumexp(block)
+        ours[clone] = scipy.special.logsumexp(block)
         start += length
 
+    assert theirs.shape == ours.shape == (len(clone_lengths),)
     assert np.allclose(theirs, ours, rtol=0.0, atol=1e-12), (
         f"max |difference| {np.max(np.abs(theirs - ours)):.3e}"
     )
@@ -143,28 +146,60 @@ def test_a_stack_that_does_not_divide_is_refused() -> None:
 
 
 @pytest.mark.bug
-def test_the_consumer_this_accessor_is_for_does_not_run() -> None:
-    """`compute_logmu_shifts` is dead code, and #234 PR 2 has to decide it.
+def test_the_shift_is_computed_and_then_discarded() -> None:
+    """The call is live on the `port` branch; nothing reads what it returns.
 
-    `hmm_nophasing.py:279` comments out the only call and logs
-    `"logmu_shifts are not currently supported."` So the per-clone shift the
-    accessor exists to express is computed nowhere in a run.
+    The branch this repository pinned before #259 commented the call out and
+    logged `"logmu_shifts are not currently supported."`. The `port` branch
+    calls it, inside `for i in range(n_states)`, and drops the result --
+    `# TODO fold in logmu_shifts`. So the emission is still computed without
+    the per-clone normalizer, and the cost of computing it is now paid
+    `n_states` times per spot for nothing.
 
-    Written as a `bug` pin against `cnaster`'s own contract -- the function is
-    defined, documented and unreachable -- so it **fails** the day the call is
-    restored, which is when PR 2 must judge the shift against the planted
-    truth rather than merely reproducing a loop.
+    Pinned by counting binds against reads in the function's AST rather than
+    by matching a comment, so the day the shift is folded in this **fails**,
+    which is when #234 PR 2 owes a judgement of the shift against planted
+    truth rather than reproduction of a loop. #259 stages 2--4 are what
+    clear it.
     """
+    import ast
     import inspect
 
     import cnaster.hmm_nophasing as nophasing
 
-    source = inspect.getsource(nophasing)
+    consumer = "compute_emission_probability_nb_betabinom_coded"
+    function = next(
+        node
+        for node in ast.walk(ast.parse(inspect.getsource(nophasing)))
+        if isinstance(node, ast.FunctionDef) and node.name == consumer
+    )
+    uses = [
+        node
+        for node in ast.walk(function)
+        if isinstance(node, ast.Name) and node.id == "logmu_shifts"
+    ]
 
-    assert "logmu_shifts are not currently supported" in source, (
-        "the warning is gone, so the call may be live: #234 PR 2 now owes a "
-        "validation of the shift against planted truth, not just equivalence"
+    binds = [node for node in uses if isinstance(node.ctx, ast.Store)]
+    reads = [node for node in uses if isinstance(node.ctx, ast.Load)]
+
+    assert binds, f"{consumer} no longer computes the shift at all"
+    assert not reads, (
+        f"{consumer} now reads the shift on line(s) "
+        f"{[node.lineno for node in reads]}: #234 PR 2 owes a validation "
+        "against planted truth, not just equivalence to a loop"
     )
-    assert "# logmu_shifts = compute_logmu_shifts(" in source, (
-        "the call is no longer commented out"
-    )
+
+    # NB and it is recomputed per state, though it does not depend on one.
+    #    Loop-invariant, so the waste is a factor of `n_states`.
+    over_states = [
+        loop
+        for loop in ast.walk(function)
+        if isinstance(loop, ast.For)
+        and ast.unparse(loop.iter) == "range(n_states)"
+        and any(
+            isinstance(node, ast.Name) and node.id == "logmu_shifts"
+            for node in ast.walk(loop)
+        )
+    ]
+
+    assert len(over_states) == 1, "the per-state recompute moved; re-read the call site"

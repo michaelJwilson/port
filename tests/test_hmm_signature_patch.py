@@ -1,7 +1,8 @@
-"""Three signatures `cnaster`'s `port` branch broke, and the rows that carry them.
+"""Four signatures `cnaster`'s `port` branch broke, and the rows that carry them.
 
 **#259 stage 1.** Moving the pin from `finish_annotation_mushift3` to `port`
-found three defects that stop the pipeline before it fits anything. Each is a
+found four defects. Three stop the pipeline before it fits anything and take
+a row; the fourth breaks a module nothing reaches and takes none. Each is a
 call site and a signature disagreeing, and none is a calculation `port`
 replaces, so the rows say "the run happens" rather than "the number is
 better".
@@ -9,6 +10,11 @@ better".
 `bug`: each test pins a defect in the subject. They pass while the defect is
 there and **fail when `cnaster` fixes it**, which is the exit condition -- a
 compatibility row that outlives its reason is a row nobody will remove.
+
+Each reads `port.patch.*.UPSTREAM`, the class captured at import time, rather
+than the module attribute: the rows are installed for the whole session
+(`tests/conftest.py`), so the attribute is the shim and inspecting it would
+assert the patch against itself.
 
 The emission comparison that would normally referee a `SWAPS` row is not
 available here: the unpatched arm raises before producing one.
@@ -19,15 +25,40 @@ from __future__ import annotations
 import inspect
 
 import pytest
-from port.pipeline import SWAPS
+from port.pipeline import COMPAT_SWAPS
 
 
 def _row(module: str, name: str) -> object:
-    matched = [swap for swap in SWAPS if swap.module == module and swap.name == name]
+    matched = [
+        swap for swap in COMPAT_SWAPS if swap.module == module and swap.name == name
+    ]
 
     assert len(matched) == 1, f"expected one row for {module}.{name}, got {matched}"
 
     return matched[0]
+
+
+@pytest.mark.patch
+def test_the_captured_upstream_is_not_the_installed_shim() -> None:
+    """What the three `bug` tests below rest on, asserted rather than assumed.
+
+    If `install` had run before the patch modules imported, `UPSTREAM` would
+    be the shim and every defect below would read as fixed. So this pins that
+    the capture is `cnaster`'s own class, by the file it is defined in.
+    """
+    import cnaster.hmm_nophasing
+    import cnaster.hmm_phased
+    from port.patch.hmm_nophasing import UPSTREAM as upstream_nophasing
+    from port.patch.hmm_phased import UPSTREAM as upstream_phased
+
+    for upstream, module in (
+        (upstream_nophasing, cnaster.hmm_nophasing),
+        (upstream_phased, cnaster.hmm_phased),
+    ):
+        assert inspect.getfile(upstream) == module.__file__
+        assert upstream is not getattr(module, upstream.__name__), (
+            "the shim is not installed, so these tests referee nothing"
+        )
 
 
 @pytest.mark.bug
@@ -38,7 +69,7 @@ def test_the_phased_override_refuses_the_keyword_its_caller_passes() -> None:
     `class hmm_phased(hmm_nophasing)` means `self.` reaches the override
     whenever the phased model fits. Every phased fit raises.
     """
-    from cnaster.hmm_phased import hmm_phased as upstream
+    from port.patch.hmm_phased import UPSTREAM as upstream
 
     taken = inspect.signature(
         upstream.compute_emission_probability_nb_betabinom_coded
@@ -60,7 +91,7 @@ def test_the_fit_refuses_two_keywords_its_caller_passes() -> None:
     the rename, and its `# **kwargs,` is commented out -- so every fit
     raises before the phased one gets the chance to.
     """
-    from cnaster.hmm_nophasing import hmm_nophasing as upstream
+    from port.patch.hmm_nophasing import UPSTREAM as upstream
 
     taken = inspect.signature(upstream._run_optimization_pipeline).parameters
 
@@ -84,11 +115,9 @@ def test_the_shift_is_guarded_on_the_wrong_variable() -> None:
     rather than a `TypeError`. Asserted on the source because the failure is
     numba's and reproducing it costs a compile.
     """
-    import cnaster.hmm_nophasing as module
+    from port.patch.hmm_nophasing import UPSTREAM as upstream
 
-    source = inspect.getsource(
-        module.hmm_nophasing.compute_emission_probability_nb_betabinom_coded
-    )
+    source = inspect.getsource(upstream.compute_emission_probability_nb_betabinom_coded)
 
     assert "if normal_log_lambda is not None:" in source, (
         "the guard moved; re-read it before trusting the patch (#259)"
@@ -99,32 +128,36 @@ def test_the_shift_is_guarded_on_the_wrong_variable() -> None:
     assert "compute_logmu_shifts(log_mu, copy_states" in source
 
 
-@pytest.mark.patch
-def test_the_patched_classes_are_upstreams_with_the_keywords_added() -> None:
-    """Subclasses, so everything not named here is upstream's own.
+@pytest.mark.bug
+def test_the_sampling_module_does_not_import_and_nothing_notices() -> None:
+    """A fourth defect, and the only one that owes no row.
 
-    The rows replace a **class** because `port.pipeline.Swap` names a module
-    attribute and these are attributes of a class. What that buys is this
-    assertion: the patch cannot silently diverge in a method it does not
-    mention.
+    `cnaster/wolff.py` imports `get_clone_label_annotation` from
+    `cnaster.annotation`, which exports three names and not that one. So
+    `import cnaster.wolff` raises -- and no row is owed, because **nothing in
+    the package imports it**: `scripts/run_cnaster.py:62` and `hmrf.py:12`
+    comment theirs out and the only call site sits inside a string literal.
+
+    Pinned here rather than patched: a module the entry point cannot reach is
+    out of `port`'s scope to replace, and in scope to report. #259's sampling
+    comment carries it upstream.
     """
-    from cnaster.hmm_nophasing import hmm_nophasing as upstream_nophasing
-    from cnaster.hmm_phased import hmm_phased as upstream_phased
-    from port.patch.hmm_nophasing import hmm_nophasing as patched_nophasing
-    from port.patch.hmm_phased import hmm_phased as patched_phased
+    with pytest.raises(ImportError, match="get_clone_label_annotation"):
+        import cnaster.wolff
 
-    assert issubclass(patched_nophasing, upstream_nophasing)
-    assert issubclass(patched_phased, upstream_phased)
+    import pathlib
 
-    for patched in (patched_nophasing, patched_phased):
-        taken = inspect.signature(patched._run_optimization_pipeline).parameters
+    import cnaster
 
-        assert {"clone_lengths", "propagate_errors"} <= set(taken), (
-            f"{patched.__name__} does not take what its caller passes"
-        )
+    package = pathlib.Path(cnaster.__file__).parent
+    importers = [
+        path.relative_to(package).as_posix()
+        for path in package.rglob("*.py")
+        for line in path.read_text().splitlines()
+        if line.lstrip().startswith(("from cnaster.wolff", "import cnaster.wolff"))
+    ]
 
-    taken = inspect.signature(
-        patched_phased.compute_emission_probability_nb_betabinom_coded
-    ).parameters
-
-    assert "num_segments_clones" in taken
+    assert not importers, (
+        f"{importers} now import it, so the ImportError is reachable and a row "
+        "or an upstream fix is owed (#259)"
+    )
