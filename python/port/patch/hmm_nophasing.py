@@ -47,6 +47,7 @@ from __future__ import annotations
 from typing import Any
 
 from cnaster.hmm_nophasing import hmm_nophasing as UPSTREAM
+from port.patch.hmm_single_spot import SingleSpot
 
 __all__ = ["UPSTREAM", "RenamedKeywords", "hmm_nophasing"]
 
@@ -115,9 +116,15 @@ class RenamedKeywords:
         )
 
 
-class hmm_nophasing(RenamedKeywords, UPSTREAM):  # type: ignore[misc]
+class hmm_nophasing(SingleSpot, RenamedKeywords, UPSTREAM):  # type: ignore[misc]
     """`cnaster.hmm_nophasing.hmm_nophasing`, taking what its callers pass.
 
     The name is `cnaster`'s, lower-case class and all: this is rebound over
     it, so a traceback that names `hmm_nophasing` keeps naming it.
+
+    `SingleSpot` comes first so the collapsed emission (#259 stage 2) wins
+    over `RenamedKeywords`'s forward to upstream's loop. `hmm_phased` carries
+    `RenamedKeywords` and **not** `SingleSpot`: it reaches the same method
+    with `clone_stack=False` on a path nothing here has established is
+    single-spot.
     """
