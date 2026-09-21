@@ -36,6 +36,15 @@ from typing import Any
 import numpy as np
 from cnaster.hmm_nophasing import _bb_logpmf_1d, _nb_logpmf_1d
 
+MIRRORS: tuple[str, ...] = ("cnaster.hmm_initialize",)
+"""`hmm_initialize`'s two initializers, scored on one referee.
+
+The `cnaster` module this stands in for, or `()` where it stands in for
+none (#250). Declared rather than inferred: a reader holding a `cnaster`
+module open should be able to find `port`'s answer to it, and
+`tests/test_module_correspondence.py` reads this to check that every swap
+row lands in a module that admits to its target."""
+
 __all__ = [
     "Candidate",
     "Selection",

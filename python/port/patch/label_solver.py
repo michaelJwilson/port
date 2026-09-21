@@ -22,6 +22,15 @@ from __future__ import annotations
 import os
 from typing import Literal
 
+MIRRORS: tuple[str, ...] = ("cnaster.icm",)
+"""Which solver stands in for `icm.icm_sweep_deque` at the call site.
+
+The `cnaster` module this stands in for, or `()` where it stands in for
+none (#250). Declared rather than inferred: a reader holding a `cnaster`
+module open should be able to find `port`'s answer to it, and
+`tests/test_module_correspondence.py` reads this to check that every swap
+row lands in a module that admits to its target."""
+
 __all__ = ["SOLVERS", "label_solver", "set_label_solver"]
 
 Solver = Literal["icm", "alpha"]

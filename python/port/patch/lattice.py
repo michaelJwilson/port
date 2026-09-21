@@ -62,6 +62,18 @@ from cnaster.hmm_nophasing import numba_logsumexp
 from cnaster.hmm_phased import PEANLIZE_PHASE_ONLY_ON_SAME_CNV, update_combined_transmat
 from numba import njit
 
+MIRRORS: tuple[str, ...] = (
+    "cnaster.hmm_nophasing",
+    "cnaster.hmm_phased",
+)
+"""**Two**, and that is the finding: `forward_lattice` and `backward_lattice` are defined in both, so one recursion here replaces a duplicate pair rather than a module.
+
+The `cnaster` module this stands in for, or `()` where it stands in for
+none (#250). Declared rather than inferred: a reader holding a `cnaster`
+module open should be able to find `port`'s answer to it, and
+`tests/test_module_correspondence.py` reads this to check that every swap
+row lands in a module that admits to its target."""
+
 __all__ = ["backward_lattice", "forward_lattice", "is_phased", "spot_sums_agree"]
 
 
