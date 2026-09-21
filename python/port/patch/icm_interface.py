@@ -44,6 +44,15 @@ from dataclasses import dataclass
 
 import numpy as np
 
+MIRRORS: tuple[str, ...] = ("cnaster.icm",)
+"""`icm.icm_sweep_deque`, reduced to the problem it solves.
+
+The `cnaster` module this stands in for, or `()` where it stands in for
+none (#250). Declared rather than inferred: a reader holding a `cnaster`
+module open should be able to find `port`'s answer to it, and
+`tests/test_module_correspondence.py` reads this to check that every swap
+row lands in a module that admits to its target."""
+
 __all__ = ["CsrGraph", "IcmResult", "fold_unary", "icm_sweep"]
 
 

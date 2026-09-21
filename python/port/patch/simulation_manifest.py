@@ -26,6 +26,15 @@ from typing import Any
 import numpy as np
 import yaml
 
+MIRRORS: tuple[str, ...] = ()
+"""`port`'s own record of what a run's inputs were; `cnaster` keeps none.
+
+The `cnaster` module this stands in for, or `()` where it stands in for
+none (#250). Declared rather than inferred: a reader holding a `cnaster`
+module open should be able to find `port`'s answer to it, and
+`tests/test_module_correspondence.py` reads this to check that every swap
+row lands in a module that admits to its target."""
+
 MANIFEST_VERSION = 1
 """Bumped when a field changes meaning, so a consumer can refuse an old one."""
 

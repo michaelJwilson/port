@@ -53,6 +53,15 @@ from typing import Any
 import numpy as np
 import scipy.special
 
+MIRRORS: tuple[str, ...] = ("cnaster.hmm_nophasing",)
+"""`hmm_nophasing._nb_logpmf_1d`, installed by `NUMERIC_SWAPS`.
+
+The `cnaster` module this stands in for, or `()` where it stands in for
+none (#250). Declared rather than inferred: a reader holding a `cnaster`
+module open should be able to find `port`'s answer to it, and
+`tests/test_module_correspondence.py` reads this to check that every swap
+row lands in a module that admits to its target."""
+
 __all__ = ["log_factorial", "nb_logpmf_1d"]
 
 _LOG_FACTORIAL: dict[int, tuple[Any, np.ndarray]] = {}

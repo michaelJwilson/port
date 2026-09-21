@@ -44,6 +44,15 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
+MIRRORS: tuple[str, ...] = ("cnaster.hmrf",)
+"""The COO round trip `hmrf` builds per iteration.
+
+The `cnaster` module this stands in for, or `()` where it stands in for
+none (#250). Declared rather than inferred: a reader holding a `cnaster`
+module open should be able to find `port`'s answer to it, and
+`tests/test_module_correspondence.py` reads this to check that every swap
+row lands in a module that admits to its target."""
+
 if TYPE_CHECKING:
     from scipy.sparse import csr_matrix
 

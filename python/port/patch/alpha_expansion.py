@@ -58,6 +58,15 @@ from snakes_and_ladders.sim.graph import PottsGraph
 
 from port.patch.icm_interface import CsrGraph, IcmResult
 
+MIRRORS: tuple[str, ...] = ("cnaster.icm",)
+"""`icm.icm_sweep_deque`'s problem, solved by upstream's expansion moves.
+
+The `cnaster` module this stands in for, or `()` where it stands in for
+none (#250). Declared rather than inferred: a reader holding a `cnaster`
+module open should be able to find `port`'s answer to it, and
+`tests/test_module_correspondence.py` reads this to check that every swap
+row lands in a module that admits to its target."""
+
 __all__ = ["alpha_expansion_sweep", "potts_energy", "potts_graph_from"]
 
 
