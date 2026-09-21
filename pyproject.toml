@@ -77,6 +77,34 @@ docs = [
 calicost = [
     "calicost",
 ]
+# The run store behind `snakes_and_ladders.track`, which is the seam #251
+# records `run_cnaster`'s optimizations through. **Optional, and never
+# imported at module scope**: `track.Run` is a `runtime_checkable` Protocol
+# written with `aim.Run`'s own signatures, so the recording path works, types
+# and tests without `aim` installed, and only a reader who wants the UI
+# installs it. Mirrors how `snakes_and_ladders` declares it (sal #778).
+#
+# Apache-2.0 and above the 1,000-star bar, so neither `CLAUDE.md` dependency
+# rule is triggered by the licence or the size. **Two advisories are, and
+# they have no fixed version**: PYSEC-2026-1087 (XSS in the report endpoint)
+# and PYSEC-2026-1088 (a sandbox escape in the query handler). Both are in
+# the server `aim up` runs, not in the recording path this repository uses.
+#
+# **It is a large install.** The resolution goes 194 packages to 219: `aim`
+# carries the server behind `aim up` -- `sqlalchemy`, `starlette`,
+# `uvicorn`, `watchdog`, `websockets` and the rest -- none of which the
+# recording path touches. That is the cost #251 weighs, and the second
+# reason this is an extra.
+#
+# CI syncs `--extra dev --extra test`, so `aim` is never installed there.
+# `uv sync --locked --all-extras` -- the command `CLAUDE.md` names -- **does**
+# install it, so a `pip-audit` after that command reports both advisories.
+# That is a consequence of adding it, stated rather than discovered: the
+# remedy is to sync without this extra before auditing, and the reason to
+# keep it an extra rather than a core dependency.
+track = [
+    "aim>=3.29,<4",
+]
 notebooks = [
     "nbclient>=0.10",
     "nbformat>=5.10",
