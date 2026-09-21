@@ -142,10 +142,11 @@ def test_the_generator_is_idempotent(tmp_path: Path) -> None:
 def test_a_ratio_is_never_rendered_without_its_instance() -> None:
     """`CLAUDE.md`: a ratio read at a gate size decides nothing.
 
-    So `1.21X` on its own is the claim that rule forbids. The size used to
-    live in each ratio's label as `@ stress`, which named the tier rather
-    than the shape and spent the width twice; the `instance` badge carries
-    it now, and says `stress: 4000x1980x5`.
+    So `1.21X` on its own is the claim that rule forbids. The tier used to
+    live in each ratio's label as `@ stress`, spending the width twice; the
+    `instance` badge carries it once now, and says `stress`. The shape stays
+    in `.badges/measurements.json` and in the README's table, where there is
+    room to say what it means.
 
     That makes the two badges a pair: this is what refuses a ratio rendered
     while the instance beside it still reads as unmeasured, which is the
