@@ -53,8 +53,9 @@ cycles rather than ICM iterations.
 from __future__ import annotations
 
 import numpy as np
-from snakes_and_ladders.search.alpha_expansion import alpha_expansion, energy
+from snakes_and_ladders.search.alpha_expansion import alpha_expansion
 from snakes_and_ladders.sim.graph import PottsGraph
+from snakes_and_ladders.sim.potts import energy
 
 from port.patch.icm_interface import CsrGraph, IcmResult
 

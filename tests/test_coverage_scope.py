@@ -46,6 +46,22 @@ much of `snakes_and_ladders` the validation rests on.
 """
 
 
+NOT_REFEREES = frozenset({"snakes_and_ladders.track"})
+"""Upstream a test imports that is **not** a referee, and so not in the surface.
+
+The oracle figure says how much of upstream `port` uses to referee `cnaster`.
+`snakes_and_ladders.track` is a run store: `--track` records a run through it
+and `tests/test_tracking.py` asserts the seam binds and unbinds, but nothing
+about `cnaster` rests on it being right. Its statements in the oracle
+denominator would be upstream that no claim rests on, which is the same
+dilution `preprocessing` is deselected to avoid -- and this file's own rule
+against gaming the number by omission cuts both ways.
+
+One member, deliberately. A second is a reason to re-read the rule rather
+than to extend the set (#251).
+"""
+
+
 def _declared_oracle_modules() -> set[str]:
     """The surface as dotted module names, from the report's `include` globs."""
     import configparser
@@ -96,9 +112,10 @@ def test_no_test_referees_against_an_undeclared_upstream_module() -> None:
     denominator shrinks, the fraction rises, and the claims rest on exactly as
     much of upstream as before.
 
-    The rule is absolute: anything upstream a test reaches for is the
-    referee. An exemption would need a reason, and none has been needed --
-    every upstream module the suite imports today is in the surface.
+    The rule holds for anything a test reaches for **as a referee**, which
+    was every upstream import until #251. `NOT_REFEREES` carries the one
+    exemption and its reason; the set is meant to stay at one member, and a
+    second one is a sign the surface is being gamed after all.
 
     Scanned from the source rather than from `sys.modules`, so an import
     reached only on a branch no test takes is still counted.
@@ -127,7 +144,9 @@ def test_no_test_referees_against_an_undeclared_upstream_module() -> None:
         undeclared = {
             name
             for name in used
-            if name != "snakes_and_ladders" and name not in declared
+            if name != "snakes_and_ladders"
+            and name not in declared
+            and name not in NOT_REFEREES
         }
         if undeclared:
             offenders[path.name] = undeclared

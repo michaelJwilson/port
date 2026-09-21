@@ -83,6 +83,20 @@ include =
     */snakes_and_ladders/search/alpha_expansion.py
     */snakes_and_ladders/opt/emission_mixture.py
     */snakes_and_ladders/opt/mixture.py
+    */snakes_and_ladders/sim/potts.py
+# `sim/potts.py` joined on #251. It is where
+# `energy` is **defined**: the pin bump to 54acc8e turned
+# `search/alpha_expansion.py`'s `energy` into a re-import, and `mypy --strict`
+# refuses an indirect re-export, so the three sites that score a Potts
+# labelling now name the definition and the referee moved with them.
+# `track.py` is **not** here, although `tests/test_tracking.py` imports it:
+# it is a run store, not a referee. It establishes nothing about `cnaster`,
+# so its statements in this denominator would be upstream that no claim
+# rests on -- the same dilution `preprocessing` is deselected to avoid.
+# `tests/test_coverage_scope.py` carries the exemption and the reason.
+# `tests/test_coverage_scope.py` is what caught both: a test may not referee
+# against an upstream module this file does not declare, or the oracle's
+# denominator stops being the surface port actually rests on.
 # 1,209 of 2,582 statements, 46.82 per cent. `ragged.py` joined the surface
 # when #667 landed and the fixture began planting unequal chromosomes against
 # it; `opt/fit.py` joined with `main`'s `test_integer_copy.py`;
@@ -119,7 +133,7 @@ include =
 # and they are the fit-level half of that rung, which waits on #77 item 1.
 # Upstream's #674 is the fix; the event that moves this figure is the pin
 # moving, not a test here failing.
-fail_under = 46.7
+fail_under = 49.6
 precision = 2
 # **Upstream capability with no `cnaster` counterpart leaves the denominator.**
 # The figure is coverage against what `cnaster` can do, not against what
