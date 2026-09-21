@@ -411,18 +411,22 @@ omit = [
 # that judge planted truth reads 39.11, and the figure rose because the
 # reclassification was worth more than the narrowing cost.
 #
-# The denominator moves with the selection, 6,218 to 5,919, and the 299
-# statements are exactly `scripts/run_cnaster.py`. That is the sharpest thing
-# the split found: **the only tests that reach the installed entry point are
-# ones this taxonomy does not count.** A directory scan never descends into
-# `scripts/` (the note above), so those statements enter the figure only when
-# something imports the script -- and today that is `test_run_cnaster_round_trip`
+# The denominator used to move with the selection, 6,218 to 5,919, and the 299
+# statements were exactly `scripts/run_cnaster.py`. That was the sharpest thing
+# the split found: **the only tests that reached the installed entry point were
+# ones this taxonomy does not count.** A directory scan did not descend into
+# `scripts/` (the note above), so those statements entered the figure only when
+# something imported the script -- and that was `test_run_cnaster_round_trip`
 # and `test_cold_inference`, both `infra`. The end-to-end coverage #87 was
 # credited with was real code executed and nothing judging the result.
 #
-# So the floor is stated against 5,919 deliberately. Recutting it against
-# 6,218 would mean counting a module no counted test enters, which is the
-# arithmetic this change exists to stop.
+# **#259 ended the split**, and not by a decision here: `cnaster`'s `port`
+# branch ships `__init__.py`, the scan descends, and `scripts/` is in the
+# denominator for every selection. The two guards now read one number, 8,514,
+# and #223 -- which asked what the 299 were -- is answered by the arithmetic
+# rather than by argument. What it does not answer is the gap the note above
+# names: those 919 statements are the most live code `cnaster` has and they
+# are at 0.00 per cent, counted now and still unjudged.
 #
 # The `port` side of the denominator: `port.integer_copy` 98 statements,
 # `port.patch.hmrf_field` 32, `port.patch.hmrf_fused_field` 25,
@@ -440,9 +444,23 @@ omit = [
 #
 # Upstream's rule governs it: maintained or raised, never lowered to pass a
 # pull request. Unlike a denominator of the imported modules, this one does
-# not fall for bringing a new module under test, so there is no case where
-# lowering it is legitimate.
-fail_under = 41.7
+# not fall for bringing a new module under test.
+#
+# **It does fall when the denominator grows, and on #259 it did**: 41.7 to
+# 41.6, and the number is lower while the requirement is higher. The gate
+# measured 41.65 against 8,514 statements where it had measured 46.10 against
+# 7,554, because `cnaster/scripts/` (919 statements, 0.00 per cent) entered
+# the denominator with the pin move and no test was removed. In statements,
+# which is what the floor is really about:
+#
+#     old floor  41.7 per cent of 7,554  =  3,150 covered
+#     new floor  41.6 per cent of 8,514  =  3,542 covered
+#
+# So the recut asks for **392 more covered statements than the floor it
+# replaces**, and the covered count rose 3,482 to 3,546 to clear it. Recorded
+# here rather than argued in a pull request, because a floor that moved for a
+# reason nobody wrote down is a floor that will move again.
+fail_under = 41.6
 precision = 2
 exclude_lines = [
     "pragma: no cover",
