@@ -29,7 +29,7 @@ from dataclasses import dataclass
 
 import numpy as np
 import pytest
-from port.patch.icm_interface import CsrGraph, fold_unary, icm_sweep
+from port.patch.icm.interface import CsrGraph, fold_unary, icm_sweep
 from pytest_benchmark.fixture import BenchmarkFixture
 from scipy.sparse import csr_matrix
 

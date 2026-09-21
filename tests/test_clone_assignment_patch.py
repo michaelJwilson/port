@@ -16,7 +16,7 @@ from typing import Any
 
 import numpy as np
 import pytest
-from port.patch.clone_assignment import _channel_weight, _decoded
+from port.patch.hmrf.clone_assignment import _channel_weight, _decoded
 
 
 def _cnaster_weight(
@@ -111,7 +111,7 @@ def test_the_fallback_does_not_call_itself() -> None:
     where it costs nothing.
     """
     import cnaster.hmrf
-    from port.patch import clone_assignment
+    from port.patch.hmrf import clone_assignment
     from port.pipeline import patched
 
     captured = clone_assignment.UPSTREAM
@@ -152,14 +152,14 @@ def test_the_boundary_invariants_are_computed_once_per_dataset() -> None:
     The two valid-segment counts and the channel weight derived from them are
     functions of the input data, which the outer loop never fits, and
     `cnaster` recomputes all three on every iteration.
-    `port.patch.clone_assignment.boundary` returns the same object for the
+    `port.patch.hmrf.clone_assignment.boundary` returns the same object for the
     same arrays, which is what "computed where they are constant" means when
     the loop is inside a dependency this repository cannot edit.
 
     The values are checked against a fresh computation too: a cache that
     returned the same wrong answer twice would pass an identity check alone.
     """
-    from port.patch.clone_assignment import boundary
+    from port.patch.hmrf.clone_assignment import boundary
 
     generator = np.random.default_rng(13)
 
@@ -189,7 +189,7 @@ def test_the_invariant_cache_holds_the_arrays_it_is_keyed_on() -> None:
     One slot, because a run conditions on one dataset: a second entry would
     mean something is calling the seam with data it did not load.
     """
-    from port.patch.clone_assignment import _BOUNDARY, boundary
+    from port.patch.hmrf.clone_assignment import _BOUNDARY, boundary
 
     first = np.ones((4, 3))
     second = np.ones((4, 3))

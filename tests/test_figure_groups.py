@@ -194,7 +194,7 @@ def test_sink_collapses_the_run_without_touching_the_raster(tmp_path: Path) -> N
     `test_sink_moves_the_gridlines_under_the_rasterized_run`, because a
     collapse that changed nothing at all would not be a collapse.
     """
-    from port.patch.figures import collapse_rasterizing_groups
+    from port.patch.utils import collapse_rasterizing_groups
 
     reference = _panel()
     axes = len(reference.axes)
@@ -231,7 +231,7 @@ def test_sink_moves_the_gridlines_under_the_rasterized_run() -> None:
     one silently, so it is pinned rather than described.
     """
     import matplotlib.pyplot as plt
-    from port.patch.figures import collapse_rasterizing_groups
+    from port.patch.utils import collapse_rasterizing_groups
 
     figure = _panel(n_clones=1)
     axis = figure.axes[0]
@@ -271,7 +271,7 @@ def test_sweep_collapses_the_run_by_rasterizing_the_gridlines(
     Over a whole run the two allocate the same 1,036 MB, and `sweep` writes a
     1,021 KB of PDF against `sink`'s 839 KB in 5.16 s against 3.84 s.
     """
-    from port.patch.figures import collapse_rasterizing_groups
+    from port.patch.utils import collapse_rasterizing_groups
 
     reference = _panel()
     axes = len(reference.axes)
@@ -301,7 +301,7 @@ def test_strict_refuses_the_figures_cnaster_writes(tmp_path: Path) -> None:
     only one that changes no drawing at all, and pinned here so that reading
     for it is not necessary.
     """
-    from port.patch.figures import collapse_rasterizing_groups
+    from port.patch.utils import collapse_rasterizing_groups
 
     figure = _panel()
     axes = len(figure.axes)
@@ -318,7 +318,7 @@ def test_strict_refuses_the_figures_cnaster_writes(tmp_path: Path) -> None:
 def test_an_axes_with_one_rasterized_artist_is_left_alone() -> None:
     """Nothing to collapse: a run of one is already one group."""
     import matplotlib.pyplot as plt
-    from port.patch.figures import collapse_rasterizing_groups
+    from port.patch.utils import collapse_rasterizing_groups
 
     figure, axis = plt.subplots()
     axis.scatter([0.0, 1.0], [0.0, 1.0], rasterized=True)
@@ -333,7 +333,7 @@ def test_an_axes_with_one_rasterized_artist_is_left_alone() -> None:
 def test_an_unknown_strategy_is_refused() -> None:
     """Three strategies, named, and nothing else silently doing nothing."""
     import matplotlib.pyplot as plt
-    from port.patch.figures import collapse_rasterizing_groups
+    from port.patch.utils import collapse_rasterizing_groups
 
     figure = plt.figure()
 

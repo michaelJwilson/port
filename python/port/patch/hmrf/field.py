@@ -80,15 +80,6 @@ from typing import TYPE_CHECKING
 import numpy as np
 from numba import njit
 
-MIRRORS: tuple[str, ...] = ("cnaster.hmrf",)
-"""`hmrf.compute_loglike_spot_assignment`, installed by `SWAPS`.
-
-The `cnaster` module this stands in for, or `()` where it stands in for
-none (#250). Declared rather than inferred: a reader holding a `cnaster`
-module open should be able to find `port`'s answer to it, and
-`tests/test_module_correspondence.py` reads this to check that every swap
-row lands in a module that admits to its target."""
-
 if TYPE_CHECKING:  # pragma: no cover - `prange` is `range` to a type checker
     prange = range
 else:

@@ -17,12 +17,12 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
-from port.patch.alpha_expansion import (
+from port.patch.icm.alpha_expansion import (
     alpha_expansion_sweep,
     potts_energy,
     potts_graph_from,
 )
-from port.patch.icm_interface import CsrGraph
+from port.patch.icm.interface import CsrGraph
 
 
 def _lattice(

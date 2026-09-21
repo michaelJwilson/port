@@ -51,7 +51,7 @@ def test_the_distribution_function_agrees_with_scipy(total: int) -> None:
     branch that sums `(k, n]` and subtracts from one are both covered, along
     with the two endpoints where one of them is empty.
     """
-    from port.patch.normal_baf import cumulative_and_mass
+    from port.patch.normal_spot import cumulative_and_mass
 
     support = np.arange(total + 1)
     totals = np.full_like(support, total)
@@ -82,7 +82,7 @@ def test_the_tabulated_mass_function_is_scipys_formula() -> None:
     from, so the bound is a statement about the depth rather than about the
     formula.
     """
-    from port.patch.normal_baf import _log_mass, _log_mass_tabulated, _log_tables
+    from port.patch.normal_spot import _log_mass, _log_mass_tabulated, _log_tables
 
     alpha, beta = 4.5, 11.0
     totals = np.repeat([13, 200, 1_009], 7)
@@ -109,7 +109,7 @@ def test_the_distribution_function_is_a_distribution_function(total: int) -> Non
     term: the values would stay close to `scipy` in the middle and the top
     would no longer be one.
     """
-    from port.patch.normal_baf import cumulative_and_mass
+    from port.patch.normal_spot import cumulative_and_mass
 
     support = np.arange(-1, total + 1)
     totals = np.full_like(support, total)
@@ -131,7 +131,7 @@ def test_the_chunk_boundary_cannot_move_a_value() -> None:
     docstring -- that the budget is a memory decision and not a numerical one
     -- is what lets it be tuned for cache rather than for accuracy.
     """
-    import port.patch.normal_baf as module
+    import port.patch.normal_spot as module
 
     totals = np.random.default_rng(5).integers(500, 2_000, size=64)
     counts = np.random.default_rng(6).binomial(totals, 0.5)
@@ -164,7 +164,7 @@ def test_an_exact_tie_is_decided_the_way_cnaster_decides_it() -> None:
     Marked `bug` rather than `patch`: it records a defect the patch would have
     had, and it fails if the settling step is removed.
     """
-    from port.patch.normal_baf import removal_indicator
+    from port.patch.normal_spot import removal_indicator
 
     total, alpha, beta = 201, 15.0, 15.0
     support = np.arange(total + 1)

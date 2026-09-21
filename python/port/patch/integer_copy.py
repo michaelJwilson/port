@@ -75,15 +75,6 @@ from typing import TYPE_CHECKING
 import numpy as np
 from scipy.stats import chi2
 
-MIRRORS: tuple[str, ...] = ("cnaster.integer_copy",)
-"""`integer_copy`'s solve, not installed.
-
-The `cnaster` module this stands in for, or `()` where it stands in for
-none (#250). Declared rather than inferred: a reader holding a `cnaster`
-module open should be able to find `port`'s answer to it, and
-`tests/test_module_correspondence.py` reads this to check that every swap
-row lands in a module that admits to its target."""
-
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
