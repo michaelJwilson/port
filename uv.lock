@@ -618,7 +618,7 @@ wheels = [
 [[package]]
 name = "cnaster"
 version = "0.1.0"
-source = { git = "https://github.com/michaelJwilson/cnaster?branch=finish_annotation_mushift3#4adad4d829ac58ac234685d71a8dbf26fd8ff3bb" }
+source = { git = "https://github.com/michaelJwilson/cnaster?branch=port#e93a137f7848aeb0016b2374c1e817d2c0afcecc" }
 dependencies = [
     { name = "anndata" },
     { name = "hmmlearn" },
@@ -2848,7 +2848,7 @@ track = [
 requires-dist = [
     { name = "aim", marker = "extra == 'track'", specifier = ">=3.29,<4" },
     { name = "calicost", marker = "extra == 'calicost'", git = "https://github.com/raphael-group/CalicoST?rev=c1abcae" },
-    { name = "cnaster", git = "https://github.com/michaelJwilson/cnaster?branch=finish_annotation_mushift3" },
+    { name = "cnaster", git = "https://github.com/michaelJwilson/cnaster?branch=port" },
     { name = "ipykernel", marker = "extra == 'notebooks'", specifier = ">=6.29" },
     { name = "matplotlib", specifier = ">=3.9.0" },
     { name = "mypy", marker = "extra == 'dev'", specifier = ">=1.15,<3" },
