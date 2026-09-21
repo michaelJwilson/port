@@ -21,12 +21,12 @@
   },
   "reach": {
    "label": "all",
-   "percent": 65.92,
+   "percent": 72.28,
    "floor": null,
    "selection": "not release and not (end2end or oracle)",
-   "denominator": "cnaster + python/port, 7865 statements",
-   "commit": "49ea116",
-   "note": "Guard 3. Proposed by #159 and not wired into CI -- its 'Done when' asks for exactly that and is unmet, which is why this is the badge that went stale furthest. 5,185 of 7,865 statements, from a clean run: 568 passed, 8 skipped, 0 failed. It read 71.52 per cent over 7,329 statements at 7b12d7c; #238, #239, #242, #249 and #237 added 536 statements to the denominator and the figure fell 5.60 points without a test being removed. The denominator is 353 statements larger than guard 1's on the same tree, so the two are not subtractable: #223. An earlier reading was diagnosed here as test pollution and was not; the record said so wrongly until baae1a3."
+   "denominator": "cnaster + python/port, 7811 statements",
+   "commit": "003a0da",
+   "note": "Guard 3. Proposed by #159 and not wired into CI -- its 'Done when' asks for exactly that and is unmet, which is why this is the badge that goes stale furthest and the one nothing catches when it does. 5,646 of 7,811 statements, from a clean run: 576 passed, 0 failed. It read 71.52 per cent over 7,329 statements at 7b12d7c. The denominator is 299 statements larger than guard 1's on the same tree, so the two are not subtractable: #223. **A 65.92 per cent figure was recorded here briefly and was wrong** -- measured on the #237 branch rather than on this one, which is a different tree and a larger denominator. The lesson is the one #223 already states: a coverage figure means nothing without the tree it was read on, so every guard here carries its commit."
   }
  },
  "whole_run": {
