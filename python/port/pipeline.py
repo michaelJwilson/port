@@ -173,6 +173,12 @@ SWAPS: tuple[Swap, ...] = (
         "port.patch.hmm_nophasing:hmm_nophasing",
         259,
     ),
+    Swap(
+        "cnaster.hmrf_utils",
+        "clone_stack_obs",
+        "port.patch.hmrf_utils:clone_stack_obs",
+        234,
+    ),
 )
 """Every `cnaster` name `port` can replace by rebinding it.
 
