@@ -133,7 +133,7 @@ include =
 # and they are the fit-level half of that rung, which waits on #77 item 1.
 # Upstream's #674 is the fix; the event that moves this figure is the pin
 # moving, not a test here failing.
-fail_under = 46.7
+fail_under = 49.6
 precision = 2
 # **Upstream capability with no `cnaster` counterpart leaves the denominator.**
 # The figure is coverage against what `cnaster` can do, not against what
