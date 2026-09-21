@@ -108,8 +108,8 @@ resolves `snakes_and_ladders` from git against `uv.lock`. The first sync
 compiles two Rust crates and downloads PyTorch, so allow several minutes;
 later syncs are cached.
 
-To install a single extra rather than all five (`dev`, `test`, `docs`,
-`notebooks`, `calicost`):
+To install a single extra rather than all six (`dev`, `test`, `docs`,
+`notebooks`, `calicost`, `track`):
 
 ```
 uv sync --locked --extra test
@@ -123,6 +123,22 @@ reference this repository **reads and does not run** -- see
 `docs/audit-integer-copy-calicost.md` and
 `docs/audit-cnaster-calicost-divergence.md`. It is an extra rather than a
 dependency because nothing on the default path imports it.
+
+`track` is the other odd one, and it is the one to read before running
+`--all-extras`. It pins [Aim](https://github.com/aimhubio/aim), the run
+store behind `snakes_and_ladders.track`, which #251 records
+`run_cnaster`'s optimizations through. `track.Run` is a Protocol written
+with `aim.Run`'s own signatures, so the recording path imports, types and
+tests with `aim` absent; only a reader who wants the UI installs it.
+
+Two things come with it. The resolution goes **194 packages to 219** --
+`aim` carries the web server `aim up` runs, which the recording path never
+touches. And that server holds two advisories with no fixed version,
+**PYSEC-2026-1087** (XSS in the report endpoint) and **PYSEC-2026-1088** (a
+sandbox escape in the query handler). CI syncs `--extra dev --extra test`
+and so never installs it; `uv sync --locked --all-extras` does, and a
+`pip-audit` after that command reports both. Sync without this extra before
+auditing.
 
 Without `uv`, any PEP 517 front end works, but the git dependency is then
 unpinned and the extension is rebuilt rather than reused:
