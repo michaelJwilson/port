@@ -30,11 +30,11 @@
   }
  },
  "whole_run": {
-  "instance": "4000x1980x5",
+  "instance": "3800x1980x5",
   "tier": "stress",
-  "commit": "7b12d7c",
+  "commit": "49ea116",
   "shape": {
-   "n_obs": 4000,
+   "n_obs": 3800,
    "n_spots": 1980,
    "n_states": 5,
    "n_clones": 4
@@ -43,52 +43,58 @@
    {
     "arm": "cnaster",
     "returncode": 0,
-    "seconds": 192.0573733909987,
-    "peak_rss_gb": 11.346702575683594,
-    "stderr_tail": [
-     "/home/user/port/.venv/lib/python3.12/site-packages/cnaster/plotting.py:263: ImplicitModificationWarning: Trying to modify attribute `.obsm` of view, initializing view as actual.",
-     "  shifted_coords[index, 0] = shifted_coords[index, 0] + x_offset",
-     "run_cnaster_port: 187.00s"
-    ]
+    "seconds": 205.88835674200072,
+    "peak_rss_gb": 12.338790893554688
    },
    {
     "arm": "patched",
     "returncode": 0,
-    "seconds": 120.47995567199905,
-    "peak_rss_gb": 3.691883087158203,
-    "stderr_tail": [
-     "/home/user/port/.venv/lib/python3.12/site-packages/cnaster/plotting.py:263: ImplicitModificationWarning: Trying to modify attribute `.obsm` of view, initializing view as actual.",
-     "  shifted_coords[index, 0] = shifted_coords[index, 0] + x_offset",
-     "run_cnaster_port: 115.51s"
-    ]
+    "seconds": 121.2072700409999,
+    "peak_rss_gb": 3.8521652221679688
    }
   ],
   "ratio": {
-   "runtime": 1.5941,
-   "memory": 3.0734
+   "runtime": 1.6986,
+   "memory": 3.2104
   },
   "repetitions": [
    {
-    "runtime": 1.5941,
-    "memory": 3.0734,
-    "cnaster_seconds": 192.06,
-    "patched_seconds": 120.48
+    "runtime": 1.7619,
+    "memory": 3.2104,
+    "cnaster_seconds": 209.61,
+    "patched_seconds": 118.97
    },
    {
-    "runtime": 1.7786,
-    "memory": 3.0737,
-    "cnaster_seconds": 201.37,
-    "patched_seconds": 113.22
+    "runtime": 1.6879,
+    "memory": 3.2109,
+    "cnaster_seconds": 202.44,
+    "patched_seconds": 119.94
    },
    {
-    "runtime": 1.4713,
-    "memory": 3.0719,
-    "cnaster_seconds": 189.57,
-    "patched_seconds": 128.84
+    "runtime": 1.6986,
+    "memory": 3.2031,
+    "cnaster_seconds": 205.89,
+    "patched_seconds": 121.21
    }
   ],
-  "_intent": "run_cnaster patched against --no-patch, wall time and peak RSS, each arm in its own process. key_instance (10,000 x 5,000) does not fit unpatched -- 8 GB of emission array against 15 GB available (#90) -- so the comparison runs at the largest instance both arms complete and the badge label carries it. This measurement is #91.",
+  "_intent": "run_cnaster patched against --no-patch, wall time and peak RSS, each arm in its own process. The instance is the largest whose **unpatched** arm completes on this host: 4000x1980x5 took SIGKILL four times out of four, the last with the host otherwise idle, while 3800x1980x5 completes at 12.34-12.36 GB of 16,095 MB. key_instance (10,000 x 5,000) does not fit unpatched either -- 8 GB of emission array (#90) -- so the comparison has always run at the largest instance both arms complete, and that size has now moved down once. This measurement is #91.",
   "arms_are": "`--no-patch`, nothing rebound, against the entry point's default: SWAPS plus FIGURE_SWAPS. The figure swaps are in the default as of 1c0a496, so this is what a user gets rather than what the bitwise-reproducing subset gets.",
-  "note": "Median of 3 pairs, each arm in its own process, on an otherwise idle host. The median rather than the mean because runtime ratios span 1.4713 to 1.7786 while peak RSS barely moves between pairs -- the wall clock is the noisy axis here and the memory is not. **Most of both is the figure swap.** SWAPS alone measured 1.21x runtime and 1.00x memory over the same baseline; adding FIGURE_SWAPS is what takes peak RSS from 11.35 GB to 3.69 GB. That is also the answer to a premise: at this instance the emission array is about 0.3 GB against a peak of 11.35, so plotting is what caps the run and not the emission array (#90). Runtime is below CLAUDE.md's 2x bar and reads as such; memory is above it."
+  "note": "Median of 3 pairs, each arm in its own process, on an otherwise idle host. **Not comparable with the 1.5941x and 3.0734x this badge carried at 7b12d7c**: those were read at 4000x1980x5, and a ratio is a statement about two implementations only where everything else was equal. The instance is not, so the older figures are superseded rather than corrected. Nothing installed changed in between -- `SWAPS` and `FIGURE_SWAPS` are byte-identical to 7b12d7c, eight of the nine installed replacements are unchanged and the ninth moved 13 lines (#249's `label_solver` branch, defaulting to `icm`). **Most of both is the figure swap** (#195): peak RSS is 12.35 GB against 3.85, and the emission array is about 0.3 GB of that, so plotting is what caps the run and not the emission array (#90). Runtime is below `CLAUDE.md`'s 2x bar and reads as such; memory is above it.",
+  "_probe": {
+   "why": "The unpatched arm no longer completes at 4000x1980x5. Measured four times: three paired runs and one probe with the host otherwise idle, SIGKILL every time at 12.124-12.128 GB of the 16,095 MB available. The host has no cgroup cap, so this is the arm's requirement rather than contention -- #90's 'does not fit unpatched' arriving at the stress instance, not only at key_instance.",
+   "killed_at_4000x1980x5": {
+    "returncode": -9,
+    "seconds": 213.87,
+    "peak_rss_gb": 12.1276,
+    "host": "idle"
+   },
+   "fits_at_3600x1980x5": {
+    "returncode": 0,
+    "seconds": 190.97,
+    "peak_rss_gb": 10.3846
+   },
+   "pending": "Settled: three pairs at 3800x1980x5, all six arms returning 0, recorded above.",
+   "harness": "The first attempt at 3800 died too, at 12.059 GB, although the standalone probe of the same instance had completed at 12.167 GB. The driver built the fixture in the parent and still held every array while the arms ran, so the harness was competing with what it measured. It now releases the fixture and collects before either arm starts, and the unpatched arm reaches 12.34-12.36 GB and completes -- higher than any of the five kills. So the kill point was never a ceiling and never the arm's requirement; it was whatever else was resident."
+  }
  }
 }
