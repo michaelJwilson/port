@@ -21,74 +21,44 @@
   },
   "reach": {
    "label": "all",
-   "percent": 71.52,
+   "percent": 65.92,
    "floor": null,
    "selection": "not release and not (end2end or oracle)",
-   "denominator": "cnaster + python/port, 7329 statements",
-   "commit": "7b12d7c",
-   "note": "Guard 3. Proposed by #159 and not wired into CI -- its 'Done when' asks for exactly that and is unmet. 5,242 of 7,329 statements, from a clean run: 524 passed, 1 skipped, 0 failed. An earlier reading of the same figure came from a run with 5 failures and was diagnosed here as test pollution; it was not, and the record said so wrongly until baae1a3. Those 5 were the badge module's own tests, failing because this file did not exist yet when that run collected them. The denominator is 299 statements larger than guard 1's on the same tree, so the two are not subtractable: #223."
+   "denominator": "cnaster + python/port, 7865 statements",
+   "commit": "49ea116",
+   "note": "Guard 3. Proposed by #159 and not wired into CI -- its 'Done when' asks for exactly that and is unmet, which is why this is the badge that went stale furthest. 5,185 of 7,865 statements, from a clean run: 568 passed, 8 skipped, 0 failed. It read 71.52 per cent over 7,329 statements at 7b12d7c; #238, #239, #242, #249 and #237 added 536 statements to the denominator and the figure fell 5.60 points without a test being removed. The denominator is 353 statements larger than guard 1's on the same tree, so the two are not subtractable: #223. An earlier reading was diagnosed here as test pollution and was not; the record said so wrongly until baae1a3."
   }
  },
  "whole_run": {
-  "instance": "4000x1980x5",
+  "instance": null,
   "tier": "stress",
-  "commit": "7b12d7c",
+  "commit": "49ea116",
   "shape": {
    "n_obs": 4000,
    "n_spots": 1980,
    "n_states": 5,
    "n_clones": 4
   },
-  "arms": [
-   {
-    "arm": "cnaster",
-    "returncode": 0,
-    "seconds": 192.0573733909987,
-    "peak_rss_gb": 11.346702575683594,
-    "stderr_tail": [
-     "/home/user/port/.venv/lib/python3.12/site-packages/cnaster/plotting.py:263: ImplicitModificationWarning: Trying to modify attribute `.obsm` of view, initializing view as actual.",
-     "  shifted_coords[index, 0] = shifted_coords[index, 0] + x_offset",
-     "run_cnaster_port: 187.00s"
-    ]
-   },
-   {
-    "arm": "patched",
-    "returncode": 0,
-    "seconds": 120.47995567199905,
-    "peak_rss_gb": 3.691883087158203,
-    "stderr_tail": [
-     "/home/user/port/.venv/lib/python3.12/site-packages/cnaster/plotting.py:263: ImplicitModificationWarning: Trying to modify attribute `.obsm` of view, initializing view as actual.",
-     "  shifted_coords[index, 0] = shifted_coords[index, 0] + x_offset",
-     "run_cnaster_port: 115.51s"
-    ]
-   }
-  ],
-  "ratio": {
-   "runtime": 1.5941,
-   "memory": 3.0734
-  },
-  "repetitions": [
-   {
-    "runtime": 1.5941,
-    "memory": 3.0734,
-    "cnaster_seconds": 192.06,
-    "patched_seconds": 120.48
-   },
-   {
-    "runtime": 1.7786,
-    "memory": 3.0737,
-    "cnaster_seconds": 201.37,
-    "patched_seconds": 113.22
-   },
-   {
-    "runtime": 1.4713,
-    "memory": 3.0719,
-    "cnaster_seconds": 189.57,
-    "patched_seconds": 128.84
-   }
-  ],
+  "arms": [],
+  "ratio": null,
+  "repetitions": [],
   "_intent": "run_cnaster patched against --no-patch, wall time and peak RSS, each arm in its own process. key_instance (10,000 x 5,000) does not fit unpatched -- 8 GB of emission array against 15 GB available (#90) -- so the comparison runs at the largest instance both arms complete and the badge label carries it. This measurement is #91.",
   "arms_are": "`--no-patch`, nothing rebound, against the entry point's default: SWAPS plus FIGURE_SWAPS. The figure swaps are in the default as of 1c0a496, so this is what a user gets rather than what the bitwise-reproducing subset gets.",
-  "note": "Median of 3 pairs, each arm in its own process, on an otherwise idle host. The median rather than the mean because runtime ratios span 1.4713 to 1.7786 while peak RSS barely moves between pairs -- the wall clock is the noisy axis here and the memory is not. **Most of both is the figure swap.** SWAPS alone measured 1.21x runtime and 1.00x memory over the same baseline; adding FIGURE_SWAPS is what takes peak RSS from 11.35 GB to 3.69 GB. That is also the answer to a premise: at this instance the emission array is about 0.3 GB against a peak of 11.35, so plotting is what caps the run and not the emission array (#90). Runtime is below CLAUDE.md's 2x bar and reads as such; memory is above it."
+  "note": "**No ratio: the baseline arm cannot complete at this instance.** The figures this badge carried -- 1.5941x runtime and 3.0734x memory, median of 3 pairs at 4000x1980x5 on 7b12d7c -- are withdrawn rather than carried forward, because `speed` and `mem` are the two badges CI never checks and a ratio nobody can reproduce is worse than an absent one. Nothing installed changed in between: `SWAPS` and `FIGURE_SWAPS` are byte-identical to 7b12d7c, eight of the nine installed replacement modules are unchanged, and the ninth moved by 13 lines (#249's `label_solver` branch, which defaults to `icm`). So the withdrawal is about what the host can run, not about the patch. `_probe` records the attempt and what it established.",
+  "_probe": {
+   "why": "The unpatched arm no longer completes at 4000x1980x5. Measured four times: three paired runs and one probe with the host otherwise idle, SIGKILL every time at 12.124-12.128 GB of the 16,095 MB available. The host has no cgroup cap, so this is the arm's requirement rather than contention -- #90's 'does not fit unpatched' arriving at the stress instance, not only at key_instance.",
+   "killed_at_4000x1980x5": {
+    "returncode": -9,
+    "seconds": 213.87,
+    "peak_rss_gb": 12.1276,
+    "host": "idle"
+   },
+   "fits_at_3600x1980x5": {
+    "returncode": 0,
+    "seconds": 190.97,
+    "peak_rss_gb": 10.3846
+   },
+   "pending": "Three pairs at the largest instance whose unpatched arm completes; 3800 is being probed between the two above, because scaling down further than the measurement needs would understate the claim."
+  }
  }
 }
