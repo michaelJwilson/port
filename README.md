@@ -50,9 +50,15 @@ time and peak resident memory, each arm in its own process, in ratio units.
 
 **`instance`** is what makes those two readable, and `CLAUDE.md` is explicit
 that a ratio read at a gate size decides nothing -- so the three are a set.
-It carries the size as `obs x spots x states`, which is what a tier name
-cannot: two instances both called stress can differ by more than the patch
-being measured does. It asserts nothing and is blue for that reason.
+It carries the **tier**, `stress`, and nothing else. It asserts nothing and
+is blue for that reason.
+
+The size it used to render, `obs x spots x states`, is in
+`.badges/measurements.json` under `whole_run.instance` instead. A badge has
+no room to say what a shape means, and two instances both called stress can
+differ by more than the patch being measured does -- which is a reason to
+record the shape where a reader can see the conditions beside it, not a
+reason to spend a badge's width on digits nobody can interpret in place.
 
 `tests/test_badges_agree.py` is what keeps them together. It refuses a
 recorded ratio that does not name its instance, carry exactly two arms, and
