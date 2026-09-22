@@ -6,7 +6,7 @@ each one re-derives how `pred_cnv` is laid out, and each one branches on a
 second column of the state parameters that the fit cannot produce.
 """
 
-from port.patch.plotting.clone_paths import clone_path, clone_paths
+from port.patch.plotting.clone_paths import clone_path, clone_paths, state_vector
 
 MIRRORS: tuple[str, ...] = (
     "cnaster.plot_genomic",
@@ -21,4 +21,4 @@ happen to share a helper -- the same reason `patch/lattice` and
 `patch/emission` are exempt from the naming rule.
 """
 
-__all__ = ["MIRRORS", "clone_path", "clone_paths"]
+__all__ = ["MIRRORS", "clone_path", "clone_paths", "state_vector"]

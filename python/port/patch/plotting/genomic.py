@@ -47,7 +47,7 @@ from cnaster.utils import get_intervals
 from matplotlib.collections import LineCollection
 from matplotlib.lines import Line2D
 
-from port.patch.plotting.clone_paths import clone_column, clone_path
+from port.patch.plotting.clone_paths import clone_path, state_vector
 
 logger = get_logger(__name__, start_time=start_time)
 
@@ -106,17 +106,17 @@ def segment_levels(
     """The Viterbi segments and the rate and BAF each one sits at.
 
     Returns the segments, `exp(log_mu)` per segment and `p_binom` per
-    segment -- the three things the drawn lines are made of. `clone_column`
-    is what used to be `0 if new_log_mu.shape[1] == 1 else c`.
+    segment -- the three things the drawn lines are made of. `state_vector`
+    is what used to be `0 if new_log_mu.shape[1] == 1 else c`: the column
+    index disappears rather than being computed.
     """
-    column = clone_column(np.asarray(res_combine["new_log_mu"]))
-    n_states = np.asarray(res_combine["new_log_mu"]).shape[0]
+    log_mu = state_vector(res_combine["new_log_mu"])
 
-    path = clone_path(res_combine["pred_cnv"], clone, n_obs, n_states)
+    path = clone_path(res_combine["pred_cnv"], clone, n_obs, len(log_mu))
     segments, labels = get_intervals(path)
 
-    rates = np.exp(np.asarray(res_combine["new_log_mu"])[:, column])
-    probabilities = np.asarray(res_combine["new_p_binom"])[:, column]
+    rates = np.exp(log_mu)
+    probabilities = state_vector(res_combine["new_p_binom"])
 
     return segments, rates[labels], probabilities[labels]
 

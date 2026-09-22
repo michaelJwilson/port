@@ -131,10 +131,12 @@ def emission_into(
     counts_bb, total_bb_RD : np.ndarray
         `(n_obs, n_spots)`. `X[:, 1, :]` and the read depth.
     log_mu, alphas, p_binom, taus : np.ndarray
-        `(n_states, n_columns)`. One column is read for every spot, which is
-        `hmm_nophasing`'s indexing; `n_spots` columns are read one per spot,
-        which is `hmm_phased`'s. Both live layouts, and the branch between
-        them is the shape rather than a flag.
+        `(n_states, 1)`. Column zero is read for every spot, which is
+        `hmm_nophasing`'s indexing and the only one the fit can produce.
+        `hmm_phased` reads `[i, s]` instead, pairing the parameter's column
+        axis with the data's spot axis; #267 established those are different
+        axes and #269 that the pairing is what makes it raise. That reading
+        is deliberately not carried.
     out_rdr, out_baf : np.ndarray
         `(n_states, n_obs, n_spots)`, or `(2 * n_states, ...)` when `phased`.
         Written in full. See :func:`emission_buffers`.
@@ -161,31 +163,32 @@ def emission_into(
     n_obs, n_spots = counts_nb.shape
     n_states = log_mu.shape[0]
 
-    # NB the two entry points read the parameter columns differently, and
-    #    that is the only place they disagree about the parameters:
-    #    `hmm_nophasing`'s dense kernels take column zero, `hmm_phased`'s
-    #    encoder path takes `log_mu[i, s]` -- one column per spot, which on
-    #    the clone-stacked layout is one per clone. Both are covered by
-    #    reading column `spot` when there is one per spot and column zero
-    #    otherwise, which is what each of them means by its own indexing.
-    per_spot = log_mu.shape[1] == n_spots and n_spots > 1
-
+    # NB **one column, and the per-spot reading is deliberately gone.**
+    #    `hmm_nophasing`'s dense kernels take `log_mu[i, 0]` and broadcast;
+    #    `hmm_phased`'s encoder path takes `log_mu[i, s]`, pairing the
+    #    parameter's column axis with the *data's* spot axis. #267 found
+    #    that those are different axes and that pairing them is what makes
+    #    `hmm_phased` raise `IndexError` on the shape the fit returns
+    #    (#269). This carried both readings behind a `per_spot` test, which
+    #    is the ambiguity rather than a resolution of it.
+    #
+    #    The fit cannot produce a second column -- `clone_stack_obs`
+    #    reshapes to `(-1, n_comp, 1)` and `get_initial_params` refuses
+    #    `n_spots != 1` -- so there is one reading, and the dense one is it.
     for state in prange(n_states):
         for spot in range(n_spots):
-            column = spot if per_spot else 0
-
             _nb_logpmf_1d(
                 counts_nb[:, spot],
                 base_nb_mean[:, spot],
-                np.exp(log_mu[state, column]),
-                alphas[state, column],
+                np.exp(log_mu[state, 0]),
+                alphas[state, 0],
                 out_rdr[state, :, spot],
             )
             _bb_logpmf_1d(
                 counts_bb[:, spot],
                 total_bb_RD[:, spot],
-                p_binom[state, column],
-                taus[state, column],
+                p_binom[state, 0],
+                taus[state, 0],
                 out_baf[state, :, spot],
             )
 
@@ -194,14 +197,12 @@ def emission_into(
             #    the allele channel is it above its switched copy, which is
             #    `hmm_phased`'s `vstack` pair written in place.
             for spot in range(n_spots):
-                column = spot if per_spot else 0
-
                 switched = _switch_betabinom_1d(
                     out_baf[state : state + 1, :, spot].copy(),
                     counts_bb[:, spot],
                     total_bb_RD[:, spot],
-                    p_binom[state : state + 1, column],
-                    taus[state : state + 1, column],
+                    p_binom[state : state + 1, 0],
+                    taus[state : state + 1, 0],
                 )
 
                 for obs in range(n_obs):

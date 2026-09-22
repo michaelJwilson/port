@@ -14,10 +14,10 @@ from __future__ import annotations
 import numpy as np
 import pytest
 from port.patch.plotting.clone_paths import (
-    clone_column,
     clone_path,
     clone_paths,
     parameter_by_path,
+    state_vector,
 )
 
 
@@ -54,17 +54,19 @@ def test_the_concatenated_layout_matches_upstreams_slice() -> None:
 
 
 @pytest.mark.patch
-def test_the_two_dimensional_layout_matches_upstreams_column() -> None:
-    """`deconcatenate_clones` splits the genome back out, and both are live."""
-    n_obs, n_clones, n_states = 40, 3, 5
-    rng = np.random.default_rng(1)
-    pred_cnv = rng.integers(0, 2 * n_states, size=(n_obs, n_clones))
+def test_the_deconcatenated_layout_is_refused_rather_than_read() -> None:
+    """Upstream's `else: path = array[:, clone]` is deliberately not carried.
 
-    for clone in range(n_clones):
-        np.testing.assert_array_equal(
-            clone_path(pred_cnv, clone, n_obs, n_states),
-            _upstream_two_dimensional(pred_cnv, clone, n_states),
-        )
+    `deconcatenate_clones` produces `(n_obs, n_clones)` and is off on every
+    run `run_cnaster` makes. Supporting it would mean every consumer tests
+    the layout again, which is the duplication being removed -- so it is
+    refused at the edge instead. Refused rather than flattened: `reshape(-1)`
+    on that shape is row-major and would silently interleave the clones.
+    """
+    pred_cnv = np.arange(40 * 3).reshape(40, 3)
+
+    with pytest.raises(ValueError, match="expected a concatenated path"):
+        clone_path(pred_cnv, 1, 40)
 
 
 @pytest.mark.patch
@@ -109,27 +111,28 @@ def test_every_clone_comes_back_in_order() -> None:
 
 
 @pytest.mark.bug
-def test_a_second_parameter_column_is_refused_rather_than_ignored() -> None:
-    """The guard upstream writes resolves to `0`; this one says so instead.
+def test_only_the_two_shapes_the_fit_produces_are_accepted() -> None:
+    """`(n_states,)` and `(n_states, 1)`, and nothing else.
 
-    `0 if shape[1] == 1 else c` silently reads column `c` if a second column
-    ever appears, and #267 established that nothing in `cnaster` agrees on
-    what such a column would mean. Refusing is the only reading that cannot
-    be quietly wrong.
+    Upstream writes `0 if shape[1] == 1 else c`, which silently reads column
+    `c` if a second column ever appears -- and #267 established that nothing
+    in `cnaster` agrees on what such a column would mean. `state_vector`
+    removes the index rather than computing it.
 
-    **Written to fail when the fit changes**: if `cnaster` starts producing
-    per-clone parameters, this goes red and #278's consumers are revisited
-    rather than silently indexing the first column.
+    **Written to fail when the fit changes**: per-clone parameters would go
+    red here and #278's consumers are revisited rather than reading column
+    zero of an array that has five.
     """
-    one_column = np.linspace(-0.1, 0.1, 5).reshape(5, 1)
+    states = np.linspace(-0.1, 0.1, 5)
 
-    assert clone_column(one_column) == 0
+    np.testing.assert_array_equal(state_vector(states), states)
+    np.testing.assert_array_equal(state_vector(states.reshape(5, 1)), states)
 
-    with pytest.raises(ValueError, match="expected a fitted state parameter"):
-        clone_column(np.zeros((5, 3)))
+    with pytest.raises(ValueError, match="expected a state parameter"):
+        state_vector(np.zeros((5, 3)))
 
-    with pytest.raises(ValueError, match="expected a fitted state parameter"):
-        clone_column(np.zeros(5))
+    with pytest.raises(ValueError, match="expected a state parameter"):
+        state_vector(np.zeros((5, 2, 1)))
 
 
 @pytest.mark.patch
@@ -145,6 +148,9 @@ def test_reading_a_parameter_along_a_path_matches_upstream() -> None:
     upstream = p_binom[path, clone if p_binom.shape[1] > 1 else 0]
 
     np.testing.assert_array_equal(parameter_by_path(p_binom, path), upstream)
+
+    # a `(n_states,)` parameter reads the same as `(n_states, 1)`
+    np.testing.assert_array_equal(parameter_by_path(p_binom[:, 0], path), upstream)
 
 
 @pytest.mark.patch
