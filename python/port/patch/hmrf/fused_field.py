@@ -130,8 +130,8 @@ def fused_spot_clone_field(
             _nb_logpmf_1d(
                 counts_nb[o, :],
                 base_nb_mean[o, :],
-                np.exp(log_mu[copy_state, 0]),
-                alphas[copy_state, 0],
+                np.exp(log_mu[copy_state]),
+                alphas[copy_state],
                 scratch,
             )
             accumulated_rdr += scratch
@@ -139,8 +139,8 @@ def fused_spot_clone_field(
             _bb_logpmf_1d(
                 counts_bb[o, :],
                 total_bb_RD[o, :],
-                p_binom[copy_state, 0],
-                taus[copy_state, 0],
+                p_binom[copy_state],
+                taus[copy_state],
                 scratch,
             )
             accumulated_baf += scratch

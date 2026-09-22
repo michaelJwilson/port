@@ -35,7 +35,7 @@ from port.pipeline import FIGURE_SWAPS, NUMERIC_SWAPS, SWAPS
 
 ROOT = Path(__file__).resolve().parents[1]
 
-UNIFIERS = ("emission", "lattice")
+UNIFIERS = ("emission", "lattice", "plotting")
 """The two patches that replace a pair of `cnaster` modules rather than one.
 
 Named here rather than inferred so that adding a third is a decision someone
@@ -47,6 +47,16 @@ PRIVATE_SURFACE = frozenset(
         ("cnaster.hmm_nophasing", "_bb_logpmf_1d"),
         ("cnaster.hmm_nophasing", "_nb_logpmf_1d"),
         ("cnaster.hmm_phased", "_switch_betabinom_1d"),
+        # The four layout helpers `plot_clones_genomic` is built from (#278).
+        # `port.patch.plotting.genomic` replaces that function and imports
+        # these rather than copying them: they draw the gridspec, the axis
+        # furniture and the chromosome boundaries, and a copy would be 130
+        # lines whose only job is to stay identical. Importing them is what
+        # keeps the replacement's figure upstream's figure.
+        ("cnaster.plot_genomic", "_annotate_clone_stats"),
+        ("cnaster.plot_genomic", "_create_clone_gridspec"),
+        ("cnaster.plot_genomic", "_draw_chromosome_boundaries"),
+        ("cnaster.plot_genomic", "_format_track_axis"),
     }
 )
 """Every underscore-prefixed `cnaster` name `port` depends on, reviewed.
@@ -55,6 +65,12 @@ PRIVATE_SURFACE = frozenset(
 Failure is loud rather than silent -- `pipeline.install` does a `getattr` and
 an absent name raises -- but nothing listed what `port` would lose if one
 were renamed, which is the gap this closes.
+
+The four `plot_genomic` entries are the largest single addition and the one
+worth arguing with: a drop-in replacement that imports four private helpers
+is four more names that can be renamed underneath it. The alternative is
+copying them, which trades that risk for a divergence nobody would notice
+until a figure changed. Reviewed, and chosen.
 """
 
 

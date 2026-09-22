@@ -74,8 +74,10 @@ The uncovered branches, and why:
 *   more than one sample -- `log_persample_weights` and `sample_ids` are
     passed through to the solver unchanged, but the inertia they encode is
     what #28 deprecates and no fixture here carries two samples.
-*   more than one parameter column -- `log_mu[state, 0]` is what the fused
-    kernel reads, which is the clone-stacked layout every live call uses.
+
+There is no third branch for a parameter with a clone axis. The fused kernel
+reads `(n_states,)` and `state_vector` normalizes at the edge, so a shape the
+fit cannot produce raises there rather than being delegated (#278).
 """
 
 from __future__ import annotations
@@ -227,13 +229,10 @@ def _decoded(pred: np.ndarray, n_obs: int) -> np.ndarray:
     return np.ascontiguousarray(pred.reshape(-1, n_obs).T)
 
 
-def _delegates(single_tumor_prop: Any, log_mu: np.ndarray) -> str | None:
+def _delegates(single_tumor_prop: Any) -> str | None:
     """Why this call goes to `cnaster`'s function, or `None` if it does not."""
     if single_tumor_prop is not None:
         return "the tumour-mixed field (#135)"
-
-    if log_mu.shape[1] != 1:
-        return f"{log_mu.shape[1]} parameter columns, against the clone-stacked one"
 
     return None
 
@@ -261,8 +260,9 @@ def pipeline_clone_assignment(
     from port.patch.hmrf.fused_field import fused_spot_clone_field
     from port.patch.icm.interface import CsrGraph, fold_unary, icm_sweep
     from port.patch.icm.label_solver import label_solver
+    from port.patch.plotting.clone_paths import state_vector
 
-    reason = _delegates(single_tumor_prop, res["new_log_mu"])
+    reason = _delegates(single_tumor_prop)
 
     if reason is not None:
         logger.info_once(f"Delegating clone assignment to cnaster: {reason}.")
@@ -331,10 +331,13 @@ def pipeline_clone_assignment(
         pooled_base_nb_mean,
         pooled_X[:, 1, :],
         pooled_total_bb_RD,
-        res["new_log_mu"],
-        res["new_alphas"],
-        res["new_p_binom"],
-        res["new_taus"],
+        # NB `(n_states,)`, normalized at the edge. The kernel indexes by
+        #    state alone, because a state parameter has no second axis to
+        #    index (#278).
+        state_vector(res["new_log_mu"]),
+        state_vector(res["new_alphas"]),
+        state_vector(res["new_p_binom"]),
+        state_vector(res["new_taus"]),
         decoded,
         invariants.weight,
         # NB the buffer is the caller's, which is upstream's shape --

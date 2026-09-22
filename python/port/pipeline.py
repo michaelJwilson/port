@@ -483,14 +483,16 @@ def _kernels() -> tuple[tuple[str, Any], ...]:
         (
             "port.patch.hmrf.fused_field:fused_spot_clone_field",
             (
+                # the four observation arrays are `(n_obs, n_spots)` ...
                 _tiny(1, 1),
                 _tiny(1, 1),
                 _tiny(1, 1),
                 _tiny(1, 1),
-                _tiny(1, 1),
-                _tiny(1, 1),
-                _tiny(1, 1),
-                _tiny(1, 1),
+                # ... and the four state parameters are `(n_states,)` (#278)
+                _tiny(1),
+                _tiny(1),
+                _tiny(1),
+                _tiny(1),
                 np.zeros((1, 1), dtype=np.int64),
                 _tiny(1),
             ),
