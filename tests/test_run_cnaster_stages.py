@@ -1165,13 +1165,39 @@ def test_the_expression_filter_keeps_every_planted_count_it_should(
     np.testing.assert_array_equal(retained, truth.counts_nb.astype(float))
 
 
-@pytest.mark.bug
-def test_the_expression_filter_empties_every_bin_holding_more_than_one_gene(
+@pytest.mark.patch
+def test_the_expression_filter_no_longer_empties_multi_gene_bins(
     planted: CoreInferenceTruth,
     loaded: Any,
     prepared: tuple[Any, Any, Any],
 ) -> None:
-    """**A separator mismatch zeroes 32 of 40 bins, 82 per cent of the UMIs.**
+    """**The separator mismatch is fixed, and this now refereees the fix.**
+
+    It stood as a `bug` pin: `binned_gene_snp` writes `INCLUDED_GENES` as
+    `",".join(...)` (`omics.py:261`) while `filter_normal_diffexp` read it
+    back with `genestr.split(" ")`, so every bin holding more than one gene
+    yielded a single unmatchable name, its gene set came back empty, and its
+    counts were summed over no genes at all -- 32 of 40 bins, 82 per cent of
+    the UMIs. The docstring ended *"Reported upstream; `port` does not land
+    the fix."*
+
+    `cnaster@port#9dd89b8` landed it: `split(",")`, with the comment *"must
+    match omics.py:261"*. The `bug` marker's contract is that such a test
+    fails when the defect is fixed, and this one did.
+
+    So the claim inverts rather than the test being deleted. **No gene passes
+    either threshold on this instance** -- 0 of the 131 that survive
+    `sc.pp.filter_genes` -- so with the separator right, a correctly parsed
+    gene set loses nothing and every bin must come back bitwise, multi-gene
+    bins included. That is a stronger statement than the old one: it fails if
+    the separator regresses *and* if the thresholds start excluding genes this
+    fixture assumes they do not.
+
+    `patch` rather than `bug`: it says `cnaster` agrees with itself across two
+    modules, not that either is right about the biology.
+
+    Gated behind `config.quality.filter_normal_diffexp`, which this fixture and
+    `zenodo_sim_config.yaml` leave off.
 
     `binned_gene_snp` writes `INCLUDED_GENES` as `",".join(...)`
     (`omics.py:261`); `filter_normal_diffexp` reads it back with
@@ -1211,7 +1237,11 @@ def test_the_expression_filter_empties_every_bin_holding_more_than_one_gene(
     )
 
     emptied = retained.sum(axis=1) == 0
-    np.testing.assert_array_equal(emptied, genes_per_bin > 1)
-    np.testing.assert_array_equal(
-        retained[~emptied], np.asarray(binned.X[~emptied, 0, :], dtype=float)
+
+    assert not emptied.any(), (
+        f"{emptied.sum()} of {emptied.size} bins came back empty, "
+        f"{(genes_per_bin[emptied] > 1).sum()} of them multi-gene: the "
+        "separator mismatch has regressed, or a gene now fails a threshold "
+        "this fixture assumes none does"
     )
+    np.testing.assert_array_equal(retained, np.asarray(binned.X[:, 0, :], dtype=float))
