@@ -165,11 +165,11 @@ class _Fitted(NamedTuple):
     taus: np.ndarray
 
 
-class hmm_nophasing(  # type: ignore[misc]
+class hmm_nophasing(
     TupleParameters,
     CodedEmission,
     RenamedKeywords,
-    UPSTREAM,
+    UPSTREAM,  # type: ignore[misc]
 ):
     """`cnaster.hmm_nophasing.hmm_nophasing`, taking what its callers pass.
 
