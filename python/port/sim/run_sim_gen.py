@@ -4,7 +4,7 @@
 says what a dataset was, and this turns one into a dataset of the same shape,
 beside a configuration that points at it.
 
-    python -m port.run_sim_gen manifest.yaml
+    python -m port.sim.run_sim_gen manifest.yaml
 
 By default it writes into the **current directory** and the configuration it
 writes names every path relative to that directory, so the tree can be moved
@@ -34,7 +34,7 @@ import numpy as np
 import pandas as pd
 import yaml
 
-from port.simulation_manifest import Manifest, read_simulation_manifest
+from port.sim.manifest import Manifest, read_simulation_manifest
 
 GENE_SPACING = 200_000
 """Base pairs between gene intervals. Wide enough to leave each its own block."""

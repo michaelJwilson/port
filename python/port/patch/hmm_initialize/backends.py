@@ -224,7 +224,7 @@ def sal_emission_backend(
         plus_plus_start,
     )
 
-    from port.emission_family import constant_covariate
+    from port.extensions.emission_family import constant_covariate
 
     exposure = constant_covariate(np.asarray(base_nb_mean), "base_nb_mean")
     trials = constant_covariate(np.asarray(total_bb_RD), "total_bb_RD")

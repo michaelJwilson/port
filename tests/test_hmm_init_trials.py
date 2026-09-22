@@ -13,7 +13,7 @@ matters cannot be computed at all.
 from __future__ import annotations
 
 import pytest
-from port.hmm_init_trials import HMMInit
+from port.extensions.hmm_init_trials import HMMInit
 
 
 @pytest.mark.infra
