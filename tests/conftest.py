@@ -225,32 +225,28 @@ for that reason.
 @pytest.hookimpl(tryfirst=True)
 @pytest.fixture(scope="session", autouse=True)
 def numba_seeded() -> None:
-    """Seed `numba`'s generator, so the coverage guards are reproducible.
+    """Seed `numba`'s generator, so a stochastic solver runs reproducibly.
 
-    **#264.** `cnaster/icm.py:888` takes an epsilon-greedy branch under
-    `np.random.rand()` inside an `@njit`. Numba keeps its own generator,
-    seeded from entropy on first use and **not** by `np.random.seed` from
-    Python -- so whether that branch fires is a coin flip per process.
+    `cnaster/icm.py` draws from `np.random` inside an `@njit`, and numba keeps
+    **its own** generator, seeded from entropy on first use and not by
+    `np.random.seed` from Python. `cnaster`'s entry point seeds it at
+    `scripts/run_cnaster.py:66`; the suite never reached that call, so every
+    session drew a different stream.
 
-    Measured before this fixture: five runs of the `end2end` selection at a
-    fixed thread count read 40.27 four times and 40.21 once, a 5-statement
-    swing in `icm.py` alone. `tests/check_badges.py` compares a recorded
-    figure against the measured one, so it refused two consecutive CI runs of
-    the same code, in opposite directions.
+    **What this fixes is stated narrowly, because the wider claim is not
+    established.** It makes the solver's draws the same from run to run. It
+    was added while chasing a flake in the coverage guards -- `e2e` read 40.21
+    once against 40.27 otherwise, a 5-statement swing in `icm.py`, and two CI
+    runs of one tree refused the record in opposite directions. **Whether
+    seeding removes that flake is unproven**: the outlier did not recur in 14
+    subsequent runs, seeded or not, so there is nothing here to show a fix
+    against. #264 carries it.
 
-    Seeded here rather than in the tests that reach the solver, because any
-    test that ever reaches it moves the figure for the whole session.
-    `cnaster`'s own entry point does the same thing at
-    `scripts/run_cnaster.py:66`.
-
-    **Compiled here rather than imported from there**, and that is not a
-    style choice: importing `cnaster.scripts.run_cnaster` for the one
-    function drags in `plotting`, `palette`, `plot_genomic` and
-    `plot_copy_number_profile`, and every statement they run at import time
-    joins the covered set. Measured: it moved `plotting.py` from 0.00 to 6.40
-    per cent and `scripts/run_cnaster.py` from 0.00 to 10.37, for no test
-    reaching either. A guard that rises because the suite imported more is
-    the one this denominator exists to refuse.
+    Compiled here rather than imported from `cnaster.scripts.run_cnaster`,
+    and that is not a style choice: that import drags in `plotting`,
+    `palette`, `plot_genomic` and `plot_copy_number_profile`, and every
+    statement they run at import time joins the covered set. Measured: it
+    moved `plotting.py` from 0.00 to 6.40 per cent for no test reaching it.
     """
     import numpy as np
     from numba import njit
