@@ -59,6 +59,18 @@ recorded ratio that does not name its instance, carry exactly two arms, and
 show both arms exiting 0 -- a ratio from an arm that did not complete is not
 a ratio -- and it refuses a ratio rendered while `instance` still reads `/`.
 
+**The badges are pinned to `main`, so a pull request does not show its own
+figures** -- the six URLs above all read `/main/.badges/`, and a README
+cannot render a branch-relative badge without making `main`'s README wrong.
+CI closes that with a report instead (#271): `tests/badge_report.py` renders
+this branch's guards against its base, delta first, into the job summary and
+into one pull request comment rewritten in place on each push. It reports and
+never gates -- `tests/check_badges.py` is what fails the job on a figure that
+moved and was never written down, and it runs first so the report cannot
+stand in for it. A denominator that moved is called out beside the delta,
+because two percentages over different denominators are not comparable and a
+bare `-3.43` invites exactly that mistake.
+
 Neither ratio is re-measured by CI, and that is deliberate rather than
 pending. A whole `run_cnaster` on a shared two-core runner is moved more by
 the runner than by the patch, so a figure from there would be a number
