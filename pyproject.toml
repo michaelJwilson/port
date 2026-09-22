@@ -37,6 +37,7 @@ dependencies = [
     # Pulled from git, not PyPI -- see [tool.uv.sources] below, which pins it
     # to the `finish_annotation_mushift3` branch.
     "cnaster",
+    "jax>=0.11.2",
 ]
 
 [project.scripts]
