@@ -7,7 +7,7 @@
    "floor": null,
    "selection": "not release and end2end",
    "denominator": "cnaster + python/port, 8267 statements",
-   "commit": "PENDING",
+   "commit": "0d75cd7",
    "note": "Guard 1. 3,399 of 8,355 statements, from the 58 tests that judge a scientific output against the truth that generated the data. **`oracle`-marked tests are excluded**, which is what makes the name honest -- the badge beside it already claims that word. **It carries no floor of its own, as of #259.** It used to render CI's, which gates `end2end or oracle` -- a different, larger selection that measures 42.44 on this tree. One number serving two selections read green only while the margin covered the difference, and it is not this guard's floor. A floor cut for `end2end` alone is owed and is #260. **The denominator moved twice on #259 and the figure fell 44.11 to 40.68 with no test removed.** `cnaster/scripts/` entered it -- 919 statements at 0.00 per cent, the four console entry points, which coverage could not see because `cnaster` shipped no `__init__.py` for its scan of a source directory to descend through. The `port` branch ships them, so the gap `[tool.coverage.run]` names -- *\"the most live code cnaster has, and the gate is silent about them\"* -- closed by itself, and is #260. `wolff.py` left it: 159 statements nothing in the package imports and nothing can, since the module does not import at all. Net 7,554 to 8,355, and the covered count rose 3,332 to 3,399. **Re-measured on the `cnaster@port#23cae59` pin (#259).** The subject itself moved: `cnaster` upstreamed port's coded emission and optimization pipeline, deleted `plot_loh_density.py` and parked two superseded bodies inside `hmm_nophasing`, so the denominator is 8,267 rather than 8,355 and the figure reads 40.95 against a recorded 40.68. A guard measured against a dependency moves when the dependency does, and this is the first re-pin where that is the whole of the movement rather than a `port` change."
   },
   "oracle": {
@@ -25,7 +25,7 @@
    "floor": null,
    "selection": "not release and not (end2end or oracle)",
    "denominator": "cnaster + python/port, 8267 statements",
-   "commit": "PENDING",
+   "commit": "0d75cd7",
    "note": "Guard 3. Proposed by #159 and not wired into CI -- its 'Done when' asks for exactly that and is unmet, which is why this is the badge that goes stale furthest and the one nothing catches when it does. 5,773 of 8,355 statements, from a clean run: 598 passed, 0 failed. **#223 is settled, by arithmetic rather than by argument.** This guard's denominator used to sit 299 statements above guard 1's on the same tree and nobody could say which statements they were. They were `cnaster/scripts/run_cnaster.py`, which has exactly 299: guard 3's selection imports the module and guard 1's does not, and an imported file is counted whether or not the directory scan reaches it. On #259 the `port` branch ships `__init__.py`, the scan reaches the directory for both selections, and the two denominators agree at 8,355. **Measured on this tree, not carried across one.** A 65.92 per cent figure was recorded here briefly and was wrong -- read on the #237 branch, which is a different tree with a different denominator. Every guard here carries its commit for exactly that reason. **Re-measured on the same pin**: 5,684 of 8,267. The two denominators agree at 8,267, as they have since `cnaster` shipped `__init__.py`."
   }
  },
