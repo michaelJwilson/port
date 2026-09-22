@@ -12,12 +12,16 @@
   },
   "oracle": {
    "label": "oracle",
-   "percent": 46.9,
+   "percent": null,
    "floor": 46.7,
    "selection": "not release and not preprocessing",
    "denominator": "snakes_and_ladders, 2582 statements",
    "commit": "88a019e",
-   "note": "Guard 2. Measured over its own denominator so the figure cannot rise by importing more of upstream, which validates nothing about cnaster. 1,211 of 2,582 statements. `opt/emission_mixture`, `opt/mixture` and `CountPairEmission` joined the surface on #232, because port's claims started resting on them: the denominator grew 2,164 to 2,582 and the covered count 947 to 1,209, so the figure rose 43.76 to 46.82 and the floor was raised with it. #232 predicted a fall to 36.88 on the assumption the joining modules would arrive uncovered; they did not. Merging `main` (#239, #242, #249) reached 2 further statements, 1,209 to 1,211, and the figure moved 46.82 to 46.90 over an unchanged denominator."
+   "note": "Guard 2, **disabled** (#282). CI no longer runs the oracle tests or this measurement, so the badge renders `/` rather than a figure from a run nobody made -- `tests/badges.py` treats a guard with no percent as unmeasured and `tests/check_badges.py` skips it, which is the behaviour both were built with. The floor stays recorded at 46.70 so restoring the guard restores what it has to clear, and `last_measured` carries the figure it stood at. **What the disable costs, stated rather than implied**: 117 of the 790 tests in the per-pull-request tier carry `oracle`, and `CLAUDE.md` makes `end2end` and `oracle` the only two markers that count as validation. This removes one of the two. `.coveragerc-oracle` and `tests/test_coverage_scope.py` are kept, so the declared oracle surface is still checked against what is installed and restoring the guard is two CI steps, four `and not oracle` clauses, and a figure. What it read before: measured over its own denominator so the figure could not rise by importing more of upstream, which validates nothing about `cnaster`. 1,211 of 2,582 statements. `opt/emission_mixture`, `opt/mixture` and `CountPairEmission` joined the surface on #232: the denominator grew 2,164 to 2,582 and the covered count 947 to 1,209, so the figure rose 43.76 to 46.82 and the floor was raised with it. Merging `main` (#239, #242, #249) reached 2 further statements and it moved 46.82 to 46.90 over an unchanged denominator.",
+   "last_measured": {
+    "percent": 46.9,
+    "commit": "88a019e"
+   }
   },
   "reach": {
    "label": "all",
