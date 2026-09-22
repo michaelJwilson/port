@@ -153,6 +153,54 @@ def _triples(
     )
 
 
+def _current(lengths: tuple[int, ...], n_segments: int) -> tuple[int, ...]:
+    """The clone lengths of the sequence actually being fitted.
+
+    **`cnaster` passes stale ones once clones merge.** `hmrf.py:564` sets
+    `clone_lengths` from the initial pseudobulk, before the loop, and never
+    updates it; the HMRF then merges clones, so on #292's genome it still
+    says six clones of 300 bins while the fit is over three -- 1,800 against
+    900. Every clone carries the whole genome, so the length is the one bin
+    count and the current number of clones is the decode's size over it.
+    Anything that does not divide is refused rather than guessed.
+    """
+    if int(sum(lengths)) == n_segments:
+        return lengths
+
+    if lengths and len(set(lengths)) == 1 and n_segments % lengths[0] == 0:
+        return (lengths[0],) * (n_segments // lengths[0])
+
+    msg = f"clone lengths {lengths} do not tile the {n_segments} segments decoded"
+    raise ValueError(msg)
+
+
+def _stacked(normal_log_lambda: Any, lengths: tuple[int, ...]) -> np.ndarray:
+    """`log lambda` over the clone-stacked sequence the decode indexes.
+
+    **`cnaster` passes it per genome bin.** `hmrf.py:476` builds
+    `normal_lambda` by summing the baseline over spots, so it has one entry
+    per bin, while the decode and the reduction walk `sum(lengths)` stacked
+    segments. The reduction is a `numba` loop without bounds checks, so the
+    short array would be read past its end rather than refused. Every clone
+    shares the one normal profile, so the stacked form is the per-bin one
+    repeated clone after clone.
+    """
+    values = np.asarray(normal_log_lambda, dtype=np.float64).reshape(-1)
+    total = int(sum(lengths))
+
+    if values.size == total:
+        return values
+
+    if lengths and all(length == values.size for length in lengths):
+        return np.tile(values, len(lengths))
+
+    msg = (
+        f"normal_log_lambda has {values.size} entries; expected one per genome "
+        f"bin ({lengths[0] if lengths else 0}) or per stacked segment ({total})"
+    )
+    raise ValueError(msg)
+
+
 class hmm_nophasing(UPSTREAM):  # type: ignore[misc]
     """`cnaster.hmm_nophasing`, with the shift applied when the flag is set.
 
@@ -282,7 +330,10 @@ class hmm_nophasing(UPSTREAM):  # type: ignore[misc]
         concentrations = state_vector(taus)
 
         n_states = rates.shape[0]
-        lengths = tuple(int(length) for length in np.asarray(clone_lengths))
+        lengths = _current(
+            tuple(int(length) for length in np.asarray(clone_lengths)),
+            int(np.asarray(decode).size),
+        )
 
         # NB **once per call, not once per state.** Upstream's commented-out
         #    call sits inside `for i in range(n_states)` at
@@ -297,7 +348,7 @@ class hmm_nophasing(UPSTREAM):  # type: ignore[misc]
         shifts = logmu_shifts(
             rates,
             np.asarray(decode, dtype=np.int64),
-            np.asarray(normal_log_lambda, dtype=np.float64),
+            _stacked(normal_log_lambda, lengths),
             np.asarray(lengths, dtype=np.int64),
         )
 

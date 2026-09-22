@@ -263,3 +263,44 @@ def test_each_clone_takes_its_own_shift(cnaster_config: None) -> None:
         "no (obs, total) pair scored differently across clones, so either the "
         "fixture shares none or every clone took the same shift"
     )
+
+
+@pytest.mark.bug
+def test_stale_clone_lengths_are_retiled_to_the_decoded_sequence() -> None:
+    """`hmrf.py:564` sets `clone_lengths` once, before clones merge (#293).
+
+    On #292's genome `cnaster` passes six clones of 300 while the fit is over
+    three: 1,800 against 900. The shift re-derives the current count from
+    the decode, and refuses lengths that do not tile it. Written to fail if
+    `cnaster` starts passing current lengths, when `_current` has nothing
+    left to repair.
+    """
+    from port.patch.hmm_nophasing.shifted_emission import _current
+
+    assert _current((300,) * 6, 900) == (300,) * 3
+    assert _current((300,) * 3, 900) == (300,) * 3
+
+    with pytest.raises(ValueError, match="do not tile"):
+        _current((300, 200), 900)
+
+
+@pytest.mark.analytic
+def test_a_per_bin_lambda_is_repeated_over_the_clone_stack() -> None:
+    """`hmrf.py:476` builds `normal_lambda` per genome bin (#293).
+
+    The reduction walks the stacked sequence without bounds checks, so the
+    per-bin profile is repeated clone after clone, which is exact because
+    every clone shares the one normal profile. A per-segment one passes
+    through, and any other length is refused.
+    """
+    from port.patch.hmm_nophasing.shifted_emission import _stacked
+
+    profile = np.log(np.array([0.2, 0.3, 0.5]))
+
+    np.testing.assert_array_equal(_stacked(profile, (3, 3)), np.tile(profile, 2))
+    np.testing.assert_array_equal(
+        _stacked(np.tile(profile, 2), (3, 3)), np.tile(profile, 2)
+    )
+
+    with pytest.raises(ValueError, match="expected one per genome"):
+        _stacked(profile, (4, 4))
