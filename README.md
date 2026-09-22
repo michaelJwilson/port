@@ -106,6 +106,12 @@ is less validated than it was -- it is just not a progress metric for this
 repository. `pyproject.toml` says so beside the floor, so nobody fixes it by
 counting the replacement as the replaced.
 
+Stage 3 then ran the other way, **for that same rule read forwards**:
+replacing the whole pipeline added 149 statements and `e2e` rose 40.27 to
+41.01, with the gate at 42.71. The replacement is installed by default, so
+every counted fit runs it and it joins at 82 per cent, where stages 2 and 4
+added modules the `end2end` selection does not reach.
+
 **A badge reading `/` has no measurement yet**, and that is the point: not a
 zero, which is a claim, and not a last-known figure from a commit nobody can
 name. `all` is unwired (#159's "Done when" asks for it and is unmet) and the

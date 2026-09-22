@@ -481,8 +481,17 @@ omit = [
 # defect.** Measured on #259 stage 2, which replaced one method:
 #
 #     cnaster/hmm_nophasing.py    covered  191 -> 170   (-21)
-#     port/patch/hmm_single_spot  statements 0 -> 27, covered 24
+#     port/patch/coded_emission   statements 0 -> 27, covered 24
 #     gate                        42.44 -> 42.31
+#
+# **Stage 3 then ran the other way, and the reason is the same rule read
+# forwards.** Replacing `_run_optimization_pipeline` outright added 149
+# statements of `port` and the gate reads 42.71, because the replacement is
+# installed by default: every fit in the counted selection runs it, so it
+# joins at 82 per cent rather than at whatever its own `patch` tests reach. A
+# swap row costs this gate when the counted selection does not exercise the
+# replacement and pays when it does. Neither direction is a statement about
+# `port`.
 #
 # The denominator is `cnaster`, so a body `port` replaces stops being
 # exercised and a `port` module joins at whatever its own tests reach. The

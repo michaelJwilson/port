@@ -49,6 +49,7 @@ from typing import Any
 from cnaster.hmm_nophasing import hmm_nophasing as UPSTREAM
 
 from port.patch.coded_emission import CodedEmission
+from port.patch.optimization_pipeline import OptimizationPipeline
 from port.patch.shifted_emission import ShiftedEmission
 
 __all__ = ["UPSTREAM", "GuardedShift", "RenamedKeywords", "hmm_nophasing"]
@@ -136,7 +137,7 @@ class GuardedShift:
 class hmm_nophasing(
     ShiftedEmission,
     CodedEmission,
-    RenamedKeywords,
+    OptimizationPipeline,
     UPSTREAM,  # type: ignore[misc]
 ):
     """`cnaster.hmm_nophasing.hmm_nophasing`, taking what its callers pass.
@@ -144,4 +145,11 @@ class hmm_nophasing(
     The name is `cnaster`'s, lower-case class and all: this is rebound over
     it, so a traceback that names `hmm_nophasing` keeps naming it. Each base
     says in its own module what it replaces and why it sits where it does.
+
+    **`RenamedKeywords` is not among them, as of #259 stage 3.** It existed
+    to translate `clone_lengths` and swallow `propagate_errors` on the way to
+    upstream's `_run_optimization_pipeline`; `OptimizationPipeline` replaces
+    that function and takes both itself, so forwarding to a body nothing
+    calls would be a translation with nothing to translate for. `hmm_phased`
+    still carries it, because it still reaches upstream's.
     """
