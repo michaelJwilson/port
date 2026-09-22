@@ -125,10 +125,11 @@ def test_every_swap_lands_in_the_module_named_for_its_target() -> None:
 def test_what_replaces_nothing_does_not_live_under_patch() -> None:
     """`patch/` means "replaces `cnaster`", so a module that does not is elsewhere.
 
-    `emission_family` wraps `snakes_and_ladders`, `run_sim_gen` is proposed
-    for `cnaster` and written here (#116), and `simulation_manifest` and
-    `hmm_init_trials` are `port`'s own. All four sit at `port.` top level, and
-    none may appear in a swap row.
+    `emission_family` wraps `snakes_and_ladders` and `hmm_init_trials` is
+    `port`'s own, so both are `extensions/`; `run_sim_gen` is proposed for
+    `cnaster` and written here (#116) and `manifest` plants truth, so both
+    are `sim/`. None may appear in a swap row: an extension installed over a
+    `cnaster` name is a patch that has not admitted to being one.
     """
     installed = {
         swap.replacement.partition(":")[0]
@@ -136,10 +137,10 @@ def test_what_replaces_nothing_does_not_live_under_patch() -> None:
     }
 
     for name in (
-        "port.emission_family",
-        "port.run_sim_gen",
-        "port.simulation_manifest",
-        "port.hmm_init_trials",
+        "port.extensions.emission_family",
+        "port.sim.run_sim_gen",
+        "port.sim.manifest",
+        "port.extensions.hmm_init_trials",
     ):
         importlib.import_module(name)
 
@@ -171,3 +172,50 @@ def test_the_private_cnaster_surface_is_the_reviewed_one() -> None:
         f"added {sorted(found - PRIVATE_SURFACE)}, "
         f"dropped {sorted(PRIVATE_SURFACE - found)}"
     )
+
+
+@pytest.mark.infra
+def test_every_module_has_one_of_the_four_jobs() -> None:
+    """`CLAUDE.md`'s shape rule, asserted rather than left to review.
+
+    Four jobs: `patch/` replaces a named `cnaster` function or class,
+    `extensions/` adds what has no counterpart, `sim/` simulates, and
+    everything else realizes `run_cnaster_port` with those in place. A module
+    with none of them goes to `sandbox/`.
+
+    **This is the test the refactor exists for.** Moving four modules is an
+    afternoon; keeping them where they belong is what needed a referee, and
+    without one the next module lands at `port.` top level because that is
+    where the last one was.
+
+    `sandbox/` is deliberately not exempted from anything else -- it is
+    outside the coverage denominator and outside the claims, which is the
+    whole of what it means -- so it simply does not appear here.
+    """
+    allowed = {"patch", "extensions", "sim", "scripts", "sandbox"}
+
+    package = ROOT / "python" / "port"
+    stray = []
+
+    for path in sorted(package.glob("*.py")):
+        if path.name in {"__init__.py", "pipeline.py"}:
+            # `pipeline.py` *is* realizing `run_cnaster_port`: it is the swap
+            # table and the context manager that installs it.
+            continue
+
+        stray.append(path.name)
+
+    assert not stray, (
+        f"{stray} sit at `port.` top level and claim none of the four jobs. "
+        f"A patch goes under `patch/`, new functionality under "
+        f"`extensions/`, planted truth under `sim/`, and anything else "
+        f"under `sandbox/`."
+    )
+
+    for child in sorted(p.name for p in package.iterdir() if p.is_dir()):
+        if child.startswith("__"):
+            continue
+
+        assert child in allowed, (
+            f"`port/{child}/` is not one of the four jobs {sorted(allowed)}"
+        )
