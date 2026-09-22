@@ -12,6 +12,7 @@ __pycache__/
 # NB the per-guard data files, named one by one rather than as `.coverage*`,
 #    which would also match the tracked `.coveragerc-oracle`. The dotted form
 #    is here for the shards coverage writes in parallel mode.
+.coverage-dropin
 .coverage-e2e
 .coverage-oracle
 .coverage-reach
