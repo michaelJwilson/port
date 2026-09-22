@@ -11,10 +11,22 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# NB stated rather than inherited. Every job here reads; only the badge report
+#    below writes, and it writes a pull request comment rather than the
+#    repository -- `check_badges` refuses a figure that moved and was never
+#    written down, and a job that could push would make that refusal moot.
+permissions:
+  contents: read
+
 jobs:
   python:
     name: Python (lint, types, tests)
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # the badge report's one comment, upserted. Absent on a fork's pull
+      # request, which is why that step degrades rather than fails.
+      pull-requests: write
     steps:
       - uses: actions/checkout@v4
 
@@ -106,6 +118,65 @@ jobs:
       #    which is the opposite of what a floor is for: a coverage change
       #    should arrive in a diff someone reads.
       - run: uv run --no-sync python -m tests.check_badges
+      # NB what a pull request cannot otherwise say (#271). Every badge in
+      #    `README.md` is pinned to `/main/.badges/`, so a branch renders
+      #    main's figures and its own live only in a JSON diff. This renders
+      #    the comparison the reviewer needs: base against head, delta first.
+      #
+      #    It reports and never gates. `check_badges` above is what fails the
+      #    job on a figure that moved and was not written down, and it runs
+      #    first so a report can never stand in for it.
+      - name: Badge report
+        if: always() && github.event_name == 'pull_request'
+        continue-on-error: true
+        env:
+          BASE: ${{ github.event.pull_request.base.ref }}
+        run: |
+          # A shallow fetch of the base is enough: only one file is read, and
+          # `|| true` because a missing base is a case the report renders
+          # rather than an error -- a first commit reaches it.
+          git fetch --depth=1 origin "$BASE" || true
+          git show FETCH_HEAD:.badges/measurements.json > /tmp/base-measurements.json || true
+
+          uv run --no-sync python -m tests.badge_report \
+            --base /tmp/base-measurements.json > /tmp/badge-report.md
+
+          cat /tmp/badge-report.md >> "$GITHUB_STEP_SUMMARY"
+      # NB one comment, upserted, because a comment per push is the noise the
+      #    badges exist to avoid. Separate from the step above so the job
+      #    summary still renders when no token can write -- a fork's pull
+      #    request has none, and that is not a failure.
+      - name: Badge report comment
+        if: always() && github.event_name == 'pull_request'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NUMBER: ${{ github.event.pull_request.number }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          MARKER='<!-- badge-report -->'
+
+          {
+            echo "$MARKER"
+            cat /tmp/badge-report.md
+            echo
+            echo "_Posted by the \`Badge report\` step of CI, and rewritten in place on each push._"
+          } > /tmp/badge-comment.md
+
+          # `--paginate` runs the filter once per page, so a repository with
+          # enough comments to paginate can emit an id per page; take the
+          # first and rewrite that one.
+          EXISTING=$(gh api "repos/$REPOSITORY/issues/$NUMBER/comments" --paginate \
+            --jq "[.[] | select(.body | startswith(\"$MARKER\"))] | first | .id // empty" \
+            | head -n 1)
+
+          if [ -n "$EXISTING" ]; then
+            gh api -X PATCH "repos/$REPOSITORY/issues/comments/$EXISTING" \
+              -F body=@/tmp/badge-comment.md
+          else
+            gh api "repos/$REPOSITORY/issues/$NUMBER/comments" \
+              -F body=@/tmp/badge-comment.md
+          fi
 
   # The release tier. `CLAUDE.md` says the release gate runs everything, and
   # until this job existed nothing did: `release` was a marker every job

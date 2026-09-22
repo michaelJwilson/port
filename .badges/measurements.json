@@ -3,12 +3,12 @@
  "coverage": {
   "judged": {
    "label": "e2e",
-   "percent": 44.14,
+   "percent": 44.43,
    "floor": 41.7,
    "selection": "not release and end2end",
-   "denominator": "cnaster + python/port, 7512 statements",
-   "commit": "88a019e",
-   "note": "Guard 1. 3,316 of 7,512 statements, from the 58 tests that judge a scientific output against the truth that generated the data. **`oracle`-marked tests are excluded**, which is what makes the name honest -- the badge beside it already claims that word. Adding them reaches 46.10 per cent, so they are worth 147 statements and 1.96 points over an identical denominator. The floor is CI's, decided by #157 over `end2end or oracle`; this selection is a strict subset of that one and clears it by 2.44 points. The denominator grew 7,031 to 7,512 when #239, #242 and #249 merged: a new port module is counted whether or not an `end2end` test reaches it, so the figure fell 44.80 to 44.14 without any test being removed. Not subtractable from `all`: see #223."
+   "denominator": "cnaster + python/port, 7540 statements",
+   "commit": "4241c08",
+   "note": "Guard 1. 3,316 of 7,512 statements, from the 58 tests that judge a scientific output against the truth that generated the data. **`oracle`-marked tests are excluded**, which is what makes the name honest -- the badge beside it already claims that word. Adding them reaches 46.10 per cent, so they are worth 147 statements and 1.96 points over an identical denominator. The floor is CI's, decided by #157 over `end2end or oracle`; this selection is a strict subset of that one and clears it by 2.44 points. The denominator grew 7,031 to 7,512 when #239, #242 and #249 merged: a new port module is counted whether or not an `end2end` test reaches it, so the figure fell 44.80 to 44.14 without any test being removed. Not subtractable from `all`: see #223. **Re-recorded on #271, and `main` was red on this figure for four merges.** `check_badges` had been failing since #256 with `judged coverage is 44.43% and .badges/measurements.json records 44.14%`, which is the exact failure #271 exists to prevent: the number moved, nothing surfaced it, and the only signal that would have said so was a red job on a branch nobody re-reads. The cause is #254's restructure and it is fully attributed: `python/port` went 2,016 to 2,044 statements, of which 24 are the five new subpackage `__init__.py` re-export modules (`patch/hmrf` 7, `patch/icm` 5, `patch/hmm_initialize` 4, `patch/hmm_nophasing` 4, `patch/omics` 4) and 4 are `patch/emission.py` and `patch/lattice.py` at +2 each. **Every rename in that restructure was statement-neutral** -- 208 to 208, 174 to 174, and so on down the list -- so the whole move is the new package roots. `cnaster` is unchanged: same pin, same 5,496 statements."
   },
   "oracle": {
    "label": "oracle",
@@ -21,12 +21,12 @@
   },
   "reach": {
    "label": "all",
-   "percent": 65.92,
+   "percent": 72.56,
    "floor": null,
    "selection": "not release and not (end2end or oracle)",
-   "denominator": "cnaster + python/port, 7865 statements",
-   "commit": "49ea116",
-   "note": "Guard 3. Proposed by #159 and not wired into CI -- its 'Done when' asks for exactly that and is unmet, which is why this is the badge that went stale furthest. 5,185 of 7,865 statements, from a clean run: 568 passed, 8 skipped, 0 failed. It read 71.52 per cent over 7,329 statements at 7b12d7c; #238, #239, #242, #249 and #237 added 536 statements to the denominator and the figure fell 5.60 points without a test being removed. The denominator is 353 statements larger than guard 1's on the same tree, so the two are not subtractable: #223. An earlier reading was diagnosed here as test pollution and was not; the record said so wrongly until baae1a3."
+   "denominator": "cnaster + python/port, 7839 statements",
+   "commit": "4241c08",
+   "note": "Guard 3. Proposed by #159 and not wired into CI -- its 'Done when' asks for exactly that and is unmet, which is why this is the badge that went stale furthest. 5,185 of 7,865 statements, from a clean run: 568 passed, 8 skipped, 0 failed. It read 71.52 per cent over 7,329 statements at 7b12d7c; #238, #239, #242, #249 and #237 added 536 statements to the denominator and the figure fell 5.60 points without a test being removed. The denominator is 353 statements larger than guard 1's on the same tree, so the two are not subtractable: #223. An earlier reading was diagnosed here as test pollution and was not; the record said so wrongly until baae1a3. **Re-recorded on #271, from a record four merges stale.** It read 65.92 over 7,865 statements at 49ea116 and reads 72.56 over 7,839 here. CI does not check this guard -- #159 asks for that and is unmet -- so nothing refused the staleness, which is why it drifted further than guard 1 did before anyone looked. It is the badge that goes stale furthest, as this note has said since #159, now with a second measurement saying it."
   }
  },
  "whole_run": {
