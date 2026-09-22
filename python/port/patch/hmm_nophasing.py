@@ -165,12 +165,7 @@ class _Fitted(NamedTuple):
     taus: np.ndarray
 
 
-class hmm_nophasing(
-    TupleParameters,
-    CodedEmission,
-    RenamedKeywords,
-    UPSTREAM,  # type: ignore[misc]
-):
+class hmm_nophasing(TupleParameters, CodedEmission, RenamedKeywords, UPSTREAM):  # type: ignore[misc]
     """`cnaster.hmm_nophasing.hmm_nophasing`, taking what its callers pass.
 
     The name is `cnaster`'s, lower-case class and all: this is rebound over
