@@ -1,4 +1,4 @@
-r"""Fitted `(mubar, p)` over realizations of one planted genome (#291).
+r"""Fitted `(mu, p)` over realizations of one planted genome (#291).
 
 **What a stated error is for, drawn beside what it claims.**
 `port.extensions.parameter_errors` gives one fit's covariance. That covariance
@@ -9,6 +9,11 @@ axis per copy state:
 - one realization, with 1-sigma error bars and its 1- and 2-sigma contours;
 - every other realization, as a point without error bars;
 - the planted truth.
+
+`mu` is the rate relative to normal coverage, compared unshifted: the planted
+`mu` realizes UMIs against the normal baseline, and the fit's `exp(log_mu)`
+estimates the same thing. `logmu_shift` would take either to `mubar`, a
+different quantity, and is applied to neither.
 
 A fit whose contours hold the other realizations and the truth is calibrated
 and unbiased. One whose other realizations sit inside its contours but whose
@@ -71,17 +76,17 @@ def plot_realizations(
     others: Sequence[tuple[np.ndarray, np.ndarray]],
     labels: Sequence[str] | None = None,
 ) -> Any:
-    """One panel per copy state, in `(mubar, p)`.
+    """One panel per copy state, in `(mu, p)`.
 
     Parameters
     ----------
     planted
-        `(mubar, p)` per state, the truth.
+        `(mu, p)` per state, the truth.
     single
-        `(mubar, p, covariance)` for the realization with errors;
-        `covariance` is `(n_states, 2, 2)` in `(mubar, p)`.
+        `(mu, p, covariance)` for the realization with errors;
+        `covariance` is `(n_states, 2, 2)` in `(mu, p)`.
     others
-        `(mubar, p)` per state for each remaining realization.
+        `(mu, p)` per state for each remaining realization.
     labels
         A title per state. Defaults to the state index.
 
@@ -146,7 +151,7 @@ def plot_realizations(
         )
 
         axis.set_title(labels[state] if labels is not None else f"state {state}")
-        axis.set_xlabel(r"$\bar\mu$")
+        axis.set_xlabel(r"$\mu$")
         axis.set_ylabel("p (minor)")
         axis.ticklabel_format(useOffset=False)
 

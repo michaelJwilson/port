@@ -43,6 +43,7 @@ GENOME = {
     "n_segments": 3,
     "events": (3, 5),
     "event_bins": (20, 40),
+    "reads": (10, 31),
     "seed": 12,
 }
 """The planted genome the figure is drawn for, before clone 0 is neutralized.
@@ -53,6 +54,17 @@ estimated: at the fixture's default extent over 120 bins they are 2 to 4 bins
 and the fit invents states instead. Seed 12 because it plants all three
 states -- seed 11 plants no bin of state 1, which is a figure of two states.
 """
+
+EXPOSURE = 100.0
+"""Expected normal-coverage counts per `(segment, spot)`: `mu = 1` draws 100
+in expectation. The fixture's `depth` draws about 1.75, which leaves a
+thousand spots a thin BAF and RDR signal each; the planted exposure is
+rescaled to this mean, keeping its shape along the genome. Allele trials are
+`reads = (10, 31)`, uniform on 10 to 30, 20 in expectation."""
+
+PLANTED_MU = (1.0, 1.5, 3.0)
+"""The rates planted, relative to normal coverage, in place of the fixture's
+`linspace(1.5, 5, K - 1)`: the highest state at 3 rather than 5."""
 
 GENOME_DRAW = 2**31
 """The realization stream the planted genome's own counts come from."""
@@ -68,13 +80,17 @@ def planted_genome(genome: dict[str, Any] | None = None) -> CoreInferenceTruth:
 
     **The pipeline needs normal spots, and the fixture plants none.** Every
     clone carries events, so `determine_normal_baseline` builds its baseline
-    from spots that share them and divides them out: a planted `(5, 0.88)`
-    comes back as `mu = 0.92, p = 0.12`. One clone with every bin in state 0
+    from spots that share them and divides them out: at the fixture's
+    default rates a planted `(5, 0.88)` came back as `mu = 0.92, p = 0.12`. One clone with every bin in state 0
     gives the baseline what it assumes it has.
     """
     truth = core_inference_truth(**(genome or GENOME))
     states = truth.states.copy()
     states[0] = 0
+
+    log_mu = np.log(np.asarray(PLANTED_MU[: truth.log_mu.size], dtype=np.float64))
+    base_nb_mean = truth.base_nb_mean * (EXPOSURE / truth.base_nb_mean.mean())
+    truth = dataclasses.replace(truth, log_mu=log_mu, base_nb_mean=base_nb_mean)
 
     # NB the counts are redrawn so they follow the new path; the stream is one
     #    no realization index reaches, so the genome's own draw is not also
@@ -169,15 +185,15 @@ def run(truth: CoreInferenceTruth, root: Path) -> Captured:
 
 
 class Fit(NamedTuple):
-    """One realization's fitted `(mubar, p)` per planted state, in truth order.
+    """One realization's fitted `(mu, p)` per planted state, in truth order.
 
-    `covariance` is `(n_states, 2, 2)` in `(mubar, p)` and `None` where it
+    `covariance` is `(n_states, 2, 2)` in `(mu, p)` and `None` where it
     was not computed; `decrement` is the Newton decrement `g' S g` at the
     returned point, which says whether it is an optimum of the objective the
     covariance is the curvature of.
     """
 
-    mubar: np.ndarray
+    mu: np.ndarray
     p: np.ndarray
     covariance: np.ndarray | None
     decrement: float | None
@@ -213,50 +229,52 @@ def pseudobulk(captured: Captured) -> dict[str, np.ndarray]:
 
 
 def match_states(truth: CoreInferenceTruth, captured: Captured) -> np.ndarray:
-    """`order[k]` is the fitted state carrying planted state `k`.
+    """`order[k]` is the fitted state whose responsibility is closest to `k`'s.
 
-    By the planted path, not by sorting parameters: every `(bin, spot)` votes
-    for the pair (planted state, fitted state), and the assignment maximizing
-    agreement is taken. Sorting would match a fit that swapped two states'
-    `mu` by the value it got wrong.
+    Planted state `k`'s occupancy is its indicator over every `(bin, spot)`;
+    fitted state `j`'s responsibility is its posterior `gamma_j` there, read
+    at the clone the fit assigned the spot to. The distance is
+    `sum (gamma_j - 1[s = k])^2`, and the one-to-one assignment minimizing
+    the total is taken.
+
+    Neither by index nor by value: the pipeline's labels are its own, and
+    sorting by `mu` would pair states by the value under test. The posterior
+    rather than the decoded path, so a state the fit is unsure of counts as
+    unsure rather than as its argmax.
     """
     result = captured.result
-    pred = np.asarray(result["pred_cnv"], dtype=np.int64)
+    gamma = np.exp(np.asarray(result["log_gamma"], dtype=np.float64))
     assignment = np.asarray(result["new_assignment"], dtype=np.int64)
     n_states = truth.log_mu.size
 
-    fitted = pred[:, assignment]
+    responsibility = gamma[:, :, assignment]
     planted = truth.states[truth.labels].T
 
-    if fitted.shape != planted.shape:
-        msg = f"fitted path {fitted.shape} is not the planted {planted.shape}"
+    if responsibility.shape[1:] != planted.shape:
+        msg = f"responsibility {responsibility.shape} is not over {planted.shape}"
         raise ValueError(msg)
 
-    votes = np.zeros((n_states, n_states))
-    np.add.at(votes, (planted.ravel(), fitted.ravel()), 1.0)
+    occupancy = (planted[None] == np.arange(n_states)[:, None, None]).astype(float)
+    distance = ((occupancy[:, None] - responsibility[None]) ** 2).sum(axis=(2, 3))
 
-    rows, columns = linear_sum_assignment(-votes)
-
+    rows, columns = linear_sum_assignment(distance)
     order: np.ndarray = np.asarray(columns)[np.argsort(rows)]
 
     return order
 
 
-def planted_mubar(truth: CoreInferenceTruth) -> np.ndarray:
-    """The planted `mu` debiased by the planted genome's own normalizer.
+def planted_mu(truth: CoreInferenceTruth) -> np.ndarray:
+    """The planted `mu`, as planted.
 
-    `lambda` is the planted exposure summed over each clone's spots and
-    normalized over every `(bin, clone)`, which is the paper's normal
-    profile for this fixture: `mean counts = exposure * mu`.
+    The fixture draws `counts = exposure * mu`, so `mu` is UMIs relative to
+    normal coverage, which is what the fit's `exp(log_mu)` estimates against
+    the pipeline's normal baseline. Neither side is shifted: `logmu_shift`
+    maps `mu` to `mu`, a different quantity, and a comparison that
+    shifted one side would be comparing two.
     """
-    n_clones = int(truth.labels.max()) + 1
-    exposure = np.stack(
-        [truth.base_nb_mean[:, truth.labels == c].sum(axis=1) for c in range(n_clones)]
-    )
-    weights = exposure / exposure.sum()
-    mu = np.exp(truth.log_mu)
+    mu: np.ndarray = np.exp(truth.log_mu)
 
-    return mu / float((weights * mu[truth.states]).sum())
+    return mu
 
 
 def planted_minor(truth: CoreInferenceTruth) -> np.ndarray:
@@ -267,24 +285,17 @@ def planted_minor(truth: CoreInferenceTruth) -> np.ndarray:
 
 
 def fitted(truth: CoreInferenceTruth, captured: Captured, *, errors: bool) -> Fit:
-    """The fit's `(mubar, p)` per planted state, and its covariance if asked.
+    """The fit's `(mu, p)` per planted state, and its covariance if asked.
 
-    `mubar` is the fitted `mu` debiased by one normalizer over every
-    `(bin, clone)` of the stacked sequence, `lambda` being the pipeline's own
-    normal baseline -- the same pooling `planted_mubar` applies to the truth.
+    `mu` is `exp(new_log_mu)`, unshifted, as `planted_mu` is.
 
     The covariance is the inverse observed information of the objective the
     HMM maximized, over `(log mu_k, logit p_k, log alpha, log tau)` with the
     two dispersions shared as the configuration shares them, and transitions
-    held at the fit: they are not what is plotted. The shift is propagated
-    through `shift_weights`' Jacobian and `(log mu, logit p)` taken to
-    `(mubar, p)` by the delta method.
+    held at the fit: they are not what is plotted. `(log mu, logit p)` is
+    taken to `(mu, p)` by the delta method.
     """
-    from port.extensions.parameter_errors import (
-        parameter_errors,
-        shift_weights,
-        shifted_covariance,
-    )
+    from port.extensions.parameter_errors import parameter_errors
 
     result = captured.result
     log_mu = _column(result["new_log_mu"])
@@ -294,11 +305,7 @@ def fitted(truth: CoreInferenceTruth, captured: Captured, *, errors: bool) -> Fi
     n_states = log_mu.size
 
     inputs = pseudobulk(captured)
-    path = np.asarray(result["pred_cnv"], dtype=np.int64).T.reshape(-1)
-    log_lambda = np.log(inputs["base_nb_mean"] / inputs["base_nb_mean"].sum())
-
-    shift = float(np.logaddexp.reduce(log_mu[path] + log_lambda))
-    mubar = np.exp(log_mu - shift)
+    mu = np.exp(log_mu)
 
     # NB phasing makes the allele label arbitrary, so `p` is reported folded
     #    to the minor fraction, as `planted_minor` folds the truth. Folding is
@@ -310,7 +317,7 @@ def fitted(truth: CoreInferenceTruth, captured: Captured, *, errors: bool) -> Fi
     order = match_states(truth, captured)
 
     if not errors:
-        return Fit(mubar[order], minor[order], None, None)
+        return Fit(mu[order], minor[order], None, None)
 
     import jax
     import jax.numpy as jnp
@@ -343,24 +350,21 @@ def fitted(truth: CoreInferenceTruth, captured: Captured, *, errors: bool) -> Fi
     gradient = np.asarray(jax.grad(objective)(jnp.asarray(theta)))
     decrement = float(gradient @ estimate.covariance @ gradient)
 
-    rates = shifted_covariance(
-        estimate.covariance[:n_states, :n_states],
-        shift_weights(log_mu, path, log_lambda),
-    )
+    rates = estimate.covariance[:n_states, :n_states]
     slope = p_binom * (1.0 - p_binom)
     alleles = estimate.covariance[n_states : 2 * n_states, n_states : 2 * n_states]
 
     covariance = np.zeros((n_states, 2, 2))
 
     for k in range(n_states):
-        cross = estimate.covariance[k, n_states + k] * mubar[k] * slope[k]
+        cross = estimate.covariance[k, n_states + k] * mu[k] * slope[k]
         cross = -cross if flipped[k] else cross
         covariance[k] = [
-            [rates[k, k] * mubar[k] ** 2, cross],
+            [rates[k, k] * mu[k] ** 2, cross],
             [cross, alleles[k, k] * slope[k] ** 2],
         ]
 
-    return Fit(mubar[order], minor[order], covariance[order], decrement)
+    return Fit(mu[order], minor[order], covariance[order], decrement)
 
 
 def fit_one(genome: dict[str, Any] | None, index: int, root: Path, errors: bool) -> Fit:
@@ -386,9 +390,10 @@ def realizations(
 
     **One fresh process per realization.** Run back to back in one process,
     the fourth of eight stalled for over twenty minutes after its genomic
-    figure, while the same realization alone completes in 35 s: state carried
-    between in-process runs of the pipeline, not the realization, is what
-    stalls. A spawned worker that exits after one run carries none.
+    figure, while the same realization alone completes in 35 s. A worker
+    peaks at 4.7 GB resident -- three at once were killed by the memory
+    cgroup -- so a process that exits after one run is what returns the
+    memory. `jobs` above 1 is for a host with room for that many.
     """
     import multiprocessing
     from concurrent.futures import ProcessPoolExecutor
@@ -411,7 +416,7 @@ class Summary(NamedTuple):
     """The figure's claims as numbers, per planted state.
 
     `bias` is the single realization's distance from truth in its own
-    standard errors, `(mubar, p)`. `spread` is the other realizations'
+    standard errors, `(mu, p)`. `spread` is the other realizations'
     standard deviation over the single realization's stated one: 1 where the
     stated error describes the scatter, above 1 where it understates it.
     """
@@ -427,10 +432,10 @@ def summarize(truth: CoreInferenceTruth, fits: Sequence[Fit]) -> Summary:
         raise ValueError(msg)
 
     sigma = np.sqrt(np.stack([single.covariance[:, 0, 0], single.covariance[:, 1, 1]]))
-    planted = np.stack([planted_mubar(truth), planted_minor(truth)])
-    estimate = np.stack([single.mubar, single.p])
+    planted = np.stack([planted_mu(truth), planted_minor(truth)])
+    estimate = np.stack([single.mu, single.p])
 
-    others = np.stack([np.stack([fit.mubar, fit.p]) for fit in fits[1:]])
+    others = np.stack([np.stack([fit.mu, fit.p]) for fit in fits[1:]])
 
     return Summary(
         bias=((estimate - planted) / sigma).T,
@@ -458,9 +463,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     assert single.covariance is not None
 
     figure = plot_realizations(
-        planted=(planted_mubar(truth), planted_minor(truth)),
-        single=(single.mubar, single.p, single.covariance),
-        others=[(fit.mubar, fit.p) for fit in fits[1:]],
+        planted=(planted_mu(truth), planted_minor(truth)),
+        single=(single.mu, single.p, single.covariance),
+        others=[(fit.mu, fit.p) for fit in fits[1:]],
         labels=[
             f"planted ({np.exp(mu):g}, {p:g})"
             for mu, p in zip(truth.log_mu, planted_minor(truth), strict=True)
@@ -472,9 +477,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     summary = summarize(truth, fits)
     np.savez(
         arguments.output.with_suffix(".npz"),
-        planted_mubar=planted_mubar(truth),
+        planted_mu=planted_mu(truth),
         planted_p=planted_minor(truth),
-        mubar=np.stack([fit.mubar for fit in fits]),
+        mu=np.stack([fit.mu for fit in fits]),
         p=np.stack([fit.p for fit in fits]),
         covariance=single.covariance,
         decrement=np.nan if single.decrement is None else single.decrement,

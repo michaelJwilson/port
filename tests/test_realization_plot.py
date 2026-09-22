@@ -73,13 +73,13 @@ def test_a_realization_redraws_the_counts_and_nothing_else() -> None:
 
 
 @pytest.mark.analytic
-def test_states_are_matched_by_the_path_not_by_their_values() -> None:
-    """A fit that relabels the states and swaps two `mu` is matched by path.
+def test_states_are_matched_by_responsibility_not_by_index() -> None:
+    """A fit that relabels its states is matched back by its posterior.
 
-    Sorting by `mu` would pair each planted state with the fitted one whose
-    value is nearest in rank, so a fit that got two values the wrong way round
-    would be read as right. Voting on the path pairs a fitted state with the
-    planted one whose bins it decoded, whatever value it carries.
+    The responsibilities are the planted occupancy, relabelled and softened
+    to 0.8 on the occupied state, so no fitted state is an exact indicator
+    and the match has to be the closest rather than an equal one. Reading
+    by index would return the identity; the relabelling is what comes back.
     """
     from tests.fixtures import core_inference_truth
     from tests.realizations import match_states
@@ -89,11 +89,13 @@ def test_states_are_matched_by_the_path_not_by_their_values() -> None:
     )
     relabel = np.array([2, 0, 1])
 
+    fitted_path = relabel[truth.states]
+    gamma = np.full((3, *fitted_path.T.shape), 0.1)
+    for state in range(3):
+        gamma[state][state == fitted_path.T] = 0.8
+
     captured = SimpleNamespace(
-        result={
-            "pred_cnv": relabel[truth.states].T,
-            "new_assignment": truth.labels,
-        }
+        result={"log_gamma": np.log(gamma), "new_assignment": truth.labels}
     )
 
     np.testing.assert_array_equal(match_states(truth, captured), relabel)  # type: ignore[arg-type]
@@ -103,9 +105,9 @@ def test_states_are_matched_by_the_path_not_by_their_values() -> None:
 def test_the_figure_has_one_panel_per_state_and_every_series() -> None:
     """Three panels, and each holds both contours, the errorbar, the others
     and the truth. Checked against itself, hence `smoke`."""
-    import matplotlib
+    import matplotlib as mpl
 
-    matplotlib.use("Agg")
+    mpl.use("Agg")
 
     from port.extensions.realization_plot import plot_realizations
 
