@@ -35,7 +35,7 @@ from port.pipeline import FIGURE_SWAPS, NUMERIC_SWAPS, SWAPS
 
 ROOT = Path(__file__).resolve().parents[1]
 
-UNIFIERS = ("emission", "lattice")
+UNIFIERS = ("emission", "lattice", "plotting")
 """The two patches that replace a pair of `cnaster` modules rather than one.
 
 Named here rather than inferred so that adding a third is a decision someone
