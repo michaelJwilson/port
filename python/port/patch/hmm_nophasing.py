@@ -44,146 +44,16 @@ fails loudly once upstream's signatures accept what its callers pass.
 
 from __future__ import annotations
 
-from typing import Any, NamedTuple
-
-import numpy as np
 from cnaster.hmm_nophasing import hmm_nophasing as UPSTREAM
 
 from port.patch.coded_emission import CodedEmission
 from port.patch.optimization_pipeline import OptimizationPipeline
 from port.patch.shifted_emission import ShiftedEmission
 
-__all__ = ["UPSTREAM", "GuardedShift", "RenamedKeywords", "hmm_nophasing"]
-
-
-class RenamedKeywords:
-    """The call-site keywords upstream's signatures have drifted away from.
-
-    A mixin rather than a base class: it is applied to `hmm_nophasing` and to
-    `hmm_phased`, which does not inherit the first one's patch. It carries
-    `_run_optimization_pipeline` alone; the emission guard both classes needed
-    at #259 stage 1 is `GuardedShift` below, which only `hmm_phased` still
-    reaches.
-    """
-
-    def _run_optimization_pipeline(
-        self,
-        *args: Any,
-        clone_lengths: Any = None,
-        propagate_errors: Any = None,
-        **kwargs: Any,
-    ) -> Any:
-        """Upstream's, taking `clone_lengths` for `num_segments_clones`.
-
-        `propagate_errors` is accepted and dropped; see the module docstring
-        for why that loses nothing. `num_segments_clones` wins if a caller
-        passes both names, so a migrated call site is never overridden by the
-        compatibility shim.
-        """
-        del propagate_errors
-
-        if clone_lengths is not None:
-            kwargs.setdefault("num_segments_clones", clone_lengths)
-
-        return super()._run_optimization_pipeline(*args, **kwargs)  # type: ignore[misc]
-
-
-class GuardedShift:
-    """Upstream's emission, with the shift's guard testing what it indexes.
-
-    **Carried by `hmm_phased` alone.** `hmm_nophasing` reaches its emission
-    through `port.patch.coded_emission`, which computes the whole body and
-    never calls upstream's, so the guard has nothing to guard there. Keeping
-    it on the shared mixin would be a second definition of a method the
-    nophasing class cannot run -- `cnaster`'s own defect 1, reproduced in the
-    patch.
-    """
-
-    def compute_emission_probability_nb_betabinom_coded(
-        self,
-        *args: Any,
-        normal_log_lambda: Any = None,
-        copy_states: Any = None,
-        **kwargs: Any,
-    ) -> Any:
-        """Upstream's, with the shift's guard testing the variable it indexes.
-
-        `cnaster` guards the shift on `normal_log_lambda is not None` and then
-        calls `compute_logmu_shifts(log_mu, copy_states, ...)`, but the call
-        site never passes `copy_states` and the signature defaults it to
-        `None`. The function is `@njit`, so the first call is a compile
-        failure rather than a `TypeError`:
-
-            numba.core.errors.TypingError: No implementation of function
-            Function(<built-in function getitem>) found for signature ...
-
-        Suppressing `normal_log_lambda` when there is no decode to evaluate
-        the shift on is **bitwise neutral on the emission**, because the
-        result is discarded either way -- `# TODO fold in logmu_shifts` is the
-        next line upstream. So this restores the run and changes no number,
-        and it is the seam #259 stage 4 replaces: once the shift is applied,
-        this is where `copy_states` gets supplied rather than dropped.
-        """
-        if copy_states is None:
-            normal_log_lambda = None
-
-        return super().compute_emission_probability_nb_betabinom_coded(  # type: ignore[misc]
-            *args,
-            normal_log_lambda=normal_log_lambda,
-            copy_states=copy_states,
-            **kwargs,
-        )
-
-
-class TupleParameters:
-    """`unpack_params` as a tuple that also answers by name (#259 stage 1).
-
-    **The new pin's `_run_optimization_pipeline` cannot run.**
-    `cnaster@port#e4e8739` upstreamed `port`'s pipeline but not the
-    named-parameter object it reads, so its own body does::
-
-        fitted = unpack(params)
-        self.log_emissions = emission(fitted.log_mu, ...)
-
-    while `unpack_params` returns a five-tuple and no such class exists
-    there::
-
-        AttributeError: 'tuple' object has no attribute 'log_mu'
-        cnaster/hmm_nophasing.py:1205
-
-    Every fit raises it, which is the same shape of defect as the two
-    signature breaks above: the branch does not run at all.
-
-    **A `NamedTuple` is the whole fix, and it changes no number.** It *is*
-    the tuple -- same identity under indexing, unpacking and iteration, so
-    every positional consumer is untouched -- and it answers `.log_mu` as
-    well, which is all upstream's body wants. Returning a dataclass here
-    would break the positional consumers; returning a plain tuple is what
-    upstream already does and is what breaks.
-
-    It comes out when `cnaster` either lands the named object or takes the
-    attribute access back out.
-    """
-
-    def unpack_params(self, *args: Any, **kwargs: Any) -> Any:
-        """Upstream's, as a named tuple rather than a bare one."""
-        unpacked = super().unpack_params(*args, **kwargs)  # type: ignore[misc]
-
-        return _Fitted(*unpacked)
-
-
-class _Fitted(NamedTuple):
-    """The five arrays `unpack_params` returns, in its own order."""
-
-    log_startprob: np.ndarray
-    log_mu: np.ndarray
-    p_binom: np.ndarray
-    alphas: np.ndarray
-    taus: np.ndarray
+__all__ = ["UPSTREAM", "hmm_nophasing"]
 
 
 class hmm_nophasing(
-    TupleParameters,
     ShiftedEmission,
     CodedEmission,
     OptimizationPipeline,

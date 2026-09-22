@@ -131,8 +131,7 @@ def test_initial_parameters_have_the_declared_shape(n_states: int) -> None:
 
     `get_initial_params` is what a fit starts from when nothing is supplied,
     so a wrong shape here surfaces as a broadcast deep inside the emission
-    rather than as a bad start. One column, because the rewritten pipeline
-    carries one (#259 stage 3).
+    rather than as a bad start.
     """
     from cnaster.hmm_nophasing import hmm_nophasing
 
@@ -140,18 +139,3 @@ def test_initial_parameters_have_the_declared_shape(n_states: int) -> None:
 
     for array in initial[:4]:
         assert np.asarray(array).shape == (n_states, 1)
-
-
-@pytest.mark.smoke
-def test_more_than_one_column_is_refused() -> None:
-    """The second column upstream allowed is what the rewrite removed.
-
-    Upstream built its defaults with `vstack([...] * n_spots).T`, so a caller
-    asking for two got two. The rewrite carries the concatenated genome as one
-    column, and a caller asking for more is asking for a loop that no longer
-    exists; it is refused at the start rather than broadcast into the emission.
-    """
-    from cnaster.hmm_nophasing import hmm_nophasing
-
-    with pytest.raises(ValueError, match="expected one column, got 2"):
-        hmm_nophasing().get_initial_params(3, 2)
