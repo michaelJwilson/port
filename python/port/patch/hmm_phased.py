@@ -48,12 +48,12 @@ from typing import Any
 
 from cnaster.hmm_phased import hmm_phased as UPSTREAM
 
-from port.patch.hmm_nophasing import RenamedKeywords
+from port.patch.hmm_nophasing import GuardedShift, RenamedKeywords
 
 __all__ = ["UPSTREAM", "hmm_phased"]
 
 
-class hmm_phased(RenamedKeywords, UPSTREAM):  # type: ignore[misc]
+class hmm_phased(GuardedShift, RenamedKeywords, UPSTREAM):  # type: ignore[misc]
     """`cnaster.hmm_phased.hmm_phased`, with the renamed keywords accepted.
 
     Carries `RenamedKeywords` as well as its own override: `hmm_phased`

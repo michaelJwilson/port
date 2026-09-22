@@ -198,8 +198,20 @@ run_cnaster_port config.yaml                 # cnaster's pipeline, port's replac
 run_cnaster_port --no-patch config.yaml      # the same run, nothing rebound
 run_cnaster_port --no-figures config.yaml    # the replacements that reproduce bitwise
 run_cnaster_port --time-stages config.yaml   # what the replacements cost in the run
+run_cnaster_port --logmu-shift config.yaml   # debias log mu by the per-clone normalizer
 run_cnaster_port --list                      # what would be rebound, and why
 ```
+
+**`--logmu-shift` is the one flag that changes a scientific answer**, and it
+is off by default for that reason (#259). `cnaster` computes the per-clone
+library normalization and discards it -- `# TODO fold in logmu_shifts` -- so
+a run without the flag is the run that exists today, and a run with it moves
+every fitted RDR parameter. It costs 1.69x on the emission at a stress size,
+because the shift differs per clone and `CountEncoder` compresses across the
+whole concatenated genome, so the NB channel has to be encoded per clone.
+It is refused under `--no-patch`: the shift lives on the patched HMM, and a
+run asked to debias that returned an undebiased answer is one nobody could
+tell from a debiased one.
 
 `port.pipeline.SWAPS` is the table -- one row per `cnaster` name `port`
 replaces, each naming the ticket that measured it -- and `patched()` is the

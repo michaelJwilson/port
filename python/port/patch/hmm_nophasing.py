@@ -49,15 +49,19 @@ from typing import Any
 from cnaster.hmm_nophasing import hmm_nophasing as UPSTREAM
 
 from port.patch.coded_emission import CodedEmission
+from port.patch.shifted_emission import ShiftedEmission
 
-__all__ = ["UPSTREAM", "RenamedKeywords", "hmm_nophasing"]
+__all__ = ["UPSTREAM", "GuardedShift", "RenamedKeywords", "hmm_nophasing"]
 
 
 class RenamedKeywords:
     """The call-site keywords upstream's signatures have drifted away from.
 
     A mixin rather than a base class: it is applied to `hmm_nophasing` and to
-    `hmm_phased`, which does not inherit the first one's patch.
+    `hmm_phased`, which does not inherit the first one's patch. It carries
+    `_run_optimization_pipeline` alone; the emission guard both classes needed
+    at #259 stage 1 is `GuardedShift` below, which only `hmm_phased` still
+    reaches.
     """
 
     def _run_optimization_pipeline(
@@ -80,6 +84,18 @@ class RenamedKeywords:
             kwargs.setdefault("num_segments_clones", clone_lengths)
 
         return super()._run_optimization_pipeline(*args, **kwargs)  # type: ignore[misc]
+
+
+class GuardedShift:
+    """Upstream's emission, with the shift's guard testing what it indexes.
+
+    **Carried by `hmm_phased` alone.** `hmm_nophasing` reaches its emission
+    through `port.patch.coded_emission`, which computes the whole body and
+    never calls upstream's, so the guard has nothing to guard there. Keeping
+    it on the shared mixin would be a second definition of a method the
+    nophasing class cannot run -- `cnaster`'s own defect 1, reproduced in the
+    patch.
+    """
 
     def compute_emission_probability_nb_betabinom_coded(
         self,
@@ -117,7 +133,12 @@ class RenamedKeywords:
         )
 
 
-class hmm_nophasing(CodedEmission, RenamedKeywords, UPSTREAM):  # type: ignore[misc]
+class hmm_nophasing(
+    ShiftedEmission,
+    CodedEmission,
+    RenamedKeywords,
+    UPSTREAM,  # type: ignore[misc]
+):
     """`cnaster.hmm_nophasing.hmm_nophasing`, taking what its callers pass.
 
     The name is `cnaster`'s, lower-case class and all: this is rebound over
