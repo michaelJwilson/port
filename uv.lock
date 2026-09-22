@@ -618,7 +618,7 @@ wheels = [
 [[package]]
 name = "cnaster"
 version = "0.1.0"
-source = { git = "https://github.com/michaelJwilson/cnaster?branch=port#e93a137f7848aeb0016b2374c1e817d2c0afcecc" }
+source = { git = "https://github.com/michaelJwilson/cnaster?branch=port#e4e87399fa8849451bbf2d449455ee307a52d626" }
 dependencies = [
     { name = "anndata" },
     { name = "hmmlearn" },
