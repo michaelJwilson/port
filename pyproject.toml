@@ -322,6 +322,18 @@ markers = [
     #    `analytic`, `patch` or `backend` -- and that carries no scale marker,
     #    so the early gate cannot silently become the slow tier.
     "critical: gates early; fast, and its failure means the rest is not worth running -- structurally, or because the science it rests on is wrong",
+    # NB `cnaster` is a second axis too, and for the same reason `critical` is
+    #    one rather than an eleventh referee: `patch` already names what a
+    #    correspondence test is checked against, and #157 undid exactly the
+    #    split that would put two names on one referee. So a test carries
+    #    `cnaster` *and* its referee -- usually `patch`, sometimes `end2end`
+    #    or `analytic` where the comparison runs through a whole stage.
+    #
+    #    What it selects is guard 4's denominator in use: every drop-in under
+    #    `python/port/patch/`, driven on a fixture against the `cnaster`
+    #    function it replaces. A replacement with no such test is one nobody
+    #    compared, and `tests/test_dropin_correspondence.py` refuses it.
+    "cnaster: compares a drop-in replacement with the cnaster implementation it replaces, on a fixture",
 ]
 
 

@@ -361,9 +361,11 @@ were never compared look exactly like three that agree.
     rises only by validating more of it. `pyproject.toml` records what the
     denominator currently *is*, measured rather than assumed, and what it
     excludes.
-*   **A compiled kernel is tested even where coverage cannot see it.**
-    `numba` reports nothing, so `@njit` functions read as uncovered however
-    hard they are exercised. They carry tests regardless, against an
-    independent reference, and the coverage figure is never the reason a
-    kernel goes untested. Where a test exists only to reach a compiled
-    kernel, say so in its docstring, because the report will not.
+*   **A compiled kernel is tested whether or not coverage can see it, and
+    whether it can see it is a choice.** Under the default `numba` reports
+    nothing, so `@njit` functions read as uncovered however hard they are
+    exercised; a guard that wants to measure them runs them as Python
+    instead. Which of the two a measurement did belongs beside the figure,
+    because the same suite reads very differently under each. Either way the
+    kernel carries tests against an independent reference, and the coverage
+    figure is never the reason one goes untested.

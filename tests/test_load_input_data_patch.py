@@ -392,6 +392,7 @@ def _loaders() -> list[tuple[str, Any]]:
 
 
 @pytest.mark.end2end
+@pytest.mark.cnaster
 @pytest.mark.parametrize(("name", "load_input_data"), _loaders())
 def test_the_gene_file_removes_the_genes_it_names_and_no_others(
     name: str,
@@ -440,6 +441,7 @@ def test_the_gene_file_removes_the_genes_it_names_and_no_others(
 
 
 @pytest.mark.end2end
+@pytest.mark.cnaster
 @pytest.mark.parametrize(("name", "load_input_data"), _loaders())
 def test_the_range_file_removes_the_snps_inside_the_ranges_it_names(
     name: str,
@@ -499,6 +501,7 @@ def test_the_range_file_removes_the_snps_inside_the_ranges_it_names(
 
 
 @pytest.mark.end2end
+@pytest.mark.cnaster
 @pytest.mark.parametrize(("name", "load_input_data"), _loaders())
 def test_the_normal_index_file_annotates_the_spots_it_names(
     name: str,

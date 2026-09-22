@@ -2,7 +2,11 @@
 
 `interface` is `icm_sweep_deque` reduced to the problem it solves (#206),
 `alpha_expansion` is upstream's solver behind that same signature (#246), and
-`label_solver` is which of the two the call site takes. Three modules, one
+`label_solver` is which of the two the call site takes; it lives in
+`port.extensions` and is re-exported here, because choosing between two
+solvers replaces no `cnaster` function -- it is a setting, and #274's
+four-job rule puts what has no counterpart under `extensions/` (#281).
+Two modules here, one
 `cnaster` module, one package name.
 
 The submodules keep the split; this re-exports them so a swap row can name
@@ -11,6 +15,11 @@ The submodules keep the split; this re-exports them so a swap row can name
 
 from __future__ import annotations
 
+from port.extensions.label_solver import (
+    SOLVERS,
+    label_solver,
+    set_label_solver,
+)
 from port.patch.icm.alpha_expansion import (
     alpha_expansion_sweep,
     potts_energy,
@@ -21,11 +30,6 @@ from port.patch.icm.interface import (
     IcmResult,
     fold_unary,
     icm_sweep,
-)
-from port.patch.icm.label_solver import (
-    SOLVERS,
-    label_solver,
-    set_label_solver,
 )
 
 __all__ = [

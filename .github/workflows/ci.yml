@@ -126,6 +126,24 @@ jobs:
       #    pushed would make the badges always correct and always unreviewed,
       #    which is the opposite of what a floor is for: a coverage change
       #    should arrive in a diff someone reads.
+      # NB guard 4: the drop-ins, against their own correspondence tests
+      #    (#281). Guards 1-3 measure a dependency this repository does not
+      #    own and are low by construction; this one measures code `port`
+      #    wrote to replace something, under the tests that compare it with
+      #    the something, so its floor is 90 rather than 41.70.
+      #
+      #    **`NUMBA_DISABLE_JIT` is what makes it measurable.** `CLAUDE.md`
+      #    records that `numba` reports nothing, so an `@njit` kernel reads
+      #    as uncovered however hard it is exercised -- 111 statements
+      #    across four modules here. Running the kernels as Python makes
+      #    them visible rather than excused: `patch/emission.py` went 55.56
+      #    to 100 per cent without a test being added, and the step is
+      #    *faster* for it, 38 s against 60, because nothing compiles.
+      - run: >
+          NUMBA_DISABLE_JIT=1 uv run --no-sync
+          coverage run --rcfile=.coveragerc-dropin
+          -m pytest -m "not release and (patch or cnaster)" -q --no-cov
+      - run: uv run --no-sync coverage report --rcfile=.coveragerc-dropin
       - run: uv run --no-sync python -m tests.check_badges
       # NB what a pull request cannot otherwise say (#271). Every badge in
       #    `README.md` is pinned to `/main/.badges/`, so a branch renders
