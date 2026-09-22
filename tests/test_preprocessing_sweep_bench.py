@@ -172,7 +172,7 @@ def test_the_vectorized_distribution_function_at_the_gate_depth(
     benchmark: BenchmarkFixture,
 ) -> None:
     """One sweep for both: 7.36 ms, **7.3x**."""
-    from port.patch.normal_baf import cumulative_and_mass
+    from port.patch.normal_spot import cumulative_and_mass
 
     counts, totals = _bins(*GATE_DEPTH)
 
@@ -267,7 +267,7 @@ def test_the_vectorized_distribution_function_at_the_stress_depth(
     Where the claim is made. Both forms are linear in the terms summed, so the
     ratio is what a term costs: four gathers against two `betaln` calls.
     """
-    from port.patch.normal_baf import cumulative_and_mass
+    from port.patch.normal_spot import cumulative_and_mass
 
     counts, totals = _bins(*STRESS_DEPTH)
 

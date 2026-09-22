@@ -164,7 +164,7 @@ def test_the_quantile_test_is_a_distribution_function_comparison(
     that ship and the median, where `ppf` lands on the mode and an off-by-one
     would be invisible at the tails.
     """
-    from port.patch.normal_baf import removal_indicator
+    from port.patch.normal_spot import removal_indicator
 
     alpha, beta = 15.0, 15.0
 
@@ -198,7 +198,7 @@ def test_the_patched_filter_returns_what_cnasters_returns(
     `index_remaining` either way.
     """
     from cnaster.normal_spot import normal_baf_bin_filter as upstream
-    from port.patch.normal_baf import normal_baf_bin_filter as patched
+    from port.patch.normal_spot import normal_baf_bin_filter as patched
 
     _, table, binned, index_normal = binned_instance
 
@@ -237,7 +237,7 @@ def test_the_patched_filter_removes_the_planted_imbalanced_bins(
     surviving segmentation is the planted `[10, 21, 9]` less the removals
     charged to each chromosome.
     """
-    from port.patch.normal_baf import normal_baf_bin_filter as patched
+    from port.patch.normal_spot import normal_baf_bin_filter as patched
 
     truth, table, binned, index_normal = binned_instance
 

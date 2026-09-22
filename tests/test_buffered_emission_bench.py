@@ -31,7 +31,13 @@ STRESS = {"n_states": 7, "n_obs": 3_000, "n_spots": 2_000}
 """336 MB per channel unphased, 1.34 GB across both channels phased."""
 
 
-def _inputs(n_states: int, n_obs: int, n_spots: int, *, per_spot: bool) -> Inputs:
+def _inputs(n_states: int, n_obs: int, n_spots: int) -> Inputs:
+    """Both parameter shapes, so neither arm shapes an array inside the timer.
+
+    The kernel reads `(n_states,)`, which is what a fit produces (#278);
+    `cnaster` indexes `[i, 0]`. Building both here keeps the difference out
+    of the measurement.
+    """
     generator = np.random.default_rng(29)
 
     exposure = generator.integers(20, 45, (n_obs, n_spots)).astype(np.float64)
@@ -41,18 +47,19 @@ def _inputs(n_states: int, n_obs: int, n_spots: int, *, per_spot: bool) -> Input
     single_X[:, 0, :] = generator.poisson(exposure)
     single_X[:, 1, :] = generator.binomial(trials.astype(int), 0.42)
 
-    def column(values: np.ndarray) -> np.ndarray:
-        stacked = np.asarray(values)[:, None]
-        return np.tile(stacked, (1, n_spots)) if per_spot else stacked
+    parameters = {
+        "log_mu": np.linspace(-0.35, 0.35, n_states),
+        "alphas": np.linspace(0.12, 0.55, n_states),
+        "p_binom": np.linspace(0.22, 0.78, n_states),
+        "taus": np.linspace(8.0, 28.0, n_states),
+    }
 
     return {
         "single_X": single_X,
         "base_nb_mean": exposure,
         "total_bb_RD": trials,
-        "log_mu": column(np.linspace(-0.35, 0.35, n_states)),
-        "alphas": column(np.linspace(0.12, 0.55, n_states)),
-        "p_binom": column(np.linspace(0.22, 0.78, n_states)),
-        "taus": column(np.linspace(8.0, 28.0, n_states)),
+        **parameters,
+        **{f"{name}_column": values[:, None] for name, values in parameters.items()},
     }
 
 
@@ -63,11 +70,11 @@ def _run_cnaster(inputs: Inputs) -> tuple[np.ndarray, np.ndarray]:
     scored = hmm_nophasing.compute_emission_probability_nb_betabinom(
         inputs["single_X"],
         inputs["base_nb_mean"],
-        inputs["log_mu"],
-        inputs["alphas"],
+        inputs["log_mu_column"],
+        inputs["alphas_column"],
         inputs["total_bb_RD"],
-        inputs["p_binom"],
-        inputs["taus"],
+        inputs["p_binom_column"],
+        inputs["taus_column"],
     )
     return scored
 
@@ -95,7 +102,7 @@ def _bench(
 ) -> None:
     from port.patch.emission import emission_buffers
 
-    inputs = _inputs(**size, per_spot=False)
+    inputs = _inputs(**size)
 
     if implementation == "cnaster":
         _run_cnaster(inputs)

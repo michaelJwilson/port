@@ -1,6 +1,6 @@
 """`--track` records what a stage did, and changes nothing when it is off.
 
-**#251.** `snakes_and_ladders.track` is the store and `port.tracking` is the
+**#251.** `snakes_and_ladders.track` is the store and `port.extensions.tracking` is the
 seam: which `cnaster` stage a number belongs to, and how to open a store
 without making `aim` mandatory. These pin the three properties the rest of
 #251 will be built on.
@@ -18,7 +18,7 @@ which would fail if any recorded quantity were computed into the run.
 from __future__ import annotations
 
 import pytest
-from port.tracking import MISSING_AIM, record_label_sweep, tracking
+from port.extensions.tracking import MISSING_AIM, record_label_sweep, tracking
 from snakes_and_ladders.track import MemoryRun, TrackedOptimization, current, track
 
 

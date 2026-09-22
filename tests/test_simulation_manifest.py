@@ -19,14 +19,14 @@ from typing import Any
 
 import numpy as np
 import pytest
-from port.patch.run_sim_gen import generate, main
-from port.patch.simulation_manifest import (
+from port.sim.manifest import (
     MANIFEST_VERSION,
     fit_counts,
     read_simulation_manifest,
     simulation_manifest,
     write_simulation_manifest,
 )
+from port.sim.run_sim_gen import generate, main
 
 from tests.fixtures import CoreInferenceTruth, core_inference_truth
 from tests.run_config import write_run_cnaster_config
@@ -237,7 +237,7 @@ def test_cnaster_loads_what_the_generator_wrote(
 def test_the_entry_point_writes_into_the_current_directory(
     planted: CoreInferenceTruth, loaded: tuple[Any, Any], tmp_path: Path
 ) -> None:
-    """`python -m port.patch.run_sim_gen manifest.yaml` writes here, by default."""
+    """`python -m port.sim.run_sim_gen manifest.yaml` writes here, by default."""
     _, data = loaded
     manifest = simulation_manifest(
         adata=data.adata,

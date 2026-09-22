@@ -1,6 +1,6 @@
 """The layout patch for `cnaster`'s spot/clone field, pinned bitwise.
 
-Issue #59 item 1. `port.patch.hmrf_field` replaces
+Issue #59 item 1. `port.patch.hmrf.field` replaces
 `cnaster.hmrf.compute_loglike_spot_assignment` with one that runs the same
 three loops with `spot` innermost, so the inner walk is along the contiguous
 axis and accumulates into a vector rather than reducing to a scalar. Same
@@ -18,7 +18,7 @@ ratio -- a test that fails on a machine's speed is flaky.
 
 import numpy as np
 import pytest
-from port.patch.hmrf_field import compute_loglike_spot_assignment_strided
+from port.patch.hmrf.field import compute_loglike_spot_assignment_strided
 
 from tests.fixtures import SpotCloneField, spot_clone_field
 

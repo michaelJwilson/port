@@ -22,7 +22,13 @@ import pytest
 
 @dataclass(frozen=True)
 class EmissionInputs:
-    """Both channels live, at `cnaster`'s shapes."""
+    """Both channels live: `(n_obs, ...)` counts and `(n_states,)` parameters.
+
+    The parameters are the shape a fit produces and the only one the patched
+    kernel reads (#278). `cnaster`'s entry points index `[i, 0]` (unphased)
+    and `[i, s]` (phased), so `_upstream_columns` adds the axis at the
+    referee's call site rather than the fixture carrying it.
+    """
 
     single_X: np.ndarray
     base_nb_mean: np.ndarray
@@ -41,9 +47,7 @@ class EmissionInputs:
         return (int(self.single_X.shape[0]), int(self.single_X.shape[2]))
 
 
-def _inputs(
-    n_states: int, *, n_obs: int = 60, n_spots: int = 4, per_spot: bool = False
-) -> EmissionInputs:
+def _inputs(n_states: int, *, n_obs: int = 60, n_spots: int = 4) -> EmissionInputs:
     """Counts and parameters drawn with repeats, so the encoder deduplicates.
 
     Repeats matter for the phased claim: `hmm_phased` scores the unique
@@ -59,21 +63,33 @@ def _inputs(
     single_X[:, 0, :] = generator.poisson(exposure)
     single_X[:, 1, :] = generator.binomial(trials.astype(int), 0.42)
 
-    def column(values: np.ndarray) -> np.ndarray:
-        """One parameter column, or one per spot, which is what `phased` reads."""
-        stacked = np.asarray(values)[:, None]
-
-        return np.tile(stacked, (1, n_spots)) if per_spot else stacked
-
     return EmissionInputs(
         single_X=single_X,
         base_nb_mean=exposure,
         total_bb_RD=trials,
-        log_mu=column(np.linspace(-0.35, 0.35, n_states)),
-        alphas=column(np.linspace(0.12, 0.55, n_states)),
-        p_binom=column(np.linspace(0.22, 0.78, n_states)),
-        taus=column(np.linspace(8.0, 28.0, n_states)),
+        log_mu=np.linspace(-0.35, 0.35, n_states),
+        alphas=np.linspace(0.12, 0.55, n_states),
+        p_binom=np.linspace(0.22, 0.78, n_states),
+        taus=np.linspace(8.0, 28.0, n_states),
     )
+
+
+def _upstream_columns(
+    inputs: EmissionInputs, *, n_spots: int = 1
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """The referee's shape, built where the referee is called.
+
+    `hmm_nophasing` reads `[i, 0]` and `hmm_phased` reads `[i, s]`; both are
+    upstream's expectation of an axis a fit never fills (#278, #269). Tiling
+    one column across spots leaves every entry equal, so the referee computes
+    what the `(n_states,)` kernel computes and the comparison stays bitwise.
+    """
+    log_mu, alphas, p_binom, taus = (
+        np.tile(values[:, None], (1, n_spots))
+        for values in (inputs.log_mu, inputs.alphas, inputs.p_binom, inputs.taus)
+    )
+
+    return log_mu, alphas, p_binom, taus
 
 
 def _buffered(inputs: EmissionInputs, *, phased: bool) -> tuple[np.ndarray, np.ndarray]:
@@ -114,16 +130,17 @@ def test_the_buffered_emission_is_the_unphased_entry_point_bitwise(
     from cnaster.hmm_nophasing import hmm_nophasing
 
     inputs = _inputs(n_states)
+    log_mu, alphas, p_binom, taus = _upstream_columns(inputs)
 
     expected_rdr, expected_baf = (
         hmm_nophasing.compute_emission_probability_nb_betabinom(
             inputs.single_X,
             inputs.base_nb_mean,
-            inputs.log_mu,
-            inputs.alphas,
+            log_mu,
+            alphas,
             inputs.total_bb_RD,
-            inputs.p_binom,
-            inputs.taus,
+            p_binom,
+            taus,
         )
     )
 
@@ -149,16 +166,17 @@ def test_the_buffered_emission_is_the_phased_entry_point_bitwise(
     """
     from cnaster.hmm_phased import hmm_phased
 
-    inputs = _inputs(n_states, per_spot=True)
+    inputs = _inputs(n_states)
+    log_mu, alphas, p_binom, taus = _upstream_columns(inputs, n_spots=inputs.shape[1])
 
     expected_rdr, expected_baf = hmm_phased.compute_emission_probability_nb_betabinom(
         inputs.single_X,
         inputs.base_nb_mean,
-        inputs.log_mu,
-        inputs.alphas,
+        log_mu,
+        alphas,
         inputs.total_bb_RD,
-        inputs.p_binom,
-        inputs.taus,
+        p_binom,
+        taus,
         clone_stack=False,
     )
 
@@ -181,7 +199,7 @@ def test_the_buffers_are_written_in_full_so_a_reused_one_needs_no_clearing() -> 
     """
     from port.patch.emission import emission_buffers, emission_into
 
-    inputs = _inputs(3, per_spot=True)
+    inputs = _inputs(3)
     n_obs, n_spots = inputs.shape
 
     out_rdr, out_baf = emission_buffers(3, n_obs, n_spots, phased=True)

@@ -2,7 +2,7 @@
 
 **#229 stage 1.** `cnaster.hmm_initialize.gmm_init` performs four filters, two
 transforms and an imputation in one 235-line function, interleaved across
-three blocks. `port.patch.hmm_init` separates them. A refactor is only a
+three blocks. `port.patch.hmm_initialize.filtering` separates them. A refactor is only a
 refactor if the result is the same, so the claim asserted here is the strong
 one: the array `cnaster` hands `GaussianMixture.fit` is **the same array**,
 not one within a tolerance.
@@ -22,7 +22,7 @@ from typing import Any
 
 import numpy as np
 import pytest
-from port.patch.hmm_init import (
+from port.patch.hmm_initialize.filtering import (
     Standardize,
     design_matrix,
     filter_observations,

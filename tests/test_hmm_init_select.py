@@ -19,8 +19,8 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
-from port.patch.emission_family import count_pair_family
-from port.patch.hmm_init_backends import (
+from port.extensions.emission_family import count_pair_family
+from port.patch.hmm_initialize.backends import (
     DEFAULT_ALPHA,
     DEFAULT_TAU,
     Candidate,
@@ -218,7 +218,7 @@ def test_the_backend_refuses_a_varying_exposure(
     is suspicious is that the regime excludes real data, which is #57 and
     #65.
     """
-    from port.patch.emission_family import CovariateNotConstant
+    from port.extensions.emission_family import CovariateNotConstant
 
     X, _, trials = drawn
     varying = np.linspace(EXPOSURE, 3.0 * EXPOSURE, N_OBS)

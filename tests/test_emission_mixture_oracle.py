@@ -16,7 +16,7 @@ judged against it. That is what moves `CountPairEmission` out of
 correspondence is exact only where `base_nb_mean` and `total_bb_RD` are
 constant across bins: upstream carries one mean and one trial count per
 state, `cnaster` carries one of each per bin. That is #57 and #65 reaching
-the initializer, and `port.patch.emission_family.constant_covariate` refuses
+the initializer, and `port.extensions.emission_family.constant_covariate` refuses
 rather than approximates outside it.
 """
 
@@ -26,7 +26,7 @@ import numpy as np
 import pytest
 import torch
 from cnaster.hmm_nophasing import _bb_logpmf_1d, _nb_logpmf_1d
-from port.patch.emission_family import (
+from port.extensions.emission_family import (
     CovariateNotConstant,
     constant_covariate,
     count_pair_family,

@@ -1,4 +1,4 @@
-"""`port.patch.summaries.summarize_blocks` against `cnaster`'s (#191).
+"""`port.patch.omics.summaries.summarize_blocks` against `cnaster`'s (#191).
 
 **The same log lines, from two passes and a `bincount` instead of a per-block
 slice of the count matrix.** The function returns nothing -- every figure it
@@ -40,7 +40,7 @@ def blocked(
     """A table carrying both block columns, and the instance it came from."""
     from cnaster.io import load_input_data
     from cnaster.omics import form_gene_snp_table
-    from port.patch.omics import assign_initial_blocks
+    from port.patch.omics.blocks import assign_initial_blocks
 
     _, _, written, _ = planted_instance
     loaded = load_input_data(gate_config)
@@ -104,9 +104,9 @@ def test_the_summary_logs_what_cnaster_logs(
     total UMI so a tie broken differently is a different table on screen.
     """
     import cnaster.omics as reference_module
-    import port.patch.summaries as patched_module
+    import port.patch.omics.summaries as patched_module
     from cnaster.omics import summarize_blocks as upstream
-    from port.patch.summaries import summarize_blocks as patched
+    from port.patch.omics.summaries import summarize_blocks as patched
 
     loaded, table = blocked
     arguments = (
@@ -138,9 +138,9 @@ def test_the_summary_logs_what_cnaster_logs_with_normal_candidates(
     """
     import cnaster.omics as reference_module
     import numpy as np
-    import port.patch.summaries as patched_module
+    import port.patch.omics.summaries as patched_module
     from cnaster.omics import summarize_blocks as upstream
-    from port.patch.summaries import summarize_blocks as patched
+    from port.patch.omics.summaries import summarize_blocks as patched
 
     loaded, table = blocked
     candidates = np.zeros(loaded.adata.shape[0], dtype=bool)

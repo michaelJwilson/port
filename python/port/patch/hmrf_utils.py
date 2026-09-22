@@ -29,18 +29,132 @@ the gate size, under `CLAUDE.md`'s 2x bar, and the module that measured it
 says why: halving wasted line-fill helps a bandwidth-bound kernel, and
 `_nb_logpmf_1d` calls `lgamma` per element, which is not one. The row stands
 on equivalence and on removing the index arithmetic from four call sites.
+
+## `CloneStack` lives here
+
+The accessor was `port.patch.clone_stack` when #259 installed the function,
+and #250's naming rule moved it into the module named for the `cnaster` one it
+serves. Both halves are in this file for that reason: the function `cnaster`
+defines, and the layout it is read through.
 """
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
 from cnaster.hmrf_utils import clone_stack_obs as UPSTREAM
 
-from port.patch.clone_stack import CloneStack, channels_of
+__all__ = ["UPSTREAM", "CloneStack", "channels", "channels_of", "clone_stack_obs"]
 
-__all__ = ["UPSTREAM", "channels", "clone_stack_obs"]
+
+@dataclass(frozen=True)
+class CloneStack:
+    """A 1D clone-major buffer with its shape, and the two ways to read it.
+
+    `values` is `n_clones * n_obs` long and clone-major, which is what
+    `clone_stack_obs` already produces. Holding `n_clones` and `n_obs` beside
+    it is the whole of the fix: the arithmetic stops being re-derived at every
+    call site, and `view()` makes the per-clone axis a real axis.
+    """
+
+    values: np.ndarray
+    n_clones: int
+    n_obs: int
+
+    def __post_init__(self) -> None:
+        expected = self.n_clones * self.n_obs
+        size = int(np.asarray(self.values).size)
+
+        if size != expected:
+            msg = (
+                f"{size} values for {self.n_clones} clones of {self.n_obs} "
+                "observations; a clone stack that does not divide is a "
+                "different layout, not a shorter one"
+            )
+            raise ValueError(msg)
+
+    def view(self) -> np.ndarray:
+        """`(n_clones, n_obs)`, sharing memory with `values`.
+
+        A reshape rather than a copy, and it stays a view because the buffer
+        is clone-major: row `c` **is** `values[c * n_obs : (c + 1) * n_obs]`,
+        which `tests/test_clone_stack.py` pins rather than assumes.
+        """
+        return np.asarray(self.values).reshape(self.n_clones, self.n_obs)
+
+    def clone(self, index: int) -> np.ndarray:
+        """One clone's observations, contiguous.
+
+        Negative indices are refused rather than wrapped: `stack.clone(-1)`
+        reading the last clone is a convenience that turns an off-by-one into
+        silently correct-looking numbers for the wrong clone.
+        """
+        if not 0 <= index < self.n_clones:
+            msg = f"clone {index} is outside 0..{self.n_clones - 1}"
+            raise IndexError(msg)
+
+        return np.asarray(self.view()[index])
+
+    def per_clone(self, reduce: Callable[[np.ndarray], np.ndarray]) -> np.ndarray:
+        """Apply a reduction along the observation axis, one value per clone.
+
+        `reduce` takes the `(n_clones, n_obs)` view and returns `(n_clones,)`.
+        This is the operation `compute_logmu_shifts` writes as a two-pass loop
+        over `start_idx`.
+        """
+        reduced = np.asarray(reduce(self.view()))
+
+        if reduced.shape != (self.n_clones,):
+            msg = f"reduction returned {reduced.shape}, expected ({self.n_clones},)"
+            raise ValueError(msg)
+
+        return reduced
+
+    def broadcast(self, per_clone_values: np.ndarray) -> np.ndarray:
+        """One value per clone, back over that clone's observations.
+
+        The second half of what `compute_logmu_shifts` does -- it assigns
+        `logmu_shifts[start:start + clone_len] = shift_val` -- as a repeat.
+        """
+        values = np.asarray(per_clone_values).reshape(-1)
+
+        if values.size != self.n_clones:
+            msg = f"{values.size} values for {self.n_clones} clones"
+            raise ValueError(msg)
+
+        return np.repeat(values, self.n_obs)
+
+
+def channels_of(stacked: np.ndarray, n_clones: int) -> tuple[CloneStack, ...]:
+    """Split `clone_stack_obs`'s output into one contiguous buffer per channel.
+
+    `stacked` is `(n_clones * n_obs, n_comp, 1)` or `(n_clones * n_obs,
+    n_comp)`. Each returned buffer is C-contiguous, so a clone's series walks
+    at unit stride instead of `n_comp`.
+
+    The copy is deliberate and is the point: a view of the interleaved array
+    would preserve the stride this exists to remove.
+    """
+    array = np.asarray(stacked)
+
+    if array.ndim == 3:
+        array = array[:, :, 0]
+
+    rows, n_comp = array.shape
+
+    if rows % n_clones:
+        msg = f"{rows} rows do not divide into {n_clones} clones"
+        raise ValueError(msg)
+
+    n_obs = rows // n_clones
+
+    return tuple(
+        CloneStack(np.ascontiguousarray(array[:, channel]), n_clones, n_obs)
+        for channel in range(n_comp)
+    )
 
 
 def clone_stack_obs(

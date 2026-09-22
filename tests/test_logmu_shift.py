@@ -1,7 +1,7 @@
 """`port`'s axis reduction reproduces `cnaster`'s hand-rolled loop.
 
 **#234 PR 2.** `compute_logmu_shifts` is a per-clone `logsumexp` written as a
-two-pass max-then-sum-exp over `start_idx`. `port.patch.logmu_shift.shifts` is
+two-pass max-then-sum-exp over `start_idx`. `port.patch.hmm_nophasing.logmu_shift.shifts` is
 the vectorized form the function's own docstring carries. These pin that the
 two agree.
 
@@ -15,7 +15,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 from cnaster.hmm_nophasing import compute_logmu_shifts
-from port.patch.logmu_shift import shifts
+from port.patch.hmm_nophasing.logmu_shift import shifts
 
 EXACT = 1e-12
 """Two summation orders over the same terms; not a tolerance on the science."""

@@ -1,4 +1,4 @@
-"""`port.patch.omics`'s two count summarizers against `cnaster`'s (#198).
+"""`port.patch.omics.blocks`'s two count summarizers against `cnaster`'s (#198).
 
 **2.02x and 1.51x, bitwise.** Both build the same thing the same way wrong:
 a grouped column sum done one group at a time, each pass slicing every spot's
@@ -92,7 +92,7 @@ def test_the_block_counts_are_cnasters(blocked: tuple[Any, Any, Any]) -> None:
     agreeing is what says it was the same sum.
     """
     from cnaster.omics import summarize_counts_for_blocks as upstream
-    from port.patch.omics import summarize_counts_for_blocks as patched
+    from port.patch.omics.blocks import summarize_counts_for_blocks as patched
 
     loaded, table, _ = blocked
     alleles = (loaded.cell_snp_Aallele, loaded.cell_snp_Ballele)
@@ -107,7 +107,7 @@ def test_the_bin_counts_are_cnasters(blocked: tuple[Any, Any, Any], phase: str) 
     """**Every field of the bin summary, bitwise, under three phase vectors.**"""
     from cnaster.omics import create_bin_ranges
     from cnaster.omics import summarize_counts_for_bins as upstream
-    from port.patch.omics import summarize_counts_for_bins as patched
+    from port.patch.omics.blocks import summarize_counts_for_bins as patched
 
     loaded, table, counts = blocked
     alleles = (loaded.cell_snp_Aallele, loaded.cell_snp_Ballele)
@@ -157,7 +157,7 @@ def test_the_indicator_sums_each_group_and_nothing_else() -> None:
     group zero; an implementation that skipped empty groups would shorten the
     answer.
     """
-    from port.patch.omics import _group_indicator, _grouped_column_sums
+    from port.patch.omics.blocks import _group_indicator, _grouped_column_sums
 
     matrix = np.arange(12, dtype=np.int64).reshape(3, 4)
     rows = np.array([0, 0, 1, 2])
@@ -186,7 +186,7 @@ def test_the_grouped_sum_agrees_sparse_and_dense() -> None:
     and the product is `O(nnz)` on the second -- 19.7x at a slide's density.
     Which container it gets must not change the number.
     """
-    from port.patch.omics import _group_indicator, _grouped_column_sums
+    from port.patch.omics.blocks import _group_indicator, _grouped_column_sums
 
     dense = np.arange(40, dtype=np.int64).reshape(5, 8)
     dense[dense % 3 == 0] = 0

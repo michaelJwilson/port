@@ -205,7 +205,7 @@ def test_a_default_is_restored_with_the_binding_it_was_read_from() -> None:
     """
     import cnaster.hmrf
     from port import pipeline
-    from port.patch.clone_assignment import UPSTREAM
+    from port.patch.hmrf.clone_assignment import UPSTREAM
 
     def holder(_: object = UPSTREAM) -> None: ...
 

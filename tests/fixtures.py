@@ -1206,6 +1206,10 @@ class SpotCloneField:
         the per-state parameters beside them. Carried because issue #59 item
         2 fuses the emission into the field, so a patch for it needs what the
         emission was built from rather than the emission itself.
+    log_mu, alphas, p_binom, taus : np.ndarray
+        `(n_states,)`. The shape a fit produces and the only one the patched
+        kernels read (#278). `cnaster`'s own two-step indexes `[i, 0]`, so a
+        test using it as referee adds the column at that call site.
     segments : int
         Runs in clone zero's profile. The data-dependence `CLAUDE.md` names:
         a near-constant profile and a fragmented one are different problems
@@ -1357,10 +1361,10 @@ def spot_clone_field(
         base_nb_mean=np.ones_like(observations, dtype=np.float64),
         counts_bb=successes.astype(np.float64),
         total_bb_RD=np.full(successes.shape, float(trials), dtype=np.float64),
-        log_mu=np.log(profiles.mean).reshape(-1, 1),
-        alphas=(1.0 / profiles.dispersion).reshape(-1, 1),
-        p_binom=allele.success_probability.reshape(-1, 1),
-        taus=allele.concentration.reshape(-1, 1),
+        log_mu=np.log(profiles.mean),
+        alphas=1.0 / profiles.dispersion,
+        p_binom=allele.success_probability,
+        taus=allele.concentration,
     )
 
 

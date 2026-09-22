@@ -57,7 +57,7 @@ from snakes_and_ladders.search.alpha_expansion import alpha_expansion
 from snakes_and_ladders.sim.graph import PottsGraph
 from snakes_and_ladders.sim.potts import energy
 
-from port.patch.icm_interface import CsrGraph, IcmResult
+from port.patch.icm.interface import CsrGraph, IcmResult
 
 __all__ = ["alpha_expansion_sweep", "potts_energy", "potts_graph_from"]
 

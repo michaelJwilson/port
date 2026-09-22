@@ -18,7 +18,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 from cnaster.hmm_nophasing import compute_logmu_shifts
-from port.patch.clone_stack import CloneStack, channels_of
+from port.patch.hmrf_utils import CloneStack, channels_of
 
 
 @pytest.mark.patch

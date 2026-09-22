@@ -27,8 +27,8 @@ needs the memory -- but the arithmetic it rests on is asserted in
 
 import numpy as np
 import pytest
-from port.patch.hmrf_field import compute_loglike_spot_assignment_strided
-from port.patch.hmrf_fused_field import fused_spot_clone_field
+from port.patch.hmrf.field import compute_loglike_spot_assignment_strided
+from port.patch.hmrf.fused_field import fused_spot_clone_field
 from pytest_benchmark.fixture import BenchmarkFixture
 
 from tests.fixtures import SpotCloneField, spot_clone_field
@@ -41,11 +41,19 @@ STRESS = {"n_states": 7, "n_obs": 2000, "n_spots": 2000, "n_clones": 4}
 def _two_step(fixture: SpotCloneField, weight: np.ndarray) -> np.ndarray:
     from cnaster.hmm_nophasing import _dense_bb_logpmf, _dense_nb_logpmf
 
+    # NB the column is upstream's requirement: `_dense_*_logpmf` indexes
+    #    `[i, 0]` where the fused kernel takes `(n_states,)` (#278).
     rdr = _dense_nb_logpmf(
-        fixture.counts_nb, fixture.base_nb_mean, fixture.log_mu, fixture.alphas
+        fixture.counts_nb,
+        fixture.base_nb_mean,
+        fixture.log_mu[:, None],
+        fixture.alphas[:, None],
     )
     baf = _dense_bb_logpmf(
-        fixture.counts_bb, fixture.total_bb_RD, fixture.p_binom, fixture.taus
+        fixture.counts_bb,
+        fixture.total_bb_RD,
+        fixture.p_binom[:, None],
+        fixture.taus[:, None],
     )
     field: np.ndarray = compute_loglike_spot_assignment_strided(
         fixture.n_spots,

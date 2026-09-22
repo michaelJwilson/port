@@ -31,6 +31,7 @@ import time
 from collections.abc import Sequence
 from contextlib import ExitStack
 
+from port.extensions.tracking import tracking
 from port.pipeline import (
     FIGURE_SWAPS,
     NUMERIC_SWAPS,
@@ -40,7 +41,6 @@ from port.pipeline import (
     patched,
     warm,
 )
-from port.tracking import tracking
 
 
 def _parser() -> argparse.ArgumentParser:
