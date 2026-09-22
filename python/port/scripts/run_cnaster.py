@@ -31,6 +31,7 @@ import time
 from collections.abc import Sequence
 from contextlib import ExitStack
 
+from port.patch.shifted_emission import logmu_shift
 from port.pipeline import (
     FIGURE_SWAPS,
     NUMERIC_SWAPS,
@@ -102,6 +103,19 @@ def _parser() -> argparse.ArgumentParser:
             "changes no number** -- outside a track block `record` returns on "
             "its first line. Needs the `track` extra; the run refuses rather "
             "than quietly recording nothing if `aim` is absent."
+        ),
+    )
+    parser.add_argument(
+        "--logmu-shift",
+        action="store_true",
+        help=(
+            "debias the fitted log rates by the per-clone library "
+            "normalization, log Z_c = log sum_g lambda_g sum_k gamma_gk "
+            "exp(theta_k) (#259). **Off by default and it changes every "
+            "fitted RDR parameter** -- `cnaster` computes this shift and "
+            "discards it, so a run without the flag is the run that exists "
+            "today. Needs the patched HMM, so it is refused under "
+            "--no-patch."
         ),
     )
     parser.add_argument(
@@ -194,6 +208,26 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
         else:
             print("run_cnaster_port: --no-patch, nothing rebound", file=sys.stderr)
+
+        # NB after the swaps, because the flag lives on the patched class and
+        #    there is nothing to set it on until the compatibility rows are
+        #    installed. Refused rather than ignored under `--no-patch`: a run
+        #    asked to debias and given an undebiased answer is one a reader
+        #    cannot tell from a debiased one.
+        if arguments.logmu_shift:
+            if arguments.no_patch:
+                print(
+                    "run_cnaster_port: --logmu-shift needs the patched HMM "
+                    "and --no-patch rebinds nothing",
+                    file=sys.stderr,
+                )
+                return 2
+
+            stack.enter_context(logmu_shift())
+            print(
+                "run_cnaster_port: --logmu-shift, every fitted RDR parameter moves",
+                file=sys.stderr,
+            )
 
         # NB after the swaps, so a recorded run records whichever
         #    implementation is installed, and before the timer, because

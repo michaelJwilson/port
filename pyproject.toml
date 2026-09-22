@@ -476,6 +476,21 @@ omit = [
 # The two are not interchangeable and the difference is the point: one is
 # code the subject runs and nothing judges, which belongs in the denominator
 # and is #260; the other is code the subject cannot run, which does not.
+#
+# **Every swap row costs this gate, and that is a property rather than a
+# defect.** Measured on #259 stage 2, which replaced one method:
+#
+#     cnaster/hmm_nophasing.py    covered  191 -> 170   (-21)
+#     port/patch/hmm_single_spot  statements 0 -> 27, covered 24
+#     gate                        42.44 -> 42.31
+#
+# The denominator is `cnaster`, so a body `port` replaces stops being
+# exercised and a `port` module joins at whatever its own tests reach. The
+# figure is not wrong: an unpatched user still runs the upstream body, and it
+# is less validated than it was. It is simply not a progress metric for
+# `port`, and it will fall again on every stage that lands a row. Do not
+# "fix" it by counting the replacement as the replaced; that would make the
+# guard report `port`'s coverage under `cnaster`'s name.
 fail_under = 41.7
 precision = 2
 exclude_lines = [

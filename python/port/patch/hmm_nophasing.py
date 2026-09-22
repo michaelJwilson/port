@@ -46,12 +46,15 @@ from __future__ import annotations
 
 from cnaster.hmm_nophasing import hmm_nophasing as UPSTREAM
 
+from port.patch.shifted_emission import ShiftedEmission
+
 __all__ = ["UPSTREAM", "hmm_nophasing"]
 
 
-class hmm_nophasing(UPSTREAM):  # type: ignore[misc]
+class hmm_nophasing(ShiftedEmission, UPSTREAM):  # type: ignore[misc]
     """`cnaster.hmm_nophasing.hmm_nophasing`, taking what its callers pass.
 
     The name is `cnaster`'s, lower-case class and all: this is rebound over
-    it, so a traceback that names `hmm_nophasing` keeps naming it.
+    it, so a traceback that names `hmm_nophasing` keeps naming it. Each base
+    says in its own module what it replaces and why it sits where it does.
     """

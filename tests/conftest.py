@@ -11,6 +11,13 @@ from pathlib import Path
 
 import pytest
 
+NUMBA_SEED = 314159
+"""What `numba`'s own generator is seeded with for the whole session (#264).
+
+Any value works; what matters is that there is one. The figure the coverage
+guards record is a function of it, so changing it moves them.
+"""
+
 COMPRESSION_DECIMALS = 6
 """Places `CountEncoder` rounds to before deduplicating.
 
@@ -216,6 +223,44 @@ for that reason.
 
 
 @pytest.hookimpl(tryfirst=True)
+@pytest.fixture(scope="session", autouse=True)
+def numba_seeded() -> None:
+    """Seed `numba`'s generator, so a stochastic solver runs reproducibly.
+
+    `cnaster/icm.py` draws from `np.random` inside an `@njit`, and numba keeps
+    **its own** generator, seeded from entropy on first use and not by
+    `np.random.seed` from Python. `cnaster`'s entry point seeds it at
+    `scripts/run_cnaster.py:66`; the suite never reached that call, so every
+    session drew a different stream.
+
+    **What this fixes is stated narrowly, because the wider claim is not
+    established.** It makes the solver's draws the same from run to run. It
+    was added while chasing a flake in the coverage guards -- `e2e` read 40.21
+    once against 40.27 otherwise, a 5-statement swing in `icm.py`, and two CI
+    runs of one tree refused the record in opposite directions. **Whether
+    seeding removes that flake is unproven**: the outlier did not recur in 14
+    subsequent runs, seeded or not, so there is nothing here to show a fix
+    against. #264 carries it.
+
+    Compiled here rather than imported from `cnaster.scripts.run_cnaster`,
+    and that is not a style choice: that import drags in `plotting`,
+    `palette`, `plot_genomic` and `plot_copy_number_profile`, and every
+    statement they run at import time joins the covered set. Measured: it
+    moved `plotting.py` from 0.00 to 6.40 per cent for no test reaching it.
+    """
+    import numpy as np
+    from numba import njit
+
+    # NB `numba`'s `np.random` is its own generator and takes the legacy
+    #    seeding call; `np.random.Generator` is not supported inside an
+    #    `@njit`, so `ruff`'s NPY002 does not apply here.
+    @njit(cache=True)
+    def seed(value: int) -> None:
+        np.random.seed(value)  # noqa: NPY002
+
+    seed(NUMBA_SEED)
+
+
 @pytest.fixture(scope="session", autouse=True)
 def cnaster_runs() -> None:
     """Install the compatibility rows for the whole session.
