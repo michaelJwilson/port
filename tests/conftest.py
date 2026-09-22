@@ -11,6 +11,13 @@ from pathlib import Path
 
 import pytest
 
+NUMBA_SEED = 314159
+"""What `numba`'s own generator is seeded with for the whole session (#264).
+
+Any value works; what matters is that there is one. The figure the coverage
+guards record is a function of it, so changing it moves them.
+"""
+
 COMPRESSION_DECIMALS = 6
 """Places `CountEncoder` rounds to before deduplicating.
 
@@ -216,6 +223,32 @@ for that reason.
 
 
 @pytest.hookimpl(tryfirst=True)
+@pytest.fixture(scope="session", autouse=True)
+def numba_seeded() -> None:
+    """Seed `numba`'s generator, so the coverage guards are reproducible.
+
+    **#264.** `cnaster/icm.py:888` takes an epsilon-greedy branch under
+    `np.random.rand()` inside an `@njit`. Numba keeps its own generator,
+    seeded from entropy on first use and **not** by `np.random.seed` from
+    Python -- so whether that branch fires is a coin flip per process.
+
+    Measured before this fixture: five runs of the `end2end` selection at a
+    fixed thread count read 40.27 four times and 40.21 once, a 5-statement
+    swing in `icm.py` alone. `tests/check_badges.py` compares a recorded
+    figure against the measured one, so it refused two consecutive CI runs of
+    the same code, in opposite directions.
+
+    Seeded here rather than in the tests that reach the solver, because any
+    test that ever reaches it moves the figure for the whole session.
+    `cnaster`'s own entry point does the same thing at
+    `scripts/run_cnaster.py:66`; this is that call, made where the suite can
+    rely on it.
+    """
+    from cnaster.scripts.run_cnaster import set_numba_seed
+
+    set_numba_seed(NUMBA_SEED)
+
+
 @pytest.fixture(scope="session", autouse=True)
 def cnaster_runs() -> None:
     """Install the compatibility rows for the whole session.
