@@ -257,6 +257,26 @@ a test.
     tests under `tests/`. `python-source` and `module-name` in
     `pyproject.toml` bind the first two; changing either without the other
     breaks the import.
+*   **Every module has one of four jobs, and a module with none of them is
+    in the wrong place.** This repository patches a dependency, so its shape
+    should be legible as that and nothing else:
+    *   **`patch/` replaces.** A patch is a drop-in replacement -- one
+        function or one class -- for a named `cnaster` function or class.
+        Not a translation layer over a signature, not a mixin that adds a
+        keyword, not a wrapper that forwards: the thing it replaces, written
+        again. If there is no `cnaster` name it stands in for, it is not a
+        patch.
+    *   **`extensions/` adds.** New functionality is a new function or class,
+        as simple and as small as it can be, with no `cnaster` counterpart
+        to reproduce. It earns its place by being used, and its interface is
+        the narrowest one that works.
+    *   **`sim/` simulates**, for the work that needs planted truth.
+    *   **Everything else realizes `run_cnaster_port`** with those in place,
+        and is limited to that.
+    A module that does none of the four goes to `python/port/sandbox/`,
+    which this repository's own scope rule then treats the way it treats a
+    dependency's: out of the denominator and out of the claims, until
+    something moves it back.
 *   **Versioning:** `Cargo.toml` carries the version. `pyproject.toml`
     declares it dynamic and maturin reads it across, so the two cannot
     drift.

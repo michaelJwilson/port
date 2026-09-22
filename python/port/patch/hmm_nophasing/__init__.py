@@ -2,7 +2,8 @@
 
 `nb_logpmf` is the vectorized negative-binomial log-pmf `NUMERIC_SWAPS`
 installs (#240); `logmu_shift` is `compute_logmu_shifts` as an axis reduction,
-not installed (#234).
+not installed (#234); `compat` is the `hmm_nophasing` class `COMPAT_SWAPS`
+rebinds (#259).
 
 The submodules keep the split; this re-exports them so a swap row can name
 `port.patch.hmm_nophasing` and a reader can open `cnaster.hmm_nophasing` and find it.
@@ -10,6 +11,7 @@ The submodules keep the split; this re-exports them so a swap row can name
 
 from __future__ import annotations
 
+from port.patch.hmm_nophasing.compat import UPSTREAM, hmm_nophasing
 from port.patch.hmm_nophasing.logmu_shift import (
     shifts,
 )
@@ -19,6 +21,8 @@ from port.patch.hmm_nophasing.nb_logpmf import (
 )
 
 __all__ = [
+    "UPSTREAM",
+    "hmm_nophasing",
     "log_factorial",
     "nb_logpmf_1d",
     "shifts",

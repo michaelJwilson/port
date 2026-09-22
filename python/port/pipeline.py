@@ -45,10 +45,11 @@ import sys
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
-from types import ModuleType
+from types import FunctionType, ModuleType
 from typing import Any
 
 __all__ = [
+    "COMPAT_SWAPS",
     "FIGURE_SWAPS",
     "NUMERIC_SWAPS",
     "SWAPS",
@@ -82,10 +83,21 @@ class Swap:
 
 @dataclass(frozen=True)
 class Site:
-    """One module whose binding of a name was rebound."""
+    """One binding of a name that was rebound."""
 
     module: str
     name: str
+
+    default: str | None = None
+    """`qualname(parameter)` where the name was frozen into a default argument.
+
+    `None` for the ordinary case, a module attribute. A default argument is
+    evaluated once, when `def` runs, so a name captured there is a *copy* of
+    the binding at import time and `setattr` on the module never reaches it.
+    Whether it holds `cnaster`'s object or `port`'s is then decided by
+    whether `install` ran before the importing module did -- which is not a
+    decision anything should rest on, so these are rebound too (#259).
+    """
 
 
 SWAPS: tuple[Swap, ...] = (
@@ -156,6 +168,12 @@ SWAPS: tuple[Swap, ...] = (
         "port.patch.hmrf:pipeline_clone_assignment",
         206,
     ),
+    Swap(
+        "cnaster.hmrf_utils",
+        "clone_stack_obs",
+        "port.patch.hmrf_utils:clone_stack_obs",
+        234,
+    ),
 )
 """Every `cnaster` name `port` can replace by rebinding it.
 
@@ -168,6 +186,41 @@ whole-run test asserts, and it is why `FIGURE_SWAPS` is a separate table
 rather than three more rows: a figure written at half the dpi is a different
 file by design, and mixing the two would make "the patched run reproduces
 the unpatched one" a claim nobody could state.
+"""
+
+
+COMPAT_SWAPS: tuple[Swap, ...] = (
+    Swap(
+        "cnaster.hmm_phased",
+        "hmm_phased",
+        "port.patch.hmm_phased:hmm_phased",
+        259,
+    ),
+    Swap(
+        "cnaster.hmm_nophasing",
+        "hmm_nophasing",
+        "port.patch.hmm_nophasing:hmm_nophasing",
+        259,
+    ),
+)
+"""The rows that make `cnaster` **run**, rather than run differently.
+
+A fourth table because the claim is a fourth one. `SWAPS` reproduces
+`cnaster` bitwise, `NUMERIC_SWAPS` agrees to a tolerance, `FIGURE_SWAPS`
+changes the output; these change nothing at all. Each is a keyword a
+`cnaster` call site passes and the signature it reaches no longer takes, so
+without them the pipeline raises before it fits anything (#259).
+
+**Installed unconditionally, including under `--no-patch`.** That is the
+difference between this table and the other three, and it is not a
+convenience: `--no-patch` means none of `port`'s *replacements*, and a
+baseline that cannot start is not a baseline. Every comparison in this
+repository is against an arm that runs, so the shims are on both sides of
+every one of them and cancel from all of them.
+
+They come out when `cnaster` finishes the rename. `tests/test_hmm_signature_patch.py`
+pins each defect and **fails once upstream accepts what its callers pass**,
+which is the only reliable way a compatibility row gets removed.
 """
 
 
@@ -256,16 +309,142 @@ def _bound_to(original: Any, name: str) -> list[ModuleType]:
     ]
 
 
+def _functions_in(module: ModuleType) -> Iterator[FunctionType]:
+    """Every plain function `module` holds, at module level or on a class.
+
+    Only what a `def` in that module produces. A `functools.partial`, a
+    `numba` dispatcher or a C builtin carries no `__defaults__` to rewrite,
+    and a bound method's are its function's.
+    """
+    for value in list(vars(module).values()):
+        if isinstance(value, FunctionType):
+            yield value
+        elif isinstance(value, type):
+            for attribute in list(vars(value).values()):
+                if isinstance(attribute, FunctionType):
+                    yield attribute
+                elif isinstance(attribute, staticmethod | classmethod) and isinstance(
+                    attribute.__func__, FunctionType
+                ):
+                    yield attribute.__func__
+
+
+def _defaults_holding(
+    original: Any, roots: frozenset[str]
+) -> list[tuple[FunctionType, int | str]]:
+    """Every default argument still holding `original`, as (function, key).
+
+    An `int` key is a positional default's index into `__defaults__`, a `str`
+    key a keyword-only one's name in `__kwdefaults__`. Deduplicated by
+    identity: one function is reachable through several modules, and
+    rewriting its defaults twice would make the second undo restore the
+    first's replacement.
+
+    `roots` are the top-level packages to search, which is the swap's own and
+    `port`. Unlike `_bound_to` this reads every attribute of every module it
+    walks, and a package that deprecates a name through `__getattr__` emits
+    its warning when touched -- so the walk is confined to the two packages
+    that can plausibly hold a `cnaster` object rather than to `sys.modules`
+    entire.
+    """
+    found: list[tuple[FunctionType, int | str]] = []
+    seen: set[int] = set()
+
+    for name, module in list(sys.modules.items()):
+        if module is None or name.partition(".")[0] not in roots:
+            continue
+
+        try:
+            functions = list(_functions_in(module))
+        except Exception:  # NB a lazy or half-built module may raise on vars()
+            continue
+
+        for function in functions:
+            if id(function) in seen:
+                continue
+
+            seen.add(id(function))
+
+            found.extend(
+                (function, index)
+                for index, value in enumerate(function.__defaults__ or ())
+                if value is original
+            )
+            found.extend(
+                (function, key)
+                for key, value in (function.__kwdefaults__ or {}).items()
+                if value is original
+            )
+
+    return found
+
+
+def _set_default(function: FunctionType, key: int | str, value: Any) -> None:
+    """Put `value` into one of `function`'s defaults."""
+    if isinstance(key, int):
+        defaults = list(function.__defaults__ or ())
+        defaults[key] = value
+        function.__defaults__ = tuple(defaults)
+    else:
+        kwdefaults = function.__kwdefaults__
+
+        assert kwdefaults is not None, f"{function.__qualname__} has no {key}"
+
+        kwdefaults[key] = value
+
+
+def _default_site(function: FunctionType, key: int | str) -> Site:
+    """Name a default-argument site by the parameter rather than the index."""
+    if isinstance(key, int):
+        code = function.__code__
+        positional = code.co_varnames[: code.co_argcount]
+        parameter = positional[len(positional) - len(function.__defaults__ or ()) + key]
+    else:
+        parameter = key
+
+    return Site(
+        function.__module__,
+        function.__name__,
+        f"{function.__qualname__}({parameter})",
+    )
+
+
+def _with_compat(swaps: tuple[Swap, ...]) -> tuple[Swap, ...]:
+    """`swaps`, with every compatibility row that is not already in it.
+
+    Order matters and is why this prepends rather than appends: the shims
+    rebind classes, and a later row rebinding a function those classes call
+    must land on the class that will actually be used.
+    """
+    chosen = {(swap.module, swap.name) for swap in swaps}
+
+    missing = tuple(
+        swap for swap in COMPAT_SWAPS if (swap.module, swap.name) not in chosen
+    )
+
+    return missing + swaps
+
+
 def swap_sites(swaps: tuple[Swap, ...] = SWAPS) -> tuple[Site, ...]:
-    """Where each swap would land, without landing it."""
+    """Where each swap would land, without landing it.
+
+    `COMPAT_SWAPS` is counted whatever is asked for: it is installed
+    unconditionally, so a caller reporting sites would otherwise under-report
+    what is rebound.
+    """
     sites: list[Site] = []
 
-    for swap in swaps:
+    for swap in _with_compat(swaps):
         __import__(swap.module)
         original = getattr(sys.modules[swap.module], swap.name)
+        roots = frozenset({swap.module.partition(".")[0], "port"})
         sites.extend(
             Site(module.__name__, swap.name)
             for module in _bound_to(original, swap.name)
+        )
+        sites.extend(
+            _default_site(function, key)
+            for function, key in _defaults_holding(original, roots)
         )
 
     return tuple(sites)
@@ -280,14 +459,19 @@ def install(swaps: tuple[Swap, ...] = SWAPS) -> tuple[Site, ...]:
     """
     rebound: list[Site] = []
 
-    for swap in swaps:
+    for swap in _with_compat(swaps):
         __import__(swap.module)
         original = getattr(sys.modules[swap.module], swap.name)
+        roots = frozenset({swap.module.partition(".")[0], "port"})
         replacement = _resolve(swap.replacement)
 
         for module in _bound_to(original, swap.name):
             setattr(module, swap.name, replacement)
             rebound.append(Site(module.__name__, swap.name))
+
+        for function, key in _defaults_holding(original, roots):
+            _set_default(function, key, replacement)
+            rebound.append(_default_site(function, key))
 
     return tuple(rebound)
 
@@ -301,12 +485,14 @@ def patched(swaps: tuple[Swap, ...] = SWAPS) -> Iterator[tuple[Site, ...]]:
     that comparison vacuous.
     """
     undo: list[tuple[ModuleType, str, Any]] = []
+    restore: list[tuple[FunctionType, int | str, Any]] = []
     rebound: list[Site] = []
 
     try:
-        for swap in swaps:
+        for swap in _with_compat(swaps):
             __import__(swap.module)
             original = getattr(sys.modules[swap.module], swap.name)
+            roots = frozenset({swap.module.partition(".")[0], "port"})
             replacement = _resolve(swap.replacement)
 
             for module in _bound_to(original, swap.name):
@@ -314,8 +500,16 @@ def patched(swaps: tuple[Swap, ...] = SWAPS) -> Iterator[tuple[Site, ...]]:
                 setattr(module, swap.name, replacement)
                 rebound.append(Site(module.__name__, swap.name))
 
+            for function, key in _defaults_holding(original, roots):
+                restore.append((function, key, original))
+                _set_default(function, key, replacement)
+                rebound.append(_default_site(function, key))
+
         yield tuple(rebound)
     finally:
+        for function, key, original in reversed(restore):
+            _set_default(function, key, original)
+
         for module, name, original in reversed(undo):
             setattr(module, name, original)
 

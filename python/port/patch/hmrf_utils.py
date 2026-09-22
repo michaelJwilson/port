@@ -1,47 +1,53 @@
-"""A clone-stacked 1D buffer, addressed as `(n_clones, n_obs)`.
+"""`clone_stack_obs`, with the clone-major buffers its consumers walk.
 
-**#234 PR 1.** `cnaster.hmrf_utils.clone_stack_obs` concatenates clones along
-the genomic axis, so the index is already `c * n_obs + t`. What it does not
-give is an accessor: every consumer re-derives the arithmetic, and
-`hmm_nophasing.compute_logmu_shifts` walks it with a hand-rolled `start_idx`
-loop performing a per-clone `logsumexp` its own docstring shows the vectorized
-form of.
+**#234, installed by #259 stage 1.** `cnaster.hmrf_utils.clone_stack_obs`
+concatenates clones along the genomic axis and returns
+`(n_clones * n_obs, n_comp, 1)`, C-contiguous with strides `(16, 8, 8)`
+bytes. **One clone's one channel is therefore strided by two elements**: a
+kernel walking it loads a 64-byte line and uses four of its eight doubles.
 
-## What the layout costs
+Three call sites consume it -- `hmrf.py:502`, `hmrf.py:689` and
+`hmm_initialize.py:98`, `:685` -- and every one of them re-derives the index
+arithmetic `c * n_obs + t` for itself.
 
-Measured at `n_obs = 3,000`, `n_comp = 2`, `n_clones = 4`. `clone_stack_obs`
-returns `(n_clones * n_obs, n_comp, 1)`, C-contiguous with strides
-`(16, 8, 8)` bytes, so **one clone's one channel is strided by two elements**:
-a kernel walking it loads a 64-byte line and uses four of its eight doubles.
+## What this returns, and what it does not change
 
-| array | contiguous | stride |
-| --- | --- | ---: |
-| `clone_stack_obs` output, one clone, one channel | no | 2 elements |
-| this module's per-channel buffer, viewed | yes | 1 element |
+**The same six values, bitwise.** Shapes, dtypes and contents are upstream's,
+asserted in `tests/test_hmrf_utils_patch.py` against the function itself, so
+the row belongs in `SWAPS` rather than in `NUMERIC_SWAPS`: every consumer
+that indexes the result keeps working unchanged.
 
-Splitting the channels into their own clone-major buffers makes `view()[c]`
-**exactly** `flat[c * n_obs : (c + 1) * n_obs]`, so a per-clone reduction is
-an axis reduction rather than a loop.
+What it adds is `channels(...)`: the same data as one contiguous
+`CloneStack` per channel, so `view()[c]` is exactly
+`flat[c * n_obs : (c + 1) * n_obs]` and a per-clone reduction is an axis
+reduction rather than a `start_idx` loop. Nothing in `cnaster` calls it yet;
+it is the accessor #259 stages 2-5 reach for, and it is here rather than in a
+later stage so the layout arrives with the function that produces it.
 
-## What this module does not claim
+**This is not a speedup claim.** #238 measured the layout at **1.007x** at
+the gate size, under `CLAUDE.md`'s 2x bar, and the module that measured it
+says why: halving wasted line-fill helps a bandwidth-bound kernel, and
+`_nb_logpmf_1d` calls `lgamma` per element, which is not one. The row stands
+on equivalence and on removing the index arithmetic from four call sites.
 
-**That it is faster.** The ticket proposes the layout "assuming this is
-faster", and `CLAUDE.md` puts a 2x bar on a speedup claim measured at a stress
-size. The honest prior is that this lands under it: halving wasted line-fill
-helps a bandwidth-bound kernel, and `_nb_logpmf_1d` calls `lgamma` per element,
-which is not. `tests/test_clone_stack_bench.py` reports the ratio and the
-verdict either way; below the bar this is a simplification standing on its
-evidence of equivalence.
+## `CloneStack` lives here
+
+The accessor was `port.patch.clone_stack` when #259 installed the function,
+and #250's naming rule moved it into the module named for the `cnaster` one it
+serves. Both halves are in this file for that reason: the function `cnaster`
+defines, and the layout it is read through.
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from typing import Any
 
 import numpy as np
+from cnaster.hmrf_utils import clone_stack_obs as UPSTREAM
 
-__all__ = ["CloneStack", "channels_of"]
+__all__ = ["UPSTREAM", "CloneStack", "channels", "channels_of", "clone_stack_obs"]
 
 
 @dataclass(frozen=True)
@@ -149,3 +155,67 @@ def channels_of(stacked: np.ndarray, n_clones: int) -> tuple[CloneStack, ...]:
         CloneStack(np.ascontiguousarray(array[:, channel]), n_clones, n_obs)
         for channel in range(n_comp)
     )
+
+
+def clone_stack_obs(
+    X: np.ndarray,
+    base_nb_mean: np.ndarray,
+    total_bb_RD: np.ndarray,
+    lengths: Any,
+    log_sitewise_transmat: Any,
+    tumor_prop: Any,
+) -> tuple[Any, ...]:
+    """Upstream's six values, from one transpose-reshape per array.
+
+    `X.transpose(2, 0, 1).reshape(-1, n_comp, 1)` is upstream's own comment's
+    claim -- the `flatten("F")` plus `vstack` it replaced, in one C-level
+    copy -- and is kept verbatim. The two covariates transpose and reshape
+    the same way; `lengths` and the transition tile; `tumor_prop` repeats.
+
+    Returns
+    -------
+    tuple
+        `(X, base_nb_mean, total_bb_RD, lengths, log_sitewise_transmat,
+        tumor_prop)`, clone-concatenated, exactly as upstream returns them.
+    """
+    n_obs, n_comp, n_clones = X.shape
+
+    stacked_X = X.transpose(2, 0, 1).reshape(-1, n_comp, 1)
+    stacked_base = base_nb_mean.T.reshape(-1, 1)
+    stacked_total = total_bb_RD.T.reshape(-1, 1)
+
+    stacked_lengths = None if lengths is None else np.tile(lengths, n_clones)
+    stacked_transmat = (
+        None
+        if log_sitewise_transmat is None
+        else np.tile(log_sitewise_transmat, n_clones)
+    )
+    stacked_tumor = (
+        None if tumor_prop is None else np.repeat(tumor_prop, n_obs).reshape(-1, 1)
+    )
+
+    return (
+        stacked_X,
+        stacked_base,
+        stacked_total,
+        stacked_lengths,
+        stacked_transmat,
+        stacked_tumor,
+    )
+
+
+def channels(stacked_X: np.ndarray, n_clones: int) -> tuple[CloneStack, ...]:
+    """The stacked observations as one contiguous buffer per channel.
+
+    The accessor the four call sites open-code. `channels(...)[0].view()[c]`
+    is clone `c`'s total-count series at unit stride, and `per_clone` takes a
+    reduction over it without an index loop.
+
+    Parameters
+    ----------
+    stacked_X : np.ndarray
+        `clone_stack_obs`'s first return.
+    n_clones : int
+        How many clones it concatenates.
+    """
+    return channels_of(stacked_X, n_clones)

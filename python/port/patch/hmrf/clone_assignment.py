@@ -83,6 +83,7 @@ fit cannot produce raises there rather than being delegated (#278).
 from __future__ import annotations
 
 import copy
+import itertools
 import time
 from dataclasses import dataclass
 from typing import Any
@@ -92,7 +93,19 @@ from cnaster.config import get_global_config, start_time
 from cnaster.hmrf import pipeline_clone_assignment as UPSTREAM
 from cnaster.logger import get_logger
 
+from port.extensions.tracking import record_label_sweep
+
 __all__ = ["UPSTREAM", "boundary", "pipeline_clone_assignment"]
+
+_VISIT = itertools.count()
+"""Which visit to this stage a recorded number belongs to (#251).
+
+A run reaches clone assignment several times -- once per outer iteration, and
+again per refinement -- and Aim orders a series by step, so the visits are
+counted rather than inferred. Module level because the counter belongs to the
+process the run is in, and never reset: a repeated step would put two
+different sweeps at one point on the series.
+"""
 
 logger = get_logger(__name__, start_time=start_time)
 """`cnaster`'s own function, captured at import.
@@ -260,7 +273,7 @@ def pipeline_clone_assignment(
     from port.patch.hmrf.adjacency import adjacency_coo
     from port.patch.hmrf.fused_field import fused_spot_clone_field
     from port.patch.icm.interface import CsrGraph, fold_unary, icm_sweep
-    from port.patch.plotting.clone_paths import state_vector
+    from port.patch.plot_genomic.clone_paths import state_vector
 
     reason = _delegates(single_tumor_prop)
 
@@ -378,6 +391,19 @@ def pipeline_clone_assignment(
         )
 
         niter, new_cost = result.niter, result.cost
+
+        # NB the one stage `port` already replaces, so it is the site #251
+        #    instruments without needing a new swap. It assembles nothing and
+        #    returns False on a run without `--track`, which is what keeps the
+        #    bitwise claim: `current()` is the null optimization there.
+        record_label_sweep(
+            next(_VISIT),
+            solver=solver,
+            cost=new_cost,
+            niter=niter,
+            n_clones=int(np.unique(new_assignment).size),
+            n_spots=n_spots,
+        )
 
         logger.info(f"Ready for potential merging of clones?  {merge}.")
 

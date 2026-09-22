@@ -59,7 +59,7 @@ def test_it_reproduces_cnasters_loop(lengths: list[int]) -> None:
     )
     ours = shifts(log_mus, copy_states, normal_log_lambda, clone_lengths)
 
-    assert ours.shape == theirs.shape
+    assert ours.shape == theirs.shape == (len(lengths),)
     assert np.allclose(theirs, ours, rtol=0.0, atol=EXACT), (
         f"max |difference| {np.max(np.abs(theirs - ours)):.3e}"
     )
@@ -85,25 +85,29 @@ def test_a_clone_of_minus_infinities_stays_minus_infinity() -> None:
 
     # NB one clone per assertion, so a failure names which of the two lost
     #    its `-inf` rather than reporting that the conjunction is false
-    #    (`ruff` PT018).
+    #    (`ruff` PT018). Clone 0 is the all-`-inf` one; the return is one
+    #    value per clone, so it is element 0 rather than a run of segments.
     assert np.isneginf(theirs[0])
-    assert np.isneginf(theirs[1])
     assert np.isneginf(ours[0])
-    assert np.isneginf(ours[1])
     assert not np.any(np.isnan(ours)), "a nan here would be a silent wrong answer"
-    assert np.allclose(theirs[2:], ours[2:], rtol=0.0, atol=EXACT)
+    assert np.allclose(theirs[1:], ours[1:], rtol=0.0, atol=EXACT)
 
 
 @pytest.mark.patch
-def test_the_broadcast_is_constant_within_each_clone() -> None:
-    """One value per clone, repeated over its segments — the loop's assignment."""
+def test_there_is_one_value_per_clone_and_they_differ() -> None:
+    """One value per clone — the rank the `port` branch returns (#259).
+
+    The branch before it broadcast each clone's value over that clone's
+    segments. The quantity is the same; what changed is that the shape now
+    says so. Two clones sharing a value would still hide a bug, so that is
+    what is asserted rather than the old within-clone constancy.
+    """
     log_mus, copy_states, normal_log_lambda, clone_lengths = _case([12, 20], 3, 5)
 
     out = shifts(log_mus, copy_states, normal_log_lambda, clone_lengths)
 
-    assert len(np.unique(out[:12])) == 1
-    assert len(np.unique(out[12:])) == 1
-    assert out[0] != out[12], "two clones sharing a shift would hide a bug"
+    assert out.shape == (2,)
+    assert out[0] != out[1], "two clones sharing a shift would hide a bug"
 
 
 @pytest.mark.patch
