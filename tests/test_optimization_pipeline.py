@@ -37,22 +37,19 @@ FIELDS = (
 """Every fitted array the result carries, by the name it carries it under."""
 
 
-def _baseline() -> type:
-    """`cnaster`'s class, with the least that makes it run at all.
+def _baseline() -> Any:
+    """`cnaster`'s class, with nothing wrapped around it.
 
-    `GuardedShift` and `RenamedKeywords` are #259 stage 1's compatibility
-    rows: without them the unpatched class raises a `TypeError` and a numba
-    `TypingError` before it fits anything, so there would be nothing to
-    compare against. Neither changes a number -- that is what stage 1
-    established -- so this is upstream's arithmetic with upstream's defects
-    stepped around.
+    It used to need two compatibility rows to run at all -- `GuardedShift`
+    and `RenamedKeywords`, without which it raised a `TypeError` and a numba
+    `TypingError` before fitting anything. `cnaster@port#23cae59` fixed both
+    and added `CnaHmmParams`, so upstream runs on its own and the referee is
+    the unwrapped class. That is a stronger comparison than the shimmed one
+    this test opened with.
     """
-    from port.patch.hmm_nophasing import UPSTREAM, GuardedShift, RenamedKeywords
+    from port.patch.hmm_nophasing import UPSTREAM
 
-    class Baseline(GuardedShift, RenamedKeywords, UPSTREAM):  # type: ignore[misc]
-        pass
-
-    return Baseline
+    return UPSTREAM
 
 
 def _fit(hmmclass: type, truth: Any) -> Any:
@@ -77,18 +74,6 @@ def _truth() -> Any:
     )
 
 
-@pytest.mark.xfail(
-    reason=(
-        "the referee is gone: `cnaster@port#e4e8739` upstreamed this very "
-        "pipeline but not the named-parameter object it reads, so its own "
-        "`_run_optimization_pipeline` raises `AttributeError: 'tuple' object "
-        "has no attribute 'log_mu'` at hmm_nophasing.py:1205 before it fits "
-        "anything. There is no upstream arm left to compare against. "
-        "**strict**, so this goes red the moment upstream can run again and "
-        "the bitwise claim is restored rather than quietly dropped."
-    ),
-    strict=True,
-)
 @pytest.mark.patch
 def test_the_rewritten_pipeline_is_upstreams_bitwise(cnaster_config: None) -> None:
     """Both classes, one fixture, every returned array to the bit.
