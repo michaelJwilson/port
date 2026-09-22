@@ -241,12 +241,28 @@ def numba_seeded() -> None:
     Seeded here rather than in the tests that reach the solver, because any
     test that ever reaches it moves the figure for the whole session.
     `cnaster`'s own entry point does the same thing at
-    `scripts/run_cnaster.py:66`; this is that call, made where the suite can
-    rely on it.
-    """
-    from cnaster.scripts.run_cnaster import set_numba_seed
+    `scripts/run_cnaster.py:66`.
 
-    set_numba_seed(NUMBA_SEED)
+    **Compiled here rather than imported from there**, and that is not a
+    style choice: importing `cnaster.scripts.run_cnaster` for the one
+    function drags in `plotting`, `palette`, `plot_genomic` and
+    `plot_copy_number_profile`, and every statement they run at import time
+    joins the covered set. Measured: it moved `plotting.py` from 0.00 to 6.40
+    per cent and `scripts/run_cnaster.py` from 0.00 to 10.37, for no test
+    reaching either. A guard that rises because the suite imported more is
+    the one this denominator exists to refuse.
+    """
+    import numpy as np
+    from numba import njit
+
+    # NB `numba`'s `np.random` is its own generator and takes the legacy
+    #    seeding call; `np.random.Generator` is not supported inside an
+    #    `@njit`, so `ruff`'s NPY002 does not apply here.
+    @njit(cache=True)
+    def seed(value: int) -> None:
+        np.random.seed(value)  # noqa: NPY002
+
+    seed(NUMBA_SEED)
 
 
 @pytest.fixture(scope="session", autouse=True)
