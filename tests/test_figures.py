@@ -52,41 +52,12 @@ def _result(truth: CoreInferenceTruth) -> dict[str, Any]:
     }
 
 
-@pytest.mark.smoke
-def test_the_loh_density_renders(planted: CoreInferenceTruth) -> None:
-    """`plot_loh_density` returns a figure for a planted instance."""
-    from cnaster.plot_loh_density import plot_loh_density
-
-    coords = np.stack(
-        np.unravel_index(np.arange(planted.n_spots), planted.lattice), axis=-1
-    ).astype(float)
-
-    figure = plot_loh_density(
-        coords,
-        np.stack([planted.counts_nb, planted.counts_bb], axis=1),
-        planted.total_bb_RD,
-        _result(planted),
-        lengths=planted.lengths,
-    )
-
-    assert figure is not None
-
-
-@pytest.mark.smoke
-def test_the_smoother_leaves_a_gap_where_there_is_no_coverage() -> None:
-    """`nan_gaussian_filter1d` fills rather than propagates.
-
-    The one claim in these modules that is not "it rendered": a NaN inside the
-    window would otherwise poison every output it touches, and the whole point
-    of the helper is that it does not.
-    """
-    from cnaster.plot_loh_density import nan_gaussian_filter1d
-
-    data = np.array([[0.4, np.nan, 0.6, 0.5]])
-    smoothed = nan_gaussian_filter1d(data, sigma=1.0, fill_value=0.5)
-
-    assert smoothed.shape == data.shape
-    assert np.isfinite(smoothed).all()
+# NB two tests stood here and are removed rather than repaired (#259).
+#    They rendered `cnaster.plot_loh_density`, which `cnaster@port`
+#    deleted outright -- the module is gone, not moved, so there is no
+#    import to update and nothing left to render. Its superseded copy
+#    had been parked in a string literal beside it (#270); the whole
+#    file went with the cleanup.
 
 
 @pytest.mark.smoke
