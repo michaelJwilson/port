@@ -65,71 +65,13 @@ def test_the_captured_upstream_is_not_the_installed_shim() -> None:
         )
 
 
-@pytest.mark.bug
-def test_the_phased_override_refuses_the_keyword_its_caller_passes() -> None:
-    """`hmm_phased`'s emission never took the rename `hmm_nophasing` did.
-
-    `hmm_nophasing.py:791` passes `num_segments_clones` unconditionally, and
-    `class hmm_phased(hmm_nophasing)` means `self.` reaches the override
-    whenever the phased model fits. Every phased fit raises.
-    """
-    from port.patch.hmm_phased import UPSTREAM as upstream
-
-    taken = inspect.signature(
-        upstream.compute_emission_probability_nb_betabinom_coded
-    ).parameters
-
-    assert "clone_lengths" in taken, "upstream stopped taking the old name"
-    assert "num_segments_clones" not in taken, (
-        "upstream now accepts the new name; drop the hmm_phased row (#259)"
-    )
-
-    _row("cnaster.hmm_phased", "hmm_phased")
-
-
-@pytest.mark.bug
-def test_the_fit_refuses_two_keywords_its_caller_passes() -> None:
-    """`hmm.py:122-124` calls with `propagate_errors` and the old `clone_lengths`.
-
-    `_run_optimization_pipeline` takes neither -- `num_segments_clones` is
-    the rename, and its `# **kwargs,` is commented out -- so every fit
-    raises before the phased one gets the chance to.
-    """
-    from port.patch.hmm_nophasing import UPSTREAM as upstream
-
-    taken = inspect.signature(upstream._run_optimization_pipeline).parameters
-
-    assert "propagate_errors" not in taken, (
-        "upstream now accepts `propagate_errors`; drop half the mixin (#259)"
-    )
-    assert "clone_lengths" not in taken, (
-        "upstream now accepts the old name; drop the other half (#259)"
-    )
-    assert "num_segments_clones" in taken
-
-    _row("cnaster.hmm_nophasing", "hmm_nophasing")
-
-
-@pytest.mark.bug
-def test_the_shift_is_guarded_on_the_wrong_variable() -> None:
-    """The guard tests `normal_log_lambda`; the call indexes `copy_states`.
-
-    `copy_states` defaults to `None` and the call site never passes it, and
-    `compute_logmu_shifts` is `@njit`, so the first call is a compile failure
-    rather than a `TypeError`. Asserted on the source because the failure is
-    numba's and reproducing it costs a compile.
-    """
-    from port.patch.hmm_nophasing import UPSTREAM as upstream
-
-    source = inspect.getsource(upstream.compute_emission_probability_nb_betabinom_coded)
-
-    assert "if normal_log_lambda is not None:" in source, (
-        "the guard moved; re-read it before trusting the patch (#259)"
-    )
-    assert "copy_states is not None" not in source, (
-        "upstream now guards on the variable it indexes; drop the override (#259)"
-    )
-    assert "compute_logmu_shifts(log_mu, copy_states" in source
+# NB three tests stood here and are removed rather than repaired (#259).
+#    They pinned the two signature breaks and the shift guard that
+#    `cnaster@port` has now fixed: the rename is finished in both
+#    directions and the guard reads the variable it indexes. Each was
+#    written to fail loudly at exactly this moment, and each did. What
+#    they refereed no longer exists, so keeping them would mean pinning
+#    a defect that is gone.
 
 
 @pytest.mark.bug
