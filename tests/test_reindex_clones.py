@@ -118,3 +118,59 @@ def test_the_contract_makes_the_entry_point_branch_dead() -> None:
 
     for key in ("new_log_mu", "new_alphas", "new_p_binom", "new_taus"):
         assert np.asarray(reindexed[key]).shape[1] == 1, key
+
+
+@pytest.mark.cnaster
+@pytest.mark.patch
+def test_the_deconcatenated_path_is_reindexed_as_upstream_does() -> None:
+    """`pred_cnv` at `(n_obs, n_clones)`, which the other branch never reaches.
+
+    The module narrows the *parameter* axis and leaves `pred_cnv`'s two
+    layouts alone, because reindexing a path by clone order is a different
+    job from reading a state parameter. That decision is only worth making
+    if the layout it keeps is refereed, and this is the half the
+    concatenated fixture above cannot reach: `log_gamma` picks up a third
+    axis here and is permuted along it rather than along the genome.
+    """
+    from cnaster.hmrf import reindex_clones as upstream
+
+    n_states, n_obs, n_clones = 4, 12, 3
+    rng = np.random.default_rng(13)
+
+    result = _result(n_states, n_obs, n_clones)
+    result["pred_cnv"] = np.asarray(result["pred_cnv"]).reshape(n_clones, n_obs).T
+    result["log_gamma"] = rng.normal(size=(n_states, n_obs, n_clones))
+
+    theirs, _ = upstream(dict(result), posterior=None, single_tumor_prop=None)
+    ours, _ = reindex_clones(dict(result), posterior=None, single_tumor_prop=None)
+
+    assert set(ours) == set(theirs)
+
+    for key in sorted(theirs):
+        np.testing.assert_array_equal(
+            np.asarray(ours[key]), np.asarray(theirs[key]), err_msg=key
+        )
+
+
+@pytest.mark.cnaster
+@pytest.mark.patch
+def test_a_posterior_is_permuted_with_the_clones() -> None:
+    """The third return, which travels with the reorder and is easy to forget.
+
+    A posterior column belongs to a clone, so an ordering applied to the
+    clones and not to it silently attributes every spot's probability to its
+    neighbour. Refereed against upstream rather than asserted, because what
+    is being checked is that the replacement permutes it the *same* way.
+    """
+    from cnaster.hmrf import reindex_clones as upstream
+
+    n_clones = 3
+    rng = np.random.default_rng(17)
+    posterior = rng.uniform(size=(15, n_clones))
+
+    result = _result(n_clones=n_clones)
+
+    _, theirs = upstream(dict(result), posterior=posterior.copy())
+    _, ours = reindex_clones(dict(result), posterior=posterior.copy())
+
+    np.testing.assert_array_equal(np.asarray(ours), np.asarray(theirs))

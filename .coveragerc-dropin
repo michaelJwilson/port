@@ -1,0 +1,42 @@
+# Guard 4: the drop-ins, measured against their own correspondence tests.
+#
+# Guards 1-3 measure a dependency this repository does not own, so they are
+# low by construction and rise only by validating more of it. This one
+# measures code `port` wrote to replace something, under the tests that
+# compare it with the something. There is no reason for a replacement to be
+# unreached by its own correspondence test, so the floor is high and a fall
+# means a drop-in nobody compared.
+#
+# The denominator is `python/port/patch` and nothing else. `extensions/` is
+# new functionality with no `cnaster` counterpart to be refereed against, and
+# `sim/` and `pipeline.py` are neither -- #274 gave every module one of four
+# jobs, and this guard is over exactly one of them.
+[run]
+# NB its own data file, and hyphenated. `.coverage.dropin` reads as a
+#    parallel-mode shard of `.coverage` and `coverage erase` -- which
+#    pytest-cov runs at the start of every `--cov` session -- deletes those
+#    with the main file. That is measured, not theoretical: see
+#    `.coveragerc-oracle`, where it silently emptied a guard.
+data_file = .coverage-dropin
+source =
+    python/port/patch
+
+[report]
+# 1,580 of 1,741 statements. The floor is the measurement, as #157 set guard
+# 1's: chosen figures are met and then stop meaning anything.
+#
+# **High because the denominator is ours and small.** A replacement that its
+# own correspondence test does not reach is one nobody compared, which is a
+# different failure from guard 1's -- there a low figure says how much of a
+# dependency is validated, here a low one says a patch is unrefereed.
+#
+# What the remaining 161 are, so a reader can tell a gap from a ceiling:
+# `hmm_initialize/backends.py` 26 (the `snakes_and_ladders` backend, whose
+# referee is the oracle rather than `cnaster`), `io.py` 15, `lattice.py` 13
+# (`is_phased` and the two spot-sum reductions, licensed by
+# `tests/test_unified_lattice.py` under `smoke` -- it compares `cnaster`'s
+# two forms with each other, which is the premise for the drop-in and not a
+# correspondence claim, so it is deliberately not marked `cnaster`), and the
+# rest are refusal branches on port's own guards.
+fail_under = 90.0
+precision = 2

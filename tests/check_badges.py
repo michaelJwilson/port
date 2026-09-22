@@ -39,6 +39,7 @@ that would let a real movement hide.
 GUARDS = (
     ("judged", Path(".coverage-e2e"), None),
     ("oracle", Path(".coverage-oracle"), Path(".coveragerc-oracle")),
+    ("dropin", Path(".coverage-dropin"), Path(".coveragerc-dropin")),
 )
 """Each checkable guard, with the data file and config its CI step used.
 
