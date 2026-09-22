@@ -182,15 +182,35 @@ def test_the_shift_is_computed_and_then_discarded() -> None:
     binds = [node for node in uses if isinstance(node.ctx, ast.Store)]
     reads = [node for node in uses if isinstance(node.ctx, ast.Load)]
 
-    assert binds, f"{consumer} no longer computes the shift at all"
+    # NB the defect changed shape at `cnaster@port#23cae59` and the pin moves
+    #    with it. Upstream used to compute `logmu_shifts` and discard the
+    #    result -- `# TODO fold in logmu_shifts` on the next line. It now
+    #    deletes the shift's *arguments* on the first line of the body
+    #    instead, so there is nothing to compute and nothing to discard. The
+    #    shift is still not applied either way, which is what #263 supplies.
+    deleted = [
+        target.id
+        for node in ast.walk(function)
+        if isinstance(node, ast.Delete)
+        for target in node.targets
+        if isinstance(target, ast.Name)
+    ]
+
     assert not reads, (
         f"{consumer} now reads the shift on line(s) "
         f"{[node.lineno for node in reads]}: #234 PR 2 owes a validation "
         "against planted truth, not just equivalence to a loop"
     )
+    assert binds or "normal_log_lambda" in deleted, (
+        f"{consumer} neither computes the shift nor deletes its arguments; "
+        "it may have started applying it, which would make #263 redundant"
+    )
 
-    # NB and it is recomputed per state, though it does not depend on one.
-    #    Loop-invariant, so the waste is a factor of `n_states`.
+    # NB the per-state recompute is gone with the compute itself. Upstream
+    #    used to evaluate `logmu_shifts` inside `for i in range(n_states)`
+    #    though it depends on no state -- loop-invariant waste of a factor
+    #    `n_states`. There is no call left to hoist, so that half of the
+    #    defect is closed and only the unapplied shift remains.
     over_states = [
         loop
         for loop in ast.walk(function)
@@ -202,4 +222,7 @@ def test_the_shift_is_computed_and_then_discarded() -> None:
         )
     ]
 
-    assert len(over_states) == 1, "the per-state recompute moved; re-read the call site"
+    assert not over_states, (
+        "the per-state recompute is back; it is loop-invariant and belongs "
+        "outside `for i in range(n_states)`"
+    )
