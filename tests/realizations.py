@@ -76,26 +76,61 @@ the realization with errors says whether it was."""
 
 
 def planted_genome(genome: dict[str, Any] | None = None) -> CoreInferenceTruth:
-    """`core_inference_truth`, with clone 0 made neutral.
+    """`core_inference_truth`, with clone 0 neutral, planted from the model.
+
+    **The model:** `<u_gn> = lambda_g T_n mu_{s_n(g)} / sum_g' lambda_g' mu_{s_n(g')}`,
+    with `lambda_g` the normal profile over the genome, normalized to one,
+    and `T_n` spot `n`'s coverage. The normalizer `Z_n` is the spot's own
+    `sum lambda mu`, so a spot's expected total is `T_n` whatever its copy
+    states. `cnaster` builds its baseline as `lambda_g T_n` from the counts
+    (`normal_spot.py:162`), which is this model's denominator-free part.
+
+    `lambda_g` is the fixture's exposure averaged over spots, which keeps its
+    variation along the genome, and `T_n` its per-spot total rescaled so a
+    segment carries `EXPOSURE` counts in expectation. The planted
+    `base_nb_mean` is then `lambda_g T_n / Z_n`, the factor `realize` draws
+    `mu` against.
 
     **The pipeline needs normal spots, and the fixture plants none.** Every
     clone carries events, so `determine_normal_baseline` builds its baseline
     from spots that share them and divides them out: at the fixture's
-    default rates a planted `(5, 0.88)` came back as `mu = 0.92, p = 0.12`. One clone with every bin in state 0
-    gives the baseline what it assumes it has.
+    default rates a planted `(5, 0.88)` came back as `mu = 0.92, p = 0.12`.
+    Clone 0 with every bin in state 0 gives the baseline what it assumes.
     """
     truth = core_inference_truth(**(genome or GENOME))
     states = truth.states.copy()
     states[0] = 0
 
     log_mu = np.log(np.asarray(PLANTED_MU[: truth.log_mu.size], dtype=np.float64))
-    base_nb_mean = truth.base_nb_mean * (EXPOSURE / truth.base_nb_mean.mean())
-    truth = dataclasses.replace(truth, log_mu=log_mu, base_nb_mean=base_nb_mean)
+    mu = np.exp(log_mu)
+
+    profile = truth.base_nb_mean.mean(axis=1)
+    profile = profile / profile.sum()
+
+    coverage = truth.base_nb_mean.sum(axis=0)
+    coverage = coverage * (EXPOSURE * profile.size / coverage.mean())
+
+    normalizer = (profile[:, None] * mu[states[truth.labels]].T).sum(axis=0)
+    base_nb_mean = profile[:, None] * coverage[None, :] / normalizer[None, :]
+
+    truth = dataclasses.replace(
+        truth, log_mu=log_mu, base_nb_mean=base_nb_mean, states=states
+    )
 
     # NB the counts are redrawn so they follow the new path; the stream is one
     #    no realization index reaches, so the genome's own draw is not also
     #    one of its realizations.
-    return realize(dataclasses.replace(truth, states=states), GENOME_DRAW)
+    return realize(truth, GENOME_DRAW)
+
+
+def normalizers(truth: CoreInferenceTruth) -> np.ndarray:
+    """`Z_c = sum_g lambda_g mu_{s_c(g)}` per clone, under the planted profile."""
+    profile = truth.base_nb_mean.mean(axis=1)
+    profile = profile / profile.sum()
+    mu = np.exp(truth.log_mu)
+    z: np.ndarray = (profile[None, :] * mu[truth.states]).sum(axis=1)
+
+    return z
 
 
 def realize(truth: CoreInferenceTruth, seed: int) -> CoreInferenceTruth:
