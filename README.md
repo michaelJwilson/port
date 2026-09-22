@@ -37,12 +37,12 @@ guard `tests/test_planning_documents_agree.py` puts on the planning
 documents.
 
 **Three coverage guards, because one figure would answer three questions
-badly** (#159):
+badly** (#159). One of the three is off: see the table.
 
 | badge | selection | denominator | what it says |
 | --- | --- | --- | --- |
 | **e2e** | `end2end` | `cnaster` | how much of the subject is **validated end to end**, against the truth that generated the data. `oracle` is excluded because the badge beside it claims that word |
-| **oracle** | the referee's own reach | `snakes_and_ladders` | how much of upstream is used as a referee. Separate, so the figure cannot rise by importing more of upstream, which validates nothing |
+| **oracle** | the referee's own reach | `snakes_and_ladders` | **disabled** (#282), so it renders `/` rather than a figure nothing measures. It said how much of upstream is used as a referee, separately so it could not rise by importing more of upstream |
 | **all** | the other eight markers | `cnaster` | how much is merely **run**, rather than judged against anything outside `cnaster` |
 
 **`speed` and `mem`** are patched `run_cnaster` against `--no-patch`: wall
@@ -245,7 +245,7 @@ not carry, not before.
 | Mechanism | What it refuses |
 | --- | --- |
 | Two CI jobs | A stale `uv.lock`, a lint or format failure, an untyped definition, a failing test, a `clippy` warning |
-| Registered markers | A test not checked against exactly one of `end2end`, `oracle`, `analytic`, `patch`, `backend`, `bug`, `warning`, `snapshot`, `smoke`, `infra` (#157), plus the tiers `release`, `preprocessing`, `benchmark` and `critical`. Only `end2end` and `oracle` count toward coverage |
+| Registered markers | A test not checked against exactly one of `end2end`, `oracle`, `analytic`, `patch`, `backend`, `bug`, `warning`, `snapshot`, `smoke`, `infra` (#157), plus the tiers `release`, `preprocessing`, `benchmark` and `critical`. Only `end2end` and `oracle` count toward coverage, and CI runs neither the `oracle` tests nor their guard while #282 holds |
 | `--cov-fail-under` over the whole of `cnaster` | A figure that rises for importing less. The denominator is the dependency, so the number says how much of the subject is validated |
 | [`tests/test_coverage_scope.py`](tests/test_coverage_scope.py) | A gate silently measuring a fraction of the subject after a Python version bump |
 | [`tests/test_planning_documents_agree.py`](tests/test_planning_documents_agree.py) | The three planning documents naming different work |

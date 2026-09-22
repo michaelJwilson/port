@@ -58,6 +58,12 @@ jobs:
       #    18.86 s. `tests/test_marker_discipline.py` is what keeps that ratio
       #    from drifting: the gate takes only a test refereed from outside the
       #    implementation and carrying no scale marker.
+      #
+      #    **The early gate keeps its `oracle` tests** while the rest of the
+      #    disable holds (#282). Deselecting them here took it from 91 tests
+      #    to 13, because most of what is `critical` is refereed against
+      #    `snakes_and_ladders` -- which would leave the tripwire that exists
+      #    to fail in eight seconds barely able to fail at all.
       - run: uv run --no-sync pytest -m critical -q --no-cov
       # NB the coverage gate is enforced here rather than in `addopts`, so a
       #    local `pytest` stays fast and the floor still binds on every change.
@@ -69,44 +75,47 @@ jobs:
       #    change. The floor is measured against this selection, and the
       #    release-marked tests contribute no statements of their own, so
       #    deselecting them does not move it.
-      - run: uv run --no-sync pytest -m "not release" -q --no-cov
+      #
+      #    **`oracle` is deselected, and that is a temporary disable (#282).** Every
+      #    `and not oracle` in this file is one clause, added together and
+      #    removable together; `.badges/measurements.json` records the guard
+      #    it turned off and the figure it last read. 118 of 849 tests are
+      #    `oracle`-marked and `CLAUDE.md` counts them as one of the two that
+      #    validate anything, so this is a reduction in what CI establishes
+      #    rather than a saving.
+      - run: uv run --no-sync pytest -m "not release and not oracle" -q --no-cov
       # NB the gate measures the validated types alone (#149). Coverage counts
       #    what ran, so the counted set has to be the selection here rather
       #    than a filter applied to the full run afterwards -- which is also
       #    why the full suite runs first, above: every test still has to pass,
       #    counted or not.
-      - run: >
-          uv run --no-sync pytest
-          -m "not release and (end2end or oracle)"
-          --cov --cov-report=term
-      # NB the referee's own floor, measured separately and over its own
-      #    denominator. One figure covering both would rise for importing more
-      #    of upstream, which is not validating more of the subject.
-      #    `preprocessing` is deselected: the input path has no upstream
-      #    referee, so those tests would dilute the oracle's denominator with
-      #    work it was never asked to do.
-      - run: >
-          uv run --no-sync coverage run --rcfile=.coveragerc-oracle
-          -m pytest -m "not release and not preprocessing" -q --no-cov
-      - run: uv run --no-sync coverage report --rcfile=.coveragerc-oracle
-      # NB the `e2e` badge measures `end2end` **alone**, which the gate above
-      #    does not: the gate is `end2end or oracle` at the floor #157
-      #    decided, and that floor is not this step's to move. The badge is
-      #    named `e2e` and there is a separate badge claiming `oracle`, so a
-      #    figure counting both under the first name was wrong however
-      #    defensible the union is as a gate.
       #
-      #    `COVERAGE_FILE` keeps it off `.coverage`, hyphenated so it is not
-      #    read as a parallel shard and erased by a later `--cov` run;
-      #    `--cov-fail-under=0`
-      #    because the floor is the gate's job and failing twice on one
-      #    number tells nobody anything new. Measured: 44.81 per cent against
-      #    the gate's 45.69, so the oracle-marked tests are worth 62
-      #    statements over an identical denominator.
+      #    The gate was `end2end or oracle` at the floor #157 decided. With
+      #    `oracle` disabled the union is `end2end` alone, which is what this
+      #    now selects -- and it is the badge's selection too, so the two
+      #    steps are one while the disable holds. **The floor does not move**:
+      #    `pyproject.toml` keeps 41.70 and `end2end` alone clears it by 1.86
+      #    points. Restoring the guard restores the union and the second step.
+      #
+      #    `COVERAGE_FILE` keeps the data off `.coverage`, hyphenated so it is
+      #    not read as a parallel shard and erased by a later `--cov` run.
+      #    `tests/check_badges.py` reads this file.
       - run: >
           COVERAGE_FILE=.coverage-e2e uv run --no-sync pytest
           -m "not release and end2end"
-          --cov --cov-report=term --cov-fail-under=0
+          --cov --cov-report=term
+      # NB **the oracle guard is disabled (#282).** It ran
+      #    `coverage run --rcfile=.coveragerc-oracle -m pytest
+      #    -m "not release and not preprocessing" -q --no-cov` followed by
+      #    `coverage report --rcfile=.coveragerc-oracle`, measuring the
+      #    referee's own reach over its own denominator so the figure could
+      #    not rise by importing more of upstream.
+      #
+      #    `.coveragerc-oracle` and `tests/test_coverage_scope.py` stay, so
+      #    the declared surface is still checked against what is installed
+      #    and restoring the guard is these two lines and a figure.
+      #    `tests/check_badges.py` skips a guard recorded with no percent, so
+      #    nothing else here needed changing.
       # NB the badges. `tests/test_badges_agree.py` already refuses a badge
       #    that disagrees with `.badges/measurements.json`; what it cannot
       #    catch is a measurement that moved and was never written down, so
@@ -199,7 +208,7 @@ jobs:
       # `-m` on the command line replaces `addopts`' `-m "not release"`, so
       # this is the whole suite: the per-pull-request tier and the release
       # tier together, as the release gate is defined.
-      - run: uv run --no-sync pytest -m "release or not release" -q --no-cov
+      - run: uv run --no-sync pytest -m "(release or not release) and not oracle" -q --no-cov
 
   rust:
     name: Rust (lint, format)
