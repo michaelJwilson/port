@@ -1,0 +1,25 @@
+# Guard 4: the drop-ins, measured against their own correspondence tests.
+#
+# Guards 1-3 measure a dependency this repository does not own, so they are
+# low by construction and rise only by validating more of it. This one
+# measures code `port` wrote to replace something, under the tests that
+# compare it with the something. There is no reason for a replacement to be
+# unreached by its own correspondence test, so the floor is high and a fall
+# means a drop-in nobody compared.
+#
+# The denominator is `python/port/patch` and nothing else. `extensions/` is
+# new functionality with no `cnaster` counterpart to be refereed against, and
+# `sim/` and `pipeline.py` are neither -- #274 gave every module one of four
+# jobs, and this guard is over exactly one of them.
+[run]
+# NB its own data file, and hyphenated. `.coverage.dropin` reads as a
+#    parallel-mode shard of `.coverage` and `coverage erase` -- which
+#    pytest-cov runs at the start of every `--cov` session -- deletes those
+#    with the main file. That is measured, not theoretical: see
+#    `.coveragerc-oracle`, where it silently emptied a guard.
+data_file = .coverage-dropin
+source =
+    python/port/patch
+
+[report]
+precision = 2
