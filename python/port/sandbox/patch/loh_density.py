@@ -19,7 +19,7 @@ The layout test is re-derived here and at four sites in `plot_genomic`, and
 they do not agree -- two take the modulus by `n_states` and three do not.
 The column guard resolves to `0` on every run the fit can produce, so it
 reads as a supported case that does not exist. Both go to
-`port.patch.plotting.clone_paths`, which is refereed against the expressions
+`port.patch.plot_genomic.clone_paths`, which is refereed against the expressions
 it replaces rather than asserted.
 
 **The rendering is copied unchanged.** It is 60 lines of `matplotlib` with
@@ -40,7 +40,7 @@ from cnaster.config import start_time
 from cnaster.logger import get_logger
 from cnaster.plot_loh_density import nan_gaussian_filter1d
 
-from port.patch.plotting.clone_paths import clone_path, parameter_by_path
+from port.patch.plot_genomic.clone_paths import clone_path, parameter_by_path
 
 logger = get_logger(__name__, start_time=start_time)
 

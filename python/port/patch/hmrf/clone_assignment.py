@@ -273,7 +273,7 @@ def pipeline_clone_assignment(
     from port.patch.hmrf.adjacency import adjacency_coo
     from port.patch.hmrf.fused_field import fused_spot_clone_field
     from port.patch.icm.interface import CsrGraph, fold_unary, icm_sweep
-    from port.patch.plotting.clone_paths import state_vector
+    from port.patch.plot_genomic.clone_paths import state_vector
 
     reason = _delegates(single_tumor_prop)
 

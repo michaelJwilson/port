@@ -11,6 +11,12 @@ from pathlib import Path
 
 import pytest
 
+# NB parked tests for `port.sandbox`, not collected. Their subject's `cnaster`
+#    referee is gone from the pin (`plot_loh_density.py`, deleted by
+#    `cnaster@port#23cae59`), so they cannot import; they return with the
+#    module when it leaves `sandbox/`.
+collect_ignore = ["sandbox"]
+
 COMPRESSION_DECIMALS = 6
 """Places `CountEncoder` rounds to before deduplicating.
 

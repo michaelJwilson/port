@@ -79,7 +79,7 @@ def test_the_replacement_draws_the_density_upstream_draws() -> None:
     mpl.use("Agg")
 
     from cnaster.plot_loh_density import plot_loh_density as upstream
-    from port.patch.plotting.loh_density import plot_loh_density as replacement
+    from port.sandbox.patch.loh_density import plot_loh_density as replacement
 
     coords, single_X, total_bb_RD, result = _instance()
 
@@ -114,7 +114,7 @@ def test_each_panel_alone_is_upstreams(plot_type: str) -> None:
     mpl.use("Agg")
 
     from cnaster.plot_loh_density import plot_loh_density as upstream
-    from port.patch.plotting.loh_density import plot_loh_density as replacement
+    from port.sandbox.patch.loh_density import plot_loh_density as replacement
 
     coords, single_X, total_bb_RD, result = _instance()
 
@@ -147,7 +147,7 @@ def test_a_clone_holding_no_spots_leaves_its_column_alone() -> None:
     mpl.use("Agg")
 
     from cnaster.plot_loh_density import plot_loh_density as upstream
-    from port.patch.plotting.loh_density import plot_loh_density as replacement
+    from port.sandbox.patch.loh_density import plot_loh_density as replacement
 
     coords, single_X, total_bb_RD, result = _instance()
 

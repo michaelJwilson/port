@@ -35,8 +35,8 @@ from port.pipeline import FIGURE_SWAPS, NUMERIC_SWAPS, SWAPS
 
 ROOT = Path(__file__).resolve().parents[1]
 
-UNIFIERS = ("emission", "lattice", "plotting")
-"""The two patches that replace a pair of `cnaster` modules rather than one.
+UNIFIERS = ("emission", "lattice")
+"""The patches that replace a pair of `cnaster` modules rather than one.
 
 Named here rather than inferred so that adding a third is a decision someone
 makes in a diff, not a name that quietly stops meaning anything.
@@ -48,7 +48,7 @@ PRIVATE_SURFACE = frozenset(
         ("cnaster.hmm_nophasing", "_nb_logpmf_1d"),
         ("cnaster.hmm_phased", "_switch_betabinom_1d"),
         # The four layout helpers `plot_clones_genomic` is built from (#278).
-        # `port.patch.plotting.genomic` replaces that function and imports
+        # `port.patch.plot_genomic.genomic` replaces that function and imports
         # these rather than copying them: they draw the gridspec, the axis
         # furniture and the chromosome boundaries, and a copy would be 130
         # lines whose only job is to stay identical. Importing them is what

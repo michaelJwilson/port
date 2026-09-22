@@ -3,7 +3,7 @@
 `cnaster` renders as it computes: the read-depth ratio, its Poisson error,
 the B-allele frequency, its Beta posterior error and the Viterbi segment
 levels are all expressions inside 338 lines of `matplotlib`, and none of them
-can be asked for on its own. `port.patch.plotting.genomic` makes each a
+can be asked for on its own. `port.patch.plot_genomic.genomic` makes each a
 function, which is what lets any of this be checked.
 
 Two kinds of claim, marked differently. Reproducing upstream's expression is
@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
-from port.patch.plotting.genomic import baf_track, rdr_track, segment_levels
+from port.patch.plot_genomic.genomic import baf_track, rdr_track, segment_levels
 
 
 def _instance(
@@ -207,7 +207,7 @@ def test_the_replacement_draws_what_upstream_draws(cnaster_config: None) -> None
     mpl.use("Agg")
 
     from cnaster.plot_genomic import plot_clones_genomic as upstream
-    from port.patch.plotting.genomic import plot_clones_genomic as replacement
+    from port.patch.plot_genomic.genomic import plot_clones_genomic as replacement
 
     rng = np.random.default_rng(17)
     n_obs, n_spots, n_clones, n_states = 24, 9, 3, 4
@@ -273,7 +273,7 @@ def test_the_integer_copy_colouring_is_upstreams(
 
     import pandas as pd
     from cnaster.plot_genomic import plot_clones_genomic as upstream
-    from port.patch.plotting.genomic import plot_clones_genomic as replacement
+    from port.patch.plot_genomic.genomic import plot_clones_genomic as replacement
 
     rng = np.random.default_rng(29)
     n_obs, n_spots, n_clones, n_states = 24, 9, 3, 4

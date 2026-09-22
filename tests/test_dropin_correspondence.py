@@ -42,18 +42,12 @@ UNINSTALLED = {
         "number -- the branch it kills was already unreachable. It goes into "
         "`SWAPS` when a run is measured against it."
     ),
-    "port.patch.plotting.genomic": (
+    "port.patch.plot_genomic.genomic": (
         "#280. Draws at a text column rather than at 20 inches, which is a "
         "deliberate change of output, so it cannot join `SWAPS` -- that table "
         "is the set that reproduces `cnaster` bitwise and "
         "`tests/test_patched_entry_point.py` reads it. `FIGURE_SWAPS` is "
         "where it belongs, once #280's remaining two assertions land."
-    ),
-    "port.patch.plotting.loh_density": (
-        "#278, and `FIGURE_SWAPS` for the same reason as its sibling above: "
-        "the figure is upstream's, but it installs beside `plot_clones_"
-        "genomic` or not at all, because a run drawing one at each size is "
-        "worse than a run drawing both at either."
     ),
     "port.patch.hmm_phased.coded_emission": (
         "#269. Fixes an `IndexError` upstream raises on the shape every fit "
