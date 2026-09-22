@@ -10,6 +10,10 @@ That is a lot of moved code for a claim of "nothing changed", so the referee
 is the whole fit: both classes on one fixture, every returned array compared
 **bitwise**. `patch`, because it says the rewrite agrees with `cnaster` and
 not that `cnaster` is right.
+
+#259 stage 5's derived gradient is **off by default**, so that claim is the
+default arm's. The test below that turns it on compares the two arms at the
+tolerance each reaches, which is the whole of what the flag changes.
 """
 
 from __future__ import annotations
@@ -103,6 +107,89 @@ def test_the_rewritten_pipeline_is_upstreams_bitwise(cnaster_config: None) -> No
         np.asarray(ours.assignment.new_assignment),
         np.asarray(theirs.assignment.new_assignment),
     ), "the clone assignment moved"
+
+
+@pytest.mark.patch
+def test_the_analytic_gradient_reaches_the_same_fit(cnaster_config: None) -> None:
+    """The derived gradient is the same objective by a different route.
+
+    BFGS with `jac=None` differences the objective; with the gradient it
+    steps on the derived one. Both maximize the same likelihood, so the
+    fit agrees to a tolerance rather than to the bit: on this fixture the
+    likelihood agrees to 5.9e-06 relative, the fitted parameters to
+    4.8e-03, and the clone assignment is identical. `log_startprob` and
+    `log_transmat` are bitwise because they come from the E step's counts
+    rather than from the solver.
+
+    **That the fit moves at all is why the flag is off by default.** The
+    tolerances asserted below carry 2x headroom over those figures; the
+    gradient itself is refereed against central differences (1.7e-07) in
+    `test_em_gradient.py`. That `new_taus` moves furthest in absolute terms
+    while the likelihood moves 5.9e-06 is the weak identification of tau,
+    not an error in either arm.
+    """
+    from port.patch.hmm_nophasing import hmm_nophasing as REWRITE
+    from port.patch.optimization_pipeline import analytic_jac
+
+    truth = _truth()
+
+    differenced = _fit(REWRITE, truth)
+
+    with analytic_jac():
+        derived = _fit(REWRITE, truth)
+
+    assert abs(derived.llf - differenced.llf) <= 1.2e-05 * abs(differenced.llf), (
+        f"llf {derived.llf!r} against {differenced.llf!r}"
+    )
+
+    for field in ("new_log_mu", "new_alphas", "new_p_binom", "new_taus"):
+        mine = np.asarray(getattr(derived.params, field))
+        theirs = np.asarray(getattr(differenced.params, field))
+        scale = max(float(np.max(np.abs(theirs))), 1e-12)
+
+        assert np.max(np.abs(mine - theirs)) <= 1.0e-02 * scale, (
+            f"{field}: max |difference| {np.max(np.abs(mine - theirs)):.3e}"
+        )
+
+    for field in ("new_log_startprob", "new_log_transmat"):
+        assert np.array_equal(
+            np.asarray(getattr(derived.params, field)),
+            np.asarray(getattr(differenced.params, field)),
+        ), f"{field} is the E step's, and moved"
+
+    assert np.array_equal(
+        np.asarray(derived.assignment.new_assignment),
+        np.asarray(differenced.assignment.new_assignment),
+    ), "the clone assignment moved"
+
+
+@pytest.mark.patch
+def test_the_gradient_is_off_unless_asked_for(cnaster_config: None) -> None:
+    """The default is `cnaster`'s arm, and the switch restores it.
+
+    A class attribute left set by a block that raised would make every later
+    fit in the process the other arm, and the two exist to be compared. So
+    the default is pinned here as well as the restore, in both directions.
+    """
+    from port.patch.hmm_nophasing import hmm_nophasing as REWRITE
+    from port.patch.optimization_pipeline import analytic_jac
+
+    assert REWRITE.use_analytic_jac is False, "the default arm is cnaster's"
+
+    with analytic_jac():
+        assert REWRITE.use_analytic_jac is True
+
+        with analytic_jac(enabled=False):
+            assert REWRITE.use_analytic_jac is False
+
+        assert REWRITE.use_analytic_jac is True, "nesting restored to a literal"
+
+    assert REWRITE.use_analytic_jac is False
+
+    with pytest.raises(RuntimeError), analytic_jac():
+        raise RuntimeError
+
+    assert REWRITE.use_analytic_jac is False, "a raising block left it set"
 
 
 @pytest.mark.patch

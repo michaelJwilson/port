@@ -31,6 +31,7 @@ import time
 from collections.abc import Sequence
 from contextlib import ExitStack
 
+from port.patch.optimization_pipeline import analytic_jac
 from port.patch.shifted_emission import logmu_shift
 from port.pipeline import (
     FIGURE_SWAPS,
@@ -117,6 +118,29 @@ def _parser() -> argparse.ArgumentParser:
             "today. Needs the patched HMM, so it is refused under "
             "--no-patch."
         ),
+    )
+    jac = parser.add_mutually_exclusive_group()
+    jac.add_argument(
+        "--jac",
+        dest="jac",
+        action="store_true",
+        default=False,
+        help=(
+            "hand BFGS the derived gradient of the M step instead of letting "
+            "scipy difference the objective (#259). **Off by default and it "
+            "moves the fit**: the same objective by a different route, so the "
+            "search lands within a tolerance rather than on cnaster's bit -- "
+            "likelihood to 5.9e-06 relative, parameters to 4.8e-03, clone "
+            "assignment identical. It buys 18.06x fewer emission evaluations "
+            "at a stress size. Needs the patched HMM, so it is refused under "
+            "--no-patch."
+        ),
+    )
+    jac.add_argument(
+        "--no-jac",
+        dest="jac",
+        action="store_false",
+        help="the default, stated: scipy differences the M step's objective",
     )
     parser.add_argument(
         "--time-stages",
@@ -226,6 +250,25 @@ def main(argv: Sequence[str] | None = None) -> int:
             stack.enter_context(logmu_shift())
             print(
                 "run_cnaster_port: --logmu-shift, every fitted RDR parameter moves",
+                file=sys.stderr,
+            )
+
+        # NB the same seam as `--logmu-shift` above, and refused for the same
+        #    reason: the flag lives on the patched class, and a run asked for
+        #    the derived gradient that silently differenced would report a
+        #    ratio nobody could reproduce.
+        if arguments.jac:
+            if arguments.no_patch:
+                print(
+                    "run_cnaster_port: --jac needs the patched HMM "
+                    "and --no-patch rebinds nothing",
+                    file=sys.stderr,
+                )
+                return 2
+
+            stack.enter_context(analytic_jac())
+            print(
+                "run_cnaster_port: --jac, BFGS steps on the derived gradient",
                 file=sys.stderr,
             )
 

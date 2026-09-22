@@ -493,6 +493,13 @@ omit = [
 # replacement and pays when it does. Neither direction is a statement about
 # `port`.
 #
+# **Stage 5 is the clearest case of that, because the flag decides it.** The
+# derived gradient is off by default, so the counted selection never enters
+# `em_gradient` (16.47 per cent, refereed by tests this gate does not count)
+# and the gate fell 42.71 to 42.38. Defaulting the flag on would raise it and
+# spend the bitwise reproduction claim `SWAPS` carries. That trade is not a
+# coverage guard's to make, and this comment exists so nobody makes it here.
+#
 # The denominator is `cnaster`, so a body `port` replaces stops being
 # exercised and a `port` module joins at whatever its own tests reach. The
 # figure is not wrong: an unpatched user still runs the upstream body, and it

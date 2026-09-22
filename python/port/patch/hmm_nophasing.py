@@ -49,6 +49,7 @@ from typing import Any
 from cnaster.hmm_nophasing import hmm_nophasing as UPSTREAM
 
 from port.patch.coded_emission import CodedEmission
+from port.patch.em_gradient import EmGradient
 from port.patch.optimization_pipeline import OptimizationPipeline
 from port.patch.shifted_emission import ShiftedEmission
 
@@ -137,6 +138,7 @@ class GuardedShift:
 class hmm_nophasing(
     ShiftedEmission,
     CodedEmission,
+    EmGradient,
     OptimizationPipeline,
     UPSTREAM,  # type: ignore[misc]
 ):

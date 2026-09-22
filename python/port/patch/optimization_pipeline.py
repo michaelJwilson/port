@@ -41,6 +41,8 @@ where the code relies on it.
 from __future__ import annotations
 
 import time
+from collections.abc import Iterator
+from contextlib import contextmanager
 from typing import Any
 
 import numpy as np
@@ -50,9 +52,10 @@ from cnaster.count_encoder import CountEncoder
 from cnaster.hmm_nophasing import get_log_transmat, numba_logsumexp
 from cnaster.logger import get_logger
 
+from port.patch.clone_shift import log_normalizers_from_weights
 from port.patch.hmm_parameters import Parameters
 
-__all__ = ["OptimizationPipeline"]
+__all__ = ["OptimizationPipeline", "analytic_jac"]
 
 logger = get_logger(__name__, start_time=start_time)
 
@@ -73,6 +76,22 @@ class OptimizationPipeline:
     params: str
     """Which blocks the optimizer varies -- `"s"`, `"t"`, `"m"`, `"p"`."""
 
+    use_analytic_jac: bool = False
+    """Hand BFGS the derived gradient rather than let it difference (#259).
+
+    **Off by default, and for the reason `--logmu-shift` is.** The gradient
+    is of the same objective -- refereed against central differences at
+    1.7e-07 -- but BFGS reaches a stationary point of it by a different
+    route, so the fit it lands on is not `cnaster`'s to the bit. `SWAPS`
+    claims every row reproduces `cnaster` artifact by artifact, and a default
+    that quietly moved a fitted parameter by 4.8e-03 would be that claim
+    spent without anyone electing to spend it.
+
+    `run_cnaster_port --jac` turns it on and buys 18.06x fewer emission
+    evaluations at a stress size; `analytic_jac()` is the same switch in
+    process.
+    """
+
     t: float
     """The transition matrix's self-transition weight."""
 
@@ -88,6 +107,8 @@ class OptimizationPipeline:
     iterations: int
     """How many times the callback has been entered."""
 
+    _em_gradient: Any
+    _clone_state_weights: Any
     apply_logmu_shift: bool
     compute_emission_probability_nb_betabinom_coded: Any
     get_state_posteriors: Any
@@ -313,6 +334,67 @@ class OptimizationPipeline:
             msg = f"Unknown optimization mode: {mode}"
             raise ValueError(msg)
 
+        jac: Any = None
+
+        if mode == "em" and self.use_analytic_jac:
+            shifting = bool(
+                self.apply_logmu_shift
+                and normal_log_lambda is not None
+                and num_segments_clones is not None
+            )
+            clones = (
+                tuple(int(n) for n in np.asarray(num_segments_clones))
+                if num_segments_clones is not None
+                else ()
+            )
+
+            # NB the coupling term is derived for one clone. With the shift
+            #    off there is no coupling and any clone count is fine; with
+            #    it on and more than one, the gradient would be of a
+            #    different objective, so BFGS keeps differencing and says so.
+            if shifting and len(clones) > 1:
+                logger.info(
+                    f"Analytic jac declined: the shift is on over "
+                    f"{len(clones)} clones and the coupling is derived for "
+                    f"one (#259 stage 5). BFGS will difference."
+                )
+            else:
+
+                def jac(params: np.ndarray) -> np.ndarray:
+                    fitted = unpack(params)
+
+                    if self.state_posteriors is None:
+                        cost_fn(params)
+
+                    shifts = None
+                    weights = None
+
+                    if shifting:
+                        weights = self._clone_state_weights(
+                            self.state_posteriors, normal_log_lambda, clones
+                        )
+                        shifts = log_normalizers_from_weights(weights, fitted.log_mu)
+
+                    gradient: np.ndarray = self._em_gradient(
+                        nbEncoder=nbEncoder,
+                        bbEncoder=bbEncoder,
+                        posteriors=self.state_posteriors,
+                        log_mu=fitted.log_mu,
+                        alphas=fitted.alphas,
+                        p_binom=fitted.p_binom,
+                        taus=fitted.taus,
+                        optimize_nb=optimize_nb,
+                        fix_NB_dispersion=fix_NB_dispersion,
+                        shared_NB_dispersion=shared_NB_dispersion,
+                        fix_BB_dispersion=fix_BB_dispersion,
+                        shared_BB_dispersion=shared_BB_dispersion,
+                        use_logit=use_logit,
+                        shifts=shifts,
+                        clone_weights=weights,
+                        lengths=clones if shifting else None,
+                    )
+                    return gradient
+
         options = {"maxiter": max_iter, "ftol": 1e-6, "gtol": 1e-5, "disp": False}
 
         start_time_opt = time.time()
@@ -325,7 +407,7 @@ class OptimizationPipeline:
             cost_fn,
             x0,
             method=optimizer,
-            jac=None,
+            jac=jac,
             bounds=None,
             callback=callback,
             options=options,
@@ -436,3 +518,26 @@ class OptimizationPipeline:
         log_transmat = get_log_transmat(n_states, self.t)
 
         return log_mu, p_binom, alphas, taus, log_startprob, log_transmat
+
+
+@contextmanager
+def analytic_jac(enabled: bool = True) -> Iterator[None]:
+    """Turn the derived gradient on -- or off, with `enabled=False`.
+
+    One switch for both directions, because the two arms exist to be
+    compared and a helper that only turned it on would leave the other side
+    reaching into the class attribute by hand.
+
+    The flag lives on the class, so a block that set it and left it would
+    make every later fit in the same process the other arm. Restored to what
+    it was rather than to a literal, so nesting does not lie.
+    """
+    from port.patch.hmm_nophasing import hmm_nophasing
+
+    previous = hmm_nophasing.use_analytic_jac
+    hmm_nophasing.use_analytic_jac = enabled
+
+    try:
+        yield
+    finally:
+        hmm_nophasing.use_analytic_jac = previous

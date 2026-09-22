@@ -112,6 +112,12 @@ replacing the whole pipeline added 149 statements and `e2e` rose 40.27 to
 every counted fit runs it and it joins at 82 per cent, where stages 2 and 4
 added modules the `end2end` selection does not reach.
 
+Stage 5 then took it back to 40.71, and **the flag is what decided it**: the
+derived gradient is off by default, so the counted selection never enters
+`em_gradient` and it joins at 16.47 per cent against stage 3's 74.67. The
+figure would rise if the flag defaulted on, at the price of the bitwise
+reproduction claim above. A coverage guard does not get to make that trade.
+
 **A badge reading `/` has no measurement yet**, and that is the point: not a
 zero, which is a claim, and not a last-known figure from a commit nobody can
 name. `all` is unwired (#159's "Done when" asks for it and is unmet) and the
@@ -205,11 +211,12 @@ run_cnaster_port --no-patch config.yaml      # the same run, nothing rebound
 run_cnaster_port --no-figures config.yaml    # the replacements that reproduce bitwise
 run_cnaster_port --time-stages config.yaml   # what the replacements cost in the run
 run_cnaster_port --logmu-shift config.yaml   # debias log mu by the per-clone normalizer
+run_cnaster_port --jac config.yaml           # BFGS steps on the derived M step gradient
 run_cnaster_port --list                      # what would be rebound, and why
 ```
 
-**`--logmu-shift` is the one flag that changes a scientific answer**, and it
-is off by default for that reason (#259). `cnaster` computes the per-clone
+**Two flags change a scientific answer, and both are off for that reason
+(#259).** The first is `--logmu-shift`. `cnaster` computes the per-clone
 library normalization and discards it -- `# TODO fold in logmu_shifts` -- so
 a run without the flag is the run that exists today, and a run with it moves
 every fitted RDR parameter. It costs 1.69x on the emission at a stress size,
@@ -218,6 +225,24 @@ whole concatenated genome, so the NB channel has to be encoded per clone.
 It is refused under `--no-patch`: the shift lives on the patched HMM, and a
 run asked to debias that returned an undebiased answer is one nobody could
 tell from a debiased one.
+
+**`--jac` is the second, and it is off for the same reason.** `cnaster`
+leaves `jac=None` and scipy differences the M step's objective; the patched
+HMM can hand BFGS the derived gradient instead. It is the same objective --
+refereed against central differences at 1.7e-07 -- but the search reaches a
+stationary point of it by a different route, so the fit is not `cnaster`'s
+to the bit: the likelihood agrees to 5.9e-06 relative, the fitted parameters
+to 4.8e-03, the transition matrix and start probabilities are bitwise (the E
+step's, not the solver's), and the clone assignment is identical. A default
+that spent the `SWAPS` reproduction claim for 4.8e-03 would be spending it
+without anyone electing to.
+
+What it buys, at a stress size: 2,276 emission evaluations down to 126
+(18.06x), and the M step from 41.23 s to 14.45 s (2.85x). At a gate size,
+524 to 62. `--no-jac` states the default rather than changing it, so a
+benchmark script can name the arm it measured. The gradient declines itself,
+with a logged reason, where `--logmu-shift` couples more than one clone;
+that coupling is derived for one.
 
 `port.pipeline.SWAPS` is the table -- one row per `cnaster` name `port`
 replaces, each naming the ticket that measured it -- and `patched()` is the
