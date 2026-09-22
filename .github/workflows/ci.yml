@@ -58,7 +58,13 @@ jobs:
       #    18.86 s. `tests/test_marker_discipline.py` is what keeps that ratio
       #    from drifting: the gate takes only a test refereed from outside the
       #    implementation and carrying no scale marker.
-      - run: uv run --no-sync pytest -m "critical and not oracle" -q --no-cov
+      #
+      #    **The early gate keeps its `oracle` tests** while the rest of the
+      #    disable holds (#282). Deselecting them here took it from 91 tests
+      #    to 13, because most of what is `critical` is refereed against
+      #    `snakes_and_ladders` -- which would leave the tripwire that exists
+      #    to fail in eight seconds barely able to fail at all.
+      - run: uv run --no-sync pytest -m critical -q --no-cov
       # NB the coverage gate is enforced here rather than in `addopts`, so a
       #    local `pytest` stays fast and the floor still binds on every change.
       #
