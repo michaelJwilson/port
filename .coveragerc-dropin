@@ -22,4 +22,21 @@ source =
     python/port/patch
 
 [report]
+# 1,580 of 1,741 statements. The floor is the measurement, as #157 set guard
+# 1's: chosen figures are met and then stop meaning anything.
+#
+# **High because the denominator is ours and small.** A replacement that its
+# own correspondence test does not reach is one nobody compared, which is a
+# different failure from guard 1's -- there a low figure says how much of a
+# dependency is validated, here a low one says a patch is unrefereed.
+#
+# What the remaining 161 are, so a reader can tell a gap from a ceiling:
+# `hmm_initialize/backends.py` 26 (the `snakes_and_ladders` backend, whose
+# referee is the oracle rather than `cnaster`), `io.py` 15, `lattice.py` 13
+# (`is_phased` and the two spot-sum reductions, licensed by
+# `tests/test_unified_lattice.py` under `smoke` -- it compares `cnaster`'s
+# two forms with each other, which is the premise for the drop-in and not a
+# correspondence claim, so it is deliberately not marked `cnaster`), and the
+# rest are refusal branches on port's own guards.
+fail_under = 90.0
 precision = 2

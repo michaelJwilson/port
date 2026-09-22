@@ -243,3 +243,103 @@ def test_the_replacement_draws_what_upstream_draws(cnaster_config: None) -> None
         np.testing.assert_array_equal(
             mine, upstream_drawn, err_msg=f"drawn artist {index} differs"
         )
+
+
+@pytest.mark.cnaster
+@pytest.mark.patch
+@pytest.mark.parametrize("phased_integer_copies", [False, True])
+@pytest.mark.parametrize("palette_name", ["chisel", "tab10"])
+def test_the_integer_copy_colouring_is_upstreams(
+    cnaster_config: None, phased_integer_copies: bool, palette_name: str
+) -> None:
+    """The `df_cnv` branch, which is a third of the function and had no referee.
+
+    Passing integer copies takes a different path through every clone: the
+    hue comes from `(A, B)` through the palette's map rather than from the
+    decoded state, and `chisel` alone gives the balanced state its reduced
+    opacity. Both knobs are parametrized because each selects a branch the
+    other cannot reach, and the `False` case is the one that takes the
+    maximum and minimum rather than the alleles as given -- a patch that
+    dropped that ordering would draw the same points in exchanged colours.
+
+    Colours as well as offsets, for the reason
+    `tests/test_plot_loh_density.py` gives: the point cloud alone passes a
+    replacement that coloured it wrongly, and colour is the whole of what
+    this branch decides.
+    """
+    import matplotlib as mpl
+
+    mpl.use("Agg")
+
+    import pandas as pd
+    from cnaster.plot_genomic import plot_clones_genomic as upstream
+    from port.patch.plotting.genomic import plot_clones_genomic as replacement
+
+    rng = np.random.default_rng(29)
+    n_obs, n_spots, n_clones, n_states = 24, 9, 3, 4
+
+    lengths = np.array([n_obs])
+    total_bb_RD = rng.integers(20, 80, size=(n_obs, n_spots)).astype(float)
+
+    single_X = np.zeros((n_obs, 2, n_spots))
+    single_X[:, 0, :] = rng.poisson(150, size=(n_obs, n_spots))
+    single_X[:, 1, :] = rng.binomial(total_bb_RD.astype(int), 0.45)
+
+    single_base_nb_mean = rng.uniform(100.0, 200.0, size=(n_obs, n_spots))
+    assignment = np.tile(np.arange(n_clones), n_spots // n_clones)
+
+    result = {
+        "new_assignment": assignment,
+        "pred_cnv": rng.integers(0, n_states, size=n_obs * n_clones),
+        "new_log_mu": rng.normal(0.0, 0.2, size=(n_states, 1)),
+        "new_p_binom": rng.uniform(0.15, 0.85, size=(n_states, 1)),
+    }
+
+    # NB the balanced state is planted explicitly: `(1, 1)` is what the
+    #    `chisel` opacity rule and `default_idx` both key on, so a fixture
+    #    drawing only unbalanced pairs would exercise neither.
+    frame = {"CHR": np.ones(n_obs, dtype=int)}
+
+    for clone in range(n_clones):
+        major = rng.integers(1, 4, size=n_obs)
+        minor = rng.integers(0, 2, size=n_obs)
+        major[:4], minor[:4] = 1, 1
+
+        frame[f"clone{clone} A"] = major
+        frame[f"clone{clone} B"] = minor
+
+    df_cnv = pd.DataFrame(frame)
+
+    arguments = (lengths, single_X, single_base_nb_mean, total_bb_RD)
+    keywords = {
+        "df_cnv": df_cnv,
+        "res_combine": result,
+        "palette_name": palette_name,
+        "phased_integer_copies": phased_integer_copies,
+    }
+
+    theirs = upstream(*arguments, **keywords)
+    ours = replacement(*arguments, **keywords)
+
+    drawn_theirs, drawn_ours = _drawn(theirs), _drawn(ours)
+
+    assert len(drawn_ours) == len(drawn_theirs), (
+        f"drew {len(drawn_ours)} collections against upstream's {len(drawn_theirs)}"
+    )
+
+    for index, (mine, upstream_drawn) in enumerate(
+        zip(drawn_ours, drawn_theirs, strict=True)
+    ):
+        np.testing.assert_array_equal(mine, upstream_drawn, err_msg=f"artist {index}")
+
+    for index, (mine, upstream_axis) in enumerate(
+        zip(ours.axes, theirs.axes, strict=True)
+    ):
+        for collection, upstream_collection in zip(
+            mine.collections, upstream_axis.collections, strict=True
+        ):
+            np.testing.assert_array_equal(
+                np.asarray(collection.get_facecolors()),
+                np.asarray(upstream_collection.get_facecolors()),
+                err_msg=f"axis {index} colours",
+            )

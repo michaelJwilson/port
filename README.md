@@ -2,6 +2,7 @@
 
 [![e2e](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/michaelJwilson/port/main/.badges/coverage-judged.json)](#what-the-badges-mean)
 [![oracle](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/michaelJwilson/port/main/.badges/coverage-oracle.json)](#what-the-badges-mean)
+[![drop-in](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/michaelJwilson/port/main/.badges/coverage-dropin.json)](#what-the-badges-mean)
 [![all](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/michaelJwilson/port/main/.badges/coverage-reach.json)](#what-the-badges-mean)
 [![speed](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/michaelJwilson/port/main/.badges/run-speed.json)](#what-the-badges-mean)
 [![mem](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/michaelJwilson/port/main/.badges/run-mem.json)](#what-the-badges-mean)
@@ -36,14 +37,17 @@ it, and `tests/test_badges_agree.py` fails when the two disagree -- the same
 guard `tests/test_planning_documents_agree.py` puts on the planning
 documents.
 
-**Three coverage guards, because one figure would answer three questions
-badly** (#159):
+**Four coverage guards, because one figure would answer four questions
+badly** (#159, #281). Three measure a dependency this repository does not
+own and are low by construction; the fourth measures `port`'s own
+replacements and is high for the same reason:
 
 | badge | selection | denominator | what it says |
 | --- | --- | --- | --- |
 | **e2e** | `end2end` | `cnaster` | how much of the subject is **validated end to end**, against the truth that generated the data. `oracle` is excluded because the badge beside it claims that word |
 | **oracle** | the referee's own reach | `snakes_and_ladders` | how much of upstream is used as a referee. Separate, so the figure cannot rise by importing more of upstream, which validates nothing |
 | **all** | the other eight markers | `cnaster` | how much is merely **run**, rather than judged against anything outside `cnaster` |
+| **drop-in** | `patch or cnaster` | `python/port/patch` | how much of what `port` wrote to replace something is reached by the test comparing it with the something. The one guard whose denominator is ours, so the one with a high floor |
 
 **`speed` and `mem`** are patched `run_cnaster` against `--no-patch`: wall
 time and peak resident memory, each arm in its own process, in ratio units.
@@ -245,7 +249,7 @@ not carry, not before.
 | Mechanism | What it refuses |
 | --- | --- |
 | Two CI jobs | A stale `uv.lock`, a lint or format failure, an untyped definition, a failing test, a `clippy` warning |
-| Registered markers | A test not checked against exactly one of `end2end`, `oracle`, `analytic`, `patch`, `backend`, `bug`, `warning`, `snapshot`, `smoke`, `infra` (#157), plus the tiers `release`, `preprocessing`, `benchmark` and `critical`. Only `end2end` and `oracle` count toward coverage |
+| Registered markers | A test not checked against exactly one of `end2end`, `oracle`, `analytic`, `patch`, `backend`, `bug`, `warning`, `snapshot`, `smoke`, `infra` (#157), plus the second axes `critical` and `cnaster`, and the tiers `release`, `preprocessing` and `benchmark`. Only `end2end` and `oracle` count toward coverage |
 | `--cov-fail-under` over the whole of `cnaster` | A figure that rises for importing less. The denominator is the dependency, so the number says how much of the subject is validated |
 | [`tests/test_coverage_scope.py`](tests/test_coverage_scope.py) | A gate silently measuring a fraction of the subject after a Python version bump |
 | [`tests/test_planning_documents_agree.py`](tests/test_planning_documents_agree.py) | The three planning documents naming different work |
