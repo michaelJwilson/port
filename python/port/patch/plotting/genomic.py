@@ -121,6 +121,27 @@ def segment_levels(
     return segments, rates[labels], probabilities[labels]
 
 
+UPSTREAM_WIDTH = 20.0
+"""What `_create_clone_gridspec` hardcodes, in inches."""
+
+PAPER_WIDTH = 6.5
+"""A text column, and this module's default (#280).
+
+Measured from `docs/plots/`: the committed genomic figures are 20.03 in
+wide, so `\\includegraphics[width=\\linewidth]` scales them by **0.325** and
+a 10 pt tick label lands at **3.2 pt** on the page. At a text column the
+figure is included at 1:1, so a declared size is the size on the page and
+nothing has to be undone at the point of inclusion.
+
+**This is a deliberate change of output, and the only one this module
+makes.** The aspect is preserved and the data is untouched, which is what
+`test_the_replacement_draws_what_upstream_draws` holds: it compares every
+drawn offset and segment in data coordinates, so it passes across this
+change and would fail across a rewiring. Pass `width=UPSTREAM_WIDTH` for
+upstream's canvas.
+"""
+
+
 def plot_clones_genomic(
     lengths: np.ndarray,
     single_X: np.ndarray,
@@ -142,8 +163,9 @@ def plot_clones_genomic(
     plot_rdr_errors: str = "poisson",
     phased_integer_copies: bool = False,
     known_nb_baseline: Any = None,
+    width: float = PAPER_WIDTH,
 ) -> Any:
-    """Upstream's, with the two decodes and the column guard taken from above."""
+    """Upstream's, with the two decodes, the column guard and a canvas (#280)."""
     logger.info("Plotting aggregated rdr and baf for clones.")
 
     palette: list[Any] = []
@@ -213,6 +235,16 @@ def plot_clones_genomic(
     fig, axes = _create_clone_gridspec(
         len(nonempty_clones), axes_per_clone, base_height, sample_list
     )
+
+    # NB the canvas, after the gridspec rather than inside it: upstream's
+    #    helper hardcodes `figsize=(20, ...)` and takes no width, and it is
+    #    imported rather than copied for the reason the module docstring
+    #    gives. Setting the size here leaves the layout upstream's and scales
+    #    the height with it, so the aspect a caller asked for is the aspect
+    #    it gets.
+    if width != UPSTREAM_WIDTH:
+        drawn = fig.get_size_inches()
+        fig.set_size_inches(width, float(drawn[1]) * width / float(drawn[0]))
     x_vals = np.arange(n_obs)
 
     for s, raw_clone in enumerate(nonempty_clones):
