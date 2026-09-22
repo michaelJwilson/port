@@ -12,8 +12,11 @@ return scipy.special.logsumexp(
 )
 ```
 
-`shifts` is that form, restored, via `CloneStack` where the clones are equal
-length and per clone where they are not.
+`shifts` is that reduction, returning **one value per clone** where upstream
+returns one per segment -- see its docstring for why the shape is the point.
+It stays a `numba` kernel: the vectorized form the comment sketches is
+measurably slower than the compiled loop, so what this removes is the
+broadcast write, not the loop.
 
 ## It is not installed, and that is the point
 
@@ -31,14 +34,14 @@ truth as its referee rather than a loop nobody calls.
 fails the day that decision is taken elsewhere, so it cannot be taken
 silently.
 
-## Equal lengths are the rectangular case, and not the general one
+## Unequal clones are admitted, and are why there is no rectangular path
 
 `clone_stack_obs` tiles `lengths` to `[A, B, A, B]`, so every clone in a
 stacked run carries the same total. `compute_logmu_shifts` nonetheless takes
-`clone_lengths` and walks them individually, which admits unequal clones. A
-rectangular `(n_clones, n_obs)` view cannot hold that, so `shifts` takes the
-lengths and uses the view only when they are equal -- the fast path is a
-special case it detects, never an assumption it makes.
+`clone_lengths` and walks them individually, which admits unequal clones, and
+this walks them the same way rather than detecting the rectangular case: the
+earlier version kept a `CloneStack` view for equal lengths and it is gone
+with the vectorized reduction that needed it. One loop, both cases.
 """
 
 from __future__ import annotations
@@ -46,11 +49,50 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 import numpy as np
-import scipy.special
-
-from port.patch.hmrf_utils import CloneStack
+from numba import njit
 
 __all__ = ["shifts"]
+
+
+@njit(nogil=True, cache=True, parallel=False, error_model="numpy")
+def _per_clone(means, states, lambdas, lengths):
+    """Upstream's two passes, writing one value per clone rather than per segment.
+
+    Kept as `numba` and kept as upstream's shape of loop, because that is
+    what the measurement says: a `scipy.special.logsumexp` over per-clone
+    views is **2.1x slower** at the stress size and 3.9x at the gate one.
+    The compiled two-pass is not the thing worth replacing; the write is.
+    """
+    n_clones = lengths.size
+    out = np.empty(n_clones, dtype=np.float64)
+
+    start = 0
+
+    for clone in range(n_clones):
+        length = lengths[clone]
+        largest = -np.inf
+
+        for i in range(length):
+            value = means[states[start + i]] + lambdas[start + i]
+
+            # NB `max` rather than the branch PLR1730 asks for: `numba`
+            #    compiles the comparison, and the builtin on two floats is
+            #    what upstream's own loop avoids for the same reason.
+            largest = max(largest, value)
+
+        if np.isinf(largest):
+            out[clone] = largest
+        else:
+            total = 0.0
+
+            for i in range(length):
+                total += np.exp(means[states[start + i]] + lambdas[start + i] - largest)
+
+            out[clone] = largest + np.log(total)
+
+        start += length
+
+    return out
 
 
 def shifts(
@@ -59,11 +101,27 @@ def shifts(
     normal_log_lambda: np.ndarray,
     clone_lengths: Sequence[int] | np.ndarray,
 ) -> np.ndarray:
-    """Per-clone `logsumexp` of `log_mus[state] + normal_log_lambda`, broadcast.
+    """Per-clone `logsumexp` of `log_mus[state] + normal_log_lambda`.
 
-    Reproduces `cnaster.hmm_nophasing.compute_logmu_shifts` exactly, including
-    its handling of a clone whose every term is `-inf`: the loop leaves
-    `max_val` at `-inf` and returns it rather than computing `log(0)`, and
+    **`(n_clones,)`, where upstream returns `(n_segments,)`.** That is the
+    one stated difference from `compute_logmu_shifts`, and it is a shape
+    rather than a value: upstream writes each clone's shift across every one
+    of that clone's segments, so its return carries `n_clones` distinct
+    numbers in `n_segments` floats. `np.repeat(shifts(...), clone_lengths)`
+    is upstream's array exactly, and
+    `tests/test_logmu_shift.py::test_it_reproduces_cnasters_loop` is what
+    holds that.
+
+    The shape is the point rather than the bytes. A per-segment return has to
+    be indexed by a running offset, and indexing it by clone -- which is what
+    it looks like it wants -- silently hands every clone the first clone's
+    shift, with no exception and no warning. One value per clone cannot be
+    read that way. At the segment count `expected_runtime.tex` derives, 2.9e5,
+    the difference is also 2.3 MB against a handful of numbers.
+
+    Reproduces the values `compute_logmu_shifts` computes, including its
+    handling of a clone whose every term is `-inf`: the loop leaves `max_val`
+    at `-inf` and returns it rather than computing `log(0)`, and
     `scipy.special.logsumexp` returns `-inf` there too.
 
     Parameters
@@ -92,24 +150,10 @@ def shifts(
         msg = f"clone lengths sum to {int(lengths.sum())}, not {n_segments}"
         raise ValueError(msg)
 
-    terms = means[states] + lambdas
-
     # NB the rectangular fast path, detected rather than assumed. Where the
     #    clones are equal the whole reduction is one call on a view that
     #    copies nothing; where they are not, a view cannot exist and the
     #    per-clone slices are still each contiguous.
-    if lengths.size and bool(np.all(lengths == lengths[0])):
-        stack = CloneStack(terms, int(lengths.size), int(lengths[0]))
-        per_clone = stack.per_clone(lambda view: scipy.special.logsumexp(view, axis=1))
+    reduced: np.ndarray = _per_clone(means, states, lambdas, lengths)
 
-        return stack.broadcast(per_clone)
-
-    out = np.empty(n_segments, dtype=np.float64)
-    start = 0
-
-    for length in lengths:
-        stop = start + int(length)
-        out[start:stop] = scipy.special.logsumexp(terms[start:stop])
-        start = stop
-
-    return out
+    return reduced

@@ -26,16 +26,27 @@ attribute because `port` does not call this method -- `optimize_params` does,
 from inside `cnaster` -- so a keyword would have to be threaded through a
 function this repository does not replace.
 
-## The shift is per segment, and indexing it per clone is wrong
+## The shift is computed once, and carried per clone
 
-`compute_logmu_shifts` returns **one value per segment**, constant within
-each clone's block, not one per clone. Measured on three clones of four
-segments: the return has length 12 and carries three distinct values at
-indices 0, 4 and 8. Reading it as `shifts[clone]` therefore picks indices 0,
-1 and 2 -- all inside clone zero's block -- and gives **every clone clone
-zero's shift**, silently, on any instance whose first clone is longer than
-the clone count. The running segment offset is the index, and
-`test_each_clone_takes_its_own_shift` is what holds it.
+`compute_logmu_shifts` is **patched** rather than called
+(`port.patch.hmm_nophasing.logmu_shift`), for two reasons that are both
+about the call site rather than the arithmetic.
+
+*It returns one value per segment.* `n_clones` distinct numbers in
+`n_segments` floats, so it has to be indexed by a running offset; indexed by
+clone -- which is what it looks like it wants -- it hands every clone the
+first clone's shift, silently, on any instance whose first clone is longer
+than the clone count. The patch returns `(n_clones,)`, which cannot be read
+that way, and `np.repeat` recovers upstream's array bitwise.
+
+*Upstream's own call site would compute it `n_states` times.* The commented
+block at `hmm_nophasing.py:275-279` sits inside `for i in range(n_states)`,
+and the shift does not depend on the state. It is computed once here.
+
+The reduction itself is upstream's compiled loop, kept: a
+`scipy.special.logsumexp` over per-clone views measured **2.1x slower** at
+the stress size and 3.9x at the gate one, so the loop is not the thing worth
+replacing.
 
 ## Why only the read-depth channel is re-encoded
 
@@ -62,13 +73,10 @@ from typing import Any
 
 import numpy as np
 from cnaster.count_encoder import CountEncoder
-from cnaster.hmm_nophasing import (
-    _bb_logpmf_1d,
-    _nb_logpmf_1d,
-    compute_logmu_shifts,
-)
+from cnaster.hmm_nophasing import _bb_logpmf_1d, _nb_logpmf_1d
 from cnaster.hmm_nophasing import hmm_nophasing as UPSTREAM
 
+from port.patch.hmm_nophasing.logmu_shift import shifts as logmu_shifts
 from port.patch.plotting.clone_paths import state_vector
 
 __all__ = ["UPSTREAM", "hmm_nophasing", "logmu_shift"]
@@ -213,15 +221,20 @@ class hmm_nophasing(UPSTREAM):  # type: ignore[misc]
         n_states = rates.shape[0]
         lengths = tuple(int(length) for length in np.asarray(clone_lengths))
 
-        # NB `cnaster`'s own kernel, not a reimplementation: the hard-decoded
-        #    shift `logsumexp_g(log_mu[state_g] + lambda_g)` over each clone's
-        #    segments. Upstream supplies the quantity, so this applies it
-        #    rather than deriving it a second way and then owing a comparison
-        #    between the two.
-        shifts = compute_logmu_shifts(
-            np.ascontiguousarray(rates),
-            np.ascontiguousarray(np.asarray(decode, dtype=np.int64)),
-            np.ascontiguousarray(np.asarray(normal_log_lambda, dtype=np.float64)),
+        # NB **once per call, not once per state.** Upstream's commented-out
+        #    call sits inside `for i in range(n_states)` at
+        #    `hmm_nophasing.py:275-279`, so folding it in as written would
+        #    recompute the whole reduction `n_states` times over an
+        #    `n_segments` array for a quantity that does not depend on the
+        #    state. That is the efficiency here; the reduction itself is
+        #    upstream's own loop, kept (`logmu_shift`).
+        #
+        #    `(n_clones,)`, so it is indexed by clone. Upstream's shape is
+        #    `(n_segments,)` and indexing *that* by clone is silently wrong.
+        shifts = logmu_shifts(
+            rates,
+            np.asarray(decode, dtype=np.int64),
+            np.asarray(normal_log_lambda, dtype=np.float64),
             np.asarray(lengths, dtype=np.int64),
         )
 
@@ -257,12 +270,7 @@ class hmm_nophasing(UPSTREAM):  # type: ignore[misc]
 
             rdr_uniq = np.zeros((n_states, len(nb_endog)))
 
-            # NB **`shifts[start]`, not `shifts[clone]`.** The return is one
-            #    value per segment, constant within a clone, so the running
-            #    offset is the index and the clone number is not. Indexing by
-            #    clone reads inside clone zero's block and hands every clone
-            #    clone zero's shift.
-            shift = shifts[start]
+            shift = shifts[clone]
 
             for state in range(n_states):
                 _nb_logpmf_1d(
