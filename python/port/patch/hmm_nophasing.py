@@ -44,8 +44,9 @@ fails loudly once upstream's signatures accept what its callers pass.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, NamedTuple
 
+import numpy as np
 from cnaster.hmm_nophasing import hmm_nophasing as UPSTREAM
 
 from port.patch.coded_emission import CodedEmission
@@ -117,7 +118,59 @@ class RenamedKeywords:
         )
 
 
-class hmm_nophasing(CodedEmission, RenamedKeywords, UPSTREAM):  # type: ignore[misc]
+class TupleParameters:
+    """`unpack_params` as a tuple that also answers by name (#259 stage 1).
+
+    **The new pin's `_run_optimization_pipeline` cannot run.**
+    `cnaster@port#e4e8739` upstreamed `port`'s pipeline but not the
+    named-parameter object it reads, so its own body does::
+
+        fitted = unpack(params)
+        self.log_emissions = emission(fitted.log_mu, ...)
+
+    while `unpack_params` returns a five-tuple and no such class exists
+    there::
+
+        AttributeError: 'tuple' object has no attribute 'log_mu'
+        cnaster/hmm_nophasing.py:1205
+
+    Every fit raises it, which is the same shape of defect as the two
+    signature breaks above: the branch does not run at all.
+
+    **A `NamedTuple` is the whole fix, and it changes no number.** It *is*
+    the tuple -- same identity under indexing, unpacking and iteration, so
+    every positional consumer is untouched -- and it answers `.log_mu` as
+    well, which is all upstream's body wants. Returning a dataclass here
+    would break the positional consumers; returning a plain tuple is what
+    upstream already does and is what breaks.
+
+    It comes out when `cnaster` either lands the named object or takes the
+    attribute access back out.
+    """
+
+    def unpack_params(self, *args: Any, **kwargs: Any) -> Any:
+        """Upstream's, as a named tuple rather than a bare one."""
+        unpacked = super().unpack_params(*args, **kwargs)  # type: ignore[misc]
+
+        return _Fitted(*unpacked)
+
+
+class _Fitted(NamedTuple):
+    """The five arrays `unpack_params` returns, in its own order."""
+
+    log_startprob: np.ndarray
+    log_mu: np.ndarray
+    p_binom: np.ndarray
+    alphas: np.ndarray
+    taus: np.ndarray
+
+
+class hmm_nophasing(  # type: ignore[misc]
+    TupleParameters,
+    CodedEmission,
+    RenamedKeywords,
+    UPSTREAM,
+):
     """`cnaster.hmm_nophasing.hmm_nophasing`, taking what its callers pass.
 
     The name is `cnaster`'s, lower-case class and all: this is rebound over
