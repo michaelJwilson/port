@@ -45,8 +45,14 @@ def _case(
         pytest.param([17], id="single-clone"),
     ],
 )
+@pytest.mark.cnaster
 def test_it_reproduces_cnasters_loop(lengths: list[int]) -> None:
-    """Both paths, against the shipped function.
+    """`np.repeat` of the patch is upstream's array, bitwise.
+
+    **The shapes differ, and that is the patch.** Upstream returns one value
+    per segment, this returns one per clone, so the comparison is against the
+    broadcast rather than against the return -- which also states exactly
+    what the difference is: a shape and not a value.
 
     The unequal case is the one that matters: with equal lengths the index
     arithmetic is a multiplication and an off-by-one cancels, so a test using
@@ -59,10 +65,14 @@ def test_it_reproduces_cnasters_loop(lengths: list[int]) -> None:
     )
     ours = shifts(log_mus, copy_states, normal_log_lambda, clone_lengths)
 
-    assert ours.shape == theirs.shape
-    assert np.allclose(theirs, ours, rtol=0.0, atol=EXACT), (
-        f"max |difference| {np.max(np.abs(theirs - ours)):.3e}"
+    assert ours.shape == (len(lengths),), (
+        f"one value per clone, got {ours.shape} for {len(lengths)} clones"
     )
+    assert theirs.shape == (sum(lengths),), (
+        "upstream returns one per segment; if that changed this patch is moot"
+    )
+
+    np.testing.assert_array_equal(np.repeat(ours, lengths), theirs)
 
 
 @pytest.mark.patch
@@ -86,24 +96,33 @@ def test_a_clone_of_minus_infinities_stays_minus_infinity() -> None:
     # NB one clone per assertion, so a failure names which of the two lost
     #    its `-inf` rather than reporting that the conjunction is false
     #    (`ruff` PT018).
+    # NB upstream's index is the segment and the patch's is the clone, so
+    #    the same claim is read at two positions: clone zero holds segments
+    #    0 and 1, clone one segments 2 and 3.
     assert np.isneginf(theirs[0])
-    assert np.isneginf(theirs[1])
     assert np.isneginf(ours[0])
-    assert np.isneginf(ours[1])
     assert not np.any(np.isnan(ours)), "a nan here would be a silent wrong answer"
-    assert np.allclose(theirs[2:], ours[2:], rtol=0.0, atol=EXACT)
+    assert np.allclose(theirs[2], ours[1], rtol=0.0, atol=EXACT)
 
 
-@pytest.mark.patch
-def test_the_broadcast_is_constant_within_each_clone() -> None:
-    """One value per clone, repeated over its segments — the loop's assignment."""
-    log_mus, copy_states, normal_log_lambda, clone_lengths = _case([12, 20], 3, 5)
+@pytest.mark.bug
+def test_one_value_per_clone_cannot_be_indexed_by_segment() -> None:
+    """**Written to fail if the return goes back to one value per segment.**
+
+    The shape is the whole point of the patch. Upstream's per-segment array
+    carries `n_clones` distinct numbers and has to be read at a running
+    offset; read at the clone number -- which is what it looks like it wants
+    -- it hands every clone the first clone's shift, with no exception and no
+    warning. A `(n_clones,)` return cannot be read that way, and this is what
+    keeps it that way.
+    """
+    lengths = [12, 20]
+    log_mus, copy_states, normal_log_lambda, clone_lengths = _case(lengths, 3, 5)
 
     out = shifts(log_mus, copy_states, normal_log_lambda, clone_lengths)
 
-    assert len(np.unique(out[:12])) == 1
-    assert len(np.unique(out[12:])) == 1
-    assert out[0] != out[12], "two clones sharing a shift would hide a bug"
+    assert out.shape == (2,), f"one per clone, got {out.shape}"
+    assert out[0] != out[1], "two clones sharing a shift would hide a bug"
 
 
 @pytest.mark.patch
