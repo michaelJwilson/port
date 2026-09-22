@@ -73,6 +73,18 @@ def _truth() -> Any:
     )
 
 
+@pytest.mark.xfail(
+    reason=(
+        "the referee is gone: `cnaster@port#e4e8739` upstreamed this very "
+        "pipeline but not the named-parameter object it reads, so its own "
+        "`_run_optimization_pipeline` raises `AttributeError: 'tuple' object "
+        "has no attribute 'log_mu'` at hmm_nophasing.py:1205 before it fits "
+        "anything. There is no upstream arm left to compare against. "
+        "**strict**, so this goes red the moment upstream can run again and "
+        "the bitwise claim is restored rather than quietly dropped."
+    ),
+    strict=True,
+)
 @pytest.mark.patch
 def test_the_rewritten_pipeline_is_upstreams_bitwise(cnaster_config: None) -> None:
     """Both classes, one fixture, every returned array to the bit.

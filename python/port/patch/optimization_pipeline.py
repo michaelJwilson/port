@@ -50,8 +50,6 @@ from cnaster.count_encoder import CountEncoder
 from cnaster.hmm_nophasing import get_log_transmat, numba_logsumexp
 from cnaster.logger import get_logger
 
-from port.patch.hmm_parameters import Parameters
-
 __all__ = ["OptimizationPipeline"]
 
 logger = get_logger(__name__, start_time=start_time)
@@ -227,25 +225,31 @@ class OptimizationPipeline:
             out: np.ndarray = (rdr + baf)[:, :, np.newaxis]
             return out
 
-        def unpack(params: np.ndarray) -> Parameters:
-            """The optimization vector, as named parameters."""
-            return Parameters.of(
-                self.unpack_params(
-                    params,
-                    n_states,
-                    log_startprob,
-                    log_mu,
-                    p_binom,
-                    alphas,
-                    taus,
-                    optimize_nb=optimize_nb,
-                    fix_NB_dispersion=fix_NB_dispersion,
-                    shared_NB_dispersion=shared_NB_dispersion,
-                    fix_BB_dispersion=fix_BB_dispersion,
-                    shared_BB_dispersion=shared_BB_dispersion,
-                    use_logit=use_logit,
-                )
+        def unpack(params: np.ndarray) -> tuple[np.ndarray, ...]:
+            """The optimization vector, as `unpack_params` returns it.
+
+            `(log_startprob, log_mu, p_binom, alphas, taus)`, positional.
+            A named-parameter wrapper lived here briefly and is withdrawn:
+            upstream's `unpack_params` returns the tuple, and a second
+            spelling of the same five arrays is a translation layer to keep
+            in step for no behaviour.
+            """
+            unpacked: tuple[np.ndarray, ...] = self.unpack_params(
+                params,
+                n_states,
+                log_startprob,
+                log_mu,
+                p_binom,
+                alphas,
+                taus,
+                optimize_nb=optimize_nb,
+                fix_NB_dispersion=fix_NB_dispersion,
+                shared_NB_dispersion=shared_NB_dispersion,
+                fix_BB_dispersion=fix_BB_dispersion,
+                shared_BB_dispersion=shared_BB_dispersion,
+                use_logit=use_logit,
             )
+            return unpacked
 
         callback: Any
 
@@ -271,10 +275,10 @@ class OptimizationPipeline:
                 self.iterations += 1
 
             def cost_fn(params: np.ndarray) -> float:
-                fitted = unpack(params)
+                _, fit_log_mu, fit_p_binom, fit_alphas, fit_taus = unpack(params)
 
                 self.log_emissions = emission(
-                    fitted.log_mu, fitted.alphas, fitted.p_binom, fitted.taus
+                    fit_log_mu, fit_alphas, fit_p_binom, fit_taus
                 )
 
                 if self.state_posteriors is None:
@@ -288,15 +292,15 @@ class OptimizationPipeline:
             callback = None
 
             def cost_fn(params: np.ndarray) -> float:
-                fitted = unpack(params)
-
-                log_emissions = emission(
-                    fitted.log_mu, fitted.alphas, fitted.p_binom, fitted.taus
+                (fit_startprob, fit_log_mu, fit_p_binom, fit_alphas, fit_taus) = unpack(
+                    params
                 )
+
+                log_emissions = emission(fit_log_mu, fit_alphas, fit_p_binom, fit_taus)
                 log_alpha = self.forward_lattice(
                     lengths,
                     log_transmat,
-                    fitted.log_startprob,
+                    fit_startprob,
                     log_emissions,
                     log_sitewise_transmat,
                 )
@@ -337,7 +341,9 @@ class OptimizationPipeline:
             f"negative ln. likelihood={res.fun:.6e}"
         )
 
-        final = unpack(res.x)
+        (final_startprob, final_log_mu, final_p_binom, final_alphas, final_taus) = (
+            unpack(res.x)
+        )
 
         # NB upstream calls the dense emission here under `# TODO call coded`.
         #    The two agree bitwise, and taking the coded path is what makes
@@ -346,12 +352,12 @@ class OptimizationPipeline:
         # NB three-dimensional, as the lattice wants: `forward_lattice` and
         #    `backward_lattice` index `log_emission[:, t, :]`, so the trailing
         #    axis is not decoration.
-        log_emission = emission(final.log_mu, final.alphas, final.p_binom, final.taus)
+        log_emission = emission(final_log_mu, final_alphas, final_p_binom, final_taus)
 
         log_gamma = self.get_state_posteriors(
             lengths,
             log_transmat,
-            final.log_startprob,
+            final_startprob,
             log_emission,
             log_sitewise_transmat,
         )
@@ -360,18 +366,18 @@ class OptimizationPipeline:
         log_lines = [
             f"--- Final HMM State ({self.__class__.__name__}) ---",
             f"p_binom:\n"
-            f"{np.array2string(final.p_binom, precision=3, suppress_small=True)}",
+            f"{np.array2string(final_p_binom, precision=3, suppress_small=True)}",
             f"taus:\n"
-            f"{np.array2string(final.taus, formatter={'float_kind': lambda x: f'{x:.3e}'})}",
+            f"{np.array2string(final_taus, formatter={'float_kind': lambda x: f'{x:.3e}'})}",
         ]
 
         if optimize_nb:
             log_lines.extend(
                 [
                     f"log_mu:\n"
-                    f"{np.array2string(final.log_mu, precision=3, suppress_small=True)}",
+                    f"{np.array2string(final_log_mu, precision=3, suppress_small=True)}",
                     f"alphas:\n"
-                    f"{np.array2string(final.alphas, precision=3, suppress_small=True)}",
+                    f"{np.array2string(final_alphas, precision=3, suppress_small=True)}",
                 ]
             )
 
@@ -380,18 +386,18 @@ class OptimizationPipeline:
                 f"State posteriors:\n"
                 f"{np.array2string(state_prior, formatter={'float_kind': lambda x: f'{x:.4e}'})}",
                 f"Max updates (tol={tol:.6e}): "
-                f"mu={np.max(np.abs(np.exp(final.log_mu) - np.exp(log_mu))):.6e}",
+                f"mu={np.max(np.abs(np.exp(final_log_mu) - np.exp(log_mu))):.6e}",
             ]
         )
 
         logger.info("\n".join(log_lines))
 
         return {
-            "new_log_mu": final.log_mu,
-            "new_alphas": final.alphas,
-            "new_p_binom": final.p_binom,
-            "new_taus": final.taus,
-            "new_log_startprob": final.log_startprob,
+            "new_log_mu": final_log_mu,
+            "new_alphas": final_alphas,
+            "new_p_binom": final_p_binom,
+            "new_taus": final_taus,
+            "new_log_startprob": final_startprob,
             "new_log_transmat": log_transmat,
             "log_gamma": log_gamma,
             "pred_cnv": np.argmax(log_gamma, axis=0),
