@@ -1,28 +1,29 @@
-"""One spot, because `optimize_params` already asserts there is only one.
+"""`compute_emission_probability_nb_betabinom_coded`, written straight through.
 
-**#259 stage 2.** `cnaster`'s `port` branch opens `optimize_params` with
+**#259 stage 2.** Upstream's body loops `for s in range(n_spots)`, keeps a
+scratch buffer per `s`, asserts the two encoders agree on `n_spots`, indexes
+every parameter by `[i, s]`, collects two lists and branches on whether to
+concatenate or stack them. `optimize_params` has already asserted the loop
+has one pass:
 
     assert X.shape[-1] == 1, "Currently expects multiple clone to be
                               concatenated along the genomic axis."
 
-and then runs an emission that loops `for s in range(n_spots)`, builds a
-scratch buffer per `s`, asserts the two encoders agree on `n_spots`, indexes
-every parameter by `[i, s]`, collects two lists and branches on whether to
-concatenate them or stack them. With the assert holding, each of those is a
-no-op a reader must still verify. 23 lines of `hmm_nophasing.py` mention
-`n_spots` and 6 index a parameter by `s`.
+So the machinery is a no-op a reader still has to verify, and 23 lines of
+`hmm_nophasing.py` exist to serve it. This is the same calculation with
+nothing between the reader and it.
 
-**The clone axis does not disappear -- it moves into the genomic axis**,
-where it is a `lengths` vector rather than a dimension. That is what makes
-the per-clone normalizer expressible at all, and it is why this stage comes
-before the one that applies it.
+**The clone axis does not disappear — it moves into the genomic axis**, where
+it is a `lengths` vector rather than a dimension. That is what makes the
+per-clone normalizer expressible at all, and it is why this comes before the
+stage that applies it.
 
 ## What it changes, which is nothing
 
 `np.concatenate([a], axis=1)` is `a` with a copy taken, and
-`np.stack([a], axis=2)` is `a[:, :, None]`. With one spot the whole branch is
-those two identities, so the collapsed body returns the same values bitwise.
-`tests/test_single_spot_emission.py` is the referee, against upstream's own
+`np.stack([a], axis=2)` is `a[:, :, None]`. Under upstream's own assert the
+whole branch is those two identities, so this returns the same values
+bitwise. `tests/test_coded_emission.py` is the referee, against upstream's
 method on the same encoders.
 
 The one difference is an allocation, not a value: `decode_array` returns
@@ -32,14 +33,15 @@ optimizer calls this per iteration.
 
 ## What it refuses
 
-More than one spot, by name and with the upstream assert quoted. Upstream's
-loop would handle it; this body would silently read spot 0 and discard the
-rest, which is the one way a collapse behind an assert can go wrong. So the
-assert moves to where the collapse is rather than staying two frames up.
+A shape it cannot reduce. Upstream's loop would iterate it; this body would
+read the first column and discard the rest, which is the one way writing a
+loop out straight can go wrong. So the assumption is checked where the code
+relies on it rather than two frames up, and the message quotes the assert
+that already exists so a reader knows it is upstream's and not `port`'s.
 
 **Only `hmm_nophasing` carries this.** `hmm_phased` reaches the same method
-through `clone_stack=False` on a path `port` has not established is
-single-spot, so it keeps upstream's loop; see `port.patch.hmm_phased`.
+through `clone_stack=False` on a path nothing here has established meets that
+assumption, so it keeps upstream's loop; see `port.patch.hmm_phased`.
 """
 
 from __future__ import annotations
@@ -50,15 +52,15 @@ from typing import Any
 import numpy as np
 from cnaster.hmm_nophasing import _bb_logpmf_1d, _nb_logpmf_1d
 
-__all__ = ["SingleSpot"]
+__all__ = ["CodedEmission"]
 
 
-class SingleSpot:
-    """The emission with the `s` axis collapsed, one spot asserted.
+class CodedEmission:
+    """The coded emission, with upstream's assert spent rather than looped over.
 
-    A mixin, applied to the patched `hmm_nophasing` alone. It sits **before**
-    `RenamedKeywords` in the MRO so that the shift's guard is settled here
-    rather than forwarded to a loop this body replaces.
+    A mixin, applied to the patched `hmm_nophasing` alone. It is listed
+    before `port.patch.hmm_nophasing.RenamedKeywords` so this body wins over
+    that one's forward to upstream's loop.
     """
 
     def compute_emission_probability_nb_betabinom_coded(
@@ -77,7 +79,7 @@ class SingleSpot:
         copy_states: Any = None,
         clone_lengths: Any = None,
     ) -> tuple[np.ndarray, np.ndarray]:
-        """Upstream's, with `n_spots == 1` spent rather than looped over.
+        """Upstream's emission, with the loop it cannot take written out.
 
         The signature is upstream's plus `clone_lengths`, which
         `port.patch.hmm_nophasing.RenamedKeywords` would otherwise translate
@@ -95,12 +97,12 @@ class SingleSpot:
 
         if nbEncoder.n_spots != 1 or bbEncoder.n_spots != 1:
             msg = (
-                f"one spot only: got {nbEncoder.n_spots} and "
+                f"expected one column, got {nbEncoder.n_spots} and "
                 f"{bbEncoder.n_spots}. `optimize_params` asserts "
                 '"Currently expects multiple clone to be concatenated along '
-                'the genomic axis"; this body spends that assert rather than '
-                "looping, so it refuses where upstream would read spot 0 and "
-                "drop the rest (#259 stage 2)."
+                'the genomic axis"; this body relies on that rather than '
+                "looping, so it refuses where upstream would read the first "
+                "column and drop the rest (#259 stage 2)."
             )
             raise ValueError(msg)
 

@@ -1,4 +1,4 @@
-"""What spending the `s` assert costs, against upstream's loop (#259 stage 2).
+"""What writing the loop out costs, against upstream's (#259 stage 2).
 
 **The claim is one allocation, not a ratio.** With `n_spots == 1` upstream's
 body still builds two one-element lists and calls `np.concatenate` on each,
@@ -6,8 +6,8 @@ and `decode_array` is a matmul that already returned a fresh array -- so the
 concatenate is an `(n_states, n_obs)` copy of something nothing aliases. The
 optimizer calls this once per iteration per channel.
 
-These rows are here to catch the case where collapsing the loop cost
-something, not to argue a speedup. `tests/test_single_spot_emission.py`
+These rows are here to catch the case where writing the loop out cost
+something, not to argue a speedup. `tests/test_coded_emission.py`
 carries the bitwise evidence that makes it a simplification, and
 `CLAUDE.md`'s 2x bar is **not met and not claimed**:
 
@@ -41,11 +41,11 @@ GATE = {"n_states": 5, "n_obs": 4_000}
 """Small enough for the per-pull-request budget; decides no ratio."""
 
 STRESS = {"n_states": 7, "n_obs": 400_000}
-"""One clone-concatenated genome at the scale #87 names, as one spot."""
+"""One clone-concatenated genome at the scale #87 names, in one column."""
 
 
 def _arms(n_states: int, n_obs: int) -> dict[str, Any]:
-    """One spot, with repeats, so `decode_array` is not an identity."""
+    """One column, with repeats, so `decode_array` is not an identity."""
     from cnaster.count_encoder import CountEncoder
 
     generator = np.random.default_rng(29)
@@ -104,7 +104,7 @@ def _bench(
 
 @pytest.mark.benchmark
 @pytest.mark.parametrize("implementation", ["cnaster", "collapsed"])
-def test_the_gate_single_spot_emission(
+def test_the_gate_coded_emission(
     cnaster_config: None, benchmark: BenchmarkFixture, implementation: str
 ) -> None:
     """A baseline at a gate size, which argues nothing either way."""
@@ -114,7 +114,7 @@ def test_the_gate_single_spot_emission(
 @pytest.mark.release
 @pytest.mark.benchmark
 @pytest.mark.parametrize("implementation", ["cnaster", "collapsed"])
-def test_the_stress_single_spot_emission(
+def test_the_stress_coded_emission(
     cnaster_config: None, benchmark: BenchmarkFixture, implementation: str
 ) -> None:
     """The size the copy tells at, warm."""

@@ -1,10 +1,11 @@
-"""The collapsed emission is upstream's, at the one spot the assert allows.
+"""The straight-through emission is upstream's, under upstream's own assert.
 
 **#259 stage 2.** `optimize_params` opens with
 `assert X.shape[-1] == 1`; the emission it then calls loops `for s in
 range(n_spots)`, keeps a scratch buffer per `s`, and branches on whether to
-concatenate its one-element list or stack it. `port.patch.hmm_single_spot`
-spends that assert instead. These pin that spending it changes no value.
+concatenate its one-element list or stack it. `port.patch.coded_emission`
+relies on the assert instead of re-deriving it. These pin that relying on it
+changes no value.
 
 `patch` throughout: the claim is that the two bodies agree, not that either
 computes the right emission. The referee is upstream's own method on the
@@ -69,7 +70,7 @@ def test_it_is_upstreams_emission_bitwise(
 ) -> None:
     """Both branches of the return, over three state counts.
 
-    `clone_stack` is the branch the collapse rewrites as two identities --
+    `clone_stack` is the branch this rewrites as two identities --
     `np.concatenate([a], axis=1)` is `a` copied and `np.stack([a], axis=2)`
     is `a[:, :, None]` -- so both have to be checked or half the rewrite is
     unrefereed. `n_states=1` is the case where a `(n_states, n_obs)` result
@@ -97,7 +98,7 @@ def test_it_is_upstreams_emission_bitwise(
 def test_the_scratch_buffers_are_used_and_reused(cnaster_config: None) -> None:
     """The optimizer passes them per iteration; both bodies must write there.
 
-    A collapse that quietly allocated instead would be bitwise correct and
+    A rewrite that quietly allocated instead would be bitwise correct and
     would cost an allocation per call on the hottest loop in the fit, which
     is the kind of regression a value comparison cannot see.
     """
@@ -129,17 +130,18 @@ def test_the_scratch_buffers_are_used_and_reused(cnaster_config: None) -> None:
 
 
 @pytest.mark.patch
-def test_more_than_one_spot_is_refused_by_name(cnaster_config: None) -> None:
-    """Upstream would loop; this body would read spot 0 and drop the rest.
+def test_a_shape_it_cannot_reduce_is_refused(cnaster_config: None) -> None:
+    """Upstream would loop; this body would read the first column and stop.
 
-    So the assert `optimize_params` holds two frames up is restated where the
-    collapse is. The message quotes upstream's, because a reader hitting this
-    needs to know the assert exists rather than that `port` invented a limit.
+    So the assert `optimize_params` holds two frames up is checked where the
+    code relies on it. The message quotes upstream's, because a reader
+    hitting this needs to know the assert exists rather than that `port`
+    invented a limit.
     """
     nb, bb, _, _ = _encoders(n_obs=30, n_spots=3, seed=2)
     log_mu, p_binom, alphas, taus = _parameters(3, seed=1)
 
-    with pytest.raises(ValueError, match="one spot only"):
+    with pytest.raises(ValueError, match="expected one column"):
         PATCHED.compute_emission_probability_nb_betabinom_coded(
             PATCHED(), nb, bb, log_mu, alphas, p_binom, taus
         )
@@ -147,15 +149,15 @@ def test_more_than_one_spot_is_refused_by_name(cnaster_config: None) -> None:
 
 @pytest.mark.patch
 def test_the_phased_class_keeps_upstreams_loop() -> None:
-    """`hmm_phased` reaches this method too, and is not collapsed.
+    """`hmm_phased` reaches this method too, and is not rewritten.
 
     It calls with `clone_stack=False` on a path nothing here has established
-    is single-spot, so it must **not** inherit `SingleSpot`. Pinned on the
-    MRO rather than on behaviour: the difference is which body runs, and a
-    single-spot fixture would agree either way.
+    meets upstream's assert, so it must **not** inherit `CodedEmission`.
+    Pinned on the MRO rather than on behaviour: the difference is which body
+    runs, and a fixture that met the assert would agree either way.
     """
+    from port.patch.coded_emission import CodedEmission
     from port.patch.hmm_phased import hmm_phased
-    from port.patch.hmm_single_spot import SingleSpot
 
-    assert SingleSpot in PATCHED.__mro__
-    assert SingleSpot not in hmm_phased.__mro__
+    assert CodedEmission in PATCHED.__mro__
+    assert CodedEmission not in hmm_phased.__mro__
