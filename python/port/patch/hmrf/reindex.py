@@ -48,36 +48,33 @@ import numpy as np
 from cnaster.config import start_time
 from cnaster.logger import get_logger
 
+from port.patch.plotting.clone_paths import parameter_by_path, state_vector
+
 logger = get_logger(__name__, start_time=start_time)
 
 __all__ = ["PARAMETERS", "reindex_clones"]
 
 PARAMETERS = ("new_log_mu", "new_alphas", "new_p_binom", "new_taus")
-"""The four the M step fits, all of which are `(n_states, 1)`."""
+"""The four the M step fits, each of them one value per state."""
 
 EPS_BAF = 0.05
 """Upstream's dead-band around a balanced BAF, kept at its value."""
 
 
-def _one_column(res_combine: dict[str, Any]) -> None:
-    """Every fitted parameter has exactly one column, or the run stops.
+def _state_parameters(res_combine: dict[str, Any]) -> None:
+    """Every fitted parameter is one value per state, or the run stops.
 
     `clone_stack_obs` reshapes observations to `(-1, n_comp, 1)` and
     `get_initial_params` refuses `n_spots != 1`, so a second column means the
-    fit changed. Every consumer downstream indexes column zero -- #267 found
-    three incompatible readings of what another column would mean -- so
+    fit changed. Every consumer downstream reads one value per state -- #267
+    found three incompatible readings of what another column would mean -- so
     stopping here is the only behaviour that cannot be silently wrong.
+
+    `state_vector` is the one guard, and it carries the message. Restating
+    the check here would make two places to keep in agreement.
     """
     for key in PARAMETERS:
-        shape = np.asarray(res_combine[key]).shape
-
-        if len(shape) != 2 or shape[1] != 1:
-            msg = (
-                f"{key} has shape {shape}, expected (n_states, 1). The fit "
-                f"cannot produce a second column, and every consumer reads "
-                f"column zero (#278)."
-            )
-            raise ValueError(msg)
+        state_vector(res_combine[key], key)
 
 
 def reindex_clones(
@@ -88,7 +85,7 @@ def reindex_clones(
     """Upstream's, with the parameter contract enforced and the reorder gone."""
     assert single_tumor_prop is None, "single_tumor_prop must be None"
 
-    _one_column(res_combine)
+    _state_parameters(res_combine)
 
     new_res_combine = copy.copy(res_combine)
 
@@ -96,22 +93,27 @@ def reindex_clones(
     clone_labels = np.unique(assignments)
     n_clones = len(clone_labels)
 
-    pred_cnv = res_combine["pred_cnv"]
+    pred_cnv = np.asarray(res_combine["pred_cnv"])
     is_concatenated = pred_cnv.ndim == 1
 
     n_obs = len(pred_cnv) // n_clones if is_concatenated else pred_cnv.shape[0]
 
-    baf_profile_list = []
+    # NB the path keeps both of upstream's layouts, for the reason the module
+    #    docstring gives; what narrows is the parameter read beside it, from
+    #    `new_p_binom[path, 0]` to one value per state.
+    probabilities = res_combine["new_p_binom"]
 
-    for c in range(n_clones):
-        if is_concatenated:
-            clone_path = pred_cnv[c * n_obs : (c + 1) * n_obs]
-        else:
-            clone_path = pred_cnv[:, c]
-
-        baf_profile_list.append(res_combine["new_p_binom"][clone_path, 0])
-
-    baf_profiles = np.column_stack(baf_profile_list).T
+    baf_profiles = np.stack(
+        [
+            parameter_by_path(
+                probabilities,
+                pred_cnv[c * n_obs : (c + 1) * n_obs]
+                if is_concatenated
+                else pred_cnv[:, c],
+            )
+            for c in range(n_clones)
+        ]
+    )
 
     # NB the normal clone minimizes deviation from 0.5, outside the dead band.
     baf_penalty = np.maximum(np.abs(baf_profiles - 0.5) - EPS_BAF, 0)
@@ -139,7 +141,7 @@ def reindex_clones(
     new_res_combine["new_assignment"] = palette[assignments]
 
     # NB upstream reorders the four parameters by clone here, under
-    #    `if shape[1] > 1`. `_one_column` above is what makes that branch
+    #    `if shape[1] > 1`. `_state_parameters` above is what makes that branch
     #    unreachable, so it is gone rather than left as an unreachable
     #    reading of an axis that has one meaning.
 

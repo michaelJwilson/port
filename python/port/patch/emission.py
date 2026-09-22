@@ -131,7 +131,7 @@ def emission_into(
     counts_bb, total_bb_RD : np.ndarray
         `(n_obs, n_spots)`. `X[:, 1, :]` and the read depth.
     log_mu, alphas, p_binom, taus : np.ndarray
-        `(n_states, 1)`. Column zero is read for every spot, which is
+        `(n_states,)`. One value per state, read for every spot, which is
         `hmm_nophasing`'s indexing and the only one the fit can produce.
         `hmm_phased` reads `[i, s]` instead, pairing the parameter's column
         axis with the data's spot axis; #267 established those are different
@@ -163,7 +163,7 @@ def emission_into(
     n_obs, n_spots = counts_nb.shape
     n_states = log_mu.shape[0]
 
-    # NB **one column, and the per-spot reading is deliberately gone.**
+    # NB **one value per state, and the per-spot reading is deliberately gone.**
     #    `hmm_nophasing`'s dense kernels take `log_mu[i, 0]` and broadcast;
     #    `hmm_phased`'s encoder path takes `log_mu[i, s]`, pairing the
     #    parameter's column axis with the *data's* spot axis. #267 found
@@ -180,15 +180,15 @@ def emission_into(
             _nb_logpmf_1d(
                 counts_nb[:, spot],
                 base_nb_mean[:, spot],
-                np.exp(log_mu[state, 0]),
-                alphas[state, 0],
+                np.exp(log_mu[state]),
+                alphas[state],
                 out_rdr[state, :, spot],
             )
             _bb_logpmf_1d(
                 counts_bb[:, spot],
                 total_bb_RD[:, spot],
-                p_binom[state, 0],
-                taus[state, 0],
+                p_binom[state],
+                taus[state],
                 out_baf[state, :, spot],
             )
 
@@ -201,8 +201,8 @@ def emission_into(
                     out_baf[state : state + 1, :, spot].copy(),
                     counts_bb[:, spot],
                     total_bb_RD[:, spot],
-                    p_binom[state : state + 1, 0],
-                    taus[state : state + 1, 0],
+                    p_binom[state : state + 1],
+                    taus[state : state + 1],
                 )
 
                 for obs in range(n_obs):

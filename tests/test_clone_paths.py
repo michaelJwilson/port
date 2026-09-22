@@ -128,10 +128,10 @@ def test_only_the_two_shapes_the_fit_produces_are_accepted() -> None:
     np.testing.assert_array_equal(state_vector(states), states)
     np.testing.assert_array_equal(state_vector(states.reshape(5, 1)), states)
 
-    with pytest.raises(ValueError, match="expected a state parameter"):
+    with pytest.raises(ValueError, match="the fit produces no other"):
         state_vector(np.zeros((5, 3)))
 
-    with pytest.raises(ValueError, match="expected a state parameter"):
+    with pytest.raises(ValueError, match="the fit produces no other"):
         state_vector(np.zeros((5, 2, 1)))
 
 

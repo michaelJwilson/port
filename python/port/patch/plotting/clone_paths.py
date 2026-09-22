@@ -31,13 +31,16 @@ import numpy as np
 __all__ = ["clone_path", "clone_paths", "parameter_by_path", "state_vector"]
 
 
-def state_vector(parameters: Any) -> np.ndarray:
+def state_vector(parameters: Any, name: str = "a state parameter") -> np.ndarray:
     """A fitted state parameter as `(n_states,)`.
 
     Takes `(n_states,)` or `(n_states, 1)` -- the two shapes the fit
     produces -- and refuses anything else. `#267` established that nothing in
     `cnaster` agrees on what a second column would mean, so the one reading
     that cannot be silently wrong is to stop.
+
+    `name` goes into the message where the caller knows which of the four it
+    is holding, so a refusal says what to look at.
     """
     array = np.asarray(parameters)
 
@@ -47,7 +50,10 @@ def state_vector(parameters: Any) -> np.ndarray:
     if array.ndim == 2 and array.shape[1] == 1:
         return array[:, 0]
 
-    msg = f"expected a state parameter of shape (n_states,) or (n_states, 1), got {array.shape}"
+    msg = (
+        f"{name} has shape {array.shape}, expected (n_states,) or "
+        f"(n_states, 1): the fit produces no other (#278)"
+    )
     raise ValueError(msg)
 
 

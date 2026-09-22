@@ -160,7 +160,7 @@ def test_the_segment_levels_refuse_a_second_parameter_column() -> None:
         "pred_cnv": rng.integers(0, n_states, size=n_obs),
     }
 
-    with pytest.raises(ValueError, match="expected a state parameter"):
+    with pytest.raises(ValueError, match="the fit produces no other"):
         segment_levels(result, 0, n_obs)
 
 

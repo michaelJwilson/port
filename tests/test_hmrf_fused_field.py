@@ -44,11 +44,20 @@ def _cnaster_two_step(
     from cnaster.hmm_nophasing import _dense_bb_logpmf, _dense_nb_logpmf
     from scipy.sparse import eye as sparse_eye
 
+    # NB the column is the referee's, not the fixture's: `_dense_*_logpmf`
+    #    indexes `[i, 0]`, while the fused kernel takes the `(n_states,)` a
+    #    fit produces (#278).
     rdr = _dense_nb_logpmf(
-        fixture.counts_nb, fixture.base_nb_mean, fixture.log_mu, fixture.alphas
+        fixture.counts_nb,
+        fixture.base_nb_mean,
+        fixture.log_mu[:, None],
+        fixture.alphas[:, None],
     )
     baf = _dense_bb_logpmf(
-        fixture.counts_bb, fixture.total_bb_RD, fixture.p_binom, fixture.taus
+        fixture.counts_bb,
+        fixture.total_bb_RD,
+        fixture.p_binom[:, None],
+        fixture.taus[:, None],
     )
     if valid_nb is None or valid_bb is None:
         valid_nb = np.ones(fixture.n_spots)
@@ -184,7 +193,7 @@ def test_the_fused_field_scores_only_the_decoded_states() -> None:
     before = _fused(fixture, weight)
 
     perturbed = spot_clone_field(n_states=5, n_clones=2)
-    perturbed.log_mu[unused[0], 0] += 5.0
-    perturbed.p_binom[unused[0], 0] = 0.99
+    perturbed.log_mu[unused[0]] += 5.0
+    perturbed.p_binom[unused[0]] = 0.99
 
     np.testing.assert_array_equal(before, _fused(perturbed, weight))

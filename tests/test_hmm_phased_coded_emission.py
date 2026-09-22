@@ -134,5 +134,5 @@ def test_a_second_parameter_column_is_refused(cnaster_config: None) -> None:
     nb, bb, parameters = _encoders(n_obs=10, n_spots=2, seed=3)
     parameters["log_mu"] = np.zeros((3, 2))
 
-    with pytest.raises(ValueError, match="expected a state parameter"):
+    with pytest.raises(ValueError, match="the fit produces no other"):
         replacement(nb, bb, **parameters)
