@@ -72,19 +72,31 @@ the runner than by the patch, so a figure from there would be a number
 on a quiet host, and the recorded commit is what says which tree they
 describe.
 
-**`e2e` and `all` are not subtractable** (#223). They report against
-different denominators -- 7,030 and 7,329 statements on the same tree with
-the same config -- because a `cnaster` subdirectory module enters the figure
-only when some test imports it. `cnaster` carries no `__init__.py`, so
-coverage's directory scan never reaches `scripts/`, but the tracer measures
-whatever runs and the source prefix then admits it. The 299-statement
-difference is `scripts/run_cnaster.py`, which guard 3's selection imports
-and guard 1's does not.
+**`e2e` and `all` used not to be subtractable** (#223), and #259 settled it
+by arithmetic. They reported against different denominators -- 7,030 and
+7,329 statements on the same tree with the same config -- because a `cnaster`
+subdirectory module entered the figure only when some test imported it.
+`cnaster` carried no `__init__.py`, so coverage's directory scan never
+reached `scripts/`, while the tracer measured whatever ran and the source
+prefix then admitted it. The 299-statement difference was
+`scripts/run_cnaster.py`, which guard 3's selection imports and guard 1's
+does not -- and that module has exactly 299 statements.
 
-The direction is what makes it worth fixing rather than noting: bringing that
-entry point under an `end2end` test would add its statements to `e2e`'s
-denominator, and unless the test covered more than 45.69 per cent of them the
-guard would **fall** for validating the most live code the subject has.
+`cnaster`'s `port` branch ships `__init__.py`. The scan descends, `scripts/`
+is in the denominator for every selection, and the two guards read one
+number: **8,355**.
+
+Two things moved it, in opposite directions, and the difference between them
+is the point. **919 statements entered at 0.00 per cent** -- the four console
+entry points the wheel installs, code the subject runs and nothing judges,
+which belongs in the denominator and is #260. **159 left**: `cnaster/wolff.py`,
+which no module in the package imports and which does not import at all, so
+the scope rule -- reachable from an installed entry point -- says no, as it
+already said for `sim.py`. A `bug` test pins both halves of that, so the
+defect is not hidden by the exclusion.
+
+`e2e` fell 44.11 to 40.68 with no test removed, and **CI's floor did not
+move**: the gate reads 42.44 against the 41.7 it already had.
 
 **A badge reading `/` has no measurement yet**, and that is the point: not a
 zero, which is a claim, and not a last-known figure from a commit nobody can

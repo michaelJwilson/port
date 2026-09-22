@@ -22,13 +22,20 @@ def reference_shifts(
     normal_log_lambda: np.ndarray,
     clone_lengths: np.ndarray,
 ) -> np.ndarray:
-    """Per clone, the log of `sum_b lambda_b mu_state(b)`, broadcast over it."""
-    shifts = np.empty(copy_states.size, dtype=np.float64)
+    """Per clone, the log of `sum_b lambda_b mu_state(b)`: **one value each**.
+
+    `cnaster`'s `port` branch returns `(n_clones,)`; the branch before it
+    broadcast the same value over each clone's segments and returned
+    `(n_segments,)`. The quantity is unchanged -- a clone's normalizer is one
+    number either way -- and #259 stage 1 moved the pin, so this reference
+    moved with it.
+    """
+    shifts = np.empty(len(clone_lengths), dtype=np.float64)
     start = 0
-    for length in clone_lengths:
+    for clone, length in enumerate(clone_lengths):
         stop = start + length
         terms = log_mus[copy_states[start:stop]] + normal_log_lambda[start:stop]
-        shifts[start:stop] = logsumexp(terms)
+        shifts[clone] = logsumexp(terms)
         start = stop
     return shifts
 
@@ -67,12 +74,15 @@ def test_matches_the_vectorized_reference(
 
 
 @pytest.mark.smoke
-def test_is_constant_within_a_clone() -> None:
-    """One shift per clone, broadcast over its positions.
+def test_there_is_one_shift_per_clone() -> None:
+    """One value per clone, and the rank says which model this is.
 
     The property the emission depends on: the shift scales a clone's whole
-    profile, so a value varying inside a clone would be a different model,
-    not a different number.
+    profile, so a value varying *inside* a clone would be a different model.
+    The `port` branch expresses that by returning one number per clone rather
+    than by broadcasting it over the clone's segments, and the rank is what
+    #258 and #259 settle on -- `(n_clones,)`, not `(n_states, n_clones)` and
+    not `(n_segments,)`.
     """
     from cnaster.hmm_nophasing import compute_logmu_shifts
 
@@ -81,11 +91,8 @@ def test_is_constant_within_a_clone() -> None:
         *draw(seed=2, n_states=3, clone_lengths=clone_lengths)
     )
 
-    start = 0
-    for length in clone_lengths:
-        within = shifts[start : start + length]
-        np.testing.assert_array_equal(within, np.full(length, within[0]))
-        start += length
+    assert shifts.shape == (len(clone_lengths),)
+    assert np.all(np.isfinite(shifts))
 
 
 @pytest.mark.analytic
@@ -129,4 +136,4 @@ def test_normalised_weights_and_one_state_give_that_state() -> None:
         log_mus, copy_states, np.log(weights), np.array([n_segments])
     )
 
-    np.testing.assert_allclose(shifts, np.full(n_segments, 1.75), rtol=0.0, atol=1e-12)
+    np.testing.assert_allclose(shifts, np.full(1, 1.75), rtol=0.0, atol=1e-12)

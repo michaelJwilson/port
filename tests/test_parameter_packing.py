@@ -135,8 +135,7 @@ def test_initial_parameters_have_the_declared_shape(n_states: int) -> None:
     """
     from cnaster.hmm_nophasing import hmm_nophasing
 
-    n_spots = 2
-    initial = hmm_nophasing().get_initial_params(n_states, n_spots)
+    initial = hmm_nophasing().get_initial_params(n_states)
 
     for array in initial[:4]:
-        assert np.asarray(array).shape == (n_states, n_spots)
+        assert np.asarray(array).shape == (n_states, 1)
