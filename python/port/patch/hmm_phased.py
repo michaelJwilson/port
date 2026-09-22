@@ -44,40 +44,26 @@ accepts the keyword itself.
 
 from __future__ import annotations
 
-from typing import Any
-
 from cnaster.hmm_phased import hmm_phased as UPSTREAM
-
-from port.patch.hmm_nophasing import GuardedShift, RenamedKeywords
 
 __all__ = ["UPSTREAM", "hmm_phased"]
 
 
-class hmm_phased(GuardedShift, RenamedKeywords, UPSTREAM):  # type: ignore[misc]
-    """`cnaster.hmm_phased.hmm_phased`, with the renamed keywords accepted.
+class hmm_phased(UPSTREAM):  # type: ignore[misc]
+    """`cnaster.hmm_phased.hmm_phased`, unchanged as of the e4e8739 pin.
 
-    Carries `RenamedKeywords` as well as its own override: `hmm_phased`
-    binds `hmm_nophasing` as its base at class creation, so patching that
-    class does not reach here.
+    **Both compatibility overrides are gone (#259).** `hmm_phased` carried
+    two: a `RenamedKeywords` row translating `clone_lengths` on the way in,
+    and its own override translating `num_segments_clones` back to
+    `clone_lengths` on the way out. Upstream has finished the rename in both
+    directions, so each shim now passes a keyword the signature refuses:
 
-    The name is `cnaster`'s, lower-case class and all: this is rebound over
-    it, so a traceback that names `hmm_phased` should keep naming it.
+        TypeError: hmm_phased.compute_emission_probability_nb_betabinom_coded()
+                   got an unexpected keyword argument 'clone_lengths'
+
+    The class stays as a rebind point so the row keeps its name in `SWAPS`
+    and a traceback keeps saying `hmm_phased`, and it adds nothing. When the
+    next thing needs patching here, it goes in as a drop-in replacement for
+    the `cnaster` function it replaces rather than as another translation
+    layer.
     """
-
-    @staticmethod
-    def compute_emission_probability_nb_betabinom_coded(
-        *args: Any,
-        num_segments_clones: Any = None,
-        **kwargs: Any,
-    ) -> Any:
-        """Upstream's, taking `num_segments_clones` for its `clone_lengths`.
-
-        Keyword-only and defaulted, so a caller passing neither, either, or
-        the old name reaches the same place. `clone_lengths` wins if both are
-        given rather than being silently overwritten -- an explicit old name
-        is a caller that has not been migrated, and the two disagreeing is a
-        bug worth surfacing rather than resolving.
-        """
-        kwargs.setdefault("clone_lengths", num_segments_clones)
-
-        return UPSTREAM.compute_emission_probability_nb_betabinom_coded(*args, **kwargs)
