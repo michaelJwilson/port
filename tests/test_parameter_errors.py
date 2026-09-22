@@ -1,7 +1,7 @@
 """Parameter errors from the fitted objective, and the shift's Jacobian (#287).
 
 What `port.extensions.integer_copy.decode_copy_state` takes as its second
-argument, and what `cnaster` does not produce. Three claims:
+argument, and what `cnaster` does not produce. Four claims:
 
 *The covariance is the inverse observed information.* Checked on a Gaussian,
 whose answer is known in closed form without computing it.
@@ -13,6 +13,10 @@ covariance that still looks like a number.
 *The shift's Jacobian is singular along the constant direction.* The one that
 needs the derivation rather than a library -- and the reason the shift cannot
 be treated as an additive constant.
+
+*The chain decodes planted integer copies.* Fit, Hessian, debiasing, delta
+method and decode, on a genome whose pairs are known -- the use the three
+above exist for.
 """
 
 from __future__ import annotations
@@ -268,3 +272,223 @@ def test_a_copy_state_block_is_what_decode_copy_state_reads() -> None:
     assert block[1, 1] == pytest.approx(0.01)
     assert block[0, 1] == 0.0
     assert block[1, 0] == 0.0
+
+
+DECODED = ((1, 1), (2, 1), (1, 0))
+"""Balanced diploid, a single-allele gain, and a deletion, in state order.
+
+The deletion is what makes the planted genome satisfy the paper's constraint
+`sum_g lambda_g mubar_g = 1`: every state with both alleles present has
+`mubar >= 1`, so without a state below one the lambda-weighted mean exceeds
+it and `(A + B) / 2` is not what the debiased rate estimates. `_planted_genome`
+gives the gain and the deletion equal lambda mass, so the mean is exactly one.
+"""
+
+LIBRARY = 1.7
+"""The per-clone library factor the debiasing exists to remove.
+
+Planted into the counts and absent from `DECODED`, so a fitted `log_mu` is
+`log(1.7 mubar)` and only the shift takes it back to `log mubar`.
+"""
+
+
+def _planted_genome(seed: int = 23) -> dict[str, np.ndarray]:
+    """One clone, 600 bins in blocks of 50, drawn from `DECODED`.
+
+    `p_binom` is `cnaster`'s **major** allele fraction, `1 - p` in the paper's
+    convention, so the deletion's is exactly 1: every allele read is from the
+    one copy left, which is what the planted `counts_bb = trials` says.
+    """
+    generator = np.random.default_rng(seed)
+
+    blocks = np.array([0, 1, 0, 2, 0, 1, 2, 0, 1, 0, 2, 0])
+    states = np.repeat(blocks, 50).astype(np.int64)
+    n_obs = states.size
+
+    weights = generator.uniform(0.5, 1.5, n_obs)
+    weights[states == 2] *= weights[states == 1].sum() / weights[states == 2].sum()
+    weights /= weights.sum()
+
+    copies = np.asarray(DECODED, dtype=np.float64)
+    mubar = copies.sum(axis=1) / 2.0
+    p_binom = copies[:, 0] / copies.sum(axis=1)
+
+    alpha, tau = 0.04, 40.0
+    exposure = 6.0e4 * weights
+    mean = exposure * LIBRARY * mubar[states]
+
+    counts_nb = generator.negative_binomial(1.0 / alpha, 1.0 / (1.0 + alpha * mean))
+    trials = generator.integers(20, 50, n_obs)
+    # NB the deletion's fraction is drawn as 1/2 and discarded: a beta at 1
+    #    has no second shape parameter, and the draw is replaced by the 1 the
+    #    model says.
+    interior = np.where(states == 2, 0.5, p_binom[states])
+    majors = generator.beta(interior * tau, (1.0 - interior) * tau)
+    counts_bb = generator.binomial(trials, np.where(states == 2, 1.0, majors))
+
+    return {
+        "states": states,
+        "normal_log_lambda": np.log(weights),
+        "counts_nb": counts_nb.astype(np.float64),
+        "base_nb_mean": exposure,
+        "counts_bb": counts_bb.astype(np.float64),
+        "total_bb_RD": trials.astype(np.float64),
+        "mubar": mubar,
+    }
+
+
+@pytest.mark.end2end
+def test_a_fit_s_errors_decode_the_planted_integer_copies() -> None:
+    """Fit, differentiate, debias, propagate, decode -- against planted pairs.
+
+    **The use #287 exists for.** Everything above checks a piece; this runs
+    the chain `decode_copy_state` sits at the end of, on a genome whose
+    integer copies are known, with a library factor of 1.7 planted so the
+    debiasing has something to remove.
+
+    *The fit.* The marginal negative log-likelihood of
+    `port.extensions.jax_hmm`, maximized by `scipy`'s BFGS over `log_mu`, the
+    logit of the two interior `p_binom`, and a shared `log alpha` and
+    `log tau`. The deletion's `p_binom` is fixed at 1: it sits on the
+    boundary, where the observed information is not the covariance of
+    anything, so it is neither fitted nor decoded -- its `log_mu` is both, and
+    is what balances the constraint. The transitions are fixed at a sticky
+    matrix; they are not what is being decoded. The module fits nothing, and
+    this does not change that: the test fits so there is a fit to take errors
+    of, and the objective it fits is the one `tests/test_jax_hmm.py` pins to
+    `cnaster`'s kernels.
+
+    *The debiasing.* The shift's value is `port.patch.hmm_nophasing.shifts`,
+    the `numba` kernel the patched pipeline runs; its Jacobian is
+    `shift_weights`, and the covariance is `J S J'` on the rate block.
+
+    *The decode.* `(mubar, p)` by the delta method from `(log mubar,
+    logit p_binom)`, with `p` the minor fraction `decode_copy_state` reads.
+
+    Stated tolerances, and realized on seed 23: the Newton decrement at the
+    fit below 1e-6, realized 3.3e-12; the rate-allele correlation below 0.1,
+    realized 0.073; each debiased `mubar` within three standard errors of the
+    planted one, realized 0.78, -1.57 and 1.59; each interior state decoded
+    to exactly its planted pair inside the 95 per cent region, realized at
+    squared distances 1.43 and 2.55 against 5.99; and the undebiased rate
+    decoding to anything else. Seeds 1 to 6 pass the same assertions.
+    """
+    import jax
+    import jax.numpy as jnp
+    from port.extensions.integer_copy import decode_copy_state
+    from port.extensions.jax_hmm import emission, marginal_negative_log_likelihood
+    from port.extensions.parameter_errors import (
+        copy_state_covariance,
+        parameter_errors,
+        shift_weights,
+        shifted_covariance,
+    )
+    from port.patch.hmm_nophasing import shifts
+    from scipy.optimize import minimize
+
+    genome = _planted_genome()
+    n_states = len(DECODED)
+    lengths = np.array([genome["states"].size], dtype=np.int64)
+
+    log_startprob = np.full(n_states, -np.log(n_states))
+    stay = 0.99
+    log_transmat = np.log(
+        np.full((n_states, n_states), (1.0 - stay) / (n_states - 1))
+        + (stay - (1.0 - stay) / (n_states - 1)) * np.eye(n_states)
+    )
+
+    def objective(theta: jnp.ndarray) -> jnp.ndarray:
+        majors = jax.nn.sigmoid(theta[3:5])
+        log_emission = emission(
+            theta[0:3],
+            jnp.full(n_states, jnp.exp(theta[5])),
+            jnp.concatenate([majors, jnp.ones(1)]),
+            jnp.full(n_states, jnp.exp(theta[6])),
+            genome["counts_nb"],
+            genome["base_nb_mean"],
+            genome["counts_bb"],
+            genome["total_bb_RD"],
+        )
+
+        return marginal_negative_log_likelihood(
+            log_emission, log_startprob, log_transmat, lengths
+        )
+
+    # NB started away from the truth by 0.2 in every rate and 0.3 in every
+    #    logit, so the fit has distance to cover; not from a neutral point,
+    #    because a label switch is a different test.
+    truth = np.log(LIBRARY * genome["mubar"])
+    start = np.concatenate([truth + 0.2, [0.3, 0.9], [np.log(0.1), np.log(20.0)]])
+
+    value_and_grad = jax.jit(jax.value_and_grad(objective))
+
+    def scipy_objective(theta: np.ndarray) -> tuple[float, np.ndarray]:
+        value, gradient = value_and_grad(jnp.asarray(theta))
+
+        return float(value), np.asarray(gradient, dtype=np.float64)
+
+    fit = minimize(
+        scipy_objective, start, jac=True, method="BFGS", options={"gtol": 1e-6}
+    )
+
+    errors = parameter_errors(objective, fit.x)
+
+    # NB BFGS stops on a gradient in the parameters' own units, which says
+    #    nothing about whether the remaining step matters. The Newton
+    #    decrement `g' S g` is that step in chi-square units, so it is what
+    #    decides whether the Hessian was taken at the optimum.
+    gradient = scipy_objective(fit.x)[1]
+    decrement = float(gradient @ errors.covariance @ gradient)
+
+    assert decrement < 1e-6, f"not at an optimum: Newton decrement {decrement:.2e}"
+
+    # NB `copy_state_covariance` zeros the rate-allele off-diagonal as a
+    #    modelling statement. The marginal likelihood couples the channels
+    #    through the state posterior, so it holds approximately here and the
+    #    size of the approximation is asserted rather than assumed.
+    scales = np.sqrt(np.diag(errors.covariance))
+    correlation = errors.covariance / np.outer(scales, scales)
+
+    assert np.abs(correlation[0:3, 3:5]).max() < 0.1
+
+    log_mus = fit.x[0:3]
+    states = genome["states"]
+    lambdas = genome["normal_log_lambda"]
+
+    debiased = log_mus - shifts(log_mus, states, lambdas, lengths)[0]
+    rate_covariance = shifted_covariance(
+        errors.covariance[0:3, 0:3], shift_weights(log_mus, states, lambdas)
+    )
+
+    mubar = np.exp(debiased)
+    mubar_covariance = rate_covariance * np.outer(mubar, mubar)
+
+    majors = 1.0 / (1.0 + np.exp(-fit.x[3:5]))
+    slope = majors * (1.0 - majors)
+    allele_covariance = errors.covariance[3:5, 3:5] * np.outer(slope, slope)
+
+    standardized = (mubar - genome["mubar"]) / np.sqrt(np.diag(mubar_covariance))
+
+    assert np.abs(standardized).max() < 3.0, f"mubar residuals {standardized}"
+
+    for state, planted in enumerate(DECODED[:2]):
+        block = copy_state_covariance(mubar_covariance, allele_covariance, state)
+        result = decode_copy_state([mubar[state], 1.0 - majors[state]], block)
+
+        assert result.best == planted, f"state {state}: {result.best} != {planted}"
+        assert result.consistent == (planted,), f"state {state}: {result.consistent}"
+        assert result.consistent_with_data
+
+        # NB the control: the same decode on the raw rate, library factor
+        #    and all, which is what reading `cnaster`'s `log_mu` directly
+        #    would do. Refused, so the debiasing is the step that decoded.
+        raw = decode_copy_state([np.exp(log_mus[state]), 1.0 - majors[state]], block)
+
+        assert planted not in raw.consistent, f"state {state} decoded undebiased"
+
+    # NB the deletion's allele fraction is not fitted, so its rate is judged
+    #    alone: the one channel whose error this computed.
+    deletion = DECODED[2]
+    residual = (mubar[2] - sum(deletion) / 2.0) ** 2 / mubar_covariance[2, 2]
+
+    assert residual < 3.0**2, f"deletion mubar at {np.sqrt(residual):.2f} sigma"
