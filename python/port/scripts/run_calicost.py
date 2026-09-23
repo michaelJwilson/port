@@ -256,12 +256,22 @@ def _set_module(name: str, module: types.ModuleType) -> Iterator[None]:
         sys.modules.pop(name, None)
 
 
-def _palette(cap: int) -> tuple[dict[tuple[int, int], Any], list[tuple[int, int]]]:
-    """CalicoST's `get_full_palette`, extended to every pair up to `cap`."""
-    import matplotlib as mpl
-    from calicost.utils_plotting import get_full_palette
+def _palette(
+    cap: int, original: Any = None
+) -> tuple[dict[tuple[int, int], Any], list[tuple[int, int]]]:
+    """CalicoST's `get_full_palette`, extended to every pair up to `cap`.
 
-    palette, ordered = get_full_palette()
+    `original` is CalicoST's function, taken before `aligned` rebinds the
+    name: read through the module afterwards, it is this one, and recurses.
+    """
+    import matplotlib as mpl
+
+    if original is None:
+        from calicost import utils_plotting
+
+        original = utils_plotting.get_full_palette
+
+    palette, ordered = original()
     extra = [
         (major, total - major)
         for total in range(7, cap + 1)
@@ -345,7 +355,11 @@ def aligned(document: dict[str, Any]) -> Iterator[None]:
         #    `KeyError` after every table is written. Its own colours are
         #    kept; the pairs above them are added, graded by total.
         stack.enter_context(
-            _set(utils_plotting, "get_full_palette", partial(_palette, cap))
+            _set(
+                utils_plotting,
+                "get_full_palette",
+                partial(_palette, cap, utils_plotting.get_full_palette),
+            )
         )
         stack.enter_context(
             _set(

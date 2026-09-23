@@ -289,3 +289,21 @@ def test_the_aligned_palette_colours_every_pair_up_to_the_cap() -> None:
         for major in range(total, (total - 1) // 2, -1)
     } <= set(ours)
     assert len(ordered) == len(set(ordered)) == len(ours)
+
+
+@pytest.mark.infra
+def test_the_aligned_palette_is_callable_while_installed(tmp_path: Path) -> None:
+    """Called through CalicoST's module inside `aligned`, it returns, not recurses."""
+    pytest.importorskip("calicost")
+    from port.scripts.run_calicost import aligned, compatible
+
+    document, _ = _document(tmp_path)
+    document["int_copy_num"]["max_total_copy"] = 12
+
+    with compatible():
+        from calicost import utils_plotting
+
+        with aligned(document):
+            palette, _ = utils_plotting.get_full_palette()
+
+    assert (5, 2) in palette
