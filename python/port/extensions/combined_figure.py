@@ -794,6 +794,38 @@ def _genomic_page(genomic: Call, profile: Call, width: float, scale: float) -> A
     return figure
 
 
+@contextlib.contextmanager
+def page_style() -> Iterator[None]:
+    """Matplotlib's own defaults for the block, whatever the run has set.
+
+    `cnaster.plotting` sets `font.family` to a serif face when it is
+    imported, and `cnaster`'s plots set seaborn's theme when they run, so
+    without this a figure depended on what had been imported or drawn before
+    it (#342). A text or line takes most of its style when it is made, and
+    some -- the hatch's weight among them -- when it is drawn, so both the
+    build and the write are held: `genomic_figure` and `spatial_figure` hold
+    their own, and a caller writing one holds it around the write.
+    """
+    import matplotlib as mpl
+
+    with mpl.rc_context():
+        mpl.style.use("default")
+        yield
+
+
+def _styled(build: Any) -> Any:
+    """`build` under `page_style`."""
+    import functools
+
+    @functools.wraps(build)
+    def styled(*args: Any, **kwargs: Any) -> Any:
+        with page_style():
+            return build(*args, **kwargs)
+
+    return styled
+
+
+@_styled
 def genomic_figure(
     recorded: Recorded, width: float | None = None, height: float = TEXT_HEIGHT
 ) -> Any:
@@ -884,6 +916,7 @@ def _place_spatial(figure: Any, slide_ax: Any, spatial_ax: Any) -> None:
     key.set_bbox_to_anchor((anchor + short / side, 0.0), transform=spatial_ax.transAxes)
 
 
+@_styled
 def spatial_figure(
     recorded: Recorded, he_frame: Any, width: float | None = None
 ) -> Any:

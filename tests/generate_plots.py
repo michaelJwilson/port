@@ -33,6 +33,7 @@ mpl.use("Agg")
 from port.extensions.combined_figure import (
     Recorded,
     genomic_figure,
+    page_style,
     recording,
     spatial_figure,
 )
@@ -97,10 +98,17 @@ def _write_combined(
     plots = next(output.rglob("clones_spatial.pdf")).parent
     # NB at its declared size, not a tight box: the page is drawn at the text
     #    width and included at 1:1, so a box that grows past it is rescaled.
-    write_fig(str(plots / "genomic.pdf"), genomic_figure(recorded), bbox_inches=None)
-    write_fig(
-        str(plots / "spatial.pdf"), spatial_figure(recorded, frame), bbox_inches=None
-    )
+    # NB written as drawn: the run has set seaborn's theme, which a page
+    #    written under it would follow where a style is read at draw time.
+    with page_style():
+        write_fig(
+            str(plots / "genomic.pdf"), genomic_figure(recorded), bbox_inches=None
+        )
+        write_fig(
+            str(plots / "spatial.pdf"),
+            spatial_figure(recorded, frame),
+            bbox_inches=None,
+        )
 
 
 def main() -> None:

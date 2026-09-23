@@ -25,9 +25,12 @@ def _pixels(figure: Any) -> np.ndarray:
     import io
 
     import matplotlib.image as mimage
+    from port.extensions.combined_figure import page_style
 
     buffer = io.BytesIO()
-    figure.savefig(buffer, format="png", dpi=DPI, facecolor="white")
+
+    with page_style():
+        figure.savefig(buffer, format="png", dpi=DPI, facecolor="white")
     buffer.seek(0)
     return np.asarray(np.round(mimage.imread(buffer) * 255.0), dtype=np.uint8)
 
@@ -36,6 +39,15 @@ def _drawn(tmp_path: Path) -> dict[str, np.ndarray]:
     import matplotlib as mpl
 
     mpl.use("Agg")
+    # NB the state a run leaves: `cnaster.plotting` sets a serif face when
+    #    imported, and `cnaster`'s plots set seaborn's context and style; the figures
+    #    follow neither.
+    import cnaster.plotting  # noqa: F401
+    import seaborn as sns  # type: ignore[import-untyped]
+
+    # NB as `cnaster.plot_validation_stats` sets it.
+    sns.set_context("paper", font_scale=0.9)
+    sns.set_style("ticks")
     from port.extensions.combined_figure import genomic_figure, spatial_figure
 
     from tests.test_combined_figure import _recorded
