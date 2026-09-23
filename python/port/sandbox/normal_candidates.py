@@ -16,11 +16,25 @@ the same configuration. RDR sees what BAF could not, so a clone carrying
 balanced gains is separated from the normal one before its spots are summed
 into the baseline.
 
-**In the sandbox, not the default.** It costs a second whole run, and #313's
-oracle -- the planted normal spots as candidates -- collapses two of four
-audited configurations to one clone, which is a second defect downstream of
-the baseline. A selector whose ceiling is the oracle inherits that, so it
-stays here until the collapse is understood.
+**Measured** (`python -m tests.recovery_audit --two-pass-normal`, against
+the default arm; `docs/audit-recovery.md`):
+
+| instance, config | tumor candidates | ARI | mean `mu` err | altered copies exact |
+| --- | ---: | ---: | ---: | ---: |
+| dev, 5 states, 1 x 3 | 380 -> 49 | 0.919 -> 0.859 | 0.186 -> 0.035 | 0.000 -> 0.471 |
+| dev, 10 states, 3 x 30 | 440 -> 0 | 1.000 -> 0.000 (one clone) | diverged | -- |
+| lattice, 5 states, 1 x 3 | -> 110 of 110 | 0.606 -> 0.000 (one clone) | -- | -- |
+| lattice, 9 states, 3 x 30 | 399 -> 0 | 1.000 -> 1.000 | 0.089 -> 0.026 | 0.484 -> 0.749 |
+
+Where the first pass labels the clones exactly, the second equals #313's
+oracle arm to the digit, including the oracle's one-clone collapse at dev
+converged. Where it does not (lattice at 5 states, ARI 0.606), the clone it
+calls normal is a tumor clone and the run collapses.
+
+**In the sandbox, not the default.** Two of four arms collapse, it costs a
+second whole run (144 to 301 s against 35 to 99 s), and a clean baseline
+exposes a second defect downstream: the RDR-stage refinement merges to one
+clone. It stays here until that is understood (#320).
 """
 
 from __future__ import annotations
