@@ -198,6 +198,7 @@ run_cnaster_port --no-patch config.yaml      # the same run, nothing rebound
 run_cnaster_port --no-figures config.yaml    # the replacements that reproduce bitwise
 run_cnaster_port --time-stages config.yaml   # what the replacements cost in the run
 run_cnaster_port --list                      # what would be rebound, and why
+run_cnaster_port --audit-config config.yaml # what the config states that cnaster does not use (#324)
 ```
 
 `port.pipeline.SWAPS` is the table -- one row per `cnaster` name `port`
