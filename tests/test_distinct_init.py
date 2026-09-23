@@ -92,3 +92,44 @@ def test_the_initializer_is_upstreams_bitwise_with_only_minor() -> None:
             assert mine is None
         else:
             np.testing.assert_array_equal(mine, upstreams)
+
+
+@pytest.mark.cnaster
+@pytest.mark.patch
+@pytest.mark.usefixtures("cnaster_config")
+def test_at_radius_zero_the_mixed_phase_initializer_is_upstreams_bitwise(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`only_minor=False` with nothing merged: the same parameters, bit for bit.
+
+    The one change is the merge; with the radius at zero no two components
+    are one, and what is left must be upstream's selection exactly.
+    """
+    import cnaster.hmm_initialize as upstream
+    from port.patch.hmm_initialize import distinct
+
+    monkeypatch.setattr(distinct, "RADIUS", 0.0)
+    rng = np.random.default_rng(4)
+    n_obs = 300
+    base = np.full((n_obs, 1), 60.0)
+    total = np.full((n_obs, 1), 40.0)
+    X = np.stack(
+        [rng.poisson(60.0, (n_obs, 1)), rng.binomial(40, 0.3, (n_obs, 1))], axis=1
+    ).astype(float)
+    arguments = (4, X, base, total, "smp", np.array([n_obs]), None, None)
+
+    with distinct.distinct_init():
+        assert distinct.installed()
+        ours = distinct.gmm_init(
+            *arguments, random_state=0, in_log_space=False, only_minor=False
+        )
+
+    theirs = upstream.gmm_init(
+        *arguments, random_state=0, in_log_space=False, only_minor=False
+    )
+
+    for mine, upstreams in zip(ours, theirs, strict=True):
+        if upstreams is None:
+            assert mine is None
+        else:
+            np.testing.assert_array_equal(mine, upstreams)
