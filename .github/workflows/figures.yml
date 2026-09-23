@@ -81,3 +81,4 @@ jobs:
             docs/plots/*.pdf
             docs/plots/*.png
             docs/plots/*.npz
+            docs/plots/lattice/*.pdf

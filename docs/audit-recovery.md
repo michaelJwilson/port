@@ -24,7 +24,8 @@ integer copies.
 - **Instances:** `dev` is 1,600 spots in 4 bands (480/400/360/360) and 1,000
   bins, with 10 planted states of which 8 are used. `lattice` is the same
   genome with `COPY_LATTICE` states, `2 mu = A + B` (9 planted, 8 used).
-- **Configurations:** F is the figures', 5 states, `max_iter_outer=1`,
+- **Configurations:** F is the figures' as audited, 5 states (8 since
+  #313's follow-up, `tests/generate_plots.py`), `max_iter_outer=1`,
   `max_iter=3`. C is converged, planted `n_states`, 3 × 30.
 - **Metrics:**
   - `state` is the share of clone-bins in the Hungarian-matched state;
