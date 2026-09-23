@@ -268,3 +268,64 @@ def test_the_integer_labels_keep_every_spot_s_fitted_label(tmp_path: Path) -> No
     np.testing.assert_array_equal(
         written.integer_clone_label.to_numpy(), [0, 2, 0, np.nan, 0]
     )
+
+
+@pytest.mark.end2end
+def test_a_run_s_continuous_view_recovers_the_planted_amplification(
+    cnaster_config: None, tmp_path: Path
+) -> None:
+    """`cnv_binlevel.tsv` of a whole run, read against the planted states.
+
+    `run_cnaster` on the round trip's instance (two clones, three states,
+    40 bins), then the writer. Each run bin is mapped to its planted bin by
+    the coordinates `tests.tmp_inputs` gave it, and each fitted clone to the
+    planted clone most of its spots carry. The normal clone reads flat --
+    `mu` 1 and `p` 1/2 to 1e-2 at every bin -- and in the tumour clone the
+    planted amplification, `mu` 5.0 and `p` 0.88, is recovered: its mean
+    `mu` over the neutral bins' to 15 per cent (4.41 measured), and its BAF
+    distance from 1/2 to 0.02 (0.379 against 0.38).
+
+    State 1 (`mu` 1.5, `p` 0.58) is not asserted: at this run's three
+    iterations the fit does not separate it from the neutral state (0.674
+    against 0.663), which is the fit's limit here and not the writer's.
+    """
+    from port.extensions.outputs import run_directories, write_outputs
+
+    from tests.fixtures import core_inference_truth
+    from tests.test_run_cnaster_round_trip import _run
+    from tests.tmp_inputs import GENE_SPACING
+
+    truth = core_inference_truth(
+        n_clones=2, n_states=3, lattice=(25, 40), n_obs=40, n_segments=3, seed=11
+    )
+    (run,) = run_directories(_run(truth, tmp_path, max_iter_outer=1, max_iter=3))
+    write_outputs(run)
+
+    bins = pd.read_csv(run / "cnv_binlevel.tsv", sep="\t")
+    labels = pd.read_csv(run / "clone_labels.tsv", sep="\t", comment="#")
+    offset = np.concatenate([[0], np.cumsum(truth.lengths)[:-1]])
+    planted_bin = (
+        offset[bins.CHR.to_numpy() - 1] + bins.START.to_numpy() // GENE_SPACING
+    )
+    mu_planted = np.exp(np.ravel(truth.log_mu))
+    p_planted = np.ravel(truth.p_binom)
+
+    for clone in np.unique(labels.clone_label):
+        spots = labels.clone_label.to_numpy() == clone
+        planted_clone = int(pd.Series(truth.labels[spots]).mode()[0])
+        state = truth.states[planted_clone, planted_bin]
+        mu = bins[f"clone{clone} mu"].to_numpy()
+        p = bins[f"clone{clone} p"].to_numpy()
+
+        if np.all(state == 0):
+            np.testing.assert_allclose(mu, 1.0, atol=1e-2)
+            np.testing.assert_allclose(p, 0.5, atol=1e-2)
+            continue
+
+        amplified = state == int(np.argmax(mu_planted))
+        ratio = mu[amplified].mean() / mu[state == 0].mean()
+
+        assert ratio == pytest.approx(mu_planted.max() / mu_planted[0], rel=0.15)
+        assert np.abs(p[amplified] - 0.5).mean() == pytest.approx(
+            abs(p_planted[np.argmax(mu_planted)] - 0.5), abs=0.02
+        )
