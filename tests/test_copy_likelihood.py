@@ -11,6 +11,7 @@ likelihood's own maximum over single-state moves (`analytic`).
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -107,3 +108,70 @@ def test_the_candidates_are_every_pair_under_the_cap() -> None:
     assert len(lattice) == 90
     assert lattice.sum(axis=1).max() == 12
     assert ((lattice.sum(axis=1) > 0) & (lattice.min(axis=1) >= 0)).all()
+
+
+@pytest.mark.end2end
+def test_the_entry_point_decodes_the_planted_pair_through_the_likelihood(
+    tmp_path: Path,
+) -> None:
+    """`run_cnaster_port --copy-likelihood` on a two-state copy lattice.
+
+    The critical instance with `(1, 1)` and `(1, 2)` planted: every altered
+    clone-bin of the tumor clone is written as the planted pair, phase folded,
+    and the refinement ran once per decode.
+    """
+    import warnings
+
+    import matplotlib as mpl
+    import pandas as pd
+    from cnaster.config import get_global_config, set_global_config
+    from port.patch import integer_copy
+    from port.scripts.run_cnaster import main
+
+    from tests.fixtures import critical_instance
+    from tests.run_config import write_run_cnaster_config
+    from tests.tmp_inputs import write_tmp_inputs
+    from tests.unsegment import unsegment
+
+    mpl.use("Agg")
+    truth = critical_instance(copy_lattice=True)
+    written = write_tmp_inputs(
+        truth, unsegment(truth, flip_every=0, unassigned_genes=0), tmp_path
+    )
+    config = write_run_cnaster_config(
+        written, truth, max_iter_outer=1, max_iter=3, n_states=2
+    )
+    seen: list[object] = []
+    original = integer_copy._refine
+
+    def counted(*arguments: object) -> object:
+        refined = original(*arguments)  # type: ignore[arg-type]
+        seen.extend(integer_copy.DECODED[-1:])
+        return refined
+
+    integer_copy._refine = counted  # type: ignore[assignment]
+    # NB `run_cnaster` installs its configuration as `cnaster`'s global and
+    #    leaves it there, and a later test that expects none reads it: with
+    #    it set, `test_hmm_phased`'s strict xfail passes.
+    previous = get_global_config()
+
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            assert main([str(config), "--copy-likelihood"]) == 0
+    finally:
+        integer_copy._refine = original
+        set_global_config(previous)
+
+    assert seen, "the likelihood refinement never ran"
+
+    copies = pd.read_csv(
+        next((written.root / "output").rglob("cnv_seglevel.tsv")), sep="\t"
+    )
+    pairs = {
+        tuple(sorted(pair))
+        for column in ("clone0", "clone1")
+        for pair in zip(copies[f"{column} A"], copies[f"{column} B"], strict=True)
+    }
+
+    assert pairs == {(1, 1), (1, 2)}

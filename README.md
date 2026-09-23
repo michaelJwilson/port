@@ -210,6 +210,7 @@ run_cnaster_port --no-patch config.yaml      # the same run, nothing rebound
 run_cnaster_port --no-figures config.yaml    # the replacements that reproduce bitwise
 run_cnaster_port --sal config.yaml           # snakes_and_ladders routines where port measured a gain
 run_cnaster_port --no-copy-cap config.yaml   # cnaster's integer copy caps, A + B <= 6, whatever the config states
+run_cnaster_port --copy-likelihood config.yaml  # integer copies re-decoded by the HMM's pseudobulk likelihood
 run_cnaster_port --time-stages config.yaml   # what the replacements cost in the run
 run_cnaster_port --list                      # what would be rebound, and why
 ```
@@ -244,6 +245,12 @@ planted total of 10 cannot be decoded. `COPY_SWAPS` reads
 without the key decodes exactly as `cnaster` does. The MILP decoder, called
 as `run_cnaster` calls it, returns planted totals of 10 to 12 exactly at a
 stated 12, and none of them at `cnaster`'s 6 (`tests/test_integer_copy_patch.py`).
+
+**`--copy-likelihood` is off by default** (#327). It re-decodes integer
+copies by the HMM's pseudobulk NB/BB likelihood, holding the fitted path, and
+starts from the MILP's answer. On the lattice fixture it decodes 0.794 of
+altered clone-bins exactly, against the MILP's 0.417, and costs 5 s per run
+(`docs/audit-recovery.md`).
 
 **`--sal` is off by default** (#312). It admits `snakes_and_ladders`
 routines only on `port`'s measurement, and admits one today: the clone
