@@ -147,9 +147,20 @@ def test_a_clone_below_the_solver_s_floor_is_merged_away(cnaster_config: None) -
     reassigns every spot of any smaller clone. The planted labelling here is
     separable -- the field recovers it exactly in
     `test_core_inference_fixture.py` -- and the run still returns one clone.
+
+    **On equal bands with events in both clones** (`normal_clone=False`).
+    With #298's normal clone the same 30 spots return **two** clones, so
+    "whatever the data says" is not what the solver does: the floor held on
+    this data and not on that. Pinned on the layout it was measured on, and
+    the contradiction reported on #298.
     """
     truth = core_inference_truth(
-        n_clones=2, n_states=3, lattice=(6, 5), n_obs=60, n_segments=2
+        n_clones=2,
+        n_states=3,
+        lattice=(6, 5),
+        n_obs=60,
+        n_segments=2,
+        normal_clone=False,
     )
 
     result = _run(truth, max_iter_outer=1, max_iter=5)
@@ -261,7 +272,7 @@ def test_the_declared_scale_is_out_of_reach_of_a_single_run_here() -> None:
     mark the run `release` is a measurement rather than a preference.
     """
     truth = core_inference_truth(
-        n_clones=10, n_states=10, lattice=(10, 10), n_obs=100, n_segments=2
+        n_clones=10, n_states=10, lattice=(20, 5), n_obs=100, n_segments=2
     )
     declared = 2.0 * 10 * 10_000 * 5_000 * 8 / 1e9
 
