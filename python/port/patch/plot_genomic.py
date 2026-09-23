@@ -53,6 +53,7 @@ __all__ = [
     "UPSTREAM",
     "Levels",
     "bin_colours",
+    "clone_axes",
     "clone_groups",
     "clone_path",
     "fitted_levels",
@@ -260,6 +261,27 @@ def _points(
     )
 
 
+def clone_axes(figure: Any, n_pairs: int, per_clone: int) -> list[Any]:
+    """`_create_clone_gridspec`'s axes, on a figure the caller owns.
+
+    The same rows -- `per_clone` tracks per clone, a quarter-height gap
+    between clones, no vertical space -- without the 20 in page or the
+    title, which belong to whoever composes the figure.
+    """
+    ratios: list[float] = []
+
+    for pair in range(n_pairs):
+        ratios.extend([1.0] * per_clone)
+
+        if pair < n_pairs - 1:
+            ratios.append(0.25)
+
+    grid = figure.add_gridspec(len(ratios), 1, height_ratios=ratios, hspace=0)
+    rows = [row for row, ratio in enumerate(ratios) if ratio == 1.0]
+
+    return [figure.add_subplot(grid[row, 0]) for row in rows]
+
+
 def plot_clones_genomic(
     lengths: np.ndarray,
     single_X: np.ndarray,
@@ -281,12 +303,17 @@ def plot_clones_genomic(
     plot_rdr_errors: str = "poisson",
     phased_integer_copies: bool = False,
     known_nb_baseline: np.ndarray | None = None,
+    figure: Any = None,
 ) -> Any:
     """Per clone, RDR and BAF along the genome, with the fitted levels.
 
     `cnaster`'s signature and page. The RDR level is shifted by the clone's
     `log Z_c` when the fit was (`port.patch.hmm_nophasing`'s flag), so the
     line sits on the bins it describes.
+
+    `figure`, a `Figure` or `SubFigure`, is drawn into rather than a new
+    20 in page, which is how `port.extensions.combined_figure` sets it in a
+    column (#309). The layout is then the caller's, so no `tight_layout`.
     """
     from port.patch.hmm_nophasing import hmm_nophasing
 
@@ -318,9 +345,14 @@ def plot_clones_genomic(
     x = np.arange(n_obs)
     per_clone = 2 if has_rdr else 1
 
-    figure, axes = _create_clone_gridspec(
-        len(labels), per_clone, base_height, sample_list
-    )
+    if figure is None:
+        figure, axes = _create_clone_gridspec(
+            len(labels), per_clone, base_height, sample_list
+        )
+        owned = True
+    else:
+        axes = clone_axes(figure, len(labels), per_clone)
+        owned = False
 
     for clone, label in enumerate(labels):
         ax_rdr = axes[per_clone * clone] if has_rdr else None
@@ -436,6 +468,8 @@ def plot_clones_genomic(
         else 1 + np.arange(len(lengths))
     )
     _draw_chromosome_boundaries(axes, lengths, chromosomes, chrtext_shift)
-    figure.tight_layout()
+
+    if owned:
+        figure.tight_layout()
 
     return figure
