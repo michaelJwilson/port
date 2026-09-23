@@ -123,11 +123,16 @@ def test_the_figure_swap_is_kept_out_of_the_default_table() -> None:
     apart is what lets `run_cnaster_port` be 47 per cent faster while
     `SWAPS` remains the set that reproduces `cnaster` -- and `--no-figures`
     is the arm that does.
+
+    The table has a second row since #299, `plot_clones_genomic`, which
+    changes the figure for the same reason, so what is pinned is that
+    `write_fig` is in it with its ticket and that no row is in both tables.
     """
     from port.pipeline import FIGURE_SWAPS, SWAPS
 
     names = {swap.name for swap in SWAPS}
+    figures = {swap.name: swap.ticket for swap in FIGURE_SWAPS}
 
     assert "write_fig" not in names
-    assert [swap.name for swap in FIGURE_SWAPS] == ["write_fig"]
-    assert all(swap.ticket == 195 for swap in FIGURE_SWAPS)
+    assert figures["write_fig"] == 195
+    assert not names & set(figures), f"in both tables: {names & set(figures)}"

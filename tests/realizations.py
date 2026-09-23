@@ -76,7 +76,7 @@ the realization with errors says whether it was."""
 
 
 def planted_genome(genome: dict[str, Any] | None = None) -> CoreInferenceTruth:
-    """`core_inference_truth`, with clone 0 neutral, planted from the model.
+    """`core_inference_truth`, planted from the model.
 
     **The model:** `<u_gn> = lambda_g T_n mu_{s_n(g)} / sum_g' lambda_g' mu_{s_n(g')}`,
     with `lambda_g` the normal profile over the genome, normalized to one,
@@ -91,15 +91,13 @@ def planted_genome(genome: dict[str, Any] | None = None) -> CoreInferenceTruth:
     `base_nb_mean` is then `lambda_g T_n / Z_n`, the factor `realize` draws
     `mu` against.
 
-    **The pipeline needs normal spots, and the fixture plants none.** Every
-    clone carries events, so `determine_normal_baseline` builds its baseline
-    from spots that share them and divides them out: at the fixture's
-    default rates a planted `(5, 0.88)` came back as `mu = 0.92, p = 0.12`.
-    Clone 0 with every bin in state 0 gives the baseline what it assumes.
+    Clone 0 is the fixture's normal clone (#298), which
+    `determine_normal_baseline` needs: without one, at the fixture's default
+    rates, a planted `(5, 0.88)` came back as `mu = 0.92, p = 0.12`.
     """
+    # NB clone 0 is planted normal by the fixture itself (#298).
     truth = core_inference_truth(**(genome or GENOME))
-    states = truth.states.copy()
-    states[0] = 0
+    states = truth.states
 
     log_mu = np.log(np.asarray(PLANTED_MU[: truth.log_mu.size], dtype=np.float64))
     mu = np.exp(log_mu)

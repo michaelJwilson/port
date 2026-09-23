@@ -227,6 +227,19 @@ def test_the_equal_partition_recovers_the_planted_bands(
     """
     from cnaster.spatial import best_equal_partition
 
+    # NB equal bands (`normal_clone=False`): the claim is that the equal
+    #    partition *is* the planted one, which holds only where the planted
+    #    bands are equal. #298's normal clone takes 30 per cent of the rows.
+    planted = core_inference_truth(
+        n_clones=2,
+        n_states=3,
+        lattice=LATTICE,
+        n_obs=40,
+        n_segments=3,
+        seed=11,
+        normal_clone=False,
+    )
+
     index, _ = best_equal_partition(
         _coordinates(planted), planted.n_clones, 1, n_trials=50
     )

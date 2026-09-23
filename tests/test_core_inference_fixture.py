@@ -283,7 +283,8 @@ def test_the_pseudobulk_recovers_the_mean_and_not_the_dispersion() -> None:
         inputs.initial_clone_index,
     )
 
-    clone = 0
+    # NB clone 1: clone 0 is the normal clone (#298) and plants no state 1.
+    clone = 1
     state_of = truth.states[clone]
     state = 1
     rows = state_of == state
@@ -341,3 +342,26 @@ def test_the_fixture_is_bitwise_reproducible() -> None:
 
     for name in ("counts_nb", "counts_bb", "base_nb_mean", "total_bb_RD", "states"):
         np.testing.assert_array_equal(getattr(first, name), getattr(second, name))
+
+
+@pytest.mark.smoke
+@pytest.mark.parametrize(
+    ("lattice", "n_clones"), [((12, 10), 3), ((40, 40), 4), ((20, 5), 10)]
+)
+def test_every_size_plants_a_normal_clone_of_at_least_thirty_per_cent(
+    lattice: tuple[int, int], n_clones: int
+) -> None:
+    """Clone 0 is all state 0 and holds at least 30 per cent of the spots (#298).
+
+    At three sizes, the dev instance's among them. Checked against the
+    fixture's own construction, hence `smoke`.
+    """
+    from tests.fixtures import NORMAL_SHARE
+
+    truth = core_inference_truth(
+        n_clones=n_clones, n_states=4, lattice=lattice, n_obs=60, n_segments=2
+    )
+
+    assert np.all(truth.states[0] == 0)
+    assert np.mean(truth.labels == 0) >= NORMAL_SHARE
+    assert np.unique(truth.labels).size == n_clones
