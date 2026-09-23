@@ -124,12 +124,11 @@ def test_the_entry_point_decodes_the_planted_pair_through_the_likelihood(
 
     import matplotlib as mpl
     import pandas as pd
-    from cnaster.config import get_global_config, set_global_config
     from port.patch import integer_copy
     from port.scripts.run_cnaster import main
 
     from tests.fixtures import critical_instance
-    from tests.run_config import write_run_cnaster_config
+    from tests.run_config import isolated_run, write_run_cnaster_config
     from tests.tmp_inputs import write_tmp_inputs
     from tests.unsegment import unsegment
 
@@ -150,18 +149,13 @@ def test_the_entry_point_decodes_the_planted_pair_through_the_likelihood(
         return refined
 
     integer_copy._refine = counted  # type: ignore[assignment]
-    # NB `run_cnaster` installs its configuration as `cnaster`'s global and
-    #    leaves it there, and a later test that expects none reads it: with
-    #    it set, `test_hmm_phased`'s strict xfail passes.
-    previous = get_global_config()
 
     try:
-        with warnings.catch_warnings():
+        with isolated_run(), warnings.catch_warnings():
             warnings.simplefilter("ignore")
             assert main([str(config), "--copy-likelihood"]) == 0
     finally:
         integer_copy._refine = original
-        set_global_config(previous)
 
     assert seen, "the likelihood refinement never ran"
 
