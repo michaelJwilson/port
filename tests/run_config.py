@@ -26,9 +26,12 @@ the original section for section. `tests/test_config_audit.py` pins exactly
 those findings, so a key that stops being read, or starts, is a failing test.
 """
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import yaml
 
 from tests.fixtures import CoreInferenceTruth
@@ -176,3 +179,35 @@ def write_run_cnaster_config(
     path = written.root / "custom_config.yaml"
     path.write_text(yaml.safe_dump(run_cnaster_config(written, truth, **overrides)))
     return path
+
+
+ENTRY_POINT_SEED = 0
+"""The global `numpy` seed a whole run in a test starts from."""
+
+
+@contextmanager
+def isolated_run() -> Iterator[None]:
+    """A whole `run_cnaster` that neither reads nor leaves global state.
+
+    `cnaster` draws from `numpy`'s global generator without seeding it --
+    the ICM's tie-breaks and random sweep order (`icm.py:344`, `483`, `537`,
+    `620`) and the emission initializer's jitter (`hmm_emission.py:71`) -- so
+    a run's labels depend on whatever an earlier test left in that state. The
+    entry-point test read ARI 0.996 in the full suite on #326 and 1.000 alone.
+    Seeded here, and the previous state restored.
+
+    `run_cnaster` also installs its configuration as `cnaster`'s global and
+    leaves it, which a later test expecting none reads; that is restored too.
+    """
+    from cnaster.config import get_global_config, set_global_config
+
+    # NB the legacy global is what `cnaster` draws from, so it is what is seeded.
+    state = np.random.get_state()  # noqa: NPY002
+    config = get_global_config()
+    np.random.seed(ENTRY_POINT_SEED)  # noqa: NPY002
+
+    try:
+        yield
+    finally:
+        np.random.set_state(state)  # noqa: NPY002
+        set_global_config(config)
