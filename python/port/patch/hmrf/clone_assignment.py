@@ -295,6 +295,9 @@ def pipeline_clone_assignment(
     from port.extensions.label_solver import label_solver, sweep_for
     from port.patch.hmrf.adjacency import adjacency_coo
     from port.patch.hmrf.fused_field import fused_spot_clone_field
+    from port.patch.hmrf.refinement import compact, mask_for
+    from port.patch.icm.floor import configured_floor, enforce_floor
+    from port.patch.icm.floor import installed as floor_installed
     from port.patch.icm.interface import CsrGraph, fold_unary, icm_sweep
     from port.patch.plotting.clone_paths import state_vector
 
@@ -432,12 +435,39 @@ def pipeline_clone_assignment(
         #    three adjacency arrays travel as the one graph they are.
         sweep = icm_sweep if solver == "icm" else sweep_for(solver)
 
-        result = sweep(
-            fold_unary(field, log_persample_weights, sample_ids),
-            CsrGraph.from_matrix(adjacency_mat),
-            new_assignment,
-            spatial_weight,
-        )
+        # NB the read-depth refinement's allowed-clone mask, which `cnaster`
+        #    computes and drops (#348): into the field, so no move and no
+        #    merge crosses a BAF clone, and into the floor, whose random
+        #    reassignment reads nothing else. Absent, the call is as before.
+        mask = mask_for(new_assignment, n_clones)
+        knobs: dict[str, Any] = {} if mask is None else {"onehot_allowed_clones": mask}
+
+        if mask is not None:
+            unmasked = field
+            field = np.where(mask, field, -np.inf)
+
+        # NB the floor merged smallest first, into each spot's best clone,
+        #    in place of the sweep's all-at-once random reassignment (#348):
+        #    the sweep runs floorless, the floor is met after it, and a
+        #    second sweep settles what the merge moved.
+        folded = fold_unary(field, log_persample_weights, sample_ids)
+        graph = CsrGraph.from_matrix(adjacency_mat)
+
+        if floor_installed():
+            knobs["min_clone_spots"] = 0
+
+        result = sweep(folded, graph, new_assignment, spatial_weight, **knobs)
+
+        if floor_installed():
+            emptied = enforce_floor(folded, new_assignment, configured_floor())
+
+            if emptied:
+                logger.info(
+                    f"Merged {emptied} clones under {configured_floor()} spots, "
+                    "smallest first (#348)."
+                )
+                result = sweep(folded, graph, new_assignment, spatial_weight, **knobs)
+                enforce_floor(folded, new_assignment, configured_floor())
 
         niter, new_cost = result.niter, result.cost
 
@@ -490,6 +520,13 @@ def pipeline_clone_assignment(
             f"iterations ({time.time() - started:.2f}s with clone breakdown=\n"
             f"{[f'{share:.3f}' for share in counts / counts.sum()]})."
         )
+
+        # NB `cnaster` compacts the surviving clones in ascending order
+        #    (`hmrf.py:648`); the mask follows, so it still describes the
+        #    next iteration's problem.
+        if mask is not None:
+            compact(new_assignment)
+            field = unmasked
 
     logger.info("Computing ln likelihood for hmrf.")
 

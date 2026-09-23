@@ -65,6 +65,13 @@ def pin_neutral(result: Any) -> int:
 
 def run_core_inference(*args: Any, **kwargs: Any) -> Any:
     """Upstream's inference, then the neutral pin when the fit was shifted."""
+    from port.patch.hmm_initialize import distinct
+
+    # NB passed rather than rebound: upstream binds the initializer as a
+    #    default argument (#348).
+    if distinct.installed() and "hmm_initializer" not in kwargs:
+        kwargs["hmm_initializer"] = distinct.gmm_init
+
     result = UPSTREAM(*args, **kwargs)
 
     hmmclass = kwargs.get("hmmclass")

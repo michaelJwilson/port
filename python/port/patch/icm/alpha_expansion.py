@@ -140,6 +140,7 @@ def alpha_expansion_sweep(
     min_clone_spots: int = 200,
     cost_zeropoint: float = 0.0,
     backend: Backend = Backend.PYTHON,
+    onehot_allowed_clones: np.ndarray | None = None,
 ) -> IcmResult:
     """`icm_sweep`'s signature, upstream's solver.
 
@@ -159,7 +160,7 @@ def alpha_expansion_sweep(
     site; ignored rather than approximated so nothing pretends to honour
     them.
     """
-    del tol, epsilon, min_clone_spots, cost_zeropoint
+    del tol, epsilon, min_clone_spots, cost_zeropoint, onehot_allowed_clones
 
     # NB *not* negated: upstream's energy is `-sum h[s] - sum J [s == s]`,
     #    so `h = field` is already `cnaster`'s objective with the sign

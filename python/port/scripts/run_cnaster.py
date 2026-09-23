@@ -35,6 +35,7 @@ from port.pipeline import (
     COPY_SWAPS,
     FIGURE_SWAPS,
     NUMERIC_SWAPS,
+    REFINEMENT_SWAPS,
     SHIFT_SWAPS,
     SWAPS,
     Spent,
@@ -79,6 +80,40 @@ def _parser() -> argparse.ArgumentParser:
             "lowest-mu state to mu = 1 afterwards (#276, #293). **On by "
             "default**: without it a clone's rates come back divided by its "
             "own normalizer. Pass --no-shift for cnaster's unshifted model."
+        ),
+    )
+    parser.add_argument(
+        "--refinement-mask",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help=(
+            "keep each read-depth sub-clone inside its BAF clone, with the "
+            "mask cnaster computes and drops (#348); without it the ICM floor "
+            "reassigns spots across BAF clones. **On by default**, off with "
+            "--no-patch."
+        ),
+    )
+    parser.add_argument(
+        "--floor-merge",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help=(
+            "meet the clone-size floor smallest first, each spot to its best "
+            "remaining clone, at hmrf.min_spots_per_clone (#348); cnaster "
+            "empties every clone under a fixed 200 at once and reassigns its "
+            "spots at random. **On by default**, off with --no-patch."
+        ),
+    )
+    parser.add_argument(
+        "--distinct-init",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help=(
+            "initialize the HMM from distinct GMM components: a component "
+            "within one standard deviation of a heavier one is merged into it "
+            "before the most populated K are kept (#348); cnaster keeps the K "
+            "most populated, which on a mostly normal genome are slices of the "
+            "normal cluster. **On by default**, off with --no-patch."
         ),
     )
     parser.add_argument(
@@ -166,6 +201,11 @@ def main(argv: Sequence[str] | None = None) -> int:
                 f"{swap.module}.{swap.name} <- {swap.replacement}  "
                 f"(#{swap.ticket}, changes the model; --no-shift to omit)"
             )
+        for swap in REFINEMENT_SWAPS:
+            print(
+                f"{swap.module}.{swap.name} <- {swap.replacement}  "
+                f"(#{swap.ticket}, changes the clones; --no-refinement-mask to omit)"
+            )
         for swap in COPY_SWAPS:
             print(
                 f"{swap.module}.{swap.name} <- {swap.replacement}  "
@@ -245,6 +285,34 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         if copy_cap:
             selected = selected + COPY_SWAPS
+        refinement_mask = (
+            not arguments.no_patch
+            if arguments.refinement_mask is None
+            else arguments.refinement_mask
+        )
+        if refinement_mask:
+            from port.patch.hmrf.refinement import forget
+
+            selected = selected + REFINEMENT_SWAPS
+            stack.callback(forget)
+        floor = (
+            not arguments.no_patch
+            if arguments.floor_merge is None
+            else arguments.floor_merge
+        )
+        if floor:
+            from port.patch.icm.floor import floor_merge
+
+            stack.enter_context(floor_merge())
+        distinct = (
+            not arguments.no_patch
+            if arguments.distinct_init is None
+            else arguments.distinct_init
+        )
+        if distinct:
+            from port.patch.hmm_initialize.distinct import distinct_init
+
+            stack.enter_context(distinct_init())
         if shift:
             from port.patch.hmm_nophasing import logmu_shift
 
@@ -268,6 +336,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                 f"{len(sites)} bindings"
                 + (", figures included" if figures else "")
                 + (", copy caps from the config" if copy_cap else "")
+                + (", refinement mask" if refinement_mask else "")
+                + (", floor merged smallest first" if floor else "")
+                + (", distinct initial states" if distinct else "")
                 + (", approx included" if approx else "")
                 + (", shift included" if shift else "")
                 + (", sal included" if arguments.sal else ""),

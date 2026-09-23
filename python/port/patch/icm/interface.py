@@ -175,6 +175,7 @@ def icm_sweep(
     epsilon: float = 0.0,
     min_clone_spots: int = 200,
     cost_zeropoint: float = 0.0,
+    onehot_allowed_clones: np.ndarray | None = None,
 ) -> IcmResult:
     """Run `cnaster`'s live sweep through the reduced interface.
 
@@ -215,7 +216,10 @@ def icm_sweep(
         new_assignment=assignment,
         spatial_weight=beta,
         posterior=None,
-        onehot_allowed_clones=None,
+        # NB `None` unless the refinement's mask applies (#348): the field
+        #    already carries it, and only the floor's reassignment needs it
+        #    passed, since it reads no field.
+        onehot_allowed_clones=onehot_allowed_clones,
         tol=tol,
         log_persample_weights=None,
         sample_ids=None,
