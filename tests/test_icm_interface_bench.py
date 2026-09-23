@@ -25,6 +25,7 @@ seeds it -- otherwise the benchmark measures a different number of epochs on
 every round and reports the variance as noise.
 """
 
+from collections.abc import Callable
 from dataclasses import dataclass
 
 import numpy as np
@@ -32,6 +33,8 @@ import pytest
 from port.patch.icm.interface import CsrGraph, fold_unary, icm_sweep
 from pytest_benchmark.fixture import BenchmarkFixture
 from scipy.sparse import csr_matrix
+
+from tests.fixtures import tiers
 
 GATE_SPOTS = 400
 STRESS_SPOTS = 20_000
@@ -110,26 +113,12 @@ def _patched_call(problem: Problem) -> None:
 
 
 @pytest.mark.benchmark
-def test_cnaster_sweep_gate(benchmark: BenchmarkFixture) -> None:
-    """400 spots, 4 clones."""
-    benchmark(_cnaster_call, _problem(GATE_SPOTS))
-
-
-@pytest.mark.benchmark
-def test_patched_sweep_gate(benchmark: BenchmarkFixture) -> None:
-    """The same, through the reduced interface."""
-    benchmark(_patched_call, _problem(GATE_SPOTS))
-
-
-@pytest.mark.benchmark
-@pytest.mark.release
-def test_cnaster_sweep_stress(benchmark: BenchmarkFixture) -> None:
-    """20,000 spots, which is the scale a slice runs at."""
-    benchmark(_cnaster_call, _problem(STRESS_SPOTS))
-
-
-@pytest.mark.benchmark
-@pytest.mark.release
-def test_patched_sweep_stress(benchmark: BenchmarkFixture) -> None:
-    """And the reduced interface at that scale."""
-    benchmark(_patched_call, _problem(STRESS_SPOTS))
+@pytest.mark.parametrize("n_spots", tiers(GATE_SPOTS, STRESS_SPOTS))
+@pytest.mark.parametrize(
+    "arm", [_cnaster_call, _patched_call], ids=["cnaster", "patched"]
+)
+def test_sweep(
+    benchmark: BenchmarkFixture, arm: Callable[[Problem], None], n_spots: int
+) -> None:
+    """One sweep over 4 clones; 20,000 spots is the scale a slice runs at."""
+    benchmark(arm, _problem(n_spots))

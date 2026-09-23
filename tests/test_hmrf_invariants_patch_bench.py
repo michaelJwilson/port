@@ -33,6 +33,8 @@ from port.patch.hmrf.invariants import BoundaryInvariants, boundary_invariants
 from pytest_benchmark.fixture import BenchmarkFixture
 from scipy.sparse import csr_matrix
 
+from tests.fixtures import tiers
+
 GATE = (240, 160)
 STRESS = (3_000, 5_000)
 WORKING = (10_000, 2_500)
@@ -79,38 +81,26 @@ def _weight_inputs(n_spots: int) -> tuple[BoundaryInvariants, csr_matrix]:
 
 
 @pytest.mark.benchmark
-def test_cnaster_counts_gate(benchmark: BenchmarkFixture) -> None:
-    """Both passes at the gate fixture's shape: 0.041 ms."""
-    base, total = _counts_inputs(GATE)
+@pytest.mark.parametrize(
+    "shape",
+    [
+        *tiers(GATE, STRESS),
+        pytest.param(WORKING, id="working", marks=pytest.mark.release),
+    ],
+)
+def test_cnaster_counts(benchmark: BenchmarkFixture, shape: tuple[int, int]) -> None:
+    """Both passes, per outer iteration, for a constant.
+
+    0.041 ms at the gate shape, 25.2 ms at 3,000 by 5,000, and 48.5 ms at
+    `cnaster`'s own working size, 10,000 by 2,500.
+    """
+    base, total = _counts_inputs(shape)
     benchmark(_cnaster_counts, base, total)
 
 
 @pytest.mark.benchmark
-def test_hoisted_weight_gate(benchmark: BenchmarkFixture) -> None:
-    """What the hoist costs once, at the same shape: 0.018 ms."""
-    invariants, smooth = _weight_inputs(GATE[1])
-    benchmark(invariants.relative_channel_weight, smooth.indptr, smooth.indices)
-
-
-@pytest.mark.benchmark
-@pytest.mark.release
-def test_cnaster_counts_stress(benchmark: BenchmarkFixture) -> None:
-    """3,000 by 5,000: 25.2 ms, per outer iteration, for a constant."""
-    base, total = _counts_inputs(STRESS)
-    benchmark(_cnaster_counts, base, total)
-
-
-@pytest.mark.benchmark
-@pytest.mark.release
-def test_cnaster_counts_working(benchmark: BenchmarkFixture) -> None:
-    """`cnaster`'s own working size, 10,000 by 2,500: 48.5 ms."""
-    base, total = _counts_inputs(WORKING)
-    benchmark(_cnaster_counts, base, total)
-
-
-@pytest.mark.benchmark
-@pytest.mark.release
-def test_hoisted_weight_stress(benchmark: BenchmarkFixture) -> None:
-    """The weight at 5,000 spots: 0.229 ms, paid once rather than per iteration."""
-    invariants, smooth = _weight_inputs(STRESS[1])
+@pytest.mark.parametrize("shape", tiers(GATE, STRESS))
+def test_hoisted_weight(benchmark: BenchmarkFixture, shape: tuple[int, int]) -> None:
+    """What the hoist costs once: 0.018 ms at the gate, 0.229 ms at 5,000 spots."""
+    invariants, smooth = _weight_inputs(shape[1])
     benchmark(invariants.relative_channel_weight, smooth.indptr, smooth.indices)

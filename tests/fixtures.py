@@ -11,9 +11,10 @@ which is the one rung whose correspondence with `cnaster` is exact today.
 """
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
+import pytest
 import torch
 from snakes_and_ladders.emissions import (
     BetaBinomialEmission,
@@ -32,6 +33,18 @@ if TYPE_CHECKING:
 
 DEFAULT_SEED = 11
 """The seed every builder defaults to, so a bare call is reproducible."""
+
+
+def tiers(gate: object, stress: object) -> list[Any]:
+    """A benchmark's two sizes, as parameters: `gate`, and `stress` under `release`.
+
+    `CLAUDE.md` reads a speedup at the stress size alone, so the stress case
+    carries `release` and the per-pull-request tier runs the gate case only.
+    """
+    return [
+        pytest.param(gate, id="gate"),
+        pytest.param(stress, id="stress", marks=pytest.mark.release),
+    ]
 
 
 @dataclass(frozen=True)
