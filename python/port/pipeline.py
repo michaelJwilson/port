@@ -274,6 +274,12 @@ SHIFT_SWAPS: tuple[Swap, ...] = (
         "port.patch.hmrf:run_core_inference",
         293,
     ),
+    Swap(
+        "cnaster.hmrf",
+        "reindex_clones",
+        "port.patch.hmrf:reindex_clones",
+        362,
+    ),
 )
 """The per-clone `logmu_shift`, folded into the fit and **on by default**.
 
@@ -289,7 +295,10 @@ posteriors and `hmm.py:155`'s rescore -- and `pipeline_clone_assignment`
 (in `SWAPS`) reads the class's flag to apply it per candidate clone. The
 `run_core_inference` row pins the result's scale, which the shifted
 likelihood does not set, once after the optimization: the normal clone's
-dominant balanced state is `mu = 1` (#299).
+dominant balanced state is `mu = 1` (#299), and then gives each clone its
+own column, less its `log Z_c`, the normal clone's at zero (#362). The
+`reindex_clones` row carries `p`, `alpha` and `tau` to one column per clone
+so that integer copy reads every clone's own rates.
 
 Its own table because every fitted rate moves, which `CLAUDE.md` forbids
 doing silently; `run_cnaster_port` installs it unless `--no-shift` is given,

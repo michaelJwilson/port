@@ -23,8 +23,11 @@ nothing, and takes the configured cap; `run_cnaster` passes neither.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from typing import Any
 
+import numpy as np
 from cnaster import integer_copy as upstream
 
 __all__ = [
@@ -69,6 +72,37 @@ def _caps(max_allele_copy: int, max_total_copy: int) -> tuple[int, int]:
     )
 
 
+def _shifted(new_log_mu: Any, pred_cnv: Any) -> tuple[Any, int | None]:
+    """The clone's rates and normal state: the pinned table less its shift (#362).
+
+    Formed here, in memory, and nowhere stored; the table unchanged and no
+    normal state where no shifted fit was reindexed, so an unshifted run
+    decodes exactly as before.
+    """
+    from port.patch.hmrf.core_inference import shift_for
+
+    shift, normal = shift_for(pred_cnv)
+    rates = new_log_mu if shift == 0.0 else np.asarray(new_log_mu) - shift
+
+    return rates, normal
+
+
+@contextmanager
+def _normal(state: int | None) -> Iterator[None]:
+    """Hand `cnaster`'s decoders the clone's normal state, for the block."""
+    if state is None:
+        yield
+        return
+
+    original = upstream.find_diploid_balanced_state
+    upstream.find_diploid_balanced_state = lambda *_, **__: state
+
+    try:
+        yield
+    finally:
+        upstream.find_diploid_balanced_state = original
+
+
 def hill_climbing_integer_copynumber_oneclone(
     new_log_mu: Any,
     base_nb_mean: Any,
@@ -83,19 +117,21 @@ def hill_climbing_integer_copynumber_oneclone(
 ) -> Any:
     """`cnaster`'s hill climbing, under the configured caps."""
     allele, total = _caps(max_allele_copy, max_total_copy)
+    rates, normal = _shifted(new_log_mu, pred_cnv)
 
-    return _ONECLONE(
-        new_log_mu,
-        base_nb_mean,
-        new_p_binom,
-        pred_cnv,
-        max_allele_copy=allele,
-        max_total_copy=total,
-        max_medploidy=max_medploidy,
-        enforce_states=enforce_states,
-        EPS_BAF=EPS_BAF,
-        expression_weight=expression_weight,
-    )
+    with _normal(normal):
+        return _ONECLONE(
+            rates,
+            base_nb_mean,
+            new_p_binom,
+            pred_cnv,
+            max_allele_copy=allele,
+            max_total_copy=total,
+            max_medploidy=max_medploidy,
+            enforce_states=enforce_states,
+            EPS_BAF=EPS_BAF,
+            expression_weight=expression_weight,
+        )
 
 
 def hill_climbing_integer_copynumber_fixdiploid_milp(
@@ -119,23 +155,25 @@ def hill_climbing_integer_copynumber_fixdiploid_milp(
 ) -> Any:
     """`cnaster`'s MILP decoder, under the configured caps."""
     allele, total = _caps(max_allele_copy, max_total_copy)
+    rates, normal = _shifted(new_log_mu, pred_cnv)
 
-    return _MILP(
-        new_log_mu,
-        base_nb_mean,
-        new_p_binom,
-        pred_cnv,
-        max_allele_copy=allele,
-        max_total_copy=total,
-        max_medploidy=max_medploidy,
-        min_prop_threshold=min_prop_threshold,
-        EPS_BAF=EPS_BAF,
-        nonbalance_bafdist=nonbalance_bafdist,
-        nondiploid_rdrdist=nondiploid_rdrdist,
-        cost_type=cost_type,
-        enforce_order=enforce_order,
-        uniform_state_weights=uniform_state_weights,
-        rdr_relative_weight=rdr_relative_weight,
-        enforce_states=enforce_states,
-        max_samples=max_samples,
-    )
+    with _normal(normal):
+        return _MILP(
+            rates,
+            base_nb_mean,
+            new_p_binom,
+            pred_cnv,
+            max_allele_copy=allele,
+            max_total_copy=total,
+            max_medploidy=max_medploidy,
+            min_prop_threshold=min_prop_threshold,
+            EPS_BAF=EPS_BAF,
+            nonbalance_bafdist=nonbalance_bafdist,
+            nondiploid_rdrdist=nondiploid_rdrdist,
+            cost_type=cost_type,
+            enforce_order=enforce_order,
+            uniform_state_weights=uniform_state_weights,
+            rdr_relative_weight=rdr_relative_weight,
+            enforce_states=enforce_states,
+            max_samples=max_samples,
+        )
