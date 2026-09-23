@@ -56,11 +56,15 @@ HATCH_ANGLE = 25.0
 """Degrees from the horizontal: flatter than a 45-degree hatch, so a row a
 tenth of an inch tall carries several lines rather than one."""
 
-HATCH_SPACING = 0.035
+HATCH_SPACING = 0.07
 """Inches between lines, along the row."""
 
 HATCH_LINEWIDTH = 0.9
-"""Points: about half the spacing, so A's fill and B's lines read equally."""
+"""Points: about a sixth of the spacing, so A's fill reads first."""
+
+LINEWIDTH = 0.5
+"""Points, for each row's outline and the chromosome boundaries: what
+`plot_clones_genomic` draws its boundaries at."""
 
 
 def _order(df_cnv: pd.DataFrame, clone_ids: list[str]) -> list[str]:
@@ -111,7 +115,8 @@ class _Hatch(LineCollection):
     """
 
     def __init__(self, fill: Rectangle, colour: Any, orientation: int) -> None:
-        super().__init__([], colors=[colour], linewidths=HATCH_LINEWIDTH)
+        # NB under the outlines (zorder 3), over the fill (1).
+        super().__init__([], colors=[colour], linewidths=HATCH_LINEWIDTH, zorder=1.5)
         self.fill = fill
         self.orientation = orientation
         self.set_transform(IdentityTransform())
@@ -207,7 +212,14 @@ def plot_copy_number_profile(
 
     for k in range(num_clones):
         y0 = gap / 2 + k * h
-        ax.vlines(ch_coords, ymin=y0, ymax=y0 + row, linewidth=1, colors="black")
+        ax.vlines(
+            ch_coords,
+            ymin=y0,
+            ymax=y0 + row,
+            linewidth=LINEWIDTH,
+            colors="black",
+            zorder=3,
+        )
         ax.add_patch(
             Rectangle(
                 (0, y0),
@@ -215,7 +227,8 @@ def plot_copy_number_profile(
                 row,
                 facecolor="none",
                 edgecolor="black",
-                linewidth=1,
+                linewidth=LINEWIDTH,
+                zorder=3,
             )
         )
 
@@ -266,36 +279,52 @@ def plot_ascn_legend(
     tick_len: float = 0.08,
     label_fontsize: float = 10,
     palette_name: str = "chisel_single",
+    span: float | None = None,
 ) -> Any:
-    """`cnaster`'s colour bar, with a swatch for each hatch orientation, `h=0` and `h=1`."""
+    """The phase swatches and `cnaster`'s colour bar, each titled.
+
+    Two swatches, black lines on white, one per hatch orientation: `h=`
+    to the left, `0` and `1` centred under them, "Phase" centred over
+    them. Then the copy-number bar, "$\\mathbb{N}$-CNA" centred over it
+    at the titles' height. With `span`, the axis runs `0` to `span` and
+    the bar ends there, so a caller that sets the axis over its plot
+    gets the swatches on the plot's left edge and the bar on its right.
+    """
     state_style, ordered_acn = get_full_palette(palette_name)
     ax.axis("off")
 
-    # NB the two orientations, named by haplotype: `h=0` where A is the
-    #    major allele, `h=1` where B is. The colours are the example's.
-    example_a, example_b = 3, 2
-    key = [
-        ("h=0", example_a, example_b),
-        ("h=1", example_b, example_a),
-    ]
-    x = 0.0
+    gap = 0.15 * box_w
+    title_y = box_h + 0.12
+    label_y = -tick_len - 0.04
+    text = {"fontsize": label_fontsize, "clip_on": False}
 
-    for label, a, b in key:
-        _segment(ax, x, 0.0, box_w, box_h, a, b, state_style)
+    for k, orientation in enumerate((HATCH[1], HATCH[-1])):
+        x = k * (box_w + gap)
+        swatch = Rectangle(
+            (x, 0.0), box_w, box_h, facecolor="white", edgecolor="none", linewidth=0
+        )
+        ax.add_patch(swatch)
+        _hatch(ax, swatch, "black", orientation)
         ax.add_patch(
-            Rectangle((x, 0.0), box_w, box_h, facecolor="none", edgecolor="black")
+            Rectangle(
+                (x, 0.0),
+                box_w,
+                box_h,
+                facecolor="none",
+                edgecolor="black",
+                linewidth=LINEWIDTH,
+                zorder=3,
+            )
         )
-        ax.text(
-            x + box_w / 2,
-            -tick_len - 0.04,
-            label,
-            ha="center",
-            va="top",
-            fontsize=label_fontsize,
-        )
-        x += box_w + 0.15
+        ax.text(x + box_w / 2, label_y, str(k), ha="center", va="top", **text)
 
-    x0 = x + 0.35
+    ax.text(-gap, label_y, "h=", ha="right", va="top", **text)
+    phase_end = 2 * box_w + gap
+    ax.text(phase_end / 2, title_y, "Phase", ha="center", va="bottom", **text)
+
+    bar = len(ordered_acn) * box_w
+    end = span if span is not None else phase_end + 3 * box_w + bar
+    x0 = end - bar
 
     for i, label in enumerate(ordered_acn):
         color = state_style.get(label)
@@ -306,22 +335,18 @@ def plot_ascn_legend(
                 box_h,
                 facecolor=mcolors.to_rgba(color, NORMAL_OPACITY if label == 1 else 1.0),
                 edgecolor="black",
+                linewidth=LINEWIDTH,
             )
         )
         xc = x0 + i * box_w + box_w / 2.0
-        ax.plot([xc, xc], [-tick_len, 0.0], color="black", linewidth=0.8)
-        ax.text(
-            xc,
-            -tick_len - 0.04,
-            str(label),
-            ha="center",
-            va="top",
-            fontsize=label_fontsize,
-        )
+        ax.plot([xc, xc], [-tick_len, 0.0], color="black", linewidth=LINEWIDTH)
+        ax.text(xc, label_y, str(label), ha="center", va="top", **text)
 
-    end = x0 + len(ordered_acn) * box_w
-    ax.set_xlim(0.0, end + 0.2)
-    ax.set_ylim(-0.5, box_h + 0.2)
+    ax.text(
+        x0 + bar / 2, title_y, r"$\mathbb{N}$-CNA", ha="center", va="bottom", **text
+    )
+    ax.set_xlim(0.0, end)
+    ax.set_ylim(-0.6, box_h + 0.6)
     ax.set_aspect("auto")
 
     return ax

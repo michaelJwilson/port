@@ -130,8 +130,7 @@ def test_the_page_is_a_column_wide_with_capped_text(
 
     assert figure.get_size_inches()[0] * 25.4 == pytest.approx(122.0)
 
-    titles = [panel._suptitle.get_text() for panel in figure.subfigs[:2]]
-    titles += [panel._suptitle.get_text() for panel in figure.subfigs[2].subfigs]
+    titles = [text.get_text() for text in figure.texts]
     assert titles == ["(a)", "(b)", "(c)", "(d)"]
 
     sizes = [
@@ -265,7 +264,8 @@ def test_b_spans_a_and_its_clone_names_start_in_one_column(
 def test_the_slide_is_left_and_the_clone_key_is_two_columns_one_alone_on_top(
     cnaster_config: None, tmp_path: Path
 ) -> None:
-    """(c) the slide, (d) the clones; three clones key as one over two."""
+    """(c) the slide on (a)'s left edge, (d) the clones; three clones key as one
+    over two, the key's bottom on (d)'s bottom."""
     import matplotlib as mpl
 
     mpl.use("Agg")
@@ -280,7 +280,7 @@ def test_the_slide_is_left_and_the_clone_key_is_two_columns_one_alone_on_top(
         <= clones.axes[0].get_window_extent(renderer).x0
     )
 
-    key = clones.axes[1].get_legend()
+    key = clones.axes[0].get_legend()
     entries = {
         text.get_text(): text.get_window_extent(renderer)
         for text in key.get_texts()
@@ -291,3 +291,53 @@ def test_the_slide_is_left_and_the_clone_key_is_two_columns_one_alone_on_top(
     assert len(entries) == 3
     assert len(rows) == 2
     assert sum(round(box.y0) == rows[0] for box in entries.values()) == 1
+
+    tracks = figure.subfigs[0].axes
+    here = slide.axes[0].get_window_extent(renderer)
+    tiles = clones.axes[0].get_window_extent(renderer)
+
+    assert here.x0 == pytest.approx(
+        min(ax.get_window_extent(renderer).x0 for ax in tracks), abs=1.0
+    )
+    assert key.get_window_extent(renderer).y0 == pytest.approx(tiles.y0, abs=1.0)
+
+
+@pytest.mark.infra
+def test_the_letters_sit_level_with_their_panels_in_the_margin(
+    cnaster_config: None, tmp_path: Path
+) -> None:
+    """Each letter's top on its panel's top, left of every axis; nothing off
+    the page left or right, (b)'s legend on (a)'s edges."""
+    import matplotlib as mpl
+
+    mpl.use("Agg")
+    figure = _page(tmp_path)
+    figure.canvas.draw()
+    renderer = figure.canvas.get_renderer()
+    page = figure.bbox
+    tracks = figure.subfigs[0].axes
+    left = min(ax.get_window_extent(renderer).x0 for ax in tracks)
+    right = max(ax.get_window_extent(renderer).x1 for ax in tracks)
+
+    tiles = figure.subfigs[2].subfigs[1].axes[0].get_window_extent(renderer)
+    # NB (d)'s letter sits between (c) and (d), the others in the margin.
+    edges = (left, left, left, tiles.x0)
+
+    for text, edge in zip(figure.texts, edges, strict=True):
+        box = text.get_window_extent(renderer)
+        assert box.x0 >= page.x0 - 0.5
+        assert box.x1 <= edge, text.get_text()
+
+    for panel in figure.subfigs[:2]:
+        for ax in panel.axes:
+            ticks = [*ax.get_xticklabels(), *ax.get_yticklabels()] if ax.axison else []
+
+            for text in [*ax.texts, *ticks]:
+                if text.get_visible() and text.get_text():
+                    box = text.get_window_extent(renderer)
+                    assert box.x0 >= page.x0 - 0.5, text.get_text()
+                    assert box.x1 <= page.x1 + 0.5, text.get_text()
+
+    legend = figure.subfigs[1].axes[1].get_window_extent(renderer)
+    assert legend.x0 == pytest.approx(left, abs=1.0)
+    assert legend.x1 == pytest.approx(right, abs=1.0)
