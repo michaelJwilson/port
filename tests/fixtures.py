@@ -955,32 +955,43 @@ def clone_bands(
     return labels
 
 
+QUADRANT_CUTS = (0.75, 0.40)
+"""Where `clone_quadrants` cuts the rows and the columns, as shares (#359).
+
+Off the halves the phasing and BAF stages start from
+(`phasing.npart_phasing ** 2` rectangles, `run_cnaster.py:276`), so the
+start is not the truth. The product is `NORMAL_SHARE`, the normal clone's
+top-left block."""
+
+
 def clone_quadrants(
     rows: int, columns: int, n_clones: int, *, normal_clone: bool = True
 ) -> np.ndarray:
     """Clone label per spot: an axis-aligned `p x p` grid of rectangles (#347).
 
     `p = ceil(sqrt(n_clones))`, block `b` holding clone `b % n_clones`, the
-    layout CalicoST's `rectangle_initialize_initial_clone` draws. Clone 0's
-    block is the top-left, widened to `sqrt(NORMAL_SHARE)` of each side so
-    it holds at least `NORMAL_SHARE` of the spots; the other splits are even.
-    Every clone is a rectangle, and so is the union of two side-adjacent
-    ones, which is what keeps CalicoST's initializer off its
-    non-terminating case (`port.scripts.run_calicost.terminating`).
+    layout CalicoST's `rectangle_initialize_initial_clone` draws. The first
+    row and column cuts are at :data:`QUADRANT_CUTS`, not at the halves, so
+    the planted layout is not the `2 x 2` grid `cnaster` starts from (#359);
+    with a normal clone the top-left block holds `NORMAL_SHARE` of the spots.
+    The remaining cuts, for `p > 2`, are even. Every clone is a rectangle,
+    and so is the union of two side-adjacent ones, which is what keeps
+    CalicoST's initializer off its non-terminating case
+    (`port.scripts.run_calicost.terminating`).
     """
     p = int(np.ceil(np.sqrt(n_clones)))
-    first = np.sqrt(NORMAL_SHARE) if normal_clone and n_clones > 1 else 1.0 / p
 
-    def cuts(extent: int) -> np.ndarray:
+    def cuts(extent: int, first: float) -> np.ndarray:
         rest = np.linspace(first, 1.0, p)[1:-1] if p > 2 else np.array([])
         edges = np.concatenate(([first], rest))[: p - 1] if p > 1 else np.array([])
         return np.rint(edges * extent).astype(int)
 
+    row_cut, column_cut = QUADRANT_CUTS if normal_clone else (0.5, 0.5)
     row = np.arange(rows * columns) // columns
     column = np.arange(rows * columns) % columns
-    block = np.searchsorted(cuts(rows), row, side="right") * p + np.searchsorted(
-        cuts(columns), column, side="right"
-    )
+    block = np.searchsorted(
+        cuts(rows, row_cut), row, side="right"
+    ) * p + np.searchsorted(cuts(columns, column_cut), column, side="right")
     labels: np.ndarray = (block % n_clones).astype(np.int64)
 
     return labels
@@ -1363,7 +1374,7 @@ def calicost_instance(**overrides: object) -> CoreInferenceTruth:
     | | |
     | --- | --- |
     | spots | 1,600, a `40 x 40` square lattice |
-    | clones | 4, planted as quadrants: 484 (normal), 396, 396, 324 spots |
+    | clones | 4, planted as rectangles cut at 0.75 and 0.40: 480 (normal), 720, 160, 240 spots |
     | bins | 1,000 over 10 ragged chromosomes (69 to 182 bins) |
     | states | 10 planted, 8 of them used; `mu` 1 to 5, `p` 0.5 to 0.88 |
     | altered bins | 0, 67, 92 and 64 of 1,000 per clone |
@@ -1373,6 +1384,12 @@ def calicost_instance(**overrides: object) -> CoreInferenceTruth:
     the states and every clone's path are its own, drawn from the same
     stream. Only which spot carries which clone differs, and so the clone
     sizes (dev's bands are 480, 400, 360, 360).
+
+    **Why the cuts are off the halves** (#359). `run_cnaster` starts phasing
+    and the BAF stage from `npart_phasing ** 2 = 2 x 2` rectangles cut at the
+    halves. #348 planted cuts at 22 of 40, which agreed with that start at
+    ARI 0.759; these agree at 0.369, pinned under 0.5 in
+    `tests/test_core_inference_fixture.py`.
 
     **Why the layout changes.** CalicoST splits each BAF clone by read depth
     from an initial layout of `ceil(sqrt(n_clones_rdr))^2` rectangles, and at

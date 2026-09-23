@@ -402,3 +402,36 @@ def test_the_mandelbrot_labelling_puts_the_set_in_the_last_clone() -> None:
     np.testing.assert_array_equal(truth.labels == 3, bounded)
     np.testing.assert_array_equal(np.bincount(truth.labels), [480, 400, 400, 320])
     assert np.all(truth.states[0] == 0)
+
+
+GRID_ARI_CEILING = 0.5
+"""The most `calicost_instance`'s planted clones may agree with the start (#359).
+
+`run_cnaster` starts phasing and the BAF stage from `npart_phasing ** 2`
+rectangles cut at the halves. #348's layout, cut at 22 of 40, agreed with
+that start at ARI 0.759, so part of what the BAF stage "recovered" was
+handed to it. The moved layout agrees at 0.369.
+"""
+
+
+@pytest.mark.analytic
+def test_the_calicost_instance_does_not_plant_the_initial_grid() -> None:
+    """Planted clones against `cnaster`'s own `2 x 2` start, by ARI, under a ceiling.
+
+    Checked against `cnaster.spatial.rectangle_partition` at
+    `npart_phasing = 2`, the partition `initialize_clones` makes; the fixture
+    config states `npart_phasing: 2`. Fails if a layout plants the grid again.
+    """
+    from cnaster.spatial import rectangle_partition
+    from sklearn.metrics import adjusted_rand_score
+
+    from tests.fixtures import calicost_instance
+
+    truth = calicost_instance(n_obs=10, n_segments=1)
+    rows, columns = truth.lattice
+    spot = np.arange(rows * columns)
+    coords = np.stack([spot // columns, spot % columns], axis=1).astype(np.float64)
+    _, grid = rectangle_partition(coords, 2, 2)
+
+    assert np.bincount(grid).tolist() == [400] * 4
+    assert adjusted_rand_score(truth.labels, grid) <= GRID_ARI_CEILING
