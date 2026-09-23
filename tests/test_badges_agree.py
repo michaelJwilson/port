@@ -99,6 +99,17 @@ def test_every_measurement_carries_the_conditions_that_decided_it() -> None:
                 f"coverage guard {name} is unmeasured and does not say why"
             )
 
+    patched = recorded.get("patched")
+
+    if patched is not None:
+        for key in ("percent", "patched_lines", "executed_lines", "instance", "commit"):
+            assert key in patched, f"the patched share does not state {key}"
+
+        assert patched["patched_lines"] <= patched["executed_lines"]
+        assert patched["percent"] == pytest.approx(
+            100.0 * patched["patched_lines"] / patched["executed_lines"], abs=0.005
+        ), "the percent is not the recorded counts' ratio"
+
     run = recorded["whole_run"]
 
     for key in ("instance", "commit", "arms"):
