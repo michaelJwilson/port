@@ -333,6 +333,8 @@ def _fit_tracks(panel: Any) -> None:
             top.set_verticalalignment("top")
 
         ax.tick_params(length=2, pad=1)
+        # NB the RDR and BAF labels a point off their ticks, not 4.
+        ax.yaxis.labelpad = 1.0
 
         names = [t for t in ax.texts if t.get_rotation() == 90.0]
         stats = [t for t in ax.texts if t.get_rotation() == 0.0]
@@ -502,9 +504,9 @@ def _place(
 
     Run once the layout is drawn and frozen, when every extent is known:
 
-    - (d)'s clone names start a letter's width and two `LABEL_GAP` in,
-      left-aligned, and the common left edge is where they fit or where
-      (c)'s own furniture needs it, whichever is further in;
+    - the common left edge is as far out as the furniture left of it
+      allows -- (c)'s RDR and BAF labels, (d)'s clone names, (a)'s extent
+      ticks -- each a `LABEL_GAP` in from the page, the names left-aligned;
     - (a)'s tracks, (b)'s axis and its legend share that left edge, and a
       right edge pulled in until no chromosome name runs off the page, so
       bin `i` of (b) is under bin `i` of (a);
@@ -524,11 +526,21 @@ def _place(
     names = profile_ax.get_yticklabels()
     widest = max(t.get_window_extent(renderer).width for t in names) / dpi
 
+    # NB the left edge as far out as the furniture left of it allows: the
+    #    tracks' RDR/BAF labels and ticks, (d)'s names, (a)'s extent ticks,
+    #    each a `gap` in from the page. The letters sit over their panels,
+    #    so they take no column.
     tracks = list(top.axes)
-    left = max(
-        min(ax.get_window_extent(renderer).x0 for ax in tracks) / dpi,
-        letter + 2 * gap + widest + gap,
+    furniture = max(
+        (ax.get_window_extent(renderer).x0 - ax.get_tightbbox(renderer).x0) / dpi
+        for ax in tracks
     )
+    extent = (
+        max(t.get_window_extent(renderer).width for t in slide_ax.get_yticklabels())
+        / dpi
+        + 3.0 / 72.0
+    )
+    left = gap + max(furniture, widest + gap, extent)
     right = max(ax.get_window_extent(renderer).x1 for ax in tracks) / dpi
 
     chromosomes = list(profile_ax.get_xticklabels())
@@ -567,9 +579,7 @@ def _place(
     for text in names:
         text.set_horizontalalignment("left")
 
-    profile_ax.tick_params(
-        axis="y", which="major", pad=(left - letter - 2 * gap) * 72.0, length=0
-    )
+    profile_ax.tick_params(axis="y", which="major", pad=(left - gap) * 72.0, length=0)
 
     plot_ascn_legend(
         legend_ax,

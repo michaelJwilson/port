@@ -235,8 +235,8 @@ def test_b_spans_a_and_its_clone_names_start_in_one_column(
     cnaster_config: None, tmp_path: Path
 ) -> None:
     """The profile's axis has the tracks' left and right edges to 1.5 px, so bin
-    `i` is under bin `i`; its names are left-aligned in a column a letter's
-    width and two `LABEL_GAP` from the page's edge, clear of the axis."""
+    `i` is under bin `i`; its names are left-aligned a `LABEL_GAP` from the
+    page's edge, clear of the axis."""
     import matplotlib as mpl
 
     mpl.use("Agg")
@@ -260,8 +260,8 @@ def test_b_spans_a_and_its_clone_names_start_in_one_column(
     gap = LABEL_GAP / 72.0 * figure.dpi
     assert profile.x0 - max(name.x1 for name in names) >= gap - 1.0
 
-    letter = max(t.get_window_extent(renderer).width for t in figure.texts)
-    assert min(lefts) == pytest.approx(letter + 2 * gap, abs=1.5)
+    # NB a `gap` in from the page: the letters sit over the panels.
+    assert min(lefts) == pytest.approx(gap, abs=1.5)
 
 
 @pytest.mark.infra
