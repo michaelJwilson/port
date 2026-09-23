@@ -13,8 +13,8 @@ it (`swatch`) -- so both alleles read at the row's full height.
 A >= B and to the left where A < B, so a pair of segments whose alleles are
 swapped between clones -- what the chevrons marked -- hatch in opposite
 directions, and every segment carries its orientation rather than only
-mirrored ones. The legend names the two orientations by haplotype: `h=0`
-where A is the major allele, `h=1` where B is.
+mirrored ones. The legend shows the two orientations, unnumbered, under
+"Mirror": what it keys is that a pair hatches opposite ways.
 
 **The hatch is drawn, not a matplotlib hatch.** A hatch pattern is fixed at
 45 degrees and a spacing matplotlib chooses. Here each aberrant segment
@@ -341,14 +341,14 @@ def plot_ascn_legend(
     span: float | None = None,
     title_on_edge: bool = False,
 ) -> Any:
-    """The phase swatches and `cnaster`'s colour bar, each titled on its left.
+    """The mirror swatches and `cnaster`'s colour bar, each titled on its left.
 
-    Two swatches, black lines on white, one per hatch orientation, `0` and
-    `1` centred under them and "Phase" to their left, in the margin or,
+    Two swatches, black lines on white, one per hatch orientation, and
+    "Mirror" to their left, in the margin or,
     with `title_on_edge`, starting on the axis's left edge. Then the copy-number
     bar with "$\\mathbb{N}$-CNA" to its left, on the same line. With `span`,
     the axis runs `0` to `span` and the bar ends there, so a caller that sets
-    the axis over its plot gets the swatches on the plot's left edge, "Phase"
+    the axis over its plot gets the swatches on the plot's left edge, "Mirror"
     in the margin, and the bar on its right edge.
     """
     state_style, ordered_acn = _palette(palette_name)
@@ -359,19 +359,19 @@ def plot_ascn_legend(
     text = {"fontsize": label_fontsize, "clip_on": False}
     start = 0.0
 
-    # NB with `title_on_edge`, "Phase" starts on the axis's left edge -- the
+    # NB with `title_on_edge`, "Mirror" starts on the axis's left edge -- the
     #    caller's common left axis -- and the swatches follow it; otherwise it
     #    ends a gap before them, in the margin.
     if title_on_edge:
         ax.set_xlim(0.0, span if span is not None else 1.0)
         title = ax.text(
-            0.0, box_h / 2, "Phase", ha="left", va="center_baseline", **text
+            0.0, box_h / 2, "Mirror", ha="left", va="center_baseline", **text
         )
         renderer = ax.figure.canvas.get_renderer()
         right = title.get_window_extent(renderer).x1
         start = ax.transData.inverted().transform((right, 0.0))[0] + gap
     else:
-        ax.text(-gap, box_h / 2, "Phase", ha="right", va="center_baseline", **text)
+        ax.text(-gap, box_h / 2, "Mirror", ha="right", va="center_baseline", **text)
 
     for k, orientation in enumerate((HATCH[1], HATCH[-1])):
         x = start + k * (box_w + gap)
@@ -391,7 +391,6 @@ def plot_ascn_legend(
                 zorder=3,
             )
         )
-        ax.text(x + box_w / 2, label_y, str(k), ha="center", va="top", **text)
 
     phase_end = start + 2 * box_w + gap
 

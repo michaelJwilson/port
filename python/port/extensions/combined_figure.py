@@ -22,7 +22,9 @@ is frozen and placed by hand (`_place`): the slide, the tracks, the profile
 and its legend start on one left edge, and the clones, tracks and profile
 end on one right edge, so a chromosome boundary in (c) is over the same
 boundary in (d). Every line is `PROFILE_LINEWIDTH` wide. Each
-letter sits over its panel's top-left corner, `LETTER_GAP` left of it.
+letter sits over its panel, on its leftmost text: (a) and (b)'s extent
+ticks, and for (c) and (d) the left column `NAME_INSET` in, where (d)'s
+clone names and (c)'s RDR and BAF labels start.
 
 **What is drawn is what the run drew.** `recording` keeps the arguments of
 the run's last call to each of the three plotting functions -- for (c), the
@@ -63,8 +65,10 @@ LABEL_GAP = 2.0
 """Points between a label and what it labels: (d)'s clone names and its
 axis, (b)'s key and (b)."""
 
-LETTER_GAP = 5 * LABEL_GAP
-"""Points between a panel letter's right edge and its panel's left edge."""
+NAME_INSET = 3 * LABEL_GAP
+"""Points from the page's left edge to the left column: (d)'s clone names,
+(c)'s RDR and BAF labels, and the letters of (c) and (d)."""
+
 
 SPATIAL_GAP = 0.17
 """Inches between (c) and (d): twice the 0.084 the layout gave, widened if
@@ -333,8 +337,10 @@ def _fit_tracks(panel: Any) -> None:
             top.set_verticalalignment("top")
 
         ax.tick_params(length=2, pad=1)
-        # NB the RDR and BAF labels a point off their ticks, not 4.
+        # NB the RDR and BAF labels a point off their ticks, not 4, and
+        #    without the blank line `cnaster` puts before each.
         ax.yaxis.labelpad = 1.0
+        ax.set_ylabel(ax.get_ylabel().strip())
 
         names = [t for t in ax.texts if t.get_rotation() == 90.0]
         stats = [t for t in ax.texts if t.get_rotation() == 0.0]
@@ -470,22 +476,23 @@ def _set_x(
     ax.set_position(Bbox([[a, b], [c, d]]))
 
 
-def _trim(figure: Any, bottom: float) -> None:
-    """Cut `bottom` inches off the page's foot, every axis kept where it is
-    measured from the top.
+def _trim(figure: Any, bottom: float, top: float = 0.0) -> None:
+    """Cut `bottom` inches off the page's foot and `top` off its head, every
+    axis kept where it is measured from the foot, less `bottom`.
 
-    Only ever cuts: the page is drawn with slack at its foot, and growing it
-    here moved the panels by twice the growth.
+    Only ever cuts: the page is drawn with slack at its foot.
     """
-    if bottom < 0.0:
-        msg = f"the page is {-bottom:.3f} in short at its foot; give it more slack"
+    if min(bottom, top) < 0.0:
+        msg = f"the page is short by {-min(bottom, top):.3f} in; give it more slack"
         raise ValueError(msg)
 
     renderer = figure.canvas.get_renderer()
     dpi = figure.dpi
     width, height = figure.get_size_inches()
-    kept = [(ax, ax.get_window_extent(renderer)) for ax in figure.get_axes()]
-    figure.set_size_inches(width, height - bottom)
+    # NB frozen: an axis's extent is a live transform of the page, so an
+    #    unfrozen one reads the resized page and moves each axis twice.
+    kept = [(ax, ax.get_window_extent(renderer).frozen()) for ax in figure.get_axes()]
+    figure.set_size_inches(width, height - bottom - top)
     figure.canvas.draw()
 
     for ax, box in kept:
@@ -512,8 +519,11 @@ def _place(
       bin `i` of (b) is under bin `i` of (a);
     - (a) starts on the left edge and (b) ends on the right, each drawn at
       `SPATIAL_INSET` of its box and centred in it;
-    - each letter over its panel's top-left corner, `LETTER_GAP` left of it.
+    - each letter over its panel, on its leftmost text, and the page's head
+      a `LABEL_GAP` over the letters.
     """
+    from matplotlib.transforms import blended_transform_factory
+
     from port.patch.plot_copy_number_profile import plot_ascn_legend
 
     renderer = figure.canvas.get_renderer()
@@ -522,25 +532,30 @@ def _place(
     gap = LABEL_GAP / 72.0
 
     letters = [figure.text(0.0, 0.0, f"({k})", fontsize=LABEL_SIZE) for k in "abcd"]
-    letter = max(t.get_window_extent(renderer).width for t in letters) / dpi
     names = profile_ax.get_yticklabels()
     widest = max(t.get_window_extent(renderer).width for t in names) / dpi
 
-    # NB the left edge as far out as the furniture left of it allows: the
-    #    tracks' RDR/BAF labels and ticks, (d)'s names, (a)'s extent ticks,
-    #    each a `gap` in from the page. The letters sit over their panels,
-    #    so they take no column.
+    # NB one left column `NAME_INSET` in: (d)'s names and (c)'s RDR and BAF
+    #    labels start there, and the left edge is as close as what sits
+    #    between the column and the axes allows -- a label, a `gap`, the
+    #    ticks -- or (a)'s extent ticks, whichever is wider.
     tracks = list(top.axes)
-    furniture = max(
-        (ax.get_window_extent(renderer).x0 - ax.get_tightbbox(renderer).x0) / dpi
+    column = NAME_INSET / 72.0
+    labelled = [ax for ax in tracks if ax.get_ylabel()]
+    label = max(ax.yaxis.label.get_window_extent(renderer).width for ax in labelled)
+    ticks_width = max(
+        t.get_window_extent(renderer).width
         for ax in tracks
+        for t in ax.get_yticklabels()
+        if t.get_text()
     )
+    furniture = label / dpi + gap + ticks_width / dpi + 3.0 / 72.0
     extent = (
         max(t.get_window_extent(renderer).width for t in slide_ax.get_yticklabels())
         / dpi
         + 3.0 / 72.0
     )
-    left = gap + max(furniture, widest + gap, extent)
+    left = column + max(furniture, widest + gap, extent)
     right = max(ax.get_window_extent(renderer).x1 for ax in tracks) / dpi
 
     chromosomes = list(profile_ax.get_xticklabels())
@@ -579,7 +594,19 @@ def _place(
     for text in names:
         text.set_horizontalalignment("left")
 
-    profile_ax.tick_params(axis="y", which="major", pad=(left - gap) * 72.0, length=0)
+    profile_ax.tick_params(
+        axis="y", which="major", pad=(left - column) * 72.0, length=0
+    )
+
+    # NB each RDR and BAF label's left on the column; a y label is anchored
+    #    on its side nearest the axis, so it is set its own width right of it.
+    for ax in labelled:
+        at = column + ax.yaxis.label.get_window_extent(renderer).width / dpi
+        ax.yaxis.set_label_coords(
+            at,
+            0.5,
+            transform=blended_transform_factory(figure.dpi_scale_trans, ax.transAxes),
+        )
 
     plot_ascn_legend(
         legend_ax,
@@ -666,31 +693,43 @@ def _place(
         / dpi
     )
     _trim(figure, lowest - gap)
-    height = figure.get_size_inches()[1]
 
+    # NB each letter just above its panel and on its panel's leftmost text:
+    #    (a) and (b)'s extent ticks, (c) and (d)'s left column. Placed, the
+    #    page's head is cut to a `gap` over them, and they are placed again.
+    heads = (
+        min(t.get_window_extent(renderer).x0 for t in slide_ax.get_yticklabels()),
+        min(t.get_window_extent(renderer).x0 for t in spatial_ax.get_yticklabels()),
+        column * dpi,
+        column * dpi,
+    )
+
+    def letter_positions() -> None:
+        figure.canvas.draw()
+        height = figure.get_size_inches()[1]
+
+        for text, ax, x in zip(
+            letters, (slide_ax, spatial_ax, tracks[0], legend_ax), heads, strict=True
+        ):
+            box = ax.get_window_extent(renderer)
+            # NB over (c)'s statistics line and (a) and (b)'s top tick.
+            above = [*ax.texts, *(ax.get_yticklabels() if ax.axison else [])]
+            top = max(
+                [box.y1]
+                + [
+                    t.get_window_extent(renderer).y1
+                    for t in above
+                    if t.get_visible() and t.get_text()
+                ]
+            )
+            text.set_position((x / dpi / width, (top / dpi + gap / 2) / height))
+            text.set_verticalalignment("bottom")
+
+    letter_positions()
     figure.canvas.draw()
-
-    # NB each letter just above its panel's top edge and `LETTER_GAP` left
-    #    of its left edge, so it sits with its panel rather than in a column.
-    for text, ax in zip(
-        letters, (slide_ax, spatial_ax, tracks[0], legend_ax), strict=True
-    ):
-        box = ax.get_window_extent(renderer)
-        # NB over (c)'s first statistics line, which heads its panel.
-        # NB and over the top extent tick of (a) and (b).
-        heads = [*ax.texts, *(ax.get_yticklabels() if ax.axison else [])]
-        top = max(
-            [box.y1]
-            + [
-                t.get_window_extent(renderer).y1
-                for t in heads
-                if t.get_visible() and t.get_text()
-            ]
-        )
-        x = box.x0 / dpi - letter - LETTER_GAP / 72.0
-        y = top / dpi + gap / 2
-        text.set_position((x / width, y / height))
-        text.set_verticalalignment("bottom")
+    highest = max(t.get_window_extent(renderer).y1 for t in letters) / dpi
+    _trim(figure, 0.0, figure.get_size_inches()[1] - highest - gap)
+    letter_positions()
 
     # NB a legend's box is not its anchor to the point: moved, on the page
     #    as it ends, by what it falls short of the right edge.

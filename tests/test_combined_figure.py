@@ -235,12 +235,12 @@ def test_b_spans_a_and_its_clone_names_start_in_one_column(
     cnaster_config: None, tmp_path: Path
 ) -> None:
     """The profile's axis has the tracks' left and right edges to 1.5 px, so bin
-    `i` is under bin `i`; its names are left-aligned a `LABEL_GAP` from the
-    page's edge, clear of the axis."""
+    `i` is under bin `i`; its names are left-aligned on the column
+    `NAME_INSET` from the page's edge, clear of the axis."""
     import matplotlib as mpl
 
     mpl.use("Agg")
-    from port.extensions.combined_figure import LABEL_GAP
+    from port.extensions.combined_figure import LABEL_GAP, NAME_INSET
 
     figure = _page(tmp_path)
     figure.canvas.draw()
@@ -260,8 +260,9 @@ def test_b_spans_a_and_its_clone_names_start_in_one_column(
     gap = LABEL_GAP / 72.0 * figure.dpi
     assert profile.x0 - max(name.x1 for name in names) >= gap - 1.0
 
-    # NB a `gap` in from the page: the letters sit over the panels.
-    assert min(lefts) == pytest.approx(gap, abs=1.5)
+    # NB on the left column: the letters sit over the panels.
+    column = NAME_INSET / 72.0 * figure.dpi
+    assert min(lefts) == pytest.approx(column, abs=1.5)
 
 
 @pytest.mark.infra
@@ -305,42 +306,59 @@ def test_the_top_row_is_slide_clones_key_edge_to_edge(
 
 
 @pytest.mark.infra
-def test_the_letters_sit_over_the_top_left_corner_of_their_panels(
+def test_the_letters_sit_over_their_panels_on_its_leftmost_text(
     cnaster_config: None, tmp_path: Path
 ) -> None:
-    """Each letter's bottom on its panel's top, or on (c)'s statistics line,
-    to one `LABEL_GAP`, and its right edge `LETTER_GAP` left of the panel,
-    to a letter's width; no text off the page, (d)'s legend on (c)'s edges."""
+    """Each letter's bottom on its panel's top, or on the text over it, to one
+    `LABEL_GAP`; its left on (a) and (b)'s extent ticks, or on (c) and (d)'s
+    left column, which (c)'s labels and (d)'s names start on; the page's head
+    a `LABEL_GAP` over the letters; no text off the page, (d)'s legend on
+    (c)'s edges."""
     import matplotlib as mpl
 
     mpl.use("Agg")
-    from port.extensions.combined_figure import LABEL_GAP, LETTER_GAP
+    from port.extensions.combined_figure import LABEL_GAP, NAME_INSET
 
     figure = _page(tmp_path)
     figure.canvas.draw()
     renderer = figure.canvas.get_renderer()
     page = figure.bbox
     gap = LABEL_GAP / 72.0 * figure.dpi
-    space = LETTER_GAP / 72.0 * figure.dpi
+    column = NAME_INSET / 72.0 * figure.dpi
     tracks = figure.subfigs[1].axes
     left = min(ax.get_window_extent(renderer).x0 for ax in tracks)
     right = max(ax.get_window_extent(renderer).x1 for ax in tracks)
 
     slide, clones = figure.subfigs[0].axes
-    panels = (slide, clones, tracks[0], figure.subfigs[2].axes[0])
-    letter = max(t.get_window_extent(renderer).width for t in figure.texts)
+    legend_ax, profile = figure.subfigs[2].axes
+    edges = (
+        min(t.get_window_extent(renderer).x0 for t in slide.get_yticklabels()),
+        min(t.get_window_extent(renderer).x0 for t in clones.get_yticklabels()),
+        column,
+        column,
+    )
 
-    for text, ax in zip(figure.texts, panels, strict=True):
+    for text, ax, edge in zip(
+        figure.texts, (slide, clones, tracks[0], legend_ax), edges, strict=True
+    ):
         box = text.get_window_extent(renderer)
-        edge = ax.get_window_extent(renderer)
-        heads = [t.get_window_extent(renderer).y1 for t in ax.texts if t.get_visible()]
-        above = max([edge.y1, *heads])
+        heads = [
+            t.get_window_extent(renderer).y1
+            for t in [*ax.texts, *(ax.get_yticklabels() if ax.axison else [])]
+            if t.get_visible() and t.get_text()
+        ]
+        above = max([ax.get_window_extent(renderer).y1, *heads])
 
-        assert box.x0 >= page.x0 - 0.5, text.get_text()
-        assert edge.x0 - space - letter - 0.5 <= box.x0, text.get_text()
-        assert box.x1 <= edge.x0 - space + 0.5, text.get_text()
+        assert box.x0 == pytest.approx(edge, abs=1.5), text.get_text()
         assert box.y0 >= above - 0.5, text.get_text()
         assert box.y0 <= above + gap, text.get_text()
+
+    labels = [ax.yaxis.label.get_window_extent(renderer).x0 for ax in tracks]
+    names = [t.get_window_extent(renderer).x0 for t in profile.get_yticklabels()]
+    assert labels + names == pytest.approx([column] * len(labels + names), abs=1.5)
+
+    highest = max(t.get_window_extent(renderer).y1 for t in figure.texts)
+    assert page.y1 - highest == pytest.approx(gap, abs=1.5)
 
     for panel in figure.subfigs:
         for ax in panel.axes:
