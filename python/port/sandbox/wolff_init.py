@@ -42,9 +42,9 @@ from scipy.sparse.csgraph import connected_components
 
 __all__ = [
     "MAX_CLONES",
-    "draw",
     "Floors",
     "choose_coupling",
+    "draw",
     "recolour",
     "umi_grow",
     "wolff_start",
