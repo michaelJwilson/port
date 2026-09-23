@@ -210,22 +210,48 @@ def _stacked(normal_log_lambda: Any, lengths: tuple[int, ...]) -> np.ndarray:
     raise ValueError(msg)
 
 
-def neutral_state(log_mu: np.ndarray, p_binom: np.ndarray) -> int:
-    """The balanced state with the lowest `mu`: the one pinned to `mu = 1`.
+def neutral_state(
+    log_mu: np.ndarray, p_binom: np.ndarray, path: np.ndarray | None = None
+) -> int:
+    """The state pinned to `mu = 1`: the normal clone's dominant state.
 
     Balanced is within :data:`NEUTRAL_BAF_TOLERANCE` of 0.5, in either
-    allele's convention. Where no state is, the one closest to 0.5 is taken
-    rather than none, because the shifted likelihood has no scale without a
-    pin and an unpinned fit is not comparable to anything.
+    allele's convention. Given the decoded `path`, `(n_obs, n_clones)`, the
+    **normal clone** is the one with the largest share of bins in balanced
+    states, and the pinned state is its most occupied balanced state (#299).
+
+    **Not the balanced state with the lowest `mu`**, which is what #293 first
+    pinned. On the dev instance that chose a small sub-neutral balanced state
+    -- 57 bins of 1,000 -- over the one the normal bins decode to, and put
+    every line in `clones_genomic` 2.40 times too high.
+
+    Without a path, or where no clone decodes to a balanced state, the
+    balanced state with the lowest `mu` is taken, and where no state is
+    balanced the one closest to 0.5: the shifted likelihood has no scale
+    without a pin, and an unpinned fit is not comparable to anything.
     """
     rates = np.asarray(log_mu, dtype=np.float64).reshape(-1)
     distance = np.abs(np.asarray(p_binom, dtype=np.float64).reshape(-1) - 0.5)
-    balanced = np.flatnonzero(distance <= NEUTRAL_BAF_TOLERANCE)
+    balanced = distance <= NEUTRAL_BAF_TOLERANCE
 
-    if balanced.size == 0:
+    if not balanced.any():
         return int(np.argmin(distance))
 
-    return int(balanced[np.argmin(rates[balanced])])
+    if path is not None:
+        decoded = np.asarray(path, dtype=np.int64)
+        decoded = decoded.reshape(decoded.shape[0], -1)
+        share = balanced[decoded].mean(axis=0)
+        normal = int(np.argmax(share))
+
+        if share[normal] > 0.0:
+            counts = np.bincount(decoded[:, normal], minlength=rates.size)
+            counts = np.where(balanced, counts, -1)
+
+            return int(np.argmax(counts))
+
+    candidates = np.flatnonzero(balanced)
+
+    return int(candidates[np.argmin(rates[candidates])])
 
 
 class hmm_nophasing(UPSTREAM):  # type: ignore[misc]
