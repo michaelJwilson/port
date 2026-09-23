@@ -20,10 +20,10 @@ the run's last call to each of the three plotting functions -- for (a), the
 one with integer copies, which is `clones_genomic.pdf` -- so the page is a
 re-drawing of the run's own figures rather than a second derivation of them.
 
-**Text is set once, for the page.** `cnaster`'s helpers hardcode 10 and 12
-pt, sized for a 20 in page; at 6.5 in those are a third of the axis. Every
-text on the page is capped at `FONT_SIZE` after drawing, and the panel
-labels are set above it.
+**Text is set once, for the page.** `cnaster`'s helpers hardcode 6 to 12
+pt, sized for a 20 in page; at 6.5 in the larger are a third of the axis.
+After drawing, every text is set to `FONT_SIZE`, (a)'s to a point under it,
+and the panel labels above both.
 """
 
 from __future__ import annotations
@@ -36,7 +36,11 @@ from typing import Any
 import numpy as np
 
 FONT_SIZE = 6.0
-"""The largest text on the page, in points, bar the panel labels."""
+"""Every text on the page, in points, bar the panel labels and (a)."""
+
+GENOMIC_FONT_SIZE = FONT_SIZE - 1.0
+"""(a)'s text: a point under the rest, for the statistics line to fit the
+gap between clones."""
 
 LABEL_SIZE = 8.0
 """The panel labels, (a) to (d)."""
@@ -141,12 +145,12 @@ def slide_image(frame: Any) -> tuple[np.ndarray, tuple[float, float, float, floa
     return np.clip(image, 0.0, 1.0), extent
 
 
-def _cap_text(figure: Any, size: float) -> None:
+def _set_text(panel: Any, size: float) -> None:
+    """Every text in `panel` at `size`: one size per panel, not a cap."""
     from matplotlib.text import Text
 
-    for text in figure.findobj(Text):
-        if text.get_fontsize() > size:
-            text.set_fontsize(size)
+    for text in panel.findobj(Text):
+        text.set_fontsize(size)
 
 
 def _fit_tracks(panel: Any) -> None:
@@ -247,7 +251,7 @@ def combined_figure(
     width = PAPER_WIDTH if width is None else width
     genomic = recorded.genomic
     n_clones = len(np.unique(genomic.kwargs["res_combine"]["new_assignment"]))
-    heights = (0.75 * n_clones, 0.3 * n_clones + 0.6, SCALE * SIDE * width + 0.2)
+    heights = (0.6 * n_clones, 0.3 * n_clones + 0.6, SCALE * SIDE * width + 0.2)
 
     # NB no space between axes beyond what `clone_axes`' gap rows give.
     figure = plt.figure(
@@ -310,7 +314,10 @@ def combined_figure(
     slide_ax.set_aspect("equal")
     slide_ax.axis("off")
 
-    _cap_text(figure, FONT_SIZE)
+    _set_text(top, GENOMIC_FONT_SIZE)
+
+    for panel in (middle, left, right):
+        _set_text(panel, FONT_SIZE)
 
     # NB as titles, so the layout engine reserves their space.
     for panel, label in zip((top, middle, left, right), "abcd", strict=True):

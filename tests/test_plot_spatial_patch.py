@@ -79,3 +79,41 @@ def test_every_spot_has_upstreams_colour_at_upstreams_point(
     side = np.ptp(corners[:, :, 0], axis=1)
     np.testing.assert_allclose(side, TILE * pitch(coords), rtol=1e-12)
     assert pitch(coords) == 1.0
+
+
+@pytest.mark.patch
+def test_two_samples_are_offset_and_titled_as_upstream_does() -> None:
+    """Sample 1 shifted right by sample 0's width plus 10, colours bitwise.
+
+    Upstream lays samples side by side along `x`, each after the previous
+    one's largest `x` plus 10, and titles the page with the sample names.
+    The same 108 spots split into two samples by row parity.
+    """
+    import matplotlib as mpl
+
+    mpl.use("Agg")
+
+    from cnaster.plotting import plot_clones_spatial as upstream
+    from port.patch.plotting.spatial import plot_clones_spatial
+
+    coords, assignment, _ = _instance()
+    samples = (np.arange(coords.shape[0]) % 2).astype(int)
+    names = ["S0", "S1"]
+
+    shifted = coords.copy()
+    shifted[samples == 1, 0] += coords[samples == 0, 0].max() + 10
+
+    theirs_figure = upstream(coords.copy(), assignment, None, names, samples)
+    theirs = _upstream_by_spot(theirs_figure, shifted)
+    ours = plot_clones_spatial(coords.copy(), assignment, None, names, samples)
+
+    (tiles,) = ours.axes[0].collections
+    centres = np.array([path.vertices[:4] for path in tiles.get_paths()]).mean(axis=1)
+
+    np.testing.assert_array_equal(np.asarray(tiles.get_facecolors()), theirs)
+    # NB a centre is recovered as the mean of four float corners, which is
+    #    exact only where the half-side sums without round-off; realized 4.4e-16.
+    np.testing.assert_allclose(
+        centres, np.column_stack([shifted[:, 0], -shifted[:, 1]]), rtol=0, atol=1e-12
+    )
+    assert [text.get_text() for text in ours.axes[0].texts] == ["S0, S1"]
