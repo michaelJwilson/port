@@ -1042,6 +1042,15 @@ def mandelbrot_labels(
     return labels
 
 
+def balanced_clone(truth: CoreInferenceTruth) -> int:
+    """Which clone the fixture planted at the balanced state in most bins."""
+    return int(
+        np.argmax(
+            [np.mean(truth.states[clone] == 0) for clone in range(truth.n_clones)]
+        )
+    )
+
+
 def core_inference_truth(
     *,
     n_clones: int = 3,
@@ -1521,9 +1530,6 @@ def spot_clone_field(
     )
 
 
-MAX_ENUMERABLE_LABELLINGS = 200_000
-
-
 @dataclass(frozen=True)
 class PottsLabels:
     """A spatial labelling problem, and the truth that built it.
@@ -1684,44 +1690,24 @@ def enumerate_minimum_energy(fixture: PottsLabels) -> tuple[np.ndarray, float]:
     it visited, and without the true optimum there is no way to tell a good
     search from a lucky one.
 
+    `snakes_and_ladders.enumeration.enumerated_optimum` over the negated
+    energy, which refuses past `MAX_ENUMERABLE_CONFIGURATIONS` rather than
+    running for an hour. Its configurations are read reversed, so node zero
+    varies fastest and a tie resolves to the first minimiser in that order.
     Returns the labelling and its energy, under upstream's sign convention
-    (`energy` is minimised). Cost is `n_clones ** n_nodes`, so this is for
-    fixtures built to be enumerable and nothing else.
-
-    Raises
-    ------
-    ValueError
-        If the search space exceeds `MAX_ENUMERABLE_LABELLINGS`. Refusing is
-        the point: an enumeration that silently takes an hour is a test that
-        will be deleted rather than fixed, and a fixture too large to
-        enumerate needs a different referee rather than more patience.
+    (`energy` is minimised).
     """
+    from snakes_and_ladders.enumeration import enumerated_optimum
     from snakes_and_ladders.sim.potts import energy
-
-    n_nodes, n_clones = fixture.n_nodes, fixture.n_clones
-    total = n_clones**n_nodes
-
-    if total > MAX_ENUMERABLE_LABELLINGS:
-        msg = (
-            f"{n_clones}**{n_nodes} = {total} labellings exceeds "
-            f"{MAX_ENUMERABLE_LABELLINGS}; use a smaller fixture"
-        )
-        raise ValueError(msg)
 
     graph = _scaled_graph(fixture)
 
-    best_labelling, best_energy = None, np.inf
-    for index in range(total):
-        labelling = np.array(
-            [(index // n_clones**position) % n_clones for position in range(n_nodes)],
-            dtype=np.int64,
-        )
-        value = energy(graph, fixture.field, labelling)
-        if value < best_energy:
-            best_labelling, best_energy = labelling, value
+    def negated(configuration: tuple[int, ...]) -> float:
+        labelling = np.array(configuration[::-1], dtype=np.int64)
+        return -energy(graph, fixture.field, labelling)
 
-    assert best_labelling is not None
-    return best_labelling, float(best_energy)
+    optimum, best = enumerated_optimum(fixture.n_clones, fixture.n_nodes, negated)
+    return np.array(optimum[::-1], dtype=np.int64), -best
 
 
 def _scaled_graph(fixture: PottsLabels) -> "PottsGraph":
@@ -1739,3 +1725,81 @@ def _scaled_graph(fixture: PottsLabels) -> "PottsGraph":
         edges=fixture.graph.edges,
         coupling=tuple(fixture.spatial_weight * j for j in fixture.graph.coupling),
     )
+
+
+def synthetic_ranges(
+    n_snps: int, n_ranges: int, seed: int = 11
+) -> tuple[np.ndarray, Any]:
+    """SNP ids and filter ranges over a genome, both sorted as the loader needs.
+
+    For the range filter and its benchmark. The ids are `cnaster`'s own text form --
+    `{chromosome}_{position}_{ref}_{alt}` -- because the filter parses them with
+    `split("_")`, so a test handing it tuples would not exercise the parse.
+    """
+    import pandas as pd
+
+    rng = np.random.default_rng(seed)
+
+    chromosomes = rng.integers(1, 23, n_snps)
+    positions = rng.integers(0, 250_000_000, n_snps)
+    order = np.lexsort((positions, chromosomes))
+    snp_ids = np.array(
+        [f"{chromosomes[k]}_{positions[k]}_A_T" for k in order], dtype=object
+    )
+
+    range_chromosomes = rng.integers(1, 23, n_ranges)
+    range_starts = rng.integers(0, 250_000_000, n_ranges)
+    range_order = np.lexsort((range_starts, range_chromosomes))
+
+    ranges = pd.DataFrame(
+        {
+            "Chr": range_chromosomes[range_order],
+            "Start": range_starts[range_order],
+            "End": range_starts[range_order] + 2_000_000,
+        }
+    )
+
+    return snp_ids, ranges
+
+
+def genomic_plot_instance(seed: int = 17, n_states: int = 4) -> dict[str, Any]:
+    """`plot_clones_genomic`'s arguments and a fit result: 24 bins, 9 spots, 3 clones."""
+    rng = np.random.default_rng(seed)
+    n_obs, n_spots, n_clones = 24, 9, 3
+
+    total = rng.integers(20, 80, size=(n_obs, n_spots)).astype(float)
+    X = np.zeros((n_obs, 2, n_spots))
+    X[:, 0, :] = rng.poisson(150, size=(n_obs, n_spots))
+    X[:, 1, :] = rng.binomial(total.astype(int), 0.45)
+
+    return {
+        "arguments": (
+            np.array([n_obs]),
+            X,
+            rng.uniform(100.0, 200.0, size=(n_obs, n_spots)),
+            total,
+        ),
+        "result": {
+            "new_assignment": np.tile(np.arange(n_clones), n_spots // n_clones),
+            "pred_cnv": rng.integers(0, n_states, size=(n_obs, n_clones)),
+            "new_log_mu": rng.normal(0.0, 0.2, size=(n_states, 1)),
+            "new_p_binom": rng.uniform(0.15, 0.85, size=(n_states, 1)),
+        },
+        "rng": rng,
+    }
+
+
+def integer_copies(rng: np.random.Generator, n_obs: int, n_clones: int) -> Any:
+    """A `df_cnv` of major and minor copies per clone, the first four bins diploid."""
+    import pandas as pd
+
+    frame: dict[str, np.ndarray] = {"CHR": np.ones(n_obs, dtype=int)}
+
+    for clone in range(n_clones):
+        major = rng.integers(1, 4, size=n_obs)
+        minor = rng.integers(0, 2, size=n_obs)
+        major[:4], minor[:4] = 1, 1
+        frame[f"clone{clone} A"] = major
+        frame[f"clone{clone} B"] = minor
+
+    return pd.DataFrame(frame)

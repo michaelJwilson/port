@@ -15,15 +15,13 @@ different split of the same total is exactly the error this arrangement could
 make, and a scalar would not see it.
 """
 
-from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
 
 import numpy as np
 import pytest
 
 from tests.fixtures import CoreInferenceTruth, core_inference_truth
-from tests.tmp_inputs import write_tmp_inputs, written_config
+from tests.tmp_inputs import Binned, read_to_bins, write_tmp_inputs, written_config
 from tests.unsegment import unsegment
 
 pytestmark = [pytest.mark.preprocessing]
@@ -38,20 +36,12 @@ setting is a separate question with its own instance.
 """
 
 
-def _prepared(tmp_path: Path, n_obs: int = 20) -> tuple[CoreInferenceTruth, Any]:
+def _prepared(tmp_path: Path, n_obs: int = 20) -> tuple[CoreInferenceTruth, Binned]:
     """Drive the prep chain `run_cnaster` runs, in its order, and bin at the end.
 
     One call, because every function in the chain reads the global config and
     the chain has to hold it open across all of them.
     """
-    from cnaster.omics import (
-        assign_initial_blocks,
-        create_bin_ranges,
-        form_gene_snp_table,
-        summarize_counts_for_bins,
-        summarize_counts_for_blocks,
-    )
-
     truth = core_inference_truth(
         n_clones=2, n_states=3, lattice=(6, 5), n_obs=n_obs, n_segments=2
     )
@@ -60,58 +50,13 @@ def _prepared(tmp_path: Path, n_obs: int = 20) -> tuple[CoreInferenceTruth, Any]
     written = write_tmp_inputs(truth, unsegment(truth, flip_every=0), tmp_path)
 
     with written_config(written):
-        from cnaster.config import get_global_config
-        from cnaster.io import load_input_data
-
-        loaded = load_input_data(get_global_config())
-        alleles = (loaded.cell_snp_Aallele, loaded.cell_snp_Ballele)
-
-        table = form_gene_snp_table(
-            loaded.unique_snp_ids, str(written.hgtable), loaded.adata
-        )
-        table = assign_initial_blocks(
-            table,
-            loaded.adata,
-            *alleles,
-            loaded.unique_snp_ids,
+        chain = read_to_bins(
+            written,
             initial_min_umi=INITIAL_MIN_UMI,
-        )
-        blocks = summarize_counts_for_blocks(
-            table, loaded.adata, *alleles, loaded.unique_snp_ids
-        )
-        table = create_bin_ranges(
-            table,
-            loaded.adata,
-            *alleles,
-            loaded.unique_snp_ids,
-            blocks.X,
-            blocks.total_bb_RD,
-            blocks.lengths,
             secondary_min_umi=SECONDARY_MIN_UMI,
-            secondary_min_snp_umi=SECONDARY_MIN_UMI,
-            secondary_min_normal_umi=0,
-        )
-        binned = summarize_counts_for_bins(
-            table,
-            loaded.adata,
-            blocks.X,
-            blocks.total_bb_RD,
-            np.ones(int(table.block_id.dropna().nunique()), dtype=bool),
-            nu=1.0,
-            logphase_shift=0.0,
-            geneticmap_file=None,
         )
 
-    return truth, Prepared(table=table, blocks=blocks, binned=binned)
-
-
-@dataclass(frozen=True)
-class Prepared:
-    """What the chain produced: the table it built, the blocks, the bins."""
-
-    table: Any
-    blocks: Any
-    binned: Any
+    return truth, chain
 
 
 @pytest.mark.snapshot
@@ -146,7 +91,7 @@ def test_the_derived_segmentation_is_the_planted_one(tmp_path: Path) -> None:
     truth, prepared = _prepared(tmp_path, n_obs=20)
 
     assert int(prepared.table.bin_id.dropna().nunique()) == truth.n_obs
-    np.testing.assert_array_equal(prepared.binned.lengths, truth.lengths)
+    np.testing.assert_array_equal(prepared.bins.lengths, truth.lengths)
 
 
 @pytest.mark.snapshot
@@ -160,11 +105,11 @@ def test_the_counts_in_the_derived_bins_are_the_planted_ones(tmp_path: Path) -> 
     truth, prepared = _prepared(tmp_path, n_obs=20)
 
     np.testing.assert_array_equal(
-        prepared.binned.X[:, 0, :], truth.counts_nb.astype(np.int64)
+        prepared.bins.X[:, 0, :], truth.counts_nb.astype(np.int64)
     )
     np.testing.assert_array_equal(
-        prepared.binned.X[:, 1, :], truth.counts_bb.astype(np.int64)
+        prepared.bins.X[:, 1, :], truth.counts_bb.astype(np.int64)
     )
     np.testing.assert_array_equal(
-        prepared.binned.total_bb_RD, truth.total_bb_RD.astype(np.int64)
+        prepared.bins.total_bb_RD, truth.total_bb_RD.astype(np.int64)
     )

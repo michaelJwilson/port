@@ -13,7 +13,6 @@ is a defect in one of the two implementations and cannot be anything else.
 import numpy as np
 import pytest
 import torch
-from snakes_and_ladders.opt.hmm import forward_log_likelihood_from_density
 
 from tests.adapters import (
     BAF_CHANNEL,
@@ -21,6 +20,7 @@ from tests.adapters import (
     cnaster_emission,
     cnaster_total_log_likelihood,
     from_negative_binomial_chains,
+    upstream_total_log_likelihood,
 )
 from tests.fixtures import (
     NegativeBinomialChains,
@@ -43,20 +43,6 @@ def upstream_emission(
     )
     reshaped: np.ndarray = density.numpy().reshape(inputs.n_obs, inputs.n_states).T
     return reshaped
-
-
-def upstream_total_log_likelihood(fixture: NegativeBinomialChains) -> float:
-    """The summed forward log-likelihood, from upstream's recursion."""
-    density = fixture.family.log_density(
-        torch.as_tensor(fixture.dataset.observations, dtype=torch.float64)
-    )
-    return float(
-        forward_log_likelihood_from_density(
-            density,
-            torch.log(torch.as_tensor(fixture.dataset.initial)),
-            torch.log(torch.as_tensor(fixture.dataset.transition)),
-        )
-    )
 
 
 @pytest.mark.oracle

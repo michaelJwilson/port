@@ -19,18 +19,15 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from tests.test_load_input_data_patch import (
-    gate_config,  # noqa: F401  -- used by name, and it needs the one below
-    planted_instance,  # noqa: F401  -- `gate_config` resolves it in this module
-)
+from tests.run_config import PlantedInstance
 
 pytestmark = pytest.mark.preprocessing
 
 
 @pytest.mark.patch
 def test_the_reference_table_is_cnasters_table(
-    planted_instance: tuple[Any, Any, Any, Any],  # noqa: F811
-    gate_config: Any,  # noqa: F811
+    planted_instance: PlantedInstance,
+    gate_config: Any,
 ) -> None:
     """Every column, every dtype, and the index, as a frame."""
     from cnaster.reference import get_reference_genes as upstream
@@ -46,7 +43,7 @@ def test_the_reference_table_is_cnasters_table(
 @pytest.mark.patch
 def test_the_reader_drops_what_cnaster_drops(
     tmp_path: Path,
-    gate_config: Any,  # noqa: F811
+    gate_config: Any,
 ) -> None:
     """**Only chr1 to chr22 survive, and a written table proves it.**
 

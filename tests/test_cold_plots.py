@@ -26,7 +26,7 @@ mpl.use("Agg")
 
 from tests.fixtures import CoreInferenceTruth, core_inference_truth
 from tests.run_config import write_run_cnaster_config
-from tests.tmp_inputs import write_tmp_inputs
+from tests.tmp_inputs import write_tmp_inputs, written_config
 from tests.unsegment import unsegment
 
 LATTICE = (10, 10)
@@ -52,21 +52,13 @@ def written(
     planted: CoreInferenceTruth, tmp_path_factory: pytest.TempPathFactory
 ) -> Iterator[tuple[Any, Any]]:
     """The written inputs and what `load_input_data` returns for them."""
-    from cnaster.config import YAMLConfig, get_global_config, set_global_config
     from cnaster.io import load_input_data
 
     root: Path = tmp_path_factory.mktemp("cold")
     inputs = write_tmp_inputs(planted, unsegment(planted, flip_every=0), root)
-    config_path = write_run_cnaster_config(inputs, planted)
 
-    previous = get_global_config()
-    set_global_config(None)
-    set_global_config(YAMLConfig.from_file(config_path))
-    try:
-        yield inputs, load_input_data(get_global_config())
-    finally:
-        set_global_config(None)
-        set_global_config(previous)
+    with written_config(write_run_cnaster_config(inputs, planted)) as config:
+        yield inputs, load_input_data(config)
 
 
 @pytest.mark.smoke

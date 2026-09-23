@@ -30,7 +30,7 @@ from port.sim.run_sim_gen import generate, main
 
 from tests.fixtures import CoreInferenceTruth, core_inference_truth
 from tests.run_config import write_run_cnaster_config
-from tests.tmp_inputs import write_tmp_inputs
+from tests.tmp_inputs import write_tmp_inputs, written_config
 from tests.unsegment import unsegment
 
 pytestmark = pytest.mark.preprocessing
@@ -52,21 +52,13 @@ def loaded(
     planted: CoreInferenceTruth, tmp_path_factory: pytest.TempPathFactory
 ) -> Iterator[tuple[Any, Any]]:
     """The written inputs and what `load_input_data` returns for them."""
-    from cnaster.config import YAMLConfig, get_global_config, set_global_config
     from cnaster.io import load_input_data
 
     root: Path = tmp_path_factory.mktemp("manifest")
     written = write_tmp_inputs(planted, unsegment(planted, flip_every=0), root)
-    config_path = write_run_cnaster_config(written, planted)
 
-    previous = get_global_config()
-    set_global_config(None)
-    set_global_config(YAMLConfig.from_file(config_path))
-    try:
-        yield written, load_input_data(get_global_config())
-    finally:
-        set_global_config(None)
-        set_global_config(previous)
+    with written_config(write_run_cnaster_config(written, planted)) as config:
+        yield written, load_input_data(config)
 
 
 @pytest.mark.end2end
@@ -187,7 +179,10 @@ def test_an_instance_generated_from_a_manifest_measures_back_to_it(
 @pytest.mark.snapshot
 @pytest.mark.preprocessing
 def test_cnaster_loads_what_the_generator_wrote(
-    planted: CoreInferenceTruth, loaded: tuple[Any, Any], tmp_path: Path
+    planted: CoreInferenceTruth,
+    loaded: tuple[Any, Any],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """`load_input_data` reads the generated tree, from inside it.
 
@@ -196,9 +191,6 @@ def test_cnaster_loads_what_the_generator_wrote(
     anywhere else and the relative paths are wrong, which is the behaviour
     `run_cnaster` already has and which this does not change.
     """
-    import os
-
-    from cnaster.config import YAMLConfig, get_global_config, set_global_config
     from cnaster.io import load_input_data
 
     _, data = loaded
@@ -216,21 +208,13 @@ def test_cnaster_loads_what_the_generator_wrote(
     )
     generated = generate(manifest, tmp_path / "loadable", seed=5)
 
-    previous_config = get_global_config()
-    previous_cwd = Path.cwd()
-    os.chdir(generated.root)
-    try:
-        set_global_config(None)
-        set_global_config(YAMLConfig.from_file(generated.config))
-        read = load_input_data(get_global_config())
+    monkeypatch.chdir(generated.root)
+    with written_config(generated.config) as config:
+        read = load_input_data(config)
 
-        assert read.adata.shape[0] == manifest.shapes["n_spots"]
-        assert read.cell_snp_Aallele.shape[0] == manifest.shapes["n_spots"]
-        assert len(read.unique_snp_ids) == manifest.shapes["n_snps"]
-    finally:
-        os.chdir(previous_cwd)
-        set_global_config(None)
-        set_global_config(previous_config)
+    assert read.adata.shape[0] == manifest.shapes["n_spots"]
+    assert read.cell_snp_Aallele.shape[0] == manifest.shapes["n_spots"]
+    assert len(read.unique_snp_ids) == manifest.shapes["n_snps"]
 
 
 @pytest.mark.smoke

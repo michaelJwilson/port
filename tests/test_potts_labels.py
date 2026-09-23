@@ -32,6 +32,7 @@ coincided would let a solver pass by returning its input.
 
 import numpy as np
 import pytest
+from snakes_and_ladders.enumeration import MAX_ENUMERABLE_CONFIGURATIONS
 
 from tests.adapters import (
     cnaster_assignment_cost,
@@ -40,7 +41,6 @@ from tests.adapters import (
     upstream_potts_energy,
 )
 from tests.fixtures import (
-    MAX_ENUMERABLE_LABELLINGS,
     PottsLabels,
     enumerate_minimum_energy,
     potts_labels,
@@ -213,9 +213,9 @@ def test_enumeration_refuses_what_it_cannot_search() -> None:
     the ceiling needs a different referee rather than more patience.
     """
     too_large = potts_labels(shape=(6, 6), n_clones=3)
-    assert too_large.n_clones**too_large.n_nodes > MAX_ENUMERABLE_LABELLINGS
+    assert too_large.n_clones**too_large.n_nodes > MAX_ENUMERABLE_CONFIGURATIONS
 
-    with pytest.raises(ValueError, match="exceeds"):
+    with pytest.raises(ValueError, match="refusing to enumerate"):
         enumerate_minimum_energy(too_large)
 
 

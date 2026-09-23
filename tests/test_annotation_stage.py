@@ -19,18 +19,12 @@ from typing import Any
 import numpy as np
 import pandas as pd
 import pytest
-import yaml
 
-from tests.fixtures import CoreInferenceTruth, core_inference_truth
-from tests.run_config import run_cnaster_config
-from tests.tmp_inputs import GENE_SPACING, WrittenInputs, write_tmp_inputs
-from tests.unsegment import unsegment
+from tests.fixtures import CoreInferenceTruth, balanced_clone
+from tests.run_config import PlantedInstance, run_cnaster_config
+from tests.tmp_inputs import GENE_SPACING, WrittenInputs, written_config
 
 pytestmark = pytest.mark.preprocessing
-
-LATTICE = (25, 40)
-N_OBS = 40
-"""The dev instance the other stage tests use, so the figures compare."""
 
 NORMAL_BASELINE_TOLERANCE = 0.15
 """Total variation between the annotated normal baseline and the planted one.
@@ -50,31 +44,16 @@ off the signature would pass whatever it became.
 """
 
 
-def _balanced_clone(truth: CoreInferenceTruth) -> int:
-    """Which clone the fixture planted at the balanced state in most bins."""
-    return int(
-        np.argmax(
-            [np.mean(truth.states[clone] == 0) for clone in range(truth.n_clones)]
-        )
-    )
+@pytest.fixture(scope="module")
+def planted(planted_instance: PlantedInstance) -> CoreInferenceTruth:
+    """The session's gate instance: both stages are pure functions of it."""
+    return planted_instance[0]
 
 
 @pytest.fixture(scope="module")
-def planted() -> CoreInferenceTruth:
-    """One instance for the module: both stages are pure functions of it."""
-    return core_inference_truth(
-        n_clones=2, n_states=3, lattice=LATTICE, n_obs=N_OBS, n_segments=3, seed=11
-    )
-
-
-@pytest.fixture(scope="module")
-def written(
-    planted: CoreInferenceTruth, tmp_path_factory: pytest.TempPathFactory
-) -> WrittenInputs:
-    """The fixture as files, written once."""
-    root: Path = tmp_path_factory.mktemp("annotation")
-
-    return write_tmp_inputs(planted, unsegment(planted, flip_every=0), root)
+def written(planted_instance: PlantedInstance) -> WrittenInputs:
+    """The gate instance as files."""
+    return planted_instance[2]
 
 
 @pytest.fixture(scope="module")
@@ -86,7 +65,7 @@ def clone_label_file(planted: CoreInferenceTruth, written: WrittenInputs) -> Pat
     is group zero and the rest follow. Written from the truth rather than from
     a run, so a disagreement below is the loader's.
     """
-    balanced = _balanced_clone(planted)
+    balanced = balanced_clone(planted)
     labels = [
         "normal" if label == balanced else f"clone_{label}" for label in planted.labels
     ]
@@ -110,22 +89,11 @@ def annotated_config(
     reads the global when its `config` argument is `None` and `run_cnaster`
     calls it that way.
     """
-    from cnaster.config import YAMLConfig, get_global_config, set_global_config
-
     config = run_cnaster_config(written, planted)
     config["annotation"]["clone_label"] = str(clone_label_file)
 
-    path = written.root / "config_annotation.yaml"
-    path.write_text(yaml.safe_dump(config))
-
-    previous = get_global_config()
-    set_global_config(None)
-    set_global_config(YAMLConfig.from_file(path))
-    try:
-        yield get_global_config()
-    finally:
-        set_global_config(None)
-        set_global_config(previous)
+    with written_config(config) as installed:
+        yield installed
 
 
 @pytest.fixture(scope="module")
@@ -165,7 +133,7 @@ def test_the_clone_label_file_returns_the_planted_partition(
     from cnaster.annotation import load_clone_labels
 
     index, _ = annotated
-    balanced = _balanced_clone(planted)
+    balanced = balanced_clone(planted)
 
     assert len(index) == planted.n_clones
     np.testing.assert_array_equal(
@@ -202,7 +170,7 @@ def test_the_annotated_normal_baseline_follows_the_planted_exposure(
     """
     _, base_nb_mean = annotated
 
-    balanced = _balanced_clone(planted)
+    balanced = balanced_clone(planted)
     planted_share = np.asarray(planted.base_nb_mean)[:, planted.labels == balanced].sum(
         axis=1
     )
@@ -257,7 +225,7 @@ def clone_range_file(planted: CoreInferenceTruth, written: WrittenInputs) -> Pat
 
 @pytest.fixture(scope="module")
 def assigned_ranges(
-    planted: CoreInferenceTruth, written: WrittenInputs, clone_range_file: Path
+    planted_instance: PlantedInstance, written: WrittenInputs, clone_range_file: Path
 ) -> tuple[Any, np.ndarray, np.ndarray]:
     """`load_clone_ranges` then `assign_clone_ranges`, over the derived table.
 
@@ -266,25 +234,14 @@ def assigned_ranges(
     ones the files carry rather than ones this test chose.
     """
     from cnaster.annotation import assign_clone_ranges, load_clone_ranges
-    from cnaster.config import YAMLConfig, get_global_config, set_global_config
     from cnaster.io import load_input_data
     from cnaster.omics import form_gene_snp_table
 
-    from tests.run_config import write_run_cnaster_config
-
-    config_path = write_run_cnaster_config(written, planted)
-
-    previous = get_global_config()
-    set_global_config(None)
-    set_global_config(YAMLConfig.from_file(config_path))
-    try:
-        loaded = load_input_data(get_global_config())
+    with written_config(planted_instance[3]) as config:
+        loaded = load_input_data(config)
         table = form_gene_snp_table(
             loaded.unique_snp_ids, str(written.hgtable), loaded.adata
         )
-    finally:
-        set_global_config(None)
-        set_global_config(previous)
 
     assigned = assign_clone_ranges(table, load_clone_ranges(clone_range_file))
 

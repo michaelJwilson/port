@@ -21,6 +21,8 @@ from tests.adapters import (
     cnaster_total_log_likelihood,
     from_negative_binomial_chains,
     from_phased_chains,
+    upstream_phased_total_log_likelihood,
+    upstream_total_log_likelihood,
 )
 from tests.fixtures import (
     NegativeBinomialChains,
@@ -28,8 +30,6 @@ from tests.fixtures import (
     negative_binomial_chains,
     phased_chains,
 )
-from tests.test_hmm_phased import upstream_phased_total_log_likelihood
-from tests.test_hmm_single_chain import upstream_total_log_likelihood
 
 GATE_STATES = 5
 GATE_LENGTH = 200

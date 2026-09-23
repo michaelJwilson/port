@@ -24,13 +24,8 @@ from port.patch.io import _range_mask
 from port.patch.io import load_input_data as patched_loader
 from pytest_benchmark.fixture import BenchmarkFixture
 
-from tests.fixtures import tiers
-from tests.test_load_input_data_patch import (
-    gate_config,  # noqa: F401  -- used by name, and it needs the one below
-    planted_instance,  # noqa: F401  -- `gate_config` resolves it in this module
-    range_filter_loop,
-    synthetic_ranges,
-)
+from tests.adapters import range_filter_loop
+from tests.fixtures import synthetic_ranges, tiers
 
 pytestmark = pytest.mark.preprocessing
 
@@ -52,7 +47,7 @@ real slide carries 500,000 SNPs, where the loop is 15 s by the same slope.
 def test_the_loader(
     benchmark: BenchmarkFixture,
     loader: Callable[[Any], Any],
-    gate_config: Any,  # noqa: F811
+    gate_config: Any,
 ) -> None:
     """60.5 ms median on the dev instance, against 52.4 ms patched.
 

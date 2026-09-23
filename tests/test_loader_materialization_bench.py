@@ -40,15 +40,21 @@ from port.patch.io import load_input_data as patched_loader
 from pytest_benchmark.fixture import BenchmarkFixture
 
 from tests.fixtures import tiers
-from tests.test_load_input_data_patch import (
-    STRESS_LATTICE,
-    STRESS_OBS,
-    _instance,
-    gate_config,  # noqa: F401  -- used by name, and it needs the one below
-    planted_instance,  # noqa: F401  -- `gate_config` resolves it in this module
-)
+from tests.run_config import planted_and_written
+from tests.tmp_inputs import written_config
 
 pytestmark = pytest.mark.preprocessing
+
+STRESS_LATTICE = (50, 50)
+STRESS_OBS = 400
+"""2,500 spots over 400 bins -- 782 SNPs and 1,187 genes once binned.
+
+Chosen as the largest instance whose fixture builds in under four seconds, so
+the measurement is repeatable inside a test run rather than an offline note.
+A Visium slide is 5,000 spots against 500,000 SNPs, where the arrays this
+patch does not allocate are gigabytes rather than megabytes; the direction is
+established here and the magnitude there is arithmetic, not measurement.
+"""
 
 
 @pytest.fixture(scope="module")
@@ -59,19 +65,11 @@ def stress_config(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Any]:
     report the same three loaders at the dev instance's size and decide
     nothing on their own.
     """
-    from cnaster.config import YAMLConfig, get_global_config, set_global_config
-
     root: Path = tmp_path_factory.mktemp("materialization_stress")
-    config_path = _instance(root, STRESS_LATTICE, STRESS_OBS)[3]
+    config_path = planted_and_written(root, STRESS_LATTICE, STRESS_OBS)[3]
 
-    previous = get_global_config()
-    set_global_config(None)
-    set_global_config(YAMLConfig.from_file(config_path))
-    try:
-        yield get_global_config()
-    finally:
-        set_global_config(None)
-        set_global_config(previous)
+    with written_config(config_path) as config:
+        yield config
 
 
 @pytest.mark.benchmark

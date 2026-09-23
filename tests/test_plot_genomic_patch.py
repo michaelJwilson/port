@@ -15,66 +15,8 @@ from typing import Any
 import numpy as np
 import pytest
 
-
-def _drawn(figure: Any) -> list[np.ndarray]:
-    """Every point and segment on the figure, in drawing order, with colours."""
-    drawn: list[np.ndarray] = []
-
-    for axis in figure.axes:
-        for collection in axis.collections:
-            offsets = np.asarray(collection.get_offsets())
-
-            if offsets.size:
-                drawn.append(offsets)
-                drawn.append(np.asarray(collection.get_facecolors()))
-
-            segments = getattr(collection, "get_segments", None)
-
-            if segments is not None:
-                drawn.extend(np.asarray(segment) for segment in segments())
-
-    return drawn
-
-
-def _instance(seed: int = 17, n_states: int = 4) -> dict[str, Any]:
-    rng = np.random.default_rng(seed)
-    n_obs, n_spots, n_clones = 24, 9, 3
-
-    total = rng.integers(20, 80, size=(n_obs, n_spots)).astype(float)
-    X = np.zeros((n_obs, 2, n_spots))
-    X[:, 0, :] = rng.poisson(150, size=(n_obs, n_spots))
-    X[:, 1, :] = rng.binomial(total.astype(int), 0.45)
-
-    return {
-        "arguments": (
-            np.array([n_obs]),
-            X,
-            rng.uniform(100.0, 200.0, size=(n_obs, n_spots)),
-            total,
-        ),
-        "result": {
-            "new_assignment": np.tile(np.arange(n_clones), n_spots // n_clones),
-            "pred_cnv": rng.integers(0, n_states, size=(n_obs, n_clones)),
-            "new_log_mu": rng.normal(0.0, 0.2, size=(n_states, 1)),
-            "new_p_binom": rng.uniform(0.15, 0.85, size=(n_states, 1)),
-        },
-        "rng": rng,
-    }
-
-
-def _integer_copies(rng: np.random.Generator, n_obs: int, n_clones: int) -> Any:
-    import pandas as pd
-
-    frame: dict[str, np.ndarray] = {"CHR": np.ones(n_obs, dtype=int)}
-
-    for clone in range(n_clones):
-        major = rng.integers(1, 4, size=n_obs)
-        minor = rng.integers(0, 2, size=n_obs)
-        major[:4], minor[:4] = 1, 1
-        frame[f"clone{clone} A"] = major
-        frame[f"clone{clone} B"] = minor
-
-    return pd.DataFrame(frame)
+from tests.adapters import drawn
+from tests.fixtures import genomic_plot_instance, integer_copies
 
 
 @pytest.mark.cnaster
@@ -98,7 +40,7 @@ def test_unshifted_it_draws_what_upstream_draws(
     from cnaster.plot_genomic import plot_clones_genomic as upstream
     from port.patch.plot_genomic import plot_clones_genomic as replacement
 
-    instance = _instance()
+    instance = genomic_plot_instance()
     arguments = instance["arguments"]
     result = instance["result"]
 
@@ -107,13 +49,13 @@ def test_unshifted_it_draws_what_upstream_draws(
     elif branch == "integer copies":
         keywords = {
             "res_combine": result,
-            "df_cnv": _integer_copies(instance["rng"], 24, 3),
+            "df_cnv": integer_copies(instance["rng"], 24, 3),
         }
     else:
         keywords = {"clone_index": [np.arange(0, 9, 3), np.arange(1, 9, 3)]}
 
-    theirs = _drawn(upstream(*arguments, **keywords))
-    ours = _drawn(replacement(*arguments, **keywords))
+    theirs = drawn(upstream(*arguments, **keywords))
+    ours = drawn(replacement(*arguments, **keywords))
 
     assert len(ours) == len(theirs), f"drew {len(ours)} arrays, upstream {len(theirs)}"
 

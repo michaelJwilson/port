@@ -32,9 +32,12 @@ import pytest
 from pytest_benchmark.fixture import BenchmarkFixture
 
 from tests.fixtures import dev_instance
-from tests.run_config import write_run_cnaster_config
-from tests.test_run_cnaster_stages import FLIP_EVERY, SHIPPED_T_PHASEING
-from tests.tmp_inputs import write_tmp_inputs
+from tests.run_config import (
+    FLIP_EVERY,
+    SHIPPED_T_PHASEING,
+    write_run_cnaster_config,
+)
+from tests.tmp_inputs import read_to_bins, write_tmp_inputs, written_config
 from tests.unsegment import unsegment
 
 pytestmark = [pytest.mark.preprocessing, pytest.mark.release]
@@ -68,39 +71,13 @@ def _blocks(truth: Any, root: Path) -> Iterator[Any]:
     its first run: later tests took a different branch because a stale global
     was still installed, which is a fixture changing another test's answer.
     """
-    from cnaster.config import YAMLConfig, get_global_config, set_global_config
-    from cnaster.io import load_input_data
-    from cnaster.omics import (
-        assign_initial_blocks,
-        form_gene_snp_table,
-        summarize_counts_for_blocks,
-    )
-
     pre_image = unsegment(
         truth, blocks_per_bin=(1, 2), unassigned_genes=0, flip_every=FLIP_EVERY
     )
     written = write_tmp_inputs(truth, pre_image, root)
-    config_path = write_run_cnaster_config(written, truth)
 
-    previous = get_global_config()
-    set_global_config(None)
-    set_global_config(YAMLConfig.from_file(config_path))
-    try:
-        loaded = load_input_data(get_global_config())
-        alleles = (loaded.cell_snp_Aallele, loaded.cell_snp_Ballele)
-
-        table = form_gene_snp_table(
-            loaded.unique_snp_ids, str(written.hgtable), loaded.adata
-        )
-        table = assign_initial_blocks(
-            table, loaded.adata, *alleles, loaded.unique_snp_ids, initial_min_umi=1
-        )
-        yield summarize_counts_for_blocks(
-            table, loaded.adata, *alleles, loaded.unique_snp_ids
-        )
-    finally:
-        set_global_config(None)
-        set_global_config(previous)
+    with written_config(write_run_cnaster_config(written, truth)):
+        yield read_to_bins(written, through="blocks").blocks
 
 
 def _phase(truth: Any, blocks: Any) -> Any:

@@ -19,6 +19,8 @@ import numpy as np
 import pytest
 from port.patch.plotting.genomic import baf_track, rdr_track, segment_levels
 
+from tests.adapters import drawn
+
 
 def _instance(
     n_obs: int = 40, n_clones: int = 3, seed: int = 0
@@ -164,31 +166,6 @@ def test_the_segment_levels_refuse_a_second_parameter_column() -> None:
         segment_levels(result, 0, n_obs)
 
 
-def _drawn(figure: object) -> list[np.ndarray]:
-    """Every point and line a figure actually put on its axes.
-
-    Compares what was *drawn* rather than what was rendered: scatter offsets
-    and `LineCollection` segments are the figure's data, and they are exactly
-    what the extracted functions feed. A pixel comparison would fail on a
-    font or a backend; this fails only if a number changed.
-    """
-    drawn = []
-
-    for axis in figure.axes:  # type: ignore[attr-defined]
-        for collection in axis.collections:
-            offsets = np.asarray(collection.get_offsets())
-
-            if offsets.size:
-                drawn.append(offsets)
-
-            segments = getattr(collection, "get_segments", None)
-
-            if segments is not None:
-                drawn.extend(np.asarray(s) for s in segments())
-
-    return drawn
-
-
 @pytest.mark.patch
 def test_the_replacement_draws_what_upstream_draws(cnaster_config: None) -> None:
     """Both figures, one input, every drawn point and segment compared.
@@ -232,8 +209,8 @@ def test_the_replacement_draws_what_upstream_draws(cnaster_config: None) -> None
 
     arguments = (lengths, single_X, single_base_nb_mean, total_bb_RD)
 
-    theirs = _drawn(upstream(*arguments, res_combine=result))
-    ours = _drawn(replacement(*arguments, res_combine=result))
+    theirs = drawn(upstream(*arguments, res_combine=result), colours=False)
+    ours = drawn(replacement(*arguments, res_combine=result), colours=False)
 
     assert len(ours) == len(theirs), (
         f"drew {len(ours)} collections against upstream's {len(theirs)}"
@@ -321,7 +298,7 @@ def test_the_integer_copy_colouring_is_upstreams(
     theirs = upstream(*arguments, **keywords)
     ours = replacement(*arguments, **keywords)
 
-    drawn_theirs, drawn_ours = _drawn(theirs), _drawn(ours)
+    drawn_theirs, drawn_ours = drawn(theirs, colours=False), drawn(ours, colours=False)
 
     assert len(drawn_ours) == len(drawn_theirs), (
         f"drew {len(drawn_ours)} collections against upstream's {len(drawn_theirs)}"

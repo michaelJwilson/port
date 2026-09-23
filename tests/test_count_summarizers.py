@@ -22,10 +22,8 @@ import numpy as np
 import pytest
 import scipy.sparse as sp
 
-from tests.test_load_input_data_patch import (
-    gate_config,  # noqa: F401  -- used by name, and it needs the one below
-    planted_instance,  # noqa: F401  -- `gate_config` resolves it in this module
-)
+from tests.run_config import PlantedInstance
+from tests.tmp_inputs import read_to_bins
 
 pytestmark = pytest.mark.preprocessing
 
@@ -41,32 +39,13 @@ complement is the one place lifting the loop could invert a haplotype.
 
 @pytest.fixture(scope="module")
 def blocked(
-    planted_instance: tuple[Any, Any, Any, Any],  # noqa: F811
-    gate_config: Any,  # noqa: F811
+    planted_instance: PlantedInstance,
+    gate_config: Any,
 ) -> tuple[Any, Any, Any]:
     """The instance, its gene-SNP table with blocks, and the block counts."""
-    from cnaster.io import load_input_data
-    from cnaster.omics import (
-        assign_initial_blocks,
-        form_gene_snp_table,
-        summarize_counts_for_blocks,
-    )
+    chain = read_to_bins(planted_instance[2], through="blocks")
 
-    _, _, written, _ = planted_instance
-    loaded = load_input_data(gate_config)
-    alleles = (loaded.cell_snp_Aallele, loaded.cell_snp_Ballele)
-
-    table = form_gene_snp_table(
-        loaded.unique_snp_ids, str(written.hgtable), loaded.adata
-    )
-    table = assign_initial_blocks(
-        table, loaded.adata, *alleles, loaded.unique_snp_ids, 1
-    )
-    counts = summarize_counts_for_blocks(
-        table.copy(), loaded.adata, *alleles, loaded.unique_snp_ids
-    )
-
-    return loaded, table, counts
+    return chain.loaded, chain.table, chain.blocks
 
 
 def _fields_equal(realized: Any, reference: Any) -> None:
@@ -201,7 +180,7 @@ def test_the_grouped_sum_agrees_sparse_and_dense() -> None:
 
 @pytest.mark.end2end
 def test_the_block_counts_are_the_planted_counts(
-    planted_instance: tuple[Any, Any, Any, Any],  # noqa: F811
+    planted_instance: PlantedInstance,
     blocked: tuple[Any, Any, Any],
 ) -> None:
     """**What the blocks carry is what the fixture planted, summed per block.**

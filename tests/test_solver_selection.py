@@ -44,16 +44,12 @@ def test_solver_options_are_the_ones_that_solver_takes() -> None:
 @pytest.mark.smoke
 def test_an_unknown_solver_is_refused() -> None:
     """A name outside the supported set stops the fit rather than starting one."""
-    from cnaster.config import YAMLConfig, get_global_config, set_global_config
     from cnaster.hmm_utils import get_solver
 
-    previous = get_global_config()
-    set_global_config(YAMLConfig({"hmm": {"solver": "Powell"}}))
-    try:
-        with pytest.raises(AssertionError):
-            get_solver()
-    finally:
-        set_global_config(previous)
+    from tests.tmp_inputs import written_config
+
+    with written_config({"hmm": {"solver": "Powell"}}), pytest.raises(AssertionError):
+        get_solver()
 
 
 @pytest.mark.analytic
