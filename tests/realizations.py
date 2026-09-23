@@ -28,6 +28,8 @@ from typing import Any, NamedTuple
 
 import numpy as np
 import torch
+from port.extensions import copy_errors as _copy_errors
+from port.extensions.copy_errors import Captured
 from scipy.optimize import linear_sum_assignment
 
 from tests.fixtures import CoreInferenceTruth, _emission_families, core_inference_truth
@@ -75,7 +77,9 @@ whether the returned point is an optimum; the Newton decrement reported for
 the realization with errors says whether it was."""
 
 
-def planted_genome(genome: dict[str, Any] | None = None) -> CoreInferenceTruth:
+def planted_genome(
+    genome: dict[str, Any] | None = None, *, lattice: bool = False
+) -> CoreInferenceTruth:
     """`core_inference_truth`, planted from the model.
 
     **The model:** `<u_gn> = lambda_g T_n mu_{s_n(g)} / sum_g' lambda_g' mu_{s_n(g')}`,
@@ -94,12 +98,20 @@ def planted_genome(genome: dict[str, Any] | None = None) -> CoreInferenceTruth:
     Clone 0 is the fixture's normal clone (#298), which
     `determine_normal_baseline` needs: without one, at the fixture's default
     rates, a planted `(5, 0.88)` came back as `mu = 0.92, p = 0.12`.
+
+    `lattice` plants `tests.fixtures.COPY_LATTICE` instead of `PLANTED_MU` and
+    the fixture's allele fractions, so every state is an integer `(A, B)`
+    with `2 mu = A + B` (#353); the genome is otherwise the same.
     """
     # NB clone 0 is planted normal by the fixture itself (#298).
-    truth = core_inference_truth(**(genome or GENOME))
+    truth = core_inference_truth(**(genome or GENOME), copy_lattice=lattice)
     states = truth.states
 
-    log_mu = np.log(np.asarray(PLANTED_MU[: truth.log_mu.size], dtype=np.float64))
+    log_mu = (
+        np.asarray(truth.log_mu, dtype=np.float64)
+        if lattice
+        else np.log(np.asarray(PLANTED_MU[: truth.log_mu.size], dtype=np.float64))
+    )
     mu = np.exp(log_mu)
 
     profile = truth.base_nb_mean.mean(axis=1)
@@ -155,16 +167,6 @@ def realize(truth: CoreInferenceTruth, seed: int) -> CoreInferenceTruth:
         counts_bb[:, spot] = drawn[..., 1]
 
     return dataclasses.replace(truth, counts_nb=counts_nb, counts_bb=counts_bb)
-
-
-class Captured(NamedTuple):
-    """What `run_core_inference` was given, and what it returned."""
-
-    single_X: np.ndarray
-    lengths: np.ndarray
-    single_base_nb_mean: np.ndarray
-    single_total_bb_RD: np.ndarray
-    result: Any
 
 
 def run(truth: CoreInferenceTruth, root: Path) -> Captured:
@@ -242,33 +244,8 @@ class Fit(NamedTuple):
     realization's data: the error bars the truth would carry."""
 
 
-def _column(values: Any) -> np.ndarray:
-    return np.asarray(values, dtype=np.float64).reshape(-1)
-
-
-def pseudobulk(captured: Captured) -> dict[str, np.ndarray]:
-    """The clone-summed inputs the HMM scored, stacked clone after clone.
-
-    `run_core_inference` sums each clone's spots and concatenates the clones
-    along the genome (`clone_stack_obs`), so the objective is one sequence of
-    `n_clones * n_obs` with `lengths` tiled. The assignment is the fit's own.
-    """
-    assignment = np.asarray(captured.result["new_assignment"], dtype=np.int64)
-    clones = np.unique(assignment)
-
-    def summed(values: np.ndarray) -> np.ndarray:
-        return np.concatenate(
-            [values[..., assignment == c].sum(axis=-1) for c in clones]
-        )
-
-    return {
-        "counts_nb": summed(captured.single_X[:, 0, :]),
-        "counts_bb": summed(captured.single_X[:, 1, :]),
-        "base_nb_mean": summed(captured.single_base_nb_mean),
-        "total_bb_RD": summed(captured.single_total_bb_RD),
-        "lengths": np.tile(captured.lengths, clones.size),
-        "n_clones": np.asarray(clones.size),
-    }
+_column = _copy_errors._column
+pseudobulk = _copy_errors.pseudobulk
 
 
 def match_states(truth: CoreInferenceTruth, captured: Captured) -> np.ndarray:
@@ -327,52 +304,7 @@ def planted_minor(truth: CoreInferenceTruth) -> np.ndarray:
     return minor
 
 
-def _covariance(
-    objective: Any,
-    theta: np.ndarray,
-    free: np.ndarray,
-    mu: np.ndarray,
-    p_binom: np.ndarray,
-    flipped: np.ndarray,
-) -> tuple[np.ndarray, float]:
-    """`(n_states, 2, 2)` in `(mu, minor p)` at `theta`, and its decrement.
-
-    `theta` is `(log mu_k for k in free, logit p_k, log alpha, log tau)`, the
-    pinned coordinates, so a state outside `free` has no `mu` error.
-    """
-    import jax
-    import jax.numpy as jnp
-    from port.extensions.parameter_errors import parameter_errors
-
-    n_states = mu.size
-    estimate = parameter_errors(objective, theta)
-
-    gradient = np.asarray(jax.grad(objective)(jnp.asarray(theta)))
-    decrement = float(gradient @ estimate.covariance @ gradient)
-
-    rates = np.zeros((n_states, n_states))
-    rates[np.ix_(free, free)] = estimate.covariance[: free.size, : free.size]
-    cross = np.zeros(n_states)
-    cross[free] = [
-        estimate.covariance[index, free.size + state]
-        for index, state in enumerate(free)
-    ]
-    alleles = estimate.covariance[
-        free.size : free.size + n_states, free.size : free.size + n_states
-    ]
-    slope = p_binom * (1.0 - p_binom)
-
-    covariance = np.zeros((n_states, 2, 2))
-
-    for k in range(n_states):
-        off = cross[k] * mu[k] * slope[k]
-        off = -off if flipped[k] else off
-        covariance[k] = [
-            [rates[k, k] * mu[k] ** 2, off],
-            [off, alleles[k, k] * slope[k] ** 2],
-        ]
-
-    return covariance, decrement
+_covariance = _copy_errors.pinned_covariance
 
 
 def fitted(truth: CoreInferenceTruth, captured: Captured, *, errors: bool) -> Fit:
@@ -403,8 +335,6 @@ def fitted(truth: CoreInferenceTruth, captured: Captured, *, errors: bool) -> Fi
     planted `alpha = 1/6` is per spot, not per sum over hundreds of spots),
     and each planted `p` takes the allele convention its fitted state has.
     """
-    from port.patch.hmm_nophasing.shifted_emission import neutral_state
-
     result = captured.result
     log_mu = _column(result["new_log_mu"])
     p_binom = _column(result["new_p_binom"])
@@ -412,7 +342,6 @@ def fitted(truth: CoreInferenceTruth, captured: Captured, *, errors: bool) -> Fi
     tau = float(_column(result["new_taus"])[0])
     n_states = log_mu.size
 
-    inputs = pseudobulk(captured)
     mu = np.exp(log_mu)
 
     # NB phasing makes the allele label arbitrary, so `p` is reported folded
@@ -427,69 +356,10 @@ def fitted(truth: CoreInferenceTruth, captured: Captured, *, errors: bool) -> Fi
     if not errors:
         return Fit(mu[order], minor[order], None, None)
 
-    import jax
-    import jax.numpy as jnp
-    import jax.scipy.special as jsp
-    from port.extensions.jax_hmm import emission, marginal_negative_log_likelihood
-
-    log_startprob = _column(result["new_log_startprob"])
-    log_transmat = np.asarray(result["new_log_transmat"], dtype=np.float64)
-
-    profile = captured.single_base_nb_mean.sum(axis=1)
-    log_lambda = np.log(profile / profile.sum())
-    path = np.asarray(result["pred_cnv"], dtype=np.int64)
-    n_obs, n_clones = path.shape
-
-    def pinned_objective(free: np.ndarray) -> Any:
-        def objective(theta: jnp.ndarray) -> jnp.ndarray:
-            rates = jnp.zeros(n_states).at[free].set(theta[: free.size])
-            dispersions = jnp.full(n_states, jnp.exp(theta[-2]))
-            probabilities = jax.nn.sigmoid(theta[free.size : free.size + n_states])
-            concentrations = jnp.full(n_states, jnp.exp(theta[-1]))
-
-            blocks = []
-
-            for clone in range(n_clones):
-                shift = jsp.logsumexp(rates[path[:, clone]] + log_lambda)
-                rows = slice(clone * n_obs, (clone + 1) * n_obs)
-                blocks.append(
-                    emission(
-                        rates - shift,
-                        dispersions,
-                        probabilities,
-                        concentrations,
-                        inputs["counts_nb"][rows],
-                        inputs["base_nb_mean"][rows],
-                        inputs["counts_bb"][rows],
-                        inputs["total_bb_RD"][rows],
-                    )
-                )
-
-            return marginal_negative_log_likelihood(
-                jnp.concatenate(blocks, axis=1),
-                log_startprob,
-                log_transmat,
-                inputs["lengths"],
-            )
-
-        return objective
-
-    def coordinates(rates: np.ndarray, p: np.ndarray, free: np.ndarray) -> np.ndarray:
-        return np.concatenate(
-            [rates[free], np.log(p / (1.0 - p)), [np.log(alpha), np.log(tau)]]
-        )
-
-    neutral = neutral_state(log_mu, p_binom, np.asarray(result["pred_cnv"]))
-    free = np.array([k for k in range(n_states) if k != neutral])
-
-    covariance, decrement = _covariance(
-        pinned_objective(free),
-        coordinates(log_mu, p_binom, free),
-        free,
-        mu,
-        p_binom,
-        flipped,
-    )
+    # NB the pinned coordinates and the shift's Jacobian are
+    #    `port.extensions.copy_errors`', which `--copy-errors` also uses (#353).
+    pinned = _copy_errors.pinned_errors(captured)
+    covariance, decrement = pinned.covariance, pinned.decrement
 
     # NB the truth in the fit's labels: planted state `k` is fitted state
     #    `order[k]`, and its `p` is written in that state's orientation.
@@ -503,8 +373,8 @@ def fitted(truth: CoreInferenceTruth, captured: Captured, *, errors: bool) -> Fi
     free_truth = np.array([k for k in range(n_states) if k != order[0]])
 
     truth_covariance, _ = _covariance(
-        pinned_objective(free_truth),
-        coordinates(planted_log_mu, planted_p, free_truth),
+        _copy_errors.pinned_objective(captured, free_truth),
+        _copy_errors.coordinates(planted_log_mu, planted_p, free_truth, alpha, tau),
         free_truth,
         np.exp(planted_log_mu),
         planted_p,
