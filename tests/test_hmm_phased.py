@@ -162,7 +162,7 @@ def test_switch_outside_the_unit_interval_is_refused() -> None:
         )
 
 
-@pytest.mark.smoke
+@pytest.mark.bug
 @pytest.mark.xfail(
     strict=True,
     reason=(

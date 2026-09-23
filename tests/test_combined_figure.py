@@ -57,7 +57,7 @@ def test_a_subfigure_draws_what_the_standalone_page_draws(cnaster_config: None) 
         np.testing.assert_array_equal(mine, reference, err_msg=f"array {index}")
 
 
-@pytest.mark.infra
+@pytest.mark.smoke
 def test_recording_calls_through_and_restores() -> None:
     """A recorded call returns the wrapped function's figure; the names return."""
     import matplotlib as mpl
