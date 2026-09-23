@@ -94,6 +94,21 @@ The two events separate only with enough states **and** `--sal`.
   `max_total_copy = 6`, so no decoder output could be right. The lattice
   fixture's analog, (1,4) and (3,3), is what the copy column above referees.
 
+## A realistic selector (sandbox)
+
+`port.sandbox.normal_candidates.two_pass` takes the candidates from a first
+run's fitted normal clone (#320). Scored with `--two-pass-normal`:
+
+| instance | config | tumor candidates | ARI | mu err | copies (altered) |
+| --- | --- | ---: | ---: | ---: | ---: |
+| dev | F | 49 | 0.859 | 0.035 | 0.471 |
+| dev | C | 0 | 0.000 (1 clone) | diverged | — |
+| lattice | F | 110 of 110 | 0.000 (1 clone) | — | — |
+| lattice | C | 0 | 1.000 | 0.026 | 0.749 |
+
+It equals the oracle wherever the first pass labels the clones exactly, and
+inherits the oracle's collapse. It stays in the sandbox.
+
 ## Not established
 
 - **Why the oracle collapses two runs to one clone.** The RDR-stage refinement
