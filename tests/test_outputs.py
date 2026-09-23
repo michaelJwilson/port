@@ -270,35 +270,39 @@ def test_the_integer_labels_keep_every_spot_s_fitted_label(tmp_path: Path) -> No
     )
 
 
+def _truth() -> Any:
+    from tests.fixtures import core_inference_truth
+
+    return core_inference_truth(
+        n_clones=2, n_states=3, lattice=(25, 40), n_obs=40, n_segments=3, seed=11
+    )
+
+
 @pytest.mark.end2end
-def test_a_run_s_continuous_view_recovers_the_planted_amplification(
+def test_a_run_s_outputs_recover_the_planted_clones_and_the_flat_normal(
     cnaster_config: None, tmp_path: Path
 ) -> None:
-    """`cnv_binlevel.tsv` of a whole run, read against the planted states.
+    """The writer on a whole `run_cnaster` run, read against the planted truth.
 
-    `run_cnaster` on the round trip's instance (two clones, three states,
-    40 bins), then the writer. Each run bin is mapped to its planted bin by
-    the coordinates `tests.tmp_inputs` gave it, and each fitted clone to the
-    planted clone most of its spots carry. The normal clone reads flat --
-    `mu` constant to 1 per cent and `p` 1/2 to 0.02 -- and in the tumour
-    clone the planted amplification's BAF distance from 1/2 is recovered to
-    0.02 (0.379 against 0.38, at every seed and fit length measured), with
-    its `mu` above the neutral bins'.
+    The round trip's instance (two clones, three states, 40 bins). Each
+    fitted clone's spots are one planted clone to 95 per cent (1.000 on this
+    host), and the planted normal clone reads flat in `cnv_binlevel.tsv`:
+    `mu` constant to 1 per cent about its own mean -- `run_cnaster` leaves
+    `mu`'s scale unpinned -- and `p` 1/2 to 0.02 (0.499 here, 0.487 on CI's
+    runner). The segments reproduce `cnaster`'s own table bin for bin.
 
-    Only the direction of `mu` is asserted, not its planted ratio of 5.0:
-    the ratio read 4.41 at 3 iterations and 1.29 at 10 on this host, and
-    1.18 on CI's runner -- `run_cnaster`'s `mu` scale is #293's, not the
-    writer's. State 1 (`mu` 1.5, `p` 0.58) is not separated by the fit.
+    The tumour clone's amplification is not judged here: at this run's three
+    iterations its recovery differs by machine -- `mu` ratio 4.41 on this
+    host, 1.18 on CI's runner, and its BAF likewise -- which is `run_cnaster`'s
+    fit (#293), not the writer. `test_the_writer_returns_the_planted_states_
+    of_a_perfect_decode` judges the writer on the amplification, exactly.
     """
     from port.extensions.outputs import run_directories, write_outputs
 
-    from tests.fixtures import core_inference_truth
     from tests.test_run_cnaster_round_trip import _run
     from tests.tmp_inputs import GENE_SPACING
 
-    truth = core_inference_truth(
-        n_clones=2, n_states=3, lattice=(25, 40), n_obs=40, n_segments=3, seed=11
-    )
+    truth = _truth()
     # NB `cnaster`'s ICM draws from numpy's global generator unseeded, so the
     #    run is seeded here and the generator put back after.
     state = np.random.get_state()  # noqa: NPY002
@@ -310,34 +314,99 @@ def test_a_run_s_continuous_view_recovers_the_planted_amplification(
     write_outputs(run)
 
     bins = pd.read_csv(run / "cnv_binlevel.tsv", sep="\t")
+    seglevel = pd.read_csv(run / "cnv_seglevel.tsv", sep="\t", comment="#")
+    segments = pd.read_csv(run / "cnv_segments.tsv", sep="\t")
     labels = pd.read_csv(run / "clone_labels.tsv", sep="\t", comment="#")
     offset = np.concatenate([[0], np.cumsum(truth.lengths)[:-1]])
     planted_bin = (
         offset[bins.CHR.to_numpy() - 1] + bins.START.to_numpy() // GENE_SPACING
     )
-    mu_planted = np.exp(np.ravel(truth.log_mu))
-    p_planted = np.ravel(truth.p_binom)
+    normal = 0
 
     for clone in np.unique(labels.clone_label):
         spots = labels.clone_label.to_numpy() == clone
-        planted_clone = int(pd.Series(truth.labels[spots]).mode()[0])
-        state = truth.states[planted_clone, planted_bin]
-        mu = bins[f"clone{clone} mu"].to_numpy()
-        p = bins[f"clone{clone} p"].to_numpy()
+        planted = pd.Series(truth.labels[spots]).value_counts(normalize=True)
+        assert planted.iloc[0] >= 0.95, f"clone {clone}: {planted.to_dict()}"
 
-        if np.all(state == 0):
-            # NB flat, not 1: `run_cnaster` fits `mu` up to a common scale,
-            #    which `run_cnaster_port`'s pin fixes and this run does not
-            #    (0.893 on one tree, 1.000 on another).
-            np.testing.assert_allclose(mu, mu.mean(), rtol=1e-2)
-            # NB 0.02: CI's runner read 0.487 where this host reads 0.499.
-            np.testing.assert_allclose(p, 0.5, atol=0.02)
-            continue
-
-        amplified = state == int(np.argmax(mu_planted))
-        ratio = mu[amplified].mean() / mu[state == 0].mean()
-
-        assert ratio > 1.1
-        assert np.abs(p[amplified] - 0.5).mean() == pytest.approx(
-            abs(p_planted[np.argmax(mu_planted)] - 0.5), abs=0.02
+        runs = segments[segments.clone.astype(str) == str(clone)]
+        np.testing.assert_array_equal(
+            np.repeat(runs[["A", "B"]].to_numpy(), runs.n_bins, axis=0),
+            seglevel[[f"clone{clone} A", f"clone{clone} B"]].to_numpy(),
         )
+
+        if np.all(truth.states[int(planted.index[0]), planted_bin] == 0):
+            normal += 1
+            mu = bins[f"clone{clone} mu"].to_numpy()
+            np.testing.assert_allclose(mu, mu.mean(), rtol=1e-2)
+            np.testing.assert_allclose(bins[f"clone{clone} p"], 0.5, atol=0.02)
+
+    assert normal == 1, "the planted normal clone was not recovered as one clone"
+
+
+@pytest.mark.analytic
+def test_the_writer_returns_the_planted_states_of_a_perfect_decode(
+    tmp_path: Path,
+) -> None:
+    """A run directory written from the planted truth itself -- each clone's
+    path its planted states, the posterior one-hot on them, one `(A, B)` per
+    state -- is read back as the truth: every bin's `mu` and `p` the planted
+    state's, the amplification's `mu` 5.0 and `p` 0.88 exactly, and the
+    segments the planted runs of state within each chromosome."""
+    from port.extensions.outputs import binlevel, segments, states
+
+    truth = _truth()
+    n_states, n_bins = len(np.ravel(truth.log_mu)), truth.states.shape[1]
+    chromosome = np.repeat(np.arange(1, len(truth.lengths) + 1), truth.lengths)
+    start = np.concatenate([np.arange(n) for n in truth.lengths]) * 1000
+    pairs = np.array([[1, 1], [2, 1], [4, 1]])[:n_states]
+    seglevel = pd.DataFrame({"CHR": chromosome, "START": start, "END": start + 999})
+    perstate = pd.DataFrame(index=range(n_states))
+
+    for clone in range(truth.states.shape[0]):
+        path = truth.states[clone]
+        seglevel[f"clone{clone} Z"] = path
+        seglevel[f"clone{clone} A"] = pairs[path, 0]
+        seglevel[f"clone{clone} B"] = pairs[path, 1]
+        perstate[f"clone{clone} A"] = pairs[:, 0]
+        perstate[f"clone{clone} B"] = pairs[:, 1]
+
+    gamma = np.zeros((n_states, n_bins, truth.states.shape[0]))
+    for clone in range(truth.states.shape[0]):
+        gamma[truth.states[clone], np.arange(n_bins), clone] = 1.0
+
+    fit = {
+        "n_states": n_states,
+        "new_log_mu": np.ravel(truth.log_mu)[:, None],
+        "new_p_binom": np.ravel(truth.p_binom)[:, None],
+        "log_gamma": np.log(np.maximum(gamma, 1e-300)),
+        "pred_cnv": truth.states.T,
+    }
+    mu_planted = np.exp(np.ravel(truth.log_mu))
+    p_planted = np.ravel(truth.p_binom)
+    table = binlevel(seglevel, fit)
+
+    for clone in range(truth.states.shape[0]):
+        path = truth.states[clone]
+        np.testing.assert_allclose(
+            table[f"clone{clone} mu"], mu_planted[path], rtol=1e-12
+        )
+        np.testing.assert_allclose(
+            table[f"clone{clone} p"], p_planted[path], rtol=1e-12
+        )
+
+        runs = segments(seglevel, fit)
+        runs = runs[runs.clone == str(clone)]
+        breaks = np.flatnonzero(
+            (path[1:] != path[:-1]) | (chromosome[1:] != chromosome[:-1])
+        )
+        np.testing.assert_array_equal(runs.first_bin, np.concatenate([[0], breaks + 1]))
+        np.testing.assert_allclose(
+            runs.mu, mu_planted[path[runs.first_bin]], rtol=1e-12
+        )
+
+    amplified = int(np.argmax(mu_planted))
+    rows = states(seglevel, perstate, fit)
+    held = rows[(rows.state == amplified) & (rows.share > 0)]
+    assert len(held) >= 1
+    assert np.exp(held.logmu.iloc[0]) == pytest.approx(5.0, rel=1e-12)
+    assert held.p.iloc[0] == pytest.approx(0.88, rel=1e-12)
