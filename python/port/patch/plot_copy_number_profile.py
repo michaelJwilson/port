@@ -9,10 +9,18 @@ colour as before. Any other segment is filled with A's colour and hatched
 with B's -- A first, on the same colour bar `plot_ascn_legend` draws -- so
 both alleles read at the row's full height.
 
-**The hatch orientation is the mirror.** Hatching runs at +45 degrees where
-A >= B and at -45 where A < B, so a pair of segments whose alleles are swapped
-between clones -- what the chevrons marked -- hatch in opposite directions,
-and every segment carries its orientation rather than only mirrored ones.
+**The hatch orientation is the mirror.** Hatching rises to the right where
+A >= B and to the left where A < B, so a pair of segments whose alleles are
+swapped between clones -- what the chevrons marked -- hatch in opposite
+directions, and every segment carries its orientation rather than only
+mirrored ones. The legend names the two orientations by haplotype: `h=0`
+where A is the major allele, `h=1` where B is.
+
+**The hatch is drawn, not a matplotlib hatch.** A hatch pattern is fixed at
+45 degrees and a spacing matplotlib chooses. Here each aberrant segment
+carries a `LineCollection` of B's colour clipped to it, at `HATCH_ANGLE`
+from the horizontal and `HATCH_SPACING` apart, both in inches on the page,
+so the lines keep their angle and density whatever the axis's data scale.
 
 A `FIGURE_SWAPS` row: the figure changes by design.
 """
@@ -28,15 +36,31 @@ import pandas as pd
 from cnaster.palette import get_full_palette
 from cnaster.plot_copy_number_profile import NORMAL_OPACITY, get_intervals
 from cnaster.utils import cast_clone_label
+from matplotlib.collections import LineCollection
 from matplotlib.patches import Rectangle
+from matplotlib.transforms import IdentityTransform
 
-__all__ = ["HATCH", "plot_ascn_legend", "plot_copy_number_profile"]
+__all__ = [
+    "HATCH",
+    "HATCH_ANGLE",
+    "HATCH_SPACING",
+    "hatch_of",
+    "plot_ascn_legend",
+    "plot_copy_number_profile",
+]
 
-HATCH = {1: "////", -1: "\\\\\\\\"}
-"""+45 degrees where A >= B, -45 where A < B."""
+HATCH = {1: 1, -1: -1}
+"""Rising to the right where A >= B (`h=0`), to the left where A < B (`h=1`)."""
 
-HATCH_LINEWIDTH = 1.6
-"""Wide enough that B's colour reads as a band beside A's, not a thin line."""
+HATCH_ANGLE = 25.0
+"""Degrees from the horizontal: flatter than a 45-degree hatch, so a row a
+tenth of an inch tall carries several lines rather than one."""
+
+HATCH_SPACING = 0.035
+"""Inches between lines, along the row."""
+
+HATCH_LINEWIDTH = 0.9
+"""Points: about half the spacing, so A's fill and B's lines read equally."""
 
 
 def _order(df_cnv: pd.DataFrame, clone_ids: list[str]) -> list[str]:
@@ -71,19 +95,58 @@ def _segment(
         )
         return
 
-    ax.add_patch(
-        Rectangle(
-            (x0, y0),
-            w,
-            h,
-            facecolor=style.get(a, default),
-            hatch=HATCH[1 if a >= b else -1],
-            hatchcolor=style.get(b, default),
-            hatch_linewidth=HATCH_LINEWIDTH,
-            edgecolor="none",
-            linewidth=0,
-        )
+    fill = Rectangle(
+        (x0, y0), w, h, facecolor=style.get(a, default), edgecolor="none", linewidth=0
     )
+    ax.add_patch(fill)
+    _hatch(ax, fill, style.get(b, default), HATCH[1 if a >= b else -1])
+
+
+class _Hatch(LineCollection):
+    """B's lines over one fill, laid out when drawn, in the page's inches.
+
+    At draw time the fill's extent on the page is known, so exactly the
+    lines that cross it are made: `HATCH_SPACING` apart along its bottom
+    edge, at `HATCH_ANGLE`, clipped to it.
+    """
+
+    def __init__(self, fill: Rectangle, colour: Any, orientation: int) -> None:
+        super().__init__([], colors=[colour], linewidths=HATCH_LINEWIDTH)
+        self.fill = fill
+        self.orientation = orientation
+        self.set_transform(IdentityTransform())
+
+    def draw(self, renderer: Any) -> None:
+        box = self.fill.get_window_extent(renderer)
+        dpi = self.figure.dpi if self.figure is not None else 72.0
+        spacing = HATCH_SPACING * dpi
+        run = box.height / np.tan(np.radians(HATCH_ANGLE))
+        starts = np.arange(box.x0 - run, box.x1 + run + spacing, spacing)
+        ends = starts + self.orientation * run
+        self.set_segments(
+            [[(x0, box.y0), (x1, box.y1)] for x0, x1 in zip(starts, ends, strict=True)]
+        )
+        super().draw(renderer)
+
+
+def _hatch(ax: Any, fill: Rectangle, colour: Any, orientation: int) -> None:
+    """Attach B's lines to `fill`, drawn over it."""
+    hatch = _Hatch(fill, colour, orientation)
+    ax.add_collection(hatch, autolim=False)
+    # NB as a path and its transform, after `add_collection`: a `Rectangle`
+    #    is turned into a clip box, and `add_collection` then replaces it
+    #    with the axis's own, which is what let the lines cross rows.
+    hatch.set_clip_path(fill.get_path(), fill.get_transform())
+    fill.set_gid(f"hatch{orientation:+d}")
+
+
+def hatch_of(ax: Any, fill: Rectangle) -> tuple[int, Any] | None:
+    """A fill's hatch orientation and B's colour, or `None` where it is plain."""
+    for collection in ax.collections:
+        if isinstance(collection, _Hatch) and collection.fill is fill:
+            return collection.orientation, collection.get_edgecolor()[0]
+
+    return None
 
 
 def plot_copy_number_profile(
@@ -204,14 +267,16 @@ def plot_ascn_legend(
     label_fontsize: float = 10,
     palette_name: str = "chisel_single",
 ) -> Any:
-    """`cnaster`'s colour bar, with swatches for the fill, the hatch and its turn."""
+    """`cnaster`'s colour bar, with a swatch for each hatch orientation, `h=0` and `h=1`."""
     state_style, ordered_acn = get_full_palette(palette_name)
     ax.axis("off")
 
+    # NB the two orientations, named by haplotype: `h=0` where A is the
+    #    major allele, `h=1` where B is. The colours are the example's.
     example_a, example_b = 3, 2
     key = [
-        (f"A{example_a}B{example_b}", example_a, example_b),
-        (f"A{example_b}B{example_a}", example_b, example_a),
+        ("h=0", example_a, example_b),
+        ("h=1", example_b, example_a),
     ]
     x = 0.0
 
@@ -255,15 +320,7 @@ def plot_ascn_legend(
         )
 
     end = x0 + len(ordered_acn) * box_w
-    ax.text(
-        end + 0.2,
-        box_h / 2.0,
-        r"$\mathbb{N}$-CNA: fill A, hatch B",
-        fontsize=label_fontsize,
-        ha="left",
-        va="center",
-    )
-    ax.set_xlim(0.0, end + 4.0)
+    ax.set_xlim(0.0, end + 0.2)
     ax.set_ylim(-0.5, box_h + 0.2)
     ax.set_aspect("auto")
 

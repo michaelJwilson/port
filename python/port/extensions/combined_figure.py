@@ -8,12 +8,15 @@ subfigures so the page is drawn once, at its printed size, and included at
   width, drawn by `port.patch.plot_genomic` into its subfigure;
 - **(b)** `copy_number_profile`: the integer copies per clone, full width,
   drawn by `cnaster` into an axis it is handed;
-- **(c)** `clones_spatial`: the fitted clone of each spot, tiled by
-  `port.patch.plotting.spatial`;
-- **(d)** the H&E slide, as `cnaster.he.get_he_image` reads it.
+- **(c)** the H&E slide, as `cnaster.he.get_he_image` reads it;
+- **(d)** `clones_spatial`: the fitted clone of each spot, tiled by
+  `port.patch.plotting.spatial`, with the clones keyed beside it in two
+  columns, one alone on top when their count is odd.
 
-(c) and (d) sit side by side at 0.48 of the width each and share the spot
-coordinates, so a clone boundary in (c) reads against the tissue in (d).
+(c) and (d) sit side by side at 0.36 of the width each and share the spot
+coordinates, so a clone boundary in (d) reads against the tissue in (c).
+(b)'s axis spans (a)'s tracks exactly, so a chromosome boundary in one is
+under the same boundary in the other.
 
 **What is drawn is what the run drew.** `recording` keeps the arguments of
 the run's last call to each of the three plotting functions -- for (a), the
@@ -45,12 +48,14 @@ gap between clones."""
 LABEL_SIZE = 8.0
 """The panel labels, (a) to (d)."""
 
-SIDE = 0.48
-"""(c) and (d), as a fraction of the width: the layout's minipages."""
+SIDE = 0.36
+"""(c) and (d), each as a fraction of the width: square panels side by side."""
 
-SCALE = 0.75 * 0.85
-"""(c) and (d) within their minipages, centred, so the section does not
-outweigh the genome above it: 0.75, then a further 15 per cent."""
+KEY = 1.0 - 2 * SIDE
+"""(d)'s clone key, beside its tiles: the rest of the width."""
+
+LABEL_GAP = 2.0
+"""Points between (b)'s clone names and its axis."""
 
 
 @dataclass
@@ -219,12 +224,71 @@ def _fit_tracks(panel: Any) -> None:
             ).set_in_layout(False)
 
 
-def _centred(panel: Any) -> Any:
-    """One axis, `SCALE` of the panel's width, centred in it."""
-    margin = (1.0 - SCALE) / 2
-    grid = panel.add_gridspec(1, 3, width_ratios=(margin, SCALE, margin))
+def _clone_key(ax: Any, clone_ids: Any, colours: list[str]) -> None:
+    """The clones in two columns, row by row, one alone on top when odd."""
+    from cnaster.utils import cast_clone_label
+    from matplotlib.lines import Line2D
 
-    return panel.add_subplot(grid[0, 1])
+    entries = [
+        Line2D([0], [0], marker="s", color="w", markerfacecolor=colour, markersize=5)
+        for colour in colours
+    ]
+    labels = [cast_clone_label(clone) for clone in clone_ids]
+    blank = Line2D([0], [0], color="w", alpha=0.0)
+
+    grid: list[list[tuple[Any, str]]] = []
+    rest = list(zip(entries, labels, strict=True))
+
+    if len(rest) % 2:
+        grid.append([rest.pop(0), (blank, "")])
+
+    grid += [rest[k : k + 2] for k in range(0, len(rest), 2)]
+
+    # NB `legend` fills its columns first, so the rows are read down each.
+    order = [row[c] for c in range(2) for row in grid]
+    ax.legend(
+        [handle for handle, _ in order],
+        [label for _, label in order],
+        ncol=2,
+        loc="center left",
+        frameon=False,
+        handlelength=0.8,
+        handletextpad=0.3,
+        columnspacing=0.8,
+        borderaxespad=0.0,
+        fontsize=FONT_SIZE,
+    )
+    ax.axis("off")
+
+
+def _align_profile(top: Any, profile_ax: Any, figure: Any) -> None:
+    """(b)'s axis over (a)'s tracks, and its clone names left-aligned beside it.
+
+    Run after the layout is drawn and frozen: the tracks' extent on the page
+    is then known, and (b)'s axis takes the same left and right edges, so
+    bin `i` of (b) sits under bin `i` of (a) and the chromosome boundaries
+    line up. The names are set left-aligned, their `C`s in one column, a
+    `LABEL_GAP` from the axis.
+    """
+    from matplotlib.transforms import Bbox
+
+    renderer = figure.canvas.get_renderer()
+    tracks = [ax.get_window_extent(renderer) for ax in top.axes]
+    left, right = min(b.x0 for b in tracks), max(b.x1 for b in tracks)
+
+    here = profile_ax.get_window_extent(renderer)
+    parent = profile_ax.get_figure().transSubfigure.inverted()
+    (x0, y0), (x1, y1) = parent.transform([(left, here.y0), (right, here.y1)])
+    profile_ax.set_position(Bbox([[x0, y0], [x1, y1]]))
+
+    names = profile_ax.get_yticklabels()
+    widest = max(text.get_window_extent(renderer).width for text in names)
+    pad = widest / figure.dpi * 72.0 + LABEL_GAP
+
+    for text in names:
+        text.set_horizontalalignment("left")
+
+    profile_ax.tick_params(axis="y", which="major", pad=pad, length=0)
 
 
 def combined_figure(
@@ -244,7 +308,7 @@ def combined_figure(
     )
     from port.patch.plot_genomic import plot_clones_genomic
     from port.patch.plotting.genomic import PAPER_WIDTH
-    from port.patch.plotting.spatial import draw_clones_spatial
+    from port.patch.plotting.spatial import draw_clones_spatial, spot_colours
 
     if recorded.genomic is None or recorded.spatial is None or recorded.profile is None:
         msg = f"the run made {recorded.calls}; the page needs all three"
@@ -255,10 +319,10 @@ def combined_figure(
     n_clones = len(np.unique(genomic.kwargs["res_combine"]["new_assignment"]))
     # NB one profile row per clone rather than two halves, and the height
     #    that frees goes to (a), whose tracks are the densest on the page.
-    # NB (c)'s legend sits below its tiles and out of the layout, so its row
-    #    is reserved here: at 0.2 in it ran 0.107 in off the page at 4.80 in
-    #    (#339), where a tight bounding box had hidden it by growing the page.
-    heights = (0.68 * n_clones, 0.12 * n_clones + 0.55, SCALE * SIDE * width + 0.45)
+    # NB (b)'s rows taller than (a)'s tracks, and (c)/(d) square at `SIDE`,
+    #    their key beside them rather than below, so nothing runs off the
+    #    page at 4.80 in (#339).
+    heights = (0.68 * n_clones, 0.2 * n_clones + 0.5, SIDE * width + 0.25)
 
     # NB no space between axes beyond what `clone_axes`' gap rows give.
     figure = plt.figure(
@@ -269,9 +333,9 @@ def combined_figure(
     )
     rows: Any = figure.subfigures(3, 1, height_ratios=heights, hspace=0.02)
     top, middle = rows[0], rows[1]
-    sides: Any = rows[2].subfigures(
-        1, 2, width_ratios=(SIDE, SIDE), wspace=(1.0 - 2 * SIDE) / SIDE
-    )
+    # NB the slide on the left, the clones beside it and their key at the
+    #    right edge.
+    sides: Any = rows[2].subfigures(1, 2, width_ratios=(SIDE, 1.0 - SIDE), wspace=0.0)
     left, right = sides[0], sides[1]
 
     plot_clones_genomic(
@@ -288,34 +352,32 @@ def combined_figure(
 
     profile_ax, legend_ax = middle.subplots(2, 1, height_ratios=(1.0, 0.3))
     plot_copy_number_profile(recorded.profile.args[0], ax=profile_ax)
-    # NB upstream's clone names are vertical, which on a row 0.3 in tall is
-    #    longer than the row: set level, they take width the page has.
-    profile_ax.tick_params(axis="y", which="major", pad=9)
 
     for text in profile_ax.get_yticklabels():
         text.set_rotation(0)
-        text.set_horizontalalignment("right")
     # NB `cnaster` adds its legend at fixed page coordinates, which a layout
     #    engine does not manage; it is redrawn into an axis that is managed.
     middle.axes[-1].remove()
     plot_ascn_legend(legend_ax, label_fontsize=FONT_SIZE)
 
     coords, assignment = recorded.spatial.args[:2]
-    spatial_ax = _centred(left)
+    grid = right.add_gridspec(1, 2, width_ratios=(SIDE, KEY), wspace=0.05)
+    spatial_ax = right.add_subplot(grid[0, 0])
+    key_ax = right.add_subplot(grid[0, 1])
     draw_clones_spatial(
         spatial_ax,
         np.asarray(coords),
         assignment,
         recorded.spatial.kwargs.get("single_tumor_prop"),
     )
-
-    # NB out of the layout, below the tiles, so (c) and (d) are one size.
-    spatial_ax.get_legend().set_in_layout(False)
+    spatial_ax.get_legend().remove()
+    _, clone_ids, colours = spot_colours(assignment)
+    _clone_key(key_ax, clone_ids, colours)
 
     image, extent = slide_image(he_frame)
-    slide_ax = _centred(right)
+    slide_ax = left.add_subplot(1, 1, 1)
     slide_ax.imshow(image, extent=extent, interpolation="none")
-    # NB the section (c) shows, so a boundary sits at the same place in both.
+    # NB the section (d) shows, so a boundary sits at the same place in both.
     slide_ax.set_xlim(spatial_ax.get_xlim())
     slide_ax.set_ylim(spatial_ax.get_ylim())
     slide_ax.set_aspect("equal")
@@ -336,5 +398,10 @@ def combined_figure(
         panel.suptitle(
             f"({label})", x=0.0, ha="left", fontsize=LABEL_SIZE, fontweight="bold"
         )
+
+    # NB laid out once and frozen, so (b) can be set against (a) on the page.
+    figure.canvas.draw()
+    figure.set_layout_engine("none")
+    _align_profile(top, profile_ax, figure)
 
     return figure

@@ -184,8 +184,8 @@ def test_the_page_is_written_at_the_text_width_with_nothing_past_it(
     renderer = figure.canvas.get_renderer()
     page = figure.bbox
 
-    # NB the legends one by one: (c)'s is out of the layout, so the figure's
-    #    tight box does not count it, and it is the one that ran off.
+    # NB the legends one by one: one kept out of the layout is not in the
+    #    figure's tight box, and (c)'s ran off the page that way at 4.80 in.
     extents = [figure.get_tightbbox(renderer)]
     extents += [
         ax.get_legend().get_window_extent(renderer)
@@ -205,3 +205,89 @@ def test_the_page_is_written_at_the_text_width_with_nothing_past_it(
 
     assert box is not None
     assert float(box.group(1)) == pytest.approx(122.0 / 25.4 * 72.0, abs=0.1)
+
+
+def _page(tmp_path: Path, n_clones: int = 3) -> Any:
+    from cnaster.he import get_he_image
+    from port.extensions.combined_figure import Call, Recorded, combined_figure
+
+    from tests.fixtures import clone_bands
+    from tests.he_slide import mock_he, write_he_slide
+
+    arguments, keywords = _genomic_arguments()
+    n_spots = arguments[1].shape[2]
+    rows, columns = np.unravel_index(np.arange(n_spots), (3, 3))
+    coords = np.column_stack([rows, columns]).astype(float)
+    assignment = pd.Series([f"clone {k % n_clones}" for k in range(n_spots)])
+    write_he_slide(mock_he(clone_bands(3, 3, 3), (3, 3), seed=1), tmp_path)
+
+    return combined_figure(
+        Recorded(
+            genomic=Call(arguments, keywords),
+            spatial=Call((coords, assignment), {}),
+            profile=Call((keywords["df_cnv"].assign(START=0, END=1),), {}),
+        ),
+        get_he_image(str(tmp_path), pos=None),
+    )
+
+
+@pytest.mark.infra
+def test_b_spans_a_and_its_clone_names_start_in_one_column(
+    cnaster_config: None, tmp_path: Path
+) -> None:
+    """(b)'s axis has (a)'s left and right edges to a pixel, so bin `i` is under
+    bin `i`; its names are left-aligned, `LABEL_GAP` clear of the axis."""
+    import matplotlib as mpl
+
+    mpl.use("Agg")
+    from port.extensions.combined_figure import LABEL_GAP
+
+    figure = _page(tmp_path)
+    figure.canvas.draw()
+    renderer = figure.canvas.get_renderer()
+    top, middle = figure.subfigs[0], figure.subfigs[1]
+
+    tracks = [ax.get_window_extent(renderer) for ax in top.axes]
+    profile = middle.axes[0].get_window_extent(renderer)
+
+    assert profile.x0 == pytest.approx(min(b.x0 for b in tracks), abs=1.0)
+    assert profile.x1 == pytest.approx(max(b.x1 for b in tracks), abs=1.0)
+
+    names = [t.get_window_extent(renderer) for t in middle.axes[0].get_yticklabels()]
+    lefts = [name.x0 for name in names]
+
+    assert max(lefts) - min(lefts) < 1.0
+    gap = profile.x0 - max(name.x1 for name in names)
+    assert 0.0 < gap <= LABEL_GAP / 72.0 * figure.dpi + 1.0
+
+
+@pytest.mark.infra
+def test_the_slide_is_left_and_the_clone_key_is_two_columns_one_alone_on_top(
+    cnaster_config: None, tmp_path: Path
+) -> None:
+    """(c) the slide, (d) the clones; three clones key as one over two."""
+    import matplotlib as mpl
+
+    mpl.use("Agg")
+    figure = _page(tmp_path, n_clones=3)
+    figure.canvas.draw()
+    renderer = figure.canvas.get_renderer()
+    slide, clones = figure.subfigs[2].subfigs
+
+    assert slide.axes[0].get_images(), "(c) is the slide"
+    assert (
+        slide.axes[0].get_window_extent(renderer).x1
+        <= clones.axes[0].get_window_extent(renderer).x0
+    )
+
+    key = clones.axes[1].get_legend()
+    entries = {
+        text.get_text(): text.get_window_extent(renderer)
+        for text in key.get_texts()
+        if text.get_text()
+    }
+    rows = sorted({round(box.y0) for box in entries.values()}, reverse=True)
+
+    assert len(entries) == 3
+    assert len(rows) == 2
+    assert sum(round(box.y0) == rows[0] for box in entries.values()) == 1

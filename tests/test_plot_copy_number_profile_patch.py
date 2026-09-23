@@ -53,6 +53,7 @@ def _alleles(ax: Any, *, halves: bool) -> dict[tuple[int, int, str], tuple[float
     """
     from matplotlib.colors import to_rgba
     from matplotlib.patches import Rectangle
+    from port.patch.plot_copy_number_profile import hatch_of
 
     n_rows = round(ax.get_ylim()[1] / (1.0 / len(ax.get_yticks())))
     h = ax.get_ylim()[1] / n_rows
@@ -73,10 +74,9 @@ def _alleles(ax: Any, *, halves: bool) -> dict[tuple[int, int, str], tuple[float
             for b in bins:
                 colours[(row, b, allele)] = face
         else:
+            drawn = hatch_of(ax, patch)
             hatch = (
-                tuple(np.round(to_rgba(patch.get_hatchcolor())[:3], 6))
-                if patch.get_hatch()
-                else face
+                tuple(np.round(to_rgba(drawn[1])[:3], 6)) if drawn is not None else face
             )
             for b in bins:
                 colours[(row, b, "A")] = face
@@ -113,17 +113,66 @@ def test_every_bin_has_upstreams_alleles_in_upstreams_row() -> None:
 
 @pytest.mark.patch
 def test_the_hatch_turns_with_the_major_allele_and_normal_is_plain() -> None:
-    """(2, 1) at +45 degrees, its mirror (1, 2) at -45, and (1, 1) unhatched."""
-    from port.patch.plot_copy_number_profile import HATCH, plot_copy_number_profile
+    """(2, 1) rising right (`h=0`), its mirror (1, 2) rising left (`h=1`), (1, 1) plain."""
+    from port.patch.plot_copy_number_profile import (
+        HATCH,
+        hatch_of,
+        plot_copy_number_profile,
+    )
 
     ours = plot_copy_number_profile(_profile()).axes[0]
-    hatches = {
-        (round(p.get_x()), round(p.get_y(), 3), round(p.get_width())): p.get_hatch()
+    turns = [
+        None if (drawn := hatch_of(ours, p)) is None else drawn[0]
         for p in ours.patches
         if p.get_facecolor()[3] > 0 and p.get_width() < 20
-    }
+    ]
 
-    assert HATCH[1] in hatches.values()
-    assert HATCH[-1] in hatches.values()
-    assert all(hatch in (None, HATCH[1], HATCH[-1]) for hatch in hatches.values())
-    assert sum(hatch is None for hatch in hatches.values()) >= 1
+    assert HATCH[1] in turns
+    assert HATCH[-1] in turns
+    assert set(turns) <= {None, HATCH[1], HATCH[-1]}
+    assert turns.count(None) >= 1
+
+
+@pytest.mark.infra
+def test_the_hatch_is_clipped_to_its_segment_at_its_angle_and_spacing() -> None:
+    """Every line inside its segment's extent, at `HATCH_ANGLE`, `HATCH_SPACING` apart.
+
+    The lines are matplotlib's only after a draw, and a `Rectangle` clip is
+    silently replaced by the axis's own: before that was fixed the lines of
+    one segment crossed every row below it.
+    """
+    from matplotlib.collections import LineCollection
+    from matplotlib.transforms import TransformedPath
+    from port.patch.plot_copy_number_profile import (
+        HATCH_ANGLE,
+        HATCH_SPACING,
+        plot_copy_number_profile,
+    )
+
+    figure = plot_copy_number_profile(_profile())
+    ax = figure.axes[0]
+    figure.canvas.draw()
+
+    hatches = [
+        c
+        for c in ax.collections
+        if isinstance(c, LineCollection) and hasattr(c, "fill")
+    ]
+    assert hatches
+
+    for hatch in hatches:
+        clip = hatch.get_clip_path()
+        assert isinstance(clip, TransformedPath), "clipped to its segment's path"
+        path, transform = clip.get_transformed_path_and_affine()
+        box = transform.transform_path(path).get_extents()
+        fill = hatch.fill.get_window_extent(figure.canvas.get_renderer())
+
+        np.testing.assert_allclose(box.bounds, fill.bounds, atol=0.5)
+
+        (x0, y0), (x1, y1) = hatch.get_segments()[0]
+        assert np.degrees(np.arctan2(abs(y1 - y0), abs(x1 - x0))) == pytest.approx(
+            HATCH_ANGLE
+        )
+
+        starts = [segment[0][0] for segment in hatch.get_segments()]
+        np.testing.assert_allclose(np.diff(starts), HATCH_SPACING * figure.dpi)

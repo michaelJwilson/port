@@ -53,14 +53,16 @@ component-wise work around `tests/test_run_cnaster_round_trip.py`.
 
 ## `combined.pdf`
 
-The final four at a text column (#309, #280): (a) `clones_genomic` and (b)
-`copy_number_profile` full width, (c) `clones_spatial` and (d) an H&E slide
-side by side at 0.48 each, no caption. `port.extensions.combined_figure`
-redraws the run's own calls into matplotlib subfigures at 122 mm (4.80 in),
-`llncs`'s `\textwidth` (#339), and writes the page at exactly that size, so
-it is included at `width=\linewidth` unscaled.
+The final four at a text column (#309, #280, #339): (a) `clones_genomic`
+and (b) `copy_number_profile` full width, (b)'s axis spanning (a)'s tracks so
+their chromosome boundaries line up; (c) an H&E slide and (d) `clones_spatial`
+side by side at 0.36 each, (d)'s clones keyed beside it in two columns; no
+caption. `port.extensions.combined_figure` redraws the run's own calls into
+matplotlib subfigures at 122 mm (4.80 in), `llncs`'s `\textwidth`, and writes
+the page at exactly that size, so it is included at `width=\linewidth`
+unscaled.
 
-(d) is **mocked** from the planted labels (`tests/he_slide.py`) and read back
+(c) is **mocked** from the planted labels (`tests/he_slide.py`) and read back
 through `cnaster.he.get_he_image`, as `run_cnaster` reads a slide. It is
 written beside the run's inputs, not into them: in them, `load_input_data`
 would pick it up and refine the initial clones by it, and the other figures

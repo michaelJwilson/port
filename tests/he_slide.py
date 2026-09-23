@@ -38,10 +38,10 @@ PIXELS_PER_SPOT = 24
 """`tissue_hires_scalef`: pixels per unit of spot position.
 
 A Visium spot pitch is 100 um, so a pixel is about 4 um and a nucleus of
-6 to 12 um is 1.5 to 3 pixels across its radius. 24 is at least what a
-0.48-linewidth panel resolves at 300 dpi over 40 spots: 23 at a 6.5 in
-column (#280), 17 at `llncs`'s 4.80 in (#339), so the slide is never the
-coarser of the two.
+6 to 12 um is 1.5 to 3 pixels across its radius. 24 is at least what the
+page's panel resolves at 300 dpi over 40 spots: 23 for 0.48 of a 6.5 in
+column (#280), 13 for 0.36 of `llncs`'s 4.80 in (#339), so the slide is
+never the coarser of the two.
 """
 
 OD_HAEMATOXYLIN = np.array([0.5626, 0.7201, 0.4062])
