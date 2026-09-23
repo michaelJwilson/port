@@ -29,6 +29,8 @@ import numpy as np
 import pytest
 from pytest_benchmark.fixture import BenchmarkFixture
 
+from tests.fixtures import tiers
+
 GATE = {"n_clones": 3, "per_clone": 1_000}
 """Small enough for the per-pull-request budget; decides no ratio."""
 
@@ -50,7 +52,15 @@ def _case(
     )
 
 
-def _bench(benchmark: BenchmarkFixture, size: dict[str, int], arm: str) -> None:
+@pytest.mark.benchmark
+@pytest.mark.parametrize("size", tiers(GATE, STRESS))
+@pytest.mark.parametrize("arm", ["cnaster", "patch"])
+def test_the_shift(benchmark: BenchmarkFixture, arm: str, size: dict[str, int]) -> None:
+    """Both arms, warmed, at the gate size and at a genome's.
+
+    The gate baseline argues nothing either way. At the stress size the
+    removed write is 2.3 MB per call.
+    """
     from cnaster.hmm_nophasing import compute_logmu_shifts
     from port.patch.hmm_nophasing.logmu_shift import shifts
 
@@ -62,21 +72,6 @@ def _bench(benchmark: BenchmarkFixture, size: dict[str, int], arm: str) -> None:
     function(*arguments)
 
     benchmark(function, *arguments)
-
-
-@pytest.mark.benchmark
-@pytest.mark.parametrize("arm", ["cnaster", "patch"])
-def test_the_gate_shift(benchmark: BenchmarkFixture, arm: str) -> None:
-    """A baseline at a gate size, which argues nothing either way."""
-    _bench(benchmark, GATE, arm)
-
-
-@pytest.mark.release
-@pytest.mark.benchmark
-@pytest.mark.parametrize("arm", ["cnaster", "patch"])
-def test_the_stress_shift(benchmark: BenchmarkFixture, arm: str) -> None:
-    """The size a genome reaches, where the removed write is 2.3 MB per call."""
-    _bench(benchmark, STRESS, arm)
 
 
 @pytest.mark.patch
