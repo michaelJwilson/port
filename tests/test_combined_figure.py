@@ -310,7 +310,7 @@ def test_the_letters_sit_over_the_top_left_corner_of_their_panels(
 ) -> None:
     """Each letter's bottom on its panel's top, or on (c)'s statistics line,
     to one `LABEL_GAP`, and its right edge `LETTER_GAP` left of the panel,
-    to a letter's width; nothing off the page, (d)'s legend on (c)'s edges."""
+    to a letter's width; no text off the page, (d)'s legend on (c)'s edges."""
     import matplotlib as mpl
 
     mpl.use("Agg")
@@ -342,7 +342,7 @@ def test_the_letters_sit_over_the_top_left_corner_of_their_panels(
         assert box.y0 >= above - 0.5, text.get_text()
         assert box.y0 <= above + gap, text.get_text()
 
-    for panel in figure.subfigs[1:]:
+    for panel in figure.subfigs:
         for ax in panel.axes:
             ticks = [*ax.get_xticklabels(), *ax.get_yticklabels()] if ax.axison else []
 

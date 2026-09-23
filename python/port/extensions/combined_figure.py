@@ -301,9 +301,10 @@ def _fit_tracks(panel: Any) -> None:
     """The genomic tracks' furniture, at a track a third of an inch tall.
 
     Upstream labels every integer of RDR and every 0.2 of BAF, which at this
-    height is a stack of overlapping numbers: only the two ends are kept,
-    and the gridlines stay. The clone name is moved clear of the axis label,
-    and the legend's 10 pt markers are set to the page's.
+    height is a stack of overlapping numbers: the two ends and the middle
+    are kept, at one decimal as (a) and (b) are, and the gridlines stay. The
+    clone name is moved clear of the axis label, and the legend's 10 pt
+    markers are set to the page's.
 
     The statistics line and the legend share one line above each clone's
     RDR track, in the gap row `clone_axes` leaves between clones, and are
@@ -314,12 +315,12 @@ def _fit_tracks(panel: Any) -> None:
         ticks = ax.get_yticks()
 
         if ticks.size > 2:
-            ends = [ticks[0], ticks[-1]]
-            ax.set_yticks(ends, [f"{tick:.0f}" for tick in ends])
+            ends = [ticks[0], (ticks[0] + ticks[-1]) / 2, ticks[-1]]
+            ax.set_yticks(ends, [f"{tick:.1f}" for tick in ends])
 
             # NB inside the track's height: a label centred on the edge
             #    overhangs it, and the layout pads every track to make room.
-            bottom, top = ax.get_yticklabels()
+            bottom, _, top = ax.get_yticklabels()
             bottom.set_verticalalignment("bottom")
             top.set_verticalalignment("top")
 
@@ -432,8 +433,8 @@ def _extents(ax: Any, coords: np.ndarray) -> None:
     y0, y1 = float(coords[:, 1].min()), float(coords[:, 1].max())
     x = (x0, (x0 + x1) / 2, x1)
     y = (y0, (y0 + y1) / 2, y1)
-    ax.set_xticks(x, [f"{v:.4g}" for v in x])
-    ax.set_yticks([-v for v in y], [f"{v:.4g}" for v in y])
+    ax.set_xticks(x, [f"{v:.1f}" for v in x])
+    ax.set_yticks([-v for v in y], [f"{v:.1f}" for v in y])
     ax.tick_params(length=2, pad=1, width=PROFILE_LINEWIDTH)
 
     for spine in ax.spines.values():
@@ -598,8 +599,11 @@ def _place(
     _set_x(
         spatial_ax, right - side + inset, right - inset, ceiling - side + inset, drawn
     )
+    # NB the key centred between (a)'s right edge and (b)'s extent ticks.
+    between = ((left + side - inset) + (right - side + inset - ticks)) / 2
     spatial_ax.get_legend().set_bbox_to_anchor(
-        (-(ticks + gap) / drawn, 0.0), transform=spatial_ax.transAxes
+        ((between + key.width / dpi / 2 - (right - side + inset)) / drawn, 0.0),
+        transform=spatial_ax.transAxes,
     )
 
     stats = [t for t in tracks[0].texts if t.get_visible()]

@@ -3,7 +3,8 @@
 The patch changes the drawing -- one row per clone, A's fill under B's
 hatch -- and not what is drawn. So what `cnaster` asserts is compared segment
 by segment: the same clones in the same order, and every segment at the same
-position and width with A's colour and B's colour from the same palette.
+position and width with A's colour and B's colour from the same palette,
+`COPY_COLOURS` read for `cnaster`'s copies 2 to 7+.
 The drawing is then held to its own claims: a normal segment is not hatched,
 and the hatch turns with the major allele, so a mirrored pair hatches in
 opposite directions.
@@ -108,7 +109,19 @@ def test_every_bin_has_upstreams_alleles_in_upstreams_row() -> None:
         t.get_text() for t in theirs.get_yticklabels()
     ]
 
-    expected = _alleles(theirs, halves=True)
+    from cnaster.palette import get_full_palette
+    from matplotlib.colors import to_rgb
+    from port.patch.plot_copy_number_profile import COPY_COLOURS
+
+    upstream, _ = get_full_palette("chisel_single")
+    recolour = {
+        tuple(np.round(to_rgb(upstream[k]), 6)): tuple(np.round(to_rgb(c), 6))
+        for k, c in COPY_COLOURS.items()
+    }
+    expected = {
+        key: recolour.get(colour, colour)
+        for key, colour in _alleles(theirs, halves=True).items()
+    }
     drawn = _alleles(ours, halves=False)
 
     assert drawn.keys() == expected.keys()

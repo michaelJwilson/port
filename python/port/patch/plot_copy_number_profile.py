@@ -51,6 +51,17 @@ __all__ = [
     "swatch",
 ]
 
+COPY_COLOURS = {
+    2: "#feb24c",
+    3: "#fd8d3c",
+    4: "#fc4e2a",
+    5: "#e31a1c",
+    6: "#bd0026",
+    "7+": "#660013",
+}
+"""Copies 2 to 7+ on `chisel_single`'s scale, its `khaki` 2 dropped: each
+moves one step redder along ColorBrewer's YlOrRd, which adds a red (#339)."""
+
 HATCH = {1: 1, -1: -1}
 """Rising to the right where A >= B (`h=0`), to the left where A < B (`h=1`)."""
 
@@ -72,6 +83,16 @@ aberrations are what the eye finds (#339)."""
 LINEWIDTH = 0.5
 """Points, for each row's outline and the chromosome boundaries: what
 `plot_clones_genomic` draws its boundaries at."""
+
+
+def _palette(palette_name: str) -> tuple[dict[Any, Any], Any]:
+    """`cnaster`'s palette, `COPY_COLOURS` over it for `chisel_single`."""
+    state_style, ordered_acn = get_full_palette(palette_name)
+
+    if palette_name == "chisel_single":
+        state_style = {**state_style, **COPY_COLOURS}
+
+    return state_style, ordered_acn
 
 
 def swatch(style: Any, copies: Any) -> tuple[float, float, float]:
@@ -199,7 +220,7 @@ def plot_copy_number_profile(
     palette_name: str = "chisel_single",
 ) -> Any:
     """`cnaster`'s profile, one row per clone, aberrations hatched A then B."""
-    state_style, _ = get_full_palette(palette_name)
+    state_style, _ = _palette(palette_name)
     clone_ids = [c.split(" ")[0][5:] for c in df_cnv.columns if c.endswith(" A")]
     clone_ids = _order(df_cnv, clone_ids)
     num_clones = len(clone_ids)
@@ -330,7 +351,7 @@ def plot_ascn_legend(
     the axis over its plot gets the swatches on the plot's left edge, "Phase"
     in the margin, and the bar on its right edge.
     """
-    state_style, ordered_acn = get_full_palette(palette_name)
+    state_style, ordered_acn = _palette(palette_name)
     ax.axis("off")
 
     gap = 0.15 * box_w
