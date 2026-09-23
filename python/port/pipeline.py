@@ -211,10 +211,18 @@ default either.
 
 FIGURE_SWAPS: tuple[Swap, ...] = (
     Swap("cnaster.utils", "write_fig", "port.patch.utils:write_fig", 195),
+    Swap(
+        "cnaster.plot_genomic",
+        "plot_clones_genomic",
+        "port.patch.plot_genomic:plot_clones_genomic",
+        299,
+    ),
 )
 """The replacements that **change the output**, and the biggest win here.
 
-One row, and it is 47 per cent of a run (#195). `write_fig` carries two
+Two rows. `write_fig` is 47 per cent of a run (#195); `plot_clones_genomic`
+draws each clone's RDR line at `mu / Z_c` when the shift is on, where its
+points are, rather than at the pinned `mu` (#299). `write_fig` carries two
 defaults `cnaster` does not: `dpi=150`, and one rasterizing group per axes
 rather than the two a gridline splits `cnaster`'s runs into. Together they
 take a run's plotting from 20.34 s to 3.84 s and its renderer buffers from
@@ -264,8 +272,8 @@ wherever the HMM scores the fit -- the coded M and E steps, its own final
 posteriors and `hmm.py:155`'s rescore -- and `pipeline_clone_assignment`
 (in `SWAPS`) reads the class's flag to apply it per candidate clone. The
 `run_core_inference` row pins the result's scale, which the shifted
-likelihood does not set, once after the optimization: the balanced state
-with the lowest `mu` is `mu = 1`.
+likelihood does not set, once after the optimization: the normal clone's
+dominant balanced state is `mu = 1` (#299).
 
 Its own table because every fitted rate moves, which `CLAUDE.md` forbids
 doing silently; `run_cnaster_port` installs it unless `--no-shift` is given,

@@ -453,3 +453,25 @@ def test_each_candidate_clone_is_scored_under_its_own_normalizer() -> None:
 
     assert ours is not None
     np.testing.assert_allclose(ours, expected, rtol=0.0, atol=1e-12)
+
+
+@pytest.mark.analytic
+def test_the_pinned_state_is_the_normal_clones_dominant_one() -> None:
+    """Not the lowest balanced `mu`: the state the normal clone decodes to.
+
+    The dev instance's case (#299): a small balanced state below the neutral
+    one, occupying a few bins, and the neutral state filling the normal
+    clone. Lowest-`mu` picks the small one; the normal clone's dominant
+    balanced state is the neutral one.
+    """
+    from port.patch.hmm_nophasing.shifted_emission import neutral_state
+
+    log_mu = np.log(np.array([2.4, 1.0, 4.0]))
+    p_binom = np.array([0.50, 0.50, 0.17])
+
+    path = np.zeros((100, 2), dtype=np.int64)
+    path[:5, :] = 1
+    path[60:, 1] = 2
+
+    assert neutral_state(log_mu, p_binom) == 1
+    assert neutral_state(log_mu, p_binom, path) == 0

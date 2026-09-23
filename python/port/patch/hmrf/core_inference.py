@@ -6,8 +6,8 @@ mean is `lambda_g T_n mu / sum_g lambda_g mu`, which `mu -> c mu` leaves
 unchanged. So the fitted rates carry an arbitrary common factor, and nothing
 downstream -- integer copy, the plots -- can read them until it is fixed.
 
-The balanced state (allele fraction within `NEUTRAL_BAF_TOLERANCE` of 0.5)
-with the lowest `mu` is set to `mu = 1`, and every rate moves with it. That
+The normal clone's dominant balanced state (`neutral_state`, #299) is set
+to `mu = 1`, and every rate moves with it. That
 changes no emission and no likelihood, so it is done **once, after the whole
 optimization**: `run_core_inference` returns the HMM and HMRF's final fit,
 and `run_cnaster` hands it straight to integer copy and plotting.
@@ -38,7 +38,16 @@ def pin_neutral(result: Any) -> int:
 
     column = np.asarray(result["new_log_mu"])
     rates = state_vector(column)
-    neutral = neutral_state(rates, state_vector(result["new_p_binom"]))
+    try:
+        path = np.asarray(result["pred_cnv"])
+    except KeyError:
+        path = None
+
+    neutral = neutral_state(
+        rates,
+        state_vector(result["new_p_binom"]),
+        path if path is not None and path.ndim == 2 else None,
+    )
 
     locked = bool(getattr(result, "_locked", False))
 
