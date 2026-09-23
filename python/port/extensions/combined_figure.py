@@ -420,16 +420,18 @@ def _clone_key(ax: Any, clone_ids: Any, colours: list[str]) -> None:
 
 
 def _extents(ax: Any, coords: np.ndarray) -> None:
-    """A perimeter like every other panel's, and the spots' first and last
-    coordinate on each axis as its only ticks: the section's extent.
+    """A perimeter like every other panel's, and the spots' first, middle and
+    last coordinate on each axis as its only ticks: the section's extent.
 
     `y` is drawn as `-y`, so its ticks carry the coordinate, not the height.
     """
     from port.patch.plot_copy_number_profile import LINEWIDTH as PROFILE_LINEWIDTH
 
     ax.axis("on")
-    x = (float(coords[:, 0].min()), float(coords[:, 0].max()))
-    y = (float(coords[:, 1].min()), float(coords[:, 1].max()))
+    x0, x1 = float(coords[:, 0].min()), float(coords[:, 0].max())
+    y0, y1 = float(coords[:, 1].min()), float(coords[:, 1].max())
+    x = (x0, (x0 + x1) / 2, x1)
+    y = (y0, (y0 + y1) / 2, y1)
     ax.set_xticks(x, [f"{v:.4g}" for v in x])
     ax.set_yticks([-v for v in y], [f"{v:.4g}" for v in y])
     ax.tick_params(length=2, pad=1, width=PROFILE_LINEWIDTH)
