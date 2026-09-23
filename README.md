@@ -211,6 +211,8 @@ run_cnaster_port --no-figures config.yaml    # the replacements that reproduce b
 run_cnaster_port --sal config.yaml           # snakes_and_ladders routines where port measured a gain
 run_cnaster_port --no-copy-cap config.yaml   # cnaster's integer copy caps, A + B <= 6, whatever the config states
 run_cnaster_port --time-stages config.yaml   # what the replacements cost in the run
+run_cnaster_port --no-floor-merge config.yaml  # cnaster's random 200-spot floor (and --no-refinement-mask, --no-distinct-init)
+run_calicost config.yaml                     # CalicoST on the same fixture files, at port's configuration
 run_cnaster_port --list                      # what would be rebound, and why
 ```
 
@@ -256,6 +258,24 @@ four configurations (#313).
 At this instance the emission array is about 0.3 GB against an 11.35 GB
 peak, which says plotting caps this run rather than the emission array --
 a different regime from #90's declared scale, not a contradiction of it.
+
+**Three clone-assignment patches are on by default** (#348). On
+`tests.fixtures.calicost_instance`, `cnaster` ends with one clone (ARI 0.000):
+`run_cnaster.py:1105` drops the read-depth refinement's allowed-clone mask, and
+`icm_sweep_deque` then moves every clone under 200 spots at random into the one
+that reached 200. `--floor-merge` keeps the floor but merges the smallest clone
+first, into each spot's best remaining clone. `--refinement-mask` passes the
+mask. `--distinct-init` stops `gmm_init` keeping near-duplicate normal
+components as separate states. With all three on, the run recovers clone ARI
+0.774 (1.000 integer) and copy-state ARI 0.997. The floor merge alone removes
+the collapse.
+
+**`run_calicost`** (#347) translates the same YAML and runs CalicoST in-process
+on the same files, into `<output_dir>_calicost`. `--align` (the default)
+replaces the CalicoST constants that have a `cnaster` counterpart;
+`--no-align` keeps CalicoST's own. It refuses the initial-clone layout on which
+CalicoST's `rectangle_initialize_initial_clone` never returns (`cnaster` #248).
+`python -m tests.recovery_audit --calicost` scores it with port's scorer.
 
 `cnaster` appends a fit record to `cnaster.perf` in the repository root on
 every run. It is **not tracked** (#222): nothing reads it, no test
