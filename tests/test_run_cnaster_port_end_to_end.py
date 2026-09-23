@@ -27,7 +27,7 @@ def test_the_entry_point_recovers_the_planted_clones(tmp_path: Path) -> None:
     from port.scripts.run_cnaster import main
 
     from tests.fixtures import core_inference_truth
-    from tests.run_config import write_run_cnaster_config
+    from tests.run_config import isolated_run, write_run_cnaster_config
     from tests.test_core_inference_end_to_end import _adjusted_rand_index
     from tests.tmp_inputs import write_tmp_inputs
     from tests.unsegment import unsegment
@@ -41,7 +41,7 @@ def test_the_entry_point_recovers_the_planted_clones(tmp_path: Path) -> None:
     )
     config = write_run_cnaster_config(written, truth, max_iter_outer=1, max_iter=3)
 
-    with warnings.catch_warnings():
+    with isolated_run(), warnings.catch_warnings():
         warnings.simplefilter("ignore")
         assert main([str(config)]) == 0
 
