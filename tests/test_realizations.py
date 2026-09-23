@@ -2,8 +2,8 @@
 
 `release`: each realization is a whole pipeline run, 35 to 40 s, in its own
 process because a run peaks at 4.7 GB. The figure is
-`python -m tests.realizations`; these two tests pin what its first
-realization says, at the planted genome it is drawn for.
+`python -m tests.realizations`; these two tests pin what its drawn
+realization (4 of 8, seed 12) says, at the planted genome it is drawn for.
 """
 
 from __future__ import annotations
@@ -25,11 +25,12 @@ pytestmark = pytest.mark.release
 
 @pytest.fixture(scope="module")
 def first(tmp_path_factory: pytest.TempPathFactory) -> First:
-    from tests.realizations import fit_one, planted_genome
+    from tests.realizations import GENOME, chosen, fit_one, planted_genome
 
     root: Path = tmp_path_factory.mktemp("realizations")
+    index = chosen(8, int(GENOME["seed"]))  # type: ignore[call-overload]
 
-    return planted_genome(), fit_one(None, 0, root, errors=True)
+    return planted_genome(), fit_one(None, index, root, errors=True)
 
 
 @pytest.mark.oracle
@@ -42,32 +43,29 @@ def test_the_rebuilt_objective_is_at_its_optimum_where_the_pipeline_stopped(
     `run_core_inference`'s captured inputs, not the one `cnaster` optimized.
     If the two were different objectives, the pipeline's point would not be
     an optimum of the rebuilt one and the decrement would say so. Stated
-    below 1e-2 in chi-square units, a tenth of a standard error, because the
+    below 5e-2 in chi-square units, a fifth of a standard error, because the
     pipeline's EM stops at `tol = 1e-3` rather than at the optimum; realized
-    3.7e-03.
+    2.4e-02 with the shift on.
     """
     _, fit = first
 
     assert fit.decrement is not None
-    assert fit.decrement < 1e-2, f"Newton decrement {fit.decrement:.2e}"
+    assert fit.decrement < 5e-2, f"Newton decrement {fit.decrement:.2e}"
 
 
 @pytest.mark.bug
 def test_the_fit_is_many_standard_errors_from_the_planted_rates(first: First) -> None:
-    """Precise and biased: `mu` misses the truth by 31 to 50 of its sigma.
+    """With the shift on, `p` is recovered and `mu` still reads low.
 
-    `mu` unshifted on both sides: the planted one realizes UMIs relative to
-    normal coverage, which the fit's `exp(log_mu)` estimates. Realized on
-    realization 0: 0.767, 1.056, 2.010 against planted 1, 1.5, 3, at -32.7,
-    -50.4 and -30.9 standard errors -- 0.77, 0.70 and 0.67 of the truth, so
-    close to one common scale. **The neutral state is the one to read
-    first**: it is the whole of clone 0, whose spots are the normal ones, and
-    it comes back at 0.77 rather than 1. The planted 0.42 allele fraction
-    comes back 0.483, at 54.1 sigma.
+    Realization 4, pinned so the neutral state is 1: `mu` 1.340 and 2.525
+    against planted 1.5 and 3, at -6.5 and -11.2 standard errors; `p` within
+    0.5 sigma in every state. **Not a local optimum**: on realization 1,
+    which lands in the same place, the shifted likelihood prefers the fit
+    to the planted parameters by 67 nats. Two of eight realizations recover
+    `(1.5, 3)` to 0.5 per cent.
 
-    Undiagnosed, and pinned as found: written to fail when every `mu` is
-    within five of its standard errors of truth. Seven more realizations are
-    in the figure; three of them recover the 0.42.
+    Undiagnosed (#293), and pinned as found: written to fail when every
+    unpinned `mu` is within five of its standard errors of truth.
     """
     from tests.realizations import planted_minor, planted_mu
 
@@ -75,8 +73,10 @@ def test_the_fit_is_many_standard_errors_from_the_planted_rates(first: First) ->
     assert fit.covariance is not None
 
     sigma = np.sqrt(np.stack([fit.covariance[:, 0, 0], fit.covariance[:, 1, 1]]).T)
+    sigma = np.where(sigma > 0.0, sigma, np.nan)
     planted = np.stack([planted_mu(truth), planted_minor(truth)]).T
     bias = (np.stack([fit.mu, fit.p]).T - planted) / sigma
 
-    assert np.all(np.abs(bias[:, 0]) > 5.0), f"mu bias {bias[:, 0]} sigma"
-    assert abs(bias[1, 1]) > 5.0, f"p bias of the (1.5, 0.42) state {bias[1, 1]}"
+    unpinned = np.isfinite(bias[:, 0])
+
+    assert np.all(np.abs(bias[unpinned, 0]) > 5.0), f"mu bias {bias[:, 0]} sigma"

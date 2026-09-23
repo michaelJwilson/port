@@ -55,16 +55,6 @@ UNINSTALLED = {
         "genomic` or not at all, because a run drawing one at each size is "
         "worse than a run drawing both at either."
     ),
-    "port.patch.hmm_nophasing.shifted_emission": (
-        "#276. Applies the library normalizer `cnaster` computes at "
-        "`hmm_nophasing.py:133` and discards at `:279`. Enabling it moves "
-        "every fitted RDR parameter, so it cannot be installed by default, "
-        "and it is not in `SWAPS` for the reason that table exists: `SWAPS` "
-        "is the set that reproduces `cnaster` bitwise and this deliberately "
-        "does not. `logmu_shift()` turns it on for a block. It joins a table "
-        "the day the shift is decided to be right, which is a scientific "
-        "question #276 holds and not a refactor."
-    ),
     "port.patch.hmm_phased.coded_emission": (
         "#269. Fixes an `IndexError` upstream raises on the shape every fit "
         "returns, so installing it changes a crash into a number -- which is "
@@ -181,11 +171,11 @@ def _installed() -> set[str]:
     """
     from importlib import import_module
 
-    from port.pipeline import FIGURE_SWAPS, NUMERIC_SWAPS, SWAPS
+    from port.pipeline import FIGURE_SWAPS, NUMERIC_SWAPS, SHIFT_SWAPS, SWAPS
 
     reached = set()
 
-    for table in (SWAPS, NUMERIC_SWAPS, FIGURE_SWAPS):
+    for table in (SWAPS, NUMERIC_SWAPS, FIGURE_SWAPS, SHIFT_SWAPS):
         for swap in table:
             module_name, _, attribute = swap.replacement.partition(":")
 

@@ -76,26 +76,61 @@ the realization with errors says whether it was."""
 
 
 def planted_genome(genome: dict[str, Any] | None = None) -> CoreInferenceTruth:
-    """`core_inference_truth`, with clone 0 made neutral.
+    """`core_inference_truth`, with clone 0 neutral, planted from the model.
+
+    **The model:** `<u_gn> = lambda_g T_n mu_{s_n(g)} / sum_g' lambda_g' mu_{s_n(g')}`,
+    with `lambda_g` the normal profile over the genome, normalized to one,
+    and `T_n` spot `n`'s coverage. The normalizer `Z_n` is the spot's own
+    `sum lambda mu`, so a spot's expected total is `T_n` whatever its copy
+    states. `cnaster` builds its baseline as `lambda_g T_n` from the counts
+    (`normal_spot.py:162`), which is this model's denominator-free part.
+
+    `lambda_g` is the fixture's exposure averaged over spots, which keeps its
+    variation along the genome, and `T_n` its per-spot total rescaled so a
+    segment carries `EXPOSURE` counts in expectation. The planted
+    `base_nb_mean` is then `lambda_g T_n / Z_n`, the factor `realize` draws
+    `mu` against.
 
     **The pipeline needs normal spots, and the fixture plants none.** Every
     clone carries events, so `determine_normal_baseline` builds its baseline
     from spots that share them and divides them out: at the fixture's
-    default rates a planted `(5, 0.88)` came back as `mu = 0.92, p = 0.12`. One clone with every bin in state 0
-    gives the baseline what it assumes it has.
+    default rates a planted `(5, 0.88)` came back as `mu = 0.92, p = 0.12`.
+    Clone 0 with every bin in state 0 gives the baseline what it assumes.
     """
     truth = core_inference_truth(**(genome or GENOME))
     states = truth.states.copy()
     states[0] = 0
 
     log_mu = np.log(np.asarray(PLANTED_MU[: truth.log_mu.size], dtype=np.float64))
-    base_nb_mean = truth.base_nb_mean * (EXPOSURE / truth.base_nb_mean.mean())
-    truth = dataclasses.replace(truth, log_mu=log_mu, base_nb_mean=base_nb_mean)
+    mu = np.exp(log_mu)
+
+    profile = truth.base_nb_mean.mean(axis=1)
+    profile = profile / profile.sum()
+
+    coverage = truth.base_nb_mean.sum(axis=0)
+    coverage = coverage * (EXPOSURE * profile.size / coverage.mean())
+
+    normalizer = (profile[:, None] * mu[states[truth.labels]].T).sum(axis=0)
+    base_nb_mean = profile[:, None] * coverage[None, :] / normalizer[None, :]
+
+    truth = dataclasses.replace(
+        truth, log_mu=log_mu, base_nb_mean=base_nb_mean, states=states
+    )
 
     # NB the counts are redrawn so they follow the new path; the stream is one
     #    no realization index reaches, so the genome's own draw is not also
     #    one of its realizations.
-    return realize(dataclasses.replace(truth, states=states), GENOME_DRAW)
+    return realize(truth, GENOME_DRAW)
+
+
+def normalizers(truth: CoreInferenceTruth) -> np.ndarray:
+    """`Z_c = sum_g lambda_g mu_{s_c(g)}` per clone, under the planted profile."""
+    profile = truth.base_nb_mean.mean(axis=1)
+    profile = profile / profile.sum()
+    mu = np.exp(truth.log_mu)
+    z: np.ndarray = (profile[None, :] * mu[truth.states]).sum(axis=1)
+
+    return z
 
 
 def realize(truth: CoreInferenceTruth, seed: int) -> CoreInferenceTruth:
@@ -135,8 +170,15 @@ class Captured(NamedTuple):
 
 
 def run(truth: CoreInferenceTruth, root: Path) -> Captured:
-    """Write one realization's inputs and run `run_cnaster_port` on them."""
-    import cnaster.scripts.run_cnaster as pipeline
+    """Write one realization's inputs and run `run_cnaster_port` on them.
+
+    The capture wraps **`port`'s** `run_core_inference`, the one the default
+    shift table installs, so what is kept is the pinned result `run_cnaster`
+    hands to integer copy. Wrapping `cnaster`'s binding instead would hide it
+    from the swap, which rebinds only names still bound to upstream, and the
+    pin would never run.
+    """
+    import port.patch.hmrf as patch
     from port.scripts.run_cnaster import main
 
     written = write_tmp_inputs(
@@ -145,7 +187,7 @@ def run(truth: CoreInferenceTruth, root: Path) -> Captured:
     config = write_run_cnaster_config(written, truth, **RUN)
 
     kept: list[Captured] = []
-    original = pipeline.run_core_inference
+    original = patch.run_core_inference
 
     def keep(
         single_X: Any, lengths: Any, base: Any, total: Any, *rest: Any, **kw: Any
@@ -168,14 +210,14 @@ def run(truth: CoreInferenceTruth, root: Path) -> Captured:
         )
         return result
 
-    pipeline.run_core_inference = keep
+    patch.run_core_inference = keep
 
     try:
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             main([str(config), "--no-figures"])
     finally:
-        pipeline.run_core_inference = original
+        patch.run_core_inference = original
 
     if len(kept) != 1:
         msg = f"run_core_inference was called {len(kept)} times, expected once"
@@ -197,6 +239,9 @@ class Fit(NamedTuple):
     p: np.ndarray
     covariance: np.ndarray | None
     decrement: float | None
+    truth_covariance: np.ndarray | None = None
+    """The same objective's covariance at the **planted** parameters, on this
+    realization's data: the error bars the truth would carry."""
 
 
 def _column(values: Any) -> np.ndarray:
@@ -284,18 +329,83 @@ def planted_minor(truth: CoreInferenceTruth) -> np.ndarray:
     return minor
 
 
+def _covariance(
+    objective: Any,
+    theta: np.ndarray,
+    free: np.ndarray,
+    mu: np.ndarray,
+    p_binom: np.ndarray,
+    flipped: np.ndarray,
+) -> tuple[np.ndarray, float]:
+    """`(n_states, 2, 2)` in `(mu, minor p)` at `theta`, and its decrement.
+
+    `theta` is `(log mu_k for k in free, logit p_k, log alpha, log tau)`, the
+    pinned coordinates, so a state outside `free` has no `mu` error.
+    """
+    import jax
+    import jax.numpy as jnp
+    from port.extensions.parameter_errors import parameter_errors
+
+    n_states = mu.size
+    estimate = parameter_errors(objective, theta)
+
+    gradient = np.asarray(jax.grad(objective)(jnp.asarray(theta)))
+    decrement = float(gradient @ estimate.covariance @ gradient)
+
+    rates = np.zeros((n_states, n_states))
+    rates[np.ix_(free, free)] = estimate.covariance[: free.size, : free.size]
+    cross = np.zeros(n_states)
+    cross[free] = [
+        estimate.covariance[index, free.size + state]
+        for index, state in enumerate(free)
+    ]
+    alleles = estimate.covariance[
+        free.size : free.size + n_states, free.size : free.size + n_states
+    ]
+    slope = p_binom * (1.0 - p_binom)
+
+    covariance = np.zeros((n_states, 2, 2))
+
+    for k in range(n_states):
+        off = cross[k] * mu[k] * slope[k]
+        off = -off if flipped[k] else off
+        covariance[k] = [
+            [rates[k, k] * mu[k] ** 2, off],
+            [off, alleles[k, k] * slope[k] ** 2],
+        ]
+
+    return covariance, decrement
+
+
 def fitted(truth: CoreInferenceTruth, captured: Captured, *, errors: bool) -> Fit:
     """The fit's `(mu, p)` per planted state, and its covariance if asked.
 
-    `mu` is `exp(new_log_mu)`, unshifted, as `planted_mu` is.
+    `mu` is `exp(new_log_mu)` as the pipeline returns it: fitted with the
+    per-clone shift and pinned so the balanced, lowest-`mu` state is 1
+    (`port.patch.hmrf.run_core_inference`), which is the planted convention.
 
-    The covariance is the inverse observed information of the objective the
-    HMM maximized, over `(log mu_k, logit p_k, log alpha, log tau)` with the
-    two dispersions shared as the configuration shares them, and transitions
-    held at the fit: they are not what is plotted. `(log mu, logit p)` is
-    taken to `(mu, p)` by the delta method.
+    **The covariance is taken in the pinned coordinates.** The shifted
+    likelihood is flat along `mu -> c mu`, so its information over every
+    `log mu` is singular; fixing the neutral `log mu` at 0 and differentiating
+    in the rest is the pin, applied to the parameters rather than after them.
+    So the other states' errors are those of their ratio to the neutral one,
+    and the neutral `mu` carries none: it is 1 by construction.
+
+    The objective is the one the HMM maximized, rebuilt in `jax`: per clone,
+    the rates `log mu_k - log sum_g lambda_g mu_{s_c(g)}` over the fit's own
+    decoded path, with `lambda` built as `hmrf.py:476` builds it. The path is
+    held fixed, so the shift's derivative is through the rates alone. Over
+    `(log mu_k != neutral, logit p_k, log alpha, log tau)`, dispersions
+    shared as configured and transitions held at the fit.
+
+    **At the truth too.** The same objective on the same data, evaluated at
+    the planted `(mu, p)` placed in the fit's state labels, gives the
+    covariance the truth would carry. The planted neutral state is the one
+    pinned there, the fit's dispersions stand in for the pseudobulk's (the
+    planted `alpha = 1/6` is per spot, not per sum over hundreds of spots),
+    and each planted `p` takes the allele convention its fitted state has.
     """
-    from port.extensions.parameter_errors import parameter_errors
+    from port.patch.hmm_nophasing.shifted_emission import neutral_state
 
     result = captured.result
     log_mu = _column(result["new_log_mu"])
@@ -321,50 +431,95 @@ def fitted(truth: CoreInferenceTruth, captured: Captured, *, errors: bool) -> Fi
 
     import jax
     import jax.numpy as jnp
+    import jax.scipy.special as jsp
     from port.extensions.jax_hmm import emission, marginal_negative_log_likelihood
 
     log_startprob = _column(result["new_log_startprob"])
     log_transmat = np.asarray(result["new_log_transmat"], dtype=np.float64)
 
-    def objective(theta: jnp.ndarray) -> jnp.ndarray:
-        log_emission = emission(
-            theta[:n_states],
-            jnp.full(n_states, jnp.exp(theta[-2])),
-            jax.nn.sigmoid(theta[n_states : 2 * n_states]),
-            jnp.full(n_states, jnp.exp(theta[-1])),
-            inputs["counts_nb"],
-            inputs["base_nb_mean"],
-            inputs["counts_bb"],
-            inputs["total_bb_RD"],
+    profile = captured.single_base_nb_mean.sum(axis=1)
+    log_lambda = np.log(profile / profile.sum())
+    path = np.asarray(result["pred_cnv"], dtype=np.int64)
+    n_obs, n_clones = path.shape
+
+    def pinned_objective(free: np.ndarray) -> Any:
+        def objective(theta: jnp.ndarray) -> jnp.ndarray:
+            rates = jnp.zeros(n_states).at[free].set(theta[: free.size])
+            dispersions = jnp.full(n_states, jnp.exp(theta[-2]))
+            probabilities = jax.nn.sigmoid(theta[free.size : free.size + n_states])
+            concentrations = jnp.full(n_states, jnp.exp(theta[-1]))
+
+            blocks = []
+
+            for clone in range(n_clones):
+                shift = jsp.logsumexp(rates[path[:, clone]] + log_lambda)
+                rows = slice(clone * n_obs, (clone + 1) * n_obs)
+                blocks.append(
+                    emission(
+                        rates - shift,
+                        dispersions,
+                        probabilities,
+                        concentrations,
+                        inputs["counts_nb"][rows],
+                        inputs["base_nb_mean"][rows],
+                        inputs["counts_bb"][rows],
+                        inputs["total_bb_RD"][rows],
+                    )
+                )
+
+            return marginal_negative_log_likelihood(
+                jnp.concatenate(blocks, axis=1),
+                log_startprob,
+                log_transmat,
+                inputs["lengths"],
+            )
+
+        return objective
+
+    def coordinates(rates: np.ndarray, p: np.ndarray, free: np.ndarray) -> np.ndarray:
+        return np.concatenate(
+            [rates[free], np.log(p / (1.0 - p)), [np.log(alpha), np.log(tau)]]
         )
 
-        return marginal_negative_log_likelihood(
-            log_emission, log_startprob, log_transmat, inputs["lengths"]
-        )
+    neutral = neutral_state(log_mu, p_binom)
+    free = np.array([k for k in range(n_states) if k != neutral])
 
-    theta = np.concatenate(
-        [log_mu, np.log(p_binom / (1.0 - p_binom)), [np.log(alpha), np.log(tau)]]
+    covariance, decrement = _covariance(
+        pinned_objective(free),
+        coordinates(log_mu, p_binom, free),
+        free,
+        mu,
+        p_binom,
+        flipped,
     )
-    estimate = parameter_errors(objective, theta)
 
-    gradient = np.asarray(jax.grad(objective)(jnp.asarray(theta)))
-    decrement = float(gradient @ estimate.covariance @ gradient)
+    # NB the truth in the fit's labels: planted state `k` is fitted state
+    #    `order[k]`, and its `p` is written in that state's orientation.
+    planted_log_mu = np.empty(n_states)
+    planted_log_mu[order] = truth.log_mu - truth.log_mu[0]
+    minor_truth = np.minimum(truth.p_binom, 1.0 - truth.p_binom)
+    planted_minor_in_fit = np.empty(n_states)
+    planted_minor_in_fit[order] = minor_truth
+    planted_p = np.where(flipped, 1.0 - planted_minor_in_fit, planted_minor_in_fit)
 
-    rates = estimate.covariance[:n_states, :n_states]
-    slope = p_binom * (1.0 - p_binom)
-    alleles = estimate.covariance[n_states : 2 * n_states, n_states : 2 * n_states]
+    free_truth = np.array([k for k in range(n_states) if k != order[0]])
 
-    covariance = np.zeros((n_states, 2, 2))
+    truth_covariance, _ = _covariance(
+        pinned_objective(free_truth),
+        coordinates(planted_log_mu, planted_p, free_truth),
+        free_truth,
+        np.exp(planted_log_mu),
+        planted_p,
+        flipped,
+    )
 
-    for k in range(n_states):
-        cross = estimate.covariance[k, n_states + k] * mu[k] * slope[k]
-        cross = -cross if flipped[k] else cross
-        covariance[k] = [
-            [rates[k, k] * mu[k] ** 2, cross],
-            [cross, alleles[k, k] * slope[k] ** 2],
-        ]
-
-    return Fit(mu[order], minor[order], covariance[order], decrement)
+    return Fit(
+        mu[order],
+        minor[order],
+        covariance[order],
+        decrement,
+        truth_covariance[order],
+    )
 
 
 def fit_one(genome: dict[str, Any] | None, index: int, root: Path, errors: bool) -> Fit:
@@ -380,13 +535,24 @@ def fit_one(genome: dict[str, Any] | None, index: int, root: Path, errors: bool)
     return fitted(realization, captured, errors=errors)
 
 
+def chosen(n_realizations: int, seed: int) -> int:
+    """The realization drawn to carry the error bars, uniformly from `seed`.
+
+    Drawn rather than fixed at 0, so the realization whose errors are shown
+    is not a choice anyone made; seeded, so the figure reproduces. The index
+    is printed and saved beside the figure.
+    """
+    return int(np.random.default_rng(seed).integers(n_realizations))
+
+
 def realizations(
     n_realizations: int,
     root: Path,
     genome: dict[str, Any] | None = None,
     jobs: int = 1,
+    single: int = 0,
 ) -> tuple[CoreInferenceTruth, list[Fit]]:
-    """Plant the genome, run each realization, and fit the first with errors.
+    """Plant the genome, run each realization, and fit `single` with errors.
 
     **One fresh process per realization.** Run back to back in one process,
     the fourth of eight stalled for over twenty minutes after its genomic
@@ -404,7 +570,7 @@ def realizations(
         max_workers=jobs, mp_context=context, max_tasks_per_child=1
     ) as pool:
         futures = [
-            pool.submit(fit_one, genome, index, root, index == 0)
+            pool.submit(fit_one, genome, index, root, index == single)
             for index in range(n_realizations)
         ]
         fits = [future.result() for future in futures]
@@ -425,17 +591,26 @@ class Summary(NamedTuple):
     spread: np.ndarray
 
 
-def summarize(truth: CoreInferenceTruth, fits: Sequence[Fit]) -> Summary:
-    single = fits[0]
+def summarize(
+    truth: CoreInferenceTruth, fits: Sequence[Fit], index: int = 0
+) -> Summary:
+    single = fits[index]
     if single.covariance is None:
-        msg = "the first realization carries no covariance"
+        msg = f"realization {index} carries no covariance"
         raise ValueError(msg)
 
     sigma = np.sqrt(np.stack([single.covariance[:, 0, 0], single.covariance[:, 1, 1]]))
     planted = np.stack([planted_mu(truth), planted_minor(truth)])
     estimate = np.stack([single.mu, single.p])
 
-    others = np.stack([np.stack([fit.mu, fit.p]) for fit in fits[1:]])
+    others = np.stack(
+        [np.stack([fit.mu, fit.p]) for at, fit in enumerate(fits) if at != index]
+    )
+
+    # NB the pinned state's `mu` has no error -- it is 1 by construction -- so
+    #    its standardized entries are undefined and reported as `nan` rather
+    #    than as an infinite bias.
+    sigma = np.where(sigma > 0.0, sigma, np.nan)
 
     return Summary(
         bias=((estimate - planted) / sigma).T,
@@ -448,46 +623,80 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--realizations", type=int, default=8)
     parser.add_argument("--jobs", type=int, default=1)
     parser.add_argument(
+        "--seed",
+        type=int,
+        default=GENOME["seed"],
+        help="draws which realization carries the error bars",
+    )
+    parser.add_argument(
         "--output", type=Path, default=Path("docs/plots/realizations.png")
     )
     arguments = parser.parse_args(argv)
 
     from port.extensions.realization_plot import plot_realizations
 
+    index = chosen(arguments.realizations, arguments.seed)
+
     with tempfile.TemporaryDirectory() as scratch:
         truth, fits = realizations(
-            arguments.realizations, Path(scratch), jobs=arguments.jobs
+            arguments.realizations, Path(scratch), jobs=arguments.jobs, single=index
         )
 
-    single = fits[0]
+    single = fits[index]
     assert single.covariance is not None
 
+    others = [(fit.mu, fit.p) for at, fit in enumerate(fits) if at != index]
+    labels = [
+        f"planted ({np.exp(mu):g}, {p:g})"
+        for mu, p in zip(truth.log_mu, planted_minor(truth), strict=True)
+    ]
+    arguments.output.parent.mkdir(parents=True, exist_ok=True)
+
+    # NB two figures, the same points: the errors on the realization drawn,
+    #    and the errors on the truth, from the same likelihood at the planted
+    #    parameters on that realization's data.
     figure = plot_realizations(
         planted=(planted_mu(truth), planted_minor(truth)),
         single=(single.mu, single.p, single.covariance),
-        others=[(fit.mu, fit.p) for fit in fits[1:]],
-        labels=[
-            f"planted ({np.exp(mu):g}, {p:g})"
-            for mu, p in zip(truth.log_mu, planted_minor(truth), strict=True)
-        ],
+        others=others,
+        labels=labels,
     )
-    arguments.output.parent.mkdir(parents=True, exist_ok=True)
     figure.savefig(arguments.output, dpi=150)
 
-    summary = summarize(truth, fits)
+    at_truth = arguments.output.with_name(
+        f"{arguments.output.stem}_truth{arguments.output.suffix}"
+    )
+    figure = plot_realizations(
+        planted=(planted_mu(truth), planted_minor(truth)),
+        single=(single.mu, single.p, None),
+        others=others,
+        labels=labels,
+        planted_covariance=single.truth_covariance,
+    )
+    figure.savefig(at_truth, dpi=150)
+
+    summary = summarize(truth, fits, index)
     np.savez(
         arguments.output.with_suffix(".npz"),
         planted_mu=planted_mu(truth),
         planted_p=planted_minor(truth),
         mu=np.stack([fit.mu for fit in fits]),
         p=np.stack([fit.p for fit in fits]),
+        single=index,
         covariance=single.covariance,
+        truth_covariance=np.full((1,), np.nan)
+        if single.truth_covariance is None
+        else single.truth_covariance,
         decrement=np.nan if single.decrement is None else single.decrement,
         bias=summary.bias,
         spread=summary.spread,
     )
 
-    print(f"wrote {arguments.output}; Newton decrement {single.decrement:.2e}")
+    print(
+        f"wrote {arguments.output} and {at_truth}; realization {index} carries "
+        "the errors, "
+        f"Newton decrement {single.decrement:.2e}"
+    )
     for state in range(truth.log_mu.size):
         print(
             f"state {state}: bias {summary.bias[state].round(2)} sigma, "

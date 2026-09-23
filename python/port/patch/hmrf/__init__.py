@@ -21,6 +21,10 @@ from port.patch.hmrf.clone_assignment import (
     boundary,
     pipeline_clone_assignment,
 )
+from port.patch.hmrf.core_inference import (
+    pin_neutral,
+    run_core_inference,
+)
 from port.patch.hmrf.field import (
     compute_loglike_spot_assignment_strided,
 )
@@ -40,5 +44,7 @@ __all__ = [
     "boundary_invariants",
     "compute_loglike_spot_assignment_strided",
     "fused_spot_clone_field",
+    "pin_neutral",
     "pipeline_clone_assignment",
+    "run_core_inference",
 ]
