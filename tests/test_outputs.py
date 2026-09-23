@@ -230,7 +230,8 @@ def test_a_run_s_continuous_view_recovers_the_planted_amplification(
     40 bins), then the writer. Each run bin is mapped to its planted bin by
     the coordinates `tests.tmp_inputs` gave it, and each fitted clone to the
     planted clone most of its spots carry. The normal clone reads flat --
-    `mu` 1 and `p` 1/2 to 1e-2 at every bin -- and in the tumour clone the
+    `mu` constant to 1 per cent and `p` 1/2 to 1e-2 at every bin, `mu`'s
+    level being the fit's unpinned scale -- and in the tumour clone the
     planted amplification, `mu` 5.0 and `p` 0.88, is recovered: its mean
     `mu` over the neutral bins' to 15 per cent (4.41 measured), and its BAF
     distance from 1/2 to 0.02 (0.379 against 0.38).
@@ -268,7 +269,10 @@ def test_a_run_s_continuous_view_recovers_the_planted_amplification(
         p = bins[f"clone{clone} p"].to_numpy()
 
         if np.all(state == 0):
-            np.testing.assert_allclose(mu, 1.0, atol=1e-2)
+            # NB flat, not 1: `run_cnaster` fits `mu` up to a common scale,
+            #    which `run_cnaster_port`'s pin fixes and this run does not
+            #    (0.893 on one tree, 1.000 on another).
+            np.testing.assert_allclose(mu, mu.mean(), rtol=1e-2)
             np.testing.assert_allclose(p, 0.5, atol=1e-2)
             continue
 
