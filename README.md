@@ -210,6 +210,7 @@ run_cnaster_port --no-patch config.yaml      # the same run, nothing rebound
 run_cnaster_port --no-figures config.yaml    # the replacements that reproduce bitwise
 run_cnaster_port --sal config.yaml           # snakes_and_ladders routines where port measured a gain
 run_cnaster_port --no-copy-cap config.yaml   # cnaster's integer copy caps, A + B <= 6, whatever the config states
+run_cnaster_port --sample-layout 3,1 config.yaml  # clone spatial plots, one panel per sample
 run_cnaster_port --time-stages config.yaml   # what the replacements cost in the run
 run_cnaster_port --list                      # what would be rebound, and why
 ```
@@ -244,6 +245,15 @@ planted total of 10 cannot be decoded. `COPY_SWAPS` reads
 without the key decodes exactly as `cnaster` does. The MILP decoder, called
 as `run_cnaster` calls it, returns planted totals of 10 to 12 exactly at a
 stated 12, and none of them at `cnaster`'s 6 (`tests/test_integer_copy_patch.py`).
+
+**Several samples run as is, with shared clones** (#328).
+`tests/multisample.py` places three realizations of one genome side by side,
+with one empty column between them and an integer `sample_label` per spot.
+`run_cnaster_port` recovers the planted clones in every sample at ARI 1.000.
+Spatial edges stay within a sample.
+`port.extensions.multisample.cross_sample_adjacency` is the placeholder for
+edges between samples, and nothing installs it. `--sample-layout 3,1` draws
+the clone spatial plots one panel per sample, each in its own coordinates.
 
 **`--sal` is off by default** (#312). It admits `snakes_and_ladders`
 routines only on `port`'s measurement, and admits one today: the clone
