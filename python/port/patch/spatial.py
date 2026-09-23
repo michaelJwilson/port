@@ -331,3 +331,87 @@ def best_equal_partition(
     )
 
     return index, assignment
+
+
+RECTANGLE_TRIES = 1_000
+"""Block assignments tried before the block boundaries are redrawn.
+
+`cnaster` draws the boundaries once and then retries only the assignment,
+which cannot succeed when a block is too small: with `n_clones` a perfect
+square every clone takes exactly one block, so a small block is a small
+clone on every try (#304).
+"""
+
+
+def initialize_rectangular_clones(
+    coords: np.ndarray, n_clones: int, random_state: int = 0
+) -> tuple[list[np.ndarray], np.ndarray]:
+    """`cnaster.spatial.initialize_rectangular_clones`, which terminates.
+
+    **`cnaster`'s never returns on some inputs.** It dices the coordinates
+    into `p x p` blocks at Dirichlet-drawn boundaries, then loops `while
+    True` assigning blocks to clones at random until every clone holds more
+    than 20 per cent of an equal share of spots. The boundaries are drawn
+    once, before the loop. When one block holds fewer spots than that and
+    `n_clones = p ** 2`, so that each clone takes exactly one block, no
+    assignment passes and the loop spins forever. #298's normal clone makes
+    a 12-row band on the dev instance that does exactly this.
+
+    Here the same boundaries, the same random stream and the same test, with
+    one change: after :data:`RECTANGLE_TRIES` failed assignments the
+    boundaries are redrawn from the same stream. Wherever `cnaster` returns
+    within that many tries this returns the same, bitwise; where it would
+    not return, this does.
+    """
+    # NB the legacy global stream, deliberately: `cnaster` draws from it, and
+    #    the same draws in the same order are what makes this bitwise.
+    np.random.seed(random_state)  # noqa: NPY002
+
+    p = int(np.ceil(np.sqrt(n_clones)))
+
+    if n_clones <= 1:
+        clone_id = np.zeros(len(coords), dtype=int)
+
+        return [np.where(clone_id == i)[0] for i in range(n_clones)], clone_id
+
+    def blocks() -> np.ndarray:
+        digits = []
+
+        for axis in (0, 1):
+            share = np.random.dirichlet(np.ones(p) * 10)  # noqa: NPY002
+            share[-1] += 1e-4
+
+            low = np.percentile(coords[:, axis], 5)
+            high = np.percentile(coords[:, axis], 95)
+
+            boundary = low + (high - low) * np.cumsum(share)
+            boundary[-1] = np.max(coords[:, axis]) + 1
+
+            digits.append(np.digitize(coords[:, axis], boundary, right=True))
+
+        block_id: np.ndarray = digits[0] * p + digits[1]
+
+        return block_id
+
+    block_id = blocks()
+    tries = 0
+
+    while True:
+        if tries == RECTANGLE_TRIES:
+            block_id = blocks()
+            tries = 0
+
+        tries += 1
+        block_clone_map = np.random.randint(low=0, high=n_clones, size=p**2)  # noqa: NPY002
+
+        while len(np.unique(block_clone_map)) < n_clones:
+            counts = np.bincount(block_clone_map, minlength=n_clones)
+            block_clone_map[np.where(block_clone_map == np.argmax(counts))[0][0]] = (
+                np.where(counts == 0)[0][0]
+            )
+
+        clone_id = block_clone_map[block_id]
+        initial_clone_index = [np.where(clone_id == i)[0] for i in range(n_clones)]
+
+        if min(len(x) for x in initial_clone_index) > 0.2 * coords.shape[0] / n_clones:
+            return initial_clone_index, clone_id

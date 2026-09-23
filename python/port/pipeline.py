@@ -140,6 +140,12 @@ SWAPS: tuple[Swap, ...] = (
         190,
     ),
     Swap(
+        "cnaster.spatial",
+        "initialize_rectangular_clones",
+        "port.patch.spatial:initialize_rectangular_clones",
+        304,
+    ),
+    Swap(
         "cnaster.normal_spot",
         "normal_baf_bin_filter",
         "port.patch.normal_spot:normal_baf_bin_filter",
