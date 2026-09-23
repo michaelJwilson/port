@@ -1,15 +1,14 @@
-"""The plotting entry points `run_cnaster` never calls, and the H&E path.
+"""The H&E path and the clone annotations, which `run_cnaster` never takes.
 
-#111. The round trip draws nineteen figures through `plot_clones_genomic` and
-`plot_clones_spatial`; five of `plotting.py`'s seven entry points are on no
-path it takes, and `he.py` is gated off by a configuration that names an image
-the fixture does not write.
+#111. `he.py` is gated off by a configuration that names an image the
+fixture does not write, and the annotation loaders by one that names no
+labels. Each is given the planted fixture's own arrays.
 
-**These render and do not raise, and claim nothing about what is in the
-figure** -- the exception `tests/test_figures.py` states and #103 owns. What
-is added here beyond a call is the *input*: each one is given the planted
-fixture's own arrays, so a figure that silently drew nothing would still be
-drawing nothing from real data.
+**Four of `plotting.py`'s entry points have no test here** --
+`plot_adjacency`, `plot_gene_snp_spatial`, `plot_recombination_rates` and
+`plot_copy_states`. Their render-only tests asserted `is not None`, a
+directory's existence or nothing, which `CLAUDE.md` forbids, and were dropped
+on #355. What a figure test would be is #103's.
 """
 
 import json
@@ -59,95 +58,6 @@ def written(
 
     with written_config(write_run_cnaster_config(inputs, planted)) as config:
         yield inputs, load_input_data(config)
-
-
-@pytest.mark.smoke
-def test_the_adjacency_plot_renders(planted: CoreInferenceTruth) -> None:
-    """`plot_adjacency` draws the graph the label solver runs on."""
-    from cnaster.adjacency import multislice_adjacency
-    from cnaster.plotting import plot_adjacency
-
-    coords = np.stack(
-        np.unravel_index(np.arange(planted.n_spots), planted.lattice), axis=-1
-    ).astype(float)
-    adjacency, smooth = multislice_adjacency(coords, np.zeros(planted.n_spots, int))
-
-    assert plot_adjacency(coords, smooth, adjacency) is not None
-
-
-@pytest.mark.smoke
-def test_the_gene_and_snp_spatial_plot_renders(
-    written: tuple[Any, Any], tmp_path: Path
-) -> None:
-    """`plot_gene_snp_spatial` draws one panel per gene, into a directory."""
-    from cnaster.omics import form_gene_snp_table
-    from cnaster.plotting import plot_gene_snp_spatial
-
-    inputs, loaded = written
-    table = form_gene_snp_table(
-        loaded.unique_snp_ids, str(inputs.hgtable), loaded.adata
-    )
-
-    # NB the function writes into `{plots_dir}/genes` and does not create it:
-    #    without this the first panel raises `FileNotFoundError`. A caller
-    #    that has not made the directory gets no figures and a traceback.
-    (tmp_path / "genes").mkdir()
-
-    plot_gene_snp_spatial(
-        loaded.adata,
-        loaded.cell_snp_Aallele,
-        loaded.cell_snp_Ballele,
-        table,
-        loaded.unique_snp_ids,
-        str(tmp_path),
-        max_genes=2,
-    )
-
-    assert (tmp_path / "genes").exists()
-
-
-@pytest.mark.smoke
-def test_the_recombination_rate_plot_renders(written: tuple[Any, Any]) -> None:
-    """`plot_recombination_rates` draws a rate the reference reader does not give it.
-
-    The frame comes from `get_reference_recomb_rates`, which is what
-    `get_sitewise_transmat` reads and which returns `chrom`, `pos` and
-    `pos_cm`. The plot asks for `recomb_rate` (`plotting.py:413`), so the two
-    do not compose: something between them has to differentiate the map, and
-    nothing in the package does. The column is derived here, which is the
-    finding as much as the figure.
-    """
-    from cnaster.plotting import plot_recombination_rates
-    from cnaster.reference import get_reference_recomb_rates
-
-    inputs, _ = written
-    rates = get_reference_recomb_rates(str(inputs.genetic_map))
-
-    # cM per megabase, which is what a recombination rate is.
-    rates = rates.sort_values(["chrom", "pos"]).copy()
-    steps = rates.groupby("chrom")[["pos", "pos_cm"]].diff()
-    rates["recomb_rate"] = (steps.pos_cm / (steps.pos / 1e6)).fillna(0.0)
-
-    assert plot_recombination_rates(rates) is not None
-
-
-@pytest.mark.smoke
-def test_the_copy_state_plot_renders(planted: CoreInferenceTruth) -> None:
-    """`plot_copy_states` draws a per-state table, in the shape the run writes.
-
-    The columns are the ones `run_cnaster` builds for `cnv_perstate.tsv`:
-    `clone{c} A`, `clone{c} B` and `clone{c} logmu`, one row per state.
-    """
-    from cnaster.plotting import plot_copy_states
-
-    columns: dict[str, Any] = {}
-    for clone in range(planted.n_clones):
-        columns[f"clone{clone} A"] = np.arange(planted.n_states) % 3
-        columns[f"clone{clone} B"] = (np.arange(planted.n_states) + 1) % 3
-        columns[f"clone{clone} logmu"] = planted.log_mu
-        columns[f"clone{clone} p"] = planted.p_binom
-
-    plot_copy_states(pd.DataFrame(columns))
 
 
 @pytest.mark.smoke

@@ -169,18 +169,6 @@ def test_the_clone_label_cast_refuses_what_it_says_it_refuses() -> None:
         cast_clone_label("clone4000")
 
 
-@pytest.mark.smoke
-def test_the_interval_decoder_returns_contiguous_runs() -> None:
-    """`get_intervals` turns a state path into the runs a figure draws."""
-    from cnaster.utils import get_intervals
-
-    path = np.array([0, 0, 1, 1, 1, 0, 2])
-    intervals = get_intervals(path)
-
-    assert intervals is not None
-    assert len(intervals) >= 1
-
-
 @pytest.mark.snapshot
 @pytest.mark.usefixtures("cnaster_config", "cnaster_perf_sink")
 def test_the_mixture_initializer_returns_the_declared_shapes(

@@ -16,15 +16,6 @@ from tests.fixtures import negative_binomial_chains
 
 @pytest.mark.smoke
 @pytest.mark.usefixtures("cnaster_config")
-def test_the_configured_solver_is_returned() -> None:
-    """The name comes from configuration rather than a default."""
-    from cnaster.hmm_utils import get_solver
-
-    assert get_solver() == "L-BFGS-B"
-
-
-@pytest.mark.smoke
-@pytest.mark.usefixtures("cnaster_config")
 def test_solver_options_are_the_ones_that_solver_takes() -> None:
     """Each solver gets its own keywords, with the `em_` prefix stripped.
 

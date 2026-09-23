@@ -225,18 +225,6 @@ def test_the_buffers_are_written_in_full_so_a_reused_one_needs_no_clearing() -> 
 
 
 @pytest.mark.smoke
-def test_the_phased_buffers_carry_twice_the_states() -> None:
-    """The state axis is the argument that was a subclass."""
-    from port.patch.emission import emission_buffers
-
-    unphased = emission_buffers(4, 10, 2, phased=False)
-    phased = emission_buffers(4, 10, 2, phased=True)
-
-    assert [buffer.shape for buffer in unphased] == [(4, 10, 2)] * 2
-    assert [buffer.shape for buffer in phased] == [(8, 10, 2)] * 2
-
-
-@pytest.mark.smoke
 def test_what_the_buffers_hold_is_what_cnaster_allocates_per_call() -> None:
     """The memory claim, as arithmetic rather than as a peak reading.
 

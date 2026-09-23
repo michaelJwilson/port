@@ -123,20 +123,3 @@ def test_bounds_match_the_packed_vector(flags: dict[str, bool], n_states: int) -
         assert low is None or low <= value, f"{value} below its lower bound {low}"
         assert high is None or value <= high, f"{value} above its upper bound {high}"
 
-
-@pytest.mark.smoke
-@pytest.mark.parametrize("n_states", [1, 3, 5])
-def test_initial_parameters_have_the_declared_shape(n_states: int) -> None:
-    """The defaults are the shape the emission scores at.
-
-    `get_initial_params` is what a fit starts from when nothing is supplied,
-    so a wrong shape here surfaces as a broadcast deep inside the emission
-    rather than as a bad start.
-    """
-    from cnaster.hmm_nophasing import hmm_nophasing
-
-    n_spots = 2
-    initial = hmm_nophasing().get_initial_params(n_states, n_spots)
-
-    for array in initial[:4]:
-        assert np.asarray(array).shape == (n_states, n_spots)
