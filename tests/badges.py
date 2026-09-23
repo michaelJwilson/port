@@ -25,6 +25,7 @@ The cost is that they can go stale, and the test is what pays it.
 | --- | --- | --- |
 | judged, oracle, reach | the three coverage guards | per pull request |
 | runtime, memory, instance | a whole `run_cnaster`, both arms | `release` |
+| patched | `python -m tests.patched_share`, one unpatched run (#302) | by hand |
 
 The `instance` badge carries the size the two ratios were read at, because
 `CLAUDE.md` is explicit that a ratio read at a gate size decides nothing.
@@ -178,6 +179,18 @@ def _coverage_badge(key: str, guard: dict[str, Any]) -> Badge:
     )
 
 
+def _patched_badge(record: dict[str, Any] | None) -> Badge:
+    """The share of executed `cnaster` lines a default run has replaced.
+
+    Blue: it measures how much of the subject `port` has taken over, which
+    is neither good nor bad on its own, so no threshold colours it.
+    """
+    if not record or record.get("percent") is None:
+        return Badge("patched", "patched", UNMEASURED, "lightgrey")
+
+    return Badge("patched", record["label"], f"{record['percent']:.1f}%", "blue")
+
+
 def load() -> dict[str, Any]:
     """The recorded measurements, with their conditions."""
     return json.loads(MEASUREMENTS.read_text())  # type: ignore[no-any-return]
@@ -194,6 +207,7 @@ def badges(measurements: dict[str, Any] | None = None) -> tuple[Badge, ...]:
 
     rendered.extend(_ratio_badge(name, axis, run) for name, axis in RATIOS)
     rendered.append(_instance_badge(run))
+    rendered.append(_patched_badge(recorded.get("patched")))
 
     return tuple(rendered)
 

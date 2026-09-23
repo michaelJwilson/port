@@ -109,5 +109,14 @@
    "pending": "Settled: three pairs at 3800x1980x5, all six arms returning 0, recorded above.",
    "harness": "The first attempt at 3800 died too, at 12.059 GB, although the standalone probe of the same instance had completed at 12.167 GB. The driver built the fixture in the parent and still held every array while the arms ran, so the harness was competing with what it measured. It now releases the fixture and collects before either arm starts, and the unpatched arm reaches 12.34-12.36 GB and completes -- higher than any of the five kills. So the kill point was never a ceiling and never the arm's requirement; it was whatever else was resident."
   }
+ },
+ "patched": {
+  "label": "patched",
+  "percent": 17.48,
+  "patched_lines": 970,
+  "executed_lines": 5549,
+  "instance": "dev",
+  "commit": "cbee988",
+  "note": "Executed cnaster lines inside functions run_cnaster_port replaces by default (SWAPS, FIGURE_SWAPS, SHIFT_SWAPS; for a class, only overridden methods), over every cnaster line an unpatched run_cnaster executes on the dev instance with numba disabled. Measured by python -m tests.patched_share (#302); not checked per pull request, because it needs a whole run."
  }
 }
