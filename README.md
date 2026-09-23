@@ -210,6 +210,7 @@ run_cnaster_port --no-patch config.yaml      # the same run, nothing rebound
 run_cnaster_port --no-figures config.yaml    # the replacements that reproduce bitwise
 run_cnaster_port --sal config.yaml           # snakes_and_ladders routines where port measured a gain
 run_cnaster_port --no-copy-cap config.yaml   # cnaster's integer copy caps, A + B <= 6, whatever the config states
+run_cnaster_port --genomic-colours states config.yaml  # clones_genomic coloured per fitted state, not per integer pair
 run_cnaster_port --time-stages config.yaml   # what the replacements cost in the run
 run_cnaster_port --list                      # what would be rebound, and why
 ```
@@ -244,6 +245,12 @@ planted total of 10 cannot be decoded. `COPY_SWAPS` reads
 without the key decodes exactly as `cnaster` does. The MILP decoder, called
 as `run_cnaster` calls it, returns planted totals of 10 to 12 exactly at a
 stated 12, and none of them at `cnaster`'s 6 (`tests/test_integer_copy_patch.py`).
+
+**`--genomic-colours` chooses how `clones_genomic` colours bins** (#333).
+`integer` colours by decoded `(A, B)`, so fitted states that oversample one
+pair share a colour. `states` colours each fitted state separately, with its
+continuous `2mu` and `p` in the legend. Unset, the choice is `cnaster`'s:
+integer copies where the figure has them, states elsewhere.
 
 **`--sal` is off by default** (#312). It admits `snakes_and_ladders`
 routines only on `port`'s measurement, and admits one today: the clone
