@@ -114,11 +114,12 @@ def test_the_candidates_are_every_pair_under_the_cap() -> None:
 def test_the_entry_point_decodes_the_planted_pair_through_the_likelihood(
     tmp_path: Path,
 ) -> None:
-    """`run_cnaster_port --copy-likelihood` on a two-state copy lattice.
+    """`run_cnaster_port` on a two-state copy lattice, decoding by likelihood.
 
     The critical instance with `(1, 1)` and `(1, 2)` planted: every altered
     clone-bin of the tumor clone is written as the planted pair, phase folded,
-    and the refinement ran once per decode.
+    and the likelihood decode -- the only one supported (#362) -- ran once
+    per clone.
     """
     import warnings
 
@@ -140,22 +141,13 @@ def test_the_entry_point_decodes_the_planted_pair_through_the_likelihood(
     config = write_run_cnaster_config(
         written, truth, max_iter_outer=1, max_iter=3, n_states=2
     )
-    seen: list[object] = []
-    original = integer_copy._refine
+    integer_copy.DECODED.clear()
 
-    def counted(*arguments: object) -> object:
-        refined = original(*arguments)  # type: ignore[arg-type]
-        seen.extend(integer_copy.DECODED[-1:])
-        return refined
+    with isolated_run(), warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        assert main([str(config)]) == 0
 
-    integer_copy._refine = counted  # type: ignore[assignment]
-
-    try:
-        with isolated_run(), warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            assert main([str(config), "--copy-likelihood"]) == 0
-    finally:
-        integer_copy._refine = original
+    seen = list(integer_copy.DECODED)
 
     assert seen, "the likelihood refinement never ran"
 

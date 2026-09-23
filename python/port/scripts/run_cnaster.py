@@ -121,22 +121,10 @@ def _parser() -> argparse.ArgumentParser:
         action=argparse.BooleanOptionalAction,
         default=None,
         help=(
-            "decode integer copies under the caps the configuration states, "
-            "int_copy_num.max_total_copy and max_allele_copy (#313); cnaster "
-            "reads neither and decodes under A + B <= 6. **On by default**, "
-            "off with --no-patch; a configuration that states no cap decodes "
-            "exactly as cnaster does."
-        ),
-    )
-    parser.add_argument(
-        "--copy-likelihood",
-        action="store_true",
-        help=(
-            "re-decode integer copies by the HMM's own pseudobulk likelihood, "
-            "the path held at the fit and the neutral state pinned at (1, 1) "
-            "(#327). Off by default: on the lattice fixture it decodes 0.794 "
-            "of altered clone-bins exactly against the MILP's 0.417, for 5 s "
-            "a run; needs the copy caps (--copy-cap), which it refines."
+            "decode integer copies by the HMM's likelihood (#362) under the "
+            "cap the configuration states, int_copy_num.max_total_copy (#313); "
+            "cnaster's L1 decoders read no cap and decode under A + B <= 6. "
+            "**On by default**, off with --no-patch."
         ),
     )
     parser.add_argument(
@@ -220,7 +208,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         for swap in COPY_SWAPS:
             print(
                 f"{swap.module}.{swap.name} <- {swap.replacement}  "
-                f"(#{swap.ticket}, caps from the config; --no-copy-cap to omit)"
+                f"(#{swap.ticket}, likelihood decode, caps from the config; --no-copy-cap to omit)"
             )
         from port.extensions.sal import SAL_ROWS
 
@@ -325,13 +313,14 @@ def main(argv: Sequence[str] | None = None) -> int:
 
             stack.enter_context(distinct_init())
 
-        if arguments.copy_likelihood:
-            if not copy_cap:
-                _parser().error("--copy-likelihood refines the copy-cap decoders")
+        # NB the copy rows decode by the HMM's likelihood only (#362), which
+        #    reads each clone's counts from the fit this captures; entered
+        #    before `patched`, so the shift's row installs the capturing
+        #    `run_core_inference`.
+        if copy_cap:
+            from port.extensions.copy_likelihood import capture
 
-            from port.patch.integer_copy import by_likelihood
-
-            stack.enter_context(by_likelihood())
+            stack.enter_context(capture())
         if shift:
             from port.patch.hmm_nophasing import logmu_shift
 

@@ -210,7 +210,6 @@ run_cnaster_port --no-patch config.yaml      # the same run, nothing rebound
 run_cnaster_port --no-figures config.yaml    # the replacements that reproduce bitwise
 run_cnaster_port --sal config.yaml           # snakes_and_ladders routines where port measured a gain
 run_cnaster_port --no-copy-cap config.yaml   # cnaster's integer copy caps, A + B <= 6, whatever the config states
-run_cnaster_port --copy-likelihood config.yaml  # integer copies re-decoded by the HMM's pseudobulk likelihood
 run_cnaster_port --time-stages config.yaml   # what the replacements cost in the run
 run_cnaster_port --no-floor-merge config.yaml  # cnaster's random 200-spot floor (and --no-refinement-mask, --no-distinct-init)
 run_calicost config.yaml                     # CalicoST on the same fixture files, at port's configuration
@@ -243,16 +242,20 @@ So the figure swaps are most of the runtime win and all of the memory one.
 **`--copy-cap` is on by default** (#313). `cnaster` decodes integer copies
 under `A + B <= 6` and `A, B <= 5` and reads no key that changes them, so a
 planted total of 10 cannot be decoded. `COPY_SWAPS` reads
-`int_copy_num.max_total_copy` and applies it to both caps; a configuration
-without the key decodes exactly as `cnaster` does. The MILP decoder, called
-as `run_cnaster` calls it, returns planted totals of 10 to 12 exactly at a
-stated 12, and none of them at `cnaster`'s 6 (`tests/test_integer_copy_patch.py`).
+`int_copy_num.max_total_copy` and applies it to both caps.
 
-**`--copy-likelihood` is off by default** (#327). It re-decodes integer
-copies by the HMM's pseudobulk NB/BB likelihood, holding the fitted path, and
-starts from the MILP's answer. On the lattice fixture it decodes 0.794 of
-altered clone-bins exactly, against the MILP's 0.417, and costs 5 s per run
-(`docs/audit-recovery.md`).
+**The copy rows decode by the HMM's likelihood only** (#362). Both of
+`cnaster`'s decoders -- an L1 cost on the fitted `(mu, p)` with a ploidy
+search, and a per-clone guess at the normal state as the balanced state
+whose raw `mu` is nearest 1 -- are replaced by the pseudobulk NB/BB
+likelihood the HMM fitted (#327), with the pinned `mu`, each clone's
+`logmu_shift`, its spots, its decoded path and the fitted dispersions held.
+That makes the one-candidate-per-state MILP separable, so it is solved
+exactly, state by state; the normal state is `(1, 1)` by definition, the
+pinned one, shared by every clone. Planted totals of 10 to 12 decode exactly
+at a stated 12 (`tests/test_integer_copy_patch.py`), and the copy-lattice
+fixture's states decode exactly at known states with only the dispersions
+fitted (`tests/test_copy_decode_known_states.py`).
 
 **`--sal` is off by default** (#312). It admits `snakes_and_ladders`
 routines only on `port`'s measurement, and admits one today: the clone

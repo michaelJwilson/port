@@ -37,6 +37,7 @@ __all__ = [
     "candidates",
     "capture",
     "decode",
+    "decode_fixed",
     "log_likelihood",
 ]
 
@@ -193,6 +194,62 @@ def decode(
         sets[k] = within
 
     return Decoded(copies, best, passes, sets)
+
+
+def decode_fixed(
+    path: np.ndarray,
+    bulk: Pseudobulk,
+    *,
+    n_states: int,
+    max_total_copy: int,
+    normal: int,
+    log_shift: float,
+) -> Decoded:
+    """Each state's `(A, B)` by the HMM's likelihood, everything else fixed (#362).
+
+    Held: the pinned `mu` and the clone's `log_shift` (so `Z_c` does not
+    move with the candidate), the clone's spots, the decoded `path` and the
+    fitted dispersions. The likelihood is then a sum over states of terms
+    each depending on one state's copies, so the one-candidate-per-state
+    MILP separates and its exact solution is each state's argmax. `normal`
+    -- the pinned state, shared by every clone -- is `(1, 1)`; a state not
+    on `path` is `(1, 1)` too, having no bins to decide it. Each decoded
+    state's set is every candidate within `CHI2_HALF` of its best.
+    """
+    lattice = candidates(max_total_copy)
+    log_mu, p = _parameters(lattice)
+    copies = np.ones((n_states, 2), dtype=np.int64)
+    total = 0.0
+    sets: dict[int, list[tuple[int, int]]] = {}
+
+    for state in np.unique(path):
+        bins = np.flatnonzero(path == state)
+        k = int(state)
+
+        if k == normal:
+            pair = np.array([[1, 1]])
+            one_mu, one_p = _parameters(pair)
+            total += float(
+                np.sum(_emission(one_mu[0] - log_shift, one_p[0], bulk, bins))
+            )
+            continue
+
+        scores = np.array(
+            [
+                float(np.sum(_emission(log_mu[i] - log_shift, p[i], bulk, bins)))
+                for i in range(len(lattice))
+            ]
+        )
+        best = int(np.argmax(scores))
+        copies[k] = lattice[best]
+        total += float(scores[best])
+        sets[k] = [
+            (int(a), int(b))
+            for (a, b), score in zip(lattice, scores, strict=True)
+            if score >= scores[best] - CHI2_HALF
+        ]
+
+    return Decoded(copies, total, 1, sets)
 
 
 _CAPTURED: list[tuple[Any, Any, Any, Any]] = []

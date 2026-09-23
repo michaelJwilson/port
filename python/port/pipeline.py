@@ -329,9 +329,10 @@ planted at `2 mu = 10` -- could not be decoded by any configuration. These
 read `int_copy_num.max_total_copy` and apply it to the total and to each
 allele; `tests/run_config.py` states 12.
 
-**Its own table, and on by default.** Where the configuration states no cap
-the decode is `cnaster`'s, bitwise (`tests/test_integer_copy_patch.py`); where
-it states one the output changes, which `SWAPS` promises never to do.
+**Its own table, and on by default.** Both rows decode by the HMM's
+likelihood only, with `mu`, each clone's shift, its path and the dispersions
+held (#362), so the output is not `cnaster`'s, which `SWAPS` promises never
+to change; `run_cnaster_port` installs `copy_likelihood.capture` with them.
 `run_cnaster_port` installs it unless `--no-copy-cap` is given, and
 `--no-patch` leaves it out with the rest.
 """
