@@ -365,3 +365,40 @@ def test_every_size_plants_a_normal_clone_of_at_least_thirty_per_cent(
     assert np.all(truth.states[0] == 0)
     assert np.mean(truth.labels == 0) >= NORMAL_SHARE
     assert np.unique(truth.labels).size == n_clones
+
+
+@pytest.mark.smoke
+def test_the_mandelbrot_labelling_puts_the_set_in_the_last_clone() -> None:
+    """The last clone is exactly the spots that never escape; clone 0 is normal.
+
+    On the dev lattice, 40 x 40 and four clones: the set holds 320 spots,
+    over `icm_sweep_deque`'s 200-spot floor, and the normal clone 480, 30 per
+    cent. Checked against the construction's own escape iteration, hence
+    `smoke`.
+    """
+    from tests.fixtures import MANDELBROT_ITERATIONS, MANDELBROT_WINDOW
+
+    truth = core_inference_truth(
+        n_clones=4,
+        n_states=4,
+        lattice=(40, 40),
+        n_obs=60,
+        n_segments=2,
+        labelling="mandelbrot",
+    )
+
+    real_low, real_high, imag_low, imag_high = MANDELBROT_WINDOW
+    c = (
+        np.linspace(real_low, real_high, 40)[None, :]
+        + 1j * np.linspace(imag_high, imag_low, 40)[:, None]
+    ).reshape(-1)
+    z = np.zeros_like(c)
+    bounded = np.ones(c.size, dtype=bool)
+
+    for _ in range(MANDELBROT_ITERATIONS):
+        z[bounded] = z[bounded] ** 2 + c[bounded]
+        bounded &= np.abs(z) <= 2.0
+
+    np.testing.assert_array_equal(truth.labels == 3, bounded)
+    np.testing.assert_array_equal(np.bincount(truth.labels), [480, 400, 400, 320])
+    assert np.all(truth.states[0] == 0)

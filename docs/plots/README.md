@@ -2,11 +2,16 @@
 
 **What `run_cnaster_port` draws for the dev instance, committed so a change to
 the pipeline shows up as a change to a picture.** Nineteen of them, written at
-every stage of the run rather than at the end.
+every stage of the run rather than at the end, and `combined.pdf`, the final
+four on one page.
 
-**CI regenerates them on every pull request and commits the result** to the
-pull request's branch (`.github/workflows/figures.yml`, #296). By hand:
-`python -m tests.generate_plots`, or `--cnaster` for plain `cnaster`.
+**CI regenerates every figure here on every pull request and commits the
+result** to the pull request's branch (`.github/workflows/figures.yml`,
+#296): the twenty below, and `realizations.png`, `realizations_truth.png`
+and `realizations.npz`, eight runs of one planted genome with the
+likelihood's errors on one run and on the truth (#291). By hand:
+`python -m tests.generate_plots` (`--cnaster` for plain `cnaster`) and
+`python -m tests.realizations`.
 
 ## The instance
 
@@ -18,8 +23,9 @@ data carries is what a real run does anyway.
 State zero is planted diploid and balanced, `mu = 1` and `p = 0.5`. Without
 one the run does not reach these figures at all (#106).
 
-Through `run_cnaster_port` with its defaults, the shift included: 109 s end to
-end and a peak of 6.92 GB (#296). Plain `cnaster` measured 31 s and 5.89 GB.
+Through `run_cnaster_port` with its defaults, the shift included: 54 s end to
+end and a peak of 4.25 GB (#304). Plain `cnaster` measured 31 s and 5.89 GB
+before #298's normal clone, which made it loop forever (#304).
 
 ## What they are, and are not
 
