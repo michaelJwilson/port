@@ -22,6 +22,10 @@ kept apart:
   constants on the same inputs. `ALIGNED` lists what it sets, and
   `UNALIGNED` lists what it cannot reach.
 
+`terminating()` refuses, with an error, the one input found on which
+CalicoST's rectangle initializer loops forever; it is on in both modes,
+because a hang is not a result.
+
 `--no-figures` stubs CalicoST's three plotting calls. CalicoST writes its
 figures after its tables, so the tables do not depend on the flag.
 """
@@ -45,10 +49,12 @@ import yaml
 __all__ = [
     "ALIGNED",
     "UNALIGNED",
+    "UnterminatedInitialization",
     "aligned",
     "calicost_config",
     "compatible",
     "main",
+    "terminating",
     "write_calicost_config",
 ]
 
@@ -325,6 +331,67 @@ def aligned(document: dict[str, Any]) -> Iterator[None]:
         yield
 
 
+def _rectangles(coords: Any, n_clones: int, random_state: int = 0) -> tuple[Any, int]:
+    """CalicoST's initial blocks and their sizes, drawn as it draws them."""
+    import numpy as np
+
+    np.random.seed(random_state)  # noqa: NPY002 - CalicoST's own global stream
+    p = int(np.ceil(np.sqrt(n_clones)))
+    digits = []
+
+    for axis in (0, 1):
+        share = np.random.dirichlet(np.ones(p) * 10)  # noqa: NPY002
+        share[-1] += 1e-4
+        low, high = np.percentile(coords[:, axis], [5, 95])
+        boundary = low + (high - low) * np.cumsum(share)
+        boundary[-1] = np.max(coords[:, axis]) + 1
+        digits.append(np.digitize(coords[:, axis], boundary, right=True))
+
+    return np.bincount(digits[0] * p + digits[1], minlength=p * p), p
+
+
+class UnterminatedInitialization(RuntimeError):
+    """CalicoST's rectangle initializer cannot exit on these spots (#347)."""
+
+
+@contextmanager
+def terminating() -> Iterator[None]:
+    """Refuse the initialization CalicoST would loop on forever.
+
+    `rectangle_initialize_initial_clone` (`utils_hmrf.py:177`) draws its
+    blocks once, then redraws only the block-to-clone map until every clone
+    holds more than `0.2 * n_spots / n_clones` spots. With `p * p == n_clones`
+    blocks the map is a permutation, so the smallest clone is the smallest
+    block on every draw: if that block is under the floor, the loop never
+    ends. Measured on the dev instance at `n_clones_rdr = 4`: 8 spots against
+    a floor of 14.75, in the first BAF clone. `cnaster` #248 is the same
+    defect in the code rewritten from this.
+
+    The check draws the blocks with CalicoST's own seed and arithmetic and
+    then calls CalicoST, which reseeds, so a run that terminates is unchanged.
+    """
+    from calicost import calicost_main
+
+    original = calicost_main.rectangle_initialize_initial_clone
+
+    def checked(coords: Any, n_clones: int, random_state: int = 0) -> Any:
+        sizes, p = _rectangles(coords, n_clones, random_state)
+        floor = 0.2 * len(coords) / n_clones
+
+        if p * p == n_clones and sizes.min() <= floor:
+            msg = (
+                f"CalicoST's rectangle initializer cannot terminate: {n_clones} "
+                f"blocks for {n_clones} clones, the smallest {sizes.min()} spots "
+                f"against a floor of {floor:.2f} (utils_hmrf.py:216, #347)"
+            )
+            raise UnterminatedInitialization(msg)
+
+        return original(coords, n_clones, random_state=random_state)
+
+    with _set(calicost_main, "rectangle_initialize_initial_clone", checked):
+        yield
+
+
 class _NoFigure:
     def savefig(self, *_: Any, **__: Any) -> None:
         pass
@@ -376,6 +443,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     with ExitStack() as stack:
         stack.enter_context(compatible())
         from calicost import calicost_main
+
+        stack.enter_context(terminating())
 
         if arguments.align:
             stack.enter_context(aligned(document))

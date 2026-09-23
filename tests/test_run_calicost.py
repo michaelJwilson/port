@@ -198,3 +198,72 @@ def test_calicost_recovers_the_planted_clones_of_the_dev_instance() -> None:
     recovery, _ = run_arm(dev_instance(), ["--no-figures"], calicost=True)
 
     assert recovery.ari >= 0.5, recovery
+
+
+def _l_shaped() -> np.ndarray:
+    """A 20 x 20 grid less its top-right quadrant: 300 spots, one block empty."""
+    xs, ys = np.meshgrid(np.arange(20), np.arange(20))
+    coords = np.column_stack([xs.ravel(), ys.ravel()])
+    return coords[~((coords[:, 0] >= 10) & (coords[:, 1] >= 10))]
+
+
+@pytest.mark.bug
+@pytest.mark.release
+def test_calicosts_initializer_does_not_terminate_on_an_l_shaped_clone() -> None:
+    """`rectangle_initialize_initial_clone` loops forever on an L of 300 spots.
+
+    Four clones get four blocks, so every redraw is a permutation and the
+    empty block is always some clone's (`utils_hmrf.py:216`). Run in a child
+    with a 20 s limit, because the defect is that it never returns; written
+    to fail the day it does. `cnaster` #248 is the same defect.
+    """
+    import subprocess
+    import sys
+
+    pytest.importorskip("calicost")
+    script = (
+        "import numpy as np, sys, types\n"
+        "t = types.ModuleType('turtle'); t.reset = lambda: None\n"
+        "sys.modules['turtle'] = t\n"
+        "from calicost.utils_hmrf import rectangle_initialize_initial_clone\n"
+        "xs, ys = np.meshgrid(np.arange(20), np.arange(20))\n"
+        "c = np.column_stack([xs.ravel(), ys.ravel()])\n"
+        "c = c[~((c[:, 0] >= 10) & (c[:, 1] >= 10))]\n"
+        "rectangle_initialize_initial_clone(c, 4, random_state=0)\n"
+    )
+
+    with pytest.raises(subprocess.TimeoutExpired):
+        subprocess.run([sys.executable, "-c", script], timeout=20, check=True)
+
+
+@pytest.mark.infra
+def test_the_guard_refuses_the_l_and_passes_a_square_through() -> None:
+    """The refusal names the block and the floor; a square grid is CalicoST's."""
+    pytest.importorskip("calicost")
+    from port.scripts.run_calicost import (
+        UnterminatedInitialization,
+        compatible,
+        terminating,
+    )
+
+    xs, ys = np.meshgrid(np.arange(20), np.arange(20))
+    square = np.column_stack([xs.ravel(), ys.ravel()])
+
+    with compatible():
+        from calicost import calicost_main
+
+        original = calicost_main.rectangle_initialize_initial_clone(
+            square, 4, random_state=0
+        )
+
+        with terminating():
+            with pytest.raises(UnterminatedInitialization, match="0 spots"):
+                calicost_main.rectangle_initialize_initial_clone(
+                    _l_shaped(), 4, random_state=0
+                )
+            checked = calicost_main.rectangle_initialize_initial_clone(
+                square, 4, random_state=0
+            )
+
+    for ours, theirs in zip(checked, original, strict=True):
+        np.testing.assert_array_equal(ours, theirs)
