@@ -9,7 +9,11 @@ four on one page.
 result** to the pull request's branch (`.github/workflows/figures.yml`,
 #296): the twenty below, and `realizations.png`, `realizations_truth.png`
 and `realizations.npz`, eight runs of one planted genome with the
-likelihood's errors on one run and on the truth (#291). By hand:
+likelihood's errors on one run and on the truth (#291). A branch another
+open pull request is based on is the exception: its figures are uploaded as a
+workflow artifact rather than committed, because every PDF carries a
+timestamp and a commit there would re-conflict the pull request above it
+(#350). By hand:
 `python -m tests.generate_plots` (`--cnaster` for plain `cnaster`) and
 `python -m tests.realizations`.
 
