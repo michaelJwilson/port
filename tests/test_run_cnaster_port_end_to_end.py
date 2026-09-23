@@ -22,7 +22,7 @@ import pytest
 
 @pytest.mark.end2end
 def test_the_entry_point_recovers_the_planted_clones(tmp_path: Path) -> None:
-    """Every spot in its planted clone, ARI 1.000, through `run_cnaster_port`."""
+    """Both planted clones, at most 2 of 1,000 spots misplaced, through `run_cnaster_port`."""
     import matplotlib as mpl
     from port.scripts.run_cnaster import main
 
@@ -52,4 +52,17 @@ def test_the_entry_point_recovers_the_planted_clones(tmp_path: Path) -> None:
     fitted = np.empty(truth.labels.size, dtype=np.int64)
     fitted[spots] = labels["clone_label"].to_numpy()
 
-    assert _adjusted_rand_index(truth.labels, fitted) == pytest.approx(1.0)
+    # NB each fitted clone read as the planted clone most of its spots carry.
+    #    Two of 1,000 is the stated tolerance: on the CI runner the seeded run
+    #    places one boundary spot in the other clone (ARI 0.996, #326, #325
+    #    at 7627acc), where the same seed here places none; the ICM's ties
+    #    fall on floating-point sums whose order the platform decides.
+    majority = {
+        clone: np.bincount(truth.labels[fitted == clone]).argmax()
+        for clone in np.unique(fitted)
+    }
+    wrong = int(np.sum(np.vectorize(majority.get)(fitted) != truth.labels))
+
+    assert len(majority) == truth.n_clones
+    assert wrong <= 2, f"{wrong} of {truth.n_spots} spots in the wrong clone"
+    assert _adjusted_rand_index(truth.labels, fitted) >= 0.99
