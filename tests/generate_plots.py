@@ -30,7 +30,10 @@ import matplotlib as mpl
 
 mpl.use("Agg")
 
+from port.extensions.combined_figure import Recorded, combined_figure, recording
+
 from tests.fixtures import CoreInferenceTruth, dev_instance
+from tests.he_slide import mock_he, write_he_slide
 from tests.run_config import write_run_cnaster_config
 from tests.test_run_cnaster_round_trip import _run
 from tests.tmp_inputs import write_tmp_inputs
@@ -68,6 +71,28 @@ def _run_port(truth: CoreInferenceTruth, root: Path, **config: object) -> Path:
     return written.root / "output"
 
 
+def _write_combined(
+    recorded: Recorded, truth: CoreInferenceTruth, root: Path, output: Path
+) -> None:
+    """(a) to (d) on one page, beside the run's own figures (#309).
+
+    The slide is mocked from the planted labels and read back through
+    `cnaster.he.get_he_image`, as `run_cnaster` reads one. It is written
+    beside the run's inputs rather than into them: `load_input_data` would
+    otherwise find it and refine the initial clones by it, and the figures
+    would stop being the ones the dev instance's run draws.
+    """
+    from cnaster.he import get_he_image
+    from port.patch.utils import write_fig
+
+    slide = mock_he(truth.labels, truth.lattice, seed=truth.seed)
+    write_he_slide(slide, root / "slide")
+    frame = get_he_image(str(root / "slide"), res="hires", pos=None)
+
+    plots = next(output.rglob("clones_spatial.pdf")).parent
+    write_fig(str(plots / "combined.pdf"), combined_figure(recorded, frame))
+
+
 def main() -> None:
     """Run the pipeline and copy its figures into `docs/plots/`."""
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
@@ -78,9 +103,18 @@ def main() -> None:
     )
     arguments = parser.parse_args()
 
-    run = _run if arguments.cnaster else _run_port
     root = Path(tempfile.mkdtemp())
-    output = run(dev_instance(), root, max_iter_outer=1, max_iter=3, n_states=STATES)
+    truth = dev_instance()
+
+    if arguments.cnaster:
+        output = _run(truth, root, max_iter_outer=1, max_iter=3, n_states=STATES)
+    else:
+        with recording() as recorded:
+            output = _run_port(
+                truth, root, max_iter_outer=1, max_iter=3, n_states=STATES
+            )
+
+        _write_combined(recorded, truth, root, output)
 
     PLOTS.mkdir(parents=True, exist_ok=True)
     for stale in PLOTS.glob("*.pdf"):

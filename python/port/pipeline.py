@@ -223,20 +223,28 @@ FIGURE_SWAPS: tuple[Swap, ...] = (
         "port.patch.plot_genomic:plot_clones_genomic",
         299,
     ),
+    Swap(
+        "cnaster.plotting",
+        "plot_clones_spatial",
+        "port.patch.plotting:plot_clones_spatial",
+        309,
+    ),
 )
 """The replacements that **change the output**, and the biggest win here.
 
-Two rows. `write_fig` is 47 per cent of a run (#195); `plot_clones_genomic`
+Three rows. `write_fig` is 47 per cent of a run (#195); `plot_clones_genomic`
 draws each clone's RDR line at `mu / Z_c` when the shift is on, where its
-points are, rather than at the pinned `mu` (#299). `write_fig` carries two
-defaults `cnaster` does not: `dpi=150`, and one rasterizing group per axes
-rather than the two a gridline splits `cnaster`'s runs into. Together they
+points are, rather than at the pinned `mu` (#299); `plot_clones_spatial`
+tiles each spot at 0.85 of the lattice pitch rather than a dot 0.53 of it
+across (#309). `write_fig` carries two defaults `cnaster` does not:
+`dpi=150`, and one rasterizing group per axes rather than the two a
+gridline splits `cnaster`'s runs into. Together they
 take a run's plotting from 20.34 s to 3.84 s and its renderer buffers from
 8,287 MB to 1,036 MB.
 
 Separate from `SWAPS` because `CLAUDE.md` forbids a silent behaviour change
-and both of these are ones: a coarser raster, and gridlines that paint under
-the data instead of over it.
+and all three are ones: a coarser raster, gridlines that paint under
+the data instead of over it, and a spot's area.
 
 **Separate, but on by default at the entry point.** `run_cnaster_port`
 installs this table unless `--no-figures` is given, because a win that large
