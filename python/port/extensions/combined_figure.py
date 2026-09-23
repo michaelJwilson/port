@@ -4,35 +4,36 @@ Four panels at a text column's width, `llncs`'s 122 mm (#280, #339), composed wi
 subfigures so the page is drawn once, at its printed size, and included at
 `width=\linewidth` with nothing scaled:
 
-- **(a)** `clones_genomic`: RDR and BAF along the genome per clone, full
+- **(a)** the H&E slide, as `cnaster.he.get_he_image` reads it;
+- **(b)** `clones_spatial`: the fitted clone of each spot, tiled by
+  `port.patch.plotting.spatial`, keyed in one column to its left;
+- **(c)** `clones_genomic`: RDR and BAF along the genome per clone, full
   width, drawn by `port.patch.plot_genomic` into its subfigure;
-- **(b)** `copy_number_profile`: the integer copies per clone, full width,
-  drawn by `cnaster` into an axis it is handed;
-- **(c)** the H&E slide, as `cnaster.he.get_he_image` reads it;
-- **(d)** `clones_spatial`: the fitted clone of each spot, tiled by
-  `port.patch.plotting.spatial`, with the clones keyed beside it in two
-  columns, one alone on top when their count is odd.
+- **(d)** `copy_number_profile`: the integer copies per clone, full width,
+  drawn by `port.patch.plot_copy_number_profile`, which names the
+  chromosomes for both.
 
-(c) and (d) sit side by side, square, at most 0.36 of the width each, and
-share the spot coordinates, so a clone boundary in (d) reads against the
-tissue in (c).
+(a) and (b) sit across the top, square, and share the spot coordinates, so a
+clone boundary in (b) reads against the tissue in (a). Clones are named as
+the paper names them, $m_N$ for the normal and $m_1$, $m_2$, ... for the rest.
 
 **One left edge and one right edge.** After one pass of the layout the page
-is frozen and placed by hand (`_place`): (a)'s tracks, (b)'s axis, its
-legend and (c) start on one left edge, and the rows end on one right edge,
-so a chromosome boundary in (a) is over the same boundary in (b). The
+is frozen and placed by hand (`_place`): the slide, the tracks, the profile
+and its legend start on one left edge, and the clones, tracks and profile
+end on one right edge, so a chromosome boundary in (c) is over the same
+boundary in (d). Every line is `PROFILE_LINEWIDTH` wide. The
 letters sit in the left margin, level with each panel's top, and take no
 height.
 
 **What is drawn is what the run drew.** `recording` keeps the arguments of
-the run's last call to each of the three plotting functions -- for (a), the
+the run's last call to each of the three plotting functions -- for (c), the
 one with integer copies, which is `clones_genomic.pdf` -- so the page is a
 re-drawing of the run's own figures rather than a second derivation of them.
 
 **Text is set once, for the page.** `cnaster`'s helpers hardcode 6 to 12
 pt, sized for a 20 in page; at 4.80 in the larger are half an axis.
-After drawing, every text is set to `FONT_SIZE`, (a)'s to a point under it,
-and the letters (a) to (d) above both.
+After drawing, every text is set to `FONT_SIZE`, the letters (a) to (d)
+included.
 """
 
 from __future__ import annotations
@@ -44,15 +45,16 @@ from typing import Any
 
 import numpy as np
 
-FONT_SIZE = 6.0
-"""Every text on the page, in points, bar the panel labels and (a)."""
+from port.patch.plot_copy_number_profile import LINEWIDTH as PROFILE_LINEWIDTH
 
-GENOMIC_FONT_SIZE = FONT_SIZE - 1.0
-"""(a)'s text: a point under the rest, for the statistics line to fit the
-gap between clones."""
+FONT_SIZE = 9.0
+"""Every text on the page, in points (#339)."""
 
-LABEL_SIZE = 8.0
-"""The panel labels, (a) to (d)."""
+GENOMIC_FONT_SIZE = FONT_SIZE
+"""The genomic panel's text, at the page's size."""
+
+LABEL_SIZE = FONT_SIZE
+"""The panel letters, at the page's size and not bold."""
 
 SIDE = 0.36
 """(c) and (d), each at most this fraction of the width: square, side by side,
@@ -70,7 +72,14 @@ LEGEND_BOX = 0.25
 """Inches, one box of (b)'s legend."""
 
 TOP_LINE = 0.1
-"""Inches above (a) for the top clone's statistics line."""
+"""Inches above the genomic panel for the top clone's statistics line."""
+
+SPATIAL_SCALE = 0.8
+"""The slide and clone panels, as a fraction of the largest that fits."""
+
+SPATIAL_ROW = 0.9
+"""Their row's height, as a fraction of that largest: 0.1 of it left as white
+space under the panels."""
 
 
 @dataclass
@@ -173,6 +182,26 @@ def _set_text(panel: Any, size: float) -> None:
         text.set_fontsize(size)
 
 
+def _fractions(ax: Any, handles: Any, labels: list[str], columns: int) -> Any:
+    """A clone's state fractions on its statistics line, justified right,
+    in `columns` columns."""
+    legend = ax.legend(
+        handles,
+        labels,
+        loc="lower right",
+        bbox_to_anchor=(1.0, 1.0),
+        ncol=columns,
+        frameon=False,
+        borderpad=0.0,
+        borderaxespad=0.0,
+        handletextpad=0.2,
+        columnspacing=0.6,
+        fontsize=FONT_SIZE,
+    )
+    legend.set_in_layout(False)
+    return legend
+
+
 def _fit_tracks(panel: Any) -> None:
     """The genomic tracks' furniture, at a track a third of an inch tall.
 
@@ -209,7 +238,9 @@ def _fit_tracks(panel: Any) -> None:
         #    into the RDR and BAF labels at 4.80 in (#339).
         for name in names:
             if stats:
-                stats[0].set_text(f"{name.get_text()}: {stats[0].get_text()}")
+                # NB the name alone: at 11 pt the spot and UMI counts ran
+                #    past the page's width.
+                stats[0].set_text(clone_symbol(name.get_text()))
             name.set_visible(False)
             name.set_in_layout(False)
 
@@ -218,17 +249,15 @@ def _fit_tracks(panel: Any) -> None:
                 text.set_y(1.0)
                 text.set_in_layout(False)
             if text.get_text().startswith("chr"):
-                # NB the rotated box hung from the axis, 1 pt under it,
-                #    rather than its baseline 0.9 of a track down, so the
-                #    layout reserves the names' height and no more.
-                from matplotlib.transforms import ScaledTranslation
+                # NB the profile below names the chromosomes on the same
+                #    edges, so the tracks drop theirs and take the height.
+                text.set_visible(False)
+                text.set_in_layout(False)
 
-                text.set_y(0.0)
-                text.set_verticalalignment("top")
-                text.set_transform(
-                    ax.get_xaxis_transform()
-                    + ScaledTranslation(0.0, -1.0 / 72.0, ax.figure.dpi_scale_trans)
-                )
+        # NB frames at the width of the chromosome boundaries and of the
+        #    profile's outlines, one line weight on the page.
+        for spine in ax.spines.values():
+            spine.set_linewidth(PROFILE_LINEWIDTH)
 
         legend = ax.get_legend()
 
@@ -243,24 +272,36 @@ def _fit_tracks(panel: Any) -> None:
                 handle.set_markersize(3)
 
             legend.remove()
-            ax.legend(
-                handles,
-                labels,
-                loc="lower right",
-                bbox_to_anchor=(1.0, 1.0),
-                ncol=len(labels),
-                frameon=False,
-                borderpad=0.0,
-                borderaxespad=0.0,
-                handletextpad=0.2,
-                columnspacing=1.0,
-                fontsize=FONT_SIZE,
-            ).set_in_layout(False)
+            _fractions(ax, handles, labels, len(labels))
+
+
+ROMAN = {"I": 1, "V": 5, "X": 10, "L": 50, "C": 100}
+
+
+def clone_symbol(label: str) -> str:
+    """`cnaster`'s "Clone 0", "Clone III" as the paper's $m_N$, $m_3$.
+
+    Clone 0 is the normal clone, `N`; the rest are numbered in arabic.
+    """
+    word = label.split()[-1]
+
+    if word.isdigit():
+        number = int(word)
+    else:
+        values = [ROMAN[c] for c in word.upper()]
+        number = sum(
+            -v if k + 1 < len(values) and v < values[k + 1] else v
+            for k, v in enumerate(values)
+        )
+
+    if number == 0:
+        return r"$m_N$"
+
+    return rf"$m_{number}$" if number < 10 else rf"$m_{{{number}}}$"
 
 
 def _clone_key(ax: Any, clone_ids: Any, colours: list[str]) -> None:
-    """The clones in two columns beside `ax`, row by row, one alone on top
-    when odd, the key's bottom on the axis's bottom."""
+    """The clones in one column left of `ax`, the key's bottom on the axis's."""
     from cnaster.utils import cast_clone_label
     from matplotlib.lines import Line2D
 
@@ -268,30 +309,16 @@ def _clone_key(ax: Any, clone_ids: Any, colours: list[str]) -> None:
         Line2D([0], [0], marker="s", color="w", markerfacecolor=colour, markersize=5)
         for colour in colours
     ]
-    labels = [cast_clone_label(clone) for clone in clone_ids]
-    blank = Line2D([0], [0], color="w", alpha=0.0)
-
-    grid: list[list[tuple[Any, str]]] = []
-    rest = list(zip(entries, labels, strict=True))
-
-    if len(rest) % 2:
-        grid.append([rest.pop(0), (blank, "")])
-
-    grid += [rest[k : k + 2] for k in range(0, len(rest), 2)]
-
-    # NB `legend` fills its columns first, so the rows are read down each.
-    order = [row[c] for c in range(2) for row in grid]
     ax.legend(
-        [handle for handle, _ in order],
-        [label for _, label in order],
-        ncol=2,
-        loc="lower left",
-        bbox_to_anchor=(1.04, 0.0),
+        entries,
+        [clone_symbol(cast_clone_label(clone)) for clone in clone_ids],
+        ncol=1,
+        loc="lower right",
+        bbox_to_anchor=(-0.04, 0.0),
         frameon=False,
         borderpad=0.0,
         handlelength=0.8,
         handletextpad=0.3,
-        columnspacing=0.8,
         borderaxespad=0.0,
         fontsize=FONT_SIZE,
     ).set_in_layout(False)
@@ -312,6 +339,20 @@ def _set_x(
     parent = ax.get_figure().transSubfigure.inverted()
     (a, b), (c, d) = parent.transform([(x0 * dpi, bottom), (x1 * dpi, top)])
     ax.set_position(Bbox([[a, b], [c, d]]))
+
+
+def _trim(figure: Any, bottom: float, top: float = 0.0) -> None:
+    """Cut `bottom` inches off the page's foot and `top` off its head, every
+    axis kept where it is relative to the rest."""
+    renderer = figure.canvas.get_renderer()
+    dpi = figure.dpi
+    width, height = figure.get_size_inches()
+    kept = [(ax, ax.get_window_extent(renderer)) for ax in figure.get_axes()]
+    figure.set_size_inches(width, height - bottom - top)
+    figure.canvas.draw()
+
+    for ax, box in kept:
+        _set_x(ax, box.x0 / dpi, box.x1 / dpi, box.y0 / dpi - bottom, box.height / dpi)
 
 
 def _place(
@@ -342,10 +383,7 @@ def _place(
     width, height = figure.get_size_inches()
     gap = LABEL_GAP / 72.0
 
-    letters = [
-        figure.text(0.0, 0.0, f"({k})", fontsize=LABEL_SIZE, fontweight="bold")
-        for k in "abcd"
-    ]
+    letters = [figure.text(0.0, 0.0, f"({k})", fontsize=LABEL_SIZE) for k in "abcd"]
     letter = max(t.get_window_extent(renderer).width for t in letters) / dpi
     names = profile_ax.get_yticklabels()
     widest = max(t.get_window_extent(renderer).width for t in names) / dpi
@@ -353,12 +391,11 @@ def _place(
     tracks = list(top.axes)
     left = max(
         min(ax.get_window_extent(renderer).x0 for ax in tracks) / dpi,
-        letter + gap + widest + gap,
+        letter + 2 * gap + widest + gap,
     )
     right = max(ax.get_window_extent(renderer).x1 for ax in tracks) / dpi
 
-    chromosomes = [t for t in tracks[-1].texts if t.get_text().startswith("chr")]
-    chromosomes += list(profile_ax.get_xticklabels())
+    chromosomes = list(profile_ax.get_xticklabels())
 
     for _ in range(3):
         for ax in [*tracks, profile_ax, legend_ax]:
@@ -374,11 +411,29 @@ def _place(
 
         right -= overrun + gap
 
+    # NB each clone's state fractions follow its name, so a clone with many
+    #    states wraps its key onto rows rather than running off the page.
+    for ax in tracks:
+        legend = ax.get_legend()
+
+        # NB a legend lays out its box once, so a narrower one is a new one.
+        while (
+            legend is not None
+            and legend._ncols > 1
+            and legend.get_window_extent(renderer).x1 / dpi > right
+        ):
+            handles = legend.legend_handles
+            labels = [text.get_text() for text in legend.get_texts()]
+            columns = legend._ncols - 1
+            legend.remove()
+            legend = _fractions(ax, handles, labels, columns)
+            figure.canvas.draw()
+
     for text in names:
         text.set_horizontalalignment("left")
 
     profile_ax.tick_params(
-        axis="y", which="major", pad=(left - letter - gap) * 72.0, length=0
+        axis="y", which="major", pad=(left - letter - 2 * gap) * 72.0, length=0
     )
 
     plot_ascn_legend(
@@ -390,41 +445,55 @@ def _place(
         span=right - left,
     )
 
-    # NB (c) and (d) square and equal, as large as `SIDE` allows and no
-    #    larger than fits: across, beside (d)'s key; down, under (b)'s legend.
+    # NB (a) and (b) square and equal across the top: the slide on the
+    #    left edge, the clones on the right edge, their key in one column
+    #    between, its bottom on theirs. The largest that fits across is
+    #    `fit`; they are drawn at `SPATIAL_SCALE` of it, in a row
+    #    `SPATIAL_ROW` of it tall, and everything below moves up to meet it.
     figure.canvas.draw()
-    between = max(SPATIAL_GAP, letter + 2 * gap)
-    # NB how far the key reaches past (d)'s right edge, anchor offset included.
     key = spatial_ax.get_legend().get_window_extent(renderer)
-    key_width = (key.x1 - spatial_ax.get_window_extent(renderer).x1) / dpi + gap
-    ceiling = (
-        min(t.get_window_extent(renderer).y0 for t in legend_ax.texts) / dpi - 2 * gap
-    )
-    side = min(SIDE * width, (width - left - between - key_width) / 2, ceiling - gap)
-    below = ceiling - side
-    _set_x(slide_ax, left, left + side, below, side)
-    _set_x(spatial_ax, left + side + between, left + 2 * side + between, below, side)
+    key_width = key.width / dpi + 2 * gap
+    ceiling = height - gap
+    fit = min(SIDE * width, (right - left - key_width - SPATIAL_GAP) / 2)
+    side = SPATIAL_SCALE * fit
+    _set_x(slide_ax, left, left + side, ceiling - side, side)
+    _set_x(spatial_ax, right - side, right, ceiling - side, side)
 
-    # NB the key's anchor is a fraction of (d)'s width, which just changed.
+    stats = [t for t in tracks[0].texts if t.get_visible()]
+    lower = [*tracks, profile_ax, legend_ax]
     figure.canvas.draw()
-    overrun = spatial_ax.get_legend().get_window_extent(renderer).x1 / dpi - (
-        width - gap
-    )
+    first = max(t.get_window_extent(renderer).y1 for t in stats) / dpi
+    lift = (ceiling - SPATIAL_ROW * fit - 3 * gap) - first
 
-    if overrun > 0.0:
-        side -= overrun / 2
-        below = ceiling - side
-        _set_x(slide_ax, left, left + side, below, side)
+    for ax in lower:
+        here = ax.get_window_extent(renderer)
         _set_x(
-            spatial_ax, left + side + between, left + 2 * side + between, below, side
+            ax, here.x0 / dpi, here.x1 / dpi, here.y0 / dpi + lift, here.height / dpi
         )
+
+    # NB the page ends at its lowest text, `gap` under it.
+    figure.canvas.draw()
+    lowest = (
+        min(
+            t.get_window_extent(renderer).y0
+            for ax in lower
+            for t in [*ax.texts, *(ax.get_xticklabels() if ax.axison else [])]
+            if t.get_visible() and t.get_text()
+        )
+        / dpi
+    )
+    highest = (
+        max(ax.get_window_extent(renderer).y1 for ax in (slide_ax, spatial_ax)) / dpi
+    )
+    _trim(figure, lowest - gap, height - highest - gap)
+    height = figure.get_size_inches()[1]
 
     figure.canvas.draw()
 
     for text, ax, x in zip(
         letters,
-        (tracks[0], profile_ax, slide_ax, spatial_ax),
-        (0.0, 0.0, 0.0, left + side + gap),
+        (slide_ax, spatial_ax, tracks[0], profile_ax),
+        (0.0, left + side + 2 * gap, 0.0, 0.0),
         strict=True,
     ):
         # NB level with the panel's top, its statistics line included.
@@ -466,25 +535,21 @@ def combined_figure(
     #    their key beside them rather than below, so nothing runs off the
     #    page at 4.80 in; no row for the letters, which sit in the margin
     #    (#339).
-    heights = (0.68 * n_clones + TOP_LINE, 0.22 * n_clones + 0.6, SIDE * width + 0.05)
+    heights = (
+        SIDE * width + TOP_LINE + 0.05,
+        1.05 * n_clones,
+        0.27 * n_clones + 0.45,
+    )
 
     # NB no space between axes beyond what `clone_axes`' gap rows give.
     figure = plt.figure(
         figsize=(width, sum(heights)),
         dpi=300,
         facecolor="white",
-        # NB the top clone's statistics line sits above its track and out of
-        #    the layout, so the page keeps a line for it.
-        layout=ConstrainedLayoutEngine(
-            h_pad=0.01, hspace=0.0, rect=(0.0, 0.0, 1.0, 1.0 - TOP_LINE / sum(heights))
-        ),
+        layout=ConstrainedLayoutEngine(h_pad=0.01, hspace=0.0),
     )
     rows: Any = figure.subfigures(3, 1, height_ratios=heights, hspace=0.02)
-    top, middle = rows[0], rows[1]
-    # NB the slide on the left, the clones beside it and their key at the
-    #    right edge.
-    sides: Any = rows[2].subfigures(1, 2, width_ratios=(SIDE, 1.0 - SIDE), wspace=0.0)
-    left, right = sides[0], sides[1]
+    spatial_row, top, middle = rows[0], rows[1], rows[2]
 
     plot_clones_genomic(
         *genomic.args,
@@ -498,8 +563,12 @@ def combined_figure(
     )
     _fit_tracks(top)
 
-    profile_ax, legend_ax = middle.subplots(2, 1, height_ratios=(1.0, 0.5))
+    profile_ax, legend_ax = middle.subplots(2, 1, height_ratios=(1.0, 0.3))
     plot_copy_number_profile(recorded.profile.args[0], ax=profile_ax)
+
+    profile_ax.set_yticklabels(
+        [clone_symbol(t.get_text()) for t in profile_ax.get_yticklabels()]
+    )
 
     for text in profile_ax.get_yticklabels():
         text.set_rotation(0)
@@ -509,7 +578,7 @@ def combined_figure(
     legend_ax.axis("off")
 
     coords, assignment = recorded.spatial.args[:2]
-    spatial_ax = right.add_subplot(1, 1, 1)
+    slide_ax, spatial_ax = spatial_row.subplots(1, 2)
     draw_clones_spatial(
         spatial_ax,
         np.asarray(coords),
@@ -521,9 +590,8 @@ def combined_figure(
     _clone_key(spatial_ax, clone_ids, colours)
 
     image, extent = slide_image(he_frame)
-    slide_ax = left.add_subplot(1, 1, 1)
     slide_ax.imshow(image, extent=extent, interpolation="none")
-    # NB the section (d) shows, so a boundary sits at the same place in both.
+    # NB the section (b) shows, so a boundary sits at the same place in both.
     slide_ax.set_xlim(spatial_ax.get_xlim())
     slide_ax.set_ylim(spatial_ax.get_ylim())
     slide_ax.set_aspect("equal")
@@ -531,7 +599,7 @@ def combined_figure(
 
     _set_text(top, GENOMIC_FONT_SIZE)
 
-    for panel in (middle, left, right):
+    for panel in (middle, spatial_row):
         _set_text(panel, FONT_SIZE)
 
     # NB (b)'s chromosome names at (a)'s size: at 4.80 in the short

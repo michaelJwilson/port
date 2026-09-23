@@ -34,7 +34,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from cnaster.palette import get_full_palette
-from cnaster.plot_copy_number_profile import NORMAL_OPACITY, get_intervals
+from cnaster.plot_copy_number_profile import NORMAL_OPACITY as UPSTREAM_OPACITY
+from cnaster.plot_copy_number_profile import get_intervals
 from cnaster.utils import cast_clone_label
 from matplotlib.collections import LineCollection
 from matplotlib.patches import Rectangle
@@ -52,15 +53,20 @@ __all__ = [
 HATCH = {1: 1, -1: -1}
 """Rising to the right where A >= B (`h=0`), to the left where A < B (`h=1`)."""
 
-HATCH_ANGLE = 25.0
+HATCH_ANGLE = 35.0
 """Degrees from the horizontal: flatter than a 45-degree hatch, so a row a
-tenth of an inch tall carries several lines rather than one."""
+tenth of an inch tall carries several lines, and steep enough that the two
+phases cross at 70 degrees and read apart."""
 
 HATCH_SPACING = 0.07
 """Inches between lines, along the row."""
 
 HATCH_LINEWIDTH = 0.9
 """Points: about a sixth of the spacing, so A's fill reads first."""
+
+NORMAL_OPACITY = UPSTREAM_OPACITY / 2
+"""A normal `(1, 1)` segment's opacity, half `cnaster`'s 0.25, so the
+aberrations are what the eye finds (#339)."""
 
 LINEWIDTH = 0.5
 """Points, for each row's outline and the chromosome boundaries: what
@@ -281,20 +287,19 @@ def plot_ascn_legend(
     palette_name: str = "chisel_single",
     span: float | None = None,
 ) -> Any:
-    """The phase swatches and `cnaster`'s colour bar, each titled.
+    """The phase swatches and `cnaster`'s colour bar, each titled on its left.
 
-    Two swatches, black lines on white, one per hatch orientation: `h=`
-    to the left, `0` and `1` centred under them, "Phase" centred over
-    them. Then the copy-number bar, "$\\mathbb{N}$-CNA" centred over it
-    at the titles' height. With `span`, the axis runs `0` to `span` and
-    the bar ends there, so a caller that sets the axis over its plot
-    gets the swatches on the plot's left edge and the bar on its right.
+    Two swatches, black lines on white, one per hatch orientation, `0` and
+    `1` centred under them and "Phase" to their left. Then the copy-number
+    bar with "$\\mathbb{N}$-CNA" to its left, on the same line. With `span`,
+    the axis runs `0` to `span` and the bar ends there, so a caller that sets
+    the axis over its plot gets the swatches on the plot's left edge, "Phase"
+    in the margin, and the bar on its right edge.
     """
     state_style, ordered_acn = get_full_palette(palette_name)
     ax.axis("off")
 
     gap = 0.15 * box_w
-    title_y = box_h + 0.12
     label_y = -tick_len - 0.04
     text = {"fontsize": label_fontsize, "clip_on": False}
 
@@ -318,9 +323,8 @@ def plot_ascn_legend(
         )
         ax.text(x + box_w / 2, label_y, str(k), ha="center", va="top", **text)
 
-    ax.text(-gap, label_y, "h=", ha="right", va="top", **text)
     phase_end = 2 * box_w + gap
-    ax.text(phase_end / 2, title_y, "Phase", ha="center", va="bottom", **text)
+    ax.text(-gap, box_h / 2, "Phase", ha="right", va="center", **text)
 
     bar = len(ordered_acn) * box_w
     end = span if span is not None else phase_end + 3 * box_w + bar
@@ -342,11 +346,9 @@ def plot_ascn_legend(
         ax.plot([xc, xc], [-tick_len, 0.0], color="black", linewidth=LINEWIDTH)
         ax.text(xc, label_y, str(label), ha="center", va="top", **text)
 
-    ax.text(
-        x0 + bar / 2, title_y, r"$\mathbb{N}$-CNA", ha="center", va="bottom", **text
-    )
+    ax.text(x0 - gap, box_h / 2, r"$\mathbb{N}$-CNA", ha="right", va="center", **text)
     ax.set_xlim(0.0, end)
-    ax.set_ylim(-0.6, box_h + 0.6)
+    ax.set_ylim(-0.6, box_h + 0.05)
     ax.set_aspect("auto")
 
     return ax

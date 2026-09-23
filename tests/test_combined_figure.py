@@ -136,9 +136,9 @@ def test_the_page_is_a_column_wide_with_capped_text(
     sizes = [
         text.get_fontsize()
         for text in figure.findobj(Text)
-        if text.get_text() not in titles
+        if text.get_text() and text.get_text() not in titles
     ]
-    assert max(sizes) <= FONT_SIZE < LABEL_SIZE
+    assert max(sizes) <= FONT_SIZE == LABEL_SIZE
 
 
 @pytest.mark.infra
@@ -234,8 +234,8 @@ def _page(tmp_path: Path, n_clones: int = 3) -> Any:
 def test_b_spans_a_and_its_clone_names_start_in_one_column(
     cnaster_config: None, tmp_path: Path
 ) -> None:
-    """(b)'s axis has (a)'s left and right edges to a pixel, so bin `i` is under
-    bin `i`; its names are left-aligned, `LABEL_GAP` clear of the axis."""
+    """The profile's axis has the tracks' left and right edges to 1.5 px, so bin
+    `i` is under bin `i`; its names are left-aligned in a column after (d)."""
     import matplotlib as mpl
 
     mpl.use("Agg")
@@ -244,62 +244,62 @@ def test_b_spans_a_and_its_clone_names_start_in_one_column(
     figure = _page(tmp_path)
     figure.canvas.draw()
     renderer = figure.canvas.get_renderer()
-    top, middle = figure.subfigs[0], figure.subfigs[1]
+    top, middle = figure.subfigs[1], figure.subfigs[2]
 
     tracks = [ax.get_window_extent(renderer) for ax in top.axes]
     profile = middle.axes[0].get_window_extent(renderer)
 
-    assert profile.x0 == pytest.approx(min(b.x0 for b in tracks), abs=1.0)
-    assert profile.x1 == pytest.approx(max(b.x1 for b in tracks), abs=1.0)
+    assert profile.x0 == pytest.approx(min(b.x0 for b in tracks), abs=1.5)
+    assert profile.x1 == pytest.approx(max(b.x1 for b in tracks), abs=1.5)
 
     names = [t.get_window_extent(renderer) for t in middle.axes[0].get_yticklabels()]
     lefts = [name.x0 for name in names]
 
     assert max(lefts) - min(lefts) < 1.0
     gap = profile.x0 - max(name.x1 for name in names)
-    assert 0.0 < gap <= LABEL_GAP / 72.0 * figure.dpi + 1.0
+    assert gap >= LABEL_GAP / 72.0 * figure.dpi - 1.0
+
+    # NB the names start a column after the letters, 2 `LABEL_GAP` clear.
+    letter = figure.texts[3].get_window_extent(renderer)
+    assert min(lefts) == pytest.approx(
+        letter.x1 + 2 * LABEL_GAP / 72.0 * figure.dpi, abs=1.5
+    )
 
 
 @pytest.mark.infra
-def test_the_slide_is_left_and_the_clone_key_is_two_columns_one_alone_on_top(
+def test_the_top_row_is_slide_key_clones_edge_to_edge(
     cnaster_config: None, tmp_path: Path
 ) -> None:
-    """(c) the slide on (a)'s left edge, (d) the clones; three clones key as one
-    over two, the key's bottom on (d)'s bottom."""
+    """(a) the slide on the left edge, (b) the clones on the right edge, their
+    key one column between, its bottom on (b)'s, each clone named $m$."""
     import matplotlib as mpl
 
     mpl.use("Agg")
     figure = _page(tmp_path, n_clones=3)
     figure.canvas.draw()
     renderer = figure.canvas.get_renderer()
-    slide, clones = figure.subfigs[2].subfigs
+    slide, clones = figure.subfigs[0].axes
+    tracks = figure.subfigs[1].axes
 
-    assert slide.axes[0].get_images(), "(c) is the slide"
-    assert (
-        slide.axes[0].get_window_extent(renderer).x1
-        <= clones.axes[0].get_window_extent(renderer).x0
-    )
+    here = slide.get_window_extent(renderer)
+    tiles = clones.get_window_extent(renderer)
+    key = clones.get_legend()
+    box = key.get_window_extent(renderer)
 
-    key = clones.axes[0].get_legend()
-    entries = {
-        text.get_text(): text.get_window_extent(renderer)
-        for text in key.get_texts()
-        if text.get_text()
-    }
-    rows = sorted({round(box.y0) for box in entries.values()}, reverse=True)
-
-    assert len(entries) == 3
-    assert len(rows) == 2
-    assert sum(round(box.y0) == rows[0] for box in entries.values()) == 1
-
-    tracks = figure.subfigs[0].axes
-    here = slide.axes[0].get_window_extent(renderer)
-    tiles = clones.axes[0].get_window_extent(renderer)
-
+    assert slide.get_images(), "(a) is the slide"
     assert here.x0 == pytest.approx(
-        min(ax.get_window_extent(renderer).x0 for ax in tracks), abs=1.0
+        min(ax.get_window_extent(renderer).x0 for ax in tracks), abs=1.5
     )
-    assert key.get_window_extent(renderer).y0 == pytest.approx(tiles.y0, abs=1.0)
+    assert tiles.x1 == pytest.approx(
+        max(ax.get_window_extent(renderer).x1 for ax in tracks), abs=1.5
+    )
+    assert here.x1 <= box.x0
+    assert box.x1 <= tiles.x0
+    assert box.y0 == pytest.approx(tiles.y0, abs=1.0)
+    assert [t.get_text() for t in key.get_texts()] == ["$m_N$", "$m_1$", "$m_2$"]
+
+    lefts = {round(t.get_window_extent(renderer).x0) for t in key.get_texts()}
+    assert len(lefts) == 1, "one column"
 
 
 @pytest.mark.infra
@@ -315,20 +315,20 @@ def test_the_letters_sit_level_with_their_panels_in_the_margin(
     figure.canvas.draw()
     renderer = figure.canvas.get_renderer()
     page = figure.bbox
-    tracks = figure.subfigs[0].axes
+    tracks = figure.subfigs[1].axes
     left = min(ax.get_window_extent(renderer).x0 for ax in tracks)
     right = max(ax.get_window_extent(renderer).x1 for ax in tracks)
 
-    tiles = figure.subfigs[2].subfigs[1].axes[0].get_window_extent(renderer)
-    # NB (d)'s letter sits between (c) and (d), the others in the margin.
-    edges = (left, left, left, tiles.x0)
+    tiles = figure.subfigs[0].axes[1].get_window_extent(renderer)
+    # NB (b)'s letter sits between (a) and (b), the others in the margin.
+    edges = (left, tiles.x0, left, left)
 
     for text, edge in zip(figure.texts, edges, strict=True):
         box = text.get_window_extent(renderer)
         assert box.x0 >= page.x0 - 0.5
         assert box.x1 <= edge, text.get_text()
 
-    for panel in figure.subfigs[:2]:
+    for panel in figure.subfigs[1:]:
         for ax in panel.axes:
             ticks = [*ax.get_xticklabels(), *ax.get_yticklabels()] if ax.axison else []
 
@@ -338,6 +338,6 @@ def test_the_letters_sit_level_with_their_panels_in_the_margin(
                     assert box.x0 >= page.x0 - 0.5, text.get_text()
                     assert box.x1 <= page.x1 + 0.5, text.get_text()
 
-    legend = figure.subfigs[1].axes[1].get_window_extent(renderer)
+    legend = figure.subfigs[2].axes[1].get_window_extent(renderer)
     assert legend.x0 == pytest.approx(left, abs=1.0)
     assert legend.x1 == pytest.approx(right, abs=1.0)
