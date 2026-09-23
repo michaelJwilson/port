@@ -90,7 +90,11 @@ def _write_combined(
     frame = get_he_image(str(root / "slide"), res="hires", pos=None)
 
     plots = next(output.rglob("clones_spatial.pdf")).parent
-    write_fig(str(plots / "combined.pdf"), combined_figure(recorded, frame))
+    # NB at its declared size, not a tight box: the page is drawn at the text
+    #    width and included at 1:1, so a box that grows past it is rescaled.
+    write_fig(
+        str(plots / "combined.pdf"), combined_figure(recorded, frame), bbox_inches=None
+    )
 
 
 def main() -> None:

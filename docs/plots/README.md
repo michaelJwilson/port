@@ -56,8 +56,9 @@ component-wise work around `tests/test_run_cnaster_round_trip.py`.
 The final four at a text column (#309, #280): (a) `clones_genomic` and (b)
 `copy_number_profile` full width, (c) `clones_spatial` and (d) an H&E slide
 side by side at 0.48 each, no caption. `port.extensions.combined_figure`
-redraws the run's own calls into matplotlib subfigures at 6.5 in, so it is
-included at `width=\linewidth` unscaled.
+redraws the run's own calls into matplotlib subfigures at 122 mm (4.80 in),
+`llncs`'s `\textwidth` (#339), and writes the page at exactly that size, so
+it is included at `width=\linewidth` unscaled.
 
 (d) is **mocked** from the planted labels (`tests/he_slide.py`) and read back
 through `cnaster.he.get_he_image`, as `run_cnaster` reads a slide. It is

@@ -1,6 +1,6 @@
 r"""One page from a run: genome, copy numbers, clones and the slide (#309).
 
-Four panels at a text column's width (#280), composed with matplotlib
+Four panels at a text column's width, `llncs`'s 122 mm (#280, #339), composed with matplotlib
 subfigures so the page is drawn once, at its printed size, and included at
 `width=\linewidth` with nothing scaled:
 
@@ -21,7 +21,7 @@ one with integer copies, which is `clones_genomic.pdf` -- so the page is a
 re-drawing of the run's own figures rather than a second derivation of them.
 
 **Text is set once, for the page.** `cnaster`'s helpers hardcode 6 to 12
-pt, sized for a 20 in page; at 6.5 in the larger are a third of the axis.
+pt, sized for a 20 in page; at 4.80 in the larger are half an axis.
 After drawing, every text is set to `FONT_SIZE`, (a)'s to a point under it,
 and the panel labels above both.
 """
@@ -255,7 +255,10 @@ def combined_figure(
     n_clones = len(np.unique(genomic.kwargs["res_combine"]["new_assignment"]))
     # NB one profile row per clone rather than two halves, and the height
     #    that frees goes to (a), whose tracks are the densest on the page.
-    heights = (0.68 * n_clones, 0.12 * n_clones + 0.55, SCALE * SIDE * width + 0.2)
+    # NB (c)'s legend sits below its tiles and out of the layout, so its row
+    #    is reserved here: at 0.2 in it ran 0.107 in off the page at 4.80 in
+    #    (#339), where a tight bounding box had hidden it by growing the page.
+    heights = (0.68 * n_clones, 0.12 * n_clones + 0.55, SCALE * SIDE * width + 0.45)
 
     # NB no space between axes beyond what `clone_axes`' gap rows give.
     figure = plt.figure(
@@ -322,6 +325,11 @@ def combined_figure(
 
     for panel in (middle, left, right):
         _set_text(panel, FONT_SIZE)
+
+    # NB (b)'s chromosome names at (a)'s size: at 4.80 in the short
+    #    chromosomes' rotated names touch at 6 pt (#339).
+    for text in profile_ax.get_xticklabels():
+        text.set_fontsize(GENOMIC_FONT_SIZE)
 
     # NB as titles, so the layout engine reserves their space.
     for panel, label in zip((top, middle, left, right), "abcd", strict=True):

@@ -93,7 +93,7 @@ def test_recording_calls_through_and_restores() -> None:
 def test_the_page_is_a_column_wide_with_capped_text(
     cnaster_config: None, tmp_path: Path
 ) -> None:
-    """6.5 in wide, four panels labelled (a) to (d), no text over 6 pt else."""
+    """`llncs`'s 122 mm wide, four panels labelled (a) to (d), no text over 6 pt else."""
     import matplotlib as mpl
 
     mpl.use("Agg")
@@ -128,7 +128,7 @@ def test_the_page_is_a_column_wide_with_capped_text(
     )
     figure = combined_figure(recorded, frame)
 
-    assert figure.get_size_inches()[0] == pytest.approx(6.5)
+    assert figure.get_size_inches()[0] * 25.4 == pytest.approx(122.0)
 
     titles = [panel._suptitle.get_text() for panel in figure.subfigs[:2]]
     titles += [panel._suptitle.get_text() for panel in figure.subfigs[2].subfigs]
@@ -140,3 +140,68 @@ def test_the_page_is_a_column_wide_with_capped_text(
         if text.get_text() not in titles
     ]
     assert max(sizes) <= FONT_SIZE < LABEL_SIZE
+
+
+@pytest.mark.infra
+def test_the_page_is_written_at_the_text_width_with_nothing_past_it(
+    cnaster_config: None, tmp_path: Path
+) -> None:
+    """The PDF's MediaBox is 122 mm to 0.1 pt, and every legend is on the page.
+
+    `llncs` fixes `\\textwidth` at 122 mm, so a page written wider is scaled
+    down by `\\includegraphics[width=\\linewidth]` and its 6 pt text shrinks
+    with it. At a tight bounding box the page grew to 6.66 in at 6.5 (#339),
+    which also hid (c)'s legend running off the bottom.
+    """
+    import re
+
+    import matplotlib as mpl
+
+    mpl.use("Agg")
+    from cnaster.he import get_he_image
+    from port.extensions.combined_figure import Call, Recorded, combined_figure
+    from port.patch.utils import write_fig
+
+    from tests.fixtures import clone_bands
+    from tests.he_slide import mock_he, write_he_slide
+
+    arguments, keywords = _genomic_arguments()
+    n_spots = arguments[1].shape[2]
+    rows, columns = np.unravel_index(np.arange(n_spots), (3, 3))
+    coords = np.column_stack([rows, columns]).astype(float)
+    assignment = pd.Series(
+        [f"clone {c}" for c in keywords["res_combine"]["new_assignment"]]
+    )
+    write_he_slide(mock_he(clone_bands(3, 3, 3), (3, 3), seed=1), tmp_path)
+    recorded = Recorded(
+        genomic=Call(arguments, keywords),
+        spatial=Call((coords, assignment), {}),
+        profile=Call((keywords["df_cnv"].assign(START=0, END=1),), {}),
+    )
+    figure = combined_figure(recorded, get_he_image(str(tmp_path), pos=None))
+
+    figure.canvas.draw()
+    renderer = figure.canvas.get_renderer()
+    page = figure.bbox
+
+    # NB the legends one by one: (c)'s is out of the layout, so the figure's
+    #    tight box does not count it, and it is the one that ran off.
+    extents = [figure.get_tightbbox(renderer)]
+    extents += [
+        ax.get_legend().get_window_extent(renderer)
+        for ax in figure.axes
+        if ax.get_legend() is not None
+    ]
+
+    for extent in extents[1:]:
+        assert extent.y0 >= page.y0 - 0.5, (
+            f"{extent.y0 - page.y0:.1f} px below the page"
+        )
+        assert extent.x1 <= page.x1 + 0.5, f"{extent.x1 - page.x1:.1f} px past the page"
+
+    path = tmp_path / "combined.pdf"
+    write_fig(str(path), figure, bbox_inches=None)
+    box = re.search(rb"/MediaBox\s*\[\s*[\d.]+\s+[\d.]+\s+([\d.]+)", path.read_bytes())
+
+    assert box is not None
+    assert float(box.group(1)) == pytest.approx(122.0 / 25.4 * 72.0, abs=0.1)
