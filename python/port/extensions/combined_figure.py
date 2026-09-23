@@ -44,6 +44,10 @@ LABEL_SIZE = 8.0
 SIDE = 0.48
 """(c) and (d), as a fraction of the width: the layout's minipages."""
 
+SCALE = 0.75
+"""(c) and (d) within their minipages, centred, so the section does not
+outweigh the genome above it."""
+
 
 @dataclass
 class Call:
@@ -152,6 +156,11 @@ def _fit_tracks(panel: Any) -> None:
     height is a stack of overlapping numbers: only the two ends are kept,
     and the gridlines stay. The clone name is moved clear of the axis label,
     and the legend's 10 pt markers are set to the page's.
+
+    The statistics line and the legend share one line above each clone's
+    RDR track, in the gap row `clone_axes` leaves between clones, and are
+    kept out of the layout: counted in it, each pushes every track apart by
+    its own height.
     """
     for ax in panel.axes:
         ticks = ax.get_yticks()
@@ -160,23 +169,58 @@ def _fit_tracks(panel: Any) -> None:
             ends = [ticks[0], ticks[-1]]
             ax.set_yticks(ends, [f"{tick:.0f}" for tick in ends])
 
+            # NB inside the track's height: a label centred on the edge
+            #    overhangs it, and the layout pads every track to make room.
+            bottom, top = ax.get_yticklabels()
+            bottom.set_verticalalignment("bottom")
+            top.set_verticalalignment("top")
+
         ax.tick_params(length=2, pad=1)
 
         for text in ax.texts:
             if text.get_rotation() == 90.0:
+                # NB centred on the RDR/BAF boundary: counted in the layout,
+                #    it opens a gap between the two tracks of one clone.
                 text.set_x(-0.055)
+                text.set_in_layout(False)
+            elif text.get_rotation() == 0.0:
+                text.set_y(1.0)
+                text.set_in_layout(False)
 
         legend = ax.get_legend()
 
         if legend is not None:
-            for handle in legend.legend_handles:
+            # NB redrawn on the statistics line, right-aligned and unpadded:
+            #    upstream's anchor, sized for a 3.2 in track, lands on the
+            #    track above.
+            handles = legend.legend_handles
+            labels = [text.get_text() for text in legend.get_texts()]
+
+            for handle in handles:
                 handle.set_markersize(3)
 
-            # NB above the track, where upstream's anchor puts it on a 3.2 in
-            #    track; on a third of an inch it lands on the track below.
-            legend.set_loc("lower right")
-            legend.set_bbox_to_anchor((1.0, 0.9), transform=ax.transAxes)
-            legend.set_in_layout(False)
+            legend.remove()
+            ax.legend(
+                handles,
+                labels,
+                loc="lower right",
+                bbox_to_anchor=(1.0, 1.0),
+                ncol=len(labels),
+                frameon=False,
+                borderpad=0.0,
+                borderaxespad=0.0,
+                handletextpad=0.2,
+                columnspacing=1.0,
+                fontsize=FONT_SIZE,
+            ).set_in_layout(False)
+
+
+def _centred(panel: Any) -> Any:
+    """One axis, `SCALE` of the panel's width, centred in it."""
+    margin = (1.0 - SCALE) / 2
+    grid = panel.add_gridspec(1, 3, width_ratios=(margin, SCALE, margin))
+
+    return panel.add_subplot(grid[0, 1])
 
 
 def combined_figure(
@@ -190,6 +234,7 @@ def combined_figure(
         plot_ascn_legend,
         plot_copy_number_profile,
     )
+    from matplotlib.layout_engine import ConstrainedLayoutEngine
 
     from port.patch.plot_genomic import plot_clones_genomic
     from port.patch.plotting.genomic import PAPER_WIDTH
@@ -202,10 +247,14 @@ def combined_figure(
     width = PAPER_WIDTH if width is None else width
     genomic = recorded.genomic
     n_clones = len(np.unique(genomic.kwargs["res_combine"]["new_assignment"]))
-    heights = (0.85 * n_clones, 0.3 * n_clones + 0.6, SIDE * width)
+    heights = (0.75 * n_clones, 0.3 * n_clones + 0.6, SCALE * SIDE * width + 0.2)
 
+    # NB no space between axes beyond what `clone_axes`' gap rows give.
     figure = plt.figure(
-        figsize=(width, sum(heights)), dpi=300, facecolor="white", layout="constrained"
+        figsize=(width, sum(heights)),
+        dpi=300,
+        facecolor="white",
+        layout=ConstrainedLayoutEngine(h_pad=0.01, hspace=0.0),
     )
     rows: Any = figure.subfigures(3, 1, height_ratios=heights, hspace=0.02)
     top, middle = rows[0], rows[1]
@@ -241,7 +290,7 @@ def combined_figure(
     plot_ascn_legend(legend_ax, label_fontsize=FONT_SIZE)
 
     coords, assignment = recorded.spatial.args[:2]
-    spatial_ax = left.subplots()
+    spatial_ax = _centred(left)
     draw_clones_spatial(
         spatial_ax,
         np.asarray(coords),
@@ -249,8 +298,11 @@ def combined_figure(
         recorded.spatial.kwargs.get("single_tumor_prop"),
     )
 
+    # NB out of the layout, below the tiles, so (c) and (d) are one size.
+    spatial_ax.get_legend().set_in_layout(False)
+
     image, extent = slide_image(he_frame)
-    slide_ax = right.subplots()
+    slide_ax = _centred(right)
     slide_ax.imshow(image, extent=extent, interpolation="none")
     # NB the section (c) shows, so a boundary sits at the same place in both.
     slide_ax.set_xlim(spatial_ax.get_xlim())
