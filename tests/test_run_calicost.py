@@ -307,3 +307,65 @@ def test_the_aligned_palette_is_callable_while_installed(tmp_path: Path) -> None
             palette, _ = utils_plotting.get_full_palette()
 
     assert (5, 2) in palette
+
+
+def _minspots_case(sizes: list[int]) -> tuple[Any, dict[str, Any], Any]:
+    """Clones of `sizes` spots, 2 bins each, as `merge_by_minspots` takes them."""
+    assignment = np.repeat(np.arange(len(sizes)), sizes)
+    n_obs = 2
+    total = np.ones((n_obs, assignment.size))
+    res = {
+        "new_assignment": assignment,
+        "pred_cnv": np.arange(n_obs * len(sizes)),
+        "log_gamma": np.zeros((3, n_obs * len(sizes))),
+    }
+    return assignment, res, total
+
+
+@pytest.mark.bug
+def test_calicosts_minspots_merge_fails_when_every_clone_is_under_the_floor() -> None:
+    """Four clones of 40 spots against a floor of 100: `argmax` of an empty list.
+
+    What the read-depth refinement hands `merge_by_minspots` on
+    `calicost_instance`'s 160-spot clone (#359). Checked against CalicoST's
+    own function, called as `calicost_main.py:231` calls it.
+    """
+    pytest.importorskip("calicost")
+    from calicost.hmrf import merge_by_minspots
+
+    assignment, res, total = _minspots_case([40, 40, 40, 40])
+
+    with pytest.raises(ValueError, match="empty sequence"):
+        merge_by_minspots(assignment, res, total, min_spots_thresholds=100)
+
+
+@pytest.mark.patch
+def test_the_merging_guard_keeps_an_all_failed_group_as_one_clone() -> None:
+    """All failed: one group, every clone in it. Any succeeded: CalicoST's answer.
+
+    Referee: CalicoST's `merge_by_minspots` itself, on the case it handles.
+    """
+    pytest.importorskip("calicost")
+    from calicost import calicost_main
+    from calicost.hmrf import merge_by_minspots
+    from port.scripts.run_calicost import compatible, merging
+
+    failed = _minspots_case([40, 41, 40, 40])
+    passing = _minspots_case([120, 40, 40, 110])
+
+    with compatible(), merging():
+        groups, merged = calicost_main.merge_by_minspots(
+            *failed, min_spots_thresholds=100
+        )
+        guarded = calicost_main.merge_by_minspots(*passing, min_spots_thresholds=100)
+
+    with compatible():
+        upstream = merge_by_minspots(*passing, min_spots_thresholds=100)
+
+    assert sorted(c for group in groups for c in group) == [0, 1, 2, 3]
+    assert len(groups) == 1
+    assert groups[0][0] == 1
+    assert set(merged["new_assignment"].tolist()) == {0}
+
+    assert guarded[0] == upstream[0]
+    assert np.array_equal(guarded[1]["new_assignment"], upstream[1]["new_assignment"])

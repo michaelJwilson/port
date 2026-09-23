@@ -26,6 +26,10 @@ kept apart:
 CalicoST's rectangle initializer loops forever; it is on in both modes,
 because a hang is not a result.
 
+`merging()` keeps a group whose clones all fail the size floor as one clone,
+where CalicoST's `merge_by_minspots` takes the `argmax` of an empty list; it
+is on in both modes, because a crash is not a result either (#359).
+
 `--no-figures` stubs CalicoST's three plotting calls. CalicoST writes its
 figures after its tables, so the tables do not depend on the flag.
 """
@@ -436,6 +440,100 @@ def terminating() -> Iterator[None]:
         yield
 
 
+def _clone_umis(
+    assignment: Any,
+    single_total_bb_RD: Any,
+    single_tumor_prop: Any,
+    threshold: float,
+) -> dict[Any, float]:
+    """SNP UMIs per clone over tumour spots, as `merge_by_minspots` sums them."""
+    import numpy as np
+
+    labels = np.asarray(assignment)
+    tumour = (
+        np.ones(labels.size, dtype=bool)
+        if single_tumor_prop is None
+        else np.asarray(single_tumor_prop) > threshold
+    )
+
+    return {
+        c: float(np.sum(single_total_bb_RD[:, (labels == c) & tumour]))
+        for c in np.unique(labels)
+    }
+
+
+@contextmanager
+def merging() -> Iterator[None]:
+    """Keep a group whose clones all fail the floor as one clone (#359).
+
+    `merge_by_minspots` (`hmrf.py:248`) sorts clones into those that meet
+    `min_spots_per_clone` and the UMI floor and those that do not, then
+    merges each failed clone into the successful one with the most SNP UMIs
+    (`hmrf.py:271`). When none succeeds that is `argmax([])`, and CalicoST
+    stops. It happens in the read-depth refinement, which splits each BAF
+    clone into `n_clones_rdr` parts: on `tests.fixtures.calicost_instance`
+    the 160-spot clone splits into 4 of about 40 spots, against a floor of
+    100. `cnaster`'s `merge_by_minspots` raises `RuntimeError` in the same
+    case; `port`'s floor merge meets it by merging smallest first.
+
+    Here, when every clone fails, CalicoST's own function is called with the
+    floors set so that only the clone with the most SNP UMIs succeeds, and
+    the rest merge into it: the group stays one clone, as it would be had it
+    not been split. Where any clone succeeds the call is CalicoST's, unchanged.
+    """
+    from calicost import calicost_main
+
+    original = calicost_main.merge_by_minspots
+
+    def merged(
+        assignment: Any,
+        res: Any,
+        single_total_bb_RD: Any,
+        min_spots_thresholds: int = 50,
+        min_umicount_thresholds: float = 0,
+        single_tumor_prop: Any = None,
+        threshold: float = 0.5,
+    ) -> Any:
+        umis = _clone_umis(assignment, single_total_bb_RD, single_tumor_prop, threshold)
+        labels = list(umis)
+        spots = {
+            c: sum(
+                1
+                for label, tumour in zip(
+                    assignment,
+                    [True] * len(assignment)
+                    if single_tumor_prop is None
+                    else [x > threshold for x in single_tumor_prop],
+                    strict=True,
+                )
+                if tumour and label == c
+            )
+            for c in labels
+        }
+        failing = [
+            c
+            for c in labels
+            if spots[c] < min_spots_thresholds or umis[c] < min_umicount_thresholds
+        ]
+
+        if len(labels) > 1 and len(failing) == len(labels):
+            min_spots_thresholds = 0
+            min_umicount_thresholds = max(umis.values())
+
+        return original(
+            assignment,
+            res,
+            single_total_bb_RD,
+            min_spots_thresholds=min_spots_thresholds,
+            min_umicount_thresholds=min_umicount_thresholds,
+            single_tumor_prop=single_tumor_prop,
+            threshold=threshold,
+        )
+
+    with _set(calicost_main, "merge_by_minspots", merged):
+        yield
+
+
 class _NoFigure:
     def savefig(self, *_: Any, **__: Any) -> None:
         pass
@@ -489,6 +587,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         from calicost import calicost_main
 
         stack.enter_context(terminating())
+        stack.enter_context(merging())
 
         if arguments.align:
             stack.enter_context(aligned(document))
