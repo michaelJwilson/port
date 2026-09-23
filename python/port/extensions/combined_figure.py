@@ -80,6 +80,10 @@ LEGEND_ROW = 0.24
 """(d)'s legend row against its profile's height, 1.0: 20% under the 0.3
 it had, the difference given to the profile's rows."""
 
+PROFILE_ROWS = 0.8
+"""(d)'s axis against the height it had: its rows 20% shorter, the
+difference given to (c)'s tracks."""
+
 TOP_LINE = 0.1
 """Inches above the genomic panel for the top clone's statistics line."""
 
@@ -706,10 +710,15 @@ def combined_figure(
     #    their key beside them rather than below, so nothing runs off the
     #    page at 4.80 in; no row for the letters, which sit in the margin
     #    (#339).
+    # NB (d)'s axis at `PROFILE_ROWS` of the height it had, its legend row
+    #    unchanged, and the difference given to (c)'s tracks.
+    middle_height = 0.27 * n_clones + 0.45
+    profile_height = middle_height / (1.0 + LEGEND_ROW)
+    freed = (1.0 - PROFILE_ROWS) * profile_height
     heights = (
         SIDE * width + TOP_LINE + 0.05,
-        1.05 * n_clones,
-        0.27 * n_clones + 0.45,
+        1.05 * n_clones + freed,
+        middle_height - freed,
     )
 
     # NB no space between axes beyond what `clone_axes`' gap rows give.
@@ -746,7 +755,9 @@ def combined_figure(
     _fit_tracks(top)
     _colour_by_state(top, genomic)
 
-    profile_ax, legend_ax = middle.subplots(2, 1, height_ratios=(1.0, LEGEND_ROW))
+    profile_ax, legend_ax = middle.subplots(
+        2, 1, height_ratios=(PROFILE_ROWS, LEGEND_ROW)
+    )
     plot_copy_number_profile(recorded.profile.args[0], ax=profile_ax)
 
     profile_ax.set_yticklabels(
