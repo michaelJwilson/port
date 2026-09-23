@@ -68,6 +68,7 @@ ALIGNED = {
     "hill_climbing_integer_copynumber_fixdiploid": (
         "max_total_copy, max_allele_copy <- int_copy_num.max_total_copy"
     ),
+    "get_full_palette": "a colour for every (A, B) up to that cap, not 6",
 }
 """Hard-coded CalicoST constants `aligned` sets, and where their values come from."""
 
@@ -255,6 +256,27 @@ def _set_module(name: str, module: types.ModuleType) -> Iterator[None]:
         sys.modules.pop(name, None)
 
 
+def _palette(cap: int) -> tuple[dict[tuple[int, int], Any], list[tuple[int, int]]]:
+    """CalicoST's `get_full_palette`, extended to every pair up to `cap`."""
+    import matplotlib as mpl
+    from calicost.utils_plotting import get_full_palette
+
+    palette, ordered = get_full_palette()
+    extra = [
+        (major, total - major)
+        for total in range(7, cap + 1)
+        for major in range(total, (total - 1) // 2, -1)
+    ]
+    shades = mpl.colormaps["copper"]
+
+    for major, minor in extra:
+        palette[(major, minor)] = mpl.colors.to_hex(
+            shades(1.0 - (major + minor - 6) / max(cap - 6, 1))
+        )
+
+    return palette, [*ordered, *extra]
+
+
 class _KeepEveryGene:
     """`LocalOutlierFactor` for `local_outlier_filter: false`: flags nothing."""
 
@@ -273,7 +295,7 @@ def aligned(document: dict[str, Any]) -> Iterator[None]:
     import ast
 
     import numpy as np
-    from calicost import calicost_main, utils_hmrf
+    from calicost import calicost_main, utils_hmrf, utils_plotting
     from calicost import utils_IO as utils_io
 
     quality, hmrf = document["quality"], document["hmrf"]
@@ -316,6 +338,14 @@ def aligned(document: dict[str, Any]) -> Iterator[None]:
                     unit_ysquared=hmrf["unit_ysquared"],
                 ),
             )
+        )
+        # NB CalicoST's figures colour `(major, minor)` pairs from a table
+        #    that stops at total 6 (`utils_plotting.py:23`), so a state the
+        #    raised cap decodes, `(5, 2)` on the quadrant fixture, is a
+        #    `KeyError` after every table is written. Its own colours are
+        #    kept; the pairs above them are added, graded by total.
+        stack.enter_context(
+            _set(utils_plotting, "get_full_palette", partial(_palette, cap))
         )
         stack.enter_context(
             _set(

@@ -267,3 +267,25 @@ def test_the_guard_refuses_the_l_and_passes_a_square_through() -> None:
 
     for ours, theirs in zip(checked, original, strict=True):
         np.testing.assert_array_equal(ours, theirs)
+
+
+@pytest.mark.infra
+def test_the_aligned_palette_colours_every_pair_up_to_the_cap() -> None:
+    """CalicoST's own colours kept; `(5, 2)`, which failed a run, now has one."""
+    pytest.importorskip("calicost")
+    from port.scripts.run_calicost import _palette, compatible
+
+    with compatible():
+        from calicost.utils_plotting import get_full_palette
+
+        theirs, _ = get_full_palette()
+        ours, ordered = _palette(12)
+
+    assert (5, 2) not in theirs
+    assert all(ours[pair] == colour for pair, colour in theirs.items())
+    assert {
+        (major, total - major)
+        for total in range(1, 13)
+        for major in range(total, (total - 1) // 2, -1)
+    } <= set(ours)
+    assert len(ordered) == len(set(ordered)) == len(ours)

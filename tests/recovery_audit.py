@@ -517,7 +517,19 @@ def run_arm(
 
         output = root / "output_calicost"
         arm = " ".join(["calicost", *flags])
-        return score(truth, output, arm, wall, read_calicost), output
+        recovery = score(truth, output, arm, wall, read_calicost)
+        # NB CalicoST's normal spots (`calicost_main.py:115-126`): the
+        #    near-diploid BAF clone's low-variance share. The file holds
+        #    positions in CalicoST's spot order, despite its name, which is
+        #    the order of `clone_labels.tsv`.
+        listed = next(output.rglob("normal_candidate_barcodes.txt"))
+        positions = pd.read_csv(listed, header=None)[0].to_numpy()
+        order = pd.read_csv(listed.parent / "clone_labels.tsv", sep="\t", index_col=0)
+        used = np.zeros(truth.labels.size, dtype=bool)
+        used[_spots(order.index.to_series().iloc[positions])] = True
+        recovery.candidates = int(used.sum())
+        recovery.candidates_tumor = int((used & (truth.labels != 0)).sum())
+        return recovery, output
 
     # NB `port`'s `run_core_inference`, which the default shift installs, so
     #    what is kept is the pinned result integer copy is handed.
@@ -633,7 +645,9 @@ def main() -> None:
     mpl.use("Agg")
 
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--instance", default="dev", choices=["critical", "dev"])
+    parser.add_argument(
+        "--instance", default="dev", choices=["calicost", "critical", "dev"]
+    )
     parser.add_argument("--states", type=int, default=8)
     parser.add_argument("--outer", type=int, default=1)
     parser.add_argument("--iterations", type=int, default=3)
