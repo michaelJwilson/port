@@ -916,12 +916,36 @@ def _place_spatial(figure: Any, slide_ax: Any, spatial_ax: Any) -> None:
     key.set_bbox_to_anchor((anchor + short / side, 0.0), transform=spatial_ax.transAxes)
 
 
+def integer_labels(assignment: Any, df_cnv: Any) -> Any:
+    """`assignment`'s "clone {c}" labels, each clone named by its integer
+    copy profile in `df_cnv` (`port.extensions.outputs.integer_clones`):
+    clones that decode alike at every bin take the smallest id among them."""
+    from port.extensions.outputs import integer_clones
+
+    merged = integer_clones(df_cnv)
+
+    def name(label: Any) -> Any:
+        if not isinstance(label, str) or label.split()[-1] not in merged:
+            return label
+        return f"clone {merged[label.split()[-1]]}"
+
+    return assignment.map(name)
+
+
 @_styled
 def spatial_figure(
-    recorded: Recorded, he_frame: Any, width: float | None = None
+    recorded: Recorded,
+    he_frame: Any,
+    width: float | None = None,
+    labels: str = "integer",
 ) -> Any:
     """(a) the H&E slide and (b) `clones_spatial`, square and as large as fit
-    across `width` inches, (b) keyed on the right edge; no caption."""
+    across `width` inches, (b) keyed on the right edge; no caption.
+
+    `labels` is "integer", the default, for clones named by their integer
+    copy profile (#344) -- which needs the run's profile call -- or
+    "continuous" for the fit's own clones.
+    """
     import matplotlib.pyplot as plt
 
     from port.patch.plotting.genomic import PAPER_WIDTH
@@ -938,6 +962,15 @@ def spatial_figure(
     spatial_ax = figure.add_axes((0.5, 0.0, 0.4, 0.4))
 
     coords, assignment = recorded.spatial.args[:2]
+
+    if labels == "integer":
+        if recorded.profile is None:
+            msg = "integer clone labels need the run's copy_number_profile call"
+            raise ValueError(msg)
+        assignment = integer_labels(assignment, recorded.profile.args[0])
+    elif labels != "continuous":
+        msg = f'labels is "integer" or "continuous", not {labels!r}'
+        raise ValueError(msg)
     draw_clones_spatial(
         spatial_ax,
         np.asarray(coords),

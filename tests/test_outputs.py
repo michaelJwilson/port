@@ -218,3 +218,53 @@ def test_the_writer_leaves_cnaster_s_files_and_writes_valid_json(
     assert manifest["total_llf"] is None
     assert manifest["clones"] == dict(zip(IDS, POSITIONS, strict=True))
     assert manifest["run_cnaster_port"] == {"shift": True}
+
+
+@pytest.mark.analytic
+def test_clones_that_decode_alike_are_one_integer_clone() -> None:
+    """Equal `(A, B)` at every bin is one clone, named by its smallest id;
+    one differing bin keeps two clones apart."""
+    from port.extensions.outputs import integer_clones
+
+    base = np.array([[1, 1], [2, 1], [1, 0], [1, 1]])
+    frame = pd.DataFrame({"CHR": [1, 1, 2, 2]})
+    near = base.copy()
+    near[2] = [1, 1]
+
+    for clone, profile in (("5", base), ("0", near), ("2", base), ("7", near)):
+        frame[f"clone{clone} A"], frame[f"clone{clone} B"] = profile.T
+
+    assert integer_clones(frame) == {"5": "2", "0": "0", "2": "2", "7": "0"}
+
+
+@pytest.mark.infra
+def test_the_integer_labels_keep_every_spot_s_fitted_label(tmp_path: Path) -> None:
+    """`clone_labels_integer.tsv` is `clone_labels.tsv` column for column,
+    plus each spot's integer clone; a spot with no clone keeps none."""
+    from port.extensions.outputs import integer_clones, write_outputs
+
+    run = _run(tmp_path)
+    seglevel, _, _ = _load(run)
+    # NB clone 5 decodes as clone 0 does.
+    for column in ("A", "B"):
+        seglevel[f"clone5 {column}"] = seglevel[f"clone0 {column}"]
+    seglevel.to_csv(run / "cnv_seglevel.tsv", sep="\t", index=False)
+
+    labels = pd.DataFrame(
+        {
+            "barcode": [f"BC{k}" for k in range(5)],
+            "sample_id": "S1",
+            "x": range(5),
+            "y": 0,
+            "clone_label": [0, 2, 5, np.nan, 5],
+        }
+    )
+    labels.to_csv(run / "clone_labels.tsv", sep="\t", index=False)
+    write_outputs(run)
+    written = pd.read_csv(run / "clone_labels_integer.tsv", sep="\t")
+
+    pd.testing.assert_frame_equal(written[labels.columns], labels)
+    assert integer_clones(seglevel)["5"] == "0"
+    np.testing.assert_array_equal(
+        written.integer_clone_label.to_numpy(), [0, 2, 0, np.nan, 0]
+    )

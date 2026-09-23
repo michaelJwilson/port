@@ -291,3 +291,35 @@ def test_the_spatial_panels_are_square_and_keyed_on_the_right_edge(
 
     highest = max(t.get_window_extent(renderer).y1 for t in figure.texts)
     assert figure.bbox.y1 - highest == pytest.approx(gap, abs=1.5)
+
+
+@pytest.mark.infra
+def test_the_spatial_labels_are_integer_by_default_or_continuous(
+    cnaster_config: None, tmp_path: Path
+) -> None:
+    """Two clones that decode alike at every bin are one clone under the
+    default "integer" labels -- two keyed, $m_N$ and $m_1$ -- and stay two
+    under "continuous": three keyed, as the fit found them (#344)."""
+    import matplotlib as mpl
+
+    mpl.use("Agg")
+    from port.extensions.combined_figure import Call, spatial_figure
+
+    recorded, frame = _recorded(tmp_path)
+    assert recorded.profile is not None
+    df_cnv = recorded.profile.args[0].copy()
+
+    for column in ("A", "B"):
+        df_cnv[f"clone2 {column}"] = df_cnv[f"clone1 {column}"]
+
+    recorded.profile = Call((df_cnv,), {})
+
+    def keyed(labels: str) -> list[str]:
+        figure = spatial_figure(recorded, frame, labels=labels)
+        return [t.get_text() for t in figure.axes[1].get_legend().get_texts()]
+
+    assert keyed("continuous") == ["$m_N$", "$m_1$", "$m_2$"]
+    assert keyed("integer") == ["$m_N$", "$m_1$"]
+
+    with pytest.raises(ValueError, match="integer"):
+        spatial_figure(recorded, frame, labels="decoded")
