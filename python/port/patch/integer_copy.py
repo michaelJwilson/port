@@ -73,45 +73,56 @@ def _caps(max_allele_copy: int, max_total_copy: int) -> tuple[int, int]:
     )
 
 
+_SHARED: dict[str, Any] = {}
+"""The shared decode of the captured fit, computed at the first clone's call."""
+
+
 def decode_clone(
-    new_log_mu: Any, base_nb_mean: Any, new_p_binom: Any, pred_cnv: Any, total: int
+    new_log_mu: Any, new_p_binom: Any, pred_cnv: Any, total: int
 ) -> tuple[np.ndarray, float, int]:
     """One clone's `(copies, loss, ploidy)`, as `cnaster`'s decoders return them.
 
-    `loss` is the negative log-likelihood reached; `ploidy` the median total
-    copy over the clone's bins.
+    The copies are shared by every clone (`copy_likelihood.decode_shared`):
+    decoded once, from the captured fit, at the first clone's call, and
+    returned to each. `loss` is the negative log-likelihood reached; `ploidy`
+    the median total copy over this clone's bins.
     """
-    from port.extensions.copy_likelihood import decode_fixed, pseudobulk_for
+    from port.extensions.copy_likelihood import (
+        _CAPTURED,
+        captured_clones,
+        decode_shared,
+    )
     from port.patch.hmm_nophasing.shifted_emission import neutral_state
     from port.patch.hmrf.core_inference import shift_for
 
-    bulk = pseudobulk_for(np.asarray(base_nb_mean))
+    clones = captured_clones()
 
-    if bulk is None:
+    if clones is None:
         msg = (
-            "no captured clone matches this baseline: the likelihood decode needs "
-            "copy_likelihood.capture() around the run (#362)"
+            "no captured fit: the likelihood decode needs copy_likelihood.capture() "
+            "around the run (#362)"
         )
         raise RuntimeError(msg)
 
     log_mu = np.asarray(new_log_mu, dtype=np.float64).reshape(-1)
     path = np.asarray(pred_cnv, dtype=np.int64).reshape(-1) % log_mu.size
-    shift, normal = shift_for(pred_cnv)
+    key = id(_CAPTURED[0][3]) if _CAPTURED else id(clones)
 
-    if normal is None:
-        normal = neutral_state(
-            log_mu, np.asarray(new_p_binom).reshape(-1), path[:, None]
+    if _SHARED.get("key") != key or _SHARED.get("total") != total:
+        _, normal = shift_for(pred_cnv)
+
+        if normal is None:
+            normal = neutral_state(
+                log_mu, np.asarray(new_p_binom).reshape(-1), path[:, None]
+            )
+
+        decoded = decode_shared(
+            clones, n_states=log_mu.size, max_total_copy=total, normal=normal
         )
+        _SHARED.update(key=key, total=total, decoded=decoded)
+        DECODED.append(decoded)
 
-    decoded = decode_fixed(
-        path,
-        bulk,
-        n_states=log_mu.size,
-        max_total_copy=total,
-        normal=normal,
-        log_shift=shift,
-    )
-    DECODED.append(decoded)
+    decoded = _SHARED["decoded"]
     ploidy = int(np.rint(np.median(decoded.copies[path].sum(axis=1))))
 
     return decoded.copies, -decoded.log_likelihood, ploidy
@@ -119,7 +130,7 @@ def decode_clone(
 
 def hill_climbing_integer_copynumber_oneclone(
     new_log_mu: Any,
-    base_nb_mean: Any,
+    base_nb_mean: Any,  # noqa: ARG001 -- cnaster's positional; the capture carries it
     new_p_binom: Any,
     pred_cnv: Any,
     max_allele_copy: int = 5,
@@ -129,12 +140,12 @@ def hill_climbing_integer_copynumber_oneclone(
     """`cnaster`'s name, decoding by :func:`decode_clone`."""
     _, total = _caps(max_allele_copy, max_total_copy)
 
-    return decode_clone(new_log_mu, base_nb_mean, new_p_binom, pred_cnv, total)
+    return decode_clone(new_log_mu, new_p_binom, pred_cnv, total)
 
 
 def hill_climbing_integer_copynumber_fixdiploid_milp(
     new_log_mu: Any,
-    base_nb_mean: Any,
+    base_nb_mean: Any,  # noqa: ARG001 -- cnaster's positional; the capture carries it
     new_p_binom: Any,
     pred_cnv: Any,
     max_allele_copy: int = 5,
@@ -144,4 +155,4 @@ def hill_climbing_integer_copynumber_fixdiploid_milp(
     """`cnaster`'s name, decoding by :func:`decode_clone`."""
     _, total = _caps(max_allele_copy, max_total_copy)
 
-    return decode_clone(new_log_mu, base_nb_mean, new_p_binom, pred_cnv, total)
+    return decode_clone(new_log_mu, new_p_binom, pred_cnv, total)

@@ -12,6 +12,15 @@ The four ARIs are `tests.recovery_audit`'s, on the sample's truth:
   planted `(A, B)` at the bin's midpoint;
 - **copy state, integer**: the decoded `(A, B)` against the same.
 
+`--oracle-start` sets `annotation.clone_label` to the sample's
+`truth_clone_labels.tsv`, `cnaster`'s own known-labels mode: the planted
+clones start phasing and the BAF stage in place of the grid
+(`run_cnaster.py:244`) and the read-depth stage (`:1059`), and the normal
+baseline is taken from the planted normal spots (`annotation.py:34`). It
+also sets `hmrf.fixed_assignment`, which holds them there: no ICM move, floor
+merge or clone loss (`hmrf.py:287`). The arm that says what the copy decode
+recovers when the clones are right.
+
 Each planted clone is matched to the fitted clone it overlaps most (Hungarian
 on the spot overlap). `exact` is the share of matched clone-bins whose
 decoded `(A, B)` is the planted pair, and `exact_altered` the same over bins
@@ -149,6 +158,7 @@ def run_arm(
     flags: list[str],
     overrides: dict[str, Any] | None = None,
     root: Path | None = None,
+    oracle: bool = False,
 ) -> tuple[SimRecovery, Path]:
     """`run_cnaster_port` with `flags` on `sample`, scored."""
     from port.scripts.run_cnaster import main
@@ -156,7 +166,13 @@ def run_arm(
     from tests.sim_fixtures import write_sim_inputs
 
     root = Path(tempfile.mkdtemp()) if root is None else root
-    config = write_sim_inputs(sample, root, overrides)
+    known = {
+        "annotation.clone_label": str(sample.path / "truth_clone_labels.tsv"),
+        "hmrf.fixed_assignment": True,
+    }
+    config = write_sim_inputs(
+        sample, root, {**(overrides or {}), **(known if oracle else {})}
+    )
 
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
@@ -165,7 +181,8 @@ def run_arm(
         wall = time.perf_counter() - started
 
     output = root / "output"
-    return score(sample, output, " ".join(flags) or "default", wall), output
+    arm = " ".join(["oracle-start", *flags] if oracle else flags) or "default"
+    return score(sample, output, arm, wall), output
 
 
 def main() -> None:
@@ -176,6 +193,11 @@ def main() -> None:
     parser.add_argument("--sample", default="easy")
     parser.add_argument("--set", action="append", default=[], metavar="K=V")
     parser.add_argument("--root", type=Path, default=None)
+    parser.add_argument(
+        "--oracle-start",
+        action="store_true",
+        help="start the BAF stage from the planted clone labels",
+    )
     parser.add_argument("flags", nargs=argparse.REMAINDER)
     arguments = parser.parse_args()
 
@@ -185,7 +207,9 @@ def main() -> None:
         for k, _, v in (entry.partition("=") for entry in arguments.set)
     }
     flags = [f for f in arguments.flags if f != "--"]
-    recovery, output = run_arm(sample, flags, overrides, arguments.root)
+    recovery, output = run_arm(
+        sample, flags, overrides, arguments.root, oracle=arguments.oracle_start
+    )
     recovery.peak_gb = round(
         resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024**2, 2
     )

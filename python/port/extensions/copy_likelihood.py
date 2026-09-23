@@ -38,6 +38,7 @@ __all__ = [
     "capture",
     "decode",
     "decode_fixed",
+    "decode_shared",
     "log_likelihood",
 ]
 
@@ -250,6 +251,101 @@ def decode_fixed(
         ]
 
     return Decoded(copies, total, 1, sets)
+
+
+def decode_shared(
+    clones: list[tuple[np.ndarray, Pseudobulk, float]],
+    *,
+    n_states: int,
+    max_total_copy: int,
+    normal: int,
+) -> Decoded:
+    """Each state's `(A, B)`, one pair shared by every clone (#362).
+
+    `clones` holds each clone's decoded path, pseudobulk and `log_shift`.
+    State `k`'s pair maximizes the likelihood summed over every clone's bins
+    in `k`, each clone's rate `log((A + B) / 2) - log_shift`; `normal` is
+    `(1, 1)` by definition and a state no clone visits is `(1, 1)` too.
+    Everything but the copies is held, so the states separate and the
+    one-candidate-per-state MILP is solved exactly, state by state.
+    """
+    lattice = candidates(max_total_copy)
+    log_mu, p = _parameters(lattice)
+    copies = np.ones((n_states, 2), dtype=np.int64)
+    total = 0.0
+    sets: dict[int, list[tuple[int, int]]] = {}
+    visited = np.unique(np.concatenate([path for path, _, _ in clones]))
+
+    for state in visited:
+        k = int(state)
+        members = [
+            (np.flatnonzero(path == k), bulk, shift)
+            for path, bulk, shift in clones
+            if np.any(path == k)
+        ]
+
+        def score(i: int, members: list[Any] = members) -> float:
+            return sum(
+                float(np.sum(_emission(log_mu[i] - shift, p[i], bulk, bins)))
+                for bins, bulk, shift in members
+            )
+
+        if k == normal:
+            one = int(np.flatnonzero((lattice[:, 0] == 1) & (lattice[:, 1] == 1))[0])
+            total += score(one)
+            continue
+
+        scores = np.array([score(i) for i in range(len(lattice))])
+        best = int(np.argmax(scores))
+        copies[k] = lattice[best]
+        total += float(scores[best])
+        sets[k] = [
+            (int(a), int(b))
+            for (a, b), value in zip(lattice, scores, strict=True)
+            if value >= scores[best] - CHI2_HALF
+        ]
+
+    return Decoded(copies, total, 1, sets)
+
+
+def captured_clones() -> list[tuple[np.ndarray, Pseudobulk, float]] | None:
+    """Every captured clone's path, pseudobulk and shift, in the fit's order."""
+    if not _CAPTURED:
+        return None
+
+    single_x, base, total, result = _CAPTURED[0]
+    assignment = np.asarray(result["new_assignment"], dtype=np.int64)
+    log_mu = np.asarray(result["new_log_mu"], dtype=np.float64).reshape(-1)
+    path = np.asarray(result["pred_cnv"], dtype=np.int64)
+    path = path.reshape(path.shape[0], -1) % log_mu.size
+
+    try:
+        shifts = np.asarray(result["new_log_mu_shift"], dtype=np.float64).reshape(-1)
+    except (KeyError, TypeError, ValueError):
+        shifts = np.zeros(path.shape[1])
+
+    if shifts.size != path.shape[1]:
+        shifts = np.zeros(path.shape[1])
+
+    profile = base.sum(axis=1)
+    alpha = float(np.asarray(result["new_alphas"]).reshape(-1)[0])
+    tau = float(np.asarray(result["new_taus"]).reshape(-1)[0])
+    rows = []
+
+    for clone in range(path.shape[1]):
+        spots = assignment == clone
+        bulk = Pseudobulk(
+            counts_nb=single_x[:, 0, spots].sum(axis=1),
+            base_nb_mean=base[:, spots].sum(axis=1),
+            counts_bb=single_x[:, 1, spots].sum(axis=1),
+            total_bb_rd=total[:, spots].sum(axis=1),
+            log_lambda=np.log(profile / profile.sum()),
+            alpha=alpha,
+            tau=tau,
+        )
+        rows.append((path[:, clone], bulk, float(shifts[clone])))
+
+    return rows
 
 
 _CAPTURED: list[tuple[Any, Any, Any, Any]] = []

@@ -152,17 +152,18 @@ def test_the_normal_state_is_one_one_by_definition() -> None:
 
 
 @contextmanager
-def _captured(bulk: Pseudobulk) -> Iterator[None]:
-    """`copy_likelihood.pseudobulk_for` answering with `bulk`, restored after."""
+def _captured(bulk: Pseudobulk, path: np.ndarray) -> Iterator[None]:
+    """`copy_likelihood.captured_clones` answering with one clone, restored after."""
     import port.extensions.copy_likelihood as module
 
-    original = module.pseudobulk_for
-    setattr(module, "pseudobulk_for", lambda _: bulk)  # noqa: B010 -- a stub
+    original = module.captured_clones
+    clones = [(path, bulk, 0.0)]
+    setattr(module, "captured_clones", lambda: clones)  # noqa: B010 -- a stub
 
     try:
         yield
     finally:
-        setattr(module, "pseudobulk_for", original)  # noqa: B010
+        setattr(module, "captured_clones", original)  # noqa: B010
 
 
 @pytest.mark.patch
@@ -175,9 +176,9 @@ def test_installed_the_swap_decodes_by_likelihood_once() -> None:
     import cnaster.integer_copy as upstream
     from port.pipeline import COPY_SWAPS, patched
 
-    bulk, _ = _bulk(HIGH[0])
+    bulk, path = _bulk(HIGH[0])
 
-    with _config(max_total_copy=12), _captured(bulk), patched(COPY_SWAPS):
+    with _config(max_total_copy=12), _captured(bulk, path), patched(COPY_SWAPS):
         copies, loss, _ = upstream.hill_climbing_integer_copynumber_fixdiploid_milp(
             *_inputs(HIGH[0]), **MILP_ARGUMENTS
         )
@@ -197,7 +198,7 @@ def test_a_clone_the_capture_cannot_identify_is_an_error() -> None:
     log_mu, base, p_binom, path = _inputs(HIGH[0])
 
     with pytest.raises(RuntimeError, match="capture"):
-        decode_clone(log_mu, base, p_binom, path, 12)
+        decode_clone(log_mu, p_binom, path, 12)
 
 
 @pytest.mark.infra
