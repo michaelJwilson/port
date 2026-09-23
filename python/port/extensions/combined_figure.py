@@ -48,9 +48,9 @@ LABEL_SIZE = 8.0
 SIDE = 0.48
 """(c) and (d), as a fraction of the width: the layout's minipages."""
 
-SCALE = 0.75
+SCALE = 0.75 * 0.85
 """(c) and (d) within their minipages, centred, so the section does not
-outweigh the genome above it."""
+outweigh the genome above it: 0.75, then a further 15 per cent."""
 
 
 @dataclass
@@ -251,7 +251,7 @@ def combined_figure(
     width = PAPER_WIDTH if width is None else width
     genomic = recorded.genomic
     n_clones = len(np.unique(genomic.kwargs["res_combine"]["new_assignment"]))
-    heights = (0.6 * n_clones, 0.3 * n_clones + 0.6, SCALE * SIDE * width + 0.2)
+    heights = (0.6 * n_clones, 0.2 * n_clones + 0.55, SCALE * SIDE * width + 0.2)
 
     # NB no space between axes beyond what `clone_axes`' gap rows give.
     figure = plt.figure(
