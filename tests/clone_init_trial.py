@@ -6,18 +6,25 @@ process running `run_cnaster_port` at the figures' configuration with the
 BAF stage started from `port.sandbox.clone_init.CANDIDATES[candidate]`, and
 prints one `TRIAL` line of JSON: the initial labelling's ARI, the final
 clone ARI (continuous and integer), the copy-state ARIs and the wall time.
+
+Every run is at copy cap 6 (`int_copy_num.max_total_copy`), as #348's
+comparison is: at 12 one dev-instance run peaks at 7.4 GB. A run that dies
+(out of memory, a crash) is reported as an error line and the rest go on.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
-import multiprocessing
+import subprocess
+import sys
 import time
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 FIXTURES = ("dev", "calicost", "mandelbrot", "lattice")
+
+CAP = {"int_copy_num.max_total_copy": 6}
 
 
 def _truth(fixture: str) -> Any:
@@ -54,7 +61,7 @@ def one(fixture: str, candidate: str, seed: int) -> dict[str, Any]:
     started = time.perf_counter()
 
     with trial(candidate, truth=truth.labels, seed=seed) as record:
-        recovery, _ = run_arm(truth, ["--no-figures"], n_states=n_states)
+        recovery, _ = run_arm(truth, ["--no-figures"], n_states=n_states, overrides=CAP)
 
     return {
         "fixture": fixture,
@@ -80,7 +87,13 @@ def main() -> None:
     parser.add_argument("--fixtures", default=",".join(FIXTURES))
     parser.add_argument("--seeds", type=int, default=1)
     parser.add_argument("--jobs", type=int, default=1)
+    parser.add_argument("--one", nargs=3, metavar=("FIXTURE", "CANDIDATE", "SEED"))
     arguments = parser.parse_args()
+
+    if arguments.one:
+        fixture, candidate, seed = arguments.one
+        print("TRIAL " + json.dumps(one(fixture, candidate, int(seed))), flush=True)
+        return
 
     runs = [
         (fixture, candidate, seed)
@@ -88,20 +101,21 @@ def main() -> None:
         for candidate in arguments.candidates.split(",")
         for seed in range(arguments.seeds)
     ]
-    context = multiprocessing.get_context("spawn")
 
-    with ProcessPoolExecutor(
-        max_workers=arguments.jobs, mp_context=context, max_tasks_per_child=1
-    ) as pool:
-        futures = {pool.submit(one, *run): run for run in runs}
-        for future, run in futures.items():
-            try:
-                print("TRIAL " + json.dumps(future.result()), flush=True)
-            except Exception as error:
-                print(
-                    "TRIAL " + json.dumps({"run": run, "error": repr(error)}),
-                    flush=True,
-                )
+    def isolated(run: tuple[str, str, int]) -> str:
+        command = [sys.executable, "-m", "tests.clone_init_trial", "--one"]
+        done = subprocess.run(
+            [*command, *map(str, run)], capture_output=True, text=True, check=False
+        )
+        lines = [x for x in done.stdout.splitlines() if x.startswith("TRIAL ")]
+        if lines:
+            return lines[-1]
+        error = {"run": run, "error": f"exit {done.returncode}: {done.stderr[-300:]}"}
+        return "TRIAL " + json.dumps(error)
+
+    with ThreadPoolExecutor(max_workers=arguments.jobs) as pool:
+        for line in pool.map(isolated, runs):
+            print(line, flush=True)
 
 
 if __name__ == "__main__":
