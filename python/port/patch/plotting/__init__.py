@@ -7,10 +7,12 @@ second column of the state parameters that the fit cannot produce.
 """
 
 from port.patch.plotting.clone_paths import clone_path, clone_paths, state_vector
+from port.patch.plotting.spatial import plot_clones_spatial
 
 MIRRORS: tuple[str, ...] = (
     "cnaster.plot_genomic",
     "cnaster.plot_loh_density",
+    "cnaster.plotting",
 )
 """The pair this package stands in for, as `UNIFIERS` requires.
 
@@ -19,6 +21,15 @@ parameters' second column, so the duplication is between them rather than
 inside either. That is what makes this a unifier and not two patches that
 happen to share a helper -- the same reason `patch/lattice` and
 `patch/emission` are exempt from the naming rule.
+
+`cnaster.plotting` joined with `spatial` (#309), and it is also the name the
+package carries, which is where `FIGURE_SWAPS` finds `plot_clones_spatial`.
 """
 
-__all__ = ["MIRRORS", "clone_path", "clone_paths", "state_vector"]
+__all__ = [
+    "MIRRORS",
+    "clone_path",
+    "clone_paths",
+    "plot_clones_spatial",
+    "state_vector",
+]
