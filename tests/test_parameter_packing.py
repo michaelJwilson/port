@@ -122,4 +122,3 @@ def test_bounds_match_the_packed_vector(flags: dict[str, bool], n_states: int) -
     for value, (low, high) in zip(packed, bounds, strict=True):
         assert low is None or low <= value, f"{value} below its lower bound {low}"
         assert high is None or value <= high, f"{value} above its upper bound {high}"
-
