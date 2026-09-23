@@ -67,8 +67,9 @@ def test_the_planted_normal_state_is_the_candidate_it_selects(
     Under the chain this fixture used to draw -- ten states visited uniformly
     -- the normal state occupied **0.0858** and the selection raised, and the
     round trip only reached the end because it fitted five states rather than
-    ten. #120 replaced that with a neutral genome carrying events, and the
-    normal state now occupies **0.892**.
+    ten. #120 replaced that with a neutral genome carrying events, where the
+    normal state occupied **0.892**; #298's normal clone, 30 per cent of the
+    spots, takes it to **0.944**.
 
     Both numbers are asserted: the one that matters and the margin over the
     threshold, so a later change to the event rate that quietly ate the
@@ -79,7 +80,7 @@ def test_the_planted_normal_state_is_the_candidate_it_selects(
     path = planted.states.reshape(-1)
     occupancy = np.bincount(path, minlength=planted.n_states) / path.size
 
-    assert occupancy[NORMAL_STATE] == pytest.approx(0.892, abs=5e-3)
+    assert occupancy[NORMAL_STATE] == pytest.approx(0.944, abs=5e-3)
     assert occupancy[NORMAL_STATE] > MIN_PROPORTION
 
     chosen = find_diploid_balanced_state(
@@ -144,12 +145,16 @@ def test_the_planted_scale_is_cnasters_and_not_the_papers() -> None:
     asserts that it does not: the planted exposure's weighted sum is not one,
     so the two scales are genuinely different here rather than coincidentally
     equal.
+
+    Clone 1, not clone 0: clone 0 is the normal clone (#298), every bin at
+    `mu = 1`, so its weighted rate is 1 by construction. Clone 1 carries
+    events and reads **1.202**.
     """
     truth = dev_instance()
 
     weights = truth.base_nb_mean.sum(axis=1)
     weights = weights / weights.sum()
-    normalized = float(np.sum(weights * np.exp(truth.log_mu[truth.states[0]])))
+    normalized = float(np.sum(weights * np.exp(truth.log_mu[truth.states[1]])))
 
     assert normalized != pytest.approx(1.0, abs=0.05), (
         f"the exposure-weighted rate is {normalized:.3f}; if it were one the "

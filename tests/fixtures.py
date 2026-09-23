@@ -915,6 +915,46 @@ def ragged_lengths(
     return lengths + MINIMUM_SEGMENT
 
 
+NORMAL_SHARE = 0.3
+"""The least share of spots the normal clone holds, when there is one (#298)."""
+
+
+def clone_bands(
+    rows: int, columns: int, n_clones: int, *, normal_clone: bool = True
+) -> np.ndarray:
+    """Clone label per spot: row bands, clone 0 at least `NORMAL_SHARE`.
+
+    Clone 0 takes `ceil(0.3 * rows)` rows or its equal share, whichever is
+    more, and the rest split the remaining rows as evenly as the rows
+    allow. A single clone takes every row; it cannot also be normal, so it
+    carries events as before.
+    """
+    row = np.arange(rows * columns) // columns
+
+    if not normal_clone:
+        equal: np.ndarray = np.minimum(row * n_clones // rows, n_clones - 1)
+
+        return equal.astype(np.int64)
+
+    if n_clones == 1:
+        return np.zeros(rows * columns, dtype=np.int64)
+
+    normal_rows = max(int(np.ceil(NORMAL_SHARE * rows)), rows // n_clones)
+    rest = rows - normal_rows
+
+    if rest < n_clones - 1:
+        msg = (
+            f"{rows} rows leave {rest} after the normal clone's {normal_rows}, "
+            f"fewer than the {n_clones - 1} other clones"
+        )
+        raise ValueError(msg)
+
+    others = 1 + (row - normal_rows) * (n_clones - 1) // rest
+    labels: np.ndarray = np.where(row < normal_rows, 0, others).astype(np.int64)
+
+    return labels
+
+
 def core_inference_truth(
     *,
     n_clones: int = 3,
@@ -931,6 +971,7 @@ def core_inference_truth(
     reads: tuple[int, int] = (10, 60),
     switch: tuple[float, float] = (0.01, 0.20),
     seed: int = DEFAULT_SEED,
+    normal_clone: bool = True,
 ) -> CoreInferenceTruth:
     """Plant an instance, drawing every count through upstream's families.
 
@@ -941,6 +982,11 @@ def core_inference_truth(
 
     Parameters
     ----------
+    normal_clone : bool
+        Clone 0 all state 0 and at least `NORMAL_SHARE` of the spots (#298),
+        which `cnaster`'s baseline needs. On by default at every size;
+        `False` restores equal bands with events in every clone, for the
+        tests whose subject is that layout.
     exposure : str
         How `base_nb_mean` is planted. `"weierstrass"` varies it violently
         along the **bin** axis, which is the axis that survives the pseudobulk
@@ -989,8 +1035,7 @@ def core_inference_truth(
     p_binom = np.concatenate(([0.5], np.linspace(0.58, 0.88, n_states - 1)))
     taus = np.full(n_states, 30.0)
 
-    row_of = np.arange(n_spots) // columns
-    labels = np.minimum(row_of * n_clones // rows, n_clones - 1).astype(np.int64)
+    labels = clone_bands(rows, columns, n_clones, normal_clone=normal_clone)
 
     if segmentation == "ragged":
         lengths = ragged_lengths(n_obs, n_segments, rng=rng)
@@ -1022,6 +1067,15 @@ def core_inference_truth(
     ]
     states = np.stack([path for path, _ in placements])
     placed_events = tuple(tuple(placed) for _, placed in placements)
+
+    # NB clone 0 is normal (#298): `cnaster` builds its baseline from normal
+    #    spots (`determine_normal_baseline`), and a fixture with none hands
+    #    it spots that share the events it divides out. Its path is drawn and
+    #    then replaced rather than skipped, so every other clone's events are
+    #    the ones the same seed drew before.
+    if normal_clone and n_clones > 1:
+        states[0] = 0
+        placed_events = ((), *placed_events[1:])
 
     if exposure == "constant":
         base_nb_mean = np.full((n_obs, n_spots), float(depth[0]))

@@ -92,9 +92,21 @@ fails if the value drifts, since the count it pins depends on it.
 
 @pytest.fixture(scope="module")
 def planted() -> CoreInferenceTruth:
-    """One instance for the module: the stages below are pure functions of it."""
+    """One instance for the module: the stages below are pure functions of it.
+
+    **Equal bands with events in both clones** (`normal_clone=False`), the
+    layout the numbers here were measured on: with #298's normal clone the
+    bands are unequal and the rectangular partition returns them at 0.96
+    rather than exactly.
+    """
     return core_inference_truth(
-        n_clones=2, n_states=3, lattice=LATTICE, n_obs=40, n_segments=3, seed=11
+        n_clones=2,
+        n_states=3,
+        lattice=LATTICE,
+        n_obs=40,
+        n_segments=3,
+        seed=11,
+        normal_clone=False,
     )
 
 
@@ -286,7 +298,10 @@ def flipped(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Any]:
     #    neutral -- 78 per cent of this instance's bins, which leaves two
     #    blocks carrying a phase out of sixty. That is the right default and
     #    the wrong instance for this test, so the events here cover the
-    #    genome instead of decorating it.
+    #    genome instead of decorating it -- and so it has no normal clone
+    #    (`normal_clone=False`, #298), which would leave half the spots with
+    #    no phase to recover. With one, the decode no longer collapses: 18,
+    #    84 and 18 bins over the three states at the fit's second iteration.
     truth = core_inference_truth(
         n_clones=2,
         n_states=3,
@@ -296,6 +311,7 @@ def flipped(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Any]:
         events=(8, 12),
         event_bins=(10, 25),
         seed=5,
+        normal_clone=False,
     )
     pre_image = unsegment(
         truth, blocks_per_bin=(1, 2), unassigned_genes=0, flip_every=FLIP_EVERY
