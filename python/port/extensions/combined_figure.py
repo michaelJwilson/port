@@ -786,6 +786,8 @@ def combined_figure(
     #    chromosomes' rotated names touch at 6 pt (#339).
     for text in profile_ax.get_xticklabels():
         text.set_fontsize(GENOMIC_FONT_SIZE)
+    # NB a point lower than the profile's own -5 pt, clear of its bottom edge.
+    profile_ax.tick_params(axis="x", pad=-4)
 
     # NB laid out once and frozen, then placed on the page by hand.
     figure.canvas.draw()

@@ -105,7 +105,8 @@ def _order(df_cnv: pd.DataFrame, clone_ids: list[str]) -> list[str]:
 def _segment(
     ax: Any, x0: float, y0: float, w: float, h: float, a: Any, b: Any, style: Any
 ) -> None:
-    """One segment: faint if normal, else A's fill under B's hatch."""
+    """One segment: faint if normal, else A's fill under B's hatch, its two
+    ends drawn as boundaries."""
     default = style.get("default", "lightgray")
 
     if a == 1 and b == 1:
@@ -126,6 +127,17 @@ def _segment(
     )
     ax.add_patch(fill)
     _hatch(ax, fill, swatch(style, b), HATCH[1 if a >= b else -1])
+    # NB the aberration's ends, at the outline's weight: where it starts and
+    #    stops reads without following the fill's edge into the next colour.
+    ax.vlines(
+        [x0, x0 + w],
+        ymin=y0,
+        ymax=y0 + h,
+        linewidth=LINEWIDTH,
+        colors="black",
+        zorder=3,
+        clip_on=False,
+    )
 
 
 class _Hatch(LineCollection):
