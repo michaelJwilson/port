@@ -21,9 +21,10 @@ $m_2$, ... for the rest.
 is frozen and placed by hand: the genomic tracks, the profile and its key
 share a left and a right edge, so a chromosome boundary in (a) is over the
 same boundary in (b). Every line is `PROFILE_LINEWIDTH` wide. Each letter
-sits on its panel's leftmost text: the spatial panels' extent ticks, and
-the genomic figure's left column `NAME_INSET` in, where the clone names and
-the RDR and BAF labels start.
+sits on its panel's leftmost text or edge: the slide's extent ticks, the
+clones' left edge -- their rows are the slide's, so only the slide labels
+them -- and the genomic figure's left column `NAME_INSET` in, where the
+clone names and the RDR and BAF labels start.
 
 **What is drawn is what the run drew.** `recording` keeps the arguments of
 the run's last call to each of the three plotting functions -- for the
@@ -831,8 +832,8 @@ def genomic_figure(
 
 def _place_spatial(figure: Any, slide_ax: Any, spatial_ax: Any) -> None:
     """(a) the slide on the left, (b)'s key on the right edge and (b) left of
-    it, square and as large as fits across; each letter on its panel's
-    extent ticks, and the page cut to its text."""
+    it, square and as large as fits across; each letter over its panel's
+    top-left, on (a)'s extent ticks, and the page cut to its text."""
     renderer = figure.canvas.get_renderer()
     dpi = figure.dpi
     width, height = figure.get_size_inches()
@@ -841,8 +842,13 @@ def _place_spatial(figure: Any, slide_ax: Any, spatial_ax: Any) -> None:
     figure.canvas.draw()
 
     def ticks(ax: Any) -> float:
-        widths = [t.get_window_extent(renderer).width for t in ax.get_yticklabels()]
-        return float(max(widths) / dpi + 3.0 / 72.0)
+        """The tick labels' width, if shown, and the tick and its pad."""
+        widths = [
+            t.get_window_extent(renderer).width
+            for t in ax.get_yticklabels()
+            if t.get_visible()
+        ]
+        return float(max(widths, default=0.0) / dpi + 3.0 / 72.0)
 
     key = spatial_ax.get_legend()
     left = NAME_INSET / 72.0 + ticks(slide_ax)
@@ -863,8 +869,8 @@ def _place_spatial(figure: Any, slide_ax: Any, spatial_ax: Any) -> None:
         [
             (
                 text,
-                min(_inches(figure, ax.get_yticklabels(), "x0")),
-                max(_inches(figure, ax.get_yticklabels(), "y1")) + gap / 2,
+                min(_inches(figure, [ax, *ax.get_yticklabels()], "x0")),
+                max(_inches(figure, [ax, *ax.get_yticklabels()], "y1")) + gap / 2,
                 "bottom",
             )
             for text, ax in zip(letters, (slide_ax, spatial_ax), strict=True)
@@ -922,6 +928,8 @@ def spatial_figure(
 
     for ax in (slide_ax, spatial_ax):
         _extents(ax, np.asarray(coords))
+    # NB (b) shares (a)'s rows, so its row labels are (a)'s; its ticks stay.
+    spatial_ax.tick_params(axis="y", labelleft=False)
 
     _set_text(figure, FONT_SIZE)
     _place_spatial(figure, slide_ax, spatial_ax)

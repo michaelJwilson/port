@@ -251,8 +251,9 @@ def test_the_spatial_panels_are_square_and_keyed_on_the_right_edge(
 ) -> None:
     """(a) the slide and (b) the clones, square and of one size; (b)'s key one
     column on the page's right edge, a `LABEL_GAP` in, its bottom on (b)'s,
-    each clone named $m$; each letter on its panel's extent ticks, the head a
-    `LABEL_GAP` over them."""
+    each clone named $m$; (b)'s rows labelled by (a)'s alone; each letter
+    over its panel's top-left text or corner, the head a `LABEL_GAP` over
+    them."""
     from port.extensions.combined_figure import LABEL_GAP
 
     _, figure = _figures(tmp_path)
@@ -275,11 +276,17 @@ def test_the_spatial_panels_are_square_and_keyed_on_the_right_edge(
     assert [t.get_text() for t in key.get_texts()] == ["$m_N$", "$m_1$", "$m_2$"]
     assert len({round(t.get_window_extent(renderer).x0) for t in key.get_texts()}) == 1
 
+    assert not any(t.get_visible() for t in clones.get_yticklabels()), "(a)'s rows"
+
     for text, ax in zip(figure.texts, (slide, clones), strict=True):
         letter = text.get_window_extent(renderer)
-        ticks = [t.get_window_extent(renderer) for t in ax.get_yticklabels()]
-        assert letter.x0 == pytest.approx(min(t.x0 for t in ticks), abs=1.5)
-        top = max(t.y1 for t in ticks)
+        edges = [ax.get_window_extent(renderer)] + [
+            t.get_window_extent(renderer)
+            for t in ax.get_yticklabels()
+            if t.get_visible()
+        ]
+        assert letter.x0 == pytest.approx(min(e.x0 for e in edges), abs=1.5)
+        top = max(e.y1 for e in edges)
         assert top - 0.5 <= letter.y0 <= top + gap
 
     highest = max(t.get_window_extent(renderer).y1 for t in figure.texts)
