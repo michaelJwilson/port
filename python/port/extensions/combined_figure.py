@@ -73,8 +73,12 @@ SPATIAL_GAP = 0.17
 FOOT = 0.4
 """Inches of slack under the layout, trimmed off at the end."""
 
-LEGEND_BOX = 0.25
-"""Inches, one box of (b)'s legend."""
+LEGEND_BOX = 0.2
+"""Inches, one box of (d)'s legend."""
+
+LEGEND_ROW = 0.24
+"""(d)'s legend row against its profile's height, 1.0: 20% under the 0.3
+it had, the difference given to the profile's rows."""
 
 TOP_LINE = 0.1
 """Inches above the genomic panel for the top clone's statistics line."""
@@ -742,7 +746,7 @@ def combined_figure(
     _fit_tracks(top)
     _colour_by_state(top, genomic)
 
-    profile_ax, legend_ax = middle.subplots(2, 1, height_ratios=(1.0, 0.3))
+    profile_ax, legend_ax = middle.subplots(2, 1, height_ratios=(1.0, LEGEND_ROW))
     plot_copy_number_profile(recorded.profile.args[0], ax=profile_ax)
 
     profile_ax.set_yticklabels(
