@@ -118,5 +118,27 @@
   "instance": "dev",
   "commit": "cbee988",
   "note": "Executed cnaster lines inside functions run_cnaster_port replaces by default (SWAPS, FIGURE_SWAPS, SHIFT_SWAPS; for a class, only overridden methods), over every cnaster line an unpatched run_cnaster executes on the dev instance with numba disabled. Measured by python -m tests.patched_share (#302); not checked per pull request, because it needs a whole run."
+ },
+ "recovery": {
+  "instance": "dev: 1,600 spots x 1,000 bins, 4 clones, 10 planted states (8 used)",
+  "configuration": "the figures': 8 states, max_iter_outer=1, max_iter=3 (tests/generate_plots.py)",
+  "commit": "57a42ed",
+  "arms": {
+   "port": {
+    "flags": [],
+    "spot_ari": 0.8503,
+    "copy_ari": 0.8959,
+    "wall_s": 65.5
+   },
+   "sal": {
+    "flags": [
+     "--sal"
+    ],
+    "spot_ari": 0.9728,
+    "copy_ari": 0.9951,
+    "wall_s": 57.34
+   }
+  },
+  "note": "python -m tests.recovery_audit [-- --sal], one run each, each its own process. spot_ari: fitted clone labels against planted, over 1,600 spots. copy_ari: after integer decoding, each matched clone-bin's phased (A, B) from cnv_seglevel.tsv against the state the fixture painted there, over 4,000 clone-bins (clones matched by spot overlap). Before decoding, the fitted states scored 0.160 and 0.130: the fit spreads the planted normal bins over several near-neutral states, which decoding merges to (1, 1). Not measured per pull request: each arm is a whole run. Walls include other work on the host and are indicative."
  }
 }
