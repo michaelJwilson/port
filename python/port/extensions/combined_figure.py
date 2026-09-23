@@ -6,7 +6,7 @@ subfigures so the page is drawn once, at its printed size, and included at
 
 - **(a)** the H&E slide, as `cnaster.he.get_he_image` reads it;
 - **(b)** `clones_spatial`: the fitted clone of each spot, tiled by
-  `port.patch.plotting.spatial`, keyed in one column to its left;
+  `port.patch.plotting.spatial`, keyed in one column to its right;
 - **(c)** `clones_genomic`: RDR and BAF along the genome per clone, full
   width, drawn by `port.patch.plot_genomic` into its subfigure;
 - **(d)** `copy_number_profile`: the integer copies per clone, full width,
@@ -46,7 +46,7 @@ import numpy as np
 
 from port.patch.plot_copy_number_profile import LINEWIDTH as PROFILE_LINEWIDTH
 
-FONT_SIZE = 8.0
+FONT_SIZE = 7.0
 """Every text on the page, in points (#339)."""
 
 GENOMIC_FONT_SIZE = FONT_SIZE
@@ -60,8 +60,8 @@ SIDE = 0.36
 shrunk if (d)'s key or the page's height needs it."""
 
 LABEL_GAP = 2.0
-"""Points between a label and what it labels: (b)'s clone names and its
-axis, a panel letter and the column beside it."""
+"""Points between a label and what it labels: (d)'s clone names and its
+axis, (b)'s key and (b)."""
 
 LETTER_GAP = 5 * LABEL_GAP
 """Points between a panel letter's right edge and its panel's left edge."""
@@ -592,8 +592,8 @@ def _place(
     )
 
     # NB (a) and (b) square and equal across the top: the slide on the
-    #    left edge, the clones on the right edge, their key in one column
-    #    between, its bottom on theirs. The largest that fits across is
+    #    left edge, the clones' key in one column on the right edge, its
+    #    bottom on theirs, and the clones two `LABEL_GAP` left of it. The largest that fits across is
     #    `fit`; their boxes are `SPATIAL_SCALE` of it, each panel
     #    `SPATIAL_INSET` of its box and centred there, in a row
     #    `SPATIAL_ROW` of it tall, and everything below moves up to meet it.
@@ -614,14 +614,18 @@ def _place(
     inset = (1.0 - SPATIAL_INSET) * side / 2
     drawn = SPATIAL_INSET * side
     _set_x(slide_ax, left + inset, left + side - inset, ceiling - side + inset, drawn)
+    # NB the key on the right edge, (b) a `gap` left of it.
+    clones_right = right - key.width / dpi - 2 * gap
     _set_x(
-        spatial_ax, right - side + inset, right - inset, ceiling - side + inset, drawn
+        spatial_ax,
+        clones_right - side + inset,
+        clones_right - inset,
+        ceiling - side + inset,
+        drawn,
     )
-    # NB the key centred between (a)'s right edge and (b)'s extent ticks.
-    between = ((left + side - inset) + (right - side + inset - ticks)) / 2
+    anchor = (right - (clones_right - side + inset)) / drawn
     spatial_ax.get_legend().set_bbox_to_anchor(
-        ((between + key.width / dpi / 2 - (right - side + inset)) / drawn, 0.0),
-        transform=spatial_ax.transAxes,
+        (anchor, 0.0), transform=spatial_ax.transAxes
     )
 
     stats = [t for t in tracks[0].texts if t.get_visible()]
@@ -669,7 +673,7 @@ def _place(
     # NB each letter just above its panel's top edge and `LETTER_GAP` left
     #    of its left edge, so it sits with its panel rather than in a column.
     for text, ax in zip(
-        letters, (slide_ax, spatial_ax, tracks[0], profile_ax), strict=True
+        letters, (slide_ax, spatial_ax, tracks[0], legend_ax), strict=True
     ):
         box = ax.get_window_extent(renderer)
         # NB over (c)'s first statistics line, which heads its panel.
@@ -687,6 +691,14 @@ def _place(
         y = top / dpi + gap / 2
         text.set_position((x / width, y / height))
         text.set_verticalalignment("bottom")
+
+    # NB a legend's box is not its anchor to the point: moved, on the page
+    #    as it ends, by what it falls short of the right edge.
+    figure.canvas.draw()
+    short = right - spatial_ax.get_legend().get_window_extent(renderer).x1 / dpi
+    spatial_ax.get_legend().set_bbox_to_anchor(
+        (anchor + short / drawn, 0.0), transform=spatial_ax.transAxes
+    )
 
 
 def combined_figure(
@@ -765,8 +777,9 @@ def combined_figure(
     _fit_tracks(top)
     _colour_by_state(top, genomic)
 
-    profile_ax, legend_ax = middle.subplots(
-        2, 1, height_ratios=(PROFILE_ROWS, LEGEND_ROW)
+    # NB the phase and copy key above the profile, under (d)'s letter.
+    legend_ax, profile_ax = middle.subplots(
+        2, 1, height_ratios=(LEGEND_ROW, PROFILE_ROWS)
     )
     plot_copy_number_profile(recorded.profile.args[0], ax=profile_ax)
 

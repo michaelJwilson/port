@@ -248,12 +248,12 @@ def test_b_spans_a_and_its_clone_names_start_in_one_column(
     top, middle = figure.subfigs[1], figure.subfigs[2]
 
     tracks = [ax.get_window_extent(renderer) for ax in top.axes]
-    profile = middle.axes[0].get_window_extent(renderer)
+    profile = middle.axes[1].get_window_extent(renderer)
 
     assert profile.x0 == pytest.approx(min(b.x0 for b in tracks), abs=1.5)
     assert profile.x1 == pytest.approx(max(b.x1 for b in tracks), abs=1.5)
 
-    names = [t.get_window_extent(renderer) for t in middle.axes[0].get_yticklabels()]
+    names = [t.get_window_extent(renderer) for t in middle.axes[1].get_yticklabels()]
     lefts = [name.x0 for name in names]
 
     assert max(lefts) - min(lefts) < 1.0
@@ -265,12 +265,12 @@ def test_b_spans_a_and_its_clone_names_start_in_one_column(
 
 
 @pytest.mark.infra
-def test_the_top_row_is_slide_key_clones_edge_to_edge(
+def test_the_top_row_is_slide_clones_key_edge_to_edge(
     cnaster_config: None, tmp_path: Path
 ) -> None:
-    """(a) the slide on the left edge, (b) the clones on the right edge, each
-    centred in a box `SPATIAL_INSET` larger; their key one column between, its
-    bottom on (b)'s, each clone named $m$."""
+    """(a) the slide on the left edge, centred in a box `SPATIAL_INSET`
+    larger; (b)'s key one column on the right edge, its bottom on (b)'s, (b)
+    left of it; each clone named $m$."""
     import matplotlib as mpl
 
     mpl.use("Agg")
@@ -292,11 +292,11 @@ def test_the_top_row_is_slide_key_clones_edge_to_edge(
     assert here.x0 - border * here.width == pytest.approx(
         min(ax.get_window_extent(renderer).x0 for ax in tracks), abs=1.5
     )
-    assert tiles.x1 + border * tiles.width == pytest.approx(
+    assert box.x1 == pytest.approx(
         max(ax.get_window_extent(renderer).x1 for ax in tracks), abs=1.5
     )
-    assert here.x1 <= box.x0
-    assert box.x1 <= tiles.x0
+    assert here.x1 <= tiles.x0
+    assert tiles.x1 <= box.x0
     assert box.y0 == pytest.approx(tiles.y0, abs=1.0)
     assert [t.get_text() for t in key.get_texts()] == ["$m_N$", "$m_1$", "$m_2$"]
 
@@ -352,6 +352,6 @@ def test_the_letters_sit_over_the_top_left_corner_of_their_panels(
                     assert box.x0 >= page.x0 - 0.5, text.get_text()
                     assert box.x1 <= page.x1 + 0.5, text.get_text()
 
-    legend = figure.subfigs[2].axes[1].get_window_extent(renderer)
+    legend = figure.subfigs[2].axes[0].get_window_extent(renderer)
     assert legend.x0 == pytest.approx(left, abs=1.0)
     assert legend.x1 == pytest.approx(right, abs=1.0)
