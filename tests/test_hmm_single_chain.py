@@ -154,9 +154,7 @@ def test_constant_exposure_is_absorbed(exposure: float) -> None:
 @pytest.mark.snapshot
 @pytest.mark.parametrize("n_states", [1, 2, 5])
 def test_transition_matches_cnaster_construction(n_states: int) -> None:
-    """The fixture's transition is the one `cnaster` builds for itself.
-
-    Two constructions of one matrix, pinned so a later change to either is a
+    """Two constructions of one matrix, pinned so a later change to either is a
     failing test rather than a silent divergence in what is being compared.
     """
     from cnaster.hmm_nophasing import get_log_transmat

@@ -74,9 +74,7 @@ def test_shifts_with_log_mu(offset: float) -> None:
 
 @pytest.mark.analytic
 def test_normalised_weights_and_one_state_give_that_state() -> None:
-    """With one state and weights summing to one, the shift is that state's mean.
-
-    A case whose answer is known without computing it: every term is the
+    """A case whose answer is known without computing it: every term is the
     same `log_mu`, and `logsumexp` over weights that sum to one returns it.
     """
     from cnaster.hmm_nophasing import compute_logmu_shifts

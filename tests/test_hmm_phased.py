@@ -173,9 +173,7 @@ def test_switch_outside_the_unit_interval_is_refused() -> None:
     ),
 )
 def test_phased_emission_is_reachable() -> None:
-    """The phased emission returns scores rather than raising.
-
-    Written as the test that should pass, marked strict so it fails loudly
+    """Written as the test that should pass, marked strict so it fails loudly
     the day `cnaster` fixes the defect rather than sitting green and unread.
     """
     from cnaster.hmm_phased import hmm_phased
