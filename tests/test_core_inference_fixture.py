@@ -369,19 +369,26 @@ def test_every_size_plants_a_normal_clone_of_at_least_thirty_per_cent(
 
 @pytest.mark.smoke
 def test_the_mandelbrot_labelling_puts_the_set_in_the_last_clone() -> None:
-    """The last clone is exactly the spots that never escape; clone 0 is normal.
+    """Ten clones: the set last, the normal clone 0, eight shells between.
 
-    On the dev lattice, 40 x 40 and four clones: the set holds 320 spots,
-    over `icm_sweep_deque`'s 200-spot floor, and the normal clone 480, 30 per
-    cent. Checked against the construction's own escape iteration, hence
-    `smoke`.
+    On the key instance's lattice, 50 x 100, the `M = 10` instance: the set
+    holds 1,012 spots, the normal clone 1,500 (30 per cent) and each shell
+    311, all over `icm_sweep_deque`'s 200-spot floor. The dev lattice cannot
+    hold ten: its shells are 100 spots, and the floor would merge them.
+    Checked against the construction's own escape iteration, hence `smoke`.
     """
-    from tests.fixtures import MANDELBROT_ITERATIONS, MANDELBROT_WINDOW
+    from tests.fixtures import (
+        MANDELBROT_CLONES,
+        MANDELBROT_ITERATIONS,
+        MANDELBROT_LATTICE,
+        MANDELBROT_WINDOW,
+    )
 
+    rows, columns = MANDELBROT_LATTICE
     truth = core_inference_truth(
-        n_clones=4,
+        n_clones=MANDELBROT_CLONES,
         n_states=4,
-        lattice=(40, 40),
+        lattice=MANDELBROT_LATTICE,
         n_obs=60,
         n_segments=2,
         labelling="mandelbrot",
@@ -389,8 +396,8 @@ def test_the_mandelbrot_labelling_puts_the_set_in_the_last_clone() -> None:
 
     real_low, real_high, imag_low, imag_high = MANDELBROT_WINDOW
     c = (
-        np.linspace(real_low, real_high, 40)[None, :]
-        + 1j * np.linspace(imag_high, imag_low, 40)[:, None]
+        np.linspace(real_low, real_high, columns)[None, :]
+        + 1j * np.linspace(imag_high, imag_low, rows)[:, None]
     ).reshape(-1)
     z = np.zeros_like(c)
     bounded = np.ones(c.size, dtype=bool)
@@ -399,6 +406,8 @@ def test_the_mandelbrot_labelling_puts_the_set_in_the_last_clone() -> None:
         z[bounded] = z[bounded] ** 2 + c[bounded]
         bounded &= np.abs(z) <= 2.0
 
-    np.testing.assert_array_equal(truth.labels == 3, bounded)
-    np.testing.assert_array_equal(np.bincount(truth.labels), [480, 400, 400, 320])
+    np.testing.assert_array_equal(truth.labels == MANDELBROT_CLONES - 1, bounded)
+    np.testing.assert_array_equal(
+        np.bincount(truth.labels), [1500] + [311] * 8 + [1012]
+    )
     assert np.all(truth.states[0] == 0)

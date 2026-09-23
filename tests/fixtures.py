@@ -962,6 +962,17 @@ cardioid and bulbs, with a margin of exterior around it."""
 MANDELBROT_ITERATIONS = 64
 """Escape-time cap. A spot still bounded after this many is interior."""
 
+MANDELBROT_CLONES = 10
+"""The labelling's clone count: `M = 10`, the key instance's (#307)."""
+
+MANDELBROT_LATTICE = (50, 100)
+"""The key instance's lattice, the smallest here that holds ten clones.
+
+Ten over it gives the normal clone 1,500 spots, the set 1,012 and eight
+shells of 311, all over `icm_sweep_deque`'s 200-spot floor (#81). The dev
+lattice, 40 x 40, gives shells of 100, which the floor would merge.
+"""
+
 
 def mandelbrot_labels(
     rows: int, columns: int, n_clones: int, *, normal_clone: bool = True
@@ -983,8 +994,9 @@ def mandelbrot_labels(
 
     Ties in escape time are broken by position, so the labelling is a
     deterministic function of the lattice and `n_clones` alone. The set is
-    about a fifth of the window: 320 of the dev lattice's 1,600 spots, over
-    `icm_sweep_deque`'s 200-spot floor.
+    about a fifth of the window. At :data:`MANDELBROT_CLONES` over
+    :data:`MANDELBROT_LATTICE` every clone clears `icm_sweep_deque`'s
+    200-spot floor.
     """
     real_low, real_high, imag_low, imag_high = MANDELBROT_WINDOW
     real = np.linspace(real_low, real_high, columns)
