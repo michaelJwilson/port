@@ -7,13 +7,10 @@ the whole justification for declaring `aim` in an extra rather than as a
 dependency: if it were false, a default install would have to carry a web
 server and two unfixed advisories (`pyproject.toml`, the `track` extra).
 
-**The seam is not in the revision `port` pins.** `[tool.uv.sources]` fixes
-`snakes_and_ladders` at `c9f4250`, and `track.py` is not in the installed
-package; it arrived on sal's `main` with PR #843 (`claude/sample-799-track`),
-whose merge is the current head. So the two tests that import it skip until
-the pin moves, and say so rather than passing vacuously. Moving the pin is
-#251's first step and not this change's business: the extra is declarable
-now, and a bump drags everything else sal landed since with it.
+**The seam is in the revision `port` pins** since #312's step 0 moved
+`[tool.uv.sources]`'s lock from `c9f4250` to `186bc59`; before that the two
+tests that import it skipped. They import it directly now, so a pin that
+loses `track.py` fails here rather than skipping.
 
 `infra`: these assert `port`'s own packaging rule, not anything about
 `cnaster` or about a scientific result. The packaging test passes whether or
@@ -40,10 +37,7 @@ def test_the_recording_seam_imports_without_aim() -> None:
     untracked run costs nothing and needs nothing, and an import alone would
     not catch a store that reached for `aim` on first use.
     """
-    track = pytest.importorskip(
-        "snakes_and_ladders.track",
-        reason="port pins snakes_and_ladders at c9f4250, before track.py landed (#251)",
-    )
+    from snakes_and_ladders import track
 
     tracked = track.current()
 
@@ -60,10 +54,7 @@ def test_a_store_satisfies_the_protocol_structurally() -> None:
     `Run`, the Protocol would have drifted from the three members a hook
     uses, and `aim.Run` would be no more admissible than anything else.
     """
-    track = pytest.importorskip(
-        "snakes_and_ladders.track",
-        reason="port pins snakes_and_ladders at c9f4250, before track.py landed (#251)",
-    )
+    from snakes_and_ladders import track
 
     assert isinstance(track.MemoryRun(), track.Run)
     assert isinstance(track.NULL_RUN, track.Run)
