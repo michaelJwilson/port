@@ -481,7 +481,7 @@ def fitted(truth: CoreInferenceTruth, captured: Captured, *, errors: bool) -> Fi
             [rates[free], np.log(p / (1.0 - p)), [np.log(alpha), np.log(tau)]]
         )
 
-    neutral = neutral_state(log_mu, p_binom)
+    neutral = neutral_state(log_mu, p_binom, np.asarray(result["pred_cnv"]))
     free = np.array([k for k in range(n_states) if k != neutral])
 
     covariance, decrement = _covariance(
