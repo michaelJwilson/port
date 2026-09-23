@@ -21,9 +21,8 @@ the paper names them, $m_N$ for the normal and $m_1$, $m_2$, ... for the rest.
 is frozen and placed by hand (`_place`): the slide, the tracks, the profile
 and its legend start on one left edge, and the clones, tracks and profile
 end on one right edge, so a chromosome boundary in (c) is over the same
-boundary in (d). Every line is `PROFILE_LINEWIDTH` wide. The
-letters sit in the left margin, level with each panel's top, and take no
-height.
+boundary in (d). Every line is `PROFILE_LINEWIDTH` wide. Each
+letter sits over its panel's top-left corner, `LETTER_GAP` left of it.
 
 **What is drawn is what the run drew.** `recording` keeps the arguments of
 the run's last call to each of the three plotting functions -- for (c), the
@@ -47,7 +46,7 @@ import numpy as np
 
 from port.patch.plot_copy_number_profile import LINEWIDTH as PROFILE_LINEWIDTH
 
-FONT_SIZE = 9.0
+FONT_SIZE = 8.0
 """Every text on the page, in points (#339)."""
 
 GENOMIC_FONT_SIZE = FONT_SIZE
@@ -64,9 +63,15 @@ LABEL_GAP = 2.0
 """Points between a label and what it labels: (b)'s clone names and its
 axis, a panel letter and the column beside it."""
 
+LETTER_GAP = 5 * LABEL_GAP
+"""Points between a panel letter's right edge and its panel's left edge."""
+
 SPATIAL_GAP = 0.17
 """Inches between (c) and (d): twice the 0.084 the layout gave, widened if
 (d)'s letter needs more."""
+
+FOOT = 0.4
+"""Inches of slack under the layout, trimmed off at the end."""
 
 LEGEND_BOX = 0.25
 """Inches, one box of (b)'s legend."""
@@ -76,6 +81,9 @@ TOP_LINE = 0.1
 
 SPATIAL_SCALE = 0.8
 """The slide and clone panels, as a fraction of the largest that fits."""
+
+SPATIAL_INSET = 0.9
+"""Each panel within its box: centred, the rest of the box a white border."""
 
 SPATIAL_ROW = 0.9
 """Their row's height, as a fraction of that largest: 0.1 of it left as white
@@ -185,12 +193,16 @@ def _set_text(panel: Any, size: float) -> None:
 def _fractions(ax: Any, handles: Any, labels: list[str], columns: int) -> Any:
     """A clone's state fractions on its statistics line, justified right,
     in `columns` columns."""
+    from matplotlib.legend_handler import HandlerTuple
+
     legend = ax.legend(
         handles,
         labels,
         loc="lower right",
         bbox_to_anchor=(1.0, 1.0),
         ncol=columns,
+        # NB a tuple of dots side by side: the states behind one entry.
+        handler_map={tuple: HandlerTuple(ndivide=None, pad=0.1)},
         frameon=False,
         borderpad=0.0,
         borderaxespad=0.0,
@@ -199,7 +211,90 @@ def _fractions(ax: Any, handles: Any, labels: list[str], columns: int) -> Any:
         fontsize=FONT_SIZE,
     )
     legend.set_in_layout(False)
+    ax._port_fractions = (list(handles), list(labels))
     return legend
+
+
+def _colour_by_state(top: Any, genomic: Any) -> None:
+    """(c)'s points coloured by the fitted, continuous HMM state, each key
+    entry that state's share of the clone's bins and the pair it decodes to.
+
+    `clones_genomic` colours by the decoded `(A, B)`, which merges states
+    that decode to one pair; here each fitted state keeps its own colour, and
+    the key still reads in integer copies. Only the page changes: the run's
+    own `clones_genomic.pdf` is `cnaster`'s colouring.
+    """
+    import matplotlib.colors as mcolors
+    import seaborn as sns  # type: ignore[import-untyped]
+    from matplotlib.collections import LineCollection, PathCollection
+    from matplotlib.lines import Line2D
+
+    from port.patch.plot_genomic import clone_groups, clone_path
+
+    res_combine = genomic.kwargs["res_combine"]
+    df_cnv = genomic.kwargs.get("df_cnv")
+    n_obs = int(np.asarray(genomic.args[1]).shape[0])
+    n_states = np.asarray(res_combine["new_log_mu"]).shape[0]
+    palette = [mcolors.to_rgba(c) for c in sns.color_palette("deep", n_states)]
+    labels, _ = clone_groups(res_combine, None)
+    axes = list(top.axes)
+    per_clone = len(axes) // len(labels)
+
+    for clone, label in enumerate(labels):
+        path = clone_path(res_combine, clone, n_obs)
+        colours = np.array([palette[k] for k in path])
+
+        for ax in axes[per_clone * clone : per_clone * (clone + 1)]:
+            for collection in ax.collections:
+                if isinstance(collection, PathCollection):
+                    collection.set_facecolor([tuple(c) for c in colours])
+                elif isinstance(collection, LineCollection) and len(
+                    collection.get_segments()
+                ) == len(colours):
+                    collection.set_color([tuple(c) for c in colours])
+
+        # NB one entry per decoded pair: the states decoding to it share the
+        #    entry, their shares summed, a dot of each state's colour.
+        decoded: dict[tuple[int, int] | None, list[int]] = {}
+
+        for k in np.unique(path):
+            pair: tuple[int, int] | None = None
+
+            if df_cnv is not None:
+                a = df_cnv[f"clone{label} A"].to_numpy()[path == k]
+                b = df_cnv[f"clone{label} B"].to_numpy()[path == k]
+                pairs, counts = np.unique(
+                    np.stack([a, b], axis=1), axis=0, return_counts=True
+                )
+                major = pairs[np.argmax(counts)]
+                pair = (int(major[0]), int(major[1]))
+
+            decoded.setdefault(pair, []).append(int(k))
+
+        entries: list[Any] = []
+        texts: list[str] = []
+
+        for pair, states in decoded.items():
+            share = 100.0 * float(np.isin(path, states).mean())
+            dots = tuple(
+                Line2D(
+                    [0],
+                    [0],
+                    marker="o",
+                    color="w",
+                    markerfacecolor=palette[k],
+                    markersize=3,
+                )
+                for k in states
+            )
+            entries.append(dots)
+            suffix = "" if pair is None else f" ({pair[0]}, {pair[1]})"
+            texts.append(f"{share:.1f}%{suffix}")
+
+        anchor = axes[per_clone * clone]
+        if anchor.get_legend() is not None:
+            anchor.get_legend().remove()
+        _fractions(anchor, entries, texts, len(texts))
 
 
 def _fit_tracks(panel: Any) -> None:
@@ -324,6 +419,27 @@ def _clone_key(ax: Any, clone_ids: Any, colours: list[str]) -> None:
     ).set_in_layout(False)
 
 
+def _extents(ax: Any, coords: np.ndarray) -> None:
+    """A perimeter like every other panel's, and the spots' first and last
+    coordinate on each axis as its only ticks: the section's extent.
+
+    `y` is drawn as `-y`, so its ticks carry the coordinate, not the height.
+    """
+    from port.patch.plot_copy_number_profile import LINEWIDTH as PROFILE_LINEWIDTH
+
+    ax.axis("on")
+    x = (float(coords[:, 0].min()), float(coords[:, 0].max()))
+    y = (float(coords[:, 1].min()), float(coords[:, 1].max()))
+    ax.set_xticks(x, [f"{v:.4g}" for v in x])
+    ax.set_yticks([-v for v in y], [f"{v:.4g}" for v in y])
+    ax.tick_params(length=2, pad=1, width=PROFILE_LINEWIDTH)
+
+    for spine in ax.spines.values():
+        spine.set_visible(True)
+        spine.set_linewidth(PROFILE_LINEWIDTH)
+        spine.set_edgecolor("black")
+
+
 def _set_x(
     ax: Any, x0: float, x1: float, y0: float | None = None, height: float | None = None
 ) -> None:
@@ -341,14 +457,22 @@ def _set_x(
     ax.set_position(Bbox([[a, b], [c, d]]))
 
 
-def _trim(figure: Any, bottom: float, top: float = 0.0) -> None:
-    """Cut `bottom` inches off the page's foot and `top` off its head, every
-    axis kept where it is relative to the rest."""
+def _trim(figure: Any, bottom: float) -> None:
+    """Cut `bottom` inches off the page's foot, every axis kept where it is
+    measured from the top.
+
+    Only ever cuts: the page is drawn with slack at its foot, and growing it
+    here moved the panels by twice the growth.
+    """
+    if bottom < 0.0:
+        msg = f"the page is {-bottom:.3f} in short at its foot; give it more slack"
+        raise ValueError(msg)
+
     renderer = figure.canvas.get_renderer()
     dpi = figure.dpi
     width, height = figure.get_size_inches()
     kept = [(ax, ax.get_window_extent(renderer)) for ax in figure.get_axes()]
-    figure.set_size_inches(width, height - bottom - top)
+    figure.set_size_inches(width, height - bottom)
     figure.canvas.draw()
 
     for ax, box in kept:
@@ -367,14 +491,15 @@ def _place(
 
     Run once the layout is drawn and frozen, when every extent is known:
 
-    - the letters (a) to (d) go in the left margin, level with each panel's
-      top, so they take no height; (b)'s clone names start a `LABEL_GAP`
-      after them, left-aligned, and the common left edge is where both fit
-      or where (a)'s own furniture needs it, whichever is further in;
+    - (d)'s clone names start a letter's width and two `LABEL_GAP` in,
+      left-aligned, and the common left edge is where they fit or where
+      (c)'s own furniture needs it, whichever is further in;
     - (a)'s tracks, (b)'s axis and its legend share that left edge, and a
       right edge pulled in until no chromosome name runs off the page, so
       bin `i` of (b) is under bin `i` of (a);
-    - (c) starts on the left edge, (d) `SPATIAL_GAP` after it.
+    - (a) starts on the left edge and (b) ends on the right, each drawn at
+      `SPATIAL_INSET` of its box and centred in it;
+    - each letter over its panel's top-left corner, `LETTER_GAP` left of it.
     """
     from port.patch.plot_copy_number_profile import plot_ascn_legend
 
@@ -422,8 +547,7 @@ def _place(
             and legend._ncols > 1
             and legend.get_window_extent(renderer).x1 / dpi > right
         ):
-            handles = legend.legend_handles
-            labels = [text.get_text() for text in legend.get_texts()]
+            handles, labels = ax._port_fractions
             columns = legend._ncols - 1
             legend.remove()
             legend = _fractions(ax, handles, labels, columns)
@@ -443,32 +567,63 @@ def _place(
         tick_len=0.1,
         label_fontsize=FONT_SIZE,
         span=right - left,
+        title_on_edge=True,
     )
 
     # NB (a) and (b) square and equal across the top: the slide on the
     #    left edge, the clones on the right edge, their key in one column
     #    between, its bottom on theirs. The largest that fits across is
-    #    `fit`; they are drawn at `SPATIAL_SCALE` of it, in a row
+    #    `fit`; their boxes are `SPATIAL_SCALE` of it, each panel
+    #    `SPATIAL_INSET` of its box and centred there, in a row
     #    `SPATIAL_ROW` of it tall, and everything below moves up to meet it.
     figure.canvas.draw()
     key = spatial_ax.get_legend().get_window_extent(renderer)
-    key_width = key.width / dpi + 2 * gap
-    ceiling = height - gap
+    # NB (b)'s extent ticks on its left, between it and the key.
+    ticks = (
+        max(t.get_window_extent(renderer).width for t in spatial_ax.get_yticklabels())
+        / dpi
+        + 3.0 / 72.0
+    )
+    key_width = key.width / dpi + ticks + 2 * gap
+    raised = max(t.get_window_extent(renderer).height for t in letters) / dpi + gap
+    # NB a letter's height above the top row, for (a) and (b).
+    ceiling = height - raised - gap
     fit = min(SIDE * width, (right - left - key_width - SPATIAL_GAP) / 2)
     side = SPATIAL_SCALE * fit
-    _set_x(slide_ax, left, left + side, ceiling - side, side)
-    _set_x(spatial_ax, right - side, right, ceiling - side, side)
+    inset = (1.0 - SPATIAL_INSET) * side / 2
+    drawn = SPATIAL_INSET * side
+    _set_x(slide_ax, left + inset, left + side - inset, ceiling - side + inset, drawn)
+    _set_x(
+        spatial_ax, right - side + inset, right - inset, ceiling - side + inset, drawn
+    )
+    spatial_ax.get_legend().set_bbox_to_anchor(
+        (-(ticks + gap) / drawn, 0.0), transform=spatial_ax.transAxes
+    )
 
     stats = [t for t in tracks[0].texts if t.get_visible()]
     lower = [*tracks, profile_ax, legend_ax]
     figure.canvas.draw()
     first = max(t.get_window_extent(renderer).y1 for t in stats) / dpi
-    lift = (ceiling - SPATIAL_ROW * fit - 3 * gap) - first
+    # NB under (a) and (b)'s extent ticks, where they reach below the row.
+    floor = min(
+        ceiling - SPATIAL_ROW * fit,
+        min(ax.get_tightbbox(renderer).y0 for ax in (slide_ax, spatial_ax)) / dpi - gap,
+    )
+    lift = (floor - 3 * gap) - first
 
     for ax in lower:
         here = ax.get_window_extent(renderer)
         _set_x(
             ax, here.x0 / dpi, here.x1 / dpi, here.y0 / dpi + lift, here.height / dpi
+        )
+
+    # NB room for (d)'s letter over its top edge, clear of (c)'s last tick.
+    figure.canvas.draw()
+
+    for ax in (profile_ax, legend_ax):
+        here = ax.get_window_extent(renderer)
+        _set_x(
+            ax, here.x0 / dpi, here.x1 / dpi, here.y0 / dpi - raised, here.height / dpi
         )
 
     # NB the page ends at its lowest text, `gap` under it.
@@ -482,26 +637,32 @@ def _place(
         )
         / dpi
     )
-    highest = (
-        max(ax.get_window_extent(renderer).y1 for ax in (slide_ax, spatial_ax)) / dpi
-    )
-    _trim(figure, lowest - gap, height - highest - gap)
+    _trim(figure, lowest - gap)
     height = figure.get_size_inches()[1]
 
     figure.canvas.draw()
 
-    for text, ax, x in zip(
-        letters,
-        (slide_ax, spatial_ax, tracks[0], profile_ax),
-        (0.0, left + side + 2 * gap, 0.0, 0.0),
-        strict=True,
+    # NB each letter just above its panel's top edge and `LETTER_GAP` left
+    #    of its left edge, so it sits with its panel rather than in a column.
+    for text, ax in zip(
+        letters, (slide_ax, spatial_ax, tracks[0], profile_ax), strict=True
     ):
-        # NB level with the panel's top, its statistics line included.
-        extents = [ax.get_window_extent(renderer)]
-        extents += [t.get_window_extent(renderer) for t in ax.texts if t.get_visible()]
-        y = max(e.y1 for e in extents) / dpi
+        box = ax.get_window_extent(renderer)
+        # NB over (c)'s first statistics line, which heads its panel.
+        # NB and over the top extent tick of (a) and (b).
+        heads = [*ax.texts, *(ax.get_yticklabels() if ax.axison else [])]
+        top = max(
+            [box.y1]
+            + [
+                t.get_window_extent(renderer).y1
+                for t in heads
+                if t.get_visible() and t.get_text()
+            ]
+        )
+        x = box.x0 / dpi - letter - LETTER_GAP / 72.0
+        y = top / dpi + gap / 2
         text.set_position((x / width, y / height))
-        text.set_verticalalignment("top")
+        text.set_verticalalignment("bottom")
 
 
 def combined_figure(
@@ -543,10 +704,21 @@ def combined_figure(
 
     # NB no space between axes beyond what `clone_axes`' gap rows give.
     figure = plt.figure(
-        figsize=(width, sum(heights)),
+        figsize=(width, sum(heights) + FOOT),
         dpi=300,
         facecolor="white",
-        layout=ConstrainedLayoutEngine(h_pad=0.01, hspace=0.0),
+        # NB `FOOT` of slack under the layout, which `_place` trims off once
+        #    it has moved the lower panels down for (d)'s letter.
+        layout=ConstrainedLayoutEngine(
+            h_pad=0.01,
+            hspace=0.0,
+            rect=(
+                0.0,
+                FOOT / (sum(heights) + FOOT),
+                1.0,
+                1.0 - FOOT / (sum(heights) + FOOT),
+            ),
+        ),
     )
     rows: Any = figure.subfigures(3, 1, height_ratios=heights, hspace=0.02)
     spatial_row, top, middle = rows[0], rows[1], rows[2]
@@ -562,6 +734,7 @@ def combined_figure(
         },
     )
     _fit_tracks(top)
+    _colour_by_state(top, genomic)
 
     profile_ax, legend_ax = middle.subplots(2, 1, height_ratios=(1.0, 0.3))
     plot_copy_number_profile(recorded.profile.args[0], ax=profile_ax)
@@ -595,7 +768,12 @@ def combined_figure(
     slide_ax.set_xlim(spatial_ax.get_xlim())
     slide_ax.set_ylim(spatial_ax.get_ylim())
     slide_ax.set_aspect("equal")
-    slide_ax.axis("off")
+
+    for ax in (slide_ax, spatial_ax):
+        _extents(ax, np.asarray(coords))
+    # NB an equal-aspect axis shrinks inside its box; held to the page's edges.
+    slide_ax.set_anchor("W")
+    spatial_ax.set_anchor("E")
 
     _set_text(top, GENOMIC_FONT_SIZE)
 

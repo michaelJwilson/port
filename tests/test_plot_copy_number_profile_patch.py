@@ -53,7 +53,14 @@ def _alleles(ax: Any, *, halves: bool) -> dict[tuple[int, int, str], tuple[float
     """
     from matplotlib.colors import to_rgba
     from matplotlib.patches import Rectangle
-    from port.patch.plot_copy_number_profile import hatch_of
+    from port.patch.plot_copy_number_profile import NORMAL_OPACITY, hatch_of
+
+    def seen(colour: Any) -> tuple[float, ...]:
+        # NB a translucent face read over white at the patch's opacity:
+        #    upstream fades copy 1 by 0.25, the patch by `NORMAL_OPACITY`.
+        rgba = np.asarray(to_rgba(colour))
+        alpha = 1.0 if rgba[3] == 1 else NORMAL_OPACITY
+        return tuple(np.round(alpha * rgba[:3] + 1.0 - alpha, 6))
 
     n_rows = round(ax.get_ylim()[1] / (1.0 / len(ax.get_yticks())))
     h = ax.get_ylim()[1] / n_rows
@@ -66,7 +73,7 @@ def _alleles(ax: Any, *, halves: bool) -> dict[tuple[int, int, str], tuple[float
             continue
 
         row = int(patch.get_y() // h)
-        face = tuple(np.round(to_rgba(patch.get_facecolor())[:3], 6))
+        face = seen(patch.get_facecolor())
         bins = range(round(patch.get_x()), round(patch.get_x() + patch.get_width()))
 
         if halves:
@@ -75,9 +82,7 @@ def _alleles(ax: Any, *, halves: bool) -> dict[tuple[int, int, str], tuple[float
                 colours[(row, b, allele)] = face
         else:
             drawn = hatch_of(ax, patch)
-            hatch = (
-                tuple(np.round(to_rgba(drawn[1])[:3], 6)) if drawn is not None else face
-            )
+            hatch = seen(drawn[1]) if drawn is not None else face
             for b in bins:
                 colours[(row, b, "A")] = face
                 colours[(row, b, "B")] = hatch
@@ -89,8 +94,8 @@ def _alleles(ax: Any, *, halves: bool) -> dict[tuple[int, int, str], tuple[float
 def test_every_bin_has_upstreams_alleles_in_upstreams_row() -> None:
     """A's colour and B's colour at every (clone, bin), as upstream draws them.
 
-    RGB only: upstream fades an allele at copy 1 by opacity, and the patch
-    fades only a whole normal segment.
+    As seen over white: upstream fades an allele at copy 1 by opacity, and
+    the patch draws it opaque in its legend box's colour, at `NORMAL_OPACITY`.
     """
     from cnaster.plot_copy_number_profile import plot_copy_number_profile as upstream
     from port.patch.plot_copy_number_profile import plot_copy_number_profile

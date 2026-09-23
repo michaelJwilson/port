@@ -6,8 +6,8 @@ width the half-rows are 0.1 in tall and the chevrons fill them.
 
 **One row per clone.** A normal segment, `(1, 1)`, is the faint normal
 colour as before. Any other segment is filled with A's colour and hatched
-with B's -- A first, on the same colour bar `plot_ascn_legend` draws -- so
-both alleles read at the row's full height.
+with B's -- A first, each as its box on `plot_ascn_legend`'s colour bar shows
+it (`swatch`) -- so both alleles read at the row's full height.
 
 **The hatch orientation is the mirror.** Hatching rises to the right where
 A >= B and to the left where A < B, so a pair of segments whose alleles are
@@ -48,6 +48,7 @@ __all__ = [
     "hatch_of",
     "plot_ascn_legend",
     "plot_copy_number_profile",
+    "swatch",
 ]
 
 HATCH = {1: 1, -1: -1}
@@ -71,6 +72,21 @@ aberrations are what the eye finds (#339)."""
 LINEWIDTH = 0.5
 """Points, for each row's outline and the chromosome boundaries: what
 `plot_clones_genomic` draws its boundaries at."""
+
+
+def swatch(style: Any, copies: Any) -> tuple[float, float, float]:
+    """Copy number `copies`'s colour as its legend box shows it, opaque.
+
+    Copy 1 is `cnaster`'s colour at `NORMAL_OPACITY` over white, so a fill or
+    hatch line of it is the colour of its box rather than the full colour the
+    box fades: lines of a translucent colour would vanish into the fill.
+    """
+    rgb = np.asarray(
+        mcolors.to_rgb(style.get(copies, style.get("default", "lightgray")))
+    )
+    alpha = NORMAL_OPACITY if copies == 1 else 1.0
+    r, g, b = alpha * rgb + (1.0 - alpha)
+    return float(r), float(g), float(b)
 
 
 def _order(df_cnv: pd.DataFrame, clone_ids: list[str]) -> list[str]:
@@ -106,10 +122,10 @@ def _segment(
         return
 
     fill = Rectangle(
-        (x0, y0), w, h, facecolor=style.get(a, default), edgecolor="none", linewidth=0
+        (x0, y0), w, h, facecolor=swatch(style, a), edgecolor="none", linewidth=0
     )
     ax.add_patch(fill)
-    _hatch(ax, fill, style.get(b, default), HATCH[1 if a >= b else -1])
+    _hatch(ax, fill, swatch(style, b), HATCH[1 if a >= b else -1])
 
 
 class _Hatch(LineCollection):
@@ -216,6 +232,8 @@ def plot_copy_number_profile(
 
     ch_coords.append(ch_offset)
 
+    # NB unclipped: the first and last edges sit on the x limits, where the
+    #    axes clip would cut them to half the width of every other line.
     for k in range(num_clones):
         y0 = gap / 2 + k * h
         ax.vlines(
@@ -225,6 +243,7 @@ def plot_copy_number_profile(
             linewidth=LINEWIDTH,
             colors="black",
             zorder=3,
+            clip_on=False,
         )
         ax.add_patch(
             Rectangle(
@@ -235,6 +254,7 @@ def plot_copy_number_profile(
                 edgecolor="black",
                 linewidth=LINEWIDTH,
                 zorder=3,
+                clip_on=False,
             )
         )
 
@@ -286,11 +306,13 @@ def plot_ascn_legend(
     label_fontsize: float = 10,
     palette_name: str = "chisel_single",
     span: float | None = None,
+    title_on_edge: bool = False,
 ) -> Any:
     """The phase swatches and `cnaster`'s colour bar, each titled on its left.
 
     Two swatches, black lines on white, one per hatch orientation, `0` and
-    `1` centred under them and "Phase" to their left. Then the copy-number
+    `1` centred under them and "Phase" to their left, in the margin or,
+    with `title_on_edge`, starting on the axis's left edge. Then the copy-number
     bar with "$\\mathbb{N}$-CNA" to its left, on the same line. With `span`,
     the axis runs `0` to `span` and the bar ends there, so a caller that sets
     the axis over its plot gets the swatches on the plot's left edge, "Phase"
@@ -302,14 +324,29 @@ def plot_ascn_legend(
     gap = 0.15 * box_w
     label_y = -tick_len - 0.04
     text = {"fontsize": label_fontsize, "clip_on": False}
+    start = 0.0
+
+    # NB with `title_on_edge`, "Phase" starts on the axis's left edge -- the
+    #    caller's common left axis -- and the swatches follow it; otherwise it
+    #    ends a gap before them, in the margin.
+    if title_on_edge:
+        ax.set_xlim(0.0, span if span is not None else 1.0)
+        title = ax.text(
+            0.0, box_h / 2, "Phase", ha="left", va="center_baseline", **text
+        )
+        renderer = ax.figure.canvas.get_renderer()
+        right = title.get_window_extent(renderer).x1
+        start = ax.transData.inverted().transform((right, 0.0))[0] + gap
+    else:
+        ax.text(-gap, box_h / 2, "Phase", ha="right", va="center_baseline", **text)
 
     for k, orientation in enumerate((HATCH[1], HATCH[-1])):
-        x = k * (box_w + gap)
-        swatch = Rectangle(
+        x = start + k * (box_w + gap)
+        box = Rectangle(
             (x, 0.0), box_w, box_h, facecolor="white", edgecolor="none", linewidth=0
         )
-        ax.add_patch(swatch)
-        _hatch(ax, swatch, "black", orientation)
+        ax.add_patch(box)
+        _hatch(ax, box, "black", orientation)
         ax.add_patch(
             Rectangle(
                 (x, 0.0),
@@ -323,21 +360,19 @@ def plot_ascn_legend(
         )
         ax.text(x + box_w / 2, label_y, str(k), ha="center", va="top", **text)
 
-    phase_end = 2 * box_w + gap
-    ax.text(-gap, box_h / 2, "Phase", ha="right", va="center", **text)
+    phase_end = start + 2 * box_w + gap
 
     bar = len(ordered_acn) * box_w
     end = span if span is not None else phase_end + 3 * box_w + bar
     x0 = end - bar
 
     for i, label in enumerate(ordered_acn):
-        color = state_style.get(label)
         ax.add_patch(
             Rectangle(
                 (x0 + i * box_w, 0.0),
                 box_w,
                 box_h,
-                facecolor=mcolors.to_rgba(color, NORMAL_OPACITY if label == 1 else 1.0),
+                facecolor=swatch(state_style, label),
                 edgecolor="black",
                 linewidth=LINEWIDTH,
             )
@@ -346,7 +381,14 @@ def plot_ascn_legend(
         ax.plot([xc, xc], [-tick_len, 0.0], color="black", linewidth=LINEWIDTH)
         ax.text(xc, label_y, str(label), ha="center", va="top", **text)
 
-    ax.text(x0 - gap, box_h / 2, r"$\mathbb{N}$-CNA", ha="right", va="center", **text)
+    ax.text(
+        x0 - 3 * gap,
+        box_h / 2,
+        r"$\mathbb{N}$-CNA",
+        ha="right",
+        va="center_baseline",
+        **text,
+    )
     ax.set_xlim(0.0, end)
     ax.set_ylim(-0.6, box_h + 0.05)
     ax.set_aspect("auto")

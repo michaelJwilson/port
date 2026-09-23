@@ -235,7 +235,8 @@ def test_b_spans_a_and_its_clone_names_start_in_one_column(
     cnaster_config: None, tmp_path: Path
 ) -> None:
     """The profile's axis has the tracks' left and right edges to 1.5 px, so bin
-    `i` is under bin `i`; its names are left-aligned in a column after (d)."""
+    `i` is under bin `i`; its names are left-aligned in a column a letter's
+    width and two `LABEL_GAP` from the page's edge, clear of the axis."""
     import matplotlib as mpl
 
     mpl.use("Agg")
@@ -256,25 +257,25 @@ def test_b_spans_a_and_its_clone_names_start_in_one_column(
     lefts = [name.x0 for name in names]
 
     assert max(lefts) - min(lefts) < 1.0
-    gap = profile.x0 - max(name.x1 for name in names)
-    assert gap >= LABEL_GAP / 72.0 * figure.dpi - 1.0
+    gap = LABEL_GAP / 72.0 * figure.dpi
+    assert profile.x0 - max(name.x1 for name in names) >= gap - 1.0
 
-    # NB the names start a column after the letters, 2 `LABEL_GAP` clear.
-    letter = figure.texts[3].get_window_extent(renderer)
-    assert min(lefts) == pytest.approx(
-        letter.x1 + 2 * LABEL_GAP / 72.0 * figure.dpi, abs=1.5
-    )
+    letter = max(t.get_window_extent(renderer).width for t in figure.texts)
+    assert min(lefts) == pytest.approx(letter + 2 * gap, abs=1.5)
 
 
 @pytest.mark.infra
 def test_the_top_row_is_slide_key_clones_edge_to_edge(
     cnaster_config: None, tmp_path: Path
 ) -> None:
-    """(a) the slide on the left edge, (b) the clones on the right edge, their
-    key one column between, its bottom on (b)'s, each clone named $m$."""
+    """(a) the slide on the left edge, (b) the clones on the right edge, each
+    centred in a box `SPATIAL_INSET` larger; their key one column between, its
+    bottom on (b)'s, each clone named $m$."""
     import matplotlib as mpl
 
     mpl.use("Agg")
+    from port.extensions.combined_figure import SPATIAL_INSET
+
     figure = _page(tmp_path, n_clones=3)
     figure.canvas.draw()
     renderer = figure.canvas.get_renderer()
@@ -287,10 +288,11 @@ def test_the_top_row_is_slide_key_clones_edge_to_edge(
     box = key.get_window_extent(renderer)
 
     assert slide.get_images(), "(a) is the slide"
-    assert here.x0 == pytest.approx(
+    border = (1.0 - SPATIAL_INSET) / 2 / SPATIAL_INSET
+    assert here.x0 - border * here.width == pytest.approx(
         min(ax.get_window_extent(renderer).x0 for ax in tracks), abs=1.5
     )
-    assert tiles.x1 == pytest.approx(
+    assert tiles.x1 + border * tiles.width == pytest.approx(
         max(ax.get_window_extent(renderer).x1 for ax in tracks), abs=1.5
     )
     assert here.x1 <= box.x0
@@ -303,30 +305,42 @@ def test_the_top_row_is_slide_key_clones_edge_to_edge(
 
 
 @pytest.mark.infra
-def test_the_letters_sit_level_with_their_panels_in_the_margin(
+def test_the_letters_sit_over_the_top_left_corner_of_their_panels(
     cnaster_config: None, tmp_path: Path
 ) -> None:
-    """Each letter's top on its panel's top, left of every axis; nothing off
-    the page left or right, (b)'s legend on (a)'s edges."""
+    """Each letter's bottom on its panel's top, or on (c)'s statistics line,
+    to one `LABEL_GAP`, and its right edge `LETTER_GAP` left of the panel,
+    to a letter's width; nothing off the page, (d)'s legend on (c)'s edges."""
     import matplotlib as mpl
 
     mpl.use("Agg")
+    from port.extensions.combined_figure import LABEL_GAP, LETTER_GAP
+
     figure = _page(tmp_path)
     figure.canvas.draw()
     renderer = figure.canvas.get_renderer()
     page = figure.bbox
+    gap = LABEL_GAP / 72.0 * figure.dpi
+    space = LETTER_GAP / 72.0 * figure.dpi
     tracks = figure.subfigs[1].axes
     left = min(ax.get_window_extent(renderer).x0 for ax in tracks)
     right = max(ax.get_window_extent(renderer).x1 for ax in tracks)
 
-    tiles = figure.subfigs[0].axes[1].get_window_extent(renderer)
-    # NB (b)'s letter sits between (a) and (b), the others in the margin.
-    edges = (left, tiles.x0, left, left)
+    slide, clones = figure.subfigs[0].axes
+    panels = (slide, clones, tracks[0], figure.subfigs[2].axes[0])
+    letter = max(t.get_window_extent(renderer).width for t in figure.texts)
 
-    for text, edge in zip(figure.texts, edges, strict=True):
+    for text, ax in zip(figure.texts, panels, strict=True):
         box = text.get_window_extent(renderer)
-        assert box.x0 >= page.x0 - 0.5
-        assert box.x1 <= edge, text.get_text()
+        edge = ax.get_window_extent(renderer)
+        heads = [t.get_window_extent(renderer).y1 for t in ax.texts if t.get_visible()]
+        above = max([edge.y1, *heads])
+
+        assert box.x0 >= page.x0 - 0.5, text.get_text()
+        assert edge.x0 - space - letter - 0.5 <= box.x0, text.get_text()
+        assert box.x1 <= edge.x0 - space + 0.5, text.get_text()
+        assert box.y0 >= above - 0.5, text.get_text()
+        assert box.y0 <= above + gap, text.get_text()
 
     for panel in figure.subfigs[1:]:
         for ax in panel.axes:
