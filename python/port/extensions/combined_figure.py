@@ -234,12 +234,14 @@ def combined_figure(
 ) -> Any:
     """Compose (a) to (d) on one page `width` inches wide; no caption."""
     import matplotlib.pyplot as plt
-    from cnaster.plot_copy_number_profile import (
+    from matplotlib.layout_engine import ConstrainedLayoutEngine
+
+    # NB `port`'s profile directly: the page is drawn after the run, when
+    #    `FIGURE_SWAPS` has been restored and `cnaster`'s names are its own.
+    from port.patch.plot_copy_number_profile import (
         plot_ascn_legend,
         plot_copy_number_profile,
     )
-    from matplotlib.layout_engine import ConstrainedLayoutEngine
-
     from port.patch.plot_genomic import plot_clones_genomic
     from port.patch.plotting.genomic import PAPER_WIDTH
     from port.patch.plotting.spatial import draw_clones_spatial
@@ -251,7 +253,9 @@ def combined_figure(
     width = PAPER_WIDTH if width is None else width
     genomic = recorded.genomic
     n_clones = len(np.unique(genomic.kwargs["res_combine"]["new_assignment"]))
-    heights = (0.6 * n_clones, 0.2 * n_clones + 0.55, SCALE * SIDE * width + 0.2)
+    # NB one profile row per clone rather than two halves, and the height
+    #    that frees goes to (a), whose tracks are the densest on the page.
+    heights = (0.68 * n_clones, 0.12 * n_clones + 0.55, SCALE * SIDE * width + 0.2)
 
     # NB no space between axes beyond what `clone_axes`' gap rows give.
     figure = plt.figure(
@@ -279,8 +283,8 @@ def combined_figure(
     )
     _fit_tracks(top)
 
-    profile_ax, legend_ax = middle.subplots(2, 1, height_ratios=(1.0, 0.12))
-    plot_copy_number_profile(*recorded.profile.args, ax=profile_ax)
+    profile_ax, legend_ax = middle.subplots(2, 1, height_ratios=(1.0, 0.3))
+    plot_copy_number_profile(recorded.profile.args[0], ax=profile_ax)
     # NB upstream's clone names are vertical, which on a row 0.3 in tall is
     #    longer than the row: set level, they take width the page has.
     profile_ax.tick_params(axis="y", which="major", pad=9)
