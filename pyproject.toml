@@ -46,6 +46,9 @@ dependencies = [
 # how the whole-run claim is measured, so it ships rather than living in a
 # scratch script.
 run_cnaster_port = "port.scripts.run_cnaster:main"
+# CalicoST on the same configuration, for the three-reference comparison
+# (#347). Needs the `calicost` extra; nothing imports CalicoST until it runs.
+run_calicost = "port.scripts.run_calicost:main"
 
 [project.optional-dependencies]
 dev = [
@@ -204,6 +207,12 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = "numba.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# CalicoST ships no py.typed marker either; `run_calicost` is its only
+# importer, and only through the optional `calicost` extra (#347).
+module = "calicost.*"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
