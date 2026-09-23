@@ -7,6 +7,7 @@
 [![speed](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/michaelJwilson/port/main/.badges/run-speed.json)](#what-the-badges-mean)
 [![mem](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/michaelJwilson/port/main/.badges/run-mem.json)](#what-the-badges-mean)
 [![instance](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/michaelJwilson/port/main/.badges/instance.json)](#what-the-badges-mean)
+[![patched](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/michaelJwilson/port/main/.badges/patched.json)](#what-the-badges-mean)
 
 A scientific repository built on
 [`snakes_and_ladders`](https://github.com/michaelJwilson/snakes_and_ladders),
@@ -30,7 +31,7 @@ under `src/`, exposed to Python as `port.oxiport`.
 
 ## What the badges mean
 
-Six numbers, and each is a claim rather than a decoration.
+Eight numbers, and each is a claim rather than a decoration.
 `.badges/measurements.json` holds every value with the selection, denominator
 and commit that produced it, `python -m tests.badges` derives the badges from
 it, and `tests/test_badges_agree.py` fails when the two disagree -- the same
@@ -59,13 +60,20 @@ It carries the size as `obs x spots x states`, which is what a tier name
 cannot: two instances both called stress can differ by more than the patch
 being measured does. It asserts nothing and is blue for that reason.
 
+**`patched`** is how much of what a run executes `port` has replaced: of
+the `cnaster` lines an unpatched `run_cnaster` executes on the dev instance
+(`numba` disabled, so a kernel's body counts), the share inside a function a
+default row of `run_cnaster_port` replaces -- for a class, its overridden
+methods (#302). Measured by `python -m tests.patched_share`, not per pull
+request, since it is a whole run; blue, because it asserts nothing.
+
 `tests/test_badges_agree.py` is what keeps them together. It refuses a
 recorded ratio that does not name its instance, carry exactly two arms, and
 show both arms exiting 0 -- a ratio from an arm that did not complete is not
 a ratio -- and it refuses a ratio rendered while `instance` still reads `/`.
 
 **The badges are pinned to `main`, so a pull request does not show its own
-figures** -- the six URLs above all read `/main/.badges/`, and a README
+figures** -- the eight URLs above all read `/main/.badges/`, and a README
 cannot render a branch-relative badge without making `main`'s README wrong.
 CI closes that with a report instead (#271): `tests/badge_report.py` renders
 this branch's guards against its base, delta first, into the job summary and
