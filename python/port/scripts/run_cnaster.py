@@ -34,6 +34,7 @@ from contextlib import ExitStack
 from port.pipeline import (
     FIGURE_SWAPS,
     NUMERIC_SWAPS,
+    SHIFT_SWAPS,
     SWAPS,
     Spent,
     instrumented,
@@ -66,6 +67,17 @@ def _parser() -> argparse.ArgumentParser:
             "8,287 MB of figure rendering down to 1,036 MB. Pass --no-figures "
             "for an arm that reproduces cnaster bitwise, which every other "
             "swap does and this one does not."
+        ),
+    )
+    parser.add_argument(
+        "--shift",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help=(
+            "fold the per-clone logmu_shift into the fit and pin the balanced, "
+            "lowest-mu state to mu = 1 afterwards (#276, #293). **On by "
+            "default**: without it a clone's rates come back divided by its "
+            "own normalizer. Pass --no-shift for cnaster's unshifted model."
         ),
     )
     parser.add_argument(
@@ -126,6 +138,11 @@ def main(argv: Sequence[str] | None = None) -> int:
                 f"{swap.module}.{swap.name} <- {swap.replacement}  "
                 f"(#{swap.ticket}, changes the output; --no-figures to omit)"
             )
+        for swap in SHIFT_SWAPS:
+            print(
+                f"{swap.module}.{swap.name} <- {swap.replacement}  "
+                f"(#{swap.ticket}, changes the model; --no-shift to omit)"
+            )
         return 0
 
     if arguments.config is None:
@@ -162,12 +179,31 @@ def main(argv: Sequence[str] | None = None) -> int:
         #    3 (#244). The 1.78x kernel ratio does not survive `CountEncoder`
         #    dedup, which is what #240 warned it might not.
         approx = bool(arguments.approx)
+        # NB **on** unless refused, and off with `--no-patch` for the same
+        #    reason the figures are: a baseline arm that fits a different
+        #    model is not a baseline. The clone assignment applies the shift
+        #    through `port`'s `pipeline_clone_assignment`, which is in
+        #    `SWAPS`, so `--no-patch --shift` fits shifted and assigns clones
+        #    unshifted; it is allowed, and said.
+        shift = not arguments.no_patch if arguments.shift is None else arguments.shift
 
         selected = SWAPS if not arguments.no_patch else ()
         if approx:
             selected = selected + NUMERIC_SWAPS
         if figures:
             selected = selected + FIGURE_SWAPS
+        if shift:
+            from port.patch.hmm_nophasing import logmu_shift
+
+            selected = selected + SHIFT_SWAPS
+            stack.enter_context(logmu_shift())
+
+            if arguments.no_patch:
+                print(
+                    "run_cnaster_port: --no-patch --shift assigns clones "
+                    "unshifted; the shift reaches the HMM only",
+                    file=sys.stderr,
+                )
 
         if selected:
             sites = stack.enter_context(patched(selected))
@@ -175,7 +211,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                 f"run_cnaster_port: {len(selected)} replacements over "
                 f"{len(sites)} bindings"
                 + (", figures included" if figures else "")
-                + (", approx included" if approx else ""),
+                + (", approx included" if approx else "")
+                + (", shift included" if shift else ""),
                 file=sys.stderr,
             )
         else:

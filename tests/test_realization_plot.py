@@ -126,3 +126,41 @@ def test_the_figure_has_one_panel_per_state_and_every_series() -> None:
         "other realizations",
         "truth",
     }
+
+
+@pytest.mark.smoke
+def test_the_truth_can_carry_the_errors_instead() -> None:
+    """With `planted_covariance`, the contours sit on the truth.
+
+    The realization is a point with no bars, and a state whose `mu` variance
+    is zero -- the pinned one -- is titled as pinned and drawn without an
+    ellipse. Checked against itself, hence `smoke`.
+    """
+    import matplotlib as mpl
+
+    mpl.use("Agg")
+
+    from port.extensions.realization_plot import plot_realizations
+
+    covariance = np.tile(np.array([[1e-4, 0.0], [0.0, 1e-6]]), (3, 1, 1))
+    covariance[0, 0, 0] = 0.0
+
+    truth_mu = np.array([1.0, 1.5, 3.0])
+    figure = plot_realizations(
+        planted=(truth_mu, np.array([0.5, 0.42, 0.12])),
+        single=(np.array([1.0, 1.51, 3.02]), np.array([0.5, 0.41, 0.1]), None),
+        others=[],
+        planted_covariance=covariance,
+    )
+
+    titles = [axis.get_title() for axis in figure.axes]
+
+    assert titles[0].endswith("(pinned)")
+    assert not titles[1].endswith("(pinned)")
+
+    # NB two contours on each unpinned panel, centred on the truth.
+    for state, axis in enumerate(figure.axes[1:], start=1):
+        rings = [line for line in axis.get_lines() if len(line.get_xdata()) > 2]
+
+        assert len(rings) == 2
+        assert np.mean(rings[0].get_xdata()) == pytest.approx(truth_mu[state], rel=1e-3)

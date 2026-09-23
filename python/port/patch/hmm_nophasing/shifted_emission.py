@@ -94,7 +94,16 @@ from cnaster.hmm_nophasing import hmm_nophasing as UPSTREAM
 from port.patch.hmm_nophasing.logmu_shift import shifts as logmu_shifts
 from port.patch.plotting.clone_paths import state_vector
 
-__all__ = ["UPSTREAM", "hmm_nophasing", "logmu_shift"]
+__all__ = ["UPSTREAM", "hmm_nophasing", "logmu_shift", "neutral_state"]
+
+NEUTRAL_BAF_TOLERANCE = 0.05
+"""How far from 0.5 a state's allele fraction may sit and still be neutral.
+
+The neutral state is the one with a balanced allele fraction and the lowest
+`mu` (#293). `p` is fitted, so "balanced" is a tolerance; 0.05 admits the
+0.4873-0.4999 #292's fits return for the planted 0.5 and refuses the next
+planted state, 0.42.
+"""
 
 
 class _Triples(NamedTuple):
@@ -201,6 +210,24 @@ def _stacked(normal_log_lambda: Any, lengths: tuple[int, ...]) -> np.ndarray:
     raise ValueError(msg)
 
 
+def neutral_state(log_mu: np.ndarray, p_binom: np.ndarray) -> int:
+    """The balanced state with the lowest `mu`: the one pinned to `mu = 1`.
+
+    Balanced is within :data:`NEUTRAL_BAF_TOLERANCE` of 0.5, in either
+    allele's convention. Where no state is, the one closest to 0.5 is taken
+    rather than none, because the shifted likelihood has no scale without a
+    pin and an unpinned fit is not comparable to anything.
+    """
+    rates = np.asarray(log_mu, dtype=np.float64).reshape(-1)
+    distance = np.abs(np.asarray(p_binom, dtype=np.float64).reshape(-1) - 0.5)
+    balanced = np.flatnonzero(distance <= NEUTRAL_BAF_TOLERANCE)
+
+    if balanced.size == 0:
+        return int(np.argmin(distance))
+
+    return int(balanced[np.argmin(rates[balanced])])
+
+
 class hmm_nophasing(UPSTREAM):  # type: ignore[misc]
     """`cnaster.hmm_nophasing`, with the shift applied when the flag is set.
 
@@ -267,6 +294,140 @@ class hmm_nophasing(UPSTREAM):  # type: ignore[misc]
         decoded: np.ndarray = self.get_copy_states(np.asarray(posteriors))
 
         return decoded
+
+    _row_shift: np.ndarray | None = None
+    """The last shifted fit's shift, one entry per clone-stacked segment.
+
+    **Class state, and deliberately so.** `hmm.py:155` rescores the fit
+    through `hmmclass.compute_emission_probability_nb_betabinom`, a static
+    method called on the class with no argument that could carry the shift.
+    The pipeline is sequential, the call follows `optimize` directly, and the
+    override applies it only to an input of exactly this length, so a stale
+    value cannot reach a different problem unnoticed.
+    """
+
+    @staticmethod
+    def compute_emission_probability_nb_betabinom(
+        X: np.ndarray,
+        base_nb_mean: np.ndarray,
+        log_mu: np.ndarray,
+        alphas: np.ndarray,
+        total_bb_RD: np.ndarray,
+        p_binom: np.ndarray,
+        taus: np.ndarray,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Upstream's dense emission, with the last fit's shift applied.
+
+        The shift enters the negative binomial through its mean,
+        `base * exp(log_mu - shift)`, which is `base * exp(-shift)` against
+        the unshifted `exp(log_mu)`. So it is applied to the exposure and the
+        rest is upstream's kernel unchanged.
+        """
+        shift = hmm_nophasing._row_shift
+
+        if (
+            hmm_nophasing.apply_logmu_shift
+            and shift is not None
+            and shift.size == np.asarray(X).shape[0]
+        ):
+            # NB **recentred, because the rates have no scale.** The shifted
+            #    likelihood is flat along `mu -> c mu`, and the fit wanders
+            #    along it: measured, `log mu` and the shift both near -7,024 on
+            #    #292's realization 3. `exp(-shift) * exp(log_mu)` is then
+            #    `inf * 0`. Taking a common `c` off both leaves the product --
+            #    the emission -- unchanged and each factor near one.
+            centre = float(np.mean(shift))
+            base_nb_mean = np.asarray(base_nb_mean) * np.exp(-(shift - centre))[:, None]
+            log_mu = np.asarray(log_mu) - centre
+
+        scored: tuple[np.ndarray, np.ndarray]
+        scored = UPSTREAM.compute_emission_probability_nb_betabinom(
+            X, base_nb_mean, log_mu, alphas, total_bb_RD, p_binom, taus
+        )
+
+        return scored
+
+    def optimize(
+        self,
+        X: np.ndarray,
+        lengths: np.ndarray,
+        n_states: int,
+        base_nb_mean: np.ndarray,
+        total_bb_RD: np.ndarray,
+        *args: Any,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        """Upstream's fit, then a shifted decode.
+
+        Inside the fit the shift is already applied: the M step's objective
+        and the E step's posteriors both come from the coded emission below.
+        What upstream does after it is not shifted -- `hmm_nophasing.py:1085`
+        rescored the fit through the dense emission for `log_gamma` -- so
+        that is redone here with the shift, and the shift is recorded for
+        `hmm.py:155`, which rescores it once more.
+
+        The rates are returned as fitted. The shifted mean `base * mu / sum
+        lambda mu` is unchanged by `mu -> c mu`, so their scale is arbitrary
+        here; `port.patch.hmrf.run_core_inference` pins it once, after the
+        whole optimization.
+        """
+        hmm_nophasing._row_shift = None
+
+        res: dict[str, Any] = super().optimize(
+            X, lengths, n_states, base_nb_mean, total_bb_RD, *args, **kwargs
+        )
+
+        normal_lambda = kwargs.get("normal_lambda")
+        clone_lengths = kwargs.get("clone_lengths")
+        decode = self._decode()
+
+        if (
+            not self.apply_logmu_shift
+            or "m" not in self.params
+            or normal_lambda is None
+            or clone_lengths is None
+            or decode is None
+        ):
+            return res
+
+        rates = state_vector(res["new_log_mu"])
+
+        n_segments = int(np.asarray(X).shape[0])
+        current = _current(
+            tuple(int(length) for length in np.asarray(clone_lengths)), n_segments
+        )
+
+        shifts = logmu_shifts(
+            rates,
+            np.asarray(decode, dtype=np.int64),
+            _stacked(np.log(np.asarray(normal_lambda, dtype=np.float64)), current),
+            np.asarray(current, dtype=np.int64),
+        )
+        hmm_nophasing._row_shift = np.repeat(shifts, current)
+
+        log_emission_rdr, log_emission_baf = (
+            self.compute_emission_probability_nb_betabinom(
+                X,
+                base_nb_mean,
+                res["new_log_mu"],
+                res["new_alphas"],
+                total_bb_RD,
+                res["new_p_binom"],
+                res["new_taus"],
+            )
+        )
+        log_gamma = self.get_state_posteriors(
+            lengths,
+            res["new_log_transmat"],
+            res["new_log_startprob"],
+            log_emission_rdr + log_emission_baf,
+            kwargs.get("log_sitewise_transmat"),
+        )
+
+        res["log_gamma"] = log_gamma
+        res["pred_cnv"] = np.argmax(log_gamma, axis=0)
+
+        return res
 
     def compute_emission_probability_nb_betabinom_coded(
         self,

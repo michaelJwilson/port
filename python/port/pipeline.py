@@ -51,6 +51,7 @@ from typing import Any
 __all__ = [
     "FIGURE_SWAPS",
     "NUMERIC_SWAPS",
+    "SHIFT_SWAPS",
     "SWAPS",
     "Site",
     "Swap",
@@ -233,6 +234,43 @@ two would have bought the same 47 per cent and cost the claim.
 
 So the decision is still a reader's rather than a default's -- it is just
 the other way round, and `--no-figures` is where it is made.
+"""
+
+
+SHIFT_SWAPS: tuple[Swap, ...] = (
+    Swap(
+        "cnaster.hmm_nophasing",
+        "hmm_nophasing",
+        "port.patch.hmm_nophasing:hmm_nophasing",
+        276,
+    ),
+    Swap(
+        "cnaster.hmrf",
+        "run_core_inference",
+        "port.patch.hmrf:run_core_inference",
+        293,
+    ),
+)
+"""The per-clone `logmu_shift`, folded into the fit and **on by default**.
+
+`cnaster` computes `log Z_c = log sum_g lambda_g mu_{s_c(g)}` and discards
+it, so a clone whose events move its library is fitted against a baseline
+that does not account for them: on #292's genome the fit returned
+`mu / Z_c`, state by state, rather than the planted `mu` (#293). The model
+these rows fit is `<u_gn> = lambda_g T_n mu / sum_g lambda_g mu`.
+
+Two rows because the shift has two jobs. The `hmm_nophasing` class applies it
+wherever the HMM scores the fit -- the coded M and E steps, its own final
+posteriors and `hmm.py:155`'s rescore -- and `pipeline_clone_assignment`
+(in `SWAPS`) reads the class's flag to apply it per candidate clone. The
+`run_core_inference` row pins the result's scale, which the shifted
+likelihood does not set, once after the optimization: the balanced state
+with the lowest `mu` is `mu = 1`.
+
+Its own table because every fitted rate moves, which `CLAUDE.md` forbids
+doing silently; `run_cnaster_port` installs it unless `--no-shift` is given,
+and `port.patch.hmm_nophasing.logmu_shift()` is what turns the class's flag
+on for the run.
 """
 
 

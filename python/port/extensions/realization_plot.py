@@ -69,12 +69,52 @@ def contour(
     return points.T
 
 
+def _errors(
+    axis: Any,
+    centre: tuple[float, float],
+    covariance: np.ndarray,
+    color: str,
+    once: Any,
+) -> bool:
+    """Contours and 1-sigma bars around `centre`; whether its `mu` is pinned.
+
+    A pinned state's `mu` is exact, so its covariance is singular and has no
+    ellipse: its error is the bar on `p` alone.
+    """
+    pinned = bool(covariance[0, 0] <= 0.0)
+
+    if not pinned:
+        for radius, style in zip(RADII, ("-", "--"), strict=True):
+            ring = contour(centre, covariance, radius)
+            axis.plot(
+                ring[:, 0],
+                ring[:, 1],
+                style,
+                color=color,
+                linewidth=1.0,
+                label=once(f"radius {radius:g}"),
+            )
+
+    sigma = np.sqrt(np.clip(np.diag(covariance), 0.0, None))
+    axis.errorbar(
+        *centre,
+        xerr=sigma[0],
+        yerr=sigma[1],
+        fmt="none",
+        ecolor=color,
+        capsize=2,
+    )
+
+    return pinned
+
+
 def plot_realizations(
     *,
     planted: tuple[np.ndarray, np.ndarray],
-    single: tuple[np.ndarray, np.ndarray, np.ndarray],
+    single: tuple[np.ndarray, np.ndarray, np.ndarray | None],
     others: Sequence[tuple[np.ndarray, np.ndarray]],
     labels: Sequence[str] | None = None,
+    planted_covariance: np.ndarray | None = None,
 ) -> Any:
     """One panel per copy state, in `(mu, p)`.
 
@@ -83,12 +123,15 @@ def plot_realizations(
     planted
         `(mu, p)` per state, the truth.
     single
-        `(mu, p, covariance)` for the realization with errors;
-        `covariance` is `(n_states, 2, 2)` in `(mu, p)`.
+        `(mu, p, covariance)` for one realization; `covariance` is
+        `(n_states, 2, 2)` in `(mu, p)`, or `None` to draw it as a point.
     others
         `(mu, p)` per state for each remaining realization.
     labels
         A title per state. Defaults to the state index.
+    planted_covariance
+        `(n_states, 2, 2)` to draw the errors on the truth instead: the
+        likelihood's covariance evaluated at the planted parameters.
 
     Returns
     -------
@@ -97,37 +140,39 @@ def plot_realizations(
     import matplotlib.pyplot as plt
 
     truth_mu, truth_p = (np.asarray(values, dtype=np.float64) for values in planted)
-    mu, p, covariance = (np.asarray(values, dtype=np.float64) for values in single)
+    mu = np.asarray(single[0], dtype=np.float64)
+    p = np.asarray(single[1], dtype=np.float64)
+    covariance = None if single[2] is None else np.asarray(single[2], dtype=np.float64)
     n_states = truth_mu.size
 
     figure, axes = plt.subplots(
         1, n_states, figsize=(3.2 * n_states, 3.2), squeeze=False, layout="constrained"
     )
 
+    shown: set[str] = set()
+
+    def once(name: str) -> str | None:
+        """The legend label the first time a series is drawn, else `None`."""
+        if name in shown:
+            return None
+
+        shown.add(name)
+
+        return name
+
     for state, axis in enumerate(axes[0]):
-        centre = (mu[state], p[state])
-        sigma = np.sqrt(np.diag(covariance[state]))
+        pinned = False
 
-        for radius, style in zip(RADII, ("-", "--"), strict=True):
-            ring = contour(centre, covariance[state], radius)
-            axis.plot(
-                ring[:, 0],
-                ring[:, 1],
-                style,
-                color="C0",
-                linewidth=1.0,
-                label=f"radius {radius:g}" if state == 0 else None,
-            )
+        if covariance is not None:
+            pinned = _errors(axis, (mu[state], p[state]), covariance[state], "C0", once)
 
-        axis.errorbar(
-            *centre,
-            xerr=sigma[0],
-            yerr=sigma[1],
-            fmt="o",
+        axis.plot(
+            mu[state],
+            p[state],
+            "o",
             color="C0",
             markersize=4,
-            capsize=2,
-            label="one realization" if state == 0 else None,
+            label=once("one realization"),
         )
 
         if others:
@@ -138,7 +183,16 @@ def plot_realizations(
                 markerfacecolor="none",
                 color="C1",
                 markersize=4,
-                label="other realizations" if state == 0 else None,
+                label=once("other realizations"),
+            )
+
+        if planted_covariance is not None:
+            pinned = _errors(
+                axis,
+                (truth_mu[state], truth_p[state]),
+                np.asarray(planted_covariance[state], dtype=np.float64),
+                "k",
+                once,
             )
 
         axis.plot(
@@ -147,10 +201,11 @@ def plot_realizations(
             "*",
             color="k",
             markersize=10,
-            label="truth" if state == 0 else None,
+            label=once("truth"),
         )
 
-        axis.set_title(labels[state] if labels is not None else f"state {state}")
+        title = labels[state] if labels is not None else f"state {state}"
+        axis.set_title(title + (" (pinned)" if pinned else ""))
         axis.set_xlabel(r"$\mu$")
         axis.set_ylabel("p (minor)")
         axis.ticklabel_format(useOffset=False)

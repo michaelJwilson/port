@@ -237,6 +237,42 @@ def _delegates(single_tumor_prop: Any) -> str | None:
     return None
 
 
+def _clone_shifts(
+    hmmclass: Any, res: Any, decoded: np.ndarray, single_base_nb_mean: np.ndarray
+) -> np.ndarray | None:
+    """`log sum_g lambda_g mu_{s_c(g)}` per clone, or `None` when unshifted.
+
+    Only when the fit was shifted (#276, #293): scoring spots with the shift
+    off against rates fitted with it on is the inconsistency this repairs.
+    `lambda` is built as `hmrf.py:476` builds `normal_lambda` -- the baseline
+    summed over spots, normalized -- because that is what the fit's shift
+    was taken against, and `decoded` is the `(n_obs, n_clones)` path the
+    field reads.
+    """
+    import scipy.special
+
+    from port.patch.plotting.clone_paths import state_vector
+
+    if not getattr(hmmclass, "apply_logmu_shift", False):
+        return None
+
+    profile = np.asarray(single_base_nb_mean, dtype=np.float64).sum(axis=1)
+    total = profile.sum()
+
+    if total <= 0.0:
+        return None
+
+    with np.errstate(divide="ignore"):
+        log_lambda = np.log(profile / total)
+
+    rates = state_vector(res["new_log_mu"])
+    terms = rates[np.asarray(decoded, dtype=np.int64)] + log_lambda[:, None]
+
+    shifts: np.ndarray = scipy.special.logsumexp(terms, axis=0)
+
+    return shifts
+
+
 def pipeline_clone_assignment(
     single_X: np.ndarray,
     single_base_nb_mean: np.ndarray,
@@ -326,29 +362,61 @@ def pipeline_clone_assignment(
     # NB the two steps `cnaster` runs here -- build (n_states, n_obs, n_spots)
     #    per channel, then read one decoded state per (bin, clone) out of it --
     #    in one pass that materializes neither.
-    field = fused_spot_clone_field(
-        pooled_X[:, 0, :],
-        pooled_base_nb_mean,
-        pooled_X[:, 1, :],
-        pooled_total_bb_RD,
-        # NB `(n_states,)`, normalized at the edge. The kernel indexes by
-        #    state alone, because a state parameter has no second axis to
-        #    index (#278).
-        state_vector(res["new_log_mu"]),
-        state_vector(res["new_alphas"]),
-        state_vector(res["new_p_binom"]),
-        state_vector(res["new_taus"]),
-        decoded,
-        invariants.weight,
-        # NB the buffer is the caller's, which is upstream's shape --
-        #    `external_field(..., field)` writes in place. It is allocated per
-        #    call rather than reused, and that is deliberate: this function
-        #    *returns* the field, so a reused buffer would rewrite an array
-        #    its caller still holds, which is the defect
-        #    `tests/test_seam_defects.py` pins on the solver. At 400 KB at the
-        #    declared scale there is nothing to win by taking that risk.
-        np.empty((n_spots, n_clones)),
-    )
+    shifts = _clone_shifts(hmmclass, res, decoded, single_base_nb_mean)
+
+    if shifts is None:
+        field = fused_spot_clone_field(
+            pooled_X[:, 0, :],
+            pooled_base_nb_mean,
+            pooled_X[:, 1, :],
+            pooled_total_bb_RD,
+            # NB `(n_states,)`, normalized at the edge. The kernel indexes by
+            #    state alone, because a state parameter has no second axis to
+            #    index (#278).
+            state_vector(res["new_log_mu"]),
+            state_vector(res["new_alphas"]),
+            state_vector(res["new_p_binom"]),
+            state_vector(res["new_taus"]),
+            decoded,
+            invariants.weight,
+            # NB the buffer is the caller's, which is upstream's shape --
+            #    `external_field(..., field)` writes in place. It is allocated
+            #    per call rather than reused, and that is deliberate: this
+            #    function *returns* the field, so a reused buffer would
+            #    rewrite an array its caller still holds, which is the defect
+            #    `tests/test_seam_defects.py` pins on the solver. At 400 KB at
+            #    the declared scale there is nothing to win by taking that
+            #    risk.
+            np.empty((n_spots, n_clones)),
+        )
+    else:
+        # NB the shift is the **candidate** clone's, not the spot's current
+        #    one: a spot scored against clone `c` is scored under `c`'s
+        #    normalizer. It enters the mean as `base * exp(-shift_c)`, so each
+        #    clone's column is the same kernel over a rescaled exposure --
+        #    the same work as the one call, split by clone.
+        #    Both factors are taken relative to the shifts' mean: the rates
+        #    have no scale under the shift and drift along it (to near -7,024
+        #    on #292's realization 3), so `exp(-shift)` and `exp(log_mu)` are
+        #    each out of range while their product is not.
+        field = np.empty((n_spots, n_clones))
+        centre = float(np.mean(shifts))
+
+        for clone in range(n_clones):
+            column = fused_spot_clone_field(
+                pooled_X[:, 0, :],
+                pooled_base_nb_mean * np.exp(-(shifts[clone] - centre)),
+                pooled_X[:, 1, :],
+                pooled_total_bb_RD,
+                state_vector(res["new_log_mu"]) - centre,
+                state_vector(res["new_alphas"]),
+                state_vector(res["new_p_binom"]),
+                state_vector(res["new_taus"]),
+                np.ascontiguousarray(decoded[:, clone : clone + 1]),
+                invariants.weight,
+                np.empty((n_spots, 1)),
+            )
+            field[:, clone] = column[:, 0]
 
     if get_global_config().hmrf.fixed_assignment:
         logger.warning("Assuming a fixed clone assignment")

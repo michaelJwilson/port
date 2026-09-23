@@ -304,3 +304,152 @@ def test_a_per_bin_lambda_is_repeated_over_the_clone_stack() -> None:
 
     with pytest.raises(ValueError, match="expected one per genome"):
         _stacked(profile, (4, 4))
+
+
+@pytest.mark.analytic
+def test_the_neutral_state_is_the_balanced_one_with_the_lowest_mu() -> None:
+    """Balanced within 0.05 of 0.5, in either allele's convention, then lowest.
+
+    A gain that is balanced is not neutral when a lower balanced state
+    exists, and an unbalanced state at a low `mu` is never chosen while a
+    balanced one is available (#293).
+    """
+    from port.patch.hmm_nophasing.shifted_emission import neutral_state
+
+    log_mu = np.log(np.array([2.0, 0.9, 0.5, 1.1]))
+    p_binom = np.array([0.5, 0.52, 0.12, 0.47])
+
+    assert neutral_state(log_mu, p_binom) == 1
+    assert neutral_state(log_mu, 1.0 - p_binom) == 1
+
+
+@pytest.mark.analytic
+def test_the_pin_leaves_every_shifted_rate_as_it_was() -> None:
+    """`mu -> c mu` changes no shifted rate, so the pin changes no emission.
+
+    `log mu - log sum lambda mu` against the same after the pin, to 1e-12,
+    and the pinned state reads exactly 0 in log.
+    """
+    from port.patch.hmm_nophasing.logmu_shift import shifts
+    from port.patch.hmrf.core_inference import pin_neutral
+
+    rng = np.random.default_rng(3)
+    states = rng.integers(0, 3, 40).astype(np.int64)
+    log_lambda = np.log(rng.random(40) / 40)
+    lengths = np.array([20, 20], dtype=np.int64)
+
+    result = {
+        "new_log_mu": np.log(np.array([[1.7], [0.6], [3.1]])),
+        "new_p_binom": np.array([[0.49], [0.51], [0.12]]),
+    }
+    before = result["new_log_mu"][:, 0]
+    shifted_before = (
+        before[None, :] - shifts(before, states, log_lambda, lengths)[:, None]
+    )
+
+    assert pin_neutral(result) == 1
+
+    after = result["new_log_mu"][:, 0]
+
+    assert after[1] == 0.0
+
+    shifted_after = after[None, :] - shifts(after, states, log_lambda, lengths)[:, None]
+
+    np.testing.assert_allclose(shifted_after, shifted_before, rtol=0.0, atol=1e-12)
+
+
+@pytest.mark.patch
+@pytest.mark.parametrize("offset", [0.0, -7024.0])
+def test_the_dense_emission_applies_the_recorded_shift_to_the_mean(
+    offset: float,
+) -> None:
+    """`base * exp(log_mu - shift)`, finite at any common offset of the two.
+
+    Against upstream called on the shifted mean directly -- exposure
+    `base * exp(log_mu_k - shift_g)` per state, with `log_mu = 0` -- to
+    1e-9 relative. The offset is the gauge the fit drifts along: at -7,024,
+    which #292's realization 3 reached, forming `exp(-shift)` and
+    `exp(log_mu)` separately is `inf * 0`. Unshifted when the flag is off.
+    """
+    from cnaster.hmm_nophasing import hmm_nophasing as upstream
+    from port.patch.hmm_nophasing import hmm_nophasing, logmu_shift
+
+    rng = np.random.default_rng(5)
+    n_obs = 12
+    X = np.stack(
+        [rng.poisson(40, (n_obs, 1)), rng.integers(0, 10, (n_obs, 1))], axis=1
+    ).astype(float)
+    base = rng.uniform(20, 60, (n_obs, 1))
+    total = np.full((n_obs, 1), 10.0)
+    rates = np.log(np.array([1.0, 2.0]))
+    alphas, p_binom, taus = (
+        np.full((2, 1), 0.1),
+        np.array([[0.5], [0.2]]),
+        np.full((2, 1), 30.0),
+    )
+    shift = rng.normal(0.0, 0.3, n_obs)
+
+    previous = hmm_nophasing._row_shift
+    hmm_nophasing._row_shift = shift + offset
+
+    try:
+        with logmu_shift():
+            ours = hmm_nophasing.compute_emission_probability_nb_betabinom(
+                X, base, (rates + offset)[:, None], alphas, total, p_binom, taus
+            )
+
+        for state in range(2):
+            theirs = upstream.compute_emission_probability_nb_betabinom(
+                X,
+                base * np.exp(rates[state] - shift)[:, None],
+                np.zeros((2, 1)),
+                alphas,
+                total,
+                p_binom,
+                taus,
+            )
+
+            assert np.all(np.isfinite(ours[0][state]))
+            np.testing.assert_allclose(ours[0][state], theirs[0][state], rtol=1e-9)
+            np.testing.assert_array_equal(ours[1][state], theirs[1][state])
+
+        off = hmm_nophasing.compute_emission_probability_nb_betabinom(
+            X, base, rates[:, None], alphas, total, p_binom, taus
+        )
+        plain = upstream.compute_emission_probability_nb_betabinom(
+            X, base, rates[:, None], alphas, total, p_binom, taus
+        )
+
+        for mine, reference in zip(off, plain, strict=True):
+            np.testing.assert_array_equal(mine, reference)
+    finally:
+        hmm_nophasing._row_shift = previous
+
+
+@pytest.mark.analytic
+def test_each_candidate_clone_is_scored_under_its_own_normalizer() -> None:
+    """`_clone_shifts` is `log sum_g lambda_g mu_{s_c(g)}`, per clone.
+
+    Against the sum written out, to 1e-12, with `lambda` the baseline summed
+    over spots and normalized as `hmrf.py:476` builds it; `None` when the fit
+    was not shifted, so the unshifted path is the fused field as before.
+    """
+    from port.patch.hmm_nophasing import hmm_nophasing, logmu_shift
+    from port.patch.hmrf.clone_assignment import _clone_shifts
+
+    rng = np.random.default_rng(9)
+    base = rng.uniform(1.0, 5.0, (30, 7))
+    decoded = rng.integers(0, 3, (30, 2)).astype(np.int64)
+    res = {"new_log_mu": np.log(np.array([[1.0], [1.5], [3.0]]))}
+
+    assert _clone_shifts(hmm_nophasing, res, decoded, base) is None
+
+    with logmu_shift():
+        ours = _clone_shifts(hmm_nophasing, res, decoded, base)
+
+    weights = base.sum(axis=1) / base.sum()
+    mu = np.array([1.0, 1.5, 3.0])
+    expected = np.log([(weights * mu[decoded[:, c]]).sum() for c in range(2)])
+
+    assert ours is not None
+    np.testing.assert_allclose(ours, expected, rtol=0.0, atol=1e-12)
