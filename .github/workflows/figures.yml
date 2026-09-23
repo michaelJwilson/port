@@ -1,0 +1,75 @@
+name: Figures
+
+# Regenerate docs/plots/ with run_cnaster_port on the dev instance and commit
+# it to the pull request's branch (#296). The figures are a result, not a
+# referee: a matplotlib PDF carries a creation timestamp, so every run differs
+# byte for byte (#103), and nothing here compares them with the previous
+# ones. What this guarantees is that the figures in a pull request are the
+# figures its code draws.
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  figures:
+    name: Figures (run_cnaster_port, dev instance)
+    runs-on: ubuntu-latest
+    # NB measured at 109 s and a peak of 6.92 GB. The job runs alone, beside
+    #    no other step, because a private repository's standard runner has
+    #    7 GB and the test job's own peak would not fit alongside it.
+    timeout-minutes: 30
+    permissions:
+      # NB the only job in the repository that writes, and it writes only
+      #    `docs/plots/`: the commit below stages that directory and nothing
+      #    else, so no badge or coverage figure is ever written by CI and
+      #    `check_badges`' refusal in ci.yml still means what it says.
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # NB the branch itself, not the merge commit `pull_request` checks
+          #    out by default, so there is something to push to.
+          ref: ${{ github.event.pull_request.head.ref || github.ref }}
+
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - run: uv sync --locked --extra dev --extra test
+
+      - run: uv run --no-sync python -m tests.generate_plots
+
+      # NB a pull request from a fork gets a read-only token, so the figures
+      #    are uploaded there instead of committed.
+      - name: Commit the figures
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/plots
+          if git diff --cached --quiet; then
+            echo "no figure changed"
+            exit 0
+          fi
+          # NB a push with GITHUB_TOKEN starts no workflow run, so this
+          #    cannot re-trigger itself.
+          git commit -m "Regenerate docs/plots with run_cnaster_port (#296)"
+          git push
+
+      - name: Upload the figures
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository
+        uses: actions/upload-artifact@v4
+        with:
+          name: figures
+          path: docs/plots/*.pdf

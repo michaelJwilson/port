@@ -1,10 +1,12 @@
 # Figures
 
-**What `run_cnaster` draws for the dev instance, committed so a change to the
-pipeline shows up as a change to a picture.** Nineteen of them, written at
+**What `run_cnaster_port` draws for the dev instance, committed so a change to
+the pipeline shows up as a change to a picture.** Nineteen of them, written at
 every stage of the run rather than at the end.
 
-Regenerate with `python -m tests.generate_plots`.
+**CI regenerates them on every pull request and commits the result** to the
+pull request's branch (`.github/workflows/figures.yml`, #296). By hand:
+`python -m tests.generate_plots`, or `--cnaster` for plain `cnaster`.
 
 ## The instance
 
@@ -16,7 +18,8 @@ data carries is what a real run does anyway.
 State zero is planted diploid and balanced, `mu = 1` and `p = 0.5`. Without
 one the run does not reach these figures at all (#106).
 
-31 s and a peak of 5.89 GB.
+Through `run_cnaster_port` with its defaults, the shift included: 109 s end to
+end and a peak of 6.92 GB (#296). Plain `cnaster` measured 31 s and 5.89 GB.
 
 ## What they are, and are not
 
