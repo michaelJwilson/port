@@ -33,13 +33,16 @@ from scipy.special import gammaln, logsumexp
 __all__ = [
     "CHI2_HALF",
     "Decoded",
+    "IntegerFit",
     "Pseudobulk",
     "candidates",
     "capture",
     "decode",
     "decode_fixed",
     "decode_shared",
+    "integer_em",
     "log_likelihood",
+    "rounded_start",
 ]
 
 CHI2_HALF = 5.991464547107979 / 2
@@ -259,6 +262,7 @@ def decode_shared(
     n_states: int,
     max_total_copy: int,
     normal: int,
+    distinct: bool = False,
 ) -> Decoded:
     """Each state's `(A, B)`, one pair shared by every clone (#362).
 
@@ -267,13 +271,16 @@ def decode_shared(
     in `k`, each clone's rate `log((A + B) / 2) - log_shift`; `normal` is
     `(1, 1)` by definition and a state no clone visits is `(1, 1)` too.
     Everything but the copies is held, so the states separate and the
-    one-candidate-per-state MILP is solved exactly, state by state.
+    one-candidate-per-state MILP is solved exactly, state by state. With
+    `distinct`, no two states share a pair: the assignment of pairs to states
+    maximizing the summed likelihood, `(1, 1)` the normal state's alone.
     """
     lattice = candidates(max_total_copy)
     log_mu, p = _parameters(lattice)
     copies = np.ones((n_states, 2), dtype=np.int64)
     total = 0.0
     sets: dict[int, list[tuple[int, int]]] = {}
+    table: dict[int, np.ndarray] = {}
     visited = np.unique(np.concatenate([path for path, _, _ in clones]))
 
     for state in visited:
@@ -296,14 +303,32 @@ def decode_shared(
             continue
 
         scores = np.array([score(i) for i in range(len(lattice))])
+        table[k] = scores
         best = int(np.argmax(scores))
         copies[k] = lattice[best]
-        total += float(scores[best])
         sets[k] = [
             (int(a), int(b))
             for (a, b), value in zip(lattice, scores, strict=True)
             if value >= scores[best] - CHI2_HALF
         ]
+
+    if distinct and table:
+        from scipy.optimize import linear_sum_assignment
+
+        states = sorted(table)
+        one = (lattice[:, 0] == 1) & (lattice[:, 1] == 1)
+        matrix = np.array([np.where(one, -np.inf, table[k]) for k in states])
+        rows, columns = linear_sum_assignment(
+            np.where(np.isfinite(matrix), -matrix, 1e300)
+        )
+
+        for row, column in zip(rows, columns, strict=True):
+            copies[states[row]] = lattice[column]
+
+    total += sum(
+        float(table[k][int(np.flatnonzero((lattice == copies[k]).all(axis=1))[0])])
+        for k in table
+    )
 
     return Decoded(copies, total, 1, sets)
 
@@ -415,3 +440,237 @@ def pseudobulk_for(base_column: np.ndarray) -> Pseudobulk | None:
             )
 
     return None
+
+
+@dataclass
+class IntegerFit:
+    """The integer EM's fixed point: shared copies, per-clone paths and shifts."""
+
+    copies: np.ndarray
+    paths: list[np.ndarray]
+    shifts: np.ndarray
+    alpha: float
+    tau: float
+    log_likelihood: float
+    iterations: int
+    trace: list[float] = field(default_factory=list)
+
+
+def _with(bulk: Pseudobulk, alpha: float, tau: float) -> Pseudobulk:
+    return Pseudobulk(
+        bulk.counts_nb,
+        bulk.base_nb_mean,
+        bulk.counts_bb,
+        bulk.total_bb_rd,
+        bulk.log_lambda,
+        alpha,
+        tau,
+    )
+
+
+def rounded_start(
+    log_mu: np.ndarray, p_binom: np.ndarray, normal: int, max_total_copy: int
+) -> np.ndarray:
+    """Each state's `(A, B)` from the continuous fit, `normal` at `(1, 1)`.
+
+    The total is `2 exp(mu_k - mu_normal)` rounded, clipped to
+    `[1, max_total_copy]`; `A` is `p_k` of it, rounded.
+    """
+    total = np.clip(
+        np.rint(2.0 * np.exp(log_mu - log_mu[normal])), 1, max_total_copy
+    ).astype(np.int64)
+    major = np.clip(np.rint(p_binom * total), 0, total).astype(np.int64)
+    copies = np.stack([major, total - major], axis=1)
+    copies[normal] = (1, 1)
+    return copies
+
+
+def _viterbi(
+    log_emission: np.ndarray,
+    log_transmat: np.ndarray,
+    log_startprob: np.ndarray,
+    lengths: np.ndarray,
+) -> tuple[np.ndarray, float]:
+    """`(n_states, n_obs)` emissions; the best path, restarted at each length."""
+    path = np.empty(log_emission.shape[1], dtype=np.int64)
+    total = 0.0
+    start = 0
+
+    for length in np.asarray(lengths, dtype=np.int64):
+        stop = start + int(length)
+        delta = log_startprob + log_emission[:, start]
+        back = np.empty((stop - start, log_transmat.shape[0]), dtype=np.int64)
+
+        for t in range(start + 1, stop):
+            scores = delta[:, None] + log_transmat
+            back[t - start] = np.argmax(scores, axis=0)
+            delta = scores[back[t - start], np.arange(scores.shape[1])]
+            delta = delta + log_emission[:, t]
+
+        path[stop - 1] = int(np.argmax(delta))
+        total += float(np.max(delta))
+
+        for t in range(stop - 1, start, -1):
+            path[t - 1] = back[t - start, path[t]]
+
+        start = stop
+
+    return path, total
+
+
+def _negative_shifted(
+    shift: float, log_rate: np.ndarray, p: np.ndarray, bulk: Pseudobulk
+) -> float:
+    return -float(np.sum(_emission(log_rate - shift, p, bulk, np.arange(p.size))))
+
+
+def _negative_joint(
+    log_value: float,
+    which: str,
+    other: float,
+    paths: list[np.ndarray],
+    bulks: list[Pseudobulk],
+    shifts: np.ndarray,
+    copies: np.ndarray,
+) -> float:
+    """Minus the joint log-likelihood at `exp(log_value)` for `which` dispersion."""
+    value = float(np.exp(log_value))
+    alpha, tau = (value, other) if which == "alpha" else (other, value)
+    log_mu, p = _parameters(copies)
+    return -sum(
+        float(
+            np.sum(
+                _emission(log_mu[z] - s, p[z], _with(b, alpha, tau), np.arange(z.size))
+            )
+        )
+        for z, b, s in zip(paths, bulks, shifts, strict=True)
+    )
+
+
+def integer_em(
+    clones: list[tuple[np.ndarray, Pseudobulk, float]],
+    start: np.ndarray,
+    *,
+    normal_clone: int,
+    log_transmat: np.ndarray,
+    log_startprob: np.ndarray,
+    lengths: np.ndarray,
+    max_total_copy: int,
+    normal: int,
+    zero_normal: bool = True,
+    max_iter: int = 20,
+    max_inner: int = 10,
+) -> IntegerFit:
+    """EM over integer states: the copies are the M-step's parameters (#362).
+
+    M-step, each clone's path held: each clone's `logmu_shift` (the normal
+    clone's held at 0 under `zero_normal`), then the shared dispersions
+    `alpha` and `tau`, then each state's `(A, B)`, shared by every clone
+    (:func:`decode_shared`), `normal` at `(1, 1)`. Each state's `mu` and
+    `p` are those of its pair. E-step: each clone's Viterbi path under them,
+    with the fit's transitions. It starts from `start` and the continuous
+    fit's paths, shifts and dispersions, and stops when an iteration changes
+    no path and no pair.
+    """
+    from scipy.optimize import minimize_scalar
+
+    n_states = start.shape[0]
+    copies = np.array(start, dtype=np.int64)
+    copies[normal] = (1, 1)
+    paths = [np.asarray(path, dtype=np.int64) for path, _, _ in clones]
+    bulks = [bulk for _, bulk, _ in clones]
+    shifts = np.array([shift for _, _, shift in clones], dtype=np.float64)
+    alpha, tau = bulks[0].alpha, bulks[0].tau
+    trace: list[float] = []
+    total = -np.inf
+    iteration = 0
+
+    def fitted(a: float, t: float) -> list[Pseudobulk]:
+        return [_with(bulk, a, t) for bulk in bulks]
+
+    for iteration in range(1, max_iter + 1):  # noqa: B007 -- read after the loop
+        updated = copies.copy()
+
+        for _ in range(max_inner):  # the M-step to its own fixed point
+            previous = (updated.copy(), shifts.copy())
+            copies_m = updated
+            log_mu, p = _parameters(copies_m)
+
+            for i, (z, bulk) in enumerate(zip(paths, fitted(alpha, tau), strict=True)):
+                if zero_normal and i == normal_clone:
+                    shifts[i] = 0.0
+                    continue
+
+                shifts[i] = float(
+                    minimize_scalar(
+                        _negative_shifted,
+                        bounds=(shifts[i] - 3.0, shifts[i] + 3.0),
+                        args=(log_mu[z], p[z], bulk),
+                        method="bounded",
+                    ).x
+                )
+
+            alpha = float(
+                np.exp(
+                    minimize_scalar(
+                        _negative_joint,
+                        bounds=(np.log(alpha) - 5.0, np.log(alpha) + 5.0),
+                        args=("alpha", tau, paths, bulks, shifts, copies_m),
+                        method="bounded",
+                    ).x
+                )
+            )
+            tau = float(
+                np.exp(
+                    minimize_scalar(
+                        _negative_joint,
+                        bounds=(np.log(tau) - 5.0, np.log(tau) + 5.0),
+                        args=("tau", alpha, paths, bulks, shifts, copies_m),
+                        method="bounded",
+                    ).x
+                )
+            )
+
+            members = [
+                (z, bulk, float(s))
+                for z, bulk, s in zip(paths, fitted(alpha, tau), shifts, strict=True)
+            ]
+            shared = decode_shared(
+                members,
+                n_states=n_states,
+                max_total_copy=max_total_copy,
+                normal=normal,
+                distinct=True,
+            )
+            visited = np.unique(np.concatenate(paths))
+            updated = copies_m.copy()
+            updated[visited] = shared.copies[visited]
+
+            if np.array_equal(updated, previous[0]) and np.allclose(
+                shifts, previous[1], atol=1e-4
+            ):
+                break
+
+        log_mu, p = _parameters(updated)
+        new_paths = []
+        total = 0.0
+
+        for z, bulk, s in members:
+            bins = np.arange(z.size)
+            emission = np.stack(
+                [_emission(log_mu[k] - s, p[k], bulk, bins) for k in range(n_states)]
+            )
+            path, score = _viterbi(emission, log_transmat, log_startprob, lengths)
+            new_paths.append(path)
+            total += score
+
+        trace.append(total)
+        unchanged = np.array_equal(updated, copies) and all(
+            np.array_equal(a, b) for a, b in zip(paths, new_paths, strict=True)
+        )
+        copies, paths = updated, new_paths
+
+        if unchanged:
+            break
+
+    return IntegerFit(copies, paths, shifts, alpha, tau, total, iteration, trace)
