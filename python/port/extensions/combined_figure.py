@@ -693,9 +693,15 @@ def _place(
     def head(ax: Any) -> float:
         texts = [t for t in ax.texts if t.get_visible()]
         legend = ax.get_legend()
-        return max(
-            [t.get_window_extent(renderer).y1 for t in texts]
-            + ([legend.get_window_extent(renderer).y1] if legend is not None else [])
+        return float(
+            max(
+                [t.get_window_extent(renderer).y1 for t in texts]
+                + (
+                    [legend.get_window_extent(renderer).y1]
+                    if legend is not None
+                    else []
+                )
+            )
         )
 
     between = [
