@@ -23,6 +23,8 @@ nothing, and takes the configured cap; `run_cnaster` passes neither.
 
 from __future__ import annotations
 
+import contextlib
+import logging
 from collections.abc import Iterator
 from contextlib import contextmanager
 from typing import Any
@@ -42,6 +44,14 @@ __all__ = [
 _ONECLONE = upstream.hill_climbing_integer_copynumber_oneclone
 _MILP = upstream.hill_climbing_integer_copynumber_fixdiploid_milp
 
+_LIKELIHOOD: list[bool] = [False]
+"""Whether the decoders refine by the pseudobulk likelihood (#327)."""
+
+DECODED: list[Any] = []
+"""Each refinement's `port.extensions.copy_likelihood.Decoded`, in call order."""
+
+logger = logging.getLogger(__name__)
+
 MAX_ALLELE_COPY = 5
 """`cnaster`'s default, in both signatures."""
 
@@ -60,6 +70,77 @@ def configured_caps() -> tuple[int, int]:
         return MAX_ALLELE_COPY, MAX_TOTAL_COPY
 
     return int(total), int(total)
+
+
+@contextlib.contextmanager
+def by_likelihood() -> Iterator[None]:
+    """Refine each decode by the HMM's pseudobulk likelihood for the block (#327).
+
+    Captures the RDR+BAF fit's inputs, and after `cnaster`'s decoder returns,
+    re-decodes that clone's states by `port.extensions.copy_likelihood`,
+    starting from the decoder's answer. A clone the capture cannot identify
+    keeps the decoder's answer, and says so.
+    """
+    from port.extensions.copy_likelihood import capture
+
+    previous = _LIKELIHOOD[0]
+    _LIKELIHOOD[0] = True
+    DECODED.clear()
+
+    try:
+        with capture():
+            yield
+    finally:
+        _LIKELIHOOD[0] = previous
+
+
+def _refine(
+    result: Any,
+    new_log_mu: Any,
+    base_nb_mean: Any,
+    new_p_binom: Any,
+    pred_cnv: Any,
+    total: int,
+    normal: int | None = None,
+) -> Any:
+    """The decoder's answer, re-decoded by likelihood when `by_likelihood` is on.
+
+    `normal` is the pinned normal state shared by every clone (#362); where
+    none was propagated it is found from this clone's decode, as before.
+    """
+    if not _LIKELIHOOD[0]:
+        return result
+
+    from port.extensions.copy_likelihood import decode, pseudobulk_for
+    from port.patch.hmm_nophasing.shifted_emission import hmm_nophasing, neutral_state
+
+    bulk = pseudobulk_for(np.asarray(base_nb_mean))
+
+    if bulk is None:
+        logger.warning("copy likelihood: no captured clone matches; keeping the MILP's")
+        return result
+
+    copies, _, ploidy = result
+    copies = np.asarray(copies, dtype=np.int64)
+    log_mu = np.asarray(new_log_mu, dtype=np.float64).reshape(-1)
+    path = np.asarray(pred_cnv, dtype=np.int64).reshape(-1) % log_mu.size
+    neutral = (
+        normal
+        if normal is not None
+        else neutral_state(log_mu, np.asarray(new_p_binom).reshape(-1), path[:, None])
+    )
+
+    decoded = decode(
+        copies,
+        path,
+        bulk,
+        max_total_copy=total,
+        neutral=neutral,
+        shift=bool(hmm_nophasing.apply_logmu_shift),
+    )
+    DECODED.append(decoded)
+
+    return decoded.copies, -decoded.log_likelihood, ploidy
 
 
 def _caps(max_allele_copy: int, max_total_copy: int) -> tuple[int, int]:
@@ -120,7 +201,7 @@ def hill_climbing_integer_copynumber_oneclone(
     rates, normal = _shifted(new_log_mu, pred_cnv)
 
     with _normal(normal):
-        return _ONECLONE(
+        result = _ONECLONE(
             rates,
             base_nb_mean,
             new_p_binom,
@@ -132,6 +213,10 @@ def hill_climbing_integer_copynumber_oneclone(
             EPS_BAF=EPS_BAF,
             expression_weight=expression_weight,
         )
+
+    return _refine(
+        result, new_log_mu, base_nb_mean, new_p_binom, pred_cnv, total, normal
+    )
 
 
 def hill_climbing_integer_copynumber_fixdiploid_milp(
@@ -158,7 +243,7 @@ def hill_climbing_integer_copynumber_fixdiploid_milp(
     rates, normal = _shifted(new_log_mu, pred_cnv)
 
     with _normal(normal):
-        return _MILP(
+        result = _MILP(
             rates,
             base_nb_mean,
             new_p_binom,
@@ -177,3 +262,7 @@ def hill_climbing_integer_copynumber_fixdiploid_milp(
             enforce_states=enforce_states,
             max_samples=max_samples,
         )
+
+    return _refine(
+        result, new_log_mu, base_nb_mean, new_p_binom, pred_cnv, total, normal
+    )
