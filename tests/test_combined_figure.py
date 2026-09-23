@@ -309,9 +309,10 @@ def test_the_top_row_is_slide_clones_key_edge_to_edge(
 def test_the_letters_sit_over_their_panels_on_its_leftmost_text(
     cnaster_config: None, tmp_path: Path
 ) -> None:
-    """Each letter's bottom on its panel's top, or on the text over it, to one
-    `LABEL_GAP`; its left on (a) and (b)'s extent ticks, or on (c) and (d)'s
-    left column, which (c)'s labels and (d)'s names start on; the page's head
+    """(a) to (c)'s bottom on its panel's top, or on the text over it, to one
+    `LABEL_GAP`, and (d) level with its key; each letter's left on (a) and
+    (b)'s extent ticks, or on (c) and (d)'s left column, which (c)'s labels
+    and (d)'s names start on; the page's head
     a `LABEL_GAP` over the letters; no text off the page, (d)'s legend on
     (c)'s edges."""
     import matplotlib as mpl
@@ -339,7 +340,7 @@ def test_the_letters_sit_over_their_panels_on_its_leftmost_text(
     )
 
     for text, ax, edge in zip(
-        figure.texts, (slide, clones, tracks[0], legend_ax), edges, strict=True
+        figure.texts[:3], (slide, clones, tracks[0]), edges[:3], strict=True
     ):
         box = text.get_window_extent(renderer)
         heads = [
@@ -352,6 +353,14 @@ def test_the_letters_sit_over_their_panels_on_its_leftmost_text(
         assert box.x0 == pytest.approx(edge, abs=1.5), text.get_text()
         assert box.y0 >= above - 0.5, text.get_text()
         assert box.y0 <= above + gap, text.get_text()
+
+    # NB (d)'s in the column, level with its key's first title.
+    letter = figure.texts[3].get_window_extent(renderer)
+    title = legend_ax.texts[0].get_window_extent(renderer)
+    assert letter.x0 == pytest.approx(edges[3], abs=1.5)
+    assert (letter.y0 + letter.y1) / 2 == pytest.approx(
+        (title.y0 + title.y1) / 2, abs=1.0
+    )
 
     labels = [ax.yaxis.label.get_window_extent(renderer).x0 for ax in tracks]
     names = [t.get_window_extent(renderer).x0 for t in profile.get_yticklabels()]

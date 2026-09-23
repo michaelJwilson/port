@@ -42,6 +42,7 @@ from __future__ import annotations
 import contextlib
 from collections.abc import Iterator
 from dataclasses import dataclass, field
+from itertools import pairwise
 from typing import Any
 
 import numpy as np
@@ -64,6 +65,10 @@ shrunk if (d)'s key or the page's height needs it."""
 LABEL_GAP = 2.0
 """Points between a label and what it labels: (d)'s clone names and its
 axis, (b)'s key and (b)."""
+
+GAP_CLOSED = 0.5
+"""The fraction of the white closed between (c)'s clones, and between (c)
+and (d)'s key."""
 
 NAME_INSET = 3 * LABEL_GAP
 """Points from the page's left edge to the left column: (d)'s clone names,
@@ -476,6 +481,13 @@ def _set_x(
     ax.set_position(Bbox([[a, b], [c, d]]))
 
 
+def _move(ax: Any, up: float) -> None:
+    """Move `ax` `up` inches, its width and height kept."""
+    dpi = ax.get_figure(root=True).dpi
+    here = ax.get_window_extent(ax.get_figure(root=True).canvas.get_renderer())
+    _set_x(ax, here.x0 / dpi, here.x1 / dpi, here.y0 / dpi + up, here.height / dpi)
+
+
 def _trim(figure: Any, bottom: float, top: float = 0.0) -> None:
     """Cut `bottom` inches off the page's foot and `top` off its head, every
     axis kept where it is measured from the foot, less `bottom`.
@@ -672,14 +684,52 @@ def _place(
             ax, here.x0 / dpi, here.x1 / dpi, here.y0 / dpi + lift, here.height / dpi
         )
 
-    # NB room for (d)'s letter over its top edge, clear of (c)'s last tick.
+    # NB the white between clones, from a clone's statistics line to the
+    #    BAF axis over it, halved: each clone moves up by half of it for
+    #    every clone above, and (d) with the last.
     figure.canvas.draw()
+    rows = [tracks[k : k + 2] for k in range(0, len(tracks), 2)]
 
-    for ax in (profile_ax, legend_ax):
-        here = ax.get_window_extent(renderer)
-        _set_x(
-            ax, here.x0 / dpi, here.x1 / dpi, here.y0 / dpi - raised, here.height / dpi
+    def head(ax: Any) -> float:
+        texts = [t for t in ax.texts if t.get_visible()]
+        legend = ax.get_legend()
+        return max(
+            [t.get_window_extent(renderer).y1 for t in texts]
+            + ([legend.get_window_extent(renderer).y1] if legend is not None else [])
         )
+
+    between = [
+        (upper[-1].get_window_extent(renderer).y0 - head(lower_row[0])) / dpi
+        for upper, lower_row in pairwise(rows)
+    ]
+    shift = 0.0
+
+    for row, closed in zip(rows[1:], between, strict=True):
+        shift += GAP_CLOSED * closed
+        for ax in row:
+            _move(ax, shift)
+
+    # NB and the white between (c)'s last axis and (d)'s key, which (d)'s
+    #    letter no longer sits in: it moves to the left column, level with
+    #    the key.
+    figure.canvas.draw()
+    key_top = max(
+        a.get_window_extent(renderer).y1 for a in [*legend_ax.patches, *legend_ax.texts]
+    )
+    last = min(
+        [rows[-1][-1].get_window_extent(renderer).y0]
+        + [
+            t.get_window_extent(renderer).y0
+            for t in rows[-1][-1].get_yticklabels()
+            if t.get_text()
+        ]
+    )
+
+    # NB the white as it was includes the letter's row, `raised`, which the
+    #    layout no longer leaves; closed from that, not from what is left.
+    white = last / dpi - shift - key_top / dpi
+    for ax in (profile_ax, legend_ax):
+        _move(ax, shift + white - (1.0 - GAP_CLOSED) * (white + raised))
 
     # NB the page ends at its lowest text, `gap` under it.
     figure.canvas.draw()
@@ -724,6 +774,13 @@ def _place(
             )
             text.set_position((x / dpi / width, (top / dpi + gap / 2) / height))
             text.set_verticalalignment("bottom")
+
+        # NB (d)'s level with its key's first title, in the column beside it.
+        title = legend_ax.texts[0].get_window_extent(renderer)
+        letters[3].set_position(
+            (column / width, (title.y0 + title.y1) / 2 / dpi / height)
+        )
+        letters[3].set_verticalalignment("center")
 
     letter_positions()
     figure.canvas.draw()
