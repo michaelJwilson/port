@@ -299,9 +299,9 @@ def run_arm(
     import cnaster.scripts.run_cnaster as pipeline
     import port.patch.hmrf as patch
     import scipy.optimize
+    from port.extensions.copy_errors import Captured
     from port.scripts.run_cnaster import main
 
-    from tests.realizations import Captured
     from tests.run_config import write_run_cnaster_config
     from tests.tmp_inputs import write_tmp_inputs
     from tests.unsegment import unsegment
