@@ -11,6 +11,7 @@ expansion finds the lower-energy basin, then `cnaster`'s ICM applies its
   `cnaster`, and the floor is `cnaster`'s contract);
 - end to end on the dev instance, `--sal` recovers the planted clones at
   ARI 1.000 against the default's 0.919 (`end2end`, `release`);
+- the same on the critical instance, per pull request (`end2end`);
 - the flag's own mechanics (`infra`).
 """
 
@@ -129,6 +130,33 @@ def test_list_prints_the_sal_row(capsys: pytest.CaptureFixture[str]) -> None:
 
     assert "cnaster.icm.icm_sweep_deque <- search.alpha_expansion" in printed
     assert "(#312, accuracy; --sal to add)" in printed
+
+
+@pytest.mark.end2end
+def test_sal_recovers_the_critical_instance(cnaster_config: None) -> None:
+    """ARI 1.000 on the early gate's instance, with the row's labelling installed.
+
+    `M = K = 2`, `G = 1,000`, `S = 500`, through `run_core_inference` with
+    `port`'s `pipeline_clone_assignment` (the `SWAPS` row `--sal` reads) and
+    `sal()` in place, so alpha expansion and `cnaster`'s floor label every
+    spot. The per-pull-request form of the dev claim below.
+    """
+    from port.extensions.sal import sal
+    from port.pipeline import SWAPS, patched
+
+    from tests.fixtures import critical_instance
+    from tests.test_core_inference_end_to_end import _adjusted_rand_index, _run
+
+    truth = critical_instance()
+    row = tuple(swap for swap in SWAPS if swap.name == "pipeline_clone_assignment")
+
+    with patched(row), sal():
+        result = _run(truth, max_iter_outer=1, max_iter=3)
+
+    fitted = np.asarray(result.assignment.new_assignment)
+
+    assert np.unique(fitted).size == truth.n_clones
+    assert _adjusted_rand_index(truth.labels, fitted) == pytest.approx(1.0)
 
 
 @pytest.mark.end2end
