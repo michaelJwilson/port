@@ -122,23 +122,29 @@
  "recovery": {
   "instance": "dev: 1,600 spots x 1,000 bins, 4 clones, 10 planted states (8 used)",
   "configuration": "the figures': 8 states, max_iter_outer=1, max_iter=3 (tests/generate_plots.py)",
-  "commit": "57a42ed",
+  "commit": "aaa4067",
   "arms": {
    "port": {
     "flags": [],
-    "spot_ari": 0.8503,
-    "copy_ari": 0.8959,
-    "wall_s": 65.5
+    "ari": 0.5382,
+    "ari_integer": 0.8892,
+    "state_ari": 0.2597,
+    "copy_ari": 0.9982,
+    "wall_s": 75.72,
+    "peak_gb": 5.93
    },
    "sal": {
     "flags": [
      "--sal"
     ],
-    "spot_ari": 0.9728,
-    "copy_ari": 0.9951,
-    "wall_s": 57.34
+    "ari": 0.9107,
+    "ari_integer": 0.9107,
+    "state_ari": 0.2121,
+    "copy_ari": 0.9971,
+    "wall_s": 43.58,
+    "peak_gb": 3.23
    }
   },
-  "note": "python -m tests.recovery_audit [-- --sal], one run each, each its own process. spot_ari: fitted clone labels against planted, over 1,600 spots. copy_ari: after integer decoding, each matched clone-bin's phased (A, B) from cnv_seglevel.tsv against the state the fixture painted there, over 4,000 clone-bins (clones matched by spot overlap). Before decoding, the fitted states scored 0.160 and 0.130: the fit spreads the planted normal bins over several near-neutral states, which decoding merges to (1, 1). Not measured per pull request: each arm is a whole run. Walls include other work on the host and are indicative."
+  "note": "python -m tests.recovery_audit [-- --sal], one run each, each its own process, on an otherwise idle host. The badge shows the integer indices: ari_integer, fitted clone labels over 1,600 spots after merging clones of one decoded (A, B) profile (#344); copy_ari, each matched clone-bin's phased (A, B) from cnv_seglevel.tsv against the state the fixture painted there (clones matched by spot overlap). Recorded beside them, not shown: ari, the clone labels before merging, and state_ari, the fitted state Z per clone-bin. Not measured per pull request: each arm is a whole run."
  }
 }

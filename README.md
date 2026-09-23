@@ -70,10 +70,12 @@ methods (#302). Measured by `python -m tests.patched_share`, not per pull
 request, since it is a whole run; blue, because it asserts nothing.
 
 **`port` and `sal`** are recovery against the planted truth, for
-`run_cnaster_port`'s default and for `--sal`: the adjusted Rand index of the
-fitted clone labels against the planted ones over spots, and, after integer
-decoding, of each clone-bin's phased `(A, B)` against the state the fixture
-painted there. Measured
+`run_cnaster_port`'s default and for `--sal`, both on the integer decode: the
+adjusted Rand index of the fitted clone labels against the planted ones over
+spots, after merging clones of one decoded `(A, B)` profile (#344), and of
+each clone-bin's phased `(A, B)` against the state the fixture painted there.
+The continuous indices, before merging and of the fitted state, are recorded
+beside them in `measurements.json`. Measured
 by `python -m tests.recovery_audit` on the dev instance at the figures'
 configuration (#313); the instance, configuration and commit are in
 `measurements.json`. Not per pull request, since each is a whole run; blue,
