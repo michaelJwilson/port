@@ -53,6 +53,15 @@ def _parser() -> argparse.ArgumentParser:
         "config", nargs="?", help="the YAML configuration run_cnaster reads"
     )
     parser.add_argument(
+        "--no-outputs",
+        action="store_true",
+        help=(
+            "skip port.extensions.outputs, which writes the fitted states, the "
+            "integer segments, the bin-level posterior means and a manifest "
+            "beside cnaster's files (#331); off with --no-patch"
+        ),
+    )
+    parser.add_argument(
         "--no-patch",
         action="store_true",
         help="run the same pipeline with nothing rebound, for the baseline arm",
@@ -358,8 +367,36 @@ def main(argv: Sequence[str] | None = None) -> int:
     if spent is not None:
         _report(spent, wall, patched=not arguments.no_patch)
 
+    # NB after the run and outside its timer, and off with `--no-patch`: a
+    #    baseline arm writes what `cnaster` writes and nothing beside it.
+    if not (arguments.no_outputs or arguments.no_patch):
+        _write_outputs(
+            arguments.config,
+            {"figures": figures, "approx": approx, "shift": shift},
+        )
+
     print(f"run_cnaster_port: {wall:.2f}s", file=sys.stderr)
     return 0
+
+
+def _write_outputs(config: str, flags: dict[str, bool]) -> None:
+    """`port.extensions.outputs` into each run directory the run wrote."""
+    from pathlib import Path
+
+    from port.extensions.outputs import config_keys, run_directories, write_outputs
+
+    output_dir = config_keys(Path(config)).get("output_dir")
+
+    if output_dir is None:
+        print(
+            "run_cnaster_port: no output_dir in the config; outputs skipped",
+            file=sys.stderr,
+        )
+        return
+
+    for run in run_directories(Path(output_dir)):
+        write_outputs(run, Path(config), flags)
+        print(f"run_cnaster_port: outputs written to {run}", file=sys.stderr)
 
 
 def _report(spent: dict[str, Spent], wall: float, *, patched: bool) -> None:

@@ -212,9 +212,19 @@ run_cnaster_port --no-rust config.yaml       # cnaster's numba lattices instead 
 run_cnaster_port --sal config.yaml           # snakes_and_ladders routines where port measured a gain
 run_cnaster_port --no-copy-cap config.yaml   # cnaster's integer copy caps, A + B <= 6, whatever the config states
 run_cnaster_port --time-stages config.yaml   # what the replacements cost in the run
+run_cnaster_port --no-outputs config.yaml    # skip the fitted/decoded tables below
 run_cnaster_port --list                      # what would be rebound, and why
 run_cnaster_port --audit-config config.yaml # what the config states that cnaster does not use (#324)
 ```
+
+**A patched run also writes the seam between the fit and the integers**
+(#331): beside `cnaster`'s files, and without touching them,
+`port.extensions.outputs` writes `cnv_states.tsv` (each fitted state, the
+`(A, B)` each clone decodes it to, and its share of the clone's bins),
+`cnv_segments.tsv` (runs of equal `(A, B)`), `cnv_binlevel.tsv` (the
+posterior-mean `mu` and `p` per bin) and `manifest.json` (states, clones,
+likelihoods, the configuration's caps and the flags). Off with `--no-patch`,
+so the baseline arm writes what `cnaster` writes.
 
 `port.pipeline.SWAPS` is the table -- one row per `cnaster` name `port`
 replaces, each naming the ticket that measured it -- and `patched()` is the
