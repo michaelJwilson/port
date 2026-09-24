@@ -208,12 +208,24 @@ compiled extension is typed by the hand-written stub
 run_cnaster_port config.yaml                 # cnaster's pipeline, port's replacements
 run_cnaster_port --no-patch config.yaml      # the same run, nothing rebound
 run_cnaster_port --no-figures config.yaml    # the replacements that reproduce bitwise
+run_cnaster_port --no-rust config.yaml       # cnaster's numba lattices instead of oxiport's
 run_cnaster_port --sal config.yaml           # snakes_and_ladders routines where port measured a gain
 run_cnaster_port --no-copy-cap config.yaml   # cnaster's integer copy caps, A + B <= 6, whatever the config states
 run_cnaster_port --copy-likelihood config.yaml  # integer copies re-decoded by the HMM's pseudobulk likelihood
 run_cnaster_port --time-stages config.yaml   # what the replacements cost in the run
+run_cnaster_port --no-outputs config.yaml    # skip the fitted/decoded tables below
 run_cnaster_port --list                      # what would be rebound, and why
+run_cnaster_port --audit-config config.yaml # what the config states that cnaster does not use (#324)
 ```
+
+**A patched run also writes the seam between the fit and the integers**
+(#331): beside `cnaster`'s files, and without touching them,
+`port.extensions.outputs` writes `cnv_states.tsv` (each fitted state, the
+`(A, B)` each clone decodes it to, and its share of the clone's bins),
+`cnv_segments.tsv` (runs of equal `(A, B)`), `cnv_binlevel.tsv` (the
+posterior-mean `mu` and `p` per bin) and `manifest.json` (states, clones,
+likelihoods, the configuration's caps and the flags). Off with `--no-patch`,
+so the baseline arm writes what `cnaster` writes.
 
 `port.pipeline.SWAPS` is the table -- one row per `cnaster` name `port`
 replaces, each naming the ticket that measured it -- and `patched()` is the
@@ -251,6 +263,15 @@ copies by the HMM's pseudobulk NB/BB likelihood, holding the fitted path, and
 starts from the MILP's answer. On the lattice fixture it decodes 0.794 of
 altered clone-bins exactly, against the MILP's 0.417, and costs 5 s per run
 (`docs/audit-recovery.md`).
+
+**`--rust` is on by default** (#318). It runs `cnaster`'s four
+forward/backward lattices from `port.oxiport`, bitwise `cnaster`'s
+(`tests/test_rust_lattice.py`, and a whole `--no-patch` run reproduced
+artifact by artifact). `cnaster`'s unphased pair is `@njit` without a cache,
+so every process compiled it: 4.1 s and 0.5 s of first call, against 0.5 ms
+from Rust. On the dev instance a default run takes 29.8 s against 36.5 s
+with `--no-rust`. The four kernels are 4.3x to 6.1x faster warm at
+`K = 10`, 10,000 bins and 20 spots, on four cores.
 
 **`--sal` is off by default** (#312). It admits `snakes_and_ladders`
 routines only on `port`'s measurement, and admits one today: the clone
@@ -310,6 +331,7 @@ not carry, not before.
 | [TICKETS.md](TICKETS.md) | What is filed and not done, grouped by the milestone it serves |
 | [STATUS.md](STATUS.md) | What has landed, with the measurement that established it |
 | [CLAUDE.md](CLAUDE.md) | The rules |
+| [docs/templates/](docs/templates/README.md) | Templates for documents made outside the code: the work-in-flight page (#335) |
 
 `DEV.md`, `INSTALL.md` and `CHANGELOG.md` are added when the content for them
 exists, not ahead of it: `README.md` still carries installation and
