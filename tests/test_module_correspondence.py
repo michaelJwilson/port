@@ -31,7 +31,13 @@ from pathlib import Path
 
 import port.patch
 import pytest
-from port.pipeline import FIGURE_SWAPS, NUMERIC_SWAPS, SHIFT_SWAPS, SWAPS
+from port.pipeline import (
+    COPY_SWAPS,
+    FIGURE_SWAPS,
+    NUMERIC_SWAPS,
+    SHIFT_SWAPS,
+    SWAPS,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -120,13 +126,13 @@ def test_a_unifier_declares_the_pair_it_replaces() -> None:
 
 @pytest.mark.infra
 def test_every_swap_lands_in_the_module_named_for_its_target() -> None:
-    """All 14 rows: `cnaster.X` is replaced from `port.patch.X`.
+    """All 16 rows: `cnaster.X` is replaced from `port.patch.X`.
 
     The load-bearing one. A swap moved to a different module, or a module
     renamed without its rows, fails here -- and both are how a layout stops
     meaning what it claims once nothing reads it.
     """
-    for swap in SWAPS + NUMERIC_SWAPS + FIGURE_SWAPS + SHIFT_SWAPS:
+    for swap in SWAPS + NUMERIC_SWAPS + FIGURE_SWAPS + SHIFT_SWAPS + COPY_SWAPS:
         target, _, _ = swap.replacement.partition(":")
         expected = f"port.patch.{swap.module.rpartition('.')[2]}"
 
@@ -149,7 +155,7 @@ def test_what_replaces_nothing_does_not_live_under_patch() -> None:
     """
     installed = {
         swap.replacement.partition(":")[0]
-        for swap in SWAPS + NUMERIC_SWAPS + FIGURE_SWAPS + SHIFT_SWAPS
+        for swap in SWAPS + NUMERIC_SWAPS + FIGURE_SWAPS + SHIFT_SWAPS + COPY_SWAPS
     }
 
     for name in (

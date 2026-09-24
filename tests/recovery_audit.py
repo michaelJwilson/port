@@ -37,7 +37,7 @@ above zero, that the model prefers the fit to the truth. It needs as many
 fitted states as planted ones.
 
 The configuration defaults to the figures' (`max_iter_outer=1`,
-`max_iter=3`, five states), which is under-converged by design; `--outer`,
+`max_iter=3`, eight states), which is under-converged by design; `--outer`,
 `--iterations` and `--states` separate a configuration effect from a
 defect, and `--set section.key=value` overrides any other entry.
 """
@@ -262,7 +262,7 @@ def run_arm(
     truth: CoreInferenceTruth,
     flags: list[str],
     *,
-    n_states: int = 5,
+    n_states: int = 8,
     max_iter_outer: int = 1,
     max_iter: int = 3,
     overrides: dict[str, Any] | None = None,
@@ -426,7 +426,7 @@ def main() -> None:
 
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--instance", default="dev", choices=["critical", "dev"])
-    parser.add_argument("--states", type=int, default=5)
+    parser.add_argument("--states", type=int, default=8)
     parser.add_argument("--outer", type=int, default=1)
     parser.add_argument("--iterations", type=int, default=3)
     parser.add_argument(
