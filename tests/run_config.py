@@ -152,6 +152,12 @@ def run_cnaster_config(
             "nonbalance_bafdist": 1.0,
             "nondiploid_rdrdist": 10.0,
             "ploidy": "diploid",
+            # NB `port`'s key, read by `port.patch.integer_copy` (`COPY_SWAPS`)
+            #    and by nothing in `cnaster`, whose decoders cap `A + B` at 6
+            #    and each allele at 5. It sets both caps; 12 decodes the dev
+            #    instance's largest planted state, `2 mu = 10`, which the
+            #    default cannot (#313).
+            "max_total_copy": 12,
         },
     }
 
