@@ -152,3 +152,29 @@ def test_the_viterbi_em_recovers_a_planted_tumour_fraction(seed: int) -> None:
     assert abs(fitted.purity[1] - PURITY) < 0.03
     for pairs, planted in zip(fitted.pairs, paths, strict=True):
         np.testing.assert_array_equal(pairs, LOH_PAIRS[planted])
+
+
+@pytest.mark.end2end
+@pytest.mark.parametrize("dispersion", ["poisson", "relax"])
+def test_the_dispersions_may_start_at_the_poisson_limit(dispersion: str) -> None:
+    """Every bin's pair from the Poisson/binomial start; relaxed, `alpha` to 2x."""
+    from dataclasses import replace
+
+    paths, bulks = _planted(0, LOH_PAIRS, PURITY)
+    fitted = fit_copies(
+        [(z, b, 0.0) for z, b in zip(paths, bulks, strict=True)],
+        replace(VITERBI, dispersion=dispersion),  # type: ignore[arg-type]
+        n_states=4,
+        normal=0,
+        normal_clone=0,
+        max_total_copy=6,
+        lengths=np.array([N_OBS]),
+    )
+
+    for pairs, planted in zip(fitted.pairs, paths, strict=True):
+        np.testing.assert_array_equal(pairs, LOH_PAIRS[planted])
+
+    if dispersion == "poisson":
+        assert (fitted.alpha, fitted.tau) == (0.0, np.inf)
+    else:
+        assert ALPHA / 2.0 < fitted.alpha < ALPHA * 2.0

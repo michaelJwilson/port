@@ -217,7 +217,7 @@ def test_the_entry_point_decodes_the_planted_pair_through_the_likelihood(
 
 
 @pytest.mark.analytic
-def test_the_poisson_flag_is_the_zero_dispersion_limit() -> None:
+def test_the_poisson_dispersion_is_the_zero_dispersion_limit() -> None:
     """`alpha = 0`, `tau = inf` agree with NB and BB at `alpha = 1e-9`, `tau = 1e9`."""
     from dataclasses import replace
 

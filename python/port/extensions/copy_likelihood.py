@@ -14,8 +14,10 @@ set by a :class:`Scheme`'s flags:
   log emissions and transitions at `1 / T`, so as `T -> 0` each bin's
   responsibility concentrates on one state, the Viterbi path's; `T = 0` is
   Viterbi itself. Empty: no E-step, the continuous fit's paths held;
-- `poisson`: the dispersions fixed at the Poisson and binomial limits
-  (`alpha = 0`, `tau = inf`) rather than fitted;
+- `dispersion`: `"fit"` fits `alpha` and `tau` at every M-step; `"poisson"`
+  fixes them at the Poisson and binomial limits (`alpha = 0`, `tau = inf`);
+  `"relax"` holds them there for the first EM iteration and fits them from
+  then on, so the first paths are chosen under the tightest likelihood;
 - `fit_purity`: each tumour clone's spots are a fraction `rho` tumour and the
   rest normal. Depth `rho (A + B) / 2 + 1 - rho`, allele share
   `(rho A + 1 - rho) / (rho (A + B) + 2 (1 - rho))`, `rho` fitted to the
@@ -80,7 +82,7 @@ class Scheme:
     temperatures: tuple[float, ...] = ()
     fit_purity: bool = False
     distinct: bool = False
-    poisson: bool = False
+    dispersion: Literal["fit", "poisson", "relax"] = "fit"
 
 
 SHARED = Scheme()
@@ -450,6 +452,12 @@ def _log_emissions(
     return np.where(np.isfinite(emission), emission, -1e10)
 
 
+ALPHA_BOUNDS = (np.log(1e-8), np.log(10.0))
+"""Where `alpha` is searched, in logs: from Poisson to ten times overdispersed."""
+
+TAU_BOUNDS = (0.0, np.log(1e8))
+"""Where `tau` is searched, in logs: from binomial to a flat allele share."""
+
 PURITY_GRID = (1.0, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3)
 """Where :func:`_profile_start` looks for a clone's tumour fraction."""
 
@@ -538,7 +546,8 @@ def fit_copies(
     bulks = [bulk for _, bulk, _ in clones]
     shifts = np.array([shift for _, _, shift in clones], dtype=np.float64)
     purity = np.ones(len(clones))
-    alpha, tau = (0.0, np.inf) if scheme.poisson else (bulks[0].alpha, bulks[0].tau)
+    limit = scheme.dispersion in ("poisson", "relax")
+    alpha, tau = (0.0, np.inf) if limit else (bulks[0].alpha, bulks[0].tau)
     lengths = np.array([paths[0].size]) if lengths is None else np.asarray(lengths)
 
     if scheme.states == "fit":
@@ -603,10 +612,17 @@ def fit_copies(
 
     if gammas is not None and scheme.temperatures:
         states, alpha, tau = fit.m_step(
-            gammas, states, shifts, purity, alpha, tau, scheme.temperatures[0] == 0.0
+            gammas,
+            states,
+            shifts,
+            purity,
+            alpha,
+            tau,
+            scheme.temperatures[0] == 0.0,
+            held=limit,
         )
 
-    for temperature in scheme.temperatures:
+    for step, temperature in enumerate(scheme.temperatures):
         if transmat is None or start is None:  # pragma: no cover -- refused above
             raise ValueError(msg)
 
@@ -629,7 +645,15 @@ def fit_copies(
 
         paths = [np.argmax(gamma, axis=0) for gamma in gammas]
         states, alpha, tau = fit.m_step(
-            gammas, states, shifts, purity, alpha, tau, temperature == 0.0
+            gammas,
+            states,
+            shifts,
+            purity,
+            alpha,
+            tau,
+            temperature == 0.0,
+            held=scheme.dispersion == "poisson"
+            or (scheme.dispersion == "relax" and step == 0),
         )
 
     total = 0.0
@@ -685,6 +709,7 @@ class _Blocks:
         alpha: float,
         tau: float,
         best: bool,
+        held: bool,
     ) -> tuple[np.ndarray, float, float]:
         """Shifts, fractions, dispersions and pairs, in turn, until none moves.
 
@@ -732,13 +757,13 @@ class _Blocks:
                         ).x
                     )
 
-            if not self.scheme.poisson:
+            if not held:
                 common = (self.bulks, states, purity, shifts, gammas, self.floor)
                 alpha = float(
                     np.exp(
                         minimize_scalar(
                             _negative_dispersion_weighted,
-                            bounds=(np.log(alpha) - 5.0, np.log(alpha) + 5.0),
+                            bounds=ALPHA_BOUNDS,
                             args=("alpha", tau, *common),
                             method="bounded",
                         ).x
@@ -748,7 +773,7 @@ class _Blocks:
                     np.exp(
                         minimize_scalar(
                             _negative_dispersion_weighted,
-                            bounds=(np.log(tau) - 5.0, np.log(tau) + 5.0),
+                            bounds=TAU_BOUNDS,
                             args=("tau", alpha, *common),
                             method="bounded",
                         ).x
