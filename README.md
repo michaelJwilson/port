@@ -196,6 +196,7 @@ compiled extension is typed by the hand-written stub
 run_cnaster_port config.yaml                 # cnaster's pipeline, port's replacements
 run_cnaster_port --no-patch config.yaml      # the same run, nothing rebound
 run_cnaster_port --no-figures config.yaml    # the replacements that reproduce bitwise
+run_cnaster_port --sal config.yaml           # snakes_and_ladders routines where port measured a gain
 run_cnaster_port --time-stages config.yaml   # what the replacements cost in the run
 run_cnaster_port --list                      # what would be rebound, and why
 ```
@@ -222,6 +223,13 @@ Measured at 4,000 x 1,980 x 5, against `--no-patch`:
 | `SWAPS` + `FIGURE_SWAPS` | 120.48 s | 3.69 GB |
 
 So the figure swaps are most of the runtime win and all of the memory one.
+
+**`--sal` is off by default** (#312). It admits `snakes_and_ladders`
+routines only on `port`'s measurement, and admits one today: the clone
+labelling. That row runs alpha expansion with the Rust minimum cut, then
+`cnaster`'s ICM for its 200-spot floor. On the dev instance it recovers the
+planted clones at ARI 1.000 against the default's 0.919, in 29 s against
+41 s. `port.extensions.sal` lists what was measured and not admitted.
 At this instance the emission array is about 0.3 GB against an 11.35 GB
 peak, which says plotting caps this run rather than the emission array --
 a different regime from #90's declared scale, not a contradiction of it.
