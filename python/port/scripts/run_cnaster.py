@@ -53,6 +53,15 @@ def _parser() -> argparse.ArgumentParser:
         "config", nargs="?", help="the YAML configuration run_cnaster reads"
     )
     parser.add_argument(
+        "--no-outputs",
+        action="store_true",
+        help=(
+            "skip port.extensions.outputs, which writes the fitted states, the "
+            "integer segments, the bin-level posterior means and a manifest "
+            "beside cnaster's files (#331); off with --no-patch"
+        ),
+    )
+    parser.add_argument(
         "--no-patch",
         action="store_true",
         help="run the same pipeline with nothing rebound, for the baseline arm",
@@ -107,6 +116,17 @@ def _parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--rust",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help=(
+            "run cnaster's four forward/backward lattices from port's Rust "
+            "backend, oxiport (#318): bitwise cnaster's, compiled once at "
+            "build rather than by numba in every process. **On by default**, "
+            "off with --no-patch; --no-patch --rust adds it alone."
+        ),
+    )
+    parser.add_argument(
         "--sal",
         action="store_true",
         help=(
@@ -129,6 +149,15 @@ def _parser() -> argparse.ArgumentParser:
         "--time-stages",
         action="store_true",
         help="report what the swapped names cost in this run, patched or not",
+    )
+    parser.add_argument(
+        "--audit-config",
+        action="store_true",
+        help=(
+            "print what the configuration states that cnaster does not use -- "
+            "keys nothing reads, thresholds that cannot fire, floors that do "
+            "not govern (#324) -- and exit without running"
+        ),
     )
     parser.add_argument(
         "--list",
@@ -171,6 +200,13 @@ def main(argv: Sequence[str] | None = None) -> int:
                 f"{swap.module}.{swap.name} <- {swap.replacement}  "
                 f"(#{swap.ticket}, caps from the config; --no-copy-cap to omit)"
             )
+        from port.patch.lattice import RUST_LATTICES
+
+        for module, cls in RUST_LATTICES:
+            print(
+                f"{module}.{cls}.{{forward,backward}}_lattice <- port.oxiport  "
+                "(#318, bitwise; --no-rust to omit)"
+            )
         from port.extensions.sal import SAL_ROWS
 
         for row in SAL_ROWS:
@@ -181,6 +217,23 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     if arguments.config is None:
         _parser().error("a configuration is required unless --list is given")
+
+    import yaml
+
+    from port.extensions.config_audit import audit
+
+    findings = audit(yaml.safe_load(open(arguments.config)))  # noqa: PTH123, SIM115
+
+    if arguments.audit_config:
+        for finding in findings:
+            print(finding)
+        return 0
+
+    print(
+        f"run_cnaster_port: config audit: {len(findings)} findings"
+        + (" (--audit-config to list)" if findings else ""),
+        file=sys.stderr,
+    )
 
     with ExitStack() as stack:
         # NB `--figures` is additive rather than a third mode, and it composes
@@ -220,6 +273,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         #    `SWAPS`, so `--no-patch --shift` fits shifted and assigns clones
         #    unshifted; it is allowed, and said.
         shift = not arguments.no_patch if arguments.shift is None else arguments.shift
+
+        # NB bitwise, so on by default like `SWAPS`, and off with it: a
+        #    baseline arm is `cnaster`'s compiled code as well as its names.
+        rust = not arguments.no_patch if arguments.rust is None else arguments.rust
+
+        if rust:
+            from port.patch.lattice import rust_lattices
+
+            stack.enter_context(rust_lattices())
 
         selected = SWAPS if not arguments.no_patch else ()
 
@@ -270,11 +332,16 @@ def main(argv: Sequence[str] | None = None) -> int:
                 + (", copy caps from the config" if copy_cap else "")
                 + (", approx included" if approx else "")
                 + (", shift included" if shift else "")
+                + (", rust lattices" if rust else "")
                 + (", sal included" if arguments.sal else ""),
                 file=sys.stderr,
             )
         else:
-            print("run_cnaster_port: --no-patch, nothing rebound", file=sys.stderr)
+            print(
+                "run_cnaster_port: --no-patch, nothing rebound"
+                + (" but the rust lattices" if rust else ""),
+                file=sys.stderr,
+            )
 
         # NB after the swaps and before the timer, so what is compiled is
         #    what the run will call and none of it lands in the measurement.
@@ -300,8 +367,36 @@ def main(argv: Sequence[str] | None = None) -> int:
     if spent is not None:
         _report(spent, wall, patched=not arguments.no_patch)
 
+    # NB after the run and outside its timer, and off with `--no-patch`: a
+    #    baseline arm writes what `cnaster` writes and nothing beside it.
+    if not (arguments.no_outputs or arguments.no_patch):
+        _write_outputs(
+            arguments.config,
+            {"figures": figures, "approx": approx, "shift": shift},
+        )
+
     print(f"run_cnaster_port: {wall:.2f}s", file=sys.stderr)
     return 0
+
+
+def _write_outputs(config: str, flags: dict[str, bool]) -> None:
+    """`port.extensions.outputs` into each run directory the run wrote."""
+    from pathlib import Path
+
+    from port.extensions.outputs import config_keys, run_directories, write_outputs
+
+    output_dir = config_keys(Path(config)).get("output_dir")
+
+    if output_dir is None:
+        print(
+            "run_cnaster_port: no output_dir in the config; outputs skipped",
+            file=sys.stderr,
+        )
+        return
+
+    for run in run_directories(Path(output_dir)):
+        write_outputs(run, Path(config), flags)
+        print(f"run_cnaster_port: outputs written to {run}", file=sys.stderr)
 
 
 def _report(spent: dict[str, Spent], wall: float, *, patched: bool) -> None:

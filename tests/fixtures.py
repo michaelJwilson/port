@@ -958,80 +958,6 @@ def clone_bands(
     return labels
 
 
-MANDELBROT_WINDOW = (-2.2, 0.8, -1.25, 1.25)
-"""`(real low, real high, imaginary low, imaginary high)`: the whole set,
-cardioid and bulbs, with a margin of exterior around it."""
-
-MANDELBROT_ITERATIONS = 64
-"""Escape-time cap. A spot still bounded after this many is interior."""
-
-
-def mandelbrot_labels(
-    rows: int, columns: int, n_clones: int, *, normal_clone: bool = True
-) -> np.ndarray:
-    """Clone label per spot, by the Mandelbrot escape time of its position.
-
-    The lattice is laid over :data:`MANDELBROT_WINDOW`, row as the imaginary
-    axis and column as the real one, and each spot takes the number of
-    iterations `z -> z^2 + c` needs to leave the disc of radius 2.
-
-    - the last clone is **the set itself**: every spot still bounded after
-      :data:`MANDELBROT_ITERATIONS`, so its boundary is the cardioid and
-      bulbs;
-    - clone 0, the **normal** clone, is the fastest-escaping exterior and
-      holds `NORMAL_SHARE` of the spots when `normal_clone`, an equal share
-      otherwise;
-    - clones `1 .. n_clones - 2` split the rest of the exterior into
-      equal-count shells of escape time, nested around the set.
-
-    Ties in escape time are broken by position, so the labelling is a
-    deterministic function of the lattice and `n_clones` alone. The set is
-    about a fifth of the window: 320 of the dev lattice's 1,600 spots, over
-    `icm_sweep_deque`'s 200-spot floor.
-    """
-    real_low, real_high, imag_low, imag_high = MANDELBROT_WINDOW
-    real = np.linspace(real_low, real_high, columns)
-    imag = np.linspace(imag_high, imag_low, rows)
-    c = real[None, :] + 1j * imag[:, None]
-
-    z = np.zeros_like(c)
-    escape = np.full(c.shape, MANDELBROT_ITERATIONS, dtype=np.int64)
-
-    for step in range(MANDELBROT_ITERATIONS):
-        bounded = escape == MANDELBROT_ITERATIONS
-        z[bounded] = z[bounded] ** 2 + c[bounded]
-        escape[bounded & (np.abs(z) > 2.0)] = step
-
-    flat = escape.reshape(-1)
-    n_spots = rows * columns
-    labels = np.full(n_spots, n_clones - 1, dtype=np.int64)
-
-    if n_clones == 1:
-        return np.zeros(n_spots, dtype=np.int64)
-
-    exterior = np.flatnonzero(flat < MANDELBROT_ITERATIONS)
-    exterior = exterior[np.argsort(flat[exterior], kind="stable")]
-
-    share = NORMAL_SHARE if normal_clone else 1.0 / n_clones
-    normal = max(int(np.ceil(share * n_spots)), n_spots // n_clones)
-
-    if normal > exterior.size:
-        msg = f"the exterior holds {exterior.size} spots, fewer than {normal}"
-        raise ValueError(msg)
-
-    labels[exterior[:normal]] = 0
-
-    if n_clones == 2:
-        labels[exterior[normal:]] = 0
-    else:
-        for clone, spots in enumerate(
-            np.array_split(exterior[normal:], n_clones - 2), start=1
-        ):
-            labels[spots] = clone
-
-    return labels
-
-
 COPY_LATTICE: tuple[tuple[int, int], ...] = (
     (1, 1),
     (1, 2),
@@ -1094,10 +1020,8 @@ def core_inference_truth(
     Parameters
     ----------
     labelling : str
-        How spots are labelled with clones. `"bands"` lays them in row
-        bands, the default; `"mandelbrot"` by the Mandelbrot escape time of
-        each spot's position (`mandelbrot_labels`), so clone boundaries are
-        curved, nested and uneven rather than straight.
+        How spots are labelled with clones. `"bands"`, the only one, lays
+        them in row bands.
     copy_lattice : bool
         Plant integer allele copies, `COPY_LATTICE`, instead of the default
         grid of `mu` in `[1.5, 5]` and `p` in `[0.58, 0.88]`. The default grid
@@ -1185,8 +1109,6 @@ def core_inference_truth(
 
     if labelling == "bands":
         labels = clone_bands(rows, columns, n_clones, normal_clone=normal_clone)
-    elif labelling == "mandelbrot":
-        labels = mandelbrot_labels(rows, columns, n_clones, normal_clone=normal_clone)
     else:
         msg = f"unknown labelling {labelling!r}"
         raise ValueError(msg)
