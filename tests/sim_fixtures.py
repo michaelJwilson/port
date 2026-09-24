@@ -248,3 +248,111 @@ def write_sim_inputs(
     config = root / "config.yaml"
     config.write_text(yaml.safe_dump(document))
     return config
+
+
+PURE_SEED = 362
+"""The draw :func:`purify` makes, so a pure sample is one fixture, not many."""
+
+
+def _gene_copies(
+    sample: SimulatedSample, genes: np.ndarray, resources: Path
+) -> np.ndarray:
+    """`(n_genes, n_clones)` planted `A + B` at each gene's midpoint; 2 off-table."""
+    table = pd.read_csv(resources / RESOURCE_FILES[0], sep="\t", index_col=0)
+    table = table.drop_duplicates("name2").set_index("name2")
+    known = np.isin(genes, table.index)
+    total = np.full((genes.size, sample.n_clones), 2, dtype=np.int64)
+    rows = table.loc[genes[known]]
+    chromosome = rows["chrom"].astype(str).str.removeprefix("chr").to_numpy()
+    middle = ((rows["cdsStart"] + rows["cdsEnd"]) // 2).to_numpy()
+    copies = sample.copies_at(chromosome, middle)
+    covered = copies[:, 0, 0] >= 0
+    placed = np.flatnonzero(known)[covered]
+    total[placed] = copies[covered].sum(axis=2)
+    return total
+
+
+def purify(sample: SimulatedSample, root: Path, seed: int = PURE_SEED) -> Path:
+    """Write `sample` with every tumour spot pure; return the new directory.
+
+    The simulated spots carry about 8 per cent normal admixture: at planted
+    LOH the phased pseudobulk BAF is 0.072 to 0.082 rather than 0, the same
+    in every clone. This redraws each tumour spot as pure tumour at its
+    planted copies and keeps everything else:
+
+    - read depth: the spot's total UMI (its exposure) is kept and its genes
+      are a multinomial draw over the normal spots' pooled profile scaled by
+      the planted `(A + B) / 2` at each gene;
+    - alleles: each SNP's total reads (its trials) are kept and the
+      haplotype-A count is `Binomial(n, A / (A + B))`, 0.5 where `A + B` is
+      0;
+    - normal spots, positions, barcodes and the truth: unchanged.
+    """
+    import anndata as ad
+    import scipy.sparse as sp
+
+    resources = references()
+
+    if resources is None:
+        msg = "CalicoST's GRCh38_resources not found; set $PORT_GRCH38"
+        raise FileNotFoundError(msg)
+
+    rng = np.random.default_rng(seed)
+    out = root / f"{sample.name}_pure"
+    (out / "spatial").mkdir(parents=True, exist_ok=True)
+
+    for name in (*INPUTS, *TRUTH):
+        if not name.startswith("cell_snp") and not name.endswith(".h5ad"):
+            (out / name).write_bytes((sample.path / name).read_bytes())
+
+    by_barcode = dict(zip(sample.barcodes.astype(str), sample.labels, strict=True))
+
+    assay = ad.read_h5ad(sample.path / "filtered_feature_bc_matrix.h5ad")
+    labels = np.array([by_barcode[b] for b in assay.obs_names.astype(str)])
+    counts = sp.csr_matrix(assay.X)
+    genes = np.asarray(assay.var_names).astype(str)
+    total = _gene_copies(sample, genes, resources)
+    normal = np.asarray(counts[labels == 0].sum(axis=0)).ravel().astype(np.float64)
+    depth = np.asarray(counts.sum(axis=1)).ravel()
+    rows = []
+
+    for spot in range(counts.shape[0]):
+        clone = int(labels[spot])
+
+        if clone == 0:
+            rows.append(counts[spot])
+            continue
+
+        weights = normal * total[:, clone] / 2.0
+        drawn = rng.multinomial(int(depth[spot]), weights / weights.sum())
+        rows.append(sp.csr_matrix(drawn[None, :]))
+
+    assay.X = sp.vstack(rows).tocsr().astype(counts.dtype)
+    assay.write_h5ad(out / "filtered_feature_bc_matrix.h5ad")
+
+    snps = np.load(sample.path / "unique_snp_ids.npy", allow_pickle=True).astype(str)
+    chromosome = np.array([s.split("_")[0].removeprefix("chr") for s in snps])
+    position = np.array([int(s.split("_")[1]) for s in snps])
+    copies = sample.copies_at(chromosome, position)
+    barcodes = (sample.path / "barcodes.txt").read_text().split()
+    spot_labels = np.array([by_barcode[b] for b in barcodes])
+    first = sp.load_npz(sample.path / "cell_snp_Aallele.npz").tocsr()
+    second = sp.load_npz(sample.path / "cell_snp_Ballele.npz").tocsr()
+    trials = (first + second).tocoo()
+    clone = spot_labels[trials.row]
+    pair = copies[trials.col, clone]
+    tumour = (clone > 0) & (pair[:, 0] >= 0)
+    share = np.where(
+        pair.sum(axis=1) > 0, pair[:, 0] / np.maximum(pair.sum(axis=1), 1), 0.5
+    )
+    a_count = np.asarray(first[trials.row, trials.col]).ravel()
+    a_count = np.where(tumour, rng.binomial(trials.data, share), a_count)
+    shape = first.shape
+    new_a = sp.csr_matrix((a_count, (trials.row, trials.col)), shape=shape)
+    new_b = sp.csr_matrix(
+        (trials.data - a_count, (trials.row, trials.col)), shape=shape
+    )
+    sp.save_npz(out / "cell_snp_Aallele.npz", new_a.astype(first.dtype))
+    sp.save_npz(out / "cell_snp_Ballele.npz", new_b.astype(second.dtype))
+
+    return out

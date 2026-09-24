@@ -127,28 +127,34 @@ def test_the_likelihood_decodes_the_planted_pairs_under_a_cap_of_twelve(
     extra: tuple[int, int],
 ) -> None:
     """Every planted pair exactly, at a stated cap of 12 and the shift held at 0."""
-    from port.extensions.copy_likelihood import decode_fixed
+    from port.extensions.copy_likelihood import shared_decode
 
     bulk, path = _bulk(extra)
-    decoded = decode_fixed(
-        path, bulk, n_states=5, max_total_copy=12, normal=0, log_shift=0.0
+    decoded = shared_decode(
+        [(path, bulk, 0.0)],
+        n_states=5,
+        normal=0,
+        max_total_copy=12,
     )
 
-    assert [(int(a), int(b)) for a, b in decoded.copies] == [*BASE, extra]
+    assert [(int(a), int(b)) for a, b in decoded.states] == [*BASE, extra]
 
 
 @pytest.mark.analytic
 def test_the_normal_state_is_one_one_by_definition() -> None:
     """Named normal, a state decodes `(1, 1)` though its counts say `(2, 1)`."""
-    from port.extensions.copy_likelihood import decode_fixed
+    from port.extensions.copy_likelihood import shared_decode
 
     bulk, path = _bulk(HIGH[0])
-    decoded = decode_fixed(
-        path, bulk, n_states=5, max_total_copy=12, normal=1, log_shift=0.0
+    decoded = shared_decode(
+        [(path, bulk, 0.0)],
+        n_states=5,
+        normal=1,
+        max_total_copy=12,
     )
 
-    assert tuple(decoded.copies[1]) == (1, 1)
-    assert tuple(decoded.copies[0]) == (1, 1)
+    assert tuple(decoded.states[1]) == (1, 1)
+    assert tuple(decoded.states[0]) == (1, 1)
 
 
 @contextmanager
