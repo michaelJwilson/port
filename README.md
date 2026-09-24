@@ -258,13 +258,29 @@ at a stated 12 (`tests/test_integer_copy_patch.py`), and the copy-lattice
 fixture's states decode exactly at known states with only the dispersions
 fitted (`tests/test_copy_decode_known_states.py`).
 
+**A finer decode is in the package, not yet in the written output** (#367).
+`port.extensions.copy_likelihood.lattice_decode` gives every `(A, B)` its
+own HMM state and decodes each clone by Viterbi, with a per-clone tumour
+fraction (its spots `rho` tumour, the rest normal) and a parsimony prior of
+0.5 nats per bin on `|A + B - 2|`. On CalicoST's simulated samples it
+reaches copy ARI 0.90-0.91 on the admixed samples where the per-state
+decode reaches 0.37-0.79, and 0.95-0.98 on pure ones (#362). `cnaster`'s
+output writes one pair per continuous state, so `run_cnaster_port` still
+writes the per-state decode; the decoders compared and set aside are in
+`port.sandbox.integer_decoding`.
+
 **`--copy-errors` is off by default** (#353). It adds
 `cnv_copy_sets.tsv` beside the fit: for each fitted state, every integer
 `(A, B)` inside its 95 per cent credible region, from the observed
 information of the objective the HMM maximized
 (`port.extensions.copy_errors`). The scale is the neutral pin's (#299), so
 it needs the shift, and the pinned state decodes on total 2 by its allele
-fraction alone. `cnaster`'s MILP decode in `cnv_seglevel.tsv` is unchanged;
+fraction alone. The curvature is taken at that objective's own optimum,
+refitted with paths held, and optionally with each clone's tumour fraction
+in the objective (#367); parameters the data do not identify -- unvisited
+states, allele fractions at 0 or 1, the dispersions -- are held. At
+pseudobulk depth the regions are narrow: on the pure easy simulated sample
+20 of 28 are empty. `cnaster`'s MILP decode in `cnv_seglevel.tsv` is unchanged;
 `python -m tests.copy_audit` scores both against realizations of an integer
 genome.
 
