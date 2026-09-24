@@ -48,6 +48,19 @@ adding one would break the monotonicity its termination proof rests on. So a
 run through this solver does **not** apply that floor, which is a behaviour
 difference rather than an omission, and `IcmResult.niter` counts expansion
 cycles rather than ICM iterations.
+
+## Forbidden labels are passed finite (#366)
+
+`cnaster` marks a label a spot may not take with `-inf` in the field.
+`snakes_and_ladders` at 679d326 makes no expansion move at all on a field
+holding `-inf` or entries of order `-1e6`, where 186bc59 did: on a
+`--sal` run of CalicoST's pure hard sample every sweep with a forbidden
+label returned its start, 464 to 670 nats above the old pin's labelling, and
+the clone ARI fell from 0.994 to 0.666. So `forbidden_as_finite` replaces
+each `-inf` by a penalty no move can pay: the site's least finite entry,
+less the coupling of every edge at the site, less one. A site then gains
+more by any allowed label than by a forbidden one whatever its neighbours
+do, so the minimizer and its energy are the ones the `-inf` field states.
 """
 
 from __future__ import annotations
@@ -60,7 +73,12 @@ from snakes_and_ladders.sim.potts import energy
 
 from port.patch.icm.interface import CsrGraph, IcmResult
 
-__all__ = ["alpha_expansion_sweep", "potts_energy", "potts_graph_from"]
+__all__ = [
+    "alpha_expansion_sweep",
+    "forbidden_as_finite",
+    "potts_energy",
+    "potts_graph_from",
+]
 
 
 def potts_graph_from(graph: CsrGraph, beta: float) -> PottsGraph:
@@ -106,6 +124,37 @@ def potts_graph_from(graph: CsrGraph, beta: float) -> PottsGraph:
         edges=tuple(edges),
         coupling=tuple(coupling),
     )
+
+
+def forbidden_as_finite(values: np.ndarray, graph: CsrGraph, beta: float) -> np.ndarray:
+    """`values` with each `-inf` replaced by a penalty no labelling pays (#366).
+
+    Upstream minimizes `-sum h[s] - sum J [s == s']`, so a label's field entry
+    `h` is a gain, and moving a site from any allowed label to one with entry
+    `p` changes the energy by at least `min_allowed(h) - p - sum_j J_ij`. With
+    `p = min_allowed(h) - sum_j J_ij - 1` that change is at least one, so no
+    minimum cut takes a forbidden label and no local minimum holds one. A site
+    with no finite entry is refused: it has no label to take.
+    """
+    forbidden = np.isneginf(values)
+
+    if not forbidden.any():
+        return values
+
+    finite = np.where(forbidden, np.inf, values)
+    lowest = finite.min(axis=1)
+
+    if not np.isfinite(lowest).all():
+        msg = "a site forbids every label; there is no labelling to minimize over"
+        raise ValueError(msg)
+
+    indptr = np.asarray(graph.indptr)
+    sites = np.repeat(np.arange(indptr.size - 1), np.diff(indptr))
+    weights = beta * np.asarray(graph.weights, dtype=np.float64)
+    incident = np.bincount(sites, weights=weights, minlength=indptr.size - 1)
+    penalty = lowest - incident - 1.0
+
+    return np.where(forbidden, penalty[:, None], values)
 
 
 def potts_energy(
@@ -165,7 +214,7 @@ def alpha_expansion_sweep(
     # NB *not* negated: upstream's energy is `-sum h[s] - sum J [s == s]`,
     #    so `h = field` is already `cnaster`'s objective with the sign
     #    upstream's minimizer wants. See the module docstring.
-    values = np.asarray(field, dtype=np.float64)
+    values = forbidden_as_finite(np.asarray(field, dtype=np.float64), graph, beta)
     n_states = int(values.shape[1])
 
     result = alpha_expansion(
