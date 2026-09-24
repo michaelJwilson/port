@@ -173,7 +173,7 @@ def pinned_objective(
         probabilities = (
             jnp.asarray(fixed)
             .at[estimated]
-            .set(  # noqa: PD008
+            .set(
                 jax.nn.sigmoid(theta[free.size : free.size + estimated.size])
             )
         )
