@@ -384,6 +384,9 @@ source = [
 omit = [
     "*/cnaster/deprecated/*",
     "*/cnaster/sandbox/*",
+    # `port`'s own `sandbox/` is set aside the same way: experiments with their
+    # numbers attached, installed by nothing (`python/port/sandbox/__init__.py`).
+    "*/port/sandbox/*",
     # `sim.py` holds `load_tables_to_matrices` and nothing else, and its only
     # caller is commented out in `scripts/run_cnaster.py:58`. That is the
     # dependency setting a module aside in the only way a package with no
