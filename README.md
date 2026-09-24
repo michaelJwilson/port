@@ -8,6 +8,8 @@
 [![mem](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/michaelJwilson/port/main/.badges/run-mem.json)](#what-the-badges-mean)
 [![instance](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/michaelJwilson/port/main/.badges/instance.json)](#what-the-badges-mean)
 [![patched](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/michaelJwilson/port/main/.badges/patched.json)](#what-the-badges-mean)
+[![port](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/michaelJwilson/port/main/.badges/recovery-port.json)](#what-the-badges-mean)
+[![sal](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/michaelJwilson/port/main/.badges/recovery-sal.json)](#what-the-badges-mean)
 
 A scientific repository built on
 [`snakes_and_ladders`](https://github.com/michaelJwilson/snakes_and_ladders),
@@ -31,7 +33,7 @@ under `src/`, exposed to Python as `port.oxiport`.
 
 ## What the badges mean
 
-Eight numbers, and each is a claim rather than a decoration.
+Ten numbers, and each is a claim rather than a decoration.
 `.badges/measurements.json` holds every value with the selection, denominator
 and commit that produced it, `python -m tests.badges` derives the badges from
 it, and `tests/test_badges_agree.py` fails when the two disagree -- the same
@@ -67,13 +69,23 @@ default row of `run_cnaster_port` replaces -- for a class, its overridden
 methods (#302). Measured by `python -m tests.patched_share`, not per pull
 request, since it is a whole run; blue, because it asserts nothing.
 
+**`port` and `sal`** are recovery against the planted truth, for
+`run_cnaster_port`'s default and for `--sal`: the adjusted Rand index of the
+fitted clone labels against the planted ones over spots, and, after integer
+decoding, of each clone-bin's phased `(A, B)` against the state the fixture
+painted there. Measured
+by `python -m tests.recovery_audit` on the dev instance at the figures'
+configuration (#313); the instance, configuration and commit are in
+`measurements.json`. Not per pull request, since each is a whole run; blue,
+because the configuration they were read at is not on the badge.
+
 `tests/test_badges_agree.py` is what keeps them together. It refuses a
 recorded ratio that does not name its instance, carry exactly two arms, and
 show both arms exiting 0 -- a ratio from an arm that did not complete is not
 a ratio -- and it refuses a ratio rendered while `instance` still reads `/`.
 
 **The badges are pinned to `main`, so a pull request does not show its own
-figures** -- the eight URLs above all read `/main/.badges/`, and a README
+figures** -- the ten URLs above all read `/main/.badges/`, and a README
 cannot render a branch-relative badge without making `main`'s README wrong.
 CI closes that with a report instead (#271): `tests/badge_report.py` renders
 this branch's guards against its base, delta first, into the job summary and
@@ -202,6 +214,7 @@ run_cnaster_port --no-copy-cap config.yaml   # cnaster's integer copy caps, A + 
 run_cnaster_port --time-stages config.yaml   # what the replacements cost in the run
 run_cnaster_port --no-outputs config.yaml    # skip the fitted/decoded tables below
 run_cnaster_port --list                      # what would be rebound, and why
+run_cnaster_port --audit-config config.yaml # what the config states that cnaster does not use (#324)
 ```
 
 **A patched run also writes the seam between the fit and the integers**
@@ -311,6 +324,7 @@ not carry, not before.
 | [TICKETS.md](TICKETS.md) | What is filed and not done, grouped by the milestone it serves |
 | [STATUS.md](STATUS.md) | What has landed, with the measurement that established it |
 | [CLAUDE.md](CLAUDE.md) | The rules |
+| [docs/templates/](docs/templates/README.md) | Templates for documents made outside the code: the work-in-flight page (#335) |
 
 `DEV.md`, `INSTALL.md` and `CHANGELOG.md` are added when the content for them
 exists, not ahead of it: `README.md` still carries installation and

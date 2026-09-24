@@ -151,6 +151,15 @@ def _parser() -> argparse.ArgumentParser:
         help="report what the swapped names cost in this run, patched or not",
     )
     parser.add_argument(
+        "--audit-config",
+        action="store_true",
+        help=(
+            "print what the configuration states that cnaster does not use -- "
+            "keys nothing reads, thresholds that cannot fire, floors that do "
+            "not govern (#324) -- and exit without running"
+        ),
+    )
+    parser.add_argument(
         "--list",
         action="store_true",
         help="print what would be rebound, and exit without running",
@@ -208,6 +217,23 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     if arguments.config is None:
         _parser().error("a configuration is required unless --list is given")
+
+    import yaml
+
+    from port.extensions.config_audit import audit
+
+    findings = audit(yaml.safe_load(open(arguments.config)))  # noqa: PTH123, SIM115
+
+    if arguments.audit_config:
+        for finding in findings:
+            print(finding)
+        return 0
+
+    print(
+        f"run_cnaster_port: config audit: {len(findings)} findings"
+        + (" (--audit-config to list)" if findings else ""),
+        file=sys.stderr,
+    )
 
     with ExitStack() as stack:
         # NB `--figures` is additive rather than a third mode, and it composes

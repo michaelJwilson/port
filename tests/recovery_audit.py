@@ -71,6 +71,13 @@ class Recovery:
     wall: float
     ari: float
     n_clones: int
+    copy_ari: float
+    """ARI of the decoded phased `(A, B)` against the planted states, per clone-bin.
+
+    After integer decoding: each clone-bin's `(A, B)` from `cnv_seglevel.tsv`,
+    phased (`(2, 1)` and `(1, 2)` are different labels), against the state the
+    fixture painted there. ARI needs only the two partitions, so it is defined
+    on a fixture whose states are not integer as well as on `copy_lattice`."""
     state_match: float
     mu_error_median: float
     mu_error_mean: float
@@ -146,6 +153,14 @@ def score(truth: CoreInferenceTruth, output: Path, arm: str, wall: float) -> Rec
             for c in clone_of
         ]
     )
+    phased = np.concatenate(
+        [
+            copies[f"clone{clone_of[c]} A"].to_numpy() * 1_000
+            + copies[f"clone{clone_of[c]} B"].to_numpy()
+            for c in clone_of
+        ]
+    )
+    copy_ari = float(adjusted_rand_score(planted, phased))
     expected = np.rint(2.0 * mu_true[planted])
     altered = planted != 0
 
@@ -154,6 +169,7 @@ def score(truth: CoreInferenceTruth, output: Path, arm: str, wall: float) -> Rec
         wall=round(wall, 2),
         ari=round(ari, 4),
         n_clones=n_fitted,
+        copy_ari=round(copy_ari, 4),
         state_match=round(state_match, 4),
         mu_error_median=round(float(np.median(mu_error)), 4),
         mu_error_mean=round(float(np.mean(mu_error)), 4),
