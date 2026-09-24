@@ -291,7 +291,7 @@ def run_written(
     """
     written, config_path = write_for_run(truth, root, **config)
 
-    with isolated_run(), warnings.catch_warnings():
+    with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         if port:
             from port.scripts.run_cnaster import main

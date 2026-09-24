@@ -249,7 +249,7 @@ def test_a_run_s_outputs_recover_the_planted_clones_and_the_flat_normal(
     """
     from port.extensions.outputs import run_directories, write_outputs
 
-    from tests.test_run_cnaster_round_trip import _run
+    from tests.run_config import run_written
     from tests.tmp_inputs import GENE_SPACING
 
     truth = _truth()
@@ -258,7 +258,9 @@ def test_a_run_s_outputs_recover_the_planted_clones_and_the_flat_normal(
     state = np.random.get_state()  # noqa: NPY002
     np.random.seed(11)  # noqa: NPY002
     try:
-        (run,) = run_directories(_run(truth, tmp_path, max_iter_outer=1, max_iter=3))
+        (run,) = run_directories(
+            run_written(truth, tmp_path, port=False, max_iter_outer=1, max_iter=3)
+        )
     finally:
         np.random.set_state(state)  # noqa: NPY002
     write_outputs(run)
