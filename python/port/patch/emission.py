@@ -47,7 +47,7 @@ implementations of the emission as well as two of the loop over it.
 **Who would maintain it.** `snakes_and_ladders` carries this job:
 `NegativeBinomialEmission`, `BetaBinomialEmission` and `CountPairEmission`
 are one family with covariates, bounds, `Reestimate` and an oracle, and
-`oxi_snakes_and_ladders.external_field` already writes into a caller's
+`oxisal.external_field` already writes into a caller's
 buffer. So this is **functionality upstream could carry** rather than `port`
 code -- what it needs first is `#32`'s covariate gap, since the exposure on
 the count mean and the trials on the allele channel are per-observation

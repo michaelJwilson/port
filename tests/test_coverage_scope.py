@@ -54,7 +54,7 @@ def _declared_oracle_modules() -> set[str]:
     parser.read(ORACLE_CONFIG)
 
     return {
-        glob.removeprefix("*/").removesuffix(".py").replace("/", ".")
+        glob.removeprefix("*/").removesuffix(".py").removesuffix("/*").replace("/", ".")
         for glob in parser["report"]["include"].split()
     }
 
@@ -85,6 +85,32 @@ def test_every_declared_oracle_module_is_the_installed_one() -> None:
         assert pathlib.Path(spec.origin).resolve().is_relative_to(installed), (
             f"{name} resolves outside the installed package"
         )
+
+
+@pytest.mark.infra
+def test_every_oracle_include_glob_matches_an_installed_file() -> None:
+    """A glob that matches nothing drops its module from the denominator.
+
+    `find_spec` above cannot see this: after sal #1010 turned `emissions.py`
+    and `opt/hmm.py` into packages, `snakes_and_ladders.emissions` still
+    resolved (to `__init__.py`) while the glob `*/emissions.py` matched no
+    file, and coverage.py reports an unmatched `include` as nothing at all.
+    """
+    import configparser
+
+    import snakes_and_ladders
+
+    installed = pathlib.Path(next(iter(snakes_and_ladders.__path__))).resolve()
+    parser = configparser.ConfigParser()
+    parser.read(ORACLE_CONFIG)
+
+    unmatched = [
+        glob
+        for glob in parser["report"]["include"].split()
+        if not list(installed.glob(glob.split("snakes_and_ladders/", 1)[1]))
+    ]
+
+    assert not unmatched, f"include globs matching no installed file: {unmatched}"
 
 
 @pytest.mark.infra

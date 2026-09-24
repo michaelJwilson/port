@@ -101,15 +101,28 @@ def _declared_modules() -> set[str]:
         if not glob:
             continue
         tail = glob.split("snakes_and_ladders/", 1)[1].removesuffix(".py")
+        tail = tail.removesuffix("/*")
         declared.add("snakes_and_ladders." + tail.replace("/", "."))
     return declared
 
 
-def _upstream_emissions_source() -> str:
+def _upstream_emissions_classes() -> set[str]:
+    """Every class defined anywhere in upstream's `emissions` package.
+
+    `emissions.py` became a package on sal #1010; its `__init__.py` only
+    re-exports, so reading it alone finds no class and the family check
+    would compare against an empty set.
+    """
     spec = importlib.util.find_spec("snakes_and_ladders.emissions")
     assert spec is not None
-    assert spec.origin is not None
-    return Path(spec.origin).read_text()
+    assert spec.submodule_search_locations is not None
+    package = Path(next(iter(spec.submodule_search_locations)))
+    return {
+        node.name
+        for path in sorted(package.glob("*.py"))
+        for node in ast.parse(path.read_text()).body
+        if isinstance(node, ast.ClassDef)
+    }
 
 
 @pytest.mark.infra
@@ -188,11 +201,8 @@ def test_the_unmatched_emission_families_are_the_ones_named() -> None:
     Upstream adding a family turns this red; the fix is to list it, not to
     count it as reachable.
     """
-    tree = ast.parse(_upstream_emissions_source())
     families = {
-        node.name
-        for node in tree.body
-        if isinstance(node, ast.ClassDef) and node.name.endswith("Emission")
+        name for name in _upstream_emissions_classes() if name.endswith("Emission")
     }
     matched = {
         "NegativeBinomialEmission",

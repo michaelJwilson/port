@@ -40,7 +40,7 @@ step, which helps where the transition is constant and is dead weight where
 it is rebuilt per site anyway.
 
 **Who would maintain it.** `snakes_and_ladders` carries this job already, and
-carries it further: `oxi_snakes_and_ladders.ragged_posteriors` runs the
+carries it further: `oxisal.ragged_posteriors` runs the
 ragged recursion in Rust and writes posteriors, transition counts and the
 evidence in place. What upstream does **not** carry is a transition that
 varies along the chain, which is exactly the phased half here -- `#32`'s

@@ -68,8 +68,8 @@ source =
 
 [report]
 include =
-    */snakes_and_ladders/emissions.py
-    */snakes_and_ladders/opt/hmm.py
+    */snakes_and_ladders/emissions/*.py
+    */snakes_and_ladders/opt/hmm/*.py
     */snakes_and_ladders/opt/fit.py
     */snakes_and_ladders/ragged.py
     */snakes_and_ladders/likelihood/forward_backward.py

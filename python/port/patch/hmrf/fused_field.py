@@ -99,7 +99,7 @@ def fused_spot_clone_field(
 
     `out` is an `(n_spots, n_clones)` buffer to write into, or `None` to
     allocate one. This is upstream's shape --
-    `oxi_snakes_and_ladders.external_field(..., field)` writes in place --
+    `oxisal.external_field(..., field)` writes in place --
     and it is carried here for that correspondence rather than for the
     bytes: **the buffer is 400 KB at the declared scale**, against the 8 GB
     the two-step materialized, so a caller that reuses it across outer
