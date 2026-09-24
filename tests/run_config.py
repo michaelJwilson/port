@@ -17,6 +17,13 @@ fixture.
 The iteration counts are small. The claim this configuration supports is that
 the pipeline **completes**, and a round trip at `max_iter_outer = 25` is a
 release-tier measurement of the same thing.
+
+**Audited against what `cnaster` reads** (`port.extensions.config_audit`,
+#324). Four keys are kept though nothing reads them -- `run.bafonly`,
+`hmm.params`, `betabinom.run_default`, `int_copy_num.rdr_weight` -- and two
+`em_*` tolerances the L-BFGS-B solver does not take, because this file mirrors
+the original section for section. `tests/test_config_audit.py` pins exactly
+those findings, so a key that stops being read, or starts, is a failing test.
 """
 
 from collections.abc import Iterator
@@ -106,9 +113,10 @@ def run_cnaster_config(
         "hmrf": {
             "n_clones": clones,
             "n_clones_rdr": clones,
-            # The solver merges any clone under this many spots and does not
-            # expose the threshold (#81); the dev instance's smallest clone is
-            # 200, so a floor above it would merge the fixture away.
+            # NB not the floor a run gets (#324): this feeds only the post-fit
+            #    `merge_by_minspots`, and the ICM label solve merges any clone
+            #    under its own hard-coded 200 spots first (#81). The dev
+            #    instance's smallest clone is 360 spots, so neither merges it.
             "min_spots_per_clone": 100,
             "min_avgumi_per_clone": 1,
             "tumorprop_threshold": 0.5,
@@ -151,9 +159,14 @@ def run_cnaster_config(
             "start_disp": 1000.0,
         },
         "int_copy_num": {
+            # NB read by nothing: its one read is commented out (#324).
             "rdr_weight": 0.5,
-            "nonbalance_bafdist": 1.0,
-            "nondiploid_rdrdist": 10.0,
+            # NB both off, stated as off (#324). The shipped 1.0 and 10.0 are
+            #    thresholds no state can cross -- |p - 0.5| <= 0.5, and
+            #    |mu - 1| <= 2 under the decoder's cap of 6 -- and the MILP
+            #    reads None as off, so the decode is the same either way.
+            "nonbalance_bafdist": None,
+            "nondiploid_rdrdist": None,
             "ploidy": "diploid",
             # NB `port`'s key, read by `port.patch.integer_copy` (`COPY_SWAPS`)
             #    and by nothing in `cnaster`, whose decoders cap `A + B` at 6
