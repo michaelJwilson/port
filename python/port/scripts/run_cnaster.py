@@ -174,6 +174,16 @@ def _parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--mixture-space",
+        choices=("lattice", "states"),
+        default="lattice",
+        help=(
+            "with --clone-mixture, what the pure profiles are: `lattice`, "
+            "integer (A, B) pairs (a uniform admixture cannot hide in them), "
+            "or `states`, the HMM's fitted continuous states (#380)"
+        ),
+    )
+    parser.add_argument(
         "--mixture-cap",
         type=float,
         default=None,

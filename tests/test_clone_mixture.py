@@ -145,3 +145,61 @@ def test_the_anneal_is_linear_and_holds_at_its_end() -> None:
     caps = [annealed(0.1, 0.5, t, 4) for t in range(6)]
 
     np.testing.assert_allclose(caps, [0.1, 0.2, 0.3, 0.4, 0.5, 0.5])
+
+
+@pytest.mark.end2end
+def test_the_lattice_finds_a_uniform_normal_admixture() -> None:
+    """Three clones on integer pairs, the tumour ones 8 per cent normal.
+
+    Continuous states would absorb a uniform admixture; integer pairs cannot,
+    so the fit has to put it in `W`. From every path at `(1, 1)` and `W = I`,
+    with clone 0 the pinned normal, each tumour row's normal weight is 0.08
+    to 0.02 and the pure pairs are the planted ones.
+    """
+    from port.extensions.clone_mixture import PARSIMONY, fit_mixture, lattice
+
+    pairs, mu, p = lattice(6)
+    index = {tuple(x): i for i, x in enumerate(pairs.tolist())}
+    n_bins = 400
+    planted = np.full((3, n_bins), index[(1, 1)], dtype=np.int64)
+    planted[1, 50:200] = index[(1, 0)]
+    planted[2, 150:300] = index[(2, 1)]
+    weights = np.eye(3)
+    weights[1] = [0.08, 0.92, 0.0]
+    weights[2] = [0.08, 0.0, 0.92]
+
+    from port.extensions.clone_mixture import mixed_parameters
+
+    rng = np.random.default_rng(7)
+    base = np.full((3, n_bins), 400.0) * rng.uniform(0.5, 1.5, n_bins)
+    total = np.full((3, n_bins), 300.0)
+    mixed, share = mixed_parameters(mu, p, planted, weights)
+    weight = base / base.sum(axis=1, keepdims=True)
+    mean = base * mixed / np.sum(weight * mixed, axis=1, keepdims=True)
+    r = 1.0 / ALPHA
+    rdr = rng.negative_binomial(r, r / (r + mean)).astype(np.float64)
+    baf = rng.binomial(
+        total.astype(np.int64), rng.beta(share * TAU, (1 - share) * TAU)
+    ).astype(np.float64)
+    n = mu.size
+    transmat = np.log(
+        np.full((n, n), 0.01 / (n - 1)) + np.eye(n) * (0.99 - 0.01 / (n - 1))
+    )
+    prior = -PARSIMONY * np.abs(pairs.sum(axis=1) - 2).astype(np.float64)
+    start = np.full((3, n_bins), index[(1, 1)], dtype=np.int64)
+
+    fit = fit_mixture(
+        (rdr, baf, total, base),
+        mu,
+        p,
+        ALPHA,
+        TAU,
+        start,
+        transmat,
+        log_prior=prior,
+        fixed=0,
+        admixture=(0.0, 0.05, 0.1, 0.2, 0.3),
+    )
+
+    np.testing.assert_allclose(fit.weights[1:, 0], [0.08, 0.08], atol=0.02)
+    np.testing.assert_array_equal(fit.paths, planted)
