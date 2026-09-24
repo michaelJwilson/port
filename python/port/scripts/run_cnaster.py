@@ -130,11 +130,10 @@ def _parser() -> argparse.ArgumentParser:
         action=argparse.BooleanOptionalAction,
         default=None,
         help=(
-            "decode integer copies under the caps the configuration states, "
-            "int_copy_num.max_total_copy and max_allele_copy (#313); cnaster "
-            "reads neither and decodes under A + B <= 6. **On by default**, "
-            "off with --no-patch; a configuration that states no cap decodes "
-            "exactly as cnaster does."
+            "decode integer copies by the HMM's likelihood (#362) under the "
+            "cap the configuration states, int_copy_num.max_total_copy (#313); "
+            "cnaster's L1 decoders read no cap and decode under A + B <= 6. "
+            "**On by default**, off with --no-patch."
         ),
     )
     parser.add_argument(
@@ -238,7 +237,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         for swap in COPY_SWAPS:
             print(
                 f"{swap.module}.{swap.name} <- {swap.replacement}  "
-                f"(#{swap.ticket}, caps from the config; --no-copy-cap to omit)"
+                f"(#{swap.ticket}, likelihood decode, caps from the config; --no-copy-cap to omit)"
             )
         from port.patch.lattice import RUST_LATTICES
 
@@ -375,6 +374,15 @@ def main(argv: Sequence[str] | None = None) -> int:
             from port.patch.hmm_initialize.distinct import distinct_init
 
             stack.enter_context(distinct_init())
+
+        # NB the copy rows decode by the HMM's likelihood only (#362), which
+        #    reads each clone's counts from the fit this captures; entered
+        #    before `patched`, so the shift's row installs the capturing
+        #    `run_core_inference`.
+        if copy_cap:
+            from port.extensions.copy_likelihood import capture
+
+            stack.enter_context(capture())
         if shift:
             from port.patch.hmm_nophasing import logmu_shift
 

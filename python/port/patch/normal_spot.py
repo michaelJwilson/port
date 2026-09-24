@@ -382,6 +382,14 @@ def normal_baf_bin_filter(
     `geneticmap_file` are accepted and unused, as upstream -- the docstring
     promises a `log_sitewise_transmat` the function has never returned, and
     `run_cnaster` calls `get_sitewise_transmat` itself on the next line.
+
+    **One addition (#105):** a gene whose bin is removed is marked
+    `is_interval = False`. Upstream leaves it `True` with `bin_id` null, and
+    `run_cnaster`'s gene-level output casts every interval gene's `bin_id`
+    to `int` (`run_cnaster.py:1476`), so one removed bin ends the run with
+    an `IndexError` after every other table is written. `is_interval` is read
+    nowhere else after this filter. Where no bin is removed the frame is
+    upstream's, bitwise.
     """
     if confidence_interval is None:
         confidence_interval = ast.literal_eval(
@@ -424,7 +432,12 @@ def normal_baf_bin_filter(
     )
 
     column = np.where(df_gene_snp.columns == "bin_id")[0][0]
-    df_gene_snp.iloc[np.where(df_gene_snp.bin_id.isin(index_removal))[0], column] = None
+    removed = np.where(df_gene_snp.bin_id.isin(index_removal))[0]
+    df_gene_snp.iloc[removed, column] = None
+
+    if removed.size and "is_interval" in df_gene_snp.columns:
+        interval = np.where(df_gene_snp.columns == "is_interval")[0][0]
+        df_gene_snp.iloc[removed, interval] = False
 
     df_gene_snp["bin_id"] = df_gene_snp["bin_id"].map(
         {x: i for i, x in enumerate(index_remaining)}

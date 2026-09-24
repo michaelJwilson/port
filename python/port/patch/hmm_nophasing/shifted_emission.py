@@ -87,13 +87,16 @@ from math import exp
 from typing import Any, NamedTuple
 
 import numpy as np
-from cnaster.config import get_global_config
+from cnaster.config import get_global_config, start_time
 from cnaster.hmm_nophasing import _bb_logpmf_1d, _nb_logpmf_1d
 from cnaster.hmm_nophasing import hmm_nophasing as UPSTREAM
+from cnaster.logger import get_logger
 from snakes_and_ladders.ragged import Ragged
 
 from port.patch.hmm_nophasing.logmu_shift import shifts as logmu_shifts
 from port.patch.plotting.clone_paths import state_vector
+
+logger = get_logger(__name__, start_time=start_time)
 
 __all__ = ["UPSTREAM", "hmm_nophasing", "logmu_shift", "neutral_state"]
 
@@ -501,6 +504,25 @@ class hmm_nophasing(UPSTREAM):  # type: ignore[misc]
             or clone_lengths is None
             or decode is None
         ):
+            if self.apply_logmu_shift:
+                # NB expected with the shift on: the BAF stage has no
+                #    exposure, and a first iteration has no decode yet. Said
+                #    at debug, and the exposure withheld from upstream so it
+                #    does not warn "not currently supported" for a shift that
+                #    applies from the next call (#362).
+                logger.debug(
+                    "logmu shift not applied on this call: %s",
+                    ", ".join(
+                        name
+                        for name, missing in (
+                            ("no exposure", normal_log_lambda is None),
+                            ("no clone lengths", clone_lengths is None),
+                            ("no decode yet", decode is None),
+                        )
+                        if missing
+                    ),
+                )
+                normal_log_lambda = None
             unshifted: tuple[np.ndarray, np.ndarray]
             unshifted = super().compute_emission_probability_nb_betabinom_coded(
                 nbEncoder,

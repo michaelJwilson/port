@@ -256,10 +256,20 @@ So the figure swaps are most of the runtime win and all of the memory one.
 **`--copy-cap` is on by default** (#313). `cnaster` decodes integer copies
 under `A + B <= 6` and `A, B <= 5` and reads no key that changes them, so a
 planted total of 10 cannot be decoded. `COPY_SWAPS` reads
-`int_copy_num.max_total_copy` and applies it to both caps; a configuration
-without the key decodes exactly as `cnaster` does. The MILP decoder, called
-as `run_cnaster` calls it, returns planted totals of 10 to 12 exactly at a
-stated 12, and none of them at `cnaster`'s 6 (`tests/test_integer_copy_patch.py`).
+`int_copy_num.max_total_copy` and applies it to both caps.
+
+**The copy rows decode by the HMM's likelihood only** (#362). Both of
+`cnaster`'s decoders -- an L1 cost on the fitted `(mu, p)` with a ploidy
+search, and a per-clone guess at the normal state as the balanced state
+whose raw `mu` is nearest 1 -- are replaced by the pseudobulk NB/BB
+likelihood the HMM fitted (#327), with the pinned `mu`, each clone's
+`logmu_shift`, its spots, its decoded path and the fitted dispersions held.
+That makes the one-candidate-per-state MILP separable, so it is solved
+exactly, state by state; the normal state is `(1, 1)` by definition, the
+pinned one, shared by every clone. Planted totals of 10 to 12 decode exactly
+at a stated 12 (`tests/test_integer_copy_patch.py`), and the copy-lattice
+fixture's states decode exactly at known states with only the dispersions
+fitted (`tests/test_copy_decode_known_states.py`).
 
 **`--rust` is on by default** (#318). It runs `cnaster`'s four
 forward/backward lattices from `port.oxiport`, bitwise `cnaster`'s

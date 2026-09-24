@@ -23,6 +23,7 @@ from port.patch.hmrf.clone_assignment import (
 )
 from port.patch.hmrf.core_inference import (
     pin_neutral,
+    reindex_clones,
     run_core_inference,
 )
 from port.patch.hmrf.field import (
@@ -46,5 +47,6 @@ __all__ = [
     "fused_spot_clone_field",
     "pin_neutral",
     "pipeline_clone_assignment",
+    "reindex_clones",
     "run_core_inference",
 ]

@@ -1,43 +1,47 @@
-"""`cnaster.integer_copy`'s two decoders, with their copy caps read from the config.
+"""`cnaster.integer_copy`'s two decoders, both replaced by one: the HMM's likelihood.
 
-`run_cnaster` calls `hill_climbing_integer_copynumber_oneclone` and
-`hill_climbing_integer_copynumber_fixdiploid_milp` without `max_total_copy` or
-`max_allele_copy`, so both decode under their defaults, `A + B <= 6` and
-`A, B <= 5`, whatever the configuration says. A state whose planted total is
-above 6 cannot be decoded at all: #313's chr7 plants `2 mu = 10` and every
-configuration returned 6 or less (`docs/audit-recovery.md`).
+`run_cnaster` calls `hill_climbing_integer_copynumber_oneclone` or
+`hill_climbing_integer_copynumber_fixdiploid_milp` once per clone, handing it
+the fitted `log mu` and `p`, the clone's pseudobulk baseline and its decode.
+Both do the same job with an L1 cost on `(mu, p)` and a ploidy search, and
+both re-derive the normal state per clone as the balanced state whose raw
+`mu` is closest to 1 (`integer_copy.py:84`) -- on CalicoST's easy simulated
+sample that chose the pinned state for every tumour clone and decoded their
+`(2, 2)` gains as `(1, 1)` (#362).
 
-These read `int_copy_num.max_total_copy` from `cnaster`'s global
-configuration and apply it as **both** caps: the total, and each allele, since
-an allele cap below the total leaves totals above twice it unreachable -- at
-`cnaster`'s 5 no pair beyond `(5, 5)` exists. Where the configuration states
-no cap the decode is `cnaster`'s, so a configuration without the key decodes
-exactly as `cnaster` does. The key is `port`'s: `cnaster` does not read it,
-which is why this is its own table (`COPY_SWAPS`) rather than a `SWAPS` row --
-a configuration that states it changes the output.
+**Only one decode is supported** (#362): the pseudobulk NB/BB likelihood the
+HMM fitted (`port.extensions.copy_likelihood.decode_fixed`, #327), with the
+pinned `mu`, the clone's propagated `logmu_shift`, its spots, its decoded
+path and the fitted dispersions all held. So the one-candidate-per-state
+MILP separates and is solved exactly, state by state. The normal state is
+`(1, 1)` by definition: the pinned one, shared by every clone
+(`port.patch.hmrf.core_inference`). Both of `cnaster`'s names return that
+decode, their signatures kept so the swap is a drop-in.
 
-The signature is `cnaster`'s, defaults included, so the swap is a drop-in. A
-caller passing the default value explicitly cannot be told from one passing
-nothing, and takes the configured cap; `run_cnaster` passes neither.
+The copy caps are `int_copy_num.max_total_copy` from the configuration, as
+before (#313); without the key, `cnaster`'s `A + B <= 6`.
+
+The clone's counts come from `copy_likelihood.capture`, which
+`run_cnaster_port` installs with these rows; a clone it cannot identify is an
+error, not a fallback to another decoder.
 """
 
 from __future__ import annotations
 
 from typing import Any
 
-from cnaster import integer_copy as upstream
+import numpy as np
 
 __all__ = [
+    "DECODED",
     "configured_caps",
+    "decode_clone",
     "hill_climbing_integer_copynumber_fixdiploid_milp",
     "hill_climbing_integer_copynumber_oneclone",
 ]
 
-# NB bound at import, before any swap: `pipeline.patched` rebinds a name in
-#    every module that holds it, `cnaster.integer_copy` included, so reading
-#    `upstream.<name>` at call time would call this module back.
-_ONECLONE = upstream.hill_climbing_integer_copynumber_oneclone
-_MILP = upstream.hill_climbing_integer_copynumber_fixdiploid_milp
+DECODED: list[Any] = []
+"""Each clone's `port.extensions.copy_likelihood.Decoded`, in call order."""
 
 MAX_ALLELE_COPY = 5
 """`cnaster`'s default, in both signatures."""
@@ -69,73 +73,86 @@ def _caps(max_allele_copy: int, max_total_copy: int) -> tuple[int, int]:
     )
 
 
+_SHARED: dict[str, Any] = {}
+"""The shared decode of the captured fit, computed at the first clone's call."""
+
+
+def decode_clone(
+    new_log_mu: Any, new_p_binom: Any, pred_cnv: Any, total: int
+) -> tuple[np.ndarray, float, int]:
+    """One clone's `(copies, loss, ploidy)`, as `cnaster`'s decoders return them.
+
+    The copies are shared by every clone (`copy_likelihood.decode_shared`):
+    decoded once, from the captured fit, at the first clone's call, and
+    returned to each. `loss` is the negative log-likelihood reached; `ploidy`
+    the median total copy over this clone's bins.
+    """
+    from port.extensions.copy_likelihood import (
+        _CAPTURED,
+        captured_clones,
+        decode_shared,
+    )
+    from port.patch.hmm_nophasing.shifted_emission import neutral_state
+    from port.patch.hmrf.core_inference import shift_for
+
+    clones = captured_clones()
+
+    if clones is None:
+        msg = (
+            "no captured fit: the likelihood decode needs copy_likelihood.capture() "
+            "around the run (#362)"
+        )
+        raise RuntimeError(msg)
+
+    log_mu = np.asarray(new_log_mu, dtype=np.float64).reshape(-1)
+    path = np.asarray(pred_cnv, dtype=np.int64).reshape(-1) % log_mu.size
+    key = id(_CAPTURED[0][3]) if _CAPTURED else id(clones)
+
+    if _SHARED.get("key") != key or _SHARED.get("total") != total:
+        _, normal = shift_for(pred_cnv)
+
+        if normal is None:
+            normal = neutral_state(
+                log_mu, np.asarray(new_p_binom).reshape(-1), path[:, None]
+            )
+
+        decoded = decode_shared(
+            clones, n_states=log_mu.size, max_total_copy=total, normal=normal
+        )
+        _SHARED.update(key=key, total=total, decoded=decoded)
+        DECODED.append(decoded)
+
+    decoded = _SHARED["decoded"]
+    ploidy = int(np.rint(np.median(decoded.copies[path].sum(axis=1))))
+
+    return decoded.copies, -decoded.log_likelihood, ploidy
+
+
 def hill_climbing_integer_copynumber_oneclone(
     new_log_mu: Any,
-    base_nb_mean: Any,
+    base_nb_mean: Any,  # noqa: ARG001 -- cnaster's positional; the capture carries it
     new_p_binom: Any,
     pred_cnv: Any,
     max_allele_copy: int = 5,
     max_total_copy: int = 6,
-    max_medploidy: int = 4,
-    enforce_states: Any = {},  # noqa: B006 -- cnaster's default, passed through
-    EPS_BAF: float = 0.05,
-    expression_weight: bool = False,
+    **ignored: Any,  # noqa: ARG001 -- cnaster's other keywords, unused here
 ) -> Any:
-    """`cnaster`'s hill climbing, under the configured caps."""
-    allele, total = _caps(max_allele_copy, max_total_copy)
+    """`cnaster`'s name, decoding by :func:`decode_clone`."""
+    _, total = _caps(max_allele_copy, max_total_copy)
 
-    return _ONECLONE(
-        new_log_mu,
-        base_nb_mean,
-        new_p_binom,
-        pred_cnv,
-        max_allele_copy=allele,
-        max_total_copy=total,
-        max_medploidy=max_medploidy,
-        enforce_states=enforce_states,
-        EPS_BAF=EPS_BAF,
-        expression_weight=expression_weight,
-    )
+    return decode_clone(new_log_mu, new_p_binom, pred_cnv, total)
 
 
 def hill_climbing_integer_copynumber_fixdiploid_milp(
     new_log_mu: Any,
-    base_nb_mean: Any,
+    base_nb_mean: Any,  # noqa: ARG001 -- cnaster's positional; the capture carries it
     new_p_binom: Any,
     pred_cnv: Any,
     max_allele_copy: int = 5,
     max_total_copy: int = 6,
-    max_medploidy: int = 4,
-    min_prop_threshold: float = 0.0,
-    EPS_BAF: float = 0.05,
-    nonbalance_bafdist: Any = None,
-    nondiploid_rdrdist: Any = None,
-    cost_type: str = "L1",
-    enforce_order: bool = False,
-    uniform_state_weights: bool = False,
-    rdr_relative_weight: float = 0.3,
-    enforce_states: Any = {},  # noqa: B006 -- cnaster's default, passed through
-    max_samples: int = 20,
+    **ignored: Any,  # noqa: ARG001 -- cnaster's other keywords, unused here
 ) -> Any:
-    """`cnaster`'s MILP decoder, under the configured caps."""
-    allele, total = _caps(max_allele_copy, max_total_copy)
+    """`cnaster`'s name, decoding by :func:`decode_clone`."""
+    _, total = _caps(max_allele_copy, max_total_copy)
 
-    return _MILP(
-        new_log_mu,
-        base_nb_mean,
-        new_p_binom,
-        pred_cnv,
-        max_allele_copy=allele,
-        max_total_copy=total,
-        max_medploidy=max_medploidy,
-        min_prop_threshold=min_prop_threshold,
-        EPS_BAF=EPS_BAF,
-        nonbalance_bafdist=nonbalance_bafdist,
-        nondiploid_rdrdist=nondiploid_rdrdist,
-        cost_type=cost_type,
-        enforce_order=enforce_order,
-        uniform_state_weights=uniform_state_weights,
-        rdr_relative_weight=rdr_relative_weight,
-        enforce_states=enforce_states,
-        max_samples=max_samples,
-    )
+    return decode_clone(new_log_mu, new_p_binom, pred_cnv, total)
