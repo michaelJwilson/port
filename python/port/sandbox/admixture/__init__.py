@@ -1,9 +1,11 @@
-"""The clone-mixture design study (#380): probes, not package code.
+"""The clone-mixture design study (#380): the variants set aside, and its probes.
 
-`probes/run_sim.sh <easy|hard> <base|mix> [pure|admixed] [oracle]` runs one
-simulated sample through `tests.sim_audit` with `--sal`, optionally
-`--clone-mixture`; `NF=f1,f2,f3` plants a per-clone normal fraction
-(`purify(normal=...)`), and `MIX_ROW_MODE`, `MIX_STARTS` set the row
-regularizer and admixture starts. `probes/stop_probe.py` stops after
-`cnaster`'s normal-candidate step to score the BAF-only stage.
+`variants` is the mixture with every option the study measured -- continuous
+or integer profiles, BIC or entropy rows, a fixed or annealed mixing cap --
+and the numbers that decided against each. `port.extensions.clone_mixture`
+ships the one adopted.
+
+`probes/run_sim.sh` runs one simulated sample through `tests.sim_audit` with
+`--sal`, with or without `--clone-mixture`, and prints the fitted `W` and
+the integer decode's tumour fractions; its header lists the options.
 """

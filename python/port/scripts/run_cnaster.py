@@ -169,35 +169,9 @@ def _parser() -> argparse.ArgumentParser:
         help=(
             "score spots against each clone's pure path (#380): between the "
             "HMM fit and spot assignment, fit each clone's pseudobulk as a "
-            "row-stochastic K x K mixture of the model clones, and assign "
-            "against the unmixed paths. Off by default; unphased HMM only."
-        ),
-    )
-    parser.add_argument(
-        "--mixture-space",
-        choices=("lattice", "states"),
-        default="lattice",
-        help=(
-            "with --clone-mixture, what the pure profiles are: `lattice`, "
-            "integer (A, B) pairs (a uniform admixture cannot hide in them), "
-            "or `states`, the HMM's fitted continuous states (#380)"
-        ),
-    )
-    parser.add_argument(
-        "--mixture-cap",
-        type=float,
-        default=None,
-        help=(
-            "with --clone-mixture, the largest share of a clone's pseudobulk "
-            "from other clones, e.g. 0.2; default 0.5 (#380)"
-        ),
-    )
-    parser.add_argument(
-        "--mixture-anneal",
-        default=None,
-        help=(
-            "with --clone-mixture, anneal that cap linearly over each stage's "
-            "outer iterations, START,END, e.g. 0.1,0.5 (#380)"
+            "mixture of the clones' integer-copy paths and a diploid normal, "
+            "and assign against each clone's pure path at its own normal "
+            "fraction. Off by default; unphased HMM only."
         ),
     )
     parser.add_argument(
@@ -432,18 +406,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         if arguments.clone_mixture:
             from port.extensions.clone_mixture import clone_mixture
 
-            anneal: tuple[float, float] | None = None
-            if arguments.mixture_anneal:
-                low, high = (float(x) for x in arguments.mixture_anneal.split(","))
-                anneal = (low, high)
-
-            stack.enter_context(clone_mixture(cap=arguments.mixture_cap, anneal=anneal))
-            print(
-                "run_cnaster_port: clone mixture in the loop"
-                + (f", cap {arguments.mixture_cap}" if arguments.mixture_cap else "")
-                + (f", annealed {arguments.mixture_anneal}" if anneal else ""),
-                file=sys.stderr,
-            )
+            stack.enter_context(clone_mixture())
+            print("run_cnaster_port: clone mixture in the loop", file=sys.stderr)
 
         # NB after the swaps and before the timer, so what is compiled is
         #    what the run will call and none of it lands in the measurement.

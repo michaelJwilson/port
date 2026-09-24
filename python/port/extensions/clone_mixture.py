@@ -1,45 +1,49 @@
-r"""Each clone's pseudobulk as a mixture of the K model clones, inside the run (#380).
+r"""Each clone's pseudobulk as a mixture of the clones and a diploid normal (#380).
 
 `cnaster`'s clone loop fits the HMM to each clone's pseudobulk as labelled,
 then scores every spot against every clone's decoded path. When the labels
-are impure -- a start that splits a clone, or spots admixed from another --
-each pseudobulk is a blend, the path fitted to it describes the blend, and
-the spot scores reinforce it. This fits the blend instead:
+are impure -- a start that splits a clone, spots admixed from another, or
+normal cells in tumour spots -- each pseudobulk is a blend, the path fitted
+to it describes the blend, and the spot scores reinforce it. This fits the
+blend instead:
 
 .. math::
     \mu^{\rm mix}_{ib} = \sum_j W_{ij}\,\mu_{s_j(b)}, \qquad
     p^{\rm mix}_{ib} = \frac{\sum_j W_{ij}\,\mu_{s_j(b)}\,p_{s_j(b)}}
                             {\mu^{\rm mix}_{ib}},
 
-with :math:`s_j` model clone j's **pure** state path over bins, over
-`cnaster`'s own fitted states, and :math:`W` row-stochastic, K x K, one
-observed clone per model clone. Depth mixes linearly because reads add;
-the allele share is a ratio of mixed allele counts, each clone contributing
-in proportion to its depth. The pseudobulk is scored by **one** NB and one
-BB per bin at the mixed parameters -- a mixture of means, not of
-likelihoods, since a pseudobulk sums many spots rather than being drawn from
-one clone.
+over `K + 1` pure profiles: each clone's path :math:`s_j` over the integer
+pairs `(A, B)`, `mu = (A + B) / 2` and `p = A / (A + B)`, and a last,
+**diploid** column fixed at `(1, 1)`. `W` is `K x (K + 1)` and
+row-stochastic. Integer pairs are the point: a uniform normal admixture is
+absorbed into continuous fitted states, and cannot be into integer ones, so
+it has to show in `W`; the diploid column gives it a known profile to load
+on, and no clone has to be named normal. Depth mixes linearly because reads
+add; the allele share is a ratio of mixed allele counts. Each pseudobulk is
+scored by one NB and one BB per bin at the mixed parameters -- a mixture of
+means, not of likelihoods -- library-normalized per observed clone as
+`port`'s shifted emission is (#276).
 
-**Depth is library-normalized per observed clone**, as `port`'s shifted
-emission normalizes it (#276): mean `base_ib mu_ib / sum_b' lambda_b' mu_ib'`
-with `lambda = base_i / sum base_i`. The normalizer is recomputed from the
-mixed profile, so no fitted shift is needed.
+The fit is coordinate ascent: each clone's pure path by Viterbi against the
+pseudobulks that load on it, with the library normalizer held while its
+candidates are scored; then each row of `W` by exponentiated gradient (the
+one-sided Sinkhorn step) with at most half of it off the diagonal. The
+objective carries a parsimony prior of `PARSIMONY` nats per `|A + B - 2|`
+per bin and an entropy penalty `ENTROPY_WEIGHT * H(row)` per row, so a pure
+clone stays pure; a step is kept only if it does not lower it. One fit per
+value in `ADMIXTURE_STARTS`, the best kept: a pure pair and its admixture
+only fit together.
 
-The fit is coordinate ascent from `W = I` and the fitted paths, which is
-`cnaster`'s own answer: each model clone's path by Viterbi against every
-observed clone it loads on, then each row of `W` on the simplex. A step is
-kept only if the joint log-likelihood does not fall, so the result is never
-worse than `W = I` by the model's own measure; a row's new off-diagonal
-weight is kept only if it gains half a log-bin count in nats per weight
-(BIC), so a pure clone stays pure.
+The penalty costs some accuracy in `W`, measured on the unit fixtures: a
+pure sample keeps 0.015 to 0.021 off the diagonal, and a planted 0.08
+normal fraction reads 0.058 on an LOH clone. Spot recovery on the
+simulated samples ties the BIC alternative in `port.sandbox.admixture`
+to 0.002 in ARI; the penalty is the simpler rule.
 
-**Mixing is capped:** each row's off-diagonal mass is at most `cap`, a
-linear constraint that keeps the feasible set convex. `cap` is fixed (0.2
-is at most a fifth of a pseudobulk from other clones) or annealed linearly
-over one inference stage's outer iterations, e.g. 0.1 to 0.5, so clones
-still forming may borrow little and formed ones more. Uncapped, it is 0.5. :func:`clone_mixture` installs
-it between the HMM fit and spot assignment, which then scores spots against
-the pure paths.
+:func:`clone_mixture` installs it between the HMM fit and spot assignment,
+which then scores spots against each clone's pure path at its own diploid
+weight. The design study behind these choices, and the variants it set
+aside, are in `port.sandbox.admixture`.
 """
 
 from __future__ import annotations
@@ -55,7 +59,6 @@ from scipy.special import gammaln
 __all__ = [
     "FITS",
     "MixtureFit",
-    "annealed",
     "clone_mixture",
     "fit_mixture",
     "lattice",
@@ -71,8 +74,21 @@ EPS = 1e-10
 MIN_GAIN = 1e-3
 """Nats a path step has to gain to be kept."""
 
-MIN_WEIGHT = 1e-4
-"""A mixing weight below this is zero."""
+ENTROPY_WEIGHT = 1.0
+"""Nats of penalty per nat of a row's entropy."""
+
+SUPPORT = 0.01
+"""An off-diagonal weight below this is dropped after each row step."""
+
+MAX_MIXING = 0.5
+"""The largest share of a pseudobulk off the diagonal: an observed clone is
+still at least half itself, so the one-to-one pairing holds."""
+
+ADMIXTURE_STARTS = (0.0, 0.05, 0.1, 0.2, 0.3)
+"""Initial diploid weight of every row, one fit per value, best kept."""
+
+PARSIMONY = 0.5
+"""Nats per bin per unit of `|A + B - 2|` on a path, as `lattice_decode`."""
 
 Bulks = tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]
 """`(rdr, baf, total, base)` per clone and bin, each `(K, bins)`."""
@@ -80,14 +96,13 @@ Bulks = tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]
 
 @dataclass(frozen=True)
 class MixtureFit:
-    """The fitted weights and pure paths, and the log-likelihoods either side."""
+    """The fitted weights and pure paths, and the objective either side."""
 
     weights: np.ndarray
     paths: np.ndarray
     start: float
     end: float
     sweeps: int
-    cap: float | None = None
 
 
 FITS: list[MixtureFit] = []
@@ -217,33 +232,6 @@ def _viterbi(scores: np.ndarray, log_transmat: np.ndarray) -> np.ndarray:
     return path
 
 
-ROW_MODE = "bic"
-"""How a row of `W` is kept sparse: `bic`, nested support with a BIC cost per
-contaminant; or `entropy`, a penalty `ENTROPY_WEIGHT * H(row)` on the
-objective and nothing else."""
-
-ENTROPY_WEIGHT = 5.0
-"""Nats per nat of row entropy, in `entropy` mode."""
-
-SUPPORT = 0.01
-"""An off-diagonal weight below this is dropped before the BIC test."""
-
-DEFAULT_CAP = 0.5
-"""The largest share of a pseudobulk from other clones, uncapped: at 0.5 an
-observed clone is still at least half itself, so the one-to-one pairing holds."""
-
-
-def _project(row: np.ndarray, i: int, limit: float) -> np.ndarray:
-    """The KL projection onto `W_ii >= 1 - limit`: the others share `limit`."""
-    outside = 1.0 - row[i]
-    if outside <= limit:
-        return np.asarray(row, dtype=np.float64)
-
-    projected = np.asarray(row * (limit / outside), dtype=np.float64)
-    projected[i] = 1.0 - limit
-    return projected
-
-
 def _row(
     i: int,
     weights: np.ndarray,
@@ -253,19 +241,17 @@ def _row(
     paths: np.ndarray,
     alpha: float,
     tau: float,
-    cap: float | None = None,
     steps: int = 60,
 ) -> np.ndarray:
-    """Row `i` of `W` by mirror descent in KL geometry, under a mixing cap.
+    """Row `i` of `W`, by exponentiated gradient on its penalized likelihood.
 
-    The feasible set is the simplex with `sum_{j != i} W_ij <= cap`, a
-    polytope. Each step is exponentiated gradient, `w <- w exp(-eta grad)`
-    renormalized -- the one-sided Sinkhorn projection -- then the KL
-    projection onto the cap, with `eta` halved until the likelihood does not
-    fall. The start is strictly positive, since a multiplicative step cannot
-    move a zero. Weights under `SUPPORT` are then dropped, and the row is kept
-    only if it gains half a log-bin count in nats per remaining contaminant
-    (BIC) over the current row, so a pure clone stays pure.
+    Each step is `w <- w exp(-eta grad)` renormalized -- the one-sided
+    Sinkhorn step -- then scaled so at most :data:`MAX_MIXING` is off the
+    diagonal, with `eta` halved until the objective does not rise. The
+    descent starts from the current row softened towards an even spread,
+    since a multiplicative step cannot move a zero; weights under
+    :data:`SUPPORT` are then dropped, and the row is kept only if it is no
+    worse than the current one.
     """
     one: Bulks = (
         bulks[0][i : i + 1],
@@ -276,93 +262,57 @@ def _row(
     depth = mu[paths]
     allele = depth * p[paths]
     k = weights.shape[1]
-    limit = min(DEFAULT_CAP if cap is None else cap, DEFAULT_CAP)
-    penalty = 0.5 * np.log(paths.shape[1])
+    others = np.arange(k) != i
 
-    def nll(row: np.ndarray) -> float:
+    def bound(row: np.ndarray) -> np.ndarray:
+        row = row / row.sum()
+        off = 1.0 - row[i]
+        if off > MAX_MIXING:
+            row = row * (MAX_MIXING / off)
+            row[i] = 1.0 - MAX_MIXING
+        return row
+
+    def objective(row: np.ndarray) -> float:
         mixed = row @ depth
         share = np.where(mixed > 0, (row @ allele) / np.maximum(mixed, EPS), 0.5)
-        return -float(score(one, mixed[None, :], share[None, :], alpha, tau).sum())
+        nll = -float(score(one, mixed[None, :], share[None, :], alpha, tau).sum())
+        return nll + ENTROPY_WEIGHT * _entropy(row)
 
     def gradient(row: np.ndarray, value: float) -> np.ndarray:
         step = 1e-6
-        grad = np.empty(k)
-        for j in range(k):
-            bumped = row.copy()
-            bumped[j] += step
-            grad[j] = (nll(bumped) - value) / step
-        return grad
+        return np.array(
+            [(objective(row + step * np.eye(k)[j]) - value) / step for j in range(k)]
+        )
 
-    current = _project(weights[i].copy(), i, limit)
+    current = bound(weights[i].copy())
+    before = objective(current)
+    spread = np.where(others, MAX_MIXING / (k - 1), 1.0 - MAX_MIXING)
+    row = bound(0.8 * current + 0.2 * spread)
+    value = objective(row)
+    eta = 1.0 / max(np.abs(gradient(row, value)).max(), 1e-12)
 
-    if ROW_MODE == "entropy":
-        plain = nll
+    for _ in range(steps):
+        grad = gradient(row, value)
+        grad -= grad @ row
 
-        def nll(row: np.ndarray) -> float:
-            return plain(row) + ENTROPY_WEIGHT * _entropy(row)
-
-    before = nll(current)
-
-    if k == 1 or limit <= 0.0:
-        return np.asarray(current, dtype=np.float64)
-
-    def descend(row: np.ndarray) -> tuple[np.ndarray, float]:
-        """Exponentiated gradient from `row`; its zeros stay zero."""
-        value = nll(row)
-        eta = 1.0 / max(np.abs(gradient(row, value)).max(), 1e-12)
-
-        for _ in range(steps):
-            grad = gradient(row, value)
-            grad -= grad @ row
-            accepted = False
-
-            while eta > 1e-12:
-                trial = row * np.exp(-np.clip(eta * grad, -30.0, 30.0))
-                trial = _project(trial / trial.sum(), i, limit)
-                trial_value = nll(trial)
-                if trial_value <= value:
-                    accepted = True
-                    break
-                eta *= 0.5
-
-            if not accepted:
+        while eta > 1e-12:
+            trial = bound(row * np.exp(-np.clip(eta * grad, -30.0, 30.0)))
+            trial_value = objective(trial)
+            if trial_value <= value:
                 break
+            eta *= 0.5
+        else:
+            break
 
-            gain = value - trial_value
-            row, value = trial, trial_value
-            if gain < 1e-6:
-                break
-            eta *= 1.5
+        gain = value - trial_value
+        row, value = trial, trial_value
+        if gain < 1e-6:
+            break
+        eta *= 1.5
 
-        row = np.where((np.arange(k) != i) & (row < SUPPORT), 0.0, row)
-        row = _project(row / row.sum(), i, limit)
-        return row, nll(row)
+    row = bound(np.where(others & (row < SUPPORT), 0.0, row))
 
-    if ROW_MODE == "entropy":
-        spread = np.full(k, limit / (k - 1))
-        spread[i] = 1.0 - limit
-        full, value = descend(_project(0.8 * current + 0.2 * spread, i, limit))
-        best = full if value <= before else current
-        return np.asarray(best, dtype=np.float64)
-
-    # NB nested: the row on its current support first, which needs no
-    #    evidence beyond not falling; then on every clone, which replaces it
-    #    only if it pays the BIC cost of each contaminant it adds.
-    kept, kept_value = current, before
-    if np.count_nonzero(np.delete(current, i)) > 0:
-        restricted, value = descend(current.copy())
-        if value <= before:
-            kept, kept_value = restricted, value
-
-    spread = np.full(k, limit / (k - 1))
-    spread[i] = 1.0 - limit
-    full, value = descend(_project(0.8 * kept + 0.2 * spread, i, limit))
-    added = np.count_nonzero(np.delete(full, i)) - np.count_nonzero(np.delete(kept, i))
-
-    if value + penalty * max(added, 0) <= kept_value:
-        return np.asarray(full, dtype=np.float64)
-
-    return np.asarray(kept, dtype=np.float64)
+    return np.asarray(row if objective(row) <= before else current, dtype=np.float64)
 
 
 def fit_mixture(
@@ -373,121 +323,87 @@ def fit_mixture(
     tau: float,
     paths: np.ndarray,
     log_transmat: np.ndarray,
+    *,
+    log_prior: np.ndarray | None = None,
+    diploid: int | None = None,
+    admixture: float = 0.0,
     sweeps: int = 5,
     tol: float = 1e-3,
-    cap: float | None = None,
-    log_prior: np.ndarray | None = None,
-    fixed: int | None = None,
-    admixture: tuple[float, ...] = (0.0,),
 ) -> MixtureFit:
-    """Coordinate ascent on `(W, paths)` from `(I, paths)`; never downhill.
+    """Coordinate ascent on `(W, paths)`; the objective never falls.
 
     `mu`, `p` are the states' rate and share, `(states,)`; `paths` the
-    starting paths, `(K, bins)`, or `(K + 1, bins)` with a last row no
-    pseudobulk observes. `log_prior`, per state and bin, enters both the
-    path scores and the objective. Path `fixed` -- the diploid column --
-    is never refitted, and has no row if no pseudobulk observes it. Several `admixture`
-    values are several starts, each tumour row that much normal, and the
-    best objective is kept: a pure pair and its admixture only fit together,
-    so one start from `W = I` can settle on the wrong pair.
+    starting paths, `(K, bins)`, or `(K + 1, bins)` with a last column no
+    pseudobulk observes. Path `diploid` is never refitted and has no row.
+    `admixture` starts every row with that much weight on it. `log_prior`,
+    per state, enters both the path scores and the objective.
     """
-    if len(admixture) > 1:
-        fits = [
-            fit_mixture(
-                bulks,
-                mu,
-                p,
-                alpha,
-                tau,
-                paths,
-                log_transmat,
-                sweeps,
-                tol,
-                cap,
-                log_prior,
-                fixed,
-                (a,),
-            )
-            for a in admixture
-        ]
-        return max(fits, key=lambda fit: fit.end)
-
     k = paths.shape[0]
     rows = bulks[0].shape[0]
     weights = np.eye(rows, k)
-    if fixed is not None and admixture[0] > 0.0:
-        # NB a start with every tumour row `a` normal: the first path sweep
-        #    then scores pure pairs under an admixed model, so a pair and the
-        #    admixture that only fit together can be found together.
+
+    if diploid is not None and admixture > 0.0:
         for i in range(rows):
-            if i != fixed:
-                weights[i, i] = 1.0 - admixture[0]
-                weights[i, fixed] = admixture[0]
+            weights[i, i] = 1.0 - admixture
+            weights[i, diploid] = admixture
+
     paths = paths.copy()
     n_states = mu.size
     prior = np.zeros(n_states) if log_prior is None else log_prior
 
-    def total(w: np.ndarray, s: np.ndarray) -> float:
+    def objective(w: np.ndarray, s: np.ndarray) -> float:
         mixed, share = mixed_parameters(mu, p, s, w)
-        value = float(score(bulks, mixed, share, alpha, tau).sum() + prior[s].sum())
-        if ROW_MODE == "entropy":
-            value -= ENTROPY_WEIGHT * sum(_entropy(row) for row in w)
-        return value
+        fit = float(score(bulks, mixed, share, alpha, tau).sum() + prior[s].sum())
+        return fit - ENTROPY_WEIGHT * sum(_entropy(row) for row in w)
 
-    start = current = total(weights, paths)
+    start = current = objective(weights, paths)
     done = 0
 
     for done in range(1, sweeps + 1):  # noqa: B007
         before = current
 
         for j in range(k):
-            if j == fixed:
+            if j == diploid:
                 continue
 
             loads = np.flatnonzero(weights[:, j] > 1e-6)
-            candidate = np.empty((paths.shape[1], n_states))
+            sub: Bulks = (
+                bulks[0][loads],
+                bulks[1][loads],
+                bulks[2][loads],
+                bulks[3][loads],
+            )
+            # NB the library normalizer is held at the current paths: scoring
+            #    one state at every bin makes the trial path constant, and a
+            #    constant path's depth cancels against its own normalizer.
             held = library(bulks[3], mixed_parameters(mu, p, paths, weights)[0])
+            candidate = np.empty((paths.shape[1], n_states))
 
             for s in range(n_states):
                 trial = paths.copy()
                 trial[j] = s
                 mixed, share = mixed_parameters(mu, p, trial, weights)
-                sub: Bulks = (
-                    bulks[0][loads],
-                    bulks[1][loads],
-                    bulks[2][loads],
-                    bulks[3][loads],
-                )
                 candidate[:, s] = (
-                    score(
-                        sub,
-                        mixed[loads],
-                        share[loads],
-                        alpha,
-                        tau,
-                        held[loads],
-                    ).sum(axis=0)
+                    score(sub, mixed[loads], share[loads], alpha, tau, held[loads]).sum(
+                        axis=0
+                    )
                     + prior[s]
                 )
 
             trial = paths.copy()
             trial[j] = _viterbi(candidate, log_transmat)
-            value = total(weights, trial)
+            value = objective(weights, trial)
 
-            # NB better by `MIN_GAIN` only: a constant path has no scale under
-            #    the per-clone library normalization, so states differing only
-            #    in `mu` score alike up to the weight another row puts on it,
-            #    and a path is not relabelled for a rounding error of that.
+            # NB better by `MIN_GAIN` only: states differing only in `mu`
+            #    score alike on a constant path, and a path is not relabelled
+            #    for a rounding error.
             if value > current + MIN_GAIN:
                 paths, current = trial, value
 
         for i in range(rows):
-            if i == fixed:
-                continue
-
             trial_w = weights.copy()
-            trial_w[i] = _row(i, weights, bulks, mu, p, paths, alpha, tau, cap)
-            value = total(trial_w, paths)
+            trial_w[i] = _row(i, weights, bulks, mu, p, paths, alpha, tau)
+            value = objective(trial_w, paths)
 
             if value >= current:
                 weights, current = trial_w, value
@@ -495,29 +411,48 @@ def fit_mixture(
         if current - before < tol:
             break
 
-    return MixtureFit(weights, paths, start, current, done, cap)
-
-
-ADMIXTURE_STARTS = (0.0, 0.05, 0.1, 0.2, 0.3)
-"""Initial normal weight of every tumour row, one fit per value, best kept."""
-
-PARSIMONY = 0.5
-"""Nats per bin per unit of `|A + B - 2|` on a lattice path, as `lattice_decode`."""
+    return MixtureFit(weights, paths, start, current, done)
 
 
 def lattice(max_total_copy: int) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """`(pairs, mu, p)` over every `(A, B)` with `0 < A + B <= max_total_copy`.
-
-    `mu = (A + B) / 2` against a diploid normal, `p = A / (A + B)`: integer
-    profiles, so a uniform normal admixture cannot be absorbed into the
-    states -- a pure LOH has `p = 0`, and 8 per cent normal moves it to 0.08
-    only through `W`.
-    """
+    """`(pairs, mu, p)` over every `(A, B)` with `0 < A + B <= max_total_copy`."""
     from port.extensions.copy_likelihood import candidates
 
     pairs = candidates(max_total_copy)
     total = pairs.sum(axis=1).astype(np.float64)
     return pairs, total / 2.0, pairs[:, 0] / total
+
+
+def scoring_states(
+    fit: MixtureFit, mu: np.ndarray, p: np.ndarray
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """`(log_mu, p, pred)` of the profiles spots are scored against.
+
+    Candidate clone `j`'s profile is its pure path at its own diploid weight,
+    the last column of `W`; its weights on other clones are dropped, since
+    contamination by other clones is what the assignment undoes. One state
+    per distinct `(clone, pair)`.
+    """
+    k, n_bins = fit.weights.shape[0], fit.paths.shape[1]
+    rates: list[float] = []
+    shares: list[float] = []
+    index: dict[tuple[int, int], int] = {}
+    pred = np.empty((k, n_bins), dtype=np.int64)
+
+    for j in range(k):
+        normal = float(fit.weights[j, -1])
+
+        for b, state in enumerate(fit.paths[j]):
+            key = (j, int(state))
+            if key not in index:
+                depth = normal + (1.0 - normal) * mu[state]
+                allele = 0.5 * normal + (1.0 - normal) * mu[state] * p[state]
+                index[key] = len(rates)
+                rates.append(depth)
+                shares.append(allele / depth if depth > 0 else 0.5)
+            pred[j, b] = index[key]
+
+    return np.log(np.maximum(rates, EPS)), np.asarray(shares), pred
 
 
 def _max_total_copy() -> int:
@@ -531,41 +466,8 @@ def _max_total_copy() -> int:
     return 6 if value is None else int(value)
 
 
-def scoring_states(
-    fit: MixtureFit, mu: np.ndarray, p: np.ndarray, diploid: int
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """`(log_mu, p, pred)` of the profiles spots are scored against.
-
-    Candidate clone `j`'s profile keeps its own normal admixture,
-    `W_j,diploid`, and drops its weights on other clones: admixture
-    is the spot's, contamination by other clones is what the assignment
-    undoes. One state per distinct `(clone, pair)`.
-    """
-    k, n_bins = fit.weights.shape[0], fit.paths.shape[1]
-    rates: list[float] = []
-    shares: list[float] = []
-    index: dict[tuple[int, int], int] = {}
-    pred = np.empty((k, n_bins), dtype=np.int64)
-
-    for j in range(k):
-        admixed = float(fit.weights[j, diploid])
-
-        for b, state in enumerate(fit.paths[j]):
-            key = (j, int(state))
-            if key not in index:
-                depth = admixed * 1.0 + (1.0 - admixed) * mu[state]
-                allele = admixed * 0.5 + (1.0 - admixed) * mu[state] * p[state]
-                index[key] = len(rates)
-                rates.append(depth)
-                shares.append(allele / depth if depth > 0 else 0.5)
-            pred[j, b] = index[key]
-
-    return np.log(np.maximum(rates, EPS)), np.asarray(shares), pred
-
-
-def _states(res: Any) -> tuple[np.ndarray, np.ndarray, float, float, np.ndarray]:
-    mu = np.exp(np.asarray(res["new_log_mu"], dtype=np.float64)[:, 0])
-    p = np.asarray(res["new_p_binom"], dtype=np.float64)[:, 0]
+def _fitted(res: Any) -> tuple[float, float, float]:
+    """`(alpha, tau, stay)`: the dispersions and mean self-transition cnaster fitted."""
     alpha = float(np.asarray(res["new_alphas"]).ravel()[0])
     tau = float(np.asarray(res["new_taus"]).ravel()[0])
     transmat = np.asarray(res["new_log_transmat"], dtype=np.float64)
@@ -573,34 +475,12 @@ def _states(res: Any) -> tuple[np.ndarray, np.ndarray, float, float, np.ndarray]
     if transmat.ndim == 3:
         transmat = transmat[:, :, 0]
 
-    return mu, p, alpha, tau, transmat
-
-
-def annealed(start: float, end: float, iteration: int, iterations: int) -> float:
-    """The cap at outer `iteration` of `iterations`, linear from `start` to `end`."""
-    if iterations <= 0:
-        return end
-
-    return start + (end - start) * min(iteration / iterations, 1.0)
-
-
-def _outer_iterations() -> int:
-    from cnaster.config import get_global_config
-
-    try:
-        return int(get_global_config().hmrf.max_iter_outer)
-    except (AttributeError, TypeError, ValueError):
-        return 1
+    return alpha, tau, float(np.exp(np.diag(transmat)).mean())
 
 
 @contextlib.contextmanager
-def clone_mixture(
-    sweeps: int = 5,
-    cap: float | None = None,
-    anneal: tuple[float, float] | None = None,
-    space: str = "lattice",
-) -> Iterator[list[MixtureFit]]:
-    """Score spots against each clone's pure path rather than its fitted one.
+def clone_mixture(sweeps: int = 5) -> Iterator[list[MixtureFit]]:
+    """Score spots against each clone's pure, admixed path, not its fitted one.
 
     Wraps whatever `cnaster.hmrf.pipeline_clone_assignment` is bound to on
     entry -- `port`'s swap, or `--sal`'s -- so it is entered **after** the
@@ -611,7 +491,6 @@ def clone_mixture(
 
     original = hmrf.pipeline_clone_assignment
     FITS.clear()
-    stage: dict[str, int] = {"id": -1, "iteration": 0}
 
     def assign(
         single_x: np.ndarray,
@@ -634,69 +513,46 @@ def clone_mixture(
             and pred.size // n_bins > 1
         ):
             k = pred.size // n_bins
-
-            # NB one inference stage passes the same count array on every
-            #    outer iteration; a new array is a new stage, and the anneal
-            #    restarts with it.
-            if stage["id"] != id(single_x):
-                stage["id"], stage["iteration"] = id(single_x), 0
-            else:
-                stage["iteration"] += 1
-
-            limit = cap
-            if anneal is not None:
-                limit = annealed(*anneal, stage["iteration"], _outer_iterations())
-
-            mu, p, alpha, tau, transmat = _states(res)
+            alpha, tau, stay = _fitted(res)
             bulks = pseudobulks(single_x, base, total, np.asarray(previous), k)
-            fitted_paths = np.asarray(pred).reshape(k, n_bins)
-            if space == "lattice":
-                pairs, mu, p = lattice(_max_total_copy())
-                stay = float(np.exp(np.diag(transmat)).mean())
-                n = mu.size
-                transmat = np.log(
-                    np.full((n, n), (1.0 - stay) / (n - 1))
-                    + np.eye(n) * (stay - (1.0 - stay) / (n - 1))
-                )
-                neutral = int(np.flatnonzero((pairs == 1).all(axis=1))[0])
-                # NB one column more than clones: a path at `(1, 1)` no
-                #    clone owns, so normal admixture has a known profile to
-                #    load on and no clone has to be named normal.
-                start = np.full((k + 1, n_bins), neutral, dtype=np.int64)
-                diploid: int | None = k
-                prior = -PARSIMONY * np.abs(pairs.sum(axis=1) - 2).astype(np.float64)
-            else:
-                start, prior, diploid = fitted_paths, None, None
-
-            fitted = fit_mixture(
-                bulks,
-                mu,
-                p,
-                alpha,
-                tau,
-                start,
-                transmat,
-                sweeps=sweeps,
-                cap=limit,
-                log_prior=prior,
-                fixed=diploid,
-                admixture=ADMIXTURE_STARTS if space == "lattice" else (0.0,),
+            pairs, mu, p = lattice(_max_total_copy())
+            n = mu.size
+            transmat = np.log(
+                np.full((n, n), (1.0 - stay) / (n - 1))
+                + np.eye(n) * (stay - (1.0 - stay) / (n - 1))
+            )
+            neutral = int(np.flatnonzero((pairs == 1).all(axis=1))[0])
+            start = np.full((k + 1, n_bins), neutral, dtype=np.int64)
+            prior = -PARSIMONY * np.abs(pairs.sum(axis=1) - 2).astype(np.float64)
+            fitted = max(
+                (
+                    fit_mixture(
+                        bulks,
+                        mu,
+                        p,
+                        alpha,
+                        tau,
+                        start,
+                        transmat,
+                        log_prior=prior,
+                        diploid=k,
+                        admixture=a,
+                        sweeps=sweeps,
+                    )
+                    for a in ADMIXTURE_STARTS
+                ),
+                key=lambda fit: fit.end,
             )
             FITS.append(fitted)
 
-            if space == "lattice":
-                log_mu, shares, decoded = scoring_states(fitted, mu, p, k)
-                res = res.copy(deep=True)
-                res.unlock()
-                alphas = np.asarray(res["new_alphas"], dtype=np.float64)
-                taus = np.asarray(res["new_taus"], dtype=np.float64)
-                res["new_log_mu"] = log_mu[:, None]
-                res["new_p_binom"] = shares[:, None]
-                res["new_alphas"] = np.full((log_mu.size, 1), alphas.ravel()[0])
-                res["new_taus"] = np.full((log_mu.size, 1), taus.ravel()[0])
-                pred = decoded.reshape(-1)
-            else:
-                pred = fitted.paths.reshape(-1)
+            log_mu, shares, decoded = scoring_states(fitted, mu, p)
+            res = res.copy(deep=True)
+            res.unlock()
+            res["new_log_mu"] = log_mu[:, None]
+            res["new_p_binom"] = shares[:, None]
+            res["new_alphas"] = np.full((log_mu.size, 1), alpha)
+            res["new_taus"] = np.full((log_mu.size, 1), tau)
+            pred = decoded.reshape(-1)
 
         return original(
             single_x, base, total, res, pred, adjacency, previous, *args, **kwargs

@@ -250,6 +250,74 @@ def write_sim_inputs(
     return config
 
 
+def crop(
+    sample: SimulatedSample, root: Path, window: tuple[float, float, float, float]
+) -> Path:
+    """Write the spots of `sample` inside `window`; return the new directory.
+
+    `window` is `(x0, x1, y0, y1)`, half-open, in the truth file's
+    coordinates, so the subset is one contiguous block of the array and the
+    spatial neighbourhoods inside it are the original ones. Every per-spot
+    input is subset in its own row order; the SNP list, the genes and the
+    copy-number truth are unchanged. Refuses a window that loses a planted
+    clone, the normal one included.
+    """
+    import anndata as ad
+    import scipy.sparse as sp
+
+    x0, x1, y0, y1 = window
+    x, y = sample.coords[:, 0], sample.coords[:, 1]
+    inside = (x >= x0) & (x < x1) & (y >= y0) & (y < y1)
+    kept = set(sample.barcodes[inside].astype(str))
+    lost = sorted(set(range(sample.n_clones)) - set(sample.labels[inside].tolist()))
+
+    if lost:
+        msg = f"window {window} drops clones {[sample.clones[c] for c in lost]}"
+        raise ValueError(msg)
+
+    out = root / (sample.name + "_crop_" + "_".join(f"{v:g}" for v in window))
+    if (out / ".complete").exists():
+        return out
+    (out / "spatial").mkdir(parents=True, exist_ok=True)
+    (out / "unique_snp_ids.npy").write_bytes(
+        (sample.path / "unique_snp_ids.npy").read_bytes()
+    )
+    (out / "truth_acn_profile.tsv").write_bytes(
+        (sample.path / "truth_acn_profile.tsv").read_bytes()
+    )
+
+    barcodes = (sample.path / "barcodes.txt").read_text().split()
+    rows = np.array([b in kept for b in barcodes])
+    (out / "barcodes.txt").write_text(
+        "\n".join(b for b, k in zip(barcodes, rows, strict=True) if k) + "\n"
+    )
+
+    for name in ("cell_snp_Aallele.npz", "cell_snp_Ballele.npz"):
+        matrix = sp.load_npz(sample.path / name).tocsr()
+        sp.save_npz(out / name, matrix[rows])
+
+    assay = ad.read_h5ad(sample.path / "filtered_feature_bc_matrix.h5ad")
+    assay[assay.obs_names.astype(str).isin(kept)].copy().write_h5ad(
+        out / "filtered_feature_bc_matrix.h5ad"
+    )
+
+    positions = sample.path / "spatial" / "tissue_positions_list.csv"
+    lines = positions.read_text().splitlines()
+    (out / "spatial" / "tissue_positions_list.csv").write_text(
+        "\n".join(line for line in lines if line.split(",")[0] in kept) + "\n"
+    )
+
+    truth = (sample.path / "truth_clone_labels.tsv").read_text().splitlines()
+    (out / "truth_clone_labels.tsv").write_text(
+        "\n".join(
+            [truth[0], *(line for line in truth[1:] if line.split("\t")[0] in kept)]
+        )
+        + "\n"
+    )
+    (out / ".complete").touch()
+    return out
+
+
 PURE_SEED = 362
 """The draw :func:`purify` makes, so a pure sample is one fixture, not many."""
 
@@ -310,6 +378,8 @@ def purify(
     rng = np.random.default_rng(seed)
     suffix = "_".join(f"{f:g}" for f in normal)
     out = root / (f"{sample.name}_normal_{suffix}" if normal else f"{sample.name}_pure")
+    if (out / ".complete").exists():
+        return out
     fraction = np.array([0.0, *normal])
     (out / "spatial").mkdir(parents=True, exist_ok=True)
 
@@ -375,5 +445,6 @@ def purify(
     )
     sp.save_npz(out / "cell_snp_Aallele.npz", new_a.astype(first.dtype))
     sp.save_npz(out / "cell_snp_Ballele.npz", new_b.astype(second.dtype))
+    (out / ".complete").touch()
 
     return out

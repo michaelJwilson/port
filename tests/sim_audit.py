@@ -77,6 +77,17 @@ class SimRecovery:
     clone_of: dict[int, int] = field(default_factory=dict)
 
 
+def _scratch() -> Path:
+    """Where generated samples go: `$PORT_SIM_CACHE`, reused when complete, else a temp dir."""
+    import os
+
+    cache = os.environ.get("PORT_SIM_CACHE")
+    if cache:
+        Path(cache).mkdir(parents=True, exist_ok=True)
+        return Path(cache)
+    return Path(tempfile.mkdtemp())
+
+
 def _barcode(values: pd.Series) -> np.ndarray:
     barcodes: np.ndarray = values.astype(str).to_numpy()
     return barcodes
@@ -213,6 +224,12 @@ def main() -> None:
         help="redraw the tumour spots pure (`tests.sim_fixtures.purify`) first",
     )
     parser.add_argument(
+        "--window",
+        default="",
+        metavar="X0,X1,Y0,Y1",
+        help="crop to the spots in this contiguous window first (`crop`)",
+    )
+    parser.add_argument(
         "--normal-fraction",
         default="",
         metavar="F1,F2,...",
@@ -223,6 +240,15 @@ def main() -> None:
 
     sample = load_simulated(SAMPLES.get(arguments.sample, arguments.sample))
 
+    if arguments.window:
+        from tests.sim_fixtures import crop
+
+        window = tuple(float(v) for v in arguments.window.split(","))
+        assert len(window) == 4
+        cropped = crop(sample, _scratch(), window)
+        sample = load_simulated(cropped.name, cropped.parent)
+        print(f"WINDOW {list(window)} spots={sample.barcodes.size}", flush=True)
+
     if arguments.pure:
         from tests.sim_fixtures import purify
 
@@ -230,7 +256,7 @@ def main() -> None:
             float(f) for f in arguments.normal_fraction.split(",") if f.strip()
         )
         print(f"PLANTED normal_fraction={list(normal)}", flush=True)
-        pure = purify(sample, Path(tempfile.mkdtemp()), normal=normal)
+        pure = purify(sample, _scratch(), normal=normal)
         sample = load_simulated(pure.name, pure.parent)
     overrides = {
         k: yaml.safe_load(v)
