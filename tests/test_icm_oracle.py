@@ -56,6 +56,7 @@ def _upstream_graph(fixture: PottsLabels) -> "PottsGraph":
 
 
 def _upstream_icm(fixture: PottsLabels, seed: int = 0) -> tuple[np.ndarray, float]:
+    from snakes_and_ladders.backend import Backend
     from snakes_and_ladders.search.alpha_expansion import iterated_conditional_modes
 
     labelling, energy = iterated_conditional_modes(
@@ -63,6 +64,7 @@ def _upstream_icm(fixture: PottsLabels, seed: int = 0) -> tuple[np.ndarray, floa
         fixture.field,
         fixture.n_clones,
         np.random.default_rng(seed),
+        backend=Backend.NUMBA,
     )
     return np.asarray(labelling), float(energy)
 
@@ -70,13 +72,17 @@ def _upstream_icm(fixture: PottsLabels, seed: int = 0) -> tuple[np.ndarray, floa
 def _upstream_expansion(
     fixture: PottsLabels, start: np.ndarray | None = None
 ) -> "ExpansionResult":
+    from snakes_and_ladders.backend import Backend
     from snakes_and_ladders.search.alpha_expansion import alpha_expansion
 
+    # Pinned: upstream's default moved from Python to Rust past 186bc59, and
+    # an oracle that follows a default is not the implementation it names (#366).
     return alpha_expansion(
         _upstream_graph(fixture),
         fixture.field,
         fixture.n_clones,
         start=None if start is None else np.asarray(start, dtype=np.int64),
+        backend=Backend.PYTHON,
     )
 
 
