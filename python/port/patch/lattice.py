@@ -57,6 +57,10 @@ recursion, and the bitwise claim would then be about the wrong thing.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+from contextlib import contextmanager
+from typing import Any
+
 import numpy as np
 from cnaster.hmm_nophasing import numba_logsumexp
 from cnaster.hmm_phased import PEANLIZE_PHASE_ONLY_ON_SAME_CNV, update_combined_transmat
@@ -74,7 +78,18 @@ module open should be able to find `port`'s answer to it, and
 `tests/test_module_correspondence.py` reads this to check that every swap
 row lands in a module that admits to its target."""
 
-__all__ = ["backward_lattice", "forward_lattice", "is_phased", "spot_sums_agree"]
+__all__ = [
+    "RUST_LATTICES",
+    "backward_lattice",
+    "backward_lattice_phased_rust",
+    "backward_lattice_rust",
+    "forward_lattice",
+    "forward_lattice_phased_rust",
+    "forward_lattice_rust",
+    "is_phased",
+    "rust_lattices",
+    "spot_sums_agree",
+]
 
 
 @njit(nogil=True, cache=True, error_model="numpy")
@@ -306,3 +321,134 @@ def backward_lattice(
         cumlen += le
 
     return log_beta
+
+
+RUST_LATTICES: tuple[tuple[str, str], ...] = (
+    ("cnaster.hmm_nophasing", "hmm_nophasing"),
+    ("cnaster.hmm_phased", "hmm_phased"),
+)
+"""The two classes whose `forward_lattice` and `backward_lattice`
+:func:`rust_lattices` replaces with `port.oxiport`'s (#318).
+
+**Why a class attribute rather than a `SWAPS` row.** `cnaster` defines the
+four recursions as `@staticmethod`s and calls them as `hmmclass.forward_lattice`
+or `self.forward_lattice`, so there is no module-level name to rebind. `port`'s
+own `hmm_nophasing` (in `SHIFT_SWAPS`) subclasses `cnaster`'s and inherits
+whatever the class carries, so installing on these two reaches every caller.
+"""
+
+
+def _lengths(lengths: Any) -> np.ndarray:
+    return np.ascontiguousarray(lengths, dtype=np.int64)
+
+
+def _f64(array: Any) -> np.ndarray:
+    return np.ascontiguousarray(array, dtype=np.float64)
+
+
+def forward_lattice_rust(
+    lengths: Any,
+    log_transmat: Any,
+    log_startprob: Any,
+    log_emission: Any,
+    log_sitewise_transmat: Any,  # noqa: ARG001 -- cnaster's signature
+) -> np.ndarray:
+    """`cnaster.hmm_nophasing.hmm_nophasing.forward_lattice`, from Rust."""
+    from port import oxiport
+
+    return oxiport.forward_lattice(
+        _lengths(lengths), _f64(log_transmat), _f64(log_startprob), _f64(log_emission)
+    )
+
+
+def backward_lattice_rust(
+    lengths: Any,
+    log_transmat: Any,
+    log_startprob: Any,  # noqa: ARG001 -- cnaster's signature, unread there too
+    log_emission: Any,
+    log_sitewise_transmat: Any,  # noqa: ARG001 -- cnaster's signature
+) -> np.ndarray:
+    """`cnaster.hmm_nophasing.hmm_nophasing.backward_lattice`, from Rust."""
+    from port import oxiport
+
+    return oxiport.backward_lattice(
+        _lengths(lengths), _f64(log_transmat), _f64(log_emission)
+    )
+
+
+def forward_lattice_phased_rust(
+    lengths: Any,
+    log_transmat: Any,
+    log_startprob: Any,
+    log_emission: Any,
+    log_sitewise_transmat: Any,
+    penalize_phase_only_on_same_cnv: bool = PEANLIZE_PHASE_ONLY_ON_SAME_CNV,
+) -> np.ndarray:
+    """`cnaster.hmm_phased.hmm_phased.forward_lattice`, from Rust."""
+    from port import oxiport
+
+    return oxiport.forward_lattice_phased(
+        _lengths(lengths),
+        _f64(log_transmat),
+        _f64(log_startprob),
+        _f64(log_emission),
+        _f64(log_sitewise_transmat),
+        bool(penalize_phase_only_on_same_cnv),
+    )
+
+
+def backward_lattice_phased_rust(
+    lengths: Any,
+    log_transmat: Any,
+    log_startprob: Any,  # noqa: ARG001 -- cnaster's signature, unread there too
+    log_emission: Any,
+    log_sitewise_transmat: Any,
+    penalize_phase_only_on_same_cnv: bool = PEANLIZE_PHASE_ONLY_ON_SAME_CNV,
+) -> np.ndarray:
+    """`cnaster.hmm_phased.hmm_phased.backward_lattice`, from Rust."""
+    from port import oxiport
+
+    return oxiport.backward_lattice_phased(
+        _lengths(lengths),
+        _f64(log_transmat),
+        _f64(log_emission),
+        _f64(log_sitewise_transmat),
+        bool(penalize_phase_only_on_same_cnv),
+    )
+
+
+_RUST = {
+    "hmm_nophasing": (forward_lattice_rust, backward_lattice_rust),
+    "hmm_phased": (forward_lattice_phased_rust, backward_lattice_phased_rust),
+}
+
+
+@contextmanager
+def rust_lattices() -> Iterator[None]:
+    """Replace `cnaster`'s four lattices with `port.oxiport`'s for the block.
+
+    Bitwise `cnaster`'s (`tests/test_rust_lattice.py`), with no compile on
+    first call: `hmm_nophasing`'s two are `@njit` without `cache=True`, so
+    every process compiled them, 9.75 s of a 40 s dev run (#312, O1).
+    Restored on the way out, so a test comparing the two sees both.
+    """
+    import importlib
+
+    undo: list[tuple[type, str, Any]] = []
+
+    try:
+        for module_name, class_name in RUST_LATTICES:
+            cls = getattr(importlib.import_module(module_name), class_name)
+            forward, backward = _RUST[class_name]
+
+            for name, replacement in (
+                ("forward_lattice", forward),
+                ("backward_lattice", backward),
+            ):
+                undo.append((cls, name, cls.__dict__[name]))
+                setattr(cls, name, staticmethod(replacement))
+
+        yield
+    finally:
+        for cls, name, original in reversed(undo):
+            setattr(cls, name, original)
