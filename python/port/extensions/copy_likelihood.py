@@ -123,10 +123,21 @@ def _emission(
     return np.asarray(depth + allele)
 
 
-def _parameters(copies: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+def _parameters(
+    copies: np.ndarray, purity: float = 1.0
+) -> tuple[np.ndarray, np.ndarray]:
+    """`(log mu, p)` of each pair, in a spot `purity` tumour and the rest normal.
+
+    Depth `purity (A + B) / 2 + (1 - purity)`; allele share
+    `(purity A + 1 - purity) / (purity (A + B) + 2 (1 - purity))`, 0.5 where
+    there are no copies at all.
+    """
     total = copies.sum(axis=1).astype(np.float64)
+    depth = purity * total / 2.0 + (1.0 - purity)
+    alleles = purity * total + 2.0 * (1.0 - purity)
     with np.errstate(divide="ignore", invalid="ignore"):
-        return np.log(total / 2.0), np.where(total > 0, copies[:, 0] / total, 0.5)
+        share = (purity * copies[:, 0] + (1.0 - purity)) / alleles
+        return np.log(depth), np.where(alleles > 0, share, 0.5)
 
 
 def log_likelihood(
@@ -263,6 +274,7 @@ def decode_shared(
     max_total_copy: int,
     normal: int,
     distinct: bool = False,
+    purity: list[float] | None = None,
 ) -> Decoded:
     """Each state's `(A, B)`, one pair shared by every clone (#362).
 
@@ -274,9 +286,12 @@ def decode_shared(
     one-candidate-per-state MILP is solved exactly, state by state. With
     `distinct`, no two states share a pair: the assignment of pairs to states
     maximizing the summed likelihood, `(1, 1)` the normal state's alone.
+    `purity`, one per clone, scores each clone's pair at its tumour
+    fraction (:func:`_parameters`); pure where not given.
     """
     lattice = candidates(max_total_copy)
-    log_mu, p = _parameters(lattice)
+    fractions = [1.0] * len(clones) if purity is None else list(purity)
+    rates = [_parameters(lattice, f) for f in fractions]
     copies = np.ones((n_states, 2), dtype=np.int64)
     total = 0.0
     sets: dict[int, list[tuple[int, int]]] = {}
@@ -286,15 +301,15 @@ def decode_shared(
     for state in visited:
         k = int(state)
         members = [
-            (np.flatnonzero(path == k), bulk, shift)
-            for path, bulk, shift in clones
+            (np.flatnonzero(path == k), bulk, shift, rate)
+            for (path, bulk, shift), rate in zip(clones, rates, strict=True)
             if np.any(path == k)
         ]
 
         def score(i: int, members: list[Any] = members) -> float:
             return sum(
-                float(np.sum(_emission(log_mu[i] - shift, p[i], bulk, bins)))
-                for bins, bulk, shift in members
+                float(np.sum(_emission(mu[i] - shift, p[i], bulk, bins)))
+                for bins, bulk, shift, (mu, p) in members
             )
 
         if k == normal:
@@ -454,6 +469,7 @@ class IntegerFit:
     log_likelihood: float
     iterations: int
     trace: list[float] = field(default_factory=list)
+    purity: np.ndarray = field(default_factory=lambda: np.ones(0))
 
 
 def _with(bulk: Pseudobulk, alpha: float, tau: float) -> Pseudobulk:
@@ -532,19 +548,28 @@ def _negative_joint(
     bulks: list[Pseudobulk],
     shifts: np.ndarray,
     copies: np.ndarray,
+    purity: np.ndarray,
 ) -> float:
     """Minus the joint log-likelihood at `exp(log_value)` for `which` dispersion."""
     value = float(np.exp(log_value))
     alpha, tau = (value, other) if which == "alpha" else (other, value)
-    log_mu, p = _parameters(copies)
-    return -sum(
-        float(
-            np.sum(
-                _emission(log_mu[z] - s, p[z], _with(b, alpha, tau), np.arange(z.size))
-            )
+    total = 0.0
+
+    for z, b, s, f in zip(paths, bulks, shifts, purity, strict=True):
+        log_mu, p = _parameters(copies, float(f))
+        bins = np.arange(z.size)
+        total += float(
+            np.sum(_emission(log_mu[z] - s, p[z], _with(b, alpha, tau), bins))
         )
-        for z, b, s in zip(paths, bulks, shifts, strict=True)
-    )
+
+    return -total
+
+
+def _negative_purity(
+    purity: float, copies: np.ndarray, z: np.ndarray, shift: float, bulk: Pseudobulk
+) -> float:
+    log_mu, p = _parameters(copies, purity)
+    return -float(np.sum(_emission(log_mu[z] - shift, p[z], bulk, np.arange(z.size))))
 
 
 def integer_em(
@@ -560,6 +585,7 @@ def integer_em(
     zero_normal: bool = True,
     max_iter: int = 20,
     max_inner: int = 10,
+    fit_purity: bool = False,
 ) -> IntegerFit:
     """EM over integer states: the copies are the M-step's parameters (#362).
 
@@ -571,6 +597,11 @@ def integer_em(
     with the fit's transitions. It starts from `start` and the continuous
     fit's paths, shifts and dispersions, and stops when an iteration changes
     no path and no pair.
+
+    With `fit_purity` each tumour clone also carries a tumour fraction,
+    fitted beside its shift in `[0.05, 1]` from 1: its spots are that
+    fraction tumour and the rest normal (:func:`_parameters`). The normal
+    clone's is 1, having no tumour to dilute.
     """
     from scipy.optimize import minimize_scalar
 
@@ -581,6 +612,7 @@ def integer_em(
     bulks = [bulk for _, bulk, _ in clones]
     shifts = np.array([shift for _, _, shift in clones], dtype=np.float64)
     alpha, tau = bulks[0].alpha, bulks[0].tau
+    purity = np.ones(len(clones))
     trace: list[float] = []
     total = -np.inf
     iteration = 0
@@ -592,15 +624,25 @@ def integer_em(
         updated = copies.copy()
 
         for _ in range(max_inner):  # the M-step to its own fixed point
-            previous = (updated.copy(), shifts.copy())
+            previous = (updated.copy(), shifts.copy(), purity.copy())
             copies_m = updated
-            log_mu, p = _parameters(copies_m)
 
             for i, (z, bulk) in enumerate(zip(paths, fitted(alpha, tau), strict=True)):
+                if fit_purity and i != normal_clone:
+                    purity[i] = float(
+                        minimize_scalar(
+                            _negative_purity,
+                            bounds=(0.05, 1.0),
+                            args=(copies_m, z, float(shifts[i]), bulk),
+                            method="bounded",
+                        ).x
+                    )
+
                 if zero_normal and i == normal_clone:
                     shifts[i] = 0.0
                     continue
 
+                log_mu, p = _parameters(copies_m, float(purity[i]))
                 shifts[i] = float(
                     minimize_scalar(
                         _negative_shifted,
@@ -615,7 +657,7 @@ def integer_em(
                     minimize_scalar(
                         _negative_joint,
                         bounds=(np.log(alpha) - 5.0, np.log(alpha) + 5.0),
-                        args=("alpha", tau, paths, bulks, shifts, copies_m),
+                        args=("alpha", tau, paths, bulks, shifts, copies_m, purity),
                         method="bounded",
                     ).x
                 )
@@ -625,7 +667,7 @@ def integer_em(
                     minimize_scalar(
                         _negative_joint,
                         bounds=(np.log(tau) - 5.0, np.log(tau) + 5.0),
-                        args=("tau", alpha, paths, bulks, shifts, copies_m),
+                        args=("tau", alpha, paths, bulks, shifts, copies_m, purity),
                         method="bounded",
                     ).x
                 )
@@ -641,21 +683,24 @@ def integer_em(
                 max_total_copy=max_total_copy,
                 normal=normal,
                 distinct=True,
+                purity=purity.tolist(),
             )
             visited = np.unique(np.concatenate(paths))
             updated = copies_m.copy()
             updated[visited] = shared.copies[visited]
 
-            if np.array_equal(updated, previous[0]) and np.allclose(
-                shifts, previous[1], atol=1e-4
+            if (
+                np.array_equal(updated, previous[0])
+                and np.allclose(shifts, previous[1], atol=1e-4)
+                and np.allclose(purity, previous[2], atol=1e-4)
             ):
                 break
 
-        log_mu, p = _parameters(updated)
         new_paths = []
         total = 0.0
 
-        for z, bulk, s in members:
+        for (z, bulk, s), f in zip(members, purity, strict=True):
+            log_mu, p = _parameters(updated, float(f))
             bins = np.arange(z.size)
             emission = np.stack(
                 [_emission(log_mu[k] - s, p[k], bulk, bins) for k in range(n_states)]
@@ -673,4 +718,6 @@ def integer_em(
         if unchanged:
             break
 
-    return IntegerFit(copies, paths, shifts, alpha, tau, total, iteration, trace)
+    return IntegerFit(
+        copies, paths, shifts, alpha, tau, total, iteration, trace, purity
+    )

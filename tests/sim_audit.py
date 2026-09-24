@@ -12,6 +12,10 @@ The four ARIs are `tests.recovery_audit`'s, on the sample's truth:
   planted `(A, B)` at the bin's midpoint;
 - **copy state, integer**: the decoded `(A, B)` against the same.
 
+`--pure` first redraws the tumour spots as pure tumour
+(`tests.sim_fixtures.purify`): the simulated spots carry about 8 per cent
+normal admixture, which no pair `(A, B)` at `p = A / (A + B)` can fit.
+
 `--oracle-start` sets `annotation.clone_label` to the sample's
 `truth_clone_labels.tsv`, `cnaster`'s own known-labels mode: the planted
 clones start phasing and the BAF stage in place of the grid
@@ -198,10 +202,21 @@ def main() -> None:
         action="store_true",
         help="start the BAF stage from the planted clone labels",
     )
+    parser.add_argument(
+        "--pure",
+        action="store_true",
+        help="redraw the tumour spots pure (`tests.sim_fixtures.purify`) first",
+    )
     parser.add_argument("flags", nargs=argparse.REMAINDER)
     arguments = parser.parse_args()
 
     sample = load_simulated(SAMPLES.get(arguments.sample, arguments.sample))
+
+    if arguments.pure:
+        from tests.sim_fixtures import purify
+
+        pure = purify(sample, Path(tempfile.mkdtemp()))
+        sample = load_simulated(pure.name, pure.parent)
     overrides = {
         k: yaml.safe_load(v)
         for k, _, v in (entry.partition("=") for entry in arguments.set)
