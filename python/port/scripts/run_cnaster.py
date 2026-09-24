@@ -229,6 +229,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     if arguments.config is None:
         _parser().error("a configuration is required unless --list is given")
 
+    # NB refused before the configuration is read: an argument error, not a
+    #    file error. The figure default is the one the run below computes.
+    if arguments.genomic_colours is not None and not (
+        not arguments.no_patch if arguments.figures is None else arguments.figures
+    ):
+        _parser().error("--genomic-colours needs the figure swaps")
+
     import yaml
 
     from port.extensions.config_audit import audit
@@ -312,9 +319,6 @@ def main(argv: Sequence[str] | None = None) -> int:
         if figures:
             selected = selected + FIGURE_SWAPS
         if arguments.genomic_colours is not None:
-            if not figures:
-                _parser().error("--genomic-colours needs the figure swaps")
-
             from port.patch import plot_genomic
 
             stack.callback(setattr, plot_genomic, "COLOUR_BY", plot_genomic.COLOUR_BY)
