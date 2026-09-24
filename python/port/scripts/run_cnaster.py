@@ -105,6 +105,16 @@ def _parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--sal",
+        action="store_true",
+        help=(
+            "substitute snakes_and_ladders routines where port measured a "
+            "gain (#312): alpha expansion with the Rust minimum cut for the "
+            "clone labelling, a lower Potts energy on every problem measured. "
+            "Off by default; no row reproduces cnaster."
+        ),
+    )
+    parser.add_argument(
         "--warm-up",
         action="store_true",
         help=(
@@ -161,6 +171,12 @@ def main(argv: Sequence[str] | None = None) -> int:
                 f"{module}.{cls}.{{forward,backward}}_lattice <- port.oxiport  "
                 "(#318, bitwise; --no-rust to omit)"
             )
+        from port.extensions.sal import SAL_ROWS
+
+        for row in SAL_ROWS:
+            print(
+                f"{row.cnaster} <- {row.sal}  (#{row.ticket}, {row.axis}; --sal to add)"
+            )
         return 0
 
     if arguments.config is None:
@@ -215,6 +231,18 @@ def main(argv: Sequence[str] | None = None) -> int:
             stack.enter_context(rust_lattices())
 
         selected = SWAPS if not arguments.no_patch else ()
+
+        # NB `--sal` selects the clone labelling through `port`'s
+        #    `pipeline_clone_assignment`, a `SWAPS` row; under `--no-patch`
+        #    that one row is installed alone, so the flag still means what it
+        #    says and the rest of the baseline stays `cnaster`'s.
+        if arguments.sal:
+            from port.extensions.sal import sal
+
+            if arguments.no_patch:
+                selected = tuple(
+                    swap for swap in SWAPS if swap.name == "pipeline_clone_assignment"
+                )
         if approx:
             selected = selected + NUMERIC_SWAPS
         if figures:
@@ -224,6 +252,9 @@ def main(argv: Sequence[str] | None = None) -> int:
 
             selected = selected + SHIFT_SWAPS
             stack.enter_context(logmu_shift())
+
+        if arguments.sal:
+            stack.enter_context(sal(shift=shift))
 
             if arguments.no_patch:
                 print(
@@ -240,7 +271,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                 + (", figures included" if figures else "")
                 + (", approx included" if approx else "")
                 + (", shift included" if shift else "")
-                + (", rust lattices" if rust else ""),
+                + (", rust lattices" if rust else "")
+                + (", sal included" if arguments.sal else ""),
                 file=sys.stderr,
             )
         else:

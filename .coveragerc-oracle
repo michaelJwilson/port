@@ -84,10 +84,13 @@ include =
     */snakes_and_ladders/opt/emission_mixture.py
     */snakes_and_ladders/opt/mixture.py
     */snakes_and_ladders/sim/potts.py
+    */snakes_and_ladders/backend.py
 # `sim/potts.py` joined on #312's pin bump: `energy`, the Potts referee
 # #246 scores both solvers with, is imported from where it is defined since
 # sal main stopped re-exporting it from `search.alpha_expansion`. The
 # surface did not grow in what is refereed, only in where it is named.
+# `backend.py` joined with `--sal` (#312): the Rust minimum cut is selected by
+# its `Backend`, and `tests/test_sal_rows.py` pins that cut to the Python one.
 #
 # 1,209 of 2,582 statements, 46.82 per cent. `ragged.py` joined the surface
 # when #667 landed and the fixture began planting unequal chromosomes against
