@@ -171,11 +171,17 @@ def _installed() -> set[str]:
     """
     from importlib import import_module
 
-    from port.pipeline import FIGURE_SWAPS, NUMERIC_SWAPS, SHIFT_SWAPS, SWAPS
+    from port.pipeline import (
+        COPY_SWAPS,
+        FIGURE_SWAPS,
+        NUMERIC_SWAPS,
+        SHIFT_SWAPS,
+        SWAPS,
+    )
 
     reached = set()
 
-    for table in (SWAPS, NUMERIC_SWAPS, FIGURE_SWAPS, SHIFT_SWAPS):
+    for table in (SWAPS, NUMERIC_SWAPS, FIGURE_SWAPS, SHIFT_SWAPS, COPY_SWAPS):
         for swap in table:
             module_name, _, attribute = swap.replacement.partition(":")
 

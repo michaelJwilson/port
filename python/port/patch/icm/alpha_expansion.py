@@ -53,6 +53,7 @@ cycles rather than ICM iterations.
 from __future__ import annotations
 
 import numpy as np
+from snakes_and_ladders.backend import Backend
 from snakes_and_ladders.search.alpha_expansion import alpha_expansion
 from snakes_and_ladders.sim.graph import PottsGraph
 from snakes_and_ladders.sim.potts import energy
@@ -138,8 +139,15 @@ def alpha_expansion_sweep(
     epsilon: float = 0.0,
     min_clone_spots: int = 200,
     cost_zeropoint: float = 0.0,
+    backend: Backend = Backend.PYTHON,
 ) -> IcmResult:
     """`icm_sweep`'s signature, upstream's solver.
+
+    `backend` picks the minimum-cut solver and nothing else. `Backend.RUST`
+    returns the same labelling as the Python cut on every problem #312
+    measured -- four from a dev run and six at stress -- at 7 to 38 times
+    the speed; sal keeps it opt-in because a degenerate network can admit a
+    second minimum cut of equal energy (search/alpha_expansion.py:430).
 
     `assignment` is **updated in place**, as `icm_sweep` does, because the
     call site reads the array rather than a return value.
@@ -164,6 +172,7 @@ def alpha_expansion_sweep(
         values,
         n_states,
         start=np.asarray(assignment, dtype=np.int64).copy(),
+        backend=backend,
     )
 
     labelling = np.asarray(result.labelling, dtype=assignment.dtype)
