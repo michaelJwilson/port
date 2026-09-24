@@ -240,6 +240,8 @@ labelling. That row runs alpha expansion with the Rust minimum cut, then
 `cnaster`'s ICM for its 200-spot floor. On the dev instance it recovers the
 planted clones at ARI 1.000 against the default's 0.919, in 29 s against
 41 s. `port.extensions.sal` lists what was measured and not admitted.
+`docs/audit-recovery.md` carries its recovery against the planted truth at
+four configurations (#313).
 At this instance the emission array is about 0.3 GB against an 11.35 GB
 peak, which says plotting caps this run rather than the emission array --
 a different regime from #90's declared scale, not a contradiction of it.
