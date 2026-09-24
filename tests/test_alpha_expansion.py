@@ -241,8 +241,14 @@ def _forbidding(
 
 
 @pytest.mark.oracle
+@pytest.mark.patch
 def test_a_finite_penalty_keeps_the_minimizer_of_the_forbidding_field() -> None:
     """Brute force over every labelling of a 3 x 3 lattice, three labels.
+
+    The referee is `cnaster`'s objective itself: `potts_energy` on the `-inf`
+    field is its negation up to a constant
+    (`test_the_energy_is_minus_cnasters_objective_up_to_a_constant`), so the
+    finite field must leave `cnaster`'s maximizer where it was.
 
     The global minimum of the energy with `-inf` entries equals that with
     `forbidden_as_finite`'s penalty, and the minimizer takes no forbidden
