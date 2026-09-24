@@ -239,7 +239,7 @@ def test_no_declared_drop_in_is_quietly_installed() -> None:
     The converse -- every drop-in either installed or declared -- is **not**
     asserted here, and deliberately. `python/port/patch` holds the pieces
     the replacements are built from as well as the replacements themselves
-    (`hmrf_utils`, `hmrf/invariants`, `icm/interface`, `plotting/clone_
+    (`hmrf/invariants`, `icm/interface`, `plotting/clone_
     paths`), and those are reached through an installed swap rather than
     being one. Separating the two needs a `cnaster` counterpart per module,
     which is #281's remaining half.
