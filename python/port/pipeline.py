@@ -49,6 +49,7 @@ from types import ModuleType
 from typing import Any
 
 __all__ = [
+    "COPY_SWAPS",
     "FIGURE_SWAPS",
     "NUMERIC_SWAPS",
     "SHIFT_SWAPS",
@@ -305,6 +306,36 @@ Its own table because every fitted rate moves, which `CLAUDE.md` forbids
 doing silently; `run_cnaster_port` installs it unless `--no-shift` is given,
 and `port.patch.hmm_nophasing.logmu_shift()` is what turns the class's flag
 on for the run.
+"""
+
+
+COPY_SWAPS: tuple[Swap, ...] = (
+    Swap(
+        "cnaster.integer_copy",
+        "hill_climbing_integer_copynumber_fixdiploid_milp",
+        "port.patch.integer_copy:hill_climbing_integer_copynumber_fixdiploid_milp",
+        313,
+    ),
+    Swap(
+        "cnaster.integer_copy",
+        "hill_climbing_integer_copynumber_oneclone",
+        "port.patch.integer_copy:hill_climbing_integer_copynumber_oneclone",
+        313,
+    ),
+)
+"""The integer copy decoders, under the caps the configuration states.
+
+`run_cnaster` decodes under `cnaster`'s defaults, `A + B <= 6` and
+`A, B <= 5`, and reads no key that would change them, so #313's chr7 --
+planted at `2 mu = 10` -- could not be decoded by any configuration. These
+read `int_copy_num.max_total_copy` and apply it to the total and to each
+allele; `tests/run_config.py` states 12.
+
+**Its own table, and on by default.** Where the configuration states no cap
+the decode is `cnaster`'s, bitwise (`tests/test_integer_copy_patch.py`); where
+it states one the output changes, which `SWAPS` promises never to do.
+`run_cnaster_port` installs it unless `--no-copy-cap` is given, and
+`--no-patch` leaves it out with the rest.
 """
 
 

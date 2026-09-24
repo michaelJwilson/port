@@ -5,6 +5,9 @@ nothing, or govern something other than its name says, and the run proceeds
 the same either way. `audit` reports those, per key, against the installed
 `cnaster`:
 
+- **port**: no live `cnaster` module reads it, but a `port` patch does, in
+  :data:`PORT_READS`; `run_cnaster` ignores it and `run_cnaster_port`
+  applies it;
 - **unread**: no live module reads it. Reads are found by walking the AST of
   every installed module outside `deprecated/` and `sandbox/`, so a read in a
   comment or inside a string literal does not count, plus the indirect reads
@@ -32,7 +35,7 @@ from functools import cache
 from pathlib import Path
 from typing import Any
 
-__all__ = ["INDIRECT", "Finding", "audit", "cnaster_reads"]
+__all__ = ["INDIRECT", "PORT_READS", "Finding", "audit", "cnaster_reads"]
 
 INDIRECT: frozenset[tuple[str, str]] = frozenset(
     {
@@ -44,6 +47,11 @@ INDIRECT: frozenset[tuple[str, str]] = frozenset(
     }
 )
 """Reads the AST walk cannot see, because the section is bound to a name first."""
+
+PORT_READS: dict[tuple[str, str], str] = {
+    ("int_copy_num", "max_total_copy"): "--copy-cap (#313)",
+}
+"""Keys `cnaster` never reads that a `port` patch does, and the flag that reads them."""
 
 NUMBER = re.compile(r"^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$")
 
@@ -140,6 +148,15 @@ def audit(document: dict[str, Any], *, check_paths: bool = True) -> list[Finding
                             f"unread by solver {document['hmm'].get('solver')!r}",
                         )
                     )
+            elif (section, key) in PORT_READS and (section, key) not in reads:
+                findings.append(
+                    Finding(
+                        name,
+                        "port",
+                        f"cnaster ignores it; run_cnaster_port reads it under "
+                        f"{PORT_READS[section, key]}",
+                    )
+                )
             elif (section, key) not in reads:
                 findings.append(
                     Finding(name, "unread", "no live cnaster code reads it")

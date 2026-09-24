@@ -73,7 +73,12 @@ def test_the_shipped_config_carries_what_324_tabulates() -> None:
 
 @pytest.mark.warning
 def test_the_test_config_carries_only_what_it_states(tmp_path: Path) -> None:
-    """The mirror's unread keys and the floor; nothing disabled, nothing a string."""
+    """The mirror's unread keys and the floor; nothing disabled, nothing a string.
+
+    `int_copy_num.max_total_copy` (#313) is `port`'s: `cnaster` never reads it,
+    so a plain `run_cnaster` ignores the 12 the test config states, while
+    `run_cnaster_port --copy-cap` applies it. Reported as `port`, not `unread`.
+    """
     from tests.fixtures import dev_instance
     from tests.run_config import run_cnaster_config
     from tests.tmp_inputs import write_tmp_inputs
@@ -84,7 +89,9 @@ def test_the_test_config_carries_only_what_it_states(tmp_path: Path) -> None:
         truth, unsegment(truth, flip_every=0, unassigned_genes=0), tmp_path
     )
 
-    assert _kinds(run_cnaster_config(written, truth), check_paths=False) == UNUSED
+    assert _kinds(run_cnaster_config(written, truth), check_paths=False) == UNUSED | {
+        ("int_copy_num.max_total_copy", "port")
+    }
 
 
 @pytest.mark.infra
@@ -109,3 +116,17 @@ def test_audit_config_lists_the_findings_and_runs_nothing(
 
     assert "unread   hmm.params" in printed
     assert "path     references.geneticmap_file" in printed
+
+
+@pytest.mark.infra
+def test_a_key_only_port_reads_is_reported_as_ports_not_as_unread() -> None:
+    """`max_total_copy` is read by `--copy-cap` and by no live `cnaster` code."""
+    from port.extensions.config_audit import PORT_READS, cnaster_reads
+
+    document = {"int_copy_num": {"max_total_copy": 12}}
+
+    assert ("int_copy_num", "max_total_copy") in PORT_READS
+    assert ("int_copy_num", "max_total_copy") not in cnaster_reads(("int_copy_num",))
+    assert _kinds(document, check_paths=False) == {
+        ("int_copy_num.max_total_copy", "port")
+    }
