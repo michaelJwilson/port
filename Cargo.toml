@@ -18,6 +18,7 @@ name = "oxiport"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-# Add `numpy` here when a binding first takes or returns an array; nothing
-# does yet, and an unused dependency is build time paid for nothing.
 pyo3 = { version = "0.29", features = ["extension-module"] }
+# The lattice bindings take and return arrays (#318). BSD-2-Clause, PyO3's
+# own NumPy bindings.
+numpy = "0.29"
