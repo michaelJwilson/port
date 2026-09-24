@@ -211,6 +211,7 @@ run_cnaster_port --no-figures config.yaml    # the replacements that reproduce b
 run_cnaster_port --sal config.yaml           # snakes_and_ladders routines where port measured a gain
 run_cnaster_port --no-copy-cap config.yaml   # cnaster's integer copy caps, A + B <= 6, whatever the config states
 run_cnaster_port --copy-errors config.yaml   # also every (A, B) each state's error bars admit
+run_cnaster_port --copy-decode shared config.yaml  # one (A, B) per continuous state, as before #371
 run_cnaster_port --time-stages config.yaml   # what the replacements cost in the run
 run_cnaster_port --no-floor-merge config.yaml  # cnaster's random 200-spot floor (and --no-refinement-mask, --no-distinct-init)
 run_calicost config.yaml                     # CalicoST on the same fixture files, at port's configuration
@@ -258,16 +259,19 @@ at a stated 12 (`tests/test_integer_copy_patch.py`), and the copy-lattice
 fixture's states decode exactly at known states with only the dispersions
 fitted (`tests/test_copy_decode_known_states.py`).
 
-**A finer decode is in the package, not yet in the written output** (#367).
+**The written copies are the lattice decode** (#370, #371).
 `port.extensions.copy_likelihood.lattice_decode` gives every `(A, B)` its
 own HMM state and decodes each clone by Viterbi, with a per-clone tumour
 fraction (its spots `rho` tumour, the rest normal) and a parsimony prior of
-0.5 nats per bin on `|A + B - 2|`. On CalicoST's simulated samples it
-reaches copy ARI 0.90-0.91 on the admixed samples where the per-state
-decode reaches 0.37-0.79, and 0.95-0.98 on pure ones (#362). `cnaster`'s
-output writes one pair per continuous state, so `run_cnaster_port` still
-writes the per-state decode; the decoders compared and set aside are in
-`port.sandbox.integer_decoding`.
+0.5 nats per bin on `|A + B - 2|`. Its pairs are per bin, and
+`run_cnaster_port` writes them to `cnv_seglevel.tsv`, `cnv_genelevel.tsv`
+and the genomic figures; the per-state table carries each state's most
+frequent pair, and `copy_decode.tsv` the fitted fractions, shifts and
+dispersions. Scored from the written files on CalicoST's simulated samples
+(#371), copy ARI is 0.95-0.98 on pure samples and 0.73-0.91 on admixed ones,
+where the per-state decode wrote 0.37-0.79 on the admixed samples with
+planted clones. `--copy-decode shared` writes the per-state decode instead;
+the decoders compared and set aside are in `port.sandbox.integer_decoding`.
 
 **`--copy-errors` is off by default** (#353). It adds
 `cnv_copy_sets.tsv` beside the fit: for each fitted state, every integer
