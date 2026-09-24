@@ -1,4 +1,4 @@
-"""`fit_copies`' EMs recover planted pairs, paths and a tumour clone's shift (#362).
+"""`lattice_decode` recovers planted pairs, a tumour clone's shift and fraction (#362).
 
 Two clones share four states' `(A, B)`: a normal clone and a tumour clone
 whose depth is scaled by `exp(-SHIFT)`, as the shifted model's `logmu_shift`
@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
-from port.extensions.copy_likelihood import VITERBI, Pseudobulk, Scheme, fit_copies
+from port.extensions.copy_likelihood import Pseudobulk, lattice_decode
 
 PAIRS = np.array([[1, 1], [2, 1], [3, 1], [2, 2]])
 SHIFT = 0.4
@@ -65,30 +65,6 @@ def _scrambled(paths: list[np.ndarray], seed: int) -> list[np.ndarray]:
 LOG_TRANSMAT = np.log(np.full((4, 4), 1e-4 / 3) + np.eye(4) * (1 - 1e-4 - 1e-4 / 3))
 
 
-@pytest.mark.end2end
-@pytest.mark.parametrize("seed", [0, 1])
-def test_the_fit_states_em_recovers_pairs_paths_and_the_shift(seed: int) -> None:
-    """Every pair, every bin's state, and `SHIFT` to 0.02, from a scrambled start."""
-    paths, bulks = _planted(seed)
-    fitted = fit_copies(
-        [(z, b, 0.0) for z, b in zip(_scrambled(paths, seed), bulks, strict=True)],
-        Scheme(states="fit", temperatures=(0.0,) * 10, distinct=True),
-        n_states=4,
-        normal=0,
-        normal_clone=0,
-        max_total_copy=6,
-        log_transmat=LOG_TRANSMAT,
-        log_startprob=np.full(4, -np.log(4)),
-        lengths=np.array([N_OBS]),
-    )
-
-    np.testing.assert_array_equal(fitted.states, PAIRS)
-    for found, planted in zip(fitted.paths, paths, strict=True):
-        np.testing.assert_array_equal(found, planted)
-    assert fitted.shifts[0] == 0.0
-    assert abs(fitted.shifts[1] - SHIFT) < 0.02
-
-
 LOH_PAIRS = np.array([[1, 1], [2, 1], [0, 1], [2, 2]])
 """`PAIRS` with LOH for `(3, 1)`: the one kind of state no fraction can mimic."""
 
@@ -115,17 +91,13 @@ def test_half_purity_mimics_every_pair_with_both_alleles(pair: tuple[int, int]) 
 @pytest.mark.parametrize("seed", [0, 1])
 def test_the_lattice_viterbi_em_recovers_every_bins_pair(seed: int) -> None:
     """One state per pair, fractions held at 1: each bin's pair and the shift."""
-    from dataclasses import replace
-
     paths, bulks = _planted(seed)
-    fitted = fit_copies(
+    fitted = lattice_decode(
         [(z, b, 0.0) for z, b in zip(paths, bulks, strict=True)],
-        replace(VITERBI, fit_purity=False),
-        n_states=4,
-        normal=0,
         normal_clone=0,
         max_total_copy=6,
         lengths=np.array([N_OBS]),
+        fit_purity=False,
     )
 
     for pairs, planted in zip(fitted.pairs, paths, strict=True):
@@ -138,11 +110,8 @@ def test_the_lattice_viterbi_em_recovers_every_bins_pair(seed: int) -> None:
 def test_the_viterbi_em_recovers_a_planted_tumour_fraction(seed: int) -> None:
     """With LOH planted, `rho = 0.8` to 0.03, and every bin's pair."""
     paths, bulks = _planted(seed, LOH_PAIRS, PURITY)
-    fitted = fit_copies(
+    fitted = lattice_decode(
         [(z, b, 0.0) for z, b in zip(paths, bulks, strict=True)],
-        VITERBI,
-        n_states=4,
-        normal=0,
         normal_clone=0,
         max_total_copy=6,
         lengths=np.array([N_OBS]),
@@ -152,29 +121,3 @@ def test_the_viterbi_em_recovers_a_planted_tumour_fraction(seed: int) -> None:
     assert abs(fitted.purity[1] - PURITY) < 0.03
     for pairs, planted in zip(fitted.pairs, paths, strict=True):
         np.testing.assert_array_equal(pairs, LOH_PAIRS[planted])
-
-
-@pytest.mark.end2end
-@pytest.mark.parametrize("dispersion", ["poisson", "relax"])
-def test_the_dispersions_may_start_at_the_poisson_limit(dispersion: str) -> None:
-    """Every bin's pair from the Poisson/binomial start; relaxed, `alpha` to 2x."""
-    from dataclasses import replace
-
-    paths, bulks = _planted(0, LOH_PAIRS, PURITY)
-    fitted = fit_copies(
-        [(z, b, 0.0) for z, b in zip(paths, bulks, strict=True)],
-        replace(VITERBI, dispersion=dispersion),  # type: ignore[arg-type]
-        n_states=4,
-        normal=0,
-        normal_clone=0,
-        max_total_copy=6,
-        lengths=np.array([N_OBS]),
-    )
-
-    for pairs, planted in zip(fitted.pairs, paths, strict=True):
-        np.testing.assert_array_equal(pairs, LOH_PAIRS[planted])
-
-    if dispersion == "poisson":
-        assert (fitted.alpha, fitted.tau) == (0.0, np.inf)
-    else:
-        assert ALPHA / 2.0 < fitted.alpha < ALPHA * 2.0

@@ -5,8 +5,7 @@ likelihood the EM fits identifies each state's integer `(A, B)`. So the
 referee is the truth the counts were drawn from: a clone-sized pseudobulk
 under the shifted NB/BB model, planted `(A, B)` including totals above
 `cnaster`'s 6 (`end2end` against the planted pairs). The decode is held to
-be the likelihood's own maximum over single-state moves, and the tempered
-E-step to reach Viterbi's path as its temperature falls (`analytic`).
+be the likelihood's own maximum over single-state moves (`analytic`).
 """
 
 from __future__ import annotations
@@ -72,17 +71,14 @@ def _offset(path: np.ndarray, bulk: Pseudobulk) -> float:
 @pytest.mark.parametrize("shift", [True, False], ids=["shifted", "unshifted"])
 def test_the_shared_decode_recovers_every_planted_pair(shift: bool) -> None:
     """All six states exactly, `(4, 6)` and `(5, 4)` above cnaster's cap included."""
-    from port.extensions.copy_likelihood import SHARED, fit_copies
+    from port.extensions.copy_likelihood import shared_decode
 
     path, bulk = _draw(shift=shift)
-    fitted = fit_copies(
+    fitted = shared_decode(
         [(path, bulk, _offset(path, bulk) if shift else 0.0)],
-        SHARED,
         n_states=len(PLANTED),
         normal=0,
-        normal_clone=0,
         max_total_copy=12,
-        zero_normal=False,
     )
 
     np.testing.assert_array_equal(fitted.states, PLANTED)
@@ -93,23 +89,19 @@ def test_the_shared_decode_recovers_every_planted_pair(shift: bool) -> None:
 def test_the_shared_decode_is_each_states_likelihood_maximum() -> None:
     """With the path held, no other pair for any one state raises the likelihood."""
     from port.extensions.copy_likelihood import (
-        SHARED,
         _emission,
         _parameters,
         candidates,
-        fit_copies,
+        shared_decode,
     )
 
     path, bulk = _draw()
     shift = _offset(path, bulk)
-    fitted = fit_copies(
+    fitted = shared_decode(
         [(path, bulk, shift)],
-        SHARED,
         n_states=len(PLANTED),
         normal=0,
-        normal_clone=0,
         max_total_copy=12,
-        zero_normal=False,
     )
 
     def likelihood(copies: np.ndarray) -> float:
@@ -125,31 +117,6 @@ def test_the_shared_decode_is_each_states_likelihood_maximum() -> None:
             trial = fitted.states.copy()
             trial[k] = pair
             assert likelihood(trial) <= best + 1e-9
-
-
-@pytest.mark.analytic
-def test_tempering_to_a_low_temperature_is_viterbi() -> None:
-    """At `T -> 0` each bin's responsibility is one-hot on Viterbi's state."""
-    from port.extensions.copy_likelihood import (
-        _forward_backward,
-        _log_emissions,
-        _viterbi,
-        candidates,
-    )
-
-    path, bulk = _draw()
-    lattice = candidates(6)
-    n = len(lattice)
-    transmat = np.log(np.full((n, n), 1e-4 / (n - 1)) + np.eye(n) * (1 - 1e-4))
-    start = np.full(n, -np.log(n))
-    emission = _log_emissions(lattice, _offset(path, bulk), 1.0, bulk)
-    lengths = np.array([path.size])
-
-    best, _ = _viterbi(emission, transmat, start, lengths)
-    cold = _forward_backward(emission, transmat, start, lengths, 1e-3)
-
-    np.testing.assert_array_equal(np.argmax(cold, axis=0), best)
-    assert cold.max(axis=0).min() > 1.0 - 1e-9
 
 
 @pytest.mark.infra
@@ -214,19 +181,3 @@ def test_the_entry_point_decodes_the_planted_pair_through_the_likelihood(
     }
 
     assert pairs == {(1, 1), (1, 2)}
-
-
-@pytest.mark.analytic
-def test_the_poisson_dispersion_is_the_zero_dispersion_limit() -> None:
-    """`alpha = 0`, `tau = inf` agree with NB and BB at `alpha = 1e-9`, `tau = 1e9`."""
-    from dataclasses import replace
-
-    from port.extensions.copy_likelihood import _emission, _parameters
-
-    path, bulk = _draw()
-    log_mu, p = _parameters(PLANTED)
-    bins = np.arange(path.size)
-    exact = _emission(log_mu[path], p[path], replace(bulk, alpha=0.0, tau=np.inf), bins)
-    near = _emission(log_mu[path], p[path], replace(bulk, alpha=1e-9, tau=1e9), bins)
-
-    np.testing.assert_allclose(exact, near, rtol=1e-5)

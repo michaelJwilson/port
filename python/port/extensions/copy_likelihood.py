@@ -3,44 +3,29 @@
 `cnaster` decodes a clone's integer copies with an L1 cost on its fitted
 `(mu, p)` (`integer_copy.py`). Here they are fitted by the pseudobulk NB/BB
 likelihood itself, on the same counts, the same normal baseline and each
-clone's `logmu_shift`. One entry point, :func:`fit_copies`; what it does is
-set by a :class:`Scheme`'s flags:
+clone's `logmu_shift`. Two entry points:
 
-- `states`: `"fit"` keeps the continuous fit's states and chooses each one's
-  `(A, B)`, shared by every clone, in the M-step; `"lattice"` has one state
-  per `(A, B)` with `A + B <= max_total_copy`, so the pairs are fixed and the
-  path chooses among them;
-- `temperatures`: one EM iteration each. The E-step is forward-backward with
-  log emissions and transitions at `1 / T`, so as `T -> 0` each bin's
-  responsibility concentrates on one state, the Viterbi path's; `T = 0` is
-  Viterbi itself. Empty: no E-step, the continuous fit's paths held;
-- `dispersion`: `"fit"` fits `alpha` and `tau` at every M-step; `"poisson"`
-  fixes them at the Poisson and binomial limits (`alpha = 0`, `tau = inf`);
-  `"relax"` holds them there for the first EM iteration and fits them from
-  then on, so the first paths are chosen under the tightest likelihood;
-- `parsimony`: a log-prior of `-parsimony |A + B - 2|` per bin on each
-  state, in the E-step and the fraction's marginal. It decides among pairs the
-  counts cannot tell apart -- where read depth says little about the total, a
-  fraction and a total trade (`(0, 3)` at 0.78 against `(0, 1)` at 0.92 has
-  one allele share) -- and loses to any real difference in allele share;
-- `fit_purity`: each tumour clone's spots are a fraction `rho` tumour and the
-  rest normal. Depth `rho (A + B) / 2 + 1 - rho`, allele share
-  `(rho A + 1 - rho) / (rho (A + B) + 2 (1 - rho))`, `rho` fitted to the
-  marginal likelihood (the best path's, for `T = 0`). The normal clone's
-  `rho` is 1.
+- :func:`lattice_decode`, the default: one HMM state per `(A, B)` with
+  `A + B <= max_total_copy`, decoded per clone by Viterbi, in an EM whose
+  M-step fits each clone's shift and tumour fraction and the shared
+  dispersions. A tumour clone's spots are a fraction `rho` tumour and the
+  rest normal: depth `rho (A + B) / 2 + 1 - rho`, allele share
+  `(rho A + 1 - rho) / (rho (A + B) + 2 (1 - rho))`. A per-bin log-prior
+  `-parsimony |A + B - 2|` decides among pairs the counts cannot separate:
+  where read depth barely fixes the total, a fraction and a total trade, and
+  `(0, 3)` at 0.78 has `(0, 1)`'s allele share at 0.92.
+- :func:`shared_decode`, the pipeline's: the continuous fit's states and
+  paths held, each state's pair the one maximizing the likelihood summed over
+  every clone's bins in it. It is what `cnaster`'s per-state interface can
+  carry (`port.patch.integer_copy`).
 
-The M-step fits, in order, each clone's `rho` (with `fit_purity`) and shift
-(the normal clone's held at 0), the shared dispersions `alpha` and `tau`,
-and, for `"fit"` states, each state's pair. With paths and everything else
-held, the likelihood is a sum over states of terms each depending on one
-state's pair, so the one-pair-per-state MILP separates and each state's
-argmax solves it exactly; `distinct` adds that no two states share a pair,
-an assignment problem (Hungarian). Both constraint sets are totally
-unimodular, so no branching is needed. The normal state is `(1, 1)`.
-
-:data:`SHARED` is the pipeline's decode (`port.patch.integer_copy`);
-:data:`VITERBI` and :data:`TEMPERED` are the two EMs over every pair, and
-:data:`DEFAULT` is `VITERBI` with a parsimony prior.
+Measured on CalicoST's simulated samples (#362), pure and admixed, easy and
+hard, with planted and fitted clones: the lattice decode is best on 6 of 8
+fits by copy ARI and within 0.004 on the other 2, and scores 0.97-0.99 of
+altered clone-bins exactly (phase-free) on the pure samples against about
+0.6 on the admixed ones. What it was chosen over -- tempered E-steps, EMs
+over the continuous states, fixed or relaxed dispersions, CalicoST's own
+decoders -- is in `port.sandbox.integer_decoding`.
 """
 
 from __future__ import annotations
@@ -51,21 +36,38 @@ from dataclasses import dataclass
 from typing import Any, Literal
 
 import numpy as np
-from scipy.special import gammaln, logsumexp
+from scipy.special import gammaln
 
 __all__ = [
-    "DEFAULT",
-    "SHARED",
-    "TEMPERED",
-    "VITERBI",
     "CopyFit",
     "Pseudobulk",
-    "Scheme",
     "candidates",
     "capture",
     "captured_clones",
-    "fit_copies",
+    "lattice_decode",
+    "shared_decode",
 ]
+
+PARSIMONY = 0.5
+"""Nats per bin per unit of `|A + B - 2|`: the prior :func:`lattice_decode` uses."""
+
+ALPHA_BOUNDS = (np.log(1e-8), np.log(10.0))
+"""Where `alpha` is searched, in logs: from Poisson to ten times overdispersed."""
+
+TAU_BOUNDS = (0.0, np.log(1e8))
+"""Where `tau` is searched, in logs: from binomial to a flat allele share."""
+
+SHIFT_WINDOW = 0.35
+"""How far the start moves a clone's shift: less than `log 2`.
+
+`(2A, 2B)` at `shift + log 2` has `(A, B)`'s depth and allele share exactly,
+so a clone's ploidy is not identifiable under a free per-clone shift; a
+window under `log 2` keeps the continuous fit's scale rather than doubling
+it. On the pure easy fixture an unbounded search found the doubled genome.
+"""
+
+PURITY_GRID = (1.0, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3)
+"""Where the start looks for a clone's tumour fraction."""
 
 
 @dataclass
@@ -79,53 +81,6 @@ class Pseudobulk:
     log_lambda: np.ndarray
     alpha: float
     tau: float
-
-
-@dataclass(frozen=True)
-class Scheme:
-    """How :func:`fit_copies` fits; see the module docstring."""
-
-    states: Literal["fit", "lattice"] = "fit"
-    temperatures: tuple[float, ...] = ()
-    fit_purity: bool = False
-    distinct: bool = False
-    dispersion: Literal["fit", "poisson", "relax"] = "fit"
-    parsimony: float = 0.0
-
-
-SHARED = Scheme()
-"""The continuous fit's states and paths, each state's pair shared by every clone."""
-
-VITERBI = Scheme(states="lattice", temperatures=(0.0,) * 5, fit_purity=True)
-"""One state per pair, hard EM: Viterbi E-steps, `rho` to the best path."""
-
-DEFAULT = Scheme(
-    states="lattice", temperatures=(0.0,) * 5, fit_purity=True, parsimony=0.5
-)
-"""`VITERBI` with a parsimony of 0.5 nats: the best on the admixed simulated
-samples (#362), where read depth barely fixes the total and a fraction and a
-total otherwise trade."""
-
-TEMPERED = Scheme(
-    states="lattice", temperatures=(1.0, 0.5, 0.25, 0.1, 0.05), fit_purity=True
-)
-"""One state per pair, responsibilities tempered towards one state per bin."""
-
-
-@dataclass
-class CopyFit:
-    """Each clone's per-bin `(A, B)`, and what was fitted to reach them."""
-
-    pairs: list[np.ndarray]
-    """Per clone, `(n_obs, 2)`."""
-    states: np.ndarray
-    """`(n_states, 2)`: each state's pair."""
-    paths: list[np.ndarray]
-    shifts: np.ndarray
-    purity: np.ndarray
-    alpha: float
-    tau: float
-    log_likelihood: float
 
 
 def candidates(max_total_copy: int) -> np.ndarray:
@@ -253,202 +208,20 @@ def _viterbi(
     return path, total
 
 
-def _forward_backward(
-    log_emission: np.ndarray,
-    log_transmat: np.ndarray,
-    log_startprob: np.ndarray,
-    lengths: np.ndarray,
-    temperature: float,
-) -> np.ndarray:
-    """`(n_states, n_obs)` responsibilities with everything scaled by `1 / T`.
+@dataclass
+class CopyFit:
+    """Each clone's per-bin `(A, B)`, and what was fitted to reach them."""
 
-    At `T = 1` the HMM's posteriors; as `T -> 0` they concentrate on the
-    Viterbi path, one state per bin.
-    """
-    inverse = 1.0 / temperature
-    emission = log_emission * inverse
-    transmat = log_transmat * inverse
-    start_prob = log_startprob * inverse
-    gamma = np.empty_like(emission)
-    begin = 0
-
-    for length in np.asarray(lengths, dtype=np.int64):
-        stop = begin + int(length)
-        n = stop - begin
-        forward = np.empty((n, emission.shape[0]))
-        backward = np.zeros((n, emission.shape[0]))
-        forward[0] = start_prob + emission[:, begin]
-
-        for t in range(1, n):
-            forward[t] = (
-                logsumexp(forward[t - 1][:, None] + transmat, axis=0)
-                + emission[:, begin + t]
-            )
-
-        for t in range(n - 2, -1, -1):
-            backward[t] = logsumexp(
-                transmat + (emission[:, begin + t + 1] + backward[t + 1])[None, :],
-                axis=1,
-            )
-
-        joint = forward + backward
-        gamma[:, begin:stop] = np.exp(joint - logsumexp(joint, axis=1)[:, None]).T
-        begin = stop
-
-    return gamma
-
-
-def _weighted(
-    log_mu: np.ndarray,
-    p: np.ndarray,
-    shift: float,
-    bulk: Pseudobulk,
-    gamma: np.ndarray,
-    states: np.ndarray,
-) -> float:
-    """`sum_g sum_k gamma_kg log f(x_g | k)` over the states carrying weight."""
-    bins = np.arange(gamma.shape[1])
-    return float(
-        sum(
-            np.sum(gamma[k] * _emission(log_mu[k] - shift, p[k], bulk, bins))
-            for k in states
-        )
-    )
-
-
-def _negative_marginal(
-    purity: float,
-    lattice: np.ndarray,
-    shift: float,
-    bulk: Pseudobulk,
-    log_transmat: np.ndarray | None,
-    log_startprob: np.ndarray | None,
-    lengths: np.ndarray,
-    best: bool = False,
-    parsimony: float = 0.0,
-) -> float:
-    """Minus the clone's forward log-likelihood, every path summed, at `purity`.
-
-    With `best`, the best path's alone (Viterbi's), for the hard scheme.
-
-    The tumour fraction is shared by every bin, so it is fitted to the
-    marginal rather than to responsibilities computed at the old fraction,
-    which pin it: a bin placed at `(1, 5)` under a pure fit only loses
-    likelihood as the fraction falls, though `(0, 1)` would then fit it.
-    """
-    if log_transmat is None or log_startprob is None:
-        msg = "a tumour fraction is fitted to the marginal, which needs transitions"
-        raise ValueError(msg)
-
-    emission = _log_emissions(lattice, shift, purity, bulk, parsimony)
-    total = 0.0
-    begin = 0
-
-    for length in np.asarray(lengths, dtype=np.int64):
-        stop = begin + int(length)
-        forward = log_startprob + emission[:, begin]
-
-        for t in range(begin + 1, stop):
-            step = forward[:, None] + log_transmat
-            reduced = step.max(axis=0) if best else logsumexp(step, axis=0)
-            forward = reduced + emission[:, t]
-
-        total += float(forward.max() if best else logsumexp(forward))
-        begin = stop
-
-    return -total
-
-
-def _negative_shift_weighted(
-    shift: float,
-    log_mu: np.ndarray,
-    p: np.ndarray,
-    bulk: Pseudobulk,
-    gamma: np.ndarray,
-    states: np.ndarray,
-) -> float:
-    return -_weighted(log_mu, p, shift, bulk, gamma, states)
-
-
-def _negative_dispersion_weighted(
-    log_value: float,
-    which: str,
-    other: float,
-    bulks: list[Pseudobulk],
-    lattice: np.ndarray,
-    purity: np.ndarray,
-    shifts: np.ndarray,
-    gammas: list[np.ndarray],
-    floor: float,
-) -> float:
-    value = float(np.exp(log_value))
-    alpha, tau = (value, other) if which == "alpha" else (other, value)
-    total = 0.0
-
-    for i, bulk in enumerate(bulks):
-        log_mu, p = _parameters(lattice, float(purity[i]))
-        states = np.flatnonzero(gammas[i].max(axis=1) > floor)
-        total += _weighted(
-            log_mu, p, float(shifts[i]), _with(bulk, alpha, tau), gammas[i], states
-        )
-
-    return -total
-
-
-def _shared_pairs(
-    paths: list[np.ndarray],
-    bulks: list[Pseudobulk],
-    shifts: np.ndarray,
-    purity: np.ndarray,
-    *,
-    n_states: int,
-    lattice: np.ndarray,
-    normal: int,
-    distinct: bool,
-) -> np.ndarray:
-    """Each state's pair, shared by every clone, paths and the rest held."""
-    rates = [_parameters(lattice, float(f)) for f in purity]
-    one = (lattice[:, 0] == 1) & (lattice[:, 1] == 1)
-    copies = np.ones((n_states, 2), dtype=np.int64)
-    table: dict[int, np.ndarray] = {}
-
-    for k in np.unique(np.concatenate(paths)):
-        state = int(k)
-
-        if state == normal:
-            continue
-
-        scores = np.zeros(len(lattice))
-
-        for path, bulk, shift, (log_mu, p) in zip(
-            paths, bulks, shifts, rates, strict=True
-        ):
-            bins = np.flatnonzero(path == state)
-
-            if bins.size:
-                scores += np.array(
-                    [
-                        np.sum(_emission(log_mu[i] - shift, p[i], bulk, bins))
-                        for i in range(len(lattice))
-                    ]
-                )
-
-        table[state] = scores
-        copies[state] = lattice[int(np.argmax(scores))]
-
-    if distinct and table:
-        from scipy.optimize import linear_sum_assignment
-
-        order = sorted(table)
-        matrix = np.array([np.where(one, -np.inf, table[k]) for k in order])
-        rows, columns = linear_sum_assignment(
-            np.where(np.isfinite(matrix), -matrix, 1e300)
-        )
-
-        for row, column in zip(rows, columns, strict=True):
-            copies[order[row]] = lattice[column]
-
-    return copies
+    pairs: list[np.ndarray]
+    """Per clone, `(n_obs, 2)`."""
+    states: np.ndarray
+    """`(n_states, 2)`: each state's pair."""
+    paths: list[np.ndarray]
+    shifts: np.ndarray
+    purity: np.ndarray
+    alpha: float
+    tau: float
+    log_likelihood: float
 
 
 def _prior(states: np.ndarray, parsimony: float) -> np.ndarray:
@@ -461,7 +234,7 @@ def _log_emissions(
     shift: float,
     purity: float,
     bulk: Pseudobulk,
-    parsimony: float = 0.0,
+    parsimony: float,
 ) -> np.ndarray:
     """`(n_states, n_obs)` plus the prior, `-1e10` where a state cannot emit."""
     log_mu, p = _parameters(states, purity)
@@ -473,80 +246,49 @@ def _log_emissions(
     return np.asarray(emission + _prior(states, parsimony)[:, None])
 
 
-ALPHA_BOUNDS = (np.log(1e-8), np.log(10.0))
-"""Where `alpha` is searched, in logs: from Poisson to ten times overdispersed."""
-
-TAU_BOUNDS = (0.0, np.log(1e8))
-"""Where `tau` is searched, in logs: from binomial to a flat allele share."""
-
-SHIFT_WINDOW = 0.35
-"""How far :func:`_profile_start` moves a clone's shift: less than `log 2`.
-
-`(2A, 2B)` at `shift + log 2` has `(A, B)`'s depth and allele share exactly,
-so a clone's ploidy is not identifiable under a free per-clone shift; a
-window under `log 2` keeps the continuous fit's scale rather than doubling
-it. On the pure easy fixture an unbounded search found the doubled genome.
-"""
-
-PURITY_GRID = (1.0, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3)
-"""Where :func:`_profile_start` looks for a clone's tumour fraction."""
+def _best_path(
+    purity: float,
+    shift: float,
+    states: np.ndarray,
+    bulk: Pseudobulk,
+    chain: tuple[np.ndarray, np.ndarray, np.ndarray],
+    parsimony: float,
+) -> float:
+    """Minus the clone's best path's log-likelihood (Viterbi's) at `purity`, `shift`."""
+    log_transmat, log_startprob, lengths = chain
+    emission = _log_emissions(states, shift, purity, bulk, parsimony)
+    return -_viterbi(emission, log_transmat, log_startprob, lengths)[1]
 
 
-def _profile_start(
+def _start(
     states: np.ndarray,
     shift: float,
     bulk: Pseudobulk,
-    log_transmat: np.ndarray | None,
-    log_startprob: np.ndarray | None,
-    lengths: np.ndarray,
-    *,
-    best: bool,
-    fix_shift: bool,
-    parsimony: float = 0.0,
+    chain: tuple[np.ndarray, np.ndarray, np.ndarray],
+    parsimony: float,
+    grid: tuple[float, ...] = PURITY_GRID,
+    window: float = SHIFT_WINDOW,
 ) -> tuple[float, float]:
-    """A clone's `(purity, shift)` jointly, before any E-step.
+    """A tumour clone's `(purity, shift)` jointly, before any E-step.
 
-    The fraction and the shift trade against each other -- a lower fraction
-    at a lower shift reads as the same depth -- so fitting either alone from
-    a wrong start settles wherever the first E-step left the paths. So each
-    fraction on :data:`PURITY_GRID` gets its own best shift against the
-    marginal (every path summed; the best path's with `best`), and the best
-    pair starts the EM. On a pure planted clone the marginal is maximal at 1
-    by 1,000 nats over 0.4 (`tests/test_integer_em.py`).
+    The fraction and the shift trade against each other, so fitting either
+    alone from a wrong start settles wherever the first E-step left the
+    paths: each fraction on :data:`PURITY_GRID` gets its own best shift
+    within :data:`SHIFT_WINDOW`, and the best pair starts the EM.
     """
     from scipy.optimize import minimize_scalar
 
-    found: list[tuple[float, float, float]] = []
+    found = []
 
-    for fraction in PURITY_GRID:
-        if fix_shift:
-            value = _negative_marginal(
-                fraction,
-                states,
-                shift,
-                bulk,
-                log_transmat,
-                log_startprob,
-                lengths,
-                best,
-                parsimony,
-            )
+    for fraction in grid:
+        if window <= 0.0:
+            value = _best_path(fraction, shift, states, bulk, chain, parsimony)
             found.append((value, fraction, shift))
             continue
 
         result = minimize_scalar(
-            lambda s, f=fraction: _negative_marginal(
-                f,
-                states,
-                s,
-                bulk,
-                log_transmat,
-                log_startprob,
-                lengths,
-                best,
-                parsimony,
-            ),
-            bounds=(shift - SHIFT_WINDOW, shift + SHIFT_WINDOW),
+            lambda s, f=fraction: _best_path(f, s, states, bulk, chain, parsimony),
+            bounds=(shift - window, shift + window),
             method="bounded",
         )
         found.append((float(result.fun), fraction, float(result.x)))
@@ -555,119 +297,122 @@ def _profile_start(
     return fraction, shift
 
 
-def fit_copies(
+def _on_path(
+    shift: float, purity: float, states: np.ndarray, bulk: Pseudobulk, path: np.ndarray
+) -> float:
+    """The clone's log-likelihood along `path`."""
+    log_mu, p = _parameters(states, purity)
+    bins = np.arange(path.size)
+    return float(np.sum(_emission(log_mu[path] - shift, p[path], bulk, bins)))
+
+
+def _dispersions(
+    alpha: float,
+    tau: float,
+    states: np.ndarray,
+    paths: list[np.ndarray],
+    bulks: list[Pseudobulk],
+    shifts: np.ndarray,
+    purity: np.ndarray,
+) -> tuple[float, float]:
+    """The shared `alpha`, then `tau`, maximizing the likelihood along the paths."""
+    from scipy.optimize import minimize_scalar
+
+    def total(a: float, t: float) -> float:
+        return sum(
+            _on_path(float(s), float(f), states, _with(b, a, t), z)
+            for z, b, s, f in zip(paths, bulks, shifts, purity, strict=True)
+        )
+
+    alpha = float(
+        np.exp(
+            minimize_scalar(
+                lambda x: -total(float(np.exp(x)), tau),
+                bounds=ALPHA_BOUNDS,
+                method="bounded",
+            ).x
+        )
+    )
+    tau = float(
+        np.exp(
+            minimize_scalar(
+                lambda x: -total(alpha, float(np.exp(x))),
+                bounds=TAU_BOUNDS,
+                method="bounded",
+            ).x
+        )
+    )
+    return alpha, tau
+
+
+def lattice_decode(
     clones: list[tuple[np.ndarray, Pseudobulk, float]],
-    scheme: Scheme = SHARED,
     *,
-    n_states: int,
-    normal: int,
     normal_clone: int,
     max_total_copy: int,
-    log_transmat: np.ndarray | None = None,
-    log_startprob: np.ndarray | None = None,
     lengths: np.ndarray | None = None,
-    stay: float = 1.0 - 1e-6,
-    zero_normal: bool = True,
-    floor: float = 1e-6,
+    stay: float = 1.0 - 1e-7,
+    parsimony: float = PARSIMONY,
+    fit_purity: bool = True,
+    fit_shifts: bool = True,
+    dispersion: Literal["fit", "held", "poisson"] = "fit",
+    em: bool = True,
+    iterations: int = 5,
     max_inner: int = 10,
 ) -> CopyFit:
-    """Each clone's integer copies under `scheme` (see the module docstring).
+    """Each clone's per-bin `(A, B)`: the default decode (module docstring).
 
-    `clones` holds each clone's continuous path, pseudobulk and shift, in
-    the fit's order; `normal` is the continuous fit's normal state and
-    `normal_clone` the normal clone. `log_transmat`, `log_startprob` and
-    `lengths` are the fit's, for an E-step over its states; over the lattice
-    the transitions are `stay` on the diagonal, the rest even. Each M-step
-    iterates its blocks -- shifts, then tumour fractions, then dispersions,
-    then pairs -- until none moves, at most `max_inner` times.
+    `clones` holds each clone's continuous path (read for its length),
+    pseudobulk and shift, in the fit's order; `normal_clone` is held at
+    shift 0 and fraction 1. Transitions are `stay` on the diagonal and the
+    rest even.
+
+    Start: each tumour clone's fraction (on :data:`PURITY_GRID`, or 1
+    without `fit_purity`) and shift (within :data:`SHIFT_WINDOW`, or the
+    continuous fit's without `fit_shifts`), jointly, by :func:`_start`. Then,
+    with `em`, `iterations` times: each clone's Viterbi path (E-step); then
+    its shift and fraction and the shared `alpha` and `tau`, until none moves
+    or `max_inner` times (M-step). Without `em`, one Viterbi pass at the
+    start. `dispersion`: `"fit"` in the M-step, `"held"` at the continuous
+    fit's, `"poisson"` at the Poisson and binomial limits.
+
+    The flags are the simplifications the #362 audit measured; the defaults
+    are the decode it adopted.
     """
-    lattice = candidates(max_total_copy)
-    paths = [np.asarray(path, dtype=np.int64) for path, _, _ in clones]
+    from scipy.optimize import minimize_scalar
+
+    states = candidates(max_total_copy)
+    n = len(states)
+    transmat = np.log(
+        np.full((n, n), (1.0 - stay) / (n - 1))
+        + np.eye(n) * (stay - (1.0 - stay) / (n - 1))
+    )
+    start = np.full(n, -np.log(n))
     bulks = [bulk for _, bulk, _ in clones]
     shifts = np.array([shift for _, _, shift in clones], dtype=np.float64)
+    shifts[normal_clone] = 0.0
     purity = np.ones(len(clones))
-    limit = scheme.dispersion in ("poisson", "relax")
-    alpha, tau = (0.0, np.inf) if limit else (bulks[0].alpha, bulks[0].tau)
-    lengths = np.array([paths[0].size]) if lengths is None else np.asarray(lengths)
-
-    if scheme.states == "fit":
-        states = _shared_pairs(
-            paths,
-            [_with(b, alpha, tau) for b in bulks],
-            shifts,
-            purity,
-            n_states=n_states,
-            lattice=lattice,
-            normal=normal,
-            distinct=scheme.distinct,
-        )
-        states[normal] = (1, 1)
-        transmat, start = log_transmat, log_startprob
-        gammas: list[np.ndarray] | None = [np.eye(n_states)[:, path] for path in paths]
-    else:
-        states = lattice
-        n = len(lattice)
-        transmat = np.log(
-            np.full((n, n), (1.0 - stay) / (n - 1))
-            + np.eye(n) * (stay - (1.0 - stay) / (n - 1))
-        )
-        start = np.full(n, -np.log(n))
-        gammas = None
-
-    msg = "an E-step over the fit's states needs its log_transmat and log_startprob"
-
-    if (scheme.temperatures or scheme.fit_purity) and (
-        transmat is None or start is None
-    ):
-        raise ValueError(msg)
-
-    fit = _Blocks(
-        scheme,
-        bulks,
-        lattice,
-        n_states,
-        normal,
-        normal_clone,
-        zero_normal,
-        floor,
-        max_inner,
-        transmat,
-        start,
-        lengths,
+    alpha, tau = (
+        (0.0, np.inf) if dispersion == "poisson" else (bulks[0].alpha, bulks[0].tau)
     )
+    lengths = np.array([clones[0][0].size]) if lengths is None else lengths
+    chain = (transmat, start, np.asarray(lengths))
+    grid = PURITY_GRID if fit_purity else (1.0,)
 
-    if scheme.fit_purity:
-        for i, bulk in enumerate(bulks):
-            if i != normal_clone:
-                purity[i], shifts[i] = _profile_start(
-                    states,
-                    float(shifts[i]),
-                    _with(bulk, alpha, tau),
-                    transmat,
-                    start,
-                    lengths,
-                    best=bool(scheme.temperatures) and scheme.temperatures[0] == 0.0,
-                    fix_shift=zero_normal and i == normal_clone,
-                    parsimony=scheme.parsimony,
-                )
+    for i, bulk in enumerate(bulks):
+        if i != normal_clone and (fit_purity or fit_shifts):
+            purity[i], shifts[i] = _start(
+                states,
+                float(shifts[i]),
+                _with(bulk, alpha, tau),
+                chain,
+                parsimony,
+                grid,
+                SHIFT_WINDOW if fit_shifts else 0.0,
+            )
 
-    if gammas is not None and scheme.temperatures:
-        states, alpha, tau = fit.m_step(
-            gammas,
-            states,
-            shifts,
-            purity,
-            alpha,
-            tau,
-            scheme.temperatures[0] == 0.0,
-            held=limit,
-        )
-
-    for step, temperature in enumerate(scheme.temperatures):
-        if transmat is None or start is None:  # pragma: no cover -- refused above
-            raise ValueError(msg)
-
-        gammas = []
+    def e_step() -> tuple[list[np.ndarray], float]:
+        paths, total = [], 0.0
 
         for i, bulk in enumerate(bulks):
             emission = _log_emissions(
@@ -675,46 +420,62 @@ def fit_copies(
                 float(shifts[i]),
                 float(purity[i]),
                 _with(bulk, alpha, tau),
-                scheme.parsimony,
+                parsimony,
             )
+            path, score = _viterbi(emission, transmat, start, chain[2])
+            paths.append(path)
+            total += score
 
-            if temperature == 0.0:
-                path, _ = _viterbi(emission, transmat, start, lengths)
-                hard = np.zeros_like(emission)
-                hard[path, np.arange(path.size)] = 1.0
-                gammas.append(hard)
-            else:
-                gammas.append(
-                    _forward_backward(emission, transmat, start, lengths, temperature)
+        return paths, total
+
+    paths, total = e_step()
+
+    for _ in range(iterations if em else 0):
+        for _ in range(max_inner):
+            before = (shifts.copy(), purity.copy(), alpha, tau)
+
+            for i, bulk in enumerate(bulks):
+                if i == normal_clone:
+                    continue
+
+                fitted = _with(bulk, alpha, tau)
+
+                if fit_shifts:
+                    shifts[i] = float(
+                        minimize_scalar(
+                            lambda s, i=i, fitted=fitted, path=paths[i]: -_on_path(
+                                s, float(purity[i]), states, fitted, path
+                            ),
+                            bounds=(shifts[i] - 3.0, shifts[i] + 3.0),
+                            method="bounded",
+                        ).x
+                    )
+
+                if fit_purity:
+                    purity[i] = float(
+                        minimize_scalar(
+                            lambda f, i=i, fitted=fitted: _best_path(
+                                f, float(shifts[i]), states, fitted, chain, parsimony
+                            ),
+                            bounds=(0.05, 1.0),
+                            method="bounded",
+                        ).x
+                    )
+
+            if dispersion == "fit":
+                alpha, tau = _dispersions(
+                    alpha, tau, states, paths, bulks, shifts, purity
                 )
 
-        paths = [np.argmax(gamma, axis=0) for gamma in gammas]
-        states, alpha, tau = fit.m_step(
-            gammas,
-            states,
-            shifts,
-            purity,
-            alpha,
-            tau,
-            temperature == 0.0,
-            held=scheme.dispersion == "poisson"
-            or (scheme.dispersion == "relax" and step == 0),
-        )
+            if (
+                np.allclose(shifts, before[0], atol=1e-4)
+                and np.allclose(purity, before[1], atol=1e-4)
+                and np.isclose(alpha, before[2], rtol=1e-3)
+                and np.isclose(tau, before[3], rtol=1e-3)
+            ):
+                break
 
-    total = 0.0
-
-    for path, bulk, shift, f in zip(paths, bulks, shifts, purity, strict=True):
-        log_mu, p = _parameters(states, float(f))
-        total += float(
-            np.sum(
-                _emission(
-                    log_mu[path] - shift,
-                    p[path],
-                    _with(bulk, alpha, tau),
-                    np.arange(path.size),
-                )
-            )
-        )
+        paths, total = e_step()
 
     return CopyFit(
         [states[path] for path in paths],
@@ -728,125 +489,60 @@ def fit_copies(
     )
 
 
-@dataclass
-class _Blocks:
-    """The M-step's blocks, and what they hold fixed."""
+def shared_decode(
+    clones: list[tuple[np.ndarray, Pseudobulk, float]],
+    *,
+    n_states: int,
+    normal: int,
+    max_total_copy: int,
+) -> CopyFit:
+    """Each continuous state's `(A, B)`, one pair shared by every clone.
 
-    scheme: Scheme
-    bulks: list[Pseudobulk]
-    lattice: np.ndarray
-    n_states: int
-    normal: int
-    normal_clone: int
-    zero_normal: bool
-    floor: float
-    max_inner: int
-    transmat: np.ndarray | None
-    start: np.ndarray | None
-    lengths: np.ndarray
+    The continuous paths, shifts and dispersions are held, so the
+    likelihood is a sum over states of terms each depending on one state's
+    pair, and each state's argmax over the lattice solves the one-pair-per-
+    state MILP exactly. `normal` is `(1, 1)`; a state no clone visits is too.
+    """
+    lattice = candidates(max_total_copy)
+    log_mu, p = _parameters(lattice)
+    states = np.ones((n_states, 2), dtype=np.int64)
+    paths = [np.asarray(path, dtype=np.int64) for path, _, _ in clones]
+    total = 0.0
 
-    def m_step(
-        self,
-        gammas: list[np.ndarray],
-        states: np.ndarray,
-        shifts: np.ndarray,
-        purity: np.ndarray,
-        alpha: float,
-        tau: float,
-        best: bool,
-        held: bool,
-    ) -> tuple[np.ndarray, float, float]:
-        """Shifts, fractions, dispersions and pairs, in turn, until none moves.
+    for k in np.unique(np.concatenate(paths)):
+        state = int(k)
+        scores = np.zeros(len(lattice))
 
-        `shifts` and `purity` are updated in place.
-        """
-        from scipy.optimize import minimize_scalar
+        for path, (_, bulk, shift) in zip(paths, clones, strict=True):
+            bins = np.flatnonzero(path == state)
 
-        paths = [np.argmax(gamma, axis=0) for gamma in gammas]
-
-        for _ in range(self.max_inner):
-            before = (states.copy(), shifts.copy(), purity.copy())
-
-            for i, bulk in enumerate(self.bulks):
-                fitted = _with(bulk, alpha, tau)
-                weighted = np.flatnonzero(gammas[i].max(axis=1) > self.floor)
-
-                if self.zero_normal and i == self.normal_clone:
-                    shifts[i] = 0.0
-                else:
-                    log_mu, p = _parameters(states, float(purity[i]))
-                    shifts[i] = float(
-                        minimize_scalar(
-                            _negative_shift_weighted,
-                            bounds=(shifts[i] - 3.0, shifts[i] + 3.0),
-                            args=(log_mu, p, fitted, gammas[i], weighted),
-                            method="bounded",
-                        ).x
-                    )
-
-                if self.scheme.fit_purity and i != self.normal_clone:
-                    purity[i] = float(
-                        minimize_scalar(
-                            _negative_marginal,
-                            bounds=(0.05, 1.0),
-                            args=(
-                                states,
-                                float(shifts[i]),
-                                fitted,
-                                self.transmat,
-                                self.start,
-                                self.lengths,
-                                best,
-                                self.scheme.parsimony,
-                            ),
-                            method="bounded",
-                        ).x
-                    )
-
-            if not held:
-                common = (self.bulks, states, purity, shifts, gammas, self.floor)
-                alpha = float(
-                    np.exp(
-                        minimize_scalar(
-                            _negative_dispersion_weighted,
-                            bounds=ALPHA_BOUNDS,
-                            args=("alpha", tau, *common),
-                            method="bounded",
-                        ).x
-                    )
-                )
-                tau = float(
-                    np.exp(
-                        minimize_scalar(
-                            _negative_dispersion_weighted,
-                            bounds=TAU_BOUNDS,
-                            args=("tau", alpha, *common),
-                            method="bounded",
-                        ).x
-                    )
+            if bins.size:
+                scores += np.array(
+                    [
+                        np.sum(_emission(log_mu[i] - shift, p[i], bulk, bins))
+                        for i in range(len(lattice))
+                    ]
                 )
 
-            if self.scheme.states == "fit":
-                states = _shared_pairs(
-                    paths,
-                    [_with(b, alpha, tau) for b in self.bulks],
-                    shifts,
-                    purity,
-                    n_states=self.n_states,
-                    lattice=self.lattice,
-                    normal=self.normal,
-                    distinct=self.scheme.distinct,
-                )
-                states[self.normal] = (1, 1)
+        best = (
+            int(np.flatnonzero((lattice[:, 0] == 1) & (lattice[:, 1] == 1))[0])
+            if state == normal
+            else int(np.argmax(scores))
+        )
+        states[state] = lattice[best]
+        total += float(scores[best])
 
-            if (
-                np.array_equal(states, before[0])
-                and np.allclose(shifts, before[1], atol=1e-4)
-                and np.allclose(purity, before[2], atol=1e-4)
-            ):
-                break
-
-        return states, alpha, tau
+    bulks = [bulk for _, bulk, _ in clones]
+    return CopyFit(
+        [states[path] for path in paths],
+        states,
+        paths,
+        np.array([shift for _, _, shift in clones], dtype=np.float64),
+        np.ones(len(clones)),
+        bulks[0].alpha,
+        bulks[0].tau,
+        total,
+    )
 
 
 def captured_clones() -> list[tuple[np.ndarray, Pseudobulk, float]] | None:

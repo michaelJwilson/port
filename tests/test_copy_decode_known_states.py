@@ -26,7 +26,7 @@ from dataclasses import replace
 
 import numpy as np
 import pytest
-from port.extensions.copy_likelihood import SHARED, Pseudobulk, _emission, fit_copies
+from port.extensions.copy_likelihood import Pseudobulk, _emission, shared_decode
 from scipy.optimize import minimize_scalar
 
 from tests.fixtures import COPY_LATTICE, CoreInferenceTruth, core_inference_truth
@@ -115,12 +115,10 @@ def test_known_states_and_fitted_dispersions_decode_the_planted_pairs() -> None:
     alpha, tau = _fit_dispersions(truth, bulks)
 
     for bulk, path in bulks:
-        decoded = fit_copies(
+        decoded = shared_decode(
             [(path, replace(bulk, alpha=alpha, tau=tau), 0.0)],
-            SHARED,
             n_states=N_STATES,
             normal=0,
-            normal_clone=0,
             max_total_copy=6,
         )
         for state in np.unique(path):
