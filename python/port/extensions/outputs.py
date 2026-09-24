@@ -228,17 +228,24 @@ def write_outputs(
         table.to_csv(run / name, sep="\t", index=False)
         written.append(run / name)
 
-    shift = fit.get("new_log_mu_shift")
-    shift_value = None if shift is None else shift.item()
+    # NB one shift per clone since #348's `clone_shifts`, a scalar before it,
+    #    and an object `None` where the run applied none.
+    shift = (
+        None
+        if fit.get("new_log_mu_shift") is None
+        else np.asarray(fit["new_log_mu_shift"])
+    )
+    unset = shift is None or (
+        shift.dtype == object and shift.size == 1 and shift.item() is None
+    )
+    shift_value = None if unset else np.asarray(shift, dtype=float).tolist()
     manifest = {
         "n_states": int(fit["n_states"]),
         "n_bins": len(seglevel),
         "clones": clone_columns(seglevel, fit["pred_cnv"]),
         "llf": finite(fit["llf"]),
         "total_llf": finite(fit["total_llf"]),
-        "log_mu_shift": None
-        if shift_value is None
-        else np.asarray(shift_value, dtype=float).tolist(),
+        "log_mu_shift": shift_value,
         "integer_decoder": "cnaster MILP, first ploidy pass (max_medploidy=None)",
         "config": config_keys(config),
         "run_cnaster_port": flags or {},
