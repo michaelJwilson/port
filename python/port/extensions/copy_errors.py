@@ -54,6 +54,19 @@ __all__ = [
 ]
 
 
+BASE_FLOOR = 1e-12
+"""The least expected depth a bin is given, so a zero baseline differentiates."""
+
+VARIANCE_FLOOR = 1e-12
+"""Added to each variance, so a held parameter's region is defined."""
+
+BOUNDARY = 1e-3
+"""An allele fraction this close to 0 or 1 is held rather than estimated."""
+
+EPS_P = 1e-6
+"""How close to 0 or 1 an allele fraction is taken, for a finite logit."""
+
+
 class Captured(NamedTuple):
     """What `run_core_inference` was given, and what it returned."""
 
@@ -103,14 +116,23 @@ def pseudobulk(captured: Captured) -> dict[str, np.ndarray]:
     return {
         "counts_nb": summed(captured.single_X[:, 0, :]),
         "counts_bb": summed(captured.single_X[:, 1, :]),
-        "base_nb_mean": summed(captured.single_base_nb_mean),
+        # NB a bin with no normal baseline expects no depth; its NB term is then
+        #    `0 * log 0`, whose gradient is `nan`. Floored, it scores a zero
+        #    count as certain to within `BASE_FLOOR`, and differentiates.
+        "base_nb_mean": np.maximum(summed(captured.single_base_nb_mean), BASE_FLOOR),
         "total_bb_RD": summed(captured.single_total_bb_RD),
         "lengths": np.tile(captured.lengths, clones.size),
         "n_clones": np.asarray(clones.size),
     }
 
 
-def pinned_objective(captured: Captured, free: np.ndarray) -> Any:
+def pinned_objective(
+    captured: Captured,
+    free: np.ndarray,
+    purity: np.ndarray | None = None,
+    shares: np.ndarray | None = None,
+    held: np.ndarray | None = None,
+) -> Any:
     """The HMM's negative log-likelihood over `(log mu_free, logit p, log alpha, log tau)`.
 
     The objective the HMM maximized, rebuilt in `jax`: per clone, the rates
@@ -119,6 +141,12 @@ def pinned_objective(captured: Captured, free: np.ndarray) -> Any:
     fixed, so the shift's derivative is through the rates alone. States not
     in `free` have `log mu = 0`: that is the pin, applied to the parameters.
     Dispersions are shared, as configured, and transitions held at the fit.
+
+    With `purity`, one tumour fraction per clone, each state's `(mu, p)` is the
+    tumour component's: clone `c` sees depth `rho_c mu + 1 - rho_c` and allele
+    share `(2 rho_c mu p + 1 - rho_c) / (2 rho_c mu + 2 (1 - rho_c))`, its
+    spots being `rho_c` tumour and the rest normal `(1, 1)` (#367). The
+    fractions are held, as `lattice_decode` fitted them.
     """
     import jax
     import jax.numpy as jnp
@@ -136,23 +164,41 @@ def pinned_objective(captured: Captured, free: np.ndarray) -> Any:
     log_lambda = np.log(profile / profile.sum())
     path = np.asarray(result["pred_cnv"], dtype=np.int64)
     n_obs, n_clones = path.shape
+    estimated = np.arange(n_states) if shares is None else np.asarray(shares)
+    fixed = np.full(n_states, 0.5) if held is None else np.asarray(held)
 
     def objective(theta: jnp.ndarray) -> jnp.ndarray:
         rates = jnp.zeros(n_states).at[free].set(theta[: free.size])  # noqa: PD008
         dispersions = jnp.full(n_states, jnp.exp(theta[-2]))
-        probabilities = jax.nn.sigmoid(theta[free.size : free.size + n_states])
+        probabilities = (
+            jnp.asarray(fixed)
+            .at[estimated]
+            .set(  # noqa: PD008
+                jax.nn.sigmoid(theta[free.size : free.size + estimated.size])
+            )
+        )
         concentrations = jnp.full(n_states, jnp.exp(theta[-1]))
 
         blocks = []
 
         for clone in range(n_clones):
-            shift = jsp.logsumexp(rates[path[:, clone]] + log_lambda)
+            if purity is None:
+                observed, shares = rates, probabilities
+            else:
+                rho = float(purity[clone])
+                tumour = rho * jnp.exp(rates)
+                observed = jnp.log(tumour + 1.0 - rho)
+                shares = (2.0 * tumour * probabilities + 1.0 - rho) / (
+                    2.0 * tumour + 2.0 * (1.0 - rho)
+                )
+
+            shift = jsp.logsumexp(observed[path[:, clone]] + log_lambda)
             rows = slice(clone * n_obs, (clone + 1) * n_obs)
             blocks.append(
                 emission(
-                    rates - shift,
+                    observed - shift,
                     dispersions,
-                    probabilities,
+                    shares,
                     concentrations,
                     inputs["counts_nb"][rows],
                     inputs["base_nb_mean"][rows],
@@ -172,11 +218,22 @@ def pinned_objective(captured: Captured, free: np.ndarray) -> Any:
 
 
 def coordinates(
-    rates: np.ndarray, p: np.ndarray, free: np.ndarray, alpha: float, tau: float
+    rates: np.ndarray,
+    p: np.ndarray,
+    free: np.ndarray,
+    alpha: float,
+    tau: float,
+    shares: np.ndarray | None = None,
 ) -> np.ndarray:
-    """`theta` for :func:`pinned_objective`, from rates and allele fractions."""
+    """`theta` for :func:`pinned_objective`, from rates and allele fractions.
+
+    An allele fraction of exactly 0 or 1 -- an LOH state on a pure sample --
+    has no finite logit; it is taken at `EPS_P` from the boundary.
+    """
+    share = np.clip(p, EPS_P, 1.0 - EPS_P)
+    share = share if shares is None else share[shares]
     return np.concatenate(
-        [rates[free], np.log(p / (1.0 - p)), [np.log(alpha), np.log(tau)]]
+        [rates[free], np.log(share / (1.0 - share)), [np.log(alpha), np.log(tau)]]
     )
 
 
@@ -187,10 +244,12 @@ def pinned_covariance(
     mu: np.ndarray,
     p_binom: np.ndarray,
     flipped: np.ndarray,
+    shares: np.ndarray | None = None,
 ) -> tuple[np.ndarray, float]:
     """`(n_states, 2, 2)` in `(mu, minor p)` at `theta`, and its decrement.
 
-    A state outside `free` has no `mu` error.
+    A state outside `free` has no `mu` error, and one outside `shares` no `p`
+    error: those parameters are held.
     """
     import jax
     import jax.numpy as jnp
@@ -198,21 +257,35 @@ def pinned_covariance(
     from port.extensions.parameter_errors import parameter_errors
 
     n_states = mu.size
-    estimate = parameter_errors(objective, theta)
+    # NB the dispersions are held at `theta`'s: they are nuisance parameters
+    #    to the decode, and at the binomial limit (a pure sample's allele
+    #    counts) `log tau` has no curvature at all, so the full information is
+    #    singular there. The errors are conditional on them.
+    dispersions = jnp.asarray(theta[-2:])
 
-    gradient = np.asarray(jax.grad(objective)(jnp.asarray(theta)))
+    def conditional(point: Any) -> Any:
+        return objective(jnp.concatenate([point, dispersions]))
+
+    theta = np.asarray(theta[:-2])
+    estimate = parameter_errors(conditional, theta)
+
+    gradient = np.asarray(jax.grad(conditional)(jnp.asarray(theta)))
     decrement = float(gradient @ estimate.covariance @ gradient)
 
     rates = np.zeros((n_states, n_states))
     rates[np.ix_(free, free)] = estimate.covariance[: free.size, : free.size]
+    estimated = np.arange(n_states) if shares is None else np.asarray(shares)
+    column = {int(state): free.size + i for i, state in enumerate(estimated)}
     cross = np.zeros(n_states)
     cross[free] = [
-        estimate.covariance[index, free.size + state]
+        estimate.covariance[index, column[int(state)]] if int(state) in column else 0.0
         for index, state in enumerate(free)
     ]
-    alleles = estimate.covariance[
-        free.size : free.size + n_states, free.size : free.size + n_states
+    alleles = np.zeros((n_states, n_states))
+    block = estimate.covariance[
+        free.size : free.size + estimated.size, free.size : free.size + estimated.size
     ]
+    alleles[np.ix_(estimated, estimated)] = block
     slope = p_binom * (1.0 - p_binom)
 
     covariance = np.zeros((n_states, 2, 2))
@@ -228,8 +301,28 @@ def pinned_covariance(
     return covariance, decrement
 
 
-def pinned_errors(captured: Captured) -> PinnedErrors:
+def _refit(objective: Any, theta: np.ndarray) -> np.ndarray:
+    """The objective's optimum from `theta`, paths held, by L-BFGS on its gradient."""
+    import jax
+    import jax.numpy as jnp
+    from scipy.optimize import minimize
+
+    value_and_grad = jax.jit(jax.value_and_grad(objective))
+
+    def fun(point: np.ndarray) -> tuple[float, np.ndarray]:
+        value, gradient = value_and_grad(jnp.asarray(point))
+        return float(value), np.asarray(gradient, dtype=np.float64)
+
+    result = minimize(fun, theta, jac=True, method="L-BFGS-B", options={"maxiter": 500})
+    return np.asarray(result.x, dtype=np.float64)
+
+
+def pinned_errors(captured: Captured, purity: np.ndarray | None = None) -> PinnedErrors:
     """The fit's `(mu, minor p)` and their covariance in the pinned coordinates.
+
+    With `purity` the objective mixes each clone's tumour fraction in
+    (:func:`pinned_objective`), the rates and fractions are refitted under it,
+    and `(mu, p)` and the covariance are the tumour component's.
 
     `mu` is `exp(new_log_mu)` as the pipeline returns it, pinned so #299's
     neutral state is 1. The neutral state is found again here with the same
@@ -249,16 +342,41 @@ def pinned_errors(captured: Captured) -> PinnedErrors:
     flipped = p_binom > 0.5
     minor = np.where(flipped, 1.0 - p_binom, p_binom)
 
-    neutral = neutral_state(log_mu, p_binom, np.asarray(result["pred_cnv"]))
-    free = np.array([k for k in range(n_states) if k != neutral])
+    path = np.asarray(result["pred_cnv"])
+    neutral = neutral_state(log_mu, p_binom, path)
+    visited = set(np.unique(path % n_states).tolist())
+    # NB what the data identify: a state no bin visits has no information,
+    #    and an allele fraction at its boundary (an LOH state on a pure
+    #    sample) has no curvature in its logit. Both are held.
+    free = np.array([k for k in range(n_states) if k != neutral and k in visited])
+    shares = np.array(
+        [
+            k
+            for k in range(n_states)
+            if k in visited and BOUNDARY < p_binom[k] < 1.0 - BOUNDARY
+        ]
+    )
+    held = np.clip(p_binom, EPS_P, 1.0 - EPS_P)
+    objective = pinned_objective(captured, free, purity, shares, held)
+    theta = coordinates(log_mu, p_binom, free, alpha, tau, shares)
+
+    # NB the curvature is taken at this objective's own optimum, paths held:
+    #    the pipeline's fit is not one to within the conditioning check (on the
+    #    pure easy fixture its information has an eigenvalue ratio of -1e-6),
+    #    and with `purity` the fractions, fitted first (`lattice_decode`),
+    #    move the optimum further.
+    theta = _refit(objective, theta)
+
+    log_mu[free] = theta[: free.size]
+    log_mu[neutral] = 0.0
+    p_binom = held.copy()
+    p_binom[shares] = 1.0 / (1.0 + np.exp(-theta[free.size : free.size + shares.size]))
+    mu = np.exp(log_mu)
+    flipped = p_binom > 0.5
+    minor = np.where(flipped, 1.0 - p_binom, p_binom)
 
     covariance, decrement = pinned_covariance(
-        pinned_objective(captured, free),
-        coordinates(log_mu, p_binom, free, alpha, tau),
-        free,
-        mu,
-        p_binom,
-        flipped,
+        objective, theta, free, mu, p_binom, flipped, shares
     )
 
     return PinnedErrors(mu, minor, flipped, covariance, int(neutral), decrement)
@@ -322,10 +440,13 @@ def copy_sets(
             )
             continue
 
+        # NB a held parameter (`pinned_errors`) is known exactly; its variance
+        #    is floored so the region is defined and admits only its value.
+        covariance = errors.covariance[state] + np.eye(2) * VARIANCE_FLOOR
         decoded.append(
             decode_copy_state(
                 [errors.mu[state], errors.minor[state]],
-                errors.covariance[state],
+                covariance,
                 level=level,
                 lattice=lattice,
             )
