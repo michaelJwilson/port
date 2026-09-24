@@ -94,6 +94,17 @@ def _parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--rust",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help=(
+            "run cnaster's four forward/backward lattices from port's Rust "
+            "backend, oxiport (#318): bitwise cnaster's, compiled once at "
+            "build rather than by numba in every process. **On by default**, "
+            "off with --no-patch; --no-patch --rust adds it alone."
+        ),
+    )
+    parser.add_argument(
         "--sal",
         action="store_true",
         help=(
@@ -153,6 +164,13 @@ def main(argv: Sequence[str] | None = None) -> int:
                 f"{swap.module}.{swap.name} <- {swap.replacement}  "
                 f"(#{swap.ticket}, changes the model; --no-shift to omit)"
             )
+        from port.patch.lattice import RUST_LATTICES
+
+        for module, cls in RUST_LATTICES:
+            print(
+                f"{module}.{cls}.{{forward,backward}}_lattice <- port.oxiport  "
+                "(#318, bitwise; --no-rust to omit)"
+            )
         from port.extensions.sal import SAL_ROWS
 
         for row in SAL_ROWS:
@@ -203,6 +221,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         #    unshifted; it is allowed, and said.
         shift = not arguments.no_patch if arguments.shift is None else arguments.shift
 
+        # NB bitwise, so on by default like `SWAPS`, and off with it: a
+        #    baseline arm is `cnaster`'s compiled code as well as its names.
+        rust = not arguments.no_patch if arguments.rust is None else arguments.rust
+
+        if rust:
+            from port.patch.lattice import rust_lattices
+
+            stack.enter_context(rust_lattices())
+
         selected = SWAPS if not arguments.no_patch else ()
 
         # NB `--sal` selects the clone labelling through `port`'s
@@ -244,11 +271,16 @@ def main(argv: Sequence[str] | None = None) -> int:
                 + (", figures included" if figures else "")
                 + (", approx included" if approx else "")
                 + (", shift included" if shift else "")
+                + (", rust lattices" if rust else "")
                 + (", sal included" if arguments.sal else ""),
                 file=sys.stderr,
             )
         else:
-            print("run_cnaster_port: --no-patch, nothing rebound", file=sys.stderr)
+            print(
+                "run_cnaster_port: --no-patch, nothing rebound"
+                + (" but the rust lattices" if rust else ""),
+                file=sys.stderr,
+            )
 
         # NB after the swaps and before the timer, so what is compiled is
         #    what the run will call and none of it lands in the measurement.

@@ -955,6 +955,27 @@ def clone_bands(
     return labels
 
 
+COPY_LATTICE: tuple[tuple[int, int], ...] = (
+    (1, 1),
+    (1, 2),
+    (1, 3),
+    (2, 3),
+    (1, 4),
+    (2, 4),
+    (1, 5),
+    (2, 2),
+    (3, 3),
+)
+"""`(A, B)` allele copies for `copy_lattice=True`, the diploid normal first.
+
+`mu = (A + B) / 2` against a diploid normal and `p = B / (A + B)`, at or
+above balance as the unphased initializer requires, and every total within
+`cnaster`'s `max_total_copy = 6`. No `A = 0` state: `p = 1` is a degenerate
+beta-binomial. The two balanced amplifications come last, so a fixture of
+seven or fewer states is identifiable from BAF as well as RDR.
+"""
+
+
 def core_inference_truth(
     *,
     n_clones: int = 3,
@@ -973,6 +994,7 @@ def core_inference_truth(
     seed: int = DEFAULT_SEED,
     normal_clone: bool = True,
     labelling: str = "bands",
+    copy_lattice: bool = False,
 ) -> CoreInferenceTruth:
     """Plant an instance, drawing every count through upstream's families.
 
@@ -986,6 +1008,13 @@ def core_inference_truth(
     labelling : str
         How spots are labelled with clones. `"bands"`, the only one, lays
         them in row bands.
+    copy_lattice : bool
+        Plant integer allele copies, `COPY_LATTICE`, instead of the default
+        grid of `mu` in `[1.5, 5]` and `p` in `[0.58, 0.88]`. The default grid
+        is off the integer lattice -- `mu = 1.5` at `p = 0.58` is no `(A, B)`
+        -- so it cannot referee an integer copy decoder, and three of its
+        states exceed `cnaster`'s `max_total_copy = 6` (#313). Off by
+        default, so every existing fixture draws what it drew.
     normal_clone : bool
         Clone 0 all state 0 and at least `NORMAL_SHARE` of the spots (#298),
         which `cnaster`'s baseline needs. On by default at every size;
@@ -1034,9 +1063,19 @@ def core_inference_truth(
     # as `cnaster`'s own comment says, with no phasing the states have to sit
     # at or above 0.5. A state planted below it is asking the initializer for
     # something the model does not carry.
-    log_mu = np.concatenate(([0.0], np.log(np.linspace(1.5, 5.0, n_states - 1))))
+    if copy_lattice:
+        if n_states > len(COPY_LATTICE):
+            msg = f"the copy lattice has {len(COPY_LATTICE)} states, not {n_states}"
+            raise ValueError(msg)
+
+        copies = np.asarray(COPY_LATTICE[:n_states], dtype=np.float64)
+        log_mu = np.log(copies.sum(axis=1) / 2.0)
+        p_binom = copies[:, 1] / copies.sum(axis=1)
+    else:
+        log_mu = np.concatenate(([0.0], np.log(np.linspace(1.5, 5.0, n_states - 1))))
+        p_binom = np.concatenate(([0.5], np.linspace(0.58, 0.88, n_states - 1)))
+
     alphas = np.full(n_states, 1.0 / 6.0)
-    p_binom = np.concatenate(([0.5], np.linspace(0.58, 0.88, n_states - 1)))
     taus = np.full(n_states, 30.0)
 
     if labelling == "bands":
