@@ -32,6 +32,7 @@ from collections.abc import Sequence
 from contextlib import ExitStack
 
 from port.pipeline import (
+    COPY_SWAPS,
     FIGURE_SWAPS,
     NUMERIC_SWAPS,
     SHIFT_SWAPS,
@@ -78,6 +79,18 @@ def _parser() -> argparse.ArgumentParser:
             "lowest-mu state to mu = 1 afterwards (#276, #293). **On by "
             "default**: without it a clone's rates come back divided by its "
             "own normalizer. Pass --no-shift for cnaster's unshifted model."
+        ),
+    )
+    parser.add_argument(
+        "--copy-cap",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help=(
+            "decode integer copies under the caps the configuration states, "
+            "int_copy_num.max_total_copy and max_allele_copy (#313); cnaster "
+            "reads neither and decodes under A + B <= 6. **On by default**, "
+            "off with --no-patch; a configuration that states no cap decodes "
+            "exactly as cnaster does."
         ),
     )
     parser.add_argument(
@@ -172,6 +185,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(
                 f"{swap.module}.{swap.name} <- {swap.replacement}  "
                 f"(#{swap.ticket}, changes the model; --no-shift to omit)"
+            )
+        for swap in COPY_SWAPS:
+            print(
+                f"{swap.module}.{swap.name} <- {swap.replacement}  "
+                f"(#{swap.ticket}, caps from the config; --no-copy-cap to omit)"
             )
         from port.patch.lattice import RUST_LATTICES
 
@@ -273,6 +291,13 @@ def main(argv: Sequence[str] | None = None) -> int:
             selected = selected + NUMERIC_SWAPS
         if figures:
             selected = selected + FIGURE_SWAPS
+        # NB on unless refused, and off with `--no-patch` like the figures: a
+        #    baseline arm decodes under `cnaster`'s caps.
+        copy_cap = (
+            not arguments.no_patch if arguments.copy_cap is None else arguments.copy_cap
+        )
+        if copy_cap:
+            selected = selected + COPY_SWAPS
         if shift:
             from port.patch.hmm_nophasing import logmu_shift
 
@@ -295,6 +320,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 f"run_cnaster_port: {len(selected)} replacements over "
                 f"{len(sites)} bindings"
                 + (", figures included" if figures else "")
+                + (", copy caps from the config" if copy_cap else "")
                 + (", approx included" if approx else "")
                 + (", shift included" if shift else "")
                 + (", rust lattices" if rust else "")
