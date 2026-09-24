@@ -1,12 +1,12 @@
 """`port.extensions.copy_likelihood` against pseudobulks drawn from its own model (#327).
 
-The decoder claims that, with the path held, the pseudobulk likelihood the
-EM fits identifies each state's integer `(A, B)`. So the referee is the
-truth the counts were drawn from: a clone-sized pseudobulk under the
-shifted NB/BB model, planted `(A, B)` including totals above `cnaster`'s 6,
-decoded from a wrong start (`end2end` against the planted pairs). The
-likelihood-ratio set is held to contain the truth, and the decode to be the
-likelihood's own maximum over single-state moves (`analytic`).
+The shared decode claims that, with the path held, the pseudobulk
+likelihood the EM fits identifies each state's integer `(A, B)`. So the
+referee is the truth the counts were drawn from: a clone-sized pseudobulk
+under the shifted NB/BB model, planted `(A, B)` including totals above
+`cnaster`'s 6 (`end2end` against the planted pairs). The decode is held to
+be the likelihood's own maximum over single-state moves, and the tempered
+E-step to reach Viterbi's path as its temperature falls (`analytic`).
 """
 
 from __future__ import annotations
@@ -62,41 +62,94 @@ def _draw(seed: int = 3, *, shift: bool = True) -> tuple[np.ndarray, Pseudobulk]
     return path, bulk
 
 
+def _offset(path: np.ndarray, bulk: Pseudobulk) -> float:
+    """The planted clone's shift, `log Z_c`, as the draw applied it."""
+    total = PLANTED.sum(axis=1)
+    return float(np.logaddexp.reduce(np.log(total / 2.0)[path] + bulk.log_lambda))
+
+
 @pytest.mark.end2end
 @pytest.mark.parametrize("shift", [True, False], ids=["shifted", "unshifted"])
-def test_the_decode_recovers_every_planted_pair_from_a_wrong_start(shift: bool) -> None:
+def test_the_shared_decode_recovers_every_planted_pair(shift: bool) -> None:
     """All six states exactly, `(4, 6)` and `(5, 4)` above cnaster's cap included."""
-    from port.extensions.copy_likelihood import decode
+    from port.extensions.copy_likelihood import SHARED, fit_copies
 
     path, bulk = _draw(shift=shift)
-    start = np.ones_like(PLANTED)
+    fitted = fit_copies(
+        [(path, bulk, _offset(path, bulk) if shift else 0.0)],
+        SHARED,
+        n_states=len(PLANTED),
+        normal=0,
+        normal_clone=0,
+        max_total_copy=12,
+        zero_normal=False,
+    )
 
-    decoded = decode(start, path, bulk, max_total_copy=12, neutral=0, shift=shift)
-
-    np.testing.assert_array_equal(decoded.copies, PLANTED)
-    assert decoded.passes <= 5
+    np.testing.assert_array_equal(fitted.states, PLANTED)
+    np.testing.assert_array_equal(fitted.pairs[0], PLANTED[path])
 
 
 @pytest.mark.analytic
-def test_the_decode_is_a_single_move_maximum_and_its_sets_hold_the_truth() -> None:
-    """No single state's move raises the likelihood; each set contains the planted pair."""
-    from port.extensions.copy_likelihood import candidates, decode, log_likelihood
-
-    path, bulk = _draw()
-    decoded = decode(
-        np.ones_like(PLANTED), path, bulk, max_total_copy=12, neutral=0, shift=True
+def test_the_shared_decode_is_each_states_likelihood_maximum() -> None:
+    """With the path held, no other pair for any one state raises the likelihood."""
+    from port.extensions.copy_likelihood import (
+        SHARED,
+        _emission,
+        _parameters,
+        candidates,
+        fit_copies,
     )
 
-    for k in range(1, len(PLANTED)):
-        assert tuple(PLANTED[k]) in decoded.sets[k]
+    path, bulk = _draw()
+    shift = _offset(path, bulk)
+    fitted = fit_copies(
+        [(path, bulk, shift)],
+        SHARED,
+        n_states=len(PLANTED),
+        normal=0,
+        normal_clone=0,
+        max_total_copy=12,
+        zero_normal=False,
+    )
 
+    def likelihood(copies: np.ndarray) -> float:
+        log_mu, p = _parameters(copies)
+        bins = np.arange(path.size)
+        return float(np.sum(_emission(log_mu[path] - shift, p[path], bulk, bins)))
+
+    best = likelihood(fitted.states)
+    assert best == pytest.approx(fitted.log_likelihood, rel=1e-12)
+
+    for k in range(1, len(PLANTED)):
         for pair in candidates(12):
-            trial = decoded.copies.copy()
+            trial = fitted.states.copy()
             trial[k] = pair
-            assert (
-                log_likelihood(trial, path, bulk, shift=True)
-                <= decoded.log_likelihood + 1e-9
-            )
+            assert likelihood(trial) <= best + 1e-9
+
+
+@pytest.mark.analytic
+def test_tempering_to_a_low_temperature_is_viterbi() -> None:
+    """At `T -> 0` each bin's responsibility is one-hot on Viterbi's state."""
+    from port.extensions.copy_likelihood import (
+        _forward_backward,
+        _log_emissions,
+        _viterbi,
+        candidates,
+    )
+
+    path, bulk = _draw()
+    lattice = candidates(6)
+    n = len(lattice)
+    transmat = np.log(np.full((n, n), 1e-4 / (n - 1)) + np.eye(n) * (1 - 1e-4))
+    start = np.full(n, -np.log(n))
+    emission = _log_emissions(lattice, _offset(path, bulk), 1.0, bulk)
+    lengths = np.array([path.size])
+
+    best, _ = _viterbi(emission, transmat, start, lengths)
+    cold = _forward_backward(emission, transmat, start, lengths, 1e-3)
+
+    np.testing.assert_array_equal(np.argmax(cold, axis=0), best)
+    assert cold.max(axis=0).min() > 1.0 - 1e-9
 
 
 @pytest.mark.infra
@@ -161,3 +214,19 @@ def test_the_entry_point_decodes_the_planted_pair_through_the_likelihood(
     }
 
     assert pairs == {(1, 1), (1, 2)}
+
+
+@pytest.mark.analytic
+def test_the_poisson_flag_is_the_zero_dispersion_limit() -> None:
+    """`alpha = 0`, `tau = inf` agree with NB and BB at `alpha = 1e-9`, `tau = 1e9`."""
+    from dataclasses import replace
+
+    from port.extensions.copy_likelihood import _emission, _parameters
+
+    path, bulk = _draw()
+    log_mu, p = _parameters(PLANTED)
+    bins = np.arange(path.size)
+    exact = _emission(log_mu[path], p[path], replace(bulk, alpha=0.0, tau=np.inf), bins)
+    near = _emission(log_mu[path], p[path], replace(bulk, alpha=1e-9, tau=1e9), bins)
+
+    np.testing.assert_allclose(exact, near, rtol=1e-5)

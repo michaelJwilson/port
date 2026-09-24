@@ -10,7 +10,7 @@ sample that chose the pinned state for every tumour clone and decoded their
 `(2, 2)` gains as `(1, 1)` (#362).
 
 **Only one decode is supported** (#362): the pseudobulk NB/BB likelihood the
-HMM fitted (`port.extensions.copy_likelihood.decode_fixed`, #327), with the
+HMM fitted (`port.extensions.copy_likelihood.fit_copies` under `SHARED`, #327), with the
 pinned `mu`, the clone's propagated `logmu_shift`, its spots, its decoded
 path and the fitted dispersions all held. So the one-candidate-per-state
 MILP separates and is solved exactly, state by state. The normal state is
@@ -41,7 +41,7 @@ __all__ = [
 ]
 
 DECODED: list[Any] = []
-"""Each clone's `port.extensions.copy_likelihood.Decoded`, in call order."""
+"""Each shared decode's `port.extensions.copy_likelihood.CopyFit`, in call order."""
 
 MAX_ALLELE_COPY = 5
 """`cnaster`'s default, in both signatures."""
@@ -82,15 +82,16 @@ def decode_clone(
 ) -> tuple[np.ndarray, float, int]:
     """One clone's `(copies, loss, ploidy)`, as `cnaster`'s decoders return them.
 
-    The copies are shared by every clone (`copy_likelihood.decode_shared`):
+    The copies are shared by every clone (`copy_likelihood.fit_copies` under `SHARED`):
     decoded once, from the captured fit, at the first clone's call, and
     returned to each. `loss` is the negative log-likelihood reached; `ploidy`
     the median total copy over this clone's bins.
     """
     from port.extensions.copy_likelihood import (
         _CAPTURED,
+        SHARED,
         captured_clones,
-        decode_shared,
+        fit_copies,
     )
     from port.patch.hmm_nophasing.shifted_emission import neutral_state
     from port.patch.hmrf.core_inference import shift_for
@@ -116,16 +117,21 @@ def decode_clone(
                 log_mu, np.asarray(new_p_binom).reshape(-1), path[:, None]
             )
 
-        decoded = decode_shared(
-            clones, n_states=log_mu.size, max_total_copy=total, normal=normal
+        decoded = fit_copies(
+            clones,
+            SHARED,
+            n_states=log_mu.size,
+            normal=normal,
+            normal_clone=0,
+            max_total_copy=total,
         )
         _SHARED.update(key=key, total=total, decoded=decoded)
         DECODED.append(decoded)
 
     decoded = _SHARED["decoded"]
-    ploidy = int(np.rint(np.median(decoded.copies[path].sum(axis=1))))
+    ploidy = int(np.rint(np.median(decoded.states[path].sum(axis=1))))
 
-    return decoded.copies, -decoded.log_likelihood, ploidy
+    return decoded.states, -decoded.log_likelihood, ploidy
 
 
 def hill_climbing_integer_copynumber_oneclone(
