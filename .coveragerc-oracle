@@ -128,6 +128,15 @@ include =
 # and they are the fit-level half of that rung, which waits on #77 item 1.
 # Upstream's #674 is the fix; the event that moves this figure is the pin
 # moving, not a test here failing.
+#
+# **#384's pin bump, denominator only** (the guard is disabled, #282, so no
+# numerator was measured). sal #1010 turned `emissions.py` and `opt/hmm.py`
+# into packages; the file globs then matched nothing and coverage.py dropped
+# both without a word. Measured with no test run, `exclude_also` applied:
+# 3,902 statements in 17 files at 679d326; 2,545 in 15 at b6bc5d6 under the
+# old globs; 4,025 in 24 at b6bc5d6 under the package globs. The 2,582 above
+# predates the #312 and #366 joins. `tests/test_coverage_scope.py` now fails
+# on an include glob that matches no installed file.
 fail_under = 46.7
 precision = 2
 # **Upstream capability with no `cnaster` counterpart leaves the denominator.**
