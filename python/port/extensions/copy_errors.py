@@ -170,13 +170,9 @@ def pinned_objective(
     def objective(theta: jnp.ndarray) -> jnp.ndarray:
         rates = jnp.zeros(n_states).at[free].set(theta[: free.size])  # noqa: PD008
         dispersions = jnp.full(n_states, jnp.exp(theta[-2]))
-        probabilities = (
-            jnp.asarray(fixed)
-            .at[estimated]
-            .set(
-                jax.nn.sigmoid(theta[free.size : free.size + estimated.size])
-            )
-        )
+        shares_free = jax.nn.sigmoid(theta[free.size : free.size + estimated.size])
+        held_shares = jnp.asarray(fixed)
+        probabilities = held_shares.at[estimated].set(shares_free)  # noqa: PD008
         concentrations = jnp.full(n_states, jnp.exp(theta[-1]))
 
         blocks = []
