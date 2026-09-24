@@ -1,16 +1,17 @@
-"""The clone-stack accessor reproduces what `cnaster` computes by hand.
+"""The clone-stacked layout the shifted emission reads, and the loop it replaced.
 
-**#234 PR 1.** `compute_logmu_shifts` performs a per-clone `logsumexp` with a
-hand-rolled two-pass loop over `start_idx`, and its own docstring carries the
-vectorized form it replaced. `CloneStack.per_clone` is that form. These pin
-that the two agree, which is what makes replacing the loop a refactor.
+**#234 PR 1**, folded into the `hmm_nophasing` patch by #349. `CountEncoder`
+keeps a view of the clone-stacked `X`, `(n_clones * n_obs, 2, 1)`, so one
+channel walks at a stride of two elements; `shifted_emission._clone_major`
+copies it to one contiguous clone-major buffer and tags each entry with its
+clone. It replaced `port.patch.hmrf_utils` (`CloneStack`, `channels_of`),
+which no run called. These pin:
 
-`patch` throughout: this says the accessor and the loop agree, not that either
-is the right quantity. Whether `compute_logmu_shifts` should run at all is
-open — `hmm_nophasing.py:279` comments out its only call and logs
-`"logmu_shifts are not currently supported."`, which
-`test_the_consumer_this_accessor_is_for_does_not_run` pins so the day it is
-re-enabled is not silent.
+- the buffer is contiguous and **is** the channel, clone after clone, for
+  unequal clone lengths (`patch`);
+- `_triples` built from it is bitwise what the pre-#349 build was (`patch`);
+- `compute_logmu_shifts`' `start_idx` walk is the per-clone `logsumexp`
+  (`patch`), and upstream still does not call it (`bug`).
 """
 
 from __future__ import annotations
@@ -18,26 +19,72 @@ from __future__ import annotations
 import numpy as np
 import pytest
 from cnaster.hmm_nophasing import compute_logmu_shifts
-from port.patch.hmrf_utils import CloneStack, channels_of
+from port.patch.hmm_nophasing.shifted_emission import _clone_major, _triples
+
+
+def _stacked(lengths: tuple[int, ...], seed: int = 17) -> np.ndarray:
+    """A clone-stacked `X`, `(sum(lengths), 2, 1)`, as `clone_stack_obs` returns."""
+    rng = np.random.default_rng(seed)
+    rows = int(sum(lengths))
+    stacked = np.empty((rows, 2, 1))
+    stacked[:, 0, 0] = rng.poisson(40.0, size=rows)
+    stacked[:, 1, 0] = rng.binomial(60, 0.3, size=rows)
+    return stacked
 
 
 @pytest.mark.patch
-def test_a_row_is_the_slice_it_claims_to_be() -> None:
-    """`view()[c]` **is** `values[c*n_obs:(c+1)*n_obs]`, not merely equal to it.
+def test_the_buffer_is_the_channel_contiguous_and_clone_tagged() -> None:
+    """Unequal lengths, so an off-by-one in the tiling cannot cancel (#234).
 
-    Pinned rather than assumed: the whole accessor rests on the buffer being
-    clone-major, and a layout change elsewhere would make every row quietly
-    wrong rather than loudly broken.
+    The encoder's channel is strided by two; the buffer is contiguous, equal
+    to it entry for entry, and entry `t` of clone `c`'s block carries `c`.
     """
-    n_clones, n_obs = 4, 50
-    values = np.arange(n_clones * n_obs, dtype=np.float64)
-    stack = CloneStack(values, n_clones, n_obs)
+    lengths = (40, 25, 55)
+    stacked = _stacked(lengths)
+    channel = stacked[:, 0, :]
 
-    for clone in range(n_clones):
-        expected = values[clone * n_obs : (clone + 1) * n_obs]
+    assert channel.strides[0] // channel.itemsize == 2
 
-        assert np.array_equal(stack.clone(clone), expected)
-        assert np.shares_memory(stack.view(), values), "view() must not copy"
+    values, clones = _clone_major(channel, lengths)
+
+    assert values.flags["C_CONTIGUOUS"]
+    np.testing.assert_array_equal(values, stacked[:, 0, 0])
+    np.testing.assert_array_equal(clones, np.repeat([0, 1, 2], lengths))
+
+
+@pytest.mark.patch
+def test_lengths_that_do_not_tile_the_channel_are_refused() -> None:
+    with pytest.raises(ValueError, match="tile the array"):
+        _clone_major(_stacked((3, 3))[:, 0, :], (3, 4))
+
+
+@pytest.mark.patch
+def test_the_triples_are_bitwise_the_pre_fold_build(cnaster_config: None) -> None:
+    """`_triples` on the strided channel, against #276's build verbatim.
+
+    Float counts, so the configured rounding runs on both sides as it does in
+    a fit (`CountEncoder` is built on `X`, which is float).
+    """
+    from cnaster.config import get_global_config
+
+    lengths = (300, 300, 300)
+    stacked = _stacked(lengths, seed=5)
+    obs, total = stacked[:, 0, :], stacked[:, 1, :]
+
+    clones = np.repeat(np.arange(len(lengths), dtype=np.int64), lengths)
+    counts = np.column_stack(
+        [clones.astype(np.float64), obs.reshape(-1), total.reshape(-1)]
+    )
+    counts = counts.round(decimals=get_global_config().hmm.compression_decimals)
+    unique, inverse = np.unique(counts, axis=0, return_inverse=True)
+    triples = _triples(obs, total, lengths)
+
+    np.testing.assert_array_equal(triples.obs, unique[:, 1])
+    np.testing.assert_array_equal(triples.total, unique[:, 2])
+    np.testing.assert_array_equal(triples.inverse, inverse.reshape(-1))
+    np.testing.assert_array_equal(
+        triples.bounds, np.searchsorted(unique[:, 0], np.arange(len(lengths) + 1))
+    )
 
 
 @pytest.mark.patch
@@ -63,9 +110,8 @@ def test_the_per_clone_reduction_reproduces_cnasters_loop() -> None:
         log_mus, copy_states, normal_log_lambda, clone_lengths
     )
 
-    # NB the same quantity via the accessor, one clone at a time because the
-    #    lengths differ -- which is exactly the case a rectangular view cannot
-    #    hold, and is why `channels_of` takes one `n_obs` rather than a list.
+    # NB the same quantity via one clone at a time because the lengths
+    #    differ, which is the case a rectangular view cannot hold.
     ours = np.empty(n_segments)
     start = 0
 
@@ -82,73 +128,13 @@ def test_the_per_clone_reduction_reproduces_cnasters_loop() -> None:
     )
 
 
-@pytest.mark.patch
-def test_equal_lengths_are_the_rectangular_case_the_view_handles() -> None:
-    """Where every clone is the same length, `per_clone` is one call."""
-    import scipy.special
-
-    rng = np.random.default_rng(23)
-    n_clones, n_obs = 3, 30
-    values = rng.normal(size=n_clones * n_obs)
-
-    stack = CloneStack(values, n_clones, n_obs)
-    reduced = stack.per_clone(lambda view: scipy.special.logsumexp(view, axis=1))
-
-    expected = np.array(
-        [
-            scipy.special.logsumexp(values[c * n_obs : (c + 1) * n_obs])
-            for c in range(n_clones)
-        ]
-    )
-
-    assert np.allclose(reduced, expected, rtol=0.0, atol=1e-12)
-    assert np.array_equal(stack.broadcast(reduced), np.repeat(expected, n_obs))
-
-
-@pytest.mark.patch
-def test_channels_are_split_into_contiguous_buffers() -> None:
-    """The stride this exists to remove, measured on both sides."""
-    n_obs, n_comp, n_clones = 200, 2, 3
-    X = np.arange(n_obs * n_comp * n_clones, dtype=np.float64).reshape(
-        n_obs, n_comp, n_clones
-    )
-    stacked = X.transpose(2, 0, 1).reshape(-1, n_comp, 1)
-
-    interleaved = stacked[0:n_obs, 0, 0]
-
-    assert not interleaved.flags["C_CONTIGUOUS"]
-    assert interleaved.strides[0] // interleaved.itemsize == n_comp
-
-    channels = channels_of(stacked, n_clones)
-
-    assert len(channels) == n_comp
-
-    for channel_index, channel in enumerate(channels):
-        assert channel.n_clones == n_clones
-        assert channel.n_obs == n_obs
-        assert channel.values.flags["C_CONTIGUOUS"]
-        assert channel.view().strides[1] // channel.values.itemsize == 1
-
-        # NB and it is the same data, not merely the same shape.
-        assert np.array_equal(channel.clone(0), stacked[0:n_obs, channel_index, 0])
-
-
-@pytest.mark.patch
-def test_a_stack_that_does_not_divide_is_refused() -> None:
-    with pytest.raises(ValueError, match="does not divide|values for"):
-        CloneStack(np.zeros(7), 2, 3)
-
-    with pytest.raises(IndexError, match="outside"):
-        CloneStack(np.zeros(6), 2, 3).clone(-1)
-
-
 @pytest.mark.bug
 def test_the_consumer_this_accessor_is_for_does_not_run() -> None:
     """`compute_logmu_shifts` is dead code, and #234 PR 2 has to decide it.
 
     `hmm_nophasing.py:279` comments out the only call and logs
-    `"logmu_shifts are not currently supported."` So the per-clone shift the
-    accessor exists to express is computed nowhere in a run.
+    `"logmu_shifts are not currently supported."` So the per-clone shift
+    upstream defines is computed nowhere in an unpatched run.
 
     Written as a `bug` pin against `cnaster`'s own contract -- the function is
     defined, documented and unreachable -- so it **fails** the day the call is
