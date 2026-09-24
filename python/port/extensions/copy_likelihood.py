@@ -18,6 +18,11 @@ set by a :class:`Scheme`'s flags:
   fixes them at the Poisson and binomial limits (`alpha = 0`, `tau = inf`);
   `"relax"` holds them there for the first EM iteration and fits them from
   then on, so the first paths are chosen under the tightest likelihood;
+- `parsimony`: a log-prior of `-parsimony |A + B - 2|` per bin on each
+  state, in the E-step and the fraction's marginal. It decides among pairs the
+  counts cannot tell apart -- where read depth says little about the total, a
+  fraction and a total trade (`(0, 3)` at 0.78 against `(0, 1)` at 0.92 has
+  one allele share) -- and loses to any real difference in allele share;
 - `fit_purity`: each tumour clone's spots are a fraction `rho` tumour and the
   rest normal. Depth `rho (A + B) / 2 + 1 - rho`, allele share
   `(rho A + 1 - rho) / (rho (A + B) + 2 (1 - rho))`, `rho` fitted to the
@@ -34,7 +39,8 @@ an assignment problem (Hungarian). Both constraint sets are totally
 unimodular, so no branching is needed. The normal state is `(1, 1)`.
 
 :data:`SHARED` is the pipeline's decode (`port.patch.integer_copy`);
-:data:`VITERBI` and :data:`TEMPERED` are the two EMs over every pair.
+:data:`VITERBI` and :data:`TEMPERED` are the two EMs over every pair, and
+:data:`DEFAULT` is `VITERBI` with a parsimony prior.
 """
 
 from __future__ import annotations
@@ -48,6 +54,7 @@ import numpy as np
 from scipy.special import gammaln, logsumexp
 
 __all__ = [
+    "DEFAULT",
     "SHARED",
     "TEMPERED",
     "VITERBI",
@@ -83,6 +90,7 @@ class Scheme:
     fit_purity: bool = False
     distinct: bool = False
     dispersion: Literal["fit", "poisson", "relax"] = "fit"
+    parsimony: float = 0.0
 
 
 SHARED = Scheme()
@@ -90,6 +98,13 @@ SHARED = Scheme()
 
 VITERBI = Scheme(states="lattice", temperatures=(0.0,) * 5, fit_purity=True)
 """One state per pair, hard EM: Viterbi E-steps, `rho` to the best path."""
+
+DEFAULT = Scheme(
+    states="lattice", temperatures=(0.0,) * 5, fit_purity=True, parsimony=0.5
+)
+"""`VITERBI` with a parsimony of 0.5 nats: the best on the admixed simulated
+samples (#362), where read depth barely fixes the total and a fraction and a
+total otherwise trade."""
 
 TEMPERED = Scheme(
     states="lattice", temperatures=(1.0, 0.5, 0.25, 0.1, 0.05), fit_purity=True
@@ -310,6 +325,7 @@ def _negative_marginal(
     log_startprob: np.ndarray | None,
     lengths: np.ndarray,
     best: bool = False,
+    parsimony: float = 0.0,
 ) -> float:
     """Minus the clone's forward log-likelihood, every path summed, at `purity`.
 
@@ -324,12 +340,7 @@ def _negative_marginal(
         msg = "a tumour fraction is fitted to the marginal, which needs transitions"
         raise ValueError(msg)
 
-    log_mu, p = _parameters(lattice, purity)
-    bins = np.arange(bulk.counts_nb.size)
-    emission = np.stack(
-        [_emission(log_mu[k] - shift, p[k], bulk, bins) for k in range(len(lattice))]
-    )
-    emission = np.where(np.isfinite(emission), emission, -1e10)
+    emission = _log_emissions(lattice, shift, purity, bulk, parsimony)
     total = 0.0
     begin = 0
 
@@ -440,16 +451,26 @@ def _shared_pairs(
     return copies
 
 
+def _prior(states: np.ndarray, parsimony: float) -> np.ndarray:
+    """Each state's log-prior per bin: `-parsimony |A + B - 2|`."""
+    return -parsimony * np.abs(states.sum(axis=1) - 2).astype(np.float64)
+
+
 def _log_emissions(
-    states: np.ndarray, shift: float, purity: float, bulk: Pseudobulk
+    states: np.ndarray,
+    shift: float,
+    purity: float,
+    bulk: Pseudobulk,
+    parsimony: float = 0.0,
 ) -> np.ndarray:
-    """`(n_states, n_obs)`, `-1e10` where a state cannot emit the counts."""
+    """`(n_states, n_obs)` plus the prior, `-1e10` where a state cannot emit."""
     log_mu, p = _parameters(states, purity)
     bins = np.arange(bulk.counts_nb.size)
     emission = np.stack(
         [_emission(log_mu[k] - shift, p[k], bulk, bins) for k in range(len(states))]
     )
-    return np.where(np.isfinite(emission), emission, -1e10)
+    emission = np.where(np.isfinite(emission), emission, -1e10)
+    return np.asarray(emission + _prior(states, parsimony)[:, None])
 
 
 ALPHA_BOUNDS = (np.log(1e-8), np.log(10.0))
@@ -457,6 +478,15 @@ ALPHA_BOUNDS = (np.log(1e-8), np.log(10.0))
 
 TAU_BOUNDS = (0.0, np.log(1e8))
 """Where `tau` is searched, in logs: from binomial to a flat allele share."""
+
+SHIFT_WINDOW = 0.35
+"""How far :func:`_profile_start` moves a clone's shift: less than `log 2`.
+
+`(2A, 2B)` at `shift + log 2` has `(A, B)`'s depth and allele share exactly,
+so a clone's ploidy is not identifiable under a free per-clone shift; a
+window under `log 2` keeps the continuous fit's scale rather than doubling
+it. On the pure easy fixture an unbounded search found the doubled genome.
+"""
 
 PURITY_GRID = (1.0, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3)
 """Where :func:`_profile_start` looks for a clone's tumour fraction."""
@@ -472,6 +502,7 @@ def _profile_start(
     *,
     best: bool,
     fix_shift: bool,
+    parsimony: float = 0.0,
 ) -> tuple[float, float]:
     """A clone's `(purity, shift)` jointly, before any E-step.
 
@@ -498,15 +529,24 @@ def _profile_start(
                 log_startprob,
                 lengths,
                 best,
+                parsimony,
             )
             found.append((value, fraction, shift))
             continue
 
         result = minimize_scalar(
             lambda s, f=fraction: _negative_marginal(
-                f, states, s, bulk, log_transmat, log_startprob, lengths, best
+                f,
+                states,
+                s,
+                bulk,
+                log_transmat,
+                log_startprob,
+                lengths,
+                best,
+                parsimony,
             ),
-            bounds=(shift - 1.5, shift + 1.5),
+            bounds=(shift - SHIFT_WINDOW, shift + SHIFT_WINDOW),
             method="bounded",
         )
         found.append((float(result.fun), fraction, float(result.x)))
@@ -608,6 +648,7 @@ def fit_copies(
                     lengths,
                     best=bool(scheme.temperatures) and scheme.temperatures[0] == 0.0,
                     fix_shift=zero_normal and i == normal_clone,
+                    parsimony=scheme.parsimony,
                 )
 
     if gammas is not None and scheme.temperatures:
@@ -630,7 +671,11 @@ def fit_copies(
 
         for i, bulk in enumerate(bulks):
             emission = _log_emissions(
-                states, float(shifts[i]), float(purity[i]), _with(bulk, alpha, tau)
+                states,
+                float(shifts[i]),
+                float(purity[i]),
+                _with(bulk, alpha, tau),
+                scheme.parsimony,
             )
 
             if temperature == 0.0:
@@ -752,6 +797,7 @@ class _Blocks:
                                 self.start,
                                 self.lengths,
                                 best,
+                                self.scheme.parsimony,
                             ),
                             method="bounded",
                         ).x
