@@ -24,7 +24,8 @@ integer copies.
 - **Instances:** `dev` is 1,600 spots in 4 bands (480/400/360/360) and 1,000
   bins, with 10 planted states of which 8 are used. `lattice` is the same
   genome with `COPY_LATTICE` states, `2 mu = A + B` (9 planted, 8 used).
-- **Configurations:** F is the figures', 5 states, `max_iter_outer=1`,
+- **Configurations:** F is the figures' as audited, 5 states (8 since
+  #313's follow-up, `tests/generate_plots.py`), `max_iter_outer=1`,
   `max_iter=3`. C is converged, planted `n_states`, 3 × 30.
 - **Metrics:**
   - `state` is the share of clone-bins in the Hungarian-matched state;
@@ -93,6 +94,21 @@ The two events separate only with enough states **and** `--sal`.
 - **The copies are the decoder's cap:** 6.5 is no integer and 10 exceeds
   `max_total_copy = 6`, so no decoder output could be right. The lattice
   fixture's analog, (1,4) and (3,3), is what the copy column above referees.
+
+## A realistic selector (sandbox)
+
+`port.sandbox.normal_candidates.two_pass` takes the candidates from a first
+run's fitted normal clone (#320). Scored with `--two-pass-normal`:
+
+| instance | config | tumor candidates | ARI | mu err | copies (altered) |
+| --- | --- | ---: | ---: | ---: | ---: |
+| dev | F | 49 | 0.859 | 0.035 | 0.471 |
+| dev | C | 0 | 0.000 (1 clone) | diverged | — |
+| lattice | F | 110 of 110 | 0.000 (1 clone) | — | — |
+| lattice | C | 0 | 1.000 | 0.026 | 0.749 |
+
+It equals the oracle wherever the first pass labels the clones exactly, and
+inherits the oracle's collapse. It stays in the sandbox.
 
 ## Not established
 

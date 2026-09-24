@@ -37,7 +37,7 @@ above zero, that the model prefers the fit to the truth. It needs as many
 fitted states as planted ones.
 
 The configuration defaults to the figures' (`max_iter_outer=1`,
-`max_iter=3`, five states), which is under-converged by design; `--outer`,
+`max_iter=3`, eight states), which is under-converged by design; `--outer`,
 `--iterations` and `--states` separate a configuration effect from a
 defect, and `--set section.key=value` overrides any other entry.
 """
@@ -262,13 +262,14 @@ def run_arm(
     truth: CoreInferenceTruth,
     flags: list[str],
     *,
-    n_states: int = 5,
+    n_states: int = 8,
     max_iter_outer: int = 1,
     max_iter: int = 3,
     overrides: dict[str, Any] | None = None,
     likelihood: bool = False,
     oracle_normal: bool = False,
     m_step_tol: float | None = None,
+    two_pass_normal: bool = False,
 ) -> tuple[Recovery, Path]:
     """Run `run_cnaster_port` with `flags` on `truth`'s inputs, and score it.
 
@@ -276,6 +277,8 @@ def run_arm(
     normal candidates -- an upper bound on fixing their selection, not a
     fix. `m_step_tol` sets the `ftol` and `gtol` the emission M step
     hard-codes (`hmm_nophasing.py:1007`, #30); `hmm.em_ftol` is not read there.
+    `two_pass_normal` runs `port.sandbox.normal_candidates.two_pass`: the
+    candidates of the scored run are the first run's fitted normal clone.
     """
     import cnaster.scripts.run_cnaster as pipeline
     import port.patch.hmrf as patch
@@ -376,7 +379,13 @@ def run_arm(
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             started = time.perf_counter()
-            main([str(config), *flags])
+            if two_pass_normal:
+                from port.sandbox.normal_candidates import two_pass
+
+                two_pass([str(config), *flags])
+            else:
+                main([str(config), *flags])
+
             wall = time.perf_counter() - started
     finally:
         patch.run_core_inference = original
@@ -386,10 +395,20 @@ def run_arm(
     arm = " ".join(flags) or "default"
     recovery = score(truth, root / "output", arm, wall)
     recovery.m_step_calls = tightened_calls[0]
-    recovery.candidates = int(chosen[-1].sum())
-    recovery.candidates_tumor = int(
-        (chosen[-1] & (np.asarray(truth.labels) != 0)).sum()
-    )
+    used = chosen[-1]
+
+    if two_pass_normal:
+        from port.sandbox.normal_candidates import normal_clone_spots
+
+        first = root / "output_first_pass"
+        used = normal_clone_spots(
+            np.load(
+                next(first.rglob("rdrbaf_final_nstates*_smp.npz")), allow_pickle=True
+            )
+        )
+
+    recovery.candidates = int(used.sum())
+    recovery.candidates_tumor = int((used & (np.asarray(truth.labels) != 0)).sum())
 
     if likelihood:
         fit, planted = likelihoods(truth, kept[-1])
@@ -407,7 +426,7 @@ def main() -> None:
 
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--instance", default="dev", choices=["critical", "dev"])
-    parser.add_argument("--states", type=int, default=5)
+    parser.add_argument("--states", type=int, default=8)
     parser.add_argument("--outer", type=int, default=1)
     parser.add_argument("--iterations", type=int, default=3)
     parser.add_argument(
@@ -433,6 +452,11 @@ def main() -> None:
         type=float,
         default=None,
         help="ftol and gtol for the emission M step, which cnaster hard-codes (#30)",
+    )
+    parser.add_argument(
+        "--two-pass-normal",
+        action="store_true",
+        help="candidates from a first run's fitted normal clone (port.sandbox, #320)",
     )
     parser.add_argument("flags", nargs=argparse.REMAINDER)
     arguments = parser.parse_args()
@@ -460,6 +484,7 @@ def main() -> None:
         likelihood=arguments.likelihood,
         oracle_normal=arguments.oracle_normal,
         m_step_tol=arguments.m_step_tol,
+        two_pass_normal=arguments.two_pass_normal,
     )
     import resource
 
@@ -476,6 +501,7 @@ def main() -> None:
                 "set": arguments.set,
                 "oracle_normal": arguments.oracle_normal,
                 "m_step_tol": arguments.m_step_tol,
+                "two_pass_normal": arguments.two_pass_normal,
                 "states": arguments.states,
                 "outer": arguments.outer,
                 "iterations": arguments.iterations,
