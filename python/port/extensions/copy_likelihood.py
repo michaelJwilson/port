@@ -35,6 +35,7 @@ __all__ = [
     "Decoded",
     "IntegerFit",
     "Pseudobulk",
+    "TemperedFit",
     "candidates",
     "capture",
     "decode",
@@ -43,6 +44,7 @@ __all__ = [
     "integer_em",
     "log_likelihood",
     "rounded_start",
+    "tempered_em",
 ]
 
 CHI2_HALF = 5.991464547107979 / 2
@@ -721,3 +723,285 @@ def integer_em(
     return IntegerFit(
         copies, paths, shifts, alpha, tau, total, iteration, trace, purity
     )
+
+
+def _forward_backward(
+    log_emission: np.ndarray,
+    log_transmat: np.ndarray,
+    log_startprob: np.ndarray,
+    lengths: np.ndarray,
+    temperature: float,
+) -> np.ndarray:
+    """`(n_states, n_obs)` responsibilities with everything scaled by `1 / T`.
+
+    At `T = 1` the HMM's posteriors; as `T -> 0` they concentrate on the
+    Viterbi path, one state per bin.
+    """
+    inverse = 1.0 / temperature
+    emission = log_emission * inverse
+    transmat = log_transmat * inverse
+    start_prob = log_startprob * inverse
+    gamma = np.empty_like(emission)
+    begin = 0
+
+    for length in np.asarray(lengths, dtype=np.int64):
+        stop = begin + int(length)
+        n = stop - begin
+        forward = np.empty((n, emission.shape[0]))
+        backward = np.zeros((n, emission.shape[0]))
+        forward[0] = start_prob + emission[:, begin]
+
+        for t in range(1, n):
+            forward[t] = (
+                logsumexp(forward[t - 1][:, None] + transmat, axis=0)
+                + emission[:, begin + t]
+            )
+
+        for t in range(n - 2, -1, -1):
+            backward[t] = logsumexp(
+                transmat + (emission[:, begin + t + 1] + backward[t + 1])[None, :],
+                axis=1,
+            )
+
+        joint = forward + backward
+        gamma[:, begin:stop] = np.exp(joint - logsumexp(joint, axis=1)[:, None]).T
+        begin = stop
+
+    return gamma
+
+
+@dataclass
+class TemperedFit:
+    """The tempered EM over every `(A, B)`: pairs per bin, and each clone's fit."""
+
+    copies: list[np.ndarray]
+    shifts: np.ndarray
+    purity: np.ndarray
+    alpha: float
+    tau: float
+    temperatures: list[float]
+
+
+def _weighted(
+    log_mu: np.ndarray,
+    p: np.ndarray,
+    shift: float,
+    bulk: Pseudobulk,
+    gamma: np.ndarray,
+    states: np.ndarray,
+) -> float:
+    """`sum_g sum_k gamma_kg log f(x_g | k)` over the states carrying weight."""
+    bins = np.arange(gamma.shape[1])
+    return float(
+        sum(
+            np.sum(gamma[k] * _emission(log_mu[k] - shift, p[k], bulk, bins))
+            for k in states
+        )
+    )
+
+
+def _negative_marginal(
+    purity: float,
+    lattice: np.ndarray,
+    shift: float,
+    bulk: Pseudobulk,
+    log_transmat: np.ndarray,
+    log_startprob: np.ndarray,
+    lengths: np.ndarray,
+    best: bool = False,
+) -> float:
+    """Minus the clone's forward log-likelihood, every path summed, at `purity`.
+
+    With `best`, the best path's alone (Viterbi's), for the hard scheme.
+
+    The tumour fraction is shared by every bin, so it is fitted to the
+    marginal rather than to responsibilities computed at the old fraction,
+    which pin it: a bin placed at `(1, 5)` under a pure fit only loses
+    likelihood as the fraction falls, though `(0, 1)` would then fit it.
+    """
+    log_mu, p = _parameters(lattice, purity)
+    bins = np.arange(bulk.counts_nb.size)
+    emission = np.stack(
+        [_emission(log_mu[k] - shift, p[k], bulk, bins) for k in range(len(lattice))]
+    )
+    emission = np.where(np.isfinite(emission), emission, -1e10)
+    total = 0.0
+    begin = 0
+
+    for length in np.asarray(lengths, dtype=np.int64):
+        stop = begin + int(length)
+        forward = log_startprob + emission[:, begin]
+
+        for t in range(begin + 1, stop):
+            step = forward[:, None] + log_transmat
+            reduced = step.max(axis=0) if best else logsumexp(step, axis=0)
+            forward = reduced + emission[:, t]
+
+        total += float(forward.max() if best else logsumexp(forward))
+        begin = stop
+
+    return -total
+
+
+def _negative_shift_weighted(
+    shift: float,
+    log_mu: np.ndarray,
+    p: np.ndarray,
+    bulk: Pseudobulk,
+    gamma: np.ndarray,
+    states: np.ndarray,
+) -> float:
+    return -_weighted(log_mu, p, shift, bulk, gamma, states)
+
+
+def _negative_dispersion_weighted(
+    log_value: float,
+    which: str,
+    other: float,
+    bulks: list[Pseudobulk],
+    lattice: np.ndarray,
+    purity: np.ndarray,
+    shifts: np.ndarray,
+    gammas: list[np.ndarray],
+    floor: float,
+) -> float:
+    value = float(np.exp(log_value))
+    alpha, tau = (value, other) if which == "alpha" else (other, value)
+    total = 0.0
+
+    for i, bulk in enumerate(bulks):
+        log_mu, p = _parameters(lattice, float(purity[i]))
+        states = np.flatnonzero(gammas[i].max(axis=1) > floor)
+        total += _weighted(
+            log_mu, p, float(shifts[i]), _with(bulk, alpha, tau), gammas[i], states
+        )
+
+    return -total
+
+
+def tempered_em(
+    bulks: list[Pseudobulk],
+    shifts: np.ndarray,
+    *,
+    normal_clone: int,
+    lengths: np.ndarray,
+    max_total_copy: int,
+    stay: float,
+    temperatures: tuple[float, ...] = (1.0, 0.5, 0.25, 0.1, 0.05),
+    fit_purity: bool = True,
+    zero_normal: bool = True,
+    floor: float = 1e-6,
+) -> TemperedFit:
+    """EM with one state per `(A, B)`, responsibilities tempered to one state (#362).
+
+    States are every pair with `A + B <= max_total_copy`, each at its own
+    `mu` and `p` (:func:`_parameters`) under each clone's tumour fraction.
+    Transitions: `stay` on the diagonal, the rest spread evenly. At each
+    temperature `T` the E-step is forward-backward with log emissions and
+    transitions scaled by `1 / T`; the M-step then fits each clone's shift
+    (the normal clone's held at 0 under `zero_normal`) and, with
+    `fit_purity`, its tumour fraction (the normal clone's 1) to the
+    marginal likelihood (:func:`_negative_marginal`), and then the
+    shared `alpha` and `tau`, all weighted by the responsibilities. The
+    last temperature's responsibilities are hardened to each bin's argmax.
+    A temperature of 0 is the Viterbi scheme: each bin's responsibility is
+    one-hot on its state in the best path, and the tumour fraction is fitted
+    to that path's likelihood.
+    """
+    from scipy.optimize import minimize_scalar
+
+    lattice = candidates(max_total_copy)
+    n = len(lattice)
+    log_transmat = np.log(
+        np.full((n, n), (1.0 - stay) / (n - 1))
+        + np.eye(n) * (stay - (1.0 - stay) / (n - 1))
+    )
+    log_startprob = np.full(n, -np.log(n))
+    shifts = np.asarray(shifts, dtype=np.float64).copy()
+    purity = np.ones(len(bulks))
+    alpha, tau = bulks[0].alpha, bulks[0].tau
+    gammas: list[np.ndarray] = []
+
+    for temperature in temperatures:
+        gammas = []
+
+        for i, bulk in enumerate(bulks):
+            fitted = _with(bulk, alpha, tau)
+            log_mu, p = _parameters(lattice, float(purity[i]))
+            bins = np.arange(bulk.counts_nb.size)
+            emission = np.stack(
+                [_emission(log_mu[k] - shifts[i], p[k], fitted, bins) for k in range(n)]
+            )
+            emission = np.where(np.isfinite(emission), emission, -1e10)
+            if temperature == 0.0:
+                path, _ = _viterbi(emission, log_transmat, log_startprob, lengths)
+                hard = np.zeros_like(emission)
+                hard[path, np.arange(path.size)] = 1.0
+                gammas.append(hard)
+            else:
+                gammas.append(
+                    _forward_backward(
+                        emission, log_transmat, log_startprob, lengths, temperature
+                    )
+                )
+
+        for i, bulk in enumerate(bulks):
+            fitted = _with(bulk, alpha, tau)
+            states = np.flatnonzero(gammas[i].max(axis=1) > floor)
+
+            if fit_purity and i != normal_clone:
+                purity[i] = float(
+                    minimize_scalar(
+                        _negative_marginal,
+                        bounds=(0.05, 1.0),
+                        args=(
+                            lattice,
+                            float(shifts[i]),
+                            fitted,
+                            log_transmat,
+                            log_startprob,
+                            lengths,
+                            temperature == 0.0,
+                        ),
+                        method="bounded",
+                    ).x
+                )
+
+            if zero_normal and i == normal_clone:
+                shifts[i] = 0.0
+                continue
+
+            log_mu, p = _parameters(lattice, float(purity[i]))
+            shifts[i] = float(
+                minimize_scalar(
+                    _negative_shift_weighted,
+                    bounds=(shifts[i] - 3.0, shifts[i] + 3.0),
+                    args=(log_mu, p, fitted, gammas[i], states),
+                    method="bounded",
+                ).x
+            )
+
+        common = (bulks, lattice, purity, shifts, gammas, floor)
+        alpha = float(
+            np.exp(
+                minimize_scalar(
+                    _negative_dispersion_weighted,
+                    bounds=(np.log(alpha) - 5.0, np.log(alpha) + 5.0),
+                    args=("alpha", tau, *common),
+                    method="bounded",
+                ).x
+            )
+        )
+        tau = float(
+            np.exp(
+                minimize_scalar(
+                    _negative_dispersion_weighted,
+                    bounds=(np.log(tau) - 5.0, np.log(tau) + 5.0),
+                    args=("tau", alpha, *common),
+                    method="bounded",
+                ).x
+            )
+        )
+
+    copies = [lattice[np.argmax(gamma, axis=0)] for gamma in gammas]
+    return TemperedFit(copies, shifts, purity, alpha, tau, list(temperatures))
