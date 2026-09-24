@@ -272,8 +272,18 @@ def _gene_copies(
     return total
 
 
-def purify(sample: SimulatedSample, root: Path, seed: int = PURE_SEED) -> Path:
+def purify(
+    sample: SimulatedSample,
+    root: Path,
+    seed: int = PURE_SEED,
+    normal: tuple[float, ...] = (),
+) -> Path:
     """Write `sample` with every tumour spot pure; return the new directory.
+
+    With `normal`, tumour clone `c`'s spots are instead `normal[c - 1]`
+    normal, a planted fraction per clone that a fit can be asked to recover:
+    depth `(1 - f) (A + B) / 2 + f` and share `((1 - f) A + f) / ((1 - f)
+    (A + B) + 2 f)` in place of the pure `(A + B) / 2` and `A / (A + B)`.
 
     The simulated spots carry about 8 per cent normal admixture: at planted
     LOH the phased pseudobulk BAF is 0.072 to 0.082 rather than 0, the same
@@ -298,7 +308,9 @@ def purify(sample: SimulatedSample, root: Path, seed: int = PURE_SEED) -> Path:
         raise FileNotFoundError(msg)
 
     rng = np.random.default_rng(seed)
-    out = root / f"{sample.name}_pure"
+    suffix = "_".join(f"{f:g}" for f in normal)
+    out = root / (f"{sample.name}_normal_{suffix}" if normal else f"{sample.name}_pure")
+    fraction = np.array([0.0, *normal])
     (out / "spatial").mkdir(parents=True, exist_ok=True)
 
     for name in (*INPUTS, *TRUTH):
@@ -312,7 +324,8 @@ def purify(sample: SimulatedSample, root: Path, seed: int = PURE_SEED) -> Path:
     counts = sp.csr_matrix(assay.X)
     genes = np.asarray(assay.var_names).astype(str)
     total = _gene_copies(sample, genes, resources)
-    normal = np.asarray(counts[labels == 0].sum(axis=0)).ravel().astype(np.float64)
+    baseline = np.asarray(counts[labels == 0].sum(axis=0)).ravel()
+    baseline = baseline.astype(np.float64)
     depth = np.asarray(counts.sum(axis=1)).ravel()
     rows = []
 
@@ -323,7 +336,8 @@ def purify(sample: SimulatedSample, root: Path, seed: int = PURE_SEED) -> Path:
             rows.append(counts[spot])
             continue
 
-        weights = normal * total[:, clone] / 2.0
+        f = fraction[clone] if clone < fraction.size else 0.0
+        weights = baseline * ((1.0 - f) * total[:, clone] / 2.0 + f)
         drawn = rng.multinomial(int(depth[spot]), weights / weights.sum())
         rows.append(sp.csr_matrix(drawn[None, :]))
 
@@ -342,8 +356,15 @@ def purify(sample: SimulatedSample, root: Path, seed: int = PURE_SEED) -> Path:
     clone = spot_labels[trials.row]
     pair = copies[trials.col, clone]
     tumour = (clone > 0) & (pair[:, 0] >= 0)
-    share = np.where(
-        pair.sum(axis=1) > 0, pair[:, 0] / np.maximum(pair.sum(axis=1), 1), 0.5
+    admixed = np.where(
+        clone < fraction.size, fraction[np.minimum(clone, fraction.size - 1)], 0.0
+    )
+    alleles = (1.0 - admixed) * pair[:, 0] + admixed
+    copies_total = (1.0 - admixed) * pair.sum(axis=1) + 2.0 * admixed
+    share = np.clip(
+        np.where(copies_total > 0, alleles / np.maximum(copies_total, 1e-12), 0.5),
+        0.0,
+        1.0,
     )
     a_count = np.asarray(first[trials.row, trials.col]).ravel()
     a_count = np.where(tumour, rng.binomial(trials.data, share), a_count)

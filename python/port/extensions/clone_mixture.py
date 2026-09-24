@@ -60,7 +60,6 @@ __all__ = [
     "fit_mixture",
     "lattice",
     "mixed_parameters",
-    "normal_clone",
     "pseudobulks",
     "score",
     "scoring_states",
@@ -276,7 +275,7 @@ def _row(
     )
     depth = mu[paths]
     allele = depth * p[paths]
-    k = weights.shape[0]
+    k = weights.shape[1]
     limit = min(DEFAULT_CAP if cap is None else cap, DEFAULT_CAP)
     penalty = 0.5 * np.log(paths.shape[1])
 
@@ -384,9 +383,10 @@ def fit_mixture(
     """Coordinate ascent on `(W, paths)` from `(I, paths)`; never downhill.
 
     `mu`, `p` are the states' rate and share, `(states,)`; `paths` the
-    starting per-clone paths, `(K, bins)`. `log_prior`, per state and bin,
-    enters both the path scores and the objective. Clone `fixed` -- the
-    normal clone -- keeps its path and a pure row. Several `admixture`
+    starting paths, `(K, bins)`, or `(K + 1, bins)` with a last row no
+    pseudobulk observes. `log_prior`, per state and bin, enters both the
+    path scores and the objective. Path `fixed` -- the diploid column --
+    is never refitted, and has no row if no pseudobulk observes it. Several `admixture`
     values are several starts, each tumour row that much normal, and the
     best objective is kept: a pure pair and its admixture only fit together,
     so one start from `W = I` can settle on the wrong pair.
@@ -413,12 +413,13 @@ def fit_mixture(
         return max(fits, key=lambda fit: fit.end)
 
     k = paths.shape[0]
-    weights = np.eye(k)
+    rows = bulks[0].shape[0]
+    weights = np.eye(rows, k)
     if fixed is not None and admixture[0] > 0.0:
         # NB a start with every tumour row `a` normal: the first path sweep
         #    then scores pure pairs under an admixed model, so a pair and the
         #    admixture that only fit together can be found together.
-        for i in range(k):
+        for i in range(rows):
             if i != fixed:
                 weights[i, i] = 1.0 - admixture[0]
                 weights[i, fixed] = admixture[0]
@@ -480,7 +481,7 @@ def fit_mixture(
             if value > current + MIN_GAIN:
                 paths, current = trial, value
 
-        for i in range(k):
+        for i in range(rows):
             if i == fixed:
                 continue
 
@@ -530,30 +531,24 @@ def _max_total_copy() -> int:
     return 6 if value is None else int(value)
 
 
-def normal_clone(mu: np.ndarray, p: np.ndarray, paths: np.ndarray) -> int:
-    """The clone with the largest share of bins at `mu = 1`, `p = 1/2`."""
-    neutral = (np.abs(mu - 1.0) < 0.1) & (np.abs(p - 0.5) < 0.05)
-    return int(np.argmax(neutral[paths].mean(axis=1)))
-
-
 def scoring_states(
-    fit: MixtureFit, mu: np.ndarray, p: np.ndarray, normal: int
+    fit: MixtureFit, mu: np.ndarray, p: np.ndarray, diploid: int
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """`(log_mu, p, pred)` of the profiles spots are scored against.
 
     Candidate clone `j`'s profile keeps its own normal admixture,
-    `W_j,normal`, and drops its weights on other tumour clones: admixture
+    `W_j,diploid`, and drops its weights on other clones: admixture
     is the spot's, contamination by other clones is what the assignment
     undoes. One state per distinct `(clone, pair)`.
     """
-    k, n_bins = fit.paths.shape
+    k, n_bins = fit.weights.shape[0], fit.paths.shape[1]
     rates: list[float] = []
     shares: list[float] = []
     index: dict[tuple[int, int], int] = {}
     pred = np.empty((k, n_bins), dtype=np.int64)
 
     for j in range(k):
-        admixed = 0.0 if j == normal else float(fit.weights[j, normal])
+        admixed = float(fit.weights[j, diploid])
 
         for b, state in enumerate(fit.paths[j]):
             key = (j, int(state))
@@ -655,8 +650,6 @@ def clone_mixture(
             mu, p, alpha, tau, transmat = _states(res)
             bulks = pseudobulks(single_x, base, total, np.asarray(previous), k)
             fitted_paths = np.asarray(pred).reshape(k, n_bins)
-            normal = normal_clone(mu, p, fitted_paths)
-
             if space == "lattice":
                 pairs, mu, p = lattice(_max_total_copy())
                 stay = float(np.exp(np.diag(transmat)).mean())
@@ -666,10 +659,14 @@ def clone_mixture(
                     + np.eye(n) * (stay - (1.0 - stay) / (n - 1))
                 )
                 neutral = int(np.flatnonzero((pairs == 1).all(axis=1))[0])
-                start = np.full((k, n_bins), neutral, dtype=np.int64)
+                # NB one column more than clones: a path at `(1, 1)` no
+                #    clone owns, so normal admixture has a known profile to
+                #    load on and no clone has to be named normal.
+                start = np.full((k + 1, n_bins), neutral, dtype=np.int64)
+                diploid: int | None = k
                 prior = -PARSIMONY * np.abs(pairs.sum(axis=1) - 2).astype(np.float64)
             else:
-                start, prior = fitted_paths, None
+                start, prior, diploid = fitted_paths, None, None
 
             fitted = fit_mixture(
                 bulks,
@@ -682,13 +679,13 @@ def clone_mixture(
                 sweeps=sweeps,
                 cap=limit,
                 log_prior=prior,
-                fixed=normal,
+                fixed=diploid,
                 admixture=ADMIXTURE_STARTS if space == "lattice" else (0.0,),
             )
             FITS.append(fitted)
 
             if space == "lattice":
-                log_mu, shares, decoded = scoring_states(fitted, mu, p, normal)
+                log_mu, shares, decoded = scoring_states(fitted, mu, p, k)
                 res = res.copy(deep=True)
                 res.unlock()
                 alphas = np.asarray(res["new_alphas"], dtype=np.float64)

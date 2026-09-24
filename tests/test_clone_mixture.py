@@ -152,9 +152,10 @@ def test_the_lattice_finds_a_uniform_normal_admixture() -> None:
     """Three clones on integer pairs, the tumour ones 8 per cent normal.
 
     Continuous states would absorb a uniform admixture; integer pairs cannot,
-    so the fit has to put it in `W`. From every path at `(1, 1)` and `W = I`,
-    with clone 0 the pinned normal, each tumour row's normal weight is 0.08
-    to 0.02 and the pure pairs are the planted ones.
+    so the fit has to put it in `W`. From every path at `(1, 1)`, with a
+    fourth, diploid column no clone owns, each tumour row's diploid weight is
+    0.08 to 0.02 and the pure pairs are the planted ones. Clone 0 is itself
+    diploid, so how its row splits between itself and the column is free.
     """
     from port.extensions.clone_mixture import PARSIMONY, fit_mixture, lattice
 
@@ -186,7 +187,7 @@ def test_the_lattice_finds_a_uniform_normal_admixture() -> None:
         np.full((n, n), 0.01 / (n - 1)) + np.eye(n) * (0.99 - 0.01 / (n - 1))
     )
     prior = -PARSIMONY * np.abs(pairs.sum(axis=1) - 2).astype(np.float64)
-    start = np.full((3, n_bins), index[(1, 1)], dtype=np.int64)
+    start = np.full((4, n_bins), index[(1, 1)], dtype=np.int64)
 
     fit = fit_mixture(
         (rdr, baf, total, base),
@@ -197,9 +198,10 @@ def test_the_lattice_finds_a_uniform_normal_admixture() -> None:
         start,
         transmat,
         log_prior=prior,
-        fixed=0,
+        fixed=3,
         admixture=(0.0, 0.05, 0.1, 0.2, 0.3),
     )
 
-    np.testing.assert_allclose(fit.weights[1:, 0], [0.08, 0.08], atol=0.02)
-    np.testing.assert_array_equal(fit.paths, planted)
+    np.testing.assert_allclose(fit.weights[1:, 3], [0.08, 0.08], atol=0.02)
+    np.testing.assert_allclose(fit.weights[0, [0, 3]].sum(), 1.0, atol=0.02)
+    np.testing.assert_array_equal(fit.paths[:3], planted)

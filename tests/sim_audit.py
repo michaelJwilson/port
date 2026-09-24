@@ -212,6 +212,12 @@ def main() -> None:
         action="store_true",
         help="redraw the tumour spots pure (`tests.sim_fixtures.purify`) first",
     )
+    parser.add_argument(
+        "--normal-fraction",
+        default="",
+        metavar="F1,F2,...",
+        help="with --pure, tumour clone c's spots F_c normal instead",
+    )
     parser.add_argument("flags", nargs=argparse.REMAINDER)
     arguments = parser.parse_args()
 
@@ -220,7 +226,11 @@ def main() -> None:
     if arguments.pure:
         from tests.sim_fixtures import purify
 
-        pure = purify(sample, Path(tempfile.mkdtemp()))
+        normal = tuple(
+            float(f) for f in arguments.normal_fraction.split(",") if f.strip()
+        )
+        print(f"PLANTED normal_fraction={list(normal)}", flush=True)
+        pure = purify(sample, Path(tempfile.mkdtemp()), normal=normal)
         sample = load_simulated(pure.name, pure.parent)
     overrides = {
         k: yaml.safe_load(v)
