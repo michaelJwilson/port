@@ -270,6 +270,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     if arguments.config is None:
         _parser().error("a configuration is required unless --list is given")
 
+    # NB the decode compares `(A + B) / 2` against the pinned rates; an
+    #    unshifted fit's rates carry the baseline's per-clone scale, so the
+    #    sets would be drawn on the wrong axis (#353). Refused before the
+    #    configuration is read: it is an argument error, not a file error.
+    if arguments.copy_errors and (
+        arguments.shift is False or (arguments.shift is None and arguments.no_patch)
+    ):
+        _parser().error("--copy-errors needs the shift; drop --no-shift")
+
     import yaml
 
     from port.extensions.config_audit import audit
@@ -325,12 +334,6 @@ def main(argv: Sequence[str] | None = None) -> int:
         #    `SWAPS`, so `--no-patch --shift` fits shifted and assigns clones
         #    unshifted; it is allowed, and said.
         shift = not arguments.no_patch if arguments.shift is None else arguments.shift
-
-        # NB the decode compares `(A + B) / 2` against the pinned rates; an
-        #    unshifted fit's rates carry the baseline's per-clone scale, so
-        #    the sets would be drawn on the wrong axis (#353).
-        if arguments.copy_errors and not shift:
-            _parser().error("--copy-errors needs the shift; drop --no-shift")
 
         kept = stack.enter_context(_kept()) if arguments.copy_errors else None
 
