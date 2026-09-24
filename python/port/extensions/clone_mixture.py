@@ -163,21 +163,39 @@ def _bb(k: np.ndarray, n: np.ndarray, p: np.ndarray, tau: float) -> np.ndarray:
     return np.asarray(np.where(valid, out, 0.0), dtype=np.float64)
 
 
+def library(base: np.ndarray, mu_mix: np.ndarray) -> np.ndarray:
+    """Each clone's library normalizer, `sum_b lambda_b mu_b`, `(K, 1)`."""
+    weight = base / np.maximum(base.sum(axis=1, keepdims=True), EPS)
+    return np.asarray(np.sum(weight * mu_mix, axis=1, keepdims=True), dtype=np.float64)
+
+
 def score(
     bulks: Bulks,
     mu_mix: np.ndarray,
     p_mix: np.ndarray,
     alpha: float,
     tau: float,
+    normalizer: np.ndarray | None = None,
 ) -> np.ndarray:
-    """Log-likelihood per observed clone and bin, `(K, bins)`."""
+    """Log-likelihood per observed clone and bin, `(K, bins)`.
+
+    `normalizer`, `(K, 1)`, holds each clone's library normalizer fixed
+    rather than taking it from `mu_mix`: scoring one state at every bin
+    otherwise makes the path constant, and a constant path's depth cancels
+    against its own normalizer.
+    """
     rdr, baf, total, base = bulks
-    weight = base / np.maximum(base.sum(axis=1, keepdims=True), EPS)
-    normalizer = np.sum(weight * mu_mix, axis=1, keepdims=True)
+    if normalizer is None:
+        normalizer = library(base, mu_mix)
     mean = base * mu_mix / np.maximum(normalizer, EPS)
 
     scored: np.ndarray = _nb(rdr, mean, alpha) + _bb(baf, total, p_mix, tau)
     return scored
+
+
+def _entropy(row: np.ndarray) -> float:
+    positive = row[row > 0]
+    return float(-np.sum(positive * np.log(positive)))
 
 
 def _viterbi(scores: np.ndarray, log_transmat: np.ndarray) -> np.ndarray:
@@ -199,6 +217,14 @@ def _viterbi(scores: np.ndarray, log_transmat: np.ndarray) -> np.ndarray:
 
     return path
 
+
+ROW_MODE = "bic"
+"""How a row of `W` is kept sparse: `bic`, nested support with a BIC cost per
+contaminant; or `entropy`, a penalty `ENTROPY_WEIGHT * H(row)` on the
+objective and nothing else."""
+
+ENTROPY_WEIGHT = 5.0
+"""Nats per nat of row entropy, in `entropy` mode."""
 
 SUPPORT = 0.01
 """An off-diagonal weight below this is dropped before the BIC test."""
@@ -269,6 +295,13 @@ def _row(
         return grad
 
     current = _project(weights[i].copy(), i, limit)
+
+    if ROW_MODE == "entropy":
+        plain = nll
+
+        def nll(row: np.ndarray) -> float:
+            return plain(row) + ENTROPY_WEIGHT * _entropy(row)
+
     before = nll(current)
 
     if k == 1 or limit <= 0.0:
@@ -305,6 +338,13 @@ def _row(
         row = np.where((np.arange(k) != i) & (row < SUPPORT), 0.0, row)
         row = _project(row / row.sum(), i, limit)
         return row, nll(row)
+
+    if ROW_MODE == "entropy":
+        spread = np.full(k, limit / (k - 1))
+        spread[i] = 1.0 - limit
+        full, value = descend(_project(0.8 * current + 0.2 * spread, i, limit))
+        best = full if value <= before else current
+        return np.asarray(best, dtype=np.float64)
 
     # NB nested: the row on its current support first, which needs no
     #    evidence beyond not falling; then on every clone, which replaces it
@@ -388,7 +428,10 @@ def fit_mixture(
 
     def total(w: np.ndarray, s: np.ndarray) -> float:
         mixed, share = mixed_parameters(mu, p, s, w)
-        return float(score(bulks, mixed, share, alpha, tau).sum() + prior[s].sum())
+        value = float(score(bulks, mixed, share, alpha, tau).sum() + prior[s].sum())
+        if ROW_MODE == "entropy":
+            value -= ENTROPY_WEIGHT * sum(_entropy(row) for row in w)
+        return value
 
     start = current = total(weights, paths)
     done = 0
@@ -402,6 +445,7 @@ def fit_mixture(
 
             loads = np.flatnonzero(weights[:, j] > 1e-6)
             candidate = np.empty((paths.shape[1], n_states))
+            held = library(bulks[3], mixed_parameters(mu, p, paths, weights)[0])
 
             for s in range(n_states):
                 trial = paths.copy()
@@ -420,6 +464,7 @@ def fit_mixture(
                         share[loads],
                         alpha,
                         tau,
+                        held[loads],
                     ).sum(axis=0)
                     + prior[s]
                 )
