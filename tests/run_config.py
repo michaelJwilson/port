@@ -17,11 +17,21 @@ fixture.
 The iteration counts are small. The claim this configuration supports is that
 the pipeline **completes**, and a round trip at `max_iter_outer = 25` is a
 release-tier measurement of the same thing.
+
+**Audited against what `cnaster` reads** (`port.extensions.config_audit`,
+#324). Four keys are kept though nothing reads them -- `run.bafonly`,
+`hmm.params`, `betabinom.run_default`, `int_copy_num.rdr_weight` -- and two
+`em_*` tolerances the L-BFGS-B solver does not take, because this file mirrors
+the original section for section. `tests/test_config_audit.py` pins exactly
+those findings, so a key that stops being read, or starts, is a failing test.
 """
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import yaml
 
 from tests.fixtures import CoreInferenceTruth
@@ -103,9 +113,10 @@ def run_cnaster_config(
         "hmrf": {
             "n_clones": clones,
             "n_clones_rdr": clones,
-            # The solver merges any clone under this many spots and does not
-            # expose the threshold (#81); the dev instance's smallest clone is
-            # 200, so a floor above it would merge the fixture away.
+            # NB not the floor a run gets (#324): this feeds only the post-fit
+            #    `merge_by_minspots`, and the ICM label solve merges any clone
+            #    under its own hard-coded 200 spots first (#81). The dev
+            #    instance's smallest clone is 360 spots, so neither merges it.
             "min_spots_per_clone": 100,
             "min_avgumi_per_clone": 1,
             "tumorprop_threshold": 0.5,
@@ -148,9 +159,14 @@ def run_cnaster_config(
             "start_disp": 1000.0,
         },
         "int_copy_num": {
+            # NB read by nothing: its one read is commented out (#324).
             "rdr_weight": 0.5,
-            "nonbalance_bafdist": 1.0,
-            "nondiploid_rdrdist": 10.0,
+            # NB both off, stated as off (#324). The shipped 1.0 and 10.0 are
+            #    thresholds no state can cross -- |p - 0.5| <= 0.5, and
+            #    |mu - 1| <= 2 under the decoder's cap of 6 -- and the MILP
+            #    reads None as off, so the decode is the same either way.
+            "nonbalance_bafdist": None,
+            "nondiploid_rdrdist": None,
             "ploidy": "diploid",
             # NB `port`'s key, read by `port.patch.integer_copy` (`COPY_SWAPS`)
             #    and by nothing in `cnaster`, whose decoders cap `A + B` at 6
@@ -169,3 +185,35 @@ def write_run_cnaster_config(
     path = written.root / "custom_config.yaml"
     path.write_text(yaml.safe_dump(run_cnaster_config(written, truth, **overrides)))
     return path
+
+
+ENTRY_POINT_SEED = 0
+"""The global `numpy` seed a whole run in a test starts from."""
+
+
+@contextmanager
+def isolated_run() -> Iterator[None]:
+    """A whole `run_cnaster` that neither reads nor leaves global state.
+
+    `cnaster` draws from `numpy`'s global generator without seeding it --
+    the ICM's tie-breaks and random sweep order (`icm.py:344`, `483`, `537`,
+    `620`) and the emission initializer's jitter (`hmm_emission.py:71`) -- so
+    a run's labels depend on whatever an earlier test left in that state. The
+    entry-point test read ARI 0.996 in the full suite on #326 and 1.000 alone.
+    Seeded here, and the previous state restored.
+
+    `run_cnaster` also installs its configuration as `cnaster`'s global and
+    leaves it, which a later test expecting none reads; that is restored too.
+    """
+    from cnaster.config import get_global_config, set_global_config
+
+    # NB the legacy global is what `cnaster` draws from, so it is what is seeded.
+    state = np.random.get_state()  # noqa: NPY002
+    config = get_global_config()
+    np.random.seed(ENTRY_POINT_SEED)  # noqa: NPY002
+
+    try:
+        yield
+    finally:
+        np.random.set_state(state)  # noqa: NPY002
+        set_global_config(config)
