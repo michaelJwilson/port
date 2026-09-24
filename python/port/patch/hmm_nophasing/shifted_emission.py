@@ -90,6 +90,7 @@ import numpy as np
 from cnaster.config import get_global_config
 from cnaster.hmm_nophasing import _bb_logpmf_1d, _nb_logpmf_1d
 from cnaster.hmm_nophasing import hmm_nophasing as UPSTREAM
+from snakes_and_ladders.ragged import Ragged
 
 from port.patch.hmm_nophasing.logmu_shift import shifts as logmu_shifts
 from port.patch.plotting.clone_paths import state_vector
@@ -121,6 +122,26 @@ class _Triples(NamedTuple):
     bounds: np.ndarray
 
 
+def _clone_major(
+    channel: Any, lengths: tuple[int, ...]
+) -> tuple[np.ndarray, np.ndarray]:
+    """One clone-stacked channel, contiguous, and the clone each entry is in.
+
+    **What `port.patch.hmrf_utils` held, where the data is read (#349).**
+    `CountEncoder(X[:, 0, :], ...)` (`hmm_nophasing.py:842`) keeps a view of
+    the clone-stacked `X`, `(n_clones * n_obs, 2, 1)`, so one channel walks at
+    a stride of two elements. The copy here is the contiguous clone-major
+    buffer #234 PR 1 built as `channels_of`; the tiling is checked by
+    `snakes_and_ladders.ragged.Ragged`, which refuses lengths that do not sum
+    to the rows, rather than re-derived.
+    """
+    values = np.ascontiguousarray(np.asarray(channel).reshape(-1))
+    layout = Ragged(values=values, lengths=lengths)
+    clones = np.repeat(np.arange(layout.n_segments, dtype=np.int64), layout.lengths)
+
+    return values, clones
+
+
 def _triples(
     obs_count: np.ndarray, total_count: np.ndarray, lengths: tuple[int, ...]
 ) -> _Triples:
@@ -143,13 +164,12 @@ def _triples(
     entries that upstream would collapse are not separated here by a float
     the encoder never looked at.
     """
-    clones = np.repeat(np.arange(len(lengths), dtype=np.int64), lengths)
+    obs, clones = _clone_major(obs_count, lengths)
+    total, _ = _clone_major(total_count, lengths)
 
-    counts = np.column_stack(
-        [clones.astype(np.float64), np.asarray(obs_count), np.asarray(total_count)]
-    )
+    counts = np.column_stack([clones.astype(np.float64), obs, total])
 
-    if not np.issubdtype(np.asarray(total_count).dtype, np.integer):
+    if not np.issubdtype(total.dtype, np.integer):
         counts = counts.round(decimals=get_global_config().hmm.compression_decimals)
 
     unique, inverse = np.unique(counts, axis=0, return_inverse=True)
@@ -293,11 +313,7 @@ class hmm_nophasing(UPSTREAM):  # type: ignore[misc]
         if key not in cache:
             cache[key] = (
                 encoder,
-                _triples(
-                    np.asarray(encoder.obs_count).reshape(-1),
-                    np.asarray(encoder.total_count).reshape(-1),
-                    lengths,
-                ),
+                _triples(encoder.obs_count, encoder.total_count, lengths),
             )
 
         return cache[key][1]
