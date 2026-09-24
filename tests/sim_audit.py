@@ -16,6 +16,11 @@ The four ARIs are `tests.recovery_audit`'s, on the sample's truth:
 (`tests.sim_fixtures.purify`): the simulated spots carry about 8 per cent
 normal admixture, which no pair `(A, B)` at `p = A / (A + B)` can fit.
 
+`--decorrelated` first zeroes, in every spot, the tested genes whose shared
+tumour expression offset is largest (`tests.sim_fixtures.decorrelate`,
+#372), keeping the 20 per cent whose expression follows the normal baseline
+times the planted copy factor.
+
 `--oracle-start` sets `annotation.clone_label` to the sample's
 `truth_clone_labels.tsv`, `cnaster`'s own known-labels mode: the planted
 clones start phasing and the BAF stage in place of the grid
@@ -212,10 +217,22 @@ def main() -> None:
         action="store_true",
         help="redraw the tumour spots pure (`tests.sim_fixtures.purify`) first",
     )
+    parser.add_argument(
+        "--decorrelated",
+        action="store_true",
+        help="zero the genes off baseline x copy number "
+        "(`tests.sim_fixtures.decorrelate`) first, before `--pure`",
+    )
     parser.add_argument("flags", nargs=argparse.REMAINDER)
     arguments = parser.parse_args()
 
     sample = load_simulated(SAMPLES.get(arguments.sample, arguments.sample))
+
+    if arguments.decorrelated:
+        from tests.sim_fixtures import decorrelate
+
+        kept = decorrelate(sample, Path(tempfile.mkdtemp()))
+        sample = load_simulated(kept.name, kept.parent)
 
     if arguments.pure:
         from tests.sim_fixtures import purify

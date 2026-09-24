@@ -356,3 +356,104 @@ def purify(sample: SimulatedSample, root: Path, seed: int = PURE_SEED) -> Path:
     sp.save_npz(out / "cell_snp_Ballele.npz", new_b.astype(second.dtype))
 
     return out
+
+
+DECORRELATED_KEEP = 0.2
+"""The share of tested genes :func:`decorrelate` keeps (#372)."""
+
+ADMIXED_PURITY = 0.92
+"""The simulated tumour spots' tumour fraction (:func:`purify`: about 8 per cent normal)."""
+
+
+@dataclass(frozen=True)
+class GeneAgreement:
+    """Per tested gene, how far the tumour clones' expression is from baseline x copy number."""
+
+    genes: np.ndarray
+    """`(n_genes,)` column indices into the assay of the tested genes."""
+    offset: np.ndarray
+    """`(n_genes,)` mean over tumour clones of `log(x / e)`, less its median: the shared tumour program."""
+    realized: np.ndarray
+    """`(n_genes, n_tumour)` each tumour clone's share of its pseudobulk."""
+    expected: np.ndarray
+    """`(n_genes, n_tumour)` the normal baseline times the planted copy factor, normalized."""
+
+
+def gene_agreement(
+    counts: Any, labels: np.ndarray, total: np.ndarray, purity: float = ADMIXED_PURITY
+) -> GeneAgreement:
+    """Tumour pseudobulk against normal baseline x planted copy factor, per tested gene.
+
+    `total` is `(n_genes, n_clones)` planted `A + B`. A gene is tested when the
+    normal pseudobulk holds at least 20 counts and every tumour clone at
+    least 5, so the log ratio is not Poisson noise. The expected share is
+    `b_g f_gc`, normalized per clone, with `f = rho (A + B) / 2 + 1 - rho`.
+
+    The offset is centred on its median. A program that raises some genes
+    raises the clone's total, so every gene that follows the model sits at
+    one common negative offset rather than at 0; uncentred, `|o_g|` near 0
+    selects program genes (`tests/test_decorrelated_fixtures.py`).
+    """
+    n_clones = total.shape[1]
+    normal = np.asarray(counts[labels == 0].sum(axis=0)).ravel().astype(np.float64)
+    bulk = np.stack(
+        [
+            np.asarray(counts[labels == c].sum(axis=0)).ravel()
+            for c in range(1, n_clones)
+        ],
+        axis=1,
+    ).astype(np.float64)
+    tested = np.flatnonzero((normal >= 20) & (bulk.min(axis=1) >= 5))
+    factor = purity * total[tested, 1:] / 2.0 + 1.0 - purity
+    expected = normal[tested, None] * factor
+    expected /= expected.sum(axis=0)
+    realized = bulk[tested] / bulk[tested].sum(axis=0)
+    offset = np.log(realized / expected).mean(axis=1)
+    offset -= np.median(offset)
+    return GeneAgreement(tested, offset, realized, expected)
+
+
+def decorrelate(
+    sample: SimulatedSample, root: Path, keep: float = DECORRELATED_KEEP
+) -> Path:
+    """Write `sample` with its decorrelated genes zeroed; return the new directory.
+
+    Of the genes :func:`gene_agreement` tests, the `keep` share with the
+    smallest shared tumour offset `|o_g|` is kept, and every other tested gene
+    is zeroed in every spot, normal spots included, as if never measured.
+    Untested genes, the SNP counts, positions and the truth are unchanged.
+    The selection reads the truth, so this is a fixture, not a method: it is
+    where the read-depth model holds by construction (#372).
+    """
+    import anndata as ad
+    import scipy.sparse as sp
+
+    resources = references()
+
+    if resources is None:
+        msg = "CalicoST's GRCh38_resources not found; set $PORT_GRCH38"
+        raise FileNotFoundError(msg)
+
+    out = root / f"{sample.name}_decorrelated"
+    (out / "spatial").mkdir(parents=True, exist_ok=True)
+
+    for name in (*INPUTS, *TRUTH):
+        if not name.endswith(".h5ad"):
+            (out / name).write_bytes((sample.path / name).read_bytes())
+
+    by_barcode = dict(zip(sample.barcodes.astype(str), sample.labels, strict=True))
+    assay = ad.read_h5ad(sample.path / "filtered_feature_bc_matrix.h5ad")
+    labels = np.array([by_barcode[b] for b in assay.obs_names.astype(str)])
+    counts = sp.csc_matrix(assay.X)
+    genes = np.asarray(assay.var_names).astype(str)
+    agreement = gene_agreement(counts, labels, _gene_copies(sample, genes, resources))
+    order = np.argsort(np.abs(agreement.offset), kind="stable")
+    dropped = agreement.genes[order[int(round(keep * order.size)) :]]
+    scale = np.ones(genes.size)
+    scale[dropped] = 0.0
+    zeroed = (counts @ sp.diags(scale)).tocsr()
+    zeroed.eliminate_zeros()
+    assay.X = zeroed.astype(counts.dtype)
+    assay.write_h5ad(out / "filtered_feature_bc_matrix.h5ad")
+
+    return out
