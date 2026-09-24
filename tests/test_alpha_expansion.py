@@ -240,7 +240,6 @@ def _forbidding(
     return field, graph, start, beta
 
 
-@pytest.mark.oracle
 @pytest.mark.patch
 def test_a_finite_penalty_keeps_the_minimizer_of_the_forbidding_field() -> None:
     """Brute force over every labelling of a 3 x 3 lattice, three labels.
