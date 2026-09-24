@@ -174,6 +174,23 @@ def _parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--mixture-cap",
+        type=float,
+        default=None,
+        help=(
+            "with --clone-mixture, the largest share of a clone's pseudobulk "
+            "from other clones, e.g. 0.2; default 0.5 (#380)"
+        ),
+    )
+    parser.add_argument(
+        "--mixture-anneal",
+        default=None,
+        help=(
+            "with --clone-mixture, anneal that cap linearly over each stage's "
+            "outer iterations, START,END, e.g. 0.1,0.5 (#380)"
+        ),
+    )
+    parser.add_argument(
         "--copy-decode",
         choices=("lattice", "shared"),
         default="lattice",
@@ -405,8 +422,18 @@ def main(argv: Sequence[str] | None = None) -> int:
         if arguments.clone_mixture:
             from port.extensions.clone_mixture import clone_mixture
 
-            stack.enter_context(clone_mixture())
-            print("run_cnaster_port: clone mixture in the loop", file=sys.stderr)
+            anneal: tuple[float, float] | None = None
+            if arguments.mixture_anneal:
+                low, high = (float(x) for x in arguments.mixture_anneal.split(","))
+                anneal = (low, high)
+
+            stack.enter_context(clone_mixture(cap=arguments.mixture_cap, anneal=anneal))
+            print(
+                "run_cnaster_port: clone mixture in the loop"
+                + (f", cap {arguments.mixture_cap}" if arguments.mixture_cap else "")
+                + (f", annealed {arguments.mixture_anneal}" if anneal else ""),
+                file=sys.stderr,
+            )
 
         # NB after the swaps and before the timer, so what is compiled is
         #    what the run will call and none of it lands in the measurement.

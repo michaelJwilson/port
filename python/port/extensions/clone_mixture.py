@@ -31,7 +31,13 @@ observed clone it loads on, then each row of `W` on the simplex. A step is
 kept only if the joint log-likelihood does not fall, so the result is never
 worse than `W = I` by the model's own measure; a row's new off-diagonal
 weight is kept only if it gains half a log-bin count in nats per weight
-(BIC), so a pure clone stays pure. :func:`clone_mixture` installs
+(BIC), so a pure clone stays pure.
+
+**Mixing is capped:** each row's off-diagonal mass is at most `cap`, a
+linear constraint that keeps the feasible set convex. `cap` is fixed (0.2
+is at most a fifth of a pseudobulk from other clones) or annealed linearly
+over one inference stage's outer iterations, e.g. 0.1 to 0.5, so clones
+still forming may borrow little and formed ones more. Uncapped, it is 0.5. :func:`clone_mixture` installs
 it between the HMM fit and spot assignment, which then scores spots against
 the pure paths.
 """
@@ -49,6 +55,7 @@ from scipy.special import gammaln
 __all__ = [
     "FITS",
     "MixtureFit",
+    "annealed",
     "clone_mixture",
     "fit_mixture",
     "mixed_parameters",
@@ -78,6 +85,7 @@ class MixtureFit:
     start: float
     end: float
     sweeps: int
+    cap: float | None = None
 
 
 FITS: list[MixtureFit] = []
@@ -189,6 +197,25 @@ def _viterbi(scores: np.ndarray, log_transmat: np.ndarray) -> np.ndarray:
     return path
 
 
+SUPPORT = 0.01
+"""An off-diagonal weight below this is dropped before the BIC test."""
+
+DEFAULT_CAP = 0.5
+"""The largest share of a pseudobulk from other clones, uncapped: at 0.5 an
+observed clone is still at least half itself, so the one-to-one pairing holds."""
+
+
+def _project(row: np.ndarray, i: int, limit: float) -> np.ndarray:
+    """The KL projection onto `W_ii >= 1 - limit`: the others share `limit`."""
+    outside = 1.0 - row[i]
+    if outside <= limit:
+        return np.asarray(row, dtype=np.float64)
+
+    projected = np.asarray(row * (limit / outside), dtype=np.float64)
+    projected[i] = 1.0 - limit
+    return projected
+
+
 def _row(
     i: int,
     weights: np.ndarray,
@@ -198,10 +225,20 @@ def _row(
     paths: np.ndarray,
     alpha: float,
     tau: float,
+    cap: float | None = None,
+    steps: int = 60,
 ) -> np.ndarray:
-    """Row `i` of `W` on the simplex, observed clone `i` mostly itself."""
-    from scipy.optimize import minimize
+    """Row `i` of `W` by mirror descent in KL geometry, under a mixing cap.
 
+    The feasible set is the simplex with `sum_{j != i} W_ij <= cap`, a
+    polytope. Each step is exponentiated gradient, `w <- w exp(-eta grad)`
+    renormalized -- the one-sided Sinkhorn projection -- then the KL
+    projection onto the cap, with `eta` halved until the likelihood does not
+    fall. The start is strictly positive, since a multiplicative step cannot
+    move a zero. Weights under `SUPPORT` are then dropped, and the row is kept
+    only if it gains half a log-bin count in nats per remaining contaminant
+    (BIC) over the current row, so a pure clone stays pure.
+    """
     one: Bulks = (
         bulks[0][i : i + 1],
         bulks[1][i : i + 1],
@@ -211,45 +248,68 @@ def _row(
     depth = mu[paths]
     allele = depth * p[paths]
     k = weights.shape[0]
+    limit = min(DEFAULT_CAP if cap is None else cap, DEFAULT_CAP)
+    penalty = 0.5 * np.log(paths.shape[1])
 
-    def objective(logits: np.ndarray) -> float:
-        row = np.exp(logits - logits.max())
-        row /= row.sum()
+    def nll(row: np.ndarray) -> float:
         mixed = row @ depth
         share = np.where(mixed > 0, (row @ allele) / np.maximum(mixed, EPS), 0.5)
-        ll = score(one, mixed[None, :], share[None, :], alpha, tau).sum()
-        return -float(ll)
+        return -float(score(one, mixed[None, :], share[None, :], alpha, tau).sum())
 
-    # NB softened: at the identity the softmax is saturated and its gradient
-    #    vanishes, so a start there never moves. The never-downhill check
-    #    below still compares against the current row.
-    start = np.log(0.9 * weights[i] + 0.1 / k)
-    found = minimize(objective, start, method="L-BFGS-B")
-    row = np.exp(found.x - found.x.max())
-    row /= row.sum()
-    row = np.where(row < MIN_WEIGHT, 0.0, row)
-    row /= row.sum()
+    def gradient(row: np.ndarray, value: float) -> np.ndarray:
+        step = 1e-6
+        grad = np.empty(k)
+        for j in range(k):
+            bumped = row.copy()
+            bumped[j] += step
+            grad[j] = (nll(bumped) - value) / step
+        return grad
 
-    # NB the one-to-one pairing: observed clone i is model clone i first.
-    #    A row that puts more weight elsewhere is a relabelling, not a blend,
-    #    and is left to the spot assignment rather than fitted here.
-    if np.argmax(row) != i or k == 1:
-        return np.asarray(weights[i], dtype=np.float64)
+    current = _project(weights[i].copy(), i, limit)
+    before = nll(current)
 
-    with np.errstate(divide="ignore"):
-        before = objective(np.log(weights[i]))
-        after = objective(np.log(row))
+    if k == 1 or limit <= 0.0:
+        return np.asarray(current, dtype=np.float64)
 
-    # NB BIC: each off-diagonal weight the row adds has to pay for itself,
-    #    half a log-bin count in nats. Without it a pure clone takes a few
-    #    per cent of its neighbours to fit noise.
+    spread = np.full(k, limit / (k - 1))
+    spread[i] = 1.0 - limit
+    row = _project(0.8 * current + 0.2 * spread, i, limit)
+    value = nll(row)
+    eta = 1.0 / max(np.abs(gradient(row, value)).max(), 1e-12)
+
+    for _ in range(steps):
+        grad = gradient(row, value)
+        grad -= grad @ row
+        accepted = False
+
+        while eta > 1e-12:
+            trial = row * np.exp(-np.clip(eta * grad, -30.0, 30.0))
+            trial = _project(trial / trial.sum(), i, limit)
+            trial_value = nll(trial)
+            if trial_value <= value:
+                accepted = True
+                break
+            eta *= 0.5
+
+        if not accepted or value - trial_value < 1e-6:
+            if accepted:
+                row, value = trial, trial_value
+            break
+
+        row, value = trial, trial_value
+        eta *= 1.5
+
+    row = np.where((np.arange(k) != i) & (row < SUPPORT), 0.0, row)
+    row = _project(row / row.sum(), i, limit)
+    after = nll(row)
     added = np.count_nonzero(np.delete(row, i)) - np.count_nonzero(
-        np.delete(weights[i], i)
+        np.delete(current, i) > 0
     )
-    penalty = 0.5 * np.log(paths.shape[1]) * added
-    kept = after + penalty <= before
 
-    return np.asarray(row if kept else weights[i], dtype=np.float64)
+    if after + penalty * max(added, 0) <= before:
+        return np.asarray(row, dtype=np.float64)
+
+    return np.asarray(current, dtype=np.float64)
 
 
 def fit_mixture(
@@ -262,6 +322,7 @@ def fit_mixture(
     log_transmat: np.ndarray,
     sweeps: int = 5,
     tol: float = 1e-3,
+    cap: float | None = None,
 ) -> MixtureFit:
     """Coordinate ascent on `(W, paths)` from `(I, paths)`; never downhill.
 
@@ -318,7 +379,7 @@ def fit_mixture(
 
         for i in range(k):
             trial_w = weights.copy()
-            trial_w[i] = _row(i, weights, bulks, mu, p, paths, alpha, tau)
+            trial_w[i] = _row(i, weights, bulks, mu, p, paths, alpha, tau, cap)
             value = total(trial_w, paths)
 
             if value >= current:
@@ -327,7 +388,7 @@ def fit_mixture(
         if current - before < tol:
             break
 
-    return MixtureFit(weights, paths, start, current, done)
+    return MixtureFit(weights, paths, start, current, done, cap)
 
 
 def _states(res: Any) -> tuple[np.ndarray, np.ndarray, float, float, np.ndarray]:
@@ -343,8 +404,29 @@ def _states(res: Any) -> tuple[np.ndarray, np.ndarray, float, float, np.ndarray]
     return mu, p, alpha, tau, transmat
 
 
+def annealed(start: float, end: float, iteration: int, iterations: int) -> float:
+    """The cap at outer `iteration` of `iterations`, linear from `start` to `end`."""
+    if iterations <= 0:
+        return end
+
+    return start + (end - start) * min(iteration / iterations, 1.0)
+
+
+def _outer_iterations() -> int:
+    from cnaster.config import get_global_config
+
+    try:
+        return int(get_global_config().hmrf.max_iter_outer)
+    except (AttributeError, TypeError, ValueError):
+        return 1
+
+
 @contextlib.contextmanager
-def clone_mixture(sweeps: int = 5) -> Iterator[list[MixtureFit]]:
+def clone_mixture(
+    sweeps: int = 5,
+    cap: float | None = None,
+    anneal: tuple[float, float] | None = None,
+) -> Iterator[list[MixtureFit]]:
     """Score spots against each clone's pure path rather than its fitted one.
 
     Wraps whatever `cnaster.hmrf.pipeline_clone_assignment` is bound to on
@@ -356,6 +438,7 @@ def clone_mixture(sweeps: int = 5) -> Iterator[list[MixtureFit]]:
 
     original = hmrf.pipeline_clone_assignment
     FITS.clear()
+    stage: dict[str, int] = {"id": -1, "iteration": 0}
 
     def assign(
         single_x: np.ndarray,
@@ -378,6 +461,19 @@ def clone_mixture(sweeps: int = 5) -> Iterator[list[MixtureFit]]:
             and pred.size // n_bins > 1
         ):
             k = pred.size // n_bins
+
+            # NB one inference stage passes the same count array on every
+            #    outer iteration; a new array is a new stage, and the anneal
+            #    restarts with it.
+            if stage["id"] != id(single_x):
+                stage["id"], stage["iteration"] = id(single_x), 0
+            else:
+                stage["iteration"] += 1
+
+            limit = cap
+            if anneal is not None:
+                limit = annealed(*anneal, stage["iteration"], _outer_iterations())
+
             mu, p, alpha, tau, transmat = _states(res)
             bulks = pseudobulks(single_x, base, total, np.asarray(previous), k)
             fitted = fit_mixture(
@@ -389,6 +485,7 @@ def clone_mixture(sweeps: int = 5) -> Iterator[list[MixtureFit]]:
                 np.asarray(pred).reshape(k, n_bins),
                 transmat,
                 sweeps=sweeps,
+                cap=limit,
             )
             FITS.append(fitted)
             pred = fitted.paths.reshape(-1)
