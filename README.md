@@ -196,6 +196,9 @@ compiled extension is typed by the hand-written stub
 run_cnaster_port config.yaml                 # cnaster's pipeline, port's replacements
 run_cnaster_port --no-patch config.yaml      # the same run, nothing rebound
 run_cnaster_port --no-figures config.yaml    # the replacements that reproduce bitwise
+run_cnaster_port --no-rust config.yaml       # cnaster's numba lattices instead of oxiport's
+run_cnaster_port --sal config.yaml           # snakes_and_ladders routines where port measured a gain
+run_cnaster_port --no-copy-cap config.yaml   # cnaster's integer copy caps, A + B <= 6, whatever the config states
 run_cnaster_port --time-stages config.yaml   # what the replacements cost in the run
 run_cnaster_port --list                      # what would be rebound, and why
 ```
@@ -222,6 +225,32 @@ Measured at 4,000 x 1,980 x 5, against `--no-patch`:
 | `SWAPS` + `FIGURE_SWAPS` | 120.48 s | 3.69 GB |
 
 So the figure swaps are most of the runtime win and all of the memory one.
+
+**`--copy-cap` is on by default** (#313). `cnaster` decodes integer copies
+under `A + B <= 6` and `A, B <= 5` and reads no key that changes them, so a
+planted total of 10 cannot be decoded. `COPY_SWAPS` reads
+`int_copy_num.max_total_copy` and applies it to both caps; a configuration
+without the key decodes exactly as `cnaster` does. The MILP decoder, called
+as `run_cnaster` calls it, returns planted totals of 10 to 12 exactly at a
+stated 12, and none of them at `cnaster`'s 6 (`tests/test_integer_copy_patch.py`).
+
+**`--rust` is on by default** (#318). It runs `cnaster`'s four
+forward/backward lattices from `port.oxiport`, bitwise `cnaster`'s
+(`tests/test_rust_lattice.py`, and a whole `--no-patch` run reproduced
+artifact by artifact). `cnaster`'s unphased pair is `@njit` without a cache,
+so every process compiled it: 4.1 s and 0.5 s of first call, against 0.5 ms
+from Rust. On the dev instance a default run takes 29.8 s against 36.5 s
+with `--no-rust`. The four kernels are 4.3x to 6.1x faster warm at
+`K = 10`, 10,000 bins and 20 spots, on four cores.
+
+**`--sal` is off by default** (#312). It admits `snakes_and_ladders`
+routines only on `port`'s measurement, and admits one today: the clone
+labelling. That row runs alpha expansion with the Rust minimum cut, then
+`cnaster`'s ICM for its 200-spot floor. On the dev instance it recovers the
+planted clones at ARI 1.000 against the default's 0.919, in 29 s against
+41 s. `port.extensions.sal` lists what was measured and not admitted.
+`docs/audit-recovery.md` carries its recovery against the planted truth at
+four configurations (#313).
 At this instance the emission array is about 0.3 GB against an 11.35 GB
 peak, which says plotting caps this run rather than the emission array --
 a different regime from #90's declared scale, not a contradiction of it.

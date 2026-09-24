@@ -37,6 +37,7 @@ CORRESPONDENCE: dict[str, tuple[str, ...]] = {
     "snakes_and_ladders.search.spatio_sequential": ("cnaster.hmrf",),
     "snakes_and_ladders.search.alpha_expansion": ("cnaster.icm",),
     "snakes_and_ladders.sim.potts": ("cnaster.icm",),
+    "snakes_and_ladders.backend": ("cnaster.icm",),
     "snakes_and_ladders.sim.count_pairs": ("cnaster.hmm_nophasing",),
     "snakes_and_ladders.sim.spatio_sequential": ("cnaster.hmrf",),
     "snakes_and_ladders.sim.graph": ("cnaster.hmrf_utils",),
