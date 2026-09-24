@@ -218,3 +218,83 @@ def test_the_energy_is_minus_cnasters_objective_up_to_a_constant() -> None:
         assert -potts_energy(field, graph, labels, beta) == pytest.approx(
             objective, rel=1e-12
         )
+
+
+def _forbidding(
+    side: int, n_states: int, seed: int, scale: float
+) -> tuple[np.ndarray, CsrGraph, np.ndarray, float]:
+    """`_lattice` with two allowed labels per site and `-inf` on the rest.
+
+    `cnaster`'s field marks a label a spot may not take with `-inf`; `scale`
+    sets the field's magnitude against the unit coupling (#366).
+    """
+    field, graph, _, beta = _lattice(side, n_states, seed, beta=1.0)
+    rng = np.random.default_rng(seed)
+    allowed = np.zeros(field.shape, dtype=bool)
+
+    for site in range(field.shape[0]):
+        allowed[site, rng.choice(n_states, 2, replace=False)] = True
+
+    field = np.where(allowed, scale * field, -np.inf)
+    start = np.array([rng.choice(np.flatnonzero(row)) for row in allowed])
+    return field, graph, start, beta
+
+
+@pytest.mark.oracle
+def test_a_finite_penalty_keeps_the_minimizer_of_the_forbidding_field() -> None:
+    """Brute force over every labelling of a 3 x 3 lattice, three labels.
+
+    The global minimum of the energy with `-inf` entries equals that with
+    `forbidden_as_finite`'s penalty, and the minimizer takes no forbidden
+    label. Fails if the penalty is ever payable: some neighbourhood would
+    then prefer a forbidden label, and the finite minimum would sit below
+    the true one or on a label the field forbids.
+    """
+    import itertools
+
+    from port.patch.icm.alpha_expansion import forbidden_as_finite
+
+    for seed in range(5):
+        field, graph, _, beta = _forbidding(3, 3, seed, scale=100.0)
+        finite = forbidden_as_finite(field, graph, beta)
+        best_true = best_finite = np.inf
+        argmin_finite = None
+
+        for labels in itertools.product(range(3), repeat=9):
+            labelling = np.asarray(labels)
+            true = potts_energy(field, graph, labelling, beta)
+            stated = potts_energy(finite, graph, labelling, beta)
+            best_true = min(best_true, true)
+
+            if stated < best_finite:
+                best_finite, argmin_finite = stated, labelling
+
+        assert argmin_finite is not None
+        assert np.isfinite(field[np.arange(9), argmin_finite]).all()
+        assert best_finite == pytest.approx(best_true, rel=1e-12)
+
+
+@pytest.mark.analytic
+@pytest.mark.parametrize("scale", [1.0, 1000.0])
+def test_the_sweep_moves_on_a_forbidding_field(scale: float) -> None:
+    """The result is a local minimum under every single-site allowed move.
+
+    `snakes_and_ladders` at 679d326 makes no expansion move on a field with
+    `-inf` entries, so the sweep returned its start, which no single-site
+    descent certifies (#366). The expansion's local minimum is stronger than
+    the single-site one, so this holds of any correct run and failed on the
+    stalled one at both scales.
+    """
+    field, graph, start, beta = _forbidding(20, 5, 366, scale)
+    labelling = start.copy()
+    alpha_expansion_sweep(field, graph, labelling, beta)
+
+    assert np.isfinite(field[np.arange(labelling.size), labelling]).all()
+    assert (labelling != start).any()
+
+    here = potts_energy(field, graph, labelling, beta)
+    for site in range(labelling.size):
+        for label in np.flatnonzero(np.isfinite(field[site])):
+            moved = labelling.copy()
+            moved[site] = label
+            assert potts_energy(field, graph, moved, beta) >= here - 1e-9
