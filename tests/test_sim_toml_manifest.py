@@ -387,3 +387,22 @@ def test_the_easy_manifest_draws_calicosts_sample_pure(tmp_path: Path) -> None:
     admixed = _loh_minor_baf(manifest, original)
     assert all(0.07 < share < 0.09 for share, _ in admixed.values()), admixed
     _assert_recovers(manifest, sample.path)
+
+
+@pytest.mark.release
+@pytest.mark.snapshot
+def test_refitting_calicosts_easy_sample_writes_the_shipped_manifest() -> None:
+    """`python -m port.sim.toml_manifest sim/<easy> easy.toml` is reproducible.
+
+    The shipped manifest is this fit's output; a change to the fitting that
+    moves a parameter, a KS statistic or a normal fraction fails here, and
+    the manifest is regenerated in the same diff.
+    """
+    from port.sim.toml_manifest import manifest_from_sample
+
+    shipped = read_manifest(MANIFESTS / "easy.toml")
+    refit = manifest_from_sample(
+        SIM_ROOT / EASY, name=shipped.name, root=MANIFESTS, seed=shipped.seed
+    )
+
+    assert to_document(refit) == to_document(shipped)
