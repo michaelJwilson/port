@@ -11,7 +11,7 @@ be the likelihood's own maximum over single-state moves (`analytic`).
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pytest
@@ -130,17 +130,12 @@ def test_the_candidates_are_every_pair_under_the_cap() -> None:
     assert ((lattice.sum(axis=1) > 0) & (lattice.min(axis=1) >= 0)).all()
 
 
-@pytest.mark.end2end
-def test_the_entry_point_decodes_the_planted_pair_through_the_likelihood(
-    tmp_path: Path,
-) -> None:
-    """`run_cnaster_port` on a two-state copy lattice, decoding by likelihood.
-
-    The critical instance with `(1, 1)` and `(1, 2)` planted: every altered
-    clone-bin of the tumor clone is written as the planted pair, phase folded,
-    and the likelihood decode -- the only one supported (#362) -- ran once
-    per clone.
-    """
+def _entry_point_run(
+    tmp_path: Path, argv: tuple[str, ...]
+) -> tuple[Any, list[Any], Any]:
+    """`run_cnaster_port` on the two-state copy lattice: the critical instance
+    with `(1, 1)` and `(1, 2)` planted. Returns the written segment table, the
+    decodes it made, and the run's output directory."""
     import warnings
 
     import matplotlib as mpl
@@ -165,15 +160,34 @@ def test_the_entry_point_decodes_the_planted_pair_through_the_likelihood(
 
     with isolated_run(), warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        assert main([str(config)]) == 0
+        assert main([*argv, str(config)]) == 0
 
-    seen = list(integer_copy.DECODED)
+    table = next((written.root / "output").rglob("cnv_seglevel.tsv"))
+    return pd.read_csv(table, sep="\t"), list(integer_copy.DECODED), table.parent
 
-    assert seen, "the likelihood refinement never ran"
 
-    copies = pd.read_csv(
-        next((written.root / "output").rglob("cnv_seglevel.tsv")), sep="\t"
-    )
+@pytest.mark.end2end
+def test_the_entry_point_decodes_the_planted_pair_through_the_likelihood(
+    tmp_path: Path,
+) -> None:
+    """The default decode, `lattice` (#370), written per bin to the files (#371).
+
+    Every clone-bin of the segment table is the planted pair, phase folded;
+    each clone's `A` and `B` columns are the lattice decode's pairs bin for
+    bin, so the file carries the per-bin decode rather than a per-state
+    summary of it; and `copy_decode.tsv` records the fractions it fitted,
+    both 1 on this pure instance.
+
+    This is the test that found #371's M-step defect: the fraction's bounded
+    search returned 0.546 and wrote `(1, 3)`, 3,363 nats below the planted
+    `(1, 2)` at fraction 1.
+    """
+    import pandas as pd
+
+    copies, seen, output = _entry_point_run(tmp_path, ())
+
+    assert len(seen) == 1, "the decode ran once for the run, not once per clone"
+    decoded = seen[0]
     pairs = {
         tuple(sorted(pair))
         for column in ("clone0", "clone1")
@@ -181,3 +195,51 @@ def test_the_entry_point_decodes_the_planted_pair_through_the_likelihood(
     }
 
     assert pairs == {(1, 1), (1, 2)}
+
+    for clone, column in enumerate(("clone0", "clone1")):
+        written = copies[[f"{column} A", f"{column} B"]].to_numpy()
+        np.testing.assert_array_equal(written, decoded.pairs[clone])
+
+    fitted = pd.read_csv(output / "copy_decode.tsv", sep="\t")
+
+    assert fitted["tumour_fraction"].to_list() == pytest.approx([1.0, 1.0])
+
+
+@pytest.mark.patch
+def test_the_shared_decode_is_still_one_flag_away(tmp_path: Path) -> None:
+    """`--copy-decode shared` writes #327's per-state pairs through the path.
+
+    Each clone's written `A` and `B` are the shared decode's state pairs
+    indexed by that clone's `Z`, as before #371: the flag restores the
+    previous output rather than approximating it.
+    """
+    copies, seen, _ = _entry_point_run(tmp_path, ("--copy-decode", "shared"))
+
+    assert len(seen) == 1
+    states = seen[0].states
+
+    for column in ("clone0", "clone1"):
+        path = copies[f"{column} Z"].to_numpy().astype(np.int64) % len(states)
+        written = copies[[f"{column} A", f"{column} B"]].to_numpy()
+        np.testing.assert_array_equal(written, states[path])
+
+
+@pytest.mark.analytic
+def test_the_fraction_step_never_goes_uphill() -> None:
+    """A bounded search on an objective whose minimum is its endpoint.
+
+    `f(x) = min((x - 0.2)^2 + 0.05, 1 - x)` is least at `x = 1`, with a
+    shallower basin at 0.2 that a bounded Brent search settles in, since it
+    never scores the endpoint. The step returns the endpoint, and from any
+    start never a value above the start's (#371).
+    """
+    from port.extensions.copy_likelihood import PURITY_GRID, _monotone
+
+    def objective(x: float) -> float:
+        return min((x - 0.2) ** 2 + 0.05, 1.0 - x)
+
+    for current in (0.3, 0.6, 1.0):
+        chosen = _monotone(objective, current, (0.05, 1.0), PURITY_GRID)
+
+        assert objective(chosen) <= objective(current)
+        assert chosen == 1.0
