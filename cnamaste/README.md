@@ -23,5 +23,6 @@ reads the run's tables back against what it planted.
 | `test_unsegment_round_trip.py`, `test_tmp_input_round_trip.py` | the planted bins, bitwise, back through the loader and the binner |
 | `test_clone_assignment.py` | brute-force distances and `scipy.stats`; the planted labels; the solver's local optimality |
 | `test_figures.py` | the data drawn against the data given; a written figure's bytes against its content |
+| `test_shift.py` | brute-force `logsumexp` and the pin's loop; scale invariance and normalization |
 | `test_run.py` | the planted clones, states and allele fractions, through a whole run |
 | `test_benchmarks.py` | a baseline; `--benchmark-enable -m "benchmark or release"` measures |

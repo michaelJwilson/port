@@ -195,3 +195,22 @@ def test_genomic_figure(benchmark: Any, size: dict[str, Any], tmp_path: Any) -> 
     draw()
     benchmark(draw)
     assert path.stat().st_size > 0
+
+
+@pytest.mark.parametrize("size", SIZES.values())
+def test_library_shifts(benchmark: Any, size: dict[str, Any]) -> None:
+    """`log Z_c` per clone, once per emission evaluation under the shift (#392 stage 3)."""
+    from cnamaste.hmm_nophasing import shifts
+
+    truth = _instance(size)
+    profile = truth.base_nb_mean.sum(axis=1)
+    log_lambda = np.tile(np.log(profile / profile.sum()), truth.n_clones)
+    args = (
+        truth.log_mu,
+        truth.states.reshape(-1),
+        log_lambda,
+        [truth.n_obs] * truth.n_clones,
+    )
+    _warm(shifts, *args)
+    out = benchmark(shifts, *args)
+    assert np.all(np.isfinite(out))
