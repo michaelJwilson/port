@@ -230,6 +230,18 @@ FIGURE_SWAPS: tuple[Swap, ...] = (
         "port.patch.plotting:plot_clones_spatial",
         309,
     ),
+    Swap(
+        "cnaster.plot_copy_number_profile",
+        "plot_copy_number_profile",
+        "port.patch.plot_copy_number_profile:plot_copy_number_profile",
+        309,
+    ),
+    Swap(
+        "cnaster.plot_copy_number_profile",
+        "plot_ascn_legend",
+        "port.patch.plot_copy_number_profile:plot_ascn_legend",
+        309,
+    ),
 )
 """The replacements that **change the output**, and the biggest win here.
 
