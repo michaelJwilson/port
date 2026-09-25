@@ -24,6 +24,7 @@ __pycache__/
 #    reader to ignore `git status`, and the once it carries something real it
 #    looks exactly like the noise.
 cnaster.perf
+cnamaste.perf
 .coverage.*
 *.egg-info/
 .ruff_cache/
