@@ -34,7 +34,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from cnaster.palette import get_full_palette
-from cnaster.plot_copy_number_profile import NORMAL_OPACITY as UPSTREAM_OPACITY
 from cnaster.plot_copy_number_profile import get_intervals
 from cnaster.utils import cast_clone_label
 from matplotlib.collections import LineCollection
@@ -78,9 +77,11 @@ HATCH_LINEWIDTH = 72.0 * HATCH_SPACING * float(np.sin(np.radians(HATCH_ANGLE))) 
 along the row times the sine of `HATCH_ANGLE`, so A's stripes and B's are the
 same width (1.445 pt at 0.07 in and 35 degrees)."""
 
-NORMAL_OPACITY = UPSTREAM_OPACITY / 2
-"""A normal `(1, 1)` segment's opacity, half `cnaster`'s 0.25, so the
-aberrations are what the eye finds (#339)."""
+NORMAL_OPACITY = 0.35
+"""Copy 1's opacity over white, for a normal `(1, 1)` segment and a hatch's
+1: over `cnaster`'s 0.25, so it reads as blue rather than as the page (#339
+had halved it to 0.125, which read as white), and still paler than copy 2's
+orange, so the aberrations are what the eye finds."""
 
 LINEWIDTH = 0.5
 """Points, for each row's outline and the chromosome boundaries: what
