@@ -13,6 +13,8 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 from cnamaste.config import start_time
 from cnamaste.logger import get_logger
 from cnamaste.utils import cast_clone_label, write_fig
+from typing import Any
+import scipy.spatial
 
 logger = get_logger(__name__, start_time=start_time)
 
@@ -237,116 +239,145 @@ def plot_adjacency(
     return fig
 
 
-def plot_clones_spatial(
-    coords,
-    assignment,
-    single_tumor_prop=None,
-    sample_list=None,
-    sample_ids=None,
-    base_width=4,
-    base_height=4,
-    palette="rocket",  # "Set2"
-):
+TILE = 0.85
+"""A tile's side, as a fraction of the lattice pitch; the rest is the gap."""
+
+
+def clone_colours(clone_ids: np.ndarray, palette: str = "rocket") -> list[str]:
+    """Upstream's colour per clone id: `clone 0` light grey, the rest `palette`."""
+    import seaborn as sns  # type: ignore[import-untyped]
+
+    n_clones = len(clone_ids)
+
+    if "clone 0" in clone_ids:
+        return ["lightgrey", *sns.color_palette(palette, n_clones - 1).as_hex()]
+
+    return list(sns.color_palette(palette, n_clones).as_hex())
+
+
+def pitch(coords: np.ndarray) -> float:
+    """The lattice spacing: the median distance to a spot's nearest neighbour."""
+    if coords.shape[0] < 2:
+        return 1.0
+
+    distance, _ = scipy.spatial.cKDTree(coords).query(coords, k=2)
+
+    return float(np.median(distance[:, 1]))
+
+
+def spot_colours(
+    assignment: Any,
+    single_tumor_prop: np.ndarray | None = None,
+    palette: str = "rocket",
+) -> tuple[np.ndarray, np.ndarray, list[str]]:
+    """RGBA per spot, the clone ids in upstream's order, and their colours.
+
+    A spot with no clone is transparent, as upstream leaves it undrawn. Tumour
+    proportion is the opacity, a NaN taken as 0.5, as upstream.
     """
-    Plot the spatial distribution of assigned clones for multiple slices/samples.
-    """
-    logger.info(f"Plotting inferred positions for all clones.")
+    values = np.asarray(assignment.values)
+    missing = assignment.isnull().to_numpy()
+    clone_ids = np.unique(values[~missing])
+    colours = clone_colours(clone_ids, palette)
 
-    # NB shift coordinates across samples
-    shifted_coords = copy.copy(coords)
+    rgba = np.zeros((values.size, 4))
 
-    if sample_ids is not None:
-        x_offset = 0
+    for colour, clone in zip(colours, clone_ids, strict=True):
+        rgba[values == clone] = (*mcolors.to_rgb(colour), 1.0)
 
-        for s, _ in enumerate(sample_list):
-            index = np.where(sample_ids == s)[0]
-            shifted_coords[index, 0] = shifted_coords[index, 0] + x_offset
-            x_offset += np.max(coords[index, 0]) + 10
-
-    # NB number of clones and samples
-    final_clone_ids = np.unique(assignment[~assignment.isnull()].values)
-    n_final_clones = len(final_clone_ids)
-    # n_samples = 1 if sample_list is None else len(sample_list)
-
-    # NB remove nan of single_tumor_prop; assumes 0.5(!)
     if single_tumor_prop is not None:
-        copy_single_tumor_prop = np.array(single_tumor_prop, dtype=float)
-        invalid = np.isnan(copy_single_tumor_prop)
+        proportion = np.array(single_tumor_prop, dtype=float)
+        proportion[np.isnan(proportion)] = 0.5
+        rgba[:, 3] = np.clip(proportion, 0.0, 1.0)
 
-        if np.any(invalid):
-            logger.warning(
-                f"Imputing {100. * np.mean(invalid):.3f} [%] of NaN tumor proportion with 0.5"
-            )
-            copy_single_tumor_prop[np.isnan(copy_single_tumor_prop)] = 0.5
+    rgba[missing, 3] = 0.0
 
-    # NB heuristic for marker size: 120000.0 is roughly appropriate for s=0.1 with ~100k spots.
-    #    If we have fewer spots, we want larger markers.
-    #    Clip to a reasonable range [0.1, 20].
-    n_points = coords.shape[0]
-    marker_size = np.clip(12_000.0 / n_points, 0.1, 25.0)
+    return rgba, clone_ids, colours
 
-    fig, ax = plt.subplots(
-        1, 1, figsize=(base_width, base_height), dpi=300, facecolor="white"
-    )
 
-    if "clone 0" in final_clone_ids:
-        colorlist = ["lightgrey"] + sns.color_palette(
-            palette, n_final_clones - 1
-        ).as_hex()
-    else:
-        colorlist = sns.color_palette(palette, n_final_clones).as_hex()
+def draw_clones_spatial(
+    ax: Any,
+    coords: np.ndarray,
+    assignment: Any,
+    single_tumor_prop: np.ndarray | None = None,
+    palette: str = "rocket",
+    tile: float = TILE,
+) -> None:
+    """Tile each spot at `(x, -y)` into `ax`, with upstream's legend."""
+    from cnamaste.utils import cast_clone_label
+    from matplotlib.collections import PolyCollection
+    from matplotlib.lines import Line2D
 
-    for c, cid in enumerate(final_clone_ids):
-        idx = np.where((assignment.values == cid))[0]
+    rgba, clone_ids, colours = spot_colours(assignment, single_tumor_prop, palette)
 
-        if single_tumor_prop is None:
-            ax.scatter(
-                x=shifted_coords[idx, 0],
-                y=-shifted_coords[idx, 1],
-                s=marker_size,
-                color=colorlist[c],
-                linewidth=0,
-            )
-        else:
-            vals = np.clip(copy_single_tumor_prop[idx], 0.0, 1.0)
+    half = 0.5 * tile * pitch(coords)
+    centres = np.column_stack([coords[:, 0], -coords[:, 1]])
+    corners = np.array([[-half, -half], [half, -half], [half, half], [-half, half]])
 
-            base_rgb = mcolors.to_rgb(colorlist[c])
-            rgba_colors = np.zeros((len(vals), 4))
-            rgba_colors[:, :3] = base_rgb
-            rgba_colors[:, 3] = vals
-
-            ax.scatter(
-                shifted_coords[idx, 0],
-                -shifted_coords[idx, 1],
-                s=marker_size,
-                c=rgba_colors,
-                linewidth=0,
-            )
-
-    legend_elements = [
-        Line2D(
-            [0],
-            [0],
-            marker="o",
-            color="w",
-            markerfacecolor=colorlist[c],
-            label=cid,
-            markersize=6,
+    ax.add_collection(
+        PolyCollection(
+            centres[:, None, :] + corners[None, :, :],
+            facecolors=rgba,
+            edgecolors="none",
+            linewidths=0,
         )
-        for c, cid in enumerate(final_clone_ids)
-    ]
+    )
+    ax.set_xlim(centres[:, 0].min() - half, centres[:, 0].max() + half)
+    ax.set_ylim(centres[:, 1].min() - half, centres[:, 1].max() + half)
+    ax.set_aspect("equal")
 
     ax.legend(
-        legend_elements,
-        [cast_clone_label(cid) for cid in final_clone_ids],
+        [
+            Line2D(
+                [0],
+                [0],
+                marker="s",
+                color="w",
+                markerfacecolor=colour,
+                label=clone,
+                markersize=6,
+            )
+            for colour, clone in zip(colours, clone_ids, strict=True)
+        ],
+        [cast_clone_label(clone) for clone in clone_ids],
         handlelength=0.1,
         loc="upper left",
         bbox_to_anchor=(0.05, 0.02),
-        ncol=n_final_clones,
+        ncol=len(clone_ids),
         frameon=False,
         fontsize=8,
         borderaxespad=0.0,
     )
+    ax.axis("off")
+
+
+def plot_clones_spatial(
+    coords: np.ndarray,
+    assignment: Any,
+    single_tumor_prop: np.ndarray | None = None,
+    sample_list: list[str] | None = None,
+    sample_ids: np.ndarray | None = None,
+    base_width: float = 4,
+    base_height: float = 4,
+    palette: str = "rocket",
+) -> Any:
+    """Upstream's signature and page, each spot a tile of `TILE` the pitch."""
+    import matplotlib.pyplot as plt
+
+    shifted = copy.copy(coords)
+
+    if sample_ids is not None and sample_list is not None:
+        offset = 0
+
+        for sample, _ in enumerate(sample_list):
+            index = np.where(sample_ids == sample)[0]
+            shifted[index, 0] = shifted[index, 0] + offset
+            offset += np.max(coords[index, 0]) + 10
+
+    figure, ax = plt.subplots(
+        1, 1, figsize=(base_width, base_height), dpi=300, facecolor="white"
+    )
+    draw_clones_spatial(ax, shifted, assignment, single_tumor_prop, palette)
 
     if sample_list is not None:
         ax.text(
@@ -359,12 +390,7 @@ def plot_clones_spatial(
             fontsize=9,
         )
 
-    # ax.set_aspect("equal")
-    ax.axis("off")
-
-    # fig.tight_layout()
-
-    return fig
+    return figure
 
 
 def plot_recombination_rates(df_recomb, base_height=4):

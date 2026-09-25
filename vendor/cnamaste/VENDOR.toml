@@ -8,7 +8,7 @@
 # The `port.pipeline` tables folded in, in order. Each row's function is
 # written into the module it replaced, with its helpers beside it, so the copy
 # computes what `run_cnaster_port` computes with that table installed.
-tables = ["SWAPS"]
+tables = ["SWAPS", "FIGURE_SWAPS"]
 
 [source]
 url = "https://github.com/michaelJwilson/cnaster"
@@ -70,11 +70,17 @@ why = "The module is carried; the console script is not, because cnaster install
 "port.patch.hmrf.adjacency" = "cnamaste.hmrf"
 "port.patch.icm.interface" = "cnamaste.icm_interface"
 "port.patch.plotting.clone_paths" = "cnamaste.clone_paths"
+"port.patch.utils" = "cnamaste.utils"
+"port.patch.plot_genomic" = "cnamaste.plot_genomic"
+"port.patch.plotting" = "cnamaste.plotting"
+"port.patch.plotting.spatial" = "cnamaste.plotting"
+"port.patch.hmm_nophasing" = "cnamaste.hmm_nophasing"
 
 # Rows whose folded function is not `port`'s verbatim (renamed), and why.
 [edited]
 "cnamaste.hmrf:pipeline_clone_assignment" = "The label solver is the ICM alone: port's `--sal` choice of solver is an extension and stays in port. Delegation calls the kept original, `pipeline_clone_assignment_reference`, rather than a captured `UPSTREAM`."
 "cnamaste.omics:assign_initial_blocks" = "Its delegation for a known segmentation calls the kept original, `assign_initial_blocks_reference`: port imports `cnaster`'s under the name `upstream`, which in the copy would be the function itself."
+"cnamaste.plot_genomic:plot_clones_genomic" = "Reads the shift flag with `getattr(..., False)`: the copy's `hmm_nophasing` has no `apply_logmu_shift` until SHIFT_SWAPS is folded (stage 3), and is unshifted until then, as port's class is by default."
 
 # Modules a stage has rewritten, with the table that did it. The provenance
 # test skips them; the run test and the row test are what hold them.
@@ -82,9 +88,12 @@ why = "The module is carried; the console script is not, because cnaster install
 "hmrf.py" = "SWAPS"
 "io.py" = "SWAPS"
 "normal_spot.py" = "SWAPS"
+"plot_genomic.py" = "FIGURE_SWAPS"
+"plotting.py" = "FIGURE_SWAPS"
 "omics.py" = "SWAPS"
 "reference.py" = "SWAPS"
 "spatial.py" = "SWAPS"
+"utils.py" = "FIGURE_SWAPS"
 
 # Modules with no counterpart at the pin, with the table that added them.
 [added]

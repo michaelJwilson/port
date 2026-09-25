@@ -18,6 +18,8 @@ from cnamaste.logger import get_logger
 from cnamaste.palette import get_full_palette
 from cnamaste.pseudobulk import merge_pseudobulk_by_index_mix
 from cnamaste.utils import cast_clone_label, get_intervals, top_hat_sum, write_fig
+from typing import NamedTuple
+import scipy.special
 
 logger = get_logger(__name__, start_time=start_time)
 
@@ -409,16 +411,238 @@ def plot_clones_genomic(
 '''
 
 
+POINT_COLOUR = "#4C72B0"
+"""Every bin's colour when there is neither a fit nor integer copies."""
+
+
+def clone_groups(
+    res_combine: Any, clone_index: list[np.ndarray] | None
+) -> tuple[list[str], list[np.ndarray]]:
+    """The clone labels, and the spots in each, in plotting order.
+
+    From the fit's assignment when there is one, else from `clone_index`.
+    """
+    if res_combine is None:
+        if clone_index is None:
+            msg = "clone_index is required when there is no res_combine"
+            raise ValueError(msg)
+
+        return [str(i) for i in range(len(clone_index))], list(clone_index)
+
+    assignment = np.asarray(res_combine["new_assignment"])
+    labels = np.sort(np.unique(assignment))
+
+    return [str(label) for label in labels], [
+        np.flatnonzero(assignment == label) for label in labels
+    ]
+
+
+def clone_path(res_combine: Any, clone: int, n_obs: int) -> np.ndarray:
+    """Clone `clone`'s decoded states, `(n_obs,)`, modulo the state count.
+
+    `pred_cnv` comes either with one column per clone (`run_core_inference`
+    deconcatenates) or with the clones concatenated along the genome.
+    """
+    pred = np.asarray(res_combine["pred_cnv"])
+    n_states = np.asarray(res_combine["new_log_mu"]).shape[0]
+
+    if pred.ndim == 2 and pred.shape[1] > 1:
+        path = pred[:, clone]
+    else:
+        path = pred.reshape(-1)[clone * n_obs : (clone + 1) * n_obs]
+
+    states: np.ndarray = np.asarray(path, dtype=np.int64) % n_states
+
+    return states
+
+
+def bin_colours(
+    *,
+    df_cnv: pd.DataFrame | None,
+    res_combine: Any,
+    label: str,
+    clone: int,
+    n_obs: int,
+    palette_name: str,
+    phased_integer_copies: bool,
+) -> tuple[Any, list[tuple[Any, str]]]:
+    """One colour per bin, and the legend entries `(colour, text)`.
+
+    Integer copies when `df_cnv` is given, coloured by `cnamaste`'s palette
+    with normal `(1, 1)` faded; else the decoded state, one seaborn colour
+    each; else a single colour and no legend.
+    """
+    if df_cnv is not None:
+        colour_of, ordered = get_full_palette(palette_name)
+        first = df_cnv[f"clone{label} A"].to_numpy()
+        second = df_cnv[f"clone{label} B"].to_numpy()
+
+        if not phased_integer_copies:
+            first, second = np.maximum(first, second), np.minimum(first, second)
+
+        index = {pair: i for i, pair in enumerate(ordered)}
+        normal = index.get((1, 1), 0)
+        hue = np.array(
+            [index.get(pair, normal) for pair in zip(first, second, strict=True)]
+        )
+
+        faded = palette_name == "chisel"
+        palette = np.array(
+            [
+                mcolors.to_rgba(
+                    colour_of[pair],
+                    alpha=NORMAL_OPACITY if faded and pair == (1, 1) else 1.0,
+                )
+                for pair in ordered
+            ]
+        )
+        names = [str(pair) for pair in ordered]
+
+    elif res_combine is not None:
+        hue = clone_path(res_combine, clone, n_obs)
+        n_states = np.asarray(res_combine["new_log_mu"]).shape[0]
+        palette = np.array(
+            [mcolors.to_rgba(c) for c in sns.color_palette("deep", n_states)]
+        )
+        names = [""] * n_states
+
+    else:
+        return POINT_COLOUR, []
+
+    legend = [
+        (palette[i], f"{100.0 * np.mean(hue == i):.1f}% {names[i]}".strip())
+        for i in np.unique(hue)
+    ]
+
+    return palette[hue], legend
+
+
+class Levels(NamedTuple):
+    """The runs of equal state along one clone, and where each is drawn."""
+
+    starts: np.ndarray
+    ends: np.ndarray
+    rdr: np.ndarray
+    baf: np.ndarray
+
+
+def fitted_levels(
+    res_combine: Any,
+    clone: int,
+    n_obs: int,
+    single_base_nb_mean: np.ndarray,
+    shifted: bool,
+) -> Levels:
+    """Each run of one state along clone `clone`, at its fitted RDR and BAF.
+
+    RDR is `exp(log_mu)` unshifted and `exp(log_mu - log Z_c)` shifted, with
+    `Z_c = sum_g lambda_g mu_{s_c(g)}` over this clone's path and `lambda`
+    the baseline summed over spots and normalized, as `hmrf.py:476` builds
+    it. BAF is the fitted `p`, drawn with its mirror `1 - p`.
+    """
+    from cnamaste.clone_paths import state_vector
+
+    log_mu = state_vector(res_combine["new_log_mu"])
+    p_binom = state_vector(res_combine["new_p_binom"])
+    path = clone_path(res_combine, clone, n_obs)
+
+    shift = 0.0
+
+    if shifted:
+        profile = np.asarray(single_base_nb_mean, dtype=np.float64).sum(axis=1)
+
+        with np.errstate(divide="ignore"):
+            log_lambda = np.log(profile / profile.sum())
+
+        shift = float(scipy.special.logsumexp(log_mu[path] + log_lambda))
+
+    segments, states = get_intervals(path)
+    states = np.asarray(states, dtype=np.int64)
+
+    return Levels(
+        starts=np.array([segment[0] for segment in segments], dtype=np.float64),
+        ends=np.array([segment[-1] for segment in segments], dtype=np.float64),
+        rdr=np.exp(log_mu[states] - shift),
+        baf=p_binom[states],
+    )
+
+
+def _horizontal(
+    axis: Any, levels: Levels, heights: np.ndarray, style: str = "solid"
+) -> None:
+    lines = [
+        [(start, height), (end, height)]
+        for start, end, height in zip(levels.starts, levels.ends, heights, strict=True)
+    ]
+    axis.add_collection(
+        LineCollection(lines, colors="k", linewidths=0.5, linestyles=style, zorder=2)
+    )
+
+
+def _points(
+    axis: Any,
+    x: np.ndarray,
+    y: np.ndarray,
+    error: np.ndarray | None,
+    colours: Any,
+    pointsize: float,
+    linewidth: float,
+) -> None:
+    if error is not None:
+        axis.errorbar(
+            x,
+            y,
+            yerr=error,
+            fmt="none",
+            ecolor=colours,
+            elinewidth=0.5,
+            zorder=0,
+            rasterized=True,
+        )
+
+    axis.scatter(
+        x,
+        y,
+        s=pointsize,
+        c=colours,
+        edgecolors="none",
+        linewidth=linewidth,
+        zorder=1,
+        rasterized=True,
+    )
+
+
+def clone_axes(figure: Any, n_pairs: int, per_clone: int) -> list[Any]:
+    """`_create_clone_gridspec`'s axes, on a figure the caller owns.
+
+    The same rows -- `per_clone` tracks per clone, a quarter-height gap
+    between clones, no vertical space -- without the 20 in page or the
+    title, which belong to whoever composes the figure.
+    """
+    ratios: list[float] = []
+
+    for pair in range(n_pairs):
+        ratios.extend([1.0] * per_clone)
+
+        if pair < n_pairs - 1:
+            ratios.append(0.25)
+
+    grid = figure.add_gridspec(len(ratios), 1, height_ratios=ratios, hspace=0)
+    rows = [row for row, ratio in enumerate(ratios) if ratio == 1.0]
+
+    return [figure.add_subplot(grid[row, 0]) for row in rows]
+
+
 def plot_clones_genomic(
     lengths: np.ndarray,
     single_X: np.ndarray,
     single_base_nb_mean: np.ndarray,
     single_total_bb_RD: np.ndarray,
-    df_cnv: Optional[pd.DataFrame] = None,
-    res_combine: Optional[Dict[str, Any]] = None,
-    single_tumor_prop: Optional[np.ndarray] = None,
-    clone_index: Optional[list] = None,
-    sample_list: Optional[list] = None,
+    df_cnv: pd.DataFrame | None = None,
+    res_combine: Any = None,
+    single_tumor_prop: np.ndarray | None = None,
+    clone_index: list[np.ndarray] | None = None,
+    sample_list: list[str] | None = None,
     remove_xticks: bool = True,
     rdr_ylim: float = 6.0,
     chrtext_shift: float = -0.25,
@@ -429,167 +653,93 @@ def plot_clones_genomic(
     plot_baf_errors: str = "beta",
     plot_rdr_errors: str = "poisson",
     phased_integer_copies: bool = False,
-    known_nb_baseline=None,
-):
+    known_nb_baseline: np.ndarray | None = None,
+    figure: Any = None,
+) -> Any:
+    """Per clone, RDR and BAF along the genome, with the fitted levels.
+
+    `cnamaste`'s signature and page. The RDR level is shifted by the clone's
+    `log Z_c` when the fit was (`port.patch.hmm_nophasing`'s flag), so the
+    line sits on the bins it describes.
+
+    `figure`, a `Figure` or `SubFigure`, is drawn into rather than a new
+    20 in page, which is how `port.extensions.combined_figure` sets it in a
+    column (#309). The layout is then the caller's, so no `tight_layout`.
     """
-    Plots aggregated rdr and baf (with error models) and best-fit continuous copy states (mu, p).
-    If df_cnv is None, functions as a raw data plotter without categorical integer states.
-    """
-    logger.info("Plotting aggregated rdr and baf for clones.")
+    from cnamaste.hmm_nophasing import hmm_nophasing
 
-    # 1. State resolution and hierarchy setup
-    if df_cnv is not None:
-        assert res_combine is not None, "res_combine required if df_cnv is provided."
-        unique_chrs = np.unique(df_cnv.CHR.values)
-        final_clone_ids = np.sort(np.unique(res_combine["new_assignment"]))
-        clone_index = [
-            np.where(res_combine["new_assignment"] == c)[0] for c in final_clone_ids
-        ]
-        color_palette, ordered_acn = get_full_palette(palette_name)
-        state_colors = [color_palette[c] for c in ordered_acn]
-        map_cn = {x: i for i, x in enumerate(ordered_acn)}
-        default_idx = map_cn.get((1, 1), 0)
+    if df_cnv is not None and res_combine is None:
+        msg = "res_combine is required with df_cnv"
+        raise ValueError(msg)
 
-    elif res_combine is not None:
-        unique_chrs = 1 + np.arange(len(lengths))
-        final_clone_ids = np.sort(np.unique(res_combine["new_assignment"]))
-        clone_index = [
-            np.where(res_combine["new_assignment"] == c)[0] for c in final_clone_ids
-        ]
-        n_states = res_combine["new_p_binom"].shape[0]
-        # Pre-compute fallback palette outside the loop
-        base_pal = sns.color_palette("deep", n_states)
-        palette = [mcolors.to_rgba(color, alpha=1.0) for color in base_pal]
+    if single_X.shape[0] != int(np.sum(lengths)):
+        msg = f"{single_X.shape[0]} bins against lengths summing to {np.sum(lengths)}"
+        raise ValueError(msg)
 
-    else:
-        assert clone_index is not None, "clone_index must be provided."
-        assert lengths is not None, "lengths must be provided."
-        unique_chrs = 1 + np.arange(len(lengths))
-        final_clone_ids = [str(i) for i in range(len(clone_index))]
-
-    assert single_X.shape[0] == np.sum(
-        lengths
-    ), "Mismatch in genomic segment defined X and lengths."
+    labels, groups = clone_groups(res_combine, clone_index)
 
     X, base_nb_mean, total_bb_RD, tumor_prop = merge_pseudobulk_by_index_mix(
-        single_X,
-        single_base_nb_mean,
-        single_total_bb_RD,
-        clone_index,
-        single_tumor_prop,
+        single_X, single_base_nb_mean, single_total_bb_RD, groups, single_tumor_prop
     )
 
-    n_obs = X.shape[0]
-    spots_per_clone = [len(xx) for xx in clone_index]
-    nonempty_clones = np.where(np.sum(total_bb_RD, axis=0) > 0)[0]
-
-    assert len(nonempty_clones) == total_bb_RD.shape[1]
-    assert np.all(nonempty_clones == np.arange(len(final_clone_ids)))
+    if not np.all(np.sum(total_bb_RD, axis=0) > 0):
+        msg = "a clone holds no allele reads"
+        raise ValueError(msg)
 
     if known_nb_baseline is not None:
         base_nb_mean = known_nb_baseline.copy()
 
     has_rdr = base_nb_mean is not None and np.max(base_nb_mean) > 0
-    axes_per_clone = 2 if has_rdr else 1
+    # NB `getattr` until the shift is folded (#392, stage 3): the copy's
+    #    class gains the flag there, and is unshifted until then.
+    shifted = bool(getattr(hmm_nophasing, "apply_logmu_shift", False)) and has_rdr
 
-    fig, axes = _create_clone_gridspec(
-        len(nonempty_clones), axes_per_clone, base_height, sample_list
-    )
-    x_vals = np.arange(n_obs)
+    n_obs = X.shape[0]
+    x = np.arange(n_obs)
+    per_clone = 2 if has_rdr else 1
 
-    for s, c in enumerate(nonempty_clones):
-        cid = final_clone_ids[c]
-        ax_idx = s * axes_per_clone
-        ax_rdr = axes[ax_idx] if has_rdr else None
-        ax_baf = axes[ax_idx + 1] if has_rdr else axes[ax_idx]
+    if figure is None:
+        figure, axes = _create_clone_gridspec(
+            len(labels), per_clone, base_height, sample_list
+        )
+        owned = True
+    else:
+        axes = clone_axes(figure, len(labels), per_clone)
+        owned = False
 
-        if df_cnv is not None:
-            if phased_integer_copies:
-                allele_1 = df_cnv[f"clone{cid} A"].values
-                allele_2 = df_cnv[f"clone{cid} B"].values
-            else:
-                # Collapse to unphased (Major, Minor)
-                allele_1 = np.maximum(
-                    df_cnv[f"clone{cid} A"].values, df_cnv[f"clone{cid} B"].values
-                )
-                allele_2 = np.minimum(
-                    df_cnv[f"clone{cid} A"].values, df_cnv[f"clone{cid} B"].values
-                )
+    for clone, label in enumerate(labels):
+        ax_rdr = axes[per_clone * clone] if has_rdr else None
+        ax_baf = axes[per_clone * clone + per_clone - 1]
 
-            state_tuples = pd.Series(zip(allele_1, allele_2))
-            hue_indices = (
-                state_tuples.map(map_cn).fillna(default_idx).astype(int).values
+        colours, legend = bin_colours(
+            df_cnv=df_cnv,
+            res_combine=res_combine,
+            label=label,
+            clone=clone,
+            n_obs=n_obs,
+            palette_name=palette_name,
+            phased_integer_copies=phased_integer_copies,
+        )
+
+        counts, trials = X[:, 0, clone], total_bb_RD[:, clone]
+        successes = X[:, 1, clone]
+
+        if ax_rdr is not None:
+            baseline = base_nb_mean[:, clone]
+
+            with np.errstate(divide="ignore", invalid="ignore"):
+                rdr = counts / baseline
+                rdr_error = np.nan_to_num(np.sqrt(counts) / baseline, posinf=0.0)
+
+            _points(
+                ax_rdr,
+                x,
+                rdr,
+                rdr_error if plot_rdr_errors == "poisson" else None,
+                colours,
+                pointsize,
+                linewidth,
             )
-
-            if palette_name == "chisel":
-                # Assuming NORMAL_OPACITY is defined globally
-                palette = [
-                    mcolors.to_rgba(
-                        color,
-                        alpha=(NORMAL_OPACITY if ordered_acn[i] == (1, 1) else 1.0),
-                    )
-                    for i, color in enumerate(state_colors)
-                ]
-            else:
-                palette = [mcolors.to_rgba(color, alpha=1.0) for color in state_colors]
-
-            point_colors = np.array(palette)[hue_indices]
-            unique_hues = np.unique(hue_indices)
-
-        elif res_combine is not None:
-            if (
-                res_combine["pred_cnv"].ndim == 1
-                or res_combine["pred_cnv"].shape[1] == 1
-            ):
-                this_pred = (
-                    res_combine["pred_cnv"][(c * n_obs) : (c * n_obs + n_obs)].flatten()
-                    % n_states
-                )
-            else:
-                this_pred = res_combine["pred_cnv"][:, c] % n_states
-
-            assert (
-                len(this_pred) == n_obs
-            ), f"Clone {cid} copy states defined for {len(this_pred)}, expected {n_obs}."
-
-            point_colors = np.array(palette)[this_pred]
-            unique_hues = np.unique(this_pred)
-
-        else:
-            point_colors = "#4C72B0"
-
-        # --- RDR Plotting ---
-        if has_rdr:
-            y_vals_rdr = X[:, 0, c] / base_nb_mean[:, c]
-
-            if plot_rdr_errors == "poisson":
-                with np.errstate(divide="ignore", invalid="ignore"):
-                    std_err_rdr = np.sqrt(X[:, 0, c]) / base_nb_mean[:, c]
-                    std_err_rdr[~np.isfinite(std_err_rdr)] = 0.0
-
-                ax_rdr.errorbar(
-                    x_vals,
-                    y_vals_rdr,
-                    yerr=std_err_rdr,
-                    fmt="none",
-                    ecolor=point_colors,
-                    elinewidth=0.5,
-                    zorder=0,
-                    rasterized=True,
-                )
-
-            # Replaced sns.scatterplot with raw matplotlib scatter for speed
-            ax_rdr.scatter(
-                x_vals,
-                y_vals_rdr,
-                s=pointsize,
-                c=point_colors,
-                edgecolors="none",
-                linewidth=linewidth,
-                zorder=1,
-                rasterized=True,
-            )
-
             _format_track_axis(
                 ax_rdr,
                 "\nRDR",
@@ -599,39 +749,19 @@ def plot_clones_genomic(
                 n_obs,
             )
 
-        # --- BAF Plotting ---
-        baf_vals = X[:, 1, c] / total_bb_RD[:, c]
+        # NB the posterior sd of a beta(k + 1, n - k + 1), as upstream.
+        a, b = successes + 1, trials - successes + 1
+        baf_error = np.sqrt(a * b / ((a + b) ** 2 * (a + b + 1)))
 
-        if plot_baf_errors == "beta":
-            k, n_trials = X[:, 1, c], total_bb_RD[:, c]
-            alpha_param, beta_param = k + 1, n_trials - k + 1
-            alpha_beta_sum = alpha_param + beta_param
-            std_err_baf = np.sqrt(
-                (alpha_param * beta_param)
-                / (np.square(alpha_beta_sum) * (alpha_beta_sum + 1))
-            )
-
-            ax_baf.errorbar(
-                x_vals,
-                baf_vals,
-                yerr=std_err_baf,
-                fmt="none",
-                ecolor=point_colors,
-                elinewidth=0.5,
-                zorder=0,
-                rasterized=True,
-            )
-
-        ax_baf.scatter(
-            x_vals,
-            baf_vals,
-            s=pointsize,
-            c=point_colors,
-            edgecolors="none",
-            zorder=1,
-            rasterized=True,
+        _points(
+            ax_baf,
+            x,
+            successes / trials,
+            baf_error if plot_baf_errors == "beta" else None,
+            colours,
+            pointsize,
+            linewidth,
         )
-
         _format_track_axis(
             ax_baf,
             "\nBAF",
@@ -641,112 +771,61 @@ def plot_clones_genomic(
             n_obs,
         )
 
-        # --- Viterbi Segments ---
         if res_combine is not None:
-            clone_idx = 0 if res_combine["new_log_mu"].shape[1] == 1 else c
-
-            if (
-                res_combine["pred_cnv"].ndim == 1
-                or res_combine["pred_cnv"].shape[1] == 1
-            ):
-                this_pred = (
-                    res_combine["pred_cnv"][(c * n_obs) : (c * n_obs + n_obs)].flatten()
-                    % res_combine["new_log_mu"].shape[0]
-                )
-            else:
-                n_states = res_combine["new_log_mu"].shape[0]
-                this_pred = res_combine["pred_cnv"][:, c] % n_states
-
-            segments, labels = get_intervals(this_pred)
-
-            # 1. Pre-compute exponential math ONCE, not inside the loop
-            exp_log_mu = np.exp(res_combine["new_log_mu"][:, clone_idx])
-            p_binom_arr = res_combine["new_p_binom"][:, clone_idx]
-
-            # 2. Build coordinate lists for LineCollection
-            rdr_lines, baf_major_lines, baf_minor_lines = [], [], []
-
-            for i, seg in enumerate(segments):
-                lbl = labels[i]
-                x_start, x_end = seg[0], seg[-1]
-
-                if has_rdr:
-                    y_rdr = exp_log_mu[lbl]
-                    rdr_lines.append([(x_start, y_rdr), (x_end, y_rdr)])
-
-                y_baf = p_binom_arr[lbl]
-                baf_major_lines.append([(x_start, y_baf), (x_end, y_baf)])
-                baf_minor_lines.append([(x_start, 1.0 - y_baf), (x_end, 1.0 - y_baf)])
-
-            # 3. Add collections to axes in a single vectorized batch
-            if has_rdr and rdr_lines:
-                ax_rdr.add_collection(
-                    LineCollection(rdr_lines, colors="k", linewidths=0.5, zorder=2)
-                )
-
-            if baf_major_lines:
-                ax_baf.add_collection(
-                    LineCollection(
-                        baf_major_lines, colors="k", linewidths=0.5, zorder=2
-                    )
-                )
-                ax_baf.add_collection(
-                    LineCollection(
-                        baf_minor_lines,
-                        colors="k",
-                        linewidths=0.5,
-                        linestyles="--",
-                        zorder=2,
-                    )
-                )
-
-        # --- Legend & Annotations ---
-        if df_cnv is not None or res_combine is not None:
-            legend_labels = ordered_acn if df_cnv is not None else [""] * n_states
-
-            legend_elements = [
-                Line2D(
-                    [0],
-                    [0],
-                    marker="o",
-                    color="w",
-                    markerfacecolor=palette[i],
-                    label=f"{100. * np.mean(hue_indices == i if df_cnv is not None else this_pred == i):.1f}% {legend_labels[i]}",
-                    markersize=10,
-                    linestyle="None",
-                )
-                for i in unique_hues
-            ]
-
-            ax_legend = ax_rdr if has_rdr else ax_baf
-            ax_legend.legend(
-                handles=legend_elements,
-                loc="upper right",
-                bbox_to_anchor=(1, 1.25),
-                ncol=len(legend_elements),
-                frameon=False,
-                bbox_transform=ax_legend.transAxes,
+            levels = fitted_levels(
+                res_combine, clone, n_obs, single_base_nb_mean, shifted
             )
 
-        t_prop = (
-            tumor_prop[c]
-            if (single_tumor_prop is not None and tumor_prop is not None)
-            else None
-        )
+            if ax_rdr is not None:
+                _horizontal(ax_rdr, levels, levels.rdr)
+
+            _horizontal(ax_baf, levels, levels.baf)
+            _horizontal(ax_baf, levels, 1.0 - levels.baf, "--")
+
+        if legend:
+            anchor = ax_rdr if ax_rdr is not None else ax_baf
+            anchor.legend(
+                handles=[
+                    Line2D(
+                        [0],
+                        [0],
+                        marker="o",
+                        color="w",
+                        markerfacecolor=colour,
+                        label=text,
+                        markersize=10,
+                        linestyle="None",
+                    )
+                    for colour, text in legend
+                ],
+                loc="upper right",
+                bbox_to_anchor=(1, 1.25),
+                ncol=len(legend),
+                frameon=False,
+                bbox_transform=anchor.transAxes,
+            )
+
         _annotate_clone_stats(
-            ax_rdr if has_rdr else ax_baf,
-            cid,
-            spots_per_clone[c],
-            np.sum(X[:, 0, c]),
-            np.sum(total_bb_RD[:, c]),
-            t_prop,
-            paired_ax=ax_baf if has_rdr else None,
+            ax_rdr if ax_rdr is not None else ax_baf,
+            label,
+            len(groups[clone]),
+            np.sum(counts),
+            np.sum(trials),
+            tumor_prop[clone] if single_tumor_prop is not None else None,
+            paired_ax=ax_baf if ax_rdr is not None else None,
         )
 
-    _draw_chromosome_boundaries(axes, lengths, unique_chrs, chrtext_shift)
-    fig.tight_layout()
+    chromosomes = (
+        np.unique(df_cnv.CHR.values)
+        if df_cnv is not None
+        else 1 + np.arange(len(lengths))
+    )
+    _draw_chromosome_boundaries(axes, lengths, chromosomes, chrtext_shift)
 
-    return fig
+    if owned:
+        figure.tight_layout()
+
+    return figure
 
 
 # TODO define width

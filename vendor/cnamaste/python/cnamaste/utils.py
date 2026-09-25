@@ -17,6 +17,7 @@ from numba import njit
 
 from cnamaste.config import get_global_config, start_time
 from cnamaste.logger import get_logger
+from typing import Any
 
 logger = get_logger(__name__, start_time=start_time)
 
@@ -272,12 +273,152 @@ def write_tsv(opath, df=None, header=True, index=False, index_label=None, prefix
     df.to_csv(opath, sep="\t", header=header, index=index, index_label=index_label)
 
 
-def write_fig(opath, fig=None, transparent=True, bbox_inches="tight", dpi=300):
+FIGURE_DPI = 150
+"""What a figure is written at, against `cnamaste`'s 300.
+
+Halving it quarters the raster: a 20x10 inch panel goes 6,000 x 3,000 pixels
+to 3,000 x 1,500, 72 MB of RGBA to 18 MB. Measured on one figure with four
+rasterized collections, written to PDF:
+
+    dpi=300, tight bbox -- cnamaste   2,033 ms   35.1 MB
+    dpi=150, tight bbox                692 ms    9.9 MB   2.9x
+    dpi=150, no tight bbox             489 ms    9.8 MB   4.2x
+    dpi=300, tight, not rasterized   1,379 ms    2.1 MB
+
+150 rather than lower because it is the floor at which a 20-inch panel still
+carries 3,000 pixels across, which is more than any screen shows it at and
+more than a page prints it at. Lower is available and is a judgement about
+the figures rather than about the arithmetic, so it is left to whoever is
+reading them.
+"""
+
+
+def collapse_rasterizing_groups(fig: Any, strategy: str = "sink") -> tuple[int, int]:
+    """One rasterizing group per axes rather than two (#195 item 2).
+
+    **The ticket's mechanism was wrong, and the measurement is why this
+    function exists at all.** It read mixed mode as allocating a buffer per
+    rasterized artist -- "four rasterized collections in one axes cost four
+    full-figure buffers". `matplotlib` does not: `allow_rasterization` starts
+    rasterizing at the first rasterized artist and stops at the first one
+    that is **not**, so a run of consecutive rasterized artists shares one
+    buffer.
+
+    What splits `cnamaste`'s runs is a gridline. `_format_track_axis` adds
+    `ax.axhline(..., c="lightgray", linewidth=0.5, zorder=0)` per y tick
+    (`plot_genomic.py:70`), and those land between the rasterized errorbar at
+    zorder 0 and the rasterized scatter at zorder 1. Two groups per axes,
+    measured: a whole run allocates **120 groups over 60 rasterized artists
+    on 39 axes** -- exactly two per artist, one per artist per `bbox_inches`
+    pass -- and 8,287 MB of `RendererAgg` at `cnamaste`'s dpi.
+
+    So the floor is one group per axes, not one per figure, and reaching it
+    costs a change to the drawing either way:
+
+    ``sink``
+        Move the interleaved vector artists **below** the rasterized run.
+        Nothing that was vector becomes raster; the gridlines paint under the
+        error bars instead of over them. This is the default, because the
+        loss is a paint order that was arguably backwards and the other
+        strategy's loss is resolution.
+    ``sweep``
+        Rasterize them with `Axes.set_rasterization_zorder`. The drawing
+        order is untouched and the gridlines become raster at the figure's
+        dpi -- a 0.5 pt line is one pixel at 150.
+    ``strict``
+        Refuse. Collapse only where nothing vector is in the way, which on
+        `cnamaste`'s own figures is **never**: measured at 120 groups before
+        and 120 after, byte for byte the same files.
+
+    Returns
+    -------
+    tuple[int, int]
+        Axes collapsed, and rasterized artists in them.
+
+    Raises
+    ------
+    ValueError
+        On an unknown strategy.
+    """
+    if strategy not in {"sink", "sweep", "strict"}:
+        msg = f"unknown strategy {strategy!r}"
+        raise ValueError(msg)
+
+    collapsed, folded = 0, 0
+
+    for axis in fig.axes:
+        children = [child for child in axis.get_children() if child is not axis.patch]
+        rasterized = [child for child in children if child.get_rasterized()]
+
+        if len(rasterized) < 2:
+            continue
+
+        ceiling = max(child.get_zorder() for child in rasterized)
+        floor = min(child.get_zorder() for child in rasterized)
+
+        # NB only what is drawn *between* two rasterized artists splits the
+        #    run. A vector artist above the ceiling never entered it.
+        interleaved = [
+            child
+            for child in children
+            if child.get_visible()
+            and not child.get_rasterized()
+            and floor <= child.get_zorder() <= ceiling
+        ]
+
+        if interleaved and strategy == "strict":
+            continue
+
+        if strategy == "sweep":
+            for artist in rasterized:
+                artist.set_rasterized(False)
+
+            axis.set_rasterization_zorder(ceiling + 0.5)
+        else:
+            for artist in interleaved:
+                artist.set_zorder(floor - 1.0)
+
+        collapsed += 1
+        folded += len(rasterized)
+
+    return collapsed, folded
+
+
+def write_fig(
+    opath: str,
+    fig: Any = None,
+    transparent: bool = True,
+    bbox_inches: str = "tight",
+    dpi: int = FIGURE_DPI,
+    group_rasters: bool = True,
+    group_strategy: str = "sink",
+) -> None:
+    """What `cnamaste.utils.write_fig` does, at `FIGURE_DPI` and one group per axes.
+
+    A drop-in: same name, `cnamaste`'s signature with one keyword appended,
+    same side effects -- the figure is written and closed. Two differences,
+    and each is a default a caller can put back:
+
+    *   `dpi`, which no caller in `cnamaste` overrides.
+    *   `group_rasters`, which collapses the rasterizing groups by
+        `group_strategy`. At `dpi=300, group_rasters=False` this is
+        `cnamaste`'s function byte for byte, which is what
+        `tests/test_figure_dpi.py` holds it to.
+    """
     if fig is None:
         fig = plt.figure()
-        ax = fig.add_subplot(111)
+        fig.add_subplot(111)
+
+    if group_rasters:
+        collapsed, folded = collapse_rasterizing_groups(fig, group_strategy)
+
+        if collapsed:
+            logger.info(
+                f"Collapsed {folded} rasterized artists into {collapsed} groups."
+            )
 
     logger.info(f"Writing figure to:\n{opath}")
+
     fig.savefig(
         opath,
         format="pdf",
@@ -285,6 +426,7 @@ def write_fig(opath, fig=None, transparent=True, bbox_inches="tight", dpi=300):
         bbox_inches=bbox_inches,
         dpi=dpi,
     )
+
     plt.close(fig)
 
 
