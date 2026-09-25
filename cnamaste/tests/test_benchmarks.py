@@ -159,3 +159,39 @@ def test_label_sweep(benchmark: Any, size: dict[str, Any]) -> None:
     sweep()
     result = benchmark(sweep)
     assert np.isfinite(result.cost)
+
+
+@pytest.mark.parametrize("size", SIZES.values())
+def test_genomic_figure(benchmark: Any, size: dict[str, Any], tmp_path: Any) -> None:
+    """`plot_clones_genomic` drawn and written as a PDF (#392 stage 2)."""
+    import matplotlib as mpl
+
+    from cnamaste.plot_genomic import plot_clones_genomic
+    from cnamaste.utils import write_fig
+
+    mpl.use("Agg")
+    truth = _instance(size)
+    single_X = np.stack([truth.counts_nb, truth.unphased_bb()], axis=1)
+    res = {
+        "new_log_mu": truth.log_mu[:, None],
+        "new_p_binom": truth.p_binom[:, None],
+        "pred_cnv": truth.states.T,
+        "new_assignment": truth.labels,
+    }
+    clone_index = [np.flatnonzero(truth.labels == c) for c in range(truth.n_clones)]
+    path = tmp_path / "clones_genomic.pdf"
+
+    def draw() -> None:
+        figure = plot_clones_genomic(
+            truth.lengths,
+            single_X,
+            truth.base_nb_mean,
+            truth.total_bb_RD,
+            res_combine=res,
+            clone_index=clone_index,
+        )
+        write_fig(str(path), figure)
+
+    draw()
+    benchmark(draw)
+    assert path.stat().st_size > 0
