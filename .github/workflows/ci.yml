@@ -84,6 +84,11 @@ jobs:
       #    validate anything, so this is a reduction in what CI establishes
       #    rather than a saving.
       - run: uv run --no-sync pytest -m "not release and not oracle" -q --no-cov
+      # NB `cnamaste`'s own tests (#392): fixture based, blind to `cnaster` and
+      #    `snakes_and_ladders`, and configured by `cnamaste/pyproject.toml`,
+      #    which a path under `cnamaste/` selects. Its default deselects
+      #    `release`, and benchmarks run once as tests. 40 tests in 70 s.
+      - run: uv run --no-sync pytest cnamaste/tests -q
       # NB the gate measures the validated types alone (#149). Coverage counts
       #    what ran, so the counted set has to be the selection here rather
       #    than a filter applied to the full run afterwards -- which is also

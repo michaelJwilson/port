@@ -1,6 +1,6 @@
 # `cnaster` at 4adad4d, renamed `cnamaste` (VENDOR.toml, #392). The runtime
 # dependencies are the pin's, unchanged; its development extras are not
-# carried, because `port` develops and tests the copy.
+# carried; its own tests take `test` below.
 [project]
 name = "cnamaste"
 version = "0.1.0"
@@ -28,6 +28,9 @@ dependencies = [
     "pysam",
 ]
 
+[project.optional-dependencies]
+test = ["pytest>=9.0.3", "pytest-benchmark>=4", "pytest-xdist>=3.6"]
+
 [project.scripts]
 run_cnamaste = "cnamaste.scripts.run_cnamaste:main"
 
@@ -36,6 +39,21 @@ include = ["python/cnamaste"]
 
 [tool.hatch.build.targets.wheel.sources]
 "python/cnamaste" = "cnamaste"
+
+# `cnamaste`'s own tests (#392): fixture based, and blind to `cnaster` and
+# `snakes_and_ladders` -- the generator in `tests/sim` is `numpy` alone.
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["tests"]
+addopts = ["--strict-markers", "-m", "not release", "--benchmark-disable"]
+markers = [
+    "end2end: judged against the planted truth, through a whole run",
+    "oracle: judged against an independent implementation of the same quantity",
+    "analytic: judged against a mathematical property",
+    "sim: judges the generator against what it planted",
+    "benchmark: records a baseline; asserts no ratio",
+    "release: over the per-PR budget, or a stress size; run with -m release",
+]
 
 [build-system]
 requires = ["hatchling"]

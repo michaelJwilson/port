@@ -137,7 +137,7 @@ module-name = "port.oxiport"
 target-version = "py312"
 # `cnaster`'s code, vendored byte for byte but for the rename (#392): held to
 # the pin by `tests/test_vendor_cnamaste.py`, not to this repository's style.
-extend-exclude = ["cnamaste"]
+extend-exclude = ["cnamaste/python"]
 
 [tool.ruff.lint]
 ignore = [
@@ -187,7 +187,11 @@ unfixable = [
 
 [tool.mypy]
 strict = true
-files = ["python", "tests"]
+files = ["python", "tests", "cnamaste/tests"]
+# NB `cnamaste`'s tests import their generator as `sim`, from their own root;
+#    with explicit bases, `python` is named so `port` resolves as `port`.
+mypy_path = "python:cnamaste/tests"
+explicit_package_bases = true
 
 [[tool.mypy.overrides]]
 module = "pytest_benchmark.*"
