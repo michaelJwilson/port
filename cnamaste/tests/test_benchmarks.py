@@ -214,3 +214,17 @@ def test_library_shifts(benchmark: Any, size: dict[str, Any]) -> None:
     _warm(shifts, *args)
     out = benchmark(shifts, *args)
     assert np.all(np.isfinite(out))
+
+
+@pytest.mark.parametrize("name", ["oneclone", "fixdiploid_milp"])
+@pytest.mark.parametrize("size", SIZES.values())
+def test_integer_copy_decoder(benchmark: Any, size: dict[str, Any], name: str) -> None:
+    """One clone's integer copies under the configured cap (#392 stage 4)."""
+    from cnamaste import integer_copy
+
+    truth = planted(n_clones=3, n_segments=4, copy_lattice=True, **size)
+    exposure = truth.base_nb_mean[:, truth.labels == 2].sum(axis=1)
+    decoder = getattr(integer_copy, f"hill_climbing_integer_copynumber_{name}")
+    args = (truth.log_mu, exposure, truth.p_binom, truth.states[2])
+    copies, _, _ = benchmark(decoder, *args)
+    assert np.all(np.asarray(copies) >= 0)

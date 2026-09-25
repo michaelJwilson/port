@@ -214,9 +214,12 @@ module = "cnaster.*"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
-# The vendored copy of cnaster (#392), untyped for the same reason.
-module = "cnamaste.*"
+# The vendored copy of cnaster (#392), untyped for the same reason. The package
+# is named too, and skipped: with explicit bases the repository root's
+# `cnamaste/` directory would otherwise resolve as it, without its modules.
+module = ["cnamaste", "cnamaste.*"]
 ignore_missing_imports = true
+follow_imports = "skip"
 
 [[tool.mypy.overrides]]
 module = "numba.*"
