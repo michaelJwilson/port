@@ -110,6 +110,28 @@ run's fitted normal clone (#320). Scored with `--two-pass-normal`:
 It equals the oracle wherever the first pass labels the clones exactly, and
 inherits the oracle's collapse. It stays in the sandbox.
 
+## Integer copies by the pseudobulk likelihood (#327)
+
+`run_cnaster_port --copy-likelihood` re-decodes each clone's integer copies by
+the NB/BB pseudobulk log-likelihood the HMM fitted, with the decoded path
+and the dispersions held (no E-step), the neutral state pinned at `(1, 1)`,
+and the shift's `Z_c` when the shift is on. It starts from the MILP's answer.
+F is 8 states at `1 x 3`; C is 9 states at `3 x 30`. Spot ARI is the same in
+both arms, because the refinement runs after the labelling.
+
+| instance | config | decoder | copy ARI | copies exact | altered exact | altered error (median) | wall |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: |
+| dev | F | MILP | 0.896 | 0.944 | 0.000 | 3 | 69.1 s |
+| dev | F | likelihood | 0.898 | 0.944 | 0.000 | 1 | 69.0 s |
+| lattice | F | MILP | 0.799 | 0.968 | 0.417 | 1 | 120.1 s |
+| lattice | F | likelihood | **0.887** | 0.980 | **0.794** | 0 | 125.2 s |
+| lattice | C | MILP | 0.993 | 0.971 | 0.484 | 1 | 130.8 s |
+| lattice | C | likelihood | **0.999** | 0.985 | **0.727** | 0 | 135.9 s |
+
+The dev grid is not integer (`mu = 1.5` at `p = 0.58`), so its altered copies
+cannot be exact under either decoder; the median error falls from 3 to 1.
+The refinement costs 4 to 5 s per run, and each wall figure is one run.
+
 ## Not established
 
 - **Why the oracle collapses two runs to one clone.** The RDR-stage refinement
