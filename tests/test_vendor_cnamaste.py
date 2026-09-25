@@ -1,4 +1,4 @@
-"""`vendor/cnamaste` is `cnaster` at the lock's pin, renamed (#392).
+"""`cnamaste/` is `cnaster` at the lock's pin, renamed (#392).
 
 Two referees. The pin itself, for every module no stage has rewritten: the
 copy, renamed back, is the installed file byte for byte. And the installed
