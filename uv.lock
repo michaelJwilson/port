@@ -617,6 +617,47 @@ wheels = [
 ]
 
 [[package]]
+name = "cnamaste"
+version = "0.1.0"
+source = { editable = "vendor/cnamaste" }
+dependencies = [
+    { name = "anndata" },
+    { name = "hmmlearn" },
+    { name = "matplotlib" },
+    { name = "numba" },
+    { name = "numpy" },
+    { name = "pandas" },
+    { name = "polars" },
+    { name = "pybedtools" },
+    { name = "pyranges" },
+    { name = "pysam" },
+    { name = "pyyaml" },
+    { name = "rich" },
+    { name = "scanpy" },
+    { name = "scikit-learn" },
+    { name = "scipy" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "anndata", specifier = ">=0.8.0" },
+    { name = "hmmlearn" },
+    { name = "matplotlib" },
+    { name = "numba", specifier = ">=0.61.0" },
+    { name = "numpy", specifier = ">=1.26.0" },
+    { name = "pandas", specifier = ">=2.0.0,<3" },
+    { name = "polars", specifier = ">=1.30.0" },
+    { name = "pybedtools" },
+    { name = "pyranges" },
+    { name = "pysam" },
+    { name = "pyyaml", specifier = ">=6.0" },
+    { name = "rich", specifier = "==14.0.0" },
+    { name = "scanpy", specifier = ">=1.9.0" },
+    { name = "scikit-learn" },
+    { name = "scipy" },
+]
+
+[[package]]
 name = "cnaster"
 version = "0.1.0"
 source = { git = "https://github.com/michaelJwilson/cnaster?branch=finish_annotation_mushift3#4adad4d829ac58ac234685d71a8dbf26fd8ff3bb" }
@@ -2905,6 +2946,7 @@ wheels = [
 name = "port"
 source = { editable = "." }
 dependencies = [
+    { name = "cnamaste" },
     { name = "cnaster" },
     { name = "jax" },
     { name = "matplotlib" },
@@ -2950,6 +2992,7 @@ track = [
 requires-dist = [
     { name = "aim", marker = "extra == 'track'", specifier = ">=3.29,<4" },
     { name = "calicost", marker = "extra == 'calicost'", git = "https://github.com/raphael-group/CalicoST?rev=c1abcae" },
+    { name = "cnamaste", editable = "vendor/cnamaste" },
     { name = "cnaster", git = "https://github.com/michaelJwilson/cnaster?branch=finish_annotation_mushift3" },
     { name = "ipykernel", marker = "extra == 'notebooks'", specifier = ">=6.29" },
     { name = "jax", specifier = ">=0.11.2" },

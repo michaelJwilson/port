@@ -1,0 +1,228 @@
+import numpy as np
+import scipy.special
+
+from cnamaste.cna_hmrf_result import (
+    CloneAssignment,
+    CnaHMRFResult,
+    HMMParamErrors,
+    HMMParams,
+    HMMProfile,
+)
+from cnamaste.config import start_time
+from cnamaste.hmm_initialize import gmm_init
+from cnamaste.hmm_phased import hmm_phased
+from cnamaste.hmm_nophasing import compute_logmu_shifts
+from cnamaste.logger import get_logger
+
+logger = get_logger(__name__, start_time=start_time)
+
+
+# TODO
+def compute_copy_state_posterior(
+    log_alpha,
+    log_beta,
+):
+    # NB log_gamma (n_states * n_observations), potentially concatenated by clone.
+    log_gamma = log_alpha + log_beta
+
+    if np.any(np.sum(log_gamma, axis=0) == 0):
+        logger.error("Sum of posterior probability is zero for some observations!")
+        raise RuntimeError()
+
+    # NB normalize across states for each observation.
+    log_gamma -= scipy.special.logsumexp(log_gamma, axis=0)
+
+    return log_gamma
+
+
+def pipeline_baum_welch(
+    _,
+    X,
+    lengths,
+    n_states,
+    base_nb_mean,
+    total_bb_RD,
+    log_sitewise_transmat,
+    tumor_prop=None,
+    hmmclass=hmm_phased,
+    params="smp",
+    t=1.0 - 1.0e-6,
+    random_state=0,
+    in_log_space=True,
+    only_minor=False,
+    fix_NB_dispersion=False,
+    shared_NB_dispersion=True,
+    fix_BB_dispersion=False,
+    shared_BB_dispersion=True,
+    init_log_mu=None,
+    init_p_binom=None,
+    init_alphas=None,
+    init_taus=None,
+    is_diag=True,
+    propagate_errors=False,
+    max_iter=100,
+    tol=1e-4,
+    normal_lambda=None,
+    clone_lengths=None,
+    init_log_gamma=None,
+):
+    logger.info(
+        f"Solving HMM for X={X.shape} with {hmmclass.__name__} instance and parameters={params}; t={t}."
+    )
+
+    # NB initialize emission parameters (for hmm) prior to baum welch, if not provided.
+    if ((init_log_mu is None) and ("m" in params)) or (
+        (init_p_binom is None) and ("p" in params)
+    ):
+        tmp_log_mu, tmp_p_binom = gmm_init(
+            n_states,
+            X,
+            base_nb_mean,
+            total_bb_RD,
+            params,
+            random_state=random_state,
+            in_log_space=in_log_space,
+            only_minor=only_minor,
+        )
+
+        if (init_log_mu is None) and ("m" in params):
+            init_log_mu = tmp_log_mu
+            logger.info(f"Initialized log_mu with gmm:\n{init_log_mu}")
+
+        if (init_p_binom is None) and ("p" in params):
+            init_p_binom = tmp_p_binom
+            logger.info(f"Initialized p_binom with gmm:\n{init_p_binom}")
+    else:
+        if "m" in params:
+            logger.info(f"Assumed initial log_mu:\n{init_log_mu}")
+        if "p" in params:
+            logger.info(f"Assumed initial p_binom:\n{init_p_binom}")
+
+    hmm_model = hmmclass(params=params, t=t)
+
+    res = hmm_model.optimize(
+        X,
+        lengths,
+        n_states,
+        base_nb_mean,
+        total_bb_RD,
+        log_sitewise_transmat=log_sitewise_transmat,
+        tumor_prop=tumor_prop,
+        fix_NB_dispersion=fix_NB_dispersion,
+        shared_NB_dispersion=shared_NB_dispersion,
+        fix_BB_dispersion=fix_BB_dispersion,
+        shared_BB_dispersion=shared_BB_dispersion,
+        is_diag=is_diag,
+        init_log_mu=init_log_mu,
+        init_p_binom=init_p_binom,
+        init_alphas=init_alphas,
+        init_taus=init_taus,
+        max_iter=max_iter,
+        tol=tol,
+        propagate_errors=propagate_errors,
+        normal_lambda=normal_lambda,  # TODO FINAL
+        clone_lengths=clone_lengths,  # TODO FINAL
+        log_gamma=None,  # TODO FINAL
+    )
+
+    # TODO
+    new_log_mu = res["new_log_mu"]
+    new_alphas = res["new_alphas"]
+    new_p_binom = res["new_p_binom"]
+    new_taus = res["new_taus"]
+    new_log_startprob = res["new_log_startprob"]
+    new_log_transmat = res["new_log_transmat"]
+    log_gamma = res["log_gamma"]
+
+    to_log = [
+        f"Solved for best emission parameters with {hmm_model.__class__.__name__}:"
+    ]
+
+    if "m" in params and new_log_mu is not None:
+        to_log.append(f"mu=\n{np.exp(new_log_mu)}")
+        to_log.append(f"alphas=\n{new_alphas}")
+
+    if "p" in params and new_p_binom is not None:
+        to_log.append(f"p_binom=\n{new_p_binom}")
+        to_log.append(f"taus=\n{new_taus}")
+
+    logger.info("\n".join(to_log))
+    logger.info("Computing emission prob. given best-fit parameters.")
+
+    (
+        log_emission_rdr,
+        log_emission_baf,
+    ) = hmmclass.compute_emission_probability_nb_betabinom(
+        X, base_nb_mean, new_log_mu, new_alphas, total_bb_RD, new_p_binom, new_taus
+    )
+
+    # logmu_shift = compute_logmu_shift(n_states, new_log_mu, log_gamma, normal_lambda, clone_lengths)
+
+    # NB assumed independent.
+    log_emission = log_emission_rdr + log_emission_baf
+
+    log_alpha = hmmclass.forward_lattice(
+        lengths,
+        new_log_transmat,
+        new_log_startprob,
+        log_emission,
+        log_sitewise_transmat,
+    )
+
+    # NB forward determines the total likelihood.
+    llf = np.sum(scipy.special.logsumexp(log_alpha[:, np.cumsum(lengths) - 1], axis=0))
+
+    log_beta = hmmclass.backward_lattice(
+        lengths,
+        new_log_transmat,
+        new_log_startprob,
+        log_emission,
+        log_sitewise_transmat,
+    )
+
+    # NB compute state posterior.
+    log_gamma = compute_copy_state_posterior(log_alpha, log_beta)
+
+    # NB pred > n_states indicates a phase switch.
+    pred = np.argmax(log_gamma, axis=0)
+
+    # NB copy state only, lost phase.
+    pred_cnv = pred % n_states
+
+    logger.info(
+        f"Solved HMM with LLF={llf:.6e} for new_log_mu.shape={new_log_mu.shape} given X.shape={X.shape}"
+    )
+
+    param_errors = (
+        HMMParamErrors(
+            new_log_mu_err=res["new_log_mu_err"],
+            new_alphas_err=res["new_alphas_err"],
+            new_p_binom_err=res["new_p_binom_err"],
+            new_taus_err=res["new_taus_err"],
+            new_log_startprob_err=None,  # TODO
+            new_log_transmat_err=None,  # TODO
+        )
+        if propagate_errors
+        else None
+    )
+
+    # NB pred (when clones concatenated along an axis) assumes a clone (order) definition.
+    return CnaHMRFResult(
+        params=HMMParams(
+            new_log_mu=new_log_mu,
+            # new_log_mu_shift=logmu_shift,
+            new_alphas=new_alphas,
+            new_p_binom=new_p_binom,
+            new_taus=new_taus,
+            new_log_startprob=new_log_startprob,
+            new_log_transmat=new_log_transmat,
+        ),
+        param_errors=param_errors,
+        profile=HMMProfile(
+            log_gamma=log_gamma,
+            pred_cnv=pred_cnv,
+        ),
+        assignment=CloneAssignment(),
+        llf=llf,
+        n_states=n_states,
+    )

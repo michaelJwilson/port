@@ -282,6 +282,9 @@ specific.
     to do rather than what some implementation does. It is not a dependency:
     nothing imports it, and the pin that governs it is a citation rather
     than a lockfile.
+*   `vendor/cnamaste` is `cnaster` at the lock's pin, renamed, with `port`'s
+    default patches written in (#392). It is `port`'s code, not a fourth
+    reference: `cnaster` stays the reference it is held against.
 *   Where `cnaster` and the paper disagree, neither is automatically right.
     The paper may describe an intent the code has not reached, or the code
     may have learned something the paper has not recorded. Say which, with

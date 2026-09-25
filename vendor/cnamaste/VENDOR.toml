@@ -1,0 +1,54 @@
+# `cnamaste`: `cnaster` at the pin `port` locks, renamed, with `port`'s
+# default swaps folded in one table at a time (#392).
+#
+# `tests/vendor_cnamaste.py` reads this file. Stage 0 wrote the copy from it
+# (`python -m tests.vendor_cnamaste`), and `tests/test_vendor_cnamaste.py`
+# holds every module not listed under `folded` to the pin byte for byte.
+
+[source]
+url = "https://github.com/michaelJwilson/cnaster"
+branch = "finish_annotation_mushift3"
+commit = "4adad4d829ac58ac234685d71a8dbf26fd8ff3bb"
+
+# Applied to every file's text in this order, and reversed to check it. None
+# of the targets occurs at the pin, so the reversal is exact.
+[[rename]]
+old = "cnaster"
+new = "cnamaste"
+
+[[rename]]
+old = "CNAster"
+new = "CNAmaste"
+
+# Paths relative to the package, pin -> copy.
+[paths]
+"scripts/run_cnaster.py" = "scripts/run_cnamaste.py"
+
+# Out of scope by `CLAUDE.md`: work the source repository set aside.
+[excluded]
+trees = ["deprecated", "sandbox"]
+
+# Deprecated rather than carried (#392).
+[[dropped]]
+entry = "run_cnaster_tumor_prop"
+module = ""
+why = "Its entry point names cnaster.scripts.run_cnaster_tumor_prop, which does not exist at the pin: the command fails on import."
+
+[[dropped]]
+entry = "prep_snps"
+module = "scripts/prep_snps.py"
+why = "Input preparation upstream of the model; no module of cnaster or port imports it."
+
+[[dropped]]
+entry = "create_allele_matrices"
+module = "scripts/create_allele_matrices.py"
+why = "Input preparation upstream of the model; no module of cnaster or port imports it."
+
+[[dropped]]
+entry = "run_sim_analysis"
+module = ""
+why = "The module is carried; the console script is not, because cnaster installs one of the same name beside it and the two would overwrite each other."
+
+# Modules a stage has rewritten, with the swap table that did it. The
+# provenance test skips them; the oracle test is what holds them.
+[folded]
