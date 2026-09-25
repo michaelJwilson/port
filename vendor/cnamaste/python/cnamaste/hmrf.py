@@ -918,7 +918,7 @@ def pipeline_clone_assignment_reference(
     return new_assignment, loglike_spot_clone_assignment, log_likelihood
 
 
-def run_core_inference(
+def run_core_inference_reference(
     single_X,
     lengths,
     single_base_nb_mean,
@@ -1311,6 +1311,55 @@ def run_core_inference(
         res["pred_cnv"] = np.argmax(res["log_gamma"], axis=0)
 
     return res
+
+def pin_neutral(result: Any) -> int:
+    """Set the neutral state's `mu` to 1 in `result`, in place.
+
+    Returns the state pinned. `result` is `cnamaste`'s `CnaHMRFResult`, which
+    may be locked; it is unlocked for the one assignment and locked again if
+    it was.
+    """
+    from cnamaste.hmm_nophasing import neutral_state
+    from cnamaste.clone_paths import state_vector
+
+    column = np.asarray(result["new_log_mu"])
+    rates = state_vector(column)
+    try:
+        path = np.asarray(result["pred_cnv"])
+    except KeyError:
+        path = None
+
+    neutral = neutral_state(
+        rates,
+        state_vector(result["new_p_binom"]),
+        path if path is not None and path.ndim == 2 else None,
+    )
+
+    locked = bool(getattr(result, "_locked", False))
+
+    if locked:
+        result.unlock()
+
+    try:
+        result["new_log_mu"] = (rates - rates[neutral]).reshape(column.shape)
+    finally:
+        if locked:
+            result.lock()
+
+    return neutral
+
+
+def run_core_inference(*args: Any, **kwargs: Any) -> Any:
+    """Upstream's inference, then the neutral pin when the fit was shifted."""
+    result = run_core_inference_reference(*args, **kwargs)
+
+    hmmclass = kwargs.get("hmmclass")
+    shifted = bool(getattr(hmmclass, "apply_logmu_shift", False))
+
+    if shifted and "m" in str(kwargs.get("params", "")):
+        pin_neutral(result)
+
+    return result
 
 
 def reindex_clones(res_combine, posterior=None, single_tumor_prop=None):

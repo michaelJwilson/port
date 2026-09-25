@@ -8,6 +8,7 @@ from cnamaste.hmm_nophasing import (
     _bb_logpmf_1d,
     _nb_logpmf_1d,
     hmm_nophasing,
+    hmm_nophasing_reference,
     numba_logsumexp,
 )
 
@@ -75,7 +76,9 @@ def update_combined_transmat(
         out_transmat[n_states:, n_states:] = self_trans + log_transmat
 
 
-class hmm_phased(hmm_nophasing):
+# NB the unshifted class, as `port` leaves it: its swap rebinds the name
+#    `hmm_nophasing` after this subclass was built on the original (#392).
+class hmm_phased(hmm_nophasing_reference):
     def __init__(self, params="stmp", t=1 - 1e-4):
         super().__init__(params=params, t=t)
 

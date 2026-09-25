@@ -636,6 +636,7 @@ dependencies = [
     { name = "scanpy" },
     { name = "scikit-learn" },
     { name = "scipy" },
+    { name = "snakes-and-ladders" },
 ]
 
 [package.metadata]
@@ -655,6 +656,7 @@ requires-dist = [
     { name = "scanpy", specifier = ">=1.9.0" },
     { name = "scikit-learn" },
     { name = "scipy" },
+    { name = "snakes-and-ladders", git = "https://github.com/michaelJwilson/snakes_and_ladders?branch=main" },
 ]
 
 [[package]]

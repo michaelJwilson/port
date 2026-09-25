@@ -11,6 +11,13 @@ from scipy.optimize import OptimizeResult
 from cnamaste.config import start_time
 from cnamaste.count_encoder import CountEncoder
 from cnamaste.logger import get_logger
+from collections.abc import Sequence
+from collections.abc import Iterator
+from contextlib import contextmanager
+from typing import Any, NamedTuple
+from cnamaste.config import get_global_config
+from snakes_and_ladders.ragged import Ragged
+from cnamaste.clone_paths import state_vector
 
 logger = get_logger(__name__, start_time=start_time)
 
@@ -178,7 +185,7 @@ def compute_logmu_shifts(log_mus, copy_states, normal_log_lambda, clone_lengths)
         
     return logmu_shifts
 
-class hmm_nophasing:
+class hmm_nophasing_reference:
     def __init__(self, params="stmp", t=1 - 1e-4):
         self.params = params
         self.t = t
@@ -1134,3 +1141,642 @@ class hmm_nophasing:
             "llf": -res.fun,
             "n_states": n_states,
         } | param_errors
+
+@njit(nogil=True, cache=True, parallel=False, error_model="numpy")
+def _per_clone(means, states, lambdas, lengths):
+    """Upstream's two passes, writing one value per clone rather than per segment.
+
+    Kept as `numba` and kept as upstream's shape of loop, because that is
+    what the measurement says: a `scipy.special.logsumexp` over per-clone
+    views is **2.1x slower** at the stress size and 3.9x at the gate one.
+    The compiled two-pass is not the thing worth replacing; the write is.
+    """
+    n_clones = lengths.size
+    out = np.empty(n_clones, dtype=np.float64)
+
+    start = 0
+
+    for clone in range(n_clones):
+        length = lengths[clone]
+        largest = -np.inf
+
+        for i in range(length):
+            value = means[states[start + i]] + lambdas[start + i]
+
+            # NB `max` rather than the branch PLR1730 asks for: `numba`
+            #    compiles the comparison, and the builtin on two floats is
+            #    what upstream's own loop avoids for the same reason.
+            largest = max(largest, value)
+
+        if np.isinf(largest):
+            out[clone] = largest
+        else:
+            total = 0.0
+
+            for i in range(length):
+                total += np.exp(means[states[start + i]] + lambdas[start + i] - largest)
+
+            out[clone] = largest + np.log(total)
+
+        start += length
+
+    return out
+
+
+def shifts(
+    log_mus: np.ndarray,
+    copy_states: np.ndarray,
+    normal_log_lambda: np.ndarray,
+    clone_lengths: Sequence[int] | np.ndarray,
+) -> np.ndarray:
+    """Per-clone `logsumexp` of `log_mus[state] + normal_log_lambda`.
+
+    **`(n_clones,)`, where upstream returns `(n_segments,)`.** That is the
+    one stated difference from `compute_logmu_shifts`, and it is a shape
+    rather than a value: upstream writes each clone's shift across every one
+    of that clone's segments, so its return carries `n_clones` distinct
+    numbers in `n_segments` floats. `np.repeat(shifts(...), clone_lengths)`
+    is upstream's array exactly, and
+    `tests/test_logmu_shift.py::test_it_reproduces_cnamastes_loop` is what
+    holds that.
+
+    The shape is the point rather than the bytes. A per-segment return has to
+    be indexed by a running offset, and indexing it by clone -- which is what
+    it looks like it wants -- silently hands every clone the first clone's
+    shift, with no exception and no warning. One value per clone cannot be
+    read that way. At the segment count `expected_runtime.tex` derives, 2.9e5,
+    the difference is also 2.3 MB against a handful of numbers.
+
+    Reproduces the values `compute_logmu_shifts` computes, including its
+    handling of a clone whose every term is `-inf`: the loop leaves `max_val`
+    at `-inf` and returns it rather than computing `log(0)`, and
+    `scipy.special.logsumexp` returns `-inf` there too.
+
+    Parameters
+    ----------
+    log_mus
+        Per-state log means, indexed by `copy_states`.
+    copy_states
+        One state index per segment, over every clone concatenated.
+    normal_log_lambda
+        One value per segment, added to its state's `log_mu`.
+    clone_lengths
+        Segments per clone, in order. Their sum is the segment count.
+    """
+    states = np.asarray(copy_states, dtype=np.int64).reshape(-1)
+    lambdas = np.asarray(normal_log_lambda, dtype=np.float64).reshape(-1)
+    means = np.asarray(log_mus, dtype=np.float64).reshape(-1)
+    lengths = np.asarray(clone_lengths, dtype=np.int64).reshape(-1)
+
+    n_segments = states.size
+
+    if lambdas.size != n_segments:
+        msg = f"{lambdas.size} lambdas for {n_segments} segments"
+        raise ValueError(msg)
+
+    if int(lengths.sum()) != n_segments:
+        msg = f"clone lengths sum to {int(lengths.sum())}, not {n_segments}"
+        raise ValueError(msg)
+
+    # NB the rectangular fast path, detected rather than assumed. Where the
+    #    clones are equal the whole reduction is one call on a view that
+    #    copies nothing; where they are not, a view cannot exist and the
+    #    per-clone slices are still each contiguous.
+    reduced: np.ndarray = _per_clone(means, states, lambdas, lengths)
+
+    return reduced
+
+
+NEUTRAL_BAF_TOLERANCE = 0.05
+"""How far from 0.5 a state's allele fraction may sit and still be neutral.
+
+The neutral state is the one with a balanced allele fraction and the lowest
+`mu` (#293). `p` is fitted, so "balanced" is a tolerance; 0.05 admits the
+0.4873-0.4999 #292's fits return for the planted 0.5 and refuses the next
+planted state, 0.42.
+"""
+
+
+class _Triples(NamedTuple):
+    """The genome-wide `(clone, obs, total)` compression, and how to undo it.
+
+    `bounds[c]:bounds[c + 1]` is clone `c`'s block of unique rows, contiguous
+    because the clone index is the **first** column and `np.unique` sorts
+    lexicographically. That is what lets one shift be applied per block with
+    a scalar rather than per entry with a gather.
+    """
+
+    obs: np.ndarray
+    total: np.ndarray
+    inverse: np.ndarray
+    bounds: np.ndarray
+
+
+def _clone_major(
+    channel: Any, lengths: tuple[int, ...]
+) -> tuple[np.ndarray, np.ndarray]:
+    """One clone-stacked channel, contiguous, and the clone each entry is in.
+
+    **What `port.patch.hmrf_utils` held, where the data is read (#349).**
+    `CountEncoder(X[:, 0, :], ...)` (`hmm_nophasing.py:842`) keeps a view of
+    the clone-stacked `X`, `(n_clones * n_obs, 2, 1)`, so one channel walks at
+    a stride of two elements. The copy here is the contiguous clone-major
+    buffer #234 PR 1 built as `channels_of`; the tiling is checked by
+    `snakes_and_ladders.ragged.Ragged`, which refuses lengths that do not sum
+    to the rows, rather than re-derived.
+    """
+    values = np.ascontiguousarray(np.asarray(channel).reshape(-1))
+    layout = Ragged(values=values, lengths=lengths)
+    clones = np.repeat(np.arange(layout.n_segments, dtype=np.int64), layout.lengths)
+
+    return values, clones
+
+
+def _triples(
+    obs_count: np.ndarray, total_count: np.ndarray, lengths: tuple[int, ...]
+) -> _Triples:
+    """Compress `(clone, obs, total)` once over the whole genome.
+
+    **The clone index is what lets a shared pair carry two rates.**
+    `CountEncoder` compresses `(obs, total)` genome-wide, so two segments in
+    different clones sharing a pair collapse to one entry -- and under the
+    shift they need different rates, which one entry cannot hold. Adding the
+    clone to the key separates exactly those and nothing else: the unique
+    rows are, per clone, that clone's unique pairs.
+
+    The alternative is one `CountEncoder` per clone, which is what #276
+    deferred at **1.69x**. This keeps one pass and one mapping, so the
+    duplication it admits is the minimum the shift requires rather than a
+    re-encoding of the genome per clone.
+
+    Rounding follows `CountEncoder.construct_unique_encoding`: non-integer
+    counts are rounded to the configured decimals before the compare, so two
+    entries that upstream would collapse are not separated here by a float
+    the encoder never looked at.
+    """
+    obs, clones = _clone_major(obs_count, lengths)
+    total, _ = _clone_major(total_count, lengths)
+
+    counts = np.column_stack([clones.astype(np.float64), obs, total])
+
+    if not np.issubdtype(total.dtype, np.integer):
+        counts = counts.round(decimals=get_global_config().hmm.compression_decimals)
+
+    unique, inverse = np.unique(counts, axis=0, return_inverse=True)
+
+    return _Triples(
+        obs=np.ascontiguousarray(unique[:, 1]),
+        total=np.ascontiguousarray(unique[:, 2]),
+        inverse=inverse.reshape(-1),
+        bounds=np.searchsorted(unique[:, 0], np.arange(len(lengths) + 1)),
+    )
+
+
+def _current(lengths: tuple[int, ...], n_segments: int) -> tuple[int, ...]:
+    """The clone lengths of the sequence actually being fitted.
+
+    **`cnamaste` passes stale ones once clones merge.** `hmrf.py:564` sets
+    `clone_lengths` from the initial pseudobulk, before the loop, and never
+    updates it; the HMRF then merges clones, so on #292's genome it still
+    says six clones of 300 bins while the fit is over three -- 1,800 against
+    900. Every clone carries the whole genome, so the length is the one bin
+    count and the current number of clones is the decode's size over it.
+    Anything that does not divide is refused rather than guessed.
+    """
+    if int(sum(lengths)) == n_segments:
+        return lengths
+
+    if lengths and len(set(lengths)) == 1 and n_segments % lengths[0] == 0:
+        return (lengths[0],) * (n_segments // lengths[0])
+
+    msg = f"clone lengths {lengths} do not tile the {n_segments} segments decoded"
+    raise ValueError(msg)
+
+
+def _stacked(normal_log_lambda: Any, lengths: tuple[int, ...]) -> np.ndarray:
+    """`log lambda` over the clone-stacked sequence the decode indexes.
+
+    **`cnamaste` passes it per genome bin.** `hmrf.py:476` builds
+    `normal_lambda` by summing the baseline over spots, so it has one entry
+    per bin, while the decode and the reduction walk `sum(lengths)` stacked
+    segments. The reduction is a `numba` loop without bounds checks, so the
+    short array would be read past its end rather than refused. Every clone
+    shares the one normal profile, so the stacked form is the per-bin one
+    repeated clone after clone.
+    """
+    values = np.asarray(normal_log_lambda, dtype=np.float64).reshape(-1)
+    total = int(sum(lengths))
+
+    if values.size == total:
+        return values
+
+    if lengths and all(length == values.size for length in lengths):
+        return np.tile(values, len(lengths))
+
+    msg = (
+        f"normal_log_lambda has {values.size} entries; expected one per genome "
+        f"bin ({lengths[0] if lengths else 0}) or per stacked segment ({total})"
+    )
+    raise ValueError(msg)
+
+
+def neutral_state(
+    log_mu: np.ndarray, p_binom: np.ndarray, path: np.ndarray | None = None
+) -> int:
+    """The state pinned to `mu = 1`: the normal clone's dominant state.
+
+    Balanced is within :data:`NEUTRAL_BAF_TOLERANCE` of 0.5, in either
+    allele's convention. Given the decoded `path`, `(n_obs, n_clones)`, the
+    **normal clone** is the one with the largest share of bins in balanced
+    states, and the pinned state is its most occupied balanced state (#299).
+
+    **Not the balanced state with the lowest `mu`**, which is what #293 first
+    pinned. On the dev instance that chose a small sub-neutral balanced state
+    -- 57 bins of 1,000 -- over the one the normal bins decode to, and put
+    every line in `clones_genomic` 2.40 times too high.
+
+    Without a path, or where no clone decodes to a balanced state, the
+    balanced state with the lowest `mu` is taken, and where no state is
+    balanced the one closest to 0.5: the shifted likelihood has no scale
+    without a pin, and an unpinned fit is not comparable to anything.
+    """
+    rates = np.asarray(log_mu, dtype=np.float64).reshape(-1)
+    distance = np.abs(np.asarray(p_binom, dtype=np.float64).reshape(-1) - 0.5)
+    balanced = distance <= NEUTRAL_BAF_TOLERANCE
+
+    if not balanced.any():
+        return int(np.argmin(distance))
+
+    if path is not None:
+        decoded = np.asarray(path, dtype=np.int64)
+        decoded = decoded.reshape(decoded.shape[0], -1)
+        share = balanced[decoded].mean(axis=0)
+        normal = int(np.argmax(share))
+
+        if share[normal] > 0.0:
+            counts = np.bincount(decoded[:, normal], minlength=rates.size)
+            counts = np.where(balanced, counts, -1)
+
+            return int(np.argmax(counts))
+
+    candidates = np.flatnonzero(balanced)
+
+    return int(candidates[np.argmin(rates[candidates])])
+
+
+class hmm_nophasing(hmm_nophasing_reference):  # type: ignore[misc]
+    """`cnamaste.hmm_nophasing`, with the shift applied when the flag is set.
+
+    A subclass rather than a mixin: it replaces a named `cnamaste` class, which
+    is what `CLAUDE.md`'s four-job rule asks a `patch/` module to do, and
+    every method it does not override is upstream's by inheritance rather
+    than by delegation.
+
+    The name is lower-case because `cnamaste`'s is, and a drop-in that renamed
+    the thing it replaces would not be one.
+    """
+
+    apply_logmu_shift: bool = False
+    """Off by default. :func:`logmu_shift` is what turns it on.
+
+    A class attribute rather than a keyword, because the caller is
+    `optimize_params` inside `cnamaste` and a keyword would have to reach it
+    through a function this repository does not replace.
+    """
+
+    def _clone_triples(self, encoder: Any, lengths: tuple[int, ...]) -> _Triples:
+        """`(clone, obs, total)` compressed once over the whole genome.
+
+        One `np.unique`, not one per clone. Built once per
+        `(encoder, lengths)` and cached, keyed on the encoder's identity
+        **and holding a reference to it**, so an id cannot be reused by a
+        later object while the entry is live. `optimize_params` builds the
+        encoder once per fit, so this is one build per fit rather than one
+        per optimizer iteration.
+        """
+        cache: dict[tuple[int, tuple[int, ...]], tuple[Any, _Triples]]
+        cache = getattr(self, "_triple_cache", None) or {}
+        self._triple_cache = cache
+
+        key = (id(encoder), lengths)
+
+        if key not in cache:
+            cache[key] = (
+                encoder,
+                _triples(encoder.obs_count, encoder.total_count, lengths),
+            )
+
+        return cache[key][1]
+
+    def _decode(self) -> np.ndarray | None:
+        """The hard decode the shift is taken at, or `None` if unavailable.
+
+        Upstream's commented-out block reads `self.get_state_posteriors()`
+        and then `self.get_copy_states(log_gamma)`; this reads the posteriors
+        the instance is carrying and applies upstream's own `get_copy_states`
+        to them. Returning `None` rather than a default is deliberate -- a
+        shift computed from a decode nobody supplied is a number nobody asked
+        for.
+        """
+        posteriors = getattr(self, "state_posteriors", None)
+
+        if posteriors is None:
+            return None
+
+        decoded: np.ndarray = self.get_copy_states(np.asarray(posteriors))
+
+        return decoded
+
+    _row_shift: np.ndarray | None = None
+    """The last shifted fit's shift, one entry per clone-stacked segment.
+
+    **Class state, and deliberately so.** `hmm.py:155` rescores the fit
+    through `hmmclass.compute_emission_probability_nb_betabinom`, a static
+    method called on the class with no argument that could carry the shift.
+    The pipeline is sequential, the call follows `optimize` directly, and the
+    override applies it only to an input of exactly this length, so a stale
+    value cannot reach a different problem unnoticed.
+    """
+
+    @staticmethod
+    def compute_emission_probability_nb_betabinom(
+        X: np.ndarray,
+        base_nb_mean: np.ndarray,
+        log_mu: np.ndarray,
+        alphas: np.ndarray,
+        total_bb_RD: np.ndarray,
+        p_binom: np.ndarray,
+        taus: np.ndarray,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Upstream's dense emission, with the last fit's shift applied.
+
+        The shift enters the negative binomial through its mean,
+        `base * exp(log_mu - shift)`, which is `base * exp(-shift)` against
+        the unshifted `exp(log_mu)`. So it is applied to the exposure and the
+        rest is upstream's kernel unchanged.
+        """
+        shift = hmm_nophasing._row_shift
+
+        if (
+            hmm_nophasing.apply_logmu_shift
+            and shift is not None
+            and shift.size == np.asarray(X).shape[0]
+        ):
+            # NB **recentred, because the rates have no scale.** The shifted
+            #    likelihood is flat along `mu -> c mu`, and the fit wanders
+            #    along it: measured, `log mu` and the shift both near -7,024 on
+            #    #292's realization 3. `exp(-shift) * exp(log_mu)` is then
+            #    `inf * 0`. Taking a common `c` off both leaves the product --
+            #    the emission -- unchanged and each factor near one.
+            centre = float(np.mean(shift))
+            base_nb_mean = np.asarray(base_nb_mean) * np.exp(-(shift - centre))[:, None]
+            log_mu = np.asarray(log_mu) - centre
+
+        scored: tuple[np.ndarray, np.ndarray]
+        scored = hmm_nophasing_reference.compute_emission_probability_nb_betabinom(
+            X, base_nb_mean, log_mu, alphas, total_bb_RD, p_binom, taus
+        )
+
+        return scored
+
+    def optimize(
+        self,
+        X: np.ndarray,
+        lengths: np.ndarray,
+        n_states: int,
+        base_nb_mean: np.ndarray,
+        total_bb_RD: np.ndarray,
+        *args: Any,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        """Upstream's fit, then a shifted decode.
+
+        Inside the fit the shift is already applied: the M step's objective
+        and the E step's posteriors both come from the coded emission below.
+        What upstream does after it is not shifted -- `hmm_nophasing.py:1085`
+        rescored the fit through the dense emission for `log_gamma` -- so
+        that is redone here with the shift, and the shift is recorded for
+        `hmm.py:155`, which rescores it once more.
+
+        The rates are returned as fitted. The shifted mean `base * mu / sum
+        lambda mu` is unchanged by `mu -> c mu`, so their scale is arbitrary
+        here; `port.patch.hmrf.run_core_inference` pins it once, after the
+        whole optimization.
+        """
+        hmm_nophasing._row_shift = None
+
+        res: dict[str, Any] = super().optimize(
+            X, lengths, n_states, base_nb_mean, total_bb_RD, *args, **kwargs
+        )
+
+        normal_lambda = kwargs.get("normal_lambda")
+        clone_lengths = kwargs.get("clone_lengths")
+        decode = self._decode()
+
+        if (
+            not self.apply_logmu_shift
+            or "m" not in self.params
+            or normal_lambda is None
+            or clone_lengths is None
+            or decode is None
+        ):
+            return res
+
+        rates = state_vector(res["new_log_mu"])
+
+        n_segments = int(np.asarray(X).shape[0])
+        current = _current(
+            tuple(int(length) for length in np.asarray(clone_lengths)), n_segments
+        )
+
+        shifts = logmu_shifts(
+            rates,
+            np.asarray(decode, dtype=np.int64),
+            _stacked(np.log(np.asarray(normal_lambda, dtype=np.float64)), current),
+            np.asarray(current, dtype=np.int64),
+        )
+        hmm_nophasing._row_shift = np.repeat(shifts, current)
+
+        log_emission_rdr, log_emission_baf = (
+            self.compute_emission_probability_nb_betabinom(
+                X,
+                base_nb_mean,
+                res["new_log_mu"],
+                res["new_alphas"],
+                total_bb_RD,
+                res["new_p_binom"],
+                res["new_taus"],
+            )
+        )
+        log_gamma = self.get_state_posteriors(
+            lengths,
+            res["new_log_transmat"],
+            res["new_log_startprob"],
+            log_emission_rdr + log_emission_baf,
+            kwargs.get("log_sitewise_transmat"),
+        )
+
+        res["log_gamma"] = log_gamma
+        res["pred_cnv"] = np.argmax(log_gamma, axis=0)
+
+        return res
+
+    def compute_emission_probability_nb_betabinom_coded(
+        self,
+        nbEncoder: Any,
+        bbEncoder: Any,
+        log_mu: np.ndarray,
+        alphas: np.ndarray,
+        p_binom: np.ndarray,
+        taus: np.ndarray,
+        clone_stack: bool = True,
+        scratch_rdr: Any = None,
+        scratch_baf: Any = None,
+        normal_log_lambda: Any = None,
+        clone_lengths: Any = None,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Upstream's emission, with `log_mu` debiased per clone.
+
+        Hands the call on unchanged unless **all** of the flag, the exposures,
+        the clone lengths and a decode are present. A shift needs every one of
+        them, and computing it from a default would be a number nobody asked
+        for -- which is also upstream's own reason for warning rather than
+        guessing at `hmm_nophasing.py:279`.
+        """
+        decode = self._decode()
+
+        if (
+            not self.apply_logmu_shift
+            or normal_log_lambda is None
+            or clone_lengths is None
+            or decode is None
+        ):
+            unshifted: tuple[np.ndarray, np.ndarray]
+            unshifted = super().compute_emission_probability_nb_betabinom_coded(
+                nbEncoder,
+                bbEncoder,
+                log_mu,
+                alphas,
+                p_binom,
+                taus,
+                clone_stack=clone_stack,
+                scratch_rdr=scratch_rdr,
+                scratch_baf=scratch_baf,
+                normal_log_lambda=normal_log_lambda,
+                clone_lengths=clone_lengths,
+            )
+            return unshifted
+
+        if nbEncoder.n_spots != 1 or bbEncoder.n_spots != 1:
+            msg = (
+                f"one spot only: got {nbEncoder.n_spots} and {bbEncoder.n_spots}. "
+                "The shift is per clone along the genomic axis (#276)."
+            )
+            raise ValueError(msg)
+
+        # NB `(n_states,)`, normalized once at the edge. The fit returns
+        #    `(n_states, 1)` and nothing else can reach here (#278), so the
+        #    column is dropped rather than indexed at four call sites below.
+        rates = state_vector(log_mu)
+        dispersions = state_vector(alphas)
+        probabilities = state_vector(p_binom)
+        concentrations = state_vector(taus)
+
+        n_states = rates.shape[0]
+        lengths = _current(
+            tuple(int(length) for length in np.asarray(clone_lengths)),
+            int(np.asarray(decode).size),
+        )
+
+        # NB **once per call, not once per state.** Upstream's commented-out
+        #    call sits inside `for i in range(n_states)` at
+        #    `hmm_nophasing.py:275-279`, so folding it in as written would
+        #    recompute the whole reduction `n_states` times over an
+        #    `n_segments` array for a quantity that does not depend on the
+        #    state. That is the efficiency here; the reduction itself is
+        #    upstream's own loop, kept (`logmu_shift`).
+        #
+        #    `(n_clones,)`, so it is indexed by clone. Upstream's shape is
+        #    `(n_segments,)` and indexing *that* by clone is silently wrong.
+        shifts = logmu_shifts(
+            rates,
+            np.asarray(decode, dtype=np.int64),
+            _stacked(normal_log_lambda, lengths),
+            np.asarray(lengths, dtype=np.int64),
+        )
+
+        # NB the allele channel is untouched by the shift, so it keeps the
+        #    whole-genome encoder and upstream's path.
+        bb_endog = bbEncoder.get_unique_obs(0)
+        bb_exposure = bbEncoder.get_unique_total(0)
+
+        baf_uniq = (
+            scratch_baf[0] if scratch_baf else np.zeros((n_states, len(bb_endog)))
+        )
+
+        for state in range(n_states):
+            _bb_logpmf_1d(
+                bb_endog,
+                bb_exposure,
+                probabilities[state],
+                concentrations[state],
+                baf_uniq[state, :],
+            )
+
+        log_emit_baf = bbEncoder.decode_array(baf_uniq, 0)
+
+        # NB scored once per unique `(clone, obs, total)`, then decoded by a
+        #    single gather. The clone's block is contiguous, so its shift is
+        #    a scalar the kernel already takes -- no per-entry rate array and
+        #    no second mapping.
+        triples = self._clone_triples(nbEncoder, lengths)
+        rdr_uniq = np.zeros((n_states, triples.obs.size))
+
+        for clone in range(len(lengths)):
+            first, last = int(triples.bounds[clone]), int(triples.bounds[clone + 1])
+
+            if first == last:
+                continue
+
+            for state in range(n_states):
+                _nb_logpmf_1d(
+                    triples.obs[first:last],
+                    triples.total[first:last],
+                    exp(rates[state] - shifts[clone]),
+                    dispersions[state],
+                    rdr_uniq[state, first:last],
+                )
+
+        log_emit_rdr = rdr_uniq[:, triples.inverse]
+
+        if clone_stack:
+            return log_emit_rdr, log_emit_baf
+
+        return log_emit_rdr[:, :, None], log_emit_baf[:, :, None]
+
+
+# NB on, as `port` runs by default: its entry point enters `logmu_shift()` for
+#    the whole run (#276, #392).
+hmm_nophasing.apply_logmu_shift = True
+
+
+@contextmanager
+def logmu_shift() -> Iterator[None]:
+    """Turn the shift on for the block, and back to what it was after.
+
+    The flag is a class attribute, so a run that set it and left it would make
+    every later comparison in the same process a shifted one. Restored rather
+    than cleared, so nesting does not lie.
+    """
+    previous = hmm_nophasing.apply_logmu_shift
+    hmm_nophasing.apply_logmu_shift = True
+
+    try:
+        yield
+    finally:
+        hmm_nophasing.apply_logmu_shift = previous
+
+
+logmu_shifts = shifts
+
+

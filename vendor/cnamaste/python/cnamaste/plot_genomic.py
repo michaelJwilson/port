@@ -690,9 +690,7 @@ def plot_clones_genomic(
         base_nb_mean = known_nb_baseline.copy()
 
     has_rdr = base_nb_mean is not None and np.max(base_nb_mean) > 0
-    # NB `getattr` until the shift is folded (#392, stage 3): the copy's
-    #    class gains the flag there, and is unshifted until then.
-    shifted = bool(getattr(hmm_nophasing, "apply_logmu_shift", False)) and has_rdr
+    shifted = bool(hmm_nophasing.apply_logmu_shift) and has_rdr
 
     n_obs = X.shape[0]
     x = np.arange(n_obs)

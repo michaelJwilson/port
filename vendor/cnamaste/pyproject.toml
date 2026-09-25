@@ -1,6 +1,7 @@
 # `cnaster` at 4adad4d, renamed `cnamaste` (VENDOR.toml, #392). The runtime
 # dependencies are the pin's, unchanged; its development extras are not
-# carried, because `port` develops and tests the copy.
+# carried, because `port` develops and tests the copy. `snakes_and_ladders`
+# joins them at stage 3 (#392).
 [project]
 name = "cnamaste"
 version = "0.1.0"
@@ -26,6 +27,9 @@ dependencies = [
     "pyranges",
     "hmmlearn",
     "pysam",
+    # `hmm_nophasing`'s per-clone shift lays its segments out with
+    # `snakes_and_ladders.ragged.Ragged` (#276, #392).
+    "snakes_and_ladders",
 ]
 
 [project.scripts]
@@ -36,6 +40,9 @@ include = ["python/cnamaste"]
 
 [tool.hatch.build.targets.wheel.sources]
 "python/cnamaste" = "cnamaste"
+
+[tool.uv.sources]
+snakes_and_ladders = { git = "https://github.com/michaelJwilson/snakes_and_ladders", branch = "main" }
 
 [build-system]
 requires = ["hatchling"]

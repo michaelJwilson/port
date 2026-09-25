@@ -79,8 +79,16 @@ from {module} import {function}
 
 import port.pipeline
 
+from contextlib import ExitStack
+
+from port.patch.hmm_nophasing import logmu_shift
+
 swaps = sum((getattr(port.pipeline, t) for t in {tables!r}), ())
-with port.pipeline.patched(swaps):
+with ExitStack() as stack:
+    stack.enter_context(port.pipeline.patched(swaps))
+    # NB as `run_cnaster_port` does whenever it installs the shift's table.
+    if "SHIFT_SWAPS" in {tables!r}:
+        stack.enter_context(logmu_shift())
     {function}(sys.argv[1])
 """
 """One whole run in a fresh interpreter, seeded as `tests.run_config.isolated_run`
@@ -134,7 +142,9 @@ def test_each_folded_row_is_ports_function() -> None:
             theirs = _definition(importlib.import_module(module), row.name)
 
             ours.name = row.name
-            assert ast.dump(theirs) == ast.dump(_renamed(ours, vendor, module)), name
+            assert ast.dump(theirs) == ast.dump(
+                _renamed(ours, vendor, module, row.name)
+            ), name
             checked += 1
 
     assert checked == sum(len(getattr(port.pipeline, t)) for t in vendor.tables) - len(
@@ -142,26 +152,32 @@ def test_each_folded_row_is_ports_function() -> None:
     )
 
 
-def _definition(module: object, name: str) -> ast.FunctionDef:
+Definition = ast.FunctionDef | ast.ClassDef
+
+
+def _definition(module: object, name: str) -> Definition:
     """The top-level definition of `name` in `module`'s source."""
     obj = getattr(module, name)
     code = getattr(obj, "py_func", obj)
     tree = ast.parse(textwrap.dedent(inspect.getsource(code)))
     (definition,) = tree.body
-    assert isinstance(definition, ast.FunctionDef)
+    assert isinstance(definition, Definition)
     return definition
 
 
 def _renamed(
-    definition: ast.FunctionDef, vendor: Manifest, home: str
-) -> ast.FunctionDef:
+    definition: Definition, vendor: Manifest, home: str, row: str
+) -> Definition:
     """`definition` as the copy carries it: renamed, its imports rehomed.
 
     A `port` module's import names the module that code now lives in, and an
     import of `home` itself is dropped, because those names are its globals.
+    `UPSTREAM`, `port`'s name for the function a row replaces, reads as the
+    row's kept original, `<row>_reference`.
     """
     (renamed,) = ast.parse(vendor.rename(ast.unparse(definition))).body
-    assert isinstance(renamed, ast.FunctionDef)
+    assert isinstance(renamed, Definition)
+    names = {"UPSTREAM": f"{row}_reference"}
 
     class Rehome(ast.NodeTransformer):
         def visit_ImportFrom(self, node: ast.ImportFrom) -> ast.ImportFrom | None:
@@ -171,8 +187,12 @@ def _renamed(
             node.module = module
             return node
 
+        def visit_Name(self, node: ast.Name) -> ast.Name:
+            node.id = names.get(node.id, node.id)
+            return node
+
     rehomed = Rehome().visit(renamed)
-    assert isinstance(rehomed, ast.FunctionDef)
+    assert isinstance(rehomed, Definition)
     return ast.fix_missing_locations(rehomed)
 
 
