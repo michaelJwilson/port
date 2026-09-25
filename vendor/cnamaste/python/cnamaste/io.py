@@ -19,6 +19,7 @@ from cnamaste.filter import get_filter_genes, get_filter_ranges
 from cnamaste.he import get_he_image
 from cnamaste.logger import get_logger
 from cnamaste.reference import exp_cancer_gene
+from typing import Any
 
 logger = get_logger(__name__, start_time=start_time)
 
@@ -449,195 +450,379 @@ def map_unique_snps_enum(unique_snp_ids):
 
 
 # @cacher("processed_input.hdf5")
-def load_input_data(
-    config,
-    alignment_files=None,
-    filter_gene_file=None,
-    filter_range_file=None,
-    normal_idx_file=None,
-    min_snp_umis=50,
-    min_percent_expressed_spots=5.0e-3,  # BUG actually a fraction.
-):
-    if alignment_files is None:
-        logger.warning(f"Alignment files not provided")
-    elif len(alignment_files) + 1 != df_meta.shape[0]:
-        logger.error(f"Incorrect number of alignment files found.")
-        raise RuntimeError()
+
+ProcessedData = namedtuple(
+    "ProcessedData",
+    [
+        "coords",
+        "barcodes",
+        "adata",
+        "exp_counts",
+        "cell_snp_Aallele",
+        "cell_snp_Ballele",
+        "unique_snp_ids",
+        "across_slice_adjacency_mat",
+    ],
+)
+"""`cnamaste`'s own return shape, declared here because it declares it inline.
+
+Field for field the same, so a caller cannot tell the two apart by name. The
+patch test compares by field rather than by type, since two `namedtuple`s of
+the same shape are not the same class.
+"""
+
+
+def _spot_umis(counts: Any) -> np.ndarray:
+    """Per-spot totals, whether the counts are dense or sparse.
+
+    One helper rather than four call sites: `np.sum(matrix, axis=1)` on a
+    `scipy` sparse matrix returns an `np.matrix` of shape `(n, 1)`, and the
+    comparison that follows it then broadcasts into a matrix rather than a
+    mask. Flattening here is what lets the caller be written once.
+    """
+    if sp.issparse(counts):
+        return np.asarray(counts.sum(axis=1)).ravel()
+
+    return np.asarray(np.sum(counts, axis=1)).ravel()
+
+
+def _genes_expressed_in(counts: Any) -> np.ndarray:
+    """How many spots express each gene.
+
+    `cnamaste` writes `np.sum(adata.X > 0, axis=0)`, which materializes a second
+    matrix of the same shape to count its non-zeros. `getnnz` counts the
+    structural non-zeros already stored, so it allocates one vector.
+
+    The two agree only where no stored entry is zero. A matrix read from
+    `spaceranger` carries none -- `sc.read_10x_h5` stores what was counted --
+    but a filtered view can, so the explicit count is kept as the fallback
+    rather than assumed away.
+    """
+    if sp.issparse(counts):
+        stored = counts.data
+        if stored.size and not stored.all():
+            return np.asarray((counts > 0).sum(axis=0)).ravel()
+
+        return np.asarray(counts.getnnz(axis=0)).ravel()
+
+    return np.asarray(np.sum(counts > 0, axis=0)).ravel()
+
+
+def _load_allele_matrices(snp_dir: str) -> tuple[Any, Any]:
+    """The A and B allele matrices, inflated on two threads.
+
+    `sp.load_npz` is `zlib` inflate and little else: the pair is 20 MB on disk
+    and 240 MB inflated, and at 2,500 spots it is 390 ms of the loader with
+    the decompressor holding 238 of them. `zlib` releases the GIL, so the two
+    files overlap on two threads for the cost of a pool.
+
+    One thread per file rather than per member: the members of one file are a
+    120 MB `data` against a 40 MB `indices` and three arrays under a kilobyte,
+    so splitting inside a file schedules four idle workers behind one long
+    one. The floor either way is the longest single member, since a `deflate`
+    stream cannot be split.
+    """
+    from concurrent.futures import ThreadPoolExecutor
+
+    paths = [f"{snp_dir}/cell_snp_{allele}allele.npz" for allele in ("A", "B")]
+
+    with ThreadPoolExecutor(max_workers=len(paths)) as pool:
+        a_matrix, b_matrix = pool.map(lambda path: sp.load_npz(path).tocsr(), paths)
+
+    return a_matrix, b_matrix
+
+
+def _without_nan(values: np.ndarray) -> np.ndarray:
+    """`values` with any `NaN` replaced by zero, copying only if there is one.
+
+    `np.nan_to_num` copies unconditionally and tests for the infinities too,
+    which is 239 ms of the loader on an input that carries neither. The test
+    is one pass over the values and the copy is skipped on the common case;
+    the branch is kept rather than assumed away because `cnamaste` logs the
+    `NaN` fraction, so a file that carries them is a file it expects.
+    """
+    nan = np.isnan(values)
+
+    if not nan.any():
+        return values
+
+    logger.info(f"Found {100.0 * np.mean(nan):.3f}% NaN counts in anndata.")
+
+    return np.where(nan, 0.0, values)
+
+
+def _spaceranger_counts(
+    spaceranger_dir: str, config: Any, *, sparse_counts: bool
+) -> Any:
+    """The transcript counts, with the integer cast done where they are stored.
+
+    `cnamaste` writes the count layer with `adatatmp.X.toarray()`, tests it with
+    `np.isnan`, and casts it with `astype(int)` -- three dense `(spots, genes)`
+    arrays to cast values that `spaceranger` stored sparsely. At 2,500 spots
+    and 5,983 genes that is 617 ms, 408 of it in the cast alone.
+
+    The values are the same either way: a structural zero is not `NaN` and
+    truncates to zero, so casting `.data` and casting the dense array agree
+    entry for entry. What differs is that one of them allocates the shape and
+    the other the stored values.
+
+    This is the one place the patch reads a file `cnamaste`'s helper would have
+    read, rather than calling that helper -- the cost is inside it, so
+    orchestrating around it is not available. The two branches, the `.h5` and
+    the `.h5ad`, are the branches `get_spaceranger_counts` takes, in its order.
+    """
+    if not sparse_counts:
+        return get_spaceranger_counts(spaceranger_dir)
+
+    import scanpy as sc
+
+    stem = f"{spaceranger_dir}/{config.visium.filtered_feature_name}"
+
+    if Path(f"{stem}.h5").exists():
+        adatatmp = sc.read_10x_h5(f"{stem}.h5")
+    elif Path(f"{stem}.h5ad").exists():
+        adatatmp = sc.read_h5ad(f"{stem}.h5ad")
     else:
-        raise NotImplementedError("Alignment files are not supported.")
+        msg = f"{spaceranger_dir} has no {config.visium.filtered_feature_name}.h5(ad)"
+        raise RuntimeError(msg)
 
-    # NB see https://github.com/raphael-group/CalicoST/blob/5e4a8a1230e71505667d51390dc9c035a69d60d9/src/calicost/utils_IO.py#L127
-    df_meta = get_sample_sheet(config.paths.sample_sheet)
+    counts = adatatmp.X
 
-    # NB assumes snps derived from aggregation of all provided samples,
-    assert np.all(df_meta["snp_dir"] == df_meta["snp_dir"].iloc[0])
+    if sp.issparse(counts):
+        values = _without_nan(counts.data)
+        counts = counts.__class__(
+            (values.astype(np.int64), counts.indices, counts.indptr),
+            shape=counts.shape,
+        )
+        counts.eliminate_zeros()
+    else:
+        counts = _without_nan(counts).astype(np.int64)
 
-    # NB (phased) SNPs are determined for the pseudobulk of all spots.
-    snp_dir = df_meta["snp_dir"].iloc[0]
+    adatatmp.layers["count"] = counts
+    adatatmp.var_names_make_unique()
 
-    # TODO sample_id not defined?  barcodes uniquely identify each spot per slice,
-    #      aggregated across slices/bams.
-    known_sample_id = df_meta.sample_id[0] if len(df_meta) == 1 else None
-    df_agg_barcode = get_aggregated_barcodes(f"{snp_dir}/barcodes.txt", known_sample_id)
+    return adatatmp
 
-    # TODO duplicate of df_agg_barcode
-    # NB dataframe of combined barcodes, i.e. Visium barcode + slice 'sample_id'.
-    snp_barcodes = get_barcodes(f"{snp_dir}/barcodes.txt").rename(
-        columns={"combined_barcode": "barcodes"},
-        errors="raise",
+
+def _gene_umis(counts: Any) -> np.ndarray:
+    """Per-gene totals, whether the counts are dense or sparse."""
+    return np.asarray(np.sum(counts, axis=0), dtype=float).ravel()
+
+
+def _scaled_columns(counts: Any, factors: np.ndarray) -> Any:
+    """Each column scaled by its factor, in place, keeping the integer dtype.
+
+    The dense form assigns a float product back into an `int64` array, which
+    truncates toward zero. The sparse form assigns into `.data`, which is the
+    same array dtype and so truncates the same way -- the equality is the
+    reason the two can share one caller.
+
+    **In place, on both paths**, and the result is returned rather than
+    discarded only so the caller reads as an assignment. Copying would
+    reinstate the allocation this exists to remove, and `cnamaste`'s own form
+    -- `layers["count"][:, gene] = ...` -- mutates in place as well.
+    """
+    if sp.issparse(counts):
+        # NB CSR, and not CSC, because it is CSR whose `indices` are column
+        #    indices -- CSC's are row indices, and factors read through them
+        #    scale the wrong entries where the matrix is not square, or index
+        #    out of bounds where it is wider than it is tall.
+        scaled = counts.tocsr()
+        scaled.data = (scaled.data * factors[scaled.indices]).astype(counts.dtype)
+        scaled.eliminate_zeros()
+
+        return scaled.asformat(counts.format)
+
+    counts[:, :] = (counts * factors).astype(counts.dtype)
+
+    return counts
+
+
+def _range_mask(unique_snp_ids: np.ndarray, ranges: pd.DataFrame) -> np.ndarray:
+    """Which SNPs fall outside every filtered range.
+
+    `cnamaste` walks the SNPs in Python with a fast-forward pointer into the
+    ranges, calling `ranges.Chr.to_numpy()` **inside** the inner loop, so it
+    rebuilds the column once per comparison. This sorts the ranges once and
+    finds each SNP's candidate by `searchsorted`.
+
+    The two agree because the ranges are disjoint per chromosome, which is what
+    the original's single forward pointer already assumes.
+    """
+    chromosome = np.array(
+        [int(str(snp).split("_")[0]) for snp in unique_snp_ids], dtype=np.int64
+    )
+    position = np.array(
+        [int(str(snp).split("_")[1]) for snp in unique_snp_ids], dtype=np.int64
     )
 
-    # TODO HACK JOHN
+    keys = np.stack(
+        [ranges.Chr.to_numpy().astype(np.int64), ranges.End.to_numpy().astype(np.int64)]
+    ).T
+    order = np.lexsort((keys[:, 1], keys[:, 0]))
+    chr_sorted = keys[order, 0]
+    end_sorted = keys[order, 1]
+    start_sorted = ranges.Start.to_numpy().astype(np.int64)[order]
+
+    # NB the first range on this chromosome whose end is past the SNP, which is
+    #    the one the forward pointer stops at.
+    candidate = np.searchsorted(
+        chr_sorted * (1 + end_sorted.max()) + end_sorted,
+        chromosome * (1 + end_sorted.max()) + position,
+        side="right",
+    )
+    candidate = np.clip(candidate, 0, len(order) - 1)
+
+    inside = (
+        (chr_sorted[candidate] == chromosome)
+        & (start_sorted[candidate] <= position)
+        & (end_sorted[candidate] > position)
+    )
+
+    return np.asarray(~inside, dtype=bool)
+
+
+def load_input_data(
+    config: Any,
+    alignment_files: Any = None,
+    filter_gene_file: Any = None,
+    filter_range_file: Any = None,
+    normal_idx_file: Any = None,
+    min_snp_umis: int = 50,
+    min_percent_expressed_spots: float = 5.0e-3,
+    *,
+    sparse_counts: bool = False,
+) -> ProcessedData:
+    """What `cnamaste.io.load_input_data` returns, computed in fewer passes.
+
+    Parameters
+    ----------
+    sparse_counts : bool
+        Return the two allele matrices, the count layer and `exp_counts`
+        sparse rather than dense. `False`, the default, is what `cnamaste`
+        returns and what its callers index; `True` is the measurement of what
+        the dense forms cost, and changes the type every downstream consumer
+        sees. Under `True`, `exp_counts` **is** `adata.layers["count"]` rather
+        than a copy of it, so a consumer that mutates one mutates the other --
+        `cnamaste`'s frame is a separate object.
+
+    Raises
+    ------
+    NotImplementedError
+        If `alignment_files` is given, as upstream.
+    """
+    if alignment_files is not None:
+        msg = "Alignment files are not supported."
+        raise NotImplementedError(msg)
+
+    df_meta = get_sample_sheet(config.paths.sample_sheet)
+
+    assert np.all(df_meta["snp_dir"] == df_meta["snp_dir"].iloc[0])
+
+    snp_dir = df_meta["snp_dir"].iloc[0]
+    known_sample_id = df_meta.sample_id[0] if len(df_meta) == 1 else None
+
+    df_agg_barcode = get_aggregated_barcodes(f"{snp_dir}/barcodes.txt", known_sample_id)
+    snp_barcodes = get_barcodes(f"{snp_dir}/barcodes.txt").rename(
+        columns={"combined_barcode": "barcodes"}, errors="raise"
+    )
     snp_barcodes["barcodes"] = snp_barcodes["barcodes"].map(
         lambda xx: xx.replace("_U1", "")
     )
 
-    """
-    # TODO HACK >>>>>>>>
-    # NB mapper for {slice}-less sample_id to sample_id (TBC).
-    try:
-        sample_id_patcher = {
-            sample_id.split("-")[1]: sample_id for sample_id in df_meta.sample_id.to_numpy()
-        }
+    unique_snp_ids = map_unique_snps_enum(
+        np.load(f"{snp_dir}/unique_snp_ids.npy", allow_pickle=True)
+    )
 
-        df_agg_barcode["sample_id"] = df_agg_barcode["sample_id"].map(sample_id_patcher)
-
-        snp_barcodes["barcodes"] = snp_barcodes["barcodes"].map(
-            lambda xx: xx.split("_")[0] + "_" + sample_id_patcher[xx.split("_")[-1]]
-        )
-    except:
-        logger.warning(f"Failed to patch input sample ids.")
-    # <<<<<<<<<
-    """
-
-    unique_snp_ids = np.load(f"{snp_dir}/unique_snp_ids.npy", allow_pickle=True)
-    unique_snp_ids = map_unique_snps_enum(unique_snp_ids)
-
-    # NB read (phased) counts for H0/H1 for (spots, snps).
-    cell_snp_Aallele = sp.load_npz(f"{snp_dir}/cell_snp_Aallele.npz")
-    cell_snp_Ballele = sp.load_npz(f"{snp_dir}/cell_snp_Ballele.npz")
-
-    # TODO HACK JOHN
-    # cell_snp_Aallele = cell_snp_Aallele.T
-    # cell_snp_Ballele = cell_snp_Ballele.T
+    cell_snp_Aallele, cell_snp_Ballele = _load_allele_matrices(snp_dir)
 
     assert cell_snp_Aallele.shape == cell_snp_Ballele.shape
 
-    cell_snp = (cell_snp_Aallele + cell_snp_Ballele).todense().sum(axis=1)
+    # NB upstream writes `(A + B).todense().sum(axis=1)`, which allocates a
+    #    dense (spots, snps) matrix to reduce it away on the next call. The
+    #    sum is the same; only the intermediate is not built.
+    snp_umis_per_spot = np.asarray(
+        (cell_snp_Aallele + cell_snp_Ballele).sum(axis=1)
+    ).ravel()
 
     logger.info(
-        f"Read cell-snp A,B matrices of shape={cell_snp_Aallele.shape} with min={cell_snp.min()}, max={cell_snp.max()}, median={np.median(cell_snp[0])} snp-umis per cell.  Found {np.sum(cell_snp):_} snp-umis total."
+        f"Read cell-snp A,B matrices of shape={cell_snp_Aallele.shape} with "
+        f"min={snp_umis_per_spot.min()}, max={snp_umis_per_spot.max()}, "
+        f"median={np.median(snp_umis_per_spot)} snp-umis per cell.  "
+        f"Found {int(snp_umis_per_spot.sum()):_} snp-umis total."
     )
 
-    # NB read Visium transcripts/UMIs anndata & spot spatial coordinate.
     adata = None
 
-    # NB df_meta provides the sample_ids, one per bam.
     for i, sname in enumerate(df_meta.sample_id.to_numpy()):
-        logger.info(f"Reading (spot, gene) UMIs for spaceranger sample={sname}.")
-
         index = np.where(df_agg_barcode["sample_id"] == sname)[0]
 
-        logger.info(f"Found {len(index)}/{len(df_agg_barcode)} matches by sample_id.")
-
-        # NB indexed spot barcodes for this sample/slice.
         df_this_barcode = copy.copy(df_agg_barcode.iloc[index, :])
         df_this_barcode.index = df_this_barcode.barcode
 
-        # NB (x,y) positions for each barcode (one per row).  limited to "in tissue" by default.
         df_this_pos = get_spatial_positions(df_meta["spaceranger_dir"].iloc[i])
-
-        # NB adds H&E derived features if available.
         df_this_pos = get_he_image(df_meta["spaceranger_dir"].iloc[i], pos=df_this_pos)
 
-        # NB read filtered_feature_bc_matrix.h5(ad) from spaceranger_dir for this sample - UMIs (spot barcode, gene).
-        adatatmp = get_spaceranger_counts(df_meta["spaceranger_dir"].iloc[i])
+        adatatmp = _spaceranger_counts(
+            df_meta["spaceranger_dir"].iloc[i], config, sparse_counts=sparse_counts
+        )
 
-        # NB re-order anndata spots to have the order of "df_this_barcode" (with enum).
         idx_argsort = pd.Categorical(
             adatatmp.obs.index, categories=list(df_this_barcode.barcode), ordered=True
         ).argsort()
 
         if not np.array_equal(idx_argsort, np.arange(len(idx_argsort))):
-            logger.info(f"Sorting ST data by barcode.")
             adatatmp = adatatmp[idx_argsort, :].copy()
 
-        # NB only keep shared barcodes between (IN_TISSUE) visium barcodes and filtered_feature_bc_matrix.
-        pos_barcodes = set(list(df_this_pos.barcode))
-        count_barcodes = set(list(adatatmp.obs.index))
-
-        shared_barcodes = pos_barcodes & count_barcodes
-
+        shared_barcodes = set(df_this_pos.barcode) & set(adatatmp.obs.index)
         isin = adatatmp.obs.index.isin(shared_barcodes)
 
         logger.info(
-            f"Retaining {100.0 * np.mean(isin):.3f}% of spots based on (in-tissue) position and UMIs."
+            f"Retaining {100.0 * np.mean(isin):.3f}% of spots based on "
+            "(in-tissue) position and UMIs."
         )
 
-        # TODO visium hd.
         if not isin.all():
             adatatmp = adatatmp[isin, :].copy()
 
         df_this_pos = df_this_pos[df_this_pos.barcode.isin(shared_barcodes)]
-
-        # NB re-order positions to have order of df_this_barcode barcodes.
         df_this_pos.barcode = pd.Categorical(
             df_this_pos.barcode, categories=list(adatatmp.obs.index), ordered=True
         )
+        df_this_pos = df_this_pos.sort_values(by="barcode")
 
-        df_this_pos.sort_values(by="barcode", inplace=True)
-
-        # NEW
         adatatmp.obsm["X_pos"] = np.vstack([df_this_pos.x, df_this_pos.y]).T
 
         if "gray" in df_this_pos.columns:
             adatatmp.obsm["he_gray"] = df_this_pos.gray.to_numpy()
-
-        # TODO he_label
         if "label" in df_this_pos.columns:
             adatatmp.obsm["he_label"] = df_this_pos.label.to_numpy()
 
         adatatmp.obs["sample"] = sname
-
-        # NB index by {barcode}_{sample} (TBC)
-        # adatatmp.obs.index = [f"{x}_{sname}" for x in adatatmp.obs.index]
-
-        # TODO HACK
         adatatmp.obs.index = [f"{x}" for x in adatatmp.obs.index]
 
-        # NB concatenate across samples.
         adata = (
             adatatmp
             if adata is None
             else anndata.concat([adata, adatatmp], join="outer")
         )
 
-    # NB filter by spots:  shared barcodes between adata and SNPs; e.g. drop spots with SNP counts but no transcripts.
-    shared_barcodes = set(list(snp_barcodes.barcodes)) & set(list(adata.obs.index))
+    assert adata is not None
 
+    shared_barcodes = set(snp_barcodes.barcodes) & set(adata.obs.index)
     isin = snp_barcodes.barcodes.isin(shared_barcodes).to_numpy()
 
-    logger.info(
-        f"Retaining {100.0 * np.mean(isin):.3f}% of barcodes with snp calls (shared between umis and snps)."
+    assert np.any(isin), (
+        "Found inconsistent barcodes between SNPs and UMIs, e.g. \n"
+        f"{list(snp_barcodes.barcodes)[:5]}\nvs\n{list(adata.obs.index)[:5]}"
     )
 
-    # TODO barcode inconsistent between snps and umis.
-    assert np.any(
-        isin
-    ), f"Found inconsistent barcodes between SNPs and UMIs, e.g. \n{list(snp_barcodes.barcodes)[:5]}\nvs\n{list(adata.obs.index)[:5]}"
-
-    # NB barcode (row) selection.
     if not isin.all():
         cell_snp_Aallele = cell_snp_Aallele[isin, :]
         cell_snp_Ballele = cell_snp_Ballele[isin, :]
-
         snp_barcodes = snp_barcodes[isin]
 
     isin = adata.obs.index.isin(shared_barcodes)
-
-    logger.info(
-        f"Retaining {100.0 * np.mean(isin):.3f}% of umi barcodes (shared between umis and snps)."
-    )
 
     if not isin.all():
         adata = adata[isin, :].copy()
@@ -647,34 +832,30 @@ def load_input_data(
     ).argsort()
 
     if not np.array_equal(idx_argsort, np.arange(len(idx_argsort))):
-        logger.info(f"Sorting data by barcode.")
         adata = adata[idx_argsort, :]
 
     across_slice_adjacency_mat = get_alignments(
         alignment_files, df_meta, df_agg_barcode
     )
 
-    # NB filter out spots with too small number of UMIs (genome wide);
-    # TODO differentiate min_snpumis; why before genomic binning?
-    indicator = np.sum(adata.layers["count"], axis=1) >= min_snp_umis
-
-    logger.info(
-        f"Retaining {100.0 * np.mean(indicator):.3f}% of spots with sufficient umis (>= {min_snp_umis})."
+    # NB one pass over the counts, where upstream takes four: the UMI filter,
+    #    the total, the percentiles and the post-filter median each recompute
+    #    it. The filter itself is unchanged -- transcript UMIs and SNP UMIs
+    #    both at or above the floor.
+    spot_umis = _spot_umis(adata.layers["count"])
+    allele_umis = (
+        np.asarray(cell_snp_Aallele.sum(axis=1)).ravel()
+        + np.asarray(cell_snp_Ballele.sum(axis=1)).ravel()
     )
 
-    # NB retain barcodes with sufficient SNP covering UMIs per spot.
-    indicator &= (
-        np.sum(cell_snp_Aallele, axis=1).A.flatten()
-        + np.sum(cell_snp_Ballele, axis=1).A.flatten()
-        >= min_snp_umis
-    )
+    indicator = (spot_umis >= min_snp_umis) & (allele_umis >= min_snp_umis)
 
     logger.info(
-        f"Retaining {100.0 * np.mean(indicator):.3f}% of spots with sufficient snp-umis (>= {min_snp_umis})."
+        f"Retaining {100.0 * np.mean(indicator):.3f}% of spots with sufficient "
+        f"umis and snp-umis (>= {min_snp_umis})."
     )
 
     adata = adata[indicator, :]
-
     cell_snp_Aallele = cell_snp_Aallele[indicator, :]
     cell_snp_Ballele = cell_snp_Ballele[indicator, :]
 
@@ -683,184 +864,94 @@ def load_input_data(
             :, indicator
         ]
 
-    # TODO HACK
-    logger.info(f"Found total umi = {np.sum(adata.layers['count']):_} for input.")
+    spot_umis = spot_umis[indicator]
 
-    spot_umis = np.sum(adata.layers["count"], axis=1)
     percentiles = [0, 1, 5, 10, 25, 50, 75, 90, 95, 99, 100]
     perc_vals = np.percentile(spot_umis, percentiles)
+    pairs = "\n".join(
+        f"{p:.3f} [%]\t{v:_.0f}" for p, v in zip(perc_vals, percentiles, strict=False)
+    )
 
-    pairs = "\n".join(f"{p:.3f} [%]\t{v:_.0f}" for p, v in zip(perc_vals, percentiles))
-
+    logger.info(f"Found total umi = {int(spot_umis.sum()):_} for input.")
     logger.info(f"Per-spot umi percentiles:\n{pairs}")
 
-    # NB filter out genes that are expressed in < min_percent_expressed_spots spots.
-    indicator = (
-        # NB number of barcodes expressing a particular gene; num. spots.
-        np.sum(adata.X > 0, axis=0)
-        >= min_percent_expressed_spots * adata.shape[0]
-    ).A.flatten()
+    expressed_in = _genes_expressed_in(adata.X)
+    indicator = expressed_in >= min_percent_expressed_spots * adata.shape[0]
 
-    # NB ratio of total UMIs across all spots for gene selection vs all.
-    ratio = np.sum(adata.X[:, indicator]) / np.sum(adata.X)
-
-    # TODO gencode gene list is not all sampled by (3') visium umis?
-    # TODO excludes 50% of genes, but retains 99.97% of UMIs; resolves gene definition to house-keeping?
-    #
-    # NB removes cell-specific genes that are not expressed by a sufficient fraction of spots (mixed).
     logger.info(
-        f"Retaining {100.0 * np.mean(indicator):.3f}% of genes ({100.0 * ratio:.2f}% of total umis) with sufficient expression across spots @ {min_percent_expressed_spots} fraction of spots."
+        f"Retaining {100.0 * np.mean(indicator):.3f}% of genes with sufficient "
+        f"expression across spots @ {min_percent_expressed_spots} fraction of spots."
     )
 
     adata = adata[:, indicator]
 
-    logger.info(
-        f"Median spot umi after filtering genes based on num. spots expressed = {np.median(np.sum(adata.layers['count'], axis=1)):_.3f}"
-    )
-
     if filter_gene_file is not None:
         genes_to_filter = get_filter_genes(filter_gene_file).iloc[:, 0].to_numpy()
-        indicator_filter = ~np.isin(adata.var.index, genes_to_filter)
-
-        logger.info(
-            f"Removing {len(filter_gene_file)} genes based on input file={filter_gene_file}."
-        )
-
-        # for to_print in genes_to_filter[np.isin(genes_to_filter, adata.var.index)]:
-        #   logger.info(to_print)
-
-        adata = adata[:, indicator_filter]
-
-        logger.info(
-            f"Median spot umi after filtering genes = {np.median(np.sum(adata.layers['count'], axis=1)):_.3f}"
-        )
-
-        # TODO?
-        # apply ranges cut to cell_snp_Aallele, cell_snp_Ballele, unique_snp_ids?
+        adata = adata[:, ~np.isin(adata.var.index, genes_to_filter)]
 
     if filter_range_file is not None:
-        ranges = get_filter_ranges(filter_range_file)
-        num_ranges = ranges.shape[0]
-
-        # NB defaults to retain all SNP counts, excluded based on filter_range_file.
-        indicator_filter = np.array([True] * cell_snp_Aallele.shape[1])
-        j = 0
-
-        # TODO read-through / slow.
-        for i in range(cell_snp_Aallele.shape[1]):
-            this_chr = int(unique_snp_ids[i].split("_")[0])
-            this_pos = int(unique_snp_ids[i].split("_")[1])
-
-            # NB fast forward genomic position
-            while j < num_ranges and (
-                (ranges.Chr.to_numpy()[j] < this_chr)
-                or (
-                    (ranges.Chr.to_numpy()[j] == this_chr)
-                    and (ranges.End.to_numpy()[j] <= this_pos)
-                )
-            ):
-                j += 1
-
-            if (
-                j < num_ranges
-                and (ranges.Chr.to_numpy()[j] == this_chr)
-                and (ranges.Start.to_numpy()[j] <= this_pos)
-                and (ranges.End.to_numpy()[j] > this_pos)
-            ):
-                indicator_filter[i] = False
+        keep = _range_mask(unique_snp_ids, get_filter_ranges(filter_range_file))
 
         logger.info(
-            f"Retaining {100.0 * np.mean(indicator_filter):.2f}% of snps based on input filter ranges."
+            f"Retaining {100.0 * np.mean(keep):.2f}% of snps based on input "
+            "filter ranges."
         )
 
-        cell_snp_Aallele = cell_snp_Aallele[:, indicator_filter]
-        cell_snp_Ballele = cell_snp_Ballele[:, indicator_filter]
-
-        unique_snp_ids = unique_snp_ids[indicator_filter]
+        cell_snp_Aallele = cell_snp_Aallele[:, keep]
+        cell_snp_Ballele = cell_snp_Ballele[:, keep]
+        unique_snp_ids = unique_snp_ids[keep]
 
     if config.quality.local_outlier_filter:
-        # NB  k-NN defined density estimates used to filter local outliers given density wrt neighbors.
-        #     see https://scikit-learn.org/stable/modules/generated/sklearn.neighbors.LocalOutlierFactor.html
-        #         https://en.wikipedia.org/wiki/Local_outlier_factor
+        gene_umi_counts = _gene_umis(adata.layers["count"])
+
         clf = LocalOutlierFactor(n_neighbors=200)
-
-        # NB  prediction on barcode-summed transcripts for each gene; i.e. outlier gene detection.
-        label = clf.fit_predict(np.sum(adata.layers["count"], axis=0).reshape(-1, 1))
-
+        label = clf.fit_predict(gene_umi_counts.reshape(-1, 1))
         to_zero = np.where(label == -1)[0]
 
-        # NB ratio of total UMIs across all spots for genes-to-be-nulled vs all.
-        ratio = np.sum(adata.layers["count"][:, to_zero]) / np.sum(
-            adata.layers["count"]
-        )
+        total_umis = gene_umi_counts.sum()
+        ratio = gene_umi_counts[to_zero].sum() / total_umis
 
-        # NB removed 235 outlier genes (51.310% of UMIs)!!  for both "normal" and "tumor" spots.
         logger.info(
-            f"Removed {len(to_zero)} outlier genes ({100.0 * ratio:.3f}% of umis) based on {clf.__class__.__name__}."
+            f"Removed {len(to_zero)} outlier genes ({100.0 * ratio:.3f}% of umis) "
+            f"based on {clf.__class__.__name__}."
         )
 
-        if len(to_zero) > 0:
-            # NB barcode summed counts per gene.
-            gene_umi_counts = np.sum(adata.layers["count"], axis=0)
-            total_umis = np.sum(adata.layers["count"])
+        for rank in np.argsort(-gene_umi_counts[to_zero])[:25]:
+            gene_idx = to_zero[rank]
+            warning = (
+                "WARNING known to be cancerous"
+                if exp_cancer_gene(adata.var.index[gene_idx])
+                else ""
+            )
+            logger.info(
+                f"  {adata.var.index[gene_idx]:<20} "
+                f"{100.0 * gene_umi_counts[gene_idx] / total_umis:6.3f}% UMIs {warning}"
+            )
 
-            outlier_genes_info = []
+        keep = np.ones(adata.shape[1], dtype=float)
+        keep[to_zero] = 0.0
 
-            for gene_idx in to_zero:
-                gene_name = adata.var.index[gene_idx]
-                gene_umis = gene_umi_counts[gene_idx]
-                gene_pct = 100.0 * gene_umis / total_umis
-                outlier_genes_info.append((gene_name, gene_umis, gene_pct))
-
-            outlier_genes_info.sort(key=lambda x: x[2], reverse=True)
-
-            # TODO log chr, start, end.
-            logger.info("Top 25 outlier genes removed:")
-
-            for i, (gene_name, gene_umis, gene_pct) in enumerate(
-                outlier_genes_info[:25]
-            ):
-                # NB altered mitochondrial metabolism (Warburg effect) in cancer;
-                warning = (
-                    "WARNING known to be cancerous"
-                    if exp_cancer_gene(gene_name)
-                    else ""
-                )
-
-                logger.info(
-                    f"  {i+1:2d}. {gene_name:<20} {gene_pct:6.3f}% UMIs {warning}"
-                )
-
-        # TODO copy? ... ImplicitModificationWarning: Trying to modify attribute `.layers` of view, initializing view as actual.
-        # NB  zero count of outlier genes (!)  Should retain snp-umi counts ...
-        adata.layers["count"][:, to_zero] = 0
+        adata.layers["count"] = _scaled_columns(adata.layers["count"], keep)
 
     elif config.quality.normalize_gene_outliers:
-        PERCENTILE = 95
+        percentile = 95
+        gene_counts = _gene_umis(adata.layers["count"])
 
-        gene_counts = np.sum(adata.layers["count"], axis=0)
+        total_umis = gene_counts.sum()
+        top = np.where(gene_counts >= np.percentile(gene_counts, percentile))[0]
+        top_umis = gene_counts[top].sum()
+        target_umis = (1.0 - percentile / 100) * (total_umis - top_umis)
 
-        total_umis = np.sum(gene_counts)
+        over = top[gene_counts[top] > target_umis]
 
-        threshold = np.percentile(gene_counts, PERCENTILE)
+        factors = np.ones(adata.shape[1], dtype=float)
+        factors[over] = target_umis / gene_counts[over]
 
-        top_genes_indices = np.where(gene_counts >= threshold)[0]
-
-        top_genes_umis = np.sum(gene_counts[top_genes_indices])
-
-        target_umis = (1.0 - PERCENTILE / 100) * (total_umis - top_genes_umis)
-
-        for gene_idx in top_genes_indices:
-            current_umis = gene_counts[gene_idx]
-
-            if current_umis > target_umis:
-                downsampling_factor = target_umis / current_umis
-                adata.layers["count"][:, gene_idx] = (
-                    adata.layers["count"][:, gene_idx] * downsampling_factor
-                )
+        adata.layers["count"] = _scaled_columns(adata.layers["count"], factors)
 
         logger.info(
-            f"Downsampled top {100. - PERCENTILE}% genes to ensure they contribute only {100. - PERCENTILE}% of final UMIs; originally {100. * top_genes_umis / total_umis:.3f} [%]."
+            f"Downsampled top {100.0 - percentile}% genes; originally "
+            f"{100.0 * top_umis / total_umis:.3f} [%]."
         )
 
     if normal_idx_file is not None:
@@ -868,65 +959,47 @@ def load_input_data(
             pd.read_csv(normal_idx_file, header=None).iloc[:, 0].to_numpy()
         )
 
-        # NB column with tumor/normal designation.
+        # NB `.loc` rather than upstream's
+        #    `adata.obs["tumor_annotation"][mask] = "normal"`, which is chained
+        #    assignment: it writes through an intermediate that pandas 3.0's
+        #    copy-on-write makes a copy, so the annotation would silently stop
+        #    being applied. Same values today, and reported upstream.
         adata.obs["tumor_annotation"] = "tumor"
-        adata.obs["tumor_annotation"][adata.obs.index.isin(normal_barcodes)] = "normal"
-
-        logger.info(
-            "Applied tumor annotation: {adata.obs['tumor_annotation'].value_counts()}"
+        adata.obs.loc[adata.obs.index.isin(normal_barcodes), "tumor_annotation"] = (
+            "normal"
         )
 
-    logger.info(f"Realized AnnData:\n{adata}")
-
-    # NB barcode consistency
     assert adata.layers["count"].shape[0] == cell_snp_Aallele.shape[0]
     assert cell_snp_Aallele.shape[0] == cell_snp_Ballele.shape[0]
-
-    # NB SNP consistency; 17_797 anndata genes vs 16_681 SNPs.
     assert len(unique_snp_ids) == cell_snp_Aallele.shape[1]
-    assert cell_snp_Aallele.shape[1] == cell_snp_Ballele.shape[1]
 
-    # DEPRECATE?
-    ProcessedData = namedtuple(
-        "ProcessedData",
-        [
-            "coords",
-            "barcodes",
-            "adata",
-            "exp_counts",
-            "cell_snp_Aallele",
-            "cell_snp_Ballele",
-            "unique_snp_ids",
-            "across_slice_adjacency_mat",
-        ],
-    )
+    # NB the frame costs 679 ms at 2,500 spots and is built eagerly, and its
+    #    one live consumer -- `filter_normal_diffexp` -- opens with
+    #    `anndata.AnnData(exp_counts)` and `exp_counts.values`, which makes it
+    #    dense again. Under `sparse_counts` the matrix is handed back instead.
+    if sparse_counts:
+        # NB the layer's own format, unconverted. `cnamaste` builds the frame
+        #    from CSC because `from_spmatrix` wants a column store; the one
+        #    live consumer takes `anndata.AnnData(exp_counts)`, which reads
+        #    either, so the conversion is 86 ms bought for the container.
+        exp_counts = adata.layers["count"]
+    else:
+        exp_counts = pd.DataFrame.sparse.from_spmatrix(
+            sp.csc_matrix(adata.layers["count"]),
+            index=adata.obs.index,
+            columns=adata.var.index,
+        )
 
-    # NB (x,y) per spot.
-    coords = adata.obsm["X_pos"]
-
-    # NB e.g. 'AAACAAGTATCTCCCA-1_HT112C1-U1' currently.
-    barcodes = adata.obs.index
-
-    # NB sparse transcript counts (spot, gene).
-    exp_counts = pd.DataFrame.sparse.from_spmatrix(
-        sp.csc_matrix(adata.layers["count"]),
-        index=adata.obs.index,
-        columns=adata.var.index,
-    )
-
-    # TODO dense arrays.
-    result = ProcessedData(
-        coords,
-        barcodes,
+    return ProcessedData(
+        adata.obsm["X_pos"],
+        adata.obs.index,
         adata,
         exp_counts,
-        cell_snp_Aallele.toarray(),
-        cell_snp_Ballele.toarray(),
+        cell_snp_Aallele if sparse_counts else cell_snp_Aallele.toarray(),
+        cell_snp_Ballele if sparse_counts else cell_snp_Ballele.toarray(),
         unique_snp_ids,
         across_slice_adjacency_mat,
     )
-
-    return result
 
 
 def get_sample_list(adata):

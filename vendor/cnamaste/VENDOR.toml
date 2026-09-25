@@ -5,6 +5,11 @@
 # (`python -m tests.vendor_cnamaste`), and `tests/test_vendor_cnamaste.py`
 # holds every module not listed under `folded` to the pin byte for byte.
 
+# The `port.pipeline` tables folded in, in order. Each row's function is
+# written into the module it replaced, with its helpers beside it, so the copy
+# computes what `run_cnaster_port` computes with that table installed.
+tables = ["SWAPS"]
+
 [source]
 url = "https://github.com/michaelJwilson/cnaster"
 branch = "finish_annotation_mushift3"
@@ -49,6 +54,39 @@ entry = "run_sim_analysis"
 module = ""
 why = "The module is carried; the console script is not, because cnaster installs one of the same name beside it and the two would overwrite each other."
 
-# Modules a stage has rewritten, with the swap table that did it. The
-# provenance test skips them; the oracle test is what holds them.
+# Where each `port` module's code lives in the copy, for the imports the
+# folded functions make. An import of the module a function now lives in is
+# dropped: the names are its own globals.
+[homes]
+"port.patch.io" = "cnamaste.io"
+"port.patch.reference" = "cnamaste.reference"
+"port.patch.omics" = "cnamaste.omics"
+"port.patch.omics.blocks" = "cnamaste.omics"
+"port.patch.omics.summaries" = "cnamaste.omics"
+"port.patch.spatial" = "cnamaste.spatial"
+"port.patch.normal_spot" = "cnamaste.normal_spot"
+"port.patch.hmrf.field" = "cnamaste.hmrf"
+"port.patch.hmrf.fused_field" = "cnamaste.hmrf"
+"port.patch.hmrf.adjacency" = "cnamaste.hmrf"
+"port.patch.icm.interface" = "cnamaste.icm_interface"
+"port.patch.plotting.clone_paths" = "cnamaste.clone_paths"
+
+# Rows whose folded function is not `port`'s verbatim (renamed), and why.
+[edited]
+"cnamaste.hmrf:pipeline_clone_assignment" = "The label solver is the ICM alone: port's `--sal` choice of solver is an extension and stays in port. Delegation calls the kept original, `pipeline_clone_assignment_reference`, rather than a captured `UPSTREAM`."
+"cnamaste.omics:assign_initial_blocks" = "Its delegation for a known segmentation calls the kept original, `assign_initial_blocks_reference`: port imports `cnaster`'s under the name `upstream`, which in the copy would be the function itself."
+
+# Modules a stage has rewritten, with the table that did it. The provenance
+# test skips them; the run test and the row test are what hold them.
 [folded]
+"hmrf.py" = "SWAPS"
+"io.py" = "SWAPS"
+"normal_spot.py" = "SWAPS"
+"omics.py" = "SWAPS"
+"reference.py" = "SWAPS"
+"spatial.py" = "SWAPS"
+
+# Modules with no counterpart at the pin, with the table that added them.
+[added]
+"clone_paths.py" = "SWAPS"
+"icm_interface.py" = "SWAPS"

@@ -32,6 +32,10 @@ class Manifest:
     excluded: tuple[str, ...]
     dropped: tuple[str, ...]
     folded: dict[str, str]
+    added: dict[str, str]
+    tables: tuple[str, ...]
+    edited: dict[str, str]
+    homes: dict[str, str]
 
     def rename(self, text: str) -> str:
         """The pin's text as the copy carries it."""
@@ -60,6 +64,10 @@ def manifest() -> Manifest:
         excluded=tuple(data["excluded"]["trees"]),
         dropped=tuple(d["module"] for d in data["dropped"] if d["module"]),
         folded=dict(data.get("folded", {})),
+        added=dict(data.get("added", {})),
+        tables=tuple(data.get("tables", ())),
+        edited=dict(data.get("edited", {})),
+        homes=dict(data.get("homes", {})),
     )
 
 

@@ -7,6 +7,7 @@ import pyranges as pr
 
 from cnamaste.config import get_global_config, start_time
 from cnamaste.logger import get_logger
+from typing import Any
 
 logger = get_logger(__name__, start_time=start_time)
 
@@ -30,60 +31,45 @@ def exp_cancer_gene(gene_name):
     return any(re.match(pattern, gene_name) for pattern in cancer_gene_patterns)
 
 
-def get_reference_genes(hgtable_file):
-    config = get_global_config()
+AUTOSOMES = [f"chr{index}" for index in range(1, 23)]
+"""The contigs `cnamaste` keeps. Sex chromosomes and the mitochondrion are not
+among them, which is upstream's choice and carried across unchanged."""
 
-    # TODO HACK use legacy only for now.
-    if True or config.run.legacy:
-        logger.info_once(f"Assuming legacy gene annotation={hgtable_file}.")
 
-        # NB read gene info and keep only chr1-chr22 and genes appearing in adata
-        #    name2  chrom  cdsStart    cdsEnd
-        df_hgtable = pd.read_csv(hgtable_file, header=0, index_col=0, sep="\t")
-        df_hgtable = df_hgtable[
-            df_hgtable.chrom.isin([f"chr{i}" for i in range(1, 23)])
-        ]
-        df_hgtable = df_hgtable.rename(
-            columns={
-                "chrom": "Chromosome",
-                "cdsStart": "Start",
-                "cdsEnd": "End",
-                "name2": "gene",
-            }
+def get_reference_genes(hgtable_file: str) -> Any:
+    """What `cnamaste.reference.get_reference_genes` returns, read with `polars`.
+
+    The GTF branch is delegated rather than reimplemented: `cnamaste` guards it
+    with `if True or config.run.legacy`, so it is unreachable, and a patch
+    that rewrote unreachable code would be measuring nothing.
+    """
+    # NB upstream guards its GTF branch with `if True or config.run.legacy`,
+    #    so only this one is reachable. `get_global_config()` is still read,
+    #    because a caller reaching here without a config installed is a
+    #    misconfiguration upstream would raise on too.
+    get_global_config()
+
+    logger.info_once(f"Assuming legacy gene annotation={hgtable_file}.")
+
+    # NB `snp_id` and `is_interval` are literals upstream sets on the frame
+    #    rather than columns of the file, and they carry `object` and `bool`
+    #    through Arrow as they do through `numpy` -- which the bitwise test
+    #    checks, dtypes included, because a `None` column is exactly where a
+    #    conversion is free to choose a different one.
+    frame: Any = (
+        pl.read_csv(hgtable_file, separator="\t")
+        .filter(pl.col("chrom").is_in(AUTOSOMES))
+        .select(
+            pl.col("chrom").str.slice(3).cast(pl.Int64).alias("CHR"),
+            pl.col("cdsStart").alias("START"),
+            pl.col("cdsEnd").alias("END"),
+            pl.lit(None).alias("snp_id"),
+            pl.col("name2").alias("gene"),
+            pl.lit(True).alias("is_interval"),
         )
-    else:
-        # TODO rename_attr=True
-        df_hgtable = pr.read_gtf(config.references.annotation_file, full=True)
-        df_hgtable = df_hgtable.query("Feature == 'gene'").drop_duplicates(
-            "gene_id", keep="first"
-        )
-        df_hgtable = df_hgtable[["Chromosome", "Start", "End", "gene_name", "gene_id"]]
-
-        # NB drop .5 suffix to gene_id.
-        df_hgtable["gene_id"] = df_hgtable["gene_id"].str.replace(
-            r"\.\d+$", "", regex=True
-        )
-        df_hgtable = df_hgtable[
-            df_hgtable.Chromosome.isin([f"chr{i}" for i in range(1, 23)])
-        ]
-        df_hgtable = df_hgtable.rename(columns={"gene_name": "gene"})
-
-    logger.info(f"Read reference genes:\n{df_hgtable}")
-
-    df_gene = pd.DataFrame(
-        {
-            "CHR": [int(x[3:]) for x in df_hgtable.Chromosome.to_numpy()],
-            "START": df_hgtable.Start.to_numpy(),
-            "END": df_hgtable.End.to_numpy(),
-            "snp_id": None,
-            "gene": df_hgtable.gene.to_numpy(),
-            "is_interval": True,
-        }
+        .to_pandas()
     )
-
-    # df_gene["LENGTH"] = df_gene["END"] - df_gene["START"]
-
-    return df_gene
+    return frame
 
 
 def get_reference_recomb_rates(geneticmap_file):
