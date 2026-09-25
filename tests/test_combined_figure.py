@@ -339,7 +339,7 @@ def test_the_combined_page_is_the_two_figures_stacked(
 @pytest.mark.analytic
 def test_the_hatch_stripes_are_one_width() -> None:
     """B's lines are half the hatch's period measured across them, so A's
-    stripes between them are as wide: 1.445 pt at 0.07 in and 35 degrees."""
+    stripes between them are as wide: 2.065 pt at 0.10 in and 35 degrees."""
     from port.patch.plot_copy_number_profile import (
         HATCH_ANGLE,
         HATCH_LINEWIDTH,
@@ -349,4 +349,4 @@ def test_the_hatch_stripes_are_one_width() -> None:
     period = 72.0 * HATCH_SPACING * np.sin(np.radians(HATCH_ANGLE))
 
     assert pytest.approx(period - HATCH_LINEWIDTH) == HATCH_LINEWIDTH
-    assert pytest.approx(1.4454, abs=1e-4) == HATCH_LINEWIDTH
+    assert pytest.approx(2.0649, abs=1e-4) == HATCH_LINEWIDTH

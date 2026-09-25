@@ -69,13 +69,14 @@ HATCH_ANGLE = 35.0
 tenth of an inch tall carries several lines, and steep enough that the two
 phases cross at 70 degrees and read apart."""
 
-HATCH_SPACING = 0.07
-"""Inches between lines, along the row."""
+HATCH_SPACING = 0.10
+"""Inches between lines, along the row: wide enough that each stripe, A's
+and B's, reads at print size."""
 
 HATCH_LINEWIDTH = 72.0 * HATCH_SPACING * float(np.sin(np.radians(HATCH_ANGLE))) / 2.0
 """Points: half the lines' period measured across them, `HATCH_SPACING`
 along the row times the sine of `HATCH_ANGLE`, so A's stripes and B's are the
-same width (1.445 pt at 0.07 in and 35 degrees)."""
+same width (2.065 pt at 0.10 in and 35 degrees)."""
 
 NORMAL_OPACITY = 0.35
 """Copy 1's opacity over white, for a normal `(1, 1)` segment and a hatch's
