@@ -73,8 +73,10 @@ phases cross at 70 degrees and read apart."""
 HATCH_SPACING = 0.07
 """Inches between lines, along the row."""
 
-HATCH_LINEWIDTH = 0.9
-"""Points: about a sixth of the spacing, so A's fill reads first."""
+HATCH_LINEWIDTH = 72.0 * HATCH_SPACING * float(np.sin(np.radians(HATCH_ANGLE))) / 2.0
+"""Points: half the lines' period measured across them, `HATCH_SPACING`
+along the row times the sine of `HATCH_ANGLE`, so A's stripes and B's are the
+same width (1.445 pt at 0.07 in and 35 degrees)."""
 
 NORMAL_OPACITY = UPSTREAM_OPACITY / 2
 """A normal `(1, 1)` segment's opacity, half `cnaster`'s 0.25, so the

@@ -32,6 +32,7 @@ mpl.use("Agg")
 
 from port.extensions.combined_figure import (
     Recorded,
+    combined_figure,
     genomic_figure,
     page_style,
     recording,
@@ -80,7 +81,7 @@ def _run_port(truth: CoreInferenceTruth, root: Path, **config: object) -> Path:
 def _write_combined(
     recorded: Recorded, truth: CoreInferenceTruth, root: Path, output: Path
 ) -> None:
-    """The genomic and spatial figures, beside the run's own (#309, #339).
+    """The genomic and spatial figures, and both on one page (#309, #339).
 
     The slide is mocked from the planted labels and read back through
     `cnaster.he.get_he_image`, as `run_cnaster` reads one. It is written
@@ -107,6 +108,11 @@ def _write_combined(
         write_fig(
             str(plots / "spatial.pdf"),
             spatial_figure(recorded, frame),
+            bbox_inches=None,
+        )
+        write_fig(
+            str(plots / "combined.pdf"),
+            combined_figure(recorded, frame),
             bbox_inches=None,
         )
 

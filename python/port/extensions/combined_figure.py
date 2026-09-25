@@ -1,4 +1,4 @@
-r"""Two figures from a run, at `llncs`'s text width (#309, #339).
+r"""Two figures from a run, and both on one page, at `llncs`'s width (#309, #339).
 
 Drawn once at their printed size, 122 mm wide, and included at
 `width=\linewidth` with nothing scaled:
@@ -70,6 +70,10 @@ SPATIAL_GAP = 0.17
 
 TEXT_HEIGHT = 193.0 / 25.4
 """`llncs`'s `\\textheight`, 193 mm in inches: the genomic figure's height."""
+
+CAPTION_ROOM = 1.5
+"""Inches left under the genomic figure for its caption: `genomic.pdf` is
+`TEXT_HEIGHT` less this, the combined page `TEXT_HEIGHT` itself."""
 
 FOOT = 0.4
 """Inches of slack under the layout, trimmed off at the end."""
@@ -827,10 +831,13 @@ def _styled(build: Any) -> Any:
 
 @_styled
 def genomic_figure(
-    recorded: Recorded, width: float | None = None, height: float = TEXT_HEIGHT
+    recorded: Recorded,
+    width: float | None = None,
+    height: float = TEXT_HEIGHT - CAPTION_ROOM,
 ) -> Any:
     """(a) `clones_genomic` over (b) `copy_number_profile`, `width` by
-    `height` inches, the text block's by default; no caption.
+    `height` inches, the text block's less `CAPTION_ROOM` by default; no
+    caption.
 
     Everything but the tracks and the profile's rows is fixed in points, so
     the two are scaled together until the page is `height` tall: from the
@@ -916,24 +923,11 @@ def _place_spatial(figure: Any, slide_ax: Any, spatial_ax: Any) -> None:
     key.set_bbox_to_anchor((anchor + short / side, 0.0), transform=spatial_ax.transAxes)
 
 
-@_styled
-def spatial_figure(
-    recorded: Recorded, he_frame: Any, width: float | None = None
-) -> Any:
-    """(a) the H&E slide and (b) `clones_spatial`, square and as large as fit
-    across `width` inches, (b) keyed on the right edge; no caption."""
-    import matplotlib.pyplot as plt
-
-    from port.patch.plotting.genomic import PAPER_WIDTH
+def _draw_spatial(figure: Any, recorded: Recorded, he_frame: Any) -> tuple[Any, Any]:
+    """The slide and the clones on `figure`, drawn but not yet placed."""
     from port.patch.plotting.spatial import draw_clones_spatial, spot_colours
 
-    if recorded.spatial is None:
-        msg = f"the run made {recorded.calls}; the spatial figure needs its clones"
-        raise ValueError(msg)
-
-    width = PAPER_WIDTH if width is None else width
-    # NB drawn on a page taller than it needs, and cut to its text.
-    figure = plt.figure(figsize=(width, width), dpi=300, facecolor="white")
+    assert recorded.spatial is not None
     slide_ax = figure.add_axes((0.0, 0.0, 0.4, 0.4))
     spatial_ax = figure.add_axes((0.5, 0.0, 0.4, 0.4))
 
@@ -964,6 +958,102 @@ def spatial_figure(
     # NB (b) shares (a)'s rows, so its row labels are (a)'s; its ticks stay.
     spatial_ax.tick_params(axis="y", labelleft=False)
 
+    return slide_ax, spatial_ax
+
+
+@_styled
+def spatial_figure(
+    recorded: Recorded, he_frame: Any, width: float | None = None
+) -> Any:
+    """(a) the H&E slide and (b) `clones_spatial`, square and as large as fit
+    across `width` inches, (b) keyed on the right edge; no caption."""
+    import matplotlib.pyplot as plt
+
+    from port.patch.plotting.genomic import PAPER_WIDTH
+
+    if recorded.spatial is None:
+        msg = f"the run made {recorded.calls}; the spatial figure needs its clones"
+        raise ValueError(msg)
+
+    width = PAPER_WIDTH if width is None else width
+    # NB drawn on a page taller than it needs, and cut to its text.
+    figure = plt.figure(figsize=(width, width), dpi=300, facecolor="white")
+    slide_ax, spatial_ax = _draw_spatial(figure, recorded, he_frame)
+
     _set_text(figure, FONT_SIZE)
     _place_spatial(figure, slide_ax, spatial_ax)
+    return figure
+
+
+@_styled
+def combined_figure(
+    recorded: Recorded,
+    he_frame: Any,
+    width: float | None = None,
+    height: float = TEXT_HEIGHT,
+) -> Any:
+    """The spatial figure over the genomic one on one page, `height` tall.
+
+    (a) and (b) are the spatial figure's, drawn at the head exactly as it
+    draws them; (c) and (d) are the genomic figure's, drawn the rest of the
+    height. So the page is the two figures stacked, each as on its own page.
+    """
+    import matplotlib.pyplot as plt
+
+    spatial = spatial_figure(recorded, he_frame, width)
+    above = float(spatial.get_size_inches()[1])
+    figure = genomic_figure(recorded, width, height - above)
+    dpi = figure.dpi
+    wide, tall = figure.get_size_inches()
+
+    # NB the genomic page grown at its head by the spatial page's height:
+    #    each axis keeps its place measured from the foot, each letter too,
+    #    and they become (c) and (d).
+    kept = [
+        (ax, ax.get_window_extent(figure.canvas.get_renderer()).frozen())
+        for ax in figure.get_axes()
+    ]
+    letters = [(text, text.get_position()) for text in figure.texts]
+    figure.set_size_inches(wide, tall + above)
+    figure.canvas.draw()
+
+    for ax, box in kept:
+        _put(ax, box.x0 / dpi, box.x1 / dpi, box.y0 / dpi, box.height / dpi)
+    for (text, (x, y)), letter in zip(letters, "cd", strict=True):
+        text.set_position((x, y * tall / (tall + above)))
+        text.set_text(f"({letter})")
+
+    # NB (a) and (b): drawn anew in the space above and put where the spatial
+    #    page puts them, `tall` higher.
+    slide_ax, spatial_ax = _draw_spatial(figure, recorded, he_frame)
+    _set_text(figure, FONT_SIZE)
+    figure.canvas.draw()
+    source = spatial.canvas.get_renderer()
+    # NB the slide's axis, then the clones', as `_draw_spatial` adds them.
+    old_axes = spatial.get_axes()[:2]
+
+    for new, old in zip((slide_ax, spatial_ax), old_axes, strict=True):
+        box = old.get_window_extent(source)
+        _put(new, box.x0 / dpi, box.x1 / dpi, box.y0 / dpi + tall, box.height / dpi)
+
+    old_key, new_key = old_axes[1].get_legend(), spatial_ax.get_legend()
+    anchor = old_key.get_bbox_to_anchor()
+    axis = old_axes[1].get_window_extent(source)
+    new_key.set_bbox_to_anchor(
+        ((anchor.x0 - axis.x0) / axis.width, (anchor.y0 - axis.y0) / axis.height),
+        transform=spatial_ax.transAxes,
+    )
+
+    for text in spatial.texts:
+        x, y = text.get_position()
+        figure.text(
+            x,
+            (y * above + tall) / (tall + above),
+            text.get_text(),
+            fontsize=LABEL_SIZE,
+            verticalalignment=text.get_verticalalignment(),
+        )
+
+    plt.close(spatial)
+    figure.canvas.draw()
     return figure
