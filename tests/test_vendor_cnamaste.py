@@ -75,27 +75,35 @@ import numpy as np
 matplotlib.use("Agg")
 warnings.simplefilter("ignore")
 np.random.seed({seed})
-from {module} import {function}
-
-import port.pipeline
-
-from contextlib import ExitStack
-
-from port.patch.hmm_nophasing import logmu_shift
-
-swaps = sum((getattr(port.pipeline, t) for t in {tables!r}), ())
-with ExitStack() as stack:
-    stack.enter_context(port.pipeline.patched(swaps))
-    # NB as `run_cnaster_port` does whenever it installs the shift's table.
-    if "SHIFT_SWAPS" in {tables!r}:
-        stack.enter_context(logmu_shift())
-    {function}(sys.argv[1])
+{call}
 """
-"""One whole run in a fresh interpreter, seeded as `tests.run_config.isolated_run`
-seeds, with the named `port.pipeline` tables installed over `cnaster`."""
+"""One whole run in a fresh interpreter, seeded as `tests.run_config.isolated_run` seeds."""
+
+SUBJECT = """
+from cnamaste.scripts.run_cnamaste import run_cnamaste
+
+run_cnamaste(sys.argv[1])
+"""
+"""`cnamaste`'s entry point, with nothing installed."""
+
+REFERENCE = """
+from port.scripts.run_cnaster import main
+
+assert main([sys.argv[1], "--no-outputs", *{flags!r}]) == 0
+"""
+"""`run_cnaster_port`, with the tables `VENDOR.toml` has not folded turned off.
+
+`--no-outputs` because `port.extensions.outputs` writes files beside the run
+that `cnaster` does not, and those are port's rather than the copy's. What
+remains on by default besides the tables -- the Rust lattices, the
+configuration audit -- is bitwise or writes nothing.
+"""
+
+FLAGS = {"FIGURE_SWAPS": "figures", "SHIFT_SWAPS": "shift", "COPY_SWAPS": "copy-cap"}
+"""The switch each table other than `SWAPS` has on `run_cnaster_port`."""
 
 
-def _run(module: str, function: str, config: str, tables: tuple[str, ...] = ()) -> None:
+def _run(call: str, config: str) -> None:
     """Run one entry point in its own process.
 
     Its own process so that the two runs share no state -- neither the
@@ -105,11 +113,21 @@ def _run(module: str, function: str, config: str, tables: tuple[str, ...] = ()) 
     """
     from tests.run_config import ENTRY_POINT_SEED
 
-    code = RUN.format(
-        seed=ENTRY_POINT_SEED, module=module, function=function, tables=tables
-    )
+    code = RUN.format(seed=ENTRY_POINT_SEED, call=call)
     environment = dict(os.environ, SOURCE_DATE_EPOCH="0")
     subprocess.run([sys.executable, "-c", code, config], check=True, env=environment)
+
+
+def _reference(tables: tuple[str, ...]) -> str:
+    """`REFERENCE`, switched to the folded tables."""
+    assert tables[:1] == ("SWAPS",), (
+        "SWAPS folds first; run_cnaster_port has no switch for it"
+    )
+    flags = [
+        f"--{flag}" if table in tables else f"--no-{flag}"
+        for table, flag in FLAGS.items()
+    ]
+    return REFERENCE.format(flags=flags)
 
 
 @pytest.mark.patch
@@ -200,9 +218,9 @@ def _renamed(
 def test_run_cnamaste_writes_what_run_cnaster_writes(tmp_path: Path) -> None:
     """Every file of the round trip's run, byte for byte, through both entry points.
 
-    The reference is `run_cnaster` with the tables `VENDOR.toml` has folded
-    installed over it -- what `run_cnaster_port` computes with those tables --
-    and the subject is `run_cnamaste` with nothing installed. Two clones of
+    The reference is `run_cnaster_port` with the tables `VENDOR.toml` has
+    folded switched on and the rest off -- once all four are folded, its
+    default run -- and the subject is `run_cnamaste` with nothing installed. Two clones of
     500 spots over 40 bins (`tests/test_run_cnaster_round_trip.py`), seeded
     identically. `SOURCE_DATE_EPOCH` fixes the figures' creation date, which
     the two runs would otherwise differ in by construction.
@@ -221,9 +239,9 @@ def test_run_cnamaste_writes_what_run_cnaster_writes(tmp_path: Path) -> None:
     config = str(write_run_cnaster_config(written, truth, max_iter_outer=1, max_iter=3))
     output = written.root / "output"
 
-    _run("cnaster.scripts.run_cnaster", "run_cnaster", config, manifest().tables)
+    _run(_reference(manifest().tables), config)
     reference = Path(shutil.move(output, written.root / "reference"))
-    _run("cnamaste.scripts.run_cnamaste", "run_cnamaste", config)
+    _run(SUBJECT, config)
 
     expected = _files(reference)
     produced = _files(output)

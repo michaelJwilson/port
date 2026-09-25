@@ -7,8 +7,9 @@
 
 # The `port.pipeline` tables folded in, in order. Each row's function is
 # written into the module it replaced, with its helpers beside it, so the copy
-# computes what `run_cnaster_port` computes with that table installed.
-tables = ["SWAPS", "FIGURE_SWAPS", "SHIFT_SWAPS"]
+# computes what `run_cnaster_port` computes with that table installed. With
+# all four, the copy is `run_cnaster_port`'s default run.
+tables = ["SWAPS", "FIGURE_SWAPS", "SHIFT_SWAPS", "COPY_SWAPS"]
 
 [source]
 url = "https://github.com/michaelJwilson/cnaster"
@@ -89,6 +90,7 @@ why = "The module is carried; the console script is not, because cnaster install
 # Changes outside the rows themselves, and why.
 [consequences]
 "hmm_phased.py" = "Subclasses `hmm_nophasing_reference`: port's swap rebinds the name `hmm_nophasing` after `hmm_phased` was built on the original, so the phased class stays unshifted."
+"integer_copy.py" = "`_ONECLONE` and `_MILP`, which port binds to `cnaster`'s decoders at import, are the kept originals, `<name>_reference`."
 "hmm_nophasing.py" = "`hmm_nophasing.apply_logmu_shift = True` after the class: `run_cnaster_port` enters `logmu_shift()` for the whole run by default."
 
 # Modules a stage has rewritten, with the table that did it. The provenance
@@ -97,6 +99,7 @@ why = "The module is carried; the console script is not, because cnaster install
 "hmm_nophasing.py" = "SHIFT_SWAPS"
 "hmm_phased.py" = "SHIFT_SWAPS"
 "hmrf.py" = "SWAPS"
+"integer_copy.py" = "COPY_SWAPS"
 "io.py" = "SWAPS"
 "normal_spot.py" = "SWAPS"
 "plot_genomic.py" = "FIGURE_SWAPS"

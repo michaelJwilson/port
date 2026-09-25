@@ -8,6 +8,7 @@ from scipy.sparse import lil_matrix
 
 from cnamaste.config import start_time
 from cnamaste.logger import get_logger
+from typing import Any
 
 logger = get_logger(__name__, start_time=start_time)
 # TODO
@@ -98,7 +99,7 @@ def find_diploid_balanced_state(
         return normal_candidate
 
 
-def hill_climbing_integer_copynumber_oneclone(
+def hill_climbing_integer_copynumber_oneclone_reference(
     new_log_mu,
     base_nb_mean,
     new_p_binom,
@@ -568,7 +569,7 @@ def hill_climbing_integer_copynumber_fixdiploid(
     return best_integer_copies, best_obj, best_ploidy
 
 
-def hill_climbing_integer_copynumber_fixdiploid_milp(
+def hill_climbing_integer_copynumber_fixdiploid_milp_reference(
     new_log_mu,
     base_nb_mean,
     new_p_binom,
@@ -789,3 +790,112 @@ def hill_climbing_integer_copynumber_fixdiploid_milp(
         logger.info(f"\t{m:7.4f}\t{p:7.4f}\t{pts:8.1f}\t{tuple(best_copy.tolist())}")
 
     return best_integer_copies, best_obj, best_ploidy
+
+
+# NB the decoders the capped ones call: the pin's, kept under `_reference`
+#    (#392), where `port` binds them at import before its swap.
+_ONECLONE = hill_climbing_integer_copynumber_oneclone_reference
+_MILP = hill_climbing_integer_copynumber_fixdiploid_milp_reference
+
+MAX_ALLELE_COPY = 5
+"""`cnamaste`'s default, in both signatures."""
+
+MAX_TOTAL_COPY = 6
+"""`cnamaste`'s default, in both signatures."""
+
+
+def configured_caps() -> tuple[int, int]:
+    """`(max_allele_copy, max_total_copy)`: the configured cap for both, else `cnamaste`'s."""
+    from cnamaste.config import get_global_config
+
+    section = getattr(get_global_config(), "int_copy_num", None)
+    total = getattr(section, "max_total_copy", None)
+
+    if total is None:
+        return MAX_ALLELE_COPY, MAX_TOTAL_COPY
+
+    return int(total), int(total)
+
+
+def _caps(max_allele_copy: int, max_total_copy: int) -> tuple[int, int]:
+    """The caps to decode under: the configuration's where the caller left the default."""
+    allele, total = configured_caps()
+
+    return (
+        allele if max_allele_copy == MAX_ALLELE_COPY else max_allele_copy,
+        total if max_total_copy == MAX_TOTAL_COPY else max_total_copy,
+    )
+
+
+def hill_climbing_integer_copynumber_oneclone(
+    new_log_mu: Any,
+    base_nb_mean: Any,
+    new_p_binom: Any,
+    pred_cnv: Any,
+    max_allele_copy: int = 5,
+    max_total_copy: int = 6,
+    max_medploidy: int = 4,
+    enforce_states: Any = {},  # noqa: B006 -- cnamaste's default, passed through
+    EPS_BAF: float = 0.05,
+    expression_weight: bool = False,
+) -> Any:
+    """`cnamaste`'s hill climbing, under the configured caps."""
+    allele, total = _caps(max_allele_copy, max_total_copy)
+
+    return _ONECLONE(
+        new_log_mu,
+        base_nb_mean,
+        new_p_binom,
+        pred_cnv,
+        max_allele_copy=allele,
+        max_total_copy=total,
+        max_medploidy=max_medploidy,
+        enforce_states=enforce_states,
+        EPS_BAF=EPS_BAF,
+        expression_weight=expression_weight,
+    )
+
+
+def hill_climbing_integer_copynumber_fixdiploid_milp(
+    new_log_mu: Any,
+    base_nb_mean: Any,
+    new_p_binom: Any,
+    pred_cnv: Any,
+    max_allele_copy: int = 5,
+    max_total_copy: int = 6,
+    max_medploidy: int = 4,
+    min_prop_threshold: float = 0.0,
+    EPS_BAF: float = 0.05,
+    nonbalance_bafdist: Any = None,
+    nondiploid_rdrdist: Any = None,
+    cost_type: str = "L1",
+    enforce_order: bool = False,
+    uniform_state_weights: bool = False,
+    rdr_relative_weight: float = 0.3,
+    enforce_states: Any = {},  # noqa: B006 -- cnamaste's default, passed through
+    max_samples: int = 20,
+) -> Any:
+    """`cnamaste`'s MILP decoder, under the configured caps."""
+    allele, total = _caps(max_allele_copy, max_total_copy)
+
+    return _MILP(
+        new_log_mu,
+        base_nb_mean,
+        new_p_binom,
+        pred_cnv,
+        max_allele_copy=allele,
+        max_total_copy=total,
+        max_medploidy=max_medploidy,
+        min_prop_threshold=min_prop_threshold,
+        EPS_BAF=EPS_BAF,
+        nonbalance_bafdist=nonbalance_bafdist,
+        nondiploid_rdrdist=nondiploid_rdrdist,
+        cost_type=cost_type,
+        enforce_order=enforce_order,
+        uniform_state_weights=uniform_state_weights,
+        rdr_relative_weight=rdr_relative_weight,
+        enforce_states=enforce_states,
+        max_samples=max_samples,
+    )
+
+
