@@ -310,6 +310,16 @@ replaces the CalicoST constants that have a `cnaster` counterpart;
 CalicoST's `rectangle_initialize_initial_clone` never returns (`cnaster` #248).
 `python -m tests.recovery_audit --calicost` scores it with port's scorer.
 
+**`run_sim_gen`** (#382) draws a simulated sample from a TOML manifest, in
+the format of CalicoST's `sim/<name>/`. `sim/manifests/{easy,hard}.toml`
+replicate the two committed samples' sizes, truth and fitted coverage laws,
+drawn pure (`normal_frac = 0`); `--normal-frac fitted` draws them at the
+normal fraction measured on each clone. The gene table is CalicoST's
+`GRCh38_resources`, found through `$PORT_GRCH38` or `--gene-table`:
+
+    python -m port.sim.run_sim_gen sim/manifests/easy.toml
+    python -m port.sim.toml_manifest sim/<name> sim/manifests/<name>.toml
+
 `cnaster` appends a fit record to `cnaster.perf` in the repository root on
 every run. It is **not tracked** (#222): nothing reads it, no test
 references it, and its rows carry no commit or instance, so it is a log
@@ -323,6 +333,7 @@ trains a reader to ignore `git status`.
 | `python/port/` | The Python package; `python-source` in `pyproject.toml` |
 | `src/` | The Rust crate `oxiport`, bound as `port.oxiport` |
 | `tests/` | The suite; `testpaths` in `pyproject.toml` |
+| `sim/` | CalicoST's simulated samples, and `manifests/` that draw them |
 | `Cargo.toml` | The single source of the version, which maturin reads across |
 
 # Infrastructure
