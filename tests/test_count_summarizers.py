@@ -147,6 +147,43 @@ def test_the_bin_counts_are_cnasters(blocked: tuple[Any, Any, Any], phase: str) 
     _fields_equal(call(patched), call(upstream))
 
 
+@pytest.mark.patch
+def test_the_bin_counts_are_cnasters_on_snps_outside_a_gene() -> None:
+    """**Bitwise with SNP rows whose `gene` is `None`**, which upstream skips.
+
+    The prep chain names a gene on every row it bins, so the test above never
+    carries one; `unsegment`'s pre-image carries 112 of 327. The patch raised
+    `TypeError` on them -- `searchsorted` cannot order `None` against a string
+    -- until `_positions` read them as unknown (#392, found by
+    `cnamaste/tests/test_unsegment_round_trip.py`).
+    """
+    from cnaster.omics import summarize_counts_for_bins as upstream
+    from port.patch.omics.blocks import summarize_counts_for_bins as patched
+
+    from tests.fixtures import core_inference_truth
+    from tests.unsegment import unsegment
+
+    truth = core_inference_truth(
+        n_clones=2, n_states=3, lattice=(6, 5), n_obs=60, n_segments=2
+    )
+    pre_image = unsegment(truth)
+    assert pre_image.df_gene_snp.gene.isna().any(), "no row without a gene"
+
+    def call(implementation: Any) -> Any:
+        return implementation(
+            pre_image.df_gene_snp.copy(),
+            pre_image.adata,
+            pre_image.block_single_X,
+            pre_image.block_single_total_bb_RD,
+            pre_image.phase_indicator,
+            nu=1.0,
+            logphase_shift=0.0,
+            geneticmap_file=None,
+        )
+
+    _fields_equal(call(patched), call(upstream))
+
+
 @pytest.mark.analytic
 def test_the_indicator_sums_each_group_and_nothing_else() -> None:
     """**The grouped sum against an explicit loop, on a matrix built to trip it.**
