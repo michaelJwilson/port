@@ -1,4 +1,4 @@
-"""`vendor/cnamaste`: `cnaster` at the lock's pin, renamed (#392).
+"""`cnamaste/`: `cnaster` at the lock's pin, renamed (#392).
 
 `VENDOR.toml` states the copy: the source commit, the rename, the modules
 left out, and the modules a stage has since rewritten ("folded"). This reads
@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-VENDOR = ROOT / "vendor" / "cnamaste"
+VENDOR = ROOT / "cnamaste"
 PACKAGE = VENDOR / "python" / "cnamaste"
 
 
@@ -32,6 +32,7 @@ class Manifest:
     excluded: tuple[str, ...]
     dropped: tuple[str, ...]
     folded: dict[str, str]
+    added: dict[str, str]
 
     def rename(self, text: str) -> str:
         """The pin's text as the copy carries it."""
@@ -51,7 +52,7 @@ class Manifest:
 
 
 def manifest() -> Manifest:
-    """`vendor/cnamaste/VENDOR.toml`."""
+    """`cnamaste/VENDOR.toml`."""
     data = tomllib.loads((VENDOR / "VENDOR.toml").read_text())
     return Manifest(
         commit=data["source"]["commit"],
@@ -60,6 +61,7 @@ def manifest() -> Manifest:
         excluded=tuple(data["excluded"]["trees"]),
         dropped=tuple(d["module"] for d in data["dropped"] if d["module"]),
         folded=dict(data.get("folded", {})),
+        added=dict(data.get("added", {})),
     )
 
 

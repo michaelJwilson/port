@@ -52,3 +52,7 @@ why = "The module is carried; the console script is not, because cnaster install
 # Modules a stage has rewritten, with the swap table that did it. The
 # provenance test skips them; the oracle test is what holds them.
 [folded]
+
+# Modules with no counterpart at the pin, with what added them.
+[added]
+"__init__.py" = "layout: a regular package, so no directory named `cnamaste` joins it"

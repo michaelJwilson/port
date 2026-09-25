@@ -291,7 +291,7 @@ trains a reader to ignore `git status`.
 | `python/port/` | The Python package; `python-source` in `pyproject.toml` |
 | `src/` | The Rust crate `oxiport`, bound as `port.oxiport` |
 | `tests/` | The suite; `testpaths` in `pyproject.toml` |
-| `vendor/cnamaste/` | `cnaster` at the lock's pin, renamed, with the default patches folded in (#392); `VENDOR.toml` states what it holds |
+| `cnamaste/` | `cnaster` at the lock's pin, renamed, with the default patches folded in (#392); `VENDOR.toml` states what it holds |
 | `Cargo.toml` | The single source of the version, which maturin reads across |
 
 # Infrastructure

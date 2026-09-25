@@ -1,4 +1,4 @@
-"""`vendor/cnamaste` is `cnaster` at the lock's pin, renamed (#392).
+"""`cnamaste/` is `cnaster` at the lock's pin, renamed (#392).
 
 Two referees. The pin itself, for every module no stage has rewritten: the
 copy, renamed back, is the installed file byte for byte. And the installed
@@ -48,7 +48,7 @@ def test_the_copy_is_the_pin_renamed() -> None:
         for p in PACKAGE.rglob("*.py")
         if "__pycache__" not in p.parts
     )
-    assert copied == sorted(vendor.copied(f) for f in pinned)
+    assert copied == sorted([vendor.copied(f) for f in pinned] + list(vendor.added))
     assert set(vendor.folded) <= set(copied)
 
     source = installed()

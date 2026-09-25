@@ -619,7 +619,7 @@ wheels = [
 [[package]]
 name = "cnamaste"
 version = "0.1.0"
-source = { editable = "vendor/cnamaste" }
+source = { editable = "cnamaste" }
 dependencies = [
     { name = "anndata" },
     { name = "hmmlearn" },
@@ -2992,7 +2992,7 @@ track = [
 requires-dist = [
     { name = "aim", marker = "extra == 'track'", specifier = ">=3.29,<4" },
     { name = "calicost", marker = "extra == 'calicost'", git = "https://github.com/raphael-group/CalicoST?rev=c1abcae" },
-    { name = "cnamaste", editable = "vendor/cnamaste" },
+    { name = "cnamaste", editable = "cnamaste" },
     { name = "cnaster", git = "https://github.com/michaelJwilson/cnaster?branch=finish_annotation_mushift3" },
     { name = "ipykernel", marker = "extra == 'notebooks'", specifier = ">=6.29" },
     { name = "jax", specifier = ">=0.11.2" },

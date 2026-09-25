@@ -37,7 +37,7 @@ dependencies = [
     # Pulled from git, not PyPI -- see [tool.uv.sources] below, which pins it
     # to the `finish_annotation_mushift3` branch.
     "cnaster",
-    # Vendored under `vendor/cnamaste` -- `cnaster` at the lock's pin, renamed,
+    # Vendored under `cnamaste` -- `cnaster` at the lock's pin, renamed,
     # with port's default swaps folded in (#392). A path source, below.
     "cnamaste",
     "jax>=0.11.2",
@@ -124,7 +124,7 @@ test = [
 [tool.uv.sources]
 snakes_and_ladders = { git = "https://github.com/michaelJwilson/snakes_and_ladders", branch = "main" }
 cnaster = { git = "https://github.com/michaelJwilson/cnaster", branch = "finish_annotation_mushift3" }
-cnamaste = { path = "vendor/cnamaste", editable = true }
+cnamaste = { path = "cnamaste", editable = true }
 # Pinned to a commit rather than a branch: this is a reference being read, so
 # a moving target would silently change what the audits describe.
 calicost = { git = "https://github.com/raphael-group/CalicoST", rev = "c1abcae" }
@@ -137,7 +137,7 @@ module-name = "port.oxiport"
 target-version = "py312"
 # `cnaster`'s code, vendored byte for byte but for the rename (#392): held to
 # the pin by `tests/test_vendor_cnamaste.py`, not to this repository's style.
-extend-exclude = ["vendor"]
+extend-exclude = ["cnamaste"]
 
 [tool.ruff.lint]
 ignore = [
