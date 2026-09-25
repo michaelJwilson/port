@@ -103,6 +103,17 @@ def _parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--genomic-colours",
+        choices=("integer", "states"),
+        default=None,
+        help=(
+            "colour the clones_genomic bins by deduplicated integer copies "
+            "(A, B), or by fitted HMM state with each state's continuous "
+            "2 mu and p, so states oversampling one integer pair stay "
+            "distinct. Unset, cnaster's choice per figure. Needs --figures."
+        ),
+    )
+    parser.add_argument(
         "--copy-likelihood",
         action="store_true",
         help=(
@@ -229,6 +240,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     if arguments.config is None:
         _parser().error("a configuration is required unless --list is given")
 
+    # NB refused before the configuration is read: an argument error, not a
+    #    file error. The figure default is the one the run below computes.
+    if arguments.genomic_colours is not None and not (
+        not arguments.no_patch if arguments.figures is None else arguments.figures
+    ):
+        _parser().error("--genomic-colours needs the figure swaps")
+
     import yaml
 
     from port.extensions.config_audit import audit
@@ -311,6 +329,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             selected = selected + NUMERIC_SWAPS
         if figures:
             selected = selected + FIGURE_SWAPS
+        if arguments.genomic_colours is not None:
+            from port.patch import plot_genomic
+
+            stack.callback(setattr, plot_genomic, "COLOUR_BY", plot_genomic.COLOUR_BY)
+            plot_genomic.COLOUR_BY = arguments.genomic_colours
         # NB on unless refused, and off with `--no-patch` like the figures: a
         #    baseline arm decodes under `cnaster`'s caps.
         copy_cap = (
