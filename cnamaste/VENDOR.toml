@@ -86,7 +86,8 @@ why = "The module is carried; the console script is not, because cnaster install
 "reference.py" = "SWAPS"
 "spatial.py" = "SWAPS"
 
-# Modules with no counterpart at the pin, with the table that added them.
+# Modules with no counterpart at the pin, with what added them.
 [added]
+"__init__.py" = "layout: a regular package, so no directory named `cnamaste` joins it"
 "clone_paths.py" = "SWAPS"
 "icm_interface.py" = "SWAPS"
