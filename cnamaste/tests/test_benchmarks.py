@@ -98,3 +98,64 @@ def test_forward_lattice(benchmark: Any, size: dict[str, Any], phased: bool) -> 
     _warm(forward, *args)
     log_alpha = benchmark(forward, *args)
     assert np.all(np.isfinite(log_alpha))
+
+
+def _field_args(size: dict[str, Any]) -> tuple[Any, ...]:
+    truth = _instance(size)
+    return (
+        truth.counts_nb.astype(np.float64),
+        truth.base_nb_mean,
+        truth.unphased_bb().astype(np.float64),
+        truth.total_bb_RD.astype(np.float64),
+        truth.log_mu,
+        truth.alphas,
+        truth.p_binom,
+        truth.taus,
+        np.ascontiguousarray(truth.states.T),
+        np.ones(truth.n_spots),
+        np.empty((truth.n_spots, truth.n_clones)),
+    )
+
+
+@pytest.mark.parametrize("size", SIZES.values())
+def test_spot_clone_field(benchmark: Any, size: dict[str, Any]) -> None:
+    """The fused `(n_spots, n_clones)` field, once per outer iteration (#392 stage 1)."""
+    from cnamaste.hmrf import fused_spot_clone_field
+
+    args = _field_args(size)
+    _warm(fused_spot_clone_field, *args)
+    field = benchmark(fused_spot_clone_field, *args)
+    assert np.all(np.isfinite(field))
+
+
+@pytest.mark.parametrize("size", SIZES.values())
+def test_label_sweep(benchmark: Any, size: dict[str, Any]) -> None:
+    """The ICM from a random labelling on the lattice graph (#392 stage 1)."""
+    import scipy.sparse as sp
+
+    from cnamaste.icm_interface import CsrGraph, icm_sweep
+    from cnamaste.spatial import construct_multislice_lattice_adjacency
+
+    truth = _instance(size)
+    rows, columns = np.unravel_index(np.arange(truth.n_spots), truth.lattice)
+    adjacency, _ = construct_multislice_lattice_adjacency(
+        np.zeros(truth.n_spots, dtype=np.int64),
+        ["S1"],
+        np.stack([rows, columns], axis=1).astype(np.float64),
+        None,
+        maxspots_pooling=1,
+        unit_xsquared=1,
+        unit_ysquared=1,
+    )
+    graph = CsrGraph.from_matrix(sp.csr_matrix(adjacency))
+    rng = np.random.default_rng(0)
+    field = rng.normal(0.0, 1.0, (truth.n_spots, truth.n_clones))
+    start = rng.integers(0, truth.n_clones, truth.n_spots)
+
+    def sweep() -> Any:
+        np.random.seed(0)  # noqa: NPY002 -- the solver's legacy global stream
+        return icm_sweep(field, graph, start.copy(), 1.0, min_clone_spots=0)
+
+    sweep()
+    result = benchmark(sweep)
+    assert np.isfinite(result.cost)
