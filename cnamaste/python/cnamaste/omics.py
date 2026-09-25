@@ -737,12 +737,20 @@ def _positions(
     A dictionary comprehension over a column is a Python loop per row, which
     is the cost the products below exist to remove -- so the lookup is a
     `searchsorted` against the sorted vocabulary instead.
+
+    A missing value -- a SNP row with no gene, `None` -- is unknown. It is
+    swapped for `""` before the search, because `None` does not order against
+    a string and `searchsorted` raises on it where upstream's lookup skips it.
     """
     order = np.argsort(vocabulary)
     ordered = vocabulary[order]
 
+    missing = pd.isna(values)
+    if missing.any():
+        values = np.where(missing, "", values)
+
     slot = np.clip(np.searchsorted(ordered, values), 0, ordered.size - 1)
-    known = ordered[slot] == values
+    known = (ordered[slot] == values) & ~missing
 
     return order[slot], known
 
