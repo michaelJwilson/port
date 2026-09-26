@@ -927,7 +927,9 @@ def _draw_spatial(figure: Any, recorded: Recorded, he_frame: Any) -> tuple[Any, 
     """The slide and the clones on `figure`, drawn but not yet placed."""
     from port.patch.plotting.spatial import draw_clones_spatial, spot_colours
 
-    assert recorded.spatial is not None
+    if recorded.spatial is None:  # invariant
+        msg = "expected recorded.spatial is not None"
+        raise AssertionError(msg)
     slide_ax = figure.add_axes((0.0, 0.0, 0.4, 0.4))
     spatial_ax = figure.add_axes((0.5, 0.0, 0.4, 0.4))
 

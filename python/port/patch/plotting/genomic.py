@@ -180,7 +180,9 @@ def plot_clones_genomic(
     n_states = 0
 
     if df_cnv is not None:
-        assert res_combine is not None, "res_combine required if df_cnv is provided."
+        if res_combine is None:  # invariant
+            msg = "res_combine required if df_cnv is provided."
+            raise AssertionError(msg)
 
         unique_chrs = np.unique(df_cnv.CHR.to_numpy())
         final_clone_ids = np.sort(np.unique(res_combine["new_assignment"]))
@@ -205,15 +207,19 @@ def plot_clones_genomic(
         ]
 
     else:
-        assert clone_index is not None, "clone_index must be provided."
-        assert lengths is not None, "lengths must be provided."
+        if clone_index is None:  # invariant
+            msg = "clone_index must be provided."
+            raise AssertionError(msg)
+        if lengths is None:  # invariant
+            msg = "lengths must be provided."
+            raise AssertionError(msg)
 
         unique_chrs = 1 + np.arange(len(lengths))
         final_clone_ids = np.asarray([str(i) for i in range(len(clone_index))])
 
-    assert single_X.shape[0] == np.sum(lengths), (
-        "Mismatch in genomic segment defined X and lengths."
-    )
+    if single_X.shape[0] != np.sum(lengths):  # invariant
+        msg = "Mismatch in genomic segment defined X and lengths."
+        raise AssertionError(msg)
 
     X, base_nb_mean, total_bb_RD, tumor_prop = merge_pseudobulk_by_index_mix(
         single_X,
@@ -227,8 +233,12 @@ def plot_clones_genomic(
     spots_per_clone = [len(xx) for xx in clone_index]
     nonempty_clones = np.where(np.sum(total_bb_RD, axis=0) > 0)[0]
 
-    assert len(nonempty_clones) == total_bb_RD.shape[1]
-    assert np.all(nonempty_clones == np.arange(len(final_clone_ids)))
+    if len(nonempty_clones) != total_bb_RD.shape[1]:  # invariant
+        msg = "expected len(nonempty_clones) == total_bb_RD.shape[1]"
+        raise AssertionError(msg)
+    if not (np.all(nonempty_clones == np.arange(len(final_clone_ids)))):  # invariant
+        msg = "expected np.all(nonempty_clones == np.arange(len(final_clone_ids)))"
+        raise AssertionError(msg)
 
     if known_nb_baseline is not None:
         base_nb_mean = known_nb_baseline.copy()
@@ -301,10 +311,10 @@ def plot_clones_genomic(
             #    `new_p_binom.shape[0]` there and `new_log_mu.shape[0]` here.
             this_pred = clone_path(res_combine["pred_cnv"], c, n_obs, n_states)
 
-            assert len(this_pred) == n_obs, (
-                f"Clone {cid} copy states defined for {len(this_pred)}, "
+            if len(this_pred) != n_obs:  # invariant
+                msg = f"Clone {cid} copy states defined for {len(this_pred)}, "
                 f"expected {n_obs}."
-            )
+                raise AssertionError(msg)
 
             point_colors = np.array(palette)[this_pred]
             unique_hues = np.unique(this_pred)

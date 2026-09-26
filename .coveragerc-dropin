@@ -40,3 +40,7 @@ source =
 # rest are refusal branches on port's own guards.
 fail_under = 90.0
 precision = 2
+# An invariant checked explicitly rather than by `assert` (#408), excluded
+# whole as in `pyproject.toml`.
+exclude_also =
+    [#] invariant$

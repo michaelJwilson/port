@@ -64,7 +64,9 @@ def compute_emission_probability_nb_betabinom_coded(
     n_states = len(rates)
     n_spots = nbEncoder.n_spots
 
-    assert n_spots == bbEncoder.n_spots, "Encoders must have identical spot counts"
+    if n_spots != bbEncoder.n_spots:  # invariant
+        msg = "Encoders must have identical spot counts"
+        raise AssertionError(msg)
 
     rdr_columns, baf_columns = [], []
 

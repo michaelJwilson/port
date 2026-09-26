@@ -323,7 +323,9 @@ def load_input_data(
 
     df_meta = get_sample_sheet(config.paths.sample_sheet)
 
-    assert np.all(df_meta["snp_dir"] == df_meta["snp_dir"].iloc[0])
+    if not (np.all(df_meta["snp_dir"] == df_meta["snp_dir"].iloc[0])):  # invariant
+        msg = 'expected np.all(df_meta["snp_dir"] == df_meta["snp_dir"].iloc[0])'
+        raise AssertionError(msg)
 
     snp_dir = df_meta["snp_dir"].iloc[0]
     known_sample_id = df_meta.sample_id[0] if len(df_meta) == 1 else None
@@ -342,7 +344,9 @@ def load_input_data(
 
     cell_snp_Aallele, cell_snp_Ballele = _load_allele_matrices(snp_dir)
 
-    assert cell_snp_Aallele.shape == cell_snp_Ballele.shape
+    if cell_snp_Aallele.shape != cell_snp_Ballele.shape:  # invariant
+        msg = "expected cell_snp_Aallele.shape == cell_snp_Ballele.shape"
+        raise AssertionError(msg)
 
     # NB upstream writes `(A + B).todense().sum(axis=1)`, which allocates a
     #    dense (spots, snps) matrix to reduce it away on the next call. The
@@ -413,15 +417,17 @@ def load_input_data(
             else anndata.concat([adata, adatatmp], join="outer")
         )
 
-    assert adata is not None
+    if adata is None:  # invariant
+        msg = "expected adata is not None"
+        raise AssertionError(msg)
 
     shared_barcodes = set(snp_barcodes.barcodes) & set(adata.obs.index)
     isin = snp_barcodes.barcodes.isin(shared_barcodes).to_numpy()
 
-    assert np.any(isin), (
-        "Found inconsistent barcodes between SNPs and UMIs, e.g. \n"
+    if not (np.any(isin)):  # invariant
+        msg = "Found inconsistent barcodes between SNPs and UMIs, e.g. \n"
         f"{list(snp_barcodes.barcodes)[:5]}\nvs\n{list(adata.obs.index)[:5]}"
-    )
+        raise AssertionError(msg)
 
     if not isin.all():
         cell_snp_Aallele = cell_snp_Aallele[isin, :]
@@ -575,9 +581,15 @@ def load_input_data(
             "normal"
         )
 
-    assert adata.layers["count"].shape[0] == cell_snp_Aallele.shape[0]
-    assert cell_snp_Aallele.shape[0] == cell_snp_Ballele.shape[0]
-    assert len(unique_snp_ids) == cell_snp_Aallele.shape[1]
+    if adata.layers["count"].shape[0] != cell_snp_Aallele.shape[0]:  # invariant
+        msg = 'expected adata.layers["count"].shape[0] == cell_snp_Aallele.shape[0]'
+        raise AssertionError(msg)
+    if cell_snp_Aallele.shape[0] != cell_snp_Ballele.shape[0]:  # invariant
+        msg = "expected cell_snp_Aallele.shape[0] == cell_snp_Ballele.shape[0]"
+        raise AssertionError(msg)
+    if len(unique_snp_ids) != cell_snp_Aallele.shape[1]:  # invariant
+        msg = "expected len(unique_snp_ids) == cell_snp_Aallele.shape[1]"
+        raise AssertionError(msg)
 
     # NB the frame costs 679 ms at 2,500 spots and is built eagerly, and its
     #    one live consumer -- `filter_normal_diffexp` -- opens with

@@ -175,7 +175,7 @@ class HMMInit:
 
                 try:
                     result = backend(*args, seed=seed, **kwargs)
-                except Exception as error:
+                except Exception as error:  # noqa: BLE001 -- a failed run is a result
                     # NB a backend that raises is a result, not an abort. #230
                     #    compares recovery *rates*, so a run that failed has
                     #    to survive as a failure rather than stop the sweep.

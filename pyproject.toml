@@ -168,6 +168,10 @@ extend-select = [
   "EXE",         # flake8-executable
   "NPY",         # NumPy specific rules
   "PD",          # pandas-vet
+  "BLE",         # blind except (#408)
+  "A",           # shadowed builtins (#408)
+  "DTZ",         # naive datetimes (#408)
+  "S101",        # assert, stripped under -O (#408)
 ]
 unfixable = [
   "T20",  # Removes print statements
@@ -179,6 +183,9 @@ unfixable = [
   "S101",    # asserts are the point of a test
   "PLR2004", # literal expected values are the point of a regression test
   "ARG001",  # a fixture requested for its side effect is an unused argument
+]
+"python/port/patch/io.py" = [
+  "A005",    # named for the cnaster module it replaces (#250)
 ]
 
 [tool.mypy]
@@ -471,4 +478,9 @@ precision = 2
 exclude_lines = [
     "pragma: no cover",
     "if __name__ == .__main__.:",
+    # An invariant checked explicitly rather than by `assert` (#408). The
+    # assert was one line; the check is a block whose body a correct run
+    # never reaches, so it is excluded whole. `cnaster` has no such tag, so
+    # the denominator of the subject is unchanged.
+    "[#] invariant$",
 ]
