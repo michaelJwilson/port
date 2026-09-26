@@ -301,7 +301,9 @@ def test_the_spatial_panels_are_square_and_keyed_on_the_right_edge(
 
 
 @pytest.mark.infra
-@pytest.mark.merge
+# NB too specific to run on every change (#403): it passed where it merged,
+#    and runs again where this module or the lock changes, and at a release.
+@pytest.mark.deprecate
 def test_the_combined_page_is_the_two_figures_stacked(
     cnaster_config: None, tmp_path: Path
 ) -> None:
