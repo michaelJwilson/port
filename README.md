@@ -189,13 +189,26 @@ in the same change.
 
 ## Checks
 
+CI runs locally, through one entry point (#403). Each step prints its seconds.
+
 ```
-uv run pytest                                          # tests
-uv run ruff check . && uv run ruff format --check .     # lint, format
-uv run mypy                                            # types, --strict
-cargo clippy --all-targets -- -D warnings               # Rust lint
-cargo fmt --check                                       # Rust format
+uv run python -m tests.ci                  # gate: ruff, mypy, critical + untiered tests; <= 60 s
+uv run python -m tests.ci --badges         # judged and drop-in coverage; --record writes them
+uv run python -m tests.ci --full           # gate, badges, then `merge` tests and benchmarks
+uv run python -m tests.ci --release        # `release` and `oracle`
+uv run python -m tests.ci --figures        # redraw docs/plots
+uv run python -m tests.ci --install        # once per clone: the `badges` merge driver
+cargo clippy --all-targets -- -D warnings  # Rust lint
+cargo fmt --check                          # Rust format
 ```
+
+Every test sits in at most one tier -- `critical`, none, `merge`, `release`
+-- and each step selects one, so no step repeats another's tests. The gate
+is `pytest -n 4`; a whole-pipeline test (`xdist_group("pipeline")`) runs one
+at a time, since four exceed 15 GB. Badges are measured and recorded locally
+by the change that moves them. `.gitattributes` sends `.badges/*.json` and
+`docs/plots/*` to the `badges` driver, which keeps the branch's copy on a
+merge; `--badges --record` and `--figures` then regenerate them.
 
 `mypy` reads its paths from `pyproject.toml` (`python/`, `tests/`). The
 compiled extension is typed by the hand-written stub
@@ -211,6 +224,9 @@ run_cnaster_port --no-figures config.yaml    # the replacements that reproduce b
 run_cnaster_port --no-rust config.yaml       # cnaster's numba lattices instead of oxiport's
 run_cnaster_port --sal config.yaml           # snakes_and_ladders routines where port measured a gain
 run_cnaster_port --no-copy-cap config.yaml   # cnaster's integer copy caps, A + B <= 6, whatever the config states
+run_cnaster_port --sample-layout 3,1 config.yaml  # clone spatial plots, one panel per sample
+run_cnaster_port --genomic-colours states config.yaml  # clones_genomic coloured per fitted state, not per integer pair
+run_cnaster_port --copy-likelihood config.yaml  # integer copies re-decoded by the HMM's pseudobulk likelihood
 run_cnaster_port --time-stages config.yaml   # what the replacements cost in the run
 run_cnaster_port --no-outputs config.yaml    # skip the fitted/decoded tables below
 run_cnaster_port --list                      # what would be rebound, and why
@@ -256,6 +272,27 @@ planted total of 10 cannot be decoded. `COPY_SWAPS` reads
 without the key decodes exactly as `cnaster` does. The MILP decoder, called
 as `run_cnaster` calls it, returns planted totals of 10 to 12 exactly at a
 stated 12, and none of them at `cnaster`'s 6 (`tests/test_integer_copy_patch.py`).
+
+**Several samples run as is, with shared clones** (#328).
+`tests/multisample.py` places three realizations of one genome side by side,
+with one empty column between them and an integer `sample_label` per spot.
+`run_cnaster_port` recovers the planted clones in every sample at ARI 1.000.
+Spatial edges stay within a sample.
+`port.extensions.multisample.cross_sample_adjacency` is the placeholder for
+edges between samples, and nothing installs it. `--sample-layout 3,1` draws
+the clone spatial plots one panel per sample, each in its own coordinates.
+
+**`--genomic-colours` chooses how `clones_genomic` colours bins** (#333).
+`integer` colours by decoded `(A, B)`, so fitted states that oversample one
+pair share a colour. `states` colours each fitted state separately, with its
+continuous `2mu` and `p` in the legend. Unset, the choice is `cnaster`'s:
+integer copies where the figure has them, states elsewhere.
+
+**`--copy-likelihood` is off by default** (#327). It re-decodes integer
+copies by the HMM's pseudobulk NB/BB likelihood, holding the fitted path, and
+starts from the MILP's answer. On the lattice fixture it decodes 0.794 of
+altered clone-bins exactly, against the MILP's 0.417, and costs 5 s per run
+(`docs/audit-recovery.md`).
 
 **`--rust` is on by default** (#318). It runs `cnaster`'s four
 forward/backward lattices from `port.oxiport`, bitwise `cnaster`'s

@@ -111,6 +111,36 @@ def test_the_quantile_test_is_a_distribution_function_comparison(
 
 
 @pytest.mark.patch
+@pytest.mark.parametrize("interval", [(0.0, 1.0), (0.01, 1.0), (0.0, 0.99)])
+def test_a_closed_end_removes_nothing_on_its_side_as_cnaster(
+    interval: tuple[float, float],
+) -> None:
+    """`cnaster`'s `ppf` mask, bitwise, where a tail saturates (#332).
+
+    A normal pool diluted by an LOH clone reads BAF 0.62 over 29,000 reads,
+    against a fitted `alpha = beta = 500`: the upper tail is below `1e-50`,
+    and `cdf(x - 1)` rounds to exactly 1.0. At `hi = 1` the distribution-
+    function form removed that bin and `ppf(1) = n` keeps it; the whole-run
+    LOH fixture lost 6 bins to it and crashed in `run_cnaster`'s gene writer.
+    The mirrored bins, BAF 0.38 and 0.02, saturate the lower tail.
+    """
+    from port.patch.normal_spot import removal_indicator
+
+    totals = np.array([3_000.0, 29_000.0, 29_000.0, 29_000.0, 29_000.0])
+    counts = np.array([2_950.0, 17_980.0, 11_020.0, 580.0, 14_500.0])
+
+    for alpha, beta in ((15.0, 15.0), (500.0, 500.0)):
+        lo, hi = interval
+        expected = (counts < scipy.stats.betabinom.ppf(lo, totals, alpha, beta)) | (
+            counts > scipy.stats.betabinom.ppf(hi, totals, alpha, beta)
+        )
+
+        np.testing.assert_array_equal(
+            removal_indicator(counts, totals, alpha, beta, interval), expected
+        )
+
+
+@pytest.mark.patch
 def test_the_patched_filter_returns_what_cnasters_returns(
     binned_instance: tuple[CoreInferenceTruth, Any, Any, np.ndarray],
 ) -> None:

@@ -110,6 +110,55 @@ run's fitted normal clone (#320). Scored with `--two-pass-normal`:
 It equals the oracle wherever the first pass labels the clones exactly, and
 inherits the oracle's collapse. It stays in the sandbox.
 
+## LOH and mirrored LOH (#332)
+
+`--lattice --loh` appends `(0, 2)`, `(2, 0)`, `(0, 1)` and `(1, 0)` to the
+copy lattice. Each tumor clone carries a copy-neutral LOH and a hemizygous
+deletion, and the next tumor clone carries the same bins with the other
+allele lost. `p` is held 1e-5 from 0 and 1. 13 states are fitted.
+
+| config | ARI | clones | copy ARI | copies exact | altered exact | wall |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| 13 states, 1 × 3 | 0.279 | 2 | 0.000 | 0.931 | 0.276 | 80.2 s |
+| 13 states, 3 × 30 | **0.998** | 4 | **0.995** | 0.988 | **0.909** | 447.9 s |
+
+Converged, the fit carries states at `p = 1.000` and `p = 0.000` beside the
+balanced ones, so both phases of each mirrored pair are recovered as distinct
+states.
+
+**The first run crashed, and the cause was `port`'s.** At the test
+configuration's `confidence_interval = (0, 1)`, `port`'s normal-BAF filter
+removed 6 bins that `cnaster`'s `ppf` form keeps. The upper tail was below
+`1e-50`, and `cdf(x - 1)` rounded to 1.0. Those genes carried a NaN `bin_id`
+into `run_cnaster`'s gene-level writer, which cast it to `INT_MIN`. All 6
+bins lay inside the `(0, 1)` event of clone 3. The normal pool there read BAF
+0.62, because the BAF-only stage had merged one tumor clone into the normal
+(#320). `removal_indicator` now takes a closed end from `scipy`'s support, as
+`ppf` does, and `tests/test_normal_baf_patch.py` pins it bitwise against the
+`ppf` form.
+
+## Integer copies by the pseudobulk likelihood (#327)
+
+`run_cnaster_port --copy-likelihood` re-decodes each clone's integer copies by
+the NB/BB pseudobulk log-likelihood the HMM fitted, with the decoded path
+and the dispersions held (no E-step), the neutral state pinned at `(1, 1)`,
+and the shift's `Z_c` when the shift is on. It starts from the MILP's answer.
+F is 8 states at `1 x 3`; C is 9 states at `3 x 30`. Spot ARI is the same in
+both arms, because the refinement runs after the labelling.
+
+| instance | config | decoder | copy ARI | copies exact | altered exact | altered error (median) | wall |
+| --- | --- | --- | ---: | ---: | ---: | ---: | ---: |
+| dev | F | MILP | 0.896 | 0.944 | 0.000 | 3 | 69.1 s |
+| dev | F | likelihood | 0.898 | 0.944 | 0.000 | 1 | 69.0 s |
+| lattice | F | MILP | 0.799 | 0.968 | 0.417 | 1 | 120.1 s |
+| lattice | F | likelihood | **0.887** | 0.980 | **0.794** | 0 | 125.2 s |
+| lattice | C | MILP | 0.993 | 0.971 | 0.484 | 1 | 130.8 s |
+| lattice | C | likelihood | **0.999** | 0.985 | **0.727** | 0 | 135.9 s |
+
+The dev grid is not integer (`mu = 1.5` at `p = 0.58`), so its altered copies
+cannot be exact under either decoder; the median error falls from 3 to 1.
+The refinement costs 4 to 5 s per run, and each wall figure is one run.
+
 ## Not established
 
 - **Why the oracle collapses two runs to one clone.** The RDR-stage refinement

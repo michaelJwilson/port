@@ -22,11 +22,12 @@ per arm, so a per-pull-request job has nothing to compare against.
 
 from __future__ import annotations
 
+import json
 import os
 import sys
 from pathlib import Path
 
-from tests.badges import load
+from tests.badges import MEASUREMENTS, load, write
 
 TOLERANCE = 0.005
 """How far a recorded figure may sit from the measured one, in points.
@@ -86,9 +87,19 @@ def measured(data_file: Path, config: Path | None) -> float | None:
         return float(measurement.report(file=sink))
 
 
-def main() -> int:
-    recorded = load()["coverage"]
+def main(argv: list[str] | None = None) -> int:
+    """Check every guard; with `--record`, write what was measured instead.
+
+    `--record` is how a change that moves a figure carries it (#403): the
+    measured percentage replaces the recorded one and the badges are
+    regenerated, in the same local run that measured it. Each guard's note
+    is not touched -- why a figure moved belongs in the commit that moved it.
+    """
+    record = "--record" in (sys.argv[1:] if argv is None else argv)
+    document = load()
+    recorded = document["coverage"]
     failed = 0
+    moved = False
 
     for name, data_file, config in GUARDS:
         guard = recorded[name]
@@ -112,7 +123,11 @@ def main() -> int:
             failed += 1
             continue
 
-        if abs(current - guard["percent"]) > TOLERANCE:
+        if record and abs(current - guard["percent"]) > TOLERANCE:
+            print(f"{name}: recorded {guard['percent']:.2f}% -> {current:.2f}%")
+            guard["percent"] = round(current, 2)
+            moved = True
+        elif abs(current - guard["percent"]) > TOLERANCE:
             print(
                 f"{name} coverage is {current:.2f}% and .badges/measurements.json "
                 f"records {guard['percent']:.2f}%.\n"
@@ -122,6 +137,12 @@ def main() -> int:
             failed += 1
         else:
             print(f"{name} coverage {current:.2f}% matches the record")
+
+    if moved:
+        MEASUREMENTS.write_text(
+            json.dumps(document, indent=1, ensure_ascii=False) + "\n"
+        )
+        write()
 
     return 1 if failed else 0
 

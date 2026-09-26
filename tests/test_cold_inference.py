@@ -171,6 +171,7 @@ def test_the_clone_label_cast_refuses_what_it_says_it_refuses() -> None:
 
 @pytest.mark.snapshot
 @pytest.mark.usefixtures("cnaster_config", "cnaster_perf_sink")
+@pytest.mark.merge
 def test_the_mixture_initializer_returns_the_declared_shapes(
     planted: CoreInferenceTruth,
 ) -> None:

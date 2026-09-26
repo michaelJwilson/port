@@ -1,0 +1,9 @@
+# Generated files keep this branch's copy on a merge rather than stopping it
+# (#403). `python -m tests.ci --install` defines the `badges` driver;
+# `python -m tests.ci --badges --record` then re-measures what the merged
+# tree reads, and `--figures` redraws the plots. Without the driver installed
+# git falls back to its ordinary merge, so nothing breaks, it only conflicts.
+.badges/*.json merge=badges
+docs/plots/*.pdf binary merge=badges
+docs/plots/*.png binary merge=badges
+docs/plots/*.npz binary merge=badges

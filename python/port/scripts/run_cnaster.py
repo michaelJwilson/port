@@ -44,6 +44,21 @@ from port.pipeline import (
 )
 
 
+def _layout(text: str) -> tuple[int, int]:
+    """`"3,1"` as `(3, 1)`, both positive."""
+    try:
+        rows, columns = (int(part) for part in text.split(","))
+    except ValueError as error:
+        msg = f"expected ROWS,COLUMNS, got {text!r}"
+        raise argparse.ArgumentTypeError(msg) from error
+
+    if rows < 1 or columns < 1:
+        msg = f"a layout needs a row and a column, got {text!r}"
+        raise argparse.ArgumentTypeError(msg)
+
+    return rows, columns
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="run_cnaster_port",
@@ -100,6 +115,39 @@ def _parser() -> argparse.ArgumentParser:
             "reads neither and decodes under A + B <= 6. **On by default**, "
             "off with --no-patch; a configuration that states no cap decodes "
             "exactly as cnaster does."
+        ),
+    )
+    parser.add_argument(
+        "--sample-layout",
+        type=_layout,
+        default=None,
+        metavar="ROWS,COLUMNS",
+        help=(
+            "draw the clone spatial plots one panel per sample on this grid, "
+            "e.g. 3,1, each sample in its own coordinates (#328). Unset, "
+            "cnaster's one axis with samples offset along x. Needs --figures."
+        ),
+    )
+    parser.add_argument(
+        "--genomic-colours",
+        choices=("integer", "states"),
+        default=None,
+        help=(
+            "colour the clones_genomic bins by deduplicated integer copies "
+            "(A, B), or by fitted HMM state with each state's continuous "
+            "2 mu and p, so states oversampling one integer pair stay "
+            "distinct. Unset, cnaster's choice per figure. Needs --figures."
+        ),
+    )
+    parser.add_argument(
+        "--copy-likelihood",
+        action="store_true",
+        help=(
+            "re-decode integer copies by the HMM's own pseudobulk likelihood, "
+            "the path held at the fit and the neutral state pinned at (1, 1) "
+            "(#327). Off by default: on the lattice fixture it decodes 0.794 "
+            "of altered clone-bins exactly against the MILP's 0.417, for 5 s "
+            "a run; needs the copy caps (--copy-cap), which it refines."
         ),
     )
     parser.add_argument(
@@ -218,6 +266,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     if arguments.config is None:
         _parser().error("a configuration is required unless --list is given")
 
+    # NB refused before the configuration is read: an argument error, not a
+    #    file error. The figure default is the one the run below computes.
+    if arguments.genomic_colours is not None and not (
+        not arguments.no_patch if arguments.figures is None else arguments.figures
+    ):
+        _parser().error("--genomic-colours needs the figure swaps")
+
     import yaml
 
     from port.extensions.config_audit import audit
@@ -300,6 +355,20 @@ def main(argv: Sequence[str] | None = None) -> int:
             selected = selected + NUMERIC_SWAPS
         if figures:
             selected = selected + FIGURE_SWAPS
+        if arguments.sample_layout is not None:
+            if not figures:
+                _parser().error("--sample-layout needs the figure swaps")
+
+            from port.patch.plotting import spatial
+
+            stack.callback(setattr, spatial, "SAMPLE_LAYOUT", spatial.SAMPLE_LAYOUT)
+            spatial.SAMPLE_LAYOUT = arguments.sample_layout
+
+        if arguments.genomic_colours is not None:
+            from port.patch import plot_genomic
+
+            stack.callback(setattr, plot_genomic, "COLOUR_BY", plot_genomic.COLOUR_BY)
+            plot_genomic.COLOUR_BY = arguments.genomic_colours
         # NB on unless refused, and off with `--no-patch` like the figures: a
         #    baseline arm decodes under `cnaster`'s caps.
         copy_cap = (
@@ -307,6 +376,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         if copy_cap:
             selected = selected + COPY_SWAPS
+
+        if arguments.copy_likelihood:
+            if not copy_cap:
+                _parser().error("--copy-likelihood refines the copy-cap decoders")
+
+            from port.patch.integer_copy import by_likelihood
+
+            stack.enter_context(by_likelihood())
         if shift:
             from port.patch.hmm_nophasing import logmu_shift
 

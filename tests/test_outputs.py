@@ -229,6 +229,9 @@ def _truth() -> Any:
 
 
 @pytest.mark.end2end
+@pytest.mark.merge
+# NB one whole run at a time: four at once exceed 15 GB (#403).
+@pytest.mark.xdist_group("pipeline")
 def test_a_run_s_outputs_recover_the_planted_clones_and_the_flat_normal(
     cnaster_config: None, tmp_path: Path
 ) -> None:

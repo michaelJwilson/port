@@ -223,7 +223,12 @@ for that reason.
 
 @pytest.hookimpl(tryfirst=True)
 def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
-    """Record the collection before pytest's own mark deselection runs."""
+    """Record the collection before pytest's own mark deselection runs.
+
+    `critical` tests go first (#403), so the gate fails on them before it
+    spends its minute on the rest; the sort is stable, so nothing else moves.
+    """
+    items.sort(key=lambda item: item.get_closest_marker("critical") is None)
     _COLLECTED[:] = items
 
 

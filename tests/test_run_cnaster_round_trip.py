@@ -76,6 +76,9 @@ def _artifacts(output: Path) -> tuple[set[str], list[Path]]:
 
 @pytest.mark.smoke
 @pytest.mark.preprocessing
+@pytest.mark.merge
+# NB one whole run at a time: four at once exceed 15 GB (#403).
+@pytest.mark.xdist_group("pipeline")
 def test_the_pipeline_completes_from_files(
     planted_instance: PlantedInstance, tmp_path: Path
 ) -> None:

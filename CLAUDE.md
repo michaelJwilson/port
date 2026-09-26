@@ -204,10 +204,11 @@ full for that reason.
     (signatures, bindings, source) is `infra`.
 *   **Time is money.** Test and build frameworks are justified against a
     time and computational budget.
-*   **The per-PR tier is the fast gate; the release gate runs everything.**
-    A test over the per-PR duration cap, or whose claim is not needed to
-    gate a merge, carries the `release` marker. The CI job must deselect it,
-    or the marker is documentation.
+*   **Four tiers, at most one per test:** `critical` gates first, no tier
+    is the gate, `merge` runs before a merge, `release` for a release. A
+    test over the gate's cap carries `merge`, over the pre-merge budget
+    `release`. `python -m tests.ci` is the only runner, so a tier it does
+    not select is documentation.
 
 A test that cannot say what would have to be wrong for it to fail is not yet
 a test.
@@ -232,6 +233,27 @@ a test.
 *   Must be open source (OSI-approved licence).
 *   Flag any proposed dependency with $<1,000$ GitHub stars (or equivalent
     ecosystem metric).
+
+## API Conventions
+*   **One name, one meaning, one sign.** `energy` is minimized; maximized
+    quantities are `log_*`. No name is reused for another quantity or sign.
+*   **Names come from the reference that owns the concept:** `cnaster`'s
+    for the application, `snakes_and_ladders`' for what is not application
+    specific. `port.extensions.vocabulary` lists them and the words they
+    retire.
+*   **A drop-in keeps `cnaster`'s signature.** Rebinding a name is how it
+    installs, so the conventions govern what `port` owns, not what it
+    replaces.
+*   **Match the sibling.** A new entry point copies its nearest sibling's
+    arguments, order and result; where the sibling is wrong, fix both or
+    ticket it.
+*   **One result type per concept,** carrying `snakes_and_ladders`'
+    required `Termination`. Exhaustion is a termination, never a warning,
+    exception or silence.
+*   **Meaning by type, not by value.** Two readings of an input are two
+    types.
+*   **NumPy at the boundary;** tensors only behind a `torch` or `jax` name.
+*   **Every convention has a guard test,** or it drifts.
 
 ## Conventions
 *   **Documentation Sync:** Any change affecting behaviour, CI, dev setup or

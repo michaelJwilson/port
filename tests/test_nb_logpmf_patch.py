@@ -121,6 +121,7 @@ def test_the_cached_value_is_log_factorial() -> None:
 
 
 @pytest.mark.backend
+@pytest.mark.merge
 def test_the_patch_is_faster_but_below_the_bar() -> None:
     """#240: 1.78x measured, and `CLAUDE.md` puts a speedup claim at 2x.
 

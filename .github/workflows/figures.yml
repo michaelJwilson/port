@@ -76,7 +76,11 @@ jobs:
       # NB a pull request from a fork gets a read-only token, so the figures
       #    are uploaded there instead of committed.
       - name: Commit the figures
-        if: github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && steps.stacked.outputs.children == '0')
+        # NB never onto a pull request's branch (#403): the figures are drawn
+        #    locally by `python -m tests.ci --figures` and committed by the
+        #    change that moves them, so two open pull requests never both
+        #    carry a regenerated PDF. A dispatched run on `main` still commits.
+        if: github.event_name != 'pull_request'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -91,7 +95,7 @@ jobs:
           git push
 
       - name: Upload the figures
-        if: github.event_name == 'pull_request' && (github.event.pull_request.head.repo.full_name != github.repository || steps.stacked.outputs.children != '0')
+        if: github.event_name == 'pull_request'
         uses: actions/upload-artifact@v4
         with:
           name: figures
