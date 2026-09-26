@@ -312,9 +312,9 @@ with `--no-rust`. The four kernels are 4.3x to 6.1x faster warm at
 
 **`--sal` is off by default** (#312). It admits `snakes_and_ladders`
 routines only on `port`'s measurement, and admits one today: the clone
-labelling. That row runs alpha expansion with the Rust minimum cut, then
-sal's `merge_small_labels` at `cnaster`'s 200-spot floor (#410), so no
-`cnaster` ICM runs. On the dev instance it recovers the planted clones at
+labelling. That row fuses alpha expansion (Rust minimum cut) with sal's
+descent from the field's argmax, then applies sal's `merge_small_labels` at
+`cnaster`'s 200-spot floor (#410), so no `cnaster` ICM runs. On the dev instance it recovers the planted clones at
 ARI 1.000 against the default's 0.7927, in 24.8 s against 44.9 s.
 `port.extensions.sal` lists what was measured and not admitted.
 `docs/audit-recovery.md` carries its recovery against the planted truth at
