@@ -72,6 +72,7 @@ def test_the_shipped_config_carries_what_324_tabulates() -> None:
 
 
 @pytest.mark.warning
+@pytest.mark.merge
 def test_the_test_config_carries_only_what_it_states(tmp_path: Path) -> None:
     """The mirror's unread keys and the floor; nothing disabled, nothing a string.
 

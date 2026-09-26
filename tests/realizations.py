@@ -8,8 +8,8 @@ scatter across realizations is the sampling variation of one experiment,
 which is what a fit's stated error claims to describe.
 
 Each realization is run through `port.scripts.run_cnaster.main`, in process,
-with `cnaster.scripts.run_cnaster.run_core_inference` wrapped so that its
-inputs and its result are kept. The objective the fit maximized is then
+with `port.patch.hmrf.run_core_inference` wrapped so that its inputs and its
+result are kept. The objective the fit maximized is then
 rebuilt from those inputs in `jax` and differentiated at the fit by
 `port.extensions.parameter_errors`: nothing is re-fitted.
 
@@ -21,7 +21,6 @@ from __future__ import annotations
 import argparse
 import dataclasses
 import tempfile
-import warnings
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, NamedTuple
@@ -31,9 +30,7 @@ import torch
 from scipy.optimize import linear_sum_assignment
 
 from tests.fixtures import CoreInferenceTruth, _emission_families, core_inference_truth
-from tests.run_config import write_run_cnaster_config
-from tests.tmp_inputs import write_tmp_inputs
-from tests.unsegment import unsegment
+from tests.run_config import run_written
 
 GENOME = {
     "n_clones": 3,
@@ -69,7 +66,7 @@ PLANTED_MU = (1.0, 1.5, 3.0)
 GENOME_DRAW = 2**31
 """The realization stream the planted genome's own counts come from."""
 
-RUN = {"max_iter_outer": 3, "max_iter": 200}
+RUN: dict[str, Any] = {"max_iter_outer": 3, "max_iter": 200}
 """The pipeline's iteration budgets. `max_iter` is the HMM's and decides
 whether the returned point is an optimum; the Newton decrement reported for
 the realization with errors says whether it was."""
@@ -177,12 +174,6 @@ def run(truth: CoreInferenceTruth, root: Path) -> Captured:
     pin would never run.
     """
     import port.patch.hmrf as patch
-    from port.scripts.run_cnaster import main
-
-    written = write_tmp_inputs(
-        truth, unsegment(truth, flip_every=0, unassigned_genes=0), root
-    )
-    config = write_run_cnaster_config(written, truth, **RUN)
 
     kept: list[Captured] = []
     original = patch.run_core_inference
@@ -211,9 +202,7 @@ def run(truth: CoreInferenceTruth, root: Path) -> Captured:
     patch.run_core_inference = keep
 
     try:
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            main([str(config), "--no-figures"])
+        run_written(truth, root, port=True, flags=("--no-figure-swaps",), **RUN)
     finally:
         patch.run_core_inference = original
 

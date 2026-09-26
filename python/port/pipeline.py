@@ -52,6 +52,7 @@ __all__ = [
     "COPY_SWAPS",
     "FIGURE_SWAPS",
     "NUMERIC_SWAPS",
+    "PLOT_OFF_SWAPS",
     "REFINEMENT_SWAPS",
     "SHIFT_SWAPS",
     "SWAPS",
@@ -231,6 +232,18 @@ FIGURE_SWAPS: tuple[Swap, ...] = (
         "port.patch.plotting:plot_clones_spatial",
         309,
     ),
+    Swap(
+        "cnaster.plot_copy_number_profile",
+        "plot_copy_number_profile",
+        "port.patch.plot_copy_number_profile:plot_copy_number_profile",
+        309,
+    ),
+    Swap(
+        "cnaster.plot_copy_number_profile",
+        "plot_ascn_legend",
+        "port.patch.plot_copy_number_profile:plot_ascn_legend",
+        309,
+    ),
 )
 """The replacements that **change the output**, and the biggest win here.
 
@@ -249,7 +262,7 @@ and all three are ones: a coarser raster, gridlines that paint under
 the data instead of over it, and a spot's area.
 
 **Separate, but on by default at the entry point.** `run_cnaster_port`
-installs this table unless `--no-figures` is given, because a win that large
+installs this table unless `--no-figure-swaps` is given, because a win that large
 sitting behind a flag is a win nobody gets. The table stays its own so the
 distinction survives the default: `SWAPS` is still the set that reproduces
 `cnaster` bitwise, `install()` still defaults to `SWAPS` alone, and the
@@ -257,7 +270,7 @@ tests asserting that property still have something to assert. Merging the
 two would have bought the same 47 per cent and cost the claim.
 
 So the decision is still a reader's rather than a default's -- it is just
-the other way round, and `--no-figures` is where it is made.
+the other way round, and `--no-figure-swaps` is where it is made.
 """
 
 
@@ -297,6 +310,16 @@ and `port.patch.hmm_nophasing.logmu_shift()` is what turns the class's flag
 on for the run.
 """
 
+
+PLOT_OFF_SWAPS: tuple[Swap, ...] = (
+    Swap("cnaster.utils", "write_fig", "port.patch.utils:discard_fig", 403),
+)
+"""`run_cnaster_port --no-plots`: every figure is built and none is written.
+
+Installed after `FIGURE_SWAPS`, so it rebinds port's `write_fig` where that
+one is in place. Not a drop-in in the bitwise sense -- no file appears -- and
+for that reason a table of its own, chosen by a flag and never by default.
+"""
 
 COPY_SWAPS: tuple[Swap, ...] = (
     Swap(

@@ -48,9 +48,9 @@ the table.
 
 | badge | selection | denominator | what it says |
 | --- | --- | --- | --- |
-| **e2e** | `end2end` | `cnaster` | how much of the subject is **validated end to end**, against the truth that generated the data. `oracle` is excluded because the badge beside it claims that word |
+| **e2e** | `end2end` | `cnaster` + `python/port` | how much of the subject is **validated end to end**, against the truth that generated the data. `oracle` is excluded because the badge beside it claims that word |
 | **oracle** | the referee's own reach | `snakes_and_ladders` | **disabled** (#282), so it renders `/` rather than a figure nothing measures. It said how much of upstream is used as a referee, separately so it could not rise by importing more of upstream |
-| **all** | the other eight markers | `cnaster` | how much is merely **run**, rather than judged against anything outside `cnaster` |
+| **all** | the other eight markers | `cnaster` + `python/port` | how much is merely **run**, rather than judged against anything outside `cnaster` |
 | **drop-in** | `patch or cnaster` | `python/port/patch` | how much of what `port` wrote to replace something is reached by the test comparing it with the something. The one guard whose denominator is ours, so the one with a high floor |
 
 **`speed` and `mem`** are patched `run_cnaster` against `--no-patch`: wall
@@ -191,13 +191,28 @@ in the same change.
 
 ## Checks
 
+CI runs locally, through one entry point (#403). Each step prints its seconds.
+
 ```
-uv run pytest                                          # tests
-uv run ruff check . && uv run ruff format --check .     # lint, format
-uv run mypy                                            # types, --strict
-cargo clippy --all-targets -- -D warnings               # Rust lint
-cargo fmt --check                                       # Rust format
+uv run python -m tests.ci                  # gate: ruff, mypy, critical + untiered tests; <= 60 s
+uv run python -m tests.ci --badges         # judged and drop-in coverage; --record writes them
+uv run python -m tests.ci --full           # gate, badges, then `merge` tests and benchmarks
+uv run python -m tests.ci --release        # `release` and `oracle`
+uv run python -m tests.ci --figures        # redraw docs/plots
+uv run python -m tests.ci --install        # once per clone: the `badges` merge driver
+cargo clippy --all-targets -- -D warnings  # Rust lint
+cargo fmt --check                          # Rust format
 ```
+
+Every test sits in at most one tier -- `critical`, none, `merge`, `release`,
+`deprecate` -- and each step selects one, so no step repeats another's tests.
+A `deprecate` test runs only in the change that touches its module (against
+`--base`, `origin/main`) and at a release. The gate
+is `pytest -n 4`; a whole-pipeline test (`xdist_group("pipeline")`) runs one
+at a time, since four exceed 15 GB. Badges are measured and recorded locally
+by the change that moves them. `.gitattributes` sends `.badges/*.json` and
+`docs/plots/*` to the `badges` driver, which keeps the branch's copy on a
+merge; `--badges --record` and `--figures` then regenerate them.
 
 `mypy` reads its paths from `pyproject.toml` (`python/`, `tests/`). The
 compiled extension is typed by the hand-written stub
@@ -209,10 +224,14 @@ compiled extension is typed by the hand-written stub
 ```
 run_cnaster_port config.yaml                 # cnaster's pipeline, port's replacements
 run_cnaster_port --no-patch config.yaml      # the same run, nothing rebound
-run_cnaster_port --no-figures config.yaml    # the replacements that reproduce bitwise
+run_cnaster_port --no-figure-swaps config.yaml  # the replacements that reproduce bitwise
+run_cnaster_port --no-plots config.yaml      # build every figure, write none; for a run whose claim is not a figure
 run_cnaster_port --no-rust config.yaml       # cnaster's numba lattices instead of oxiport's
 run_cnaster_port --sal config.yaml           # snakes_and_ladders routines where port measured a gain
 run_cnaster_port --no-copy-cap config.yaml   # cnaster's integer copy caps, A + B <= 6, whatever the config states
+run_cnaster_port --sample-layout 3,1 config.yaml  # clone spatial plots, one panel per sample
+run_cnaster_port --genomic-colours states config.yaml  # clones_genomic coloured per fitted state, not per integer pair
+run_cnaster_port --copy-likelihood config.yaml  # integer copies re-decoded by the HMM's pseudobulk likelihood
 run_cnaster_port --time-stages config.yaml   # what the replacements cost in the run
 run_cnaster_port --no-floor-merge config.yaml  # cnaster's random 200-spot floor (and --no-refinement-mask, --no-distinct-init)
 run_calicost config.yaml                     # CalicoST on the same fixture files, at port's configuration
@@ -241,7 +260,7 @@ wherever it has been imported, because `run_cnaster` holds its own
 speed claims worth reading. `FIGURE_SWAPS` is a second table that does not:
 lowering the dpi and merging the rasterizing groups writes a different file
 by design (#195). It is **in the default** because it is the largest win
-here, and `--no-figures` is the arm that reproduces bitwise.
+here, and `--no-figure-swaps` is the arm that reproduces bitwise.
 
 Measured at 4,000 x 1,980 x 5, against `--no-patch`:
 
@@ -260,6 +279,27 @@ planted total of 10 cannot be decoded. `COPY_SWAPS` reads
 without the key decodes exactly as `cnaster` does. The MILP decoder, called
 as `run_cnaster` calls it, returns planted totals of 10 to 12 exactly at a
 stated 12, and none of them at `cnaster`'s 6 (`tests/test_integer_copy_patch.py`).
+
+**Several samples run as is, with shared clones** (#328).
+`tests/multisample.py` places three realizations of one genome side by side,
+with one empty column between them and an integer `sample_label` per spot.
+`run_cnaster_port` recovers the planted clones in every sample at ARI 1.000.
+Spatial edges stay within a sample.
+`port.extensions.multisample.cross_sample_adjacency` is the placeholder for
+edges between samples, and nothing installs it. `--sample-layout 3,1` draws
+the clone spatial plots one panel per sample, each in its own coordinates.
+
+**`--genomic-colours` chooses how `clones_genomic` colours bins** (#333).
+`integer` colours by decoded `(A, B)`, so fitted states that oversample one
+pair share a colour. `states` colours each fitted state separately, with its
+continuous `2mu` and `p` in the legend. Unset, the choice is `cnaster`'s:
+integer copies where the figure has them, states elsewhere.
+
+**`--copy-likelihood` is off by default** (#327). It re-decodes integer
+copies by the HMM's pseudobulk NB/BB likelihood, holding the fitted path, and
+starts from the MILP's answer. On the lattice fixture it decodes 0.794 of
+altered clone-bins exactly, against the MILP's 0.417, and costs 5 s per run
+(`docs/audit-recovery.md`).
 
 **`--rust` is on by default** (#318). It runs `cnaster`'s four
 forward/backward lattices from `port.oxiport`, bitwise `cnaster`'s
@@ -356,9 +396,10 @@ development, and `towncrier` has no release to build.
 
 ## What exists, measured
 
-Coverage over the whole of `cnaster` is **13.82 per cent** — 766 of 5,544
-statements — on 224 tests. Low by construction, and it rises only by validating
-more of the subject.
+Coverage is the four guards above, each recorded with its selection,
+denominator and commit in `.badges/measurements.json`; the `e2e` badge is
+the validated share of `cnaster` and `python/port`. Low by construction, and
+it rises only by validating more of the subject.
 
 | Claim | Realized |
 | --- | --- |

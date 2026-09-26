@@ -14,11 +14,15 @@ here to stop anyone claiming otherwise. `CLAUDE.md` separates the two cases
 and this is the first.
 """
 
+from collections.abc import Callable
+
 import numpy as np
 import pytest
 from port.patch.hmrf.adjacency import adjacency_coo
 from pytest_benchmark.fixture import BenchmarkFixture
 from scipy.sparse import csr_matrix
+
+from tests.fixtures import tiers
 
 GATE_SPOTS = 1_200
 STRESS_SPOTS = 20_000
@@ -44,26 +48,15 @@ def _cnaster_round_trip(matrix: csr_matrix) -> tuple[np.ndarray, ...]:
 
 
 @pytest.mark.benchmark
-def test_cnaster_adjacency_round_trip_gate(benchmark: BenchmarkFixture) -> None:
-    """Two Python passes over the non-zeros, at gate size."""
-    benchmark(_cnaster_round_trip, _graph(GATE_SPOTS))
+@pytest.mark.parametrize("n_spots", tiers(GATE_SPOTS, STRESS_SPOTS))
+@pytest.mark.parametrize(
+    "arm", [_cnaster_round_trip, adjacency_coo], ids=["cnaster", "patched"]
+)
+def test_adjacency(
+    benchmark: BenchmarkFixture, arm: Callable[[csr_matrix], object], n_spots: int
+) -> None:
+    """Two Python passes over the non-zeros, against three `numpy` expressions.
 
-
-@pytest.mark.benchmark
-def test_patched_adjacency_gate(benchmark: BenchmarkFixture) -> None:
-    """Three `numpy` expressions, at gate size."""
-    benchmark(adjacency_coo, _graph(GATE_SPOTS))
-
-
-@pytest.mark.benchmark
-@pytest.mark.release
-def test_cnaster_adjacency_round_trip_stress(benchmark: BenchmarkFixture) -> None:
-    """The same at 20,000 spots, where the Python loop is 52.7 ms."""
-    benchmark(_cnaster_round_trip, _graph(STRESS_SPOTS))
-
-
-@pytest.mark.benchmark
-@pytest.mark.release
-def test_patched_adjacency_stress(benchmark: BenchmarkFixture) -> None:
-    """And the patch, at 0.951 ms."""
-    benchmark(adjacency_coo, _graph(STRESS_SPOTS))
+    At 20,000 spots the Python loop is 52.7 ms and the patch 0.951 ms.
+    """
+    benchmark(arm, _graph(n_spots))

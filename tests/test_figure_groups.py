@@ -181,6 +181,9 @@ def test_a_gridline_is_what_splits_the_rasterizing_run(tmp_path: Path) -> None:
 
 
 @pytest.mark.patch
+# NB one figure's form (#403): passed where it merged; runs again where this
+#    module or the lock changes, and at a release.
+@pytest.mark.deprecate
 def test_sink_collapses_the_run_without_touching_the_raster(tmp_path: Path) -> None:
     """One group per axes, and the buffers hold what they held.
 
@@ -257,6 +260,9 @@ def test_sink_moves_the_gridlines_under_the_rasterized_run() -> None:
 
 
 @pytest.mark.patch
+# NB one figure's form (#403): passed where it merged; runs again where this
+#    module or the lock changes, and at a release.
+@pytest.mark.deprecate
 def test_sweep_collapses_the_run_by_rasterizing_the_gridlines(
     tmp_path: Path,
 ) -> None:
@@ -292,6 +298,9 @@ def test_sweep_collapses_the_run_by_rasterizing_the_gridlines(
 
 
 @pytest.mark.patch
+# NB one figure's form (#403): passed where it merged; runs again where this
+#    module or the lock changes, and at a release.
+@pytest.mark.deprecate
 def test_strict_refuses_the_figures_cnaster_writes(tmp_path: Path) -> None:
     """The refusal, and the measurement that made it the wrong default.
 
@@ -315,6 +324,9 @@ def test_strict_refuses_the_figures_cnaster_writes(tmp_path: Path) -> None:
 
 
 @pytest.mark.smoke
+# NB one figure's form (#403): passed where it merged; runs again where this
+#    module or the lock changes, and at a release.
+@pytest.mark.deprecate
 def test_an_axes_with_one_rasterized_artist_is_left_alone() -> None:
     """Nothing to collapse: a run of one is already one group."""
     import matplotlib.pyplot as plt

@@ -311,11 +311,18 @@ markers = [
     "snapshot: pins current behaviour with no judgement attached, to be conserved",
     "smoke: checked against itself -- reachability, a shape, the absence of an exception, an invariant the implementation chose",
     # NB `infra` is deliberately few: port's own rules, not the subject's
-    #    behaviour. A test that reaches `cnaster` at all is not infra, whatever
-    #    it asserts -- it is `smoke` until something outside decides its value.
+    #    behaviour. A test that executes `cnaster` is not infra, whatever it
+    #    asserts -- it is `smoke` until something outside decides its value.
+    #    Inspecting `cnaster` (signatures, bindings, source) is infra.
     "infra: port's own machinery and rules -- the marker guard, the planning-document check, the coverage scope, the upstream correspondence",
     # --- tiers: when a test runs, and how long it is allowed to take -----
-    "release: over the per-pull-request budget; runs for a release",
+    # NB at most one tier per test (#403): `critical` gates first, no tier is
+    #    the gate, `merge` runs before a merge with the badges, `release` runs
+    #    for a release, `deprecate` where its module changes and at a
+    #    release. `python -m tests.ci` selects by these and nothing else.
+    "merge: over the gate's 5-second cap at gate size; runs before a merge, with the badges",
+    "release: over the pre-merge budget -- dev, key or stress size; runs for a release",
+    "deprecate: too specific to run on every change; passed where merged, runs again only where its module changes, and for a release",
     # NB `preprocessing` names a subject rather than a referee, as `release`
     #    and `benchmark` do. It selects the input path -- `load_input_data`,
     #    the binning, the pre-image that round-trips through them -- which is

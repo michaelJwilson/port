@@ -98,7 +98,10 @@ def _fused(fixture: SpotCloneField, weight: np.ndarray) -> np.ndarray:
 
 
 @pytest.mark.patch
-@pytest.mark.parametrize(("n_states", "n_clones"), [(7, 3), (5, 5), (3, 1)])
+@pytest.mark.parametrize(
+    ("n_states", "n_clones"),
+    [pytest.param(7, 3, marks=pytest.mark.merge), (5, 5), (3, 1)],
+)
 def test_the_fused_field_is_bitwise_the_two_step(n_states: int, n_clones: int) -> None:
     """Identical output, including where every state is read.
 

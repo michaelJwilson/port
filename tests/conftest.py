@@ -7,7 +7,9 @@ left behind is a test that passes alone and fails in a suite.
 """
 
 from collections.abc import Callable, Iterator
+from contextlib import ExitStack
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -74,54 +76,50 @@ one of them gave up.
 """
 
 
-def install_cnaster_config(tmp_path: Path, em_ftol: float, em_maxiter: int) -> None:
-    """Set the global config `cnaster` reads instead of taking arguments."""
-    from cnaster.config import YAMLConfig, set_global_config
-
-    set_global_config(
-        YAMLConfig(
-            {
-                "phasing": {"min_prob": MIN_PHASE_SWITCH_PROB},
-                # NB `hmm_utils` reads the solver name and then the
-                #    `em_`-prefixed option for each keyword that solver takes.
-                "hmm": {
-                    "compression_decimals": COMPRESSION_DECIMALS,
-                    "solver": "L-BFGS-B",
-                    "em_maxiter": em_maxiter,
-                    "em_ftol": em_ftol,
-                    "em_disp": 0,
-                    "em_xrtol": 1e-5,
-                    "em_xtol": 1e-5,
-                    # NB `gmm_init` clips the observed allele share before
-                    #    fitting, and reads the bounds from here rather than
-                    #    taking them as arguments (`hmm_initialize.py:362`).
-                    #    Wide enough to clip nothing a fixture plants, so the
-                    #    initializer's start is the data's and not the clip's.
-                    "gmm_min_binom_prob": 0.01,
-                    "gmm_max_binom_prob": 0.99,
-                    "gmm_maxiter": 100,
-                },
-                # NB `run_core_inference` reads the outer loop's own settings
-                #    from here: `inertia` decides whether a uniform prior over
-                #    clones is added to the field, `fixed_assignment` whether
-                #    the label solve runs at all, and `ari_tolerance` when the
-                #    loop stops. All three are the shipped defaults.
-                "hmrf": {
-                    "inertia": False,
-                    "fixed_assignment": False,
-                    "ari_tolerance": 0.99,
-                },
-                "betabinom": {
-                    "start_params": BETABINOM_START_PARAMS,
-                    "start_disp": BETABINOM_START_DISPERSION,
-                },
-                # NB `hmm_emission.flush_perf` reads this to count the rows
-                #    already written. It does not write here; see
-                #    `cnaster_perf_sink`.
-                "paths": {"perf_path": str(tmp_path / "cnaster.perf")},
-            }
-        )
-    )
+def cnaster_test_config(
+    tmp_path: Path, em_ftol: float, em_maxiter: int
+) -> dict[str, Any]:
+    """The global config `cnaster` reads instead of taking arguments."""
+    return {
+        "phasing": {"min_prob": MIN_PHASE_SWITCH_PROB},
+        # NB `hmm_utils` reads the solver name and then the
+        #    `em_`-prefixed option for each keyword that solver takes.
+        "hmm": {
+            "compression_decimals": COMPRESSION_DECIMALS,
+            "solver": "L-BFGS-B",
+            "em_maxiter": em_maxiter,
+            "em_ftol": em_ftol,
+            "em_disp": 0,
+            "em_xrtol": 1e-5,
+            "em_xtol": 1e-5,
+            # NB `gmm_init` clips the observed allele share before
+            #    fitting, and reads the bounds from here rather than
+            #    taking them as arguments (`hmm_initialize.py:362`).
+            #    Wide enough to clip nothing a fixture plants, so the
+            #    initializer's start is the data's and not the clip's.
+            "gmm_min_binom_prob": 0.01,
+            "gmm_max_binom_prob": 0.99,
+            "gmm_maxiter": 100,
+        },
+        # NB `run_core_inference` reads the outer loop's own settings
+        #    from here: `inertia` decides whether a uniform prior over
+        #    clones is added to the field, `fixed_assignment` whether
+        #    the label solve runs at all, and `ari_tolerance` when the
+        #    loop stops. All three are the shipped defaults.
+        "hmrf": {
+            "inertia": False,
+            "fixed_assignment": False,
+            "ari_tolerance": 0.99,
+        },
+        "betabinom": {
+            "start_params": BETABINOM_START_PARAMS,
+            "start_disp": BETABINOM_START_DISPERSION,
+        },
+        # NB `hmm_emission.flush_perf` reads this to count the rows
+        #    already written. It does not write here; see
+        #    `cnaster_perf_sink`.
+        "paths": {"perf_path": str(tmp_path / "cnaster.perf")},
+    }
 
 
 @pytest.fixture
@@ -131,14 +129,10 @@ def cnaster_config(tmp_path: Path) -> Iterator[None]:
     At `cnaster`'s own solver settings. A global left behind is a test that
     passes alone and fails in a suite, so what was there is restored.
     """
-    from cnaster.config import get_global_config, set_global_config
+    from tests.tmp_inputs import written_config
 
-    previous = get_global_config()
-    install_cnaster_config(tmp_path, em_ftol=SHIPPED_EM_FTOL, em_maxiter=100)
-    try:
+    with written_config(cnaster_test_config(tmp_path, SHIPPED_EM_FTOL, 100)):
         yield
-    finally:
-        set_global_config(previous)
 
 
 @pytest.fixture
@@ -149,14 +143,10 @@ def cnaster_converged_config(tmp_path: Path) -> Iterator[None]:
     shipped criterion is a separate question, and the tests that ask it take
     `cnaster_config` instead.
     """
-    from cnaster.config import get_global_config, set_global_config
+    from tests.tmp_inputs import written_config
 
-    previous = get_global_config()
-    install_cnaster_config(tmp_path, em_ftol=CONVERGED_EM_FTOL, em_maxiter=5_000)
-    try:
+    with written_config(cnaster_test_config(tmp_path, CONVERGED_EM_FTOL, 5_000)):
         yield
-    finally:
-        set_global_config(previous)
 
 
 @pytest.fixture
@@ -193,17 +183,33 @@ def cnaster_config_switch(tmp_path: Path) -> Iterator[Callable[[float, int], Non
     criterion falls short of the maximum needs both within one body, because
     the shortfall is a difference and neither run alone is the answer.
     """
-    from cnaster.config import get_global_config, set_global_config
+    from tests.tmp_inputs import written_config
 
-    previous = get_global_config()
+    with ExitStack() as stack:
+        yield lambda em_ftol, em_maxiter: stack.enter_context(
+            written_config(cnaster_test_config(tmp_path, em_ftol, em_maxiter))
+        )
 
-    def switch(em_ftol: float, em_maxiter: int) -> None:
-        install_cnaster_config(tmp_path, em_ftol=em_ftol, em_maxiter=em_maxiter)
 
-    try:
-        yield switch
-    finally:
-        set_global_config(previous)
+@pytest.fixture(scope="session")
+def planted_instance(tmp_path_factory: pytest.TempPathFactory) -> Any:
+    """The gate instance, planted and written once for the session.
+
+    `tests.run_config.planted_and_written` at its defaults. Tests add files
+    beside it under names of their own and never rewrite what it wrote.
+    """
+    from tests.run_config import planted_and_written
+
+    return planted_and_written(tmp_path_factory.mktemp("gate"))
+
+
+@pytest.fixture(scope="module")
+def gate_config(planted_instance: Any) -> Iterator[Any]:
+    """The gate instance's run configuration, installed for the module."""
+    from tests.tmp_inputs import written_config
+
+    with written_config(planted_instance[3]) as config:
+        yield config
 
 
 _COLLECTED: list[pytest.Item] = []
@@ -217,7 +223,12 @@ for that reason.
 
 @pytest.hookimpl(tryfirst=True)
 def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
-    """Record the collection before pytest's own mark deselection runs."""
+    """Record the collection before pytest's own mark deselection runs.
+
+    `critical` tests go first (#403), so the gate fails on them before it
+    spends its minute on the rest; the sort is stable, so nothing else moves.
+    """
+    items.sort(key=lambda item: item.get_closest_marker("critical") is None)
     _COLLECTED[:] = items
 
 

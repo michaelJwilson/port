@@ -30,7 +30,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import numpy as np
 import pandas as pd
@@ -71,7 +71,7 @@ there to handle.
 """
 
 SAMPLE_ID = "S1"
-"""One slice. Multi-slice alignment is a separate concern and a separate fixture."""
+"""The one slice's id; `sample_label` writes `S1`..`Sk` for several (#328)."""
 
 FILTERED_FEATURE_NAME = "filtered_feature_bc_matrix"
 """What `visium.filtered_feature_name` has to name for the `.h5ad` to be found."""
@@ -149,21 +149,41 @@ def write_genetic_map(truth: CoreInferenceTruth, path: Path) -> Path:
 
 
 def write_tmp_inputs(
-    truth: CoreInferenceTruth, pre_image: Unsegmented, root: Path
+    truth: CoreInferenceTruth,
+    pre_image: Unsegmented,
+    root: Path,
+    *,
+    sample_label: np.ndarray | None = None,
+    positions: np.ndarray | None = None,
 ) -> WrittenInputs:
     """Serialize a pre-image into `load_input_data`'s inputs under `root`.
 
     The allele matrices are `(n_spots, n_blocks)` with the A count as
     `total - B`, so the pair carries the same information the blocks did and a
     loader that swapped them would return the complement.
-    """
 
-    snp_dir, spaceranger_dir = root / "snp", root / "spaceranger"
-    (spaceranger_dir / "spatial").mkdir(parents=True)
+    `sample_label`, the sample of each spot, writes one `spaceranger_S{k}` per
+    sample and one sample-sheet row each, over one `snp_dir` (#328). The
+    spots must be grouped by sample, as `get_sample_list` requires, and the
+    barcodes carry the sample, `BC00000-1_S2`, so they are unique across
+    samples. `positions`, `(n_spots, 2)`, replaces the lattice's own.
+    """
+    n_spots = truth.n_spots
+    single = sample_label is None
+    labels = np.zeros(n_spots, dtype=np.int64) if sample_label is None else sample_label
+
+    if np.any(np.diff(labels) < 0):
+        msg = "spots must be grouped by sample, in sample order"
+        raise ValueError(msg)
+
+    snp_dir = root / "snp"
     snp_dir.mkdir(parents=True)
 
-    n_spots = truth.n_spots
-    barcodes = [f"BC{spot:05d}-1" for spot in range(n_spots)]
+    barcodes = (
+        [f"BC{spot:05d}-1" for spot in range(n_spots)]
+        if single
+        else [f"BC{spot:05d}-1_S{k + 1}" for spot, k in enumerate(labels)]
+    )
     (snp_dir / "barcodes.txt").write_text("\n".join(barcodes) + "\n")
 
     # Genomic coordinates: one interval per planted bin, chromosomes taken
@@ -217,31 +237,47 @@ def write_tmp_inputs(
     adata.obs_names = barcodes
     # Sparse because `get_spaceranger_counts` calls `.toarray()` unguarded.
     adata.X = sp.csr_matrix(adata.X)
-    adata.write_h5ad(spaceranger_dir / f"{FILTERED_FEATURE_NAME}.h5ad")
 
-    rows, columns = np.unravel_index(np.arange(n_spots), truth.lattice)
-    pd.DataFrame(
-        {
-            "barcode": barcodes,
-            "in_tissue": 1,
-            "x": rows,
-            "y": columns,
-            "pixel_row": rows * 100,
-            "pixel_col": columns * 100,
-        }
-    ).to_csv(spaceranger_dir / "spatial" / "tissue_positions.csv", index=False)
+    if positions is None:
+        rows, columns = np.unravel_index(np.arange(n_spots), truth.lattice)
+    else:
+        rows, columns = positions[:, 0], positions[:, 1]
 
-    sample_sheet = root / "sample_sheet.tsv"
-    pd.DataFrame(
-        [
+    sheet = []
+
+    for k in np.unique(labels):
+        spots = np.flatnonzero(labels == k)
+        sample_id = SAMPLE_ID if single else f"S{k + 1}"
+        spaceranger_dir = root / (
+            "spaceranger" if single else f"spaceranger_{sample_id}"
+        )
+        (spaceranger_dir / "spatial").mkdir(parents=True)
+
+        adata[spots].copy().write_h5ad(
+            spaceranger_dir / f"{FILTERED_FEATURE_NAME}.h5ad"
+        )
+        pd.DataFrame(
+            {
+                "barcode": [barcodes[spot] for spot in spots],
+                "in_tissue": 1,
+                "x": rows[spots],
+                "y": columns[spots],
+                "pixel_row": rows[spots] * 100,
+                "pixel_col": columns[spots] * 100,
+            }
+        ).to_csv(spaceranger_dir / "spatial" / "tissue_positions.csv", index=False)
+
+        sheet.append(
             {
                 "bam": "none",
-                "sample_id": SAMPLE_ID,
+                "sample_id": sample_id,
                 "spaceranger_dir": str(spaceranger_dir),
                 "snp_dir": str(snp_dir),
             }
-        ]
-    ).to_csv(sample_sheet, index=False, sep="\t")
+        )
+
+    sample_sheet = root / "sample_sheet.tsv"
+    pd.DataFrame(sheet).to_csv(sample_sheet, index=False, sep="\t")
 
     return WrittenInputs(
         root=root,
@@ -257,8 +293,14 @@ def write_tmp_inputs(
 
 
 @contextmanager
-def written_config(written: WrittenInputs) -> Iterator[None]:
-    """Install the global config `cnaster` reads, and put back what was there.
+def written_config(
+    source: "WrittenInputs | Path | str | dict[str, Any]",
+) -> Iterator[Any]:
+    """Install the global config `cnaster` reads, yield it, and put back what was there.
+
+    `source` is written inputs, whose loader configuration is installed; the
+    path of a configuration file, read as `YAMLConfig.from_file` reads it; or
+    a configuration as a dictionary.
 
     A context manager rather than a call, because the prep chain is several
     functions long and each of them reads the global -- `form_gene_snp_table`
@@ -269,17 +311,109 @@ def written_config(written: WrittenInputs) -> Iterator[None]:
 
     previous = get_global_config()
     try:
-        set_global_config(YAMLConfig(written.config()))
-        yield
+        if isinstance(source, WrittenInputs):
+            set_global_config(YAMLConfig(source.config()))
+        elif isinstance(source, Path | str):
+            set_global_config(YAMLConfig.from_file(source))
+        else:
+            set_global_config(YAMLConfig(source))
+        yield get_global_config()
     finally:
         set_global_config(previous)
+
+
+@dataclass(frozen=True)
+class Binned:
+    """What the prep chain `run_cnaster` runs between loading and binning produced.
+
+    `table` is the gene-SNP table as the last stage run left it; `bins` is
+    `None` when the chain stopped before binning.
+    """
+
+    loaded: Any
+    table: Any
+    blocks: Any
+    bins: Any
+
+
+def read_to_bins(
+    written: WrittenInputs,
+    *,
+    loaded: Any = None,
+    initial_min_umi: int = 1,
+    secondary_min_umi: int = 1,
+    through: Literal["blocks", "ranges", "bins"] = "bins",
+) -> Binned:
+    """`load_input_data` through the stage `through` names, under the installed config.
+
+    `run_cnaster`'s order: `form_gene_snp_table`, `assign_initial_blocks` and
+    `summarize_counts_for_blocks` (`"blocks"`); `create_bin_ranges`
+    (`"ranges"`); `summarize_counts_for_bins` with every block phased, no
+    phase-switch shift and no genetic map (`"bins"`). Each stage reads the
+    global config, so the caller installs one and holds it. `loaded` is a
+    `load_input_data` return already in hand; without one the chain loads.
+    """
+    from cnaster.config import get_global_config
+    from cnaster.io import load_input_data
+    from cnaster.omics import (
+        assign_initial_blocks,
+        create_bin_ranges,
+        form_gene_snp_table,
+        summarize_counts_for_bins,
+        summarize_counts_for_blocks,
+    )
+
+    if loaded is None:
+        loaded = load_input_data(get_global_config())
+    alleles = (loaded.cell_snp_Aallele, loaded.cell_snp_Ballele)
+
+    table = form_gene_snp_table(
+        loaded.unique_snp_ids, str(written.hgtable), loaded.adata
+    )
+    table = assign_initial_blocks(
+        table,
+        loaded.adata,
+        *alleles,
+        loaded.unique_snp_ids,
+        initial_min_umi=initial_min_umi,
+    )
+    blocks = summarize_counts_for_blocks(
+        table, loaded.adata, *alleles, loaded.unique_snp_ids
+    )
+    if through == "blocks":
+        return Binned(loaded=loaded, table=table, blocks=blocks, bins=None)
+
+    table = create_bin_ranges(
+        table,
+        loaded.adata,
+        *alleles,
+        loaded.unique_snp_ids,
+        blocks.X,
+        blocks.total_bb_RD,
+        blocks.lengths,
+        secondary_min_umi=secondary_min_umi,
+        secondary_min_snp_umi=secondary_min_umi,
+        secondary_min_normal_umi=0,
+    )
+    if through == "ranges":
+        return Binned(loaded=loaded, table=table, blocks=blocks, bins=None)
+
+    bins = summarize_counts_for_bins(
+        table,
+        loaded.adata,
+        blocks.X,
+        blocks.total_bb_RD,
+        np.ones(int(table.block_id.dropna().nunique()), dtype=bool),
+        nu=1.0,
+        logphase_shift=0.0,
+        geneticmap_file=None,
+    )
+    return Binned(loaded=loaded, table=table, blocks=blocks, bins=bins)
 
 
 def load_written(written: WrittenInputs) -> Any:
     """Run `cnaster.io.load_input_data` against what was written."""
     from cnaster.io import load_input_data
 
-    with written_config(written):
-        from cnaster.config import get_global_config
-
-        return load_input_data(get_global_config())
+    with written_config(written) as config:
+        return load_input_data(config)

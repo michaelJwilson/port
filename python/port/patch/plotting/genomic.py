@@ -124,12 +124,16 @@ def segment_levels(
 UPSTREAM_WIDTH = 20.0
 """What `_create_clone_gridspec` hardcodes, in inches."""
 
-PAPER_WIDTH = 6.5
-"""A text column, and this module's default (#280).
+LLNCS_TEXT_WIDTH_MM = 122.0
+"""`\\textwidth` of `\\documentclass[runningheads,11pt]{llncs}`, fixed by the
+class whatever the paper (#339)."""
+
+PAPER_WIDTH = LLNCS_TEXT_WIDTH_MM / 25.4
+"""A text column, 4.80 in, and this module's default (#280, #339).
 
 Measured from `docs/plots/`: the committed genomic figures are 20.03 in
-wide, so `\\includegraphics[width=\\linewidth]` scales them by **0.325** and
-a 10 pt tick label lands at **3.2 pt** on the page. At a text column the
+wide, so `\\includegraphics[width=\\linewidth]` scales them by **0.240** and
+a 10 pt tick label lands at **2.4 pt** on the page. At a text column the
 figure is included at 1:1, so a declared size is the size on the page and
 nothing has to be undone at the point of inclusion.
 

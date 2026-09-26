@@ -194,7 +194,9 @@ def _compare(baseline: Path, patched_output: Path) -> tuple[list[str], list[str]
 
 @pytest.mark.patch
 @pytest.mark.release
-def test_a_patched_run_reproduces_an_unpatched_one(tmp_path: Path) -> None:
+def test_a_patched_run_reproduces_an_unpatched_one(
+    planted_instance: Any, tmp_path: Path
+) -> None:
     """Two whole runs, one flag apart, compared artifact by artifact.
 
     `release` because it is two pipelines end to end. Nothing smaller makes
@@ -209,7 +211,7 @@ def test_a_patched_run_reproduces_an_unpatched_one(tmp_path: Path) -> None:
     entry point is what ships, so running it is a stronger claim than
     importing what it calls.
 
-    **The patched arm passes `--no-figures --no-approx`**, because two of the
+    **The patched arm passes `--no-figure-swaps --no-approx`**, because two of the
     three swap tables are in the entry point's default and neither makes this
     claim: a figure at a different dpi is a different file by design (#195),
     and the vectorized log-pmf agrees to 8.6e-13 rather than to the byte
@@ -223,18 +225,11 @@ def test_a_patched_run_reproduces_an_unpatched_one(tmp_path: Path) -> None:
     import subprocess
     import sys
 
-    from tests.fixtures import core_inference_truth
-    from tests.run_config import write_run_cnaster_config
-    from tests.tmp_inputs import write_tmp_inputs
-    from tests.unsegment import unsegment
+    from tests.run_config import write_for_run
 
-    truth = core_inference_truth(
-        n_clones=2, n_states=3, lattice=(25, 40), n_obs=40, n_segments=3, seed=11
+    written, config = write_for_run(
+        planted_instance[0], tmp_path, max_iter_outer=1, max_iter=3
     )
-    written = write_tmp_inputs(
-        truth, unsegment(truth, flip_every=0, unassigned_genes=0), tmp_path
-    )
-    config = write_run_cnaster_config(written, truth, max_iter_outer=1, max_iter=3)
 
     output = written.root / "output"
 
@@ -251,7 +246,7 @@ def test_a_patched_run_reproduces_an_unpatched_one(tmp_path: Path) -> None:
     baseline = tmp_path / "baseline"
     shutil.move(str(output), str(baseline))
 
-    run("--no-figures", "--no-approx")
+    run("--no-figure-swaps", "--no-approx")
 
     same, differ = _compare(baseline, output)
 

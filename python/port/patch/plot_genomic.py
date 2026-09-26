@@ -21,6 +21,15 @@ gains -- 1.52 to 2.50 on the dev instance. Here the line is at
 `exp(log_mu - log Z_c)` when the shift is on, and at `exp(log_mu)`, as
 upstream, when it is off.
 
+**Colour, by `colour_by`.** `"integer"` colours each bin by its decoded
+`(A, B)`: states the HMM oversampled -- two fitted states at one integer
+pair -- share a colour, deduplicated as the copy numbers are. `"states"`
+colours by the HMM state, one per fitted state, the legend giving each
+state's continuous `2 mu` and `p`, so oversampling is visible rather than
+merged. Unset, as upstream: integer copies when `df_cnv` is given, states
+otherwise. `COLOUR_BY` is the module default `run_cnaster_port
+--genomic-colours` sets.
+
 The layout helpers -- gridspec, axis furniture, chromosome boundaries, clone
 annotation -- are `cnaster`'s, imported rather than copied, so the page is
 upstream's page.
@@ -50,6 +59,8 @@ from matplotlib.collections import LineCollection
 from matplotlib.lines import Line2D
 
 __all__ = [
+    "COLOUR_BY",
+    "COLOUR_MODES",
     "UPSTREAM",
     "Levels",
     "bin_colours",
@@ -62,6 +73,12 @@ __all__ = [
 
 POINT_COLOUR = "#4C72B0"
 """Every bin's colour when there is neither a fit nor integer copies."""
+
+COLOUR_MODES = ("integer", "states")
+"""Deduplicated integer `(A, B)`, or one colour per continuous HMM state."""
+
+COLOUR_BY: str | None = None
+"""The mode a call that names none takes; `None` is upstream's choice."""
 
 
 def clone_groups(
@@ -114,14 +131,29 @@ def bin_colours(
     n_obs: int,
     palette_name: str,
     phased_integer_copies: bool,
+    colour_by: str | None = None,
 ) -> tuple[Any, list[tuple[Any, str]]]:
     """One colour per bin, and the legend entries `(colour, text)`.
 
     Integer copies when `df_cnv` is given, coloured by `cnaster`'s palette
     with normal `(1, 1)` faded; else the decoded state, one seaborn colour
-    each; else a single colour and no legend.
+    each; else a single colour and no legend. `colour_by` overrides the
+    first choice: `"states"` colours by state with `df_cnv` given, labelled
+    `2 mu` and `p`, and `"integer"` refuses a call without `df_cnv`.
     """
-    if df_cnv is not None:
+    if colour_by not in (None, *COLOUR_MODES):
+        msg = f"colour_by is one of {COLOUR_MODES} or None, got {colour_by!r}"
+        raise ValueError(msg)
+
+    if colour_by == "integer" and df_cnv is None:
+        msg = "colour_by='integer' needs df_cnv, the decoded integer copies"
+        raise ValueError(msg)
+
+    if colour_by == "states" and res_combine is None:
+        msg = "colour_by='states' needs res_combine, the fitted states"
+        raise ValueError(msg)
+
+    if df_cnv is not None and colour_by != "states":
         colour_of, ordered = get_full_palette(palette_name)
         first = df_cnv[f"clone{label} A"].to_numpy()
         second = df_cnv[f"clone{label} B"].to_numpy()
@@ -154,6 +186,13 @@ def bin_colours(
             [mcolors.to_rgba(c) for c in sns.color_palette("deep", n_states)]
         )
         names = [""] * n_states
+
+        if colour_by == "states":
+            from port.patch.plotting.clone_paths import state_vector
+
+            mu = np.exp(state_vector(res_combine["new_log_mu"]))
+            p = state_vector(res_combine["new_p_binom"])
+            names = [f"2mu={2.0 * m:.2f} p={q:.2f}" for m, q in zip(mu, p, strict=True)]
 
     else:
         return POINT_COLOUR, []
@@ -261,10 +300,15 @@ def _points(
     )
 
 
+CLONE_GAP = 0.45
+"""The gap row between clones, as a fraction of a track: it holds the next
+clone's statistics line, with white space above and below it (#339)."""
+
+
 def clone_axes(figure: Any, n_pairs: int, per_clone: int) -> list[Any]:
     """`_create_clone_gridspec`'s axes, on a figure the caller owns.
 
-    The same rows -- `per_clone` tracks per clone, a quarter-height gap
+    The same rows -- `per_clone` tracks per clone, a `CLONE_GAP` gap
     between clones, no vertical space -- without the 20 in page or the
     title, which belong to whoever composes the figure.
     """
@@ -274,7 +318,7 @@ def clone_axes(figure: Any, n_pairs: int, per_clone: int) -> list[Any]:
         ratios.extend([1.0] * per_clone)
 
         if pair < n_pairs - 1:
-            ratios.append(0.25)
+            ratios.append(CLONE_GAP)
 
     grid = figure.add_gridspec(len(ratios), 1, height_ratios=ratios, hspace=0)
     rows = [row for row, ratio in enumerate(ratios) if ratio == 1.0]
@@ -304,6 +348,7 @@ def plot_clones_genomic(
     phased_integer_copies: bool = False,
     known_nb_baseline: np.ndarray | None = None,
     figure: Any = None,
+    colour_by: str | None = None,
 ) -> Any:
     """Per clone, RDR and BAF along the genome, with the fitted levels.
 
@@ -314,6 +359,10 @@ def plot_clones_genomic(
     `figure`, a `Figure` or `SubFigure`, is drawn into rather than a new
     20 in page, which is how `port.extensions.combined_figure` sets it in a
     column (#309). The layout is then the caller's, so no `tight_layout`.
+
+    `colour_by` is `"integer"`, `"states"` or, unset, `COLOUR_BY`; the
+    module default applies only where it can, so a call without `df_cnv`
+    under `COLOUR_BY = "integer"` colours by state as upstream does.
     """
     from port.patch.hmm_nophasing import hmm_nophasing
 
@@ -324,6 +373,10 @@ def plot_clones_genomic(
     if single_X.shape[0] != int(np.sum(lengths)):
         msg = f"{single_X.shape[0]} bins against lengths summing to {np.sum(lengths)}"
         raise ValueError(msg)
+
+    if colour_by is None and COLOUR_BY is not None:
+        possible = df_cnv is not None if COLOUR_BY == "integer" else True
+        colour_by = COLOUR_BY if possible and res_combine is not None else None
 
     labels, groups = clone_groups(res_combine, clone_index)
 
@@ -366,6 +419,7 @@ def plot_clones_genomic(
             n_obs=n_obs,
             palette_name=palette_name,
             phased_integer_copies=phased_integer_copies,
+            colour_by=colour_by,
         )
 
         counts, trials = X[:, 0, clone], total_bb_RD[:, clone]

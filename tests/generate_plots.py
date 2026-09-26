@@ -1,7 +1,7 @@
 """Regenerate the committed figures under `docs/plots/`.
 
 Run as `python -m tests.generate_plots`. It writes the dev instance's inputs
-the way `tests/test_run_cnaster_round_trip.py` does, runs **`run_cnaster_port`**
+through `tests.run_config.run_written`, runs **`run_cnaster_port`**
 on them, and copies what it wrote into the repository. `--cnaster` runs plain
 `cnaster` instead, for a comparison.
 
@@ -28,21 +28,24 @@ pinned first; #103 owns that.
 import argparse
 import shutil
 import tempfile
-import warnings
 from pathlib import Path
 
 import matplotlib as mpl
 
 mpl.use("Agg")
 
-from port.extensions.combined_figure import Recorded, combined_figure, recording
+from port.extensions.combined_figure import (
+    Recorded,
+    combined_figure,
+    genomic_figure,
+    page_style,
+    recording,
+    spatial_figure,
+)
 
 from tests.fixtures import COPY_LATTICE, CoreInferenceTruth, dev_instance
 from tests.he_slide import mock_he, write_he_slide
-from tests.run_config import write_run_cnaster_config
-from tests.test_run_cnaster_round_trip import _run
-from tests.tmp_inputs import write_tmp_inputs
-from tests.unsegment import unsegment
+from tests.run_config import run_written
 
 PLOTS = Path(__file__).resolve().parent.parent / "docs" / "plots"
 """Where the figures live in the repository."""
@@ -60,31 +63,10 @@ chr7's two events were decoded as one state (#313).
 """
 
 
-def _run_port(truth: CoreInferenceTruth, root: Path, **config: object) -> Path:
-    """The round trip's inputs and configuration, run through `run_cnaster_port`.
-
-    In process, through `port.scripts.run_cnaster.main`, with its defaults:
-    `SWAPS`, the figure table and whatever else the entry point installs by
-    default. The figures are the ones a user of the entry point would get.
-    """
-    from port.scripts.run_cnaster import main as run_cnaster_port
-
-    written = write_tmp_inputs(
-        truth, unsegment(truth, flip_every=0, unassigned_genes=0), root
-    )
-    config_path = write_run_cnaster_config(written, truth, **config)
-
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        run_cnaster_port([str(config_path)])
-
-    return written.root / "output"
-
-
 def _write_combined(
     recorded: Recorded, truth: CoreInferenceTruth, root: Path, output: Path
 ) -> None:
-    """(a) to (d) on one page, beside the run's own figures (#309).
+    """The genomic and spatial figures, and both on one page (#309, #339).
 
     The slide is mocked from the planted labels and read back through
     `cnaster.he.get_he_image`, as `run_cnaster` reads one. It is written
@@ -100,7 +82,24 @@ def _write_combined(
     frame = get_he_image(str(root / "slide"), res="hires", pos=None)
 
     plots = next(output.rglob("clones_spatial.pdf")).parent
-    write_fig(str(plots / "combined.pdf"), combined_figure(recorded, frame))
+    # NB at its declared size, not a tight box: the page is drawn at the text
+    #    width and included at 1:1, so a box that grows past it is rescaled.
+    # NB written as drawn: the run has set seaborn's theme, which a page
+    #    written under it would follow where a style is read at draw time.
+    with page_style():
+        write_fig(
+            str(plots / "genomic.pdf"), genomic_figure(recorded), bbox_inches=None
+        )
+        write_fig(
+            str(plots / "spatial.pdf"),
+            spatial_figure(recorded, frame),
+            bbox_inches=None,
+        )
+        write_fig(
+            str(plots / "combined.pdf"),
+            combined_figure(recorded, frame),
+            bbox_inches=None,
+        )
 
 
 def main() -> None:
@@ -122,11 +121,20 @@ def main() -> None:
         root = Path(tempfile.mkdtemp())
 
         if arguments.cnaster:
-            output = _run(truth, root, max_iter_outer=1, max_iter=3, n_states=STATES)
+            output = run_written(
+                truth, root, port=False, max_iter_outer=1, max_iter=3, n_states=STATES
+            )
         else:
+            # NB in process, through `port.scripts.run_cnaster.main`, with its
+            #    defaults: the figures are the ones a user of the entry point gets.
             with recording() as recorded:
-                output = _run_port(
-                    truth, root, max_iter_outer=1, max_iter=3, n_states=STATES
+                output = run_written(
+                    truth,
+                    root,
+                    port=True,
+                    max_iter_outer=1,
+                    max_iter=3,
+                    n_states=STATES,
                 )
 
             _write_combined(recorded, truth, root, output)

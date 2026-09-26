@@ -26,6 +26,8 @@ report the cost of a fit that has not reached its answer and would read as
 misleading number this module could produce, so it is not produced.
 """
 
+from collections.abc import Callable
+
 import numpy as np
 import pytest
 from pytest_benchmark.fixture import BenchmarkFixture
@@ -38,21 +40,13 @@ from tests.fixtures import (
     BetaBinomialChains,
     beta_binomial_chains,
     planted_posterior,
+    tiers,
 )
 
 GATE_STATES = 3
 GATE_SEQUENCES = 6
 GATE_LENGTH = 400
 """2,400 observations. The size the referee tests in `test_m_step` run at."""
-
-STRESS_MARKER_NOTE = None
-"""The stress pair carries `release`.
-
-One `cnaster` round at stress size runs about fourteen seconds, so the pair
-is over the per-pull-request budget `pyproject.toml` defines that marker
-for. The gate pair runs on every pull request; the stress pair is what a
-release measures, and what a speedup claim is argued on.
-"""
 
 STRESS_STATES = 5
 STRESS_SEQUENCES = 24
@@ -92,34 +86,29 @@ def _problem(
 
 @pytest.mark.benchmark
 @pytest.mark.usefixtures("cnaster_converged_config", "cnaster_perf_sink")
-def test_cnaster_m_step_gate(benchmark: BenchmarkFixture) -> None:
-    """`Weighted_BetaBinom_mix.fit` at gate size, run to its maximum."""
-    fixture, posterior = _problem(GATE_STATES, GATE_SEQUENCES, GATE_LENGTH)
-    benchmark(cnaster_beta_binomial_m_step, fixture, posterior)
+@pytest.mark.parametrize(
+    "size",
+    tiers(
+        (GATE_STATES, GATE_SEQUENCES, GATE_LENGTH),
+        (STRESS_STATES, STRESS_SEQUENCES, STRESS_LENGTH),
+    ),
+)
+@pytest.mark.parametrize(
+    "arm",
+    [cnaster_beta_binomial_m_step, upstream_beta_binomial_m_step],
+    ids=["cnaster", "upstream"],
+)
+def test_m_step(
+    benchmark: BenchmarkFixture,
+    arm: Callable[[BetaBinomialChains, np.ndarray], object],
+    size: tuple[int, int, int],
+) -> None:
+    """`Weighted_BetaBinom_mix.fit`, run to its maximum, against upstream's.
 
-
-@pytest.mark.benchmark
-def test_upstream_m_step_gate(benchmark: BenchmarkFixture) -> None:
-    """`BetaBinomialEmission.reestimate` at gate size, for the ratio."""
-    fixture, posterior = _problem(GATE_STATES, GATE_SEQUENCES, GATE_LENGTH)
-    benchmark(upstream_beta_binomial_m_step, fixture, posterior)
-
-
-@pytest.mark.benchmark
-@pytest.mark.release
-@pytest.mark.usefixtures("cnaster_converged_config", "cnaster_perf_sink")
-def test_cnaster_m_step_stress(benchmark: BenchmarkFixture) -> None:
-    """`Weighted_BetaBinom_mix.fit` at stress size.
-
-    The size a ratio may be read at, per upstream's Measurement rule.
+    Upstream's is `BetaBinomialEmission.reestimate`. One `cnaster` round at
+    the stress size runs about fourteen seconds, which is why that size is
+    `release`. The configuration is `cnaster`'s and upstream reads none; installing it
+    for both keeps the two arms' conditions equal.
     """
-    fixture, posterior = _problem(STRESS_STATES, STRESS_SEQUENCES, STRESS_LENGTH)
-    benchmark(cnaster_beta_binomial_m_step, fixture, posterior)
-
-
-@pytest.mark.benchmark
-@pytest.mark.release
-def test_upstream_m_step_stress(benchmark: BenchmarkFixture) -> None:
-    """`BetaBinomialEmission.reestimate` at stress size."""
-    fixture, posterior = _problem(STRESS_STATES, STRESS_SEQUENCES, STRESS_LENGTH)
-    benchmark(upstream_beta_binomial_m_step, fixture, posterior)
+    fixture, posterior = _problem(*size)
+    benchmark(arm, fixture, posterior)

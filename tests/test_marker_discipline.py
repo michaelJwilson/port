@@ -49,8 +49,11 @@ real referees, they just do not establish that `cnaster` computed the right
 answer on an instance anyone ran.
 """
 
-SCALE = frozenset({"release", "benchmark"})
+SCALE = frozenset({"merge", "release", "deprecate", "benchmark"})
 """Markers that say a test is not fast. Disqualifying for the early gate."""
+
+TIERS = frozenset({"critical", "merge", "release", "deprecate"})
+"""When a test runs (#403). At most one; none is the gate."""
 
 
 def _own_markers(item: pytest.Item) -> set[str]:
@@ -113,8 +116,8 @@ def test_infra_stays_few(collected_items: list[pytest.Item]) -> None:
     for it sparingly; this is what makes that a check rather than a wish.
 
     The bound is a share rather than a count, so it survives the suite
-    growing. A test that reaches `cnaster` at all belongs in `smoke` until
-    something outside decides its value.
+    growing. A test that executes `cnaster` belongs in `smoke` until
+    something outside decides its value; one that only inspects it is infra.
     """
     infra = [item for item in collected_items if "infra" in _own_markers(item)]
     marked = [item for item in collected_items if _own_markers(item) & MARKERS]
@@ -186,3 +189,19 @@ def test_no_marker_is_empty(collected_items: list[pytest.Item]) -> None:
     }
 
     assert all(counts.values()), f"a marker nothing carries: {counts}"
+
+
+@pytest.mark.infra
+def test_a_test_runs_in_at_most_one_tier(collected_items: list[pytest.Item]) -> None:
+    """`critical`, `merge` and `release` partition the suite with the gate.
+
+    `python -m tests.ci` selects each step by one tier, so a test in two
+    would run twice or, deselected by one step's expression, not at all.
+    """
+    offenders = {
+        item.nodeid: sorted(_own_markers(item) & TIERS)
+        for item in collected_items
+        if len(_own_markers(item) & TIERS) > 1
+    }
+
+    assert not offenders, f"test(s) in more than one tier: {offenders}"

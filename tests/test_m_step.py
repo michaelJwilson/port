@@ -196,9 +196,7 @@ def test_m_step_recovers_the_planted_family(chains: BetaBinomialChains) -> None:
 @pytest.mark.analytic
 @pytest.mark.usefixtures("cnaster_config", "cnaster_perf_sink")
 def test_m_step_does_not_increase_its_own_objective(chains: BetaBinomialChains) -> None:
-    """An M step does not leave the objective worse than it found it.
-
-    The invariant, and the only claim here that holds whichever
+    """The invariant, and the only claim here that holds whichever
     implementation is right. Evaluated through `cnaster`'s own
     `nloglikeobs`, so it is made against the function that was minimised
     rather than against a restatement of it -- a restatement would turn a

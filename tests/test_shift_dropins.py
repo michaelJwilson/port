@@ -13,8 +13,8 @@ from typing import Any
 import numpy as np
 import pytest
 
+from tests.adapters import clone_assignment_arguments
 from tests.fixtures import spot_clone_field
-from tests.test_clone_assignment_correspondence import _arguments
 
 
 @pytest.mark.cnaster
@@ -33,7 +33,7 @@ def test_a_shifted_clone_is_scored_as_upstream_scores_its_rescaled_exposure() ->
     from port.patch.hmrf.clone_assignment import UPSTREAM, pipeline_clone_assignment
 
     fixture = spot_clone_field(n_states=3, n_obs=40, n_spots=16, n_clones=1)
-    arguments = _arguments(fixture, width=4)
+    arguments = clone_assignment_arguments(fixture, width=4)
 
     profile = fixture.base_nb_mean.sum(axis=1)
     log_lambda = np.log(profile / profile.sum())

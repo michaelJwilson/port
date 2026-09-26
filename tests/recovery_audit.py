@@ -655,6 +655,11 @@ def main() -> None:
         "--lattice", action="store_true", help="plant integer copies (COPY_LATTICE)"
     )
     parser.add_argument(
+        "--loh",
+        action="store_true",
+        help="with --lattice, add mirrored LOH (fixtures.LOH_STATES)",
+    )
+    parser.add_argument(
         "--likelihood", action="store_true", help="-log P(x) at the fit and the truth"
     )
     parser.add_argument(
@@ -692,7 +697,9 @@ def main() -> None:
 
     instance = getattr(fixtures, f"{arguments.instance}_instance")
     truth = (
-        instance(n_states=len(fixtures.COPY_LATTICE), copy_lattice=True)
+        instance(
+            n_states=len(fixtures.COPY_LATTICE), copy_lattice=True, loh=arguments.loh
+        )
         if arguments.lattice
         else instance()
     )

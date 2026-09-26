@@ -316,6 +316,9 @@ def test_a_scale_error_empties_the_set_without_moving_the_argmin() -> None:
 
 
 @pytest.mark.smoke
+@pytest.mark.merge
+# NB one whole run at a time: four at once exceed 15 GB (#403).
+@pytest.mark.xdist_group("pipeline")
 def test_the_covariance_comes_from_upstream() -> None:
     """End to end: fit with `snakes_and_ladders`, propagate, decode.
 

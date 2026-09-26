@@ -10,11 +10,11 @@ changes an order; the entry point called is `cnaster.scripts.run_cnaster`,
 and if `cnaster` lands a patch upstream the row leaves `SWAPS` and this
 script keeps working.
 
-**`--figures` is on by default, so a default run does not reproduce
+**`--figure-swaps` is on by default, so a default run does not reproduce
 `cnaster` byte for byte.** It is the largest measured win here -- 47 per
 cent of a run, and 8,287 MB of figure rendering down to 1,036 MB (#195) --
 and a figure written at a different dpi is a different file by design. Pass
-`--no-figures` for an arm that does reproduce bitwise.
+`--no-figure-swaps` for an arm that does reproduce bitwise.
 
 That property still holds of `port.pipeline.SWAPS`, which is unchanged and
 still what `install()` defaults to; only this entry point's default moved.
@@ -35,6 +35,7 @@ from port.pipeline import (
     COPY_SWAPS,
     FIGURE_SWAPS,
     NUMERIC_SWAPS,
+    PLOT_OFF_SWAPS,
     REFINEMENT_SWAPS,
     SHIFT_SWAPS,
     SWAPS,
@@ -43,6 +44,21 @@ from port.pipeline import (
     patched,
     warm,
 )
+
+
+def _layout(text: str) -> tuple[int, int]:
+    """`"3,1"` as `(3, 1)`, both positive."""
+    try:
+        rows, columns = (int(part) for part in text.split(","))
+    except ValueError as error:
+        msg = f"expected ROWS,COLUMNS, got {text!r}"
+        raise argparse.ArgumentTypeError(msg) from error
+
+    if rows < 1 or columns < 1:
+        msg = f"a layout needs a row and a column, got {text!r}"
+        raise argparse.ArgumentTypeError(msg)
+
+    return rows, columns
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -68,16 +84,25 @@ def _parser() -> argparse.ArgumentParser:
         help="run the same pipeline with nothing rebound, for the baseline arm",
     )
     parser.add_argument(
-        "--figures",
+        "--figure-swaps",
         action=argparse.BooleanOptionalAction,
         default=None,
         help=(
             "install the replacements that change the output: the figure dpi "
             "and the rasterizing groups (#195). **On by default**, because it "
             "is the largest measured win port has -- 47 per cent of a run, and "
-            "8,287 MB of figure rendering down to 1,036 MB. Pass --no-figures "
+            "8,287 MB of figure rendering down to 1,036 MB. Pass --no-figure-swaps "
             "for an arm that reproduces cnaster bitwise, which every other "
             "swap does and this one does not."
+        ),
+    )
+    parser.add_argument(
+        "--no-plots",
+        action="store_true",
+        help=(
+            "build every figure and write none (#403): the plotting code runs, "
+            "its rendering does not. For a run whose claim is not a figure. "
+            "Not --no-figure-swaps, which writes cnaster's figures unswapped."
         ),
     )
     parser.add_argument(
@@ -135,6 +160,39 @@ def _parser() -> argparse.ArgumentParser:
             "reads neither and decodes under A + B <= 6. **On by default**, "
             "off with --no-patch; a configuration that states no cap decodes "
             "exactly as cnaster does."
+        ),
+    )
+    parser.add_argument(
+        "--sample-layout",
+        type=_layout,
+        default=None,
+        metavar="ROWS,COLUMNS",
+        help=(
+            "draw the clone spatial plots one panel per sample on this grid, "
+            "e.g. 3,1, each sample in its own coordinates (#328). Unset, "
+            "cnaster's one axis with samples offset along x. Needs --figure-swaps."
+        ),
+    )
+    parser.add_argument(
+        "--genomic-colours",
+        choices=("integer", "states"),
+        default=None,
+        help=(
+            "colour the clones_genomic bins by deduplicated integer copies "
+            "(A, B), or by fitted HMM state with each state's continuous "
+            "2 mu and p, so states oversampling one integer pair stay "
+            "distinct. Unset, cnaster's choice per figure. Needs --figure-swaps."
+        ),
+    )
+    parser.add_argument(
+        "--copy-likelihood",
+        action="store_true",
+        help=(
+            "re-decode integer copies by the HMM's own pseudobulk likelihood, "
+            "the path held at the fit and the neutral state pinned at (1, 1) "
+            "(#327). Off by default: on the lattice fixture it decodes 0.794 "
+            "of altered clone-bins exactly against the MILP's 0.417, for 5 s "
+            "a run; needs the copy caps (--copy-cap), which it refines."
         ),
     )
     parser.add_argument(
@@ -223,7 +281,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         for swap in FIGURE_SWAPS:
             print(
                 f"{swap.module}.{swap.name} <- {swap.replacement}  "
-                f"(#{swap.ticket}, changes the output; --no-figures to omit)"
+                f"(#{swap.ticket}, changes the output; --no-figure-swaps to omit)"
             )
         for swap in SHIFT_SWAPS:
             print(
@@ -258,6 +316,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     if arguments.config is None:
         _parser().error("a configuration is required unless --list is given")
 
+    # NB refused before the configuration is read: an argument error, not a
+    #    file error. The figure default is the one the run below computes.
+    if arguments.genomic_colours is not None and not (
+        not arguments.no_patch
+        if arguments.figure_swaps is None
+        else arguments.figure_swaps
+    ):
+        _parser().error("--genomic-colours needs the figure swaps")
+
     import yaml
 
     from port.extensions.config_audit import audit
@@ -276,7 +343,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
 
     with ExitStack() as stack:
-        # NB `--figures` is additive rather than a third mode, and it composes
+        # NB `--figure-swaps` is additive rather than a third mode, and it composes
         #    with `--no-patch`: what a reader needs to know about a run is
         #    which of the two tables produced it, not which flag was typed.
         #
@@ -295,10 +362,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         #    win for free.
         #
         #    `default=None` is what makes that possible: it separates "not
-        #    asked" from "asked for off", so `--no-patch --figures` still
+        #    asked" from "asked for off", so `--no-patch --figure-swaps` still
         #    composes and still measures the figure swap on its own.
         figures = (
-            not arguments.no_patch if arguments.figures is None else arguments.figures
+            not arguments.no_patch
+            if arguments.figure_swaps is None
+            else arguments.figure_swaps
         )
         # NB **off** unless asked for. Measured on a whole run at
         #    4,000 x 1,980 x 5: it recovers -1.04 s and -0.051 GB -- nothing,
@@ -340,6 +409,20 @@ def main(argv: Sequence[str] | None = None) -> int:
             selected = selected + NUMERIC_SWAPS
         if figures:
             selected = selected + FIGURE_SWAPS
+        if arguments.sample_layout is not None:
+            if not figures:
+                _parser().error("--sample-layout needs the figure swaps")
+
+            from port.patch.plotting import spatial
+
+            stack.callback(setattr, spatial, "SAMPLE_LAYOUT", spatial.SAMPLE_LAYOUT)
+            spatial.SAMPLE_LAYOUT = arguments.sample_layout
+
+        if arguments.genomic_colours is not None:
+            from port.patch import plot_genomic
+
+            stack.callback(setattr, plot_genomic, "COLOUR_BY", plot_genomic.COLOUR_BY)
+            plot_genomic.COLOUR_BY = arguments.genomic_colours
         # NB on unless refused, and off with `--no-patch` like the figures: a
         #    baseline arm decodes under `cnaster`'s caps.
         copy_cap = (
@@ -375,6 +458,14 @@ def main(argv: Sequence[str] | None = None) -> int:
             from port.patch.hmm_initialize.distinct import distinct_init
 
             stack.enter_context(distinct_init())
+
+        if arguments.copy_likelihood:
+            if not copy_cap:
+                _parser().error("--copy-likelihood refines the copy-cap decoders")
+
+            from port.patch.integer_copy import by_likelihood
+
+            stack.enter_context(by_likelihood())
         if shift:
             from port.patch.hmm_nophasing import logmu_shift
 
@@ -391,6 +482,11 @@ def main(argv: Sequence[str] | None = None) -> int:
                     file=sys.stderr,
                 )
 
+        if arguments.no_plots:
+            # NB after every other table, so it rebinds whichever `write_fig`
+            #    the figure swaps put in place.
+            selected = selected + PLOT_OFF_SWAPS
+
         if selected:
             sites = stack.enter_context(patched(selected))
             print(
@@ -404,7 +500,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                 + (", approx included" if approx else "")
                 + (", shift included" if shift else "")
                 + (", rust lattices" if rust else "")
-                + (", sal included" if arguments.sal else ""),
+                + (", sal included" if arguments.sal else "")
+                + (", no plots written" if arguments.no_plots else ""),
                 file=sys.stderr,
             )
         else:

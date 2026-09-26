@@ -68,6 +68,7 @@ def test_the_numba_descent_returns_the_python_descents_labelling() -> None:
 
 
 @pytest.mark.smoke
+@pytest.mark.merge
 def test_the_sequence_keeps_cnasters_clone_floor() -> None:
     """No clone the sequence returns is under `min_clone_spots`.
 

@@ -109,7 +109,7 @@ def _run(report: Path) -> None:
 
     from tests.fixtures import dev_instance
     from tests.generate_plots import STATES
-    from tests.test_run_cnaster_round_trip import _run as run_cnaster
+    from tests.run_config import run_written
 
     # NB `__path__`, not `__file__`: this pin ships `cnaster` as a namespace
     #    package, with no `__init__.py` to name.
@@ -120,9 +120,10 @@ def _run(report: Path) -> None:
         warnings.simplefilter("ignore")
         tracer.start()
         try:
-            run_cnaster(
+            run_written(
                 dev_instance(),
                 Path(scratch),
+                port=False,
                 max_iter_outer=1,
                 max_iter=3,
                 n_states=STATES,

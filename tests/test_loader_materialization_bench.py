@@ -29,22 +29,32 @@ tracker with it distorts both: the allocation-heavy stages of this loader read
 several-fold high under `tracemalloc`.
 """
 
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
+from functools import partial
 from pathlib import Path
 from typing import Any
 
 import pytest
+from cnaster.io import load_input_data as cnaster_loader
+from port.patch.io import load_input_data as patched_loader
 from pytest_benchmark.fixture import BenchmarkFixture
 
-from tests.test_load_input_data_patch import (
-    STRESS_LATTICE,
-    STRESS_OBS,
-    _instance,
-    gate_config,  # noqa: F401  -- used by name, and it needs the one below
-    planted_instance,  # noqa: F401  -- `gate_config` resolves it in this module
-)
+from tests.fixtures import tiers
+from tests.run_config import planted_and_written
+from tests.tmp_inputs import written_config
 
 pytestmark = pytest.mark.preprocessing
+
+STRESS_LATTICE = (50, 50)
+STRESS_OBS = 400
+"""2,500 spots over 400 bins -- 782 SNPs and 1,187 genes once binned.
+
+Chosen as the largest instance whose fixture builds in under four seconds, so
+the measurement is repeatable inside a test run rather than an offline note.
+A Visium slide is 5,000 spots against 500,000 SNPs, where the arrays this
+patch does not allocate are gigabytes rather than megabytes; the direction is
+established here and the magnitude there is arithmetic, not measurement.
+"""
 
 
 @pytest.fixture(scope="module")
@@ -55,86 +65,35 @@ def stress_config(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Any]:
     report the same three loaders at the dev instance's size and decide
     nothing on their own.
     """
-    from cnaster.config import YAMLConfig, get_global_config, set_global_config
-
     root: Path = tmp_path_factory.mktemp("materialization_stress")
-    config_path = _instance(root, STRESS_LATTICE, STRESS_OBS)[3]
+    config_path = planted_and_written(root, STRESS_LATTICE, STRESS_OBS)[3]
 
-    previous = get_global_config()
-    set_global_config(None)
-    set_global_config(YAMLConfig.from_file(config_path))
-    try:
-        yield get_global_config()
-    finally:
-        set_global_config(None)
-        set_global_config(previous)
+    with written_config(config_path) as config:
+        yield config
 
 
 @pytest.mark.benchmark
-def test_cnasters_loader_at_the_gate_size(
+@pytest.mark.parametrize("config", tiers("gate_config", "stress_config"))
+@pytest.mark.parametrize(
+    "loader",
+    [
+        cnaster_loader,
+        patched_loader,
+        partial(patched_loader, sparse_counts=True),
+    ],
+    ids=["cnaster", "dense-patch", "sparse-patch"],
+)
+def test_the_loader(
     benchmark: BenchmarkFixture,
-    gate_config: Any,  # noqa: F811
+    request: pytest.FixtureRequest,
+    loader: Callable[[Any], Any],
+    config: str,
 ) -> None:
-    """The baseline at the dev instance's size: 43.0 ms."""
-    from cnaster.io import load_input_data
+    """The baseline, the patch on `cnaster`'s type contract, and all three removed.
 
-    benchmark(lambda: load_input_data(gate_config))
-
-
-@pytest.mark.benchmark
-def test_the_dense_patch_at_the_gate_size(
-    benchmark: BenchmarkFixture,
-    gate_config: Any,  # noqa: F811
-) -> None:
-    """The patch on `cnaster`'s type contract: 39.5 ms, so 1.09x."""
-    from port.patch.io import load_input_data
-
-    benchmark(lambda: load_input_data(gate_config))
-
-
-@pytest.mark.benchmark
-def test_the_sparse_patch_at_the_gate_size(
-    benchmark: BenchmarkFixture,
-    gate_config: Any,  # noqa: F811
-) -> None:
-    """All three materializations removed: 35.6 ms, so 1.21x.
-
-    A ratio at the gate size decides nothing, per the Measurement rule. It is
-    here because a gate-sized regression is what a merge can be stopped on.
+    At the gate size 43.0 ms, 39.5 ms (1.09x) and 35.6 ms (1.21x). A ratio
+    there decides nothing, per the Measurement rule; it is here because a
+    gate-sized regression is what a merge can be stopped on. The stress
+    figures are the table in the module docstring.
     """
-    from port.patch.io import load_input_data
-
-    benchmark(lambda: load_input_data(gate_config, sparse_counts=True))
-
-
-@pytest.mark.benchmark
-@pytest.mark.release
-def test_cnasters_loader_at_the_stress_size(
-    benchmark: BenchmarkFixture, stress_config: Any
-) -> None:
-    """The baseline at 2,500 spots: 298.4 ms median, 106 ms IQR."""
-    from cnaster.io import load_input_data
-
-    benchmark(lambda: load_input_data(stress_config))
-
-
-@pytest.mark.benchmark
-@pytest.mark.release
-def test_the_dense_patch_at_the_stress_size(
-    benchmark: BenchmarkFixture, stress_config: Any
-) -> None:
-    """The default return at 2,500 spots: 387.7 ms, and see the docstring."""
-    from port.patch.io import load_input_data
-
-    benchmark(lambda: load_input_data(stress_config))
-
-
-@pytest.mark.benchmark
-@pytest.mark.release
-def test_the_sparse_patch_at_the_stress_size(
-    benchmark: BenchmarkFixture, stress_config: Any
-) -> None:
-    """Where the claim is made: 149.3 ms, **2.00x** on `cnaster`."""
-    from port.patch.io import load_input_data
-
-    benchmark(lambda: load_input_data(stress_config, sparse_counts=True))
+    benchmark(loader, request.getfixturevalue(config))

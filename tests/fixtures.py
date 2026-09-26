@@ -11,9 +11,10 @@ which is the one rung whose correspondence with `cnaster` is exact today.
 """
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
+import pytest
 import torch
 from snakes_and_ladders.emissions import (
     BetaBinomialEmission,
@@ -32,6 +33,18 @@ if TYPE_CHECKING:
 
 DEFAULT_SEED = 11
 """The seed every builder defaults to, so a bare call is reproducible."""
+
+
+def tiers(gate: object, stress: object) -> list[Any]:
+    """A benchmark's two sizes, as parameters: `gate`, and `stress` under `release`.
+
+    `CLAUDE.md` reads a speedup at the stress size alone, so the stress case
+    carries `release` and the per-pull-request tier runs the gate case only.
+    """
+    return [
+        pytest.param(gate, id="gate"),
+        pytest.param(stress, id="stress", marks=pytest.mark.release),
+    ]
 
 
 @dataclass(frozen=True)
@@ -708,6 +721,9 @@ class CoreInferenceTruth:
     lattice: tuple[int, int]
     self_transition: float
     seed: int
+    mirrored: tuple[tuple[int, int, int, int], ...] = ()
+    """`(clone, mirror, offset, extent)`: bins where `mirror` carries `clone`'s
+    LOH with the other allele lost, `loh=True` only."""
 
     @property
     def n_clones(self) -> int:
@@ -986,6 +1002,15 @@ def clone_quadrants(
     return labels
 
 
+def balanced_clone(truth: CoreInferenceTruth) -> int:
+    """Which clone the fixture planted at the balanced state in most bins."""
+    return int(
+        np.argmax(
+            [np.mean(truth.states[clone] == 0) for clone in range(truth.n_clones)]
+        )
+    )
+
+
 COPY_LATTICE: tuple[tuple[int, int], ...] = (
     (1, 1),
     (1, 2),
@@ -1001,10 +1026,20 @@ COPY_LATTICE: tuple[tuple[int, int], ...] = (
 
 `mu = (A + B) / 2` against a diploid normal and `p = B / (A + B)`, at or
 above balance as the unphased initializer requires, and every total within
-`cnaster`'s `max_total_copy = 6`. No `A = 0` state: `p = 1` is a degenerate
-beta-binomial. The two balanced amplifications come last, so a fixture of
+`cnaster`'s `max_total_copy = 6`. No `A = 0` state here: `p = 1` is a
+degenerate beta-binomial, and `LOH_STATES` carries LOH held off it. The two balanced amplifications come last, so a fixture of
 seven or fewer states is identifiable from BAF as well as RDR.
 """
+
+LOH_STATES: tuple[tuple[int, int], ...] = ((0, 2), (2, 0), (0, 1), (1, 0))
+"""`(A, B)` states `loh=True` appends: copy-neutral LOH and hemizygous
+deletion, each with its mirror, the other allele lost."""
+
+LOH_EPSILON = 1e-5
+"""How far an LOH state's `p` sits from 0 or 1: `p = 1` is a degenerate
+beta-binomial, and `1 - 1e-5` at `tau = 30` gives the lost allele a beta
+shape of `3e-4`, so a draw is all one allele to within the tolerance
+`tests/test_loh_fixture.py` states."""
 
 
 def core_inference_truth(
@@ -1026,6 +1061,7 @@ def core_inference_truth(
     normal_clone: bool = True,
     labelling: str = "bands",
     copy_lattice: bool = False,
+    loh: bool = False,
 ) -> CoreInferenceTruth:
     """Plant an instance, drawing every count through upstream's families.
 
@@ -1047,6 +1083,14 @@ def core_inference_truth(
         -- so it cannot referee an integer copy decoder, and three of its
         states exceed `cnaster`'s `max_total_copy = 6` (#313). Off by
         default, so every existing fixture draws what it drew.
+    loh : bool
+        With `copy_lattice`, append `LOH_STATES` after the `n_states` lattice
+        states and plant them **mirrored**: each tumor clone carries a
+        copy-neutral LOH and a hemizygous deletion, and the next tumor clone
+        carries the same bins with the other allele lost, so the phase of
+        the LOH flips between the two clones while `mu` does not. `p` is
+        held `LOH_EPSILON` from 0 and 1. The events are drawn after every
+        other draw, so the other clones' events are unchanged by it.
     normal_clone : bool
         Clone 0 all state 0 and at least `NORMAL_SHARE` of the spots (#298),
         which `cnaster`'s baseline needs. On by default at every size;
@@ -1069,8 +1113,9 @@ def core_inference_truth(
     ------
     ValueError
         If `n_clones` exceeds the lattice's rows, where a band would be empty,
-        the segments do not partition `n_obs`, `n_states < 2`, or `exposure`
-        names no mode.
+        the segments do not partition `n_obs`, `n_states < 2`, `exposure`
+        names no mode, or `loh` is asked without `copy_lattice` or of fewer
+        than two tumor clones, which leaves no clone to mirror.
     """
     rows, columns = lattice
     if n_clones > rows:
@@ -1100,15 +1145,21 @@ def core_inference_truth(
             msg = f"the copy lattice has {len(COPY_LATTICE)} states, not {n_states}"
             raise ValueError(msg)
 
-        copies = np.asarray(COPY_LATTICE[:n_states], dtype=np.float64)
+        table = COPY_LATTICE[:n_states] + (LOH_STATES if loh else ())
+        copies = np.asarray(table, dtype=np.float64)
         log_mu = np.log(copies.sum(axis=1) / 2.0)
-        p_binom = copies[:, 1] / copies.sum(axis=1)
+        p_binom = np.clip(
+            copies[:, 1] / copies.sum(axis=1), LOH_EPSILON, 1.0 - LOH_EPSILON
+        )
+    elif loh:
+        msg = "loh plants integer (A, B) states, so it needs copy_lattice"
+        raise ValueError(msg)
     else:
         log_mu = np.concatenate(([0.0], np.log(np.linspace(1.5, 5.0, n_states - 1))))
         p_binom = np.concatenate(([0.5], np.linspace(0.58, 0.88, n_states - 1)))
 
-    alphas = np.full(n_states, 1.0 / 6.0)
-    taus = np.full(n_states, 30.0)
+    alphas = np.full(log_mu.size, 1.0 / 6.0)
+    taus = np.full(log_mu.size, 30.0)
 
     if labelling == "bands":
         labels = clone_bands(rows, columns, n_clones, normal_clone=normal_clone)
@@ -1158,6 +1209,18 @@ def core_inference_truth(
         states[0] = 0
         placed_events = ((), *placed_events[1:])
 
+    mirrored: tuple[tuple[int, int, int, int], ...] = ()
+    if loh:
+        states, placed_events, mirrored = _mirror_loh(
+            states,
+            placed_events,
+            lengths,
+            first=n_states,
+            tumor=list(range(1 if normal_clone else 0, n_clones)),
+            event_bins=extent,
+            rng=np.random.default_rng([seed, 0, 1]),  # no spot stream is three long
+        )
+
     if exposure == "constant":
         base_nb_mean = np.full((n_obs, n_spots), float(depth[0]))
     elif exposure == "uniform":
@@ -1203,7 +1266,69 @@ def core_inference_truth(
         lattice=lattice,
         self_transition=self_transition,
         seed=seed,
+        mirrored=mirrored,
     )
+
+
+def _mirror_loh(
+    states: np.ndarray,
+    placed_events: tuple[tuple[tuple[int, int, int, int], ...], ...],
+    lengths: np.ndarray,
+    *,
+    first: int,
+    tumor: list[int],
+    event_bins: tuple[int, int],
+    rng: np.random.Generator,
+) -> tuple[
+    np.ndarray,
+    tuple[tuple[tuple[int, int, int, int], ...], ...],
+    tuple[tuple[int, int, int, int], ...],
+]:
+    """Each tumor clone's two LOH events, and the next one's mirror of them.
+
+    `first` is the index of `LOH_STATES[0]`; a state and its mirror are
+    adjacent there, `first + 2 j` and `first + 2 j + 1`. The mirror is the
+    next tumor clone, cyclically, so every tumor clone carries both phases.
+    Events sit inside one chromosome, as `place_events`' do, and overwrite
+    what is under them in both clones, but never each other: a pair drawn
+    over an earlier pair's bins is redrawn, so every pair `mirrored` records
+    is intact in the path.
+    """
+    if len(tumor) < 2:
+        msg = f"mirrored LOH needs two tumor clones, got {len(tumor)}"
+        raise ValueError(msg)
+
+    states = states.copy()
+    events = [list(placed) for placed in placed_events]
+    edges = np.concatenate(([0], np.cumsum(lengths)))
+    taken = np.zeros(states.shape[1], dtype=bool)
+    mirrored = []
+
+    for i, clone in enumerate(tumor):
+        mirror = tumor[(i + 1) % len(tumor)]
+
+        for j in range(len(LOH_STATES) // 2):
+            for _ in range(1_000):
+                chromosome = int(rng.integers(lengths.size))
+                start, stop = int(edges[chromosome]), int(edges[chromosome + 1])
+                extent = min(int(rng.integers(*event_bins)), stop - start)
+                offset = int(rng.integers(start, stop - extent + 1))
+                if not taken[offset : offset + extent].any():
+                    break
+            else:
+                msg = "no room left for a disjoint mirrored LOH event"
+                raise ValueError(msg)
+
+            taken[offset : offset + extent] = True
+            state = first + 2 * j
+
+            states[clone, offset : offset + extent] = state
+            states[mirror, offset : offset + extent] = state + 1
+            events[clone].append((chromosome, offset, extent, state))
+            events[mirror].append((chromosome, offset, extent, state + 1))
+            mirrored.append((clone, mirror, offset, extent))
+
+    return states, tuple(tuple(e) for e in events), tuple(mirrored)
 
 
 def critical_instance(**overrides: object) -> CoreInferenceTruth:
@@ -1542,9 +1667,6 @@ def spot_clone_field(
     )
 
 
-MAX_ENUMERABLE_LABELLINGS = 200_000
-
-
 @dataclass(frozen=True)
 class PottsLabels:
     """A spatial labelling problem, and the truth that built it.
@@ -1705,44 +1827,24 @@ def enumerate_minimum_energy(fixture: PottsLabels) -> tuple[np.ndarray, float]:
     it visited, and without the true optimum there is no way to tell a good
     search from a lucky one.
 
+    `snakes_and_ladders.enumeration.enumerated_optimum` over the negated
+    energy, which refuses past `MAX_ENUMERABLE_CONFIGURATIONS` rather than
+    running for an hour. Its configurations are read reversed, so node zero
+    varies fastest and a tie resolves to the first minimiser in that order.
     Returns the labelling and its energy, under upstream's sign convention
-    (`energy` is minimised). Cost is `n_clones ** n_nodes`, so this is for
-    fixtures built to be enumerable and nothing else.
-
-    Raises
-    ------
-    ValueError
-        If the search space exceeds `MAX_ENUMERABLE_LABELLINGS`. Refusing is
-        the point: an enumeration that silently takes an hour is a test that
-        will be deleted rather than fixed, and a fixture too large to
-        enumerate needs a different referee rather than more patience.
+    (`energy` is minimised).
     """
+    from snakes_and_ladders.enumeration import enumerated_optimum
     from snakes_and_ladders.sim.potts import energy
-
-    n_nodes, n_clones = fixture.n_nodes, fixture.n_clones
-    total = n_clones**n_nodes
-
-    if total > MAX_ENUMERABLE_LABELLINGS:
-        msg = (
-            f"{n_clones}**{n_nodes} = {total} labellings exceeds "
-            f"{MAX_ENUMERABLE_LABELLINGS}; use a smaller fixture"
-        )
-        raise ValueError(msg)
 
     graph = _scaled_graph(fixture)
 
-    best_labelling, best_energy = None, np.inf
-    for index in range(total):
-        labelling = np.array(
-            [(index // n_clones**position) % n_clones for position in range(n_nodes)],
-            dtype=np.int64,
-        )
-        value = energy(graph, fixture.field, labelling)
-        if value < best_energy:
-            best_labelling, best_energy = labelling, value
+    def negated(configuration: tuple[int, ...]) -> float:
+        labelling = np.array(configuration[::-1], dtype=np.int64)
+        return -energy(graph, fixture.field, labelling)
 
-    assert best_labelling is not None
-    return best_labelling, float(best_energy)
+    optimum, best = enumerated_optimum(fixture.n_clones, fixture.n_nodes, negated)
+    return np.array(optimum[::-1], dtype=np.int64), -best
 
 
 def _scaled_graph(fixture: PottsLabels) -> "PottsGraph":
@@ -1760,3 +1862,81 @@ def _scaled_graph(fixture: PottsLabels) -> "PottsGraph":
         edges=fixture.graph.edges,
         coupling=tuple(fixture.spatial_weight * j for j in fixture.graph.coupling),
     )
+
+
+def synthetic_ranges(
+    n_snps: int, n_ranges: int, seed: int = 11
+) -> tuple[np.ndarray, Any]:
+    """SNP ids and filter ranges over a genome, both sorted as the loader needs.
+
+    For the range filter and its benchmark. The ids are `cnaster`'s own text form --
+    `{chromosome}_{position}_{ref}_{alt}` -- because the filter parses them with
+    `split("_")`, so a test handing it tuples would not exercise the parse.
+    """
+    import pandas as pd
+
+    rng = np.random.default_rng(seed)
+
+    chromosomes = rng.integers(1, 23, n_snps)
+    positions = rng.integers(0, 250_000_000, n_snps)
+    order = np.lexsort((positions, chromosomes))
+    snp_ids = np.array(
+        [f"{chromosomes[k]}_{positions[k]}_A_T" for k in order], dtype=object
+    )
+
+    range_chromosomes = rng.integers(1, 23, n_ranges)
+    range_starts = rng.integers(0, 250_000_000, n_ranges)
+    range_order = np.lexsort((range_starts, range_chromosomes))
+
+    ranges = pd.DataFrame(
+        {
+            "Chr": range_chromosomes[range_order],
+            "Start": range_starts[range_order],
+            "End": range_starts[range_order] + 2_000_000,
+        }
+    )
+
+    return snp_ids, ranges
+
+
+def genomic_plot_instance(seed: int = 17, n_states: int = 4) -> dict[str, Any]:
+    """`plot_clones_genomic`'s arguments and a fit result: 24 bins, 9 spots, 3 clones."""
+    rng = np.random.default_rng(seed)
+    n_obs, n_spots, n_clones = 24, 9, 3
+
+    total = rng.integers(20, 80, size=(n_obs, n_spots)).astype(float)
+    X = np.zeros((n_obs, 2, n_spots))
+    X[:, 0, :] = rng.poisson(150, size=(n_obs, n_spots))
+    X[:, 1, :] = rng.binomial(total.astype(int), 0.45)
+
+    return {
+        "arguments": (
+            np.array([n_obs]),
+            X,
+            rng.uniform(100.0, 200.0, size=(n_obs, n_spots)),
+            total,
+        ),
+        "result": {
+            "new_assignment": np.tile(np.arange(n_clones), n_spots // n_clones),
+            "pred_cnv": rng.integers(0, n_states, size=(n_obs, n_clones)),
+            "new_log_mu": rng.normal(0.0, 0.2, size=(n_states, 1)),
+            "new_p_binom": rng.uniform(0.15, 0.85, size=(n_states, 1)),
+        },
+        "rng": rng,
+    }
+
+
+def integer_copies(rng: np.random.Generator, n_obs: int, n_clones: int) -> Any:
+    """A `df_cnv` of major and minor copies per clone, the first four bins diploid."""
+    import pandas as pd
+
+    frame: dict[str, np.ndarray] = {"CHR": np.ones(n_obs, dtype=int)}
+
+    for clone in range(n_clones):
+        major = rng.integers(1, 4, size=n_obs)
+        minor = rng.integers(0, 2, size=n_obs)
+        major[:4], minor[:4] = 1, 1
+        frame[f"clone{clone} A"] = major
+        frame[f"clone{clone} B"] = minor
+
+    return pd.DataFrame(frame)

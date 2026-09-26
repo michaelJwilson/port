@@ -18,10 +18,7 @@ import numpy as np
 import pytest
 import scipy.sparse as sp
 
-from tests.test_load_input_data_patch import (
-    gate_config,  # noqa: F401  -- used by name, and it needs the one below
-    planted_instance,  # noqa: F401  -- `gate_config` resolves it in this module
-)
+from tests.run_config import PlantedInstance
 
 pytestmark = pytest.mark.preprocessing
 
@@ -121,7 +118,7 @@ def test_zeroing_a_column_removes_it_from_the_stored_values() -> None:
 
 
 @pytest.fixture(scope="module")
-def both_returns(gate_config: Any) -> tuple[Any, Any]:  # noqa: F811
+def both_returns(gate_config: Any) -> tuple[Any, Any]:
     """The loader run once each way, on one instance."""
     from port.patch.io import load_input_data
 
@@ -171,7 +168,7 @@ def test_the_sparse_return_carries_every_field_the_dense_one_does(
 
 @pytest.mark.end2end
 def test_the_sparse_loader_returns_the_planted_counts(
-    planted_instance: tuple[Any, Any, Any, Any],  # noqa: F811
+    planted_instance: PlantedInstance,
     both_returns: tuple[Any, Any],
 ) -> None:
     """**What the sparse path loads is what the fixture planted.**

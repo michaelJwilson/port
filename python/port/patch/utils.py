@@ -50,7 +50,7 @@ nothing had measured it.
 ways: a coarser raster, and gridlines that paint under the data instead of
 over it. Every other replacement reproduces `cnaster` bitwise, which is why
 this is not in `port.pipeline.SWAPS` and installs only under
-`run_cnaster_port --figures`. At `dpi=300, group_rasters=False` it is
+`run_cnaster_port --figure-swaps`. At `dpi=300, group_rasters=False` it is
 `cnaster`'s function byte for byte, which `tests/test_figure_dpi.py` holds it
 to.
 
@@ -186,7 +186,7 @@ def write_fig(
     opath: str,
     fig: Any = None,
     transparent: bool = True,
-    bbox_inches: str = "tight",
+    bbox_inches: str | None = "tight",
     dpi: int = FIGURE_DPI,
     group_rasters: bool = True,
     group_strategy: str = "sink",
@@ -226,3 +226,18 @@ def write_fig(
     )
 
     plt.close(fig)
+
+
+def discard_fig(opath: str, fig: Any = None, *_: Any, **__: Any) -> None:
+    """`write_fig` under `run_cnaster_port --no-plots` (#403): close, write nothing.
+
+    Every figure a run draws is still built -- the plotting code runs, and a
+    coverage guard still reads it -- and only the rendering is skipped, which
+    is where a small run spends 31 to 45 per cent of its time, in PDF text
+    layout. For a run whose claim is not a figure.
+    """
+    import matplotlib.pyplot as plt
+
+    del opath
+    if fig is not None:
+        plt.close(fig)
