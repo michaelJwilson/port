@@ -143,9 +143,10 @@ def _texts(figure: Any) -> list[Any]:
 def test_each_figure_is_a_column_wide_with_one_text_size(
     cnaster_config: None, tmp_path: Path
 ) -> None:
-    """`llncs`'s 122 mm wide, the genomic figure its 193 mm tall to 0.005 in,
-    each lettered (a) and (b), and no text over `FONT_SIZE`."""
-    from port.extensions.combined_figure import FONT_SIZE, TEXT_HEIGHT
+    """`llncs`'s 122 mm wide, the genomic figure its 193 mm less
+    `CAPTION_ROOM` tall to 0.005 in, each lettered (a) and (b), and no text
+    over `FONT_SIZE`."""
+    from port.extensions.combined_figure import CAPTION_ROOM, FONT_SIZE, TEXT_HEIGHT
 
     genomic, spatial = _figures(tmp_path)
 
@@ -154,7 +155,9 @@ def test_each_figure_is_a_column_wide_with_one_text_size(
         assert [t.get_text() for t in figure.texts] == ["(a)", "(b)"]
         assert max(t.get_fontsize() for t in _texts(figure)) <= FONT_SIZE
 
-    assert genomic.get_size_inches()[1] == pytest.approx(TEXT_HEIGHT, abs=0.005)
+    assert genomic.get_size_inches()[1] == pytest.approx(
+        TEXT_HEIGHT - CAPTION_ROOM, abs=0.005
+    )
     assert spatial.get_size_inches()[1] < TEXT_HEIGHT / 3
 
 
@@ -256,8 +259,9 @@ def test_the_spatial_panels_are_square_and_keyed_on_the_right_edge(
 ) -> None:
     """(a) the slide and (b) the clones, square and of one size; (b)'s key one
     column on the page's right edge, a `LABEL_GAP` in, its bottom on (b)'s,
-    each clone named $m$; each letter on its panel's extent ticks, the head a
-    `LABEL_GAP` over them."""
+    each clone named $m$; (b)'s rows labelled by (a)'s alone; each letter
+    over its panel's top-left text or corner, the head a `LABEL_GAP` over
+    them."""
     from port.extensions.combined_figure import LABEL_GAP
 
     _, figure = _figures(tmp_path)
@@ -280,12 +284,77 @@ def test_the_spatial_panels_are_square_and_keyed_on_the_right_edge(
     assert [t.get_text() for t in key.get_texts()] == ["$m_N$", "$m_1$", "$m_2$"]
     assert len({round(t.get_window_extent(renderer).x0) for t in key.get_texts()}) == 1
 
+    assert not any(t.get_visible() for t in clones.get_yticklabels()), "(a)'s rows"
+
     for text, ax in zip(figure.texts, (slide, clones), strict=True):
         letter = text.get_window_extent(renderer)
-        ticks = [t.get_window_extent(renderer) for t in ax.get_yticklabels()]
-        assert letter.x0 == pytest.approx(min(t.x0 for t in ticks), abs=1.5)
-        top = max(t.y1 for t in ticks)
+        edges = [ax.get_window_extent(renderer)] + [
+            t.get_window_extent(renderer)
+            for t in ax.get_yticklabels()
+            if t.get_visible()
+        ]
+        assert letter.x0 == pytest.approx(min(e.x0 for e in edges), abs=1.5)
+        top = max(e.y1 for e in edges)
         assert top - 0.5 <= letter.y0 <= top + gap
 
     highest = max(t.get_window_extent(renderer).y1 for t in figure.texts)
     assert figure.bbox.y1 - highest == pytest.approx(gap, abs=1.5)
+
+
+@pytest.mark.infra
+# NB too specific to run on every change (#403): it passed where it merged,
+#    and runs again where this module or the lock changes, and at a release.
+@pytest.mark.deprecate
+def test_the_combined_page_is_the_two_figures_stacked(
+    cnaster_config: None, tmp_path: Path
+) -> None:
+    """One page, 122 mm by 193 mm to 0.005 in, lettered (a) to (d).
+
+    (a) and (b) sit where the spatial figure puts them, to a pixel, measured
+    from the head: the page is the spatial figure over a genomic one drawn
+    the rest of the height.
+    """
+    import matplotlib.pyplot as plt
+    from port.extensions.combined_figure import (
+        TEXT_HEIGHT,
+        combined_figure,
+        spatial_figure,
+    )
+
+    recorded, frame = _recorded(tmp_path)
+    combined = combined_figure(recorded, frame)
+    spatial = spatial_figure(recorded, frame)
+
+    assert combined.get_size_inches()[0] * 25.4 == pytest.approx(122.0)
+    assert combined.get_size_inches()[1] == pytest.approx(TEXT_HEIGHT, abs=0.005)
+    assert sorted(t.get_text() for t in combined.texts) == ["(a)", "(b)", "(c)", "(d)"]
+
+    placed = combined.get_axes()[-2:]
+    for new, old in zip(placed, spatial.get_axes()[:2], strict=True):
+        here = new.get_window_extent(combined.canvas.get_renderer())
+        there = old.get_window_extent(spatial.canvas.get_renderer())
+        head = combined.bbox.height - spatial.bbox.height
+        np.testing.assert_allclose(
+            (here.x0, here.y0 - head, here.width, here.height),
+            there.bounds,
+            atol=1.0,
+        )
+
+    plt.close(combined)
+    plt.close(spatial)
+
+
+@pytest.mark.analytic
+def test_the_hatch_stripes_are_one_width() -> None:
+    """B's lines are half the hatch's period measured across them, so A's
+    stripes between them are as wide: 2.065 pt at 0.10 in and 35 degrees."""
+    from port.patch.plot_copy_number_profile import (
+        HATCH_ANGLE,
+        HATCH_LINEWIDTH,
+        HATCH_SPACING,
+    )
+
+    period = 72.0 * HATCH_SPACING * np.sin(np.radians(HATCH_ANGLE))
+
+    assert pytest.approx(period - HATCH_LINEWIDTH) == HATCH_LINEWIDTH
+    assert pytest.approx(2.0649, abs=1e-4) == HATCH_LINEWIDTH

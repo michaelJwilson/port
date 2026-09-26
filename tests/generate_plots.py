@@ -36,7 +36,9 @@ mpl.use("Agg")
 
 from port.extensions.combined_figure import (
     Recorded,
+    combined_figure,
     genomic_figure,
+    page_style,
     recording,
     spatial_figure,
 )
@@ -64,7 +66,7 @@ chr7's two events were decoded as one state (#313).
 def _write_combined(
     recorded: Recorded, truth: CoreInferenceTruth, root: Path, output: Path
 ) -> None:
-    """The genomic and spatial figures, beside the run's own (#309, #339).
+    """The genomic and spatial figures, and both on one page (#309, #339).
 
     The slide is mocked from the planted labels and read back through
     `cnaster.he.get_he_image`, as `run_cnaster` reads one. It is written
@@ -82,10 +84,22 @@ def _write_combined(
     plots = next(output.rglob("clones_spatial.pdf")).parent
     # NB at its declared size, not a tight box: the page is drawn at the text
     #    width and included at 1:1, so a box that grows past it is rescaled.
-    write_fig(str(plots / "genomic.pdf"), genomic_figure(recorded), bbox_inches=None)
-    write_fig(
-        str(plots / "spatial.pdf"), spatial_figure(recorded, frame), bbox_inches=None
-    )
+    # NB written as drawn: the run has set seaborn's theme, which a page
+    #    written under it would follow where a style is read at draw time.
+    with page_style():
+        write_fig(
+            str(plots / "genomic.pdf"), genomic_figure(recorded), bbox_inches=None
+        )
+        write_fig(
+            str(plots / "spatial.pdf"),
+            spatial_figure(recorded, frame),
+            bbox_inches=None,
+        )
+        write_fig(
+            str(plots / "combined.pdf"),
+            combined_figure(recorded, frame),
+            bbox_inches=None,
+        )
 
 
 def main() -> None:

@@ -2,12 +2,12 @@
 
 **What `run_cnaster_port` draws for the dev instance, committed so a change to
 the pipeline shows up as a change to a picture.** Nineteen of them, written at
-every stage of the run rather than at the end, and `genomic.pdf` and
-`spatial.pdf`, the final four as two figures.
+every stage of the run rather than at the end, and `genomic.pdf`,
+`spatial.pdf` and `combined.pdf`, the final four as two figures and as one page.
 
 **CI regenerates every figure here on every pull request and commits the
 result** to the pull request's branch (`.github/workflows/figures.yml`,
-#296): the twenty-one below, and `realizations.png`, `realizations_truth.png`
+#296): the twenty-two below, and `realizations.png`, `realizations_truth.png`
 and `realizations.npz`, eight runs of one planted genome with the
 likelihood's errors on one run and on the truth (#291). A branch another
 open pull request is based on is the exception: its figures are uploaded as a
@@ -53,17 +53,20 @@ component-wise work around `tests/test_run_cnaster_round_trip.py`.
 | BAF only | `bafonly_clones_genomic`, `bafonly_clones_spatial`, `merged_bafonly_clones_genomic`, `merged_bafonly_clones_spatial` |
 | RDR and BAF | `rdr_baf_clones_genomic`, `rdr_baf_clones_spatial`, `merged_rdr_baf_clones_genomic`, `merged_rdr_baf_clones_spatial` |
 | final | `real_clones_genomic`, `clones_genomic`, `clones_spatial`, `copy_number_profile` |
-| after the run | `genomic`, `spatial` |
+| after the run | `genomic`, `spatial`, `combined` |
 
-## `genomic.pdf` and `spatial.pdf`
+## `genomic.pdf`, `spatial.pdf` and `combined.pdf`
 
 The final four as two figures at a text column (#309, #280, #339).
-`genomic.pdf` fills `llncs`'s text block, 122 by 193 mm: (a)
+`genomic.pdf` is 122 mm wide and `llncs`'s 193 mm text height less 1.5 in
+(`CAPTION_ROOM`), so its caption fits on the page: (a)
 `clones_genomic` over (b) `copy_number_profile`, (b)'s axis spanning (a)'s
 tracks so their chromosome boundaries line up. `spatial.pdf` is 122 mm wide
 and about a quarter of the block tall: (a) an H&E slide and (b) `clones_spatial`,
-square and as large as fit across, (b)'s clones keyed on the right edge. No
-captions. `port.extensions.combined_figure` redraws the run's own calls and
+square and as large as fit across, (b)'s clones keyed on the right edge.
+`combined.pdf` is both on one page, the full 122 by 193 mm: the spatial
+figure at the head as (a) and (b), the genomic figure drawn the rest of the
+height below as (c) and (d). No captions. `port.extensions.combined_figure` redraws the run's own calls and
 writes each page at exactly its size, so it is included at
 `width=\linewidth` unscaled.
 
