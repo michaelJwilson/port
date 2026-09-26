@@ -75,3 +75,30 @@ def test_generated_files_merge_through_the_badges_driver() -> None:
             line.startswith(pattern) and "merge=badges" in line
             for line in attributes.splitlines()
         ), pattern
+
+
+@pytest.mark.infra
+def test_the_input_hash_moves_with_an_input_and_not_otherwise(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A skipped badge pass is only as safe as this: an edit moves the digest,
+    a badge write does not."""
+    from tests import badges
+
+    (tmp_path / "python").mkdir()
+    (tmp_path / "python" / "a.py").write_text("x = 1\n")
+    (tmp_path / "uv.lock").write_text("lock\n")
+    (tmp_path / ".badges").mkdir()
+    monkeypatch.setattr(badges, "ROOT", tmp_path)
+
+    first = badges.inputs_hash()
+    (tmp_path / ".badges" / "measurements.json").write_text("{}\n")
+    assert badges.inputs_hash() == first, "a badge write moved the digest"
+
+    (tmp_path / "python" / "a.py").write_text("x = 2\n")
+    assert badges.inputs_hash() != first, "an edit to the code did not move it"
+
+    (tmp_path / "python" / "a.py").write_text("x = 1\n")
+    assert badges.inputs_hash() == first
+    (tmp_path / "python" / "a.py").rename(tmp_path / "python" / "b.py")
+    assert badges.inputs_hash() != first, "a rename did not move it"

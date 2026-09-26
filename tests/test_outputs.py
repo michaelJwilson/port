@@ -262,7 +262,9 @@ def test_a_run_s_outputs_recover_the_planted_clones_and_the_flat_normal(
     np.random.seed(11)  # noqa: NPY002
     try:
         (run,) = run_directories(
-            run_written(truth, tmp_path, port=False, max_iter_outer=1, max_iter=3)
+            run_written(
+                truth, tmp_path, port=False, plots=False, max_iter_outer=1, max_iter=3
+            )
         )
     finally:
         np.random.set_state(state)  # noqa: NPY002

@@ -220,7 +220,8 @@ compiled extension is typed by the hand-written stub
 ```
 run_cnaster_port config.yaml                 # cnaster's pipeline, port's replacements
 run_cnaster_port --no-patch config.yaml      # the same run, nothing rebound
-run_cnaster_port --no-figures config.yaml    # the replacements that reproduce bitwise
+run_cnaster_port --no-figure-swaps config.yaml  # the replacements that reproduce bitwise
+run_cnaster_port --no-plots config.yaml      # build every figure, write none; for a run whose claim is not a figure
 run_cnaster_port --no-rust config.yaml       # cnaster's numba lattices instead of oxiport's
 run_cnaster_port --sal config.yaml           # snakes_and_ladders routines where port measured a gain
 run_cnaster_port --no-copy-cap config.yaml   # cnaster's integer copy caps, A + B <= 6, whatever the config states
@@ -253,7 +254,7 @@ wherever it has been imported, because `run_cnaster` holds its own
 speed claims worth reading. `FIGURE_SWAPS` is a second table that does not:
 lowering the dpi and merging the rasterizing groups writes a different file
 by design (#195). It is **in the default** because it is the largest win
-here, and `--no-figures` is the arm that reproduces bitwise.
+here, and `--no-figure-swaps` is the arm that reproduces bitwise.
 
 Measured at 4,000 x 1,980 x 5, against `--no-patch`:
 

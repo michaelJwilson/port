@@ -215,6 +215,46 @@ def _recovery_badge(arm: str, record: dict[str, Any] | None) -> Badge:
     )
 
 
+INPUTS = ("python", "tests", "src", "pyproject.toml", "uv.lock", "Cargo.lock")
+"""What a coverage figure is a function of: the code, the tests, the locks and
+the configuration that selects them. `.badges` itself is not an input."""
+
+
+def inputs_hash() -> str:
+    """One digest over every input file, so an unchanged tree skips a pass (#403).
+
+    Paths and contents both enter it, so a renamed file moves it. Bytecode
+    and the extension module are outputs, and are left out.
+    """
+    import hashlib
+
+    digest = hashlib.sha256()
+    files: list[Path] = []
+
+    for name in INPUTS:
+        path = ROOT / name
+        if path.is_file():
+            files.append(path)
+        elif path.is_dir():
+            files.extend(
+                p
+                for p in path.rglob("*")
+                if p.is_file()
+                and "__pycache__" not in p.parts
+                and p.suffix in {".py", ".rs", ".pyi", ".toml", ".cfg"}
+            )
+
+    for path in sorted(files):
+        digest.update(path.relative_to(ROOT).as_posix().encode())
+        digest.update(path.read_bytes())
+
+    for rc in sorted(ROOT.glob(".coveragerc*")):
+        digest.update(rc.name.encode())
+        digest.update(rc.read_bytes())
+
+    return digest.hexdigest()[:16]
+
+
 def load() -> dict[str, Any]:
     """The recorded measurements, with their conditions."""
     return json.loads(MEASUREMENTS.read_text())  # type: ignore[no-any-return]

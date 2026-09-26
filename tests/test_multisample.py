@@ -79,9 +79,12 @@ def test_the_entry_point_recovers_the_shared_clones_in_every_sample(
 
     with isolated_run(), warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        assert main([str(config), "--sample-layout", "3,1"]) == 0
+        assert main([str(config), "--sample-layout", "3,1", "--no-plots"]) == 0
 
     output = written.root / "output"
+    # NB the claim is the labelling, so nothing is rendered (#403); the
+    #    panels are `test_sample_layout_draws_a_panel_per_sample_in_the_runs_colours`'s.
+    assert not list(output.rglob("*.pdf")), "--no-plots wrote a figure"
     labels = pd.read_csv(next(output.rglob("clone_labels.tsv")), sep="\t", comment="#")
     spots = labels["barcode"].str.slice(2, 7).astype(int).to_numpy()
     fitted = np.full(truth.n_spots, -1, dtype=np.int64)

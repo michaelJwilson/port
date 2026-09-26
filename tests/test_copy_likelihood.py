@@ -156,7 +156,7 @@ def test_the_entry_point_decodes_the_planted_pair_through_the_likelihood(
     try:
         with isolated_run(), warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            assert main([str(config), "--copy-likelihood"]) == 0
+            assert main([str(config), "--copy-likelihood", "--no-plots"]) == 0
     finally:
         integer_copy._refine = original
 

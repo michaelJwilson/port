@@ -281,14 +281,20 @@ def run_written(
     *,
     port: bool,
     flags: Sequence[str] = (),
+    plots: bool = True,
     **config: Any,
 ) -> Path:
     """Write the inputs and configuration, run the pipeline, return its output.
 
     `port` selects `run_cnaster_port` in process, with `flags` on its command
     line; otherwise `cnaster`'s own `run_cnaster`, which takes none. Warnings
-    are silenced for the run.
+    are silenced for the run. `plots=False` builds every figure and writes
+    none (#403): `--no-plots` for port, the same swap for `cnaster`.
     """
+    from contextlib import nullcontext
+
+    from port.pipeline import PLOT_OFF_SWAPS, patched
+
     written, config_path = write_for_run(truth, root, **config)
 
     with warnings.catch_warnings():
@@ -296,13 +302,14 @@ def run_written(
         if port:
             from port.scripts.run_cnaster import main
 
-            main([str(config_path), *flags])
+            main([str(config_path), *flags, *(() if plots else ("--no-plots",))])
         else:
             if flags:
                 msg = "cnaster's run_cnaster takes no flags"
                 raise ValueError(msg)
             from cnaster.scripts.run_cnaster import run_cnaster
 
-            run_cnaster(str(config_path))
+            with nullcontext() if plots else patched(PLOT_OFF_SWAPS):
+                run_cnaster(str(config_path))
 
     return written.root / "output"

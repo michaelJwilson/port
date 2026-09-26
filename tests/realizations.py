@@ -66,7 +66,7 @@ PLANTED_MU = (1.0, 1.5, 3.0)
 GENOME_DRAW = 2**31
 """The realization stream the planted genome's own counts come from."""
 
-RUN = {"max_iter_outer": 3, "max_iter": 200}
+RUN: dict[str, Any] = {"max_iter_outer": 3, "max_iter": 200}
 """The pipeline's iteration budgets. `max_iter` is the HMM's and decides
 whether the returned point is an optimum; the Newton decrement reported for
 the realization with errors says whether it was."""
@@ -202,7 +202,7 @@ def run(truth: CoreInferenceTruth, root: Path) -> Captured:
     patch.run_core_inference = keep
 
     try:
-        run_written(truth, root, port=True, flags=("--no-figures",), **RUN)
+        run_written(truth, root, port=True, flags=("--no-figure-swaps",), **RUN)
     finally:
         patch.run_core_inference = original
 
