@@ -121,7 +121,7 @@ def test_the_figure_swap_is_kept_out_of_the_default_table() -> None:
     stops that becoming a merge of the two tables. The default decides what
     a user gets; the table decides what can still be claimed. Keeping them
     apart is what lets `run_cnaster_port` be 47 per cent faster while
-    `SWAPS` remains the set that reproduces `cnaster` -- and `--no-figures`
+    `SWAPS` remains the set that reproduces `cnaster` -- and `--no-figure-swaps`
     is the arm that does.
 
     The table has a second row since #299, `plot_clones_genomic`, which

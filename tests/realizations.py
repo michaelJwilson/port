@@ -213,7 +213,7 @@ def run(truth: CoreInferenceTruth, root: Path) -> Captured:
     try:
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            main([str(config), "--no-figures"])
+            main([str(config), "--no-figure-swaps"])
     finally:
         patch.run_core_inference = original
 

@@ -69,9 +69,18 @@ pipeline that plots at every stage can actually have.
 """
 
 
-def _run(truth: CoreInferenceTruth, root: Path, **config: object) -> Path:
-    """Write the inputs, write the configuration, and run the pipeline."""
+def _run(
+    truth: CoreInferenceTruth, root: Path, *, plots: bool = True, **config: object
+) -> Path:
+    """Write the inputs, write the configuration, and run the pipeline.
+
+    `plots=False` builds every figure and writes none (#403), for a caller
+    whose claim is not a figure.
+    """
+    from contextlib import nullcontext
+
     from cnaster.scripts.run_cnaster import run_cnaster
+    from port.pipeline import PLOT_OFF_SWAPS, patched
 
     written = write_tmp_inputs(
         truth,
@@ -83,7 +92,7 @@ def _run(truth: CoreInferenceTruth, root: Path, **config: object) -> Path:
     )
     config_path = write_run_cnaster_config(written, truth, **config)
 
-    with warnings.catch_warnings():
+    with warnings.catch_warnings(), nullcontext() if plots else patched(PLOT_OFF_SWAPS):
         warnings.simplefilter("ignore")
         run_cnaster(str(config_path))
 

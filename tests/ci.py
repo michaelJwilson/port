@@ -17,6 +17,11 @@ test another step ran. `--record` writes the guards' measured figures into
 `.badges/measurements.json` and regenerates the badges, so the change that
 moves a figure carries it (`CLAUDE.md`: badges are local).
 
+A guard whose recorded input hash (`tests.badges.inputs_hash`: `python/`,
+`tests/`, `src/`, the locks, `pyproject.toml`, the coverage configs) is the
+tree's is not re-measured: its figure is a function of those inputs, so it
+still holds. `--force` measures it anyway.
+
 `--install` sets the `badges` merge driver `.gitattributes` names: a merge
 keeps this branch's badge files and figures rather than stopping on them,
 and `--badges` then measures what the merged tree actually reads.
@@ -73,39 +78,42 @@ def _steps(
         ]
 
     if arguments.badges or arguments.full:
-        steps += [
-            (
-                "judged coverage",
-                _pytest(JUDGED, workers=n, cov=("--cov", "--cov-report=")),
-                {**sysmon, "COVERAGE_FILE": ".coverage-e2e"},
-            ),
-            (
-                "drop-in coverage",
-                _pytest(
-                    DROPIN,
-                    workers=n,
-                    cov=(
-                        "--cov",
-                        "--cov-config=.coveragerc-dropin",
-                        "--cov-report=",
-                        "--cov-fail-under=0",
-                    ),
+        unchanged = _unchanged() if not arguments.force else set()
+        judged = (
+            "judged coverage",
+            _pytest(JUDGED, workers=n, cov=("--cov", "--cov-report=")),
+            {**sysmon, "COVERAGE_FILE": ".coverage-e2e"},
+        )
+        dropin = (
+            "drop-in coverage",
+            _pytest(
+                DROPIN,
+                workers=n,
+                cov=(
+                    "--cov",
+                    "--cov-config=.coveragerc-dropin",
+                    "--cov-report=",
+                    "--cov-fail-under=0",
                 ),
-                # NB `numba` reports nothing for a compiled body, so the
-                #    guard runs its kernels as Python (#281).
-                {
-                    **sysmon,
-                    "COVERAGE_FILE": ".coverage-dropin",
-                    "NUMBA_DISABLE_JIT": "1",
-                },
             ),
-            (
-                "check badges",
-                [sys.executable, "-m", "tests.check_badges"]
-                + (["--record"] if arguments.record else []),
-                {},
-            ),
+            # NB `numba` reports nothing for a compiled body, so the guard
+            #    runs its kernels as Python (#281).
+            {**sysmon, "COVERAGE_FILE": ".coverage-dropin", "NUMBA_DISABLE_JIT": "1"},
+        )
+        steps += [
+            step
+            for name, step in (("judged", judged), ("dropin", dropin))
+            if name not in unchanged
         ]
+        check = [sys.executable, "-m", "tests.check_badges"]
+        if arguments.record:
+            check.append("--record")
+        if unchanged:
+            check.append("--skip=" + ",".join(sorted(unchanged)))
+            print(
+                f"[tests.ci] inputs unchanged, not re-measured: {', '.join(sorted(unchanged))}"
+            )
+        steps.append(("check badges", check, {}))
 
     if arguments.full:
         steps += [
@@ -124,6 +132,18 @@ def _steps(
         steps.append(("figures", [sys.executable, "-m", "tests.generate_plots"], {}))
 
     return steps
+
+
+def _unchanged() -> set[str]:
+    """Guards whose recorded input hash is the tree's: their figure still holds."""
+    from tests.badges import inputs_hash, load
+
+    digest = inputs_hash()
+    return {
+        name
+        for name, guard in load()["coverage"].items()
+        if name in {"judged", "dropin"} and guard.get("inputs") == digest
+    }
 
 
 def install() -> int:
@@ -146,6 +166,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--figures", action="store_true", help="draw docs/plots")
     parser.add_argument(
         "--record", action="store_true", help="write the measured figures"
+    )
+    parser.add_argument(
+        "--force", action="store_true", help="re-measure unchanged guards"
     )
     parser.add_argument("--install", action="store_true", help="set the merge driver")
     parser.add_argument("-n", "--workers", type=int, default=WORKERS)
