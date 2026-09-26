@@ -128,3 +128,53 @@ def test_the_refinement_start_is_upstreams_and_its_mask_is_kept() -> None:
         assert mask_for(ours[0], ours[2]) is not None
     finally:
         forget()
+
+
+@pytest.mark.patch
+@pytest.mark.usefixtures("cnaster_config")
+def test_the_floor_is_cnasters_unless_the_config_sets_one() -> None:
+    """With no `hmrf.min_spots_per_clone`, the floor is `icm_sweep_deque`'s own
+    default; installing the merge is scoped to its block (#348, opt-in #403)."""
+    import inspect
+
+    from cnaster.config import get_global_config
+    from cnaster.icm import icm_sweep_deque
+    from port.patch.icm.floor import (
+        CNASTER_FLOOR,
+        configured_floor,
+        floor_merge,
+        installed,
+    )
+
+    default = inspect.signature(icm_sweep_deque).parameters["min_clone_spots"].default
+    assert default == CNASTER_FLOOR
+
+    section = getattr(get_global_config(), "hmrf", None)
+    key = getattr(section, "min_spots_per_clone", None)
+    assert configured_floor() == (CNASTER_FLOOR if key is None else int(key))
+
+    assert not installed()
+    with floor_merge():
+        assert installed()
+    assert not installed()
+
+
+@pytest.mark.patch
+def test_the_mask_keeps_the_columns_cnaster_relabels_survivors_to() -> None:
+    """`run_core_inference` relabels survivors by `np.unique(..., return_inverse)`,
+    ascending; `compact` keeps the mask's columns in that order."""
+    from port.patch.hmrf import refinement
+
+    mask = np.eye(4, dtype=bool)
+    assignment = np.array([3, 0, 3, 0])
+    survivors, relabelled = np.unique(assignment, return_inverse=True)
+
+    refinement._KEPT[:] = [mask]
+    try:
+        refinement.compact(assignment)
+        kept = refinement._KEPT[0]
+    finally:
+        refinement.forget()
+
+    np.testing.assert_array_equal(kept, mask[:, survivors])
+    assert kept.shape[1] == relabelled.max() + 1

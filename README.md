@@ -233,7 +233,7 @@ run_cnaster_port --sample-layout 3,1 config.yaml  # clone spatial plots, one pan
 run_cnaster_port --genomic-colours states config.yaml  # clones_genomic coloured per fitted state, not per integer pair
 run_cnaster_port --copy-likelihood config.yaml  # integer copies re-decoded by the HMM's pseudobulk likelihood
 run_cnaster_port --time-stages config.yaml   # what the replacements cost in the run
-run_cnaster_port --no-floor-merge config.yaml  # cnaster's random 200-spot floor (and --no-refinement-mask, --no-distinct-init)
+run_cnaster_port --floor-merge --refinement-mask config.yaml  # #348's clone patches, opt-in; --no-distinct-init drops the third
 run_calicost config.yaml                     # CalicoST on the same fixture files, at port's configuration
 run_cnaster_port --no-outputs config.yaml    # skip the fitted/decoded tables below
 run_cnaster_port --list                      # what would be rebound, and why
@@ -322,7 +322,7 @@ At this instance the emission array is about 0.3 GB against an 11.35 GB
 peak, which says plotting caps this run rather than the emission array --
 a different regime from #90's declared scale, not a contradiction of it.
 
-**Three clone-assignment patches are on by default** (#348). On
+**Three clone-assignment patches, one on by default** (#348). On
 `tests.fixtures.calicost_instance`, `cnaster` ends with one clone (ARI 0.000):
 `run_cnaster.py:1105` drops the read-depth refinement's allowed-clone mask, and
 `icm_sweep_deque` then moves every clone under 200 spots at random into the one
@@ -331,7 +331,9 @@ first, into each spot's best remaining clone. `--refinement-mask` passes the
 mask. `--distinct-init` stops `gmm_init` keeping near-duplicate normal
 components as separate states. With all three on, the run recovers clone ARI
 0.774 (1.000 integer) and copy-state ARI 0.997. The floor merge alone removes
-the collapse.
+the collapse. `--floor-merge` and `--refinement-mask` are opt-in: each alone
+splits #338's three-sample instance, 2 planted clones into 6 fitted.
+`--distinct-init` is on by default.
 
 **`run_calicost`** (#347) translates the same YAML and runs CalicoST in-process
 on the same files, into `<output_dir>_calicost`. `--align` (the default)

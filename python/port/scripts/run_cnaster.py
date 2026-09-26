@@ -123,8 +123,8 @@ def _parser() -> argparse.ArgumentParser:
         help=(
             "keep each read-depth sub-clone inside its BAF clone, with the "
             "mask cnaster computes and drops (#348); without it the ICM floor "
-            "reassigns spots across BAF clones. **On by default**, off with "
-            "--no-patch."
+            "reassigns spots across BAF clones. Off by default: on #338's "
+            "three-sample instance it splits 2 planted clones into 6."
         ),
     )
     parser.add_argument(
@@ -135,7 +135,8 @@ def _parser() -> argparse.ArgumentParser:
             "meet the clone-size floor smallest first, each spot to its best "
             "remaining clone, at hmrf.min_spots_per_clone (#348); cnaster "
             "empties every clone under a fixed 200 at once and reassigns its "
-            "spots at random. **On by default**, off with --no-patch."
+            "spots at random. Off by default: on #338's three-sample instance it "
+            "splits 2 planted clones into 6."
         ),
     )
     parser.add_argument(
@@ -291,7 +292,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         for swap in REFINEMENT_SWAPS:
             print(
                 f"{swap.module}.{swap.name} <- {swap.replacement}  "
-                f"(#{swap.ticket}, changes the clones; --no-refinement-mask to omit)"
+                f"(#{swap.ticket}, changes the clones; --refinement-mask to install)"
             )
         for swap in COPY_SWAPS:
             print(
@@ -430,21 +431,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         if copy_cap:
             selected = selected + COPY_SWAPS
-        refinement_mask = (
-            not arguments.no_patch
-            if arguments.refinement_mask is None
-            else arguments.refinement_mask
-        )
+        # NB opt-in, unlike the other clone patches: each alone over-splits
+        #    #338's three-sample instance, 6 fitted clones against 2 planted.
+        refinement_mask = bool(arguments.refinement_mask)
         if refinement_mask:
             from port.patch.hmrf.refinement import forget
 
             selected = selected + REFINEMENT_SWAPS
             stack.callback(forget)
-        floor = (
-            not arguments.no_patch
-            if arguments.floor_merge is None
-            else arguments.floor_merge
-        )
+        floor = bool(arguments.floor_merge)
         if floor:
             from port.patch.icm.floor import floor_merge
 
