@@ -694,6 +694,7 @@ def main() -> None:
     arguments = parser.parse_args()
 
     from tests import fixtures
+    from tests.metrics import fixture_hash
 
     instance = getattr(fixtures, f"{arguments.instance}_instance")
     truth = (
@@ -732,6 +733,7 @@ def main() -> None:
             {
                 **asdict(recovery),
                 "output": str(output),
+                "fixture_hash": fixture_hash(truth),
                 "lattice": arguments.lattice,
                 "set": arguments.set,
                 "oracle_normal": arguments.oracle_normal,
