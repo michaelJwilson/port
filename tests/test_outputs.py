@@ -229,6 +229,9 @@ def _truth() -> Any:
 
 
 @pytest.mark.end2end
+@pytest.mark.merge
+# NB one whole run at a time: four at once exceed 15 GB (#403).
+@pytest.mark.xdist_group("pipeline")
 def test_a_run_s_outputs_recover_the_planted_clones_and_the_flat_normal(
     cnaster_config: None, tmp_path: Path
 ) -> None:
@@ -258,7 +261,9 @@ def test_a_run_s_outputs_recover_the_planted_clones_and_the_flat_normal(
     state = np.random.get_state()  # noqa: NPY002
     np.random.seed(11)  # noqa: NPY002
     try:
-        (run,) = run_directories(_run(truth, tmp_path, max_iter_outer=1, max_iter=3))
+        (run,) = run_directories(
+            _run(truth, tmp_path, max_iter_outer=1, max_iter=3, plots=False)
+        )
     finally:
         np.random.set_state(state)  # noqa: NPY002
     write_outputs(run)

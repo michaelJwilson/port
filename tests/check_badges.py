@@ -22,11 +22,12 @@ per arm, so a per-pull-request job has nothing to compare against.
 
 from __future__ import annotations
 
+import json
 import os
 import sys
 from pathlib import Path
 
-from tests.badges import load
+from tests.badges import MEASUREMENTS, inputs_hash, load, write
 
 TOLERANCE = 0.005
 """How far a recorded figure may sit from the measured one, in points.
@@ -86,15 +87,45 @@ def measured(data_file: Path, config: Path | None) -> float | None:
         return float(measurement.report(file=sink))
 
 
-def main() -> int:
-    recorded = load()["coverage"]
+def main(argv: list[str] | None = None) -> int:
+    """Check every guard; with `--record`, write what was measured instead.
+
+    `--record` is how a change that moves a figure carries it (#403): the
+    measured percentage replaces the recorded one and the badges are
+    regenerated, in the same local run that measured it. Each guard's note
+    is not touched -- why a figure moved belongs in the commit that moved it.
+    """
+    arguments = sys.argv[1:] if argv is None else argv
+    record = "--record" in arguments
+    # NB `tests.ci --badges` passes `--skip` for a guard whose recorded input
+    #    hash matches the tree, and did not re-measure it (#403).
+    skipped = {
+        name
+        for flag in arguments
+        if flag.startswith("--skip=")
+        for name in flag.removeprefix("--skip=").split(",")
+    }
+    digest = inputs_hash()
+    document = load()
+    recorded = document["coverage"]
     failed = 0
+    moved = False
 
     for name, data_file, config in GUARDS:
         guard = recorded[name]
 
         if guard["percent"] is None:
             print(f"{name} is recorded as unmeasured; nothing to check")
+            continue
+
+        if name in skipped:
+            if guard.get("inputs") != digest:
+                print(f"{name}: skipped, but its inputs changed; re-measure it")
+                failed += 1
+            else:
+                print(
+                    f"{name}: inputs unchanged since {guard['percent']:.2f}% was recorded"
+                )
             continue
 
         current = measured(data_file, config)
@@ -112,7 +143,15 @@ def main() -> int:
             failed += 1
             continue
 
-        if abs(current - guard["percent"]) > TOLERANCE:
+        if record:
+            if abs(current - guard["percent"]) > TOLERANCE:
+                print(f"{name}: recorded {guard['percent']:.2f}% -> {current:.2f}%")
+                guard["percent"] = round(current, 2)
+            else:
+                print(f"{name} coverage {current:.2f}% matches the record")
+            guard["inputs"] = digest
+            moved = True
+        elif abs(current - guard["percent"]) > TOLERANCE:
             print(
                 f"{name} coverage is {current:.2f}% and .badges/measurements.json "
                 f"records {guard['percent']:.2f}%.\n"
@@ -122,6 +161,12 @@ def main() -> int:
             failed += 1
         else:
             print(f"{name} coverage {current:.2f}% matches the record")
+
+    if moved:
+        MEASUREMENTS.write_text(
+            json.dumps(document, indent=1, ensure_ascii=False) + "\n"
+        )
+        write()
 
     return 1 if failed else 0
 

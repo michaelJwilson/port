@@ -181,4 +181,4 @@ def test_run_cnaster_port_refuses_the_colours_without_the_figure_swaps() -> None
     from port.scripts.run_cnaster import main
 
     with pytest.raises(SystemExit):
-        main(["config.yaml", "--no-figures", "--genomic-colours", "states"])
+        main(["config.yaml", "--no-figure-swaps", "--genomic-colours", "states"])

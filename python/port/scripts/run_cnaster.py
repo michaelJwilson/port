@@ -10,11 +10,11 @@ changes an order; the entry point called is `cnaster.scripts.run_cnaster`,
 and if `cnaster` lands a patch upstream the row leaves `SWAPS` and this
 script keeps working.
 
-**`--figures` is on by default, so a default run does not reproduce
+**`--figure-swaps` is on by default, so a default run does not reproduce
 `cnaster` byte for byte.** It is the largest measured win here -- 47 per
 cent of a run, and 8,287 MB of figure rendering down to 1,036 MB (#195) --
 and a figure written at a different dpi is a different file by design. Pass
-`--no-figures` for an arm that does reproduce bitwise.
+`--no-figure-swaps` for an arm that does reproduce bitwise.
 
 That property still holds of `port.pipeline.SWAPS`, which is unchanged and
 still what `install()` defaults to; only this entry point's default moved.
@@ -35,6 +35,7 @@ from port.pipeline import (
     COPY_SWAPS,
     FIGURE_SWAPS,
     NUMERIC_SWAPS,
+    PLOT_OFF_SWAPS,
     SHIFT_SWAPS,
     SWAPS,
     Spent,
@@ -82,16 +83,25 @@ def _parser() -> argparse.ArgumentParser:
         help="run the same pipeline with nothing rebound, for the baseline arm",
     )
     parser.add_argument(
-        "--figures",
+        "--figure-swaps",
         action=argparse.BooleanOptionalAction,
         default=None,
         help=(
             "install the replacements that change the output: the figure dpi "
             "and the rasterizing groups (#195). **On by default**, because it "
             "is the largest measured win port has -- 47 per cent of a run, and "
-            "8,287 MB of figure rendering down to 1,036 MB. Pass --no-figures "
+            "8,287 MB of figure rendering down to 1,036 MB. Pass --no-figure-swaps "
             "for an arm that reproduces cnaster bitwise, which every other "
             "swap does and this one does not."
+        ),
+    )
+    parser.add_argument(
+        "--no-plots",
+        action="store_true",
+        help=(
+            "build every figure and write none (#403): the plotting code runs, "
+            "its rendering does not. For a run whose claim is not a figure. "
+            "Not --no-figure-swaps, which writes cnaster's figures unswapped."
         ),
     )
     parser.add_argument(
@@ -125,7 +135,7 @@ def _parser() -> argparse.ArgumentParser:
         help=(
             "draw the clone spatial plots one panel per sample on this grid, "
             "e.g. 3,1, each sample in its own coordinates (#328). Unset, "
-            "cnaster's one axis with samples offset along x. Needs --figures."
+            "cnaster's one axis with samples offset along x. Needs --figure-swaps."
         ),
     )
     parser.add_argument(
@@ -136,7 +146,7 @@ def _parser() -> argparse.ArgumentParser:
             "colour the clones_genomic bins by deduplicated integer copies "
             "(A, B), or by fitted HMM state with each state's continuous "
             "2 mu and p, so states oversampling one integer pair stay "
-            "distinct. Unset, cnaster's choice per figure. Needs --figures."
+            "distinct. Unset, cnaster's choice per figure. Needs --figure-swaps."
         ),
     )
     parser.add_argument(
@@ -236,7 +246,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         for swap in FIGURE_SWAPS:
             print(
                 f"{swap.module}.{swap.name} <- {swap.replacement}  "
-                f"(#{swap.ticket}, changes the output; --no-figures to omit)"
+                f"(#{swap.ticket}, changes the output; --no-figure-swaps to omit)"
             )
         for swap in SHIFT_SWAPS:
             print(
@@ -269,7 +279,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     # NB refused before the configuration is read: an argument error, not a
     #    file error. The figure default is the one the run below computes.
     if arguments.genomic_colours is not None and not (
-        not arguments.no_patch if arguments.figures is None else arguments.figures
+        not arguments.no_patch
+        if arguments.figure_swaps is None
+        else arguments.figure_swaps
     ):
         _parser().error("--genomic-colours needs the figure swaps")
 
@@ -291,7 +303,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
 
     with ExitStack() as stack:
-        # NB `--figures` is additive rather than a third mode, and it composes
+        # NB `--figure-swaps` is additive rather than a third mode, and it composes
         #    with `--no-patch`: what a reader needs to know about a run is
         #    which of the two tables produced it, not which flag was typed.
         #
@@ -310,10 +322,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         #    win for free.
         #
         #    `default=None` is what makes that possible: it separates "not
-        #    asked" from "asked for off", so `--no-patch --figures` still
+        #    asked" from "asked for off", so `--no-patch --figure-swaps` still
         #    composes and still measures the figure swap on its own.
         figures = (
-            not arguments.no_patch if arguments.figures is None else arguments.figures
+            not arguments.no_patch
+            if arguments.figure_swaps is None
+            else arguments.figure_swaps
         )
         # NB **off** unless asked for. Measured on a whole run at
         #    4,000 x 1,980 x 5: it recovers -1.04 s and -0.051 GB -- nothing,
@@ -400,6 +414,11 @@ def main(argv: Sequence[str] | None = None) -> int:
                     file=sys.stderr,
                 )
 
+        if arguments.no_plots:
+            # NB after every other table, so it rebinds whichever `write_fig`
+            #    the figure swaps put in place.
+            selected = selected + PLOT_OFF_SWAPS
+
         if selected:
             sites = stack.enter_context(patched(selected))
             print(
@@ -410,7 +429,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                 + (", approx included" if approx else "")
                 + (", shift included" if shift else "")
                 + (", rust lattices" if rust else "")
-                + (", sal included" if arguments.sal else ""),
+                + (", sal included" if arguments.sal else "")
+                + (", no plots written" if arguments.no_plots else ""),
                 file=sys.stderr,
             )
         else:

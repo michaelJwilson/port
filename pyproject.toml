@@ -306,7 +306,11 @@ markers = [
     #    it asserts -- it is `smoke` until something outside decides its value.
     "infra: port's own machinery and rules -- the marker guard, the planning-document check, the coverage scope, the upstream correspondence",
     # --- tiers: when a test runs, and how long it is allowed to take -----
-    "release: over the per-pull-request budget; runs for a release",
+    # NB at most one tier per test (#403): `critical` gates first, no tier is
+    #    the gate, `merge` runs before a merge with the badges, `release` runs
+    #    for a release. `python -m tests.ci` selects by these and nothing else.
+    "merge: over the gate's 5-second cap at gate size; runs before a merge, with the badges",
+    "release: over the pre-merge budget -- dev, key or stress size; runs for a release",
     # NB `preprocessing` names a subject rather than a referee, as `release`
     #    and `benchmark` do. It selects the input path -- `load_input_data`,
     #    the binning, the pre-image that round-trips through them -- which is
