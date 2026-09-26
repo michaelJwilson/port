@@ -62,6 +62,9 @@ def _written(tmp_path: Path, name: str, writer: Any, **keywords: Any) -> bytes:
 
 
 @pytest.mark.patch
+# NB one figure's form (#403): passed where it merged; runs again where this
+#    module or the lock changes, and at a release.
+@pytest.mark.deprecate
 def test_at_the_same_dpi_it_is_cnasters_function_byte_for_byte(tmp_path: Path) -> None:
     """The patch is a default, not a rewrite.
 
