@@ -16,6 +16,9 @@ without touching them, in each run directory that holds a
   the posterior-mean `mu` and `p` over the run. The deduplicated view.
 - `cnv_binlevel.tsv`: per bin and clone, the fitted state and the
   posterior-mean `mu` and `p` under `log_gamma`. The continuous view.
+- `clone_labels_integer.tsv`: `clone_labels.tsv` with each spot's clone
+  also named by its integer copy profile (`integer_clones`, #344): clones
+  that decode to the same `(A, B)` at every bin are one clone.
 - `manifest.json`: the run's shape and provenance -- states, clones,
   likelihoods, the shift, the configuration's copy caps and ploidy, and
   what `run_cnaster_port` was asked for.
@@ -44,6 +47,7 @@ __all__ = [
     "binlevel",
     "clone_columns",
     "config_keys",
+    "integer_clones",
     "run_directories",
     "segments",
     "states",
@@ -178,6 +182,46 @@ def segments(seglevel: pd.DataFrame, fit: dict[str, Any]) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def integer_clones(frame: pd.DataFrame) -> dict[str, str]:
+    """Each clone id -> the smallest id with the same integer copy profile.
+
+    `frame` is `cnv_seglevel.tsv`, or any table with `clone{c} A` and
+    `clone{c} B` per bin. Two clones are one when their `(A, B)` agree at
+    every bin; the smallest id names them, so the normal clone keeps `0`.
+    """
+    ids = [c.split()[0][len("clone") :] for c in frame.columns if c.endswith(" A")]
+    ordered = sorted(
+        ids, key=lambda c: (not c.isdigit(), int(c) if c.isdigit() else 0, c)
+    )
+    first: dict[bytes, str] = {}
+
+    for clone in ordered:
+        profile = frame[[f"clone{clone} A", f"clone{clone} B"]].to_numpy(dtype=int)
+        first.setdefault(profile.tobytes(), clone)
+
+    return {
+        clone: first[
+            frame[[f"clone{clone} A", f"clone{clone} B"]].to_numpy(dtype=int).tobytes()
+        ]
+        for clone in ids
+    }
+
+
+def clone_labels_integer(run: Path, seglevel: pd.DataFrame) -> pd.DataFrame:
+    """`clone_labels.tsv` with `integer_clone_label` beside `clone_label`."""
+    labels = pd.read_csv(run / "clone_labels.tsv", sep="\t", comment="#")
+    merged = integer_clones(seglevel)
+
+    def name(label: Any) -> Any:
+        if pd.isna(label):
+            return label
+        key = str(int(label)) if float(label).is_integer() else str(label)
+        return int(merged[key]) if merged.get(key, "").isdigit() else merged.get(key)
+
+    labels["integer_clone_label"] = labels["clone_label"].map(name)
+    return labels
+
+
 def config_keys(config: Path | None) -> dict[str, Any]:
     """The configuration's copy caps, ploidy and state count, where set."""
     if config is None:
@@ -220,11 +264,16 @@ def write_outputs(
     seglevel, perstate, fit = _load(run)
     written = []
 
-    for name, table in (
+    tables = [
         ("cnv_states.tsv", states(seglevel, perstate, fit)),
         ("cnv_segments.tsv", segments(seglevel, fit)),
         ("cnv_binlevel.tsv", binlevel(seglevel, fit)),
-    ):
+    ]
+
+    if (run / "clone_labels.tsv").exists():
+        tables.append(("clone_labels_integer.tsv", clone_labels_integer(run, seglevel)))
+
+    for name, table in tables:
         table.to_csv(run / name, sep="\t", index=False)
         written.append(run / name)
 
@@ -234,6 +283,7 @@ def write_outputs(
         "n_states": int(fit["n_states"]),
         "n_bins": len(seglevel),
         "clones": clone_columns(seglevel, fit["pred_cnv"]),
+        "integer_clones": integer_clones(seglevel),
         "llf": finite(fit["llf"]),
         "total_llf": finite(fit["total_llf"]),
         "log_mu_shift": None

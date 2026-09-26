@@ -241,7 +241,9 @@ run_cnaster_port --audit-config config.yaml # what the config states that cnaste
 `port.extensions.outputs` writes `cnv_states.tsv` (each fitted state, the
 `(A, B)` each clone decodes it to, and its share of the clone's bins),
 `cnv_segments.tsv` (runs of equal `(A, B)`), `cnv_binlevel.tsv` (the
-posterior-mean `mu` and `p` per bin) and `manifest.json` (states, clones,
+posterior-mean `mu` and `p` per bin), `clone_labels_integer.tsv` (each
+spot's clone named by its integer copy profile, so clones that decode alike
+at every bin are one clone, #344) and `manifest.json` (states, clones,
 likelihoods, the configuration's caps and the flags). Off with `--no-patch`,
 so the baseline arm writes what `cnaster` writes.
 

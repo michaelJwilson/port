@@ -63,7 +63,8 @@ The final four as two figures at a text column (#309, #280, #339).
 `clones_genomic` over (b) `copy_number_profile`, (b)'s axis spanning (a)'s
 tracks so their chromosome boundaries line up. `spatial.pdf` is 122 mm wide
 and about a quarter of the block tall: (a) an H&E slide and (b) `clones_spatial`,
-square and as large as fit across, (b)'s clones keyed on the right edge.
+square and as large as fit across, (b)'s clones keyed on the right edge
+and named by their integer copy profile (#344).
 `combined.pdf` is both on one page, the full 122 by 193 mm: the spatial
 figure at the head as (a) and (b), the genomic figure drawn the rest of the
 height below as (c) and (d). No captions. `port.extensions.combined_figure` redraws the run's own calls and

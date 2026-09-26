@@ -923,15 +923,47 @@ def _place_spatial(figure: Any, slide_ax: Any, spatial_ax: Any) -> None:
     key.set_bbox_to_anchor((anchor + short / side, 0.0), transform=spatial_ax.transAxes)
 
 
-def _draw_spatial(figure: Any, recorded: Recorded, he_frame: Any) -> tuple[Any, Any]:
-    """The slide and the clones on `figure`, drawn but not yet placed."""
+def integer_labels(assignment: Any, df_cnv: Any) -> Any:
+    """`assignment`'s "clone {c}" labels, each clone named by its integer
+    copy profile in `df_cnv` (`port.extensions.outputs.integer_clones`):
+    clones that decode alike at every bin take the smallest id among them."""
+    from port.extensions.outputs import integer_clones
+
+    merged = integer_clones(df_cnv)
+
+    def name(label: Any) -> Any:
+        if not isinstance(label, str) or label.split()[-1] not in merged:
+            return label
+        return f"clone {merged[label.split()[-1]]}"
+
+    return assignment.map(name)
+
+
+def _draw_spatial(
+    figure: Any, recorded: Recorded, he_frame: Any, labels: str = "integer"
+) -> tuple[Any, Any]:
+    """The slide and the clones on `figure`, drawn but not yet placed.
+
+    `labels` is "integer", the default, for clones named by their integer
+    copy profile (#344) -- which needs the run's profile call -- or
+    "continuous" for the fit's own clones.
+    """
     from port.patch.plotting.spatial import draw_clones_spatial, spot_colours
 
     assert recorded.spatial is not None
+    coords, assignment = recorded.spatial.args[:2]
+
+    if labels == "integer":
+        if recorded.profile is None:
+            msg = "integer clone labels need the run's copy_number_profile call"
+            raise ValueError(msg)
+        assignment = integer_labels(assignment, recorded.profile.args[0])
+    elif labels != "continuous":
+        msg = f'labels is "integer" or "continuous", not {labels!r}'
+        raise ValueError(msg)
+
     slide_ax = figure.add_axes((0.0, 0.0, 0.4, 0.4))
     spatial_ax = figure.add_axes((0.5, 0.0, 0.4, 0.4))
-
-    coords, assignment = recorded.spatial.args[:2]
     draw_clones_spatial(
         spatial_ax,
         np.asarray(coords),
@@ -963,10 +995,16 @@ def _draw_spatial(figure: Any, recorded: Recorded, he_frame: Any) -> tuple[Any, 
 
 @_styled
 def spatial_figure(
-    recorded: Recorded, he_frame: Any, width: float | None = None
+    recorded: Recorded,
+    he_frame: Any,
+    width: float | None = None,
+    labels: str = "integer",
 ) -> Any:
     """(a) the H&E slide and (b) `clones_spatial`, square and as large as fit
-    across `width` inches, (b) keyed on the right edge; no caption."""
+    across `width` inches, (b) keyed on the right edge; no caption.
+
+    `labels` as `_draw_spatial` takes it: "integer" (#344) or "continuous".
+    """
     import matplotlib.pyplot as plt
 
     from port.patch.plotting.genomic import PAPER_WIDTH
@@ -978,7 +1016,7 @@ def spatial_figure(
     width = PAPER_WIDTH if width is None else width
     # NB drawn on a page taller than it needs, and cut to its text.
     figure = plt.figure(figsize=(width, width), dpi=300, facecolor="white")
-    slide_ax, spatial_ax = _draw_spatial(figure, recorded, he_frame)
+    slide_ax, spatial_ax = _draw_spatial(figure, recorded, he_frame, labels)
 
     _set_text(figure, FONT_SIZE)
     _place_spatial(figure, slide_ax, spatial_ax)
@@ -991,8 +1029,11 @@ def combined_figure(
     he_frame: Any,
     width: float | None = None,
     height: float = TEXT_HEIGHT,
+    labels: str = "integer",
 ) -> Any:
     """The spatial figure over the genomic one on one page, `height` tall.
+
+    `labels` names (b)'s clones as `spatial_figure` does (#344).
 
     (a) and (b) are the spatial figure's, drawn at the head exactly as it
     draws them; (c) and (d) are the genomic figure's, drawn the rest of the
@@ -1000,7 +1041,7 @@ def combined_figure(
     """
     import matplotlib.pyplot as plt
 
-    spatial = spatial_figure(recorded, he_frame, width)
+    spatial = spatial_figure(recorded, he_frame, width, labels)
     above = float(spatial.get_size_inches()[1])
     figure = genomic_figure(recorded, width, height - above)
     dpi = figure.dpi
@@ -1025,7 +1066,7 @@ def combined_figure(
 
     # NB (a) and (b): drawn anew in the space above and put where the spatial
     #    page puts them, `tall` higher.
-    slide_ax, spatial_ax = _draw_spatial(figure, recorded, he_frame)
+    slide_ax, spatial_ax = _draw_spatial(figure, recorded, he_frame, labels)
     _set_text(figure, FONT_SIZE)
     figure.canvas.draw()
     source = spatial.canvas.get_renderer()
