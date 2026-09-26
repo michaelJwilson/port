@@ -186,7 +186,7 @@ def write_fig(
     opath: str,
     fig: Any = None,
     transparent: bool = True,
-    bbox_inches: str = "tight",
+    bbox_inches: str | None = "tight",
     dpi: int = FIGURE_DPI,
     group_rasters: bool = True,
     group_strategy: str = "sink",

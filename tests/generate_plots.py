@@ -34,7 +34,12 @@ import matplotlib as mpl
 
 mpl.use("Agg")
 
-from port.extensions.combined_figure import Recorded, combined_figure, recording
+from port.extensions.combined_figure import (
+    Recorded,
+    genomic_figure,
+    recording,
+    spatial_figure,
+)
 
 from tests.fixtures import COPY_LATTICE, CoreInferenceTruth, dev_instance
 from tests.he_slide import mock_he, write_he_slide
@@ -59,7 +64,7 @@ chr7's two events were decoded as one state (#313).
 def _write_combined(
     recorded: Recorded, truth: CoreInferenceTruth, root: Path, output: Path
 ) -> None:
-    """(a) to (d) on one page, beside the run's own figures (#309).
+    """The genomic and spatial figures, beside the run's own (#309, #339).
 
     The slide is mocked from the planted labels and read back through
     `cnaster.he.get_he_image`, as `run_cnaster` reads one. It is written
@@ -75,7 +80,12 @@ def _write_combined(
     frame = get_he_image(str(root / "slide"), res="hires", pos=None)
 
     plots = next(output.rglob("clones_spatial.pdf")).parent
-    write_fig(str(plots / "combined.pdf"), combined_figure(recorded, frame))
+    # NB at its declared size, not a tight box: the page is drawn at the text
+    #    width and included at 1:1, so a box that grows past it is rescaled.
+    write_fig(str(plots / "genomic.pdf"), genomic_figure(recorded), bbox_inches=None)
+    write_fig(
+        str(plots / "spatial.pdf"), spatial_figure(recorded, frame), bbox_inches=None
+    )
 
 
 def main() -> None:

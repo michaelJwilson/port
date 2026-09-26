@@ -3,7 +3,8 @@
 The patch changes the drawing -- one row per clone, A's fill under B's
 hatch -- and not what is drawn. So what `cnaster` asserts is compared segment
 by segment: the same clones in the same order, and every segment at the same
-position and width with A's colour and B's colour from the same palette.
+position and width with A's colour and B's colour from the same palette,
+`COPY_COLOURS` read for `cnaster`'s copies 2 to 7+.
 The drawing is then held to its own claims: a normal segment is not hatched,
 and the hatch turns with the major allele, so a mirrored pair hatches in
 opposite directions.
@@ -53,6 +54,14 @@ def _alleles(ax: Any, *, halves: bool) -> dict[tuple[int, int, str], tuple[float
     """
     from matplotlib.colors import to_rgba
     from matplotlib.patches import Rectangle
+    from port.patch.plot_copy_number_profile import NORMAL_OPACITY, hatch_of
+
+    def seen(colour: Any) -> tuple[float, ...]:
+        # NB a translucent face read over white at the patch's opacity:
+        #    upstream fades copy 1 by 0.25, the patch by `NORMAL_OPACITY`.
+        rgba = np.asarray(to_rgba(colour))
+        alpha = 1.0 if rgba[3] == 1 else NORMAL_OPACITY
+        return tuple(np.round(alpha * rgba[:3] + 1.0 - alpha, 6))
 
     n_rows = round(ax.get_ylim()[1] / (1.0 / len(ax.get_yticks())))
     h = ax.get_ylim()[1] / n_rows
@@ -65,7 +74,7 @@ def _alleles(ax: Any, *, halves: bool) -> dict[tuple[int, int, str], tuple[float
             continue
 
         row = int(patch.get_y() // h)
-        face = tuple(np.round(to_rgba(patch.get_facecolor())[:3], 6))
+        face = seen(patch.get_facecolor())
         bins = range(round(patch.get_x()), round(patch.get_x() + patch.get_width()))
 
         if halves:
@@ -73,11 +82,8 @@ def _alleles(ax: Any, *, halves: bool) -> dict[tuple[int, int, str], tuple[float
             for b in bins:
                 colours[(row, b, allele)] = face
         else:
-            hatch = (
-                tuple(np.round(to_rgba(patch.get_hatchcolor())[:3], 6))
-                if patch.get_hatch()
-                else face
-            )
+            drawn = hatch_of(ax, patch)
+            hatch = seen(drawn[1]) if drawn is not None else face
             for b in bins:
                 colours[(row, b, "A")] = face
                 colours[(row, b, "B")] = hatch
@@ -89,8 +95,8 @@ def _alleles(ax: Any, *, halves: bool) -> dict[tuple[int, int, str], tuple[float
 def test_every_bin_has_upstreams_alleles_in_upstreams_row() -> None:
     """A's colour and B's colour at every (clone, bin), as upstream draws them.
 
-    RGB only: upstream fades an allele at copy 1 by opacity, and the patch
-    fades only a whole normal segment.
+    As seen over white: upstream fades an allele at copy 1 by opacity, and
+    the patch draws it opaque in its legend box's colour, at `NORMAL_OPACITY`.
     """
     from cnaster.plot_copy_number_profile import plot_copy_number_profile as upstream
     from port.patch.plot_copy_number_profile import plot_copy_number_profile
@@ -103,7 +109,19 @@ def test_every_bin_has_upstreams_alleles_in_upstreams_row() -> None:
         t.get_text() for t in theirs.get_yticklabels()
     ]
 
-    expected = _alleles(theirs, halves=True)
+    from cnaster.palette import get_full_palette
+    from matplotlib.colors import to_rgb
+    from port.patch.plot_copy_number_profile import COPY_COLOURS
+
+    upstream, _ = get_full_palette("chisel_single")
+    recolour = {
+        tuple(np.round(to_rgb(upstream[k]), 6)): tuple(np.round(to_rgb(c), 6))
+        for k, c in COPY_COLOURS.items()
+    }
+    expected = {
+        key: recolour.get(colour, colour)
+        for key, colour in _alleles(theirs, halves=True).items()
+    }
     drawn = _alleles(ours, halves=False)
 
     assert drawn.keys() == expected.keys()
@@ -113,17 +131,66 @@ def test_every_bin_has_upstreams_alleles_in_upstreams_row() -> None:
 
 @pytest.mark.patch
 def test_the_hatch_turns_with_the_major_allele_and_normal_is_plain() -> None:
-    """(2, 1) at +45 degrees, its mirror (1, 2) at -45, and (1, 1) unhatched."""
-    from port.patch.plot_copy_number_profile import HATCH, plot_copy_number_profile
+    """(2, 1) rising right (`h=0`), its mirror (1, 2) rising left (`h=1`), (1, 1) plain."""
+    from port.patch.plot_copy_number_profile import (
+        HATCH,
+        hatch_of,
+        plot_copy_number_profile,
+    )
 
     ours = plot_copy_number_profile(_profile()).axes[0]
-    hatches = {
-        (round(p.get_x()), round(p.get_y(), 3), round(p.get_width())): p.get_hatch()
+    turns = [
+        None if (drawn := hatch_of(ours, p)) is None else drawn[0]
         for p in ours.patches
         if p.get_facecolor()[3] > 0 and p.get_width() < 20
-    }
+    ]
 
-    assert HATCH[1] in hatches.values()
-    assert HATCH[-1] in hatches.values()
-    assert all(hatch in (None, HATCH[1], HATCH[-1]) for hatch in hatches.values())
-    assert sum(hatch is None for hatch in hatches.values()) >= 1
+    assert HATCH[1] in turns
+    assert HATCH[-1] in turns
+    assert set(turns) <= {None, HATCH[1], HATCH[-1]}
+    assert turns.count(None) >= 1
+
+
+@pytest.mark.infra
+def test_the_hatch_is_clipped_to_its_segment_at_its_angle_and_spacing() -> None:
+    """Every line inside its segment's extent, at `HATCH_ANGLE`, `HATCH_SPACING` apart.
+
+    The lines are matplotlib's only after a draw, and a `Rectangle` clip is
+    silently replaced by the axis's own: before that was fixed the lines of
+    one segment crossed every row below it.
+    """
+    from matplotlib.collections import LineCollection
+    from matplotlib.transforms import TransformedPath
+    from port.patch.plot_copy_number_profile import (
+        HATCH_ANGLE,
+        HATCH_SPACING,
+        plot_copy_number_profile,
+    )
+
+    figure = plot_copy_number_profile(_profile())
+    ax = figure.axes[0]
+    figure.canvas.draw()
+
+    hatches = [
+        c
+        for c in ax.collections
+        if isinstance(c, LineCollection) and hasattr(c, "fill")
+    ]
+    assert hatches
+
+    for hatch in hatches:
+        clip = hatch.get_clip_path()
+        assert isinstance(clip, TransformedPath), "clipped to its segment's path"
+        path, transform = clip.get_transformed_path_and_affine()
+        box = transform.transform_path(path).get_extents()
+        fill = hatch.fill.get_window_extent(figure.canvas.get_renderer())
+
+        np.testing.assert_allclose(box.bounds, fill.bounds, atol=0.5)
+
+        (x0, y0), (x1, y1) = hatch.get_segments()[0]
+        assert np.degrees(np.arctan2(abs(y1 - y0), abs(x1 - x0))) == pytest.approx(
+            HATCH_ANGLE
+        )
+
+        starts = [segment[0][0] for segment in hatch.get_segments()]
+        np.testing.assert_allclose(np.diff(starts), HATCH_SPACING * figure.dpi)

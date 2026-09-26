@@ -1,12 +1,12 @@
-"""`port.extensions.combined_figure`: one page from a run's figures (#309).
+"""`port.extensions.combined_figure`: two figures from a run (#309, #339).
 
 Two claims a reader relies on. **Drawing into a subfigure changes the layout
-and nothing drawn**: every point, segment and colour of (a) is the one the
-standalone `clones_genomic` page carries. **Recording does not touch the
-run**: each wrapper calls through, returns what it wraps, and is removed on
-exit. The page itself is checked for what #280 asks of it -- a text column
-wide, no text above the cap -- which is `smoke`: it says the page composes,
-not that anything on it is right.
+and nothing drawn**: every point, segment and colour of the tracks is the
+one the standalone `clones_genomic` page carries. **Recording does not touch
+the run**: each wrapper calls through, returns what it wraps, and is removed
+on exit. The pages are checked for what #280 and #339 ask of them -- a text
+column wide, one text size, panels on shared edges -- which is `smoke` and
+`infra`: they say the pages compose, not that anything on them is right.
 """
 
 from __future__ import annotations
@@ -90,23 +90,10 @@ def test_recording_calls_through_and_restores() -> None:
     ) == before
 
 
-@pytest.mark.smoke
-def test_the_page_is_a_column_wide_with_capped_text(
-    cnaster_config: None, tmp_path: Path
-) -> None:
-    """6.5 in wide, four panels labelled (a) to (d), no text over 6 pt else."""
-    import matplotlib as mpl
-
-    mpl.use("Agg")
+def _recorded(tmp_path: Path, n_clones: int = 3) -> tuple[Any, Any]:
+    """A run's three recorded calls on the 3 by 3 fixture, and its slide."""
     from cnaster.he import get_he_image
-    from matplotlib.text import Text
-    from port.extensions.combined_figure import (
-        FONT_SIZE,
-        LABEL_SIZE,
-        Call,
-        Recorded,
-        combined_figure,
-    )
+    from port.extensions.combined_figure import Call, Recorded
 
     from tests.fixtures import clone_bands
     from tests.he_slide import mock_he, write_he_slide
@@ -115,29 +102,190 @@ def test_the_page_is_a_column_wide_with_capped_text(
     n_spots = arguments[1].shape[2]
     rows, columns = np.unravel_index(np.arange(n_spots), (3, 3))
     coords = np.column_stack([rows, columns]).astype(float)
-    assignment = pd.Series(
-        [f"clone {c}" for c in keywords["res_combine"]["new_assignment"]]
-    )
-
+    assignment = pd.Series([f"clone {k % n_clones}" for k in range(n_spots)])
     write_he_slide(mock_he(clone_bands(3, 3, 3), (3, 3), seed=1), tmp_path)
-    frame = get_he_image(str(tmp_path), pos=None)
-
     recorded = Recorded(
         genomic=Call(arguments, keywords),
         spatial=Call((coords, assignment), {}),
         profile=Call((keywords["df_cnv"].assign(START=0, END=1),), {}),
     )
-    figure = combined_figure(recorded, frame)
 
-    assert figure.get_size_inches()[0] == pytest.approx(6.5)
+    return recorded, get_he_image(str(tmp_path), pos=None)
 
-    titles = [panel._suptitle.get_text() for panel in figure.subfigs[:2]]
-    titles += [panel._suptitle.get_text() for panel in figure.subfigs[2].subfigs]
-    assert titles == ["(a)", "(b)", "(c)", "(d)"]
 
-    sizes = [
-        text.get_fontsize()
-        for text in figure.findobj(Text)
-        if text.get_text() not in titles
+def _figures(tmp_path: Path) -> tuple[Any, Any]:
+    import matplotlib as mpl
+
+    mpl.use("Agg")
+    from port.extensions.combined_figure import genomic_figure, spatial_figure
+
+    recorded, frame = _recorded(tmp_path)
+    genomic, spatial = genomic_figure(recorded), spatial_figure(recorded, frame)
+
+    for figure in (genomic, spatial):
+        figure.canvas.draw()
+
+    return genomic, spatial
+
+
+def _texts(figure: Any) -> list[Any]:
+    from matplotlib.text import Text
+
+    return [
+        t
+        for t in figure.findobj(Text)
+        if t.get_visible() and t.get_text() and t.get_figure(root=True) is figure
     ]
-    assert max(sizes) <= FONT_SIZE < LABEL_SIZE
+
+
+@pytest.mark.smoke
+@pytest.mark.merge
+def test_each_figure_is_a_column_wide_with_one_text_size(
+    cnaster_config: None, tmp_path: Path
+) -> None:
+    """`llncs`'s 122 mm wide, the genomic figure its 193 mm tall to 0.005 in,
+    each lettered (a) and (b), and no text over `FONT_SIZE`."""
+    from port.extensions.combined_figure import FONT_SIZE, TEXT_HEIGHT
+
+    genomic, spatial = _figures(tmp_path)
+
+    for figure in (genomic, spatial):
+        assert figure.get_size_inches()[0] * 25.4 == pytest.approx(122.0)
+        assert [t.get_text() for t in figure.texts] == ["(a)", "(b)"]
+        assert max(t.get_fontsize() for t in _texts(figure)) <= FONT_SIZE
+
+    assert genomic.get_size_inches()[1] == pytest.approx(TEXT_HEIGHT, abs=0.005)
+    assert spatial.get_size_inches()[1] < TEXT_HEIGHT / 3
+
+
+@pytest.mark.infra
+@pytest.mark.merge
+def test_each_page_is_written_at_its_size_with_nothing_past_it(
+    cnaster_config: None, tmp_path: Path
+) -> None:
+    """Each PDF's MediaBox is its figure's size to 0.1 pt, and every text and
+    legend is on the page to half a pixel.
+
+    `llncs` fixes `\\textwidth` at 122 mm, so a page written wider is scaled
+    down by `\\includegraphics[width=\\linewidth]` and its text shrinks with
+    it. At a tight bounding box the page grew to 6.66 in at 6.5 (#339).
+    """
+    import re
+
+    from port.patch.utils import write_fig
+
+    for name, figure in zip(("genomic", "spatial"), _figures(tmp_path), strict=True):
+        renderer = figure.canvas.get_renderer()
+        page = figure.bbox
+        extents = [t.get_window_extent(renderer) for t in _texts(figure)]
+        extents += [
+            ax.get_legend().get_window_extent(renderer)
+            for ax in figure.get_axes()
+            if ax.get_legend() is not None
+        ]
+
+        for extent in extents:
+            assert extent.y0 >= page.y0 - 0.5, name
+            assert extent.y1 <= page.y1 + 0.5, name
+            assert extent.x0 >= page.x0 - 0.5, name
+            assert extent.x1 <= page.x1 + 0.5, name
+
+        path = tmp_path / f"{name}.pdf"
+        write_fig(str(path), figure, bbox_inches=None)
+        box = re.search(
+            rb"/MediaBox\s*\[\s*[\d.]+\s+[\d.]+\s+([\d.]+)\s+([\d.]+)",
+            path.read_bytes(),
+        )
+
+        assert box is not None
+        width, height = figure.get_size_inches() * 72.0
+        assert float(box.group(1)) == pytest.approx(width, abs=0.1)
+        assert float(box.group(2)) == pytest.approx(height, abs=0.1)
+
+
+@pytest.mark.infra
+@pytest.mark.merge
+def test_the_profile_spans_the_tracks_on_one_left_column(
+    cnaster_config: None, tmp_path: Path
+) -> None:
+    """(b)'s axis and key have (a)'s left and right edges to 1.5 px, so bin `i`
+    is under bin `i`; (b)'s names and (a)'s RDR and BAF labels start on the
+    column `NAME_INSET` in, clear of the axes; (a)'s letter over its first
+    statistics line and (b)'s level with its key, both on the column; the
+    head a `LABEL_GAP` over them."""
+    from port.extensions.combined_figure import LABEL_GAP, NAME_INSET
+
+    figure, _ = _figures(tmp_path)
+    renderer = figure.canvas.get_renderer()
+    gap = LABEL_GAP / 72.0 * figure.dpi
+    column = NAME_INSET / 72.0 * figure.dpi
+    tracks = figure.subfigs[0].axes
+    key, profile = figure.subfigs[1].axes
+    edges = [ax.get_window_extent(renderer) for ax in tracks]
+    left, right = min(b.x0 for b in edges), max(b.x1 for b in edges)
+
+    for ax in (profile, key):
+        box = ax.get_window_extent(renderer)
+        assert box.x0 == pytest.approx(left, abs=1.5)
+        assert box.x1 == pytest.approx(right, abs=1.5)
+
+    names = [t.get_window_extent(renderer) for t in profile.get_yticklabels()]
+    labels = [ax.yaxis.label.get_window_extent(renderer) for ax in tracks]
+    starts = [b.x0 for b in names + labels]
+    assert starts == pytest.approx([column] * len(starts), abs=1.5)
+    assert left - max(b.x1 for b in names) >= gap - 1.0
+
+    first, second = (t.get_window_extent(renderer) for t in figure.texts)
+    stats = max(
+        t.get_window_extent(renderer).y1 for t in tracks[0].texts if t.get_visible()
+    )
+    title = key.texts[0].get_window_extent(renderer)
+    assert first.x0 == pytest.approx(column, abs=1.5)
+    assert stats - 0.5 <= first.y0 <= stats + gap
+    assert second.x0 == pytest.approx(column, abs=1.5)
+    assert (second.y0 + second.y1) / 2 == pytest.approx(
+        (title.y0 + title.y1) / 2, abs=1.0
+    )
+    assert figure.bbox.y1 - first.y1 == pytest.approx(gap, abs=1.5)
+
+
+@pytest.mark.infra
+@pytest.mark.merge
+def test_the_spatial_panels_are_square_and_keyed_on_the_right_edge(
+    cnaster_config: None, tmp_path: Path
+) -> None:
+    """(a) the slide and (b) the clones, square and of one size; (b)'s key one
+    column on the page's right edge, a `LABEL_GAP` in, its bottom on (b)'s,
+    each clone named $m$; each letter on its panel's extent ticks, the head a
+    `LABEL_GAP` over them."""
+    from port.extensions.combined_figure import LABEL_GAP
+
+    _, figure = _figures(tmp_path)
+    renderer = figure.canvas.get_renderer()
+    gap = LABEL_GAP / 72.0 * figure.dpi
+    slide, clones = figure.axes
+    here, tiles = (ax.get_window_extent(renderer) for ax in (slide, clones))
+    key = clones.get_legend()
+    box = key.get_window_extent(renderer)
+
+    assert slide.get_images(), "(a) is the slide"
+    assert here.width == pytest.approx(here.height, abs=1.0)
+    assert (tiles.width, tiles.height) == pytest.approx(
+        (here.width, here.height), abs=1.0
+    )
+    assert here.x1 < tiles.x0
+    assert tiles.x1 <= box.x0
+    assert box.x1 == pytest.approx(figure.bbox.x1 - gap, abs=1.5)
+    assert box.y0 == pytest.approx(tiles.y0, abs=1.0)
+    assert [t.get_text() for t in key.get_texts()] == ["$m_N$", "$m_1$", "$m_2$"]
+    assert len({round(t.get_window_extent(renderer).x0) for t in key.get_texts()}) == 1
+
+    for text, ax in zip(figure.texts, (slide, clones), strict=True):
+        letter = text.get_window_extent(renderer)
+        ticks = [t.get_window_extent(renderer) for t in ax.get_yticklabels()]
+        assert letter.x0 == pytest.approx(min(t.x0 for t in ticks), abs=1.5)
+        top = max(t.y1 for t in ticks)
+        assert top - 0.5 <= letter.y0 <= top + gap
+
+    highest = max(t.get_window_extent(renderer).y1 for t in figure.texts)
+    assert figure.bbox.y1 - highest == pytest.approx(gap, abs=1.5)

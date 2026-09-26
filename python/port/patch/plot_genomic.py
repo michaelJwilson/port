@@ -300,10 +300,15 @@ def _points(
     )
 
 
+CLONE_GAP = 0.45
+"""The gap row between clones, as a fraction of a track: it holds the next
+clone's statistics line, with white space above and below it (#339)."""
+
+
 def clone_axes(figure: Any, n_pairs: int, per_clone: int) -> list[Any]:
     """`_create_clone_gridspec`'s axes, on a figure the caller owns.
 
-    The same rows -- `per_clone` tracks per clone, a quarter-height gap
+    The same rows -- `per_clone` tracks per clone, a `CLONE_GAP` gap
     between clones, no vertical space -- without the 20 in page or the
     title, which belong to whoever composes the figure.
     """
@@ -313,7 +318,7 @@ def clone_axes(figure: Any, n_pairs: int, per_clone: int) -> list[Any]:
         ratios.extend([1.0] * per_clone)
 
         if pair < n_pairs - 1:
-            ratios.append(0.25)
+            ratios.append(CLONE_GAP)
 
     grid = figure.add_gridspec(len(ratios), 1, height_ratios=ratios, hspace=0)
     rows = [row for row, ratio in enumerate(ratios) if ratio == 1.0]
