@@ -8,12 +8,14 @@ first failure stops the run with that step's exit code.
 | `--gate` (default) | ruff, mypy, every test in no tier or `critical` | 60 s |
 | `--badges` | the judged and drop-in coverage guards, `check_badges` | pre-merge |
 | `--full` | the gate, the badges, then `merge` tests neither guard ran | pre-merge |
-| `--release` | `release` and `oracle` | release |
+| `--release` | `release`, `oracle` and `deprecate` | release |
 | `--figures` | `docs/plots`, drawn locally | on a figure change |
 
 The tiers partition the suite -- `critical`, none, `merge`, `release`,
-at most one per test (`tests/test_marker_discipline.py`) -- so no step runs a
-test another step ran. `--record` writes the guards' measured figures into
+`deprecate`, at most one per test (`tests/test_marker_discipline.py`) -- so
+no step runs a test another step ran. A `deprecate` test is too specific to
+run on every change: it has passed where it was merged, and runs again only
+where its module differs from `--base` (`origin/main`), and at a release. `--record` writes the guards' measured figures into
 `.badges/measurements.json` and regenerates the badges, so the change that
 moves a figure carries it (`CLAUDE.md`: badges are local).
 
@@ -35,20 +37,57 @@ import subprocess
 import sys
 import time
 from collections.abc import Sequence
+from pathlib import Path
 
 WORKERS = 4
 """xdist workers: the host's cores, and 15 GB holds four gate workers."""
 
-GATE = "not release and not oracle and not merge and not benchmark"
+GATE = "not release and not oracle and not merge and not benchmark and not deprecate"
 """Every test in no tier or `critical`. Benchmarks measure, so they run
 serially under `--full`, where pytest-benchmark is not disabled by xdist."""
 
 JUDGED = "not release and end2end"
 DROPIN = "not release and (patch or cnaster)"
-MERGE_REST = "merge and not release and not end2end and not patch and not cnaster"
+"""The guards measure rather than gate, so they read `deprecate` tests too: a
+correspondence test is what makes a replacement compared, however seldom the
+gate runs it, and a guard that dropped it would read the replacement as
+uncompared (#403: the drop-in figure fell 90.57 -> 89.53 without this)."""
+MERGE_REST = "merge and not end2end and not patch and not cnaster"
 """The `merge` tests neither coverage guard runs, so `--full` runs each once."""
 
-RELEASE = "release or oracle"
+RELEASE = "release or oracle or deprecate"
+
+DEPRECATE = "deprecate"
+"""Run only in the test modules a change touches (`_changed_modules`)."""
+
+
+def _changed_modules(base: str) -> list[str]:
+    """Test modules that differ from `base`, committed or not.
+
+    A moved `uv.lock` counts as every module changing: `bug` and `warning`
+    tests pin what `cnaster` does at its locked version, so a pin bump is
+    exactly when a `deprecate` one of them has something new to say.
+    """
+    merge_base = subprocess.run(
+        ["git", "merge-base", "HEAD", base], capture_output=True, text=True, check=False
+    ).stdout.strip()
+    if not merge_base:
+        return []
+    changed = subprocess.run(
+        ["git", "diff", "--name-only", merge_base, "--", "tests/", "uv.lock"],
+        capture_output=True,
+        text=True,
+        check=False,
+    ).stdout.split()
+    if "uv.lock" in changed:
+        changed = [str(path) for path in Path("tests").glob("test_*.py")]
+    return sorted(
+        path
+        for path in changed
+        if path.startswith("tests/test_")
+        and path.endswith(".py")
+        and Path(path).exists()
+    )
 
 
 def _pytest(
@@ -76,6 +115,17 @@ def _steps(
             ("mypy", [sys.executable, "-m", "mypy"], {}),
             ("gate", _pytest(GATE, workers=n), {}),
         ]
+        touched = _changed_modules(arguments.base)
+        if touched:
+            # NB exit code 5 is "no tests collected": no touched module holds
+            #    a `deprecate` test, which is the common case and not a failure.
+            steps.append(
+                (
+                    "deprecate, touched modules",
+                    [*_pytest(DEPRECATE, workers=1), *touched],
+                    {"PORT_CI_EMPTY_OK": "1"},
+                )
+            )
 
     if arguments.badges or arguments.full:
         unchanged = _unchanged() if not arguments.force else set()
@@ -170,6 +220,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument(
         "--force", action="store_true", help="re-measure unchanged guards"
     )
+    parser.add_argument(
+        "--base", default="origin/main", help="what `deprecate` tests diff against"
+    )
     parser.add_argument("--install", action="store_true", help="set the merge driver")
     parser.add_argument("-n", "--workers", type=int, default=WORKERS)
     arguments = parser.parse_args(argv)
@@ -195,6 +248,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         code = subprocess.run(
             command, env={**os.environ, **environment}, check=False
         ).returncode
+        if code == 5 and environment.get("PORT_CI_EMPTY_OK"):
+            code = 0
         print(f"[tests.ci] {name}: {time.perf_counter() - began:.1f} s", flush=True)
 
         if code:

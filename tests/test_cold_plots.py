@@ -70,6 +70,9 @@ def written(
 
 
 @pytest.mark.smoke
+# NB one figure's form (#403): passed where it merged; runs again where this
+#    module or the lock changes, and at a release.
+@pytest.mark.deprecate
 def test_the_adjacency_plot_renders(planted: CoreInferenceTruth) -> None:
     """`plot_adjacency` draws the graph the label solver runs on."""
     from cnaster.adjacency import multislice_adjacency
@@ -84,6 +87,9 @@ def test_the_adjacency_plot_renders(planted: CoreInferenceTruth) -> None:
 
 
 @pytest.mark.smoke
+# NB one figure's form (#403): passed where it merged; runs again where this
+#    module or the lock changes, and at a release.
+@pytest.mark.deprecate
 def test_the_gene_and_snp_spatial_plot_renders(
     written: tuple[Any, Any], tmp_path: Path
 ) -> None:
@@ -115,6 +121,9 @@ def test_the_gene_and_snp_spatial_plot_renders(
 
 
 @pytest.mark.smoke
+# NB one figure's form (#403): passed where it merged; runs again where this
+#    module or the lock changes, and at a release.
+@pytest.mark.deprecate
 def test_the_recombination_rate_plot_renders(written: tuple[Any, Any]) -> None:
     """`plot_recombination_rates` draws a rate the reference reader does not give it.
 
@@ -140,6 +149,9 @@ def test_the_recombination_rate_plot_renders(written: tuple[Any, Any]) -> None:
 
 
 @pytest.mark.smoke
+# NB one figure's form (#403): passed where it merged; runs again where this
+#    module or the lock changes, and at a release.
+@pytest.mark.deprecate
 def test_the_copy_state_plot_renders(planted: CoreInferenceTruth) -> None:
     """`plot_copy_states` draws a per-state table, in the shape the run writes.
 
@@ -159,6 +171,9 @@ def test_the_copy_state_plot_renders(planted: CoreInferenceTruth) -> None:
 
 
 @pytest.mark.smoke
+# NB one figure's form (#403): passed where it merged; runs again where this
+#    module or the lock changes, and at a release.
+@pytest.mark.deprecate
 def test_the_he_image_loads_and_renders(
     written: tuple[Any, Any], planted: CoreInferenceTruth
 ) -> None:
