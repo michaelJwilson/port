@@ -133,8 +133,8 @@ SWAPS: tuple[Swap, ...] = (
     Swap(
         "cnaster.spatial",
         "construct_multislice_lattice_adjacency",
-        "port.patch.spatial:construct_multislice_lattice_adjacency",
-        190,
+        "port.patch.spatial:lattice_multislice_adjacency",
+        417,
     ),
     Swap(
         "cnaster.spatial",
