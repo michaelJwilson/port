@@ -49,10 +49,10 @@ real referees, they just do not establish that `cnaster` computed the right
 answer on an instance anyone ran.
 """
 
-SCALE = frozenset({"merge", "release", "benchmark"})
+SCALE = frozenset({"merge", "release", "deprecate", "benchmark"})
 """Markers that say a test is not fast. Disqualifying for the early gate."""
 
-TIERS = frozenset({"critical", "merge", "release"})
+TIERS = frozenset({"critical", "merge", "release", "deprecate"})
 """When a test runs (#403). At most one; none is the gate."""
 
 

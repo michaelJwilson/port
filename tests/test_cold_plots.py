@@ -61,6 +61,9 @@ def written(
 
 
 @pytest.mark.smoke
+# NB one figure's form (#403): passed where it merged; runs again where this
+#    module or the lock changes, and at a release.
+@pytest.mark.deprecate
 def test_the_he_image_loads_and_renders(
     written: tuple[Any, Any], planted: CoreInferenceTruth
 ) -> None:

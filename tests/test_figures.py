@@ -28,6 +28,9 @@ SAMPLES = 4
 
 
 @pytest.mark.smoke
+# NB one figure's form (#403): passed where it merged; runs again where this
+#    module or the lock changes, and at a release.
+@pytest.mark.deprecate
 def test_the_smoother_fills_where_there_is_no_coverage() -> None:
     """`nan_gaussian_filter1d` fills rather than propagates.
 
@@ -45,6 +48,9 @@ def test_the_smoother_fills_where_there_is_no_coverage() -> None:
 
 
 @pytest.mark.smoke
+# NB one figure's form (#403): passed where it merged; runs again where this
+#    module or the lock changes, and at a release.
+@pytest.mark.deprecate
 def test_the_validation_metrics_load_and_render(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
