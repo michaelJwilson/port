@@ -13,3 +13,5 @@ clone-bin; `state_ari` the continuous state before integer decoding;
 
 | commit | date | fixture | fixture_hash | args | clone_ari | clone_ari_int | copy_ari | state_ari | wall_s | peak_gb |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| c84aa06 | 2026-09-26 | dev | 07b82e92 | --states 8 --outer 1 --iterations 3 -- | 0.7927 | 0.9242 | 0.9982 | 0.4298 | 44.9 | 5.25 |
+| c84aa06 | 2026-09-26 | dev | 07b82e92 | --states 8 --outer 1 --iterations 3 -- --sal | 0.9795 | 0.9795 | 0.9971 | 0.2183 | 25.9 | 3.30 |
