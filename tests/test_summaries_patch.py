@@ -16,10 +16,7 @@ from typing import Any
 
 import pytest
 
-from tests.test_load_input_data_patch import (
-    gate_config,  # noqa: F401  -- used by name, and it needs the one below
-    planted_instance,  # noqa: F401  -- `gate_config` resolves it in this module
-)
+from tests.run_config import PlantedInstance
 
 pytestmark = pytest.mark.preprocessing
 
@@ -34,8 +31,8 @@ where the first mostly does not.
 
 @pytest.fixture(scope="module")
 def blocked(
-    planted_instance: tuple[Any, Any, Any, Any],  # noqa: F811
-    gate_config: Any,  # noqa: F811
+    planted_instance: PlantedInstance,
+    gate_config: Any,
 ) -> tuple[Any, Any]:
     """A table carrying both block columns, and the instance it came from."""
     from cnaster.io import load_input_data

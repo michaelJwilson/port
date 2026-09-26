@@ -54,7 +54,7 @@ VALIDATED: dict[str, str] = {
         "::test_the_field_recovers_the_planted_clone_assignment"
     ),
     "hmm_nophasing:compute_logmu_shifts": (
-        "tests/test_logmu_shifts.py::test_matches_the_vectorized_reference"
+        "tests/test_logmu_shift.py::test_it_reproduces_cnasters_loop"
     ),
     "hmm_nophasing:forward_lattice": (
         "tests/test_hmm_single_chain.py::test_total_log_likelihood_matches_upstream"
@@ -138,7 +138,7 @@ def _installed_kernels() -> dict[str, str]:
     return kernels
 
 
-@pytest.mark.smoke
+@pytest.mark.infra
 def test_every_compiled_kernel_is_classified() -> None:
     """A kernel is validated or it names the ticket that owns the gap.
 
@@ -159,7 +159,7 @@ def test_every_compiled_kernel_is_classified() -> None:
     )
 
 
-@pytest.mark.smoke
+@pytest.mark.infra
 def test_every_named_validation_test_exists(
     collected_items: list[pytest.Item],
 ) -> None:
@@ -179,7 +179,7 @@ def test_every_named_validation_test_exists(
     assert not missing, f"registry points at tests that do not exist: {missing}"
 
 
-@pytest.mark.smoke
+@pytest.mark.infra
 def test_every_gap_names_a_ticket() -> None:
     """An excuse without a ticket is a decision nobody will revisit."""
     import re
@@ -193,7 +193,7 @@ def test_every_gap_names_a_ticket() -> None:
     assert not unticketed, f"gaps with no ticket: {unticketed}"
 
 
-@pytest.mark.smoke
+@pytest.mark.infra
 def test_the_registry_is_not_empty_and_the_scan_found_kernels() -> None:
     """Each assertion above passes trivially over an empty scan.
 

@@ -18,6 +18,8 @@ rungs report against, so that "the fit-level rung costs X" is a measurement
 rather than an impression.
 """
 
+from collections.abc import Callable
+from functools import partial
 from typing import Any
 
 import numpy as np
@@ -26,7 +28,7 @@ import torch
 from pytest_benchmark.fixture import BenchmarkFixture
 
 from tests.adapters import from_core_inference_truth
-from tests.fixtures import _emission_families, dev_instance
+from tests.fixtures import _emission_families, dev_instance, tiers
 
 GATE_OBS = 200
 """The dev instance's bin axis, reduced. Its `M`, `K` and `S` are untouched."""
@@ -95,48 +97,34 @@ def stress_instance() -> Any:
     return dev_instance()
 
 
+def _cnaster_arm(truth: Any) -> Callable[[], Any]:
+    return partial(_cnaster_emission, _cnaster_inputs(truth))
+
+
+def _upstream_arm(truth: Any) -> Callable[[], Any]:
+    family, observations, covariate = _upstream_inputs(truth)
+    return lambda: family.log_density(observations, covariate)
+
+
 @pytest.mark.benchmark
-def test_cnaster_emission_gate(benchmark: BenchmarkFixture, gate_instance: Any) -> None:
-    """`cnaster`'s two matched families over the reduced dev instance.
-
-    Realized **376 ms** minimum against upstream's 128 ms, a ratio of 2.9.
-    """
-    inputs = _cnaster_inputs(gate_instance)
-    benchmark(_cnaster_emission, inputs)
-
-
-@pytest.mark.benchmark
-def test_upstream_emission_gate(
-    benchmark: BenchmarkFixture, gate_instance: Any
+@pytest.mark.parametrize("size", tiers("gate_instance", "stress_instance"))
+@pytest.mark.parametrize(
+    "arm",
+    [_cnaster_arm, _upstream_arm],
+    ids=["cnaster", "upstream"],
+)
+def test_emission(
+    benchmark: BenchmarkFixture,
+    request: pytest.FixtureRequest,
+    arm: Callable[[Any], Callable[[], Any]],
+    size: str,
 ) -> None:
-    """Upstream's, on the same instance and the same parameters.
+    """`cnaster`'s two matched families against upstream's, same parameters.
 
-    `upstream` rather than `upstream_oracle`: this times the referee, it does
-    not consult it. The agreement claim is #9's, at 2.5e-11.
+    Realized **376 ms** minimum against upstream's 128 ms at the gate, a
+    ratio of 2.9, and **1,977 ms** against 930 ms at the stress size, 2.1.
+    The gap narrows with size, which is the encoder's constant factor being
+    amortized. `upstream` rather than `upstream_oracle`: this times the
+    referee, it does not consult it. The agreement claim is #9's, at 2.5e-11.
     """
-    family, observations, covariate = _upstream_inputs(gate_instance)
-    benchmark(family.log_density, observations, covariate)
-
-
-@pytest.mark.benchmark
-@pytest.mark.release
-def test_cnaster_emission_stress(
-    benchmark: BenchmarkFixture, stress_instance: Any
-) -> None:
-    """The whole dev instance: five times the bins of the gate.
-
-    Realized **1,977 ms** against upstream's 930 ms, a ratio of 2.1. The gap
-    narrows with size, which is the encoder's constant factor being amortized.
-    """
-    inputs = _cnaster_inputs(stress_instance)
-    benchmark(_cnaster_emission, inputs)
-
-
-@pytest.mark.benchmark
-@pytest.mark.release
-def test_upstream_emission_stress(
-    benchmark: BenchmarkFixture, stress_instance: Any
-) -> None:
-    """Upstream's, at the size a ratio may be read at."""
-    family, observations, covariate = _upstream_inputs(stress_instance)
-    benchmark(family.log_density, observations, covariate)
+    benchmark(arm(request.getfixturevalue(size)))

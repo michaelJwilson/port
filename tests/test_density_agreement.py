@@ -59,9 +59,7 @@ def _draws(size: int = 500) -> tuple[np.ndarray, ...]:
 
 @pytest.mark.patch
 def test_the_hmm_and_the_m_step_score_the_same_density() -> None:
-    """What the M step maximizes is what the HMM scores.
-
-    The precondition for #205's step 2: two implementations cannot be made
+    """The precondition for #205's step 2: two implementations cannot be made
     one until they are shown to be one. Also the open half of #9 -- neither
     is designated the referee, so this says they agree without saying which
     would be wrong.

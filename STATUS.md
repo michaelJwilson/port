@@ -1,7 +1,9 @@
 # STATUS
 
-**Nine pull requests have merged and ten are open. Coverage over the whole of
-`cnaster` is 13.82 per cent — 766 of 5,544 statements — on 224 tests.** Every
+**Nine pull requests had merged and ten were open at `9cd81f0`, where coverage
+over the whole of `cnaster` was 13.82 per cent — 766 of 5,544 statements — on
+224 tests.** The current figures are the guards in
+`.badges/measurements.json`. Every
 row below carries the measurement that established it, or says the claim is
 unmeasured. A row reading "landed" with no number is the failure this document
 exists to prevent.

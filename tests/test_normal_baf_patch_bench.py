@@ -11,10 +11,15 @@ function would measure the same difference against a constant offset and take
 a beta-binomial fit per round to do it.
 """
 
+from collections.abc import Callable
+
 import numpy as np
 import pytest
 import scipy.stats
+from port.patch.normal_spot import removal_indicator
 from pytest_benchmark.fixture import BenchmarkFixture
+
+from tests.fixtures import tiers
 
 pytestmark = pytest.mark.preprocessing
 
@@ -73,52 +78,20 @@ def cnaster_indicator(
 
 
 @pytest.mark.benchmark
-def test_the_quantile_inversion_at_the_gate_size(benchmark: BenchmarkFixture) -> None:
-    """`cnaster`'s two `ppf` calls over 40 bins: 1.44 s."""
-    counts, totals = _instance(*GATE)
-
-    benchmark(
-        lambda: cnaster_indicator(counts, totals, ALPHA, BETA, SHIPPED_CONFIDENCE)
-    )
-
-
-@pytest.mark.benchmark
-def test_the_distribution_function_at_the_gate_size(
+@pytest.mark.parametrize("size", tiers(GATE, STRESS))
+@pytest.mark.parametrize(
+    "arm", [cnaster_indicator, removal_indicator], ids=["quantile", "distribution"]
+)
+def test_the_indicator(
     benchmark: BenchmarkFixture,
+    arm: Callable[..., np.ndarray],
+    size: tuple[int, int],
 ) -> None:
-    """The same mask from two `cdf` calls: 95 ms, so **15x**."""
-    from port.patch.normal_spot import removal_indicator
+    """`cnaster`'s two `ppf` calls against the same mask from two `cdf` calls.
 
-    counts, totals = _instance(*GATE)
+    1.44 s against 95 ms over 40 bins, so **15x**. At 400 bins 13.95 s
+    against 919 ms: **15.2x**, and the whole filter 29.4 s, 14.3x.
+    """
+    counts, totals = _instance(*size)
 
-    benchmark(
-        lambda: removal_indicator(counts, totals, ALPHA, BETA, SHIPPED_CONFIDENCE)
-    )
-
-
-@pytest.mark.benchmark
-@pytest.mark.release
-def test_the_quantile_inversion_at_the_stress_size(
-    benchmark: BenchmarkFixture,
-) -> None:
-    """400 bins: 13.95 s, and the filter around it 29.4 s."""
-    counts, totals = _instance(*STRESS)
-
-    benchmark(
-        lambda: cnaster_indicator(counts, totals, ALPHA, BETA, SHIPPED_CONFIDENCE)
-    )
-
-
-@pytest.mark.benchmark
-@pytest.mark.release
-def test_the_distribution_function_at_the_stress_size(
-    benchmark: BenchmarkFixture,
-) -> None:
-    """919 ms against 13.95 s: **15.2x**, and the whole filter 14.3x."""
-    from port.patch.normal_spot import removal_indicator
-
-    counts, totals = _instance(*STRESS)
-
-    benchmark(
-        lambda: removal_indicator(counts, totals, ALPHA, BETA, SHIPPED_CONFIDENCE)
-    )
+    benchmark(arm, counts, totals, ALPHA, BETA, SHIPPED_CONFIDENCE)

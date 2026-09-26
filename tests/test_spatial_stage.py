@@ -18,6 +18,7 @@ import numpy as np
 import pytest
 
 from tests.fixtures import CoreInferenceTruth, core_inference_truth
+from tests.run_config import PlantedInstance
 
 pytestmark = pytest.mark.preprocessing
 
@@ -73,11 +74,9 @@ def _moore_neighbourhood(spot: int, rows: int, columns: int) -> set[int]:
 
 
 @pytest.fixture(scope="module")
-def planted() -> CoreInferenceTruth:
-    """One instance for the module."""
-    return core_inference_truth(
-        n_clones=2, n_states=3, lattice=LATTICE, n_obs=40, n_segments=3, seed=11
-    )
+def planted(planted_instance: PlantedInstance) -> CoreInferenceTruth:
+    """The session's gate instance."""
+    return planted_instance[0]
 
 
 @pytest.fixture(scope="module")

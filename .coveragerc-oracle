@@ -72,6 +72,7 @@ include =
     */snakes_and_ladders/opt/hmm.py
     */snakes_and_ladders/opt/fit.py
     */snakes_and_ladders/ragged.py
+    */snakes_and_ladders/enumeration.py
     */snakes_and_ladders/likelihood/forward_backward.py
     */snakes_and_ladders/likelihood/ragged_rust.py
     */snakes_and_ladders/likelihood/spatio_sequential.py

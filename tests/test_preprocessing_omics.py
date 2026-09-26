@@ -19,18 +19,15 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from tests.test_load_input_data_patch import (
-    gate_config,  # noqa: F401  -- used by name, and it needs the one below
-    planted_instance,  # noqa: F401  -- `gate_config` resolves it in this module
-)
+from tests.run_config import PlantedInstance
 
 pytestmark = pytest.mark.preprocessing
 
 
 @pytest.fixture(scope="module")
 def both_tables(
-    planted_instance: tuple[Any, Any, Any, Any],  # noqa: F811
-    gate_config: Any,  # noqa: F811
+    planted_instance: PlantedInstance,
+    gate_config: Any,
 ) -> tuple[Any, Any]:
     """Both implementations run once on the planted instance."""
     from cnaster.io import load_input_data
@@ -161,8 +158,8 @@ ends. A comparison run only at the shipped threshold would exercise neither.
 
 @pytest.fixture(scope="module")
 def staged(
-    planted_instance: tuple[Any, Any, Any, Any],  # noqa: F811
-    gate_config: Any,  # noqa: F811
+    planted_instance: PlantedInstance,
+    gate_config: Any,
 ) -> tuple[Any, Any, Any]:
     """The loaded instance and its gene-SNP table, once for the module."""
     from cnaster.io import load_input_data
