@@ -203,10 +203,11 @@ full for that reason.
     `smoke` until something outside decides its value.
 *   **Time is money.** Test and build frameworks are justified against a
     time and computational budget.
-*   **Four tiers, at most one per test:** `critical` gates first, no tier
-    is the gate, `merge` runs before a merge, `release` for a release. A
-    test over the gate's cap carries `merge`, over the pre-merge budget
-    `release`. `python -m tests.ci` is the only runner, so a tier it does
+*   **Five tiers, at most one per test:** `critical` gates first, no tier
+    is the gate, `merge` runs before a merge, `release` for a release, and
+    `deprecate` where its module changes. A test over the gate's cap carries
+    `merge`, over the pre-merge budget `release`; one too specific to earn a
+    run on every change, having passed where it merged, `deprecate`. `python -m tests.ci` is the only runner, so a tier it does
     not select is documentation.
 
 A test that cannot say what would have to be wrong for it to fail is not yet
