@@ -7,7 +7,8 @@ name: Figures
 # referee: a matplotlib PDF carries a creation timestamp, so every run differs
 # byte for byte (#103), and nothing here compares them with the previous
 # ones. What this guarantees is that the figures in a pull request are the
-# figures its code draws.
+# figures its code draws. A branch another open pull request is based on is
+# the exception: its figures are uploaded rather than committed (#350).
 
 on:
   pull_request:
@@ -35,6 +36,8 @@ jobs:
       #    else, so no badge or coverage figure is ever written by CI and
       #    `check_badges`' refusal in ci.yml still means what it says.
       contents: write
+      # NB to list the pull requests based on this branch (#350).
+      pull-requests: read
     steps:
       - uses: actions/checkout@v4
         with:
@@ -55,10 +58,29 @@ jobs:
 
       - run: uv run --no-sync python -m tests.realizations --realizations 8 --jobs 1
 
+      # NB a branch another open pull request is based on is not committed
+      #    to (#350): every PDF carries a timestamp (#103), so a commit here
+      #    re-conflicts each child on docs/plots alone. Its figures are
+      #    uploaded instead, and the child's own run commits its figures.
+      - name: Is another pull request stacked on this branch
+        id: stacked
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD: ${{ github.event.pull_request.head.ref }}
+        run: |
+          children=$(gh pr list --repo "$GITHUB_REPOSITORY" --base "$HEAD" --state open --json number --jq 'length')
+          echo "children=$children" >> "$GITHUB_OUTPUT"
+          echo "$children open pull request(s) based on $HEAD"
+
       # NB a pull request from a fork gets a read-only token, so the figures
       #    are uploaded there instead of committed.
       - name: Commit the figures
-        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        # NB never onto a pull request's branch (#403): the figures are drawn
+        #    locally by `python -m tests.ci --figures` and committed by the
+        #    change that moves them, so two open pull requests never both
+        #    carry a regenerated PDF. A dispatched run on `main` still commits.
+        if: github.event_name != 'pull_request'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -73,7 +95,7 @@ jobs:
           git push
 
       - name: Upload the figures
-        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository
+        if: github.event_name == 'pull_request'
         uses: actions/upload-artifact@v4
         with:
           name: figures
@@ -81,3 +103,4 @@ jobs:
             docs/plots/*.pdf
             docs/plots/*.png
             docs/plots/*.npz
+            docs/plots/lattice/*.pdf

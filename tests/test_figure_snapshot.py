@@ -1,4 +1,4 @@
-"""The genomic and spatial figures, pixel for pixel, against a frozen copy (#342).
+"""The genomic, spatial and combined figures, pixel for pixel, against a frozen copy (#342).
 
 Frozen on #341's head, so a change to `port.extensions.combined_figure` that
 is meant to leave the figures alone -- a refactor -- is shown to, rather than
@@ -48,7 +48,11 @@ def _drawn(tmp_path: Path) -> dict[str, np.ndarray]:
     # NB as `cnaster.plot_validation_stats` sets it.
     sns.set_context("paper", font_scale=0.9)
     sns.set_style("ticks")
-    from port.extensions.combined_figure import genomic_figure, spatial_figure
+    from port.extensions.combined_figure import (
+        combined_figure,
+        genomic_figure,
+        spatial_figure,
+    )
 
     from tests.test_combined_figure import _recorded
 
@@ -56,10 +60,12 @@ def _drawn(tmp_path: Path) -> dict[str, np.ndarray]:
     return {
         "genomic": _pixels(genomic_figure(recorded)),
         "spatial": _pixels(spatial_figure(recorded, frame)),
+        "combined": _pixels(combined_figure(recorded, frame)),
     }
 
 
 @pytest.mark.snapshot
+@pytest.mark.merge
 def test_the_figures_are_the_frozen_ones(cnaster_config: None, tmp_path: Path) -> None:
     """Both figures bitwise equal to `tests/data/figures/`: same size, every
     channel of every pixel."""
@@ -76,7 +82,7 @@ def test_the_figures_are_the_frozen_ones(cnaster_config: None, tmp_path: Path) -
 
 
 def main() -> None:
-    """Re-freeze: draw both figures and write them over `tests/data/figures/`."""
+    """Re-freeze: draw the figures and write them over `tests/data/figures/`."""
     import tempfile
 
     import matplotlib.image as mimage

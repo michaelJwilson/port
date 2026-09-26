@@ -5,6 +5,11 @@ the way `tests/test_run_cnaster_round_trip.py` does, runs **`run_cnaster_port`**
 on them, and copies what it wrote into the repository. `--cnaster` runs plain
 `cnaster` instead, for a comparison.
 
+**Two sets.** `docs/plots/` is the dev instance as planted by default;
+`docs/plots/lattice/` is the same genome with `copy_lattice=True`, whose states
+are integer allele copies `(A, B)` (`tests.fixtures.COPY_LATTICE`), so its
+copy-number figures can be read against a truth that is integer (#313).
+
 **CI runs this on every pull request and commits the result** (#296,
 `.github/workflows/figures.yml`), so the figures in a pull request are the
 figures its code draws.
@@ -32,13 +37,14 @@ mpl.use("Agg")
 
 from port.extensions.combined_figure import (
     Recorded,
+    combined_figure,
     genomic_figure,
     page_style,
     recording,
     spatial_figure,
 )
 
-from tests.fixtures import CoreInferenceTruth, dev_instance
+from tests.fixtures import COPY_LATTICE, CoreInferenceTruth, dev_instance
 from tests.he_slide import mock_he, write_he_slide
 from tests.run_config import write_run_cnaster_config
 from tests.test_run_cnaster_round_trip import _run
@@ -48,11 +54,16 @@ from tests.unsegment import unsegment
 PLOTS = Path(__file__).resolve().parent.parent / "docs" / "plots"
 """Where the figures live in the repository."""
 
-STATES = 5
-"""What the run fits, against the ten the dev instance plants.
+LATTICE_PLOTS = PLOTS / "lattice"
+"""Where the copy-lattice set lives."""
 
-Five because ten does not fit: the kernel kills the run at 15 GB (#90). At
-five it completes in 31 s at a peak of 5.89 GB.
+STATES = 8
+"""What the run fits: the eight states each instance uses of those it plants.
+
+The dev instance plants ten states and its clones use eight; the copy-lattice
+instance plants nine and uses eight. At five (#90's figure, set when ten
+did not fit) the five planted amplifications could not be separated and
+chr7's two events were decoded as one state (#313).
 """
 
 
@@ -80,7 +91,7 @@ def _run_port(truth: CoreInferenceTruth, root: Path, **config: object) -> Path:
 def _write_combined(
     recorded: Recorded, truth: CoreInferenceTruth, root: Path, output: Path
 ) -> None:
-    """The genomic and spatial figures, beside the run's own (#309, #339).
+    """The genomic and spatial figures, and both on one page (#309, #339).
 
     The slide is mocked from the planted labels and read back through
     `cnaster.he.get_he_image`, as `run_cnaster` reads one. It is written
@@ -109,6 +120,11 @@ def _write_combined(
             spatial_figure(recorded, frame),
             bbox_inches=None,
         )
+        write_fig(
+            str(plots / "combined.pdf"),
+            combined_figure(recorded, frame),
+            bbox_inches=None,
+        )
 
 
 def main() -> None:
@@ -121,28 +137,33 @@ def main() -> None:
     )
     arguments = parser.parse_args()
 
-    root = Path(tempfile.mkdtemp())
-    truth = dev_instance()
+    sets = (
+        (dev_instance(), PLOTS),
+        (dev_instance(n_states=len(COPY_LATTICE), copy_lattice=True), LATTICE_PLOTS),
+    )
 
-    if arguments.cnaster:
-        output = _run(truth, root, max_iter_outer=1, max_iter=3, n_states=STATES)
-    else:
-        with recording() as recorded:
-            output = _run_port(
-                truth, root, max_iter_outer=1, max_iter=3, n_states=STATES
-            )
+    for truth, destination in sets:
+        root = Path(tempfile.mkdtemp())
 
-        _write_combined(recorded, truth, root, output)
+        if arguments.cnaster:
+            output = _run(truth, root, max_iter_outer=1, max_iter=3, n_states=STATES)
+        else:
+            with recording() as recorded:
+                output = _run_port(
+                    truth, root, max_iter_outer=1, max_iter=3, n_states=STATES
+                )
 
-    PLOTS.mkdir(parents=True, exist_ok=True)
-    for stale in PLOTS.glob("*.pdf"):
-        stale.unlink()
+            _write_combined(recorded, truth, root, output)
 
-    figures = sorted(output.rglob("*.pdf"))
-    for figure in figures:
-        shutil.copy(figure, PLOTS / figure.name)
+        destination.mkdir(parents=True, exist_ok=True)
+        for stale in destination.glob("*.pdf"):
+            stale.unlink()
 
-    print(f"wrote {len(figures)} figures to {PLOTS}")
+        figures = sorted(output.rglob("*.pdf"))
+        for figure in figures:
+            shutil.copy(figure, destination / figure.name)
+
+        print(f"wrote {len(figures)} figures to {destination}")
 
 
 if __name__ == "__main__":

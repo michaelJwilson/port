@@ -110,6 +110,17 @@ def test_every_measurement_carries_the_conditions_that_decided_it() -> None:
             100.0 * patched["patched_lines"] / patched["executed_lines"], abs=0.005
         ), "the percent is not the recorded counts' ratio"
 
+    recovery = recorded.get("recovery")
+
+    if recovery is not None:
+        for key in ("instance", "configuration", "commit", "arms"):
+            assert key in recovery, f"the recovery measurement does not state {key}"
+
+        for arm, values in recovery["arms"].items():
+            assert {"spot_ari", "copy_ari", "flags"} <= set(values), (
+                f"recovery arm {arm} does not state its flags and both indices"
+            )
+
     run = recorded["whole_run"]
 
     for key in ("instance", "commit", "arms"):

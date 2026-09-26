@@ -8,6 +8,8 @@
 [![mem](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/michaelJwilson/port/main/.badges/run-mem.json)](#what-the-badges-mean)
 [![instance](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/michaelJwilson/port/main/.badges/instance.json)](#what-the-badges-mean)
 [![patched](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/michaelJwilson/port/main/.badges/patched.json)](#what-the-badges-mean)
+[![port](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/michaelJwilson/port/main/.badges/recovery-port.json)](#what-the-badges-mean)
+[![sal](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/michaelJwilson/port/main/.badges/recovery-sal.json)](#what-the-badges-mean)
 
 A scientific repository built on
 [`snakes_and_ladders`](https://github.com/michaelJwilson/snakes_and_ladders),
@@ -31,7 +33,7 @@ under `src/`, exposed to Python as `port.oxiport`.
 
 ## What the badges mean
 
-Eight numbers, and each is a claim rather than a decoration.
+Ten numbers, and each is a claim rather than a decoration.
 `.badges/measurements.json` holds every value with the selection, denominator
 and commit that produced it, `python -m tests.badges` derives the badges from
 it, and `tests/test_badges_agree.py` fails when the two disagree -- the same
@@ -67,13 +69,23 @@ default row of `run_cnaster_port` replaces -- for a class, its overridden
 methods (#302). Measured by `python -m tests.patched_share`, not per pull
 request, since it is a whole run; blue, because it asserts nothing.
 
+**`port` and `sal`** are recovery against the planted truth, for
+`run_cnaster_port`'s default and for `--sal`: the adjusted Rand index of the
+fitted clone labels against the planted ones over spots, and, after integer
+decoding, of each clone-bin's phased `(A, B)` against the state the fixture
+painted there. Measured
+by `python -m tests.recovery_audit` on the dev instance at the figures'
+configuration (#313); the instance, configuration and commit are in
+`measurements.json`. Not per pull request, since each is a whole run; blue,
+because the configuration they were read at is not on the badge.
+
 `tests/test_badges_agree.py` is what keeps them together. It refuses a
 recorded ratio that does not name its instance, carry exactly two arms, and
 show both arms exiting 0 -- a ratio from an arm that did not complete is not
 a ratio -- and it refuses a ratio rendered while `instance` still reads `/`.
 
 **The badges are pinned to `main`, so a pull request does not show its own
-figures** -- the eight URLs above all read `/main/.badges/`, and a README
+figures** -- the ten URLs above all read `/main/.badges/`, and a README
 cannot render a branch-relative badge without making `main`'s README wrong.
 CI closes that with a report instead (#271): `tests/badge_report.py` renders
 this branch's guards against its base, delta first, into the job summary and
@@ -177,13 +189,26 @@ in the same change.
 
 ## Checks
 
+CI runs locally, through one entry point (#403). Each step prints its seconds.
+
 ```
-uv run pytest                                          # tests
-uv run ruff check . && uv run ruff format --check .     # lint, format
-uv run mypy                                            # types, --strict
-cargo clippy --all-targets -- -D warnings               # Rust lint
-cargo fmt --check                                       # Rust format
+uv run python -m tests.ci                  # gate: ruff, mypy, critical + untiered tests; <= 60 s
+uv run python -m tests.ci --badges         # judged and drop-in coverage; --record writes them
+uv run python -m tests.ci --full           # gate, badges, then `merge` tests and benchmarks
+uv run python -m tests.ci --release        # `release` and `oracle`
+uv run python -m tests.ci --figures        # redraw docs/plots
+uv run python -m tests.ci --install        # once per clone: the `badges` merge driver
+cargo clippy --all-targets -- -D warnings  # Rust lint
+cargo fmt --check                          # Rust format
 ```
+
+Every test sits in at most one tier -- `critical`, none, `merge`, `release`
+-- and each step selects one, so no step repeats another's tests. The gate
+is `pytest -n 4`; a whole-pipeline test (`xdist_group("pipeline")`) runs one
+at a time, since four exceed 15 GB. Badges are measured and recorded locally
+by the change that moves them. `.gitattributes` sends `.badges/*.json` and
+`docs/plots/*` to the `badges` driver, which keeps the branch's copy on a
+merge; `--badges --record` and `--figures` then regenerate them.
 
 `mypy` reads its paths from `pyproject.toml` (`python/`, `tests/`). The
 compiled extension is typed by the hand-written stub
@@ -195,7 +220,14 @@ compiled extension is typed by the hand-written stub
 ```
 run_cnaster_port config.yaml                 # cnaster's pipeline, port's replacements
 run_cnaster_port --no-patch config.yaml      # the same run, nothing rebound
-run_cnaster_port --no-figures config.yaml    # the replacements that reproduce bitwise
+run_cnaster_port --no-figure-swaps config.yaml  # the replacements that reproduce bitwise
+run_cnaster_port --no-plots config.yaml      # build every figure, write none; for a run whose claim is not a figure
+run_cnaster_port --no-rust config.yaml       # cnaster's numba lattices instead of oxiport's
+run_cnaster_port --sal config.yaml           # snakes_and_ladders routines where port measured a gain
+run_cnaster_port --no-copy-cap config.yaml   # cnaster's integer copy caps, A + B <= 6, whatever the config states
+run_cnaster_port --sample-layout 3,1 config.yaml  # clone spatial plots, one panel per sample
+run_cnaster_port --genomic-colours states config.yaml  # clones_genomic coloured per fitted state, not per integer pair
+run_cnaster_port --copy-likelihood config.yaml  # integer copies re-decoded by the HMM's pseudobulk likelihood
 run_cnaster_port --time-stages config.yaml   # what the replacements cost in the run
 run_cnaster_port --no-outputs config.yaml    # skip the fitted/decoded tables below
 run_cnaster_port --list                      # what would be rebound, and why
@@ -224,7 +256,7 @@ wherever it has been imported, because `run_cnaster` holds its own
 speed claims worth reading. `FIGURE_SWAPS` is a second table that does not:
 lowering the dpi and merging the rasterizing groups writes a different file
 by design (#195). It is **in the default** because it is the largest win
-here, and `--no-figures` is the arm that reproduces bitwise.
+here, and `--no-figure-swaps` is the arm that reproduces bitwise.
 
 Measured at 4,000 x 1,980 x 5, against `--no-patch`:
 
@@ -235,6 +267,53 @@ Measured at 4,000 x 1,980 x 5, against `--no-patch`:
 | `SWAPS` + `FIGURE_SWAPS` | 120.48 s | 3.69 GB |
 
 So the figure swaps are most of the runtime win and all of the memory one.
+
+**`--copy-cap` is on by default** (#313). `cnaster` decodes integer copies
+under `A + B <= 6` and `A, B <= 5` and reads no key that changes them, so a
+planted total of 10 cannot be decoded. `COPY_SWAPS` reads
+`int_copy_num.max_total_copy` and applies it to both caps; a configuration
+without the key decodes exactly as `cnaster` does. The MILP decoder, called
+as `run_cnaster` calls it, returns planted totals of 10 to 12 exactly at a
+stated 12, and none of them at `cnaster`'s 6 (`tests/test_integer_copy_patch.py`).
+
+**Several samples run as is, with shared clones** (#328).
+`tests/multisample.py` places three realizations of one genome side by side,
+with one empty column between them and an integer `sample_label` per spot.
+`run_cnaster_port` recovers the planted clones in every sample at ARI 1.000.
+Spatial edges stay within a sample.
+`port.extensions.multisample.cross_sample_adjacency` is the placeholder for
+edges between samples, and nothing installs it. `--sample-layout 3,1` draws
+the clone spatial plots one panel per sample, each in its own coordinates.
+
+**`--genomic-colours` chooses how `clones_genomic` colours bins** (#333).
+`integer` colours by decoded `(A, B)`, so fitted states that oversample one
+pair share a colour. `states` colours each fitted state separately, with its
+continuous `2mu` and `p` in the legend. Unset, the choice is `cnaster`'s:
+integer copies where the figure has them, states elsewhere.
+
+**`--copy-likelihood` is off by default** (#327). It re-decodes integer
+copies by the HMM's pseudobulk NB/BB likelihood, holding the fitted path, and
+starts from the MILP's answer. On the lattice fixture it decodes 0.794 of
+altered clone-bins exactly, against the MILP's 0.417, and costs 5 s per run
+(`docs/audit-recovery.md`).
+
+**`--rust` is on by default** (#318). It runs `cnaster`'s four
+forward/backward lattices from `port.oxiport`, bitwise `cnaster`'s
+(`tests/test_rust_lattice.py`, and a whole `--no-patch` run reproduced
+artifact by artifact). `cnaster`'s unphased pair is `@njit` without a cache,
+so every process compiled it: 4.1 s and 0.5 s of first call, against 0.5 ms
+from Rust. On the dev instance a default run takes 29.8 s against 36.5 s
+with `--no-rust`. The four kernels are 4.3x to 6.1x faster warm at
+`K = 10`, 10,000 bins and 20 spots, on four cores.
+
+**`--sal` is off by default** (#312). It admits `snakes_and_ladders`
+routines only on `port`'s measurement, and admits one today: the clone
+labelling. That row runs alpha expansion with the Rust minimum cut, then
+`cnaster`'s ICM for its 200-spot floor. On the dev instance it recovers the
+planted clones at ARI 1.000 against the default's 0.919, in 29 s against
+41 s. `port.extensions.sal` lists what was measured and not admitted.
+`docs/audit-recovery.md` carries its recovery against the planted truth at
+four configurations (#313).
 At this instance the emission array is about 0.3 GB against an 11.35 GB
 peak, which says plotting caps this run rather than the emission array --
 a different regime from #90's declared scale, not a contradiction of it.
@@ -285,6 +364,7 @@ not carry, not before.
 | [TICKETS.md](TICKETS.md) | What is filed and not done, grouped by the milestone it serves |
 | [STATUS.md](STATUS.md) | What has landed, with the measurement that established it |
 | [CLAUDE.md](CLAUDE.md) | The rules |
+| [docs/templates/](docs/templates/README.md) | Templates for documents made outside the code: the work-in-flight page (#335) |
 
 `DEV.md`, `INSTALL.md` and `CHANGELOG.md` are added when the content for them
 exists, not ahead of it: `README.md` still carries installation and

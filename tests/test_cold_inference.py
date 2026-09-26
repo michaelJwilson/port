@@ -183,6 +183,7 @@ def test_the_interval_decoder_returns_contiguous_runs() -> None:
 
 @pytest.mark.snapshot
 @pytest.mark.usefixtures("cnaster_config", "cnaster_perf_sink")
+@pytest.mark.merge
 def test_the_mixture_initializer_returns_the_declared_shapes(
     planted: CoreInferenceTruth,
 ) -> None:

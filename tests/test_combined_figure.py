@@ -138,12 +138,14 @@ def _texts(figure: Any) -> list[Any]:
 
 
 @pytest.mark.smoke
+@pytest.mark.merge
 def test_each_figure_is_a_column_wide_with_one_text_size(
     cnaster_config: None, tmp_path: Path
 ) -> None:
-    """`llncs`'s 122 mm wide, the genomic figure its 193 mm tall to 0.005 in,
-    each lettered (a) and (b), and no text over `FONT_SIZE`."""
-    from port.extensions.combined_figure import FONT_SIZE, TEXT_HEIGHT
+    """`llncs`'s 122 mm wide, the genomic figure its 193 mm less
+    `CAPTION_ROOM` tall to 0.005 in, each lettered (a) and (b), and no text
+    over `FONT_SIZE`."""
+    from port.extensions.combined_figure import CAPTION_ROOM, FONT_SIZE, TEXT_HEIGHT
 
     genomic, spatial = _figures(tmp_path)
 
@@ -152,11 +154,14 @@ def test_each_figure_is_a_column_wide_with_one_text_size(
         assert [t.get_text() for t in figure.texts] == ["(a)", "(b)"]
         assert max(t.get_fontsize() for t in _texts(figure)) <= FONT_SIZE
 
-    assert genomic.get_size_inches()[1] == pytest.approx(TEXT_HEIGHT, abs=0.005)
+    assert genomic.get_size_inches()[1] == pytest.approx(
+        TEXT_HEIGHT - CAPTION_ROOM, abs=0.005
+    )
     assert spatial.get_size_inches()[1] < TEXT_HEIGHT / 3
 
 
 @pytest.mark.infra
+@pytest.mark.merge
 def test_each_page_is_written_at_its_size_with_nothing_past_it(
     cnaster_config: None, tmp_path: Path
 ) -> None:
@@ -201,6 +206,7 @@ def test_each_page_is_written_at_its_size_with_nothing_past_it(
 
 
 @pytest.mark.infra
+@pytest.mark.merge
 def test_the_profile_spans_the_tracks_on_one_left_column(
     cnaster_config: None, tmp_path: Path
 ) -> None:
@@ -246,6 +252,7 @@ def test_the_profile_spans_the_tracks_on_one_left_column(
 
 
 @pytest.mark.infra
+@pytest.mark.merge
 def test_the_spatial_panels_are_square_and_keyed_on_the_right_edge(
     cnaster_config: None, tmp_path: Path
 ) -> None:
@@ -323,3 +330,59 @@ def test_the_spatial_labels_are_integer_by_default_or_continuous(
 
     with pytest.raises(ValueError, match="integer"):
         spatial_figure(recorded, frame, labels="decoded")
+
+
+@pytest.mark.merge
+def test_the_combined_page_is_the_two_figures_stacked(
+    cnaster_config: None, tmp_path: Path
+) -> None:
+    """One page, 122 mm by 193 mm to 0.005 in, lettered (a) to (d).
+
+    (a) and (b) sit where the spatial figure puts them, to a pixel, measured
+    from the head: the page is the spatial figure over a genomic one drawn
+    the rest of the height.
+    """
+    import matplotlib.pyplot as plt
+    from port.extensions.combined_figure import (
+        TEXT_HEIGHT,
+        combined_figure,
+        spatial_figure,
+    )
+
+    recorded, frame = _recorded(tmp_path)
+    combined = combined_figure(recorded, frame)
+    spatial = spatial_figure(recorded, frame)
+
+    assert combined.get_size_inches()[0] * 25.4 == pytest.approx(122.0)
+    assert combined.get_size_inches()[1] == pytest.approx(TEXT_HEIGHT, abs=0.005)
+    assert sorted(t.get_text() for t in combined.texts) == ["(a)", "(b)", "(c)", "(d)"]
+
+    placed = combined.get_axes()[-2:]
+    for new, old in zip(placed, spatial.get_axes()[:2], strict=True):
+        here = new.get_window_extent(combined.canvas.get_renderer())
+        there = old.get_window_extent(spatial.canvas.get_renderer())
+        head = combined.bbox.height - spatial.bbox.height
+        np.testing.assert_allclose(
+            (here.x0, here.y0 - head, here.width, here.height),
+            there.bounds,
+            atol=1.0,
+        )
+
+    plt.close(combined)
+    plt.close(spatial)
+
+
+@pytest.mark.analytic
+def test_the_hatch_stripes_are_one_width() -> None:
+    """B's lines are half the hatch's period measured across them, so A's
+    stripes between them are as wide: 2.065 pt at 0.10 in and 35 degrees."""
+    from port.patch.plot_copy_number_profile import (
+        HATCH_ANGLE,
+        HATCH_LINEWIDTH,
+        HATCH_SPACING,
+    )
+
+    period = 72.0 * HATCH_SPACING * np.sin(np.radians(HATCH_ANGLE))
+
+    assert pytest.approx(period - HATCH_LINEWIDTH) == HATCH_LINEWIDTH
+    assert pytest.approx(2.0649, abs=1e-4) == HATCH_LINEWIDTH
