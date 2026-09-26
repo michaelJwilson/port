@@ -21,7 +21,7 @@ four-job rule puts what has no `cnaster` counterpart under `extensions/`.
 ## The conditioning check is upstream's rule, applied here
 
 `CLAUDE.md` asks for functionality to be considered first as something
-upstream already carries. `snakes_and_ladders.opt.fit.parameter_covariance`
+upstream already carries. `sal.opt.fit.parameter_covariance`
 is that thing, and it is **not called**: it takes a `torch` objective and
 differentiates with `torch`, while this differentiates the `jax` objective
 `port.extensions.jax_hmm` supplies, and adapting one to the other would mean
@@ -133,7 +133,7 @@ def observed_information(objective: Any, theta: Any) -> np.ndarray:
     """The Hessian of a **negative** log-likelihood at `theta`.
 
     No sign flip: the objective is a negative log-likelihood by
-    `snakes_and_ladders.opt`'s convention, so its Hessian is the observed
+    `sal.opt`'s convention, so its Hessian is the observed
     Fisher information directly.
 
     `objective` takes one parameter vector and returns a scalar, and is

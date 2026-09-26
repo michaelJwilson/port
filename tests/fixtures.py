@@ -16,20 +16,20 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 import pytest
 import torch
-from snakes_and_ladders.emissions import (
+from sal.emissions import (
     BetaBinomialEmission,
     EmissionFamily,
     NegativeBinomialEmission,
 )
-from snakes_and_ladders.ragged import MINIMUM_LENGTH, Ragged
-from snakes_and_ladders.sim.hmm import (
+from sal.ragged import MINIMUM_LENGTH, Ragged
+from sal.sim.hmm import (
     HmmParams,
     SimulatedHmmDataset,
     simulate_sequences,
 )
 
 if TYPE_CHECKING:
-    from snakes_and_ladders.sim.graph import BoundaryCondition, PottsGraph
+    from sal.sim.graph import BoundaryCondition, PottsGraph
 
 DEFAULT_SEED = 11
 """The seed every builder defaults to, so a bare call is reproducible."""
@@ -791,11 +791,11 @@ def _emission_families(
 
     The identity mapping, stated once so no test re-derives it.
     """
-    from snakes_and_ladders.emissions import (
+    from sal.emissions import (
         BetaBinomialEmission,
         NegativeBinomialEmission,
     )
-    from snakes_and_ladders.sim.count_pairs import IndependentCountPair
+    from sal.sim.count_pairs import IndependentCountPair
 
     return IndependentCountPair(
         NegativeBinomialEmission(
@@ -1778,7 +1778,7 @@ def potts_labels(
         `noise` is negative; or if `shape` has fewer sites than clones, where
         a planted labelling cannot use them all.
     """
-    from snakes_and_ladders.sim.graph import BoundaryCondition, lattice_graph
+    from sal.sim.graph import BoundaryCondition, lattice_graph
 
     if n_clones < 2:
         msg = f"n_clones must be at least two, got {n_clones}"
@@ -1827,15 +1827,15 @@ def enumerate_minimum_energy(fixture: PottsLabels) -> tuple[np.ndarray, float]:
     it visited, and without the true optimum there is no way to tell a good
     search from a lucky one.
 
-    `snakes_and_ladders.enumeration.enumerated_optimum` over the negated
+    `sal.enumeration.enumerated_optimum` over the negated
     energy, which refuses past `MAX_ENUMERABLE_CONFIGURATIONS` rather than
     running for an hour. Its configurations are read reversed, so node zero
     varies fastest and a tie resolves to the first minimiser in that order.
     Returns the labelling and its energy, under upstream's sign convention
     (`energy` is minimised).
     """
-    from snakes_and_ladders.enumeration import enumerated_optimum
-    from snakes_and_ladders.sim.potts import energy
+    from sal.enumeration import enumerated_optimum
+    from sal.sim.potts import energy
 
     graph = _scaled_graph(fixture)
 
@@ -1855,7 +1855,7 @@ def _scaled_graph(fixture: PottsLabels) -> "PottsGraph":
     makes the two score the same objective, and doing it in one place is what
     stops a test folding it twice.
     """
-    from snakes_and_ladders.sim.graph import PottsGraph
+    from sal.sim.graph import PottsGraph
 
     return PottsGraph(
         n_nodes=fixture.graph.n_nodes,

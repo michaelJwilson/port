@@ -1,4 +1,4 @@
-"""`cnaster.icm` refereed by `snakes_and_ladders.search` (#140).
+"""`cnaster.icm` refereed by `sal.search` (#140).
 
 **334 statements at zero: `icm.py` is the largest `cnaster` module no second
 implementation decides a value for.** The code is exercised --
@@ -37,8 +37,8 @@ from tests.adapters import cnaster_icm_labelling, upstream_potts_energy
 from tests.fixtures import PottsLabels, enumerate_minimum_energy, potts_labels
 
 if TYPE_CHECKING:
-    from snakes_and_ladders.search.alpha_expansion import ExpansionResult
-    from snakes_and_ladders.sim.graph import PottsGraph
+    from sal.search.alpha_expansion import ExpansionResult
+    from sal.sim.graph import PottsGraph
 
 BOUND_TOLERANCE = 1e-9
 """Float slack on an inequality between two sums of the same terms.
@@ -56,27 +56,26 @@ def _upstream_graph(fixture: PottsLabels) -> "PottsGraph":
 
 
 def _upstream_icm(fixture: PottsLabels, seed: int = 0) -> tuple[np.ndarray, float]:
-    from snakes_and_ladders.search.alpha_expansion import iterated_conditional_modes
+    from sal.search.icm import iterated_conditional_modes
 
-    labelling, energy = iterated_conditional_modes(
-        _upstream_graph(fixture),
-        fixture.field,
-        fixture.n_clones,
-        np.random.default_rng(seed),
+    result = iterated_conditional_modes(
+        _upstream_graph(fixture), fixture.field, np.random.default_rng(seed)
     )
-    return np.asarray(labelling), float(energy)
+    return np.asarray(result.labelling), float(result.energy)
 
 
 def _upstream_expansion(
     fixture: PottsLabels, start: np.ndarray | None = None
 ) -> "ExpansionResult":
-    from snakes_and_ladders.search.alpha_expansion import alpha_expansion
+    from sal.backend import Backend
+    from sal.search.alpha_expansion import alpha_expansion
 
+    # NB PYTHON was the default before e0aeb19 made it RUST (#410).
     return alpha_expansion(
         _upstream_graph(fixture),
         fixture.field,
-        fixture.n_clones,
         start=None if start is None else np.asarray(start, dtype=np.int64),
+        backend=Backend.PYTHON,
     )
 
 

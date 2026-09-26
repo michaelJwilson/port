@@ -31,7 +31,7 @@ from tests.adapters import CnasterChainInputs, from_negative_binomial_chains
 from tests.fixtures import NegativeBinomialChains, negative_binomial_chains
 
 if TYPE_CHECKING:
-    from snakes_and_ladders.likelihood.forward_backward import ForwardBackward
+    from sal.likelihood.forward_backward import ForwardBackward
 
 TOLERANCE = 1e-9
 """Two `logsumexp` recursions over the same floats, in the same order."""
@@ -88,7 +88,7 @@ def _upstream_forward_backward(
     fixture: NegativeBinomialChains, chain: int
 ) -> "ForwardBackward":
     """Upstream's two passes on one chain of the fixture."""
-    from snakes_and_ladders.likelihood.forward_backward import forward_backward
+    from sal.likelihood.forward_backward import forward_backward
 
     # NB `observations` is `(n_sequences, sequence_length)`, one row per chain,
     #    where `cnaster` takes them concatenated along the observation axis.
@@ -204,8 +204,8 @@ def _upstream_evidence_at(
     upstream from the parameters the fit returned and the evidence is summed
     over the fixture's chains.
     """
-    from snakes_and_ladders.emissions import NegativeBinomialEmission
-    from snakes_and_ladders.likelihood.forward_backward import forward_backward
+    from sal.emissions import NegativeBinomialEmission
+    from sal.likelihood.forward_backward import forward_backward
 
     family = NegativeBinomialEmission(
         torch.as_tensor(1.0 / np.asarray(alphas).ravel(), dtype=torch.float64),
@@ -404,7 +404,7 @@ def _paper_transition_update(
     Rows are the source state here, `cnaster`'s convention rather than the
     paper's column one, so the normalization is over the row.
     """
-    from snakes_and_ladders.likelihood.forward_backward import forward_backward
+    from sal.likelihood.forward_backward import forward_backward
 
     observations = np.asarray(fixture.dataset.observations)
     log_initial = np.log(np.asarray(fixture.dataset.initial, dtype=float))

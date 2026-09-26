@@ -156,7 +156,7 @@ def test_upstream_accepts_the_kernel_and_scores_with_it() -> None:
     """
     import torch
     from cnaster.hmm_nophasing import get_log_transmat
-    from snakes_and_ladders.opt.hmm import forward_log_likelihood_from_density
+    from sal.opt.hmm import forward_log_likelihood_from_density
 
     n_states, length = 3, 24
     rng = np.random.default_rng(5)

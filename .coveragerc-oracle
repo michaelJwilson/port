@@ -64,28 +64,29 @@
 #    prevent.
 data_file = .coverage-oracle
 source =
-    .venv/lib/python3.12/site-packages/snakes_and_ladders
+    .venv/lib/python3.12/site-packages/sal
 
 [report]
 include =
-    */snakes_and_ladders/emissions.py
-    */snakes_and_ladders/opt/hmm.py
-    */snakes_and_ladders/opt/fit.py
-    */snakes_and_ladders/ragged.py
-    */snakes_and_ladders/enumeration.py
-    */snakes_and_ladders/likelihood/forward_backward.py
-    */snakes_and_ladders/likelihood/ragged_rust.py
-    */snakes_and_ladders/likelihood/spatio_sequential.py
-    */snakes_and_ladders/search/spatio_sequential.py
-    */snakes_and_ladders/sim/count_pairs.py
-    */snakes_and_ladders/sim/spatio_sequential.py
-    */snakes_and_ladders/sim/graph.py
-    */snakes_and_ladders/sim/hmm.py
-    */snakes_and_ladders/search/alpha_expansion.py
-    */snakes_and_ladders/opt/emission_mixture.py
-    */snakes_and_ladders/opt/mixture.py
-    */snakes_and_ladders/sim/potts.py
-    */snakes_and_ladders/backend.py
+    */sal/emissions/*
+    */sal/opt/hmm/*
+    */sal/opt/fit.py
+    */sal/ragged.py
+    */sal/enumeration.py
+    */sal/likelihood/forward_backward.py
+    */sal/likelihood/ragged/*
+    */sal/likelihood/spatio_sequential/*
+    */sal/search/spatio_sequential.py
+    */sal/sim/count_pairs/*
+    */sal/sim/spatio_sequential.py
+    */sal/sim/graph.py
+    */sal/sim/hmm.py
+    */sal/search/alpha_expansion.py
+    */sal/search/icm/*
+    */sal/opt/emission_mixture.py
+    */sal/opt/mixture.py
+    */sal/sim/potts.py
+    */sal/backend.py
 # `sim/potts.py` joined on #312's pin bump: `energy`, the Potts referee
 # #246 scores both solvers with, is imported from where it is defined since
 # sal main stopped re-exporting it from `search.alpha_expansion`. The

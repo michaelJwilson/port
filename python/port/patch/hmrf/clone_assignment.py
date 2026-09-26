@@ -47,7 +47,7 @@ optimization is upstream's, could be upstream's, or is `port`'s:
 
 | step | class | why |
 | --- | --- | --- |
-| the fused field, written into a buffer | **could be upstream** | `oxi_snakes_and_ladders.external_field(totals, successes, ..., field)` is this function, in Rust, writing in place. What it cannot take is the per-observation exposure and trials, which is #32's covariate gap |
+| the fused field, written into a buffer | **could be upstream** | `sal.oxisal.external_field(totals, successes, ..., field)` is this function, in Rust, writing in place. What it cannot take is the per-observation exposure and trials, which is #32's covariate gap |
 | one graph across the seam | **exists upstream** | `single_site_sweeps(state, field, offsets, neighbours, couplings, ...)` takes the CSR directly |
 | the hoisted invariants | **`port`** | they are invariants of `cnaster`'s own loop, and upstream has no loop to hoist them out of |
 | the COO triple, built where it is consumed | **`port`** | upstream has no COO form to build; this is `cnaster`'s own round trip removed |

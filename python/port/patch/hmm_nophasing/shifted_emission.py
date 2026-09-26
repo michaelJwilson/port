@@ -90,7 +90,7 @@ import numpy as np
 from cnaster.config import get_global_config
 from cnaster.hmm_nophasing import _bb_logpmf_1d, _nb_logpmf_1d
 from cnaster.hmm_nophasing import hmm_nophasing as UPSTREAM
-from snakes_and_ladders.ragged import Ragged
+from sal.ragged import Ragged
 
 from port.patch.hmm_nophasing.logmu_shift import shifts as logmu_shifts
 from port.patch.plotting.clone_paths import state_vector
@@ -132,7 +132,7 @@ def _clone_major(
     the clone-stacked `X`, `(n_clones * n_obs, 2, 1)`, so one channel walks at
     a stride of two elements. The copy here is the contiguous clone-major
     buffer #234 PR 1 built as `channels_of`; the tiling is checked by
-    `snakes_and_ladders.ragged.Ragged`, which refuses lengths that do not sum
+    `sal.ragged.Ragged`, which refuses lengths that do not sum
     to the rows, rather than re-derived.
     """
     values = np.ascontiguousarray(np.asarray(channel).reshape(-1))

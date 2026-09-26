@@ -27,24 +27,25 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 ORACLE_CONFIG = PROJECT_ROOT / ".coveragerc-oracle"
 
 CORRESPONDENCE: dict[str, tuple[str, ...]] = {
-    "snakes_and_ladders.emissions": ("cnaster.hmm_nophasing", "cnaster.hmm_emission"),
-    "snakes_and_ladders.opt.hmm": ("cnaster.hmm", "cnaster.hmm_nophasing"),
-    "snakes_and_ladders.opt.fit": ("cnaster.integer_copy",),
-    "snakes_and_ladders.ragged": ("cnaster.hmrf_utils",),
-    "snakes_and_ladders.likelihood.ragged_rust": ("cnaster.hmm_nophasing",),
-    "snakes_and_ladders.likelihood.forward_backward": ("cnaster.hmm_nophasing",),
-    "snakes_and_ladders.likelihood.spatio_sequential": ("cnaster.hmrf",),
-    "snakes_and_ladders.search.spatio_sequential": ("cnaster.hmrf",),
-    "snakes_and_ladders.search.alpha_expansion": ("cnaster.icm",),
-    "snakes_and_ladders.enumeration": ("cnaster.icm",),
-    "snakes_and_ladders.sim.potts": ("cnaster.icm",),
-    "snakes_and_ladders.backend": ("cnaster.icm",),
-    "snakes_and_ladders.sim.count_pairs": ("cnaster.hmm_nophasing",),
-    "snakes_and_ladders.sim.spatio_sequential": ("cnaster.hmrf",),
-    "snakes_and_ladders.sim.graph": ("cnaster.hmrf_utils",),
-    "snakes_and_ladders.sim.hmm": ("cnaster.hmm_nophasing",),
-    "snakes_and_ladders.opt.emission_mixture": ("cnaster.hmm_initialize",),
-    "snakes_and_ladders.opt.mixture": ("cnaster.hmm_initialize",),
+    "sal.emissions": ("cnaster.hmm_nophasing", "cnaster.hmm_emission"),
+    "sal.opt.hmm": ("cnaster.hmm", "cnaster.hmm_nophasing"),
+    "sal.opt.fit": ("cnaster.integer_copy",),
+    "sal.ragged": ("cnaster.hmrf_utils",),
+    "sal.likelihood.ragged": ("cnaster.hmm_nophasing",),
+    "sal.likelihood.forward_backward": ("cnaster.hmm_nophasing",),
+    "sal.likelihood.spatio_sequential": ("cnaster.hmrf",),
+    "sal.search.spatio_sequential": ("cnaster.hmrf",),
+    "sal.search.alpha_expansion": ("cnaster.icm",),
+    "sal.search.icm": ("cnaster.icm",),
+    "sal.enumeration": ("cnaster.icm",),
+    "sal.sim.potts": ("cnaster.icm",),
+    "sal.backend": ("cnaster.icm",),
+    "sal.sim.count_pairs": ("cnaster.hmm_nophasing",),
+    "sal.sim.spatio_sequential": ("cnaster.hmrf",),
+    "sal.sim.graph": ("cnaster.hmrf_utils",),
+    "sal.sim.hmm": ("cnaster.hmm_nophasing",),
+    "sal.opt.emission_mixture": ("cnaster.hmm_initialize",),
+    "sal.opt.mixture": ("cnaster.hmm_initialize",),
 }
 """Each declared upstream module, and the `cnaster` code whose claim rests on it.
 
@@ -101,16 +102,20 @@ def _declared_modules() -> set[str]:
         glob = line.strip()
         if not glob:
             continue
-        tail = glob.split("snakes_and_ladders/", 1)[1].removesuffix(".py")
-        declared.add("snakes_and_ladders." + tail.replace("/", "."))
+        tail = glob.split("sal/", 1)[1].removesuffix("/*").removesuffix(".py")
+        declared.add("sal." + tail.replace("/", "."))
     return declared
 
 
 def _upstream_emissions_source() -> str:
-    spec = importlib.util.find_spec("snakes_and_ladders.emissions")
+    spec = importlib.util.find_spec("sal.emissions")
     assert spec is not None
     assert spec.origin is not None
-    return Path(spec.origin).read_text()
+    # NB a package at e0aeb19 (#410): its families are spread
+    #    over the modules beside `__init__.py`.
+    return "\n".join(
+        p.read_text() for p in sorted(Path(spec.origin).parent.glob("*.py"))
+    )
 
 
 @pytest.mark.infra

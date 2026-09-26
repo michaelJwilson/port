@@ -205,7 +205,7 @@ def sal_emission_backend(
     seed: int = 0,
     max_iterations: int = 200,
 ) -> Candidate:
-    """`snakes_and_ladders.opt.emission_mixture`, as a candidate.
+    """`sal.opt.emission_mixture`, as a candidate.
 
     Fits the mixture **in the family the data came from**, so there is no log,
     no standardization and no inverse -- #229's steps 2, 3 and 11 do not exist
@@ -217,8 +217,9 @@ def sal_emission_backend(
     honest behaviour, not a gap to paper over.
     """
     import torch
-    from snakes_and_ladders.emissions import CountPairEmission
-    from snakes_and_ladders.opt.emission_mixture import (
+    from sal.emissions import CountPairEmission
+    from sal.opt.em import EmConfig
+    from sal.opt.emission_mixture import (
         CountPairSeeding,
         expectation_maximization,
         plus_plus_start,
@@ -243,8 +244,13 @@ def sal_emission_backend(
     components = plus_plus_start(observations, n_states, seeding, rng)
     weights = torch.full((n_states,), 1.0 / n_states, dtype=torch.float64)
 
+    # NB the tolerance is the one the keyword form defaulted to before the
+    #    budget moved into `EmConfig` (#410).
     fit = expectation_maximization(
-        observations, weights, components, max_iterations=max_iterations
+        observations,
+        weights,
+        components,
+        EmConfig(max_iterations=max_iterations, tolerance=1e-10),
     )
 
     # NB back into `cnaster`'s parameters, the inverse of
@@ -276,7 +282,7 @@ def sal_emission_backend(
         taus=concentration,
         detail={
             "log_likelihood": fit.log_likelihood,
-            "iterations": fit.iterations,
+            "iterations": fit.termination.iterations,
             "at_boundary": fit.at_boundary,
         },
     )
