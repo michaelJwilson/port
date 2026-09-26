@@ -61,7 +61,16 @@ SAL_ROWS: tuple[SalRow, ...] = (
 - `icm-numba`: the same descent 39 to 61 times faster at stress, within
   31 nats either way per call, and ARI 0.827 end to end, having no floor.
 
-Both wait on #312's R7: a label merge in `snakes_and_ladders`."""
+Both wait on #312's R7: a label merge in `snakes_and_ladders`.
+
+- `icm-argmax-floor` (#410, sal #1121): the `numba` descent from the field's
+  argmax with the floor. Dev instance: clone ARI 1.000, copy ARI 0.9971,
+  wall 22.5 s end to end. Per call at 10,000 spots and ten clones, 0.034 s
+  against the admitted row's 0.124 s under #421 -- 3.7x -- but at a Potts
+  energy 295 nats higher (-19,335 against -19,630); at 1,600 spots and four
+  clones, 0.0049 against 0.0102 s and 54 nats higher. Not admitted: the
+  speed is bought with a worse minimum, and the label step is 2.3 s of the
+  run."""
 
 
 @contextlib.contextmanager
