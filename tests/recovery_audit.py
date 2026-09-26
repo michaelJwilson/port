@@ -70,6 +70,7 @@ class Recovery:
     arm: str
     wall: float
     ari: float
+    """ARI of the fitted clone labels against the planted ones, per spot."""
     n_clones: int
     copy_ari: float
     """ARI of the decoded phased `(A, B)` against the planted states, per clone-bin.
@@ -78,6 +79,13 @@ class Recovery:
     phased (`(2, 1)` and `(1, 2)` are different labels), against the state the
     fixture painted there. ARI needs only the two partitions, so it is defined
     on a fixture whose states are not integer as well as on `copy_lattice`."""
+    ari_integer: float
+    """`ari` after merging fitted clones whose decoded `(A, B)` agree at every
+    bin (#344): clones told apart by the fit and not by their copies are one."""
+    n_integer_clones: int
+    state_ari: float
+    """ARI of the fitted continuous state (`pred_cnv`) against the planted
+    state, per matched clone-bin: `copy_ari` before integer decoding."""
     state_match: float
     mu_error_median: float
     mu_error_mean: float
@@ -89,6 +97,8 @@ class Recovery:
     fitted_mu: list[float]
     fitted_p: list[float]
     peak_gb: float = 0.0
+    bins_scored: float = 1.0
+    """Share of planted clone-bins an output row covers; CalicoST can drop bins."""
     nll_fit: float | None = None
     nll_truth: float | None = None
     candidates: int = 0
@@ -104,17 +114,176 @@ def _match(confusion: np.ndarray) -> dict[int, int]:
     return dict(zip(rows.tolist(), columns.tolist(), strict=True))
 
 
-def score(truth: CoreInferenceTruth, output: Path, arm: str, wall: float) -> Recovery:
-    """Score one finished run's outputs against `truth`."""
-    from sklearn.metrics import adjusted_rand_score
+@dataclass
+class Reading:
+    """One finished run's outputs, on the planted spots and bins.
 
+    What `score` needs from either program: `cnaster` shares one `(mu, p)` per
+    state across clones, CalicoST fits one per clone, and CalicoST's bins need
+    not be the planted ones. A planted bin no output row covers is `-1` in
+    `pred`, `a` and `b`, and is left out of every per-bin figure.
+    """
+
+    labels: np.ndarray
+    """`(n_spots,)` fitted clone per planted spot."""
+    pred: np.ndarray
+    """`(n_bins, n_fitted)` decoded continuous state, folded to `[0, n_states)`."""
+    log_mu: np.ndarray
+    """`(n_states, n_fitted)`."""
+    p_binom: np.ndarray
+    """`(n_states, n_fitted)`."""
+    a: np.ndarray
+    """`(n_bins, n_fitted)` decoded integer A copies."""
+    b: np.ndarray
+    """`(n_bins, n_fitted)` decoded integer B copies."""
+
+
+def _spots(barcodes: pd.Series) -> np.ndarray:
+    spots: np.ndarray = barcodes.str.slice(2, 7).astype(int).to_numpy()
+    return spots
+
+
+def planted_rows(seglevel: pd.DataFrame, truth: CoreInferenceTruth) -> np.ndarray:
+    """The `seglevel` row covering each planted bin's gene, or `-1`.
+
+    `tests/tmp_inputs.py` writes bin `k` of a chromosome as one gene at
+    `k * GENE_SPACING`, so a row covers a planted bin when its `[START, END]`
+    holds that gene's start on the same chromosome. A table with one row per
+    planted bin is read as the planted bins in order.
+    """
+    from tests.tmp_inputs import GENE_SPACING
+
+    n_bins = int(np.sum(truth.lengths))
+
+    if len(seglevel) == n_bins:
+        return np.arange(n_bins)
+
+    chromosome = np.concatenate(
+        [np.full(int(n), c) for c, n in enumerate(truth.lengths, start=1)]
+    )
+    position = np.concatenate([np.arange(int(n)) * GENE_SPACING for n in truth.lengths])
+    found = np.full(n_bins, -1)
+    chrom = seglevel["CHR"].astype(str).str.removeprefix("chr").astype(int).to_numpy()
+    starts, ends = seglevel["START"].to_numpy(), seglevel["END"].to_numpy()
+
+    for row in range(len(seglevel)):
+        covered = (
+            (chromosome == chrom[row])
+            & (position >= starts[row])
+            & (position <= ends[row])
+        )
+        found[covered] = row
+
+    return found
+
+
+def _copies(
+    seglevel: pd.DataFrame, rows: np.ndarray, clones: range
+) -> tuple[np.ndarray, np.ndarray]:
+    a = np.full((rows.size, len(clones)), -1, dtype=np.int64)
+    b = np.full_like(a, -1)
+    kept = rows >= 0
+
+    for clone in clones:
+        if f"clone{clone} A" in seglevel:
+            a[kept, clone] = seglevel[f"clone{clone} A"].to_numpy()[rows[kept]]
+            b[kept, clone] = seglevel[f"clone{clone} B"].to_numpy()[rows[kept]]
+
+    return a, b
+
+
+def read_cnaster(truth: CoreInferenceTruth, output: Path) -> Reading:
+    """A `run_cnaster` or `run_cnaster_port` run's outputs."""
     run = next(output.rglob("rdrbaf_final_nstates*_smp.npz"))
     fit = np.load(run, allow_pickle=True)
     labels = pd.read_csv(run.parent / "clone_labels.tsv", sep="\t", comment="#")
-    spots = labels["barcode"].str.slice(2, 7).astype(int).to_numpy()
     fitted = np.empty(truth.labels.size, dtype=np.int64)
-    fitted[spots] = labels["clone_label"].to_numpy()
+    fitted[_spots(labels["barcode"])] = labels["clone_label"].to_numpy()
+    n_fitted = int(fitted.max()) + 1
 
+    log_mu = np.asarray(fit["new_log_mu"])
+    log_mu = log_mu.reshape(log_mu.shape[0], -1)[:, :1]
+    p_binom = np.asarray(fit["new_p_binom"])
+    p_binom = p_binom.reshape(p_binom.shape[0], -1)[:, :1]
+    n_states = log_mu.shape[0]
+
+    seglevel = pd.read_csv(run.parent / "cnv_seglevel.tsv", sep="\t")
+    rows = planted_rows(seglevel, truth)
+    pred = np.where(
+        rows[:, None] >= 0, np.asarray(fit["pred_cnv"])[rows] % n_states, -1
+    )
+    a, b = _copies(seglevel, rows, range(n_fitted))
+
+    return Reading(
+        labels=fitted,
+        pred=pred,
+        log_mu=np.repeat(log_mu, n_fitted, axis=1),
+        p_binom=np.repeat(p_binom, n_fitted, axis=1),
+        a=a,
+        b=b,
+    )
+
+
+def read_calicost(truth: CoreInferenceTruth, output: Path) -> Reading:
+    """A `run_calicost` run's outputs (#347).
+
+    CalicoST's `clone_labels.tsv` is indexed by `BARCODES`, its fit carries
+    one `(mu, p)` column per clone, and its `cnv_seglevel.tsv` rows are its
+    own bins, which `planted_rows` maps back.
+    """
+    run = next(output.rglob("rdrbaf_final_nstates*_smp.npz"))
+    fit = np.load(run, allow_pickle=True)
+    labels = pd.read_csv(run.parent / "clone_labels.tsv", sep="\t", index_col=0)
+    fitted = np.empty(truth.labels.size, dtype=np.int64)
+    fitted[_spots(labels.index.to_series())] = labels["clone_label"].to_numpy()
+    log_mu = np.asarray(fit["new_log_mu"])
+    n_states, n_fitted = log_mu.shape
+
+    seglevel = pd.read_csv(run.parent / "cnv_seglevel.tsv", sep="\t")
+    rows = planted_rows(seglevel, truth)
+    pred = np.where(
+        rows[:, None] >= 0, np.asarray(fit["pred_cnv"])[rows] % n_states, -1
+    )
+    a, b = _copies(seglevel, rows, range(n_fitted))
+
+    return Reading(
+        labels=fitted,
+        pred=pred,
+        log_mu=log_mu,
+        p_binom=np.asarray(fit["new_p_binom"]),
+        a=a,
+        b=b,
+    )
+
+
+def integer_clones(a: np.ndarray, b: np.ndarray) -> np.ndarray:
+    """Each fitted clone's label after merging clones of one `(A, B)` profile.
+
+    Index `c` holds the smallest clone whose decoded `(A, B)` equals clone
+    `c`'s at every bin (#344), so the normal clone keeps `0`.
+    """
+    merged = np.arange(a.shape[1])
+    seen: dict[bytes, int] = {}
+
+    for clone in range(a.shape[1]):
+        profile = np.stack([a[:, clone], b[:, clone]]).astype(np.int64)
+        merged[clone] = seen.setdefault(profile.tobytes(), clone)
+
+    return merged
+
+
+def score(
+    truth: CoreInferenceTruth,
+    output: Path,
+    arm: str,
+    wall: float,
+    reader: Any = read_cnaster,
+) -> Recovery:
+    """Score one finished run's outputs against `truth`."""
+    from sklearn.metrics import adjusted_rand_score
+
+    reading = reader(truth, output)
+    fitted = reading.labels
     ari = float(adjusted_rand_score(truth.labels, fitted))
 
     n_planted = int(truth.labels.max()) + 1
@@ -123,15 +292,19 @@ def score(truth: CoreInferenceTruth, output: Path, arm: str, wall: float) -> Rec
     np.add.at(overlap, (truth.labels, fitted), 1)
     clone_of = _match(overlap)
 
-    pred = np.asarray(fit["pred_cnv"])
-    mu_fit = np.exp(np.asarray(fit["new_log_mu"]).ravel())
-    p_fit = np.asarray(fit["new_p_binom"]).ravel()
-    n_states = mu_fit.size
+    n_states = reading.log_mu.shape[0]
     mu_true = np.exp(np.asarray(truth.log_mu).ravel())
     p_true = np.asarray(truth.p_binom).ravel()
 
-    planted = np.concatenate([truth.states[c] for c in clone_of])
-    decoded = np.concatenate([pred[:, clone_of[c]] % n_states for c in clone_of])
+    # NB per matched clone-bin, over the planted bins some output row covers.
+    kept = reading.pred >= 0
+    planted = np.concatenate([truth.states[c][kept[:, clone_of[c]]] for c in clone_of])
+    fitted_clone = np.concatenate(
+        [np.full(kept[:, clone_of[c]].sum(), clone_of[c]) for c in clone_of]
+    )
+    decoded = np.concatenate(
+        [reading.pred[kept[:, clone_of[c]], clone_of[c]] for c in clone_of]
+    )
 
     co = np.zeros((mu_true.size, n_states), dtype=np.int64)
     np.add.at(co, (planted, decoded), 1)
@@ -142,27 +315,26 @@ def score(truth: CoreInferenceTruth, output: Path, arm: str, wall: float) -> Rec
         folded: np.ndarray = np.minimum(p, 1.0 - p)
         return folded
 
-    mu_error = np.abs(mu_fit[decoded] - mu_true[planted])
-    baf_error = np.abs(fold(p_fit[decoded]) - fold(p_true[planted]))
+    mu_fit = np.exp(reading.log_mu)
+    mu_error = np.abs(mu_fit[decoded, fitted_clone] - mu_true[planted])
+    baf_error = np.abs(
+        fold(reading.p_binom[decoded, fitted_clone]) - fold(p_true[planted])
+    )
 
-    copies = pd.read_csv(next(run.parent.glob("cnv_seglevel.tsv")), sep="\t")
-    total = np.concatenate(
-        [
-            copies[f"clone{clone_of[c]} A"].to_numpy()
-            + copies[f"clone{clone_of[c]} B"].to_numpy()
-            for c in clone_of
-        ]
-    )
-    phased = np.concatenate(
-        [
-            copies[f"clone{clone_of[c]} A"].to_numpy() * 1_000
-            + copies[f"clone{clone_of[c]} B"].to_numpy()
-            for c in clone_of
-        ]
-    )
-    copy_ari = float(adjusted_rand_score(planted, phased))
+    a = np.concatenate([reading.a[kept[:, clone_of[c]], clone_of[c]] for c in clone_of])
+    b = np.concatenate([reading.b[kept[:, clone_of[c]], clone_of[c]] for c in clone_of])
+    total = a + b
+    copy_ari = float(adjusted_rand_score(planted, a * 1_000 + b))
+    state_ari = float(adjusted_rand_score(planted, decoded))
+    merged = integer_clones(reading.a, reading.b)
+    ari_integer = float(adjusted_rand_score(truth.labels, merged[fitted]))
     expected = np.rint(2.0 * mu_true[planted])
     altered = planted != 0
+    # NB `cnaster` shares one `(mu, p)` per state, so its first column is all
+    #    of it; CalicoST's are per clone, listed clone after clone.
+    shared = np.allclose(reading.log_mu, reading.log_mu[:, :1])
+    listed_mu = mu_fit[:, 0] if shared else mu_fit.T.ravel()
+    listed_p = reading.p_binom[:, 0] if shared else reading.p_binom.T.ravel()
 
     return Recovery(
         arm=arm,
@@ -170,6 +342,9 @@ def score(truth: CoreInferenceTruth, output: Path, arm: str, wall: float) -> Rec
         ari=round(ari, 4),
         n_clones=n_fitted,
         copy_ari=round(copy_ari, 4),
+        ari_integer=round(ari_integer, 4),
+        n_integer_clones=int(np.unique(merged).size),
+        state_ari=round(state_ari, 4),
         state_match=round(state_match, 4),
         mu_error_median=round(float(np.median(mu_error)), 4),
         mu_error_mean=round(float(np.mean(mu_error)), 4),
@@ -182,8 +357,9 @@ def score(truth: CoreInferenceTruth, output: Path, arm: str, wall: float) -> Rec
         copy_error_altered_median=round(
             float(np.median(np.abs(total[altered] - expected[altered]))), 4
         ),
-        fitted_mu=[round(float(m), 4) for m in mu_fit],
-        fitted_p=[round(float(p), 4) for p in p_fit],
+        fitted_mu=[round(float(m), 4) for m in listed_mu],
+        fitted_p=[round(float(p), 4) for p in listed_p],
+        bins_scored=round(float(kept.mean()), 4),
     )
 
 
@@ -286,6 +462,7 @@ def run_arm(
     oracle_normal: bool = False,
     m_step_tol: float | None = None,
     two_pass_normal: bool = False,
+    calicost: bool = False,
 ) -> tuple[Recovery, Path]:
     """Run `run_cnaster_port` with `flags` on `truth`'s inputs, and score it.
 
@@ -295,6 +472,8 @@ def run_arm(
     hard-codes (`hmm_nophasing.py:1007`, #30); `hmm.em_ftol` is not read there.
     `two_pass_normal` runs `port.sandbox.normal_candidates.two_pass`: the
     candidates of the scored run are the first run's fitted normal clone.
+    `calicost` runs `run_calicost` on the same configuration instead, with
+    `flags` passed to it (#347); the `cnaster` hooks above do not apply.
     """
     import cnaster.scripts.run_cnaster as pipeline
     import port.patch.hmrf as patch
@@ -326,6 +505,31 @@ def run_arm(
             document[section][name] = value
 
         config.write_text(yaml.safe_dump(document))
+
+    if calicost:
+        from port.scripts.run_calicost import main as run_calicost
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            started = time.perf_counter()
+            run_calicost([str(config), *flags])
+            wall = time.perf_counter() - started
+
+        output = root / "output_calicost"
+        arm = " ".join(["calicost", *flags])
+        recovery = score(truth, output, arm, wall, read_calicost)
+        # NB CalicoST's normal spots (`calicost_main.py:115-126`): the
+        #    near-diploid BAF clone's low-variance share. The file holds
+        #    positions in CalicoST's spot order, despite its name, which is
+        #    the order of `clone_labels.tsv`.
+        listed = next(output.rglob("normal_candidate_barcodes.txt"))
+        positions = pd.read_csv(listed, header=None)[0].to_numpy()
+        order = pd.read_csv(listed.parent / "clone_labels.tsv", sep="\t", index_col=0)
+        used = np.zeros(truth.labels.size, dtype=bool)
+        used[_spots(order.index.to_series().iloc[positions])] = True
+        recovery.candidates = int(used.sum())
+        recovery.candidates_tumor = int((used & (truth.labels != 0)).sum())
+        return recovery, output
 
     # NB `port`'s `run_core_inference`, which the default shift installs, so
     #    what is kept is the pinned result integer copy is handed.
@@ -441,7 +645,9 @@ def main() -> None:
     mpl.use("Agg")
 
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--instance", default="dev", choices=["critical", "dev"])
+    parser.add_argument(
+        "--instance", default="dev", choices=["calicost", "critical", "dev"]
+    )
     parser.add_argument("--states", type=int, default=8)
     parser.add_argument("--outer", type=int, default=1)
     parser.add_argument("--iterations", type=int, default=3)
@@ -479,6 +685,11 @@ def main() -> None:
         action="store_true",
         help="candidates from a first run's fitted normal clone (port.sandbox, #320)",
     )
+    parser.add_argument(
+        "--calicost",
+        action="store_true",
+        help="run run_calicost on the same inputs; flags go to it (#347)",
+    )
     parser.add_argument("flags", nargs=argparse.REMAINDER)
     arguments = parser.parse_args()
 
@@ -508,6 +719,7 @@ def main() -> None:
         oracle_normal=arguments.oracle_normal,
         m_step_tol=arguments.m_step_tol,
         two_pass_normal=arguments.two_pass_normal,
+        calicost=arguments.calicost,
     )
     import resource
 

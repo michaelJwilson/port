@@ -117,8 +117,8 @@ def test_every_measurement_carries_the_conditions_that_decided_it() -> None:
             assert key in recovery, f"the recovery measurement does not state {key}"
 
         for arm, values in recovery["arms"].items():
-            assert {"spot_ari", "copy_ari", "flags"} <= set(values), (
-                f"recovery arm {arm} does not state its flags and both indices"
+            assert {"ari_integer", "copy_ari", "flags"} <= set(values), (
+                f"recovery arm {arm} does not state its flags and both integer indices"
             )
 
     run = recorded["whole_run"]

@@ -70,10 +70,12 @@ methods (#302). Measured by `python -m tests.patched_share`, not per pull
 request, since it is a whole run; blue, because it asserts nothing.
 
 **`port` and `sal`** are recovery against the planted truth, for
-`run_cnaster_port`'s default and for `--sal`: the adjusted Rand index of the
-fitted clone labels against the planted ones over spots, and, after integer
-decoding, of each clone-bin's phased `(A, B)` against the state the fixture
-painted there. Measured
+`run_cnaster_port`'s default and for `--sal`, both on the integer decode: the
+adjusted Rand index of the fitted clone labels against the planted ones over
+spots, after merging clones of one decoded `(A, B)` profile (#344), and of
+each clone-bin's phased `(A, B)` against the state the fixture painted there.
+The continuous indices, before merging and of the fitted state, are recorded
+beside them in `measurements.json`. Measured
 by `python -m tests.recovery_audit` on the dev instance at the figures'
 configuration (#313); the instance, configuration and commit are in
 `measurements.json`. Not per pull request, since each is a whole run; blue,
@@ -231,6 +233,8 @@ run_cnaster_port --sample-layout 3,1 config.yaml  # clone spatial plots, one pan
 run_cnaster_port --genomic-colours states config.yaml  # clones_genomic coloured per fitted state, not per integer pair
 run_cnaster_port --copy-likelihood config.yaml  # integer copies re-decoded by the HMM's pseudobulk likelihood
 run_cnaster_port --time-stages config.yaml   # what the replacements cost in the run
+run_cnaster_port --floor-merge --refinement-mask config.yaml  # #348's clone patches, opt-in; --no-distinct-init drops the third
+run_calicost config.yaml                     # CalicoST on the same fixture files, at port's configuration
 run_cnaster_port --no-outputs config.yaml    # skip the fitted/decoded tables below
 run_cnaster_port --list                      # what would be rebound, and why
 run_cnaster_port --audit-config config.yaml # what the config states that cnaster does not use (#324)
@@ -317,6 +321,26 @@ four configurations (#313).
 At this instance the emission array is about 0.3 GB against an 11.35 GB
 peak, which says plotting caps this run rather than the emission array --
 a different regime from #90's declared scale, not a contradiction of it.
+
+**Three clone-assignment patches, one on by default** (#348). On
+`tests.fixtures.calicost_instance`, `cnaster` ends with one clone (ARI 0.000):
+`run_cnaster.py:1105` drops the read-depth refinement's allowed-clone mask, and
+`icm_sweep_deque` then moves every clone under 200 spots at random into the one
+that reached 200. `--floor-merge` keeps the floor but merges the smallest clone
+first, into each spot's best remaining clone. `--refinement-mask` passes the
+mask. `--distinct-init` stops `gmm_init` keeping near-duplicate normal
+components as separate states. With all three on, the run recovers clone ARI
+0.774 (1.000 integer) and copy-state ARI 0.997. The floor merge alone removes
+the collapse. `--floor-merge` and `--refinement-mask` are opt-in: each alone
+splits #338's three-sample instance, 2 planted clones into 6 fitted.
+`--distinct-init` is on by default.
+
+**`run_calicost`** (#347) translates the same YAML and runs CalicoST in-process
+on the same files, into `<output_dir>_calicost`. `--align` (the default)
+replaces the CalicoST constants that have a `cnaster` counterpart;
+`--no-align` keeps CalicoST's own. It refuses the initial-clone layout on which
+CalicoST's `rectangle_initialize_initial_clone` never returns (`cnaster` #248).
+`python -m tests.recovery_audit --calicost` scores it with port's scorer.
 
 `cnaster` appends a fit record to `cnaster.perf` in the repository root on
 every run. It is **not tracked** (#222): nothing reads it, no test

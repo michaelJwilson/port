@@ -134,6 +134,7 @@ def expansion_then_floor(
     from port.patch.icm import alpha_expansion as sal
     from port.patch.icm.interface import icm_sweep
 
+    # NB a mask is already in `field`; the ICM's floor is what reads it.
     sal.alpha_expansion_sweep(field, graph, assignment, beta, backend=Backend.RUST)
 
     return icm_sweep(field, graph, assignment, beta, **knobs)
@@ -149,6 +150,7 @@ def sal_icm_sweep(
     epsilon: float = 0.0,
     min_clone_spots: int = 200,
     cost_zeropoint: float = 0.0,
+    onehot_allowed_clones: Any = None,
 ) -> Any:
     """`icm_sweep`'s signature, upstream's single-site descent in `numba`.
 
@@ -165,7 +167,7 @@ def sal_icm_sweep(
     same reason -- including `min_clone_spots`: the merge below 200 spots is
     `cnaster`'s, not the descent's.
     """
-    del tol, epsilon, min_clone_spots, cost_zeropoint
+    del tol, epsilon, min_clone_spots, cost_zeropoint, onehot_allowed_clones
 
     import numpy as np
     from snakes_and_ladders.backend import Backend

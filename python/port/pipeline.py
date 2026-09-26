@@ -53,6 +53,7 @@ __all__ = [
     "FIGURE_SWAPS",
     "NUMERIC_SWAPS",
     "PLOT_OFF_SWAPS",
+    "REFINEMENT_SWAPS",
     "SHIFT_SWAPS",
     "SWAPS",
     "Site",
@@ -347,6 +348,35 @@ the decode is `cnaster`'s, bitwise (`tests/test_integer_copy_patch.py`); where
 it states one the output changes, which `SWAPS` promises never to do.
 `run_cnaster_port` installs it unless `--no-copy-cap` is given, and
 `--no-patch` leaves it out with the rest.
+"""
+
+
+REFINEMENT_SWAPS: tuple[Swap, ...] = (
+    Swap(
+        "cnaster.spatial",
+        "initialize_rdr_clone_refininement",
+        "port.patch.hmrf.refinement:initialize_rdr_clone_refininement",
+        348,
+    ),
+)
+"""The read-depth refinement kept inside each BAF clone, as `cnaster` intends.
+
+`cnaster` builds the mask of which sub-clones each spot may take and drops
+it before the HMRF (`run_cnaster.py:1105`), so `icm_sweep_deque`'s 200-spot
+floor reassigns spots across BAF clones at random: on `calicost_instance` it
+merged all 16 sub-clones into one (ARI 0.000). The row keeps the mask;
+`port.patch.hmrf.clone_assignment` applies it while the problem is the one it
+was built for (`port.patch.hmrf.refinement`).
+
+**Its own table, and on by default**, because the clones change.
+`run_cnaster_port` installs it unless `--no-refinement-mask` is given, and
+`--no-patch` leaves it out with the rest.
+
+`--floor-merge`, also on by default, is the second half and needs no row:
+`port.patch.icm.floor.floor_merge()` makes `pipeline_clone_assignment` (in
+`SWAPS`) meet the clone-size floor smallest first, into each spot's best
+clone, at `hmrf.min_spots_per_clone`, instead of the sweep's all-at-once
+random reassignment at a fixed 200. It holds with or without the mask.
 """
 
 

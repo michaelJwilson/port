@@ -175,13 +175,21 @@ def _installed() -> set[str]:
         COPY_SWAPS,
         FIGURE_SWAPS,
         NUMERIC_SWAPS,
+        REFINEMENT_SWAPS,
         SHIFT_SWAPS,
         SWAPS,
     )
 
     reached = set()
 
-    for table in (SWAPS, NUMERIC_SWAPS, FIGURE_SWAPS, SHIFT_SWAPS, COPY_SWAPS):
+    for table in (
+        SWAPS,
+        NUMERIC_SWAPS,
+        FIGURE_SWAPS,
+        SHIFT_SWAPS,
+        COPY_SWAPS,
+        REFINEMENT_SWAPS,
+    ):
         for swap in table:
             module_name, _, attribute = swap.replacement.partition(":")
 

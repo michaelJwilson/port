@@ -971,6 +971,37 @@ def clone_bands(
     return labels
 
 
+def clone_quadrants(
+    rows: int, columns: int, n_clones: int, *, normal_clone: bool = True
+) -> np.ndarray:
+    """Clone label per spot: an axis-aligned `p x p` grid of rectangles (#347).
+
+    `p = ceil(sqrt(n_clones))`, block `b` holding clone `b % n_clones`, the
+    layout CalicoST's `rectangle_initialize_initial_clone` draws. Clone 0's
+    block is the top-left, widened to `sqrt(NORMAL_SHARE)` of each side so
+    it holds at least `NORMAL_SHARE` of the spots; the other splits are even.
+    Every clone is a rectangle, and so is the union of two side-adjacent
+    ones, which is what keeps CalicoST's initializer off its
+    non-terminating case (`port.scripts.run_calicost.terminating`).
+    """
+    p = int(np.ceil(np.sqrt(n_clones)))
+    first = np.sqrt(NORMAL_SHARE) if normal_clone and n_clones > 1 else 1.0 / p
+
+    def cuts(extent: int) -> np.ndarray:
+        rest = np.linspace(first, 1.0, p)[1:-1] if p > 2 else np.array([])
+        edges = np.concatenate(([first], rest))[: p - 1] if p > 1 else np.array([])
+        return np.rint(edges * extent).astype(int)
+
+    row = np.arange(rows * columns) // columns
+    column = np.arange(rows * columns) % columns
+    block = np.searchsorted(cuts(rows), row, side="right") * p + np.searchsorted(
+        cuts(columns), column, side="right"
+    )
+    labels: np.ndarray = (block % n_clones).astype(np.int64)
+
+    return labels
+
+
 def balanced_clone(truth: CoreInferenceTruth) -> int:
     """Which clone the fixture planted at the balanced state in most bins."""
     return int(
@@ -1042,8 +1073,9 @@ def core_inference_truth(
     Parameters
     ----------
     labelling : str
-        How spots are labelled with clones. `"bands"`, the only one, lays
-        them in row bands.
+        How spots are labelled with clones. `"bands"` lays them in row
+        bands, the default; `"quadrants"` in an axis-aligned grid of
+        rectangles (`clone_quadrants`, #347).
     copy_lattice : bool
         Plant integer allele copies, `COPY_LATTICE`, instead of the default
         grid of `mu` in `[1.5, 5]` and `p` in `[0.58, 0.88]`. The default grid
@@ -1131,6 +1163,8 @@ def core_inference_truth(
 
     if labelling == "bands":
         labels = clone_bands(rows, columns, n_clones, normal_clone=normal_clone)
+    elif labelling == "quadrants":
+        labels = clone_quadrants(rows, columns, n_clones, normal_clone=normal_clone)
     else:
         msg = f"unknown labelling {labelling!r}"
         raise ValueError(msg)
@@ -1363,6 +1397,45 @@ def dev_instance(**overrides: object) -> CoreInferenceTruth:
         "lattice": (40, 40),
         "n_obs": 1_000,
         "n_segments": 10,
+    }
+    settings.update(overrides)
+    return core_inference_truth(**settings)  # type: ignore[arg-type]
+
+
+def calicost_instance(**overrides: object) -> CoreInferenceTruth:
+    """The instance `run_calicost` is compared with `port` on (#347).
+
+    **Size:**
+
+    | | |
+    | --- | --- |
+    | spots | 1,600, a `40 x 40` square lattice |
+    | clones | 4, planted as quadrants: 484 (normal), 396, 396, 324 spots |
+    | bins | 1,000 over 10 ragged chromosomes (69 to 182 bins) |
+    | states | 10 planted, 8 of them used; `mu` 1 to 5, `p` 0.5 to 0.88 |
+    | altered bins | 0, 67, 92 and 64 of 1,000 per clone |
+    | seed | 11 |
+
+    That is `dev_instance` with one change, the spatial layout: the genome,
+    the states and every clone's path are its own, drawn from the same
+    stream. Only which spot carries which clone differs, and so the clone
+    sizes (dev's bands are 480, 400, 360, 360).
+
+    **Why the layout changes.** CalicoST splits each BAF clone by read depth
+    from an initial layout of `ceil(sqrt(n_clones_rdr))^2` rectangles, and at
+    `n_clones_rdr = 4` its retry loop cannot exit when one holds under 5 per
+    cent of the clone's spots (`port.scripts.run_calicost.terminating`). The
+    dev instance's row bands leave BAF clones on which it does not. Planted
+    as rectangles, the BAF clones are rectangles too, and the comparison with
+    `port` runs at `n_clones_rdr = 4`.
+    """
+    settings: dict[str, object] = {
+        "n_clones": 4,
+        "n_states": 10,
+        "lattice": (40, 40),
+        "n_obs": 1_000,
+        "n_segments": 10,
+        "labelling": "quadrants",
     }
     settings.update(overrides)
     return core_inference_truth(**settings)  # type: ignore[arg-type]

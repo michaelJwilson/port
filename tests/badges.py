@@ -195,11 +195,13 @@ def _patched_badge(record: dict[str, Any] | None) -> Badge:
 def _recovery_badge(arm: str, record: dict[str, Any] | None) -> Badge:
     """Clone and copy-state recovery against the planted truth, one arm.
 
-    Two adjusted Rand indices against the fixture that generated the data:
-    clone labels over spots, and the decoded phased integer copies over
-    clone-bins against the painted states. Blue: the instance and
-    configuration they were read at are in `measurements.json`, and a badge
-    has no room for them.
+    Two adjusted Rand indices against the fixture that generated the data,
+    both on the integer decode: the fitted clone labels over spots after
+    merging clones of one decoded `(A, B)` profile (#344), and each matched
+    clone-bin's decoded `(A, B)` against the state the fixture painted there.
+    The continuous indices are recorded beside them, not shown. Blue: the instance and configuration
+    they were read at are in `measurements.json`, and a badge has no room
+    for them.
     """
     name = f"recovery-{arm}"
     values = (record or {}).get("arms", {}).get(arm)
@@ -210,7 +212,7 @@ def _recovery_badge(arm: str, record: dict[str, Any] | None) -> Badge:
     return Badge(
         name,
         arm,
-        f"ARI spots {values['spot_ari']:.3f} / copies {values['copy_ari']:.3f}",
+        f"ARI clones {values['ari_integer']:.3f} / copies {values['copy_ari']:.3f}",
         "blue",
     )
 
