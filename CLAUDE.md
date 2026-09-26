@@ -232,6 +232,27 @@ a test.
 *   Flag any proposed dependency with $<1,000$ GitHub stars (or equivalent
     ecosystem metric).
 
+## API Conventions
+*   **One name, one meaning, one sign.** `energy` is minimized; maximized
+    quantities are `log_*`. No name is reused for another quantity or sign.
+*   **Names come from the reference that owns the concept:** `cnaster`'s
+    for the application, `snakes_and_ladders`' for what is not application
+    specific. `port.extensions.vocabulary` lists them and the words they
+    retire.
+*   **A drop-in keeps `cnaster`'s signature.** Rebinding a name is how it
+    installs, so the conventions govern what `port` owns, not what it
+    replaces.
+*   **Match the sibling.** A new entry point copies its nearest sibling's
+    arguments, order and result; where the sibling is wrong, fix both or
+    ticket it.
+*   **One result type per concept,** carrying `snakes_and_ladders`'
+    required `Termination`. Exhaustion is a termination, never a warning,
+    exception or silence.
+*   **Meaning by type, not by value.** Two readings of an input are two
+    types.
+*   **NumPy at the boundary;** tensors only behind a `torch` or `jax` name.
+*   **Every convention has a guard test,** or it drifts.
+
 ## Conventions
 *   **Documentation Sync:** Any change affecting behaviour, CI, dev setup or
     math models must update, in the same PR, whichever documents it makes
