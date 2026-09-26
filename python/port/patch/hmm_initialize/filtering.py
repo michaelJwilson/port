@@ -253,7 +253,9 @@ def design_matrix(
     columns = []
 
     if "m" in params:
-        assert observations.rdr is not None
+        if observations.rdr is None:  # invariant
+            msg = "expected observations.rdr is not None"
+            raise AssertionError(msg)
         values = np.log(observations.rdr) if in_log_space else observations.rdr
 
         if standardize is None:
@@ -262,7 +264,9 @@ def design_matrix(
         columns.append(standardize.apply(values))
 
     if "p" in params:
-        assert observations.baf is not None
+        if observations.baf is None:  # invariant
+            msg = "expected observations.baf is not None"
+            raise AssertionError(msg)
         columns.append(observations.baf)
 
     design = np.hstack(columns) if len(columns) > 1 else columns[0]

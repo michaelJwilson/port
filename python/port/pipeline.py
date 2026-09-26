@@ -686,7 +686,7 @@ def warm() -> Warmed:
 
             kernel(*arguments)
             compiled.append(target)
-        except Exception as error:
+        except Exception as error:  # noqa: BLE001 -- a kernel that fails is reported
             missed.append(f"{target} ({type(error).__name__}: {error})")
 
     return Warmed(time.perf_counter() - started, tuple(compiled), tuple(missed))

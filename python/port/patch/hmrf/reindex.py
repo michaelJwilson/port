@@ -83,7 +83,9 @@ def reindex_clones(
     single_tumor_prop: Any = None,
 ) -> tuple[dict[str, Any], Any]:
     """Upstream's, with the parameter contract enforced and the reorder gone."""
-    assert single_tumor_prop is None, "single_tumor_prop must be None"
+    if single_tumor_prop is not None:  # invariant
+        msg = "single_tumor_prop must be None"
+        raise AssertionError(msg)
 
     _state_parameters(res_combine)
 

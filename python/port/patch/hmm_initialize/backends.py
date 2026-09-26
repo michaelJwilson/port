@@ -259,9 +259,9 @@ def sal_emission_backend(
     #    gap (#57, #65) showing up as one line of arithmetic.
     fitted = fit.components
 
-    assert isinstance(fitted, CountPairEmission), (
-        f"expected a CountPairEmission, got {type(fitted).__name__}"
-    )
+    if not (isinstance(fitted, CountPairEmission)):  # invariant
+        msg = f"expected a CountPairEmission, got {type(fitted).__name__}"
+        raise AssertionError(msg)
 
     depth = np.asarray(fitted.total.mean, dtype=np.float64).reshape(-1)
     dispersion = np.asarray(fitted.total.dispersion, dtype=np.float64).reshape(-1)

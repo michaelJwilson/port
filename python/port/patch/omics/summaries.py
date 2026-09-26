@@ -180,8 +180,12 @@ def summarize_blocks(
     """What `cnaster.omics.summarize_blocks` logs, line for line."""
     logger.info("Summarizing blocks ...")
 
-    assert block_key is not None, "block_key must be specified"
-    assert block_key in gene_snp_table.columns, f"{block_key} not in DataFrame"
+    if block_key is None:  # invariant
+        msg = "block_key must be specified"
+        raise AssertionError(msg)
+    if block_key not in gene_snp_table.columns:  # invariant
+        msg = f"{block_key} not in DataFrame"
+        raise AssertionError(msg)
 
     summary = block_summary(
         gene_snp_table,

@@ -397,7 +397,9 @@ def normal_baf_bin_filter(
             get_global_config().quality.normal_allele_specific_confidence
         )
 
-    assert confidence_interval is not None
+    if confidence_interval is None:  # invariant
+        msg = "expected confidence_interval is not None"
+        raise AssertionError(msg)
 
     pooled_counts = np.sum(single_X[:, 1, index_normal], axis=1)
     pooled_totals = np.sum(single_total_bb_RD[:, index_normal], axis=1)
@@ -458,8 +460,12 @@ def normal_baf_bin_filter(
             ].bin_id.unique()
         )
 
-    assert df_gene_snp["bin_id"].nunique(dropna=True) == single_X.shape[0]
-    assert df_gene_snp["bin_id"].nunique(dropna=True) == sum(lengths)
+    if df_gene_snp["bin_id"].nunique(dropna=True) != single_X.shape[0]:  # invariant
+        msg = 'expected df_gene_snp["bin_id"].nunique(dropna=True) == single_X.shape[0]'
+        raise AssertionError(msg)
+    if df_gene_snp["bin_id"].nunique(dropna=True) != sum(lengths):  # invariant
+        msg = 'expected df_gene_snp["bin_id"].nunique(dropna=True) == sum(lengths)'
+        raise AssertionError(msg)
 
     return df_gene_snp, SpatioGenomicCounts(
         lengths, single_X, single_base_nb_mean, single_total_bb_RD
