@@ -131,6 +131,49 @@ def test_the_merge_keeps_cnasters_clone_floor_without_cnaster() -> None:
     assert np.all((sizes == 0) | (sizes >= 200)), f"clone sizes {sizes}"
 
 
+@pytest.mark.analytic
+def test_the_fusion_is_no_worse_than_either_proposal() -> None:
+    """Before the floor, the fused labelling's energy is at most both proposals'.
+
+    The roof dual's labelled part is an autarky (sal #1125), so
+    `E(fuse(a, b)) <= min(E(a), E(b))` whatever the two are. Checked on the
+    floor fixture with a floor of one spot, so the merge dissolves nothing
+    and only descends further from the fusion.
+    """
+    from port.extensions.label_solver import fusion_then_merge
+    from port.patch.icm.alpha_expansion import potts_graph_from
+    from sal.backend import Backend
+    from sal.search.alpha_expansion import alpha_expansion
+    from sal.search.icm import iterated_conditional_modes
+    from sal.sim.potts import energy
+
+    field, graph, _, beta = _lattice(40, 16, seed=9, beta=0.6)
+    start = np.arange(1600, dtype=np.int64) % 16
+    potts = potts_graph_from(graph, beta)
+    values = np.asarray(field, dtype=np.float64)
+
+    expanded = energy(
+        potts,
+        values,
+        alpha_expansion(
+            potts, values, start=start.copy(), backend=Backend.RUST
+        ).labelling,
+    )
+    descended = energy(
+        potts,
+        values,
+        iterated_conditional_modes(
+            potts,
+            values,
+            np.random.default_rng(0),
+            start=np.argmax(values, axis=1).astype(np.int64),
+        ).labelling,
+    )
+    fused = fusion_then_merge(field, graph, start.copy(), beta, min_clone_spots=1)
+
+    assert fused.cost <= min(expanded, descended) + 1e-9
+
+
 @pytest.mark.infra
 def test_the_flag_selects_the_row_and_restores_the_solver() -> None:
     """Inside `sal()` the labelling is the row's; outside, what it was."""
@@ -140,7 +183,7 @@ def test_the_flag_selects_the_row_and_restores_the_solver() -> None:
     before = label_solver()
 
     with sal():
-        assert label_solver() == SAL_ROWS[0].solver == "alpha-rust-merge"
+        assert label_solver() == SAL_ROWS[0].solver == "alpha-rust-fuse-merge"
 
     assert label_solver() == before
 

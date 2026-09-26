@@ -47,6 +47,9 @@ KNOWN: dict[str, str] = {
     "port.extensions.label_solver:expansion_then_merge arg tol": "F8",
     "port.extensions.label_solver:sal_icm_floor_sweep arg beta": "F2",
     "port.extensions.label_solver:sal_icm_floor_sweep arg tol": "F8",
+    "port.extensions.label_solver:fusion_then_merge arg beta": "F2",
+    "port.extensions.label_solver:fusion_then_merge arg tol": "F8",
+    "port.extensions.label_solver:fusion_then_merge sibling": "F8",
     "port.extensions.label_solver:expansion_then_merge sibling": "F8",
     "port.extensions.label_solver:sal_icm_floor_sweep sibling": "F8",
     "port.patch.icm.alpha_expansion:alpha_expansion_sweep sibling": "F8",
@@ -94,6 +97,7 @@ SIBLINGS: dict[str, tuple[str, ...]] = {
         "port.extensions.label_solver:expansion_then_floor",
         "port.extensions.label_solver:expansion_then_merge",
         "port.extensions.label_solver:sal_icm_floor_sweep",
+        "port.extensions.label_solver:fusion_then_merge",
     ),
     "port.patch.hmm_initialize.backends:sal_emission_backend": (
         "port.patch.hmm_initialize.backends:cnaster_gmm_backend",
