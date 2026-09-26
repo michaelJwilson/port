@@ -7,3 +7,7 @@
 docs/plots/*.pdf binary merge=badges
 docs/plots/*.png binary merge=badges
 docs/plots/*.npz binary merge=badges
+
+# Rows are appended, one per run, so two branches that each record one both
+# keep theirs (#409).
+docs/metrics.md merge=union
