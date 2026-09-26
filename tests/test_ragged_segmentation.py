@@ -13,7 +13,7 @@ constructing it, the floor by driving its refusal.
 
 import numpy as np
 import pytest
-from snakes_and_ladders.ragged import MINIMUM_LENGTH, Ragged
+from sal.ragged import MINIMUM_LENGTH, Ragged
 
 from tests.fixtures import core_inference_truth, dev_instance, ragged_lengths
 

@@ -18,7 +18,7 @@ from dataclasses import dataclass
 
 import numpy as np
 import pytest
-from snakes_and_ladders.ragged import Ragged
+from sal.ragged import Ragged
 
 from tests.fixtures import (
     CoreInferenceTruth,
@@ -125,8 +125,8 @@ def test_the_two_recursions_agree_on_the_clone_stacked_batch(
     the same fifteen chains of unequal length, and the agreement is the claim.
     """
     from cnaster.hmm_nophasing import hmm_nophasing
+    from sal.likelihood.ragged import posteriors
     from scipy.special import logsumexp
-    from snakes_and_ladders.likelihood.ragged_rust import posteriors
 
     stacked = _stacked(planted)
     lengths = stacked.lengths
@@ -183,12 +183,12 @@ def test_a_covariate_carrying_its_own_channel_axis_is_refused_with_a_singleton()
     fixture-construction problem on this side rather than an upstream one.
     """
     import torch
-    from snakes_and_ladders.emissions import (
+    from sal.emissions import (
         BetaBinomialEmission,
         CovariateNotSupportedError,
         NegativeBinomialEmission,
     )
-    from snakes_and_ladders.sim.count_pairs import IndependentCountPair
+    from sal.sim.count_pairs import IndependentCountPair
 
     family = IndependentCountPair(
         NegativeBinomialEmission(dispersion=np.full(2, 6.0), mean=np.array([1.0, 3.0])),

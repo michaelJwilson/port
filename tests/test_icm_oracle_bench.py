@@ -27,7 +27,7 @@ from tests.adapters import cnaster_icm_labelling
 from tests.fixtures import PottsLabels, potts_labels, tiers
 
 if TYPE_CHECKING:
-    from snakes_and_ladders.sim.graph import PottsGraph
+    from sal.sim.graph import PottsGraph
 
 GATE_SHAPE = (20, 20)
 """400 nodes, three clones: the per-pull-request size."""
@@ -47,19 +47,19 @@ def _cnaster_sweep(fixture: PottsLabels, _: "PottsGraph", start: np.ndarray) -> 
 
 
 def _upstream_icm(fixture: PottsLabels, graph: "PottsGraph", _: np.ndarray) -> Any:
-    from snakes_and_ladders.search.alpha_expansion import iterated_conditional_modes
+    from sal.search.icm import iterated_conditional_modes
 
-    return iterated_conditional_modes(
-        graph, fixture.field, fixture.n_clones, np.random.default_rng(0)
-    )
+    return iterated_conditional_modes(graph, fixture.field, np.random.default_rng(0))
 
 
 def _upstream_expansion(
     fixture: PottsLabels, graph: "PottsGraph", _: np.ndarray
 ) -> Any:
-    from snakes_and_ladders.search.alpha_expansion import alpha_expansion
+    from sal.backend import Backend
+    from sal.search.alpha_expansion import alpha_expansion
 
-    return alpha_expansion(graph, fixture.field, fixture.n_clones)
+    # NB PYTHON was the default before e0aeb19 made it RUST (#410).
+    return alpha_expansion(graph, fixture.field, backend=Backend.PYTHON)
 
 
 @pytest.fixture(scope="module")

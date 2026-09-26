@@ -53,10 +53,10 @@ cycles rather than ICM iterations.
 from __future__ import annotations
 
 import numpy as np
-from snakes_and_ladders.backend import Backend
-from snakes_and_ladders.search.alpha_expansion import alpha_expansion
-from snakes_and_ladders.sim.graph import PottsGraph
-from snakes_and_ladders.sim.potts import energy
+from sal.backend import Backend
+from sal.search.alpha_expansion import alpha_expansion
+from sal.sim.graph import PottsGraph
+from sal.sim.potts import energy
 
 from port.patch.icm.interface import CsrGraph, IcmResult
 
@@ -166,12 +166,11 @@ def alpha_expansion_sweep(
     #    so `h = field` is already `cnaster`'s objective with the sign
     #    upstream's minimizer wants. See the module docstring.
     values = np.asarray(field, dtype=np.float64)
-    n_states = int(values.shape[1])
 
+    # NB `n_states` is the field's column count, which sal infers (#410).
     result = alpha_expansion(
         potts_graph_from(graph, beta),
         values,
-        n_states,
         start=np.asarray(assignment, dtype=np.int64).copy(),
         backend=backend,
     )

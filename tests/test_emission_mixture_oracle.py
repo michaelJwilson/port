@@ -31,8 +31,8 @@ from port.extensions.emission_family import (
     constant_covariate,
     count_pair_family,
 )
-from snakes_and_ladders.emissions import CountPairEmission
-from snakes_and_ladders.opt.emission_mixture import (
+from sal.emissions import CountPairEmission
+from sal.opt.emission_mixture import (
     CountPairSeeding,
     expectation_maximization,
     plus_plus_start,
@@ -134,7 +134,7 @@ def test_upstreams_mixture_recovers_the_planted_state(
     weights = torch.full((2,), 0.5, dtype=torch.float64)
     fit = expectation_maximization(observations, weights, components)
 
-    assert fit.iterations >= 1
+    assert fit.termination.iterations >= 1
     assert fit.log_likelihood <= 0.0, "a discrete likelihood is a probability"
 
     # NB `mean` is per state and per channel: column 0 the negative

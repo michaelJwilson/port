@@ -229,7 +229,7 @@ def test_each_word_names_one_term() -> None:
 
 @pytest.mark.infra
 @pytest.mark.parametrize(
-    ("source", "package"), [("cnaster", "cnaster"), ("sal", "snakes_and_ladders")]
+    ("source", "package"), [("cnaster", "cnaster"), ("sal", "sal")]
 )
 def test_each_term_is_its_references_word(source: str, package: str) -> None:
     """A term taken from `cnaster` or `sal` is a word that package uses."""

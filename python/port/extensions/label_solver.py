@@ -109,7 +109,7 @@ def sweep_for(name: Solver) -> Any:
         return sal.alpha_expansion_sweep
 
     if name == "alpha-rust":
-        from snakes_and_ladders.backend import Backend
+        from sal.backend import Backend
 
         return functools.partial(sal.alpha_expansion_sweep, backend=Backend.RUST)
 
@@ -129,7 +129,7 @@ def expansion_then_floor(
     `assignment` is updated in place by both, and the result is the ICM's,
     whose cost is the energy of the labelling returned.
     """
-    from snakes_and_ladders.backend import Backend
+    from sal.backend import Backend
 
     from port.patch.icm import alpha_expansion as sal
     from port.patch.icm.interface import icm_sweep
@@ -170,9 +170,9 @@ def sal_icm_sweep(
     del tol, epsilon, min_clone_spots, cost_zeropoint, onehot_allowed_clones
 
     import numpy as np
-    from snakes_and_ladders.backend import Backend
-    from snakes_and_ladders.search.alpha_expansion import iterated_conditional_modes
-    from snakes_and_ladders.sim.potts import energy
+    from sal.backend import Backend
+    from sal.search.icm import iterated_conditional_modes
+    from sal.sim.potts import energy
 
     from port.patch.icm.alpha_expansion import potts_graph_from
     from port.patch.icm.interface import IcmResult
@@ -182,7 +182,6 @@ def sal_icm_sweep(
     result = iterated_conditional_modes(
         potts,
         values,
-        int(values.shape[1]),
         np.random.default_rng(0),
         start=np.asarray(assignment, dtype=np.int64).copy(),
         backend=Backend.NUMBA,

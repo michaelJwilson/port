@@ -340,8 +340,8 @@ def test_the_covariance_comes_from_upstream() -> None:
     this model needs to identify its parameters, and it is why the fixture
     here is the larger one. #6 owns the negative binomial half.
     """
-    from snakes_and_ladders.opt.fit import fit, parameter_covariance
-    from snakes_and_ladders.opt.hmm import BetaBinomialHmmObjective
+    from sal.opt.fit import fit, parameter_covariance
+    from sal.opt.hmm import BetaBinomialHmmObjective
 
     from tests.fixtures import beta_binomial_chains
 
@@ -367,7 +367,7 @@ def test_the_covariance_comes_from_upstream() -> None:
     #    pinning which side of the noise the arithmetic fell on, not whether
     #    the fit converged. 1e-7 is above the floor and still four orders
     #    inside the curvature `parameter_covariance` needs.
-    fitted = fit(objective, start, max_iterations=400, gradient_tolerance=1e-7)
+    fitted = fit(objective, start, max_iterations=400, tolerance=1e-7)
     assert fitted.converged
 
     covariance = np.asarray(parameter_covariance(objective, fitted.theta).detach())

@@ -32,7 +32,7 @@ coincided would let a solver pass by returning its input.
 
 import numpy as np
 import pytest
-from snakes_and_ladders.enumeration import MAX_ENUMERABLE_CONFIGURATIONS
+from sal.enumeration import MAX_ENUMERABLE_CONFIGURATIONS
 
 from tests.adapters import (
     cnaster_assignment_cost,

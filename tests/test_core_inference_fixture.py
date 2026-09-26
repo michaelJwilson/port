@@ -164,7 +164,7 @@ def test_cnaster_scores_the_fixture_as_upstream_does() -> None:
     """
     import torch
     from cnaster.hmm_nophasing import _bb_logpmf_1d, _nb_logpmf_1d
-    from snakes_and_ladders.emissions import (
+    from sal.emissions import (
         BetaBinomialEmission,
         NegativeBinomialEmission,
     )

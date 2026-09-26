@@ -28,7 +28,7 @@ from tests.test_alpha_expansion import _lattice
 def test_the_rust_cut_returns_the_python_cuts_labelling(n_states: int) -> None:
     """Bitwise, on a 30 x 30 lattice at three and six labels."""
     from port.patch.icm.alpha_expansion import alpha_expansion_sweep
-    from snakes_and_ladders.backend import Backend
+    from sal.backend import Backend
 
     field, graph, start, beta = _lattice(30, n_states, seed=4, beta=0.6)
     python, rust = start.copy(), start.copy()
@@ -48,8 +48,8 @@ def test_the_numba_descent_returns_the_python_descents_labelling() -> None:
     """
     from port.extensions.label_solver import sal_icm_sweep
     from port.patch.icm.alpha_expansion import potts_graph_from
-    from snakes_and_ladders.backend import Backend
-    from snakes_and_ladders.search.alpha_expansion import iterated_conditional_modes
+    from sal.backend import Backend
+    from sal.search.icm import iterated_conditional_modes
 
     field, graph, start, beta = _lattice(30, 4, seed=2, beta=0.6)
     compiled = start.copy()
@@ -58,7 +58,6 @@ def test_the_numba_descent_returns_the_python_descents_labelling() -> None:
     python = iterated_conditional_modes(
         potts_graph_from(graph, beta),
         field,
-        4,
         np.random.default_rng(0),
         start=start.copy(),
         backend=Backend.PYTHON,

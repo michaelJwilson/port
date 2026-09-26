@@ -1,6 +1,6 @@
 """`aim` is an extra, and the recording path does not need it installed.
 
-**#251.** `snakes_and_ladders.track.Run` is a `runtime_checkable` Protocol
+**#251.** `sal.track.Run` is a `runtime_checkable` Protocol
 written with `aim.Run`'s own signatures, so `aim.Run` satisfies it
 structurally and sal imports `aim` nowhere at module scope. That property is
 the whole justification for declaring `aim` in an extra rather than as a
@@ -37,7 +37,7 @@ def test_the_recording_seam_imports_without_aim() -> None:
     untracked run costs nothing and needs nothing, and an import alone would
     not catch a store that reached for `aim` on first use.
     """
-    from snakes_and_ladders import track
+    from sal import track
 
     tracked = track.current()
 
@@ -54,7 +54,7 @@ def test_a_store_satisfies_the_protocol_structurally() -> None:
     `Run`, the Protocol would have drifted from the three members a hook
     uses, and `aim.Run` would be no more admissible than anything else.
     """
-    from snakes_and_ladders import track
+    from sal import track
 
     assert isinstance(track.MemoryRun(), track.Run)
     assert isinstance(track.NULL_RUN, track.Run)
@@ -67,7 +67,7 @@ def test_aim_is_declared_as_an_extra_and_never_imported_here() -> None:
     A module-scope `import aim` anywhere in `python/port/` would make the
     extra mandatory in fact while staying optional in `pyproject.toml`,
     which is the failure this refuses. Tracking code reaches `aim` only
-    through `snakes_and_ladders.track`, and an entry point that opens a
+    through `sal.track`, and an entry point that opens a
     store imports it inside the function that does.
     """
     manifest = tomllib.loads((ROOT / "pyproject.toml").read_text())

@@ -54,7 +54,7 @@ def _declared_oracle_modules() -> set[str]:
     parser.read(ORACLE_CONFIG)
 
     return {
-        glob.removeprefix("*/").removesuffix(".py").replace("/", ".")
+        glob.removeprefix("*/").removesuffix("/*").removesuffix(".py").replace("/", ".")
         for glob in parser["report"]["include"].split()
     }
 
@@ -74,9 +74,9 @@ def test_every_declared_oracle_module_is_the_installed_one() -> None:
     """
     import importlib.util
 
-    import snakes_and_ladders
+    import sal
 
-    installed = pathlib.Path(next(iter(snakes_and_ladders.__path__))).resolve()
+    installed = pathlib.Path(next(iter(sal.__path__))).resolve()
 
     for name in sorted(_declared_oracle_modules()):
         spec = importlib.util.find_spec(name)
@@ -114,20 +114,19 @@ def test_no_test_referees_against_an_undeclared_upstream_module() -> None:
 
         for node in ast.walk(tree):
             if isinstance(node, ast.ImportFrom) and (node.module or "").startswith(
-                "snakes_and_ladders"
+                "sal"
             ):
                 used.add(node.module or "")
             elif isinstance(node, ast.Import):
                 used.update(
-                    alias.name
-                    for alias in node.names
-                    if alias.name.startswith("snakes_and_ladders")
+                    alias.name for alias in node.names if alias.name.startswith("sal")
                 )
 
         undeclared = {
             name
             for name in used
-            if name != "snakes_and_ladders" and name not in declared
+            if name != "sal"
+            and not any(name == d or name.startswith(d + ".") for d in declared)
         }
         if undeclared:
             offenders[path.name] = undeclared

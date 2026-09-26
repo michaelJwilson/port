@@ -3,7 +3,7 @@
 **#232, #229 stage 4.** `cnaster` writes its own negative-binomial and
 beta-binomial densities (`hmm_nophasing._nb_logpmf_1d`, `_bb_logpmf_1d`) and
 its own mixture initializer on top of them. Upstream ships
-`snakes_and_ladders.emissions.CountPairEmission` -- "a total count and the
+`sal.emissions.CountPairEmission` -- "a total count and the
 successes within it, as one observation" -- which is the same model, and
 `opt/emission_mixture` fits a mixture of it. `CLAUDE.md` asks an optimization
 to be considered first as functionality that exists upstream; this module is
@@ -49,7 +49,7 @@ be a third model rather than either of these.
 from __future__ import annotations
 
 import numpy as np
-from snakes_and_ladders.emissions import CountPairEmission
+from sal.emissions import CountPairEmission
 
 __all__ = [
     "CovariateNotConstant",

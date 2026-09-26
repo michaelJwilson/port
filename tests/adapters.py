@@ -22,8 +22,8 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import torch
-from snakes_and_ladders.emissions import BetaBinomialEmission
-from snakes_and_ladders.opt.hmm import forward_log_likelihood_from_density
+from sal.emissions import BetaBinomialEmission
+from sal.opt.hmm import forward_log_likelihood_from_density
 
 from tests.fixtures import (
     BetaBinomialChains,
@@ -706,7 +706,7 @@ def upstream_potts_energy(fixture: PottsLabels, labelling: np.ndarray) -> float:
     what `cnaster_assignment_cost` returns.
     """
     import numpy as np
-    from snakes_and_ladders.sim.potts import energy
+    from sal.sim.potts import energy
 
     from tests.fixtures import _scaled_graph
 

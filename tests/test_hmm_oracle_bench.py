@@ -81,7 +81,7 @@ def _cnaster_both(inputs: CnasterChainInputs, emission: np.ndarray) -> np.ndarra
 def _upstream_both(
     densities: list[np.ndarray], initial: np.ndarray, transition: np.ndarray
 ) -> float:
-    from snakes_and_ladders.likelihood.forward_backward import forward_backward
+    from sal.likelihood.forward_backward import forward_backward
 
     return sum(
         float(forward_backward(density, initial, transition).log_evidence)
