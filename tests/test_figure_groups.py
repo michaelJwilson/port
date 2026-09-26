@@ -181,6 +181,7 @@ def test_a_gridline_is_what_splits_the_rasterizing_run(tmp_path: Path) -> None:
 
 
 @pytest.mark.patch
+@pytest.mark.merge
 def test_sink_collapses_the_run_without_touching_the_raster(tmp_path: Path) -> None:
     """One group per axes, and the buffers hold what they held.
 
@@ -257,6 +258,7 @@ def test_sink_moves_the_gridlines_under_the_rasterized_run() -> None:
 
 
 @pytest.mark.patch
+@pytest.mark.merge
 def test_sweep_collapses_the_run_by_rasterizing_the_gridlines(
     tmp_path: Path,
 ) -> None:

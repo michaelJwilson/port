@@ -21,6 +21,9 @@ import pytest
 
 
 @pytest.mark.end2end
+@pytest.mark.merge
+# NB one whole run at a time: four at once exceed 15 GB (#403).
+@pytest.mark.xdist_group("pipeline")
 def test_the_entry_point_recovers_the_planted_clones(tmp_path: Path) -> None:
     """Both planted clones, at most 2 of 1,000 spots misplaced, through `run_cnaster_port`."""
     import matplotlib as mpl

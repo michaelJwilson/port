@@ -209,7 +209,7 @@ def test_a_patched_run_reproduces_an_unpatched_one(tmp_path: Path) -> None:
     entry point is what ships, so running it is a stronger claim than
     importing what it calls.
 
-    **The patched arm passes `--no-figures --no-approx`**, because two of the
+    **The patched arm passes `--no-figure-swaps --no-approx`**, because two of the
     three swap tables are in the entry point's default and neither makes this
     claim: a figure at a different dpi is a different file by design (#195),
     and the vectorized log-pmf agrees to 8.6e-13 rather than to the byte
@@ -251,7 +251,7 @@ def test_a_patched_run_reproduces_an_unpatched_one(tmp_path: Path) -> None:
     baseline = tmp_path / "baseline"
     shutil.move(str(output), str(baseline))
 
-    run("--no-figures", "--no-approx")
+    run("--no-figure-swaps", "--no-approx")
 
     same, differ = _compare(baseline, output)
 

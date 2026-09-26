@@ -49,8 +49,10 @@ from types import ModuleType
 from typing import Any
 
 __all__ = [
+    "COPY_SWAPS",
     "FIGURE_SWAPS",
     "NUMERIC_SWAPS",
+    "PLOT_OFF_SWAPS",
     "SHIFT_SWAPS",
     "SWAPS",
     "Site",
@@ -259,7 +261,7 @@ and all three are ones: a coarser raster, gridlines that paint under
 the data instead of over it, and a spot's area.
 
 **Separate, but on by default at the entry point.** `run_cnaster_port`
-installs this table unless `--no-figures` is given, because a win that large
+installs this table unless `--no-figure-swaps` is given, because a win that large
 sitting behind a flag is a win nobody gets. The table stays its own so the
 distinction survives the default: `SWAPS` is still the set that reproduces
 `cnaster` bitwise, `install()` still defaults to `SWAPS` alone, and the
@@ -267,7 +269,7 @@ tests asserting that property still have something to assert. Merging the
 two would have bought the same 47 per cent and cost the claim.
 
 So the decision is still a reader's rather than a default's -- it is just
-the other way round, and `--no-figures` is where it is made.
+the other way round, and `--no-figure-swaps` is where it is made.
 """
 
 
@@ -305,6 +307,46 @@ Its own table because every fitted rate moves, which `CLAUDE.md` forbids
 doing silently; `run_cnaster_port` installs it unless `--no-shift` is given,
 and `port.patch.hmm_nophasing.logmu_shift()` is what turns the class's flag
 on for the run.
+"""
+
+
+PLOT_OFF_SWAPS: tuple[Swap, ...] = (
+    Swap("cnaster.utils", "write_fig", "port.patch.utils:discard_fig", 403),
+)
+"""`run_cnaster_port --no-plots`: every figure is built and none is written.
+
+Installed after `FIGURE_SWAPS`, so it rebinds port's `write_fig` where that
+one is in place. Not a drop-in in the bitwise sense -- no file appears -- and
+for that reason a table of its own, chosen by a flag and never by default.
+"""
+
+COPY_SWAPS: tuple[Swap, ...] = (
+    Swap(
+        "cnaster.integer_copy",
+        "hill_climbing_integer_copynumber_fixdiploid_milp",
+        "port.patch.integer_copy:hill_climbing_integer_copynumber_fixdiploid_milp",
+        313,
+    ),
+    Swap(
+        "cnaster.integer_copy",
+        "hill_climbing_integer_copynumber_oneclone",
+        "port.patch.integer_copy:hill_climbing_integer_copynumber_oneclone",
+        313,
+    ),
+)
+"""The integer copy decoders, under the caps the configuration states.
+
+`run_cnaster` decodes under `cnaster`'s defaults, `A + B <= 6` and
+`A, B <= 5`, and reads no key that would change them, so #313's chr7 --
+planted at `2 mu = 10` -- could not be decoded by any configuration. These
+read `int_copy_num.max_total_copy` and apply it to the total and to each
+allele; `tests/run_config.py` states 12.
+
+**Its own table, and on by default.** Where the configuration states no cap
+the decode is `cnaster`'s, bitwise (`tests/test_integer_copy_patch.py`); where
+it states one the output changes, which `SWAPS` promises never to do.
+`run_cnaster_port` installs it unless `--no-copy-cap` is given, and
+`--no-patch` leaves it out with the rest.
 """
 
 
