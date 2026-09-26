@@ -49,6 +49,9 @@ def _multi() -> Any:
 
 
 @pytest.mark.end2end
+@pytest.mark.merge
+# NB one whole run at a time: four at once exceed 15 GB (#403).
+@pytest.mark.xdist_group("pipeline")
 def test_the_entry_point_recovers_the_shared_clones_in_every_sample(
     tmp_path: Path,
 ) -> None:

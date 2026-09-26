@@ -203,10 +203,11 @@ full for that reason.
     `smoke` until something outside decides its value.
 *   **Time is money.** Test and build frameworks are justified against a
     time and computational budget.
-*   **The per-PR tier is the fast gate; the release gate runs everything.**
-    A test over the per-PR duration cap, or whose claim is not needed to
-    gate a merge, carries the `release` marker. The CI job must deselect it,
-    or the marker is documentation.
+*   **Four tiers, at most one per test:** `critical` gates first, no tier
+    is the gate, `merge` runs before a merge, `release` for a release. A
+    test over the gate's cap carries `merge`, over the pre-merge budget
+    `release`. `python -m tests.ci` is the only runner, so a tier it does
+    not select is documentation.
 
 A test that cannot say what would have to be wrong for it to fail is not yet
 a test.

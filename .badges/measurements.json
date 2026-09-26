@@ -1,5 +1,5 @@
 {
- "_": "The values README.md's badges render. Regenerate with `python -m tests.badges`; tests/test_badges_agree.py refuses a drift.",
+ "_": "The values README.md's badges render. Measured and recorded locally by `python -m tests.ci --badges --record`, which regenerates the badges; tests/test_badges_agree.py refuses a drift. Notes are closed as of #403: why a figure moved goes in the commit that moves it, so two changes never append to one string.",
  "coverage": {
   "judged": {
    "label": "e2e",

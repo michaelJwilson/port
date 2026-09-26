@@ -189,13 +189,26 @@ in the same change.
 
 ## Checks
 
+CI runs locally, through one entry point (#403). Each step prints its seconds.
+
 ```
-uv run pytest                                          # tests
-uv run ruff check . && uv run ruff format --check .     # lint, format
-uv run mypy                                            # types, --strict
-cargo clippy --all-targets -- -D warnings               # Rust lint
-cargo fmt --check                                       # Rust format
+uv run python -m tests.ci                  # gate: ruff, mypy, critical + untiered tests; <= 60 s
+uv run python -m tests.ci --badges         # judged and drop-in coverage; --record writes them
+uv run python -m tests.ci --full           # gate, badges, then `merge` tests and benchmarks
+uv run python -m tests.ci --release        # `release` and `oracle`
+uv run python -m tests.ci --figures        # redraw docs/plots
+uv run python -m tests.ci --install        # once per clone: the `badges` merge driver
+cargo clippy --all-targets -- -D warnings  # Rust lint
+cargo fmt --check                          # Rust format
 ```
+
+Every test sits in at most one tier -- `critical`, none, `merge`, `release`
+-- and each step selects one, so no step repeats another's tests. The gate
+is `pytest -n 4`; a whole-pipeline test (`xdist_group("pipeline")`) runs one
+at a time, since four exceed 15 GB. Badges are measured and recorded locally
+by the change that moves them. `.gitattributes` sends `.badges/*.json` and
+`docs/plots/*` to the `badges` driver, which keeps the branch's copy on a
+merge; `--badges --record` and `--figures` then regenerate them.
 
 `mypy` reads its paths from `pyproject.toml` (`python/`, `tests/`). The
 compiled extension is typed by the hand-written stub
