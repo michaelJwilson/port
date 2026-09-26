@@ -304,6 +304,11 @@ module names no model, so anything may import it."
 working as intended -- the duplication was found by writing the audit the
 rule asks for.
 
+**Resolved on #355**, one step further: `enumerate_minimum_energy` is now
+`enumeration.enumerated_optimum` over the negated energy, with the
+configurations read reversed so the enumeration order and the tie rule are
+the ones the loop had. The constant is gone.
+
 ---
 
 # Summary of actions

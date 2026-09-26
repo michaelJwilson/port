@@ -26,7 +26,8 @@ the original section for section. `tests/test_config_audit.py` pins exactly
 those findings, so a key that stops being read, or starts, is a failing test.
 """
 
-from collections.abc import Iterator
+import warnings
+from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
@@ -34,8 +35,30 @@ from typing import Any
 import numpy as np
 import yaml
 
-from tests.fixtures import CoreInferenceTruth
-from tests.tmp_inputs import FILTERED_FEATURE_NAME, WrittenInputs
+from tests.fixtures import CoreInferenceTruth, core_inference_truth
+from tests.tmp_inputs import FILTERED_FEATURE_NAME, WrittenInputs, write_tmp_inputs
+from tests.unsegment import Unsegmented, unsegment
+
+GATE_LATTICE = (25, 40)
+GATE_OBS = 40
+"""The gate instance: a thousand spots over forty bins, two clones, three states.
+
+What a merge is gated on, and the one `planted_instance` in `tests/conftest.py`
+plants once per session. A ratio read at this size decides nothing.
+"""
+
+FLIP_EVERY = 3
+"""Every third block is stored on the other haplotype, for the phasing tests."""
+
+SHIPPED_T_PHASEING = 0.99999
+"""`zenodo_sim_config.yaml`'s `hmm.t_phaseing`, which `run_cnaster` passes.
+
+Restated so the phasing tests and their benchmark run against what ships
+rather than against a number a test chose. `hmm.t` is stickier still, 0.9999999.
+"""
+
+PlantedInstance = tuple[CoreInferenceTruth, Unsegmented, WrittenInputs, Path]
+"""The truth, its pre-image, the files written from it, and the run configuration."""
 
 
 def run_cnaster_config(
@@ -217,3 +240,76 @@ def isolated_run() -> Iterator[None]:
     finally:
         np.random.set_state(state)  # noqa: NPY002
         set_global_config(config)
+
+
+def planted_and_written(
+    root: Path, lattice: tuple[int, int] = GATE_LATTICE, n_obs: int = GATE_OBS
+) -> PlantedInstance:
+    """Plant an instance and write it, returning its configuration path.
+
+    The pre-image comes back too: it carries the planted per-gene counts and
+    their names, which is what a loader is judged against. The binned truth
+    cannot serve, because the loader drops genes and a bin total would then
+    disagree for a reason that is the filter working.
+    """
+    truth = core_inference_truth(
+        n_clones=2, n_states=3, lattice=lattice, n_obs=n_obs, n_segments=3, seed=11
+    )
+    pre_image = unsegment(truth, flip_every=0)
+    written = write_tmp_inputs(truth, pre_image, root)
+
+    return truth, pre_image, written, write_run_cnaster_config(written, truth)
+
+
+def write_for_run(
+    truth: CoreInferenceTruth, root: Path, **config: Any
+) -> tuple[WrittenInputs, Path]:
+    """Write `truth` as a whole run reads it, and the configuration beside it.
+
+    Every gene assigned (`unassigned_genes=0`) and no flipped haplotype, as
+    the whole-run tests and scripts plant it.
+    """
+    written = write_tmp_inputs(
+        truth, unsegment(truth, flip_every=0, unassigned_genes=0), root
+    )
+    return written, write_run_cnaster_config(written, truth, **config)
+
+
+def run_written(
+    truth: CoreInferenceTruth,
+    root: Path,
+    *,
+    port: bool,
+    flags: Sequence[str] = (),
+    plots: bool = True,
+    **config: Any,
+) -> Path:
+    """Write the inputs and configuration, run the pipeline, return its output.
+
+    `port` selects `run_cnaster_port` in process, with `flags` on its command
+    line; otherwise `cnaster`'s own `run_cnaster`, which takes none. Warnings
+    are silenced for the run. `plots=False` builds every figure and writes
+    none (#403): `--no-plots` for port, the same swap for `cnaster`.
+    """
+    from contextlib import nullcontext
+
+    from port.pipeline import PLOT_OFF_SWAPS, patched
+
+    written, config_path = write_for_run(truth, root, **config)
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        if port:
+            from port.scripts.run_cnaster import main
+
+            main([str(config_path), *flags, *(() if plots else ("--no-plots",))])
+        else:
+            if flags:
+                msg = "cnaster's run_cnaster takes no flags"
+                raise ValueError(msg)
+            from cnaster.scripts.run_cnaster import run_cnaster
+
+            with nullcontext() if plots else patched(PLOT_OFF_SWAPS):
+                run_cnaster(str(config_path))
+
+    return written.root / "output"

@@ -18,6 +18,8 @@ import numpy as np
 import pytest
 from pytest_benchmark.fixture import BenchmarkFixture
 
+from tests.fixtures import tiers
+
 Inputs = dict[str, Any]
 """The arrays one arm is handed, named so both arms take the same thing."""
 
@@ -84,42 +86,28 @@ def _run_unified(
 
 
 @pytest.mark.benchmark
+@pytest.mark.parametrize("size", tiers(GATE, STRESS))
 @pytest.mark.parametrize("which", ["forward_lattice", "backward_lattice"])
 @pytest.mark.parametrize("phased", [False, True], ids=["unphased", "phased"])
 @pytest.mark.parametrize("implementation", ["cnaster", "unified"])
-def test_the_gate_recursion(
-    benchmark: BenchmarkFixture, which: str, phased: bool, implementation: str
+def test_the_recursion(
+    benchmark: BenchmarkFixture,
+    which: str,
+    phased: bool,
+    implementation: str,
+    size: dict[str, int],
 ) -> None:
-    """A baseline at a gate size, which argues nothing either way."""
-    inputs = _inputs(**GATE, phased=phased)
+    """Both arms, warm, at the gate size and at the size the ratio is read at.
 
-    if implementation == "cnaster":
-        _run_cnaster(which, inputs, phased=phased)
-        benchmark(_run_cnaster, which, inputs, phased=phased)
-    else:
-        _run_unified(which, inputs, GATE["n_states"], phased=phased)
-        benchmark(_run_unified, which, inputs, GATE["n_states"], phased=phased)
-
-
-@pytest.mark.release
-@pytest.mark.benchmark
-@pytest.mark.parametrize("which", ["forward_lattice", "backward_lattice"])
-@pytest.mark.parametrize("phased", [False, True], ids=["unphased", "phased"])
-@pytest.mark.parametrize("implementation", ["cnaster", "unified"])
-def test_the_stress_recursion(
-    benchmark: BenchmarkFixture, which: str, phased: bool, implementation: str
-) -> None:
-    """The size the ratio is read at, warm -- the compile is not the cost here.
-
-    Both arms are called once outside the timer, because both are `numba`
-    kernels with a cold cache on a fresh host and a first call is compilation
-    rather than work (#204).
+    The gate baseline argues nothing either way. Both arms are called once
+    outside the timer, because both are `numba` kernels with a cold cache on
+    a fresh host and a first call is compilation rather than work (#204).
     """
-    inputs = _inputs(**STRESS, phased=phased)
+    inputs = _inputs(**size, phased=phased)
 
     if implementation == "cnaster":
         _run_cnaster(which, inputs, phased=phased)
         benchmark(_run_cnaster, which, inputs, phased=phased)
     else:
-        _run_unified(which, inputs, STRESS["n_states"], phased=phased)
-        benchmark(_run_unified, which, inputs, STRESS["n_states"], phased=phased)
+        _run_unified(which, inputs, size["n_states"], phased=phased)
+        benchmark(_run_unified, which, inputs, size["n_states"], phased=phased)

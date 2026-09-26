@@ -15,16 +15,13 @@ Two defects and one fixture gap were found by getting this far: #105, #106,
 and the widened confidence interval `tests/run_config.py` states.
 """
 
-import warnings
 from pathlib import Path
 
 import matplotlib as mpl
 import pytest
 
-from tests.fixtures import CoreInferenceTruth, core_inference_truth, dev_instance
-from tests.run_config import write_run_cnaster_config
-from tests.tmp_inputs import write_tmp_inputs
-from tests.unsegment import unsegment
+from tests.fixtures import dev_instance
+from tests.run_config import PlantedInstance, run_written
 
 mpl.use("Agg")
 """No display in CI, and the figures are written rather than shown."""
@@ -69,36 +66,6 @@ pipeline that plots at every stage can actually have.
 """
 
 
-def _run(
-    truth: CoreInferenceTruth, root: Path, *, plots: bool = True, **config: object
-) -> Path:
-    """Write the inputs, write the configuration, and run the pipeline.
-
-    `plots=False` builds every figure and writes none (#403), for a caller
-    whose claim is not a figure.
-    """
-    from contextlib import nullcontext
-
-    from cnaster.scripts.run_cnaster import run_cnaster
-    from port.pipeline import PLOT_OFF_SWAPS, patched
-
-    written = write_tmp_inputs(
-        truth,
-        # The files carry allele counts and no phase -- the phase is
-        # `cnaster`'s to infer -- and every gene lands in a bin, because a
-        # gene without one crashes the gene-level output (#105).
-        unsegment(truth, flip_every=0, unassigned_genes=0),
-        root,
-    )
-    config_path = write_run_cnaster_config(written, truth, **config)
-
-    with warnings.catch_warnings(), nullcontext() if plots else patched(PLOT_OFF_SWAPS):
-        warnings.simplefilter("ignore")
-        run_cnaster(str(config_path))
-
-    return written.root / "output"
-
-
 def _artifacts(output: Path) -> tuple[set[str], list[Path]]:
     """The tables and figures a completed run leaves behind."""
     return (
@@ -112,7 +79,9 @@ def _artifacts(output: Path) -> tuple[set[str], list[Path]]:
 @pytest.mark.merge
 # NB one whole run at a time: four at once exceed 15 GB (#403).
 @pytest.mark.xdist_group("pipeline")
-def test_the_pipeline_completes_from_files(tmp_path: Path) -> None:
+def test_the_pipeline_completes_from_files(
+    planted_instance: PlantedInstance, tmp_path: Path
+) -> None:
     """Every stage runs, on the smallest instance that clears the floors.
 
     Small in the genome and not in the slice: `icm_sweep_deque` merges any
@@ -120,11 +89,9 @@ def test_the_pipeline_completes_from_files(tmp_path: Path) -> None:
     thousand spots over two clones is the floor this can be run at whatever
     the bin count is.
     """
-    truth = core_inference_truth(
-        n_clones=2, n_states=3, lattice=(25, 40), n_obs=40, n_segments=3, seed=11
+    output = run_written(
+        planted_instance[0], tmp_path, port=False, max_iter_outer=1, max_iter=3
     )
-
-    output = _run(truth, tmp_path, max_iter_outer=1, max_iter=3)
     tables, figures = _artifacts(output)
 
     assert set(TABLES) <= tables, f"missing tables: {set(TABLES) - tables}"
@@ -157,7 +124,9 @@ def test_the_pipeline_completes_on_the_dev_instance(tmp_path: Path) -> None:
     The figures this writes are the ones committed under `docs/plots/`;
     `python -m tests.generate_plots` is the same call with the copy.
     """
-    output = _run(dev_instance(), tmp_path, max_iter_outer=1, max_iter=3, n_states=5)
+    output = run_written(
+        dev_instance(), tmp_path, port=False, max_iter_outer=1, max_iter=3, n_states=5
+    )
     tables, figures = _artifacts(output)
 
     assert set(TABLES) <= tables

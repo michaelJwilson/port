@@ -17,18 +17,25 @@ from typing import Any
 import numpy as np
 import pytest
 
-from tests.fixtures import CoreInferenceTruth, core_inference_truth
-from tests.run_config import write_run_cnaster_config
-from tests.tmp_inputs import WrittenInputs, write_tmp_inputs
+from tests.fixtures import CoreInferenceTruth, balanced_clone, core_inference_truth
+from tests.run_config import (
+    FLIP_EVERY,
+    SHIPPED_T_PHASEING,
+    PlantedInstance,
+    write_run_cnaster_config,
+)
+from tests.tmp_inputs import (
+    WrittenInputs,
+    read_to_bins,
+    write_tmp_inputs,
+    written_config,
+)
 from tests.unsegment import unsegment
 
 pytestmark = pytest.mark.preprocessing
 
 LATTICE = (25, 40)
 """Rows and columns. A thousand spots, which is `icm_sweep_deque`'s floor times five."""
-
-FLIP_EVERY = 3
-"""Every third block is stored on the other haplotype, for the phasing test."""
 
 BALANCED_STATE = 0
 """The planted diploid balanced state, which casts no phase vote (#106)."""
@@ -50,13 +57,6 @@ retired.
 
 STRONG_MARGIN = 0.1
 """How far from balance a planted state has to sit to count as strong."""
-
-SHIPPED_T_PHASEING = 0.99999
-"""`zenodo_sim_config.yaml`'s `hmm.t_phaseing`, which `run_cnaster` passes.
-
-Restated so the sweep below is against what ships rather than against a
-number this file chose. `hmm.t` is stickier still, 0.9999999.
-"""
 
 RESOLVING_SELF_TRANSITIONS = (0.7, 0.6, 0.5)
 """Swept `t` at which the decode resolves three states on every platform (#142).
@@ -131,24 +131,16 @@ def loaded(planted: CoreInferenceTruth, written: WrittenInputs) -> Iterator[Any]
     The configuration stays installed for the body of every test: these stages
     read the global rather than taking it as an argument, and a fixture that
     restored it on the way out would leave them reading `None`.
+
+    The pipeline's own configuration rather than the loader's subset: these
+    stages read sections the loader never touches -- `preprocessing`,
+    `hmrf`, `int_copy_num` -- so a partial global makes them raise
+    `AttributeError` rather than run.
     """
-    from cnaster.config import YAMLConfig, get_global_config, set_global_config
     from cnaster.io import load_input_data
 
-    config_path = write_run_cnaster_config(written, planted)
-
-    # The pipeline's own configuration rather than the loader's subset: these
-    # stages read sections the loader never touches -- `preprocessing`,
-    # `hmrf`, `int_copy_num` -- so a partial global makes them raise
-    # `AttributeError` rather than run.
-    previous = get_global_config()
-    set_global_config(None)
-    set_global_config(YAMLConfig.from_file(config_path))
-    try:
-        yield load_input_data(get_global_config())
-    finally:
-        set_global_config(None)
-        set_global_config(previous)
+    with written_config(write_run_cnaster_config(written, planted)) as config:
+        yield load_input_data(config)
 
 
 @pytest.mark.end2end
@@ -287,7 +279,6 @@ def flipped(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Any]:
     phase would be ambiguous wherever they disagreed, which is a fixture
     question rather than a phasing one.
     """
-    from cnaster.config import YAMLConfig, get_global_config, set_global_config
     from cnaster.io import load_input_data
 
     # NB `self_transition` is loosened from the default 0.99: over sixty bins
@@ -319,16 +310,9 @@ def flipped(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Any]:
 
     root: Path = tmp_path_factory.mktemp("phasing")
     written = write_tmp_inputs(truth, pre_image, root)
-    config_path = write_run_cnaster_config(written, truth)
 
-    previous = get_global_config()
-    set_global_config(None)
-    set_global_config(YAMLConfig.from_file(config_path))
-    try:
-        yield truth, pre_image, load_input_data(get_global_config()), written
-    finally:
-        set_global_config(None)
-        set_global_config(previous)
+    with written_config(write_run_cnaster_config(written, truth)) as config:
+        yield truth, pre_image, load_input_data(config), written
 
 
 @pytest.fixture(scope="module")
@@ -340,25 +324,10 @@ def phased(flipped: Any) -> Any:
     it, and the segmentation it refined.
     """
     from cnaster.hmm_nophasing import get_log_transmat
-    from cnaster.omics import (
-        assign_initial_blocks,
-        form_gene_snp_table,
-        summarize_counts_for_blocks,
-    )
     from cnaster.phasing import initial_phase_given_partition
 
     truth, pre_image, loaded, written = flipped
-    alleles = (loaded.cell_snp_Aallele, loaded.cell_snp_Ballele)
-
-    table = form_gene_snp_table(
-        loaded.unique_snp_ids, str(written.hgtable), loaded.adata
-    )
-    table = assign_initial_blocks(
-        table, loaded.adata, *alleles, loaded.unique_snp_ids, initial_min_umi=1
-    )
-    blocks = summarize_counts_for_blocks(
-        table, loaded.adata, *alleles, loaded.unique_snp_ids
-    )
+    blocks = read_to_bins(written, loaded=loaded, through="blocks").blocks
 
     res, recovered, refined = initial_phase_given_partition(
         blocks.X,
@@ -505,24 +474,10 @@ def phase_inputs(flipped: Any) -> Any:
     from cnaster.hmm_initialize import gmm_init
     from cnaster.hmm_nophasing import get_log_transmat
     from cnaster.hmrf_utils import clone_stack_obs
-    from cnaster.omics import (
-        assign_initial_blocks,
-        form_gene_snp_table,
-        summarize_counts_for_blocks,
-    )
     from cnaster.pseudobulk import merge_pseudobulk_by_index_mix
 
     truth, _, loaded, written = flipped
-    alleles = (loaded.cell_snp_Aallele, loaded.cell_snp_Ballele)
-    table = form_gene_snp_table(
-        loaded.unique_snp_ids, str(written.hgtable), loaded.adata
-    )
-    table = assign_initial_blocks(
-        table, loaded.adata, *alleles, loaded.unique_snp_ids, initial_min_umi=1
-    )
-    blocks = summarize_counts_for_blocks(
-        table, loaded.adata, *alleles, loaded.unique_snp_ids
-    )
+    blocks = read_to_bins(written, loaded=loaded, through="blocks").blocks
 
     zero_exposure = np.zeros_like(blocks.total_bb_RD)
     sitewise = np.zeros(blocks.X.shape[0])
@@ -855,11 +810,7 @@ def test_the_normal_candidates_are_the_planted_balanced_clone(
     """
     truth, candidate, _ = normal_stage
 
-    planted_balanced = int(
-        np.argmax(
-            [np.mean(truth.states[clone] == 0) for clone in range(truth.n_clones)]
-        )
-    )
+    planted_balanced = balanced_clone(truth)
 
     assert candidate.sum() > 0, "the stage selected no normal spots at all"
     assert set(np.unique(truth.labels[candidate]).tolist()) == {planted_balanced}, (
@@ -930,58 +881,11 @@ def _prep_chain(loaded: Any, written: WrittenInputs) -> tuple[Any, Any, Any]:
     recovers the planted segmentation and counts on its own instance; here it
     is the input to the two filters, not the subject.
     """
-    from cnaster.omics import (
-        assign_initial_blocks,
-        binned_gene_snp,
-        create_bin_ranges,
-        form_gene_snp_table,
-        summarize_counts_for_bins,
-        summarize_counts_for_blocks,
-    )
+    from cnaster.omics import binned_gene_snp
 
-    alleles = (loaded.cell_snp_Aallele, loaded.cell_snp_Ballele)
-    table = form_gene_snp_table(
-        loaded.unique_snp_ids, str(written.hgtable), loaded.adata
-    )
-    table = assign_initial_blocks(
-        table, loaded.adata, *alleles, loaded.unique_snp_ids, initial_min_umi=1
-    )
-    blocks = summarize_counts_for_blocks(
-        table, loaded.adata, *alleles, loaded.unique_snp_ids
-    )
-    table = create_bin_ranges(
-        table,
-        loaded.adata,
-        *alleles,
-        loaded.unique_snp_ids,
-        blocks.X,
-        blocks.total_bb_RD,
-        blocks.lengths,
-        secondary_min_umi=1,
-        secondary_min_snp_umi=1,
-        secondary_min_normal_umi=0,
-    )
-    binned = summarize_counts_for_bins(
-        table,
-        loaded.adata,
-        blocks.X,
-        blocks.total_bb_RD,
-        np.ones(int(table.block_id.dropna().nunique()), dtype=bool),
-        nu=1.0,
-        logphase_shift=0.0,
-        geneticmap_file=None,
-    )
+    chain = read_to_bins(written, loaded=loaded)
 
-    return table, binned, binned_gene_snp(table)
-
-
-def _balanced_clone(truth: CoreInferenceTruth) -> int:
-    """Which clone the fixture planted at the balanced state in most bins."""
-    return int(
-        np.argmax(
-            [np.mean(truth.states[clone] == 0) for clone in range(truth.n_clones)]
-        )
-    )
+    return chain.table, chain.bins, binned_gene_snp(chain.table)
 
 
 @pytest.fixture(scope="module")
@@ -1005,7 +909,7 @@ def baf_filtered(
 
     truth, binned, _ = planted, *prepared[1:]
     table = prepared[0]
-    index_normal = np.flatnonzero(truth.labels == _balanced_clone(truth))
+    index_normal = np.flatnonzero(truth.labels == balanced_clone(truth))
 
     filtered, counts = normal_baf_bin_filter(
         table.copy(),
@@ -1047,7 +951,7 @@ def test_the_baf_filter_removes_the_imbalanced_bins_of_the_normal_clone(
     """
     _, _, removed = baf_filtered
 
-    planted_imbalanced = np.flatnonzero(planted.states[_balanced_clone(planted)] != 0)
+    planted_imbalanced = np.flatnonzero(planted.states[balanced_clone(planted)] != 0)
 
     np.testing.assert_array_equal(removed, planted_imbalanced)
 
@@ -1101,7 +1005,7 @@ def test_the_surviving_bins_are_renumbered_onto_a_contiguous_range(
 
 @pytest.fixture(scope="module")
 def one_gene_per_bin(
-    tmp_path_factory: pytest.TempPathFactory,
+    planted_instance: PlantedInstance, tmp_path_factory: pytest.TempPathFactory
 ) -> tuple[CoreInferenceTruth, np.ndarray, np.ndarray]:
     """`filter_normal_diffexp` on an instance whose bins hold one gene each.
 
@@ -1115,38 +1019,28 @@ def one_gene_per_bin(
     and the module already holds two instances whose globals would otherwise
     interleave.
     """
-    from cnaster.config import YAMLConfig, get_global_config, set_global_config
     from cnaster.io import get_sample_list, load_input_data
     from cnaster.normal_spot import filter_normal_diffexp
 
-    truth = core_inference_truth(
-        n_clones=2, n_states=3, lattice=LATTICE, n_obs=40, n_segments=3, seed=11
-    )
+    truth = planted_instance[0]
     root: Path = tmp_path_factory.mktemp("one_gene")
     written = write_tmp_inputs(
         truth, unsegment(truth, flip_every=0, genes_per_bin=(1, 2)), root
     )
-    config_path = write_run_cnaster_config(written, truth)
 
-    previous = get_global_config()
-    set_global_config(None)
-    set_global_config(YAMLConfig.from_file(config_path))
-    try:
-        loaded = load_input_data(get_global_config())
+    with written_config(write_run_cnaster_config(written, truth)) as config:
+        loaded = load_input_data(config)
         _, binned, df_bin_info = _prep_chain(loaded, written)
         sample_list, sample_ids = get_sample_list(loaded.adata)
         retained = np.asarray(
             filter_normal_diffexp(
                 loaded.exp_counts,
                 df_bin_info,
-                truth.labels == _balanced_clone(truth),
+                truth.labels == balanced_clone(truth),
                 sample_list=sample_list,
                 sample_ids=sample_ids,
             )
         )
-    finally:
-        set_global_config(None)
-        set_global_config(previous)
 
     return truth, retained, np.asarray(binned.X[:, 0, :])
 
@@ -1220,7 +1114,7 @@ def test_the_expression_filter_empties_every_bin_holding_more_than_one_gene(
         filter_normal_diffexp(
             loaded.exp_counts,
             df_bin_info,
-            planted.labels == _balanced_clone(planted),
+            planted.labels == balanced_clone(planted),
             sample_list=["S1"],
             sample_ids=np.zeros(planted.n_spots, dtype=int),
         )

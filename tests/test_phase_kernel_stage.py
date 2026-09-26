@@ -14,23 +14,17 @@ evaluates to at the shipped constants.
 """
 
 from collections.abc import Iterator
-from pathlib import Path
 from typing import Any
 
 import numpy as np
 import pandas as pd
 import pytest
 
-from tests.fixtures import CoreInferenceTruth, core_inference_truth
-from tests.run_config import write_run_cnaster_config
-from tests.tmp_inputs import WrittenInputs, write_tmp_inputs
-from tests.unsegment import unsegment
+from tests.fixtures import CoreInferenceTruth
+from tests.run_config import PlantedInstance
+from tests.tmp_inputs import WrittenInputs, read_to_bins, written_config
 
 pytestmark = pytest.mark.preprocessing
-
-LATTICE = (25, 40)
-N_OBS = 40
-"""The dev instance, as the other stage modules use."""
 
 NU = 1.0
 LOGPHASE_SHIFT = -2.0
@@ -52,16 +46,14 @@ before, which is the same as having no kernel at all.
 
 
 @pytest.fixture(scope="module")
-def planted() -> CoreInferenceTruth:
-    """One instance for the module."""
-    return core_inference_truth(
-        n_clones=2, n_states=3, lattice=LATTICE, n_obs=N_OBS, n_segments=3, seed=11
-    )
+def planted(planted_instance: PlantedInstance) -> CoreInferenceTruth:
+    """The session's gate instance."""
+    return planted_instance[0]
 
 
 @pytest.fixture(scope="module")
 def binned_genome(
-    planted: CoreInferenceTruth, tmp_path_factory: pytest.TempPathFactory
+    planted_instance: PlantedInstance,
 ) -> Iterator[tuple[WrittenInputs, Any, np.ndarray]]:
     """The prep chain, then `get_sitewise_transmat` over the bins it derived.
 
@@ -69,48 +61,12 @@ def binned_genome(
     `create_bin_ranges` -- so the coordinates the genetic map is interpolated
     at are the pipeline's rather than ones this module chose.
     """
-    from cnaster.config import YAMLConfig, get_global_config, set_global_config
-    from cnaster.io import load_input_data
-    from cnaster.omics import (
-        assign_initial_blocks,
-        create_bin_ranges,
-        form_gene_snp_table,
-        summarize_counts_for_blocks,
-    )
     from cnaster.recomb import get_sitewise_transmat
 
-    root: Path = tmp_path_factory.mktemp("phase_kernel")
-    written = write_tmp_inputs(planted, unsegment(planted, flip_every=0), root)
-    config_path = write_run_cnaster_config(written, planted)
+    _, _, written, config_path = planted_instance
 
-    previous = get_global_config()
-    set_global_config(None)
-    set_global_config(YAMLConfig.from_file(config_path))
-    try:
-        loaded = load_input_data(get_global_config())
-        alleles = (loaded.cell_snp_Aallele, loaded.cell_snp_Ballele)
-
-        table = form_gene_snp_table(
-            loaded.unique_snp_ids, str(written.hgtable), loaded.adata
-        )
-        table = assign_initial_blocks(
-            table, loaded.adata, *alleles, loaded.unique_snp_ids, initial_min_umi=1
-        )
-        blocks = summarize_counts_for_blocks(
-            table, loaded.adata, *alleles, loaded.unique_snp_ids
-        )
-        table = create_bin_ranges(
-            table,
-            loaded.adata,
-            *alleles,
-            loaded.unique_snp_ids,
-            blocks.X,
-            blocks.total_bb_RD,
-            blocks.lengths,
-            secondary_min_umi=1,
-            secondary_min_snp_umi=1,
-            secondary_min_normal_umi=0,
-        )
+    with written_config(config_path):
+        table = read_to_bins(written, through="ranges").table
         kernel = np.asarray(
             get_sitewise_transmat(
                 segment_key="bin_id",
@@ -122,9 +78,6 @@ def binned_genome(
         )
 
         yield written, table, kernel
-    finally:
-        set_global_config(None)
-        set_global_config(previous)
 
 
 def _closed_form(written: WrittenInputs, table: Any) -> np.ndarray:

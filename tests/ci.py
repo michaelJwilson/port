@@ -46,8 +46,12 @@ GATE = "not release and not oracle and not merge and not benchmark and not depre
 """Every test in no tier or `critical`. Benchmarks measure, so they run
 serially under `--full`, where pytest-benchmark is not disabled by xdist."""
 
-JUDGED = "not release and not deprecate and end2end"
-DROPIN = "not release and not deprecate and (patch or cnaster)"
+JUDGED = "not release and end2end"
+DROPIN = "not release and (patch or cnaster)"
+"""The guards measure rather than gate, so they read `deprecate` tests too: a
+correspondence test is what makes a replacement compared, however seldom the
+gate runs it, and a guard that dropped it would read the replacement as
+uncompared (#403: the drop-in figure fell 90.57 -> 89.53 without this)."""
 MERGE_REST = "merge and not end2end and not patch and not cnaster"
 """The `merge` tests neither coverage guard runs, so `--full` runs each once."""
 

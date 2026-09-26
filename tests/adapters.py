@@ -18,10 +18,12 @@ load-bearing and each is pinned by a test rather than assumed:
 """
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
+import torch
 from snakes_and_ladders.emissions import BetaBinomialEmission
+from snakes_and_ladders.opt.hmm import forward_log_likelihood_from_density
 
 from tests.fixtures import (
     BetaBinomialChains,
@@ -29,6 +31,7 @@ from tests.fixtures import (
     NegativeBinomialChains,
     PhasedChains,
     PottsLabels,
+    SpotCloneField,
 )
 
 if TYPE_CHECKING:
@@ -193,6 +196,20 @@ def cnaster_total_log_likelihood(inputs: CnasterChainInputs) -> float:
     return float(sum(logsumexp(log_alpha[:, end]) for end in ends))
 
 
+def upstream_total_log_likelihood(fixture: NegativeBinomialChains) -> float:
+    """The summed forward log-likelihood, from upstream's recursion."""
+    density = fixture.family.log_density(
+        torch.as_tensor(fixture.dataset.observations, dtype=torch.float64)
+    )
+    return float(
+        forward_log_likelihood_from_density(
+            density,
+            torch.log(torch.as_tensor(fixture.dataset.initial)),
+            torch.log(torch.as_tensor(fixture.dataset.transition)),
+        )
+    )
+
+
 @dataclass(frozen=True)
 class CnasterPhasedInputs:
     """`cnaster`'s arguments for the phased lattice.
@@ -274,6 +291,32 @@ def cnaster_phased_total_log_likelihood(inputs: CnasterPhasedInputs) -> float:
     )
     ends = np.cumsum(inputs.lengths) - 1
     return float(sum(logsumexp(log_alpha[:, end]) for end in ends))
+
+
+def upstream_phased_total_log_likelihood(
+    fixture: PhasedChains, inputs: CnasterPhasedInputs
+) -> float:
+    """The same total from upstream, at the assembled constant transition.
+
+    The paired start is the copy-state initial halved across the phases,
+    which is what `hmm_phased.forward_lattice` builds for itself.
+    """
+    n_sequences = inputs.lengths.size
+    sequence_length = int(inputs.lengths[0])
+    density = torch.as_tensor(
+        inputs.log_emission[:, :, 0]
+        .T.reshape(n_sequences, sequence_length, fixture.n_paired_states)
+        .copy()
+    )
+    paired_initial = 0.5 * np.concatenate([fixture.initial, fixture.initial])
+
+    return float(
+        forward_log_likelihood_from_density(
+            density,
+            torch.log(torch.as_tensor(paired_initial)),
+            torch.log(torch.as_tensor(fixture.combined_transition)),
+        )
+    )
 
 
 @dataclass(frozen=True)
@@ -732,3 +775,131 @@ def cnaster_icm_labelling(
         min_clone_spots=min_clone_spots,
     )
     return assignment, float(cost), int(iterations)
+
+
+def range_filter_loop(unique_snp_ids: np.ndarray, ranges: Any) -> np.ndarray:
+    """`cnaster.io.load_input_data`'s range filter, transcribed verbatim.
+
+    Lines 740-772 of `io.py`, as the call the patch replaces. Transcribed
+    rather than imported because it is inline in a 480-line function behind a
+    configuration key, so there is no way to call it on its own -- which is
+    also why nothing had ever run it.
+    """
+    num_ranges = ranges.shape[0]
+    indicator_filter = np.array([True] * len(unique_snp_ids))
+    j = 0
+
+    for i in range(len(unique_snp_ids)):
+        this_chr = int(unique_snp_ids[i].split("_")[0])
+        this_pos = int(unique_snp_ids[i].split("_")[1])
+
+        while j < num_ranges and (
+            (ranges.Chr.to_numpy()[j] < this_chr)
+            or (
+                (ranges.Chr.to_numpy()[j] == this_chr)
+                and (ranges.End.to_numpy()[j] <= this_pos)
+            )
+        ):
+            j += 1
+
+        if (
+            j < num_ranges
+            and (ranges.Chr.to_numpy()[j] == this_chr)
+            and (ranges.Start.to_numpy()[j] <= this_pos)
+            and (ranges.End.to_numpy()[j] > this_pos)
+        ):
+            indicator_filter[i] = False
+
+    return indicator_filter
+
+
+def drawn(figure: Any, *, colours: bool = True) -> list[np.ndarray]:
+    """Every point and segment a figure put on its axes, in drawing order.
+
+    Scatter offsets, with their face colours unless `colours` is off, and
+    `LineCollection` segments: the figure's data rather than its pixels, so a
+    comparison fails only if a number changed and not on a font or a backend.
+    """
+    out: list[np.ndarray] = []
+
+    for axis in figure.axes:
+        for collection in axis.collections:
+            offsets = np.asarray(collection.get_offsets())
+
+            if offsets.size:
+                out.append(offsets)
+                if colours:
+                    out.append(np.asarray(collection.get_facecolors()))
+
+            segments = getattr(collection, "get_segments", None)
+
+            if segments is not None:
+                out.extend(np.asarray(segment) for segment in segments())
+
+    return out
+
+
+def grid_adjacency(n_spots: int, width: int) -> Any:
+    """A four-neighbour grid, as `construct_multislice_lattice_adjacency` builds.
+
+    Built here rather than drawn, because the claim is about the solver
+    reading one graph and the graph should be one a reader can check by
+    inspection: spot `i` neighbours `i - 1`, `i + 1`, `i - width` and
+    `i + width` where those exist.
+    """
+    from scipy.sparse import coo_matrix
+
+    rows: list[int] = []
+    columns: list[int] = []
+
+    for spot in range(n_spots):
+        row, column = divmod(spot, width)
+
+        for neighbour_row, neighbour_column in (
+            (row, column + 1),
+            (row + 1, column),
+        ):
+            neighbour = neighbour_row * width + neighbour_column
+
+            if neighbour_column < width and neighbour < n_spots:
+                rows.extend((spot, neighbour))
+                columns.extend((neighbour, spot))
+
+    data = np.ones(len(rows))
+
+    return coo_matrix((data, (rows, columns)), shape=(n_spots, n_spots)).tocsr()
+
+
+def clone_assignment_arguments(fixture: SpotCloneField, width: int) -> dict[str, Any]:
+    """`pipeline_clone_assignment`'s arguments, built once so two arms cannot differ.
+
+    `pred` is the concatenated path the fit returns and `res` the four
+    parameters beside it, at `(n_states, 1)` -- the shape `cnaster` reads
+    and the only one a fit produces (#278).
+    """
+    n_obs, n_spots = fixture.counts_nb.shape
+
+    single_X = np.zeros((n_obs, 2, n_spots))
+    single_X[:, 0, :] = fixture.counts_nb
+    single_X[:, 1, :] = fixture.counts_bb
+
+    generator = np.random.default_rng(fixture.seed)
+
+    return {
+        "single_X": single_X,
+        "single_base_nb_mean": fixture.base_nb_mean,
+        "single_total_bb_RD": fixture.total_bb_RD,
+        "res": {
+            "new_log_mu": fixture.log_mu.reshape(-1, 1),
+            "new_alphas": fixture.alphas.reshape(-1, 1),
+            "new_p_binom": fixture.p_binom.reshape(-1, 1),
+            "new_taus": fixture.taus.reshape(-1, 1),
+        },
+        "pred": fixture.pred.T.reshape(-1),
+        "adjacency_mat": grid_adjacency(n_spots, width),
+        "prev_assignment": generator.integers(0, fixture.n_clones, size=n_spots).astype(
+            np.int64
+        ),
+        "sample_ids": np.zeros(n_spots, dtype=np.int64),
+        "spatial_weight": 1.5,
+    }

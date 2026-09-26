@@ -12,87 +12,20 @@ in `tests/test_run_cnaster_stages.py`, which judge what comes out of the
 loader against the truth the fixture planted.
 """
 
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
+from contextlib import ExitStack
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 import pytest
 
-from tests.fixtures import CoreInferenceTruth, core_inference_truth
-from tests.run_config import write_run_cnaster_config
-from tests.tmp_inputs import WrittenInputs, write_tmp_inputs
-from tests.unsegment import unsegment
+from tests.adapters import range_filter_loop
+from tests.fixtures import balanced_clone, synthetic_ranges
+from tests.run_config import PlantedInstance
+from tests.tmp_inputs import WrittenInputs, written_config
 
 pytestmark = pytest.mark.preprocessing
-
-GATE_LATTICE = (25, 40)
-GATE_OBS = 40
-"""The dev instance: a thousand spots over forty bins.
-
-What a merge is gated on. The size at which a **speedup** is established is
-the release-tier one below, per the Measurement rule: a ratio read here
-decides nothing.
-"""
-
-STRESS_LATTICE = (50, 50)
-STRESS_OBS = 400
-"""2,500 spots over 400 bins -- 782 SNPs and 1,187 genes once binned.
-
-Chosen as the largest instance whose fixture builds in under four seconds, so
-the measurement is repeatable inside a test run rather than an offline note.
-A Visium slide is 5,000 spots against 500,000 SNPs, where the arrays this
-patch does not allocate are gigabytes rather than megabytes; the direction is
-established here and the magnitude there is arithmetic, not measurement.
-"""
-
-
-def _instance(
-    root: Path, lattice: tuple[int, int], n_obs: int
-) -> tuple[CoreInferenceTruth, Any, WrittenInputs, Path]:
-    """Plant an instance and write it, returning its configuration path.
-
-    The pre-image comes back too: it carries the planted per-gene counts and
-    their names, which is what the loader is judged against below. The binned
-    truth cannot serve, because the loader drops genes and a bin total would
-    then disagree for a reason that is the filter working.
-    """
-    truth = core_inference_truth(
-        n_clones=2, n_states=3, lattice=lattice, n_obs=n_obs, n_segments=3, seed=11
-    )
-    pre_image = unsegment(truth, flip_every=0)
-    written = write_tmp_inputs(truth, pre_image, root)
-
-    return truth, pre_image, written, write_run_cnaster_config(written, truth)
-
-
-@pytest.fixture(scope="module")
-def planted_instance(
-    tmp_path_factory: pytest.TempPathFactory,
-) -> tuple[CoreInferenceTruth, Any, WrittenInputs, Path]:
-    """The dev instance, planted and written once for the module."""
-    root: Path = tmp_path_factory.mktemp("patch_gate")
-
-    return _instance(root, GATE_LATTICE, GATE_OBS)
-
-
-@pytest.fixture(scope="module")
-def gate_config(
-    planted_instance: tuple[CoreInferenceTruth, Any, WrittenInputs, Path],
-) -> Iterator[Any]:
-    """The dev instance's configuration, installed for the module."""
-    from cnaster.config import YAMLConfig, get_global_config, set_global_config
-
-    config_path = planted_instance[3]
-
-    previous = get_global_config()
-    set_global_config(None)
-    set_global_config(YAMLConfig.from_file(config_path))
-    try:
-        yield get_global_config()
-    finally:
-        set_global_config(None)
-        set_global_config(previous)
 
 
 @pytest.fixture(scope="module")
@@ -196,7 +129,7 @@ is a floor of five spots rather than of five.
 
 @pytest.mark.end2end
 def test_the_patched_loader_returns_the_planted_counts_for_every_gene_it_keeps(
-    planted_instance: tuple[CoreInferenceTruth, Any, WrittenInputs, Path],
+    planted_instance: PlantedInstance,
     both_loaders: tuple[Any, Any],
 ) -> None:
     """**Every retained count is the planted count, bitwise (#167).**
@@ -223,7 +156,7 @@ def test_the_patched_loader_returns_the_planted_counts_for_every_gene_it_keeps(
 
 @pytest.mark.end2end
 def test_the_loader_drops_exactly_the_genes_too_few_spots_express(
-    planted_instance: tuple[CoreInferenceTruth, Any, WrittenInputs, Path],
+    planted_instance: PlantedInstance,
     both_loaders: tuple[Any, Any],
 ) -> None:
     """**Which genes survive is decided by the planted counts, and it holds.**
@@ -273,77 +206,6 @@ def test_the_sparse_return_carries_the_same_matrix(gate_config: Any) -> None:
     np.testing.assert_array_equal(
         sparse.cell_snp_Ballele.toarray(), dense.cell_snp_Ballele
     )
-
-
-def synthetic_ranges(
-    n_snps: int, n_ranges: int, seed: int = 11
-) -> tuple[np.ndarray, Any]:
-    """SNP ids and filter ranges over a genome, both sorted as the loader needs.
-
-    Shared with the benchmark module. The ids are `cnaster`'s own text form --
-    `{chromosome}_{position}_{ref}_{alt}` -- because the filter parses them with
-    `split("_")`, so a test handing it tuples would not exercise the parse.
-    """
-    import pandas as pd
-
-    rng = np.random.default_rng(seed)
-
-    chromosomes = rng.integers(1, 23, n_snps)
-    positions = rng.integers(0, 250_000_000, n_snps)
-    order = np.lexsort((positions, chromosomes))
-    snp_ids = np.array(
-        [f"{chromosomes[k]}_{positions[k]}_A_T" for k in order], dtype=object
-    )
-
-    range_chromosomes = rng.integers(1, 23, n_ranges)
-    range_starts = rng.integers(0, 250_000_000, n_ranges)
-    range_order = np.lexsort((range_starts, range_chromosomes))
-
-    ranges = pd.DataFrame(
-        {
-            "Chr": range_chromosomes[range_order],
-            "Start": range_starts[range_order],
-            "End": range_starts[range_order] + 2_000_000,
-        }
-    )
-
-    return snp_ids, ranges
-
-
-def range_filter_loop(unique_snp_ids: np.ndarray, ranges: Any) -> np.ndarray:
-    """`cnaster.io.load_input_data`'s range filter, transcribed verbatim.
-
-    Lines 740-772 of `io.py`, as the call the patch replaces. Transcribed
-    rather than imported because it is inline in a 480-line function behind a
-    configuration key, so there is no way to call it on its own -- which is
-    also why nothing had ever run it.
-    """
-    num_ranges = ranges.shape[0]
-    indicator_filter = np.array([True] * len(unique_snp_ids))
-    j = 0
-
-    for i in range(len(unique_snp_ids)):
-        this_chr = int(unique_snp_ids[i].split("_")[0])
-        this_pos = int(unique_snp_ids[i].split("_")[1])
-
-        while j < num_ranges and (
-            (ranges.Chr.to_numpy()[j] < this_chr)
-            or (
-                (ranges.Chr.to_numpy()[j] == this_chr)
-                and (ranges.End.to_numpy()[j] <= this_pos)
-            )
-        ):
-            j += 1
-
-        if (
-            j < num_ranges
-            and (ranges.Chr.to_numpy()[j] == this_chr)
-            and (ranges.Start.to_numpy()[j] <= this_pos)
-            and (ranges.End.to_numpy()[j] > this_pos)
-        ):
-            indicator_filter[i] = False
-
-    return indicator_filter
 
 
 @pytest.mark.patch
@@ -397,7 +259,7 @@ def _loaders() -> list[tuple[str, Any]]:
 def test_the_gene_file_removes_the_genes_it_names_and_no_others(
     name: str,
     load_input_data: Any,
-    planted_instance: tuple[CoreInferenceTruth, Any, WrittenInputs, Path],
+    planted_instance: PlantedInstance,
     gate_config: Any,
 ) -> None:
     """**`filter_gene_file`, which no run in this repository has ever taken.**
@@ -446,7 +308,7 @@ def test_the_gene_file_removes_the_genes_it_names_and_no_others(
 def test_the_range_file_removes_the_snps_inside_the_ranges_it_names(
     name: str,
     load_input_data: Any,
-    planted_instance: tuple[CoreInferenceTruth, Any, WrittenInputs, Path],
+    planted_instance: PlantedInstance,
     gate_config: Any,
 ) -> None:
     """**`filter_range_file`, likewise never taken, and against planted SNPs.**
@@ -506,7 +368,7 @@ def test_the_range_file_removes_the_snps_inside_the_ranges_it_names(
 def test_the_normal_index_file_annotates_the_spots_it_names(
     name: str,
     load_input_data: Any,
-    planted_instance: tuple[CoreInferenceTruth, Any, WrittenInputs, Path],
+    planted_instance: PlantedInstance,
     gate_config: Any,
 ) -> None:
     """**`normal_idx_file`, the third branch nothing runs.**
@@ -518,11 +380,7 @@ def test_the_normal_index_file_annotates_the_spots_it_names(
     """
     truth, _, written, _ = planted_instance
 
-    balanced = int(
-        np.argmax(
-            [np.mean(truth.states[clone] == 0) for clone in range(truth.n_clones)]
-        )
-    )
+    balanced = balanced_clone(truth)
     normal = [
         str(written.barcodes[spot]) for spot in np.flatnonzero(truth.labels == balanced)
     ]
@@ -547,7 +405,7 @@ def test_the_normal_index_file_annotates_the_spots_it_names(
 
 @pytest.fixture(scope="module")
 def outlier_configs(
-    planted_instance: tuple[CoreInferenceTruth, Any, WrittenInputs, Path],
+    planted_instance: PlantedInstance,
 ) -> dict[str, Path]:
     """The same instance's configuration with each outlier branch turned on.
 
@@ -573,27 +431,15 @@ def outlier_configs(
 
 
 @pytest.fixture
-def installed(outlier_configs: dict[str, Path]) -> Any:
+def installed(outlier_configs: dict[str, Path]) -> Iterator[Callable[[str], Any]]:
     """Install one of those configurations for the body of a test."""
-    from cnaster.config import YAMLConfig, get_global_config, set_global_config
-
-    def install(key: str) -> Any:
-        set_global_config(None)
-        set_global_config(YAMLConfig.from_file(outlier_configs[key]))
-
-        return get_global_config()
-
-    previous = get_global_config()
-    try:
-        yield install
-    finally:
-        set_global_config(None)
-        set_global_config(previous)
+    with ExitStack() as stack:
+        yield lambda key: stack.enter_context(written_config(outlier_configs[key]))
 
 
 @pytest.mark.end2end
 def test_the_outlier_filter_leaves_every_planted_count_alone(
-    planted_instance: tuple[CoreInferenceTruth, Any, WrittenInputs, Path],
+    planted_instance: PlantedInstance,
     installed: Any,
 ) -> None:
     """**`quality.local_outlier_filter`, a branch nothing had run, is a no-op here.**
@@ -625,7 +471,7 @@ def test_the_outlier_filter_leaves_every_planted_count_alone(
 
 @pytest.mark.warning
 def test_the_downsampler_misses_its_own_threshold_by_two_per_cent(
-    planted_instance: tuple[CoreInferenceTruth, Any, WrittenInputs, Path],
+    planted_instance: PlantedInstance,
     installed: Any,
 ) -> None:
     """**`quality.normalize_gene_outliers` does nothing, by a 2.5 per cent margin.**
@@ -663,7 +509,7 @@ def test_the_downsampler_misses_its_own_threshold_by_two_per_cent(
 
 @pytest.mark.bug
 def test_the_gene_filter_counts_the_path_rather_than_the_genes(
-    planted_instance: tuple[CoreInferenceTruth, Any, WrittenInputs, Path],
+    planted_instance: PlantedInstance,
     gate_config: Any,
 ) -> None:
     """**`len(filter_gene_file)` is the length of the filename (`io.py:725`).**

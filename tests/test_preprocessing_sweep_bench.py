@@ -31,13 +31,27 @@ function at a slide's read depth -- the one place a patch here allocates more
 than what it replaces.
 """
 
+from collections.abc import Callable
 from typing import Any
 
 import numpy as np
 import pandas as pd
 import pytest
 import scipy.stats
+from cnaster.reference import get_reference_genes as cnaster_reference_genes
+from cnaster.spatial import best_equal_partition as cnaster_partition
+from cnaster.spatial import (
+    construct_multislice_lattice_adjacency as cnaster_adjacency,
+)
+from port.patch.normal_spot import cumulative_and_mass
+from port.patch.reference import get_reference_genes as patched_reference_genes
+from port.patch.spatial import best_equal_partition as patched_partition
+from port.patch.spatial import (
+    construct_multislice_lattice_adjacency as patched_adjacency,
+)
 from pytest_benchmark.fixture import BenchmarkFixture
+
+from tests.fixtures import tiers
 
 pytestmark = pytest.mark.preprocessing
 
@@ -102,233 +116,129 @@ def _bins(depth: int, count: int) -> tuple[np.ndarray, np.ndarray]:
     return generator.binomial(totals, 0.5), totals
 
 
-@pytest.mark.benchmark
-def test_cnasters_adjacency_at_the_gate_size(benchmark: BenchmarkFixture) -> None:
-    """The dense block diagonal: 14.9 ms at 1,000 spots."""
-    from cnaster.spatial import construct_multislice_lattice_adjacency
+def _scipy_cumulative_and_mass(
+    counts: np.ndarray, totals: np.ndarray, alpha: float, beta: float
+) -> tuple[np.ndarray, np.ndarray]:
+    """`betabinom.cdf` twice, as `removal_indicator` called it."""
+    return (
+        scipy.stats.betabinom.cdf(counts, totals, alpha, beta),
+        scipy.stats.betabinom.cdf(counts - 1, totals, alpha, beta),
+    )
 
-    coords = _lattice(*GATE_LATTICE)
+
+@pytest.mark.benchmark
+@pytest.mark.parametrize("lattice", tiers(GATE_LATTICE, STRESS_LATTICE))
+@pytest.mark.parametrize(
+    "arm",
+    [cnaster_adjacency, patched_adjacency],
+    ids=["cnaster-dense", "patched-sparse"],
+)
+def test_adjacency(
+    benchmark: BenchmarkFixture,
+    arm: Callable[..., object],
+    lattice: tuple[int, int],
+) -> None:
+    """The dense block diagonal against sparse throughout.
+
+    14.9 ms against 2.49 ms at 1,000 spots, **6.0x**. At 10,000 spots
+    1,250 ms and 1,601 MB to hold 0.3 MB of graph, against 15.9 ms and
+    5.5 MB: **78x**, and 289x less allocated. The ratio grows with the spot
+    count because what is removed is quadratic in it and what is left -- the
+    k-d tree query -- is not.
+    """
+    coords = _lattice(*lattice)
     sample_ids = np.zeros(len(coords), dtype=int)
 
-    benchmark(
-        lambda: construct_multislice_lattice_adjacency(
-            sample_ids, [0], coords, None, 1, 1, 1
-        )
-    )
+    benchmark(arm, sample_ids, [0], coords, None, 1, 1, 1)
 
 
 @pytest.mark.benchmark
-def test_the_sparse_adjacency_at_the_gate_size(benchmark: BenchmarkFixture) -> None:
-    """Sparse throughout: 2.49 ms, so **6.0x** at 1,000 spots."""
-    from port.patch.spatial import construct_multislice_lattice_adjacency
-
-    coords = _lattice(*GATE_LATTICE)
-    sample_ids = np.zeros(len(coords), dtype=int)
-
-    benchmark(
-        lambda: construct_multislice_lattice_adjacency(
-            sample_ids, [0], coords, None, 1, 1, 1
-        )
-    )
-
-
-@pytest.mark.benchmark
-def test_cnasters_partition_at_the_gate_size(benchmark: BenchmarkFixture) -> None:
-    """Index lists per trial, at 1,000 spots and 200 trials: 24.2 ms."""
-    from cnaster.spatial import best_equal_partition
-
-    coords = _lattice(*GATE_LATTICE)
-
-    benchmark(lambda: best_equal_partition(coords, 3, 3, n_trials=200))
-
-
-@pytest.mark.benchmark
-def test_the_batched_partition_at_the_gate_size(benchmark: BenchmarkFixture) -> None:
-    """Summed-area table, batched across trials: 3.90 ms, **6.2x**."""
-    from port.patch.spatial import best_equal_partition
-
-    coords = _lattice(*GATE_LATTICE)
-
-    benchmark(lambda: best_equal_partition(coords, 3, 3, n_trials=200))
-
-
-@pytest.mark.benchmark
-def test_scipys_distribution_function_at_the_gate_depth(
+@pytest.mark.parametrize(
+    ("lattice", "n_trials"),
+    [
+        pytest.param(GATE_LATTICE, 200, id="gate"),
+        pytest.param(STRESS_LATTICE, 1_000, id="stress", marks=pytest.mark.release),
+    ],
+)
+@pytest.mark.parametrize(
+    "arm",
+    [cnaster_partition, patched_partition],
+    ids=["cnaster-index-lists", "patched-batched"],
+)
+def test_partition(
     benchmark: BenchmarkFixture,
+    arm: Callable[..., object],
+    lattice: tuple[int, int],
+    n_trials: int,
 ) -> None:
-    """`betabinom.cdf` twice, as `removal_indicator` called it: 53.9 ms."""
-    counts, totals = _bins(*GATE_DEPTH)
+    """Index lists per trial against a summed-area table batched across trials.
 
-    benchmark(
-        lambda: (
-            scipy.stats.betabinom.cdf(counts, totals, 15.0, 15.0),
-            scipy.stats.betabinom.cdf(counts - 1, totals, 15.0, 15.0),
-        )
-    )
+    24.2 ms against 3.90 ms at 1,000 spots and 200 trials, **6.2x**. At
+    10,000 spots and 1,000 trials 304 ms against 18.6 ms, **16x**, and
+    17.2 ms at 2,500 spots -- the same figure. The cost stops depending on
+    the spot count, which is the claim: a trial reads `x_part * y_part`
+    corners of a table built once.
+    """
+    coords = _lattice(*lattice)
+
+    benchmark(arm, coords, 3, 3, n_trials=n_trials)
 
 
 @pytest.mark.benchmark
-def test_the_vectorized_distribution_function_at_the_gate_depth(
+@pytest.mark.parametrize("depth", tiers(GATE_DEPTH, STRESS_DEPTH))
+@pytest.mark.parametrize(
+    "arm",
+    [_scipy_cumulative_and_mass, cumulative_and_mass],
+    ids=["scipy", "vectorized"],
+)
+def test_distribution_function(
     benchmark: BenchmarkFixture,
+    arm: Callable[..., object],
+    depth: tuple[int, int],
 ) -> None:
-    """One sweep for both: 7.36 ms, **7.3x**."""
-    from port.patch.normal_spot import cumulative_and_mass
+    """Two `scipy` calls against one sweep for both.
 
-    counts, totals = _bins(*GATE_DEPTH)
-
-    benchmark(lambda: cumulative_and_mass(counts, totals, 15.0, 15.0))
-
-
-@pytest.mark.benchmark
-@pytest.mark.release
-def test_cnasters_adjacency_at_the_stress_size(benchmark: BenchmarkFixture) -> None:
-    """1,250 ms at 10,000 spots, and 1,601 MB to hold 0.3 MB of graph."""
-    from cnaster.spatial import construct_multislice_lattice_adjacency
-
-    coords = _lattice(*STRESS_LATTICE)
-    sample_ids = np.zeros(len(coords), dtype=int)
-
-    benchmark(
-        lambda: construct_multislice_lattice_adjacency(
-            sample_ids, [0], coords, None, 1, 1, 1
-        )
-    )
-
-
-@pytest.mark.benchmark
-@pytest.mark.release
-def test_the_sparse_adjacency_at_the_stress_size(benchmark: BenchmarkFixture) -> None:
-    """15.9 ms and 5.5 MB: **78x**, and 289x less allocated.
-
-    The ratio grows with the spot count because what is removed is quadratic
-    in it and what is left -- the k-d tree query -- is not.
+    53.9 ms against 7.36 ms at the gate depth, **7.3x**. At 20,000 reads per
+    bin `scipy` sums one element at a time, 404.6 ms against 73.1 ms:
+    **5.5x**, and 4.9x again at 100,000. Where the claim is made. Both forms
+    are linear in the terms summed, so the ratio is what a term costs: four
+    gathers against two `betaln` calls.
     """
-    from port.patch.spatial import construct_multislice_lattice_adjacency
+    counts, totals = _bins(*depth)
 
-    coords = _lattice(*STRESS_LATTICE)
-    sample_ids = np.zeros(len(coords), dtype=int)
-
-    benchmark(
-        lambda: construct_multislice_lattice_adjacency(
-            sample_ids, [0], coords, None, 1, 1, 1
-        )
-    )
+    benchmark(arm, counts, totals, 15.0, 15.0)
 
 
 @pytest.mark.benchmark
-@pytest.mark.release
-def test_cnasters_partition_at_the_stress_size(benchmark: BenchmarkFixture) -> None:
-    """304 ms at 10,000 spots and 1,000 trials."""
-    from cnaster.spatial import best_equal_partition
-
-    coords = _lattice(*STRESS_LATTICE)
-
-    benchmark(lambda: best_equal_partition(coords, 3, 3, n_trials=1_000))
-
-
-@pytest.mark.benchmark
-@pytest.mark.release
-def test_the_batched_partition_at_the_stress_size(benchmark: BenchmarkFixture) -> None:
-    """18.6 ms: **16x**, and 17.2 ms at 2,500 spots -- the same figure.
-
-    The cost stops depending on the spot count, which is the claim: a trial
-    reads `x_part * y_part` corners of a table built once.
-    """
-    from port.patch.spatial import best_equal_partition
-
-    coords = _lattice(*STRESS_LATTICE)
-
-    benchmark(lambda: best_equal_partition(coords, 3, 3, n_trials=1_000))
-
-
-@pytest.mark.benchmark
-@pytest.mark.release
-def test_scipys_distribution_function_at_the_stress_depth(
+@pytest.mark.parametrize("rows", tiers(1_213, 250_000))
+@pytest.mark.parametrize(
+    "arm",
+    [cnaster_reference_genes, patched_reference_genes],
+    ids=["cnaster-pandas", "patched-polars"],
+)
+def test_reference_read(
     benchmark: BenchmarkFixture,
+    hgtable: Any,
+    arm: Callable[[str], object],
+    rows: int,
 ) -> None:
-    """404.6 ms at 20,000 reads per bin, summing one element at a time."""
-    counts, totals = _bins(*STRESS_DEPTH)
+    """`pd.read_csv` against `pl.read_csv` handed back through Arrow (#185).
 
-    benchmark(
-        lambda: (
-            scipy.stats.betabinom.cdf(counts, totals, 15.0, 15.0),
-            scipy.stats.betabinom.cdf(counts - 1, totals, 15.0, 15.0),
-        )
-    )
+    At 1,213 transcripts 6.31 ms against 4.03 ms, **0.98x**, and that is the
+    finding: a multi-threaded parser has nothing to divide and the Arrow
+    conversion's fixed cost is the whole of the read.
 
-
-@pytest.mark.benchmark
-@pytest.mark.release
-def test_the_vectorized_distribution_function_at_the_stress_depth(
-    benchmark: BenchmarkFixture,
-) -> None:
-    """73.1 ms: **5.5x**, and 4.9x again at 100,000 reads per bin.
-
-    Where the claim is made. Both forms are linear in the terms summed, so the
-    ratio is what a term costs: four gathers against two `betaln` calls.
-    """
-    from port.patch.normal_spot import cumulative_and_mass
-
-    counts, totals = _bins(*STRESS_DEPTH)
-
-    benchmark(lambda: cumulative_and_mass(counts, totals, 15.0, 15.0))
-
-
-@pytest.mark.benchmark
-def test_cnasters_reference_read_at_the_gate_size(
-    benchmark: BenchmarkFixture, hgtable: Any
-) -> None:
-    """`pd.read_csv` at 1,213 transcripts: 6.31 ms (#185)."""
-    from cnaster.reference import get_reference_genes
-
-    benchmark(lambda: get_reference_genes(str(hgtable(1_213))))
-
-
-@pytest.mark.benchmark
-def test_the_polars_reference_read_at_the_gate_size(
-    benchmark: BenchmarkFixture, hgtable: Any
-) -> None:
-    """`pl.read_csv`, handed back through Arrow: 4.03 ms, **0.98x** (#185).
-
-    **No faster than `pandas` at this size, and that is the finding.** The
-    gate size has 1,213 transcripts: a multi-threaded parser has nothing to
-    divide and the Arrow conversion's fixed cost is the whole of the read.
-    The claim is at the stress size below, and it is about memory.
-    """
-    from port.patch.reference import get_reference_genes
-
-    benchmark(lambda: get_reference_genes(str(hgtable(1_213))))
-
-
-@pytest.mark.benchmark
-@pytest.mark.release
-def test_cnasters_reference_read_at_the_stress_size(
-    benchmark: BenchmarkFixture, hgtable: Any
-) -> None:
-    """430.7 ms and 49.5 MB at 250,000 transcripts, a human reference's size."""
-    from cnaster.reference import get_reference_genes
-
-    benchmark(lambda: get_reference_genes(str(hgtable(250_000))))
-
-
-@pytest.mark.benchmark
-@pytest.mark.release
-def test_the_polars_reference_read_at_the_stress_size(
-    benchmark: BenchmarkFixture, hgtable: Any
-) -> None:
-    """60.5 ms and 15.5 MB: **7.1x**, and **3.2x less allocated**.
-
-    Where the claim is made, and the claim is the second column. Reading the
-    frame back column by column through `numpy` is 42.8 ms and 23.3 MB --
-    **faster by 1.41x** and heavier by 1.50x -- so `pyarrow` is a memory
-    patch and a time cost, not a speedup, and `CLAUDE.md`'s 2x bar is
-    therefore not the rule that decides it. The evidence that does is the
-    bitwise test: `tests/test_reference_patch.py` compares the frame,
-    its index, its column order and its dtypes against `cnaster`'s.
+    At 250,000 transcripts, a human reference's size, 430.7 ms and 49.5 MB
+    against 60.5 ms and 15.5 MB: **7.1x**, and **3.2x less allocated**. The
+    claim is the second figure. Reading the frame back column by column
+    through `numpy` is 42.8 ms and 23.3 MB -- **faster by 1.41x** and heavier
+    by 1.50x -- so `pyarrow` is a memory patch and a time cost, not a
+    speedup, and `CLAUDE.md`'s 2x bar is therefore not the rule that decides
+    it. The evidence that does is the bitwise test:
+    `tests/test_reference_patch.py` compares the frame, its index, its column
+    order and its dtypes against `cnaster`'s.
 
     Warm, best of five, and both routes measured in the same pass -- the
     first read of a 250,000-row file is the page cache, not the parser.
     """
-    from port.patch.reference import get_reference_genes
-
-    benchmark(lambda: get_reference_genes(str(hgtable(250_000))))
+    benchmark(arm, str(hgtable(rows)))
