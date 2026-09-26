@@ -125,7 +125,7 @@ def test_the_default_hmm_class_cannot_complete_an_outer_iteration(
     from cnaster.hmrf import run_core_inference
 
     truth = core_inference_truth(
-        n_clones=2, n_states=3, lattice=(6, 5), n_obs=60, n_segments=2
+        n_clones=2, n_states=3, lattice=(6, 6), n_obs=60, n_segments=2
     )
 
     with warnings.catch_warnings():
@@ -154,6 +154,10 @@ def test_a_clone_below_the_solver_s_floor_is_merged_away(cnaster_config: None) -
     "whatever the data says" is not what the solver does: the floor held on
     this data and not on that. Pinned on the layout it was measured on, and
     the contradiction reported on #298.
+
+    **Kept at 6 x 5 when the other small fixtures moved to 6 x 6 (#417):** at
+    6 x 6 the same draw returns two clones -- the floor is not reached again
+    -- so the layout is part of what this pins.
     """
     truth = core_inference_truth(
         n_clones=2,
