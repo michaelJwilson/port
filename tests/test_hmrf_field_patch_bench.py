@@ -27,12 +27,14 @@ issue #59 item 2 -- the materialization is a scaling limit rather than an
 optimization -- and it is why the large row trades spots for bins.
 """
 
+from collections.abc import Callable
+
 import numpy as np
 import pytest
 from port.patch.hmrf.field import compute_loglike_spot_assignment_strided
 from pytest_benchmark.fixture import BenchmarkFixture
 
-from tests.fixtures import SpotCloneField, spot_clone_field
+from tests.fixtures import SpotCloneField, spot_clone_field, tiers
 
 GATE = {"n_states": 5, "n_obs": 400, "n_spots": 300, "n_clones": 3}
 """Small enough for the per-pull-request budget; decides no ratio."""
@@ -76,42 +78,22 @@ def _run_patch(fixture: SpotCloneField) -> np.ndarray:
 
 
 @pytest.mark.benchmark
-def test_cnaster_field_gate(benchmark: BenchmarkFixture) -> None:
-    """`cnaster`'s layout at gate size."""
-    fixture = spot_clone_field(**GATE)
-    _run_cnaster(fixture)
-    benchmark(_run_cnaster, fixture)
+@pytest.mark.parametrize("size", tiers(GATE, STRESS))
+@pytest.mark.parametrize("arm", [_run_cnaster, _run_patch], ids=["cnaster", "patched"])
+def test_field(
+    benchmark: BenchmarkFixture,
+    arm: Callable[[SpotCloneField], np.ndarray],
+    size: dict[str, int],
+) -> None:
+    """`cnaster`'s layout against the transposed one, warmed by one call.
 
-
-@pytest.mark.benchmark
-def test_patched_field_gate(benchmark: BenchmarkFixture) -> None:
-    """The transposed layout at gate size, for the pair."""
-    fixture = spot_clone_field(**GATE)
-    _run_patch(fixture)
-    benchmark(_run_patch, fixture)
-
-
-@pytest.mark.benchmark
-@pytest.mark.release
-def test_cnaster_field_stress(benchmark: BenchmarkFixture) -> None:
-    """`cnaster`'s layout at the size the claim is made on."""
-    fixture = spot_clone_field(**STRESS)
-    _run_cnaster(fixture)
-    benchmark(_run_cnaster, fixture)
-
-
-@pytest.mark.benchmark
-@pytest.mark.release
-def test_patched_field_stress(benchmark: BenchmarkFixture) -> None:
-    """The transposed layout at the same size.
-
-    The transpose itself is **not** timed here, and that is deliberate rather
-    than favourable: at this size it costs 606 ms against a 74 ms kernel, so
+    The transpose itself is **not** timed, and that is deliberate rather than
+    favourable: at the stress size it costs 606 ms against a 74 ms kernel, so
     doing it per call never pays. The change belongs in
     `compute_emission_probability_nb_betabinom`'s output indexing, and what
-    this row prices is the kernel a producer emitting that layout would feed.
-    Timing the copy would price a patch nobody is proposing.
+    the patched row prices is the kernel a producer emitting that layout
+    would feed. Timing the copy would price a patch nobody is proposing.
     """
-    fixture = spot_clone_field(**STRESS)
-    _run_patch(fixture)
-    benchmark(_run_patch, fixture)
+    fixture = spot_clone_field(**size)
+    arm(fixture)
+    benchmark(arm, fixture)

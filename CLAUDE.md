@@ -199,8 +199,9 @@ full for that reason.
     gap between the two is where this repository's defects have been found.
 *   **`infra` is for port's own rules, and stays sparing.** It is the one
     marker that says nothing about the subject, so it is what a test drifts
-    into when it is hard to classify. A test that reaches `cnaster` at all is
-    `smoke` until something outside decides its value.
+    into when it is hard to classify. A test that executes `cnaster` is
+    `smoke` until something outside decides its value; inspecting it
+    (signatures, bindings, source) is `infra`.
 *   **Time is money.** Test and build frameworks are justified against a
     time and computational budget.
 *   **Five tiers, at most one per test:** `critical` gates first, no tier

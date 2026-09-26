@@ -30,7 +30,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import numpy as np
 import pandas as pd
@@ -293,8 +293,14 @@ def write_tmp_inputs(
 
 
 @contextmanager
-def written_config(written: WrittenInputs) -> Iterator[None]:
-    """Install the global config `cnaster` reads, and put back what was there.
+def written_config(
+    source: "WrittenInputs | Path | str | dict[str, Any]",
+) -> Iterator[Any]:
+    """Install the global config `cnaster` reads, yield it, and put back what was there.
+
+    `source` is written inputs, whose loader configuration is installed; the
+    path of a configuration file, read as `YAMLConfig.from_file` reads it; or
+    a configuration as a dictionary.
 
     A context manager rather than a call, because the prep chain is several
     functions long and each of them reads the global -- `form_gene_snp_table`
@@ -305,17 +311,109 @@ def written_config(written: WrittenInputs) -> Iterator[None]:
 
     previous = get_global_config()
     try:
-        set_global_config(YAMLConfig(written.config()))
-        yield
+        if isinstance(source, WrittenInputs):
+            set_global_config(YAMLConfig(source.config()))
+        elif isinstance(source, Path | str):
+            set_global_config(YAMLConfig.from_file(source))
+        else:
+            set_global_config(YAMLConfig(source))
+        yield get_global_config()
     finally:
         set_global_config(previous)
+
+
+@dataclass(frozen=True)
+class Binned:
+    """What the prep chain `run_cnaster` runs between loading and binning produced.
+
+    `table` is the gene-SNP table as the last stage run left it; `bins` is
+    `None` when the chain stopped before binning.
+    """
+
+    loaded: Any
+    table: Any
+    blocks: Any
+    bins: Any
+
+
+def read_to_bins(
+    written: WrittenInputs,
+    *,
+    loaded: Any = None,
+    initial_min_umi: int = 1,
+    secondary_min_umi: int = 1,
+    through: Literal["blocks", "ranges", "bins"] = "bins",
+) -> Binned:
+    """`load_input_data` through the stage `through` names, under the installed config.
+
+    `run_cnaster`'s order: `form_gene_snp_table`, `assign_initial_blocks` and
+    `summarize_counts_for_blocks` (`"blocks"`); `create_bin_ranges`
+    (`"ranges"`); `summarize_counts_for_bins` with every block phased, no
+    phase-switch shift and no genetic map (`"bins"`). Each stage reads the
+    global config, so the caller installs one and holds it. `loaded` is a
+    `load_input_data` return already in hand; without one the chain loads.
+    """
+    from cnaster.config import get_global_config
+    from cnaster.io import load_input_data
+    from cnaster.omics import (
+        assign_initial_blocks,
+        create_bin_ranges,
+        form_gene_snp_table,
+        summarize_counts_for_bins,
+        summarize_counts_for_blocks,
+    )
+
+    if loaded is None:
+        loaded = load_input_data(get_global_config())
+    alleles = (loaded.cell_snp_Aallele, loaded.cell_snp_Ballele)
+
+    table = form_gene_snp_table(
+        loaded.unique_snp_ids, str(written.hgtable), loaded.adata
+    )
+    table = assign_initial_blocks(
+        table,
+        loaded.adata,
+        *alleles,
+        loaded.unique_snp_ids,
+        initial_min_umi=initial_min_umi,
+    )
+    blocks = summarize_counts_for_blocks(
+        table, loaded.adata, *alleles, loaded.unique_snp_ids
+    )
+    if through == "blocks":
+        return Binned(loaded=loaded, table=table, blocks=blocks, bins=None)
+
+    table = create_bin_ranges(
+        table,
+        loaded.adata,
+        *alleles,
+        loaded.unique_snp_ids,
+        blocks.X,
+        blocks.total_bb_RD,
+        blocks.lengths,
+        secondary_min_umi=secondary_min_umi,
+        secondary_min_snp_umi=secondary_min_umi,
+        secondary_min_normal_umi=0,
+    )
+    if through == "ranges":
+        return Binned(loaded=loaded, table=table, blocks=blocks, bins=None)
+
+    bins = summarize_counts_for_bins(
+        table,
+        loaded.adata,
+        blocks.X,
+        blocks.total_bb_RD,
+        np.ones(int(table.block_id.dropna().nunique()), dtype=bool),
+        nu=1.0,
+        logphase_shift=0.0,
+        geneticmap_file=None,
+    )
+    return Binned(loaded=loaded, table=table, blocks=blocks, bins=bins)
 
 
 def load_written(written: WrittenInputs) -> Any:
     """Run `cnaster.io.load_input_data` against what was written."""
     from cnaster.io import load_input_data
 
-    with written_config(written):
-        from cnaster.config import get_global_config
-
-        return load_input_data(get_global_config())
+    with written_config(written) as config:
+        return load_input_data(config)
