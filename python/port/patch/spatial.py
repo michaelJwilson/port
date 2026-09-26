@@ -20,12 +20,18 @@ not own**), so both are written here with their referees beside them in
 `tests/test_preprocessing_sweep.py`.
 
 Both returns are **bitwise** what `cnaster` returns.
+
+**`lattice_multislice_adjacency` is not** (#417): it is the swap the run
+installs over `construct_multislice_lattice_adjacency`, and replaces
+`cnaster`'s directed eight nearest neighbours with the fixtures' lattice,
+symmetric and reinforced at the boundary. Its interior graph is `cnaster`'s
+on a square grid; the section at the end of this module says what differs.
 """
 
 from __future__ import annotations
 
 from collections import namedtuple
-from typing import Any
+from typing import Any, Literal
 
 import numpy as np
 import scipy.sparse as sp
@@ -415,3 +421,245 @@ def initialize_rectangular_clones(
 
         if min(len(x) for x in initial_clone_index) > 0.2 * coords.shape[0] / n_clones:
             return initial_clone_index, clone_id
+
+
+# --- lattice adjacency (#417) ----------------------------------------
+#
+# The fixtures' lattices as adjacencies: symmetric, no self loops, boundaries reinforced (#417).
+#
+# `cnaster` builds its spatial graph as eight nearest neighbours per spot. That
+# is a directed graph -- spot `i` naming `j` does not make `j` name `i` -- and
+# its ICM sums a spot's own row, so the Potts term is not a symmetric coupling.
+# On the dev instance 344 of 12,800 entries have no transpose, and `--sal`'s
+# conversion kept the upper triangle and dropped them silently.
+#
+# **For now**, the lattices the fixtures plant are built directly:
+#
+# | lattice | coordinates | neighbours | `z` |
+# | --- | --- | --- | --- |
+# | square | integer `(row, col)` | `(0, ±1)`, `(±1, 0)`, `(±1, ±1)` | 8 |
+# | triangular | Visium array: `col` steps by 2, odd rows offset | `(0, ±2)`, `(±1, ±1)` | 6 |
+#
+# The square lattice keeps its diagonals because `cnaster`'s eight nearest
+# neighbours on a square grid are exactly these eight: the interior graph is
+# `cnaster`'s, and what changes is symmetry and the boundary. Dropping them
+# (`cnaster.adjacency.lattice_map`'s `square: 4`) halves the coupling at a
+# fixed `spatial_weight`; measured on the dev instance, clone ARI 0.3851.
+#
+# **Boundary reinforcement.** A spot on the boundary has fewer neighbours, so
+# the smoothing it feels is weaker. Each edge carries
+# `w_ij = (z / d_i + z / d_j) / 2`, with `d` the spot's neighbour count: `1`
+# between two interior spots, above `1` wherever an end is on the boundary,
+# and symmetric by construction. Exact balancing -- every weighted degree `z`
+# -- converges for the triangular lattice and fails for the four-neighbour
+# square one, which is bipartite; the closed form is used for both kinds.
+#
+# Coordinates that are neither lattice are refused rather than approximated;
+# the general construction is #417's future work.
+
+Lattice = Literal["square", "triangular"]
+
+COORDINATION: dict[str, int] = {"square": 8, "triangular": 6}
+"""Interior neighbour count: `cnaster`'s kNN on a square grid, a Visium hexagon."""
+
+OFFSETS: dict[str, tuple[tuple[int, int], ...]] = {
+    "square": ((0, 1), (0, -1), (1, 0), (-1, 0), (1, 1), (1, -1), (-1, 1), (-1, -1)),
+    "triangular": ((0, 2), (0, -2), (1, 1), (1, -1), (-1, 1), (-1, -1)),
+}
+
+AXIS: tuple[tuple[int, int], ...] = ((0, 1), (0, -1), (1, 0), (-1, 0))
+"""What only a square grid has: a triangular layout's diagonals are its own too."""
+
+TOLERANCE = 1e-12
+"""On a reinforced weight: the rule is exact arithmetic on small integers."""
+
+
+class AdjacencyError(ValueError):
+    """An adjacency the HMRF must not be given."""
+
+
+def _integer_coords(coords: np.ndarray) -> np.ndarray:
+    values = np.asarray(coords, dtype=np.float64)
+
+    if values.ndim != 2 or values.shape[1] != 2:
+        msg = f"coordinates must be (n_spots, 2), got {values.shape}"
+        raise AdjacencyError(msg)
+
+    rounded = np.rint(values)
+
+    if not np.array_equal(rounded, values):
+        msg = "coordinates are not integer array positions, so no lattice is defined"
+        raise AdjacencyError(msg)
+
+    return rounded.astype(np.int64)
+
+
+def _neighbours(
+    grid: np.ndarray, offsets: tuple[tuple[int, int], ...]
+) -> tuple[np.ndarray, np.ndarray]:
+    """Every `(i, j)` whose positions differ by one of `offsets`, both directions."""
+    low = grid.min(axis=0)
+    shifted = grid - low + 2
+    width = int(shifted[:, 1].max()) + 3
+    keys = shifted[:, 0] * width + shifted[:, 1]
+    order = np.argsort(keys)
+    sorted_keys = keys[order]
+
+    if np.unique(sorted_keys).size != sorted_keys.size:
+        msg = "two spots share a position"
+        raise AdjacencyError(msg)
+
+    rows, cols = [], []
+
+    for d_row, d_col in offsets:
+        target = (shifted[:, 0] + d_row) * width + (shifted[:, 1] + d_col)
+        slot = np.clip(np.searchsorted(sorted_keys, target), 0, keys.size - 1)
+        found = sorted_keys[slot] == target
+        rows.append(np.flatnonzero(found))
+        cols.append(order[slot[found]])
+
+    return np.concatenate(rows), np.concatenate(cols)
+
+
+def lattice_kind(coords: np.ndarray) -> Lattice:
+    """`square` if any spot has an axis neighbour at unit distance, else `triangular`.
+
+    A triangular (Visium) layout has no pair at `(0, ±1)` or `(±1, 0)`: columns
+    step by two within a row and change parity between rows. A square grid
+    has both kinds of offset -- its diagonals are triangular ones -- so the
+    axis test is the one that decides.
+    """
+    grid = _integer_coords(coords)
+
+    if grid.shape[0] < 2:
+        msg = "a lattice needs at least two spots"
+        raise AdjacencyError(msg)
+
+    if _neighbours(grid, AXIS)[0].size:
+        return "square"
+
+    if _neighbours(grid, OFFSETS["triangular"])[0].size:
+        return "triangular"
+
+    msg = "no two spots are lattice neighbours: neither square nor triangular"
+    raise AdjacencyError(msg)
+
+
+def reinforced_weights(
+    rows: np.ndarray, cols: np.ndarray, degree: np.ndarray, coordination: int
+) -> np.ndarray:
+    """`(z / d_i + z / d_j) / 2` per edge: 1 in the interior, above 1 at a boundary."""
+    inverse = coordination / degree.astype(np.float64)
+    weights: np.ndarray = 0.5 * (inverse[rows] + inverse[cols])
+    return weights
+
+
+def lattice_adjacency(coords: np.ndarray, kind: Lattice | None = None) -> Any:
+    """One slice's reinforced lattice adjacency, as CSR `float64`."""
+    grid = _integer_coords(coords)
+    kind = lattice_kind(grid) if kind is None else kind
+    rows, cols = _neighbours(grid, OFFSETS[kind])
+    n_spots = grid.shape[0]
+    degree = np.bincount(rows, minlength=n_spots)
+
+    if np.any(degree == 0):
+        spot = int(np.argmax(degree == 0))
+        msg = f"spot {spot} at {tuple(grid[spot])} has no {kind} neighbour"
+        raise AdjacencyError(msg)
+
+    weights = reinforced_weights(rows, cols, degree, COORDINATION[kind])
+    adjacency = sp.csr_matrix((weights, (rows, cols)), shape=(n_spots, n_spots))
+    adjacency.sort_indices()
+
+    return adjacency
+
+
+def validate_adjacency(adjacency: Any, coordination: int | None = None) -> None:
+    """Raise unless symmetric, zero on the diagonal, and reinforced at the boundary.
+
+    Reinforced means each stored weight is `(z / d_i + z / d_j) / 2` for the
+    neighbour counts the sparsity pattern gives, to `TOLERANCE`. `z` is the
+    largest neighbour count when not given: the interior's.
+    """
+    matrix = sp.csr_matrix(adjacency, dtype=np.float64)
+    matrix.eliminate_zeros()
+
+    if matrix.shape[0] != matrix.shape[1]:
+        msg = f"adjacency is {matrix.shape}, not square"
+        raise AdjacencyError(msg)
+
+    if np.any(matrix.diagonal() != 0.0):
+        spot = int(np.argmax(matrix.diagonal() != 0.0))
+        msg = f"adjacency has a self loop at spot {spot}"
+        raise AdjacencyError(msg)
+
+    asymmetric = abs(matrix - matrix.T)
+    asymmetric.eliminate_zeros()
+
+    if asymmetric.nnz:
+        msg = (
+            f"adjacency is not symmetric: {asymmetric.nnz} of {matrix.nnz} entries "
+            "differ from their transpose"
+        )
+        raise AdjacencyError(msg)
+
+    coo = matrix.tocoo()
+    degree = np.bincount(coo.row, minlength=matrix.shape[0])
+    z = int(degree.max()) if coordination is None else coordination
+    expected = reinforced_weights(coo.row, coo.col, np.maximum(degree, 1), z)
+    error = np.abs(coo.data - expected)
+
+    if coo.nnz and error.max() > TOLERANCE:
+        worst = int(np.argmax(error))
+        msg = (
+            f"edge ({coo.row[worst]}, {coo.col[worst]}) weighs {coo.data[worst]:.6g}, "
+            f"not the reinforced {expected[worst]:.6g} (z = {z})"
+        )
+        raise AdjacencyError(msg)
+
+
+def lattice_multislice_adjacency(
+    sample_ids: np.ndarray,
+    sample_list: Any,
+    coords: np.ndarray,
+    across_slice_adjacency_mat: Any,
+    maxspots_pooling: int,
+    unit_xsquared: int = 9,  # noqa: ARG001 -- a lattice has no metric to scale
+    unit_ysquared: int = 3,  # noqa: ARG001 -- a lattice has no metric to scale
+) -> Adjacency:
+    """`construct_multislice_lattice_adjacency`'s signature, on the lattice graph.
+
+    Per slice, in `sample_list` order as `cnaster` assembles them, then block
+    diagonal. The pooling matrix is `cnaster`'s identity. The result is
+    validated before it is returned, so the HMRF never receives a graph that
+    fails `validate_adjacency`.
+    """
+    if maxspots_pooling != 1:
+        msg = f"maxspots_pooling={maxspots_pooling}; the lattice path pools nothing"
+        raise AdjacencyError(msg)
+
+    blocks, kinds = [], []
+
+    for index, _ in enumerate(sample_list):
+        this_coords = np.asarray(coords[np.flatnonzero(sample_ids == index), :])
+        kind = lattice_kind(this_coords)
+        kinds.append(kind)
+        blocks.append(lattice_adjacency(this_coords, kind))
+
+    if len(set(kinds)) != 1:
+        msg = f"slices are on different lattices: {kinds}"
+        raise AdjacencyError(msg)
+
+    adjacency_mat = _block_diagonal(blocks)
+    smooth_mat = sp.identity(adjacency_mat.shape[0], dtype=np.int8, format="csr")
+
+    if across_slice_adjacency_mat is not None:
+        adjacency_mat = adjacency_mat + across_slice_adjacency_mat
+
+    validate_adjacency(adjacency_mat, COORDINATION[kinds[0]])
+    logger.info(
+        f"{kinds[0]} lattice adjacency: {adjacency_mat.nnz} entries over "
+        f"{adjacency_mat.shape[0]} spots, symmetric, boundaries reinforced."
+    )
+
+    return Adjacency(adjacency_mat=adjacency_mat, smooth_mat=smooth_mat)
