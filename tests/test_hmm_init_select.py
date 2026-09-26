@@ -24,6 +24,7 @@ from port.patch.hmm_initialize.backends import (
     DEFAULT_ALPHA,
     DEFAULT_TAU,
     Candidate,
+    cnaster_gmm_backend,
     referee_score,
     sal_emission_backend,
     select,
@@ -203,25 +204,121 @@ def test_the_sal_backend_beats_a_deliberately_wrong_start(
     )
 
 
-@pytest.mark.warning
-def test_the_backend_refuses_a_varying_exposure(
-    drawn: tuple[np.ndarray, np.ndarray, np.ndarray],
-) -> None:
-    """#236, and the reason this backend is regime-limited.
+@pytest.mark.oracle
+def test_sals_density_with_a_covariate_is_cnasters() -> None:
+    """Per-observation exposure and trials (sal #1083): cnaster's NB and BB, bin for bin.
 
-    `cnaster` divides the exposure out of the mean and leaves it in the
-    variance; upstream's family has no per-observation exposure at all. So
-    outside the constant regime there is no correspondence, and the backend
-    raises rather than fitting a model the data did not come from.
-
-    `warning` rather than `bug`: refusing is the defensible behaviour. What
-    is suspicious is that the regime excludes real data, which is #57 and
-    #65.
+    What makes a varying exposure fittable: sal scores the total against each
+    bin's `base_nb_mean` and the successes out of its `total_bb_RD`, with
+    `cnaster`'s parameterization -- `r = 1 / alpha`, mean `exposure * mu` --
+    so the two densities are one model. Realized 2.9e-13 absolute over 1,200
+    entries, zero-trial bins included; stated at 1e-10.
     """
-    from port.extensions.emission_family import CovariateNotConstant
+    import torch
+    from cnaster.hmm_nophasing import _bb_logpmf_1d, _nb_logpmf_1d
+    from sal.emissions import CountPairEmission
 
-    X, _, trials = drawn
-    varying = np.linspace(EXPOSURE, 3.0 * EXPOSURE, N_OBS)
+    rng = np.random.default_rng(0)
+    n = 400
+    log_mu = np.array([-0.3, 0.0, 0.5])
+    alphas = np.array([0.05, 0.1, 0.2])
+    p_binom = np.array([0.5, 0.2, 0.35])
+    taus = np.array([30.0, 40.0, 50.0])
+    exposure = rng.uniform(20, 200, n)
+    trials = rng.integers(0, 60, n).astype(float)
+    totals = rng.poisson(exposure).astype(float)
+    successes = np.minimum(rng.poisson(trials * 0.4), trials).astype(float)
 
-    with pytest.raises(CovariateNotConstant, match="base_nb_mean varies"):
-        sal_emission_backend(X, varying, trials, n_states=2, seed=5)
+    family = CountPairEmission(
+        dispersion=1 / alphas,
+        mean=np.exp(log_mu),
+        alpha=p_binom * taus,
+        beta=(1 - p_binom) * taus,
+        trials=np.full(3, 10.0),
+        joint=False,
+    )
+    ours = np.asarray(
+        family.log_density(
+            torch.as_tensor(np.column_stack([totals, successes])),
+            covariate=torch.as_tensor(np.column_stack([exposure, trials])),
+        )
+    ).T
+
+    theirs = np.zeros((3, n))
+    for state in range(3):
+        nb, bb = np.zeros(n), np.zeros(n)
+        _nb_logpmf_1d(totals, exposure, float(np.exp(log_mu[state])), alphas[state], nb)
+        _bb_logpmf_1d(successes, trials, p_binom[state], taus[state], bb)
+        theirs[state] = nb + bb
+
+    np.testing.assert_allclose(ours, theirs, rtol=0, atol=1e-10)
+
+
+def _varying() -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Three planted states at 3,000 bins, each bin its own exposure and trials."""
+    rng = np.random.default_rng(1)
+    n = 3000
+    log_mu = np.log([0.8, 1.0, 1.6])
+    p_binom = np.array([0.5, 0.2, 0.35])
+    alpha, tau = 0.05, 40.0
+    state = rng.integers(0, 3, n)
+    exposure = rng.uniform(20, 200, n)
+    trials = rng.integers(5, 60, n).astype(float)
+    mean = exposure * np.exp(log_mu[state])
+    r = 1 / alpha
+    totals = rng.negative_binomial(r, r / (r + mean)).astype(float)
+    rate = rng.beta(p_binom[state] * tau, (1 - p_binom[state]) * tau)
+    successes = rng.binomial(trials.astype(int), rate).astype(float)
+    X = np.stack([totals, successes], axis=1)[:, :, None]
+    return X, exposure[:, None], trials[:, None], log_mu, p_binom
+
+
+@pytest.mark.oracle
+@pytest.mark.cnaster
+def test_the_sal_backend_outscores_cnasters_gmm_under_cnasters_density(
+    cnaster_config: None,
+) -> None:
+    """On varying exposure, sal's fit beats `gmm_init`'s under the shared referee.
+
+    Both initializers on the same bins, both scored by `referee_score` --
+    `cnaster`'s own NB times BB, so neither wins by its fitting space.
+    Realized -23,609.1 against -23,913.4: 304 nats.
+    """
+    X, exposure, trials, _, _ = _varying()
+    n_obs = X.shape[0]
+
+    sal = sal_emission_backend(X, exposure, trials, n_states=3, seed=1)
+    gmm = cnaster_gmm_backend(
+        3,
+        X,
+        exposure,
+        trials,
+        "smp",
+        np.array([n_obs]),
+        np.log(np.full((3, 3), 1 / 3)),
+        np.log(np.full(n_obs, 1e-3)),
+        seed=1,
+    )
+
+    assert referee_score(sal, X, exposure, trials) > referee_score(
+        gmm, X, exposure, trials
+    )
+
+
+@pytest.mark.end2end
+def test_the_sal_backend_recovers_states_under_a_varying_exposure() -> None:
+    """Three planted states, each bin its own exposure and trial count.
+
+    Before sal #1083 this raised (#236): the family had one exposure per
+    state. Recovery against the planted parameters, states matched by rate:
+    realized `log_mu` within 0.0331 and `p` within 0.0099 at 3,000 bins,
+    converged in 138 EM iterations;
+    stated at 0.1 and 0.05.
+    """
+    X, exposure, trials, log_mu, p_binom = _varying()
+
+    candidate = sal_emission_backend(X, exposure, trials, n_states=3, seed=1)
+    order = np.argsort(candidate.log_mu)
+
+    np.testing.assert_allclose(candidate.log_mu[order], log_mu, atol=0.1)
+    np.testing.assert_allclose(candidate.p_binom[order], p_binom, atol=0.05)
