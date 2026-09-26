@@ -25,13 +25,15 @@ needs the memory -- but the arithmetic it rests on is asserted in
 `test_hmrf_fused_field.py`.
 """
 
+from collections.abc import Callable
+
 import numpy as np
 import pytest
 from port.patch.hmrf.field import compute_loglike_spot_assignment_strided
 from port.patch.hmrf.fused_field import fused_spot_clone_field
 from pytest_benchmark.fixture import BenchmarkFixture
 
-from tests.fixtures import SpotCloneField, spot_clone_field
+from tests.fixtures import SpotCloneField, spot_clone_field, tiers
 
 GATE = {"n_states": 5, "n_obs": 400, "n_spots": 300, "n_clones": 2}
 STRESS = {"n_states": 7, "n_obs": 2000, "n_spots": 2000, "n_clones": 4}
@@ -87,38 +89,18 @@ def _fused(fixture: SpotCloneField, weight: np.ndarray) -> np.ndarray:
 
 
 @pytest.mark.benchmark
-def test_two_step_gate(benchmark: BenchmarkFixture) -> None:
-    """Producer plus reordered field, at gate size."""
-    fixture = spot_clone_field(**GATE)
+@pytest.mark.parametrize("size", tiers(GATE, STRESS))
+@pytest.mark.parametrize("arm", [_two_step, _fused], ids=["two-step", "fused"])
+def test_field(
+    benchmark: BenchmarkFixture,
+    arm: Callable[[SpotCloneField, np.ndarray], np.ndarray],
+    size: dict[str, int],
+) -> None:
+    """Producer plus reordered field, against one pass holding no emission.
+
+    At the stress size the two-step's emission is 0.9 GB.
+    """
+    fixture = spot_clone_field(**size)
     weight = np.ones(fixture.n_spots)
-    _two_step(fixture, weight)
-    benchmark(_two_step, fixture, weight)
-
-
-@pytest.mark.benchmark
-def test_fused_gate(benchmark: BenchmarkFixture) -> None:
-    """One pass, at gate size, for the pair."""
-    fixture = spot_clone_field(**GATE)
-    weight = np.ones(fixture.n_spots)
-    _fused(fixture, weight)
-    benchmark(_fused, fixture, weight)
-
-
-@pytest.mark.benchmark
-@pytest.mark.release
-def test_two_step_stress(benchmark: BenchmarkFixture) -> None:
-    """Producer plus field at a size where the emission is 0.9 GB."""
-    fixture = spot_clone_field(**STRESS)
-    weight = np.ones(fixture.n_spots)
-    _two_step(fixture, weight)
-    benchmark(_two_step, fixture, weight)
-
-
-@pytest.mark.benchmark
-@pytest.mark.release
-def test_fused_stress(benchmark: BenchmarkFixture) -> None:
-    """The same, fused, holding no emission at all."""
-    fixture = spot_clone_field(**STRESS)
-    weight = np.ones(fixture.n_spots)
-    _fused(fixture, weight)
-    benchmark(_fused, fixture, weight)
+    arm(fixture, weight)
+    benchmark(arm, fixture, weight)

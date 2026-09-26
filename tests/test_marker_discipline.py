@@ -49,10 +49,10 @@ real referees, they just do not establish that `cnaster` computed the right
 answer on an instance anyone ran.
 """
 
-SCALE = frozenset({"merge", "release", "benchmark"})
+SCALE = frozenset({"merge", "release", "deprecate", "benchmark"})
 """Markers that say a test is not fast. Disqualifying for the early gate."""
 
-TIERS = frozenset({"critical", "merge", "release"})
+TIERS = frozenset({"critical", "merge", "release", "deprecate"})
 """When a test runs (#403). At most one; none is the gate."""
 
 
@@ -116,8 +116,8 @@ def test_infra_stays_few(collected_items: list[pytest.Item]) -> None:
     for it sparingly; this is what makes that a check rather than a wish.
 
     The bound is a share rather than a count, so it survives the suite
-    growing. A test that reaches `cnaster` at all belongs in `smoke` until
-    something outside decides its value.
+    growing. A test that executes `cnaster` belongs in `smoke` until
+    something outside decides its value; one that only inspects it is infra.
     """
     infra = [item for item in collected_items if "infra" in _own_markers(item)]
     marked = [item for item in collected_items if _own_markers(item) & MARKERS]

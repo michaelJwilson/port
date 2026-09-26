@@ -14,6 +14,8 @@ No ratio is asserted. These are the baselines the fit-level rung (#77, #97)
 will report against when it lands.
 """
 
+from collections.abc import Callable
+from functools import partial
 from typing import Any
 
 import numpy as np
@@ -22,7 +24,7 @@ import torch
 from pytest_benchmark.fixture import BenchmarkFixture
 
 from tests.adapters import CnasterChainInputs, from_negative_binomial_chains
-from tests.fixtures import NegativeBinomialChains, negative_binomial_chains
+from tests.fixtures import NegativeBinomialChains, negative_binomial_chains, tiers
 
 GATE = {"n_states": 5, "sequence_length": 200, "n_sequences": 8}
 """1,600 positions over eight chains: the per-pull-request size."""
@@ -123,6 +125,16 @@ def stress() -> Any:
     return _instance(STRESS)
 
 
+def _cnaster_arm(instance: Any) -> Callable[[], Any]:
+    _, inputs, emission, _, _, _ = instance
+    return partial(_cnaster_both, inputs, emission)
+
+
+def _upstream_arm(instance: Any) -> Callable[[], Any]:
+    _, _, _, densities, initial, transition = instance
+    return partial(_upstream_both, densities, initial, transition)
+
+
 @pytest.mark.benchmark
 def test_cnaster_forward_only_gate(benchmark: BenchmarkFixture, gate: Any) -> None:
     """`forward_lattice` over the concatenated batch, one call."""
@@ -131,36 +143,20 @@ def test_cnaster_forward_only_gate(benchmark: BenchmarkFixture, gate: Any) -> No
 
 
 @pytest.mark.benchmark
-def test_cnaster_forward_backward_gate(benchmark: BenchmarkFixture, gate: Any) -> None:
-    """Both passes and the posterior, which is what the driver runs per iteration."""
-    _, inputs, emission, _, _, _ = gate
-    benchmark(_cnaster_both, inputs, emission)
+@pytest.mark.parametrize("size", tiers("gate", "stress"))
+@pytest.mark.parametrize(
+    "arm", [_cnaster_arm, _upstream_arm], ids=["cnaster", "upstream"]
+)
+def test_forward_backward(
+    benchmark: BenchmarkFixture,
+    request: pytest.FixtureRequest,
+    arm: Callable[[Any], Callable[[], Any]],
+    size: str,
+) -> None:
+    """Both passes and the posterior, which is what the driver runs per iteration.
 
-
-@pytest.mark.benchmark
-def test_upstream_forward_backward_gate(benchmark: BenchmarkFixture, gate: Any) -> None:
-    """Upstream's, looped over chains.
-
-    `upstream` rather than `upstream_oracle`: this times the referee, it does
-    not consult it. The agreement claims are in `test_hmm_oracle.py`.
+    Upstream's is looped over chains. `upstream` rather than
+    `upstream_oracle`: this times the referee, it does not consult it. The
+    agreement claims are in `test_hmm_oracle.py`.
     """
-    _, _, _, densities, initial, transition = gate
-    benchmark(_upstream_both, densities, initial, transition)
-
-
-@pytest.mark.benchmark
-@pytest.mark.release
-def test_cnaster_forward_backward_stress(
-    benchmark: BenchmarkFixture, stress: Any
-) -> None:
-    _, inputs, emission, _, _, _ = stress
-    benchmark(_cnaster_both, inputs, emission)
-
-
-@pytest.mark.benchmark
-@pytest.mark.release
-def test_upstream_forward_backward_stress(
-    benchmark: BenchmarkFixture, stress: Any
-) -> None:
-    _, _, _, densities, initial, transition = stress
-    benchmark(_upstream_both, densities, initial, transition)
+    benchmark(arm(request.getfixturevalue(size)))

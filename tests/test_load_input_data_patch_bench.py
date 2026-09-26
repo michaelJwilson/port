@@ -15,17 +15,17 @@ is the equivalence in `tests/test_load_input_data_patch.py`.
 does not show at a fixture's scale and dominates at a genome's.
 """
 
+from collections.abc import Callable
 from typing import Any
 
 import pytest
+from cnaster.io import load_input_data as cnaster_loader
+from port.patch.io import _range_mask
+from port.patch.io import load_input_data as patched_loader
 from pytest_benchmark.fixture import BenchmarkFixture
 
-from tests.test_load_input_data_patch import (
-    gate_config,  # noqa: F401  -- used by name, and it needs the one below
-    planted_instance,  # noqa: F401  -- `gate_config` resolves it in this module
-    range_filter_loop,
-    synthetic_ranges,
-)
+from tests.adapters import range_filter_loop
+from tests.fixtures import synthetic_ranges, tiers
 
 pytestmark = pytest.mark.preprocessing
 
@@ -41,58 +41,36 @@ real slide carries 500,000 SNPs, where the loop is 15 s by the same slope.
 
 
 @pytest.mark.benchmark
-def test_cnasters_loader(benchmark: BenchmarkFixture, gate_config: Any) -> None:  # noqa: F811
-    """The baseline: 60.5 ms median on the dev instance."""
-    from cnaster.io import load_input_data
-
-    benchmark(lambda: load_input_data(gate_config))
-
-
-@pytest.mark.benchmark
-def test_the_patched_loader(benchmark: BenchmarkFixture, gate_config: Any) -> None:  # noqa: F811
-    """52.4 ms, so 1.15x. Reported; no speedup is claimed from it."""
-    from port.patch.io import load_input_data
-
-    benchmark(lambda: load_input_data(gate_config))
-
-
-@pytest.mark.benchmark
-def test_the_range_filter_loop_at_the_gate_size(benchmark: BenchmarkFixture) -> None:
-    """`cnaster`'s loop over 10,000 SNPs and 200 ranges."""
-    snp_ids, ranges = synthetic_ranges(*GATE_RANGES)
-
-    benchmark(lambda: range_filter_loop(snp_ids, ranges))
-
-
-@pytest.mark.benchmark
-def test_the_vectorized_range_filter_at_the_gate_size(
+@pytest.mark.parametrize(
+    "loader", [cnaster_loader, patched_loader], ids=["cnaster", "patched"]
+)
+def test_the_loader(
     benchmark: BenchmarkFixture,
+    loader: Callable[[Any], Any],
+    gate_config: Any,
 ) -> None:
-    """The same, vectorized at 7.4 ms: 35x at this size."""
-    from port.patch.io import _range_mask
+    """60.5 ms median on the dev instance, against 52.4 ms patched.
 
-    snp_ids, ranges = synthetic_ranges(*GATE_RANGES)
-
-    benchmark(lambda: _range_mask(snp_ids, ranges))
-
-
-@pytest.mark.benchmark
-@pytest.mark.release
-def test_the_range_filter_loop_at_the_stress_size(benchmark: BenchmarkFixture) -> None:
-    """100,000 SNPs and 2,000 ranges, which is where the claim is made."""
-    snp_ids, ranges = synthetic_ranges(*STRESS_RANGES)
-
-    benchmark(lambda: range_filter_loop(snp_ids, ranges))
+    1.15x. Reported; no speedup is claimed from it.
+    """
+    benchmark(loader, gate_config)
 
 
 @pytest.mark.benchmark
-@pytest.mark.release
-def test_the_vectorized_range_filter_at_the_stress_size(
+@pytest.mark.parametrize("size", tiers(GATE_RANGES, STRESS_RANGES))
+@pytest.mark.parametrize(
+    "arm", [range_filter_loop, _range_mask], ids=["loop", "vectorized"]
+)
+def test_the_range_filter(
     benchmark: BenchmarkFixture,
+    arm: Callable[[Any, Any], Any],
+    size: tuple[int, int],
 ) -> None:
-    """2.88 s against 73 ms: **39x**, and exact agreement."""
-    from port.patch.io import _range_mask
+    """`cnaster`'s loop against the vectorized mask, with exact agreement.
 
-    snp_ids, ranges = synthetic_ranges(*STRESS_RANGES)
+    7.4 ms vectorized at the gate size, 35x. At the stress size, where the
+    claim is made, 2.88 s against 73 ms: **39x**.
+    """
+    snp_ids, ranges = synthetic_ranges(*size)
 
-    benchmark(lambda: _range_mask(snp_ids, ranges))
+    benchmark(arm, snp_ids, ranges)

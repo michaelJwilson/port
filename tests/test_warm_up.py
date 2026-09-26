@@ -15,7 +15,7 @@ import pytest
 from port.pipeline import Warmed, _kernels, warm
 
 
-@pytest.mark.infra
+@pytest.mark.smoke
 def test_the_warm_up_compiles_every_kernel_it_names() -> None:
     """No misses, and each named kernel carries a signature afterwards.
 

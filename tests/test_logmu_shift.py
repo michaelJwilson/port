@@ -37,16 +37,20 @@ def _case(
 
 @pytest.mark.patch
 @pytest.mark.parametrize(
-    "lengths",
+    ("lengths", "n_states"),
     [
-        pytest.param([30, 30, 30], id="equal-the-rectangular-fast-path"),
-        pytest.param([40, 25, 55], id="unequal-no-view-can-exist"),
-        pytest.param([1, 99], id="one-segment-clone"),
-        pytest.param([17], id="single-clone"),
+        pytest.param([30, 30, 30], 4, id="equal-the-rectangular-fast-path"),
+        pytest.param([40, 25, 55], 4, id="unequal-no-view-can-exist"),
+        pytest.param([1, 99], 4, id="one-segment-clone"),
+        pytest.param([17], 4, id="single-clone"),
+        pytest.param([10], 1, id="single-clone-one-state"),
+        pytest.param([10, 10], 1, id="equal-one-state"),
+        pytest.param([1, 19], 1, id="one-segment-clone-one-state"),
+        pytest.param([7, 3, 10], 1, id="three-unequal-one-state"),
     ],
 )
 @pytest.mark.cnaster
-def test_it_reproduces_cnasters_loop(lengths: list[int]) -> None:
+def test_it_reproduces_cnasters_loop(lengths: list[int], n_states: int) -> None:
     """`np.repeat` of the patch is upstream's array, bitwise.
 
     **The shapes differ, and that is the patch.** Upstream returns one value
@@ -56,9 +60,12 @@ def test_it_reproduces_cnasters_loop(lengths: list[int]) -> None:
 
     The unequal case is the one that matters: with equal lengths the index
     arithmetic is a multiplication and an off-by-one cancels, so a test using
-    only those would pass while checking nothing.
+    only those would pass while checking nothing. With one state every term
+    in a clone shares its mean, and the weights alone decide the maximum.
     """
-    log_mus, copy_states, normal_log_lambda, clone_lengths = _case(lengths, 4, 17)
+    log_mus, copy_states, normal_log_lambda, clone_lengths = _case(
+        lengths, n_states, 17
+    )
 
     theirs = compute_logmu_shifts(
         log_mus, copy_states, normal_log_lambda, clone_lengths

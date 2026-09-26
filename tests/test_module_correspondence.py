@@ -91,9 +91,7 @@ def _top_level() -> list[str]:
 
 @pytest.mark.infra
 def test_every_patch_is_named_for_the_cnaster_module_it_replaces() -> None:
-    """The rule itself: every name under `patch/` is a `cnaster` module name.
-
-    Importing the target rather than matching a string is what makes this
+    """Importing the target rather than matching a string is what makes this
     bite: a plausible-looking name that `cnaster` does not carry --
     `hmrf_field`, `normal_baf`, `input_data` were all of them -- fails here.
     """

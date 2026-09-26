@@ -18,14 +18,15 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from tests.test_plot_genomic_patch import _drawn, _instance, _integer_copies
+from tests.adapters import drawn
+from tests.fixtures import genomic_plot_instance, integer_copies
 
 
 def _genomic_arguments() -> tuple[tuple[Any, ...], dict[str, Any]]:
-    instance = _instance()
+    instance = genomic_plot_instance()
     keywords = {
         "res_combine": instance["result"],
-        "df_cnv": _integer_copies(instance["rng"], 24, 3),
+        "df_cnv": integer_copies(instance["rng"], 24, 3),
     }
 
     return instance["arguments"], keywords
@@ -48,7 +49,7 @@ def test_a_subfigure_draws_what_the_standalone_page_draws(cnaster_config: None) 
     top = panels[0]
     plot_clones_genomic(*arguments, **{**keywords, "figure": top})
 
-    ours, theirs = _drawn(host), _drawn(page)
+    ours, theirs = drawn(host), drawn(page)
 
     assert len(ours) == len(theirs)
 
@@ -56,7 +57,7 @@ def test_a_subfigure_draws_what_the_standalone_page_draws(cnaster_config: None) 
         np.testing.assert_array_equal(mine, reference, err_msg=f"array {index}")
 
 
-@pytest.mark.infra
+@pytest.mark.smoke
 def test_recording_calls_through_and_restores() -> None:
     """A recorded call returns the wrapped function's figure; the names return."""
     import matplotlib as mpl
@@ -332,7 +333,10 @@ def test_the_spatial_labels_are_integer_by_default_or_continuous(
         spatial_figure(recorded, frame, labels="decoded")
 
 
-@pytest.mark.merge
+@pytest.mark.infra
+# NB too specific to run on every change (#403): it passed where it merged,
+#    and runs again where this module or the lock changes, and at a release.
+@pytest.mark.deprecate
 def test_the_combined_page_is_the_two_figures_stacked(
     cnaster_config: None, tmp_path: Path
 ) -> None:

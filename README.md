@@ -48,9 +48,9 @@ the table.
 
 | badge | selection | denominator | what it says |
 | --- | --- | --- | --- |
-| **e2e** | `end2end` | `cnaster` | how much of the subject is **validated end to end**, against the truth that generated the data. `oracle` is excluded because the badge beside it claims that word |
+| **e2e** | `end2end` | `cnaster` + `python/port` | how much of the subject is **validated end to end**, against the truth that generated the data. `oracle` is excluded because the badge beside it claims that word |
 | **oracle** | the referee's own reach | `snakes_and_ladders` | **disabled** (#282), so it renders `/` rather than a figure nothing measures. It said how much of upstream is used as a referee, separately so it could not rise by importing more of upstream |
-| **all** | the other eight markers | `cnaster` | how much is merely **run**, rather than judged against anything outside `cnaster` |
+| **all** | the other eight markers | `cnaster` + `python/port` | how much is merely **run**, rather than judged against anything outside `cnaster` |
 | **drop-in** | `patch or cnaster` | `python/port/patch` | how much of what `port` wrote to replace something is reached by the test comparing it with the something. The one guard whose denominator is ours, so the one with a high floor |
 
 **`speed` and `mem`** are patched `run_cnaster` against `--no-patch`: wall
@@ -202,8 +202,10 @@ cargo clippy --all-targets -- -D warnings  # Rust lint
 cargo fmt --check                          # Rust format
 ```
 
-Every test sits in at most one tier -- `critical`, none, `merge`, `release`
--- and each step selects one, so no step repeats another's tests. The gate
+Every test sits in at most one tier -- `critical`, none, `merge`, `release`,
+`deprecate` -- and each step selects one, so no step repeats another's tests.
+A `deprecate` test runs only in the change that touches its module (against
+`--base`, `origin/main`) and at a release. The gate
 is `pytest -n 4`; a whole-pipeline test (`xdist_group("pipeline")`) runs one
 at a time, since four exceed 15 GB. Badges are measured and recorded locally
 by the change that moves them. `.gitattributes` sends `.badges/*.json` and
@@ -374,9 +376,10 @@ development, and `towncrier` has no release to build.
 
 ## What exists, measured
 
-Coverage over the whole of `cnaster` is **13.82 per cent** — 766 of 5,544
-statements — on 224 tests. Low by construction, and it rises only by validating
-more of the subject.
+Coverage is the four guards above, each recorded with its selection,
+denominator and commit in `.badges/measurements.json`; the `e2e` badge is
+the validated share of `cnaster` and `python/port`. Low by construction, and
+it rises only by validating more of the subject.
 
 | Claim | Realized |
 | --- | --- |

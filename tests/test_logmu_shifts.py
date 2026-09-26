@@ -1,36 +1,15 @@
-"""`compute_logmu_shifts`, against a vectorized reference and its own identities.
+"""`compute_logmu_shifts`, against its own identities.
 
 The quantity issue #5 is about: a per-clone normalizer that `cnaster`
 computes and never applies. It is a pure function of its arguments, so it
 can be pinned now and the pin stands when the shift is finally used.
 
-The reference below is the vectorized form of the same definition, which is
-also the form the docstring inside `compute_logmu_shifts` sketches in a
-comment block that was never adopted.
+Agreement with the vectorized form is `tests/test_logmu_shift.py`'s claim,
+against `port.patch.hmm_nophasing.logmu_shift.shifts`.
 """
 
 import numpy as np
 import pytest
-from scipy.special import logsumexp
-
-SELF_TRANSITION_STATES = 4
-
-
-def reference_shifts(
-    log_mus: np.ndarray,
-    copy_states: np.ndarray,
-    normal_log_lambda: np.ndarray,
-    clone_lengths: np.ndarray,
-) -> np.ndarray:
-    """Per clone, the log of `sum_b lambda_b mu_state(b)`, broadcast over it."""
-    shifts = np.empty(copy_states.size, dtype=np.float64)
-    start = 0
-    for length in clone_lengths:
-        stop = start + length
-        terms = log_mus[copy_states[start:stop]] + normal_log_lambda[start:stop]
-        shifts[start:stop] = logsumexp(terms)
-        start = stop
-    return shifts
 
 
 def draw(seed: int, n_states: int, clone_lengths: list[int]) -> tuple[np.ndarray, ...]:
@@ -45,24 +24,6 @@ def draw(seed: int, n_states: int, clone_lengths: list[int]) -> tuple[np.ndarray
         copy_states,
         np.log(weights / weights.sum()),
         np.array(clone_lengths),
-    )
-
-
-@pytest.mark.oracle
-@pytest.mark.critical
-@pytest.mark.parametrize(
-    "clone_lengths", [[10], [10, 10], [1, 19], [7, 3, 10]], ids=str
-)
-@pytest.mark.parametrize("n_states", [1, SELF_TRANSITION_STATES])
-def test_matches_the_vectorized_reference(
-    clone_lengths: list[int], n_states: int
-) -> None:
-    """The loop computes what the closed form computes."""
-    from cnaster.hmm_nophasing import compute_logmu_shifts
-
-    args = draw(seed=5, n_states=n_states, clone_lengths=clone_lengths)
-    np.testing.assert_allclose(
-        compute_logmu_shifts(*args), reference_shifts(*args), rtol=0.0, atol=1e-12
     )
 
 
@@ -113,9 +74,7 @@ def test_shifts_with_log_mu(offset: float) -> None:
 
 @pytest.mark.analytic
 def test_normalised_weights_and_one_state_give_that_state() -> None:
-    """With one state and weights summing to one, the shift is that state's mean.
-
-    A case whose answer is known without computing it: every term is the
+    """A case whose answer is known without computing it: every term is the
     same `log_mu`, and `logsumexp` over weights that sum to one returns it.
     """
     from cnaster.hmm_nophasing import compute_logmu_shifts

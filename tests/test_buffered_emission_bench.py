@@ -21,6 +21,8 @@ import numpy as np
 import pytest
 from pytest_benchmark.fixture import BenchmarkFixture
 
+from tests.fixtures import tiers
+
 Inputs = dict[str, Any]
 """The arrays one arm is handed, named so both arms take the same thing."""
 
@@ -97,9 +99,18 @@ def _run_buffered(inputs: Inputs, buffers: tuple[np.ndarray, np.ndarray]) -> Non
     )
 
 
-def _bench(
-    benchmark: BenchmarkFixture, size: dict[str, int], implementation: str
+@pytest.mark.benchmark
+@pytest.mark.parametrize("size", tiers(GATE, STRESS))
+@pytest.mark.parametrize("implementation", ["cnaster", "buffered"])
+def test_the_emission(
+    benchmark: BenchmarkFixture, implementation: str, size: dict[str, int]
 ) -> None:
+    """Both arms, warm, at the gate size and at the size the allocation tells at.
+
+    The gate baseline argues nothing either way. Both arms are called once
+    outside the timer: both are `numba` kernels and a first call on a cold
+    cache is compilation rather than work (#204).
+    """
     from port.patch.emission import emission_buffers
 
     inputs = _inputs(**size)
@@ -113,22 +124,3 @@ def _bench(
         )
         _run_buffered(inputs, buffers)
         benchmark(_run_buffered, inputs, buffers)
-
-
-@pytest.mark.benchmark
-@pytest.mark.parametrize("implementation", ["cnaster", "buffered"])
-def test_the_gate_emission(benchmark: BenchmarkFixture, implementation: str) -> None:
-    """A baseline at a gate size, which argues nothing either way."""
-    _bench(benchmark, GATE, implementation)
-
-
-@pytest.mark.release
-@pytest.mark.benchmark
-@pytest.mark.parametrize("implementation", ["cnaster", "buffered"])
-def test_the_stress_emission(benchmark: BenchmarkFixture, implementation: str) -> None:
-    """The size the allocation tells at, warm.
-
-    Both arms are called once outside the timer: both are `numba` kernels and
-    a first call on a cold cache is compilation rather than work (#204).
-    """
-    _bench(benchmark, STRESS, implementation)

@@ -65,7 +65,9 @@ def _drawn(tmp_path: Path) -> dict[str, np.ndarray]:
 
 
 @pytest.mark.snapshot
-@pytest.mark.merge
+# NB too specific to run on every change (#403): it passed where it merged,
+#    and runs again where this module or the lock changes, and at a release.
+@pytest.mark.deprecate
 def test_the_figures_are_the_frozen_ones(cnaster_config: None, tmp_path: Path) -> None:
     """Both figures bitwise equal to `tests/data/figures/`: same size, every
     channel of every pixel."""
@@ -87,14 +89,16 @@ def main() -> None:
 
     import matplotlib.image as mimage
 
-    from tests.conftest import SHIPPED_EM_FTOL, install_cnaster_config
+    from tests.conftest import SHIPPED_EM_FTOL, cnaster_test_config
+    from tests.tmp_inputs import written_config
 
     FROZEN.mkdir(parents=True, exist_ok=True)
 
-    with tempfile.TemporaryDirectory() as root:
+    with (
+        tempfile.TemporaryDirectory() as root,
         # NB the `cnaster_config` fixture's config, as the test draws under.
-        install_cnaster_config(Path(root), em_ftol=SHIPPED_EM_FTOL, em_maxiter=100)
-
+        written_config(cnaster_test_config(Path(root), SHIPPED_EM_FTOL, 100)),
+    ):
         for name, pixels in _drawn(Path(root)).items():
             mimage.imsave(FROZEN / f"{name}.png", pixels)
             print(f"froze {name}: {pixels.shape}", file=sys.stderr)

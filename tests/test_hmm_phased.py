@@ -17,15 +17,13 @@ silently.
 
 import numpy as np
 import pytest
-import torch
-from snakes_and_ladders.opt.hmm import forward_log_likelihood_from_density
 
 from tests.adapters import (
-    CnasterPhasedInputs,
     cnaster_phased_total_log_likelihood,
     from_phased_chains,
+    upstream_phased_total_log_likelihood,
 )
-from tests.fixtures import PhasedChains, phased_chains, phased_combined_transition
+from tests.fixtures import phased_chains, phased_combined_transition
 
 TOLERANCE = 1e-9
 
@@ -33,32 +31,6 @@ ASSEMBLIES = [
     pytest.param(False, id="kronecker"),
     pytest.param(True, id="conserved-copy-state-only"),
 ]
-
-
-def upstream_phased_total_log_likelihood(
-    fixture: PhasedChains, inputs: CnasterPhasedInputs
-) -> float:
-    """The same total from upstream, at the assembled constant transition.
-
-    The paired start is the copy-state initial halved across the phases,
-    which is what `hmm_phased.forward_lattice` builds for itself.
-    """
-    n_sequences = inputs.lengths.size
-    sequence_length = int(inputs.lengths[0])
-    density = torch.as_tensor(
-        inputs.log_emission[:, :, 0]
-        .T.reshape(n_sequences, sequence_length, fixture.n_paired_states)
-        .copy()
-    )
-    paired_initial = 0.5 * np.concatenate([fixture.initial, fixture.initial])
-
-    return float(
-        forward_log_likelihood_from_density(
-            density,
-            torch.log(torch.as_tensor(paired_initial)),
-            torch.log(torch.as_tensor(fixture.combined_transition)),
-        )
-    )
 
 
 @pytest.mark.snapshot
@@ -190,7 +162,7 @@ def test_switch_outside_the_unit_interval_is_refused() -> None:
         )
 
 
-@pytest.mark.smoke
+@pytest.mark.bug
 @pytest.mark.xfail(
     strict=True,
     reason=(
@@ -201,9 +173,7 @@ def test_switch_outside_the_unit_interval_is_refused() -> None:
     ),
 )
 def test_phased_emission_is_reachable() -> None:
-    """The phased emission returns scores rather than raising.
-
-    Written as the test that should pass, marked strict so it fails loudly
+    """Written as the test that should pass, marked strict so it fails loudly
     the day `cnaster` fixes the defect rather than sitting green and unread.
     """
     from cnaster.hmm_phased import hmm_phased
