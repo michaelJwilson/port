@@ -26,19 +26,31 @@ from typing import Any, Literal
 __all__ = [
     "SOLVERS",
     "expansion_then_floor",
+    "expansion_then_merge",
     "label_solver",
+    "sal_icm_floor_sweep",
     "sal_icm_sweep",
     "set_label_solver",
     "sweep_for",
 ]
 
-Solver = Literal["icm", "alpha", "alpha-rust", "icm-numba", "alpha-rust-icm"]
+Solver = Literal[
+    "icm",
+    "alpha",
+    "alpha-rust",
+    "icm-numba",
+    "alpha-rust-icm",
+    "alpha-rust-merge",
+    "icm-numba-floor",
+]
 SOLVERS: tuple[Solver, ...] = (
     "icm",
     "alpha",
     "alpha-rust",
     "icm-numba",
     "alpha-rust-icm",
+    "alpha-rust-merge",
+    "icm-numba-floor",
 )
 """`icm` is `cnaster`'s. `alpha`, `alpha-rust` and `icm-numba` are
 `snakes_and_ladders`' (#246, #312): alpha expansion with its Python or Rust
@@ -116,6 +128,12 @@ def sweep_for(name: Solver) -> Any:
     if name == "alpha-rust-icm":
         return expansion_then_floor
 
+    if name == "alpha-rust-merge":
+        return expansion_then_merge
+
+    if name == "icm-numba-floor":
+        return sal_icm_floor_sweep
+
     return sal_icm_sweep
 
 
@@ -191,3 +209,91 @@ def sal_icm_sweep(
     assignment[:] = labelling
 
     return IcmResult(niter=1, cost=float(energy(potts, values, labelling)))
+
+
+def _sal_floor(
+    field: Any,
+    graph: Any,
+    assignment: Any,
+    beta: float,
+    min_clone_spots: int,
+    *,
+    expand: bool,
+) -> Any:
+    """sal end to end: an optional Rust expansion, then its ICM at `cnaster`'s floor.
+
+    `merge_small_labels` is `iterated_conditional_modes` from the given start
+    with `min_sites` (sal #1114), so with `expand` off this is the descent
+    with the floor built in, and with it on the floor follows the expansion
+    -- #312's R7: the merge that `alpha-rust` and `icm-numba` waited on.
+    """
+    import numpy as np
+    from sal.backend import Backend
+    from sal.search.alpha_expansion import alpha_expansion
+    from sal.search.icm import merge_small_labels
+    from sal.sim.potts import energy
+
+    from port.patch.icm.alpha_expansion import potts_graph_from
+    from port.patch.icm.interface import IcmResult
+
+    values = np.asarray(field, dtype=np.float64)
+    potts = potts_graph_from(graph, beta)
+    start = np.asarray(assignment, dtype=np.int64).copy()
+
+    if expand:
+        start = np.asarray(
+            alpha_expansion(potts, values, start=start, backend=Backend.RUST).labelling,
+            dtype=np.int64,
+        )
+
+    result = merge_small_labels(
+        potts,
+        values,
+        start,
+        np.random.default_rng(0),
+        min_sites=max(int(min_clone_spots), 1),
+        backend=Backend.NUMBA,
+    )
+
+    labelling = np.asarray(result.labelling, dtype=assignment.dtype)
+    assignment[:] = labelling
+
+    return IcmResult(
+        niter=int(result.sweeps), cost=float(energy(potts, values, labelling))
+    )
+
+
+def expansion_then_merge(
+    field: Any,
+    graph: Any,
+    assignment: Any,
+    beta: float,
+    *,
+    tol: float = 0.0,
+    epsilon: float = 0.0,
+    min_clone_spots: int = 200,
+    cost_zeropoint: float = 0.0,
+    onehot_allowed_clones: Any = None,
+) -> Any:
+    """Alpha expansion (Rust cut), then sal's merge at `cnaster`'s floor."""
+    del tol, epsilon, cost_zeropoint, onehot_allowed_clones
+
+    return _sal_floor(field, graph, assignment, beta, min_clone_spots, expand=True)
+
+
+def sal_icm_floor_sweep(
+    field: Any,
+    graph: Any,
+    assignment: Any,
+    beta: float,
+    *,
+    tol: float = 0.0,
+    epsilon: float = 0.0,
+    min_clone_spots: int = 200,
+    cost_zeropoint: float = 0.0,
+    onehot_allowed_clones: Any = None,
+) -> Any:
+    """sal's `numba` descent with `cnaster`'s floor built in."""
+    del tol, epsilon, cost_zeropoint, onehot_allowed_clones
+
+    return _sal_floor(field, graph, assignment, beta, min_clone_spots, expand=False)
