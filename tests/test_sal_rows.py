@@ -105,6 +105,32 @@ def test_the_sequence_keeps_cnasters_clone_floor() -> None:
     assert np.all((sizes == 0) | (sizes >= 200)), f"clone sizes {sizes}"
 
 
+@pytest.mark.smoke
+def test_the_merge_keeps_cnasters_clone_floor_without_cnaster() -> None:
+    """`alpha-rust-merge` leaves no clone under `min_clone_spots`, from sal alone.
+
+    The fixture above, where alpha expansion alone leaves twelve clones of 38
+    to 84 spots: sal's `merge_small_labels` dissolves each, and no global RNG
+    is touched because none of `cnaster`'s sweep runs.
+    """
+    from port.extensions.label_solver import expansion_then_merge
+    from port.patch.icm.alpha_expansion import alpha_expansion_sweep
+
+    field, graph, _, beta = _lattice(40, 16, seed=9, beta=0.6)
+    start = np.arange(1600, dtype=np.int64) % 16
+
+    alone = start.copy()
+    alpha_expansion_sweep(field, graph, alone, beta)
+    merged = start.copy()
+    expansion_then_merge(field, graph, merged, beta, min_clone_spots=200)
+
+    sizes_alone = np.bincount(alone, minlength=16)
+    sizes = np.bincount(merged, minlength=16)
+
+    assert np.any((sizes_alone > 0) & (sizes_alone < 200))
+    assert np.all((sizes == 0) | (sizes >= 200)), f"clone sizes {sizes}"
+
+
 @pytest.mark.infra
 def test_the_flag_selects_the_row_and_restores_the_solver() -> None:
     """Inside `sal()` the labelling is the row's; outside, what it was."""
@@ -114,7 +140,7 @@ def test_the_flag_selects_the_row_and_restores_the_solver() -> None:
     before = label_solver()
 
     with sal():
-        assert label_solver() == SAL_ROWS[0].solver == "alpha-rust-icm"
+        assert label_solver() == SAL_ROWS[0].solver == "alpha-rust-merge"
 
     assert label_solver() == before
 
@@ -129,7 +155,7 @@ def test_list_prints_the_sal_row(capsys: pytest.CaptureFixture[str]) -> None:
     printed = capsys.readouterr().out
 
     assert "cnaster.icm.icm_sweep_deque <- search.alpha_expansion" in printed
-    assert "(#312, accuracy; --sal to add)" in printed
+    assert "(#410, accuracy; --sal to add)" in printed
 
 
 @pytest.mark.end2end
