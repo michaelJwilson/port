@@ -43,7 +43,7 @@ def _prepared(tmp_path: Path, n_obs: int = 20) -> tuple[CoreInferenceTruth, Binn
     the chain has to hold it open across all of them.
     """
     truth = core_inference_truth(
-        n_clones=2, n_states=3, lattice=(6, 5), n_obs=n_obs, n_segments=2
+        n_clones=2, n_states=3, lattice=(6, 6), n_obs=n_obs, n_segments=2
     )
     # No flipped haplotype: the files carry allele counts, and the phase is
     # `cnaster`'s to infer. The flipped form is exercised at the binner.

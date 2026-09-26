@@ -20,6 +20,12 @@ not own**), so both are written here with their referees beside them in
 `tests/test_preprocessing_sweep.py`.
 
 Both returns are **bitwise** what `cnaster` returns.
+
+**`lattice_multislice_adjacency` is not bitwise by contract** (#417): it is
+the swap the run installs over `construct_multislice_lattice_adjacency`,
+builds each slice from `port.extensions.adjacency` -- `knn` by default, which
+on a square grid is `cnaster`'s graph entry for entry, or `lattice` -- and
+refuses any graph `validate_adjacency` rejects.
 """
 
 from __future__ import annotations
@@ -415,3 +421,67 @@ def initialize_rectangular_clones(
 
         if min(len(x) for x in initial_clone_index) > 0.2 * coords.shape[0] / n_clones:
             return initial_clone_index, clone_id
+
+
+def lattice_multislice_adjacency(
+    sample_ids: np.ndarray,
+    sample_list: Any,
+    coords: np.ndarray,
+    across_slice_adjacency_mat: Any,
+    maxspots_pooling: int,
+    unit_xsquared: int = 9,  # noqa: ARG001 -- a lattice has no metric to scale
+    unit_ysquared: int = 3,  # noqa: ARG001 -- a lattice has no metric to scale
+) -> Adjacency:
+    """`construct_multislice_lattice_adjacency`'s signature, on the lattice graph.
+
+    Per slice, in `sample_list` order as `cnaster` assembles them, then block
+    diagonal. The pooling matrix is `cnaster`'s identity. The result is
+    validated before it is returned, so the HMRF never receives a graph that
+    fails `validate_adjacency`.
+    """
+    from port.extensions.adjacency import (
+        COORDINATION,
+        AdjacencyError,
+        adjacency_setting,
+        knn_adjacency,
+        lattice_adjacency,
+        lattice_kind,
+        neighbourhood_for,
+        validate_adjacency,
+    )
+
+    if maxspots_pooling != 1:
+        msg = f"maxspots_pooling={maxspots_pooling}; the lattice path pools nothing"
+        raise AdjacencyError(msg)
+
+    construction = adjacency_setting("construction")
+    build = knn_adjacency if construction == "knn" else lattice_adjacency
+    blocks, kinds = [], []
+
+    for index, _ in enumerate(sample_list):
+        this_coords = np.asarray(coords[np.flatnonzero(sample_ids == index), :])
+        kind = neighbourhood_for(lattice_kind(this_coords))
+        kinds.append(kind)
+        blocks.append(build(this_coords, kind))
+
+    if len(set(kinds)) != 1:
+        msg = f"slices are on different lattices: {kinds}"
+        raise AdjacencyError(msg)
+
+    adjacency_mat = _block_diagonal(blocks)
+    smooth_mat = sp.identity(adjacency_mat.shape[0], dtype=np.int8, format="csr")
+
+    if across_slice_adjacency_mat is not None:
+        adjacency_mat = adjacency_mat + across_slice_adjacency_mat
+
+    validate_adjacency(
+        adjacency_mat,
+        COORDINATION[kinds[0]],
+        construction=construction,  # type: ignore[arg-type]
+    )
+    logger.info(
+        f"{construction} {kinds[0]} adjacency: {adjacency_mat.nnz} entries over "
+        f"{adjacency_mat.shape[0]} spots, validated."
+    )
+
+    return Adjacency(adjacency_mat=adjacency_mat, smooth_mat=smooth_mat)
