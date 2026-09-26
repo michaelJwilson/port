@@ -89,14 +89,16 @@ def main() -> None:
 
     import matplotlib.image as mimage
 
-    from tests.conftest import SHIPPED_EM_FTOL, install_cnaster_config
+    from tests.conftest import SHIPPED_EM_FTOL, cnaster_test_config
+    from tests.tmp_inputs import written_config
 
     FROZEN.mkdir(parents=True, exist_ok=True)
 
-    with tempfile.TemporaryDirectory() as root:
+    with (
+        tempfile.TemporaryDirectory() as root,
         # NB the `cnaster_config` fixture's config, as the test draws under.
-        install_cnaster_config(Path(root), em_ftol=SHIPPED_EM_FTOL, em_maxiter=100)
-
+        written_config(cnaster_test_config(Path(root), SHIPPED_EM_FTOL, 100)),
+    ):
         for name, pixels in _drawn(Path(root)).items():
             mimage.imsave(FROZEN / f"{name}.png", pixels)
             print(f"froze {name}: {pixels.shape}", file=sys.stderr)
