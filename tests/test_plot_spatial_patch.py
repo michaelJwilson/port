@@ -117,3 +117,61 @@ def test_two_samples_are_offset_and_titled_as_upstream_does() -> None:
         centres, np.column_stack([shifted[:, 0], -shifted[:, 1]]), rtol=0, atol=1e-12
     )
     assert [text.get_text() for text in ours.axes[0].texts] == ["S0, S1"]
+
+
+@pytest.mark.patch
+@pytest.mark.parametrize("with_proportion", [False, True])
+def test_each_sample_panel_is_upstreams_spots_of_that_sample(
+    with_proportion: bool,
+) -> None:
+    """`sample_layout` against upstream's one axis, spot by spot (#328).
+
+    Upstream draws three samples side by side along `x`, each after the
+    previous one's largest `x` plus 10. Each panel carries that sample's
+    spots only, colour and opacity bitwise upstream's for the same spot, and
+    centred on the sample's own coordinates rather than the offset ones.
+    """
+    import matplotlib as mpl
+
+    mpl.use("Agg")
+    import matplotlib.pyplot as plt
+    from cnaster.plotting import plot_clones_spatial as upstream
+    from port.patch.plotting.spatial import plot_clones_spatial
+
+    coords, assignment, proportion = _instance()
+    tumour = proportion if with_proportion else None
+    samples = np.repeat(np.arange(3), coords.shape[0] // 3)
+    names = ["S0", "S1", "S2"]
+
+    shifted = coords.copy()
+    offset = 0.0
+    for sample in range(3):
+        spots = samples == sample
+        shifted[spots, 0] += offset
+        offset += coords[spots, 0].max() + 10
+
+    theirs_figure = upstream(coords.copy(), assignment, tumour, names, samples)
+    theirs = _upstream_by_spot(theirs_figure, shifted)
+    ours = plot_clones_spatial(
+        coords.copy(), assignment, tumour, names, samples, sample_layout=(3, 1)
+    )
+
+    assert len(ours.axes) == 3
+    for sample, ax in enumerate(ours.axes):
+        spots = np.flatnonzero(samples == sample)
+        (tiles,) = ax.collections
+        centres = np.array([path.vertices[:4] for path in tiles.get_paths()]).mean(
+            axis=1
+        )
+
+        np.testing.assert_array_equal(np.asarray(tiles.get_facecolors()), theirs[spots])
+        np.testing.assert_allclose(
+            centres,
+            np.column_stack([coords[spots, 0], -coords[spots, 1]]),
+            rtol=0,
+            atol=1e-12,
+        )
+        assert ax.get_title() == names[sample]
+
+    plt.close(theirs_figure)
+    plt.close(ours)

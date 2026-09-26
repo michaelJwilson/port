@@ -44,6 +44,21 @@ from port.pipeline import (
 )
 
 
+def _layout(text: str) -> tuple[int, int]:
+    """`"3,1"` as `(3, 1)`, both positive."""
+    try:
+        rows, columns = (int(part) for part in text.split(","))
+    except ValueError as error:
+        msg = f"expected ROWS,COLUMNS, got {text!r}"
+        raise argparse.ArgumentTypeError(msg) from error
+
+    if rows < 1 or columns < 1:
+        msg = f"a layout needs a row and a column, got {text!r}"
+        raise argparse.ArgumentTypeError(msg)
+
+    return rows, columns
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="run_cnaster_port",
@@ -100,6 +115,17 @@ def _parser() -> argparse.ArgumentParser:
             "reads neither and decodes under A + B <= 6. **On by default**, "
             "off with --no-patch; a configuration that states no cap decodes "
             "exactly as cnaster does."
+        ),
+    )
+    parser.add_argument(
+        "--sample-layout",
+        type=_layout,
+        default=None,
+        metavar="ROWS,COLUMNS",
+        help=(
+            "draw the clone spatial plots one panel per sample on this grid, "
+            "e.g. 3,1, each sample in its own coordinates (#328). Unset, "
+            "cnaster's one axis with samples offset along x. Needs --figures."
         ),
     )
     parser.add_argument(
@@ -329,6 +355,15 @@ def main(argv: Sequence[str] | None = None) -> int:
             selected = selected + NUMERIC_SWAPS
         if figures:
             selected = selected + FIGURE_SWAPS
+        if arguments.sample_layout is not None:
+            if not figures:
+                _parser().error("--sample-layout needs the figure swaps")
+
+            from port.patch.plotting import spatial
+
+            stack.callback(setattr, spatial, "SAMPLE_LAYOUT", spatial.SAMPLE_LAYOUT)
+            spatial.SAMPLE_LAYOUT = arguments.sample_layout
+
         if arguments.genomic_colours is not None:
             from port.patch import plot_genomic
 
