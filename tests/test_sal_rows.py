@@ -105,6 +105,36 @@ def test_the_sequence_keeps_cnasters_clone_floor() -> None:
     assert np.all((sizes == 0) | (sizes >= 200)), f"clone sizes {sizes}"
 
 
+@pytest.mark.analytic
+def test_the_argmax_descent_is_the_argmax_without_coupling() -> None:
+    """At `beta = 0` the MAP labelling is each site's best clone, and nothing moves it.
+
+    With no coupling every site's conditional mode is its own field argmax,
+    which is where the descent starts, so it takes no step; a floor of one
+    spot dissolves nothing. Against `np.argmax` directly.
+    """
+    from port.extensions.label_solver import sal_icm_argmax_sweep
+
+    field, graph, start, _ = _lattice(20, 5, seed=4, beta=0.6)
+    labelling = start.copy()
+    sal_icm_argmax_sweep(field, graph, labelling, 0.0, min_clone_spots=1)
+
+    np.testing.assert_array_equal(labelling, np.argmax(field, axis=1))
+
+
+@pytest.mark.smoke
+def test_the_argmax_descent_keeps_the_clone_floor() -> None:
+    """No clone the argmax row returns is under `min_clone_spots`."""
+    from port.extensions.label_solver import sal_icm_argmax_sweep
+
+    field, graph, start, beta = _lattice(40, 16, seed=9, beta=0.6)
+    labelling = start.copy()
+    sal_icm_argmax_sweep(field, graph, labelling, beta, min_clone_spots=200)
+    sizes = np.bincount(labelling, minlength=16)
+
+    assert np.all((sizes == 0) | (sizes >= 200)), f"clone sizes {sizes}"
+
+
 @pytest.mark.infra
 def test_the_flag_selects_the_row_and_restores_the_solver() -> None:
     """Inside `sal()` the labelling is the row's; outside, what it was."""
