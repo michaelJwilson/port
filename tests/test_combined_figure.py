@@ -138,6 +138,7 @@ def _texts(figure: Any) -> list[Any]:
 
 
 @pytest.mark.smoke
+@pytest.mark.merge
 def test_each_figure_is_a_column_wide_with_one_text_size(
     cnaster_config: None, tmp_path: Path
 ) -> None:
@@ -160,6 +161,7 @@ def test_each_figure_is_a_column_wide_with_one_text_size(
 
 
 @pytest.mark.infra
+@pytest.mark.merge
 def test_each_page_is_written_at_its_size_with_nothing_past_it(
     cnaster_config: None, tmp_path: Path
 ) -> None:
@@ -204,6 +206,7 @@ def test_each_page_is_written_at_its_size_with_nothing_past_it(
 
 
 @pytest.mark.infra
+@pytest.mark.merge
 def test_the_profile_spans_the_tracks_on_one_left_column(
     cnaster_config: None, tmp_path: Path
 ) -> None:
@@ -249,6 +252,7 @@ def test_the_profile_spans_the_tracks_on_one_left_column(
 
 
 @pytest.mark.infra
+@pytest.mark.merge
 def test_the_spatial_panels_are_square_and_keyed_on_the_right_edge(
     cnaster_config: None, tmp_path: Path
 ) -> None:
@@ -297,6 +301,7 @@ def test_the_spatial_panels_are_square_and_keyed_on_the_right_edge(
 
 
 @pytest.mark.infra
+@pytest.mark.merge
 def test_the_combined_page_is_the_two_figures_stacked(
     cnaster_config: None, tmp_path: Path
 ) -> None:

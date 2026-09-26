@@ -292,7 +292,7 @@ def pipeline_clone_assignment(
     """What `cnaster.hmrf.pipeline_clone_assignment` returns, computed leaner."""
     import cnaster.hmrf as upstream
 
-    from port.extensions.label_solver import label_solver
+    from port.extensions.label_solver import label_solver, sweep_for
     from port.patch.hmrf.adjacency import adjacency_coo
     from port.patch.hmrf.fused_field import fused_spot_clone_field
     from port.patch.icm.interface import CsrGraph, fold_unary, icm_sweep
@@ -430,13 +430,7 @@ def pipeline_clone_assignment(
         #    per-sample weights fold into the field, which is where they were
         #    added anyway, once per visit instead of once per sweep; the
         #    three adjacency arrays travel as the one graph they are.
-        sweep = (
-            icm_sweep
-            if solver == "icm"
-            else __import__(
-                "port.patch.icm.alpha_expansion", fromlist=["alpha_expansion_sweep"]
-            ).alpha_expansion_sweep
-        )
+        sweep = icm_sweep if solver == "icm" else sweep_for(solver)
 
         result = sweep(
             fold_unary(field, log_persample_weights, sample_ids),

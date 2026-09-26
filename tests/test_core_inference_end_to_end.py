@@ -139,6 +139,7 @@ def test_the_default_hmm_class_cannot_complete_an_outer_iteration(
 
 
 @pytest.mark.warning
+@pytest.mark.merge
 def test_a_clone_below_the_solver_s_floor_is_merged_away(cnaster_config: None) -> None:
     """Under 200 spots a clone cannot survive, whatever the data says.
 

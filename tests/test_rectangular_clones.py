@@ -85,6 +85,7 @@ def _within(seconds: int, call: Any) -> bool:
 
 
 @pytest.mark.bug
+@pytest.mark.merge
 def test_cnaster_does_not_return_on_the_captured_input() -> None:
     """`cnaster`'s loop, on the third call's arguments, runs past 5 s.
 

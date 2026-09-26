@@ -708,6 +708,9 @@ class CoreInferenceTruth:
     lattice: tuple[int, int]
     self_transition: float
     seed: int
+    mirrored: tuple[tuple[int, int, int, int], ...] = ()
+    """`(clone, mirror, offset, extent)`: bins where `mirror` carries `clone`'s
+    LOH with the other allele lost, `loh=True` only."""
 
     @property
     def n_clones(self) -> int:
@@ -955,78 +958,35 @@ def clone_bands(
     return labels
 
 
-MANDELBROT_WINDOW = (-2.2, 0.8, -1.25, 1.25)
-"""`(real low, real high, imaginary low, imaginary high)`: the whole set,
-cardioid and bulbs, with a margin of exterior around it."""
+COPY_LATTICE: tuple[tuple[int, int], ...] = (
+    (1, 1),
+    (1, 2),
+    (1, 3),
+    (2, 3),
+    (1, 4),
+    (2, 4),
+    (1, 5),
+    (2, 2),
+    (3, 3),
+)
+"""`(A, B)` allele copies for `copy_lattice=True`, the diploid normal first.
 
-MANDELBROT_ITERATIONS = 64
-"""Escape-time cap. A spot still bounded after this many is interior."""
+`mu = (A + B) / 2` against a diploid normal and `p = B / (A + B)`, at or
+above balance as the unphased initializer requires, and every total within
+`cnaster`'s `max_total_copy = 6`. No `A = 0` state here: `p = 1` is a
+degenerate beta-binomial, and `LOH_STATES` carries LOH held off it. The two balanced amplifications come last, so a fixture of
+seven or fewer states is identifiable from BAF as well as RDR.
+"""
 
+LOH_STATES: tuple[tuple[int, int], ...] = ((0, 2), (2, 0), (0, 1), (1, 0))
+"""`(A, B)` states `loh=True` appends: copy-neutral LOH and hemizygous
+deletion, each with its mirror, the other allele lost."""
 
-def mandelbrot_labels(
-    rows: int, columns: int, n_clones: int, *, normal_clone: bool = True
-) -> np.ndarray:
-    """Clone label per spot, by the Mandelbrot escape time of its position.
-
-    The lattice is laid over :data:`MANDELBROT_WINDOW`, row as the imaginary
-    axis and column as the real one, and each spot takes the number of
-    iterations `z -> z^2 + c` needs to leave the disc of radius 2.
-
-    - the last clone is **the set itself**: every spot still bounded after
-      :data:`MANDELBROT_ITERATIONS`, so its boundary is the cardioid and
-      bulbs;
-    - clone 0, the **normal** clone, is the fastest-escaping exterior and
-      holds `NORMAL_SHARE` of the spots when `normal_clone`, an equal share
-      otherwise;
-    - clones `1 .. n_clones - 2` split the rest of the exterior into
-      equal-count shells of escape time, nested around the set.
-
-    Ties in escape time are broken by position, so the labelling is a
-    deterministic function of the lattice and `n_clones` alone. The set is
-    about a fifth of the window: 320 of the dev lattice's 1,600 spots, over
-    `icm_sweep_deque`'s 200-spot floor.
-    """
-    real_low, real_high, imag_low, imag_high = MANDELBROT_WINDOW
-    real = np.linspace(real_low, real_high, columns)
-    imag = np.linspace(imag_high, imag_low, rows)
-    c = real[None, :] + 1j * imag[:, None]
-
-    z = np.zeros_like(c)
-    escape = np.full(c.shape, MANDELBROT_ITERATIONS, dtype=np.int64)
-
-    for step in range(MANDELBROT_ITERATIONS):
-        bounded = escape == MANDELBROT_ITERATIONS
-        z[bounded] = z[bounded] ** 2 + c[bounded]
-        escape[bounded & (np.abs(z) > 2.0)] = step
-
-    flat = escape.reshape(-1)
-    n_spots = rows * columns
-    labels = np.full(n_spots, n_clones - 1, dtype=np.int64)
-
-    if n_clones == 1:
-        return np.zeros(n_spots, dtype=np.int64)
-
-    exterior = np.flatnonzero(flat < MANDELBROT_ITERATIONS)
-    exterior = exterior[np.argsort(flat[exterior], kind="stable")]
-
-    share = NORMAL_SHARE if normal_clone else 1.0 / n_clones
-    normal = max(int(np.ceil(share * n_spots)), n_spots // n_clones)
-
-    if normal > exterior.size:
-        msg = f"the exterior holds {exterior.size} spots, fewer than {normal}"
-        raise ValueError(msg)
-
-    labels[exterior[:normal]] = 0
-
-    if n_clones == 2:
-        labels[exterior[normal:]] = 0
-    else:
-        for clone, spots in enumerate(
-            np.array_split(exterior[normal:], n_clones - 2), start=1
-        ):
-            labels[spots] = clone
-
-    return labels
+LOH_EPSILON = 1e-5
+"""How far an LOH state's `p` sits from 0 or 1: `p = 1` is a degenerate
+beta-binomial, and `1 - 1e-5` at `tau = 30` gives the lost allele a beta
+shape of `3e-4`, so a draw is all one allele to within the tolerance
+`tests/test_loh_fixture.py` states."""
 
 
 def core_inference_truth(
@@ -1047,6 +1007,8 @@ def core_inference_truth(
     seed: int = DEFAULT_SEED,
     normal_clone: bool = True,
     labelling: str = "bands",
+    copy_lattice: bool = False,
+    loh: bool = False,
 ) -> CoreInferenceTruth:
     """Plant an instance, drawing every count through upstream's families.
 
@@ -1058,10 +1020,23 @@ def core_inference_truth(
     Parameters
     ----------
     labelling : str
-        How spots are labelled with clones. `"bands"` lays them in row
-        bands, the default; `"mandelbrot"` by the Mandelbrot escape time of
-        each spot's position (`mandelbrot_labels`), so clone boundaries are
-        curved, nested and uneven rather than straight.
+        How spots are labelled with clones. `"bands"`, the only one, lays
+        them in row bands.
+    copy_lattice : bool
+        Plant integer allele copies, `COPY_LATTICE`, instead of the default
+        grid of `mu` in `[1.5, 5]` and `p` in `[0.58, 0.88]`. The default grid
+        is off the integer lattice -- `mu = 1.5` at `p = 0.58` is no `(A, B)`
+        -- so it cannot referee an integer copy decoder, and three of its
+        states exceed `cnaster`'s `max_total_copy = 6` (#313). Off by
+        default, so every existing fixture draws what it drew.
+    loh : bool
+        With `copy_lattice`, append `LOH_STATES` after the `n_states` lattice
+        states and plant them **mirrored**: each tumor clone carries a
+        copy-neutral LOH and a hemizygous deletion, and the next tumor clone
+        carries the same bins with the other allele lost, so the phase of
+        the LOH flips between the two clones while `mu` does not. `p` is
+        held `LOH_EPSILON` from 0 and 1. The events are drawn after every
+        other draw, so the other clones' events are unchanged by it.
     normal_clone : bool
         Clone 0 all state 0 and at least `NORMAL_SHARE` of the spots (#298),
         which `cnaster`'s baseline needs. On by default at every size;
@@ -1084,8 +1059,9 @@ def core_inference_truth(
     ------
     ValueError
         If `n_clones` exceeds the lattice's rows, where a band would be empty,
-        the segments do not partition `n_obs`, `n_states < 2`, or `exposure`
-        names no mode.
+        the segments do not partition `n_obs`, `n_states < 2`, `exposure`
+        names no mode, or `loh` is asked without `copy_lattice` or of fewer
+        than two tumor clones, which leaves no clone to mirror.
     """
     rows, columns = lattice
     if n_clones > rows:
@@ -1110,15 +1086,29 @@ def core_inference_truth(
     # as `cnaster`'s own comment says, with no phasing the states have to sit
     # at or above 0.5. A state planted below it is asking the initializer for
     # something the model does not carry.
-    log_mu = np.concatenate(([0.0], np.log(np.linspace(1.5, 5.0, n_states - 1))))
-    alphas = np.full(n_states, 1.0 / 6.0)
-    p_binom = np.concatenate(([0.5], np.linspace(0.58, 0.88, n_states - 1)))
-    taus = np.full(n_states, 30.0)
+    if copy_lattice:
+        if n_states > len(COPY_LATTICE):
+            msg = f"the copy lattice has {len(COPY_LATTICE)} states, not {n_states}"
+            raise ValueError(msg)
+
+        table = COPY_LATTICE[:n_states] + (LOH_STATES if loh else ())
+        copies = np.asarray(table, dtype=np.float64)
+        log_mu = np.log(copies.sum(axis=1) / 2.0)
+        p_binom = np.clip(
+            copies[:, 1] / copies.sum(axis=1), LOH_EPSILON, 1.0 - LOH_EPSILON
+        )
+    elif loh:
+        msg = "loh plants integer (A, B) states, so it needs copy_lattice"
+        raise ValueError(msg)
+    else:
+        log_mu = np.concatenate(([0.0], np.log(np.linspace(1.5, 5.0, n_states - 1))))
+        p_binom = np.concatenate(([0.5], np.linspace(0.58, 0.88, n_states - 1)))
+
+    alphas = np.full(log_mu.size, 1.0 / 6.0)
+    taus = np.full(log_mu.size, 30.0)
 
     if labelling == "bands":
         labels = clone_bands(rows, columns, n_clones, normal_clone=normal_clone)
-    elif labelling == "mandelbrot":
-        labels = mandelbrot_labels(rows, columns, n_clones, normal_clone=normal_clone)
     else:
         msg = f"unknown labelling {labelling!r}"
         raise ValueError(msg)
@@ -1162,6 +1152,18 @@ def core_inference_truth(
     if normal_clone and n_clones > 1:
         states[0] = 0
         placed_events = ((), *placed_events[1:])
+
+    mirrored: tuple[tuple[int, int, int, int], ...] = ()
+    if loh:
+        states, placed_events, mirrored = _mirror_loh(
+            states,
+            placed_events,
+            lengths,
+            first=n_states,
+            tumor=list(range(1 if normal_clone else 0, n_clones)),
+            event_bins=extent,
+            rng=np.random.default_rng([seed, 0, 1]),  # no spot stream is three long
+        )
 
     if exposure == "constant":
         base_nb_mean = np.full((n_obs, n_spots), float(depth[0]))
@@ -1208,7 +1210,69 @@ def core_inference_truth(
         lattice=lattice,
         self_transition=self_transition,
         seed=seed,
+        mirrored=mirrored,
     )
+
+
+def _mirror_loh(
+    states: np.ndarray,
+    placed_events: tuple[tuple[tuple[int, int, int, int], ...], ...],
+    lengths: np.ndarray,
+    *,
+    first: int,
+    tumor: list[int],
+    event_bins: tuple[int, int],
+    rng: np.random.Generator,
+) -> tuple[
+    np.ndarray,
+    tuple[tuple[tuple[int, int, int, int], ...], ...],
+    tuple[tuple[int, int, int, int], ...],
+]:
+    """Each tumor clone's two LOH events, and the next one's mirror of them.
+
+    `first` is the index of `LOH_STATES[0]`; a state and its mirror are
+    adjacent there, `first + 2 j` and `first + 2 j + 1`. The mirror is the
+    next tumor clone, cyclically, so every tumor clone carries both phases.
+    Events sit inside one chromosome, as `place_events`' do, and overwrite
+    what is under them in both clones, but never each other: a pair drawn
+    over an earlier pair's bins is redrawn, so every pair `mirrored` records
+    is intact in the path.
+    """
+    if len(tumor) < 2:
+        msg = f"mirrored LOH needs two tumor clones, got {len(tumor)}"
+        raise ValueError(msg)
+
+    states = states.copy()
+    events = [list(placed) for placed in placed_events]
+    edges = np.concatenate(([0], np.cumsum(lengths)))
+    taken = np.zeros(states.shape[1], dtype=bool)
+    mirrored = []
+
+    for i, clone in enumerate(tumor):
+        mirror = tumor[(i + 1) % len(tumor)]
+
+        for j in range(len(LOH_STATES) // 2):
+            for _ in range(1_000):
+                chromosome = int(rng.integers(lengths.size))
+                start, stop = int(edges[chromosome]), int(edges[chromosome + 1])
+                extent = min(int(rng.integers(*event_bins)), stop - start)
+                offset = int(rng.integers(start, stop - extent + 1))
+                if not taken[offset : offset + extent].any():
+                    break
+            else:
+                msg = "no room left for a disjoint mirrored LOH event"
+                raise ValueError(msg)
+
+            taken[offset : offset + extent] = True
+            state = first + 2 * j
+
+            states[clone, offset : offset + extent] = state
+            states[mirror, offset : offset + extent] = state + 1
+            events[clone].append((chromosome, offset, extent, state))
+            events[mirror].append((chromosome, offset, extent, state + 1))
+            mirrored.append((clone, mirror, offset, extent))
+
+    return states, tuple(tuple(e) for e in events), tuple(mirrored)
 
 
 def critical_instance(**overrides: object) -> CoreInferenceTruth:

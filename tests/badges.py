@@ -26,6 +26,7 @@ The cost is that they can go stale, and the test is what pays it.
 | judged, oracle, reach | the three coverage guards | per pull request |
 | runtime, memory, instance | a whole `run_cnaster`, both arms | `release` |
 | patched | `python -m tests.patched_share`, one unpatched run (#302) | by hand |
+| port, sal | `python -m tests.recovery_audit`, default and `--sal` (#313) | by hand |
 
 The `instance` badge carries the size the two ratios were read at, because
 `CLAUDE.md` is explicit that a ratio read at a gate size decides nothing.
@@ -191,6 +192,69 @@ def _patched_badge(record: dict[str, Any] | None) -> Badge:
     return Badge("patched", record["label"], f"{record['percent']:.1f}%", "blue")
 
 
+def _recovery_badge(arm: str, record: dict[str, Any] | None) -> Badge:
+    """Clone and copy-state recovery against the planted truth, one arm.
+
+    Two adjusted Rand indices against the fixture that generated the data:
+    clone labels over spots, and the decoded phased integer copies over
+    clone-bins against the painted states. Blue: the instance and
+    configuration they were read at are in `measurements.json`, and a badge
+    has no room for them.
+    """
+    name = f"recovery-{arm}"
+    values = (record or {}).get("arms", {}).get(arm)
+
+    if not values:
+        return Badge(name, arm, UNMEASURED, "lightgrey")
+
+    return Badge(
+        name,
+        arm,
+        f"ARI spots {values['spot_ari']:.3f} / copies {values['copy_ari']:.3f}",
+        "blue",
+    )
+
+
+INPUTS = ("python", "tests", "src", "pyproject.toml", "uv.lock", "Cargo.lock")
+"""What a coverage figure is a function of: the code, the tests, the locks and
+the configuration that selects them. `.badges` itself is not an input."""
+
+
+def inputs_hash() -> str:
+    """One digest over every input file, so an unchanged tree skips a pass (#403).
+
+    Paths and contents both enter it, so a renamed file moves it. Bytecode
+    and the extension module are outputs, and are left out.
+    """
+    import hashlib
+
+    digest = hashlib.sha256()
+    files: list[Path] = []
+
+    for name in INPUTS:
+        path = ROOT / name
+        if path.is_file():
+            files.append(path)
+        elif path.is_dir():
+            files.extend(
+                p
+                for p in path.rglob("*")
+                if p.is_file()
+                and "__pycache__" not in p.parts
+                and p.suffix in {".py", ".rs", ".pyi", ".toml", ".cfg"}
+            )
+
+    for path in sorted(files):
+        digest.update(path.relative_to(ROOT).as_posix().encode())
+        digest.update(path.read_bytes())
+
+    for rc in sorted(ROOT.glob(".coveragerc*")):
+        digest.update(rc.name.encode())
+        digest.update(rc.read_bytes())
+
+    return digest.hexdigest()[:16]
+
+
 def load() -> dict[str, Any]:
     """The recorded measurements, with their conditions."""
     return json.loads(MEASUREMENTS.read_text())  # type: ignore[no-any-return]
@@ -208,6 +272,9 @@ def badges(measurements: dict[str, Any] | None = None) -> tuple[Badge, ...]:
     rendered.extend(_ratio_badge(name, axis, run) for name, axis in RATIOS)
     rendered.append(_instance_badge(run))
     rendered.append(_patched_badge(recorded.get("patched")))
+    rendered.extend(
+        _recovery_badge(arm, recorded.get("recovery")) for arm in ("port", "sal")
+    )
 
     return tuple(rendered)
 

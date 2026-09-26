@@ -338,6 +338,9 @@ def _planted_genome(seed: int = 23) -> dict[str, np.ndarray]:
 
 
 @pytest.mark.end2end
+@pytest.mark.merge
+# NB one whole run at a time: four at once exceed 15 GB (#403).
+@pytest.mark.xdist_group("pipeline")
 def test_a_fit_s_errors_decode_the_planted_integer_copies() -> None:
     """Fit, differentiate, debias, propagate, decode -- against planted pairs.
 

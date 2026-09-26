@@ -65,6 +65,7 @@ def _drawn(tmp_path: Path) -> dict[str, np.ndarray]:
 
 
 @pytest.mark.snapshot
+@pytest.mark.merge
 def test_the_figures_are_the_frozen_ones(cnaster_config: None, tmp_path: Path) -> None:
     """Both figures bitwise equal to `tests/data/figures/`: same size, every
     channel of every pixel."""

@@ -71,7 +71,7 @@ there to handle.
 """
 
 SAMPLE_ID = "S1"
-"""One slice. Multi-slice alignment is a separate concern and a separate fixture."""
+"""The one slice's id; `sample_label` writes `S1`..`Sk` for several (#328)."""
 
 FILTERED_FEATURE_NAME = "filtered_feature_bc_matrix"
 """What `visium.filtered_feature_name` has to name for the `.h5ad` to be found."""
@@ -149,21 +149,41 @@ def write_genetic_map(truth: CoreInferenceTruth, path: Path) -> Path:
 
 
 def write_tmp_inputs(
-    truth: CoreInferenceTruth, pre_image: Unsegmented, root: Path
+    truth: CoreInferenceTruth,
+    pre_image: Unsegmented,
+    root: Path,
+    *,
+    sample_label: np.ndarray | None = None,
+    positions: np.ndarray | None = None,
 ) -> WrittenInputs:
     """Serialize a pre-image into `load_input_data`'s inputs under `root`.
 
     The allele matrices are `(n_spots, n_blocks)` with the A count as
     `total - B`, so the pair carries the same information the blocks did and a
     loader that swapped them would return the complement.
-    """
 
-    snp_dir, spaceranger_dir = root / "snp", root / "spaceranger"
-    (spaceranger_dir / "spatial").mkdir(parents=True)
+    `sample_label`, the sample of each spot, writes one `spaceranger_S{k}` per
+    sample and one sample-sheet row each, over one `snp_dir` (#328). The
+    spots must be grouped by sample, as `get_sample_list` requires, and the
+    barcodes carry the sample, `BC00000-1_S2`, so they are unique across
+    samples. `positions`, `(n_spots, 2)`, replaces the lattice's own.
+    """
+    n_spots = truth.n_spots
+    single = sample_label is None
+    labels = np.zeros(n_spots, dtype=np.int64) if sample_label is None else sample_label
+
+    if np.any(np.diff(labels) < 0):
+        msg = "spots must be grouped by sample, in sample order"
+        raise ValueError(msg)
+
+    snp_dir = root / "snp"
     snp_dir.mkdir(parents=True)
 
-    n_spots = truth.n_spots
-    barcodes = [f"BC{spot:05d}-1" for spot in range(n_spots)]
+    barcodes = (
+        [f"BC{spot:05d}-1" for spot in range(n_spots)]
+        if single
+        else [f"BC{spot:05d}-1_S{k + 1}" for spot, k in enumerate(labels)]
+    )
     (snp_dir / "barcodes.txt").write_text("\n".join(barcodes) + "\n")
 
     # Genomic coordinates: one interval per planted bin, chromosomes taken
@@ -217,31 +237,47 @@ def write_tmp_inputs(
     adata.obs_names = barcodes
     # Sparse because `get_spaceranger_counts` calls `.toarray()` unguarded.
     adata.X = sp.csr_matrix(adata.X)
-    adata.write_h5ad(spaceranger_dir / f"{FILTERED_FEATURE_NAME}.h5ad")
 
-    rows, columns = np.unravel_index(np.arange(n_spots), truth.lattice)
-    pd.DataFrame(
-        {
-            "barcode": barcodes,
-            "in_tissue": 1,
-            "x": rows,
-            "y": columns,
-            "pixel_row": rows * 100,
-            "pixel_col": columns * 100,
-        }
-    ).to_csv(spaceranger_dir / "spatial" / "tissue_positions.csv", index=False)
+    if positions is None:
+        rows, columns = np.unravel_index(np.arange(n_spots), truth.lattice)
+    else:
+        rows, columns = positions[:, 0], positions[:, 1]
 
-    sample_sheet = root / "sample_sheet.tsv"
-    pd.DataFrame(
-        [
+    sheet = []
+
+    for k in np.unique(labels):
+        spots = np.flatnonzero(labels == k)
+        sample_id = SAMPLE_ID if single else f"S{k + 1}"
+        spaceranger_dir = root / (
+            "spaceranger" if single else f"spaceranger_{sample_id}"
+        )
+        (spaceranger_dir / "spatial").mkdir(parents=True)
+
+        adata[spots].copy().write_h5ad(
+            spaceranger_dir / f"{FILTERED_FEATURE_NAME}.h5ad"
+        )
+        pd.DataFrame(
+            {
+                "barcode": [barcodes[spot] for spot in spots],
+                "in_tissue": 1,
+                "x": rows[spots],
+                "y": columns[spots],
+                "pixel_row": rows[spots] * 100,
+                "pixel_col": columns[spots] * 100,
+            }
+        ).to_csv(spaceranger_dir / "spatial" / "tissue_positions.csv", index=False)
+
+        sheet.append(
             {
                 "bam": "none",
-                "sample_id": SAMPLE_ID,
+                "sample_id": sample_id,
                 "spaceranger_dir": str(spaceranger_dir),
                 "snp_dir": str(snp_dir),
             }
-        ]
-    ).to_csv(sample_sheet, index=False, sep="\t")
+        )
+
+    sample_sheet = root / "sample_sheet.tsv"
+    pd.DataFrame(sheet).to_csv(sample_sheet, index=False, sep="\t")
 
     return WrittenInputs(
         root=root,

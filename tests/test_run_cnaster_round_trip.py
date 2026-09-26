@@ -69,9 +69,18 @@ pipeline that plots at every stage can actually have.
 """
 
 
-def _run(truth: CoreInferenceTruth, root: Path, **config: object) -> Path:
-    """Write the inputs, write the configuration, and run the pipeline."""
+def _run(
+    truth: CoreInferenceTruth, root: Path, *, plots: bool = True, **config: object
+) -> Path:
+    """Write the inputs, write the configuration, and run the pipeline.
+
+    `plots=False` builds every figure and writes none (#403), for a caller
+    whose claim is not a figure.
+    """
+    from contextlib import nullcontext
+
     from cnaster.scripts.run_cnaster import run_cnaster
+    from port.pipeline import PLOT_OFF_SWAPS, patched
 
     written = write_tmp_inputs(
         truth,
@@ -83,7 +92,7 @@ def _run(truth: CoreInferenceTruth, root: Path, **config: object) -> Path:
     )
     config_path = write_run_cnaster_config(written, truth, **config)
 
-    with warnings.catch_warnings():
+    with warnings.catch_warnings(), nullcontext() if plots else patched(PLOT_OFF_SWAPS):
         warnings.simplefilter("ignore")
         run_cnaster(str(config_path))
 
@@ -100,6 +109,9 @@ def _artifacts(output: Path) -> tuple[set[str], list[Path]]:
 
 @pytest.mark.smoke
 @pytest.mark.preprocessing
+@pytest.mark.merge
+# NB one whole run at a time: four at once exceed 15 GB (#403).
+@pytest.mark.xdist_group("pipeline")
 def test_the_pipeline_completes_from_files(tmp_path: Path) -> None:
     """Every stage runs, on the smallest instance that clears the floors.
 

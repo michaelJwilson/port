@@ -348,6 +348,14 @@ def removal_indicator(
     second. **Both are equalities rather than approximations**, which is why
     the mask is bitwise `cnaster`'s and not within a tolerance -- the
     equivalence test asserts exactly that.
+
+    **Except at a closed end, which is taken from `scipy`'s support instead
+    (#332).** `ppf(1) = n` and `ppf(0) = -1`, so at `hi >= 1` or `lo <= 0`
+    `cnaster` removes nothing on that side. The distribution function does
+    not know that: an upper tail of `1e-50` rounds `cdf(x - 1)` to exactly
+    `1.0 >= hi`, and on a normal pool diluted by an LOH clone the patch
+    removed 6 bins `cnaster` kept, whose genes then carried a NaN `bin_id`
+    into `run_cnaster`'s gene-level writer.
     """
     below, mass = cumulative_and_mass(counts, totals, alpha, beta)
     at_or_below = np.clip(below - mass, 0.0, 1.0)
@@ -356,10 +364,11 @@ def removal_indicator(
         counts, totals, alpha, beta, confidence_interval, below, at_or_below
     )
 
-    return np.asarray(
-        (below < confidence_interval[0]) | (at_or_below >= confidence_interval[1]),
-        dtype=bool,
-    )
+    lo, hi = confidence_interval
+    low = below < lo if lo > 0.0 else np.zeros(counts.shape, dtype=bool)
+    high = at_or_below >= hi if hi < 1.0 else np.zeros(counts.shape, dtype=bool)
+
+    return np.asarray(low | high, dtype=bool)
 
 
 def normal_baf_bin_filter(
