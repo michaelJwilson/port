@@ -1,10 +1,12 @@
-"""The lattice adjacency and its guard (#417).
+"""The spatial adjacencies and their guard (#417).
 
-The sparsity pattern is refereed by brute force -- every pair at unit
-Euclidean distance in the lattice's own embedding -- and the weights by the
-rule's two properties: exactly 1 between interior spots, above 1 wherever an
-end is on the boundary. The guard is refereed by the three graphs it must
-refuse, `cnaster`'s own among them.
+Two constructions over three neighbourhoods (square 4, Moore 8, triangular
+6). `knn` -- the default -- is `cnaster`'s directed construction with `k`
+the neighbourhood's coordination; on a square grid with `k = 8` it is
+`cnaster`'s graph entry for entry. `lattice` is the neighbourhood's offsets,
+symmetric, boundary edges reinforced. Patterns are refereed by brute force
+(pairs at the neighbourhood's distances), weights by the reinforcement
+rule's properties, and the guard by the graphs it must refuse.
 """
 
 from __future__ import annotations
@@ -25,52 +27,56 @@ def _triangular(rows: int, cols: int) -> np.ndarray:
     return np.stack([r, 2 * k + r % 2], axis=1)
 
 
-def _brute_force(coords: np.ndarray, kind: str) -> np.ndarray:
-    """Square: distance 1 and sqrt(2) (Moore); triangular: 1 in its hexagonal embedding."""
+def _brute_force(coords: np.ndarray, neighbourhood: str) -> np.ndarray:
+    """Pairs at distance 1 -- and sqrt(2) for Moore -- in the lattice's embedding."""
     points = coords.astype(np.float64)
-    if kind == "triangular":
+    if neighbourhood == "triangular":
         points = np.stack([points[:, 0] * np.sqrt(3.0) / 2.0, points[:, 1] / 2.0], 1)
     distance = np.linalg.norm(points[:, None, :] - points[None, :, :], axis=-1)
     pattern: np.ndarray = np.isclose(distance, 1.0, atol=1e-9)
-    if kind == "square":
+    if neighbourhood == "moore":
         pattern |= np.isclose(distance, np.sqrt(2.0), atol=1e-9)
     return pattern
 
 
 @pytest.mark.oracle
 @pytest.mark.parametrize(
-    ("kind", "build", "shape"),
+    ("kind", "neighbourhood", "build", "shape"),
     [
-        ("square", _square, (7, 5)),
-        ("square", _square, (1, 6)),
-        ("triangular", _triangular, (6, 7)),
-        ("triangular", _triangular, (3, 3)),
+        ("square", "square", _square, (7, 5)),
+        ("square", "moore", _square, (7, 5)),
+        ("square", "moore", _square, (1, 6)),
+        ("triangular", "triangular", _triangular, (6, 7)),
+        ("triangular", "triangular", _triangular, (3, 3)),
     ],
 )
-def test_the_neighbours_are_the_brute_force_pairs(
-    kind: str, build: object, shape: tuple[int, int]
+def test_the_lattice_neighbours_are_the_brute_force_pairs(
+    kind: str, neighbourhood: str, build: object, shape: tuple[int, int]
 ) -> None:
-    from port.patch.spatial import lattice_adjacency, lattice_kind
+    from port.extensions.adjacency import lattice_adjacency, lattice_kind
 
     coords = build(*shape)  # type: ignore[operator]
 
     assert lattice_kind(coords) == kind
-    adjacency = lattice_adjacency(coords)
-    np.testing.assert_array_equal(adjacency.toarray() > 0, _brute_force(coords, kind))
+    adjacency = lattice_adjacency(coords, neighbourhood)  # type: ignore[arg-type]
+    np.testing.assert_array_equal(
+        adjacency.toarray() > 0, _brute_force(coords, neighbourhood)
+    )
 
 
 @pytest.mark.analytic
 @pytest.mark.parametrize(
-    ("kind", "build"), [("square", _square), ("triangular", _triangular)]
+    ("neighbourhood", "build"),
+    [("square", _square), ("moore", _square), ("triangular", _triangular)],
 )
 def test_interior_edges_weigh_one_and_boundary_edges_more(
-    kind: str, build: object
+    neighbourhood: str, build: object
 ) -> None:
     """Symmetric, no self loops, 1 in the interior, above 1 at the boundary."""
-    from port.patch.spatial import COORDINATION, lattice_adjacency
+    from port.extensions.adjacency import COORDINATION, lattice_adjacency
 
-    adjacency = lattice_adjacency(build(8, 9))  # type: ignore[operator]
-    z = COORDINATION[kind]
+    adjacency = lattice_adjacency(build(8, 9), neighbourhood)  # type: ignore[operator, arg-type]
+    z = COORDINATION[neighbourhood]
     coo = adjacency.tocoo()
     degree = np.bincount(coo.row, minlength=adjacency.shape[0])
     interior = (degree[coo.row] == z) & (degree[coo.col] == z)
@@ -102,7 +108,7 @@ def test_interior_edges_weigh_one_and_boundary_edges_more(
 def test_the_guard_refuses_cnasters_directed_graph() -> None:
     """`cnaster`'s eight nearest neighbours on a square grid: not symmetric."""
     from cnaster.spatial import construct_lattice_adjacency
-    from port.patch.spatial import AdjacencyError, validate_adjacency
+    from port.extensions.adjacency import AdjacencyError, validate_adjacency
 
     _, directed = construct_lattice_adjacency(
         _square(12, 12).astype(float), unit_xsquared=1, unit_ysquared=1
@@ -114,13 +120,13 @@ def test_the_guard_refuses_cnasters_directed_graph() -> None:
 
 @pytest.mark.analytic
 def test_the_guard_refuses_a_self_loop_and_an_unreinforced_boundary() -> None:
-    from port.patch.spatial import (
+    from port.extensions.adjacency import (
         AdjacencyError,
         lattice_adjacency,
         validate_adjacency,
     )
 
-    adjacency = lattice_adjacency(_square(4, 4))
+    adjacency = lattice_adjacency(_square(4, 4), "moore")
     validate_adjacency(adjacency, 8)
 
     looped = adjacency.tolil()
@@ -136,7 +142,7 @@ def test_the_guard_refuses_a_self_loop_and_an_unreinforced_boundary() -> None:
 
 @pytest.mark.analytic
 def test_positions_that_are_no_lattice_are_refused() -> None:
-    from port.patch.spatial import AdjacencyError, lattice_kind
+    from port.extensions.adjacency import AdjacencyError, lattice_kind
 
     with pytest.raises(AdjacencyError, match="integer"):
         lattice_kind(np.array([[0.0, 0.5], [1.0, 0.0]]))
@@ -148,12 +154,10 @@ def test_positions_that_are_no_lattice_are_refused() -> None:
 @pytest.mark.analytic
 def test_slices_are_assembled_block_diagonal_and_validated() -> None:
     """Two slices, `cnaster`'s order and its identity pooling matrix."""
-    from port.patch.spatial import (
-        lattice_adjacency,
-        lattice_multislice_adjacency,
-    )
+    from port.extensions.adjacency import knn_adjacency
+    from port.patch.spatial import lattice_multislice_adjacency
 
-    first, second = _square(3, 4), _square(5, 2)
+    first, second = _square(4, 4), _square(5, 3)
     coords = np.concatenate([first, second])
     sample_ids = np.repeat([0, 1], [len(first), len(second)])
 
@@ -161,7 +165,10 @@ def test_slices_are_assembled_block_diagonal_and_validated() -> None:
         sample_ids, ["A", "B"], coords, None, maxspots_pooling=1
     )
 
-    expected = sp.block_diag([lattice_adjacency(first), lattice_adjacency(second)])
+    # NB the default construction, `knn`, with the default Moore neighbourhood.
+    expected = sp.block_diag(
+        [knn_adjacency(first, "moore"), knn_adjacency(second, "moore")]
+    )
     np.testing.assert_array_equal(adjacency.toarray(), expected.toarray())
     np.testing.assert_array_equal(smooth.toarray(), np.eye(len(coords), dtype=np.int8))
 
@@ -177,14 +184,14 @@ def test_the_interior_is_cnasters_graph_on_a_square_grid() -> None:
     replaces -- so the comparison is over rows two or more spots in.
     """
     from cnaster.spatial import construct_lattice_adjacency
-    from port.patch.spatial import lattice_adjacency
+    from port.extensions.adjacency import lattice_adjacency
 
     side = 12
     coords = _square(side, side)
     _, directed = construct_lattice_adjacency(
         coords.astype(float), unit_xsquared=1, unit_ysquared=1
     )
-    ours = lattice_adjacency(coords)
+    ours = lattice_adjacency(coords, "moore")
     rows, cols = coords[:, 0], coords[:, 1]
     inner = (rows >= 2) & (rows < side - 2) & (cols >= 2) & (cols < side - 2)
 
@@ -194,3 +201,124 @@ def test_the_interior_is_cnasters_graph_on_a_square_grid() -> None:
     theirs = (directed.toarray() > 0)[inner]
     np.testing.assert_array_equal((ours.toarray() > 0)[inner], theirs)
     np.testing.assert_array_equal(ours.toarray()[inner][theirs], 1.0)
+
+
+@pytest.mark.patch
+def test_knn_moore_is_cnasters_graph_on_a_square_grid() -> None:
+    """The default construction: `cnaster`'s eight nearest neighbours, entry for entry."""
+    from cnaster.spatial import construct_lattice_adjacency
+    from port.extensions.adjacency import knn_adjacency, validate_adjacency
+
+    coords = _square(40, 40)
+    _, theirs = construct_lattice_adjacency(
+        coords.astype(float), unit_xsquared=1, unit_ysquared=1
+    )
+    ours = knn_adjacency(coords, "moore")
+
+    assert (ours != theirs).nnz == 0
+    validate_adjacency(ours, 8, construction="knn")
+
+
+@pytest.mark.analytic
+@pytest.mark.parametrize(
+    ("neighbourhood", "build", "shape", "realized"),
+    [
+        ("moore", _square, (40, 40), 0.987),
+        ("moore", _square, (12, 10), 0.942),
+        ("moore", _square, (4, 4), 0.781),
+        ("square", _square, (4, 5), 0.775),
+        ("triangular", _triangular, (40, 40), 0.975),
+        ("triangular", _triangular, (4, 4), 0.792),
+    ],
+)
+def test_knn_is_symmetric_away_from_the_boundary(
+    neighbourhood: str, build: object, shape: tuple[int, int], realized: float
+) -> None:
+    """Every interior spot's edges are reciprocated; the asymmetry is at the edge.
+
+    A spot two or more rows from every edge has `k` neighbours at the
+    lattice spacing, each of which names it back, so its row is symmetric.
+    The share of reciprocated edges is pinned at its realized value, which
+    is what `RECIPROCATED` (0.6) is set under.
+    """
+    from port.extensions.adjacency import RECIPROCATED, knn_adjacency
+
+    coords = build(*shape)  # type: ignore[operator]
+    adjacency = knn_adjacency(coords, neighbourhood)  # type: ignore[arg-type]
+    degree = np.asarray((adjacency > 0).sum(axis=1)).ravel()
+    reciprocated = np.asarray(adjacency.multiply(adjacency.T).astype(bool).sum(axis=1))
+    full = reciprocated.ravel() == degree
+
+    rows = coords[:, 0]
+    cols = np.arange(coords.shape[0]) % shape[1]
+    inner = (rows >= 2) & (rows < shape[0] - 2) & (cols >= 2) & (cols < shape[1] - 2)
+    share = adjacency.multiply(adjacency.T).nnz / adjacency.nnz
+
+    assert full[inner].all()
+    assert share == pytest.approx(realized, abs=5e-4)
+    assert share >= RECIPROCATED
+
+
+@pytest.mark.analytic
+def test_the_knn_guard_refuses_what_is_not_a_knn_lattice() -> None:
+    """A self loop, a wrong row count, a weight other than 1, a mostly one-way graph."""
+    from port.extensions.adjacency import (
+        AdjacencyError,
+        knn_adjacency,
+        validate_adjacency,
+    )
+
+    adjacency = knn_adjacency(_square(12, 12), "moore")
+    validate_adjacency(adjacency, 8, construction="knn")
+
+    looped = adjacency.tolil()
+    looped[5, 5] = 1.0
+    with pytest.raises(AdjacencyError, match="self loop"):
+        validate_adjacency(looped.tocsr(), 8, construction="knn")
+
+    with pytest.raises(AdjacencyError, match="neighbours, not the k"):
+        validate_adjacency(adjacency, 4, construction="knn")
+
+    heavy = adjacency.copy()
+    heavy.data[:] = 2.0
+    with pytest.raises(AdjacencyError, match="unit weights"):
+        validate_adjacency(heavy, 8, construction="knn")
+
+    # NB eight random targets per spot: a directed graph almost nowhere reciprocated.
+    rng = np.random.default_rng(0)
+    n = 144
+    targets = np.array(
+        [rng.choice(np.delete(np.arange(n), i), 8, False) for i in range(n)]
+    )
+    one_way = sp.csr_matrix(
+        (np.ones(n * 8), (np.repeat(np.arange(n), 8), targets.ravel())), shape=(n, n)
+    )
+    with pytest.raises(AdjacencyError, match="reciprocated"):
+        validate_adjacency(one_way, 8, construction="knn")
+
+
+@pytest.mark.patch
+def test_the_swap_reproduces_cnasters_multislice_adjacency_on_square_grids() -> None:
+    """The run's default: `cnaster`'s builder's return, bitwise, for square slices.
+
+    Two slices of different shapes through `cnaster`'s
+    `construct_multislice_lattice_adjacency` and through the swap, at the
+    fixtures' isotropic units: the same adjacency entry for entry, and the
+    same identity pooling matrix.
+    """
+    from cnaster.spatial import construct_multislice_lattice_adjacency
+    from port.patch.spatial import lattice_multislice_adjacency
+
+    first, second = _square(12, 10), _square(9, 14)
+    coords = np.concatenate([first, second]).astype(float)
+    sample_ids = np.repeat([0, 1], [len(first), len(second)])
+
+    theirs = construct_multislice_lattice_adjacency(
+        sample_ids, ["A", "B"], coords, None, 1, unit_xsquared=1, unit_ysquared=1
+    )
+    ours = lattice_multislice_adjacency(
+        sample_ids, ["A", "B"], coords, None, 1, unit_xsquared=1, unit_ysquared=1
+    )
+
+    assert (ours.adjacency_mat != theirs.adjacency_mat).nnz == 0
+    assert (ours.smooth_mat != theirs.smooth_mat).nnz == 0
