@@ -75,6 +75,14 @@ SAL_ROWS: tuple[SalRow, ...] = (
 - `alpha-rust-icm`: the row `alpha-rust-merge` replaced;
 - `alpha-rust-merge`: the expansion alone before the floor, which the fused
   row replaced on energy (#1125);
+- `icm-argmax-floor` (#410, sal #1121): the `numba` descent from the field's
+  argmax with the floor. Dev instance: clone ARI 1.000, copy ARI 0.9971,
+  wall 22.5 s end to end. Per call at 10,000 spots and ten clones, 0.034 s
+  against the admitted row's 0.124 s under #421 -- 3.7x -- but at a Potts
+  energy 295 nats higher (-19,335 against -19,630); at 1,600 spots and four
+  clones, 0.0049 against 0.0102 s and 54 nats higher. Not admitted: the
+  speed is bought with a worse minimum, and the label step is 2.3 s of the
+  run;
 - TRW-S (#1061) then the floor: 0.6 nats from its own bound at 10,000
   spots, at 3.2 s per call, 38x the fused row's. A certificate, not a row.
 

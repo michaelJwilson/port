@@ -29,6 +29,7 @@ __all__ = [
     "expansion_then_merge",
     "fusion_then_merge",
     "label_solver",
+    "sal_icm_argmax_sweep",
     "sal_icm_floor_sweep",
     "sal_icm_sweep",
     "set_label_solver",
@@ -43,6 +44,7 @@ Solver = Literal[
     "alpha-rust-icm",
     "alpha-rust-merge",
     "icm-numba-floor",
+    "icm-argmax-floor",
     "alpha-rust-fuse-merge",
 ]
 SOLVERS: tuple[Solver, ...] = (
@@ -53,6 +55,7 @@ SOLVERS: tuple[Solver, ...] = (
     "alpha-rust-icm",
     "alpha-rust-merge",
     "icm-numba-floor",
+    "icm-argmax-floor",
     "alpha-rust-fuse-merge",
 )
 """`icm` is `cnaster`'s. `alpha`, `alpha-rust` and `icm-numba` are
@@ -136,6 +139,9 @@ def sweep_for(name: Solver) -> Any:
 
     if name == "icm-numba-floor":
         return sal_icm_floor_sweep
+
+    if name == "icm-argmax-floor":
+        return sal_icm_argmax_sweep
 
     if name == "alpha-rust-fuse-merge":
         return fusion_then_merge
@@ -303,6 +309,54 @@ def sal_icm_floor_sweep(
     del tol, epsilon, cost_zeropoint, onehot_allowed_clones
 
     return _sal_floor(field, graph, assignment, beta, min_clone_spots, expand=False)
+
+
+def sal_icm_argmax_sweep(
+    field: Any,
+    graph: Any,
+    assignment: Any,
+    beta: float,
+    *,
+    tol: float = 0.0,
+    epsilon: float = 0.0,
+    min_clone_spots: int = 200,
+    cost_zeropoint: float = 0.0,
+    onehot_allowed_clones: Any = None,
+) -> Any:
+    """sal's `numba` descent from the field's argmax, with `cnaster`'s floor (#410).
+
+    sal #1121: a cold start at each site's best clone rather than the
+    labelling the caller holds, then index-order single-site descent with
+    `min_sites` dissolving any clone under the floor. `assignment` is read
+    only for its dtype and written in place.
+    """
+    del tol, epsilon, cost_zeropoint, onehot_allowed_clones
+
+    import numpy as np
+    from sal.backend import Backend
+    from sal.search.icm import iterated_conditional_modes
+    from sal.sim.potts import energy
+
+    from port.patch.icm.alpha_expansion import potts_graph_from
+    from port.patch.icm.interface import IcmResult
+
+    values = np.asarray(field, dtype=np.float64)
+    potts = potts_graph_from(graph, beta)
+    result = iterated_conditional_modes(
+        potts,
+        values,
+        np.random.default_rng(0),
+        start=np.argmax(values, axis=1).astype(np.int64),
+        min_sites=max(int(min_clone_spots), 1),
+        backend=Backend.NUMBA,
+    )
+
+    labelling = np.asarray(result.labelling, dtype=assignment.dtype)
+    assignment[:] = labelling
+
+    return IcmResult(
+        niter=int(result.sweeps), cost=float(energy(potts, values, labelling))
+    )
 
 
 def fusion_then_merge(

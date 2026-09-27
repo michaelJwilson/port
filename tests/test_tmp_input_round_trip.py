@@ -21,7 +21,7 @@ from tests.unsegment import unsegment
 
 def _written(tmp_path: Path, n_obs: int = 20) -> tuple[Any, Any, Any]:
     truth = core_inference_truth(
-        n_clones=2, n_states=3, lattice=(6, 5), n_obs=n_obs, n_segments=2
+        n_clones=2, n_states=3, lattice=(6, 6), n_obs=n_obs, n_segments=2
     )
     pre_image = unsegment(truth)
     return truth, pre_image, write_tmp_inputs(truth, pre_image, tmp_path)
