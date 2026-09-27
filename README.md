@@ -310,6 +310,13 @@ from Rust. On the dev instance a default run takes 29.8 s against 36.5 s
 with `--no-rust`. The four kernels are 4.3x to 6.1x faster warm at
 `K = 10`, 10,000 bins and 20 spots, on four cores.
 
+**The M step's gradient is closed form** (#433). `cnaster` fits the
+emission by BFGS with a finite-difference gradient, one objective call per
+packed coordinate; `port` supplies the derivative instead
+(`port.patch.hmm_nophasing.gradient`), pinned against `jax`'s. On the dev
+instance the M step falls from 11.1 s to 2.0 s. `finite_difference()`
+restores `cnaster`'s gradient for a block.
+
 **The spatial graph is validated before the HMRF sees it** (#417). The run
 builds it from `port.extensions.adjacency`: by default each spot's `k`
 nearest (`PORT_ADJACENCY=knn`), with `k` the lattice's coordination -- 8 on a
