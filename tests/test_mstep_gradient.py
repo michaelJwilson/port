@@ -198,3 +198,42 @@ def test_a_bin_without_baseline_moves_no_gradient(cnaster_config: None) -> None:
     _, other, _, _ = _problem(shifted=False, shared=True, silent=500.0)
 
     np.testing.assert_allclose(gradient(x), other(x), rtol=1e-12)
+
+
+@pytest.mark.cnaster
+def test_the_closed_form_fit_is_cnasters_fit_to_a_stated_tolerance(
+    cnaster_config: None,
+) -> None:
+    """`cnaster`'s class, finite differences, against `port`'s, closed form, at `max_iter=20`.
+
+    Both run `cnaster`'s `cost_fn` and callback; only the gradient differs, and
+    the finite difference is the less exact of the two. So the fits agree to
+    the finite difference's own error, carried through twenty iterations
+    (1.1e-5 relative realized, on `p`), and not bitwise.
+    """
+    from cnaster.hmm_nophasing import hmm_nophasing as upstream
+    from port.patch.hmm_nophasing import hmm_nophasing
+    from port.patch.hmm_nophasing.gradient import EmGradient
+
+    from tests.test_shift_dropins import _stacked_instance
+
+    assert hmm_nophasing.analytic_gradient
+    assert EmGradient is not None
+
+    instance = _stacked_instance()
+    kwargs = {
+        "init_log_mu": np.log(np.array([[1.0], [2.0]])),
+        "init_p_binom": np.array([[0.5], [0.25]]),
+        "max_iter": 20,
+        "normal_lambda": instance["normal_lambda"],
+        "clone_lengths": instance["clone_lengths"],
+        "shared_NB_dispersion": True,
+        "shared_BB_dispersion": True,
+    }
+    args = (instance["X"], instance["lengths"], 2, instance["base"], instance["total"])
+
+    theirs = upstream(params="smp", t=0.99).optimize(*args, **kwargs)
+    ours = hmm_nophasing(params="smp", t=0.99).optimize(*args, **kwargs)
+
+    for key in ("new_log_mu", "new_p_binom", "new_alphas", "new_taus"):
+        np.testing.assert_allclose(ours[key], theirs[key], rtol=1e-4, err_msg=key)

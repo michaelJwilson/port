@@ -55,14 +55,14 @@ FLOOR = 1e-10
 
 
 def nb_partials(
-    obs: np.ndarray, mean: np.ndarray, alpha: np.ndarray
+    obs: np.ndarray, mean: np.ndarray, dispersion: np.ndarray
 ) -> tuple[np.ndarray, np.ndarray]:
     """`d ell / d log mean` and `d ell / d log alpha` of `cnaster`'s negative binomial.
 
     Broadcasts. A bin `cnaster` scores 0 -- no exposure, or `p` rounded to 1
     -- has zero derivative, because its score does not move.
     """
-    alpha = np.asarray(alpha, dtype=np.float64)
+    alpha = np.asarray(dispersion, dtype=np.float64)
     size = 1.0 / np.maximum(alpha, FLOOR)
     scaled = alpha * mean
     success = 1.0 / (1.0 + scaled)
@@ -84,13 +84,14 @@ def nb_partials(
 
 
 def bb_partials(
-    obs: np.ndarray, total: np.ndarray, p_binom: np.ndarray, tau: np.ndarray
+    obs: np.ndarray, total: np.ndarray, p_binom: np.ndarray, taus: np.ndarray
 ) -> tuple[np.ndarray, np.ndarray]:
     """`d ell / d p` and `d ell / d log tau` of `cnaster`'s beta-binomial.
 
     A floored `a` or `b` is a constant, so contributes nothing; a code
     `cnaster` scores 0 (`k > n`) has zero derivative.
     """
+    tau = taus
     shape_a = p_binom * tau
     shape_b = (1.0 - p_binom) * tau
     a = np.maximum(shape_a, FLOOR)
