@@ -38,7 +38,13 @@ def _map(path: Path, contigs: range, rate: float = 1.0) -> Path:
 
 
 def _blocks(contigs: range) -> pd.DataFrame:
-    """Twenty blocks per contig, 50-150 kb wide, every 1-3 Mb; one row per block edge."""
+    """Twenty blocks per contig, 50-150 kb wide, every 1-3 Mb.
+
+    Each block is a gene, a SNP inside it, and a second gene, so its first
+    and last rows are genes: the extent `cnaster` reads from its rows and the
+    one read here from its genes are the same, and the comparison is of the
+    map alone.
+    """
     rng = np.random.default_rng(13)
     rows = []
     block = 0
@@ -47,17 +53,27 @@ def _blocks(contigs: range) -> pd.DataFrame:
         starts = np.cumsum(rng.integers(1_000_000, 3_000_000, 20))
         for start in starts:
             width = int(rng.integers(50_000, 150_000))
+            s = int(start)
             rows += [
                 {
                     "CHR": contig,
-                    "START": int(start),
-                    "END": int(start + 10),
+                    "START": s,
+                    "END": s + 10,
+                    "is_interval": True,
                     "block_id": block,
                 },
                 {
                     "CHR": contig,
-                    "START": int(start + width - 10),
-                    "END": int(start + width),
+                    "START": s + 5,
+                    "END": s + 6,
+                    "is_interval": False,
+                    "block_id": block,
+                },
+                {
+                    "CHR": contig,
+                    "START": s + width - 10,
+                    "END": s + width,
+                    "is_interval": True,
                     "block_id": block,
                 },
             ]

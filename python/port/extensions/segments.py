@@ -1,31 +1,34 @@
-r"""Genomic segments as a lineage: every level defined by its parent, back to the rows (#438).
+r"""Genomic segments as labellings of the gene rows (#438).
 
 `cnaster` re-derives its segments at every step -- rows into blocks, blocks
 into bins, bins filtered, bins merged -- by `groupby` on an id column, and
-each step recomputes `lengths` and any per-segment array (the phase-switch
-kernel four times) from whatever order that `groupby` returns. Nothing
-carries what a segment *is* in terms of the rows it came from, so an array
-can be aligned to the wrong step, or to the right step in the wrong order,
-with no error: the kernel was right on chr1 and chr10-22 and wrong on
-chr2-9 for exactly that reason (#438 D1).
+recomputes `lengths` and every per-segment array (the phase-switch kernel
+four times) from whatever order that `groupby` returns. Nothing carries what
+a segment *is* in terms of the data it came from, so an array can be aligned
+to the wrong step, or to the right step in the wrong order, with no error:
+the kernel was right on chr1 and chr10-22 and wrong on chr2-9 for exactly
+that reason (#438 D1).
 
-:class:`Segmentation` is one level. Each segment holds its contig, its genomic
-`start` and `end`, and the half-open range `[lo, hi)` of its parent's
-segments it covers; the root is the table's rows. So a segment at any level
-is defined against the original rows by composing the ranges
-(:meth:`Segmentation.root_span`), and the arrays one level carries map to
-another's by a `reduceat` (:meth:`aggregate`) or a `repeat`
-(:meth:`broadcast`) -- the same O(n) work `groupby` does, without its order.
+**The root is the gene rows of `df_gene_snp`**, sorted by `(CHR, START)`:
+every SNP row belongs to the gene that contains it, every block and bin
+holds at least one gene, and a gene is the unit read depth is counted over.
+**Every coarser segmentation is one label per gene** -- `(0, 1, 1, 2, 2, 2)`
+-- with `-1` for a gene the segmentation drops. So each segment at every
+level is defined against the same original rows, two levels compare by
+their label arrays, and coarsening is a lookup `label[fine]` rather than a
+chain of parents.
 
-**What is derived and never stored.** `lengths` -- segments per contig, the
-grid every lattice restarts on -- is the contig column's run lengths, so it
-cannot disagree with the segments and is never zero (#438 D5). `boundary`
-marks each contig's last segment, the one entry of a pairwise quantity with
-no successor inside its contig.
+**What is derived and never stored.** A segment's contig, `start` (its first
+gene's `START`) and `end` (its last gene's `END`); `lengths`, segments per
+contig -- the grid every lattice restarts on -- which cannot disagree with
+the labels and is never zero (#438 D5); and `boundary`, each contig's last
+segment. Moving an array between genes and segments is a `reduceat` or a
+gather, O(n_genes).
 
-**What is refused.** A segment whose members are not contiguous in its
-parent, that spans two contigs, or whose id order is not genomic order: each
-is a way the rows and a per-segment array silently disagree (#438 D3, D6).
+**What is refused.** A label whose kept genes are not one run among the
+kept genes, that spans two contigs, or whose id order is not genomic order: each is a way the rows and
+a per-segment array silently disagree (#438 D3, D6). A segment with no gene
+cannot be a labelling of the genes, and is refused where it is built.
 """
 
 from __future__ import annotations
@@ -35,128 +38,171 @@ from typing import Any
 
 import numpy as np
 
-__all__ = ["GeneticMap", "Segmentation"]
+__all__ = ["Genes", "GeneticMap", "Segmentation"]
+
+DROPPED = -1
+"""The label of a gene a segmentation does not keep."""
+
+
+@dataclass(frozen=True, eq=False)
+class Genes:
+    """The root: `df_gene_snp`'s gene rows, sorted by contig and position."""
+
+    contig: np.ndarray
+    start: np.ndarray
+    end: np.ndarray
+    row: np.ndarray
+    """Each gene's row in the table it was read from."""
+
+    @classmethod
+    def from_table(cls, table: Any) -> Genes:
+        """The rows with `is_interval` set, as `form_gene_snp_table` marks genes."""
+        genes = np.asarray(table["is_interval"], dtype=bool)
+        row = np.flatnonzero(genes)
+        contig = np.asarray(table["CHR"], dtype=np.int64)[row]
+
+        if row.size and np.any(np.diff(contig) < 0):
+            msg = "gene rows must be sorted by contig"
+            raise ValueError(msg)
+
+        return cls(
+            contig=contig,
+            start=np.asarray(table["START"], dtype=np.int64)[row],
+            end=np.asarray(table["END"], dtype=np.int64)[row],
+            row=row,
+        )
+
+    @property
+    def n_genes(self) -> int:
+        return int(self.row.size)
 
 
 @dataclass(frozen=True, eq=False)
 class Segmentation:
-    """One level of segments over its parent level, or over rows at the root."""
+    """One segmentation: a label per gene, `DROPPED` where it keeps none."""
 
-    name: str
-    contig: np.ndarray
-    start: np.ndarray
-    end: np.ndarray
-    lo: np.ndarray
-    hi: np.ndarray
+    genes: Genes
+    label: np.ndarray
     ids: np.ndarray
-    parent: Segmentation | None = None
+    """Each segment's id in the table it was read from, in label order."""
+    name: str
 
     # -- construction --------------------------------------------------------
 
     @classmethod
-    def rows(
-        cls, contig: Any, start: Any, end: Any, *, name: str = "rows"
+    def from_table(
+        cls, table: Any, key: str, genes: Genes | None = None
     ) -> Segmentation:
-        """The root: one segment per row, rows sorted by `(contig, start)`."""
-        contig = np.asarray(contig, dtype=np.int64)
-        start = np.asarray(start, dtype=np.int64)
-        end = np.asarray(end, dtype=np.int64)
-        n = contig.size
+        """`table[key]` read at the gene rows, labels in id order.
 
-        if n and np.any(np.diff(contig) < 0):
-            msg = "rows must be sorted by contig"
-            raise ValueError(msg)
-
-        index = np.arange(n, dtype=np.int64)
-        return cls(name, contig, start, end, index, index + 1, index)
-
-    @classmethod
-    def from_table(cls, table: Any, key: str | None = None) -> Segmentation:
-        """The rows of a `CHR`/`START`/`END` table, grouped by `key` if given."""
-        root = cls.rows(table["CHR"], table["START"], table["END"])
-
-        if key is None:
-            return root
-
-        return root.group(np.asarray(table[key]), name=key)
-
-    def group(self, labels: Any, *, name: str) -> Segmentation:
-        """A coarser level: one segment per distinct label, in label order.
-
-        `labels` has one entry per segment of this level; a missing label
-        (`NaN`, `None`, `pd.NA`) drops the segment. Label order is the order
-        `cnaster` indexes its arrays in (`groupby(key, sort=True)`), so it
-        has to be genomic order as well, or the two would disagree.
+        Id order is the order `cnaster` indexes its arrays in
+        (`groupby(key, sort=True)`), so it has to be genomic order too, or the
+        two would disagree. An id carried only by SNP rows has no gene and is
+        refused.
         """
         import pandas as pd
 
-        labels = pd.Series(labels)
-        present = labels.notna().to_numpy()
-        position = np.flatnonzero(present)
-        values = labels[present].to_numpy()
+        genes = Genes.from_table(table) if genes is None else genes
+        column = pd.Series(np.asarray(table[key]))
 
-        ids, first, inverse, counts = np.unique(
-            values, return_index=True, return_inverse=True, return_counts=True
-        )
-        last = np.zeros(ids.size, dtype=np.int64)
-        np.maximum.at(last, inverse, np.arange(values.size))
+        every = column.dropna().unique()
+        at_genes = column.iloc[genes.row].reset_index(drop=True)
+        present = at_genes.notna().to_numpy()
 
-        lo = position[first]
-        hi = position[last] + 1
+        ids, inverse = np.unique(at_genes[present].to_numpy(), return_inverse=True)
 
-        if np.any(hi - lo != counts):
-            msg = f"{name}: a segment's members are not contiguous in {self.name}"
+        if ids.size != every.size:
+            msg = f"{key}: {every.size - ids.size} segments hold no gene"
             raise ValueError(msg)
 
-        if np.any(self.contig[lo] != self.contig[hi - 1]):
+        label = np.full(genes.n_genes, DROPPED, dtype=np.int64)
+        label[present] = inverse
+
+        return cls.of(genes, label, ids=ids, name=key)
+
+    @classmethod
+    def of(
+        cls, genes: Genes, label: Any, *, ids: Any = None, name: str
+    ) -> Segmentation:
+        """A labelling of `genes`, checked: contiguous, one contig each, genomic order."""
+        label = np.asarray(label, dtype=np.int64)
+        kept = label[label != DROPPED]
+
+        if kept.size and (np.any(np.diff(kept) < 0) or np.any(np.diff(kept) > 1)):
+            msg = f"{name}: labels are not contiguous runs in genomic order"
+            raise ValueError(msg)
+
+        if kept.size and kept[0] != 0:
+            msg = f"{name}: labels must start at 0"
+            raise ValueError(msg)
+
+        n = int(kept[-1]) + 1 if kept.size else 0
+        position = np.flatnonzero(label != DROPPED)
+        first = position[np.searchsorted(kept, np.arange(n), side="left")]
+        last = position[np.searchsorted(kept, np.arange(n), side="right") - 1]
+
+        if np.any(genes.contig[first] != genes.contig[last]):
             msg = f"{name}: a segment spans two contigs"
             raise ValueError(msg)
 
-        if ids.size > 1 and np.any(np.diff(lo) <= 0):
-            msg = f"{name}: id order is not genomic order"
-            raise ValueError(msg)
-
-        return Segmentation(
+        # NB a dropped gene may fall inside a segment: `cnaster`'s second
+        #    binning merges surviving bins across the ones the normal-BAF
+        #    filter dropped (`run_cnaster.py:983`). The segment is its kept
+        #    genes; its extent runs from the first to the last.
+        return cls(
+            genes=genes,
+            label=label,
+            ids=np.arange(n) if ids is None else np.asarray(ids),
             name=name,
-            contig=self.contig[lo],
-            start=self.start[lo],
-            end=self.end[hi - 1],
-            lo=lo.astype(np.int64),
-            hi=hi.astype(np.int64),
-            ids=ids,
-            parent=self,
         )
+
+    def coarsen(self, parent: Any, *, name: str) -> Segmentation:
+        """A coarser labelling: `parent[k]` is segment `k`'s new label, `DROPPED` drops it."""
+        parent = np.asarray(parent, dtype=np.int64)
+        label = np.where(self.label == DROPPED, DROPPED, parent[self.label])
+        return Segmentation.of(self.genes, label, name=name)
 
     def select(self, keep: Any, *, name: str) -> Segmentation:
-        """This level with some segments dropped; the survivors keep their lineage."""
-        index = np.flatnonzero(np.asarray(keep, dtype=bool))
-
-        return Segmentation(
-            name=name,
-            contig=self.contig[index],
-            start=self.start[index],
-            end=self.end[index],
-            lo=index.astype(np.int64),
-            hi=(index + 1).astype(np.int64),
-            ids=self.ids[index],
-            parent=self,
-        )
+        """This segmentation with some segments dropped; survivors keep their genes."""
+        keep = np.asarray(keep, dtype=bool)
+        renumber = np.where(keep, np.cumsum(keep) - 1, DROPPED)
+        selected = self.coarsen(renumber, name=name)
+        return Segmentation(self.genes, selected.label, self.ids[keep], name)
 
     # -- what is derived -----------------------------------------------------
 
     @property
     def n_segments(self) -> int:
-        return int(self.contig.size)
+        return int(self.ids.size)
 
     @property
-    def contigs(self) -> np.ndarray:
-        """The contigs present, in order."""
-        change = np.flatnonzero(np.diff(self.contig)) + 1
-        return (
-            self.contig[np.concatenate(([0], change))]
-            if self.n_segments
-            else self.contig
-        )
+    def first(self) -> np.ndarray:
+        """Each segment's first gene."""
+        kept = np.flatnonzero(self.label != DROPPED)
+        order = np.searchsorted(self.label[kept], np.arange(self.n_segments), "left")
+        return kept[order]
+
+    @property
+    def last(self) -> np.ndarray:
+        """Each segment's last gene."""
+        kept = np.flatnonzero(self.label != DROPPED)
+        order = np.searchsorted(self.label[kept], np.arange(self.n_segments), "right")
+        return kept[order - 1]
+
+    @property
+    def contig(self) -> np.ndarray:
+        values: np.ndarray = self.genes.contig[self.first]
+        return values
+
+    @property
+    def start(self) -> np.ndarray:
+        values: np.ndarray = self.genes.start[self.first]
+        return values
+
+    @property
+    def end(self) -> np.ndarray:
+        values: np.ndarray = self.genes.end[self.last]
+        return values
 
     @property
     def lengths(self) -> np.ndarray:
@@ -164,70 +210,61 @@ class Segmentation:
         if not self.n_segments:
             return np.zeros(0, dtype=np.int64)
 
-        change = np.flatnonzero(np.diff(self.contig)) + 1
+        contig = self.contig
+        change = np.flatnonzero(np.diff(contig)) + 1
         edges = np.concatenate(([0], change, [self.n_segments]))
         return np.diff(edges).astype(np.int64)
 
     @property
     def boundary(self) -> np.ndarray:
         """True at each contig's last segment, which has no successor in its contig."""
+        contig = self.contig
         last = np.ones(self.n_segments, dtype=bool)
-        last[:-1] = self.contig[1:] != self.contig[:-1]
+        last[:-1] = contig[1:] != contig[:-1]
         return last
 
-    def root_span(self) -> tuple[np.ndarray, np.ndarray]:
-        """Each segment's `[lo, hi)` in the root's rows, composed down the lineage."""
-        if self.parent is None:
-            return self.lo, self.hi
+    def refines(self, other: Segmentation) -> bool:
+        """Every segment here lies inside one of `other`'s, over the genes both keep."""
+        both = (self.label != DROPPED) & (other.label != DROPPED)
+        fine, coarse = self.label[both], other.label[both]
+        mapped = np.full(self.n_segments, DROPPED, dtype=np.int64)
+        mapped[fine] = coarse
+        return bool(np.all(mapped[fine] == coarse))
 
-        lo, hi = self.parent.root_span()
-        return lo[self.lo], hi[self.hi - 1]
-
-    def lineage(self) -> tuple[Segmentation, ...]:
-        """This level and every level under it, root last."""
-        level: Segmentation | None = self
-        chain: list[Segmentation] = []
-
-        while level is not None:
-            chain.append(level)
-            level = level.parent
-
-        return tuple(chain)
-
-    # -- moving arrays between levels ----------------------------------------
+    # -- moving arrays between genes and segments ----------------------------
 
     def aggregate(self, values: Any, ufunc: Any = np.add) -> np.ndarray:
-        """A parent-level array reduced to this level, `ufunc` over each segment's members."""
+        """A per-gene array reduced over each segment's genes."""
         values = np.asarray(values)
 
-        if self.parent is None or values.shape[0] != self.parent.n_segments:
-            msg = f"{self.name}: aggregate takes one entry per parent segment"
+        if values.shape[0] != self.genes.n_genes:
+            msg = f"{self.name}: aggregate takes one entry per gene"
             raise ValueError(msg)
 
-        reduced: np.ndarray = ufunc.reduceat(values, self.lo, axis=0)
+        kept = np.flatnonzero(self.label != DROPPED)
+        offsets = np.searchsorted(self.label[kept], np.arange(self.n_segments), "left")
+        reduced: np.ndarray = ufunc.reduceat(values[kept], offsets, axis=0)
         return reduced
 
     def broadcast(self, values: Any, fill: Any = np.nan) -> np.ndarray:
-        """This level's array written to each member in the parent; dropped members get `fill`."""
+        """A per-segment array read at each gene; a dropped gene gets `fill`."""
         values = np.asarray(values)
 
-        if self.parent is None or values.shape[0] != self.n_segments:
+        if values.shape[0] != self.n_segments:
             msg = f"{self.name}: broadcast takes one entry per segment"
             raise ValueError(msg)
 
         dtype = np.result_type(values.dtype, np.asarray(fill).dtype)
-        out = np.full((self.parent.n_segments, *values.shape[1:]), fill, dtype=dtype)
-        counts = self.hi - self.lo
-        owner = np.repeat(np.arange(self.n_segments), counts)
-        offset = np.arange(owner.size) - np.repeat(np.cumsum(counts) - counts, counts)
-        out[self.lo[owner] + offset] = values[owner]
+        out = np.full((self.genes.n_genes, *values.shape[1:]), fill, dtype=dtype)
+        kept = self.label != DROPPED
+        out[kept] = values[self.label[kept]]
         return out
 
     def stacked(self, values: Any, n_clones: int) -> np.ndarray:
         """A per-segment array over `n_clones` clones stacked genome after genome.
 
         `cnaster.hmrf_utils.clone_stack_obs`'s layout: row `c * n + g` is
-        segment `g` of clone `c`, and the stacked `lengths` is this level's
+        segment `g` of clone `c`, and the stacked `lengths` is this one's
         tiled, so a contig's last segment stays last in every clone.
         """
         return np.tile(np.asarray(values), n_clones)
@@ -241,7 +278,7 @@ class Segmentation:
         logphase_shift: float,
         min_prob: float,
     ) -> np.ndarray:
-        """`cnaster`'s `log_sitewise_transmat` over this level, contig by contig.
+        """`cnaster`'s `log_sitewise_transmat` over this segmentation, contig by contig.
 
         Entry `k` is the log probability of a phase switch between segment `k`
         and `k + 1`: Haldane's `(1 - exp(-2 nu d)) / 2` over the centimorgan
@@ -249,14 +286,17 @@ class Segmentation:
         `min_prob`, shifted by `logphase_shift` and capped at `log 1/2`, as
         `recomb.py:158-172` computes it.
 
-        Two things differ, both stated in #438:
+        Three things differ, stated in #438:
 
-        - centimorgans are read from each contig's own rows of the map, so
-          no contig inherits another's (D1: `cnaster` gives chr2-9 chr1's
-          last value, distance 0, and `min_prob`);
+        - centimorgans are read from each contig's own rows of the map, so no
+          contig inherits another's (D1: `cnaster` gives chr2-9 chr1's last
+          value, distance 0, `min_prob`);
         - a contig's last segment is `log 1/2`, independence, where `cnaster`
           writes `min_prob`, near-certain continuity (D2). Every lattice
-          restarts there and never reads it; the value is what it means.
+          restarts there and never reads it;
+        - a segment ends at its last *gene's* `END`, where `cnaster` takes the
+          last *row's*, which is a SNP inside that gene on every block of the
+          dev instance.
         """
         cm_start = genetic_map.centimorgans(self.contig, self.start)
         cm_end = genetic_map.centimorgans(self.contig, self.end)

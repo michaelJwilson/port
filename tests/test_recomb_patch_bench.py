@@ -1,8 +1,8 @@
 """The phase-switch kernel: `cnaster`'s Python walk against the lineage's vectorized one (#438).
 
-Both read the same map file each call, as `run_cnaster` does. Measured:
-2,200 blocks 0.029 s against 0.010 s; 33,000 blocks (stress) 0.289 s
-against 0.021 s, 14x.
+Both read the same map file each call, as `run_cnaster` does. Median:
+2,200 blocks 29.4 ms against 10.3 ms; 33,000 blocks (stress) 272.8 ms
+against 26.8 ms, 10.2x.
 """
 
 from __future__ import annotations
@@ -33,12 +33,15 @@ def _table(per_contig: int) -> pd.DataFrame:
         grid = np.arange(1, 59_000_000, 20_000)
         for start in np.sort(rng.choice(grid, per_contig, replace=False)):
             rows += [
-                (contig, int(start), int(start) + 10, block),
-                (contig, int(start) + 15_000, int(start) + 15_010, block),
+                (contig, int(start), int(start) + 10, True, block),
+                (contig, int(start) + 5, int(start) + 6, False, block),
+                (contig, int(start) + 15_000, int(start) + 15_010, True, block),
             ]
             block += 1
 
-    return pd.DataFrame(rows, columns=["CHR", "START", "END", "block_id"])
+    return pd.DataFrame(
+        rows, columns=["CHR", "START", "END", "is_interval", "block_id"]
+    )
 
 
 def _cnaster(*args: Any) -> Any:

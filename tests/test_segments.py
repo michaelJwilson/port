@@ -1,6 +1,6 @@
-"""The segment lineage (#438): what each level is, in terms of the rows it came from.
+"""Segmentations as labellings of the gene rows (#438).
 
-Referees: a brute-force walk over the rows for every composed quantity
+Referees: a brute-force walk over the table for what a labelling says
 (`oracle`), and the definitions for what is derived (`analytic`).
 """
 
@@ -17,21 +17,34 @@ if TYPE_CHECKING:
 
 
 def _table(seed: int = 3) -> pd.DataFrame:
-    """Rows on three contigs, sorted, with blocks of 1-4 rows and bins of 1-3 blocks."""
+    """Genes on three contigs with SNPs inside some, blocks of 1-4 genes."""
     rng = np.random.default_rng(seed)
     rows = []
 
-    for contig, n_rows in ((1, 40), (2, 25), (7, 31)):
-        starts = np.cumsum(rng.integers(100, 1_000, n_rows))
-        rows += [
-            {"CHR": contig, "START": int(s), "END": int(s + rng.integers(1, 90))}
-            for s in starts
-        ]
+    for contig, n_genes in ((1, 40), (2, 25), (7, 31)):
+        starts = np.cumsum(rng.integers(1_000, 5_000, n_genes))
+        for start in starts:
+            end = int(start + rng.integers(200, 900))
+            rows.append(
+                {"CHR": contig, "START": int(start), "END": end, "is_interval": True}
+            )
+            for _ in range(int(rng.integers(0, 3))):
+                pos = int(rng.integers(start + 1, end))
+                rows.append(
+                    {"CHR": contig, "START": pos, "END": pos + 1, "is_interval": False}
+                )
 
-    table = pd.DataFrame(rows)
-    change = np.r_[True, table.CHR.to_numpy()[1:] != table.CHR.to_numpy()[:-1]]
-    block_start = change | (rng.random(len(table)) < 0.4)
-    table["block_id"] = np.cumsum(block_start) - 1
+    table = (
+        pd.DataFrame(rows)
+        .sort_values(["CHR", "START"], kind="stable")
+        .reset_index(drop=True)
+    )
+
+    genes = table.is_interval.to_numpy()
+    contig = table.CHR.to_numpy()
+    new_block = genes & (rng.random(len(table)) < 0.4)
+    new_block |= genes & np.r_[True, contig[1:] != contig[:-1]]
+    table["block_id"] = np.cumsum(new_block) - 1
 
     return table
 
@@ -40,51 +53,55 @@ def _levels() -> tuple[pd.DataFrame, Segmentation, Segmentation, Segmentation]:
     from port.extensions.segments import Segmentation
 
     table = _table()
-    blocks = Segmentation.from_table(table, key="block_id")
+    blocks = Segmentation.from_table(table, "block_id")
     rng = np.random.default_rng(5)
-    keep = rng.random(blocks.n_segments) > 0.2
+    kept = blocks.select(rng.random(blocks.n_segments) > 0.2, name="kept")
 
-    # NB bins of kept blocks: a new bin at each contig change or at random.
-    kept = blocks.select(keep, name="kept")
-    change = np.r_[True, kept.contig[1:] != kept.contig[:-1]]
-    bins = kept.group(
-        np.cumsum(change | (rng.random(kept.n_segments) < 0.5)), name="bins"
+    # NB bins: a new bin at each contig change, else at random.
+    contig = kept.contig
+    new_bin = np.r_[True, contig[1:] != contig[:-1]] | (
+        rng.random(kept.n_segments) < 0.5
     )
+    bins = kept.coarsen(np.cumsum(new_bin) - 1, name="bins")
 
     return table, blocks, kept, bins
 
 
 @pytest.mark.oracle
-def test_every_level_is_its_rows() -> None:
-    """A segment's composed row span is exactly the rows a brute-force walk assigns it."""
+def test_each_level_labels_the_genes_as_the_table_does() -> None:
+    """A gene's label is its block's rank; a bin's extent is its first and last gene's."""
     table, blocks, kept, bins = _levels()
-    lo, hi = bins.root_span()
+    genes = table[table.is_interval]
 
-    block_rows = {b: np.flatnonzero(table.block_id.to_numpy() == b) for b in blocks.ids}
-    kept_ids = kept.ids
+    np.testing.assert_array_equal(blocks.ids[blocks.label], genes.block_id.to_numpy())
 
     for segment in range(bins.n_segments):
-        members = kept_ids[bins.lo[segment] : bins.hi[segment]]
-        rows = np.concatenate([block_rows[b] for b in members])
-        assert lo[segment] == rows.min()
-        assert hi[segment] == rows.max() + 1
-        assert bins.start[segment] == table.START[rows.min()]
-        assert bins.end[segment] == table.END[rows.max()]
+        members = np.flatnonzero(bins.label == segment)
+        assert np.all(np.diff(members) == 1)
+        assert bins.start[segment] == genes.START.iloc[members[0]]
+        assert bins.end[segment] == genes.END.iloc[members[-1]]
+        assert (
+            np.unique(kept.label[members]).size == np.unique(kept.label[members]).size
+        )
+
+    assert bins.refines(blocks) is False or bins.n_segments == blocks.n_segments
+    assert kept.refines(bins)
 
 
 @pytest.mark.oracle
 def test_aggregate_is_a_groupby_and_broadcast_undoes_it() -> None:
-    """Sums over each block's rows equal pandas' `groupby`; broadcast returns each row its block's value."""
+    """Sums over each block's genes equal pandas' `groupby`; broadcast gives each gene its block."""
     table, blocks, _, _ = _levels()
-    values = np.random.default_rng(9).normal(size=(len(table), 2))
+    genes = table[table.is_interval]
+    values = np.random.default_rng(9).normal(size=(len(genes), 2))
 
     ours = blocks.aggregate(values)
-    theirs = pd.DataFrame(values).groupby(table.block_id.to_numpy()).sum().to_numpy()
+    theirs = pd.DataFrame(values).groupby(genes.block_id.to_numpy()).sum().to_numpy()
 
     np.testing.assert_allclose(ours, theirs, rtol=1e-14)
-
-    back = blocks.broadcast(np.arange(blocks.n_segments))
-    np.testing.assert_array_equal(back, table.block_id.to_numpy())
+    np.testing.assert_array_equal(
+        blocks.broadcast(np.arange(blocks.n_segments)), blocks.label
+    )
 
 
 @pytest.mark.analytic
@@ -108,27 +125,33 @@ def test_lengths_are_the_contig_runs_and_never_zero() -> None:
     [
         ("gap", "not contiguous"),
         ("two contigs", "two contigs"),
-        ("order", "genomic order"),
+        ("order", "not contiguous"),
+        ("no gene", "hold no gene"),
     ],
 )
-def test_a_grouping_that_would_misalign_rows_is_refused(
+def test_a_labelling_that_would_misalign_rows_is_refused(
     defect: str, message: str
 ) -> None:
-    """Non-contiguous members, a segment over two contigs, or ids out of genomic order."""
+    """Non-contiguous genes, a segment over two contigs, ids out of order, or a gene-less segment."""
     from port.extensions.segments import Segmentation
 
     table = _table()
     labels = table.block_id.to_numpy().copy()
+    genes = np.flatnonzero(table.is_interval.to_numpy())
     boundary = int(np.flatnonzero(np.diff(table.CHR.to_numpy()))[0])
 
     if defect == "gap":
-        labels[5] = labels[20]
+        labels[genes[5]] = labels[genes[20]]
     elif defect == "two contigs":
-        labels[boundary + 1] = labels[boundary]
-    else:
+        labels[boundary + 1 :] -= 1
+    elif defect == "order":
         labels = labels.max() - labels
+    else:
+        snp = int(np.flatnonzero(~table.is_interval.to_numpy())[0])
+        labels = labels.astype(float)
+        labels[snp] = labels.max() + 1
 
     table["bad"] = labels
 
     with pytest.raises(ValueError, match=message):
-        Segmentation.from_table(table, key="bad")
+        Segmentation.from_table(table, "bad")
