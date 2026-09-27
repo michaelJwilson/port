@@ -60,7 +60,7 @@ def _document(tmp_path: Path) -> tuple[dict[str, Any], Path]:
     from tests.tmp_inputs import write_tmp_inputs
     from tests.unsegment import unsegment
 
-    truth = core_inference_truth(n_obs=40, lattice=(6, 5), seed=3)
+    truth = core_inference_truth(n_obs=40, lattice=(6, 6), seed=3)
     written = write_tmp_inputs(
         truth, unsegment(truth, flip_every=0, unassigned_genes=0), tmp_path
     )
@@ -152,7 +152,7 @@ def test_a_merged_bin_maps_back_to_each_planted_bin_it_covers() -> None:
     from tests.recovery_audit import planted_rows
     from tests.tmp_inputs import GENE_LENGTH, GENE_SPACING
 
-    truth = core_inference_truth(n_obs=40, lattice=(6, 5), seed=3)
+    truth = core_inference_truth(n_obs=40, lattice=(6, 6), seed=3)
     first = int(truth.lengths[0])
     seglevel = pd.DataFrame(
         {
