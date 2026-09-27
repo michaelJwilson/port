@@ -3,7 +3,9 @@
 `nb_logpmf` is the vectorized negative-binomial log-pmf `NUMERIC_SWAPS`
 installs (#240); `logmu_shift` is `compute_logmu_shifts` as an axis reduction,
 not installed (#234); `shifted_emission` is the class that **applies** that
-shift, which upstream computes and discards (#276), off by default.
+shift, which upstream computes and discards (#276), off by default;
+`dense_emission` (entered by `sal_emission()`) scores the coded emission with sal's dense log-emission,
+which `--sal` enters (#425).
 
 The submodules keep the split; this re-exports them so a swap row can name
 `port.patch.hmm_nophasing` and a reader can open `cnaster.hmm_nophasing` and find it.
@@ -21,6 +23,7 @@ from port.patch.hmm_nophasing.nb_logpmf import (
 from port.patch.hmm_nophasing.shifted_emission import (
     hmm_nophasing,
     logmu_shift,
+    sal_emission,
 )
 
 __all__ = [
@@ -28,5 +31,6 @@ __all__ = [
     "log_factorial",
     "logmu_shift",
     "nb_logpmf_1d",
+    "sal_emission",
     "shifts",
 ]
