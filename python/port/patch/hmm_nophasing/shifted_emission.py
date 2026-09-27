@@ -294,6 +294,15 @@ class hmm_nophasing(UPSTREAM):  # type: ignore[misc]
     through a function this repository does not replace.
     """
 
+    emission_kernels: str = "cnaster"
+    """`cnaster` (default) or `sal`: which kernels score the coded emission.
+
+    :func:`sal_emission` sets `sal`, which `--sal` enters (#425). A class
+    attribute for the reason `apply_logmu_shift` is one; not a name rebind,
+    because `cnaster`'s compiled kernels call `_nb_logpmf_1d` as a global and
+    a Python function in its place breaks their compilation.
+    """
+
     def _clone_triples(self, encoder: Any, lengths: tuple[int, ...]) -> _Triples:
         """`(clone, obs, total)` compressed once over the whole genome.
 
@@ -501,6 +510,19 @@ class hmm_nophasing(UPSTREAM):  # type: ignore[misc]
             or clone_lengths is None
             or decode is None
         ):
+            if self.emission_kernels == "sal":
+                from port.patch.hmm_nophasing.dense_emission import coded_emission
+
+                return coded_emission(
+                    nbEncoder,
+                    bbEncoder,
+                    log_mu,
+                    alphas,
+                    p_binom,
+                    taus,
+                    clone_stack=clone_stack,
+                )
+
             unshifted: tuple[np.ndarray, np.ndarray]
             unshifted = super().compute_emission_probability_nb_betabinom_coded(
                 nbEncoder,
@@ -564,14 +586,21 @@ class hmm_nophasing(UPSTREAM):  # type: ignore[misc]
             scratch_baf[0] if scratch_baf else np.zeros((n_states, len(bb_endog)))
         )
 
-        for state in range(n_states):
-            _bb_logpmf_1d(
-                bb_endog,
-                bb_exposure,
-                probabilities[state],
-                concentrations[state],
-                baf_uniq[state, :],
+        if self.emission_kernels == "sal":
+            from port.patch.hmm_nophasing.dense_emission import bb_states
+
+            baf_uniq[:] = bb_states(
+                bb_endog, bb_exposure, probabilities, concentrations
             )
+        else:
+            for state in range(n_states):
+                _bb_logpmf_1d(
+                    bb_endog,
+                    bb_exposure,
+                    probabilities[state],
+                    concentrations[state],
+                    baf_uniq[state, :],
+                )
 
         log_emit_baf = bbEncoder.decode_array(baf_uniq, 0)
 
@@ -586,6 +615,17 @@ class hmm_nophasing(UPSTREAM):  # type: ignore[misc]
             first, last = int(triples.bounds[clone]), int(triples.bounds[clone + 1])
 
             if first == last:
+                continue
+
+            if self.emission_kernels == "sal":
+                from port.patch.hmm_nophasing.dense_emission import nb_states
+
+                rdr_uniq[:, first:last] = nb_states(
+                    triples.obs[first:last],
+                    triples.total[first:last],
+                    np.exp(rates - shifts[clone]),
+                    dispersions,
+                )
                 continue
 
             for state in range(n_states):
@@ -620,3 +660,18 @@ def logmu_shift() -> Iterator[None]:
         yield
     finally:
         hmm_nophasing.apply_logmu_shift = previous
+
+
+@contextmanager
+def sal_emission() -> Iterator[None]:
+    """Score the coded emission with sal's dense kernels for the block (#425).
+
+    Restored rather than cleared on the way out, as :func:`logmu_shift` is.
+    """
+    previous = hmm_nophasing.emission_kernels
+    hmm_nophasing.emission_kernels = "sal"
+
+    try:
+        yield
+    finally:
+        hmm_nophasing.emission_kernels = previous
