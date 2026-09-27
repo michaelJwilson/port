@@ -131,6 +131,12 @@ SWAPS: tuple[Swap, ...] = (
         198,
     ),
     Swap(
+        "cnaster.recomb",
+        "get_sitewise_transmat",
+        "port.patch.recomb:get_sitewise_transmat",
+        438,
+    ),
+    Swap(
         "cnaster.spatial",
         "construct_multislice_lattice_adjacency",
         "port.patch.spatial:lattice_multislice_adjacency",
