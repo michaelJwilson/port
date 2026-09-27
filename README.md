@@ -310,6 +310,13 @@ from Rust. On the dev instance a default run takes 29.8 s against 36.5 s
 with `--no-rust`. The four kernels are 4.3x to 6.1x faster warm at
 `K = 10`, 10,000 bins and 20 spots, on four cores.
 
+**`--sal-emission` is on by default** (#425). It scores the coded NB/BB
+emission with `snakes_and_ladders`' dense log-emission, to 3.2e-12 of
+`cnaster`'s kernels. On the dev instance the default run's clone ARI rises
+0.7927 to 0.8653 and its integer ARI 0.9242 to 0.9905, fitting 5 clones for 4
+rather than 6; the lattice fixture is unchanged at 0.9985. It is not faster end
+to end. `--no-sal-emission` restores `cnaster`'s kernels.
+
 **`--sal` is off by default** (#312). It admits `snakes_and_ladders`
 routines only on `port`'s measurement, and admits one today: the clone
 labelling. That row runs alpha expansion with the Rust minimum cut, then
