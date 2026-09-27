@@ -150,7 +150,7 @@ def test_the_fit_is_upstreams_off_and_decodes_under_its_own_shift_on() -> None:
 
 @pytest.mark.patch
 def test_the_pin_applies_to_a_shifted_rate_fit_only() -> None:
-    """`run_core_inference` pins after upstream's inference, and only then.
+    """`run_core_inference` pins after the inference, and only then.
 
     A shifted fit of `mu` is pinned so the balanced, lowest-`mu` state is 1;
     an unshifted one, or a fit with no `mu` (`params="sp"`, the BAF-only
@@ -165,8 +165,8 @@ def test_the_pin_applies_to_a_shifted_rate_fit_only() -> None:
             "new_p_binom": np.array([[0.5], [0.49], [0.1]]),
         }
 
-    original = module.UPSTREAM
-    module.UPSTREAM = fake
+    original = module.inference
+    module.inference = fake
 
     try:
         unshifted = module.run_core_inference(hmmclass=hmm_nophasing, params="smp")
@@ -175,7 +175,7 @@ def test_the_pin_applies_to_a_shifted_rate_fit_only() -> None:
             pinned = module.run_core_inference(hmmclass=hmm_nophasing, params="smp")
             baf_only = module.run_core_inference(hmmclass=hmm_nophasing, params="sp")
     finally:
-        module.UPSTREAM = original
+        module.inference = original
 
     np.testing.assert_array_equal(unshifted["new_log_mu"], fake()["new_log_mu"])
     np.testing.assert_array_equal(baf_only["new_log_mu"], fake()["new_log_mu"])

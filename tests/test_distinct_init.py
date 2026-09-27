@@ -57,7 +57,7 @@ def test_the_initializer_is_handed_over_only_while_installed(
 
     seen: list[object] = []
     monkeypatch.setattr(
-        core, "UPSTREAM", lambda *_, **k: seen.append(k.get("hmm_initializer"))
+        core, "inference", lambda *_, **k: seen.append(k.get("hmm_initializer"))
     )
 
     core.run_core_inference()
