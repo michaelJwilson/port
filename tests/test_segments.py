@@ -77,15 +77,14 @@ def test_each_level_labels_the_genes_as_the_table_does() -> None:
 
     for segment in range(bins.n_segments):
         members = np.flatnonzero(bins.label == segment)
-        assert np.all(np.diff(members) == 1)
+        span = bins.label[members[0] : members[-1] + 1]
+        assert np.all((span == segment) | (span == -1))
         assert bins.start[segment] == genes.START.iloc[members[0]]
         assert bins.end[segment] == genes.END.iloc[members[-1]]
-        assert (
-            np.unique(kept.label[members]).size == np.unique(kept.label[members]).size
-        )
 
-    assert bins.refines(blocks) is False or bins.n_segments == blocks.n_segments
     assert kept.refines(bins)
+    assert kept.refines(blocks)
+    assert not bins.refines(kept)
 
 
 @pytest.mark.oracle
