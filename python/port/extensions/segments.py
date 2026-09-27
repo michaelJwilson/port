@@ -405,6 +405,8 @@ class Lineage:
 
     genes: Genes | None = None
     levels: dict[str, Segmentation] = field(default_factory=dict)
+    excluded_genes: set[str] = field(default_factory=set)
+    """Genes a step removed from read depth: the differential-expression filter's (#440)."""
 
     def record(self, segmentation: Segmentation, name: str) -> Segmentation:
         """Keep `segmentation` under `name`, suffixed `.2`, `.3` if the name repeats.
