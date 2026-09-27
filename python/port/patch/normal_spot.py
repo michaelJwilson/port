@@ -40,6 +40,8 @@ from cnaster.hmm_utils import get_em_solver_params
 from cnaster.logger import get_logger
 from cnaster.spatio_genomic_counts import SpatioGenomicCounts
 
+from port.extensions.segments import observe
+
 logger = get_logger(__name__, start_time=start_time)
 
 MIN_BETABINOM_TAU = 30
@@ -451,14 +453,9 @@ def normal_baf_bin_filter(
     single_base_nb_mean = single_base_nb_mean[index_remaining, :]
     single_total_bb_RD = single_total_bb_RD[index_remaining, :]
 
-    lengths = np.zeros(len(df_gene_snp.CHR.unique()), dtype=int)
-
-    for i, contig in enumerate(df_gene_snp.CHR.unique()):
-        lengths[i] = len(
-            df_gene_snp[
-                (contig == df_gene_snp.CHR) & (~df_gene_snp.bin_id.isnull())
-            ].bin_id.unique()
-        )
+    # NB the surviving bins as a labelling of the genes (#438): a contig whose
+    #    every bin was removed is absent rather than zero (D5).
+    lengths = observe(df_gene_snp, "bin_id", "bins-filtered").lengths
 
     if df_gene_snp["bin_id"].nunique(dropna=True) != single_X.shape[0]:  # invariant
         msg = 'expected df_gene_snp["bin_id"].nunique(dropna=True) == single_X.shape[0]'

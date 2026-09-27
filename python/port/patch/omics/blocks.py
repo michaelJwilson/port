@@ -42,6 +42,7 @@ from cnaster.config import start_time
 from cnaster.logger import get_logger
 from cnaster.spatio_genomic_counts import SpatioGenomicCounts
 
+from port.extensions.segments import observe
 from port.patch.reference import get_reference_genes
 
 logger = get_logger(__name__, start_time=start_time)
@@ -584,7 +585,10 @@ def summarize_counts_for_blocks(
         a_allele + _grouped_column_sums(cell_snp_Ballele, by_snp)
     ).astype(int)
 
-    lengths = df_gene_snp.groupby("CHR")["block_id"].nunique().to_numpy()
+    # NB from the blocks as a labelling of the genes (#438): the contig runs
+    #    of the segments the rows are indexed by, never zero, and recorded
+    #    while a run records its lineage.
+    lengths = observe(df_gene_snp, "block_id", "blocks").lengths
 
     return SpatioGenomicCounts(
         lengths, single_X, np.zeros((n_blocks, n_spots)), single_total_bb_RD
@@ -658,14 +662,10 @@ def summarize_counts_for_bins(
 
     bin_single_total_bb_RD = np.asarray(by_block.T @ single_total_bb_RD, dtype=int)
 
-    chr_order = df_gene_snp.CHR.unique()
-    lengths = (
-        df_gene_snp.loc[assigned]
-        .groupby("CHR")["bin_id"]
-        .nunique()
-        .reindex(chr_order, fill_value=0)
-        .to_numpy()
-    )
+    # NB from the bins as a labelling of the genes (#438). `cnaster` reindexes
+    #    over every contig with zeros; a zero is a contig every lattice
+    #    restarts on and never reaches (D5), so none is written.
+    lengths = observe(df_gene_snp, "bin_id", "bins").lengths
 
     return SpatioGenomicCounts(
         lengths, bin_single_X, np.zeros((n_bins, n_spots)), bin_single_total_bb_RD

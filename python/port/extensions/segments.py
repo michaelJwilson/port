@@ -33,7 +33,9 @@ cannot be a labelling of the genes, and is refused where it is built.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from collections.abc import Iterator
+from contextlib import contextmanager
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 import numpy as np
@@ -53,6 +55,8 @@ class Genes:
     end: np.ndarray
     row: np.ndarray
     """Each gene's row in the table it was read from."""
+    key: np.ndarray
+    """Each gene's index label in that table: what a later table is matched on."""
 
     @classmethod
     def from_table(cls, table: Any) -> Genes:
@@ -70,6 +74,7 @@ class Genes:
             start=np.asarray(table["START"], dtype=np.int64)[row],
             end=np.asarray(table["END"], dtype=np.int64)[row],
             row=row,
+            key=np.asarray(table.index)[row],
         )
 
     @property
@@ -104,9 +109,17 @@ class Segmentation:
 
         genes = Genes.from_table(table) if genes is None else genes
         column = pd.Series(np.asarray(table[key]))
+        is_gene = np.asarray(table["is_interval"], dtype=bool)
+
+        # NB the table's gene rows located among the root's by index label: a
+        #    later table may have dropped rows, never added a gene.
+        where = pd.Index(genes.key).get_indexer(np.asarray(table.index)[is_gene])
+        if np.any(where < 0):
+            msg = f"{key}: the table holds genes the root does not"
+            raise ValueError(msg)
 
         every = column.dropna().unique()
-        at_genes = column.iloc[genes.row].reset_index(drop=True)
+        at_genes = column[is_gene].reset_index(drop=True)
         present = at_genes.notna().to_numpy()
 
         ids, inverse = np.unique(at_genes[present].to_numpy(), return_inverse=True)
@@ -116,7 +129,7 @@ class Segmentation:
             raise ValueError(msg)
 
         label = np.full(genes.n_genes, DROPPED, dtype=np.int64)
-        label[present] = inverse
+        label[where[present]] = inverse
 
         return cls.of(genes, label, ids=ids, name=key)
 
@@ -377,3 +390,114 @@ class GeneticMap:
             out[rows[after]] = ref_cm[-1]
 
         return out
+
+
+@dataclass
+class Lineage:
+    """Every segmentation one run makes, in order, over one root of genes.
+
+    The run's steps each read `df_gene_snp` by an id column and each re-derive
+    what they need from it; recording each one's labelling here keeps every
+    level after the table's columns are overwritten -- `create_bin_ranges`
+    writes `bin_id` over `block_id` (#438 D7) -- so a per-segment array at
+    any step can be read at any other through the genes.
+    """
+
+    genes: Genes | None = None
+    levels: dict[str, Segmentation] = field(default_factory=dict)
+
+    def record(self, segmentation: Segmentation, name: str) -> Segmentation:
+        """Keep `segmentation` under `name`, suffixed `.2`, `.3` if the name repeats.
+
+        Every step is kept, identical to the last or not: that a step changed
+        nothing is itself what the lineage records.
+        """
+        unique, suffix = name, 2
+        while unique in self.levels:
+            unique, suffix = f"{name}.{suffix}", suffix + 1
+
+        kept = replace(segmentation, name=unique)
+        self.levels[unique] = kept
+        return kept
+
+    def latest(self, segmentation: Segmentation) -> Segmentation:
+        """The last recorded level with `segmentation`'s labelling, else `segmentation`."""
+        for level in reversed(self.levels.values()):
+            if np.array_equal(level.label, segmentation.label) and np.array_equal(
+                level.ids, segmentation.ids
+            ):
+                return level
+        return segmentation
+
+    def __getitem__(self, name: str) -> Segmentation:
+        return self.levels[name]
+
+    def table(self) -> Any:
+        """One row per gene: coordinates, then each level's label (`-1` where dropped)."""
+        import pandas as pd
+
+        if self.genes is None:
+            return pd.DataFrame()
+
+        columns = {
+            "CHR": self.genes.contig,
+            "START": self.genes.start,
+            "END": self.genes.end,
+        }
+        columns |= {name: level.label for name, level in self.levels.items()}
+        return pd.DataFrame(columns)
+
+
+_CURRENT: list[Lineage] = []
+
+
+@contextmanager
+def recording() -> Iterator[Lineage]:
+    """Record every segmentation :func:`observe` sees for the block.
+
+    Joins a lineage already recording rather than opening a second, so a
+    caller that records around `run_cnaster_port`'s `main` sees what the
+    run recorded.
+    """
+    if _CURRENT:
+        yield _CURRENT[-1]
+        return
+
+    lineage = Lineage()
+    _CURRENT.append(lineage)
+
+    try:
+        yield lineage
+    finally:
+        _CURRENT.remove(lineage)
+
+
+def current() -> Lineage | None:
+    """The innermost recording lineage, if any."""
+    return _CURRENT[-1] if _CURRENT else None
+
+
+def observe(table: Any, key: str, name: str | None = None) -> Segmentation:
+    """`table[key]` as a labelling of the genes, recorded under `name` while recording.
+
+    The first table seen while recording sets the root; every later one is
+    read onto it by index label, so a step that drops rows or overwrites a
+    column still labels the same genes. Without a `name` nothing is recorded,
+    and the last recorded level with the same labelling is returned: a
+    quantity computed *on* a step's segments reads them rather than making a
+    step of its own.
+    """
+    lineage = current()
+
+    if lineage is None:
+        return Segmentation.from_table(table, key)
+
+    if lineage.genes is None:
+        lineage.genes = Genes.from_table(table)
+
+    segmentation = Segmentation.from_table(table, key, lineage.genes)
+
+    if name is None:
+        return lineage.latest(segmentation)
+
+    return lineage.record(segmentation, name)

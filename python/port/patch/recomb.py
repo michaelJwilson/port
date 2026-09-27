@@ -33,9 +33,9 @@ def get_sitewise_transmat(
     from cnaster.config import get_global_config
     from cnaster.reference import get_reference_recomb_rates
 
-    from port.extensions.segments import GeneticMap, Segmentation
+    from port.extensions.segments import GeneticMap, observe
 
-    segments = Segmentation.from_table(df_gene_snp, segment_key)
+    segments = observe(df_gene_snp, segment_key)
     genetic_map = GeneticMap.from_frame(get_reference_recomb_rates(geneticmap_file))
 
     return segments.log_phase_switch(
