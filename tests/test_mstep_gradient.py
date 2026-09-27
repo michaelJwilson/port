@@ -201,6 +201,7 @@ def test_a_bin_without_baseline_moves_no_gradient(cnaster_config: None) -> None:
 
 
 @pytest.mark.cnaster
+@pytest.mark.patch
 def test_the_closed_form_fit_is_cnasters_fit_to_a_stated_tolerance(
     cnaster_config: None,
 ) -> None:
