@@ -49,7 +49,7 @@ def test_the_round_trip_returns_the_binned_fixture(n_obs: int) -> None:
     variable grouping is half of what this checks.
     """
     truth = core_inference_truth(
-        n_clones=2, n_states=3, lattice=(6, 5), n_obs=n_obs, n_segments=2
+        n_clones=2, n_states=3, lattice=(6, 6), n_obs=n_obs, n_segments=2
     )
     rebinned = _rebin(unsegment(truth))
 
@@ -70,7 +70,7 @@ def test_the_round_trip_returns_the_segmentation() -> None:
     the right counts against the wrong segmentation.
     """
     truth = core_inference_truth(
-        n_clones=2, n_states=3, lattice=(6, 5), n_obs=240, n_segments=4
+        n_clones=2, n_states=3, lattice=(6, 6), n_obs=240, n_segments=4
     )
     rebinned = _rebin(unsegment(truth))
 
@@ -92,7 +92,7 @@ def test_the_unassigned_genes_never_reach_a_bin() -> None:
     the fixture exactly.
     """
     truth = core_inference_truth(
-        n_clones=2, n_states=3, lattice=(6, 5), n_obs=60, n_segments=2
+        n_clones=2, n_states=3, lattice=(6, 6), n_obs=60, n_segments=2
     )
     pre_image = unsegment(truth)
 
@@ -119,7 +119,7 @@ def test_the_flipped_blocks_are_unflipped_by_the_binner() -> None:
     from dataclasses import replace
 
     truth = core_inference_truth(
-        n_clones=2, n_states=3, lattice=(6, 5), n_obs=60, n_segments=2
+        n_clones=2, n_states=3, lattice=(6, 6), n_obs=60, n_segments=2
     )
     pre_image = unsegment(truth)
     assert not pre_image.phase_indicator.all(), "no block is flipped"
@@ -144,7 +144,7 @@ def test_the_pre_image_is_a_partition_and_not_a_copy() -> None:
     weaken every test above.
     """
     truth = core_inference_truth(
-        n_clones=2, n_states=3, lattice=(6, 5), n_obs=240, n_segments=4
+        n_clones=2, n_states=3, lattice=(6, 6), n_obs=240, n_segments=4
     )
     table = unsegment(truth).df_gene_snp
     assigned = table[table.bin_id.notnull()]

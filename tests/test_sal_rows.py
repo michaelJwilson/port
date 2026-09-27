@@ -105,6 +105,62 @@ def test_the_sequence_keeps_cnasters_clone_floor() -> None:
     assert np.all((sizes == 0) | (sizes >= 200)), f"clone sizes {sizes}"
 
 
+@pytest.mark.smoke
+def test_the_merge_keeps_cnasters_clone_floor_without_cnaster() -> None:
+    """`alpha-rust-merge` leaves no clone under `min_clone_spots`, from sal alone.
+
+    The fixture above, where alpha expansion alone leaves twelve clones of 38
+    to 84 spots: sal's `merge_small_labels` dissolves each, and no global RNG
+    is touched because none of `cnaster`'s sweep runs.
+    """
+    from port.extensions.label_solver import expansion_then_merge
+    from port.patch.icm.alpha_expansion import alpha_expansion_sweep
+
+    field, graph, _, beta = _lattice(40, 16, seed=9, beta=0.6)
+    start = np.arange(1600, dtype=np.int64) % 16
+
+    alone = start.copy()
+    alpha_expansion_sweep(field, graph, alone, beta)
+    merged = start.copy()
+    expansion_then_merge(field, graph, merged, beta, min_clone_spots=200)
+
+    sizes_alone = np.bincount(alone, minlength=16)
+    sizes = np.bincount(merged, minlength=16)
+
+    assert np.any((sizes_alone > 0) & (sizes_alone < 200))
+    assert np.all((sizes == 0) | (sizes >= 200)), f"clone sizes {sizes}"
+
+
+@pytest.mark.analytic
+def test_the_argmax_descent_is_the_argmax_without_coupling() -> None:
+    """At `beta = 0` the MAP labelling is each site's best clone, and nothing moves it.
+
+    With no coupling every site's conditional mode is its own field argmax,
+    which is where the descent starts, so it takes no step; a floor of one
+    spot dissolves nothing. Against `np.argmax` directly.
+    """
+    from port.extensions.label_solver import sal_icm_argmax_sweep
+
+    field, graph, start, _ = _lattice(20, 5, seed=4, beta=0.6)
+    labelling = start.copy()
+    sal_icm_argmax_sweep(field, graph, labelling, 0.0, min_clone_spots=1)
+
+    np.testing.assert_array_equal(labelling, np.argmax(field, axis=1))
+
+
+@pytest.mark.smoke
+def test_the_argmax_descent_keeps_the_clone_floor() -> None:
+    """No clone the argmax row returns is under `min_clone_spots`."""
+    from port.extensions.label_solver import sal_icm_argmax_sweep
+
+    field, graph, start, beta = _lattice(40, 16, seed=9, beta=0.6)
+    labelling = start.copy()
+    sal_icm_argmax_sweep(field, graph, labelling, beta, min_clone_spots=200)
+    sizes = np.bincount(labelling, minlength=16)
+
+    assert np.all((sizes == 0) | (sizes >= 200)), f"clone sizes {sizes}"
+
+
 @pytest.mark.infra
 def test_the_flag_selects_the_row_and_restores_the_solver() -> None:
     """Inside `sal()` the labelling is the row's; outside, what it was."""
@@ -114,7 +170,7 @@ def test_the_flag_selects_the_row_and_restores_the_solver() -> None:
     before = label_solver()
 
     with sal():
-        assert label_solver() == SAL_ROWS[0].solver == "alpha-rust-icm"
+        assert label_solver() == SAL_ROWS[0].solver == "alpha-rust-merge"
 
     assert label_solver() == before
 
@@ -129,7 +185,7 @@ def test_list_prints_the_sal_row(capsys: pytest.CaptureFixture[str]) -> None:
     printed = capsys.readouterr().out
 
     assert "cnaster.icm.icm_sweep_deque <- search.alpha_expansion" in printed
-    assert "(#312, accuracy; --sal to add)" in printed
+    assert "(#410, accuracy; --sal to add)" in printed
 
 
 @pytest.mark.end2end

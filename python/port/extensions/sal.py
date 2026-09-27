@@ -42,16 +42,21 @@ SAL_ROWS: tuple[SalRow, ...] = (
     SalRow(
         stage="clone labelling",
         cnaster="cnaster.icm.icm_sweep_deque",
-        sal="search.alpha_expansion.alpha_expansion, Backend.RUST, then cnaster's ICM",
+        sal=(
+            "search.alpha_expansion.alpha_expansion, Backend.RUST, then "
+            "search.icm.merge_small_labels at cnaster's floor"
+        ),
         axis="accuracy",
         evidence=(
-            "dev instance, three runs each: clone ARI 0.919 -> 1.000 against "
-            "the planted labels, wall 40.5 -> 28.8 s. Alpha expansion alone "
-            "lowers each call's Potts energy by 12 to 7,954 nats but takes the "
-            "ARI to 0.386: cnaster's 200-spot floor, which the ICM that "
-            "follows applies, is load-bearing"
+            "dev instance: clone ARI 0.9795 -> 1.000 against the planted "
+            "labels, wall 28.4 -> 24.8 s; lattice instance 0.9946 -> 1.000, "
+            "27.0 -> 25.7 s, against the row it replaced (expansion then "
+            "cnaster's ICM, #312: 0.919 -> 1.000 over the default). The floor "
+            "is load-bearing -- alpha expansion alone reaches ARI 0.386 -- "
+            "and is now sal's (#1114), so no cnaster ICM runs under --sal"
         ),
-        solver="alpha-rust-icm",
+        solver="alpha-rust-merge",
+        ticket=410,
     ),
 )
 """The admitted rows. Measured and not admitted, selectable through
@@ -59,9 +64,21 @@ SAL_ROWS: tuple[SalRow, ...] = (
 
 - `alpha-rust`: the lowest energy per call, and ARI 0.386 end to end;
 - `icm-numba`: the same descent 39 to 61 times faster at stress, within
-  31 nats either way per call, and ARI 0.827 end to end, having no floor.
+  31 nats either way per call, and ARI 0.827 end to end, having no floor;
+- `icm-numba-floor`: that descent with sal's floor (#1114), ARI 0.3385 and
+  two clones for four on the dev instance -- the index-order descent from
+  the RDR stage's start dissolves clones the expansion keeps;
+- `alpha-rust-icm`: the row `alpha-rust-merge` replaced;
+- `icm-argmax-floor` (#410, sal #1121): the `numba` descent from the field's
+  argmax with the floor. Dev instance: clone ARI 1.000, copy ARI 0.9971,
+  wall 22.5 s end to end. Per call at 10,000 spots and ten clones, 0.034 s
+  against the admitted row's 0.124 s under #421 -- 3.7x -- but at a Potts
+  energy 295 nats higher (-19,335 against -19,630); at 1,600 spots and four
+  clones, 0.0049 against 0.0102 s and 54 nats higher. Not admitted: the
+  speed is bought with a worse minimum, and the label step is 2.3 s of the
+  run.
 
-Both wait on #312's R7: a label merge in `snakes_and_ladders`."""
+#312's R7, the label merge in sal, landed as `merge_small_labels`."""
 
 
 @contextlib.contextmanager

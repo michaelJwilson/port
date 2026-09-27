@@ -310,12 +310,22 @@ from Rust. On the dev instance a default run takes 29.8 s against 36.5 s
 with `--no-rust`. The four kernels are 4.3x to 6.1x faster warm at
 `K = 10`, 10,000 bins and 20 spots, on four cores.
 
+**The spatial graph is validated before the HMRF sees it** (#417). The run
+builds it from `port.extensions.adjacency`: by default each spot's `k`
+nearest (`PORT_ADJACENCY=knn`), with `k` the lattice's coordination -- 8 on a
+square grid (Moore; `PORT_SQUARE_NEIGHBOURHOOD=square` for 4), 6 on a Visium
+hexagon. On a square grid that is `cnaster`'s own graph entry for entry.
+`PORT_ADJACENCY=lattice` builds the neighbourhood's offsets instead,
+symmetric with boundary edges reinforced. The guard refuses a self loop, and
+for `knn` a row without `k` unit edges or a graph under 0.6 reciprocated.
+
 **`--sal` is off by default** (#312). It admits `snakes_and_ladders`
 routines only on `port`'s measurement, and admits one today: the clone
 labelling. That row runs alpha expansion with the Rust minimum cut, then
-`cnaster`'s ICM for its 200-spot floor. On the dev instance it recovers the
-planted clones at ARI 1.000 against the default's 0.919, in 29 s against
-41 s. `port.extensions.sal` lists what was measured and not admitted.
+sal's `merge_small_labels` at `cnaster`'s 200-spot floor (#410), so no
+`cnaster` ICM runs. On the dev instance it recovers the planted clones at
+ARI 1.000 against the default's 0.7927, in 24.8 s against 44.9 s.
+`port.extensions.sal` lists what was measured and not admitted.
 `docs/audit-recovery.md` carries its recovery against the planted truth at
 four configurations (#313).
 At this instance the emission array is about 0.3 GB against an 11.35 GB

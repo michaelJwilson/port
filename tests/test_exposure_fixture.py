@@ -131,7 +131,7 @@ def test_the_binner_does_not_carry_the_exposure() -> None:
     from tests.unsegment import unsegment
 
     truth = core_inference_truth(
-        n_clones=2, n_states=3, lattice=(6, 5), n_obs=20, n_segments=2
+        n_clones=2, n_states=3, lattice=(6, 6), n_obs=20, n_segments=2
     )
     pre_image = unsegment(truth)
 
