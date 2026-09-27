@@ -221,6 +221,17 @@ def _parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--sal-emission",
+        action="store_true",
+        help=(
+            "score the coded NB/BB emission with sal's dense log-emission "
+            "(#425): to 3.2e-12 of cnaster's kernels (3.5e-9 at the dispersion "
+            "floor, where sal is the nearer the exact value), 3-9x the kernels "
+            "at 100,000 codes, and no faster end to end, as CountEncoder dedup "
+            "leaves the kernels small. Off by default, not a --sal row."
+        ),
+    )
+    parser.add_argument(
         "--sal",
         action="store_true",
         help=(
@@ -399,6 +410,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         #    `pipeline_clone_assignment`, a `SWAPS` row; under `--no-patch`
         #    that one row is installed alone, so the flag still means what it
         #    says and the rest of the baseline stays `cnaster`'s.
+        if arguments.sal_emission:
+            from port.patch.hmm_nophasing import sal_emission
+
+            # NB the coded emission from sal's tables (#425), a class flag
+            #    the `hmm_nophasing` swap reads, restored with the run.
+            stack.enter_context(sal_emission())
+
         if arguments.sal:
             from port.extensions.sal import sal
 
