@@ -119,6 +119,20 @@ class Segmentation:
             raise ValueError(msg)
 
         every = column.dropna().unique()
+
+        # NB `assign_initial_blocks`' known-range path writes -1 for every row
+        #    no range covers (`omics.py:528-530`): rows across the genome under
+        #    one id, which `summarize_counts_for_blocks` then writes into the
+        #    *last* row of its counts while `groupby` puts it first (#438 D3).
+        #    It is not a segment, and is refused by name rather than as a gap.
+        if np.issubdtype(np.asarray(every).dtype, np.number) and np.any(
+            np.asarray(every) < 0
+        ):
+            msg = (
+                f"{key}: a negative id marks rows no segment covers "
+                "(the known-range path's -1), which is not a segment"
+            )
+            raise ValueError(msg)
         at_genes = column[is_gene].reset_index(drop=True)
         present = at_genes.notna().to_numpy()
 
