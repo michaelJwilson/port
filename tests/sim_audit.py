@@ -2,7 +2,7 @@
 
 Run as `python -m tests.sim_audit [--sample easy|hard|<name>] [--set k=v]
 [-- flags]`: one arm, one `SIM` line of JSON on stdout. `<name>` is under
-`sim/`, so a sample `port.sim.draw` wrote is `generated/<name>` (#445); it
+`sim/`, so a sample `port.sim.draw` wrote is `generated/<name>/r<k>` (#445); it
 runs on its own `config.yaml`.
 
 The four ARIs are `tests.recovery_audit`'s, on the sample's truth:

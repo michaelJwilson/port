@@ -184,7 +184,7 @@ def test_phase_switches_occur_at_the_haldane_rate(tree_draw: Drawn) -> None:
     chromosome = np.array([s.split("_")[0] for s in snps.astype(str)])
     same = chromosome[1:] == chromosome[:-1]
     written = np.load(tree_draw.path / "truth_phase.npy")
-    np.testing.assert_array_equal(written, tree_draw.switched)
+    np.testing.assert_array_equal(written, tree_draw.switched[0])
     switched = written.astype(int)
     observed = int(np.sum(np.diff(switched)[same] != 0))
 
@@ -347,3 +347,41 @@ def test_the_patched_loader_puts_every_spot_in_the_slice_it_was_drawn_on(
     suffix = obs.index.to_series().str.rsplit("_", n=1).str[-1]
     assert set(obs["sample"]) == set(tree_draw.sample_ids)
     assert (obs["sample"].astype(str) == suffix).all()
+
+
+@pytest.mark.analytic
+def test_realizations_share_the_clones_and_redraw_counts_and_phase(
+    resources: Path, tmp_path: Path
+) -> None:
+    """Two realizations: one truth, two phases, two count draws; r0 as if drawn alone.
+
+    Each realization is a complete sample `load_simulated` reads, and asking
+    for more realizations leaves the first one's bits unchanged.
+    """
+    import anndata
+
+    from tests.sim_fixtures import load_simulated
+
+    one = draw(_manifest("dev_tree"), tmp_path / "one", resources=resources)
+    two = draw(
+        _manifest("dev_tree", {"sample": {"realizations": 2}}),
+        tmp_path / "two",
+        resources=resources,
+    )
+    first, second = two.realizations
+    sid = two.sample_ids[0]
+
+    def matrix(path: Path) -> Any:
+        return anndata.read_h5ad(path / sid / "filtered_feature_bc_matrix.h5ad").X
+
+    for name in ("truth_clone_labels.tsv", "truth_acn_profile.tsv", "truth_tree.tsv"):
+        assert (first / name).read_bytes() == (second / name).read_bytes(), name
+    assert (matrix(first) != matrix(second)).nnz > 0
+    assert np.any(two.switched[0] != two.switched[1])
+
+    assert (matrix(one.path) != matrix(first)).nnz == 0
+    np.testing.assert_array_equal(one.switched[0], two.switched[0])
+
+    for path in two.realizations:
+        sample = load_simulated(path.name, path.parent)
+        assert sample.labels.size == 2 * 20 * 20

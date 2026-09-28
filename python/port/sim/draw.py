@@ -4,7 +4,7 @@ Version 2 (`port.sim.toml_manifest`, #382) replicates one CalicoST sample:
 its events, spots and layout are read off the sample. Version 3 draws them:
 
     version = 3
-    [sample]      name, seed, output
+    [sample]      name, seed, output, realizations
     [reference]   baseline, coverage, snps; GRCh38 resources via $PORT_GRCH38
     [array]       kind = "hex", rows, columns
     [model]       admixture, normal_frac, nb_dispersion, bb_overdispersion,
@@ -21,15 +21,18 @@ its events, spots and layout are read off the sample. Version 3 draws them:
 **The generative model**, per slice and spot `s` of clone `c`:
 
 - `N_s ~ [coverage] spot_umi` and `M_s ~ spot_snp_umi`, independent;
-- gene counts `Poisson(N_s q_sg)`, `q_s` normalized and proportional to
-  `lambda_g d_g(c) G_sg`: `lambda` from `normal_baseline.txt`, `d` the
-  admixture law's depth factor at the gene's `(A, B)`, and
-  `G_sg ~ Gamma(1/alpha, alpha)` at `alpha = [model] nb_dispersion`. The
-  library size is held, so a gain in one clone dilutes its other genes, as
-  sequencing does;
-- SNP reads `Poisson(M_s w_sj)`, `w_s` normalized and proportional to
-  `v_j H_sj`: `v_j ~ Gamma(1/a, a)` at `a = [coverage] snp_total`
-  dispersion and `H_sj ~ Gamma(1/b, b)` at `b = [model] snp_dispersion`;
+- gene counts `NB(N_s q_gc, alpha)`, `var = mu + alpha mu^2`, independent
+  per entry: `q_c` sums to 1 and is proportional to `lambda_g d_g(c)`,
+  `lambda` from `normal_baseline.txt` and `d` the admixture law's depth
+  factor at the gene's `(A, B)`, at `alpha = [model] nb_dispersion`. The
+  library size is held in expectation, so a gain in one clone dilutes its
+  other genes, as sequencing does;
+- SNP reads `NB(M_s w_jc, b)`, `w_c` summing to 1 and proportional to `v_j`
+  (times the depth factor if `snp_depth_follows_copies`):
+  `v_j ~ Gamma(1/a, a)` at `a = [coverage] snp_total` dispersion,
+  and `b = [model] snp_dispersion`. Per realization: `N_s`, `M_s`, `v`,
+  the counts and the phase. `port.sim.kernels` draws both by
+  inversion, one uniform per entry;
 - the haplotype-A count `BetaBinomial(n, share, rho)`, `share` the admixture
   law's (`toml_manifest.allele_share`).
 
@@ -67,7 +70,7 @@ import functools
 import itertools
 import os
 import tomllib
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -79,7 +82,7 @@ from port.sim.toml_manifest import ADMIXTURE_LAWS, Event, Law, allele_share
 MANIFEST_VERSION = 3
 
 REQUIRED: dict[str, tuple[str, ...]] = {
-    "sample": ("name", "seed", "output"),
+    "sample": ("name", "seed", "output", "realizations"),
     "reference": (
         "baseline", "coverage", "snps", "resources", "gene_table",
         "genetic_map", "filter_genes", "filter_regions",
@@ -104,10 +107,6 @@ BY_MODE = {
     "tree": ("trunk", "per_leaf", "per_internal"),
 }
 BY_LAW = {"fixed": ("size",), "exponential": ("mean", "minimum")}
-
-SPOT_CHUNK = 64
-"""Spots drawn per block, for memory only: draws are consumed row-major, so
-the chunk does not change what is drawn."""
 
 
 def references(directory: Path, names: tuple[str, ...]) -> Path:
@@ -596,12 +595,17 @@ def sample_ids(n_slices: int, n_bytes: int, rng: np.random.Generator) -> list[st
 @functools.lru_cache(maxsize=2)
 def genetic_map(path: Path) -> dict[str, tuple[np.ndarray, np.ndarray]]:
     """`chrom` (no `chr`) to its sorted positions and cM."""
-    table = pd.read_csv(path, sep="\t", usecols=["chrom", "pos", "pos_cm"])
-    table = table.sort_values(["chrom", "pos"], kind="stable")
-    return {
-        str(c).removeprefix("chr"): (g["pos"].to_numpy(), g["pos_cm"].to_numpy())
-        for c, g in table.groupby("chrom", sort=False)
-    }
+    table = pd.read_csv(
+        path, sep="\t", usecols=["chrom", "pos", "pos_cm"], engine="pyarrow"
+    )
+    out = {}
+    for contig, group in table.groupby("chrom", sort=False):
+        pos, cm = group["pos"].to_numpy(), group["pos_cm"].to_numpy()
+        if np.any(np.diff(pos) < 0):  # NB chrX, once; the autosomes are sorted.
+            order = np.argsort(pos, kind="stable")
+            pos, cm = pos[order], cm[order]
+        out[str(contig).removeprefix("chr")] = (pos, cm)
+    return out
 
 
 UNITS = {"morgan": 100.0, "centimorgan": 1.0}
@@ -637,14 +641,21 @@ def switch_probabilities(
 class Drawn:
     """What `draw` wrote, and what a test reads back."""
 
-    path: Path
+    root: Path
+    realizations: list[Path]
+    """One complete sample directory per `[sample] realizations`, `r<k>`."""
     sample_ids: list[str]
     clones: tuple[str, ...]
     labels: list[np.ndarray]
     tree: CloneTree
-    switched: np.ndarray
+    switched: list[np.ndarray]
+    """Each realization's phase: True where `A` and `B` are exchanged."""
     switch_p: np.ndarray
-    counts: list[Any] = field(default_factory=list)
+
+    @property
+    def path(self) -> Path:
+        """The first realization."""
+        return self.realizations[0]
 
 
 def _laws(manifest: DrawManifest) -> dict[str, Law]:
@@ -686,19 +697,24 @@ def _snps(manifest: DrawManifest) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
 def draw(
     manifest: DrawManifest, into: Path | None = None, *, resources: Path | None = None
 ) -> Drawn:
-    """Draw every slice of `manifest` and write it as `<into>/<name>/`."""
-    import anndata
-    import scipy.sparse
+    """Draw `manifest` and write each realization as `<into>/<name>/r<k>/`.
 
-    streams = [
-        np.random.default_rng(s) for s in np.random.SeedSequence(manifest.seed).spawn(5)
-    ]
-    tree_rng, layout_rng, id_rng, phase_rng, count_rng = streams
+    The clones, their layout and the barcodes are drawn once. Each of
+    `[sample] realizations` then draws, from its own stream, every spot's
+    coverage, each SNP's capture weight, the counts and the phase, and is
+    written as a complete sample directory; a realization does not change
+    when more are asked for.
+    """
+    tree_rng, layout_rng, id_rng = (
+        np.random.default_rng(s) for s in np.random.SeedSequence(manifest.seed).spawn(3)
+    )
+    realization_seeds = np.random.SeedSequence([manifest.seed, 1]).spawn(
+        int(manifest.sample["realizations"])
+    )
     resources = resources or manifest.resources()
-    out = (
+    root = (
         into if into is not None else manifest.resolve(manifest.sample["output"])
     ) / manifest.name
-    (out / "snp").mkdir(parents=True, exist_ok=True)
 
     tree = draw_tree(manifest, tree_rng)
     clones = ("normal", *manifest.tumour)
@@ -709,8 +725,9 @@ def draw(
     )
     gene_chrom = baseline["chrom"].astype(str).str.removeprefix("chr").to_numpy()
     gene_pos = ((baseline["cdsStart"] + baseline["cdsEnd"]) // 2).to_numpy()
-    gene_weights = baseline["lambda"].to_numpy()[:, None] * _depth(
-        manifest, clones, clone_copies(tree, clones, gene_chrom, gene_pos)
+    gene_weights = _normalized(
+        baseline["lambda"].to_numpy()[:, None]
+        * _depth(manifest, clones, clone_copies(tree, clones, gene_chrom, gene_pos))
     )
 
     snp_ids, snp_chrom, snp_pos = _snps(manifest)
@@ -733,11 +750,6 @@ def draw(
         else np.ones((snp_ids.size, len(clones)))
     )
     dispersion = laws["snp_total"].parameters["dispersion"]
-    snp_weights = (
-        count_rng.gamma(1 / dispersion, dispersion, snp_ids.size)
-        if dispersion > 0
-        else np.ones(snp_ids.size)
-    )
 
     p_switch = switch_probabilities(
         snp_chrom,
@@ -748,11 +760,6 @@ def draw(
     )
     if not manifest.phasing["switch_errors"]:
         p_switch = np.zeros_like(p_switch)
-    switches = phase_rng.random(p_switch.size) < p_switch
-    switched = np.zeros(snp_ids.size, dtype=bool)
-    for name in np.unique(snp_chrom):
-        at = np.flatnonzero(snp_chrom == name)
-        switched[at] = np.cumsum(switches[at]) % 2 == 1
 
     rows, cols, points = hex_array(
         int(manifest.array["rows"]), int(manifest.array["columns"])
@@ -760,118 +767,196 @@ def draw(
     codes = manifest.barcodes
     whitelist = barcodes(rows.size, int(codes["length"]), codes["suffix"], id_rng)
     ids = sample_ids(len(manifest.slices), int(codes["sample_id_bytes"]), id_rng)
-    alpha = float(manifest.model["nb_dispersion"])
-    entry = float(manifest.model["snp_dispersion"])
+    labels = [
+        layout(manifest, piece, points, layout_rng)[0] + 1  # NB `normal` is clone 0.
+        for piece in manifest.slices
+    ]
+    combined = [np.array([f"{b}_{sid}" for b in whitelist]) for sid in ids]
+    truth = pd.concat(
+        pd.DataFrame(
+            {"labels": np.asarray(clones)[lab], "x": rows, "y": cols, "sample_id": sid},
+            index=pd.Index(names, name="barcode"),
+        )
+        for lab, sid, names in zip(labels, ids, combined, strict=True)
+    )
+    profile = truth_profile(tree, clones, manifest.genome["chromosome_lengths"])
+
+    paths: list[Path] = []
+    phases: list[np.ndarray] = []
+    width = len(str(len(realization_seeds) - 1))
+    for k, seed in enumerate(realization_seeds):
+        out = root / f"r{k:0{width}d}"
+        (out / "snp").mkdir(parents=True, exist_ok=True)
+        count_seed, phase_seed, capture_seed = seed.spawn(3)
+        rng = np.random.default_rng(count_seed)
+        switched = phased(p_switch, snp_chrom, np.random.default_rng(phase_seed))
+        capture = (
+            np.random.default_rng(capture_seed).gamma(
+                1 / dispersion, dispersion, snp_ids.size
+            )
+            if dispersion > 0
+            else np.ones(snp_ids.size)
+        )
+        snp_weights = _normalized(capture[:, None] * snp_factor)
+        a_blocks, b_blocks = [], []
+
+        for lab, sid, names in zip(labels, ids, combined, strict=True):
+            _write_slice(out / sid, manifest, laws, gene_weights, lab, names, rows, cols,
+                         baseline["gene"].to_numpy(), clones, rng)  # fmt: skip
+            a, b = _alleles(manifest, laws, snp_weights, share, switched, lab, rng)
+            a_blocks.append(a)
+            b_blocks.append(b)
+
+        _write_snps(out / "snp", combined, snp_ids, a_blocks, b_blocks)
+        truth.to_csv(out / "truth_clone_labels.tsv", sep="\t")
+        profile.to_csv(out / "truth_acn_profile.tsv", sep="\t", index=False)
+        tree_table(tree).to_csv(out / "truth_tree.tsv", sep="\t", index=False)
+        # NB the realized phase: True where the written `A` and `B` are exchanged,
+        #    in `unique_snp_ids.npy`'s order; a switch is a change within a chromosome.
+        np.save(out / "truth_phase.npy", switched)
+        write_inputs(manifest, out, ids, resources)
+        paths.append(out)
+        phases.append(switched)
+
+    return Drawn(root, paths, ids, clones, labels, tree, phases, p_switch)
+
+
+def phased(
+    p_switch: np.ndarray, chromosome: np.ndarray, rng: np.random.Generator
+) -> np.ndarray:
+    """One draw of the phase: switches at `p_switch`, their parity per chromosome."""
+    switches = rng.random(p_switch.size) < p_switch
+    switched = np.zeros(p_switch.size, dtype=bool)
+    for name in np.unique(chromosome):
+        at = np.flatnonzero(chromosome == name)
+        switched[at] = np.cumsum(switches[at]) % 2 == 1
+    return switched
+
+
+COMPRESSION_LEVEL = 1
+"""zlib level for the written counts: 2.8 s of 17.7 at level 6 on 2 x 3,000 spots."""
+
+
+def save_npz(path: Path, matrix: Any) -> None:
+    """`scipy.sparse.save_npz`'s format, deflated at `COMPRESSION_LEVEL`.
+
+    The same members `load_npz` reads -- `indices`, `indptr`, `format`,
+    `shape`, `data` -- written with `zipfile` at the level set, which
+    `numpy.savez_compressed` does not expose.
+    """
+    import zipfile
+
+    members = {
+        "indices": matrix.indices,
+        "indptr": matrix.indptr,
+        "format": np.array(matrix.format.encode("ascii")),
+        "shape": np.array(matrix.shape),
+        "data": matrix.data,
+    }
+    with zipfile.ZipFile(
+        path, "w", zipfile.ZIP_DEFLATED, compresslevel=COMPRESSION_LEVEL
+    ) as archive:
+        for name, array in members.items():
+            with archive.open(f"{name}.npy", "w", force_zip64=True) as stream:
+                np.lib.format.write_array(stream, np.asanyarray(array))
+
+
+def _normalized(weights: np.ndarray) -> np.ndarray:
+    """Each clone's column summing to 1: the library size is held per spot."""
+    return np.asarray(weights / weights.sum(axis=0, keepdims=True))
+
+
+def _write_slice(
+    out: Path,
+    manifest: DrawManifest,
+    laws: dict[str, Law],
+    weights: np.ndarray,
+    labels: np.ndarray,
+    names: np.ndarray,
+    rows: np.ndarray,
+    cols: np.ndarray,
+    genes: np.ndarray,
+    clones: tuple[str, ...],
+    rng: np.random.Generator,
+) -> None:
+    """One slice's `filtered_feature_bc_matrix.h5ad` and tissue positions."""
+    import anndata
+
+    from port.sim.kernels import draw_rows
+
+    depth = _lognormal(laws["spot_umi"], names.size, rng).astype(np.float64)
+    counts = draw_rows(
+        depth, weights, labels, float(manifest.model["nb_dispersion"]), rng
+    )
+
+    (out / "spatial").mkdir(parents=True, exist_ok=True)
+    anndata.AnnData(
+        X=counts,
+        obs=pd.DataFrame({"labels": np.asarray(clones)[labels]}, index=names),
+        var=pd.DataFrame(index=genes),
+    ).write_h5ad(
+        out / "filtered_feature_bc_matrix.h5ad",
+        compression="gzip",
+        compression_opts=COMPRESSION_LEVEL,
+    )
+    pd.DataFrame({0: names, 1: 1, 2: rows, 3: cols, 4: rows, 5: cols}).to_csv(
+        out / "spatial" / "tissue_positions_list.csv", header=False, index=False
+    )
+
+
+def _alleles(
+    manifest: DrawManifest,
+    laws: dict[str, Law],
+    weights: np.ndarray,
+    share: np.ndarray,
+    switched: np.ndarray,
+    labels: np.ndarray,
+    rng: np.random.Generator,
+) -> tuple[Any, Any]:
+    """One slice's written `A` and `B` reads: trials, then the planted haplotype's, then phase."""
+    import scipy.sparse
+
+    from port.sim.kernels import draw_rows
+
+    depth = _lognormal(laws["spot_snp_umi"], labels.size, rng).astype(np.float64)
+    trials = draw_rows(
+        depth, weights, labels, float(manifest.model["snp_dispersion"]), rng
+    ).tocoo()
+
+    p = share[labels[trials.row], trials.col]
     rho = float(manifest.model["bb_overdispersion"])
-
-    all_barcodes, a_blocks, b_blocks, truth, labels_out, counts_out = (
-        [],
-        [],
-        [],
-        [],
-        [],
-        [],
+    if rho > 0:
+        inner = (p > 0) & (p < 1)
+        scale = 1 / rho - 1
+        p = p.copy()
+        p[inner] = rng.beta(p[inner] * scale, (1 - p[inner]) * scale)
+    first = rng.binomial(trials.data, p)
+    second = trials.data - first
+    flip = switched[trials.col]
+    shape = trials.shape
+    at = (trials.row, trials.col)
+    return (
+        scipy.sparse.csr_matrix((np.where(flip, second, first), at), shape=shape),
+        scipy.sparse.csr_matrix((np.where(flip, first, second), at), shape=shape),
     )
-    for piece, sid in zip(manifest.slices, ids, strict=True):
-        tumour_labels, _ = layout(manifest, piece, points, layout_rng)
-        labels = tumour_labels + 1  # NB `normal` is clone 0 of `clones`.
-        combined = np.array([f"{b}_{sid}" for b in whitelist])
 
-        depth = _lognormal(laws["spot_umi"], rows.size, count_rng)
-        blocks = []
-        for start in range(0, rows.size, SPOT_CHUNK):
-            spots = np.arange(start, min(start + SPOT_CHUNK, rows.size))
-            q = gene_weights[:, labels[spots]].T
-            if alpha > 0:
-                q = q * count_rng.gamma(1 / alpha, alpha, q.shape)
-            q = q / q.sum(axis=1, keepdims=True)
-            blocks.append(
-                scipy.sparse.csr_matrix(count_rng.poisson(depth[spots, None] * q))
-            )
-        counts = scipy.sparse.vstack(blocks).tocsr().astype(np.int64)
 
-        slice_dir = out / sid
-        (slice_dir / "spatial").mkdir(parents=True, exist_ok=True)
-        anndata.AnnData(
-            X=counts,
-            obs=pd.DataFrame({"labels": np.asarray(clones)[labels]}, index=combined),
-            var=pd.DataFrame(index=baseline["gene"].to_numpy()),
-        ).write_h5ad(slice_dir / "filtered_feature_bc_matrix.h5ad", compression="gzip")
-        pd.DataFrame({0: combined, 1: 1, 2: rows, 3: cols, 4: rows, 5: cols}).to_csv(
-            slice_dir / "spatial" / "tissue_positions_list.csv",
-            header=False,
-            index=False,
-        )
+def _write_snps(
+    out: Path,
+    combined: list[np.ndarray],
+    snp_ids: np.ndarray,
+    a_blocks: list[Any],
+    b_blocks: list[Any],
+) -> None:
+    import scipy.sparse
 
-        snp_depth = _lognormal(laws["spot_snp_umi"], rows.size, count_rng)
-        trial_blocks = []
-        for start in range(0, rows.size, SPOT_CHUNK):
-            spots = np.arange(start, min(start + SPOT_CHUNK, rows.size))
-            w = snp_weights[None, :] * snp_factor[:, labels[spots]].T
-            if entry > 0:
-                w = w * count_rng.gamma(1 / entry, entry, w.shape)
-            w = w / w.sum(axis=1, keepdims=True)
-            trial_blocks.append(
-                scipy.sparse.csr_matrix(count_rng.poisson(snp_depth[spots, None] * w))
-            )
-        trials = scipy.sparse.vstack(trial_blocks).tocoo()
-
-        p = share[labels[trials.row], trials.col]
-        if rho > 0:
-            inner = (p > 0) & (p < 1)
-            scale = 1 / rho - 1
-            p = p.copy()
-            p[inner] = count_rng.beta(p[inner] * scale, (1 - p[inner]) * scale)
-        first = count_rng.binomial(trials.data, p)
-        second = trials.data - first
-        flip = switched[trials.col]
-        reported_a = np.where(flip, second, first)
-        reported_b = np.where(flip, first, second)
-        shape = (rows.size, snp_ids.size)
-        a_blocks.append(
-            scipy.sparse.csr_matrix((reported_a, (trials.row, trials.col)), shape=shape)
-        )
-        b_blocks.append(
-            scipy.sparse.csr_matrix((reported_b, (trials.row, trials.col)), shape=shape)
-        )
-
-        all_barcodes.append(combined)
-        truth.append(
-            pd.DataFrame(
-                {
-                    "labels": np.asarray(clones)[labels],
-                    "x": rows,
-                    "y": cols,
-                    "sample_id": sid,
-                },
-                index=pd.Index(combined, name="barcode"),
-            )
-        )
-        labels_out.append(labels)
-        counts_out.append(counts)
-
-    snp_dir = out / "snp"
-    (snp_dir / "barcodes.txt").write_text(
-        "\n".join(np.concatenate(all_barcodes)) + "\n"
-    )
-    np.save(snp_dir / "unique_snp_ids.npy", snp_ids.astype(object))
+    (out / "barcodes.txt").write_text("\n".join(np.concatenate(combined)) + "\n")
+    np.save(out / "unique_snp_ids.npy", snp_ids.astype(object))
     for name, blocks in (("A", a_blocks), ("B", b_blocks)):
-        scipy.sparse.save_npz(
-            snp_dir / f"cell_snp_{name}allele.npz",
-            scipy.sparse.vstack(blocks).tocsr().astype(np.int64),
+        save_npz(
+            out / f"cell_snp_{name}allele.npz",
+            scipy.sparse.vstack(blocks, format="csr").astype(np.int64),
         )
-
-    pd.concat(truth).to_csv(out / "truth_clone_labels.tsv", sep="\t")
-    truth_profile(tree, clones, manifest.genome["chromosome_lengths"]).to_csv(
-        out / "truth_acn_profile.tsv", sep="\t", index=False
-    )
-    tree_table(tree).to_csv(out / "truth_tree.tsv", sep="\t", index=False)
-    # NB the realized phase: True where the written `A` and `B` are exchanged,
-    #    in `unique_snp_ids.npy`'s order. A switch is a change within a chromosome.
-    np.save(out / "truth_phase.npy", switched)
-    write_inputs(manifest, out, ids, resources)
-
-    return Drawn(out, ids, clones, labels_out, tree, switched, p_switch, counts_out)
 
 
 def write_inputs(
@@ -934,7 +1019,8 @@ def main(argv: list[str] | None = None) -> int:
         manifest = replace(manifest, tables=_merge(manifest.tables, seed))
     drawn = draw(manifest, None if arguments.into is None else Path(arguments.into))
     print(
-        f"wrote {len(drawn.sample_ids)} slices to {drawn.path}; config {drawn.path / 'config.yaml'}"
+        f"wrote {len(drawn.realizations)} realizations of {len(drawn.sample_ids)} "
+        f"slices to {drawn.root}; configs {drawn.root}/r*/config.yaml"
     )
     return 0
 

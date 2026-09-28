@@ -7,6 +7,8 @@ extends = "calicost_grch38.toml"
 name = "dev_shared_unique"
 seed = 0
 output = "../generated"
+# NB count draws of the same clones, layout and phase, written as r0, r1, ...
+realizations = 1
 
 [cna]
 mode = "shared.unique"

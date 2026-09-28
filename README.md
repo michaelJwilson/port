@@ -329,11 +329,14 @@ genetic map's Haldane rate. Every assumption is a TOML key, and a manifest
 that omits one is refused; `sim/manifests/calicost_grch38.toml` states
 CalicoST's and a manifest `extends` it. Counts follow `sim/normal_baseline.txt`
 (λ per gene) and `sim/normal_coverage.toml`, both fitted on CalicoST's normal
-spots by `port.sim.normal_fit`. Samples land in `sim/generated/`, untracked;
-`tests.sim_audit` runs and scores one:
+spots by `port.sim.normal_fit`. `[sample] realizations` redraws the counts,
+spot coverage, SNP capture and phase over the same clones and layout, each a
+complete sample in `sim/generated/<name>/r<k>/`, untracked. `port.sim.kernels`
+draws the counts by NB inversion, compiled with `numba`: a 100 x 30 draw takes
+6-9 s. `tests.sim_audit` runs and scores one realization:
 
     python -m port.sim.draw sim/manifests/dev_tree.toml
-    python -m tests.sim_audit --sample generated/dev_tree -- --sal
+    python -m tests.sim_audit --sample generated/dev_tree/r0 -- --sal
 
 `tests/test_file_sizes.py` refuses a tracked or addable file above
 `[tool.port] max_file_bytes` (5 MB): GitHub rejects 100 MiB, and a clone keeps
