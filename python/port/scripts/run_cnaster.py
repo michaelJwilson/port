@@ -222,13 +222,15 @@ def _parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--sal-emission",
-        action="store_true",
+        action=argparse.BooleanOptionalAction,
+        default=True,
         help=(
             "score the coded NB/BB emission with sal's dense log-emission "
             "(#425): to 3.2e-12 of cnaster's kernels (3.5e-9 at the dispersion "
             "floor, where sal is the nearer the exact value), 3-9x the kernels "
             "at 100,000 codes, and no faster end to end, as CountEncoder dedup "
-            "leaves the kernels small. Off by default, not a --sal row."
+            "leaves the kernels small. **On by default**, off with "
+            "--no-sal-emission; not a --sal row."
         ),
     )
     parser.add_argument(
@@ -414,7 +416,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             from port.patch.hmm_nophasing import sal_emission
 
             # NB the coded emission from sal's tables (#425), a class flag
-            #    the `hmm_nophasing` swap reads, restored with the run.
+            #    the `hmm_nophasing` swap reads, restored with the run; under
+            #    `--no-patch` that swap is not installed and it reads nothing.
             stack.enter_context(sal_emission())
 
         if arguments.sal:

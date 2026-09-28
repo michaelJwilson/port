@@ -297,7 +297,8 @@ class hmm_nophasing(UPSTREAM):  # type: ignore[misc]
     emission_kernels: str = "cnaster"
     """`cnaster` (default) or `sal`: which kernels score the coded emission.
 
-    :func:`sal_emission` sets `sal`, which `--sal` enters (#425). A class
+    :func:`sal_emission` sets `sal`, which `run_cnaster` enters unless
+    `--no-sal-emission` (#425). A class
     attribute for the reason `apply_logmu_shift` is one; not a name rebind,
     because `cnaster`'s compiled kernels call `_nb_logpmf_1d` as a global and
     a Python function in its place breaks their compilation.
