@@ -197,11 +197,30 @@ Ordered as a run reaches them. The `ticket` column is what makes each row
 answerable: it names the issue carrying the ratio and the referee, so a row
 cannot be added here without a measurement behind it.
 
-**Every row here reproduces `cnaster` bitwise.** That is the property the
-whole-run test asserts, and it is why `FIGURE_SWAPS` is a separate table
-rather than three more rows: a figure written at half the dpi is a different
-file by design, and mixing the two would make "the patched run reproduces
-the unpatched one" a claim nobody could state.
+**Each row reproduces `cnaster` bitwise wherever `cnaster` is correct**, and
+the whole-run test asserts it on its fixture. Where a row departs, the
+departure is a stated fix, in its own docstring, and changes the result only
+in the regime named there (#466 lists them):
+
+- `get_aggregated_barcodes`: a slice id read from the barcode suffix (#446);
+- `assign_initial_blocks`: no block across two chromosomes;
+- `summarize_counts_for_bins`: the normal-spot filter's flagged genes left
+  out of every bin (#177), and a chromosome with no bins left out of
+  `lengths`;
+- `create_bin_ranges`: bins removed upstream dropped from the table (#105);
+- `get_sitewise_transmat`: cM per chromosome, `log 0.5` at each end, and a
+  segment's end at its last gene (#438);
+- `filter_normal_diffexp`: genes split on `,` (#165), and flagged genes
+  recorded for the bins (#177);
+- `construct_multislice_lattice_adjacency`: the lattice's own neighbours, 6
+  on a Visium hex grid, where `cnaster` takes 8 on scaled coordinates (#417);
+- `initialize_rectangular_clones`: new boundaries after 1,000 failed tries,
+  where `cnaster` loops (#304);
+- `normal_baf_bin_filter`: a removed bin's genes marked `is_interval =
+  False` (#105), and a chromosome with no bins left out of `lengths`.
+
+`FIGURE_SWAPS` is a separate table rather than more rows for another reason:
+a figure written at half the dpi is a different file by design, not a fix.
 """
 
 
@@ -392,11 +411,11 @@ merged all 16 sub-clones into one (ARI 0.000). The row keeps the mask;
 `port.patch.hmrf.clone_assignment` applies it while the problem is the one it
 was built for (`port.patch.hmrf.refinement`).
 
-**Its own table, and on by default**, because the clones change.
-`run_cnaster_port` installs it unless `--no-refinement-mask` is given, and
-`--no-patch` leaves it out with the rest.
+**Its own table, and off by default**, because the clones change.
+`run_cnaster_port --refinement-mask` installs it, and `--no-patch` leaves it
+out with the rest (#466: this said "on", the CLI never did).
 
-`--floor-merge`, also on by default, is the second half and needs no row:
+`--floor-merge`, also off by default, is the second half and needs no row:
 `port.patch.icm.floor.floor_merge()` makes `pipeline_clone_assignment` (in
 `SWAPS`) meet the clone-size floor smallest first, into each spot's best
 clone, at `hmrf.min_spots_per_clone`, instead of the sweep's all-at-once

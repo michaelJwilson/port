@@ -389,7 +389,9 @@ def normal_baf_bin_filter(
 
     Everything but `removal_indicator` is `cnaster`'s, in its order: the pooled
     counts, the one-state fit, the two patched parameters, the renumbering of
-    the survivors and the per-chromosome lengths. `nu`, `logphase_shift` and
+    the survivors and the per-chromosome lengths, except that a chromosome
+    whose bins are all removed is left out of `lengths` where `cnaster` writes
+    a 0 (#466). `nu`, `logphase_shift` and
     `geneticmap_file` are accepted and unused, as upstream -- the docstring
     promises a `log_sitewise_transmat` the function has never returned, and
     `run_cnaster` calls `get_sitewise_transmat` itself on the next line.

@@ -225,10 +225,12 @@ def _scaled_columns(counts: Any, factors: np.ndarray) -> Any:
     same array dtype and so truncates the same way -- the equality is the
     reason the two can share one caller.
 
-    **In place, on both paths**, and the result is returned rather than
-    discarded only so the caller reads as an assignment. Copying would
-    reinstate the allocation this exists to remove, and `cnaster`'s own form
-    -- `layers["count"][:, gene] = ...` -- mutates in place as well.
+    **The result is what the caller assigns** (#466). The loader's `adata`
+    is a view by then, and anndata copies a view on its first write: writing
+    into `counts` in place scales the copy, and assigning `counts` back then
+    restores the unscaled view, so the local outlier filter and the
+    downsampling were silently dropped on a dense layer. The dense path
+    therefore returns a new array; the sparse path already did.
     """
     if sp.issparse(counts):
         # NB CSR, and not CSC, because it is CSR whose `indices` are column
@@ -241,9 +243,7 @@ def _scaled_columns(counts: Any, factors: np.ndarray) -> Any:
 
         return scaled.asformat(counts.format)
 
-    counts[:, :] = (counts * factors).astype(counts.dtype)
-
-    return counts
+    return np.asarray(counts * factors).astype(counts.dtype)
 
 
 def _range_mask(unique_snp_ids: np.ndarray, ranges: pd.DataFrame) -> np.ndarray:
