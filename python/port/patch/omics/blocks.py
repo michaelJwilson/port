@@ -43,7 +43,7 @@ from cnaster.logger import get_logger
 from cnaster.omics import create_bin_ranges as _UPSTREAM_CREATE_BIN_RANGES
 from cnaster.spatio_genomic_counts import SpatioGenomicCounts
 
-from port.extensions.segments import observe
+from port.extensions.segments import current, observe
 from port.patch.reference import get_reference_genes
 
 logger = get_logger(__name__, start_time=start_time)
@@ -646,6 +646,14 @@ def summarize_counts_for_bins(
 
     gene_names = adata.var.index.to_numpy()
     columns, known = _positions(df_gene_snp.gene.to_numpy()[assigned], gene_names)
+
+    # NB genes the differential-expression filter flagged earlier in the run
+    #    leave the read depth of every bin summed after it (#440, #177): the
+    #    filter's own bins are re-cut before its result could be used.
+    lineage = current()
+    if lineage is not None and lineage.excluded_genes:
+        flagged = np.isin(gene_names[columns], list(lineage.excluded_genes))
+        known = known & ~flagged
 
     by_gene = _group_indicator(columns[known], bin_rank[known], len(gene_names), n_bins)
 

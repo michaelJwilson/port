@@ -450,6 +450,35 @@ def likelihoods(truth: CoreInferenceTruth, captured: Any) -> tuple[float, float]
     return fit, planted
 
 
+def plant_diffexp(
+    truth: CoreInferenceTruth, pre_image: Any, fold: float, n_genes: int
+) -> list[str]:
+    """Scale the `n_genes` highest-UMI genes by `fold` outside the balanced clone, in place.
+
+    A gene expressed `fold` times higher in the tumour spots with no copy
+    number behind it: what `filter_normal_diffexp` exists to remove, and what
+    moves a bin's read depth without a copy-number change if it does not.
+    Poisson-redrawn at the scaled mean from a fixed stream, so the counts stay
+    counts.
+    """
+    from scipy import sparse
+
+    from tests.fixtures import balanced_clone
+
+    adata = pre_image.adata
+    counts = np.asarray(adata.layers["count"])
+    top = np.argsort(counts.sum(axis=0))[::-1][:n_genes]
+    tumour = truth.labels != balanced_clone(truth)
+
+    rng = np.random.default_rng([truth.seed, 440])
+    block = counts[np.ix_(tumour, top)].astype(np.float64) * fold
+    counts[np.ix_(tumour, top)] = rng.poisson(block)
+
+    adata.layers["count"] = counts
+    adata.X = sparse.csr_matrix(counts) if sparse.issparse(adata.X) else counts.copy()
+    return [str(g) for g in adata.var.index[top]]
+
+
 def run_arm(
     truth: CoreInferenceTruth,
     flags: list[str],
@@ -463,6 +492,7 @@ def run_arm(
     m_step_tol: float | None = None,
     two_pass_normal: bool = False,
     calicost: bool = False,
+    diffexp: tuple[float, int] | None = None,
 ) -> tuple[Recovery, Path]:
     """Run `run_cnaster_port` with `flags` on `truth`'s inputs, and score it.
 
@@ -474,6 +504,9 @@ def run_arm(
     candidates of the scored run are the first run's fitted normal clone.
     `calicost` runs `run_calicost` on the same configuration instead, with
     `flags` passed to it (#347); the `cnaster` hooks above do not apply.
+    `diffexp = (fold, n_genes)` plants differential expression: the
+    `n_genes` highest-UMI genes scaled by `fold` in every spot outside the
+    balanced clone, before the inputs are written (#440).
     """
     import cnaster.scripts.run_cnaster as pipeline
     import port.patch.hmrf as patch
@@ -486,9 +519,10 @@ def run_arm(
     from tests.unsegment import unsegment
 
     root = Path(tempfile.mkdtemp())
-    written = write_tmp_inputs(
-        truth, unsegment(truth, flip_every=0, unassigned_genes=0), root
-    )
+    pre_image = unsegment(truth, flip_every=0, unassigned_genes=0)
+    if diffexp is not None:
+        plant_diffexp(truth, pre_image, *diffexp)
+    written = write_tmp_inputs(truth, pre_image, root)
     config = write_run_cnaster_config(
         written,
         truth,
@@ -690,6 +724,13 @@ def main() -> None:
         action="store_true",
         help="run run_calicost on the same inputs; flags go to it (#347)",
     )
+    parser.add_argument(
+        "--diffexp",
+        nargs=2,
+        type=float,
+        metavar=("FOLD", "N_GENES"),
+        help="plant N_GENES highest-UMI genes FOLD times up in tumour spots (#440)",
+    )
     parser.add_argument("flags", nargs=argparse.REMAINDER)
     arguments = parser.parse_args()
 
@@ -721,6 +762,11 @@ def main() -> None:
         m_step_tol=arguments.m_step_tol,
         two_pass_normal=arguments.two_pass_normal,
         calicost=arguments.calicost,
+        diffexp=(
+            None
+            if arguments.diffexp is None
+            else (arguments.diffexp[0], int(arguments.diffexp[1]))
+        ),
     )
     import resource
 
@@ -742,6 +788,7 @@ def main() -> None:
                 "states": arguments.states,
                 "outer": arguments.outer,
                 "iterations": arguments.iterations,
+                "diffexp": arguments.diffexp,
             }
         )
     )

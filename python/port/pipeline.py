@@ -149,6 +149,12 @@ SWAPS: tuple[Swap, ...] = (
         438,
     ),
     Swap(
+        "cnaster.normal_spot",
+        "filter_normal_diffexp",
+        "port.patch.normal_spot:filter_normal_diffexp",
+        440,
+    ),
+    Swap(
         "cnaster.spatial",
         "construct_multislice_lattice_adjacency",
         "port.patch.spatial:lattice_multislice_adjacency",
