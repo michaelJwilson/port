@@ -361,6 +361,35 @@ def test_the_range_file_removes_the_snps_inside_the_ranges_it_names(
     )
 
 
+@pytest.mark.cnaster
+@pytest.mark.patch
+def test_a_range_file_reads_the_same_with_or_without_the_chr_prefix(
+    tmp_path: Path,
+) -> None:
+    """`filter_ranges` equals `cnaster`'s on `chrN`, and reads bare `N` (#176).
+
+    `cnaster.filter.get_filter_ranges` raises `TypeError` on a file whose
+    chromosomes parse as integers; the prefixed form is the one it reads.
+    """
+    import pandas as pd
+    from cnaster.filter import get_filter_ranges
+    from port.patch.io import filter_ranges
+
+    rows = [(2, 500, 900), (1, 100, 300), (10, 5, 50), (1, 50, 80)]
+    prefixed = tmp_path / "prefixed.tsv"
+    bare = tmp_path / "bare.tsv"
+    prefixed.write_text("".join(f"chr{c}\t{s}\t{e}\n" for c, s, e in rows))
+    bare.write_text("".join(f"{c}\t{s}\t{e}\n" for c, s, e in rows))
+
+    upstream = get_filter_ranges(prefixed)
+
+    pd.testing.assert_frame_equal(filter_ranges(prefixed), upstream)
+    pd.testing.assert_frame_equal(filter_ranges(bare), upstream)
+
+    with pytest.raises(TypeError):
+        get_filter_ranges(bare)
+
+
 @pytest.mark.end2end
 @pytest.mark.cnaster
 @pytest.mark.parametrize(("name", "load_input_data"), _loaders())
@@ -543,32 +572,3 @@ def test_the_gene_filter_counts_the_path_rather_than_the_genes(
     filtered = upstream(gate_config, filter_gene_file=str(gene_file))
 
     assert "gene_0_0" not in set(map(str, filtered.adata.var.index))
-
-
-@pytest.mark.cnaster
-@pytest.mark.patch
-def test_a_range_file_reads_the_same_with_or_without_the_chr_prefix(
-    tmp_path: Path,
-) -> None:
-    """`filter_ranges` equals `cnaster`'s on `chrN`, and reads bare `N` (#176).
-
-    `cnaster.filter.get_filter_ranges` raises `TypeError` on a file whose
-    chromosomes parse as integers; the prefixed form is the one it reads.
-    """
-    import pandas as pd
-    from cnaster.filter import get_filter_ranges
-    from port.patch.io import filter_ranges
-
-    rows = [(2, 500, 900), (1, 100, 300), (10, 5, 50), (1, 50, 80)]
-    prefixed = tmp_path / "prefixed.tsv"
-    bare = tmp_path / "bare.tsv"
-    prefixed.write_text("".join(f"chr{c}\t{s}\t{e}\n" for c, s, e in rows))
-    bare.write_text("".join(f"{c}\t{s}\t{e}\n" for c, s, e in rows))
-
-    upstream = get_filter_ranges(prefixed)
-
-    pd.testing.assert_frame_equal(filter_ranges(prefixed), upstream)
-    pd.testing.assert_frame_equal(filter_ranges(bare), upstream)
-
-    with pytest.raises(TypeError):
-        get_filter_ranges(bare)

@@ -159,27 +159,6 @@ def _without_nan(values: np.ndarray) -> np.ndarray:
     return np.where(nan, 0.0, values)
 
 
-def filter_ranges(filter_range_file: Any) -> pd.DataFrame:
-    """`cnaster.filter.get_filter_ranges`, reading bare-integer chromosomes too.
-
-    `cnaster` decides whether to strip a `chr` prefix with `"chr" in
-    ranges.Chr.iloc[0]`, which raises `TypeError` when the column parses as
-    integers (#176), so only the `chrN` form was readable. Here each value is
-    read as a string and a `chr` prefix stripped where present; the result is
-    `cnaster`'s -- integer `Chr`, sorted by `Chr` and `Start` -- for either form.
-    """
-    ranges = pd.read_csv(
-        filter_range_file, header=None, sep="\t", names=["Chr", "Start", "End"]
-    )
-    ranges["Chr"] = [
-        int(str(x)[3:]) if str(x).startswith("chr") else int(x)
-        for x in ranges.Chr.to_numpy()
-    ]
-    ordered: pd.DataFrame = ranges.sort_values(by=["Chr", "Start"])
-
-    return ordered
-
-
 def _spaceranger_counts(
     spaceranger_dir: str, config: Any, *, sparse_counts: bool
 ) -> Any:
@@ -265,6 +244,27 @@ def _scaled_columns(counts: Any, factors: np.ndarray) -> Any:
     counts[:, :] = (counts * factors).astype(counts.dtype)
 
     return counts
+
+
+def filter_ranges(filter_range_file: Any) -> pd.DataFrame:
+    """`cnaster.filter.get_filter_ranges`, reading bare-integer chromosomes too.
+
+    `cnaster` decides whether to strip a `chr` prefix with `"chr" in
+    ranges.Chr.iloc[0]`, which raises `TypeError` when the column parses as
+    integers (#176), so only the `chrN` form was readable. Here each value is
+    read as a string and a `chr` prefix stripped where present; the result is
+    `cnaster`'s -- integer `Chr`, sorted by `Chr` and `Start` -- for either form.
+    """
+    ranges = pd.read_csv(
+        filter_range_file, header=None, sep="\t", names=["Chr", "Start", "End"]
+    )
+    ranges["Chr"] = [
+        int(str(x)[3:]) if str(x).startswith("chr") else int(x)
+        for x in ranges.Chr.to_numpy()
+    ]
+    ordered: pd.DataFrame = ranges.sort_values(by=["Chr", "Start"])
+
+    return ordered
 
 
 def _range_mask(unique_snp_ids: np.ndarray, ranges: pd.DataFrame) -> np.ndarray:
