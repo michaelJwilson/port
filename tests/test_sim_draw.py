@@ -427,3 +427,20 @@ def test_streamed_realizations_are_the_written_ones(
         a = scipy.sparse.load_npz(path / "snp" / "cell_snp_Aallele.npz")
         assert (r.a != a).nnz == 0
         np.testing.assert_array_equal(r.phase, np.load(path / "truth_phase.npy"))
+
+
+@pytest.mark.analytic
+def test_a_manifest_extended_from_elsewhere_keeps_its_base_paths(
+    tmp_path: Path,
+) -> None:
+    """Relative paths resolve against the file stating them, not the one extending it."""
+    child = tmp_path / "elsewhere" / "child.toml"
+    child.parent.mkdir()
+    child.write_text(
+        f'version = 3\nextends = "{MANIFESTS / "dev_tree.toml"}"\n'
+        '[sample]\nname = "child"\n'
+    )
+    manifest = from_document(extended(child), child.parent)
+
+    assert manifest.resolve(manifest.reference["coverage"]).exists()
+    assert manifest.resolve(manifest.config["base"]).exists()

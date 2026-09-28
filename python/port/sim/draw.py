@@ -219,11 +219,38 @@ def extended(path: Path) -> dict[str, Any]:
     Tables merge key by key and the extending file wins; `[[slice]]` and
     every other value it states replace the base's.
     """
-    document = tomllib.loads(path.read_text())
+    document = _anchored(tomllib.loads(path.read_text()), path.parent)
     parent = document.pop("extends", None)
     if parent is None:
         return document
     return _merge(extended(path.parent / parent), document)
+
+
+PATH_KEYS = (
+    ("sample", "output"),
+    ("reference", "baseline"),
+    ("reference", "coverage"),
+    ("reference", "snps"),
+    ("config", "base"),
+)
+"""Keys holding a path relative to the file that states them."""
+
+
+def _anchored(document: dict[str, Any], directory: Path) -> dict[str, Any]:
+    """Each relative path in `PATH_KEYS` made absolute against `directory`.
+
+    So a key keeps its meaning when the file it is in is extended from
+    another directory; a `$VARIABLE` path is left for `resolve` to expand.
+    """
+    for table, key in PATH_KEYS:
+        value = document.get(table, {}).get(key)
+        if (
+            isinstance(value, str)
+            and not value.startswith("$")
+            and not Path(value).is_absolute()
+        ):
+            document[table][key] = str((directory / value).resolve())
+    return document
 
 
 def _merge(base: dict[str, Any], over: dict[str, Any]) -> dict[str, Any]:
