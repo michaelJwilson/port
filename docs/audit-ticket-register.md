@@ -42,7 +42,7 @@ clause, so each wants a one-minute read before closing.
 | 128 | The oracle surface is 37.70 per cent | `test_oracle_correspondence.py`; #130 merged |
 | 106 | The fixture plants no balanced clone | `test_normal_state.py`; #118 merged |
 | 89 | Validate `determine_normal_baseline` | #162, "Judge the normal baseline against the planted exposure" |
-| 116 | `cnaster` should emit a simulation manifest | `python/port/patch/simulation_manifest.py` and its test; the ticket body is the upstream report its "Done when" asks for |
+| 116 | `cnaster` should emit a simulation manifest | `port.sandbox.sim_from_run` writes a version-3 manifest from a run's outputs (#460), replacing the YAML record; the ticket body is the upstream report its "Done when" asks for |
 | 25 | Referee the integer copy fit against exhaustive enumeration | `test_integer_copy.py`, eight tests including the lattice, the planted copies and the credible set's coverage rate |
 | 12 | Audit the spatial graph and smoothing | `test_pseudobulk_and_adjacency.py`, `test_preprocessing_spatial.py` |
 | 96 | `initial_phase_given_partition` is the one prep stage stepped over | `test_phasing_bench.py`; #129 merged |
