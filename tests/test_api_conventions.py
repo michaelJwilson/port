@@ -34,6 +34,7 @@ KNOWN: dict[str, str] = {
     "port.patch.icm.alpha_expansion:potts_graph_from arg beta": "F2",
     "port.patch.icm.alpha_expansion:potts_energy arg beta": "F2",
     "port.patch.icm.alpha_expansion:alpha_expansion_sweep arg beta": "F2",
+    "port.patch.icm.alpha_expansion:forbidden_as_finite arg beta": "F2",
     "port.patch.icm.alpha_expansion:alpha_expansion_sweep arg tol": "F8",
     "port.extensions.label_solver:expansion_then_floor arg beta": "F2",
     "port.extensions.label_solver:sal_icm_sweep arg beta": "F2",
