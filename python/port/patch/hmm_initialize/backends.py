@@ -211,10 +211,14 @@ def sal_emission_backend(
     no standardization and no inverse -- #229's steps 2, 3 and 11 do not exist
     on this path.
 
-    Regime-limited by construction: `count_pair_family`'s `constant_covariate`
-    raises where the exposure or trial count varies across bins, because
-    upstream carries one of each per state (#57, #65). That refusal is the
-    honest behaviour, not a gap to paper over.
+    **Each bin's exposure and trial count enter as its covariate** (#410, sal
+    #1083/#1127): the total is scored against `base_nb_mean` and the
+    successes out of `total_bb_RD`, per observation, which is `cnaster`'s
+    density to 2.9e-13 (`tests/test_hmm_init_select.py`). Before sal #1083
+    the family carried one exposure per state and this backend refused
+    anything else (#57, #65). A bin with zero exposure is left out of the
+    fit: `cnaster` scores its total as uninformative, and sal's family has
+    no mean to score it at.
     """
     import torch
     from sal.emissions import CountPairEmission
@@ -225,23 +229,46 @@ def sal_emission_backend(
         plus_plus_start,
     )
 
-    from port.extensions.emission_family import constant_covariate
-
-    exposure = constant_covariate(np.asarray(base_nb_mean), "base_nb_mean")
-    trials = constant_covariate(np.asarray(total_bb_RD), "total_bb_RD")
+    def column(values: np.ndarray) -> np.ndarray:
+        array = np.asarray(values, dtype=np.float64)
+        return array[:, 0] if array.ndim == 2 else array
 
     totals = np.asarray(X[:, 0, 0] if X.ndim == 3 else X[:, 0], dtype=np.float64)
     successes = np.asarray(X[:, 1, 0] if X.ndim == 3 else X[:, 1], dtype=np.float64)
-    observations = np.column_stack([totals, successes])
+    exposure, trials = column(base_nb_mean), column(total_bb_RD)
+
+    kept = exposure > 0.0
+
+    if not kept.any():
+        msg = "every bin has zero exposure; there is no total to fit"
+        raise ValueError(msg)
+
+    observations = np.column_stack([totals, successes])[kept]
+    covariate = np.column_stack([exposure, trials])[kept]
+
+    # NB seeding reads rates, not counts, under a covariate (sal #933): a
+    #    success rate out of zero trials is read as the pooled one.
+    pooled = successes[kept].sum() / max(trials[kept].sum(), 1.0)
+    rates = np.column_stack(
+        [
+            observations[:, 0] / covariate[:, 0],
+            np.divide(
+                observations[:, 1],
+                covariate[:, 1],
+                out=np.full(observations.shape[0], pooled),
+                where=covariate[:, 1] > 0,
+            ),
+        ]
+    )
 
     rng = np.random.default_rng(seed)
     seeding = CountPairSeeding(
         dispersion=1.0 / DEFAULT_ALPHA,
         concentration=DEFAULT_TAU,
         joint=False,
-        trials=trials,
+        trials=max(float(np.rint(np.median(covariate[:, 1]))), 1.0),
     )
-    components = plus_plus_start(observations, n_states, seeding, rng)
+    components = plus_plus_start(rates, n_states, seeding, rng)
     weights = torch.full((n_states,), 1.0 / n_states, dtype=torch.float64)
 
     # NB the tolerance is the one the keyword form defaulted to before the
@@ -251,6 +278,7 @@ def sal_emission_backend(
         weights,
         components,
         EmConfig(max_iterations=max_iterations, tolerance=1e-10),
+        covariate=covariate,
     )
 
     # NB back into `cnaster`'s parameters, the inverse of
@@ -259,10 +287,9 @@ def sal_emission_backend(
     #    Upstream names three of the four directly: `rate` is the
     #    beta-binomial's mean, which is `p_binom`; `concentration` is
     #    `alpha + beta`, which is `tau`; and the negative binomial is its own
-    #    object under `total`, carrying `dispersion = 1 / alphas`. Only the
-    #    exposure has to be divided back out, because upstream folds it into
-    #    the mean and `cnaster` keeps it separate -- which is the covariate
-    #    gap (#57, #65) showing up as one line of arithmetic.
+    #    object under `total`, carrying `dispersion = 1 / alphas`. The
+    #    exposure is a covariate here, as it is in `cnaster`, so the fitted
+    #    mean is already per unit exposure and `log_mu` is its log.
     fitted = fit.components
 
     if not (isinstance(fitted, CountPairEmission)):  # invariant
@@ -276,7 +303,7 @@ def sal_emission_backend(
 
     return Candidate(
         backend="sal_emission",
-        log_mu=np.log(np.maximum(depth, 1e-12) / exposure),
+        log_mu=np.log(np.maximum(depth, 1e-12)),
         p_binom=rate,
         alphas=1.0 / np.maximum(dispersion, 1e-12),
         taus=concentration,
