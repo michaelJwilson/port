@@ -100,7 +100,6 @@ jobs:
         with:
           name: figures
           path: |
-            docs/plots/*.pdf
             docs/plots/*.png
             docs/plots/*.npz
-            docs/plots/lattice/*.pdf
+            docs/plots/lattice/*.png

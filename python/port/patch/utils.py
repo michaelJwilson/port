@@ -63,6 +63,9 @@ own it is a regression.
 
 from __future__ import annotations
 
+import contextlib
+from collections.abc import Iterator
+from pathlib import Path
 from typing import Any
 
 import matplotlib.pyplot as plt
@@ -182,6 +185,26 @@ def collapse_rasterizing_groups(fig: Any, strategy: str = "sink") -> tuple[int, 
     return collapsed, folded
 
 
+_PNG_COPIES = [False]
+"""Whether `write_fig` also writes a PNG beside each PDF; see `png_copies`."""
+
+
+@contextlib.contextmanager
+def png_copies() -> Iterator[None]:
+    """`write_fig` writes `<name>.png` beside each `<name>.pdf` while this is open.
+
+    For the figures committed under `docs/plots/` (#452): a matplotlib PDF
+    carries its creation time, so two runs of the same code differ byte for
+    byte; a PNG written without metadata does not. The PDF is still written,
+    and `cnaster`'s behaviour is unchanged outside this context.
+    """
+    _PNG_COPIES[0] = True
+    try:
+        yield
+    finally:
+        _PNG_COPIES[0] = False
+
+
 def write_fig(
     opath: str,
     fig: Any = None,
@@ -224,6 +247,16 @@ def write_fig(
         bbox_inches=bbox_inches,
         dpi=dpi,
     )
+
+    if _PNG_COPIES[0]:
+        fig.savefig(
+            Path(opath).with_suffix(".png"),
+            format="png",
+            facecolor="white",
+            bbox_inches=bbox_inches,
+            dpi=dpi,
+            metadata={"Software": None},
+        )
 
     plt.close(fig)
 

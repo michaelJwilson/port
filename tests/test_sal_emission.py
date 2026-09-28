@@ -158,3 +158,12 @@ def test_the_class_under_sal_emission_scores_as_it_does_under_cnasters(
     for mine, reference in zip(ours, theirs, strict=True):
         assert mine.shape == reference.shape
         np.testing.assert_allclose(mine, reference, rtol=0, atol=1e-10)
+
+
+@pytest.mark.infra
+def test_run_cnaster_scores_with_sal_s_kernels_unless_told_not_to() -> None:
+    """`--sal-emission` is the default (#425), and `--no-sal-emission` turns it off."""
+    from port.scripts.run_cnaster import _parser
+
+    assert _parser().parse_args([]).sal_emission is True
+    assert _parser().parse_args(["--no-sal-emission"]).sal_emission is False

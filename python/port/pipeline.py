@@ -95,6 +95,12 @@ class Site:
 SWAPS: tuple[Swap, ...] = (
     Swap("cnaster.io", "load_input_data", "port.patch.io:load_input_data", 186),
     Swap(
+        "cnaster.io",
+        "get_aggregated_barcodes",
+        "port.patch.io:get_aggregated_barcodes",
+        446,
+    ),
+    Swap(
         "cnaster.reference",
         "get_reference_genes",
         "port.patch.reference:get_reference_genes",
@@ -129,6 +135,12 @@ SWAPS: tuple[Swap, ...] = (
         "summarize_counts_for_bins",
         "port.patch.omics:summarize_counts_for_bins",
         198,
+    ),
+    Swap(
+        "cnaster.recomb",
+        "get_sitewise_transmat",
+        "port.patch.recomb:get_sitewise_transmat",
+        438,
     ),
     Swap(
         "cnaster.spatial",
