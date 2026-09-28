@@ -36,7 +36,6 @@ from typing import Any
 from port.pipeline import (
     COPY_SWAPS,
     FIGURE_SWAPS,
-    NUMERIC_SWAPS,
     PLOT_OFF_SWAPS,
     REFINEMENT_SWAPS,
     SHIFT_SWAPS,
@@ -205,19 +204,6 @@ def _parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
-        "--approx",
-        action=argparse.BooleanOptionalAction,
-        default=None,
-        help=(
-            "install the replacements that agree to a tolerance rather than "
-            "bitwise: the vectorized negative-binomial log-pmf (#240). **Off "
-            "by default**: it is 1.78x on the kernel and nothing on a whole "
-            "run, and the 8.6e-13 disagreement moves one segment's integer "
-            "copy number by 3 (#244). Available for measuring that, not for "
-            "running production with."
-        ),
-    )
-    parser.add_argument(
         "--rust",
         action=argparse.BooleanOptionalAction,
         default=None,
@@ -295,11 +281,6 @@ def main(argv: Sequence[str] | None = None) -> int:
     if arguments.list:
         for swap in SWAPS:
             print(f"{swap.module}.{swap.name} <- {swap.replacement}  (#{swap.ticket})")
-        for swap in NUMERIC_SWAPS:
-            print(
-                f"{swap.module}.{swap.name} <- {swap.replacement}  "
-                f"(#{swap.ticket}, agrees to a tolerance; --no-approx to omit)"
-            )
         for swap in FIGURE_SWAPS:
             print(
                 f"{swap.module}.{swap.name} <- {swap.replacement}  "
@@ -391,12 +372,6 @@ def main(argv: Sequence[str] | None = None) -> int:
             if arguments.figure_swaps is None
             else arguments.figure_swaps
         )
-        # NB **off** unless asked for. Measured on a whole run at
-        #    4,000 x 1,980 x 5: it recovers -1.04 s and -0.051 GB -- nothing,
-        #    within noise -- while moving one segment's integer copy number by
-        #    3 (#244). The 1.78x kernel ratio does not survive `CountEncoder`
-        #    dedup, which is what #240 warned it might not.
-        approx = bool(arguments.approx)
         # NB **on** unless refused, and off with `--no-patch` for the same
         #    reason the figures are: a baseline arm that fits a different
         #    model is not a baseline. The clone assignment applies the shift
@@ -448,8 +423,6 @@ def main(argv: Sequence[str] | None = None) -> int:
                 selected = tuple(
                     swap for swap in SWAPS if swap.name == "pipeline_clone_assignment"
                 )
-        if approx:
-            selected = selected + NUMERIC_SWAPS
         if figures:
             selected = selected + FIGURE_SWAPS
         if arguments.sample_layout is not None:
@@ -549,7 +522,6 @@ def main(argv: Sequence[str] | None = None) -> int:
                 + (", refinement mask" if refinement_mask else "")
                 + (", floor merged smallest first" if floor else "")
                 + (", distinct initial states" if distinct else "")
-                + (", approx included" if approx else "")
                 + (", shift included" if shift else "")
                 + (", rust lattices" if rust else "")
                 + (", sal included" if arguments.sal else "")
@@ -575,7 +547,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         #    two arms print the same rows and `write_fig` can be compared
         #    against itself rather than inferred from the whole-run delta.
         spent = (
-            stack.enter_context(instrumented(SWAPS + NUMERIC_SWAPS + FIGURE_SWAPS))
+            stack.enter_context(instrumented(SWAPS + FIGURE_SWAPS))
             if arguments.time_stages
             else None
         )
@@ -598,7 +570,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if not (arguments.no_outputs or arguments.no_patch):
         _write_outputs(
             arguments.config,
-            {"figures": figures, "approx": approx, "shift": shift},
+            {"figures": figures, "shift": shift},
             lineage.table(),
         )
 

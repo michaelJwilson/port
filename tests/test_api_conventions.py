@@ -66,7 +66,6 @@ KNOWN: dict[str, str] = {
     "port.patch.normal_spot:removal_indicator arg beta": "F2",
     "port.extensions.integer_copy:success_probability_variance arg alpha": "F3",
     "port.extensions.integer_copy:success_probability_variance arg beta": "F2",
-    "port.patch.hmm_nophasing.nb_logpmf:nb_logpmf_1d arg alpha": "F3",
     "port.extensions.copy_likelihood:Pseudobulk field alpha": "F3",
     "port.extensions.copy_likelihood:Pseudobulk field tau": "F5",
     "port.extensions.copy_likelihood:Pseudobulk field total_bb_rd": "F5",

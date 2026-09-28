@@ -51,7 +51,6 @@ from typing import Any
 __all__ = [
     "COPY_SWAPS",
     "FIGURE_SWAPS",
-    "NUMERIC_SWAPS",
     "PLOT_OFF_SWAPS",
     "REFINEMENT_SWAPS",
     "SHIFT_SWAPS",
@@ -219,52 +218,8 @@ in the regime named there (#466 lists them):
 - `normal_baf_bin_filter`: a removed bin's genes marked `is_interval =
   False` (#105), and a chromosome with no bins left out of `lengths`.
 
-`FIGURE_SWAPS` is a separate table rather than more rows for another reason:
+`FIGURE_SWAPS` is a separate table rather than more rows for a different reason:
 a figure written at half the dpi is a different file by design, not a fix.
-"""
-
-
-NUMERIC_SWAPS: tuple[Swap, ...] = (
-    Swap(
-        "cnaster.hmm_nophasing",
-        "_nb_logpmf_1d",
-        "port.patch.hmm_nophasing:nb_logpmf_1d",
-        240,
-    ),
-)
-"""The replacements that agree to a **tolerance** rather than bitwise.
-
-A third table for the same reason `FIGURE_SWAPS` is a second one: `SWAPS`
-carries a claim -- every row reproduces `cnaster` byte for byte -- and a row
-that agrees to 8.6e-13 does not make it. Putting it in `SWAPS` would not have
-made the claim false quietly; it would have made
-`tests/test_patched_entry_point.py` fail, which is the guard working. This is
-the honest place for it.
-
-**Off by default, and the reason is a measurement rather than caution.** On
-the kernel it is 1.78x across ten states. On a **whole run** at
-4,000 x 1,980 x 5 it recovers **-1.04 s and -0.051 GB** -- nothing, within
-noise -- because the live path goes through `CountEncoder` dedup before
-reaching the kernel, which is what #240 flagged as the thing that could make
-the ratio not survive. It did not survive.
-
-And it is not free. The 8.6e-13 disagreement -- round-off from
-`scipy.special.gammaln` against libm's `lgamma` -- propagates through the EM
-to a 3.2e-3 change in the fitted parameters and **flips one segment's integer
-copy number by 3** (#244). A patch that changes a scientific output for no
-measured gain is not a default; `--approx` is how it is turned on to study
-that amplification, which is the only thing it is currently good for.
-
-The 3.51x prefix-sum form needs a `k_max` bound and a fallback nothing has
-measured, and would have to clear the same whole-run test before it could
-default either.
-
-**Broken as it stands (#466).** `cnaster`'s `_dense_nb_logpmf` is
-`@njit(cache=True)` and reads this name as a global when it compiles: with a
-cold numba cache the run raises `TypingError`, and with a warm one it runs
-`cnaster`'s kernel. Under the entry point's default sal emission the fit
-never calls it. The measurements above predate both, and the row is below
-`CLAUDE.md`'s 2x bar.
 """
 
 
