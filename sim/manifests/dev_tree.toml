@@ -1,0 +1,36 @@
+# Three tumour clones on a mutation tree, two slices (#445).
+# `python -m port.sim.draw sim/manifests/dev_tree.toml`
+version = 3
+extends = "calicost_grch38.toml"
+
+[sample]
+name = "dev_tree"
+seed = 0
+output = "../generated"
+# NB count draws of the same clones, layout and phase, written as r0, r1, ...
+realizations = 1
+
+[cna]
+mode = "tree"
+# NB one event on the ancestor's edge, so the tree is not CalicoST's star.
+per_internal = 1
+
+[cna.length]
+law = "exponential"
+# NB CalicoST's easy sample, cnasize5e7: the mean event length.
+mean = 5e7
+minimum = 5e6
+
+[phasing]
+# NB switches at cnaster's assumed rate: Numbat's law in cM, nu = 1.
+switch_errors = true
+
+[[slice]]
+# NB slices sit in one frame, offset in fractions of the array: the second
+#    overlaps the first's right half, so clone_1, listed on both, sits there.
+offset = [0.0, 0.0]
+clones = ["clone_0", "clone_1"]
+
+[[slice]]
+offset = [0.5, 0.0]
+clones = ["clone_1", "clone_2"]

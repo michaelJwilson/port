@@ -21,12 +21,14 @@ from port.patch.hmm_nophasing.nb_logpmf import (
     nb_logpmf_1d,
 )
 from port.patch.hmm_nophasing.shifted_emission import (
+    finite_difference,
     hmm_nophasing,
     logmu_shift,
     sal_emission,
 )
 
 __all__ = [
+    "finite_difference",
     "hmm_nophasing",
     "log_factorial",
     "logmu_shift",

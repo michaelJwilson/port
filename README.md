@@ -310,6 +310,20 @@ from Rust. On the dev instance a default run takes 29.8 s against 36.5 s
 with `--no-rust`. The four kernels are 4.3x to 6.1x faster warm at
 `K = 10`, 10,000 bins and 20 spots, on four cores.
 
+**`--sal-emission` is on by default** (#425). It scores the coded NB/BB
+emission with `snakes_and_ladders`' dense log-emission, to 3.2e-12 of
+`cnaster`'s kernels. On the dev instance the default run's clone ARI rises
+0.7927 to 0.8653 and its integer ARI 0.9242 to 0.9905, fitting 5 clones for 4
+rather than 6; the lattice fixture is unchanged at 0.9985. It is not faster end
+to end. `--no-sal-emission` restores `cnaster`'s kernels.
+
+**The M step's gradient is closed form** (#433). `cnaster` fits the
+emission by BFGS with a finite-difference gradient, one objective call per
+packed coordinate; `port` supplies the derivative instead
+(`port.patch.hmm_nophasing.gradient`), pinned against `jax`'s. On the dev
+instance the M step falls from 11.1 s to 2.0 s. `finite_difference()`
+restores `cnaster`'s gradient for a block.
+
 **The spatial graph is validated before the HMRF sees it** (#417). The run
 builds it from `port.extensions.adjacency`: by default each spot's `k`
 nearest (`PORT_ADJACENCY=knn`), with `k` the lattice's coordination -- 8 on a
@@ -352,6 +366,43 @@ replaces the CalicoST constants that have a `cnaster` counterpart;
 CalicoST's `rectangle_initialize_initial_clone` never returns (`cnaster` #248).
 `python -m tests.recovery_audit --calicost` scores it with port's scorer.
 
+**`port.sim.draw`** (#445) draws new samples from a version-3 manifest:
+clones from CalicoST's `shared.unique` counts or a mutation tree
+(`snakes_and_ladders`' `random_topology`, rooted at `normal`), fixed or
+exponential event lengths, one or more slices with clones on N-gon regions,
+Visium barcodes with hexadecimal `sample_id`s, and phase switches at the
+genetic map's Haldane rate. Every assumption is a TOML key, and a manifest
+that omits one is refused; `sim/manifests/calicost_grch38.toml` states
+CalicoST's and a manifest `extends` it. Counts follow `sim/normal_baseline.txt.gz`
+(λ per gene) and `sim/normal_coverage.toml`, both fitted on CalicoST's normal
+spots by `port.sim.normal_fit` (#455). A spot's genes are
+`Multinomial(N_s, p_s)`, `p_s ~ Dirichlet(κ λ d_c)` with `d` the clone's
+`(A + B) / 2` and `N_s` the `spot_umi` law times `Σ λ d_c`, so a gain grows
+the library; κ = 100 matches the normal spots' per-(gene, spot) nonzero share
+(0.90%) and `log10` moments. Each (SNP, spot) is drawn independently from the
+`snp_spot_umi` law. `[sample] realizations` redraws the counts and phase over
+the same clones and layout, each a complete sample in
+`sim/generated/<name>/r<k>/`, untracked; `dev_tree` draws in 9.4 s.
+`tests.sim_audit` runs and scores one realization:
+
+    python -m port.sim.draw sim/manifests/dev_tree.toml
+    python -m tests.sim_audit --sample generated/dev_tree/r0 -- --sal
+
+`port.sandbox.sim_from_run` (#460, set aside) writes a version-3 manifest
+from a finished run's `clone_labels.tsv` and `cnv_segments.tsv`: its clones,
+shared and unique events, states, array and slices. What a run does not
+measure -- slice offsets, the tree, normal fractions -- is left commented, so
+the manifest draws only once the offsets are stated:
+
+    python -m port.sandbox.sim_from_run <run dir> > sim/manifests/<name>.toml
+
+`tests/test_file_sizes.py` refuses a tracked or addable file above
+`[tool.port] max_file_bytes` (5 MB): GitHub rejects 100 MiB, and a clone keeps
+every version. CalicoST's samples and `sim/normal_baseline.txt.gz` are
+stored compressed (`port.sim.files`, deterministic gzip where the format is
+not compressed already); `tests.sim_fixtures.stage` writes a run's inputs
+out plain under the names `cnaster` opens.
+
 `cnaster` appends a fit record to `cnaster.perf` in the repository root on
 every run. It is **not tracked** (#222): nothing reads it, no test
 references it, and its rows carry no commit or instance, so it is a log
@@ -365,6 +416,7 @@ trains a reader to ignore `git status`.
 | `python/port/` | The Python package; `python-source` in `pyproject.toml` |
 | `src/` | The Rust crate `oxiport`, bound as `port.oxiport` |
 | `tests/` | The suite; `testpaths` in `pyproject.toml` |
+| `sim/` | CalicoST's simulated samples, their normal fits, and `manifests/` that draw them |
 | `Cargo.toml` | The single source of the version, which maturin reads across |
 
 # Infrastructure
@@ -398,7 +450,7 @@ not carry, not before.
 | [TICKETS.md](TICKETS.md) | What is filed and not done, grouped by the milestone it serves |
 | [STATUS.md](STATUS.md) | What has landed, with the measurement that established it |
 | [CLAUDE.md](CLAUDE.md) | The rules |
-| [docs/metrics.md](docs/metrics.md) | One row per recovery run: commit, fixture hash, arguments, clone/copy/state ARI, wall, peak (#409) |
+| [docs/metrics.md](docs/metrics.md) | One row per recovery run: commit, timestamp, fixture hash, test, arguments, clone/copy/state ARI, wall, peak, note (#409) |
 | [docs/templates/](docs/templates/README.md) | Templates for documents made outside the code: the work-in-flight page (#335) |
 
 `DEV.md`, `INSTALL.md` and `CHANGELOG.md` are added when the content for them
