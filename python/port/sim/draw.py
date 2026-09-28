@@ -27,7 +27,7 @@ per-entry laws `port.sim.normal_fit` fits on CalicoST's normal spots (#455):
   gene's expected UMI is `N_s lambda_g d_g(c)`, so its read-depth ratio to
   normal is `d_g(c) = (1 - f) (A + B) / 2 + f`, the admixture law's depth
   factor at the gene's `(A, B)`, `f = normal_frac`. `lambda` is
-  `normal_baseline.txt`'s and `kappa = [model] dirichlet_concentration`,
+  `normal_baseline.txt.gz`'s and `kappa = [model] dirichlet_concentration`,
   both fitted on CalicoST's normal spots (#455);
 - SNP reads: every (SNP, spot) entry drawn independently from
   `[coverage] snp_spot_umi` (`snp_law`, `b = [model] snp_dispersion`),
@@ -79,6 +79,7 @@ import numpy as np
 import pandas as pd
 
 from port.sim.entries import dirichlet_multinomial, independent, nodes, snp_law
+from port.sim.files import load_ids
 from port.sim.laws import ADMIXTURE_LAWS, Event, Law, allele_share
 
 MANIFEST_VERSION = 3
@@ -743,9 +744,7 @@ def _depth(
 
 
 def _snps(manifest: DrawManifest) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    ids = np.load(
-        manifest.resolve(manifest.reference["snps"]), allow_pickle=True
-    ).astype(str)
+    ids = load_ids(manifest.resolve(manifest.reference["snps"]))
     chromosome = np.array([s.split("_")[0] for s in ids])
     position = np.array([int(s.split("_")[1]) for s in ids])
     return ids, chromosome, position

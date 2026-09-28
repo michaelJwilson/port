@@ -45,6 +45,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 import yaml
+from port.sim.files import located
 from scipy.optimize import linear_sum_assignment
 
 from tests.recovery_audit import integer_clones
@@ -187,7 +188,7 @@ def run_arm(
 
     root = Path(tempfile.mkdtemp()) if root is None else root
     known = {
-        "annotation.clone_label": str(sample.path / "truth_clone_labels.tsv"),
+        "annotation.clone_label": str(located(sample.path / "truth_clone_labels.tsv")),
         "hmrf.fixed_assignment": True,
     }
     settings = {**(overrides or {}), **(known if oracle else {})}

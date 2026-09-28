@@ -606,7 +606,7 @@ def _baseline(r: Realization) -> pd.DataFrame:
 
 
 def plot_baseline(r: Realization, out: Path) -> Path:
-    """`log10 lambda` per gene as `normal_baseline.txt` states it; the share at 0 as a rate.
+    """`log10 lambda` per gene as `normal_baseline.txt.gz` states it; the share at 0 as a rate.
 
     The baseline the draw read, not a realization's counts. Formatted as
     `plot_clones_genomic` formats a track, with `cnaster`'s own helpers.

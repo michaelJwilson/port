@@ -10,8 +10,10 @@ each; `size` is each event's length in base pairs. `sample_name` builds the
 name from those numbers, and :data:`EASY` and :data:`HARD` are the two
 samples committed here: few long events, and many short ones.
 
-`load_simulated` reads what `run_cnaster` reads from the directory, in place,
-and the truth `run_sim_analysis` reads from it (`get_sample_truth`):
+The text inputs, the SNP ids and the truth are committed gzip-compressed
+(`port.sim.files`, #460); the AnnData and allele matrices already are.
+`load_simulated` reads the truth `run_sim_analysis` reads (`get_sample_truth`)
+from the compressed files:
 
 - `truth_clone_labels.tsv`: `barcode label x y`, `normal` or `clone_k`,
   renumbered as `remap_clone_num` does, so `normal` is 0 and `clone_k` is
@@ -19,8 +21,9 @@ and the truth `run_sim_analysis` reads from it (`get_sample_truth`):
 - `truth_acn_profile.tsv`: `chr start end` and each clone's `A` and `B`
   copies over segments.
 
-`write_sim_inputs` writes the sample sheet and the configuration beside
-them: `zenodo_sim_config.yaml`, the configuration shipped for these samples,
+`write_sim_inputs` stages what `run_cnaster` reads under the run's root --
+the compressed inputs decompressed, the rest linked -- and writes the sample
+sheet, pointed at the stage, and the configuration: `zenodo_sim_config.yaml`, the configuration shipped for these samples,
 with its paths pointed here. The gene table and genetic map are CalicoST's
 `GRCh38_resources`, which the sample directory does not carry; `references`
 finds them, and a test that needs them skips where they are absent.
@@ -36,6 +39,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 import yaml
+from port.sim.files import decompress, located
 
 REPOSITORY = Path(__file__).resolve().parents[1]
 SIM_ROOT = REPOSITORY / "sim"
@@ -49,7 +53,8 @@ INPUTS = (
     "filtered_feature_bc_matrix.h5ad",
     "spatial/tissue_positions_list.csv",
 )
-"""What `cnaster.io.load_input_data` reads from a sample directory."""
+"""What `cnaster.io.load_input_data` reads from a sample directory, by these
+names; committed as `<name>.gz` where the format is not compressed already."""
 
 TRUTH = ("truth_clone_labels.tsv", "truth_acn_profile.tsv")
 
@@ -160,7 +165,7 @@ def _missing_inputs(path: Path) -> list[str]:
     `snp/` and one directory per slice, named by its `sample_id`.
     """
     if not (path / "snp").is_dir():
-        return [f for f in (*INPUTS, *TRUTH) if not (path / f).exists()]
+        return [f for f in (*INPUTS, *TRUTH) if not located(path / f).exists()]
 
     missing = [f for f in (*DRAWN_INPUTS, *TRUTH) if not (path / f).exists()]
     if (path / "sample_sheet.tsv").exists():
@@ -188,11 +193,11 @@ def load_simulated(name: str = EASY, root: Path = SIM_ROOT) -> SimulatedSample:
         msg = f"{path} is missing {missing}"
         raise FileNotFoundError(msg)
 
-    table = pd.read_csv(path / "truth_clone_labels.tsv", sep="\t")
+    table = pd.read_csv(located(path / "truth_clone_labels.tsv"), sep="\t")
     table.columns = ["barcode", "clone", "x", "y", *table.columns[4:]]
     clones = _clone_order(table["clone"])
     index = {clone: label for label, clone in enumerate(clones)}
-    profile = pd.read_csv(path / "truth_acn_profile.tsv", sep="\t")
+    profile = pd.read_csv(located(path / "truth_acn_profile.tsv"), sep="\t")
 
     return SimulatedSample(
         name=name,
@@ -248,6 +253,24 @@ def sim_config(sample: SimulatedSample, root: Path, resources: Path) -> dict[str
     return document
 
 
+def stage(sample: SimulatedSample, into: Path) -> Path:
+    """`into/<name>/` holding `INPUTS` by name: a compressed one decompressed.
+
+    `cnaster` opens its inputs by these names, so a `.gz` is written out
+    plain; one committed in its own compressed format is linked.
+    """
+    target = into / sample.name
+    for name in INPUTS:
+        source = located(sample.path / name)
+        if source.name.endswith(".gz"):
+            decompress(source, target / name)
+        else:
+            (target / name).parent.mkdir(parents=True, exist_ok=True)
+            (target / name).unlink(missing_ok=True)
+            (target / name).symlink_to(source.resolve())
+    return target
+
+
 def write_sim_inputs(
     sample: SimulatedSample,
     root: Path,
@@ -264,12 +287,13 @@ def write_sim_inputs(
         raise FileNotFoundError(msg)
 
     root.mkdir(parents=True, exist_ok=True)
+    staged = stage(sample, root / "inputs")
     pd.DataFrame(
         {
             "bam": ["unused.bam"],
             "sample_id": [sample.name],
-            "spaceranger_dir": [str(sample.path)],
-            "snp_dir": [str(sample.path)],
+            "spaceranger_dir": [str(staged)],
+            "snp_dir": [str(staged)],
         }
     ).to_csv(root / "sample_sheet.tsv", sep="\t", index=False)
 

@@ -359,7 +359,7 @@ exponential event lengths, one or more slices with clones on N-gon regions,
 Visium barcodes with hexadecimal `sample_id`s, and phase switches at the
 genetic map's Haldane rate. Every assumption is a TOML key, and a manifest
 that omits one is refused; `sim/manifests/calicost_grch38.toml` states
-CalicoST's and a manifest `extends` it. Counts follow `sim/normal_baseline.txt`
+CalicoST's and a manifest `extends` it. Counts follow `sim/normal_baseline.txt.gz`
 (λ per gene) and `sim/normal_coverage.toml`, both fitted on CalicoST's normal
 spots by `port.sim.normal_fit` (#455). A spot's genes are
 `Multinomial(N_s, p_s)`, `p_s ~ Dirichlet(κ λ d_c)` with `d` the clone's
@@ -384,7 +384,10 @@ the manifest draws only once the offsets are stated:
 
 `tests/test_file_sizes.py` refuses a tracked or addable file above
 `[tool.port] max_file_bytes` (5 MB): GitHub rejects 100 MiB, and a clone keeps
-every version. CalicoST's AnnData files are stored gzip-compressed.
+every version. CalicoST's samples and `sim/normal_baseline.txt.gz` are
+stored compressed (`port.sim.files`, deterministic gzip where the format is
+not compressed already); `tests.sim_fixtures.stage` writes a run's inputs
+out plain under the names `cnaster` opens.
 
 `cnaster` appends a fit record to `cnaster.perf` in the repository root on
 every run. It is **not tracked** (#222): nothing reads it, no test

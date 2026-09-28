@@ -29,6 +29,7 @@ from port.sim.draw import (
     hex_array,
     layout,
 )
+from port.sim.files import located
 
 from tests.sim_fixtures import EASY, HARD, SIM_ROOT, references
 
@@ -68,7 +69,7 @@ def star_draw(resources: Path, tmp_path_factory: pytest.TempPathFactory) -> Draw
 
 @pytest.mark.oracle
 def test_lambda_is_each_genes_share_of_normal_spot_umi() -> None:
-    """`normal_baseline.txt` against the AnnData summed by `pandas`, to 1e-8 relative.
+    """`normal_baseline.txt.gz` against the AnnData summed by `pandas`, to 1e-8 relative.
 
     The file writes 10 significant digits (5e-10); Σλ is 1 to 1e-8.
     """
@@ -78,7 +79,9 @@ def test_lambda_is_each_genes_share_of_normal_spot_umi() -> None:
     for name in (EASY, HARD):
         path = SIM_ROOT / name
         assay = anndata.read_h5ad(path / "filtered_feature_bc_matrix.h5ad")
-        truth = pd.read_csv(path / "truth_clone_labels.tsv", sep="\t", index_col=0)
+        truth = pd.read_csv(
+            located(path / "truth_clone_labels.tsv"), sep="\t", index_col=0
+        )
         normal = truth.loc[assay.obs_names].iloc[:, 0].eq("normal").to_numpy()
         dense = pd.DataFrame(
             scipy.sparse.csr_matrix(assay.X)[normal].toarray(),
@@ -87,7 +90,7 @@ def test_lambda_is_each_genes_share_of_normal_spot_umi() -> None:
         totals.append(dense.sum(axis=0).groupby(level=0).sum())
 
     total = totals[0] + totals[1]
-    baseline = pd.read_csv(SIM_ROOT / "normal_baseline.txt", sep="\t", comment="#")
+    baseline = pd.read_csv(SIM_ROOT / "normal_baseline.txt.gz", sep="\t", comment="#")
     expected = total.loc[baseline["gene"]].to_numpy(dtype=np.float64)
 
     np.testing.assert_allclose(
@@ -289,7 +292,7 @@ def test_each_clones_expression_is_the_planted_depth(star_draw: Drawn) -> None:
 
     sid = star_draw.sample_ids[0]
     assay = anndata.read_h5ad(star_draw.path / sid / "filtered_feature_bc_matrix.h5ad")
-    baseline = pd.read_csv(SIM_ROOT / "normal_baseline.txt", sep="\t", comment="#")
+    baseline = pd.read_csv(SIM_ROOT / "normal_baseline.txt.gz", sep="\t", comment="#")
     chromosome = baseline["chrom"].str.removeprefix("chr").to_numpy()
     middle = ((baseline["cdsStart"] + baseline["cdsEnd"]) // 2).to_numpy()
     counts = scipy.sparse.csr_matrix(assay.X)

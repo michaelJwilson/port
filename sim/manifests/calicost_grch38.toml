@@ -4,9 +4,9 @@
 version = 3
 
 [reference]
-baseline = "../normal_baseline.txt"
+baseline = "../normal_baseline.txt.gz"
 coverage = "../normal_coverage.toml"
-snps = "../numcnas1.2_cnasize5e7_ploidy2_random0/unique_snp_ids.npy"
+snps = "../numcnas1.2_cnasize5e7_ploidy2_random0/unique_snp_ids.npy.gz"
 # NB CalicoST's GRCh38_resources; where $PORT_GRCH38 is unset, uv's checkout.
 resources = "$PORT_GRCH38"
 gene_table = "hgTables_hg38_gencode.txt"

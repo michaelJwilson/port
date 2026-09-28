@@ -94,7 +94,7 @@ overlapping by half) at seed 0.
   slices inside it; one clone legend for every slice, on the left;
 - `phase.png`: switches accumulated along each chromosome per Mb of it, each
   contig's switches per Mb above it, formatted as `plot_clones_genomic`'s tracks;
-- `baseline.png`: `log10 lambda` per gene as `normal_baseline.txt` states it,
+- `baseline.png`: `log10 lambda` per gene as `normal_baseline.txt.gz` states it,
   the share of genes at 0 as the dropout rate, formatted as
   `plot_clones_genomic`'s tracks;
 - `clones_genomic.png`: `plot_clones_genomic` over the true clone labels, on
