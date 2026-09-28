@@ -18,6 +18,8 @@ number. #206's "done when" list, in its order:
     `external_field(..., field)` shape. 8 GB at the declared scale, twice
     per outer iteration (#90), for an array whose only consumer is the
     reduction. Pinned **bitwise** in `tests/test_hmrf_fused_field.py`.
+    Its `lgamma` are read from tables by count
+    (`port.patch.hmrf.tabulated_field`, #433), bitwise again.
 *   **The graph crosses the seam once, in the representation the solver
     reads.** `CsrGraph` carries the three arrays that are meaningless apart.
     The COO triple `merge_assignment` wants is built only where it is
@@ -294,8 +296,8 @@ def pipeline_clone_assignment(
 
     from port.extensions.label_solver import label_solver, sweep_for
     from port.patch.hmrf.adjacency import adjacency_coo
-    from port.patch.hmrf.fused_field import fused_spot_clone_field
     from port.patch.hmrf.refinement import compact, mask_for
+    from port.patch.hmrf.tabulated_field import spot_clone_field
     from port.patch.icm.floor import configured_floor, enforce_floor
     from port.patch.icm.floor import installed as floor_installed
     from port.patch.icm.interface import CsrGraph, fold_unary, icm_sweep
@@ -368,7 +370,7 @@ def pipeline_clone_assignment(
     shifts = _clone_shifts(hmmclass, res, decoded, single_base_nb_mean)
 
     if shifts is None:
-        field = fused_spot_clone_field(
+        field = spot_clone_field(
             pooled_X[:, 0, :],
             pooled_base_nb_mean,
             pooled_X[:, 1, :],
@@ -406,7 +408,7 @@ def pipeline_clone_assignment(
         centre = float(np.mean(shifts))
 
         for clone in range(n_clones):
-            column = fused_spot_clone_field(
+            column = spot_clone_field(
                 pooled_X[:, 0, :],
                 pooled_base_nb_mean * np.exp(-(shifts[clone] - centre)),
                 pooled_X[:, 1, :],
