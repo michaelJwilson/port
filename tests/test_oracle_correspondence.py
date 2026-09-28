@@ -37,6 +37,7 @@ CORRESPONDENCE: dict[str, tuple[str, ...]] = {
     "sal.search.spatio_sequential": ("cnaster.hmrf",),
     "sal.search.alpha_expansion": ("cnaster.icm",),
     "sal.search.icm": ("cnaster.icm",),
+    "sal.search.trws": ("cnaster.icm",),
     "sal.enumeration": ("cnaster.icm",),
     "sal.sim.potts": ("cnaster.icm",),
     "sal.backend": ("cnaster.icm",),

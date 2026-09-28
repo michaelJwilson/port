@@ -83,6 +83,7 @@ include =
     */sal/sim/hmm.py
     */sal/search/alpha_expansion.py
     */sal/search/icm/*
+    */sal/search/trws/*
     */sal/opt/emission_mixture.py
     */sal/opt/mixture.py
     */sal/sim/potts.py
