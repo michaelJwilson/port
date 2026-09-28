@@ -1,16 +1,15 @@
 """The normal baseline and coverage laws, fitted on CalicoST's normal spots (#445).
 
-`port.sim.toml_manifest.fit_coverage` fits its laws over every spot of a
-sample, so a tumour spot's copies move them. This fits on the spots
-`truth_clone_labels.tsv` calls `normal`, pooled over the samples given, and
-writes what `port.sim.draw` draws from:
+Laws fitted over every spot of a sample move with a tumour spot's copies, so
+these are fitted on the spots `truth_clone_labels.tsv` calls `normal`,
+pooled over the samples given, and written where `port.sim.draw` reads them:
 
 - `normal_baseline.txt`: one row per gene of the reference that the assay
   measures -- `name2` of CalicoST's `hgTables_hg38_gencode.txt` present in
   the AnnData's `var_names` -- with `chrom`, `cdsStart`, `cdsEnd` and
   `lambda`, that gene's share of all normal-spot UMI, summing to 1. A name the
-  reference repeats keeps its first row, as `run_sim_gen` places genes; a
-  name the assay repeats sums its columns.
+  reference repeats keeps its first row, as CalicoST's simulator places
+  genes; a name the assay repeats sums its columns.
 - `normal_coverage.toml`: `[coverage.<law>]` tables, each with both families
   fitted and the one with the smaller KS statistic drawn from:
 
@@ -40,7 +39,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from port.sim.toml_manifest import Law, _counted
+from port.sim.laws import Law, counted
 
 LAWS = ("spot_umi", "spot_snp_umi", "snp_a", "snp_b", "snp_total")
 """The laws `normal_coverage.toml` carries, in the order it writes them."""
@@ -203,8 +202,8 @@ def fit_entries(
 
 def best(values: np.ndarray) -> Law:
     """Both families fitted to `values`; the one with the smaller KS statistic."""
-    lognormal = _counted(values, "lognormal")
-    negative = _counted(values, "negative_binomial")
+    lognormal = counted(values, "lognormal")
+    negative = counted(values, "negative_binomial")
     return lognormal if (lognormal.ks or 0.0) <= (negative.ks or 0.0) else negative
 
 

@@ -352,16 +352,6 @@ replaces the CalicoST constants that have a `cnaster` counterpart;
 CalicoST's `rectangle_initialize_initial_clone` never returns (`cnaster` #248).
 `python -m tests.recovery_audit --calicost` scores it with port's scorer.
 
-**`run_sim_gen`** (#382) draws a simulated sample from a TOML manifest, in
-the format of CalicoST's `sim/<name>/`. `sim/manifests/{easy,hard}.toml`
-replicate the two committed samples' sizes, truth and fitted coverage laws,
-drawn pure (`normal_frac = 0`); `--normal-frac fitted` draws them at the
-normal fraction measured on each clone. The gene table is CalicoST's
-`GRCh38_resources`, found through `$PORT_GRCH38` or `--gene-table`:
-
-    python -m port.sim.run_sim_gen sim/manifests/easy.toml
-    python -m port.sim.toml_manifest sim/<name> sim/manifests/<name>.toml
-
 **`port.sim.draw`** (#445) draws new samples from a version-3 manifest:
 clones from CalicoST's `shared.unique` counts or a mutation tree
 (`snakes_and_ladders`' `random_topology`, rooted at `normal`), fixed or
@@ -383,6 +373,14 @@ the same clones and layout, each a complete sample in
 
     python -m port.sim.draw sim/manifests/dev_tree.toml
     python -m tests.sim_audit --sample generated/dev_tree/r0 -- --sal
+
+`port.sandbox.sim_from_run` (#460, set aside) writes a version-3 manifest
+from a finished run's `clone_labels.tsv` and `cnv_segments.tsv`: its clones,
+shared and unique events, states, array and slices. What a run does not
+measure -- slice offsets, the tree, normal fractions -- is left commented, so
+the manifest draws only once the offsets are stated:
+
+    python -m port.sandbox.sim_from_run <run dir> > sim/manifests/<name>.toml
 
 `tests/test_file_sizes.py` refuses a tracked or addable file above
 `[tool.port] max_file_bytes` (5 MB): GitHub rejects 100 MiB, and a clone keeps

@@ -1,7 +1,6 @@
 """Draw new samples from a version-3 TOML manifest (#445).
 
-Version 2 (`port.sim.toml_manifest`, #382) replicates one CalicoST sample:
-its events, spots and layout are read off the sample. Version 3 draws them:
+Its clones, events, layout and counts are drawn from what the manifest states:
 
     version = 3
     [sample]      name, seed, output, realizations
@@ -35,7 +34,7 @@ per-entry laws `port.sim.normal_fit` fits on CalicoST's normal spots (#455):
   unordered and independent of copies. Per realization: the counts and the
   phase. Both samplers draw each nonzero value exactly, with no tail cut;
 - the haplotype-A count `BetaBinomial(n, share, rho)`, `share` the admixture
-  law's (`toml_manifest.allele_share`).
+  law's (`port.sim.laws.allele_share`).
 
 **Clones.** `shared.unique` is CalicoST's `numcnas{shared}.{unique}`:
 `shared` events on every tumour clone and `unique` on each. `tree` draws a
@@ -80,7 +79,7 @@ import numpy as np
 import pandas as pd
 
 from port.sim.entries import dirichlet_multinomial, independent, nodes, snp_law
-from port.sim.toml_manifest import ADMIXTURE_LAWS, Event, Law, allele_share
+from port.sim.laws import ADMIXTURE_LAWS, Event, Law, allele_share
 
 MANIFEST_VERSION = 3
 

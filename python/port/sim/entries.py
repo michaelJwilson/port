@@ -24,7 +24,7 @@ from typing import Any
 
 import numpy as np
 
-from port.sim.toml_manifest import Law
+from port.sim.laws import Law
 
 QUADRATURE = 64
 """Quantiles a continuous law (spot depth, SNP weight) is summed over."""
