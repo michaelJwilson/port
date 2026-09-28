@@ -19,7 +19,8 @@ writes what `port.sim.draw` draws from:
   - `snp_a`, `snp_b`, `snp_total`: a SNP's `A`, `B` and `A + B` reads summed
     over normal spots.
 
-    python -m port.sim.normal_fit sim/<easy> sim/<hard> --into sim
+    python -m port.sim.normal_fit sim/<easy> sim/<hard> --into sim \\
+        --gene-table $PORT_GRCH38/hgTables_hg38_gencode.txt
 """
 
 from __future__ import annotations
@@ -187,22 +188,14 @@ def read_coverage(path: Path) -> dict[str, Law]:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("samples", nargs="+", help="CalicoST sample directories")
-    parser.add_argument("--into", default="sim", help="where to write both files")
+    parser.add_argument("--into", required=True, help="where to write both files")
     parser.add_argument(
-        "--gene-table",
-        default=None,
-        help="CalicoST's hgTables_hg38_gencode.txt; default $PORT_GRCH38's",
+        "--gene-table", required=True, help="CalicoST's hgTables_hg38_gencode.txt"
     )
     arguments = parser.parse_args(argv)
 
-    from port.sim.draw import references
-
     paths = [Path(p) for p in arguments.samples]
-    gene_table = (
-        Path(arguments.gene_table)
-        if arguments.gene_table
-        else references() / "hgTables_hg38_gencode.txt"
-    )
+    gene_table = Path(arguments.gene_table)
     into = Path(arguments.into)
     names = ", ".join(p.name for p in paths)
 

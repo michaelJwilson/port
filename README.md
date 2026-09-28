@@ -320,6 +320,25 @@ normal fraction measured on each clone. The gene table is CalicoST's
     python -m port.sim.run_sim_gen sim/manifests/easy.toml
     python -m port.sim.toml_manifest sim/<name> sim/manifests/<name>.toml
 
+**`port.sim.draw`** (#445) draws new samples from a version-3 manifest:
+clones from CalicoST's `shared.unique` counts or a mutation tree
+(`snakes_and_ladders`' `random_topology`, rooted at `normal`), fixed or
+exponential event lengths, one or more slices with clones on N-gon regions,
+Visium barcodes with hexadecimal `sample_id`s, and phase switches at the
+genetic map's Haldane rate. Every assumption is a TOML key, and a manifest
+that omits one is refused; `sim/manifests/calicost_grch38.toml` states
+CalicoST's and a manifest `extends` it. Counts follow `sim/normal_baseline.txt`
+(λ per gene) and `sim/normal_coverage.toml`, both fitted on CalicoST's normal
+spots by `port.sim.normal_fit`. Samples land in `sim/generated/`, untracked;
+`tests.sim_audit` runs and scores one:
+
+    python -m port.sim.draw sim/manifests/dev_tree.toml
+    python -m tests.sim_audit --sample generated/dev_tree -- --sal
+
+`tests/test_file_sizes.py` refuses a tracked or addable file above
+`[tool.port] max_file_bytes` (5 MB): GitHub rejects 100 MiB, and a clone keeps
+every version. CalicoST's AnnData files are stored gzip-compressed.
+
 `cnaster` appends a fit record to `cnaster.perf` in the repository root on
 every run. It is **not tracked** (#222): nothing reads it, no test
 references it, and its rows carry no commit or instance, so it is a log
@@ -333,7 +352,7 @@ trains a reader to ignore `git status`.
 | `python/port/` | The Python package; `python-source` in `pyproject.toml` |
 | `src/` | The Rust crate `oxiport`, bound as `port.oxiport` |
 | `tests/` | The suite; `testpaths` in `pyproject.toml` |
-| `sim/` | CalicoST's simulated samples, and `manifests/` that draw them |
+| `sim/` | CalicoST's simulated samples, their normal fits, and `manifests/` that draw them |
 | `Cargo.toml` | The single source of the version, which maturin reads across |
 
 # Infrastructure

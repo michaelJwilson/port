@@ -43,7 +43,9 @@ from cnaster.config import start_time
 from cnaster.filter import get_filter_genes, get_filter_ranges
 from cnaster.he import get_he_image
 from cnaster.io import (
-    get_aggregated_barcodes,
+    get_aggregated_barcodes as _UPSTREAM_AGGREGATED_BARCODES,
+)
+from cnaster.io import (
     get_alignments,
     get_barcodes,
     get_sample_sheet,
@@ -606,3 +608,27 @@ def load_input_data(
         unique_snp_ids,
         across_slice_adjacency_mat,
     )
+
+
+def get_aggregated_barcodes(
+    barcode_file: str, known_sample_id: str | None = None
+) -> pd.DataFrame:
+    """`cnaster.io.get_aggregated_barcodes`, with each slice's `sample_id` kept (#446).
+
+    Upstream splits `{barcode}_{sample_id}` and then overwrites both columns
+    with the whole string and `known_sample_id`, which `load_input_data`
+    passes as `None` for two or more slices: every slice then matches no spot.
+
+    With a `known_sample_id` -- one slice -- this is upstream's, bitwise; its
+    overwrite is what keeps CalicoST's `spot_0` barcodes whole. With none, the
+    `sample_id` is the suffix after the last `_` and `barcode` stays the
+    combined string, which is how each slice's counts and positions index
+    their spots, and the suffix `construct_df_clone_label` reads.
+    """
+    frame = _UPSTREAM_AGGREGATED_BARCODES(barcode_file, known_sample_id)
+
+    combined = frame["combined_barcode"].astype(str)
+    if known_sample_id is None and combined.str.contains("_").all():
+        frame["sample_id"] = combined.str.rsplit("_", n=1).str[-1].to_numpy()
+
+    return frame

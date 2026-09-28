@@ -465,3 +465,9 @@ exclude_lines = [
     "pragma: no cover",
     "if __name__ == .__main__.:",
 ]
+
+[tool.port]
+# NB the largest file the repository takes, in bytes; `tests/test_file_sizes.py`
+#    refuses a tracked or addable file above it. GitHub warns at 50 MiB and
+#    rejects 100 MiB; 5 MB keeps generated outputs out and fixtures compressed.
+max_file_bytes = 5_000_000

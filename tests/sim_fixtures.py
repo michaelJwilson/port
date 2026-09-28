@@ -141,21 +141,55 @@ def _clone_order(names: pd.Series) -> tuple[str, ...]:
     return ("normal", *others)
 
 
+DRAWN_INPUTS = (
+    "sample_sheet.tsv",
+    "snp/barcodes.txt",
+    "snp/unique_snp_ids.npy",
+    "snp/cell_snp_Aallele.npz",
+    "snp/cell_snp_Ballele.npz",
+)
+"""What a sample `port.sim.draw` wrote holds beside its slices (#445)."""
+
+SLICE_INPUTS = ("filtered_feature_bc_matrix.h5ad", "spatial/tissue_positions_list.csv")
+
+
+def _missing_inputs(path: Path) -> list[str]:
+    """Inputs `cnaster` reads that `path` lacks, in either layout.
+
+    CalicoST's: every input in `path`. `port.sim.draw`'s: the SNPs under
+    `snp/` and one directory per slice, named by its `sample_id`.
+    """
+    if not (path / "snp").is_dir():
+        return [f for f in (*INPUTS, *TRUTH) if not (path / f).exists()]
+
+    missing = [f for f in (*DRAWN_INPUTS, *TRUTH) if not (path / f).exists()]
+    if (path / "sample_sheet.tsv").exists():
+        sheet = pd.read_csv(path / "sample_sheet.tsv", sep="\t", dtype=str)
+        missing += [
+            f"{sid}/{f}"
+            for sid in sheet["sample_id"]
+            for f in SLICE_INPUTS
+            if not (path / sid / f).exists()
+        ]
+    return missing
+
+
 def load_simulated(name: str = EASY, root: Path = SIM_ROOT) -> SimulatedSample:
-    """Read one sample's truth, and check it carries the inputs `cnaster` reads."""
+    """Read one sample's truth, and check it carries the inputs `cnaster` reads.
+
+    Either layout: CalicoST's, whose truth is `barcode label x y`, or
+    `port.sim.draw`'s (#445), whose truth adds `sample_id` and whose barcodes
+    are `{barcode}_{sample_id}` over every slice.
+    """
     path = root / name
-    missing = [f for f in (*INPUTS, *TRUTH) if not (path / f).exists()]
+    missing = _missing_inputs(path)
 
     if missing:
         msg = f"{path} is missing {missing}"
         raise FileNotFoundError(msg)
 
-    table = pd.read_csv(
-        path / "truth_clone_labels.tsv",
-        sep="\t",
-        names=["barcode", "clone", "x", "y"],
-        skiprows=1,
-    )
+    table = pd.read_csv(path / "truth_clone_labels.tsv", sep="\t")
+    table.columns = ["barcode", "clone", "x", "y", *table.columns[4:]]
     clones = _clone_order(table["clone"])
     index = {clone: label for label, clone in enumerate(clones)}
     profile = pd.read_csv(path / "truth_acn_profile.tsv", sep="\t")

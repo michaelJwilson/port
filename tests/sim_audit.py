@@ -1,7 +1,9 @@
 """`run_cnaster_port` on CalicoST's simulated samples, scored (#362).
 
 Run as `python -m tests.sim_audit [--sample easy|hard|<name>] [--set k=v]
-[-- flags]`: one arm, one `SIM` line of JSON on stdout.
+[-- flags]`: one arm, one `SIM` line of JSON on stdout. `<name>` is under
+`sim/`, so a sample `port.sim.draw` wrote is `generated/<name>` (#445); it
+runs on its own `config.yaml`.
 
 The four ARIs are `tests.recovery_audit`'s, on the sample's truth:
 
@@ -153,6 +155,24 @@ def score(sample: SimulatedSample, output: Path, arm: str, wall: float) -> SimRe
     )
 
 
+def _drawn_config(
+    sample: SimulatedSample, root: Path, overrides: dict[str, Any]
+) -> Path:
+    """A `port.sim.draw` sample's own `config.yaml`, writing under `root` (#445)."""
+    document: dict[str, Any] = yaml.safe_load((sample.path / "config.yaml").read_text())
+    document["paths"]["output_dir"] = str(root / "output")
+    document["paths"]["perf_path"] = str(root / "cnaster.perf")
+
+    for key, value in overrides.items():
+        section, _, name = key.partition(".")
+        document[section][name] = value
+
+    root.mkdir(parents=True, exist_ok=True)
+    config = root / "config.yaml"
+    config.write_text(yaml.safe_dump(document))
+    return config
+
+
 def run_arm(
     sample: SimulatedSample,
     flags: list[str],
@@ -170,9 +190,11 @@ def run_arm(
         "annotation.clone_label": str(sample.path / "truth_clone_labels.tsv"),
         "hmrf.fixed_assignment": True,
     }
-    config = write_sim_inputs(
-        sample, root, {**(overrides or {}), **(known if oracle else {})}
-    )
+    settings = {**(overrides or {}), **(known if oracle else {})}
+    if (sample.path / "snp").is_dir():
+        config = _drawn_config(sample, root, settings)
+    else:
+        config = write_sim_inputs(sample, root, settings)
 
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")

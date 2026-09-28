@@ -1,17 +1,122 @@
-"""Draw new samples from a version-3 TOML manifest (#445)."""
+"""Draw new samples from a version-3 TOML manifest (#445).
+
+Version 2 (`port.sim.toml_manifest`, #382) replicates one CalicoST sample:
+its events, spots and layout are read off the sample. Version 3 draws them:
+
+    version = 3
+    [sample]      name, seed, output
+    [reference]   baseline, coverage, snps; GRCh38 resources via $PORT_GRCH38
+    [array]       kind = "hex", rows, columns
+    [model]       admixture, normal_frac, nb_dispersion, bb_overdispersion,
+                  snp_dispersion, snp_depth_follows_copies
+    [cna]         mode = "shared.unique" (shared, unique) or "tree"
+                  (trunk, per_leaf, per_internal); n_clones;
+                  states = [[A, B], ...]. Defaults are CalicoST's easy
+                  sample, `numcnas1.2`, state them
+    [cna.length]  law = "fixed" (size) or "exponential" (mean); minimum
+    [phasing]     switch_errors, nu, unit
+    [layout]      overlap, radius, vertices, jitter
+    [[slice]]     clones = [...], regions = [{clone, center, radius, ...}]
+
+**The generative model**, per slice and spot `s` of clone `c`:
+
+- `N_s ~ [coverage] spot_umi` and `M_s ~ spot_snp_umi`, independent;
+- gene counts `Poisson(N_s q_sg)`, `q_s` normalized and proportional to
+  `lambda_g d_g(c) G_sg`: `lambda` from `normal_baseline.txt`, `d` the
+  admixture law's depth factor at the gene's `(A, B)`, and
+  `G_sg ~ Gamma(1/alpha, alpha)` at `alpha = [model] nb_dispersion`. The
+  library size is held, so a gain in one clone dilutes its other genes, as
+  sequencing does;
+- SNP reads `Poisson(M_s w_sj)`, `w_s` normalized and proportional to
+  `v_j H_sj`: `v_j ~ Gamma(1/a, a)` at `a = [coverage] snp_total`
+  dispersion and `H_sj ~ Gamma(1/b, b)` at `b = [model] snp_dispersion`;
+- the haplotype-A count `BetaBinomial(n, share, rho)`, `share` the admixture
+  law's (`toml_manifest.allele_share`).
+
+**Clones.** `shared.unique` is CalicoST's `numcnas{shared}.{unique}`:
+`shared` events on every tumour clone and `unique` on each. `tree` draws a
+topology on `normal` and the tumour clones with `snakes_and_ladders`'
+`random_topology` -- uniform over unrooted binary trees -- and roots it at
+`normal`: the edge out of `normal` is the trunk and carries `trunk` events,
+each edge into a clone `per_leaf` and each edge into an unobserved ancestor
+`per_internal`. A clone carries every event on its path from
+the root, later ones overriding earlier ones where they overlap. `(1, 1)`
+elsewhere.
+
+**Phase.** One phasing for all slices, as the SNPs are phased on the
+pseudobulk: between consecutive SNPs of a chromosome the reported phase
+switches with probability `(1 - exp(-2 nu d)) / 2`, `d` the map distance in
+`unit`: Haldane's recombination law in Morgans, or -- in cM at `nu = 1` --
+Numbat's phase-switch law, which `cnaster.recomb` assumes. `cnaster` then
+multiplies by `exp(-logphase_shift)` and floors at `min_prob` per bin, which
+does not compose over SNPs and is its inference's, so it is not drawn. The
+map is `genetic_map_GRCh38_merged.tab.gz`. A switched SNP's `A`
+and `B` are exchanged in the written matrices; `truth_phase.npy` is that
+binary vector, one entry per SNP.
+
+**Barcodes.** One whitelist of Visium-like 16-mers, `-1`, shared by every
+slice at the same array position, as Visium's is; each spot is written as
+`{barcode}-1_{sample_id}` with a hexadecimal `sample_id` per slice, the
+form `cnaster.io.get_aggregated_barcodes` splits.
+"""
 
 from __future__ import annotations
 
+import argparse
+import functools
+import itertools
 import os
+import tomllib
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
-RESOURCE_FILES = ("hgTables_hg38_gencode.txt", "genetic_map_GRCh38_merged.tab.gz")
-"""What `draw` reads from CalicoST's `GRCh38_resources`."""
+import numpy as np
+import pandas as pd
+
+from port.sim.toml_manifest import ADMIXTURE_LAWS, Event, Law, allele_share
+
+MANIFEST_VERSION = 3
+
+REQUIRED: dict[str, tuple[str, ...]] = {
+    "sample": ("name", "seed", "output"),
+    "reference": (
+        "baseline", "coverage", "snps", "resources", "gene_table",
+        "genetic_map", "filter_genes", "filter_regions",
+    ),
+    "genome": ("chromosome_lengths",),
+    "array": ("kind", "rows", "columns"),
+    "barcodes": ("length", "suffix", "sample_id_bytes"),
+    "model": (
+        "admixture", "normal_frac", "nb_dispersion", "bb_overdispersion",
+        "snp_dispersion", "snp_depth_follows_copies",
+    ),
+    "cna": ("mode", "n_clones", "states", "length"),
+    "phasing": ("switch_errors", "nu", "unit"),
+    "layout": ("overlap", "radius", "vertices", "jitter", "max_placements"),
+    "config": ("base",),
+}  # fmt: skip
+"""Every table and key a manifest must state. Nothing the draw assumes has a
+default in code: a manifest that leaves one out is refused, naming it."""
+
+BY_MODE = {
+    "shared.unique": ("shared", "unique"),
+    "tree": ("trunk", "per_leaf", "per_internal"),
+}
+BY_LAW = {"fixed": ("size",), "exponential": ("mean", "minimum")}
+
+SPOT_CHUNK = 64
+"""Spots drawn per block, for memory only: draws are consumed row-major, so
+the chunk does not change what is drawn."""
 
 
-def references() -> Path:
-    """CalicoST's `GRCh38_resources`: `$PORT_GRCH38`, else the uv git checkout."""
-    candidates = [os.environ.get("PORT_GRCH38", "")]
+def references(directory: Path, names: tuple[str, ...]) -> Path:
+    """`directory` if it holds `names`, else CalicoST's uv git checkout's.
+
+    `[reference] resources` is usually `$PORT_GRCH38`; where that is unset
+    the checkout `uv` made of CalicoST for `cnaster` is found instead.
+    """
+    candidates = [str(directory)] if str(directory) not in {"", "."} else []
     candidates += sorted(
         str(p)
         for p in (Path.home() / ".cache/uv/git-v0/checkouts").glob(
@@ -20,8 +125,819 @@ def references() -> Path:
     )
 
     for candidate in candidates:
-        if candidate and all((Path(candidate) / f).exists() for f in RESOURCE_FILES):
+        if all((Path(candidate) / f).exists() for f in names):
             return Path(candidate)
 
-    msg = "CalicoST's GRCh38_resources not found; set $PORT_GRCH38"
+    msg = f"none of {candidates} holds {list(names)}; set [reference] resources"
     raise FileNotFoundError(msg)
+
+
+# --- the manifest --------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class Region:
+    """One clone's polygon on one slice, in fractions of the array's extent."""
+
+    clone: str
+    center: tuple[float, float] | None
+    """`None` draws it, uniform over the array; a polygon past an edge is clipped."""
+    radius: float
+    """Of the shorter extent."""
+    vertices: int
+    jitter: float
+    """Each vertex's radius is `radius (1 + jitter U(-1, 1))`."""
+
+
+@dataclass(frozen=True)
+class Slice:
+    clones: tuple[str, ...]
+    regions: tuple[Region, ...]
+
+
+@dataclass(frozen=True)
+class DrawManifest:
+    """A parsed version-3 manifest: the TOML's tables, checked."""
+
+    tables: dict[str, dict[str, Any]]
+    slices: tuple[Slice, ...]
+    root: Path
+
+    def __getattr__(self, table: str) -> dict[str, Any]:
+        tables = self.__dict__["tables"]
+        if table in tables:
+            return dict(tables[table])
+        raise AttributeError(table)
+
+    @property
+    def name(self) -> str:
+        return str(self.tables["sample"]["name"])
+
+    @property
+    def seed(self) -> int:
+        return int(self.tables["sample"]["seed"])
+
+    def resolve(self, value: str) -> Path:
+        return self.root / os.path.expandvars(value)
+
+    @property
+    def tumour(self) -> tuple[str, ...]:
+        return tuple(f"clone_{k}" for k in range(int(self.tables["cna"]["n_clones"])))
+
+    def normal_frac(self, clone: str) -> float:
+        value = self.tables["model"]["normal_frac"]
+        if clone == "normal":
+            return 0.0
+        if isinstance(value, dict):
+            return float(value[clone])
+        return float(value)
+
+    def resources(self) -> Path:
+        reference = self.tables["reference"]
+        names = tuple(reference[k] for k in ("gene_table", "genetic_map"))
+        return references(Path(os.path.expandvars(reference["resources"])), names)
+
+
+def read_manifest(path: str | Path) -> DrawManifest:
+    """Parse and check a version-3 manifest."""
+    source = Path(path)
+    document = extended(source)
+    version = int(document.get("version", 0))
+
+    if version != MANIFEST_VERSION:
+        msg = f"manifest version {version}, this reads {MANIFEST_VERSION}"
+        raise ValueError(msg)
+
+    return from_document(document, source.parent)
+
+
+def extended(path: Path) -> dict[str, Any]:
+    """`path`'s document laid over the one its `extends` names, recursively.
+
+    Tables merge key by key and the extending file wins; `[[slice]]` and
+    every other value it states replace the base's.
+    """
+    document = tomllib.loads(path.read_text())
+    parent = document.pop("extends", None)
+    if parent is None:
+        return document
+    return _merge(extended(path.parent / parent), document)
+
+
+def _merge(base: dict[str, Any], over: dict[str, Any]) -> dict[str, Any]:
+    out = dict(base)
+    for key, value in over.items():
+        if isinstance(value, dict) and isinstance(out.get(key), dict):
+            out[key] = _merge(out[key], value)
+        else:
+            out[key] = value
+    return out
+
+
+def _missing(document: dict[str, Any]) -> list[str]:
+    """`table.key` for every required key the document does not state."""
+    missing = [
+        f"[{t}] {k}" for t, keys in REQUIRED.items() for k in keys
+        if k not in document.get(t, {})
+    ]  # fmt: skip
+    cna = document.get("cna", {})
+    missing += [f"[cna] {k}" for k in BY_MODE.get(cna.get("mode"), ()) if k not in cna]
+    length = cna.get("length", {})
+    missing += [
+        f"[cna.length] {k}" for k in ("law", *BY_LAW.get(length.get("law"), ()))
+        if k not in length
+    ]  # fmt: skip
+    for index, piece in enumerate(document.get("slice", [])):
+        if "clones" not in piece:
+            missing.append(f"[[slice]] {index}: clones")
+    if not document.get("slice"):
+        missing.append("[[slice]]")
+    return missing
+
+
+def from_document(document: dict[str, Any], root: Path = Path()) -> DrawManifest:
+    missing = _missing(document)
+    if missing:
+        msg = f"the manifest does not state {', '.join(missing)}"
+        raise ValueError(msg)
+
+    layout = document["layout"]
+    slices = tuple(
+        Slice(
+            clones=tuple(s["clones"]),
+            regions=tuple(
+                Region(
+                    clone=r["clone"],
+                    center=None if "center" not in r else tuple(r["center"]),
+                    radius=float(r.get("radius", layout["radius"])),
+                    vertices=int(r.get("vertices", layout["vertices"])),
+                    jitter=float(r.get("jitter", layout["jitter"])),
+                )
+                for r in s.get("regions", [])
+            ),
+        )
+        for s in document["slice"]
+    )
+    tables = {k: v for k, v in document.items() if isinstance(v, dict)}
+    manifest = DrawManifest(tables, slices, root)
+    _check(manifest)
+    return manifest
+
+
+def _check(manifest: DrawManifest) -> None:
+    problems = []
+    mode = manifest.cna["mode"]
+
+    if mode not in BY_MODE:
+        problems.append(f"[cna] mode {mode!r}: one of {sorted(BY_MODE)}")
+    if manifest.model["admixture"] not in ADMIXTURE_LAWS:
+        problems.append(f"[model] admixture {manifest.model['admixture']!r}")
+    if manifest.cna["length"]["law"] not in BY_LAW:
+        problems.append(f"[cna.length] law: one of {sorted(BY_LAW)}")
+    if manifest.phasing["unit"] not in UNITS:
+        problems.append(f"[phasing] unit: one of {sorted(UNITS)}")
+    if manifest.array["kind"] != "hex":
+        problems.append(f"[array] kind {manifest.array['kind']!r}: 'hex'")
+
+    known = set(manifest.tumour)
+    for index, piece in enumerate(manifest.slices):
+        unknown = (set(piece.clones) | {r.clone for r in piece.regions}) - known
+        if unknown:
+            problems.append(f"slice {index} names unknown clones {sorted(unknown)}")
+
+    if problems:
+        raise ValueError("; ".join(problems))
+
+
+# --- clones --------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class CloneTree:
+    """`parent[node]`, the events on the edge into `node`, and the leaves."""
+
+    parent: dict[str, str | None]
+    edge_events: dict[str, tuple[Event, ...]]
+    leaves: tuple[str, ...]
+
+    def path(self, node: str) -> list[str]:
+        """Root to `node`, inclusive."""
+        out = [node]
+        while (up := self.parent[out[-1]]) is not None:
+            out.append(up)
+        return out[::-1]
+
+    def events(self, node: str) -> tuple[Event, ...]:
+        """Every event on the path to `node`, in the order they arose."""
+        return tuple(e for n in self.path(node) for e in self.edge_events[n])
+
+
+def _topology(
+    manifest: DrawManifest, rng: np.random.Generator
+) -> dict[str, str | None]:
+    """`parent` of each node of the tree, rooted at `normal`."""
+    tumour = manifest.tumour
+
+    if manifest.cna["mode"] == "shared.unique" or len(tumour) < 2:
+        return {"normal": None, "founder": "normal"} | dict.fromkeys(tumour, "founder")
+
+    from snakes_and_ladders.sim.topology import random_topology
+    from snakes_and_ladders.sim.tree import edges
+
+    unrooted = random_topology(["normal", *tumour], rng)
+    neighbours: dict[str, list[str]] = {}
+    for up, down in edges(unrooted):
+        neighbours.setdefault(up.name, []).append(down.name)
+        neighbours.setdefault(down.name, []).append(up.name)
+
+    parent: dict[str, str | None] = {"normal": None}
+    frontier = ["normal"]
+    while frontier:
+        node = frontier.pop()
+        for other in neighbours[node]:
+            if other not in parent:
+                parent[other] = node
+                frontier.append(other)
+
+    names = {n: n for n in parent if n in {"normal", *tumour}}
+    internal = sorted((n for n in parent if n not in names), key=str)
+    names |= {n: f"ancestor_{k}" for k, n in enumerate(internal)}
+    trunk = next(n for n, p in parent.items() if p == "normal")
+    names[trunk] = "founder" if trunk not in tumour else trunk
+    return {names[n]: None if p is None else names[p] for n, p in parent.items()}
+
+
+def _event_length(manifest: DrawManifest, rng: np.random.Generator) -> int:
+    law = manifest.cna["length"]
+    if law["law"] == "fixed":
+        return int(law["size"])
+    return int(max(rng.exponential(float(law["mean"])), float(law["minimum"])))
+
+
+def _events(
+    manifest: DrawManifest, count: int, rng: np.random.Generator
+) -> tuple[Event, ...]:
+    """`count` events: a chromosome by length, a start uniform on it, a state."""
+    lengths = np.asarray(manifest.genome["chromosome_lengths"], dtype=np.float64)
+    states = [tuple(s) for s in manifest.cna["states"]]
+    out = []
+
+    for _ in range(count):
+        index = int(rng.choice(lengths.size, p=lengths / lengths.sum()))
+        span = min(_event_length(manifest, rng), int(lengths[index]))
+        start = int(rng.integers(0, int(lengths[index]) - span + 1))
+        a, b = states[int(rng.integers(len(states)))]
+        out.append(Event(str(index + 1), start, start + span, int(a), int(b)))
+
+    return tuple(out)
+
+
+def draw_tree(manifest: DrawManifest, rng: np.random.Generator) -> CloneTree:
+    """The clones' tree and the events on each of its edges."""
+    parent = _topology(manifest, rng)
+    shared_unique = manifest.cna["mode"] == "shared.unique"
+    counts = manifest.cna
+    trunk = int(counts["shared" if shared_unique else "trunk"])
+    leaf = int(counts["unique" if shared_unique else "per_leaf"])
+    internal = 0 if shared_unique else int(counts["per_internal"])
+    leaves = set(manifest.tumour)
+
+    edge_events: dict[str, tuple[Event, ...]] = {"normal": ()}
+    for node in sorted(n for n in parent if n != "normal"):
+        if parent[node] == "normal":
+            count = trunk
+        else:
+            count = leaf if node in leaves else internal
+        edge_events[node] = _events(manifest, count, rng)
+
+    return CloneTree(parent, edge_events, manifest.tumour)
+
+
+def clone_copies(
+    tree: CloneTree,
+    clones: tuple[str, ...],
+    chromosome: np.ndarray,
+    position: np.ndarray,
+) -> np.ndarray:
+    """`(n_positions, n_clones, 2)` `(A, B)`; `(1, 1)` where no event covers."""
+    copies = np.ones((position.size, len(clones), 2), dtype=np.int64)
+    query = np.asarray(chromosome).astype(str)
+
+    for label, clone in enumerate(clones):
+        for event in tree.events(clone) if clone != "normal" else ():
+            covered = (query == event.chromosome) & (position >= event.start)
+            covered &= position < event.end
+            copies[covered, label] = (event.a, event.b)
+
+    return copies
+
+
+def truth_profile(
+    tree: CloneTree, clones: tuple[str, ...], chromosome_lengths: list[int]
+) -> pd.DataFrame:
+    """`truth_acn_profile.tsv`: `chr start end`, `A`, `B` per clone, CalicoST's order."""
+    rows = []
+    for index, length in enumerate(chromosome_lengths, start=1):
+        cuts = {0, int(length)}
+        for clone in clones:
+            for event in tree.events(clone) if clone != "normal" else ():
+                if event.chromosome == str(index):
+                    cuts |= {event.start, event.end}
+        rows += [(index, s, e) for s, e in itertools.pairwise(sorted(cuts))]
+
+    frame = pd.DataFrame(rows, columns=["chr", "start", "end"])
+    middle = ((frame["start"] + frame["end"]) // 2).to_numpy()
+    copies = clone_copies(tree, clones, frame["chr"].astype(str).to_numpy(), middle)
+    for label in sorted(range(len(clones)), key=lambda i: clones[i] == "normal"):
+        frame[f"{clones[label]}_A_copy"] = copies[:, label, 0]
+        frame[f"{clones[label]}_B_copy"] = copies[:, label, 1]
+    return frame
+
+
+def tree_table(tree: CloneTree) -> pd.DataFrame:
+    """`truth_tree.tsv`: one row per event, with the edge it arose on."""
+    rows = [
+        {"node": node, "parent": tree.parent[node], "chr": e.chromosome,
+         "start": e.start, "end": e.end, "A": e.a, "B": e.b}
+        for node in tree.parent
+        for e in tree.edge_events[node]
+    ]  # fmt: skip
+    edges = [{"node": n, "parent": p} for n, p in tree.parent.items()]
+    columns = ["node", "parent", "chr", "start", "end", "A", "B"]
+    return pd.concat(
+        [
+            pd.DataFrame(edges, columns=["node", "parent"]),
+            pd.DataFrame(rows, columns=columns),
+        ],
+        ignore_index=True,
+    )[columns]
+
+
+# --- the array and the layout --------------------------------------------------
+
+
+def hex_array(rows: int, columns: int) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Visium's packing: `array_row`, `array_col = 2 col + row % 2`, and points.
+
+    Points are in spot spacings: `x = array_col / 2`, `y = row sqrt(3) / 2`,
+    so distances are isotropic and a regular polygon stays regular.
+    """
+    index = np.arange(rows * columns)
+    row = index // columns
+    col = 2 * (index % columns) + row % 2
+    points = np.column_stack([col / 2.0, row * np.sqrt(3.0) / 2.0])
+    return row, col, points
+
+
+def polygon(
+    region: Region, center: np.ndarray, scale: float, rng: np.random.Generator
+) -> np.ndarray:
+    """`(vertices, 2)`: evenly spaced angles from a random phase, radii jittered."""
+    angles = 2 * np.pi * np.arange(region.vertices) / region.vertices
+    angles = angles + rng.uniform(0, 2 * np.pi)
+    radii = (
+        region.radius * scale * (1 + region.jitter * rng.uniform(-1, 1, angles.size))
+    )
+    return center + np.column_stack([radii * np.cos(angles), radii * np.sin(angles)])
+
+
+def _inside(vertices: np.ndarray, points: np.ndarray) -> np.ndarray:
+    from matplotlib.path import Path as MplPath
+
+    return np.asarray(MplPath(vertices).contains_points(points))
+
+
+def layout(
+    manifest: DrawManifest, piece: Slice, points: np.ndarray, rng: np.random.Generator
+) -> tuple[np.ndarray, list[np.ndarray]]:
+    """Clone per spot, `-1` for normal, and each region's polygon.
+
+    Regions named in `piece.regions` are placed first; each clone of
+    `piece.clones` without one is drawn at the `[layout]` defaults. With
+    `overlap = false` a stated overlap -- a spot inside two polygons -- is
+    refused, and a drawn polygon is redrawn until it claims no taken spot.
+    With `overlap = true` a later region takes the spot.
+    """
+    lower, upper = points.min(axis=0), points.max(axis=0)
+    extent = upper - lower
+    scale = float(extent.min())
+    named = {r.clone for r in piece.regions}
+    regions = list(piece.regions) + [
+        Region(
+            clone=c,
+            center=None,
+            radius=float(manifest.layout["radius"]),
+            vertices=int(manifest.layout["vertices"]),
+            jitter=float(manifest.layout["jitter"]),
+        )
+        for c in piece.clones
+        if c not in named
+    ]
+    overlap = bool(manifest.layout["overlap"])
+    labels = np.full(points.shape[0], -1, dtype=np.int64)
+    shapes = []
+
+    for region in regions:
+        label = manifest.tumour.index(region.clone)
+        for _ in range(int(manifest.layout["max_placements"])):
+            if region.center is None:
+                # NB anywhere on the array: a polygon past an edge is clipped,
+                #    so a clone may be smaller than its radius says.
+                fraction = rng.uniform(0.0, 1.0, 2)
+            else:
+                fraction = np.asarray(region.center, dtype=np.float64)
+            vertices = polygon(region, lower + fraction * extent, scale, rng)
+            claimed = _inside(vertices, points)
+            clash = bool(np.any(labels[claimed] >= 0))
+            if overlap or not clash:
+                break
+            if region.center is not None:
+                msg = f"region of {region.clone} overlaps another and [layout] overlap = false"
+                raise ValueError(msg)
+        else:
+            msg = (
+                f"no placement of {region.clone} in {manifest.layout['max_placements']} "
+                "clears the others"
+            )
+            raise ValueError(msg)
+        labels[claimed] = label
+        shapes.append(vertices)
+
+    return labels, shapes
+
+
+def barcodes(
+    n_spots: int, length: int, suffix: str, rng: np.random.Generator
+) -> np.ndarray:
+    """`n_spots` distinct `length`-mers over `ACGT`, then `suffix` (Visium: 16, `-1`)."""
+    out: dict[str, None] = {}
+    while len(out) < n_spots:
+        draws = rng.integers(0, 4, (n_spots, length))
+        for row in draws:
+            out.setdefault("".join("ACGT"[i] for i in row) + suffix)
+            if len(out) == n_spots:
+                break
+    return np.array(list(out))
+
+
+def sample_ids(n_slices: int, n_bytes: int, rng: np.random.Generator) -> list[str]:
+    """Distinct hexadecimal ids of `2 n_bytes` digits."""
+    out: list[str] = []
+    while len(out) < n_slices:
+        candidate = rng.bytes(n_bytes).hex()
+        if candidate not in out:
+            out.append(candidate)
+    return out
+
+
+# --- phase ---------------------------------------------------------------------
+
+
+@functools.lru_cache(maxsize=2)
+def genetic_map(path: Path) -> dict[str, tuple[np.ndarray, np.ndarray]]:
+    """`chrom` (no `chr`) to its sorted positions and cM."""
+    table = pd.read_csv(path, sep="\t", usecols=["chrom", "pos", "pos_cm"])
+    table = table.sort_values(["chrom", "pos"], kind="stable")
+    return {
+        str(c).removeprefix("chr"): (g["pos"].to_numpy(), g["pos_cm"].to_numpy())
+        for c, g in table.groupby("chrom", sort=False)
+    }
+
+
+UNITS = {"morgan": 100.0, "centimorgan": 1.0}
+"""`d = cM / UNITS[unit]`: Haldane's map in Morgans, or Numbat's and `cnaster`'s in cM."""
+
+
+def switch_probabilities(
+    chromosome: np.ndarray,
+    position: np.ndarray,
+    gmap: dict[str, tuple[np.ndarray, np.ndarray]],
+    nu: float,
+    unit: str,
+) -> np.ndarray:
+    """`p[j]`: the phase switches between SNP `j - 1` and `j`; 0 at each chromosome's first.
+
+    `p = (1 - exp(-2 nu d)) / 2`, `d` the map distance in `unit`: the
+    two-state Markov chain whose `1 - 2p` multiplies along a chromosome, so
+    the SNP-level draw composes exactly to the same law over any bin.
+    """
+    p = np.zeros(position.size)
+    for name in np.unique(chromosome):
+        at = np.flatnonzero(chromosome == name)
+        pos, cm = gmap[str(name)]
+        distance = np.diff(np.interp(position[at], pos, cm)) / UNITS[unit]
+        p[at[1:]] = 0.5 * (1 - np.exp(-2 * nu * distance))
+    return p
+
+
+# --- the draw ------------------------------------------------------------------
+
+
+@dataclass
+class Drawn:
+    """What `draw` wrote, and what a test reads back."""
+
+    path: Path
+    sample_ids: list[str]
+    clones: tuple[str, ...]
+    labels: list[np.ndarray]
+    tree: CloneTree
+    switched: np.ndarray
+    switch_p: np.ndarray
+    counts: list[Any] = field(default_factory=list)
+
+
+def _laws(manifest: DrawManifest) -> dict[str, Law]:
+    from port.sim.normal_fit import read_coverage
+
+    return read_coverage(manifest.resolve(manifest.reference["coverage"]))
+
+
+def _lognormal(law: Law, size: int, rng: np.random.Generator) -> np.ndarray:
+    if law.family != "lognormal":
+        msg = f"a spot law is lognormal here, not {law.family}"
+        raise ValueError(msg)
+    drawn = rng.lognormal(law.parameters["mu"], law.parameters["sigma"], size)
+    return np.maximum(np.rint(drawn), 1).astype(np.int64)
+
+
+def _depth(
+    manifest: DrawManifest, clones: tuple[str, ...], copies: np.ndarray
+) -> np.ndarray:
+    """`(n_loci, n_clones)` the admixture law's depth factor; `normal` 1."""
+    total = copies.sum(axis=2).astype(np.float64)
+    factor = np.ones_like(total)
+    for label, clone in enumerate(clones):
+        if clone != "normal":
+            tumour = 1.0 - manifest.normal_frac(clone)
+            factor[:, label] = tumour * total[:, label] / 2.0 + (1.0 - tumour)
+    return factor
+
+
+def _snps(manifest: DrawManifest) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    ids = np.load(
+        manifest.resolve(manifest.reference["snps"]), allow_pickle=True
+    ).astype(str)
+    chromosome = np.array([s.split("_")[0] for s in ids])
+    position = np.array([int(s.split("_")[1]) for s in ids])
+    return ids, chromosome, position
+
+
+def draw(
+    manifest: DrawManifest, into: Path | None = None, *, resources: Path | None = None
+) -> Drawn:
+    """Draw every slice of `manifest` and write it as `<into>/<name>/`."""
+    import anndata
+    import scipy.sparse
+
+    streams = [
+        np.random.default_rng(s) for s in np.random.SeedSequence(manifest.seed).spawn(5)
+    ]
+    tree_rng, layout_rng, id_rng, phase_rng, count_rng = streams
+    resources = resources or manifest.resources()
+    out = (
+        into if into is not None else manifest.resolve(manifest.sample["output"])
+    ) / manifest.name
+    (out / "snp").mkdir(parents=True, exist_ok=True)
+
+    tree = draw_tree(manifest, tree_rng)
+    clones = ("normal", *manifest.tumour)
+    laws = _laws(manifest)
+
+    baseline = pd.read_csv(
+        manifest.resolve(manifest.reference["baseline"]), sep="\t", comment="#"
+    )
+    gene_chrom = baseline["chrom"].astype(str).str.removeprefix("chr").to_numpy()
+    gene_pos = ((baseline["cdsStart"] + baseline["cdsEnd"]) // 2).to_numpy()
+    gene_weights = baseline["lambda"].to_numpy()[:, None] * _depth(
+        manifest, clones, clone_copies(tree, clones, gene_chrom, gene_pos)
+    )
+
+    snp_ids, snp_chrom, snp_pos = _snps(manifest)
+    snp_copies = clone_copies(tree, clones, snp_chrom, snp_pos)
+    share = np.stack(
+        [
+            allele_share(
+                snp_copies[:, label, 0].astype(np.float64),
+                snp_copies[:, label, 1].astype(np.float64),
+                manifest.normal_frac(clone),
+                manifest.model["admixture"],
+            )
+            for label, clone in enumerate(clones)
+        ]
+    )
+    follows = bool(manifest.model["snp_depth_follows_copies"])
+    snp_factor = (
+        _depth(manifest, clones, snp_copies)
+        if follows
+        else np.ones((snp_ids.size, len(clones)))
+    )
+    dispersion = laws["snp_total"].parameters["dispersion"]
+    snp_weights = (
+        count_rng.gamma(1 / dispersion, dispersion, snp_ids.size)
+        if dispersion > 0
+        else np.ones(snp_ids.size)
+    )
+
+    p_switch = switch_probabilities(
+        snp_chrom,
+        snp_pos,
+        genetic_map(resources / manifest.reference["genetic_map"]),
+        float(manifest.phasing["nu"]),
+        manifest.phasing["unit"],
+    )
+    if not manifest.phasing["switch_errors"]:
+        p_switch = np.zeros_like(p_switch)
+    switches = phase_rng.random(p_switch.size) < p_switch
+    switched = np.zeros(snp_ids.size, dtype=bool)
+    for name in np.unique(snp_chrom):
+        at = np.flatnonzero(snp_chrom == name)
+        switched[at] = np.cumsum(switches[at]) % 2 == 1
+
+    rows, cols, points = hex_array(
+        int(manifest.array["rows"]), int(manifest.array["columns"])
+    )
+    codes = manifest.barcodes
+    whitelist = barcodes(rows.size, int(codes["length"]), codes["suffix"], id_rng)
+    ids = sample_ids(len(manifest.slices), int(codes["sample_id_bytes"]), id_rng)
+    alpha = float(manifest.model["nb_dispersion"])
+    entry = float(manifest.model["snp_dispersion"])
+    rho = float(manifest.model["bb_overdispersion"])
+
+    all_barcodes, a_blocks, b_blocks, truth, labels_out, counts_out = (
+        [],
+        [],
+        [],
+        [],
+        [],
+        [],
+    )
+    for piece, sid in zip(manifest.slices, ids, strict=True):
+        tumour_labels, _ = layout(manifest, piece, points, layout_rng)
+        labels = tumour_labels + 1  # NB `normal` is clone 0 of `clones`.
+        combined = np.array([f"{b}_{sid}" for b in whitelist])
+
+        depth = _lognormal(laws["spot_umi"], rows.size, count_rng)
+        blocks = []
+        for start in range(0, rows.size, SPOT_CHUNK):
+            spots = np.arange(start, min(start + SPOT_CHUNK, rows.size))
+            q = gene_weights[:, labels[spots]].T
+            if alpha > 0:
+                q = q * count_rng.gamma(1 / alpha, alpha, q.shape)
+            q = q / q.sum(axis=1, keepdims=True)
+            blocks.append(
+                scipy.sparse.csr_matrix(count_rng.poisson(depth[spots, None] * q))
+            )
+        counts = scipy.sparse.vstack(blocks).tocsr().astype(np.int64)
+
+        slice_dir = out / sid
+        (slice_dir / "spatial").mkdir(parents=True, exist_ok=True)
+        anndata.AnnData(
+            X=counts,
+            obs=pd.DataFrame({"labels": np.asarray(clones)[labels]}, index=combined),
+            var=pd.DataFrame(index=baseline["gene"].to_numpy()),
+        ).write_h5ad(slice_dir / "filtered_feature_bc_matrix.h5ad", compression="gzip")
+        pd.DataFrame({0: combined, 1: 1, 2: rows, 3: cols, 4: rows, 5: cols}).to_csv(
+            slice_dir / "spatial" / "tissue_positions_list.csv",
+            header=False,
+            index=False,
+        )
+
+        snp_depth = _lognormal(laws["spot_snp_umi"], rows.size, count_rng)
+        trial_blocks = []
+        for start in range(0, rows.size, SPOT_CHUNK):
+            spots = np.arange(start, min(start + SPOT_CHUNK, rows.size))
+            w = snp_weights[None, :] * snp_factor[:, labels[spots]].T
+            if entry > 0:
+                w = w * count_rng.gamma(1 / entry, entry, w.shape)
+            w = w / w.sum(axis=1, keepdims=True)
+            trial_blocks.append(
+                scipy.sparse.csr_matrix(count_rng.poisson(snp_depth[spots, None] * w))
+            )
+        trials = scipy.sparse.vstack(trial_blocks).tocoo()
+
+        p = share[labels[trials.row], trials.col]
+        if rho > 0:
+            inner = (p > 0) & (p < 1)
+            scale = 1 / rho - 1
+            p = p.copy()
+            p[inner] = count_rng.beta(p[inner] * scale, (1 - p[inner]) * scale)
+        first = count_rng.binomial(trials.data, p)
+        second = trials.data - first
+        flip = switched[trials.col]
+        reported_a = np.where(flip, second, first)
+        reported_b = np.where(flip, first, second)
+        shape = (rows.size, snp_ids.size)
+        a_blocks.append(
+            scipy.sparse.csr_matrix((reported_a, (trials.row, trials.col)), shape=shape)
+        )
+        b_blocks.append(
+            scipy.sparse.csr_matrix((reported_b, (trials.row, trials.col)), shape=shape)
+        )
+
+        all_barcodes.append(combined)
+        truth.append(
+            pd.DataFrame(
+                {
+                    "labels": np.asarray(clones)[labels],
+                    "x": rows,
+                    "y": cols,
+                    "sample_id": sid,
+                },
+                index=pd.Index(combined, name="barcode"),
+            )
+        )
+        labels_out.append(labels)
+        counts_out.append(counts)
+
+    snp_dir = out / "snp"
+    (snp_dir / "barcodes.txt").write_text(
+        "\n".join(np.concatenate(all_barcodes)) + "\n"
+    )
+    np.save(snp_dir / "unique_snp_ids.npy", snp_ids.astype(object))
+    for name, blocks in (("A", a_blocks), ("B", b_blocks)):
+        scipy.sparse.save_npz(
+            snp_dir / f"cell_snp_{name}allele.npz",
+            scipy.sparse.vstack(blocks).tocsr().astype(np.int64),
+        )
+
+    pd.concat(truth).to_csv(out / "truth_clone_labels.tsv", sep="\t")
+    truth_profile(tree, clones, manifest.genome["chromosome_lengths"]).to_csv(
+        out / "truth_acn_profile.tsv", sep="\t", index=False
+    )
+    tree_table(tree).to_csv(out / "truth_tree.tsv", sep="\t", index=False)
+    # NB the realized phase: True where the written `A` and `B` are exchanged,
+    #    in `unique_snp_ids.npy`'s order. A switch is a change within a chromosome.
+    np.save(out / "truth_phase.npy", switched)
+    write_inputs(manifest, out, ids, resources)
+
+    return Drawn(out, ids, clones, labels_out, tree, switched, p_switch, counts_out)
+
+
+def write_inputs(
+    manifest: DrawManifest, out: Path, ids: list[str], resources: Path
+) -> Path:
+    """`sample_sheet.tsv` and `config.yaml` for `run_cnaster` / `run_cnaster_port`.
+
+    The configuration is `[config] base`, a `run_cnaster` YAML, with each
+    `[config.<section>]` table of the manifest laid over its section; then its
+    paths pointed here and its references at `[reference] resources`. Paths
+    are absolute, so either runs from any directory.
+    """
+    import yaml
+
+    pd.DataFrame(
+        {
+            "bam": ["unused.bam"] * len(ids),
+            "sample_id": ids,
+            "spaceranger_dir": [str((out / sid).resolve()) for sid in ids],
+            "snp_dir": [str((out / "snp").resolve())] * len(ids),
+        }
+    ).to_csv(out / "sample_sheet.tsv", sep="\t", index=False)
+
+    config = manifest.config
+    document: dict[str, Any] = yaml.safe_load(
+        manifest.resolve(config.pop("base")).read_text()
+    )
+    for section, values in config.items():
+        document.setdefault(section, {}).update(values)
+
+    reference = manifest.reference
+    document["paths"] = {
+        "sample_sheet": str((out / "sample_sheet.tsv").resolve()),
+        "output_dir": str((out / "output").resolve()),
+        "perf_path": str((out / "cnaster.perf").resolve()),
+    }
+    document["references"] |= {
+        "geneticmap_file": str(resources / reference["genetic_map"]),
+        "hgtable_file": str(resources / reference["gene_table"]),
+        "filtergenelist_file": str(resources / reference["filter_genes"]),
+        "filterregion_file": str(resources / reference["filter_regions"]),
+    }
+    path = out / "config.yaml"
+    path.write_text(yaml.safe_dump(document, sort_keys=False))
+    return path
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("manifest", help="a version-3 `.toml` manifest")
+    parser.add_argument("--into", default=None, help="default: the manifest's `output`")
+    parser.add_argument("--seed", type=int, default=None, help="override the seed")
+    arguments = parser.parse_args(argv)
+
+    manifest = read_manifest(arguments.manifest)
+    if arguments.seed is not None:
+        from dataclasses import replace
+
+        seed = {"sample": {"seed": arguments.seed}}
+        manifest = replace(manifest, tables=_merge(manifest.tables, seed))
+    drawn = draw(manifest, None if arguments.into is None else Path(arguments.into))
+    print(
+        f"wrote {len(drawn.sample_ids)} slices to {drawn.path}; config {drawn.path / 'config.yaml'}"
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

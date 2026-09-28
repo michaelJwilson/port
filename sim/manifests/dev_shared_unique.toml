@@ -1,0 +1,15 @@
+# CalicoST's numcnas1.2_cnasize5e7 at the dev size, one slice (#445).
+# `python -m port.sim.draw sim/manifests/dev_shared_unique.toml`
+version = 3
+extends = "calicost_grch38.toml"
+
+[sample]
+name = "dev_shared_unique"
+seed = 0
+output = "../generated"
+
+[cna]
+mode = "shared.unique"
+
+[[slice]]
+clones = ["clone_0", "clone_1", "clone_2"]

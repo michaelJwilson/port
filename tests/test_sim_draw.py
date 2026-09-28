@@ -1,0 +1,349 @@
+"""#445: samples drawn from a version-3 manifest, and #446's two-slice load.
+
+`port.sim.normal_fit` fits the normal baseline and laws on CalicoST's normal
+spots; `port.sim.draw` draws clones, layouts, counts and phase from a
+manifest that states every assumption. The referees: a second computation of
+the baseline from the AnnData (`oracle`), the planted truth the draw was made
+from (`end2end`), and the properties the construction must hold (`analytic`).
+
+The draws here are 20 x 20 per slice from the shipped dev manifests; they
+need CalicoST's `GRCh38_resources` for the genetic map.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Any
+
+import numpy as np
+import pandas as pd
+import pytest
+import scipy.sparse
+from port.sim.draw import (
+    DrawManifest,
+    Drawn,
+    _merge,
+    draw,
+    extended,
+    from_document,
+    hex_array,
+    layout,
+)
+
+from tests.sim_fixtures import EASY, HARD, SIM_ROOT, references
+
+MANIFESTS = SIM_ROOT / "manifests"
+SIGMAS = 4.0
+"""Tolerances are this many standard errors of the statistic compared."""
+
+SMALL = {"array": {"rows": 20, "columns": 20}}
+
+
+def _manifest(name: str, overrides: dict[str, Any] | None = None) -> DrawManifest:
+    document = _merge(extended(MANIFESTS / f"{name}.toml"), SMALL | (overrides or {}))
+    return from_document(document, MANIFESTS)
+
+
+@pytest.fixture(scope="module")
+def resources() -> Path:
+    found = references()
+    if found is None:
+        pytest.skip("CalicoST's GRCh38_resources not found; set $PORT_GRCH38")
+    return found
+
+
+@pytest.fixture(scope="module")
+def tree_draw(resources: Path, tmp_path_factory: pytest.TempPathFactory) -> Drawn:
+    """Two slices on a tree, with phase switches at `cnaster`'s assumed rate."""
+    manifest = _manifest("dev_tree")
+    return draw(manifest, tmp_path_factory.mktemp("tree"), resources=resources)
+
+
+@pytest.fixture(scope="module")
+def star_draw(resources: Path, tmp_path_factory: pytest.TempPathFactory) -> Drawn:
+    """One slice, CalicoST's shared.unique, no phase switches."""
+    manifest = _manifest("dev_shared_unique")
+    return draw(manifest, tmp_path_factory.mktemp("star"), resources=resources)
+
+
+@pytest.mark.oracle
+def test_lambda_is_each_genes_share_of_normal_spot_umi() -> None:
+    """`normal_baseline.txt` against the AnnData summed by `pandas`, to 1e-8 relative.
+
+    The file writes 10 significant digits (5e-10); Σλ is 1 to 1e-8.
+    """
+    import anndata
+
+    totals = []
+    for name in (EASY, HARD):
+        path = SIM_ROOT / name
+        assay = anndata.read_h5ad(path / "filtered_feature_bc_matrix.h5ad")
+        truth = pd.read_csv(path / "truth_clone_labels.tsv", sep="\t", index_col=0)
+        normal = truth.loc[assay.obs_names].iloc[:, 0].eq("normal").to_numpy()
+        dense = pd.DataFrame(
+            scipy.sparse.csr_matrix(assay.X)[normal].toarray(),
+            columns=np.asarray(assay.var_names),
+        )
+        totals.append(dense.sum(axis=0).groupby(level=0).sum())
+
+    total = totals[0] + totals[1]
+    baseline = pd.read_csv(SIM_ROOT / "normal_baseline.txt", sep="\t", comment="#")
+    expected = total.loc[baseline["gene"]].to_numpy(dtype=np.float64)
+
+    np.testing.assert_allclose(
+        baseline["lambda"].to_numpy(), expected / expected.sum(), rtol=1e-8
+    )
+    assert abs(baseline["lambda"].sum() - 1.0) < 1e-8
+    assert baseline["gene"].is_unique
+
+
+@pytest.mark.infra
+@pytest.mark.parametrize(
+    ("table", "key"),
+    [("genome", "chromosome_lengths"), ("cna", "states"), ("layout", "jitter")],
+)
+def test_a_manifest_that_omits_an_assumption_is_refused(table: str, key: str) -> None:
+    """Nothing the draw assumes has a default in code (#445)."""
+    document = extended(MANIFESTS / "dev_tree.toml")
+    del document[table][key]
+
+    with pytest.raises(ValueError, match=rf"\[{table}\] {key}"):
+        from_document(document, MANIFESTS)
+
+
+@pytest.mark.analytic
+def test_every_clone_carries_the_events_on_its_path_from_normal(
+    tree_draw: Drawn, star_draw: Drawn
+) -> None:
+    """Leaves hang from a tree rooted at `normal`; a clone's events are its path's.
+
+    `shared.unique`: every clone shares the trunk's `shared` events and has
+    `unique` of its own, CalicoST's `numcnas{shared}.{unique}`.
+    """
+    tree = tree_draw.tree
+    assert tree.parent["normal"] is None
+    for leaf in tree.leaves:
+        path = tree.path(leaf)
+        assert path[0] == "normal"
+        assert tree.events(leaf) == tuple(
+            e for node in path for e in tree.edge_events[node]
+        )
+        assert len(tree.edge_events[leaf]) == 2
+    trunk = [n for n, p in tree.parent.items() if p == "normal"]
+    assert len(trunk) == 1
+    assert len(tree.edge_events[trunk[0]]) == 1
+
+    star = star_draw.tree
+    shared = star.edge_events["founder"]
+    assert len(shared) == 1
+    for leaf in star.leaves:
+        assert star.events(leaf)[:1] == shared
+        assert len(star.events(leaf)) == 3
+
+
+@pytest.mark.analytic
+def test_drawn_polygons_claim_no_spot_twice_and_a_stated_overlap_is_refused() -> None:
+    """`overlap = false`: drawn regions are disjoint; two stated ones that share a spot raise."""
+    manifest = _manifest("dev_tree")
+    _, _, points = hex_array(20, 20)
+    rng = np.random.default_rng(3)
+
+    for piece in manifest.slices:
+        labels, shapes = layout(manifest, piece, points, rng)
+        assert len(shapes) == len(piece.clones)
+        for clone in piece.clones:
+            assert np.any(labels == manifest.tumour.index(clone))
+
+    region = {"center": [0.5, 0.5], "radius": 0.3}
+    clash = _manifest(
+        "dev_tree",
+        {
+            "slice": [
+                {
+                    "clones": ["clone_0", "clone_1"],
+                    "regions": [
+                        {"clone": "clone_0"} | region,
+                        {"clone": "clone_1"} | region,
+                    ],
+                }
+            ]
+        },
+    )
+    with pytest.raises(ValueError, match="overlaps"):
+        layout(clash, clash.slices[0], points, rng)
+
+
+@pytest.mark.analytic
+def test_phase_switches_occur_at_the_haldane_rate(tree_draw: Drawn) -> None:
+    """Switches within chromosomes against Σ p, to 4 SE of the Bernoulli sum.
+
+    Read from the written `truth_phase.npy`, where a switch is a change of
+    phase between consecutive SNPs of a chromosome.
+    """
+    snps = np.load(tree_draw.path / "snp" / "unique_snp_ids.npy", allow_pickle=True)
+    chromosome = np.array([s.split("_")[0] for s in snps.astype(str)])
+    same = chromosome[1:] == chromosome[:-1]
+    written = np.load(tree_draw.path / "truth_phase.npy")
+    np.testing.assert_array_equal(written, tree_draw.switched)
+    switched = written.astype(int)
+    observed = int(np.sum(np.diff(switched)[same] != 0))
+
+    p = tree_draw.switch_p[1:][same]
+    expected, se = p.sum(), np.sqrt(np.sum(p * (1 - p)))
+
+    assert expected > 100, f"{expected:.1f} expected switches is too few to test"
+    assert abs(observed - expected) <= SIGMAS * se, (observed, expected, se)
+
+
+@pytest.mark.analytic
+def test_the_switch_law_composes_over_any_binning() -> None:
+    """Two steps of the chain are one step over the summed distance.
+
+    `(1 - 2 p_ab)(1 - 2 p_bc) = 1 - 2 p_ac`: the SNP-level draw gives the law
+    `cnaster.recomb` states over a bin, whatever the bin, to 1e-10 relative:
+    at 5 cM the product is 2.3e-6, and `1 - 2p` cancels to 1.4e-12 realized.
+    """
+    from port.sim.draw import switch_probabilities
+
+    cm = np.array([0.0, 0.7, 2.2, 5.0])
+    gmap = {"1": (np.array([0, 1000, 2000, 3000]), cm)}
+    chromosome = np.array(["1"] * 4)
+    position = np.array([0, 1000, 2000, 3000])
+
+    for unit in ("centimorgan", "morgan"):
+        p = switch_probabilities(chromosome, position, gmap, 1.3, unit)[1:]
+        whole = switch_probabilities(
+            chromosome[[0, 3]], position[[0, 3]], gmap, 1.3, unit
+        )[1]
+        np.testing.assert_allclose(np.prod(1 - 2 * p), 1 - 2 * whole, rtol=1e-10)
+
+
+def _segments(drawn: Drawn) -> pd.DataFrame:
+    return pd.read_csv(drawn.path / "truth_acn_profile.tsv", sep="\t")
+
+
+@pytest.mark.end2end
+def test_each_clones_baf_is_the_planted_share(star_draw: Drawn) -> None:
+    """Per clone and aberrant segment, the mean SNP BAF against `A / (A + B)`, 4 SE.
+
+    No switches in this draw, so the written `A` is the planted haplotype.
+    """
+    path = star_draw.path
+    a = scipy.sparse.load_npz(path / "snp" / "cell_snp_Aallele.npz").tocsr()
+    b = scipy.sparse.load_npz(path / "snp" / "cell_snp_Ballele.npz").tocsr()
+    snps = np.load(path / "snp" / "unique_snp_ids.npy", allow_pickle=True).astype(str)
+    chromosome = np.array([s.split("_")[0] for s in snps])
+    position = np.array([int(s.split("_")[1]) for s in snps])
+    labels = star_draw.labels[0]
+    checked = 0
+
+    for _, row in _segments(star_draw).iterrows():
+        at = (chromosome == str(row["chr"])) & (position >= row["start"])
+        at &= position < row["end"]
+        for label, clone in enumerate(star_draw.clones):
+            copies = row[f"{clone}_A_copy"], row[f"{clone}_B_copy"]
+            if copies == (1, 1) or sum(copies) == 0:
+                continue
+            spots = labels == label
+            alt = np.asarray(a[spots][:, at].sum(axis=0)).ravel()
+            total = alt + np.asarray(b[spots][:, at].sum(axis=0)).ravel()
+            baf = alt[total > 0] / total[total > 0]
+            if baf.size < 20:
+                continue
+            share = copies[0] / sum(copies)
+            se = max(baf.std(ddof=1), 1e-3) / np.sqrt(baf.size)
+            assert abs(baf.mean() - share) <= SIGMAS * se, (clone, row["chr"], share)
+            checked += 1
+
+    assert checked >= 3, f"{checked} segments had 20 SNPs with reads"
+
+
+@pytest.mark.end2end
+def test_each_clones_expression_is_the_planted_depth(star_draw: Drawn) -> None:
+    """Per clone and aberrant segment, a spot's UMI share against `Σλd / Σλd`, 4 SE."""
+    import anndata
+
+    sid = star_draw.sample_ids[0]
+    assay = anndata.read_h5ad(star_draw.path / sid / "filtered_feature_bc_matrix.h5ad")
+    baseline = pd.read_csv(SIM_ROOT / "normal_baseline.txt", sep="\t", comment="#")
+    chromosome = baseline["chrom"].str.removeprefix("chr").to_numpy()
+    middle = ((baseline["cdsStart"] + baseline["cdsEnd"]) // 2).to_numpy()
+    lam = baseline["lambda"].to_numpy()
+    counts = scipy.sparse.csr_matrix(assay.X)
+    depth = np.asarray(counts.sum(axis=1)).ravel()
+    labels = star_draw.labels[0]
+    segments = _segments(star_draw)
+    checked = 0
+
+    for label, clone in enumerate(star_draw.clones):
+        if clone == "normal":
+            continue
+        factor = np.ones(lam.size)
+        for _, row in segments.iterrows():
+            at = (chromosome == str(row["chr"])) & (middle >= row["start"])
+            at &= middle < row["end"]
+            factor[at] = (row[f"{clone}_A_copy"] + row[f"{clone}_B_copy"]) / 2
+        weight = lam * factor / np.sum(lam * factor)
+        spots = np.flatnonzero(labels == label)
+
+        for _, row in segments.iterrows():
+            copies = row[f"{clone}_A_copy"] + row[f"{clone}_B_copy"]
+            at = (chromosome == str(row["chr"])) & (middle >= row["start"])
+            at &= middle < row["end"]
+            if copies == 2 or weight[at].sum() < 1e-3:
+                continue
+            share = np.asarray(counts[spots][:, at].sum(axis=1)).ravel() / depth[spots]
+            se = share.std(ddof=1) / np.sqrt(spots.size)
+            assert abs(share.mean() - weight[at].sum()) <= SIGMAS * se, (
+                clone,
+                row["chr"],
+            )
+            checked += 1
+
+    assert checked >= 3
+
+
+@pytest.mark.bug
+def test_cnaster_assigns_no_spot_to_any_of_two_slices(tree_draw: Drawn) -> None:
+    """#446: with 2+ slices every barcode's `sample_id` is `None`, so no slice matches."""
+    from cnaster.io import get_aggregated_barcodes
+
+    frame = get_aggregated_barcodes(str(tree_draw.path / "snp" / "barcodes.txt"), None)
+
+    for sid in tree_draw.sample_ids:
+        assert int(np.sum(frame["sample_id"] == sid)) == 0
+
+
+@pytest.mark.patch
+def test_one_slice_is_cnasters_bitwise(star_draw: Drawn) -> None:
+    """The patch leaves the single-slice path, `known_sample_id` given, as upstream."""
+    from cnaster.io import get_aggregated_barcodes as upstream
+    from port.patch.io import get_aggregated_barcodes as patched
+
+    path = str(star_draw.path / "snp" / "barcodes.txt")
+    sid = star_draw.sample_ids[0]
+
+    pd.testing.assert_frame_equal(patched(path, sid), upstream(path, sid))
+
+
+@pytest.mark.end2end
+def test_the_patched_loader_puts_every_spot_in_the_slice_it_was_drawn_on(
+    tree_draw: Drawn,
+) -> None:
+    """Both slices load, each spot under the `sample_id` its barcode was written with."""
+    from cnaster.config import YAMLConfig, get_global_config, set_global_config
+    from port.patch.io import load_input_data
+
+    previous = get_global_config()
+    set_global_config(None)
+    set_global_config(YAMLConfig.from_file(tree_draw.path / "config.yaml"))
+    try:
+        loaded = load_input_data(get_global_config(), min_snp_umis=1)
+    finally:
+        set_global_config(None)
+        set_global_config(previous)
+
+    obs = loaded.adata.obs
+    suffix = obs.index.to_series().str.rsplit("_", n=1).str[-1]
+    assert set(obs["sample"]) == set(tree_draw.sample_ids)
+    assert (obs["sample"].astype(str) == suffix).all()
