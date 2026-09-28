@@ -137,6 +137,12 @@ SWAPS: tuple[Swap, ...] = (
         198,
     ),
     Swap(
+        "cnaster.omics",
+        "create_bin_ranges",
+        "port.patch.omics:create_bin_ranges",
+        438,
+    ),
+    Swap(
         "cnaster.recomb",
         "get_sitewise_transmat",
         "port.patch.recomb:get_sitewise_transmat",
