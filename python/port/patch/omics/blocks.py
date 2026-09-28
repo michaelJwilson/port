@@ -40,8 +40,10 @@ import pandas as pd
 import scipy.sparse as sp
 from cnaster.config import start_time
 from cnaster.logger import get_logger
+from cnaster.omics import create_bin_ranges as _UPSTREAM_CREATE_BIN_RANGES
 from cnaster.spatio_genomic_counts import SpatioGenomicCounts
 
+from port.extensions.segments import current, observe
 from port.patch.reference import get_reference_genes
 
 logger = get_logger(__name__, start_time=start_time)
@@ -584,7 +586,10 @@ def summarize_counts_for_blocks(
         a_allele + _grouped_column_sums(cell_snp_Ballele, by_snp)
     ).astype(int)
 
-    lengths = df_gene_snp.groupby("CHR")["block_id"].nunique().to_numpy()
+    # NB from the blocks as a labelling of the genes (#438): the contig runs
+    #    of the segments the rows are indexed by, never zero, and recorded
+    #    while a run records its lineage.
+    lengths = observe(df_gene_snp, "block_id", "blocks").lengths
 
     return SpatioGenomicCounts(
         lengths, single_X, np.zeros((n_blocks, n_spots)), single_total_bb_RD
@@ -642,6 +647,14 @@ def summarize_counts_for_bins(
     gene_names = adata.var.index.to_numpy()
     columns, known = _positions(df_gene_snp.gene.to_numpy()[assigned], gene_names)
 
+    # NB genes the differential-expression filter flagged earlier in the run
+    #    leave the read depth of every bin summed after it (#440, #177): the
+    #    filter's own bins are re-cut before its result could be used.
+    lineage = current()
+    if lineage is not None and lineage.excluded_genes:
+        flagged = np.isin(gene_names[columns], list(lineage.excluded_genes))
+        known = known & ~flagged
+
     by_gene = _group_indicator(columns[known], bin_rank[known], len(gene_names), n_bins)
 
     # NB every block's phased B count at once; the choice is per block, not
@@ -658,15 +671,71 @@ def summarize_counts_for_bins(
 
     bin_single_total_bb_RD = np.asarray(by_block.T @ single_total_bb_RD, dtype=int)
 
-    chr_order = df_gene_snp.CHR.unique()
-    lengths = (
-        df_gene_snp.loc[assigned]
-        .groupby("CHR")["bin_id"]
-        .nunique()
-        .reindex(chr_order, fill_value=0)
-        .to_numpy()
-    )
+    # NB from the bins as a labelling of the genes (#438). `cnaster` reindexes
+    #    over every contig with zeros; a zero is a contig every lattice
+    #    restarts on and never reaches (D5), so none is written.
+    lengths = observe(df_gene_snp, "bin_id", "bins").lengths
 
     return SpatioGenomicCounts(
         lengths, bin_single_X, np.zeros((n_bins, n_spots)), bin_single_total_bb_RD
     )
+
+
+def create_bin_ranges(
+    df_gene_snp: Any,
+    adata: Any,
+    cell_snp_Aallele: Any,
+    cell_snp_Ballele: Any,
+    unique_snp_ids: Any,
+    single_X: Any,
+    single_total_bb_RD: Any,
+    refined_lengths: Any,
+    secondary_min_umi: Any,
+    secondary_min_snp_umi: Any,
+    secondary_min_normal_umi: Any,
+    normal_candidates: Any = None,
+    max_binlength: float = 5e6,
+    key: str = "block_id",
+) -> Any:
+    """`cnaster.omics.create_bin_ranges`, without the rows its merge leaves unbinned (#438 D8, #105).
+
+    `normal_baf_bin_filter` sets `bin_id` to missing for every bin it removes,
+    and the merge (`key="bin_id"`, `run_cnaster.py:983`) carries the missing
+    ids through. `run_cnaster` then casts `bin_id` to `int` over every gene
+    (`run_cnaster.py:1476`): a missing id becomes `INT_MIN` and indexes out of
+    bounds, so any removed bin ends the run at its last stage, after the
+    inference. Dropping those rows here is the fix #105 names -- a gene in a
+    removed bin has no copy number -- and every other consumer of the table
+    already skips them. The rows' index labels are kept, so the lineage still
+    places every remaining gene.
+    """
+    table = _UPSTREAM_CREATE_BIN_RANGES(
+        df_gene_snp,
+        adata,
+        cell_snp_Aallele,
+        cell_snp_Ballele,
+        unique_snp_ids,
+        single_X,
+        single_total_bb_RD,
+        refined_lengths,
+        secondary_min_umi,
+        secondary_min_snp_umi,
+        secondary_min_normal_umi,
+        normal_candidates=normal_candidates,
+        max_binlength=max_binlength,
+        key=key,
+    )
+
+    if key != "bin_id":
+        return table
+
+    unbinned = table["bin_id"].isna().to_numpy()
+
+    if unbinned.any():
+        logger.info(
+            f"Dropping {int(unbinned.sum())} rows whose bins the normal-BAF "
+            "filter removed, so the gene-level output can index them (#105)."
+        )
+        table = table.loc[~unbinned]
+
+    return table

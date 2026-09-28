@@ -13,6 +13,7 @@ from __future__ import annotations
 from port.patch.omics.blocks import (
     assign_initial_blocks,
     block_of_row,
+    create_bin_ranges,
     form_gene_snp_table,
     merged_gene_intervals,
     preceding_gene,
@@ -28,6 +29,7 @@ __all__ = [
     "assign_initial_blocks",
     "block_of_row",
     "block_summary",
+    "create_bin_ranges",
     "form_gene_snp_table",
     "merged_gene_intervals",
     "preceding_gene",

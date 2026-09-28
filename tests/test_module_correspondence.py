@@ -146,9 +146,8 @@ def test_what_replaces_nothing_does_not_live_under_patch() -> None:
     """`patch/` means "replaces `cnaster`", so a module that does not is elsewhere.
 
     `emission_family` wraps `snakes_and_ladders` and `hmm_init_trials` is
-    `port`'s own, so both are `extensions/`; `run_sim_gen` is proposed for
-    `cnaster` and written here (#116) and `manifest` plants truth, so both
-    are `sim/`. None may appear in a swap row: an extension installed over a
+    `port`'s own, so both are `extensions/`; `draw` plants truth, so it is
+    `sim/`. None may appear in a swap row: an extension installed over a
     `cnaster` name is a patch that has not admitted to being one.
     """
     installed = {
@@ -158,8 +157,7 @@ def test_what_replaces_nothing_does_not_live_under_patch() -> None:
 
     for name in (
         "port.extensions.emission_family",
-        "port.sim.run_sim_gen",
-        "port.sim.manifest",
+        "port.sim.draw",
         "port.extensions.hmm_init_trials",
     ):
         importlib.import_module(name)

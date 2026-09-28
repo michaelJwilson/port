@@ -1,4 +1,4 @@
-"""`cnaster.normal_spot.normal_baf_bin_filter`, without the quantile inversion.
+"""`cnaster.normal_spot.normal_baf_bin_filter`, without the quantile inversion; and `filter_normal_diffexp`, fixed and reconnected (#440, at the end).
 
 **Proposed for `cnaster`, written here.** #174: the filter decides which bins to
 drop by inverting a beta-binomial quantile at each bin, and `scipy` has no
@@ -39,6 +39,8 @@ from cnaster.hmm_emission import Weighted_BetaBinom
 from cnaster.hmm_utils import get_em_solver_params
 from cnaster.logger import get_logger
 from cnaster.spatio_genomic_counts import SpatioGenomicCounts
+
+from port.extensions.segments import observe
 
 logger = get_logger(__name__, start_time=start_time)
 
@@ -391,6 +393,14 @@ def normal_baf_bin_filter(
     `geneticmap_file` are accepted and unused, as upstream -- the docstring
     promises a `log_sitewise_transmat` the function has never returned, and
     `run_cnaster` calls `get_sitewise_transmat` itself on the next line.
+
+    **One addition (#105):** a gene whose bin is removed is marked
+    `is_interval = False`. Upstream leaves it `True` with `bin_id` null, and
+    `run_cnaster`'s gene-level output casts every interval gene's `bin_id`
+    to `int` (`run_cnaster.py:1476`), so one removed bin ends the run with
+    an `IndexError` after every other table is written. `is_interval` is read
+    nowhere else after this filter. Where no bin is removed the frame is
+    upstream's, bitwise.
     """
     if confidence_interval is None:
         confidence_interval = ast.literal_eval(
@@ -435,7 +445,12 @@ def normal_baf_bin_filter(
     )
 
     column = np.where(df_gene_snp.columns == "bin_id")[0][0]
-    df_gene_snp.iloc[np.where(df_gene_snp.bin_id.isin(index_removal))[0], column] = None
+    removed = np.where(df_gene_snp.bin_id.isin(index_removal))[0]
+    df_gene_snp.iloc[removed, column] = None
+
+    if removed.size and "is_interval" in df_gene_snp.columns:
+        interval = np.where(df_gene_snp.columns == "is_interval")[0][0]
+        df_gene_snp.iloc[removed, interval] = False
 
     df_gene_snp["bin_id"] = df_gene_snp["bin_id"].map(
         {x: i for i, x in enumerate(index_remaining)}
@@ -451,14 +466,9 @@ def normal_baf_bin_filter(
     single_base_nb_mean = single_base_nb_mean[index_remaining, :]
     single_total_bb_RD = single_total_bb_RD[index_remaining, :]
 
-    lengths = np.zeros(len(df_gene_snp.CHR.unique()), dtype=int)
-
-    for i, contig in enumerate(df_gene_snp.CHR.unique()):
-        lengths[i] = len(
-            df_gene_snp[
-                (contig == df_gene_snp.CHR) & (~df_gene_snp.bin_id.isnull())
-            ].bin_id.unique()
-        )
+    # NB the surviving bins as a labelling of the genes (#438): a contig whose
+    #    every bin was removed is absent rather than zero (D5).
+    lengths = observe(df_gene_snp, "bin_id", "bins-filtered").lengths
 
     if df_gene_snp["bin_id"].nunique(dropna=True) != single_X.shape[0]:  # invariant
         msg = 'expected df_gene_snp["bin_id"].nunique(dropna=True) == single_X.shape[0]'
@@ -470,3 +480,197 @@ def normal_baf_bin_filter(
     return df_gene_snp, SpatioGenomicCounts(
         lengths, single_X, single_base_nb_mean, single_total_bb_RD
     )
+
+
+# -- `filter_normal_diffexp` (#440) ----------------------------------------
+#
+# `cnaster.normal_spot.filter_normal_diffexp`, with its two defects fixed (#440).
+#
+# The filter drops genes whose expression differs between the normal
+# candidates and the rest -- `|logFC| > 2` against spots it cannot call, or
+# `> 4` against tumour spots, among genes above the 80th percentile of UMIs --
+# because such a gene moves a bin's read depth without a copy-number change.
+# `cnaster` ships it with two defects that together make it inert:
+#
+# - **#165.** It reads a bin's genes with `split(" ")` from a column the binner
+#   writes with `",".join` (`omics.py:261`), so every bin holding more than one
+#   gene is summed over no gene at all: 82 per cent of the read depth on the
+#   dev fixture.
+# - **#177.** `run_cnaster` binds the result to `copy_single_X_rdr` and
+#   overwrites it before any read (`run_cnaster.py:969`, `:1031`); CalicoST uses
+#   it at once (`calicost_main.py:145-155`).
+#
+# The selection below is `cnaster`'s, restated so the flagged genes can be
+# returned: `cnaster`'s function keeps them in a local. The bin sums split on
+# the separator the binner writes. And the flagged genes are recorded on the
+# run's lineage, where :func:`port.patch.omics.summarize_counts_for_bins`
+# leaves them out of every bin it sums after the filter -- the final bins,
+# which `create_bin_ranges` re-cuts between the filter and its consumer, so a
+# bin-level array could not have been reconnected.
+#
+# **Referee:** `cnaster`'s own function on bins of one gene each, where its
+# separator defect cannot bite -- bitwise (`tests/test_diffexp.py`).
+
+
+def flagged_genes(
+    exp_counts: Any,
+    normal_candidate: Any,
+    sample_list: Any = None,
+    sample_ids: Any = None,
+    logfcthreshold_u: float = 2,
+    logfcthreshold_t: float = 4,
+    quantile_threshold: float = 80,
+    use_kmeans: bool = True,
+) -> set[str]:
+    """The genes `cnaster`'s filter removes, as `normal_spot.py:727-887` selects them."""
+    import anndata
+    import scanpy as sc
+    from sklearn.cluster import KMeans
+
+    adata = anndata.AnnData(exp_counts)
+    adata.layers["count"] = exp_counts.values
+    adata.obs["normal_candidate"] = normal_candidate
+
+    gene_umi = dict(
+        zip(adata.var.index, np.sum(adata.layers["count"], axis=0), strict=True)
+    )
+
+    if sample_list is None:
+        sample_list = [None]
+
+    flagged: set[str] = set()
+
+    for s, name in enumerate(sample_list):
+        index = (
+            np.arange(adata.shape[0]) if name is None else np.where(sample_ids == s)[0]
+        )
+        sample: Any = adata[index, :].copy()
+        normal = sample.obs["normal_candidate"]
+
+        if np.sum(sample.layers["count"][normal, :]) < sample.shape[1] * 10:
+            continue
+
+        umi_threshold = np.percentile(
+            np.sum(sample.layers["count"], axis=0), quantile_threshold
+        )
+
+        sc.pp.filter_genes(sample, min_cells=10)
+        median = np.median(np.sum(sample.layers["count"], axis=1))
+        sc.pp.normalize_total(sample, target_sum=median)
+        sc.pp.log1p(sample)
+
+        normal_mask = sample.obs["normal_candidate"].to_numpy()
+
+        if use_kmeans:
+            sc.pp.pca(sample, n_comps=4)
+            kmeans = KMeans(n_clusters=2, random_state=0).fit(sample.obsm["X_pca"])
+            labels = kmeans.predict(sample.obsm["X_pca"])
+            normal_label = np.argmax(np.bincount(labels[normal_mask], minlength=2))
+
+            clone = np.array(["normal"] * sample.shape[0], dtype=object)
+            clone[(labels != normal_label) & (~normal_mask)] = "tumor"
+            clone[(labels == normal_label) & (~normal_mask)] = "unsure"
+        else:
+            clone = np.array(["tumor"] * sample.shape[0], dtype=object)
+            clone[normal_mask] = "normal"
+
+        aggregated = np.vstack(
+            [
+                np.sum(sample.layers["count"][clone == label, :], axis=0)
+                for label in ["normal", "unsure", "tumor"]
+            ]
+        )
+        totals = np.sum(aggregated, axis=1, keepdims=True)
+        totals[totals == 0] = 1.0
+        aggregated = aggregated / totals * 1e6
+
+        umis = np.array([gene_umi[x] for x in sample.var.index])
+
+        logfc_u = _logfc(aggregated, 1, present=bool(np.any(clone == "unsure")))
+        logfc_t = _logfc(aggregated, 2, present=bool(np.any(clone == "tumor")))
+
+        flagged |= set(
+            sample.var.index[
+                (np.abs(logfc_u) > logfcthreshold_u) & (umis > umi_threshold)
+            ]
+        ) | set(
+            sample.var.index[
+                (np.abs(logfc_t) > logfcthreshold_t) & (umis > umi_threshold)
+            ]
+        )
+
+    return flagged
+
+
+def _logfc(aggregated: np.ndarray, row: int, *, present: bool) -> np.ndarray:
+    """`log2` of row `row` over the normal row, 10 where either is zero; zeros if absent."""
+    if not present:
+        return np.zeros(aggregated.shape[1])
+
+    with np.errstate(divide="ignore", invalid="ignore"):
+        ratio: np.ndarray = np.where(
+            (aggregated[row, :] == 0) | (aggregated[0, :] == 0),
+            10,
+            np.log2(aggregated[row, :] / aggregated[0, :]),
+        )
+    return ratio
+
+
+def _genes_of(text: str) -> list[str]:
+    """A bin's genes from `INCLUDED_GENES`, `","`-joined as the binner writes it."""
+    return [gene for gene in text.replace(" ", ",").split(",") if gene]
+
+
+def filter_normal_diffexp(
+    exp_counts: Any,
+    df_bininfo: Any,
+    normal_candidate: Any,
+    sample_list: Any = None,
+    sample_ids: Any = None,
+    logfcthreshold_u: float = 2,
+    logfcthreshold_t: float = 4,
+    quantile_threshold: float = 80,
+    use_kmeans: bool = True,
+) -> np.ndarray:
+    """`(n_bins, n_spots)` read depth without the flagged genes; the genes recorded.
+
+    `cnaster`'s signature and return. The flagged genes are also recorded on
+    the run's lineage, which is what reconnects the filter (#177).
+    """
+    import scipy.sparse as sp
+
+    from port.extensions.segments import current
+
+    flagged = flagged_genes(
+        exp_counts,
+        normal_candidate,
+        sample_list=sample_list,
+        sample_ids=sample_ids,
+        logfcthreshold_u=logfcthreshold_u,
+        logfcthreshold_t=logfcthreshold_t,
+        quantile_threshold=quantile_threshold,
+        use_kmeans=use_kmeans,
+    )
+
+    lineage = current()
+    if lineage is not None:
+        lineage.excluded_genes |= flagged
+
+    genes = np.asarray(exp_counts.columns)
+    column = {gene: i for i, gene in enumerate(genes)}
+    kept = np.array([gene not in flagged for gene in genes])
+
+    rows, columns = [], []
+    for b, text in enumerate(df_bininfo.INCLUDED_GENES.to_numpy()):
+        for gene in _genes_of(text):
+            if gene in column:
+                rows.append(b)
+                columns.append(column[gene])
+
+    membership = sp.csr_matrix(
+        (np.ones(len(rows)), (rows, columns)), shape=(len(df_bininfo), genes.size)
+    )
+    counts = np.asarray(exp_counts.to_numpy(), dtype=np.float64) * kept
+    retained: np.ndarray = np.asarray(membership @ counts.T)
+
+    return retained

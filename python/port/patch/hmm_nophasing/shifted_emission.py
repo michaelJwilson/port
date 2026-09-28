@@ -92,10 +92,17 @@ from cnaster.hmm_nophasing import _bb_logpmf_1d, _nb_logpmf_1d
 from cnaster.hmm_nophasing import hmm_nophasing as UPSTREAM
 from sal.ragged import Ragged
 
+from port.patch.hmm_nophasing.gradient import EmGradient, analytic_bfgs
 from port.patch.hmm_nophasing.logmu_shift import shifts as logmu_shifts
 from port.patch.plotting.clone_paths import state_vector
 
-__all__ = ["UPSTREAM", "hmm_nophasing", "logmu_shift", "neutral_state"]
+__all__ = [
+    "UPSTREAM",
+    "finite_difference",
+    "hmm_nophasing",
+    "logmu_shift",
+    "neutral_state",
+]
 
 NEUTRAL_BAF_TOLERANCE = 0.05
 """How far from 0.5 a state's allele fraction may sit and still be neutral.
@@ -294,10 +301,18 @@ class hmm_nophasing(UPSTREAM):  # type: ignore[misc]
     through a function this repository does not replace.
     """
 
+    analytic_gradient: bool = True
+    """On by default: the M step's gradient in closed form (#433).
+
+    Off, BFGS differences `cost_fn` as `cnaster` does, one call per
+    coordinate. :func:`finite_difference` turns it off for a block.
+    """
+
     emission_kernels: str = "cnaster"
     """`cnaster` (default) or `sal`: which kernels score the coded emission.
 
-    :func:`sal_emission` sets `sal`, which `--sal` enters (#425). A class
+    :func:`sal_emission` sets `sal`, which `run_cnaster` enters unless
+    `--no-sal-emission` (#425). A class
     attribute for the reason `apply_logmu_shift` is one; not a name rebind,
     because `cnaster`'s compiled kernels call `_nb_logpmf_1d` as a global and
     a Python function in its place breaks their compilation.
@@ -423,6 +438,20 @@ class hmm_nophasing(UPSTREAM):  # type: ignore[misc]
         whole optimization.
         """
         hmm_nophasing._row_shift = None
+
+        # NB the M step's gradient in closed form, through `minimize`'s
+        #    callable `method` (#433); positional extras leave the fit as is,
+        #    since the settings the gradient reads would then be unnamed.
+        if (
+            self.analytic_gradient
+            and not args
+            and kwargs.get("optimizer", "BFGS") == "BFGS"
+        ):
+            kwargs["optimizer"] = analytic_bfgs(
+                EmGradient.for_fit(
+                    self, X, n_states, base_nb_mean, total_bb_RD, **kwargs
+                )
+            )
 
         res: dict[str, Any] = super().optimize(
             X, lengths, n_states, base_nb_mean, total_bb_RD, *args, **kwargs
@@ -675,3 +704,15 @@ def sal_emission() -> Iterator[None]:
         yield
     finally:
         hmm_nophasing.emission_kernels = previous
+
+
+@contextmanager
+def finite_difference() -> Iterator[None]:
+    """`cnaster`'s finite-difference gradient for the block (#433), restored after."""
+    previous = hmm_nophasing.analytic_gradient
+    hmm_nophasing.analytic_gradient = False
+
+    try:
+        yield
+    finally:
+        hmm_nophasing.analytic_gradient = previous
