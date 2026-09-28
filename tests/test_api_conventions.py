@@ -84,6 +84,9 @@ KNOWN: dict[str, str] = {
     "port.patch.hmm_initialize.backends:sal_emission_backend arg seed": "F9",
     "port.patch.hmm_initialize.backends:cnaster_gmm_backend sibling": "F9",
     "port.sim.run_sim_gen:generate arg seed": "F9",
+    # NB the `[sample] seed` a manifest stores and `generate` consumes.
+    "port.sim.toml_manifest:SimManifest field seed": "F9",
+    "port.sim.toml_manifest:manifest_from_sample arg seed": "F9",
     "port.sim.manifest:simulation_manifest arg random_state": "F9",
     # --- F11: integer copies ------------------------------------------------
     "port.extensions.copy_likelihood:decode arg max_passes": "F11",

@@ -5,6 +5,13 @@ says what a dataset was, and this turns one into a dataset of the same shape,
 beside a configuration that points at it.
 
     python -m port.sim.run_sim_gen manifest.yaml
+    python -m port.sim.run_sim_gen sim/manifests/easy.toml
+
+A `.toml` manifest (#382, `port.sim.toml_manifest`) is generative: it writes
+one sample directory in the format of CalicoST's `sim/<name>/` -- counts,
+alleles, positions and the truth -- pure or admixed as its `[model]` says. A
+`.yaml` manifest (#116) is a record of a run's inputs and writes the
+`run_cnaster` input tree below.
 
 By default it writes into the **current directory** and the configuration it
 writes names every path relative to that directory, so the tree can be moved
@@ -26,7 +33,7 @@ what is being held fixed is the problem rather than the sample.
 from __future__ import annotations
 
 import argparse
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -35,6 +42,14 @@ import pandas as pd
 import yaml
 
 from port.sim.manifest import Manifest, read_simulation_manifest
+from port.sim.toml_manifest import (
+    SimManifest,
+    allele_share,
+    copies_at,
+    read_manifest,
+    segments,
+    with_normal_frac,
+)
 
 GENE_SPACING = 200_000
 """Base pairs between gene intervals. Wide enough to leave each its own block."""
@@ -325,19 +340,391 @@ def _write_config(manifest: Manifest, root: Path) -> Path:
     return path
 
 
+@dataclass(frozen=True)
+class GeneratedSample:
+    """Where a TOML manifest's sample was written, and what it holds."""
+
+    path: Path
+    n_spots: int
+    n_genes: int
+    n_snps: int
+    n_segments: int
+    labels: np.ndarray
+    """`(n_spots,)` index into the manifest's clones."""
+
+
+SPOT_CHUNK = 64
+"""Spots drawn per block: 64 x 35,299 genes is 18 MB of float64."""
+
+
+def generate_sample(
+    manifest: SimManifest,
+    into: Path | None = None,
+    *,
+    gene_table: Path | None = None,
+) -> GeneratedSample:
+    """Draw one sample from `manifest` and write it as `<into>/<name>/`.
+
+    The generative model, per spot `s` of clone `c` with normal fraction `f`:
+
+    - total UMI `N_s` and total SNP reads `M_s` are independent draws from
+      `[coverage] spot_umi` and `spot_snp_umi` (lognormal, rounded, at
+      least 1): CalicoST's two correlate at r = 0.010 and 0.002;
+    - gene counts are `Poisson(N_s q_g)` with `q` normalized and
+      `p_g d_g G_sg`: `p` the gene profile drawn once from
+      `[coverage] gene_profile`, `d_g` the depth factor of the admixture law
+      at the gene's planted `(A, B)`, and `G_sg ~ Gamma(1/alpha, alpha)` with
+      `alpha = [model] nb_dispersion` (`G = 1` at 0);
+    - SNP reads are `Poisson(M_s w_sj)`, `w` normalized and proportional to
+      `v_j H_sj`: `v_j ~ Gamma(1/a, a)` with `a` the `[coverage] snp_total`
+      dispersion, times `d_j` if `snp_depth_follows_copies`, and
+      `H_sj ~ Gamma(1/b, b)` with `b = [model] snp_dispersion`;
+    - the haplotype-A count of each nonzero entry is
+      `BetaBinomial(n, share, rho)`, `share` the admixture law's, binomial at
+      `rho = 0` and wherever the share is 0 or 1.
+
+    Poisson rather than multinomial draws, so a spot's total is `N_s` up to
+    Poisson noise, `sqrt(N_s) / N_s` = 1.8% at 3,000 UMI: 106M binomials are
+    what a 35,299-way multinomial costs per 3,000 spots.
+
+    The normal clone is drawn at `(1, 1)` with `f` irrelevant, so a pure
+    sample (`f = 0`) differs from an admixed one only in the tumour spots.
+    """
+    rng = np.random.default_rng(manifest.seed)
+    out = into if into is not None else manifest.resolve(manifest.output)
+    out = out / manifest.name
+    (out / "spatial").mkdir(parents=True, exist_ok=True)
+
+    n_spots = int(manifest.size["n_spots"])
+    barcodes = np.array([f"spot_{i}" for i in range(n_spots)])
+    rows, cols = _hex_lattice(manifest)
+    labels = _labels(manifest, barcodes, rows, cols)
+
+    genes, gene_chrom, gene_pos = _genes(manifest, gene_table)
+    snp_ids, snp_chrom, snp_pos = _snps(manifest, rng)
+
+    _write_expression(manifest, out, rng, barcodes, labels, genes, gene_chrom, gene_pos)
+    _write_alleles(manifest, out, rng, labels, snp_chrom, snp_pos)
+
+    (out / "barcodes.txt").write_text("\n".join(barcodes))
+    np.save(out / "unique_snp_ids.npy", snp_ids.astype(object))
+    pd.DataFrame({0: barcodes, 1: 1, 2: rows, 3: cols, 4: rows, 5: cols}).to_csv(
+        out / "spatial" / "tissue_positions_list.csv", header=False, index=False
+    )
+    names = np.array([c.name for c in manifest.clones])
+    pd.DataFrame(
+        {"labels": names[labels], "x": rows, "y": cols}, index=barcodes
+    ).to_csv(out / "truth_clone_labels.tsv", sep="\t")
+    profile = _profile(manifest)
+    profile.to_csv(out / "truth_acn_profile.tsv", sep="\t", index=False)
+
+    return GeneratedSample(out, n_spots, len(genes), len(snp_ids), len(profile), labels)
+
+
+def _hex_lattice(manifest: SimManifest) -> tuple[np.ndarray, np.ndarray]:
+    """Visium's hex packing, row-major: `x = row`, `y = 2 col + row % 2`."""
+    index = np.arange(int(manifest.size["n_spots"]))
+    columns = int(manifest.size["columns"])
+    rows = index // columns
+    return rows, 2 * (index % columns) + rows % 2
+
+
+def _labels(
+    manifest: SimManifest, barcodes: np.ndarray, rows: np.ndarray, cols: np.ndarray
+) -> np.ndarray:
+    """Clone per spot: a truth file's, or `voronoi` from each clone's center.
+
+    `voronoi` hands each clone, in manifest order, its `spots` nearest spots
+    not yet taken, so the counts are the manifest's exactly.
+    """
+    source = manifest.layout.get("labels", "voronoi")
+    index = {clone.name: i for i, clone in enumerate(manifest.clones)}
+
+    if source != "voronoi":
+        table = pd.read_csv(manifest.resolve(source), sep="\t", index_col=0)
+        labels: np.ndarray = np.asarray(table["labels"].map(index).to_numpy())
+        if table.shape[0] != barcodes.size or np.isnan(labels.astype(float)).any():
+            msg = f"{source} does not label the manifest's {barcodes.size} spots"
+            raise ValueError(msg)
+        return np.asarray(labels, dtype=np.int64)
+
+    labels = np.full(barcodes.size, -1, dtype=np.int64)
+    points = np.column_stack([rows, cols]).astype(np.float64)
+    for label, clone in enumerate(manifest.clones):
+        if clone.center is None:
+            msg = f"clone {clone.name} has no center for a voronoi layout"
+            raise ValueError(msg)
+        free = np.flatnonzero(labels < 0)
+        distance = ((points[free] - np.asarray(clone.center)) ** 2).sum(axis=1)
+        labels[free[np.argsort(distance, kind="stable")[: clone.spots]]] = label
+    return labels
+
+
+def _spread(manifest: SimManifest, count: int, rng: Any | None) -> tuple[Any, Any]:
+    """`count` positions over the genome, by chromosome length.
+
+    Evenly spaced when `rng` is None, uniform draws otherwise; sorted.
+    """
+    lengths = np.asarray(manifest.size["chromosome_lengths"], dtype=np.float64)
+    genome = np.concatenate([[0.0], np.cumsum(lengths)])
+    if rng is None:
+        offsets = (np.arange(count) + 0.5) * genome[-1] / count
+    else:
+        offsets = np.sort(rng.uniform(0, genome[-1], count))
+    chromosome = np.searchsorted(genome, offsets, side="right")
+    position = (offsets - genome[chromosome - 1]).astype(np.int64)
+    return chromosome.astype(str), position
+
+
+def _genes(
+    manifest: SimManifest, gene_table: Path | None
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Gene names, and each one's chromosome and midpoint (-1 where unplaced)."""
+    import anndata
+
+    n_genes = int(manifest.size["n_genes"])
+    source = manifest.layout.get("genes", "synthetic")
+
+    if source == "synthetic":
+        chromosome, position = _spread(manifest, n_genes, None)
+        return np.array([f"gene_{i:06d}" for i in range(n_genes)]), chromosome, position
+
+    genes = np.asarray(anndata.read_h5ad(manifest.resolve(source)).var_names).astype(
+        str
+    )
+    table_path = gene_table or manifest.resolve(manifest.layout["gene_table"])
+    if not table_path.exists():
+        msg = (
+            f"gene table {table_path} not found: set $PORT_GRCH38 to CalicoST's "
+            "GRCh38_resources, or pass --gene-table"
+        )
+        raise FileNotFoundError(msg)
+    table = pd.read_csv(table_path, sep="\t", index_col=0)
+    table = table.drop_duplicates("name2").set_index("name2")
+    known = np.asarray(pd.Index(genes).isin(table.index))
+    chromosome = np.full(genes.size, "", dtype=object)
+    position = np.full(genes.size, -1, dtype=np.int64)
+    rows = table.loc[genes[known]]
+    chromosome[known] = rows["chrom"].astype(str).str.removeprefix("chr").to_numpy()
+    position[known] = ((rows["cdsStart"] + rows["cdsEnd"]) // 2).to_numpy()
+    return genes, chromosome.astype(str), position
+
+
+def _snps(manifest: SimManifest, rng: Any) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """SNP ids as CalicoST writes them, `chr_pos_N_N`, with their loci."""
+    source = manifest.layout.get("snps", "synthetic")
+
+    if source == "synthetic":
+        chromosome, position = _spread(manifest, int(manifest.size["n_snps"]), rng)
+        ids = np.array(
+            [f"{c}_{p}_N_N" for c, p in zip(chromosome, position, strict=True)]
+        )
+        return ids, chromosome, position
+
+    ids = np.load(manifest.resolve(source), allow_pickle=True).astype(str)
+    chromosome = np.array([s.split("_")[0] for s in ids])
+    position = np.array([int(s.split("_")[1]) for s in ids])
+    return ids, chromosome, position
+
+
+def _depth_factor(manifest: SimManifest, copies: np.ndarray) -> np.ndarray:
+    """`(n_loci, n_clones)` read-depth factor of the admixture law; normal 1."""
+    total = copies.sum(axis=2).astype(np.float64)
+    factor = np.ones_like(total)
+    for label, clone in enumerate(manifest.clones):
+        if clone.name == "normal":
+            continue
+        tumour = 1.0 - manifest.normal_frac(clone.name)
+        factor[:, label] = tumour * total[:, label] / 2.0 + (1.0 - tumour)
+    return factor
+
+
+def _lognormal_counts(manifest: SimManifest, law: str, size: int, rng: Any) -> Any:
+    parameters = manifest.coverage[law].parameters
+    drawn = rng.lognormal(parameters["mu"], parameters["sigma"], size)
+    return np.maximum(np.rint(drawn), 1).astype(np.int64)
+
+
+def _write_expression(
+    manifest: SimManifest,
+    out: Path,
+    rng: Any,
+    barcodes: np.ndarray,
+    labels: np.ndarray,
+    genes: np.ndarray,
+    chromosome: np.ndarray,
+    position: np.ndarray,
+) -> None:
+    """`filtered_feature_bc_matrix.h5ad`: counts as int64 CSR, `obs.labels`."""
+    import anndata
+    import scipy.sparse
+
+    law = manifest.coverage["gene_profile"]
+    expressed = rng.random(genes.size) < float(law.expressed or 1.0)
+    profile = np.where(
+        expressed,
+        rng.lognormal(law.parameters["mu"], law.parameters["sigma"], genes.size),
+        0.0,
+    )
+    placed = position >= 0
+    copies = np.ones((genes.size, len(manifest.clones), 2), dtype=np.int64)
+    copies[placed] = copies_at(manifest, chromosome[placed], position[placed])
+    weights = profile[:, None] * _depth_factor(manifest, copies)
+
+    depth = _lognormal_counts(manifest, "spot_umi", barcodes.size, rng)
+    alpha = float(manifest.model.nb_dispersion)
+    blocks = []
+
+    for start in range(0, barcodes.size, SPOT_CHUNK):
+        spots = np.arange(start, min(start + SPOT_CHUNK, barcodes.size))
+        q = weights[:, labels[spots]].T
+        if alpha > 0:
+            q = q * rng.gamma(1.0 / alpha, alpha, q.shape)
+        q = q / q.sum(axis=1, keepdims=True)
+        blocks.append(scipy.sparse.csr_matrix(rng.poisson(depth[spots, None] * q)))
+
+    counts = scipy.sparse.vstack(blocks).tocsr().astype(np.int64)
+    names = np.array([c.name for c in manifest.clones])
+    assay = anndata.AnnData(
+        X=counts,
+        obs=pd.DataFrame({"labels": names[labels]}, index=barcodes),
+        var=pd.DataFrame(index=genes),
+    )
+    assay.write_h5ad(out / "filtered_feature_bc_matrix.h5ad")
+
+
+def _write_alleles(
+    manifest: SimManifest,
+    out: Path,
+    rng: Any,
+    labels: np.ndarray,
+    chromosome: np.ndarray,
+    position: np.ndarray,
+) -> None:
+    """`cell_snp_{A,B}allele.npz`: int64 CSR, spots by SNPs, A the haplotype."""
+    import scipy.sparse
+
+    n_spots, n_snps = labels.size, position.size
+    copies = copies_at(manifest, chromosome, position)
+    dispersion = manifest.coverage["snp_total"].parameters.get("dispersion", 0.0)
+    weights = (
+        rng.gamma(1.0 / dispersion, dispersion, n_snps)
+        if dispersion > 0
+        else np.ones(n_snps)
+    )
+    follows = manifest.model.snp_depth_follows_copies
+    factor = (
+        _depth_factor(manifest, copies)
+        if follows
+        else np.ones_like(copies[..., 0], dtype=np.float64)
+    )
+    depth = _lognormal_counts(manifest, "spot_snp_umi", n_spots, rng)
+    entry = float(manifest.model.snp_dispersion)
+
+    blocks = []
+    for start in range(0, n_spots, SPOT_CHUNK):
+        spots = np.arange(start, min(start + SPOT_CHUNK, n_spots))
+        w = weights[None, :] * factor[:, labels[spots]].T
+        if entry > 0:
+            w = w * rng.gamma(1.0 / entry, entry, w.shape)
+        w = w / w.sum(axis=1, keepdims=True)
+        blocks.append(scipy.sparse.csr_matrix(rng.poisson(depth[spots, None] * w)))
+    trials = scipy.sparse.vstack(blocks).tocoo()
+
+    share = np.stack(
+        [
+            allele_share(
+                copies[:, label, 0].astype(np.float64),
+                copies[:, label, 1].astype(np.float64),
+                manifest.normal_frac(clone.name),
+                manifest.model.admixture,
+            )
+            for label, clone in enumerate(manifest.clones)
+        ]
+    )
+    p = share[labels[trials.row], trials.col]
+
+    rho = float(manifest.model.bb_overdispersion)
+    if rho > 0:
+        inner = (p > 0) & (p < 1)
+        scale = 1.0 / rho - 1.0
+        p = p.copy()
+        p[inner] = rng.beta(p[inner] * scale, (1 - p[inner]) * scale)
+    hits = rng.binomial(trials.data, p)
+
+    shape = (n_spots, n_snps)
+    first = scipy.sparse.csr_matrix((hits, (trials.row, trials.col)), shape=shape)
+    second = scipy.sparse.csr_matrix(
+        (trials.data - hits, (trials.row, trials.col)), shape=shape
+    )
+    scipy.sparse.save_npz(out / "cell_snp_Aallele.npz", first.astype(np.int64))
+    scipy.sparse.save_npz(out / "cell_snp_Ballele.npz", second.astype(np.int64))
+
+
+def _profile(manifest: SimManifest) -> pd.DataFrame:
+    """`truth_acn_profile.tsv`: `chr start end`, then `A`, `B` per clone."""
+    rows = segments(manifest)
+    frame = pd.DataFrame(rows, columns=["chr", "start", "end"])
+    chromosome = frame["chr"].to_numpy().astype(str)
+    middle = ((frame["start"] + frame["end"]) // 2).to_numpy()
+    copies = copies_at(manifest, chromosome, middle)
+    frame["chr"] = frame["chr"].astype(int)
+    # NB CalicoST's order: tumour clones, then `normal` last.
+    order = sorted(
+        range(len(manifest.clones)), key=lambda i: manifest.clones[i].name == "normal"
+    )
+    for label in order:
+        clone = manifest.clones[label]
+        frame[f"{clone.name}_A_copy"] = copies[:, label, 0]
+        frame[f"{clone.name}_B_copy"] = copies[:, label, 1]
+    return frame
+
+
 def main(argv: list[str] | None = None) -> int:
-    """Read a manifest, write an instance beside it."""
+    """Read a manifest, write an instance: a sample for TOML, a tree for YAML."""
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("manifest", help="a simulation manifest, as YAML")
+    parser.add_argument("manifest", help="a manifest, `.toml` (#382) or `.yaml` (#116)")
     parser.add_argument(
-        "--into", default=".", help="where to write the tree; the default is here"
+        "--into",
+        default=None,
+        help="where to write; TOML: the manifest's `output`, YAML: here",
     )
     parser.add_argument("--seed", type=int, default=None, help="override the seed")
+    parser.add_argument(
+        "--normal-frac",
+        default=None,
+        help="TOML: every tumour clone at this fraction, or `fitted`",
+    )
+    parser.add_argument("--name", default=None, help="TOML: override the sample name")
+    parser.add_argument(
+        "--gene-table", default=None, help="TOML: override `[layout] gene_table`"
+    )
     arguments = parser.parse_args(argv)
+
+    if Path(arguments.manifest).suffix == ".toml":
+        manifest = read_manifest(arguments.manifest)
+        if arguments.normal_frac is not None:
+            manifest = with_normal_frac(manifest, arguments.normal_frac)
+        if arguments.seed is not None:
+            manifest = replace(manifest, seed=arguments.seed)
+        if arguments.name is not None:
+            manifest = replace(manifest, name=arguments.name)
+        sample = generate_sample(
+            manifest,
+            None if arguments.into is None else Path(arguments.into),
+            gene_table=None
+            if arguments.gene_table is None
+            else Path(arguments.gene_table),
+        )
+        print(
+            f"wrote {sample.n_spots} spots, {sample.n_genes} genes, "
+            f"{sample.n_snps} snps and {sample.n_segments} segments to {sample.path}"
+        )
+        return 0
 
     generated = generate(
         read_simulation_manifest(arguments.manifest),
-        Path(arguments.into),
+        Path(arguments.into or "."),
         seed=arguments.seed,
     )
     print(

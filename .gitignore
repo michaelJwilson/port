@@ -36,3 +36,6 @@ python/port/*.dylib
 
 # Sphinx build output
 docs/_build/
+
+# NB samples drawn by `port.sim.draw` (#445); the manifests are what is tracked.
+sim/generated/

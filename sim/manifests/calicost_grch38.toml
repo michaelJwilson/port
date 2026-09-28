@@ -1,0 +1,96 @@
+# The GRCh38 and CalicoST assumptions every version-3 manifest shares (#445).
+# A manifest names this file with `extends` and states what differs; its own
+# tables win, key by key.
+version = 3
+
+[reference]
+baseline = "../normal_baseline.txt"
+coverage = "../normal_coverage.toml"
+snps = "../numcnas1.2_cnasize5e7_ploidy2_random0/unique_snp_ids.npy"
+# NB CalicoST's GRCh38_resources; where $PORT_GRCH38 is unset, uv's checkout.
+resources = "$PORT_GRCH38"
+gene_table = "hgTables_hg38_gencode.txt"
+genetic_map = "genetic_map_GRCh38_merged.tab.gz"
+filter_genes = "ig_gene_list.txt"
+filter_regions = "HLA_regions.bed"
+
+[genome]
+# NB GRCh38 autosomes chr1-22.
+chromosome_lengths = [
+    248956422, 242193529, 198295559, 190214555, 181538259, 170805979,
+    159345973, 145138636, 138394717, 133797422, 135086622, 133275309,
+    114364328, 107043718, 101991189, 90338345, 83257441, 80373285,
+    58617616, 64444167, 46709983, 50818468,
+]
+
+[array]
+# NB CalicoST's sims are 100 x 30 hex (3,000 spots): the release and stress
+#    size. 25 x 25 (625 spots) is the dev size, within the per-PR budget.
+kind = "hex"
+rows = 25
+columns = 25
+
+[barcodes]
+# NB Visium 16-mers with `-1`, one whitelist for every slice;
+#    sample ids of 8 hexadecimal digits.
+length = 16
+suffix = "-1"
+sample_id_bytes = 4
+
+[model]
+admixture = "read"
+normal_frac = 0.0
+# NB fitted on CalicoST's normal spots, `../normal_coverage.toml` (#455):
+#    dirichlet_concentration its `gene_spot_umi`, snp_dispersion its
+#    `snp_spot_umi`.
+# NB A of A + B is binomial: on the normal spots the per-entry beta-binomial
+#    rho is 0.0166, 95% CI [0.0033, 0.0297] over the 20,157 entries at
+#    A + B >= 2 (likelihood ratio 6.0 against binomial), and per SNP over
+#    spots 0, CI [0, 0.0005] (#455).
+dirichlet_concentration = 100.0
+bb_overdispersion = 0.0
+snp_dispersion = 1.0
+# NB CalicoST's SNP reads do not scale with copies.
+snp_depth_follows_copies = false
+
+[cna]
+# NB CalicoST's easy sample, numcnas1.2: 3 tumour clones (the leaves), 1 event
+#    shared by all and 2 unique to each, 3 per clone. As a tree: 1 on the
+#    trunk, 2 on each leaf edge, none on an ancestor's.
+n_clones = 3
+shared = 1
+unique = 2
+trunk = 1
+per_leaf = 2
+per_internal = 0
+# NB the (A, B) states CalicoST's easy sample plants.
+states = [[1, 0], [0, 1], [2, 1], [1, 2], [3, 1], [2, 2], [0, 2]]
+
+[cna.length]
+# NB CalicoST's cnasize5e7.
+law = "fixed"
+size = 5e7
+
+[phasing]
+switch_errors = false
+# NB p = (1 - exp(-2 nu d)) / 2 between consecutive SNPs, d in `unit`: in
+#    centimorgan at nu = 1 this is Numbat's law, as cnaster.recomb assumes
+#    (config phasing.nu); "morgan" gives Haldane's recombination law.
+nu = 1.0
+unit = "centimorgan"
+
+[layout]
+overlap = false
+radius = 0.3
+vertices = 6
+jitter = 0.2
+max_placements = 1000
+
+[config]
+# NB the configuration shipped with CalicoST's sims;
+#    [config.*] tables override it.
+base = "../../tests/data/zenodo_sim_config.yaml"
+
+[config.hmrf]
+n_clones = 4
+min_spots_per_clone = 50
