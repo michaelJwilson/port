@@ -1,12 +1,11 @@
 """`port.extensions.copy_likelihood` against pseudobulks drawn from its own model (#327).
 
-The decoder claims that, with the path held, the pseudobulk likelihood the
-EM fits identifies each state's integer `(A, B)`. So the referee is the
-truth the counts were drawn from: a clone-sized pseudobulk under the
-shifted NB/BB model, planted `(A, B)` including totals above `cnaster`'s 6,
-decoded from a wrong start (`end2end` against the planted pairs). The
-likelihood-ratio set is held to contain the truth, and the decode to be the
-likelihood's own maximum over single-state moves (`analytic`).
+The shared decode claims that, with the path held, the pseudobulk
+likelihood the EM fits identifies each state's integer `(A, B)`. So the
+referee is the truth the counts were drawn from: a clone-sized pseudobulk
+under the shifted NB/BB model, planted `(A, B)` including totals above
+`cnaster`'s 6 (`end2end` against the planted pairs). The decode is held to
+be the likelihood's own maximum over single-state moves (`analytic`).
 """
 
 from __future__ import annotations
@@ -62,41 +61,62 @@ def _draw(seed: int = 3, *, shift: bool = True) -> tuple[np.ndarray, Pseudobulk]
     return path, bulk
 
 
+def _offset(path: np.ndarray, bulk: Pseudobulk) -> float:
+    """The planted clone's shift, `log Z_c`, as the draw applied it."""
+    total = PLANTED.sum(axis=1)
+    return float(np.logaddexp.reduce(np.log(total / 2.0)[path] + bulk.log_lambda))
+
+
 @pytest.mark.end2end
 @pytest.mark.parametrize("shift", [True, False], ids=["shifted", "unshifted"])
-def test_the_decode_recovers_every_planted_pair_from_a_wrong_start(shift: bool) -> None:
+def test_the_shared_decode_recovers_every_planted_pair(shift: bool) -> None:
     """All six states exactly, `(4, 6)` and `(5, 4)` above cnaster's cap included."""
-    from port.extensions.copy_likelihood import decode
+    from port.extensions.copy_likelihood import shared_decode
 
     path, bulk = _draw(shift=shift)
-    start = np.ones_like(PLANTED)
+    fitted = shared_decode(
+        [(path, bulk, _offset(path, bulk) if shift else 0.0)],
+        n_states=len(PLANTED),
+        normal=0,
+        max_total_copy=12,
+    )
 
-    decoded = decode(start, path, bulk, max_total_copy=12, neutral=0, shift=shift)
-
-    np.testing.assert_array_equal(decoded.copies, PLANTED)
-    assert decoded.passes <= 5
+    np.testing.assert_array_equal(fitted.states, PLANTED)
+    np.testing.assert_array_equal(fitted.pairs[0], PLANTED[path])
 
 
 @pytest.mark.analytic
-def test_the_decode_is_a_single_move_maximum_and_its_sets_hold_the_truth() -> None:
-    """No single state's move raises the likelihood; each set contains the planted pair."""
-    from port.extensions.copy_likelihood import candidates, decode, log_likelihood
-
-    path, bulk = _draw()
-    decoded = decode(
-        np.ones_like(PLANTED), path, bulk, max_total_copy=12, neutral=0, shift=True
+def test_the_shared_decode_is_each_states_likelihood_maximum() -> None:
+    """With the path held, no other pair for any one state raises the likelihood."""
+    from port.extensions.copy_likelihood import (
+        _emission,
+        _parameters,
+        candidates,
+        shared_decode,
     )
 
-    for k in range(1, len(PLANTED)):
-        assert tuple(PLANTED[k]) in decoded.sets[k]
+    path, bulk = _draw()
+    shift = _offset(path, bulk)
+    fitted = shared_decode(
+        [(path, bulk, shift)],
+        n_states=len(PLANTED),
+        normal=0,
+        max_total_copy=12,
+    )
 
+    def likelihood(copies: np.ndarray) -> float:
+        log_mu, p = _parameters(copies)
+        bins = np.arange(path.size)
+        return float(np.sum(_emission(log_mu[path] - shift, p[path], bulk, bins)))
+
+    best = likelihood(fitted.states)
+    assert best == pytest.approx(fitted.log_likelihood, rel=1e-12)
+
+    for k in range(1, len(PLANTED)):
         for pair in candidates(12):
-            trial = decoded.copies.copy()
+            trial = fitted.states.copy()
             trial[k] = pair
-            assert (
-                log_likelihood(trial, path, bulk, shift=True)
-                <= decoded.log_likelihood + 1e-9
-            )
+            assert likelihood(trial) <= best + 1e-9
 
 
 @pytest.mark.infra

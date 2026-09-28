@@ -9,7 +9,7 @@ complete-data likelihood at the known path, which is what Baum-Welch
 maximizes when the states are known.
 
 The integer copies are then decoded by `port.extensions.copy_likelihood.
-decode_fixed`, the one decode `port.patch.integer_copy` supports, at those
+fit_copies` under `SHARED`, the decode `port.patch.integer_copy` runs, at those
 states: the normal state `(1, 1)` by definition and the shift 0, because the
 planted `mu` is already on the normal scale. Referee: the planted pairs.
 The fixture writes the major allele second (`p = B / (A + B)`) and the
@@ -26,7 +26,7 @@ from dataclasses import replace
 
 import numpy as np
 import pytest
-from port.extensions.copy_likelihood import Pseudobulk, _emission, decode_fixed
+from port.extensions.copy_likelihood import Pseudobulk, _emission, shared_decode
 from scipy.optimize import minimize_scalar
 
 from tests.fixtures import COPY_LATTICE, CoreInferenceTruth, core_inference_truth
@@ -115,17 +115,15 @@ def test_known_states_and_fitted_dispersions_decode_the_planted_pairs() -> None:
     alpha, tau = _fit_dispersions(truth, bulks)
 
     for bulk, path in bulks:
-        decoded = decode_fixed(
-            path,
-            replace(bulk, alpha=alpha, tau=tau),
+        decoded = shared_decode(
+            [(path, replace(bulk, alpha=alpha, tau=tau), 0.0)],
             n_states=N_STATES,
-            max_total_copy=6,
             normal=0,
-            log_shift=0.0,
+            max_total_copy=6,
         )
         for state in np.unique(path):
-            assert sorted(decoded.copies[state]) == sorted(COPY_LATTICE[state]), (
+            assert sorted(decoded.states[state]) == sorted(COPY_LATTICE[state]), (
                 state,
-                decoded.copies[state],
+                decoded.states[state],
                 COPY_LATTICE[state],
             )

@@ -28,8 +28,9 @@ from __future__ import annotations
 import argparse
 import sys
 import time
-from collections.abc import Sequence
-from contextlib import ExitStack
+from collections.abc import Iterator, Sequence
+from contextlib import ExitStack, contextmanager
+from typing import Any
 
 from port.pipeline import (
     COPY_SWAPS,
@@ -171,6 +172,18 @@ def _parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--copy-errors",
+        action="store_true",
+        help=(
+            "after the run, write cnv_copy_sets.tsv beside its fit: every "
+            "integer (A, B) inside each state's 95 per cent credible region, "
+            "from the observed information of the fitted objective (#353). "
+            "**Off by default**: it differentiates the whole objective once, "
+            "and it adds a file rather than changing one. Needs the shift, "
+            "whose pin sets the scale (A + B) / 2 is compared on."
+        ),
+    )
+    parser.add_argument(
         "--warm-up",
         action="store_true",
         help=(
@@ -257,6 +270,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     if arguments.config is None:
         _parser().error("a configuration is required unless --list is given")
 
+    # NB the decode compares `(A + B) / 2` against the pinned rates; an
+    #    unshifted fit's rates carry the baseline's per-clone scale, so the
+    #    sets would be drawn on the wrong axis (#353). Refused before the
+    #    configuration is read: it is an argument error, not a file error.
+    if arguments.copy_errors and (
+        arguments.shift is False or (arguments.shift is None and arguments.no_patch)
+    ):
+        _parser().error("--copy-errors needs the shift; drop --no-shift")
+
     import yaml
 
     from port.extensions.config_audit import audit
@@ -312,6 +334,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         #    `SWAPS`, so `--no-patch --shift` fits shifted and assigns clones
         #    unshifted; it is allowed, and said.
         shift = not arguments.no_patch if arguments.shift is None else arguments.shift
+
+        kept = stack.enter_context(_kept()) if arguments.copy_errors else None
 
         # NB bitwise, so on by default like `SWAPS`, and off with it: a
         #    baseline arm is `cnaster`'s compiled code as well as its names.
@@ -446,6 +470,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     if spent is not None:
         _report(spent, wall, patched=not arguments.no_patch)
 
+    if kept is not None:
+        _write_copy_sets(arguments.config, kept)
     # NB after the run and outside its timer, and off with `--no-patch`: a
     #    baseline arm writes what `cnaster` writes and nothing beside it.
     if not (arguments.no_outputs or arguments.no_patch):
@@ -456,6 +482,68 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     print(f"run_cnaster_port: {wall:.2f}s", file=sys.stderr)
     return 0
+
+
+@contextmanager
+def _kept() -> Iterator[list[Any]]:
+    """Keep the last `params="smp"` fit `port`'s `run_core_inference` returns.
+
+    Entered **before** the swaps, so `patched` finds the wrapper where it
+    rebinds `run_core_inference`, and the fit kept is the pinned one.
+    """
+    import numpy as np
+
+    import port.patch.hmrf as patch
+    from port.extensions.copy_errors import Captured
+
+    kept: list[Any] = []
+    original = patch.run_core_inference
+
+    def keep(
+        single_x: Any, lengths: Any, base: Any, total: Any, *rest: Any, **kw: Any
+    ) -> Any:
+        result = original(single_x, lengths, base, total, *rest, **kw)
+
+        if kw.get("params") == "smp":
+            kept.append(
+                Captured(
+                    np.array(single_x, dtype=np.float64),
+                    np.asarray(lengths, dtype=np.int64),
+                    np.array(base, dtype=np.float64),
+                    np.array(total, dtype=np.float64),
+                    result,
+                )
+            )
+
+        return result
+
+    patch.run_core_inference = keep
+
+    try:
+        yield kept
+    finally:
+        patch.run_core_inference = original
+
+
+def _write_copy_sets(config: str, kept: list[Any]) -> None:
+    """Write the credible sets beside the run's final fit."""
+    from pathlib import Path
+
+    import yaml
+
+    from port.extensions.copy_errors import write_copy_sets
+
+    if not kept:
+        print("run_cnaster_port: --copy-errors kept no fit", file=sys.stderr)
+        return
+
+    output = Path(yaml.safe_load(Path(config).read_text())["paths"]["output_dir"])
+    fits = sorted(
+        output.rglob("rdrbaf_final_nstates*_smp.npz"), key=lambda p: p.stat().st_mtime
+    )
+    run = fits[-1].parent if fits else output
+    path = write_copy_sets(run, kept[-1])
+    print(f"run_cnaster_port: wrote {path}", file=sys.stderr)
 
 
 def _write_outputs(config: str, flags: dict[str, bool]) -> None:

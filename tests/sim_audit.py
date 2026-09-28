@@ -12,6 +12,10 @@ The four ARIs are `tests.recovery_audit`'s, on the sample's truth:
   planted `(A, B)` at the bin's midpoint;
 - **copy state, integer**: the decoded `(A, B)` against the same.
 
+`--pure` first redraws the tumour spots as pure tumour
+(`tests.sim_fixtures.purify`): the simulated spots carry about 8 per cent
+normal admixture, which no pair `(A, B)` at `p = A / (A + B)` can fit.
+
 `--oracle-start` sets `annotation.clone_label` to the sample's
 `truth_clone_labels.tsv`, `cnaster`'s own known-labels mode: the planted
 clones start phasing and the BAF stage in place of the grid
@@ -25,7 +29,8 @@ Each planted clone is matched to the fitted clone it overlaps most (Hungarian
 on the spot overlap). `exact` is the share of matched clone-bins whose
 decoded `(A, B)` is the planted pair, and `exact_altered` the same over bins
 where the planted pair is not `(1, 1)`: `run_sim_analysis`'s `correct_rate`
-without the phase flip.
+without the phase flip. `exact_altered_minor` allows it: a decoded `(B, A)`
+counts, so the minor and major copies are scored and the phase is not.
 """
 
 from __future__ import annotations
@@ -67,6 +72,7 @@ class SimRecovery:
     n_integer_clones: int
     exact: float
     exact_altered: float
+    exact_altered_minor: float
     bins: int
     clone_of: dict[int, int] = field(default_factory=dict)
 
@@ -134,6 +140,8 @@ def score(sample: SimulatedSample, output: Path, arm: str, wall: float) -> SimRe
 
     t, z, ab = (np.concatenate(x) for x in (truth, state, pair))
     altered = t != 1_001
+    swapped = (ab % 1_000) * 1_000 + ab // 1_000
+    either = (t == ab) | (t == swapped)
 
     return SimRecovery(
         sample=sample.name,
@@ -148,6 +156,7 @@ def score(sample: SimulatedSample, output: Path, arm: str, wall: float) -> SimRe
         n_integer_clones=int(np.unique(merged[fitted[scored]]).size),
         exact=round(float(np.mean(t == ab)), 4),
         exact_altered=round(float(np.mean((t == ab)[altered])), 4),
+        exact_altered_minor=round(float(np.mean(either[altered])), 4),
         bins=int(covered.sum()),
         clone_of=clone_of,
     )
@@ -198,10 +207,21 @@ def main() -> None:
         action="store_true",
         help="start the BAF stage from the planted clone labels",
     )
+    parser.add_argument(
+        "--pure",
+        action="store_true",
+        help="redraw the tumour spots pure (`tests.sim_fixtures.purify`) first",
+    )
     parser.add_argument("flags", nargs=argparse.REMAINDER)
     arguments = parser.parse_args()
 
     sample = load_simulated(SAMPLES.get(arguments.sample, arguments.sample))
+
+    if arguments.pure:
+        from tests.sim_fixtures import purify
+
+        pure = purify(sample, Path(tempfile.mkdtemp()))
+        sample = load_simulated(pure.name, pure.parent)
     overrides = {
         k: yaml.safe_load(v)
         for k, _, v in (entry.partition("=") for entry in arguments.set)
