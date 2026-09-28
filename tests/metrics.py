@@ -54,6 +54,9 @@ UNMEASURED = "—"
 TEST = "tests/recovery_audit.py::main"
 """The function computing a `--record` row's metrics, as `path::name`."""
 
+SIM_TEST = "tests/sim_audit.py::main"
+"""The same, for a `--record --sample` row (#467)."""
+
 NOTE_CHARS = 72
 """A commit subject's limit, so a note reads as one."""
 
@@ -117,7 +120,13 @@ def check_note(note: str) -> None:
 
 
 def row(
-    recovery: dict[str, Any], *, fixture: str, args: str, note: str, dirty: bool
+    recovery: dict[str, Any],
+    *,
+    fixture: str,
+    args: str,
+    note: str,
+    dirty: bool,
+    test: str = TEST,
 ) -> str:
     if "|" in args:
         msg = f"a `|` in the arguments would split the row: {args}"
@@ -128,7 +137,7 @@ def row(
         "timestamp": datetime.datetime.now(datetime.UTC).strftime(TIMESTAMP),
         "fixture": fixture,
         "fixture_hash": recovery["fixture_hash"],
-        "test": TEST,
+        "test": test,
         "args": args,
         "note": note,
     }
@@ -147,6 +156,9 @@ def record(arguments: argparse.Namespace) -> int:
     if dirty and not arguments.dirty:
         print("inputs are uncommitted; commit them, or pass --dirty")
         return 1
+
+    if arguments.sample is not None:
+        return record_sample(arguments, dirty=dirty)
 
     fixture = fixture_name(
         arguments.instance, lattice=arguments.lattice, loh=arguments.loh
@@ -190,6 +202,58 @@ def record(arguments: argparse.Namespace) -> int:
     return 0
 
 
+def record_sample(arguments: argparse.Namespace, *, dirty: bool) -> int:
+    """A row for a simulated sample: `tests.sim_audit` in its own process (#467).
+
+    `r0` is `dev_tree`'s realization 0, drawn if absent and refused unless it
+    is the one `tests.sim_stages` names; `easy` and `hard` are CalicoST's.
+    The fixture hash is the sample's content hash (`realization_hash`).
+    """
+    from tests.sim_stages import r0, realization_hash
+
+    if arguments.sample == "r0":
+        path = r0()
+        sample = "generated/dev_tree/r0"
+    else:
+        from tests.sim_audit import SAMPLES
+        from tests.sim_fixtures import SIM_ROOT
+
+        sample = SAMPLES.get(arguments.sample, arguments.sample)
+        path = SIM_ROOT / sample
+
+    audit = [
+        *(item for entry in arguments.set for item in ("--set", entry)),
+        *(["--oracle-start"] if arguments.oracle_start else []),
+    ]
+    flags = [f for f in arguments.flags if f != "--"]
+    command = [
+        sys.executable, "-m", "tests.sim_audit", "--sample", sample,
+        *audit, "--", *flags,
+    ]  # fmt: skip
+    completed = subprocess.run(
+        command, cwd=ROOT, capture_output=True, text=True, check=False
+    )
+    lines = [line for line in completed.stdout.splitlines() if line.startswith("SIM ")]
+    if completed.returncode or not lines:
+        print(completed.stdout[-2000:], completed.stderr[-2000:], sep="\n")
+        return completed.returncode or 1
+
+    recovery = json.loads(lines[-1].removeprefix("SIM "))
+    recovery["fixture_hash"] = realization_hash(path)
+    line = row(
+        recovery,
+        fixture=arguments.sample,
+        args=shlex.join([*audit, "--", *flags]),
+        note=arguments.note,
+        dirty=dirty,
+        test=SIM_TEST,
+    )
+    with TABLE.open("a") as table:
+        table.write(line + "\n")
+    print(line)
+    return 0
+
+
 def best(metric: str, fixture: str | None) -> dict[str, str] | None:
     """The row maximizing `metric`, over `fixture`'s rows if given."""
     rows = [
@@ -213,6 +277,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     parser.add_argument(
         "--instance", default="dev", choices=["calicost", "critical", "dev"]
+    )
+    parser.add_argument(
+        "--sample",
+        default=None,
+        help="with --record, a simulated sample: r0, easy, hard or a sim/ path",
+    )
+    parser.add_argument(
+        "--oracle-start", action="store_true", help="with --sample, the planted clones"
     )
     parser.add_argument("--lattice", action="store_true")
     parser.add_argument("--loh", action="store_true")
