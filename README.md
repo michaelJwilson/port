@@ -212,6 +212,7 @@ run_cnaster_port --sal config.yaml           # snakes_and_ladders routines where
 run_cnaster_port --no-copy-cap config.yaml   # cnaster's integer copy caps, A + B <= 6, whatever the config states
 run_cnaster_port --copy-errors config.yaml   # also every (A, B) each state's error bars admit
 run_cnaster_port --copy-decode shared config.yaml  # one (A, B) per continuous state, as before #371
+run_cnaster_port --clone-mixture config.yaml  # spots scored against each clone's pure, admixed path (#380)
 run_cnaster_port --time-stages config.yaml   # what the replacements cost in the run
 run_cnaster_port --no-floor-merge config.yaml  # cnaster's random 200-spot floor (and --no-refinement-mask, --no-distinct-init)
 run_calicost config.yaml                     # CalicoST on the same fixture files, at port's configuration
@@ -323,6 +324,46 @@ every run. It is **not tracked** (#222): nothing reads it, no test
 references it, and its rows carry no commit or instance, so it is a log
 rather than a measurement record. A tracked file that changes on every run
 trains a reader to ignore `git status`.
+
+## Patches and extensions
+
+A **patch** (`python/port/patch/`) replaces a `cnaster` function under its
+own name and signature, because `cnaster` is read only here; `run_cnaster_port`
+rebinds it, and `--no-patch` runs `cnaster` as shipped. An **extension**
+(`python/port/extensions/`) adds what `cnaster` has no counterpart for, and
+is opt-in by flag. Each module's docstring carries the measurement behind it.
+
+| Patch | Why |
+| --- | --- |
+| `hmm_nophasing.shifted_emission` | `cnaster` computes the per-clone library normalizer and discards it; this applies it (#276) |
+| `hmm_nophasing.logmu_shift` | the same normalizer as one value per clone, which cannot be misindexed |
+| `hmm_nophasing.nb_logpmf` | the negative-binomial log-pmf vectorized: speed |
+| `hmm_phased.coded_emission` | reads the parameter column the phased HMM has (#269): correctness |
+| `hmm_initialize` | filtering separated from the initializers; a read-depth GMM start with distinct states (#348) |
+| `hmrf.core_inference` | pins the shifted rates to a scale, so fits are comparable (#293) |
+| `hmrf.refinement` | keeps each read-depth sub-clone inside its BAF clone, as `cnaster` intends (#348) |
+| `hmrf.reindex` | makes the one-column clone contract hold (#278, #269) |
+| `hmrf.clone_assignment`, `field`, `fused_field`, `adjacency`, `invariants` | the spot/clone field and assignment without array round trips: speed |
+| `hmrf_utils`, `emission` | clone-stacked contiguous buffers, written in place: speed |
+| `icm.floor` | merges clones under the size floor smallest first rather than all at once (#348) |
+| `icm.interface`, `icm.alpha_expansion` | the label solver behind a reduced interface, so `--sal` can swap it |
+| `integer_copy` | integer copies by the HMM's own likelihood; `cnaster`'s decoders mis-pin the normal state (#362) |
+| `lattice` | one forward/backward recursion for both state spaces: simplicity |
+| `omics`, `io`, `spatial`, `normal_spot`, `reference` | genome walks, loads and partitions vectorized or removed: speed |
+| `plotting`, `plot_genomic`, `utils` | figures with one clone loop and an affordable resolution (#278, #309, #195) |
+
+| Extension | Why |
+| --- | --- |
+| `clone_mixture` | fits each clone's pseudobulk as a mixture of the clones and a diploid normal, so impure labels and normal admixture do not bias spot assignment (#380; `--clone-mixture`) |
+| `copy_likelihood` | integer copies by the likelihood the HMM maximised (#327, #362) |
+| `copy_errors`, `parameter_errors`, `integer_copy` | error bars on fitted parameters and the integer copies they admit (#353; `--copy-errors`) |
+| `sal`, `label_solver`, `emission_family` | `snakes_and_ladders` routines where `port` measured a gain (#312; `--sal`) |
+| `jax_hmm`, `jax_setup` | the HMM objective in `jax`, for gradients (#287) |
+| `hmm_init_trials` | repeated HMM initializations, to report what one actually does |
+| `combined_figure`, `realization_plot` | one-page run summary; fits over realizations of one genome (#309, #291) |
+
+`python/port/sandbox/` holds work set aside with the numbers that set it
+aside, such as `sandbox/admixture`, the clone-mixture variants (#380).
 
 ## Layout
 

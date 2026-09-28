@@ -250,6 +250,74 @@ def write_sim_inputs(
     return config
 
 
+def crop(
+    sample: SimulatedSample, root: Path, window: tuple[float, float, float, float]
+) -> Path:
+    """Write the spots of `sample` inside `window`; return the new directory.
+
+    `window` is `(x0, x1, y0, y1)`, half-open, in the truth file's
+    coordinates, so the subset is one contiguous block of the array and the
+    spatial neighbourhoods inside it are the original ones. Every per-spot
+    input is subset in its own row order; the SNP list, the genes and the
+    copy-number truth are unchanged. Refuses a window that loses a planted
+    clone, the normal one included.
+    """
+    import anndata as ad
+    import scipy.sparse as sp
+
+    x0, x1, y0, y1 = window
+    x, y = sample.coords[:, 0], sample.coords[:, 1]
+    inside = (x >= x0) & (x < x1) & (y >= y0) & (y < y1)
+    kept = set(sample.barcodes[inside].astype(str))
+    lost = sorted(set(range(sample.n_clones)) - set(sample.labels[inside].tolist()))
+
+    if lost:
+        msg = f"window {window} drops clones {[sample.clones[c] for c in lost]}"
+        raise ValueError(msg)
+
+    out = root / (sample.name + "_crop_" + "_".join(f"{v:g}" for v in window))
+    if (out / ".complete").exists():
+        return out
+    (out / "spatial").mkdir(parents=True, exist_ok=True)
+    (out / "unique_snp_ids.npy").write_bytes(
+        (sample.path / "unique_snp_ids.npy").read_bytes()
+    )
+    (out / "truth_acn_profile.tsv").write_bytes(
+        (sample.path / "truth_acn_profile.tsv").read_bytes()
+    )
+
+    barcodes = (sample.path / "barcodes.txt").read_text().split()
+    rows = np.array([b in kept for b in barcodes])
+    (out / "barcodes.txt").write_text(
+        "\n".join(b for b, k in zip(barcodes, rows, strict=True) if k) + "\n"
+    )
+
+    for name in ("cell_snp_Aallele.npz", "cell_snp_Ballele.npz"):
+        matrix = sp.load_npz(sample.path / name).tocsr()
+        sp.save_npz(out / name, matrix[rows])
+
+    assay = ad.read_h5ad(sample.path / "filtered_feature_bc_matrix.h5ad")
+    assay[assay.obs_names.astype(str).isin(kept)].copy().write_h5ad(
+        out / "filtered_feature_bc_matrix.h5ad"
+    )
+
+    positions = sample.path / "spatial" / "tissue_positions_list.csv"
+    lines = positions.read_text().splitlines()
+    (out / "spatial" / "tissue_positions_list.csv").write_text(
+        "\n".join(line for line in lines if line.split(",")[0] in kept) + "\n"
+    )
+
+    truth = (sample.path / "truth_clone_labels.tsv").read_text().splitlines()
+    (out / "truth_clone_labels.tsv").write_text(
+        "\n".join(
+            [truth[0], *(line for line in truth[1:] if line.split("\t")[0] in kept)]
+        )
+        + "\n"
+    )
+    (out / ".complete").touch()
+    return out
+
+
 PURE_SEED = 362
 """The draw :func:`purify` makes, so a pure sample is one fixture, not many."""
 
@@ -272,8 +340,18 @@ def _gene_copies(
     return total
 
 
-def purify(sample: SimulatedSample, root: Path, seed: int = PURE_SEED) -> Path:
+def purify(
+    sample: SimulatedSample,
+    root: Path,
+    seed: int = PURE_SEED,
+    normal: tuple[float, ...] = (),
+) -> Path:
     """Write `sample` with every tumour spot pure; return the new directory.
+
+    With `normal`, tumour clone `c`'s spots are instead `normal[c - 1]`
+    normal, a planted fraction per clone that a fit can be asked to recover:
+    depth `(1 - f) (A + B) / 2 + f` and share `((1 - f) A + f) / ((1 - f)
+    (A + B) + 2 f)` in place of the pure `(A + B) / 2` and `A / (A + B)`.
 
     The simulated spots carry about 8 per cent normal admixture: at planted
     LOH the phased pseudobulk BAF is 0.072 to 0.082 rather than 0, the same
@@ -298,7 +376,11 @@ def purify(sample: SimulatedSample, root: Path, seed: int = PURE_SEED) -> Path:
         raise FileNotFoundError(msg)
 
     rng = np.random.default_rng(seed)
-    out = root / f"{sample.name}_pure"
+    suffix = "_".join(f"{f:g}" for f in normal)
+    out = root / (f"{sample.name}_normal_{suffix}" if normal else f"{sample.name}_pure")
+    if (out / ".complete").exists():
+        return out
+    fraction = np.array([0.0, *normal])
     (out / "spatial").mkdir(parents=True, exist_ok=True)
 
     for name in (*INPUTS, *TRUTH):
@@ -312,7 +394,8 @@ def purify(sample: SimulatedSample, root: Path, seed: int = PURE_SEED) -> Path:
     counts = sp.csr_matrix(assay.X)
     genes = np.asarray(assay.var_names).astype(str)
     total = _gene_copies(sample, genes, resources)
-    normal = np.asarray(counts[labels == 0].sum(axis=0)).ravel().astype(np.float64)
+    baseline = np.asarray(counts[labels == 0].sum(axis=0)).ravel()
+    baseline = baseline.astype(np.float64)
     depth = np.asarray(counts.sum(axis=1)).ravel()
     rows = []
 
@@ -323,7 +406,8 @@ def purify(sample: SimulatedSample, root: Path, seed: int = PURE_SEED) -> Path:
             rows.append(counts[spot])
             continue
 
-        weights = normal * total[:, clone] / 2.0
+        f = fraction[clone] if clone < fraction.size else 0.0
+        weights = baseline * ((1.0 - f) * total[:, clone] / 2.0 + f)
         drawn = rng.multinomial(int(depth[spot]), weights / weights.sum())
         rows.append(sp.csr_matrix(drawn[None, :]))
 
@@ -342,8 +426,15 @@ def purify(sample: SimulatedSample, root: Path, seed: int = PURE_SEED) -> Path:
     clone = spot_labels[trials.row]
     pair = copies[trials.col, clone]
     tumour = (clone > 0) & (pair[:, 0] >= 0)
-    share = np.where(
-        pair.sum(axis=1) > 0, pair[:, 0] / np.maximum(pair.sum(axis=1), 1), 0.5
+    admixed = np.where(
+        clone < fraction.size, fraction[np.minimum(clone, fraction.size - 1)], 0.0
+    )
+    alleles = (1.0 - admixed) * pair[:, 0] + admixed
+    copies_total = (1.0 - admixed) * pair.sum(axis=1) + 2.0 * admixed
+    share = np.clip(
+        np.where(copies_total > 0, alleles / np.maximum(copies_total, 1e-12), 0.5),
+        0.0,
+        1.0,
     )
     a_count = np.asarray(first[trials.row, trials.col]).ravel()
     a_count = np.where(tumour, rng.binomial(trials.data, share), a_count)
@@ -354,5 +445,6 @@ def purify(sample: SimulatedSample, root: Path, seed: int = PURE_SEED) -> Path:
     )
     sp.save_npz(out / "cell_snp_Aallele.npz", new_a.astype(first.dtype))
     sp.save_npz(out / "cell_snp_Ballele.npz", new_b.astype(second.dtype))
+    (out / ".complete").touch()
 
     return out
