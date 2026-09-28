@@ -13,8 +13,9 @@ script keeps working.
 **`--figure-swaps` is on by default, so a default run does not reproduce
 `cnaster` byte for byte.** It is the largest measured win here -- 47 per
 cent of a run, and 8,287 MB of figure rendering down to 1,036 MB (#195) --
-and a figure written at a different dpi is a different file by design. Pass
-`--no-figure-swaps` for an arm that does reproduce bitwise.
+and a figure written at a different dpi is a different file by design.
+`--no-figure-swaps` alone does not give a bitwise arm: the shift and copy-cap
+tables are on by default too and change the fit (#466). `--no-patch` does.
 
 That property still holds of `port.pipeline.SWAPS`, which is unchanged and
 still what `install()` defaults to; only this entry point's default moved.
@@ -89,12 +90,14 @@ def _parser() -> argparse.ArgumentParser:
         action=argparse.BooleanOptionalAction,
         default=None,
         help=(
-            "install the replacements that change the output: the figure dpi "
-            "and the rasterizing groups (#195). **On by default**, because it "
-            "is the largest measured win port has -- 47 per cent of a run, and "
-            "8,287 MB of figure rendering down to 1,036 MB. Pass --no-figure-swaps "
-            "for an arm that reproduces cnaster bitwise, which every other "
-            "swap does and this one does not."
+            "install the figure replacements, which change the files: the "
+            "figure dpi and rasterizing groups (#195), the genomic RDR line "
+            "(#299), the spatial tiles and the copy-number profile (#309). "
+            "**On by default**, because it is the largest measured win port "
+            "has -- 47 per cent of a run, and 8,287 MB of figure rendering "
+            "down to 1,036 MB. Off with --no-figure-swaps or --no-patch; only "
+            "--no-patch also leaves out the shift and copy-cap tables, which "
+            "change the fit."
         ),
     )
     parser.add_argument(
@@ -111,10 +114,12 @@ def _parser() -> argparse.ArgumentParser:
         action=argparse.BooleanOptionalAction,
         default=None,
         help=(
-            "fold the per-clone logmu_shift into the fit and pin the balanced, "
-            "lowest-mu state to mu = 1 afterwards (#276, #293). **On by "
+            "fold the per-clone logmu_shift into the fit and pin the normal "
+            "clone's dominant balanced state to mu = 1 afterwards (#276, #299). "
+            "**On by "
             "default**: without it a clone's rates come back divided by its "
-            "own normalizer. Pass --no-shift for cnaster's unshifted model."
+            "own normalizer. Pass --no-shift for cnaster's unshifted model, "
+            "which also leaves out the sal emission and distinct init."
         ),
     )
     parser.add_argument(
@@ -149,7 +154,8 @@ def _parser() -> argparse.ArgumentParser:
             "within one standard deviation of a heavier one is merged into it "
             "before the most populated K are kept (#348); cnaster keeps the K "
             "most populated, which on a mostly normal genome are slices of the "
-            "normal cluster. **On by default**, off with --no-patch."
+            "normal cluster. **On by default**, off with --no-patch or "
+            "--no-shift, whose run_core_inference row is what reads it."
         ),
     )
     parser.add_argument(
@@ -158,8 +164,9 @@ def _parser() -> argparse.ArgumentParser:
         default=None,
         help=(
             "decode integer copies under the caps the configuration states, "
-            "int_copy_num.max_total_copy and max_allele_copy (#313); cnaster "
-            "reads neither and decodes under A + B <= 6. **On by default**, "
+            "int_copy_num.max_total_copy, to the total and to each allele "
+            "(#313); cnaster reads no key and decodes under A + B <= 6 and "
+            "A, B <= 5. **On by default**, "
             "off with --no-patch; a configuration that states no cap decodes "
             "exactly as cnaster does."
         ),
@@ -224,14 +231,14 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--sal-emission",
         action=argparse.BooleanOptionalAction,
-        default=True,
+        default=None,
         help=(
             "score the coded NB/BB emission with sal's dense log-emission "
             "(#425): to 3.2e-12 of cnaster's kernels (3.5e-9 at the dispersion "
             "floor, where sal is the nearer the exact value), 3-9x the kernels "
             "at 100,000 codes, and no faster end to end, as CountEncoder dedup "
-            "leaves the kernels small. **On by default**, off with "
-            "--no-sal-emission; not a --sal row."
+            "leaves the kernels small. **On by default** where the shift is, "
+            "off with --no-sal-emission or --no-shift; not a --sal row."
         ),
     )
     parser.add_argument(
@@ -413,12 +420,25 @@ def main(argv: Sequence[str] | None = None) -> int:
         #    `pipeline_clone_assignment`, a `SWAPS` row; under `--no-patch`
         #    that one row is installed alone, so the flag still means what it
         #    says and the rest of the baseline stays `cnaster`'s.
-        if arguments.sal_emission:
+        # NB the sal emission and the distinct initializer are read by the
+        #    `SHIFT_SWAPS` rows alone -- port's `hmm_nophasing` class and
+        #    `run_core_inference` -- so without the shift they are off, and
+        #    asking for either is refused rather than ignored (#466).
+        for flag, asked in (
+            ("--sal-emission", arguments.sal_emission),
+            ("--distinct-init", arguments.distinct_init),
+        ):
+            if asked and not shift:
+                _parser().error(f"{flag} is read by the shift rows; --no-shift")
+        sal_emission_on = (
+            shift if arguments.sal_emission is None else arguments.sal_emission
+        )
+        if sal_emission_on:
             from port.patch.hmm_nophasing import sal_emission
 
             # NB the coded emission from sal's tables (#425), a class flag
-            #    the `hmm_nophasing` swap reads, restored with the run; under
-            #    `--no-patch` that swap is not installed and it reads nothing.
+            #    the `hmm_nophasing` swap reads, restored with the run. That
+            #    swap is a `SHIFT_SWAPS` row, so `--no-patch --shift` reads it.
             stack.enter_context(sal_emission())
 
         if arguments.sal:
@@ -452,22 +472,37 @@ def main(argv: Sequence[str] | None = None) -> int:
             not arguments.no_patch if arguments.copy_cap is None else arguments.copy_cap
         )
         if copy_cap:
+            # NB refused here rather than at the decode, hours into the run.
+            for finding in findings:
+                if finding.kind == "invalid" and finding.key.startswith("int_copy"):
+                    _parser().error(f"--copy-cap: {finding.detail}")
+
             selected = selected + COPY_SWAPS
         # NB opt-in, unlike the other clone patches: each alone over-splits
         #    #338's three-sample instance, 6 fitted clones against 2 planted.
         refinement_mask = bool(arguments.refinement_mask)
+        floor = bool(arguments.floor_merge)
+        # NB the mask and the floor are read by port's
+        #    `pipeline_clone_assignment` alone; without it both would be
+        #    installed and read by nothing (#466).
+        if (refinement_mask or floor) and not any(
+            swap.name == "pipeline_clone_assignment" for swap in selected
+        ):
+            _parser().error(
+                "--refinement-mask and --floor-merge need port's "
+                "pipeline_clone_assignment, which --no-patch leaves out"
+            )
         if refinement_mask:
             from port.patch.hmrf.refinement import forget
 
             selected = selected + REFINEMENT_SWAPS
             stack.callback(forget)
-        floor = bool(arguments.floor_merge)
         if floor:
             from port.patch.icm.floor import floor_merge
 
             stack.enter_context(floor_merge())
         distinct = (
-            not arguments.no_patch
+            shift and not arguments.no_patch
             if arguments.distinct_init is None
             else arguments.distinct_init
         )

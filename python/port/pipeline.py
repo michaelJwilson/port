@@ -258,6 +258,13 @@ that amplification, which is the only thing it is currently good for.
 The 3.51x prefix-sum form needs a `k_max` bound and a fallback nothing has
 measured, and would have to clear the same whole-run test before it could
 default either.
+
+**Broken as it stands (#466).** `cnaster`'s `_dense_nb_logpmf` is
+`@njit(cache=True)` and reads this name as a global when it compiles: with a
+cold numba cache the run raises `TypingError`, and with a warm one it runs
+`cnaster`'s kernel. Under the entry point's default sal emission the fit
+never calls it. The measurements above predate both, and the row is below
+`CLAUDE.md`'s 2x bar.
 """
 
 
@@ -290,22 +297,25 @@ FIGURE_SWAPS: tuple[Swap, ...] = (
 )
 """The replacements that **change the output**, and the biggest win here.
 
-Three rows. `write_fig` is 47 per cent of a run (#195); `plot_clones_genomic`
+Five rows. `write_fig` is 47 per cent of a run (#195); `plot_clones_genomic`
 draws each clone's RDR line at `mu / Z_c` when the shift is on, where its
 points are, rather than at the pinned `mu` (#299); `plot_clones_spatial`
 tiles each spot at 0.85 of the lattice pitch rather than a dot 0.53 of it
-across (#309). `write_fig` carries two defaults `cnaster` does not:
+across (#309); `plot_copy_number_profile` draws one row per clone, and
+`plot_ascn_legend` is its legend (#309). That last row is reached by no live
+call: `cnaster`'s only caller is the function the row above replaces (#466). `write_fig` carries two defaults `cnaster` does not:
 `dpi=150`, and one rasterizing group per axes rather than the two a
 gridline splits `cnaster`'s runs into. Together they
 take a run's plotting from 20.34 s to 3.84 s and its renderer buffers from
 8,287 MB to 1,036 MB.
 
 Separate from `SWAPS` because `CLAUDE.md` forbids a silent behaviour change
-and all three are ones: a coarser raster, gridlines that paint under
-the data instead of over it, and a spot's area.
+and each row makes one: a coarser raster, gridlines that paint under the data
+instead of over it, the RDR line's level, a spot's area, and the profile's
+layout.
 
 **Separate, but on by default at the entry point.** `run_cnaster_port`
-installs this table unless `--no-figure-swaps` is given, because a win that large
+installs this table unless `--no-figure-swaps` or `--no-patch` is given, because a win that large
 sitting behind a flag is a win nobody gets. The table stays its own so the
 distinction survives the default: `SWAPS` is still the set that reproduces
 `cnaster` bitwise, `install()` still defaults to `SWAPS` alone, and the
@@ -347,6 +357,13 @@ posteriors and `hmm.py:155`'s rescore -- and `pipeline_clone_assignment`
 likelihood does not set, once after the optimization: the normal clone's
 dominant balanced state is `mu = 1` (#299).
 
+The two rows also carry three things the entry point turns on with the
+shift and off without it: the sal emission (#425) and the analytic M-step
+gradient (#433), class attributes of port's `hmm_nophasing`, and the
+distinct initializer (#348), which port's `run_core_inference` passes. Where
+a tumour proportion hands clone assignment to `cnaster` (#135), the per-clone
+shift is not applied there and the run says so (#466).
+
 Its own table because every fitted rate moves, which `CLAUDE.md` forbids
 doing silently; `run_cnaster_port` installs it unless `--no-shift` is given,
 and `port.patch.hmm_nophasing.logmu_shift()` is what turns the class's flag
@@ -360,7 +377,8 @@ PLOT_OFF_SWAPS: tuple[Swap, ...] = (
 """`run_cnaster_port --no-plots`: every figure is built and none is written.
 
 Installed after `FIGURE_SWAPS`, so it rebinds port's `write_fig` where that
-one is in place. Not a drop-in in the bitwise sense -- no file appears -- and
+one is in place -- in `port.patch.utils` too, for the run, since `patched()`
+rebinds every module holding the original; nothing in `port` calls it there. Not a drop-in in the bitwise sense -- no file appears -- and
 for that reason a table of its own, chosen by a flag and never by default.
 """
 
@@ -412,14 +430,17 @@ merged all 16 sub-clones into one (ARI 0.000). The row keeps the mask;
 was built for (`port.patch.hmrf.refinement`).
 
 **Its own table, and off by default**, because the clones change.
-`run_cnaster_port --refinement-mask` installs it, and `--no-patch` leaves it
-out with the rest (#466: this said "on", the CLI never did).
+`run_cnaster_port --refinement-mask` installs it (#466: this said "on", the
+CLI never did). Its only reader is port's `pipeline_clone_assignment`, so
+`--no-patch` without `--sal` refuses it, and where a tumour proportion hands
+the call to `cnaster` (#135) the mask is not applied and the run says so.
 
 `--floor-merge`, also off by default, is the second half and needs no row:
 `port.patch.icm.floor.floor_merge()` makes `pipeline_clone_assignment` (in
 `SWAPS`) meet the clone-size floor smallest first, into each spot's best
 clone, at `hmrf.min_spots_per_clone`, instead of the sweep's all-at-once
-random reassignment at a fixed 200. It holds with or without the mask.
+random reassignment at a fixed 200. It holds with or without the mask, and
+is refused and dropped exactly where the mask is.
 """
 
 

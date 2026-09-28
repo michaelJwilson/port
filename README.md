@@ -276,7 +276,8 @@ So the figure swaps are most of the runtime win and all of the memory one.
 under `A + B <= 6` and `A, B <= 5` and reads no key that changes them, so a
 planted total of 10 cannot be decoded. `COPY_SWAPS` reads
 `int_copy_num.max_total_copy` and applies it to both caps; a configuration
-without the key decodes exactly as `cnaster` does. The MILP decoder, called
+without the key, or with `none`, decodes exactly as `cnaster` does, and a
+value that is not an integer of at least 2 is refused at start. The MILP decoder, called
 as `run_cnaster` calls it, returns planted totals of 10 to 12 exactly at a
 stated 12, and none of them at `cnaster`'s 6 (`tests/test_integer_copy_patch.py`).
 
@@ -315,7 +316,8 @@ emission with `snakes_and_ladders`' dense log-emission, to 3.2e-12 of
 `cnaster`'s kernels. On the dev instance the default run's clone ARI rises
 0.7927 to 0.8653 and its integer ARI 0.9242 to 0.9905, fitting 5 clones for 4
 rather than 6; the lattice fixture is unchanged at 0.9985. It is not faster end
-to end. `--no-sal-emission` restores `cnaster`'s kernels.
+to end. `--no-sal-emission` restores `cnaster`'s kernels. It rides on the
+shift rows, so `--no-shift` turns it off too, and `--distinct-init` with it.
 
 **The M step's gradient is closed form** (#433). `cnaster` fits the
 emission by BFGS with a finite-difference gradient, one objective call per
@@ -357,7 +359,10 @@ components as separate states. With all three on, the run recovers clone ARI
 0.774 (1.000 integer) and copy-state ARI 0.997. The floor merge alone removes
 the collapse. `--floor-merge` and `--refinement-mask` are opt-in: each alone
 splits #338's three-sample instance, 2 planted clones into 6 fitted.
-`--distinct-init` is on by default.
+`--distinct-init` is on by default. The mask and the floor are read by port's
+clone assignment alone, so `--no-patch` refuses them, and where a tumour
+proportion hands the assignment to `cnaster` the run warns that they, and the
+per-clone shift, are not applied (#466).
 
 **`run_calicost`** (#347) translates the same YAML and runs CalicoST in-process
 on the same files, into `<output_dir>_calicost`. `--align` (the default)

@@ -12,7 +12,8 @@ configuration and apply it as **both** caps: the total, and each allele, since
 an allele cap below the total leaves totals above twice it unreachable -- at
 `cnaster`'s 5 no pair beyond `(5, 5)` exists. Where the configuration states
 no cap the decode is `cnaster`'s, so a configuration without the key decodes
-exactly as `cnaster` does. The key is `port`'s: `cnaster` does not read it,
+exactly as `cnaster` does. One that states `cnaster`'s own total, 6, does not:
+its allele cap is 6 where `cnaster`'s is 5, so `(6, 0)` becomes decodable. The key is `port`'s: `cnaster` does not read it,
 which is why this is its own table (`COPY_SWAPS`) rather than a `SWAPS` row --
 a configuration that states it changes the output.
 
@@ -35,6 +36,7 @@ __all__ = [
     "configured_caps",
     "hill_climbing_integer_copynumber_fixdiploid_milp",
     "hill_climbing_integer_copynumber_oneclone",
+    "stated_total",
 ]
 
 # NB bound at import, before any swap: `pipeline.patched` rebinds a name in
@@ -58,17 +60,40 @@ MAX_TOTAL_COPY = 6
 """`cnaster`'s default, in both signatures."""
 
 
+def stated_total(value: Any) -> int | None:
+    """`int_copy_num.max_total_copy` as a cap, `None` where no cap is stated.
+
+    `None` and `"none"` state none. Anything else must be an integer of at
+    least 2, the diploid `(1, 1)`: below it the MILP returns `(0, 0)` at
+    infinite loss and the hill climber a state above the cap (#466). A
+    fraction is refused rather than truncated.
+    """
+    if value is None or (isinstance(value, str) and value.lower() == "none"):
+        return None
+
+    try:
+        total = float(value) if not isinstance(value, bool) else float("nan")
+    except ValueError:
+        total = float("nan")
+
+    if not (total >= 2 and total.is_integer()):
+        message = f"int_copy_num.max_total_copy must be an integer >= 2, got {value!r}"
+        raise ValueError(message)
+
+    return int(total)
+
+
 def configured_caps() -> tuple[int, int]:
     """`(max_allele_copy, max_total_copy)`: the configured cap for both, else `cnaster`'s."""
     from cnaster.config import get_global_config
 
     section = getattr(get_global_config(), "int_copy_num", None)
-    total = getattr(section, "max_total_copy", None)
+    total = stated_total(getattr(section, "max_total_copy", None))
 
     if total is None:
         return MAX_ALLELE_COPY, MAX_TOTAL_COPY
 
-    return int(total), int(total)
+    return total, total
 
 
 @contextlib.contextmanager
