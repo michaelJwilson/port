@@ -43,8 +43,8 @@ SAL_ROWS: tuple[SalRow, ...] = (
         stage="clone labelling",
         cnaster="cnaster.icm.icm_sweep_deque",
         sal=(
-            "search.alpha_expansion.alpha_expansion, Backend.RUST, then "
-            "search.icm.merge_small_labels at cnaster's floor"
+            "search.alpha_expansion.fuse of alpha_expansion (Backend.RUST) and "
+            "the argmax ICM, then search.icm.merge_small_labels at cnaster's floor"
         ),
         axis="accuracy",
         evidence=(
@@ -53,9 +53,13 @@ SAL_ROWS: tuple[SalRow, ...] = (
             "27.0 -> 25.7 s, against the row it replaced (expansion then "
             "cnaster's ICM, #312: 0.919 -> 1.000 over the default). The floor "
             "is load-bearing -- alpha expansion alone reaches ARI 0.386 -- "
-            "and is now sal's (#1114), so no cnaster ICM runs under --sal"
+            "and is now sal's (#1114), so no cnaster ICM runs under --sal. "
+            "The fusion (#1125) of the expansion with the argmax descent keeps "
+            "ARI 1.000 on both and lowers the Potts energy at 10,000 spots and "
+            "ten clones by 50 nats, 14.6 from TRW-S's lower bound against the "
+            "expansion's 64.6, at 0.100 s against 0.084 s per call"
         ),
-        solver="alpha-rust-merge",
+        solver="alpha-rust-fuse-merge",
         ticket=410,
     ),
 )
@@ -69,6 +73,8 @@ SAL_ROWS: tuple[SalRow, ...] = (
   two clones for four on the dev instance -- the index-order descent from
   the RDR stage's start dissolves clones the expansion keeps;
 - `alpha-rust-icm`: the row `alpha-rust-merge` replaced;
+- `alpha-rust-merge`: the expansion alone before the floor, which the fused
+  row replaced on energy (#1125);
 - `icm-argmax-floor` (#410, sal #1121): the `numba` descent from the field's
   argmax with the floor. Dev instance: clone ARI 1.000, copy ARI 0.9971,
   wall 22.5 s end to end. Per call at 10,000 spots and ten clones, 0.034 s
@@ -76,7 +82,9 @@ SAL_ROWS: tuple[SalRow, ...] = (
   energy 295 nats higher (-19,335 against -19,630); at 1,600 spots and four
   clones, 0.0049 against 0.0102 s and 54 nats higher. Not admitted: the
   speed is bought with a worse minimum, and the label step is 2.3 s of the
-  run.
+  run;
+- TRW-S (#1061) then the floor: 0.6 nats from its own bound at 10,000
+  spots, at 3.2 s per call, 38x the fused row's. A certificate, not a row.
 
 #312's R7, the label merge in sal, landed as `merge_small_labels`."""
 

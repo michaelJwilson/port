@@ -27,6 +27,7 @@ __all__ = [
     "SOLVERS",
     "expansion_then_floor",
     "expansion_then_merge",
+    "fusion_then_merge",
     "label_solver",
     "sal_icm_argmax_sweep",
     "sal_icm_floor_sweep",
@@ -44,6 +45,7 @@ Solver = Literal[
     "alpha-rust-merge",
     "icm-numba-floor",
     "icm-argmax-floor",
+    "alpha-rust-fuse-merge",
 ]
 SOLVERS: tuple[Solver, ...] = (
     "icm",
@@ -54,6 +56,7 @@ SOLVERS: tuple[Solver, ...] = (
     "alpha-rust-merge",
     "icm-numba-floor",
     "icm-argmax-floor",
+    "alpha-rust-fuse-merge",
 )
 """`icm` is `cnaster`'s. `alpha`, `alpha-rust` and `icm-numba` are
 `snakes_and_ladders`' (#246, #312): alpha expansion with its Python or Rust
@@ -139,6 +142,9 @@ def sweep_for(name: Solver) -> Any:
 
     if name == "icm-argmax-floor":
         return sal_icm_argmax_sweep
+
+    if name == "alpha-rust-fuse-merge":
+        return fusion_then_merge
 
     return sal_icm_sweep
 
@@ -341,6 +347,76 @@ def sal_icm_argmax_sweep(
         values,
         np.random.default_rng(0),
         start=np.argmax(values, axis=1).astype(np.int64),
+        min_sites=max(int(min_clone_spots), 1),
+        backend=Backend.NUMBA,
+    )
+
+    labelling = np.asarray(result.labelling, dtype=assignment.dtype)
+    assignment[:] = labelling
+
+    return IcmResult(
+        niter=int(result.sweeps), cost=float(energy(potts, values, labelling))
+    )
+
+
+def fusion_then_merge(
+    field: Any,
+    graph: Any,
+    assignment: Any,
+    beta: float,
+    *,
+    tol: float = 0.0,
+    epsilon: float = 0.0,
+    min_clone_spots: int = 200,
+    cost_zeropoint: float = 0.0,
+    onehot_allowed_clones: Any = None,
+) -> Any:
+    """Fuse the expansion's labelling with the argmax descent's, then sal's floor.
+
+    sal #1125's fusion move: per site, one proposal's label or the other's,
+    chosen by the roof dual, and never worse than the better proposal. The
+    proposals are alpha expansion (Rust cut) from the caller's labelling and
+    sal's `numba` descent from the field's argmax, which reach different
+    minima; the floor follows as in :func:`expansion_then_merge`.
+    """
+    del tol, epsilon, cost_zeropoint, onehot_allowed_clones
+
+    import numpy as np
+    from sal.backend import Backend
+    from sal.search.alpha_expansion import alpha_expansion, fuse
+    from sal.search.icm import iterated_conditional_modes, merge_small_labels
+    from sal.sim.potts import energy
+
+    from port.patch.icm.alpha_expansion import potts_graph_from
+    from port.patch.icm.interface import IcmResult
+
+    values = np.asarray(field, dtype=np.float64)
+    potts = potts_graph_from(graph, beta)
+    expanded = alpha_expansion(
+        potts,
+        values,
+        start=np.asarray(assignment, dtype=np.int64).copy(),
+        backend=Backend.RUST,
+    ).labelling
+    descended = iterated_conditional_modes(
+        potts,
+        values,
+        np.random.default_rng(0),
+        start=np.argmax(values, axis=1).astype(np.int64),
+        backend=Backend.NUMBA,
+    ).labelling
+    fused = fuse(
+        potts,
+        values,
+        np.asarray(expanded, dtype=np.int64),
+        np.asarray(descended, dtype=np.int64),
+        backend=Backend.RUST,
+    ).labelling
+    result = merge_small_labels(
+        potts,
+        values,
+        np.asarray(fused, dtype=np.int64),
+        np.random.default_rng(0),
         min_sites=max(int(min_clone_spots), 1),
         backend=Backend.NUMBA,
     )
