@@ -48,6 +48,19 @@ adding one would break the monotonicity its termination proof rests on. So a
 run through this solver does **not** apply that floor, which is a behaviour
 difference rather than an omission, and `IcmResult.niter` counts expansion
 cycles rather than ICM iterations.
+
+## Forbidden labels are passed finite (#366)
+
+`cnaster` marks a label a spot may not take with `-inf` in the field.
+`snakes_and_ladders` at 679d326 makes no expansion move at all on a field
+holding `-inf` or entries of order `-1e6`, where 186bc59 did: on a
+`--sal` run of CalicoST's pure hard sample every sweep with a forbidden
+label returned its start, 464 to 670 nats above the old pin's labelling, and
+the clone ARI fell from 0.994 to 0.666. So `forbidden_as_finite` replaces
+each `-inf` by a penalty no move can pay: the site's least finite entry,
+less the coupling of every edge at the site, less one. A site then gains
+more by any allowed label than by a forbidden one whatever its neighbours
+do, so the minimizer and its energy are the ones the `-inf` field states.
 """
 
 from __future__ import annotations
@@ -60,52 +73,106 @@ from sal.sim.potts import energy
 
 from port.patch.icm.interface import CsrGraph, IcmResult
 
-__all__ = ["alpha_expansion_sweep", "potts_energy", "potts_graph_from"]
+__all__ = [
+    "alpha_expansion_sweep",
+    "forbidden_as_finite",
+    "potts_energy",
+    "potts_graph_from",
+]
 
 
 def potts_graph_from(graph: CsrGraph, beta: float) -> PottsGraph:
-    """`port`'s CSR adjacency as upstream's `PottsGraph`.
+    """`port`'s CSR adjacency as upstream's `PottsGraph`, one-way edges included.
 
-    Each undirected edge is taken **once**, from the upper triangle, because
-    `CsrGraph` stores both directions and `PottsGraph` counts an edge's
-    coupling once per entry -- listing both would double every bond and
-    halve the effective temperature without saying so.
+    `cnaster`'s ICM sums each spot's own row, so on a directed graph its
+    coupling is `beta * sum_i sum_{j in row i} A_ij [s_i = s_j]`. Over an
+    unordered pair that is `beta * (A_ij + A_ji)`, which `PottsGraph` --
+    counting each edge once -- carries as `beta * (A_ij + A_ji) / 2`: the
+    same energy up to the factor of two every symmetric graph already had.
+    A reciprocated pair keeps `beta * w`, bitwise the upper triangle this
+    replaces; a one-way pair enters at half, where the upper-triangle read
+    kept it whole when `i < j` and dropped it when `i > j` (#417).
 
-    The coupling is `beta * weight`, non-negative by the metric condition the
-    bound rests on; a negative weight is refused rather than clipped.
+    Built by sal's `PottsGraph.from_csr` (#1113) on the symmetrized matrix,
+    with no Python loop over entries. Refused: a negative coupling -- alpha
+    expansion's bound requires a metric -- and a graph whose reciprocated
+    share of edges is under `port.extensions.adjacency.RECIPROCATED`, where
+    one-way edges are no longer the boundary's.
     """
-    indptr = np.asarray(graph.indptr)
-    indices = np.asarray(graph.indices)
-    weights = np.asarray(graph.weights, dtype=np.float64)
+    import scipy.sparse as sp
 
-    edges: list[tuple[int, int]] = []
-    coupling: list[float] = []
+    from port.extensions.adjacency import RECIPROCATED, AdjacencyError
 
-    for site in range(indptr.size - 1):
-        for slot in range(int(indptr[site]), int(indptr[site + 1])):
-            neighbour = int(indices[slot])
-
-            if neighbour <= site:
-                continue
-
-            value = float(beta) * float(weights[slot])
-
-            if value < 0.0:
-                msg = (
-                    f"edge ({site}, {neighbour}) has coupling {value}; alpha "
-                    "expansion's bound requires a metric, so a negative "
-                    "coupling is refused rather than clipped"
-                )
-                raise ValueError(msg)
-
-            edges.append((site, neighbour))
-            coupling.append(value)
-
-    return PottsGraph(
-        n_nodes=int(indptr.size - 1),
-        edges=tuple(edges),
-        coupling=tuple(coupling),
+    n_nodes = int(np.asarray(graph.indptr).size - 1)
+    matrix = sp.csr_matrix(
+        (
+            np.asarray(graph.weights, dtype=np.float64),
+            np.asarray(graph.indices),
+            np.asarray(graph.indptr),
+        ),
+        shape=(n_nodes, n_nodes),
     )
+    matrix.eliminate_zeros()
+
+    if matrix.nnz and matrix.data.min() * float(beta) < 0.0:
+        msg = (
+            f"a coupling of {matrix.data.min() * float(beta)}; alpha expansion's "
+            "bound requires a metric, so a negative coupling is refused rather "
+            "than clipped"
+        )
+        raise ValueError(msg)
+
+    # NB an empty graph -- every coupling zero -- is symmetric, not one-way.
+    reciprocated = matrix.multiply(matrix.T).nnz / matrix.nnz if matrix.nnz else 1.0
+
+    if reciprocated < RECIPROCATED:
+        msg = (
+            f"only {reciprocated:.3f} of edges are reciprocated, under "
+            f"{RECIPROCATED}: too one-way to read as a Potts coupling"
+        )
+        raise AdjacencyError(msg)
+
+    symmetric = ((matrix + matrix.T) * (0.5 * float(beta))).tocsr()
+    symmetric.sort_indices()
+
+    return PottsGraph.from_csr(symmetric.indptr, symmetric.indices, symmetric.data)
+
+
+def forbidden_as_finite(values: np.ndarray, graph: CsrGraph, beta: float) -> np.ndarray:
+    """`values` with each `-inf` replaced by a penalty no labelling pays (#366).
+
+    Upstream minimizes `-sum h[s] - sum J [s == s']`, so a label's field entry
+    `h` is a gain, and moving a site from any allowed label to one with entry
+    `p` changes the energy by at least `min_allowed(h) - p - sum_j J_ij`. With
+    `p = min_allowed(h) - sum_j J_ij - 1` that change is at least one, so no
+    minimum cut takes a forbidden label and no local minimum holds one. A site
+    with no finite entry is refused: it has no label to take.
+    """
+    forbidden = np.isneginf(values)
+
+    if not forbidden.any():
+        return values
+
+    finite = np.where(forbidden, np.inf, values)
+    lowest = finite.min(axis=1)
+
+    if not np.isfinite(lowest).all():
+        msg = "a site forbids every label; there is no labelling to minimize over"
+        raise ValueError(msg)
+
+    # NB the coupling at a site as `potts_graph_from` builds it, from
+    #    `(A + A^T) / 2`: its row and column sums, halved. On a symmetric graph
+    #    that is the row sum; a one-way edge counts at half, as it enters.
+    indptr = np.asarray(graph.indptr)
+    n_sites = indptr.size - 1
+    sites = np.repeat(np.arange(n_sites), np.diff(indptr))
+    weights = beta * np.asarray(graph.weights, dtype=np.float64)
+    rows = np.bincount(sites, weights=weights, minlength=n_sites)
+    columns = np.bincount(np.asarray(graph.indices), weights=weights, minlength=n_sites)
+    incident = 0.5 * (rows + columns)
+    penalty = lowest - incident - 1.0
+
+    return np.where(forbidden, penalty[:, None], values)
 
 
 def potts_energy(
@@ -165,7 +232,7 @@ def alpha_expansion_sweep(
     # NB *not* negated: upstream's energy is `-sum h[s] - sum J [s == s]`,
     #    so `h = field` is already `cnaster`'s objective with the sign
     #    upstream's minimizer wants. See the module docstring.
-    values = np.asarray(field, dtype=np.float64)
+    values = forbidden_as_finite(np.asarray(field, dtype=np.float64), graph, beta)
 
     # NB `n_states` is the field's column count, which sal infers (#410).
     result = alpha_expansion(
