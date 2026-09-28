@@ -10,6 +10,20 @@ output = "../generated"
 # NB count draws of the same clones, layout and phase, written as r0, r1, ...
 realizations = 1
 
+[array]
+# NB every clone clears 300 spots, so cnaster's fixed 200-spot ICM floor
+#    (#468, #81) cannot merge one away: at 25 x 25 and radius 0.3, clone_2
+#    held 49 and clone_1 158. 42 x 42 at 0.4 plants 1,079 / 587 / 326 and
+#    normal 1,536, 3,528 spots over both slices (#467).
+kind = "hex"
+rows = 42
+columns = 42
+
+[layout]
+overlap = false
+radius = 0.4
+vertices = 6
+
 [cna]
 mode = "tree"
 # NB one event on the ancestor's edge, so the tree is not CalicoST's star.

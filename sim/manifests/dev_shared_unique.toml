@@ -10,6 +10,20 @@ output = "../generated"
 # NB count draws of the same clones, layout and phase, written as r0, r1, ...
 realizations = 1
 
+[array]
+# NB every clone clears 300 spots, so cnaster's fixed 200-spot ICM floor
+#    (#468, #81) cannot merge one away: at 25 x 25 and radius 0.3 the clones
+#    held 123, 68 and 79. 50 x 50 at 0.35 plants 664 / 337 / 377 and normal
+#    1,122, 2,500 spots (#467).
+kind = "hex"
+rows = 50
+columns = 50
+
+[layout]
+overlap = false
+radius = 0.35
+vertices = 6
+
 [cna]
 mode = "shared.unique"
 
