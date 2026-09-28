@@ -15,6 +15,7 @@ its last gene's `END`, where `cnaster` reads the last row's, a SNP.
 
 from __future__ import annotations
 
+import functools
 from typing import Any
 
 import numpy as np
@@ -31,13 +32,33 @@ def get_sitewise_transmat(
 ) -> np.ndarray:
     """`log_sitewise_transmat`, one entry per `segment_key` segment."""
     from cnaster.config import get_global_config
-    from cnaster.reference import get_reference_recomb_rates
 
-    from port.extensions.segments import GeneticMap, Segmentation
+    from port.extensions.segments import observe
 
-    segments = Segmentation.from_table(df_gene_snp, segment_key)
-    genetic_map = GeneticMap.from_frame(get_reference_recomb_rates(geneticmap_file))
+    segments = observe(df_gene_snp, segment_key)
+    genetic_map = _genetic_map(str(geneticmap_file))
 
     return segments.log_phase_switch(
         genetic_map, nu, logphase_shift, get_global_config().phasing.min_prob
     )
+
+
+def _genetic_map(path: str) -> Any:
+    """The map at `path`, read once per file version (#438 D4).
+
+    `run_cnaster` asks for the kernel four times and `cnaster` re-reads the
+    map each time. Keyed on the path and its modification time, so a map
+    rewritten between runs in one process is read again.
+    """
+    from pathlib import Path
+
+    return _read_map(path, Path(path).stat().st_mtime_ns)
+
+
+@functools.lru_cache(maxsize=4)
+def _read_map(path: str, mtime: int) -> Any:  # noqa: ARG001 -- the cache key
+    from cnaster.reference import get_reference_recomb_rates
+
+    from port.extensions.segments import GeneticMap
+
+    return GeneticMap.from_frame(get_reference_recomb_rates(path))

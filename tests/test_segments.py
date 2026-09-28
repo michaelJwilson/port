@@ -154,3 +154,17 @@ def test_a_labelling_that_would_misalign_rows_is_refused(
 
     with pytest.raises(ValueError, match=message):
         Segmentation.from_table(table, "bad")
+
+
+@pytest.mark.analytic
+def test_the_known_range_paths_minus_one_is_refused_by_name() -> None:
+    """`block_id = -1` marks rows no known range covers; it is refused as that, not as a gap."""
+    from port.extensions.segments import Segmentation
+
+    table = _table()
+    labels = table.block_id.to_numpy().copy()
+    labels[:3] = -1
+    table["known"] = labels
+
+    with pytest.raises(ValueError, match="negative id"):
+        Segmentation.from_table(table, "known")
