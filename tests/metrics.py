@@ -1,9 +1,12 @@
 """One row per measured run in `docs/metrics.md`, and the best of them (#409).
 
-`python -m tests.metrics --record [--instance dev] [--lattice] -- [flags]`
+`python -m tests.metrics --record --note "..." [--instance dev] [--lattice] -- [flags]`
 runs `tests.recovery_audit` in its own process, so `peak_gb` is that run's,
-and appends one row: the commit, the fixture and a digest of the data it
-built, the arguments that reproduce it, then the tracked metrics.
+and appends one row: the commit, the UTC timestamp, the fixture and a digest
+of the data it built, the test that computed the metrics, the arguments that
+reproduce it, the tracked metrics, and a note of at most `NOTE_CHARS`
+characters, written as a commit subject, stating what change the row
+measures.
 
 `python -m tests.metrics --best clone_ari [--fixture dev]` prints the row that
 maximizes a metric.
@@ -34,7 +37,7 @@ import numpy as np
 ROOT = Path(__file__).resolve().parent.parent
 TABLE = ROOT / "docs" / "metrics.md"
 
-KEYS = ("commit", "date", "fixture", "fixture_hash", "args")
+KEYS = ("commit", "timestamp", "fixture", "fixture_hash", "test", "args")
 METRICS = {
     "clone_ari": ("ari", 4),
     "clone_ari_int": ("ari_integer", 4),
@@ -45,8 +48,16 @@ METRICS = {
 }
 """Column -> (`tests.recovery_audit.Recovery` field, decimals)."""
 
-COLUMNS = (*KEYS, *METRICS)
+COLUMNS = (*KEYS, *METRICS, "note")
 UNMEASURED = "—"
+
+TEST = "tests/recovery_audit.py::main"
+"""The function computing a `--record` row's metrics, as `path::name`."""
+
+NOTE_CHARS = 72
+"""A commit subject's limit, so a note reads as one."""
+
+TIMESTAMP = "%Y-%m-%dT%H:%MZ"
 
 INPUTS = ("python", "src", "tests", "pyproject.toml", "uv.lock", "Cargo.lock")
 """What a row's commit must hold for the row to be that commit's."""
@@ -95,16 +106,31 @@ def _git(*arguments: str) -> str:
     ).stdout.strip()
 
 
-def row(recovery: dict[str, Any], *, fixture: str, args: str, dirty: bool) -> str:
+def check_note(note: str) -> None:
+    """One line, not blank, within `NOTE_CHARS`, no `|`; raises otherwise."""
+    if not note.strip() or "\n" in note or "|" in note or len(note) > NOTE_CHARS:
+        msg = (
+            f"the note must be one line of 1 to {NOTE_CHARS} characters "
+            f"without `|`, got {len(note)}: {note!r}"
+        )
+        raise ValueError(msg)
+
+
+def row(
+    recovery: dict[str, Any], *, fixture: str, args: str, note: str, dirty: bool
+) -> str:
     if "|" in args:
         msg = f"a `|` in the arguments would split the row: {args}"
         raise ValueError(msg)
+    check_note(note)
     cells = {
         "commit": _git("rev-parse", "--short=7", "HEAD") + ("+" if dirty else ""),
-        "date": datetime.datetime.now(datetime.UTC).date().isoformat(),
+        "timestamp": datetime.datetime.now(datetime.UTC).strftime(TIMESTAMP),
         "fixture": fixture,
         "fixture_hash": recovery["fixture_hash"],
+        "test": TEST,
         "args": args,
+        "note": note,
     }
     for column, (key, decimals) in METRICS.items():
         value = recovery.get(key)
@@ -113,6 +139,10 @@ def row(recovery: dict[str, Any], *, fixture: str, args: str, dirty: bool) -> st
 
 
 def record(arguments: argparse.Namespace) -> int:
+    if arguments.note is None:
+        print("--record needs --note: what change this row measures")
+        return 1
+    check_note(arguments.note)
     dirty = bool(_git("status", "--porcelain", "--", *INPUTS))
     if dirty and not arguments.dirty:
         print("inputs are uncommitted; commit them, or pass --dirty")
@@ -151,6 +181,7 @@ def record(arguments: argparse.Namespace) -> int:
         recovery,
         fixture=fixture,
         args=shlex.join([*audit, "--", *flags]),
+        note=arguments.note,
         dirty=dirty,
     )
     with TABLE.open("a") as table:
@@ -177,6 +208,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--best", choices=list(METRICS), help="the row maximizing it")
     parser.add_argument("--fixture", default=None, help="with --best, one fixture")
     parser.add_argument("--dirty", action="store_true", help="record uncommitted")
+    parser.add_argument(
+        "--note", default=None, help=f"with --record, <= {NOTE_CHARS} characters"
+    )
     parser.add_argument(
         "--instance", default="dev", choices=["calicost", "critical", "dev"]
     )
