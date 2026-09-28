@@ -142,17 +142,22 @@ def test_every_clone_carries_the_events_on_its_path_from_normal(
 
 
 @pytest.mark.analytic
-def test_drawn_polygons_claim_no_spot_twice_and_a_stated_overlap_is_refused() -> None:
-    """`overlap = false`: drawn regions are disjoint; two stated ones that share a spot raise."""
+def test_clones_sit_in_one_frame_and_a_shared_clone_is_imaged_by_both_slices() -> None:
+    """`dev_tree`'s second slice overlaps the first's right half: `clone_1`, on both, is on both.
+
+    Every listed clone claims spots, no spot is claimed twice, and a stated
+    overlap or a clone on two slices that do not overlap is refused.
+    """
     manifest = _manifest("dev_tree")
     _, _, points = hex_array(20, 20)
-    rng = np.random.default_rng(3)
+    labels, shapes = layout(manifest, points, np.random.default_rng(3))
 
-    for piece in manifest.slices:
-        labels, shapes = layout(manifest, piece, points, rng)
-        assert len(shapes) == len(piece.clones)
+    assert set(shapes) == {"clone_0", "clone_1", "clone_2"}
+    shared = manifest.tumour.index("clone_1")
+    assert all(np.any(lab == shared) for lab in labels)
+    for piece, lab in zip(manifest.slices, labels, strict=True):
         for clone in piece.clones:
-            assert np.any(labels == manifest.tumour.index(clone))
+            assert np.any(lab == manifest.tumour.index(clone)), clone
 
     region = {"center": [0.5, 0.5], "radius": 0.3}
     clash = _manifest(
@@ -160,6 +165,7 @@ def test_drawn_polygons_claim_no_spot_twice_and_a_stated_overlap_is_refused() ->
         {
             "slice": [
                 {
+                    "offset": [0.0, 0.0],
                     "clones": ["clone_0", "clone_1"],
                     "regions": [
                         {"clone": "clone_0"} | region,
@@ -170,7 +176,19 @@ def test_drawn_polygons_claim_no_spot_twice_and_a_stated_overlap_is_refused() ->
         },
     )
     with pytest.raises(ValueError, match="overlaps"):
-        layout(clash, clash.slices[0], points, rng)
+        layout(clash, points, np.random.default_rng(3))
+
+    apart = _manifest(
+        "dev_tree",
+        {
+            "slice": [
+                {"offset": [0.0, 0.0], "clones": ["clone_1"]},
+                {"offset": [2.0, 0.0], "clones": ["clone_1"]},
+            ]
+        },
+    )
+    with pytest.raises(ValueError, match="do not overlap"):
+        layout(apart, points, np.random.default_rng(3))
 
 
 @pytest.mark.analytic

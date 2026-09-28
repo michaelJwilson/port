@@ -14,4 +14,5 @@ realizations = 1
 mode = "shared.unique"
 
 [[slice]]
+offset = [0.0, 0.0]
 clones = ["clone_0", "clone_1", "clone_2"]

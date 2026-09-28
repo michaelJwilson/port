@@ -16,7 +16,7 @@ its events, spots and layout are read off the sample. Version 3 draws them:
     [cna.length]  law = "fixed" (size) or "exponential" (mean); minimum
     [phasing]     switch_errors, nu, unit
     [layout]      overlap, radius, vertices, jitter
-    [[slice]]     clones = [...], regions = [{clone, center, radius, ...}]
+    [[slice]]     clones, offset = [x, y], regions = [{clone, center, ...}]
 
 **The generative model**, per slice and spot `s` of clone `c`:
 
@@ -152,6 +152,8 @@ class Region:
 class Slice:
     clones: tuple[str, ...]
     regions: tuple[Region, ...]
+    offset: tuple[float, float]
+    """Where the slice sits in the shared frame, in fractions of the array's extent."""
 
 
 @dataclass(frozen=True)
@@ -247,8 +249,9 @@ def _missing(document: dict[str, Any]) -> list[str]:
         if k not in length
     ]  # fmt: skip
     for index, piece in enumerate(document.get("slice", [])):
-        if "clones" not in piece:
-            missing.append(f"[[slice]] {index}: clones")
+        missing += [
+            f"[[slice]] {index}: {k}" for k in ("clones", "offset") if k not in piece
+        ]
     if not document.get("slice"):
         missing.append("[[slice]]")
     return missing
@@ -264,6 +267,7 @@ def from_document(document: dict[str, Any], root: Path = Path()) -> DrawManifest
     slices = tuple(
         Slice(
             clones=tuple(s["clones"]),
+            offset=(float(s["offset"][0]), float(s["offset"][1])),
             regions=tuple(
                 Region(
                     clone=r["clone"],
@@ -507,62 +511,86 @@ def _inside(vertices: np.ndarray, points: np.ndarray) -> np.ndarray:
 
 
 def layout(
-    manifest: DrawManifest, piece: Slice, points: np.ndarray, rng: np.random.Generator
-) -> tuple[np.ndarray, list[np.ndarray]]:
-    """Clone per spot, `-1` for normal, and each region's polygon.
+    manifest: DrawManifest, points: np.ndarray, rng: np.random.Generator
+) -> tuple[list[np.ndarray], dict[str, np.ndarray]]:
+    """Clone per spot of every slice, `-1` for normal, and each clone's polygon.
 
-    Regions named in `piece.regions` are placed first; each clone of
-    `piece.clones` without one is drawn at the `[layout]` defaults. With
-    `overlap = false` a stated overlap -- a spot inside two polygons -- is
+    The slices lie in one frame, each shifted by its `offset` in fractions of
+    the array's extent, so slices that overlap image a common piece of tissue.
+    Each clone is placed once in that frame: a region a slice states is
+    placed where it says, relative to that slice; any other clone is drawn
+    with its centre uniform over the part of the frame every slice listing it
+    covers -- so a clone on two slices sits where they overlap and is imaged
+    by both. A polygon that reaches onto another slice is imaged there too.
+
+    With `overlap = false` a stated overlap -- a spot inside two polygons -- is
     refused, and a drawn polygon is redrawn until it claims no taken spot.
     With `overlap = true` a later region takes the spot.
     """
     lower, upper = points.min(axis=0), points.max(axis=0)
     extent = upper - lower
     scale = float(extent.min())
-    named = {r.clone for r in piece.regions}
-    regions = list(piece.regions) + [
-        Region(
-            clone=c,
-            center=None,
-            radius=float(manifest.layout["radius"]),
-            vertices=int(manifest.layout["vertices"]),
-            jitter=float(manifest.layout["jitter"]),
-        )
-        for c in piece.clones
-        if c not in named
-    ]
-    overlap = bool(manifest.layout["overlap"])
-    labels = np.full(points.shape[0], -1, dtype=np.int64)
-    shapes = []
+    origins = [lower + np.asarray(piece.offset) * extent for piece in manifest.slices]
+    frames = [points - lower + origin for origin in origins]
+    everything = np.concatenate(frames)
 
-    for region in regions:
-        label = manifest.tumour.index(region.clone)
+    stated: dict[str, tuple[Region, np.ndarray]] = {}
+    for piece, origin in zip(manifest.slices, origins, strict=True):
+        for region in piece.regions:
+            if region.clone in stated:
+                msg = f"{region.clone} has a region on more than one slice"
+                raise ValueError(msg)
+            stated[region.clone] = (region, origin)
+
+    listed = [c for c in manifest.tumour if any(c in p.clones for p in manifest.slices)]
+    listed += [c for c in stated if c not in listed]
+    overlap = bool(manifest.layout["overlap"])
+    labels = np.full(everything.shape[0], -1, dtype=np.int64)
+    shapes: dict[str, np.ndarray] = {}
+
+    for clone in sorted(listed, key=lambda c: c not in stated):
+        if clone in stated:
+            region, origin = stated[clone]
+            box = None
+        else:
+            region = Region(
+                clone=clone,
+                center=None,
+                radius=float(manifest.layout["radius"]),
+                vertices=int(manifest.layout["vertices"]),
+                jitter=float(manifest.layout["jitter"]),
+            )
+            covering = [o for p, o in zip(manifest.slices, origins, strict=True)
+                        if clone in p.clones]  # fmt: skip
+            box = (np.max(covering, axis=0), np.min(covering, axis=0) + extent)
+            if np.any(box[0] > box[1]):
+                msg = f"{clone} is listed on slices whose arrays do not overlap"
+                raise ValueError(msg)
+
         for _ in range(int(manifest.layout["max_placements"])):
-            if region.center is None:
-                # NB anywhere on the array: a polygon past an edge is clipped,
-                #    so a clone may be smaller than its radius says.
-                fraction = rng.uniform(0.0, 1.0, 2)
+            if box is None:
+                center = origin + np.asarray(region.center, dtype=np.float64) * extent
             else:
-                fraction = np.asarray(region.center, dtype=np.float64)
-            vertices = polygon(region, lower + fraction * extent, scale, rng)
-            claimed = _inside(vertices, points)
-            clash = bool(np.any(labels[claimed] >= 0))
-            if overlap or not clash:
+                # NB anywhere the listing slices share: a polygon past an edge
+                #    is clipped, so a clone may be smaller than its radius says.
+                center = rng.uniform(box[0], box[1])
+            vertices = polygon(region, center, scale, rng)
+            claimed = _inside(vertices, everything)
+            if overlap or not np.any(labels[claimed] >= 0):
                 break
-            if region.center is not None:
-                msg = f"region of {region.clone} overlaps another and [layout] overlap = false"
+            if box is None:
+                msg = f"region of {clone} overlaps another and [layout] overlap = false"
                 raise ValueError(msg)
         else:
             msg = (
-                f"no placement of {region.clone} in {manifest.layout['max_placements']} "
+                f"no placement of {clone} in {manifest.layout['max_placements']} "
                 "clears the others"
             )
             raise ValueError(msg)
-        labels[claimed] = label
-        shapes.append(vertices)
+        labels[claimed] = manifest.tumour.index(clone)
+        shapes[clone] = vertices
 
-    return labels, shapes
+    return list(np.split(labels, len(frames))), shapes
 
 
 def barcodes(
@@ -768,9 +796,8 @@ def draw(
     whitelist = barcodes(rows.size, int(codes["length"]), codes["suffix"], id_rng)
     ids = sample_ids(len(manifest.slices), int(codes["sample_id_bytes"]), id_rng)
     labels = [
-        layout(manifest, piece, points, layout_rng)[0] + 1  # NB `normal` is clone 0.
-        for piece in manifest.slices
-    ]
+        lab + 1 for lab in layout(manifest, points, layout_rng)[0]
+    ]  # NB `normal` is 0.
     combined = [np.array([f"{b}_{sid}" for b in whitelist]) for sid in ids]
     truth = pd.concat(
         pd.DataFrame(

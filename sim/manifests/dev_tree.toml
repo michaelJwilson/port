@@ -17,7 +17,8 @@ per_internal = 1
 
 [cna.length]
 law = "exponential"
-mean = 3e7
+# NB CalicoST's easy sample, cnasize5e7: the mean event length.
+mean = 5e7
 minimum = 5e6
 
 [phasing]
@@ -25,7 +26,11 @@ minimum = 5e6
 switch_errors = true
 
 [[slice]]
+# NB slices sit in one frame, offset in fractions of the array: the second
+#    overlaps the first's right half, so clone_1, listed on both, sits there.
+offset = [0.0, 0.0]
 clones = ["clone_0", "clone_1"]
 
 [[slice]]
+offset = [0.5, 0.0]
 clones = ["clone_1", "clone_2"]
