@@ -30,6 +30,7 @@ import sys
 import time
 from collections.abc import Sequence
 from contextlib import ExitStack
+from typing import Any
 
 from port.pipeline import (
     COPY_SWAPS,
@@ -222,13 +223,15 @@ def _parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--sal-emission",
-        action="store_true",
+        action=argparse.BooleanOptionalAction,
+        default=True,
         help=(
             "score the coded NB/BB emission with sal's dense log-emission "
             "(#425): to 3.2e-12 of cnaster's kernels (3.5e-9 at the dispersion "
             "floor, where sal is the nearer the exact value), 3-9x the kernels "
             "at 100,000 codes, and no faster end to end, as CountEncoder dedup "
-            "leaves the kernels small. Off by default, not a --sal row."
+            "leaves the kernels small. **On by default**, off with "
+            "--no-sal-emission; not a --sal row."
         ),
     )
     parser.add_argument(
@@ -414,7 +417,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             from port.patch.hmm_nophasing import sal_emission
 
             # NB the coded emission from sal's tables (#425), a class flag
-            #    the `hmm_nophasing` swap reads, restored with the run.
+            #    the `hmm_nophasing` swap reads, restored with the run; under
+            #    `--no-patch` that swap is not installed and it reads nothing.
             stack.enter_context(sal_emission())
 
         if arguments.sal:
@@ -541,6 +545,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             else None
         )
 
+        # NB every segmentation the patched stages make, as labellings of the
+        #    same genes (#438); empty under `--no-patch`, which records nothing.
+        from port.extensions.segments import recording
+
+        lineage = stack.enter_context(recording())
+
         started = time.perf_counter()
         pipeline.run_cnaster(arguments.config)
         wall = time.perf_counter() - started
@@ -554,14 +564,19 @@ def main(argv: Sequence[str] | None = None) -> int:
         _write_outputs(
             arguments.config,
             {"figures": figures, "approx": approx, "shift": shift},
+            lineage.table(),
         )
 
     print(f"run_cnaster_port: {wall:.2f}s", file=sys.stderr)
     return 0
 
 
-def _write_outputs(config: str, flags: dict[str, bool]) -> None:
-    """`port.extensions.outputs` into each run directory the run wrote."""
+def _write_outputs(config: str, flags: dict[str, bool], segments: Any) -> None:
+    """`port.extensions.outputs` into each run directory the run wrote.
+
+    `segments` is the run's lineage, one row per gene and one label column
+    per segmentation (#438), written beside them as `gene_segments.tsv`.
+    """
     from pathlib import Path
 
     from port.extensions.outputs import config_keys, run_directories, write_outputs
@@ -577,6 +592,8 @@ def _write_outputs(config: str, flags: dict[str, bool]) -> None:
 
     for run in run_directories(Path(output_dir)):
         write_outputs(run, Path(config), flags)
+        if len(segments):
+            segments.to_csv(run / "gene_segments.tsv", sep="\t", index=False)
         print(f"run_cnaster_port: outputs written to {run}", file=sys.stderr)
 
 

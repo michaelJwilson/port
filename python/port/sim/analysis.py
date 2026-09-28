@@ -1,0 +1,931 @@
+"""What a `port.sim.draw` realization planted, drawn (#452).
+
+    python -m port.sim.analysis plot sim/generated/<name>/r<k>
+
+writes `<r>/qa/*.png`, one figure per question a reader asks of a simulated
+sample before trusting a score against it:
+
+- `clone_profiles`: each clone's planted `(A, B)` along the genome;
+- `mutation_tree`: the clones' tree, each edge with its events, each leaf with
+  the barcode of the events on its path from `normal`;
+- `spatial`: which clone each spot was drawn from, per slice;
+- `phase`: the realized phase along the genome, and switches per Mb;
+- `baseline`: the normal baseline `log10 lambda` along the genome;
+- `spot_coverage`: spot UMI against its law, and each gene's UMI share
+  against `lambda`;
+- `snp_coverage`: spot SNP reads against their law, and reads per SNP.
+
+Everything is read from the realization directory, `manifest.json` included,
+so a figure shows what was written rather than what was meant to be.
+
+**One scheme for both truth and estimate** (#452): clones keep their written
+names (`normal`, `clone_k`) and colours in fixed order, `normal` a neutral
+grey; `(A, B)` states take the categorical palette in a fixed order over
+every state that can be planted, so a state has one colour in every figure.
+"""
+
+from __future__ import annotations
+
+import argparse
+import functools
+import json
+from collections.abc import Callable, Iterator
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+import numpy as np
+import pandas as pd
+
+SERIES = (
+    "#2a78d6", "#eb6834", "#1baf7a", "#eda100",
+    "#e87ba4", "#008300", "#4a3aa7", "#e34948",
+)  # fmt: skip
+"""The categorical order, validated: adjacent CVD dE >= 9.1, normal >= 19.6."""
+
+NEUTRAL = "#b5b3ad"
+"""`normal`, and the `(1, 1)` state."""
+
+INK, MUTED, GRID = "#0b0b0b", "#52514e", "#e4e2dc"
+
+CLONE_SLOTS = 3
+"""Clones share one scatter, so all pairs are on screen: three slots validate."""
+
+
+@dataclass
+class Realization:
+    """One realization directory, read."""
+
+    path: Path
+    manifest: dict[str, Any]
+    truth: pd.DataFrame
+    profile: pd.DataFrame
+    tree: pd.DataFrame
+    phase: np.ndarray
+    snp_ids: np.ndarray
+    clones: tuple[str, ...]
+
+    @functools.cached_property
+    def counts(self) -> list[Any]:
+        """Per slice, spots x genes CSR UMI, read on first use."""
+        import scipy.sparse
+
+        return [scipy.sparse.csr_matrix(a.X) for _, a in _slices(self)]
+
+    @functools.cached_property
+    def a(self) -> Any:
+        """Spots (every slice) x SNPs CSR: the written `A` reads."""
+        import scipy.sparse
+
+        return scipy.sparse.load_npz(self.path / "snp" / "cell_snp_Aallele.npz")
+
+    @functools.cached_property
+    def b(self) -> Any:
+        import scipy.sparse
+
+        return scipy.sparse.load_npz(self.path / "snp" / "cell_snp_Ballele.npz")
+
+    def plot(self, out: Path | None = None) -> list[Path]:
+        """Every truth figure of this realization, into `out` (default `<path>/qa/`)."""
+        import matplotlib as mpl
+
+        mpl.use("Agg")
+        return [figure(self, out or self.path / "qa") for figure in PLOTS]
+
+    @property
+    def lengths(self) -> np.ndarray:
+        return np.asarray(self.manifest["genome"]["chromosome_lengths"], np.int64)
+
+    @property
+    def offsets(self) -> np.ndarray:
+        """Genome coordinate of each chromosome's start, chr1 first."""
+        return np.concatenate([[0], np.cumsum(self.lengths)[:-1]])
+
+    def genome(self, chromosome: np.ndarray, position: np.ndarray) -> np.ndarray:
+        """Genome coordinate of `(chromosome, position)`; chromosomes named `1`..`22`."""
+        index = np.asarray(chromosome).astype(int) - 1
+        return np.asarray(self.offsets[index] + np.asarray(position), dtype=np.float64)
+
+
+def read(path: Path) -> Realization:
+    truth = pd.read_csv(path / "truth_clone_labels.tsv", sep="\t")
+    names = sorted(set(truth["labels"]) - {"normal"})
+    return Realization(
+        path=path,
+        manifest=json.loads((path / "manifest.json").read_text()),
+        truth=truth,
+        profile=pd.read_csv(path / "truth_acn_profile.tsv", sep="\t"),
+        tree=pd.read_csv(path / "truth_tree.tsv", sep="\t"),
+        phase=np.load(path / "truth_phase.npy"),
+        snp_ids=np.load(path / "snp" / "unique_snp_ids.npy", allow_pickle=True).astype(
+            str
+        ),
+        clones=("normal", *names),
+    )
+
+
+def display(clone: str, clones: tuple[str, ...]) -> str:
+    """`cnaster`'s label: `normal` is `Clone 0`, `clone_k` the numeral `k + 1`."""
+    from cnaster.utils import cast_clone_label
+
+    return str(cast_clone_label(f"clone{clones.index(clone)}"))
+
+
+def clone_colour(clone: str, clones: tuple[str, ...]) -> str:
+    """`normal` grey, then the categorical slots in the clones' order."""
+    if clone == "normal":
+        return NEUTRAL
+    return SERIES[[c for c in clones if c != "normal"].index(clone) % len(SERIES)]
+
+
+def state_colours(states: list[list[int]]) -> dict[tuple[int, int], str]:
+    """One colour per plantable `(A, B)`, in `[cna] states`' order; `(1, 1)` grey."""
+    colours = {(1, 1): NEUTRAL}
+    for slot, (a, b) in enumerate(states):
+        colours[(int(a), int(b))] = SERIES[slot % len(SERIES)]
+    return colours
+
+
+def _style(ax: Any) -> None:
+    for side in ("top", "right"):
+        ax.spines[side].set_visible(False)
+    for side in ("left", "bottom"):
+        ax.spines[side].set_color(MUTED)
+    ax.tick_params(colors=MUTED, labelcolor=INK, labelsize=8)
+    ax.grid(color=GRID, linewidth=0.6)
+    ax.set_axisbelow(True)
+
+
+def _chromosome_axis(ax: Any, r: Realization) -> None:
+    """Chromosome boundaries as thin lines, names centred below."""
+    edges = np.concatenate([r.offsets, [r.lengths.sum()]])
+    for edge in edges:
+        ax.axvline(edge, color=GRID, linewidth=0.6, zorder=0)
+    ax.set_xticks(r.offsets + r.lengths / 2)
+    ax.set_xticklabels([str(i) for i in range(1, r.lengths.size + 1)], fontsize=7)
+    ax.set_xlim(0, edges[-1])
+    ax.grid(False)
+
+
+BIN = 1_000_000
+"""The truth is resampled to 1 Mb bins: `cnaster`'s plotter draws each row at one width."""
+
+
+def binned_profile(r: Realization) -> pd.DataFrame:
+    """The truth in `cnv_seglevel.tsv`'s form, one row per 1 Mb: `CHR START END`, `clone<i> A/B`.
+
+    Clones are numbered as `remap_clone_num` numbers them, `normal` 0 and
+    `clone_k` `k + 1`, so `cnaster`'s plotter reads the truth as it reads an
+    estimate.
+    """
+    rows = []
+    for chrom, length in enumerate(r.lengths, start=1):
+        starts = np.arange(0, length, BIN)
+        rows.append(pd.DataFrame({"CHR": chrom, "START": starts,
+                                  "END": np.minimum(starts + BIN, length)}))  # fmt: skip
+    table = pd.concat(rows, ignore_index=True)
+    middle = ((table["START"] + table["END"]) // 2).to_numpy()
+    bin_chrom = table["CHR"].to_numpy()
+    chrom = r.profile["chr"].to_numpy().astype(int)
+    starts, ends = r.profile["start"].to_numpy(), r.profile["end"].to_numpy()
+    segment = np.full(len(table), -1)
+    for row in range(len(r.profile)):
+        at = (bin_chrom == chrom[row]) & (middle >= starts[row]) & (middle < ends[row])
+        segment[at] = row
+
+    for index, clone in enumerate(r.clones):
+        for allele in ("A", "B"):
+            column = r.profile[f"{clone}_{allele}_copy"].to_numpy()
+            table[f"clone{index} {allele}"] = column[segment]
+    return table
+
+
+def plot_clones_genomic_truth(r: Realization, out: Path) -> Path:
+    """`plot_clones_genomic` over the true clone labels, on `binned_profile`'s 1 Mb bins.
+
+    Per bin and spot: UMI summed over the genes whose midpoint it holds,
+    `lambda` summed likewise times the spot's UMI as the expected baseline,
+    and the SNPs' `A + B` with the planted haplotype's count, the written
+    phase undone by `truth_phase.npy`. Spots are grouped by
+    `truth_clone_labels.tsv`, so each track is a true clone's pseudobulk.
+    """
+    import matplotlib.pyplot as plt
+    import scipy.sparse
+
+    from port.patch.plot_genomic import plot_clones_genomic
+
+    table = binned_profile(r)
+    offsets = np.concatenate([[0], np.cumsum(np.bincount(table["CHR"] - 1))[:-1]])
+
+    def bins(chromosome: np.ndarray, position: np.ndarray) -> np.ndarray:
+        index = np.asarray(chromosome).astype(int) - 1
+        return np.asarray(offsets[index] + np.asarray(position) // BIN, np.int64)
+
+    baseline = _baseline(r)
+    gene_bin = bins(
+        baseline["chrom"].astype(str).str.removeprefix("chr").to_numpy(),
+        ((baseline["cdsStart"] + baseline["cdsEnd"]) // 2).to_numpy(),
+    )
+    snp_bin = bins(*_snp_loci(r))
+    n_bins = len(table)
+
+    def gather(columns: np.ndarray) -> Any:
+        return scipy.sparse.csr_matrix(
+            (np.ones(columns.size), (np.arange(columns.size), columns)),
+            shape=(columns.size, n_bins),
+        )
+
+    counts = scipy.sparse.vstack(r.counts, format="csr")
+    planted = scipy.sparse.csr_matrix(
+        np.where(r.phase[None, :], r.a.toarray(), r.b.toarray())
+    )
+    umi = (counts @ gather(gene_bin)).T.toarray()
+    trials = ((r.a + r.b) @ gather(snp_bin)).T.toarray()
+    successes = (planted @ gather(snp_bin)).T.toarray()
+    lam = np.bincount(gene_bin, baseline["lambda"].to_numpy(), n_bins)
+    expected = lam[:, None] * np.asarray(counts.sum(axis=1)).ravel()[None, :]
+
+    labels = r.truth["labels"].to_numpy()
+    groups = [np.flatnonzero(labels == clone) for clone in r.clones]
+    figure = plot_clones_genomic(
+        np.bincount(table["CHR"] - 1),
+        np.stack([umi, successes], axis=1),
+        expected,
+        trials,
+        clone_index=groups,
+    )
+    path = _save(figure, out / "clones_genomic.png")
+    plt.close(figure)
+    return path
+
+
+def plot_clone_profiles(r: Realization, out: Path) -> Path:
+    """The planted `(A, B)` per clone, drawn by `cnaster`'s own profile plotter.
+
+    `cnaster.plot_copy_number_profile`, which `port`'s combined figure uses for
+    an estimate, on the truth binned at 1 Mb: its palette, hatching and
+    mirror chevrons, so a planted and a decoded profile read alike. Rows keep
+    its numerals, `Clone 0` the normal, as every figure here does.
+    """
+    import matplotlib.pyplot as plt
+    from cnaster.plot_copy_number_profile import plot_copy_number_profile
+
+    fig, ax = plt.subplots(figsize=(14, 0.55 * len(r.clones) + 1.6))
+    fig.subplots_adjust(left=0.08, right=0.98, top=0.88, bottom=0.3)
+    plot_copy_number_profile(binned_profile(r), ax=ax)
+
+    ax.set_yticklabels([t.get_text() for t in ax.get_yticklabels()],
+                       rotation=0, ha="right", fontsize=9)  # fmt: skip
+    ax.tick_params(axis="y", which="major", pad=4)
+    return _save(fig, out / "clone_profiles.png", tight=False)
+
+
+def _runs(profile: pd.DataFrame, clone: str) -> list[tuple[str, int, int, int, int]]:
+    """`(chr, start, end, A, B)` with consecutive segments of one state merged."""
+    runs: list[tuple[str, int, int, int, int]] = []
+    for row in profile.itertuples(index=False):
+        chrom, start, end = str(row.chr), int(row.start), int(row.end)
+        a = int(getattr(row, f"{clone}_A_copy"))
+        b = int(getattr(row, f"{clone}_B_copy"))
+        if (
+            runs
+            and runs[-1][0] == chrom
+            and runs[-1][3:] == (a, b)
+            and runs[-1][2] == start
+        ):
+            runs[-1] = (chrom, runs[-1][1], end, a, b)
+        else:
+            runs.append((chrom, start, end, a, b))
+    return runs
+
+
+def common_region(
+    origins: list[np.ndarray], extent: np.ndarray
+) -> tuple[np.ndarray, np.ndarray] | None:
+    """`(lower, upper)` of the frame every slice covers, or the most central overlap.
+
+    The region common to all slices where there is one. Where there is not,
+    the overlap of the two slices nearest the frame's centre, if they
+    overlap; `None` for a single slice or none that do.
+    """
+    if len(origins) < 2:
+        return None
+    lower, upper = np.max(origins, axis=0), np.min(origins, axis=0) + extent
+    if np.all(lower < upper):
+        return lower, upper
+
+    centre = (np.min(origins, axis=0) + np.max(origins, axis=0) + extent) / 2
+    near = np.argsort([np.linalg.norm(o + extent / 2 - centre) for o in origins])
+    a, b = origins[near[0]], origins[near[1]]
+    lower, upper = np.maximum(a, b), np.minimum(a, b) + extent
+    return (lower, upper) if np.all(lower < upper) else None
+
+
+def outline(
+    lower: np.ndarray, upper: np.ndarray
+) -> tuple[tuple[float, float], float, float]:
+    """`(corner, width, height)` of a frame box as spots are drawn, at `(x, -y)`.
+
+    Half a spacing clear of the spots it bounds on every side (#454).
+    """
+    corner = (float(lower[0] - 0.5), float(-upper[1] - 0.5))
+    return corner, float(upper[0] - lower[0] + 1), float(upper[1] - lower[1] + 1)
+
+
+def plot_spatial(r: Realization, out: Path) -> Path:
+    """Each slice at its place in the shared frame; the region they share dashed.
+
+    Slices that overlap image one piece of tissue, so a clone on both shows
+    inside the dashed region in both panels.
+    """
+    import matplotlib.pyplot as plt
+    from matplotlib.patches import Rectangle
+
+    slices = list(dict.fromkeys(r.truth["sample_id"]))
+    offsets = [tuple(p["offset"]) for p in r.manifest["slice"]]
+    first = r.truth[r.truth["sample_id"] == slices[0]]
+    x0 = first["y"].to_numpy() / 2.0
+    y0 = first["x"].to_numpy() * np.sqrt(3.0) / 2.0
+    extent = np.array([x0.max() - x0.min(), y0.max() - y0.min()])
+    origins = [np.array(o) * extent for o in offsets]
+    shared = common_region(origins, extent)
+
+    aspect = extent[1] / extent[0]
+    fig, axes = plt.subplots(1, len(slices), squeeze=False,
+                             figsize=(3.3 * len(slices), 3.3 * aspect + 0.7))  # fmt: skip
+    fig.subplots_adjust(left=0.01, right=0.99, top=0.9, bottom=0.14, wspace=0.03)
+    for k, (ax, sid) in enumerate(zip(axes[0], slices, strict=True)):
+        spots = r.truth[r.truth["sample_id"] == sid]
+        x = spots["y"].to_numpy() / 2.0 + origins[k][0]
+        y = spots["x"].to_numpy() * np.sqrt(3.0) / 2.0 + origins[k][1]
+        if shared is not None:
+            corner, width, height = outline(*shared)
+            ax.add_patch(Rectangle(corner, width, height, fill=False, linestyle="--",
+                                   edgecolor=MUTED, linewidth=0.8))  # fmt: skip
+        for clone in r.clones:
+            on = spots["labels"].to_numpy() == clone
+            if not on.any():
+                continue
+            name = display(clone, r.clones)
+            ax.scatter(x[on], -y[on], s=9, color=clone_colour(clone, r.clones),
+                       edgecolors="white", linewidths=0.3)  # fmt: skip
+            if clone != "normal":
+                ax.text(np.median(x[on]), -np.median(y[on]), name, ha="center",
+                        va="center", fontsize=8, color=INK,
+                        bbox={"facecolor": "white", "edgecolor": "none",
+                              "alpha": 0.8, "pad": 1})  # fmt: skip
+        # NB each panel its own slice, in frame coordinates: the dashed box
+        #    says where the slices meet without the frame's empty margin.
+        ax.set_xlim(origins[k][0] - 1, origins[k][0] + extent[0] + 1)
+        ax.set_ylim(-(origins[k][1] + extent[1] + 1), -origins[k][1] + 1)
+        ax.set_aspect("equal")
+        ax.set_xticks([])
+        ax.set_yticks([])
+        for side in ax.spines.values():
+            side.set_visible(False)
+        ax.set_title(sid, loc="left", fontsize=9, color=INK)
+    from matplotlib.lines import Line2D
+
+    # NB one legend for every slice, in the clones' order, on the left.
+    present = [c for c in r.clones if (r.truth["labels"] == c).any()]
+    handles = [
+        Line2D([], [], marker="o", linestyle="", markersize=5,
+               color=clone_colour(c, r.clones), label=display(c, r.clones))
+        for c in present
+    ]  # fmt: skip
+    fig.legend(handles=handles, loc="lower left", bbox_to_anchor=(0.01, 0.0),
+               ncol=len(handles), frameon=False, fontsize=8, handletextpad=0.2,
+               columnspacing=1.0)  # fmt: skip
+    return _save(fig, out / "spatial.png", tight=False)
+
+
+@dataclass
+class Tree:
+    """The clones' tree with its events in the order they arose."""
+
+    parent: dict[str, str | None]
+    events: pd.DataFrame
+    """One row per event, in order: `node`, `chr`, `start`, `end`, `A`, `B`,
+    `time` (events since `normal`, from 1) and `label`."""
+    barcode: dict[str, str]
+    """Per node, one bit per event, the first event's the leading bit."""
+
+
+def event_label(chrom: Any, a: Any, b: Any, start: Any, end: Any) -> str:
+    """`chr7::0/2::75`: the chromosome, the `A/B` it sets, its length in whole Mb.
+
+    At least 1: an event shorter than 0.5 Mb still reads as an event.
+    """
+    length = max(1, round((end - start) / 1e6))
+    return f"chr{int(chrom)}::{int(a)}/{int(b)}::{length}"
+
+
+def tree(r: Realization) -> Tree:
+    """Events ordered as they arose: down the tree from `normal`, in draw order per edge.
+
+    An event's time is the number of events on its path up to and including
+    it, so a child's events follow its parent's; bits follow that order, ties
+    broken by the walk, and a node's barcode sets the bits of every event on
+    its path.
+    """
+    edges = r.tree[r.tree["chr"].isna()]
+    parent = {
+        str(row.node): (None if pd.isna(row.parent) else str(row.parent))
+        for row in edges.itertuples()
+    }
+    children: dict[str, list[str]] = {}
+    for node, up in parent.items():
+        if up is not None:
+            children.setdefault(up, []).append(node)
+    drawn = r.tree.dropna(subset=["chr"])
+
+    rows, start = [], {"normal": 0}
+
+    def walk(node: str) -> None:
+        for child in sorted(children.get(node, [])):
+            mine = drawn[drawn["node"] == child]
+            for k, e in enumerate(mine.itertuples()):
+                rows.append({"node": child, "chr": int(e.chr), "start": int(e.start),
+                             "end": int(e.end), "A": int(e.A), "B": int(e.B),
+                             "time": start[node] + k + 1,
+                             "label": event_label(e.chr, e.A, e.B, e.start, e.end)})  # fmt: skip
+            start[child] = start[node] + len(mine)
+            walk(child)
+
+    walk("normal")
+    events = (
+        pd.DataFrame(rows).sort_values("time", kind="stable").reset_index(drop=True)
+    )
+
+    def path(node: str) -> set[str]:
+        up = parent[node]
+        return {node} | (set() if up is None else path(up))
+
+    barcode = {
+        node: "".join("1" if e in path(node) else "0" for e in events["node"])
+        for node in parent
+    }
+    return Tree(parent, events, barcode)
+
+
+def plot_tree(r: Realization, out: Path) -> Path:
+    """The clones' tree along event time: each event at its time on its edge.
+
+    x is the number of events since `normal`, so an edge is as long as the
+    events on it and each sits at its own time, labelled
+    `chr::A/B::Mb` (whole Mb) above the edge; every node is named by its
+    binary barcode in one style, observed clones by their numeral too.
+    """
+    import matplotlib.pyplot as plt
+
+    t = tree(r)
+    children: dict[str, list[str]] = {}
+    for node, up in t.parent.items():
+        if up is not None:
+            children.setdefault(up, []).append(node)
+    at = {"normal": 0.0}
+    for e in t.events.itertuples():
+        at[e.node] = max(at.get(e.node, 0.0), float(e.time))
+    for node, up in t.parent.items():
+        if node not in at:
+            at[node] = at.get(up or "normal", 0.0) + 0.5
+
+    def settle(node: str) -> None:
+        for child in children.get(node, []):
+            at[child] = max(at[child], at[node] + 0.5)
+            settle(child)
+
+    settle("normal")
+    order: list[str] = []
+
+    def walk(node: str) -> None:
+        for child in sorted(children.get(node, [])):
+            walk(child)
+        if not children.get(node):
+            order.append(node)
+
+    walk("normal")
+    y = {leaf: float(i) for i, leaf in enumerate(order)}
+
+    def place(node: str) -> float:
+        if node not in y:
+            y[node] = float(np.mean([place(c) for c in children[node]]))
+        return y[node]
+
+    place("normal")
+
+    width = max(at.values())
+    fig, ax = plt.subplots(figsize=(2.1 * width + 4.0, 0.9 * len(order) + 1.2))
+    for node, up in t.parent.items():
+        if up is None:
+            continue
+        ax.plot([at[up], at[up], at[node]], [y[up], y[node], y[node]],
+                color=MUTED, linewidth=1.2)  # fmt: skip
+        for e in t.events[t.events["node"] == node].itertuples():
+            x = e.time - 0.5
+            ax.plot([x, x], [y[node] - 0.06, y[node] + 0.06], color=INK, linewidth=1.0)
+            ax.text(x, y[node] + 0.1, e.label, ha="center", va="bottom",
+                    fontsize=7.5, color=INK)  # fmt: skip
+    for node in t.parent:
+        observed = node in r.clones
+        colour = clone_colour(node, r.clones) if observed else "white"
+        ax.scatter(at[node], y[node], s=90 if observed else 40, color=colour,
+                   edgecolors=MUTED, linewidths=0.8, zorder=3)  # fmt: skip
+        name = t.barcode[node]
+        if observed:
+            name = f"{display(node, r.clones)}  {name}"
+        # NB one style for every node; the root's trunk leaves to its right,
+        #    so its name sits to its left.
+        root = t.parent[node] is None
+        ax.text(at[node] + (-0.12 if root else 0.12), y[node], name, fontsize=8.5,
+                color=INK, va="center", ha="right" if root else "left",
+                family="monospace")  # fmt: skip
+    ax.set_xlim(-2.2, width + 2.2)
+    ax.set_ylim(-0.8, len(order) - 0.2)
+    ax.axis("off")
+    return _save(fig, out / "mutation_tree.png")
+
+
+def _snp_loci(r: Realization) -> tuple[np.ndarray, np.ndarray]:
+    parts = np.char.split(r.snp_ids, "_")
+    return (
+        np.array([p[0] for p in parts]),
+        np.array([int(p[1]) for p in parts], dtype=np.int64),
+    )
+
+
+def plot_phase(r: Realization, out: Path) -> Path:
+    """Switches accumulated along each chromosome from zero, per Mb of that chromosome.
+
+    Each curve is divided by its chromosome's length, so it ends at that
+    chromosome's switch rate, which is printed above it.
+
+    Formatted as `plot_clones_genomic` formats a track, with `cnaster`'s own
+    `_format_track_axis` and `_draw_chromosome_boundaries`: black contig
+    boundaries, `chr<N>` at 45 degrees below, grey rules at the y ticks.
+    """
+    import matplotlib.pyplot as plt
+    from cnaster.plot_genomic import _draw_chromosome_boundaries, _format_track_axis
+
+    chromosome, position = _snp_loci(r)
+    x = r.genome(chromosome, position)
+    phase = r.phase.astype(int)
+    same = np.r_[False, chromosome[1:] == chromosome[:-1]]
+    switch = np.r_[False, np.diff(phase) != 0] & same
+
+    fig, ax = plt.subplots(figsize=(20, 2.6))
+    top = 0.0
+    for name in np.unique(chromosome):
+        at = chromosome == name
+        steps = np.cumsum(switch[at]) / (r.lengths[int(name) - 1] / 1e6)
+        top = max(top, float(steps[-1]))
+        ax.plot(x[at], steps, color=SERIES[0], linewidth=1.2)
+    from matplotlib.ticker import MaxNLocator
+
+    located = np.asarray(MaxNLocator(nbins=4).tick_values(0, top))
+    ticks = located[(located >= 0) & (located <= top)]
+    _format_track_axis(ax, "switches / Mb", [-0.05 * top, 1.05 * top], ticks, True,
+                       int(r.lengths.sum()))  # fmt: skip
+    _draw_chromosome_boundaries(
+        [ax], r.lengths, np.arange(1, r.lengths.size + 1), -0.25
+    )
+
+    for c, (start, length) in enumerate(
+        zip(r.offsets, r.lengths, strict=True), start=1
+    ):
+        rate = switch[chromosome == str(c)].sum() / (length / 1e6)
+        ax.text(start + length / 2, 1.02, f"{rate:.2f}", transform=ax.get_xaxis_transform(),
+                fontsize=7, ha="center", va="bottom")  # fmt: skip
+    for side in ("top", "right"):
+        ax.spines[side].set_visible(False)
+    return _save(fig, out / "phase.png")
+
+
+def _baseline(r: Realization) -> pd.DataFrame:
+    return pd.read_csv(r.manifest["reference"]["baseline"], sep="\t", comment="#")
+
+
+def plot_baseline(r: Realization, out: Path) -> Path:
+    """`log10 lambda` per gene as `normal_baseline.txt.gz` states it; the share at 0 as a rate.
+
+    The baseline the draw read, not a realization's counts. Formatted as
+    `plot_clones_genomic` formats a track, with `cnaster`'s own helpers.
+    """
+    import matplotlib.pyplot as plt
+    from cnaster.plot_genomic import _draw_chromosome_boundaries, _format_track_axis
+    from matplotlib.ticker import MaxNLocator
+
+    base = _baseline(r)
+    chromosome = base["chrom"].astype(str).str.removeprefix("chr").to_numpy()
+    placed = np.isin(chromosome, [str(c) for c in range(1, r.lengths.size + 1)])
+    base, chromosome = base[placed], chromosome[placed]
+    x = r.genome(chromosome, ((base.cdsStart + base.cdsEnd) // 2).to_numpy())
+    lam = base["lambda"].to_numpy()
+    zero = lam == 0
+    log_lambda = np.log10(lam[~zero])
+    floor, ceiling = (
+        float(np.floor(log_lambda.min())),
+        float(np.ceil(log_lambda.max())),
+    )
+
+    fig, ax = plt.subplots(figsize=(20, 2.6))
+    ax.scatter(x[~zero], log_lambda, s=2, color=SERIES[0], alpha=0.35, linewidths=0)
+    ticks = np.asarray(MaxNLocator(nbins=5, integer=True).tick_values(floor, ceiling))
+    ticks = ticks[(ticks >= floor) & (ticks <= ceiling)]
+    _format_track_axis(ax, r"log$_{10}$ $\lambda$", [floor, ceiling], ticks, True,
+                       int(r.lengths.sum()))  # fmt: skip
+    ax.set_yticklabels([f"{t:.0f}" for t in ticks])
+    _draw_chromosome_boundaries(
+        [ax], r.lengths, np.arange(1, r.lengths.size + 1), -0.25
+    )
+    # NB genes at lambda = 0 have no log; only their share is stated.
+    ax.text(1.0, 1.02, f"dropout rate={zero.mean():.2f}", transform=ax.transAxes,
+            ha="right", va="bottom", fontsize=8)  # fmt: skip
+    for side in ("top", "right"):
+        ax.spines[side].set_visible(False)
+    return _save(fig, out / "baseline.png")
+
+
+def _laws(r: Realization) -> dict[str, Any]:
+    from port.sim.normal_fit import read_coverage
+
+    return read_coverage(Path(r.manifest["reference"]["coverage"]))
+
+
+def _slices(r: Realization) -> list[tuple[str, Any]]:
+    import anndata
+
+    return [
+        (sid, anndata.read_h5ad(r.path / sid / "filtered_feature_bc_matrix.h5ad"))
+        for sid in dict.fromkeys(r.truth["sample_id"])
+    ]
+
+
+def _log_edges(top: int, n: int = 40) -> np.ndarray:
+    """Half-integer edges: every integer to 10, then `n` log-spaced to `top`."""
+    tail = np.rint(np.geomspace(10, max(top, 10), n))
+    ks = np.unique(np.concatenate([np.arange(1, 11), tail]))
+    return np.append(ks[ks <= top], top + 1).astype(np.float64) - 0.5
+
+
+def _log_moments(pmf: np.ndarray) -> tuple[float, float]:
+    """`(mu, sigma)` of `log10 k` under `pmf` conditioned on `k >= 1`."""
+    k = np.arange(1, pmf.size)
+    p = pmf[1:] / pmf[1:].sum()
+    mean = float(p @ np.log10(k))
+    return mean, float(np.sqrt(p @ (np.log10(k) - mean) ** 2))
+
+
+def entries_panel(
+    ax: Any,
+    observed: np.ndarray,
+    law: np.ndarray | None,
+    colour: str,
+    names: tuple[str, str],
+    xlabel: str,
+) -> None:
+    """Nonzero entries of `observed` (bars), against `law` (line) if given, as `P(k)`.
+
+    Both conditioned on `k >= 1` and binned on `log10 k`: every integer to 10,
+    log-spaced above, as density per unit `log10`. Each carries its nonzero
+    share and the `(mu, sigma)` of `log10 k`.
+    """
+    edges = _log_edges(observed.size - 1)
+    width = np.diff(np.log10(edges))
+    cut = np.ceil(edges[1:-1]).astype(int)
+
+    def density(pmf: np.ndarray) -> np.ndarray:
+        nonzero = pmf[1:] / pmf[1:].sum()
+        return np.add.reduceat(nonzero, np.append(0, cut - 1)) / width
+
+    def label(name: str, pmf: np.ndarray) -> str:
+        mu, sigma = _log_moments(pmf)
+        return (f"{name}: {1 - pmf[0]:.2%} nonzero, "
+                f"$(\\mu, \\sigma)=({mu:.2f}, {sigma:.2f})$")  # fmt: skip
+
+    top = observed.size
+    ax.stairs(density(observed), np.log10(edges), fill=True, color=colour,
+              alpha=0.45, label=label(names[0], observed))  # fmt: skip
+    if law is not None:
+        ax.stairs(density(law[:top]), np.log10(edges), color=colour, linewidth=1.4,
+                  label=label(names[1], law[:top]))  # fmt: skip
+    ax.set_yscale("log")
+    ax.set_xlabel(xlabel, fontsize=8, color=MUTED)
+    ax.legend(frameon=False, fontsize=6.5, loc="upper left", bbox_to_anchor=(0, -0.16))
+    _style(ax)
+
+
+def plot_coverage(r: Realization, out: Path) -> Path:
+    """Every drawn entry against the law it was drawn from (#455).
+
+    Both are the realization as written: left, UMI per (gene, spot) of each
+    slice's `filtered_feature_bc_matrix.h5ad`; right, SNP-covering UMI
+    (`A + B` of `cell_snp_{A,B}allele.npz`) per (SNP, spot), against
+    `port.sim.entries.snp_pmf`, the law each entry is drawn from. Genes are
+    drawn per spot, not per entry, so no per-entry law is drawn for them.
+    """
+    import matplotlib.pyplot as plt
+    import scipy.sparse
+
+    from port.sim.entries import nodes, observed_pmf, snp_pmf
+
+    counts = scipy.sparse.vstack(r.counts, format="csr")
+    trials = (r.a + r.b).tocsr()
+    laws, model = _laws(r), r.manifest["model"]
+
+    genes, snps = observed_pmf(counts), observed_pmf(trials)
+    snp_law = snp_pmf(
+        nodes(laws["spot_snp_umi"]), laws["snp_total"].parameters["dispersion"],
+        float(model["snp_dispersion"]), trials.shape[1], snps.size - 1,
+    )  # fmt: skip
+
+    fig, axes = plt.subplots(1, 2, figsize=(10, 4.6))
+    entries_panel(axes[0], genes, None, SERIES[0], ("Realization", ""),
+                  r"$\log_{10}$ UMI per (gene, spot)")  # fmt: skip
+    entries_panel(axes[1], snps, snp_law, SERIES[1], ("Realization", "NB"),
+                  r"$\log_{10}$ SNP-covering UMI per (SNP, spot)")  # fmt: skip
+    axes[0].set_ylabel("density", fontsize=8, color=MUTED)
+    return _save(fig, out / "coverage.png")
+
+
+def _save(fig: Any, path: Path, *, tight: bool = True) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if tight:
+        fig.tight_layout()
+    fig.savefig(path, dpi=150, facecolor="white", metadata={"Software": None})
+    import matplotlib.pyplot as plt
+
+    plt.close(fig)
+    return path
+
+
+PLOTS = (
+    plot_clone_profiles,
+    plot_clones_genomic_truth,
+    plot_tree,
+    plot_spatial,
+    plot_phase,
+    plot_baseline,
+    plot_coverage,
+)
+
+
+def plot(path: Path) -> list[Path]:
+    """Every truth figure of one realization, into `<path>/qa/`."""
+    return read(path).plot()
+
+
+def stream(source: Path, into: Path | None = None) -> Iterator[Realization]:
+    """Each realization of `source`, one at a time, truth and counts on demand.
+
+    `source` is a sample directory holding `r<k>/`, or a version-3 manifest:
+    then each realization is drawn by `port.sim.draw.realize`, written under
+    `into` (default the manifest's `output`) and yielded as soon as it is,
+    so the next is not drawn until this one is consumed. A yielded
+    realization plots its own files (`.plot()`); its counts load when read.
+    """
+    if source.suffix == ".toml":
+        from port.sim.draw import read_manifest, realize
+
+        manifest = read_manifest(source)
+        root = (into or manifest.resolve(manifest.sample["output"])) / manifest.name
+        for realized in realize(manifest, root):
+            if realized.path is None:
+                msg = f"realization {realized.index} was not written under {root}"
+                raise RuntimeError(msg)
+            yield read(realized.path)
+        return
+
+    for path in sorted(p for p in source.glob("r*") if (p / "manifest.json").exists()):
+        yield read(path)
+
+
+Statistic = Callable[[Realization], Any]
+"""A number, or an array of one shape across realizations, from one realization."""
+
+
+def _log_spot_umi(r: Realization) -> np.ndarray:
+    totals = np.concatenate([np.asarray(c.sum(axis=1)).ravel() for c in r.counts])
+    logs = np.log(totals[totals > 0])
+    return np.asarray([logs.mean(), logs.std(ddof=1)], dtype=np.float64)
+
+
+def _switches_per_mb(r: Realization) -> float:
+    chromosome, _ = _snp_loci(r)
+    same = chromosome[1:] == chromosome[:-1]
+    return float(
+        np.sum(np.diff(r.phase.astype(int))[same] != 0) / (r.lengths.sum() / 1e6)
+    )
+
+
+def _reads_per_snp_dispersion(r: Realization) -> float:
+    per_snp = np.asarray((r.a + r.b).sum(axis=0)).ravel()
+    return float(per_snp.var() / per_snp.mean())
+
+
+def _normal_share(r: Realization) -> np.ndarray:
+    """Each gene's share of normal-spot UMI; the truth lists spots in the counts' order."""
+    import scipy.sparse
+
+    normal = r.truth["labels"].to_numpy() == "normal"
+    counts = scipy.sparse.vstack(r.counts, format="csr")[normal]
+    share: np.ndarray = np.asarray(counts.sum(axis=0), dtype=np.float64).ravel()
+    return np.asarray(share / float(share.sum()))
+
+
+STATISTICS: dict[str, Statistic] = {
+    "log_spot_umi": _log_spot_umi,
+    "switches_per_mb": _switches_per_mb,
+    "reads_per_snp_var_over_mean": _reads_per_snp_dispersion,
+    "normal_gene_share": _normal_share,
+}
+"""What `Population` accumulates by default: two per-spot moments, the phase
+rate, the SNP-read dispersion, and every gene's share of normal-spot UMI."""
+
+
+@dataclass
+class Moments:
+    """Welford's running mean and variance, elementwise."""
+
+    n: int = 0
+    mean: Any = 0.0
+    m2: Any = 0.0
+
+    def add(self, value: Any) -> None:
+        value = np.asarray(value, dtype=np.float64)
+        self.n += 1
+        delta = value - self.mean
+        self.mean = self.mean + delta / self.n
+        self.m2 = self.m2 + delta * (value - self.mean)
+
+    @property
+    def sd(self) -> Any:
+        return np.sqrt(self.m2 / (self.n - 1)) if self.n > 1 else np.nan * self.m2
+
+
+@dataclass
+class Population:
+    """Statistics over realizations, streamed: each is read, reduced and dropped.
+
+    `add` holds only each statistic's running mean and variance, so memory
+    is one realization plus the moments however many are streamed.
+    """
+
+    statistics: dict[str, Statistic]
+    moments: dict[str, Moments]
+
+    @classmethod
+    def of(cls, statistics: dict[str, Statistic] | None = None) -> Population:
+        chosen = STATISTICS if statistics is None else statistics
+        return cls(dict(chosen), {name: Moments() for name in chosen})
+
+    def add(self, r: Realization) -> Population:
+        for name, statistic in self.statistics.items():
+            self.moments[name].add(statistic(r))
+        return self
+
+    def summary(self) -> pd.DataFrame:
+        """Scalar statistics (and each element of short vectors): mean, sd, n."""
+        rows = []
+        for name, m in self.moments.items():
+            mean, sd = np.atleast_1d(m.mean), np.atleast_1d(m.sd)
+            if mean.size > 8:
+                rows.append({"statistic": name, "mean": f"{mean.size} values",
+                             "sd": float(np.nanmean(sd)), "n": m.n})  # fmt: skip
+                continue
+            for k, (mu, s) in enumerate(zip(mean, sd, strict=True)):
+                label = name if mean.size == 1 else f"{name}[{k}]"
+                rows.append(
+                    {"statistic": label, "mean": float(mu), "sd": float(s), "n": m.n}
+                )
+        return pd.DataFrame(rows)
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    commands = parser.add_subparsers(dest="command", required=True)
+    plotting = commands.add_parser("plot", help="the truth figures of a realization")
+    plotting.add_argument("realization", type=Path)
+    population = commands.add_parser(
+        "population", help="statistics streamed over a sample's realizations"
+    )
+    population.add_argument("source", type=Path, help="`<name>/` or a manifest")
+    population.add_argument("--plot", action="store_true", help="also plot each")
+    arguments = parser.parse_args(argv)
+
+    if arguments.command == "plot":
+        for written in plot(arguments.realization):
+            print(written)
+        return 0
+
+    reduced = Population.of()
+    for r in stream(arguments.source):
+        reduced.add(r)
+        if arguments.plot:
+            r.plot()
+    print(reduced.summary().to_string(index=False))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

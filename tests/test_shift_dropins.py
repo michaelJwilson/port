@@ -93,14 +93,16 @@ def _stacked_instance(seed: int = 4) -> dict[str, Any]:
 def test_the_fit_is_upstreams_off_and_decodes_under_its_own_shift_on() -> None:
     """`optimize`, off and on.
 
-    Off, the replacement returns what `cnaster`'s class returns, bitwise.
+    Off, and under `cnaster`'s finite-difference gradient, the replacement
+    returns what `cnaster`'s class returns, bitwise; the closed-form gradient
+    (#433) is pinned to it in `tests/test_mstep_gradient.py`.
     On, its `log_gamma` is `cnaster`'s own `get_state_posteriors` on the
     emission of the rescaled exposure `base * exp(-shift)`, with the shift
     the replacement recorded, to 1e-9 -- so the decode it returns is the one
     its shift describes, which `hmm_nophasing.py:1085` alone would not give.
     """
     from cnaster.hmm_nophasing import hmm_nophasing as upstream
-    from port.patch.hmm_nophasing import hmm_nophasing, logmu_shift
+    from port.patch.hmm_nophasing import finite_difference, hmm_nophasing, logmu_shift
 
     instance = _stacked_instance()
     kwargs = {
@@ -115,7 +117,8 @@ def test_the_fit_is_upstreams_off_and_decodes_under_its_own_shift_on() -> None:
     args = (instance["X"], instance["lengths"], 2, instance["base"], instance["total"])
 
     theirs = upstream(params="smp", t=0.99).optimize(*args, **kwargs)
-    ours = hmm_nophasing(params="smp", t=0.99).optimize(*args, **kwargs)
+    with finite_difference():
+        ours = hmm_nophasing(params="smp", t=0.99).optimize(*args, **kwargs)
 
     for key in ("new_log_mu", "new_p_binom", "log_gamma"):
         np.testing.assert_array_equal(ours[key], theirs[key])
