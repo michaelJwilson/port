@@ -49,7 +49,6 @@ from cnaster.io import (
     get_alignments,
     get_barcodes,
     get_sample_sheet,
-    get_spaceranger_counts,
     get_spatial_positions,
     map_unique_snps_enum,
 )
@@ -174,14 +173,15 @@ def _spaceranger_counts(
     entry for entry. What differs is that one of them allocates the shape and
     the other the stored values.
 
+    With `sparse_counts` off the layer is `cnaster`'s dense one, built as
+    `get_spaceranger_counts` builds it, except that a dense `X` is taken as
+    it is rather than raising on `.toarray()` (#88).
+
     This is the one place the patch reads a file `cnaster`'s helper would have
     read, rather than calling that helper -- the cost is inside it, so
     orchestrating around it is not available. The two branches, the `.h5` and
     the `.h5ad`, are the branches `get_spaceranger_counts` takes, in its order.
     """
-    if not sparse_counts:
-        return get_spaceranger_counts(spaceranger_dir)
-
     import scanpy as sc
 
     stem = f"{spaceranger_dir}/{config.visium.filtered_feature_name}"
@@ -195,6 +195,21 @@ def _spaceranger_counts(
         raise RuntimeError(msg)
 
     counts = adatatmp.X
+
+    if not sparse_counts:
+        # NB `get_spaceranger_counts`'s steps, in its order, but densifying
+        #    only a sparse matrix: its unguarded `.toarray()` raises on a
+        #    dense `.h5ad`, which `anndata` writes by default (#88).
+        dense = counts.toarray() if sp.issparse(counts) else np.array(counts)
+        is_nan = np.isnan(dense)
+
+        if np.any(is_nan):
+            dense[is_nan] = 0
+
+        adatatmp.layers["count"] = dense.astype(int)
+        adatatmp.var_names_make_unique()
+
+        return adatatmp
 
     if sp.issparse(counts):
         values = _without_nan(counts.data)
