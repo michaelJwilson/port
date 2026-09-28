@@ -7,7 +7,7 @@ its events, spots and layout are read off the sample. Version 3 draws them:
     [sample]      name, seed, output, realizations
     [reference]   baseline, coverage, snps; GRCh38 resources via $PORT_GRCH38
     [array]       kind = "hex", rows, columns
-    [model]       admixture, normal_frac, nb_dispersion, bb_overdispersion,
+    [model]       admixture, normal_frac, dirichlet_concentration, bb_overdispersion,
                   snp_dispersion, snp_depth_follows_copies
     [cna]         mode = "shared.unique" (shared, unique) or "tree"
                   (trunk, per_leaf, per_internal); n_clones;
@@ -18,21 +18,22 @@ its events, spots and layout are read off the sample. Version 3 draws them:
     [layout]      overlap, radius, vertices, jitter
     [[slice]]     clones, offset = [x, y], regions = [{clone, center, ...}]
 
-**The generative model**, per slice and spot `s` of clone `c`:
+**The generative model**, per slice and spot `s` of clone `c`, from the
+per-entry laws `port.sim.normal_fit` fits on CalicoST's normal spots (#455):
 
-- `N_s ~ [coverage] spot_umi` and `M_s ~ spot_snp_umi`, independent;
-- gene counts `NB(N_s q_gc, alpha)`, `var = mu + alpha mu^2`, independent
-  per entry: `q_c` sums to 1 and is proportional to `lambda_g d_g(c)`,
-  `lambda` from `normal_baseline.txt` and `d` the admixture law's depth
-  factor at the gene's `(A, B)`, at `alpha = [model] nb_dispersion`. The
-  library size is held in expectation, so a gain in one clone dilutes its
-  other genes, as sequencing does;
-- SNP reads `NB(M_s w_jc, b)`, `w_c` summing to 1 and proportional to `v_j`
-  (times the depth factor if `snp_depth_follows_copies`):
-  `v_j ~ Gamma(1/a, a)` at `a = [coverage] snp_total` dispersion,
-  and `b = [model] snp_dispersion`. Per realization: `N_s`, `M_s`, `v`,
-  the counts and the phase. `port.sim.kernels` draws both by
-  inversion, one uniform per entry;
+- gene UMI: `N_s ~ [coverage] spot_umi`, times the clone's library factor
+  `sum_g lambda_g d_g(c)`, so a gain grows the library; shares
+  `p_s ~ Dirichlet(kappa q_c)`, `q_c` proportional to `lambda_g d_g(c)`; and
+  `Multinomial(N_s, p_s)` (`port.sim.entries.dirichlet_multinomial`). A
+  gene's expected UMI is `N_s lambda_g d_g(c)`, so its read-depth ratio to
+  normal is `d_g(c) = (1 - f) (A + B) / 2 + f`, the admixture law's depth
+  factor at the gene's `(A, B)`, `f = normal_frac`. `lambda` is
+  `normal_baseline.txt`'s and `kappa = [model] dirichlet_concentration`,
+  both fitted on CalicoST's normal spots (#455);
+- SNP reads: every (SNP, spot) entry drawn independently from
+  `[coverage] snp_spot_umi` (`snp_law`, `b = [model] snp_dispersion`),
+  unordered and independent of copies. Per realization: the counts and the
+  phase. Both samplers draw each nonzero value exactly, with no tail cut;
 - the haplotype-A count `BetaBinomial(n, share, rho)`, `share` the admixture
   law's (`toml_manifest.allele_share`).
 
@@ -78,6 +79,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from port.sim.entries import dirichlet_multinomial, independent, nodes, snp_law
 from port.sim.toml_manifest import ADMIXTURE_LAWS, Event, Law, allele_share
 
 MANIFEST_VERSION = 3
@@ -92,7 +94,7 @@ REQUIRED: dict[str, tuple[str, ...]] = {
     "array": ("kind", "rows", "columns"),
     "barcodes": ("length", "suffix", "sample_id_bytes"),
     "model": (
-        "admixture", "normal_frac", "nb_dispersion", "bb_overdispersion",
+        "admixture", "normal_frac", "dirichlet_concentration", "bb_overdispersion",
         "snp_dispersion", "snp_depth_follows_copies",
     ),
     "cna": ("mode", "n_clones", "states", "length"),
@@ -808,8 +810,6 @@ class Realized:
     b: Any
     phase: np.ndarray
     """Per SNP: True where the written `A` and `B` are exchanged."""
-    capture: np.ndarray
-    """Per SNP, the capture weight this realization drew."""
     path: Path | None = None
     """Where it was written, if it was."""
 
@@ -823,8 +823,8 @@ def realize(
     """Each realization of `manifest` in turn, written under `into/r<k>/` if given.
 
     The clones, their layout and the barcodes are drawn once. Each of
-    `[sample] realizations` then draws, from its own stream, every spot's
-    coverage, each SNP's capture weight, the counts and the phase; a
+    `[sample] realizations` then draws, from its own stream, the counts and
+    the phase; a
     realization does not change when more are asked for. Nothing is held
     between realizations, so a population of them can be streamed through
     an analysis without writing one (`into=None`).
@@ -844,12 +844,15 @@ def realize(
     baseline = pd.read_csv(
         manifest.resolve(manifest.reference["baseline"]), sep="\t", comment="#"
     )
+    lam = baseline["lambda"].to_numpy()
     gene_chrom = baseline["chrom"].astype(str).str.removeprefix("chr").to_numpy()
     gene_pos = ((baseline["cdsStart"] + baseline["cdsEnd"]) // 2).to_numpy()
-    gene_weights = _normalized(
-        baseline["lambda"].to_numpy()[:, None]
-        * _depth(manifest, clones, clone_copies(tree, clones, gene_chrom, gene_pos))
+    depth_factor = _depth(
+        manifest, clones, clone_copies(tree, clones, gene_chrom, gene_pos)
     )
+    gene_weights = lam[:, None] * depth_factor
+    library = lam @ depth_factor
+    kappa = float(manifest.model["dirichlet_concentration"])
 
     snp_ids, snp_chrom, snp_pos = _snps(manifest)
     snp_copies = clone_copies(tree, clones, snp_chrom, snp_pos)
@@ -864,14 +867,15 @@ def realize(
             for label, clone in enumerate(clones)
         ]
     )
-    follows = bool(manifest.model["snp_depth_follows_copies"])
-    snp_factor = (
-        _depth(manifest, clones, snp_copies)
-        if follows
-        else np.ones((snp_ids.size, len(clones)))
+    if manifest.model["snp_depth_follows_copies"]:
+        msg = "SNP entries are drawn independently of copies (#455)"
+        raise ValueError(msg)
+    snp_entries = snp_law(
+        nodes(laws["spot_snp_umi"]),
+        laws["snp_total"].parameters["dispersion"],
+        float(manifest.model["snp_dispersion"]),
+        snp_ids.size,
     )
-    dispersion = laws["snp_total"].parameters["dispersion"]
-
     p_switch = switch_probabilities(
         snp_chrom,
         snp_pos,
@@ -898,22 +902,16 @@ def realize(
 
     width = len(str(len(realization_seeds) - 1))
     for k, seed in enumerate(realization_seeds):
-        count_seed, phase_seed, capture_seed = seed.spawn(3)
+        count_seed, phase_seed = seed.spawn(2)
         rng = np.random.default_rng(count_seed)
         switched = phased(p_switch, snp_chrom, np.random.default_rng(phase_seed))
-        capture = (
-            np.random.default_rng(capture_seed).gamma(
-                1 / dispersion, dispersion, snp_ids.size
-            )
-            if dispersion > 0
-            else np.ones(snp_ids.size)
-        )
-        snp_weights = _normalized(capture[:, None] * snp_factor)
         counts, a_blocks, b_blocks = [], [], []
 
         for lab in labels:
-            counts.append(_slice_counts(manifest, laws, gene_weights, lab, rng))
-            a, b = _alleles(manifest, laws, snp_weights, share, switched, lab, rng)
+            totals = np.rint(_lognormal(laws["spot_umi"], lab.size, rng) * library[lab])
+            counts.append(dirichlet_multinomial(totals, gene_weights, lab, kappa, rng))
+            trials = independent(snp_entries, (lab.size, snp_ids.size), rng)
+            a, b = _alleles(manifest, trials, share, switched, lab, rng)
             a_blocks.append(a)
             b_blocks.append(b)
 
@@ -923,7 +921,7 @@ def realize(
             k, shared, counts,
             scipy.sparse.vstack(a_blocks, format="csr").astype(np.int64),
             scipy.sparse.vstack(b_blocks, format="csr").astype(np.int64),
-            switched, capture,
+            switched,
         )  # fmt: skip
         if into is not None:
             realized.path = write(
@@ -961,6 +959,7 @@ def write(
     #    in `unique_snp_ids.npy`'s order; a switch is a change within a chromosome.
     np.save(out / "truth_phase.npy", realized.phase)
     write_inputs(manifest, out, t.sample_ids, resources)
+    write_manifest(manifest, out, resources, realized.index)
     return out
 
 
@@ -1009,22 +1008,6 @@ def _normalized(weights: np.ndarray) -> np.ndarray:
     return np.asarray(weights / weights.sum(axis=0, keepdims=True))
 
 
-def _slice_counts(
-    manifest: DrawManifest,
-    laws: dict[str, Law],
-    weights: np.ndarray,
-    labels: np.ndarray,
-    rng: np.random.Generator,
-) -> Any:
-    """One slice's spots x genes UMI: each spot's depth, then its NB counts."""
-    from port.sim.kernels import draw_rows
-
-    depth = _lognormal(laws["spot_umi"], labels.size, rng).astype(np.float64)
-    return draw_rows(
-        depth, weights, labels, float(manifest.model["nb_dispersion"]), rng
-    )
-
-
 def _write_slice(
     out: Path,
     counts: Any,
@@ -1055,22 +1038,16 @@ def _write_slice(
 
 def _alleles(
     manifest: DrawManifest,
-    laws: dict[str, Law],
-    weights: np.ndarray,
+    trials: Any,
     share: np.ndarray,
     switched: np.ndarray,
     labels: np.ndarray,
     rng: np.random.Generator,
 ) -> tuple[Any, Any]:
-    """One slice's written `A` and `B` reads: trials, then the planted haplotype's, then phase."""
+    """One slice's written `A` and `B` reads: the planted haplotype's of `trials`, then phase."""
     import scipy.sparse
 
-    from port.sim.kernels import draw_rows
-
-    depth = _lognormal(laws["spot_snp_umi"], labels.size, rng).astype(np.float64)
-    trials = draw_rows(
-        depth, weights, labels, float(manifest.model["snp_dispersion"]), rng
-    ).tocoo()
+    trials = trials.tocoo()
 
     p = share[labels[trials.row], trials.col]
     rho = float(manifest.model["bb_overdispersion"])
@@ -1097,6 +1074,32 @@ def _write_snps(
     np.save(out / "unique_snp_ids.npy", snp_ids.astype(object))
     for name, matrix in (("A", a), ("B", b)):
         save_npz(out / f"cell_snp_{name}allele.npz", matrix)
+
+
+def write_manifest(
+    manifest: DrawManifest, out: Path, resources: Path, realization: int
+) -> Path:
+    """`manifest.json`: the tables this realization was drawn from, paths resolved.
+
+    What `port.sim.analysis` reads the baseline, the laws and the genome from,
+    so a realization directory is self-describing (#452).
+    """
+    import json
+
+    tables: dict[str, Any] = {
+        name: dict(values) for name, values in manifest.tables.items()
+    }
+    reference = tables["reference"]
+    for key in ("baseline", "coverage", "snps"):
+        reference[key] = str(manifest.resolve(reference[key]).resolve())
+    reference["resources"] = str(resources.resolve())
+    tables["sample"]["realization"] = realization
+    tables["slice"] = [
+        {"clones": list(p.clones), "offset": list(p.offset)} for p in manifest.slices
+    ]
+    path = out / "manifest.json"
+    path.write_text(json.dumps(tables, indent=1, default=str))
+    return path
 
 
 def write_inputs(

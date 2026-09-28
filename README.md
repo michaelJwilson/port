@@ -329,11 +329,15 @@ genetic map's Haldane rate. Every assumption is a TOML key, and a manifest
 that omits one is refused; `sim/manifests/calicost_grch38.toml` states
 CalicoST's and a manifest `extends` it. Counts follow `sim/normal_baseline.txt`
 (λ per gene) and `sim/normal_coverage.toml`, both fitted on CalicoST's normal
-spots by `port.sim.normal_fit`. `[sample] realizations` redraws the counts,
-spot coverage, SNP capture and phase over the same clones and layout, each a
-complete sample in `sim/generated/<name>/r<k>/`, untracked. `port.sim.kernels`
-draws the counts by NB inversion, compiled with `numba`: a 100 x 30 draw takes
-6-9 s. `tests.sim_audit` runs and scores one realization:
+spots by `port.sim.normal_fit` (#455). A spot's genes are
+`Multinomial(N_s, p_s)`, `p_s ~ Dirichlet(κ λ d_c)` with `d` the clone's
+`(A + B) / 2` and `N_s` the `spot_umi` law times `Σ λ d_c`, so a gain grows
+the library; κ = 100 matches the normal spots' per-(gene, spot) nonzero share
+(0.90%) and `log10` moments. Each (SNP, spot) is drawn independently from the
+`snp_spot_umi` law. `[sample] realizations` redraws the counts and phase over
+the same clones and layout, each a complete sample in
+`sim/generated/<name>/r<k>/`, untracked; `dev_tree` draws in 9.4 s.
+`tests.sim_audit` runs and scores one realization:
 
     python -m port.sim.draw sim/manifests/dev_tree.toml
     python -m tests.sim_audit --sample generated/dev_tree/r0 -- --sal

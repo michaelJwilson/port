@@ -67,6 +67,30 @@ def _walk(u: float, mu: float, alpha: float) -> int:
     return k
 
 
+@njit(cache=True)
+def zero_truncated(
+    cumulative: np.ndarray,
+    centres: np.ndarray,
+    zeros: np.ndarray,
+    alpha: float,
+    pick: np.ndarray,
+    level: np.ndarray,
+) -> np.ndarray:
+    """`k >= 1` from a mixture of NBs, one `(pick, level)` uniform pair each.
+
+    `pick` chooses the component by `cumulative`, its weights given `k >= 1`;
+    `level` is mapped onto `[P(0), 1)` of that component and inverted, so the
+    draw is the component's quantile given `k >= 1`, with no tail cut.
+    """
+    out = np.empty(pick.size, dtype=np.int64)
+    last = centres.size - 1
+    for i in range(pick.size):
+        c = min(np.searchsorted(cumulative, pick[i], side="right"), last)
+        u = zeros[c] + level[i] * (1.0 - zeros[c])
+        out[i] = max(_walk(u, centres[c], alpha), 1)
+    return out
+
+
 @njit(cache=True, parallel=True)
 def _block(
     uniforms: np.ndarray,

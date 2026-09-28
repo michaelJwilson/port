@@ -19,10 +19,12 @@ beside the code rather than in a run directory nobody keeps, so a change to
 the pipeline shows up as a change to a picture in a diff.
 
 They are not a referee. Nothing here compares a figure against a previous
-one, and a matplotlib PDF carries a creation timestamp, so two runs of this
-script differ byte for byte with nothing having changed. Byte reproduction of
-figures is the standard `CLAUDE.md` names and reaching it needs the timestamp
-pinned first; #103 owns that.
+one. **They are committed as PNG** (#452): a matplotlib PDF carries a
+creation timestamp, so two runs differed byte for byte with nothing having
+changed, and re-conflicted every pull request stacked on another. The run
+still writes its PDFs; `port.patch.utils.png_copies` has `write_fig` write a
+PNG beside each, without metadata, and those are what is copied. `--cnaster`
+runs `cnaster`'s own `write_fig`, so it copies PDFs, for a local comparison.
 """
 
 import argparse
@@ -124,18 +126,25 @@ def main() -> None:
         if arguments.cnaster:
             output = _run(truth, root, max_iter_outer=1, max_iter=3, n_states=STATES)
         else:
-            with recording() as recorded:
-                output = _run_port(
-                    truth, root, max_iter_outer=1, max_iter=3, n_states=STATES
-                )
+            from port.patch.utils import png_copies
 
-            _write_combined(recorded, truth, root, output)
+            with png_copies():
+                with recording() as recorded:
+                    output = _run_port(
+                        truth, root, max_iter_outer=1, max_iter=3, n_states=STATES
+                    )
+
+                _write_combined(recorded, truth, root, output)
 
         destination.mkdir(parents=True, exist_ok=True)
+        # NB PDFs are no longer committed (#452). PNGs are overwritten by name
+        #    rather than globbed away: `realizations.png` and `umi_grow_*.png`
+        #    beside them are written by other scripts.
         for stale in destination.glob("*.pdf"):
             stale.unlink()
 
-        figures = sorted(output.rglob("*.pdf"))
+        suffix = "*.pdf" if arguments.cnaster else "*.png"
+        figures = sorted(output.rglob(suffix))
         for figure in figures:
             shutil.copy(figure, destination / figure.name)
 

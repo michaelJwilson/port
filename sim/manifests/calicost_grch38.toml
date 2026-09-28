@@ -40,10 +40,16 @@ sample_id_bytes = 4
 [model]
 admixture = "read"
 normal_frac = 0.0
-# NB moment fits on CalicoST's easy sample, sim/manifests/easy.toml (#382).
-nb_dispersion = 3.7463
-bb_overdispersion = 0.01281
-snp_dispersion = 0.9792
+# NB fitted on CalicoST's normal spots, `../normal_coverage.toml` (#455):
+#    dirichlet_concentration its `gene_spot_umi`, snp_dispersion its
+#    `snp_spot_umi`.
+# NB A of A + B is binomial: on the normal spots the per-entry beta-binomial
+#    rho is 0.0166, 95% CI [0.0033, 0.0297] over the 20,157 entries at
+#    A + B >= 2 (likelihood ratio 6.0 against binomial), and per SNP over
+#    spots 0, CI [0, 0.0005] (#455).
+dirichlet_concentration = 100.0
+bb_overdispersion = 0.0
+snp_dispersion = 1.0
 # NB CalicoST's SNP reads do not scale with copies.
 snp_depth_follows_copies = false
 

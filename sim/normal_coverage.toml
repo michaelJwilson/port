@@ -40,3 +40,15 @@ dispersion = 0.000679095
 ks = 0.003981
 ks_alternative = 0.04859
 n = 13482
+
+[coverage.gene_spot_umi]
+family = "dirichlet_multinomial"
+concentration = 100
+expressed = 0.009
+n = 47289940
+
+[coverage.snp_spot_umi]
+family = "negative_binomial"
+dispersion = 1
+expressed = 0.03106
+n = 18065880

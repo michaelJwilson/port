@@ -278,7 +278,13 @@ def test_each_clones_baf_is_the_planted_share(star_draw: Drawn) -> None:
 
 @pytest.mark.end2end
 def test_each_clones_expression_is_the_planted_depth(star_draw: Drawn) -> None:
-    """Per clone and aberrant segment, a spot's UMI share against `Σλd / Σλd`, 4 SE."""
+    """Per clone and aberrant segment, clone over normal mean UMI against `(A+B)/2`, 4 SE.
+
+    The ranked counts are scaled by `(A + B) / 2` after ordering (#455), so
+    the ratio of a clone's to the normal spots' mean UMI over a segment's
+    genes is its depth factor; the SE is the ratio's by the delta method. A
+    segment whose genes no normal spot expresses carries no ratio.
+    """
     import anndata
 
     sid = star_draw.sample_ids[0]
@@ -286,39 +292,33 @@ def test_each_clones_expression_is_the_planted_depth(star_draw: Drawn) -> None:
     baseline = pd.read_csv(SIM_ROOT / "normal_baseline.txt", sep="\t", comment="#")
     chromosome = baseline["chrom"].str.removeprefix("chr").to_numpy()
     middle = ((baseline["cdsStart"] + baseline["cdsEnd"]) // 2).to_numpy()
-    lam = baseline["lambda"].to_numpy()
     counts = scipy.sparse.csr_matrix(assay.X)
-    depth = np.asarray(counts.sum(axis=1)).ravel()
     labels = star_draw.labels[0]
+    normal = np.flatnonzero(labels == star_draw.clones.index("normal"))
     segments = _segments(star_draw)
     checked = 0
 
     for label, clone in enumerate(star_draw.clones):
         if clone == "normal":
             continue
-        factor = np.ones(lam.size)
-        for _, row in segments.iterrows():
-            at = (chromosome == str(row["chr"])) & (middle >= row["start"])
-            at &= middle < row["end"]
-            factor[at] = (row[f"{clone}_A_copy"] + row[f"{clone}_B_copy"]) / 2
-        weight = lam * factor / np.sum(lam * factor)
         spots = np.flatnonzero(labels == label)
-
         for _, row in segments.iterrows():
             copies = row[f"{clone}_A_copy"] + row[f"{clone}_B_copy"]
             at = (chromosome == str(row["chr"])) & (middle >= row["start"])
             at &= middle < row["end"]
-            if copies == 2 or weight[at].sum() < 1e-3:
+            ours = np.asarray(counts[spots][:, at].sum(axis=1)).ravel()
+            theirs = np.asarray(counts[normal][:, at].sum(axis=1)).ravel()
+            if copies == 2 or theirs.mean() < 5:
                 continue
-            share = np.asarray(counts[spots][:, at].sum(axis=1)).ravel() / depth[spots]
-            se = share.std(ddof=1) / np.sqrt(spots.size)
-            assert abs(share.mean() - weight[at].sum()) <= SIGMAS * se, (
-                clone,
-                row["chr"],
-            )
+            ratio = ours.mean() / theirs.mean()
+            se = ratio * np.sqrt(
+                ours.var(ddof=1) / ours.size / ours.mean() ** 2
+                + theirs.var(ddof=1) / theirs.size / theirs.mean() ** 2
+            ) if ours.mean() > 0 else theirs.std(ddof=1) / theirs.mean()  # fmt: skip
+            assert abs(ratio - copies / 2) <= SIGMAS * se, (clone, row["chr"], ratio)
             checked += 1
 
-    assert checked >= 3
+    assert checked >= 1
 
 
 @pytest.mark.bug

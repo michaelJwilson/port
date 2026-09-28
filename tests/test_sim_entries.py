@@ -1,0 +1,95 @@
+"""#455: the per-entry laws and the samplers `port.sim.draw` builds on them.
+
+`Mixture.draw` samples the SNP law exactly; its referee is the law's own pmf
+by `scipy.stats`. `dirichlet_multinomial` is pinned by its analytic moments,
+and `fit_genes` by recovering a planted concentration.
+"""
+
+from __future__ import annotations
+
+import numpy as np
+import pytest
+from port.sim.entries import (
+    Mixture,
+    dirichlet_multinomial,
+    fit_genes,
+    independent,
+    mixture,
+)
+
+
+def _law(alpha: float) -> Mixture:
+    rng = np.random.default_rng(1)
+    means = np.exp(rng.normal(0.0, 1.5, 2_000))
+    masses = rng.uniform(0.05, 1.0, 2_000)
+    return mixture(means, masses, 2_000.0, alpha)
+
+
+@pytest.mark.oracle
+@pytest.mark.parametrize("alpha", [0.0, 1.0, 12.0])
+def test_the_exact_sampler_draws_the_laws_pmf(alpha: float) -> None:
+    """400,000 independent entries against `Mixture.pmf` by `scipy.stats`.
+
+    Nonzero share within 4 binomial SE; the nonzero values by a chi-square
+    test over every `k` expected 5 times or more, the rest pooled in a tail
+    bin, at p > 1e-3.
+    """
+    from scipy.stats import chisquare
+
+    law = _law(alpha)
+    drawn = independent(law, (400, 1_000), np.random.default_rng(2))
+    share, n = law.nonzero, drawn.shape[0] * drawn.shape[1]
+    values = drawn.data
+
+    pmf = law.pmf(2_000)[1:] / law.nonzero
+    expected = pmf * values.size
+    top = int(np.argmax(expected < 5))
+    observed = np.bincount(values, minlength=top + 1)[1 : top + 1]
+    observed = np.append(observed, values.size - observed.sum())
+    expected = np.append(expected[:top], values.size - expected[:top].sum())
+
+    assert drawn.nnz / n == pytest.approx(share, abs=4 * np.sqrt(share / n))
+    assert chisquare(observed, expected).pvalue > 1e-3
+
+
+@pytest.mark.analytic
+def test_the_dirichlet_multinomial_has_its_moments() -> None:
+    """20,000 rows at `N = 400`, `kappa = 30`: rows sum to `N` exactly, and per
+    column mean `N q` and variance `N q (1 - q) (N + kappa) / (1 + kappa)` to
+    4 SE (the variance's SE from the draw's own fourth moment).
+    """
+    rng = np.random.default_rng(3)
+    q = np.array([0.5, 0.3, 0.15, 0.05])
+    n, total, kappa = 20_000, 400, 30.0
+    drawn = dirichlet_multinomial(
+        np.full(n, total), q[:, None], np.zeros(n, dtype=np.int64), kappa, rng
+    ).toarray()
+
+    assert np.all(drawn.sum(axis=1) == total)
+    for column, share in enumerate(q):
+        x = drawn[:, column].astype(np.float64)
+        mean, variance = (
+            total * share,
+            (total * share * (1 - share) * (total + kappa) / (1 + kappa)),
+        )
+        fourth = np.mean((x - x.mean()) ** 4)
+        assert x.mean() == pytest.approx(mean, abs=4 * np.sqrt(variance / n))
+        assert x.var(ddof=1) == pytest.approx(
+            variance, abs=4 * np.sqrt((fourth - variance**2) / n)
+        )
+
+
+@pytest.mark.end2end
+def test_the_concentration_is_recovered_from_a_draw_at_it() -> None:
+    """600 spots of 3,000 genes drawn at `kappa = 70`: `fit_genes` returns 70."""
+    rng = np.random.default_rng(4)
+    lam = rng.dirichlet(np.full(3_000, 0.3))
+    totals = np.rint(rng.lognormal(8.0, 0.4, 600))
+    drawn = dirichlet_multinomial(
+        totals, lam[:, None], np.zeros(600, dtype=np.int64), 70.0, rng
+    )
+
+    fit = fit_genes(drawn, lam, grid=(30.0, 50.0, 70.0, 100.0, 140.0), seed=5)
+
+    assert fit.value == 70.0
+    assert fit.nonzero == pytest.approx(fit.observed, rel=0.02)

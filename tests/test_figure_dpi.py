@@ -136,3 +136,25 @@ def test_the_figure_swap_is_kept_out_of_the_default_table() -> None:
     assert "write_fig" not in names
     assert figures["write_fig"] == 195
     assert not names & set(figures), f"in both tables: {names & set(figures)}"
+
+
+@pytest.mark.infra
+def test_png_copies_are_the_same_bytes_on_every_write(tmp_path: Path) -> None:
+    """Inside `png_copies` a PNG lands beside the PDF, and two writes are identical (#452).
+
+    The committed figures are these PNGs because the PDF beside them carries
+    a clock; outside the context no PNG is written, so `cnaster`'s behaviour
+    is unchanged.
+    """
+    from port.patch.utils import png_copies, write_fig
+
+    write_fig(str(tmp_path / "plain.pdf"), _figure())
+    assert not (tmp_path / "plain.png").exists()
+
+    with png_copies():
+        write_fig(str(tmp_path / "one.pdf"), _figure())
+        write_fig(str(tmp_path / "two.pdf"), _figure())
+
+    one, two = (tmp_path / "one.png").read_bytes(), (tmp_path / "two.png").read_bytes()
+    assert one[:8] == b"\x89PNG\r\n\x1a\n"
+    assert one == two

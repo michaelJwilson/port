@@ -19,6 +19,14 @@ writes what `port.sim.draw` draws from:
   - `snp_a`, `snp_b`, `snp_total`: a SNP's `A`, `B` and `A + B` reads summed
     over normal spots.
 
+  and `ENTRY_LAWS`, `port.sim.entries`' laws of one entry (#455), each with
+  the observed nonzero share as `expressed`:
+
+  - `gene_spot_umi`: one gene's UMI in one normal spot, Dirichlet-multinomial
+    about `lambda` at `concentration`;
+  - `snp_spot_umi`: one SNP's `A + B` reads in one normal spot, NB at
+    `dispersion` about `snp_total`'s Gamma weights.
+
     python -m port.sim.normal_fit sim/<easy> sim/<hard> --into sim \\
         --gene-table $PORT_GRCH38/hgTables_hg38_gencode.txt
 """
@@ -36,6 +44,9 @@ from port.sim.toml_manifest import Law, _counted
 
 LAWS = ("spot_umi", "spot_snp_umi", "snp_a", "snp_b", "snp_total")
 """The laws `normal_coverage.toml` carries, in the order it writes them."""
+
+ENTRY_LAWS = ("gene_spot_umi", "snp_spot_umi")
+"""The per-entry laws, fitted to the histograms `plot_coverage` draws."""
 
 BASELINE_COLUMNS = ("gene", "chrom", "cdsStart", "cdsEnd", "lambda")
 
@@ -143,6 +154,53 @@ def fit_normal_coverage(paths: list[Path]) -> dict[str, Law]:
     }
 
 
+def by_gene(pooled: dict[str, Any], genes: np.ndarray) -> Any:
+    """Pooled normal-spot UMI as spots x `genes`, a name's columns summed."""
+    import scipy.sparse
+
+    index = {name: i for i, name in enumerate(genes)}
+    columns = np.array([index.get(name, -1) for name in pooled["genes"]])
+    kept = np.nonzero(columns >= 0)[0]
+    gather = scipy.sparse.csr_matrix(
+        (np.ones(kept.size), (kept, columns[kept])), shape=(columns.size, genes.size)
+    )
+    matrix = (pooled["counts"] @ gather).tocsr()
+    matrix.data = np.rint(matrix.data).astype(np.int64)
+    return matrix
+
+
+def fit_entries(
+    paths: list[Path], baseline: pd.DataFrame, laws: dict[str, Law]
+) -> dict[str, Law]:
+    """`ENTRY_LAWS` on the pooled normal spots.
+
+    The gene law at the spots' own totals and `baseline`'s `lambda`; the SNP
+    law at `laws`' `spot_snp_umi` and `snp_total` dispersion, as
+    `port.sim.draw` draws them.
+    """
+    from port.sim.entries import fit_genes, fit_snps
+
+    pooled = _pooled(paths)
+    genes = by_gene(pooled, baseline["gene"].to_numpy())
+    trials = (pooled["a"] + pooled["b"]).tocsr()
+    weight = laws["snp_total"].parameters.get("dispersion", 0.0)
+
+    gene_fit = fit_genes(genes, baseline["lambda"].to_numpy())
+    snp_fit = fit_snps(trials, laws["spot_snp_umi"], weight)
+    return {
+        name: Law(
+            fit.family,
+            {key: fit.value},
+            n=int(matrix.shape[0] * matrix.shape[1]),
+            expressed=fit.observed,
+        )
+        for name, key, fit, matrix in (
+            ("gene_spot_umi", "concentration", gene_fit, genes),
+            ("snp_spot_umi", "dispersion", snp_fit, trials),
+        )
+    }
+
+
 def best(values: np.ndarray) -> Law:
     """Both families fitted to `values`; the one with the smaller KS statistic."""
     lognormal = _counted(values, "lognormal")
@@ -154,14 +212,24 @@ def to_toml(laws: dict[str, Law], header: str) -> str:
     """`[coverage.<law>]` tables, in `LAWS`' order."""
     lines = [f"# {line}" for line in header.splitlines()]
 
-    for name in LAWS:
+    for name in LAWS + ENTRY_LAWS:
         law = laws[name]
         lines += ["", f"[coverage.{name}]", f'family = "{law.family}"']
         lines += [f"{k} = {v:.6g}" for k, v in law.parameters.items()]
-        lines += [f"ks = {law.ks:.4g}", f"ks_alternative = {law.ks_alternative:.4g}"]
+        lines += [f"{k} = {v:.4g}" for k, v in _scores(law).items()]
         lines += [f"n = {law.n}"]
 
     return "\n".join(lines) + "\n"
+
+
+def _scores(law: Law) -> dict[str, float]:
+    """The fit statistics `law` carries, by the key `to_toml` writes."""
+    scores = {
+        "ks": law.ks,
+        "ks_alternative": law.ks_alternative,
+        "expressed": law.expressed,
+    }
+    return {k: v for k, v in scores.items() if v is not None}
 
 
 def read_coverage(path: Path) -> dict[str, Law]:
@@ -175,11 +243,12 @@ def read_coverage(path: Path) -> dict[str, Law]:
             parameters={
                 k: float(v)
                 for k, v in table.items()
-                if k not in {"family", "ks", "ks_alternative", "n"}
+                if k not in {"family", "ks", "ks_alternative", "expressed", "n"}
             },
             ks=table.get("ks"),
             ks_alternative=table.get("ks_alternative"),
             n=table.get("n"),
+            expressed=table.get("expressed"),
         )
         for name, table in tables.items()
     }
@@ -199,7 +268,9 @@ def main(argv: list[str] | None = None) -> int:
     into = Path(arguments.into)
     names = ", ".join(p.name for p in paths)
 
+    laws = fit_normal_coverage(paths)
     baseline = fit_baseline(paths, gene_table)
+    laws |= fit_entries(paths, baseline, laws)
     with (into / "normal_baseline.txt").open("w") as stream:
         stream.write(
             f"# Generated by `python -m port.sim.normal_fit` (#445) from the normal "
@@ -209,7 +280,6 @@ def main(argv: list[str] | None = None) -> int:
         )
         baseline.to_csv(stream, sep="\t", index=False, float_format="%.9e")
 
-    laws = fit_normal_coverage(paths)
     header = (
         "Generated by `python -m port.sim.normal_fit` (#445).\n"
         f"Fitted on the normal spots of {names}."
