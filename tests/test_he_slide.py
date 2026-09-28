@@ -90,3 +90,22 @@ def test_the_brightest_pixel_takes_a_label_past_num_labels(tmp_path: Path) -> No
 
     assert labels.max() == 5
     assert np.sum(labels == 5) == np.sum(pixels["gray"] == pixels["gray"].max())
+
+
+@pytest.mark.analytic
+def test_ports_labels_are_the_num_labels_asked_for(tmp_path: Path) -> None:
+    """`port.patch.io.he_image(num_labels=4)` labels every pixel `1..4` (#311).
+
+    The brightest pixels, which `cnaster` labels 5, take label 4, and no
+    other label changes.
+    """
+    from cnaster.he import get_he_image
+    from port.patch.io import he_image
+
+    _read(tmp_path)
+    upstream = get_he_image(str(tmp_path), pos=None, num_labels=4)["label"].to_numpy()
+    labels = he_image(str(tmp_path), pos=None, num_labels=4)["label"].to_numpy()
+
+    assert set(np.unique(labels)) == {1, 2, 3, 4}
+    np.testing.assert_array_equal(labels[upstream <= 4], upstream[upstream <= 4])
+    assert (labels[upstream == 5] == 4).all()
