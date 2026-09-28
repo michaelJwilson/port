@@ -403,3 +403,27 @@ def test_realizations_share_the_clones_and_redraw_counts_and_phase(
     for path in two.realizations:
         sample = load_simulated(path.name, path.parent)
         assert sample.labels.size == 2 * 20 * 20
+
+
+@pytest.mark.analytic
+def test_streamed_realizations_are_the_written_ones(
+    resources: Path, tmp_path: Path
+) -> None:
+    """`realize(into=None)` writes nothing and yields exactly what `draw` writes."""
+    import anndata
+    import scipy.sparse
+    from port.sim.draw import realize
+
+    manifest = _manifest("dev_tree", {"sample": {"realizations": 2}})
+    streamed = list(realize(manifest, None, resources=resources))
+    written = draw(manifest, tmp_path, resources=resources)
+
+    assert all(r.path is None for r in streamed)
+    assert [r.index for r in streamed] == [0, 1]
+    for r, path in zip(streamed, written.realizations, strict=True):
+        sid = r.truth.sample_ids[0]
+        on_disk = anndata.read_h5ad(path / sid / "filtered_feature_bc_matrix.h5ad").X
+        assert (r.counts[0] != on_disk).nnz == 0
+        a = scipy.sparse.load_npz(path / "snp" / "cell_snp_Aallele.npz")
+        assert (r.a != a).nnz == 0
+        np.testing.assert_array_equal(r.phase, np.load(path / "truth_phase.npy"))

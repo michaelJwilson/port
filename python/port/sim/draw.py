@@ -70,6 +70,7 @@ import functools
 import itertools
 import os
 import tomllib
+from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -727,11 +728,79 @@ def draw(
 ) -> Drawn:
     """Draw `manifest` and write each realization as `<into>/<name>/r<k>/`.
 
+    `realize` with somewhere to write, run to the end.
+    """
+    root = (
+        into if into is not None else manifest.resolve(manifest.sample["output"])
+    ) / manifest.name
+    realized = list(realize(manifest, root, resources=resources))
+    truth = realized[0].truth
+    return Drawn(
+        root,
+        [r.path for r in realized if r.path is not None],
+        truth.sample_ids,
+        truth.clones,
+        truth.labels,
+        truth.tree,
+        [r.phase for r in realized],
+        truth.p_switch,
+    )
+
+
+@dataclass
+class Truth:
+    """What every realization of a manifest shares: the clones and where they are."""
+
+    clones: tuple[str, ...]
+    tree: CloneTree
+    profile: pd.DataFrame
+    """`truth_acn_profile.tsv`: `chr start end`, then `A`, `B` per clone."""
+    labels: list[np.ndarray]
+    """Per slice, each spot's clone, indexing `clones` (`normal` is 0)."""
+    sample_ids: list[str]
+    barcodes: list[np.ndarray]
+    """Per slice, `{barcode}_{sample_id}`."""
+    rows: np.ndarray
+    cols: np.ndarray
+    genes: np.ndarray
+    snp_ids: np.ndarray
+    p_switch: np.ndarray
+    """Per SNP, the probability of a phase switch from the one before."""
+
+
+@dataclass
+class Realized:
+    """One realization: the truth it shares, and what was drawn for it."""
+
+    index: int
+    truth: Truth
+    counts: list[Any]
+    """Per slice, spots x genes CSR UMI."""
+    a: Any
+    """Spots (every slice, in order) x SNPs CSR: the written `A` reads."""
+    b: Any
+    phase: np.ndarray
+    """Per SNP: True where the written `A` and `B` are exchanged."""
+    capture: np.ndarray
+    """Per SNP, the capture weight this realization drew."""
+    path: Path | None = None
+    """Where it was written, if it was."""
+
+
+def realize(
+    manifest: DrawManifest,
+    into: Path | None = None,
+    *,
+    resources: Path | None = None,
+) -> Iterator[Realized]:
+    """Each realization of `manifest` in turn, written under `into/r<k>/` if given.
+
     The clones, their layout and the barcodes are drawn once. Each of
     `[sample] realizations` then draws, from its own stream, every spot's
-    coverage, each SNP's capture weight, the counts and the phase, and is
-    written as a complete sample directory; a realization does not change
-    when more are asked for.
+    coverage, each SNP's capture weight, the counts and the phase; a
+    realization does not change when more are asked for. Nothing is held
+    between realizations, so a population of them can be streamed through
+    an analysis without writing one (`into=None`).
     """
     tree_rng, layout_rng, id_rng = (
         np.random.default_rng(s) for s in np.random.SeedSequence(manifest.seed).spawn(3)
@@ -740,9 +809,6 @@ def draw(
         int(manifest.sample["realizations"])
     )
     resources = resources or manifest.resources()
-    root = (
-        into if into is not None else manifest.resolve(manifest.sample["output"])
-    ) / manifest.name
 
     tree = draw_tree(manifest, tree_rng)
     clones = ("normal", *manifest.tumour)
@@ -799,21 +865,12 @@ def draw(
         lab + 1 for lab in layout(manifest, points, layout_rng)[0]
     ]  # NB `normal` is 0.
     combined = [np.array([f"{b}_{sid}" for b in whitelist]) for sid in ids]
-    truth = pd.concat(
-        pd.DataFrame(
-            {"labels": np.asarray(clones)[lab], "x": rows, "y": cols, "sample_id": sid},
-            index=pd.Index(names, name="barcode"),
-        )
-        for lab, sid, names in zip(labels, ids, combined, strict=True)
-    )
     profile = truth_profile(tree, clones, manifest.genome["chromosome_lengths"])
+    shared = Truth(clones, tree, profile, labels, ids, combined, rows, cols,
+                   baseline["gene"].to_numpy(), snp_ids, p_switch)  # fmt: skip
 
-    paths: list[Path] = []
-    phases: list[np.ndarray] = []
     width = len(str(len(realization_seeds) - 1))
     for k, seed in enumerate(realization_seeds):
-        out = root / f"r{k:0{width}d}"
-        (out / "snp").mkdir(parents=True, exist_ok=True)
         count_seed, phase_seed, capture_seed = seed.spawn(3)
         rng = np.random.default_rng(count_seed)
         switched = phased(p_switch, snp_chrom, np.random.default_rng(phase_seed))
@@ -825,27 +882,59 @@ def draw(
             else np.ones(snp_ids.size)
         )
         snp_weights = _normalized(capture[:, None] * snp_factor)
-        a_blocks, b_blocks = [], []
+        counts, a_blocks, b_blocks = [], [], []
 
-        for lab, sid, names in zip(labels, ids, combined, strict=True):
-            _write_slice(out / sid, manifest, laws, gene_weights, lab, names, rows, cols,
-                         baseline["gene"].to_numpy(), clones, rng)  # fmt: skip
+        for lab in labels:
+            counts.append(_slice_counts(manifest, laws, gene_weights, lab, rng))
             a, b = _alleles(manifest, laws, snp_weights, share, switched, lab, rng)
             a_blocks.append(a)
             b_blocks.append(b)
 
-        _write_snps(out / "snp", combined, snp_ids, a_blocks, b_blocks)
-        truth.to_csv(out / "truth_clone_labels.tsv", sep="\t")
-        profile.to_csv(out / "truth_acn_profile.tsv", sep="\t", index=False)
-        tree_table(tree).to_csv(out / "truth_tree.tsv", sep="\t", index=False)
-        # NB the realized phase: True where the written `A` and `B` are exchanged,
-        #    in `unique_snp_ids.npy`'s order; a switch is a change within a chromosome.
-        np.save(out / "truth_phase.npy", switched)
-        write_inputs(manifest, out, ids, resources)
-        paths.append(out)
-        phases.append(switched)
+        import scipy.sparse
 
-    return Drawn(root, paths, ids, clones, labels, tree, phases, p_switch)
+        realized = Realized(
+            k, shared, counts,
+            scipy.sparse.vstack(a_blocks, format="csr").astype(np.int64),
+            scipy.sparse.vstack(b_blocks, format="csr").astype(np.int64),
+            switched, capture,
+        )  # fmt: skip
+        if into is not None:
+            realized.path = write(
+                realized, into / f"r{k:0{width}d}", manifest, resources
+            )
+        yield realized
+
+
+def write(
+    realized: Realized, out: Path, manifest: DrawManifest, resources: Path
+) -> Path:
+    """A realization as a complete sample directory for `run_cnaster(_port)`."""
+    t = realized.truth
+    (out / "snp").mkdir(parents=True, exist_ok=True)
+    for counts, lab, sid, names in zip(realized.counts, t.labels, t.sample_ids,
+                                       t.barcodes, strict=True):  # fmt: skip
+        _write_slice(out / sid, counts, lab, names, t.rows, t.cols, t.genes, t.clones)
+    _write_snps(out / "snp", t.barcodes, t.snp_ids, realized.a, realized.b)
+
+    pd.concat(
+        pd.DataFrame(
+            {
+                "labels": np.asarray(t.clones)[lab],
+                "x": t.rows,
+                "y": t.cols,
+                "sample_id": sid,
+            },
+            index=pd.Index(names, name="barcode"),
+        )
+        for lab, sid, names in zip(t.labels, t.sample_ids, t.barcodes, strict=True)
+    ).to_csv(out / "truth_clone_labels.tsv", sep="\t")
+    t.profile.to_csv(out / "truth_acn_profile.tsv", sep="\t", index=False)
+    tree_table(t.tree).to_csv(out / "truth_tree.tsv", sep="\t", index=False)
+    # NB the realized phase: True where the written `A` and `B` are exchanged,
+    #    in `unique_snp_ids.npy`'s order; a switch is a change within a chromosome.
+    np.save(out / "truth_phase.npy", realized.phase)
+    write_inputs(manifest, out, t.sample_ids, resources)
+    return out
 
 
 def phased(
@@ -893,28 +982,34 @@ def _normalized(weights: np.ndarray) -> np.ndarray:
     return np.asarray(weights / weights.sum(axis=0, keepdims=True))
 
 
-def _write_slice(
-    out: Path,
+def _slice_counts(
     manifest: DrawManifest,
     laws: dict[str, Law],
     weights: np.ndarray,
+    labels: np.ndarray,
+    rng: np.random.Generator,
+) -> Any:
+    """One slice's spots x genes UMI: each spot's depth, then its NB counts."""
+    from port.sim.kernels import draw_rows
+
+    depth = _lognormal(laws["spot_umi"], labels.size, rng).astype(np.float64)
+    return draw_rows(
+        depth, weights, labels, float(manifest.model["nb_dispersion"]), rng
+    )
+
+
+def _write_slice(
+    out: Path,
+    counts: Any,
     labels: np.ndarray,
     names: np.ndarray,
     rows: np.ndarray,
     cols: np.ndarray,
     genes: np.ndarray,
     clones: tuple[str, ...],
-    rng: np.random.Generator,
 ) -> None:
     """One slice's `filtered_feature_bc_matrix.h5ad` and tissue positions."""
     import anndata
-
-    from port.sim.kernels import draw_rows
-
-    depth = _lognormal(laws["spot_umi"], names.size, rng).astype(np.float64)
-    counts = draw_rows(
-        depth, weights, labels, float(manifest.model["nb_dispersion"]), rng
-    )
 
     (out / "spatial").mkdir(parents=True, exist_ok=True)
     anndata.AnnData(
@@ -969,21 +1064,12 @@ def _alleles(
 
 
 def _write_snps(
-    out: Path,
-    combined: list[np.ndarray],
-    snp_ids: np.ndarray,
-    a_blocks: list[Any],
-    b_blocks: list[Any],
+    out: Path, combined: list[np.ndarray], snp_ids: np.ndarray, a: Any, b: Any
 ) -> None:
-    import scipy.sparse
-
     (out / "barcodes.txt").write_text("\n".join(np.concatenate(combined)) + "\n")
     np.save(out / "unique_snp_ids.npy", snp_ids.astype(object))
-    for name, blocks in (("A", a_blocks), ("B", b_blocks)):
-        save_npz(
-            out / f"cell_snp_{name}allele.npz",
-            scipy.sparse.vstack(blocks, format="csr").astype(np.int64),
-        )
+    for name, matrix in (("A", a), ("B", b)):
+        save_npz(out / f"cell_snp_{name}allele.npz", matrix)
 
 
 def write_inputs(
