@@ -164,6 +164,18 @@ def _parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--copy-decode",
+        choices=("lattice", "shared"),
+        default="lattice",
+        help=(
+            "the integer copy decode written to the tables and figures (#371): "
+            "`lattice`, the default, each clone's own path over every (A, B) "
+            "with its tumour fraction fitted (#370), per bin; `shared`, one "
+            "pair per continuous state for every clone (#327). Both read the "
+            "captured fit, so both need the copy rows."
+        ),
+    )
+    parser.add_argument(
         "--warm-up",
         action="store_true",
         help=(
@@ -340,8 +352,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         #    `run_core_inference`.
         if copy_cap:
             from port.extensions.copy_likelihood import capture
+            from port.patch.integer_copy import copy_decoder
 
             stack.enter_context(capture())
+            stack.enter_context(copy_decoder(arguments.copy_decode))
         if shift:
             from port.patch.hmm_nophasing import logmu_shift
 

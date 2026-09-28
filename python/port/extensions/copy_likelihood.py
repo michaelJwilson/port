@@ -31,7 +31,7 @@ decoders -- is in `port.sandbox.integer_decoding`.
 from __future__ import annotations
 
 import contextlib
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from typing import Any, Literal
 
@@ -43,6 +43,7 @@ __all__ = [
     "Pseudobulk",
     "candidates",
     "capture",
+    "captured_chain",
     "captured_clones",
     "lattice_decode",
     "shared_decode",
@@ -297,6 +298,27 @@ def _start(
     return fraction, shift
 
 
+def _monotone(
+    objective: Callable[[float], float],
+    current: float,
+    bounds: tuple[float, float],
+    grid: tuple[float, ...] = (),
+) -> float:
+    """The lowest of `current`, a bounded Brent search, and `grid`: never uphill.
+
+    The fraction's objective is a best path, piecewise in the fraction and
+    not convex, and a bounded search never scores its endpoints: on the
+    critical instance it returned `0.20` at 11,424 against `1.0`'s 11,078
+    (#371). Scoring the current value and the grid beside it keeps each
+    M-step from raising the objective, and reaches fraction 1 exactly.
+    """
+    from scipy.optimize import minimize_scalar
+
+    found = minimize_scalar(objective, bounds=bounds, method="bounded")
+    candidates = [current, float(found.x), *grid]
+    return min(candidates, key=objective)
+
+
 def _on_path(
     shift: float, purity: float, states: np.ndarray, bulk: Pseudobulk, path: np.ndarray
 ) -> float:
@@ -379,8 +401,6 @@ def lattice_decode(
     The flags are the simplifications the #362 audit measured; the defaults
     are the decode it adopted.
     """
-    from scipy.optimize import minimize_scalar
-
     states = candidates(max_total_copy)
     n = len(states)
     transmat = np.log(
@@ -441,25 +461,34 @@ def lattice_decode(
                 fitted = _with(bulk, alpha, tau)
 
                 if fit_shifts:
-                    shifts[i] = float(
-                        minimize_scalar(
-                            lambda s, i=i, fitted=fitted, path=paths[i]: -_on_path(
-                                s, float(purity[i]), states, fitted, path
-                            ),
-                            bounds=(shifts[i] - 3.0, shifts[i] + 3.0),
-                            method="bounded",
-                        ).x
+
+                    def off_path(
+                        shift: float,
+                        fraction: float = float(purity[i]),
+                        fitted: Pseudobulk = fitted,
+                        path: np.ndarray = paths[i],
+                    ) -> float:
+                        return -_on_path(shift, fraction, states, fitted, path)
+
+                    shifts[i] = _monotone(
+                        off_path,
+                        float(shifts[i]),
+                        (float(shifts[i]) - 3.0, float(shifts[i]) + 3.0),
                     )
 
                 if fit_purity:
-                    purity[i] = float(
-                        minimize_scalar(
-                            lambda f, i=i, fitted=fitted: _best_path(
-                                f, float(shifts[i]), states, fitted, chain, parsimony
-                            ),
-                            bounds=(0.05, 1.0),
-                            method="bounded",
-                        ).x
+
+                    def best(
+                        fraction: float,
+                        shift: float = float(shifts[i]),
+                        fitted: Pseudobulk = fitted,
+                    ) -> float:
+                        return _best_path(
+                            fraction, shift, states, fitted, chain, parsimony
+                        )
+
+                    purity[i] = _monotone(
+                        best, float(purity[i]), (0.05, 1.0), PURITY_GRID
                     )
 
             if dispersion == "fit":
@@ -588,6 +617,31 @@ def captured_clones() -> list[tuple[np.ndarray, Pseudobulk, float]] | None:
 _CAPTURED: list[tuple[Any, Any, Any, Any]] = []
 """`(single_X, single_base_nb_mean, single_total_bb_RD, result)` of the last fit."""
 
+_LENGTHS: list[np.ndarray] = []
+"""The last fit's chromosome lengths, which `lattice_decode` restarts its chain at."""
+
+
+def captured_chain() -> tuple[np.ndarray | None, float]:
+    """The captured fit's `(lengths, stay)`: the chain `lattice_decode` runs on.
+
+    `stay` is the mean of the fitted transition matrix's diagonal, as #370's
+    measurements took it; `1 - 1e-7`, `lattice_decode`'s default, without a
+    captured fit.
+    """
+    if not _CAPTURED:
+        return None, 1.0 - 1e-7
+
+    result = _CAPTURED[0][3]
+    lengths = _LENGTHS[0] if _LENGTHS else None
+
+    try:
+        transmat = np.asarray(result["new_log_transmat"], dtype=np.float64)
+    except (KeyError, TypeError, ValueError):
+        return lengths, 1.0 - 1e-7
+
+    diagonal = np.diagonal(transmat.reshape(-1, *transmat.shape[-2:])[0])
+    return lengths, float(np.exp(diagonal).mean())
+
 
 @contextlib.contextmanager
 def capture() -> Iterator[None]:
@@ -609,6 +663,7 @@ def capture() -> Iterator[None]:
             _CAPTURED[:] = [
                 (np.array(single_x), np.array(base), np.array(total), result)
             ]
+            _LENGTHS[:] = [np.asarray(lengths, dtype=np.int64)]
 
         return result
 
@@ -619,3 +674,4 @@ def capture() -> Iterator[None]:
     finally:
         patch.run_core_inference = original
         _CAPTURED.clear()
+        _LENGTHS.clear()

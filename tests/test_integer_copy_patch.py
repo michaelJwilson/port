@@ -217,3 +217,27 @@ def test_one_key_sets_both_caps() -> None:
 
     with _config(max_total_copy=12):
         assert configured_caps() == (12, 12)
+
+
+@pytest.mark.analytic
+def test_pairs_by_bin_answer_the_path_per_bin_and_anything_else_per_state() -> None:
+    """The indexings `run_cnaster.py` makes of a decoder's result (#371).
+
+    `copies[path, 0]` and `copies[path][bin_ids, 0]` are per bin -- the
+    segment and gene tables -- and `copies[:, 0]` per state, the state table.
+    Fails if a per-state summary leaks into a per-bin file, or the reverse.
+    """
+    from port.patch.integer_copy import PairsByBin
+
+    path = np.array([0, 0, 1, 1, 1, 0])
+    bins = np.array([[1, 1], [1, 1], [1, 2], [1, 3], [1, 2], [1, 1]])
+    states = np.array([[1, 1], [1, 2]])
+    copies = PairsByBin(states, bins, path)
+    genes = np.array([2, 3, 3, 5])
+
+    np.testing.assert_array_equal(copies[path, 0], bins[:, 0])
+    np.testing.assert_array_equal(copies[path, 1], bins[:, 1])
+    np.testing.assert_array_equal(copies[path][genes, 1], [2, 3, 3, 1])
+    np.testing.assert_array_equal(copies[:, 1], [1, 2])
+    np.testing.assert_array_equal(copies[np.array([1, 0])], [[1, 2], [1, 1]])
+    assert type(copies[:, 0]) is np.ndarray
