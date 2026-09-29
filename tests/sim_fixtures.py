@@ -259,7 +259,15 @@ def stage(sample: SimulatedSample, into: Path) -> Path:
     `cnaster` opens its inputs by these names, so a `.gz` is written out
     plain; one committed in its own compressed format is linked.
     """
-    target = into / sample.name
+    # NB `Path(sample.name).name`: a sample loaded by absolute path carries
+    #    that path as its name, and `into / "/abs"` is `/abs` itself, which
+    #    unlinked every committed input and linked it to itself (#492).
+    target = into / Path(sample.name).name
+
+    if target.resolve() == sample.path.resolve():
+        msg = f"staging {sample.path} into itself"
+        raise ValueError(msg)
+
     for name in INPUTS:
         source = located(sample.path / name)
         if source.name.endswith(".gz"):
