@@ -18,8 +18,9 @@ from pathlib import Path
 from typing import Any
 
 import matplotlib as mpl
+import port.pipeline
 import pytest
-from port.pipeline import SWAPS, instrumented, patched, swap_sites
+from port.pipeline import SWAPS, Swap, instrumented, patched, swap_sites
 
 mpl.use("Agg")
 
@@ -60,14 +61,44 @@ def _original(swap: Any) -> Any:
     return getattr(sys.modules[swap.module], swap.name)
 
 
-@pytest.mark.infra
-@pytest.mark.parametrize("swap", SWAPS, ids=lambda swap: f"{swap.module}.{swap.name}")
-def test_every_replacement_accepts_what_it_replaces(swap: Any) -> None:
-    """A swap installs by rebinding a name, so the call has to survive it.
+TABLES: dict[str, tuple[Swap, ...]] = {
+    name: getattr(port.pipeline, name)
+    for name in port.pipeline.__all__
+    if name == "SWAPS" or name.endswith("_SWAPS")
+}
+"""Every table `port.pipeline` exports, so a new one is covered by being exported."""
 
-    Extra parameters are allowed only as keyword-only with a default --
-    `load_input_data` grows `sparse_counts` that way (#186) -- because a
-    caller that does not know about one is unaffected by it.
+ROWS = [(table, swap) for table, swaps in TABLES.items() for swap in swaps]
+
+DEPARTURES: dict[tuple[str, str], str] = {
+    ("COPY_SWAPS", "hill_climbing_integer_copynumber_fixdiploid_milp"): "**ignored",
+    ("COPY_SWAPS", "hill_climbing_integer_copynumber_oneclone"): "**ignored",
+    ("FIGURE_SWAPS", "write_fig"): "dpi 300 -> 150; two positional options",
+    ("FIGURE_SWAPS", "plot_clones_genomic"): "figure, colour_by positional",
+    ("FIGURE_SWAPS", "plot_clones_spatial"): "sample_layout positional",
+    ("FIGURE_SWAPS", "plot_ascn_legend"): "span, title_on_edge positional",
+    ("PLOT_OFF_SWAPS", "write_fig"): "*_, **__",
+    ("REFINEMENT_SWAPS", "initialize_rdr_clone_refininement"): "*args, **kwargs",
+    ("SHIFT_SWAPS", "run_core_inference"): "*args, **kwargs",
+    ("SHIFT_SWAPS", "reindex_clones"): "*args, **kwargs",
+}
+"""The rows that do not yet accept what they replace; #517 step 1 retires each.
+
+Declared rather than skipped, so the list can only shrink: an undeclared
+departure fails, and so does a declared one that has been fixed, until its
+entry is removed in the same diff.
+"""
+
+
+def _departure(swap: Swap) -> str | None:
+    """How a replacement's signature differs from `cnaster`'s, or `None`.
+
+    Defaults are compared with names and kinds: a changed default changes
+    what every caller that omits the argument gets, which is the silent
+    behaviour change `CLAUDE.md` forbids. Extra parameters are allowed only
+    as keyword-only with a default -- `load_input_data` grows
+    `sparse_counts` that way (#186) -- because a caller that does not know
+    about one is unaffected by it.
     """
     upstream, replacement = (
         _accepts(_original(swap)),
@@ -75,13 +106,45 @@ def test_every_replacement_accepts_what_it_replaces(swap: Any) -> None:
     )
 
     shared = replacement[: len(upstream)]
-    assert shared == upstream, (
-        f"{swap.module}.{swap.name} takes {upstream}; {swap.replacement} takes {shared}"
-    )
+
+    if shared != upstream:
+        return f"takes {shared}, not {upstream}"
 
     for name, kind, default in replacement[len(upstream) :]:
-        assert kind is inspect.Parameter.KEYWORD_ONLY, f"{name} is positional and new"
-        assert default is not inspect.Parameter.empty, f"{name} is new and required"
+        if kind is not inspect.Parameter.KEYWORD_ONLY:
+            return f"{name} is positional and new"
+
+        if default is inspect.Parameter.empty:
+            return f"{name} is new and required"
+
+    return None
+
+
+@pytest.mark.infra
+def test_every_replacement_accepts_what_it_replaces() -> None:
+    """A swap installs by rebinding a name, so the call has to survive it.
+
+    Every table, not `SWAPS` alone: a row in `FIGURE_SWAPS` is installed by
+    the entry point's default as surely as one in `SWAPS` is (#517 E1).
+    """
+    departing = {
+        (table, swap.name): found
+        for table, swap in ROWS
+        if (found := _departure(swap)) is not None
+    }
+
+    assert set(departing) == set(DEPARTURES), (
+        f"undeclared: { ({k: v for k, v in departing.items() if k not in DEPARTURES}) }; "
+        f"now exact, remove: {sorted(set(DEPARTURES) - set(departing))}"
+    )
+
+
+@pytest.mark.infra
+def test_every_declared_departure_is_a_row() -> None:
+    """A departure whose row was removed is an entry nothing checks."""
+    rows = {(table, swap.name) for table, swap in ROWS}
+
+    assert set(DEPARTURES) <= rows, sorted(set(DEPARTURES) - rows)
 
 
 @pytest.mark.infra

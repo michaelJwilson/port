@@ -159,8 +159,9 @@ uv sync --locked --extra test
 was rewritten from, at a commit rather than a branch, because it is a
 reference this repository **reads and does not run** -- see
 `docs/audit-logmu-shift-calicost.md`,
-`docs/audit-integer-copy-calicost.md` and
-`docs/audit-cnaster-calicost-divergence.md`. It is an extra rather than a
+`docs/audit-integer-copy-calicost.md`,
+`docs/audit-cnaster-calicost-divergence.md` and, stage by stage against
+`--sal`, `docs/audit-calicost-methods.md` (#509). It is an extra rather than a
 dependency because nothing on the default path imports it.
 
 `track` is the other odd one, and it is the one to read before running
