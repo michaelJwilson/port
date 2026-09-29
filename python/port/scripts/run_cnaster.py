@@ -29,8 +29,8 @@ from __future__ import annotations
 import argparse
 import sys
 import time
-from collections.abc import Iterator, Sequence
-from contextlib import ExitStack, contextmanager
+from collections.abc import Sequence
+from contextlib import ExitStack
 from typing import Any, NamedTuple
 
 from port.pipeline import (
@@ -409,7 +409,11 @@ def main(argv: Sequence[str] | None = None) -> int:
 
             stack.enter_context(rust_lattices())
 
-        kept = stack.enter_context(_kept()) if arguments.copy_errors else None
+        # NB before the swaps, so `patched` installs the capturing wrapper and
+        #    the fit kept is the pinned one.
+        from port.extensions.copy_errors import captured_fits
+
+        kept = stack.enter_context(captured_fits()) if arguments.copy_errors else None
 
         selected = SWAPS if not arguments.no_patch else ()
 
@@ -643,47 +647,6 @@ def _write_outputs(config: str, flags: dict[str, Any], segments: Any) -> None:
         if len(segments):
             segments.to_csv(run / "gene_segments.tsv", sep="\t", index=False)
         print(f"run_cnaster_port: outputs written to {run}", file=sys.stderr)
-
-
-@contextmanager
-def _kept() -> Iterator[list[Any]]:
-    """Keep the last `params="smp"` fit `port`'s `run_core_inference` returns.
-
-    Entered **before** the swaps, so `patched` finds the wrapper where it
-    rebinds `run_core_inference`, and the fit kept is the pinned one.
-    """
-    import numpy as np
-
-    import port.patch.hmrf as patch
-    from port.extensions.copy_errors import Captured
-
-    kept: list[Any] = []
-    original = patch.run_core_inference
-
-    def keep(
-        single_x: Any, lengths: Any, base: Any, total: Any, *rest: Any, **kw: Any
-    ) -> Any:
-        result = original(single_x, lengths, base, total, *rest, **kw)
-
-        if kw.get("params") == "smp":
-            kept.append(
-                Captured(
-                    np.array(single_x, dtype=np.float64),
-                    np.asarray(lengths, dtype=np.int64),
-                    np.array(base, dtype=np.float64),
-                    np.array(total, dtype=np.float64),
-                    result,
-                )
-            )
-
-        return result
-
-    patch.run_core_inference = keep
-
-    try:
-        yield kept
-    finally:
-        patch.run_core_inference = original
 
 
 def _write_copy_sets(config: str, kept: list[Any]) -> None:

@@ -33,10 +33,9 @@ UNCOUNTED = frozenset(
         "SWAPS:get_reference_genes",
         "SWAPS:initialize_rectangular_clones",
         "SWAPS:summarize_blocks",
-        "SWAPS:summarize_counts_for_blocks",
     }
 )
-"""14 of 31 rows. The five figure rows have no truth to count against."""
+"""13 of 31 rows. The five figure rows have no truth to count against."""
 
 
 def _uncounted() -> set[str]:

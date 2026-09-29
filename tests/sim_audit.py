@@ -51,9 +51,9 @@ import numpy as np
 import pandas as pd
 import yaml
 from port.sim.files import located
-from scipy.optimize import linear_sum_assignment
 
 from tests.recovery_audit import integer_clones
+from tests.scoring import matched, overlap
 from tests.sim_fixtures import EASY, HARD, SimulatedSample, load_simulated
 
 SAMPLES = {"easy": EASY, "hard": HARD}
@@ -159,10 +159,14 @@ def score(sample: SimulatedSample, output: Path, arm: str, wall: float) -> SimRe
 
     ari_integer = float(adjusted_rand_score(sample.labels[scored], integer))
 
-    overlap = np.zeros((sample.n_clones, int(fitted.max()) + 1), dtype=np.int64)
-    np.add.at(overlap, (sample.labels[scored], fitted[scored]), 1)
-    rows, columns = linear_sum_assignment(-overlap)
-    clone_of = dict(zip(rows.tolist(), columns.tolist(), strict=True))
+    clone_of = matched(
+        overlap(
+            sample.labels[scored],
+            fitted[scored],
+            sample.n_clones,
+            int(fitted.max()) + 1,
+        )
+    )
 
     seglevel = run["seglevel"]
     middle = ((seglevel["START"] + seglevel["END"]) // 2).to_numpy()

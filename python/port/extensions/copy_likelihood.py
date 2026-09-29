@@ -671,10 +671,17 @@ def shared_decode(
 
 def captured_clones() -> list[tuple[np.ndarray, Pseudobulk, float]] | None:
     """Every captured clone's path, pseudobulk and shift, in the fit's order."""
-    if not _CAPTURED:
+    fit = captured_fit()
+
+    if fit is None:
         return None
 
-    single_x, base, total, result = _CAPTURED[0]
+    single_x, base, total, result = (
+        fit.single_X,
+        fit.single_base_nb_mean,
+        fit.single_total_bb_RD,
+        fit.res,
+    )
     assignment = np.asarray(result["new_assignment"], dtype=np.int64)
     log_mu = np.asarray(result["new_log_mu"], dtype=np.float64).reshape(-1)
     path = np.asarray(result["pred_cnv"], dtype=np.int64)
@@ -709,11 +716,13 @@ def captured_clones() -> list[tuple[np.ndarray, Pseudobulk, float]] | None:
     return rows
 
 
-_CAPTURED: list[tuple[Any, Any, Any, Any]] = []
-"""`(single_X, single_base_nb_mean, single_total_bb_RD, result)` of the last fit."""
+_FITS: list[list[Any]] = []
+"""The fits each open `capture()` block collects (`copy_errors.captured_fits`)."""
 
-_LENGTHS: list[np.ndarray] = []
-"""The last fit's chromosome lengths, which `lattice_decode` restarts its chain at."""
+
+def captured_fit() -> Any:
+    """The last `params="smp"` fit of the innermost `capture()`, or `None`."""
+    return _FITS[-1][-1] if _FITS and _FITS[-1] else None
 
 
 def captured_normal() -> int | None:
@@ -728,10 +737,12 @@ def captured_normal() -> int | None:
     """
     from port.patch.hmm_nophasing.shifted_emission import NEUTRAL_BAF_TOLERANCE
 
-    if not _CAPTURED:
+    fit = captured_fit()
+
+    if fit is None:
         return None
 
-    result = _CAPTURED[0][3]
+    result = fit.res
     p_binom = np.asarray(result["new_p_binom"], dtype=np.float64).reshape(-1)
     path = np.asarray(result["pred_cnv"], dtype=np.int64)
     path = path.reshape(path.shape[0], -1) % p_binom.size
@@ -747,11 +758,13 @@ def captured_chain() -> tuple[np.ndarray | None, float]:
     measurements took it; `1 - 1e-7`, `lattice_decode`'s default, without a
     captured fit.
     """
-    if not _CAPTURED:
+    fit = captured_fit()
+
+    if fit is None:
         return None, 1.0 - 1e-7
 
-    result = _CAPTURED[0][3]
-    lengths = _LENGTHS[0] if _LENGTHS else None
+    result = fit.res
+    lengths = fit.lengths
 
     try:
         transmat = np.asarray(result["new_log_transmat"], dtype=np.float64)
@@ -766,31 +779,15 @@ def captured_chain() -> tuple[np.ndarray | None, float]:
 def capture() -> Iterator[None]:
     """Keep the RDR+BAF fit's inputs and result, for the decoder that follows.
 
-    Wraps `port`'s `run_core_inference`, the one the shift installs, as
-    `tests/realizations.py` does, and keeps only the `params="smp"` call.
+    `port.extensions.copy_errors.captured_fits` for the block; the decode
+    reads the last `params="smp"` fit through :func:`captured_fit`.
     """
-    import port.patch.hmrf as patch
+    from port.extensions.copy_errors import captured_fits
 
-    original = patch.run_core_inference
+    with captured_fits() as kept:
+        _FITS.append(kept)
 
-    def keep(
-        single_x: Any, lengths: Any, base: Any, total: Any, *rest: Any, **kw: Any
-    ) -> Any:
-        result = original(single_x, lengths, base, total, *rest, **kw)
-
-        if kw.get("params") == "smp":
-            _CAPTURED[:] = [
-                (np.array(single_x), np.array(base), np.array(total), result)
-            ]
-            _LENGTHS[:] = [np.asarray(lengths, dtype=np.int64)]
-
-        return result
-
-    patch.run_core_inference = keep
-
-    try:
-        yield
-    finally:
-        patch.run_core_inference = original
-        _CAPTURED.clear()
-        _LENGTHS.clear()
+        try:
+            yield
+        finally:
+            _FITS.remove(kept)

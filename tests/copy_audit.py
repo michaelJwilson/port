@@ -42,6 +42,7 @@ import numpy as np
 import pandas as pd
 
 from tests.fixtures import COPY_LATTICE
+from tests.scoring import matched, overlap
 
 Pair = tuple[int, int]
 
@@ -53,13 +54,6 @@ def unphased(a: int, b: int) -> Pair:
 
 def _code(pairs: Sequence[Pair]) -> np.ndarray:
     return np.array([a * 1_000 + b for a, b in pairs], dtype=np.int64)
-
-
-def _match(confusion: np.ndarray) -> dict[int, int]:
-    from scipy.optimize import linear_sum_assignment
-
-    rows, columns = linear_sum_assignment(-confusion)
-    return dict(zip(rows.tolist(), columns.tolist(), strict=True))
 
 
 def _merge(profiles: dict[int, bytes]) -> dict[int, int]:
@@ -97,9 +91,9 @@ def decode_one(index: int, root: Path) -> dict[str, Any]:
     # NB clones matched to planted ones by spot overlap; a clone-bin is scored
     #    against the planted state of its matched planted clone.
     n_planted = int(truth.labels.max()) + 1
-    overlap = np.zeros((n_planted, int(assignment.max()) + 1), dtype=np.int64)
-    np.add.at(overlap, (truth.labels, assignment), 1)
-    clone_of = _match(overlap)
+    clone_of = matched(
+        overlap(truth.labels, assignment, n_planted, int(assignment.max()) + 1)
+    )
 
     planted_state = np.concatenate([truth.states[c] for c in clone_of])
     fitted_state = np.concatenate([path[:, clone_of[c]] for c in clone_of])
