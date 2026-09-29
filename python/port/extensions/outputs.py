@@ -229,17 +229,22 @@ def write_outputs(
         written.append(run / name)
 
     shift = fit.get("new_log_mu_shift")
-    shift_value = None if shift is None else shift.item()
+    # NB one shift per clone since the shift is written per clone (#362).
+    shift_value = (
+        None
+        if shift is None
+        else [finite(v) for v in np.asarray(shift, dtype=float).reshape(-1)]
+    )
     manifest = {
         "n_states": int(fit["n_states"]),
         "n_bins": len(seglevel),
         "clones": clone_columns(seglevel, fit["pred_cnv"]),
         "llf": finite(fit["llf"]),
         "total_llf": finite(fit["total_llf"]),
-        "log_mu_shift": None
-        if shift_value is None
-        else np.asarray(shift_value, dtype=float).tolist(),
-        "integer_decoder": "cnaster MILP, first ploidy pass (max_medploidy=None)",
+        "log_mu_shift": None if shift_value is None else shift_value,
+        "integer_decoder": (flags or {}).get(
+            "copy_decode", "cnaster MILP, first ploidy pass (max_medploidy=None)"
+        ),
         "config": config_keys(config),
         "run_cnaster_port": flags or {},
         "versions": {name: installed(name) for name in ("cnaster", "port")},
