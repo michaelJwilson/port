@@ -165,9 +165,13 @@ def reindex_clones(res_combine: Any, *args: Any, **kwargs: Any) -> Any:
     #    `cnaster.hmrf`, so reading it here at call time would call this back.
     before = np.asarray(res_combine["pred_cnv"])
     reindexed, posterior = UPSTREAM_REINDEX(res_combine, *args, **kwargs)
-    shifts = (
-        res_combine.get("new_log_mu_shift") if hasattr(res_combine, "get") else None
-    )
+    # NB by `__getitem__`: `cnaster`'s `CnaHMRFResult` has no `get`, and
+    #    reading through `hasattr(res, "get")` left the shifts unpermuted on
+    #    every real run (#501).
+    try:
+        shifts = res_combine["new_log_mu_shift"]
+    except (KeyError, TypeError):
+        shifts = None
     _PROPAGATED.clear()
 
     if shifts is None or np.ndim(shifts) != 1:
@@ -187,7 +191,16 @@ def reindex_clones(res_combine: Any, *args: Any, **kwargs: Any) -> Any:
         order.append(matches[0] if matches else column)
 
     permuted = np.asarray(shifts, dtype=np.float64)[order]
-    reindexed["new_log_mu_shift"] = permuted
+    locked = bool(getattr(reindexed, "_locked", False))
+
+    if locked:
+        reindexed.unlock()
+
+    try:
+        reindexed["new_log_mu_shift"] = permuted
+    finally:
+        if locked:
+            reindexed.lock()
     _PROPAGATED.update(pred=new, shifts=permuted)
 
     if _NORMAL:
@@ -219,11 +232,15 @@ def shift_for(pred_cnv: Any) -> tuple[float, int | None]:
 
 def run_core_inference(*args: Any, **kwargs: Any) -> Any:
     """Upstream's inference, then the neutral pin when the fit was shifted."""
-    from port.patch.hmm_initialize import distinct
+    from port.patch.hmm_initialize import distinct, sal_mixture
 
     # NB passed rather than rebound: upstream binds the initializer as a
     #    default argument (#348).
-    if distinct.installed() and "hmm_initializer" not in kwargs:
+    if sal_mixture.installed() and "hmm_initializer" not in kwargs:
+        # NB the read-depth stage's start from `sal`'s mixture (#489); the
+        #    BAF-only stage falls back to `distinct`'s inside it.
+        kwargs["hmm_initializer"] = sal_mixture.gmm_init
+    elif distinct.installed() and "hmm_initializer" not in kwargs:
         kwargs["hmm_initializer"] = distinct.gmm_init
 
     result = UPSTREAM(*args, **kwargs)

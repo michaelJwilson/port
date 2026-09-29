@@ -142,6 +142,17 @@ def _parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--hmm-start",
+        default=None,
+        metavar="START",
+        help=(
+            "the read-depth + BAF stage's HMM start from sal's count-pair "
+            "mixture, a key of sal.search.mixture_starts (#489), conditioned "
+            "on each bin's exposure and trials; 'none' keeps --distinct-init's. "
+            "Off by default; kmeans++x5+em with --sal."
+        ),
+    )
+    parser.add_argument(
         "--distinct-init",
         action=argparse.BooleanOptionalAction,
         default=None,
@@ -509,6 +520,15 @@ def main(argv: Sequence[str] | None = None) -> int:
             from port.patch.hmm_initialize.distinct import distinct_init
 
             stack.enter_context(distinct_init())
+        hmm_start = (
+            ("kmeans++x5+em" if arguments.sal else "none")
+            if arguments.hmm_start is None
+            else arguments.hmm_start
+        )
+        if hmm_start != "none":
+            from port.patch.hmm_initialize.sal_mixture import sal_mixture
+
+            stack.enter_context(sal_mixture(hmm_start))
 
         # NB the copy rows decode by the HMM's likelihood only (#362), which
         #    reads each clone's counts from the fit this captures; entered
@@ -549,6 +569,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 + (", figures included" if figures else "")
                 + (", copy caps from the config" if copy_cap else "")
                 + (", refinement mask" if refinement_mask else "")
+                + (f", sal HMM start {hmm_start}" if hmm_start != "none" else "")
                 + (", floor merged smallest first" if floor else "")
                 + (", distinct initial states" if distinct else "")
                 + (", approx included" if approx else "")
