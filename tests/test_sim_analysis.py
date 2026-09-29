@@ -223,6 +223,50 @@ def test_the_genome_panels_share_one_left_and_one_right_edge(drawn: Drawn) -> No
 
 @pytest.mark.infra
 @pytest.mark.merge
+def test_the_tree_spans_the_genome_panels_between_its_barcodes(drawn: Drawn) -> None:
+    """(a)'s root barcode starts on (c)'s left edge and each leaf's ends on its
+    right; no name runs into a barcode or past its node's side."""
+    from port.sim.truth_figure import truth_combined_figure
+
+    figure = truth_combined_figure(read(drawn.path))
+    renderer = figure.canvas.get_renderer()
+    tree_panel, _, genomic, _ = figure.subfigs
+    (tree_ax,) = tree_panel.axes
+    track = genomic.axes[0].get_window_extent(renderer)
+    barcodes = [t for t in tree_ax.texts if t.get_gid() == "barcode"]
+    names = [t for t in tree_ax.texts if t.get_gid() == "name"]
+    boxes = sorted(
+        (t.get_window_extent(renderer) for t in barcodes), key=lambda b: b.x0
+    )
+    root, leaves = boxes[0], boxes[1:]
+
+    assert len(barcodes) == len(names) == len(read(drawn.path).clones)
+    assert root.x0 == pytest.approx(track.x0, abs=0.5)
+    for leaf in leaves:
+        assert leaf.x1 == pytest.approx(track.x1, abs=0.5)
+    for name in names:
+        box = name.get_window_extent(renderer)
+        assert not any(box.overlaps(b) for b in boxes)
+
+    # NB (c) names each clone with the barcode (a) gives it.
+    headed = {
+        t.get_text()
+        for ax in genomic.axes
+        for t in ax.texts
+        if t.get_visible() and "(" in t.get_text()
+    }
+    assert headed == {
+        f"{n.get_text()} ({b.get_text()})"
+        for n, b in zip(
+            sorted(names, key=lambda t: t.xy[1]),
+            sorted(barcodes, key=lambda t: t.get_position()[1]),
+            strict=True,
+        )
+    }
+
+
+@pytest.mark.infra
+@pytest.mark.merge
 def test_the_truth_page_writes_byte_for_byte_at_its_size(
     drawn: Drawn, tmp_path: Path
 ) -> None:

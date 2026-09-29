@@ -509,12 +509,18 @@ def draw_tree(
     dot: float = 90.0,
     name: Callable[[str], str] | None = None,
     ancestors: bool = True,
+    edges: bool = False,
 ) -> tuple[float, int]:
     """The clones' tree on `ax`, along event time; returns its width in events and its leaves.
 
     `name` names an observed clone, `display`'s numeral by default. Without
     `ancestors`, an unobserved node is drawn unnamed: its barcode is its
     children's common prefix.
+
+    With `edges`, an observed node's barcode is set on the axis's edge -- the
+    root's starting on the left, each leaf's ending on the right -- and its
+    name beside the node, so the caller sizes the tree between the two
+    (`truth_figure`). The texts carry `gid`s `name` and `barcode`.
     """
     t = tree(r)
     named = name or (lambda clone: display(clone, r.clones))
@@ -573,7 +579,20 @@ def draw_tree(
                    edgecolors=MUTED, linewidths=0.8 * small ** 0.5, zorder=3)  # fmt: skip
         label = t.barcode[node]
         root = t.parent[node] is None
-        if observed:
+        if observed and edges:
+            from matplotlib.transforms import blended_transform_factory
+
+            side = blended_transform_factory(ax.transAxes, ax.transData)
+            ax.annotate(named(node), (at[node], y[node]),
+                        xytext=(-4.0 if root else 4.0, 0.0),
+                        textcoords="offset points", fontsize=node_size, color=INK,
+                        va="center", ha="right" if root else "left",
+                        gid="name")  # fmt: skip
+            ax.text(0.0 if root else 1.0, y[node], label, transform=side,
+                    fontsize=node_size, color=INK, va="center",
+                    ha="left" if root else "right", family="monospace",
+                    gid="barcode")  # fmt: skip
+        elif observed:
             label = f"{named(node)}  {label}"
             # NB the root's trunk leaves to its right, so its name sits to
             #    its left; a leaf's name follows it.

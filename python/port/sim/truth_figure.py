@@ -9,7 +9,8 @@ Top to bottom, at `llncs`'s text width and height, 7 pt throughout, as
 - **(b)** each clone's planted `(A, B)`, drawn by `port`'s profile plotter
   under its mirror and copy-number key, the rows `combined.pdf` draws;
 - **(c)** RDR and BAF along the genome per true clone
-  (`analysis.genomic_truth`), drawn by `plot_clones_genomic`;
+  (`analysis.genomic_truth`), drawn by `plot_clones_genomic`, each clone
+  named with its barcode from (a);
 - **(d)** the true clone of each spot, per slice (`analysis.draw_spatial`),
   named by its key alone.
 
@@ -71,6 +72,7 @@ def truth_combined_figure(r: Realization, width: float | None = None) -> Any:
         draw_spatial,
         draw_tree,
         genomic_truth,
+        tree,
     )
 
     width = PAPER_WIDTH if width is None else width
@@ -88,7 +90,7 @@ def truth_combined_figure(r: Realization, width: float | None = None) -> Any:
         # (a)
         tree_ax = tree_fig.add_axes((0.02, 0.02, 0.96, 0.88))
         draw_tree(tree_ax, r, event_size=FONT_SIZE, node_size=FONT_SIZE, dot=18.0,
-                  name=symbol, ancestors=False)  # fmt: skip
+                  name=symbol, ancestors=False, edges=True)  # fmt: skip
 
         # (b): the key, then the rows, as `combined.pdf` draws its profile.
         legend_ax = profile_fig.add_axes((0.0, 0.72, 1.0, 0.2))
@@ -109,6 +111,14 @@ def truth_combined_figure(r: Realization, width: float | None = None) -> Any:
                             clone_index=g.groups, figure=genomic_fig,
                             pointsize=0.4, linewidth=0.3, chrtext_shift=-0.9)  # fmt: skip
         _fit_tracks(genomic_fig)
+        # NB each clone's name followed by its barcode, as (a) sets it.
+        barcode = tree(r).barcode
+        named = {symbol(clone): clone for clone in r.clones}
+        for ax in genomic_fig.axes:
+            for text in ax.texts:
+                clone = named.get(text.get_text())
+                if clone is not None and text.get_visible():
+                    text.set_text(f"{symbol(clone)} ({barcode[clone]})")
         for ax in genomic_fig.axes:
             ticks = ax.get_yticks()
             if ticks.size > 2:
@@ -163,7 +173,9 @@ def truth_combined_figure(r: Realization, width: float | None = None) -> Any:
             right -= overrun + LABEL_GAP / 72.0
 
         _stack_tracks(genomic_fig)
+        _put(tree_ax, LEFT, right)
         figure.canvas.draw()
+        _fit_tree(tree_ax)
         plot_ascn_legend(legend_ax, box_w=LEGEND_BOX, box_h=0.8, tick_len=0.1,
                          label_fontsize=FONT_SIZE, span=right - LEFT,
                          title_on_edge=True)  # fmt: skip
@@ -204,6 +216,63 @@ def _stack_tracks(panel: Any) -> None:
             y -= height
             _put(ax, y0=y, height=height)
         y -= TRACK_GAP
+
+
+NAME_GAP = 4.0
+"""Points between a node's name and the barcode on its edge, at the closest."""
+
+
+def _fit_tree(ax: Any) -> None:
+    """(a)'s x limits set so the tree fills the genome panels' width between its barcodes.
+
+    The root's barcode starts on the axis's left edge and each leaf's ends on
+    its right (`draw_tree(edges=True)`). The root sits `NAME_GAP` right of its
+    name after its barcode, and the tree is stretched until the leaf whose
+    name comes closest to its barcode is `NAME_GAP` from it.
+    """
+    figure = ax.get_figure(root=True)
+    renderer = figure.canvas.get_renderer()
+    dpi = figure.dpi
+    box = ax.get_window_extent(renderer)
+    left, right = box.x0 / dpi, box.x1 / dpi
+    gap = NAME_GAP / 72.0
+
+    def inches(text: Any) -> float:
+        return float(text.get_window_extent(renderer).width / dpi)
+
+    def offset(text: Any) -> float:
+        return abs(float(text.xyann[0])) / 72.0
+
+    names = [t for t in ax.texts if t.get_gid() == "name"]
+    barcodes = {
+        round(float(t.get_position()[1]), 6): t
+        for t in ax.texts
+        if t.get_gid() == "barcode"
+    }
+    root = min(names, key=lambda t: t.xy[0])
+    leaves = [t for t in names if t is not root]
+    x0 = float(root.xy[0])
+    start = (
+        left
+        + inches(barcodes[round(float(root.xy[1]), 6)])
+        + gap
+        + inches(root)
+        + offset(root)
+    )
+    # NB per leaf, the most inches per unit of event time it allows.
+    scale = min(
+        (
+            right
+            - inches(barcodes[round(float(leaf.xy[1]), 6)])
+            - gap
+            - inches(leaf)
+            - offset(leaf)
+            - start
+        )
+        / (float(leaf.xy[0]) - x0)
+        for leaf in leaves
+    )
+    ax.set_xlim(x0 - (start - left) / scale, x0 + (right - start) / scale)
 
 
 def _thin(labels: Any, renderer: Any) -> None:
