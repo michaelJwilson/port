@@ -110,6 +110,7 @@ ROLES: dict[str, Role] = {
     "port.sim.files": "sim",
     "port.sim.kernels": "sim",
     "port.sim.laws": "sim",
+    "port.sim.truth_figure": "sim",
     "port.sim.normal_fit": "sim",
     # sandbox
     "port.sandbox.admixture.clone_mixture": "set aside",
