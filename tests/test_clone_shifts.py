@@ -83,9 +83,9 @@ def test_the_reindex_carries_each_shift_with_its_clone(
     """Upstream reverses the clones; each shift follows its path, as does the lookup."""
     from port.patch.hmrf import core_inference as module
 
-    def reverse(res: dict[str, Any], *_: Any, **__: Any) -> tuple[Any, None]:
-        out = dict(res)
-        out["pred_cnv"] = np.asarray(res["pred_cnv"])[:, ::-1].copy()
+    def reverse(res_combine: dict[str, Any], **_: Any) -> tuple[Any, None]:
+        out = dict(res_combine)
+        out["pred_cnv"] = np.asarray(res_combine["pred_cnv"])[:, ::-1].copy()
         return out, None
 
     monkeypatch.setattr(module, "UPSTREAM_REINDEX", reverse)
@@ -158,10 +158,10 @@ def test_the_reindex_carries_each_shift_on_cnasters_result(
         assignment=CloneAssignment(new_assignment=np.arange(n_clones)),
     )
 
-    def reverse(res: Any, *_: Any, **__: Any) -> tuple[Any, None]:
-        out = copy.deepcopy(res)
+    def reverse(res_combine: Any, **_: Any) -> tuple[Any, None]:
+        out = copy.deepcopy(res_combine)
         out.unlock()
-        out["pred_cnv"] = np.asarray(res["pred_cnv"])[:, ::-1].copy()
+        out["pred_cnv"] = np.asarray(res_combine["pred_cnv"])[:, ::-1].copy()
         out.lock()
         return out, None
 

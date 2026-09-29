@@ -14,8 +14,8 @@ The kinds:
 - `cache`: a memo keyed by its inputs.
 - `rebind`: a name rebound outside a swap table.
 
-`OUTLIVES` is what a whole run leaves behind today. It is declared so that it
-can only shrink: step 1 moves each into run state released on exit.
+`OUTLIVES` is what a whole run leaves behind, empty since step 1. It is
+declared so that it can only shrink.
 
 `infra` for the declaration, `smoke` for the run: the second executes
 `cnaster`, and checks the run against itself rather than against a truth.
@@ -39,10 +39,7 @@ STATE: dict[str, Kind] = {
     "cnaster.hmm_initialize.GaussianMixture": "rebind",
     "port.extensions.copy_likelihood._CAPTURED": "run",
     "port.extensions.copy_likelihood._LENGTHS": "run",
-    "port.extensions.label_solver._SELECTED.name": "switch",
     "port.extensions.segments._CURRENT": "run",
-    "port.patch.hmm_initialize.distinct._INSTALLED": "switch",
-    "port.patch.hmm_initialize.sal_mixture._START": "switch",
     "port.patch.hmm_nophasing.shifted_emission.hmm_nophasing._row_shift": "run",
     "port.patch.hmm_nophasing.shifted_emission.hmm_nophasing.analytic_gradient": (
         "switch"
@@ -58,29 +55,17 @@ STATE: dict[str, Kind] = {
     "port.patch.hmrf.core_inference._PROPAGATED": "run",
     "port.patch.hmrf.refinement._KEPT": "run",
     "port.patch.hmrf.run_core_inference": "rebind",
-    "port.patch.icm.floor._INSTALLED": "switch",
-    "port.patch.integer_copy.DECODED": "run",
-    "port.patch.integer_copy._DECODER.name": "switch",
+    "port.patch.integer_copy._RECORDERS": "run",
     "port.patch.integer_copy._SHARED": "cache",
     "port.patch.io.NORMAL_SPOTS": "run",
-    "port.patch.plot_genomic.COLOUR_BY": "switch",
-    "port.patch.plotting.spatial.SAMPLE_LAYOUT": "switch",
-    "port.patch.recomb._COMPOSABLE": "switch",
-    "port.patch.utils._PNG_COPIES": "switch",
 }
 """Every name `port` writes after import, by kind. 12 switches (#517 C)."""
 
-OUTLIVES = frozenset(
-    {
-        "port.patch.hmm_nophasing.shifted_emission.hmm_nophasing._row_shift",
-        "port.patch.hmrf.clone_assignment._BOUNDARY",
-        "port.patch.hmrf.core_inference._NORMAL",
-        "port.patch.hmrf.core_inference._PROPAGATED",
-        "port.patch.integer_copy.DECODED",
-        "port.patch.integer_copy._SHARED",
-    }
-)
-"""What a whole run leaves changed today; #517 step 1 releases each on exit."""
+OUTLIVES: frozenset[str] = frozenset()
+"""What a whole run leaves changed: nothing since #517 step 1.
+
+`port.pipeline.patched` calls each `RUN_STATE` release on exit.
+"""
 
 
 @pytest.mark.infra

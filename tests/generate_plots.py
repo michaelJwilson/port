@@ -22,7 +22,7 @@ They are not a referee. Nothing here compares a figure against a previous
 one. **They are committed as PNG** (#452): a matplotlib PDF carries a
 creation timestamp, so two runs differed byte for byte with nothing having
 changed, and re-conflicted every pull request stacked on another. The run
-still writes its PDFs; `port.patch.utils.png_copies` has `write_fig` write a
+still writes its PDFs; `run_cnaster_port --png-copies` has `write_fig` write a
 PNG beside each, without metadata, and those are what is copied. `--cnaster`
 runs `cnaster`'s own `write_fig`, so it copies PDFs, for a local comparison.
 """
@@ -31,6 +31,7 @@ import argparse
 import shutil
 import tempfile
 from pathlib import Path
+from typing import Any
 
 import matplotlib as mpl
 
@@ -78,6 +79,15 @@ def _write_combined(
     """
     from cnaster.he import get_he_image
     from port.patch.utils import write_fig
+    from port.pipeline import FIGURE_DPI
+
+    # NB what the run's `FIGURE_SWAPS` row and `--png-copies` bind (#517).
+    PAGE: dict[str, Any] = {
+        "bbox_inches": None,
+        "dpi": FIGURE_DPI,
+        "group_rasters": True,
+        "png_copy": True,
+    }
 
     slide = mock_he(truth.labels, truth.lattice, seed=truth.seed)
     write_he_slide(slide, root / "slide")
@@ -89,18 +99,16 @@ def _write_combined(
     # NB written as drawn: the run has set seaborn's theme, which a page
     #    written under it would follow where a style is read at draw time.
     with page_style():
-        write_fig(
-            str(plots / "genomic.pdf"), genomic_figure(recorded), bbox_inches=None
-        )
+        write_fig(str(plots / "genomic.pdf"), genomic_figure(recorded), **PAGE)
         write_fig(
             str(plots / "spatial.pdf"),
             spatial_figure(recorded, frame),
-            bbox_inches=None,
+            **PAGE,
         )
         write_fig(
             str(plots / "combined.pdf"),
             combined_figure(recorded, frame),
-            bbox_inches=None,
+            **PAGE,
         )
 
 
@@ -127,22 +135,20 @@ def main() -> None:
                 truth, root, port=False, max_iter_outer=1, max_iter=3, n_states=STATES
             )
         else:
-            from port.patch.utils import png_copies
-
             # NB in process, through `port.scripts.run_cnaster.main`, with its
             #    defaults: the figures are the ones a user of the entry point gets.
-            with png_copies():
-                with recording() as recorded:
-                    output = run_written(
-                        truth,
-                        root,
-                        port=True,
-                        max_iter_outer=1,
-                        max_iter=3,
-                        n_states=STATES,
-                    )
+            with recording() as recorded:
+                output = run_written(
+                    truth,
+                    root,
+                    port=True,
+                    max_iter_outer=1,
+                    max_iter=3,
+                    n_states=STATES,
+                    flags=("--png-copies",),
+                )
 
-                _write_combined(recorded, truth, root, output)
+            _write_combined(recorded, truth, root, output)
 
         destination.mkdir(parents=True, exist_ok=True)
         # NB PDFs are no longer committed (#452). PNGs are overwritten by name

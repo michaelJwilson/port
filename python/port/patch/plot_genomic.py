@@ -27,8 +27,8 @@ pair -- share a colour, deduplicated as the copy numbers are. `"states"`
 colours by the HMM state, one per fitted state, the legend giving each
 state's continuous `2 mu` and `p`, so oversampling is visible rather than
 merged. Unset, as upstream: integer copies when `df_cnv` is given, states
-otherwise. `COLOUR_BY` is the module default `run_cnaster_port
---genomic-colours` sets.
+otherwise. `preferred_colour_by` is the mode a call that names none takes,
+where it can; `run_cnaster_port --genomic-colours` binds it at install.
 
 The layout helpers -- gridspec, axis furniture, chromosome boundaries, clone
 annotation -- are `cnaster`'s, imported rather than copied, so the page is
@@ -59,7 +59,6 @@ from matplotlib.collections import LineCollection
 from matplotlib.lines import Line2D
 
 __all__ = [
-    "COLOUR_BY",
     "COLOUR_MODES",
     "UPSTREAM",
     "Levels",
@@ -76,9 +75,6 @@ POINT_COLOUR = "#4C72B0"
 
 COLOUR_MODES = ("integer", "states")
 """Deduplicated integer `(A, B)`, or one colour per continuous HMM state."""
-
-COLOUR_BY: str | None = None
-"""The mode a call that names none takes; `None` is upstream's choice."""
 
 
 def clone_groups(
@@ -347,8 +343,10 @@ def plot_clones_genomic(
     plot_rdr_errors: str = "poisson",
     phased_integer_copies: bool = False,
     known_nb_baseline: np.ndarray | None = None,
+    *,
     figure: Any = None,
     colour_by: str | None = None,
+    preferred_colour_by: str | None = None,
 ) -> Any:
     """Per clone, RDR and BAF along the genome, with the fitted levels.
 
@@ -360,9 +358,9 @@ def plot_clones_genomic(
     20 in page, which is how `port.extensions.combined_figure` sets it in a
     column (#309). The layout is then the caller's, so no `tight_layout`.
 
-    `colour_by` is `"integer"`, `"states"` or, unset, `COLOUR_BY`; the
-    module default applies only where it can, so a call without `df_cnv`
-    under `COLOUR_BY = "integer"` colours by state as upstream does.
+    `colour_by` is `"integer"`, `"states"` or, unset, `preferred_colour_by`;
+    the preference applies only where it can, so a call without `df_cnv`
+    preferring `"integer"` colours by state as upstream does.
     """
     from port.patch.hmm_nophasing import hmm_nophasing
 
@@ -374,9 +372,11 @@ def plot_clones_genomic(
         msg = f"{single_X.shape[0]} bins against lengths summing to {np.sum(lengths)}"
         raise ValueError(msg)
 
-    if colour_by is None and COLOUR_BY is not None:
-        possible = df_cnv is not None if COLOUR_BY == "integer" else True
-        colour_by = COLOUR_BY if possible and res_combine is not None else None
+    if colour_by is None and preferred_colour_by is not None:
+        possible = df_cnv is not None if preferred_colour_by == "integer" else True
+        colour_by = (
+            preferred_colour_by if possible and res_combine is not None else None
+        )
 
     labels, groups = clone_groups(res_combine, clone_index)
 

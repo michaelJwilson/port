@@ -37,18 +37,19 @@ print(
 )
 sys.argv = ["sim_audit", *sys.argv[1:]]
 
-try:
-    runpy.run_module("tests.sim_audit", run_name="__main__")
-finally:
-    from port.patch.integer_copy import DECODED
+from port.patch.integer_copy import recorded
 
-    for n, fit in enumerate(cm.FITS):
-        print(
-            f"MIXFIT {n} K={fit.weights.shape[0]} gain={fit.end - fit.start:.2f} "
-            f"sweeps={fit.sweeps} W={np.round(fit.weights, 3).tolist()}"
-        )
-    for n, decode in enumerate(DECODED):
-        print(
-            f"DECODE {n} purity={np.round(np.asarray(decode.purity), 3).tolist()} "
-            f"shifts={np.round(np.asarray(decode.shifts), 3).tolist()}"
-        )
+with recorded() as DECODED:
+    try:
+        runpy.run_module("tests.sim_audit", run_name="__main__")
+    finally:
+        for n, fit in enumerate(cm.FITS):
+            print(
+                f"MIXFIT {n} K={fit.weights.shape[0]} gain={fit.end - fit.start:.2f} "
+                f"sweeps={fit.sweeps} W={np.round(fit.weights, 3).tolist()}"
+            )
+        for n, decode in enumerate(DECODED):
+            print(
+                f"DECODE {n} purity={np.round(np.asarray(decode.purity), 3).tolist()} "
+                f"shifts={np.round(np.asarray(decode.shifts), 3).tolist()}"
+            )

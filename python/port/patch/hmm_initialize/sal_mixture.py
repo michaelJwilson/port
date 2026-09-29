@@ -21,19 +21,19 @@ installed, `cnaster`'s otherwise.
 
 from __future__ import annotations
 
-from collections.abc import Iterator
-from contextlib import contextmanager
 from typing import Any
 
 import numpy as np
+from cnaster.hmm_initialize import gmm_init as UPSTREAM
+
+from port.patch._signature import as_upstream
 
 __all__ = [
     "DEFAULT",
     "POLISH_SECONDS",
+    "checked",
     "gmm_init",
-    "installed",
     "instance_of",
-    "sal_mixture",
 ]
 
 DEFAULT = "kmeans++x5+em"
@@ -48,27 +48,13 @@ DISPERSION = 10.0
 CONCENTRATION = 1_000.0
 """The seam's beta-binomial `alpha + beta`, `backends.DEFAULT_TAU`."""
 
-_START: list[str | None] = [None]
 
-
-def installed() -> bool:
-    """Whether a `sal` start is the read-depth stage's initializer."""
-    return _START[0] is not None
-
-
-@contextmanager
-def sal_mixture(start: str = DEFAULT) -> Iterator[None]:
-    """Hand `run_core_inference` this module's `gmm_init`, with `start`, for the block."""
+def checked(start: str) -> str:
+    """`start`, refused here if `sal` names no such start rather than hours in."""
     from sal.search.mixture_starts import lookup
 
     lookup(start)
-    previous = _START[0]
-    _START[0] = start
-
-    try:
-        yield
-    finally:
-        _START[0] = previous
+    return start
 
 
 def instance_of(
@@ -154,23 +140,28 @@ def fitted(
     return np.log(np.maximum(depth, 1e-12)), rate
 
 
-def gmm_init(*args: Any, **kwargs: Any) -> Any:
-    """`cnaster`'s initializer signature; `sal`'s start on the read-depth + BAF call."""
+@as_upstream(UPSTREAM, start=None, distinct=False)
+def gmm_init(arguments: dict[str, Any], options: dict[str, Any]) -> Any:
+    """`cnaster`'s initializer signature; `sal`'s `start` on the read-depth + BAF call.
+
+    Elsewhere, and with no `start`, `cnaster`'s initializer, or
+    `port.patch.hmm_initialize.distinct`'s where `distinct` is set.
+    `port.patch.hmrf.run_core_inference` binds both from its own options.
+    """
     from port.patch.hmm_initialize import distinct
 
-    params = str(args[4] if len(args) > 4 else kwargs.get("params", ""))
-    only_minor = kwargs.get("only_minor", args[10] if len(args) > 10 else True)
-    start = _START[0]
+    params = str(arguments.get("params", ""))
+    start = options["start"]
 
-    if start is None or "m" not in params or only_minor:
-        fallback = distinct.gmm_init if distinct.installed() else distinct.UPSTREAM
-        return fallback(*args, **kwargs)
+    if start is None or "m" not in params or arguments.get("only_minor", True):
+        fallback = distinct.gmm_init if options["distinct"] else distinct.UPSTREAM
+        return fallback(**arguments)
 
-    n_states = int(args[0] if args else kwargs["n_states"])
-    X = np.asarray(args[1] if len(args) > 1 else kwargs["X"])
-    base_nb_mean = np.asarray(args[2] if len(args) > 2 else kwargs["base_nb_mean"])
-    total_bb_RD = np.asarray(args[3] if len(args) > 3 else kwargs["total_bb_RD"])
-    rng = np.random.default_rng([int(kwargs.get("random_state") or 0), 0])
+    n_states = int(arguments["n_states"])
+    X = np.asarray(arguments["X"])
+    base_nb_mean = np.asarray(arguments["base_nb_mean"])
+    total_bb_RD = np.asarray(arguments["total_bb_RD"])
+    rng = np.random.default_rng([int(arguments.get("random_state") or 0), 0])
 
     log_mu, p_binom = fitted(
         instance_of(X, base_nb_mean, total_bb_RD, n_states), start, rng

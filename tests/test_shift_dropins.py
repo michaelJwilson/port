@@ -8,6 +8,7 @@ because the replacement forms `exp(log_mu - shift)` from recentred factors
 and upstream from the raw ones, so the last bits of the product differ.
 """
 
+import inspect
 from typing import Any
 
 import numpy as np
@@ -170,13 +171,25 @@ def test_the_pin_applies_to_a_shifted_rate_fit_only() -> None:
 
     original = module.UPSTREAM
     module.UPSTREAM = fake
+    # NB `cnaster`'s required arguments, never read by the fake.
+    blanks = dict.fromkeys(
+        name
+        for name, p in inspect.signature(original).parameters.items()
+        if p.default is inspect.Parameter.empty
+    )
 
     try:
-        unshifted = module.run_core_inference(hmmclass=hmm_nophasing, params="smp")
+        unshifted = module.run_core_inference(
+            **blanks, hmmclass=hmm_nophasing, params="smp"
+        )
 
         with logmu_shift():
-            pinned = module.run_core_inference(hmmclass=hmm_nophasing, params="smp")
-            baf_only = module.run_core_inference(hmmclass=hmm_nophasing, params="sp")
+            pinned = module.run_core_inference(
+                **blanks, hmmclass=hmm_nophasing, params="smp"
+            )
+            baf_only = module.run_core_inference(
+                **blanks, hmmclass=hmm_nophasing, params="sp"
+            )
     finally:
         module.UPSTREAM = original
 
