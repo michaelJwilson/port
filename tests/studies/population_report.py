@@ -361,6 +361,63 @@ def report(out: Path, study2_j: float) -> dict[str, Any]:
     for entry in slim["study2"].values():
         entry["recovered"].pop("crossing_draws")
     (out / "summary.json").write_text(json.dumps(slim, indent=1) + "\n")
+    (out / "tables.md").write_text(tables(slim))
     print(json.dumps({"members": slim["members"], "sufficient": slim["sufficient"]},
                      indent=1))  # fmt: skip
     return slim
+
+
+def _cell(rate: float, low: float, high: float, n: int) -> str:
+    if n == 0 or not np.isfinite(rate):
+        return "–"
+    return f"{rate:.2f} [{low:.2f}, {high:.2f}] ({n})"
+
+
+def tables(summary: dict[str, Any]) -> str:
+    """Markdown tables of both studies: rate [95% over members] (count) per bin."""
+    lines = []
+    study1 = summary["study1"]
+    centres = next(iter(study1.values()))["detected"]["centres"]
+    lines.append(
+        "| clone UMIs, log10 | "
+        + " | ".join(f"J = {float(j):g}" for j in study1)
+        + " |"
+    )
+    lines.append("| --- |" + " --- |" * len(study1))
+    for k, centre in enumerate(centres):
+        cells = []
+        for entry in study1.values():
+            e = entry["detected"]
+            cells.append(_cell(e["rate"][k], e["low"][k], e["high"][k], e["n"][k]))
+        if any(c != "–" for c in cells):
+            lines.append(f"| {centre:.2f} | " + " | ".join(cells) + " |")
+    lines.append("")
+    lines.append("| J | members | clones | UMI50, log10 [95%] |")
+    lines.append("| --- | --- | --- | --- |")
+    for j, entry in study1.items():
+        e = entry["detected"]
+        low, high = e["crossing_interval"]
+        lines.append(f"| {float(j):g} | {entry['members']} | {entry['clones']} | "
+                     f"{e['crossing']:.2f} [{low:.2f}, {high:.2f}] |")  # fmt: skip
+    lines.append("")
+
+    study2 = summary["study2"]
+    centres = next(iter(study2.values()))["recovered"]["centres"]
+    lines.append("| event length, log10 bp | " + " | ".join(study2) + " |")
+    lines.append("| --- |" + " --- |" * len(study2))
+    for k, centre in enumerate(centres):
+        cells = []
+        for entry in study2.values():
+            e = entry["recovered"]
+            cells.append(_cell(e["rate"][k], e["low"][k], e["high"][k], e["n"][k]))
+        if any(c != "–" for c in cells):
+            lines.append(f"| {centre:.2f} | " + " | ".join(cells) + " |")
+    lines.append("")
+    lines.append("| class | events | L50, log10 bp [95%] |")
+    lines.append("| --- | --- | --- |")
+    for name, entry in study2.items():
+        e = entry["recovered"]
+        low, high = e["crossing_interval"]
+        lines.append(f"| {name} | {entry['events']} | "
+                     f"{e['crossing']:.2f} [{low:.2f}, {high:.2f}] |")  # fmt: skip
+    return "\n".join(lines) + "\n"
