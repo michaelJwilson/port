@@ -349,6 +349,32 @@ clone on every try (#304).
 """
 
 
+RECTANGLE_REDRAWS = 10
+"""Boundary redraws before the partition falls back to equal-count bands.
+
+A redraw cannot help when the coordinates themselves leave a block empty on
+every draw: a one-row strip puts every spot in one band of the other axis,
+so two of four blocks are always empty (#248).
+"""
+
+
+def _banded(coords: np.ndarray, n_clones: int) -> tuple[list[np.ndarray], np.ndarray]:
+    """`n_clones` equal-count bands along the axis with the most distinct values.
+
+    Spots are ordered along that axis, ties by the other axis then by index,
+    so the result is deterministic. Every band holds `n // n_clones` or one
+    more spots, which passes `cnaster`'s 20 per cent test whenever
+    `n >= n_clones`.
+    """
+    n_spots = len(coords)
+    axis = int(np.argmax([np.unique(coords[:, a]).size for a in (0, 1)]))
+    order = np.lexsort((np.arange(n_spots), coords[:, 1 - axis], coords[:, axis]))
+    clone_id = np.empty(n_spots, dtype=int)
+    clone_id[order] = np.arange(n_spots) * n_clones // n_spots
+
+    return [np.where(clone_id == i)[0] for i in range(n_clones)], clone_id
+
+
 def initialize_rectangular_clones(
     coords: np.ndarray, n_clones: int, random_state: int = 0
 ) -> tuple[list[np.ndarray], np.ndarray]:
@@ -368,6 +394,10 @@ def initialize_rectangular_clones(
     boundaries are redrawn from the same stream. Wherever `cnaster` returns
     within that many tries this returns the same, bitwise; where it would
     not return, this does.
+
+    After :data:`RECTANGLE_REDRAWS` redraws also fail, the coordinates
+    cannot pass on any draw, and the partition is :func:`_banded`'s instead
+    (#248). That is a stated difference: `cnaster` does not return there.
     """
     # NB the legacy global stream, deliberately: `cnaster` draws from it, and
     #    the same draws in the same order are what makes this bitwise.
@@ -401,11 +431,16 @@ def initialize_rectangular_clones(
 
     block_id = blocks()
     tries = 0
+    redraws = 0
 
     while True:
         if tries == RECTANGLE_TRIES:
+            if redraws == RECTANGLE_REDRAWS:
+                return _banded(coords, n_clones)
+
             block_id = blocks()
             tries = 0
+            redraws += 1
 
         tries += 1
         block_clone_map = np.random.randint(low=0, high=n_clones, size=p**2)  # noqa: NPY002
