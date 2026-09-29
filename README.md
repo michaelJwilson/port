@@ -264,6 +264,12 @@ lowering the dpi and merging the rasterizing groups writes a different file
 by design (#195). It is **in the default** because it is the largest win
 here, and `--no-figure-swaps` is the arm that reproduces bitwise.
 
+**The figure swaps also set one face for every figure**, `cnaster`'s and
+`port`'s: `[tool.port.figures]` in `pyproject.toml` names it (STIX, with its
+math fonts, by default; the alternatives are commented there), and
+`port.extensions.figure_style` refuses a face matplotlib cannot find rather
+than falling back to another.
+
 Measured at 4,000 x 1,980 x 5, against `--no-patch`:
 
 | installed | wall | peak RSS |

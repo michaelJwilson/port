@@ -454,6 +454,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             selected = selected + NUMERIC_SWAPS
         if figures:
             selected = selected + FIGURE_SWAPS
+
+            from port.extensions.figure_style import figure_font
+
+            stack.enter_context(figure_font())
         if arguments.sample_layout is not None:
             if not figures:
                 _parser().error("--sample-layout needs the figure swaps")
