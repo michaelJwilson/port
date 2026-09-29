@@ -27,7 +27,10 @@ Each planted clone is matched to the fitted clone it overlaps most (Hungarian
 on the spot overlap). `exact` is the share of matched clone-bins whose
 decoded `(A, B)` is the planted pair, and `exact_altered` the same over bins
 where the planted pair is not `(1, 1)`: `run_sim_analysis`'s `correct_rate`
-without the phase flip.
+without the phase flip. `exact_altered_flip` accepts `(B, A)` as well, which
+is `run_sim_analysis`'s default (`include_flip=True`, `:991`): which
+haplotype is `A` is not identifiable from phased counts, and on CalicoST
+hard a gain fitted at BAF 1/3 decodes to `(1, 2)` where `(2, 1)` is planted.
 """
 
 from __future__ import annotations
@@ -70,6 +73,7 @@ class SimRecovery:
     n_integer_clones: int
     exact: float
     exact_altered: float
+    exact_altered_flip: float
     bins: int
     clone_of: dict[int, int] = field(default_factory=dict)
 
@@ -129,13 +133,14 @@ def score(sample: SimulatedSample, output: Path, arm: str, wall: float) -> SimRe
     planted = sample.copies_at(chromosome, middle)
     covered = planted[:, 0, 0] >= 0
 
-    truth, state, pair = [], [], []
+    truth, state, pair, flipped = [], [], [], []
     for clone, fit in clone_of.items():
         truth.append(planted[covered, clone, 0] * 1_000 + planted[covered, clone, 1])
         state.append(run["pred"][covered, fit])
         pair.append(run["a"][covered, fit] * 1_000 + run["b"][covered, fit])
+        flipped.append(run["b"][covered, fit] * 1_000 + run["a"][covered, fit])
 
-    t, z, ab = (np.concatenate(x) for x in (truth, state, pair))
+    t, z, ab, ba = (np.concatenate(x) for x in (truth, state, pair, flipped))
     altered = t != 1_001
 
     return SimRecovery(
@@ -151,6 +156,7 @@ def score(sample: SimulatedSample, output: Path, arm: str, wall: float) -> SimRe
         n_integer_clones=int(np.unique(merged[fitted[scored]]).size),
         exact=round(float(np.mean(t == ab)), 4),
         exact_altered=round(float(np.mean((t == ab)[altered])), 4),
+        exact_altered_flip=round(float(np.mean(((t == ab) | (t == ba))[altered])), 4),
         bins=int(covered.sum()),
         clone_of=clone_of,
     )
