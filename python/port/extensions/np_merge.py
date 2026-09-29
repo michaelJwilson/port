@@ -372,8 +372,8 @@ def merged(res: Any, chosen: list[list[int]]) -> Any:
     return out
 
 
-def hold(source: Any, result: Any) -> None:
-    """Keep the read-depth stage's merged `result` for the fit it came from.
+def hold(source: Any, res: Any) -> None:
+    """Keep the read-depth stage's merged `res` for the fit it came from.
 
     `cnaster` merges the read-depth stage's clones into `merged_res_combine`
     and then writes its final clones from `res_combine`, the unmerged fit
@@ -381,7 +381,7 @@ def hold(source: Any, result: Any) -> None:
     before it, change the plots and nothing else. Held here, the merge is
     handed back by `taken` where `reindex_clones` receives that fit.
     """
-    _PENDING.update(pred=np.array(source["pred_cnv"]), result=result)
+    _PENDING.update(pred=np.array(source["pred_cnv"]), result=res)
 
 
 def taken(res: Any) -> Any:
