@@ -6,6 +6,12 @@ says how far it has moved since, and in which direction.
 
 Paper at `0478c74`; `cnaster` at `4adad4d`; CalicoST at `c1abcae`.
 
+> **Correction (#509):** the squared cost quoted below is `cnaster`'s hill
+> climb. The decoder `run_cnaster` calls,
+> `hill_climbing_integer_copynumber_fixdiploid_milp`, defaults to
+> `cost_type="L1"`, so the live objective is L1 against CalicoST's L2.
+> `docs/audit-calicost-methods.md` §8.
+
 **`cnaster` has changed the solver and kept the objective.** The MILP variant
 is a real capability gain over CalicoST -- globally optimal where hill climbing
 is not -- and it optimizes the same ad-hoc cost the paper names as the reason
