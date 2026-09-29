@@ -417,3 +417,53 @@ def test_the_writer_returns_the_planted_states_of_a_perfect_decode(
     assert len(held) >= 1
     assert np.exp(held.logmu.iloc[0]) == pytest.approx(5.0, rel=1e-12)
     assert held.p.iloc[0] == pytest.approx(0.88, rel=1e-12)
+
+
+def _profiles(disagreeing: dict[str, int], n_bins: int = 1000) -> pd.DataFrame:
+    """Clones `id -> bins that differ from the neutral profile`, over `n_bins`."""
+    frame = pd.DataFrame({"CHR": np.ones(n_bins, dtype=int)})
+
+    for clone, differing in disagreeing.items():
+        profile = np.ones((n_bins, 2), dtype=int)
+        profile[:differing] = [2, 1]
+        frame[f"clone{clone} A"], frame[f"clone{clone} B"] = profile.T
+
+    return frame
+
+
+@pytest.mark.analytic
+def test_the_agreement_rule_joins_what_agrees_and_no_less() -> None:
+    """At 0.99, profiles differing at 7 of 1,000 bins are one; at 14, two (#518).
+
+    `dev_tree`'s slice-split clone differs at 2 of 2,895 bins (0.9993) and
+    the closest distinct pair on the fixtures at 0.9863, so the thresholds
+    below bracket both. The default stays the exact rule.
+    """
+    from port.extensions.outputs import integer_clones
+
+    frame = _profiles({"0": 0, "1": 7, "2": 14})
+
+    assert integer_clones(frame, 0.99) == {"0": "0", "1": "0", "2": "2"}
+    assert integer_clones(frame) == {"0": "0", "1": "1", "2": "2"}
+    assert integer_clones(frame, 0.985) == {"0": "0", "1": "0", "2": "0"}
+
+
+@pytest.mark.infra
+@pytest.mark.parametrize("agreement", [0.0, -0.1, 1.5])
+def test_an_agreement_outside_the_unit_interval_is_refused(agreement: float) -> None:
+    """A share of bins must be in (0, 1]; 0 would merge every clone into one."""
+    from port.extensions.outputs import integer_clones
+
+    with pytest.raises(ValueError, match="merge agreement"):
+        integer_clones(_profiles({"0": 0}), agreement)
+
+
+@pytest.mark.infra
+def test_the_configured_agreement_is_what_write_outputs_uses(tmp_path: Path) -> None:
+    """`int_copy_num.merge_agreement` reaches `config_keys` and the manifest (#518)."""
+    from port.extensions.outputs import config_keys
+
+    config = tmp_path / "config.yaml"
+    config.write_text("int_copy_num:\n  merge_agreement: 0.99\n")
+
+    assert config_keys(config)["merge_agreement"] == 0.99
