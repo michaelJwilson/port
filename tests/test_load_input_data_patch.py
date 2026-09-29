@@ -334,10 +334,9 @@ def test_the_range_file_removes_the_snps_inside_the_ranges_it_names(
     # NB a window around every third planted SNP, wide enough to be a range and
     #    narrow enough to leave its neighbours alone.
     centres = np.flatnonzero(np.arange(position.size) % 3 == 0)
-    # NB `chr` prefixed: `get_filter_ranges` tests `"chr" in ranges.Chr.iloc[0]`
-    #    and raises `TypeError: argument of type 'numpy.int64' is not iterable`
-    #    on a file whose chromosomes are bare integers, so the prefixed form is
-    #    the only one it reads.
+    # NB `chr` prefixed, the one form `cnaster`'s `get_filter_ranges` reads:
+    #    it raises `TypeError` on bare integers (#176). port's `filter_ranges`
+    #    reads both; `test_a_range_file_reads_the_same_with_or_without_the_chr_prefix`.
     ranges = "\n".join(
         f"chr{chromosome[k]}\t{position[k] - 10}\t{position[k] + 10}" for k in centres
     )
@@ -360,6 +359,35 @@ def test_the_range_file_removes_the_snps_inside_the_ranges_it_names(
     np.testing.assert_array_equal(
         filtered.cell_snp_Ballele, baseline.cell_snp_Ballele[:, ~inside]
     )
+
+
+@pytest.mark.cnaster
+@pytest.mark.patch
+def test_a_range_file_reads_the_same_with_or_without_the_chr_prefix(
+    tmp_path: Path,
+) -> None:
+    """`filter_ranges` equals `cnaster`'s on `chrN`, and reads bare `N` (#176).
+
+    `cnaster.filter.get_filter_ranges` raises `TypeError` on a file whose
+    chromosomes parse as integers; the prefixed form is the one it reads.
+    """
+    import pandas as pd
+    from cnaster.filter import get_filter_ranges
+    from port.patch.io import filter_ranges
+
+    rows = [(2, 500, 900), (1, 100, 300), (10, 5, 50), (1, 50, 80)]
+    prefixed = tmp_path / "prefixed.tsv"
+    bare = tmp_path / "bare.tsv"
+    prefixed.write_text("".join(f"chr{c}\t{s}\t{e}\n" for c, s, e in rows))
+    bare.write_text("".join(f"{c}\t{s}\t{e}\n" for c, s, e in rows))
+
+    upstream = get_filter_ranges(prefixed)
+
+    pd.testing.assert_frame_equal(filter_ranges(prefixed), upstream)
+    pd.testing.assert_frame_equal(filter_ranges(bare), upstream)
+
+    with pytest.raises(TypeError):
+        get_filter_ranges(bare)
 
 
 @pytest.mark.end2end
