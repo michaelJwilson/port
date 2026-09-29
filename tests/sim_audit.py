@@ -14,6 +14,10 @@ The four ARIs are `tests.recovery_audit`'s, on the sample's truth:
   planted `(A, B)` at the bin's midpoint;
 - **copy state, integer**: the decoded `(A, B)` against the same.
 
+`--pure` first redraws the tumour spots as pure tumour
+(`tests.sim_fixtures.purify`): the simulated spots carry about 8 per cent
+normal admixture, which no pair `(A, B)` at `p = A / (A + B)` can fit.
+
 `--oracle-start` sets `annotation.clone_label` to the sample's
 `truth_clone_labels.tsv`, `cnaster`'s own known-labels mode: the planted
 clones start phasing and the BAF stage in place of the grid
@@ -27,7 +31,8 @@ Each planted clone is matched to the fitted clone it overlaps most (Hungarian
 on the spot overlap). `exact` is the share of matched clone-bins whose
 decoded `(A, B)` is the planted pair, and `exact_altered` the same over bins
 where the planted pair is not `(1, 1)`: `run_sim_analysis`'s `correct_rate`
-without the phase flip.
+without the phase flip. `exact_altered_minor` allows it: a decoded `(B, A)`
+counts, so the minor and major copies are scored and the phase is not.
 """
 
 from __future__ import annotations
@@ -70,8 +75,20 @@ class SimRecovery:
     n_integer_clones: int
     exact: float
     exact_altered: float
+    exact_altered_minor: float
     bins: int
     clone_of: dict[int, int] = field(default_factory=dict)
+
+
+def _scratch() -> Path:
+    """Where generated samples go: `$PORT_SIM_CACHE`, reused when complete, else a temp dir."""
+    import os
+
+    cache = os.environ.get("PORT_SIM_CACHE")
+    if cache:
+        Path(cache).mkdir(parents=True, exist_ok=True)
+        return Path(cache)
+    return Path(tempfile.mkdtemp())
 
 
 def _barcode(values: pd.Series) -> np.ndarray:
@@ -84,8 +101,11 @@ def read_run(sample: SimulatedSample, output: Path) -> dict[str, Any]:
     run = next(output.rglob("rdrbaf_final_nstates*_smp.npz"))
     fit = np.load(run, allow_pickle=True)
     table = pd.read_csv(run.parent / "clone_labels.tsv", sep="\t", comment="#")
+    # NB CalicoST writes the barcodes as an index named `BARCODES` (#494);
+    #    `cnaster` as a `barcode` column.
+    barcodes = table["barcode"] if "barcode" in table else table.iloc[:, 0]
     by_barcode = dict(
-        zip(_barcode(table["barcode"]), table["clone_label"].to_numpy(), strict=True)
+        zip(_barcode(barcodes), table["clone_label"].to_numpy(), strict=True)
     )
     labels = np.array([by_barcode.get(b, -1) for b in sample.barcodes])
 
@@ -93,8 +113,15 @@ def read_run(sample: SimulatedSample, output: Path) -> dict[str, Any]:
     n_fitted = int(labels.max()) + 1
     n_states = np.asarray(fit["new_log_mu"]).shape[0]
     pred = np.asarray(fit["pred_cnv"]).reshape(len(seglevel), -1) % n_states
-    a = np.stack([seglevel[f"clone{c} A"].to_numpy() for c in range(n_fitted)], 1)
-    b = np.stack([seglevel[f"clone{c} B"].to_numpy() for c in range(n_fitted)], 1)
+    # NB CalicoST leaves out the column of a clone whose integer fit it
+    #    skipped (#494); its bins read as -1, never as a planted pair.
+    missing = np.full(len(seglevel), -1)
+    a = np.stack(
+        [seglevel.get(f"clone{c} A", missing) for c in range(n_fitted)], 1
+    ).astype(np.int64)
+    b = np.stack(
+        [seglevel.get(f"clone{c} B", missing) for c in range(n_fitted)], 1
+    ).astype(np.int64)
 
     return {
         "labels": labels,
@@ -137,6 +164,8 @@ def score(sample: SimulatedSample, output: Path, arm: str, wall: float) -> SimRe
 
     t, z, ab = (np.concatenate(x) for x in (truth, state, pair))
     altered = t != 1_001
+    swapped = (ab % 1_000) * 1_000 + ab // 1_000
+    either = (t == ab) | (t == swapped)
 
     return SimRecovery(
         sample=sample.name,
@@ -151,6 +180,7 @@ def score(sample: SimulatedSample, output: Path, arm: str, wall: float) -> SimRe
         n_integer_clones=int(np.unique(merged[fitted[scored]]).size),
         exact=round(float(np.mean(t == ab)), 4),
         exact_altered=round(float(np.mean((t == ab)[altered])), 4),
+        exact_altered_minor=round(float(np.mean(either[altered])), 4),
         bins=int(covered.sum()),
         clone_of=clone_of,
     )
@@ -221,10 +251,46 @@ def main() -> None:
         action="store_true",
         help="start the BAF stage from the planted clone labels",
     )
+    parser.add_argument(
+        "--pure",
+        action="store_true",
+        help="redraw the tumour spots pure (`tests.sim_fixtures.purify`) first",
+    )
+    parser.add_argument(
+        "--window",
+        default="",
+        metavar="X0,X1,Y0,Y1",
+        help="crop to the spots in this contiguous window first (`crop`)",
+    )
+    parser.add_argument(
+        "--normal-fraction",
+        default="",
+        metavar="F1,F2,...",
+        help="with --pure, tumour clone c's spots F_c normal instead",
+    )
     parser.add_argument("flags", nargs=argparse.REMAINDER)
     arguments = parser.parse_args()
 
     sample = load_simulated(SAMPLES.get(arguments.sample, arguments.sample))
+
+    if arguments.window:
+        from tests.sim_fixtures import crop
+
+        window = tuple(float(v) for v in arguments.window.split(","))
+        assert len(window) == 4
+        cropped = crop(sample, _scratch(), window)
+        sample = load_simulated(cropped.name, cropped.parent)
+        print(f"WINDOW {list(window)} spots={sample.barcodes.size}", flush=True)
+
+    if arguments.pure:
+        from tests.sim_fixtures import purify
+
+        normal = tuple(
+            float(f) for f in arguments.normal_fraction.split(",") if f.strip()
+        )
+        print(f"PLANTED normal_fraction={list(normal)}", flush=True)
+        pure = purify(sample, _scratch(), normal=normal)
+        sample = load_simulated(pure.name, pure.parent)
     overrides = {
         k: yaml.safe_load(v)
         for k, _, v in (entry.partition("=") for entry in arguments.set)

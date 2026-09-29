@@ -173,3 +173,70 @@ def test_the_merge_loop_merges_what_upstream_merges() -> None:
     np.testing.assert_array_equal(our_assignment, their_assignment)
 
     assert our_likelihood == their_likelihood
+
+
+@pytest.mark.cnaster
+@pytest.mark.patch
+@pytest.mark.usefixtures("cnaster_config")
+def test_self_only_pooling_assigns_what_upstream_assigns() -> None:
+    """With each spot pooling itself alone, the vectorized path (#488).
+
+    Referee: upstream's call with the same `smooth_mat`, whose numba loop the
+    vectorized `0 + x` replaces; all three returns bitwise, and the pooled
+    arrays themselves against `pool_spatio_genomic_counts`.
+    """
+    import cnaster.hmrf
+    import scipy.sparse as sp
+    from cnaster.hmm_nophasing import hmm_nophasing
+    from port.patch.hmrf.clone_assignment import (
+        UPSTREAM,
+        _self_only,
+        _zero_plus,
+        pipeline_clone_assignment,
+    )
+
+    fixture = spot_clone_field(n_states=4, n_obs=60, n_spots=36, n_clones=3)
+    arguments = clone_assignment_arguments(fixture, width=6)
+    identity = sp.identity(36, format="csr")
+
+    assert _self_only(identity)
+    assert not _self_only(sp.csr_matrix(np.ones((36, 36))))
+
+    theirs_pooled = cnaster.hmrf.pool_spatio_genomic_counts(
+        arguments["single_X"],
+        arguments["single_base_nb_mean"],
+        arguments["single_total_bb_RD"],
+        identity.indices,
+        identity.indptr,
+        None,
+        False,
+    )
+    ours_pooled = [
+        _zero_plus(arguments[name])
+        for name in ("single_X", "single_base_nb_mean", "single_total_bb_RD")
+    ]
+
+    for ours, theirs in zip(ours_pooled, theirs_pooled[:3], strict=True):
+        assert ours.dtype == theirs.dtype
+        np.testing.assert_array_equal(ours, theirs)
+
+    def call(function: Any) -> Any:
+        return function(
+            arguments["single_X"],
+            arguments["single_base_nb_mean"],
+            arguments["single_total_bb_RD"],
+            arguments["res"],
+            arguments["pred"],
+            arguments["adjacency_mat"],
+            arguments["prev_assignment"].copy(),
+            arguments["sample_ids"],
+            arguments["spatial_weight"],
+            smooth_mat=identity,
+            hmmclass=hmm_nophasing,
+        )
+
+    theirs, ours = call(UPSTREAM), call(pipeline_clone_assignment)
+
+    np.testing.assert_array_equal(ours[1], theirs[1])
+    np.testing.assert_array_equal(ours[0], theirs[0])
+    assert ours[2] == theirs[2]

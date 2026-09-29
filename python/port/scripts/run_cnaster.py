@@ -28,8 +28,8 @@ from __future__ import annotations
 import argparse
 import sys
 import time
-from collections.abc import Sequence
-from contextlib import ExitStack
+from collections.abc import Iterator, Sequence
+from contextlib import ExitStack, contextmanager
 from typing import Any
 
 from port.pipeline import (
@@ -142,6 +142,17 @@ def _parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--hmm-start",
+        default=None,
+        metavar="START",
+        help=(
+            "the read-depth + BAF stage's HMM start from sal's count-pair "
+            "mixture, a key of sal.search.mixture_starts (#489), conditioned "
+            "on each bin's exposure and trials; 'none' keeps --distinct-init's. "
+            "Off by default; kmeans++x5+em with --sal."
+        ),
+    )
+    parser.add_argument(
         "--distinct-init",
         action=argparse.BooleanOptionalAction,
         default=None,
@@ -158,11 +169,10 @@ def _parser() -> argparse.ArgumentParser:
         action=argparse.BooleanOptionalAction,
         default=None,
         help=(
-            "decode integer copies under the caps the configuration states, "
-            "int_copy_num.max_total_copy and max_allele_copy (#313); cnaster "
-            "reads neither and decodes under A + B <= 6. **On by default**, "
-            "off with --no-patch; a configuration that states no cap decodes "
-            "exactly as cnaster does."
+            "decode integer copies by the HMM's likelihood (#362) under the "
+            "cap the configuration states, int_copy_num.max_total_copy (#313); "
+            "cnaster's L1 decoders read no cap and decode under A + B <= 6. "
+            "**On by default**, off with --no-patch."
         ),
     )
     parser.add_argument(
@@ -185,17 +195,6 @@ def _parser() -> argparse.ArgumentParser:
             "(A, B), or by fitted HMM state with each state's continuous "
             "2 mu and p, so states oversampling one integer pair stay "
             "distinct. Unset, cnaster's choice per figure. Needs --figure-swaps."
-        ),
-    )
-    parser.add_argument(
-        "--copy-likelihood",
-        action="store_true",
-        help=(
-            "re-decode integer copies by the HMM's own pseudobulk likelihood, "
-            "the path held at the fit and the neutral state pinned at (1, 1) "
-            "(#327). Off by default: on the lattice fixture it decodes 0.794 "
-            "of altered clone-bins exactly against the MILP's 0.417, for 5 s "
-            "a run; needs the copy caps (--copy-cap), which it refines."
         ),
     )
     parser.add_argument(
@@ -243,6 +242,30 @@ def _parser() -> argparse.ArgumentParser:
             "gain (#312): alpha expansion with the Rust minimum cut for the "
             "clone labelling, a lower Potts energy on every problem measured. "
             "Off by default; no row reproduces cnaster."
+        ),
+    )
+    parser.add_argument(
+        "--copy-errors",
+        action="store_true",
+        help=(
+            "after the run, write cnv_copy_sets.tsv beside its fit: every "
+            "integer (A, B) inside each state's 95 per cent credible region, "
+            "from the observed information of the fitted objective (#353). "
+            "**Off by default**: it differentiates the whole objective once, "
+            "and it adds a file rather than changing one. Needs the shift, "
+            "whose pin sets the scale (A + B) / 2 is compared on."
+        ),
+    )
+    parser.add_argument(
+        "--copy-decode",
+        choices=("lattice", "shared"),
+        default="lattice",
+        help=(
+            "the integer copy decode written to the tables and figures (#371): "
+            "`lattice`, the default, each clone's own path over every (A, B) "
+            "with its tumour fraction fitted (#370), per bin; `shared`, one "
+            "pair per continuous state for every clone (#327). Both read the "
+            "captured fit, so both need the copy rows."
         ),
     )
     parser.add_argument(
@@ -312,7 +335,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         for swap in COPY_SWAPS:
             print(
                 f"{swap.module}.{swap.name} <- {swap.replacement}  "
-                f"(#{swap.ticket}, caps from the config; --no-copy-cap to omit)"
+                f"(#{swap.ticket}, likelihood decode, caps from the config; --no-copy-cap to omit)"
             )
         from port.patch.lattice import RUST_LATTICES
 
@@ -340,6 +363,21 @@ def main(argv: Sequence[str] | None = None) -> int:
         else arguments.figure_swaps
     ):
         _parser().error("--genomic-colours needs the figure swaps")
+
+    # NB **on** unless refused, and off with `--no-patch` for the same
+    #    reason the figures are: a baseline arm that fits a different
+    #    model is not a baseline. The clone assignment applies the shift
+    #    through `port`'s `pipeline_clone_assignment`, which is in
+    #    `SWAPS`, so `--no-patch --shift` fits shifted and assigns clones
+    #    unshifted; it is allowed, and said.
+    shift = not arguments.no_patch if arguments.shift is None else arguments.shift
+
+    # NB the decode compares `(A + B) / 2` against the pinned rates; an
+    #    unshifted fit's rates carry the baseline's per-clone scale, so
+    #    the sets would be drawn on the wrong axis (#353). Refused before
+    #    the config is read.
+    if arguments.copy_errors and not shift:
+        _parser().error("--copy-errors needs the shift; drop --no-shift")
 
     import yaml
 
@@ -391,14 +429,6 @@ def main(argv: Sequence[str] | None = None) -> int:
         #    3 (#244). The 1.78x kernel ratio does not survive `CountEncoder`
         #    dedup, which is what #240 warned it might not.
         approx = bool(arguments.approx)
-        # NB **on** unless refused, and off with `--no-patch` for the same
-        #    reason the figures are: a baseline arm that fits a different
-        #    model is not a baseline. The clone assignment applies the shift
-        #    through `port`'s `pipeline_clone_assignment`, which is in
-        #    `SWAPS`, so `--no-patch --shift` fits shifted and assigns clones
-        #    unshifted; it is allowed, and said.
-        shift = not arguments.no_patch if arguments.shift is None else arguments.shift
-
         # NB bitwise, so on by default like `SWAPS`, and off with it: a
         #    baseline arm is `cnaster`'s compiled code as well as its names.
         rust = not arguments.no_patch if arguments.rust is None else arguments.rust
@@ -407,6 +437,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             from port.patch.lattice import rust_lattices
 
             stack.enter_context(rust_lattices())
+
+        kept = stack.enter_context(_kept()) if arguments.copy_errors else None
 
         selected = SWAPS if not arguments.no_patch else ()
 
@@ -433,6 +465,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             selected = selected + NUMERIC_SWAPS
         if figures:
             selected = selected + FIGURE_SWAPS
+
+            from port.extensions.figure_style import figure_font
+
+            stack.enter_context(figure_font())
         if arguments.sample_layout is not None:
             if not figures:
                 _parser().error("--sample-layout needs the figure swaps")
@@ -484,14 +520,26 @@ def main(argv: Sequence[str] | None = None) -> int:
             from port.patch.hmm_initialize.distinct import distinct_init
 
             stack.enter_context(distinct_init())
+        hmm_start = (
+            ("kmeans++x5+em" if arguments.sal else "none")
+            if arguments.hmm_start is None
+            else arguments.hmm_start
+        )
+        if hmm_start != "none":
+            from port.patch.hmm_initialize.sal_mixture import sal_mixture
 
-        if arguments.copy_likelihood:
-            if not copy_cap:
-                _parser().error("--copy-likelihood refines the copy-cap decoders")
+            stack.enter_context(sal_mixture(hmm_start))
 
-            from port.patch.integer_copy import by_likelihood
+        # NB the copy rows decode by the HMM's likelihood only (#362), which
+        #    reads each clone's counts from the fit this captures; entered
+        #    before `patched`, so the shift's row installs the capturing
+        #    `run_core_inference`.
+        if copy_cap:
+            from port.extensions.copy_likelihood import capture
+            from port.patch.integer_copy import copy_decoder
 
-            stack.enter_context(by_likelihood())
+            stack.enter_context(capture())
+            stack.enter_context(copy_decoder(arguments.copy_decode))
         if shift:
             from port.patch.hmm_nophasing import logmu_shift
 
@@ -521,6 +569,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 + (", figures included" if figures else "")
                 + (", copy caps from the config" if copy_cap else "")
                 + (", refinement mask" if refinement_mask else "")
+                + (f", sal HMM start {hmm_start}" if hmm_start != "none" else "")
                 + (", floor merged smallest first" if floor else "")
                 + (", distinct initial states" if distinct else "")
                 + (", approx included" if approx else "")
@@ -572,15 +621,24 @@ def main(argv: Sequence[str] | None = None) -> int:
     if not (arguments.no_outputs or arguments.no_patch):
         _write_outputs(
             arguments.config,
-            {"figures": figures, "approx": approx, "shift": shift},
+            {
+                "figures": figures,
+                "approx": approx,
+                "shift": shift,
+                "copy_decode": f"lattice_decode ({arguments.copy_decode})"
+                if copy_cap
+                else "cnaster",
+            },
             lineage.table(),
         )
+    if kept is not None:
+        _write_copy_sets(arguments.config, kept)
 
     print(f"run_cnaster_port: {wall:.2f}s", file=sys.stderr)
     return 0
 
 
-def _write_outputs(config: str, flags: dict[str, bool], segments: Any) -> None:
+def _write_outputs(config: str, flags: dict[str, Any], segments: Any) -> None:
     """`port.extensions.outputs` into each run directory the run wrote.
 
     `segments` is the run's lineage, one row per gene and one label column
@@ -604,6 +662,68 @@ def _write_outputs(config: str, flags: dict[str, bool], segments: Any) -> None:
         if len(segments):
             segments.to_csv(run / "gene_segments.tsv", sep="\t", index=False)
         print(f"run_cnaster_port: outputs written to {run}", file=sys.stderr)
+
+
+@contextmanager
+def _kept() -> Iterator[list[Any]]:
+    """Keep the last `params="smp"` fit `port`'s `run_core_inference` returns.
+
+    Entered **before** the swaps, so `patched` finds the wrapper where it
+    rebinds `run_core_inference`, and the fit kept is the pinned one.
+    """
+    import numpy as np
+
+    import port.patch.hmrf as patch
+    from port.extensions.copy_errors import Captured
+
+    kept: list[Any] = []
+    original = patch.run_core_inference
+
+    def keep(
+        single_x: Any, lengths: Any, base: Any, total: Any, *rest: Any, **kw: Any
+    ) -> Any:
+        result = original(single_x, lengths, base, total, *rest, **kw)
+
+        if kw.get("params") == "smp":
+            kept.append(
+                Captured(
+                    np.array(single_x, dtype=np.float64),
+                    np.asarray(lengths, dtype=np.int64),
+                    np.array(base, dtype=np.float64),
+                    np.array(total, dtype=np.float64),
+                    result,
+                )
+            )
+
+        return result
+
+    patch.run_core_inference = keep
+
+    try:
+        yield kept
+    finally:
+        patch.run_core_inference = original
+
+
+def _write_copy_sets(config: str, kept: list[Any]) -> None:
+    """Write the credible sets beside the run's final fit."""
+    from pathlib import Path
+
+    import yaml
+
+    from port.extensions.copy_errors import write_copy_sets
+
+    if not kept:
+        print("run_cnaster_port: --copy-errors kept no fit", file=sys.stderr)
+        return
+
+    output = Path(yaml.safe_load(Path(config).read_text())["paths"]["output_dir"])
+    fits = sorted(
+        output.rglob("rdrbaf_final_nstates*_smp.npz"), key=lambda p: p.stat().st_mtime
+    )
+    run = fits[-1].parent if fits else output
+    path = write_copy_sets(run, kept[-1])
+    print(f"run_cnaster_port: wrote {path}", file=sys.stderr)
 
 
 def _report(spent: dict[str, Spent], wall: float, *, patched: bool) -> None:
