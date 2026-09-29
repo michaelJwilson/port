@@ -28,11 +28,10 @@ __all__ = [
     "expansion_then_floor",
     "expansion_then_merge",
     "fusion_then_merge",
-    "label_solver",
     "sal_icm_argmax_sweep",
     "sal_icm_floor_sweep",
     "sal_icm_sweep",
-    "set_label_solver",
+    "solver_for",
     "sweep_for",
 ]
 
@@ -72,15 +71,6 @@ ENVIRONMENT = "PORT_LABEL_SOLVER"
 """Read once per call, so a subprocess arm can select without a flag."""
 
 
-class _Selection:
-    """One mutable slot, so the module needs no `global` statement."""
-
-    name: Solver = "icm"
-
-
-_SELECTED = _Selection()
-
-
 def _checked(name: str, source: str) -> Solver:
     if name not in SOLVERS:
         msg = (
@@ -93,26 +83,19 @@ def _checked(name: str, source: str) -> Solver:
     return name
 
 
-def set_label_solver(name: str) -> Solver:
-    """Choose the solver, refusing a name that is not one."""
-    _SELECTED.name = _checked(name, "the requested solver")
-
-    return _SELECTED.name
-
-
-def label_solver() -> Solver:
-    """The selected solver, with the environment as an override.
+def solver_for(requested: str) -> Solver:
+    """The solver a call uses: `requested`, or the environment's override.
 
     The environment is consulted on every call rather than at import, so a
     benchmark harness that sets it per subprocess does not depend on import
-    order.
+    order. Either is refused if it names no solver.
     """
     from_environment = os.environ.get(ENVIRONMENT)
 
     if from_environment:
         return _checked(from_environment, ENVIRONMENT)
 
-    return _SELECTED.name
+    return _checked(requested, "the requested solver")
 
 
 def sweep_for(name: Solver) -> Any:

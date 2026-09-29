@@ -328,7 +328,7 @@ class Segmentation:
         """`cnaster`'s `log_sitewise_transmat` over this segmentation, contig by contig.
 
         `composable` is #449's law, :meth:`_composable_switch`, which no run
-        installs yet: `port.patch.recomb.composable_switch()` turns it on.
+        installs yet: `port.patch.recomb.get_sitewise_transmat(..., composable=True)`.
 
         Entry `k` is the log probability of a phase switch between segment `k`
         and `k + 1`: Haldane's `(1 - exp(-2 nu d)) / 2` over the centimorgan

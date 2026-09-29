@@ -44,6 +44,7 @@ from port.pipeline import (
     instrumented,
     patched,
     warm,
+    with_options,
 )
 
 
@@ -178,6 +179,15 @@ def _parser() -> argparse.ArgumentParser:
             "cap the configuration states, int_copy_num.max_total_copy (#313); "
             "cnaster's L1 decoders read no cap and decode under A + B <= 6. "
             "**On by default**, off with --no-patch."
+        ),
+    )
+    parser.add_argument(
+        "--png-copies",
+        action="store_true",
+        help=(
+            "write a PNG without metadata beside each PDF, so two runs of the "
+            "same code write the same bytes (docs/plots, #452). Needs "
+            "--figure-swaps."
         ),
     )
     parser.add_argument(
@@ -448,33 +458,39 @@ def main(argv: Sequence[str] | None = None) -> int:
             #    swap is a `SHIFT_SWAPS` row, so `--no-patch --shift` reads it.
             stack.enter_context(sal_emission())
 
-        if arguments.sal:
-            from port.extensions.sal import sal
-
-            if arguments.no_patch:
-                selected = tuple(
-                    swap for swap in SWAPS if swap.name == "pipeline_clone_assignment"
-                )
+        if arguments.sal and arguments.no_patch:
+            selected = tuple(
+                swap for swap in SWAPS if swap.name == "pipeline_clone_assignment"
+            )
         if figures:
             selected = selected + FIGURE_SWAPS
 
             from port.extensions.figure_style import figure_font
 
             stack.enter_context(figure_font())
+        if arguments.png_copies:
+            if not figures:
+                _parser().error("--png-copies needs the figure swaps")
+
+            selected = with_options(
+                selected, "port.patch.utils:write_fig", png_copy=True
+            )
         if arguments.sample_layout is not None:
             if not figures:
                 _parser().error("--sample-layout needs the figure swaps")
 
-            from port.patch.plotting import spatial
-
-            stack.callback(setattr, spatial, "SAMPLE_LAYOUT", spatial.SAMPLE_LAYOUT)
-            spatial.SAMPLE_LAYOUT = arguments.sample_layout
+            selected = with_options(
+                selected,
+                "port.patch.plotting:plot_clones_spatial",
+                preferred_sample_layout=arguments.sample_layout,
+            )
 
         if arguments.genomic_colours is not None:
-            from port.patch import plot_genomic
-
-            stack.callback(setattr, plot_genomic, "COLOUR_BY", plot_genomic.COLOUR_BY)
-            plot_genomic.COLOUR_BY = arguments.genomic_colours
+            selected = with_options(
+                selected,
+                "port.patch.plot_genomic:plot_clones_genomic",
+                preferred_colour_by=arguments.genomic_colours,
+            )
         # NB on unless refused, and off with `--no-patch` like the figures: a
         #    baseline arm decodes under `cnaster`'s caps.
         copy_cap = (
@@ -510,32 +526,32 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "pipeline_clone_assignment, which --no-patch leaves out"
             )
         if refinement_mask:
-            from port.patch.hmrf.refinement import forget
-
             selected = selected + REFINEMENT_SWAPS
-            stack.callback(forget)
         if floor:
-            from port.patch.icm.floor import floor_merge
-
-            stack.enter_context(floor_merge())
+            selected = with_options(
+                selected,
+                "port.patch.hmrf:pipeline_clone_assignment",
+                floor_merge=True,
+            )
+        # NB options of `port`'s `run_core_inference`, bound once the shift's
+        #    table, which holds it, is selected (#517).
+        inference: dict[str, Any] = {}
         distinct = (
             shift and not arguments.no_patch
             if arguments.distinct_init is None
             else arguments.distinct_init
         )
         if distinct:
-            from port.patch.hmm_initialize.distinct import distinct_init
-
-            stack.enter_context(distinct_init())
+            inference["distinct_init"] = True
         hmm_start = (
             ("kmeans++x5+em" if arguments.sal else "none")
             if arguments.hmm_start is None
             else arguments.hmm_start
         )
         if hmm_start != "none":
-            from port.patch.hmm_initialize.sal_mixture import sal_mixture
+            from port.patch.hmm_initialize.sal_mixture import checked
 
-            stack.enter_context(sal_mixture(hmm_start))
+            inference["hmm_start"] = checked(hmm_start)
 
         # NB the copy rows decode by the HMM's likelihood only (#362), which
         #    reads each clone's counts from the fit this captures; entered
@@ -543,18 +559,32 @@ def main(argv: Sequence[str] | None = None) -> int:
         #    `run_core_inference`.
         if copy_cap:
             from port.extensions.copy_likelihood import capture
-            from port.patch.integer_copy import copy_decoder
 
             stack.enter_context(capture())
-            stack.enter_context(copy_decoder(arguments.copy_decode))
+
+            for swap in COPY_SWAPS:
+                selected = with_options(
+                    selected, swap.replacement, decoder=arguments.copy_decode
+                )
         if shift:
             from port.patch.hmm_nophasing import logmu_shift
 
             selected = selected + SHIFT_SWAPS
             stack.enter_context(logmu_shift())
 
+        if inference:
+            selected = with_options(
+                selected, "port.patch.hmrf:run_core_inference", **inference
+            )
+
         if arguments.sal:
-            stack.enter_context(sal(shift=shift))
+            from port.extensions.sal import sal_options
+
+            selected = with_options(
+                selected,
+                "port.patch.hmrf:pipeline_clone_assignment",
+                **sal_options(shift=shift),
+            )
 
             if arguments.no_patch:
                 print(

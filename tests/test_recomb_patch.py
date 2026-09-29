@@ -229,9 +229,9 @@ def test_cnasters_law_depends_on_the_binning(
 def test_the_kernel_takes_the_composable_law_only_when_installed(
     tmp_path: Path,
 ) -> None:
-    """`composable_switch()` gives `composable_log_switch` within contigs; outside, `cnaster`'s law."""
+    """`composable=True` gives `composable_log_switch` within contigs; outside, `cnaster`'s law."""
     from port.extensions.segments import composable_log_switch
-    from port.patch.recomb import composable_switch, get_sitewise_transmat
+    from port.patch.recomb import get_sitewise_transmat
 
     contigs = range(1, 3)
     path = _map(tmp_path / "map.tsv", contigs)
@@ -242,8 +242,9 @@ def test_the_kernel_takes_the_composable_law_only_when_installed(
     )
 
     default = get_sitewise_transmat("block_id", table.copy(), path, NU, -2.0)
-    with composable_switch():
-        composable = get_sitewise_transmat("block_id", table.copy(), path, NU, -2.0)
+    composable = get_sitewise_transmat(
+        "block_id", table.copy(), path, NU, -2.0, composable=True
+    )
 
     for k in range(len(edges) - 1):
         if edges.CHR.iloc[k + 1] != edges.CHR.iloc[k]:

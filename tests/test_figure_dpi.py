@@ -65,20 +65,20 @@ def _written(tmp_path: Path, name: str, writer: Any, **keywords: Any) -> bytes:
 # NB one figure's form (#403): passed where it merged; runs again where this
 #    module or the lock changes, and at a release.
 @pytest.mark.deprecate
-def test_at_the_same_dpi_it_is_cnasters_function_byte_for_byte(tmp_path: Path) -> None:
-    """The patch is a default, not a rewrite.
+def test_at_its_defaults_it_is_cnasters_function_byte_for_byte(tmp_path: Path) -> None:
+    """The patch is two options bound at install, not a rewrite (#517).
 
-    Handed `cnaster`'s own `dpi=300`, and with the grouping put back, the two
-    write identical files, so every difference a run sees comes from the two
-    defaults and none from the code. That is what makes the change reviewable
-    as two numbers rather than as a diff, and what would catch a patch that
-    quietly dropped `transparent` or the tight bounding box along with them.
+    Called as `cnaster` calls it, the two write identical files, so every
+    difference a run sees comes from the options `FIGURE_SWAPS` binds and
+    none from the code. That is what makes the change reviewable as two
+    numbers rather than as a diff, and what would catch a patch that quietly
+    dropped `transparent` or the tight bounding box along with them.
     """
     from cnaster.utils import write_fig as upstream
     from port.patch.utils import write_fig as patched
 
-    assert _written(tmp_path, "upstream", upstream, dpi=300) == _written(
-        tmp_path, "patched", patched, dpi=300, group_rasters=False
+    assert _written(tmp_path, "upstream", upstream) == _written(
+        tmp_path, "patched", patched
     )
 
 
@@ -95,13 +95,13 @@ def test_the_default_writes_the_same_page_with_a_coarser_raster(
     is invisible in a file size.
     """
     from cnaster.utils import write_fig as upstream
-    from port.patch.utils import FIGURE_DPI
     from port.patch.utils import write_fig as patched
+    from port.pipeline import FIGURE_DPI
 
-    assert FIGURE_DPI < 300, "the default no longer lowers the resolution"
+    assert FIGURE_DPI < 300, "the row no longer lowers the resolution"
 
     at_300 = _written(tmp_path, "upstream", upstream)
-    at_default = _written(tmp_path, "patched", patched, group_rasters=False)
+    at_default = _written(tmp_path, "patched", patched, dpi=FIGURE_DPI)
 
     boxes = (MEDIA_BOX.search(at_300), MEDIA_BOX.search(at_default))
     assert all(boxes), "no page geometry found in one of the files"
@@ -143,20 +143,19 @@ def test_the_figure_swap_is_kept_out_of_the_default_table() -> None:
 
 @pytest.mark.infra
 def test_png_copies_are_the_same_bytes_on_every_write(tmp_path: Path) -> None:
-    """Inside `png_copies` a PNG lands beside the PDF, and two writes are identical (#452).
+    """With `png_copy` a PNG lands beside the PDF, and two writes are identical (#452).
 
     The committed figures are these PNGs because the PDF beside them carries
-    a clock; outside the context no PNG is written, so `cnaster`'s behaviour
+    a clock; without the option no PNG is written, so `cnaster`'s behaviour
     is unchanged.
     """
-    from port.patch.utils import png_copies, write_fig
+    from port.patch.utils import write_fig
 
     write_fig(str(tmp_path / "plain.pdf"), _figure())
     assert not (tmp_path / "plain.png").exists()
 
-    with png_copies():
-        write_fig(str(tmp_path / "one.pdf"), _figure())
-        write_fig(str(tmp_path / "two.pdf"), _figure())
+    write_fig(str(tmp_path / "one.pdf"), _figure(), png_copy=True)
+    write_fig(str(tmp_path / "two.pdf"), _figure(), png_copy=True)
 
     one, two = (tmp_path / "one.png").read_bytes(), (tmp_path / "two.png").read_bytes()
     assert one[:8] == b"\x89PNG\r\n\x1a\n"

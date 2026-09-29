@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import numpy as np
 import pytest
 
@@ -38,25 +40,23 @@ def test_the_start_recovers_the_planted_states() -> None:
     vary per bin, so a start that ignored the covariate would read the
     depth's spread as states.
     """
-    from port.patch.hmm_initialize.sal_mixture import sal_mixture
+    from port.patch.hmm_initialize.sal_mixture import DEFAULT, gmm_init
 
     X, base, trials = _draw()
 
-    with sal_mixture():
-        from port.patch.hmm_initialize.sal_mixture import gmm_init
-
-        log_mu, p_binom, _, _ = gmm_init(
-            len(PLANTED),
-            X,
-            base,
-            trials,
-            "smp",
-            None,
-            None,
-            None,
-            random_state=0,
-            only_minor=False,
-        )
+    log_mu, p_binom, _, _ = gmm_init(
+        len(PLANTED),
+        X,
+        base,
+        trials,
+        "smp",
+        None,
+        None,
+        None,
+        random_state=0,
+        only_minor=False,
+        start=DEFAULT,
+    )
 
     fitted = np.column_stack([log_mu.ravel(), p_binom.ravel()])
 
@@ -69,24 +69,32 @@ def test_the_start_recovers_the_planted_states() -> None:
 
 
 @pytest.mark.infra
-def test_the_start_is_handed_over_only_while_installed(
+def test_the_start_is_handed_over_only_under_its_option(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Installed, `sal_mixture.gmm_init` takes precedence over `distinct`'s."""
+    """With `hmm_start`, `sal_mixture.gmm_init` takes precedence over `distinct`'s."""
+    import inspect
+
     import port.patch.hmrf.core_inference as core
     from port.patch.hmm_initialize import distinct, sal_mixture
 
-    seen: list[object] = []
+    seen: list[Any] = []
     monkeypatch.setattr(
         core, "UPSTREAM", lambda *_, **k: seen.append(k.get("hmm_initializer"))
     )
+    parameters = inspect.signature(core.run_core_inference).parameters.values()
+    blanks = [None] * sum(
+        p.default is inspect.Parameter.empty
+        and p.kind is inspect.Parameter.POSITIONAL_OR_KEYWORD
+        for p in parameters
+    )
 
-    with distinct.distinct_init():
-        core.run_core_inference()
-        with sal_mixture.sal_mixture():
-            core.run_core_inference()
+    core.run_core_inference(*blanks, distinct_init=True)
+    core.run_core_inference(*blanks, distinct_init=True, hmm_start=sal_mixture.DEFAULT)
 
-    assert seen == [distinct.gmm_init, sal_mixture.gmm_init]
+    assert seen[0] is distinct.gmm_init
+    assert seen[1].func is sal_mixture.gmm_init
+    assert seen[1].keywords == {"start": sal_mixture.DEFAULT, "distinct": True}
 
 
 @pytest.mark.patch
@@ -101,7 +109,7 @@ def test_the_baf_only_and_minor_calls_keep_upstreams_start(
     Referee: `cnaster.hmm_initialize.gmm_init` on the same arguments.
     """
     from port.patch.hmm_initialize.distinct import UPSTREAM
-    from port.patch.hmm_initialize.sal_mixture import gmm_init, sal_mixture
+    from port.patch.hmm_initialize.sal_mixture import DEFAULT, gmm_init
 
     X, base, trials = _draw(400, seed=1)
     arguments = (4, X, base, trials, params, np.array([400]), None, None)
@@ -109,8 +117,7 @@ def test_the_baf_only_and_minor_calls_keep_upstreams_start(
 
     theirs = UPSTREAM(*arguments, **keywords)
 
-    with sal_mixture():
-        ours = gmm_init(*arguments, **keywords)
+    ours = gmm_init(*arguments, **keywords, start=DEFAULT)
 
     for mine, their in zip(ours, theirs, strict=True):
         if their is None:

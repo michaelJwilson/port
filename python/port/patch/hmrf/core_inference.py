@@ -45,12 +45,15 @@ import numpy as np
 from cnaster.hmrf import reindex_clones as UPSTREAM_REINDEX
 from cnaster.hmrf import run_core_inference as UPSTREAM
 
+from port.patch._signature import as_upstream
+
 __all__ = [
     "UPSTREAM",
     "ZERO_NORMAL_SHIFT",
     "clone_shifts",
     "pin_neutral",
     "reindex_clones",
+    "release",
     "run_core_inference",
     "shift_for",
 ]
@@ -101,6 +104,12 @@ _PROPAGATED: dict[str, np.ndarray] = {}
 
 _NORMAL: list[int] = []
 """The pinned normal state, shared by every clone (the normal clone's)."""
+
+
+def release() -> None:
+    """Drop what the run held; `port.pipeline.patched` calls this on exit (#517)."""
+    _PROPAGATED.clear()
+    _NORMAL.clear()
 
 
 def clone_shifts(
@@ -154,7 +163,8 @@ def clone_shifts(
     return shifts
 
 
-def reindex_clones(res_combine: Any, *args: Any, **kwargs: Any) -> Any:
+@as_upstream(UPSTREAM_REINDEX)
+def reindex_clones(arguments: dict[str, Any]) -> Any:
     """Upstream's reindex, with the clones' shifts permuted alongside them.
 
     Upstream permutes the decode's columns and not `new_log_mu_shift`, so the
@@ -163,8 +173,9 @@ def reindex_clones(res_combine: Any, *args: Any, **kwargs: Any) -> Any:
     """
     # NB bound at import, as `UPSTREAM_REINDEX`: the swap rebinds the name in
     #    `cnaster.hmrf`, so reading it here at call time would call this back.
+    res_combine = arguments["res_combine"]
     before = np.asarray(res_combine["pred_cnv"])
-    reindexed, posterior = UPSTREAM_REINDEX(res_combine, *args, **kwargs)
+    reindexed, posterior = UPSTREAM_REINDEX(**arguments)
     # NB by `__getitem__`: `cnaster`'s `CnaHMRFResult` has no `get`, and
     #    reading through `hasattr(res, "get")` left the shifts unpermuted on
     #    every real run (#501).
@@ -230,28 +241,40 @@ def shift_for(pred_cnv: Any) -> tuple[float, int | None]:
     return 0.0, None
 
 
-def run_core_inference(*args: Any, **kwargs: Any) -> Any:
-    """Upstream's inference, then the neutral pin when the fit was shifted."""
+@as_upstream(UPSTREAM, hmm_start=None, distinct_init=False)
+def run_core_inference(arguments: dict[str, Any], options: dict[str, Any]) -> Any:
+    """Upstream's inference, then the neutral pin when the fit was shifted.
+
+    Options, which `run_cnaster_port` binds at install (#517): `hmm_start`,
+    `sal`'s start for the read-depth stage (#489); `distinct_init`, the
+    initializer choosing among distinct components (#348).
+    """
+    import functools
+
     from port.patch.hmm_initialize import distinct, sal_mixture
 
     # NB passed rather than rebound: upstream binds the initializer as a
     #    default argument (#348).
-    if sal_mixture.installed() and "hmm_initializer" not in kwargs:
-        # NB the read-depth stage's start from `sal`'s mixture (#489); the
-        #    BAF-only stage falls back to `distinct`'s inside it.
-        kwargs["hmm_initializer"] = sal_mixture.gmm_init
-    elif distinct.installed() and "hmm_initializer" not in kwargs:
-        kwargs["hmm_initializer"] = distinct.gmm_init
+    if "hmm_initializer" not in arguments:
+        if options["hmm_start"] is not None:
+            # NB the BAF-only stage falls back to `distinct`'s inside it.
+            arguments["hmm_initializer"] = functools.partial(
+                sal_mixture.gmm_init,
+                start=options["hmm_start"],
+                distinct=options["distinct_init"],
+            )
+        elif options["distinct_init"]:
+            arguments["hmm_initializer"] = distinct.gmm_init
 
-    result = UPSTREAM(*args, **kwargs)
+    result = UPSTREAM(**arguments)
 
-    hmmclass = kwargs.get("hmmclass")
+    hmmclass = arguments.get("hmmclass")
     shifted = bool(getattr(hmmclass, "apply_logmu_shift", False))
 
-    if shifted and "m" in str(kwargs.get("params", "")):
+    if shifted and "m" in str(arguments.get("params", "")):
         _NORMAL[:] = [pin_neutral(result)]
 
-        base = args[2] if len(args) > 2 else kwargs.get("single_base_nb_mean")
+        base = arguments.get("single_base_nb_mean")
 
         try:
             decoded = result["pred_cnv"] is not None

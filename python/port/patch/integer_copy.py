@@ -49,22 +49,41 @@ import contextlib
 from collections.abc import Iterator
 from typing import Any
 
+import cnaster.integer_copy
 import numpy as np
 
+from port.patch._signature import as_upstream
+
 __all__ = [
-    "DECODED",
     "DECODERS",
     "PairsByBin",
     "configured_caps",
-    "copy_decoder",
     "decode_clone",
     "hill_climbing_integer_copynumber_fixdiploid_milp",
     "hill_climbing_integer_copynumber_oneclone",
+    "recorded",
+    "release",
     "stated_total",
 ]
 
-DECODED: list[Any] = []
-"""Each shared decode's `port.extensions.copy_likelihood.CopyFit`, in call order."""
+_RECORDERS: list[list[Any]] = []
+"""The lists open `recorded()` blocks collect decodes into."""
+
+
+@contextlib.contextmanager
+def recorded() -> Iterator[list[Any]]:
+    """Each decode's `port.extensions.copy_likelihood.CopyFit` in the block, in call order.
+
+    The list is the caller's; the module keeps nothing once the block ends (#517).
+    """
+    decodes: list[Any] = []
+    _RECORDERS.append(decodes)
+
+    try:
+        yield decodes
+    finally:
+        _RECORDERS.remove(decodes)
+
 
 MAX_ALLELE_COPY = 5
 """`cnaster`'s default, in both signatures."""
@@ -122,33 +141,18 @@ def _caps(max_allele_copy: int, max_total_copy: int) -> tuple[int, int]:
 _SHARED: dict[str, Any] = {}
 """The decode of the captured fit, computed at the first clone's call."""
 
+
+def release() -> None:
+    """Drop the run's decode; `port.pipeline.patched` calls this on exit (#517).
+
+    Keyed by `id()`, so a decode left behind could be served to a later run
+    whose fit was allocated at the same address.
+    """
+    _SHARED.clear()
+
+
 DECODERS = ("lattice", "shared")
 """`lattice`, the default (#370), then `shared` (#327)."""
-
-
-class _Selection:
-    """One mutable slot, so the module needs no `global` statement."""
-
-    name = "lattice"
-
-
-_DECODER = _Selection()
-
-
-@contextlib.contextmanager
-def copy_decoder(name: str) -> Iterator[None]:
-    """Decode by `name` for the block, refusing a name that is not one."""
-    if name not in DECODERS:
-        msg = f"copy decoder {name!r} is not one of {DECODERS}"
-        raise ValueError(msg)
-
-    previous = _DECODER.name
-    _DECODER.name = name
-
-    try:
-        yield
-    finally:
-        _DECODER.name = previous
 
 
 class PairsByBin(np.ndarray):
@@ -253,12 +257,17 @@ def _write_decode(decoded: Any, normal_clone: int) -> None:
 
 
 def decode_clone(
-    new_log_mu: Any, new_p_binom: Any, pred_cnv: Any, total: int
+    new_log_mu: Any,
+    new_p_binom: Any,
+    pred_cnv: Any,
+    total: int,
+    *,
+    decoder: str = "lattice",
 ) -> tuple[np.ndarray, float, int]:
     """One clone's `(copies, loss, ploidy)`, as `cnaster`'s decoders return them.
 
     Decoded once, from the captured fit, at the first clone's call, by the
-    selected decoder (:func:`copy_decoder`). `shared` returns its per-state
+    selected `decoder`. `shared` returns its per-state
     pairs to every clone; `lattice` returns this clone's :class:`PairsByBin`.
     `loss` is the negative log-likelihood reached; `ploidy` the median total
     copy over this clone's bins.
@@ -287,7 +296,9 @@ def decode_clone(
     path = np.asarray(pred_cnv, dtype=np.int64).reshape(-1) % log_mu.size
     key = id(_CAPTURED[0][3]) if _CAPTURED else id(clones)
 
-    decoder = _DECODER.name
+    if decoder not in DECODERS:
+        msg = f"copy decoder {decoder!r} is not one of {DECODERS}"
+        raise ValueError(msg)
 
     if (
         _SHARED.get("key") != key
@@ -324,7 +335,8 @@ def decode_clone(
 
         _SHARED.update(key=key, total=total, decoder=decoder, decoded=decoded)
         _SHARED["calls"] = {}
-        DECODED.append(decoded)
+        for decodes in _RECORDERS:
+            decodes.append(decoded)
 
     decoded = _SHARED["decoded"]
 
@@ -340,31 +352,52 @@ def decode_clone(
     return PairsByBin(states, bins, path), -decoded.log_likelihood, ploidy
 
 
+@as_upstream(
+    cnaster.integer_copy.hill_climbing_integer_copynumber_oneclone, decoder="lattice"
+)
 def hill_climbing_integer_copynumber_oneclone(
-    new_log_mu: Any,
-    base_nb_mean: Any,  # noqa: ARG001 -- cnaster's positional; the capture carries it
-    new_p_binom: Any,
-    pred_cnv: Any,
-    max_allele_copy: int = 5,
-    max_total_copy: int = 6,
-    **ignored: Any,  # noqa: ARG001 -- cnaster's other keywords, unused here
+    arguments: dict[str, Any], options: dict[str, Any]
 ) -> Any:
-    """`cnaster`'s name, decoding by :func:`decode_clone`."""
-    _, total = _caps(max_allele_copy, max_total_copy)
+    """`cnaster`'s name and signature, decoding by :func:`decode_clone`.
 
-    return decode_clone(new_log_mu, new_p_binom, pred_cnv, total)
+    `base_nb_mean` and the hill climb's own keywords are accepted and unused:
+    the capture carries the fit the decode reads. `decoder` is one of
+    `DECODERS`; `run_cnaster_port --copy-decode` binds it at install.
+    """
+    _, total = _caps(
+        arguments.get("max_allele_copy", 5), arguments.get("max_total_copy", 6)
+    )
+
+    return decode_clone(
+        arguments["new_log_mu"],
+        arguments["new_p_binom"],
+        arguments["pred_cnv"],
+        total,
+        decoder=options["decoder"],
+    )
 
 
+@as_upstream(
+    cnaster.integer_copy.hill_climbing_integer_copynumber_fixdiploid_milp,
+    decoder="lattice",
+)
 def hill_climbing_integer_copynumber_fixdiploid_milp(
-    new_log_mu: Any,
-    base_nb_mean: Any,  # noqa: ARG001 -- cnaster's positional; the capture carries it
-    new_p_binom: Any,
-    pred_cnv: Any,
-    max_allele_copy: int = 5,
-    max_total_copy: int = 6,
-    **ignored: Any,  # noqa: ARG001 -- cnaster's other keywords, unused here
+    arguments: dict[str, Any], options: dict[str, Any]
 ) -> Any:
-    """`cnaster`'s name, decoding by :func:`decode_clone`."""
-    _, total = _caps(max_allele_copy, max_total_copy)
+    """`cnaster`'s name and signature, decoding by :func:`decode_clone`.
 
-    return decode_clone(new_log_mu, new_p_binom, pred_cnv, total)
+    `base_nb_mean` and the hill climb's own keywords are accepted and unused:
+    the capture carries the fit the decode reads. `decoder` is one of
+    `DECODERS`; `run_cnaster_port --copy-decode` binds it at install.
+    """
+    _, total = _caps(
+        arguments.get("max_allele_copy", 5), arguments.get("max_total_copy", 6)
+    )
+
+    return decode_clone(
+        arguments["new_log_mu"],
+        arguments["new_p_binom"],
+        arguments["pred_cnv"],
+        total,
+        decoder=options["decoder"],
+    )

@@ -29,34 +29,12 @@ with its own floor at 0, and this is applied after each sweep.
 
 from __future__ import annotations
 
-from collections.abc import Iterator
-from contextlib import contextmanager
-
 import numpy as np
 
-__all__ = ["configured_floor", "enforce_floor", "floor_merge", "installed"]
-
-_INSTALLED: list[bool] = [False]
+__all__ = ["configured_floor", "enforce_floor"]
 
 CNASTER_FLOOR = 200
 """`icm_sweep_deque`'s default `min_clone_spots`, which no key reaches (#81)."""
-
-
-def installed() -> bool:
-    """Whether :func:`floor_merge` is active."""
-    return _INSTALLED[0]
-
-
-@contextmanager
-def floor_merge() -> Iterator[None]:
-    """Replace the ICM's random floor with :func:`enforce_floor` for the block."""
-    previous = _INSTALLED[0]
-    _INSTALLED[0] = True
-
-    try:
-        yield
-    finally:
-        _INSTALLED[0] = previous
 
 
 def configured_floor() -> int:

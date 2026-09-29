@@ -107,6 +107,7 @@ __all__ = [
     "hmm_nophasing",
     "logmu_shift",
     "neutral_state",
+    "release",
 ]
 
 NEUTRAL_BAF_TOLERANCE = 0.05
@@ -742,3 +743,11 @@ def finite_difference() -> Iterator[None]:
         yield
     finally:
         hmm_nophasing.analytic_gradient = previous
+
+
+def release() -> None:
+    """Drop the last fit's shift; `port.pipeline.patched` calls this on exit (#517).
+
+    Keyed by size, so a later fit of the same shape would read this one's.
+    """
+    hmm_nophasing._row_shift = None
