@@ -1,6 +1,6 @@
 r"""The #380 design study's clone-mixture variants: every option it measured.
 
-`port.extensions.clone_mixture` carries the one adopted: integer-lattice
+`port.sandbox.admixture.clone_mixture` carries the one adopted: integer-lattice
 profiles, a diploid column in `W`, rows regularized by entropy at
 `ENTROPY_WEIGHT = 1`, five admixture starts. This module keeps the rest,
 each selectable, with the numbers that set it aside (easy simulated sample,

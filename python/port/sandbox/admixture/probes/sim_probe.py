@@ -5,7 +5,7 @@
 Run from the repository root, as `run_sim.sh` does. `MIX_VARIANTS=1` routes
 `--clone-mixture` through `port.sandbox.admixture.variants`, whose knobs
 `MIX_ROW_MODE`, `MIX_ENTROPY` and `MIX_STARTS` set; otherwise the package's
-`port.extensions.clone_mixture` runs as shipped.
+`port.sandbox.admixture.clone_mixture` runs as shipped.
 """
 
 import os
@@ -17,7 +17,7 @@ import numpy as np
 
 sys.path[:0] = [str(Path.cwd() / "python"), str(Path.cwd())]
 
-import port.extensions.clone_mixture as package
+import port.sandbox.admixture.clone_mixture as package
 import port.sandbox.admixture.variants as variants
 
 cm = package
