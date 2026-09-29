@@ -22,8 +22,6 @@ The dispersions fitted are the pseudobulk's, not the spots': on this instance
 
 from __future__ import annotations
 
-from dataclasses import replace
-
 import numpy as np
 import pytest
 from port.extensions.copy_likelihood import Pseudobulk, _emission, shared_decode
@@ -44,10 +42,10 @@ def _pseudobulks(truth: CoreInferenceTruth) -> list[tuple[Pseudobulk, np.ndarray
             counts_nb=truth.counts_nb[:, spots].sum(axis=1),
             base_nb_mean=base,
             counts_bb=truth.counts_bb[:, spots].sum(axis=1),
-            total_bb_rd=truth.total_bb_RD[:, spots].sum(axis=1),
-            log_lambda=np.log(base / base.sum()),
-            alpha=1.0,
-            tau=1.0,
+            total_bb_RD=truth.total_bb_RD[:, spots].sum(axis=1),
+            normal_log_lambda=np.log(base / base.sum()),
+            dispersion=1.0,
+            taus=1.0,
         )
         rows.append((bulk, np.asarray(truth.states[clone], dtype=np.int64)))
     return rows
@@ -67,7 +65,7 @@ def _fit_dispersions(
                     _emission(
                         log_mu[path],
                         p[path],
-                        replace(bulk, alpha=alpha, tau=tau),
+                        bulk._replace(dispersion=alpha, taus=tau),
                         np.arange(path.size),
                     )
                 )
@@ -116,7 +114,7 @@ def test_known_states_and_fitted_dispersions_decode_the_planted_pairs() -> None:
 
     for bulk, path in bulks:
         decoded = shared_decode(
-            [(path, replace(bulk, alpha=alpha, tau=tau), 0.0)],
+            [(path, bulk._replace(dispersion=alpha, taus=tau), 0.0)],
             n_states=N_STATES,
             normal=0,
             max_total_copy=6,

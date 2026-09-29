@@ -18,14 +18,12 @@ it.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Literal
+from typing import Literal, NamedTuple
 
 __all__ = ["TERMS", "Term", "replaced_by"]
 
 
-@dataclass(frozen=True)
-class Term:
+class Term(NamedTuple):
     """One concept, its one name, and the names it retires."""
 
     name: str

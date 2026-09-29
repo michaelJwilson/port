@@ -69,8 +69,7 @@ nothing to say the fit is fifty-six chi-square units from explaining it.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NamedTuple
 
 import numpy as np
 from scipy.stats import chi2
@@ -104,8 +103,7 @@ CHANNELS = 2
 """`(rdr, baf)`. The degrees of freedom of the credible region."""
 
 
-@dataclass(frozen=True)
-class IntegerCopyResult:
+class IntegerCopyResult(NamedTuple):
     """One copy state decoded, with what the decoding is entitled to claim.
 
     Parameters

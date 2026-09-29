@@ -32,7 +32,7 @@ import json
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 import numpy as np
 import pandas as pd
@@ -399,8 +399,7 @@ def plot_spatial(r: Realization, out: Path) -> Path:
     return _save(fig, out / "spatial.png", tight=False)
 
 
-@dataclass
-class Tree:
+class Tree(NamedTuple):
     """The clones' tree with its events in the order they arose."""
 
     parent: dict[str, str | None]

@@ -86,8 +86,7 @@ from __future__ import annotations
 
 import copy
 import time
-from dataclasses import dataclass
-from typing import Any
+from typing import Any, NamedTuple
 
 import numpy as np
 from cnaster.config import get_global_config, start_time
@@ -116,8 +115,7 @@ symptom was a `RecursionError` two minutes into a whole run.
 """
 
 
-@dataclass
-class _Boundary:
+class _Boundary(NamedTuple):
     """What the seam recomputes per outer iteration and need not (#59 item 4).
 
     `num_valid_nb_spotwise`, `num_valid_bb_spotwise` and the relative channel

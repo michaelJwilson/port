@@ -20,7 +20,7 @@ function of the fitted laws alone.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, NamedTuple
 
 import numpy as np
 
@@ -39,8 +39,7 @@ SNP_DISPERSIONS = (0.0, 0.25, 0.5, 0.8, 0.9, 1.0, 1.1, 1.2, 1.5, 2.0, 4.0)
 """`b` scanned for the SNP law."""
 
 
-@dataclass(frozen=True)
-class EntryFit:
+class EntryFit(NamedTuple):
     """A fitted entry law and the evidence for it.
 
     `value` is the fitted `kappa` or `b`; `tv` the total variation between

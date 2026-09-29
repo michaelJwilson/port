@@ -17,14 +17,12 @@ swap installed, and `run_cnaster_port --no-patch --sal` installs it alone.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Any
+from typing import Any, NamedTuple
 
 __all__ = ["SAL_ROWS", "SalRow", "sal_options"]
 
 
-@dataclass(frozen=True)
-class SalRow:
+class SalRow(NamedTuple):
     """One `cnaster` stage, what replaces it, and the measurement behind it."""
 
     stage: str

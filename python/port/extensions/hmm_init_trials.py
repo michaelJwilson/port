@@ -36,7 +36,7 @@ import statistics
 import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, NamedTuple
 
 import numpy as np
 
@@ -46,8 +46,7 @@ Initializer = Callable[..., Any]
 Scorer = Callable[[Any], float]
 
 
-@dataclass(frozen=True)
-class Trial:
+class Trial(NamedTuple):
     """One run of one backend."""
 
     backend: str

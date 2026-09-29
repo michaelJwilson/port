@@ -32,10 +32,10 @@ def _bulk(rng: np.random.Generator, n_obs: int, alpha: float, tau: float) -> obj
         counts_nb=rng.poisson(200, n_obs).astype(float),
         base_nb_mean=rng.uniform(50.0, 150.0, n_obs),
         counts_bb=rng.binomial(trials.astype(int), 0.4).astype(float),
-        total_bb_rd=trials,
-        log_lambda=np.zeros(n_obs),
-        alpha=alpha,
-        tau=tau,
+        total_bb_RD=trials,
+        normal_log_lambda=np.zeros(n_obs),
+        dispersion=alpha,
+        taus=tau,
     )
 
 

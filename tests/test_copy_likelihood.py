@@ -53,10 +53,10 @@ def _draw(seed: int = 3, *, shift: bool = True) -> tuple[np.ndarray, Pseudobulk]
         counts_nb=counts_nb,
         base_nb_mean=base,
         counts_bb=counts_bb,
-        total_bb_rd=trials,
-        log_lambda=log_lambda,
-        alpha=alpha,
-        tau=tau,
+        total_bb_RD=trials,
+        normal_log_lambda=log_lambda,
+        dispersion=alpha,
+        taus=tau,
     )
     return path, bulk
 
@@ -64,7 +64,9 @@ def _draw(seed: int = 3, *, shift: bool = True) -> tuple[np.ndarray, Pseudobulk]
 def _offset(path: np.ndarray, bulk: Pseudobulk) -> float:
     """The planted clone's shift, `log Z_c`, as the draw applied it."""
     total = PLANTED.sum(axis=1)
-    return float(np.logaddexp.reduce(np.log(total / 2.0)[path] + bulk.log_lambda))
+    return float(
+        np.logaddexp.reduce(np.log(total / 2.0)[path] + bulk.normal_log_lambda)
+    )
 
 
 @pytest.mark.end2end
