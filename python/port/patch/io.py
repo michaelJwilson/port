@@ -352,6 +352,15 @@ def _range_mask(unique_snp_ids: np.ndarray, ranges: pd.DataFrame) -> np.ndarray:
     return np.asarray(~inside, dtype=bool)
 
 
+NORMAL_SPOTS: list[np.ndarray] = []
+"""The spots `normal_idx_file` names, per loaded spot, from the last load (#479).
+
+`cnaster` annotates them (`tumor_annotation`) and then never reads them back
+as candidates, so `port.patch.normal_spot.determine_normal_candidates` reads
+them here. Empty when the last load had no file.
+"""
+
+
 def load_input_data(
     config: Any,
     alignment_files: Any = None,
@@ -633,6 +642,14 @@ def load_input_data(
             f"{100.0 * top_umis / total_umis:.3f} [%]."
         )
 
+    # NB `run_cnaster` never passes `normal_idx_file`, so the key a user sets
+    #    reached neither the annotation nor the candidates (#479); read it from
+    #    the configuration when the argument is absent.
+    if normal_idx_file is None:
+        normal_idx_file = getattr(
+            getattr(config, "preprocessing", None), "normalidx_file", None
+        )
+
     if normal_idx_file is not None:
         normal_barcodes = (
             pd.read_csv(normal_idx_file, header=None).iloc[:, 0].to_numpy()
@@ -647,6 +664,11 @@ def load_input_data(
         adata.obs.loc[adata.obs.index.isin(normal_barcodes), "tumor_annotation"] = (
             "normal"
         )
+
+    NORMAL_SPOTS.clear()
+
+    if normal_idx_file is not None:
+        NORMAL_SPOTS.append(adata.obs["tumor_annotation"].to_numpy() == "normal")
 
     if adata.layers["count"].shape[0] != cell_snp_Aallele.shape[0]:  # invariant
         msg = 'expected adata.layers["count"].shape[0] == cell_snp_Aallele.shape[0]'

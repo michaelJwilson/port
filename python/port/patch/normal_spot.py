@@ -31,6 +31,7 @@ import ast
 from collections.abc import Iterator
 from typing import Any
 
+import cnaster.normal_spot
 import numpy as np
 import scipy.special
 import scipy.stats
@@ -41,6 +42,14 @@ from cnaster.logger import get_logger
 from cnaster.spatio_genomic_counts import SpatioGenomicCounts
 
 from port.extensions.segments import observe
+
+_UPSTREAM_CANDIDATES = cnaster.normal_spot.determine_normal_candidates
+"""`cnaster`'s own, bound at import (#479).
+
+Before `pipeline.patched()` rebinds the name to `determine_normal_candidates`
+below: resolved at call time it is that function, and the delegation
+recursed until the stack ran out.
+"""
 
 logger = get_logger(__name__, start_time=start_time)
 
@@ -371,6 +380,46 @@ def removal_indicator(
     high = at_or_below >= hi if hi < 1.0 else np.zeros(counts.shape, dtype=bool)
 
     return np.asarray(low | high, dtype=bool)
+
+
+def determine_normal_candidates(
+    config: Any,
+    res: Any,
+    baf_profiles: Any,
+    single_X: Any,
+    single_X_rdr: Any,
+    smooth_mat: Any,
+    single_tumor_prop: Any = None,
+) -> Any:
+    """`cnaster`'s, returning the named spots when `normalidx_file` is set (#479).
+
+    `cnaster` returns `None` on that branch (`normal_spot.py:100`), and
+    `run_cnaster` then calls `np.where(None)` and raises, so a configuration
+    that names its normal spots cannot run. The loader has annotated them;
+    `port.patch.io.load_input_data` keeps the annotation per spot, and this
+    returns it. Every other branch is `cnaster`'s call, unchanged.
+    """
+    if config.preprocessing.normalidx_file is None:
+        return _UPSTREAM_CANDIDATES(
+            config,
+            res,
+            baf_profiles,
+            single_X,
+            single_X_rdr,
+            smooth_mat,
+            single_tumor_prop=single_tumor_prop,
+        )
+
+    from port.patch.io import NORMAL_SPOTS
+
+    if not NORMAL_SPOTS:
+        msg = (
+            "preprocessing.normalidx_file is set but the loader recorded no "
+            "normal spots: was the data loaded through port's load_input_data?"
+        )
+        raise RuntimeError(msg)
+
+    return NORMAL_SPOTS[0].copy()
 
 
 def normal_baf_bin_filter(
