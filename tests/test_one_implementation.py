@@ -37,12 +37,21 @@ BUDGET: dict[str, int] = {
 """`python/port` outside `sandbox/`."""
 
 CONCEPTS: dict[str, int] = {
-    "Hungarian + ARI scorer": 2,
+    # NB 2: `tests.scoring.matched` pairs labels by overlap for every scorer
+    #    (step 7); `tests.realizations.match_states` pairs states by
+    #    responsibility distance, a different cost.
+    "Hungarian matcher": 2,
+    # NB 2: `tests.recovery_audit` runs a planted lattice with its hooks
+    #    (normal oracle, M-step tolerance, two-pass), `tests.sim_audit` a
+    #    written sim sample with its overrides; they share the scorer and the
+    #    capture, not the arm.
     "run_arm": 2,
     "clone_path": 1,
-    "recording": 3,
+    # NB 2: `combined_figure` records plotting arguments, `segments` a
+    #    segmentation lineage; `tests.sim_stages`'s wrapper is `logged`.
+    "recording": 2,
 }
-"""Definitions of one concept across `python/port` and `tests/`; each goes to 1."""
+"""Definitions of one concept across `python/port` and `tests/`, with the reason where not 1."""
 
 
 def _files() -> Iterator[Path]:
@@ -91,9 +100,8 @@ def _measured() -> dict[str, int]:
         "NamedTuples": sum(
             any(ast.unparse(b).endswith("NamedTuple") for b in c.bases) for c in classes
         ),
-        "Hungarian + ARI scorer": sum(
-            {"linear_sum_assignment", "adjusted_rand_score"} <= _referenced(f)
-            for f in functions
+        "Hungarian matcher": sum(
+            "linear_sum_assignment" in _referenced(f) for f in functions
         ),
         "run_arm": sum(f.name == "run_arm" for f in functions),
         "clone_path": sum(f.name == "clone_path" for f in functions),

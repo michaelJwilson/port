@@ -197,7 +197,7 @@ def capturing(calls: list[Call], names: tuple[str, ...] = CAPTURED) -> Iterator[
     driver = importlib.import_module(DRIVER)
     undo: list[tuple[str, Any]] = []
 
-    def recording(name: str, current: Any) -> Any:
+    def logged(name: str, current: Any) -> Any:
         def call(*args: Any, **kwargs: Any) -> Any:
             result = current(*args, **kwargs)
             calls.append(Call(name, args, dict(kwargs), result))
@@ -209,7 +209,7 @@ def capturing(calls: list[Call], names: tuple[str, ...] = CAPTURED) -> Iterator[
         for name in names:
             current = getattr(driver, name)
             undo.append((name, current))
-            setattr(driver, name, recording(name, current))
+            setattr(driver, name, logged(name, current))
 
         yield
     finally:

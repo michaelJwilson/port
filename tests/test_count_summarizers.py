@@ -179,18 +179,32 @@ def test_the_grouped_sum_agrees_sparse_and_dense() -> None:
 
 
 @pytest.mark.end2end
+@pytest.mark.parametrize("implementation", ["cnaster", "port"])
 def test_the_block_counts_are_the_planted_counts(
     planted_instance: PlantedInstance,
     blocked: tuple[Any, Any, Any],
+    implementation: str,
 ) -> None:
     """**What the blocks carry is what the fixture planted, summed per block.**
 
     Two implementations agreeing says nothing about whether either is right,
     so the transcript row is taken back to the planted per-gene counts and
-    re-summed over each block's genes from the table itself.
+    re-summed over each block's genes from the table itself. Both `cnaster`'s
+    summary and the swap row's are held to it.
     """
+    from port.patch.omics import summarize_counts_for_blocks
+
     _, pre_image, written, _ = planted_instance
     loaded, table, counts = blocked
+
+    if implementation == "port":
+        counts = summarize_counts_for_blocks(
+            table,
+            loaded.adata,
+            loaded.cell_snp_Aallele,
+            loaded.cell_snp_Ballele,
+            loaded.unique_snp_ids,
+        )
 
     planted = np.asarray(pre_image.adata.layers["count"])
     names = np.asarray(pre_image.adata.var.index)
