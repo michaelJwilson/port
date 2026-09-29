@@ -268,16 +268,19 @@ follows the arm unless asked: on in a patched run, off with `--no-patch`.
 | `--no-plots`, `--no-outputs`, `--time-stages`, `--audit-config`, `--list` | off | build figures and write none (#403); skip port's tables (#331); cost per swapped name; unused config (#324); the table | |
 
 **A patched run also writes the seam between the fit and the integers**
-(#331): beside `cnaster`'s files, and without touching them,
-`port.extensions.outputs` writes `cnv_states.tsv` (each fitted state, the
-`(A, B)` each clone decodes it to, and its share of the clone's bins),
-`cnv_segments.tsv` (runs of equal `(A, B)`), `cnv_binlevel.tsv` (the
-posterior-mean `mu` and `p` per bin), `clone_labels_integer.tsv` (each
-spot's clone named by its integer copy profile, so clones that decode alike
-at every bin are one clone, #344, or at the share of bins
-`int_copy_num.merge_agreement` states, #518) and `manifest.json` (states, clones,
-likelihoods, the configuration's caps and the flags). Off with `--no-patch`,
-so the baseline arm writes what `cnaster` writes.
+(#331): beside `cnaster`'s files, `port.extensions.outputs` writes
+`cnv_states.tsv` (each fitted state, the `(A, B)` each clone decodes it to,
+and its share of the clone's bins), `cnv_segments.tsv` (runs of equal
+`(A, B)`), `cnv_binlevel.tsv` (the posterior-mean `mu` and `p` per bin),
+`clone_labels_integer.tsv` (each spot's clone named by its integer copy
+profile: clones whose `(A, B)` agree at no less than
+`int_copy_num.merge_agreement` of bins, 0.99 unless stated, are one clone,
+#344, #518) and `manifest.json` (states, clones, likelihoods, the
+configuration's caps and the flags). Where that merge joins clones it also
+rewrites `clone_labels.tsv`: `clone_label` is the merged clone and
+`cnaster_clone_label` keeps `cnaster`'s, since the merge stands in for the
+Neyman-Pearson merge `--sal` no longer installs (#497). Off with
+`--no-patch`, so the baseline arm writes what `cnaster` writes.
 
 `port.pipeline.SWAPS` is the table -- one row per `cnaster` name `port`
 replaces, each naming the ticket that measured it -- and `patched()` is the

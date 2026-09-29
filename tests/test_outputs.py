@@ -270,6 +270,48 @@ def test_the_integer_labels_keep_every_spot_s_fitted_label(tmp_path: Path) -> No
     )
 
 
+@pytest.mark.infra
+def test_a_merge_rewrites_clone_labels_and_keeps_cnaster_s(tmp_path: Path) -> None:
+    """Merged clones are `clone_labels.tsv`'s `clone_label`; `cnaster`'s is kept.
+
+    Run twice, the writer reads `cnaster`'s labels back rather than its own,
+    so the file is the same after the second pass (#518). Where nothing
+    merges, `clone_labels.tsv` is `cnaster`'s byte for byte.
+    """
+    from port.extensions.outputs import CNASTER_LABEL, write_outputs
+
+    run = _run(tmp_path)
+    labels = pd.DataFrame(
+        {
+            "barcode": [f"BC{k}" for k in range(5)],
+            "sample_id": "S1",
+            "x": range(5),
+            "y": 0,
+            "clone_label": [0, 2, 5, np.nan, 5],
+        }
+    )
+    labels.to_csv(run / "clone_labels.tsv", sep="\t", index=False)
+    untouched = (run / "clone_labels.tsv").read_bytes()
+
+    write_outputs(run)
+
+    assert (run / "clone_labels.tsv").read_bytes() == untouched
+
+    seglevel, _, _ = _load(run)
+    for column in ("A", "B"):
+        seglevel[f"clone5 {column}"] = seglevel[f"clone0 {column}"]
+    seglevel.to_csv(run / "cnv_seglevel.tsv", sep="\t", index=False)
+
+    write_outputs(run)
+    once = (run / "clone_labels.tsv").read_bytes()
+    write_outputs(run)
+    rewritten = pd.read_csv(run / "clone_labels.tsv", sep="\t")
+
+    assert (run / "clone_labels.tsv").read_bytes() == once
+    np.testing.assert_array_equal(rewritten.clone_label, [0, 2, 0, np.nan, 0])
+    np.testing.assert_array_equal(rewritten[CNASTER_LABEL], labels.clone_label)
+
+
 def _truth() -> Any:
     from tests.fixtures import core_inference_truth
 
@@ -437,14 +479,14 @@ def test_the_agreement_rule_joins_what_agrees_and_no_less() -> None:
 
     `dev_tree`'s slice-split clone differs at 2 of 2,895 bins (0.9993) and
     the closest distinct pair on the fixtures at 0.9863, so the thresholds
-    below bracket both. The default stays the exact rule.
+    below bracket both. 0.99 is the default; 1.0 is the exact rule (#344).
     """
     from port.extensions.outputs import integer_clones
 
     frame = _profiles({"0": 0, "1": 7, "2": 14})
 
-    assert integer_clones(frame, 0.99) == {"0": "0", "1": "0", "2": "2"}
-    assert integer_clones(frame) == {"0": "0", "1": "1", "2": "2"}
+    assert integer_clones(frame) == {"0": "0", "1": "0", "2": "2"}
+    assert integer_clones(frame, 1.0) == {"0": "0", "1": "1", "2": "2"}
     assert integer_clones(frame, 0.985) == {"0": "0", "1": "0", "2": "0"}
 
 
