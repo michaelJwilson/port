@@ -9,7 +9,7 @@ solver is not what limits clone recovery (#497 was).
 
 ## Method
 
-`python -m tests.study_potts_solvers capture | per-call | figure`.
+`python -m tests.studies.potts_solvers capture | per-call | figure`.
 
 1. **Capture.** One `--sal --no-plots` run per sample (#487 + #496's
    loader), pickling every problem `pipeline_clone_assignment` hands its

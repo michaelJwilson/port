@@ -1,6 +1,6 @@
 """#492: `sal`'s Potts solvers and port's label-solver rows on captured clone-assignment problems.
 
-Three steps, each a subcommand of `python -m tests.study_potts_solvers`:
+Three steps, each a subcommand of `python -m tests.studies.potts_solvers`:
 
 `capture SAMPLE OUT`
     One `--sal --no-plots` arm on `SAMPLE`, pickling every problem
