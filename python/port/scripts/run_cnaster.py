@@ -353,6 +353,21 @@ def main(argv: Sequence[str] | None = None) -> int:
     ):
         _parser().error("--genomic-colours needs the figure swaps")
 
+    # NB **on** unless refused, and off with `--no-patch` for the same
+    #    reason the figures are: a baseline arm that fits a different
+    #    model is not a baseline. The clone assignment applies the shift
+    #    through `port`'s `pipeline_clone_assignment`, which is in
+    #    `SWAPS`, so `--no-patch --shift` fits shifted and assigns clones
+    #    unshifted; it is allowed, and said.
+    shift = not arguments.no_patch if arguments.shift is None else arguments.shift
+
+    # NB the decode compares `(A + B) / 2` against the pinned rates; an
+    #    unshifted fit's rates carry the baseline's per-clone scale, so
+    #    the sets would be drawn on the wrong axis (#353). Refused before
+    #    the config is read.
+    if arguments.copy_errors and not shift:
+        _parser().error("--copy-errors needs the shift; drop --no-shift")
+
     import yaml
 
     from port.extensions.config_audit import audit
@@ -403,14 +418,6 @@ def main(argv: Sequence[str] | None = None) -> int:
         #    3 (#244). The 1.78x kernel ratio does not survive `CountEncoder`
         #    dedup, which is what #240 warned it might not.
         approx = bool(arguments.approx)
-        # NB **on** unless refused, and off with `--no-patch` for the same
-        #    reason the figures are: a baseline arm that fits a different
-        #    model is not a baseline. The clone assignment applies the shift
-        #    through `port`'s `pipeline_clone_assignment`, which is in
-        #    `SWAPS`, so `--no-patch --shift` fits shifted and assigns clones
-        #    unshifted; it is allowed, and said.
-        shift = not arguments.no_patch if arguments.shift is None else arguments.shift
-
         # NB bitwise, so on by default like `SWAPS`, and off with it: a
         #    baseline arm is `cnaster`'s compiled code as well as its names.
         rust = not arguments.no_patch if arguments.rust is None else arguments.rust
@@ -419,12 +426,6 @@ def main(argv: Sequence[str] | None = None) -> int:
             from port.patch.lattice import rust_lattices
 
             stack.enter_context(rust_lattices())
-
-        # NB the decode compares `(A + B) / 2` against the pinned rates; an
-        #    unshifted fit's rates carry the baseline's per-clone scale, so
-        #    the sets would be drawn on the wrong axis (#353).
-        if arguments.copy_errors and not shift:
-            _parser().error("--copy-errors needs the shift; drop --no-shift")
 
         kept = stack.enter_context(_kept()) if arguments.copy_errors else None
 

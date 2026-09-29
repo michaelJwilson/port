@@ -221,8 +221,8 @@ class CopyFit:
     paths: list[np.ndarray]
     shifts: np.ndarray
     purity: np.ndarray
-    alpha: float
-    tau: float
+    dispersion: float
+    taus: float
     log_likelihood: float
 
 
