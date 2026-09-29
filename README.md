@@ -231,7 +231,7 @@ run_cnaster_port --sal config.yaml           # snakes_and_ladders routines where
 run_cnaster_port --no-copy-cap config.yaml   # cnaster's integer copy caps, A + B <= 6, whatever the config states
 run_cnaster_port --sample-layout 3,1 config.yaml  # clone spatial plots, one panel per sample
 run_cnaster_port --genomic-colours states config.yaml  # clones_genomic coloured per fitted state, not per integer pair
-run_cnaster_port --copy-likelihood config.yaml  # integer copies re-decoded by the HMM's pseudobulk likelihood
+run_cnaster_port --copy-decode shared config.yaml  # one integer pair per fitted state; default: lattice Viterbi per clone
 run_cnaster_port --time-stages config.yaml   # what the replacements cost in the run
 run_cnaster_port --floor-merge --refinement-mask config.yaml  # #348's clone patches, opt-in; --no-distinct-init drops the third
 run_calicost config.yaml                     # CalicoST on the same fixture files, at port's configuration
@@ -245,7 +245,9 @@ run_cnaster_port --audit-config config.yaml # what the config states that cnaste
 `port.extensions.outputs` writes `cnv_states.tsv` (each fitted state, the
 `(A, B)` each clone decodes it to, and its share of the clone's bins),
 `cnv_segments.tsv` (runs of equal `(A, B)`), `cnv_binlevel.tsv` (the
-posterior-mean `mu` and `p` per bin) and `manifest.json` (states, clones,
+posterior-mean `mu` and `p` per bin), `clone_labels_integer.tsv` (each
+spot's clone named by its integer copy profile, so clones that decode alike
+at every bin are one clone, #344) and `manifest.json` (states, clones,
 likelihoods, the configuration's caps and the flags). Off with `--no-patch`,
 so the baseline arm writes what `cnaster` writes.
 
@@ -295,11 +297,18 @@ pair share a colour. `states` colours each fitted state separately, with its
 continuous `2mu` and `p` in the legend. Unset, the choice is `cnaster`'s:
 integer copies where the figure has them, states elsewhere.
 
-**`--copy-likelihood` is off by default** (#327). It re-decodes integer
-copies by the HMM's pseudobulk NB/BB likelihood, holding the fitted path, and
-starts from the MILP's answer. On the lattice fixture it decodes 0.794 of
-altered clone-bins exactly, against the MILP's 0.417, and costs 5 s per run
-(`docs/audit-recovery.md`).
+**Integer copies are decoded by likelihood, per clone and bin** (#367, #371).
+The copy rows (on with `--copy-cap`) run `lattice_decode`: one state per
+`(A, B)` with `A + B` at most the configured cap, Viterbi along each clone's
+bins on its own pseudobulk NB/BB counts, and an EM fitting each clone's
+shift and tumour fraction `rho` against a diploid normal. So a loss and an
+LOH the HMM fitted as one state still decode apart by depth, and admixed
+normal cells no longer read as balanced states. The normal clone, held at
+`(1, 1)`, shift 0 and `rho = 1`, is the one with the largest share of
+balanced bins, as `clone_shifts` names it (#389). `--copy-decode shared`
+keeps one pair per fitted state (#327). `dev_tree` r0 at 60 x 50 under
+`--sal`: copy ARI 0.981, 0.936 of altered bins exact up to phase, against
+cnaster's decoder's 0.956 and 0.707 at 42 x 42.
 
 **`--rust` is on by default** (#318). It runs `cnaster`'s four
 forward/backward lattices from `port.oxiport`, bitwise `cnaster`'s
