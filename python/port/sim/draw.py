@@ -15,6 +15,8 @@ Its clones, events, layout and counts are drawn from what the manifest states:
     [cna.length]  law = "fixed" (size) or "exponential" (mean); minimum
     [phasing]     switch_errors, nu, unit
     [layout]      overlap, radius, vertices, jitter
+    [layout.size] optional: law = "loguniform" (minimum, maximum) or
+                  "lognormal" (median, sigma), in spots (#544)
     [[slice]]     clones, offset = [x, y], regions = [{clone, center, ...}]
 
 **The generative model**, per slice and spot `s` of clone `c`, from the
@@ -110,6 +112,9 @@ BY_MODE = {
     "tree": ("trunk", "per_leaf", "per_internal"),
 }
 BY_LAW = {"fixed": ("size",), "exponential": ("mean", "minimum")}
+SIZE_LAWS = {"loguniform": ("minimum", "maximum"), "lognormal": ("median", "sigma")}
+"""`[layout.size]`: each drawn clone's size in spots, per seed (#544). Optional:
+without it every drawn clone takes `[layout] radius`, as before."""
 
 
 def references(directory: Path, names: tuple[str, ...]) -> Path:
@@ -325,6 +330,13 @@ def _check(manifest: DrawManifest) -> None:
         problems.append(f"[model] admixture {manifest.model['admixture']!r}")
     if manifest.cna["length"]["law"] not in BY_LAW:
         problems.append(f"[cna.length] law: one of {sorted(BY_LAW)}")
+    size = manifest.layout.get("size")
+    if size is not None:
+        if size.get("law") not in SIZE_LAWS:
+            problems.append(f"[layout.size] law: one of {sorted(SIZE_LAWS)}")
+        else:
+            absent = [k for k in SIZE_LAWS[size["law"]] if k not in size]
+            problems += [f"[layout.size] {k}" for k in absent]
     if manifest.phasing["unit"] not in UNITS:
         problems.append(f"[phasing] unit: one of {sorted(UNITS)}")
     if manifest.array["kind"] != "hex":
@@ -532,6 +544,47 @@ def polygon(
     return center + np.column_stack([radii * np.cos(angles), radii * np.sin(angles)])
 
 
+def clone_size(law: dict[str, Any], rng: np.random.Generator) -> int:
+    """A clone's size in spots from `[layout.size]` (#544), at least one."""
+    if law["law"] == "loguniform":
+        low, high = np.log(float(law["minimum"])), np.log(float(law["maximum"]))
+        return max(1, round(float(np.exp(rng.uniform(low, high)))))
+    median, sigma = float(law["median"]), float(law["sigma"])
+    return max(1, round(float(median * np.exp(sigma * rng.standard_normal()))))
+
+
+def sized_polygon(
+    region: Region,
+    center: np.ndarray,
+    scale: float,
+    points: np.ndarray,
+    target: int,
+    rng: np.random.Generator,
+) -> tuple[np.ndarray, np.ndarray]:
+    """`(vertices, claimed)`: the shape `polygon` draws, scaled to claim `target` spots.
+
+    The phase and jitter are drawn once, then the radius is bisected: scaling
+    a star-shaped polygon about its centre nests the spots it claims, so the
+    count is monotone in the radius. The smallest radius claiming at least
+    `target` is kept; a polygon clipped by the array's edge claims fewer, and
+    the caller reads the realized count, not the target.
+    """
+    unit = polygon(region._replace(radius=1.0), np.zeros(2), 1.0, rng)
+    low, high = 0.0, float(np.ptp(points, axis=0).max()) / scale
+
+    def claimed(radius: float) -> np.ndarray:
+        return _inside(center + unit * radius * scale, points)
+
+    for _ in range(40):
+        middle = 0.5 * (low + high)
+        if int(claimed(middle).sum()) >= target:
+            high = middle
+        else:
+            low = middle
+
+    return center + unit * high * scale, claimed(high)
+
+
 def _inside(vertices: np.ndarray, points: np.ndarray) -> np.ndarray:
     from matplotlib.path import Path as MplPath
 
@@ -573,6 +626,10 @@ def layout(
     listed = [c for c in manifest.tumour if any(c in p.clones for p in manifest.slices)]
     listed += [c for c in stated if c not in listed]
     overlap = bool(manifest.layout["overlap"])
+    size = manifest.layout.get("size")
+    # NB drawn before any placement, in clone order, so a clone's size does
+    #    not depend on how many placements another took.
+    targets = {} if size is None else {c: clone_size(size, rng) for c in sorted(listed)}
     labels = np.full(everything.shape[0], -1, dtype=np.int64)
     shapes: dict[str, np.ndarray] = {}
 
@@ -602,8 +659,13 @@ def layout(
                 # NB anywhere the listing slices share: a polygon past an edge
                 #    is clipped, so a clone may be smaller than its radius says.
                 center = rng.uniform(box[0], box[1])
-            vertices = polygon(region, center, scale, rng)
-            claimed = _inside(vertices, everything)
+            if box is not None and size is not None:
+                vertices, claimed = sized_polygon(
+                    region, center, scale, everything, targets[clone], rng
+                )
+            else:
+                vertices = polygon(region, center, scale, rng)
+                claimed = _inside(vertices, everything)
             if overlap or not np.any(labels[claimed] >= 0):
                 break
             if box is None:

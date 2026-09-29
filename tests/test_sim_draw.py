@@ -447,3 +447,60 @@ def test_a_manifest_extended_from_elsewhere_keeps_its_base_paths(
 
     assert manifest.resolve(manifest.reference["coverage"]).exists()
     assert manifest.resolve(manifest.config["base"]).exists()
+
+
+def _sized(law: dict[str, Any]) -> DrawManifest:
+    """`population` at its own 60 x 50, with `[layout.size]` replaced by `law`."""
+    document = extended(MANIFESTS / "population.toml")
+    document["layout"]["size"] = law
+    return from_document(document, MANIFESTS)
+
+
+@pytest.mark.analytic
+def test_clone_sizes_follow_the_stated_law_across_seeds() -> None:
+    """`[layout.size]` loguniform on [25, 1,000] spots, 100 seeds x 3 clones (#544).
+
+    A polygon claims the fewest spots at least its target, so a clone's size
+    is its draw unless the array's edge clips it: log sizes are uniform on
+    `[log 25, log 1,000]` by Kolmogorov-Smirnov at 1%, and every clone is
+    within 10% below its draw or above it.
+    """
+    from port.sim.draw import clone_size
+    from scipy.stats import kstest
+
+    manifest = _sized({"law": "loguniform", "minimum": 25, "maximum": 1000})
+    _, _, points = hex_array(60, 50)
+    sizes, ratios = [], []
+
+    for seed in range(100):
+        labels, _ = layout(manifest, points, np.random.default_rng(seed))
+        rng = np.random.default_rng(seed)
+        targets = {
+            c: clone_size(manifest.layout["size"], rng) for c in sorted(manifest.tumour)
+        }
+        for clone, target in targets.items():
+            size = int(np.sum(labels[0] == manifest.tumour.index(clone)))
+            sizes.append(size)
+            ratios.append(size / target)
+
+    low, high = np.log(25), np.log(1000)
+    statistic = kstest((np.log(sizes) - low) / (high - low), "uniform")
+
+    assert statistic.pvalue > 0.01, statistic
+    assert np.quantile(ratios, 0.05) > 0.9, np.quantile(ratios, [0.05, 0.5, 0.95])
+
+
+@pytest.mark.infra
+def test_a_seed_draws_the_same_sizes_and_an_unknown_law_is_refused() -> None:
+    """The layout is a function of the seed; `[layout.size]` names a law it has."""
+    manifest = _sized({"law": "lognormal", "median": 200, "sigma": 0.5})
+    _, _, points = hex_array(60, 50)
+    first, _ = layout(manifest, points, np.random.default_rng(7))
+    second, _ = layout(manifest, points, np.random.default_rng(7))
+
+    np.testing.assert_array_equal(first[0], second[0])
+
+    with pytest.raises(ValueError, match=r"\[layout.size\] law"):
+        _sized({"law": "uniform", "minimum": 1, "maximum": 2})
+    with pytest.raises(ValueError, match=r"\[layout.size\] sigma"):
+        _sized({"law": "lognormal", "median": 200})
