@@ -203,7 +203,7 @@ def test_a_bin_without_baseline_moves_no_gradient(cnaster_config: None) -> None:
 @pytest.mark.cnaster
 @pytest.mark.patch
 def test_the_closed_form_fit_is_cnasters_fit_to_a_stated_tolerance(
-    cnaster_config: None,
+    cnaster_config: None, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """`cnaster`'s class, finite differences, against `port`'s, closed form, at `max_iter=20`.
 
@@ -220,6 +220,12 @@ def test_the_closed_form_fit_is_cnasters_fit_to_a_stated_tolerance(
 
     assert hmm_nophasing.analytic_gradient
     assert EmGradient is not None
+
+    from cnaster.config import get_global_config
+
+    # NB BFGS on both sides: the configured solver is #448's, and this
+    #    compares the gradients, not the optimizers.
+    monkeypatch.setattr(get_global_config().hmm, "solver", "BFGS")
 
     instance = _stacked_instance()
     kwargs = {
@@ -238,3 +244,103 @@ def test_the_closed_form_fit_is_cnasters_fit_to_a_stated_tolerance(
 
     for key in ("new_log_mu", "new_p_binom", "new_alphas", "new_taus"):
         np.testing.assert_allclose(ours[key], theirs[key], rtol=1e-4, err_msg=key)
+
+
+@pytest.mark.patch
+def test_the_m_step_passes_bfgs_only_its_own_options() -> None:
+    """`cnaster`'s `ftol` reaches no BFGS call, and the fit is BFGS's without it (#448).
+
+    Referee: `scipy`'s BFGS given the same gradient and only the options it
+    reads, bitwise. `cnaster` builds `{"maxiter", "ftol", "gtol", "disp"}`
+    (`hmm_nophasing.py:1005`), and BFGS warns on `ftol` and drops it.
+    """
+    import warnings
+
+    import scipy.optimize
+    from port.patch.hmm_nophasing.gradient import analytic_bfgs
+
+    scale = np.array([1.0, 4.0, 9.0])
+
+    def fun(x: np.ndarray) -> float:
+        return float(np.sum(scale * (x - 1.0) ** 2))
+
+    def grad(x: np.ndarray) -> np.ndarray:
+        return 2.0 * scale * (x - 1.0)
+
+    x0 = np.array([3.0, -2.0, 0.5])
+    cnasters = {"maxiter": 50, "ftol": 1e-6, "gtol": 1e-5, "disp": False}
+
+    with pytest.warns(scipy.optimize.OptimizeWarning, match="ftol"):
+        scipy.optimize.minimize(fun, x0, jac=grad, method="BFGS", options=cnasters)
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        ours = scipy.optimize.minimize(
+            fun, x0, method=analytic_bfgs(grad), options=cnasters
+        )
+
+    reference = scipy.optimize.minimize(
+        lambda x: (fun(x), grad(x)),
+        x0,
+        jac=True,
+        method="BFGS",
+        options={"maxiter": 50, "gtol": 1e-5, "disp": False},
+    )
+
+    np.testing.assert_array_equal(ours.x, reference.x)
+    assert ours.nit == reference.nit
+
+
+@pytest.mark.patch
+@pytest.mark.parametrize("solver", ["BFGS", "L-BFGS-B"])
+def test_the_m_step_runs_the_configured_solver_at_its_tolerances(
+    solver: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`hmm.solver` and its `em_*` keys reach the M step (#448).
+
+    Referee: `scipy.optimize.minimize` with that method, the same gradient,
+    and the options `cnaster.hmm_utils.get_em_solver_params` maps the solver
+    to, bitwise. `cnaster` runs BFGS whatever the configuration says.
+    """
+    from types import SimpleNamespace
+
+    import cnaster.config
+    import scipy.optimize
+    from port.patch.hmm_nophasing.gradient import configured_method
+
+    hmm = SimpleNamespace(
+        solver=solver, em_maxiter=7, em_ftol=1e-3, em_xrtol=1e-3, em_disp=0
+    )
+    import cnaster.hmm_utils
+
+    # NB both bindings: `hmm_utils` imports the name at load.
+    for module in (cnaster.config, cnaster.hmm_utils):
+        monkeypatch.setattr(
+            module, "get_global_config", lambda: SimpleNamespace(hmm=hmm)
+        )
+
+    scale = np.array([1.0, 4.0, 9.0])
+
+    def fun(x: np.ndarray) -> float:
+        return float(np.sum(scale * (x - 1.0) ** 2) + np.sum(x**4))
+
+    def grad(x: np.ndarray) -> np.ndarray:
+        return 2.0 * scale * (x - 1.0) + 4.0 * x**3
+
+    x0 = np.array([3.0, -2.0, 0.5])
+    cnasters = {"maxiter": 50, "ftol": 1e-6, "gtol": 1e-5, "disp": False}
+    ours = scipy.optimize.minimize(
+        fun, x0, method=configured_method(grad), options=cnasters
+    )
+
+    stated = (
+        {"maxiter": 50, "gtol": 1e-5, "disp": False, "xrtol": 1e-3}
+        if solver == "BFGS"
+        else {"gtol": 1e-5, "maxiter": 7, "ftol": 1e-3}
+    )
+    reference = scipy.optimize.minimize(
+        lambda x: (fun(x), grad(x)), x0, jac=True, method=solver, options=stated
+    )
+
+    np.testing.assert_array_equal(ours.x, reference.x)
+    assert ours.nit == reference.nit

@@ -445,6 +445,8 @@ class hmm_nophasing(UPSTREAM):  # type: ignore[misc]
         # NB the M step's gradient in closed form, through `minimize`'s
         #    callable `method` (#433); positional extras leave the fit as is,
         #    since the settings the gradient reads would then be unnamed.
+        #    BFGS, as `cnaster` runs it, whatever `hmm.solver` states:
+        #    `configured_method` honours it and is not installed (#448).
         if (
             self.analytic_gradient
             and not args
