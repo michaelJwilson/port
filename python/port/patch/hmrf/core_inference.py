@@ -163,6 +163,11 @@ def reindex_clones(res_combine: Any, *args: Any, **kwargs: Any) -> Any:
     """
     # NB bound at import, as `UPSTREAM_REINDEX`: the swap rebinds the name in
     #    `cnaster.hmrf`, so reading it here at call time would call this back.
+    from port.extensions import np_merge
+
+    # NB the read-depth stage's merged clones, which `cnaster` computes and
+    #    does not write (#497); `res_combine` itself where none is held.
+    res_combine = np_merge.taken(res_combine)
     before = np.asarray(res_combine["pred_cnv"])
     reindexed, posterior = UPSTREAM_REINDEX(res_combine, *args, **kwargs)
     shifts = (

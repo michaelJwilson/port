@@ -256,3 +256,45 @@ def test_merged_writes_a_cnaster_result_and_leaves_the_original() -> None:
     np.testing.assert_array_equal(out["new_log_mu_shift"], [0.1, 0.3])
     np.testing.assert_array_equal(np.unique(res["new_assignment"]), [0, 1, 2, 3])
     assert res["pred_cnv"].shape == (N_OBS, 4)
+
+
+@pytest.mark.patch
+def test_merged_reads_the_baf_stages_clone_stacked_layout() -> None:
+    """The BAF-only stage stacks the clones' decodes in one vector; a group keeps its first block."""
+    from port.extensions.np_merge import groups, merged, statistics
+
+    X, base, total, res = _instance()
+    stacked = {
+        **res,
+        "pred_cnv": res["pred_cnv"].T.reshape(-1),
+        "log_gamma": np.zeros((N_STATES, N_OBS * 4)),
+    }
+
+    assert statistics(X, base, total, stacked, "sp") == statistics(
+        X, base, total, res, "sp"
+    )
+    assert groups(X, base, total, stacked, "sp") == groups(X, base, total, res, "sp")
+
+    out = merged(stacked, [[0, 1, 3], [2]])
+
+    np.testing.assert_array_equal(
+        out["pred_cnv"], np.concatenate([res["pred_cnv"][:, 0], res["pred_cnv"][:, 2]])
+    )
+    assert out["log_gamma"].shape == (N_STATES, 2 * N_OBS)
+
+
+@pytest.mark.patch
+def test_the_held_merge_is_taken_only_for_its_own_fit() -> None:
+    """`taken` hands back the merged result for the fit it was held for, once."""
+    from port.extensions.np_merge import hold, np_merge, taken
+
+    _, _, _, res = _instance()
+    other = {**res, "pred_cnv": res["pred_cnv"] + 1}
+    result = {"merged": True}
+
+    with np_merge():
+        hold(res, result)
+
+        assert taken(other) is other
+        assert taken(res) is result
+        assert taken(res) is res

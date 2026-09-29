@@ -30,6 +30,7 @@ def merge_by_minspots(
     from port.extensions import np_merge
 
     held = np_merge._INPUTS
+    source = res
 
     if np_merge.installed() and held:
         import cnaster.pseudobulk
@@ -37,8 +38,10 @@ def merge_by_minspots(
         labels = np.unique(np.asarray(assignment))
         pred = np.asarray(res["pred_cnv"])
         clone_index = [np.where(np.asarray(assignment) == c)[0] for c in labels]
+        n_obs = np.asarray(held["single_X"]).shape[0]
+        source = res
 
-        if pred.reshape(pred.shape[0], -1).shape[1] == len(labels):
+        if pred.size == n_obs * len(labels):
             X, base_nb_mean, total_bb_RD, _ = (
                 cnaster.pseudobulk.merge_pseudobulk_by_index_mix(
                     held["single_X"],
@@ -65,4 +68,10 @@ def merge_by_minspots(
                 "Neyman-Pearson merge (#497) skipped: the decode's clones are not the assignment's."
             )
 
-    return UPSTREAM(assignment, res, single_total_bb_RD, **kwargs)
+    groups, result = UPSTREAM(assignment, res, single_total_bb_RD, **kwargs)
+
+    if np_merge.installed() and held and "m" in held["params"]:
+        # NB the read-depth stage: `cnaster` drops what this returns (#497).
+        np_merge.hold(source, result)
+
+    return groups, result

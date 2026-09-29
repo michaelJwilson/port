@@ -45,11 +45,13 @@ __all__ = [
     "MINLENGTH",
     "THRESHOLD",
     "groups",
+    "hold",
     "installed",
     "merged",
     "np_merge",
     "remember",
     "statistics",
+    "taken",
 ]
 
 THRESHOLD = 2.0
@@ -60,6 +62,7 @@ MINLENGTH = 10
 
 _INSTALLED = [False]
 _INPUTS: dict[str, Any] = {}
+_PENDING: dict[str, Any] = {}
 
 
 def installed() -> bool:
@@ -78,6 +81,7 @@ def np_merge() -> Iterator[None]:
     finally:
         _INSTALLED[0] = previous
         _INPUTS.clear()
+        _PENDING.clear()
 
 
 def remember(
@@ -179,6 +183,20 @@ def _emissions(
     return rdr, baf
 
 
+def _by_clone(pred_cnv: Any, n_obs: int, n_clones: int) -> np.ndarray:
+    """`(n_obs, n_clones)` decode, from either layout `cnaster` keeps.
+
+    The read-depth stage keeps one column per clone; the BAF-only stage keeps
+    the clones stacked, `n_obs` bins each, in one vector.
+    """
+    pred = np.asarray(pred_cnv, dtype=np.int64)
+
+    if pred.ndim == 1:
+        return pred.reshape(n_clones, n_obs).T
+
+    return pred.reshape(n_obs, n_clones)
+
+
 def statistics(
     X: np.ndarray,
     base_nb_mean: np.ndarray,
@@ -197,7 +215,7 @@ def statistics(
 
     rdr, baf = _emissions(X, base_nb_mean, total_bb_RD, res, shifts)
     score = baf + rdr if "m" in params else baf
-    pred = np.asarray(res["pred_cnv"], dtype=np.int64).reshape(n_obs, n_clones)
+    pred = _by_clone(res["pred_cnv"], n_obs, n_clones)
     found: dict[tuple[int, int], list[tuple[int, int, int, float]]] = {}
 
     for c1 in range(n_clones):
@@ -300,12 +318,30 @@ def merged(res: Any, chosen: list[list[int]]) -> Any:
         ),
     )
     pred = np.asarray(res["pred_cnv"])
-    _put(out, "pred_cnv", pred.reshape(pred.shape[0], -1)[:, first])
-
     gamma = _entry(res, "log_gamma")
 
-    if gamma is not None and np.ndim(gamma) == 3:
-        _put(out, "log_gamma", np.asarray(gamma)[:, :, first])
+    if pred.ndim == 1:
+        # NB clone-stacked: `n_obs` bins per clone, in label order.
+        n_obs = pred.size // len(labels)
+        _put(
+            out,
+            "pred_cnv",
+            np.concatenate([pred[c * n_obs : (c + 1) * n_obs] for c in first]),
+        )
+
+        if gamma is not None and np.ndim(gamma) == 2:
+            _put(
+                out,
+                "log_gamma",
+                np.hstack(
+                    [np.asarray(gamma)[:, c * n_obs : (c + 1) * n_obs] for c in first]
+                ),
+            )
+    else:
+        _put(out, "pred_cnv", pred.reshape(pred.shape[0], -1)[:, first])
+
+        if gamma is not None and np.ndim(gamma) == 3:
+            _put(out, "log_gamma", np.asarray(gamma)[:, :, first])
 
     shift = _entry(res, "new_log_mu_shift")
 
@@ -321,3 +357,27 @@ def merged(res: Any, chosen: list[list[int]]) -> Any:
         validate()
 
     return out
+
+
+def hold(source: Any, result: Any) -> None:
+    """Keep the read-depth stage's merged `result` for the fit it came from.
+
+    `cnaster` merges the read-depth stage's clones into `merged_res_combine`
+    and then writes its final clones from `res_combine`, the unmerged fit
+    (`run_cnaster.py:1169`, `:1269`): the minimum-size merge, and CalicoST's
+    before it, change the plots and nothing else. Held here, the merge is
+    handed back by `taken` where `reindex_clones` receives that fit.
+    """
+    _PENDING.update(pred=np.array(source["pred_cnv"]), result=result)
+
+
+def taken(res: Any) -> Any:
+    """The merged result held for `res`'s fit, or `res` where none is."""
+    held = _PENDING.get("pred")
+
+    if held is None or not np.array_equal(held, np.asarray(res["pred_cnv"])):
+        return res
+
+    result = _PENDING["result"]
+    _PENDING.clear()
+    return result
