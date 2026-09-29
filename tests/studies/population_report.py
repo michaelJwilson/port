@@ -468,7 +468,9 @@ def figures(summary: dict[str, Any], into: Path) -> list[Path]:
             ):
                 _panel(axis, entry[key], colours[j], f"J = {j:g}", dodge, 1.0)
             axis.set_xscale("log")
-            axis.set_xticks([3e5, 1e6, 3e6], ["3×10⁵", "10⁶", "3×10⁶"])
+            axis.set_xticks(
+                [3e5, 1e6, 3e6], [r"$3\times10^5$", r"$10^6$", r"$3\times10^6$"]
+            )
             axis.xaxis.set_minor_formatter(mpl.ticker.NullFormatter())
             axis.set_xlabel("Clone UMIs")
             axis.set_ylim(-0.02, 1.02)
