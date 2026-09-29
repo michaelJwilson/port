@@ -42,7 +42,7 @@ def _managers() -> list[tuple[str, Callable[[], AbstractContextManager[Any]]]]:
     from port.patch.hmm_initialize.distinct import distinct_init
     from port.patch.hmm_nophasing import logmu_shift
     from port.patch.icm.floor import floor_merge
-    from port.patch.integer_copy import by_likelihood
+    from port.patch.integer_copy import copy_decoder
     from port.patch.lattice import rust_lattices
     from port.pipeline import FIGURE_SWAPS, PLOT_OFF_SWAPS, SWAPS, patched
 
@@ -52,7 +52,7 @@ def _managers() -> list[tuple[str, Callable[[], AbstractContextManager[Any]]]]:
         ("distinct_init", distinct_init),
         ("logmu_shift", logmu_shift),
         ("floor_merge", floor_merge),
-        ("by_likelihood", by_likelihood),
+        ("copy_decoder", lambda: copy_decoder("shared")),
         ("rust_lattices", rust_lattices),
         ("patched", lambda: patched(SWAPS + FIGURE_SWAPS + PLOT_OFF_SWAPS)),
     ]

@@ -585,3 +585,154 @@ def test_scaling_a_viewed_layer_is_cnasters_column_write(sparse: bool) -> None:
         dense_of(ours.layers["count"]), dense_of(theirs.layers["count"])
     )
     assert not dense_of(ours.layers["count"])[:, 1].any()
+
+
+@pytest.mark.patch
+@pytest.mark.parametrize("shuffled", [False, True], ids=["sorted", "shuffled"])
+def test_the_range_filter_follows_the_pointer_over_nested_ranges(
+    shuffled: bool,
+) -> None:
+    """Ranges whose ends are not in start order, as GRCh38's HLA file has.
+
+    `synthetic_ranges` draws every range 2 Mb wide, so its ends are sorted
+    with its starts and a nested range never occurs; the version this
+    replaces sorted by end and matched the loop there, and kept 10 SNPs
+    `cnaster` drops on `dev_tree` 60 x 50. Here widths vary 100-fold, and
+    shuffled, the SNPs arrive out of order, where the pointer's history
+    decides. Referee: `range_filter_loop`, `cnaster`'s loop transcribed.
+    """
+    from port.patch.io import _range_mask
+
+    from tests.adapters import range_filter_loop
+    from tests.fixtures import synthetic_ranges
+
+    snp_ids, ranges = synthetic_ranges(20_000, 300, seed=5)
+    widths = np.random.default_rng(6).integers(50_000, 5_000_000, len(ranges))
+    ranges = ranges.assign(End=ranges.Start.to_numpy() + widths)
+
+    if shuffled:
+        snp_ids = snp_ids[np.random.default_rng(7).permutation(len(snp_ids))]
+
+    nested = int(
+        (np.diff(ranges.End.to_numpy())[np.diff(ranges.Chr.to_numpy()) == 0] < 0).sum()
+    )
+    expected = range_filter_loop(snp_ids, ranges)
+
+    assert nested > 0
+    # NB out of order, the pointer runs past ranges later SNPs fall in, so
+    #    the loop may drop nothing at all; that is its answer, and matched.
+    assert shuffled or 0 < int((~expected).sum()) < len(snp_ids)
+    np.testing.assert_array_equal(_range_mask(snp_ids, ranges), expected)
+
+
+@pytest.mark.patch
+def test_the_range_filter_matches_the_loop_on_the_shipped_hla_file() -> None:
+    """GRCh38's `HLA_regions.bed`, as `get_filter_ranges` reads it, over chr6 SNPs."""
+    from cnaster.filter import get_filter_ranges
+    from port.patch.io import _range_mask
+
+    from tests.adapters import range_filter_loop
+    from tests.sim_fixtures import references
+
+    resources = references()
+
+    if resources is None:
+        pytest.skip("CalicoST's GRCh38_resources are not installed")
+
+    ranges = get_filter_ranges(resources / "HLA_regions.bed")
+    # NB 50,000 SNPs over the 5 Mb: the replaced filter differed from the loop
+    #    on 4 of them, inside range 11 past its nested range 12; at 5,000 on 0.
+    positions = np.sort(
+        np.random.default_rng(3).integers(29_000_000, 34_000_000, 50_000)
+    )
+    snp_ids = np.array([f"6_{p}_A_T" for p in positions], dtype=object)
+    expected = range_filter_loop(snp_ids, ranges)
+
+    assert 0 < int((~expected).sum()) < len(snp_ids)
+    np.testing.assert_array_equal(_range_mask(snp_ids, ranges), expected)
+
+
+@pytest.mark.patch
+def test_scaling_a_views_layer_keeps_the_scaled_values() -> None:
+    """A zeroed column stays zeroed when the layer belongs to a view.
+
+    Writing into a view's layer makes the parent actual and writes into its
+    copy; the version this replaces returned the stale view, and the caller
+    assigned it back, so no outlier gene was ever zeroed where `cnaster`
+    zeroes them. Referee: the product `cnaster` assigns, `(counts * factors)`
+    cast to the layer's dtype.
+    """
+    import anndata
+    from port.patch.io import _scaled_columns
+
+    counts = np.random.default_rng(0).integers(0, 20, (30, 8))
+    adata = anndata.AnnData(np.zeros((30, 8)), layers={"count": counts.copy()})
+    view = adata[:, [0, 2, 3, 5, 7]]
+    factors = np.array([1.0, 0.0, 0.5, 1.0, 0.0])
+
+    with pytest.warns(UserWarning):
+        view.layers["count"] = _scaled_columns(view.layers["count"], factors)
+
+    expected = (counts[:, [0, 2, 3, 5, 7]] * factors).astype(counts.dtype)
+    np.testing.assert_array_equal(np.asarray(view.layers["count"]), expected)
+
+
+@pytest.mark.patch
+@pytest.mark.release
+@pytest.mark.cnaster
+def test_the_patched_loader_is_cnasters_on_a_drawn_sample(tmp_path: Path) -> None:
+    """Every return, against `cnaster.io.load_input_data`, on `dev_tree` as drawn.
+
+    The fixture above flags no outlier gene and filters no HLA SNP, which is
+    how two departures went unseen: on `dev_tree` 60 x 50 the patch kept 100
+    outlier genes `cnaster` zeroes, and 10 SNPs inside nested HLA ranges it
+    drops. A drawn sample reaches both. Referee: `cnaster`'s loader, called.
+    """
+    import yaml
+    from cnaster.config import YAMLConfig, set_global_config
+    from cnaster.io import load_input_data as theirs
+    from port.patch.io import load_input_data as ours
+    from port.sim.draw import main as draw
+
+    from tests.sim_audit import _drawn_config
+    from tests.sim_fixtures import load_simulated
+
+    manifests = Path(__file__).resolve().parents[1] / "sim" / "manifests"
+    manifest = tmp_path / "dev_tree.toml"
+    manifest.write_text(
+        (manifests / "dev_tree.toml")
+        .read_text()
+        .replace(
+            'extends = "calicost_grch38.toml"',
+            f'extends = "{manifests / "calicost_grch38.toml"}"',
+        )
+    )
+    assert draw([str(manifest), "--into", str(tmp_path / "drawn")]) == 0
+
+    sample = load_simulated("r0", tmp_path / "drawn" / "dev_tree")
+    path = _drawn_config(sample, tmp_path / "run", {})
+    config = YAMLConfig(yaml.safe_load(path.read_text()))
+    set_global_config(config)
+    arguments = {
+        "filter_gene_file": config.references.filtergenelist_file,
+        "filter_range_file": config.references.filterregion_file,
+        "min_snp_umis": config.quality.spot_min_snp_umis,
+        "min_percent_expressed_spots": config.quality.min_percent_expressed_spots,
+    }
+
+    their = theirs(config, **arguments)
+    our = ours(config, **arguments)
+
+    assert config.quality.local_outlier_filter
+    for name in ("cell_snp_Aallele", "cell_snp_Ballele", "unique_snp_ids"):
+        np.testing.assert_array_equal(
+            getattr(our, name), getattr(their, name), err_msg=name
+        )
+    assert our.barcodes.equals(their.barcodes)
+    assert our.exp_counts.equals(their.exp_counts)
+    np.testing.assert_array_equal(
+        np.asarray(our.adata.layers["count"]),
+        np.asarray(their.adata.layers["count"]),
+    )
+    assert our.adata.obs.equals(their.adata.obs)
+    assert our.adata.var.equals(their.adata.var)

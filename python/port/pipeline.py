@@ -51,6 +51,7 @@ from typing import Any
 __all__ = [
     "COPY_SWAPS",
     "FIGURE_SWAPS",
+    "NP_MERGE_SWAPS",
     "PLOT_OFF_SWAPS",
     "REFINEMENT_SWAPS",
     "SHIFT_SWAPS",
@@ -189,6 +190,12 @@ SWAPS: tuple[Swap, ...] = (
         "port.patch.hmrf:pipeline_clone_assignment",
         206,
     ),
+    Swap(
+        "cnaster.pseudobulk",
+        "merge_pseudobulk_by_index_mix",
+        "port.patch.pseudobulk:merge_pseudobulk_by_index_mix",
+        488,
+    ),
 )
 """Every `cnaster` name `port` can replace by rebinding it.
 
@@ -295,6 +302,12 @@ SHIFT_SWAPS: tuple[Swap, ...] = (
         "port.patch.hmrf:run_core_inference",
         293,
     ),
+    Swap(
+        "cnaster.hmrf",
+        "reindex_clones",
+        "port.patch.hmrf:reindex_clones",
+        362,
+    ),
 )
 """The per-clone `logmu_shift`, folded into the fit and **on by default**.
 
@@ -310,7 +323,10 @@ posteriors and `hmm.py:155`'s rescore -- and `pipeline_clone_assignment`
 (in `SWAPS`) reads the class's flag to apply it per candidate clone. The
 `run_core_inference` row pins the result's scale, which the shifted
 likelihood does not set, once after the optimization: the normal clone's
-dominant balanced state is `mu = 1` (#299).
+dominant balanced state is `mu = 1` (#299), and then gives each clone its
+own column, less its `log Z_c`, the normal clone's at zero (#362). The
+`reindex_clones` row carries `p`, `alpha` and `tau` to one column per clone
+so that integer copy reads every clone's own rates.
 
 The two rows also carry three things the entry point turns on with the
 shift and off without it: the sal emission (#425) and the analytic M-step
@@ -359,9 +375,10 @@ planted at `2 mu = 10` -- could not be decoded by any configuration. These
 read `int_copy_num.max_total_copy` and apply it to the total and to each
 allele; `tests/run_config.py` states 12.
 
-**Its own table, and on by default.** Where the configuration states no cap
-the decode is `cnaster`'s, bitwise (`tests/test_integer_copy_patch.py`); where
-it states one the output changes, which `SWAPS` promises never to do.
+**Its own table, and on by default.** Both rows decode by the HMM's
+likelihood only, with `mu`, each clone's shift, its path and the dispersions
+held (#362), so the output is not `cnaster`'s, which `SWAPS` promises never
+to change; `run_cnaster_port` installs `copy_likelihood.capture` with them.
 `run_cnaster_port` installs it unless `--no-copy-cap` is given, and
 `--no-patch` leaves it out with the rest.
 """
@@ -396,6 +413,23 @@ the call to `cnaster` (#135) the mask is not applied and the run says so.
 clone, at `hmrf.min_spots_per_clone`, instead of the sweep's all-at-once
 random reassignment at a fixed 200. It holds with or without the mask, and
 is refused and dropped exactly where the mask is.
+"""
+
+
+NP_MERGE_SWAPS: tuple[Swap, ...] = (
+    Swap(
+        "cnaster.hmrf",
+        "merge_by_minspots",
+        "port.patch.hmrf.merge:merge_by_minspots",
+        497,
+    ),
+)
+"""CalicoST's Neyman-Pearson merge of similar clones, before `cnaster`'s minimum-size merge.
+
+`cnaster` carries the merge commented out after each clone stage, so two
+clones that decode alike are never joined (#497). The row runs it where
+`port.extensions.np_merge.np_merge()` is active; `run_cnaster_port` installs
+both with `--sal` unless `--no-np-merge` is given.
 """
 
 

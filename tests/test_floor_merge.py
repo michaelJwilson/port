@@ -244,3 +244,31 @@ def test_a_delegated_assignment_says_it_drops_the_mask_floor_or_shift(
     assert len(said) == 1
     assert named[flag] in said[0]
     assert [name for name in named.values() if name in said[0]] == [named[flag]]
+
+
+@pytest.mark.merge
+@pytest.mark.end2end
+def test_sal_recovers_dev_where_the_hard_mask_froze_the_baf_boundary(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`--sal`, which now implies both clone flags, recovers `dev` (#467).
+
+    `dev`'s BAF stage places 69 normal spots with clone 3 and 15 of clone 3's
+    with normal. With the mask at `-inf` and the floor merge on, the
+    read-depth stage cannot move them across the BAF boundary: clone ARI
+    0.8683, reproduced twice. At `MASK_PENALTY` it moves them: 1.000.
+    """
+    import numpy as np
+    from port.patch.hmrf import refinement
+
+    from tests import fixtures
+    from tests.recovery_audit import run_arm
+
+    soft, _ = run_arm(fixtures.dev_instance(), ["--sal"])
+
+    assert soft.ari >= 0.99, soft.ari
+
+    monkeypatch.setattr(refinement, "MASK_PENALTY", np.inf)
+    hard, _ = run_arm(fixtures.dev_instance(), ["--sal"])
+
+    assert hard.ari < 0.9, hard.ari

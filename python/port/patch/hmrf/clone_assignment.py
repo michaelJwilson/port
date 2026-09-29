@@ -94,7 +94,13 @@ from cnaster.config import get_global_config, start_time
 from cnaster.hmrf import pipeline_clone_assignment as UPSTREAM
 from cnaster.logger import get_logger
 
-__all__ = ["UPSTREAM", "boundary", "pipeline_clone_assignment"]
+__all__ = [
+    "UPSTREAM",
+    "PooledSmoothing",
+    "boundary",
+    "pipeline_clone_assignment",
+    "require_unpooled",
+]
 
 logger = get_logger(__name__, start_time=start_time)
 """`cnaster`'s own function, captured at import.
@@ -144,6 +150,16 @@ def _channel_weight(
     return weight
 
 
+def _own_weight(valid_nb: np.ndarray, valid_bb: np.ndarray) -> np.ndarray:
+    """:func:`_channel_weight` under the identity: each spot's own ratio, one where either is zero."""
+    nb = valid_nb.astype(np.float64)
+    bb = valid_bb.astype(np.float64)
+    weight = np.ones(valid_nb.shape, dtype=np.float64)
+    live = (nb > 0) & (bb > 0)
+    weight[live] = bb[live] / nb[live]
+    return weight
+
+
 @dataclass
 class _Boundary:
     """What the seam recomputes per outer iteration and need not (#59 item 4).
@@ -173,6 +189,42 @@ _BOUNDARY: dict[tuple[int, ...], _Boundary] = {}
 """One slot. A run conditions on one dataset, so a second entry is a bug."""
 
 
+def _self_only(smooth_mat: Any) -> bool:
+    """Whether every spot's only pooling neighbour is itself, at weight one."""
+    import scipy.sparse as sp
+
+    matrix = sp.csr_matrix(smooth_mat)
+    n_spots = matrix.shape[0]
+    return bool(
+        matrix.shape == (n_spots, n_spots)
+        and np.array_equal(matrix.indptr, np.arange(n_spots + 1))
+        and np.array_equal(matrix.indices, np.arange(n_spots))
+        and np.all(matrix.data == 1)
+    )
+
+
+class PooledSmoothing(ValueError):
+    """A `smooth_mat` that pools a spot with any spot but itself (#513)."""
+
+
+def require_unpooled(smooth_mat: Any) -> None:
+    """Refuse a `smooth_mat` other than `None` or the identity (#513).
+
+    `port` reads the counts unpooled. `cnaster` only ever builds the
+    identity, so any other matrix is an input this seam does not implement,
+    and it says so rather than scoring spots unpooled while the caller
+    believes they were pooled.
+    """
+    if smooth_mat is None or _self_only(smooth_mat):
+        return
+
+    msg = (
+        "smooth_mat pools spots with their neighbours; port's clone assignment "
+        "reads counts unpooled and supports only the identity (#513)"
+    )
+    raise PooledSmoothing(msg)
+
+
 def boundary(
     single_base_nb_mean: np.ndarray,
     single_total_bb_RD: np.ndarray,
@@ -199,8 +251,11 @@ def boundary(
     valid_nb = (single_base_nb_mean > 0).sum(axis=0)
     valid_bb = (single_total_bb_RD > 0).sum(axis=0)
 
+    require_unpooled(smooth_mat)
+    # NB under the identity each spot's neighbourhood is itself, so the
+    #    pooled ratio is the spot's own; `None` keeps upstream's unit weight.
     weight = (
-        _channel_weight(valid_nb, valid_bb, smooth_mat.indices, smooth_mat.indptr)
+        _own_weight(valid_nb, valid_bb)
         if smooth_mat is not None
         else np.ones(single_base_nb_mean.shape[1], dtype=np.float64)
     )
@@ -296,8 +351,8 @@ def pipeline_clone_assignment(
 
     from port.extensions.label_solver import label_solver, sweep_for
     from port.patch.hmrf.adjacency import adjacency_coo
-    from port.patch.hmrf.refinement import compact, mask_for
-    from port.patch.hmrf.tabulated_field import spot_clone_field
+    from port.patch.hmrf.refinement import MASK_PENALTY, compact, mask_for
+    from port.patch.hmrf.tabulated_field import field_kernel, spot_clone_field
     from port.patch.icm.floor import configured_floor, enforce_floor
     from port.patch.icm.floor import installed as floor_installed
     from port.patch.icm.interface import CsrGraph, fold_unary, icm_sweep
@@ -361,24 +416,15 @@ def pipeline_clone_assignment(
         f"is_tumor_mixed=False and merge={merge}."
     )
 
-    logger.info("Pooling hmrf data by smooth mat. (reduces necessary computation).")
-
-    if smooth_mat is not None:
-        pooled_X, pooled_base_nb_mean, pooled_total_bb_RD, _, _ = (
-            upstream.pool_spatio_genomic_counts(
-                single_X,
-                single_base_nb_mean,
-                single_total_bb_RD,
-                smooth_mat.indices,
-                smooth_mat.indptr,
-                None,
-                False,
-            )
-        )
-    else:
-        pooled_X = single_X.copy()
-        pooled_base_nb_mean = single_base_nb_mean.copy()
-        pooled_total_bb_RD = single_total_bb_RD.copy()
+    # NB no pooling (#513): `cnaster` builds `smooth_mat` as the identity
+    #    (`spatial.py:310`, `maxspots_pooling` fixed at 1), so each spot pools
+    #    itself alone and upstream's loop is `0 + x`. The counts are read as
+    #    they are, uncopied; a matrix that pools more than a spot with itself
+    #    is refused rather than silently applied or ignored.
+    require_unpooled(smooth_mat)
+    pooled_X = single_X
+    pooled_base_nb_mean = single_base_nb_mean
+    pooled_total_bb_RD = single_total_bb_RD
 
     # NB hoisted: all three are functions of the input data, which the outer
     #    loop never fits, and `cnaster` recomputes them per iteration (#59
@@ -427,11 +473,19 @@ def pipeline_clone_assignment(
         #    each out of range while their product is not.
         field = np.empty((n_spots, n_clones))
         centre = float(np.mean(shifts))
+        # NB the counts are the same for every clone, so the kernel is chosen
+        #    once rather than per column, and the rescaled exposure written
+        #    into one buffer (#488).
+        kernel = field_kernel(pooled_X[:, 0, :], pooled_X[:, 1, :], pooled_total_bb_RD)
+        scaled = np.empty_like(pooled_base_nb_mean)
 
         for clone in range(n_clones):
-            column = spot_clone_field(
+            np.multiply(
+                pooled_base_nb_mean, np.exp(-(shifts[clone] - centre)), out=scaled
+            )
+            column = kernel(
                 pooled_X[:, 0, :],
-                pooled_base_nb_mean * np.exp(-(shifts[clone] - centre)),
+                scaled,
                 pooled_X[:, 1, :],
                 pooled_total_bb_RD,
                 state_vector(res["new_log_mu"]) - centre,
@@ -459,15 +513,16 @@ def pipeline_clone_assignment(
         sweep = icm_sweep if solver == "icm" else sweep_for(solver)
 
         # NB the read-depth refinement's allowed-clone mask, which `cnaster`
-        #    computes and drops (#348): into the field, so no move and no
-        #    merge crosses a BAF clone, and into the floor, whose random
-        #    reassignment reads nothing else. Absent, the call is as before.
+        #    computes and drops (#348): into the field, less `MASK_PENALTY`
+        #    (#467), so a move or merge crosses a BAF clone only on a larger
+        #    read-depth gain; and to the solver and floor as the knob. Absent,
+        #    the call is as before.
         mask = mask_for(new_assignment, n_clones)
         knobs: dict[str, Any] = {} if mask is None else {"onehot_allowed_clones": mask}
 
         if mask is not None:
             unmasked = field
-            field = np.where(mask, field, -np.inf)
+            field = np.where(mask, field, field - MASK_PENALTY)
 
         # NB the floor merged smallest first, into each spot's best clone,
         #    in place of the sweep's all-at-once random reassignment (#348):

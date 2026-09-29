@@ -17,8 +17,9 @@ spots were moved into it and the run ended with one clone (ARI 0.000).
 `initialize_rdr_clone_refininement` here is upstream's, keeping the mask it
 returns; `mask_for` hands it to `port.patch.hmrf.clone_assignment` while the
 problem is still the one it was built for, which folds it into the field
-(`-inf`, so no sweep and no merge crosses a BAF clone) and passes it to the
-floor, whose reassignment reads it (`icm.py:939`). A problem of a different
+(less :data:`MASK_PENALTY`, so a sweep or merge crosses a BAF clone only on a
+read-depth gain larger than that) and passes it to the ICM, which applies it
+as `-inf`, and to the floor, whose reassignment reads it (`icm.py:939`). A problem of a different
 shape, or an assignment that already breaks the mask, gets none.
 """
 
@@ -32,6 +33,7 @@ from cnaster.spatial import (
 )
 
 __all__ = [
+    "MASK_PENALTY",
     "UPSTREAM",
     "compact",
     "forget",
@@ -39,6 +41,19 @@ __all__ = [
     "kept",
     "mask_for",
 ]
+
+MASK_PENALTY = 100.0
+"""Nats a spot's field loses on a sub-clone of another BAF clone (#467).
+
+Finite, so a strong read-depth preference can still correct a spot the BAF
+stage misplaced; `-inf` made the BAF stage's boundary final. Measured with
+`--sal --refinement-mask --floor-merge` (clone ARI; `-inf` in brackets):
+`dev` 1.000 (0.868), CalicoST hard 0.982 (0.982), easy 0.986, r0 0.9979,
+#338's three-sample instance 1.000. At 10 hard falls to 0.554 with 3 clones
+for 4; at 1,000 `dev` is `-inf`'s 0.868. The `--sal` rows read the mask
+only through the field; `cnaster`'s ICM re-applies it as `-inf` from
+`onehot_allowed_clones`, so on the default arm this changes nothing.
+"""
 
 _KEPT: list[np.ndarray] = []
 
