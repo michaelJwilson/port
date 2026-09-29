@@ -59,7 +59,6 @@ def _write(run: Path, *, calicost: bool) -> None:
 
 
 @pytest.mark.infra
-@pytest.mark.critical
 def test_both_label_layouts_read_alike_and_a_skipped_clone_reads_as_minus_one(
     tmp_path: Path,
 ) -> None:
