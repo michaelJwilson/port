@@ -439,7 +439,7 @@ def _dodges(n: int, width: float) -> list[float]:
 
 
 def figures(summary: dict[str, Any], into: Path) -> list[Path]:
-    """The two figures: clone detection and completeness by J; CNA recovery by class.
+    """One figure: clone sensitivity by UMIs per J, beside CNA sensitivity by length.
 
     Both are `run_cnaster_port --sal`; the arm, the realization counts and
     the bands' construction are stated in the study's document rather than
@@ -459,44 +459,35 @@ def figures(summary: dict[str, Any], into: Path) -> list[Path]:
     paths = []
 
     with plt.rc_context(style):
-        fig, axes = plt.subplots(1, 2, figsize=(9, 3.6), constrained_layout=True)
+        fig, (left, right) = plt.subplots(
+            1, 2, figsize=(9, 3.6), constrained_layout=True
+        )
         colours = j_colours(list(summary["study1"]))
         series = sorted(summary["study1"].items())
-        for axis, key in zip(axes, ("detected", "completeness"), strict=True):
-            for (j, entry), dodge in zip(
-                series, _dodges(len(series), 0.015), strict=True
-            ):
-                _panel(axis, entry[key], colours[j], f"J = {j:g}", dodge, 1.0)
-            axis.set_xscale("log")
-            axis.set_xticks(
-                [3e5, 1e6, 3e6], [r"$3\times10^5$", r"$10^6$", r"$3\times10^6$"]
-            )
-            axis.xaxis.set_minor_formatter(mpl.ticker.NullFormatter())
-            axis.set_xlabel("Clone UMIs")
-            axis.set_ylim(-0.02, 1.02)
-            axis.legend(frameon=False, fontsize=8, loc="lower right")
-        axes[0].set_ylabel(
-            "Recovery rate\n(≥ 0.90 of the true clone's spots recovered)"
+        for (j, entry), dodge in zip(series, _dodges(len(series), 0.015), strict=True):
+            _panel(left, entry["detected"], colours[j], f"J = {j:g}", dodge, 1.0)
+        left.set_xscale("log")
+        left.set_xticks(
+            [3e5, 1e6, 3e6], [r"$3\times10^5$", r"$10^6$", r"$3\times10^6$"]
         )
-        axes[1].set_ylabel("Share of the true clone's spots recovered")
-        path = into / "population_clone_umis.png"
-        fig.savefig(path, dpi=150)
-        plt.close(fig)
-        paths.append(path)
+        left.xaxis.set_minor_formatter(mpl.ticker.NullFormatter())
+        left.set_xlabel("Clone UMIs")
+        left.set_ylabel("Sensitivity (≥ 90% spots)")
 
-        fig, axis = plt.subplots(figsize=(6, 3.8), constrained_layout=True)
         classes = list(summary["study2"].items())
         for (name, entry), dodge in zip(
             classes, _dodges(len(classes), 0.02), strict=True
         ):
-            _panel(axis, entry["recovered"], CLASS_COLOURS[name], CLASS_NAMES[name],
+            _panel(right, entry["recovered"], CLASS_COLOURS[name], CLASS_NAMES[name],
                    dodge, 1e6)  # fmt: skip
-        axis.set_xscale("log")
-        axis.set_xlabel("CNA length [Mb]")
-        axis.set_ylabel("Recovery rate\n(≥ 0.90 of the CNA's bins recovered)")
-        axis.set_ylim(-0.02, 1.02)
-        axis.legend(frameon=False, fontsize=8, loc="upper left")
-        path = into / "population_cna_length.png"
+        right.set_xscale("log")
+        right.set_xlabel("CNA length [Mb]")
+        right.set_ylabel("Sensitivity (90% of segments recovered)")
+
+        for axis in (left, right):
+            axis.set_ylim(-0.02, 1.02)
+            axis.legend(frameon=False, fontsize=8, loc="upper left")
+        path = into / "population_recovery.png"
         fig.savefig(path, dpi=150)
         plt.close(fig)
         paths.append(path)
