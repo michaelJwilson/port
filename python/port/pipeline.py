@@ -48,7 +48,9 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from types import ModuleType
-from typing import Any
+from typing import Any, TypeVar
+
+_T = TypeVar("_T")
 
 __all__ = [
     "COPY_SWAPS",
@@ -68,6 +70,7 @@ __all__ = [
     "release",
     "swap_sites",
     "warm",
+    "with_attributes",
     "with_options",
 ]
 
@@ -339,6 +342,7 @@ SHIFT_SWAPS: tuple[Swap, ...] = (
         "hmm_nophasing",
         "port.patch.hmm_nophasing:hmm_nophasing",
         276,
+        (("apply_logmu_shift", True),),
     ),
     Swap(
         "cnaster.hmrf",
@@ -374,15 +378,14 @@ so that integer copy reads every clone's own rates.
 
 The two rows also carry three things the entry point turns on with the
 shift and off without it: the sal emission (#425) and the analytic M-step
-gradient (#433), class attributes of port's `hmm_nophasing`, and the
+gradient (#433), options of port's `hmm_nophasing` row, and the
 distinct initializer (#348), which port's `run_core_inference` passes. Where
 a tumour proportion hands clone assignment to `cnaster` (#135), the per-clone
 shift is not applied there and the run says so (#466).
 
 Its own table because every fitted rate moves, which `CLAUDE.md` forbids
 doing silently; `run_cnaster_port` installs it unless `--no-shift` is given,
-and `port.patch.hmm_nophasing.logmu_shift()` is what turns the class's flag
-on for the run.
+and the row binds `apply_logmu_shift=True` into the class it installs (#517).
 """
 
 
@@ -483,11 +486,38 @@ def with_options(
     )
 
 
+def with_attributes(cls: type[_T], **attributes: Any) -> type[_T]:
+    """A subclass of `cls` under `cls`'s name, with `attributes` set on it (#517).
+
+    How a row that replaces a class binds its options: `cnaster` reads the
+    class's attributes where no keyword reaches (`optimize_params`, the
+    static emission `hmm.py:155` calls), so an option is a class attribute,
+    set on a subclass the row installs rather than on the class every caller
+    shares. Each must already be an attribute of `cls`, or it is refused.
+    """
+    unknown = [name for name in attributes if not hasattr(cls, name)]
+
+    if unknown:
+        msg = f"{cls.__qualname__} has no option {unknown}"
+        raise TypeError(msg)
+
+    return type(
+        cls.__name__,
+        (cls,),
+        {
+            **attributes,
+            "__module__": cls.__module__,
+            "__qualname__": cls.__qualname__,
+        },
+    )
+
+
 def _replacement(swap: Swap) -> Any:
     """What a row installs: its replacement, with its options bound.
 
     An option the replacement does not take is refused here, at install,
-    rather than at the row's first call, hours into a run.
+    rather than at the row's first call, hours into a run. A class's options
+    are attributes of a subclass (:func:`with_attributes`).
     """
     import inspect
 
@@ -495,6 +525,9 @@ def _replacement(swap: Swap) -> Any:
 
     if not swap.options:
         return replacement
+
+    if isinstance(replacement, type):
+        return with_attributes(replacement, **dict(swap.options))
 
     inspect.signature(replacement).bind_partial(**dict(swap.options))
     bound = functools.partial(replacement, **dict(swap.options))

@@ -8,7 +8,7 @@ this file rather than as a line nobody reads as a switch.
 The kinds:
 
 - `switch`: a process-global option that changes what a drop-in returns.
-  #517 step 1 binds each at install and removes it.
+  None remains: #517 steps 1 and 2 made each an option bound at install.
 - `run`: what one run carries between calls that nothing threads through.
   Justified, and released when the run ends.
 - `cache`: a memo keyed by its inputs.
@@ -41,15 +41,6 @@ STATE: dict[str, Kind] = {
     "port.extensions.copy_likelihood._LENGTHS": "run",
     "port.extensions.segments._CURRENT": "run",
     "port.patch.hmm_nophasing.shifted_emission.hmm_nophasing._row_shift": "run",
-    "port.patch.hmm_nophasing.shifted_emission.hmm_nophasing.analytic_gradient": (
-        "switch"
-    ),
-    "port.patch.hmm_nophasing.shifted_emission.hmm_nophasing.apply_logmu_shift": (
-        "switch"
-    ),
-    "port.patch.hmm_nophasing.shifted_emission.hmm_nophasing.emission_kernels": (
-        "switch"
-    ),
     "port.patch.hmrf.clone_assignment._BOUNDARY": "cache",
     "port.patch.hmrf.core_inference._NORMAL": "run",
     "port.patch.hmrf.core_inference._PROPAGATED": "run",
@@ -59,7 +50,11 @@ STATE: dict[str, Kind] = {
     "port.patch.integer_copy._SHARED": "cache",
     "port.patch.io.NORMAL_SPOTS": "run",
 }
-"""Every name `port` writes after import, by kind. 12 switches (#517 C)."""
+"""Every name `port` writes after import, by kind.
+
+No `switch` since #517 steps 1 and 2: each of the 12 is an option a row
+binds at install.
+"""
 
 OUTLIVES: frozenset[str] = frozenset()
 """What a whole run leaves changed: nothing since #517 step 1.

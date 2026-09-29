@@ -209,8 +209,9 @@ def test_a_delegated_assignment_says_it_drops_the_mask_floor_or_shift(
     """With a tumour proportion the call is `cnaster`'s, which reads none of them (#466)."""
     import contextlib
 
-    from port.patch.hmm_nophasing import hmm_nophasing, logmu_shift
+    from port.patch.hmm_nophasing import hmm_nophasing
     from port.patch.hmrf import clone_assignment, refinement
+    from port.pipeline import with_attributes
 
     said: list[str] = []
     monkeypatch.setattr(clone_assignment, "UPSTREAM", lambda *_, **__: "cnaster")
@@ -220,15 +221,13 @@ def test_a_delegated_assignment_says_it_drops_the_mask_floor_or_shift(
         if flag == "mask":
             refinement._KEPT.append(np.ones((4, 2), dtype=bool))
             stack.callback(refinement.forget)
-        elif flag != "floor":
-            stack.enter_context(logmu_shift())
 
         # NB untyped: the nine positional inputs are never read on this path.
         assign: Any = clone_assignment.pipeline_clone_assignment
         result = assign(
             *[None] * 9,
             single_tumor_prop=np.ones(4),
-            hmmclass=hmm_nophasing,
+            hmmclass=with_attributes(hmm_nophasing, apply_logmu_shift=flag == "shift"),
             floor_merge=flag == "floor",
         )
 

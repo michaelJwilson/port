@@ -30,8 +30,9 @@ def test_a_shifted_clone_is_scored_as_upstream_scores_its_rescaled_exposure() ->
     Stated to 1e-9 relative.
     """
     import scipy.special
-    from port.patch.hmm_nophasing import hmm_nophasing, logmu_shift
+    from port.patch.hmm_nophasing import hmm_nophasing
     from port.patch.hmrf.clone_assignment import UPSTREAM, pipeline_clone_assignment
+    from port.pipeline import with_attributes
 
     fixture = spot_clone_field(n_states=3, n_obs=40, n_spots=16, n_clones=1)
     arguments = clone_assignment_arguments(fixture, width=4)
@@ -54,10 +55,8 @@ def test_a_shifted_clone_is_scored_as_upstream_scores_its_rescaled_exposure() ->
             hmmclass=hmmclass,
         )
 
-    with logmu_shift():
-        _, ours, _ = call(
-            pipeline_clone_assignment, fixture.base_nb_mean, hmm_nophasing
-        )
+    shifted = with_attributes(hmm_nophasing, apply_logmu_shift=True)
+    _, ours, _ = call(pipeline_clone_assignment, fixture.base_nb_mean, shifted)
 
     _, theirs, _ = call(UPSTREAM, fixture.base_nb_mean * np.exp(-shift), hmm_nophasing)
 
@@ -103,7 +102,8 @@ def test_the_fit_is_upstreams_off_and_decodes_under_its_own_shift_on() -> None:
     its shift describes, which `hmm_nophasing.py:1085` alone would not give.
     """
     from cnaster.hmm_nophasing import hmm_nophasing as upstream
-    from port.patch.hmm_nophasing import finite_difference, hmm_nophasing, logmu_shift
+    from port.patch.hmm_nophasing import hmm_nophasing
+    from port.pipeline import with_attributes
 
     instance = _stacked_instance()
     kwargs = {
@@ -118,16 +118,15 @@ def test_the_fit_is_upstreams_off_and_decodes_under_its_own_shift_on() -> None:
     args = (instance["X"], instance["lengths"], 2, instance["base"], instance["total"])
 
     theirs = upstream(params="smp", t=0.99).optimize(*args, **kwargs)
-    with finite_difference():
-        ours = hmm_nophasing(params="smp", t=0.99).optimize(*args, **kwargs)
+    differenced = with_attributes(hmm_nophasing, analytic_gradient=False)
+    ours = differenced(params="smp", t=0.99).optimize(*args, **kwargs)
 
     for key in ("new_log_mu", "new_p_binom", "log_gamma"):
         np.testing.assert_array_equal(ours[key], theirs[key])
 
-    with logmu_shift():
-        model = hmm_nophasing(params="smp", t=0.99)
-        shifted = model.optimize(*args, **kwargs)
-        row_shift = hmm_nophasing._row_shift
+    model = with_attributes(hmm_nophasing, apply_logmu_shift=True)(params="smp", t=0.99)
+    shifted = model.optimize(*args, **kwargs)
+    row_shift = hmm_nophasing._row_shift
 
     assert row_shift is not None
     assert row_shift.size == instance["X"].shape[0]
@@ -161,7 +160,8 @@ def test_the_pin_applies_to_a_shifted_rate_fit_only() -> None:
     stage), is returned as upstream returned it.
     """
     import port.patch.hmrf.core_inference as module
-    from port.patch.hmm_nophasing import hmm_nophasing, logmu_shift
+    from port.patch.hmm_nophasing import hmm_nophasing
+    from port.pipeline import with_attributes
 
     def fake(*_: Any, **__: Any) -> dict[str, np.ndarray]:
         return {
@@ -183,13 +183,9 @@ def test_the_pin_applies_to_a_shifted_rate_fit_only() -> None:
             **blanks, hmmclass=hmm_nophasing, params="smp"
         )
 
-        with logmu_shift():
-            pinned = module.run_core_inference(
-                **blanks, hmmclass=hmm_nophasing, params="smp"
-            )
-            baf_only = module.run_core_inference(
-                **blanks, hmmclass=hmm_nophasing, params="sp"
-            )
+        shifted = with_attributes(hmm_nophasing, apply_logmu_shift=True)
+        pinned = module.run_core_inference(**blanks, hmmclass=shifted, params="smp")
+        baf_only = module.run_core_inference(**blanks, hmmclass=shifted, params="sp")
     finally:
         module.UPSTREAM = original
 

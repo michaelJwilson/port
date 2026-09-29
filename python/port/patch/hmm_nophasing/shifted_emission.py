@@ -83,8 +83,6 @@ The whole call, against the unshifted emission upstream runs: **1.12x** at
 
 from __future__ import annotations
 
-from collections.abc import Iterator
-from contextlib import contextmanager
 from math import exp
 from typing import Any, NamedTuple
 
@@ -103,9 +101,7 @@ logger = get_logger(__name__, start_time=start_time)
 
 __all__ = [
     "UPSTREAM",
-    "finite_difference",
     "hmm_nophasing",
-    "logmu_shift",
     "neutral_state",
     "release",
 ]
@@ -299,29 +295,28 @@ class hmm_nophasing(UPSTREAM):  # type: ignore[misc]
     the thing it replaces would not be one.
     """
 
-    apply_logmu_shift: bool = False
-    """Off by default. :func:`logmu_shift` is what turns it on.
+    # NB the three options below are class attributes rather than keywords,
+    #    because the caller is `optimize_params` inside `cnaster` and a keyword
+    #    would have to reach it through a function this repository does not
+    #    replace. They are set on a subclass the `SHIFT_SWAPS` row installs
+    #    (`port.pipeline.with_attributes`), never on this class (#517).
 
-    A class attribute rather than a keyword, because the caller is
-    `optimize_params` inside `cnaster` and a keyword would have to reach it
-    through a function this repository does not replace.
-    """
+    apply_logmu_shift: bool = False
+    """Off here, as `cnaster` is; the `SHIFT_SWAPS` row binds it on."""
 
     analytic_gradient: bool = True
     """On by default: the M step's gradient in closed form (#433).
 
     Off, BFGS differences `cost_fn` as `cnaster` does, one call per
-    coordinate. :func:`finite_difference` turns it off for a block.
+    coordinate.
     """
 
     emission_kernels: str = "cnaster"
     """`cnaster` (default) or `sal`: which kernels score the coded emission.
 
-    :func:`sal_emission` sets `sal`, which `run_cnaster` enters unless
-    `--no-sal-emission` (#425). A class
-    attribute for the reason `apply_logmu_shift` is one; not a name rebind,
-    because `cnaster`'s compiled kernels call `_nb_logpmf_1d` as a global and
-    a Python function in its place breaks their compilation.
+    `run_cnaster_port` binds `sal` unless `--no-sal-emission` (#425). Not a
+    name rebind, because `cnaster`'s compiled kernels call `_nb_logpmf_1d` as
+    a global and a Python function in its place breaks their compilation.
     """
 
     def _clone_triples(self, encoder: Any, lengths: tuple[int, ...]) -> _Triples:
@@ -378,8 +373,9 @@ class hmm_nophasing(UPSTREAM):  # type: ignore[misc]
     value cannot reach a different problem unnoticed.
     """
 
-    @staticmethod
+    @classmethod
     def compute_emission_probability_nb_betabinom(
+        cls,
         X: np.ndarray,
         base_nb_mean: np.ndarray,
         log_mu: np.ndarray,
@@ -398,7 +394,7 @@ class hmm_nophasing(UPSTREAM):  # type: ignore[misc]
         shift = hmm_nophasing._row_shift
 
         if (
-            hmm_nophasing.apply_logmu_shift
+            cls.apply_logmu_shift
             and shift is not None
             and shift.size == np.asarray(X).shape[0]
         ):
@@ -699,50 +695,6 @@ class hmm_nophasing(UPSTREAM):  # type: ignore[misc]
             return log_emit_rdr, log_emit_baf
 
         return log_emit_rdr[:, :, None], log_emit_baf[:, :, None]
-
-
-@contextmanager
-def logmu_shift() -> Iterator[None]:
-    """Turn the shift on for the block, and back to what it was after.
-
-    The flag is a class attribute, so a run that set it and left it would make
-    every later comparison in the same process a shifted one. Restored rather
-    than cleared, so nesting does not lie.
-    """
-    previous = hmm_nophasing.apply_logmu_shift
-    hmm_nophasing.apply_logmu_shift = True
-
-    try:
-        yield
-    finally:
-        hmm_nophasing.apply_logmu_shift = previous
-
-
-@contextmanager
-def sal_emission() -> Iterator[None]:
-    """Score the coded emission with sal's dense kernels for the block (#425).
-
-    Restored rather than cleared on the way out, as :func:`logmu_shift` is.
-    """
-    previous = hmm_nophasing.emission_kernels
-    hmm_nophasing.emission_kernels = "sal"
-
-    try:
-        yield
-    finally:
-        hmm_nophasing.emission_kernels = previous
-
-
-@contextmanager
-def finite_difference() -> Iterator[None]:
-    """`cnaster`'s finite-difference gradient for the block (#433), restored after."""
-    previous = hmm_nophasing.analytic_gradient
-    hmm_nophasing.analytic_gradient = False
-
-    try:
-        yield
-    finally:
-        hmm_nophasing.analytic_gradient = previous
 
 
 def release() -> None:
