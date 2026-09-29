@@ -16,20 +16,9 @@ defaults to recompute.
 from those counts, per call, inside its own `prange` -- also invariant, and
 hoisted with them.
 
-**Measured** by `pytest-benchmark`, both count passes together, minimum
-over the rounds it took:
-
-| `n_obs` | `n_spots` | per iteration |
-| ---: | ---: | ---: |
-| 240 | 160 | 0.041 ms |
-| 3,000 | 5,000 | 25.2 ms |
-| 10,000 | 2,500 | 48.5 ms |
-
-Against a boundary costing about 16 s that is under two tenths of a per
-cent, so this is a **simplification** rather than a speedup and is offered
-as one: the value is that a quantity which cannot change stops being
-recomputed, and the ratio is incidental. It multiplies by `max_iter_outer`,
-which is the only reason the absolute number is worth writing down at all.
+A **simplification** rather than a speedup: a quantity which cannot change
+stops being recomputed. Measured: `docs/measurements.md`,
+`port.patch.hmrf.invariants`.
 
 **What this module is for.** The patch is two expressions, so shipping them
 is not the point -- the point is the pair of facts a caller needs before

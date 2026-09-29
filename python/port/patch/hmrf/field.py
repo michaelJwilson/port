@@ -26,51 +26,20 @@ ratio is what it is:
     without early exit or data-dependent reduction, so NumPy and the Rust
     compiler vectorize"; `cnaster`'s form is contiguous in neither sense and
     is a reduction, and a form that fixes only the contiguity gets about half
-    the gain (see below).
+    the gain (`docs/measurements.md`).
 
 **Referee: bitwise.** The additions per `(spot, clone)` run over `o` in the
 same order as `cnaster`'s, so the same floats are summed in the same
 sequence. `np.array_equal` is the bar and a tolerance would be hiding
 something.
 
-**Measured**, minimum of three runs, `n_states = 7`:
-
-| `n_obs` | `n_spots` | clones | `cnaster` | this | ratio |
-| ---: | ---: | ---: | ---: | ---: | ---: |
-| 3,000 | 5,000 | 4 | 69.6 ms | 17.8 ms | 3.90 |
-| 3,000 | 5,000 | 7 | 198.7 ms | 36.1 ms | 5.50 |
-| 10,000 | 2,500 | 7 | 483.6 ms | 67.4 ms | 7.17 |
-
-Above `CLAUDE.md`'s 2x bar at every size measured, and it rises with both
-extents: the stride is `n_spots` and the number of strided probes is
-`n_obs`, so `cnaster`'s form worsens as either grows.
-`expected_runtime.tex`'s own derivation puts the genome at 2.9e5 segments
-rather than the 3.2e3 it states (`docs/audit-paper-internal.md` §3a), so the
-range measured understates the size the method is aimed at.
-
 **It needs nothing from the producer**, which is what makes it a
-simplification rather than a port-wide change. Three other forms were tried
-and are recorded so they are not retried:
+simplification rather than a port-wide change. The algorithmic cut is issue
+#59 item 2 -- not materializing the `(n_states, n_obs, n_spots)` array at
+all.
 
-| form | ratio |
-| --- | ---: |
-| transposing the emission to `(n_states, n_spots, n_obs)` | 1.18-7.46, and needs the producer changed |
-| transposing at run time, then that kernel | 0.11 |
-| a `numpy` gather, `rdr[pred[:, c], arange(n_obs), :].sum(0)` | 0.32 |
-| the same gather on the transposed array | 0.09 |
-
-The transpose is the instructive one: it fixes the contiguity and leaves the
-scalar reduction, and measures roughly half what the reorder does at the same
-sizes -- 61.8 ms against 36.1 ms at 3,000 x 5,000 x 7. Both gathers
-materialize a fancy-indexed `(n_obs, n_spots)` copy per clone that a compiled
-loop does not have.
-
-**What the profile says next.** The producer that fills these arrays costs
-4,129 ms at 3,000 x 5,000 where the field costs 70 ms, so the field is under
-two per cent of the boundary and this patch moves about one per cent of it.
-It lands because it is free and bitwise, not because it moves the boundary.
-The algorithmic cut is issue #59 item 2 -- not materializing the
-`(n_states, n_obs, n_spots)` array at all.
+Measured, and the forms tried and rejected: `docs/measurements.md`,
+`port.patch.hmrf.field`.
 """
 
 from __future__ import annotations

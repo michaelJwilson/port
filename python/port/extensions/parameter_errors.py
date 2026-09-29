@@ -74,19 +74,14 @@ the debiased rates a scale uncertainty the debiasing exists to remove.
 
 ## jax, and one implementation of the objective
 
-The previous work is `cnaster/sandbox/hmm_nophasing_jax.py`, named because
-`CLAUDE.md` puts a dependency's `sandbox/` out of scope by default and an
-excursion has to say which tree it read and why. It could not be answered
-from the installed path: that tree is not in the wheel, so nothing installed
-differentiates this objective.
-
 The Hessian is `jax`'s, taken of `port.extensions.jax_hmm` -- **the same
 objective, differentiated, rather than a second one written to be
 differentiable**. That module is pinned against `cnaster`'s own kernels, so
-what is differentiated here is refereed there.
+what is differentiated here is refereed there. `jax` is a dependency as of
+#287.
 
-`jax` is a dependency of this repository as of #287, added with permission
-because the alternative was writing the objective a third time.
+History, and the `sandbox/` excursion: `docs/measurements.md`,
+`port.extensions.parameter_errors`.
 """
 
 from __future__ import annotations

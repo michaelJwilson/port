@@ -1,8 +1,9 @@
 """`cnaster.reference.get_reference_genes`, read with `polars` (#185).
 
-**13.3x and 55.2 MB to 23.3 MB at 250,000 transcripts, which is a human
-reference's size.** The function reads one tab-separated file and hands back
-six columns, and `pandas` is 367 ms of that on its own.
+The function reads one tab-separated file and hands back six columns. The
+return is **bitwise** what `cnaster` returns -- values, index, column order
+and dtypes -- which `tests/test_reference_patch.py` pins. It is offered as a
+simplification, not a speedup.
 
 Two costs, not one:
 
@@ -21,25 +22,9 @@ it and uses it for the Visium HD spatial reads -- but it is a new one to
 **`pyarrow` is a real install, and it buys memory rather than time.** The
 whole transform is one `select` and one `to_pandas()`, so the numeric columns
 cross by Arrow buffer instead of being pulled out as six `numpy` arrays and
-rebuilt into a dict. Measured at 250,000 transcripts, warm, best of five:
+rebuilt into a dict.
 
-    cnaster                430.65 ms   49.54 MB
-    column by column        42.84 ms   23.28 MB   10.1x, 2.1x less
-    through Arrow           60.53 ms   15.49 MB    7.1x, 3.2x less
-
-and at the dev instance's 1,213 transcripts, 3.94 / 1.90 / 4.03 ms.
-
-So it is **1.41x slower than the route it replaces at a stress size and a
-wash at a gate size**, for 33 per cent less peak and a function that is one
-expression rather than seven. `CLAUDE.md` is what decides which of those
-wins: a speedup claim needs 2x at a stress size and this is not offered as
-one; a simplification needs evidence of equivalence, which is the bitwise
-test. The cost is stated rather than buried -- `pyarrow` is 152 MB installed
-and the largest wheel in the environment, against 7.8 MB of peak saved on a
-stage that is 0.17 s of a whole run.
-
-The return is **bitwise** what `cnaster` returns -- values, index, column
-order and dtypes -- which `tests/test_reference_patch.py` pins.
+Measured: `docs/measurements.md`, `port.patch.reference`.
 """
 
 from __future__ import annotations
