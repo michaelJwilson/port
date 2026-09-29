@@ -36,7 +36,8 @@ BUDGET: dict[str, int] = {
     #    mutable state, machinery or a `__post_init__` (#517 D). Step 8 moved
     #    7 dataclasses and 1 NamedTuple to `sandbox/`.
     "dataclasses": 19,
-    "NamedTuples": 23,
+    # NB 24: `analysis.GenomicTruth` (the truth page).
+    "NamedTuples": 24,
 }
 """`python/port` outside `sandbox/`."""
 
