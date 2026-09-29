@@ -101,8 +101,11 @@ def read_run(sample: SimulatedSample, output: Path) -> dict[str, Any]:
     run = next(output.rglob("rdrbaf_final_nstates*_smp.npz"))
     fit = np.load(run, allow_pickle=True)
     table = pd.read_csv(run.parent / "clone_labels.tsv", sep="\t", comment="#")
+    # NB CalicoST writes the barcodes as an index named `BARCODES` (#494);
+    #    `cnaster` as a `barcode` column.
+    barcodes = table["barcode"] if "barcode" in table else table.iloc[:, 0]
     by_barcode = dict(
-        zip(_barcode(table["barcode"]), table["clone_label"].to_numpy(), strict=True)
+        zip(_barcode(barcodes), table["clone_label"].to_numpy(), strict=True)
     )
     labels = np.array([by_barcode.get(b, -1) for b in sample.barcodes])
 
@@ -110,8 +113,15 @@ def read_run(sample: SimulatedSample, output: Path) -> dict[str, Any]:
     n_fitted = int(labels.max()) + 1
     n_states = np.asarray(fit["new_log_mu"]).shape[0]
     pred = np.asarray(fit["pred_cnv"]).reshape(len(seglevel), -1) % n_states
-    a = np.stack([seglevel[f"clone{c} A"].to_numpy() for c in range(n_fitted)], 1)
-    b = np.stack([seglevel[f"clone{c} B"].to_numpy() for c in range(n_fitted)], 1)
+    # NB CalicoST leaves out the column of a clone whose integer fit it
+    #    skipped (#494); its bins read as -1, never as a planted pair.
+    missing = np.full(len(seglevel), -1)
+    a = np.stack(
+        [seglevel.get(f"clone{c} A", missing) for c in range(n_fitted)], 1
+    ).astype(np.int64)
+    b = np.stack(
+        [seglevel.get(f"clone{c} B", missing) for c in range(n_fitted)], 1
+    ).astype(np.int64)
 
     return {
         "labels": labels,
