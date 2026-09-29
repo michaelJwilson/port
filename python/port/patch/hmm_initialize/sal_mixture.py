@@ -124,11 +124,12 @@ def instance_of(
     )
 
 
-def fitted(instance: Any, start: str, seed: int) -> tuple[np.ndarray, np.ndarray]:
+def fitted(
+    instance: Any, start: str, rng: np.random.Generator
+) -> tuple[np.ndarray, np.ndarray]:
     """`(log_mu, p_binom)` of `start` on `instance`, polished by `sal`'s EM."""
     from sal.search.mixture_starts import BestOf, Selection, lookup, polish
 
-    rng = np.random.default_rng([seed, 0])
     chosen = lookup(start)
 
     if isinstance(chosen, BestOf) and chosen.select is Selection.POLISHED:
@@ -169,9 +170,9 @@ def gmm_init(*args: Any, **kwargs: Any) -> Any:
     X = np.asarray(args[1] if len(args) > 1 else kwargs["X"])
     base_nb_mean = np.asarray(args[2] if len(args) > 2 else kwargs["base_nb_mean"])
     total_bb_RD = np.asarray(args[3] if len(args) > 3 else kwargs["total_bb_RD"])
-    seed = int(kwargs.get("random_state") or 0)
+    rng = np.random.default_rng([int(kwargs.get("random_state") or 0), 0])
 
     log_mu, p_binom = fitted(
-        instance_of(X, base_nb_mean, total_bb_RD, n_states), start, seed
+        instance_of(X, base_nb_mean, total_bb_RD, n_states), start, rng
     )
     return log_mu.reshape(-1, 1), p_binom.reshape(-1, 1), None, None

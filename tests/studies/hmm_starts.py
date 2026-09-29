@@ -1,6 +1,6 @@
 """#489: `sal`'s count-pair mixture starts on the read-depth + BAF HMM call, under the covariate.
 
-Three steps, each a subcommand of `python -m tests.study_hmm_starts`:
+Three steps, each a subcommand of `python -m tests.studies.hmm_starts`:
 
 `capture SAMPLE OUT`
     One `--sal --hmm-start none --no-plots` arm, pickling every call of the
