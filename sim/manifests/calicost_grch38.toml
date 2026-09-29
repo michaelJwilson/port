@@ -53,6 +53,11 @@ bb_overdispersion = 0.0
 snp_dispersion = 1.0
 # NB CalicoST's SNP reads do not scale with copies.
 snp_depth_follows_copies = false
+# NB one Dirichlet-multinomial law, two draws of it: "gamma" (normalized gammas,
+#    O(genes) per spot, the draw every committed realization was made with) or
+#    "urn" (Polya urn, O(UMIs) per spot, 15x at 20,000 genes). A seed draws
+#    different counts under each (#549).
+counts_sampler = "gamma"
 
 [cna]
 # NB CalicoST's easy sample, numcnas1.2: 3 tumour clones (the leaves), 1 event
