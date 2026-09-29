@@ -403,6 +403,45 @@ def test_the_normal_index_file_annotates_the_spots_it_names(
     assert marked == set(normal)
 
 
+@pytest.mark.cnaster
+@pytest.mark.patch
+@pytest.mark.parametrize("layout", ["sparse", "dense"])
+def test_the_dense_count_layer_is_cnasters_for_either_storage(
+    tmp_path: Path, layout: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The default path's count layer equals `cnaster`'s on a sparse `.h5ad`,
+    and a dense `.h5ad` gives the same layer rather than raising (#88).
+
+    `get_spaceranger_counts` calls `.toarray()` on `X` unguarded, so a dense
+    file raises `AttributeError`; `anndata` writes dense by default.
+    """
+    from types import SimpleNamespace
+
+    import anndata as ad
+    import scipy.sparse as sp
+    from cnaster.io import get_spaceranger_counts
+    from port.patch.io import _spaceranger_counts
+
+    name = "filtered_feature_bc_matrix"
+    config = SimpleNamespace(visium=SimpleNamespace(filtered_feature_name=name))
+    monkeypatch.setattr("cnaster.io.get_global_config", lambda: config)
+
+    rng = np.random.default_rng(88)
+    counts = rng.poisson(0.5, size=(30, 12)).astype(np.float32)
+    sparse_dir, layout_dir = tmp_path / "sparse", tmp_path / layout
+    sparse_dir.mkdir()
+    layout_dir.mkdir(exist_ok=True)
+    ad.AnnData(sp.csr_matrix(counts)).write_h5ad(sparse_dir / f"{name}.h5ad")
+    stored = sp.csr_matrix(counts) if layout == "sparse" else counts
+    ad.AnnData(stored).write_h5ad(layout_dir / f"{name}.h5ad")
+
+    upstream = get_spaceranger_counts(str(sparse_dir))
+    ours = _spaceranger_counts(str(layout_dir), config, sparse_counts=False)
+
+    np.testing.assert_array_equal(ours.layers["count"], upstream.layers["count"])
+    assert ours.layers["count"].dtype == upstream.layers["count"].dtype
+
+
 @pytest.fixture(scope="module")
 def outlier_configs(
     planted_instance: PlantedInstance,
