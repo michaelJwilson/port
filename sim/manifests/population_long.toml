@@ -1,0 +1,15 @@
+# The population study's long-event arm (#544): `population.toml` with a
+# 60 Mb mean event length, for Study 2's long-length bins only. Study 2 reads
+# recovery given length and class, which the length law does not change;
+# Study 1 reads the base population alone, since longer events alter more of
+# each clone's genome.
+version = 3
+extends = "population.toml"
+
+[sample]
+name = "population_long"
+
+[cna.length]
+law = "exponential"
+mean = 6e7
+minimum = 1e6

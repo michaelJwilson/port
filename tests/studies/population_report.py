@@ -59,7 +59,7 @@ CLASS_COLOURS = {
 """Categorical slots 1-3 in fixed order; `all` pools them, in secondary ink."""
 
 
-EVENT_COLUMNS = ("seed", "J", "clone", "chr", "length", "a", "b", "class", "bins",
+EVENT_COLUMNS = ("seed", "J", "manifest", "clone", "chr", "length", "a", "b", "class", "bins",
                  "correct", "recovered")  # fmt: skip
 
 
@@ -83,7 +83,8 @@ def load(out: Path) -> tuple[pd.DataFrame, pd.DataFrame]:
     clones, events = [], []
     for path in sorted((out / "records").glob("*.json")):
         record = json.loads(path.read_text())
-        key = {"seed": record["seed"], "J": record["J"]}
+        key = {"seed": record["seed"], "J": record["J"],
+               "manifest": record.get("manifest", "population")}  # fmt: skip
         clones += [key | c for c in record["clones"]]
         events += [key | e for e in record["events"]]
     return pd.DataFrame(clones), pd.DataFrame(events, columns=list(EVENT_COLUMNS))
@@ -201,11 +202,14 @@ def summarize(out: Path, study2_j: float, seed: int = 544) -> dict[str, Any]:
     #    failed at one J leaves every J -- with one set of resamples, so a
     #    J's curve and another's are read on the same members and their
     #    difference is paired.
-    js = sorted(clones["J"].unique())
-    at = clones.groupby("J")["seed"].apply(set)
+    # NB Study 1 reads the base population alone: the long-event arm alters
+    #    more of each clone's genome, which bears on detection.
+    base_clones = clones[clones["manifest"] == "population"]
+    js = sorted(base_clones["J"].unique())
+    at = base_clones.groupby("J")["seed"].apply(set)
     seeds = np.array(sorted(set.intersection(*(at[j] for j in js))))
     weights = _weights(seeds, rng)
-    paired = clones[clones["seed"].isin(seeds)]
+    paired = base_clones[base_clones["seed"].isin(seeds)]
 
     study1: dict[float, dict[str, Any]] = {}
     for j, frame in paired.groupby("J"):

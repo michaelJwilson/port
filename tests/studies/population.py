@@ -86,13 +86,13 @@ def copy_class(a: int, b: int) -> str:
     return next((k for k, pairs in CLASSES.items() if (a, b) in pairs), "other")
 
 
-def draw_member(seed: int, into: Path) -> Path:
-    """Seed `seed` of the population manifest, written under `into`; its sample path."""
+def draw_member(seed: int, into: Path, manifest_path: Path = MANIFEST) -> Path:
+    """Seed `seed` of a population manifest, written under `into`; its sample path."""
     from dataclasses import replace
 
     from port.sim.draw import _merge, draw, read_manifest
 
-    manifest = read_manifest(MANIFEST)
+    manifest = read_manifest(manifest_path)
     manifest = replace(
         manifest, tables=_merge(manifest.tables, {"sample": {"seed": seed}})
     )
@@ -213,7 +213,9 @@ def _record(out: Path, seed: int, j: float) -> Path:
     return out / "records" / f"s{seed:04d}-J{j:g}.json"
 
 
-def run_member(seed: int, js: tuple[float, ...], out: Path) -> None:
+def run_member(
+    seed: int, js: tuple[float, ...], out: Path, manifest: Path = MANIFEST
+) -> None:
     """Draw seed `seed`, run and score it at each `J`, keep only the records."""
     from tests.sim_audit import run_arm
     from tests.sim_fixtures import load_simulated
@@ -223,13 +225,13 @@ def run_member(seed: int, js: tuple[float, ...], out: Path) -> None:
         return
 
     draws = out / "draws" / f"s{seed:04d}"
-    path = draw_member(seed, draws)
+    path = draw_member(seed, draws, manifest)
     sample = load_simulated(str(path))
 
     for j in todo:
         runs = out / "runs" / f"s{seed:04d}-J{j:g}"
         started = time.perf_counter()
-        base = {"seed": seed, "J": j, "flags": list(FLAGS)}
+        base = {"seed": seed, "J": j, "flags": list(FLAGS), "manifest": manifest.stem}
         try:
             _, output = run_arm(
                 sample, list(FLAGS), {"hmrf.spatial_weight": j}, root=runs
@@ -250,14 +252,14 @@ def run_member(seed: int, js: tuple[float, ...], out: Path) -> None:
     shutil.rmtree(draws, ignore_errors=True)
 
 
-def _worker(task: tuple[int, tuple[float, ...], str]) -> str:
-    seed, js, out = task
+def _worker(task: tuple[int, tuple[float, ...], str, str]) -> str:
+    seed, js, out, manifest = task
     log = Path(out) / "logs" / f"s{seed:04d}.log"
     log.parent.mkdir(parents=True, exist_ok=True)
     with log.open("a") as handle:
         sys.stdout = sys.stderr = handle
         try:
-            run_member(seed, js, Path(out))
+            run_member(seed, js, Path(out), Path(manifest))
         except Exception as error:  # noqa: BLE001 -- recorded, the study goes on
             import traceback
 
@@ -279,6 +281,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--seeds", default="0:60", help="START:STOP")
     parser.add_argument("--J", default=",".join(f"{j:g}" for j in J_VALUES))
     parser.add_argument("--workers", type=int, default=4)
+    parser.add_argument("--manifest", type=Path, default=MANIFEST)
     parser.add_argument("--study2-J", type=float, default=J_VALUES[0],
                         help="the J Study 2's length curves are read at")  # fmt: skip
     arguments = parser.parse_args(argv)
@@ -300,7 +303,8 @@ def main(argv: list[str] | None = None) -> int:
 
     js = tuple(float(j) for j in arguments.J.split(","))
     cores = min(arguments.workers, os.cpu_count() or 1)
-    tasks = [(s, js, str(arguments.out)) for s in _seeds(arguments.seeds)]
+    tasks = [(s, js, str(arguments.out), str(arguments.manifest))
+             for s in _seeds(arguments.seeds)]  # fmt: skip
     context = multiprocessing.get_context("spawn")
     with context.Pool(cores, maxtasksperchild=1) as pool:
         for line in pool.imap_unordered(_worker, tasks):
