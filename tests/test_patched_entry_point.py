@@ -77,7 +77,6 @@ DEPARTURES: dict[tuple[str, str], str] = {
     ("FIGURE_SWAPS", "plot_clones_genomic"): "figure, colour_by positional",
     ("FIGURE_SWAPS", "plot_clones_spatial"): "sample_layout positional",
     ("FIGURE_SWAPS", "plot_ascn_legend"): "span, title_on_edge positional",
-    ("NP_MERGE_SWAPS", "merge_by_minspots"): "**kwargs",
     ("PLOT_OFF_SWAPS", "write_fig"): "*_, **__",
     ("REFINEMENT_SWAPS", "initialize_rdr_clone_refininement"): "*args, **kwargs",
     ("SHIFT_SWAPS", "run_core_inference"): "*args, **kwargs",

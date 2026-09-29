@@ -22,7 +22,7 @@ import pytest
 from tests.source_graph import PACKAGE, TESTS
 
 BUDGET: dict[str, int] = {
-    "run_cnaster_port flags": 23,
+    "run_cnaster_port flags": 22,
     "classes": 61,
     "dataclasses": 44,
     "NamedTuples": 5,
