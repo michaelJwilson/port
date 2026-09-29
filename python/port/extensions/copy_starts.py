@@ -52,9 +52,12 @@ __all__ = [
     "fold",
     "found",
     "instance",
+    "lattice_start",
     "masked",
     "planted_states",
     "polish_states",
+    "pooled_exposure",
+    "rdr_quantile_states",
     "read_captured",
     "run_start",
     "smoothed",
@@ -466,6 +469,195 @@ def corrupted(
 # --- the starts ---------------------------------------------------------------
 
 
+LATTICE_PURITY = (1.0, 0.9, 0.8, 0.7, 0.6, 0.5)
+"""Tumour fractions the lattice start tries, as `copy_likelihood.PURITY_GRID` does."""
+
+LATTICE_SCALE = tuple(float(v) for v in np.exp(np.linspace(-0.15, 0.15, 7)))
+"""Read-depth scales it tries: the call's baseline need not sit at the clones' neutral."""
+
+LATTICE_ROUNDS = 3
+"""Assign, then refit the NB size and BB concentration, this many times."""
+
+
+def _lattice_ceiling(call: CopyCall) -> int:
+    """The largest total copy the lattice holds: twice the 99.5th percentile of RDR, 3 to 8.
+
+    `mu = (A + B) / 2` at purity 1, so the states reach the highest read
+    depth the rows carry and no further (`cna_mixture_init`'s `max_rdr`).
+    """
+    if call.stage != "rdrbaf":
+        return 4
+    log_rdr = _log_rdr(call)
+    finite = log_rdr[np.isfinite(log_rdr)]
+    ceiling = float(np.exp(np.percentile(finite, 99.5))) if finite.size else 2.0
+    return int(np.clip(np.ceil(2.0 * ceiling), 3, 8))
+
+
+def _fit_shapes(
+    scored: Callable[[np.ndarray, np.ndarray, float, float], np.ndarray],
+    log_mu: np.ndarray,
+    p: np.ndarray,
+    assigned: np.ndarray,
+    concentration: float,
+) -> tuple[float, float]:
+    """The NB size, then the BB concentration, maximizing the likelihood of each row under its assigned state."""
+    from scipy.optimize import minimize_scalar
+
+    chosen = np.unique(assigned)
+    index = np.searchsorted(chosen, assigned)
+    rows = np.arange(assigned.size)
+
+    def along(r: float, c: float) -> float:
+        return float(scored(log_mu[chosen], p[chosen], r, c)[rows, index].sum())
+
+    fitted_size = float(
+        np.exp(
+            minimize_scalar(
+                lambda x: -along(float(np.exp(x)), concentration),
+                bounds=(np.log(0.5), np.log(1e4)),
+                method="bounded",
+                options={"xatol": 1e-2},
+            ).x
+        )
+    )
+    fitted_concentration = float(
+        np.exp(
+            minimize_scalar(
+                lambda x: -along(fitted_size, float(np.exp(x))),
+                bounds=(np.log(1.0), np.log(1e6)),
+                method="bounded",
+                options={"xatol": 1e-2},
+            ).x
+        )
+    )
+    return fitted_size, fitted_concentration
+
+
+def lattice_start(
+    call: CopyCall, *, rounds: int = LATTICE_ROUNDS
+) -> tuple[np.ndarray, np.ndarray]:
+    """`n_states` of the integer `(A, B)` lattice, as `lattice_decode` places them, chosen by the rows (#540).
+
+    Every `(A, B)` with `0 < A + B` up to `_lattice_ceiling` is placed at
+    its `(mu, p)` (`copy_likelihood._parameters`) and scored by the IID
+    emission the mixture fit itself uses, `sal`'s `CountPairEmission` on
+    `instance(call)`, each row on its own with its exposure and trials.
+
+    - The tumour fraction (`LATTICE_PURITY`) and read-depth scale
+      (`LATTICE_SCALE`) are those whose rows, each assigned its most likely
+      state, have the highest total likelihood, at a moderate NB size and
+      BB concentration.
+    - At those, each row is assigned its most likely state, then the shared
+      NB size and BB concentration are fitted by the likelihood along that
+      assignment, `rounds` times.
+    - The `n_states` states holding the most rows are kept; with fewer
+      populated, the next by occupancy. For BAF only the depth channel is a
+      constant, so the lattice is its allele shares.
+    """
+    import torch
+    from sal.emissions import CountPairEmission
+
+    from port.extensions.copy_likelihood import _parameters, candidates
+
+    held = instance(call)
+    observations = torch.as_tensor(np.asarray(held.observations, dtype=np.float64))
+    covariate = held.conditioned
+    trials = float(held.at.trials)
+    copies = candidates(_lattice_ceiling(call))
+
+    def rates(log_mu: np.ndarray) -> np.ndarray:
+        if call.stage == "rdrbaf":
+            return np.exp(log_mu) * EXPOSURE_SCALE
+        return np.full(log_mu.size, CONSTANT_TOTAL * EXPOSURE_SCALE)
+
+    def scored(
+        log_mu: np.ndarray, p: np.ndarray, size: float, concentration: float
+    ) -> np.ndarray:
+        """`(rows, states)` log density."""
+        share = np.clip(p, 1e-4, 1 - 1e-4)
+        family = CountPairEmission(
+            np.full(p.size, size),
+            rates(log_mu),
+            share * concentration,
+            (1.0 - share) * concentration,
+            np.full(p.size, trials),
+            joint=False,
+        )
+        density: np.ndarray = (
+            family.log_density(observations, covariate).detach().numpy()
+        )
+        return density
+
+    def total(density: np.ndarray) -> float:
+        return float(density.max(axis=1).sum())
+
+    size, concentration = 20.0, 200.0
+    grid = [
+        (purity, scale)
+        for purity in LATTICE_PURITY
+        for scale in (LATTICE_SCALE if call.stage == "rdrbaf" else (1.0,))
+    ]
+
+    def placed(purity: float, scale: float) -> tuple[np.ndarray, np.ndarray]:
+        log_mu, p = _parameters(copies, purity)
+        return log_mu + np.log(scale), p
+
+    purity, scale = max(
+        grid, key=lambda g: total(scored(*placed(*g), size, concentration))
+    )
+    log_mu, p = placed(purity, scale)
+
+    for _ in range(rounds):
+        assigned = np.argmax(scored(log_mu, p, size, concentration), axis=1)
+        size, concentration = _fit_shapes(scored, log_mu, p, assigned, concentration)
+
+    assigned = np.argmax(scored(log_mu, p, size, concentration), axis=1)
+    occupancy = np.bincount(assigned, minlength=log_mu.size)
+    picked = np.argsort(-occupancy, kind="stable")[: call.n_states]
+    return log_mu[picked], p[picked]
+
+
+def pooled_exposure(call: CopyCall) -> np.ndarray:
+    """Each row's expected total with no normal baseline: its bin's share of every clone's reads, times its clone's reads.
+
+    What the BAF-only stage has in place of `base_nb_mean`, which it runs
+    before. A bin altered in some clones shifts its own share, so this
+    reads relative depth among clones rather than against a normal.
+    """
+    bins = np.unique(call.contig + ":" + call.start.astype(str), return_inverse=True)[1]
+    by_bin = np.bincount(bins, call.total)
+    by_clone = np.bincount(call.clone, call.total)
+    share = by_bin / max(by_bin.sum(), 1e-12)
+    expected: np.ndarray = share[bins] * by_clone[call.clone]
+    return expected
+
+
+def rdr_quantile_states(call: CopyCall) -> tuple[np.ndarray, np.ndarray]:
+    """`n_states` states from read depth alone: rows cut at quantiles of log RDR, each group's pooled folded BAF.
+
+    RDR against the call's exposure, or against `pooled_exposure` where the
+    call has none (the BAF-only stage).
+    """
+    exposure = call.exposure if np.any(call.exposure > 0) else pooled_exposure(call)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        log_rdr = np.log(call.total / exposure)
+    finite = np.isfinite(log_rdr)
+    k = call.n_states
+    cuts = np.quantile(log_rdr[finite], np.linspace(0, 1, k + 1)[1:-1])
+    group = np.digitize(log_rdr, cuts)
+    folded = np.minimum(call.b, call.trials - call.b)
+    log_mu = np.zeros(k)
+    p = np.full(k, 0.5)
+    for g in range(k):
+        rows = finite & (group == g)
+        if rows.any():
+            p[g] = float(fold(folded[rows].sum() / max(call.trials[rows].sum(), 1.0)))
+            log_mu[g] = float(np.median(log_rdr[rows]))
+    if call.stage != "rdrbaf":
+        log_mu = np.zeros(k)
+    return log_mu, p
+
+
 def _cnaster_row(
     initializer: Callable[..., Any],
 ) -> Callable[[CopyCall, np.random.Generator], tuple[Any, Any]]:
@@ -513,6 +705,14 @@ def _port_starts() -> dict[
         "distinct": (
             Row("distinct", "port (#348)", both, covariate=False, stochastic=True),
             _cnaster_row(distinct.gmm_init),
+        ),
+        "lattice": (
+            Row("lattice", "port (#540)", both, covariate=True, stochastic=False),
+            lambda call, _rng: lattice_start(call),
+        ),
+        "rdr-quantiles": (
+            Row("rdr-quantiles", "port (#540)", both, covariate=True, stochastic=False),
+            lambda call, _rng: rdr_quantile_states(call),
         ),
         "cna-mixture++": (
             Row(

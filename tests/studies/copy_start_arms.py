@@ -26,8 +26,16 @@ from typing import Any, NamedTuple
 
 import numpy as np
 
-SHORTLIST = ("kmeans++x5+em", "emission++x5+em", "datax5+em", "kmeans++", "distinct")
-"""#489's three polished best-of-five starts, its best single start, and port's."""
+SHORTLIST = (
+    "kmeans++x5+em",
+    "emission++x5+em",
+    "datax5+em",
+    "kmeans++",
+    "distinct",
+    "lattice",
+    "rdr-quantiles",
+)
+"""#489's three polished best-of-five starts, its best single start, port's, and the lattice and read-depth starts."""
 
 MASKS = {
     "rdrbaf": (
@@ -172,8 +180,8 @@ def _run(job: Job, seconds: float) -> dict[str, Any]:
         elif job.arm == "rdr-seeds-baf":
             rdrbaf = _CALLS["rdrbaf"]
             opened = time.perf_counter()
-            if job.start == "rdr-quantiles":
-                p = _quantile_states(rdrbaf, call.n_states)
+            if job.variant == "from RDR quantiles":
+                p = cs.rdr_quantile_states(rdrbaf)[1]
             else:
                 p = cs.run_start(job.start, rdrbaf, rng, seconds=seconds / 2.0).p_binom
             p = _to_k(p, call.n_states)
@@ -202,23 +210,6 @@ def _run(job: Job, seconds: float) -> dict[str, Any]:
     }
 
 
-def _quantile_states(call: Any, k: int) -> np.ndarray:
-    """`k` states from read depth alone: the rows cut at `k` quantiles of log RDR, each group's pooled folded BAF."""
-    from port.extensions.copy_starts import fold
-
-    with np.errstate(divide="ignore", invalid="ignore"):
-        log_rdr = np.log(call.total / call.exposure)
-    finite = np.isfinite(log_rdr)
-    cuts = np.quantile(log_rdr[finite], np.linspace(0, 1, k + 1)[1:-1])
-    group = np.digitize(log_rdr, cuts)
-    folded_b = np.minimum(call.b, call.trials - call.b)
-    states: np.ndarray = np.array([
-        fold(folded_b[finite & (group == g)].sum() / max(call.trials[finite & (group == g)].sum(), 1.0))
-        for g in range(k)
-    ])  # fmt: skip
-    return states
-
-
 def _to_k(p: Any, k: int) -> np.ndarray:
     """`p` as `k` states: sorted, then evenly subsampled, or padded at 0.5."""
     ordered: np.ndarray = np.sort(np.asarray(p, dtype=np.float64))
@@ -243,12 +234,22 @@ def run_arms(
     workers: int,
     seconds: float,
     progress: Callable[[str], None] = print,
+    only: tuple[str, ...] | None = None,
 ) -> dict[str, Any]:
-    """Every job of every arm, in `workers` forked processes; rows, planted states and settings."""
+    """Every job of every arm, in `workers` forked processes; rows, planted states and settings.
+
+    `only` keeps the jobs of those starts alone: how a start added later
+    joins an earlier run's rows.
+    """
     from port.extensions.copy_starts import planted_states
 
     _init(calls)
-    jobs = [job for arm in arms for job in _jobs(arm, seeds)]
+    jobs = [
+        job
+        for arm in arms
+        for job in _jobs(arm, seeds)
+        if only is None or job.start in only
+    ]
     progress(f"{len(jobs)} jobs over {arms}")
     rows: list[dict[str, Any]] = []
     context = multiprocessing.get_context("fork")

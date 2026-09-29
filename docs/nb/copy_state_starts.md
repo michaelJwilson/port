@@ -1,8 +1,25 @@
 # Copy-state starts at oracle clones (#540)
 
-**TL;DR.** On dev_tree 60 × 50 r0 at the planted clones: 39 starts, 919
+**TL;DR.** On dev_tree 60 × 50 r0 at the planted clones: 41 starts, 1,014
 trials, each polished by `sal`'s EM for up to 60 s and scored on the whole
 call.
+
+- **The lattice start is the best on BAF only and ties the best on BAF +
+  RDR** (`copy_starts.lattice_start`). It places every integer `(A, B)` up
+  to the rows' read-depth ceiling, as the integer decode does, assigns each
+  row its most likely state under the mixture's own IID emission, fits the
+  NB size and BB concentration by that likelihood, and keeps the
+  `n_states` most populated.
+  - BAF only: seeded on rows smoothed over 3, 5 or 9 segments it reaches the
+    best fit any trial reached, in 2.1 s; on raw rows it ends 7.5 nats
+    below.
+  - BAF + RDR: it ends 9.2 nats below in 7.4 s, beside 10 Mb-smoothed
+    `kmeans++` at 8.9.
+  - Before its polish it holds the one-copy loss (log mu -0.79) and CN-LOH
+    (-0.10) as two states. The polish merges them, as every fit does.
+  - It is deterministic and the most robust to outliers: 0.0 nats on the 1%
+    read-depth and 5% BAF corruptions, and 112 against the shortlist's 140-181
+    on 5% read depth.
 
 - **BAF + RDR: seeding on rows smoothed over 10 Mb is the best start.**
   `kmeans++` there ends 8.9 nats below the best fit reached (at most 9.3 over
@@ -16,7 +33,10 @@ call.
   CN-LOH, found in 4% of fits. The mixture objective merges the two, whatever
   the start: #471's defect.
 - **BAF only: seeding from the BAF + RDR call's read-depth quantiles ends
-  21.4 nats below the best, in 4.9 s.** Port's `distinct`, today's BAF-stage
+  21.4 nats below the best, in 4.9 s.** In the pipeline the BAF stage runs
+  before any normal baseline exists; against the stand-in it has, each bin's
+  share of every clone's reads (`pooled_exposure`), the same seeding ends
+  118.7 nats below. Port's `distinct`, today's BAF-stage
   start, ends 36.5 nats below at its median but up to 110.9 over seeds.
   Smoothing its seeding rows (any window) holds it at 36.4-38.0. One
   `emission++x5+em` trial on 10 Mb smoothing reached the best fit; its other

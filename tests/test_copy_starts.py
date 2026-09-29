@@ -167,3 +167,15 @@ def test_a_state_placed_on_the_instance_reads_back_as_itself() -> None:
         )
         if stage == "rdrbaf":
             np.testing.assert_allclose(read_mu, log_mu, rtol=1e-12)
+
+
+@pytest.mark.end2end
+def test_the_lattice_start_places_the_states_that_drew_the_call_before_any_polish() -> (
+    None
+):
+    """`lattice_start` alone, unpolished, holds each planted `(mu, p)` to 0.1 in log mu and 0.05 in p."""
+    call = _call("rdrbaf")
+    log_mu, p = cs.lattice_start(call)
+    start = cs.CopyStart("lattice", "rdrbaf", log_mu, p, 0.0, 0.0, 0.0)
+
+    assert all(cs.found(start, cs.planted_states(call)).values()), (log_mu, p)

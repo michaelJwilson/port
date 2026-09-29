@@ -30631,6 +30631,3318 @@
 "variant": "from the BAF + RDR fit"
 },
 {
+"arm": "starts",
+"error": null,
+"found": {
+"0,1": true,
+"0,2": true,
+"1,1": true,
+"2,2": true
+},
+"handover": 0.882208,
+"log_likelihood": -76261.282923,
+"log_mu": [
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0
+],
+"p_binom": [
+0.500001,
+0.486604,
+0.507618,
+0.0,
+0.0,
+0.323787,
+0.0
+],
+"scored_on": "call",
+"seconds": 1.702079,
+"seed": 0,
+"stage": "baf",
+"start": "lattice",
+"variant": ""
+},
+{
+"arm": "starts",
+"error": null,
+"found": {
+"0,1": true,
+"0,2": true,
+"1,1": true,
+"2,2": true
+},
+"handover": 0.016277,
+"log_likelihood": -76372.541848,
+"log_mu": [
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0
+],
+"p_binom": [
+0.004192,
+0.500716,
+0.50192,
+0.499033,
+0.500064,
+0.501792,
+0.494079
+],
+"scored_on": "call",
+"seconds": 0.203248,
+"seed": 0,
+"stage": "baf",
+"start": "rdr-quantiles",
+"variant": ""
+},
+{
+"arm": "starts",
+"error": null,
+"found": {
+"0,1": false,
+"0,2": false,
+"1,1": true,
+"2,2": false
+},
+"handover": 2.3119,
+"log_likelihood": -112033.803733,
+"log_mu": [
+-0.000625,
+0.028868,
+0.008097,
+-0.034177,
+-0.115397,
+-0.158411,
+-0.17059
+],
+"p_binom": [
+0.499672,
+0.497963,
+0.500915,
+0.335534,
+0.0,
+0.0,
+0.0
+],
+"scored_on": "call",
+"seconds": 7.445682,
+"seed": 0,
+"stage": "rdrbaf",
+"start": "lattice",
+"variant": ""
+},
+{
+"arm": "starts",
+"error": null,
+"found": {
+"0,1": false,
+"0,2": false,
+"1,1": true,
+"2,2": false
+},
+"handover": 0.00574,
+"log_likelihood": -112063.529839,
+"log_mu": [
+-0.123369,
+0.010588,
+0.007469,
+-0.000627,
+0.007351,
+0.009555,
+0.032893
+],
+"p_binom": [
+0.005,
+0.500186,
+0.501421,
+0.499685,
+0.50083,
+0.499932,
+0.497572
+],
+"scored_on": "call",
+"seconds": 1.60003,
+"seed": 0,
+"stage": "rdrbaf",
+"start": "rdr-quantiles",
+"variant": ""
+},
+{
+"arm": "mask-seed",
+"error": null,
+"found": {
+"0,1": true,
+"0,2": true,
+"1,1": true,
+"2,2": true
+},
+"handover": 1.105305,
+"log_likelihood": -76261.282923,
+"log_mu": [
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0
+],
+"p_binom": [
+0.500001,
+0.486604,
+0.507618,
+0.0,
+0.0,
+0.323787,
+0.0
+],
+"scored_on": "call",
+"seconds": 1.926597,
+"seed": 0,
+"stage": "baf",
+"start": "lattice",
+"variant": "zero-counts"
+},
+{
+"arm": "mask-seed",
+"error": null,
+"found": {
+"0,1": true,
+"0,2": true,
+"1,1": true,
+"2,2": true
+},
+"handover": 0.011914,
+"log_likelihood": -76372.541848,
+"log_mu": [
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0
+],
+"p_binom": [
+0.004192,
+0.500716,
+0.50192,
+0.499033,
+0.500064,
+0.501792,
+0.494079
+],
+"scored_on": "call",
+"seconds": 0.22612,
+"seed": 0,
+"stage": "baf",
+"start": "rdr-quantiles",
+"variant": "zero-counts"
+},
+{
+"arm": "mask-seed",
+"error": null,
+"found": {
+"0,1": true,
+"0,2": true,
+"1,1": true,
+"2,2": true
+},
+"handover": 0.825231,
+"log_likelihood": -76261.282923,
+"log_mu": [
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0
+],
+"p_binom": [
+0.500001,
+0.486604,
+0.507618,
+0.0,
+0.0,
+0.323787,
+0.0
+],
+"scored_on": "call",
+"seconds": 1.656233,
+"seed": 0,
+"stage": "baf",
+"start": "lattice",
+"variant": "baf-se-0.2"
+},
+{
+"arm": "mask-seed",
+"error": null,
+"found": {
+"0,1": true,
+"0,2": true,
+"1,1": true,
+"2,2": true
+},
+"handover": 0.016227,
+"log_likelihood": -76372.541848,
+"log_mu": [
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0
+],
+"p_binom": [
+0.004192,
+0.500716,
+0.50192,
+0.499033,
+0.500064,
+0.501792,
+0.494079
+],
+"scored_on": "call",
+"seconds": 0.204046,
+"seed": 0,
+"stage": "baf",
+"start": "rdr-quantiles",
+"variant": "baf-se-0.2"
+},
+{
+"arm": "mask-seed",
+"error": null,
+"found": {
+"0,1": true,
+"0,2": true,
+"1,1": true,
+"2,2": true
+},
+"handover": 1.057941,
+"log_likelihood": -76261.282923,
+"log_mu": [
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0
+],
+"p_binom": [
+0.500001,
+0.486604,
+0.507618,
+0.0,
+0.0,
+0.323787,
+0.0
+],
+"scored_on": "call",
+"seconds": 1.874546,
+"seed": 0,
+"stage": "baf",
+"start": "lattice",
+"variant": "baf-se-0.15"
+},
+{
+"arm": "mask-seed",
+"error": null,
+"found": {
+"0,1": true,
+"0,2": true,
+"1,1": true,
+"2,2": true
+},
+"handover": 0.012047,
+"log_likelihood": -76372.538526,
+"log_mu": [
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0
+],
+"p_binom": [
+0.004189,
+0.501018,
+0.50153,
+0.498305,
+0.500337,
+0.502179,
+0.494018
+],
+"scored_on": "call",
+"seconds": 0.198406,
+"seed": 0,
+"stage": "baf",
+"start": "rdr-quantiles",
+"variant": "baf-se-0.15"
+},
+{
+"arm": "mask-seed",
+"error": null,
+"found": {
+"0,1": true,
+"0,2": true,
+"1,1": true,
+"2,2": true
+},
+"handover": 0.897845,
+"log_likelihood": -76261.268975,
+"log_mu": [
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0
+],
+"p_binom": [
+0.500001,
+0.0,
+0.4866,
+0.507619,
+0.323787,
+0.0,
+0.0
+],
+"scored_on": "call",
+"seconds": 1.670689,
+"seed": 0,
+"stage": "baf",
+"start": "lattice",
+"variant": "baf-se-0.1"
+},
+{
+"arm": "mask-seed",
+"error": null,
+"found": {
+"0,1": true,
+"0,2": true,
+"1,1": true,
+"2,2": true
+},
+"handover": 0.010376,
+"log_likelihood": -76371.471965,
+"log_mu": [
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0
+],
+"p_binom": [
+0.004189,
+0.50216,
+0.500784,
+0.500004,
+0.498822,
+0.499982,
+0.494895
+],
+"scored_on": "call",
+"seconds": 0.276231,
+"seed": 0,
+"stage": "baf",
+"start": "rdr-quantiles",
+"variant": "baf-se-0.1"
+},
+{
+"arm": "mask-seed",
+"error": null,
+"found": {
+"0,1": false,
+"0,2": false,
+"1,1": true,
+"2,2": false
+},
+"handover": 2.187641,
+"log_likelihood": -112033.803733,
+"log_mu": [
+-0.000625,
+0.028868,
+0.008097,
+-0.034177,
+-0.115397,
+-0.158411,
+-0.17059
+],
+"p_binom": [
+0.499672,
+0.497963,
+0.500915,
+0.335534,
+0.0,
+0.0,
+0.0
+],
+"scored_on": "call",
+"seconds": 7.294223,
+"seed": 0,
+"stage": "rdrbaf",
+"start": "lattice",
+"variant": "rdr-top-1%"
+},
+{
+"arm": "mask-seed",
+"error": null,
+"found": {
+"0,1": false,
+"0,2": false,
+"1,1": true,
+"2,2": false
+},
+"handover": 0.00369,
+"log_likelihood": -112063.585208,
+"log_mu": [
+-0.123369,
+0.01065,
+0.007408,
+-0.000627,
+0.007337,
+0.009554,
+0.032956
+],
+"p_binom": [
+0.005,
+0.500632,
+0.501455,
+0.499685,
+0.500838,
+0.499344,
+0.497556
+],
+"scored_on": "call",
+"seconds": 1.576894,
+"seed": 0,
+"stage": "rdrbaf",
+"start": "rdr-quantiles",
+"variant": "rdr-top-1%"
+},
+{
+"arm": "mask-seed",
+"error": null,
+"found": {
+"0,1": false,
+"0,2": false,
+"1,1": true,
+"2,2": false
+},
+"handover": 1.738067,
+"log_likelihood": -112033.804582,
+"log_mu": [
+-0.000625,
+0.028867,
+0.008097,
+-0.034177,
+-0.115398,
+-0.17059,
+-0.158409
+],
+"p_binom": [
+0.499672,
+0.497963,
+0.500915,
+0.335528,
+0.0,
+0.0,
+0.0
+],
+"scored_on": "call",
+"seconds": 7.014602,
+"seed": 0,
+"stage": "rdrbaf",
+"start": "lattice",
+"variant": "rdr-top-5%"
+},
+{
+"arm": "mask-seed",
+"error": null,
+"found": {
+"0,1": false,
+"0,2": false,
+"1,1": true,
+"2,2": false
+},
+"handover": 0.002961,
+"log_likelihood": -112063.387436,
+"log_mu": [
+-0.123367,
+0.011109,
+0.007394,
+-0.000627,
+0.007354,
+0.010598,
+0.033208
+],
+"p_binom": [
+0.004999,
+0.499292,
+0.501335,
+0.499677,
+0.501208,
+0.500004,
+0.497799
+],
+"scored_on": "call",
+"seconds": 1.435886,
+"seed": 0,
+"stage": "rdrbaf",
+"start": "rdr-quantiles",
+"variant": "rdr-top-5%"
+},
+{
+"arm": "mask-seed",
+"error": null,
+"found": {
+"0,1": false,
+"0,2": false,
+"1,1": true,
+"2,2": false
+},
+"handover": 2.612773,
+"log_likelihood": -112033.803733,
+"log_mu": [
+-0.000625,
+0.028868,
+0.008097,
+-0.034177,
+-0.115397,
+-0.158411,
+-0.17059
+],
+"p_binom": [
+0.499672,
+0.497963,
+0.500915,
+0.335534,
+0.0,
+0.0,
+0.0
+],
+"scored_on": "call",
+"seconds": 7.758153,
+"seed": 0,
+"stage": "rdrbaf",
+"start": "lattice",
+"variant": "zero-counts"
+},
+{
+"arm": "mask-seed",
+"error": null,
+"found": {
+"0,1": false,
+"0,2": false,
+"1,1": true,
+"2,2": false
+},
+"handover": 0.005525,
+"log_likelihood": -112063.529839,
+"log_mu": [
+-0.123369,
+0.010588,
+0.007469,
+-0.000627,
+0.007351,
+0.009555,
+0.032893
+],
+"p_binom": [
+0.005,
+0.500186,
+0.501421,
+0.499685,
+0.50083,
+0.499932,
+0.497572
+],
+"scored_on": "call",
+"seconds": 1.68635,
+"seed": 0,
+"stage": "rdrbaf",
+"start": "rdr-quantiles",
+"variant": "zero-counts"
+},
+{
+"arm": "mask-seed",
+"error": null,
+"found": {
+"0,1": false,
+"0,2": false,
+"1,1": true,
+"2,2": false
+},
+"handover": 2.184971,
+"log_likelihood": -112033.803733,
+"log_mu": [
+-0.000625,
+0.028868,
+0.008097,
+-0.034177,
+-0.115397,
+-0.158411,
+-0.17059
+],
+"p_binom": [
+0.499672,
+0.497963,
+0.500915,
+0.335534,
+0.0,
+0.0,
+0.0
+],
+"scored_on": "call",
+"seconds": 7.422959,
+"seed": 0,
+"stage": "rdrbaf",
+"start": "lattice",
+"variant": "baf-se-0.2"
+},
+{
+"arm": "mask-seed",
+"error": null,
+"found": {
+"0,1": false,
+"0,2": false,
+"1,1": true,
+"2,2": false
+},
+"handover": 0.003419,
+"log_likelihood": -112063.529839,
+"log_mu": [
+-0.123369,
+0.010588,
+0.007469,
+-0.000627,
+0.007351,
+0.009555,
+0.032893
+],
+"p_binom": [
+0.005,
+0.500186,
+0.501421,
+0.499685,
+0.50083,
+0.499932,
+0.497572
+],
+"scored_on": "call",
+"seconds": 1.821176,
+"seed": 0,
+"stage": "rdrbaf",
+"start": "rdr-quantiles",
+"variant": "baf-se-0.2"
+},
+{
+"arm": "mask-seed",
+"error": null,
+"found": {
+"0,1": false,
+"0,2": false,
+"1,1": true,
+"2,2": false
+},
+"handover": 2.554848,
+"log_likelihood": -112033.803733,
+"log_mu": [
+-0.000625,
+0.028868,
+0.008097,
+-0.034177,
+-0.115397,
+-0.158411,
+-0.17059
+],
+"p_binom": [
+0.499672,
+0.497963,
+0.500915,
+0.335534,
+0.0,
+0.0,
+0.0
+],
+"scored_on": "call",
+"seconds": 7.750846,
+"seed": 0,
+"stage": "rdrbaf",
+"start": "lattice",
+"variant": "baf-se-0.15"
+},
+{
+"arm": "mask-seed",
+"error": null,
+"found": {
+"0,1": false,
+"0,2": false,
+"1,1": true,
+"2,2": false
+},
+"handover": 0.003426,
+"log_likelihood": -112063.521842,
+"log_mu": [
+-0.123369,
+0.01058,
+0.007466,
+-0.000627,
+0.007351,
+0.009556,
+0.032877
+],
+"p_binom": [
+0.005,
+0.500193,
+0.501409,
+0.499685,
+0.500838,
+0.499935,
+0.497572
+],
+"scored_on": "call",
+"seconds": 1.894869,
+"seed": 0,
+"stage": "rdrbaf",
+"start": "rdr-quantiles",
+"variant": "baf-se-0.15"
+},
+{
+"arm": "mask-seed",
+"error": null,
+"found": {
+"0,1": false,
+"0,2": false,
+"1,1": true,
+"2,2": false
+},
+"handover": 2.121972,
+"log_likelihood": -112033.804582,
+"log_mu": [
+-0.000625,
+0.028867,
+0.008097,
+-0.034177,
+-0.115398,
+-0.158409,
+-0.17059
+],
+"p_binom": [
+0.499672,
+0.497963,
+0.500915,
+0.335528,
+0.0,
+0.0,
+0.0
+],
+"scored_on": "call",
+"seconds": 7.284873,
+"seed": 0,
+"stage": "rdrbaf",
+"start": "lattice",
+"variant": "baf-se-0.1"
+},
+{
+"arm": "mask-seed",
+"error": null,
+"found": {
+"0,1": false,
+"0,2": false,
+"1,1": true,
+"2,2": false
+},
+"handover": 0.003608,
+"log_likelihood": -112063.523734,
+"log_mu": [
+-0.123369,
+0.010471,
+0.007445,
+-0.000627,
+0.007351,
+0.00953,
+0.03272
+],
+"p_binom": [
+0.005,
+0.500384,
+0.501495,
+0.499685,
+0.500792,
+0.49971,
+0.497578
+],
+"scored_on": "call",
+"seconds": 1.770722,
+"seed": 0,
+"stage": "rdrbaf",
+"start": "rdr-quantiles",
+"variant": "baf-se-0.1"
+},
+{
+"arm": "mask-fit",
+"error": null,
+"found": {
+"0,1": true,
+"0,2": true,
+"1,1": true,
+"2,2": true
+},
+"handover": 0.921683,
+"log_likelihood": -76308.650181,
+"log_mu": [
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0
+],
+"p_binom": [
+0.500479,
+0.496932,
+0.502354,
+0.0,
+0.0,
+0.333077,
+0.0
+],
+"scored_on": "call",
+"seconds": 2.551938,
+"seed": 0,
+"stage": "baf",
+"start": "lattice",
+"variant": "zero-counts"
+},
+{
+"arm": "mask-fit",
+"error": null,
+"found": {
+"0,1": true,
+"0,2": true,
+"1,1": true,
+"2,2": true
+},
+"handover": 0.012023,
+"log_likelihood": -76372.624815,
+"log_mu": [
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0
+],
+"p_binom": [
+0.004193,
+0.500683,
+0.501422,
+0.49962,
+0.500275,
+0.501344,
+0.495957
+],
+"scored_on": "call",
+"seconds": 0.421103,
+"seed": 0,
+"stage": "baf",
+"start": "rdr-quantiles",
+"variant": "zero-counts"
+},
+{
+"arm": "mask-fit",
+"error": null,
+"found": {
+"0,1": true,
+"0,2": true,
+"1,1": true,
+"2,2": true
+},
+"handover": 0.795533,
+"log_likelihood": -76308.650181,
+"log_mu": [
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0
+],
+"p_binom": [
+0.500479,
+0.496932,
+0.502354,
+0.0,
+0.0,
+0.333077,
+0.0
+],
+"scored_on": "call",
+"seconds": 2.477736,
+"seed": 0,
+"stage": "baf",
+"start": "lattice",
+"variant": "baf-se-0.2"
+},
+{
+"arm": "mask-fit",
+"error": null,
+"found": {
+"0,1": true,
+"0,2": true,
+"1,1": true,
+"2,2": true
+},
+"handover": 0.012997,
+"log_likelihood": -76372.624815,
+"log_mu": [
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0
+],
+"p_binom": [
+0.004193,
+0.500683,
+0.501422,
+0.49962,
+0.500275,
+0.501344,
+0.495957
+],
+"scored_on": "call",
+"seconds": 0.418131,
+"seed": 0,
+"stage": "baf",
+"start": "rdr-quantiles",
+"variant": "baf-se-0.2"
+},
+{
+"arm": "mask-fit",
+"error": null,
+"found": {
+"0,1": true,
+"0,2": true,
+"1,1": true,
+"2,2": true
+},
+"handover": 0.864617,
+"log_likelihood": -76308.650414,
+"log_mu": [
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0
+],
+"p_binom": [
+0.500479,
+0.496931,
+0.502354,
+0.0,
+0.0,
+0.333085,
+0.0
+],
+"scored_on": "call",
+"seconds": 2.542923,
+"seed": 0,
+"stage": "baf",
+"start": "lattice",
+"variant": "baf-se-0.15"
+},
+{
+"arm": "mask-fit",
+"error": null,
+"found": {
+"0,1": true,
+"0,2": true,
+"1,1": true,
+"2,2": true
+},
+"handover": 0.015896,
+"log_likelihood": -76372.646034,
+"log_mu": [
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0
+],
+"p_binom": [
+0.004192,
+0.500892,
+0.501207,
+0.499174,
+0.500471,
+0.5016,
+0.495954
+],
+"scored_on": "call",
+"seconds": 0.476823,
+"seed": 0,
+"stage": "baf",
+"start": "rdr-quantiles",
+"variant": "baf-se-0.15"
+},
+{
+"arm": "mask-fit",
+"error": null,
+"found": {
+"0,1": true,
+"0,2": true,
+"1,1": true,
+"2,2": true
+},
+"handover": 0.90003,
+"log_likelihood": -76308.675888,
+"log_mu": [
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0
+],
+"p_binom": [
+0.50045,
+0.0,
+0.496817,
+0.50248,
+0.332742,
+0.0,
+0.0
+],
+"scored_on": "call",
+"seconds": 2.37519,
+"seed": 0,
+"stage": "baf",
+"start": "lattice",
+"variant": "baf-se-0.1"
+},
+{
+"arm": "mask-fit",
+"error": null,
+"found": {
+"0,1": true,
+"0,2": true,
+"1,1": true,
+"2,2": true
+},
+"handover": 0.012708,
+"log_likelihood": -76372.563901,
+"log_mu": [
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0
+],
+"p_binom": [
+0.004192,
+0.501751,
+0.500866,
+0.500354,
+0.499559,
+0.500339,
+0.496447
+],
+"scored_on": "call",
+"seconds": 0.509532,
+"seed": 0,
+"stage": "baf",
+"start": "rdr-quantiles",
+"variant": "baf-se-0.1"
+},
+{
+"arm": "mask-fit",
+"error": null,
+"found": {
+"0,1": false,
+"0,2": false,
+"1,1": true,
+"2,2": false
+},
+"handover": 2.259348,
+"log_likelihood": -112061.504543,
+"log_mu": [
+-0.000628,
+0.0106,
+0.007276,
+0.035271,
+-0.151093,
+-0.175126,
+-0.096252
+],
+"p_binom": [
+0.499676,
+0.500099,
+0.501144,
+0.49716,
+0.002842,
+0.0,
+0.007721
+],
+"scored_on": "call",
+"seconds": 11.364083,
+"seed": 0,
+"stage": "rdrbaf",
+"start": "lattice",
+"variant": "rdr-top-1%"
+},
+{
+"arm": "mask-fit",
+"error": null,
+"found": {
+"0,1": false,
+"0,2": false,
+"1,1": true,
+"2,2": false
+},
+"handover": 0.003543,
+"log_likelihood": -112063.754942,
+"log_mu": [
+-0.123372,
+0.008359,
+0.007738,
+-0.000624,
+0.007738,
+0.0086,
+0.028761
+],
+"p_binom": [
+0.005,
+0.501006,
+0.500728,
+0.499684,
+0.500779,
+0.500515,
+0.497774
+],
+"scored_on": "call",
+"seconds": 4.268368,
+"seed": 0,
+"stage": "rdrbaf",
+"start": "rdr-quantiles",
+"variant": "rdr-top-1%"
+},
+{
+"arm": "mask-fit",
+"error": null,
+"found": {
+"0,1": false,
+"0,2": false,
+"1,1": true,
+"2,2": false
+},
+"handover": 1.855928,
+"log_likelihood": -112060.085674,
+"log_mu": [
+-0.000623,
+0.007676,
+0.008856,
+0.029511,
+-0.117014,
+-0.11582,
+-0.173604
+],
+"p_binom": [
+0.499673,
+0.499715,
+0.50208,
+0.497055,
+0.005865,
+0.005917,
+2e-06
+],
+"scored_on": "call",
+"seconds": 5.860653,
+"seed": 0,
+"stage": "rdrbaf",
+"start": "lattice",
+"variant": "rdr-top-5%"
+},
+{
+"arm": "mask-fit",
+"error": null,
+"found": {
+"0,1": false,
+"0,2": false,
+"1,1": true,
+"2,2": false
+},
+"handover": 0.00325,
+"log_likelihood": -112063.064161,
+"log_mu": [
+-0.123365,
+0.014687,
+0.007317,
+-0.000627,
+0.007985,
+0.008848,
+0.034031
+],
+"p_binom": [
+0.004992,
+0.497414,
+0.500264,
+0.499679,
+0.50208,
+0.500778,
+0.498028
+],
+"scored_on": "call",
+"seconds": 3.71695,
+"seed": 0,
+"stage": "rdrbaf",
+"start": "rdr-quantiles",
+"variant": "rdr-top-5%"
+},
+{
+"arm": "mask-fit",
+"error": null,
+"found": {
+"0,1": false,
+"0,2": false,
+"1,1": true,
+"2,2": false
+},
+"handover": 2.70297,
+"log_likelihood": -112061.709613,
+"log_mu": [
+-0.000627,
+0.010535,
+0.007291,
+0.035258,
+-0.173959,
+-0.096598,
+-0.122751
+],
+"p_binom": [
+0.499675,
+0.500058,
+0.501196,
+0.497204,
+0.001223,
+0.007723,
+0.004825
+],
+"scored_on": "call",
+"seconds": 10.814365,
+"seed": 0,
+"stage": "rdrbaf",
+"start": "lattice",
+"variant": "zero-counts"
+},
+{
+"arm": "mask-fit",
+"error": null,
+"found": {
+"0,1": false,
+"0,2": false,
+"1,1": true,
+"2,2": false
+},
+"handover": 0.003451,
+"log_likelihood": -112063.787709,
+"log_mu": [
+-0.123372,
+0.008547,
+0.007773,
+-0.000624,
+0.007761,
+0.00835,
+0.028693
+],
+"p_binom": [
+0.005,
+0.500896,
+0.500701,
+0.499685,
+0.500591,
+0.500806,
+0.497766
+],
+"scored_on": "call",
+"seconds": 4.239861,
+"seed": 0,
+"stage": "rdrbaf",
+"start": "rdr-quantiles",
+"variant": "zero-counts"
+},
+{
+"arm": "mask-fit",
+"error": null,
+"found": {
+"0,1": false,
+"0,2": false,
+"1,1": true,
+"2,2": false
+},
+"handover": 2.331901,
+"log_likelihood": -112061.724884,
+"log_mu": [
+-0.000627,
+0.010537,
+0.007291,
+0.035275,
+-0.17396,
+-0.09659,
+-0.122762
+],
+"p_binom": [
+0.499675,
+0.500059,
+0.501195,
+0.497203,
+0.001223,
+0.007724,
+0.004825
+],
+"scored_on": "call",
+"seconds": 10.185282,
+"seed": 0,
+"stage": "rdrbaf",
+"start": "lattice",
+"variant": "baf-se-0.2"
+},
+{
+"arm": "mask-fit",
+"error": null,
+"found": {
+"0,1": false,
+"0,2": false,
+"1,1": true,
+"2,2": false
+},
+"handover": 0.003479,
+"log_likelihood": -112063.79139,
+"log_mu": [
+-0.123372,
+0.008547,
+0.007772,
+-0.000624,
+0.007758,
+0.008352,
+0.028691
+],
+"p_binom": [
+0.005,
+0.500898,
+0.5007,
+0.499685,
+0.500588,
+0.500807,
+0.497766
+],
+"scored_on": "call",
+"seconds": 4.111998,
+"seed": 0,
+"stage": "rdrbaf",
+"start": "rdr-quantiles",
+"variant": "baf-se-0.2"
+},
+{
+"arm": "mask-fit",
+"error": null,
+"found": {
+"0,1": false,
+"0,2": false,
+"1,1": true,
+"2,2": false
+},
+"handover": 2.46473,
+"log_likelihood": -112061.764378,
+"log_mu": [
+-0.000627,
+0.010558,
+0.007288,
+0.03532,
+-0.173838,
+-0.096341,
+-0.122609
+],
+"p_binom": [
+0.499675,
+0.500055,
+0.501193,
+0.497201,
+0.001313,
+0.007728,
+0.004794
+],
+"scored_on": "call",
+"seconds": 9.839451,
+"seed": 0,
+"stage": "rdrbaf",
+"start": "lattice",
+"variant": "baf-se-0.15"
+},
+{
+"arm": "mask-fit",
+"error": null,
+"found": {
+"0,1": false,
+"0,2": false,
+"1,1": true,
+"2,2": false
+},
+"handover": 0.003435,
+"log_likelihood": -112063.784008,
+"log_mu": [
+-0.123372,
+0.008543,
+0.007774,
+-0.000624,
+0.007779,
+0.008338,
+0.028691
+],
+"p_binom": [
+0.005,
+0.500888,
+0.500702,
+0.499685,
+0.500613,
+0.500796,
+0.497768
+],
+"scored_on": "call",
+"seconds": 3.880739,
+"seed": 0,
+"stage": "rdrbaf",
+"start": "rdr-quantiles",
+"variant": "baf-se-0.15"
+},
+{
+"arm": "mask-fit",
+"error": null,
+"found": {
+"0,1": false,
+"0,2": false,
+"1,1": true,
+"2,2": false
+},
+"handover": 1.938307,
+"log_likelihood": -112061.652675,
+"log_mu": [
+-0.000627,
+0.010532,
+0.007294,
+0.035276,
+-0.174491,
+-0.093048,
+-0.129294
+],
+"p_binom": [
+0.499675,
+0.500032,
+0.501224,
+0.497215,
+0.001116,
+0.008293,
+0.004017
+],
+"scored_on": "call",
+"seconds": 9.669745,
+"seed": 0,
+"stage": "rdrbaf",
+"start": "lattice",
+"variant": "baf-se-0.1"
+},
+{
+"arm": "mask-fit",
+"error": null,
+"found": {
+"0,1": false,
+"0,2": false,
+"1,1": true,
+"2,2": false
+},
+"handover": 0.003817,
+"log_likelihood": -112063.840498,
+"log_mu": [
+-0.123372,
+0.008511,
+0.007769,
+-0.000624,
+0.007749,
+0.00838,
+0.028648
+],
+"p_binom": [
+0.005,
+0.500982,
+0.500693,
+0.499685,
+0.500528,
+0.500785,
+0.497766
+],
+"scored_on": "call",
+"seconds": 3.829672,
+"seed": 0,
+"stage": "rdrbaf",
+"start": "rdr-quantiles",
+"variant": "baf-se-0.1"
+},
+{
+"arm": "smooth",
+"error": null,
+"found": {
+"0,1": true,
+"0,2": true,
+"1,1": true,
+"2,2": true
+},
+"handover": 0.677627,
+"log_likelihood": -76253.831742,
+"log_mu": [
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0
+],
+"p_binom": [
+0.499951,
+0.0,
+0.46417,
+0.324157,
+0.440687,
+0.0,
+0.0
+],
+"scored_on": "call",
+"seconds": 2.071602,
+"seed": 0,
+"stage": "baf",
+"start": "lattice",
+"variant": "3 segments"
+},
+{
+"arm": "smooth",
+"error": null,
+"found": {
+"0,1": true,
+"0,2": true,
+"1,1": true,
+"2,2": true
+},
+"handover": 0.010391,
+"log_likelihood": -76372.83579,
+"log_mu": [
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0
+],
+"p_binom": [
+0.004177,
+0.502449,
+0.500313,
+0.49874,
+0.503332,
+0.497956,
+0.494865
+],
+"scored_on": "call",
+"seconds": 0.230288,
+"seed": 0,
+"stage": "baf",
+"start": "rdr-quantiles",
+"variant": "3 segments"
+},
+{
+"arm": "smooth",
+"error": null,
+"found": {
+"0,1": true,
+"0,2": true,
+"1,1": true,
+"2,2": true
+},
+"handover": 0.678765,
+"log_likelihood": -76253.828334,
+"log_mu": [
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0
+],
+"p_binom": [
+0.499951,
+0.0,
+0.324158,
+0.436211,
+0.461608,
+0.0,
+0.0
+],
+"scored_on": "call",
+"seconds": 2.223994,
+"seed": 0,
+"stage": "baf",
+"start": "lattice",
+"variant": "5 segments"
+},
+{
+"arm": "smooth",
+"error": null,
+"found": {
+"0,1": true,
+"0,2": true,
+"1,1": true,
+"2,2": true
+},
+"handover": 0.008804,
+"log_likelihood": -76372.885333,
+"log_mu": [
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0
+],
+"p_binom": [
+0.004187,
+0.502349,
+0.502151,
+0.498607,
+0.500843,
+0.500281,
+0.493656
+],
+"scored_on": "call",
+"seconds": 0.187042,
+"seed": 0,
+"stage": "baf",
+"start": "rdr-quantiles",
+"variant": "5 segments"
+},
+{
+"arm": "smooth",
+"error": null,
+"found": {
+"0,1": true,
+"0,2": true,
+"1,1": true,
+"2,2": true
+},
+"handover": 0.66577,
+"log_likelihood": -76253.826394,
+"log_mu": [
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0
+],
+"p_binom": [
+0.499951,
+0.0,
+0.324159,
+0.433192,
+0.459871,
+0.0,
+0.0
+],
+"scored_on": "call",
+"seconds": 2.228972,
+"seed": 0,
+"stage": "baf",
+"start": "lattice",
+"variant": "9 segments"
+},
+{
+"arm": "smooth",
+"error": null,
+"found": {
+"0,1": true,
+"0,2": true,
+"1,1": true,
+"2,2": true
+},
+"handover": 0.012012,
+"log_likelihood": -76372.903926,
+"log_mu": [
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0
+],
+"p_binom": [
+0.004179,
+0.50292,
+0.503055,
+0.500313,
+0.498749,
+0.497698,
+0.49523
+],
+"scored_on": "call",
+"seconds": 0.226965,
+"seed": 0,
+"stage": "baf",
+"start": "rdr-quantiles",
+"variant": "9 segments"
+},
+{
+"arm": "smooth",
+"error": null,
+"found": {
+"0,1": true,
+"0,2": true,
+"1,1": true,
+"2,2": true
+},
+"handover": 0.760172,
+"log_likelihood": -76261.057651,
+"log_mu": [
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0
+],
+"p_binom": [
+0.5,
+0.0,
+0.507644,
+0.486544,
+0.323793,
+0.0,
+0.0
+],
+"scored_on": "call",
+"seconds": 1.55083,
+"seed": 0,
+"stage": "baf",
+"start": "lattice",
+"variant": "1 Mb"
+},
+{
+"arm": "smooth",
+"error": null,
+"found": {
+"0,1": true,
+"0,2": true,
+"1,1": true,
+"2,2": true
+},
+"handover": 0.010762,
+"log_likelihood": -76372.074705,
+"log_mu": [
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0
+],
+"p_binom": [
+0.004174,
+0.502327,
+0.501223,
+0.500752,
+0.501114,
+0.496698,
+0.493919
+],
+"scored_on": "call",
+"seconds": 0.399587,
+"seed": 0,
+"stage": "baf",
+"start": "rdr-quantiles",
+"variant": "1 Mb"
+},
+{
+"arm": "smooth",
+"error": null,
+"found": {
+"0,1": true,
+"0,2": true,
+"1,1": true,
+"2,2": true
+},
+"handover": 0.672726,
+"log_likelihood": -76260.89414,
+"log_mu": [
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0
+],
+"p_binom": [
+0.499999,
+0.0,
+0.323798,
+0.507662,
+0.486502,
+0.0,
+0.0
+],
+"scored_on": "call",
+"seconds": 1.494352,
+"seed": 0,
+"stage": "baf",
+"start": "lattice",
+"variant": "5 Mb"
+},
+{
+"arm": "smooth",
+"error": null,
+"found": {
+"0,1": true,
+"0,2": true,
+"1,1": true,
+"2,2": true
+},
+"handover": 0.011869,
+"log_likelihood": -76371.201939,
+"log_mu": [
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0
+],
+"p_binom": [
+0.004175,
+0.500612,
+0.501722,
+0.501132,
+0.500872,
+0.492777,
+0.498064
+],
+"scored_on": "call",
+"seconds": 0.269068,
+"seed": 0,
+"stage": "baf",
+"start": "rdr-quantiles",
+"variant": "5 Mb"
+},
+{
+"arm": "smooth",
+"error": null,
+"found": {
+"0,1": true,
+"0,2": true,
+"1,1": true,
+"2,2": true
+},
+"handover": 0.884244,
+"log_likelihood": -76260.869386,
+"log_mu": [
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0
+],
+"p_binom": [
+0.499998,
+0.0,
+0.323798,
+0.486495,
+0.507665,
+0.0,
+0.0
+],
+"scored_on": "call",
+"seconds": 1.589456,
+"seed": 0,
+"stage": "baf",
+"start": "lattice",
+"variant": "10 Mb"
+},
+{
+"arm": "smooth",
+"error": null,
+"found": {
+"0,1": true,
+"0,2": true,
+"1,1": true,
+"2,2": true
+},
+"handover": 0.013075,
+"log_likelihood": -76369.925699,
+"log_mu": [
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0
+],
+"p_binom": [
+0.004186,
+0.501016,
+0.500362,
+0.502197,
+0.500101,
+0.495455,
+0.496121
+],
+"scored_on": "call",
+"seconds": 0.413988,
+"seed": 0,
+"stage": "baf",
+"start": "rdr-quantiles",
+"variant": "10 Mb"
+},
+{
+"arm": "smooth",
+"error": null,
+"found": {
+"0,1": false,
+"0,2": false,
+"1,1": true,
+"2,2": false
+},
+"handover": 1.179986,
+"log_likelihood": -112033.805837,
+"log_mu": [
+-0.000625,
+-0.117038,
+0.028816,
+-0.156484,
+0.008092,
+-0.034077,
+-0.169726
+],
+"p_binom": [
+0.499672,
+0.0,
+0.49795,
+0.0,
+0.500916,
+0.333681,
+0.0
+],
+"scored_on": "call",
+"seconds": 5.624797,
+"seed": 0,
+"stage": "rdrbaf",
+"start": "lattice",
+"variant": "3 segments"
+},
+{
+"arm": "smooth",
+"error": null,
+"found": {
+"0,1": false,
+"0,2": false,
+"1,1": true,
+"2,2": false
+},
+"handover": 0.002834,
+"log_likelihood": -112063.426594,
+"log_mu": [
+-0.123371,
+0.009004,
+0.007498,
+-0.000625,
+0.007674,
+0.008959,
+0.029608
+],
+"p_binom": [
+0.005,
+0.499812,
+0.501069,
+0.49968,
+0.501523,
+0.500413,
+0.49782
+],
+"scored_on": "call",
+"seconds": 1.914008,
+"seed": 0,
+"stage": "rdrbaf",
+"start": "rdr-quantiles",
+"variant": "3 segments"
+},
+{
+"arm": "smooth",
+"error": null,
+"found": {
+"0,1": false,
+"0,2": false,
+"1,1": true,
+"2,2": false
+},
+"handover": 0.969614,
+"log_likelihood": -112033.911797,
+"log_mu": [
+-0.000625,
+-0.105354,
+-0.165753,
+0.028848,
+-0.173522,
+0.008095,
+-0.034071
+],
+"p_binom": [
+0.499672,
+0.0,
+0.0,
+0.497941,
+0.0,
+0.500918,
+0.333681
+],
+"scored_on": "call",
+"seconds": 4.288102,
+"seed": 0,
+"stage": "rdrbaf",
+"start": "lattice",
+"variant": "5 segments"
+},
+{
+"arm": "smooth",
+"error": null,
+"found": {
+"0,1": false,
+"0,2": false,
+"1,1": true,
+"2,2": false
+},
+"handover": 0.002753,
+"log_likelihood": -112063.436609,
+"log_mu": [
+-0.123372,
+0.008764,
+0.007413,
+-0.000626,
+0.007947,
+0.009004,
+0.03
+],
+"p_binom": [
+0.004999,
+0.49885,
+0.500081,
+0.49969,
+0.5018,
+0.501676,
+0.49765
+],
+"scored_on": "call",
+"seconds": 1.860132,
+"seed": 0,
+"stage": "rdrbaf",
+"start": "rdr-quantiles",
+"variant": "5 segments"
+},
+{
+"arm": "smooth",
+"error": null,
+"found": {
+"0,1": false,
+"0,2": false,
+"1,1": true,
+"2,2": false
+},
+"handover": 0.821409,
+"log_likelihood": -112033.909807,
+"log_mu": [
+-0.000625,
+-0.105371,
+-0.165737,
+0.028849,
+-0.173517,
+0.008095,
+-0.034071
+],
+"p_binom": [
+0.499672,
+0.0,
+0.0,
+0.49794,
+0.0,
+0.500918,
+0.333682
+],
+"scored_on": "call",
+"seconds": 4.001295,
+"seed": 0,
+"stage": "rdrbaf",
+"start": "lattice",
+"variant": "9 segments"
+},
+{
+"arm": "smooth",
+"error": null,
+"found": {
+"0,1": false,
+"0,2": false,
+"1,1": true,
+"2,2": false
+},
+"handover": 0.00273,
+"log_likelihood": -112063.456428,
+"log_mu": [
+-0.123373,
+0.008405,
+0.007556,
+-0.000626,
+0.008093,
+0.008921,
+0.030229
+],
+"p_binom": [
+0.004998,
+0.499392,
+0.498906,
+0.4997,
+0.502184,
+0.501354,
+0.497497
+],
+"scored_on": "call",
+"seconds": 1.92106,
+"seed": 0,
+"stage": "rdrbaf",
+"start": "rdr-quantiles",
+"variant": "9 segments"
+},
+{
+"arm": "smooth",
+"error": null,
+"found": {
+"0,1": false,
+"0,2": false,
+"1,1": true,
+"2,2": false
+},
+"handover": 1.939901,
+"log_likelihood": -112033.754148,
+"log_mu": [
+-0.000625,
+0.028892,
+-0.115905,
+-0.034163,
+-0.157753,
+0.008099,
+-0.170356
+],
+"p_binom": [
+0.499672,
+0.497958,
+0.0,
+0.335221,
+0.0,
+0.500914,
+0.0
+],
+"scored_on": "call",
+"seconds": 7.140182,
+"seed": 0,
+"stage": "rdrbaf",
+"start": "lattice",
+"variant": "1 Mb"
+},
+{
+"arm": "smooth",
+"error": null,
+"found": {
+"0,1": false,
+"0,2": false,
+"1,1": true,
+"2,2": false
+},
+"handover": 0.003109,
+"log_likelihood": -112063.233224,
+"log_mu": [
+-0.123371,
+0.009206,
+0.007382,
+-0.000626,
+0.00763,
+0.009409,
+0.030437
+],
+"p_binom": [
+0.004999,
+0.501402,
+0.500327,
+0.499687,
+0.501288,
+0.498398,
+0.497636
+],
+"scored_on": "call",
+"seconds": 2.106357,
+"seed": 0,
+"stage": "rdrbaf",
+"start": "rdr-quantiles",
+"variant": "1 Mb"
+},
+{
+"arm": "smooth",
+"error": null,
+"found": {
+"0,1": false,
+"0,2": false,
+"1,1": true,
+"2,2": false
+},
+"handover": 1.071463,
+"log_likelihood": -112033.91071,
+"log_mu": [
+-0.000625,
+-0.105363,
+-0.165744,
+0.028849,
+0.008095,
+-0.173519,
+-0.034071
+],
+"p_binom": [
+0.499672,
+0.0,
+0.0,
+0.49794,
+0.500918,
+0.0,
+0.333682
+],
+"scored_on": "call",
+"seconds": 4.200012,
+"seed": 0,
+"stage": "rdrbaf",
+"start": "lattice",
+"variant": "5 Mb"
+},
+{
+"arm": "smooth",
+"error": null,
+"found": {
+"0,1": false,
+"0,2": false,
+"1,1": true,
+"2,2": false
+},
+"handover": 0.00263,
+"log_likelihood": -112063.411858,
+"log_mu": [
+-0.123371,
+0.00844,
+0.007517,
+-0.000627,
+0.007859,
+0.009999,
+0.031756
+],
+"p_binom": [
+0.005,
+0.500797,
+0.499503,
+0.499695,
+0.502201,
+0.499828,
+0.497516
+],
+"scored_on": "call",
+"seconds": 1.926936,
+"seed": 0,
+"stage": "rdrbaf",
+"start": "rdr-quantiles",
+"variant": "5 Mb"
+},
+{
+"arm": "smooth",
+"error": null,
+"found": {
+"0,1": false,
+"0,2": false,
+"1,1": true,
+"2,2": false
+},
+"handover": 1.066349,
+"log_likelihood": -112033.909276,
+"log_mu": [
+-0.000625,
+-0.105376,
+-0.165732,
+0.02885,
+0.008095,
+-0.173516,
+-0.034071
+],
+"p_binom": [
+0.499672,
+0.0,
+0.0,
+0.49794,
+0.500918,
+0.0,
+0.333682
+],
+"scored_on": "call",
+"seconds": 4.139411,
+"seed": 0,
+"stage": "rdrbaf",
+"start": "lattice",
+"variant": "10 Mb"
+},
+{
+"arm": "smooth",
+"error": null,
+"found": {
+"0,1": false,
+"0,2": false,
+"1,1": true,
+"2,2": false
+},
+"handover": 0.002608,
+"log_likelihood": -112063.397076,
+"log_mu": [
+-0.123374,
+0.007988,
+0.010759,
+-0.000626,
+0.008035,
+0.008808,
+0.030086
+],
+"p_binom": [
+0.005,
+0.501109,
+0.494932,
+0.499699,
+0.501906,
+0.498696,
+0.497597
+],
+"scored_on": "call",
+"seconds": 2.478103,
+"seed": 0,
+"stage": "rdrbaf",
+"start": "rdr-quantiles",
+"variant": "10 Mb"
+},
+{
+"arm": "outlier",
+"error": null,
+"found": {
+"0,1": true,
+"0,2": true,
+"1,1": true,
+"2,2": true
+},
+"handover": 0.845157,
+"log_likelihood": -76440.195599,
+"log_mu": [
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0
+],
+"p_binom": [
+0.500022,
+1e-06,
+0.485877,
+0.507663,
+0.999999,
+0.597501,
+0.323999
+],
+"scored_on": "corrupted",
+"seconds": 1.571318,
+"seed": 0,
+"stage": "baf",
+"start": "lattice",
+"variant": "baf 1%"
+},
+{
+"arm": "outlier",
+"error": null,
+"found": {
+"0,1": false,
+"0,2": false,
+"1,1": true,
+"2,2": true
+},
+"handover": 0.010464,
+"log_likelihood": -76556.251304,
+"log_mu": [
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0
+],
+"p_binom": [
+0.0859,
+0.500832,
+0.501121,
+0.500047,
+0.5002,
+0.501176,
+0.494838
+],
+"scored_on": "corrupted",
+"seconds": 0.129435,
+"seed": 0,
+"stage": "baf",
+"start": "rdr-quantiles",
+"variant": "baf 1%"
+},
+{
+"arm": "outlier",
+"error": null,
+"found": {
+"0,1": true,
+"0,2": true,
+"1,1": true,
+"2,2": true
+},
+"handover": 0.854441,
+"log_likelihood": -76440.195599,
+"log_mu": [
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0
+],
+"p_binom": [
+0.500022,
+1e-06,
+0.485877,
+0.507663,
+0.999999,
+0.597501,
+0.323999
+],
+"scored_on": "corrupted",
+"seconds": 1.548031,
+"seed": 0,
+"stage": "baf",
+"start": "lattice",
+"variant": "baf 1% masked baf-se-0.15"
+},
+{
+"arm": "outlier",
+"error": null,
+"found": {
+"0,1": false,
+"0,2": false,
+"1,1": true,
+"2,2": true
+},
+"handover": 0.012111,
+"log_likelihood": -76556.195512,
+"log_mu": [
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0
+],
+"p_binom": [
+0.085873,
+0.501022,
+0.501221,
+0.499522,
+0.500404,
+0.501073,
+0.494823
+],
+"scored_on": "corrupted",
+"seconds": 0.166626,
+"seed": 0,
+"stage": "baf",
+"start": "rdr-quantiles",
+"variant": "baf 1% masked baf-se-0.15"
+},
+{
+"arm": "outlier",
+"error": null,
+"found": {
+"0,1": true,
+"0,2": true,
+"1,1": true,
+"2,2": true
+},
+"handover": 0.914799,
+"log_likelihood": -76608.139217,
+"log_mu": [
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0
+],
+"p_binom": [
+0.500052,
+0.0,
+0.486107,
+0.508192,
+0.999999,
+0.490837,
+0.324025
+],
+"scored_on": "corrupted",
+"seconds": 1.731183,
+"seed": 0,
+"stage": "baf",
+"start": "lattice",
+"variant": "baf 5%"
+},
+{
+"arm": "outlier",
+"error": null,
+"found": {
+"0,1": false,
+"0,2": false,
+"1,1": true,
+"2,2": true
+},
+"handover": 0.00907,
+"log_likelihood": -76717.812712,
+"log_mu": [
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0
+],
+"p_binom": [
+0.250392,
+0.500086,
+0.501059,
+0.500588,
+0.499738,
+0.500636,
+0.497582
+],
+"scored_on": "corrupted",
+"seconds": 0.220805,
+"seed": 0,
+"stage": "baf",
+"start": "rdr-quantiles",
+"variant": "baf 5%"
+},
+{
+"arm": "outlier",
+"error": null,
+"found": {
+"0,1": true,
+"0,2": true,
+"1,1": true,
+"2,2": true
+},
+"handover": 0.961472,
+"log_likelihood": -76608.139217,
+"log_mu": [
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0
+],
+"p_binom": [
+0.500052,
+0.0,
+0.486107,
+0.508192,
+0.999999,
+0.490837,
+0.324025
+],
+"scored_on": "corrupted",
+"seconds": 1.731227,
+"seed": 0,
+"stage": "baf",
+"start": "lattice",
+"variant": "baf 5% masked baf-se-0.15"
+},
+{
+"arm": "outlier",
+"error": null,
+"found": {
+"0,1": false,
+"0,2": false,
+"1,1": true,
+"2,2": true
+},
+"handover": 0.012522,
+"log_likelihood": -76717.61584,
+"log_mu": [
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0
+],
+"p_binom": [
+0.250391,
+0.500022,
+0.501138,
+0.500382,
+0.49979,
+0.500638,
+0.497742
+],
+"scored_on": "corrupted",
+"seconds": 0.207553,
+"seed": 0,
+"stage": "baf",
+"start": "rdr-quantiles",
+"variant": "baf 5% masked baf-se-0.15"
+},
+{
+"arm": "outlier",
+"error": null,
+"found": {
+"0,1": false,
+"0,2": false,
+"1,1": true,
+"2,2": false
+},
+"handover": 3.783945,
+"log_likelihood": -112649.636854,
+"log_mu": [
+-0.000639,
+-0.038194,
+0.01013,
+-0.023178,
+-0.129207,
+1.646036,
+2.074377
+],
+"p_binom": [
+0.499671,
+0.499013,
+0.500669,
+0.402253,
+0.0,
+0.0,
+0.497565
+],
+"scored_on": "corrupted",
+"seconds": 11.29002,
+"seed": 0,
+"stage": "rdrbaf",
+"start": "lattice",
+"variant": "rdr 1%"
+},
+{
+"arm": "outlier",
+"error": null,
+"found": {
+"0,1": false,
+"0,2": true,
+"1,1": true,
+"2,2": false
+},
+"handover": 0.004825,
+"log_likelihood": -112746.665442,
+"log_mu": [
+-0.007212,
+-0.03913,
+0.010129,
+0.009373,
+-0.000638,
+0.010609,
+2.072944
+],
+"p_binom": [
+0.005016,
+0.498464,
+0.501103,
+0.499743,
+0.499683,
+0.500479,
+0.496845
+],
+"scored_on": "corrupted",
+"seconds": 6.861527,
+"seed": 0,
+"stage": "rdrbaf",
+"start": "rdr-quantiles",
+"variant": "rdr 1%"
+},
+{
+"arm": "outlier",
+"error": null,
+"found": {
+"0,1": false,
+"0,2": false,
+"1,1": true,
+"2,2": false
+},
+"handover": 2.182986,
+"log_likelihood": -112649.627608,
+"log_mu": [
+-0.000639,
+-0.037946,
+0.010125,
+-0.023026,
+-0.129207,
+2.074335,
+1.646036
+],
+"p_binom": [
+0.499671,
+0.499014,
+0.500672,
+0.402875,
+0.0,
+0.497565,
+0.0
+],
+"scored_on": "corrupted",
+"seconds": 9.50759,
+"seed": 0,
+"stage": "rdrbaf",
+"start": "lattice",
+"variant": "rdr 1% masked rdr-top-5%"
+},
+{
+"arm": "outlier",
+"error": null,
+"found": {
+"0,1": false,
+"0,2": true,
+"1,1": true,
+"2,2": false
+},
+"handover": 0.003008,
+"log_likelihood": -112746.525943,
+"log_mu": [
+-0.007216,
+-0.038126,
+0.010042,
+-0.000638,
+0.009494,
+0.010376,
+2.073333
+],
+"p_binom": [
+0.005015,
+0.498474,
+0.501237,
+0.499681,
+0.498155,
+0.500504,
+0.496811
+],
+"scored_on": "corrupted",
+"seconds": 7.940222,
+"seed": 0,
+"stage": "rdrbaf",
+"start": "rdr-quantiles",
+"variant": "rdr 1% masked rdr-top-5%"
+},
+{
+"arm": "outlier",
+"error": null,
+"found": {
+"0,1": false,
+"0,2": true,
+"1,1": true,
+"2,2": false
+},
+"handover": 3.206723,
+"log_likelihood": -114659.089481,
+"log_mu": [
+-0.051171,
+-0.000575,
+0.010344,
+-0.002538,
+0.013216,
+2.082791,
+-2.090301
+],
+"p_binom": [
+0.497462,
+0.499548,
+0.501126,
+0.344737,
+0.0,
+0.499288,
+0.501694
+],
+"scored_on": "corrupted",
+"seconds": 16.299092,
+"seed": 0,
+"stage": "rdrbaf",
+"start": "lattice",
+"variant": "rdr 5%"
+},
+{
+"arm": "outlier",
+"error": null,
+"found": {
+"0,1": false,
+"0,2": true,
+"1,1": true,
+"2,2": false
+},
+"handover": 0.004013,
+"log_likelihood": -114941.018935,
+"log_mu": [
+0.011978,
+-0.426705,
+0.0094,
+0.015023,
+-0.000577,
+0.016101,
+2.001701
+],
+"p_binom": [
+0.004602,
+0.497415,
+0.498263,
+0.504341,
+0.499596,
+0.495529,
+0.499197
+],
+"scored_on": "corrupted",
+"seconds": 1.622193,
+"seed": 0,
+"stage": "rdrbaf",
+"start": "rdr-quantiles",
+"variant": "rdr 5%"
+},
+{
+"arm": "outlier",
+"error": null,
+"found": {
+"0,1": false,
+"0,2": false,
+"1,1": true,
+"2,2": false
+},
+"handover": 2.290758,
+"log_likelihood": -114685.224504,
+"log_mu": [
+0.010416,
+2.045618,
+-0.00054,
+-2.073529,
+-0.110446,
+-0.468611,
+1.030664
+],
+"p_binom": [
+0.500234,
+0.500453,
+0.499636,
+0.498027,
+0.005377,
+0.0,
+0.008693
+],
+"scored_on": "corrupted",
+"seconds": 7.132004,
+"seed": 0,
+"stage": "rdrbaf",
+"start": "lattice",
+"variant": "rdr 5% masked rdr-top-5%"
+},
+{
+"arm": "outlier",
+"error": null,
+"found": {
+"0,1": false,
+"0,2": true,
+"1,1": true,
+"2,2": false
+},
+"handover": 0.003002,
+"log_likelihood": -114942.191925,
+"log_mu": [
+0.011946,
+-0.442367,
+0.013351,
+0.016502,
+-0.000583,
+0.008901,
+2.022813
+],
+"p_binom": [
+0.004608,
+0.497049,
+0.498047,
+0.503504,
+0.499657,
+0.496826,
+0.499146
+],
+"scored_on": "corrupted",
+"seconds": 1.643379,
+"seed": 0,
+"stage": "rdrbaf",
+"start": "rdr-quantiles",
+"variant": "rdr 5% masked rdr-top-5%"
+},
+{
+"arm": "outlier",
+"error": null,
+"found": {
+"0,1": false,
+"0,2": false,
+"1,1": true,
+"2,2": false
+},
+"handover": 2.369911,
+"log_likelihood": -112228.552887,
+"log_mu": [
+-0.00064,
+0.029452,
+-0.06763,
+0.008406,
+-0.002286,
+-0.17367,
+-0.173724
+],
+"p_binom": [
+0.499654,
+0.497705,
+0.790422,
+0.500796,
+0.106703,
+0.000632,
+3e-06
+],
+"scored_on": "corrupted",
+"seconds": 7.804025,
+"seed": 0,
+"stage": "rdrbaf",
+"start": "lattice",
+"variant": "baf 1%"
+},
+{
+"arm": "outlier",
+"error": null,
+"found": {
+"0,1": false,
+"0,2": false,
+"1,1": true,
+"2,2": false
+},
+"handover": 0.002936,
+"log_likelihood": -112258.255337,
+"log_mu": [
+-0.10633,
+0.009983,
+0.007836,
+0.007891,
+-0.000642,
+0.009356,
+0.033569
+],
+"p_binom": [
+0.082591,
+0.500594,
+0.501476,
+0.499104,
+0.499689,
+0.500644,
+0.497559
+],
+"scored_on": "corrupted",
+"seconds": 1.92989,
+"seed": 0,
+"stage": "rdrbaf",
+"start": "rdr-quantiles",
+"variant": "baf 1%"
+},
+{
+"arm": "outlier",
+"error": null,
+"found": {
+"0,1": false,
+"0,2": false,
+"1,1": true,
+"2,2": false
+},
+"handover": 2.310436,
+"log_likelihood": -112228.552887,
+"log_mu": [
+-0.00064,
+0.029452,
+-0.06763,
+0.008406,
+-0.002286,
+-0.17367,
+-0.173724
+],
+"p_binom": [
+0.499654,
+0.497705,
+0.790422,
+0.500796,
+0.106703,
+0.000632,
+3e-06
+],
+"scored_on": "corrupted",
+"seconds": 7.511845,
+"seed": 0,
+"stage": "rdrbaf",
+"start": "lattice",
+"variant": "baf 1% masked baf-se-0.15"
+},
+{
+"arm": "outlier",
+"error": null,
+"found": {
+"0,1": false,
+"0,2": false,
+"1,1": true,
+"2,2": false
+},
+"handover": 0.003373,
+"log_likelihood": -112258.263959,
+"log_mu": [
+-0.10633,
+0.009962,
+0.007832,
+0.007908,
+-0.000642,
+0.009346,
+0.033549
+],
+"p_binom": [
+0.082591,
+0.500604,
+0.501477,
+0.499054,
+0.49969,
+0.500655,
+0.497555
+],
+"scored_on": "corrupted",
+"seconds": 1.933066,
+"seed": 0,
+"stage": "rdrbaf",
+"start": "rdr-quantiles",
+"variant": "baf 1% masked baf-se-0.15"
+},
+{
+"arm": "outlier",
+"error": null,
+"found": {
+"0,1": false,
+"0,2": true,
+"1,1": true,
+"2,2": false
+},
+"handover": 2.25462,
+"log_likelihood": -112425.761134,
+"log_mu": [
+-0.000574,
+0.030636,
+-0.107843,
+0.008524,
+-0.036865,
+-0.000103,
+-0.005362
+],
+"p_binom": [
+0.499561,
+0.498197,
+0.220907,
+0.501045,
+0.343999,
+0.531534,
+0.0
+],
+"scored_on": "corrupted",
+"seconds": 7.522662,
+"seed": 0,
+"stage": "rdrbaf",
+"start": "lattice",
+"variant": "baf 5%"
+},
+{
+"arm": "outlier",
+"error": null,
+"found": {
+"0,1": false,
+"0,2": false,
+"1,1": true,
+"2,2": false
+},
+"handover": 0.002863,
+"log_likelihood": -112623.529142,
+"log_mu": [
+-0.062393,
+0.01237,
+0.007659,
+0.007955,
+-0.000577,
+0.009849,
+0.036629
+],
+"p_binom": [
+0.249847,
+0.499706,
+0.500103,
+0.50284,
+0.499571,
+0.500615,
+0.497454
+],
+"scored_on": "corrupted",
+"seconds": 1.407201,
+"seed": 0,
+"stage": "rdrbaf",
+"start": "rdr-quantiles",
+"variant": "baf 5%"
+},
+{
+"arm": "outlier",
+"error": null,
+"found": {
+"0,1": false,
+"0,2": true,
+"1,1": true,
+"2,2": false
+},
+"handover": 2.115943,
+"log_likelihood": -112425.761134,
+"log_mu": [
+-0.000574,
+0.030636,
+-0.107843,
+0.008524,
+-0.036865,
+-0.000103,
+-0.005362
+],
+"p_binom": [
+0.499561,
+0.498197,
+0.220907,
+0.501045,
+0.343999,
+0.531534,
+0.0
+],
+"scored_on": "corrupted",
+"seconds": 7.097426,
+"seed": 0,
+"stage": "rdrbaf",
+"start": "lattice",
+"variant": "baf 5% masked baf-se-0.15"
+},
+{
+"arm": "outlier",
+"error": null,
+"found": {
+"0,1": false,
+"0,2": false,
+"1,1": true,
+"2,2": false
+},
+"handover": 0.003113,
+"log_likelihood": -112623.511374,
+"log_mu": [
+-0.062393,
+0.012316,
+0.007661,
+0.007954,
+-0.000577,
+0.009847,
+0.036562
+],
+"p_binom": [
+0.249847,
+0.499717,
+0.500101,
+0.502834,
+0.499571,
+0.500624,
+0.497453
+],
+"scored_on": "corrupted",
+"seconds": 1.303882,
+"seed": 0,
+"stage": "rdrbaf",
+"start": "rdr-quantiles",
+"variant": "baf 5% masked baf-se-0.15"
+},
+{
 "arm": "rdr-seeds-baf",
 "error": null,
 "found": {
@@ -30639,7 +33951,79 @@
 "1,1": true,
 "2,2": true
 },
-"handover": 0.0017,
+"handover": 6.839291,
+"log_likelihood": -76308.398054,
+"log_mu": [
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0
+],
+"p_binom": [
+0.0,
+0.0,
+0.0,
+0.337483,
+0.499459,
+0.500016,
+0.500415
+],
+"scored_on": "call",
+"seconds": 7.72108,
+"seed": 0,
+"stage": "baf",
+"start": "lattice",
+"variant": "from the BAF + RDR fit"
+},
+{
+"arm": "rdr-seeds-baf",
+"error": null,
+"found": {
+"0,1": true,
+"0,2": true,
+"1,1": true,
+"2,2": true
+},
+"handover": 1.418201,
+"log_likelihood": -76372.381885,
+"log_mu": [
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0,
+0.0
+],
+"p_binom": [
+0.004195,
+0.498067,
+0.499733,
+0.499914,
+0.500098,
+0.500561,
+0.500978
+],
+"scored_on": "call",
+"seconds": 1.588764,
+"seed": 0,
+"stage": "baf",
+"start": "rdr-quantiles",
+"variant": "from the BAF + RDR fit"
+},
+{
+"arm": "rdr-seeds-baf",
+"error": null,
+"found": {
+"0,1": true,
+"0,2": true,
+"1,1": true,
+"2,2": true
+},
+"handover": 0.001898,
 "log_likelihood": -76279.163104,
 "log_mu": [
 0.0,
@@ -30660,7 +34044,7 @@
 0.500171
 ],
 "scored_on": "call",
-"seconds": 4.858757,
+"seconds": 4.21698,
 "seed": 0,
 "stage": "baf",
 "start": "rdr-quantiles",
@@ -30688,7 +34072,9 @@
 "emission++x5+em",
 "datax5+em",
 "kmeans++",
-"distinct"
+"distinct",
+"lattice",
+"rdr-quantiles"
 ],
 "workers": 4
 }

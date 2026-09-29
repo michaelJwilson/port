@@ -151,6 +151,12 @@ def main(argv: list[str] | None = None) -> None:
     two.add_argument("capture", type=Path)
     two.add_argument("out", type=Path)
     two.add_argument("--arm", action="append", default=None)
+    two.add_argument(
+        "--only", action="append", default=None, help="these starts' jobs alone"
+    )
+    two.add_argument(
+        "--merge", type=Path, default=None, help="an earlier run whose rows to keep"
+    )
     arguments = parser.parse_args(argv)
 
     if arguments.command == "capture":
@@ -167,7 +173,21 @@ def main(argv: list[str] | None = None) -> None:
             seeds=SEEDS,
             workers=WORKERS,
             seconds=BUDGET_SECONDS,
+            only=tuple(arguments.only) if arguments.only else None,
         )
+        if arguments.merge is not None:
+            with arguments.merge.open("rb") as fh:
+                earlier = pickle.load(fh)
+            added = {
+                (r["arm"], r["variant"], r["stage"], r["start"], r["seed"])
+                for r in results["rows"]
+            }
+            results["rows"] = [
+                r
+                for r in earlier["rows"]
+                if (r["arm"], r["variant"], r["stage"], r["start"], r["seed"])
+                not in added
+            ] + results["rows"]
         with arguments.out.open("wb") as fh:
             pickle.dump(results, fh, protocol=5)
         print(f"{time.perf_counter() - opened:.0f} s", file=sys.stderr)
