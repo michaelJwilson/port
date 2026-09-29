@@ -79,7 +79,9 @@ def calicost_pairs(
                     nonbalance_bafdist=NONBALANCE_BAFDIST,
                     nondiploid_rdrdist=NONDIPLOID_RDRDIST,
                 )
-            except Exception:
+            # NB CalicoST's own retry catches every exception at a lower
+            #    `min_prop_threshold`; reproduced as it is, not narrowed.
+            except Exception:  # noqa: BLE001
                 copies, _ = hill_climbing_integer_copynumber_fixdiploid(
                     adjusted,
                     bulk.base_nb_mean,
