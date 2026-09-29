@@ -466,7 +466,7 @@ def test_a_manifest_extended_from_elsewhere_keeps_its_base_paths(
 def test_the_map_cache_returns_the_parse_and_follows_the_file(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """`genetic_map` from its `.npz` equals the text parse, bitwise (#549).
+    """`genetic_map` from its Parquet cache equals the text parse, bitwise (#549).
 
     The second call reads the cache the first wrote; editing the map file
     changes its digest, so the edit is parsed rather than served stale.
@@ -481,7 +481,7 @@ def test_the_map_cache_returns_the_parse_and_follows_the_file(
     parse = draw.genetic_map.__wrapped__
 
     first = parse(path)
-    assert len(list((tmp_path / "cache").glob("*.npz"))) == 1
+    assert len(list((tmp_path / "cache").glob("*.parquet"))) == 1
     second = parse(path)
 
     assert first.keys() == second.keys() == {"1", "X"}
