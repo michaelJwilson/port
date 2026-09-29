@@ -60,6 +60,7 @@ __all__ = [
     "decode_clone",
     "hill_climbing_integer_copynumber_fixdiploid_milp",
     "hill_climbing_integer_copynumber_oneclone",
+    "stated_total",
 ]
 
 DECODED: list[Any] = []
@@ -72,17 +73,40 @@ MAX_TOTAL_COPY = 6
 """`cnaster`'s default, in both signatures."""
 
 
+def stated_total(value: Any) -> int | None:
+    """`int_copy_num.max_total_copy` as a cap, `None` where no cap is stated.
+
+    `None` and `"none"` state none. Anything else must be an integer of at
+    least 2, the diploid `(1, 1)`: below it the MILP returns `(0, 0)` at
+    infinite loss and the hill climber a state above the cap (#466). A
+    fraction is refused rather than truncated.
+    """
+    if value is None or (isinstance(value, str) and value.lower() == "none"):
+        return None
+
+    try:
+        total = float(value) if not isinstance(value, bool) else float("nan")
+    except ValueError:
+        total = float("nan")
+
+    if not (total >= 2 and total.is_integer()):
+        message = f"int_copy_num.max_total_copy must be an integer >= 2, got {value!r}"
+        raise ValueError(message)
+
+    return int(total)
+
+
 def configured_caps() -> tuple[int, int]:
     """`(max_allele_copy, max_total_copy)`: the configured cap for both, else `cnaster`'s."""
     from cnaster.config import get_global_config
 
     section = getattr(get_global_config(), "int_copy_num", None)
-    total = getattr(section, "max_total_copy", None)
+    total = stated_total(getattr(section, "max_total_copy", None))
 
     if total is None:
         return MAX_ALLELE_COPY, MAX_TOTAL_COPY
 
-    return int(total), int(total)
+    return total, total
 
 
 def _caps(max_allele_copy: int, max_total_copy: int) -> tuple[int, int]:
