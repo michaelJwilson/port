@@ -163,11 +163,6 @@ def reindex_clones(res_combine: Any, *args: Any, **kwargs: Any) -> Any:
     """
     # NB bound at import, as `UPSTREAM_REINDEX`: the swap rebinds the name in
     #    `cnaster.hmrf`, so reading it here at call time would call this back.
-    from port.extensions import np_merge
-
-    # NB the read-depth stage's merged clones, which `cnaster` computes and
-    #    does not write (#497); `res_combine` itself where none is held.
-    res_combine = np_merge.taken(res_combine)
     before = np.asarray(res_combine["pred_cnv"])
     reindexed, posterior = UPSTREAM_REINDEX(res_combine, *args, **kwargs)
     shifts = (
@@ -230,18 +225,6 @@ def run_core_inference(*args: Any, **kwargs: Any) -> Any:
     #    default argument (#348).
     if distinct.installed() and "hmm_initializer" not in kwargs:
         kwargs["hmm_initializer"] = distinct.gmm_init
-
-    from port.extensions import np_merge
-
-    # NB the spot counts and parameters this fit reads, for the stage's
-    #    Neyman-Pearson merge (#497); held only while that merge is installed.
-    if np_merge.installed():
-        np_merge.remember(
-            args[0] if args else kwargs.get("single_X"),
-            args[2] if len(args) > 2 else kwargs.get("single_base_nb_mean"),
-            args[3] if len(args) > 3 else kwargs.get("single_total_bb_RD"),
-            str(kwargs.get("params", "")),
-        )
 
     result = UPSTREAM(*args, **kwargs)
 
