@@ -123,9 +123,10 @@ def _parser() -> argparse.ArgumentParser:
         default=None,
         help=(
             "keep each read-depth sub-clone inside its BAF clone, with the "
-            "mask cnaster computes and drops (#348); without it the ICM floor "
-            "reassigns spots across BAF clones. Off by default: on #338's "
-            "three-sample instance it splits 2 planted clones into 6."
+            "mask cnaster computes and drops (#348), as a 100-nat penalty "
+            "(#467); without it the ICM floor reassigns spots across BAF "
+            "clones. Off by default, on with --sal: on #338's three-sample "
+            "instance the default arm splits 2 planted clones into 6."
         ),
     )
     parser.add_argument(
@@ -136,8 +137,8 @@ def _parser() -> argparse.ArgumentParser:
             "meet the clone-size floor smallest first, each spot to its best "
             "remaining clone, at hmrf.min_spots_per_clone (#348); cnaster "
             "empties every clone under a fixed 200 at once and reassigns its "
-            "spots at random. Off by default: on #338's three-sample instance it "
-            "splits 2 planted clones into 6."
+            "spots at random. Off by default, on with --sal (#467): on #338's "
+            "three-sample instance the default arm splits 2 planted clones into 6."
         ),
     )
     parser.add_argument(
@@ -453,15 +454,23 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         if copy_cap:
             selected = selected + COPY_SWAPS
-        # NB opt-in, unlike the other clone patches: each alone over-splits
-        #    #338's three-sample instance, 6 fitted clones against 2 planted.
-        refinement_mask = bool(arguments.refinement_mask)
+        # NB opt-in on the default arm, where each alone over-splits #338's
+        #    three-sample instance (6 fitted clones against 2 planted); on with
+        #    --sal, which with both recovers CalicoST hard at 0.982 against
+        #    0.303 and keeps every other fixture measured (#467).
+        refinement_mask = bool(
+            arguments.sal
+            if arguments.refinement_mask is None
+            else arguments.refinement_mask
+        )
         if refinement_mask:
             from port.patch.hmrf.refinement import forget
 
             selected = selected + REFINEMENT_SWAPS
             stack.callback(forget)
-        floor = bool(arguments.floor_merge)
+        floor = bool(
+            arguments.sal if arguments.floor_merge is None else arguments.floor_merge
+        )
         if floor:
             from port.patch.icm.floor import floor_merge
 

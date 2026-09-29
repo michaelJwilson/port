@@ -296,7 +296,7 @@ def pipeline_clone_assignment(
 
     from port.extensions.label_solver import label_solver, sweep_for
     from port.patch.hmrf.adjacency import adjacency_coo
-    from port.patch.hmrf.refinement import compact, mask_for
+    from port.patch.hmrf.refinement import MASK_PENALTY, compact, mask_for
     from port.patch.hmrf.tabulated_field import spot_clone_field
     from port.patch.icm.floor import configured_floor, enforce_floor
     from port.patch.icm.floor import installed as floor_installed
@@ -438,15 +438,16 @@ def pipeline_clone_assignment(
         sweep = icm_sweep if solver == "icm" else sweep_for(solver)
 
         # NB the read-depth refinement's allowed-clone mask, which `cnaster`
-        #    computes and drops (#348): into the field, so no move and no
-        #    merge crosses a BAF clone, and into the floor, whose random
-        #    reassignment reads nothing else. Absent, the call is as before.
+        #    computes and drops (#348): into the field, less `MASK_PENALTY`
+        #    (#467), so a move or merge crosses a BAF clone only on a larger
+        #    read-depth gain; and to the solver and floor as the knob. Absent,
+        #    the call is as before.
         mask = mask_for(new_assignment, n_clones)
         knobs: dict[str, Any] = {} if mask is None else {"onehot_allowed_clones": mask}
 
         if mask is not None:
             unmasked = field
-            field = np.where(mask, field, -np.inf)
+            field = np.where(mask, field, field - MASK_PENALTY)
 
         # NB the floor merged smallest first, into each spot's best clone,
         #    in place of the sweep's all-at-once random reassignment (#348):

@@ -355,8 +355,13 @@ first, into each spot's best remaining clone. `--refinement-mask` passes the
 mask. `--distinct-init` stops `gmm_init` keeping near-duplicate normal
 components as separate states. With all three on, the run recovers clone ARI
 0.774 (1.000 integer) and copy-state ARI 0.997. The floor merge alone removes
-the collapse. `--floor-merge` and `--refinement-mask` are opt-in: each alone
-splits #338's three-sample instance, 2 planted clones into 6 fitted.
+the collapse. `--floor-merge` and `--refinement-mask` are opt-in on the
+default arm, where each alone splits #338's three-sample instance, 2 planted
+clones into 6 fitted, and on with `--sal` (#467). There the mask is a 100-nat
+penalty rather than `-inf`, so the read-depth stage can still move a spot the
+BAF stage misplaced: with `--sal`, CalicoST hard goes from clone ARI 0.303 (2
+clones for 4) to 0.982, easy from 0.944 to 0.986, and `dev`, r0 and the
+three-sample instance stay at 1.000, 0.998 and 1.000.
 `--distinct-init` is on by default.
 
 **`run_calicost`** (#347) translates the same YAML and runs CalicoST in-process
