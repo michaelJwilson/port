@@ -95,7 +95,7 @@ def test_states_are_matched_by_responsibility_not_by_index() -> None:
         gamma[state][state == fitted_path.T] = 0.8
 
     captured = SimpleNamespace(
-        result={"log_gamma": np.log(gamma), "new_assignment": truth.labels}
+        res={"log_gamma": np.log(gamma), "new_assignment": truth.labels}
     )
 
     np.testing.assert_array_equal(match_states(truth, captured), relabel)  # type: ignore[arg-type]
