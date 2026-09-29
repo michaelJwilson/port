@@ -237,11 +237,15 @@ def shift_for(pred_cnv: Any) -> tuple[float, int | None]:
 
 def run_core_inference(*args: Any, **kwargs: Any) -> Any:
     """Upstream's inference, then the neutral pin when the fit was shifted."""
-    from port.patch.hmm_initialize import distinct
+    from port.patch.hmm_initialize import distinct, sal_mixture
 
     # NB passed rather than rebound: upstream binds the initializer as a
     #    default argument (#348).
-    if distinct.installed() and "hmm_initializer" not in kwargs:
+    if sal_mixture.installed() and "hmm_initializer" not in kwargs:
+        # NB the read-depth stage's start from `sal`'s mixture (#489); the
+        #    BAF-only stage falls back to `distinct`'s inside it.
+        kwargs["hmm_initializer"] = sal_mixture.gmm_init
+    elif distinct.installed() and "hmm_initializer" not in kwargs:
         kwargs["hmm_initializer"] = distinct.gmm_init
 
     from port.extensions import np_merge
