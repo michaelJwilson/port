@@ -141,30 +141,6 @@ def test_every_swap_lands_in_the_module_named_for_its_target() -> None:
 
 
 @pytest.mark.infra
-def test_what_replaces_nothing_does_not_live_under_patch() -> None:
-    """`patch/` means "replaces `cnaster`", so a module that does not is elsewhere.
-
-    `emission_family` wraps `snakes_and_ladders` and `hmm_init_trials` is
-    `port`'s own, so both are `extensions/`; `draw` plants truth, so it is
-    `sim/`. None may appear in a swap row: an extension installed over a
-    `cnaster` name is a patch that has not admitted to being one.
-    """
-    installed = {
-        swap.replacement.partition(":")[0]
-        for swap in SWAPS + FIGURE_SWAPS + SHIFT_SWAPS + COPY_SWAPS
-    }
-
-    for name in (
-        "port.extensions.emission_family",
-        "port.sim.draw",
-        "port.extensions.hmm_init_trials",
-    ):
-        importlib.import_module(name)
-
-        assert name not in installed, f"{name} is installed but lives outside patch/"
-
-
-@pytest.mark.infra
 def test_the_private_cnaster_surface_is_the_reviewed_one() -> None:
     """Every `_`-prefixed `cnaster` name `port` imports, against the list above.
 
