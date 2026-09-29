@@ -33,8 +33,8 @@ BOOTSTRAP = 2000
 MIN_PER_BIN = 20
 MAX_WIDTH_DEX = 0.3
 
-UMI_EDGES = np.round(np.arange(4.7, 6.71, 0.25), 2)
-"""log10 clone UMIs, 0.25 dex bins."""
+UMI_EDGES = np.round(np.arange(5.5, 6.51, 0.2), 2)
+"""log10 clone UMIs, 0.2 dex bins over the drawn range: 100 to 1,000 spots."""
 
 LENGTH_EDGES = np.round(np.arange(6.0, 8.51, 0.25), 2)
 """log10 event length in bp, 1 Mb to about 300 Mb."""
@@ -196,13 +196,19 @@ def summarize(out: Path, study2_j: float, seed: int = 544) -> dict[str, Any]:
     clones, events = load(out)
     clones["log_umis"] = np.log10(clones["umis"])
     events["log_length"] = np.log10(events["length"])
-    seeds = np.array(sorted(clones["seed"].unique()))
-    # NB one set of resamples for every curve: a J's curve and the default's
-    #    are read on the same members, so their difference is paired.
-    weights = _weights(seeds, np.random.default_rng(seed))
+    rng = np.random.default_rng(seed)
+    # NB Study 1 is read on the members run at every J -- a member whose run
+    #    failed at one J leaves every J -- with one set of resamples, so a
+    #    J's curve and another's are read on the same members and their
+    #    difference is paired.
+    js = sorted(clones["J"].unique())
+    at = clones.groupby("J")["seed"].apply(set)
+    seeds = np.array(sorted(set.intersection(*(at[j] for j in js))))
+    weights = _weights(seeds, rng)
+    paired = clones[clones["seed"].isin(seeds)]
 
     study1: dict[float, dict[str, Any]] = {}
-    for j, frame in clones.groupby("J"):
+    for j, frame in paired.groupby("J"):
         study1[float(j)] = {
             "members": int(frame["seed"].nunique()),
             "clones": len(frame),
@@ -218,7 +224,10 @@ def summarize(out: Path, study2_j: float, seed: int = 544) -> dict[str, Any]:
             ),
         }
 
+    # NB Study 2 is read at one J, on every member run there.
     default = events[events["J"] == study2_j] if len(events) else events
+    members2 = np.array(sorted(clones.loc[clones["J"] == study2_j, "seed"].unique()))
+    weights2 = _weights(members2, rng)
     study2 = {}
     for name in ("LOH", "balanced gain", "imbalanced gain", "all"):
         frame = default if name == "all" else default[default["class"] == name]
@@ -226,7 +235,7 @@ def summarize(out: Path, study2_j: float, seed: int = 544) -> dict[str, Any]:
             "events": len(frame),
             "members": int(frame["seed"].nunique()) if len(frame) else 0,
             "recovered": curve(
-                frame, "log_length", "recovered", LENGTH_EDGES, seeds, weights
+                frame, "log_length", "recovered", LENGTH_EDGES, members2, weights2
             ),
         }
 
@@ -235,16 +244,16 @@ def summarize(out: Path, study2_j: float, seed: int = 544) -> dict[str, Any]:
     for j, entry in study1.items():
         if j == study2_j or base is None:
             continue
-        paired = np.array(entry["detected"]["crossing_draws"]) - np.array(base)
-        paired = paired[np.isfinite(paired)]
+        change = np.array(entry["detected"]["crossing_draws"]) - np.array(base)
+        change = change[np.isfinite(change)]
         interval = (
-            np.percentile(paired, [2.5, 97.5]).tolist()
-            if paired.size
+            np.percentile(change, [2.5, 97.5]).tolist()
+            if change.size
             else [float("nan")] * 2
         )
         differences[j] = {
             "interval": interval,
-            "resolved": bool(paired.size and (interval[0] > 0 or interval[1] < 0)),
+            "resolved": bool(change.size and (interval[0] > 0 or interval[1] < 0)),
         }
 
     return {
@@ -253,28 +262,58 @@ def summarize(out: Path, study2_j: float, seed: int = 544) -> dict[str, Any]:
         "differences": differences,
         "sufficient": SUFFICIENT(study1, study2),
         "members": int(seeds.size),
+        "study2_members": int(members2.size),
         "study2_J": study2_j,
         "failures": {f"{j:g}": runs for j, runs in failures(out).items()},
     }
 
 
+def verdict(entry: dict[str, Any], lo: float, hi: float) -> str:
+    """Where a curve crosses one half, as the rule reads it.
+
+    `crossed` if the crossing lies in `[lo, hi]`; `not reached` if every
+    populated bin's upper bound is below one half; `exceeded` if every
+    populated bin's lower bound is above it; `unresolved` otherwise.
+    """
+    populated = np.array(entry["n"]) >= MIN_PER_BIN
+    if lo <= entry["crossing"] <= hi:
+        return "crossed"
+    if populated.any() and np.all(np.array(entry["high"])[populated] < 0.5):
+        return "not reached"
+    if populated.any() and np.all(np.array(entry["low"])[populated] > 0.5):
+        return "exceeded"
+    return "unresolved"
+
+
 def SUFFICIENT(study1: dict[Any, Any], study2: dict[str, Any]) -> dict[str, Any]:
-    """The rule stated before the numbers: per-bin counts and crossing widths."""
+    """The rule stated before the numbers: per-bin counts and crossing widths.
+
+    Study 1, per J: every bin holds `MIN_PER_BIN` clones, and UMI50's 95%
+    interval is at most `MAX_WIDTH_DEX` wide. Study 2, per class: at least
+    three bins hold `MIN_PER_BIN` events, and the curve either crosses one
+    half with an L50 interval at most `MAX_WIDTH_DEX` wide, or is resolved
+    as never reaching (or never falling below) one half in the drawn range.
+    """
     failures = []
     for j, entry in study1.items():
         width = np.diff(entry["detected"]["crossing_interval"])[0]
         if not np.isfinite(width) or width > MAX_WIDTH_DEX:
             failures.append(f"J={j:g}: UMI50 interval {width:.2f} dex")
         thin = [c for c, n in zip(entry["detected"]["centres"], entry["detected"]["n"], strict=True)
-                if 0 < n < MIN_PER_BIN]  # fmt: skip
+                if n < MIN_PER_BIN]  # fmt: skip
         if thin:
             failures.append(f"J={j:g}: bins with < {MIN_PER_BIN} clones at {thin}")
     for name, entry in study2.items():
-        width = np.diff(entry["recovered"]["crossing_interval"])[0]
-        if np.isfinite(entry["recovered"]["crossing"]) and (
-            not np.isfinite(width) or width > MAX_WIDTH_DEX
+        curve_ = entry["recovered"]
+        if sum(n >= MIN_PER_BIN for n in curve_["n"]) < 3:
+            failures.append(f"{name}: fewer than 3 bins with {MIN_PER_BIN} events")
+        read = verdict(curve_, LENGTH_EDGES[0], LENGTH_EDGES[-1])
+        entry["verdict"] = read
+        width = np.diff(curve_["crossing_interval"])[0]
+        if read == "unresolved" or (
+            read == "crossed" and (not np.isfinite(width) or width > MAX_WIDTH_DEX)
         ):
-            failures.append(f"{name}: L50 interval {width:.2f} dex")
+            failures.append(f"{name}: L50 {read}, interval {width:.2f} dex")
     return {"passes": not failures, "failures": failures}
 
 
@@ -417,11 +456,12 @@ def tables(summary: dict[str, Any]) -> str:
         if any(c != EMPTY for c in cells):
             lines.append(f"| {centre:.2f} | " + " | ".join(cells) + " |")
     lines.append("")
-    lines.append("| class | events | L50, log10 bp [95%] |")
-    lines.append("| --- | --- | --- |")
+    lines.append("| class | events | L50, log10 bp [95%] | reading |")
+    lines.append("| --- | --- | --- | --- |")
     for name, entry in study2.items():
         e = entry["recovered"]
         low, high = e["crossing_interval"]
         lines.append(f"| {name} | {entry['events']} | "
-                     f"{e['crossing']:.2f} [{low:.2f}, {high:.2f}] |")  # fmt: skip
+                     f"{e['crossing']:.2f} [{low:.2f}, {high:.2f}] | "
+                     f"{entry.get('verdict', '')} |")  # fmt: skip
     return "\n".join(lines) + "\n"
