@@ -697,12 +697,26 @@ def barcodes(
     return np.array(list(out))
 
 
+def _numeric(text: str) -> bool:
+    try:
+        float(text)
+    except ValueError:
+        return False
+    return True
+
+
 def sample_ids(n_slices: int, n_bytes: int, rng: np.random.Generator) -> list[str]:
-    """Distinct hexadecimal ids of `2 n_bytes` digits."""
+    """Distinct hexadecimal ids of `2 n_bytes` digits, none of them a number.
+
+    `cnaster` reads the sample sheet without a string dtype, so an id such as
+    `823468e7` arrives as the float `8.23e74` and `12345678` as an integer,
+    and joining the sample names then raises (#544). Such an id is redrawn;
+    an id that parses as no number is drawn as before.
+    """
     out: list[str] = []
     while len(out) < n_slices:
         candidate = rng.bytes(n_bytes).hex()
-        if candidate not in out:
+        if candidate not in out and not _numeric(candidate):
             out.append(candidate)
     return out
 

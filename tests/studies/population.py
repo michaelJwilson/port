@@ -28,6 +28,10 @@ scored as this one. Recovered where at least `RECOVERED` of those bins
 decode, in the matched fitted clone, to the planted pair up to phase. An
 event covering no bin midpoint is kept, as not recovered: the run cannot
 report it. An event overwritten on more than half its bins is dropped.
+
+**A run that raises is a result**: its record carries the error and no
+clones, and the report counts such runs per J rather than dropping the member
+silently.
 """
 
 from __future__ import annotations
@@ -225,10 +229,19 @@ def run_member(seed: int, js: tuple[float, ...], out: Path) -> None:
     for j in todo:
         runs = out / "runs" / f"s{seed:04d}-J{j:g}"
         started = time.perf_counter()
-        _, output = run_arm(sample, list(FLAGS), {"hmrf.spatial_weight": j}, root=runs)
-        wall = time.perf_counter() - started
-        record = {"seed": seed, "J": j, "wall": round(wall, 1), "flags": list(FLAGS),
-                  **score_member(sample, output)}  # fmt: skip
+        base = {"seed": seed, "J": j, "flags": list(FLAGS)}
+        try:
+            _, output = run_arm(
+                sample, list(FLAGS), {"hmrf.spatial_weight": j}, root=runs
+            )
+        except Exception as error:  # noqa: BLE001 -- a failed run is a result
+            import traceback
+
+            traceback.print_exc()
+            record = base | {"error": repr(error), "clones": [], "events": []}
+        else:
+            wall = time.perf_counter() - started
+            record = base | {"wall": round(wall, 1), **score_member(sample, output)}
         target = _record(out, seed, j)
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(json.dumps(record) + "\n")
@@ -246,6 +259,9 @@ def _worker(task: tuple[int, tuple[float, ...], str]) -> str:
         try:
             run_member(seed, js, Path(out))
         except Exception as error:  # noqa: BLE001 -- recorded, the study goes on
+            import traceback
+
+            traceback.print_exc()
             print(f"FAILED seed {seed}: {error!r}", flush=True)
             return f"s{seed}: failed ({error!r})"
     return f"s{seed}: done"

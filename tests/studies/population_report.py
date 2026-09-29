@@ -63,8 +63,23 @@ EVENT_COLUMNS = ("seed", "J", "clone", "chr", "length", "a", "b", "class", "bins
                  "correct", "recovered")  # fmt: skip
 
 
+def failures(out: Path) -> dict[float, list[dict[str, Any]]]:
+    """Per J, the runs that raised: their seed and error."""
+    failed: dict[float, list[dict[str, Any]]] = {}
+    for path in sorted((out / "records").glob("*.json")):
+        record = json.loads(path.read_text())
+        if "error" in record:
+            failed.setdefault(float(record["J"]), []).append(
+                {"seed": record["seed"], "error": record["error"]}
+            )
+    return failed
+
+
 def load(out: Path) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """`(clones, events)`: one row per scored clone and per scored event."""
+    """`(clones, events)`: one row per scored clone and per scored event.
+
+    A run that raised has no rows; `failures` counts it.
+    """
     clones, events = [], []
     for path in sorted((out / "records").glob("*.json")):
         record = json.loads(path.read_text())
@@ -239,6 +254,7 @@ def summarize(out: Path, study2_j: float, seed: int = 544) -> dict[str, Any]:
         "sufficient": SUFFICIENT(study1, study2),
         "members": int(seeds.size),
         "study2_J": study2_j,
+        "failures": {f"{j:g}": runs for j, runs in failures(out).items()},
     }
 
 

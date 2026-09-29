@@ -504,3 +504,20 @@ def test_a_seed_draws_the_same_sizes_and_an_unknown_law_is_refused() -> None:
         _sized({"law": "uniform", "minimum": 1, "maximum": 2})
     with pytest.raises(ValueError, match=r"\[layout.size\] sigma"):
         _sized({"law": "lognormal", "median": 200})
+
+
+@pytest.mark.bug
+def test_no_sample_id_reads_as_a_number() -> None:
+    """`cnaster` parses a numeric-looking id as a number and fails on it (#544).
+
+    Over 20,000 draws of a four-byte id, about 1 in 400 is all digits or
+    digits with one `e`; none is kept.
+    """
+    from port.sim.draw import sample_ids
+
+    rng = np.random.default_rng(544)
+    ids = [i for _ in range(10_000) for i in sample_ids(2, 4, rng)]
+
+    for sample_id in ids:
+        with pytest.raises(ValueError, match="could not convert"):
+            float(sample_id)
