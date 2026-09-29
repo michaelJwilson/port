@@ -63,6 +63,26 @@ port's walls per repeat: easy 107.8 / 92.4 / 94.9 s, hard 82.7 / 89.0 /
   per call, is most of it. The start is what lifts hard from 0.8652 to
   0.9829.
 
+## Uncapped CalicoST on `dev_tree` (#532)
+
+CalicoST ran to completion on its shipped `configuration_cna_multi` with
+`n_clones 5` and no cap. It took 20,243 s (5.62 h) on 3 cores, which is
+132× the 153.6 s port `--sal` took on 1 core (395× in core-seconds). port was
+run at `main` after #515, #516 and #522, with `merge_agreement 0.99` in the
+config; under the exact rule it scores the same.
+
+| tool | clone ARI | integer clone ARI | copy state ARI | copy ARI | exact altered | bins | wall | peak |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| CalicoST | 0.8538 (6) | 0.8538 (6) | 0.0889 | 0.9075 | 0.7095 (0.7095) | 2505 | 20,243 s | 3.43 GB |
+| port `--sal` | 0.8612 (5) | 1.0 (4) | 0.0682 | 0.9828 | 0.9197 (0.9348) | 2895 | 153.6 s | 6.11 GB |
+
+- CalicoST was resumed twice from its npz checkpoints after the process was
+  killed. Its wall is summed to the last checkpoint of each segment
+  (5894 + 4697 + 9652 s). Read-depth fitting is 13,269 s of it (66%); #532
+  has the timing for each stage.
+- Each tool is scored on its own bins. Copy state ARI compares the HMM state
+  index with the planted (A, B), so it is low for both tools by construction.
+
 ## Reproduce
 
 ```
