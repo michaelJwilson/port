@@ -282,3 +282,25 @@ def _keep_the_perf_log_out_of_the_checkout(
         yield
     finally:
         os.chdir(previous)
+
+
+TEST_SEED = 0
+"""What every test's random streams start from (#264)."""
+
+
+@pytest.fixture(autouse=True)
+def _seeded() -> None:
+    """NumPy's global generator and numba's, seeded before every test (#264).
+
+    `cnaster`'s clone-assignment sweep draws its visiting order and its
+    `epsilon` moves from `np.random` (`icm.py:833, 888`), and its compiled
+    kernels from numba's per-thread generator. `run_cnaster` seeds both once
+    at start (`run_cnaster.py:90-92`); a test that calls a sweep directly
+    seeded neither, so its labels depended on what earlier tests had drawn.
+    """
+    import numpy as np
+    from cnaster.scripts.run_cnaster import set_numba_seed
+
+    # NB the legacy global generator is the one `cnaster` draws from.
+    np.random.seed(TEST_SEED)  # noqa: NPY002
+    set_numba_seed(TEST_SEED)
