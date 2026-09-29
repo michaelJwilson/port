@@ -232,6 +232,12 @@ module = "numba.*"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
+# `pyarrow` ships no py.typed marker; `port.sim.draw` keeps the parsed
+# genetic map as Parquet through it (#549).
+module = "pyarrow.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
 # CalicoST ships no py.typed marker either; `run_calicost` is its only
 # importer, and only through the optional `calicost` extra (#347).
 module = "calicost.*"

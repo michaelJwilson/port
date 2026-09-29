@@ -1,17 +1,22 @@
 """#455: the per-entry laws and the samplers `port.sim.draw` builds on them.
 
 `Mixture.draw` samples the SNP law exactly; its referee is the law's own pmf
-by `scipy.stats`. `dirichlet_multinomial` is pinned by its analytic moments,
-and `fit_genes` by recovering a planted concentration.
+by `scipy.stats`. `dirichlet_multinomial_urn`, the Polya urn (#549), is
+pinned against `dirichlet_multinomial`'s normalized gammas per gene; both by
+the law's analytic moments, and `fit_genes` by recovering a planted
+concentration.
 """
 
 from __future__ import annotations
+
+from typing import Any
 
 import numpy as np
 import pytest
 from port.sim.entries import (
     Mixture,
     dirichlet_multinomial,
+    dirichlet_multinomial_urn,
     fit_genes,
     independent,
     mixture,
@@ -53,7 +58,10 @@ def test_the_exact_sampler_draws_the_laws_pmf(alpha: float) -> None:
 
 
 @pytest.mark.analytic
-def test_the_dirichlet_multinomial_has_its_moments() -> None:
+@pytest.mark.parametrize(
+    "sampler", [dirichlet_multinomial, dirichlet_multinomial_urn], ids=["gamma", "urn"]
+)
+def test_the_dirichlet_multinomial_has_its_moments(sampler: Any) -> None:
     """20,000 rows at `N = 400`, `kappa = 30`: rows sum to `N` exactly, and per
     column mean `N q` and variance `N q (1 - q) (N + kappa) / (1 + kappa)` to
     4 SE (the variance's SE from the draw's own fourth moment).
@@ -61,7 +69,7 @@ def test_the_dirichlet_multinomial_has_its_moments() -> None:
     rng = np.random.default_rng(3)
     q = np.array([0.5, 0.3, 0.15, 0.05])
     n, total, kappa = 20_000, 400, 30.0
-    drawn = dirichlet_multinomial(
+    drawn = sampler(
         np.full(n, total), q[:, None], np.zeros(n, dtype=np.int64), kappa, rng
     ).toarray()
 
@@ -98,3 +106,44 @@ def test_the_concentration_is_recovered_from_a_draw_at_it() -> None:
 
     assert fit.value == 70.0
     assert fit.nonzero == pytest.approx(fit.observed, rel=0.02)
+
+
+@pytest.mark.oracle
+def test_the_urn_draws_the_gamma_samplers_law() -> None:
+    """The urn against normalized gammas: each gene's count pmf, per clone.
+
+    30,000 spots split over two clones with different `q` and a zero-depth
+    spot in each; depth 40, `kappa = 3`, so the overdispersion is strong. Per
+    clone and gene a two-sample chi-square over every count seen 5 times or
+    more in both draws, the rest pooled in a tail bin, at p > 1e-3; the
+    zero-depth spots are empty rows in both.
+    """
+    from scipy.stats import chi2_contingency
+
+    q = np.array([[0.55, 0.05], [0.25, 0.15], [0.15, 0.3], [0.05, 0.5]])
+    n = 30_000
+    labels = np.arange(n) % 2
+    depth = np.full(n, 40)
+    depth[:2] = 0
+    urn, gamma = (
+        sampler(depth, q, labels, 3.0, np.random.default_rng(seed)).toarray()
+        for sampler, seed in (
+            (dirichlet_multinomial_urn, 6),
+            (dirichlet_multinomial, 7),
+        )
+    )
+
+    assert np.all(urn.sum(axis=1) == depth)
+    assert np.all(urn[:2] == 0)
+    assert np.all(gamma[:2] == 0)
+    for clone in (0, 1):
+        rows = (labels == clone) & (depth > 0)
+        for gene in range(q.shape[0]):
+            a, b = (np.bincount(x[rows, gene], minlength=41) for x in (urn, gamma))
+            kept = (a >= 5) & (b >= 5)
+            table = np.array([
+                np.append(a[kept], a[~kept].sum()),
+                np.append(b[kept], b[~kept].sum()),
+            ])  # fmt: skip
+            table = table[:, table.sum(axis=0) > 0]
+            assert chi2_contingency(table).pvalue > 1e-3, (clone, gene)

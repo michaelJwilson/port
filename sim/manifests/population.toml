@@ -17,6 +17,11 @@ kind = "hex"
 rows = 60
 columns = 50
 
+[model]
+# NB the Polya urn: the gamma draw's law at O(UMIs) per spot (#549), since
+#    a member is drawn once and run at every J.
+counts_sampler = "urn"
+
 [layout]
 overlap = false
 radius = 0.2

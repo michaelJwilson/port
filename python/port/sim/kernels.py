@@ -68,3 +68,26 @@ def zero_truncated(
         u = zeros[c] + level[i] * (1.0 - zeros[c])
         out[i] = max(_walk(u, centres[c], dispersion), 1)
     return out
+
+
+@njit(cache=True)
+def seated(total: int, kappa: float, uniforms: np.ndarray) -> np.ndarray:
+    """Table sizes of `total` customers seated by a Chinese restaurant (#549).
+
+    Customer `i` (from 0) opens a table with probability `kappa / (kappa + i)`
+    -- `uniforms[i, 0]` below it -- and otherwise joins the table of customer
+    `floor(uniforms[i, 1] i)`, which is a table picked in proportion to its
+    size. Labelling each table independently from `q` makes the counts
+    Dirichlet-multinomial `DM(total, kappa q)`: the Pólya urn.
+    """
+    sizes = np.zeros(total, dtype=np.int64)
+    table = np.zeros(total, dtype=np.int64)
+    opened = 0
+    for i in range(total):
+        if uniforms[i, 0] * (kappa + i) < kappa:
+            table[i] = opened
+            opened += 1
+        else:
+            table[i] = table[int(uniforms[i, 1] * i)]
+        sizes[table[i]] += 1
+    return sizes[:opened]

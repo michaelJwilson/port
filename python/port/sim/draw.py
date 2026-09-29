@@ -7,7 +7,7 @@ Its clones, events, layout and counts are drawn from what the manifest states:
     [reference]   baseline, coverage, snps; GRCh38 resources via $PORT_GRCH38
     [array]       kind = "hex", rows, columns
     [model]       admixture, normal_frac, dirichlet_concentration, bb_overdispersion,
-                  snp_dispersion, snp_depth_follows_copies
+                  snp_dispersion, snp_depth_follows_copies, counts_sampler
     [cna]         mode = "shared.unique" (shared, unique) or "tree"
                   (trunk, per_leaf, per_internal); n_clones;
                   states = [[A, B], ...]. Defaults are CalicoST's easy
@@ -25,7 +25,8 @@ per-entry laws `port.sim.normal_fit` fits on CalicoST's normal spots (#455):
 - gene UMI: `N_s ~ [coverage] spot_umi`, times the clone's library factor
   `sum_g lambda_g d_g(c)`, so a gain grows the library; shares
   `p_s ~ Dirichlet(kappa q_c)`, `q_c` proportional to `lambda_g d_g(c)`; and
-  `Multinomial(N_s, p_s)` (`port.sim.entries.dirichlet_multinomial`). A
+  `Multinomial(N_s, p_s)`, drawn as `[model] counts_sampler` names
+  (`port.sim.entries.COUNT_SAMPLERS`: normalized gammas, or a Pólya urn). A
   gene's expected UMI is `N_s lambda_g d_g(c)`, so its read-depth ratio to
   normal is `d_g(c) = (1 - f) (A + B) / 2 + f`, the admixture law's depth
   factor at the gene's `(A, B)`, `f = normal_frac`. `lambda` is
@@ -80,7 +81,7 @@ from typing import Any, NamedTuple
 import numpy as np
 import pandas as pd
 
-from port.sim.entries import dirichlet_multinomial, independent, nodes, snp_law
+from port.sim.entries import COUNT_SAMPLERS, independent, nodes, snp_law
 from port.sim.files import load_ids
 from port.sim.laws import ADMIXTURE_LAWS, Event, Law, allele_share
 
@@ -97,7 +98,7 @@ REQUIRED: dict[str, tuple[str, ...]] = {
     "barcodes": ("length", "suffix", "sample_id_bytes"),
     "model": (
         "admixture", "normal_frac", "dirichlet_concentration", "bb_overdispersion",
-        "snp_dispersion", "snp_depth_follows_copies",
+        "snp_dispersion", "snp_depth_follows_copies", "counts_sampler",
     ),
     "cna": ("mode", "n_clones", "states", "length"),
     "phasing": ("switch_errors", "nu", "unit"),
@@ -328,6 +329,8 @@ def _check(manifest: DrawManifest) -> None:
         problems.append(f"[cna] mode {mode!r}: one of {sorted(BY_MODE)}")
     if manifest.model["admixture"] not in ADMIXTURE_LAWS:
         problems.append(f"[model] admixture {manifest.model['admixture']!r}")
+    if manifest.model["counts_sampler"] not in COUNT_SAMPLERS:
+        problems.append(f"[model] counts_sampler: one of {sorted(COUNT_SAMPLERS)}")
     if manifest.cna["length"]["law"] not in BY_LAW:
         problems.append(f"[cna.length] law: one of {sorted(BY_LAW)}")
     size = manifest.layout.get("size")
@@ -724,9 +727,21 @@ def sample_ids(n_slices: int, n_bytes: int, rng: np.random.Generator) -> list[st
 # --- phase ---------------------------------------------------------------------
 
 
-@functools.lru_cache(maxsize=2)
-def genetic_map(path: Path) -> dict[str, tuple[np.ndarray, np.ndarray]]:
-    """`chrom` (no `chr`) to its sorted positions and cM."""
+MAP_CACHE = Path(os.environ.get("PORT_CACHE", Path.home() / ".cache" / "port"))
+"""Where `genetic_map` keeps its parsed maps, one Parquet file per map (#549)."""
+
+
+def _map_digest(path: Path) -> str:
+    import hashlib
+
+    digest = hashlib.sha256()
+    with Path(path).open("rb") as handle:
+        for block in iter(lambda: handle.read(1 << 20), b""):
+            digest.update(block)
+    return digest.hexdigest()[:16]
+
+
+def _parse_map(path: Path) -> dict[str, tuple[np.ndarray, np.ndarray]]:
     table = pd.read_csv(
         path, sep="\t", usecols=["chrom", "pos", "pos_cm"], engine="pyarrow"
     )
@@ -737,6 +752,61 @@ def genetic_map(path: Path) -> dict[str, tuple[np.ndarray, np.ndarray]]:
             order = np.argsort(pos, kind="stable")
             pos, cm = pos[order], cm[order]
         out[str(contig).removeprefix("chr")] = (pos, cm)
+    return out
+
+
+def _write_map(out: dict[str, tuple[np.ndarray, np.ndarray]], path: Path) -> None:
+    """One uncompressed row group per contig; the contigs' order in the schema."""
+    import json
+
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    pos, cm = next(iter(out.values()))
+    schema = pa.schema(
+        [
+            ("pos", pa.from_numpy_dtype(pos.dtype)),
+            ("cm", pa.from_numpy_dtype(cm.dtype)),
+        ],
+        metadata={"contigs": json.dumps(list(out))},
+    )
+    with pq.ParquetWriter(path, schema, compression="none") as writer:
+        for pos, cm in out.values():
+            writer.write_table(pa.table({"pos": pos, "cm": cm}, schema=schema))
+
+
+def _read_map(path: Path) -> dict[str, tuple[np.ndarray, np.ndarray]]:
+    import json
+
+    import pyarrow.parquet as pq
+
+    handle = pq.ParquetFile(path, memory_map=True)
+    contigs = json.loads(handle.schema_arrow.metadata[b"contigs"])
+    out = {}
+    for group, contig in enumerate(contigs):
+        table = handle.read_row_group(group)
+        out[contig] = (table["pos"].to_numpy(), table["cm"].to_numpy())
+    return out
+
+
+@functools.lru_cache(maxsize=2)
+def genetic_map(path: Path) -> dict[str, tuple[np.ndarray, np.ndarray]]:
+    """`chrom` (no `chr`) to its sorted positions and cM.
+
+    Parsed once per map file and kept in `MAP_CACHE` as Parquet under the
+    file's SHA-256, so a changed map is parsed again: the text parse costs
+    1.2-2.8 s and +0.62 GB peak RSS to hold 54 MB (#549). The cache is a copy
+    of the parse, never a source: deleting it changes nothing but the time.
+    """
+    cached = MAP_CACHE / f"genetic_map-{_map_digest(path)}.parquet"
+    if cached.exists():
+        return _read_map(cached)
+
+    out = _parse_map(path)
+    cached.parent.mkdir(parents=True, exist_ok=True)
+    partial = cached.with_suffix(f".{os.getpid()}.partial")
+    _write_map(out, partial)
+    partial.replace(cached)
     return out
 
 
@@ -924,6 +994,7 @@ def realize(
     gene_weights = lam[:, None] * depth_factor
     library = lam @ depth_factor
     kappa = float(manifest.model["dirichlet_concentration"])
+    sample_counts = COUNT_SAMPLERS[manifest.model["counts_sampler"]]
 
     snp_ids, snp_chrom, snp_pos = _snps(manifest)
     snp_copies = clone_copies(tree, clones, snp_chrom, snp_pos)
@@ -980,7 +1051,7 @@ def realize(
 
         for lab in labels:
             totals = np.rint(_lognormal(laws["spot_umi"], lab.size, rng) * library[lab])
-            counts.append(dirichlet_multinomial(totals, gene_weights, lab, kappa, rng))
+            counts.append(sample_counts(totals, gene_weights, lab, kappa, rng))
             trials = independent(snp_entries, (lab.size, snp_ids.size), rng)
             a, b = _alleles(manifest, trials, share, switched, lab, rng)
             a_blocks.append(a)
