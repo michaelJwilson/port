@@ -30,10 +30,9 @@ from __future__ import annotations
 import ast
 import inspect
 import re
-from dataclasses import dataclass
 from functools import cache
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 from port.extensions.integer_copy import DEFAULT_MAX_TOTAL_COPY
 
@@ -61,8 +60,7 @@ DEFAULT_TOTAL_COPY = DEFAULT_MAX_TOTAL_COPY
 """`cnaster.integer_copy`'s `max_total_copy`, which no key changes."""
 
 
-@dataclass(frozen=True)
-class Finding:
+class Finding(NamedTuple):
     """One key, what is wrong with it, and why."""
 
     key: str

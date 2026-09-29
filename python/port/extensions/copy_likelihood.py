@@ -34,7 +34,7 @@ import contextlib
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from functools import lru_cache
-from typing import Any, Literal
+from typing import Any, Literal, NamedTuple
 
 import numpy as np
 from scipy.special import gammaln
@@ -76,17 +76,16 @@ PURITY_GRID = (1.0, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3)
 """Where the start looks for a clone's tumour fraction."""
 
 
-@dataclass
-class Pseudobulk:
+class Pseudobulk(NamedTuple):
     """One clone's summed counts and what the fit held fixed."""
 
     counts_nb: np.ndarray
     base_nb_mean: np.ndarray
     counts_bb: np.ndarray
-    total_bb_rd: np.ndarray
-    log_lambda: np.ndarray
-    alpha: float
-    tau: float
+    total_bb_RD: np.ndarray
+    normal_log_lambda: np.ndarray
+    dispersion: float
+    taus: float
 
 
 def candidates(max_total_copy: int) -> np.ndarray:
@@ -118,13 +117,13 @@ def _emission(
     mean = exposure * np.exp(log_rate)
 
     with np.errstate(divide="ignore", invalid="ignore"):
-        if bulk.alpha <= 0.0:
+        if bulk.dispersion <= 0.0:
             depth = np.where(
                 mean <= 0.0, 0.0, x * np.log(mean) - mean - gammaln(x + 1.0)
             )
         else:
-            size = 1.0 / max(bulk.alpha, DISPERSION_FLOOR)
-            success = 1.0 / (1.0 + bulk.alpha * mean)
+            size = 1.0 / max(bulk.dispersion, DISPERSION_FLOOR)
+            success = 1.0 / (1.0 + bulk.dispersion * mean)
             fixed = gammaln(x + size) - gammaln(size) - gammaln(x + 1.0)
             depth = np.where(
                 mean <= 0.0,
@@ -133,15 +132,15 @@ def _emission(
             )
 
     k = bulk.counts_bb[bins]
-    n = bulk.total_bb_rd[bins]
+    n = bulk.total_bb_RD[bins]
     choose = gammaln(n + 1.0) - gammaln(k + 1.0) - gammaln(n - k + 1.0)
 
-    if not np.isfinite(bulk.tau):
+    if not np.isfinite(bulk.taus):
         share = np.clip(p, DISPERSION_FLOOR, 1.0 - DISPERSION_FLOOR)
         allele = choose + k * np.log(share) + (n - k) * np.log1p(-share)
     else:
-        a = np.maximum(p * bulk.tau, DISPERSION_FLOOR)
-        b = np.maximum((1.0 - p) * bulk.tau, DISPERSION_FLOOR)
+        a = np.maximum(p * bulk.taus, DISPERSION_FLOOR)
+        b = np.maximum((1.0 - p) * bulk.taus, DISPERSION_FLOOR)
         allele = (
             choose
             + gammaln(k + a)
@@ -175,8 +174,8 @@ def _with(bulk: Pseudobulk, alpha: float, tau: float) -> Pseudobulk:
         bulk.counts_nb,
         bulk.base_nb_mean,
         bulk.counts_bb,
-        bulk.total_bb_rd,
-        bulk.log_lambda,
+        bulk.total_bb_RD,
+        bulk.normal_log_lambda,
         alpha,
         tau,
     )
@@ -507,7 +506,9 @@ def lattice_decode(
     shifts[normal_clone] = 0.0
     purity = np.ones(len(clones))
     alpha, tau = (
-        (0.0, np.inf) if dispersion == "poisson" else (bulks[0].alpha, bulks[0].tau)
+        (0.0, np.inf)
+        if dispersion == "poisson"
+        else (bulks[0].dispersion, bulks[0].taus)
     )
     lengths = np.array([clones[0][0].size]) if lengths is None else lengths
     chain = (transmat, start, np.asarray(lengths))
@@ -662,8 +663,8 @@ def shared_decode(
         paths,
         np.array([shift for _, _, shift in clones], dtype=np.float64),
         np.ones(len(clones)),
-        bulks[0].alpha,
-        bulks[0].tau,
+        bulks[0].dispersion,
+        bulks[0].taus,
         total,
     )
 
@@ -698,10 +699,10 @@ def captured_clones() -> list[tuple[np.ndarray, Pseudobulk, float]] | None:
             counts_nb=single_x[:, 0, spots].sum(axis=1),
             base_nb_mean=base[:, spots].sum(axis=1),
             counts_bb=single_x[:, 1, spots].sum(axis=1),
-            total_bb_rd=total[:, spots].sum(axis=1),
-            log_lambda=np.log(profile / profile.sum()),
-            alpha=alpha,
-            tau=tau,
+            total_bb_RD=total[:, spots].sum(axis=1),
+            normal_log_lambda=np.log(profile / profile.sum()),
+            dispersion=alpha,
+            taus=tau,
         )
         rows.append((path[:, clone], bulk, float(shifts[clone])))
 

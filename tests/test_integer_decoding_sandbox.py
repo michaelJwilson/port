@@ -55,15 +55,18 @@ def test_tempering_to_a_low_temperature_is_viterbi() -> None:
 @pytest.mark.analytic
 def test_the_poisson_dispersion_is_the_zero_dispersion_limit() -> None:
     """`alpha = 0`, `tau = inf` agree with NB and BB at `alpha = 1e-9`, `tau = 1e9`."""
-    from dataclasses import replace
 
     from port.sandbox.integer_decoding.schemes import _emission, _parameters
 
     path, bulk = _draw()
     log_mu, p = _parameters(PLANTED)
     bins = np.arange(path.size)
-    exact = _emission(log_mu[path], p[path], replace(bulk, alpha=0.0, tau=np.inf), bins)
-    near = _emission(log_mu[path], p[path], replace(bulk, alpha=1e-9, tau=1e9), bins)
+    exact = _emission(
+        log_mu[path], p[path], bulk._replace(dispersion=0.0, taus=np.inf), bins
+    )
+    near = _emission(
+        log_mu[path], p[path], bulk._replace(dispersion=1e-9, taus=1e9), bins
+    )
 
     np.testing.assert_allclose(exact, near, rtol=1e-5)
 

@@ -41,6 +41,7 @@ the field and the couplings there too.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import NamedTuple
 
 import numpy as np
 
@@ -80,8 +81,7 @@ class CsrGraph:
         return int(self.indptr.shape[0] - 1)
 
 
-@dataclass(frozen=True)
-class IcmResult:
+class IcmResult(NamedTuple):
     """What the sweep returns, named.
 
     `cnaster` returns a bare `(niter, cost)` tuple, and the call site unpacks

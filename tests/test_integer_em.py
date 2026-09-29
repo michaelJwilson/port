@@ -44,10 +44,10 @@ def _planted(
                 counts_nb=counts.astype(np.float64),
                 base_nb_mean=np.full(N_OBS, DEPTH),
                 counts_bb=rng.binomial(int(DEPTH), share).astype(np.float64),
-                total_bb_rd=np.full(N_OBS, DEPTH),
-                log_lambda=log_lambda,
-                alpha=ALPHA * 3.0,
-                tau=TAU / 3.0,
+                total_bb_RD=np.full(N_OBS, DEPTH),
+                normal_log_lambda=log_lambda,
+                dispersion=ALPHA * 3.0,
+                taus=TAU / 3.0,
             )
         )
 

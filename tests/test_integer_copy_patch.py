@@ -113,10 +113,10 @@ def _bulk(extra: tuple[int, int]) -> tuple[Pseudobulk, np.ndarray]:
         counts_nb=np.rint(base * totals[path] / 2.0),
         base_nb_mean=base,
         counts_bb=np.rint(DEPTH * major[path]),
-        total_bb_rd=np.full(N_OBS, DEPTH),
-        log_lambda=np.full(N_OBS, -np.log(N_OBS)),
-        alpha=1.0e-6,
-        tau=1.0e5,
+        total_bb_RD=np.full(N_OBS, DEPTH),
+        normal_log_lambda=np.full(N_OBS, -np.log(N_OBS)),
+        dispersion=1.0e-6,
+        taus=1.0e5,
     )
     return bulk, path
 

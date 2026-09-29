@@ -159,13 +159,13 @@ def _emission(
     mean = exposure * np.exp(log_rate)
 
     with np.errstate(divide="ignore", invalid="ignore"):
-        if bulk.alpha <= 0.0:
+        if bulk.dispersion <= 0.0:
             depth = np.where(
                 mean <= 0.0, 0.0, x * np.log(mean) - mean - gammaln(x + 1.0)
             )
         else:
-            size = 1.0 / max(bulk.alpha, 1e-10)
-            success = 1.0 / (1.0 + bulk.alpha * mean)
+            size = 1.0 / max(bulk.dispersion, 1e-10)
+            success = 1.0 / (1.0 + bulk.dispersion * mean)
             depth = np.where(
                 mean <= 0.0,
                 0.0,
@@ -177,15 +177,15 @@ def _emission(
             )
 
     k = bulk.counts_bb[bins]
-    n = bulk.total_bb_rd[bins]
+    n = bulk.total_bb_RD[bins]
     choose = gammaln(n + 1.0) - gammaln(k + 1.0) - gammaln(n - k + 1.0)
 
-    if not np.isfinite(bulk.tau):
+    if not np.isfinite(bulk.taus):
         share = np.clip(p, 1e-10, 1.0 - 1e-10)
         allele = choose + k * np.log(share) + (n - k) * np.log1p(-share)
     else:
-        a = np.maximum(p * bulk.tau, 1e-10)
-        b = np.maximum((1.0 - p) * bulk.tau, 1e-10)
+        a = np.maximum(p * bulk.taus, 1e-10)
+        b = np.maximum((1.0 - p) * bulk.taus, 1e-10)
         allele = (
             choose
             + gammaln(k + a)
@@ -219,8 +219,8 @@ def _with(bulk: Pseudobulk, alpha: float, tau: float) -> Pseudobulk:
         bulk.counts_nb,
         bulk.base_nb_mean,
         bulk.counts_bb,
-        bulk.total_bb_rd,
-        bulk.log_lambda,
+        bulk.total_bb_RD,
+        bulk.normal_log_lambda,
         alpha,
         tau,
     )
@@ -593,7 +593,7 @@ def fit_copies(
     shifts = np.array([shift for _, _, shift in clones], dtype=np.float64)
     purity = np.ones(len(clones))
     limit = scheme.dispersion in ("poisson", "relax")
-    alpha, tau = (0.0, np.inf) if limit else (bulks[0].alpha, bulks[0].tau)
+    alpha, tau = (0.0, np.inf) if limit else (bulks[0].dispersion, bulks[0].taus)
     lengths = np.array([paths[0].size]) if lengths is None else np.asarray(lengths)
 
     if scheme.states == "fit":
@@ -885,10 +885,10 @@ def captured_clones() -> list[tuple[np.ndarray, Pseudobulk, float]] | None:
             counts_nb=single_x[:, 0, spots].sum(axis=1),
             base_nb_mean=base[:, spots].sum(axis=1),
             counts_bb=single_x[:, 1, spots].sum(axis=1),
-            total_bb_rd=total[:, spots].sum(axis=1),
-            log_lambda=np.log(profile / profile.sum()),
-            alpha=alpha,
-            tau=tau,
+            total_bb_RD=total[:, spots].sum(axis=1),
+            normal_log_lambda=np.log(profile / profile.sum()),
+            dispersion=alpha,
+            taus=tau,
         )
         rows.append((path[:, clone], bulk, float(shifts[clone])))
 

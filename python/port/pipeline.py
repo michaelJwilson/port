@@ -41,14 +41,13 @@ point calling the original.
 
 from __future__ import annotations
 
-import dataclasses
 import functools
 import sys
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from types import ModuleType
-from typing import Any, TypeVar
+from typing import Any, NamedTuple, TypeVar
 
 _T = TypeVar("_T")
 
@@ -75,8 +74,7 @@ __all__ = [
 ]
 
 
-@dataclass(frozen=True)
-class Swap:
+class Swap(NamedTuple):
     """One `cnaster` name, and what `port` puts in its place."""
 
     module: str
@@ -100,8 +98,7 @@ class Swap:
     """
 
 
-@dataclass(frozen=True)
-class Site:
+class Site(NamedTuple):
     """One module whose binding of a name was rebound."""
 
     module: str
@@ -479,7 +476,7 @@ def with_options(
     `write_fig`, and an option belongs to one of them.
     """
     return tuple(
-        dataclasses.replace(swap, options=(*swap.options, *options.items()))
+        swap._replace(options=(*swap.options, *options.items()))
         if swap.replacement == replacement
         else swap
         for swap in swaps

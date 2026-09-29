@@ -41,7 +41,7 @@ import contextlib
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from itertools import pairwise
-from typing import Any
+from typing import Any, NamedTuple
 
 import numpy as np
 
@@ -92,8 +92,7 @@ TOP_LINE = 0.1
 """Inches above the tracks for the top clone's statistics line."""
 
 
-@dataclass
-class Call:
+class Call(NamedTuple):
     """One plotting call's arguments."""
 
     args: tuple[Any, ...]

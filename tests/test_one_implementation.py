@@ -28,10 +28,12 @@ BUDGET: dict[str, int] = {
     # NB 59: step 1 removed the two `_Selection` slots behind the decoder and
     #    solver switches.
     "classes": 59,
-    "dataclasses": 44,
-    "NamedTuples": 5,
+    # NB step 4: 18 records became NamedTuples; the dataclasses left carry
+    #    mutable state, machinery or a `__post_init__` (#517 D).
+    "dataclasses": 26,
+    "NamedTuples": 23,
 }
-"""`python/port` outside `sandbox/`. Step 4 turns 18 dataclasses into NamedTuples."""
+"""`python/port` outside `sandbox/`."""
 
 CONCEPTS: dict[str, int] = {
     "Hungarian + ARI scorer": 2,
