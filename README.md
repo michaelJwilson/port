@@ -510,6 +510,7 @@ not carry, not before.
 | [TICKETS.md](TICKETS.md) | What is filed and not done, grouped by the milestone it serves |
 | [STATUS.md](STATUS.md) | What has landed, with the measurement that established it |
 | [CLAUDE.md](CLAUDE.md) | The rules |
+| [docs/measurements.md](docs/measurements.md) | The timings, ratios and histories the package docstrings cited, by module and object (#517) |
 | [docs/metrics.md](docs/metrics.md) | One row per recovery run: commit, timestamp, fixture hash, test, arguments, clone/copy/state ARI, wall, peak, note (#409) |
 | [docs/templates/](docs/templates/README.md) | Templates for documents made outside the code: the work-in-flight page (#335) |
 

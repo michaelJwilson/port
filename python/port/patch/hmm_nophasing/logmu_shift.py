@@ -14,9 +14,8 @@ return scipy.special.logsumexp(
 
 `shifts` is that reduction, returning **one value per clone** where upstream
 returns one per segment -- see its docstring for why the shape is the point.
-It stays a `numba` kernel: the vectorized form the comment sketches is
-measurably slower than the compiled loop, so what this removes is the
-broadcast write, not the loop.
+It stays a `numba` kernel: what this removes is the broadcast write, not the
+loop. Measured: `docs/measurements.md`, `port.patch.hmm_nophasing.logmu_shift`.
 
 ## It is not installed, and that is the point
 
@@ -39,9 +38,8 @@ silently.
 `clone_stack_obs` tiles `lengths` to `[A, B, A, B]`, so every clone in a
 stacked run carries the same total. `compute_logmu_shifts` nonetheless takes
 `clone_lengths` and walks them individually, which admits unequal clones, and
-this walks them the same way rather than detecting the rectangular case: the
-earlier version kept a `CloneStack` view for equal lengths and it is gone
-with the vectorized reduction that needed it. One loop, both cases.
+this walks them the same way rather than detecting the rectangular case.
+One loop, both cases.
 """
 
 from __future__ import annotations
@@ -58,10 +56,9 @@ __all__ = ["clone_log_normalizers", "shifts"]
 def _per_clone(means, states, lambdas, lengths):
     """Upstream's two passes, writing one value per clone rather than per segment.
 
-    Kept as `numba` and kept as upstream's shape of loop, because that is
-    what the measurement says: a `scipy.special.logsumexp` over per-clone
-    views is **2.1x slower** at the stress size and 3.9x at the gate one.
-    The compiled two-pass is not the thing worth replacing; the write is.
+    Kept as `numba` and kept as upstream's shape of loop. The compiled
+    two-pass is not the thing worth replacing; the write is. Measured:
+    `docs/measurements.md`, `port.patch.hmm_nophasing.logmu_shift._per_clone`.
     """
     n_clones = lengths.size
     out = np.empty(n_clones, dtype=np.float64)
@@ -116,8 +113,8 @@ def shifts(
     be indexed by a running offset, and indexing it by clone -- which is what
     it looks like it wants -- silently hands every clone the first clone's
     shift, with no exception and no warning. One value per clone cannot be
-    read that way. At the segment count `expected_runtime.tex` derives, 2.9e5,
-    the difference is also 2.3 MB against a handful of numbers.
+    read that way. Measured: `docs/measurements.md`,
+    `port.patch.hmm_nophasing.logmu_shift.shifts`.
 
     Reproduces the values `compute_logmu_shifts` computes, including its
     handling of a clone whose every term is `-inf`: the loop leaves `max_val`
@@ -150,10 +147,6 @@ def shifts(
         msg = f"clone lengths sum to {int(lengths.sum())}, not {n_segments}"
         raise ValueError(msg)
 
-    # NB the rectangular fast path, detected rather than assumed. Where the
-    #    clones are equal the whole reduction is one call on a view that
-    #    copies nothing; where they are not, a view cannot exist and the
-    #    per-clone slices are still each contiguous.
     reduced: np.ndarray = _per_clone(means, states, lambdas, lengths)
 
     return reduced

@@ -16,20 +16,9 @@ converting to arrays.
 
 The same triple is three `numpy` calls on the CSR arrays already in hand.
 
-**This is a simplification, and the speedup is beside the point.**
-`CLAUDE.md` separates the two: a patch that makes the code plainer lands on
-its evidence of equivalence alone. The ratio is large and the saving is not:
-
-| spots | non-zeros | `cast_csr` + `unpack_adjacency` | this | ratio |
-| ---: | ---: | ---: | ---: | ---: |
-| 1,200 | 7,192 | 2.8 ms | 0.014 ms | 202 |
-| 5,000 | 29,987 | 11.4 ms | 0.040 ms | 282 |
-| 20,000 | 119,994 | 52.7 ms | 0.951 ms | 55 |
-
-11 ms per outer iteration against a boundary that costs about 16 s
-(`docs/`, issue #59 item 1's profile) is under a tenth of a per cent. Landing
-it for the ratio would be reporting a number that does not matter; landing it
-because two Python loops become three array expressions is the argument.
+**This is a simplification**: two Python loops become three array
+expressions, and it lands on its evidence of equivalence alone. Measured:
+`docs/measurements.md`, `port.patch.hmrf.adjacency`.
 
 **The graph is also invariant across outer iterations**, so the better change
 is to build the triple once outside the loop. That is the call site's to make
