@@ -145,4 +145,6 @@ int_copy_num:
   nonbalance_bafdist : 1.0 # DEPRECATE
   nondiploid_rdrdist : 10.0 # DEPRECATE
   ploidy : "diploid" # DEPRECATE
+  # NB port's (#518): integer clones agreeing at 0.99 of bins are one clone.
+  merge_agreement : 0.99
   
