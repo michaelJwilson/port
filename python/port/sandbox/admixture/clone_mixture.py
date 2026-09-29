@@ -1,4 +1,18 @@
-r"""Each clone's pseudobulk as a mixture of the clones and a diploid normal (#380).
+r"""Set aside (#467): each clone's pseudobulk as a mixture of the clones and a diploid normal (#380).
+
+**Measured with the lattice decode and no better than it**, `--sal` with
+#476's clone flags (clone ARI, clones; phase-free exact altered):
+
+| sample | lattice decode | with the mixture |
+| --- | --- | --- |
+| CalicoST easy | 0.986 (4), 0.750 | 0.986 (4), 0.749 |
+| CalicoST hard | 0.982 (4), 0.642 | 0.976 (4), 0.631 |
+| `dev_tree` r0 (42 x 42) | 0.998 (4), 0.904 | 0.896 (5), 0.836 |
+
+#381 measured easy 0.698 -> 0.991 against `cnaster`'s decoder and grid
+start; #476's clone flags now recover those clones without it, and the
+lattice decode fits each clone's tumour fraction. `--clone-mixture` is
+removed; :func:`clone_mixture` installs it for a block.
 
 `cnaster`'s clone loop fits the HMM to each clone's pseudobulk as labelled,
 then scores every spot against every clone's decoded path. When the labels

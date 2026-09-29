@@ -1,4 +1,4 @@
-"""`port.extensions.clone_mixture` against `cnaster`'s emission and a planted blend (#380)."""
+"""`port.sandbox.admixture.clone_mixture` against `cnaster`'s emission and a planted blend (#380)."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ def _planted(
     weights: np.ndarray, seed: int = 0, n_bins: int = 400
 ) -> tuple[np.ndarray, tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]]:
     """Pure paths in blocks, and pseudobulk counts drawn from the mixed model."""
-    from port.extensions.clone_mixture import mixed_parameters
+    from port.sandbox.admixture.clone_mixture import mixed_parameters
 
     rng = np.random.default_rng(seed)
     k = weights.shape[0]
@@ -45,7 +45,7 @@ def test_the_pure_mixture_is_cnasters_emission() -> None:
     `base / sum(lambda mu)`, which is the shifted emission's mean (#276).
     """
     from cnaster.hmm_nophasing import _dense_bb_logpmf, _dense_nb_logpmf
-    from port.extensions.clone_mixture import mixed_parameters, score
+    from port.sandbox.admixture.clone_mixture import mixed_parameters, score
 
     weights = np.eye(3)
     paths, bulks = _planted(weights)
@@ -78,7 +78,7 @@ def test_the_fit_recovers_a_planted_blend_and_never_goes_downhill() -> None:
     From `W = I` and the pure paths, the fit finds the off-diagonal weight to
     0.05 and ends at a log-likelihood no lower than it started.
     """
-    from port.extensions.clone_mixture import fit_mixture
+    from port.sandbox.admixture.clone_mixture import fit_mixture
 
     planted = np.eye(3)
     planted[1] = [0.0, 0.75, 0.25]
@@ -104,7 +104,7 @@ def test_the_identity_is_the_start_and_a_pure_sample_stays_there() -> None:
     0.021 of noise off the diagonal on this draw, where the BIC variant in
     `port.sandbox.admixture` leaves exact zeros (#380).
     """
-    from port.extensions.clone_mixture import fit_mixture
+    from port.sandbox.admixture.clone_mixture import fit_mixture
 
     paths, bulks = _planted(np.eye(3), seed=5)
     n = MU.size
@@ -132,7 +132,7 @@ def test_the_lattice_finds_a_uniform_normal_admixture() -> None:
     0.058 on this draw, where the BIC variant in `port.sandbox.admixture`
     recovers it to 0.02 (#380).
     """
-    from port.extensions.clone_mixture import (
+    from port.sandbox.admixture.clone_mixture import (
         ADMIXTURE_STARTS,
         PARSIMONY,
         fit_mixture,
@@ -149,7 +149,7 @@ def test_the_lattice_finds_a_uniform_normal_admixture() -> None:
     weights[1] = [0.08, 0.92, 0.0]
     weights[2] = [0.08, 0.0, 0.92]
 
-    from port.extensions.clone_mixture import mixed_parameters
+    from port.sandbox.admixture.clone_mixture import mixed_parameters
 
     rng = np.random.default_rng(7)
     base = np.full((3, n_bins), 400.0) * rng.uniform(0.5, 1.5, n_bins)

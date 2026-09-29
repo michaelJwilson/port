@@ -246,17 +246,6 @@ def _parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
-        "--clone-mixture",
-        action="store_true",
-        help=(
-            "score spots against each clone's pure path (#380): between the "
-            "HMM fit and spot assignment, fit each clone's pseudobulk as a "
-            "mixture of the clones' integer-copy paths and a diploid normal, "
-            "and assign against each clone's pure path at its own normal "
-            "fraction. Off by default; unphased HMM only."
-        ),
-    )
-    parser.add_argument(
         "--copy-decode",
         choices=("lattice", "shared"),
         default="lattice",
@@ -571,14 +560,6 @@ def main(argv: Sequence[str] | None = None) -> int:
                 file=sys.stderr,
             )
 
-        # NB after the swaps: it wraps whatever `pipeline_clone_assignment`
-        #    they bound, `port`'s or `--sal`'s (#380).
-        if arguments.clone_mixture:
-            from port.extensions.clone_mixture import clone_mixture
-
-            stack.enter_context(clone_mixture())
-            print("run_cnaster_port: clone mixture in the loop", file=sys.stderr)
-
         # NB after the swaps and before the timer, so what is compiled is
         #    what the run will call and none of it lands in the measurement.
         if arguments.warm_up:
@@ -631,7 +612,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     return 0
 
 
-def _write_outputs(config: str, flags: dict[str, bool], segments: Any) -> None:
+def _write_outputs(config: str, flags: dict[str, Any], segments: Any) -> None:
     """`port.extensions.outputs` into each run directory the run wrote.
 
     `segments` is the run's lineage, one row per gene and one label column
