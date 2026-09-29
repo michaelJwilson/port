@@ -409,26 +409,30 @@ CLASS_NAMES = {
 
 
 def _panel(axis: Any, entry: dict[str, Any], colour: str, label: str,
-           dodge: float, unit: float) -> None:  # fmt: skip
+           dodge: float, unit: float | None) -> None:  # fmt: skip
     """The fitted curve and its 95% band, with the finer binned rates on it.
 
     Curves and bins are in log10 of the covariate; they are drawn at
-    `10^x / unit` on a log axis. Points are drawn where their bin holds at
+    `10^x / unit` on a log axis, or at `x` itself where `unit` is None. Points are drawn where their bin holds at
     least `MIN_PER_BIN // 2` items, shifted `dodge` dex so bars of
     neighbouring series do not overlap.
     """
+
+    def at(x: np.ndarray) -> np.ndarray:
+        return x if unit is None else 10**x / unit
+
     grid = np.array(entry["grid"])
     fitted = np.array(entry["fitted"])
     curved = bool(grid.size and np.isfinite(fitted).any())
     if curved:
         low, high = np.array(entry["band"])
-        axis.fill_between(10**grid / unit, low, high, color=colour, alpha=0.15, lw=0)
-        axis.plot(10**grid / unit, fitted, color=colour, lw=2, label=label)
+        axis.fill_between(at(grid), low, high, color=colour, alpha=0.15, lw=0)
+        axis.plot(at(grid), fitted, color=colour, lw=2, label=label)
     shown = entry.get("display") or entry
     rate = np.array(shown["rate"])
     low, high = np.array(shown["low"]), np.array(shown["high"])
     kept = np.array(shown["n"]) >= MIN_PER_BIN // 2
-    x = 10 ** (np.array(shown["centres"])[kept] + dodge) / unit
+    x = at(np.array(shown["centres"])[kept] + dodge)
     axis.errorbar(x, rate[kept], yerr=[rate[kept] - low[kept], high[kept] - rate[kept]],
                   color=colour, lw=1, ls="none", marker="o", ms=4, capsize=2,
                   label=None if curved else label)  # fmt: skip
@@ -465,13 +469,8 @@ def figures(summary: dict[str, Any], into: Path) -> list[Path]:
         colours = j_colours(list(summary["study1"]))
         series = sorted(summary["study1"].items())
         for (j, entry), dodge in zip(series, _dodges(len(series), 0.015), strict=True):
-            _panel(left, entry["detected"], colours[j], f"J = {j:g}", dodge, 1.0)
-        left.set_xscale("log")
-        left.set_xticks(
-            [3e5, 1e6, 3e6], [r"$3\times10^5$", r"$10^6$", r"$3\times10^6$"]
-        )
-        left.xaxis.set_minor_formatter(mpl.ticker.NullFormatter())
-        left.set_xlabel("Clone UMIs")
+            _panel(left, entry["detected"], colours[j], f"J = {j:g}", dodge, None)
+        left.set_xlabel(r"$\log_{10} |{\rm Clone\ UMIs}|$")
         left.set_ylabel("Sensitivity (≥ 90% spots)")
 
         classes = list(summary["study2"].items())
@@ -482,7 +481,7 @@ def figures(summary: dict[str, Any], into: Path) -> list[Path]:
                    dodge, 1e6)  # fmt: skip
         right.set_xscale("log")
         right.set_xlabel("CNA length [Mb]")
-        right.set_ylabel("Sensitivity (90% of segments recovered)")
+        right.set_ylabel("Sensitivity (≥ 90% of segments)")
 
         for axis in (left, right):
             axis.set_ylim(-0.02, 1.02)
