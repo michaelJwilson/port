@@ -455,8 +455,13 @@ def pipeline_clone_assignment(
         folded = fold_unary(field, log_persample_weights, sample_ids)
         graph = CsrGraph.from_matrix(adjacency_mat)
 
-        if floor_installed():
-            knobs["min_clone_spots"] = 0
+        # NB the floor is `hmrf.min_spots_per_clone` where the configuration
+        #    sets it (#468): `cnaster` reads no key and every ICM variant
+        #    merges under its own default of 200, so a configured 50 merged
+        #    `dev_tree` r0's planted 49- and 158-spot clones away. With the
+        #    floor merge installed the sweep runs floorless and the same
+        #    value is met after it.
+        knobs["min_clone_spots"] = 0 if floor_installed() else configured_floor()
 
         result = sweep(folded, graph, new_assignment, spatial_weight, **knobs)
 
