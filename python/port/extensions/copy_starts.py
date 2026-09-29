@@ -62,6 +62,7 @@ __all__ = [
     "run_start",
     "smoothed",
     "starts",
+    "with_error",
     "write_captured",
 ]
 
@@ -475,6 +476,9 @@ LATTICE_PURITY = (1.0, 0.9, 0.8, 0.7, 0.6, 0.5)
 LATTICE_SCALE = tuple(float(v) for v in np.exp(np.linspace(-0.15, 0.15, 7)))
 """Read-depth scales it tries: the call's baseline need not sit at the clones' neutral."""
 
+LATTICE_ERROR_CEILING = 0.1
+"""The highest BAF error rate the lattice start fits: a lost allele read at up to 10% of the reads."""
+
 LATTICE_ROUNDS = 3
 """Assign, then refit the NB size and BB concentration, this many times."""
 
@@ -493,48 +497,51 @@ def _lattice_ceiling(call: CopyCall) -> int:
     return int(np.clip(np.ceil(2.0 * ceiling), 3, 8))
 
 
+def with_error(p: np.ndarray, error: float) -> np.ndarray:
+    """The allele share read under a BAF error rate: `error + (1 - 2 error) p`, so a lost allele reads at `error`."""
+    shared: np.ndarray = error + (1.0 - 2.0 * error) * np.asarray(p, dtype=np.float64)
+    return shared
+
+
 def _fit_shapes(
     scored: Callable[[np.ndarray, np.ndarray, float, float], np.ndarray],
     log_mu: np.ndarray,
     p: np.ndarray,
-    assigned: np.ndarray,
+    responsibility: np.ndarray,
     concentration: float,
-) -> tuple[float, float]:
-    """The NB size, then the BB concentration, maximizing the likelihood of each row under its assigned state."""
+    error: float,
+) -> tuple[float, float, float]:
+    """The NB size, the BB concentration, then the BAF error rate, each maximizing the rows' likelihood weighted by `responsibility`.
+
+    `responsibility` is `(rows, states)`: one-hot for a hard assignment, the
+    E step's posteriors for EM, whose M step this is.
+    """
     from scipy.optimize import minimize_scalar
 
-    chosen = np.unique(assigned)
-    index = np.searchsorted(chosen, assigned)
-    rows = np.arange(assigned.size)
+    chosen = np.flatnonzero(responsibility.sum(axis=0) > 1e-8)
+    weights = responsibility[:, chosen]
 
-    def along(r: float, c: float) -> float:
-        return float(scored(log_mu[chosen], p[chosen], r, c)[rows, index].sum())
+    def along(r: float, c: float, e: float) -> float:
+        density = scored(log_mu[chosen], with_error(p[chosen], e), r, c)
+        return float((weights * density).sum())
 
-    fitted_size = float(
-        np.exp(
-            minimize_scalar(
-                lambda x: -along(float(np.exp(x)), concentration),
-                bounds=(np.log(0.5), np.log(1e4)),
-                method="bounded",
-                options={"xatol": 1e-2},
-            ).x
+    def best(objective: Callable[[float], float], low: float, high: float) -> float:
+        found = minimize_scalar(
+            lambda x: -objective(float(np.exp(x))),
+            bounds=(np.log(low), np.log(high)),
+            method="bounded",
+            options={"xatol": 1e-2},
         )
-    )
-    fitted_concentration = float(
-        np.exp(
-            minimize_scalar(
-                lambda x: -along(fitted_size, float(np.exp(x))),
-                bounds=(np.log(1.0), np.log(1e6)),
-                method="bounded",
-                options={"xatol": 1e-2},
-            ).x
-        )
-    )
-    return fitted_size, fitted_concentration
+        return float(np.exp(found.x))
+
+    size = best(lambda r: along(r, concentration, error), 0.5, 1e4)
+    concentration = best(lambda c: along(size, c, error), 1.0, 1e6)
+    error = best(lambda e: along(size, concentration, e), 1e-4, LATTICE_ERROR_CEILING)
+    return size, concentration, error
 
 
 def lattice_start(
-    call: CopyCall, *, rounds: int = LATTICE_ROUNDS
+    call: CopyCall, *, rounds: int = LATTICE_ROUNDS, em: bool = False
 ) -> tuple[np.ndarray, np.ndarray]:
     """`n_states` of the integer `(A, B)` lattice, as `lattice_decode` places them, chosen by the rows (#540).
 
@@ -543,16 +550,22 @@ def lattice_start(
     emission the mixture fit itself uses, `sal`'s `CountPairEmission` on
     `instance(call)`, each row on its own with its exposure and trials.
 
+    - Rows are assigned by likelihood plus log occupancy, iterated, the
+      classification likelihood a mixture's weights give. With `em`, the
+      assignment is the E step's posteriors instead, and the weights, NB
+      size, BB concentration and error rate their M step: EM on a lattice
+      held fixed.
     - The tumour fraction (`LATTICE_PURITY`) and read-depth scale
-      (`LATTICE_SCALE`) are those whose rows, each assigned its most likely
-      state, have the highest total likelihood, at a moderate NB size and
-      BB concentration.
+      (`LATTICE_SCALE`) are those of the highest classification likelihood
+      once each point's NB size, BB concentration and error rate are fitted
+      to its assignment.
     - At those, each row is assigned its most likely state, then the shared
-      NB size and BB concentration are fitted by the likelihood along that
-      assignment, `rounds` times.
-    - The `n_states` states holding the most rows are kept; with fewer
-      populated, the next by occupancy. For BAF only the depth channel is a
-      constant, so the lattice is its allele shares.
+      NB size, BB concentration and BAF error rate (`with_error`) are fitted
+      by the likelihood along that assignment, `rounds` times. The error
+      rate is what reads a lost allele at a few percent, as sequencing and
+      phasing errors do, rather than at a lower tumour fraction.
+    - The `n_states` states of highest weight are kept. For BAF only the
+      depth channel is a constant, so the lattice is its allele shares.
     """
     import torch
     from sal.emissions import CountPairEmission
@@ -588,10 +601,41 @@ def lattice_start(
         )
         return density
 
-    def total(density: np.ndarray) -> float:
-        return float(density.max(axis=1).sum())
+    def fitted_weights(
+        density: np.ndarray, iterations: int = 3
+    ) -> tuple[np.ndarray, np.ndarray, float]:
+        """Responsibilities, state weights and the criterion, the lattice held fixed.
 
-    size, concentration = 20.0, 200.0
+        Hard (`em` false): each row's state by likelihood plus log weight,
+        iterated, the classification likelihood a mixture's weights give;
+        without the weights every row takes whichever state suits it, so the
+        tail of the depth distribution takes the gains and the bulk's scale
+        drifts below its median. EM: the posteriors under the weights, and
+        the mixture log-likelihood.
+        """
+        from scipy.special import logsumexp
+
+        n, k = density.shape
+        log_weight = np.full(k, -np.log(k))
+        floor = 1.0 / (10.0 * n)
+        responsibility = np.zeros((n, k))
+        for _ in range(iterations):
+            joint = density + log_weight
+            if em:
+                responsibility = np.exp(joint - logsumexp(joint, axis=1, keepdims=True))
+            else:
+                responsibility = np.zeros((n, k))
+                responsibility[np.arange(n), np.argmax(joint, axis=1)] = 1.0
+            log_weight = np.log(np.maximum(responsibility.mean(axis=0), floor))
+        joint = density + log_weight
+        criterion = (
+            float(logsumexp(joint, axis=1).sum())
+            if em
+            else float(joint.max(axis=1).sum())
+        )
+        return responsibility, log_weight, criterion
+
+    size, concentration, error = 20.0, 200.0, 0.01
     grid = [
         (purity, scale)
         for purity in LATTICE_PURITY
@@ -602,18 +646,29 @@ def lattice_start(
         log_mu, p = _parameters(copies, purity)
         return log_mu + np.log(scale), p
 
-    purity, scale = max(
-        grid, key=lambda g: total(scored(*placed(*g), size, concentration))
-    )
+    def fitted(grid_point: tuple[float, float]) -> float:
+        """The criterion at this fraction and scale, once its shapes and error rate are fitted."""
+        log_mu, p = placed(*grid_point)
+        responsibility, _, _ = fitted_weights(
+            scored(log_mu, with_error(p, error), size, concentration)
+        )
+        r, c, e = _fit_shapes(scored, log_mu, p, responsibility, concentration, error)
+        return fitted_weights(scored(log_mu, with_error(p, e), r, c))[2]
+
+    purity, scale = max(grid, key=fitted)
     log_mu, p = placed(purity, scale)
 
     for _ in range(rounds):
-        assigned = np.argmax(scored(log_mu, p, size, concentration), axis=1)
-        size, concentration = _fit_shapes(scored, log_mu, p, assigned, concentration)
+        responsibility, _, _ = fitted_weights(
+            scored(log_mu, with_error(p, error), size, concentration)
+        )
+        size, concentration, error = _fit_shapes(
+            scored, log_mu, p, responsibility, concentration, error
+        )
 
-    assigned = np.argmax(scored(log_mu, p, size, concentration), axis=1)
-    occupancy = np.bincount(assigned, minlength=log_mu.size)
-    picked = np.argsort(-occupancy, kind="stable")[: call.n_states]
+    p = with_error(p, error)
+    _, log_weight, _ = fitted_weights(scored(log_mu, p, size, concentration))
+    picked = np.argsort(-log_weight, kind="stable")[: call.n_states]
     return log_mu[picked], p[picked]
 
 
@@ -709,6 +764,10 @@ def _port_starts() -> dict[
         "lattice": (
             Row("lattice", "port (#540)", both, covariate=True, stochastic=False),
             lambda call, _rng: lattice_start(call),
+        ),
+        "lattice-em": (
+            Row("lattice-em", "port (#540)", both, covariate=True, stochastic=False),
+            lambda call, _rng: lattice_start(call, em=True),
         ),
         "rdr-quantiles": (
             Row("rdr-quantiles", "port (#540)", both, covariate=True, stochastic=False),

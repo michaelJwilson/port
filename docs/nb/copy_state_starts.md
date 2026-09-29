@@ -1,54 +1,59 @@
 # Copy-state starts at oracle clones (#540)
 
-**TL;DR.** On dev_tree 60 × 50 r0 at the planted clones: 41 starts, 1,014
+**TL;DR.** On dev_tree 60 × 50 r0 at the planted clones: 42 starts, 1,015
 trials, each polished by `sal`'s EM for up to 60 s and scored on the whole
 call.
 
-- **The lattice start is the best on BAF only and ties the best on BAF +
-  RDR** (`copy_starts.lattice_start`). It places every integer `(A, B)` up
-  to the rows' read-depth ceiling, as the integer decode does, assigns each
-  row its most likely state under the mixture's own IID emission, fits the
-  NB size and BB concentration by that likelihood, and keeps the
-  `n_states` most populated.
-  - BAF only: seeded on rows smoothed over 3, 5 or 9 segments it reaches the
-    best fit any trial reached, in 2.1 s; on raw rows it ends 7.5 nats
-    below.
-  - BAF + RDR: it ends 9.2 nats below in 7.4 s, beside 10 Mb-smoothed
-    `kmeans++` at 8.9.
-  - Before its polish it holds the one-copy loss (log mu -0.79) and CN-LOH
-    (-0.10) as two states. The polish merges them, as every fit does.
-  - It is deterministic and the most robust to outliers: 0.0 nats on the 1%
-    read-depth and 5% BAF corruptions, and 112 against the shortlist's 140-181
-    on 5% read depth.
-
-- **BAF + RDR: seeding on rows smoothed over 10 Mb is the best start.**
+- **The lattice start is the best on BAF only and the best on BAF + RDR on
+  raw rows** (`copy_starts.lattice_start`). It places every integer
+  `(A, B)` up to the rows' read-depth ceiling, as the integer decode does,
+  and scores each row under the mixture's own IID emission (`sal`'s
+  `CountPairEmission`). It then assigns rows by likelihood plus log weight,
+  a classification EM, fits the NB size, BB concentration and a BAF error
+  rate by that likelihood, and keeps the `n_states` states of highest
+  weight.
+  - BAF only: it reaches the best fit any trial reached, in 4.9 s. Port's
+    `distinct`, today's BAF-stage start, ends 40.4 nats below (up to 114.8).
+    With the BB concentration fitted by EM over soft posteriors
+    (`lattice-em`) it ends 35.0 below. It holds the best fit on 1% and 5%
+    corrupted BAF calls.
+  - BAF + RDR: it ends 8.8 nats below the best (in 21 s with 4 workers on 4
+    cores), beside 10 Mb-smoothed `kmeans++` at 8.9 and `--sal`'s
+    `kmeans++x5+em` at 39.6.
+  - Before its polish it places all four planted states, the one-copy loss
+    (log mu -0.69) apart from CN-LOH (0.00). The polish merges them, as
+    every fit does.
+  - It is not robust to read-depth outliers on BAF + RDR: with 5% of rows
+    at x8 or /8 it ends 369-412 nats below, because the outliers form a
+    populated state of their own; `kmeans++` holds at 11.
+- **BAF + RDR: seeding `kmeans++` on rows smoothed over 10 Mb ties the lattice.**
   `kmeans++` there ends 8.9 nats below the best fit reached (at most 9.3 over
   3 seeds) in 1.7 s. `--sal`'s `kmeans++x5+em` on the raw rows ends 39.6
   nats below (39.9 at most) in 13.9 s: 30 nats worse at 8x the cost. Every
-  start on raw rows ends 23-49 nats below, `hmcx5` and `hmcx5+em` 152-158.
-- **BAF + RDR: no start or arm separates the one-copy loss from
-  copy-neutral LOH.** Across 343 fits, the LOH states (folded p < 0.1) sit
-  at a median log mu of -0.12, between the loss (-0.65, 137 rows) and CN-LOH
-  (0.01, 456 rows). None is within 0.1 of the loss; 15 are within 0.1 of
-  CN-LOH, found in 4% of fits. The mixture objective merges the two, whatever
-  the start: #471's defect.
-- **BAF only: seeding from the BAF + RDR call's read-depth quantiles ends
-  21.4 nats below the best, in 4.9 s.** In the pipeline the BAF stage runs
-  before any normal baseline exists; against the stand-in it has, each bin's
-  share of every clone's reads (`pooled_exposure`), the same seeding ends
-  118.7 nats below. Port's `distinct`, today's BAF-stage
-  start, ends 36.5 nats below at its median but up to 110.9 over seeds.
-  Smoothing its seeding rows (any window) holds it at 36.4-38.0. One
-  `emission++x5+em` trial on 10 Mb smoothing reached the best fit; its other
-  two seeds were refused. BAF alone separates two levels, LOH and balanced,
-  and every start finds both, so the gap measures fit quality, not state
-  recovery. `sal`'s starts do not reach this stage in the pipeline yet
-  (`sal_mixture` skips it).
+  other start on raw rows ends 23-49 nats below, `hmcx5` and `hmcx5+em`
+  152-158.
+- **BAF + RDR: no polished fit separates the one-copy loss from
+  copy-neutral LOH.** Across 382 polished fits the LOH states (folded
+  p < 0.1) sit at a median log mu of -0.12, between the loss (-0.65, 137
+  rows) and CN-LOH (0.01, 456 rows), and none is within 0.1 of the loss,
+  though the lattice start places both. The mixture objective merges them,
+  whatever the start: #471's defect.
+- **BAF only: read-depth seeding needs a baseline the BAF stage lacks.**
+  Seeding from the BAF + RDR call's read-depth quantiles ends 25.3 nats
+  below the best. In the pipeline the BAF stage runs before any normal
+  baseline exists; against the stand-in it has, each bin's share of every
+  clone's reads (`pooled_exposure`), the same seeding ends 118.7 nats
+  below. `distinct` smoothed along the genome holds at 39.8-41.9. BAF alone
+  separates two levels, LOH and balanced, and every start finds both, so on
+  this stage the gap measures fit quality, not state recovery. `sal`'s starts
+  do not reach this stage in the pipeline yet (`sal_mixture` skips it).
 - **Masks** on the rows a start seeds from, or fits on, do not beat
   smoothing on either stage.
-- **Outliers**: 5% of rows at read depth x8 or /8 leave the shortlist
-  140-181 nats below the corrupted call's best, masked or not. A mask on the
-  seeding rows does not reach the polish, which still reads them.
+- **Outliers**: with 5% of rows at read depth x8 or /8, `kmeans++` and
+  `kmeans++x5+em` end 11 nats below the corrupted call's best, the lattice
+  369, `distinct` 140. Masking the top 5% of |log RDR| from the seeding
+  takes `kmeans++` to 0.1 but `kmeans++x5+em` to 375: the polish still
+  reads the masked rows.
 - **Refused**:
   - `cnaster`'s `cna_mixture_init` calls `get_state_posteriors` without
     `log_sitewise_transmat`;
