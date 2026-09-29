@@ -17,6 +17,9 @@ pinned here:
 
 from __future__ import annotations
 
+from pathlib import Path
+from typing import Any
+
 import numpy as np
 import pytest
 
@@ -178,3 +181,94 @@ def test_the_mask_keeps_the_columns_cnaster_relabels_survivors_to() -> None:
 
     np.testing.assert_array_equal(kept, mask[:, survivors])
     assert kept.shape[1] == relabelled.max() + 1
+
+
+@pytest.mark.infra
+@pytest.mark.parametrize("flag", ["--refinement-mask", "--floor-merge"])
+def test_no_patch_refuses_a_flag_nothing_would_read(
+    flag: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Only port's `pipeline_clone_assignment` reads either (#466).
+
+    Under `--no-patch` it is not installed, and the run went ahead with the
+    mask kept or the floor set and neither applied.
+    """
+    import cnaster.scripts.run_cnaster as pipeline
+    from port.scripts.run_cnaster import main
+
+    config = tmp_path / "config.yaml"
+    config.write_text("{}\n")
+    ran: list[bool] = []
+    monkeypatch.setattr(pipeline, "run_cnaster", lambda *_: ran.append(True))
+
+    with pytest.raises(SystemExit):
+        main(["--no-patch", flag, "--no-rust", str(config)])
+
+    assert not ran
+
+
+@pytest.mark.smoke
+@pytest.mark.parametrize("flag", ["mask", "floor", "shift"])
+def test_a_delegated_assignment_says_it_drops_the_mask_floor_or_shift(
+    flag: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """With a tumour proportion the call is `cnaster`'s, which reads none of them (#466)."""
+    import contextlib
+
+    from port.patch.hmm_nophasing import hmm_nophasing, logmu_shift
+    from port.patch.hmrf import clone_assignment, refinement
+    from port.patch.icm.floor import floor_merge
+
+    said: list[str] = []
+    monkeypatch.setattr(clone_assignment, "UPSTREAM", lambda *_, **__: "cnaster")
+    monkeypatch.setattr(clone_assignment.logger, "warning_once", said.append)
+
+    with contextlib.ExitStack() as stack:
+        if flag == "mask":
+            refinement._KEPT.append(np.ones((4, 2), dtype=bool))
+            stack.callback(refinement.forget)
+        elif flag == "floor":
+            stack.enter_context(floor_merge())
+        else:
+            stack.enter_context(logmu_shift())
+
+        # NB untyped: the nine positional inputs are never read on this path.
+        assign: Any = clone_assignment.pipeline_clone_assignment
+        result = assign(
+            *[None] * 9, single_tumor_prop=np.ones(4), hmmclass=hmm_nophasing
+        )
+
+    named = {"mask": "--refinement-mask", "floor": "--floor-merge", "shift": "--shift"}
+
+    assert result == "cnaster"
+    assert len(said) == 1
+    assert named[flag] in said[0]
+    assert [name for name in named.values() if name in said[0]] == [named[flag]]
+
+
+@pytest.mark.merge
+@pytest.mark.end2end
+def test_sal_recovers_dev_where_the_hard_mask_froze_the_baf_boundary(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`--sal`, which now implies both clone flags, recovers `dev` (#467).
+
+    `dev`'s BAF stage places 69 normal spots with clone 3 and 15 of clone 3's
+    with normal. With the mask at `-inf` and the floor merge on, the
+    read-depth stage cannot move them across the BAF boundary: clone ARI
+    0.8683, reproduced twice. At `MASK_PENALTY` it moves them: 1.000.
+    """
+    import numpy as np
+    from port.patch.hmrf import refinement
+
+    from tests import fixtures
+    from tests.recovery_audit import run_arm
+
+    soft, _ = run_arm(fixtures.dev_instance(), ["--sal"])
+
+    assert soft.ari >= 0.99, soft.ari
+
+    monkeypatch.setattr(refinement, "MASK_PENALTY", np.inf)
+    hard, _ = run_arm(fixtures.dev_instance(), ["--sal"])
+
+    assert hard.ari < 0.9, hard.ari

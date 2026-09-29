@@ -66,7 +66,6 @@ KNOWN: dict[str, str] = {
     "port.patch.normal_spot:removal_indicator arg beta": "F2",
     "port.extensions.integer_copy:success_probability_variance arg alpha": "F3",
     "port.extensions.integer_copy:success_probability_variance arg beta": "F2",
-    "port.patch.hmm_nophasing.nb_logpmf:nb_logpmf_1d arg alpha": "F3",
     "port.extensions.copy_likelihood:Pseudobulk field alpha": "F3",
     "port.extensions.copy_likelihood:Pseudobulk field tau": "F5",
     "port.extensions.copy_likelihood:Pseudobulk field total_bb_rd": "F5",
@@ -87,9 +86,6 @@ KNOWN: dict[str, str] = {
     "port.patch.hmm_initialize.backends:cnaster_gmm_backend arg seed": "F9",
     "port.patch.hmm_initialize.backends:sal_emission_backend arg seed": "F9",
     "port.patch.hmm_initialize.backends:cnaster_gmm_backend sibling": "F9",
-    # --- F11: integer copies ------------------------------------------------
-    "port.extensions.copy_likelihood:decode arg max_passes": "F11",
-    "port.extensions.copy_likelihood:Decoded termination": "F11",
     "port.patch.icm.interface:IcmResult termination": "F10",
 }
 """Departures found by #401's audit, keyed `module:name kind word`."""

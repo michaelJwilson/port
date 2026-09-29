@@ -39,8 +39,11 @@ import anndata
 import numpy as np
 import pandas as pd
 import scipy.sparse as sp
+from anndata._core.views import (
+    ArrayView,
+)  # NB no public name; the type `adata.layers` returns on a view
 from cnaster.config import start_time
-from cnaster.filter import get_filter_genes, get_filter_ranges
+from cnaster.filter import get_filter_genes
 from cnaster.he import get_he_image
 from cnaster.io import (
     get_aggregated_barcodes as _UPSTREAM_AGGREGATED_BARCODES,
@@ -49,7 +52,6 @@ from cnaster.io import (
     get_alignments,
     get_barcodes,
     get_sample_sheet,
-    get_spaceranger_counts,
     get_spatial_positions,
     map_unique_snps_enum,
 )
@@ -174,14 +176,15 @@ def _spaceranger_counts(
     entry for entry. What differs is that one of them allocates the shape and
     the other the stored values.
 
+    With `sparse_counts` off the layer is `cnaster`'s dense one, built as
+    `get_spaceranger_counts` builds it, except that a dense `X` is taken as
+    it is rather than raising on `.toarray()` (#88).
+
     This is the one place the patch reads a file `cnaster`'s helper would have
     read, rather than calling that helper -- the cost is inside it, so
     orchestrating around it is not available. The two branches, the `.h5` and
     the `.h5ad`, are the branches `get_spaceranger_counts` takes, in its order.
     """
-    if not sparse_counts:
-        return get_spaceranger_counts(spaceranger_dir)
-
     import scanpy as sc
 
     stem = f"{spaceranger_dir}/{config.visium.filtered_feature_name}"
@@ -195,6 +198,21 @@ def _spaceranger_counts(
         raise RuntimeError(msg)
 
     counts = adatatmp.X
+
+    if not sparse_counts:
+        # NB `get_spaceranger_counts`'s steps, in its order, but densifying
+        #    only a sparse matrix: its unguarded `.toarray()` raises on a
+        #    dense `.h5ad`, which `anndata` writes by default (#88).
+        dense = counts.toarray() if sp.issparse(counts) else np.array(counts)
+        is_nan = np.isnan(dense)
+
+        if np.any(is_nan):
+            dense[is_nan] = 0
+
+        adatatmp.layers["count"] = dense.astype(int)
+        adatatmp.var_names_make_unique()
+
+        return adatatmp
 
     if sp.issparse(counts):
         values = _without_nan(counts.data)
@@ -225,10 +243,13 @@ def _scaled_columns(counts: Any, factors: np.ndarray) -> Any:
     same array dtype and so truncates the same way -- the equality is the
     reason the two can share one caller.
 
-    **In place, on both paths**, and the result is returned rather than
-    discarded only so the caller reads as an assignment. Copying would
-    reinstate the allocation this exists to remove, and `cnaster`'s own form
-    -- `layers["count"][:, gene] = ...` -- mutates in place as well.
+    **The result is what the caller assigns** (#466, #496). The loader's
+    `adata` is a view by then, and anndata copies a view on its first write:
+    writing into `counts` in place scales the copy, and assigning `counts`
+    back then restores the unscaled view, so the local outlier filter and the
+    downsampling were silently dropped on a dense layer. A dense view
+    therefore returns a new array; an actual array is scaled in place, and
+    the sparse path returns its own.
     """
     if sp.issparse(counts):
         # NB CSR, and not CSC, because it is CSR whose `indices` are column
@@ -241,21 +262,56 @@ def _scaled_columns(counts: Any, factors: np.ndarray) -> Any:
 
         return scaled.asformat(counts.format)
 
+    if isinstance(counts, ArrayView):
+        # NB a view's layer is not written in place: `counts[:, :] = ...`
+        #    makes the parent `AnnData` actual and writes into its new copy,
+        #    and the view returned here still reads the old values, which the
+        #    caller then assigns back over the written ones. That dropped
+        #    every zeroed outlier gene (100 on `dev_tree` 60 x 50) where
+        #    `cnaster` zeroes them.
+        return (np.asarray(counts) * factors).astype(counts.dtype)
+
     counts[:, :] = (counts * factors).astype(counts.dtype)
 
     return counts
 
 
+def filter_ranges(filter_range_file: Any) -> pd.DataFrame:
+    """`cnaster.filter.get_filter_ranges`, reading bare-integer chromosomes too.
+
+    `cnaster` decides whether to strip a `chr` prefix with `"chr" in
+    ranges.Chr.iloc[0]`, which raises `TypeError` when the column parses as
+    integers (#176), so only the `chrN` form was readable. Here each value is
+    read as a string and a `chr` prefix stripped where present; the result is
+    `cnaster`'s -- integer `Chr`, sorted by `Chr` and `Start` -- for either form.
+    """
+    ranges = pd.read_csv(
+        filter_range_file, header=None, sep="\t", names=["Chr", "Start", "End"]
+    )
+    ranges["Chr"] = [
+        int(str(x)[3:]) if str(x).startswith("chr") else int(x)
+        for x in ranges.Chr.to_numpy()
+    ]
+    ordered: pd.DataFrame = ranges.sort_values(by=["Chr", "Start"])
+
+    return ordered
+
+
 def _range_mask(unique_snp_ids: np.ndarray, ranges: pd.DataFrame) -> np.ndarray:
-    """Which SNPs fall outside every filtered range.
+    """Which SNPs `cnaster`'s forward pointer over the filtered ranges keeps.
 
-    `cnaster` walks the SNPs in Python with a fast-forward pointer into the
-    ranges, calling `ranges.Chr.to_numpy()` **inside** the inner loop, so it
-    rebuilds the column once per comparison. This sorts the ranges once and
-    finds each SNP's candidate by `searchsorted`.
+    `cnaster` walks the SNPs in order with a pointer `j` into the ranges as
+    `get_filter_ranges` sorts them (by `Chr`, `Start`): it skips each range
+    whose `(Chr, End)` is at or before the SNP's `(chr, pos)`, then drops the
+    SNP if it lies in range `j`. It rebuilds the columns per comparison.
 
-    The two agree because the ranges are disjoint per chromosome, which is what
-    the original's single forward pointer already assumes.
+    For SNPs in `(chr, pos)` order the pointer at a SNP is the first range
+    whose `(Chr, End)` is past it, which is `searchsorted` over the running
+    maximum of `(Chr, End)`. That is exact whether or not the ranges overlap:
+    GRCh38's `HLA_regions.bed` has 4 overlapping pairs, where the version this
+    replaces -- sorted by `End`, assuming disjoint ranges -- kept 10 SNPs
+    `cnaster` drops on `dev_tree` 60 x 50. SNPs out of order take the
+    pointer walk itself.
     """
     chromosome = np.array(
         [int(str(snp).split("_")[0]) for snp in unique_snp_ids], dtype=np.int64
@@ -263,31 +319,49 @@ def _range_mask(unique_snp_ids: np.ndarray, ranges: pd.DataFrame) -> np.ndarray:
     position = np.array(
         [int(str(snp).split("_")[1]) for snp in unique_snp_ids], dtype=np.int64
     )
+    chrs = ranges.Chr.to_numpy().astype(np.int64)
+    starts = ranges.Start.to_numpy().astype(np.int64)
+    ends = ranges.End.to_numpy().astype(np.int64)
 
-    keys = np.stack(
-        [ranges.Chr.to_numpy().astype(np.int64), ranges.End.to_numpy().astype(np.int64)]
-    ).T
-    order = np.lexsort((keys[:, 1], keys[:, 0]))
-    chr_sorted = keys[order, 0]
-    end_sorted = keys[order, 1]
-    start_sorted = ranges.Start.to_numpy().astype(np.int64)[order]
+    if len(chrs) == 0:
+        return np.ones(len(unique_snp_ids), dtype=bool)
 
-    # NB the first range on this chromosome whose end is past the SNP, which is
-    #    the one the forward pointer stops at.
-    candidate = np.searchsorted(
-        chr_sorted * (1 + end_sorted.max()) + end_sorted,
-        chromosome * (1 + end_sorted.max()) + position,
-        side="right",
-    )
-    candidate = np.clip(candidate, 0, len(order) - 1)
+    scale = 1 + int(max(ends.max(), position.max(initial=0)))
+    snp_key = chromosome * scale + position
+    range_key = chrs * scale + ends
 
+    if np.all(snp_key[1:] >= snp_key[:-1]):
+        pointer = np.searchsorted(
+            np.maximum.accumulate(range_key), snp_key, side="right"
+        )
+    else:
+        pointer = np.empty(len(snp_key), dtype=np.int64)
+        j = 0
+
+        for i, key in enumerate(snp_key):
+            while j < len(range_key) and range_key[j] <= key:
+                j += 1
+            pointer[i] = j
+
+    found = pointer < len(chrs)
+    at = np.minimum(pointer, len(chrs) - 1)
     inside = (
-        (chr_sorted[candidate] == chromosome)
-        & (start_sorted[candidate] <= position)
-        & (end_sorted[candidate] > position)
+        found
+        & (chrs[at] == chromosome)
+        & (starts[at] <= position)
+        & (ends[at] > position)
     )
 
     return np.asarray(~inside, dtype=bool)
+
+
+NORMAL_SPOTS: list[np.ndarray] = []
+"""The spots `normal_idx_file` names, per loaded spot, from the last load (#479).
+
+`cnaster` annotates them (`tumor_annotation`) and then never reads them back
+as candidates, so `port.patch.normal_spot.determine_normal_candidates` reads
+them here. Empty when the last load had no file.
+"""
 
 
 def load_input_data(
@@ -375,8 +449,11 @@ def load_input_data(
         df_this_pos = get_spatial_positions(df_meta["spaceranger_dir"].iloc[i])
         df_this_pos = get_he_image(df_meta["spaceranger_dir"].iloc[i], pos=df_this_pos)
 
+        # NB read and cast sparse on every path (#488): the dense layer
+        #    `cnaster` returns is built once, at the end, rather than per
+        #    slice and carried through the concatenation and the scaling.
         adatatmp = _spaceranger_counts(
-            df_meta["spaceranger_dir"].iloc[i], config, sparse_counts=sparse_counts
+            df_meta["spaceranger_dir"].iloc[i], config, sparse_counts=True
         )
 
         idx_argsort = pd.Categorical(
@@ -504,7 +581,7 @@ def load_input_data(
         adata = adata[:, ~np.isin(adata.var.index, genes_to_filter)]
 
     if filter_range_file is not None:
-        keep = _range_mask(unique_snp_ids, get_filter_ranges(filter_range_file))
+        keep = _range_mask(unique_snp_ids, filter_ranges(filter_range_file))
 
         logger.info(
             f"Retaining {100.0 * np.mean(keep):.2f}% of snps based on input "
@@ -568,6 +645,14 @@ def load_input_data(
             f"{100.0 * top_umis / total_umis:.3f} [%]."
         )
 
+    # NB `run_cnaster` never passes `normal_idx_file`, so the key a user sets
+    #    reached neither the annotation nor the candidates (#479); read it from
+    #    the configuration when the argument is absent.
+    if normal_idx_file is None:
+        normal_idx_file = getattr(
+            getattr(config, "preprocessing", None), "normalidx_file", None
+        )
+
     if normal_idx_file is not None:
         normal_barcodes = (
             pd.read_csv(normal_idx_file, header=None).iloc[:, 0].to_numpy()
@@ -583,6 +668,11 @@ def load_input_data(
             "normal"
         )
 
+    NORMAL_SPOTS.clear()
+
+    if normal_idx_file is not None:
+        NORMAL_SPOTS.append(adata.obs["tumor_annotation"].to_numpy() == "normal")
+
     if adata.layers["count"].shape[0] != cell_snp_Aallele.shape[0]:  # invariant
         msg = 'expected adata.layers["count"].shape[0] == cell_snp_Aallele.shape[0]'
         raise AssertionError(msg)
@@ -597,6 +687,20 @@ def load_input_data(
     #    one live consumer -- `filter_normal_diffexp` -- opens with
     #    `anndata.AnnData(exp_counts)` and `exp_counts.values`, which makes it
     #    dense again. Under `sparse_counts` the matrix is handed back instead.
+    stored = adata.layers["count"]
+
+    if not sparse_counts and sp.issparse(stored):
+        # NB `cnaster`'s dense `int64` layer, built once (#488). The values
+        #    are the sparse ones: a structural zero is not `NaN` and truncates
+        #    to zero, so densifying after the cast and the scaling equals
+        #    casting and scaling the dense array.
+        dense = adata.layers["count"].toarray()
+
+        if adata.is_view:
+            adata = adata.copy()
+
+        adata.layers["count"] = dense
+
     if sparse_counts:
         # NB the layer's own format, unconverted. `cnaster` builds the frame
         #    from CSC because `from_spmatrix` wants a column store; the one
@@ -605,7 +709,7 @@ def load_input_data(
         exp_counts = adata.layers["count"]
     else:
         exp_counts = pd.DataFrame.sparse.from_spmatrix(
-            sp.csc_matrix(adata.layers["count"]),
+            sp.csc_matrix(stored),
             index=adata.obs.index,
             columns=adata.var.index,
         )

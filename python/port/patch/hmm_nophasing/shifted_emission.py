@@ -12,16 +12,18 @@ This folds it in:
     \exp(\theta_i) \longrightarrow \exp(\theta_i - \log Z_{c(g)})
 
 with :math:`\log Z_c` the quantity `cnaster`'s own `compute_logmu_shifts`
-returns. **Upstream's function is called, not reimplemented** -- the patch
-applies a quantity the dependency defines rather than deriving a second one
-that would then need refereeing against the first.
+defines. **Its definition is kept, and its function is not called**: `port`'s
+`shifts` computes the same quantity per clone, for the two reasons below, and
+`np.repeat` of it recovers upstream's array bitwise.
 
-## Off by default, because this changes every fitted RDR parameter
+## A class flag, because this changes every fitted RDR parameter
 
 `CLAUDE.md` forbids a silent behaviour change and enabling the shift is one:
-it debiases :math:`\log\mu` and every downstream number moves. Off, the call
-goes to `cnaster`'s own coded emission unchanged, which is the path
-`tests/test_buffered_emission.py` pins bitwise. The flag is a class
+it debiases :math:`\log\mu` and every downstream number moves. The class
+defaults it off; `run_cnaster_port` turns it on unless `--no-shift` is given
+(`port.pipeline.SHIFT_SWAPS`). Off, the call goes to `cnaster`'s own coded
+emission unchanged -- the path `tests/test_buffered_emission.py` pins
+bitwise -- or to sal's where `emission_kernels` is `"sal"`. The flag is a class
 attribute because `port` does not call this method -- `optimize_params` does,
 from inside `cnaster` -- so a keyword would have to be threaded through a
 function this repository does not replace.
@@ -87,14 +89,17 @@ from math import exp
 from typing import Any, NamedTuple
 
 import numpy as np
-from cnaster.config import get_global_config
+from cnaster.config import get_global_config, start_time
 from cnaster.hmm_nophasing import _bb_logpmf_1d, _nb_logpmf_1d
 from cnaster.hmm_nophasing import hmm_nophasing as UPSTREAM
+from cnaster.logger import get_logger
 from sal.ragged import Ragged
 
 from port.patch.hmm_nophasing.gradient import EmGradient, analytic_bfgs
 from port.patch.hmm_nophasing.logmu_shift import shifts as logmu_shifts
 from port.patch.plotting.clone_paths import state_vector
+
+logger = get_logger(__name__, start_time=start_time)
 
 __all__ = [
     "UPSTREAM",
@@ -442,6 +447,8 @@ class hmm_nophasing(UPSTREAM):  # type: ignore[misc]
         # NB the M step's gradient in closed form, through `minimize`'s
         #    callable `method` (#433); positional extras leave the fit as is,
         #    since the settings the gradient reads would then be unnamed.
+        #    BFGS, as `cnaster` runs it, whatever `hmm.solver` states:
+        #    `configured_method` honours it and is not installed (#448).
         if (
             self.analytic_gradient
             and not args
@@ -539,6 +546,25 @@ class hmm_nophasing(UPSTREAM):  # type: ignore[misc]
             or clone_lengths is None
             or decode is None
         ):
+            if self.apply_logmu_shift:
+                # NB expected with the shift on: the BAF stage has no
+                #    exposure, and a first iteration has no decode yet. Said
+                #    at debug, and the exposure withheld from upstream so it
+                #    does not warn "not currently supported" for a shift that
+                #    applies from the next call (#362).
+                logger.debug(
+                    "logmu shift not applied on this call: %s",
+                    ", ".join(
+                        name
+                        for name, missing in (
+                            ("no exposure", normal_log_lambda is None),
+                            ("no clone lengths", clone_lengths is None),
+                            ("no decode yet", decode is None),
+                        )
+                        if missing
+                    ),
+                )
+                normal_log_lambda = None
             if self.emission_kernels == "sal":
                 from port.patch.hmm_nophasing.dense_emission import coded_emission
 

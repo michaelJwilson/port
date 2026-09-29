@@ -15,12 +15,16 @@ its last gene's `END`, where `cnaster` reads the last row's, a SNP.
 
 from __future__ import annotations
 
+import contextlib
 import functools
+from collections.abc import Iterator
 from typing import Any
 
 import numpy as np
 
-__all__ = ["get_sitewise_transmat"]
+__all__ = ["composable_switch", "get_sitewise_transmat"]
+
+_COMPOSABLE: list[bool] = [False]
 
 
 def get_sitewise_transmat(
@@ -39,8 +43,24 @@ def get_sitewise_transmat(
     genetic_map = _genetic_map(str(geneticmap_file))
 
     return segments.log_phase_switch(
-        genetic_map, nu, logphase_shift, get_global_config().phasing.min_prob
+        genetic_map,
+        nu,
+        logphase_shift,
+        get_global_config().phasing.min_prob,
+        composable=_COMPOSABLE[0],
     )
+
+
+@contextlib.contextmanager
+def composable_switch() -> Iterator[None]:
+    """#449's composable phase-switch law for the block; off by default."""
+    previous = _COMPOSABLE[0]
+    _COMPOSABLE[0] = True
+
+    try:
+        yield
+    finally:
+        _COMPOSABLE[0] = previous
 
 
 def _genetic_map(path: str) -> Any:

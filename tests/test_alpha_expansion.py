@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
+from port.extensions.label_solver import SOLVERS, Solver, sweep_for
 from port.patch.icm.alpha_expansion import (
     alpha_expansion_sweep,
     potts_energy,
@@ -298,3 +299,67 @@ def test_the_sweep_moves_on_a_forbidding_field(scale: float) -> None:
             moved = labelling.copy()
             moved[site] = label
             assert potts_energy(field, graph, moved, beta) >= here - 1e-9
+
+
+@pytest.mark.analytic
+@pytest.mark.parametrize("name", SOLVERS)
+@pytest.mark.parametrize("scale", [1.0, 1000.0])
+def test_every_solver_row_reaches_a_local_minimum_on_a_forbidding_field(
+    name: Solver, scale: float
+) -> None:
+    """Each `PORT_LABEL_SOLVER` row ends at a single-site local minimum (#466).
+
+    A row that hands sal's solvers a field holding `-inf` meets the no-move
+    defect #462 worked around in `alpha_expansion_sweep` alone (#373 B0), and
+    returns a labelling some allowed single-site move improves. The floor is
+    off (`min_clone_spots = 1`), so the property is the descent's own.
+    """
+    field, graph, start, beta = _forbidding(20, 5, 466, scale)
+    labelling = start.copy()
+    sweep_for(name)(field, graph, labelling, beta, min_clone_spots=1)
+
+    assert np.isfinite(field[np.arange(labelling.size), labelling]).all()
+
+    here = potts_energy(field, graph, labelling, beta)
+    for site in range(labelling.size):
+        for label in np.flatnonzero(np.isfinite(field[site])):
+            moved = labelling.copy()
+            moved[site] = label
+            assert potts_energy(field, graph, moved, beta) >= here - 1e-9, (
+                name,
+                site,
+                label,
+            )
+
+
+EXPANDING: tuple[Solver, ...] = (
+    "alpha",
+    "alpha-rust",
+    "alpha-rust-icm",
+    "alpha-rust-merge",
+    "alpha-rust-fuse-merge",
+)
+"""The rows whose first step is alpha expansion from the caller's labelling."""
+
+
+@pytest.mark.analytic
+@pytest.mark.parametrize("name", EXPANDING)
+def test_every_expanding_row_ends_at_or_below_the_expansion(name: Solver) -> None:
+    """A row that expands first, then descends or fuses, ends no higher (#466).
+
+    Descent, merge and fusion never raise the energy, so each row ends at or
+    below `alpha_expansion_sweep`'s minimum from the same start. A row that
+    hands sal the raw `-inf` field expands nowhere (#373 B0) and ends at the
+    descent's own minimum instead: on this field `alpha-rust-merge` did, at
+    -497.58 against -501.14.
+    """
+    field, graph, start, beta = _forbidding(20, 5, 466, 1.0)
+    expanded = start.copy()
+    alpha_expansion_sweep(field, graph, expanded, beta)
+    labelling = start.copy()
+    sweep_for(name)(field, graph, labelling, beta, min_clone_spots=1)
+
+    assert (
+        potts_energy(field, graph, labelling, beta)
+        <= potts_energy(field, graph, expanded, beta) + 1e-9
+    )

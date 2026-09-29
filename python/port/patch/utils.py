@@ -46,11 +46,10 @@ derivation puts a genome at 2.9e5 segments (`docs/audit-paper-internal.md`
 is **keep rasterizing**, and it is a decision rather than a default because
 nothing had measured it.
 
-**This is the one patch in `port` that changes its output**, and now in two
-ways: a coarser raster, and gridlines that paint under the data instead of
-over it. Every other replacement reproduces `cnaster` bitwise, which is why
-this is not in `port.pipeline.SWAPS` and installs only under
-`run_cnaster_port --figure-swaps`. At `dpi=300, group_rasters=False` it is
+**This patch changes its output**, in two ways: a coarser raster, and
+gridlines that paint under the data instead of over it. That is why it is in
+`port.pipeline.FIGURE_SWAPS` rather than `SWAPS`, which `run_cnaster_port`
+installs unless `--no-figure-swaps` or `--no-patch` is given. At `dpi=300, group_rasters=False` it is
 `cnaster`'s function byte for byte, which `tests/test_figure_dpi.py` holds it
 to.
 
@@ -216,7 +215,7 @@ def write_fig(
 ) -> None:
     """What `cnaster.utils.write_fig` does, at `FIGURE_DPI` and one group per axes.
 
-    A drop-in: same name, `cnaster`'s signature with one keyword appended,
+    A drop-in: same name, `cnaster`'s signature with two keywords appended,
     same side effects -- the figure is written and closed. Two differences,
     and each is a default a caller can put back:
 
