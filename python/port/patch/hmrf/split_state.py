@@ -113,7 +113,7 @@ def _two_means(values: np.ndarray) -> tuple[float, float, int, int]:
 
 
 def split_init(
-    result: Any,
+    res: Any,
     single_X: np.ndarray,
     lengths: Sequence[int],
     single_base_nb_mean: np.ndarray,
@@ -122,11 +122,11 @@ def split_init(
 
     Returns `(log_mu, p_binom, split, freed)`, each array `(n_states, 1)`.
     """
-    log_mu = np.asarray(result["new_log_mu"], dtype=np.float64).reshape(-1)
-    p_binom = np.asarray(result["new_p_binom"], dtype=np.float64).reshape(-1)
+    log_mu = np.asarray(res["new_log_mu"], dtype=np.float64).reshape(-1)
+    p_binom = np.asarray(res["new_p_binom"], dtype=np.float64).reshape(-1)
     n_states = log_mu.size
-    path = np.asarray(result["pred_cnv"]) % n_states
-    assignment = np.asarray(result["new_assignment"])
+    path = np.asarray(res["pred_cnv"]) % n_states
+    assignment = np.asarray(res["new_assignment"])
     labels = np.unique(assignment)
 
     if path.ndim != 2 or labels.size != path.shape[1]:
