@@ -1,4 +1,11 @@
-"""CalicoST's Neyman-Pearson merge of similar clones, which `cnaster` disabled (#497).
+"""CalicoST's Neyman-Pearson merge of similar clones, which `cnaster` disabled (#497): sandbox.
+
+**Set aside, not installed by `run_cnaster_port`.** Measured under `--sal`
+before it moved here: `dev_tree` 60 x 50 r0 clone ARI 0.9996 -> 1.0, CalicoST
+easy 0.9861 either way, hard 0.8652 (5 clones) either way -- the hard RDR
+split kept by 2- and 3-bin events of 17.3 and 7.5 nats per bin (#500). Run it
+with `python -m port.sandbox.np_merge [run_cnaster_port arguments]`, which
+enters :func:`np_merge` around the entry point.
 
 After each clone stage CalicoST merges clones whose decoded copy states agree
 wherever the difference is long enough to test
@@ -72,14 +79,48 @@ def installed() -> bool:
 
 @contextlib.contextmanager
 def np_merge() -> Iterator[None]:
-    """Run the merge before `cnaster`'s minimum-size merge for the block."""
+    """Run the merge before `cnaster`'s minimum-size merge for the block.
+
+    Installs its own three bindings, so nothing outside the sandbox names it:
+    `cnaster.hmrf.merge_by_minspots` at every site that bound it, and
+    `port.patch.hmrf`'s `run_core_inference` and `reindex_clones`, wrapped to
+    hold the fit's counts and hand back the read-depth stage's merged clones.
+    Entered before `run_cnaster_port` installs its swaps, the wrapped names
+    are the ones those swaps resolve.
+    """
+    from port.patch import hmrf
+    from port.pipeline import Swap, patched
+
     previous = _INSTALLED[0]
+    fit, reindex = hmrf.run_core_inference, hmrf.reindex_clones
+
+    def run_core_inference(*args: Any, **kwargs: Any) -> Any:
+        remember(
+            args[0] if args else kwargs.get("single_X"),
+            args[2] if len(args) > 2 else kwargs.get("single_base_nb_mean"),
+            args[3] if len(args) > 3 else kwargs.get("single_total_bb_RD"),
+            str(kwargs.get("params", "")),
+        )
+        return fit(*args, **kwargs)
+
+    def reindex_clones(res_combine: Any, *args: Any, **kwargs: Any) -> Any:
+        return reindex(taken(res_combine), *args, **kwargs)
+
     _INSTALLED[0] = True
+    hmrf.run_core_inference, hmrf.reindex_clones = run_core_inference, reindex_clones
+    swap = Swap(
+        "cnaster.hmrf",
+        "merge_by_minspots",
+        "port.sandbox.np_merge.merge:merge_by_minspots",
+        497,
+    )
 
     try:
-        yield
+        with patched((swap,)):
+            yield
     finally:
         _INSTALLED[0] = previous
+        hmrf.run_core_inference, hmrf.reindex_clones = fit, reindex
         _INPUTS.clear()
         _PENDING.clear()
 
