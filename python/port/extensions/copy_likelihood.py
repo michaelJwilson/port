@@ -33,6 +33,7 @@ from __future__ import annotations
 import contextlib
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
+from functools import lru_cache
 from typing import Any, Literal
 
 import numpy as np
@@ -48,6 +49,7 @@ __all__ = [
     "captured_normal",
     "lattice_decode",
     "shared_decode",
+    "viterbi_oracle",
 ]
 
 PARSIMONY = 0.5
@@ -104,6 +106,10 @@ def _emission(
     """NB + BB log pmf per bin, in `port.extensions.jax_hmm.emission`'s terms.
 
     `alpha = 0` is the Poisson and `tau = inf` the binomial, exactly.
+    `log_rate` and `p` broadcast against the bins: a leading state axis gives
+    every state's row at once. The terms that do not depend on the state are
+    computed once, in the order the sum reads them, so each element is the
+    per-state expression's bitwise (#512).
     """
     x = bulk.counts_nb[bins]
     exposure = bulk.base_nb_mean[bins]
@@ -117,14 +123,11 @@ def _emission(
         else:
             size = 1.0 / max(bulk.alpha, 1e-10)
             success = 1.0 / (1.0 + bulk.alpha * mean)
+            fixed = gammaln(x + size) - gammaln(size) - gammaln(x + 1.0)
             depth = np.where(
                 mean <= 0.0,
                 0.0,
-                gammaln(x + size)
-                - gammaln(size)
-                - gammaln(x + 1.0)
-                + size * np.log(success)
-                + x * np.log1p(-success),
+                fixed + size * np.log(success) + x * np.log1p(-success),
             )
 
     k = bulk.counts_bb[bins]
@@ -177,13 +180,16 @@ def _with(bulk: Pseudobulk, alpha: float, tau: float) -> Pseudobulk:
     )
 
 
-def _viterbi(
+def viterbi_oracle(
     log_emission: np.ndarray,
     log_transmat: np.ndarray,
     log_startprob: np.ndarray,
     lengths: np.ndarray,
 ) -> tuple[np.ndarray, float]:
-    """`(n_states, n_obs)` emissions; the best path, restarted at each length."""
+    """`(n_states, n_obs)` emissions; the best path, restarted at each length.
+
+    The NumPy recursion :func:`_viterbi` compiles, kept as its oracle (#512).
+    """
     path = np.empty(log_emission.shape[1], dtype=np.int64)
     total = 0.0
     start = 0
@@ -208,6 +214,93 @@ def _viterbi(
         start = stop
 
     return path, total
+
+
+@lru_cache(maxsize=1)
+def _viterbi_kernel() -> Callable[..., float]:
+    """:func:`viterbi_oracle`'s recursion, compiled once (#512).
+
+    The same additions in the same order, and the first maximum on a tie as
+    `np.argmax` takes it, so the path and the score are the oracle's bitwise.
+    """
+    from numba import njit
+
+    @njit(cache=True)
+    def kernel(
+        log_emission: np.ndarray,
+        log_transmat: np.ndarray,
+        log_startprob: np.ndarray,
+        lengths: np.ndarray,
+        path: np.ndarray,
+    ) -> float:
+        n_states = log_transmat.shape[0]
+        total = 0.0
+        start = 0
+        delta = np.empty(n_states)
+        moved = np.empty(n_states)
+
+        for length in lengths:
+            stop = start + length
+            back = np.empty((stop - start, n_states), dtype=np.int64)
+
+            for j in range(n_states):
+                delta[j] = log_startprob[j] + log_emission[j, start]
+
+            for t in range(start + 1, stop):
+                for j in range(n_states):
+                    best = 0
+                    top = delta[0] + log_transmat[0, j]
+
+                    for i in range(1, n_states):
+                        score = delta[i] + log_transmat[i, j]
+                        if score > top:
+                            top = score
+                            best = i
+
+                    back[t - start, j] = best
+                    moved[j] = top + log_emission[j, t]
+
+                for j in range(n_states):
+                    delta[j] = moved[j]
+
+            last = 0
+            for j in range(1, n_states):
+                if delta[j] > delta[last]:
+                    last = j
+
+            path[stop - 1] = last
+            total += delta[last]
+
+            for t in range(stop - 1, start, -1):
+                path[t - 1] = back[t - start, path[t]]
+
+            start = stop
+
+        return total
+
+    return kernel
+
+
+def _viterbi(
+    log_emission: np.ndarray,
+    log_transmat: np.ndarray,
+    log_startprob: np.ndarray,
+    lengths: np.ndarray,
+) -> tuple[np.ndarray, float]:
+    """`(n_states, n_obs)` emissions; the best path, restarted at each length.
+
+    Compiled (:func:`_viterbi_kernel`); :func:`viterbi_oracle` is the NumPy
+    recursion it reproduces bitwise.
+    """
+    path = np.empty(log_emission.shape[1], dtype=np.int64)
+    total = _viterbi_kernel()(
+        np.ascontiguousarray(log_emission, dtype=np.float64),
+        np.ascontiguousarray(log_transmat, dtype=np.float64),
+        np.ascontiguousarray(log_startprob, dtype=np.float64),
+        np.asarray(lengths, dtype=np.int64),
+        path,
+    )
+    return path, float(total)
 
 
 @dataclass
@@ -241,9 +334,7 @@ def _log_emissions(
     """`(n_states, n_obs)` plus the prior, `-1e10` where a state cannot emit."""
     log_mu, p = _parameters(states, purity)
     bins = np.arange(bulk.counts_nb.size)
-    emission = np.stack(
-        [_emission(log_mu[k] - shift, p[k], bulk, bins) for k in range(len(states))]
-    )
+    emission = _emission((log_mu - shift)[:, None], p[:, None], bulk, bins)
     emission = np.where(np.isfinite(emission), emission, -1e10)
     return np.asarray(emission + _prior(states, parsimony)[:, None])
 
