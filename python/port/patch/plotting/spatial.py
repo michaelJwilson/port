@@ -180,6 +180,7 @@ def plot_clones_spatial(
     base_width: float = 4,
     base_height: float = 4,
     palette: str = "rocket",
+    *,
     sample_layout: tuple[int, int] | None = None,
 ) -> Any:
     """Upstream's signature and page, each spot a tile of `TILE` the pitch.

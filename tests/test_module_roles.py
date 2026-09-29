@@ -91,6 +91,7 @@ ROLES: dict[str, Role] = {
     "port.patch.spatial": "row",
     "port.patch.utils": "row",
     # patch: helpers
+    "port.patch._signature": "row-helper",
     "port.patch.hmm_initialize.distinct": "row-helper",
     "port.patch.hmm_initialize.sal_mixture": "row-helper",
     "port.patch.hmm_nophasing.dense_emission": "row-helper",

@@ -32,6 +32,8 @@ from cnaster.spatial import (
     initialize_rdr_clone_refininement as UPSTREAM,
 )
 
+from port.patch._signature import as_upstream
+
 __all__ = [
     "MASK_PENALTY",
     "UPSTREAM",
@@ -58,9 +60,10 @@ only through the field; `cnaster`'s ICM re-applies it as `-inf` from
 _KEPT: list[np.ndarray] = []
 
 
-def initialize_rdr_clone_refininement(*args: Any, **kwargs: Any) -> Any:
+@as_upstream(UPSTREAM)
+def initialize_rdr_clone_refininement(arguments: dict[str, Any]) -> Any:
     """Upstream's refinement start, with its allowed-clone mask kept."""
-    assignment, allowed, total = UPSTREAM(*args, **kwargs)
+    assignment, allowed, total = UPSTREAM(**arguments)
 
     _KEPT.clear()
     _KEPT.append(np.asarray(allowed, dtype=bool))

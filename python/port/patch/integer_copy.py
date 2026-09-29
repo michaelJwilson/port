@@ -49,7 +49,10 @@ import contextlib
 from collections.abc import Iterator
 from typing import Any
 
+import cnaster.integer_copy
 import numpy as np
+
+from port.patch._signature import as_upstream
 
 __all__ = [
     "DECODED",
@@ -340,31 +343,39 @@ def decode_clone(
     return PairsByBin(states, bins, path), -decoded.log_likelihood, ploidy
 
 
-def hill_climbing_integer_copynumber_oneclone(
-    new_log_mu: Any,
-    base_nb_mean: Any,  # noqa: ARG001 -- cnaster's positional; the capture carries it
-    new_p_binom: Any,
-    pred_cnv: Any,
-    max_allele_copy: int = 5,
-    max_total_copy: int = 6,
-    **ignored: Any,  # noqa: ARG001 -- cnaster's other keywords, unused here
-) -> Any:
-    """`cnaster`'s name, decoding by :func:`decode_clone`."""
-    _, total = _caps(max_allele_copy, max_total_copy)
+@as_upstream(cnaster.integer_copy.hill_climbing_integer_copynumber_oneclone)
+def hill_climbing_integer_copynumber_oneclone(arguments: dict[str, Any]) -> Any:
+    """`cnaster`'s name and signature, decoding by :func:`decode_clone`.
 
-    return decode_clone(new_log_mu, new_p_binom, pred_cnv, total)
+    `base_nb_mean` and the hill climb's own keywords are accepted and unused:
+    the capture carries the fit the decode reads.
+    """
+    _, total = _caps(
+        arguments.get("max_allele_copy", 5), arguments.get("max_total_copy", 6)
+    )
+
+    return decode_clone(
+        arguments["new_log_mu"],
+        arguments["new_p_binom"],
+        arguments["pred_cnv"],
+        total,
+    )
 
 
-def hill_climbing_integer_copynumber_fixdiploid_milp(
-    new_log_mu: Any,
-    base_nb_mean: Any,  # noqa: ARG001 -- cnaster's positional; the capture carries it
-    new_p_binom: Any,
-    pred_cnv: Any,
-    max_allele_copy: int = 5,
-    max_total_copy: int = 6,
-    **ignored: Any,  # noqa: ARG001 -- cnaster's other keywords, unused here
-) -> Any:
-    """`cnaster`'s name, decoding by :func:`decode_clone`."""
-    _, total = _caps(max_allele_copy, max_total_copy)
+@as_upstream(cnaster.integer_copy.hill_climbing_integer_copynumber_fixdiploid_milp)
+def hill_climbing_integer_copynumber_fixdiploid_milp(arguments: dict[str, Any]) -> Any:
+    """`cnaster`'s name and signature, decoding by :func:`decode_clone`.
 
-    return decode_clone(new_log_mu, new_p_binom, pred_cnv, total)
+    `base_nb_mean` and the hill climb's own keywords are accepted and unused:
+    the capture carries the fit the decode reads.
+    """
+    _, total = _caps(
+        arguments.get("max_allele_copy", 5), arguments.get("max_total_copy", 6)
+    )
+
+    return decode_clone(
+        arguments["new_log_mu"],
+        arguments["new_p_binom"],
+        arguments["pred_cnv"],
+        total,
+    )

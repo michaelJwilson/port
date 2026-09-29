@@ -41,6 +41,7 @@ point calling the original.
 
 from __future__ import annotations
 
+import functools
 import sys
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -50,6 +51,7 @@ from typing import Any
 
 __all__ = [
     "COPY_SWAPS",
+    "FIGURE_DPI",
     "FIGURE_SWAPS",
     "NP_MERGE_SWAPS",
     "PLOT_OFF_SWAPS",
@@ -82,6 +84,14 @@ class Swap:
 
     ticket: int
     """The issue whose measurement justifies the replacement."""
+
+    options: tuple[tuple[str, Any], ...] = ()
+    """Keywords bound into the replacement at install (#517).
+
+    A replacement takes `cnaster`'s signature and defaults; what `port`
+    changes is a keyword bound here, so the table rather than a module
+    global says what an installed row does.
+    """
 
 
 @dataclass(frozen=True)
@@ -236,8 +246,33 @@ a figure written at half the dpi is a different file by design, not a fix.
 """
 
 
+FIGURE_DPI = 150
+"""What `FIGURE_SWAPS` binds `write_fig`'s `dpi` to, against `cnaster`'s 300 (#195).
+
+Halving it quarters the raster: a 20x10 inch panel goes 6,000 x 3,000 pixels
+to 3,000 x 1,500, 72 MB of RGBA to 18 MB. Measured on one figure with four
+rasterized collections, written to PDF:
+
+    dpi=300, tight bbox -- cnaster   2,033 ms   35.1 MB
+    dpi=150, tight bbox                692 ms    9.9 MB   2.9x
+    dpi=150, no tight bbox             489 ms    9.8 MB   4.2x
+    dpi=300, tight, not rasterized   1,379 ms    2.1 MB
+
+150 rather than lower because it is the floor at which a 20-inch panel still
+carries 3,000 pixels across, which is more than any screen shows it at and
+more than a page prints it at. Lower is available and is a judgement about
+the figures rather than about the arithmetic, so it is left to whoever is
+reading them.
+"""
+
 FIGURE_SWAPS: tuple[Swap, ...] = (
-    Swap("cnaster.utils", "write_fig", "port.patch.utils:write_fig", 195),
+    Swap(
+        "cnaster.utils",
+        "write_fig",
+        "port.patch.utils:write_fig",
+        195,
+        (("dpi", FIGURE_DPI), ("group_rasters", True)),
+    ),
     Swap(
         "cnaster.plot_genomic",
         "plot_clones_genomic",
@@ -271,7 +306,7 @@ points are, rather than at the pinned `mu` (#299); `plot_clones_spatial`
 tiles each spot at 0.85 of the lattice pitch rather than a dot 0.53 of it
 across (#309); `plot_copy_number_profile` draws one row per clone, and
 `plot_ascn_legend` is its legend (#309). That last row is reached by no live
-call: `cnaster`'s only caller is the function the row above replaces (#466). `write_fig` carries two defaults `cnaster` does not:
+call: `cnaster`'s only caller is the function the row above replaces (#466). `write_fig` is installed with two options bound:
 `dpi=150`, and one rasterizing group per axes rather than the two a
 gridline splits `cnaster`'s runs into. Together they
 take a run's plotting from 20.34 s to 3.84 s and its renderer buffers from
@@ -446,6 +481,18 @@ def _resolve(target: str) -> Any:
     return getattr(sys.modules[module_name], attribute)
 
 
+def _replacement(swap: Swap) -> Any:
+    """What a row installs: its replacement, with its options bound."""
+    replacement = _resolve(swap.replacement)
+
+    if not swap.options:
+        return replacement
+
+    bound = functools.partial(replacement, **dict(swap.options))
+    functools.update_wrapper(bound, replacement)
+    return bound
+
+
 def _bound_to(original: Any, name: str) -> list[ModuleType]:
     """Every imported module whose `name` is still bound to `original`.
 
@@ -486,7 +533,7 @@ def install(swaps: tuple[Swap, ...] = SWAPS) -> tuple[Site, ...]:
     for swap in swaps:
         __import__(swap.module)
         original = getattr(sys.modules[swap.module], swap.name)
-        replacement = _resolve(swap.replacement)
+        replacement = _replacement(swap)
 
         for module in _bound_to(original, swap.name):
             setattr(module, swap.name, replacement)
@@ -510,7 +557,7 @@ def patched(swaps: tuple[Swap, ...] = SWAPS) -> Iterator[tuple[Site, ...]]:
         for swap in swaps:
             __import__(swap.module)
             original = getattr(sys.modules[swap.module], swap.name)
-            replacement = _resolve(swap.replacement)
+            replacement = _replacement(swap)
 
             for module in _bound_to(original, swap.name):
                 undo.append((module, swap.name, original))

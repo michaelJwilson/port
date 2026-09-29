@@ -73,25 +73,6 @@ from cnaster.logger import get_logger
 
 logger = get_logger(__name__, start_time=start_time)
 
-FIGURE_DPI = 150
-"""What a figure is written at, against `cnaster`'s 300.
-
-Halving it quarters the raster: a 20x10 inch panel goes 6,000 x 3,000 pixels
-to 3,000 x 1,500, 72 MB of RGBA to 18 MB. Measured on one figure with four
-rasterized collections, written to PDF:
-
-    dpi=300, tight bbox -- cnaster   2,033 ms   35.1 MB
-    dpi=150, tight bbox                692 ms    9.9 MB   2.9x
-    dpi=150, no tight bbox             489 ms    9.8 MB   4.2x
-    dpi=300, tight, not rasterized   1,379 ms    2.1 MB
-
-150 rather than lower because it is the floor at which a 20-inch panel still
-carries 3,000 pixels across, which is more than any screen shows it at and
-more than a page prints it at. Lower is available and is a judgement about
-the figures rather than about the arithmetic, so it is left to whoever is
-reading them.
-"""
-
 
 def collapse_rasterizing_groups(fig: Any, strategy: str = "sink") -> tuple[int, int]:
     """One rasterizing group per axes rather than two (#195 item 2).
@@ -209,21 +190,17 @@ def write_fig(
     fig: Any = None,
     transparent: bool = True,
     bbox_inches: str | None = "tight",
-    dpi: int = FIGURE_DPI,
-    group_rasters: bool = True,
+    dpi: int = 300,
+    *,
+    group_rasters: bool = False,
     group_strategy: str = "sink",
 ) -> None:
-    """What `cnaster.utils.write_fig` does, at `FIGURE_DPI` and one group per axes.
+    """What `cnaster.utils.write_fig` does, with rasterizing groups collapsed on request.
 
-    A drop-in: same name, `cnaster`'s signature with two keywords appended,
-    same side effects -- the figure is written and closed. Two differences,
-    and each is a default a caller can put back:
-
-    *   `dpi`, which no caller in `cnaster` overrides.
-    *   `group_rasters`, which collapses the rasterizing groups by
-        `group_strategy`. At `dpi=300, group_rasters=False` this is
-        `cnaster`'s function byte for byte, which is what
-        `tests/test_figure_dpi.py` holds it to.
+    A drop-in: `cnaster`'s signature and defaults, and at those defaults its
+    function byte for byte, which `tests/test_figure_dpi.py` holds it to.
+    `FIGURE_SWAPS` binds `dpi=FIGURE_DPI` and `group_rasters=True` at install
+    (#195, #517): `group_rasters` collapses the groups by `group_strategy`.
     """
     if fig is None:
         fig = plt.figure()
@@ -260,7 +237,13 @@ def write_fig(
     plt.close(fig)
 
 
-def discard_fig(opath: str, fig: Any = None, *_: Any, **__: Any) -> None:
+def discard_fig(
+    opath: str,
+    fig: Any = None,
+    transparent: bool = True,  # noqa: ARG001 -- cnaster's signature
+    bbox_inches: str | None = "tight",  # noqa: ARG001
+    dpi: int = 300,  # noqa: ARG001
+) -> None:
     """`write_fig` under `run_cnaster_port --no-plots` (#403): close, write nothing.
 
     Every figure a run draws is still built -- the plotting code runs, and a

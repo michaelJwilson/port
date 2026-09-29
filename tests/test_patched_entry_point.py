@@ -70,20 +70,8 @@ TABLES: dict[str, tuple[Swap, ...]] = {
 
 ROWS = [(table, swap) for table, swaps in TABLES.items() for swap in swaps]
 
-DEPARTURES: dict[tuple[str, str], str] = {
-    ("COPY_SWAPS", "hill_climbing_integer_copynumber_fixdiploid_milp"): "**ignored",
-    ("COPY_SWAPS", "hill_climbing_integer_copynumber_oneclone"): "**ignored",
-    ("FIGURE_SWAPS", "write_fig"): "dpi 300 -> 150; two positional options",
-    ("FIGURE_SWAPS", "plot_clones_genomic"): "figure, colour_by positional",
-    ("FIGURE_SWAPS", "plot_clones_spatial"): "sample_layout positional",
-    ("FIGURE_SWAPS", "plot_ascn_legend"): "span, title_on_edge positional",
-    ("NP_MERGE_SWAPS", "merge_by_minspots"): "**kwargs",
-    ("PLOT_OFF_SWAPS", "write_fig"): "*_, **__",
-    ("REFINEMENT_SWAPS", "initialize_rdr_clone_refininement"): "*args, **kwargs",
-    ("SHIFT_SWAPS", "run_core_inference"): "*args, **kwargs",
-    ("SHIFT_SWAPS", "reindex_clones"): "*args, **kwargs",
-}
-"""The rows that do not yet accept what they replace; #517 step 1 retires each.
+DEPARTURES: dict[tuple[str, str], str] = {}
+"""The rows that do not yet accept what they replace: none since #517 step 1.
 
 Declared rather than skipped, so the list can only shrink: an undeclared
 departure fails, and so does a declared one that has been fixed, until its

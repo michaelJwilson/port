@@ -342,6 +342,7 @@ def plot_ascn_legend(
     tick_len: float = 0.08,
     label_fontsize: float = 10,
     palette_name: str = "chisel_single",
+    *,
     span: float | None = None,
     title_on_edge: bool = False,
 ) -> Any:

@@ -45,6 +45,8 @@ import numpy as np
 from cnaster.hmrf import reindex_clones as UPSTREAM_REINDEX
 from cnaster.hmrf import run_core_inference as UPSTREAM
 
+from port.patch._signature import as_upstream
+
 __all__ = [
     "UPSTREAM",
     "ZERO_NORMAL_SHIFT",
@@ -154,7 +156,8 @@ def clone_shifts(
     return shifts
 
 
-def reindex_clones(res_combine: Any, *args: Any, **kwargs: Any) -> Any:
+@as_upstream(UPSTREAM_REINDEX)
+def reindex_clones(arguments: dict[str, Any]) -> Any:
     """Upstream's reindex, with the clones' shifts permuted alongside them.
 
     Upstream permutes the decode's columns and not `new_log_mu_shift`, so the
@@ -167,9 +170,9 @@ def reindex_clones(res_combine: Any, *args: Any, **kwargs: Any) -> Any:
 
     # NB the read-depth stage's merged clones, which `cnaster` computes and
     #    does not write (#497); `res_combine` itself where none is held.
-    res_combine = np_merge.taken(res_combine)
+    res_combine = arguments["res_combine"] = np_merge.taken(arguments["res_combine"])
     before = np.asarray(res_combine["pred_cnv"])
-    reindexed, posterior = UPSTREAM_REINDEX(res_combine, *args, **kwargs)
+    reindexed, posterior = UPSTREAM_REINDEX(**arguments)
     # NB by `__getitem__`: `cnaster`'s `CnaHMRFResult` has no `get`, and
     #    reading through `hasattr(res, "get")` left the shifts unpermuted on
     #    every real run (#501).
@@ -235,18 +238,19 @@ def shift_for(pred_cnv: Any) -> tuple[float, int | None]:
     return 0.0, None
 
 
-def run_core_inference(*args: Any, **kwargs: Any) -> Any:
+@as_upstream(UPSTREAM)
+def run_core_inference(arguments: dict[str, Any]) -> Any:
     """Upstream's inference, then the neutral pin when the fit was shifted."""
     from port.patch.hmm_initialize import distinct, sal_mixture
 
     # NB passed rather than rebound: upstream binds the initializer as a
     #    default argument (#348).
-    if sal_mixture.installed() and "hmm_initializer" not in kwargs:
+    if sal_mixture.installed() and "hmm_initializer" not in arguments:
         # NB the read-depth stage's start from `sal`'s mixture (#489); the
         #    BAF-only stage falls back to `distinct`'s inside it.
-        kwargs["hmm_initializer"] = sal_mixture.gmm_init
-    elif distinct.installed() and "hmm_initializer" not in kwargs:
-        kwargs["hmm_initializer"] = distinct.gmm_init
+        arguments["hmm_initializer"] = sal_mixture.gmm_init
+    elif distinct.installed() and "hmm_initializer" not in arguments:
+        arguments["hmm_initializer"] = distinct.gmm_init
 
     from port.extensions import np_merge
 
@@ -254,21 +258,21 @@ def run_core_inference(*args: Any, **kwargs: Any) -> Any:
     #    Neyman-Pearson merge (#497); held only while that merge is installed.
     if np_merge.installed():
         np_merge.remember(
-            args[0] if args else kwargs.get("single_X"),
-            args[2] if len(args) > 2 else kwargs.get("single_base_nb_mean"),
-            args[3] if len(args) > 3 else kwargs.get("single_total_bb_RD"),
-            str(kwargs.get("params", "")),
+            arguments.get("single_X"),
+            arguments.get("single_base_nb_mean"),
+            arguments.get("single_total_bb_RD"),
+            str(arguments.get("params", "")),
         )
 
-    result = UPSTREAM(*args, **kwargs)
+    result = UPSTREAM(**arguments)
 
-    hmmclass = kwargs.get("hmmclass")
+    hmmclass = arguments.get("hmmclass")
     shifted = bool(getattr(hmmclass, "apply_logmu_shift", False))
 
-    if shifted and "m" in str(kwargs.get("params", "")):
+    if shifted and "m" in str(arguments.get("params", "")):
         _NORMAL[:] = [pin_neutral(result)]
 
-        base = args[2] if len(args) > 2 else kwargs.get("single_base_nb_mean")
+        base = arguments.get("single_base_nb_mean")
 
         try:
             decoded = result["pred_cnv"] is not None

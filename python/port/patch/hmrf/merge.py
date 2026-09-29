@@ -18,17 +18,19 @@ from cnaster.config import start_time
 from cnaster.hmrf import merge_by_minspots as UPSTREAM
 from cnaster.logger import get_logger
 
+from port.patch._signature import as_upstream
+
 __all__ = ["UPSTREAM", "merge_by_minspots"]
 
 logger = get_logger(__name__, start_time=start_time)
 
 
-def merge_by_minspots(
-    assignment: Any, res: Any, single_total_bb_RD: Any, **kwargs: Any
-) -> Any:
+@as_upstream(UPSTREAM)
+def merge_by_minspots(arguments: dict[str, Any]) -> Any:
     """Upstream's minimum-size merge, after the Neyman-Pearson merge where installed."""
     from port.extensions import np_merge
 
+    assignment, res = arguments["assignment"], arguments["res"]
     held = np_merge._INPUTS
     source = res
 
@@ -86,7 +88,7 @@ def merge_by_minspots(
                 "Neyman-Pearson merge (#497) skipped: the decode's clones are not the assignment's."
             )
 
-    groups, result = UPSTREAM(assignment, res, single_total_bb_RD, **kwargs)
+    groups, result = UPSTREAM(**{**arguments, "assignment": assignment, "res": res})
 
     if np_merge.installed() and held and "m" in held["params"]:
         # NB the read-depth stage: `cnaster` drops what this returns (#497).

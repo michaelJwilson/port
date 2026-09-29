@@ -347,6 +347,7 @@ def plot_clones_genomic(
     plot_rdr_errors: str = "poisson",
     phased_integer_copies: bool = False,
     known_nb_baseline: np.ndarray | None = None,
+    *,
     figure: Any = None,
     colour_by: str | None = None,
 ) -> Any:
