@@ -21,7 +21,7 @@ STRESS = {"n_obs": 4000, "n_spots": 6000, "n_clones": 4}
 def _upstream() -> Callable[..., Any]:
     from cnaster.pseudobulk import merge_pseudobulk_by_index_mix
 
-    return merge_pseudobulk_by_index_mix
+    return merge_pseudobulk_by_index_mix  # type: ignore[no-any-return]
 
 
 def _blocked() -> Callable[..., Any]:
