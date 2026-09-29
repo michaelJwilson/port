@@ -45,8 +45,6 @@ error, not a fallback to another decoder.
 
 from __future__ import annotations
 
-import contextlib
-from collections.abc import Iterator
 from typing import Any
 
 import cnaster.integer_copy
@@ -59,7 +57,6 @@ __all__ = [
     "DECODERS",
     "PairsByBin",
     "configured_caps",
-    "copy_decoder",
     "decode_clone",
     "hill_climbing_integer_copynumber_fixdiploid_milp",
     "hill_climbing_integer_copynumber_oneclone",
@@ -127,31 +124,6 @@ _SHARED: dict[str, Any] = {}
 
 DECODERS = ("lattice", "shared")
 """`lattice`, the default (#370), then `shared` (#327)."""
-
-
-class _Selection:
-    """One mutable slot, so the module needs no `global` statement."""
-
-    name = "lattice"
-
-
-_DECODER = _Selection()
-
-
-@contextlib.contextmanager
-def copy_decoder(name: str) -> Iterator[None]:
-    """Decode by `name` for the block, refusing a name that is not one."""
-    if name not in DECODERS:
-        msg = f"copy decoder {name!r} is not one of {DECODERS}"
-        raise ValueError(msg)
-
-    previous = _DECODER.name
-    _DECODER.name = name
-
-    try:
-        yield
-    finally:
-        _DECODER.name = previous
 
 
 class PairsByBin(np.ndarray):
@@ -256,12 +228,17 @@ def _write_decode(decoded: Any, normal_clone: int) -> None:
 
 
 def decode_clone(
-    new_log_mu: Any, new_p_binom: Any, pred_cnv: Any, total: int
+    new_log_mu: Any,
+    new_p_binom: Any,
+    pred_cnv: Any,
+    total: int,
+    *,
+    decoder: str = "lattice",
 ) -> tuple[np.ndarray, float, int]:
     """One clone's `(copies, loss, ploidy)`, as `cnaster`'s decoders return them.
 
     Decoded once, from the captured fit, at the first clone's call, by the
-    selected decoder (:func:`copy_decoder`). `shared` returns its per-state
+    selected `decoder`. `shared` returns its per-state
     pairs to every clone; `lattice` returns this clone's :class:`PairsByBin`.
     `loss` is the negative log-likelihood reached; `ploidy` the median total
     copy over this clone's bins.
@@ -290,7 +267,9 @@ def decode_clone(
     path = np.asarray(pred_cnv, dtype=np.int64).reshape(-1) % log_mu.size
     key = id(_CAPTURED[0][3]) if _CAPTURED else id(clones)
 
-    decoder = _DECODER.name
+    if decoder not in DECODERS:
+        msg = f"copy decoder {decoder!r} is not one of {DECODERS}"
+        raise ValueError(msg)
 
     if (
         _SHARED.get("key") != key
@@ -343,12 +322,17 @@ def decode_clone(
     return PairsByBin(states, bins, path), -decoded.log_likelihood, ploidy
 
 
-@as_upstream(cnaster.integer_copy.hill_climbing_integer_copynumber_oneclone)
-def hill_climbing_integer_copynumber_oneclone(arguments: dict[str, Any]) -> Any:
+@as_upstream(
+    cnaster.integer_copy.hill_climbing_integer_copynumber_oneclone, decoder="lattice"
+)
+def hill_climbing_integer_copynumber_oneclone(
+    arguments: dict[str, Any], options: dict[str, Any]
+) -> Any:
     """`cnaster`'s name and signature, decoding by :func:`decode_clone`.
 
     `base_nb_mean` and the hill climb's own keywords are accepted and unused:
-    the capture carries the fit the decode reads.
+    the capture carries the fit the decode reads. `decoder` is one of
+    `DECODERS`; `run_cnaster_port --copy-decode` binds it at install.
     """
     _, total = _caps(
         arguments.get("max_allele_copy", 5), arguments.get("max_total_copy", 6)
@@ -359,15 +343,22 @@ def hill_climbing_integer_copynumber_oneclone(arguments: dict[str, Any]) -> Any:
         arguments["new_p_binom"],
         arguments["pred_cnv"],
         total,
+        decoder=options["decoder"],
     )
 
 
-@as_upstream(cnaster.integer_copy.hill_climbing_integer_copynumber_fixdiploid_milp)
-def hill_climbing_integer_copynumber_fixdiploid_milp(arguments: dict[str, Any]) -> Any:
+@as_upstream(
+    cnaster.integer_copy.hill_climbing_integer_copynumber_fixdiploid_milp,
+    decoder="lattice",
+)
+def hill_climbing_integer_copynumber_fixdiploid_milp(
+    arguments: dict[str, Any], options: dict[str, Any]
+) -> Any:
     """`cnaster`'s name and signature, decoding by :func:`decode_clone`.
 
     `base_nb_mean` and the hill climb's own keywords are accepted and unused:
-    the capture carries the fit the decode reads.
+    the capture carries the fit the decode reads. `decoder` is one of
+    `DECODERS`; `run_cnaster_port --copy-decode` binds it at install.
     """
     _, total = _caps(
         arguments.get("max_allele_copy", 5), arguments.get("max_total_copy", 6)
@@ -378,4 +369,5 @@ def hill_climbing_integer_copynumber_fixdiploid_milp(arguments: dict[str, Any]) 
         arguments["new_p_binom"],
         arguments["pred_cnv"],
         total,
+        decoder=options["decoder"],
     )

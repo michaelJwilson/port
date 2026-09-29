@@ -41,6 +41,7 @@ point calling the original.
 
 from __future__ import annotations
 
+import dataclasses
 import functools
 import sys
 from collections.abc import Iterator
@@ -66,6 +67,7 @@ __all__ = [
     "patched",
     "swap_sites",
     "warm",
+    "with_options",
 ]
 
 
@@ -449,8 +451,8 @@ CLI never did). Its only reader is port's `pipeline_clone_assignment`, so
 the call to `cnaster` (#135) the mask is not applied and the run says so.
 
 `--floor-merge`, also off by default, is the second half and needs no row:
-`port.patch.icm.floor.floor_merge()` makes `pipeline_clone_assignment` (in
-`SWAPS`) meet the clone-size floor smallest first, into each spot's best
+it binds `floor_merge=True` into `pipeline_clone_assignment` (in `SWAPS`),
+which then meets the clone-size floor smallest first, into each spot's best
 clone, at `hmrf.min_spots_per_clone`, instead of the sweep's all-at-once
 random reassignment at a fixed 200. It holds with or without the mask, and
 is refused and dropped exactly where the mask is.
@@ -479,6 +481,22 @@ def _resolve(target: str) -> Any:
     module_name, _, attribute = target.partition(":")
     __import__(module_name)
     return getattr(sys.modules[module_name], attribute)
+
+
+def with_options(
+    swaps: tuple[Swap, ...], replacement: str, **options: Any
+) -> tuple[Swap, ...]:
+    """`swaps`, with `options` bound into the rows that install `replacement`.
+
+    Keyed by the replacement rather than the `cnaster` name: two rows replace
+    `write_fig`, and an option belongs to one of them.
+    """
+    return tuple(
+        dataclasses.replace(swap, options=(*swap.options, *options.items()))
+        if swap.replacement == replacement
+        else swap
+        for swap in swaps
+    )
 
 
 def _replacement(swap: Swap) -> Any:

@@ -132,8 +132,8 @@ def test_a_mode_without_its_input_is_refused() -> None:
 
 
 @pytest.mark.infra
-def test_the_module_default_reaches_a_figure_and_falls_back_where_it_cannot() -> None:
-    """`COLOUR_BY = "states"` recolours the df_cnv figure; "integer" leaves a
+def test_the_preference_reaches_a_figure_and_falls_back_where_it_cannot() -> None:
+    """Preferring "states" recolours the df_cnv figure; "integer" leaves a
     figure without df_cnv coloured by state rather than refusing it."""
     import matplotlib as mpl
 
@@ -163,13 +163,8 @@ def test_the_module_default_reaches_a_figure_and_falls_back_where_it_cannot() ->
         plt.close(figure)
         return colours
 
-    try:
-        plot_genomic.COLOUR_BY = "states"
-        recoloured = drawn(df_cnv=instance["df_cnv"])
-        plot_genomic.COLOUR_BY = "integer"
-        fallback = drawn()
-    finally:
-        plot_genomic.COLOUR_BY = None
+    recoloured = drawn(df_cnv=instance["df_cnv"], preferred_colour_by="states")
+    fallback = drawn(preferred_colour_by="integer")
 
     np.testing.assert_array_equal(recoloured, drawn(df_cnv=None))
     np.testing.assert_array_equal(fallback, drawn(df_cnv=None))

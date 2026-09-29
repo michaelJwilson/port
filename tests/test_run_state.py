@@ -39,7 +39,6 @@ STATE: dict[str, Kind] = {
     "cnaster.hmm_initialize.GaussianMixture": "rebind",
     "port.extensions.copy_likelihood._CAPTURED": "run",
     "port.extensions.copy_likelihood._LENGTHS": "run",
-    "port.extensions.label_solver._SELECTED.name": "switch",
     "port.extensions.np_merge._INPUTS": "run",
     "port.extensions.np_merge._INSTALLED": "switch",
     "port.extensions.np_merge._PENDING": "run",
@@ -61,15 +60,9 @@ STATE: dict[str, Kind] = {
     "port.patch.hmrf.core_inference._PROPAGATED": "run",
     "port.patch.hmrf.refinement._KEPT": "run",
     "port.patch.hmrf.run_core_inference": "rebind",
-    "port.patch.icm.floor._INSTALLED": "switch",
     "port.patch.integer_copy.DECODED": "run",
-    "port.patch.integer_copy._DECODER.name": "switch",
     "port.patch.integer_copy._SHARED": "cache",
     "port.patch.io.NORMAL_SPOTS": "run",
-    "port.patch.plot_genomic.COLOUR_BY": "switch",
-    "port.patch.plotting.spatial.SAMPLE_LAYOUT": "switch",
-    "port.patch.recomb._COMPOSABLE": "switch",
-    "port.patch.utils._PNG_COPIES": "switch",
 }
 """Every name `port` writes after import, by kind. 12 switches (#517 C)."""
 

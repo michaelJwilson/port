@@ -45,6 +45,7 @@ from port.pipeline import (
     instrumented,
     patched,
     warm,
+    with_options,
 )
 
 
@@ -190,6 +191,15 @@ def _parser() -> argparse.ArgumentParser:
             "cap the configuration states, int_copy_num.max_total_copy (#313); "
             "cnaster's L1 decoders read no cap and decode under A + B <= 6. "
             "**On by default**, off with --no-patch."
+        ),
+    )
+    parser.add_argument(
+        "--png-copies",
+        action="store_true",
+        help=(
+            "write a PNG without metadata beside each PDF, so two runs of the "
+            "same code write the same bytes (docs/plots, #452). Needs "
+            "--figure-swaps."
         ),
     )
     parser.add_argument(
@@ -465,33 +475,39 @@ def main(argv: Sequence[str] | None = None) -> int:
             #    swap is a `SHIFT_SWAPS` row, so `--no-patch --shift` reads it.
             stack.enter_context(sal_emission())
 
-        if arguments.sal:
-            from port.extensions.sal import sal
-
-            if arguments.no_patch:
-                selected = tuple(
-                    swap for swap in SWAPS if swap.name == "pipeline_clone_assignment"
-                )
+        if arguments.sal and arguments.no_patch:
+            selected = tuple(
+                swap for swap in SWAPS if swap.name == "pipeline_clone_assignment"
+            )
         if figures:
             selected = selected + FIGURE_SWAPS
 
             from port.extensions.figure_style import figure_font
 
             stack.enter_context(figure_font())
+        if arguments.png_copies:
+            if not figures:
+                _parser().error("--png-copies needs the figure swaps")
+
+            selected = with_options(
+                selected, "port.patch.utils:write_fig", png_copy=True
+            )
         if arguments.sample_layout is not None:
             if not figures:
                 _parser().error("--sample-layout needs the figure swaps")
 
-            from port.patch.plotting import spatial
-
-            stack.callback(setattr, spatial, "SAMPLE_LAYOUT", spatial.SAMPLE_LAYOUT)
-            spatial.SAMPLE_LAYOUT = arguments.sample_layout
+            selected = with_options(
+                selected,
+                "port.patch.plotting:plot_clones_spatial",
+                preferred_sample_layout=arguments.sample_layout,
+            )
 
         if arguments.genomic_colours is not None:
-            from port.patch import plot_genomic
-
-            stack.callback(setattr, plot_genomic, "COLOUR_BY", plot_genomic.COLOUR_BY)
-            plot_genomic.COLOUR_BY = arguments.genomic_colours
+            selected = with_options(
+                selected,
+                "port.patch.plot_genomic:plot_clones_genomic",
+                preferred_colour_by=arguments.genomic_colours,
+            )
         # NB on unless refused, and off with `--no-patch` like the figures: a
         #    baseline arm decodes under `cnaster`'s caps.
         copy_cap = (
@@ -532,9 +548,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             selected = selected + REFINEMENT_SWAPS
             stack.callback(forget)
         if floor:
-            from port.patch.icm.floor import floor_merge
-
-            stack.enter_context(floor_merge())
+            selected = with_options(
+                selected,
+                "port.patch.hmrf:pipeline_clone_assignment",
+                floor_merge=True,
+            )
         np_merging = bool(
             arguments.sal if arguments.np_merge is None else arguments.np_merge
         )
@@ -568,10 +586,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         #    `run_core_inference`.
         if copy_cap:
             from port.extensions.copy_likelihood import capture
-            from port.patch.integer_copy import copy_decoder
 
             stack.enter_context(capture())
-            stack.enter_context(copy_decoder(arguments.copy_decode))
+
+            for swap in COPY_SWAPS:
+                selected = with_options(
+                    selected, swap.replacement, decoder=arguments.copy_decode
+                )
         if shift:
             from port.patch.hmm_nophasing import logmu_shift
 
@@ -579,7 +600,13 @@ def main(argv: Sequence[str] | None = None) -> int:
             stack.enter_context(logmu_shift())
 
         if arguments.sal:
-            stack.enter_context(sal(shift=shift))
+            from port.extensions.sal import sal_options
+
+            selected = with_options(
+                selected,
+                "port.patch.hmrf:pipeline_clone_assignment",
+                **sal_options(shift=shift),
+            )
 
             if arguments.no_patch:
                 print(

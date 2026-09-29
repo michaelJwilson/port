@@ -62,8 +62,6 @@ own it is a regression.
 
 from __future__ import annotations
 
-import contextlib
-from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
@@ -165,26 +163,6 @@ def collapse_rasterizing_groups(fig: Any, strategy: str = "sink") -> tuple[int, 
     return collapsed, folded
 
 
-_PNG_COPIES = [False]
-"""Whether `write_fig` also writes a PNG beside each PDF; see `png_copies`."""
-
-
-@contextlib.contextmanager
-def png_copies() -> Iterator[None]:
-    """`write_fig` writes `<name>.png` beside each `<name>.pdf` while this is open.
-
-    For the figures committed under `docs/plots/` (#452): a matplotlib PDF
-    carries its creation time, so two runs of the same code differ byte for
-    byte; a PNG written without metadata does not. The PDF is still written,
-    and `cnaster`'s behaviour is unchanged outside this context.
-    """
-    _PNG_COPIES[0] = True
-    try:
-        yield
-    finally:
-        _PNG_COPIES[0] = False
-
-
 def write_fig(
     opath: str,
     fig: Any = None,
@@ -194,6 +172,7 @@ def write_fig(
     *,
     group_rasters: bool = False,
     group_strategy: str = "sink",
+    png_copy: bool = False,
 ) -> None:
     """What `cnaster.utils.write_fig` does, with rasterizing groups collapsed on request.
 
@@ -201,6 +180,12 @@ def write_fig(
     function byte for byte, which `tests/test_figure_dpi.py` holds it to.
     `FIGURE_SWAPS` binds `dpi=FIGURE_DPI` and `group_rasters=True` at install
     (#195, #517): `group_rasters` collapses the groups by `group_strategy`.
+
+    `png_copy` also writes `<name>.png` beside the PDF, without metadata, for
+    the figures committed under `docs/plots/` (#452): a matplotlib PDF
+    carries its creation time, so two runs of the same code differ byte for
+    byte and a PNG written without metadata does not.
+    `run_cnaster_port --png-copies` binds it.
     """
     if fig is None:
         fig = plt.figure()
@@ -224,7 +209,7 @@ def write_fig(
         dpi=dpi,
     )
 
-    if _PNG_COPIES[0]:
+    if png_copy:
         fig.savefig(
             Path(opath).with_suffix(".png"),
             format="png",
