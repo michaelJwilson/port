@@ -94,7 +94,13 @@ from cnaster.config import get_global_config, start_time
 from cnaster.hmrf import pipeline_clone_assignment as UPSTREAM
 from cnaster.logger import get_logger
 
-__all__ = ["UPSTREAM", "boundary", "pipeline_clone_assignment"]
+__all__ = [
+    "UPSTREAM",
+    "PooledSmoothing",
+    "boundary",
+    "pipeline_clone_assignment",
+    "require_unpooled",
+]
 
 logger = get_logger(__name__, start_time=start_time)
 """`cnaster`'s own function, captured at import.
@@ -144,6 +150,16 @@ def _channel_weight(
     return weight
 
 
+def _own_weight(valid_nb: np.ndarray, valid_bb: np.ndarray) -> np.ndarray:
+    """:func:`_channel_weight` under the identity: each spot's own ratio, one where either is zero."""
+    nb = valid_nb.astype(np.float64)
+    bb = valid_bb.astype(np.float64)
+    weight = np.ones(valid_nb.shape, dtype=np.float64)
+    live = (nb > 0) & (bb > 0)
+    weight[live] = bb[live] / nb[live]
+    return weight
+
+
 @dataclass
 class _Boundary:
     """What the seam recomputes per outer iteration and need not (#59 item 4).
@@ -174,20 +190,39 @@ _BOUNDARY: dict[tuple[int, ...], _Boundary] = {}
 
 
 def _self_only(smooth_mat: Any) -> bool:
-    """Whether every spot's only pooling neighbour is itself."""
-    n_spots = smooth_mat.shape[0]
+    """Whether every spot's only pooling neighbour is itself, at weight one."""
+    import scipy.sparse as sp
+
+    matrix = sp.csr_matrix(smooth_mat)
+    n_spots = matrix.shape[0]
     return bool(
-        smooth_mat.shape == (n_spots, n_spots)
-        and np.array_equal(smooth_mat.indptr, np.arange(n_spots + 1))
-        and np.array_equal(smooth_mat.indices, np.arange(n_spots))
+        matrix.shape == (n_spots, n_spots)
+        and np.array_equal(matrix.indptr, np.arange(n_spots + 1))
+        and np.array_equal(matrix.indices, np.arange(n_spots))
+        and np.all(matrix.data == 1)
     )
 
 
-def _zero_plus(values: np.ndarray) -> np.ndarray:
-    """`0 + values` into a fresh array, as upstream's pooling accumulates."""
-    pooled = np.zeros(values.shape, dtype=values.dtype)
-    pooled += values
-    return pooled
+class PooledSmoothing(ValueError):
+    """A `smooth_mat` that pools a spot with any spot but itself (#513)."""
+
+
+def require_unpooled(smooth_mat: Any) -> None:
+    """Refuse a `smooth_mat` other than `None` or the identity (#513).
+
+    `port` reads the counts unpooled. `cnaster` only ever builds the
+    identity, so any other matrix is an input this seam does not implement,
+    and it says so rather than scoring spots unpooled while the caller
+    believes they were pooled.
+    """
+    if smooth_mat is None or _self_only(smooth_mat):
+        return
+
+    msg = (
+        "smooth_mat pools spots with their neighbours; port's clone assignment "
+        "reads counts unpooled and supports only the identity (#513)"
+    )
+    raise PooledSmoothing(msg)
 
 
 def boundary(
@@ -216,8 +251,11 @@ def boundary(
     valid_nb = (single_base_nb_mean > 0).sum(axis=0)
     valid_bb = (single_total_bb_RD > 0).sum(axis=0)
 
+    require_unpooled(smooth_mat)
+    # NB under the identity each spot's neighbourhood is itself, so the
+    #    pooled ratio is the spot's own; `None` keeps upstream's unit weight.
     weight = (
-        _channel_weight(valid_nb, valid_bb, smooth_mat.indices, smooth_mat.indptr)
+        _own_weight(valid_nb, valid_bb)
         if smooth_mat is not None
         else np.ones(single_base_nb_mean.shape[1], dtype=np.float64)
     )
@@ -357,30 +395,15 @@ def pipeline_clone_assignment(
         f"is_tumor_mixed=False and merge={merge}."
     )
 
-    logger.info("Pooling hmrf data by smooth mat. (reduces necessary computation).")
-
-    if smooth_mat is not None and _self_only(smooth_mat):
-        # NB each spot pools itself alone, so upstream's loop is `0 + x` per
-        #    entry; the same sums here, vectorized (#488).
-        pooled_X = _zero_plus(single_X)
-        pooled_base_nb_mean = _zero_plus(single_base_nb_mean)
-        pooled_total_bb_RD = _zero_plus(single_total_bb_RD)
-    elif smooth_mat is not None:
-        pooled_X, pooled_base_nb_mean, pooled_total_bb_RD, _, _ = (
-            upstream.pool_spatio_genomic_counts(
-                single_X,
-                single_base_nb_mean,
-                single_total_bb_RD,
-                smooth_mat.indices,
-                smooth_mat.indptr,
-                None,
-                False,
-            )
-        )
-    else:
-        pooled_X = single_X.copy()
-        pooled_base_nb_mean = single_base_nb_mean.copy()
-        pooled_total_bb_RD = single_total_bb_RD.copy()
+    # NB no pooling (#513): `cnaster` builds `smooth_mat` as the identity
+    #    (`spatial.py:310`, `maxspots_pooling` fixed at 1), so each spot pools
+    #    itself alone and upstream's loop is `0 + x`. The counts are read as
+    #    they are, uncopied; a matrix that pools more than a spot with itself
+    #    is refused rather than silently applied or ignored.
+    require_unpooled(smooth_mat)
+    pooled_X = single_X
+    pooled_base_nb_mean = single_base_nb_mean
+    pooled_total_bb_RD = single_total_bb_RD
 
     # NB hoisted: all three are functions of the input data, which the outer
     #    loop never fits, and `cnaster` recomputes them per iteration (#59

@@ -179,11 +179,11 @@ def test_the_merge_loop_merges_what_upstream_merges() -> None:
 @pytest.mark.patch
 @pytest.mark.usefixtures("cnaster_config")
 def test_self_only_pooling_assigns_what_upstream_assigns() -> None:
-    """With each spot pooling itself alone, the vectorized path (#488).
+    """With each spot pooling itself alone, the unpooled path (#488, #513).
 
-    Referee: upstream's call with the same `smooth_mat`, whose numba loop the
-    vectorized `0 + x` replaces; all three returns bitwise, and the pooled
-    arrays themselves against `pool_spatio_genomic_counts`.
+    Referee: upstream's call with the same `smooth_mat`, whose numba pooling
+    loop port no longer runs; all three returns bitwise. The pooled arrays
+    upstream builds equal the unpooled counts port reads.
     """
     import cnaster.hmrf
     import scipy.sparse as sp
@@ -191,7 +191,6 @@ def test_self_only_pooling_assigns_what_upstream_assigns() -> None:
     from port.patch.hmrf.clone_assignment import (
         UPSTREAM,
         _self_only,
-        _zero_plus,
         pipeline_clone_assignment,
     )
 
@@ -200,7 +199,9 @@ def test_self_only_pooling_assigns_what_upstream_assigns() -> None:
     identity = sp.identity(36, format="csr")
 
     assert _self_only(identity)
+    assert _self_only(sp.identity(36, dtype=np.int8, format="csr"))
     assert not _self_only(sp.csr_matrix(np.ones((36, 36))))
+    assert not _self_only(2 * identity)
 
     theirs_pooled = cnaster.hmrf.pool_spatio_genomic_counts(
         arguments["single_X"],
@@ -211,14 +212,13 @@ def test_self_only_pooling_assigns_what_upstream_assigns() -> None:
         None,
         False,
     )
-    ours_pooled = [
-        _zero_plus(arguments[name])
-        for name in ("single_X", "single_base_nb_mean", "single_total_bb_RD")
-    ]
 
-    for ours, theirs in zip(ours_pooled, theirs_pooled[:3], strict=True):
-        assert ours.dtype == theirs.dtype
-        np.testing.assert_array_equal(ours, theirs)
+    for name, theirs in zip(
+        ("single_X", "single_base_nb_mean", "single_total_bb_RD"),
+        theirs_pooled[:3],
+        strict=True,
+    ):
+        np.testing.assert_array_equal(arguments[name], theirs)
 
     def call(function: Any) -> Any:
         return function(
@@ -240,3 +240,35 @@ def test_self_only_pooling_assigns_what_upstream_assigns() -> None:
     np.testing.assert_array_equal(ours[1], theirs[1])
     np.testing.assert_array_equal(ours[0], theirs[0])
     assert ours[2] == theirs[2]
+
+
+@pytest.mark.infra
+@pytest.mark.critical
+@pytest.mark.usefixtures("cnaster_config")
+def test_a_smooth_matrix_that_pools_neighbours_is_refused() -> None:
+    """A `smooth_mat` pooling a spot with a neighbour raises; port does not pool (#513)."""
+    import scipy.sparse as sp
+    from cnaster.hmm_nophasing import hmm_nophasing
+    from port.patch.hmrf.clone_assignment import (
+        PooledSmoothing,
+        pipeline_clone_assignment,
+    )
+
+    fixture = spot_clone_field(n_states=4, n_obs=60, n_spots=36, n_clones=3)
+    arguments = clone_assignment_arguments(fixture, width=6)
+    pooling = sp.identity(36, format="csr") + sp.eye(36, k=1, format="csr")
+
+    with pytest.raises(PooledSmoothing, match="#513"):
+        pipeline_clone_assignment(
+            arguments["single_X"],
+            arguments["single_base_nb_mean"],
+            arguments["single_total_bb_RD"],
+            arguments["res"],
+            arguments["pred"],
+            arguments["adjacency_mat"],
+            arguments["prev_assignment"].copy(),
+            arguments["sample_ids"],
+            arguments["spatial_weight"],
+            smooth_mat=pooling,
+            hmmclass=hmm_nophasing,
+        )
