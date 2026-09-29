@@ -382,7 +382,7 @@ def likelihoods(truth: CoreInferenceTruth, captured: Any) -> tuple[float, float]
 
     from tests.realizations import _column, pseudobulk
 
-    result = captured.result
+    result = captured.res
     alpha = float(_column(result["new_alphas"])[0])
     tau = float(_column(result["new_taus"])[0])
     transition = np.asarray(result["new_log_transmat"], dtype=np.float64)

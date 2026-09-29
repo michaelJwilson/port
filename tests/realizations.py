@@ -251,7 +251,7 @@ def match_states(truth: CoreInferenceTruth, captured: Captured) -> np.ndarray:
     rather than the decoded path, so a state the fit is unsure of counts as
     unsure rather than as its argmax.
     """
-    result = captured.result
+    result = captured.res
     gamma = np.exp(np.asarray(result["log_gamma"], dtype=np.float64))
     assignment = np.asarray(result["new_assignment"], dtype=np.int64)
     n_states = truth.log_mu.size
@@ -324,7 +324,7 @@ def fitted(truth: CoreInferenceTruth, captured: Captured, *, errors: bool) -> Fi
     planted `alpha = 1/6` is per spot, not per sum over hundreds of spots),
     and each planted `p` takes the allele convention its fitted state has.
     """
-    result = captured.result
+    result = captured.res
     log_mu = _column(result["new_log_mu"])
     p_binom = _column(result["new_p_binom"])
     alpha = float(_column(result["new_alphas"])[0])

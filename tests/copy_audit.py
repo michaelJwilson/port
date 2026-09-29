@@ -86,7 +86,7 @@ def decode_one(index: int, root: Path) -> dict[str, Any]:
     n_states = truth.log_mu.size
     planted_pairs = [unphased(*COPY_LATTICE[k]) for k in range(n_states)]
 
-    result = captured.result
+    result = captured.res
     path = np.asarray(result["pred_cnv"], dtype=np.int64) % n_states
     assignment = np.asarray(result["new_assignment"], dtype=np.int64)
     fitted_clones = np.unique(assignment)
