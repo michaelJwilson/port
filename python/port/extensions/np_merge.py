@@ -272,8 +272,18 @@ def groups(
     *,
     threshold: float = THRESHOLD,
     minlength: int = MINLENGTH,
+    short_events: bool = True,
 ) -> list[list[int]]:
-    """The merged groups of clone indices, CalicoST's rule, each sorted, ordered by least member."""
+    """The merged groups of clone indices, each sorted, ordered by least member.
+
+    CalicoST's rule, and with `short_events` one addition: an event under
+    `minlength` bins also keeps two clones apart where its total evidence,
+    `bins * t`, reaches `threshold * minlength` -- what the shortest event
+    CalicoST tests carries at its threshold. On CalicoST hard two planted
+    clones differ by 9 and 6 bins at 62 and 44 nats per bin, which CalicoST's
+    rule never tests, and merged; the duplicate clones on `dev_tree` differ by
+    at most 7.4 nats in total, so they merge either way.
+    """
     n_clones = X.shape[2]
     edges: dict[tuple[int, int], float] = {}
 
@@ -281,8 +291,11 @@ def groups(
         X, base_nb_mean, total_bb_RD, res, params
     ).items():
         tested = [t for _, _, n, t in events if n >= minlength]
+        evident = short_events and any(
+            n * t >= threshold * minlength for _, _, n, t in events if n < minlength
+        )
 
-        if not tested or max(tested) < threshold:
+        if (not tested or max(tested) < threshold) and not evident:
             edges[(c1, c2)] = max(tested) if tested else 1e-3
 
     def weight(clique: list[int]) -> float:

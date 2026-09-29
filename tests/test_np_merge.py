@@ -130,7 +130,7 @@ def test_the_groups_are_calicosts(params: str, monkeypatch: pytest.MonkeyPatch) 
         tumor_prop=None,
         hmmclass=hmm_nophasing_v2,
     )
-    ours = groups(X, base, total, res, params)
+    ours = groups(X, base, total, res, params, short_events=False)
 
     assert ours == [sorted(g) for g in theirs]
     assert [0, 1] in [g[:2] for g in ours if len(g) >= 2], "the 3-bin difference merges"
@@ -298,3 +298,38 @@ def test_the_held_merge_is_taken_only_for_its_own_fit() -> None:
         assert taken(other) is other
         assert taken(res) is result
         assert taken(res) is res
+
+
+@pytest.mark.analytic
+def test_a_short_event_of_strong_evidence_keeps_two_clones_apart() -> None:
+    """Under `MINLENGTH` bins CalicoST's rule never tests an event; the
+    evidence rule tests it once `bins * t` reaches `THRESHOLD * MINLENGTH`.
+
+    Clone 3 is redrawn as clone 0 but for a 6-bin gain at the gain state, far
+    over threshold per bin and 4 bins short of CalicoST's minimum.
+    """
+    from port.extensions.np_merge import MINLENGTH, THRESHOLD, groups, statistics
+
+    X, base, total, res = _instance()
+    rng = np.random.default_rng(9)
+    bins = np.arange(60, 66)
+    X[:, :, 3] = X[:, :, 0]
+    base[:, 3] = base[:, 0]
+    total[:, 3] = total[:, 0]
+    mean = base[bins, 3] * 1.5
+    X[bins, 0, 3] = rng.negative_binomial(50, 50 / (50 + mean))
+    X[bins, 1, 3] = rng.binomial(total[bins, 3].astype(int), 0.33)
+    res["pred_cnv"][:, 3] = res["pred_cnv"][:, 0]
+    res["pred_cnv"][bins, 3] = 2
+
+    events = [
+        e for e in statistics(X, base, total, res, "smp")[(0, 3)] if e[2] == bins.size
+    ]
+
+    assert events
+    assert events[0][2] < MINLENGTH
+    assert events[0][2] * events[0][3] >= THRESHOLD * MINLENGTH
+    assert any(
+        {0, 3} <= set(g) for g in groups(X, base, total, res, "smp", short_events=False)
+    )
+    assert not any({0, 3} <= set(g) for g in groups(X, base, total, res, "smp"))
