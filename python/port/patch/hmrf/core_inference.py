@@ -238,25 +238,37 @@ def shift_for(pred_cnv: Any) -> tuple[float, int | None]:
     return 0.0, None
 
 
-@as_upstream(UPSTREAM)
-def run_core_inference(arguments: dict[str, Any]) -> Any:
-    """Upstream's inference, then the neutral pin when the fit was shifted."""
+@as_upstream(UPSTREAM, hmm_start=None, distinct_init=False, np_merge=False)
+def run_core_inference(arguments: dict[str, Any], options: dict[str, Any]) -> Any:
+    """Upstream's inference, then the neutral pin when the fit was shifted.
+
+    Options, which `run_cnaster_port` binds at install (#517): `hmm_start`,
+    `sal`'s start for the read-depth stage (#489); `distinct_init`, the
+    initializer choosing among distinct components (#348); `np_merge`, hold
+    this fit for the Neyman-Pearson merge (#497).
+    """
+    import functools
+
     from port.patch.hmm_initialize import distinct, sal_mixture
 
     # NB passed rather than rebound: upstream binds the initializer as a
     #    default argument (#348).
-    if sal_mixture.installed() and "hmm_initializer" not in arguments:
-        # NB the read-depth stage's start from `sal`'s mixture (#489); the
-        #    BAF-only stage falls back to `distinct`'s inside it.
-        arguments["hmm_initializer"] = sal_mixture.gmm_init
-    elif distinct.installed() and "hmm_initializer" not in arguments:
-        arguments["hmm_initializer"] = distinct.gmm_init
+    if "hmm_initializer" not in arguments:
+        if options["hmm_start"] is not None:
+            # NB the BAF-only stage falls back to `distinct`'s inside it.
+            arguments["hmm_initializer"] = functools.partial(
+                sal_mixture.gmm_init,
+                start=options["hmm_start"],
+                distinct=options["distinct_init"],
+            )
+        elif options["distinct_init"]:
+            arguments["hmm_initializer"] = distinct.gmm_init
 
     from port.extensions import np_merge
 
     # NB the spot counts and parameters this fit reads, for the stage's
-    #    Neyman-Pearson merge (#497); held only while that merge is installed.
-    if np_merge.installed():
+    #    Neyman-Pearson merge (#497).
+    if options["np_merge"]:
         np_merge.remember(
             arguments.get("single_X"),
             arguments.get("single_base_nb_mean"),

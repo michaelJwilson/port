@@ -38,14 +38,12 @@ def _snapshot() -> dict[tuple[str, str], Any]:
 
 def _managers() -> list[tuple[str, Callable[[], AbstractContextManager[Any]]]]:
     from port.extensions.copy_likelihood import capture
-    from port.patch.hmm_initialize.distinct import distinct_init
     from port.patch.hmm_nophasing import logmu_shift
     from port.patch.lattice import rust_lattices
     from port.pipeline import FIGURE_SWAPS, PLOT_OFF_SWAPS, SWAPS, patched
 
     return [
         ("capture", capture),
-        ("distinct_init", distinct_init),
         ("logmu_shift", logmu_shift),
         ("rust_lattices", rust_lattices),
         ("patched", lambda: patched(SWAPS + FIGURE_SWAPS + PLOT_OFF_SWAPS)),
@@ -53,7 +51,7 @@ def _managers() -> list[tuple[str, Callable[[], AbstractContextManager[Any]]]]:
 
 
 @pytest.mark.infra
-@pytest.mark.parametrize("index", range(5))
+@pytest.mark.parametrize("index", range(4))
 def test_a_raising_block_leaves_no_module_state_behind(index: int) -> None:
     name, manager = _managers()[index]
     before = _snapshot()

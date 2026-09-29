@@ -46,7 +46,6 @@ __all__ = [
     "THRESHOLD",
     "groups",
     "hold",
-    "installed",
     "merged",
     "np_merge",
     "remember",
@@ -60,26 +59,20 @@ THRESHOLD = 2.0
 MINLENGTH = 10
 """CalicoST's `np_eventminlen`: bins an event needs to be tested."""
 
-_INSTALLED = [False]
 _INPUTS: dict[str, Any] = {}
 _PENDING: dict[str, Any] = {}
 
 
-def installed() -> bool:
-    """Whether the merge runs before `merge_by_minspots`."""
-    return _INSTALLED[0]
-
-
 @contextlib.contextmanager
 def np_merge() -> Iterator[None]:
-    """Run the merge before `cnaster`'s minimum-size merge for the block."""
-    previous = _INSTALLED[0]
-    _INSTALLED[0] = True
+    """The run the merge holds its inputs for; released on the way out.
 
+    `run_core_inference` holds the fit under its `np_merge` option, and the
+    `NP_MERGE_SWAPS` row reads what is held (#497, #517).
+    """
     try:
         yield
     finally:
-        _INSTALLED[0] = previous
         _INPUTS.clear()
         _PENDING.clear()
 
@@ -97,7 +90,7 @@ def remember(
     """
     if single_X is None or single_base_nb_mean is None or single_total_bb_RD is None:
         _INPUTS.clear()
-    elif _INSTALLED[0]:
+    else:
         _INPUTS.update(
             single_X=single_X,
             single_base_nb_mean=single_base_nb_mean,

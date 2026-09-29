@@ -553,6 +553,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "port.patch.hmrf:pipeline_clone_assignment",
                 floor_merge=True,
             )
+        # NB options of `port`'s `run_core_inference`, bound once the shift's
+        #    table, which holds it, is selected (#517).
+        inference: dict[str, Any] = {}
         np_merging = bool(
             arguments.sal if arguments.np_merge is None else arguments.np_merge
         )
@@ -561,24 +564,23 @@ def main(argv: Sequence[str] | None = None) -> int:
 
             selected = selected + NP_MERGE_SWAPS
             stack.enter_context(np_merge())
+            inference["np_merge"] = True
         distinct = (
             shift and not arguments.no_patch
             if arguments.distinct_init is None
             else arguments.distinct_init
         )
         if distinct:
-            from port.patch.hmm_initialize.distinct import distinct_init
-
-            stack.enter_context(distinct_init())
+            inference["distinct_init"] = True
         hmm_start = (
             ("kmeans++x5+em" if arguments.sal else "none")
             if arguments.hmm_start is None
             else arguments.hmm_start
         )
         if hmm_start != "none":
-            from port.patch.hmm_initialize.sal_mixture import sal_mixture
+            from port.patch.hmm_initialize.sal_mixture import checked
 
-            stack.enter_context(sal_mixture(hmm_start))
+            inference["hmm_start"] = checked(hmm_start)
 
         # NB the copy rows decode by the HMM's likelihood only (#362), which
         #    reads each clone's counts from the fit this captures; entered
@@ -598,6 +600,11 @@ def main(argv: Sequence[str] | None = None) -> int:
 
             selected = selected + SHIFT_SWAPS
             stack.enter_context(logmu_shift())
+
+        if inference:
+            selected = with_options(
+                selected, "port.patch.hmrf:run_core_inference", **inference
+            )
 
         if arguments.sal:
             from port.extensions.sal import sal_options

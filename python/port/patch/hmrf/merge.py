@@ -34,7 +34,7 @@ def merge_by_minspots(arguments: dict[str, Any]) -> Any:
     held = np_merge._INPUTS
     source = res
 
-    if np_merge.installed() and held:
+    if held:
         import cnaster.pseudobulk
 
         labels = np.unique(np.asarray(assignment))
@@ -90,7 +90,7 @@ def merge_by_minspots(arguments: dict[str, Any]) -> Any:
 
     groups, result = UPSTREAM(**{**arguments, "assignment": assignment, "res": res})
 
-    if np_merge.installed() and held and "m" in held["params"]:
+    if held and "m" in held["params"]:
         # NB the read-depth stage: `cnaster` drops what this returns (#497).
         np_merge.hold(source, result)
 
