@@ -318,17 +318,29 @@ def SUFFICIENT(study1: dict[Any, Any], study2: dict[str, Any]) -> dict[str, Any]
 
 
 def _panel(axis: Any, centres: list[float], entry: dict[str, Any], colour: str,
-           label: str) -> None:  # fmt: skip
+           label: str, dodge: float) -> tuple[float, float] | None:  # fmt: skip
+    """One series with its 95% bars, shifted `dodge` in x; its last point."""
     rate = np.array(entry["rate"])
     low, high = np.array(entry["low"]), np.array(entry["high"])
     kept = np.array(entry["n"]) >= MIN_PER_BIN // 2
-    x = np.array(centres)[kept]
+    x = np.array(centres)[kept] + dodge
     axis.errorbar(x, rate[kept], yerr=[rate[kept] - low[kept], high[kept] - rate[kept]],
                   color=colour, lw=2, marker="o", ms=5, capsize=3, label=label)  # fmt: skip
-    if x.size:
-        axis.annotate(label, (x[-1], rate[kept][-1]), xytext=(6, 0),
-                      textcoords="offset points", fontsize=8, color="#52514e",
-                      va="center")  # fmt: skip
+    return (float(x[-1]), float(rate[kept][-1])) if x.size else None
+
+
+def _labels(axis: Any, ends: dict[str, tuple[float, float]], gap: float = 0.06) -> None:
+    """Direct labels at each series' end, pushed apart to at least `gap` in y."""
+    placed: list[float] = []
+    for label, (x, end) in sorted(ends.items(), key=lambda item: item[1][1]):
+        y = max(end, placed[-1] + gap) if placed else end
+        placed.append(y)
+        axis.annotate(label, (x, y), xytext=(8, 0), textcoords="offset points",
+                      fontsize=8, color="#52514e", va="center")  # fmt: skip
+
+
+def _dodges(n: int, width: float) -> list[float]:
+    return list(np.linspace(-width, width, n)) if n > 1 else [0.0]
 
 
 def figures(summary: dict[str, Any], into: Path) -> list[Path]:
@@ -349,10 +361,17 @@ def figures(summary: dict[str, Any], into: Path) -> list[Path]:
     with plt.rc_context(style):
         fig, axes = plt.subplots(1, 2, figsize=(9, 3.6), constrained_layout=True)
         colours = j_colours(list(summary["study1"]))
-        for j, entry in sorted(summary["study1"].items()):
-            for axis, key in zip(axes, ("detected", "completeness"), strict=True):
-                _panel(axis, entry[key]["centres"], entry[key], colours[j],
-                       f"J = {j:g}")  # fmt: skip
+        series = sorted(summary["study1"].items())
+        for axis, key in zip(axes, ("detected", "completeness"), strict=True):
+            ends = {}
+            for (j, entry), dodge in zip(
+                series, _dodges(len(series), 0.03), strict=True
+            ):
+                end = _panel(axis, entry[key]["centres"], entry[key], colours[j],
+                             f"J = {j:g}", dodge)  # fmt: skip
+                if end is not None:
+                    ends[f"J = {j:g}"] = end
+            _labels(axis, ends)
         axes[0].set_ylabel("recovery rate (completeness ≥ 0.90)")
         axes[1].set_ylabel("mean completeness")
         for axis in axes:
@@ -370,13 +389,20 @@ def figures(summary: dict[str, Any], into: Path) -> list[Path]:
         paths.append(path)
 
         fig, axis = plt.subplots(figsize=(5.5, 3.6), constrained_layout=True)
-        for name, entry in summary["study2"].items():
-            _panel(axis, entry["recovered"]["centres"], entry["recovered"],
-                   CLASS_COLOURS[name], name)  # fmt: skip
+        classes = list(summary["study2"].items())
+        ends = {}
+        for (name, entry), dodge in zip(
+            classes, _dodges(len(classes), 0.04), strict=True
+        ):
+            end = _panel(axis, entry["recovered"]["centres"], entry["recovered"],
+                         CLASS_COLOURS[name], name, dodge)  # fmt: skip
+            if end is not None:
+                ends[name] = end
+        _labels(axis, ends)
         axis.set_xlabel("event length, log10 bp")
         axis.set_ylabel("recovery rate (≥ 0.90 of bins)")
         axis.set_ylim(-0.02, 1.02)
-        axis.legend(frameon=False, fontsize=8, loc="lower right")
+        axis.legend(frameon=False, fontsize=8, loc="upper left")
         axis.set_title(
             f"CNA recovery against length, detected clones, J = {summary['study2_J']:g}",
             fontsize=10,
