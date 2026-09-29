@@ -39,8 +39,6 @@ STATE: dict[str, Kind] = {
     "cnaster.hmm_initialize.GaussianMixture": "rebind",
     "port.extensions.copy_likelihood._CAPTURED": "run",
     "port.extensions.copy_likelihood._LENGTHS": "run",
-    "port.extensions.np_merge._INPUTS": "run",
-    "port.extensions.np_merge._PENDING": "run",
     "port.extensions.segments._CURRENT": "run",
     "port.patch.hmm_nophasing.shifted_emission.hmm_nophasing._row_shift": "run",
     "port.patch.hmm_nophasing.shifted_emission.hmm_nophasing.analytic_gradient": (

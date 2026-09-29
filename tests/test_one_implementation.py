@@ -22,8 +22,9 @@ import pytest
 from tests.source_graph import PACKAGE, TESTS
 
 BUDGET: dict[str, int] = {
-    # NB 24: `--png-copies` binds what the `_PNG_COPIES` switch held (#517 step 1).
-    "run_cnaster_port flags": 24,
+    # NB 23: #520 removed --np-merge; `--png-copies` binds what the
+    #    `_PNG_COPIES` switch held (#517 step 1).
+    "run_cnaster_port flags": 23,
     # NB 59: step 1 removed the two `_Selection` slots behind the decoder and
     #    solver switches.
     "classes": 59,
