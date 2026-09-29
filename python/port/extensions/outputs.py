@@ -18,7 +18,8 @@ without touching them, in each run directory that holds a
   posterior-mean `mu` and `p` under `log_gamma`. The continuous view.
 - `clone_labels_integer.tsv`: `clone_labels.tsv` with each spot's clone
   also named by its integer copy profile (`integer_clones`, #344): clones
-  that decode to the same `(A, B)` at every bin are one clone.
+  that decode to the same `(A, B)` at every bin are one clone, or at the
+  share of bins `int_copy_num.merge_agreement` states (#518).
 - `manifest.json`: the run's shape and provenance -- states, clones,
   likelihoods, the shift, the configuration's copy caps and ploidy, and
   what `run_cnaster_port` was asked for.
@@ -44,6 +45,7 @@ import numpy as np
 import pandas as pd
 
 __all__ = [
+    "MERGE_AGREEMENT",
     "binlevel",
     "clone_columns",
     "config_keys",
@@ -182,35 +184,63 @@ def segments(seglevel: pd.DataFrame, fit: dict[str, Any]) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def integer_clones(frame: pd.DataFrame) -> dict[str, str]:
-    """Each clone id -> the smallest id with the same integer copy profile.
+MERGE_AGREEMENT = 1.0
+"""The share of bins at which two integer profiles must agree to be one clone, unset."""
+
+
+def integer_clones(
+    frame: pd.DataFrame, agreement: float = MERGE_AGREEMENT
+) -> dict[str, str]:
+    """Each clone id -> the smallest id whose integer copy profile it matches.
 
     `frame` is `cnv_seglevel.tsv`, or any table with `clone{c} A` and
-    `clone{c} B` per bin. Two clones are one when their `(A, B)` agree at
-    every bin; the smallest id names them, so the normal clone keeps `0`.
+    `clone{c} B` per bin. In id order, each clone joins the first earlier
+    named clone whose `(A, B)` agree with its own at no less than
+    `agreement` of the bins, and names itself otherwise; the smallest id
+    names a group, so the normal clone keeps `0`. At 1.0, every bin (#344).
+
+    Below 1.0 it is #518's merge: on `dev_tree` 60 x 50 without the
+    Neyman-Pearson merge, one planted clone split by slice decodes alike at
+    0.9993 of 2,895 bins, while every distinct pair on CalicoST easy, hard
+    and `dev_tree` agrees at 0.9863 or less.
     """
+    if not 0.0 < agreement <= 1.0:
+        msg = f"merge agreement must be in (0, 1], got {agreement!r}"
+        raise ValueError(msg)
+
     ids = [c.split()[0][len("clone") :] for c in frame.columns if c.endswith(" A")]
     ordered = sorted(
         ids, key=lambda c: (not c.isdigit(), int(c) if c.isdigit() else 0, c)
     )
-    first: dict[bytes, str] = {}
+    named: list[tuple[str, np.ndarray]] = []
+    names: dict[str, str] = {}
 
     for clone in ordered:
         profile = frame[[f"clone{clone} A", f"clone{clone} B"]].to_numpy(dtype=int)
-        first.setdefault(profile.tobytes(), clone)
+        match = next(
+            (
+                name
+                for name, other in named
+                if float(np.mean(np.all(profile == other, axis=1))) >= agreement
+            ),
+            None,
+        )
 
-    return {
-        clone: first[
-            frame[[f"clone{clone} A", f"clone{clone} B"]].to_numpy(dtype=int).tobytes()
-        ]
-        for clone in ids
-    }
+        if match is None:
+            named.append((clone, profile))
+            match = clone
+
+        names[clone] = match
+
+    return names
 
 
-def clone_labels_integer(run: Path, seglevel: pd.DataFrame) -> pd.DataFrame:
+def clone_labels_integer(
+    run: Path, seglevel: pd.DataFrame, agreement: float = MERGE_AGREEMENT
+) -> pd.DataFrame:
     """`clone_labels.tsv` with `integer_clone_label` beside `clone_label`."""
     labels = pd.read_csv(run / "clone_labels.tsv", sep="\t", comment="#")
-    merged = integer_clones(seglevel)
+    merged = integer_clones(seglevel, agreement)
 
     def name(label: Any) -> Any:
         if pd.isna(label):
@@ -229,7 +259,7 @@ def config_keys(config: Path | None) -> dict[str, Any]:
 
     import yaml
 
-    wanted = {"n_states", "max_total_copy", "ploidy", "output_dir"}
+    wanted = {"n_states", "max_total_copy", "merge_agreement", "ploidy", "output_dir"}
     found: dict[str, Any] = {}
 
     def walk(node: Any) -> None:
@@ -263,6 +293,8 @@ def write_outputs(
     run = Path(run)
     seglevel, perstate, fit = _load(run)
     written = []
+    stated = config_keys(config).get("merge_agreement")
+    agreement = MERGE_AGREEMENT if stated is None else float(stated)
 
     tables = [
         ("cnv_states.tsv", states(seglevel, perstate, fit)),
@@ -271,7 +303,9 @@ def write_outputs(
     ]
 
     if (run / "clone_labels.tsv").exists():
-        tables.append(("clone_labels_integer.tsv", clone_labels_integer(run, seglevel)))
+        tables.append(
+            ("clone_labels_integer.tsv", clone_labels_integer(run, seglevel, agreement))
+        )
 
     for name, table in tables:
         table.to_csv(run / name, sep="\t", index=False)
@@ -288,7 +322,8 @@ def write_outputs(
         "n_states": int(fit["n_states"]),
         "n_bins": len(seglevel),
         "clones": clone_columns(seglevel, fit["pred_cnv"]),
-        "integer_clones": integer_clones(seglevel),
+        "integer_clones": integer_clones(seglevel, agreement),
+        "merge_agreement": agreement,
         "llf": finite(fit["llf"]),
         "total_llf": finite(fit["total_llf"]),
         "log_mu_shift": None if shift_value is None else shift_value,
