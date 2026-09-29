@@ -367,9 +367,13 @@ def report(out: Path, study2_j: float) -> dict[str, Any]:
     return slim
 
 
+EMPTY = "-"
+"""A table cell with no item in its bin."""
+
+
 def _cell(rate: float, low: float, high: float, n: int) -> str:
     if n == 0 or not np.isfinite(rate):
-        return "–"
+        return EMPTY
     return f"{rate:.2f} [{low:.2f}, {high:.2f}] ({n})"
 
 
@@ -389,7 +393,7 @@ def tables(summary: dict[str, Any]) -> str:
         for entry in study1.values():
             e = entry["detected"]
             cells.append(_cell(e["rate"][k], e["low"][k], e["high"][k], e["n"][k]))
-        if any(c != "–" for c in cells):
+        if any(c != EMPTY for c in cells):
             lines.append(f"| {centre:.2f} | " + " | ".join(cells) + " |")
     lines.append("")
     lines.append("| J | members | clones | UMI50, log10 [95%] |")
@@ -410,7 +414,7 @@ def tables(summary: dict[str, Any]) -> str:
         for entry in study2.values():
             e = entry["recovered"]
             cells.append(_cell(e["rate"][k], e["low"][k], e["high"][k], e["n"][k]))
-        if any(c != "–" for c in cells):
+        if any(c != EMPTY for c in cells):
             lines.append(f"| {centre:.2f} | " + " | ".join(cells) + " |")
     lines.append("")
     lines.append("| class | events | L50, log10 bp [95%] |")
