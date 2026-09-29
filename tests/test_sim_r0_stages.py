@@ -107,10 +107,10 @@ def test_the_r0_counts_carry_each_event_s_depth(
 ) -> None:
     """Each event's log read-depth ratio is `log((A + B) / 2)`, to 0.2.
 
-    Measured on r0 (`93398396`): losses -0.559 to -0.746, LOH -0.027 to
-    +0.095, the chr11 gain +0.724. The worst is clone_1's chr18 loss, 159
-    genes, 0.135 short: about 2.3 standard deviations of a region that size
-    under the Dirichlet-multinomial draw (kappa 100, 587 spots). 0.2 is under
+    Measured on r0 (`3381575a`, 60 x 50 per slice): losses -0.784 to -0.630,
+    LOH -0.026 to +0.048, the chr11 gain +0.684. The worst is clone_2's chr7
+    loss, 193 genes, 0.091 beyond `log(1/2)` (at 42 x 42 it was chr18's
+    loss, 0.135). 0.2 is under
     a third of the 0.693 separating a loss from LOH, which is what the later
     stages need the data to carry. chr15's `(3, 1)` holds no gene (the
     acrocentric arm) and chr16's 31, so `MIN_GENES` leaves both out.
