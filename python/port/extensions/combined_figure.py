@@ -800,7 +800,7 @@ def _genomic_page(genomic: Call, profile: Call, width: float, scale: float) -> A
 
 @contextlib.contextmanager
 def page_style() -> Iterator[None]:
-    """Matplotlib's own defaults for the block, whatever the run has set.
+    """Matplotlib's own defaults and the stated face for the block, whatever the run has set.
 
     `cnaster.plotting` sets `font.family` to a serif face when it is
     imported, and `cnaster`'s plots set seaborn's theme when they run, so
@@ -812,8 +812,11 @@ def page_style() -> Iterator[None]:
     """
     import matplotlib as mpl
 
+    from port.extensions.figure_style import figure_rc
+
     with mpl.rc_context():
         mpl.style.use("default")
+        mpl.rcParams.update(figure_rc())
         yield
 
 
