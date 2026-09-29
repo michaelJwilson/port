@@ -190,6 +190,12 @@ SWAPS: tuple[Swap, ...] = (
         "port.patch.hmrf:pipeline_clone_assignment",
         206,
     ),
+    Swap(
+        "cnaster.pseudobulk",
+        "merge_pseudobulk_by_index_mix",
+        "port.patch.pseudobulk:merge_pseudobulk_by_index_mix",
+        488,
+    ),
 )
 """Every `cnaster` name `port` can replace by rebinding it.
 
