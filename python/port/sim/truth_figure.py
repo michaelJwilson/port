@@ -1,0 +1,254 @@
+r"""What a realization planted, on one page at `combined.pdf`'s size and type.
+
+    python -m port.sim.truth_figure sim/generated/<name>/r<k> [OUT.pdf]
+
+Top to bottom, at `llncs`'s text width and height, 7 pt throughout, as
+`port.extensions.combined_figure` sets an estimate:
+
+- **(a)** the clones' tree, each event at its time (`analysis.draw_tree`);
+- **(b)** each clone's planted `(A, B)`, drawn by `port`'s profile plotter
+  under its mirror and copy-number key, the rows `combined.pdf` draws;
+- **(c)** RDR and BAF along the genome per true clone
+  (`analysis.genomic_truth`), drawn by `plot_clones_genomic`;
+- **(d)** the true clone of each spot, per slice (`analysis.draw_spatial`),
+  named by its key alone.
+
+(b) and (c) share one left and one right edge, so a chromosome boundary is
+at one place on the page in both; (b) names the chromosomes for them. Clones
+are named as the paper names them, $m_N$ for the normal. The phase and the
+count laws stay in their own figures, `phase.png` and `coverage.png`.
+"""
+
+from __future__ import annotations
+
+import argparse
+from pathlib import Path
+from typing import Any
+
+from port.sim.analysis import Realization, clone_colour, display, read
+
+__all__ = ["truth_combined_figure", "write_truth_combined"]
+
+HEIGHTS = {"tree": 1.0, "profile": 1.0, "genomic": 4.0, "spatial": 1.6}
+"""Inches per panel, summing to `TEXT_HEIGHT` less its rounding."""
+
+LEFT = 0.42
+"""Inches from the page's left edge to the genome panels' axes: room for the RDR and BAF labels."""
+
+RIGHT = 0.06
+"""Inches of the page right of the genome panels, before the last chromosome's name is fitted."""
+
+
+def _symbol(r: Realization) -> Any:
+    from port.extensions.combined_figure import clone_symbol
+
+    return lambda clone: clone_symbol(display(clone, r.clones))
+
+
+def truth_combined_figure(r: Realization, width: float | None = None) -> Any:
+    """The four panels on one page, `width` wide (`llncs`'s by default) and `TEXT_HEIGHT` tall."""
+    import matplotlib.pyplot as plt
+    from matplotlib.lines import Line2D
+
+    from port.extensions.combined_figure import (
+        FONT_SIZE,
+        LABEL_GAP,
+        LABEL_SIZE,
+        LEGEND_BOX,
+        TEXT_HEIGHT,
+        _fit_tracks,
+        _put,
+        _set_text,
+        page_style,
+    )
+    from port.patch.plot_copy_number_profile import (
+        plot_ascn_legend,
+        plot_copy_number_profile,
+    )
+    from port.patch.plot_genomic import PAPER_WIDTH, plot_clones_genomic
+    from port.sim.analysis import (
+        binned_profile,
+        draw_spatial,
+        draw_tree,
+        genomic_truth,
+    )
+
+    width = PAPER_WIDTH if width is None else width
+    symbol = _symbol(r)
+
+    with page_style():
+        figure: Any = plt.figure(
+            figsize=(width, TEXT_HEIGHT), dpi=300, facecolor="white"
+        )
+        panels: Any = figure.subfigures(
+            len(HEIGHTS), 1, height_ratios=list(HEIGHTS.values()), hspace=0.0
+        )
+        tree_fig, profile_fig, genomic_fig, spatial_fig = panels
+
+        # (a)
+        tree_ax = tree_fig.add_axes((0.02, 0.02, 0.96, 0.88))
+        draw_tree(tree_ax, r, event_size=FONT_SIZE, node_size=FONT_SIZE, dot=18.0,
+                  name=symbol, ancestors=False)  # fmt: skip
+
+        # (b): the key, then the rows, as `combined.pdf` draws its profile.
+        legend_ax = profile_fig.add_axes((0.0, 0.72, 1.0, 0.2))
+        profile_ax = profile_fig.add_axes((0.0, 0.25, 1.0, 0.42))
+        plot_copy_number_profile(binned_profile(r), ax=profile_ax)
+        # NB the plotter's own key, at fixed page coordinates, is redrawn into
+        #    `legend_ax`, which is placed with the rows.
+        profile_fig.axes[-1].remove()
+        profile_ax.set_yticklabels(
+            [symbol_of(t.get_text()) for t in profile_ax.get_yticklabels()]
+        )
+        for text in profile_ax.get_yticklabels():
+            text.set_rotation(0)
+
+        # (c)
+        g = genomic_truth(r)
+        plot_clones_genomic(g.lengths, g.counts, g.expected, g.trials,
+                            clone_index=g.groups, figure=genomic_fig,
+                            pointsize=0.4, linewidth=0.3, chrtext_shift=-0.9)  # fmt: skip
+        _fit_tracks(genomic_fig)
+        for ax in genomic_fig.axes:
+            ticks = ax.get_yticks()
+            if ticks.size > 2:
+                ends = [ticks[0], ticks[-1]]
+                ax.set_yticks(ends, [f"{tick:.1f}" for tick in ends])
+                bottom, top = ax.get_yticklabels()
+                bottom.set_verticalalignment("bottom")
+                top.set_verticalalignment("top")
+            ax.set_ylabel(ax.get_ylabel(), rotation=0, ha="right", va="center")
+            # NB (b) names the same edges.
+            for text in ax.texts:
+                if text.get_text().startswith("chr"):
+                    text.set_visible(False)
+
+        # (d)
+        slices = list(dict.fromkeys(r.truth["sample_id"]))
+        spatial_axes = [
+            spatial_fig.add_axes((0.02 + k * 0.42, 0.04, 0.4, 0.86))
+            for k in range(len(slices))
+        ]
+        present = draw_spatial(spatial_axes, r, size=1.6, fontsize=FONT_SIZE)
+        handles = [
+            Line2D([], [], marker="s", linestyle="", markersize=4,
+                   color=clone_colour(c, r.clones), label=symbol(c))
+            for c in present
+        ]  # fmt: skip
+        spatial_fig.legend(handles=handles, loc="lower right", bbox_to_anchor=(0.99, 0.04),
+                           ncol=1, frameon=False, handletextpad=0.3,
+                           borderaxespad=0.0)  # fmt: skip
+
+        for panel in panels:
+            _set_text(panel, FONT_SIZE)
+        profile_ax.tick_params(axis="x", pad=-4)
+        figure.canvas.draw()
+
+        # NB one left and one right edge for the key, the rows and each
+        #    track; the right pulled in until no chromosome name runs off
+        #    the page, as `combined_figure` fits its own.
+        renderer = figure.canvas.get_renderer()
+        right = width - RIGHT
+        for _ in range(3):
+            for ax in [legend_ax, profile_ax, *genomic_fig.axes]:
+                _put(ax, LEFT, right)
+            figure.canvas.draw()
+            names = [t for t in profile_ax.get_xticklabels() if t.get_text()]
+            overrun = (
+                max(t.get_window_extent(renderer).x1 for t in names) / figure.dpi
+                - width
+            )
+            if overrun <= 0.0:
+                break
+            right -= overrun + LABEL_GAP / 72.0
+
+        _stack_tracks(genomic_fig)
+        figure.canvas.draw()
+        plot_ascn_legend(legend_ax, box_w=LEGEND_BOX, box_h=0.8, tick_len=0.1,
+                         label_fontsize=FONT_SIZE, span=right - LEFT,
+                         title_on_edge=True)  # fmt: skip
+        _thin(profile_ax.get_xticklabels(), renderer)
+
+        for panel, letter in zip(panels, "abcd", strict=True):
+            panel.text(0.0, 1.0, f"({letter})", fontsize=LABEL_SIZE, ha="left",
+                       va="top")  # fmt: skip
+        figure.canvas.draw()
+    return figure
+
+
+TRACK_GAP = 0.02
+"""Inches between a clone's RDR and BAF tracks."""
+
+STATS_ROW = 0.13
+"""Inches above each clone's RDR track for its name and state line."""
+
+
+def _stack_tracks(panel: Any) -> None:
+    """(c)'s tracks filling its panel: per clone, its name row, RDR, then BAF.
+
+    `plot_clones_genomic` spaces the tracks for its own page, which in a
+    subfigure leaves white at the head and foot; the tracks take it.
+    """
+    from port.extensions.combined_figure import _put
+
+    dpi = panel.get_figure(root=True).dpi
+    box = panel.bbox
+    top, bottom = box.y1 / dpi - 0.02, box.y0 / dpi + 0.04
+    tracks = list(panel.axes)
+    clones = len(tracks) // 2
+    height = (top - bottom - clones * (STATS_ROW + TRACK_GAP)) / len(tracks)
+    y = top
+    for k in range(clones):
+        y -= STATS_ROW
+        for ax in tracks[2 * k : 2 * k + 2]:
+            y -= height
+            _put(ax, y0=y, height=height)
+        y -= TRACK_GAP
+
+
+def _thin(labels: Any, renderer: Any) -> None:
+    """Hide each label that overlaps the last one kept, left to right: the small chromosomes' names."""
+    kept = None
+    for label in labels:
+        box = label.get_window_extent(renderer)
+        if kept is not None and box.overlaps(kept):
+            label.set_visible(False)
+            continue
+        kept = box
+
+
+def symbol_of(label: str) -> str:
+    """A profile row's `cnaster` numeral as the paper's $m$."""
+    from port.extensions.combined_figure import clone_symbol
+
+    return str(clone_symbol(label))
+
+
+def write_truth_combined(r: Realization, out: Path) -> Path:
+    """`truth_combined_figure` to `out` as a PDF with no creation date, so it reproduces byte for byte."""
+    import matplotlib.pyplot as plt
+
+    from port.extensions.combined_figure import page_style
+
+    figure = truth_combined_figure(r)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    with page_style():
+        figure.savefig(out, dpi=300, facecolor="white",
+                       metadata={"CreationDate": None, "Producer": None})  # fmt: skip
+    plt.close(figure)
+    return out
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("realization", type=Path)
+    parser.add_argument("out", type=Path, nargs="?")
+    arguments = parser.parse_args(argv)
+    r = read(arguments.realization)
+    out = arguments.out or r.path / "qa" / "truth_combined.pdf"
+    print(write_truth_combined(r, out))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

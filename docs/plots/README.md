@@ -85,14 +85,16 @@ would change.
 of `sim/manifests/dev_tree.toml` (a mutation tree over three clones, two slices
 overlapping by half) at seed 0.
 
-- `clone_profiles.png`: the planted `(A, B)` per clone, drawn by `cnaster`'s
-  own `plot_copy_number_profile` on the truth binned at 1 Mb, so a planted and
-  a decoded profile share palette, hatching and numerals;
+- `clone_profiles.png`: the planted `(A, B)` per clone, drawn by `port`'s
+  `plot_copy_number_profile` on the truth binned at 1 Mb, the plotter
+  `combined.pdf` uses, so a planted and a decoded profile share palette,
+  hatching, outlines and key;
 - `mutation_tree.png`: along event order, each event `chr::A/B::Mb` (whole Mb) at its time
   on its edge; each node its binary barcode, the founder's event the leading bit;
 - `spatial.png`: each slice, titled by its `sample_id`, cropped to itself in
   the shared frame; the region the slices share dashed, and a clone on both
-  slices inside it; one clone legend for every slice, on the left;
+  slices inside it; clones named by one legend for every slice, on the left,
+  and not on the tissue;
 - `phase.png`: switches accumulated along each chromosome per Mb of it, each
   contig's switches per Mb above it, formatted as `plot_clones_genomic`'s tracks;
 - `baseline.png`: `log10 lambda` per gene as `normal_baseline.txt.gz` states it,
@@ -106,6 +108,11 @@ overlapping by half) at seed 0.
   `snp_spot_umi` law it is drawn from. Genes are drawn per spot, so no
   per-entry law is shown for them.
 
-Clones carry `cnaster`'s numerals in every figure: `Clone 0` is the normal.
+- `truth_combined.png`: `python -m port.sim.truth_figure`, written as
+  `truth_combined.pdf` by `plot`: the tree, the profiles, the tracks and the
+  spatial map on one page at `combined.pdf`'s 122 mm by 193 mm and 7 pt, the
+  profile and tracks on one left and right edge, clones as $m_N$, $m_1$, ...
+
+Clones carry `cnaster`'s numerals in every other figure: `Clone 0` is the normal.
 `python -m port.sim.analysis population <sample or manifest>` streams every
 realization through the same reading, holding running means only.

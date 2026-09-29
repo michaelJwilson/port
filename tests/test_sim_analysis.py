@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import itertools
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pytest
@@ -148,9 +149,94 @@ def test_a_streamed_population_holds_each_statistics_mean_and_sd(
 
 @pytest.mark.smoke
 def test_every_figure_is_written(drawn: Drawn) -> None:
-    """One PNG per figure, nonempty; what each shows is the two tests above."""
+    """One PNG per figure and the page, nonempty; what each shows is the two tests above."""
     written = plot(drawn.path)
 
-    assert len(written) == len(PLOTS)
+    assert len(written) == len(PLOTS) + 1
     assert all(Path(p).stat().st_size > 10_000 for p in written)
-    assert np.unique([Path(p).name for p in written]).size == len(PLOTS)
+    assert np.unique([Path(p).name for p in written]).size == len(PLOTS) + 1
+    assert Path(written[-1]).name == "truth_combined.pdf"
+
+
+def _visible_texts(figure: Any) -> list[Any]:
+    from matplotlib.text import Text
+
+    return [t for t in figure.findobj(Text) if t.get_visible() and t.get_text().strip()]
+
+
+@pytest.mark.infra
+@pytest.mark.merge
+def test_the_truth_page_is_combined_pdfs_page_with_everything_on_it(
+    drawn: Drawn,
+) -> None:
+    """`llncs`'s 122 mm by 193 mm, lettered (a) to (d), no text over `FONT_SIZE`,
+    and every text and legend on the page to half a pixel."""
+    from port.extensions.combined_figure import FONT_SIZE, TEXT_HEIGHT
+    from port.sim.truth_figure import truth_combined_figure
+
+    figure = truth_combined_figure(read(drawn.path))
+    renderer = figure.canvas.get_renderer()
+    page = figure.bbox
+    texts = _visible_texts(figure)
+    legends = [
+        legend
+        for panel in figure.subfigs
+        for legend in [*panel.legends, *(ax.get_legend() for ax in panel.axes)]
+        if legend is not None
+    ]
+
+    assert figure.get_size_inches()[0] * 25.4 == pytest.approx(122.0)
+    assert figure.get_size_inches()[1] == pytest.approx(TEXT_HEIGHT)
+    assert [panel.texts[-1].get_text() for panel in figure.subfigs] == [
+        f"({k})" for k in "abcd"
+    ]
+    assert max(t.get_fontsize() for t in texts) <= FONT_SIZE
+
+    for artist in [*texts, *legends]:
+        extent = artist.get_window_extent(renderer)
+        assert extent.x0 >= page.x0 - 0.5, artist
+        assert extent.x1 <= page.x1 + 0.5, artist
+        assert extent.y0 >= page.y0 - 0.5, artist
+        assert extent.y1 <= page.y1 + 0.5, artist
+
+
+@pytest.mark.infra
+@pytest.mark.merge
+def test_the_genome_panels_share_one_left_and_one_right_edge(drawn: Drawn) -> None:
+    """(b)'s key and rows and (c)'s tracks start and end at one x, so a
+    chromosome boundary is at one place in both; (d) names its clones by its
+    key alone."""
+    from port.sim.truth_figure import truth_combined_figure
+
+    figure = truth_combined_figure(read(drawn.path))
+    renderer = figure.canvas.get_renderer()
+    _, profile, genomic, spatial = figure.subfigs
+    axes = [*profile.axes, *genomic.axes]
+    boxes = [ax.get_window_extent(renderer) for ax in axes]
+
+    assert len(genomic.axes) == 2 * len(read(drawn.path).clones)
+    for box in boxes:
+        assert box.x0 == pytest.approx(boxes[0].x0, abs=0.5)
+        assert box.x1 == pytest.approx(boxes[0].x1, abs=0.5)
+    assert all(not ax.texts for ax in spatial.axes)
+
+
+@pytest.mark.infra
+@pytest.mark.merge
+def test_the_truth_page_writes_byte_for_byte_at_its_size(
+    drawn: Drawn, tmp_path: Path
+) -> None:
+    """Two writes are one file: no creation date (#452); its MediaBox is the page to 0.1 pt."""
+    import re
+
+    from port.sim.truth_figure import write_truth_combined
+
+    r = read(drawn.path)
+    first = write_truth_combined(r, tmp_path / "a.pdf").read_bytes()
+    second = write_truth_combined(r, tmp_path / "b.pdf").read_bytes()
+    box = re.search(rb"/MediaBox\s*\[\s*[\d.]+\s+[\d.]+\s+([\d.]+)\s+([\d.]+)", first)
+
+    assert first == second
+    assert box is not None
+    assert float(box.group(1)) == pytest.approx(122.0 / 25.4 * 72.0, abs=0.1)
+    assert float(box.group(2)) == pytest.approx(193.0 / 25.4 * 72.0, abs=0.1)
