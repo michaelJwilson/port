@@ -51,7 +51,6 @@ from typing import Any
 __all__ = [
     "COPY_SWAPS",
     "FIGURE_SWAPS",
-    "NP_MERGE_SWAPS",
     "PLOT_OFF_SWAPS",
     "REFINEMENT_SWAPS",
     "SHIFT_SWAPS",
@@ -419,23 +418,6 @@ the call to `cnaster` (#135) the mask is not applied and the run says so.
 clone, at `hmrf.min_spots_per_clone`, instead of the sweep's all-at-once
 random reassignment at a fixed 200. It holds with or without the mask, and
 is refused and dropped exactly where the mask is.
-"""
-
-
-NP_MERGE_SWAPS: tuple[Swap, ...] = (
-    Swap(
-        "cnaster.hmrf",
-        "merge_by_minspots",
-        "port.patch.hmrf.merge:merge_by_minspots",
-        497,
-    ),
-)
-"""CalicoST's Neyman-Pearson merge of similar clones, before `cnaster`'s minimum-size merge.
-
-`cnaster` carries the merge commented out after each clone stage, so two
-clones that decode alike are never joined (#497). The row runs it where
-`port.extensions.np_merge.np_merge()` is active; `run_cnaster_port` installs
-both with `--sal` unless `--no-np-merge` is given.
 """
 
 
