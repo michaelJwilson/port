@@ -25,13 +25,14 @@ BUDGET: dict[str, int] = {
     # NB 23: #520 removed --np-merge; `--png-copies` binds what the
     #    `_PNG_COPIES` switch held (#517 step 1).
     "run_cnaster_port flags": 23,
-    # NB 59: step 1 removed the two `_Selection` slots behind the decoder and
-    #    solver switches.
-    "classes": 59,
+    # NB 60: step 1 removed the two `_Selection` slots behind the decoder and
+    #    solver switches; step 5 added `Settings`, the entry point's one
+    #    resolution of its tri-state flags.
+    "classes": 60,
     # NB step 4: 18 records became NamedTuples; the dataclasses left carry
     #    mutable state, machinery or a `__post_init__` (#517 D).
     "dataclasses": 26,
-    "NamedTuples": 23,
+    "NamedTuples": 24,
 }
 """`python/port` outside `sandbox/`."""
 
