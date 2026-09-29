@@ -17,11 +17,11 @@ with `cnaster` is an assumption.
 
 *A replacement nobody installed.* Four of them were, when this was written:
 `reindex_clones`, `plot_clones_genomic`, `plot_loh_density` and
-`compute_emission_probability_nb_betabinom_coded` appear in no swap table.
-Written, tested, and reaching no run -- which is indistinguishable from
-running, until someone looks. They are declared below with the reason, and
-the declaration is what makes the next one a decision rather than a
-default.
+`compute_emission_probability_nb_betabinom_coded` appeared in no swap table.
+#517 step 8 installed the first and last (the `reindex_clones` row reorders
+through `hmrf.reindex`; `hmm_phased` is a `SWAPS` row) and moved the two
+figures to `sandbox/patch/plotting/`. The next one is declared below with
+its reason, which makes it a decision rather than a default.
 """
 
 from __future__ import annotations
@@ -35,34 +35,7 @@ ROOT = Path(__file__).resolve().parent.parent
 PATCH = ROOT / "python" / "port" / "patch"
 TESTS = Path(__file__).resolve().parent
 
-UNINSTALLED = {
-    "port.patch.hmrf.reindex": (
-        "#278. Holds the one-column contract that makes "
-        "`scripts/run_cnaster.py:1366` dead, and installing it changes no "
-        "number -- the branch it kills was already unreachable. It goes into "
-        "`SWAPS` when a run is measured against it."
-    ),
-    "port.patch.plotting.genomic": (
-        "#280. Draws at a text column rather than at 20 inches, which is a "
-        "deliberate change of output, so it cannot join `SWAPS` -- that table "
-        "is the set that reproduces `cnaster` bitwise and "
-        "`tests/test_patched_entry_point.py` reads it. `FIGURE_SWAPS` is "
-        "where it belongs, once #280's remaining two assertions land."
-    ),
-    "port.patch.plotting.loh_density": (
-        "#278, and `FIGURE_SWAPS` for the same reason as its sibling above: "
-        "the figure is upstream's, but it installs beside `plot_clones_"
-        "genomic` or not at all, because a run drawing one at each size is "
-        "worse than a run drawing both at either."
-    ),
-    "port.patch.hmm_phased.coded_emission": (
-        "#269. Fixes an `IndexError` upstream raises on the shape every fit "
-        "returns, so installing it changes a crash into a number -- which is "
-        "a behaviour change, and `CLAUDE.md` forbids making one silently. It "
-        "waits on a run that exercises `hmm_phased`; the shipped script "
-        "passes `hmm_nophasing` at all four of its call sites."
-    ),
-}
+UNINSTALLED: dict[str, str] = {}
 """Drop-ins deliberately in no swap table, and why.
 
 A declaration rather than an exemption: each says what would put it in one.

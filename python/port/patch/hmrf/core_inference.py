@@ -46,6 +46,7 @@ from cnaster.hmrf import reindex_clones as UPSTREAM_REINDEX
 from cnaster.hmrf import run_core_inference as UPSTREAM
 
 from port.patch._signature import as_upstream
+from port.patch.hmrf.reindex import reindex_clones as held_to_one_column
 
 __all__ = [
     "UPSTREAM",
@@ -167,15 +168,17 @@ def clone_shifts(
 def reindex_clones(arguments: dict[str, Any]) -> Any:
     """Upstream's reindex, with the clones' shifts permuted alongside them.
 
-    Upstream permutes the decode's columns and not `new_log_mu_shift`, so the
-    permutation is recovered by matching columns, applied to the shifts, and
-    the reindexed decode and shifts are kept for the integer decode.
+    The reorder is `port.patch.hmrf.reindex`'s, which holds every fitted
+    parameter to one column rather than reordering columns it cannot have
+    (#278, #517). Upstream permutes the decode's columns and not
+    `new_log_mu_shift`, so the permutation is recovered by matching columns,
+    applied to the shifts, and the reindexed decode and shifts are kept for
+    the integer decode.
     """
-    # NB bound at import, as `UPSTREAM_REINDEX`: the swap rebinds the name in
-    #    `cnaster.hmrf`, so reading it here at call time would call this back.
     res_combine = arguments["res_combine"]
     before = np.asarray(res_combine["pred_cnv"])
-    reindexed, posterior = UPSTREAM_REINDEX(**arguments)
+    reindexed: Any
+    reindexed, posterior = held_to_one_column(**arguments)
     # NB by `__getitem__`: `cnaster`'s `CnaHMRFResult` has no `get`, and
     #    reading through `hasattr(res, "get")` left the shifts unpermuted on
     #    every real run (#501).

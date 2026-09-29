@@ -1,5 +1,13 @@
 """`cnaster.hmrf.merge_by_minspots`, after CalicoST's Neyman-Pearson merge when installed (#497).
 
+Ticket: #497 -- CalicoST's Neyman-Pearson merge before `merge_by_minspots`,
+  moved out of `--sal` to the sandbox at the owner's request.
+Measurement: statistics equal CalicoST's `compute_neymanpearson_stats` to
+  1e-10 on a drawn four-clone instance; clone ARI with and without the merge
+  is not recorded and is what would measure it.
+Exit: graduate to `patch/`, installed by `--sal`, if it raises clone ARI on
+  the #490 samples; else retire.
+
 `cnaster` calls `merge_by_minspots` where CalicoST first merged similar clones
 (`run_cnaster.py:743`, `:1172`, both commented out), so the minimum-size merge
 is the one place the pipeline hands over a stage's clones. Under

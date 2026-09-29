@@ -154,14 +154,16 @@ def reindex_clones(
 
         new_res_combine["pred_cnv"] = pred_cnv[concat_idx]
 
-        if "log_gamma" in res_combine:
+        # NB `.keys()`, as upstream reads it: `CnaHMRFResult` defines no
+        #    `__contains__`, and `in` falls back to indexing it by position.
+        if "log_gamma" in res_combine.keys():  # noqa: SIM118
             new_res_combine["log_gamma"] = res_combine["log_gamma"][:, concat_idx]
 
     else:
         if pred_cnv.shape[1] > 1:
             new_res_combine["pred_cnv"] = pred_cnv[:, reidx]
 
-        if "log_gamma" in res_combine:
+        if "log_gamma" in res_combine.keys():  # noqa: SIM118
             log_gamma = res_combine["log_gamma"]
 
             if log_gamma.ndim == 3 and log_gamma.shape[2] > 1:

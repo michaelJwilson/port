@@ -25,23 +25,35 @@ BUDGET: dict[str, int] = {
     # NB 23: #520 removed --np-merge; `--png-copies` binds what the
     #    `_PNG_COPIES` switch held (#517 step 1).
     "run_cnaster_port flags": 23,
-    # NB 59: step 1 removed the two `_Selection` slots behind the decoder and
-    #    solver switches.
-    "classes": 59,
+    # NB 53: step 1 removed the two `_Selection` slots behind the decoder and
+    #    solver switches; step 5 added `Settings`, the entry point's one
+    #    resolution of its tri-state flags; step 8 added the `hmm_phased` row
+    #    and moved 8 classes to `sandbox/` with their modules.
+    "classes": 53,
     # NB step 4: 18 records became NamedTuples; the dataclasses left carry
-    #    mutable state, machinery or a `__post_init__` (#517 D).
-    "dataclasses": 26,
+    #    mutable state, machinery or a `__post_init__` (#517 D). Step 8 moved
+    #    7 dataclasses and 1 NamedTuple to `sandbox/`.
+    "dataclasses": 19,
     "NamedTuples": 23,
 }
 """`python/port` outside `sandbox/`."""
 
 CONCEPTS: dict[str, int] = {
-    "Hungarian + ARI scorer": 2,
+    # NB 2: `tests.scoring.matched` pairs labels by overlap for every scorer
+    #    (step 7); `tests.realizations.match_states` pairs states by
+    #    responsibility distance, a different cost.
+    "Hungarian matcher": 2,
+    # NB 2: `tests.recovery_audit` runs a planted lattice with its hooks
+    #    (normal oracle, M-step tolerance, two-pass), `tests.sim_audit` a
+    #    written sim sample with its overrides; they share the scorer and the
+    #    capture, not the arm.
     "run_arm": 2,
     "clone_path": 1,
-    "recording": 3,
+    # NB 2: `combined_figure` records plotting arguments, `segments` a
+    #    segmentation lineage; `tests.sim_stages`'s wrapper is `logged`.
+    "recording": 2,
 }
-"""Definitions of one concept across `python/port` and `tests/`; each goes to 1."""
+"""Definitions of one concept across `python/port` and `tests/`, with the reason where not 1."""
 
 
 def _files() -> Iterator[Path]:
@@ -90,9 +102,8 @@ def _measured() -> dict[str, int]:
         "NamedTuples": sum(
             any(ast.unparse(b).endswith("NamedTuple") for b in c.bases) for c in classes
         ),
-        "Hungarian + ARI scorer": sum(
-            {"linear_sum_assignment", "adjusted_rand_score"} <= _referenced(f)
-            for f in functions
+        "Hungarian matcher": sum(
+            "linear_sum_assignment" in _referenced(f) for f in functions
         ),
         "run_arm": sum(f.name == "run_arm" for f in functions),
         "clone_path": sum(f.name == "clone_path" for f in functions),

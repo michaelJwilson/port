@@ -1,5 +1,12 @@
 """The BAF stage's start, and its coupling, chosen from the data's depth (#362).
 
+Ticket: #362 -- BAF-stage starts from a Potts draw and from UMI growth, set
+  aside as no start matches the grid on every sample (#490).
+Measurement: `umi_grow` clone ARI on hard, seeds 0 / 1 / 2: 0.7267 /
+  0.9674 / 0.9829 against the grid's 0.9829 (`docs/study-clone-starts.md`).
+Exit: graduate `umi_grow` to `patch/` as `initialize_clones` if it matches
+  or beats the grid on every sample and arm of #490; else retire.
+
 `run_cnaster` starts the BAF-stage clone search from the phasing grid
 (`run_cnaster.py:276`), `npart_phasing^2` rectangles, and runs the HMRF at
 the configured `spatial_weight`. On CalicoST's easy simulated sample the

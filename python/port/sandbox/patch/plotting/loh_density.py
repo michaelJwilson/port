@@ -1,5 +1,12 @@
 """`cnaster.plot_loh_density.plot_loh_density`, with the clone loop unified (#278).
 
+Ticket: #278, #289 -- a drop-in `plot_loh_density`, set aside as
+  `run_cnaster` never calls `plot_loh_density`.
+Measurement: `loh_model` equals upstream's loop bitwise on a three-clone
+  instance; no timing recorded.
+Exit: graduate to `patch/plotting`, installed as `plot_loh_density`, if
+  `run_cnaster` calls it; else retire.
+
 A drop-in replacement: same name, same signature, same figure. What changes
 is the part that had three problems and no referee.
 

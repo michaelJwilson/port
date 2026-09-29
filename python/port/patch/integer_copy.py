@@ -277,9 +277,9 @@ def decode_clone(
     copy over this clone's bins.
     """
     from port.extensions.copy_likelihood import (
-        _CAPTURED,
         captured_chain,
         captured_clones,
+        captured_fit,
         captured_normal,
         lattice_decode,
         shared_decode,
@@ -298,7 +298,8 @@ def decode_clone(
 
     log_mu = np.asarray(new_log_mu, dtype=np.float64).reshape(-1)
     path = np.asarray(pred_cnv, dtype=np.int64).reshape(-1) % log_mu.size
-    key = id(_CAPTURED[0][3]) if _CAPTURED else id(clones)
+    fit = captured_fit()
+    key = id(fit.res) if fit is not None else id(clones)
 
     if decoder not in DECODERS:
         msg = f"copy decoder {decoder!r} is not one of {DECODERS}"

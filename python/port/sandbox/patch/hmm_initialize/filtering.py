@@ -1,5 +1,12 @@
 """`cnaster`'s HMM initialization, with filtering separated from transformation.
 
+Ticket: #229 (#237) -- `gmm_init`'s filters separated from its transform,
+  set aside as it replaces no `cnaster` name.
+Measurement: `design_matrix` reproduces the array `gmm_init` hands
+  `GaussianMixture` bitwise; the cost of imputation `"none"` is not recorded.
+Exit: graduate to `patch/` when a patch of `gmm_init` calls it, installed as
+  that patch's filter stage; else retire.
+
 **Proposed for `cnaster`, written here.** #229. `cnaster.hmm_initialize.gmm_init`
 runs eleven steps between the counts and the mixture fit, of which four are
 filters, two are transforms and one is an imputation. They are interleaved

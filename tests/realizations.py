@@ -175,38 +175,8 @@ def run(truth: CoreInferenceTruth, root: Path) -> Captured:
     from the swap, which rebinds only names still bound to upstream, and the
     pin would never run.
     """
-    import port.patch.hmrf as patch
-
-    kept: list[Captured] = []
-    original = patch.run_core_inference
-
-    def keep(
-        single_X: Any, lengths: Any, base: Any, total: Any, *rest: Any, **kw: Any
-    ) -> Any:
-        result = original(single_X, lengths, base, total, *rest, **kw)
-
-        # NB the BAF-only stage calls it too, with `params="sp"`; the copy
-        #    state fit this plots is the one that also fits `mu`.
-        if kw.get("params") != "smp":
-            return result
-
-        kept.append(
-            Captured(
-                np.array(single_X, dtype=np.float64),
-                np.asarray(lengths, dtype=np.int64),
-                np.array(base, dtype=np.float64),
-                np.array(total, dtype=np.float64),
-                result,
-            )
-        )
-        return result
-
-    patch.run_core_inference = keep
-
-    try:
+    with _copy_errors.captured_fits() as kept:
         run_written(truth, root, port=True, flags=("--no-figure-swaps",), **RUN)
-    finally:
-        patch.run_core_inference = original
 
     if len(kept) != 1:
         msg = f"run_core_inference was called {len(kept)} times, expected once"

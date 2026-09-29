@@ -1,5 +1,12 @@
 """Run an HMM initializer several times and report what it actually does.
 
+Ticket: #229 -- a harness running an HMM initializer under `n` seeds, set
+  aside as no run reaches it.
+Measurement: none recorded; the spread of `gmm_init`'s referee score over
+  seeds on a simulated sample (#230) would measure it.
+Exit: graduate to `extensions/` when a run or #230's study calls it; else
+  retire with `port.sandbox.patch.hmm_initialize.backends`.
+
 **#229.** `cnaster`'s initializers are stochastic and their variance has
 never been measured. `gmm_init` defaults `random_state=None`, fits with
 `n_init=3` and reduces with `KMeans(n_init=10)`; `cna_mixture_init` restarts

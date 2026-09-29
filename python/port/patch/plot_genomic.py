@@ -59,7 +59,10 @@ from matplotlib.lines import Line2D
 
 __all__ = [
     "COLOUR_MODES",
+    "LLNCS_TEXT_WIDTH_MM",
+    "PAPER_WIDTH",
     "UPSTREAM",
+    "UPSTREAM_WIDTH",
     "Levels",
     "bin_colours",
     "clone_axes",
@@ -74,6 +77,24 @@ POINT_COLOUR = "#4C72B0"
 
 COLOUR_MODES = ("integer", "states")
 """Deduplicated integer `(A, B)`, or one colour per continuous HMM state."""
+
+
+UPSTREAM_WIDTH = 20.0
+"""What `_create_clone_gridspec` hardcodes, in inches."""
+
+LLNCS_TEXT_WIDTH_MM = 122.0
+"""`\\textwidth` of `\\documentclass[runningheads,11pt]{llncs}`, fixed by the
+class whatever the paper (#339)."""
+
+PAPER_WIDTH = LLNCS_TEXT_WIDTH_MM / 25.4
+"""A text column, 4.80 in: the width `combined_figure` draws at (#280, #339).
+
+Measured from `docs/plots/`: the committed genomic figures are 20.03 in
+wide, so `\\includegraphics[width=\\linewidth]` scales them by **0.240** and
+a 10 pt tick label lands at **2.4 pt** on the page. At a text column the
+figure is included at 1:1, so a declared size is the size on the page and
+nothing has to be undone at the point of inclusion.
+"""
 
 
 def clone_groups(

@@ -1,5 +1,14 @@
 """Two per-bin read-depth summaries that cannot filter out a CNA (#165, #362).
 
+Ticket: #362 (#165) -- two CNA-blind per-bin depth summaries, set aside as
+  neither makes depth track copy number on the easy sample.
+Measurement: residual sd, clones 1/2/3, CalicoST easy, truth clones, 1,715
+  bins: `within_bin` 1.23/1.29/1.22, `median_of_ratios` 1.24/1.29/1.22,
+  `filter_normal_diffexp` 1.06/1.13/1.07.
+Exit: graduate to `patch/` in place of `filter_normal_diffexp` if it has the
+  lower residual sd on a sample with sparse expression differences; else
+  retire.
+
 `cnaster`'s `filter_normal_diffexp` drops a gene when its tumour-over-normal
 expression ratio is extreme genome-wide. That test cannot tell a gene the
 tumour expresses differently from a gene in an amplified or deleted bin: a

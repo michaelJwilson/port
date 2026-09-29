@@ -1,5 +1,11 @@
 """`cnaster.plot_genomic.plot_clones_genomic`, with the clone loop unified (#278).
 
+Ticket: #280 -- a second `plot_clones_genomic`, superseded by
+  `port.patch.plot_genomic`.
+Measurement: every scatter point and line segment equals upstream's,
+  bitwise, on a three-clone instance (#278).
+Exit: retire; `port.patch.plot_genomic` is the installed replacement.
+
 A drop-in replacement: same name, same signature, same figure. What changes
 is that the four quantities the figure actually asserts are functions with
 referees, instead of expressions buried in 338 lines of `matplotlib`.
@@ -47,6 +53,7 @@ from cnaster.utils import get_intervals
 from matplotlib.collections import LineCollection
 from matplotlib.lines import Line2D
 
+from port.patch.plot_genomic import PAPER_WIDTH, UPSTREAM_WIDTH
 from port.patch.plotting.clone_paths import clone_path, state_vector
 
 logger = get_logger(__name__, start_time=start_time)
@@ -119,31 +126,6 @@ def segment_levels(
     probabilities = state_vector(res_combine["new_p_binom"])
 
     return segments, rates[labels], probabilities[labels]
-
-
-UPSTREAM_WIDTH = 20.0
-"""What `_create_clone_gridspec` hardcodes, in inches."""
-
-LLNCS_TEXT_WIDTH_MM = 122.0
-"""`\\textwidth` of `\\documentclass[runningheads,11pt]{llncs}`, fixed by the
-class whatever the paper (#339)."""
-
-PAPER_WIDTH = LLNCS_TEXT_WIDTH_MM / 25.4
-"""A text column, 4.80 in, and this module's default (#280, #339).
-
-Measured from `docs/plots/`: the committed genomic figures are 20.03 in
-wide, so `\\includegraphics[width=\\linewidth]` scales them by **0.240** and
-a 10 pt tick label lands at **2.4 pt** on the page. At a text column the
-figure is included at 1:1, so a declared size is the size on the page and
-nothing has to be undone at the point of inclusion.
-
-**This is a deliberate change of output, and the only one this module
-makes.** The aspect is preserved and the data is untouched, which is what
-`test_the_replacement_draws_what_upstream_draws` holds: it compares every
-drawn offset and segment in data coordinates, so it passes across this
-change and would fail across a rewiring. Pass `width=UPSTREAM_WIDTH` for
-upstream's canvas.
-"""
 
 
 def plot_clones_genomic(

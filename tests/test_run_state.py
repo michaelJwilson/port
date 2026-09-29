@@ -37,8 +37,7 @@ Kind = Literal["switch", "run", "cache", "rebind"]
 
 STATE: dict[str, Kind] = {
     "cnaster.hmm_initialize.GaussianMixture": "rebind",
-    "port.extensions.copy_likelihood._CAPTURED": "run",
-    "port.extensions.copy_likelihood._LENGTHS": "run",
+    "port.extensions.copy_likelihood._FITS": "run",
     "port.extensions.segments._CURRENT": "run",
     "port.patch.hmm_nophasing.shifted_emission.hmm_nophasing._row_shift": "run",
     "port.patch.hmrf.clone_assignment._BOUNDARY": "cache",

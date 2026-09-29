@@ -1,5 +1,12 @@
 r"""The #380 design study's clone-mixture variants: every option it measured.
 
+Ticket: #380 -- the clone-mixture variants the design study measured and did
+  not adopt, kept selectable.
+Measurement: `ROW_MODE = "bic"` against entropy rows, ARI 0.9899 against
+  0.9908 (easy admixed) and 0.9830 against 0.9838 (hard admixed).
+Exit: retire with `port.sandbox.admixture.clone_mixture` (#467); a variant
+  graduates only if it beats entropy rows on spot recovery.
+
 `port.sandbox.admixture.clone_mixture` carries the one adopted: integer-lattice
 profiles, a diploid column in `W`, rows regularized by entropy at
 `ENTROPY_WEIGHT = 1`, five admixture starts. This module keeps the rest,

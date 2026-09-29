@@ -215,6 +215,7 @@ SWAPS: tuple[Swap, ...] = (
         "port.patch.pseudobulk:merge_pseudobulk_by_index_mix",
         488,
     ),
+    Swap("cnaster.hmm_phased", "hmm_phased", "port.patch.hmm_phased:hmm_phased", 269),
 )
 """Every `cnaster` name `port` can replace by rebinding it.
 
@@ -243,6 +244,9 @@ in the regime named there (#466 lists them):
   where `cnaster` loops (#304);
 - `normal_baf_bin_filter`: a removed bin's genes marked `is_interval =
   False` (#105), and a chromosome with no bins left out of `lengths`.
+- `hmm_phased`: the coded emission reads the fitted parameter by state, so
+  a call scoring more than one spot returns a number where `cnaster` raises
+  `IndexError`; every call `run_cnaster` makes scores one spot (#269, #517).
 
 `FIGURE_SWAPS` is a separate table rather than more rows for a different reason:
 a figure written at half the dpi is a different file by design, not a fix.
@@ -253,13 +257,8 @@ FIGURE_DPI = 150
 """What `FIGURE_SWAPS` binds `write_fig`'s `dpi` to, against `cnaster`'s 300 (#195).
 
 Halving it quarters the raster: a 20x10 inch panel goes 6,000 x 3,000 pixels
-to 3,000 x 1,500, 72 MB of RGBA to 18 MB. Measured on one figure with four
-rasterized collections, written to PDF:
-
-    dpi=300, tight bbox -- cnaster   2,033 ms   35.1 MB
-    dpi=150, tight bbox                692 ms    9.9 MB   2.9x
-    dpi=150, no tight bbox             489 ms    9.8 MB   4.2x
-    dpi=300, tight, not rasterized   1,379 ms    2.1 MB
+to 3,000 x 1,500, 72 MB of RGBA to 18 MB. Measured: `docs/measurements.md`,
+`port.pipeline.FIGURE_DPI`.
 
 150 rather than lower because it is the floor at which a 20-inch panel still
 carries 3,000 pixels across, which is more than any screen shows it at and
@@ -303,7 +302,7 @@ FIGURE_SWAPS: tuple[Swap, ...] = (
 )
 """The replacements that **change the output**, and the biggest win here.
 
-Five rows. `write_fig` is 47 per cent of a run (#195); `plot_clones_genomic`
+Five rows. `write_fig` writes the figures (#195); `plot_clones_genomic`
 draws each clone's RDR line at `mu / Z_c` when the shift is on, where its
 points are, rather than at the pinned `mu` (#299); `plot_clones_spatial`
 tiles each spot at 0.85 of the lattice pitch rather than a dot 0.53 of it
@@ -311,9 +310,8 @@ across (#309); `plot_copy_number_profile` draws one row per clone, and
 `plot_ascn_legend` is its legend (#309). That last row is reached by no live
 call: `cnaster`'s only caller is the function the row above replaces (#466). `write_fig` is installed with two options bound:
 `dpi=150`, and one rasterizing group per axes rather than the two a
-gridline splits `cnaster`'s runs into. Together they
-take a run's plotting from 20.34 s to 3.84 s and its renderer buffers from
-8,287 MB to 1,036 MB.
+gridline splits `cnaster`'s runs into. Measured: `docs/measurements.md`,
+`port.pipeline.FIGURE_SWAPS`.
 
 Separate from `SWAPS` because `CLAUDE.md` forbids a silent behaviour change
 and each row makes one: a coarser raster, gridlines that paint under the data
@@ -325,8 +323,7 @@ installs this table unless `--no-figure-swaps` or `--no-patch` is given, because
 sitting behind a flag is a win nobody gets. The table stays its own so the
 distinction survives the default: `SWAPS` is still the set that reproduces
 `cnaster` bitwise, `install()` still defaults to `SWAPS` alone, and the
-tests asserting that property still have something to assert. Merging the
-two would have bought the same 47 per cent and cost the claim.
+tests asserting that property still have something to assert.
 
 So the decision is still a reader's rather than a default's -- it is just
 the other way round, and `--no-figure-swaps` is where it is made.
@@ -358,8 +355,8 @@ SHIFT_SWAPS: tuple[Swap, ...] = (
 
 `cnaster` computes `log Z_c = log sum_g lambda_g mu_{s_c(g)}` and discards
 it, so a clone whose events move its library is fitted against a baseline
-that does not account for them: on #292's genome the fit returned
-`mu / Z_c`, state by state, rather than the planted `mu` (#293). The model
+that does not account for them (#292, #293; `docs/measurements.md`,
+`port.pipeline.SHIFT_SWAPS`). The model
 these rows fit is `<u_gn> = lambda_g T_n mu / sum_g lambda_g mu`.
 
 Two rows because the shift has two jobs. The `hmm_nophasing` class applies it
@@ -440,14 +437,13 @@ REFINEMENT_SWAPS: tuple[Swap, ...] = (
 
 `cnaster` builds the mask of which sub-clones each spot may take and drops
 it before the HMRF (`run_cnaster.py:1105`), so `icm_sweep_deque`'s 200-spot
-floor reassigns spots across BAF clones at random: on `calicost_instance` it
-merged all 16 sub-clones into one (ARI 0.000). The row keeps the mask;
+floor reassigns spots across BAF clones at random (`docs/measurements.md`,
+`port.pipeline.REFINEMENT_SWAPS`). The row keeps the mask;
 `port.patch.hmrf.clone_assignment` applies it while the problem is the one it
 was built for (`port.patch.hmrf.refinement`).
 
 **Its own table, and off by default**, because the clones change.
-`run_cnaster_port --refinement-mask` installs it (#466: this said "on", the
-CLI never did). Its only reader is port's `pipeline_clone_assignment`, so
+`run_cnaster_port --refinement-mask` installs it (#466). Its only reader is port's `pipeline_clone_assignment`, so
 `--no-patch` without `--sal` refuses it, and where a tumour proportion hands
 the call to `cnaster` (#135) the mask is not applied and the run says so.
 
