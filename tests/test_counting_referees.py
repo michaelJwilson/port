@@ -25,7 +25,6 @@ UNCOUNTED = frozenset(
         "FIGURE_SWAPS:plot_clones_spatial",
         "FIGURE_SWAPS:plot_copy_number_profile",
         "FIGURE_SWAPS:write_fig",
-        "NP_MERGE_SWAPS:merge_by_minspots",
         "PLOT_OFF_SWAPS:write_fig",
         "SHIFT_SWAPS:reindex_clones",
         "SWAPS:assign_initial_blocks",
@@ -37,7 +36,7 @@ UNCOUNTED = frozenset(
         "SWAPS:summarize_counts_for_blocks",
     }
 )
-"""15 of 32 rows. The five figure rows have no truth to count against."""
+"""14 of 31 rows. The five figure rows have no truth to count against."""
 
 
 def _uncounted() -> set[str]:

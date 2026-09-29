@@ -173,11 +173,7 @@ def reindex_clones(arguments: dict[str, Any]) -> Any:
     """
     # NB bound at import, as `UPSTREAM_REINDEX`: the swap rebinds the name in
     #    `cnaster.hmrf`, so reading it here at call time would call this back.
-    from port.extensions import np_merge
-
-    # NB the read-depth stage's merged clones, which `cnaster` computes and
-    #    does not write (#497); `res_combine` itself where none is held.
-    res_combine = arguments["res_combine"] = np_merge.taken(arguments["res_combine"])
+    res_combine = arguments["res_combine"]
     before = np.asarray(res_combine["pred_cnv"])
     reindexed, posterior = UPSTREAM_REINDEX(**arguments)
     # NB by `__getitem__`: `cnaster`'s `CnaHMRFResult` has no `get`, and
@@ -245,14 +241,13 @@ def shift_for(pred_cnv: Any) -> tuple[float, int | None]:
     return 0.0, None
 
 
-@as_upstream(UPSTREAM, hmm_start=None, distinct_init=False, np_merge=False)
+@as_upstream(UPSTREAM, hmm_start=None, distinct_init=False)
 def run_core_inference(arguments: dict[str, Any], options: dict[str, Any]) -> Any:
     """Upstream's inference, then the neutral pin when the fit was shifted.
 
     Options, which `run_cnaster_port` binds at install (#517): `hmm_start`,
     `sal`'s start for the read-depth stage (#489); `distinct_init`, the
-    initializer choosing among distinct components (#348); `np_merge`, hold
-    this fit for the Neyman-Pearson merge (#497).
+    initializer choosing among distinct components (#348).
     """
     import functools
 
@@ -270,18 +265,6 @@ def run_core_inference(arguments: dict[str, Any], options: dict[str, Any]) -> An
             )
         elif options["distinct_init"]:
             arguments["hmm_initializer"] = distinct.gmm_init
-
-    from port.extensions import np_merge
-
-    # NB the spot counts and parameters this fit reads, for the stage's
-    #    Neyman-Pearson merge (#497).
-    if options["np_merge"]:
-        np_merge.remember(
-            arguments.get("single_X"),
-            arguments.get("single_base_nb_mean"),
-            arguments.get("single_total_bb_RD"),
-            str(arguments.get("params", "")),
-        )
 
     result = UPSTREAM(**arguments)
 
