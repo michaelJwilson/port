@@ -1,5 +1,12 @@
 """CalicoST's integer-copy decoders, called as `calicost_main` calls them (#362).
 
+Ticket: #362 -- CalicoST's integer-copy decoders on a `fit_copies` input, a
+  referee for the sim audit, set aside because nothing installs it.
+Measurement: none recorded; scoring these decoders against
+  `copy_likelihood.lattice_decode` on the sim audit's fits would measure it.
+Exit: graduate to `extensions/` when a sim-audit test scores it against the
+  lattice decode; else retire.
+
 CalicoST fits each clone's continuous `(mu, p)` and then decodes integer
 copies per clone with a least-squares cost on them
 (`find_integer_copynumber.py`):

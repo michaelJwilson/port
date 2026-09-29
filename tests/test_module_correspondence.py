@@ -11,12 +11,12 @@ package under that name, and its `__init__` re-exports them so a swap row
 names the package. Where a patch replaces nothing, it does not live under
 `patch/` at all.
 
-Two modules are exceptions and declare `MIRRORS` because a name cannot carry
-what they do: `cnaster` defines
-`compute_emission_probability_nb_betabinom` in **both** `hmm_nophasing` and
-`hmm_phased`, and `forward_lattice` and `backward_lattice` in both, so
-`emission` and `lattice` each unify a duplicate pair and cannot be named for
-one half of it.
+Two packages are exceptions and declare `MIRRORS` because a name cannot
+carry what they do: `cnaster` defines `forward_lattice` and
+`backward_lattice` in both `hmm_nophasing` and `hmm_phased`, so `lattice`
+unifies a duplicate pair, and `plotting`'s path helpers serve both
+`cnaster.plot_genomic` and `cnaster.plotting`. `emission`, the third, is set
+aside under `sandbox/patch/` (#517 step 8).
 
 `infra`: these assert `port`'s own layout. None says anything about a
 scientific result, and none can fail because `cnaster` changed.
@@ -40,7 +40,7 @@ from port.pipeline import (
 
 ROOT = Path(__file__).resolve().parents[1]
 
-UNIFIERS = ("emission", "lattice", "plotting")
+UNIFIERS = ("lattice", "plotting")
 """The two patches that replace a pair of `cnaster` modules rather than one.
 
 Named here rather than inferred so that adding a third is a decision someone
@@ -53,7 +53,7 @@ PRIVATE_SURFACE = frozenset(
         ("cnaster.hmm_nophasing", "_nb_logpmf_1d"),
         ("cnaster.hmm_phased", "_switch_betabinom_1d"),
         # The four layout helpers `plot_clones_genomic` is built from (#278).
-        # `port.patch.plotting.genomic` replaces that function and imports
+        # `port.sandbox.patch.plotting.genomic` replaces that function and imports
         # these rather than copying them: they draw the gridspec, the axis
         # furniture and the chromosome boundaries, and a copy would be 130
         # lines whose only job is to stay identical. Importing them is what

@@ -1,5 +1,13 @@
 """One emission entry point, writing into a buffer (#205).
 
+Ticket: #205 -- one buffered emission entry point, superseded by
+  `port.patch.hmm_nophasing.dense_emission`.
+Measurement: bitwise against both `cnaster` entry points; 0 bytes allocated
+  per call against 672 MB (unphased) and 1.34 GB (phased) at `K = 7`,
+  `G = 3,000`, `S = 2,000`; 1.07x wall.
+Exit: retire, with `tests/test_buffered_emission.py` and its benchmark;
+  superseded, it has no graduate path.
+
 **#205's first and third steps, which turned out to be one module.** The
 ticket counted "nine density routines for two distributions" and read that as
 duplication. [#214](https://github.com/michaelJwilson/port/pull/214) corrected

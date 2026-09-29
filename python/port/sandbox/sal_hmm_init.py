@@ -1,5 +1,13 @@
 """Set aside (#467): the read-depth stage's HMM start from `sal`'s covariate count-pair mixture.
 
+Ticket: #467 -- `sal`'s covariate count-pair mixture as the read-depth HMM
+  start, set aside as worse than `distinct.gmm_init`.
+Measurement: copy ARI, `distinct.gmm_init` against this start, `--sal`:
+  hard 0.919 / 0.864, easy 0.819 / 0.684; wall time 2-4x.
+Exit: graduate to `patch/`, installed as `run_core_inference`'s
+  `hmm_initializer`, if it matches `distinct`'s copy ARI on both samples;
+  else retire.
+
 **#424's backend as the initializer, measured and worse than `distinct`'s
 GMM**, under `--sal` with #476's clone flags (copy ARI, phase-free exact
 altered; clone ARI unchanged at 0.982 hard, 0.986 easy):
@@ -24,7 +32,7 @@ outliers, and no state at the planted gain or copy-neutral LOH (#471).
 `gmm_init` here fits the mixture **in the family the data came from**:
 `sal.opt.emission_mixture`, a negative binomial on each bin's total with its
 `base_nb_mean` as exposure, times a beta-binomial on its B-allele count out
-of `total_bb_RD` (`port.patch.hmm_initialize.backends.sal_emission_backend`).
+of `total_bb_RD` (`port.sandbox.patch.hmm_initialize.backends.sal_emission_backend`).
 Seeded by D-squared sampling, `RESTARTS` times; the highest log-likelihood
 is kept.
 
@@ -60,7 +68,7 @@ def gmm_init(
 ) -> tuple[np.ndarray, np.ndarray, Any, Any]:
     """`cnaster`'s initializer signature; `sal`'s mixture where there is exposure."""
     from port.patch.hmm_initialize import distinct
-    from port.patch.hmm_initialize.backends import sal_emission_backend
+    from port.sandbox.patch.hmm_initialize.backends import sal_emission_backend
 
     base = np.asarray(base_nb_mean, dtype=np.float64)
 

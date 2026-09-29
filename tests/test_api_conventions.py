@@ -68,20 +68,11 @@ KNOWN: dict[str, str] = {
     "port.extensions.integer_copy:success_probability_variance arg beta": "F2",
     "port.extensions.parameter_errors:shift_weights arg log_mus": "F5",
     "port.patch.hmm_nophasing.logmu_shift:shifts arg log_mus": "F5",
-    "port.patch.hmm_initialize.filtering:FilterRecord field n_bins": "F5",
-    "port.patch.plotting.loh_density:loh_model arg n_bins": "F5",
     "port.extensions.outputs:states arg fit": "F6",
     "port.extensions.outputs:binlevel arg fit": "F6",
     "port.extensions.outputs:segments arg fit": "F6",
     "port.patch.hmrf.core_inference:pin_neutral arg result": "F6",
     # --- F4, F9, F14: HMM initialization ------------------------------------
-    "port.extensions.hmm_init_trials:Trial field score": "F4",
-    "port.extensions.hmm_init_trials:Trial field result": "F6",
-    "port.extensions.hmm_init_trials:Trial field seed": "F9",
-    "port.patch.hmm_initialize.backends:Selection field score": "F4",
-    "port.patch.hmm_initialize.backends:cnaster_gmm_backend arg seed": "F9",
-    "port.patch.hmm_initialize.backends:sal_emission_backend arg seed": "F9",
-    "port.patch.hmm_initialize.backends:cnaster_gmm_backend sibling": "F9",
     "port.patch.icm.interface:IcmResult termination": "F10",
 }
 """Departures found by #401's audit, keyed `module:name kind word`."""
@@ -95,9 +86,6 @@ SIBLINGS: dict[str, tuple[str, ...]] = {
         "port.extensions.label_solver:sal_icm_floor_sweep",
         "port.extensions.label_solver:fusion_then_merge",
         "port.extensions.label_solver:sal_icm_argmax_sweep",
-    ),
-    "port.patch.hmm_initialize.backends:sal_emission_backend": (
-        "port.patch.hmm_initialize.backends:cnaster_gmm_backend",
     ),
 }
 """Entry points one setting chooses between, each against the first: the same

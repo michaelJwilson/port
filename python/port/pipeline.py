@@ -215,6 +215,7 @@ SWAPS: tuple[Swap, ...] = (
         "port.patch.pseudobulk:merge_pseudobulk_by_index_mix",
         488,
     ),
+    Swap("cnaster.hmm_phased", "hmm_phased", "port.patch.hmm_phased:hmm_phased", 269),
 )
 """Every `cnaster` name `port` can replace by rebinding it.
 
@@ -243,6 +244,9 @@ in the regime named there (#466 lists them):
   where `cnaster` loops (#304);
 - `normal_baf_bin_filter`: a removed bin's genes marked `is_interval =
   False` (#105), and a chromosome with no bins left out of `lengths`.
+- `hmm_phased`: the coded emission reads the fitted parameter by state, so
+  a call scoring more than one spot returns a number where `cnaster` raises
+  `IndexError`; every call `run_cnaster` makes scores one spot (#269, #517).
 
 `FIGURE_SWAPS` is a separate table rather than more rows for a different reason:
 a figure written at half the dpi is a different file by design, not a fix.

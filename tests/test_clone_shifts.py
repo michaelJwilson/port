@@ -88,7 +88,7 @@ def test_the_reindex_carries_each_shift_with_its_clone(
         out["pred_cnv"] = np.asarray(res_combine["pred_cnv"])[:, ::-1].copy()
         return out, None
 
-    monkeypatch.setattr(module, "UPSTREAM_REINDEX", reverse)
+    monkeypatch.setattr(module, "held_to_one_column", reverse)
     result = _result()
     shifts = module.clone_shifts(result, _base(), True)
     module._NORMAL[:] = [0]
@@ -104,14 +104,14 @@ def test_the_reindex_carries_each_shift_with_its_clone(
 
 
 @pytest.mark.patch
-def test_without_shifts_the_reindex_is_upstreams(
+def test_without_shifts_the_reindex_is_the_reorders(
     clean: None, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """An unshifted fit is returned as upstream returns it, and nothing is kept."""
+    """An unshifted fit is returned as the reorder returns it, and nothing is kept."""
     from port.patch.hmrf import core_inference as module
 
     sentinel = ({"pred_cnv": PATHS}, "posterior")
-    monkeypatch.setattr(module, "UPSTREAM_REINDEX", lambda *_, **__: sentinel)
+    monkeypatch.setattr(module, "held_to_one_column", lambda *_, **__: sentinel)
 
     assert module.reindex_clones(_result()) is not None
     assert module.reindex_clones(_result())[1] == "posterior"
@@ -165,7 +165,7 @@ def test_the_reindex_carries_each_shift_on_cnasters_result(
         out.lock()
         return out, None
 
-    monkeypatch.setattr(module, "UPSTREAM_REINDEX", reverse)
+    monkeypatch.setattr(module, "held_to_one_column", reverse)
     res.lock()
 
     reindexed, _ = module.reindex_clones(res)

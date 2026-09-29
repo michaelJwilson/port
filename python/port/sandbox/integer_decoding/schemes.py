@@ -1,5 +1,13 @@
 """Every integer-copy scheme the #362 audit compared, behind `Scheme` flags.
 
+Ticket: #362 -- every integer-copy scheme the audit compared, set aside when
+  `copy_likelihood` kept only the default (`DEFAULT`).
+Measurement: `TEMPERED` reaches Viterbi's answer on every fit at 6-12x the
+  time; `dispersion` `"poisson"` and `"relax"` match `"fit"` on the pure
+  fixtures.
+Exit: a scheme graduates to `extensions/copy_likelihood` if it beats
+  `DEFAULT` on the sim audit's copy recovery; else retire.
+
 The flagged `fit_copies` as it stood when `port.extensions.copy_likelihood`
 kept only the default (lattice Viterbi, per-clone tumour fraction, parsimony
 0.5). Kept here with the measurements that set it aside:
