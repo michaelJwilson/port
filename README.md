@@ -4,12 +4,12 @@
 [![oracle](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/michaelJwilson/port/main/.badges/coverage-oracle.json)](#what-the-badges-mean)
 [![drop-in](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/michaelJwilson/port/main/.badges/coverage-dropin.json)](#what-the-badges-mean)
 [![all](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/michaelJwilson/port/main/.badges/coverage-reach.json)](#what-the-badges-mean)
-[![speed vs CalicoST](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/michaelJwilson/port/main/.badges/run-speed.json)](#what-the-badges-mean)
+[![speedup](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/michaelJwilson/port/main/.badges/run-speed.json)](#what-the-badges-mean)
 [![mem](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/michaelJwilson/port/main/.badges/run-mem.json)](#what-the-badges-mean)
 [![instance](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/michaelJwilson/port/main/.badges/instance.json)](#what-the-badges-mean)
-[![patched](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/michaelJwilson/port/main/.badges/patched.json)](#what-the-badges-mean)
 [![port ARI](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/michaelJwilson/port/main/.badges/recovery-port.json)](#what-the-badges-mean)
 [![sal ARI](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/michaelJwilson/port/main/.badges/recovery-sal.json)](#what-the-badges-mean)
+[![patched](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/michaelJwilson/port/main/.badges/patched.json)](#what-the-badges-mean)
 
 A scientific repository built on
 [`snakes_and_ladders`](https://github.com/michaelJwilson/snakes_and_ladders),
@@ -53,20 +53,21 @@ the table.
 | **all** | the other eight markers | `cnaster` + `python/port` | how much is merely **run**, rather than judged against anything outside `cnaster` |
 | **drop-in** | `patch or cnaster` | `python/port/patch` | how much of what `port` wrote to replace something is reached by the test comparing it with the something. The one guard whose denominator is ours, so the one with a high floor |
 
-**`speed vs CalicoST`** is CalicoST's wall over `run_cnaster_port --sal`'s on
+**`speedup`** is CalicoST's wall over `run_cnaster_port --sal`'s on
 `dev_tree` r0 (60 x 50 per slice, 6,000 spots): CalicoST's 20,243 s
 (#532, 3 cores) taken as its one-core time, which favours CalicoST, against
 `port` pinned to one core. The sample, both walls and the commit are in
 `measurements.json`.
 
 **`mem`** is patched `run_cnaster` against `--no-patch`: peak resident
-memory, each arm in its own process, in ratio units.
+memory, each arm in its own process, in ratio units. It reads `/` until both
+arms are measured on `dev_tree`; the last ratio, 3.21X at 3800 x 1980 x 5,
+is kept in `measurements.json` as superseded, since a ratio read at another
+instance is not comparable.
 
-**`instance`** is what makes `mem` readable, and `CLAUDE.md` is explicit
-that a ratio read at a gate size decides nothing -- so the two are a set.
-It carries the size as `obs x spots x states`, which is what a tier name
-cannot: two instances both called stress can differ by more than the patch
-being measured does. It asserts nothing and is blue for that reason.
+**`instance`** names the sample the badges are read at, `dev_tree` r0, and
+`CLAUDE.md` is explicit that a ratio read at a gate size decides nothing. It
+asserts nothing and is blue for that reason.
 
 **`patched`** is how much of what a run executes `port` has replaced: of
 the `cnaster` lines an unpatched `run_cnaster` executes on the dev instance
@@ -83,8 +84,8 @@ decoded `(A, B)` agree at 0.99 of bins -- and of each clone-bin's phased
 `(A, B)` against the state the fixture painted there. Measured by
 `python -m tests.sim_audit --sample generated/dev_tree/r0`; the sample,
 configuration and commit are in `measurements.json`. Not per pull request,
-since each is a whole run; blue, because the configuration is not on the
-badge.
+since each is a whole run; orange, a fixed colour that no threshold
+decides.
 
 `tests/test_badges_agree.py` is what keeps them together. It refuses a
 recorded ratio that does not name its instance, carry exactly two arms, and

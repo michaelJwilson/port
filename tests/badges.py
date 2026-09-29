@@ -24,7 +24,7 @@ The cost is that they can go stale, and the test is what pays it.
 | badge | measured by | tier |
 | --- | --- | --- |
 | judged, oracle, reach | the three coverage guards | per pull request |
-| memory, instance | a whole `run_cnaster`, both arms | `release` |
+| memory, instance | a whole `run_cnaster`, both arms, on `dev_tree` r0 | by hand |
 | speed | `run_cnaster_port --sal` on `dev_tree` r0, one core, against CalicoST's recorded wall (#532) | by hand |
 | patched | `python -m tests.patched_share`, one unpatched run (#302) | by hand |
 | port, sal | `python -m tests.sim_audit` on `dev_tree` r0, default and `--sal` | by hand |
@@ -144,11 +144,11 @@ def _speed_badge(record: dict[str, Any] | None) -> Badge:
     sample, both walls and that assumption are in `measurements.json`.
     """
     if not record or record.get("ratio") is None:
-        return Badge("run-speed", "speed vs CalicoST", UNMEASURED, "lightgrey")
+        return Badge("run-speed", "speedup", UNMEASURED, "lightgrey")
 
     value = record["ratio"]
     return Badge(
-        "run-speed", "speed vs CalicoST", f"{value:.0f}X", _ratio_colour(value)
+        "run-speed", "speedup", f"{value:.0f}X vs CalicoST", _ratio_colour(value)
     )
 
 
@@ -216,8 +216,8 @@ def _recovery_badge(arm: str, record: dict[str, Any] | None) -> Badge:
     the run's `clone_labels.tsv` over spots, which carries #518's merge of
     clones whose decoded `(A, B)` agree at 0.99 of bins, and each matched
     clone-bin's decoded `(A, B)` against the state the fixture painted there.
-    Blue: the sample and configuration they were read at are in
-    `measurements.json`, and a badge has no room for them.
+    Orange, a fixed colour: no threshold decides it, and the sample and
+    configuration they were read at are in `measurements.json`.
     """
     name = f"recovery-{arm}"
     values = (record or {}).get("arms", {}).get(arm)
@@ -229,7 +229,7 @@ def _recovery_badge(arm: str, record: dict[str, Any] | None) -> Badge:
         name,
         f"{arm} ARI",
         f"(clones, copies) = ({values['ari']:.3f}, {values['copy_ari']:.3f})",
-        "blue",
+        "orange",
     )
 
 
@@ -290,10 +290,10 @@ def badges(measurements: dict[str, Any] | None = None) -> tuple[Badge, ...]:
     rendered.append(_speed_badge(recorded.get("speed")))
     rendered.extend(_ratio_badge(name, axis, run) for name, axis in RATIOS)
     rendered.append(_instance_badge(run))
-    rendered.append(_patched_badge(recorded.get("patched")))
     rendered.extend(
         _recovery_badge(arm, recorded.get("recovery")) for arm in ("port", "sal")
     )
+    rendered.append(_patched_badge(recorded.get("patched")))
 
     return tuple(rendered)
 
