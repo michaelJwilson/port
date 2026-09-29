@@ -375,8 +375,11 @@ def load_input_data(
         df_this_pos = get_spatial_positions(df_meta["spaceranger_dir"].iloc[i])
         df_this_pos = get_he_image(df_meta["spaceranger_dir"].iloc[i], pos=df_this_pos)
 
+        # NB read and cast sparse on every path (#488): the dense layer
+        #    `cnaster` returns is built once, at the end, rather than per
+        #    slice and carried through the concatenation and the scaling.
         adatatmp = _spaceranger_counts(
-            df_meta["spaceranger_dir"].iloc[i], config, sparse_counts=sparse_counts
+            df_meta["spaceranger_dir"].iloc[i], config, sparse_counts=True
         )
 
         idx_argsort = pd.Categorical(
@@ -597,6 +600,20 @@ def load_input_data(
     #    one live consumer -- `filter_normal_diffexp` -- opens with
     #    `anndata.AnnData(exp_counts)` and `exp_counts.values`, which makes it
     #    dense again. Under `sparse_counts` the matrix is handed back instead.
+    stored = adata.layers["count"]
+
+    if not sparse_counts and sp.issparse(stored):
+        # NB `cnaster`'s dense `int64` layer, built once (#488). The values
+        #    are the sparse ones: a structural zero is not `NaN` and truncates
+        #    to zero, so densifying after the cast and the scaling equals
+        #    casting and scaling the dense array.
+        dense = adata.layers["count"].toarray()
+
+        if adata.is_view:
+            adata = adata.copy()
+
+        adata.layers["count"] = dense
+
     if sparse_counts:
         # NB the layer's own format, unconverted. `cnaster` builds the frame
         #    from CSC because `from_spmatrix` wants a column store; the one
@@ -605,7 +622,7 @@ def load_input_data(
         exp_counts = adata.layers["count"]
     else:
         exp_counts = pd.DataFrame.sparse.from_spmatrix(
-            sp.csc_matrix(adata.layers["count"]),
+            sp.csc_matrix(stored),
             index=adata.obs.index,
             columns=adata.var.index,
         )

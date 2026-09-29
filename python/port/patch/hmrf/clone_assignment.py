@@ -173,6 +173,23 @@ _BOUNDARY: dict[tuple[int, ...], _Boundary] = {}
 """One slot. A run conditions on one dataset, so a second entry is a bug."""
 
 
+def _self_only(smooth_mat: Any) -> bool:
+    """Whether every spot's only pooling neighbour is itself."""
+    n_spots = smooth_mat.shape[0]
+    return bool(
+        smooth_mat.shape == (n_spots, n_spots)
+        and np.array_equal(smooth_mat.indptr, np.arange(n_spots + 1))
+        and np.array_equal(smooth_mat.indices, np.arange(n_spots))
+    )
+
+
+def _zero_plus(values: np.ndarray) -> np.ndarray:
+    """`0 + values` into a fresh array, as upstream's pooling accumulates."""
+    pooled = np.zeros(values.shape, dtype=values.dtype)
+    pooled += values
+    return pooled
+
+
 def boundary(
     single_base_nb_mean: np.ndarray,
     single_total_bb_RD: np.ndarray,
@@ -297,7 +314,7 @@ def pipeline_clone_assignment(
     from port.extensions.label_solver import label_solver, sweep_for
     from port.patch.hmrf.adjacency import adjacency_coo
     from port.patch.hmrf.refinement import MASK_PENALTY, compact, mask_for
-    from port.patch.hmrf.tabulated_field import spot_clone_field
+    from port.patch.hmrf.tabulated_field import field_kernel, spot_clone_field
     from port.patch.icm.floor import configured_floor, enforce_floor
     from port.patch.icm.floor import installed as floor_installed
     from port.patch.icm.interface import CsrGraph, fold_unary, icm_sweep
@@ -342,7 +359,13 @@ def pipeline_clone_assignment(
 
     logger.info("Pooling hmrf data by smooth mat. (reduces necessary computation).")
 
-    if smooth_mat is not None:
+    if smooth_mat is not None and _self_only(smooth_mat):
+        # NB each spot pools itself alone, so upstream's loop is `0 + x` per
+        #    entry; the same sums here, vectorized (#488).
+        pooled_X = _zero_plus(single_X)
+        pooled_base_nb_mean = _zero_plus(single_base_nb_mean)
+        pooled_total_bb_RD = _zero_plus(single_total_bb_RD)
+    elif smooth_mat is not None:
         pooled_X, pooled_base_nb_mean, pooled_total_bb_RD, _, _ = (
             upstream.pool_spatio_genomic_counts(
                 single_X,
@@ -406,11 +429,19 @@ def pipeline_clone_assignment(
         #    each out of range while their product is not.
         field = np.empty((n_spots, n_clones))
         centre = float(np.mean(shifts))
+        # NB the counts are the same for every clone, so the kernel is chosen
+        #    once rather than per column, and the rescaled exposure written
+        #    into one buffer (#488).
+        kernel = field_kernel(pooled_X[:, 0, :], pooled_X[:, 1, :], pooled_total_bb_RD)
+        scaled = np.empty_like(pooled_base_nb_mean)
 
         for clone in range(n_clones):
-            column = spot_clone_field(
+            np.multiply(
+                pooled_base_nb_mean, np.exp(-(shifts[clone] - centre)), out=scaled
+            )
+            column = kernel(
                 pooled_X[:, 0, :],
-                pooled_base_nb_mean * np.exp(-(shifts[clone] - centre)),
+                scaled,
                 pooled_X[:, 1, :],
                 pooled_total_bb_RD,
                 state_vector(res["new_log_mu"]) - centre,
