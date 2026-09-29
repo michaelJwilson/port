@@ -175,7 +175,6 @@ def _installed() -> set[str]:
         COPY_SWAPS,
         FIGURE_SWAPS,
         NP_MERGE_SWAPS,
-        NUMERIC_SWAPS,
         REFINEMENT_SWAPS,
         SHIFT_SWAPS,
         SWAPS,
@@ -185,7 +184,6 @@ def _installed() -> set[str]:
 
     for table in (
         SWAPS,
-        NUMERIC_SWAPS,
         FIGURE_SWAPS,
         SHIFT_SWAPS,
         COPY_SWAPS,

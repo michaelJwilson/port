@@ -149,6 +149,22 @@ def sweep_for(name: Solver) -> Any:
     return sal_icm_sweep
 
 
+def _finite(field: Any, graph: Any, beta: float) -> Any:
+    """`field` with each `-inf` a penalty no labelling pays, before sal reads it.
+
+    sal's expansion makes no move on a field holding `-inf` (#373 B0), and
+    `alpha_expansion_sweep` applies `forbidden_as_finite` for that reason
+    (#462). Every row here that hands sal the field goes through it too, so
+    one fix covers every path to sal's solvers (#466). A labelling that takes
+    no forbidden label has the same energy under either field.
+    """
+    import numpy as np
+
+    from port.patch.icm.alpha_expansion import forbidden_as_finite
+
+    return forbidden_as_finite(np.asarray(field, dtype=np.float64), graph, beta)
+
+
 def expansion_then_floor(
     field: Any, graph: Any, assignment: Any, beta: float, **knobs: Any
 ) -> Any:
@@ -207,7 +223,7 @@ def sal_icm_sweep(
     from port.patch.icm.alpha_expansion import potts_graph_from
     from port.patch.icm.interface import IcmResult
 
-    values = np.asarray(field, dtype=np.float64)
+    values = _finite(field, graph, beta)
     potts = potts_graph_from(graph, beta)
     result = iterated_conditional_modes(
         potts,
@@ -248,7 +264,7 @@ def _sal_floor(
     from port.patch.icm.alpha_expansion import potts_graph_from
     from port.patch.icm.interface import IcmResult
 
-    values = np.asarray(field, dtype=np.float64)
+    values = _finite(field, graph, beta)
     potts = potts_graph_from(graph, beta)
     start = np.asarray(assignment, dtype=np.int64).copy()
 
@@ -340,7 +356,7 @@ def sal_icm_argmax_sweep(
     from port.patch.icm.alpha_expansion import potts_graph_from
     from port.patch.icm.interface import IcmResult
 
-    values = np.asarray(field, dtype=np.float64)
+    values = _finite(field, graph, beta)
     potts = potts_graph_from(graph, beta)
     result = iterated_conditional_modes(
         potts,
@@ -390,7 +406,7 @@ def fusion_then_merge(
     from port.patch.icm.alpha_expansion import potts_graph_from
     from port.patch.icm.interface import IcmResult
 
-    values = np.asarray(field, dtype=np.float64)
+    values = _finite(field, graph, beta)
     potts = potts_graph_from(graph, beta)
     expanded = alpha_expansion(
         potts,

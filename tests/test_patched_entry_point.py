@@ -211,16 +211,16 @@ def test_a_patched_run_reproduces_an_unpatched_one(
     entry point is what ships, so running it is a stronger claim than
     importing what it calls.
 
-    **The patched arm passes `--no-figure-swaps --no-approx`**, because two of the
-    three swap tables are in the entry point's default and neither makes this
+    **The patched arm passes `--no-figure-swaps --no-shift --no-copy-cap`**,
+    because those tables are in the entry point's default and none makes this
     claim: a figure at a different dpi is a different file by design (#195),
-    and the vectorized log-pmf agrees to 8.6e-13 rather than to the byte
-    (#240). `SWAPS` is the table that reproduces `cnaster`, so the two flags
-    select the claim being tested rather than weaken it.
-
-    That is the whole reason there are three tables. A row whose agreement is
-    a tolerance cannot live in `SWAPS` without making this assertion false,
-    and the assertion is what the speed claims are read against.
+    the shift changes every fitted rate (#276), and a stated cap changes the
+    decode (#313). `--no-shift` also leaves out the sal emission and the
+    distinct init its rows read. `SWAPS` is the table that reproduces
+    `cnaster`, so the flags select the claim being tested rather than weaken
+    it; without them 14 files differed, on main as here (#466). A row whose agreement is a tolerance
+    cannot live in `SWAPS` without making this assertion false; the one that
+    did, `--approx`'s vectorized log-pmf (#240), was retired (#466).
     """
     import subprocess
     import sys
@@ -246,7 +246,7 @@ def test_a_patched_run_reproduces_an_unpatched_one(
     baseline = tmp_path / "baseline"
     shutil.move(str(output), str(baseline))
 
-    run("--no-figure-swaps", "--no-approx")
+    run("--no-figure-swaps", "--no-shift", "--no-copy-cap")
 
     same, differ = _compare(baseline, output)
 

@@ -219,6 +219,41 @@ def test_one_key_sets_both_caps() -> None:
         assert configured_caps() == (12, 12)
 
 
+@pytest.mark.infra
+@pytest.mark.parametrize(
+    ("value", "total"), [(None, None), ("none", None), (12, 12), ("12", 12), (2, 2)]
+)
+def test_a_stated_cap_is_read_as_the_audit_reads_it(value: Any, total: Any) -> None:
+    """`"none"` states no cap for the decode and the audit alike (#466).
+
+    The audit ran `int("none")` and ended the run before it started.
+    """
+    from port.extensions.config_audit import audit
+    from port.patch.integer_copy import stated_total
+
+    findings = audit({"int_copy_num": {"max_total_copy": value}}, check_paths=False)
+
+    assert stated_total(value) == total
+    assert not [f for f in findings if f.kind == "invalid"]
+
+
+@pytest.mark.infra
+@pytest.mark.parametrize("value", [0, 1, 12.7, True, "twelve"], ids=str)
+def test_a_cap_below_the_diploid_or_fractional_is_refused(value: Any) -> None:
+    """At a cap of 1 the MILP returns `(0, 0)` at infinite loss; 0 raised (#466)."""
+    from port.extensions.config_audit import audit
+    from port.patch.integer_copy import stated_total
+
+    with pytest.raises(ValueError, match="integer >= 2"):
+        stated_total(value)
+
+    findings = audit({"int_copy_num": {"max_total_copy": value}}, check_paths=False)
+
+    assert [f.key for f in findings if f.kind == "invalid"] == [
+        "int_copy_num.max_total_copy"
+    ]
+
+
 @pytest.mark.analytic
 def test_pairs_by_bin_answer_the_path_per_bin_and_anything_else_per_state() -> None:
     """The indexings `run_cnaster.py` makes of a decoder's result (#371).

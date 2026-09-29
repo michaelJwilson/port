@@ -38,6 +38,7 @@ __all__ = [
     "compact",
     "forget",
     "initialize_rdr_clone_refininement",
+    "kept",
     "mask_for",
 ]
 
@@ -107,6 +108,11 @@ def compact(assignment: np.ndarray) -> None:
         survivors = np.unique(np.asarray(assignment, dtype=np.int64))
         if survivors.size < _KEPT[0].shape[1]:
             _KEPT[0] = _KEPT[0][:, survivors]
+
+
+def kept() -> bool:
+    """Whether a mask is kept, whatever problem it describes."""
+    return bool(_KEPT)
 
 
 def forget() -> None:
