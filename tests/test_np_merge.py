@@ -83,7 +83,7 @@ def test_the_statistics_are_calicosts(params: str) -> None:
     """Every event's statistic, pair for pair, to 1e-10."""
     from calicost.hmm_NB_BB_nophasing_v2 import hmm_nophasing_v2
     from calicost.hmm_NB_BB_phaseswitch import compute_neymanpearson_stats
-    from port.extensions.np_merge import statistics
+    from port.sandbox.np_merge import statistics
 
     X, base, total, res = _instance()
     theirs = compute_neymanpearson_stats(
@@ -115,7 +115,7 @@ def test_the_groups_are_calicosts(params: str, monkeypatch: pytest.MonkeyPatch) 
     from calicost.hmm_NB_BB_phaseswitch import (
         similarity_components_rdrbaf_neymanpearson,
     )
-    from port.extensions.np_merge import groups
+    from port.sandbox.np_merge import groups
 
     monkeypatch.setattr(np, "NAN", np.nan, raising=False)
     X, base, total, res = _instance()
@@ -141,7 +141,7 @@ def test_the_groups_are_calicosts(params: str, monkeypatch: pytest.MonkeyPatch) 
 def test_a_clone_shift_scales_the_read_depth_as_its_rates() -> None:
     """A clone's shift enters as its rates less the shift: shifting a clone's
     exposure up by `e^d` and its shift by `d` leaves every statistic as it was."""
-    from port.extensions.np_merge import statistics
+    from port.sandbox.np_merge import statistics
 
     X, base, total, res = _instance()
     shifted_base = base.copy()
@@ -162,7 +162,7 @@ def test_a_clone_shift_scales_the_read_depth_as_its_rates() -> None:
 @pytest.mark.patch
 def test_merged_keeps_each_groups_first_path_and_shift() -> None:
     """CalicoST keeps the group's least clone's decode; the shift follows it."""
-    from port.extensions.np_merge import merged
+    from port.sandbox.np_merge import merged
 
     _, _, _, res = _instance()
     res = {**res, "new_log_mu_shift": np.array([0.1, 0.2, 0.3, 0.4])}
@@ -187,8 +187,8 @@ def test_the_swap_is_cnasters_merge_by_minspots_where_it_does_not_merge(
     """
     import contextlib
 
-    from port.extensions.np_merge import np_merge
-    from port.patch.hmrf.merge import UPSTREAM, merge_by_minspots
+    from port.sandbox.np_merge import np_merge
+    from port.sandbox.np_merge.merge import UPSTREAM, merge_by_minspots
 
     rng = np.random.default_rng(1)
     assignment = rng.integers(0, 3, 400)
@@ -224,7 +224,7 @@ def test_merged_writes_a_cnaster_result_and_leaves_the_original() -> None:
         HMMParams,
         HMMProfile,
     )
-    from port.extensions.np_merge import merged
+    from port.sandbox.np_merge import merged
 
     _, _, _, plain = _instance()
     gamma = np.log(np.full((N_STATES, N_OBS, 4), 0.25))
@@ -261,7 +261,7 @@ def test_merged_writes_a_cnaster_result_and_leaves_the_original() -> None:
 @pytest.mark.patch
 def test_merged_reads_the_baf_stages_clone_stacked_layout() -> None:
     """The BAF-only stage stacks the clones' decodes in one vector; a group keeps its first block."""
-    from port.extensions.np_merge import groups, merged, statistics
+    from port.sandbox.np_merge import groups, merged, statistics
 
     X, base, total, res = _instance()
     stacked = {
@@ -286,7 +286,7 @@ def test_merged_reads_the_baf_stages_clone_stacked_layout() -> None:
 @pytest.mark.patch
 def test_the_held_merge_is_taken_only_for_its_own_fit() -> None:
     """`taken` hands back the merged result for the fit it was held for, once."""
-    from port.extensions.np_merge import hold, np_merge, taken
+    from port.sandbox.np_merge import hold, np_merge, taken
 
     _, _, _, res = _instance()
     other = {**res, "pred_cnv": res["pred_cnv"] + 1}
@@ -308,7 +308,7 @@ def test_a_short_event_of_strong_evidence_keeps_two_clones_apart() -> None:
     Clone 3 is redrawn as clone 0 but for a 6-bin gain at the gain state, far
     over threshold per bin and 4 bins short of CalicoST's minimum.
     """
-    from port.extensions.np_merge import MINLENGTH, THRESHOLD, groups, statistics
+    from port.sandbox.np_merge import MINLENGTH, THRESHOLD, groups, statistics
 
     X, base, total, res = _instance()
     rng = np.random.default_rng(9)
@@ -333,3 +333,41 @@ def test_a_short_event_of_strong_evidence_keeps_two_clones_apart() -> None:
         {0, 3} <= set(g) for g in groups(X, base, total, res, "smp", short_events=False)
     )
     assert not any({0, 3} <= set(g) for g in groups(X, base, total, res, "smp"))
+
+
+@pytest.mark.infra
+@pytest.mark.cnaster
+def test_the_sandbox_merge_installs_its_bindings_and_restores_them() -> None:
+    """In the sandbox, `np_merge()` binds its three names itself and puts them back (#497).
+
+    `run_cnaster_port` names none of them, so without the context a run is
+    unmerged; inside it the entry point's own swaps resolve the wrapped fit
+    and reindex, and `cnaster`'s `merge_by_minspots` is the sandbox's.
+    """
+    import cnaster.hmrf
+    import cnaster.scripts.run_cnaster as pipeline
+    from port.patch import hmrf
+    from port.sandbox.np_merge import installed, np_merge
+    from port.sandbox.np_merge.merge import merge_by_minspots
+
+    before = (
+        hmrf.run_core_inference,
+        hmrf.reindex_clones,
+        cnaster.hmrf.merge_by_minspots,
+        pipeline.merge_by_minspots,
+    )
+
+    with np_merge():
+        assert installed()
+        assert hmrf.run_core_inference is not before[0]
+        assert hmrf.reindex_clones is not before[1]
+        assert cnaster.hmrf.merge_by_minspots is merge_by_minspots
+        assert pipeline.merge_by_minspots is merge_by_minspots
+
+    assert not installed()
+    assert (
+        hmrf.run_core_inference,
+        hmrf.reindex_clones,
+        cnaster.hmrf.merge_by_minspots,
+        pipeline.merge_by_minspots,
+    ) == before
