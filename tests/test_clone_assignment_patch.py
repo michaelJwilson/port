@@ -16,7 +16,8 @@ from typing import Any
 
 import numpy as np
 import pytest
-from port.patch.hmrf.clone_assignment import _channel_weight, _decoded
+from port.patch.hmrf.clone_assignment import _decoded
+from port.patch.hmrf.invariants import BoundaryInvariants
 
 
 def _cnaster_weight(
@@ -70,7 +71,7 @@ def test_the_channel_weight_is_cnasters_segment_sum(n_spots: int) -> None:
     valid_bb = generator.integers(0, 5, n_spots).astype(np.float64)
 
     np.testing.assert_array_equal(
-        _channel_weight(valid_nb, valid_bb, indices, indptr),
+        BoundaryInvariants(valid_nb, valid_bb).relative_channel_weight(indptr, indices),
         _cnaster_weight(valid_nb, valid_bb, indices, indptr),
     )
 
@@ -171,8 +172,12 @@ def test_the_boundary_invariants_are_computed_once_per_dataset() -> None:
 
     assert first is second, "the invariants were recomputed for the same arrays"
 
-    assert np.array_equal(first.valid_nb, (base_nb_mean > 0).sum(axis=0))
-    assert np.array_equal(first.valid_bb, (total_bb_RD > 0).sum(axis=0))
+    assert np.array_equal(
+        first.counts.num_valid_nb_spotwise, (base_nb_mean > 0).sum(axis=0)
+    )
+    assert np.array_equal(
+        first.counts.num_valid_bb_spotwise, (total_bb_RD > 0).sum(axis=0)
+    )
     assert np.array_equal(first.weight, np.ones(9))
 
 

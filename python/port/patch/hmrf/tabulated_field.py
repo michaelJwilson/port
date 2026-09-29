@@ -36,6 +36,7 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 from numba import njit
 
+from port.patch.hmm_nophasing.gradient import DISPERSION_FLOOR
 from port.patch.hmrf.fused_field import fused_spot_clone_field
 
 if TYPE_CHECKING:  # pragma: no cover - `prange` is `range` to a type checker
@@ -87,7 +88,7 @@ def tabulated_spot_clone_field(
     sizes = np.empty(n_states)
 
     for s in prange(n_states):
-        r = 1.0 / max(alphas[s], 1.0e-10)
+        r = 1.0 / max(alphas[s], DISPERSION_FLOOR)
         sizes[s] = r
 
         for k in range(nb_extent):

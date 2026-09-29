@@ -42,7 +42,6 @@ from typing import Any, NamedTuple
 import matplotlib.colors as mcolors
 import numpy as np
 import pandas as pd
-import scipy.special
 import seaborn as sns  # type: ignore[import-untyped]
 from cnaster.palette import get_full_palette
 from cnaster.plot_genomic import (
@@ -65,7 +64,7 @@ __all__ = [
     "bin_colours",
     "clone_axes",
     "clone_groups",
-    "clone_path",
+    "fitted_clone_path",
     "fitted_levels",
     "plot_clones_genomic",
 ]
@@ -99,23 +98,23 @@ def clone_groups(
     ]
 
 
-def clone_path(res_combine: Any, clone: int, n_obs: int) -> np.ndarray:
-    """Clone `clone`'s decoded states, `(n_obs,)`, modulo the state count.
+def fitted_clone_path(res_combine: Any, clone: int, n_obs: int) -> np.ndarray:
+    """Clone `clone`'s decoded states in a fit, `(n_obs,)`, modulo the state count.
 
     `pred_cnv` comes either with one column per clone (`run_core_inference`
-    deconcatenates) or with the clones concatenated along the genome.
+    deconcatenates) or with the clones concatenated along the genome; a
+    column is one clone's path, sliced by
+    `port.patch.plotting.clone_paths.clone_path` as the concatenation is.
     """
-    pred = np.asarray(res_combine["pred_cnv"])
+    from port.patch.plotting.clone_paths import clone_path
+
+    pred = np.asarray(res_combine["pred_cnv"], dtype=np.int64)
     n_states = np.asarray(res_combine["new_log_mu"]).shape[0]
 
     if pred.ndim == 2 and pred.shape[1] > 1:
-        path = pred[:, clone]
-    else:
-        path = pred.reshape(-1)[clone * n_obs : (clone + 1) * n_obs]
+        pred, clone = pred[:, clone], 0
 
-    states: np.ndarray = np.asarray(path, dtype=np.int64) % n_states
-
-    return states
+    return clone_path(pred, clone, n_obs, n_states)
 
 
 def bin_colours(
@@ -176,7 +175,7 @@ def bin_colours(
         names = [str(pair) for pair in ordered]
 
     elif res_combine is not None:
-        hue = clone_path(res_combine, clone, n_obs)
+        hue = fitted_clone_path(res_combine, clone, n_obs)
         n_states = np.asarray(res_combine["new_log_mu"]).shape[0]
         palette = np.array(
             [mcolors.to_rgba(c) for c in sns.color_palette("deep", n_states)]
@@ -228,17 +227,15 @@ def fitted_levels(
 
     log_mu = state_vector(res_combine["new_log_mu"])
     p_binom = state_vector(res_combine["new_p_binom"])
-    path = clone_path(res_combine, clone, n_obs)
+    path = fitted_clone_path(res_combine, clone, n_obs)
 
     shift = 0.0
 
     if shifted:
-        profile = np.asarray(single_base_nb_mean, dtype=np.float64).sum(axis=1)
+        from port.patch.hmm_nophasing.logmu_shift import clone_log_normalizers
 
-        with np.errstate(divide="ignore"):
-            log_lambda = np.log(profile / profile.sum())
-
-        shift = float(scipy.special.logsumexp(log_mu[path] + log_lambda))
+        normalizers = clone_log_normalizers(log_mu, path[:, None], single_base_nb_mean)
+        shift = 0.0 if normalizers is None else float(normalizers[0])
 
     segments, states = get_intervals(path)
     states = np.asarray(states, dtype=np.int64)

@@ -44,7 +44,7 @@ from __future__ import annotations
 import dataclasses
 import functools
 import sys
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from types import ModuleType
@@ -548,19 +548,40 @@ def _bound_to(original: Any, name: str) -> list[ModuleType]:
     ]
 
 
-def swap_sites(swaps: tuple[Swap, ...] = SWAPS) -> tuple[Site, ...]:
-    """Where each swap would land, without landing it."""
+def _rebind(
+    swaps: tuple[Swap, ...],
+    replace: Callable[[Swap, Any], Any] | None,
+    undo: list[tuple[ModuleType, str, Any]] | None = None,
+) -> tuple[Site, ...]:
+    """Every site each swap reaches, rebound to `replace(swap, current)`.
+
+    The one walk behind `swap_sites`, `install`, `patched` and `instrumented`.
+    Swap by swap, in order, so a later row finds what an earlier one put in
+    place: `PLOT_OFF_SWAPS` rebinds the `write_fig` `FIGURE_SWAPS` installed.
+    `replace=None` rebinds nothing; `undo` collects what to put back.
+    """
     sites: list[Site] = []
 
     for swap in swaps:
         __import__(swap.module)
-        original = getattr(sys.modules[swap.module], swap.name)
-        sites.extend(
-            Site(module.__name__, swap.name)
-            for module in _bound_to(original, swap.name)
-        )
+        current = getattr(sys.modules[swap.module], swap.name)
+        new = None if replace is None else replace(swap, current)
+
+        for module in _bound_to(current, swap.name):
+            if replace is not None:
+                if undo is not None:
+                    undo.append((module, swap.name, current))
+
+                setattr(module, swap.name, new)
+
+            sites.append(Site(module.__name__, swap.name))
 
     return tuple(sites)
+
+
+def swap_sites(swaps: tuple[Swap, ...] = SWAPS) -> tuple[Site, ...]:
+    """Where each swap would land, without landing it."""
+    return _rebind(swaps, None)
 
 
 def install(swaps: tuple[Swap, ...] = SWAPS) -> tuple[Site, ...]:
@@ -570,18 +591,7 @@ def install(swaps: tuple[Swap, ...] = SWAPS) -> tuple[Site, ...]:
     `patched()` instead: leaving the swaps in place would make every later
     comparison of `cnaster` against `port` compare `port` with itself.
     """
-    rebound: list[Site] = []
-
-    for swap in swaps:
-        __import__(swap.module)
-        original = getattr(sys.modules[swap.module], swap.name)
-        replacement = _replacement(swap)
-
-        for module in _bound_to(original, swap.name):
-            setattr(module, swap.name, replacement)
-            rebound.append(Site(module.__name__, swap.name))
-
-    return tuple(rebound)
+    return _rebind(swaps, lambda swap, _: _replacement(swap))
 
 
 RUN_STATE: tuple[str, ...] = (
@@ -616,20 +626,9 @@ def patched(swaps: tuple[Swap, ...] = SWAPS) -> Iterator[tuple[Site, ...]]:
     that comparison vacuous.
     """
     undo: list[tuple[ModuleType, str, Any]] = []
-    rebound: list[Site] = []
 
     try:
-        for swap in swaps:
-            __import__(swap.module)
-            original = getattr(sys.modules[swap.module], swap.name)
-            replacement = _replacement(swap)
-
-            for module in _bound_to(original, swap.name):
-                undo.append((module, swap.name, original))
-                setattr(module, swap.name, replacement)
-                rebound.append(Site(module.__name__, swap.name))
-
-        yield tuple(rebound)
+        yield _rebind(swaps, lambda swap, _: _replacement(swap), undo)
     finally:
         for module, name, original in reversed(undo):
             setattr(module, name, original)
@@ -702,15 +701,7 @@ def instrumented(swaps: tuple[Swap, ...] = SWAPS) -> Iterator[dict[str, Spent]]:
         return call
 
     try:
-        for swap in swaps:
-            __import__(swap.module)
-            current = getattr(sys.modules[swap.module], swap.name)
-            wrapper = timing(swap.name, current)
-
-            for module in _bound_to(current, swap.name):
-                undo.append((module, swap.name, current))
-                setattr(module, swap.name, wrapper)
-
+        _rebind(swaps, lambda swap, current: timing(swap.name, current), undo)
         yield spent
     finally:
         for module, name, original in reversed(undo):

@@ -36,7 +36,7 @@ BUDGET: dict[str, int] = {
 CONCEPTS: dict[str, int] = {
     "Hungarian + ARI scorer": 2,
     "run_arm": 2,
-    "clone_path": 2,
+    "clone_path": 1,
     "recording": 3,
 }
 """Definitions of one concept across `python/port` and `tests/`; each goes to 1."""

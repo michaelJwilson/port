@@ -269,9 +269,11 @@ def run_core_inference(arguments: dict[str, Any], options: dict[str, Any]) -> An
     result = UPSTREAM(**arguments)
 
     hmmclass = arguments.get("hmmclass")
-    shifted = bool(getattr(hmmclass, "apply_logmu_shift", False))
+    from port.patch.hmm_nophasing.shifted_emission import shifted
 
-    if shifted and "m" in str(arguments.get("params", "")):
+    is_shifted = shifted(hmmclass)
+
+    if is_shifted and "m" in str(arguments.get("params", "")):
         _NORMAL[:] = [pin_neutral(result)]
 
         base = arguments.get("single_base_nb_mean")

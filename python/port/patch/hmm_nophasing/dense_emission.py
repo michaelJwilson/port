@@ -25,6 +25,8 @@ from typing import Any
 
 import numpy as np
 
+from port.patch.hmm_nophasing.gradient import DISPERSION_FLOOR
+
 __all__ = ["bb_states", "coded_emission", "nb_states"]
 
 
@@ -38,7 +40,8 @@ def nb_states(
     mu = np.asarray(mu, dtype=np.float64)
     dead = mu <= 0.0
     family = NegativeBinomialEmission(
-        dispersion=1.0 / np.maximum(np.asarray(dispersions, dtype=np.float64), 1.0e-10),
+        dispersion=1.0
+        / np.maximum(np.asarray(dispersions, dtype=np.float64), DISPERSION_FLOOR),
         mean=np.where(dead, 1.0, mu),
     )
     scores = log_emission(
@@ -61,8 +64,8 @@ def bb_states(
     p = np.asarray(p_binom, dtype=np.float64)
     t = np.asarray(taus, dtype=np.float64)
     family = BetaBinomialEmission(
-        alpha=np.maximum(p * t, 1e-10),
-        beta=np.maximum((1.0 - p) * t, 1e-10),
+        alpha=np.maximum(p * t, DISPERSION_FLOOR),
+        beta=np.maximum((1.0 - p) * t, DISPERSION_FLOOR),
         trials=np.ones_like(p),
     )
     return log_emission(

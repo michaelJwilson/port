@@ -39,6 +39,8 @@ from typing import Any, Literal
 import numpy as np
 from scipy.special import gammaln
 
+from port.patch.hmm_nophasing.gradient import DISPERSION_FLOOR
+
 __all__ = [
     "CopyFit",
     "Pseudobulk",
@@ -121,7 +123,7 @@ def _emission(
                 mean <= 0.0, 0.0, x * np.log(mean) - mean - gammaln(x + 1.0)
             )
         else:
-            size = 1.0 / max(bulk.alpha, 1e-10)
+            size = 1.0 / max(bulk.alpha, DISPERSION_FLOOR)
             success = 1.0 / (1.0 + bulk.alpha * mean)
             fixed = gammaln(x + size) - gammaln(size) - gammaln(x + 1.0)
             depth = np.where(
@@ -135,11 +137,11 @@ def _emission(
     choose = gammaln(n + 1.0) - gammaln(k + 1.0) - gammaln(n - k + 1.0)
 
     if not np.isfinite(bulk.tau):
-        share = np.clip(p, 1e-10, 1.0 - 1e-10)
+        share = np.clip(p, DISPERSION_FLOOR, 1.0 - DISPERSION_FLOOR)
         allele = choose + k * np.log(share) + (n - k) * np.log1p(-share)
     else:
-        a = np.maximum(p * bulk.tau, 1e-10)
-        b = np.maximum((1.0 - p) * bulk.tau, 1e-10)
+        a = np.maximum(p * bulk.tau, DISPERSION_FLOOR)
+        b = np.maximum((1.0 - p) * bulk.tau, DISPERSION_FLOOR)
         allele = (
             choose
             + gammaln(k + a)

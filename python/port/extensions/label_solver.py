@@ -169,6 +169,31 @@ def expansion_then_floor(
     return icm_sweep(field, graph, assignment, beta, **knobs)
 
 
+def _solve(field: Any, graph: Any, assignment: Any, beta: float, search: Any) -> Any:
+    """The part every sal row shares: the finite field, the Potts graph, the result.
+
+    `search(potts, values, start)` returns `(labelling, sweeps)`; `assignment`
+    is written in place with its dtype kept, and the cost is the Potts energy
+    of the labelling returned. One implementation for the five rows (#517).
+    """
+    import numpy as np
+    from sal.sim.potts import energy
+
+    from port.patch.icm.alpha_expansion import potts_graph_from
+    from port.patch.icm.interface import IcmResult
+
+    values = _finite(field, graph, beta)
+    potts = potts_graph_from(graph, beta)
+    labelling, sweeps = search(
+        potts, values, np.asarray(assignment, dtype=np.int64).copy()
+    )
+
+    labelling = np.asarray(labelling, dtype=assignment.dtype)
+    assignment[:] = labelling
+
+    return IcmResult(niter=int(sweeps), cost=float(energy(potts, values, labelling)))
+
+
 def sal_icm_sweep(
     field: Any,
     graph: Any,
@@ -201,25 +226,14 @@ def sal_icm_sweep(
     import numpy as np
     from sal.backend import Backend
     from sal.search.icm import iterated_conditional_modes
-    from sal.sim.potts import energy
 
-    from port.patch.icm.alpha_expansion import potts_graph_from
-    from port.patch.icm.interface import IcmResult
+    def search(potts: Any, values: Any, start: Any) -> tuple[Any, int]:
+        result = iterated_conditional_modes(
+            potts, values, np.random.default_rng(0), start=start, backend=Backend.NUMBA
+        )
+        return result.labelling, 1
 
-    values = _finite(field, graph, beta)
-    potts = potts_graph_from(graph, beta)
-    result = iterated_conditional_modes(
-        potts,
-        values,
-        np.random.default_rng(0),
-        start=np.asarray(assignment, dtype=np.int64).copy(),
-        backend=Backend.NUMBA,
-    )
-
-    labelling = np.asarray(result.labelling, dtype=assignment.dtype)
-    assignment[:] = labelling
-
-    return IcmResult(niter=1, cost=float(energy(potts, values, labelling)))
+    return _solve(field, graph, assignment, beta, search)
 
 
 def _sal_floor(
@@ -242,36 +256,27 @@ def _sal_floor(
     from sal.backend import Backend
     from sal.search.alpha_expansion import alpha_expansion
     from sal.search.icm import merge_small_labels
-    from sal.sim.potts import energy
 
-    from port.patch.icm.alpha_expansion import potts_graph_from
-    from port.patch.icm.interface import IcmResult
+    def search(potts: Any, values: Any, start: Any) -> tuple[Any, int]:
+        if expand:
+            start = np.asarray(
+                alpha_expansion(
+                    potts, values, start=start, backend=Backend.RUST
+                ).labelling,
+                dtype=np.int64,
+            )
 
-    values = _finite(field, graph, beta)
-    potts = potts_graph_from(graph, beta)
-    start = np.asarray(assignment, dtype=np.int64).copy()
-
-    if expand:
-        start = np.asarray(
-            alpha_expansion(potts, values, start=start, backend=Backend.RUST).labelling,
-            dtype=np.int64,
+        result = merge_small_labels(
+            potts,
+            values,
+            start,
+            np.random.default_rng(0),
+            min_sites=max(int(min_clone_spots), 1),
+            backend=Backend.NUMBA,
         )
+        return result.labelling, result.sweeps
 
-    result = merge_small_labels(
-        potts,
-        values,
-        start,
-        np.random.default_rng(0),
-        min_sites=max(int(min_clone_spots), 1),
-        backend=Backend.NUMBA,
-    )
-
-    labelling = np.asarray(result.labelling, dtype=assignment.dtype)
-    assignment[:] = labelling
-
-    return IcmResult(
-        niter=int(result.sweeps), cost=float(energy(potts, values, labelling))
-    )
+    return _solve(field, graph, assignment, beta, search)
 
 
 def expansion_then_merge(
@@ -334,28 +339,20 @@ def sal_icm_argmax_sweep(
     import numpy as np
     from sal.backend import Backend
     from sal.search.icm import iterated_conditional_modes
-    from sal.sim.potts import energy
 
-    from port.patch.icm.alpha_expansion import potts_graph_from
-    from port.patch.icm.interface import IcmResult
+    def search(potts: Any, values: Any, start: Any) -> tuple[Any, int]:
+        del start
+        result = iterated_conditional_modes(
+            potts,
+            values,
+            np.random.default_rng(0),
+            start=np.argmax(values, axis=1).astype(np.int64),
+            min_sites=max(int(min_clone_spots), 1),
+            backend=Backend.NUMBA,
+        )
+        return result.labelling, result.sweeps
 
-    values = _finite(field, graph, beta)
-    potts = potts_graph_from(graph, beta)
-    result = iterated_conditional_modes(
-        potts,
-        values,
-        np.random.default_rng(0),
-        start=np.argmax(values, axis=1).astype(np.int64),
-        min_sites=max(int(min_clone_spots), 1),
-        backend=Backend.NUMBA,
-    )
-
-    labelling = np.asarray(result.labelling, dtype=assignment.dtype)
-    assignment[:] = labelling
-
-    return IcmResult(
-        niter=int(result.sweeps), cost=float(energy(potts, values, labelling))
-    )
+    return _solve(field, graph, assignment, beta, search)
 
 
 def fusion_then_merge(
@@ -384,45 +381,33 @@ def fusion_then_merge(
     from sal.backend import Backend
     from sal.search.alpha_expansion import alpha_expansion, fuse
     from sal.search.icm import iterated_conditional_modes, merge_small_labels
-    from sal.sim.potts import energy
 
-    from port.patch.icm.alpha_expansion import potts_graph_from
-    from port.patch.icm.interface import IcmResult
+    def search(potts: Any, values: Any, start: Any) -> tuple[Any, int]:
+        expanded = alpha_expansion(
+            potts, values, start=start, backend=Backend.RUST
+        ).labelling
+        descended = iterated_conditional_modes(
+            potts,
+            values,
+            np.random.default_rng(0),
+            start=np.argmax(values, axis=1).astype(np.int64),
+            backend=Backend.NUMBA,
+        ).labelling
+        fused = fuse(
+            potts,
+            values,
+            np.asarray(expanded, dtype=np.int64),
+            np.asarray(descended, dtype=np.int64),
+            backend=Backend.RUST,
+        ).labelling
+        result = merge_small_labels(
+            potts,
+            values,
+            np.asarray(fused, dtype=np.int64),
+            np.random.default_rng(0),
+            min_sites=max(int(min_clone_spots), 1),
+            backend=Backend.NUMBA,
+        )
+        return result.labelling, result.sweeps
 
-    values = _finite(field, graph, beta)
-    potts = potts_graph_from(graph, beta)
-    expanded = alpha_expansion(
-        potts,
-        values,
-        start=np.asarray(assignment, dtype=np.int64).copy(),
-        backend=Backend.RUST,
-    ).labelling
-    descended = iterated_conditional_modes(
-        potts,
-        values,
-        np.random.default_rng(0),
-        start=np.argmax(values, axis=1).astype(np.int64),
-        backend=Backend.NUMBA,
-    ).labelling
-    fused = fuse(
-        potts,
-        values,
-        np.asarray(expanded, dtype=np.int64),
-        np.asarray(descended, dtype=np.int64),
-        backend=Backend.RUST,
-    ).labelling
-    result = merge_small_labels(
-        potts,
-        values,
-        np.asarray(fused, dtype=np.int64),
-        np.random.default_rng(0),
-        min_sites=max(int(min_clone_spots), 1),
-        backend=Backend.NUMBA,
-    )
-
-    labelling = np.asarray(result.labelling, dtype=assignment.dtype)
-    assignment[:] = labelling
-
-    return IcmResult(
-        niter=int(result.sweeps), cost=float(energy(potts, values, labelling))
-    )
+    return _solve(field, graph, assignment, beta, search)

@@ -51,7 +51,7 @@ from collections.abc import Sequence
 import numpy as np
 from numba import njit
 
-__all__ = ["shifts"]
+__all__ = ["clone_log_normalizers", "shifts"]
 
 
 @njit(nogil=True, cache=True, parallel=False, error_model="numpy")
@@ -157,3 +157,32 @@ def shifts(
     reduced: np.ndarray = _per_clone(means, states, lambdas, lengths)
 
     return reduced
+
+
+def clone_log_normalizers(
+    log_mu: np.ndarray, paths: np.ndarray, single_base_nb_mean: np.ndarray
+) -> np.ndarray | None:
+    """`log Z_c = log sum_g lambda_g mu_{s_c(g)}`, one per column of `paths`.
+
+    `lambda` is built as `hmrf.py:476` builds `normal_lambda`: the baseline
+    summed over spots, normalized. `paths` is `(n_obs, n_clones)` state
+    indices into `log_mu`; `None` where the baseline has no mass. The one
+    implementation behind the clone assignment's field and the genomic
+    figure's levels (#517). One reduction along axis 0, so a single column
+    is bitwise the 1-D sum.
+    """
+    import scipy.special
+
+    profile = np.asarray(single_base_nb_mean, dtype=np.float64).sum(axis=1)
+    total = profile.sum()
+
+    if total <= 0.0:
+        return None
+
+    with np.errstate(divide="ignore"):
+        log_lambda = np.log(profile / total)
+
+    terms = np.asarray(log_mu)[np.asarray(paths, dtype=np.int64)] + log_lambda[:, None]
+    normalizers: np.ndarray = scipy.special.logsumexp(terms, axis=0)
+
+    return normalizers

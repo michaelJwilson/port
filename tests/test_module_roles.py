@@ -108,7 +108,7 @@ ROLES: dict[str, Role] = {
     "port.patch.hmm_initialize.backends": "unreached",
     "port.patch.hmm_initialize.filtering": "unreached",
     "port.patch.hmm_phased.coded_emission": "unreached",
-    "port.patch.hmrf.invariants": "unreached",
+    "port.patch.hmrf.invariants": "row-helper",
     "port.patch.hmrf.reindex": "unreached",
     "port.patch.plotting.genomic": "unreached",
     "port.patch.plotting.loh_density": "unreached",
