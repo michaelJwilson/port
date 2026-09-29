@@ -54,6 +54,7 @@ __all__ = [
     "calicost_config",
     "compatible",
     "main",
+    "shipped_config",
     "terminating",
     "write_calicost_config",
 ]
@@ -174,6 +175,43 @@ def calicost_config(document: dict[str, Any]) -> dict[str, Any]:
         "nonbalance_bafdist": copies.get("nonbalance_bafdist", 1.0),
         "nondiploid_rdrdist": copies.get("nondiploid_rdrdist", 10.0),
     }
+
+
+#: The keys `--shipped` takes from the run's configuration: where the inputs
+#: are and where the output goes. Every other value is the shipped file's.
+PATHS = (
+    "spaceranger_dir",
+    "snp_dir",
+    "output_dir",
+    "geneticmap_file",
+    "hgtable_file",
+    "filtergenelist_file",
+    "filterregion_file",
+)
+
+
+def shipped_config(document: dict[str, Any], shipped: Path) -> dict[str, Any]:
+    """CalicoST's own configuration file, its paths replaced by the run's (#494).
+
+    CalicoST's tutorial runs its simulated example on `configuration_cna` as
+    shipped, filling in the paths and keeping every other value; this does
+    the same, reading the paths from :func:`calicost_config`. Values are kept
+    as the file's text, which CalicoST parses itself.
+    """
+    config: dict[str, Any] = {}
+
+    for line in shipped.read_text().splitlines():
+        body = line.split("#", 1)[0].strip()
+
+        if ":" not in body:
+            continue
+
+        key, _, value = body.partition(":")
+        config[key.strip()] = value.strip()
+
+    translated = calicost_config(document)
+    config.update({key: translated[key] for key in PATHS})
+    return config
 
 
 def _text(value: Any) -> str:
@@ -467,6 +505,16 @@ def _parser() -> argparse.ArgumentParser:
         help="set CalicoST's hard-coded constants to the configuration's (default)",
     )
     parser.add_argument(
+        "--shipped",
+        type=Path,
+        default=None,
+        metavar="FILE",
+        help=(
+            "run on CalicoST's own configuration file (e.g. its "
+            "configuration_cna), taking only the paths from config (#494)"
+        ),
+    )
+    parser.add_argument(
         "--figures",
         action=argparse.BooleanOptionalAction,
         default=True,
@@ -479,7 +527,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     """Translate the configuration, then run CalicoST's pipeline on it."""
     arguments = _parser().parse_args(argv)
     document = yaml.safe_load(Path(arguments.config).read_text())
-    config = calicost_config(document)
+    config = (
+        calicost_config(document)
+        if arguments.shipped is None
+        else shipped_config(document, arguments.shipped)
+    )
     path = write_calicost_config(
         config, Path(config["output_dir"]) / "calicost_config.txt"
     )

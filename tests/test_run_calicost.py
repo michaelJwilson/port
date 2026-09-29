@@ -307,3 +307,34 @@ def test_the_aligned_palette_is_callable_while_installed(tmp_path: Path) -> None
             palette, _ = utils_plotting.get_full_palette()
 
     assert (5, 2) in palette
+
+
+@pytest.mark.infra
+def test_the_shipped_configuration_keeps_every_value_but_the_paths(
+    tmp_path: Path,
+) -> None:
+    """`--shipped`: CalicoST's own file, with the run's inputs and output (#494)."""
+    from port.scripts.run_calicost import PATHS, calicost_config, shipped_config
+
+    document, _ = _document(tmp_path)
+    shipped = tmp_path / "configuration_cna"
+    shipped.write_text(
+        "spaceranger_dir : <Replace>\n"
+        "output_dir : <Replace>\n"
+        "# HMRF configurations\n"
+        "n_clones : 3\n"
+        "t : 1-1e-5\n"
+        "np_threshold : 1.0  # CalicoST's own\n"
+    )
+
+    config = shipped_config(document, shipped)
+    translated = calicost_config(document)
+
+    assert {key: config[key] for key in PATHS} == {
+        key: translated[key] for key in PATHS
+    }
+    assert (config["n_clones"], config["t"], config["np_threshold"]) == (
+        "3",
+        "1-1e-5",
+        "1.0",
+    )
