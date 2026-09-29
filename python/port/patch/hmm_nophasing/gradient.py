@@ -40,6 +40,7 @@ its own callback still updates the posteriors.
 from __future__ import annotations
 
 import inspect
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
@@ -389,7 +390,25 @@ class EmGradient:
         return np.concatenate(blocks) if blocks else np.zeros(0)
 
 
-def analytic_bfgs(gradient: EmGradient) -> Any:
+BFGS_OPTIONS = frozenset(
+    {
+        "maxiter",
+        "gtol",
+        "norm",
+        "eps",
+        "disp",
+        "return_all",
+        "finite_diff_rel_step",
+        "xrtol",
+        "c1",
+        "c2",
+        "hess_inv0",
+    }
+)
+"""The options `scipy.optimize.minimize(method="BFGS")` reads (scipy 1.18)."""
+
+
+def analytic_bfgs(gradient: Callable[[np.ndarray], np.ndarray]) -> Any:
     """A `scipy.optimize.minimize` `method` that is BFGS with `gradient` as `jac`.
 
     `cnaster` passes its `optimizer` argument to `minimize` as `method`, and a
@@ -405,11 +424,11 @@ def analytic_bfgs(gradient: EmGradient) -> Any:
         fun: Any, x0: np.ndarray, args: tuple[Any, ...] = (), **kwargs: Any
     ) -> scipy.optimize.OptimizeResult:
         callback = kwargs.pop("callback", None)
-        options = {
-            key: value
-            for key, value in kwargs.items()
-            if key not in {"jac", "hess", "hessp", "bounds", "constraints"}
-        }
+        # NB BFGS's own options only (#448): `cnaster` passes `ftol`, which
+        #    BFGS has not got, and `scipy` warns "Unknown solver options:
+        #    ftol" and drops it -- 13 times a run. Dropping it here is the
+        #    same fit, without the warning.
+        options = {key: value for key, value in kwargs.items() if key in BFGS_OPTIONS}
 
         def value_and_gradient(x: np.ndarray) -> tuple[float, np.ndarray]:
             value = float(fun(x, *args))

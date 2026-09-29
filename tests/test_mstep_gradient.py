@@ -238,3 +238,48 @@ def test_the_closed_form_fit_is_cnasters_fit_to_a_stated_tolerance(
 
     for key in ("new_log_mu", "new_p_binom", "new_alphas", "new_taus"):
         np.testing.assert_allclose(ours[key], theirs[key], rtol=1e-4, err_msg=key)
+
+
+@pytest.mark.patch
+def test_the_m_step_passes_bfgs_only_its_own_options() -> None:
+    """`cnaster`'s `ftol` reaches no BFGS call, and the fit is BFGS's without it (#448).
+
+    Referee: `scipy`'s BFGS given the same gradient and only the options it
+    reads, bitwise. `cnaster` builds `{"maxiter", "ftol", "gtol", "disp"}`
+    (`hmm_nophasing.py:1005`), and BFGS warns on `ftol` and drops it.
+    """
+    import warnings
+
+    import scipy.optimize
+    from port.patch.hmm_nophasing.gradient import analytic_bfgs
+
+    scale = np.array([1.0, 4.0, 9.0])
+
+    def fun(x: np.ndarray) -> float:
+        return float(np.sum(scale * (x - 1.0) ** 2))
+
+    def grad(x: np.ndarray) -> np.ndarray:
+        return 2.0 * scale * (x - 1.0)
+
+    x0 = np.array([3.0, -2.0, 0.5])
+    cnasters = {"maxiter": 50, "ftol": 1e-6, "gtol": 1e-5, "disp": False}
+
+    with pytest.warns(scipy.optimize.OptimizeWarning, match="ftol"):
+        scipy.optimize.minimize(fun, x0, jac=grad, method="BFGS", options=cnasters)
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        ours = scipy.optimize.minimize(
+            fun, x0, method=analytic_bfgs(grad), options=cnasters
+        )
+
+    reference = scipy.optimize.minimize(
+        lambda x: (fun(x), grad(x)),
+        x0,
+        jac=True,
+        method="BFGS",
+        options={"maxiter": 50, "gtol": 1e-5, "disp": False},
+    )
+
+    np.testing.assert_array_equal(ours.x, reference.x)
+    assert ours.nit == reference.nit
