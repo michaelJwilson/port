@@ -68,6 +68,8 @@ def test_the_shipped_config_carries_what_324_tabulates() -> None:
         ("hmm.em_xrtol", "string"),
         ("int_copy_num.nonbalance_bafdist", "disabled"),
         ("int_copy_num.nondiploid_rdrdist", "disabled"),
+        # NB port's, stated for #518; `run_cnaster` ignores it.
+        ("int_copy_num.merge_agreement", "port"),
     }
 
 
