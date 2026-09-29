@@ -141,9 +141,23 @@ def score(sample: SimulatedSample, output: Path, arm: str, wall: float) -> SimRe
     scored = fitted >= 0
     ari = float(adjusted_rand_score(sample.labels[scored], fitted[scored]))
     merged = integer_clones(run["a"], run["b"])
-    ari_integer = float(
-        adjusted_rand_score(sample.labels[scored], merged[fitted[scored]])
-    )
+    integer = merged[fitted[scored]]
+    written = next(output.rglob("clone_labels_integer.tsv"), None)
+
+    if written is not None:
+        # NB the run's own integer clones, under the merge agreement its
+        #    configuration states (#518); the exact rule where none is written.
+        table = pd.read_csv(written, sep="\t", comment="#")
+        by_barcode = dict(
+            zip(
+                _barcode(table["barcode"]),
+                table["integer_clone_label"].to_numpy(),
+                strict=True,
+            )
+        )
+        integer = np.array([by_barcode[b] for b in sample.barcodes[scored]])
+
+    ari_integer = float(adjusted_rand_score(sample.labels[scored], integer))
 
     overlap = np.zeros((sample.n_clones, int(fitted.max()) + 1), dtype=np.int64)
     np.add.at(overlap, (sample.labels[scored], fitted[scored]), 1)
@@ -177,7 +191,7 @@ def score(sample: SimulatedSample, output: Path, arm: str, wall: float) -> SimRe
         state_ari=round(float(adjusted_rand_score(t, z)), 4),
         copy_ari=round(float(adjusted_rand_score(t, ab)), 4),
         n_clones=int(np.unique(fitted[scored]).size),
-        n_integer_clones=int(np.unique(merged[fitted[scored]]).size),
+        n_integer_clones=int(np.unique(integer).size),
         exact=round(float(np.mean(t == ab)), 4),
         exact_altered=round(float(np.mean((t == ab)[altered])), 4),
         exact_altered_minor=round(float(np.mean(either[altered])), 4),
