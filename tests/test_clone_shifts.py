@@ -116,3 +116,61 @@ def test_without_shifts_the_reindex_is_upstreams(
     assert module.reindex_clones(_result()) is not None
     assert module.reindex_clones(_result())[1] == "posterior"
     assert module.shift_for(PATHS[:, 0]) == (0.0, None)
+
+
+@pytest.mark.patch
+def test_the_reindex_carries_each_shift_on_cnasters_result(
+    clean: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """On `cnaster`'s locked `CnaHMRFResult`, which has no `get` (#501).
+
+    The dict test above passed while every real run left the shifts
+    unpermuted: the shifts were read through `res.get`, which only a dict has.
+    """
+    import copy
+
+    from cnaster.cna_hmrf_result import (
+        CloneAssignment,
+        CnaHMRFResult,
+        HMMParams,
+        HMMProfile,
+    )
+    from port.patch.hmrf import core_inference as module
+
+    n_states, n_clones = LOG_MU.size, PATHS.shape[1]
+    shifts = np.array([0.0, 0.3, -0.2])
+    res = CnaHMRFResult(
+        params=HMMParams(
+            new_log_mu=LOG_MU[:, None].copy(),
+            new_alphas=np.full((n_states, 1), 0.02),
+            new_p_binom=P_BINOM[:, None].copy(),
+            new_taus=np.full((n_states, 1), 100.0),
+            new_log_startprob=np.log(np.full(n_states, 1.0 / n_states)),
+            new_log_transmat=np.log(np.full((n_states, n_states), 1.0 / n_states)),
+            new_log_mu_shift=shifts.copy(),
+        ),
+        param_errors=None,
+        profile=HMMProfile(
+            log_gamma=np.zeros((n_states, N_OBS, n_clones)), pred_cnv=PATHS.copy()
+        ),
+        llf=0.0,
+        n_states=n_states,
+        assignment=CloneAssignment(new_assignment=np.arange(n_clones)),
+    )
+
+    def reverse(res: Any, *_: Any, **__: Any) -> tuple[Any, None]:
+        out = copy.deepcopy(res)
+        out.unlock()
+        out["pred_cnv"] = np.asarray(res["pred_cnv"])[:, ::-1].copy()
+        out.lock()
+        return out, None
+
+    monkeypatch.setattr(module, "UPSTREAM_REINDEX", reverse)
+    res.lock()
+
+    reindexed, _ = module.reindex_clones(res)
+
+    np.testing.assert_array_equal(reindexed["new_log_mu_shift"], shifts[::-1])
+    assert reindexed._locked
+    for clone in range(n_clones):
+        assert module.shift_for(PATHS[:, clone])[0] == float(shifts[clone])
