@@ -45,6 +45,7 @@ defect, and `--set section.key=value` overrides any other entry.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import tempfile
 import time
@@ -509,9 +510,8 @@ def run_arm(
     balanced clone, before the inputs are written (#440).
     """
     import cnaster.scripts.run_cnaster as pipeline
-    import port.patch.hmrf as patch
     import scipy.optimize
-    from port.extensions.copy_errors import Captured
+    from port.extensions.copy_errors import Captured, captured_fits
     from port.scripts.run_cnaster import main
 
     from tests.run_config import write_run_cnaster_config
@@ -565,29 +565,6 @@ def run_arm(
         recovery.candidates_tumor = int((used & (truth.labels != 0)).sum())
         return recovery, output
 
-    # NB `port`'s `run_core_inference`, which the default shift installs, so
-    #    what is kept is the pinned result integer copy is handed.
-    kept: list[Captured] = []
-    original = patch.run_core_inference
-
-    def keep(
-        single_x: Any, lengths: Any, base: Any, total: Any, *rest: Any, **kw: Any
-    ) -> Any:
-        result = original(single_x, lengths, base, total, *rest, **kw)
-
-        if kw.get("params") == "smp":
-            kept.append(
-                Captured(
-                    np.array(single_x, dtype=np.float64),
-                    np.asarray(lengths, dtype=np.int64),
-                    np.array(base, dtype=np.float64),
-                    np.array(total, dtype=np.float64),
-                    result,
-                )
-            )
-
-        return result
-
     chosen: list[np.ndarray] = []
     determine = pipeline.determine_normal_candidates
 
@@ -623,14 +600,18 @@ def run_arm(
 
         return minimize(*arguments, **keywords)
 
-    if likelihood:
-        patch.run_core_inference = keep
-
     pipeline.determine_normal_candidates = candidates
     scipy.optimize.minimize = tightened
 
     try:
-        with warnings.catch_warnings():
+        with contextlib.ExitStack() as stack:
+            # NB `port`'s `run_core_inference`, which the default shift
+            #    installs, so what is kept is the pinned result integer copy
+            #    is handed.
+            kept: list[Captured] = (
+                stack.enter_context(captured_fits()) if likelihood else []
+            )
+            stack.enter_context(warnings.catch_warnings())
             warnings.simplefilter("ignore")
             started = time.perf_counter()
             if two_pass_normal:
@@ -642,7 +623,6 @@ def run_arm(
 
             wall = time.perf_counter() - started
     finally:
-        patch.run_core_inference = original
         pipeline.determine_normal_candidates = determine
         scipy.optimize.minimize = minimize
 

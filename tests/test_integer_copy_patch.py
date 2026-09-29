@@ -196,10 +196,10 @@ def test_installed_the_swap_decodes_by_likelihood_once() -> None:
 @pytest.mark.infra
 def test_a_clone_the_capture_cannot_identify_is_an_error() -> None:
     """No captured fit: `decode_clone` raises rather than decoding another way."""
-    from port.extensions.copy_likelihood import _CAPTURED
+    from port.extensions.copy_likelihood import captured_fit
     from port.patch.integer_copy import decode_clone
 
-    assert not _CAPTURED
+    assert captured_fit() is None
 
     log_mu, base, p_binom, path = _inputs(HIGH[0])
 
