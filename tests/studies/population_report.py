@@ -14,7 +14,7 @@ log of the covariate, bootstrapped the same way.
 
 **Sufficiency is stated before the numbers are read** (`SUFFICIENT`): every
 bin drawn holds at least `MIN_PER_BIN` items; every crossing's 95% interval
-is at most `MAX_WIDTH_DEX` wide; and a J compared with the default either
+is at most `MAX_WIDTH_DEX` wide; and a J compared with Study 2's J either
 differs (the paired interval on the difference excludes zero) or is reported
 as unresolved. A study that fails the rule adds members until it passes.
 """
@@ -29,6 +29,7 @@ import numpy as np
 import pandas as pd
 
 BOOTSTRAP = 2000
+"""Resamples of the members, per curve."""
 MIN_PER_BIN = 20
 MAX_WIDTH_DEX = 0.3
 
@@ -38,8 +39,16 @@ UMI_EDGES = np.round(np.arange(4.7, 6.71, 0.25), 2)
 LENGTH_EDGES = np.round(np.arange(6.0, 8.51, 0.25), 2)
 """log10 event length in bp, 1 Mb to about 300 Mb."""
 
-J_COLOURS = {0.0: "#86b6ef", 0.5: "#3987e5", 1.0: "#1c5cab", 2.0: "#0d366b"}
-"""An ordinal blue ramp: J is ordered, so one hue light to dark (validated)."""
+J_RAMP = ("#86b6ef", "#3987e5", "#1c5cab", "#0d366b")
+"""An ordinal blue ramp, light to dark: J is ordered (validated, `--ordinal`)."""
+
+
+def j_colours(js: list[float]) -> dict[float, str]:
+    """Each J its ramp step, the smallest lightest; at most four J."""
+    ordered = sorted(js)
+    steps = np.linspace(0, len(J_RAMP) - 1, len(ordered)).round().astype(int)
+    return {j: J_RAMP[k] for j, k in zip(ordered, steps, strict=True)}
+
 
 CLASS_COLOURS = {
     "LOH": "#2a78d6",
@@ -71,15 +80,29 @@ def _binned(values: np.ndarray, edges: np.ndarray) -> np.ndarray:
 
 
 def _crossing(x: np.ndarray, y: np.ndarray, weight: np.ndarray) -> float:
-    """`x` at which a weighted logistic fit of `y` on `x` reads one half."""
-    from sklearn.linear_model import LogisticRegression
+    """`x` at which a weighted logistic fit of `y` on `x` reads one half.
 
+    Newton's method on the weighted log-likelihood (IRLS), 50 steps at most;
+    NaN where the outcome does not vary, the fit separates, or the slope is
+    not positive -- a curve that does not rise has no crossing to report.
+    """
     kept = weight > 0
     if kept.sum() < 2 or y[kept].min() == y[kept].max():
         return float("nan")
-    fit = LogisticRegression(C=1e6, max_iter=1000)
-    fit.fit(x[kept, None], y[kept], sample_weight=weight[kept])
-    slope, intercept = float(fit.coef_[0, 0]), float(fit.intercept_[0])
+    design = np.column_stack([np.ones(kept.sum()), x[kept]])
+    target, w = y[kept], weight[kept]
+    beta = np.zeros(2)
+    for _ in range(50):
+        p = 1.0 / (1.0 + np.exp(-(design @ beta)))
+        gradient = design.T @ (w * (target - p))
+        hessian = (design * (w * p * (1 - p))[:, None]).T @ design + 1e-9 * np.eye(2)
+        step = np.linalg.solve(hessian, gradient)
+        beta += step
+        if not np.all(np.isfinite(beta)) or abs(beta[1]) > 1e3:
+            return float("nan")
+        if np.max(np.abs(step)) < 1e-8:
+            break
+    intercept, slope = float(beta[0]), float(beta[1])
     return -intercept / slope if slope > 0 else float("nan")
 
 
@@ -153,7 +176,7 @@ def curve(
     }
 
 
-def summarize(out: Path, seed: int = 544) -> dict[str, Any]:
+def summarize(out: Path, study2_j: float, seed: int = 544) -> dict[str, Any]:
     """Study 1 per J and Study 2 per class, with the sufficiency verdict."""
     clones, events = load(out)
     clones["log_umis"] = np.log10(clones["umis"])
@@ -180,7 +203,7 @@ def summarize(out: Path, seed: int = 544) -> dict[str, Any]:
             ),
         }
 
-    default = events[events["J"] == 1.0] if len(events) else events
+    default = events[events["J"] == study2_j] if len(events) else events
     study2 = {}
     for name in ("LOH", "balanced gain", "imbalanced gain", "all"):
         frame = default if name == "all" else default[default["class"] == name]
@@ -193,9 +216,9 @@ def summarize(out: Path, seed: int = 544) -> dict[str, Any]:
         }
 
     differences = {}
-    base = study1.get(1.0, {}).get("detected", {}).get("crossing_draws")
+    base = study1.get(study2_j, {}).get("detected", {}).get("crossing_draws")
     for j, entry in study1.items():
-        if j == 1.0 or base is None:
+        if j == study2_j or base is None:
             continue
         paired = np.array(entry["detected"]["crossing_draws"]) - np.array(base)
         paired = paired[np.isfinite(paired)]
@@ -215,6 +238,7 @@ def summarize(out: Path, seed: int = 544) -> dict[str, Any]:
         "differences": differences,
         "sufficient": SUFFICIENT(study1, study2),
         "members": int(seeds.size),
+        "study2_J": study2_j,
     }
 
 
@@ -269,9 +293,10 @@ def figures(summary: dict[str, Any], into: Path) -> list[Path]:
 
     with plt.rc_context(style):
         fig, axes = plt.subplots(1, 2, figsize=(9, 3.6), constrained_layout=True)
+        colours = j_colours(list(summary["study1"]))
         for j, entry in sorted(summary["study1"].items()):
             for axis, key in zip(axes, ("detected", "completeness"), strict=True):
-                _panel(axis, entry[key]["centres"], entry[key], J_COLOURS.get(j, "#52514e"),
+                _panel(axis, entry[key]["centres"], entry[key], colours[j],
                        f"J = {j:g}")  # fmt: skip
         axes[0].set_ylabel("recovery rate (completeness ≥ 0.90)")
         axes[1].set_ylabel("mean completeness")
@@ -297,8 +322,10 @@ def figures(summary: dict[str, Any], into: Path) -> list[Path]:
         axis.set_ylabel("recovery rate (≥ 0.90 of bins)")
         axis.set_ylim(-0.02, 1.02)
         axis.legend(frameon=False, fontsize=8, loc="lower right")
-        axis.set_title("CNA recovery against length, detected clones, J = 1",
-                       fontsize=10)  # fmt: skip
+        axis.set_title(
+            f"CNA recovery against length, detected clones, J = {summary['study2_J']:g}",
+            fontsize=10,
+        )
         path = into / "population_cna_length.png"
         fig.savefig(path, dpi=150)
         plt.close(fig)
@@ -307,9 +334,9 @@ def figures(summary: dict[str, Any], into: Path) -> list[Path]:
     return paths
 
 
-def report(out: Path) -> dict[str, Any]:
+def report(out: Path, study2_j: float) -> dict[str, Any]:
     """Summarize `out`'s records, write the summary and figures beside them."""
-    summary = summarize(out)
+    summary = summarize(out, study2_j)
     figures(summary, out / "figures")
     slim: dict[str, Any] = json.loads(json.dumps(summary, default=float))
     for entry in slim["study1"].values():

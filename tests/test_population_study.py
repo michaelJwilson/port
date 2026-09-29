@@ -71,7 +71,7 @@ def test_the_report_recovers_a_planted_crossing_within_its_interval(
             json.dumps({"seed": seed, "J": 1.0, "clones": clones, "events": events})
         )
 
-    summary = report.summarize(tmp_path)
+    summary = report.summarize(tmp_path, 1.0)
     detected = summary["study1"][1.0]["detected"]
     low, high = detected["crossing_interval"]
 

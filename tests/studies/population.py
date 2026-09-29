@@ -5,10 +5,11 @@ layout (each clone's size drawn from `[layout.size]`) and counts all come
 from that seed, so clone sizes and event lengths vary across members. Each
 member is run once per analysis coupling `J` (`hmrf.spatial_weight`, read by
 `cnaster.hmrf`; the generator has none) and scored against its own truth.
+J starts just above the lattice's critical coupling (`J_CRITICAL`): below it
+the prior orders nothing, so the study reads J where it does.
 
-    python -m tests.studies.population run --seeds 0:60 --out DIR
-    python -m tests.studies.population run --seeds 60:120 --J 1.0 --out DIR
-    python -m tests.studies.population report --out DIR
+    python -m tests.studies.population run --seeds 0:40 --J 0.8 --out DIR
+    python -m tests.studies.population report --out DIR --study2-J 0.8
 
 `run` is resumable: a `(seed, J)` with a record in `DIR/records/` is skipped.
 Each worker runs one thread, one worker per core, and a member's draw and
@@ -46,8 +47,19 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parents[2]
 MANIFEST = ROOT / "sim" / "manifests" / "population.toml"
 
-J_VALUES = (0.0, 0.5, 1.0, 2.0)
-"""The analysis coupling `hmrf.spatial_weight`; 1.0 is the configured default."""
+J_CRITICAL = float(np.log(2.0))
+"""The q = 4 Potts model's critical coupling on the triangular lattice.
+
+`hmrf.spatial_weight` multiplies unit-weight edges between a spot and its six
+neighbours (`port.extensions.adjacency`: `(z / d_i + z / d_j) / 2`, 1 inside
+the array), so it is J in `exp(J sum delta)`. The population's
+configuration fits `hmrf.n_clones = 4`. On the triangular lattice the
+critical point solves `v^3 + 3 v^2 = q`, `v = e^J - 1` (Baxter); at q = 4
+that is v = 1, J_c = ln 2 = 0.693. The configured default, 1.0, is 1.44 J_c.
+"""
+
+J_VALUES = (0.8,)
+"""Where the study starts: just above J_c (1.15 J_c), then tailored (#544)."""
 
 DETECTED = 0.90
 """A clone is detected when this share of its spots is in its matched clone."""
@@ -251,12 +263,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--seeds", default="0:60", help="START:STOP")
     parser.add_argument("--J", default=",".join(f"{j:g}" for j in J_VALUES))
     parser.add_argument("--workers", type=int, default=4)
+    parser.add_argument("--study2-J", type=float, default=J_VALUES[0],
+                        help="the J Study 2's length curves are read at")  # fmt: skip
     arguments = parser.parse_args(argv)
 
     if arguments.command == "report":
         from tests.studies.population_report import report
 
-        report(arguments.out)
+        report(arguments.out, arguments.study2_J)
         return 0
 
     import multiprocessing
