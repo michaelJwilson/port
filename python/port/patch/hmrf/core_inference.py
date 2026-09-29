@@ -104,11 +104,11 @@ _NORMAL: list[int] = []
 
 
 def clone_shifts(
-    result: Any, base_nb_mean: np.ndarray, zero_normal: bool = True
+    res: Any, base_nb_mean: np.ndarray, zero_normal: bool = True
 ) -> np.ndarray:
     """Record each clone's `log Z_c` over the pinned rates; return them.
 
-    Sets `result["new_log_mu_shift"]` to `(n_clones,)` and leaves
+    Sets `res["new_log_mu_shift"]` to `(n_clones,)` and leaves
     `new_log_mu` the pinned, shared table. The normal clone is the one with
     the largest share of bins in balanced states, as `neutral_state` chooses
     it; with `zero_normal` its shift is 0.
@@ -118,12 +118,12 @@ def clone_shifts(
     from port.patch.hmm_nophasing.shifted_emission import NEUTRAL_BAF_TOLERANCE
     from port.patch.plotting.clone_paths import state_vector
 
-    rates = state_vector(np.asarray(result["new_log_mu"]))
+    rates = state_vector(np.asarray(res["new_log_mu"]))
     balanced = (
-        np.abs(state_vector(np.asarray(result["new_p_binom"])) - 0.5)
+        np.abs(state_vector(np.asarray(res["new_p_binom"])) - 0.5)
         <= NEUTRAL_BAF_TOLERANCE
     )
-    path = np.asarray(result["pred_cnv"], dtype=np.int64)
+    path = np.asarray(res["pred_cnv"], dtype=np.int64)
     path = path.reshape(path.shape[0], -1)
 
     with np.errstate(divide="ignore", invalid="ignore"):
@@ -140,16 +140,16 @@ def clone_shifts(
     if zero_normal:
         shifts[int(np.argmax(balanced[path].mean(axis=0)))] = 0.0
 
-    locked = bool(getattr(result, "_locked", False))
+    locked = bool(getattr(res, "_locked", False))
 
     if locked:
-        result.unlock()
+        res.unlock()
 
     try:
-        result["new_log_mu_shift"] = shifts
+        res["new_log_mu_shift"] = shifts
     finally:
         if locked:
-            result.lock()
+            res.lock()
 
     return shifts
 

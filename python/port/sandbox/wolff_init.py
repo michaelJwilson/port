@@ -85,7 +85,7 @@ def _under(patches: np.ndarray, umis: np.ndarray, floors: Floors) -> np.ndarray:
 
 
 def _graph(adjacency: sp.csr_matrix, coupling: float) -> Any:
-    from snakes_and_ladders.sim.graph import PottsGraph
+    from sal.sim.graph import PottsGraph
 
     upper = sp.triu(adjacency, k=1).tocoo()
     return PottsGraph(
@@ -110,7 +110,7 @@ def draw(
     spans most of the lattice, so a Wolff burn-in of whole-lattice clusters
     costs a Swendsen-Wang sweep each. Both leave the same law invariant.
     """
-    from snakes_and_ladders.sample.potts_mcmc import PottsMove, sample_potts
+    from sal.sample.potts_mcmc import PottsMove, sample_potts
 
     chain = sample_potts(
         _graph(adjacency, coupling),

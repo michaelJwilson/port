@@ -74,7 +74,7 @@ class Captured(NamedTuple):
     lengths: np.ndarray
     single_base_nb_mean: np.ndarray
     single_total_bb_RD: np.ndarray
-    result: Any
+    res: Any
 
 
 class PinnedErrors(NamedTuple):
@@ -105,7 +105,7 @@ def pseudobulk(captured: Captured) -> dict[str, np.ndarray]:
     along the genome (`clone_stack_obs`), so the objective is one sequence of
     `n_clones * n_obs` with `lengths` tiled. The assignment is the fit's own.
     """
-    assignment = np.asarray(captured.result["new_assignment"], dtype=np.int64)
+    assignment = np.asarray(captured.res["new_assignment"], dtype=np.int64)
     clones = np.unique(assignment)
 
     def summed(values: np.ndarray) -> np.ndarray:
@@ -154,7 +154,7 @@ def pinned_objective(
 
     from port.extensions.jax_hmm import emission, marginal_negative_log_likelihood
 
-    result = captured.result
+    result = captured.res
     n_states = _column(result["new_log_mu"]).size
     log_startprob = _column(result["new_log_startprob"])
     log_transmat = np.asarray(result["new_log_transmat"], dtype=np.float64)
@@ -167,7 +167,7 @@ def pinned_objective(
     estimated = np.arange(n_states) if shares is None else np.asarray(shares)
     fixed = np.full(n_states, 0.5) if held is None else np.asarray(held)
 
-    def objective(theta: jnp.ndarray) -> jnp.ndarray:
+    def objective(theta: Any) -> Any:
         rates = jnp.zeros(n_states).at[free].set(theta[: free.size])  # noqa: PD008
         dispersions = jnp.full(n_states, jnp.exp(theta[-2]))
         shares_free = jax.nn.sigmoid(theta[free.size : free.size + estimated.size])
@@ -217,8 +217,8 @@ def coordinates(
     rates: np.ndarray,
     p: np.ndarray,
     free: np.ndarray,
-    alpha: float,
-    tau: float,
+    dispersion: float,
+    taus: float,
     shares: np.ndarray | None = None,
 ) -> np.ndarray:
     """`theta` for :func:`pinned_objective`, from rates and allele fractions.
@@ -229,7 +229,7 @@ def coordinates(
     share = np.clip(p, EPS_P, 1.0 - EPS_P)
     share = share if shares is None else share[shares]
     return np.concatenate(
-        [rates[free], np.log(share / (1.0 - share)), [np.log(alpha), np.log(tau)]]
+        [rates[free], np.log(share / (1.0 - share)), [np.log(dispersion), np.log(taus)]]
     )
 
 
@@ -327,7 +327,7 @@ def pinned_errors(captured: Captured, purity: np.ndarray | None = None) -> Pinne
     """
     from port.patch.hmm_nophasing.shifted_emission import neutral_state
 
-    result = captured.result
+    result = captured.res
     log_mu = _column(result["new_log_mu"])
     p_binom = _column(result["new_p_binom"])
     alpha = float(_column(result["new_alphas"])[0])

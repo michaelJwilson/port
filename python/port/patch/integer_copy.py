@@ -220,8 +220,8 @@ def _write_decode(decoded: Any, normal_clone: int) -> None:
             "normal": np.arange(len(decoded.pairs)) == normal_clone,
             "tumour_fraction": decoded.purity,
             "shift": decoded.shifts,
-            "alpha": decoded.alpha,
-            "tau": decoded.tau,
+            "alpha": decoded.dispersion,
+            "tau": decoded.taus,
             "log_likelihood": decoded.log_likelihood,
             "parsimony": PARSIMONY,
         }
