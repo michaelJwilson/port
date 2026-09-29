@@ -171,3 +171,91 @@ def test_cnaster_reads_chr2_to_9_as_chr1s_last_centimorgan(tmp_path: Path) -> No
     stuck = sorted({int(c) for c in chrom[within & (theirs == floor)]})
     assert stuck == list(range(2, 10))
     assert not np.any(ours[within] == floor)
+
+
+def _cnaster_log_switch(distance: np.ndarray, shift: float, floor: float) -> np.ndarray:
+    """`cnaster`'s per-bin law (`recomb.py:56-66, :158`): Haldane over cM, floor, times `e^-shift`."""
+    p = np.maximum((1.0 - np.exp(-2.0 * NU * distance)) / 2.0, floor)
+    return np.minimum(np.log(0.5), np.log(p) - shift)
+
+
+def _composed(log_ab: np.ndarray, log_bc: np.ndarray) -> np.ndarray:
+    """`p_ac` from `p_ab` and `p_bc` on a two-state chain: `1 - 2 p = (1 - 2 p_ab)(1 - 2 p_bc)`."""
+    return np.log(
+        (1.0 - (1.0 - 2.0 * np.exp(log_ab)) * (1.0 - 2.0 * np.exp(log_bc))) / 2.0
+    )
+
+
+@pytest.mark.analytic
+def test_the_composable_law_composes_over_any_binning() -> None:
+    """Splitting a distance into two bins changes nothing (#449), to 1e-12 relative."""
+    from port.extensions.segments import composable_log_switch
+
+    rng = np.random.default_rng(449)
+    first, second = rng.uniform(1e-4, 5.0, 200), rng.uniform(1e-4, 5.0, 200)
+
+    whole = composable_log_switch(first + second, NU, -2.0)
+    split = _composed(
+        composable_log_switch(first, NU, -2.0), composable_log_switch(second, NU, -2.0)
+    )
+
+    np.testing.assert_allclose(split, whole, rtol=1e-12)
+
+
+@pytest.mark.bug
+@pytest.mark.parametrize(
+    ("distance", "one_bin", "two_bins"),
+    [(0.05, 0.3516, 0.2954), (0.002, 0.0739, 0.1369)],
+)
+def test_cnasters_law_depends_on_the_binning(
+    distance: float, one_bin: float, two_bins: float
+) -> None:
+    """With `cnaster`'s shift of -2 and floor of 0.01, two bins imply another switch rate (#449).
+
+    Fails when the law composes. The `e^2` factor lowers the composed
+    probability (0.05 cM: 0.352 in one bin, 0.295 in two); the floor raises
+    it (0.002 cM: 0.074 in one bin, 0.137 in two).
+    """
+    whole = _cnaster_log_switch(np.array([distance]), -2.0, 0.01)
+    half = _cnaster_log_switch(np.array([distance / 2]), -2.0, 0.01)
+    split = _composed(half, half)
+
+    assert float(np.exp(whole[0])) == pytest.approx(one_bin, abs=1e-4)
+    assert float(np.exp(split[0])) == pytest.approx(two_bins, abs=1e-4)
+
+
+@pytest.mark.analytic
+@pytest.mark.usefixtures("cnaster_config")
+def test_the_kernel_takes_the_composable_law_only_when_installed(
+    tmp_path: Path,
+) -> None:
+    """`composable_switch()` gives `composable_log_switch` within contigs; outside, `cnaster`'s law."""
+    from port.extensions.segments import composable_log_switch
+    from port.patch.recomb import composable_switch, get_sitewise_transmat
+
+    contigs = range(1, 3)
+    path = _map(tmp_path / "map.tsv", contigs)
+    table = _blocks(contigs)
+    frame = pd.read_csv(path, sep="\t")
+    edges = table.groupby("block_id").agg(
+        CHR=("CHR", "first"), START=("START", "first"), END=("END", "last")
+    )
+
+    default = get_sitewise_transmat("block_id", table.copy(), path, NU, -2.0)
+    with composable_switch():
+        composable = get_sitewise_transmat("block_id", table.copy(), path, NU, -2.0)
+
+    for k in range(len(edges) - 1):
+        if edges.CHR.iloc[k + 1] != edges.CHR.iloc[k]:
+            assert composable[k] == default[k] == np.log(0.5)
+            continue
+
+        rows = frame[frame.chrom == f"chr{edges.CHR.iloc[k]}"]
+        d = np.interp(edges.START.iloc[k + 1], rows.pos, rows.pos_cm) - np.interp(
+            edges.END.iloc[k], rows.pos, rows.pos_cm
+        )
+        np.testing.assert_allclose(
+            composable[k], composable_log_switch(np.array([d]), NU, -2.0)[0], rtol=1e-12
+        )
+
+    assert not np.array_equal(composable, default)
