@@ -122,36 +122,51 @@
   "note": "Executed cnaster lines inside functions run_cnaster_port replaces by default (SWAPS, FIGURE_SWAPS, SHIFT_SWAPS; for a class, only overridden methods), over every cnaster line an unpatched run_cnaster executes on the dev instance with numba disabled. Measured by python -m tests.patched_share (#302); not checked per pull request, because it needs a whole run."
  },
  "recovery": {
-  "instance": "dev: 1,600 spots x 1,000 bins, 4 clones, 10 planted states (8 used)",
-  "configuration": "the figures': 8 states, max_iter_outer=1, max_iter=3 (tests/generate_plots.py)",
-  "commit": "3dfea5f",
+  "instance": "dev_tree r0: sim/manifests/dev_tree.toml, 60 x 50 spots per slice, 2 slices, 6,000 spots, 4 planted clones (tests.sim_stages.R0_HASH)",
+  "configuration": "the sample's own config.yaml, int_copy_num.merge_agreement 0.99",
+  "commit": "741fcfb",
   "arms": {
    "port": {
     "flags": [
-     "--refinement-mask",
-     "--floor-merge"
+     "--no-plots"
     ],
-    "ari": 0.5382,
-    "ari_integer": 0.8892,
-    "state_ari": 0.2597,
-    "copy_ari": 0.9982,
-    "wall_s": 62.85,
-    "peak_gb": 5.87
+    "ari": 1.0,
+    "ari_integer": 1.0,
+    "state_ari": 0.147,
+    "copy_ari": 0.9828,
+    "exact_altered": 0.9197,
+    "clones": 4,
+    "integer_clones": 4,
+    "wall_s": 284.83,
+    "peak_gb": 6.1
    },
    "sal": {
     "flags": [
      "--sal",
-     "--refinement-mask",
-     "--floor-merge"
+     "--no-plots"
     ],
-    "ari": 0.9107,
-    "ari_integer": 0.9107,
-    "state_ari": 0.2121,
-    "copy_ari": 0.9971,
-    "wall_s": 37.64,
-    "peak_gb": 3.19
+    "ari": 1.0,
+    "ari_integer": 1.0,
+    "state_ari": 0.0778,
+    "copy_ari": 0.9828,
+    "exact_altered": 0.9197,
+    "clones": 4,
+    "integer_clones": 4,
+    "wall_s": 185.29,
+    "peak_gb": 6.13
    }
   },
-  "note": "python -m tests.recovery_audit [-- --sal], one run each, each its own process, on an otherwise idle host. The badge shows the integer indices: ari_integer, fitted clone labels over 1,600 spots after merging clones of one decoded (A, B) profile (#344); copy_ari, each matched clone-bin's phased (A, B) from cnv_seglevel.tsv against the state the fixture painted there (clones matched by spot overlap). Recorded beside them, not shown: ari, the clone labels before merging, and state_ari, the fitted state Z per clone-bin. Not measured per pull request: each arm is a whole run. Both arms ran with #348's --refinement-mask and --floor-merge, then on by default and opt-in since, so they are recorded as flags."
+  "note": "python -m tests.sim_audit --sample generated/dev_tree/r0 [-- --sal] --no-plots, one run each, each its own process, pinned to one core (taskset -c 0, NUMBA_NUM_THREADS=1). The badge shows ari, the run's clone_labels.tsv over 6,000 spots, which carries #518's merge of clones whose decoded (A, B) agree at 0.99 of bins, and copy_ari, each matched clone-bin's phased (A, B) against the planted state. Recorded beside them, not shown: state_ari, the fitted state Z per clone-bin, and exact_altered."
+ },
+ "speed": {
+  "sample": "dev_tree r0, as recovery.instance",
+  "commit": "741fcfb",
+  "calicost_seconds": 20243.0,
+  "calicost_run": "#532: CalicoST's shipped configuration_cna_multi, n_clones 5, uncapped, 3 cores, summed over two resumes from its checkpoints (docs/final-benchmark.md)",
+  "port_seconds": 185.29,
+  "port_cores": 1,
+  "port_arm": "run_cnaster_port --sal, the recovery sal arm's wall",
+  "assumption": "CalicoST's 3-core wall is taken as its 1-core time, which favours CalicoST",
+  "ratio": 109.25
  }
 }

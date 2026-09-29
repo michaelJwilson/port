@@ -24,9 +24,10 @@ The cost is that they can go stale, and the test is what pays it.
 | badge | measured by | tier |
 | --- | --- | --- |
 | judged, oracle, reach | the three coverage guards | per pull request |
-| runtime, memory, instance | a whole `run_cnaster`, both arms | `release` |
+| memory, instance | a whole `run_cnaster`, both arms | `release` |
+| speed | `run_cnaster_port --sal` on `dev_tree` r0, one core, against CalicoST's recorded wall (#532) | by hand |
 | patched | `python -m tests.patched_share`, one unpatched run (#302) | by hand |
-| port, sal | `python -m tests.recovery_audit`, default and `--sal` (#313) | by hand |
+| port, sal | `python -m tests.sim_audit` on `dev_tree` r0, default and `--sal` | by hand |
 
 The `instance` badge carries the size the two ratios were read at, because
 `CLAUDE.md` is explicit that a ratio read at a gate size decides nothing.
@@ -111,8 +112,8 @@ def _ratio_colour(value: float) -> str:
     return "brightgreen" if value >= 2.0 else "orange"
 
 
-RATIOS = (("speed", "runtime"), ("mem", "memory"))
-"""The badge name and the axis of `measurements.json` it reads."""
+RATIOS = (("mem", "memory"),)
+"""The badge name and the axis of `measurements.json`'s `whole_run` it reads."""
 
 
 def _ratio_badge(name: str, axis: str, run: dict[str, Any]) -> Badge:
@@ -133,6 +134,22 @@ def _ratio_badge(name: str, axis: str, run: dict[str, Any]) -> Badge:
     value = run["ratio"][axis]
 
     return Badge(f"run-{name}", name, f"{value:.2f}X", _ratio_colour(value))
+
+
+def _speed_badge(record: dict[str, Any] | None) -> Badge:
+    """CalicoST's wall over `run_cnaster_port --sal`'s, on one sample.
+
+    CalicoST's wall is its recorded multi-core run taken as its one-core
+    time, which favours CalicoST; `port` is measured pinned to one core. The
+    sample, both walls and that assumption are in `measurements.json`.
+    """
+    if not record or record.get("ratio") is None:
+        return Badge("run-speed", "speed vs CalicoST", UNMEASURED, "lightgrey")
+
+    value = record["ratio"]
+    return Badge(
+        "run-speed", "speed vs CalicoST", f"{value:.0f}X", _ratio_colour(value)
+    )
 
 
 def _instance_badge(run: dict[str, Any]) -> Badge:
@@ -195,24 +212,23 @@ def _patched_badge(record: dict[str, Any] | None) -> Badge:
 def _recovery_badge(arm: str, record: dict[str, Any] | None) -> Badge:
     """Clone and copy-state recovery against the planted truth, one arm.
 
-    Two adjusted Rand indices against the fixture that generated the data,
-    both on the integer decode: the fitted clone labels over spots after
-    merging clones of one decoded `(A, B)` profile (#344), and each matched
+    Two adjusted Rand indices against the fixture that generated the data:
+    the run's `clone_labels.tsv` over spots, which carries #518's merge of
+    clones whose decoded `(A, B)` agree at 0.99 of bins, and each matched
     clone-bin's decoded `(A, B)` against the state the fixture painted there.
-    The continuous indices are recorded beside them, not shown. Blue: the instance and configuration
-    they were read at are in `measurements.json`, and a badge has no room
-    for them.
+    Blue: the sample and configuration they were read at are in
+    `measurements.json`, and a badge has no room for them.
     """
     name = f"recovery-{arm}"
     values = (record or {}).get("arms", {}).get(arm)
 
     if not values:
-        return Badge(name, arm, UNMEASURED, "lightgrey")
+        return Badge(name, f"{arm} ARI", UNMEASURED, "lightgrey")
 
     return Badge(
         name,
-        arm,
-        f"ARI clones {values['ari_integer']:.3f} / copies {values['copy_ari']:.3f}",
+        f"{arm} ARI",
+        f"(clones, copies) = ({values['ari']:.3f}, {values['copy_ari']:.3f})",
         "blue",
     )
 
@@ -271,6 +287,7 @@ def badges(measurements: dict[str, Any] | None = None) -> tuple[Badge, ...]:
 
     rendered = [_coverage_badge(key, guard) for key, guard in guards.items()]
 
+    rendered.append(_speed_badge(recorded.get("speed")))
     rendered.extend(_ratio_badge(name, axis, run) for name, axis in RATIOS)
     rendered.append(_instance_badge(run))
     rendered.append(_patched_badge(recorded.get("patched")))
