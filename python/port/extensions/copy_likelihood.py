@@ -45,6 +45,7 @@ __all__ = [
     "capture",
     "captured_chain",
     "captured_clones",
+    "captured_normal",
     "lattice_decode",
     "shared_decode",
 ]
@@ -619,6 +620,30 @@ _CAPTURED: list[tuple[Any, Any, Any, Any]] = []
 
 _LENGTHS: list[np.ndarray] = []
 """The last fit's chromosome lengths, which `lattice_decode` restarts its chain at."""
+
+
+def captured_normal() -> int | None:
+    """The captured fit's normal clone: the largest share of balanced bins (#389).
+
+    The rule `run_core_inference` zeroes a clone's shift by
+    (`core_inference.clone_shifts`), so the clone the decode holds at
+    `(1, 1)`, shift 0 and fraction 1 is the one whose shift was zeroed.
+    `argmin |shift|`, the rule it replaces, ties among every clone near
+    diploid: on CalicoST easy and hard under `--sal` it named a tumour clone,
+    held it at fraction 1 and shift 0, and decoded its LOH bins as `(1, 5)`.
+    """
+    from port.patch.hmm_nophasing.shifted_emission import NEUTRAL_BAF_TOLERANCE
+
+    if not _CAPTURED:
+        return None
+
+    result = _CAPTURED[0][3]
+    p_binom = np.asarray(result["new_p_binom"], dtype=np.float64).reshape(-1)
+    path = np.asarray(result["pred_cnv"], dtype=np.int64)
+    path = path.reshape(path.shape[0], -1) % p_binom.size
+    balanced = np.abs(p_binom - 0.5) <= NEUTRAL_BAF_TOLERANCE
+
+    return int(np.argmax(balanced[path].mean(axis=0)))
 
 
 def captured_chain() -> tuple[np.ndarray | None, float]:

@@ -243,6 +243,7 @@ def decode_clone(
         _CAPTURED,
         captured_chain,
         captured_clones,
+        captured_normal,
         lattice_decode,
         shared_decode,
     )
@@ -270,8 +271,12 @@ def decode_clone(
         or _SHARED.get("decoder") != decoder
     ):
         if decoder == "lattice":
-            shifts = np.array([shift for _, _, shift in clones])
-            normal_clone = int(np.argmin(np.abs(shifts)))
+            named = captured_normal()
+            normal_clone = (
+                int(np.argmin(np.abs([shift for _, _, shift in clones])))
+                if named is None
+                else named
+            )
             lengths, stay = captured_chain()
             decoded = lattice_decode(
                 clones,
