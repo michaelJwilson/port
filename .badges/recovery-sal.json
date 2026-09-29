@@ -1,6 +1,6 @@
 {
  "schemaVersion": 1,
- "label": "sal",
- "message": "ARI clones 0.911 / copies 0.997",
+ "label": "sal ARI",
+ "message": "(clones, copies) = (1.000, 0.983)",
  "color": "blue"
 }

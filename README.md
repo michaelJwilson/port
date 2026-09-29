@@ -4,12 +4,12 @@
 [![oracle](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/michaelJwilson/port/main/.badges/coverage-oracle.json)](#what-the-badges-mean)
 [![drop-in](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/michaelJwilson/port/main/.badges/coverage-dropin.json)](#what-the-badges-mean)
 [![all](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/michaelJwilson/port/main/.badges/coverage-reach.json)](#what-the-badges-mean)
-[![speed](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/michaelJwilson/port/main/.badges/run-speed.json)](#what-the-badges-mean)
+[![speed vs CalicoST](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/michaelJwilson/port/main/.badges/run-speed.json)](#what-the-badges-mean)
 [![mem](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/michaelJwilson/port/main/.badges/run-mem.json)](#what-the-badges-mean)
 [![instance](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/michaelJwilson/port/main/.badges/instance.json)](#what-the-badges-mean)
 [![patched](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/michaelJwilson/port/main/.badges/patched.json)](#what-the-badges-mean)
-[![port](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/michaelJwilson/port/main/.badges/recovery-port.json)](#what-the-badges-mean)
-[![sal](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/michaelJwilson/port/main/.badges/recovery-sal.json)](#what-the-badges-mean)
+[![port ARI](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/michaelJwilson/port/main/.badges/recovery-port.json)](#what-the-badges-mean)
+[![sal ARI](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/michaelJwilson/port/main/.badges/recovery-sal.json)](#what-the-badges-mean)
 
 A scientific repository built on
 [`snakes_and_ladders`](https://github.com/michaelJwilson/snakes_and_ladders),
@@ -53,11 +53,17 @@ the table.
 | **all** | the other eight markers | `cnaster` + `python/port` | how much is merely **run**, rather than judged against anything outside `cnaster` |
 | **drop-in** | `patch or cnaster` | `python/port/patch` | how much of what `port` wrote to replace something is reached by the test comparing it with the something. The one guard whose denominator is ours, so the one with a high floor |
 
-**`speed` and `mem`** are patched `run_cnaster` against `--no-patch`: wall
-time and peak resident memory, each arm in its own process, in ratio units.
+**`speed vs CalicoST`** is CalicoST's wall over `run_cnaster_port --sal`'s on
+`dev_tree` r0 (60 x 50 per slice, 6,000 spots): CalicoST's 20,243 s
+(#532, 3 cores) taken as its one-core time, which favours CalicoST, against
+`port` pinned to one core. The sample, both walls and the commit are in
+`measurements.json`.
 
-**`instance`** is what makes those two readable, and `CLAUDE.md` is explicit
-that a ratio read at a gate size decides nothing -- so the three are a set.
+**`mem`** is patched `run_cnaster` against `--no-patch`: peak resident
+memory, each arm in its own process, in ratio units.
+
+**`instance`** is what makes `mem` readable, and `CLAUDE.md` is explicit
+that a ratio read at a gate size decides nothing -- so the two are a set.
 It carries the size as `obs x spots x states`, which is what a tier name
 cannot: two instances both called stress can differ by more than the patch
 being measured does. It asserts nothing and is blue for that reason.
@@ -69,17 +75,16 @@ default row of `run_cnaster_port` replaces -- for a class, its overridden
 methods (#302). Measured by `python -m tests.patched_share`, not per pull
 request, since it is a whole run; blue, because it asserts nothing.
 
-**`port` and `sal`** are recovery against the planted truth, for
-`run_cnaster_port`'s default and for `--sal`, both on the integer decode: the
-adjusted Rand index of the fitted clone labels against the planted ones over
-spots, after merging clones of one decoded `(A, B)` profile (#344), and of
-each clone-bin's phased `(A, B)` against the state the fixture painted there.
-The continuous indices, before merging and of the fitted state, are recorded
-beside them in `measurements.json`. Measured
-by `python -m tests.recovery_audit` on the dev instance at the figures'
-configuration (#313); the instance, configuration and commit are in
-`measurements.json`. Not per pull request, since each is a whole run; blue,
-because the configuration they were read at is not on the badge.
+**`port ARI` and `sal ARI`** are recovery against the planted truth on
+`dev_tree` r0, for `run_cnaster_port`'s default and for `--sal`, as
+`(clones, copies)`: the adjusted Rand index of the run's `clone_labels.tsv`
+against the planted clones over spots -- after #518's merge of clones whose
+decoded `(A, B)` agree at 0.99 of bins -- and of each clone-bin's phased
+`(A, B)` against the state the fixture painted there. Measured by
+`python -m tests.sim_audit --sample generated/dev_tree/r0`; the sample,
+configuration and commit are in `measurements.json`. Not per pull request,
+since each is a whole run; blue, because the configuration is not on the
+badge.
 
 `tests/test_badges_agree.py` is what keeps them together. It refuses a
 recorded ratio that does not name its instance, carry exactly two arms, and
