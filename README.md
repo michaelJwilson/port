@@ -237,6 +237,7 @@ run_cnaster_port --floor-merge --refinement-mask config.yaml  # #348's clone pat
 run_cnaster_port --np-merge config.yaml      # CalicoST's Neyman-Pearson merge of clones that decode alike (#497); on with --sal
 run_cnaster_port --hmm-start kmeans++x5+em config.yaml  # the read-depth HMM's start from sal's covariate mixture (#489); on with --sal
 run_calicost config.yaml                     # CalicoST on the same fixture files, at port's configuration
+run_calicost --shipped configuration_cna config.yaml  # CalicoST's own configuration file, the run's paths (#494)
 run_cnaster_port --no-outputs config.yaml    # skip the fitted/decoded tables below
 run_cnaster_port --list                      # what would be rebound, and why
 run_cnaster_port --audit-config config.yaml # what the config states that cnaster does not use (#324)
@@ -381,6 +382,9 @@ replaces the CalicoST constants that have a `cnaster` counterpart;
 `--no-align` keeps CalicoST's own. It refuses the initial-clone layout on which
 CalicoST's `rectangle_initialize_initial_clone` never returns (`cnaster` #248).
 `python -m tests.recovery_audit --calicost` scores it with port's scorer.
+`--shipped FILE` runs CalicoST's own configuration file instead, taking only
+the paths from the YAML; a sheet of several slices takes
+`configuration_cna_multi`. `docs/final-benchmark.md` compares it with `--sal`.
 
 **`port.sim.draw`** (#445) draws new samples from a version-3 manifest:
 clones from CalicoST's `shared.unique` counts or a mutation tree
