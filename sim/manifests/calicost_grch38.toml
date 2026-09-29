@@ -24,8 +24,9 @@ chromosome_lengths = [
 ]
 
 [array]
-# NB CalicoST's sims are 100 x 30 hex (3,000 spots): the release and stress
-#    size. 25 x 25 (625 spots) is the dev size, within the per-PR budget.
+# NB CalicoST's sims are 60 rows of 50 hex spots (3,000; x doubled, 0-99):
+#    the release and stress size, which the dev manifests use (#467).
+#    25 x 25 (625 spots) is the smallest size.
 kind = "hex"
 rows = 25
 columns = 25

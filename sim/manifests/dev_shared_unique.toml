@@ -1,4 +1,4 @@
-# CalicoST's numcnas1.2_cnasize5e7 at the dev size, one slice (#445).
+# CalicoST's numcnas1.2_cnasize5e7 at its own size, one slice (#445).
 # `python -m port.sim.draw sim/manifests/dev_shared_unique.toml`
 version = 3
 extends = "calicost_grch38.toml"
@@ -9,6 +9,20 @@ seed = 0
 output = "../generated"
 # NB count draws of the same clones, layout and phase, written as r0, r1, ...
 realizations = 1
+
+[array]
+# NB CalicoST's array, 60 rows of 50 (3,000 spots), the size of the sample
+#    it mirrors (#467). At radius 0.35 it plants 901 / 450 / 306 and normal
+#    1,343; every clone clears cnaster's fixed 200-spot ICM floor (#468, #81),
+#    which at 25 x 25 held clones of 123, 68 and 79.
+kind = "hex"
+rows = 60
+columns = 50
+
+[layout]
+overlap = false
+radius = 0.35
+vertices = 6
 
 [cna]
 mode = "shared.unique"

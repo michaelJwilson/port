@@ -409,7 +409,10 @@ the library; κ = 100 matches the normal spots' per-(gene, spot) nonzero share
 (0.90%) and `log10` moments. Each (SNP, spot) is drawn independently from the
 `snp_spot_umi` law. `[sample] realizations` redraws the counts and phase over
 the same clones and layout, each a complete sample in
-`sim/generated/<name>/r<k>/`, untracked; `dev_tree` draws in 9.4 s.
+`sim/generated/<name>/r<k>/`, untracked; `dev_tree` draws in 23.0 s. Both dev
+manifests use CalicoST's array, 60 rows of 50 per slice, and plant every
+clone above cnaster's fixed 200-spot ICM floor (#468): `dev_tree` 6,000
+spots over two slices, `dev_shared_unique` 3,000 on one.
 `tests.sim_audit` runs and scores one realization:
 
     python -m port.sim.draw sim/manifests/dev_tree.toml
