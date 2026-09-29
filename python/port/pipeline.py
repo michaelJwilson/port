@@ -179,6 +179,12 @@ SWAPS: tuple[Swap, ...] = (
         174,
     ),
     Swap(
+        "cnaster.normal_spot",
+        "determine_normal_candidates",
+        "port.patch.normal_spot:determine_normal_candidates",
+        479,
+    ),
+    Swap(
         "cnaster.hmrf",
         "compute_loglike_spot_assignment",
         "port.patch.hmrf:compute_loglike_spot_assignment_strided",
