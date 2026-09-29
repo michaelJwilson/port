@@ -69,7 +69,26 @@ exact altered 0.497 → 0.627. `dev_tree` 60 × 50 and easy are unchanged.
   `sal.opt.split_merge` refuses a covariate, which is the upstream change
   this would otherwise use.
 
-<!-- INFORMATIVE -->
+**Seeding from informative bins only** (counts > 0 and trials ≥ median; the
+fit still reads every bin) was measured on every start. Gap before → after, in
+nats:
+
+| start | 60 × 50 | easy | hard |
+| --- | --- | --- | --- |
+| `gaussian-em` | refused → 49.5 | refused → 129.3 | refused → 45.3 |
+| `objective` (the surrogate group) | 86.7 → 86.5 | 66.5 → 66.9 | 28.7 → 30.9 |
+| `kmeans++x5+em` | 17.2 → 18.4 | 4.5 → 26.2 | 13.2 → 8.2 |
+| `emission++x5+em` | 45.6 → 62.1 | 8.2 → 9.6 | 19.3 → 20.5 |
+| `datax5+em` | 33.7 → 34.1 | 7.3 → 7.9 | 10.4 → 25.6 |
+
+The gaps are against the best of both runs, so they differ slightly from the
+table above.
+- Trimming makes `gaussian-em` run, but it is not competitive.
+- It does not move the surrogate group.
+- It is mixed for the leading start.
+
+Not adopted. What remains for the surrogate is weighting rows rather than
+trimming them (#502).
 
 ## End to end
 
