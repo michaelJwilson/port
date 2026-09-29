@@ -26,7 +26,7 @@ def _config(normalidx_file: Any) -> Any:
 @pytest.mark.patch
 def test_without_a_file_it_is_cnasters_call(monkeypatch: pytest.MonkeyPatch) -> None:
     """No file: the arguments reach `cnaster`'s function and its result returns."""
-    import cnaster.normal_spot
+    import port.patch.normal_spot as patch
     from port.patch.normal_spot import determine_normal_candidates
 
     seen: list[Any] = []
@@ -36,7 +36,7 @@ def test_without_a_file_it_is_cnasters_call(monkeypatch: pytest.MonkeyPatch) -> 
         seen.append((args, kwargs))
         return flags
 
-    monkeypatch.setattr(cnaster.normal_spot, "determine_normal_candidates", upstream)
+    monkeypatch.setattr(patch, "_UPSTREAM_CANDIDATES", upstream)
     config = _config(None)
 
     returned = determine_normal_candidates(config, "res", "baf", "x", "rdr", "smooth")
@@ -45,6 +45,28 @@ def test_without_a_file_it_is_cnasters_call(monkeypatch: pytest.MonkeyPatch) -> 
     assert seen == [
         ((config, "res", "baf", "x", "rdr", "smooth"), {"single_tumor_prop": None})
     ]
+
+
+@pytest.mark.cnaster
+@pytest.mark.patch
+def test_the_delegation_reaches_cnaster_while_the_swap_is_installed() -> None:
+    """Under `patched()` the name is port's, and the delegation still `cnaster`'s (#479).
+
+    Resolved at call time, `cnaster.normal_spot.determine_normal_candidates`
+    is the swap itself, and the delegation recursed until the stack ran out.
+    """
+    import cnaster.normal_spot
+    import port.patch.normal_spot as patch
+    from port.pipeline import SWAPS, patched
+
+    original = cnaster.normal_spot.determine_normal_candidates
+
+    with patched(SWAPS):
+        assert (
+            cnaster.normal_spot.determine_normal_candidates
+            is patch.determine_normal_candidates
+        )
+        assert patch._UPSTREAM_CANDIDATES is original
 
 
 @pytest.mark.cnaster

@@ -31,6 +31,7 @@ import ast
 from collections.abc import Iterator
 from typing import Any
 
+import cnaster.normal_spot
 import numpy as np
 import scipy.special
 import scipy.stats
@@ -41,6 +42,14 @@ from cnaster.logger import get_logger
 from cnaster.spatio_genomic_counts import SpatioGenomicCounts
 
 from port.extensions.segments import observe
+
+_UPSTREAM_CANDIDATES = cnaster.normal_spot.determine_normal_candidates
+"""`cnaster`'s own, bound at import (#479).
+
+Before `pipeline.patched()` rebinds the name to `determine_normal_candidates`
+below: resolved at call time it is that function, and the delegation
+recursed until the stack ran out.
+"""
 
 logger = get_logger(__name__, start_time=start_time)
 
@@ -390,10 +399,8 @@ def determine_normal_candidates(
     `port.patch.io.load_input_data` keeps the annotation per spot, and this
     returns it. Every other branch is `cnaster`'s call, unchanged.
     """
-    from cnaster.normal_spot import determine_normal_candidates as upstream
-
     if config.preprocessing.normalidx_file is None:
-        return upstream(
+        return _UPSTREAM_CANDIDATES(
             config,
             res,
             baf_profiles,
