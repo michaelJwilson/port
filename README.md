@@ -234,7 +234,7 @@ run_cnaster_port --genomic-colours states config.yaml  # clones_genomic coloured
 run_cnaster_port --copy-decode shared config.yaml  # one integer pair per fitted state; default: lattice Viterbi per clone
 run_cnaster_port --time-stages config.yaml   # what the replacements cost in the run
 run_cnaster_port --floor-merge --refinement-mask config.yaml  # #348's clone patches, opt-in; --no-distinct-init drops the third
-run_cnaster_port --np-merge config.yaml      # CalicoST's Neyman-Pearson merge of clones that decode alike (#497); on with --sal
+python -m port.sandbox.np_merge config.yaml # sandbox: CalicoST's Neyman-Pearson merge of clones that decode alike (#497), not installed by default
 run_cnaster_port --hmm-start kmeans++x5+em config.yaml  # the read-depth HMM's start from sal's covariate mixture (#489); on with --sal
 run_calicost config.yaml                     # CalicoST on the same fixture files, at port's configuration
 run_calicost --shipped configuration_cna config.yaml  # CalicoST's own configuration file, the run's paths (#494)

@@ -3,7 +3,7 @@
 `cnaster` calls `merge_by_minspots` where CalicoST first merged similar clones
 (`run_cnaster.py:743`, `:1172`, both commented out), so the minimum-size merge
 is the one place the pipeline hands over a stage's clones. Under
-`port.extensions.np_merge.np_merge()` this runs the Neyman-Pearson merge on the
+`port.sandbox.np_merge.np_merge()` this runs the Neyman-Pearson merge on the
 stage's own pseudobulk -- the spot counts `run_core_inference` was fitted on,
 summed per clone as `cnaster` sums them -- and then upstream's function on what
 it leaves. Not installed, it is upstream's call unchanged.
@@ -27,7 +27,7 @@ def merge_by_minspots(
     assignment: Any, res: Any, single_total_bb_RD: Any, **kwargs: Any
 ) -> Any:
     """Upstream's minimum-size merge, after the Neyman-Pearson merge where installed."""
-    from port.extensions import np_merge
+    from port.sandbox import np_merge
 
     held = np_merge._INPUTS
     source = res
