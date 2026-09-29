@@ -347,11 +347,12 @@ def plot_clones_genomic(
     figure: Any = None,
     colour_by: str | None = None,
     preferred_colour_by: str | None = None,
+    logmu_shift: bool = False,
 ) -> Any:
     """Per clone, RDR and BAF along the genome, with the fitted levels.
 
     `cnaster`'s signature and page. The RDR level is shifted by the clone's
-    `log Z_c` when the fit was (`port.patch.hmm_nophasing`'s flag), so the
+    `log Z_c` when the fit was (`logmu_shift`), so the
     line sits on the bins it describes.
 
     `figure`, a `Figure` or `SubFigure`, is drawn into rather than a new
@@ -361,8 +362,11 @@ def plot_clones_genomic(
     `colour_by` is `"integer"`, `"states"` or, unset, `preferred_colour_by`;
     the preference applies only where it can, so a call without `df_cnv`
     preferring `"integer"` colours by state as upstream does.
+
+    `logmu_shift` draws each clone's RDR line at `mu / Z_c`, where its points
+    are, for a fit the shift was applied to (#299); `run_cnaster_port` binds
+    it with `SHIFT_SWAPS` (#517).
     """
-    from port.patch.hmm_nophasing import hmm_nophasing
 
     if df_cnv is not None and res_combine is None:
         msg = "res_combine is required with df_cnv"
@@ -392,7 +396,7 @@ def plot_clones_genomic(
         base_nb_mean = known_nb_baseline.copy()
 
     has_rdr = base_nb_mean is not None and np.max(base_nb_mean) > 0
-    shifted = bool(hmm_nophasing.apply_logmu_shift) and has_rdr
+    shifted = logmu_shift and has_rdr
 
     n_obs = X.shape[0]
     x = np.arange(n_obs)

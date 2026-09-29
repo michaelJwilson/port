@@ -467,13 +467,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         sal_emission_on = (
             shift if arguments.sal_emission is None else arguments.sal_emission
         )
-        if sal_emission_on:
-            from port.patch.hmm_nophasing import sal_emission
-
-            # NB the coded emission from sal's tables (#425), a class flag
-            #    the `hmm_nophasing` swap reads, restored with the run. That
-            #    swap is a `SHIFT_SWAPS` row, so `--no-patch --shift` reads it.
-            stack.enter_context(sal_emission())
+        # NB the coded emission from sal's tables (#425), an option of the
+        #    `hmm_nophasing` row, bound once the shift's table is selected.
+        #    That row is in `SHIFT_SWAPS`, so `--no-patch --shift` reads it.
+        model: dict[str, Any] = {"emission_kernels": "sal"} if sal_emission_on else {}
 
         if arguments.sal and arguments.no_patch:
             selected = tuple(
@@ -593,10 +590,20 @@ def main(argv: Sequence[str] | None = None) -> int:
                     selected, swap.replacement, decoder=arguments.copy_decode
                 )
         if shift:
-            from port.patch.hmm_nophasing import logmu_shift
-
             selected = selected + SHIFT_SWAPS
-            stack.enter_context(logmu_shift())
+
+            # NB the genomic figure draws each clone's line at `mu / Z_c` when
+            #    the fit it plots was shifted (#299).
+            selected = with_options(
+                selected,
+                "port.patch.plot_genomic:plot_clones_genomic",
+                logmu_shift=True,
+            )
+
+        if model:
+            selected = with_options(
+                selected, "port.patch.hmm_nophasing:hmm_nophasing", **model
+            )
 
         if inference:
             selected = with_options(

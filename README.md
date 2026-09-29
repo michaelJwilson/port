@@ -342,8 +342,8 @@ shift rows, so `--no-shift` turns it off too, and `--distinct-init` with it.
 emission by BFGS with a finite-difference gradient, one objective call per
 packed coordinate; `port` supplies the derivative instead
 (`port.patch.hmm_nophasing.gradient`), pinned against `jax`'s. On the dev
-instance the M step falls from 11.1 s to 2.0 s. `finite_difference()`
-restores `cnaster`'s gradient for a block.
+instance the M step falls from 11.1 s to 2.0 s. The row's
+`analytic_gradient=False` option restores `cnaster`'s gradient.
 
 **The spatial graph is validated before the HMRF sees it** (#417). The run
 builds it from `port.extensions.adjacency`: by default each spot's `k`

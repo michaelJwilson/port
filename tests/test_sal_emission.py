@@ -131,31 +131,22 @@ def test_the_coded_emission_is_upstreams_to_a_stated_tolerance(
 def test_the_class_under_sal_emission_scores_as_it_does_under_cnasters(
     shifted: bool, cnaster_config: None
 ) -> None:
-    """The swapped class, both branches, with the flag on against off, to 1e-10.
+    """The swapped class, both branches, with the option on against off, to 1e-10.
 
     Unshifted: `coded_emission` against upstream's coded method. Shifted:
     the batched per-clone rows against the per-state `cnaster` kernels on
-    the same `(clone, obs, total)` triples. The flag is restored after.
+    the same `(clone, obs, total)` triples.
     """
-    from port.patch.hmm_nophasing import hmm_nophasing, logmu_shift, sal_emission
-
     from tests.test_shifted_emission import _call, _instance, _replacement
 
     instance = _instance()
 
-    def scored() -> tuple[np.ndarray, np.ndarray]:
-        if shifted:
-            with logmu_shift():
-                return _call(_replacement(instance), instance)
-        return _call(_replacement(instance), instance)
+    def scored(kernels: str) -> tuple[np.ndarray, np.ndarray]:
+        model = _replacement(instance, shifted=shifted, kernels=kernels)
+        return _call(model, instance)
 
-    theirs = scored()
-
-    with sal_emission():
-        assert hmm_nophasing.emission_kernels == "sal"
-        ours = scored()
-
-    assert hmm_nophasing.emission_kernels == "cnaster"
+    theirs = scored("cnaster")
+    ours = scored("sal")
 
     for mine, reference in zip(ours, theirs, strict=True):
         assert mine.shape == reference.shape
@@ -184,9 +175,9 @@ def test_run_cnaster_scores_with_sal_s_kernels_where_the_shift_reads_them(
     Under `--no-shift` both were entered and neither read (#466); the run
     said "distinct initial states" regardless.
     """
+    import cnaster.hmm_nophasing
     import cnaster.hmrf
     import cnaster.scripts.run_cnaster as pipeline
-    from port.patch.hmm_nophasing import hmm_nophasing
     from port.scripts.run_cnaster import main
 
     config = tmp_path / "config.yaml"
@@ -197,7 +188,10 @@ def test_run_cnaster_scores_with_sal_s_kernels_where_the_shift_reads_them(
         "run_cnaster",
         lambda *_: seen.append(
             (
-                hmm_nophasing.emission_kernels,
+                # NB `cnaster`'s class, where no shift row installed port's.
+                getattr(
+                    cnaster.hmm_nophasing.hmm_nophasing, "emission_kernels", "cnaster"
+                ),
                 getattr(cnaster.hmrf.run_core_inference, "keywords", {}).get(
                     "distinct_init", False
                 ),

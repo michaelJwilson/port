@@ -38,20 +38,18 @@ def _snapshot() -> dict[tuple[str, str], Any]:
 
 def _managers() -> list[tuple[str, Callable[[], AbstractContextManager[Any]]]]:
     from port.extensions.copy_likelihood import capture
-    from port.patch.hmm_nophasing import logmu_shift
     from port.patch.lattice import rust_lattices
     from port.pipeline import FIGURE_SWAPS, PLOT_OFF_SWAPS, SWAPS, patched
 
     return [
         ("capture", capture),
-        ("logmu_shift", logmu_shift),
         ("rust_lattices", rust_lattices),
         ("patched", lambda: patched(SWAPS + FIGURE_SWAPS + PLOT_OFF_SWAPS)),
     ]
 
 
 @pytest.mark.infra
-@pytest.mark.parametrize("index", range(4))
+@pytest.mark.parametrize("index", range(3))
 def test_a_raising_block_leaves_no_module_state_behind(index: int) -> None:
     from port.pipeline import release
 

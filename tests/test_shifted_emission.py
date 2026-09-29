@@ -89,11 +89,19 @@ def _call(model: Any, instance: dict[str, Any]) -> tuple[np.ndarray, np.ndarray]
     return scored
 
 
-def _replacement(instance: dict[str, Any]) -> Any:
-    """The drop-in, carrying the decode the shift is taken at."""
-    from port.patch.hmm_nophasing import hmm_nophasing
+def _replacement(
+    instance: dict[str, Any], *, shifted: bool = False, kernels: str = "cnaster"
+) -> Any:
+    """The drop-in, carrying the decode the shift is taken at.
 
-    model = hmm_nophasing()
+    `shifted` and `kernels` are options the `SHIFT_SWAPS` row binds (#517).
+    """
+    from port.patch.hmm_nophasing import hmm_nophasing
+    from port.pipeline import with_attributes
+
+    model = with_attributes(
+        hmm_nophasing, apply_logmu_shift=shifted, emission_kernels=kernels
+    )()
     model.state_posteriors = np.eye(instance["n_states"])[instance["decode"]].T
 
     return model
@@ -131,28 +139,26 @@ def test_off_is_the_default_and_a_missing_decode_still_delegates(
     look like a working run.
     """
     from cnaster.hmm_nophasing import hmm_nophasing as upstream
-    from port.patch.hmm_nophasing import logmu_shift
 
     instance = _instance()
     expected = _call(upstream(), instance)
 
-    with logmu_shift():
-        # no decode at all
-        bare = _replacement(instance)
-        bare.state_posteriors = None
-        np.testing.assert_array_equal(_call(bare, instance)[0], expected[0])
+    # no decode at all
+    bare = _replacement(instance, shifted=True)
+    bare.state_posteriors = None
+    np.testing.assert_array_equal(_call(bare, instance)[0], expected[0])
 
-        # no exposures
-        without_lambda = dict(instance, normal_log_lambda=None)
-        np.testing.assert_array_equal(
-            _call(_replacement(instance), without_lambda)[0], expected[0]
-        )
+    # no exposures
+    without_lambda = dict(instance, normal_log_lambda=None)
+    np.testing.assert_array_equal(
+        _call(_replacement(instance, shifted=True), without_lambda)[0], expected[0]
+    )
 
-        # no clone lengths
-        without_lengths = dict(instance, clone_lengths=None)
-        np.testing.assert_array_equal(
-            _call(_replacement(instance), without_lengths)[0], expected[0]
-        )
+    # no clone lengths
+    without_lengths = dict(instance, clone_lengths=None)
+    np.testing.assert_array_equal(
+        _call(_replacement(instance, shifted=True), without_lengths)[0], expected[0]
+    )
 
 
 @pytest.mark.cnaster
@@ -166,7 +172,6 @@ def test_on_it_applies_cnasters_own_shift(cnaster_config: None) -> None:
     Bitwise, because nothing is reassociated between the two.
     """
     from cnaster.hmm_nophasing import _nb_logpmf_1d, compute_logmu_shifts
-    from port.patch.hmm_nophasing import logmu_shift
 
     instance = _instance()
     per_clone = instance["per_clone"]
@@ -178,8 +183,7 @@ def test_on_it_applies_cnasters_own_shift(cnaster_config: None) -> None:
         instance["clone_lengths"],
     )
 
-    with logmu_shift():
-        rdr, _ = _call(_replacement(instance), instance)
+    rdr, _ = _call(_replacement(instance, shifted=True), instance)
 
     observed = np.asarray(instance["nbEncoder"].obs_count).reshape(-1)
     exposure = np.asarray(instance["nbEncoder"].total_count).reshape(-1)
@@ -222,7 +226,6 @@ def test_each_clone_takes_its_own_shift(cnaster_config: None) -> None:
     equal where they should differ.
     """
     from cnaster.hmm_nophasing import compute_logmu_shifts
-    from port.patch.hmm_nophasing import logmu_shift
 
     instance = _instance()
     per_clone = instance["per_clone"]
@@ -240,8 +243,7 @@ def test_each_clone_takes_its_own_shift(cnaster_config: None) -> None:
         f"the fixture must give the clones different shifts, got {distinct}"
     )
 
-    with logmu_shift():
-        rdr, _ = _call(_replacement(instance), instance)
+    rdr, _ = _call(_replacement(instance, shifted=True), instance)
 
     # NB the same `(obs, total)` pair appears in more than one clone, which is
     #    the whole reason the encoder has to be split; those entries must now
@@ -372,8 +374,10 @@ def test_the_dense_emission_applies_the_recorded_shift_to_the_mean(
     `exp(log_mu)` separately is `inf * 0`. Unshifted when the flag is off.
     """
     from cnaster.hmm_nophasing import hmm_nophasing as upstream
-    from port.patch.hmm_nophasing import hmm_nophasing, logmu_shift
+    from port.patch.hmm_nophasing import hmm_nophasing
+    from port.pipeline import with_attributes
 
+    shifted = with_attributes(hmm_nophasing, apply_logmu_shift=True)
     rng = np.random.default_rng(5)
     n_obs = 12
     X = np.stack(
@@ -393,10 +397,9 @@ def test_the_dense_emission_applies_the_recorded_shift_to_the_mean(
     hmm_nophasing._row_shift = shift + offset
 
     try:
-        with logmu_shift():
-            ours = hmm_nophasing.compute_emission_probability_nb_betabinom(
-                X, base, (rates + offset)[:, None], alphas, total, p_binom, taus
-            )
+        ours = shifted.compute_emission_probability_nb_betabinom(
+            X, base, (rates + offset)[:, None], alphas, total, p_binom, taus
+        )
 
         for state in range(2):
             theirs = upstream.compute_emission_probability_nb_betabinom(
@@ -434,8 +437,9 @@ def test_each_candidate_clone_is_scored_under_its_own_normalizer() -> None:
     over spots and normalized as `hmrf.py:476` builds it; `None` when the fit
     was not shifted, so the unshifted path is the fused field as before.
     """
-    from port.patch.hmm_nophasing import hmm_nophasing, logmu_shift
+    from port.patch.hmm_nophasing import hmm_nophasing
     from port.patch.hmrf.clone_assignment import _clone_shifts
+    from port.pipeline import with_attributes
 
     rng = np.random.default_rng(9)
     base = rng.uniform(1.0, 5.0, (30, 7))
@@ -444,8 +448,9 @@ def test_each_candidate_clone_is_scored_under_its_own_normalizer() -> None:
 
     assert _clone_shifts(hmm_nophasing, res, decoded, base) is None
 
-    with logmu_shift():
-        ours = _clone_shifts(hmm_nophasing, res, decoded, base)
+    ours = _clone_shifts(
+        with_attributes(hmm_nophasing, apply_logmu_shift=True), res, decoded, base
+    )
 
     weights = base.sum(axis=1) / base.sum()
     mu = np.array([1.0, 1.5, 3.0])
