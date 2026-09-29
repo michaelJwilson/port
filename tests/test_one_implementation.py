@@ -28,8 +28,10 @@ BUDGET: dict[str, int] = {
     # NB 53: step 1 removed the two `_Selection` slots behind the decoder and
     #    solver switches; step 5 added `Settings`, the entry point's one
     #    resolution of its tri-state flags; step 8 added the `hmm_phased` row
-    #    and moved 8 classes to `sandbox/` with their modules.
-    "classes": 53,
+    #    and moved 8 classes to `sandbox/` with their modules. 54: the truth
+    #    page's `analysis.GenomicTruth`, the tracks' arguments that
+    #    `clones_genomic.png` and `truth_combined` both draw.
+    "classes": 54,
     # NB step 4: 18 records became NamedTuples; the dataclasses left carry
     #    mutable state, machinery or a `__post_init__` (#517 D). Step 8 moved
     #    7 dataclasses and 1 NamedTuple to `sandbox/`.
