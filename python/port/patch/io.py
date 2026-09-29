@@ -43,7 +43,7 @@ from anndata._core.views import (
     ArrayView,
 )  # NB no public name; the type `adata.layers` returns on a view
 from cnaster.config import start_time
-from cnaster.filter import get_filter_genes, get_filter_ranges
+from cnaster.filter import get_filter_genes
 from cnaster.he import get_he_image
 from cnaster.io import (
     get_aggregated_barcodes as _UPSTREAM_AGGREGATED_BARCODES,
@@ -296,6 +296,27 @@ def _scaled_columns(counts: Any, factors: np.ndarray) -> Any:
     counts[:, :] = (counts * factors).astype(counts.dtype)
 
     return counts
+
+
+def filter_ranges(filter_range_file: Any) -> pd.DataFrame:
+    """`cnaster.filter.get_filter_ranges`, reading bare-integer chromosomes too.
+
+    `cnaster` decides whether to strip a `chr` prefix with `"chr" in
+    ranges.Chr.iloc[0]`, which raises `TypeError` when the column parses as
+    integers (#176), so only the `chrN` form was readable. Here each value is
+    read as a string and a `chr` prefix stripped where present; the result is
+    `cnaster`'s -- integer `Chr`, sorted by `Chr` and `Start` -- for either form.
+    """
+    ranges = pd.read_csv(
+        filter_range_file, header=None, sep="\t", names=["Chr", "Start", "End"]
+    )
+    ranges["Chr"] = [
+        int(str(x)[3:]) if str(x).startswith("chr") else int(x)
+        for x in ranges.Chr.to_numpy()
+    ]
+    ordered: pd.DataFrame = ranges.sort_values(by=["Chr", "Start"])
+
+    return ordered
 
 
 def _range_mask(unique_snp_ids: np.ndarray, ranges: pd.DataFrame) -> np.ndarray:
@@ -573,7 +594,7 @@ def load_input_data(
         adata = adata[:, ~np.isin(adata.var.index, genes_to_filter)]
 
     if filter_range_file is not None:
-        keep = _range_mask(unique_snp_ids, get_filter_ranges(filter_range_file))
+        keep = _range_mask(unique_snp_ids, filter_ranges(filter_range_file))
 
         logger.info(
             f"Retaining {100.0 * np.mean(keep):.2f}% of snps based on input "
