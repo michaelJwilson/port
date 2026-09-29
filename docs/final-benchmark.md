@@ -26,8 +26,8 @@ it wrote, its BAF stage, scores 0.6686 (3 clones), 0.4675 (2) and 0.8601 (3).
 - A run stopped by the cap is scored on the last clone assignment it wrote
   (`final_benchmark.baf_stage`): the BAF stage after CalicoST's
   Neyman–Pearson merge (`mergedallspots_nstates7_sp.npz`), or before it
-  (`allspots_nstates7_sp.npz`, the HMRF's last round) where the merge had not
-  run. It is not comparable with a final ARI: the read-depth stage had not
+  (`allspots_nstates7_sp.npz`, which CalicoST rewrites after every HMRF
+  round, scored at its last completed round) where the merge had not run. It is not comparable with a final ARI: the read-depth stage had not
   finished.
 
 ## Results
@@ -50,8 +50,8 @@ port's walls per repeat: easy 107.8 / 92.4 / 94.9 s, hard 82.7 / 89.0 /
 
 - **CalicoST stops in the read-depth stage on easy and hard**, having
   written `clone0_nstates7_smp.npz`, the first of its clones' refinements.
-  On 60 × 50 it stops after the BAF stage's HMRF and before its merged fit
-  is written.
+  On 60 × 50 it stops inside the BAF stage's HMRF, after 2 of at most 20
+  rounds (easy had run 8 and hard 11 before their merges).
 - **Its BAF stage asks for 3 clones**, as shipped, against 4 planted, so
   0.6686 and 0.8601 measure that setting as much as the fit. On hard the
   merge joined two of the three (0.4685 before it, 0.4675 after).

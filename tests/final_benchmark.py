@@ -97,6 +97,8 @@ def port(name: str, repeats: int) -> dict[str, Any]:
         "tool": "port --sal",
         "ari": row["ari"],
         "clones": row["n_clones"],
+        "ari_integer": row["ari_integer"],
+        "integer_clones": row["n_integer_clones"],
         "copy_ari": row["copy_ari"],
         "exact_altered": row["exact_altered"],
         "exact_altered_minor": row["exact_altered_minor"],
@@ -189,8 +191,27 @@ def joint_inputs(config: Path, root: Path) -> bool:
     return True
 
 
-def calicost(name: str) -> dict[str, Any]:
-    """CalicoST on its shipped configuration, under `TIMEOUT`, scored as port is."""
+def _with_clones(shipped: Path, n_clones: int | None, root: Path) -> Path:
+    """The shipped file, with `n_clones` replaced where one is given."""
+    if n_clones is None:
+        return shipped
+
+    lines = [
+        f"n_clones : {n_clones}" if line.split(":")[0].strip() == "n_clones" else line
+        for line in shipped.read_text().splitlines()
+    ]
+    edited = root / shipped.name
+    edited.write_text("\n".join(lines) + "\n")
+    return edited
+
+
+def calicost(
+    name: str, timeout: int = TIMEOUT, n_clones: int | None = None
+) -> dict[str, Any]:
+    """CalicoST on its shipped configuration, under `timeout`, scored as port is.
+
+    `n_clones` replaces the shipped file's clone count, its one edited value.
+    """
     from tests.sim_audit import _drawn_config, score
     from tests.sim_fixtures import write_sim_inputs
 
@@ -202,19 +223,21 @@ def calicost(name: str) -> dict[str, Any]:
         else write_sim_inputs(sample, root, {})
     )
     joint = joint_inputs(Path(config), root)
+    tool = "CalicoST (shipped" + ("" if n_clones is None else f", n_clones {n_clones}")
+    tool += f", cap {timeout} s)"
     started = time.perf_counter()
 
     try:
         subprocess.run(
             [
                 "timeout",
-                str(TIMEOUT),
+                str(timeout),
                 sys.executable,
                 "-c",
                 "from port.scripts.run_calicost import main; raise SystemExit(main())",
                 str(config),
                 "--shipped",
-                str(_shipped(joint)),
+                str(_with_clones(_shipped(joint), n_clones, root)),
                 "--no-align",
                 "--no-figures",
             ],
@@ -226,7 +249,7 @@ def calicost(name: str) -> dict[str, Any]:
         wall = time.perf_counter() - started
         reached = [x for x in error.stderr.splitlines() if " - " in x][-1:]
         return {
-            "tool": "CalicoST (shipped)",
+            "tool": tool,
             "finished": False,
             "returncode": error.returncode,
             "wall": round(wall, 1),
@@ -243,7 +266,7 @@ def calicost(name: str) -> dict[str, Any]:
         recovery = score(sample, root / "output_calicost", "calicost", wall)
     except Exception as error:  # noqa: BLE001 -- the run is kept; the scoring is reported
         return {
-            "tool": "CalicoST (shipped)",
+            "tool": tool,
             "finished": True,
             "scored": f"{type(error).__name__}: {error}",
             "wall": round(wall, 1),
@@ -252,10 +275,12 @@ def calicost(name: str) -> dict[str, Any]:
         }
 
     return {
-        "tool": "CalicoST (shipped)",
+        "tool": tool,
         "finished": True,
         "ari": recovery.ari,
         "clones": recovery.n_clones,
+        "ari_integer": recovery.ari_integer,
+        "integer_clones": recovery.n_integer_clones,
         "copy_ari": recovery.copy_ari,
         "exact_altered": recovery.exact_altered,
         "exact_altered_minor": recovery.exact_altered_minor,
@@ -271,11 +296,17 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("sample")
     parser.add_argument("tool", choices=["port", "calicost"])
     parser.add_argument("--repeats", type=int, default=3)
+    parser.add_argument(
+        "--timeout", type=int, default=TIMEOUT, help="CalicoST's cap [s]"
+    )
+    parser.add_argument(
+        "--n-clones", type=int, default=None, help="CalicoST's n_clones (shipped: 3)"
+    )
     arguments = parser.parse_args(argv)
     row = (
         port(arguments.sample, arguments.repeats)
         if arguments.tool == "port"
-        else calicost(arguments.sample)
+        else calicost(arguments.sample, arguments.timeout, arguments.n_clones)
     )
     print("BENCH " + json.dumps({"sample": arguments.sample, **row}), flush=True)
 
