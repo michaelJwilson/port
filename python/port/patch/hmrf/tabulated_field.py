@@ -43,7 +43,7 @@ if TYPE_CHECKING:  # pragma: no cover - `prange` is `range` to a type checker
 else:
     from numba import prange
 
-__all__ = ["spot_clone_field", "tabulated_spot_clone_field"]
+__all__ = ["field_kernel", "spot_clone_field", "tabulated_spot_clone_field"]
 
 EPS = 1e-10
 """`cnaster`'s floors: `alpha` in `_nb_logpmf_1d`, `a` and `b` in `_bb_logpmf_1d`."""
@@ -189,6 +189,20 @@ def _integral(values: np.ndarray) -> bool:
     )
 
 
+def field_kernel(
+    counts_nb: np.ndarray, counts_bb: np.ndarray, total_bb_RD: np.ndarray
+) -> Any:
+    """The kernel :func:`spot_clone_field` would run on these counts.
+
+    The choice reads every count, so a caller scoring the same counts more
+    than once -- per clone, per sweep -- makes it once (#488).
+    """
+    if _integral(counts_nb) and _integral(counts_bb) and _integral(total_bb_RD):
+        return tabulated_spot_clone_field
+
+    return fused_spot_clone_field
+
+
 def spot_clone_field(
     counts_nb: np.ndarray,
     base_nb_mean: np.ndarray,
@@ -220,7 +234,4 @@ def spot_clone_field(
         out,
     )
 
-    if _integral(counts_nb) and _integral(counts_bb) and _integral(total_bb_RD):
-        return tabulated_spot_clone_field(*arguments)
-
-    return fused_spot_clone_field(*arguments)
+    return field_kernel(counts_nb, counts_bb, total_bb_RD)(*arguments)
