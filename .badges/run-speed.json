@@ -1,6 +1,6 @@
 {
  "schemaVersion": 1,
- "label": "speed vs CalicoST",
- "message": "109X",
+ "label": "speedup",
+ "message": "109X vs CalicoST",
  "color": "brightgreen"
 }
