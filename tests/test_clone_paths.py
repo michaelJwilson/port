@@ -166,7 +166,7 @@ def test_the_loh_model_matches_upstreams_loop() -> None:
     is no way to ask it for the model array alone. Extracting `loh_model` is
     what makes this testable at all, which is most of why it is extracted.
     """
-    from port.patch.plotting.loh_density import loh_model
+    from port.sandbox.patch.plotting.loh_density import loh_model
 
     rng = np.random.default_rng(11)
     n_bins, n_spots, n_clones, n_states = 30, 12, 3, 5
@@ -209,7 +209,7 @@ def test_a_clone_with_no_spots_leaves_its_column_alone() -> None:
     survives unification, and writing an empty mask would broadcast a
     `(n_bins, 0)` assignment rather than fail.
     """
-    from port.patch.plotting.loh_density import loh_model
+    from port.sandbox.patch.plotting.loh_density import loh_model
 
     n_bins, n_spots, n_states = 10, 4, 3
 

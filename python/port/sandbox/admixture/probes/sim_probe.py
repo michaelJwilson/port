@@ -2,6 +2,13 @@
 # mypy: ignore-errors
 """`tests.sim_audit` with the clone mixture's fits printed (#380 design study).
 
+Ticket: #380 -- the design study's probe printing the clone mixture's fits,
+  set aside with the study it served.
+Measurement: none recorded for the probe; the numbers its runs produced are
+  in `port.sandbox.admixture.variants`.
+Exit: retire with `port.sandbox.admixture.clone_mixture` (#467), whichever
+  way that module exits.
+
 Run from the repository root, as `run_sim.sh` does. `MIX_VARIANTS=1` routes
 `--clone-mixture` through `port.sandbox.admixture.variants`, whose knobs
 `MIX_ROW_MODE`, `MIX_ENTROPY` and `MIX_STARTS` set; otherwise the package's

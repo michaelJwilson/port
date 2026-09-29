@@ -1,5 +1,12 @@
 """Set aside (#467): the phasing stage's initial clones from Wolff clusters, sized by counts.
 
+Ticket: #467 -- the phasing stage's clones from Wolff clusters sized by SNP
+  UMIs, set aside as worse than `cnaster`'s grid on every sample.
+Measurement: clone ARI, grid against this start, `--sal`: hard 0.982 /
+  0.858, easy 0.986 / 0.986, `dev_tree` r0 0.998 / 0.742.
+Exit: graduate to `patch/` as `initialize_clones` if it matches the grid's
+  clone ARI on all three samples; else retire.
+
 **Measured, and worse than cnaster's grid on every sample**, under `--sal`
 with #476's clone flags (clone ARI, clones, phase-free exact altered):
 

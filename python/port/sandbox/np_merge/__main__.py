@@ -1,4 +1,10 @@
-"""`python -m port.sandbox.np_merge [run_cnaster_port arguments]`: the entry point with the merge installed (#497)."""
+"""`python -m port.sandbox.np_merge [run_cnaster_port arguments]`: the entry point with the merge installed (#497).
+
+Ticket: #497 -- the `run_cnaster_port` entry point with the Neyman-Pearson
+  merge installed, set aside with the merge at the owner's request.
+Measurement: none recorded; see `port.sandbox.np_merge.merge`.
+Exit: graduates or retires with `port.sandbox.np_merge.merge`.
+"""
 
 import sys
 

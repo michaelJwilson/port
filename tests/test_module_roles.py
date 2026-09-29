@@ -14,12 +14,11 @@ below are that rule made checkable, each against the import graph
 | `tool` | `extensions/` | reached from no row or script: a figure or record tool |
 | `sim`, `script`, `pipeline` | `sim/`, `scripts/`, `port.pipeline` | where they are |
 | `set aside` | `sandbox/` | installed by nothing |
-| `unreached` | `patch/`, `extensions/` | reached by nothing yet; #517 step 8 moves or installs each |
 
-`unreached` is the one role whose location is wrong by its own account, so
-it is a fixed list: step 8 empties it, and nothing joins it without a diff
-here. `SANDBOX_HEADERLESS` is the same for the header every sandbox module
-will carry (ticket, measurement, exit).
+A module reached by nothing lives in `sandbox/`, mirroring the tree it left
+(`sandbox/patch/...`, `sandbox/extensions/...`), so graduating is a move
+back; #517 step 8 moved the last of them. Every sandbox module states its
+ticket, measurement and exit, and a new one arrives with them.
 """
 
 from __future__ import annotations
@@ -41,7 +40,6 @@ Role = Literal[
     "script",
     "pipeline",
     "set aside",
-    "unreached",
 ]
 
 ROLES: dict[str, Role] = {
@@ -56,7 +54,6 @@ ROLES: dict[str, Role] = {
     "port.extensions.copy_likelihood": "extension",
     "port.extensions.emission_family": "oracle",
     "port.extensions.figure_style": "extension",
-    "port.extensions.hmm_init_trials": "unreached",
     "port.extensions.integer_copy": "oracle",
     "port.extensions.jax_hmm": "oracle",
     "port.extensions.jax_setup": "extension",
@@ -71,6 +68,7 @@ ROLES: dict[str, Role] = {
     "port.extensions.vocabulary": "tool",
     # patch: rows
     "port.patch.hmm_nophasing.shifted_emission": "row",
+    "port.patch.hmm_phased.coded_emission": "row",
     "port.patch.hmrf.clone_assignment": "row",
     "port.patch.hmrf.core_inference": "row",
     "port.patch.hmrf.field": "row",
@@ -103,15 +101,8 @@ ROLES: dict[str, Role] = {
     "port.patch.icm.interface": "row-helper",
     "port.patch.lattice": "row-helper",
     "port.patch.plotting.clone_paths": "row-helper",
-    # patch: reached by nothing (#517 addendum A)
-    "port.patch.emission": "unreached",
-    "port.patch.hmm_initialize.backends": "unreached",
-    "port.patch.hmm_initialize.filtering": "unreached",
-    "port.patch.hmm_phased.coded_emission": "unreached",
     "port.patch.hmrf.invariants": "row-helper",
-    "port.patch.hmrf.reindex": "unreached",
-    "port.patch.plotting.genomic": "unreached",
-    "port.patch.plotting.loh_density": "unreached",
+    "port.patch.hmrf.reindex": "row-helper",
     # sim
     "port.sim.analysis": "sim",
     "port.sim.draw": "sim",
@@ -124,12 +115,18 @@ ROLES: dict[str, Role] = {
     "port.sandbox.admixture.clone_mixture": "set aside",
     "port.sandbox.admixture.probes.sim_probe": "set aside",
     "port.sandbox.admixture.variants": "set aside",
+    "port.sandbox.extensions.hmm_init_trials": "set aside",
     "port.sandbox.integer_decoding.calicost_decoders": "set aside",
     "port.sandbox.integer_decoding.rdr_summary": "set aside",
     "port.sandbox.integer_decoding.schemes": "set aside",
     "port.sandbox.normal_candidates": "set aside",
     "port.sandbox.np_merge.__main__": "set aside",
     "port.sandbox.np_merge.merge": "set aside",
+    "port.sandbox.patch.emission": "set aside",
+    "port.sandbox.patch.hmm_initialize.backends": "set aside",
+    "port.sandbox.patch.hmm_initialize.filtering": "set aside",
+    "port.sandbox.patch.plotting.genomic": "set aside",
+    "port.sandbox.patch.plotting.loh_density": "set aside",
     "port.sandbox.sal_hmm_init": "set aside",
     "port.sandbox.sim_from_run": "set aside",
     "port.sandbox.wolff_init": "set aside",
@@ -147,27 +144,10 @@ WHERE: dict[Role, tuple[str, ...]] = {
     "script": ("port.scripts.",),
     "pipeline": ("port.pipeline",),
     "set aside": ("port.sandbox.",),
-    "unreached": ("port.patch.", "port.extensions."),
 }
 
-SANDBOX_HEADERLESS = frozenset(
-    {
-        "port.sandbox.admixture.clone_mixture",
-        "port.sandbox.admixture.probes.sim_probe",
-        "port.sandbox.admixture.variants",
-        "port.sandbox.integer_decoding.calicost_decoders",
-        "port.sandbox.integer_decoding.rdr_summary",
-        "port.sandbox.integer_decoding.schemes",
-        "port.sandbox.normal_candidates",
-        "port.sandbox.np_merge.__main__",
-        "port.sandbox.np_merge.merge",
-        "port.sandbox.sal_hmm_init",
-        "port.sandbox.sim_from_run",
-        "port.sandbox.wolff_init",
-        "port.sandbox.wolff_umi_init",
-    }
-)
-"""Sandbox modules without the header; #517 step 8 writes each one's."""
+SANDBOX_HEADERLESS: frozenset[str] = frozenset()
+"""Sandbox modules without the header: none since #517 step 8."""
 
 HEADER = ("Ticket:", "Measurement:", "Exit:")
 """What a sandbox module's docstring states, one line each."""
@@ -216,18 +196,17 @@ def test_the_rows_are_the_modules_the_tables_install_from() -> None:
 
 
 @pytest.mark.infra
-def test_live_and_unreached_are_what_the_graph_says() -> None:
-    """`extension` and `row-helper` are reached; `tool` and `unreached` are not.
+def test_live_and_set_aside_are_what_the_graph_says() -> None:
+    """`extension` and `row-helper` are reached; `tool` and `set aside` are not.
 
-    An `unreached` module that becomes reached is live and is relabelled in
-    the same diff; a `tool` reached from a script is an extension.
+    A `tool` reached from a script is an extension, and a `set aside` module
+    reached from a run has graduated without saying so.
     """
     live = _live()
 
     assert _by("extension") <= live, sorted(_by("extension") - live)
     assert _by("row-helper") <= live, sorted(_by("row-helper") - live)
     assert not (_by("tool") & live), sorted(_by("tool") & live)
-    assert not (_by("unreached") & live), sorted(_by("unreached") & live)
     assert not (_by("set aside") & live), sorted(_by("set aside") & live)
 
 

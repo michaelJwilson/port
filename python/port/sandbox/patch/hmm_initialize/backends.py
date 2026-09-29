@@ -1,5 +1,13 @@
 """Several HMM initializers, one referee, and the best of them.
 
+Ticket: #229 (#237) -- HMM initializer backends scored by one referee, set
+  aside as they replace no `cnaster` name.
+Measurement: `sal_emission_backend` outscores `gmm_init` by 304 nats under
+  `cnaster`'s density on a 3-state, 3,000-bin draw; recovery (#230) is not
+  recorded.
+Exit: graduate to `extensions/` if #230's recovery shows a backend beating
+  `gmm_init`; else retire.
+
 **#229 stages 3 and 4.** `cnaster` ships two initializers and picks one by a
 default argument (`hmrf.py:425`, `phasing.py:48`); `snakes_and_ladders` carries
 a third in `opt/emission_mixture`. Nothing compared them, because nothing could:

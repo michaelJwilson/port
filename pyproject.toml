@@ -215,7 +215,7 @@ ignore_missing_imports = true
 # `@njit` erases the signature it decorates, so a patch kernel cannot be
 # annotated in a way --strict accepts. These are pinned bitwise against
 # cnaster instead, which is a stronger claim than a type.
-module = "port.patch.*"
+module = ["port.patch.*", "port.sandbox.patch.*"]
 disallow_untyped_defs = false
 disallow_untyped_calls = false
 

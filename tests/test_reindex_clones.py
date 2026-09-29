@@ -174,3 +174,108 @@ def test_a_posterior_is_permuted_with_the_clones() -> None:
     _, ours = reindex_clones(dict(result), posterior=posterior.copy())
 
     np.testing.assert_array_equal(np.asarray(ours), np.asarray(theirs))
+
+
+def _by_rule(res: dict[str, Any], n_obs: int) -> tuple[np.ndarray, list[int]]:
+    """The rule `reindex_clones` states, written as loops: an independent reference.
+
+    The normal clone is the one whose path's BAF lies least outside
+    `0.5 +- 0.05`, summed over bins; it becomes clone 0, and the rest follow
+    in increasing spot count.
+    """
+    labels = sorted(set(res["new_assignment"].tolist()))
+    p = res["new_p_binom"][:, 0]
+    penalty = {}
+
+    for c in labels:
+        path = res["pred_cnv"][c * n_obs : (c + 1) * n_obs]
+        penalty[c] = sum(max(abs(p[s] - 0.5) - 0.05, 0.0) for s in path)
+
+    normal = min(labels, key=lambda c: (penalty[c], c))
+    count = {c: int((res["new_assignment"] == c).sum()) for c in labels}
+    order = [
+        normal,
+        *sorted((c for c in labels if c != normal), key=lambda c: count[c]),
+    ]
+    relabel = {old: new for new, old in enumerate(order)}
+
+    return np.array([relabel[a] for a in res["new_assignment"]]), order
+
+
+def _live(res: dict[str, Any], n_obs: int, n_clones: int) -> Any:
+    """`res` as `run_cnaster` hands it over: a `CnaHMRFResult`, one column per clone."""
+    from cnaster.cna_hmrf_result import (
+        CloneAssignment,
+        CnaHMRFResult,
+        HMMParams,
+        HMMProfile,
+    )
+
+    n_states = res["new_log_mu"].shape[0]
+    gamma = res["log_gamma"].reshape(n_states, n_clones, n_obs).transpose(0, 2, 1)
+
+    return CnaHMRFResult(
+        params=HMMParams(
+            new_log_mu=res["new_log_mu"],
+            new_alphas=res["new_alphas"],
+            new_p_binom=res["new_p_binom"],
+            new_taus=res["new_taus"],
+            new_log_startprob=np.log(np.full(n_states, 1.0 / n_states)),
+            new_log_transmat=np.log(np.full((n_states, n_states), 1.0 / n_states)),
+        ),
+        param_errors=None,
+        profile=HMMProfile(
+            log_gamma=np.ascontiguousarray(gamma),
+            pred_cnv=res["pred_cnv"].reshape(n_clones, n_obs).T.copy(),
+        ),
+        llf=0.0,
+        n_states=n_states,
+        assignment=CloneAssignment(new_assignment=res["new_assignment"].copy()),
+    )
+
+
+@pytest.mark.oracle
+def test_the_reorder_is_the_stated_rule_on_random_fits() -> None:
+    """**`reindex_clones` against the rule written out as loops**, over 50 draws.
+
+    Random paths, BAF parameters and clone sizes, distinct so the order is
+    determined; the assignment, the path and `log_gamma` must all be
+    permuted as the rule says, exactly, both as a concatenated `dict` and as
+    the `CnaHMRFResult` a run passes.
+    """
+    rng = np.random.default_rng(517)
+
+    for _ in range(50):
+        n_states, n_obs, n_clones = 5, int(rng.integers(3, 9)), int(rng.integers(2, 6))
+        sizes = rng.permutation(np.arange(1, n_clones + 1)) * 3
+        res = {
+            "new_assignment": rng.permutation(np.repeat(np.arange(n_clones), sizes)),
+            "pred_cnv": rng.integers(0, n_states, size=n_obs * n_clones),
+            "new_p_binom": rng.uniform(0.05, 0.95, size=(n_states, 1)),
+            "new_log_mu": rng.normal(size=(n_states, 1)),
+            "new_alphas": np.full((n_states, 1), 0.25),
+            "new_taus": np.full((n_states, 1), 30.0),
+            "log_gamma": rng.normal(size=(n_states, n_obs * n_clones)),
+        }
+        expected, order = _by_rule(res, n_obs)
+        columns = np.concatenate([np.arange(c * n_obs, (c + 1) * n_obs) for c in order])
+
+        reindexed, _ = reindex_clones(res)
+
+        np.testing.assert_array_equal(reindexed["new_assignment"], expected)
+        np.testing.assert_array_equal(reindexed["pred_cnv"], res["pred_cnv"][columns])
+        np.testing.assert_array_equal(
+            reindexed["log_gamma"], res["log_gamma"][:, columns]
+        )
+
+        # NB the live type and layout: a `CnaHMRFResult`, the path
+        #    `(n_obs, n_clones)` and `log_gamma` `(n_states, n_obs, n_clones)`.
+        stacked = _live(res, n_obs, n_clones)
+        paths = np.array(stacked["pred_cnv"])
+        gamma = np.array(stacked["log_gamma"])
+
+        reindexed, _ = reindex_clones(stacked)
+
+        np.testing.assert_array_equal(reindexed["new_assignment"], expected)
+        np.testing.assert_array_equal(reindexed["pred_cnv"], paths[:, order])
+        np.testing.assert_array_equal(reindexed["log_gamma"], gamma[:, :, order])

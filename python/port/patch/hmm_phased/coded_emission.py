@@ -32,10 +32,11 @@ from typing import Any
 import numpy as np
 from cnaster.hmm_nophasing import _bb_logpmf_1d, _nb_logpmf_1d
 from cnaster.hmm_phased import _switch_betabinom_1d
+from cnaster.hmm_phased import hmm_phased as UPSTREAM
 
 from port.patch.plotting.clone_paths import state_vector
 
-__all__ = ["compute_emission_probability_nb_betabinom_coded"]
+__all__ = ["compute_emission_probability_nb_betabinom_coded", "hmm_phased"]
 
 
 def compute_emission_probability_nb_betabinom_coded(
@@ -49,12 +50,10 @@ def compute_emission_probability_nb_betabinom_coded(
     scratch_rdr: Any = None,
     scratch_baf: Any = None,
     normal_log_lambda: Any = None,
-    num_segments_clones: Any = None,
-    copy_states: Any = None,
     clone_lengths: Any = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     """Upstream's, with the parameter read by state rather than by spot."""
-    del normal_log_lambda, num_segments_clones, copy_states, clone_lengths
+    del normal_log_lambda, clone_lengths
 
     rates = np.exp(state_vector(log_mu))
     dispersions = state_vector(alphas)
@@ -122,3 +121,16 @@ def compute_emission_probability_nb_betabinom_coded(
         )
 
     return np.stack(rdr_columns, axis=2), np.stack(baf_columns, axis=2)
+
+
+class hmm_phased(UPSTREAM):  # type: ignore[misc]
+    """`cnaster.hmm_phased`, scoring the coded emission by state (#269, #517).
+
+    Every live call scores one spot, where this equals upstream's; the
+    class is installed so that a caller scoring pooled spots gets a number
+    rather than the `IndexError` above.
+    """
+
+    compute_emission_probability_nb_betabinom_coded = staticmethod(
+        compute_emission_probability_nb_betabinom_coded
+    )

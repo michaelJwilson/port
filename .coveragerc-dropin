@@ -30,9 +30,11 @@ source =
 # different failure from guard 1's -- there a low figure says how much of a
 # dependency is validated, here a low one says a patch is unrefereed.
 #
-# What the remaining 161 are, so a reader can tell a gap from a ceiling:
-# `hmm_initialize/backends.py` 26 (the `snakes_and_ladders` backend, whose
-# referee is the oracle rather than `cnaster`), `io.py` 15, `lattice.py` 13
+# #517 step 8 moved 434 statements reached by no run to `sandbox/`: 91.85 ->
+# 91.28 per cent, 3,461 -> 3,027 statements, under `NUMBA_DISABLE_JIT=1`.
+#
+# What the remaining 161 were, so a reader can tell a gap from a ceiling:
+# `hmm_initialize/backends.py` 26 (now in `sandbox/`), `io.py` 15, `lattice.py` 13
 # (`is_phased` and the two spot-sum reductions, licensed by
 # `tests/test_unified_lattice.py` under `smoke` -- it compares `cnaster`'s
 # two forms with each other, which is the premise for the drop-in and not a

@@ -1,5 +1,12 @@
 r"""Set aside (#467): each clone's pseudobulk as a mixture of the clones and a diploid normal (#380).
 
+Ticket: #467 -- the clone mixture (#380, #381), set aside as no better than
+  the lattice decode alone under #476's clone flags.
+Measurement: clone ARI, lattice decode against with the mixture, `--sal`:
+  easy 0.986 / 0.986, hard 0.982 / 0.976, `dev_tree` r0 0.998 / 0.896.
+Exit: graduate to `extensions/`, installed by a run flag, if it beats the
+  lattice decode's clone ARI on easy, hard and `dev_tree` r0; else retire.
+
 **Measured with the lattice decode and no better than it**, `--sal` with
 #476's clone flags (clone ARI, clones; phase-free exact altered):
 
