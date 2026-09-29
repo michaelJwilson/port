@@ -57,6 +57,7 @@ __all__ = [
     "NP_MERGE_SWAPS",
     "PLOT_OFF_SWAPS",
     "REFINEMENT_SWAPS",
+    "RUN_STATE",
     "SHIFT_SWAPS",
     "SWAPS",
     "Site",
@@ -65,6 +66,7 @@ __all__ = [
     "install",
     "instrumented",
     "patched",
+    "release",
     "swap_sites",
     "warm",
     "with_options",
@@ -500,12 +502,19 @@ def with_options(
 
 
 def _replacement(swap: Swap) -> Any:
-    """What a row installs: its replacement, with its options bound."""
+    """What a row installs: its replacement, with its options bound.
+
+    An option the replacement does not take is refused here, at install,
+    rather than at the row's first call, hours into a run.
+    """
+    import inspect
+
     replacement = _resolve(swap.replacement)
 
     if not swap.options:
         return replacement
 
+    inspect.signature(replacement).bind_partial(**dict(swap.options))
     bound = functools.partial(replacement, **dict(swap.options))
     functools.update_wrapper(bound, replacement)
     return bound
@@ -560,6 +569,29 @@ def install(swaps: tuple[Swap, ...] = SWAPS) -> tuple[Site, ...]:
     return tuple(rebound)
 
 
+RUN_STATE: tuple[str, ...] = (
+    "port.patch.hmm_nophasing.shifted_emission:release",
+    "port.patch.hmrf.clone_assignment:release",
+    "port.patch.hmrf.core_inference:release",
+    "port.patch.hmrf.refinement:forget",
+    "port.patch.integer_copy:release",
+)
+"""What `patched` calls on exit: each drops what one run's rows held (#517).
+
+A module not yet imported held nothing, so it is not imported to be told so.
+"""
+
+
+def release() -> None:
+    """Call every imported `RUN_STATE` release."""
+    for target in RUN_STATE:
+        module_name, _, attribute = target.partition(":")
+        module = sys.modules.get(module_name)
+
+        if module is not None:
+            getattr(module, attribute)()
+
+
 @contextmanager
 def patched(swaps: tuple[Swap, ...] = SWAPS) -> Iterator[tuple[Site, ...]]:
     """Rebind every swap for the block, and restore on the way out.
@@ -586,6 +618,8 @@ def patched(swaps: tuple[Swap, ...] = SWAPS) -> Iterator[tuple[Site, ...]]:
     finally:
         for module, name, original in reversed(undo):
             setattr(module, name, original)
+
+        release()
 
 
 @dataclass

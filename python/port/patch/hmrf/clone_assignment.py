@@ -99,6 +99,7 @@ __all__ = [
     "PooledSmoothing",
     "boundary",
     "pipeline_clone_assignment",
+    "release",
     "require_unpooled",
 ]
 
@@ -187,6 +188,15 @@ class _Boundary:
 
 _BOUNDARY: dict[tuple[int, ...], _Boundary] = {}
 """One slot. A run conditions on one dataset, so a second entry is a bug."""
+
+
+def release() -> None:
+    """Drop the run's boundary; `port.pipeline.patched` calls this on exit (#517).
+
+    Keyed by `id()`, so a slot left behind could be read by a later run whose
+    arrays were allocated at the same addresses.
+    """
+    _BOUNDARY.clear()
 
 
 def _self_only(smooth_mat: Any) -> bool:

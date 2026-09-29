@@ -53,6 +53,7 @@ __all__ = [
     "clone_shifts",
     "pin_neutral",
     "reindex_clones",
+    "release",
     "run_core_inference",
     "shift_for",
 ]
@@ -103,6 +104,12 @@ _PROPAGATED: dict[str, np.ndarray] = {}
 
 _NORMAL: list[int] = []
 """The pinned normal state, shared by every clone (the normal clone's)."""
+
+
+def release() -> None:
+    """Drop what the run held; `port.pipeline.patched` calls this on exit (#517)."""
+    _PROPAGATED.clear()
+    _NORMAL.clear()
 
 
 def clone_shifts(

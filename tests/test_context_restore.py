@@ -53,7 +53,12 @@ def _managers() -> list[tuple[str, Callable[[], AbstractContextManager[Any]]]]:
 @pytest.mark.infra
 @pytest.mark.parametrize("index", range(4))
 def test_a_raising_block_leaves_no_module_state_behind(index: int) -> None:
+    from port.pipeline import release
+
     name, manager = _managers()[index]
+    # NB `patched` releases each run's state on exit (#517), so what an
+    #    earlier test left is dropped first rather than read as a change.
+    release()
     before = _snapshot()
 
     def _raise_inside() -> None:

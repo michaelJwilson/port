@@ -48,5 +48,6 @@ def test_no_plots_rebinds_whichever_write_fig_is_in_place() -> None:
     with patched(FIGURE_SWAPS + PLOT_OFF_SWAPS):
         assert cnaster.utils.write_fig is discard_fig
     with patched(FIGURE_SWAPS):
-        assert cnaster.utils.write_fig is write_fig
+        # NB the row binds its options into port's function (#517).
+        assert getattr(cnaster.utils.write_fig, "func", None) is write_fig
     assert cnaster.utils.write_fig.__module__ == "cnaster.utils"

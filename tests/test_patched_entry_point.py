@@ -321,3 +321,14 @@ def test_the_timer_reports_every_swapped_name(tmp_path: Path) -> None:
 
         omics.summarize_blocks  # noqa: B018 -- the binding is the wrapper here
         assert spent["summarize_blocks"].calls == 0
+
+
+@pytest.mark.infra
+def test_an_option_the_replacement_does_not_take_is_refused_at_install() -> None:
+    """A typo in a bound option fails when the row installs, not at its first call."""
+    from port.pipeline import FIGURE_SWAPS, with_options
+
+    rows = with_options(FIGURE_SWAPS, "port.patch.utils:write_fig", dpii=72)
+
+    with pytest.raises(TypeError, match="dpii"), patched(rows):
+        pass

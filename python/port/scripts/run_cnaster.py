@@ -543,10 +543,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "pipeline_clone_assignment, which --no-patch leaves out"
             )
         if refinement_mask:
-            from port.patch.hmrf.refinement import forget
-
             selected = selected + REFINEMENT_SWAPS
-            stack.callback(forget)
         if floor:
             selected = with_options(
                 selected,

@@ -14,8 +14,8 @@ The kinds:
 - `cache`: a memo keyed by its inputs.
 - `rebind`: a name rebound outside a swap table.
 
-`OUTLIVES` is what a whole run leaves behind today. It is declared so that it
-can only shrink: step 1 moves each into run state released on exit.
+`OUTLIVES` is what a whole run leaves behind, empty since step 1. It is
+declared so that it can only shrink.
 
 `infra` for the declaration, `smoke` for the run: the second executes
 `cnaster`, and checks the run against itself rather than against a truth.
@@ -57,23 +57,17 @@ STATE: dict[str, Kind] = {
     "port.patch.hmrf.core_inference._PROPAGATED": "run",
     "port.patch.hmrf.refinement._KEPT": "run",
     "port.patch.hmrf.run_core_inference": "rebind",
-    "port.patch.integer_copy.DECODED": "run",
+    "port.patch.integer_copy._RECORDERS": "run",
     "port.patch.integer_copy._SHARED": "cache",
     "port.patch.io.NORMAL_SPOTS": "run",
 }
 """Every name `port` writes after import, by kind. 12 switches (#517 C)."""
 
-OUTLIVES = frozenset(
-    {
-        "port.patch.hmm_nophasing.shifted_emission.hmm_nophasing._row_shift",
-        "port.patch.hmrf.clone_assignment._BOUNDARY",
-        "port.patch.hmrf.core_inference._NORMAL",
-        "port.patch.hmrf.core_inference._PROPAGATED",
-        "port.patch.integer_copy.DECODED",
-        "port.patch.integer_copy._SHARED",
-    }
-)
-"""What a whole run leaves changed today; #517 step 1 releases each on exit."""
+OUTLIVES: frozenset[str] = frozenset()
+"""What a whole run leaves changed: nothing since #517 step 1.
+
+`port.pipeline.patched` calls each `RUN_STATE` release on exit.
+"""
 
 
 @pytest.mark.infra

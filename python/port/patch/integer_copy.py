@@ -45,6 +45,8 @@ error, not a fallback to another decoder.
 
 from __future__ import annotations
 
+import contextlib
+from collections.abc import Iterator
 from typing import Any
 
 import cnaster.integer_copy
@@ -53,18 +55,35 @@ import numpy as np
 from port.patch._signature import as_upstream
 
 __all__ = [
-    "DECODED",
     "DECODERS",
     "PairsByBin",
     "configured_caps",
     "decode_clone",
     "hill_climbing_integer_copynumber_fixdiploid_milp",
     "hill_climbing_integer_copynumber_oneclone",
+    "recorded",
+    "release",
     "stated_total",
 ]
 
-DECODED: list[Any] = []
-"""Each shared decode's `port.extensions.copy_likelihood.CopyFit`, in call order."""
+_RECORDERS: list[list[Any]] = []
+"""The lists open `recorded()` blocks collect decodes into."""
+
+
+@contextlib.contextmanager
+def recorded() -> Iterator[list[Any]]:
+    """Each decode's `port.extensions.copy_likelihood.CopyFit` in the block, in call order.
+
+    The list is the caller's; the module keeps nothing once the block ends (#517).
+    """
+    decodes: list[Any] = []
+    _RECORDERS.append(decodes)
+
+    try:
+        yield decodes
+    finally:
+        _RECORDERS.remove(decodes)
+
 
 MAX_ALLELE_COPY = 5
 """`cnaster`'s default, in both signatures."""
@@ -121,6 +140,16 @@ def _caps(max_allele_copy: int, max_total_copy: int) -> tuple[int, int]:
 
 _SHARED: dict[str, Any] = {}
 """The decode of the captured fit, computed at the first clone's call."""
+
+
+def release() -> None:
+    """Drop the run's decode; `port.pipeline.patched` calls this on exit (#517).
+
+    Keyed by `id()`, so a decode left behind could be served to a later run
+    whose fit was allocated at the same address.
+    """
+    _SHARED.clear()
+
 
 DECODERS = ("lattice", "shared")
 """`lattice`, the default (#370), then `shared` (#327)."""
@@ -306,7 +335,8 @@ def decode_clone(
 
         _SHARED.update(key=key, total=total, decoder=decoder, decoded=decoded)
         _SHARED["calls"] = {}
-        DECODED.append(decoded)
+        for decodes in _RECORDERS:
+            decodes.append(decoded)
 
     decoded = _SHARED["decoded"]
 
