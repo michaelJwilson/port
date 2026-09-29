@@ -53,7 +53,9 @@ __all__ = [
     "aligned",
     "calicost_config",
     "compatible",
+    "input_filelist",
     "main",
+    "shipped_config",
     "terminating",
     "write_calicost_config",
 ]
@@ -86,8 +88,19 @@ UNALIGNED = {
 """What `aligned` cannot reach without editing CalicoST, and what it is instead."""
 
 
-def _sample(sheet: Path) -> tuple[Path, Path]:
+def _slices(sheet: Path) -> pd.DataFrame:
+    """The sample sheet's slices; several must share one `snp_dir`, as CalicoST reads one."""
     table = pd.read_csv(sheet, sep=r"\s+")
+
+    if len(set(table["snp_dir"])) != 1:
+        msg = f"CalicoST reads one snp_dir for every slice; {sheet} lists several"
+        raise ValueError(msg)
+
+    return table
+
+
+def _sample(sheet: Path) -> tuple[Path, Path]:
+    table = _slices(sheet)
 
     if len(table) != 1:
         msg = f"run_calicost runs one sample; {sheet} lists {len(table)}"
@@ -95,6 +108,16 @@ def _sample(sheet: Path) -> tuple[Path, Path]:
 
     row = table.iloc[0]
     return Path(row["spaceranger_dir"]), Path(row["snp_dir"])
+
+
+def input_filelist(sheet: Path) -> str:
+    """CalicoST's `input_filelist` for a sheet of several slices (#494).
+
+    CalicoST's joint loader reads it without a header: bam, sample_id and
+    spaceranger_dir per slice (`utils_IO.load_joint_data`).
+    """
+    rows = _slices(sheet)[["bam", "sample_id", "spaceranger_dir"]]
+    return "".join("\t".join(map(str, row)) + "\n" for row in rows.itertuples(False))
 
 
 def _none(value: Any) -> Any:
@@ -173,6 +196,76 @@ def calicost_config(document: dict[str, Any]) -> dict[str, Any]:
         "np_eventminlen": 0,
         "nonbalance_bafdist": copies.get("nonbalance_bafdist", 1.0),
         "nondiploid_rdrdist": copies.get("nondiploid_rdrdist", 10.0),
+    }
+
+
+#: The keys `--shipped` takes from the run's configuration: where the inputs
+#: are and where the output goes, with `spaceranger_dir` for one slice or
+#: `input_filelist` for several. Every other value is the shipped file's.
+PATHS = (
+    "snp_dir",
+    "output_dir",
+    "geneticmap_file",
+    "hgtable_file",
+    "filtergenelist_file",
+    "filterregion_file",
+)
+
+
+def shipped_config(document: dict[str, Any], shipped: Path) -> dict[str, Any]:
+    """CalicoST's own configuration file, its paths replaced by the run's (#494).
+
+    CalicoST's tutorial runs its simulated example on `configuration_cna` as
+    shipped, filling in the paths and keeping every other value; this does
+    the same. A sheet of several slices takes CalicoST's joint file,
+    `configuration_cna_multi`, and :func:`main` writes its `input_filelist`.
+    Values are kept as the file's text, which CalicoST parses itself.
+    """
+    config: dict[str, Any] = {}
+
+    for line in shipped.read_text().splitlines():
+        body = line.split("#", 1)[0].strip()
+
+        if ":" not in body:
+            continue
+
+        key, _, value = body.partition(":")
+        config[key.strip()] = value.strip()
+
+    sheet = Path(document["paths"]["sample_sheet"])
+    slices = _slices(sheet)
+    joint = "input_filelist" in config
+
+    if joint != (len(slices) > 1):
+        msg = (
+            f"{shipped.name} is CalicoST's {'joint' if joint else 'single-slice'} "
+            f"configuration and {sheet} lists {len(slices)} slice(s); CalicoST "
+            "ships configuration_cna for one and configuration_cna_multi for several"
+        )
+        raise ValueError(msg)
+
+    config.update(_paths(document, slices))
+
+    if joint:
+        config["input_filelist"] = str(
+            Path(config["output_dir"]) / "input_filelist.tsv"
+        )
+    else:
+        config["spaceranger_dir"] = str(Path(slices["spaceranger_dir"].iloc[0]))
+
+    return config
+
+
+def _paths(document: dict[str, Any], slices: pd.DataFrame) -> dict[str, Any]:
+    """The `PATHS` values, from the run's configuration and its sample sheet."""
+    paths, references = document["paths"], document["references"]
+    return {
+        "snp_dir": str(slices["snp_dir"].iloc[0]),
+        "output_dir": f"{paths['output_dir']}_calicost",
+        "geneticmap_file": references["geneticmap_file"],
+        "hgtable_file": references["hgtable_file"],
+        "filtergenelist_file": _none(references["filtergenelist_file"]),
+        "filterregion_file": _none(references["filterregion_file"]),
     }
 
 
@@ -467,6 +560,16 @@ def _parser() -> argparse.ArgumentParser:
         help="set CalicoST's hard-coded constants to the configuration's (default)",
     )
     parser.add_argument(
+        "--shipped",
+        type=Path,
+        default=None,
+        metavar="FILE",
+        help=(
+            "run on CalicoST's own configuration file (e.g. its "
+            "configuration_cna), taking only the paths from config (#494)"
+        ),
+    )
+    parser.add_argument(
         "--figures",
         action=argparse.BooleanOptionalAction,
         default=True,
@@ -479,10 +582,19 @@ def main(argv: Sequence[str] | None = None) -> int:
     """Translate the configuration, then run CalicoST's pipeline on it."""
     arguments = _parser().parse_args(argv)
     document = yaml.safe_load(Path(arguments.config).read_text())
-    config = calicost_config(document)
+    config = (
+        calicost_config(document)
+        if arguments.shipped is None
+        else shipped_config(document, arguments.shipped)
+    )
     path = write_calicost_config(
         config, Path(config["output_dir"]) / "calicost_config.txt"
     )
+
+    if "input_filelist" in config:
+        Path(config["input_filelist"]).write_text(
+            input_filelist(Path(document["paths"]["sample_sheet"]))
+        )
 
     with ExitStack() as stack:
         stack.enter_context(compatible())

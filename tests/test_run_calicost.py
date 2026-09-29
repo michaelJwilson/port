@@ -307,3 +307,77 @@ def test_the_aligned_palette_is_callable_while_installed(tmp_path: Path) -> None
             palette, _ = utils_plotting.get_full_palette()
 
     assert (5, 2) in palette
+
+
+@pytest.mark.infra
+def test_the_shipped_configuration_keeps_every_value_but_the_paths(
+    tmp_path: Path,
+) -> None:
+    """`--shipped`: CalicoST's own file, with the run's inputs and output (#494)."""
+    from port.scripts.run_calicost import PATHS, calicost_config, shipped_config
+
+    document, _ = _document(tmp_path)
+    shipped = tmp_path / "configuration_cna"
+    shipped.write_text(
+        "spaceranger_dir : <Replace>\n"
+        "output_dir : <Replace>\n"
+        "# HMRF configurations\n"
+        "n_clones : 3\n"
+        "t : 1-1e-5\n"
+        "np_threshold : 1.0  # CalicoST's own\n"
+    )
+
+    config = shipped_config(document, shipped)
+    translated = calicost_config(document)
+
+    assert {key: config[key] for key in PATHS} == {
+        key: translated[key] for key in PATHS
+    }
+    assert (config["n_clones"], config["t"], config["np_threshold"]) == (
+        "3",
+        "1-1e-5",
+        "1.0",
+    )
+
+
+@pytest.mark.infra
+def test_a_sheet_of_several_slices_takes_the_joint_file(tmp_path: Path) -> None:
+    """Two slices: `input_filelist` as CalicoST's joint loader reads it (#494).
+
+    The single-slice file is refused on that sheet, and the joint file on one
+    slice, since each names an input key the other lacks.
+    """
+    from port.scripts.run_calicost import input_filelist, shipped_config
+
+    document, _ = _document(tmp_path)
+    single = Path(document["paths"]["sample_sheet"])
+    sheet = pd.read_csv(single, sep=r"\s+")
+    joint = tmp_path / "joint_sheet.tsv"
+    pd.concat([sheet, sheet.assign(sample_id="other")]).to_csv(
+        joint, sep="\t", index=False
+    )
+    multi = tmp_path / "configuration_cna_multi"
+    multi.write_text("input_filelist: <Replace>\nalignment_files:\nn_clones : 3\n")
+    one = tmp_path / "configuration_cna"
+    one.write_text("spaceranger_dir : <Replace>\nn_clones : 3\n")
+
+    with pytest.raises(ValueError, match="configuration_cna_multi"):
+        shipped_config(document, multi)
+
+    document["paths"]["sample_sheet"] = str(joint)
+
+    with pytest.raises(ValueError, match="lists 2 slice"):
+        shipped_config(document, one)
+
+    config = shipped_config(document, multi)
+    row = sheet.iloc[0]
+
+    assert "spaceranger_dir" not in config
+    assert config["input_filelist"] == str(
+        Path(config["output_dir"]) / "input_filelist.tsv"
+    )
+    assert config["snp_dir"] == str(Path(row["snp_dir"]))
+    assert input_filelist(joint) == (
+        f"{row['bam']}\t{row['sample_id']}\t{row['spaceranger_dir']}\n"
+        f"{row['bam']}\tother\t{row['spaceranger_dir']}\n"
+    )
