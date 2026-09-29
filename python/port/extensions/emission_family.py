@@ -51,6 +51,8 @@ from __future__ import annotations
 import numpy as np
 from sal.emissions import CountPairEmission
 
+from port.patch.hmm_nophasing.gradient import DISPERSION_FLOOR
+
 __all__ = [
     "CovariateNotConstant",
     "constant_covariate",
@@ -138,7 +140,7 @@ def count_pair_family(
     return CountPairEmission(
         # NB r = 1 / alpha, which `hmm_nophasing._nb_logpmf_1d:48` computes
         #    with the same floor. Reproduced rather than chosen.
-        dispersion=1.0 / np.maximum(alphas_k, 1.0e-10),
+        dispersion=1.0 / np.maximum(alphas_k, DISPERSION_FLOOR),
         mean=exposure_value * np.exp(log_mu_k),
         alpha=p_binom_k * taus_k,
         beta=(1.0 - p_binom_k) * taus_k,

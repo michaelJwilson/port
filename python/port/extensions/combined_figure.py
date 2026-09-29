@@ -231,7 +231,7 @@ def _colour_by_state(top: Any, genomic: Any) -> None:
     from matplotlib.collections import LineCollection, PathCollection
     from matplotlib.lines import Line2D
 
-    from port.patch.plot_genomic import clone_groups, clone_path
+    from port.patch.plot_genomic import clone_groups, fitted_clone_path
 
     res_combine = genomic.kwargs["res_combine"]
     df_cnv = genomic.kwargs.get("df_cnv")
@@ -243,7 +243,7 @@ def _colour_by_state(top: Any, genomic: Any) -> None:
     per_clone = len(axes) // len(labels)
 
     for clone, label in enumerate(labels):
-        path = clone_path(res_combine, clone, n_obs)
+        path = fitted_clone_path(res_combine, clone, n_obs)
         colours = np.array([palette[k] for k in path])
 
         for ax in axes[per_clone * clone : per_clone * (clone + 1)]:

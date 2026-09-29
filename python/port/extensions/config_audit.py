@@ -35,6 +35,8 @@ from functools import cache
 from pathlib import Path
 from typing import Any
 
+from port.extensions.integer_copy import DEFAULT_MAX_TOTAL_COPY
+
 __all__ = ["INDIRECT", "PORT_READS", "Finding", "audit", "cnaster_reads"]
 
 INDIRECT: frozenset[tuple[str, str]] = frozenset(
@@ -55,7 +57,7 @@ PORT_READS: dict[tuple[str, str], str] = {
 
 NUMBER = re.compile(r"^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$")
 
-DEFAULT_TOTAL_COPY = 6
+DEFAULT_TOTAL_COPY = DEFAULT_MAX_TOTAL_COPY
 """`cnaster.integer_copy`'s `max_total_copy`, which no key changes."""
 
 

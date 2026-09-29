@@ -104,6 +104,7 @@ __all__ = [
     "hmm_nophasing",
     "neutral_state",
     "release",
+    "shifted",
 ]
 
 NEUTRAL_BAF_TOLERANCE = 0.05
@@ -695,6 +696,15 @@ class hmm_nophasing(UPSTREAM):  # type: ignore[misc]
             return log_emit_rdr, log_emit_baf
 
         return log_emit_rdr[:, :, None], log_emit_baf[:, :, None]
+
+
+def shifted(model: Any) -> bool:
+    """Whether `model`, a class or an instance, fits with the shift applied.
+
+    `False` for `cnaster`'s class, which has no such option: the one gate
+    the clone assignment, the core inference and the gradient read (#517).
+    """
+    return bool(getattr(model, "apply_logmu_shift", False))
 
 
 def release() -> None:

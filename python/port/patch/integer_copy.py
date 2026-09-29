@@ -52,6 +52,10 @@ from typing import Any
 import cnaster.integer_copy
 import numpy as np
 
+from port.extensions.integer_copy import (
+    DEFAULT_MAX_ALLELE_COPY,
+    DEFAULT_MAX_TOTAL_COPY,
+)
 from port.patch._signature import as_upstream
 
 __all__ = [
@@ -85,11 +89,11 @@ def recorded() -> Iterator[list[Any]]:
         _RECORDERS.remove(decodes)
 
 
-MAX_ALLELE_COPY = 5
-"""`cnaster`'s default, in both signatures."""
+MAX_ALLELE_COPY = DEFAULT_MAX_ALLELE_COPY
+"""`cnaster`'s default, in both signatures (`port.extensions.integer_copy`)."""
 
-MAX_TOTAL_COPY = 6
-"""`cnaster`'s default, in both signatures."""
+MAX_TOTAL_COPY = DEFAULT_MAX_TOTAL_COPY
+"""`cnaster`'s default, in both signatures (`port.extensions.integer_copy`)."""
 
 
 def stated_total(value: Any) -> int | None:

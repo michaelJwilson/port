@@ -50,6 +50,7 @@ from cnaster.count_encoder import CountEncoder
 from scipy.special import digamma, expit
 
 __all__ = [
+    "DISPERSION_FLOOR",
     "EmGradient",
     "analytic_bfgs",
     "bb_partials",
@@ -58,8 +59,12 @@ __all__ = [
     "nb_partials",
 ]
 
-FLOOR = 1e-10
-"""`cnaster`'s floor on `alpha` in `_nb_logpmf_1d` and on `a`, `b` in `_bb_logpmf_1d`."""
+DISPERSION_FLOOR = 1e-10
+"""`cnaster`'s floor on `alpha` in `_nb_logpmf_1d` and on `a`, `b` in `_bb_logpmf_1d`.
+
+The one statement of it: every port kernel that scores those two laws reads
+this, rather than restating the literal (#517).
+"""
 
 
 def nb_partials(
@@ -71,7 +76,7 @@ def nb_partials(
     -- has zero derivative, because its score does not move.
     """
     alpha = np.asarray(dispersion, dtype=np.float64)
-    size = 1.0 / np.maximum(alpha, FLOOR)
+    size = 1.0 / np.maximum(alpha, DISPERSION_FLOOR)
     scaled = alpha * mean
     success = 1.0 / (1.0 + scaled)
     live = (mean > 0.0) & (success < 1.0)
@@ -82,7 +87,7 @@ def nb_partials(
 
         # NB below the floor `r` is a constant and only `p` moves with alpha.
         through_size = np.where(
-            alpha > FLOOR,
+            alpha > DISPERSION_FLOOR,
             -size * (digamma(obs + size) - digamma(size) + np.log(success)),
             0.0,
         )
@@ -102,15 +107,15 @@ def bb_partials(
     tau = taus
     shape_a = p_binom * tau
     shape_b = (1.0 - p_binom) * tau
-    a = np.maximum(shape_a, FLOOR)
-    b = np.maximum(shape_b, FLOOR)
+    a = np.maximum(shape_a, DISPERSION_FLOOR)
+    b = np.maximum(shape_b, DISPERSION_FLOOR)
 
     joint = digamma(total + a + b) - digamma(a + b)
     d_a = digamma(obs + a) - digamma(a) - joint
     d_b = digamma(total - obs + b) - digamma(b) - joint
 
-    live_a = shape_a > FLOOR
-    live_b = shape_b > FLOOR
+    live_a = shape_a > DISPERSION_FLOOR
+    live_b = shape_b > DISPERSION_FLOOR
     valid = (obs >= 0) & (total >= 0) & (obs <= total)
 
     d_a = np.where(valid & live_a, d_a, 0.0)
@@ -269,13 +274,13 @@ class EmGradient:
         The same four conditions `compute_emission_probability_nb_betabinom_coded`
         reads, so the gradient is of the objective actually scored.
         """
-        from port.patch.hmm_nophasing.shifted_emission import _current
+        from port.patch.hmm_nophasing.shifted_emission import _current, shifted
 
         model = self.model
         decode = model._decode() if hasattr(model, "_decode") else None
 
         if (
-            not getattr(model, "apply_logmu_shift", False)
+            not shifted(model)
             or self.normal_log_lambda is None
             or self.clone_lengths is None
             or decode is None

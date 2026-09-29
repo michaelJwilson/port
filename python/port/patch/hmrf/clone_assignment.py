@@ -94,6 +94,8 @@ from cnaster.config import get_global_config, start_time
 from cnaster.hmrf import pipeline_clone_assignment as UPSTREAM
 from cnaster.logger import get_logger
 
+from port.patch.hmrf.invariants import BoundaryInvariants, boundary_invariants
+
 __all__ = [
     "UPSTREAM",
     "PooledSmoothing",
@@ -112,53 +114,6 @@ resolve the replacement and *then* rebinds the module attribute, so a
 delegation that resolved late would call itself. It did, once, and the
 symptom was a `RecursionError` two minutes into a whole run.
 """
-
-
-def _channel_weight(
-    valid_nb: np.ndarray,
-    valid_bb: np.ndarray,
-    indices: np.ndarray,
-    indptr: np.ndarray,
-) -> np.ndarray:
-    """`rel_valid_emision_weight`, as a segment sum rather than two loops.
-
-    `cnaster` computes it inside `compute_loglike_spot_assignment`: pooled
-    valid BAF segments over pooled valid RDR segments, across the spot's
-    smoothed neighbourhood, and one where either is zero. The neighbourhood
-    is a CSR row, so the pooling is `np.add.reduceat` over the non-zeros --
-    the same arithmetic, without the Python loop over spots.
-
-    What the factor *is* remains #58's: the paper's field carries no such
-    term, and this reproduces it rather than endorsing it.
-    """
-    n_spots = len(indptr) - 1
-    weight = np.ones(n_spots, dtype=np.float64)
-
-    if indices.size == 0:
-        return weight
-
-    # NB `reduceat` needs the start of each row and misbehaves on an empty
-    #    one, so rows are summed by segment id instead -- which also gives
-    #    an empty row a pooled count of zero, as the loop does.
-    rows = np.repeat(np.arange(n_spots), np.diff(indptr))
-
-    pooled_nb = np.bincount(rows, weights=valid_nb[indices], minlength=n_spots)
-    pooled_bb = np.bincount(rows, weights=valid_bb[indices], minlength=n_spots)
-
-    live = (pooled_nb > 0) & (pooled_bb > 0)
-    weight[live] = pooled_bb[live] / pooled_nb[live]
-
-    return weight
-
-
-def _own_weight(valid_nb: np.ndarray, valid_bb: np.ndarray) -> np.ndarray:
-    """:func:`_channel_weight` under the identity: each spot's own ratio, one where either is zero."""
-    nb = valid_nb.astype(np.float64)
-    bb = valid_bb.astype(np.float64)
-    weight = np.ones(valid_nb.shape, dtype=np.float64)
-    live = (nb > 0) & (bb > 0)
-    weight[live] = bb[live] / nb[live]
-    return weight
 
 
 @dataclass
@@ -180,8 +135,7 @@ class _Boundary:
     wrong.
     """
 
-    valid_nb: np.ndarray
-    valid_bb: np.ndarray
+    counts: BoundaryInvariants
     weight: np.ndarray
     held: tuple[Any, ...]
 
@@ -258,22 +212,21 @@ def boundary(
     if cached is not None:
         return cached
 
-    valid_nb = (single_base_nb_mean > 0).sum(axis=0)
-    valid_bb = (single_total_bb_RD > 0).sum(axis=0)
+    counts = boundary_invariants(single_base_nb_mean, single_total_bb_RD)
+    n_spots = single_base_nb_mean.shape[1]
 
     require_unpooled(smooth_mat)
     # NB under the identity each spot's neighbourhood is itself, so the
     #    pooled ratio is the spot's own; `None` keeps upstream's unit weight.
     weight = (
-        _own_weight(valid_nb, valid_bb)
+        counts.relative_channel_weight(np.arange(n_spots + 1), np.arange(n_spots))
         if smooth_mat is not None
-        else np.ones(single_base_nb_mean.shape[1], dtype=np.float64)
+        else np.ones(n_spots, dtype=np.float64)
     )
 
     _BOUNDARY.clear()
     _BOUNDARY[key] = _Boundary(
-        valid_nb=valid_nb,
-        valid_bb=valid_bb,
+        counts=counts,
         weight=weight,
         held=(single_base_nb_mean, single_total_bb_RD, smooth_mat),
     )
@@ -316,28 +269,16 @@ def _clone_shifts(
     was taken against, and `decoded` is the `(n_obs, n_clones)` path the
     field reads.
     """
-    import scipy.special
-
+    from port.patch.hmm_nophasing.logmu_shift import clone_log_normalizers
+    from port.patch.hmm_nophasing.shifted_emission import shifted
     from port.patch.plotting.clone_paths import state_vector
 
-    if not getattr(hmmclass, "apply_logmu_shift", False):
+    if not shifted(hmmclass):
         return None
 
-    profile = np.asarray(single_base_nb_mean, dtype=np.float64).sum(axis=1)
-    total = profile.sum()
-
-    if total <= 0.0:
-        return None
-
-    with np.errstate(divide="ignore"):
-        log_lambda = np.log(profile / total)
-
-    rates = state_vector(res["new_log_mu"])
-    terms = rates[np.asarray(decoded, dtype=np.int64)] + log_lambda[:, None]
-
-    shifts: np.ndarray = scipy.special.logsumexp(terms, axis=0)
-
-    return shifts
+    return clone_log_normalizers(
+        state_vector(res["new_log_mu"]), decoded, single_base_nb_mean
+    )
 
 
 def pipeline_clone_assignment(
@@ -369,6 +310,7 @@ def pipeline_clone_assignment(
     import cnaster.hmrf as upstream
 
     from port.extensions.label_solver import solver_for, sweep_for
+    from port.patch.hmm_nophasing.shifted_emission import shifted
     from port.patch.hmrf.adjacency import adjacency_coo
     from port.patch.hmrf.refinement import MASK_PENALTY, compact, mask_for
     from port.patch.hmrf.tabulated_field import field_kernel, spot_clone_field
@@ -392,7 +334,7 @@ def pipeline_clone_assignment(
             for flag, on in (
                 ("--refinement-mask", kept()),
                 ("--floor-merge", floor_merge),
-                ("--shift", bool(getattr(hmmclass, "apply_logmu_shift", False))),
+                ("--shift", shifted(hmmclass)),
             )
             if on
         ]
