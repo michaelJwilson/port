@@ -35,6 +35,7 @@ from typing import Any
 from port.pipeline import (
     COPY_SWAPS,
     FIGURE_SWAPS,
+    NP_MERGE_SWAPS,
     NUMERIC_SWAPS,
     PLOT_OFF_SWAPS,
     REFINEMENT_SWAPS,
@@ -139,6 +140,17 @@ def _parser() -> argparse.ArgumentParser:
             "empties every clone under a fixed 200 at once and reassigns its "
             "spots at random. Off by default, on with --sal (#467): on #338's "
             "three-sample instance the default arm splits 2 planted clones into 6."
+        ),
+    )
+    parser.add_argument(
+        "--np-merge",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help=(
+            "merge clones whose decoded states agree wherever a difference is "
+            "long enough to test, CalicoST's Neyman-Pearson merge (threshold "
+            "2.0 nats per bin, events of 10 bins), which cnaster carries "
+            "commented out (#497). Off by default, on with --sal."
         ),
     )
     parser.add_argument(
@@ -321,6 +333,11 @@ def main(argv: Sequence[str] | None = None) -> int:
                 f"{swap.module}.{swap.name} <- {swap.replacement}  "
                 f"(#{swap.ticket}, changes the clones; --refinement-mask to install)"
             )
+        for swap in NP_MERGE_SWAPS:
+            print(
+                f"{swap.module}.{swap.name} <- {swap.replacement}  "
+                f"(#{swap.ticket}, changes the clones; --np-merge to install)"
+            )
         for swap in COPY_SWAPS:
             print(
                 f"{swap.module}.{swap.name} <- {swap.replacement}  "
@@ -496,6 +513,14 @@ def main(argv: Sequence[str] | None = None) -> int:
             from port.patch.icm.floor import floor_merge
 
             stack.enter_context(floor_merge())
+        np_merging = bool(
+            arguments.sal if arguments.np_merge is None else arguments.np_merge
+        )
+        if np_merging:
+            from port.extensions.np_merge import np_merge
+
+            selected = selected + NP_MERGE_SWAPS
+            stack.enter_context(np_merge())
         distinct = (
             not arguments.no_patch
             if arguments.distinct_init is None
@@ -545,6 +570,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 + (", figures included" if figures else "")
                 + (", copy caps from the config" if copy_cap else "")
                 + (", refinement mask" if refinement_mask else "")
+                + (", Neyman-Pearson merge" if np_merging else "")
                 + (", floor merged smallest first" if floor else "")
                 + (", distinct initial states" if distinct else "")
                 + (", approx included" if approx else "")

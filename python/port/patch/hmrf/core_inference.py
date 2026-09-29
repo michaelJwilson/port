@@ -226,6 +226,17 @@ def run_core_inference(*args: Any, **kwargs: Any) -> Any:
     if distinct.installed() and "hmm_initializer" not in kwargs:
         kwargs["hmm_initializer"] = distinct.gmm_init
 
+    from port.extensions import np_merge
+
+    # NB the spot counts and parameters this fit reads, for the stage's
+    #    Neyman-Pearson merge (#497); held only while that merge is installed.
+    np_merge.remember(
+        args[0] if args else kwargs["single_X"],
+        args[2] if len(args) > 2 else kwargs["single_base_nb_mean"],
+        args[3] if len(args) > 3 else kwargs["single_total_bb_RD"],
+        str(kwargs.get("params", "")),
+    )
+
     result = UPSTREAM(*args, **kwargs)
 
     hmmclass = kwargs.get("hmmclass")
