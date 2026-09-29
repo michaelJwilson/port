@@ -242,3 +242,34 @@ def test_the_merge_sweep_joins_a_chain_of_overlaps() -> None:
     end = np.array([100, 60, 200, 400])
 
     np.testing.assert_array_equal(merged_gene_intervals(chromosome, start, end), [0, 3])
+
+
+@pytest.mark.patch
+def test_a_known_segmentation_is_cnasters_under_the_swaps(
+    staged: tuple[Any, Any, Any],
+) -> None:
+    """With `known_id`, the swapped name returns what `cnaster` does (#466).
+
+    Port hands a known segmentation to upstream. Under `patched()` upstream's
+    name is port's own function, so the hand-off recursed without end on any
+    run with `annotation.clone_ranges`. Two known segments on the staged
+    instance, one per half of the table.
+    """
+    from cnaster.omics import assign_initial_blocks as upstream
+    from port.pipeline import SWAPS, patched
+
+    loaded, table, _ = staged
+    alleles = (loaded.cell_snp_Aallele, loaded.cell_snp_Ballele)
+    known = table.copy()
+    known["known_id"] = (np.arange(len(known)) >= len(known) // 2).astype(int)
+
+    reference = upstream(known.copy(), loaded.adata, *alleles, loaded.unique_snp_ids, 1)
+
+    import cnaster.omics
+
+    with patched(SWAPS):
+        realized = cnaster.omics.assign_initial_blocks(
+            known.copy(), loaded.adata, *alleles, loaded.unique_snp_ids, 1
+        )
+
+    pd.testing.assert_frame_equal(realized, reference)

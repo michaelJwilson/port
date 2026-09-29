@@ -13,8 +13,9 @@ distance, and a tile in data units is the same fraction of the pitch at any
 figure size, which is what lets `port.extensions.combined_figure` draw it
 into a 3.1 in panel.
 
-Colours, opacity, clone order, legend and multi-sample offsets are
-upstream's: `tests/test_plot_spatial_patch.py` pins each spot's colour
+Colours, opacity, clone order, legend entries and multi-sample offsets are
+upstream's, with a square legend marker for cnaster's round one and equal
+axes: `tests/test_plot_spatial_patch.py` pins each spot's colour
 against `cnaster`'s.
 
 **`sample_layout`, `(rows, columns)`, splits the samples into panels (#328).**

@@ -40,6 +40,7 @@ import pandas as pd
 import scipy.sparse as sp
 from cnaster.config import start_time
 from cnaster.logger import get_logger
+from cnaster.omics import assign_initial_blocks as _UPSTREAM_ASSIGN_INITIAL_BLOCKS
 from cnaster.omics import create_bin_ranges as _UPSTREAM_CREATE_BIN_RANGES
 from cnaster.spatio_genomic_counts import SpatioGenomicCounts
 
@@ -288,13 +289,21 @@ def assign_initial_blocks(
     from two passes and a `bincount` rather than a fancy-indexed slice of the
     count matrix per block -- 39% of this function, computed rather than
     looped.
+
+    **One stated difference (#466):** a block never spans two chromosomes.
+    Where the last chromosome holds a single merged interval and the previous
+    chromosome's trailing blocks never reach `initial_min_umi`, `cnaster`
+    tests `reach_end` before `change_chr` and closes one block across both
+    chromosomes; here the block ends at the chromosome's end. Every later
+    stage reads blocks per chromosome, so `cnaster`'s block is a defect.
     """
     from port.patch.omics.summaries import summarize_blocks
 
     if "known_id" in df_gene_snp.columns:
-        from cnaster.omics import assign_initial_blocks as upstream
-
-        return upstream(
+        # NB upstream as imported, not as `cnaster.omics` binds it now: under
+        #    `patched()` that name is this function, and the call recursed
+        #    without end on any run with `annotation.clone_ranges` (#466).
+        return _UPSTREAM_ASSIGN_INITIAL_BLOCKS(
             df_gene_snp,
             adata,
             cell_snp_Aallele,

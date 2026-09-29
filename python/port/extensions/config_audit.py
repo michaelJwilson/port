@@ -198,8 +198,17 @@ def audit(document: dict[str, Any], *, check_paths: bool = True) -> list[Finding
             )
         )
 
+    from port.patch.integer_copy import stated_total
+
     copies = document.get("int_copy_num") or {}
-    total = int(copies.get("max_total_copy") or DEFAULT_TOTAL_COPY)
+
+    # NB parsed as `--copy-cap` parses it: `"none"` states no cap, and `0`
+    #    is refused rather than read as the default (#466).
+    try:
+        total = stated_total(copies.get("max_total_copy")) or DEFAULT_TOTAL_COPY
+    except ValueError as error:
+        findings.append(Finding("int_copy_num.max_total_copy", "invalid", str(error)))
+        total = DEFAULT_TOTAL_COPY
 
     bafdist = copies.get("nonbalance_bafdist")
 

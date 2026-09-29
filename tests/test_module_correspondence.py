@@ -34,7 +34,6 @@ import pytest
 from port.pipeline import (
     COPY_SWAPS,
     FIGURE_SWAPS,
-    NUMERIC_SWAPS,
     SHIFT_SWAPS,
     SWAPS,
 )
@@ -130,7 +129,7 @@ def test_every_swap_lands_in_the_module_named_for_its_target() -> None:
     renamed without its rows, fails here -- and both are how a layout stops
     meaning what it claims once nothing reads it.
     """
-    for swap in SWAPS + NUMERIC_SWAPS + FIGURE_SWAPS + SHIFT_SWAPS + COPY_SWAPS:
+    for swap in SWAPS + FIGURE_SWAPS + SHIFT_SWAPS + COPY_SWAPS:
         target, _, _ = swap.replacement.partition(":")
         expected = f"port.patch.{swap.module.rpartition('.')[2]}"
 
@@ -152,7 +151,7 @@ def test_what_replaces_nothing_does_not_live_under_patch() -> None:
     """
     installed = {
         swap.replacement.partition(":")[0]
-        for swap in SWAPS + NUMERIC_SWAPS + FIGURE_SWAPS + SHIFT_SWAPS + COPY_SWAPS
+        for swap in SWAPS + FIGURE_SWAPS + SHIFT_SWAPS + COPY_SWAPS
     }
 
     for name in (

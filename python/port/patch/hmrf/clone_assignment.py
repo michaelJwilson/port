@@ -363,6 +363,27 @@ def pipeline_clone_assignment(
     if reason is not None:
         logger.info_once(f"Delegating clone assignment to cnaster: {reason}.")
 
+        # NB `cnaster`'s function reads none of these, so a run that asked
+        #    for them is told they do not reach this call (#466). Its scores
+        #    go through the shifted class, which applies the fit's shift only
+        #    where it has one row per bin: with two or more clones, never.
+        from port.patch.hmrf.refinement import kept
+
+        dropped = [
+            flag
+            for flag, on in (
+                ("--refinement-mask", kept()),
+                ("--floor-merge", floor_installed()),
+                ("--shift", bool(getattr(hmmclass, "apply_logmu_shift", False))),
+            )
+            if on
+        ]
+        if dropped:
+            logger.warning_once(
+                f"{' and '.join(dropped)} not applied: clone assignment "
+                f"delegates to cnaster for {reason}."
+            )
+
         return UPSTREAM(  # type: ignore[no-any-return]
             single_X,
             single_base_nb_mean,

@@ -546,6 +546,47 @@ def test_the_gene_filter_counts_the_path_rather_than_the_genes(
     assert "gene_0_0" not in set(map(str, filtered.adata.var.index))
 
 
+@pytest.mark.oracle
+@pytest.mark.parametrize("sparse", [False, True])
+def test_scaling_a_viewed_layer_is_cnasters_column_write(sparse: bool) -> None:
+    """`_scaled_columns` on an AnnData view equals `cnaster`'s own form (#466).
+
+    The loader's `adata` is a view when the outlier branches run. `cnaster`
+    writes `layers["count"][:, gene] = ...` per column, which anndata applies
+    to its copy of the view; port assigns the scaled layer back. A dense
+    layer used to come back unscaled: the write went to the copy and the stale
+    view was assigned over it.
+    """
+    import anndata
+    import scipy.sparse as sp
+    from port.patch.io import _scaled_columns
+
+    counts = np.arange(1, 25, dtype=np.float64).reshape(6, 4)
+    factors = np.array([1.0, 0.0, 0.5, 1.0])
+
+    def viewed() -> Any:
+        full = anndata.AnnData(X=counts.copy())
+        full.layers["count"] = sp.csr_matrix(counts) if sparse else counts.copy()
+        return full[[0, 2, 3, 5], :]
+
+    ours = viewed()
+    ours.layers["count"] = _scaled_columns(ours.layers["count"], factors)
+
+    theirs = viewed()
+    for gene, factor in enumerate(factors):
+        column = theirs.layers["count"][:, gene]
+        dense = column.toarray().ravel() if sp.issparse(column) else column
+        theirs.layers["count"][:, gene] = (dense * factor).astype(counts.dtype)
+
+    def dense_of(layer: Any) -> np.ndarray:
+        return np.asarray(layer.toarray() if sp.issparse(layer) else layer)
+
+    np.testing.assert_array_equal(
+        dense_of(ours.layers["count"]), dense_of(theirs.layers["count"])
+    )
+    assert not dense_of(ours.layers["count"])[:, 1].any()
+
+
 @pytest.mark.patch
 @pytest.mark.parametrize("shuffled", [False, True], ids=["sorted", "shuffled"])
 def test_the_range_filter_follows_the_pointer_over_nested_ranges(
