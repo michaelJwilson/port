@@ -85,13 +85,19 @@ def np_merge() -> Iterator[None]:
 
 
 def remember(
-    single_X: np.ndarray,
-    single_base_nb_mean: np.ndarray,
-    single_total_bb_RD: np.ndarray,
+    single_X: np.ndarray | None,
+    single_base_nb_mean: np.ndarray | None,
+    single_total_bb_RD: np.ndarray | None,
     params: str,
 ) -> None:
-    """Hold the spot counts and parameters of the fit the next merge reads."""
-    if _INSTALLED[0]:
+    """Hold the spot counts and parameters of the fit the next merge reads.
+
+    A call without the counts holds nothing, and the merge that follows is
+    skipped rather than run on a previous fit's.
+    """
+    if single_X is None or single_base_nb_mean is None or single_total_bb_RD is None:
+        _INPUTS.clear()
+    elif _INSTALLED[0]:
         _INPUTS.update(
             single_X=single_X,
             single_base_nb_mean=single_base_nb_mean,

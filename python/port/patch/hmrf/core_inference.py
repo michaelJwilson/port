@@ -239,12 +239,13 @@ def run_core_inference(*args: Any, **kwargs: Any) -> Any:
 
     # NB the spot counts and parameters this fit reads, for the stage's
     #    Neyman-Pearson merge (#497); held only while that merge is installed.
-    np_merge.remember(
-        args[0] if args else kwargs["single_X"],
-        args[2] if len(args) > 2 else kwargs["single_base_nb_mean"],
-        args[3] if len(args) > 3 else kwargs["single_total_bb_RD"],
-        str(kwargs.get("params", "")),
-    )
+    if np_merge.installed():
+        np_merge.remember(
+            args[0] if args else kwargs.get("single_X"),
+            args[2] if len(args) > 2 else kwargs.get("single_base_nb_mean"),
+            args[3] if len(args) > 3 else kwargs.get("single_total_bb_RD"),
+            str(kwargs.get("params", "")),
+        )
 
     result = UPSTREAM(*args, **kwargs)
 
