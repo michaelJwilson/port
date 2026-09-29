@@ -117,9 +117,27 @@ def test_every_measurement_carries_the_conditions_that_decided_it() -> None:
             assert key in recovery, f"the recovery measurement does not state {key}"
 
         for arm, values in recovery["arms"].items():
-            assert {"ari_integer", "copy_ari", "flags"} <= set(values), (
-                f"recovery arm {arm} does not state its flags and both integer indices"
+            assert {"ari", "ari_integer", "copy_ari", "flags"} <= set(values), (
+                f"recovery arm {arm} does not state its flags and its indices"
             )
+
+    speed = recorded.get("speed")
+
+    if speed is not None:
+        for key in (
+            "sample",
+            "commit",
+            "calicost_seconds",
+            "port_seconds",
+            "port_cores",
+            "assumption",
+            "ratio",
+        ):
+            assert key in speed, f"the speed measurement does not state {key}"
+
+        assert speed["ratio"] == pytest.approx(
+            speed["calicost_seconds"] / speed["port_seconds"], rel=1e-3
+        ), "the ratio is not the recorded walls' ratio"
 
     run = recorded["whole_run"]
 

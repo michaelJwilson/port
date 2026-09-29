@@ -3,8 +3,8 @@
 `run_cnaster` records the continuous fit and the integer copies only through
 the fitted state index `Z` of `cnv_seglevel.tsv`: several of `K` fitted states
 decode to one integer `(A, B)`, and the map between the two views is left
-implicit. This writes the seam explicitly, beside `cnaster`'s own files and
-without touching them, in each run directory that holds a
+implicit. This writes the seam explicitly, beside `cnaster`'s own files --
+all but `clone_labels.tsv`, below -- in each run directory that holds a
 `cnv_seglevel.tsv` and its `rdrbaf_final_nstates{K}_smp.npz`:
 
 - `cnv_states.tsv`: one row per fitted state and clone -- the state's
@@ -18,8 +18,13 @@ without touching them, in each run directory that holds a
   posterior-mean `mu` and `p` under `log_gamma`. The continuous view.
 - `clone_labels_integer.tsv`: `clone_labels.tsv` with each spot's clone
   also named by its integer copy profile (`integer_clones`, #344): clones
-  that decode to the same `(A, B)` at every bin are one clone, or at the
-  share of bins `int_copy_num.merge_agreement` states (#518).
+  whose `(A, B)` agree at no less than `int_copy_num.merge_agreement` of
+  bins, 0.99 unless stated, are one clone (#518).
+- `clone_labels.tsv` itself, where that merge joins clones: `clone_label`
+  becomes the merged clone and `cnaster_clone_label` keeps `cnaster`'s. The
+  one file of `cnaster`'s this module rewrites, because the merge replaces
+  the Neyman-Pearson merge `--sal` no longer installs (#497), and that merge
+  wrote its clones there.
 - `manifest.json`: the run's shape and provenance -- states, clones,
   likelihoods, the shift, the configuration's copy caps and ploidy, and
   what `run_cnaster_port` was asked for.
@@ -45,11 +50,15 @@ import numpy as np
 import pandas as pd
 
 __all__ = [
+    "CNASTER_LABEL",
     "MERGE_AGREEMENT",
     "binlevel",
     "clone_columns",
+    "clone_labels_integer",
+    "cnaster_labels",
     "config_keys",
     "integer_clones",
+    "merged_clone_labels",
     "run_directories",
     "segments",
     "states",
@@ -184,8 +193,13 @@ def segments(seglevel: pd.DataFrame, fit: dict[str, Any]) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-MERGE_AGREEMENT = 1.0
-"""The share of bins at which two integer profiles must agree to be one clone, unset."""
+MERGE_AGREEMENT = 0.99
+"""The share of bins at which two integer profiles must agree to be one clone, unset.
+
+0.99 because the split pair it exists to join agrees at 0.9993 on `dev_tree`
+and every distinct pair on CalicoST easy, hard and `dev_tree` at 0.9863 or
+less (#518); 1.0 joins only identical profiles (#344).
+"""
 
 
 def integer_clones(
@@ -235,11 +249,25 @@ def integer_clones(
     return names
 
 
+CNASTER_LABEL = "cnaster_clone_label"
+"""The column of `clone_labels.tsv` that keeps `cnaster`'s clone once merged."""
+
+
+def cnaster_labels(run: Path) -> pd.DataFrame:
+    """`clone_labels.tsv` as `cnaster` wrote it, whether or not it was merged since."""
+    labels = pd.read_csv(run / "clone_labels.tsv", sep="\t", comment="#")
+
+    if CNASTER_LABEL in labels:
+        labels["clone_label"] = labels.pop(CNASTER_LABEL)
+
+    return labels
+
+
 def clone_labels_integer(
     run: Path, seglevel: pd.DataFrame, agreement: float = MERGE_AGREEMENT
 ) -> pd.DataFrame:
     """`clone_labels.tsv` with `integer_clone_label` beside `clone_label`."""
-    labels = pd.read_csv(run / "clone_labels.tsv", sep="\t", comment="#")
+    labels = cnaster_labels(run)
     merged = integer_clones(seglevel, agreement)
 
     def name(label: Any) -> Any:
@@ -249,6 +277,28 @@ def clone_labels_integer(
         return int(merged[key]) if merged.get(key, "").isdigit() else merged.get(key)
 
     labels["integer_clone_label"] = labels["clone_label"].map(name)
+    return labels
+
+
+def merged_clone_labels(integer: pd.DataFrame) -> pd.DataFrame | None:
+    """`clone_labels.tsv` with the merged clone as `clone_label`, or `None`.
+
+    `None` where the merge joins no clones, so the file stays `cnaster`'s
+    byte for byte; else `cnaster`'s clone moves to `cnaster_clone_label`.
+    """
+    same = (
+        integer["integer_clone_label"]
+        .astype(str)
+        .eq(integer["clone_label"].astype(str))
+        | integer["clone_label"].isna()
+    )
+
+    if bool(same.all()):
+        return None
+
+    labels = integer.drop(columns="integer_clone_label")
+    labels[CNASTER_LABEL] = labels["clone_label"]
+    labels["clone_label"] = integer["integer_clone_label"]
     return labels
 
 
@@ -303,9 +353,12 @@ def write_outputs(
     ]
 
     if (run / "clone_labels.tsv").exists():
-        tables.append(
-            ("clone_labels_integer.tsv", clone_labels_integer(run, seglevel, agreement))
-        )
+        integer = clone_labels_integer(run, seglevel, agreement)
+        tables.append(("clone_labels_integer.tsv", integer))
+        merged = merged_clone_labels(integer)
+
+        if merged is not None:
+            tables.append(("clone_labels.tsv", merged))
 
     for name, table in tables:
         table.to_csv(run / name, sep="\t", index=False)
