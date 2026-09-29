@@ -22,9 +22,9 @@ against `cnaster`'s.
 Upstream offsets each sample along `x` on one axis, which shifts twice a
 sample already placed on a shared grid. With a layout each sample is drawn
 in its own panel, in its own coordinates, with white space between, and
-every panel colours the clones as the whole run does. Unset -- the default,
-and `SAMPLE_LAYOUT`'s -- is upstream's single axis exactly.
-`run_cnaster_port --sample-layout 3,1` sets `SAMPLE_LAYOUT`.
+every panel colours the clones as the whole run does. Unset -- the default --
+is upstream's single axis exactly. `run_cnaster_port --sample-layout 3,1`
+binds `preferred_sample_layout` at install.
 """
 
 from __future__ import annotations
@@ -39,11 +39,7 @@ import scipy.spatial
 TILE = 0.85
 """A tile's side, as a fraction of the lattice pitch; the rest is the gap."""
 
-SAMPLE_LAYOUT: tuple[int, int] | None = None
-"""The `sample_layout` a call that names none takes; `None` is upstream's axis."""
-
 __all__ = [
-    "SAMPLE_LAYOUT",
     "TILE",
     "clone_colours",
     "draw_clones_spatial",
@@ -180,20 +176,22 @@ def plot_clones_spatial(
     base_width: float = 4,
     base_height: float = 4,
     palette: str = "rocket",
+    *,
     sample_layout: tuple[int, int] | None = None,
+    preferred_sample_layout: tuple[int, int] | None = None,
 ) -> Any:
     """Upstream's signature and page, each spot a tile of `TILE` the pitch.
 
-    `sample_layout`, or unset `SAMPLE_LAYOUT`, draws one panel per sample;
-    it needs `sample_ids`, and a module default is skipped for a run of one
-    sample.
+    `sample_layout`, or unset `preferred_sample_layout`, draws one panel per
+    sample; it needs `sample_ids`, and the preference is skipped for a run
+    of one sample.
     """
     import matplotlib.pyplot as plt
 
     several = sample_ids is not None and np.unique(sample_ids).size > 1
 
     if sample_layout is None and several:
-        sample_layout = SAMPLE_LAYOUT
+        sample_layout = preferred_sample_layout
 
     if sample_layout is not None:
         return _panels(

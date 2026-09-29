@@ -32,32 +32,9 @@ import numpy as np
 from cnaster.hmm_initialize import gmm_init as UPSTREAM
 from sklearn.mixture import GaussianMixture
 
-__all__ = ["UPSTREAM", "distinct_init", "distinct_weights", "gmm_init", "installed"]
+from port.patch._signature import as_upstream
 
-_INSTALLED: list[bool] = [False]
-
-
-def installed() -> bool:
-    """Whether :func:`distinct_init` is active."""
-    return _INSTALLED[0]
-
-
-@contextmanager
-def distinct_init() -> Iterator[None]:
-    """Hand :func:`gmm_init` to `run_core_inference` for the block.
-
-    `cnaster.hmrf.run_core_inference` binds its initializer as a default
-    argument (`hmm_initializer=gmm_init`, `hmrf.py:425`), which rebinding the
-    module name does not reach; `port.patch.hmrf.run_core_inference` passes
-    it explicitly while this is active.
-    """
-    previous = _INSTALLED[0]
-    _INSTALLED[0] = True
-
-    try:
-        yield
-    finally:
-        _INSTALLED[0] = previous
+__all__ = ["UPSTREAM", "distinct_weights", "gmm_init"]
 
 
 RADIUS = 1.0
@@ -116,12 +93,17 @@ def _distinct_mixture() -> Iterator[None]:
         module.GaussianMixture = previous
 
 
-def gmm_init(*args: Any, **kwargs: Any) -> Any:
-    """Upstream's, choosing among distinct components when `only_minor=False`."""
-    only_minor = kwargs.get("only_minor", args[10] if len(args) > 10 else True)
+@as_upstream(UPSTREAM)
+def gmm_init(arguments: dict[str, Any]) -> Any:
+    """Upstream's, choosing among distinct components when `only_minor=False`.
 
-    if only_minor:
-        return UPSTREAM(*args, **kwargs)
+    `cnaster.hmrf.run_core_inference` binds its initializer as a default
+    argument (`hmm_initializer=gmm_init`, `hmrf.py:425`), which rebinding the
+    module name does not reach; `port.patch.hmrf.run_core_inference` passes
+    this one explicitly under its `distinct_init` option.
+    """
+    if arguments.get("only_minor", True):
+        return UPSTREAM(**arguments)
 
     with _distinct_mixture():
-        return UPSTREAM(*args, **kwargs)
+        return UPSTREAM(**arguments)

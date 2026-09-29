@@ -99,6 +99,7 @@ __all__ = [
     "PooledSmoothing",
     "boundary",
     "pipeline_clone_assignment",
+    "release",
     "require_unpooled",
 ]
 
@@ -187,6 +188,15 @@ class _Boundary:
 
 _BOUNDARY: dict[tuple[int, ...], _Boundary] = {}
 """One slot. A run conditions on one dataset, so a second entry is a bug."""
+
+
+def release() -> None:
+    """Drop the run's boundary; `port.pipeline.patched` calls this on exit (#517).
+
+    Keyed by `id()`, so a slot left behind could be read by a later run whose
+    arrays were allocated at the same addresses.
+    """
+    _BOUNDARY.clear()
 
 
 def _self_only(smooth_mat: Any) -> bool:
@@ -345,16 +355,24 @@ def pipeline_clone_assignment(
     single_tumor_prop: Any = None,
     hmmclass: Any = None,
     merge: bool = False,
+    *,
+    label_solver: str = "icm",
+    floor_merge: bool = False,
 ) -> tuple[np.ndarray, np.ndarray, float]:
-    """What `cnaster.hmrf.pipeline_clone_assignment` returns, computed leaner."""
+    """What `cnaster.hmrf.pipeline_clone_assignment` returns, computed leaner.
+
+    `label_solver` names the solver (`port.extensions.label_solver.SOLVERS`;
+    `"icm"` is `cnaster`'s) and `floor_merge` replaces the ICM's floor with
+    :func:`port.patch.icm.floor.enforce_floor`. `run_cnaster_port` binds
+    both at install, `--sal` and `--floor-merge` (#517).
+    """
     import cnaster.hmrf as upstream
 
-    from port.extensions.label_solver import label_solver, sweep_for
+    from port.extensions.label_solver import solver_for, sweep_for
     from port.patch.hmrf.adjacency import adjacency_coo
     from port.patch.hmrf.refinement import MASK_PENALTY, compact, mask_for
     from port.patch.hmrf.tabulated_field import field_kernel, spot_clone_field
     from port.patch.icm.floor import configured_floor, enforce_floor
-    from port.patch.icm.floor import installed as floor_installed
     from port.patch.icm.interface import CsrGraph, fold_unary, icm_sweep
     from port.patch.plotting.clone_paths import state_vector
 
@@ -373,7 +391,7 @@ def pipeline_clone_assignment(
             flag
             for flag, on in (
                 ("--refinement-mask", kept()),
-                ("--floor-merge", floor_installed()),
+                ("--floor-merge", floor_merge),
                 ("--shift", bool(getattr(hmmclass, "apply_logmu_shift", False))),
             )
             if on
@@ -501,7 +519,7 @@ def pipeline_clone_assignment(
     if get_global_config().hmrf.fixed_assignment:
         logger.warning("Assuming a fixed clone assignment")
     else:
-        solver = label_solver()
+        solver = solver_for(label_solver)
 
         logger.info(f"Solving for updated clone assignment with {solver}.")
 
@@ -537,11 +555,11 @@ def pipeline_clone_assignment(
         #    `dev_tree` r0's planted 49- and 158-spot clones away. With the
         #    floor merge installed the sweep runs floorless and the same
         #    value is met after it.
-        knobs["min_clone_spots"] = 0 if floor_installed() else configured_floor()
+        knobs["min_clone_spots"] = 0 if floor_merge else configured_floor()
 
         result = sweep(folded, graph, new_assignment, spatial_weight, **knobs)
 
-        if floor_installed():
+        if floor_merge:
             emptied = enforce_floor(folded, new_assignment, configured_floor())
 
             if emptied:

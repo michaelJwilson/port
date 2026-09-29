@@ -8,7 +8,7 @@ integer copy-state ARI went from 0.896 to 0.997 (CalicoST 0.999). Pinned:
 - mirror images and near-duplicates are merged into the heavier, mass and
   all, and distinct components are kept (`analytic`);
 - `port.patch.hmrf.run_core_inference` hands the initializer to `cnaster`
-  only while `distinct_init()` is active (`infra`).
+  only under its `distinct_init` option (`infra`).
 """
 
 from __future__ import annotations
@@ -49,20 +49,27 @@ def test_a_mirror_image_at_one_half_is_the_same_component() -> None:
 
 
 @pytest.mark.infra
-def test_the_initializer_is_handed_over_only_while_installed(
+def test_the_initializer_is_handed_over_only_under_its_option(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    import inspect
+
     import port.patch.hmrf.core_inference as core
-    from port.patch.hmm_initialize.distinct import distinct_init, gmm_init
+    from port.patch.hmm_initialize.distinct import gmm_init
 
     seen: list[object] = []
     monkeypatch.setattr(
         core, "UPSTREAM", lambda *_, **k: seen.append(k.get("hmm_initializer"))
     )
+    parameters = inspect.signature(core.run_core_inference).parameters.values()
+    blanks = [None] * sum(
+        p.default is inspect.Parameter.empty
+        and p.kind is inspect.Parameter.POSITIONAL_OR_KEYWORD
+        for p in parameters
+    )
 
-    core.run_core_inference()
-    with distinct_init():
-        core.run_core_inference()
+    core.run_core_inference(*blanks)
+    core.run_core_inference(*blanks, distinct_init=True)
 
     assert seen == [None, gmm_init]
 
@@ -118,11 +125,9 @@ def test_at_radius_zero_the_mixed_phase_initializer_is_upstreams_bitwise(
     ).astype(float)
     arguments = (4, X, base, total, "smp", np.array([n_obs]), None, None)
 
-    with distinct.distinct_init():
-        assert distinct.installed()
-        ours = distinct.gmm_init(
-            *arguments, random_state=0, in_log_space=False, only_minor=False
-        )
+    ours = distinct.gmm_init(
+        *arguments, random_state=0, in_log_space=False, only_minor=False
+    )
 
     theirs = upstream.gmm_init(
         *arguments, random_state=0, in_log_space=False, only_minor=False

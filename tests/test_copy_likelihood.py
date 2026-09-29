@@ -156,14 +156,12 @@ def _entry_point_run(
     config = write_run_cnaster_config(
         written, truth, max_iter_outer=1, max_iter=3, n_states=2
     )
-    integer_copy.DECODED.clear()
-
-    with isolated_run(), warnings.catch_warnings():
+    with isolated_run(), warnings.catch_warnings(), integer_copy.recorded() as decodes:
         warnings.simplefilter("ignore")
         assert main([*argv, str(config)]) == 0
 
     table = next((written.root / "output").rglob("cnv_seglevel.tsv"))
-    return pd.read_csv(table, sep="\t"), list(integer_copy.DECODED), table.parent
+    return pd.read_csv(table, sep="\t"), decodes, table.parent
 
 
 @pytest.mark.end2end

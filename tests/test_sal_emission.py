@@ -184,8 +184,8 @@ def test_run_cnaster_scores_with_sal_s_kernels_where_the_shift_reads_them(
     Under `--no-shift` both were entered and neither read (#466); the run
     said "distinct initial states" regardless.
     """
+    import cnaster.hmrf
     import cnaster.scripts.run_cnaster as pipeline
-    from port.patch.hmm_initialize import distinct
     from port.patch.hmm_nophasing import hmm_nophasing
     from port.scripts.run_cnaster import main
 
@@ -195,7 +195,14 @@ def test_run_cnaster_scores_with_sal_s_kernels_where_the_shift_reads_them(
     monkeypatch.setattr(
         pipeline,
         "run_cnaster",
-        lambda *_: seen.append((hmm_nophasing.emission_kernels, distinct.installed())),
+        lambda *_: seen.append(
+            (
+                hmm_nophasing.emission_kernels,
+                getattr(cnaster.hmrf.run_core_inference, "keywords", {}).get(
+                    "distinct_init", False
+                ),
+            )
+        ),
     )
     main([*argv, "--no-rust", str(config)])
 

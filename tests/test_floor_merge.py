@@ -137,17 +137,13 @@ def test_the_refinement_start_is_upstreams_and_its_mask_is_kept() -> None:
 @pytest.mark.usefixtures("cnaster_config")
 def test_the_floor_is_cnasters_unless_the_config_sets_one() -> None:
     """With no `hmrf.min_spots_per_clone`, the floor is `icm_sweep_deque`'s own
-    default; installing the merge is scoped to its block (#348, opt-in #403)."""
+    default; the merge is an option of the row, off unless bound (#348, #403, #517)."""
     import inspect
 
     from cnaster.config import get_global_config
     from cnaster.icm import icm_sweep_deque
-    from port.patch.icm.floor import (
-        CNASTER_FLOOR,
-        configured_floor,
-        floor_merge,
-        installed,
-    )
+    from port.patch.hmrf.clone_assignment import pipeline_clone_assignment
+    from port.patch.icm.floor import CNASTER_FLOOR, configured_floor
 
     default = inspect.signature(icm_sweep_deque).parameters["min_clone_spots"].default
     assert default == CNASTER_FLOOR
@@ -156,10 +152,8 @@ def test_the_floor_is_cnasters_unless_the_config_sets_one() -> None:
     key = getattr(section, "min_spots_per_clone", None)
     assert configured_floor() == (CNASTER_FLOOR if key is None else int(key))
 
-    assert not installed()
-    with floor_merge():
-        assert installed()
-    assert not installed()
+    parameters = inspect.signature(pipeline_clone_assignment).parameters
+    assert parameters["floor_merge"].default is False
 
 
 @pytest.mark.patch
@@ -217,7 +211,6 @@ def test_a_delegated_assignment_says_it_drops_the_mask_floor_or_shift(
 
     from port.patch.hmm_nophasing import hmm_nophasing, logmu_shift
     from port.patch.hmrf import clone_assignment, refinement
-    from port.patch.icm.floor import floor_merge
 
     said: list[str] = []
     monkeypatch.setattr(clone_assignment, "UPSTREAM", lambda *_, **__: "cnaster")
@@ -227,15 +220,16 @@ def test_a_delegated_assignment_says_it_drops_the_mask_floor_or_shift(
         if flag == "mask":
             refinement._KEPT.append(np.ones((4, 2), dtype=bool))
             stack.callback(refinement.forget)
-        elif flag == "floor":
-            stack.enter_context(floor_merge())
-        else:
+        elif flag != "floor":
             stack.enter_context(logmu_shift())
 
         # NB untyped: the nine positional inputs are never read on this path.
         assign: Any = clone_assignment.pipeline_clone_assignment
         result = assign(
-            *[None] * 9, single_tumor_prop=np.ones(4), hmmclass=hmm_nophasing
+            *[None] * 9,
+            single_tumor_prop=np.ones(4),
+            hmmclass=hmm_nophasing,
+            floor_merge=flag == "floor",
         )
 
     named = {"mask": "--refinement-mask", "floor": "--floor-merge", "shift": "--shift"}

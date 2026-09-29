@@ -205,17 +205,24 @@ def test_the_argmax_descent_keeps_the_clone_floor() -> None:
 
 
 @pytest.mark.infra
-def test_the_flag_selects_the_row_and_restores_the_solver() -> None:
-    """Inside `sal()` the labelling is the row's; outside, what it was."""
-    from port.extensions.label_solver import label_solver
-    from port.extensions.sal import SAL_ROWS, sal
+def test_the_flag_binds_the_rows_solver_and_leaves_the_default_cnasters(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`--sal` binds the row's labelling; unbound, the row runs `cnaster`'s ICM."""
+    import inspect
 
-    before = label_solver()
+    from port.extensions.label_solver import ENVIRONMENT, solver_for
+    from port.extensions.sal import SAL_ROWS, sal_options
+    from port.patch.hmrf.clone_assignment import pipeline_clone_assignment
 
-    with sal():
-        assert label_solver() == SAL_ROWS[0].solver == "alpha-rust-fuse-merge"
+    monkeypatch.delenv(ENVIRONMENT, raising=False)
+    default = (
+        inspect.signature(pipeline_clone_assignment).parameters["label_solver"].default
+    )
 
-    assert label_solver() == before
+    assert sal_options() == {"label_solver": "alpha-rust-fuse-merge"}
+    assert SAL_ROWS[-1].solver == "alpha-rust-fuse-merge"
+    assert solver_for(default) == "icm"
 
 
 @pytest.mark.infra
@@ -237,19 +244,23 @@ def test_sal_recovers_the_critical_instance(cnaster_config: None) -> None:
 
     `M = K = 2`, `G = 1,000`, `S = 500`, through `run_core_inference` with
     `port`'s `pipeline_clone_assignment` (the `SWAPS` row `--sal` reads) and
-    `sal()` in place, so alpha expansion and `cnaster`'s floor label every
+    `sal_options()` bound, so alpha expansion and `cnaster`'s floor label every
     spot. The per-pull-request form of the dev claim below.
     """
-    from port.extensions.sal import sal
-    from port.pipeline import SWAPS, patched
+    from port.extensions.sal import sal_options
+    from port.pipeline import SWAPS, patched, with_options
 
     from tests.fixtures import critical_instance
     from tests.test_core_inference_end_to_end import _adjusted_rand_index, _run
 
     truth = critical_instance()
-    row = tuple(swap for swap in SWAPS if swap.name == "pipeline_clone_assignment")
+    row = with_options(
+        tuple(swap for swap in SWAPS if swap.name == "pipeline_clone_assignment"),
+        "port.patch.hmrf:pipeline_clone_assignment",
+        **sal_options(),
+    )
 
-    with patched(row), sal():
+    with patched(row):
         result = _run(truth, max_iter_outer=1, max_iter=3)
 
     fitted = np.asarray(result.assignment.new_assignment)
