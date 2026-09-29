@@ -212,3 +212,47 @@ def test_the_swap_is_cnasters_merge_by_minspots_where_it_does_not_merge(
         np.testing.assert_array_equal(
             np.asarray(ours[1][key]), np.asarray(theirs[1][key]), err_msg=key
         )
+
+
+@pytest.mark.patch
+def test_merged_writes_a_cnaster_result_and_leaves_the_original() -> None:
+    """On `cnaster`'s `CnaHMRFResult`: the merge is written through its parts,
+    validated once, and the result it was handed is unchanged."""
+    from cnaster.cna_hmrf_result import (
+        CloneAssignment,
+        CnaHMRFResult,
+        HMMParams,
+        HMMProfile,
+    )
+    from port.extensions.np_merge import merged
+
+    _, _, _, plain = _instance()
+    gamma = np.log(np.full((N_STATES, N_OBS, 4), 0.25))
+    res = CnaHMRFResult(
+        params=HMMParams(
+            new_log_mu=plain["new_log_mu"],
+            new_alphas=plain["new_alphas"],
+            new_p_binom=plain["new_p_binom"],
+            new_taus=plain["new_taus"],
+            new_log_startprob=np.log(np.full(N_STATES, 0.25)),
+            new_log_transmat=np.log(np.full((N_STATES, N_STATES), 0.25)),
+            new_log_mu_shift=np.array([0.1, 0.2, 0.3, 0.4]),
+        ),
+        param_errors=None,
+        profile=HMMProfile(log_gamma=gamma, pred_cnv=plain["pred_cnv"]),
+        llf=0.0,
+        n_states=N_STATES,
+        assignment=CloneAssignment(
+            new_assignment=plain["new_assignment"], total_llf=-1.0
+        ),
+    )
+    res.lock()
+
+    out = merged(res, [[0, 1, 3], [2]])
+
+    np.testing.assert_array_equal(np.unique(out["new_assignment"]), [0, 1])
+    np.testing.assert_array_equal(out["pred_cnv"], plain["pred_cnv"][:, [0, 2]])
+    assert out["log_gamma"].shape == (N_STATES, N_OBS, 2)
+    np.testing.assert_array_equal(out["new_log_mu_shift"], [0.1, 0.3])
+    np.testing.assert_array_equal(np.unique(res["new_assignment"]), [0, 1, 2, 3])
+    assert res["pred_cnv"].shape == (N_OBS, 4)

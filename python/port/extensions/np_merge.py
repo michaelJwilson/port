@@ -96,6 +96,37 @@ def remember(
         )
 
 
+def _entry(res: Any, key: str) -> Any:
+    """`res[key]`, or `None` where the result carries no such entry."""
+    try:
+        return res[key]
+    except (KeyError, AttributeError):
+        return None
+
+
+_PARTS = ("params", "param_errors", "profile", "assignment")
+
+
+def _put(res: Any, key: str, value: Any) -> None:
+    """Write `value` where `res` holds `key`, without the per-key validation.
+
+    `cnaster`'s `CnaHMRFResult` validates shapes on every `__setitem__`, so
+    changing the clone count one key at a time fails between keys; its
+    parts are written directly and the result validated once, by `merged`.
+    """
+    if isinstance(res, dict):
+        res[key] = value
+        return
+
+    for holder in (res, *(getattr(res, part, None) for part in _PARTS)):
+        if holder is not None and hasattr(holder, key):
+            object.__setattr__(holder, key, value)
+            return
+
+    msg = f"no entry {key!r} in {type(res).__name__}"
+    raise KeyError(msg)
+
+
 def _column(values: Any) -> np.ndarray:
     return np.asarray(values, dtype=np.float64).reshape(-1)
 
@@ -159,8 +190,10 @@ def statistics(
     n_obs, _, n_clones = X.shape
     shifts = np.zeros(n_clones)
 
-    if "m" in params and res.get("new_log_mu_shift") is not None:
-        shifts = _column(res["new_log_mu_shift"])[:n_clones]
+    held = _entry(res, "new_log_mu_shift")
+
+    if "m" in params and held is not None and np.size(held) >= n_clones:
+        shifts = _column(held)[:n_clones]
 
     rdr, baf = _emissions(X, base_nb_mean, total_bb_RD, res, shifts)
     score = baf + rdr if "m" in params else baf
@@ -257,22 +290,34 @@ def merged(res: Any, chosen: list[list[int]]) -> Any:
     labels = np.unique(np.asarray(res["new_assignment"]))
     to_group = {int(labels[c]): g for g, members in enumerate(chosen) for c in members}
     first = [members[0] for members in chosen]
-    out = copy.copy(res)
-    out["new_assignment"] = np.array(
-        [to_group[int(a)] for a in np.asarray(res["new_assignment"])], dtype=np.int64
+    out = copy.deepcopy(res)
+    _put(
+        out,
+        "new_assignment",
+        np.array(
+            [to_group[int(a)] for a in np.asarray(res["new_assignment"])],
+            dtype=np.int64,
+        ),
     )
     pred = np.asarray(res["pred_cnv"])
-    out["pred_cnv"] = pred.reshape(pred.shape[0], -1)[:, first]
+    _put(out, "pred_cnv", pred.reshape(pred.shape[0], -1)[:, first])
 
-    gamma = res.get("log_gamma")
+    gamma = _entry(res, "log_gamma")
 
     if gamma is not None and np.ndim(gamma) == 3:
-        out["log_gamma"] = np.asarray(gamma)[:, :, first]
+        _put(out, "log_gamma", np.asarray(gamma)[:, :, first])
 
-    shift = res.get("new_log_mu_shift")
+    shift = _entry(res, "new_log_mu_shift")
 
     if shift is not None and np.size(shift) == len(labels):
-        out["new_log_mu_shift"] = _column(shift)[first]
+        _put(out, "new_log_mu_shift", _column(shift)[first])
 
-    out["total_llf"] = np.nan
+    if _entry(res, "total_llf") is not None:
+        _put(out, "total_llf", np.nan)
+
+    validate = getattr(out, "validate", None)
+
+    if validate is not None:
+        validate()
+
     return out
