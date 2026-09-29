@@ -36,8 +36,14 @@ MAX_WIDTH_DEX = 0.3
 UMI_EDGES = np.round(np.arange(5.5, 6.51, 0.2), 2)
 """log10 clone UMIs, 0.2 dex bins over the drawn range: 100 to 1,000 spots."""
 
+UMI_DISPLAY = np.round(np.arange(5.5, 6.51, 0.1), 2)
+"""The figure's finer bins; the rule reads `UMI_EDGES`."""
+
 LENGTH_EDGES = np.round(np.arange(6.0, 8.51, 0.25), 2)
 """log10 event length in bp, 1 Mb to about 300 Mb."""
+
+LENGTH_DISPLAY = np.round(np.arange(6.0, 8.51, 0.125), 3)
+"""The figure's finer bins; the rule reads `LENGTH_EDGES`."""
 
 J_RAMP = ("#86b6ef", "#3987e5", "#1c5cab", "#0d366b")
 """An ordinal blue ramp, light to dark: J is ordered (validated, `--ordinal`)."""
@@ -95,16 +101,17 @@ def _binned(values: np.ndarray, edges: np.ndarray) -> np.ndarray:
     return binned
 
 
-def _crossing(x: np.ndarray, y: np.ndarray, weight: np.ndarray) -> float:
-    """`x` at which a weighted logistic fit of `y` on `x` reads one half.
+def _fit(
+    x: np.ndarray, y: np.ndarray, weight: np.ndarray
+) -> tuple[float, float] | None:
+    """`(intercept, slope)` of a weighted logistic fit of `y` on `x`, or `None`.
 
     Newton's method on the weighted log-likelihood (IRLS), 50 steps at most;
-    NaN where the outcome does not vary, the fit separates, or the slope is
-    not positive -- a curve that does not rise has no crossing to report.
+    `None` where the outcome does not vary or the fit separates.
     """
     kept = weight > 0
     if kept.sum() < 2 or y[kept].min() == y[kept].max():
-        return float("nan")
+        return None
     design = np.column_stack([np.ones(kept.sum()), x[kept]])
     target, w = y[kept], weight[kept]
     beta = np.zeros(2)
@@ -115,11 +122,25 @@ def _crossing(x: np.ndarray, y: np.ndarray, weight: np.ndarray) -> float:
         step = np.linalg.solve(hessian, gradient)
         beta += step
         if not np.all(np.isfinite(beta)) or abs(beta[1]) > 1e3:
-            return float("nan")
+            return None
         if np.max(np.abs(step)) < 1e-8:
             break
-    intercept, slope = float(beta[0]), float(beta[1])
-    return -intercept / slope if slope > 0 else float("nan")
+    return float(beta[0]), float(beta[1])
+
+
+def _crossing(x: np.ndarray, y: np.ndarray, weight: np.ndarray) -> float:
+    """`x` at which the logistic fit reads one half; NaN if it does not rise."""
+    fit = _fit(x, y, weight)
+    if fit is None or fit[1] <= 0:
+        return float("nan")
+    return -fit[0] / fit[1]
+
+
+def _logistic(fit: tuple[float, float] | None, grid: np.ndarray) -> np.ndarray:
+    if fit is None:
+        return np.full(grid.size, np.nan)
+    curve_: np.ndarray = 1.0 / (1.0 + np.exp(-(fit[0] + fit[1] * grid)))
+    return curve_
 
 
 def _weights(seeds: np.ndarray, rng: np.random.Generator) -> np.ndarray:
@@ -137,10 +158,14 @@ def curve(
     weights: np.ndarray,
     *,
     crossing: bool = True,
+    display: np.ndarray | None = None,
 ) -> dict[str, Any]:
     """The rate per bin, its bootstrap 95% interval, counts, and the crossing.
 
-    `crossing` fits the half-point, for a 0/1 outcome only.
+    `crossing` fits the half-point, for a 0/1 outcome only, and with it the
+    fitted curve on a grid of 101 points over `edges` and its 95% band over
+    the same resamples. `display` bins the rate again, finer, for the figure
+    alone; the rule reads `edges`.
 
     A resample weights each member by how often it was drawn, so a member's
     clones enter together: the cluster bootstrap, computed without copying
@@ -150,7 +175,8 @@ def curve(
     centres = ((edges[:-1] + edges[1:]) / 2).tolist()
     nan = [float("nan")] * n_bins
     if frame.empty:
-        return {"centres": centres, "rate": nan, "low": nan, "high": nan,
+        return {"grid": [], "fitted": [], "band": [[], []], "display": {},
+                "centres": centres, "rate": nan, "low": nan, "high": nan,
                 "n": [0] * n_bins, "crossing": float("nan"),
                 "crossing_interval": [float("nan")] * 2,
                 "crossing_draws": [float("nan")] * len(weights)}  # fmt: skip
@@ -170,13 +196,50 @@ def curve(
     low, high = np.nanpercentile(rates, [2.5, 97.5], axis=0)
 
     xs, ys = frame[x].to_numpy(dtype=float), frame[y].to_numpy(dtype=float)
-    crossings = (
-        np.array([_crossing(xs, ys, w[member]) for w in weights])
+    grid = np.linspace(edges[0], edges[-1], 101)
+    fits = [_fit(xs, ys, w[member]) for w in weights] if crossing else []
+    crossings = np.array(
+        [np.nan if f is None or f[1] <= 0 else -f[0] / f[1] for f in fits]
         if crossing
         else np.full(len(weights), np.nan)
     )
     finite = crossings[np.isfinite(crossings)]
+    fitted = (
+        _logistic(_fit(xs, ys, np.ones(xs.size)), grid) if crossing else grid * np.nan
+    )
+    with np.errstate(invalid="ignore"):
+        band = (
+            np.nanpercentile(
+                np.array([_logistic(f, grid) for f in fits]), [2.5, 97.5], axis=0
+            )
+            if crossing
+            else np.full((2, grid.size), np.nan)
+        )
+    shown = {}
+    if display is not None:
+        fine = _binned(frame[x].to_numpy(), display)
+        within = (fine >= 0) & (fine < display.size - 1)
+        fine_sums = np.zeros((seeds.size, display.size - 1))
+        fine_counts = np.zeros((seeds.size, display.size - 1))
+        np.add.at(fine_sums, (member[within], fine[within]), values[within])
+        np.add.at(fine_counts, (member[within], fine[within]), 1.0)
+        with np.errstate(invalid="ignore", divide="ignore"):
+            fine_rate = fine_sums.sum(0) / fine_counts.sum(0)
+            fine_low, fine_high = np.nanpercentile(
+                (weights @ fine_sums) / (weights @ fine_counts), [2.5, 97.5], axis=0
+            )
+        shown = {
+            "centres": ((display[:-1] + display[1:]) / 2).tolist(),
+            "rate": fine_rate.tolist(),
+            "low": fine_low.tolist(),
+            "high": fine_high.tolist(),
+            "n": fine_counts.sum(0).astype(int).tolist(),
+        }
     return {
+        "grid": grid.tolist(),
+        "fitted": fitted.tolist(),
+        "band": band.tolist(),
+        "display": shown,
         "centres": centres,
         "rate": rate.tolist(),
         "low": low.tolist(),
@@ -216,7 +279,15 @@ def summarize(out: Path, study2_j: float, seed: int = 544) -> dict[str, Any]:
         study1[float(j)] = {
             "members": int(frame["seed"].nunique()),
             "clones": len(frame),
-            "detected": curve(frame, "log_umis", "detected", UMI_EDGES, seeds, weights),
+            "detected": curve(
+                frame,
+                "log_umis",
+                "detected",
+                UMI_EDGES,
+                seeds,
+                weights,
+                display=UMI_DISPLAY,
+            ),  # fmt: skip
             "completeness": curve(
                 frame,
                 "log_umis",
@@ -225,6 +296,7 @@ def summarize(out: Path, study2_j: float, seed: int = 544) -> dict[str, Any]:
                 seeds,
                 weights,
                 crossing=False,
+                display=UMI_DISPLAY,
             ),
         }
 
@@ -239,7 +311,13 @@ def summarize(out: Path, study2_j: float, seed: int = 544) -> dict[str, Any]:
             "events": len(frame),
             "members": int(frame["seed"].nunique()) if len(frame) else 0,
             "recovered": curve(
-                frame, "log_length", "recovered", LENGTH_EDGES, members2, weights2
+                frame,
+                "log_length",
+                "recovered",
+                LENGTH_EDGES,
+                members2,
+                weights2,
+                display=LENGTH_DISPLAY,
             ),
         }
 
@@ -321,15 +399,30 @@ def SUFFICIENT(study1: dict[Any, Any], study2: dict[str, Any]) -> dict[str, Any]
     return {"passes": not failures, "failures": failures}
 
 
-def _panel(axis: Any, centres: list[float], entry: dict[str, Any], colour: str,
-           label: str, dodge: float) -> tuple[float, float] | None:  # fmt: skip
-    """One series with its 95% bars, shifted `dodge` in x; its last point."""
-    rate = np.array(entry["rate"])
-    low, high = np.array(entry["low"]), np.array(entry["high"])
-    kept = np.array(entry["n"]) >= MIN_PER_BIN // 2
-    x = np.array(centres)[kept] + dodge
+def _panel(axis: Any, entry: dict[str, Any], colour: str, label: str,
+           dodge: float) -> tuple[float, float] | None:  # fmt: skip
+    """The fitted curve and its 95% band, with the finer binned rates on it.
+
+    Points are drawn where their bin holds at least `MIN_PER_BIN // 2` items,
+    shifted `dodge` in x so bars of neighbouring series do not overlap.
+    Returns the curve's last point, for its direct label.
+    """
+    grid = np.array(entry["grid"])
+    fitted = np.array(entry["fitted"])
+    if grid.size and np.isfinite(fitted).any():
+        low, high = np.array(entry["band"])
+        axis.fill_between(grid, low, high, color=colour, alpha=0.15, lw=0)
+        axis.plot(grid, fitted, color=colour, lw=2, label=label)
+    shown = entry.get("display") or entry
+    rate = np.array(shown["rate"])
+    low, high = np.array(shown["low"]), np.array(shown["high"])
+    kept = np.array(shown["n"]) >= MIN_PER_BIN // 2
+    x = np.array(shown["centres"])[kept] + dodge
     axis.errorbar(x, rate[kept], yerr=[rate[kept] - low[kept], high[kept] - rate[kept]],
-                  color=colour, lw=2, marker="o", ms=5, capsize=3, label=label)  # fmt: skip
+                  color=colour, lw=1, ls="none", marker="o", ms=4, capsize=2,
+                  label=None if grid.size and np.isfinite(fitted).any() else label)  # fmt: skip
+    if grid.size and np.isfinite(fitted).any():
+        return float(grid[-1]), float(fitted[-1])
     return (float(x[-1]), float(rate[kept][-1])) if x.size else None
 
 
@@ -369,10 +462,9 @@ def figures(summary: dict[str, Any], into: Path) -> list[Path]:
         for axis, key in zip(axes, ("detected", "completeness"), strict=True):
             ends = {}
             for (j, entry), dodge in zip(
-                series, _dodges(len(series), 0.03), strict=True
+                series, _dodges(len(series), 0.015), strict=True
             ):
-                end = _panel(axis, entry[key]["centres"], entry[key], colours[j],
-                             f"J = {j:g}", dodge)  # fmt: skip
+                end = _panel(axis, entry[key], colours[j], f"J = {j:g}", dodge)
                 if end is not None:
                     ends[f"J = {j:g}"] = end
             _labels(axis, ends)
@@ -383,8 +475,9 @@ def figures(summary: dict[str, Any], into: Path) -> list[Path]:
             axis.set_ylim(-0.02, 1.02)
             axis.legend(frameon=False, fontsize=8, loc="lower right")
         fig.suptitle(
-            f"Clone detection against clone UMIs, {summary['members']} realizations, "
-            "95% intervals over realizations",
+            "run_cnaster_port --sal: clone detection against clone UMIs\n"
+            f"{summary['members']} realizations; logistic fit, 95% bands and bars "
+            "over realizations",
             fontsize=10,
         )
         path = into / "population_clone_umis.png"
@@ -392,14 +485,13 @@ def figures(summary: dict[str, Any], into: Path) -> list[Path]:
         plt.close(fig)
         paths.append(path)
 
-        fig, axis = plt.subplots(figsize=(5.5, 3.6), constrained_layout=True)
+        fig, axis = plt.subplots(figsize=(7.5, 4.2), constrained_layout=True)
         classes = list(summary["study2"].items())
         ends = {}
         for (name, entry), dodge in zip(
-            classes, _dodges(len(classes), 0.04), strict=True
+            classes, _dodges(len(classes), 0.02), strict=True
         ):
-            end = _panel(axis, entry["recovered"]["centres"], entry["recovered"],
-                         CLASS_COLOURS[name], name, dodge)  # fmt: skip
+            end = _panel(axis, entry["recovered"], CLASS_COLOURS[name], name, dodge)
             if end is not None:
                 ends[name] = end
         _labels(axis, ends)
@@ -408,7 +500,9 @@ def figures(summary: dict[str, Any], into: Path) -> list[Path]:
         axis.set_ylim(-0.02, 1.02)
         axis.legend(frameon=False, fontsize=8, loc="upper left")
         axis.set_title(
-            f"CNA recovery against length, detected clones, J = {summary['study2_J']:g}",
+            "run_cnaster_port --sal: CNA recovery against length, detected clones\n"
+            f"J = {summary['study2_J']:g}, {summary['study2_members']} realizations; "
+            "logistic fit, 95% bands and bars over realizations",
             fontsize=10,
         )
         path = into / "population_cna_length.png"
