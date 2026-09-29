@@ -52,6 +52,24 @@ def merge_by_minspots(
             )
             chosen = np_merge.groups(X, base_nb_mean, total_bb_RD, res, held["params"])
 
+            # NB why each pair stays apart: the events that block its merge.
+            for pair, events in np_merge.statistics(
+                X, base_nb_mean, total_bb_RD, res, held["params"]
+            ).items():
+                blocking = [
+                    (s1, s2, n, round(t, 3))
+                    for s1, s2, n, t in events
+                    if (n >= np_merge.MINLENGTH and t >= np_merge.THRESHOLD)
+                    or (
+                        n < np_merge.MINLENGTH
+                        and n * t >= np_merge.THRESHOLD * np_merge.MINLENGTH
+                    )
+                ]
+                logger.info(
+                    f"Neyman-Pearson pair {pair}: blocking events (s1, s2, bins, t) "
+                    f"{sorted(blocking, key=lambda e: -e[2] * e[3])[:3]}."
+                )
+
             if len(chosen) < len(labels):
                 logger.info(
                     f"Neyman-Pearson merge (#497): {len(labels)} clones into "
