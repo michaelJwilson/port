@@ -170,9 +170,13 @@ def reindex_clones(res_combine: Any, *args: Any, **kwargs: Any) -> Any:
     res_combine = np_merge.taken(res_combine)
     before = np.asarray(res_combine["pred_cnv"])
     reindexed, posterior = UPSTREAM_REINDEX(res_combine, *args, **kwargs)
-    shifts = (
-        res_combine.get("new_log_mu_shift") if hasattr(res_combine, "get") else None
-    )
+    # NB by `__getitem__`: `cnaster`'s `CnaHMRFResult` has no `get`, and
+    #    reading through `hasattr(res, "get")` left the shifts unpermuted on
+    #    every real run (#501).
+    try:
+        shifts = res_combine["new_log_mu_shift"]
+    except (KeyError, TypeError):
+        shifts = None
     _PROPAGATED.clear()
 
     if shifts is None or np.ndim(shifts) != 1:
@@ -192,7 +196,16 @@ def reindex_clones(res_combine: Any, *args: Any, **kwargs: Any) -> Any:
         order.append(matches[0] if matches else column)
 
     permuted = np.asarray(shifts, dtype=np.float64)[order]
-    reindexed["new_log_mu_shift"] = permuted
+    locked = bool(getattr(reindexed, "_locked", False))
+
+    if locked:
+        reindexed.unlock()
+
+    try:
+        reindexed["new_log_mu_shift"] = permuted
+    finally:
+        if locked:
+            reindexed.lock()
     _PROPAGATED.update(pred=new, shifts=permuted)
 
     if _NORMAL:
