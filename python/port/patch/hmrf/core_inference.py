@@ -18,12 +18,15 @@ and a pin would move it.
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 import numpy as np
 from cnaster.hmrf import run_core_inference as UPSTREAM
 
 __all__ = ["UPSTREAM", "pin_neutral", "run_core_inference"]
+
+logger = logging.getLogger(__name__)
 
 
 def pin_neutral(result: Any) -> int:
@@ -80,4 +83,63 @@ def run_core_inference(*args: Any, **kwargs: Any) -> Any:
     if shifted and "m" in str(kwargs.get("params", "")):
         pin_neutral(result)
 
+        from port.patch.hmrf import split_state
+
+        if split_state.installed():
+            result = _split_and_refit(result, args, kwargs)
+
     return result
+
+
+def _split_and_refit(result: Any, args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
+    """`split_state`'s refit on the first fit's clones, under the RDR + BAF call only."""
+    from port.patch.hmrf.split_state import split_init
+
+    single_X, lengths, base = args[0], args[1], np.asarray(args[2])
+
+    # NB the BAF-only call has no baseline, and no depth to split by.
+    if not np.any(base > 0):
+        return result
+
+    init = split_init(result, single_X, lengths, base)
+
+    if init is None:
+        logger.info("split state: no unbalanced state splits by depth")
+        return result
+
+    log_mu, p_binom, state, freed = init
+    logger.info(
+        f"split state: state {state} at log mu {log_mu[state, 0]:.3f}, "
+        f"state {freed} freed for {log_mu[freed, 0]:.3f}"
+    )
+
+    kept = np.asarray(result["new_assignment"])
+    clones = [np.flatnonzero(kept == label) for label in np.unique(kept)]
+    if len(args) > 5:
+        args = (*args[:5], clones, *args[6:])
+    else:
+        kwargs = {**kwargs, "initial_clone_index": clones}
+
+    refit = UPSTREAM(
+        *args,
+        **{
+            **kwargs,
+            "init_log_mu": log_mu,
+            "init_p_binom": p_binom,
+            "max_iter_outer": 0,
+        },
+    )
+    pin_neutral(refit)
+
+    locked = bool(getattr(refit, "_locked", False))
+
+    if locked:
+        refit.unlock()
+
+    try:
+        refit["new_assignment"] = kept
+    finally:
+        if locked:
+            refit.lock()
+
+    return refit

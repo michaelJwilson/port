@@ -234,6 +234,7 @@ run_cnaster_port --genomic-colours states config.yaml  # clones_genomic coloured
 run_cnaster_port --copy-likelihood config.yaml  # integer copies re-decoded by the HMM's pseudobulk likelihood
 run_cnaster_port --time-stages config.yaml   # what the replacements cost in the run
 run_cnaster_port --floor-merge --refinement-mask config.yaml  # #348's clone patches, opt-in; --no-distinct-init drops the third
+run_cnaster_port --sal --split-state config.yaml  # one LOH/loss state split by depth and refitted on the same clones, opt-in (#471)
 run_calicost config.yaml                     # CalicoST on the same fixture files, at port's configuration
 run_cnaster_port --no-outputs config.yaml    # skip the fitted/decoded tables below
 run_cnaster_port --list                      # what would be rebound, and why
@@ -358,6 +359,15 @@ components as separate states. With all three on, the run recovers clone ARI
 the collapse. `--floor-merge` and `--refinement-mask` are opt-in: each alone
 splits #338's three-sample instance, 2 planted clones into 6 fitted.
 `--distinct-init` is on by default.
+
+**`--split-state`** (#471, opt-in). The read-depth + BAF HMM fits a one-copy
+loss and a copy-neutral LOH, which share a BAF, as one state at the LOH's
+depth, so both decode to one `(A, B)`. After that fit, the flag splits the
+unbalanced state whose bins fall into two depths more than 0.3 apart in log
+ratio, frees the closer of the two nearest states, and refits once on the
+clones already found. Clone labels do not change. On `dev_tree` r0 under
+`--sal`, altered bins decoded exact go from 0.707 to 0.896. Letting the refit
+reassign clones cost CalicoST hard 0.60 clone ARI, so it does not.
 
 **`run_calicost`** (#347) translates the same YAML and runs CalicoST in-process
 on the same files, into `<output_dir>_calicost`. `--align` (the default)

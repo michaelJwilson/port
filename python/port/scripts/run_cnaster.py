@@ -141,6 +141,18 @@ def _parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--split-state",
+        action="store_true",
+        help=(
+            "after the read-depth + BAF fit, split the unbalanced state whose "
+            "bins fall into two depths farther apart than 0.3 in log ratio, "
+            "freeing the closest redundant state, and refit once on the "
+            "clones already found (#471): a one-copy loss and a copy-neutral "
+            "LOH share a BAF and are otherwise fitted as one state. Needs the "
+            "shift. Off by default."
+        ),
+    )
+    parser.add_argument(
         "--distinct-init",
         action=argparse.BooleanOptionalAction,
         default=None,
@@ -483,6 +495,13 @@ def main(argv: Sequence[str] | None = None) -> int:
             from port.patch.integer_copy import by_likelihood
 
             stack.enter_context(by_likelihood())
+        if arguments.split_state:
+            if not shift:
+                _parser().error("--split-state refits the shifted fit; drop --no-shift")
+
+            from port.patch.hmrf.split_state import split_state
+
+            stack.enter_context(split_state())
         if shift:
             from port.patch.hmm_nophasing import logmu_shift
 
@@ -516,6 +535,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 + (", distinct initial states" if distinct else "")
                 + (", approx included" if approx else "")
                 + (", shift included" if shift else "")
+                + (", one state split by depth" if arguments.split_state else "")
                 + (", rust lattices" if rust else "")
                 + (", sal included" if arguments.sal else "")
                 + (", no plots written" if arguments.no_plots else ""),
