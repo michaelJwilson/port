@@ -11,13 +11,14 @@ output = "../generated"
 realizations = 1
 
 [array]
-# NB every clone clears 300 spots, so cnaster's fixed 200-spot ICM floor
-#    (#468, #81) cannot merge one away: at 25 x 25 and radius 0.3, clone_2
-#    held 49 and clone_1 158. 42 x 42 at 0.4 plants 1,079 / 587 / 326 and
-#    normal 1,536, 3,528 spots over both slices (#467).
+# NB CalicoST's array, 60 rows of 50 (3,000 spots) per slice, so a dev
+#    realization is the size of the samples it is compared with (#467). At
+#    radius 0.4 it plants 2,011 / 1,131 / 541 and normal 2,317, 6,000 spots
+#    over both slices; every clone clears cnaster's fixed 200-spot ICM floor
+#    (#468, #81), which at 25 x 25 merged a 49-spot clone_2 away.
 kind = "hex"
-rows = 42
-columns = 42
+rows = 60
+columns = 50
 
 [layout]
 overlap = false
