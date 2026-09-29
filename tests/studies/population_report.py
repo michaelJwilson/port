@@ -399,41 +399,39 @@ def SUFFICIENT(study1: dict[Any, Any], study2: dict[str, Any]) -> dict[str, Any]
     return {"passes": not failures, "failures": failures}
 
 
+CLASS_NAMES = {
+    "LOH": "LOH",
+    "balanced gain": "Balanced gain",
+    "imbalanced gain": "Imbalanced gain",
+    "all": "All",
+}
+"""The legend's names for the copy-state classes."""
+
+
 def _panel(axis: Any, entry: dict[str, Any], colour: str, label: str,
-           dodge: float) -> tuple[float, float] | None:  # fmt: skip
+           dodge: float, unit: float) -> None:  # fmt: skip
     """The fitted curve and its 95% band, with the finer binned rates on it.
 
-    Points are drawn where their bin holds at least `MIN_PER_BIN // 2` items,
-    shifted `dodge` in x so bars of neighbouring series do not overlap.
-    Returns the curve's last point, for its direct label.
+    Curves and bins are in log10 of the covariate; they are drawn at
+    `10^x / unit` on a log axis. Points are drawn where their bin holds at
+    least `MIN_PER_BIN // 2` items, shifted `dodge` dex so bars of
+    neighbouring series do not overlap.
     """
     grid = np.array(entry["grid"])
     fitted = np.array(entry["fitted"])
-    if grid.size and np.isfinite(fitted).any():
+    curved = bool(grid.size and np.isfinite(fitted).any())
+    if curved:
         low, high = np.array(entry["band"])
-        axis.fill_between(grid, low, high, color=colour, alpha=0.15, lw=0)
-        axis.plot(grid, fitted, color=colour, lw=2, label=label)
+        axis.fill_between(10**grid / unit, low, high, color=colour, alpha=0.15, lw=0)
+        axis.plot(10**grid / unit, fitted, color=colour, lw=2, label=label)
     shown = entry.get("display") or entry
     rate = np.array(shown["rate"])
     low, high = np.array(shown["low"]), np.array(shown["high"])
     kept = np.array(shown["n"]) >= MIN_PER_BIN // 2
-    x = np.array(shown["centres"])[kept] + dodge
+    x = 10 ** (np.array(shown["centres"])[kept] + dodge) / unit
     axis.errorbar(x, rate[kept], yerr=[rate[kept] - low[kept], high[kept] - rate[kept]],
                   color=colour, lw=1, ls="none", marker="o", ms=4, capsize=2,
-                  label=None if grid.size and np.isfinite(fitted).any() else label)  # fmt: skip
-    if grid.size and np.isfinite(fitted).any():
-        return float(grid[-1]), float(fitted[-1])
-    return (float(x[-1]), float(rate[kept][-1])) if x.size else None
-
-
-def _labels(axis: Any, ends: dict[str, tuple[float, float]], gap: float = 0.06) -> None:
-    """Direct labels at each series' end, pushed apart to at least `gap` in y."""
-    placed: list[float] = []
-    for label, (x, end) in sorted(ends.items(), key=lambda item: item[1][1]):
-        y = max(end, placed[-1] + gap) if placed else end
-        placed.append(y)
-        axis.annotate(label, (x, y), xytext=(8, 0), textcoords="offset points",
-                      fontsize=8, color="#52514e", va="center")  # fmt: skip
+                  label=None if curved else label)  # fmt: skip
 
 
 def _dodges(n: int, width: float) -> list[float]:
@@ -441,7 +439,12 @@ def _dodges(n: int, width: float) -> list[float]:
 
 
 def figures(summary: dict[str, Any], into: Path) -> list[Path]:
-    """The two figures: clone detection and completeness by J; event recovery by class."""
+    """The two figures: clone detection and completeness by J; CNA recovery by class.
+
+    Both are `run_cnaster_port --sal`; the arm, the realization counts and
+    the bands' construction are stated in the study's document rather than
+    on the figure.
+    """
     import matplotlib as mpl
 
     mpl.use("Agg")
@@ -460,51 +463,37 @@ def figures(summary: dict[str, Any], into: Path) -> list[Path]:
         colours = j_colours(list(summary["study1"]))
         series = sorted(summary["study1"].items())
         for axis, key in zip(axes, ("detected", "completeness"), strict=True):
-            ends = {}
             for (j, entry), dodge in zip(
                 series, _dodges(len(series), 0.015), strict=True
             ):
-                end = _panel(axis, entry[key], colours[j], f"J = {j:g}", dodge)
-                if end is not None:
-                    ends[f"J = {j:g}"] = end
-            _labels(axis, ends)
-        axes[0].set_ylabel("recovery rate (completeness ≥ 0.90)")
-        axes[1].set_ylabel("mean completeness")
-        for axis in axes:
-            axis.set_xlabel("clone UMIs, log10")
+                _panel(axis, entry[key], colours[j], f"J = {j:g}", dodge, 1.0)
+            axis.set_xscale("log")
+            axis.set_xticks([3e5, 1e6, 3e6], ["3×10⁵", "10⁶", "3×10⁶"])
+            axis.xaxis.set_minor_formatter(mpl.ticker.NullFormatter())
+            axis.set_xlabel("Clone UMIs")
             axis.set_ylim(-0.02, 1.02)
             axis.legend(frameon=False, fontsize=8, loc="lower right")
-        fig.suptitle(
-            "run_cnaster_port --sal: clone detection against clone UMIs\n"
-            f"{summary['members']} realizations; logistic fit, 95% bands and bars "
-            "over realizations",
-            fontsize=10,
+        axes[0].set_ylabel(
+            "Recovery rate\n(≥ 0.90 of the true clone's spots recovered)"
         )
+        axes[1].set_ylabel("Share of the true clone's spots recovered")
         path = into / "population_clone_umis.png"
         fig.savefig(path, dpi=150)
         plt.close(fig)
         paths.append(path)
 
-        fig, axis = plt.subplots(figsize=(7.5, 4.2), constrained_layout=True)
+        fig, axis = plt.subplots(figsize=(6, 3.8), constrained_layout=True)
         classes = list(summary["study2"].items())
-        ends = {}
         for (name, entry), dodge in zip(
             classes, _dodges(len(classes), 0.02), strict=True
         ):
-            end = _panel(axis, entry["recovered"], CLASS_COLOURS[name], name, dodge)
-            if end is not None:
-                ends[name] = end
-        _labels(axis, ends)
-        axis.set_xlabel("event length, log10 bp")
-        axis.set_ylabel("recovery rate (≥ 0.90 of bins)")
+            _panel(axis, entry["recovered"], CLASS_COLOURS[name], CLASS_NAMES[name],
+                   dodge, 1e6)  # fmt: skip
+        axis.set_xscale("log")
+        axis.set_xlabel("CNA length [Mb]")
+        axis.set_ylabel("Recovery rate\n(≥ 0.90 of the CNA's bins recovered)")
         axis.set_ylim(-0.02, 1.02)
         axis.legend(frameon=False, fontsize=8, loc="upper left")
-        axis.set_title(
-            "run_cnaster_port --sal: CNA recovery against length, detected clones\n"
-            f"J = {summary['study2_J']:g}, {summary['study2_members']} realizations; "
-            "logistic fit, 95% bands and bars over realizations",
-            fontsize=10,
-        )
         path = into / "population_cna_length.png"
         fig.savefig(path, dpi=150)
         plt.close(fig)
