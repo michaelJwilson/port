@@ -10,6 +10,21 @@ output = "../generated"
 # NB count draws of the same clones, layout and phase, written as r0, r1, ...
 realizations = 1
 
+[array]
+# NB CalicoST's array, 60 rows of 50 (3,000 spots) per slice, so a dev
+#    realization is the size of the samples it is compared with (#467). At
+#    radius 0.4 it plants 2,011 / 1,131 / 541 and normal 2,317, 6,000 spots
+#    over both slices; every clone clears cnaster's fixed 200-spot ICM floor
+#    (#468, #81), which at 25 x 25 merged a 49-spot clone_2 away.
+kind = "hex"
+rows = 60
+columns = 50
+
+[layout]
+overlap = false
+radius = 0.4
+vertices = 6
+
 [cna]
 mode = "tree"
 # NB one event on the ancestor's edge, so the tree is not CalicoST's star.
