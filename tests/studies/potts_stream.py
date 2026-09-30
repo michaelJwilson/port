@@ -9,7 +9,9 @@ the pool solves it while the next one draws.
 - **Warmup.** Each worker runs every solver once on a 10 x 10 patch before
   any timed job, so no compilation lands in a timing.
 - **Tuning.** The first `--held-out` realizations tune the samplers and are
-  not evaluated. Each sampler runs a grid of annealing schedules (`GRID`:
+  not evaluated; with `--settings`, the samplers take that file's settings
+  (`SETTINGS`, tuned once on `dev_tree_1s_hard`) and nothing is tuned, the
+  held-out realizations still skipped. Each sampler runs a grid of annealing schedules (`GRID`:
   the start temperature, the end fixed at `T_END` so the last sweeps are a
   descent, and the sweep budget) from `TUNING_STARTS` random labellings each.
   It keeps the cheapest setting whose median gap to TRW-S's bound is within
@@ -34,6 +36,7 @@ from __future__ import annotations
 
 import argparse
 import itertools
+import json
 import multiprocessing as mp
 import pickle
 import subprocess
@@ -75,6 +78,9 @@ TOLERANCE = 0.1
 
 REPLICAS = 6
 """sal's `N_REPLICAS`: tempering's ladder, geometric from the start temperature to `T_END`."""
+
+SETTINGS = Path(__file__).with_name("potts_sampler_settings.json")
+"""The samplers' settings tuned once on `dev_tree_1s_hard`'s first 3 realizations, reused by `--settings`."""
 
 _GRAPHS: dict[tuple[int, float], Any] = {}
 
@@ -257,6 +263,7 @@ def run(
     starts: int,
     held_out: int,
     workers: int,
+    settings: Path | None = None,
 ) -> Path:
     """Tune on the first `held_out` realizations, then stream the next `n_problems`; returns the pickle it keeps current."""
     from port.sandbox.known_field import problems
@@ -277,7 +284,13 @@ def run(
     )
     context = mp.get_context("spawn")
     with ProcessPoolExecutor(workers, mp_context=context, initializer=_init) as pool:
-        tuned, tuning_rows = tune(pool, list(itertools.islice(stream, held_out)))
+        skipped = list(itertools.islice(stream, held_out))
+        if settings is None:
+            tuned, tuning_rows = tune(pool, skipped)
+        else:
+            loaded = json.loads(settings.read_text())
+            tuned = {k: v for k, v in loaded.items() if not k.startswith("_")}
+            tuning_rows = []
 
         def drain(block: bool) -> None:
             finished, _ = wait(
@@ -330,10 +343,16 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--problems", type=int, default=25)
     parser.add_argument("--starts", type=int, default=50)
     parser.add_argument("--held-out", type=int, default=3)
+    parser.add_argument(
+        "--settings",
+        type=Path,
+        default=None,
+        help=f"sampler settings to reuse, e.g. {SETTINGS}",
+    )
     parser.add_argument("--workers", type=int, default=4)
     arguments = parser.parse_args(argv)
     run(arguments.manifest, arguments.out_dir, arguments.problems, arguments.starts, arguments.held_out,
-        arguments.workers)  # fmt: skip
+        arguments.workers, arguments.settings)  # fmt: skip
 
 
 if __name__ == "__main__":
