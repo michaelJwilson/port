@@ -872,6 +872,8 @@ def _seeded(
 
     if name == "prior":
         return _prior_seeding(held, rng)
+    if name == "hmc":
+        return _chain_best_seeding(held, rng)
     chosen = lookup(name)
     if isinstance(chosen, BestOf) and chosen.select is Selection.POLISHED:
         _, best = chosen.polished(
@@ -922,6 +924,23 @@ def _prior_seeding(held: Any, rng: np.random.Generator) -> Any:
     means = np.exp(rng.uniform(np.log(low), np.log(high), size=held.n_components))
     rates = rng.uniform(0.0, 1.0, size=held.n_components)
     return held.at(np.stack([means, rates * float(held.at.trials)], axis=1))
+
+
+def _chain_best_seeding(held: Any, rng: np.random.Generator) -> Any:
+    """`sal`'s `hmc` chain, seeding from its best draw rather than its last.
+
+    The chain is `sal`'s (`chain_initializer`, the same stream and warm-up);
+    of its kept draws, the one lowest in the surrogate's negative
+    log-likelihood seeds, as `sal`'s annealing and tempering starts keep
+    their best point. `sal`'s `chain_seeding` keeps the last draw.
+    """
+    from sal.search.mixture_starts import at_locations, chain_initializer, surrogate
+
+    objective = surrogate(held)
+    chain = chain_initializer(rng).chain(objective)
+    values = [float(objective(theta)) for theta in chain.draws]
+    best = chain.draws[int(np.argmin(values))]
+    return at_locations(held, objective.components(best).mean)
 
 
 def run_start(

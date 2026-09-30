@@ -38,12 +38,12 @@ TABLE = (
         ("prior", "drawn from a prior on the observed range"),
         ("data", "on rows drawn uniformly"),
         ("kmeans++", "k-means++ on the raw count pair"),
-        ("emission++", "D-squared sampling, the emission's divergence"),
+        ("emission++", "seeds drawn by the NB x BB Bregman divergence"),
         ("gaussian-em", "Gaussian mixture on read depth"),
         ("quantile", "each channel's quantiles, paired"),
         ("anneal", "best point of a falling temperature"),
         ("tempering", "best point on a temperature ladder"),
-        ("hmc", "last draw of a Hamiltonian chain"),
+        ("hmc", "best draw of a Hamiltonian chain"),
     )),
     ("sal, best of 5 with EM", (
         ("datax5+em", "best of 5 data draws, each EM"),
@@ -232,14 +232,14 @@ def figure(record: dict[str, Any], out: Path) -> Path:
         )
     )
     ax.set_xlabel("Runtime [s]")
-    ax.set_ylabel("Log-likelihood below the best [nats]")
+    ax.set_ylabel("Gap [nats]")
     ax.plot([], [], "o", color="C1", label="cnaster, CalicoST, port")
     ax.plot([], [], "o", color="C0", label="sal")
     ax.plot([], [], "o", color="0.4", mfc="white", label="Baum-Welch")
     ax.fill_between([], [], [], color="0.55", alpha=0.35, lw=0, label="Truth, 10-90%")
     ax.plot([], [], color="k", lw=0.9, label="Truth")
     ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.1), ncol=3, fontsize=7.5, frameon=False,
-              title=f"{Path(record['manifest']).stem}: median for {n_problems} realization{'s' if n_problems > 1 else ''} $\\times$ seeds",
+              title=f"{Path(record['manifest']).stem}: median for {n_problems} realization{'s' if n_problems > 1 else ''} $\\times$ {record['seeds']} seeds",
               title_fontsize=7.5)  # fmt: skip
     missed = {
         str(n): (float(g.start_missed_pct.median()), float(g.missed_pct.median()))
@@ -251,10 +251,24 @@ def figure(record: dict[str, Any], out: Path) -> Path:
     return out
 
 
+def merged(records: list[dict[str, Any]]) -> dict[str, Any]:
+    """One record from windows of the same manifest: their rows together, a realization done in any of them."""
+    record = dict(records[0])
+    for other in records[1:]:
+        if Path(other["manifest"]).stem != Path(record["manifest"]).stem:
+            msg = f"{other['manifest']} is not {record['manifest']}"
+            raise ValueError(msg)
+        record["problems"] = {**other["problems"], **record["problems"]}
+        record["rows"] = [*record["rows"], *other["rows"]]
+        record["done"] = sorted({*record["done"], *other["done"]})
+    return record
+
+
 def main(argv: list[str] | None = None) -> None:
-    (path,) = argv if argv is not None else sys.argv[1:]
-    stream = Path(path)
-    print(figure(pickle.loads(stream.read_bytes()), stream.with_suffix(".png")))
+    """`STREAM.pkl [EARLIER.pkl ...]`: the figure beside the first, over all of them."""
+    paths = [Path(p) for p in (argv if argv is not None else sys.argv[1:])]
+    record = merged([pickle.loads(p.read_bytes()) for p in paths])
+    print(figure(record, paths[0].with_suffix(".png")))
 
 
 if __name__ == "__main__":

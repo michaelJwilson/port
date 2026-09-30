@@ -160,6 +160,8 @@ def run(
     seeds: int,
     workers: int,
     everything: bool,
+    first: int = 0,
+    merge: tuple[Path, ...] = (),
 ) -> Path:
     """The stream; returns the pickle it keeps current."""
     import logging
@@ -169,7 +171,11 @@ def run(
 
     logging.disable(logging.INFO)
     out_dir.mkdir(parents=True, exist_ok=True)
-    out = out_dir / f"copy_{manifest.stem}.pkl"
+    out = out_dir / (
+        f"copy_{manifest.stem}_r{first}.pkl"
+        if first or merge
+        else f"copy_{manifest.stem}.pkl"
+    )
     names = list(starts()) if everything else list(STARTS)
     registry = starts()
     held: dict[int, dict[str, Any]] = {}
@@ -194,7 +200,13 @@ def run(
                       "seeds": seeds}  # fmt: skip
             out.write_bytes(pickle.dumps(record))
             subprocess.run(
-                [sys.executable, "-m", "tests.studies.copy_state_plot", str(out)],
+                [
+                    sys.executable,
+                    "-m",
+                    "tests.studies.copy_state_plot",
+                    str(out),
+                    *map(str, merge),
+                ],
                 check=False,
             )
             errors = sum("error" in r for r in rows)
@@ -203,7 +215,10 @@ def run(
 
     context = mp.get_context("spawn")
     with ProcessPoolExecutor(workers, mp_context=context, initializer=_init) as pool:
-        for problem in kc.problems(manifest, n_problems, realizations=n_problems):
+        total = first + n_problems
+        for problem in kc.problems(manifest, total, realizations=total):
+            if problem.realization < first:
+                continue
             held[problem.realization] = _describe(problem)
             print(f"[{time.perf_counter() - opened:6.0f}s] drew {problem.realization}: {problem.total.size} rows, "
                   f"{problem.n_states} states; truth after Baum-Welch missed {held[problem.realization]['truth_missed']}",
@@ -230,6 +245,20 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--seeds", type=int, default=3)
     parser.add_argument("--workers", type=int, default=4)
     parser.add_argument(
+        "--first",
+        type=int,
+        default=0,
+        help="skip this many realizations: a window of the stream",
+    )
+    parser.add_argument(
+        "--merge",
+        nargs="+",
+        type=Path,
+        default=(),
+        metavar="PKL",
+        help="earlier windows to draw with this one",
+    )
+    parser.add_argument(
         "--all",
         action="store_true",
         help="every start of the registry, not one per family",
@@ -242,6 +271,8 @@ def main(argv: list[str] | None = None) -> None:
         arguments.seeds,
         arguments.workers,
         arguments.all,
+        arguments.first,
+        tuple(arguments.merge),
     )
 
 
