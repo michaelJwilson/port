@@ -848,10 +848,30 @@ def _sal_rows() -> dict[str, Row]:
 def _registry() -> dict[str, Row]:
     rows = {name: row for name, (row, _) in _port_starts().items()}
     rows |= _sal_rows()
+    # NB deprecated in the #540 study, kept for `run_cnaster --sal`
+    #    (default `kmeans++x5+em`): `emission++warm`, and `sal`'s `anneal`,
+    #    `tempering`, `hmc` (surrogate samplers snapped to observed rows),
+    #    `datax5+em`, `emission++x5+em`, `kmeans++x5+em`.
     rows["emission++warm"] = Row(
         "emission++warm", "port (#540)", STAGES, covariate=True, stochastic=True
     )
+    for name in (*HMM_SAMPLERS, *EMISSION_VARIANTS):
+        rows[name] = Row(name, "port (#540)", STAGES, covariate=True, stochastic=True)
     return rows
+
+
+EMISSION_VARIANTS = ("emission++trim", "emission++x5hmm")
+"""Port's emission++ variants (#540): trimmed seeding, and best of 5 by the HMM's NLL."""
+
+TRIM = 0.02
+"""`emission++trim`: the share of rows, farthest from every seed so far, no draw may pick."""
+
+DRAWS = 5
+"""`emission++x5hmm`: emission++ draws, the one lowest in the HMM's NLL kept."""
+
+
+HMM_SAMPLERS = ("anneal-hmm", "tempering-hmm", "hmc-hmm")
+"""Port's samplers on the HMM's own NLL (`port.sandbox.known_copy.hmm_samplers`), no snapping."""
 
 
 @functools.cache
@@ -872,6 +892,9 @@ def _tuned_seeding(
     name: str, held: Any, rng: np.random.Generator, setting: dict[str, float]
 ) -> Any:
     """`sal`'s annealing, tempering or HMC start with its schedule replaced, each seeding at its best point.
+
+    Deprecated in the #540 study: these sample a Gaussian-mixture surrogate
+    and snap to observed rows; `HMM_SAMPLERS` sample the HMM itself.
 
     - `anneal`: `FromAnnealing` from `t_start` to 1 over `steps` proposals
       (`sal`: 8 to 1 over 8);
@@ -956,6 +979,8 @@ WARM_SEEDS = "kmeans++"
 def _warm_emission(held: Any, rng: np.random.Generator) -> Any:
     """emission++ at dispersions estimated from the data rather than the seam's fixed ones.
 
+    Deprecated in the #540 study; reachable by name.
+
     `WARM_SEEDS` clusters the rows; within each cluster the negative
     binomial's `alpha` and the beta-binomial's `rho = 1 / (tau + 1)` are
     method-of-moments estimates, pooled over clusters:
@@ -1001,6 +1026,80 @@ def _warm_emission(held: Any, rng: np.random.Generator) -> Any:
     return emission_seeding(replace(held, at=at), rng).components
 
 
+def _hmm_sampled(
+    name: str, call: CopyCall, rng: np.random.Generator
+) -> tuple[np.ndarray, np.ndarray]:
+    """`HMM_SAMPLERS`' states on the call's rows: `(log mu, p)`, not snapped."""
+    from port.sandbox.known_copy.hmm_samplers import sample
+
+    sampled = sample(
+        name, call.total, call.b, call.exposure, call.trials, call.raw["lengths"],
+        call.n_states, rng,
+    )  # fmt: skip
+    return sampled.log_mu, sampled.p_binom
+
+
+def _trimmed_emission(held: Any, rng: np.random.Generator) -> Any:
+    """`sal`'s emission++ D-sampling with the `TRIM` rows farthest from every seed given probability 0.
+
+    `sal.opt.mixture.emission_mixture_plus_plus` draws each seed in
+    proportion to a row's least Bregman divergence to the seeds so far
+    (`sal.opt.emission_mixture._seed_scores`), floored at 0 as
+    `_clamped_divergence` floors it; an outlier row is the likeliest pick.
+    Here the rows above the `1 - TRIM` quantile of that divergence are
+    excluded from each draw. The first seed is uniform, as `sal`'s is; the
+    seeds are the chosen rows through the instance's seam, as
+    `plus_plus_start` places them.
+    """
+    from sal.opt.emission_mixture import _seed_scores
+
+    rows = np.asarray(held.rows, dtype=np.float64)
+    indices = np.arange(rows.shape[0], dtype=np.float64)
+    score = _seed_scores(rows, held.at)
+    chosen = [int(rng.integers(rows.shape[0]))]
+    nearest = np.maximum(score(float(chosen[0]), indices), 0.0)
+    for _ in range(1, held.n_components):
+        weight = np.where(nearest > np.quantile(nearest, 1.0 - TRIM), 0.0, nearest)
+        total = float(weight.sum())
+        if total <= 0.0:
+            chosen.append(int(rng.integers(rows.shape[0])))
+        else:
+            chosen.append(int(rng.choice(rows.shape[0], p=weight / total)))
+        nearest = np.minimum(
+            nearest, np.maximum(score(float(chosen[-1]), indices), 0.0)
+        )
+    return held.at(rows[np.asarray(chosen)])
+
+
+def _best_emission_by_hmm(call: CopyCall, held: Any, rng: np.random.Generator) -> Any:
+    """`DRAWS` emission++ draws, nothing fitted; the one lowest in the HMM's NLL at its states.
+
+    Scored by `port.sandbox.known_copy.hmm_samplers.negative_log_likelihood`
+    (`jax_hmm`'s forward recursion at `known_copy.hmm.ALPHA`, `TAU`, `T`) on
+    the call's rows, each draw's states read as `seed_states` reads them.
+    """
+    from sal.search.mixture_starts import emission_seeding
+
+    from port.sandbox.known_copy.hmm_samplers import negative_log_likelihood
+
+    best: tuple[float, Any] = (np.inf, None)
+    for _ in range(DRAWS):
+        components = emission_seeding(held, rng).components
+        log_mu, p = _read(call, components)
+        nll = negative_log_likelihood(
+            log_mu,
+            p,
+            call.total,
+            call.b,
+            call.exposure,
+            call.trials,
+            call.raw["lengths"],
+        )
+        if best[1] is None or nll < best[0]:
+            best = (nll, components)
+    return best[1]
+
+
 def _seeded(
     name: str,
     call: CopyCall,
@@ -1026,6 +1125,12 @@ def _seeded_clamped(
         return _tuned_seeding(name, held, rng, setting)
     if name == "emission++warm":
         return _warm_emission(held, rng)
+    if name == "emission++trim":
+        return _trimmed_emission(held, rng)
+    if name == "emission++x5hmm":
+        return _best_emission_by_hmm(call, held, rng)
+    if name in HMM_SAMPLERS:
+        return _place(held, call, *_hmm_sampled(name, call, rng))
     ports = _port_starts()
     if name in ports:
         return _place(held, call, *ports[name][1](call, rng))
@@ -1063,6 +1168,10 @@ def seed_states(
     states 2.3 below in log mu on dev_tree_1s_hard, and `cnaster`'s
     Baum-Welch overflowed from them.
     """
+    if name in HMM_SAMPLERS and setting is None:
+        # NB the sampler's states as drawn: `_read(_place(...))` would move p
+        #    to `(p n + 1/2) / (n + 1)` on the seam's common trial count `n`.
+        return _hmm_sampled(name, call, rng)
     components = _seeded(
         name, call, instance(call, covariate=covariate), rng, seconds, setting
     )
@@ -1093,6 +1202,8 @@ def _prior_seeding(held: Any, rng: np.random.Generator) -> Any:
 
 def _chain_best_seeding(held: Any, rng: np.random.Generator) -> Any:
     """`sal`'s `hmc` chain, seeding from its best draw rather than its last.
+
+    Deprecated in the #540 study for `hmc-hmm` (`HMM_SAMPLERS`).
 
     The chain is `sal`'s (`chain_initializer`, the same stream and warm-up);
     of its kept draws, the one lowest in the surrogate's negative

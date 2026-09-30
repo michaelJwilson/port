@@ -25,46 +25,73 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+
+def tt(name: str) -> str:
+    """`name` in typewriter type inside running text: mathtext's `\\mathtt`, a hyphen kept a hyphen."""
+    body = (
+        name.replace("_", r"\_")
+        .replace("-", r"{\text{-}}")
+        .replace("+", "{+}")
+        .replace(" ", r"\ ")
+    )
+    return rf"$\mathtt{{{body}}}$"
+
+
 TABLE = (
     ("cnaster, CalicoST, port", (
-        ("cnaster-gmm", "cnaster's gmm_init, Gaussian mixture"),
-        ("calicost-gmm", "CalicoST's GMM init, clones stacked"),
-        ("distinct", "gmm_init, distinct components (#348)"),
-        ("lattice", "integer (A, B) lattice, by the rows"),
-        ("lattice-em", "the lattice, by soft EM"),
-        ("rdr-quantiles", "quantiles of log RDR, pooled BAF"),
+        ("cnaster-gmm", f"cnaster's {tt('gmm_init')}: a Gaussian mixture"),
+        ("calicost-gmm", f"CalicoST's {tt('initialization_by_gmm')}, clones stacked"),
+        ("distinct", f"{tt('gmm_init')} among distinct components (#348)"),
+        ("lattice", "Integer (A, B) lattice, chosen by the rows"),
+        ("lattice-em", f"The {tt('lattice')}, refined by soft EM"),
+        ("rdr-quantiles", "Quantiles of log RDR, pooled BAF"),
     )),
     ("sal, one draw", (
-        ("prior", "drawn from a prior on the range"),
-        ("data", "on rows drawn uniformly"),
-        ("kmeans++", "k-means++ on the raw count pair"),
-        ("emission++", "seeds by NB x BB Bregman divergence"),
-        ("emission++warm", "emission++ at dispersions from a kmeans++ pass"),
-        ("gaussian-em", "Gaussian mixture on read depth"),
-        ("quantile", "each channel's quantiles, paired"),
-        ("anneal", "best point of a falling temperature"),
-        ("tempering", "best point on a temperature ladder"),
-        ("hmc", "best draw of a Hamiltonian chain"),
+        ("prior", "Drawn from a prior on the observed range"),
+        ("data", "Rows drawn uniformly"),
+        ("kmeans++", f"{tt('k-means++')} on the raw count pair"),
+        ("emission++", "Seeds by the NB x BB Bregman divergence"),
+        ("gaussian-em", "Gaussian mixture on read depth, by EM"),
+        ("quantile", "Each channel's quantiles, paired"),
     )),
-    ("sal, best of 5 with EM", (
-        ("datax5+em", "best of 5 data draws, each EM"),
-        ("emission++x5+em", "best of 5 emission++, each EM"),
-        ("kmeans++x5+em", "best of 5 kmeans++, each EM (--sal)"),
+    ("port, emission++ variants", (
+        ("emission++trim", f"{tt('emission++')}, farthest 2% of rows never drawn"),
+        ("emission++x5hmm", f"Best of 5 {tt('emission++')} draws by HMM likelihood"),
+    )),
+    ("port, samplers on the HMM", (
+        ("anneal-hmm", "Best point of HMC under falling temperature"),
+        ("tempering-hmm", "Best point of 4 HMC replicas on a ladder"),
+        ("hmc-hmm", "Best draw of an HMC chain at T = 1"),
     )),
 )  # fmt: skip
+
+
+def plt_colour(number: int) -> tuple[float, float, float, float]:
+    """The `number`th start's colour: `tab20`, cycled."""
+    from matplotlib import colormaps
+
+    return tuple(colormaps["tab20"]((number - 1) % 20))  # type: ignore[return-value]
+
+
 LABEL = {
-    "datax5+em": "(data & EM)$^5$",
-    "emission++x5+em": "(emission++ & EM)$^5$",
-    "kmeans++x5+em": "(kmeans++ & EM)$^5$",
-}
-"""A best-of-5-with-EM start's label: the start and its EM, five times."""
+    "cnaster-gmm": "cnaster-gmm", "calicost-gmm": "calicost-gmm", "distinct": "distinct", "lattice": "lattice",
+    "lattice-em": "lattice + em", "rdr-quantiles": "rdr-quantiles", "prior": "prior", "data": "data",
+    "kmeans++": "k-means++", "emission++": "emission++", "emission++trim": "emission++ (trim)",
+    "emission++x5hmm": r"5$\times$emission++ (hmm)", "gaussian-em": "gaussian-em", "quantile": "quantile",
+    "anneal-hmm": "anneal", "tempering-hmm": "parallel tempering", "hmc-hmm": "hmc",
+}  # fmt: skip
+"""A start's label; `5x`: the best of five draws."""
 NUMBER = {name: k + 1 for k, name in enumerate(n for _, rows in TABLE for n, _ in rows)}
 NUMBER_TEXT = {name: str(k) for name, k in NUMBER.items()}
 SOURCE = {
-    name: ("C1" if group == "cnaster, CalicoST, port" else "C0")
-    for group, rows in TABLE
-    for name, _ in rows
-}
+    **{name: "sal" for _, rows in TABLE for name, _ in rows},
+    "cnaster-gmm": "cnaster", "calicost-gmm": "CalicoST", "distinct": "port", "lattice": "port",
+    "lattice-em": "port", "rdr-quantiles": "port", "emission++trim": "port",
+    "emission++x5hmm": "port", "anneal-hmm": "port", "tempering-hmm": "port", "hmc-hmm": "port",
+}  # fmt: skip
+"""Each start's source: the package whose code it runs."""
+COLOUR = {name: plt_colour(k) for name, k in NUMBER.items()}
+"""One colour per start, by its number."""
 
 DODGE = 1.12
 FLOOR = 1e-2
@@ -131,8 +158,11 @@ def _table(
     flagged: dict[str, int],
     rank_cost: dict[str, int],
     rank_missed: dict[str, int],
+    ran: frozenset[str] = frozenset(),
 ) -> None:
-    n_rows = sum(1 + len(rows) for _, rows in TABLE)
+    n_rows = (
+        sum(1 + len(rows) for _, rows in TABLE) + len(TABLE) - 1
+    )  # NB a blank row between groups
     head = 0.06
     step = (1 - head) / (n_rows + 0.5)
 
@@ -144,18 +174,19 @@ def _table(
     rule(1.0, 1.2)
     for x, text in (
         (0.01, "#"),
-        (0.07, "Start"),
-        (0.38, "$R_C$"),
-        (0.44, "$R_M$"),
-        (0.62, "Missed [%]"),
-        (0.65, "Description"),
+        (0.07, "Algorithm"),
+        (0.49, "$R_C$"),
+        (0.55, "$R_M$"),
+        (0.72, "Missed [%]"),
+        (0.75, "Description"),
+        (0.35, "Source"),
     ):
         tab.text(x, 1 - head / 2, text, fontsize=8.5, weight="bold", transform=tab.transAxes, va="center",
-                 ha="right" if 0.3 < x < 0.64 else "left")  # fmt: skip
+                 ha="right" if 0.4 < x < 0.74 else "left")  # fmt: skip
     rule(1 - head, 0.7)
     y = 1 - head + step * 0.25
-    for group, rows in TABLE:
-        y -= step
+    for g, (group, rows) in enumerate(TABLE):
+        y -= step * (2 if g else 1)
         tab.text(
             0.07,
             y,
@@ -180,13 +211,17 @@ def _table(
                 y,
                 LABEL.get(name, name),
                 fontsize=8,
+                family="monospace",
                 transform=tab.transAxes,
                 va="center",
             )
-            tab.text(0.65, y, text, fontsize=8, transform=tab.transAxes, va="center")
+            tab.text(0.75, y, text, fontsize=8, transform=tab.transAxes, va="center")
+            tab.text(
+                0.35, y, SOURCE[name], fontsize=8, transform=tab.transAxes, va="center"
+            )
             for x, rank in (
-                (0.38, rank_cost.get(name)),
-                (0.44, rank_missed.get(name)),
+                (0.49, rank_cost.get(name)),
+                (0.55, rank_missed.get(name)),
             ):
                 if rank is not None:
                     tab.text(
@@ -201,11 +236,11 @@ def _table(
             a, b = missed.get(name, (np.nan, np.nan))
             k = flagged.get(name, 0)
             if np.isnan(a):
-                cell = f"degenerate ({k})" if k else "refused"
+                cell = f"degenerate ({k})" if k else ("refused" if name in ran else "not run")
             else:
                 cell = f"{a:.1f} / {b:.1f}" + (f" ({k} degen.)" if k else "")
             tab.text(
-                0.62,
+                0.72,
                 y,
                 cell,
                 fontsize=8,
@@ -272,7 +307,6 @@ def figure(record: dict[str, Any], out: Path) -> Path:
     grid = fig.add_gridspec(1, 2, width_ratios=[1.2, 1], wspace=0.04)
     ax, tab = fig.add_subplot(grid[0]), fig.add_subplot(grid[1])
     tab.axis("off")
-    ax.axhspan(FLOOR * 0.6, FLOOR * 1.4, color="0.92", zorder=0)
     ax.axhspan(
         float(np.quantile(truth, 0.1)),
         float(np.quantile(truth, 0.9)),
@@ -284,18 +318,26 @@ def figure(record: dict[str, Any], out: Path) -> Path:
     ax.axhline(float(np.median(truth)), color="k", lw=0.9, zorder=0)
 
     points: list[tuple[float, float, str]] = []
+    rightmost = 0.0
     for name, g in d.groupby("start"):
         if name not in NUMBER:
             continue
-        colour = SOURCE[str(name)]
+        colour = COLOUR[str(name)]
         x, xe = _bars(g.seconds)
+        # NB each start displaced by its own factor, up to 0.1 decades either side, so equal runtimes do not overlap
+        spread = 10 ** (0.2 * (NUMBER[str(name)] / max(NUMBER.values()) - 0.5))
+        x *= spread
+        xe = [[e * spread for e in side] for side in xe]
         y, ye = _bars(g.y)
         ax.errorbar(
             x, y, xerr=xe, yerr=ye, fmt="o", color=colour, ms=5, lw=0.8, capsize=2.5
         )
         bx, bxe = _bars(g.bseconds)
         by, bye = _bars(g.by)
-        bx *= DODGE
+        # NB the Baum-Welch points crowd near 10 s: spread three times as wide, up to 0.3 decades either side
+        bspread = spread**3
+        bx *= DODGE * bspread
+        bxe = [[e * bspread for e in side] for side in bxe]
         ax.annotate(
             "",
             (bx, by),
@@ -315,6 +357,7 @@ def figure(record: dict[str, Any], out: Path) -> Path:
             capsize=2.5,
         )
         points.append((x, y, str(name)))
+        rightmost = max(rightmost, bx + bxe[1][0])
 
     # NB numbers placed left of their points, stacked upward in 0.25-decade steps where they would overlap
     placed: list[tuple[float, float]] = []
@@ -323,7 +366,7 @@ def figure(record: dict[str, Any], out: Path) -> Path:
         while any(abs(lx - px) < 0.3 and abs(ly - py) < 0.2 for px, py in placed):
             ly += 0.25
         placed.append((lx, ly))
-        ax.annotate(NUMBER_TEXT[name], (x, y), xytext=(10**lx / 1.15, 10**ly), textcoords="data", fontsize=8, weight="bold",
+        ax.annotate(NUMBER_TEXT[name], (x, y), xytext=(10**lx / 1.15, 10**ly), textcoords="data", fontsize=8, weight="bold", color=COLOUR[name],
                     ha="right", va="center", arrowprops={"arrowstyle": "-", "color": "0.6", "lw": 0.4, "shrinkA": 0, "shrinkB": 2}
                     if abs(ly - np.log10(y)) > 1e-9 else None)  # fmt: skip
 
@@ -331,9 +374,10 @@ def figure(record: dict[str, Any], out: Path) -> Path:
     ax.set_yscale("log")
     ax.set_xlim(
         float(d.seconds.quantile(0.02)) * 0.5,
-        float(d.bseconds.quantile(0.98)) * DODGE * 1.6,
+        rightmost * 1.3,
     )
-    ax.set_ylim(FLOOR * 0.5, float(max(d.y.max(), d.by.max())) * 3)
+    # NB one decade below the truth's median gap, three above
+    ax.set_ylim(float(np.median(truth)) / 10, float(np.median(truth)) * 1e3)
     ax.yaxis.set_major_locator(FixedLocator([FLOOR, *10.0 ** np.arange(-1, 8)]))
     ax.yaxis.set_major_formatter(
         FuncFormatter(
@@ -341,14 +385,12 @@ def figure(record: dict[str, Any], out: Path) -> Path:
         )
     )
     ax.set_xlabel("Runtime [s]")
-    ax.set_ylabel("Gap [nats]")
-    ax.plot([], [], "o", color="C1", label="cnaster, CalicoST, port")
-    ax.plot([], [], "o", color="C0", label="sal")
+    ax.set_ylabel("Gap [Nats]")
+    ax.plot([], [], "o", color="0.4", label="Start")
     ax.plot([], [], "o", color="0.4", mfc="white", label="Baum-Welch")
-    ax.fill_between([], [], [], color="0.55", alpha=0.35, lw=0, label="Truth, 10-90%")
     ax.plot([], [], color="k", lw=0.9, label="Truth")
     ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.1), ncol=3, fontsize=7.5, frameon=False,
-              title=f"{Path(record['manifest']).stem}: median for {n_problems} realization{'s' if n_problems != 1 else ''}"
+              title=f"{Path(record['manifest']).stem}: Median for {n_problems} realization{'s' if n_problems != 1 else ''}"
                     + (f" (+{n_partial} in progress)" if n_partial else "") + f" $\\times$ {record['seeds']} seeds",
               title_fontsize=7.5)  # fmt: skip
     missed = {
@@ -358,7 +400,8 @@ def figure(record: dict[str, Any], out: Path) -> Path:
     # NB ranked after Baum-Welch, the polish the study measures: R_C by the median gap, R_M by the median Missed
     rank_cost = ranks({str(n): float(g.by.median()) for n, g in d.groupby("start")})
     rank_missed = ranks({n: m[1] for n, m in missed.items()})
-    _table(tab, missed, degenerate_counts(record), rank_cost, rank_missed)
+    ran = frozenset(str(n) for n in pd.DataFrame(record["rows"]).start.unique())
+    _table(tab, missed, degenerate_counts(record), rank_cost, rank_missed, ran)
     stamp(fig, record)
     fig.savefig(out, dpi=150, bbox_inches="tight")
     plt.close(fig)

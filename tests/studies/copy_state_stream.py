@@ -50,10 +50,12 @@ import numpy as np
 
 STARTS = (
     "cnaster-gmm", "calicost-gmm", "distinct", "lattice", "lattice-em", "rdr-quantiles",
-    "prior", "data", "kmeans++", "emission++", "emission++warm", "gaussian-em", "quantile", "anneal", "tempering", "hmc",
-    "datax5+em", "emission++x5+em", "kmeans++x5+em",
+    "prior", "data", "kmeans++", "emission++", "gaussian-em", "quantile",
+    "emission++trim", "emission++x5hmm", "anneal-hmm", "tempering-hmm", "hmc-hmm",
 )  # fmt: skip
-"""One start per family of the registry; `kmeans++x5+em` is `--sal`'s."""
+"""One start per family of the registry. Deprecated here, still in the registry: `sal`'s surrogate
+`anneal`, `tempering`, `hmc` (snapped to observed rows), `emission++warm`, and the best-of-5-with-EM
+starts, `--sal`'s `kmeans++x5+em` among them."""
 
 SECONDS = 60.0
 """A best-of-n start's budget for its own polishes, as `run_start` gives it."""
