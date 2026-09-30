@@ -75,7 +75,7 @@ def nb_partials(
     Broadcasts. A bin with no exposure scores 0 and has zero derivative.
 
     The derivative of the #560-corrected score
-    (`port.sandbox.patch.hmm_nophasing.nb_logpmf`), with `a = max(alpha, 1e-10) *
+    (`port.patch.hmm_nophasing.nb_logpmf`), with `a = max(alpha, 1e-10) *
     mean` and `log p = -log1p(a)`. Upstream's unpatched kernel also scores 0
     where `p = 1 / (1 + alpha * mean)` rounds to 1 (`a` below about
     1.1e-16) and floors `alpha` in `r` but not in `p`; this derivative

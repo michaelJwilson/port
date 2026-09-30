@@ -59,8 +59,8 @@ TABLE = (
         ("emission++x5hmm", f"Best of 5 {tt('emission++')} draws by HMM likelihood"),
         ("emission++trimx20hmm", f"Best of 20 {tt('emission++ (trim)')} by HMM likelihood"),
         ("emission++lloydx5hmm", "Best of 5 by HMM: trimmed, coverage-weighted, 10 Lloyd rounds"),
-        ("emission++anchor", "First seed neutral, trimmed, then Lloyd rounds"),
-        ("emission++knn", "Trimmed seeds, each its 1% nearest rows pooled"),
+        ("emission++anchor", "First seed neutral, trimmed, then 10 Lloyd rounds"),
+        ("emission++knn", "Trimmed seeds, each its 0.3% nearest rows pooled"),
     )),
     ("port, samplers on the HMM", (
         ("anneal-hmm", "Best point of HMC under falling temperature"),

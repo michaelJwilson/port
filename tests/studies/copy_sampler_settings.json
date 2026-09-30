@@ -38,5 +38,17 @@
     "median_gap": 58.403,
     "seconds": 6.151,
     "default_median_gap": 229.495
+  },
+  "emission++knn": {
+    "knn": 0.003,
+    "median_gap": 202.236,
+    "seconds": 0.521,
+    "default_median_gap": 210.807
+  },
+  "emission++anchor": {
+    "lloyd": 10,
+    "median_gap": 212.311,
+    "seconds": 2.688,
+    "default_median_gap": 306.541
   }
 }

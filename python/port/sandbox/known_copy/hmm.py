@@ -15,7 +15,7 @@ samples. The allele reads are phased by the truth, so no phase is modelled.
 `decode` scores and labels the rows at given states without fitting: the same
 forward-backward at `cnaster`'s initial dispersions.
 
-Both run under `port.sandbox.patch.hmm_nophasing.nb_logpmf.patched` (#560):
+Both run under `port.patch.hmm_nophasing.nb_logpmf.patched` (#560):
 `cnaster`'s negative binomial scores any count at probability 1 once its `p`
 rounds to 1, and Baum-Welch drove a state there. `degenerate` still flags a
 fit whose state would be scored so by the unpatched kernel.

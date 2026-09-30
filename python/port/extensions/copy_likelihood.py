@@ -117,7 +117,7 @@ def _emission(
     `p = 1 / (1 + a)` rounded `p` to 1 below `a` of about 1.1e-16, where a
     count of 0 scored NaN and a count of 1000 `-inf` (truth -43,420 at
     `a = 1e-19`), and lost digits of `log(1 - p)` below about 1e-4. `alpha`
-    is floored in `a` as in `r`, as `port.sandbox.patch.hmm_nophasing.nb_logpmf`
+    is floored in `a` as in `r`, as `port.patch.hmm_nophasing.nb_logpmf`
     does.
     """
     x = bulk.counts_nb[bins]

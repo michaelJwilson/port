@@ -108,7 +108,7 @@ def emission(
     `log(1 - p) = log(a) - log1p(a)` (#560). Forming `p` rounded it to 1 below
     `a` of about 1.1e-16, where a count of 0 scored NaN and a count of 1000
     `-inf` (truth -43,420 at `a = 1e-19`). `alpha` is floored in `a` as in
-    `r`, as `port.sandbox.patch.hmm_nophasing.nb_logpmf` does.
+    `r`, as `port.patch.hmm_nophasing.nb_logpmf` does.
     """
     rates = _column(log_mu)[:, None]
     dispersions = _column(alphas)[:, None]

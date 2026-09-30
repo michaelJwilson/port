@@ -85,7 +85,7 @@ The whole call, against the unshifted emission upstream runs: **1.12x** at
 **Referee: `cnaster` to 1e-9 relative where `cnaster`'s `p < 1`; the
 log-space negative binomial (#560) below.**
 The shifted path scores with
-`port.sandbox.patch.hmm_nophasing.nb_logpmf._nb_logpmf_1d`, not `cnaster`'s:
+`port.patch.hmm_nophasing.nb_logpmf._nb_logpmf_1d`, not `cnaster`'s:
 upstream's returns 0 -- probability 1 -- once `p = 1 / (1 + alpha lambda)`
 rounds to 1.0 (`alpha lambda < 1.1e-16`), and `nb_logpmf.patched()` cannot
 reach a kernel imported by name. The unshifted path is `super()`'s and stays

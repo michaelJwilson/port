@@ -16,7 +16,7 @@ tabulates this field's own sum).
 relative where `cnaster`'s `p < 1`; the log-space negative binomial (#560)
 below.** A table entry is the same `lgamma` at the same argument, built in
 the same order of operations as
-`port.sandbox.patch.hmm_nophasing.nb_logpmf._nb_logpmf_1d` and `cnaster`'s
+`port.patch.hmm_nophasing.nb_logpmf._nb_logpmf_1d` and `cnaster`'s
 `betabinom_logpmf_numba` -- `lgamma(n + a + b)` is `lgamma((n + a) + b)`, as
 upstream writes it -- and the per-bin sums run in the fused kernel's order,
 so `np.array_equal` is the bar against it. The negative binomial is the

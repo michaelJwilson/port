@@ -52,7 +52,7 @@ log-space negative binomial (#560) below**, against
 `hmm_nophasing.compute_emission_probability_nb_betabinom` and against
 `hmm_phased`'s, in `tests/test_buffered_emission.py`. The allele kernels are
 `cnaster`'s own, and that channel is bitwise; the read-depth kernel is
-`port.sandbox.patch.hmm_nophasing.nb_logpmf._nb_logpmf_1d`, not `cnaster`'s:
+`port.patch.hmm_nophasing.nb_logpmf._nb_logpmf_1d`, not `cnaster`'s:
 upstream's returns 0 -- probability 1 -- once `p = 1 / (1 + alpha lambda)`
 rounds to 1.0 (`alpha lambda < 1.1e-16`), and `nb_logpmf.patched()` cannot
 reach a kernel compiled in by name.

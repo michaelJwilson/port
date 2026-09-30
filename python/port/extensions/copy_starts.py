@@ -15,7 +15,10 @@ so they can be compared, and so #541 can take its copy states from here.
   (`sal.search.mixture_starts`), `cnaster`'s `gmm_init` and
   `cna_mixture_init`, and port's `distinct.gmm_init` (#348) all run as `sal`
   starts on one `MixtureInstance`, so each is seeded, then polished by
-  `sal`'s EM, on the same objective.
+  `sal`'s EM, on the same objective. Port's own: `EMISSION_VARIANTS`
+  (emission++ seeding with trimming, coverage weighting, pooling, Lloyd
+  rounds, or best-of-n by the HMM's likelihood) and `HMM_SAMPLERS` (HMC on
+  the HMM's own likelihood, `port.sandbox.known_copy.hmm_samplers`).
 - **The result** (`CopyStart`): each state's `log_mu` and `p_binom`, the
   log-likelihood the polish reached on the whole call, and the seconds.
 
@@ -43,6 +46,8 @@ from typing import Any, NamedTuple
 import numpy as np
 
 __all__ = [
+    "EMISSION_VARIANTS",
+    "HMM_SAMPLERS",
     "MASKS",
     "STAGES",
     "CopyCall",
@@ -862,8 +867,8 @@ EMISSION_VARIANTS: dict[str, dict[str, float]] = {
     "emission++x5hmm": {"draws": 5},
     "emission++trimx20hmm": {"trim": 0.005, "draws": 20},
     "emission++lloydx5hmm": {"trim": 0.02, "coverage": 1, "lloyd": 10, "draws": 5},
-    "emission++anchor": {"trim": 0.02, "coverage": 1, "anchor": 1, "lloyd": 3},
-    "emission++knn": {"trim": 0.02, "coverage": 1, "knn": 0.01},
+    "emission++anchor": {"trim": 0.02, "coverage": 1, "anchor": 1, "lloyd": 10},
+    "emission++knn": {"trim": 0.02, "coverage": 1, "knn": 0.003},
 }  # fmt: skip
 """Port's emission++ variants (#540): `_variant_seeding`'s options, and `draws`, the best of that
 many by the HMM's NLL at each draw's states. A `setting` replaces options by name.
@@ -871,7 +876,8 @@ many by the HMM's NLL at each draw's states. A `setting` replaces options by nam
 Tuned by `tests.studies.copy_state_stream --tune` on `dev_tree_1s_hard`'s held-out realizations 0-2
 (`tests/studies/copy_sampler_settings.json`): median gap in start log-likelihood to the best, tuned
 against first written, `trim` 0.005 against 0.02: 234.6 / 336.2 nats; `trimx20hmm` 0.005 over 20:
-58.4 / 229.5; `lloydx5hmm` 10 rounds against 3: 49.6 / 160.7. The screen below was at the first values.
+58.4 / 229.5; `lloydx5hmm` 10 rounds against 3: 49.6 / 160.7; `anchor` 10 rounds against 3:
+212.3 / 306.5; `knn` 0.3% of rows against 1%: 202.2 / 210.8. The screen below was at the first values.
 
 Screened on `dev_tree_1s_hard`'s held-out realization 0 (7,688 rows), 5 seeds, median rows missed
 at the start / after `--sal` Baum-Welch: `emission++` 2.7% / 13.9%, `emission++trim` 12.4% / 27.9%,
