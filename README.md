@@ -242,7 +242,7 @@ run_cnaster_port --copy-decode shared config.yaml  # one integer pair per fitted
 run_cnaster_port --time-stages config.yaml   # what the replacements cost in the run
 run_cnaster_port --floor-merge --refinement-mask config.yaml  # #348's clone patches, opt-in; --no-distinct-init drops the third
 python -m port.sandbox.np_merge config.yaml # sandbox: CalicoST's Neyman-Pearson merge of clones that decode alike (#497), not installed by default
-run_cnaster_port --hmm-start kmeans++x5+em config.yaml  # the read-depth HMM's start from sal's covariate mixture (#489); on with --sal
+run_cnaster_port --hmm-start lattice config.yaml  # the read-depth HMM's start from the integer lattice (#547); on with --sal
 run_calicost config.yaml                     # CalicoST on the same fixture files, at port's configuration
 run_calicost --shipped configuration_cna config.yaml  # CalicoST's own configuration file, the run's paths (#494)
 run_cnaster_port --no-outputs config.yaml    # skip the fitted/decoded tables below
@@ -266,7 +266,8 @@ follows the arm unless asked: on in a patched run, off with `--no-patch`.
 | `--sal` | off | alpha expansion with the Rust cut for the labelling (#312), and the next two | a lower Potts energy on every problem measured |
 | `--refinement-mask` | off; on with `--sal` | each read-depth sub-clone kept in its BAF clone, a 100-nat penalty (#348, #467) | with the floor merge, CalicoST hard clone ARI 0.303 to 0.982 |
 | `--floor-merge` | off; on with `--sal` | the clone-size floor met smallest first (#348) | alone, #338's three-sample instance: 2 planted clones fitted as 6 |
-| `--hmm-start` | `none`; `kmeans++x5+em` with `--sal` | the read-depth HMM's start from sal's covariate mixture (#489) | CalicoST hard clone ARI 0.8652 to 0.9829 |
+| `--hmm-start` | `none`; `lattice` with `--sal` | the read-depth HMM's copy states from the integer `(A, B)` lattice, polished by sal's EM (#547) | dev_tree clone ARI 0.8612 (5) to 1.0 (4); with the segment floor, hard copy ARI 0.9055 to 0.9181 |
+| `--baf-start` | `none` | the BAF-only HMM's copy states from the lattice (#540) | |
 | `--copy-errors` | off | `cnv_copy_sets.tsv`: every `(A, B)` in each state's 95 per cent credible region (#353) | differentiates the whole objective once |
 | `--png-copies` | off | a PNG without metadata beside each PDF, for `docs/plots` (#452) | two runs of the same code write the same bytes |
 | `--sample-layout`, `--genomic-colours` | unset | one panel per sample (#328); bins coloured per fitted state | |
@@ -327,16 +328,19 @@ as `run_cnaster` calls it, returns planted totals of 10 to 12 exactly at a
 stated 12, and none of them at `cnaster`'s 6 (`tests/test_integer_copy_patch.py`).
 
 **`quality.min_segment_mb` and `quality.min_segment_normal_umi` floor the
-read-depth segments** (#551). Off unless the configuration sets either:
-`true` is 0.75 Mb and 1,000 normal-spot UMIs, a number sets the value. At the
+read-depth segments** (#551). `--sal` sets the normal floor at 300; otherwise
+off unless the configuration sets either, and a stated key wins: `true` is
+0.75 Mb or 300 normal-spot UMIs, a number sets the value, `false` is off. At the
 read-depth binning, adjacent bins merge within each contig until each spans
 the minimum length and holds the larger of the normal floor and
 `quality.secondary_min_normal_umi`, which `cnaster` states and does not
 guarantee. The run's segment lineage then refuses any later level under
 either minimum. On dev_tree r0, tumour-clone RDR outlier rows (|log RDR
 deviation| > 0.5 at planted-neutral segments) fall from 1,163 of 2,895
-segments to 104 of 1,265 at 0.75 Mb, 288 of 2,015 at 1,000 UMIs, and 105 of
-1,423 at 0.5 Mb and 1,000 UMIs. The BAF-only stage's bins are untouched.
+segments to 802 of 2,624 at 300 UMIs and 104 of 1,265 at 0.75 Mb. With the
+lattice start, 300 was the one floor of 100, 200, 300, 500, 700 and 1,000
+with no extra clone on dev_tree, easy or hard (#547). The BAF-only stage's
+bins are untouched.
 
 **Several samples run as is, with shared clones** (#328).
 `tests/multisample.py` places three realizations of one genome side by side,

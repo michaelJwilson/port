@@ -118,20 +118,13 @@ def _parser() -> argparse.ArgumentParser:
         "--hmm-start",
         default=None,
         metavar="START",
-        help="the read-depth HMM's start, a sal mixture start (#489); none, kmeans++x5+em with --sal",
-    )
-    parser.add_argument(
-        "--hmm-smooth",
-        type=float,
-        default=None,
-        metavar="MB",
-        help="sum the read-depth start's seeding rows over MB along the genome (#540); 0 off",
+        help="the read-depth HMM's copy-state start, lattice or lattice-em (#547); none, lattice with --sal",
     )
     parser.add_argument(
         "--baf-start",
         default=None,
         metavar="START",
-        help="the BAF-only HMM's start, a copy-state start (#540); none keeps distinct's",
+        help="the BAF-only HMM's copy-state start, lattice or lattice-em (#540); none keeps distinct's",
     )
     parser.add_argument(
         "--distinct-init",
@@ -239,9 +232,7 @@ class Settings(NamedTuple):
     distinct: bool
     """The distinct initializer: on where the shift is, off with `--no-patch`."""
     hmm_start: str
-    """sal's HMM start: `none`, `kmeans++x5+em` with `--sal` (#489)."""
-    hmm_smooth: float
-    """Mb the read-depth start's seeding rows are summed over: 0, off (#540)."""
+    """The read-depth HMM's copy-state start: `none`, `lattice` with `--sal` (#547)."""
     baf_start: str
     """The BAF-only stage's start: `none`, `distinct`'s kept (#540)."""
 
@@ -265,9 +256,8 @@ def _settings(arguments: argparse.Namespace) -> Settings:
         floor=bool(asked(arguments.floor_merge, arguments.sal)),
         distinct=bool(asked(arguments.distinct_init, shift and patch)),
         hmm_start=str(
-            asked(arguments.hmm_start, "kmeans++x5+em" if arguments.sal else "none")
+            asked(arguments.hmm_start, "lattice" if arguments.sal else "none")
         ),
-        hmm_smooth=float(asked(arguments.hmm_smooth, 0.0)),
         baf_start=str(asked(arguments.baf_start, "none")),
     )
 
@@ -300,7 +290,6 @@ def _refusals(arguments: argparse.Namespace, settings: Settings) -> list[str]:
         for flag, asked in (
             ("--sal-emission", arguments.sal_emission),
             ("--distinct-init", arguments.distinct_init),
-            ("--hmm-smooth", arguments.hmm_smooth),
             ("--baf-start", arguments.baf_start),
         )
         if asked and not settings.shift
@@ -513,8 +502,6 @@ def main(argv: Sequence[str] | None = None) -> int:
             from port.patch.hmm_initialize.sal_mixture import checked
 
             inference["hmm_start"] = checked(hmm_start)
-            if settings.hmm_smooth > 0.0:
-                inference["hmm_smooth"] = settings.hmm_smooth * 1e6
         if settings.baf_start != "none":
             from port.patch.hmm_initialize.sal_mixture import checked
 
@@ -556,6 +543,15 @@ def main(argv: Sequence[str] | None = None) -> int:
 
         if arguments.sal:
             from port.extensions.sal import sal_options
+            from port.patch.omics.blocks import SAL_NORMAL_UMI_FLOOR
+
+            # NB the read-depth segment floor (#551) the lattice start was
+            #    tuned at (#547); a configuration's `quality` keys still win.
+            selected = with_options(
+                selected,
+                "port.patch.omics:create_bin_ranges",
+                normal_umi_floor=SAL_NORMAL_UMI_FLOOR,
+            )
 
             selected = with_options(
                 selected,
@@ -583,12 +579,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 + (", figures included" if figures else "")
                 + (", copy caps from the config" if copy_cap else "")
                 + (", refinement mask" if refinement_mask else "")
-                + (f", sal HMM start {hmm_start}" if hmm_start != "none" else "")
-                + (
-                    f" seeded over {settings.hmm_smooth:g} Mb"
-                    if hmm_start != "none" and settings.hmm_smooth > 0.0
-                    else ""
-                )
+                + (f", HMM start {hmm_start}" if hmm_start != "none" else "")
                 + (
                     f", BAF start {settings.baf_start}"
                     if settings.baf_start != "none"
@@ -599,6 +590,11 @@ def main(argv: Sequence[str] | None = None) -> int:
                 + (", shift included" if shift else "")
                 + (", rust lattices" if rust else "")
                 + (", sal included" if arguments.sal else "")
+                + (
+                    ", read-depth segments of 300 normal UMI unless configured"
+                    if arguments.sal
+                    else ""
+                )
                 + (", no plots written" if arguments.no_plots else ""),
                 file=sys.stderr,
             )

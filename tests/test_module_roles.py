@@ -117,6 +117,7 @@ ROLES: dict[str, Role] = {
     "port.sandbox.admixture.clone_mixture": "set aside",
     "port.sandbox.admixture.probes.sim_probe": "set aside",
     "port.sandbox.admixture.variants": "set aside",
+    "port.sandbox.extensions.copy_starts": "set aside",
     "port.sandbox.extensions.hmm_init_trials": "set aside",
     "port.sandbox.integer_decoding.calicost_decoders": "set aside",
     "port.sandbox.integer_decoding.rdr_summary": "set aside",

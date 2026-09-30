@@ -1,4 +1,4 @@
-"""#540: the copy-state start interface, on calls drawn here with known states.
+"""#540, #547: the lattice start, and the study's interface to every other start, on calls drawn here with known states.
 
 The study's own numbers are in `docs/nb/copy_state_starts.ipynb`; these pin
 what the interface must do for those numbers to mean anything: a start
@@ -14,6 +14,7 @@ from typing import Any
 import numpy as np
 import pytest
 from port.extensions import copy_starts as cs
+from port.sandbox.extensions import copy_starts as study
 
 STATES_RDRBAF = ((0.0, 0.5), (-0.69, 0.02), (0.41, 0.33))
 """`(log mu, p)` per planted state: neutral, a one-copy loss, a gain."""
@@ -58,18 +59,18 @@ def test_a_polished_start_recovers_the_states_that_drew_the_call() -> None:
     """`kmeans++x5+em` finds each planted `(mu, p)` to 0.1 in log mu and 0.05 in p, on both stages."""
     for stage in cs.STAGES:
         call = _call(stage)
-        states = cs.planted_states(call)
-        result = cs.run_start(
+        states = study.planted_states(call)
+        result = study.run_start(
             "kmeans++x5+em", call, np.random.default_rng(0), seconds=20.0
         )
 
-        assert all(cs.found(result, states).values()), (stage, result)
+        assert all(study.found(result, states).values()), (stage, result)
 
 
 @pytest.mark.analytic
 def test_the_planted_states_are_the_pooled_rates_that_drew_them() -> None:
     """Pooled over each state's rows, `(log mu, folded p)` is the generating value to 0.02."""
-    states = cs.planted_states(_call("rdrbaf", n_bins=4000))
+    states = study.planted_states(_call("rdrbaf", n_bins=4000))
 
     for (log_mu, p), key in zip(STATES_RDRBAF, [(1, 1), (0, 1), (1, 2)], strict=True):
         assert states[key][0] == pytest.approx(log_mu, abs=0.02)
@@ -97,8 +98,8 @@ def test_the_baf_only_stage_reads_no_read_depth() -> None:
 def test_a_window_of_one_segment_is_the_call_and_a_genome_wide_one_is_its_sum() -> None:
     """`smoothed` sums within clone and contig: one segment changes nothing; a window wider than a contig gives every row its contig's totals."""
     call = _call("rdrbaf", n_bins=40)
-    same = cs.smoothed(call, segments=1)
-    wide = cs.smoothed(call, bp=1e12)
+    same = study.smoothed(call, segments=1)
+    wide = study.smoothed(call, bp=1e12)
 
     np.testing.assert_array_equal(same.total, call.total)
     for clone in np.unique(call.clone):
@@ -114,7 +115,7 @@ def test_the_baf_error_masks_keep_rows_at_or_under_their_standard_error() -> Non
     call = _call("baf")
 
     for se in (0.2, 0.15, 0.1):
-        kept = cs.masked(call, f"baf-se-{se}")
+        kept = study.masked(call, f"baf-se-{se}")
         assert np.all(0.5 / np.sqrt(kept.trials) <= se + 1e-12)
         dropped = call.trials[0.5 / np.sqrt(call.trials) > se + 1e-12]
         assert kept.n_rows + dropped.size == call.n_rows
@@ -127,7 +128,7 @@ def test_an_outlier_arm_changes_the_rows_it_names_and_no_others() -> None:
     rng = np.random.default_rng(1)
 
     for kind, field in (("rdr", "total"), ("baf", "b")):
-        changed, flagged = cs.corrupted(call, 0.05, kind, rng)
+        changed, flagged = study.corrupted(call, 0.05, kind, rng)
         before: Any = getattr(call, field)
         after: Any = getattr(changed, field)
         assert flagged.sum() == round(0.05 * call.n_rows)
@@ -137,11 +138,11 @@ def test_an_outlier_arm_changes_the_rows_it_names_and_no_others() -> None:
 @pytest.mark.infra
 def test_every_start_names_its_stages_and_the_registry_is_one_list() -> None:
     """Each start takes one or both stages; `sal`'s single, best-of-five and polished starts sit beside `cnaster`'s and port's."""
-    names = set(cs.starts())
+    names = set(study.starts())
 
     assert {"kmeans++", "kmeans++x5", "kmeans++x5+em", "emission++", "prior"} <= names
     assert {"cnaster-gmm", "distinct", "cna-mixture++"} <= names
-    for row in cs.starts().values():
+    for row in study.starts().values():
         assert row.stages, row
         assert set(row.stages) <= set(cs.STAGES), row
 
@@ -178,7 +179,7 @@ def test_the_lattice_start_places_the_states_that_drew_the_call_before_any_polis
     log_mu, p = cs.lattice_start(call)
     start = cs.CopyStart("lattice", "rdrbaf", log_mu, p, 0.0, 0.0, 0.0)
 
-    assert all(cs.found(start, cs.planted_states(call)).values()), (log_mu, p)
+    assert all(study.found(start, study.planted_states(call)).values()), (log_mu, p)
 
 
 @pytest.mark.oracle

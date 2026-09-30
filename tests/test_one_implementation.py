@@ -23,25 +23,25 @@ from tests.source_graph import PACKAGE, TESTS
 
 BUDGET: dict[str, int] = {
     # NB 23: #520 removed --np-merge; `--png-copies` binds what the
-    #    `_PNG_COPIES` switch held (#517 step 1). 25: #547's `--hmm-smooth`
-    #    and `--baf-start`, #540's smoothing and BAF-stage starts.
-    "run_cnaster_port flags": 25,
+    #    `_PNG_COPIES` switch held (#517 step 1). 24: #547's `--baf-start`,
+    #    the BAF-only stage's copy-state start.
+    "run_cnaster_port flags": 24,
     # NB 53: step 1 removed the two `_Selection` slots behind the decoder and
     #    solver switches; step 5 added `Settings`, the entry point's one
     #    resolution of its tri-state flags; step 8 added the `hmm_phased` row
     #    and moved 8 classes to `sandbox/` with their modules. 54: the truth
     #    page's `analysis.GenomicTruth`, the tracks' arguments that
-    #    `clones_genomic.png` and `truth_combined` both draw. 57: #540's
-    #    copy-start records, `CopyCall`, `CopyStart` and `Row`, the one
-    #    interface every copy-state start runs behind.
-    "classes": 57,
+    #    `clones_genomic.png` and `truth_combined` both draw. 56: #540's
+    #    copy-start records, `CopyCall` and `CopyStart`; #547 moved `Row`,
+    #    the registry of the starts set aside, to `sandbox/`.
+    "classes": 56,
     # NB step 4: 18 records became NamedTuples; the dataclasses left carry
     #    mutable state, machinery or a `__post_init__` (#517 D). Step 8 moved
     #    7 dataclasses and 1 NamedTuple to `sandbox/`.
     "dataclasses": 19,
-    # NB 24: `analysis.GenomicTruth` (the truth page). 27: #540's
-    #    `CopyCall`, `CopyStart` and `Row`.
-    "NamedTuples": 27,
+    # NB 24: `analysis.GenomicTruth` (the truth page). 26: #540's
+    #    `CopyCall` and `CopyStart` (`Row` in `sandbox/`, #547).
+    "NamedTuples": 26,
 }
 """`python/port` outside `sandbox/`."""
 

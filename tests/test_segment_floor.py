@@ -126,7 +126,7 @@ def test_floor_bins_counts_normal_umi_as_a_sum_over_the_normal_spots() -> None:
     [
         ({}, (None, None)),
         ({"min_segment_mb": True}, (0.75, None)),
-        ({"min_segment_normal_umi": True}, (None, 1000.0)),
+        ({"min_segment_normal_umi": True}, (None, 300.0)),
         ({"min_segment_mb": 0.5, "min_segment_normal_umi": 600}, (0.5, 600.0)),
         ({"min_segment_mb": False, "min_segment_normal_umi": "none"}, (None, None)),
     ],
@@ -134,7 +134,7 @@ def test_floor_bins_counts_normal_umi_as_a_sum_over_the_normal_spots() -> None:
 def test_the_floor_is_off_unless_the_config_sets_it(
     quality: dict[str, object], expected: tuple[float | None, float | None]
 ) -> None:
-    """Absent, `false` or `none` is off; `true` is 0.75 Mb or 1,000 normal UMIs; a number is itself."""
+    """Absent, `false` or `none` is off; `true` is 0.75 Mb or 300 normal UMIs; a number is itself."""
     from cnaster.config import YAMLConfig, get_global_config, set_global_config
     from port.patch.omics.blocks import segment_floor
 

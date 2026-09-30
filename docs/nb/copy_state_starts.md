@@ -73,7 +73,9 @@ from, seeds every BAF near 0.01 and no read-depth state below neutral
 `copy_starts.instance` corrects both: exposure over 100, and the B column
 over the common trial count, as `sal`'s `rate_space` writes it. An earlier
 run on the uncorrected instance is discarded. These numbers are the
-corrected instance's; `--sal` itself is unchanged until #547.
+corrected instance's; #547 corrects `--sal`'s, and installs the lattice
+under it with a 300 normal-UMI segment floor. The other starts are in
+`port.sandbox.extensions.copy_starts`.
 
 **Conditions.**
 - The calls come from one `--sal --oracle-start` run of dev_tree r0, rebuilt

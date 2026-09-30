@@ -94,7 +94,11 @@ def test_the_start_is_handed_over_only_under_its_option(
 
     assert seen[0] is distinct.gmm_init
     assert seen[1].func is sal_mixture.gmm_init
-    assert seen[1].keywords == {"start": sal_mixture.DEFAULT, "distinct": True}
+    assert seen[1].keywords == {
+        "start": sal_mixture.DEFAULT,
+        "distinct": True,
+        "baf_start": None,
+    }
 
 
 @pytest.mark.patch
