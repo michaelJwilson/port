@@ -464,9 +464,9 @@ def _panel(axis: Any, entry: dict[str, Any], colour: str, label: str,
     """The fitted curve and its 95% band, with the finer binned rates on it.
 
     Curves and bins are in log10 of the covariate; they are drawn at
-    `10^x / unit` on a log axis, or at `x` itself where `unit` is None. Points are drawn where their bin holds at
-    least `MIN_PER_BIN // 2` items, shifted `dodge` dex so bars of
-    neighbouring series do not overlap.
+    `10^x / unit` on a log axis, or at `x` itself where `unit` is None.
+    Points are drawn for every bin holding an item, shifted `dodge` dex so
+    bars of neighbouring series do not overlap.
     """
 
     def at(x: np.ndarray) -> np.ndarray:
@@ -482,7 +482,7 @@ def _panel(axis: Any, entry: dict[str, Any], colour: str, label: str,
     shown = entry.get("display") or entry
     rate = np.array(shown["rate"])
     low, high = np.array(shown["low"]), np.array(shown["high"])
-    kept = np.array(shown["n"]) >= MIN_PER_BIN // 2
+    kept = np.array(shown["n"]) > 0
     x = at(np.array(shown["centres"])[kept] + dodge)
     axis.errorbar(x, rate[kept], yerr=[rate[kept] - low[kept], high[kept] - rate[kept]],
                   color=colour, lw=1, ls="none", marker="o", ms=4, capsize=2,
@@ -507,7 +507,7 @@ def _false_positives(axis: Any, entry: dict[str, Any]) -> None:
     x, n = np.array(shown["centres"]), np.array(shown["n"], dtype=float)
     rate = np.array(shown["rate"])
     low, high = np.array(shown["low"]), np.array(shown["high"])
-    seen = (n >= MIN_PER_BIN // 2) & (rate > 0)
+    seen = (n > 0) & (rate > 0)
     axis.errorbar(x[seen], rate[seen],
                   yerr=[rate[seen] - np.maximum(low[seen], rate[seen] / 10),
                         high[seen] - rate[seen]],
