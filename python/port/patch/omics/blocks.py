@@ -44,7 +44,7 @@ from cnaster.omics import assign_initial_blocks as _UPSTREAM_ASSIGN_INITIAL_BLOC
 from cnaster.omics import create_bin_ranges as _UPSTREAM_CREATE_BIN_RANGES
 from cnaster.spatio_genomic_counts import SpatioGenomicCounts
 
-from port.extensions.segments import current, observe
+from port.extensions.segments import Segmentation, current, observe
 from port.patch.reference import get_reference_genes
 
 logger = get_logger(__name__, start_time=start_time)
@@ -746,5 +746,112 @@ def create_bin_ranges(
             "filter removed, so the gene-level output can index them (#105)."
         )
         table = table.loc[~unbinned]
+
+    min_segment, min_normal = segment_floor()
+
+    if min_segment is not None or min_normal is not None:
+        table = floor_bins(
+            table,
+            adata,
+            normal_candidates,
+            min_length=(min_segment or 0.0) * 1e6,
+            min_normal_umi=max(float(secondary_min_normal_umi), min_normal or 0.0),
+        )
+
+    return table
+
+
+MIN_SEGMENT_MB = 0.75
+"""The read-depth segment floor `quality.min_segment_mb: true` sets, in Mb (#551).
+
+On dev_tree r0 it takes tumour-clone RDR outlier rows (|log RDR deviation| >
+0.5 at planted-neutral segments) from 1,163 to 104, and the segments from
+2,895 to 1,265."""
+
+MIN_SEGMENT_NORMAL_UMI = 1_000.0
+"""The normal-UMI floor `quality.min_segment_normal_umi: true` sets (#551).
+
+On dev_tree r0, alone, it takes the same outlier rows from 1,163 to 288 and
+the segments from 2,895 to 2,015; with 0.5 Mb, to 105 and 1,423."""
+
+
+def segment_floor() -> tuple[float | None, float | None]:
+    """`(Mb, normal UMI)`: `quality.min_segment_mb` and `quality.min_segment_normal_umi` from `cnaster`'s global config.
+
+    Each is `None` if absent, `false` or `none`, and `true` is its default,
+    `MIN_SEGMENT_MB` or `MIN_SEGMENT_NORMAL_UMI`. Either one switches the
+    floor on; the normal floor is then at least `secondary_min_normal_umi`.
+    """
+    from cnaster.config import get_global_config
+
+    section = getattr(get_global_config(), "quality", None)
+
+    def read(key: str, default: float) -> float | None:
+        value = getattr(section, key, None)
+        if value is None or value is False:
+            return None
+        return default if value is True else float(value)
+
+    return (
+        read("min_segment_mb", MIN_SEGMENT_MB),
+        read("min_segment_normal_umi", MIN_SEGMENT_NORMAL_UMI),
+    )
+
+
+def floor_bins(
+    table: Any,
+    adata: Any,
+    normal_candidates: Any,
+    *,
+    min_length: float,
+    min_normal_umi: float,
+) -> Any:
+    """`table`'s bins merged within each contig to `min_length` bp and `min_normal_umi` normal-spot UMIs (#551).
+
+    `cnaster`'s `create_bin_ranges` states `secondary_min_normal_umi` and
+    does not guarantee it: it merges only inside each BAF breakpoint run, and
+    a run of one block is never checked. `Segmentation.floored` merges
+    across them. Normal UMIs are counted per gene over `normal_candidates`, as
+    `cnaster` counts them per block, without the genes the
+    differential-expression filter removed (#440). While the run records its
+    lineage, the merge is recorded as `bins-floored` and the floor is set, so
+    every later level is checked against it.
+    """
+    lineage = current()
+    genes = None if lineage is None else lineage.genes
+    bins = Segmentation.from_table(table, "bin_id", genes)
+
+    counts = adata.layers["count"]
+    normal = np.zeros(adata.shape[0], dtype=bool)
+    if normal_candidates is not None:
+        normal[np.asarray(normal_candidates)] = True
+    per_column = np.asarray(counts[normal].sum(axis=0), dtype=np.float64).ravel()
+
+    names = table["gene"].reindex(bins.genes.key).to_numpy()
+    gene_names = adata.var.index.to_numpy()
+    known = pd.notna(names)
+    columns = np.zeros(names.size, dtype=np.int64)
+    columns[known], found = _positions(names[known], gene_names)
+    known[known] = found
+    if lineage is not None and lineage.excluded_genes:
+        known &= ~np.isin(names, list(lineage.excluded_genes))
+
+    weight = np.where(known, per_column[columns], 0.0)
+    floored = bins.floored(min_length, weight, min_normal_umi, name="bins-floored")
+    parent = dict(
+        zip(bins.ids.tolist(), floored.label[bins.first].tolist(), strict=True)
+    )
+
+    logger.info(
+        f"Floored {bins.n_segments} bins to {floored.n_segments}: each at least "
+        f"{min_length:_.0f} bp and {min_normal_umi:g} normal UMI (#551)."
+    )
+
+    table = table.copy()
+    table["bin_id"] = table["bin_id"].map(parent)
+
+    if lineage is not None:
+        lineage.floor = (min_length, weight, min_normal_umi)
+        lineage.record(floored, "bins-floored")
 
     return table
