@@ -598,8 +598,14 @@ def figures(summary: dict[str, Any], into: Path) -> list[Path]:
         third.set_xlabel(r"$\log_{10} |{\rm SNP\ UMIs\ in\ segment}|$")
         third.set_ylabel("False Positive Rate")
 
+        third.set_yticks(
+            [3e-4, 1e-3, 3e-3],
+            [r"$3\times10^{-4}$", r"$10^{-3}$", r"$3\times10^{-3}$"],
+        )
+        third.yaxis.set_minor_formatter(mpl.ticker.NullFormatter())
         for axis in (left, right):
             axis.set_ylim(-0.02, 1.02)
+            axis.set_yticks(np.linspace(0.0, 1.0, 6))
             axis.legend(loc="upper left", frameon=True, framealpha=0.85,
                         edgecolor="none", fancybox=False, borderpad=0.15,
                         labelspacing=0.1, handlelength=0.8, handletextpad=0.3,
@@ -607,6 +613,8 @@ def figures(summary: dict[str, Any], into: Path) -> list[Path]:
 
         # NB the layout frozen once, then each letter set over its panel's
         #    leftmost text -- the y label -- as the spatial page sets its own.
+        # NB constrained layout settles over draws; two, then frozen.
+        fig.canvas.draw()
         fig.canvas.draw()
         fig.set_layout_engine("none")
         to_figure = fig.transFigure.inverted()
