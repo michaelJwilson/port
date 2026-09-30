@@ -43,5 +43,10 @@
     "t_start": 0.25,
     "sweeps": 4000,
     "untuned": "sal:wolff's tuned setting, reused (#559)"
+  },
+  "sal:cluster-tempering": {
+    "t_start": 1.0,
+    "sweeps": 250,
+    "untuned": "sal:tempering's tuned setting, reused"
   }
 }

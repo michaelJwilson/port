@@ -56,12 +56,13 @@ DROPPED = frozenset({"sal:bifurcation", "port:alpha", "port:alpha-rust-merge"})
 
 EXTRA = (
     "sal:trws",
+    "sal:cluster-tempering",
     "port:sw-field",
     "port:sw-field-glauber",
     "port:wolff-field",
     "port:wolff-field-glauber",
 )
-"""Entries beyond the harness's: TRW-S's decoded labelling, and #559's field-weighted cluster moves."""
+"""Entries beyond the harness's: TRW-S's decoded labelling, sal's cluster tempering, and #559's field-weighted cluster moves."""
 
 SAMPLERS = {
     "sal:anneal": "single-site",
@@ -79,7 +80,11 @@ FIELD_WEIGHTED = {
 }
 """#559's cluster moves (`port.sandbox.known_field.cluster`): the move, and whether a Glauber sweep follows each."""
 
-TUNED = (*SAMPLERS, *FIELD_WEIGHTED)
+CLUSTER_TEMPERING = "sal:cluster-tempering"
+"""sal's `cluster_tempering` (its #1090): one Swendsen-Wang pass per replica per step and Houdayer moves between
+replicas, where `sal:tempering` runs single-site heat-bath sweeps; on `sal:tempering`'s ladder and setting."""
+
+TUNED = (*SAMPLERS, *FIELD_WEIGHTED, CLUSTER_TEMPERING)
 """Every entry that runs at a tuned annealing setting."""
 
 T_END = 0.05
@@ -160,6 +165,19 @@ def _sample(solver: str, field: np.ndarray, start: np.ndarray, rng: np.random.Ge
     from sal.search.ground_state import Problem, run_annealed
 
     sweeps = int(setting["sweeps"])
+    if solver == CLUSTER_TEMPERING:
+        from sal.sample.potts_mcmc.chains import cluster_tempering
+
+        # NB coldest first, as sal requires
+        ladder = tuple(
+            float(t) for t in np.geomspace(T_END, setting["t_start"], REPLICAS)
+        )
+        return np.asarray(
+            cluster_tempering(
+                graph, field, ladder, rng, max(1, sweeps // REPLICAS)
+            ).best,
+            dtype=np.int64,
+        )
     if solver in FIELD_WEIGHTED:
         from port.sandbox.known_field.cluster import anneal
 

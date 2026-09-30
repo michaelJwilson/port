@@ -26,39 +26,53 @@ import numpy as np
 import pandas as pd
 
 NAMES = {
-    "field_argmax": "Field-argmax", "icm": "ICM", "icm-random": "ICM-random", "anneal": "Glauber",
-    "swendsen-wang": "Swendsen-Wang", "wolff": "Wolff", "tempering": "Parallel tempering",
-    "alpha-expansion": "Alpha-expansion", "alpha-beta-swap": "Alpha-beta-swap", "max-product": "Max-product",
-    "alpha-rust": "Alpha-rust", "icm-numba": "ICM-numba", "alpha-rust-icm": "Alpha-rust-ICM",
-    "alpha-rust-fuse-merge": "Alpha-rust-fuse", "trws": "TRW-S", "sw-field": "SW-field",
-    "sw-field-glauber": "SW-field+Glauber", "wolff-field": "Wolff-field", "wolff-field-glauber": "Wolff-field+Glauber",
+    "field_argmax": "field-argmax", "icm": "icm", "icm-random": "icm-random", "anneal": "glauber",
+    "swendsen-wang": "swendsen-wang", "wolff": "wolff", "tempering": "parallel tempering",
+    "alpha-expansion": "alpha-expansion", "alpha-beta-swap": "alpha-beta-swap", "max-product": "max-product",
+    "alpha-rust": "alpha-rust", "icm-numba": "icm-numba", "alpha-rust-icm": "alpha-rust-icm",
+    "alpha-rust-fuse-merge": "alpha-rust-fuse", "trws": "trw-s", "sw-field": "sw-field",
+    "cluster-tempering": "cluster tempering", "sw-field-glauber": "sw-field + glauber", "wolff-field": "wolff-field", "wolff-field-glauber": "wolff-field + glauber",
 }  # fmt: skip
+
+
+def tt(name: str) -> str:
+    """`name` in typewriter type inside running text: mathtext's `\\mathtt`, a hyphen kept a hyphen."""
+    body = (
+        name.replace("_", r"\_")
+        .replace("-", r"{\text{-}}")
+        .replace("+", "{+}")
+        .replace(" ", r"\ ")
+    )
+    return rf"$\mathtt{{{body}}}$"
+
+
 TABLE = (
     ("Graph cuts", (
-        ("sal:alpha-expansion", "each clone in turn claims spots by a min cut"),
-        ("sal:alpha-beta-swap", "min-cut swaps between two clones at a time"),
-        ("port:alpha-rust", "alpha-expansion, Rust min cut"),
-        ("port:alpha-rust-fuse-merge", "Alpha-rust fused with argmax descent (--sal)"),
-        ("port:alpha-rust-icm", "Alpha-rust, then cnaster's ICM"),
+        ("sal:alpha-expansion", "Each clone in turn claims spots by a min cut"),
+        ("sal:alpha-beta-swap", "Min-cut swaps between two clones at a time"),
+        ("port:alpha-rust", f"{tt('alpha-expansion')}, Rust min cut"),
+        ("port:alpha-rust-fuse-merge", f"{tt('alpha-rust')} fused with argmax descent (--sal)"),
+        ("port:alpha-rust-icm", f"{tt('alpha-rust')}, then cnaster's {tt('icm')}"),
     )),
     ("Local descent", (
-        ("sal:icm", "each spot to its best clone given neighbours, in order"),
-        ("port:icm-numba", "sal's ICM, compiled"),
-        ("sal:icm-random", "ICM in a random order: heat bath at T = 0"),
-        ("port:icm", "cnaster's ICM, random spot order"),
-        ("sal:field_argmax", "each spot's best clone, neighbours ignored"),
+        ("sal:icm", "Each spot to its best clone given neighbours, in order"),
+        ("port:icm-numba", f"sal's {tt('icm')}, compiled"),
+        ("sal:icm-random", f"{tt('icm')} in a random order: heat bath at T = 0"),
+        ("port:icm", f"cnaster's {tt('icm')}, random spot order"),
+        ("sal:field_argmax", "Each spot's best clone, neighbours ignored"),
     )),
     ("Sampling, message passing", (
-        ("sal:anneal", "single-site heat bath (Glauber), annealed"),
-        ("sal:swendsen-wang", "cluster moves over bonded spots, annealed"),
-        ("sal:wolff", "one grown cluster flipped per move, annealed"),
-        ("port:sw-field", "SW, each cluster's clone drawn from its field"),
-        ("port:sw-field-glauber", "SW-field, a Glauber sweep after each move"),
-        ("port:wolff-field", "Wolff, the cluster's clone drawn from its field"),
-        ("port:wolff-field-glauber", "Wolff-field, a Glauber sweep after each move"),
-        ("sal:tempering", "replicas on a temperature ladder, swapped"),
-        ("sal:max-product", "loopy max-product belief propagation"),
-        ("sal:trws", "tree-reweighted message passing: its decode"),
+        ("sal:anneal", "Single-site heat bath, annealed"),
+        ("sal:swendsen-wang", "Cluster moves over bonded spots, annealed"),
+        ("sal:wolff", "One grown cluster flipped per move, annealed"),
+        ("port:sw-field", f"{tt('swendsen-wang')}, each cluster's clone drawn from its field"),
+        ("port:sw-field-glauber", f"{tt('sw-field')}, a {tt('glauber')} sweep after each move"),
+        ("port:wolff-field", f"{tt('wolff')}, the cluster's clone drawn from its field"),
+        ("port:wolff-field-glauber", f"{tt('wolff-field')}, a {tt('glauber')} sweep after each move"),
+        ("sal:tempering", f"{tt('glauber')} replicas on a temperature ladder, swapped"),
+        ("sal:cluster-tempering", f"{tt('swendsen-wang')} replicas on the ladder, Houdayer moves between them"),
+        ("sal:max-product", "Loopy max-product belief propagation"),
+        ("sal:trws", "Tree-reweighted message passing: its decode"),
     )),
 )  # fmt: skip
 NUMBER = {
@@ -73,9 +87,16 @@ FLOOR = 1e-2
 """The gap figure's "0": runs within `FLOOR` nats of the bound."""
 
 
+def _colour(solver: str) -> Any:
+    """The solver's colour: `tab20` by its number, cycled."""
+    from matplotlib import colormaps
+
+    return colormaps["tab20"]((NUMBER[solver] - 1) % 20)
+
+
 def label(solver: str) -> str:
     kind, name = solver.split(":", 1)
-    return f"{NAMES[name]}$^{{{'s' if kind == 'sal' else 'p'}}}$"
+    return NAMES[name]
 
 
 def _bars(values: pd.Series) -> tuple[float, list[list[float]]]:
@@ -123,7 +144,9 @@ def _table(
     rank_cost: dict[str, int] | None = None,
     rank_missed: dict[str, int] | None = None,
 ) -> None:
-    n_rows = sum(1 + len(rows) for _, rows in TABLE)
+    n_rows = (
+        sum(1 + len(rows) for _, rows in TABLE) + len(TABLE) - 1
+    )  # NB a blank row between groups
     head = 0.06
     step = (1 - head) / (n_rows + 0.5)
 
@@ -141,11 +164,12 @@ def _table(
     rule(1.0, 1.2)
     for x, text in (
         (0.01, "#"),
-        (0.07, "Solver"),
-        (0.33, "Description"),
-        (0.785, "$R_C$"),
-        (0.84, "$R_M$"),
-        (0.99, "Missed [%]"),
+        (0.07, "Algorithm"),
+        (0.79, "Description"),
+        (0.38, "Source"),
+        (0.53, "$R_C$"),
+        (0.59, "$R_M$"),
+        (0.76, "Missed [%]"),
     ):
         tab.text(
             x,
@@ -155,12 +179,12 @@ def _table(
             weight="bold",
             transform=tab.transAxes,
             va="center",
-            ha="left" if x < 0.7 else "right",
+            ha="right" if 0.4 < x < 0.78 else "left",
         )
     rule(1 - head, 0.7)
     y = 1 - head + step * 0.25
-    for group, rows in TABLE:
-        y -= step
+    for k, (group, rows) in enumerate(TABLE):
+        y -= step * (2 if k else 1)
         tab.text(
             0.07,
             y,
@@ -181,12 +205,26 @@ def _table(
                 va="center",
             )
             tab.text(
-                0.09, y, label(solver), fontsize=8, transform=tab.transAxes, va="center"
+                0.09,
+                y,
+                label(solver),
+                fontsize=8,
+                family="monospace",
+                transform=tab.transAxes,
+                va="center",
             )
-            tab.text(0.33, y, text, fontsize=8, transform=tab.transAxes, va="center")
+            tab.text(0.79, y, text, fontsize=8, transform=tab.transAxes, va="center")
+            tab.text(
+                0.38,
+                y,
+                solver.split(":", 1)[0],
+                fontsize=8,
+                transform=tab.transAxes,
+                va="center",
+            )
             for x, rank in (
-                (0.785, (rank_cost or {}).get(solver)),
-                (0.84, (rank_missed or {}).get(solver)),
+                (0.53, (rank_cost or {}).get(solver)),
+                (0.59, (rank_missed or {}).get(solver)),
             ):
                 if rank is not None:
                     tab.text(
@@ -201,7 +239,7 @@ def _table(
             if solver in wrong:
                 raw, polished = wrong[solver]
                 tab.text(
-                    0.99,
+                    0.76,
                     y,
                     f"{raw:.1f} / {polished:.1f}",
                     fontsize=8,
@@ -269,7 +307,6 @@ def figure(record: dict[str, Any], out: Path) -> Path:
     grid = fig.add_gridspec(1, 2, width_ratios=[1.2, 1], wspace=0.04)
     ax, tab = fig.add_subplot(grid[0]), fig.add_subplot(grid[1])
     tab.axis("off")
-    ax.axhspan(FLOOR * 0.6, FLOOR * 1.4, color="0.92", zorder=0)
     truths = np.array(
         [
             max(p["truth_energy"] - p["bound"], FLOOR)
@@ -292,15 +329,21 @@ def figure(record: dict[str, Any], out: Path) -> Path:
     crowded: list[tuple[float, float, str]] = []
     for solver, g in d.groupby("solver"):
         port = solver.startswith("port:")
-        colour, marker = ("C1", "s") if port else ("C0", "o")
+        colour = _colour(str(solver))
+        marker = "s" if port else "o"
         x, xe = _bars(g.seconds)
+        # NB each solver displaced by its own factor, up to 0.1 decades either side, so equal runtimes do not overlap
+        spread = 10 ** (0.2 * (NUMBER[str(solver)] / max(NUMBER.values()) - 0.5))
+        x *= spread
+        xe = [[e * spread for e in side] for side in xe]
         y, ye = _bars(g.y)
         ax.errorbar(
             x, y, xerr=xe, yerr=ye, fmt=marker, color=colour, ms=5, lw=0.8, capsize=2.5
         )
         px, pxe = _bars(g.pseconds)
         py, pye = _bars(g.py)
-        px *= DODGE
+        px *= DODGE * spread
+        pxe = [[e * spread for e in side] for side in pxe]
         if (g.y - g.py).abs().max() > 0.5:
             ax.annotate(
                 "",
@@ -327,7 +370,8 @@ def figure(record: dict[str, Any], out: Path) -> Path:
             )
         bx, bxe = _bars(g.bseconds)
         by, bye = _bars(g.by)
-        bx *= DODGE**2
+        bx *= DODGE**2 * spread
+        bxe = [[e * spread for e in side] for side in bxe]
         if (g.py - g.by).abs().max() > 0.5:
             ax.annotate(
                 "",
@@ -363,6 +407,7 @@ def figure(record: dict[str, Any], out: Path) -> Path:
                 textcoords="offset points",
                 fontsize=8,
                 weight="bold",
+                color=_colour(str(solver)),
             )
 
     # NB solvers at the lowest energy: numbers in a row above them, each tied to its point
@@ -374,7 +419,7 @@ def figure(record: dict[str, Any], out: Path) -> Path:
             spots.append(max(x, spots[-1] * 1.35) if spots else x)
         top = FLOOR * 30
         for (x, y, solver), tx in zip(crowded, spots, strict=True):
-            ax.annotate(str(NUMBER[solver]), (x, y), xytext=(tx, top), textcoords="data", fontsize=8, weight="bold",
+            ax.annotate(str(NUMBER[solver]), (x, y), xytext=(tx, top), textcoords="data", fontsize=8, weight="bold", color=_colour(solver),
                         ha="center", va="bottom", arrowprops={"arrowstyle": "-", "color": "0.6", "lw": 0.5, "shrinkA": 0, "shrinkB": 3})  # fmt: skip
 
     ax.set_xscale("log")
@@ -395,17 +440,16 @@ def figure(record: dict[str, Any], out: Path) -> Path:
             lambda v, _: "0" if v == FLOOR else f"$10^{{{round(np.log10(v))}}}$"
         )
     )
-    ax.set_ylabel("Gap [nats]")
+    ax.set_ylabel("Gap [Nats]")
     ax.set_xlabel("Runtime [s]")
 
-    ax.plot([], [], "o", color="C0", label="sal")
-    ax.plot([], [], "s", color="C1", label="port")
+    ax.plot([], [], "o", color="0.4", label="sal")
+    ax.plot([], [], "s", color="0.4", label="port")
     ax.plot([], [], "o", color="0.4", mfc="white", label="ICM polish")
     ax.plot([], [], "D", color="0.4", mfc="white", ms=4, label="Color merge")
-    ax.fill_between([], [], [], color="0.55", alpha=0.35, lw=0, label="Truth, 10-90%")
     ax.plot([], [], color="k", lw=0.9, label="Truth")
     ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.1), ncol=3, fontsize=7.5, frameon=False,
-              title=f"{Path(record['manifest']).stem}: median for {n_problems} realization{'s' if n_problems > 1 else ''} $\\times$ {n_starts} random starts",
+              title=f"{Path(record['manifest']).stem}: Median for {n_problems} realization{'s' if n_problems > 1 else ''} $\\times$ {n_starts} random starts",
               title_fontsize=7.5)  # fmt: skip
     # NB ranked on each solver's own output: R_C by the median gap to the bound, R_M by the median Missed
     wrong = missed(d, n_spots(record))
