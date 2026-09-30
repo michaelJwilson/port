@@ -486,9 +486,70 @@ def with_error(p: np.ndarray, error: float) -> np.ndarray:
     return shared
 
 
+Channel = Callable[..., np.ndarray]
+"""One channel's log density: `(rows, states)` at a parameter per state, or `(rows,)` at `parameter[state]`."""
+
+
+def _channels(
+    observations: np.ndarray, covariate: np.ndarray
+) -> tuple[Channel, Channel]:
+    """`sal`'s `CountPairEmission` in its independent form on one instance, by channel, in NumPy (#540).
+
+    `depth(rate, size, state=None)` is a negative binomial on each row's
+    total at `rate x exposure`; `allele(share, concentration, state=None)` a
+    beta-binomial on its B count out of its trials; a zero exposure or zero
+    trials scores 0, `sal`'s unobserved (issue #933). Each channel's
+    parameter-free terms are computed once, `log B(a, b)` once per state,
+    and a channel is scored on its own, at every state or at each row's own
+    (`state`): what the lattice's shape fits need, where `sal`'s density
+    scores both channels at every state (`test_copy_starts`, against it).
+    """
+    from scipy.special import betaln, gammaln
+
+    total, b = observations[:, 0], observations[:, 1]
+    exposure, trials = covariate[:, 0], covariate[:, 1]
+    counted, sampled = exposure > 0, trials > 0
+    unit = np.where(counted, exposure, 1.0)
+    depth_constant = np.where(counted, -gammaln(total + 1.0), 0.0)
+    allele_constant = np.where(
+        sampled,
+        gammaln(trials + 1.0) - gammaln(b + 1.0) - gammaln(trials - b + 1.0),
+        0.0,
+    )
+
+    def columns(state: Any, *arrays: np.ndarray) -> list[np.ndarray]:
+        return [a[:, None] if state is None else a for a in arrays]
+
+    def depth(rate: np.ndarray, size: float, state: Any = None) -> np.ndarray:
+        n, e, keep, constant = columns(state, total, unit, counted, depth_constant)
+        mean = (rate if state is None else rate[state]) * e
+        scores = (
+            gammaln(n + size)
+            - gammaln(size)
+            + size * np.log(size / (size + mean))
+            + n * np.log(mean / (size + mean))
+        )
+        out: np.ndarray = np.where(keep, scores + constant, 0.0)
+        return out
+
+    def allele(
+        share: np.ndarray, concentration: float, state: Any = None
+    ) -> np.ndarray:
+        alpha, beta = share * concentration, (1.0 - share) * concentration
+        normalizer = betaln(alpha, beta)
+        if state is not None:
+            alpha, beta, normalizer = alpha[state], beta[state], normalizer[state]
+        k, n, keep, constant = columns(state, b, trials, sampled, allele_constant)
+        scores = betaln(k + alpha, n - k + beta) - normalizer
+        out: np.ndarray = np.where(keep, scores + constant, 0.0)
+        return out
+
+    return depth, allele
+
+
 def _fit_shapes(
-    scored: Callable[[np.ndarray, np.ndarray, float, float], np.ndarray],
-    log_mu: np.ndarray,
+    channels: tuple[Channel, Channel],
+    rate: np.ndarray,
     p: np.ndarray,
     responsibility: np.ndarray,
     concentration: float,
@@ -497,16 +558,35 @@ def _fit_shapes(
     """The NB size, the BB concentration, then the BAF error rate, each maximizing the rows' likelihood weighted by `responsibility`.
 
     `responsibility` is `(rows, states)`: one-hot for a hard assignment, the
-    E step's posteriors for EM, whose M step this is.
+    E step's posteriors for EM, whose M step this is. The size moves the
+    depth channel alone and the concentration and error rate the allele
+    channel alone, so each is fitted on its own channel; under a hard
+    assignment, at each row's own state.
     """
     from scipy.optimize import minimize_scalar
 
-    chosen = np.flatnonzero(responsibility.sum(axis=0) > 1e-8)
-    weights = responsibility[:, chosen]
+    depth_of, allele_of = channels
+    hard = bool(np.all((responsibility == 0.0) | (responsibility == 1.0)))
+    if hard:
+        state = np.argmax(responsibility, axis=1)
 
-    def along(r: float, c: float, e: float) -> float:
-        density = scored(log_mu[chosen], with_error(p[chosen], e), r, c)
-        return float((weights * density).sum())
+        def depth(r: float) -> float:
+            return float(depth_of(rate, r, state).sum())
+
+        def allele(c: float, e: float) -> float:
+            share = np.clip(with_error(p, e), 1e-4, 1 - 1e-4)
+            return float(allele_of(share, c, state).sum())
+
+    else:
+        chosen = np.flatnonzero(responsibility.sum(axis=0) > 1e-8)
+        weights = responsibility[:, chosen]
+
+        def depth(r: float) -> float:
+            return float((weights * depth_of(rate[chosen], r)).sum())
+
+        def allele(c: float, e: float) -> float:
+            share = np.clip(with_error(p[chosen], e), 1e-4, 1 - 1e-4)
+            return float((weights * allele_of(share, c)).sum())
 
     def best(objective: Callable[[float], float], low: float, high: float) -> float:
         found = minimize_scalar(
@@ -517,9 +597,9 @@ def _fit_shapes(
         )
         return float(np.exp(found.x))
 
-    size = best(lambda r: along(r, concentration, error), 0.5, 1e4)
-    concentration = best(lambda c: along(size, c, error), 1.0, 1e6)
-    error = best(lambda e: along(size, concentration, e), 1e-4, LATTICE_ERROR_CEILING)
+    size = best(depth, 0.5, 1e4)
+    concentration = best(lambda c: allele(c, error), 1.0, 1e6)
+    error = best(lambda e: allele(concentration, e), 1e-4, LATTICE_ERROR_CEILING)
     return size, concentration, error
 
 
@@ -531,7 +611,8 @@ def lattice_start(
     Every `(A, B)` with `0 < A + B` up to `_lattice_ceiling` is placed at
     its `(mu, p)` (`copy_likelihood._parameters`) and scored by the IID
     emission the mixture fit itself uses, `sal`'s `CountPairEmission` on
-    `instance(call)`, each row on its own with its exposure and trials.
+    `instance(call)` as `_channels` evaluates it, each row on its own with its
+    exposure and trials.
 
     - Rows are assigned by likelihood plus log occupancy, iterated, the
       classification likelihood a mixture's weights give. With `em`, the
@@ -550,15 +631,14 @@ def lattice_start(
     - The `n_states` states of highest weight are kept. For BAF only the
       depth channel is a constant, so the lattice is its allele shares.
     """
-    import torch
-    from sal.emissions import CountPairEmission
-
     from port.extensions.copy_likelihood import _parameters, candidates
 
     held = instance(call)
-    observations = torch.as_tensor(np.asarray(held.observations, dtype=np.float64))
-    covariate = held.conditioned
-    trials = float(held.at.trials)
+    channels = _channels(
+        np.asarray(held.observations, dtype=np.float64),
+        np.asarray(held.conditioned, dtype=np.float64),
+    )
+    depth, allele = channels
     copies = candidates(_lattice_ceiling(call))
 
     def rates(log_mu: np.ndarray) -> np.ndarray:
@@ -571,17 +651,7 @@ def lattice_start(
     ) -> np.ndarray:
         """`(rows, states)` log density."""
         share = np.clip(p, 1e-4, 1 - 1e-4)
-        family = CountPairEmission(
-            np.full(p.size, size),
-            rates(log_mu),
-            share * concentration,
-            (1.0 - share) * concentration,
-            np.full(p.size, trials),
-            joint=False,
-        )
-        density: np.ndarray = (
-            family.log_density(observations, covariate).detach().numpy()
-        )
+        density: np.ndarray = depth(rates(log_mu), size) + allele(share, concentration)
         return density
 
     def fitted_weights(
@@ -635,7 +705,9 @@ def lattice_start(
         responsibility, _, _ = fitted_weights(
             scored(log_mu, with_error(p, error), size, concentration)
         )
-        r, c, e = _fit_shapes(scored, log_mu, p, responsibility, concentration, error)
+        r, c, e = _fit_shapes(
+            channels, rates(log_mu), p, responsibility, concentration, error
+        )
         return fitted_weights(scored(log_mu, with_error(p, e), r, c))[2]
 
     purity, scale = max(grid, key=fitted)
@@ -646,7 +718,7 @@ def lattice_start(
             scored(log_mu, with_error(p, error), size, concentration)
         )
         size, concentration, error = _fit_shapes(
-            scored, log_mu, p, responsibility, concentration, error
+            channels, rates(log_mu), p, responsibility, concentration, error
         )
 
     p = with_error(p, error)
