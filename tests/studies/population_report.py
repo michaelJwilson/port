@@ -351,16 +351,18 @@ def summarize(out: Path, study2_j: float, seed: int = 544) -> dict[str, Any]:
             ),
         }
 
-    # NB Study 3, specificity, is read on Study 2's members and resamples.
+    # NB Study 3, the false-positive rate (1 - specificity), is read on
+    #    Study 2's members and resamples.
     segments = neutral(out)
     segments = segments[segments["J"] == study2_j]
+    segments = segments.assign(false_positive=1 - segments["specific"].astype(int))
     study3 = {
         "segments": int(segments["count"].sum()),
         "members": int(segments["seed"].nunique()) if len(segments) else 0,
-        "specific": curve(
+        "false_positive": curve(
             segments,
             "log_snp_umis",
-            "specific",
+            "false_positive",
             SNP_EDGES,
             members2,
             weights2,
@@ -487,6 +489,36 @@ def _panel(axis: Any, entry: dict[str, Any], colour: str, label: str,
                   label=None if curved else label)  # fmt: skip
 
 
+def _false_positives(axis: Any, entry: dict[str, Any]) -> None:
+    """The false-positive rate on a log axis: rare, so a linear one reads 0.
+
+    The fit and its band where positive; a bin's rate with its resampled
+    95% interval where it saw a false positive, and where it saw none, a
+    downward marker at `3 / n`, the rule of three's 95% upper bound.
+    """
+    colour = CLASS_COLOURS["all"]
+    grid, fitted = np.array(entry["grid"]), np.array(entry["fitted"])
+    if grid.size and np.isfinite(fitted).any():
+        low, high = np.array(entry["band"])
+        axis.fill_between(
+            grid, low, high, where=high > 0, color=colour, alpha=0.15, lw=0
+        )
+        axis.plot(grid, fitted, color=colour, lw=2)
+    shown = entry.get("display") or entry
+    x, n = np.array(shown["centres"]), np.array(shown["n"], dtype=float)
+    rate = np.array(shown["rate"])
+    low, high = np.array(shown["low"]), np.array(shown["high"])
+    seen = (n >= MIN_PER_BIN // 2) & (rate > 0)
+    none = (n >= MIN_PER_BIN // 2) & (rate == 0)
+    axis.errorbar(x[seen], rate[seen],
+                  yerr=[rate[seen] - np.maximum(low[seen], rate[seen] / 10),
+                        high[seen] - rate[seen]],
+                  color=colour, lw=1, ls="none", marker="o", ms=4, capsize=2)  # fmt: skip
+    axis.plot(x[none], 3 / n[none], color=colour, ls="none", marker="v", ms=5,
+              markerfacecolor="none")  # fmt: skip
+    axis.set_yscale("log")
+
+
 def _dodges(n: int, width: float) -> list[float]:
     return list(np.linspace(-width, width, n)) if n > 1 else [0.0]
 
@@ -533,11 +565,9 @@ def figures(summary: dict[str, Any], into: Path) -> list[Path]:
         right.set_xlabel("CNA length [Mb]")
         right.set_ylabel("Sensitivity (≥ 90% of segments)")
 
-        _panel(third, summary["study3"]["specific"], CLASS_COLOURS["all"], "All",
-               0.0, None)  # fmt: skip
+        _false_positives(third, summary["study3"]["false_positive"])
         third.set_xlabel(r"$\log_{10} |{\rm SNP\ UMIs\ in\ segment}|$")
-        third.set_ylabel("Specificity ((1, 1) segments called (1, 1))")
-        third.set_ylim(-0.02, 1.02)
+        third.set_ylabel("False positive rate\n((1, 1) segments called otherwise)")
 
         for axis in (left, right):
             axis.set_ylim(-0.02, 1.02)
@@ -560,7 +590,7 @@ def report(out: Path, study2_j: float) -> dict[str, Any]:
             entry[key].pop("crossing_draws")
     for entry in slim["study2"].values():
         entry["recovered"].pop("crossing_draws")
-    slim["study3"]["specific"].pop("crossing_draws")
+    slim["study3"]["false_positive"].pop("crossing_draws")
     (out / "summary.json").write_text(json.dumps(slim, indent=1) + "\n")
     (out / "tables.md").write_text(tables(slim))
     print(json.dumps({"members": slim["members"], "sufficient": slim["sufficient"]},
