@@ -20,6 +20,8 @@ own.
   fixture plants it here (#66)
 - Segment lengths are ragged, and the fixture has to declare which
   segmentation it plants (#67)
+- dev_tree's clone field is 10x CalicoST easy/hard's: draw CalicoST's event
+  mix, admixture field, BAF overdispersion and tumour expression (#556)
 
 ## Milestone 1.2 — The emission and the phased HMM
 
