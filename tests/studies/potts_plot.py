@@ -10,8 +10,8 @@ Each point is a solver's median over realizations x random starts, its error
 bars the 10-90% range on both axes; an open marker is the same runs after sal's
 ICM, a diamond after the color merge that follows it. Polish stages are drawn
 `DODGE` to the right of their runtime so stages do not overlap. The table's
-last column, Missed, counts the labels that differ from the planted ones, the
-median over the same runs as the points: raw / after ICM and the color merge
+last column, Missed, is the percentage of labels that differ from the planted
+ones, the median over the same runs as the points: raw / after ICM and the color merge
 (`missed`).
 """
 
@@ -92,12 +92,18 @@ def frame(record: dict[str, Any]) -> pd.DataFrame:
     )
 
 
-def missed(d: pd.DataFrame) -> dict[str, tuple[float, float]]:
-    """Per solver, labels unlike the planted, median over all its runs (realizations x starts): raw, after both polishes."""
-    return {
-        str(solver): (float(g.wrong.median()), float(g.both_wrong.median()))
-        for solver, g in d.groupby("solver")
-    }
+def missed(d: pd.DataFrame, n_labels: int) -> dict[str, tuple[float, float]]:
+    """Per solver, the percentage of labels unlike the planted, median over all its runs: raw, after both polishes."""
+    return {str(solver): (100 * float(g.wrong.median()) / n_labels, 100 * float(g.both_wrong.median()) / n_labels)
+            for solver, g in d.groupby("solver")}  # fmt: skip
+
+
+def n_spots(record: dict[str, Any]) -> int:
+    """The spots each realization labels: the manifest's array."""
+    from port.sim.draw import read_manifest
+
+    array = read_manifest(Path(record["manifest"])).array
+    return int(array["rows"]) * int(array["columns"])
 
 
 def _table(tab: Any, wrong: dict[str, tuple[float, float]]) -> None:
@@ -121,7 +127,7 @@ def _table(tab: Any, wrong: dict[str, tuple[float, float]]) -> None:
         (0.01, "#"),
         (0.07, "Solver"),
         (0.33, "Description"),
-        (0.99, "Missed"),
+        (0.99, "Missed [%]"),
     ):
         tab.text(
             x,
@@ -131,7 +137,7 @@ def _table(tab: Any, wrong: dict[str, tuple[float, float]]) -> None:
             weight="bold",
             transform=tab.transAxes,
             va="center",
-            ha="right" if text == "Missed" else "left",
+            ha="right" if text == "Missed [%]" else "left",
         )
     rule(1 - head, 0.7)
     y = 1 - head + step * 0.25
@@ -165,7 +171,7 @@ def _table(tab: Any, wrong: dict[str, tuple[float, float]]) -> None:
                 tab.text(
                     0.99,
                     y,
-                    f"{raw:,.0f} / {polished:,.0f}",
+                    f"{raw:.1f} / {polished:.1f}",
                     fontsize=8,
                     transform=tab.transAxes,
                     va="center",
@@ -328,7 +334,7 @@ def figure(record: dict[str, Any], out: Path) -> Path:
     ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.1), ncol=3, fontsize=7.5, frameon=False,
               title=f"Median for {n_problems} realization{'s' if n_problems > 1 else ''} $\\times$ {n_starts} random starts",
               title_fontsize=7.5)  # fmt: skip
-    _table(tab, missed(d))
+    _table(tab, missed(d, n_spots(record)))
     fig.savefig(out, dpi=150, bbox_inches="tight")
     plt.close(fig)
     return out
