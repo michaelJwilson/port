@@ -326,15 +326,17 @@ value that is not an integer of at least 2 is refused at start. The MILP decoder
 as `run_cnaster` calls it, returns planted totals of 10 to 12 exactly at a
 stated 12, and none of them at `cnaster`'s 6 (`tests/test_integer_copy_patch.py`).
 
-**`quality.min_segment_mb` floors the read-depth segments** (#551). Off
-unless the configuration sets it: `true` is 0.75 Mb, a number sets the Mb.
-At the read-depth binning, adjacent bins merge within each contig until each
-spans the minimum and holds `quality.secondary_min_normal_umi` normal-spot
-UMIs, which `cnaster` states and does not guarantee. The run's segment
-lineage then refuses any later level under either minimum. On dev_tree r0,
-0.75 Mb takes tumour-clone RDR outlier rows (|log RDR deviation| > 0.5 at
-planted-neutral segments) from 1,163 to 104, and segments from 2,895 to
-1,265. The BAF-only stage's bins are untouched.
+**`quality.min_segment_mb` and `quality.min_segment_normal_umi` floor the
+read-depth segments** (#551). Off unless the configuration sets either:
+`true` is 0.75 Mb and 1,000 normal-spot UMIs, a number sets the value. At the
+read-depth binning, adjacent bins merge within each contig until each spans
+the minimum length and holds the larger of the normal floor and
+`quality.secondary_min_normal_umi`, which `cnaster` states and does not
+guarantee. The run's segment lineage then refuses any later level under
+either minimum. On dev_tree r0, tumour-clone RDR outlier rows (|log RDR
+deviation| > 0.5 at planted-neutral segments) fall from 1,163 of 2,895
+segments to 104 of 1,265 at 0.75 Mb, 288 of 2,015 at 1,000 UMIs, and 105 of
+1,423 at 0.5 Mb and 1,000 UMIs. The BAF-only stage's bins are untouched.
 
 **Several samples run as is, with shared clones** (#328).
 `tests/multisample.py` places three realizations of one genome side by side,

@@ -747,15 +747,15 @@ def create_bin_ranges(
         )
         table = table.loc[~unbinned]
 
-    min_segment = segment_floor()
+    min_segment, min_normal = segment_floor()
 
-    if min_segment is not None:
+    if min_segment is not None or min_normal is not None:
         table = floor_bins(
             table,
             adata,
             normal_candidates,
-            min_length=min_segment * 1e6,
-            min_normal_umi=float(secondary_min_normal_umi),
+            min_length=(min_segment or 0.0) * 1e6,
+            min_normal_umi=max(float(secondary_min_normal_umi), min_normal or 0.0),
         )
 
     return table
@@ -765,21 +765,37 @@ MIN_SEGMENT_MB = 0.75
 """The read-depth segment floor `quality.min_segment_mb: true` sets, in Mb (#551).
 
 On dev_tree r0 it takes tumour-clone RDR outlier rows (|log RDR deviation| >
-0.5 at planted-neutral segments) from 1,163 to 77, and the segments from 2,895
-to 1,155, 4x under the smallest planted CNA (5 Mb)."""
+0.5 at planted-neutral segments) from 1,163 to 104, and the segments from
+2,895 to 1,265."""
+
+MIN_SEGMENT_NORMAL_UMI = 1_000.0
+"""The normal-UMI floor `quality.min_segment_normal_umi: true` sets (#551).
+
+On dev_tree r0, alone, it takes the same outlier rows from 1,163 to 288 and
+the segments from 2,895 to 2,015; with 0.5 Mb, to 105 and 1,423."""
 
 
-def segment_floor() -> float | None:
-    """`quality.min_segment_mb` from `cnaster`'s global config: `None` if absent, `false` or `none`; `true` is `MIN_SEGMENT_MB`."""
+def segment_floor() -> tuple[float | None, float | None]:
+    """`(Mb, normal UMI)`: `quality.min_segment_mb` and `quality.min_segment_normal_umi` from `cnaster`'s global config.
+
+    Each is `None` if absent, `false` or `none`, and `true` is its default,
+    `MIN_SEGMENT_MB` or `MIN_SEGMENT_NORMAL_UMI`. Either one switches the
+    floor on; the normal floor is then at least `secondary_min_normal_umi`.
+    """
     from cnaster.config import get_global_config
 
     section = getattr(get_global_config(), "quality", None)
-    value = getattr(section, "min_segment_mb", None)
 
-    if value is None or value is False:
-        return None
+    def read(key: str, default: float) -> float | None:
+        value = getattr(section, key, None)
+        if value is None or value is False:
+            return None
+        return default if value is True else float(value)
 
-    return MIN_SEGMENT_MB if value is True else float(value)
+    return (
+        read("min_segment_mb", MIN_SEGMENT_MB),
+        read("min_segment_normal_umi", MIN_SEGMENT_NORMAL_UMI),
+    )
 
 
 def floor_bins(
