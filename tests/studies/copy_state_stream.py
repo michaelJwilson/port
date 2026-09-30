@@ -52,11 +52,34 @@ SECONDS = 60.0
 """A best-of-n start's budget for its own polishes, as `run_start` gives it."""
 
 
+def _raw(problem: Any) -> dict[str, Any]:
+    """`cnaster`'s initializer arguments for `problem`: clones as the spot axis, as the BAF + RDR stage stacks them."""
+    from port.sandbox.known_copy.hmm import CONFIG
+
+    n_clones = int(problem.clone.max()) + 1
+    n_bins = problem.total.size // n_clones
+
+    def by_clone(values: np.ndarray) -> np.ndarray:
+        return np.asarray(values, dtype=np.float64).reshape(n_clones, n_bins).T
+
+    lengths = np.asarray(problem.lengths)[: lengths_per_clone(problem)]
+    config = (Path(__file__).resolve().parents[2] / CONFIG).read_text()
+    return {"X": np.stack([by_clone(problem.total), by_clone(problem.b)], axis=1), "base_nb_mean": by_clone(problem.exposure),
+            "total_bb_RD": by_clone(problem.trials), "lengths": lengths, "log_sitewise_transmat": np.zeros(n_bins),
+            "params": "smp", "config": config}  # fmt: skip
+
+
+def lengths_per_clone(problem: Any) -> int:
+    """How many entries of `problem.lengths` make one clone's genome."""
+    n_clones = int(problem.clone.max()) + 1
+    return int(np.asarray(problem.lengths).size // n_clones)
+
+
 def _call(problem: Any) -> Any:
     from port.extensions.copy_starts import CopyCall
 
     return CopyCall("rdrbaf", problem.n_states, problem.total, problem.b, problem.exposure, problem.trials,
-                    problem.clone, problem.contig, problem.start, problem.length, problem.planted, {})  # fmt: skip
+                    problem.clone, problem.contig, problem.start, problem.length, problem.planted, _raw(problem))  # fmt: skip
 
 
 def seed_states(

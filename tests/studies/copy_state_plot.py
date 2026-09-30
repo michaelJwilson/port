@@ -27,30 +27,31 @@ import pandas as pd
 
 TABLE = (
     ("cnaster, port", (
-        ("cnaster-gmm", "cnaster's gmm_init: Gaussian mixtures on RDR and BAF"),
-        ("distinct", "gmm_init choosing among distinct components (#348)"),
-        ("lattice", "integer (A, B) lattice states, chosen by the rows (#540)"),
+        ("cnaster-gmm", "cnaster's gmm_init: Gaussian mixtures"),
+        ("distinct", "gmm_init among distinct components (#348)"),
+        ("lattice", "integer (A, B) lattice, chosen by the rows"),
         ("lattice-em", "the lattice, by soft EM"),
-        ("rdr-quantiles", "rows cut at quantiles of log RDR, pooled BAF"),
+        ("rdr-quantiles", "quantiles of log RDR, pooled BAF"),
     )),
     ("sal, one draw", (
-        ("prior", "components drawn from a prior over the observed range"),
-        ("data", "components on rows drawn uniformly"),
+        ("prior", "drawn from a prior on the observed range"),
+        ("data", "on rows drawn uniformly"),
         ("kmeans++", "k-means++ on the raw count pair"),
-        ("emission++", "D-squared sampling under the emission's divergence"),
-        ("gaussian-em", "a Gaussian mixture on the first channel, from k-means++"),
-        ("quantile", "each channel's evenly spaced quantiles, paired"),
-        ("anneal", "the best point of a falling temperature"),
-        ("tempering", "the best point at any temperature of a ladder"),
-        ("hmc", "the last draw of a short Hamiltonian chain"),
+        ("emission++", "D-squared sampling, the emission's divergence"),
+        ("gaussian-em", "Gaussian mixture on read depth"),
+        ("quantile", "each channel's quantiles, paired"),
+        ("anneal", "best point of a falling temperature"),
+        ("tempering", "best point on a temperature ladder"),
+        ("hmc", "last draw of a Hamiltonian chain"),
     )),
     ("sal, best of 5 with EM", (
-        ("datax5+em", "data, 5 draws each polished by EM, the best"),
-        ("emission++x5+em", "emission++, 5 draws each polished by EM, the best"),
-        ("kmeans++x5+em", "kmeans++, 5 draws each polished by EM, the best (--sal)"),
+        ("datax5+em", "best of 5 data draws, each EM"),
+        ("emission++x5+em", "best of 5 emission++, each EM"),
+        ("kmeans++x5+em", "best of 5 kmeans++, each EM (--sal)"),
     )),
 )  # fmt: skip
 NUMBER = {name: k + 1 for k, name in enumerate(n for _, rows in TABLE for n, _ in rows)}
+NUMBER_TEXT = {name: str(k) for name, k in NUMBER.items()}
 SOURCE = {
     name: ("C1" if group == "cnaster, port" else "C0")
     for group, rows in TABLE
@@ -102,7 +103,7 @@ def _table(tab: Any, missed: dict[str, tuple[float, float]]) -> None:
     for x, text in (
         (0.01, "#"),
         (0.07, "Start"),
-        (0.30, "Description"),
+        (0.33, "Description"),
         (0.99, "Missed [%]"),
     ):
         tab.text(x, 1 - head / 2, text, fontsize=8.5, weight="bold", transform=tab.transAxes, va="center",
@@ -131,18 +132,18 @@ def _table(tab: Any, missed: dict[str, tuple[float, float]]) -> None:
                 va="center",
             )
             tab.text(0.09, y, name, fontsize=8, transform=tab.transAxes, va="center")
-            tab.text(0.30, y, text, fontsize=8, transform=tab.transAxes, va="center")
-            if name in missed:
-                a, b = missed[name]
-                tab.text(
-                    0.99,
-                    y,
-                    f"{a:.1f} / {b:.1f}",
-                    fontsize=8,
-                    transform=tab.transAxes,
-                    va="center",
-                    ha="right",
-                )
+            tab.text(0.33, y, text, fontsize=8, transform=tab.transAxes, va="center")
+            a, b = missed.get(name, (np.nan, np.nan))
+            cell = "refused" if np.isnan(a) else f"{a:.1f} / {b:.1f}"
+            tab.text(
+                0.99,
+                y,
+                cell,
+                fontsize=8,
+                transform=tab.transAxes,
+                va="center",
+                ha="right",
+            )
     rule(0.0, 1.2)
     tab.set_ylim(0, 1)
 
@@ -172,6 +173,7 @@ def figure(record: dict[str, Any], out: Path) -> Path:
     )
     ax.axhline(float(np.median(truth)), color="k", lw=0.9, zorder=0)
 
+    points: list[tuple[float, float, str]] = []
     for name, g in d.groupby("start"):
         if name not in NUMBER:
             continue
@@ -202,8 +204,18 @@ def figure(record: dict[str, Any], out: Path) -> Path:
             lw=0.8,
             capsize=2.5,
         )
-        ax.annotate(str(NUMBER[str(name)]), (x, y), xytext=(-4, 4), textcoords="offset points", fontsize=8,
-                    weight="bold", ha="right")  # fmt: skip
+        points.append((x, y, str(name)))
+
+    # NB numbers placed left of their points, stacked upward in 0.25-decade steps where they would overlap
+    placed: list[tuple[float, float]] = []
+    for x, y, name in sorted(points, key=lambda p: (p[0], p[1])):
+        lx, ly = np.log10(x), np.log10(y)
+        while any(abs(lx - px) < 0.3 and abs(ly - py) < 0.2 for px, py in placed):
+            ly += 0.25
+        placed.append((lx, ly))
+        ax.annotate(NUMBER_TEXT[name], (x, y), xytext=(10**lx / 1.15, 10**ly), textcoords="data", fontsize=8, weight="bold",
+                    ha="right", va="center", arrowprops={"arrowstyle": "-", "color": "0.6", "lw": 0.4, "shrinkA": 0, "shrinkB": 2}
+                    if abs(ly - np.log10(y)) > 1e-9 else None)  # fmt: skip
 
     ax.set_xscale("log")
     ax.set_yscale("log")
