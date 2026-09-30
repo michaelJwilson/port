@@ -1,0 +1,42 @@
+{
+  "_provenance": "tests.studies.copy_state_stream --tune on dev_tree_1s_hard.toml realizations 0-2, 5 seeds per setting; the cheapest setting within 1.0 nats of the best median gap in log-likelihood at the start's states (#540)",
+  "anneal-hmm": {
+    "steps": 48,
+    "t_start": 100.0,
+    "median_gap": 80.253,
+    "seconds": 19.944,
+    "default_median_gap": 136.003
+  },
+  "hmc-hmm": {
+    "temperature": 10.0,
+    "median_gap": 103.011,
+    "seconds": 10.249,
+    "default_median_gap": 211.57
+  },
+  "tempering-hmm": {
+    "rounds": 12,
+    "t_top": 100.0,
+    "median_gap": 87.415,
+    "seconds": 18.636,
+    "default_median_gap": 119.381
+  },
+  "emission++trim": {
+    "trim": 0.005,
+    "median_gap": 234.619,
+    "seconds": 0.579,
+    "default_median_gap": 336.246
+  },
+  "emission++lloydx5hmm": {
+    "lloyd": 10,
+    "median_gap": 49.591,
+    "seconds": 27.381,
+    "default_median_gap": 160.684
+  },
+  "emission++trimx20hmm": {
+    "draws": 20,
+    "trim": 0.005,
+    "median_gap": 58.403,
+    "seconds": 6.151,
+    "default_median_gap": 229.495
+  }
+}

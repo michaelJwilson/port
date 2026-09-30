@@ -25,16 +25,20 @@ start's states.
   energy `NLL / temperature`; one jit-compiled trajectory serves all three.
   The step size adapts multiplicatively on acceptance (`GROW`, `SHRINK`),
   scaled by `sqrt(temperature)` so one step size holds across a ladder.
-- `hmc`: `HMC_ADAPT` adapting trajectories at temperature 1, then
-  `HMC_DRAWS` at a frozen step; the lowest-NLL point visited.
-- `anneal`: `ANNEAL_STEPS` trajectories under a temperature falling
-  exponentially from `T_START` to 1, adapting throughout; the best point.
-- `tempering`: `RUNGS` replicas on a geometric ladder from 1 to `T_TOP`,
-  `ROUNDS` rounds of one trajectory each and a neighbour swap; the best point
+- `hmc`: a warmed chain at a tuned `temperature`: `HMC_ADAPT`
+  burn-in trajectories adapting the step, excluded from the selection, then
+  `HMC_DRAWS` at a frozen step; the lowest-NLL point of those.
+- `anneal`: `steps` trajectories under a temperature falling
+  exponentially from `t_start` to 1, adapting throughout; the best point.
+- `tempering`: `RUNGS` replicas on a geometric ladder from 1 to `t_top`,
+  `rounds` rounds of one trajectory each and a neighbour swap; the best point
   at any temperature.
 
+Schedules are `DEFAULTS`, or a `setting` in their place.
+
 "Best point" counts every point whose NLL was evaluated at a trajectory's end,
-accepted or not, and the initial point: none is worse than the start.
+accepted or not, and the initial point: none is worse than the start. For
+`hmc` the start is the chain's point after burn-in (`Sampled.initial_nll`).
 """
 
 from __future__ import annotations
@@ -44,7 +48,14 @@ from typing import Any, NamedTuple
 
 import numpy as np
 
-__all__ = ["SAMPLERS", "Sampled", "initial_point", "negative_log_likelihood", "sample"]
+__all__ = [
+    "DEFAULTS",
+    "SAMPLERS",
+    "Sampled",
+    "initial_point",
+    "negative_log_likelihood",
+    "sample",
+]
 
 LEAPFROG = 8
 """Leapfrog steps per trajectory."""
@@ -56,12 +67,25 @@ STEP0 = 1e-2
 """The initial step size at temperature 1."""
 
 HMC_ADAPT, HMC_DRAWS = 8, 16
-ANNEAL_STEPS = 24
-T_START = 1e3
-RUNGS, ROUNDS = 4, 6
-T_TOP = 1e3
+"""`hmc`: burn-in trajectories (step adapting, excluded from the selection), then kept draws."""
 
-SAMPLERS = ("anneal-hmm", "tempering-hmm", "hmc-hmm")
+RUNGS = 4
+"""`tempering`: replicas on the ladder."""
+
+DEFAULTS: dict[str, dict[str, float]] = {
+    "anneal-hmm": {"t_start": 1e2, "steps": 48},
+    "tempering-hmm": {"t_top": 1e2, "rounds": 12},
+    "hmc-hmm": {"temperature": 10.0},
+}
+"""Each sampler's schedule where no `setting` is given: the values
+`tests.studies.copy_state_stream --tune` chose on `dev_tree_1s_hard`'s
+held-out realizations 0-2 (`tests/studies/copy_sampler_settings.json`), 5 seeds per
+setting, the cheapest within 1 nat of the best median gap in log-likelihood at the start: median
+gap to the best start 80.3 / 87.4 / 103.0 nats against 136.0 / 119.4 / 211.6 at the schedules
+first written (anneal 1e3 over 24, tempering 1e3 for 6 rounds, hmc at 300, tuned on realization 0
+alone)."""
+
+SAMPLERS = tuple(DEFAULTS)
 
 
 class Sampled(NamedTuple):
@@ -222,26 +246,39 @@ def sample(
     lengths: Any,
     n_states: int,
     rng: np.random.Generator,
+    setting: dict[str, float] | None = None,
 ) -> Sampled:
-    """`name`'s best states `(log_mu, p_binom)` on the rows, one of `SAMPLERS`."""
+    """`name`'s best states `(log_mu, p_binom)` on the rows, one of `SAMPLERS`; `setting` in place of `DEFAULTS[name]`."""
+    if name not in DEFAULTS:
+        msg = f"{name!r} is not one of {SAMPLERS}"
+        raise ValueError(msg)
+    knobs = {**DEFAULTS[name], **(setting or {})}
     data = tuple(np.asarray(v, dtype=np.float64) for v in (total, b, exposure, trials))
     sampler = _Sampler(data, lengths, n_states, rng)
     theta0 = initial_point(total, exposure, n_states, rng)
     first = sampler.chain(theta0)
     initial = first.value
     if name == "hmc-hmm":
-        for i in range(HMC_ADAPT + HMC_DRAWS):
-            first.move(1.0, adapt=i < HMC_ADAPT)
+        warm = float(knobs["temperature"])
+        for _ in range(HMC_ADAPT):
+            first.move(warm, adapt=True)
+        # NB burn-in excluded: the start is the best of the warmed chain's draws.
+        sampler.best = (np.inf, np.empty(0))
+        sampler.offer(first.theta, first.value)
+        initial = first.value
+        for _ in range(HMC_DRAWS):
+            first.move(warm, adapt=False)
     elif name == "anneal-hmm":
-        for temperature in np.geomspace(T_START, 1.0, ANNEAL_STEPS):
+        steps = int(knobs["steps"])
+        for temperature in np.geomspace(float(knobs["t_start"]), 1.0, steps):
             first.move(float(temperature), adapt=True)
-    elif name == "tempering-hmm":
-        ladder = np.geomspace(1.0, T_TOP, RUNGS)
+    else:
+        ladder = np.geomspace(1.0, float(knobs["t_top"]), RUNGS)
         chains = [first] + [
             sampler.chain(initial_point(total, exposure, n_states, rng))
             for _ in range(RUNGS - 1)
         ]
-        for r in range(ROUNDS):
+        for r in range(int(knobs["rounds"])):
             for chain, temperature in zip(chains, ladder, strict=True):
                 chain.move(float(temperature), adapt=True)
             i = r % (RUNGS - 1)
@@ -252,9 +289,6 @@ def sample(
             if np.log(rng.uniform()) < log_swap:
                 chains[i].theta, chains[j].theta = chains[j].theta, chains[i].theta
                 chains[i].value, chains[j].value = chains[j].value, chains[i].value
-    else:
-        msg = f"{name!r} is not one of {SAMPLERS}"
-        raise ValueError(msg)
     value, theta = sampler.best
     k = n_states
     return Sampled(

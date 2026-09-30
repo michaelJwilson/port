@@ -57,11 +57,13 @@ TABLE = (
     ("port, emission++ variants", (
         ("emission++trim", f"{tt('emission++')}, farthest 2% of rows never drawn"),
         ("emission++x5hmm", f"Best of 5 {tt('emission++')} draws by HMM likelihood"),
+        ("emission++trimx20hmm", "Best of 20 trimmed draws by HMM likelihood"),
+        ("emission++lloydx5hmm", "Best of 5 trimmed, coverage-weighted, 3 Lloyd rounds"),
     )),
     ("port, samplers on the HMM", (
         ("anneal-hmm", "Best point of HMC under falling temperature"),
         ("tempering-hmm", "Best point of 4 HMC replicas on a ladder"),
-        ("hmc-hmm", "Best draw of an HMC chain at T = 1"),
+        ("hmc-hmm", "Best draw of a warmed HMC chain at a tuned temperature"),
     )),
 )  # fmt: skip
 
@@ -77,7 +79,8 @@ LABEL = {
     "cnaster-gmm": "cnaster-gmm", "calicost-gmm": "calicost-gmm", "distinct": "distinct", "lattice": "lattice",
     "lattice-em": "lattice + em", "rdr-quantiles": "rdr-quantiles", "prior": "prior", "data": "data",
     "kmeans++": "k-means++", "emission++": "emission++", "emission++trim": "emission++ (trim)",
-    "emission++x5hmm": r"5$\times$emission++ (hmm)", "gaussian-em": "gaussian-em", "quantile": "quantile",
+    "emission++x5hmm": r"5$\times$emission++ (hmm)",
+    "emission++trimx20hmm": r"20$\times$emission++ (trim, hmm)", "emission++lloydx5hmm": r"5$\times$emission++ (lloyd, hmm)", "gaussian-em": "gaussian-em", "quantile": "quantile",
     "anneal-hmm": "anneal", "tempering-hmm": "parallel tempering", "hmc-hmm": "hmc",
 }  # fmt: skip
 """A start's label; `5x`: the best of five draws."""
@@ -87,7 +90,7 @@ SOURCE = {
     **{name: "sal" for _, rows in TABLE for name, _ in rows},
     "cnaster-gmm": "cnaster", "calicost-gmm": "CalicoST", "distinct": "port", "lattice": "port",
     "lattice-em": "port", "rdr-quantiles": "port", "emission++trim": "port",
-    "emission++x5hmm": "port", "anneal-hmm": "port", "tempering-hmm": "port", "hmc-hmm": "port",
+    "emission++x5hmm": "port", "emission++trimx20hmm": "port", "emission++lloydx5hmm": "port", "anneal-hmm": "port", "tempering-hmm": "port", "hmc-hmm": "port",
 }  # fmt: skip
 """Each start's source: the package whose code it runs."""
 COLOUR = {name: plt_colour(k) for name, k in NUMBER.items()}
