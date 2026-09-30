@@ -580,7 +580,10 @@ def figures(summary: dict[str, Any], into: Path) -> list[Path]:
         left.set_xlabel(r"$\log_{10} |{\rm Clone\ UMIs}|$")
         left.set_ylabel("Sensitivity")
 
-        classes = list(summary["study2"].items())
+        # NB the gains first in the legend: they are the classes the length
+        #    curve separates.
+        order = ("imbalanced gain", "balanced gain", "LOH", "all")
+        classes = [(k, summary["study2"][k]) for k in order if k in summary["study2"]]
         for (name, entry), dodge in zip(
             classes, _dodges(len(classes), 0.02), strict=True
         ):
@@ -599,7 +602,7 @@ def figures(summary: dict[str, Any], into: Path) -> list[Path]:
             axis.legend(loc="upper left", frameon=True, framealpha=0.85,
                         edgecolor="none", fancybox=False, borderpad=0.15,
                         labelspacing=0.1, handlelength=0.8, handletextpad=0.3,
-                        fontsize=FONT_SIZE - 1)  # fmt: skip
+                        fontsize=FONT_SIZE - (2 if axis is right else 1))  # fmt: skip
 
         # NB the layout frozen once, then each letter set over its panel's
         #    leftmost text -- the y label -- as the spatial page sets its own.
