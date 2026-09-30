@@ -111,7 +111,18 @@ def n_spots(record: dict[str, Any]) -> int:
     return int(array["rows"]) * int(array["columns"])
 
 
-def _table(tab: Any, wrong: dict[str, tuple[float, float]]) -> None:
+def ranks(values: dict[str, float]) -> dict[str, int]:
+    """1 for the lowest value, ties sharing the lower rank."""
+    order = pd.Series(values, dtype=float).dropna().rank(method="min")
+    return {str(k): int(v) for k, v in order.items()}
+
+
+def _table(
+    tab: Any,
+    wrong: dict[str, tuple[float, float]],
+    rank_cost: dict[str, int] | None = None,
+    rank_missed: dict[str, int] | None = None,
+) -> None:
     n_rows = sum(1 + len(rows) for _, rows in TABLE)
     head = 0.06
     step = (1 - head) / (n_rows + 0.5)
@@ -132,6 +143,8 @@ def _table(tab: Any, wrong: dict[str, tuple[float, float]]) -> None:
         (0.01, "#"),
         (0.07, "Solver"),
         (0.33, "Description"),
+        (0.785, "$R_C$"),
+        (0.84, "$R_M$"),
         (0.99, "Missed [%]"),
     ):
         tab.text(
@@ -142,7 +155,7 @@ def _table(tab: Any, wrong: dict[str, tuple[float, float]]) -> None:
             weight="bold",
             transform=tab.transAxes,
             va="center",
-            ha="right" if text == "Missed [%]" else "left",
+            ha="left" if x < 0.7 else "right",
         )
     rule(1 - head, 0.7)
     y = 1 - head + step * 0.25
@@ -171,6 +184,20 @@ def _table(tab: Any, wrong: dict[str, tuple[float, float]]) -> None:
                 0.09, y, label(solver), fontsize=8, transform=tab.transAxes, va="center"
             )
             tab.text(0.33, y, text, fontsize=8, transform=tab.transAxes, va="center")
+            for x, rank in (
+                (0.785, (rank_cost or {}).get(solver)),
+                (0.84, (rank_missed or {}).get(solver)),
+            ):
+                if rank is not None:
+                    tab.text(
+                        x,
+                        y,
+                        str(rank),
+                        fontsize=8,
+                        transform=tab.transAxes,
+                        va="center",
+                        ha="right",
+                    )
             if solver in wrong:
                 raw, polished = wrong[solver]
                 tab.text(
@@ -380,7 +407,11 @@ def figure(record: dict[str, Any], out: Path) -> Path:
     ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.1), ncol=3, fontsize=7.5, frameon=False,
               title=f"{Path(record['manifest']).stem}: median for {n_problems} realization{'s' if n_problems > 1 else ''} $\\times$ {n_starts} random starts",
               title_fontsize=7.5)  # fmt: skip
-    _table(tab, missed(d, n_spots(record)))
+    # NB ranked on each solver's own output: R_C by the median gap to the bound, R_M by the median Missed
+    wrong = missed(d, n_spots(record))
+    rank_cost = ranks({str(n): float(g.y.median()) for n, g in d.groupby("solver")})
+    rank_missed = ranks({n: m[0] for n, m in wrong.items()})
+    _table(tab, wrong, rank_cost, rank_missed)
     stamp(fig, record)
     fig.savefig(out, dpi=150, bbox_inches="tight")
     plt.close(fig)

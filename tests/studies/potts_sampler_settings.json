@@ -23,5 +23,25 @@
     "sweeps": 4000,
     "median_gap": 3301.979,
     "default_median_gap": 7412.566
+  },
+  "port:sw-field": {
+    "t_start": 1.0,
+    "sweeps": 4000,
+    "untuned": "sal:swendsen-wang's tuned setting, reused (#559)"
+  },
+  "port:sw-field-glauber": {
+    "t_start": 1.0,
+    "sweeps": 4000,
+    "untuned": "sal:swendsen-wang's tuned setting, reused (#559)"
+  },
+  "port:wolff-field": {
+    "t_start": 0.25,
+    "sweeps": 4000,
+    "untuned": "sal:wolff's tuned setting, reused (#559)"
+  },
+  "port:wolff-field-glauber": {
+    "t_start": 0.25,
+    "sweeps": 4000,
+    "untuned": "sal:wolff's tuned setting, reused (#559)"
   }
 }
