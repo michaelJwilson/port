@@ -3,7 +3,8 @@
 `python -m tests.studies.potts_plot STREAM.pkl` writes `<stem>.png` beside the
 pickle: energy less TRW-S's lower bound, on a log axis whose bottom tick, "0",
 holds every run at the bound, with a solid black line at the planted
-labelling's gap (its median over realizations).
+labelling's gap (its median over realizations) in a dark grey band (its 10-90%
+range).
 
 Each point is a solver's median over realizations x random starts, its error
 bars the 10-90% range on both axes; an open marker is the same runs after sal's
@@ -193,14 +194,23 @@ def figure(record: dict[str, Any], out: Path) -> Path:
     ax, tab = fig.add_subplot(grid[0]), fig.add_subplot(grid[1])
     tab.axis("off")
     ax.axhspan(FLOOR * 0.6, FLOOR * 1.4, color="0.92", zorder=0)
-    truth = np.median(
+    truths = np.array(
         [
             max(p["truth_energy"] - p["bound"], FLOOR)
             for i, p in record["problems"].items()
             if i in record["done"]
         ]
     )
-    ax.axhline(truth, color="k", lw=0.9, zorder=0)
+    # NB the truth's own spread over realizations: its 10-90% range, as the points' bars
+    ax.axhspan(
+        float(np.quantile(truths, 0.1)),
+        float(np.quantile(truths, 0.9)),
+        color="0.55",
+        alpha=0.35,
+        lw=0,
+        zorder=0,
+    )
+    ax.axhline(float(np.median(truths)), color="k", lw=0.9, zorder=0)
 
     lowest = float(d.groupby("solver").y.median().min())
     crowded: list[tuple[float, float, str]] = []
@@ -291,9 +301,13 @@ def figure(record: dict[str, Any], out: Path) -> Path:
                         ha="center", va="bottom", arrowprops={"arrowstyle": "-", "color": "0.6", "lw": 0.5, "shrinkA": 0, "shrinkB": 3})  # fmt: skip
 
     ax.set_xscale("log")
-    slowest = d[d.solver == "sal:max-product"].seconds
-    ax.set_xlim(float(d.groupby("solver").seconds.quantile(0.1).min()) * 0.6,
-                float(slowest.quantile(0.9) if len(slowest) else d.seconds.max()) * 1.6)  # fmt: skip
+    # NB right edge: the slowest solver's 90% runtime, polish stages included, so no point is clipped
+    slowest = (
+        max(float(g.quantile(0.9)) for _, g in d.groupby("solver").bseconds) * DODGE**2
+    )
+    ax.set_xlim(
+        float(d.groupby("solver").seconds.quantile(0.1).min()) * 0.6, slowest * 1.3
+    )
     from matplotlib.ticker import FixedLocator, FuncFormatter
 
     ax.set_yscale("log")
@@ -311,6 +325,7 @@ def figure(record: dict[str, Any], out: Path) -> Path:
     ax.plot([], [], "s", color="C1", label="port")
     ax.plot([], [], "o", color="0.4", mfc="white", label="ICM polish")
     ax.plot([], [], "D", color="0.4", mfc="white", ms=4, label="Color merge")
+    ax.fill_between([], [], [], color="0.55", alpha=0.35, lw=0, label="Truth, 10-90%")
     ax.plot([], [], color="k", lw=0.9, label="Truth")
     ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.1), ncol=3, fontsize=7.5, frameon=False,
               title=f"Median for {n_problems} realization{'s' if n_problems > 1 else ''} $\\times$ {n_starts} random starts",
