@@ -125,6 +125,44 @@ ICM and the color merge. Numbers are the table's in the figures.
 | `dev_tree_1s_hard` | ![](plots/studies/potts_dev_tree_1s_hard.png) | ![](plots/studies/potts_dev_tree_1s_hard_gap.png) |
 | `dev_tree_1s` | ![](plots/studies/potts_dev_tree_1s.png) | ![](plots/studies/potts_dev_tree_1s_gap.png) |
 
+## Tuned solvers on `dev_tree_1s_hard`, 25 realizations × 50 starts (#559)
+
+Every sampler at its setting tuned on 3 held-out realizations
+(`tests/studies/potts_sampler_settings.json`); #559's field-weighted cluster
+moves and `sal`'s cluster tempering joined the finished stream by
+`potts_stream --only --merge`. Gap above TRW-S's bound, median / 90th
+percentile over 25 × 50 runs, the share at the bound, the median after ICM and
+the color merge, Missed raw / polished, and the median runtime.
+
+| # | solver | gap | at bound | polished | Missed [%] | ms |
+| --- | --- | --- | --- | --- | --- | --- |
+| 21 | TRW-S decode | 0 / 0 | 100% | 0 | 1.1 / 1.1 | 26 |
+| 4 | `alpha-rust-fuse` (`--sal`) | 0 / 0 | 92% | 0 | 1.1 / 1.1 | 27 |
+| 11 | `glauber` | 0.01 / 0.7 | 49% | 0 | 1.1 / 1.1 | 104 |
+| 15 | `sw-field` + `glauber` | 0.01 / 0.5 | 48% | 0 | 1.1 / 1.1 | 276 |
+| 17 | `wolff-field` + `glauber` | 0.06 / 0.7 | 39% | 0.02 | 1.1 / 1.1 | 392 |
+| 18 | parallel tempering | 0.06 / 1.3 | 38% | 0.06 | 1.1 / 1.1 | 99 |
+| 19 | cluster tempering | 8.9 / 15.5 | 0% | 0.77 | 1.2 / 1.1 | 2,830 |
+| 14 | `sw-field` | 14.5 / 21.2 | 0% | 1.42 | 1.4 / 1.2 | 3,102 |
+| 12 | `swendsen-wang` | 22.0 / 30.9 | 0% | 1.92 | 1.5 / 1.2 | 1,365 |
+| 6, 7 | ICM, sequential | 13.7 / 28.5 | 0% | 13.7 | 1.6 / 1.6 | 2–10 |
+| 16 | `wolff-field` | 2,088 / 2,261 | 0% | 8.9 | 14.9 / 1.4 | 5,045 |
+| 13 | `wolff` | 3,601 / 3,906 | 0% | 18.3 | 25.1 / 1.7 | 4,595 |
+
+- **Drawing a cluster's label from its field weight is better than `sal`'s
+  uniform proposal, and not enough alone.** Swendsen-Wang falls from 22.0 to
+  14.5 nats and Wolff from 3,601 to 2,088; neither reaches the bound.
+- **A Glauber sweep after each move reaches it, and the sweep does the work.**
+  With it, both moves match annealed `glauber` alone (0.01–0.06 nats, 1.1%
+  missed) at 2.7–3.8× its runtime. On this field the cluster move adds cost
+  without closing gap.
+- **Wolff's budget counts single clusters,** as `sal`'s does, so 4,000 steps
+  relabel few spots in a field this strong.
+- The two kernels keep the Boltzmann law exactly on a 4-site enumeration
+  (`tests/test_known_field_cluster.py`).
+
+![](plots/studies/potts_dev_tree_1s_hard_tuned.png)
+
 ## Findings beside the study
 
 - **cnaster's merge scores half the boundary.** `cnaster.icm.merge_assignment`
