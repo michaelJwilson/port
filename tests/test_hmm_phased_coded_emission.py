@@ -63,9 +63,10 @@ def test_the_replacement_matches_upstream_where_upstream_runs(
 ) -> None:
     """One spot is the only width upstream survives, so it is the referee.
 
-    Bitwise: the replacement reads column zero where upstream reads column
-    `s`, and at one spot those are the same column. Nothing else changes, so
-    nothing else may move.
+    The replacement reads column zero where upstream reads column `s`, and at
+    one spot those are the same column. The allele channel is bitwise; the
+    read-depth channel is the log-space negative binomial (#560), `cnaster`
+    to 1e-9 relative where its `p < 1`, which holds on these inputs.
     """
     from cnaster.hmm_phased import hmm_phased
     from port.patch.hmm_phased import (
@@ -79,8 +80,10 @@ def test_the_replacement_matches_upstream_where_upstream_runs(
     )
     ours = replacement(nb, bb, **parameters)
 
-    for mine, upstream in zip(ours, theirs, strict=True):
-        np.testing.assert_array_equal(np.asarray(mine), np.asarray(upstream))
+    np.testing.assert_allclose(
+        np.asarray(ours[0]), np.asarray(theirs[0]), rtol=1e-9, atol=1e-9
+    )
+    np.testing.assert_array_equal(np.asarray(ours[1]), np.asarray(theirs[1]))
 
 
 @pytest.mark.patch

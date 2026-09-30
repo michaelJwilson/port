@@ -1,1 +1,1 @@
-"""`cnaster.hmm_nophasing` drop-ins set aside until a swap row installs them: `nb_logpmf` (#560)."""
+"""`nb_logpmf`: a re-export of `port.sandbox.patch.hmm_nophasing.nb_logpmf` for `sandbox.known_copy` (#560)."""

@@ -50,7 +50,6 @@ makes in a diff, not a name that quietly stops meaning anything.
 PRIVATE_SURFACE = frozenset(
     {
         ("cnaster.hmm_nophasing", "_bb_logpmf_1d"),
-        ("cnaster.hmm_nophasing", "_nb_logpmf_1d"),
         ("cnaster.hmm_phased", "_switch_betabinom_1d"),
         # The four layout helpers `plot_clones_genomic` is built from (#278).
         # `port.sandbox.patch.plotting.genomic` replaces that function and imports

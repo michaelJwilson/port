@@ -252,12 +252,128 @@ def test_the_patched_kernel_floors_the_dispersion_in_both_terms() -> None:
     cancels two values near 2.2e11 whose spacing is 3e-5 (1.5e-5 measured).
     That is `lgamma`'s, in every kernel here; the #560 defect was 0 for all.
     """
-    from port.sandbox.patch.hmm_nophasing.nb_logpmf import _nb_logpmf_1d
+    from port.patch.hmm_nophasing.nb_logpmf import _nb_logpmf_1d
 
     out = np.full(COUNTS.size, np.nan)
     _nb_logpmf_1d(COUNTS, np.ones(COUNTS.size), 10.0, 1e-17, out)
 
     np.testing.assert_allclose(out, _references(COUNTS, 10.0, 1e-17), rtol=0, atol=1e-4)
+
+
+DEGENERATE = (-43.22, 0.1184, 1000.0, 1000.0)
+"""`(log mu, alpha, exposure, count)` of dev_tree_1s_hard r0's degenerate state (#560)."""
+
+
+def _bound_kernel(module: str) -> float:
+    """The `_nb_logpmf_1d` `module` compiles in by name, on one degenerate bin."""
+    import importlib
+
+    log_mu, alpha, exposure, count = DEGENERATE
+    out = np.full(1, np.nan)
+    importlib.import_module(module)._nb_logpmf_1d(
+        np.array([count]), np.array([exposure]), float(np.exp(log_mu)), alpha, out
+    )
+    return float(out[0])
+
+
+def _field(kernel_name: str) -> float:
+    """One bin, one spot, one clone; no allele trials, so the field is the NB score."""
+    import importlib
+
+    log_mu, alpha, exposure, count = DEGENERATE
+    module, name = kernel_name.rsplit(".", 1)
+    kernel = getattr(importlib.import_module(module), name)
+    one = np.ones((1, 1))
+    field = kernel(
+        np.full((1, 1), count),
+        np.full((1, 1), exposure),
+        np.zeros((1, 1)),
+        np.zeros((1, 1)),
+        np.array([log_mu]),
+        np.array([alpha]),
+        np.array([0.5]),
+        np.array([30.0]),
+        np.zeros((1, 1), dtype=np.int64),
+        one[0],
+        np.zeros((1, 1)),
+    )
+    return float(field[0, 0])
+
+
+def _emission_into() -> float:
+    from port.sandbox.patch.emission import emission_into
+
+    log_mu, alpha, exposure, count = DEGENERATE
+    out_rdr, out_baf = np.zeros((1, 1, 1)), np.zeros((1, 1, 1))
+    emission_into(
+        np.full((1, 1), count),
+        np.full((1, 1), exposure),
+        np.zeros((1, 1)),
+        np.zeros((1, 1)),
+        np.array([log_mu]),
+        np.array([alpha]),
+        np.array([0.5]),
+        np.array([30.0]),
+        out_rdr,
+        out_baf,
+        False,
+    )
+    return float(out_rdr[0, 0, 0])
+
+
+def _np_merge() -> float:
+    from port.sandbox.np_merge import _emissions
+
+    log_mu, alpha, exposure, count = DEGENERATE
+    X = np.zeros((1, 2, 1))
+    X[0, 0, 0] = count
+    res = {
+        "new_log_mu": [log_mu],
+        "new_alphas": [alpha],
+        "new_p_binom": [0.5],
+        "new_taus": [30.0],
+    }
+    rdr, _ = _emissions(
+        X, np.full((1, 1), exposure), np.zeros((1, 1)), res, np.zeros(1)
+    )
+    return float(rdr[0, 0, 0])
+
+
+SITES: dict[str, Callable[[], float]] = {
+    "shifted_emission": lambda: _bound_kernel(
+        "port.patch.hmm_nophasing.shifted_emission"
+    ),
+    "coded_emission": lambda: _bound_kernel("port.patch.hmm_phased.coded_emission"),
+    "fused_field": lambda: _field("port.patch.hmrf.fused_field.fused_spot_clone_field"),
+    "tabulated_field": lambda: _field(
+        "port.patch.hmrf.tabulated_field.tabulated_spot_clone_field"
+    ),
+    "sandbox_emission": _emission_into,
+    "np_merge": _np_merge,
+    "hmm_initialize_backends": lambda: _bound_kernel(
+        "port.sandbox.patch.hmm_initialize.backends"
+    ),
+}
+"""Every port site that compiles `_nb_logpmf_1d` in by name, out of `nb_logpmf.patched()`'s reach."""
+
+
+@pytest.mark.oracle
+@pytest.mark.parametrize("site", sorted(SITES))
+def test_every_compiled_in_kernel_scores_a_vanishing_mean_in_log_space(
+    site: str,
+) -> None:
+    """At `log mu = -43.22`, `alpha = 0.1184`, exposure 1000, a count of 1000 scores `mpmath`'s -38,403.9 to 1e-9, not 0.
+
+    `cnaster`'s kernel scores it 0 -- probability 1 -- because `p` rounds to
+    1 (`a = 2.0e-17`); each site imports the log-space kernel (#560) instead.
+    """
+    log_mu, alpha, exposure, count = DEGENERATE
+    score = SITES[site]()
+
+    assert score < -30_000.0
+    np.testing.assert_allclose(
+        score, _reference(count, exposure * np.exp(log_mu), alpha), rtol=1e-9
+    )
 
 
 BOUNDARY = [0.0, 1e-12, 1.0 - 1e-12, 1.0, -0.2, 1.3]

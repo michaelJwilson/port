@@ -1,15 +1,17 @@
 """One emission entry point for `cnaster`'s four, writing into a buffer (#205).
 
-**Bitwise on both chains, and nothing allocated.** `cnaster` builds
+**Both chains to 1e-9 relative, allele bitwise, and nothing allocated.**
+The read-depth channel is the log-space negative binomial (#560), `cnaster`
+to 1e-9 relative where its `p < 1`. `cnaster` builds
 `(n_states, n_obs, n_spots)` per channel on every call -- and the phased
 class doubles the state axis on top -- for arrays whose shape never changes
 between outer iterations. `port.sandbox.patch.emission.emission_into` writes into
-buffers the caller owns and reproduces both entry points to the last bit,
-which is what says the allocation was the only thing removed.
+buffers the caller owns and reproduces both entry points, the allele channel
+to the last bit, which is what says the allocation was the only thing removed.
 
 The phased half is the load-bearing one. `hmm_phased` reaches its emission
 through `CountEncoder` deduplication and `decode_array`, so a dense kernel
-agreeing with it bitwise also says the deduplication changes which
+agreeing with it also says the deduplication changes which
 observations are evaluated and not how -- the claim
 `tests/test_emission_consistency.py` makes from the other side.
 """
@@ -117,15 +119,14 @@ def _buffered(inputs: EmissionInputs, *, phased: bool) -> tuple[np.ndarray, np.n
 
 @pytest.mark.patch
 @pytest.mark.parametrize("n_states", [1, 3, 5])
-def test_the_buffered_emission_is_the_unphased_entry_point_bitwise(
+def test_the_buffered_emission_is_the_unphased_entry_point(
     n_states: int,
 ) -> None:
     """`hmm_nophasing.compute_emission_probability_nb_betabinom`, into a buffer.
 
-    Bitwise rather than to a tolerance: the densities are `cnaster`'s own
-    kernels, imported, so the only thing that could differ is the order the
-    loop walks them in -- and a difference there would mean the buffer is not
-    holding what `cnaster` would have returned.
+    The allele channel is bitwise: its kernel is `cnaster`'s own, imported, so
+    only the loop order could differ. The read-depth channel is the log-space
+    negative binomial (#560), `cnaster` to 1e-9 relative where its `p < 1`.
     """
     from cnaster.hmm_nophasing import hmm_nophasing
 
@@ -146,14 +147,14 @@ def test_the_buffered_emission_is_the_unphased_entry_point_bitwise(
 
     out_rdr, out_baf = _buffered(inputs, phased=False)
 
-    assert np.array_equal(out_rdr, expected_rdr)
+    np.testing.assert_allclose(out_rdr, expected_rdr, rtol=1e-9, atol=1e-9)
     assert np.array_equal(out_baf, expected_baf)
 
 
 @pytest.mark.patch
 @pytest.mark.usefixtures("cnaster_config")
 @pytest.mark.parametrize("n_states", [1, 3, 5])
-def test_the_buffered_emission_is_the_phased_entry_point_bitwise(
+def test_the_buffered_emission_is_the_phased_entry_point(
     n_states: int,
 ) -> None:
     """`hmm_phased`'s, through the encoder, matched by a dense kernel.
@@ -183,7 +184,7 @@ def test_the_buffered_emission_is_the_phased_entry_point_bitwise(
     out_rdr, out_baf = _buffered(inputs, phased=True)
 
     assert out_rdr.shape == expected_rdr.shape
-    assert np.array_equal(out_rdr, expected_rdr)
+    np.testing.assert_allclose(out_rdr, expected_rdr, rtol=1e-9, atol=1e-9)
     assert np.array_equal(out_baf, expected_baf)
 
 

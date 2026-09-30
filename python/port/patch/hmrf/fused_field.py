@@ -40,9 +40,14 @@ which is a capability rather than a ratio -- and the kill is worth naming,
 because an OOM death reads as infrastructure breaking rather than as a stated
 limit.
 
-**Referee: bitwise.** The per-`(spot, clone)` additions run over `o` in the
-same order as the two-step's, on the same values, so `np.array_equal` is the
-bar.
+**Referee: `cnaster` to 1e-9 relative where `cnaster`'s `p < 1`; the
+log-space negative binomial (#560) below.** The per-`(spot, clone)` additions
+run over `o` in the two-step's order; the negative binomial is
+`port.sandbox.patch.hmm_nophasing.nb_logpmf._nb_logpmf_1d`, not `cnaster`'s:
+upstream's returns 0 -- probability 1 -- once `p = 1 / (1 + alpha lambda)`
+rounds to 1.0 (`alpha lambda < 1.1e-16`), and `nb_logpmf.patched()` cannot
+reach a kernel compiled in by name. So the field is bitwise the two-step run under
+`nb_logpmf.patched()`, and within 1e-9 relative of it unpatched.
 
 **What is deliberately not changed.** `rel_valid_emision_weight` is carried
 as `cnaster` computes it, for the reason item 1 gives: it is #58's finding,
@@ -54,8 +59,10 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import numpy as np
-from cnaster.hmm_nophasing import _bb_logpmf_1d, _nb_logpmf_1d
+from cnaster.hmm_nophasing import _bb_logpmf_1d
 from numba import njit
+
+from port.patch.hmm_nophasing.nb_logpmf import _nb_logpmf_1d
 
 if TYPE_CHECKING:  # pragma: no cover - `prange` is `range` to a type checker
     prange = range
@@ -64,11 +71,9 @@ else:
 
 __all__ = ["fused_spot_clone_field"]
 
-# NB the per-bin kernels are `cnaster`'s own, imported rather than restated:
-#    a patch that reimplemented them would be comparing two implementations
-#    of the emission as well as two of the field, and the bitwise claim below
-#    would then be about the wrong thing. Inside `cnaster` this is a local
-#    import from the same package.
+# NB the beta-binomial kernel is `cnaster`'s own, imported rather than
+#    restated; the negative binomial is the log-space one (#560), which
+#    `cnaster`'s two-step reaches only under `nb_logpmf.patched()`.
 
 
 @njit(nogil=True, cache=True, parallel=True, error_model="numpy")

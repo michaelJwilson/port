@@ -23,6 +23,13 @@ is not a production failure.
 spots. That is the reading this takes, because it is the one the parameter's
 shape admits: the column axis and the spot axis are different things, and
 #267 is the audit of what follows from confusing them.
+
+**Referee: `cnaster` to 1e-9 relative where `cnaster`'s `p < 1`; the
+log-space negative binomial (#560) below.** The read-depth channel scores
+with `port.sandbox.patch.hmm_nophasing.nb_logpmf._nb_logpmf_1d`, not
+`cnaster`'s: upstream's returns 0 -- probability 1 -- once `p = 1 / (1 + alpha lambda)`
+rounds to 1.0 (`alpha lambda < 1.1e-16`), and `nb_logpmf.patched()` cannot
+reach a kernel compiled in by name.
 """
 
 from __future__ import annotations
@@ -30,10 +37,11 @@ from __future__ import annotations
 from typing import Any
 
 import numpy as np
-from cnaster.hmm_nophasing import _bb_logpmf_1d, _nb_logpmf_1d
+from cnaster.hmm_nophasing import _bb_logpmf_1d
 from cnaster.hmm_phased import _switch_betabinom_1d
 from cnaster.hmm_phased import hmm_phased as UPSTREAM
 
+from port.patch.hmm_nophasing.nb_logpmf import _nb_logpmf_1d
 from port.patch.plotting.clone_paths import state_vector
 
 __all__ = ["compute_emission_probability_nb_betabinom_coded", "hmm_phased"]

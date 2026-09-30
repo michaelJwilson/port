@@ -6,16 +6,22 @@ beta-binomial one. Every one of the nine is a function of an integer count
 and a per-state parameter -- `lgamma(k + r)`, `lgamma(k + a)`,
 `lgamma(n - k + b)`, `lgamma(n + a + b)`, `lgamma(k + 1)` and their
 constants -- and only the negative binomial's `r log p + k log(1 - p)`
-reads the continuous exposure. So each is computed once per `(state, count)`
+reads the continuous exposure (`-r log1p(a) + k (log a - log1p(a))` in the
+log-space form, #560). So each is computed once per `(state, count)`
 and read back, which is sal's approach to the same emission
 (`sal.emissions.nb`, `sal.emissions.bb`, and `oxisal.external_field`, which
 tabulates this field's own sum).
 
-**Referee: bitwise.** A table entry is the same `lgamma` at the same
-argument, built in the same order of operations as `cnaster`'s
-`nbinom_logpmf_numba` and `betabinom_logpmf_numba` -- `lgamma(n + a + b)` is
-`lgamma((n + a) + b)`, as upstream writes it -- and the per-bin sums run in
-the fused kernel's order, so `np.array_equal` is the bar against it.
+**Referee: bitwise against `fused_spot_clone_field`; `cnaster` to 1e-9
+relative where `cnaster`'s `p < 1`; the log-space negative binomial (#560)
+below.** A table entry is the same `lgamma` at the same argument, built in
+the same order of operations as
+`port.sandbox.patch.hmm_nophasing.nb_logpmf._nb_logpmf_1d` and `cnaster`'s
+`betabinom_logpmf_numba` -- `lgamma(n + a + b)` is `lgamma((n + a) + b)`, as
+upstream writes it -- and the per-bin sums run in the fused kernel's order,
+so `np.array_equal` is the bar against it. The negative binomial is the
+log-space form, not `cnaster`'s `p = 1 / (1 + a)`: upstream's returns 0 --
+probability 1 -- once `p` rounds to 1.0 (`a = alpha lambda < 1.1e-16`).
 
 **Why not sal's kernels.** `sal.emissions.dense.log_emission` scores every
 state at every observation, where the field reads one per `(bin, clone)`;
@@ -30,7 +36,7 @@ Counts that are not non-negative integers cannot index a table, and
 
 from __future__ import annotations
 
-from math import lgamma, log
+from math import lgamma, log, log1p
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -82,8 +88,8 @@ def tabulated_spot_clone_field(
         int(max(counts_bb.max(), total_bb_RD.max())) + 1 if counts_bb.size else 1
     )
 
-    # NB `nbinom_logpmf_numba`'s coefficient, in its order: `(lgamma(k + r) -
-    #    lgamma(r)) - lgamma(k + 1)`.
+    # NB the log-space `_nb_logpmf_1d`'s coefficient, in its order:
+    #    `(lgamma(k + r) - lgamma(r)) - lgamma(k + 1)`.
     nb_coefficient = np.empty((n_states, nb_extent))
     sizes = np.empty(n_states)
 
@@ -126,27 +132,26 @@ def tabulated_spot_clone_field(
         for o in range(n_obs):
             state = pred[o, c]
             mu = np.exp(log_mu[state])
-            alpha = alphas[state]
+            alpha = max(alphas[state], DISPERSION_FLOOR)
             r = sizes[state]
             denom = denominator[state]
 
             for spot in range(n_spots):
-                # NB `_nb_logpmf_1d`: no baseline, or `p` rounded to 0 or 1,
-                #    scores 0; otherwise the coefficient, then `r log p`, then
-                #    `k log(1 - p)`, summed in that order.
+                # NB the log-space `_nb_logpmf_1d` (#560): no baseline scores
+                #    0; otherwise the coefficient, then `- r log1p(a)`, then
+                #    `k (log a - log1p(a))`, summed in that order, so no `p`
+                #    is formed and none rounds to 1.
                 rdr = 0.0
                 lambda_i = base_nb_mean[o, spot] * mu
 
                 if lambda_i > 0.0:
-                    p = 1.0 / (1.0 + alpha * lambda_i)
+                    a = alpha * lambda_i
                     k = counts_nb[o, spot]
-
-                    if 0.0 < p < 1.0 and k >= 0.0:
-                        rdr = (
-                            nb_coefficient[state, int(k)]
-                            + r * log(p)
-                            + k * log(1.0 - p)
-                        )
+                    rdr = (
+                        nb_coefficient[state, int(k)]
+                        - r * log1p(a)
+                        + k * (log(a) - log1p(a))
+                    )
 
                 accumulated_rdr[spot] += rdr
 

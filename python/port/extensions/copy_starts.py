@@ -33,6 +33,7 @@ outliers for the robustness arm.
 
 from __future__ import annotations
 
+import contextlib
 import functools
 import time
 from collections.abc import Callable
@@ -847,6 +848,9 @@ def _sal_rows() -> dict[str, Row]:
 def _registry() -> dict[str, Row]:
     rows = {name: row for name, (row, _) in _port_starts().items()}
     rows |= _sal_rows()
+    rows["emission++warm"] = Row(
+        "emission++warm", "port (#540)", STAGES, covariate=True, stochastic=True
+    )
     return rows
 
 
@@ -921,6 +925,82 @@ def _tuned_seeding(
     return at_locations(held, objective.components(best).mean)
 
 
+@contextlib.contextmanager
+def _clamped_divergence() -> Any:
+    """`sal`'s emission++ scores floored at 0 (#562).
+
+    `sal.opt.emission_mixture._seed_scores` returns the Bregman divergence,
+    non-negative in exact arithmetic; round-off leaves some a hair below 0
+    and `rng.choice` refuses them ("Probabilities are not non-negative"),
+    which refused `emission++x5+em` on dev_tree_1s_hard.
+    """
+    import sal.opt.emission_mixture as upstream
+
+    original = upstream._seed_scores
+
+    def clamped(observations: np.ndarray, at: Any) -> Any:
+        score = original(observations, at)
+        return lambda seed, candidates: np.maximum(score(seed, candidates), 0.0)
+
+    upstream._seed_scores = clamped
+    try:
+        yield
+    finally:
+        upstream._seed_scores = original
+
+
+WARM_SEEDS = "kmeans++"
+"""The cheap clustering `emission++warm` reads its dispersions from."""
+
+
+def _warm_emission(held: Any, rng: np.random.Generator) -> Any:
+    """emission++ at dispersions estimated from the data rather than the seam's fixed ones.
+
+    `WARM_SEEDS` clusters the rows; within each cluster the negative
+    binomial's `alpha` and the beta-binomial's `rho = 1 / (tau + 1)` are
+    method-of-moments estimates, pooled over clusters:
+    `Var y = e mu + alpha e^2 mu^2` and
+    `Var b = n p (1 - p) (1 + (n - 1) rho)`. The seam's defaults are
+    `alpha = 0.1` and `tau = 1,000`, where Baum-Welch fits `tau` of 5e3-2e5
+    on dev_tree_1s_hard: at 1,000 the allele channel's divergence is too
+    flat to separate states of one depth.
+    """
+    from dataclasses import replace
+
+    from sal.opt.emission_mixture import CountPairSeeding
+    from sal.search.mixture_starts import emission_seeding, lookup
+
+    rows = np.asarray(held.rows, dtype=np.float64)
+    seeded = lookup(WARM_SEEDS)(held, rng).components
+    centres = np.asarray(seeded.total.mean, dtype=np.float64).reshape(-1)
+    rates = np.asarray(seeded.rate, dtype=np.float64).reshape(-1)
+    located = np.column_stack([centres, rates * float(held.at.trials)])
+    cluster = (
+        ((rows[:, None, :] - located[None, :, :]) ** 2).sum(axis=-1).argmin(axis=1)
+    )
+    y, b = held.observations[:, 0], held.observations[:, 1]
+    e, n = held.covariate[:, 0], held.covariate[:, 1]
+    num_a = den_a = num_r = den_r = 0.0
+    for c in np.unique(cluster):
+        m = cluster == c
+        mu = y[m].sum() / max(e[m].sum(), 1e-12)
+        num_a += float(((y[m] - e[m] * mu) ** 2 - e[m] * mu).sum())
+        den_a += float((e[m] ** 2 * mu**2).sum())
+        p = b[m].sum() / max(n[m].sum(), 1.0)
+        v = n[m] * p * (1 - p)
+        num_r += float(((b[m] - n[m] * p) ** 2 - v).sum())
+        den_r += float((v * (n[m] - 1)).sum())
+    alpha = float(np.clip(num_a / max(den_a, 1e-12), 1e-4, 10.0))
+    rho = float(np.clip(num_r / max(den_r, 1e-12), 1e-7, 0.5))
+    at = CountPairSeeding(
+        dispersion=1.0 / alpha,
+        concentration=1.0 / rho - 1.0,
+        joint=held.at.joint,
+        trials=held.at.trials,
+    )
+    return emission_seeding(replace(held, at=at), rng).components
+
+
 def _seeded(
     name: str,
     call: CopyCall,
@@ -930,8 +1010,22 @@ def _seeded(
     setting: dict[str, float] | None = None,
 ) -> Any:
     """The start's components on `held` (the instance of `call`); a best-of-n start polishes its own n within `seconds`."""
+    with _clamped_divergence():
+        return _seeded_clamped(name, call, held, rng, seconds, setting)
+
+
+def _seeded_clamped(
+    name: str,
+    call: CopyCall,
+    held: Any,
+    rng: np.random.Generator,
+    seconds: float,
+    setting: dict[str, float] | None,
+) -> Any:
     if setting is not None:
         return _tuned_seeding(name, held, rng, setting)
+    if name == "emission++warm":
+        return _warm_emission(held, rng)
     ports = _port_starts()
     if name in ports:
         return _place(held, call, *ports[name][1](call, rng))

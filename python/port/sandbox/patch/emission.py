@@ -2,7 +2,8 @@
 
 Ticket: #205 -- one buffered emission entry point, superseded by
   `port.patch.hmm_nophasing.dense_emission`.
-Measurement: bitwise against both `cnaster` entry points; 0 bytes allocated
+Measurement: both `cnaster` entry points to 1e-9 relative (allele bitwise;
+  read depth log space, #560); 0 bytes allocated
   per call against 672 MB (unphased) and 1.34 GB (phased) at `K = 7`,
   `G = 3,000`, `S = 2,000`; 1.07x wall.
 Exit: retire, with `tests/test_buffered_emission.py` and its benchmark;
@@ -46,11 +47,15 @@ and 0.97x at the gate size. `CLAUDE.md` puts a speedup at 2x, so this is
 reported rather than claimed -- the kernels are `cnaster`'s own and the loop
 around them does the same work. What changes is the allocation.
 
-**Referee: bitwise**, against `hmm_nophasing.compute_emission_probability_nb_betabinom`
-and against `hmm_phased`'s, in `tests/test_buffered_emission.py`. That is
-available because the kernels are `cnaster`'s own, imported rather than
-restated -- a module that reimplemented the densities would be comparing two
-implementations of the emission as well as two of the loop over it.
+**Referee: `cnaster` to 1e-9 relative where `cnaster`'s `p < 1`; the
+log-space negative binomial (#560) below**, against
+`hmm_nophasing.compute_emission_probability_nb_betabinom` and against
+`hmm_phased`'s, in `tests/test_buffered_emission.py`. The allele kernels are
+`cnaster`'s own, and that channel is bitwise; the read-depth kernel is
+`port.sandbox.patch.hmm_nophasing.nb_logpmf._nb_logpmf_1d`, not `cnaster`'s:
+upstream's returns 0 -- probability 1 -- once `p = 1 / (1 + alpha lambda)`
+rounds to 1.0 (`alpha lambda < 1.1e-16`), and `nb_logpmf.patched()` cannot
+reach a kernel compiled in by name.
 
 **Who would maintain it.** `snakes_and_ladders` carries this job:
 `NegativeBinomialEmission`, `BetaBinomialEmission` and `CountPairEmission`
@@ -67,9 +72,11 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import numpy as np
-from cnaster.hmm_nophasing import _bb_logpmf_1d, _nb_logpmf_1d
+from cnaster.hmm_nophasing import _bb_logpmf_1d
 from cnaster.hmm_phased import _switch_betabinom_1d
 from numba import njit
+
+from port.patch.hmm_nophasing.nb_logpmf import _nb_logpmf_1d
 
 MIRRORS: tuple[str, ...] = (
     "cnaster.hmm_nophasing",
@@ -158,9 +165,9 @@ def emission_into(
     -----
     `prange` runs over copy states: each writes its own slab of both buffers,
     so nothing reduces across threads. The spot loop is inside it, and the
-    per-bin kernels are `cnaster`'s own -- `_nb_logpmf_1d`, `_bb_logpmf_1d`
-    and `_switch_betabinom_1d` -- so what is being compared is the loop and
-    the allocation, not the density.
+    per-bin allele kernels are `cnaster`'s own -- `_bb_logpmf_1d` and
+    `_switch_betabinom_1d` -- and `_nb_logpmf_1d` is the log-space one (#560),
+    so what is compared is the loop, the allocation and that one density.
 
     The switched allele is computed from the unswitched one, which is how
     `hmm_phased` computes it: `_switch_betabinom_1d` takes the unphased

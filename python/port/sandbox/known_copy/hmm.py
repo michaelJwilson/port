@@ -96,24 +96,52 @@ def baum_welch(
     *,
     max_iter: int = 100,
     tol: float = 1e-3,
+    sal: bool = True,
 ) -> Fit:
-    """`cnaster`'s Baum-Welch from `(log_mu, p_binom)` on `problem`'s stacked clones."""
+    """`cnaster`'s Baum-Welch from `(log_mu, p_binom)` on `problem`'s stacked clones; with `sal`, as `run_cnaster_port --sal` fits.
+
+    `sal` installs what `--sal` installs for this call: port's
+    `hmm_nophasing` class with the per-clone shift (`apply_logmu_shift`,
+    #276) and sal's emission kernels (#425), its closed-form M-step gradient
+    (#433, the class's default), and oxiport's forward-backward
+    (`port.patch.lattice.rust_lattices`, #318). The shift reads the normal
+    clone's share of UMIs per bin as `normal_lambda`, as `cnaster.hmrf`
+    derives it from the baseline.
+    """
+    from contextlib import ExitStack
+
     from cnaster.hmm import pipeline_baum_welch
     from cnaster.hmm_nophasing import hmm_nophasing
 
-    from port.sandbox.patch.hmm_nophasing.nb_logpmf import patched
+    from port.patch.hmm_nophasing.nb_logpmf import patched
 
     _configured()
     x, exposure, trials = _arrays(problem)
     n_states = int(np.asarray(log_mu).size)
     opened = time.perf_counter()
-    with patched():
+    hmmclass: Any = hmm_nophasing
+    extra: dict[str, Any] = {}
+    stack = ExitStack()
+    if sal:
+        from port.patch.hmm_nophasing import hmm_nophasing as port_hmm
+        from port.patch.lattice import rust_lattices
+        from port.pipeline import with_attributes
+
+        hmmclass = with_attributes(
+            port_hmm, apply_logmu_shift=True, emission_kernels="sal"
+        )
+        normal = np.asarray(problem.exposure, dtype=np.float64)[
+            np.asarray(problem.clone) == 0
+        ]
+        extra["normal_lambda"] = normal / normal.sum()
+        stack.enter_context(rust_lattices())
+    with stack, patched():
         result = pipeline_baum_welch(
             None, x, np.asarray(problem.lengths), n_states, exposure, trials, np.zeros(x.shape[0]), None,
-            hmmclass=hmm_nophasing, params="smp", t=T, shared_NB_dispersion=True, shared_BB_dispersion=True,
+            hmmclass=hmmclass, params="smp", t=T, shared_NB_dispersion=True, shared_BB_dispersion=True,
             is_diag=True, init_log_mu=np.asarray(log_mu, dtype=np.float64).reshape(-1, 1),
             init_p_binom=np.clip(np.asarray(p_binom, dtype=np.float64), 1e-4, 1 - 1e-4).reshape(-1, 1),
-            max_iter=max_iter, tol=tol, clone_lengths=np.bincount(problem.clone),
+            max_iter=max_iter, tol=tol, clone_lengths=np.bincount(problem.clone), **extra,
         )  # fmt: skip
     log_mu = np.asarray(result.params.new_log_mu).ravel()
     label = np.asarray(result.profile.pred_cnv, dtype=np.int64).ravel()
@@ -124,14 +152,44 @@ def baum_welch(
     )  # fmt: skip
 
 
-def decode(problem: Any, log_mu: np.ndarray, p_binom: np.ndarray) -> Fit:
-    """The log-likelihood and each row's most probable state at `(log_mu, p_binom)`, nothing fitted."""
+def decode(
+    problem: Any, log_mu: np.ndarray, p_binom: np.ndarray, *, sal: bool = True
+) -> Fit:
+    """The log-likelihood and each row's most probable state at `(log_mu, p_binom)`, nothing fitted.
+
+    With `sal`, scored under the model `baum_welch(sal=True)` fits, so a start
+    and its fit are on one objective: the per-clone shift (#276) taken at the
+    start's own decode, as port's `hmm_nophasing` takes it at the fit's, and
+    the likelihood rescored with each clone's exposure divided by it.
+    """
+    fit = _decode_once(problem, log_mu, p_binom, None)
+    if sal:
+        from port.patch.hmm_nophasing.logmu_shift import shifts
+
+        lengths = np.bincount(problem.clone)
+        normal = np.asarray(problem.exposure, dtype=np.float64)[
+            np.asarray(problem.clone) == 0
+        ]
+        log_lambda = np.tile(np.log(normal / normal.sum()), lengths.size)
+        per_clone = shifts(
+            np.asarray(log_mu, dtype=np.float64).ravel(), fit.label, log_lambda, lengths
+        )
+        fit = _decode_once(problem, log_mu, p_binom, np.repeat(per_clone, lengths))
+    return fit
+
+
+def _decode_once(
+    problem: Any, log_mu: np.ndarray, p_binom: np.ndarray, shift: np.ndarray | None
+) -> Fit:
+    """`decode` at one exposure: `problem`'s, or divided by `exp(shift)` per row."""
     import scipy.special
     from cnaster.hmm_nophasing import get_log_transmat, hmm_nophasing
 
     x, exposure, trials = _arrays(problem)
+    if shift is not None:
+        exposure = exposure * np.exp(-np.asarray(shift, dtype=np.float64))[:, None]
     n_states = int(np.asarray(log_mu).size)
-    from port.sandbox.patch.hmm_nophasing.nb_logpmf import patched
+    from port.patch.hmm_nophasing.nb_logpmf import patched
 
     opened = time.perf_counter()
     with patched():

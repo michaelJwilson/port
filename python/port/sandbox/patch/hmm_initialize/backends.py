@@ -21,7 +21,9 @@ counts. **Those are not comparable numbers**, so ranking backends by "their"
 likelihood ranks the spaces rather than the fits.
 
 `referee_score` is the single yardstick: the mixture log-likelihood under
-`cnaster`'s **own** emission density, at uniform weights, over the
+`cnaster`'s **own** emission density -- its negative binomial in log space
+(#560), `cnaster` to 1e-9 relative where its `p < 1`, so a vanishing rate
+cannot win by scoring every count at probability 1 -- at uniform weights, over the
 observations as given. Both `cnaster` initializers already compute something
 like it privately -- `gmm_init`'s step 7 posterior ranking and
 `cna_mixture_init`'s `best_solution_lnlike` -- and neither returns it.
@@ -42,7 +44,9 @@ from dataclasses import dataclass, field
 from typing import Any
 
 import numpy as np
-from cnaster.hmm_nophasing import _bb_logpmf_1d, _nb_logpmf_1d
+from cnaster.hmm_nophasing import _bb_logpmf_1d
+
+from port.patch.hmm_nophasing.nb_logpmf import _nb_logpmf_1d
 
 __all__ = [
     "Candidate",

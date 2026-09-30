@@ -50,7 +50,7 @@ import numpy as np
 
 STARTS = (
     "cnaster-gmm", "calicost-gmm", "distinct", "lattice", "lattice-em", "rdr-quantiles",
-    "prior", "data", "kmeans++", "emission++", "gaussian-em", "quantile", "anneal", "tempering", "hmc",
+    "prior", "data", "kmeans++", "emission++", "emission++warm", "gaussian-em", "quantile", "anneal", "tempering", "hmc",
     "datax5+em", "emission++x5+em", "kmeans++x5+em",
 )  # fmt: skip
 """One start per family of the registry; `kmeans++x5+em` is `--sal`'s."""
@@ -68,6 +68,9 @@ GRID: dict[str, tuple[dict[str, float], ...]] = {
 TUNING_SEEDS = 5
 TOLERANCE = 1.0
 """Nats: a setting within this of the best median gap is as good, and the cheapest of those is kept."""
+
+REDRAW = 60.0
+"""Seconds between redraws from the runs finished so far, a realization in progress included."""
 
 SETTINGS = Path(__file__).with_name("copy_sampler_settings.json")
 """The settings tuned once on `dev_tree_1s_hard`'s first `--held-out` realizations, reused by `--settings`."""
@@ -141,7 +144,7 @@ def solve(
         if not polish:
             return {"problem": problem.realization, "start": name, "seed": seed, "setting": setting,
                     "seconds": seconds, "start_llf": at_start.log_likelihood}  # fmt: skip
-        fitted = kc.baum_welch(problem, log_mu, p)
+        fitted = kc.baum_welch(problem, log_mu, p)  # NB `--sal`'s Baum-Welch (#540)
         return {
             "problem": problem.realization, "start": name, "seed": seed, "setting": setting, "seconds": seconds,
             "start_llf": at_start.log_likelihood, "start_missed": kc.missed(at_start.label, truth),
@@ -263,9 +266,33 @@ def run(
     held: dict[int, dict[str, Any]] = {}
     rows: list[dict[str, Any]] = []
     pending: dict[int, int] = {}
+    total_jobs: dict[int, int] = {}
     done: list[int] = []
     futures: dict[Future[dict[str, Any]], int] = {}
     opened = time.perf_counter()
+
+    drawn = [time.perf_counter()]
+
+    def draw(partial: bool) -> None:
+        shown = (
+            sorted({*done, *(i for i in pending if pending[i] < total_jobs[i])})
+            if partial
+            else done
+        )
+        record = {"manifest": str(manifest), "problems": held, "rows": rows, "done": shown, "complete": list(done),
+                  "starts": names, "seeds": seeds, "tuned": tuned, "held_out": held_out}  # fmt: skip
+        out.write_bytes(pickle.dumps(record))
+        subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "tests.studies.copy_state_plot",
+                str(out),
+                *map(str, merge),
+            ],
+            check=False,
+        )
+        drawn[0] = time.perf_counter()
 
     def drain(block: bool) -> None:
         finished, _ = wait(
@@ -276,22 +303,17 @@ def run(
             rows.append(future.result())
             pending[index] -= 1
             if pending[index]:
+                if time.perf_counter() - drawn[0] >= REDRAW:
+                    draw(partial=True)
+                    print(
+                        f"[{time.perf_counter() - opened:6.0f}s] partial: {len(rows)} runs in; plot redrawn",
+                        flush=True,
+                    )
                 continue
             done.append(index)
-            record = {"manifest": str(manifest), "problems": held, "rows": rows, "done": done, "starts": names,
-                      "seeds": seeds, "tuned": tuned, "held_out": held_out}  # fmt: skip
-            out.write_bytes(pickle.dumps(record))
-            subprocess.run(
-                [
-                    sys.executable,
-                    "-m",
-                    "tests.studies.copy_state_plot",
-                    str(out),
-                    *map(str, merge),
-                ],
-                check=False,
-            )
-            errors = sum("error" in r for r in rows)
+            draw(partial=False)
+            record = {"rows": rows}
+            errors = sum("error" in r for r in record["rows"])
             print(f"[{time.perf_counter() - opened:6.0f}s] problem {index} solved; {len(done)}/{n_problems} done, "
                   f"{errors} errors; plot redrawn", flush=True)  # fmt: skip
 
@@ -311,6 +333,7 @@ def run(
                 for seed in (range(seeds) if registry[name].stochastic else [0])
             ]
             pending[problem.realization] = len(jobs)
+            total_jobs[problem.realization] = len(jobs)
             for name, seed in jobs:
                 futures[pool.submit(solve, problem, name, seed, tuned.get(name))] = (
                     problem.realization

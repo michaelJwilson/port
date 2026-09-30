@@ -27,18 +27,19 @@ import pandas as pd
 
 TABLE = (
     ("cnaster, CalicoST, port", (
-        ("cnaster-gmm", "cnaster's gmm_init: Gaussian mixtures"),
-        ("calicost-gmm", "CalicoST's initialization_by_gmm, clones stacked"),
-        ("distinct", "gmm_init among distinct components (#348)"),
-        ("lattice", "integer (A, B) lattice, chosen by the rows"),
+        ("cnaster-gmm", "cnaster's gmm_init, Gaussian mixture"),
+        ("calicost-gmm", "CalicoST's GMM init, clones stacked"),
+        ("distinct", "gmm_init, distinct components (#348)"),
+        ("lattice", "integer (A, B) lattice, by the rows"),
         ("lattice-em", "the lattice, by soft EM"),
         ("rdr-quantiles", "quantiles of log RDR, pooled BAF"),
     )),
     ("sal, one draw", (
-        ("prior", "drawn from a prior on the observed range"),
+        ("prior", "drawn from a prior on the range"),
         ("data", "on rows drawn uniformly"),
         ("kmeans++", "k-means++ on the raw count pair"),
-        ("emission++", "seeds drawn by the NB x BB Bregman divergence"),
+        ("emission++", "seeds by NB x BB Bregman divergence"),
+        ("emission++warm", "emission++ at dispersions from a kmeans++ pass"),
         ("gaussian-em", "Gaussian mixture on read depth"),
         ("quantile", "each channel's quantiles, paired"),
         ("anneal", "best point of a falling temperature"),
@@ -51,6 +52,12 @@ TABLE = (
         ("kmeans++x5+em", "best of 5 kmeans++, each EM (--sal)"),
     )),
 )  # fmt: skip
+LABEL = {
+    "datax5+em": "(data & EM)$^5$",
+    "emission++x5+em": "(emission++ & EM)$^5$",
+    "kmeans++x5+em": "(kmeans++ & EM)$^5$",
+}
+"""A best-of-5-with-EM start's label: the start and its EM, five times."""
 NUMBER = {name: k + 1 for k, name in enumerate(n for _, rows in TABLE for n, _ in rows)}
 NUMBER_TEXT = {name: str(k) for name, k in NUMBER.items()}
 SOURCE = {
@@ -112,8 +119,18 @@ def frame(record: dict[str, Any]) -> tuple[pd.DataFrame, np.ndarray]:
     return rows, truth
 
 
+def ranks(values: dict[str, float]) -> dict[str, int]:
+    """1 for the lowest value, ties sharing the lower rank."""
+    order = pd.Series(values, dtype=float).dropna().rank(method="min")
+    return {str(k): int(v) for k, v in order.items()}
+
+
 def _table(
-    tab: Any, missed: dict[str, tuple[float, float]], flagged: dict[str, int]
+    tab: Any,
+    missed: dict[str, tuple[float, float]],
+    flagged: dict[str, int],
+    rank_cost: dict[str, int],
+    rank_missed: dict[str, int],
 ) -> None:
     n_rows = sum(1 + len(rows) for _, rows in TABLE)
     head = 0.06
@@ -128,11 +145,13 @@ def _table(
     for x, text in (
         (0.01, "#"),
         (0.07, "Start"),
-        (0.33, "Description"),
-        (0.99, "Missed [%]"),
+        (0.38, "$R_C$"),
+        (0.44, "$R_M$"),
+        (0.62, "Missed [%]"),
+        (0.65, "Description"),
     ):
         tab.text(x, 1 - head / 2, text, fontsize=8.5, weight="bold", transform=tab.transAxes, va="center",
-                 ha="right" if text == "Missed [%]" else "left")  # fmt: skip
+                 ha="right" if 0.3 < x < 0.64 else "left")  # fmt: skip
     rule(1 - head, 0.7)
     y = 1 - head + step * 0.25
     for group, rows in TABLE:
@@ -156,8 +175,29 @@ def _table(
                 transform=tab.transAxes,
                 va="center",
             )
-            tab.text(0.09, y, name, fontsize=8, transform=tab.transAxes, va="center")
-            tab.text(0.33, y, text, fontsize=8, transform=tab.transAxes, va="center")
+            tab.text(
+                0.09,
+                y,
+                LABEL.get(name, name),
+                fontsize=8,
+                transform=tab.transAxes,
+                va="center",
+            )
+            tab.text(0.65, y, text, fontsize=8, transform=tab.transAxes, va="center")
+            for x, rank in (
+                (0.38, rank_cost.get(name)),
+                (0.44, rank_missed.get(name)),
+            ):
+                if rank is not None:
+                    tab.text(
+                        x,
+                        y,
+                        str(rank),
+                        fontsize=8,
+                        transform=tab.transAxes,
+                        va="center",
+                        ha="right",
+                    )
             a, b = missed.get(name, (np.nan, np.nan))
             k = flagged.get(name, 0)
             if np.isnan(a):
@@ -165,7 +205,7 @@ def _table(
             else:
                 cell = f"{a:.1f} / {b:.1f}" + (f" ({k} degen.)" if k else "")
             tab.text(
-                0.99,
+                0.62,
                 y,
                 cell,
                 fontsize=8,
@@ -225,7 +265,8 @@ def figure(record: dict[str, Any], out: Path) -> Path:
     from matplotlib.ticker import FixedLocator, FuncFormatter
 
     d, truth = frame(record)
-    n_problems = len(record["done"])
+    n_problems = len(record.get("complete", record["done"]))
+    n_partial = len(record["done"]) - n_problems
     plt.rcParams.update({"font.size": 9})
     fig = plt.figure(figsize=(15.5, 6.2))
     grid = fig.add_gridspec(1, 2, width_ratios=[1.2, 1], wspace=0.04)
@@ -307,13 +348,17 @@ def figure(record: dict[str, Any], out: Path) -> Path:
     ax.fill_between([], [], [], color="0.55", alpha=0.35, lw=0, label="Truth, 10-90%")
     ax.plot([], [], color="k", lw=0.9, label="Truth")
     ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.1), ncol=3, fontsize=7.5, frameon=False,
-              title=f"{Path(record['manifest']).stem}: median for {n_problems} realization{'s' if n_problems > 1 else ''} $\\times$ {record['seeds']} seeds",
+              title=f"{Path(record['manifest']).stem}: median for {n_problems} realization{'s' if n_problems != 1 else ''}"
+                    + (f" (+{n_partial} in progress)" if n_partial else "") + f" $\\times$ {record['seeds']} seeds",
               title_fontsize=7.5)  # fmt: skip
     missed = {
         str(n): (float(g.start_missed_pct.median()), float(g.missed_pct.median()))
         for n, g in d.groupby("start")
     }
-    _table(tab, missed, degenerate_counts(record))
+    # NB ranked after Baum-Welch, the polish the study measures: R_C by the median gap, R_M by the median Missed
+    rank_cost = ranks({str(n): float(g.by.median()) for n, g in d.groupby("start")})
+    rank_missed = ranks({n: m[1] for n, m in missed.items()})
+    _table(tab, missed, degenerate_counts(record), rank_cost, rank_missed)
     stamp(fig, record)
     fig.savefig(out, dpi=150, bbox_inches="tight")
     plt.close(fig)

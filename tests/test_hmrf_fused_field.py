@@ -1,4 +1,7 @@
-"""The fused spot/clone field, pinned bitwise against `cnaster`'s two steps.
+"""The fused spot/clone field, pinned against `cnaster`'s two steps to 1e-9 relative.
+
+The negative binomial is the log-space one (#560): `cnaster` to 1e-9
+relative where its `p < 1`, so the field is too.
 
 Issue #59 item 2. `port.patch.hmrf.fused_field` replaces the pair at
 `cnaster.hmrf`'s call site -- `compute_emission_probability_nb_betabinom`
@@ -102,7 +105,7 @@ def _fused(fixture: SpotCloneField, weight: np.ndarray) -> np.ndarray:
     ("n_states", "n_clones"),
     [pytest.param(7, 3, marks=pytest.mark.merge), (5, 5), (3, 1)],
 )
-def test_the_fused_field_is_bitwise_the_two_step(n_states: int, n_clones: int) -> None:
+def test_the_fused_field_is_the_two_step(n_states: int, n_clones: int) -> None:
     """Identical output, including where every state is read.
 
     `n_clones == n_states` is the case with no flop to save, and it is also
@@ -112,8 +115,11 @@ def test_the_fused_field_is_bitwise_the_two_step(n_states: int, n_clones: int) -
     fixture = spot_clone_field(n_states=n_states, n_clones=n_clones)
     weight = np.ones(fixture.n_spots)
 
-    np.testing.assert_array_equal(
-        _cnaster_two_step(fixture, weight), _fused(fixture, weight)
+    np.testing.assert_allclose(
+        _fused(fixture, weight),
+        _cnaster_two_step(fixture, weight),
+        rtol=1e-9,
+        atol=1e-9,
     )
 
 
@@ -132,16 +138,18 @@ def test_the_fused_field_carries_the_relative_channel_weight() -> None:
     #    A uniform draw fails this test by 1.5e-11 -- not because either form
     #    is wrong, but because `_cnaster_two_step` has to reach the weight
     #    through `bb / nb`, and `1 / (1 / w)` is not `w` to the last bit. The
-    #    test input has to be exactly representable or the bitwise bar is
+    #    test input has to be exactly representable or the comparison is
     #    testing the round trip.
     counts_bb = rng.integers(1, 9, fixture.n_spots).astype(np.float64)
     counts_nb = 2.0 ** rng.integers(0, 3, fixture.n_spots)
     weight = counts_bb / counts_nb
     assert not np.allclose(weight, 1.0)
 
-    np.testing.assert_array_equal(
-        _cnaster_two_step(fixture, weight, counts_nb, counts_bb),
+    np.testing.assert_allclose(
         _fused(fixture, weight),
+        _cnaster_two_step(fixture, weight, counts_nb, counts_bb),
+        rtol=1e-9,
+        atol=1e-9,
     )
 
 
