@@ -328,7 +328,7 @@ def figure(record: dict[str, Any], out: Path) -> Path:
             lambda v, _: "0" if v == FLOOR else f"$10^{{{round(np.log10(v))}}}$"
         )
     )
-    ax.set_ylabel("TRW-S Gap [nats]")
+    ax.set_ylabel("Gap [nats]")
     ax.set_xlabel("Runtime [s]")
 
     ax.plot([], [], "o", color="C0", label="sal")
