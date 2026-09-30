@@ -578,7 +578,7 @@ def figures(summary: dict[str, Any], into: Path) -> list[Path]:
         for (j, entry), dodge in zip(series, _dodges(len(series), 0.015), strict=True):
             _panel(left, entry["detected"], colours[j], f"J = {j:g}", dodge, None)
         left.set_xlabel(r"$\log_{10} |{\rm Clone\ UMIs}|$")
-        left.set_ylabel("Sensitivity\n(≥ 90% spots)")
+        left.set_ylabel("Sensitivity")
 
         classes = list(summary["study2"].items())
         for (name, entry), dodge in zip(
@@ -588,7 +588,7 @@ def figures(summary: dict[str, Any], into: Path) -> list[Path]:
                    dodge, 1e6)  # fmt: skip
         right.set_xscale("log")
         right.set_xlabel("CNA length [Mb]")
-        right.set_ylabel("Sensitivity\n(≥ 90% of segments)")
+        right.set_ylabel("Sensitivity")
 
         _false_positives(third, summary["study3"]["false_positive"])
         third.set_xlabel(r"$\log_{10} |{\rm SNP\ UMIs\ in\ segment}|$")
