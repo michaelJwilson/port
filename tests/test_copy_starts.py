@@ -179,3 +179,41 @@ def test_the_lattice_start_places_the_states_that_drew_the_call_before_any_polis
     start = cs.CopyStart("lattice", "rdrbaf", log_mu, p, 0.0, 0.0, 0.0)
 
     assert all(cs.found(start, cs.planted_states(call)).values()), (log_mu, p)
+
+
+@pytest.mark.oracle
+def test_the_lattice_channels_are_sals_count_pair_density() -> None:
+    """`_channels`, at every state and at each row's own, is `sal`'s independent-form `CountPairEmission` on the instance, to 1e-10 relative."""
+    import torch
+    from sal.emissions import CountPairEmission
+
+    for stage in cs.STAGES:
+        call = _call(stage)
+        held = cs.instance(call)
+        observations = np.asarray(held.observations, dtype=np.float64)
+        depth, allele = cs._channels(
+            observations, np.asarray(held.conditioned, dtype=np.float64)
+        )
+        rng = np.random.default_rng(3)
+        rate, share = rng.uniform(20.0, 300.0, 5), rng.uniform(0.02, 0.98, 5)
+        size, concentration = 13.0, 150.0
+        referee = (
+            CountPairEmission(
+                np.full(5, size),
+                rate,
+                share * concentration,
+                (1.0 - share) * concentration,
+                np.full(5, float(held.at.trials)),
+                joint=False,
+            )
+            .log_density(torch.as_tensor(observations), held.conditioned)
+            .numpy()
+        )
+        mine = depth(rate, size) + allele(share, concentration)
+        state = rng.integers(0, 5, observations.shape[0])
+        own = depth(rate, size, state) + allele(share, concentration, state)
+
+        np.testing.assert_allclose(mine, referee, rtol=1e-10)
+        np.testing.assert_allclose(
+            own, referee[np.arange(state.size), state], rtol=1e-10
+        )
