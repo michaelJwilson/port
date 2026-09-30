@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
-from port.patch.hmm_nophasing import nb_logpmf as patch
+from port.sandbox.patch.hmm_nophasing import nb_logpmf as patch
 from scipy.special import logsumexp
 from scipy.stats import nbinom
 

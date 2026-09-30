@@ -76,7 +76,7 @@ from dataclasses import dataclass
 from typing import Any, Literal
 
 import numpy as np
-from scipy.special import gammaln, logsumexp
+from scipy.special import gammaln, logsumexp, xlogy
 
 from port.extensions.copy_likelihood import Pseudobulk
 
@@ -160,7 +160,9 @@ def _emission(
 ) -> np.ndarray:
     """NB + BB log pmf per bin, in `port.extensions.jax_hmm.emission`'s terms.
 
-    `alpha = 0` is the Poisson and `tau = inf` the binomial, exactly.
+    `alpha = 0` is the Poisson and `tau = inf` the binomial, exactly. The
+    negative binomial is in log space, as `copy_likelihood._emission` scores
+    it (#560): `p = 1 / (1 + alpha * mean)` rounded to 1 at a vanishing mean.
     """
     x = bulk.counts_nb[bins]
     exposure = bulk.base_nb_mean[bins]
@@ -172,16 +174,17 @@ def _emission(
                 mean <= 0.0, 0.0, x * np.log(mean) - mean - gammaln(x + 1.0)
             )
         else:
-            size = 1.0 / max(bulk.dispersion, 1e-10)
-            success = 1.0 / (1.0 + bulk.dispersion * mean)
+            dispersion = max(bulk.dispersion, 1e-10)
+            size = 1.0 / dispersion
+            scaled = dispersion * mean
             depth = np.where(
                 mean <= 0.0,
                 0.0,
                 gammaln(x + size)
                 - gammaln(size)
                 - gammaln(x + 1.0)
-                + size * np.log(success)
-                + x * np.log1p(-success),
+                - (size + x) * np.log1p(scaled)
+                + xlogy(x, scaled),
             )
 
     k = bulk.counts_bb[bins]

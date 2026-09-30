@@ -1,5 +1,13 @@
 """`cnaster.hmm_nophasing._nb_logpmf_1d`, in log space so a vanishing mean cannot score a count at probability 1 (#560).
 
+Ticket: #560 -- cnaster's `nbinom_logpmf_numba` scores any count at
+  probability 1 once `p` rounds to 1, and Baum-Welch reaches it.
+Measurement: scipy to 1e-9 where scipy is exact (`alpha * lambda >= 1e-4`);
+  cnaster to 1e-9 where its `p < 1`; dev_tree_1s_hard r0's degenerate fit,
+  -23,359 nats unpatched, refits at -75,505 nats and 1.3% missed.
+Exit: a swap row once port installs it by default; retire when cnaster
+  lands the fix.
+
 **Replaces** `_nb_logpmf_1d(obs, exposure, mu, alpha, out)` and, since
 `cnaster`'s compiled `_dense_nb_logpmf` binds it as a global at compile time,
 `_dense_nb_logpmf(X_nb, base_nb_mean, log_mu, alphas)` beside it.

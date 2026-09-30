@@ -16,7 +16,7 @@ posteriors the fit is holding and `u` a unique `(obs, total)` code,
 and each term's derivative is a digamma or a ratio:
 
 - negative binomial, `r = 1 / max(alpha, 1e-10)`, `mu = c exp(eta)`,
-  `p = 1 / (1 + alpha mu)`: `d ell / d eta = k - (r + k) alpha mu / (1 + alpha mu)`,
+  `p = 1 / (1 + max(alpha, 1e-10) mu)`, logged as `-log1p` (#560): `d ell / d eta = k - (r + k) alpha mu / (1 + alpha mu)`,
   and, where `alpha` is above the floor, `d ell / d log alpha =
   -r (psi(k + r) - psi(r) + log p) + k - (r + k) alpha mu / (1 + alpha mu)`;
 - beta-binomial, `a = max(p tau, 1e-10)`, `b = max((1 - p) tau, 1e-10)`:
@@ -72,14 +72,20 @@ def nb_partials(
 ) -> tuple[np.ndarray, np.ndarray]:
     """`d ell / d log mean` and `d ell / d log alpha` of `cnaster`'s negative binomial.
 
-    Broadcasts. A bin `cnaster` scores 0 -- no exposure, or `p` rounded to 1
-    -- has zero derivative, because its score does not move.
+    Broadcasts. A bin with no exposure scores 0 and has zero derivative.
+
+    The derivative of the #560-corrected score
+    (`port.sandbox.patch.hmm_nophasing.nb_logpmf`), with `a = max(alpha, 1e-10) *
+    mean` and `log p = -log1p(a)`. Upstream's unpatched kernel also scores 0
+    where `p = 1 / (1 + alpha * mean)` rounds to 1 (`a` below about
+    1.1e-16) and floors `alpha` in `r` but not in `p`; this derivative
+    follows neither defect, so below the floor `alpha` moves nothing.
     """
     alpha = np.asarray(dispersion, dtype=np.float64)
-    size = 1.0 / np.maximum(alpha, DISPERSION_FLOOR)
-    scaled = alpha * mean
-    success = 1.0 / (1.0 + scaled)
-    live = (mean > 0.0) & (success < 1.0)
+    floored = np.maximum(alpha, DISPERSION_FLOOR)
+    size = 1.0 / floored
+    scaled = floored * mean
+    live = mean > 0.0
 
     with np.errstate(divide="ignore", invalid="ignore"):
         pull = (size + obs) * scaled / (1.0 + scaled)
@@ -88,10 +94,12 @@ def nb_partials(
         # NB below the floor `r` is a constant and only `p` moves with alpha.
         through_size = np.where(
             alpha > DISPERSION_FLOOR,
-            -size * (digamma(obs + size) - digamma(size) + np.log(success)),
+            -size * (digamma(obs + size) - digamma(size) - np.log1p(scaled)),
             0.0,
         )
-        d_alpha = np.where(live, through_size + obs - pull, 0.0)
+        d_alpha = np.where(
+            live & (alpha > DISPERSION_FLOOR), through_size + obs - pull, 0.0
+        )
 
     return d_eta, d_alpha
 

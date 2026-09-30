@@ -1,5 +1,12 @@
 """The copy-state HMM's Baum-Welch at known clones: `cnaster`'s own, on the clones stacked along the genome.
 
+Ticket: #540 -- copy-state starts at known clones, polished by Baum-Welch
+  (`tests/studies/copy_state_stream.py`).
+Measurement: `docs/study-copy-states.md`: each start's gap in log-likelihood
+  and share of rows off their planted state, before and after Baum-Welch.
+Exit: retire with the study; a start it finds better graduates through
+  `port.extensions.copy_starts`.
+
 `baum_welch` is `cnaster.hmm.pipeline_baum_welch` with `hmm_nophasing`, as
 `cnaster.hmrf` calls it for the BAF + RDR stage: states' `log_mu` and
 `p_binom` fitted (`params = "smp"`), the NB and beta-binomial dispersions
@@ -8,7 +15,7 @@ samples. The allele reads are phased by the truth, so no phase is modelled.
 `decode` scores and labels the rows at given states without fitting: the same
 forward-backward at `cnaster`'s initial dispersions.
 
-Both run under `port.patch.hmm_nophasing.nb_logpmf.patched` (#560):
+Both run under `port.sandbox.patch.hmm_nophasing.nb_logpmf.patched` (#560):
 `cnaster`'s negative binomial scores any count at probability 1 once its `p`
 rounds to 1, and Baum-Welch drove a state there. `degenerate` still flags a
 fit whose state would be scored so by the unpatched kernel.
@@ -94,7 +101,7 @@ def baum_welch(
     from cnaster.hmm import pipeline_baum_welch
     from cnaster.hmm_nophasing import hmm_nophasing
 
-    from port.patch.hmm_nophasing.nb_logpmf import patched
+    from port.sandbox.patch.hmm_nophasing.nb_logpmf import patched
 
     _configured()
     x, exposure, trials = _arrays(problem)
@@ -124,7 +131,7 @@ def decode(problem: Any, log_mu: np.ndarray, p_binom: np.ndarray) -> Fit:
 
     x, exposure, trials = _arrays(problem)
     n_states = int(np.asarray(log_mu).size)
-    from port.patch.hmm_nophasing.nb_logpmf import patched
+    from port.sandbox.patch.hmm_nophasing.nb_logpmf import patched
 
     opened = time.perf_counter()
     with patched():

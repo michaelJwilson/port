@@ -1,5 +1,12 @@
 """A drawn realization's copy-state problem with its clones known (#540, #556).
 
+Ticket: #540 -- copy-state starts at known clones, polished by Baum-Welch
+  (`tests/studies/copy_state_stream.py`).
+Measurement: `docs/study-copy-states.md`: each start's gap in log-likelihood
+  and share of rows off their planted state, before and after Baum-Welch.
+Exit: retire with the study; a start it finds better graduates through
+  `port.extensions.copy_starts`.
+
 The clones are the planted ones, so what remains is the copy states: each
 clone's pseudobulk over genomic bins, and the states an HMM decodes along it.
 

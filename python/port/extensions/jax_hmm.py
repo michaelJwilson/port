@@ -102,6 +102,13 @@ def emission(
     A zero exposure contributes zero rather than `-inf`: that is `cnaster`'s
     own convention (`_nb_logpmf_1d` skips a bin with no baseline), and it is
     what keeps an empty bin from taking the whole likelihood with it.
+
+    The negative binomial is evaluated in log space with
+    `a = max(alpha, 1e-10) * lambda`: `log p = -log1p(a)` and
+    `log(1 - p) = log(a) - log1p(a)` (#560). Forming `p` rounded it to 1 below
+    `a` of about 1.1e-16, where a count of 0 scored NaN and a count of 1000
+    `-inf` (truth -43,420 at `a = 1e-19`). `alpha` is floored in `a` as in
+    `r`, as `port.sandbox.patch.hmm_nophasing.nb_logpmf` does.
     """
     rates = _column(log_mu)[:, None]
     dispersions = _column(alphas)[:, None]
@@ -112,8 +119,10 @@ def emission(
     exposure = jnp.asarray(base_nb_mean)[None, :]
 
     mean = exposure * jnp.exp(rates)
-    size = 1.0 / jnp.maximum(dispersions, DISPERSION_FLOOR)
-    success = 1.0 / (1.0 + dispersions * mean)
+    floored = jnp.maximum(dispersions, DISPERSION_FLOOR)
+    size = 1.0 / floored
+    # NB a zero mean is masked below; 1.0 keeps its gradient finite.
+    scaled = floored * jnp.where(mean > 0.0, mean, 1.0)
 
     read_depth = jnp.where(
         mean <= 0.0,
@@ -121,8 +130,8 @@ def emission(
         jsp.gammaln(observed + size)
         - jsp.gammaln(size)
         - jsp.gammaln(observed + 1.0)
-        + size * jnp.log(success)
-        + observed * jnp.log1p(-success),
+        - (size + observed) * jnp.log1p(scaled)
+        + jsp.xlogy(observed, scaled),
     )
 
     successes = jnp.asarray(counts_bb)[None, :]
