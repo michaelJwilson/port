@@ -180,7 +180,7 @@ def _starts_arm(job: Job) -> list[dict[str, Any]]:
     bound, trws_energy, trws_seconds = _bound(problem.field, beta)
     base = {**job._asdict(), "bound": bound, "trws_energy": trws_energy,
             "trws_seconds": trws_seconds, "start_seconds": start_seconds,
-            "build_seconds": problem.seconds}  # fmt: skip
+            "build_seconds": problem.seconds, "states_by": problem.states_by}  # fmt: skip
     rows = [{**base, "solver": "start", **_scored(problem.labels, problem.field, beta)}]
 
     if job.seed >= SOLVED:
@@ -352,7 +352,12 @@ def _hold(capture_path: Path) -> None:
 
 
 def run_arms(
-    capture_path: Path, out: Path, *, arms: list[str] | None = None, workers: int = 4
+    capture_path: Path,
+    out: Path,
+    *,
+    arms: list[str] | None = None,
+    workers: int = 4,
+    retry: Path | None = None,
 ) -> None:
     """Every job of `arms` (all by default) in `workers` spawned processes; rows pickled to `out` as they arrive.
 
@@ -366,8 +371,16 @@ def run_arms(
     beta = _HELD["capture"].spatial_weight
     oracle = _HELD["oracle"]
     jobs = _jobs(arms or list(ARMS))
-    print(f"{len(jobs)} jobs", flush=True)
     rows: list[dict[str, Any]] = []
+    if retry is not None:
+        # NB every job with an errored row runs again; its other rows go.
+        with retry.open("rb") as fh:
+            earlier = pickle.load(fh)["rows"]
+        fields = Job._fields
+        failed = {tuple(r[f] for f in fields) for r in earlier if r.get("error")}
+        rows = [r for r in earlier if tuple(r[f] for f in fields) not in failed]
+        jobs = [j for j in jobs if tuple(j) in failed]
+    print(f"{len(jobs)} jobs", flush=True)
     opened = time.perf_counter()
     with ProcessPoolExecutor(
         workers,

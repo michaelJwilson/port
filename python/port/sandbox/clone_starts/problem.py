@@ -108,6 +108,8 @@ class Problem(NamedTuple):
     """`(bins, q)` each clone's state per bin."""
     seconds: float
     """The copy states, profiles and field, from the labels."""
+    states_by: str
+    """What gave the states: the start asked for, or the fallback `sal`'s refusal took."""
 
 
 def _compact(labels: np.ndarray) -> np.ndarray:
@@ -264,16 +266,36 @@ def build(
     states: tuple[np.ndarray, np.ndarray] | None = None,
 ) -> Problem:
     """The problem `labels` give: copy states by `start` (or `states`, as given), profiles, field."""
-    from port.extensions.copy_starts import polish_states, run_start
+    from port.extensions.copy_starts import (
+        CopyStart,
+        lattice_start,
+        polish_states,
+        run_start,
+    )
 
     opened = time.perf_counter()
     labels = _compact(labels)
     call = _call(capture, labels)
 
-    if states is None:
-        fitted = run_start(start, call, rng, seconds=seconds)
-    else:
-        fitted = polish_states(start, call, *states, seconds=seconds)
+    # NB `sal`'s EM refuses some pseudobulks -- a beta-binomial fit that
+    #    degenerates, an M step that does not settle -- which the pipeline
+    #    would raise on. The study records the fallback instead: the lattice,
+    #    polished, then its states unpolished.
+    try:
+        fitted = (
+            run_start(start, call, rng, seconds=seconds)
+            if states is None
+            else polish_states(start, call, *states, seconds=seconds)
+        )
+        states_by = start if states is None else "warm"
+    except ValueError:
+        try:
+            fitted = run_start("lattice", call, rng, seconds=seconds)
+            states_by = "lattice (fallback)"
+        except ValueError:
+            log_mu, p = lattice_start(call)
+            fitted = CopyStart("lattice", "rdrbaf", log_mu, p, float("nan"), 0.0, 0.0)
+            states_by = "lattice unpolished (fallback)"
 
     pred, size, concentration = profiles(capture, labels, fitted.log_mu, fitted.p_binom)
     return Problem(
@@ -283,4 +305,5 @@ def build(
         p_binom=fitted.p_binom,
         pred=pred,
         seconds=time.perf_counter() - opened,
+        states_by=states_by,
     )

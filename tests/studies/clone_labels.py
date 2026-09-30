@@ -11,11 +11,17 @@ scoring.
 
 `python -m tests.studies.clone_labels run CAPTURE OUT.pkl [--arm ARM]` runs
 the arms (`tests.studies.clone_label_arms`).
+
+`python -m tests.studies.clone_labels e2e SAMPLE START` runs `--sal` end to
+end with `START` in place of the first clone-assignment solve of each stage
+(`first_round`), and prints `sim_audit`'s `SIM` row.
 """
 
 from __future__ import annotations
 
 import argparse
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -125,6 +131,90 @@ def capture(
     print(f"CAPTURED {out}: {n_spots} spots, {single_X.shape[0]} bins")
 
 
+FIRST_ROUND = ("mean field", "smoothed argmax 1", "agglomerative")
+"""The field-reading starts run end to end: the three #541's arms rank first that need no coordinates."""
+
+
+@contextmanager
+def first_round(start: str) -> Iterator[None]:
+    """`start` in place of the solve at each stage's first clone assignment, on the field that call holds.
+
+    The pipeline's start is its BAF stage's rectangles, and the BAF + RDR
+    stage's is the BAF stage's clones; neither holds a field until its first
+    fit. This relabels at the first assignment after each
+    `run_core_inference` begins, from that fit's field, and leaves every later
+    round to `--sal`'s solver.
+    """
+    from port.extensions import label_solver
+    from port.patch.hmrf import core_inference
+    from port.patch.icm.alpha_expansion import potts_energy
+    from port.patch.icm.interface import IcmResult
+    from port.sandbox.clone_starts.starts import STARTS
+
+    real_inference, real_sweep_for = core_inference.UPSTREAM, label_solver.sweep_for
+    fresh = [False]
+
+    def inference(**arguments: Any) -> Any:
+        fresh[0] = True
+        return real_inference(**arguments)
+
+    def sweep_for(name: Any) -> Any:
+        real = real_sweep_for(name)
+
+        def sweep(
+            field: Any, graph: Any, assignment: Any, beta: float, **knobs: Any
+        ) -> Any:
+            if not fresh[0]:
+                return real(field, graph, assignment, beta, **knobs)
+            fresh[0] = False
+
+            class Shim:
+                n_spots = graph.n_spots
+                indptr, indices, weights = graph.indptr, graph.indices, graph.weights
+                spatial_weight = beta
+
+            labels = STARTS[start].run(
+                Shim, np.random.default_rng(0), field=field, k=field.shape[1]
+            )
+            assignment[:] = labels
+            return IcmResult(1, -potts_energy(field, graph, assignment, beta))
+
+        return sweep
+
+    core_inference.UPSTREAM = inference
+    label_solver.sweep_for = sweep_for
+    try:
+        yield
+    finally:
+        core_inference.UPSTREAM = real_inference
+        label_solver.sweep_for = real_sweep_for
+
+
+def e2e(sample_name: str, start: str) -> None:
+    """`--sal` end to end with `start` at each stage's first assignment; `sim_audit`'s `SIM` line."""
+    import json
+    import time
+    from dataclasses import asdict
+
+    from tests.sim_audit import run_arm
+    from tests.sim_fixtures import load_simulated
+
+    path = Path(sample_name)
+    sample = (
+        load_simulated(path.name, path.parent)
+        if path.is_absolute()
+        else load_simulated(sample_name)
+    )
+    opened = time.perf_counter()
+    if start == "none":
+        recovery, _ = run_arm(sample, ["--sal", "--no-plots"])
+    else:
+        with first_round(start):
+            recovery, _ = run_arm(sample, ["--sal", "--no-plots"])
+    row = {**asdict(recovery), "start": start, "wall": time.perf_counter() - opened}
+    print("SIM " + json.dumps(row, default=str))
+
+
 def main(argv: list[str] | None = None) -> None:
     """The subcommands."""
     parser = argparse.ArgumentParser(description=(__doc__ or "").splitlines()[0])
@@ -137,9 +227,20 @@ def main(argv: list[str] | None = None) -> None:
     two.add_argument("out", type=Path)
     two.add_argument("--arm", action="append", default=None)
     two.add_argument("--workers", type=int, default=4)
+    two.add_argument(
+        "--retry",
+        type=Path,
+        default=None,
+        help="an earlier run: its errored jobs again",
+    )
+    three = sub.add_parser("e2e")
+    three.add_argument("sample")
+    three.add_argument("start", choices=["none", *FIRST_ROUND])
     arguments = parser.parse_args(argv)
 
-    if arguments.command == "capture":
+    if arguments.command == "e2e":
+        e2e(arguments.sample, arguments.start)
+    elif arguments.command == "capture":
         capture(arguments.sample, arguments.out)
     else:
         from tests.studies.clone_label_arms import run_arms
@@ -149,6 +250,7 @@ def main(argv: list[str] | None = None) -> None:
             arguments.out,
             arms=arguments.arm,
             workers=arguments.workers,
+            retry=arguments.retry,
         )
 
 

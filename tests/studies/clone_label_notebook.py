@@ -103,7 +103,7 @@ solvers.sort_values(["floored_ari", "gap"], ascending=[False, True]).round(4)"""
     ),
     (
         "code",
-        """per = solved.groupby(["start", "solver"]).floored_ari.median().unstack()
+        """per = solved.pivot_table(index="start", columns="solver", values="floored_ari", aggfunc="median")
 best = pd.DataFrame({
     "start ARI": starts.groupby("start").ari.median(),
     "best solver": per.idxmax(axis=1),
@@ -114,31 +114,42 @@ best.sort_values("its floored ARI", ascending=False).round(4)""",
     ),
     (
         "markdown",
-        "## Runtime against gap\n\nLeft: each solver's median energy gap per spot above TRW-S's bound against its median solve time, over every start and seed, with the range across starts. Right: each start's ARI before (open) and after (filled) `--sal`'s solver and floor, against the start's own cost. This figure replaces #492's `potts_solvers_sal.png` and `potts_solvers_port.png`.",
+        "## Runtime against gap, and what each start is worth\n\nLeft: each solver's median energy gap per spot above TRW-S's bound against its median solve time, over every start and seed, with the range. Right: each start's clone ARI as it stands (open), after one `--sal` solve and floor (bar), and after four alternating rounds (filled); in brackets, the start's and its states' and field's seconds. This figure replaces #492's `potts_solvers_sal.png` and `potts_solvers_port.png`.",
     ),
     (
         "code",
         """plt.rcParams.update({"font.size": 8})
-figure, (left, right) = plt.subplots(1, 2, figsize=(10, 4.2))
+figure, (left, right) = plt.subplots(1, 2, figsize=(11, 4.6), gridspec_kw={"width_ratios": [1, 1.15]})
+cuts = {"sal:alpha-expansion", "sal:alpha-beta-swap", "port:alpha", "port:alpha-rust",
+        "port:alpha-rust-merge", "port:alpha-rust-fuse-merge", "port:alpha-rust-icm"}
 for solver, group in solved.groupby("solver"):
     x, y = group.solve_seconds.median(), group.gap.median() + 1e-3
     port = solver.startswith("port:")
     left.errorbar(x, y, yerr=[[y - (group.gap.min() + 1e-3)], [group.gap.max() + 1e-3 - y]],
                   fmt="s" if port else "o", color="C1" if port else "C0", ms=4, lw=0.6, capsize=2)
-    left.annotate(solver.split(":")[1], (x, y), fontsize=6, xytext=(3, 2), textcoords="offset points")
-left.set(xscale="log", yscale="log", xlabel="solve seconds (median)",
-         ylabel="energy above TRW-S bound per spot, + 1e-3", title="solvers, field held")
+    if solver not in cuts:
+        left.annotate(solver.split(":")[1], (x, y), fontsize=6, xytext=(4, 3), textcoords="offset points")
+left.annotate("graph cuts: sal alpha-expansion, alpha-beta-swap;\\nport alpha-rust, -merge, -fuse-merge, -icm, alpha",
+              (0.1, 1.1e-3), fontsize=6, xytext=(8, 22), textcoords="offset points")
+left.plot([], [], "o", color="C0", label="sal"); left.plot([], [], "s", color="C1", label="port")
+left.legend(loc="upper left", fontsize=7, frameon=False)
+left.set(xscale="log", yscale="log", xlabel="solve seconds (median over starts and seeds)",
+         ylabel="energy above TRW-S bound per spot, + 1e-3", title="solvers from every start, field held")
+alternating = rows[(rows.arm == "alternating") & rows.error.isna()]
 fuse = solved[solved.solver == "port:alpha-rust-fuse-merge"].groupby("start").floored_ari.median()
 cost = starts.groupby("start").start_seconds.median() + starts.groupby("start").build_seconds.median()
 start_ari = starts.groupby("start").ari.median()
-for name in start_ari.index:
-    right.plot([cost[name]] * 2, [start_ari[name], fuse.get(name, np.nan)], color="0.7", lw=0.6)
-    right.scatter(cost[name], start_ari[name], facecolors="none", edgecolors="C0", s=18)
-    right.scatter(cost[name], fuse.get(name, np.nan), color="C0", s=18)
-    right.annotate(name, (cost[name], fuse.get(name, np.nan)), fontsize=6, xytext=(3, -2), textcoords="offset points")
-right.axhline(oracle["ari"], color="C2", lw=0.6, ls="--")
-right.set(xscale="log", xlabel="start + its states and field, seconds", ylabel="clone ARI",
-          title="starts: before (open) and after --sal's solver and floor")
+alt = alternating[(alternating.solver == "port:alpha-rust-fuse-merge") & (alternating["round"] == 4)].set_index("start").ari
+order = alt.reindex(start_ari.index).fillna(fuse).sort_values().index
+y = np.arange(len(order))
+right.hlines(y, start_ari[order], alt.reindex(order), color="0.8", lw=1)
+right.scatter(start_ari[order], y, facecolors="none", edgecolors="C0", s=22, label="start", zorder=3)
+right.scatter(fuse.reindex(order), y, marker="|", color="C1", s=60, label="solved once, floored", zorder=3)
+right.scatter(alt.reindex(order), y, color="C0", s=22, label="alternated, 4 rounds", zorder=3)
+right.set_yticks(y, [f"{n}  ({cost[n]:.0f} s)" for n in order], fontsize=7)
+right.axvline(oracle["ari"], color="C2", lw=0.6, ls="--")
+right.legend(loc="lower right", fontsize=7, frameon=False)
+right.set(xlabel="clone ARI", title="starts, with --sal's solver and floor (start + states and field, s)")
 figure.tight_layout()
 figure.savefig("../plots/studies/clone_label_study.png", dpi=150, metadata={"Software": None})""",
     ),
