@@ -10,9 +10,9 @@ Each point is a solver's median over realizations x random starts, its error
 bars the 10-90% range on both axes; an open marker is the same runs after sal's
 ICM, a diamond after the color merge that follows it. Polish stages are drawn
 `DODGE` to the right of their runtime so stages do not overlap. The table's
-last column, Missed, counts the labels that differ from the planted ones at each
-solver's lowest-energy run, median over realizations: raw / after ICM and the
-color merge (`wrong_at_best`).
+last column, Missed, counts the labels that differ from the planted ones, the
+median over the same runs as the points: raw / after ICM and the color merge
+(`missed`).
 """
 
 from __future__ import annotations
@@ -92,14 +92,12 @@ def frame(record: dict[str, Any]) -> pd.DataFrame:
     )
 
 
-def wrong_at_best(d: pd.DataFrame) -> dict[str, tuple[float, float]]:
-    """Per solver, labels unlike the planted at each realization's lowest-energy run, median over realizations: raw, polished."""
-    out: dict[str, tuple[float, float]] = {}
-    for solver, g in d.groupby("solver"):
-        raw = g.loc[g.groupby("problem").energy.idxmin(), "wrong"]
-        polished = g.loc[g.groupby("problem").both.idxmin(), "both_wrong"]
-        out[str(solver)] = (float(raw.median()), float(polished.median()))
-    return out
+def missed(d: pd.DataFrame) -> dict[str, tuple[float, float]]:
+    """Per solver, labels unlike the planted, median over all its runs (realizations x starts): raw, after both polishes."""
+    return {
+        str(solver): (float(g.wrong.median()), float(g.both_wrong.median()))
+        for solver, g in d.groupby("solver")
+    }
 
 
 def _table(tab: Any, wrong: dict[str, tuple[float, float]]) -> None:
@@ -330,7 +328,7 @@ def figure(record: dict[str, Any], out: Path) -> Path:
     ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.1), ncol=3, fontsize=7.5, frameon=False,
               title=f"Median for {n_problems} realization{'s' if n_problems > 1 else ''} $\\times$ {n_starts} random starts",
               title_fontsize=7.5)  # fmt: skip
-    _table(tab, wrong_at_best(d))
+    _table(tab, missed(d))
     fig.savefig(out, dpi=150, bbox_inches="tight")
     plt.close(fig)
     return out
