@@ -369,6 +369,7 @@ def summarize(out: Path, study2_j: float, seed: int = 544) -> dict[str, Any]:
             display=SNP_DISPLAY,
             count="count",
         ),
+        "pooled": _pooled(segments, "false_positive", members2, weights2),
     }
 
     differences = {}
@@ -646,6 +647,23 @@ EMPTY = "-"
 """A table cell with no item in its bin."""
 
 
+def _pooled(
+    frame: pd.DataFrame, y: str, seeds: np.ndarray, weights: np.ndarray
+) -> dict[str, float]:
+    """One rate over every row, counted, with its 95% interval over members."""
+    if frame.empty:
+        return {"rate": float("nan"), "low": float("nan"), "high": float("nan"),
+                "false": 0}  # fmt: skip
+    member = np.searchsorted(seeds, frame["seed"].to_numpy())
+    many = frame["count"].to_numpy(dtype=float)
+    hits = np.bincount(member, frame[y].to_numpy() * many, seeds.size)
+    total = np.bincount(member, many, seeds.size)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        low, high = np.nanpercentile((weights @ hits) / (weights @ total), [2.5, 97.5])
+    return {"rate": float(hits.sum() / total.sum()), "low": float(low),
+            "high": float(high), "false": int(hits.sum())}  # fmt: skip
+
+
 def _cell(rate: float, low: float, high: float, n: int) -> str:
     if n == 0 or not np.isfinite(rate):
         return EMPTY
@@ -700,4 +718,20 @@ def tables(summary: dict[str, Any]) -> str:
         lines.append(f"| {name} | {entry['events']} | "
                      f"{e['crossing']:.2f} [{low:.2f}, {high:.2f}] | "
                      f"{entry.get('verdict', '')} |")  # fmt: skip
+    lines.append("")
+
+    study3 = summary["study3"]
+    e = study3["false_positive"]
+    lines.append(
+        "| (1, 1) segment SNP UMIs, log10 | false positive rate [95%] (segments) |"
+    )
+    lines.append("| --- | --- |")
+    for k, centre in enumerate(e["centres"]):
+        if e["n"][k]:
+            lines.append(f"| {centre:.2f} | {e['rate'][k]:.2e} [{e['low'][k]:.2e}, "
+                         f"{e['high'][k]:.2e}] ({e['n'][k]}) |")  # fmt: skip
+    pooled = study3["pooled"]
+    lines.append(f"| all | {pooled['rate']:.2e} [{pooled['low']:.2e}, "
+                 f"{pooled['high']:.2e}] ({study3['segments']}; "
+                 f"{pooled['false']} false) |")  # fmt: skip
     return "\n".join(lines) + "\n"
