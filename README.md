@@ -521,6 +521,7 @@ not carry, not before.
 | [CLAUDE.md](CLAUDE.md) | The rules |
 | [docs/measurements.md](docs/measurements.md) | The timings, ratios and histories the package docstrings cited, by module and object (#517) |
 | [docs/metrics.md](docs/metrics.md) | One row per recovery run: commit, timestamp, fixture hash, test, arguments, clone/copy/state ARI, wall, peak, note (#409) |
+| [docs/study-recovery-population.md](docs/study-recovery-population.md) | `--sal` sensitivity against clone UMIs and CNA length, and the false positive rate, over 679 simulated runs (#544) |
 | [docs/templates/](docs/templates/README.md) | Templates for documents made outside the code: the work-in-flight page (#335) |
 
 `DEV.md`, `INSTALL.md` and `CHANGELOG.md` are added when the content for them
