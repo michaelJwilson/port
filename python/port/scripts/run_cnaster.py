@@ -118,13 +118,13 @@ def _parser() -> argparse.ArgumentParser:
         "--hmm-start",
         default=None,
         metavar="START",
-        help="the read-depth HMM's copy-state start, lattice or lattice-em (#547); none, lattice with --sal",
+        help="the read-depth HMM's copy-state start, a sal mixture start or lattice (#489, #547); none, kmeans++x5+em with --sal",
     )
     parser.add_argument(
         "--baf-start",
         default=None,
         metavar="START",
-        help="the BAF-only HMM's copy-state start, lattice or lattice-em (#540); none keeps distinct's",
+        help="the BAF-only HMM's copy-state start, a sal mixture start or lattice (#540); none keeps distinct's",
     )
     parser.add_argument(
         "--distinct-init",
@@ -232,7 +232,7 @@ class Settings(NamedTuple):
     distinct: bool
     """The distinct initializer: on where the shift is, off with `--no-patch`."""
     hmm_start: str
-    """The read-depth HMM's copy-state start: `none`, `lattice` with `--sal` (#547)."""
+    """The read-depth HMM's copy-state start: `none`, `kmeans++x5+em` with `--sal` (#489)."""
     baf_start: str
     """The BAF-only stage's start: `none`, `distinct`'s kept (#540)."""
 
@@ -256,7 +256,7 @@ def _settings(arguments: argparse.Namespace) -> Settings:
         floor=bool(asked(arguments.floor_merge, arguments.sal)),
         distinct=bool(asked(arguments.distinct_init, shift and patch)),
         hmm_start=str(
-            asked(arguments.hmm_start, "lattice" if arguments.sal else "none")
+            asked(arguments.hmm_start, "kmeans++x5+em" if arguments.sal else "none")
         ),
         baf_start=str(asked(arguments.baf_start, "none")),
     )

@@ -781,9 +781,10 @@ On dev_tree r0 it takes tumour-clone RDR outlier rows from 1,163 to 802 and
 the segments from 2,895 to 2,624."""
 
 SAL_NORMAL_UMI_FLOOR = MIN_SEGMENT_NORMAL_UMI
-"""The normal-UMI floor `--sal` binds (#547): with the lattice start, the one
-floor of 100, 200, 300, 500, 700 and 1,000 that held every clone ARI on
-dev_tree, easy and hard, and raised hard's copy ARI from 0.9055 to 0.9181."""
+"""The normal-UMI floor `--sal` binds (#547). With `kmeans++x5+em` or the
+lattice start it holds every clone ARI on dev_tree, easy and hard and raises
+hard's copy ARI from 0.9055 to 0.9181; with the lattice, 200, 500, 700 and
+1,000 each gave some sample an extra clone."""
 
 
 def segment_floor(

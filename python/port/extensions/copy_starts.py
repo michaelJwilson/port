@@ -1,9 +1,9 @@
 """The HMM's copy-state start: the integer lattice, placed by the rows and polished by `sal` (#540, #547).
 
 A start places the HMM's `n_states` copy states before its first fit: each
-state's read-depth ratio `mu` and B-allele frequency `p`. `--sal` installs
-this one on the BAF + RDR stage, `port.patch.hmm_initialize.sal_mixture`
-calling `lattice_states`:
+state's read-depth ratio `mu` and B-allele frequency `p`.
+`port.patch.hmm_initialize.sal_mixture` runs one through `run_start`: `sal`'s
+`kmeans++x5+em` under `--sal` (#489), or the lattice (`--hmm-start lattice`):
 
 - **The call** (`CopyCall`): the clone-stacked pseudobulk an HMM initializer
   is handed, one row per (clone, bin), with each row's exposure
@@ -22,9 +22,9 @@ is given a constant read-depth channel -- the same total and exposure in
 every row -- so every state fits the same `mu` and the channel adds one
 constant to every likelihood (`instance(call)`).
 
-The other starts #540 compared -- `sal`'s mixture starts, `cnaster`'s
-initializers, `rdr-quantiles`, the lattice by EM -- and the study's masks,
-smoothing and outliers are in `port.sandbox.extensions.copy_starts`
+The other starts #540 compared -- `cnaster`'s initializers, port's
+`distinct` as a start, `rdr-quantiles` -- and the study's masks, smoothing,
+outliers and records are in `port.sandbox.extensions.copy_starts`
 (`docs/nb/copy_state_starts.ipynb`).
 """
 
@@ -39,13 +39,14 @@ import numpy as np
 from port.patch.hmm_initialize.sal_mixture import EXPOSURE_SCALE
 
 __all__ = [
+    "LATTICE",
     "STAGES",
     "CopyCall",
     "CopyStart",
     "instance",
     "lattice_start",
-    "lattice_states",
     "polish_states",
+    "run_start",
     "with_error",
 ]
 
@@ -471,17 +472,100 @@ def polish_states(
     )
 
 
-def lattice_states(
-    call: CopyCall, *, seconds: float = 60.0, em: bool = False
+Seed = Callable[[CopyCall, np.random.Generator], tuple[Any, Any]]
+"""A start by `(log mu, p)`: what port's starts are, where `sal`'s are components."""
+
+LATTICE: dict[str, Seed] = {
+    "lattice": lambda call, _rng: lattice_start(call),
+    "lattice-em": lambda call, _rng: lattice_start(call, em=True),
+}
+"""port's starts that run live: the lattice, by classification and by EM."""
+
+
+def _seeded(
+    name: str,
+    call: CopyCall,
+    held: Any,
+    rng: np.random.Generator,
+    seconds: float,
+    seeds: dict[str, Seed],
+) -> Any:
+    """The start's components on `held` (the instance of `call`); a best-of-n start polishes its own n within `seconds`."""
+    if name in seeds:
+        return _place(held, call, *seeds[name](call, rng))
+
+    from sal.search.mixture_starts import BestOf, Selection, lookup
+
+    chosen = lookup(name)
+    if isinstance(chosen, BestOf) and chosen.select is Selection.POLISHED:
+        _, best = chosen.polished(
+            held, rng, seconds=seconds / 2.0, passes=None, tolerance=1e-6
+        )
+        return best.components
+    return chosen(held, rng).components
+
+
+def run_start(
+    name: str,
+    call: CopyCall,
+    rng: np.random.Generator,
+    *,
+    seed_on: CopyCall | None = None,
+    fit_on: CopyCall | None = None,
+    covariate: bool = True,
+    seconds: float = 60.0,
+    seeds: dict[str, Seed] | None = None,
 ) -> CopyStart:
-    """`lattice_start`'s states polished by `sal`'s EM on the whole call: the start `--sal` installs (#547)."""
+    """`name` seeded on `seed_on` (default the call), polished on `fit_on` if given, then on the whole call, and scored there.
+
+    `name` is one of `sal`'s mixture starts (`sal.search.mixture_starts`;
+    `kmeans++x5+em` is `--sal`'s, #489) or of `seeds`, by default
+    `LATTICE`. Every start ends in the same polish on the same instance, so
+    two starts' log-likelihoods compare; `seconds` covers the whole cell.
+    """
+    from sal.search.mixture_starts import polish
+
+    full = instance(call)
+    source = seed_on if seed_on is not None else call
     opened = time.perf_counter()
-    log_mu, p = lattice_start(call, em=em)
-    return polish_states(
-        "lattice-em" if em else "lattice",
-        call,
-        log_mu,
-        p,
-        seconds=seconds,
-        handover=time.perf_counter() - opened,
+    components = _seeded(
+        name,
+        source,
+        instance(source, covariate=covariate),
+        rng,
+        seconds,
+        LATTICE if seeds is None else seeds,
+    )
+
+    if covariate:
+        log_mu, p = _read(source, components)
+    else:
+        # NB fitted on raw totals: the rate is the mean over the typical exposure.
+        log_mu, p = _read(
+            source,
+            components,
+            per=float(np.median(source.exposure[source.exposure > 0])),
+        )
+
+    handover = time.perf_counter() - opened
+
+    if fit_on is not None:
+        left = max(seconds - (time.perf_counter() - opened), 1.0)
+        held = instance(fit_on)
+        fitted = polish(
+            held, _place(held, fit_on, log_mu, p), seconds=left / 2.0, tolerance=1e-6
+        )
+        log_mu, p = _read(fit_on, fitted.components)
+
+    left = max(seconds - (time.perf_counter() - opened), 1.0)
+    polished = polish(full, _place(full, call, log_mu, p), seconds=left, tolerance=1e-6)
+    log_mu, p = _read(call, polished.components)
+    return CopyStart(
+        name=name,
+        stage=call.stage,
+        log_mu=log_mu,
+        p_binom=p,
+        log_likelihood=float(polished.log_likelihoods[-1]),
+        seconds=time.perf_counter() - opened,
+        handover=handover,
     )

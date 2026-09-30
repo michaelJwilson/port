@@ -1,21 +1,18 @@
 """Set aside (#547): #540's copy-state starts, every one behind one interface, the lattice installed.
 
-Ticket: #540 -- which start places the HMM's copy states; #547 installed the
-  lattice under `--sal` and set the rest aside.
+Ticket: #540 -- which start places the HMM's copy states; #547 kept `sal`'s
+  starts and the lattice live and set the rest aside.
 Measurement: #540's study at the planted clones of dev_tree r0 (1,015
-  trials; `docs/nb/copy_state_starts.ipynb`), and #547's end-to-end runs:
-  on dev_tree, easy and hard, `kmeans++x5+em` and `kmeans++` over 10 Mb
-  matched the lattice's clone ARIs without the segment floor, and the
-  lattice with the 300 normal-UMI floor raised hard's copy ARI 0.9055 to
-  0.9181.
-Exit: graduate a start to `extensions/` if it beats the lattice's clone and
-  copy ARIs on dev_tree, easy and hard under `--sal`; else it stays the
+  trials; `docs/nb/copy_state_starts.ipynb`): `distinct` 40.4 nats below
+  the best BAF-only fit, `rdr-quantiles` 25.3 from the BAF + RDR call and
+  118.7 without it, `cna-mixture++` refused by `cnaster`.
+Exit: graduate a start to `extensions/` if it beats `kmeans++x5+em`'s clone
+  and copy ARIs on dev_tree, easy and hard under `--sal`; else it stays the
   study's comparison, for #541.
 
-Set aside by #547: `--sal` installs `port.extensions.copy_starts`' lattice
-start, which led #540's study (`docs/nb/copy_state_starts.ipynb`) and, with
-the 300 normal-UMI segment floor, held every clone ARI on dev_tree, easy and
-hard. What the study compared it against lives here, for #541 and for
+Set aside by #547: `port.extensions.copy_starts` runs `sal`'s mixture
+starts (`kmeans++x5+em`, `--sal`'s) and the lattice. What else #540's study
+(`docs/nb/copy_state_starts.ipynb`) compared lives here, for #541 and for
 anyone rerunning the study (`tests.studies.copy_starts`):
 
 - **The starts** (`starts()`, `run_start`): a `Row` names each, its source,
@@ -35,7 +32,6 @@ anyone rerunning the study (`tests.studies.copy_starts`):
 from __future__ import annotations
 
 import functools
-import time
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any, NamedTuple
@@ -47,12 +43,11 @@ from port.extensions.copy_starts import (
     CopyCall,
     CopyStart,
     _log_rdr,
-    _place,
-    _read,
     instance,
     lattice_start,
     polish_states,
 )
+from port.extensions.copy_starts import run_start as live_run_start
 
 __all__ = [
     "MASKS",
@@ -511,78 +506,9 @@ def starts() -> dict[str, Row]:
     return _registry()
 
 
-def _seeded(
-    name: str, call: CopyCall, held: Any, rng: np.random.Generator, seconds: float
-) -> Any:
-    """The start's components on `held` (the instance of `call`); a best-of-n start polishes its own n within `seconds`."""
-    ports = _port_starts()
-    if name in ports:
-        return _place(held, call, *ports[name][1](call, rng))
-
-    from sal.search.mixture_starts import BestOf, Selection, lookup
-
-    chosen = lookup(name)
-    if isinstance(chosen, BestOf) and chosen.select is Selection.POLISHED:
-        _, best = chosen.polished(
-            held, rng, seconds=seconds / 2.0, passes=None, tolerance=1e-6
-        )
-        return best.components
-    return chosen(held, rng).components
-
-
 def run_start(
-    name: str,
-    call: CopyCall,
-    rng: np.random.Generator,
-    *,
-    seed_on: CopyCall | None = None,
-    fit_on: CopyCall | None = None,
-    covariate: bool = True,
-    seconds: float = 60.0,
+    name: str, call: CopyCall, rng: np.random.Generator, **options: Any
 ) -> CopyStart:
-    """`name` seeded on `seed_on` (default the call), polished on `fit_on` if given, then on the whole call, and scored there.
-
-    Every arm ends in the same polish on the same instance, so the
-    log-likelihoods of two arms compare; `seconds` covers the whole cell.
-    """
-    from sal.search.mixture_starts import polish
-
-    full = instance(call)
-    source = seed_on if seed_on is not None else call
-    opened = time.perf_counter()
-    components = _seeded(
-        name, source, instance(source, covariate=covariate), rng, seconds
-    )
-
-    if covariate:
-        log_mu, p = _read(source, components)
-    else:
-        # NB fitted on raw totals: the rate is the mean over the typical exposure.
-        log_mu, p = _read(
-            source,
-            components,
-            per=float(np.median(source.exposure[source.exposure > 0])),
-        )
-
-    handover = time.perf_counter() - opened
-
-    if fit_on is not None:
-        left = max(seconds - (time.perf_counter() - opened), 1.0)
-        held = instance(fit_on)
-        fitted = polish(
-            held, _place(held, fit_on, log_mu, p), seconds=left / 2.0, tolerance=1e-6
-        )
-        log_mu, p = _read(fit_on, fitted.components)
-
-    left = max(seconds - (time.perf_counter() - opened), 1.0)
-    polished = polish(full, _place(full, call, log_mu, p), seconds=left, tolerance=1e-6)
-    log_mu, p = _read(call, polished.components)
-    return CopyStart(
-        name=name,
-        stage=call.stage,
-        log_mu=log_mu,
-        p_binom=p,
-        log_likelihood=float(polished.log_likelihoods[-1]),
-        seconds=time.perf_counter() - opened,
-        handover=handover,
-    )
+    """`copy_starts.run_start`, with `cnaster`'s initializers, `distinct` and `rdr-quantiles` among the starts it takes."""
+    seeds = {n: seed for n, (_, seed) in _port_starts().items()}
+    return live_run_start(name, call, rng, seeds=seeds, **options)
