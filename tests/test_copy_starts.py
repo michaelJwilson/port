@@ -213,9 +213,40 @@ def test_the_hmc_start_seeds_from_the_chains_best_draw() -> None:
     objective = surrogate(held)
     chain = chain_initializer(np.random.default_rng(3)).chain(objective)
     values = [float(objective(theta)) for theta in chain.draws]
-    best = at_locations(held, objective.components(chain.draws[int(np.argmin(values))]).mean)
+    best = at_locations(
+        held, objective.components(chain.draws[int(np.argmin(values))]).mean
+    )
 
     seeded = cs._seeded("hmc", call, held, np.random.default_rng(3), 60.0)
 
-    np.testing.assert_array_equal(np.asarray(seeded.total.mean), np.asarray(best.total.mean))
+    np.testing.assert_array_equal(
+        np.asarray(seeded.total.mean), np.asarray(best.total.mean)
+    )
     assert min(values) <= values[-1]
+
+
+@pytest.mark.patch
+@pytest.mark.parametrize(
+    ("name", "setting"),
+    [
+        ("anneal", {"t_start": 8.0, "steps": 8}),
+        ("tempering", {"t_top": 8.0, "rounds": 2}),
+        ("hmc", {"draws": 4}),
+    ],
+)
+def test_a_tuned_sampler_at_sals_own_setting_is_sals_start(
+    name: str, setting: dict[str, float]
+) -> None:
+    """At `sal`'s schedule the tuned route seeds the components `sal`'s start seeds, on the same stream.
+
+    `hmc` against port's best-draw start, since `sal`'s keeps its last draw.
+    """
+    call = _call("rdrbaf", n_bins=200)
+    held = cs.instance(call, covariate=cs.starts()[name].covariate)
+    tuned = cs._seeded(name, call, held, np.random.default_rng(5), 60.0, setting)
+    own = cs._seeded(name, call, held, np.random.default_rng(5), 60.0)
+
+    np.testing.assert_array_equal(
+        np.asarray(tuned.total.mean), np.asarray(own.total.mean)
+    )
+    np.testing.assert_array_equal(np.asarray(tuned.rate), np.asarray(own.rate))

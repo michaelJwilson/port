@@ -860,10 +860,78 @@ def starts() -> dict[str, Row]:
     return _registry()
 
 
+TUNABLE = ("anneal", "tempering", "hmc")
+"""The `sal` samplers a setting reaches: `_tuned_seeding`'s."""
+
+
+def _tuned_seeding(
+    name: str, held: Any, rng: np.random.Generator, setting: dict[str, float]
+) -> Any:
+    """`sal`'s annealing, tempering or HMC start with its schedule replaced, each seeding at its best point.
+
+    - `anneal`: `FromAnnealing` from `t_start` to 1 over `steps` proposals
+      (`sal`: 8 to 1 over 8);
+    - `tempering`: `FromTempering` on 4 rungs geometric from 1 to `t_top`,
+      `rounds` rounds (`sal`: 1 to 8, 2 rounds);
+    - `hmc`: `FromChain`, `draws` kept after as many burn-in (`sal`: 4 and 4),
+      seeding at its lowest-valued draw.
+
+    Step size and trajectory are `sal`'s (`CHAIN_STEP`, `CHAIN_TRAJECTORY`).
+    """
+    from sal.sample.chain import torch_stream
+    from sal.sample.initialize import FromAnnealing, FromChain, FromTempering
+    from sal.sample.schedule import ExponentialTempSchedule
+    from sal.search.mixture_starts import at_locations, surrogate
+    from sal.search.projection import CHAIN_STEP, CHAIN_TRAJECTORY
+
+    objective = surrogate(held)
+    stream = torch_stream(rng)
+    if name == "anneal":
+        schedule = ExponentialTempSchedule(
+            float(setting["t_start"]), 1.0, int(setting["steps"])
+        )
+        best = (
+            FromAnnealing(schedule, CHAIN_STEP, stream, n_steps=CHAIN_TRAJECTORY)
+            .run(objective)
+            .best
+        )
+    elif name == "tempering":
+        rungs = tuple(float(t) for t in np.geomspace(1.0, float(setting["t_top"]), 4))
+        best = (
+            FromTempering(
+                rungs,
+                int(setting["rounds"]),
+                CHAIN_STEP,
+                stream,
+                n_steps=CHAIN_TRAJECTORY,
+            )
+            .run(objective)
+            .best
+        )
+    elif name == "hmc":
+        draws = int(setting["draws"])
+        chain = FromChain(
+            draws, CHAIN_STEP, stream, n_steps=CHAIN_TRAJECTORY, burn_in=draws
+        ).chain(objective)
+        values = [float(objective(theta)) for theta in chain.draws]
+        best = chain.draws[int(np.argmin(values))]
+    else:
+        msg = f"{name!r} takes no setting; tunable: {TUNABLE}"
+        raise ValueError(msg)
+    return at_locations(held, objective.components(best).mean)
+
+
 def _seeded(
-    name: str, call: CopyCall, held: Any, rng: np.random.Generator, seconds: float
+    name: str,
+    call: CopyCall,
+    held: Any,
+    rng: np.random.Generator,
+    seconds: float,
+    setting: dict[str, float] | None = None,
 ) -> Any:
     """The start's components on `held` (the instance of `call`); a best-of-n start polishes its own n within `seconds`."""
+    if setting is not None:
+        return _tuned_seeding(name, held, rng, setting)
     ports = _port_starts()
     if name in ports:
         return _place(held, call, *ports[name][1](call, rng))
@@ -890,8 +958,9 @@ def seed_states(
     *,
     covariate: bool = True,
     seconds: float = 60.0,
+    setting: dict[str, float] | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """`name`'s states `(log mu, p)` on `call`, before any polish.
+    """`name`'s states `(log mu, p)` on `call`, before any polish; `setting` a tuned schedule for a `TUNABLE` sampler.
 
     Port's own starts are placed by `_place`, at `EXPOSURE_SCALE` per unit
     rate whichever instance holds them, and read back at it. A `sal` start
@@ -900,7 +969,9 @@ def seed_states(
     states 2.3 below in log mu on dev_tree_1s_hard, and `cnaster`'s
     Baum-Welch overflowed from them.
     """
-    components = _seeded(name, call, instance(call, covariate=covariate), rng, seconds)
+    components = _seeded(
+        name, call, instance(call, covariate=covariate), rng, seconds, setting
+    )
     if covariate or name in _port_starts():
         log_mu, p = _read(call, components)
     else:

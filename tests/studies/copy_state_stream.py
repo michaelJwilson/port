@@ -1,6 +1,13 @@
 """#540: copy-state starts at known clones on a stream of drawn realizations, polished by the HMM's Baum-Welch.
 
-`python -m tests.studies.copy_state_stream MANIFEST OUT_DIR [--problems 5] [--seeds 3] [--workers 4] [--all]`
+`python -m tests.studies.copy_state_stream MANIFEST OUT_DIR [--problems 5] [--seeds 3] [--held-out 3] [--first 0] [--settings PATH] [--workers 4] [--all]`
+
+`... --tune` tunes `sal`'s annealing, tempering and HMC starts on the
+`--held-out` realizations and writes `SETTINGS`, as `potts_stream` tunes its
+samplers: a grid per sampler (`GRID`), `TUNING_SEEDS` seeds per setting, the
+cheapest setting whose median gap in log-likelihood at the start's own states
+is within `TOLERANCE` of the best setting's. The held-out realizations are
+never evaluated: the stream starts after them.
 
 The main process draws each realization of `MANIFEST` and builds its problem at
 the planted clones (`port.sandbox.known_copy.problems`: 1 Mb bins under #551's
@@ -51,6 +58,20 @@ STARTS = (
 SECONDS = 60.0
 """A best-of-n start's budget for its own polishes, as `run_start` gives it."""
 
+GRID: dict[str, tuple[dict[str, float], ...]] = {
+    "anneal": tuple({"t_start": t, "steps": n} for t in (2.0, 8.0, 32.0) for n in (8, 64, 512)),
+    "tempering": tuple({"t_top": t, "rounds": n} for t in (4.0, 8.0, 32.0) for n in (2, 16, 128)),
+    "hmc": tuple({"draws": n} for n in (4, 16, 64, 256)),
+}  # fmt: skip
+"""Each tuned sampler's settings; `sal`'s own is in each grid (anneal 8/8, tempering 8/2, hmc 4)."""
+
+TUNING_SEEDS = 5
+TOLERANCE = 1.0
+"""Nats: a setting within this of the best median gap is as good, and the cheapest of those is kept."""
+
+SETTINGS = Path(__file__).with_name("copy_sampler_settings.json")
+"""The settings tuned once on `dev_tree_1s_hard`'s first `--held-out` realizations, reused by `--settings`."""
+
 
 def _raw(problem: Any) -> dict[str, Any]:
     """`cnaster`'s initializer arguments for `problem`: the clones stacked along the genome, one column.
@@ -80,30 +101,49 @@ def _call(problem: Any) -> Any:
 
 
 def seed_states(
-    name: str, problem: Any, rng: np.random.Generator
+    name: str,
+    problem: Any,
+    rng: np.random.Generator,
+    setting: dict[str, float] | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     """`name`'s states on `problem`, seeded as `copy_starts.run_start` seeds them, before its `sal` polish."""
     from port.extensions.copy_starts import seed_states as seeded
     from port.extensions.copy_starts import starts
 
     return seeded(
-        name, _call(problem), rng, covariate=starts()[name].covariate, seconds=SECONDS
+        name,
+        _call(problem),
+        rng,
+        covariate=starts()[name].covariate,
+        seconds=SECONDS,
+        setting=setting,
     )
 
 
-def solve(problem: Any, name: str, seed: int) -> dict[str, Any]:
-    """One start, scored at its states and after Baum-Welch; a failure is a row."""
+def solve(
+    problem: Any,
+    name: str,
+    seed: int,
+    setting: dict[str, float] | None = None,
+    polish: bool = True,
+) -> dict[str, Any]:
+    """One start, scored at its states and, with `polish`, after Baum-Welch; a failure is a row."""
     import port.sandbox.known_copy as kc
 
     try:
         opened = time.perf_counter()
-        log_mu, p = seed_states(name, problem, np.random.default_rng([seed, 540]))
+        log_mu, p = seed_states(
+            name, problem, np.random.default_rng([seed, 540]), setting
+        )
         seconds = time.perf_counter() - opened
         truth = problem.truth_label
         at_start = kc.decode(problem, log_mu, p)
+        if not polish:
+            return {"problem": problem.realization, "start": name, "seed": seed, "setting": setting,
+                    "seconds": seconds, "start_llf": at_start.log_likelihood}  # fmt: skip
         fitted = kc.baum_welch(problem, log_mu, p)
         return {
-            "problem": problem.realization, "start": name, "seed": seed, "seconds": seconds,
+            "problem": problem.realization, "start": name, "seed": seed, "setting": setting, "seconds": seconds,
             "start_llf": at_start.log_likelihood, "start_missed": kc.missed(at_start.label, truth),
             "bw_seconds": fitted.seconds, "llf": fitted.log_likelihood, "missed": kc.missed(fitted.label, truth),
             "log_mu": fitted.log_mu, "p_binom": fitted.p_binom,
@@ -132,6 +172,8 @@ def _warm() -> None:
     )  # fmt: skip
     for name in STARTS:
         solve(tiny, name, 0)
+    for name, grid in GRID.items():
+        solve(tiny, name, 0, grid[0], polish=False)
 
 
 def _init() -> None:
@@ -153,6 +195,36 @@ def _describe(problem: Any) -> dict[str, Any]:
             "draw_seconds": problem.draw_seconds, "build_seconds": problem.build_seconds}  # fmt: skip
 
 
+def tune(pool: ProcessPoolExecutor, held_out: list[Any]) -> dict[str, dict[str, float]]:
+    """Each of `GRID`'s samplers' setting: the cheapest within `TOLERANCE` of the best median gap on `held_out`."""
+    import pandas as pd
+
+    futures = [pool.submit(solve, p, name, seed, setting, False)
+               for p in held_out for name, grid in GRID.items() for setting in grid for seed in range(TUNING_SEEDS)]  # fmt: skip
+    rows = [f.result() for f in futures]
+    failed = [r for r in rows if "error" in r]
+    if failed:
+        print(
+            f"{len(failed)} tuning runs failed, e.g. {failed[0]['error'][:120]}",
+            flush=True,
+        )
+    frame = pd.DataFrame([r for r in rows if "error" not in r])
+    top = frame.groupby("problem").start_llf.max()
+    frame["gap"] = frame.problem.map(top) - frame.start_llf
+    frame["key"] = frame.setting.map(lambda s: tuple(sorted(s.items())))
+    chosen: dict[str, dict[str, float]] = {}
+    for name, g in frame.groupby("start"):
+        by = g.groupby("key").agg(gap=("gap", "median"), seconds=("seconds", "median"))
+        good = by[by.gap <= by.gap.min() + TOLERANCE].sort_values("seconds")
+        default = GRID[str(name)][{"anneal": 4, "tempering": 3, "hmc": 0}[str(name)]]
+        chosen[str(name)] = {**dict(good.index[0]), "median_gap": round(float(good.gap.iloc[0]), 3),
+                             "seconds": round(float(good.seconds.iloc[0]), 3),
+                             "default_median_gap": round(float(by.gap.get(tuple(sorted(default.items())), np.nan)), 3)}  # fmt: skip
+        print(f"tuned {name}: {dict(good.index[0])}, median gap {good.gap.iloc[0]:.1f} nats ({good.seconds.iloc[0]:.2f} s); "
+              f"sal's default {chosen[str(name)]['default_median_gap']:.1f}", flush=True)  # fmt: skip
+    return chosen
+
+
 def run(
     manifest: Path,
     out_dir: Path,
@@ -162,8 +234,11 @@ def run(
     everything: bool,
     first: int = 0,
     merge: tuple[Path, ...] = (),
+    held_out: int = 3,
+    settings: Path | None = None,
 ) -> Path:
-    """The stream; returns the pickle it keeps current."""
+    """The stream after the `held_out` realizations; returns the pickle it keeps current."""
+    import json
     import logging
 
     import port.sandbox.known_copy as kc
@@ -177,6 +252,12 @@ def run(
         else f"copy_{manifest.stem}.pkl"
     )
     names = list(starts()) if everything else list(STARTS)
+    tuned: dict[str, dict[str, float]] = {}
+    if settings is not None:
+        loaded = json.loads(settings.read_text())
+        tuned = {
+            k: {q: v[q] for q in GRID[k][0]} for k, v in loaded.items() if k in GRID
+        }
     registry = starts()
     held: dict[int, dict[str, Any]] = {}
     rows: list[dict[str, Any]] = []
@@ -197,7 +278,7 @@ def run(
                 continue
             done.append(index)
             record = {"manifest": str(manifest), "problems": held, "rows": rows, "done": done, "starts": names,
-                      "seeds": seeds}  # fmt: skip
+                      "seeds": seeds, "tuned": tuned, "held_out": held_out}  # fmt: skip
             out.write_bytes(pickle.dumps(record))
             subprocess.run(
                 [
@@ -215,9 +296,9 @@ def run(
 
     context = mp.get_context("spawn")
     with ProcessPoolExecutor(workers, mp_context=context, initializer=_init) as pool:
-        total = first + n_problems
+        total = held_out + first + n_problems
         for problem in kc.problems(manifest, total, realizations=total):
-            if problem.realization < first:
+            if problem.realization < held_out + first:
                 continue
             held[problem.realization] = _describe(problem)
             print(f"[{time.perf_counter() - opened:6.0f}s] drew {problem.realization}: {problem.total.size} rows, "
@@ -230,11 +311,34 @@ def run(
             ]
             pending[problem.realization] = len(jobs)
             for name, seed in jobs:
-                futures[pool.submit(solve, problem, name, seed)] = problem.realization
+                futures[pool.submit(solve, problem, name, seed, tuned.get(name))] = (
+                    problem.realization
+                )
             drain(block=False)
         while futures:
             drain(block=True)
     return out
+
+
+def retune(manifest: Path, held_out: int, workers: int) -> None:
+    """`tune` on `manifest`'s first `held_out` realizations, written to `SETTINGS` with its provenance."""
+    import json
+    import logging
+
+    import port.sandbox.known_copy as kc
+
+    logging.disable(logging.INFO)
+    context = mp.get_context("spawn")
+    with ProcessPoolExecutor(workers, mp_context=context, initializer=_init) as pool:
+        chosen = tune(
+            pool, list(kc.problems(manifest, held_out, realizations=held_out))
+        )
+    provenance = (f"tests.studies.copy_state_stream --tune on {manifest.name} realizations 0-{held_out - 1}, "
+                  f"{TUNING_SEEDS} seeds per setting; the cheapest setting within {TOLERANCE} nats of the best "
+                  "median gap in log-likelihood at the start's states (#540)")  # fmt: skip
+    SETTINGS.write_text(
+        json.dumps({"_provenance": provenance, **chosen}, indent=2) + "\n"
+    )
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -259,11 +363,31 @@ def main(argv: list[str] | None = None) -> None:
         help="earlier windows to draw with this one",
     )
     parser.add_argument(
+        "--held-out",
+        type=int,
+        default=3,
+        help="realizations the tuning reads, never evaluated",
+    )
+    parser.add_argument(
+        "--settings",
+        type=Path,
+        default=None,
+        help=f"tuned sampler settings, e.g. {SETTINGS}",
+    )
+    parser.add_argument(
+        "--tune",
+        action="store_true",
+        help=f"tune on the held-out realizations, write {SETTINGS.name}, stop",
+    )
+    parser.add_argument(
         "--all",
         action="store_true",
         help="every start of the registry, not one per family",
     )
     arguments = parser.parse_args(argv)
+    if arguments.tune:
+        retune(arguments.manifest, arguments.held_out, arguments.workers)
+        return
     run(
         arguments.manifest,
         arguments.out_dir,
@@ -273,6 +397,8 @@ def main(argv: list[str] | None = None) -> None:
         arguments.all,
         arguments.first,
         tuple(arguments.merge),
+        arguments.held_out,
+        arguments.settings,
     )
 
 
