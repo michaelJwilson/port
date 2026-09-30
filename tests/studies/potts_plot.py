@@ -9,7 +9,7 @@ Each point is a solver's median over realizations x random starts, its error
 bars the 10-90% range on both axes; an open marker is the same runs after sal's
 ICM, a diamond after the color merge that follows it. Polish stages are drawn
 `DODGE` to the right of their runtime so stages do not overlap. The table's
-last column counts the labels that differ from the planted ones at each
+last column, Missed, counts the labels that differ from the planted ones at each
 solver's lowest-energy run, median over realizations: raw / after ICM and the
 color merge (`wrong_at_best`).
 """
@@ -101,9 +101,7 @@ def wrong_at_best(d: pd.DataFrame) -> dict[str, tuple[float, float]]:
     return out
 
 
-def _table(
-    tab: Any, wrong: dict[str, tuple[float, float]], tuned: dict[str, dict[str, float]]
-) -> None:
+def _table(tab: Any, wrong: dict[str, tuple[float, float]]) -> None:
     n_rows = sum(1 + len(rows) for _, rows in TABLE)
     head = 0.06
     step = (1 - head) / (n_rows + 0.5)
@@ -124,7 +122,7 @@ def _table(
         (0.01, "#"),
         (0.07, "Solver"),
         (0.33, "Description"),
-        (0.99, "Wrong"),
+        (0.99, "Missed"),
     ):
         tab.text(
             x,
@@ -134,7 +132,7 @@ def _table(
             weight="bold",
             transform=tab.transAxes,
             va="center",
-            ha="right" if text == "Wrong" else "left",
+            ha="right" if text == "Missed" else "left",
         )
     rule(1 - head, 0.7)
     y = 1 - head + step * 0.25
@@ -175,22 +173,6 @@ def _table(
                     ha="right",
                 )
     rule(0.0, 1.2)
-    notes = ("$^s$ sal (snakes_and_ladders);  $^p$ port.  Wrong: labels unlike the planted at the best run, raw / ICM + color merge.",
-             "Color merge: one clone relabelled into another, the best pair, while the energy drops (cnaster).",
-             "Polish stages drawn 12% right of their runtime.",
-             "Tuned on held-out realizations (T0, sweeps): "
-             + ";  ".join(f"{NUMBER[k]} {v['t_start']:g}, {v['sweeps']:,.0f}" for k, v in sorted(tuned.items(), key=lambda kv: NUMBER[kv[0]]))
-             if tuned else "")  # fmt: skip
-    for k, note in enumerate(notes):
-        tab.text(
-            0.01,
-            -0.045 - 0.04 * k,
-            note,
-            fontsize=7.5,
-            color="0.35",
-            transform=tab.transAxes,
-            va="center",
-        )
     tab.set_ylim(0, 1)
 
 
@@ -333,7 +315,7 @@ def figure(record: dict[str, Any], out: Path) -> Path:
     ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.1), ncol=3, fontsize=7.5, frameon=False,
               title=f"Median for {n_problems} realization{'s' if n_problems > 1 else ''} $\\times$ {n_starts} random starts",
               title_fontsize=7.5)  # fmt: skip
-    _table(tab, wrong_at_best(d), record.get("tuned", {}))
+    _table(tab, wrong_at_best(d))
     fig.savefig(out, dpi=150, bbox_inches="tight")
     plt.close(fig)
     return out
