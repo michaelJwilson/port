@@ -478,14 +478,15 @@ def _panel(axis: Any, entry: dict[str, Any], colour: str, label: str,
     if curved:
         low, high = np.array(entry["band"])
         axis.fill_between(at(grid), low, high, color=colour, alpha=0.15, lw=0)
-        axis.plot(at(grid), fitted, color=colour, lw=2, label=label)
+        axis.plot(at(grid), fitted, color=colour, lw=FIT_WIDTH, label=label)
     shown = entry.get("display") or entry
     rate = np.array(shown["rate"])
     low, high = np.array(shown["low"]), np.array(shown["high"])
     kept = np.array(shown["n"]) > 0
     x = at(np.array(shown["centres"])[kept] + dodge)
     axis.errorbar(x, rate[kept], yerr=[rate[kept] - low[kept], high[kept] - rate[kept]],
-                  color=colour, lw=1, ls="none", marker="o", ms=4, capsize=2,
+                  color=colour, lw=BAR_WIDTH, ls="none", marker="o", ms=MARKER,
+                  capsize=0.8,
                   label=None if curved else label)  # fmt: skip
 
 
@@ -502,7 +503,7 @@ def _false_positives(axis: Any, entry: dict[str, Any]) -> None:
         axis.fill_between(
             grid, low, high, where=high > 0, color=colour, alpha=0.15, lw=0
         )
-        axis.plot(grid, fitted, color=colour, lw=2)
+        axis.plot(grid, fitted, color=colour, lw=FIT_WIDTH)
     shown = entry.get("display") or entry
     x, n = np.array(shown["centres"]), np.array(shown["n"], dtype=float)
     rate = np.array(shown["rate"])
@@ -511,7 +512,8 @@ def _false_positives(axis: Any, entry: dict[str, Any]) -> None:
     axis.errorbar(x[seen], rate[seen],
                   yerr=[rate[seen] - np.maximum(low[seen], rate[seen] / 10),
                         high[seen] - rate[seen]],
-                  color=colour, lw=1, ls="none", marker="o", ms=4, capsize=2)  # fmt: skip
+                  color=colour, lw=BAR_WIDTH, ls="none", marker="o", ms=MARKER,
+                  capsize=0.8)  # fmt: skip
     axis.set_yscale("log")
 
 
@@ -519,37 +521,64 @@ def _dodges(n: int, width: float) -> list[float]:
     return list(np.linspace(-width, width, n)) if n > 1 else [0.0]
 
 
-def figures(summary: dict[str, Any], into: Path) -> list[Path]:
-    """One figure: clone sensitivity by UMIs per J; CNA sensitivity by length;
-    neutral-segment specificity by the SNP-covering UMIs it holds.
+FIT_WIDTH = 1.0
+"""Points: a fitted curve, twice `PROFILE_LINEWIDTH`, the page's rule weight."""
 
-    Both are `run_cnaster_port --sal`; the arm, the realization counts and
-    the bands' construction are stated in the study's document rather than
-    on the figure.
+BAR_WIDTH = 0.5
+MARKER = 1.5
+"""Points: an error bar at the page's rule weight, and a bin's marker."""
+
+PAGE_HEIGHT = 1.75
+"""Inches: the row of three panels on `llncs`'s 4.80 in text width."""
+
+
+def figures(summary: dict[str, Any], into: Path) -> list[Path]:
+    """(a) clone sensitivity by UMIs per J; (b) CNA sensitivity by length per
+    class; (c) the `(1, 1)` segments' false positive rate by their SNP UMIs.
+
+    Set as `port.extensions.combined_figure`'s spatial page is, so the row
+    stands beside it in a paper: `page_style`, `llncs`'s text width, every
+    text at `FONT_SIZE`, rules at `PROFILE_LINEWIDTH`, each letter over its
+    panel's leftmost text. Written as PDF, and as PNG at 300 dpi. The arm,
+    the member counts and the bands' construction are stated in the study's
+    document rather than on the figure.
     """
     import matplotlib as mpl
 
     mpl.use("Agg")
     import matplotlib.pyplot as plt
+    from port.extensions.combined_figure import FONT_SIZE, LABEL_SIZE, page_style
+    from port.patch.plot_copy_number_profile import LINEWIDTH
+    from port.patch.plot_genomic import PAPER_WIDTH
 
-    style: Any = {"axes.spines.top": False, "axes.spines.right": False,
-             "axes.edgecolor": "#8a8984", "axes.labelcolor": "#0b0b0b",
-             "xtick.color": "#52514e", "ytick.color": "#52514e",
-             "axes.grid": True, "grid.color": "#e6e5e1", "grid.linewidth": 0.6,
-             "font.size": 9}  # fmt: skip
     into.mkdir(parents=True, exist_ok=True)
-    paths = []
+    paths = [into / "population_recovery.pdf", into / "population_recovery.png"]
 
-    with plt.rc_context(style):
+    with page_style():
+        mpl.rcParams.update({"font.size": FONT_SIZE, "axes.linewidth": LINEWIDTH,
+                             "xtick.major.width": LINEWIDTH,
+                             "ytick.major.width": LINEWIDTH,
+                             "xtick.minor.width": LINEWIDTH,
+                             "ytick.minor.width": LINEWIDTH,
+                             "xtick.major.size": 2, "ytick.major.size": 2,
+                             "xtick.minor.size": 1, "ytick.minor.size": 1,
+                             "legend.fontsize": FONT_SIZE,
+                             "legend.borderaxespad": 0.2})  # fmt: skip
+        from matplotlib.layout_engine import ConstrainedLayoutEngine
+
         fig, (left, right, third) = plt.subplots(
-            1, 3, figsize=(13.5, 3.6), constrained_layout=True
+            1, 3, figsize=(PAPER_WIDTH, PAGE_HEIGHT), dpi=300, facecolor="white"
         )
+        fig.set_layout_engine(
+            ConstrainedLayoutEngine(rect=(0, 0, 0.96, 0.92), w_pad=0.02, wspace=0.05)
+        )
+
         colours = j_colours(list(summary["study1"]))
         series = sorted(summary["study1"].items())
         for (j, entry), dodge in zip(series, _dodges(len(series), 0.015), strict=True):
             _panel(left, entry["detected"], colours[j], f"J = {j:g}", dodge, None)
         left.set_xlabel(r"$\log_{10} |{\rm Clone\ UMIs}|$")
-        left.set_ylabel("Sensitivity (≥ 90% spots)")
+        left.set_ylabel("Sensitivity\n(≥ 90% spots)")
 
         classes = list(summary["study2"].items())
         for (name, entry), dodge in zip(
@@ -559,7 +588,7 @@ def figures(summary: dict[str, Any], into: Path) -> list[Path]:
                    dodge, 1e6)  # fmt: skip
         right.set_xscale("log")
         right.set_xlabel("CNA length [Mb]")
-        right.set_ylabel("Sensitivity (≥ 90% of segments)")
+        right.set_ylabel("Sensitivity\n(≥ 90% of segments)")
 
         _false_positives(third, summary["study3"]["false_positive"])
         third.set_xlabel(r"$\log_{10} |{\rm SNP\ UMIs\ in\ segment}|$")
@@ -567,11 +596,27 @@ def figures(summary: dict[str, Any], into: Path) -> list[Path]:
 
         for axis in (left, right):
             axis.set_ylim(-0.02, 1.02)
-            axis.legend(frameon=False, fontsize=8, loc="upper left")
-        path = into / "population_recovery.png"
-        fig.savefig(path, dpi=150)
+            axis.legend(loc="upper left", frameon=True, framealpha=0.85,
+                        edgecolor="none", fancybox=False, borderpad=0.15,
+                        labelspacing=0.1, handlelength=0.8, handletextpad=0.3,
+                        fontsize=FONT_SIZE - 1)  # fmt: skip
+
+        # NB the layout frozen once, then each letter set over its panel's
+        #    leftmost text -- the y label -- as the spatial page sets its own.
+        fig.canvas.draw()
+        fig.set_layout_engine("none")
+        to_figure = fig.transFigure.inverted()
+        for axis, letter in zip((left, right, third), "abc", strict=True):
+            box = axis.get_tightbbox()
+            assert box is not None
+            x0 = box.transformed(to_figure).x0
+            top = axis.get_position().y1
+            fig.text(x0, top + 0.03, f"({letter})", fontsize=LABEL_SIZE,
+                     ha="left", va="bottom")  # fmt: skip
+
+        for path in paths:
+            fig.savefig(path, dpi=300, facecolor="white")
         plt.close(fig)
-        paths.append(path)
 
     return paths
 
