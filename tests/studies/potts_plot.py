@@ -186,6 +186,46 @@ def _table(tab: Any, wrong: dict[str, tuple[float, float]]) -> None:
     tab.set_ylim(0, 1)
 
 
+def stamp(fig: Any, record: dict[str, Any]) -> str:
+    """The figure's reference, drawn on it: a hash of the record it plots and the code's commit.
+
+    `data` is the first 8 hex digits of SHA-256 over the pickled record;
+    `code` is the repository's short commit, `+` where the tree differs from
+    it. Two figures with one stamp were drawn from one record by one commit.
+    """
+    import hashlib
+    import subprocess
+
+    data = hashlib.sha256(pickle.dumps(record)).hexdigest()[:8]
+    here = Path(__file__).resolve().parent
+    commit = subprocess.run(
+        ["git", "rev-parse", "--short", "HEAD"],
+        cwd=here,
+        capture_output=True,
+        text=True,
+        check=False,
+    ).stdout.strip()
+    dirty = subprocess.run(
+        ["git", "status", "--porcelain", "--untracked-files=no"],
+        cwd=here,
+        capture_output=True,
+        text=True,
+        check=False,
+    ).stdout.strip()
+    text = f"data {data} · code {commit or 'unknown'}{'+' if dirty else ''}"
+    fig.text(
+        0.995,
+        0.005,
+        text,
+        ha="right",
+        va="bottom",
+        fontsize=7,
+        color="0.35",
+        family="monospace",
+    )
+    return text
+
+
 def figure(record: dict[str, Any], out: Path) -> Path:
     import matplotlib as mpl
 
@@ -341,6 +381,7 @@ def figure(record: dict[str, Any], out: Path) -> Path:
               title=f"{Path(record['manifest']).stem}: median for {n_problems} realization{'s' if n_problems > 1 else ''} $\\times$ {n_starts} random starts",
               title_fontsize=7.5)  # fmt: skip
     _table(tab, missed(d, n_spots(record)))
+    stamp(fig, record)
     fig.savefig(out, dpi=150, bbox_inches="tight")
     plt.close(fig)
     return out
