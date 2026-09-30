@@ -1,27 +1,32 @@
 \begin{tabular}{rll}
 \toprule
-\# & Solver & What it does \\
+\# & Solver & Description \\
 \midrule
 & \multicolumn{2}{l}{\emph{Graph cuts}} \\
-1 & Alpha-expansion$^{\mathrm{s}}$ & each clone in turn claims spots by a min cut \\
-2 & Alpha-beta-swap$^{\mathrm{s}}$ & min-cut swaps between two clones at a time \\
-3 & Alpha-rust$^{\mathrm{p}}$ & alpha-expansion, Rust min cut \\
-4 & Alpha-rust-fuse$^{\mathrm{p}}$ & Alpha-rust fused with argmax descent (\texttt{--sal}) \\
-5 & Alpha-rust-ICM$^{\mathrm{p}}$ & Alpha-rust, then cnaster's ICM \\
+1 & alpha-expansion$^{\mathrm{s}}$ & Each clone in turn claims spots by a min cut \\
+2 & alpha-beta-swap$^{\mathrm{s}}$ & Min-cut swaps between two clones at a time \\
+3 & alpha-rust$^{\mathrm{p}}$ & $\mathtt{alpha{\text{-}}expansion}$, Rust min cut \\
+4 & alpha-rust-fuse$^{\mathrm{p}}$ & $\mathtt{alpha{\text{-}}rust}$ fused with argmax descent (\texttt{--sal}) \\
+5 & alpha-rust-icm$^{\mathrm{p}}$ & $\mathtt{alpha{\text{-}}rust}$, then cnaster's $\mathtt{icm}$ \\
 \addlinespace
 & \multicolumn{2}{l}{\emph{Local descent}} \\
-6 & ICM$^{\mathrm{s}}$ & each spot to its best clone given neighbours, in order \\
-7 & ICM-numba$^{\mathrm{p}}$ & sal's ICM, compiled \\
-8 & ICM-random$^{\mathrm{s}}$ & ICM in a random order: heat bath at T = 0 \\
-9 & ICM$^{\mathrm{p}}$ & cnaster's ICM, random spot order \\
-10 & Field-argmax$^{\mathrm{s}}$ & each spot's best clone, neighbours ignored \\
+6 & icm$^{\mathrm{s}}$ & Each spot to its best clone given neighbours, in order \\
+7 & icm-numba$^{\mathrm{p}}$ & sal's $\mathtt{icm}$, compiled \\
+8 & icm-random$^{\mathrm{s}}$ & $\mathtt{icm}$ in a random order: heat bath at T = 0 \\
+9 & icm$^{\mathrm{p}}$ & cnaster's $\mathtt{icm}$, random spot order \\
+10 & field-argmax$^{\mathrm{s}}$ & Each spot's best clone, neighbours ignored \\
 \addlinespace
 & \multicolumn{2}{l}{\emph{Sampling, message passing}} \\
-11 & Glauber$^{\mathrm{s}}$ & single-site heat bath (Glauber), annealed \\
-12 & Swendsen-Wang$^{\mathrm{s}}$ & cluster moves over bonded spots, annealed \\
-13 & Wolff$^{\mathrm{s}}$ & one grown cluster flipped per move, annealed \\
-14 & Parallel tempering$^{\mathrm{s}}$ & replicas on a temperature ladder, swapped \\
-15 & Max-product$^{\mathrm{s}}$ & loopy max-product belief propagation \\
-16 & TRW-S$^{\mathrm{s}}$ & tree-reweighted message passing: its decode \\
+11 & glauber$^{\mathrm{s}}$ & Single-site heat bath, annealed \\
+12 & swendsen-wang$^{\mathrm{s}}$ & Cluster moves over bonded spots, annealed \\
+13 & wolff$^{\mathrm{s}}$ & One grown cluster flipped per move, annealed \\
+14 & sw-field$^{\mathrm{p}}$ & $\mathtt{swendsen{\text{-}}wang}$, each cluster's clone drawn from its field \\
+15 & sw-field + glauber$^{\mathrm{p}}$ & $\mathtt{sw{\text{-}}field}$, a $\mathtt{glauber}$ sweep after each move \\
+16 & wolff-field$^{\mathrm{p}}$ & $\mathtt{wolff}$, the cluster's clone drawn from its field \\
+17 & wolff-field + glauber$^{\mathrm{p}}$ & $\mathtt{wolff{\text{-}}field}$, a $\mathtt{glauber}$ sweep after each move \\
+18 & parallel tempering$^{\mathrm{s}}$ & $\mathtt{glauber}$ replicas on a temperature ladder, swapped \\
+19 & cluster tempering$^{\mathrm{s}}$ & $\mathtt{swendsen{\text{-}}wang}$ replicas on the ladder, Houdayer moves between them \\
+20 & max-product$^{\mathrm{s}}$ & Loopy max-product belief propagation \\
+21 & trw-s$^{\mathrm{s}}$ & Tree-reweighted message passing: its decode \\
 \bottomrule
 \end{tabular}

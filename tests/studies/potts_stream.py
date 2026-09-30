@@ -3,6 +3,7 @@
 `python -m tests.studies.potts_stream MANIFEST OUT_DIR [--problems 25] [--starts 50] [--held-out 3] [--workers 4]`
 `python -m tests.studies.potts_stream MANIFEST OUT_DIR --tune SAMPLER ...` tunes
 only the named samplers on the held-out realizations and merges them into `SETTINGS`.
+`--only SOLVER ...` runs a subset, `--merge PKL ...` draws it with earlier streams.
 
 The main process draws each realization of `MANIFEST` in memory and builds its
 field at the planted copy states and profiles (`port.sandbox.known_field`);
@@ -10,14 +11,14 @@ the pool solves it while the next one draws.
 
 - **Warmup.** Each worker runs every solver once on a 10 x 10 patch before
   any timed job, so no compilation lands in a timing.
-- **Tuning.** The first `--held-out` realizations tune the samplers and are
-  not evaluated; with `--settings`, the samplers take that file's settings
-  (`SETTINGS`, tuned once on `dev_tree_1s_hard`) and nothing is tuned, the
-  held-out realizations still skipped. Each sampler runs a grid of annealing schedules (`GRID`:
-  the start temperature, the end fixed at `T_END` so the last sweeps are a
-  descent, and the sweep budget) from `TUNING_STARTS` random labellings each.
-  It keeps the cheapest setting whose median gap to TRW-S's bound is within
-  `TOLERANCE` nats of the best setting's.
+- **Tuning.** The first `--held-out` realizations tune the samplers (`TUNED`)
+  and are not evaluated; with `--settings`, the samplers take that file's
+  settings (`SETTINGS`) and nothing is tuned, the held-out realizations still
+  skipped. Each sampler runs `GRID` -- the start temperature, the end fixed at
+  `T_END` so the last sweeps are a descent, and the sweep budget; for a
+  tempering ladder, its hottest replica and its replica sweeps -- from
+  `TUNING_STARTS` random labellings each. It keeps the cheapest setting whose
+  median gap to TRW-S's bound is within `TOLERANCE` nats of the best setting's.
 - **Evaluation.** The next `--problems` realizations run every solver of
   #541's harness (`tests.studies.clone_label_arms`) but bifurcation, port's
   pure-Python `alpha` and the floor-merge row, plus TRW-S's own decoded
@@ -68,9 +69,11 @@ SAMPLERS = {
     "sal:anneal": "single-site",
     "sal:swendsen-wang": "swendsen-wang",
     "sal:wolff": "wolff",
-    "sal:tempering": None,
 }
-"""The tuned entries, by `sal`'s move set; tempering is a ladder of single-site replicas."""
+"""sal's annealed chains (`run_annealed`), by `sal`'s move set."""
+
+TEMPERING = "sal:tempering"
+"""sal's `parallel_tempering`: a ladder of single-site heat-bath replicas, swapped."""
 
 FIELD_WEIGHTED = {
     "port:sw-field": ("swendsen-wang", False),
@@ -81,10 +84,10 @@ FIELD_WEIGHTED = {
 """#559's cluster moves (`port.sandbox.known_field.cluster`): the move, and whether a Glauber sweep follows each."""
 
 CLUSTER_TEMPERING = "sal:cluster-tempering"
-"""sal's `cluster_tempering` (its #1090): one Swendsen-Wang pass per replica per step and Houdayer moves between
-replicas, where `sal:tempering` runs single-site heat-bath sweeps; on `sal:tempering`'s ladder and setting."""
+"""sal's `cluster_tempering` (its #1090): `TEMPERING`'s ladder, one Swendsen-Wang pass per replica per step and
+Houdayer moves between replicas."""
 
-TUNED = (*SAMPLERS, *FIELD_WEIGHTED, CLUSTER_TEMPERING)
+TUNED = (*SAMPLERS, TEMPERING, *FIELD_WEIGHTED, CLUSTER_TEMPERING)
 """Every entry that runs at a tuned annealing setting."""
 
 T_END = 0.05
@@ -101,7 +104,7 @@ TOLERANCE = 0.1
 """Nats: a setting within this of the best median gap is as good, and the cheapest of those is kept."""
 
 REPLICAS = 6
-"""sal's `N_REPLICAS`: tempering's ladder, geometric from the start temperature to `T_END`."""
+"""sal's `N_REPLICAS`: both tempering ladders, geometric between `T_END` and the start temperature."""
 
 SETTINGS = Path(__file__).with_name("potts_sampler_settings.json")
 """The samplers' settings tuned once on `dev_tree_1s_hard`'s first 3 realizations, reused by `--settings`."""
@@ -156,65 +159,42 @@ def _hold(index: int, problem: Any) -> None:
 
 def _sample(solver: str, field: np.ndarray, start: np.ndarray, rng: np.random.Generator,
             graph: Any, setting: dict[str, float]) -> np.ndarray:  # fmt: skip
-    """A sampler at `setting`: sal's annealed run or tempering ladder, its schedule and budget replaced."""
+    """A sampler at `setting`: an annealed chain on its schedule, or a tempering ladder topped at `t_start`.
+
+    A ladder runs ``sweeps // REPLICAS`` steps of `REPLICAS` replicas, so
+    `sweeps` counts replica sweeps for every entry.
+    """
+    from port.sandbox.known_field.cluster import anneal
     from sal.cost import Cost
     from sal.opt.budget import Budget
-    from sal.sample.potts_mcmc.chains import parallel_tempering
+    from sal.sample.potts_mcmc.chains import cluster_tempering, parallel_tempering
     from sal.sample.potts_mcmc.moves import PottsMove
     from sal.sample.schedule import ScheduleParams, ScheduleShape
     from sal.search.ground_state import Problem, run_annealed
 
-    sweeps = int(setting["sweeps"])
+    t_start, sweeps = float(setting["t_start"]), int(setting["sweeps"])
+    steps = max(1, sweeps // REPLICAS)
+    best: Any
     if solver == CLUSTER_TEMPERING:
-        from sal.sample.potts_mcmc.chains import cluster_tempering
-
-        # NB coldest first, as sal requires
-        ladder = tuple(
-            float(t) for t in np.geomspace(T_END, setting["t_start"], REPLICAS)
+        # NB coldest first, as sal's cluster_tempering requires
+        ladder = tuple(float(t) for t in np.geomspace(T_END, t_start, REPLICAS))
+        best = cluster_tempering(graph, field, ladder, rng, steps).best
+    elif solver == TEMPERING:
+        ladder = tuple(float(t) for t in np.geomspace(t_start, T_END, REPLICAS))
+        best = parallel_tempering(graph, field, ladder, rng, steps).best
+    elif solver in FIELD_WEIGHTED:
+        temperature = ScheduleParams(ScheduleShape.EXPONENTIAL, t_start, T_END).build(
+            sweeps
         )
-        return np.asarray(
-            cluster_tempering(
-                graph, field, ladder, rng, max(1, sweeps // REPLICAS)
-            ).best,
-            dtype=np.int64,
-        )
-    if solver in FIELD_WEIGHTED:
-        from port.sandbox.known_field.cluster import anneal
-
-        move, glauber = FIELD_WEIGHTED[solver]
-        temperatures = ScheduleParams(
-            ScheduleShape.EXPONENTIAL, float(setting["t_start"]), T_END
-        ).build(sweeps)
-        best, _ = anneal(
-            graph,
-            field,
-            start,
-            rng,
-            np.array([temperatures(k) for k in range(sweeps)]),
-            move,
-            glauber,
-        )
-        return best
-    if SAMPLERS[solver] is None:
-        ladder = tuple(
-            float(t) for t in np.geomspace(setting["t_start"], T_END, REPLICAS)
-        )
-        run = parallel_tempering(graph, field, ladder, rng, max(1, sweeps // REPLICAS))
-        return np.asarray(run.best, dtype=np.int64)
-    problem = Problem(graph, field, field.shape[1])
-    budget = Budget(Cost.SITE_VISITS, sweeps * problem.visits_per_sweep)
-    schedule = ScheduleParams(
-        ScheduleShape.EXPONENTIAL, float(setting["t_start"]), T_END
-    )
-    labelling = run_annealed(
-        problem,
-        budget,
-        rng,
-        PottsMove(str(SAMPLERS[solver])),
-        schedule=schedule,
-        start=start,
-    ).labelling
-    return np.asarray(labelling, dtype=np.int64)
+        schedule = np.array([temperature(k) for k in range(sweeps)])
+        best, _ = anneal(graph, field, start, rng, schedule, *FIELD_WEIGHTED[solver])
+    else:
+        problem = Problem(graph, field, field.shape[1])
+        budget = Budget(Cost.SITE_VISITS, sweeps * problem.visits_per_sweep)
+        best = run_annealed(problem, budget, rng, PottsMove(SAMPLERS[solver]),
+                            schedule=ScheduleParams(ScheduleShape.EXPONENTIAL, t_start, T_END),
+                            start=start).labelling  # fmt: skip
+    return np.asarray(best, dtype=np.int64)
 
 
 def solve(
@@ -247,9 +227,10 @@ def solve(
         opened = time.perf_counter()
         polished = arms._solve("sal:icm", field, out, np.random.default_rng(0), beta)
         polish_seconds = time.perf_counter() - opened
-        graph_csr = (problem.indptr, problem.indices, problem.weights)
         opened = time.perf_counter()
-        both, merges = color_merge(field, polished, *graph_csr, beta)
+        both, merges = color_merge(
+            field, polished, problem.indptr, problem.indices, problem.weights, beta
+        )
         merge_seconds = time.perf_counter() - opened
         planted = problem.planted
         return {

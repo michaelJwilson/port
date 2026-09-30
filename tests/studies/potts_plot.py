@@ -26,13 +26,11 @@ import numpy as np
 import pandas as pd
 
 NAMES = {
-    "field_argmax": "field-argmax", "icm": "icm", "icm-random": "icm-random", "anneal": "glauber",
-    "swendsen-wang": "swendsen-wang", "wolff": "wolff", "tempering": "parallel tempering",
-    "alpha-expansion": "alpha-expansion", "alpha-beta-swap": "alpha-beta-swap", "max-product": "max-product",
-    "alpha-rust": "alpha-rust", "icm-numba": "icm-numba", "alpha-rust-icm": "alpha-rust-icm",
-    "alpha-rust-fuse-merge": "alpha-rust-fuse", "trws": "trw-s", "sw-field": "sw-field",
-    "cluster-tempering": "cluster tempering", "sw-field-glauber": "sw-field + glauber", "wolff-field": "wolff-field", "wolff-field-glauber": "wolff-field + glauber",
+    "field_argmax": "field-argmax", "anneal": "glauber", "tempering": "parallel tempering",
+    "alpha-rust-fuse-merge": "alpha-rust-fuse", "trws": "trw-s", "cluster-tempering": "cluster tempering",
+    "sw-field-glauber": "sw-field + glauber", "wolff-field-glauber": "wolff-field + glauber",
 }  # fmt: skip
+"""The names the figure prints where they differ from the solver's own."""
 
 
 def tt(name: str) -> str:
@@ -95,16 +93,19 @@ def _colour(solver: str) -> Any:
 
 
 def label(solver: str) -> str:
-    kind, name = solver.split(":", 1)
-    return NAMES[name]
+    """The name printed for `solver`, its `sal:`/`port:` source dropped."""
+    name = solver.split(":", 1)[1]
+    return NAMES.get(name, name)
 
 
 def _bars(values: pd.Series) -> tuple[float, list[list[float]]]:
+    """The median and its distances to the 10% and 90% quantiles, as `errorbar` takes them."""
     m = float(values.median())
     return m, [[m - float(values.quantile(0.1))], [float(values.quantile(0.9)) - m]]
 
 
 def frame(record: dict[str, Any]) -> pd.DataFrame:
+    """The record's successful runs on finished realizations, with their bound, truth and cumulative runtimes."""
     rows = pd.DataFrame(record["rows"])
     rows = rows[rows.problem.isin(record["done"])]
     if "error" in rows:
@@ -141,9 +142,10 @@ def ranks(values: dict[str, float]) -> dict[str, int]:
 def _table(
     tab: Any,
     wrong: dict[str, tuple[float, float]],
-    rank_cost: dict[str, int] | None = None,
-    rank_missed: dict[str, int] | None = None,
+    rank_cost: dict[str, int],
+    rank_missed: dict[str, int],
 ) -> None:
+    """The solver table beside the figure: number, name, source, ranks, Missed, description."""
     n_rows = (
         sum(1 + len(rows) for _, rows in TABLE) + len(TABLE) - 1
     )  # NB a blank row between groups
@@ -223,8 +225,8 @@ def _table(
                 va="center",
             )
             for x, rank in (
-                (0.53, (rank_cost or {}).get(solver)),
-                (0.59, (rank_missed or {}).get(solver)),
+                (0.53, rank_cost.get(solver)),
+                (0.59, rank_missed.get(solver)),
             ):
                 if rank is not None:
                     tab.text(
@@ -292,10 +294,12 @@ def stamp(fig: Any, record: dict[str, Any]) -> str:
 
 
 def figure(record: dict[str, Any], out: Path) -> Path:
+    """The gap figure and its table, written to `out`."""
     import matplotlib as mpl
 
     mpl.use("Agg")
     import matplotlib.pyplot as plt
+    from matplotlib.ticker import FixedLocator, FuncFormatter
 
     d = frame(record)
     d = d.assign(y=d.energy - d.bound, py=d.polished - d.bound, by=d.both - d.bound)
@@ -328,9 +332,8 @@ def figure(record: dict[str, Any], out: Path) -> Path:
     lowest = float(d.groupby("solver").y.median().min())
     crowded: list[tuple[float, float, str]] = []
     for solver, g in d.groupby("solver"):
-        port = solver.startswith("port:")
         colour = _colour(str(solver))
-        marker = "s" if port else "o"
+        marker = "s" if solver.startswith("port:") else "o"
         x, xe = _bars(g.seconds)
         # NB each solver displaced by its own factor, up to 0.1 decades either side, so equal runtimes do not overlap
         spread = 10 ** (0.2 * (NUMBER[str(solver)] / max(NUMBER.values()) - 0.5))
@@ -407,7 +410,7 @@ def figure(record: dict[str, Any], out: Path) -> Path:
                 textcoords="offset points",
                 fontsize=8,
                 weight="bold",
-                color=_colour(str(solver)),
+                color=colour,
             )
 
     # NB solvers at the lowest energy: numbers in a row above them, each tied to its point
@@ -430,8 +433,6 @@ def figure(record: dict[str, Any], out: Path) -> Path:
     ax.set_xlim(
         float(d.groupby("solver").seconds.quantile(0.1).min()) * 0.6, slowest * 1.3
     )
-    from matplotlib.ticker import FixedLocator, FuncFormatter
-
     ax.set_yscale("log")
     ax.set_ylim(FLOOR * 0.5, float(d.y.max()) * 3)
     ax.yaxis.set_major_locator(FixedLocator([FLOOR, *10.0 ** np.arange(-1, 7)]))
@@ -479,10 +480,9 @@ def table_tex() -> str:
             lines.append(r"\addlinespace")
         lines.append(rf"& \multicolumn{{2}}{{l}}{{\emph{{{group}}}}} \\")
         for solver, text in rows:
-            kind, name = solver.split(":", 1)
-            mark = "s" if kind == "sal" else "p"
+            mark = "s" if solver.startswith("sal:") else "p"
             lines.append(
-                rf"{NUMBER[solver]} & {NAMES[name]}$^{{\mathrm{{{mark}}}}}$ & {escape(text)} \\"
+                rf"{NUMBER[solver]} & {label(solver)}$^{{\mathrm{{{mark}}}}}$ & {escape(text)} \\"
             )
     return "\n".join([*lines, r"\bottomrule", r"\end{tabular}"]) + "\n"
 
