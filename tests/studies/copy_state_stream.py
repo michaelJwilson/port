@@ -50,6 +50,7 @@ import numpy as np
 
 STARTS = (
     "emission++trim", "emission++x5hmm", "emission++trimx20hmm", "emission++lloydx5hmm",
+    "emission++anchor", "emission++knn",
     "cnaster-gmm", "calicost-gmm", "distinct", "lattice", "lattice-em", "rdr-quantiles",
     "prior", "data", "kmeans++", "emission++", "gaussian-em", "quantile",
     "anneal-hmm", "tempering-hmm", "hmc-hmm",
@@ -68,12 +69,14 @@ GRID: dict[str, tuple[dict[str, float], ...]] = {
     "emission++trim": tuple({"trim": t} for t in (0.005, 0.02, 0.05, 0.1)),
     "emission++trimx20hmm": tuple({"trim": t, "draws": n} for t in (0.005, 0.02, 0.05) for n in (10, 20)),
     "emission++lloydx5hmm": tuple({"lloyd": r} for r in (1, 3, 10)),
+    "emission++anchor": tuple({"lloyd": r} for r in (1, 3, 10)),
+    "emission++knn": tuple({"knn": k} for k in (0.003, 0.01, 0.03)),
 }  # fmt: skip
 """Each tuned start's settings: the samplers' schedules (`port.sandbox.known_copy.hmm_samplers`) and
 the emission++ variants' knobs (`copy_starts.EMISSION_VARIANTS`); each untuned default is in its grid."""
 
 UNTUNED = {"anneal-hmm": 4, "tempering-hmm": 4, "hmc-hmm": 5, "emission++trim": 1, "emission++trimx20hmm": 3,
-           "emission++lloydx5hmm": 1}  # fmt: skip
+           "emission++lloydx5hmm": 1, "emission++anchor": 1, "emission++knn": 1}  # fmt: skip
 """Each grid's index of the schedule the samplers were written with, reported beside the tuned one."""
 
 TUNING_SEEDS = 5

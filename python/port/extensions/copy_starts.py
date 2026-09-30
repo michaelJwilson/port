@@ -862,6 +862,8 @@ EMISSION_VARIANTS: dict[str, dict[str, float]] = {
     "emission++x5hmm": {"draws": 5},
     "emission++trimx20hmm": {"trim": 0.005, "draws": 20},
     "emission++lloydx5hmm": {"trim": 0.02, "coverage": 1, "lloyd": 10, "draws": 5},
+    "emission++anchor": {"trim": 0.02, "coverage": 1, "anchor": 1, "lloyd": 3},
+    "emission++knn": {"trim": 0.02, "coverage": 1, "knn": 0.01},
 }  # fmt: skip
 """Port's emission++ variants (#540): `_variant_seeding`'s options, and `draws`, the best of that
 many by the HMM's NLL at each draw's states. A `setting` replaces options by name.
@@ -875,10 +877,10 @@ Screened on `dev_tree_1s_hard`'s held-out realization 0 (7,688 rows), 5 seeds, m
 at the start / after `--sal` Baum-Welch: `emission++` 2.7% / 13.9%, `emission++trim` 12.4% / 27.9%,
 `emission++x5hmm` 1.3% / 37.0%, `emission++trimx20hmm` 2.5% / 14.0%, `emission++lloydx5hmm`
 3.0% / 35.7% (BW NLL 75,397, the variants' best, tied with trimx20hmm); `prior` 1.2% / 1.1%,
-`lattice` 1.0% / 59.3%. Dropped: `coverage` alone 15.9% / 42.7%, `knn` (each seed its 1% nearest
-rows, pooled) 10.4% / 37.5%, `lloyd` single draw 4.8% / 49.1%, `anchor` (first seed neutral, then
-lloyd) 2.2% / 36.5%. No variant reached `prior` after Baum-Welch; `lattice` shows the start's miss
-does not predict the fit's."""
+`lattice` 1.0% / 59.3%. Kept though not competitive: `anchor` (first seed neutral, then Lloyd)
+2.2% / 36.5%, `knn` (each seed its 1% nearest rows, pooled) 10.4% / 37.5%. Dropped: `coverage`
+alone 15.9% / 42.7%, single-draw `lloyd` 4.8% / 49.1%. No variant reached `prior` after
+Baum-Welch; `lattice` shows the start's miss does not predict the fit's."""
 
 
 HMM_SAMPLERS = ("anneal-hmm", "tempering-hmm", "hmc-hmm")
@@ -960,6 +962,8 @@ def _variant_seeding(
     *,
     trim: float = 0.0,
     coverage: float = 0,
+    anchor: float = 0,
+    knn: float = 0.0,
     lloyd: float = 0,
 ) -> Any:
     """`sal`'s emission++ D-sampling (`emission_mixture_plus_plus` over `_seed_scores`), with port's changes (#540).
@@ -969,6 +973,9 @@ def _variant_seeding(
     - `coverage`: the score is the divergence times the row's exposure over
       the mean, since in the seam's rate space a low-coverage row diverges by
       noise alone;
+    - `anchor`: the first seed is the neutral state (median read-depth rate,
+      B share 0.5), not a uniform row;
+    - `knn`: each seed's state is its `knn` share of nearest rows, pooled;
     - `lloyd`: that many hard-assignment rounds (argmin divergence, pooled
       state per group) before the states are handed over.
 
@@ -982,7 +989,11 @@ def _variant_seeding(
         depth = np.asarray(held.covariate, dtype=np.float64)[:, 0]
         trials = np.asarray(held.covariate, dtype=np.float64)[:, 1]
     weight = depth / max(depth.mean(), 1e-12) if coverage else np.ones(n)
-    centres = [rows[int(rng.integers(n))]]
+    if anchor:
+        neutral = [float(np.median(rows[:, 0])), 0.5 * float(held.at.trials)]
+        centres = [np.array(neutral)]
+    else:
+        centres = [rows[int(rng.integers(n))]]
     nearest = _divergences(held, rows, np.array(centres))[:, 0]
     for _ in range(1, k):
         score = nearest * weight
@@ -997,6 +1008,11 @@ def _variant_seeding(
         centres.append(rows[pick])
         nearest = np.minimum(nearest, _divergences(held, rows, rows[[pick]])[:, 0])
     placed = np.array(centres)
+    if knn > 0.0:
+        near = np.argsort(_divergences(held, rows, placed), axis=0)[
+            : max(int(knn * n), 1)
+        ]
+        placed = np.array([_pooled(rows[m], depth[m], trials[m]) for m in near.T])
     for _ in range(int(lloyd)):
         group = _divergences(held, rows, placed).argmin(axis=1)
         for j in range(k):

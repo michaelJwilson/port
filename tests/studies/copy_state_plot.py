@@ -55,10 +55,12 @@ TABLE = (
         ("quantile", "Each channel's quantiles, paired"),
     )),
     ("port, emission++ variants", (
-        ("emission++trim", f"{tt('emission++')}, farthest 2% of rows never drawn"),
+        ("emission++trim", f"{tt('emission++')}, farthest 0.5% of rows never drawn"),
         ("emission++x5hmm", f"Best of 5 {tt('emission++')} draws by HMM likelihood"),
-        ("emission++trimx20hmm", "Best of 20 trimmed draws by HMM likelihood"),
-        ("emission++lloydx5hmm", "Best of 5 trimmed, coverage-weighted, 3 Lloyd rounds"),
+        ("emission++trimx20hmm", f"Best of 20 {tt('emission++ (trim)')} by HMM likelihood"),
+        ("emission++lloydx5hmm", "Best of 5 by HMM: trimmed, coverage-weighted, 10 Lloyd rounds"),
+        ("emission++anchor", "First seed neutral, trimmed, then Lloyd rounds"),
+        ("emission++knn", "Trimmed seeds, each its 1% nearest rows pooled"),
     )),
     ("port, samplers on the HMM", (
         ("anneal-hmm", "Best point of HMC under falling temperature"),
@@ -79,8 +81,9 @@ LABEL = {
     "cnaster-gmm": "cnaster-gmm", "calicost-gmm": "calicost-gmm", "distinct": "distinct", "lattice": "lattice",
     "lattice-em": "lattice + em", "rdr-quantiles": "rdr-quantiles", "prior": "prior", "data": "data",
     "kmeans++": "k-means++", "emission++": "emission++", "emission++trim": "emission++ (trim)",
-    "emission++x5hmm": r"5$\times$emission++ (hmm)",
-    "emission++trimx20hmm": r"20$\times$emission++ (trim, hmm)", "emission++lloydx5hmm": r"5$\times$emission++ (lloyd, hmm)", "gaussian-em": "gaussian-em", "quantile": "quantile",
+    "emission++x5hmm": r"5$\times$emission++",
+    "emission++trimx20hmm": r"20$\times$trim", "emission++lloydx5hmm": r"5$\times$lloyd",
+    "emission++anchor": "emission++ (anchor)", "emission++knn": "emission++ (knn)", "gaussian-em": "gaussian-em", "quantile": "quantile",
     "anneal-hmm": "anneal", "tempering-hmm": "parallel tempering", "hmc-hmm": "hmc",
 }  # fmt: skip
 """A start's label; `5x`: the best of five draws."""
@@ -90,7 +93,7 @@ SOURCE = {
     **{name: "sal" for _, rows in TABLE for name, _ in rows},
     "cnaster-gmm": "cnaster", "calicost-gmm": "CalicoST", "distinct": "port", "lattice": "port",
     "lattice-em": "port", "rdr-quantiles": "port", "emission++trim": "port",
-    "emission++x5hmm": "port", "emission++trimx20hmm": "port", "emission++lloydx5hmm": "port", "anneal-hmm": "port", "tempering-hmm": "port", "hmc-hmm": "port",
+    "emission++x5hmm": "port", "emission++trimx20hmm": "port", "emission++lloydx5hmm": "port", "emission++anchor": "port", "emission++knn": "port", "anneal-hmm": "port", "tempering-hmm": "port", "hmc-hmm": "port",
 }  # fmt: skip
 """Each start's source: the package whose code it runs."""
 COLOUR = {name: plt_colour(k) for name, k in NUMBER.items()}
@@ -303,8 +306,9 @@ def figure(record: dict[str, Any], out: Path) -> Path:
     from matplotlib.ticker import FixedLocator, FuncFormatter
 
     d, truth = frame(record)
-    n_problems = len(record.get("complete", record["done"]))
-    n_partial = len(record["done"]) - n_problems
+    # NB every realization with rows counts, reused ones included; one still running is also named in progress
+    n_problems = int(d.problem.nunique())
+    n_partial = len(set(d.problem) - set(record.get("complete", record["done"])))
     plt.rcParams.update({"font.size": 9})
     fig = plt.figure(figsize=(15.5, 6.2))
     grid = fig.add_gridspec(1, 2, width_ratios=[1.2, 1], wspace=0.04)
@@ -392,9 +396,16 @@ def figure(record: dict[str, Any], out: Path) -> Path:
     ax.plot([], [], "o", color="0.4", label="Start")
     ax.plot([], [], "o", color="0.4", mfc="white", label="Baum-Welch")
     ax.plot([], [], color="k", lw=0.9, label="Truth")
+    # NB a start added to a running stream covers fewer realizations until it catches up: say which, and on how many
+    counts = d[d.start.isin(NUMBER)].groupby("start").problem.nunique()
+    short = counts[counts < d.problem.nunique()]
+    behind = "".join(
+        f"; #{', #'.join(str(NUMBER[s]) for s in sorted(g.index, key=lambda s: NUMBER[s]))} on {k}"
+        for k, g in short.groupby(short)
+    )
     ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.1), ncol=3, fontsize=7.5, frameon=False,
               title=f"{Path(record['manifest']).stem}: Median for {n_problems} realization{'s' if n_problems != 1 else ''}"
-                    + (f" (+{n_partial} in progress)" if n_partial else "") + f" $\\times$ {record['seeds']} seeds",
+                    + (f" ({n_partial} in progress)" if n_partial else "") + f" $\\times$ {record['seeds']} seeds{behind}",
               title_fontsize=7.5)  # fmt: skip
     missed = {
         str(n): (float(g.start_missed_pct.median()), float(g.missed_pct.median()))
