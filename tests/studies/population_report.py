@@ -492,9 +492,8 @@ def _panel(axis: Any, entry: dict[str, Any], colour: str, label: str,
 def _false_positives(axis: Any, entry: dict[str, Any]) -> None:
     """The false-positive rate on a log axis: rare, so a linear one reads 0.
 
-    The fit and its band where positive; a bin's rate with its resampled
-    95% interval where it saw a false positive, and where it saw none, a
-    downward marker at `3 / n`, the rule of three's 95% upper bound.
+    The fit and its band where positive, and a bin's rate with its resampled
+    95% interval where it saw a false positive; a bin with none has no point.
     """
     colour = CLASS_COLOURS["all"]
     grid, fitted = np.array(entry["grid"]), np.array(entry["fitted"])
@@ -509,13 +508,10 @@ def _false_positives(axis: Any, entry: dict[str, Any]) -> None:
     rate = np.array(shown["rate"])
     low, high = np.array(shown["low"]), np.array(shown["high"])
     seen = (n >= MIN_PER_BIN // 2) & (rate > 0)
-    none = (n >= MIN_PER_BIN // 2) & (rate == 0)
     axis.errorbar(x[seen], rate[seen],
                   yerr=[rate[seen] - np.maximum(low[seen], rate[seen] / 10),
                         high[seen] - rate[seen]],
                   color=colour, lw=1, ls="none", marker="o", ms=4, capsize=2)  # fmt: skip
-    axis.plot(x[none], 3 / n[none], color=colour, ls="none", marker="v", ms=5,
-              markerfacecolor="none")  # fmt: skip
     axis.set_yscale("log")
 
 
@@ -567,7 +563,7 @@ def figures(summary: dict[str, Any], into: Path) -> list[Path]:
 
         _false_positives(third, summary["study3"]["false_positive"])
         third.set_xlabel(r"$\log_{10} |{\rm SNP\ UMIs\ in\ segment}|$")
-        third.set_ylabel("False positive rate\n((1, 1) segments called otherwise)")
+        third.set_ylabel("False Positive Rate")
 
         for axis in (left, right):
             axis.set_ylim(-0.02, 1.02)
