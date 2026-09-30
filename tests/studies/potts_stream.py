@@ -1,6 +1,8 @@
 """#556: Potts solvers from random labels on a stream of known-law problems, the plot redrawn per problem.
 
 `python -m tests.studies.potts_stream MANIFEST OUT_DIR [--problems 25] [--starts 50] [--held-out 3] [--workers 4]`
+`python -m tests.studies.potts_stream MANIFEST OUT_DIR --tune SAMPLER ...` tunes
+only the named samplers on the held-out realizations and merges them into `SETTINGS`.
 
 The main process draws each realization of `MANIFEST` in memory and builds its
 field at the planted copy states and profiles (`port.sandbox.known_field`);
@@ -52,8 +54,14 @@ import numpy as np
 DROPPED = frozenset({"sal:bifurcation", "port:alpha", "port:alpha-rust-merge"})
 """Out of the stream: bifurcation (#541), `alpha` (Alpha-rust's pure-Python twin), and the deprecated floor merge."""
 
-EXTRA = ("sal:trws",)
-"""Entries beyond the harness's: TRW-S's decoded labelling."""
+EXTRA = (
+    "sal:trws",
+    "port:sw-field",
+    "port:sw-field-glauber",
+    "port:wolff-field",
+    "port:wolff-field-glauber",
+)
+"""Entries beyond the harness's: TRW-S's decoded labelling, and #559's field-weighted cluster moves."""
 
 SAMPLERS = {
     "sal:anneal": "single-site",
@@ -62,6 +70,17 @@ SAMPLERS = {
     "sal:tempering": None,
 }
 """The tuned entries, by `sal`'s move set; tempering is a ladder of single-site replicas."""
+
+FIELD_WEIGHTED = {
+    "port:sw-field": ("swendsen-wang", False),
+    "port:sw-field-glauber": ("swendsen-wang", True),
+    "port:wolff-field": ("wolff", False),
+    "port:wolff-field-glauber": ("wolff", True),
+}
+"""#559's cluster moves (`port.sandbox.known_field.cluster`): the move, and whether a Glauber sweep follows each."""
+
+TUNED = (*SAMPLERS, *FIELD_WEIGHTED)
+"""Every entry that runs at a tuned annealing setting."""
 
 T_END = 0.05
 """sal's `ANNEAL_END`: cold enough that the last sweeps are a descent."""
@@ -120,7 +139,7 @@ def _warm() -> None:
             patch,
             solver,
             0,
-            {"t_start": 2.0, "sweeps": 10} if solver in SAMPLERS else None,
+            {"t_start": 2.0, "sweeps": 10} if solver in TUNED else None,
         )
 
 
@@ -141,6 +160,23 @@ def _sample(solver: str, field: np.ndarray, start: np.ndarray, rng: np.random.Ge
     from sal.search.ground_state import Problem, run_annealed
 
     sweeps = int(setting["sweeps"])
+    if solver in FIELD_WEIGHTED:
+        from port.sandbox.known_field.cluster import anneal
+
+        move, glauber = FIELD_WEIGHTED[solver]
+        temperatures = ScheduleParams(
+            ScheduleShape.EXPONENTIAL, float(setting["t_start"]), T_END
+        ).build(sweeps)
+        best, _ = anneal(
+            graph,
+            field,
+            start,
+            rng,
+            np.array([temperatures(k) for k in range(sweeps)]),
+            move,
+            glauber,
+        )
+        return best
     if SAMPLERS[solver] is None:
         ladder = tuple(
             float(t) for t in np.geomspace(setting["t_start"], T_END, REPLICAS)
@@ -232,14 +268,14 @@ def _describe(problem: Any) -> dict[str, Any]:
 
 
 def tune(
-    pool: ProcessPoolExecutor, held_out: list[Any]
+    pool: ProcessPoolExecutor, held_out: list[Any], samplers: tuple[str, ...] = TUNED
 ) -> tuple[dict[str, dict[str, float]], list[dict[str, Any]]]:
-    """Each sampler's setting: the cheapest in `GRID` within `TOLERANCE` of the best median gap on `held_out`."""
+    """Each of `samplers`' setting: the cheapest in `GRID` within `TOLERANCE` of the best median gap on `held_out`."""
     import pandas as pd
 
     bounds = {p.realization: _describe(p)["bound"] for p in held_out}
     futures = [pool.submit(solve, p, solver, seed, setting)
-               for p in held_out for solver in SAMPLERS for setting in GRID for seed in range(TUNING_STARTS)]  # fmt: skip
+               for p in held_out for solver in samplers for setting in GRID for seed in range(TUNING_STARTS)]  # fmt: skip
     rows = [f.result() for f in futures]
     frame = pd.DataFrame([r for r in rows if "error" not in r])
     frame["gap"] = frame.energy - frame.problem.map(bounds)
@@ -264,6 +300,9 @@ def run(
     held_out: int,
     workers: int,
     settings: Path | None = None,
+    only: tuple[str, ...] | None = None,
+    first: int = 0,
+    merge: tuple[Path, ...] = (),
 ) -> Path:
     """Tune on the first `held_out` realizations, then stream the next `n_problems`; returns the pickle it keeps current."""
     from port.sandbox.known_field import problems
@@ -271,20 +310,27 @@ def run(
     import tests.studies.clone_label_arms as arms
 
     out_dir.mkdir(parents=True, exist_ok=True)
-    out = out_dir / f"{manifest.stem}.pkl"
-    solvers = [s for s in arms._solvers() if s not in DROPPED] + list(EXTRA)
+    out = out_dir / (
+        f"{manifest.stem}_r{first}.pkl" if only or first else f"{manifest.stem}.pkl"
+    )
+    solvers = (
+        list(only)
+        if only
+        else [s for s in arms._solvers() if s not in DROPPED] + list(EXTRA)
+    )
     held: dict[int, dict[str, Any]] = {}
     rows: list[dict[str, Any]] = []
     pending: dict[int, int] = {}
     done: list[int] = []
     futures: dict[Future[dict[str, Any]], int] = {}
     opened = time.perf_counter()
-    stream = problems(
-        manifest, held_out + n_problems, realizations=held_out + n_problems
-    )
+    total = held_out + first + n_problems
+    stream = problems(manifest, total, realizations=total)
     context = mp.get_context("spawn")
     with ProcessPoolExecutor(workers, mp_context=context, initializer=_init) as pool:
         skipped = list(itertools.islice(stream, held_out))
+        for _ in itertools.islice(stream, first):
+            pass
         if settings is None:
             tuned, tuning_rows = tune(pool, skipped)
         else:
@@ -307,7 +353,13 @@ def run(
                           "starts": starts, "tuned": tuned, "tuning": tuning_rows, "held_out": held_out}  # fmt: skip
                 out.write_bytes(pickle.dumps(record))
                 subprocess.run(
-                    [sys.executable, "-m", "tests.studies.potts_plot", str(out)],
+                    [
+                        sys.executable,
+                        "-m",
+                        "tests.studies.potts_plot",
+                        str(out),
+                        *map(str, merge),
+                    ],
                     check=False,
                 )
                 errors = sum("error" in r for r in rows)
@@ -336,6 +388,28 @@ def run(
     return out
 
 
+def retune(
+    manifest: Path, samplers: tuple[str, ...], held_out: int, workers: int
+) -> None:
+    """`tune` for `samplers` alone on `manifest`'s first `held_out` realizations, merged into `SETTINGS`."""
+    from port.sandbox.known_field import problems
+
+    unknown = set(samplers) - set(TUNED)
+    if unknown:
+        msg = f"not tunable: {sorted(unknown)}; tunable: {TUNED}"
+        raise ValueError(msg)
+    context = mp.get_context("spawn")
+    with ProcessPoolExecutor(workers, mp_context=context, initializer=_init) as pool:
+        chosen, _ = tune(
+            pool, list(problems(manifest, held_out, realizations=held_out)), samplers
+        )
+    settings = json.loads(SETTINGS.read_text())
+    for solver, setting in chosen.items():
+        settings[solver] = {"t_start": setting["t_start"], "sweeps": setting["sweeps"],
+                            "median_gap": round(setting["gap"], 3), "default_median_gap": round(setting["default_gap"], 3)}  # fmt: skip
+    SETTINGS.write_text(json.dumps(settings, indent=2) + "\n")
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description=(__doc__ or "").splitlines()[0])
     parser.add_argument("manifest", type=Path)
@@ -350,9 +424,46 @@ def main(argv: list[str] | None = None) -> None:
         help=f"sampler settings to reuse, e.g. {SETTINGS}",
     )
     parser.add_argument("--workers", type=int, default=4)
+    parser.add_argument(
+        "--tune",
+        nargs="+",
+        default=None,
+        metavar="SAMPLER",
+        help=f"tune only these on the held-out realizations, merge them into {SETTINGS.name}, and stop",
+    )
+    parser.add_argument(
+        "--only",
+        nargs="+",
+        default=None,
+        metavar="SOLVER",
+        help="run only these solvers",
+    )
+    parser.add_argument(
+        "--first",
+        type=int,
+        default=0,
+        help="skip this many evaluated realizations: a window of the stream",
+    )
+    parser.add_argument(
+        "--merge",
+        nargs="+",
+        type=Path,
+        default=(),
+        metavar="PKL",
+        help="earlier streams drawn with this one",
+    )
     arguments = parser.parse_args(argv)
+    if arguments.tune is not None:
+        retune(
+            arguments.manifest,
+            tuple(arguments.tune),
+            arguments.held_out,
+            arguments.workers,
+        )
+        return
     run(arguments.manifest, arguments.out_dir, arguments.problems, arguments.starts, arguments.held_out,
-        arguments.workers, arguments.settings)  # fmt: skip
+        arguments.workers, arguments.settings, tuple(arguments.only) if arguments.only else None, arguments.first,
+        tuple(arguments.merge))  # fmt: skip
 
 
 if __name__ == "__main__":

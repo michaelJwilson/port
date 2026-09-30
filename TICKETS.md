@@ -22,6 +22,8 @@ own.
   segmentation it plants (#67)
 - dev_tree's clone field is 10x CalicoST easy/hard's: draw CalicoST's event
   mix, admixture field, BAF overdispersion and tumour expression (#556)
+- sal's cluster moves stall in that field: redraw each cluster's clone from its
+  field weight, with a Glauber interleave; ghost spin next (#559)
 
 ## Milestone 1.2 — The emission and the phased HMM
 

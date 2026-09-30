@@ -30,7 +30,8 @@ NAMES = {
     "swendsen-wang": "Swendsen-Wang", "wolff": "Wolff", "tempering": "Parallel tempering",
     "alpha-expansion": "Alpha-expansion", "alpha-beta-swap": "Alpha-beta-swap", "max-product": "Max-product",
     "alpha-rust": "Alpha-rust", "icm-numba": "ICM-numba", "alpha-rust-icm": "Alpha-rust-ICM",
-    "alpha-rust-fuse-merge": "Alpha-rust-fuse", "trws": "TRW-S",
+    "alpha-rust-fuse-merge": "Alpha-rust-fuse", "trws": "TRW-S", "sw-field": "SW-field",
+    "sw-field-glauber": "SW-field+Glauber", "wolff-field": "Wolff-field", "wolff-field-glauber": "Wolff-field+Glauber",
 }  # fmt: skip
 TABLE = (
     ("Graph cuts", (
@@ -51,6 +52,10 @@ TABLE = (
         ("sal:anneal", "single-site heat bath (Glauber), annealed"),
         ("sal:swendsen-wang", "cluster moves over bonded spots, annealed"),
         ("sal:wolff", "one grown cluster flipped per move, annealed"),
+        ("port:sw-field", "SW, each cluster's clone drawn from its field"),
+        ("port:sw-field-glauber", "SW-field, a Glauber sweep after each move"),
+        ("port:wolff-field", "Wolff, the cluster's clone drawn from its field"),
+        ("port:wolff-field-glauber", "Wolff-field, a Glauber sweep after each move"),
         ("sal:tempering", "replicas on a temperature ladder, swapped"),
         ("sal:max-product", "loopy max-product belief propagation"),
         ("sal:trws", "tree-reweighted message passing: its decode"),
@@ -366,10 +371,24 @@ def table_tex() -> str:
     return "\n".join([*lines, r"\bottomrule", r"\end{tabular}"]) + "\n"
 
 
+def merged(records: list[dict[str, Any]]) -> dict[str, Any]:
+    """One record from streams of the same manifest: their rows together, a realization done in any of them."""
+    record = dict(records[0])
+    for other in records[1:]:
+        if Path(other["manifest"]).stem != Path(record["manifest"]).stem:
+            msg = f"{other['manifest']} is not {record['manifest']}"
+            raise ValueError(msg)
+        record["problems"] = {**other["problems"], **record["problems"]}
+        record["rows"] = [*record["rows"], *other["rows"]]
+        record["done"] = sorted({*record["done"], *other["done"]})
+    return record
+
+
 def main(argv: list[str] | None = None) -> None:
-    (path,) = argv if argv is not None else sys.argv[1:]
-    stream = Path(path)
-    record = pickle.loads(stream.read_bytes())
+    """`STREAM.pkl [EARLIER.pkl ...]`: the figure beside the first, over all of them."""
+    paths = [Path(p) for p in (argv if argv is not None else sys.argv[1:])]
+    stream = paths[0]
+    record = merged([pickle.loads(p.read_bytes()) for p in paths])
     print(figure(record, stream.with_suffix(".png")))
     stream.with_name("potts_solvers_table.tex").write_text(table_tex())
 
