@@ -167,7 +167,7 @@ def solve(
     problem: Any, solver: str, seed: int, setting: dict[str, float] | None = None
 ) -> dict[str, Any]:
     """One run from random labels, then its two polishes; a failure is a row."""
-    from port.sandbox.known_field import color_merge
+    from port.sandbox.known_field import color_merge, missed
     from sal.sim.potts import energy
 
     import tests.studies.clone_label_arms as arms
@@ -205,8 +205,8 @@ def solve(
             "polish_seconds": polish_seconds, "polished": energy(graph, field, polished),
             "both_seconds": polish_seconds + merge_seconds, "both": energy(graph, field, both),
             "merges": merges, "clones": int(np.unique(out).size), "both_clones": int(np.unique(both).size),
-            "wrong": int((out != planted).sum()), "polished_wrong": int((polished != planted).sum()),
-            "both_wrong": int((both != planted).sum()),
+            "wrong": missed(out, planted), "polished_wrong": missed(polished, planted),
+            "both_wrong": missed(both, planted),
         }  # fmt: skip
     except Exception as error:  # noqa: BLE001 -- a failed job is a result
         return {"problem": problem.realization, "solver": solver, "seed": seed, "setting": setting,

@@ -29,6 +29,7 @@ __all__ = [
     "KnownProblem",
     "baf_field",
     "hex_graph",
+    "missed",
     "overdispersion",
     "problems",
     "rdr_field",
@@ -137,6 +138,22 @@ def baf_field(
             terms = hap_a * np.log(pk) + (n - hap_a) * np.log1p(-pk)
         out[:, k] = _segment_sum(terms, total.indptr)
     return out
+
+
+def missed(label: np.ndarray, truth: np.ndarray) -> int:
+    """Labels unlike the planted ones under the 1-1 matching of fitted to planted labels that misses fewest.
+
+    A solver's label k is clone k's field column, so the identity is usually
+    the best matching; after a color merge a clone's spots can sit under
+    another's label, and the matching does not count that as a miss.
+    """
+    from scipy.optimize import linear_sum_assignment
+
+    n = int(max(label.max(), truth.max())) + 1
+    agree = np.zeros((n, n), dtype=np.int64)
+    np.add.at(agree, (label, truth), 1)
+    rows, cols = linear_sum_assignment(-agree)
+    return int(label.size - agree[rows, cols].sum())
 
 
 def overdispersion(

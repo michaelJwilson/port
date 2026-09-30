@@ -332,7 +332,7 @@ def figure(record: dict[str, Any], out: Path) -> Path:
     ax.fill_between([], [], [], color="0.55", alpha=0.35, lw=0, label="Truth, 10-90%")
     ax.plot([], [], color="k", lw=0.9, label="Truth")
     ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.1), ncol=3, fontsize=7.5, frameon=False,
-              title=f"Median for {n_problems} realization{'s' if n_problems > 1 else ''} $\\times$ {n_starts} random starts",
+              title=f"{Path(record['manifest']).stem}: median for {n_problems} realization{'s' if n_problems > 1 else ''} $\\times$ {n_starts} random starts",
               title_fontsize=7.5)  # fmt: skip
     _table(tab, missed(d, n_spots(record)))
     fig.savefig(out, dpi=150, bbox_inches="tight")
