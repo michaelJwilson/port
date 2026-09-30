@@ -279,7 +279,11 @@ def instance(call: CopyCall, *, covariate: bool = True) -> Any:
       alone, which `CountPairSeeding` read as near-zero successes.
 
     For `"baf"`, a constant read-depth channel. Without `covariate`, the
-    counts alone, seeded where they lie.
+    totals as observed, and the B column still the fraction over the common
+    trial count: the seam reads a row's successes over that count
+    (`(b + 1/2) / (trials + 1)`), so a raw B count above it is a rate above 1
+    and a negative beta-binomial beta, which refused `anneal`, `tempering`,
+    `quantile` and `gaussian-em` on the dev_tree calls.
     """
     from dataclasses import replace
 
@@ -309,7 +313,9 @@ def instance(call: CopyCall, *, covariate: bool = True) -> Any:
     if covariate:
         return held
 
-    return replace(held, covariate=None, seeding_rows=None)
+    # NB the covariate is the kept bins' exposure: rows[:, 0] times it is the observed total
+    counts = np.column_stack([rows[:, 0] * held.covariate[:, 0], rows[:, 1]])
+    return replace(held, covariate=None, seeding_rows=counts)
 
 
 def _place(held: Any, call: CopyCall, log_mu: Any, p_binom: Any) -> Any:
