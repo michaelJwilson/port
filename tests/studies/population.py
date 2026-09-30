@@ -14,7 +14,7 @@ the prior orders nothing, so the study reads J where it does.
 `run` is resumable: a `(seed, J)` with a record in `DIR/records/` is skipped.
 Each worker runs one thread, one worker per core, and a member's draw and
 run directories are deleted once its records are written, so the disk a
-study holds is its records. `report` is `tests.studies.population_report`.
+study holds is its records and each run's `KEPT` outputs in `DIR/outputs/`. `report` is `tests.studies.population_report`.
 
 **Scored per tumour clone:** its spots, the sum of its spots' drawn UMIs,
 and its completeness -- the share of its spots in the fitted clone matched
@@ -28,6 +28,13 @@ scored as this one. Recovered where at least `RECOVERED` of those bins
 decode, in the matched fitted clone, to the planted pair up to phase. An
 event covering no bin midpoint is kept, as not recovered: the run cannot
 report it. An event overwritten on more than half its bins is dropped.
+
+**Scored per neutral segment of a detected clone** (specificity): each
+maximal run of consecutive bins on one chromosome where the clone's planted
+pair is `(1, 1)`. Specific where at least `SPECIFIC` of its bins decode to
+`(1, 1)` in the matched fitted clone. Its covariate is the SNP-covering UMI
+it holds: `A + B` summed over the SNPs between its first bin's start and its
+last bin's end, and over the planted clone's spots.
 
 **A run that raises is a result**: its record carries the error and no
 clones, and the report counts such runs per J rather than dropping the member
@@ -71,6 +78,12 @@ DETECTED = 0.90
 RECOVERED = 0.90
 """An event is recovered when this share of its bins decodes to its pair."""
 
+SPECIFIC = 0.90
+"""A neutral segment is specific when this share of its bins decodes to (1, 1)."""
+
+KEPT = ("clone_labels.tsv", "cnv_seglevel.tsv")
+"""A run's outputs kept beside its record, so a new score needs no rerun."""
+
 FLAGS = ("--sal", "--no-plots")
 
 CLASSES = {
@@ -110,6 +123,40 @@ def spot_umis(path: Path, barcodes: np.ndarray) -> np.ndarray:
         summed = np.asarray(matrix.sum(axis=1)).ravel()
         totals.update(zip(counts.obs_names.astype(str), summed, strict=True))
     return np.array([totals[str(b)] for b in barcodes], dtype=np.float64)
+
+
+def snp_umis(path: Path, barcodes: np.ndarray) -> tuple[np.ndarray, np.ndarray, Any]:
+    """Each SNP's chromosome and position, and `A + B` per spot in `barcodes`' order."""
+    import scipy.sparse
+
+    ids = np.load(path / "snp" / "unique_snp_ids.npy", allow_pickle=True).astype(str)
+    fields = np.char.split(ids, "_")
+    chrom = np.array([f[0] for f in fields])
+    pos = np.array([int(f[1]) for f in fields], dtype=np.int64)
+    order = {
+        b: i for i, b in enumerate((path / "snp" / "barcodes.txt").read_text().split())
+    }
+    rows = np.array([order[str(b)] for b in barcodes])
+    total = scipy.sparse.load_npz(path / "snp" / "cell_snp_Aallele.npz").tocsr()
+    total = total + scipy.sparse.load_npz(path / "snp" / "cell_snp_Ballele.npz").tocsr()
+    return chrom, pos, total[rows]
+
+
+def neutral_segments(chrom: np.ndarray, neutral: np.ndarray) -> list[tuple[int, int]]:
+    """`[first, last]` bin of each maximal run of `neutral` bins on one chromosome."""
+    runs: list[tuple[int, int]] = []
+    first = None
+    for i, flag in enumerate(neutral):
+        if flag and (first is None or chrom[i] != chrom[i - 1]):
+            if first is not None:
+                runs.append((first, i - 1))
+            first = i
+        elif not flag and first is not None:
+            runs.append((first, i - 1))
+            first = None
+    if first is not None:
+        runs.append((first, len(neutral) - 1))
+    return runs
 
 
 def clone_events(path: Path) -> dict[str, list[tuple[str, int, int, int, int]]]:
@@ -206,7 +253,49 @@ def score_member(sample: Any, output: Path) -> dict[str, Any]:
             )
 
     return {"n_fitted": int(np.unique(fitted[scored]).size), "clones": clones,
-            "events": scored_events}  # fmt: skip
+            "events": scored_events,
+            "neutral": _neutral(sample, run, planted, match, clones)}  # fmt: skip
+
+
+def _neutral(
+    sample: Any,
+    run: dict[str, Any],
+    planted: np.ndarray,
+    match: dict[int, int],
+    clones: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Each detected clone's neutral segments, scored for specificity."""
+    seglevel = run["seglevel"]
+    chrom = seglevel["CHR"].astype(str).str.removeprefix("chr").to_numpy()
+    start, end = seglevel["START"].to_numpy(), seglevel["END"].to_numpy()
+    truth = sample.copies_at(chrom, (start + end) // 2)
+    snp_chrom, snp_pos, total = snp_umis(sample.path, sample.barcodes)
+    detected = {c["clone"] for c in clones if c["detected"]}
+
+    out = []
+    for c, name in enumerate(sample.clones):
+        if name not in detected or c not in match:
+            continue
+        m = match[c]
+        per_snp = np.asarray(total[planted == c].sum(axis=0)).ravel()
+        called = (run["a"][:, m] == 1) & (run["b"][:, m] == 1)
+        neutral = (truth[:, c, 0] == 1) & (truth[:, c, 1] == 1)
+        for first, last in neutral_segments(chrom, neutral):
+            inside = (snp_chrom == chrom[first]) & (snp_pos >= start[first])
+            inside &= snp_pos < end[last]
+            share = float(called[first : last + 1].mean())
+            out.append(
+                {
+                    "clone": name,
+                    "chr": str(chrom[first]),
+                    "length": int(end[last] - start[first]),
+                    "bins": last - first + 1,
+                    "snp_umis": float(per_snp[inside].sum()),
+                    "neutral": round(share, 4),
+                    "specific": bool(share >= SPECIFIC),
+                }
+            )
+    return out
 
 
 def _record(out: Path, seed: int, j: float) -> Path:
@@ -244,6 +333,10 @@ def run_member(
         else:
             wall = time.perf_counter() - started
             record = base | {"wall": round(wall, 1), **score_member(sample, output)}
+            kept = out / "outputs" / f"s{seed:04d}-J{j:g}"
+            kept.mkdir(parents=True, exist_ok=True)
+            for name in KEPT:
+                shutil.copy(next(output.rglob(name)), kept / name)
         target = _record(out, seed, j)
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(json.dumps(record) + "\n")

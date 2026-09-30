@@ -45,6 +45,11 @@ LENGTH_EDGES = np.round(np.arange(6.0, 8.51, 0.25), 2)
 LENGTH_DISPLAY = np.round(np.arange(6.0, 8.51, 0.125), 3)
 """The figure's finer bins; the rule reads `LENGTH_EDGES`."""
 
+SNP_EDGES = np.round(np.arange(1.0, 5.01, 0.5), 2)
+"""log10 SNP-covering UMIs of a neutral segment: Study 3's bins."""
+
+SNP_DISPLAY = np.round(np.arange(1.0, 5.01, 0.25), 2)
+
 J_RAMP = ("#86b6ef", "#3987e5", "#1c5cab", "#0d366b")
 """An ordinal blue ramp, light to dark: J is ordered (validated, `--ordinal`)."""
 
@@ -79,6 +84,21 @@ def failures(out: Path) -> dict[float, list[dict[str, Any]]]:
                 {"seed": record["seed"], "error": record["error"]}
             )
     return failed
+
+
+NEUTRAL_COLUMNS = ("seed", "J", "manifest", "clone", "chr", "length", "bins",
+                   "snp_umis", "neutral", "specific")  # fmt: skip
+
+
+def neutral(out: Path) -> pd.DataFrame:
+    """One row per scored neutral segment; records scored before it have none."""
+    rows = []
+    for path in sorted((out / "records").glob("*.json")):
+        record = json.loads(path.read_text())
+        key = {"seed": record["seed"], "J": record["J"],
+               "manifest": record.get("manifest", "population")}  # fmt: skip
+        rows += [key | n for n in record.get("neutral", [])]
+    return pd.DataFrame(rows, columns=list(NEUTRAL_COLUMNS))
 
 
 def load(out: Path) -> tuple[pd.DataFrame, pd.DataFrame]:
@@ -321,6 +341,24 @@ def summarize(out: Path, study2_j: float, seed: int = 544) -> dict[str, Any]:
             ),
         }
 
+    # NB Study 3, specificity, is read on Study 2's members and resamples.
+    segments = neutral(out)
+    segments = segments[(segments["J"] == study2_j) & (segments["snp_umis"] > 0)]
+    segments = segments.assign(log_snp_umis=np.log10(segments["snp_umis"]))
+    study3 = {
+        "segments": len(segments),
+        "members": int(segments["seed"].nunique()) if len(segments) else 0,
+        "specific": curve(
+            segments,
+            "log_snp_umis",
+            "specific",
+            SNP_EDGES,
+            members2,
+            weights2,
+            display=SNP_DISPLAY,
+        ),
+    }
+
     differences = {}
     base = study1.get(study2_j, {}).get("detected", {}).get("crossing_draws")
     for j, entry in study1.items():
@@ -341,6 +379,7 @@ def summarize(out: Path, study2_j: float, seed: int = 544) -> dict[str, Any]:
     return {
         "study1": study1,
         "study2": study2,
+        "study3": study3,
         "differences": differences,
         "sufficient": SUFFICIENT(study1, study2),
         "members": int(seeds.size),
@@ -443,7 +482,8 @@ def _dodges(n: int, width: float) -> list[float]:
 
 
 def figures(summary: dict[str, Any], into: Path) -> list[Path]:
-    """One figure: clone sensitivity by UMIs per J, beside CNA sensitivity by length.
+    """One figure: clone sensitivity by UMIs per J; CNA sensitivity by length;
+    neutral-segment specificity by the SNP-covering UMIs it holds.
 
     Both are `run_cnaster_port --sal`; the arm, the realization counts and
     the bands' construction are stated in the study's document rather than
@@ -463,8 +503,8 @@ def figures(summary: dict[str, Any], into: Path) -> list[Path]:
     paths = []
 
     with plt.rc_context(style):
-        fig, (left, right) = plt.subplots(
-            1, 2, figsize=(9, 3.6), constrained_layout=True
+        fig, (left, right, third) = plt.subplots(
+            1, 3, figsize=(13.5, 3.6), constrained_layout=True
         )
         colours = j_colours(list(summary["study1"]))
         series = sorted(summary["study1"].items())
@@ -482,6 +522,12 @@ def figures(summary: dict[str, Any], into: Path) -> list[Path]:
         right.set_xscale("log")
         right.set_xlabel("CNA length [Mb]")
         right.set_ylabel("Sensitivity (≥ 90% of segments)")
+
+        _panel(third, summary["study3"]["specific"], CLASS_COLOURS["all"], "All",
+               0.0, None)  # fmt: skip
+        third.set_xlabel(r"$\log_{10} |{\rm SNP\ UMIs\ in\ segment}|$")
+        third.set_ylabel("Specificity (≥ 90% of (1, 1) segments)")
+        third.set_ylim(-0.02, 1.02)
 
         for axis in (left, right):
             axis.set_ylim(-0.02, 1.02)
@@ -504,6 +550,7 @@ def report(out: Path, study2_j: float) -> dict[str, Any]:
             entry[key].pop("crossing_draws")
     for entry in slim["study2"].values():
         entry["recovered"].pop("crossing_draws")
+    slim["study3"]["specific"].pop("crossing_draws")
     (out / "summary.json").write_text(json.dumps(slim, indent=1) + "\n")
     (out / "tables.md").write_text(tables(slim))
     print(json.dumps({"members": slim["members"], "sufficient": slim["sufficient"]},
