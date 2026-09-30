@@ -5,8 +5,7 @@ pickle: energy less TRW-S's lower bound, on a log axis whose bottom tick, "0",
 holds every run at the bound, with a solid black line at the planted
 labelling's gap (its median over realizations).
 
-Each point is a solver's median over realizations x random starts, its bars
-the 10-90% range on both axes; an open marker is the same runs after sal's
+Each point is a solver's median over realizations x random starts; an open marker is the same runs after sal's
 ICM, a diamond after the color merge that follows it. Polish stages are drawn
 `DODGE` to the right of their runtime so stages do not overlap. The table's
 last column counts the labels that differ from the planted ones at each
@@ -70,11 +69,6 @@ FLOOR = 1e-2
 def label(solver: str) -> str:
     kind, name = solver.split(":", 1)
     return f"{NAMES[name]}$^{{{'s' if kind == 'sal' else 'p'}}}$"
-
-
-def _bars(values: pd.Series) -> tuple[float, list[list[float]]]:
-    m = float(values.median())
-    return m, [[m - float(values.quantile(0.1))], [float(values.quantile(0.9)) - m]]
 
 
 def frame(record: dict[str, Any]) -> pd.DataFrame:
@@ -225,13 +219,11 @@ def figure(record: dict[str, Any], out: Path) -> Path:
     for solver, g in d.groupby("solver"):
         port = solver.startswith("port:")
         colour, marker = ("C1", "s") if port else ("C0", "o")
-        x, xe = _bars(g.seconds)
-        y, ye = _bars(g.y)
-        ax.errorbar(
-            x, y, xerr=xe, yerr=ye, fmt=marker, color=colour, ms=5, lw=0.8, capsize=2.5
-        )
-        px, pxe = _bars(g.pseconds)
-        py, pye = _bars(g.py)
+        x = float(g.seconds.median())
+        y = float(g.y.median())
+        ax.errorbar(x, y, fmt=marker, color=colour, ms=5, lw=0.8, capsize=2.5)
+        px = float(g.pseconds.median())
+        py = float(g.py.median())
         px *= DODGE
         if (g.y - g.py).abs().max() > 0.5:
             ax.annotate(
@@ -248,8 +240,6 @@ def figure(record: dict[str, Any], out: Path) -> Path:
             ax.errorbar(
                 px,
                 py,
-                xerr=pxe,
-                yerr=pye,
                 fmt=marker,
                 color=colour,
                 ms=5,
@@ -257,8 +247,8 @@ def figure(record: dict[str, Any], out: Path) -> Path:
                 lw=0.8,
                 capsize=2.5,
             )
-        bx, bxe = _bars(g.bseconds)
-        by, bye = _bars(g.by)
+        bx = float(g.bseconds.median())
+        by = float(g.by.median())
         bx *= DODGE**2
         if (g.py - g.by).abs().max() > 0.5:
             ax.annotate(
@@ -276,8 +266,6 @@ def figure(record: dict[str, Any], out: Path) -> Path:
             ax.errorbar(
                 bx,
                 by,
-                xerr=bxe,
-                yerr=bye,
                 fmt="D",
                 color=colour,
                 ms=4,
@@ -331,8 +319,8 @@ def figure(record: dict[str, Any], out: Path) -> Path:
     ax.plot([], [], "D", color="0.4", mfc="white", ms=4, label="Color merge")
     ax.plot([], [], color="k", lw=0.9, label="Truth")
     ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.1), ncol=3, fontsize=7.5, frameon=False,
-              title=f"median over {n_problems} realization{'s' if n_problems > 1 else ''} $\\times$ {n_starts} random starts; "
-              "bars: 10-90%", title_fontsize=7.5)  # fmt: skip
+              title=f"Median for {n_problems} realization{'s' if n_problems > 1 else ''} $\\times$ {n_starts} random starts"
+              "", title_fontsize=7.5)  # fmt: skip
     _table(tab, wrong_at_best(d), record.get("tuned", {}))
     fig.savefig(out, dpi=150, bbox_inches="tight")
     plt.close(fig)
