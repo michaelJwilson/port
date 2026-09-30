@@ -153,14 +153,26 @@ def overdispersion(
     return float(excess / (n * (n - 1) * p * (1 - p)).sum())
 
 
-def problems(manifest_path: Path, n: int | None = None) -> Iterator[KnownProblem]:
-    """Each realization's problem in turn, `n` of them if given; the next draws only when asked for."""
+def problems(
+    manifest_path: Path, n: int | None = None, realizations: int | None = None
+) -> Iterator[KnownProblem]:
+    """Each realization's problem in turn, `n` of them if given; the next draws only when asked for.
+
+    `realizations` overrides the manifest's `[sample] realizations`, as
+    `python -m port.sim.draw --seed` overrides its seed: the same clones,
+    layout and phase law, more count draws.
+    """
     import pandas as pd
 
     from port.sim import draw as d
     from port.sim.laws import allele_share
 
     manifest = d.read_manifest(manifest_path)
+    if realizations is not None:
+        from dataclasses import replace
+
+        more = {"sample": {"realizations": int(realizations)}}
+        manifest = replace(manifest, tables=d._merge(manifest.tables, more))
     tree_rng = np.random.default_rng(np.random.SeedSequence(manifest.seed).spawn(3)[0])
     tree = d.draw_tree(manifest, tree_rng)
     clones = ("normal", *manifest.tumour)

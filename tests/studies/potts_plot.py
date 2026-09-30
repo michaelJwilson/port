@@ -1,17 +1,17 @@
 """#556: `tests.studies.potts_stream`'s runs against runtime, each solver numbered as in the table beside it.
 
-`python -m tests.studies.potts_plot STREAM.pkl` writes two figures beside the pickle:
-
-- `<stem>.png`: energy less the planted labelling's (the known best), on a
-  symmetric log axis; a solid line at the planted labels, a dashed one at
-  TRW-S's lower bound (its median over realizations);
-- `<stem>_gap.png`: energy less TRW-S's lower bound, on a log axis whose
-  bottom tick, "0", holds every run at the bound.
+`python -m tests.studies.potts_plot STREAM.pkl` writes `<stem>.png` beside the
+pickle: energy less TRW-S's lower bound, on a log axis whose bottom tick, "0",
+holds every run at the bound, with a solid black line at the planted
+labelling's gap (its median over realizations).
 
 Each point is a solver's median over realizations x random starts, its bars
 the 10-90% range on both axes; an open marker is the same runs after sal's
 ICM, a diamond after the color merge that follows it. Polish stages are drawn
-`DODGE` to the right of their runtime so stages do not overlap.
+`DODGE` to the right of their runtime so stages do not overlap. The table's
+last column counts the labels that differ from the planted ones at each
+solver's lowest-energy run, median over realizations: raw / after ICM and the
+color merge (`wrong_at_best`).
 """
 
 from __future__ import annotations
@@ -91,14 +91,26 @@ def frame(record: dict[str, Any]) -> pd.DataFrame:
     )
 
 
-def _table(tab: Any) -> None:
+def wrong_at_best(d: pd.DataFrame) -> dict[str, tuple[float, float]]:
+    """Per solver, labels unlike the planted at each realization's lowest-energy run, median over realizations: raw, polished."""
+    out: dict[str, tuple[float, float]] = {}
+    for solver, g in d.groupby("solver"):
+        raw = g.loc[g.groupby("problem").energy.idxmin(), "wrong"]
+        polished = g.loc[g.groupby("problem").both.idxmin(), "both_wrong"]
+        out[str(solver)] = (float(raw.median()), float(polished.median()))
+    return out
+
+
+def _table(
+    tab: Any, wrong: dict[str, tuple[float, float]], tuned: dict[str, dict[str, float]]
+) -> None:
     n_rows = sum(1 + len(rows) for _, rows in TABLE)
     head = 0.06
     step = (1 - head) / (n_rows + 0.5)
 
     def rule(y: float, lw: float) -> None:
         tab.plot(
-            [0.0, 0.98],
+            [0.0, 1.0],
             [y, y],
             color="k",
             lw=lw,
@@ -108,7 +120,12 @@ def _table(tab: Any) -> None:
 
     # NB the table's top and bottom rules sit on the plot's y limits
     rule(1.0, 1.2)
-    for x, text in ((0.01, "#"), (0.07, "Solver"), (0.38, "What it does")):
+    for x, text in (
+        (0.01, "#"),
+        (0.07, "Solver"),
+        (0.33, "Description"),
+        (0.99, "Wrong"),
+    ):
         tab.text(
             x,
             1 - head / 2,
@@ -117,6 +134,7 @@ def _table(tab: Any) -> None:
             weight="bold",
             transform=tab.transAxes,
             va="center",
+            ha="right" if text == "Wrong" else "left",
         )
     rule(1 - head, 0.7)
     y = 1 - head + step * 0.25
@@ -144,11 +162,25 @@ def _table(tab: Any) -> None:
             tab.text(
                 0.09, y, label(solver), fontsize=8, transform=tab.transAxes, va="center"
             )
-            tab.text(0.38, y, text, fontsize=8, transform=tab.transAxes, va="center")
+            tab.text(0.33, y, text, fontsize=8, transform=tab.transAxes, va="center")
+            if solver in wrong:
+                raw, polished = wrong[solver]
+                tab.text(
+                    0.99,
+                    y,
+                    f"{raw:,.0f} / {polished:,.0f}",
+                    fontsize=8,
+                    transform=tab.transAxes,
+                    va="center",
+                    ha="right",
+                )
     rule(0.0, 1.2)
-    notes = ("$^s$ sal (snakes_and_ladders);  $^p$ port.",
+    notes = ("$^s$ sal (snakes_and_ladders);  $^p$ port.  Wrong: labels unlike the planted at the best run, raw / ICM + color merge.",
              "Color merge: one clone relabelled into another, the best pair, while the energy drops (cnaster).",
-             "Polish stages drawn 12% right of their runtime.")  # fmt: skip
+             "Polish stages drawn 12% right of their runtime.",
+             "Tuned on held-out realizations (T0, sweeps): "
+             + ";  ".join(f"{NUMBER[k]} {v['t_start']:g}, {v['sweeps']:,.0f}" for k, v in sorted(tuned.items(), key=lambda kv: NUMBER[kv[0]]))
+             if tuned else "")  # fmt: skip
     for k, note in enumerate(notes):
         tab.text(
             0.01,
@@ -162,38 +194,31 @@ def _table(tab: Any) -> None:
     tab.set_ylim(0, 1)
 
 
-def figure(record: dict[str, Any], out: Path, gap: bool) -> Path:
+def figure(record: dict[str, Any], out: Path) -> Path:
     import matplotlib as mpl
 
     mpl.use("Agg")
     import matplotlib.pyplot as plt
 
     d = frame(record)
-    reference = d.bound if gap else d.truth
-    d = d.assign(
-        y=d.energy - reference, py=d.polished - reference, by=d.both - reference
-    )
-    if gap:
-        d[["y", "py", "by"]] = d[["y", "py", "by"]].clip(lower=FLOOR)
+    d = d.assign(y=d.energy - d.bound, py=d.polished - d.bound, by=d.both - d.bound)
+    d[["y", "py", "by"]] = d[["y", "py", "by"]].clip(lower=FLOOR)
     n_problems, n_starts = len(record["done"]), record["starts"]
 
     plt.rcParams.update({"font.size": 9})
-    fig = plt.figure(figsize=(14.5, 6.2))
-    grid = fig.add_gridspec(1, 2, width_ratios=[1.25, 1], wspace=0.04)
+    fig = plt.figure(figsize=(15.5, 6.2))
+    grid = fig.add_gridspec(1, 2, width_ratios=[1.2, 1], wspace=0.04)
     ax, tab = fig.add_subplot(grid[0]), fig.add_subplot(grid[1])
     tab.axis("off")
-    if gap:
-        ax.axhspan(FLOOR * 0.6, FLOOR * 1.4, color="0.92", zorder=0)
-    else:
-        ax.axhline(0, color="k", lw=0.7, zorder=0)
-        bound_line = np.median(
-            [
-                p["bound"] - p["truth_energy"]
-                for i, p in record["problems"].items()
-                if i in record["done"]
-            ]
-        )
-        ax.axhline(bound_line, color="k", lw=0.7, ls="--", zorder=0)
+    ax.axhspan(FLOOR * 0.6, FLOOR * 1.4, color="0.92", zorder=0)
+    truth = np.median(
+        [
+            max(p["truth_energy"] - p["bound"], FLOOR)
+            for i, p in record["problems"].items()
+            if i in record["done"]
+        ]
+    )
+    ax.axhline(truth, color="k", lw=0.9, zorder=0)
 
     lowest = float(d.groupby("solver").y.median().min())
     crowded: list[tuple[float, float, str]] = []
@@ -260,7 +285,7 @@ def figure(record: dict[str, Any], out: Path, gap: bool) -> Path:
                 lw=0.8,
                 capsize=2.5,
             )
-        if abs(y - lowest) < (0.5 if not gap else FLOOR):
+        if abs(y - lowest) < FLOOR:
             crowded.append((x, y, solver))
         else:
             ax.annotate(
@@ -278,7 +303,7 @@ def figure(record: dict[str, Any], out: Path, gap: bool) -> Path:
         xs = np.array([x for x, _, _ in crowded])
         centre = float(np.exp(np.log(xs).mean()))
         spots = centre * 1.45 ** (np.arange(xs.size) - (xs.size - 1) / 2)
-        top = FLOOR * 30 if gap else lowest + 12.0
+        top = FLOOR * 30
         for (x, y, solver), tx in zip(crowded, spots, strict=True):
             ax.annotate(str(NUMBER[solver]), (x, y), xytext=(tx, top), textcoords="data", fontsize=8, weight="bold",
                         ha="center", va="bottom", arrowprops={"arrowstyle": "-", "color": "0.6", "lw": 0.5, "shrinkA": 0, "shrinkB": 3})  # fmt: skip
@@ -287,34 +312,28 @@ def figure(record: dict[str, Any], out: Path, gap: bool) -> Path:
     slowest = d[d.solver == "sal:max-product"].seconds
     ax.set_xlim(float(d.groupby("solver").seconds.quantile(0.1).min()) * 0.6,
                 float(slowest.quantile(0.9) if len(slowest) else d.seconds.max()) * 1.6)  # fmt: skip
-    if gap:
-        from matplotlib.ticker import FixedLocator, FuncFormatter
+    from matplotlib.ticker import FixedLocator, FuncFormatter
 
-        ax.set_yscale("log")
-        ax.set_ylim(FLOOR * 0.5, float(d.y.max()) * 3)
-        ax.yaxis.set_major_locator(FixedLocator([FLOOR, *10.0 ** np.arange(-1, 7)]))
-        ax.yaxis.set_major_formatter(
-            FuncFormatter(
-                lambda v, _: "0" if v == FLOOR else f"$10^{{{round(np.log10(v))}}}$"
-            )
+    ax.set_yscale("log")
+    ax.set_ylim(FLOOR * 0.5, float(d.y.max()) * 3)
+    ax.yaxis.set_major_locator(FixedLocator([FLOOR, *10.0 ** np.arange(-1, 7)]))
+    ax.yaxis.set_major_formatter(
+        FuncFormatter(
+            lambda v, _: "0" if v == FLOOR else f"$10^{{{round(np.log10(v))}}}$"
         )
-        ax.set_ylabel("TRW-S Gap [nats]")
-    else:
-        ax.set_yscale("symlog", linthresh=1.0)
-        ax.set_ylabel("Energy $-$ planted labelling's [nats]")
+    )
+    ax.set_ylabel("TRW-S Gap [nats]")
     ax.set_xlabel("Runtime [s]")
 
     ax.plot([], [], "o", color="C0", label="sal")
     ax.plot([], [], "s", color="C1", label="port")
     ax.plot([], [], "o", color="0.4", mfc="white", label="ICM polish")
     ax.plot([], [], "D", color="0.4", mfc="white", ms=4, label="Color merge")
-    if not gap:
-        ax.plot([], [], color="k", lw=0.7, label="planted labels (known best)")
-        ax.plot([], [], color="k", lw=0.7, ls="--", label="TRW-S lower bound")
+    ax.plot([], [], color="k", lw=0.9, label="Truth")
     ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.1), ncol=3, fontsize=7.5, frameon=False,
               title=f"median over {n_problems} realization{'s' if n_problems > 1 else ''} $\\times$ {n_starts} random starts; "
               "bars: 10-90%", title_fontsize=7.5)  # fmt: skip
-    _table(tab)
+    _table(tab, wrong_at_best(d), record.get("tuned", {}))
     fig.savefig(out, dpi=150, bbox_inches="tight")
     plt.close(fig)
     return out
@@ -329,7 +348,7 @@ def table_tex() -> str:
     lines = [
         r"\begin{tabular}{rll}",
         r"\toprule",
-        r"\# & Solver & What it does \\",
+        r"\# & Solver & Description \\",
         r"\midrule",
     ]
     for k, (group, rows) in enumerate(TABLE):
@@ -349,8 +368,7 @@ def main(argv: list[str] | None = None) -> None:
     (path,) = argv if argv is not None else sys.argv[1:]
     stream = Path(path)
     record = pickle.loads(stream.read_bytes())
-    for gap, suffix in ((False, ""), (True, "_gap")):
-        print(figure(record, stream.with_name(f"{stream.stem}{suffix}.png"), gap))
+    print(figure(record, stream.with_suffix(".png")))
     stream.with_name("potts_solvers_table.tex").write_text(table_tex())
 
 
