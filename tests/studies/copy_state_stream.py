@@ -42,7 +42,7 @@ from typing import Any
 import numpy as np
 
 STARTS = (
-    "cnaster-gmm", "distinct", "lattice", "lattice-em", "rdr-quantiles",
+    "cnaster-gmm", "calicost-gmm", "distinct", "lattice", "lattice-em", "rdr-quantiles",
     "prior", "data", "kmeans++", "emission++", "gaussian-em", "quantile", "anneal", "tempering", "hmc",
     "datax5+em", "emission++x5+em", "kmeans++x5+em",
 )  # fmt: skip
@@ -53,26 +53,23 @@ SECONDS = 60.0
 
 
 def _raw(problem: Any) -> dict[str, Any]:
-    """`cnaster`'s initializer arguments for `problem`: clones as the spot axis, as the BAF + RDR stage stacks them."""
+    """`cnaster`'s initializer arguments for `problem`: the clones stacked along the genome, one column.
+
+    What `cnaster.hmm.pipeline_baum_welch` hands `gmm_init` when it seeds
+    itself, and the arrays `known_copy.baum_welch` fits. Clones as columns
+    instead made `gmm_init` return a state per clone per state: 28 for 7
+    states on 4 clones.
+    """
     from port.sandbox.known_copy.hmm import CONFIG
 
-    n_clones = int(problem.clone.max()) + 1
-    n_bins = problem.total.size // n_clones
+    def column(values: np.ndarray) -> np.ndarray:
+        return np.asarray(values, dtype=np.float64)[:, None]
 
-    def by_clone(values: np.ndarray) -> np.ndarray:
-        return np.asarray(values, dtype=np.float64).reshape(n_clones, n_bins).T
-
-    lengths = np.asarray(problem.lengths)[: lengths_per_clone(problem)]
     config = (Path(__file__).resolve().parents[2] / CONFIG).read_text()
-    return {"X": np.stack([by_clone(problem.total), by_clone(problem.b)], axis=1), "base_nb_mean": by_clone(problem.exposure),
-            "total_bb_RD": by_clone(problem.trials), "lengths": lengths, "log_sitewise_transmat": np.zeros(n_bins),
+    return {"X": np.stack([problem.total, problem.b], axis=1)[:, :, None].astype(np.float64),
+            "base_nb_mean": column(problem.exposure), "total_bb_RD": column(problem.trials),
+            "lengths": np.asarray(problem.lengths), "log_sitewise_transmat": np.zeros(problem.total.size),
             "params": "smp", "config": config}  # fmt: skip
-
-
-def lengths_per_clone(problem: Any) -> int:
-    """How many entries of `problem.lengths` make one clone's genome."""
-    n_clones = int(problem.clone.max()) + 1
-    return int(np.asarray(problem.lengths).size // n_clones)
 
 
 def _call(problem: Any) -> Any:
@@ -86,18 +83,12 @@ def seed_states(
     name: str, problem: Any, rng: np.random.Generator
 ) -> tuple[np.ndarray, np.ndarray]:
     """`name`'s states on `problem`, seeded as `copy_starts.run_start` seeds them, before its `sal` polish."""
-    from port.extensions.copy_starts import _read, _seeded, instance, starts
+    from port.extensions.copy_starts import seed_states as seeded
+    from port.extensions.copy_starts import starts
 
-    call = _call(problem)
-    covariate = starts()[name].covariate
-    components = _seeded(name, call, instance(call, covariate=covariate), rng, SECONDS)
-    if covariate:
-        log_mu, p = _read(call, components)
-    else:
-        log_mu, p = _read(
-            call, components, per=float(np.median(call.exposure[call.exposure > 0]))
-        )
-    return np.asarray(log_mu, dtype=np.float64), np.asarray(p, dtype=np.float64)
+    return seeded(
+        name, _call(problem), rng, covariate=starts()[name].covariate, seconds=SECONDS
+    )
 
 
 def solve(problem: Any, name: str, seed: int) -> dict[str, Any]:

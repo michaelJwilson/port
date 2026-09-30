@@ -750,6 +750,28 @@ def _cnaster_row(
     return seed
 
 
+def _calicost_row(call: CopyCall, rng: np.random.Generator) -> tuple[Any, Any]:
+    """CalicoST's `initialization_by_gmm` as its concatenated HMRF pipeline calls it: clones stacked along the genome.
+
+    `calicost.hmrf.hmrf_concatenate_pipeline` flattens `(bins, 2, clones)`
+    column-major into one sequence and seeds a one-iteration Gaussian
+    mixture on (RDR, BAF) with `in_log_space=False, only_minor=False`.
+    """
+    from calicost.utils_hmm import initialization_by_gmm
+
+    raw = call.raw
+    X = np.asarray(raw["X"], dtype=np.float64)
+    stacked = np.vstack([X[:, 0, :].flatten("F"), X[:, 1, :].flatten("F")]).T.reshape(
+        -1, 2, 1
+    )
+    log_mu, p = initialization_by_gmm(
+        call.n_states, stacked, np.asarray(raw["base_nb_mean"]).flatten("F").reshape(-1, 1),
+        np.asarray(raw["total_bb_RD"]).flatten("F").reshape(-1, 1), raw["params"],
+        random_state=int(rng.integers(2**31)), in_log_space=False, only_minor=False,
+    )  # fmt: skip
+    return log_mu, p
+
+
 def _port_starts() -> dict[
     str, tuple[Row, Callable[[CopyCall, np.random.Generator], tuple[Any, Any]]]
 ]:
@@ -766,6 +788,10 @@ def _port_starts() -> dict[
         "distinct": (
             Row("distinct", "port (#348)", both, covariate=False, stochastic=True),
             _cnaster_row(distinct.gmm_init),
+        ),
+        "calicost-gmm": (
+            Row("calicost-gmm", "CalicoST", both, covariate=False, stochastic=True),
+            _calicost_row,
         ),
         "lattice": (
             Row("lattice", "port (#540)", both, covariate=True, stochastic=False),
@@ -844,6 +870,8 @@ def _seeded(
 
     from sal.search.mixture_starts import BestOf, Selection, lookup
 
+    if name == "prior":
+        return _prior_seeding(held, rng)
     chosen = lookup(name)
     if isinstance(chosen, BestOf) and chosen.select is Selection.POLISHED:
         _, best = chosen.polished(
@@ -851,6 +879,49 @@ def _seeded(
         )
         return best.components
     return chosen(held, rng).components
+
+
+def seed_states(
+    name: str,
+    call: CopyCall,
+    rng: np.random.Generator,
+    *,
+    covariate: bool = True,
+    seconds: float = 60.0,
+) -> tuple[np.ndarray, np.ndarray]:
+    """`name`'s states `(log mu, p)` on `call`, before any polish.
+
+    Port's own starts are placed by `_place`, at `EXPOSURE_SCALE` per unit
+    rate whichever instance holds them, and read back at it. A `sal` start
+    fitted on raw totals has its rate at the typical exposure: the median.
+    Reading a port start at the median put `cnaster-gmm`'s and `distinct`'s
+    states 2.3 below in log mu on dev_tree_1s_hard, and `cnaster`'s
+    Baum-Welch overflowed from them.
+    """
+    components = _seeded(name, call, instance(call, covariate=covariate), rng, seconds)
+    if covariate or name in _port_starts():
+        log_mu, p = _read(call, components)
+    else:
+        log_mu, p = _read(
+            call, components, per=float(np.median(call.exposure[call.exposure > 0]))
+        )
+    return np.asarray(log_mu, dtype=np.float64), np.asarray(p, dtype=np.float64)
+
+
+def _prior_seeding(held: Any, rng: np.random.Generator) -> Any:
+    """`sal`'s `prior_seeding` with its B coordinate over the seam's trial count.
+
+    `sal` writes the pair as `(total, fraction * total)`, where its seam
+    (`CountPairSeeding`) and its own `rate_space` read successes over the
+    common trial count: a total above that count and a fraction near 1 is a
+    rate above 1 and a negative beta-binomial beta. The draws are `sal`'s,
+    in its order; only the unit of the second coordinate differs.
+    """
+    totals = np.asarray(held.rows, dtype=np.float64)[:, 0]
+    low, high = float(max(totals.min(), 1.0)), float(max(totals.max(), 2.0))
+    means = np.exp(rng.uniform(np.log(low), np.log(high), size=held.n_components))
+    rates = rng.uniform(0.0, 1.0, size=held.n_components)
+    return held.at(np.stack([means, rates * float(held.at.trials)], axis=1))
 
 
 def run_start(
@@ -873,20 +944,7 @@ def run_start(
     full = instance(call)
     source = seed_on if seed_on is not None else call
     opened = time.perf_counter()
-    components = _seeded(
-        name, source, instance(source, covariate=covariate), rng, seconds
-    )
-
-    if covariate:
-        log_mu, p = _read(source, components)
-    else:
-        # NB fitted on raw totals: the rate is the mean over the typical exposure.
-        log_mu, p = _read(
-            source,
-            components,
-            per=float(np.median(source.exposure[source.exposure > 0])),
-        )
-
+    log_mu, p = seed_states(name, source, rng, covariate=covariate, seconds=seconds)
     handover = time.perf_counter() - opened
 
     if fit_on is not None:

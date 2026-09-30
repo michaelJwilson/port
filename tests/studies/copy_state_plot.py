@@ -26,8 +26,9 @@ import numpy as np
 import pandas as pd
 
 TABLE = (
-    ("cnaster, port", (
+    ("cnaster, CalicoST, port", (
         ("cnaster-gmm", "cnaster's gmm_init: Gaussian mixtures"),
+        ("calicost-gmm", "CalicoST's initialization_by_gmm, clones stacked"),
         ("distinct", "gmm_init among distinct components (#348)"),
         ("lattice", "integer (A, B) lattice, chosen by the rows"),
         ("lattice-em", "the lattice, by soft EM"),
@@ -53,7 +54,7 @@ TABLE = (
 NUMBER = {name: k + 1 for k, name in enumerate(n for _, rows in TABLE for n, _ in rows)}
 NUMBER_TEXT = {name: str(k) for name, k in NUMBER.items()}
 SOURCE = {
-    name: ("C1" if group == "cnaster, port" else "C0")
+    name: ("C1" if group == "cnaster, CalicoST, port" else "C0")
     for group, rows in TABLE
     for name, _ in rows
 }
@@ -232,7 +233,7 @@ def figure(record: dict[str, Any], out: Path) -> Path:
     )
     ax.set_xlabel("Runtime [s]")
     ax.set_ylabel("Log-likelihood below the best [nats]")
-    ax.plot([], [], "o", color="C1", label="cnaster, port")
+    ax.plot([], [], "o", color="C1", label="cnaster, CalicoST, port")
     ax.plot([], [], "o", color="C0", label="sal")
     ax.plot([], [], "o", color="0.4", mfc="white", label="Baum-Welch")
     ax.fill_between([], [], [], color="0.55", alpha=0.35, lw=0, label="Truth, 10-90%")
