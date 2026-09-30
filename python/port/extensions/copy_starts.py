@@ -41,6 +41,8 @@ from typing import Any, NamedTuple
 
 import numpy as np
 
+from port.patch.hmm_initialize.sal_mixture import EXPOSURE_SCALE
+
 __all__ = [
     "MASKS",
     "STAGES",
@@ -71,15 +73,6 @@ STAGES = ("baf", "rdrbaf")
 
 CONSTANT_TOTAL = 100.0
 """The BAF-only stage's read-depth channel: every row's total, at exposure 1."""
-
-EXPOSURE_SCALE = 100.0
-"""Exposure is divided by this before `sal` reads it, so a state's rate per unit exposure is `mu` times it.
-
-`sal`'s seeding (`CountPairSeeding`) floors a component's negative-binomial
-mean at 1, which on `cnaster`'s `base_nb_mean` -- `mu` of order 1 -- would
-seed a loss (`mu` 0.5) at neutral. The mean at each row is rate times
-exposure, so the likelihood is unchanged; only where a start can place a
-state is (#540)."""
 
 SEED_JITTER = 1e-3
 """The relative jitter on the constant channel in the rows a BAF-only start seeds from."""
@@ -269,17 +262,11 @@ def found(
 def instance(call: CopyCall, *, covariate: bool = True) -> Any:
     """The call as `sal`'s `MixtureInstance`, conditioned on exposure and trials.
 
-    `port.patch.hmm_initialize.sal_mixture.instance_of`'s instance, with two
-    corrections to where a start seeds (#540):
-
-    - exposure divided by `EXPOSURE_SCALE`, so no state's rate falls under
-      the seeding's floor of 1;
-    - the seeding rows' B column as `sal`'s `rate_space` writes it, the B
-      fraction over the instance's common trial count, not the fraction
-      alone, which `CountPairSeeding` read as near-zero successes.
-
-    For `"baf"`, a constant read-depth channel. Without `covariate`, the
-    counts alone, seeded where they lie.
+    `port.patch.hmm_initialize.sal_mixture.instance_of`'s instance, whose
+    seeding reads `sal`'s rate space (#547): exposure over `EXPOSURE_SCALE`,
+    the B column over the common trial count. For `"baf"`, a constant
+    read-depth channel. Without `covariate`, the counts alone, seeded where
+    they lie.
     """
     from dataclasses import replace
 
@@ -290,21 +277,17 @@ def instance(call: CopyCall, *, covariate: bool = True) -> Any:
     )
     exposure = call.exposure if call.stage == "rdrbaf" else np.ones(call.n_rows)
     X = np.stack([total, call.b], axis=1)[:, :, None]
-    held = instance_of(
-        X, (exposure / EXPOSURE_SCALE)[:, None], call.trials[:, None], call.n_states
-    )
-    rows = np.array(held.seeding_rows, dtype=np.float64)
-    rows[:, 1] = rows[:, 1] * float(held.at.trials)
+    held = instance_of(X, exposure[:, None], call.trials[:, None], call.n_states)
 
     if call.stage == "baf":
         # NB the constant channel has no spread, which `sal`'s Gaussian
         #    surrogate starts refuse ("every scale must be positive"). The
         #    rows a start seeds from carry a jitter of 1e-3 of it; the rows
         #    it fits do not.
+        rows = np.array(held.seeding_rows, dtype=np.float64)
         jitter = np.random.default_rng(540).standard_normal(rows.shape[0])
         rows[:, 0] = rows[:, 0] * (1.0 + SEED_JITTER * jitter)
-
-    held = replace(held, seeding_rows=rows)
+        held = replace(held, seeding_rows=rows)
 
     if covariate:
         return held
@@ -697,6 +680,10 @@ def rdr_quantile_states(call: CopyCall) -> tuple[np.ndarray, np.ndarray]:
     with np.errstate(divide="ignore", invalid="ignore"):
         log_rdr = np.log(call.total / exposure)
     finite = np.isfinite(log_rdr)
+    if not finite.any():
+        # NB the pipeline's BAF-only call carries no totals (#547).
+        msg = "no row has a read depth to cut at quantiles"
+        raise ValueError(msg)
     k = call.n_states
     cuts = np.quantile(log_rdr[finite], np.linspace(0, 1, k + 1)[1:-1])
     group = np.digitize(log_rdr, cuts)
@@ -724,8 +711,10 @@ def _cnaster_row(
         from cnaster.hmm_nophasing import get_log_transmat
 
         raw = call.raw
-        # NB `cnaster`'s initializers read the run's `hmm` section globally.
-        set_global_config(YAMLConfig(yaml.safe_load(raw["config"])))
+        # NB `cnaster`'s initializers read the run's `hmm` section globally;
+        #    a captured call carries its run's, a live one runs under it.
+        if raw.get("config") is not None:
+            set_global_config(YAMLConfig(yaml.safe_load(raw["config"])))
         returned = initializer(
             call.n_states,
             raw["X"],

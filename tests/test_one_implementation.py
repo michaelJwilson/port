@@ -23,8 +23,9 @@ from tests.source_graph import PACKAGE, TESTS
 
 BUDGET: dict[str, int] = {
     # NB 23: #520 removed --np-merge; `--png-copies` binds what the
-    #    `_PNG_COPIES` switch held (#517 step 1).
-    "run_cnaster_port flags": 23,
+    #    `_PNG_COPIES` switch held (#517 step 1). 25: #547's `--hmm-smooth`
+    #    and `--baf-start`, #540's smoothing and BAF-stage starts.
+    "run_cnaster_port flags": 25,
     # NB 53: step 1 removed the two `_Selection` slots behind the decoder and
     #    solver switches; step 5 added `Settings`, the entry point's one
     #    resolution of its tri-state flags; step 8 added the `hmm_phased` row

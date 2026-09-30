@@ -121,6 +121,19 @@ def _parser() -> argparse.ArgumentParser:
         help="the read-depth HMM's start, a sal mixture start (#489); none, kmeans++x5+em with --sal",
     )
     parser.add_argument(
+        "--hmm-smooth",
+        type=float,
+        default=None,
+        metavar="MB",
+        help="sum the read-depth start's seeding rows over MB along the genome (#540); 0 off",
+    )
+    parser.add_argument(
+        "--baf-start",
+        default=None,
+        metavar="START",
+        help="the BAF-only HMM's start, a copy-state start (#540); none keeps distinct's",
+    )
+    parser.add_argument(
         "--distinct-init",
         action=argparse.BooleanOptionalAction,
         default=None,
@@ -227,6 +240,10 @@ class Settings(NamedTuple):
     """The distinct initializer: on where the shift is, off with `--no-patch`."""
     hmm_start: str
     """sal's HMM start: `none`, `kmeans++x5+em` with `--sal` (#489)."""
+    hmm_smooth: float
+    """Mb the read-depth start's seeding rows are summed over: 0, off (#540)."""
+    baf_start: str
+    """The BAF-only stage's start: `none`, `distinct`'s kept (#540)."""
 
 
 def _settings(arguments: argparse.Namespace) -> Settings:
@@ -250,6 +267,8 @@ def _settings(arguments: argparse.Namespace) -> Settings:
         hmm_start=str(
             asked(arguments.hmm_start, "kmeans++x5+em" if arguments.sal else "none")
         ),
+        hmm_smooth=float(asked(arguments.hmm_smooth, 0.0)),
+        baf_start=str(asked(arguments.baf_start, "none")),
     )
 
 
@@ -281,6 +300,8 @@ def _refusals(arguments: argparse.Namespace, settings: Settings) -> list[str]:
         for flag, asked in (
             ("--sal-emission", arguments.sal_emission),
             ("--distinct-init", arguments.distinct_init),
+            ("--hmm-smooth", arguments.hmm_smooth),
+            ("--baf-start", arguments.baf_start),
         )
         if asked and not settings.shift
     ]
@@ -492,6 +513,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             from port.patch.hmm_initialize.sal_mixture import checked
 
             inference["hmm_start"] = checked(hmm_start)
+            if settings.hmm_smooth > 0.0:
+                inference["hmm_smooth"] = settings.hmm_smooth * 1e6
+        if settings.baf_start != "none":
+            from port.patch.hmm_initialize.sal_mixture import checked
+
+            inference["baf_start"] = checked(settings.baf_start)
 
         # NB the copy rows decode by the HMM's likelihood only (#362), which
         #    reads each clone's counts from the fit this captures; entered
@@ -557,6 +584,16 @@ def main(argv: Sequence[str] | None = None) -> int:
                 + (", copy caps from the config" if copy_cap else "")
                 + (", refinement mask" if refinement_mask else "")
                 + (f", sal HMM start {hmm_start}" if hmm_start != "none" else "")
+                + (
+                    f" seeded over {settings.hmm_smooth:g} Mb"
+                    if hmm_start != "none" and settings.hmm_smooth > 0.0
+                    else ""
+                )
+                + (
+                    f", BAF start {settings.baf_start}"
+                    if settings.baf_start != "none"
+                    else ""
+                )
                 + (", floor merged smallest first" if floor else "")
                 + (", distinct initial states" if distinct else "")
                 + (", shift included" if shift else "")

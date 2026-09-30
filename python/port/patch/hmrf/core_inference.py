@@ -244,13 +244,17 @@ def shift_for(pred_cnv: Any) -> tuple[float, int | None]:
     return 0.0, None
 
 
-@as_upstream(UPSTREAM, hmm_start=None, distinct_init=False)
+@as_upstream(
+    UPSTREAM, hmm_start=None, distinct_init=False, hmm_smooth=None, baf_start=None
+)
 def run_core_inference(arguments: dict[str, Any], options: dict[str, Any]) -> Any:
     """Upstream's inference, then the neutral pin when the fit was shifted.
 
     Options, which `run_cnaster_port` binds at install (#517): `hmm_start`,
-    `sal`'s start for the read-depth stage (#489); `distinct_init`, the
-    initializer choosing among distinct components (#348).
+    the read-depth stage's copy-state start (#489, #540); `hmm_smooth`, the
+    base pairs its seeding rows are summed over (#540); `baf_start`, the
+    BAF-only stage's start (#540); `distinct_init`, the initializer choosing
+    among distinct components (#348).
     """
     import functools
 
@@ -259,12 +263,14 @@ def run_core_inference(arguments: dict[str, Any], options: dict[str, Any]) -> An
     # NB passed rather than rebound: upstream binds the initializer as a
     #    default argument (#348).
     if "hmm_initializer" not in arguments:
-        if options["hmm_start"] is not None:
-            # NB the BAF-only stage falls back to `distinct`'s inside it.
+        if options["hmm_start"] is not None or options["baf_start"] is not None:
+            # NB a stage without its start falls back to `distinct`'s inside it.
             arguments["hmm_initializer"] = functools.partial(
                 sal_mixture.gmm_init,
                 start=options["hmm_start"],
                 distinct=options["distinct_init"],
+                smooth=options["hmm_smooth"],
+                baf_start=options["baf_start"],
             )
         elif options["distinct_init"]:
             arguments["hmm_initializer"] = distinct.gmm_init

@@ -51,7 +51,7 @@ ROLES: dict[str, Role] = {
     "port.extensions.combined_figure": "tool",
     "port.extensions.config_audit": "extension",
     "port.extensions.copy_errors": "extension",
-    "port.extensions.copy_starts": "tool",
+    "port.extensions.copy_starts": "extension",
     "port.extensions.copy_likelihood": "extension",
     "port.extensions.emission_family": "oracle",
     "port.extensions.figure_style": "extension",
