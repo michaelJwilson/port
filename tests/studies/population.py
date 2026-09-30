@@ -29,12 +29,12 @@ decode, in the matched fitted clone, to the planted pair up to phase. An
 event covering no bin midpoint is kept, as not recovered: the run cannot
 report it. An event overwritten on more than half its bins is dropped.
 
-**Scored per neutral segment of a detected clone** (specificity): each
-maximal run of consecutive bins on one chromosome where the clone's planted
-pair is `(1, 1)`. Specific where at least `SPECIFIC` of its bins decode to
-`(1, 1)` in the matched fitted clone. Its covariate is the SNP-covering UMI
-it holds: `A + B` summed over the SNPs between its first bin's start and its
-last bin's end, and over the planted clone's spots.
+**Scored per `(1, 1)` segment of a detected clone** (specificity): each
+`cnv_seglevel.tsv` row whose midpoint the clone's truth holds at `(1, 1)`.
+Specific where the matched fitted clone decodes it to `(1, 1)`. Its
+covariate is the SNP-covering UMI it holds: `A + B` summed over the SNPs in
+`[START, END)` and over the planted clone's spots. Stored per clone as two
+columns, `snp_umis` and `specific`, one entry per segment.
 
 **A run that raises is a result**: its record carries the error and no
 clones, and the report counts such runs per J rather than dropping the member
@@ -77,9 +77,6 @@ DETECTED = 0.90
 
 RECOVERED = 0.90
 """An event is recovered when this share of its bins decodes to its pair."""
-
-SPECIFIC = 0.90
-"""A neutral segment is specific when this share of its bins decodes to (1, 1)."""
 
 KEPT = ("clone_labels.tsv", "cnv_seglevel.tsv")
 """A run's outputs kept beside its record, so a new score needs no rerun."""
@@ -140,23 +137,6 @@ def snp_umis(path: Path, barcodes: np.ndarray) -> tuple[np.ndarray, np.ndarray, 
     total = scipy.sparse.load_npz(path / "snp" / "cell_snp_Aallele.npz").tocsr()
     total = total + scipy.sparse.load_npz(path / "snp" / "cell_snp_Ballele.npz").tocsr()
     return chrom, pos, total[rows]
-
-
-def neutral_segments(chrom: np.ndarray, neutral: np.ndarray) -> list[tuple[int, int]]:
-    """`[first, last]` bin of each maximal run of `neutral` bins on one chromosome."""
-    runs: list[tuple[int, int]] = []
-    first = None
-    for i, flag in enumerate(neutral):
-        if flag and (first is None or chrom[i] != chrom[i - 1]):
-            if first is not None:
-                runs.append((first, i - 1))
-            first = i
-        elif not flag and first is not None:
-            runs.append((first, i - 1))
-            first = None
-    if first is not None:
-        runs.append((first, len(neutral) - 1))
-    return runs
 
 
 def clone_events(path: Path) -> dict[str, list[tuple[str, int, int, int, int]]]:
@@ -254,7 +234,7 @@ def score_member(sample: Any, output: Path) -> dict[str, Any]:
 
     return {"n_fitted": int(np.unique(fitted[scored]).size), "clones": clones,
             "events": scored_events,
-            "neutral": _neutral(sample, run, planted, match, clones)}  # fmt: skip
+            "neutral_segments": _neutral(sample, run, planted, match, clones)}  # fmt: skip
 
 
 def _neutral(
@@ -264,7 +244,7 @@ def _neutral(
     match: dict[int, int],
     clones: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
-    """Each detected clone's neutral segments, scored for specificity."""
+    """Each detected clone's `(1, 1)` segments: SNP UMIs held, and decoded `(1, 1)`."""
     seglevel = run["seglevel"]
     chrom = seglevel["CHR"].astype(str).str.removeprefix("chr").to_numpy()
     start, end = seglevel["START"].to_numpy(), seglevel["END"].to_numpy()
@@ -279,23 +259,71 @@ def _neutral(
         m = match[c]
         per_snp = np.asarray(total[planted == c].sum(axis=0)).ravel()
         called = (run["a"][:, m] == 1) & (run["b"][:, m] == 1)
-        neutral = (truth[:, c, 0] == 1) & (truth[:, c, 1] == 1)
-        for first, last in neutral_segments(chrom, neutral):
-            inside = (snp_chrom == chrom[first]) & (snp_pos >= start[first])
-            inside &= snp_pos < end[last]
-            share = float(called[first : last + 1].mean())
-            out.append(
-                {
-                    "clone": name,
-                    "chr": str(chrom[first]),
-                    "length": int(end[last] - start[first]),
-                    "bins": last - first + 1,
-                    "snp_umis": float(per_snp[inside].sum()),
-                    "neutral": round(share, 4),
-                    "specific": bool(share >= SPECIFIC),
-                }
-            )
+        neutral = np.flatnonzero((truth[:, c, 0] == 1) & (truth[:, c, 1] == 1))
+        held = [
+            int(per_snp[(snp_chrom == chrom[i]) & (snp_pos >= start[i])
+                        & (snp_pos < end[i])].sum())
+            for i in neutral
+        ]  # fmt: skip
+        out.append(
+            {
+                "clone": name,
+                "snp_umis": held,
+                "specific": called[neutral].astype(int).tolist(),
+            }
+        )
     return out
+
+
+def _kept_run(sample: Any, kept: Path) -> dict[str, Any]:
+    """`read_run`'s labels, seglevel, `a` and `b`, from a run's `KEPT` outputs."""
+    from tests.sim_audit import _barcode
+
+    table = pd.read_csv(kept / "clone_labels.tsv", sep="\t", comment="#")
+    barcodes = table["barcode"] if "barcode" in table else table.iloc[:, 0]
+    by_barcode = dict(
+        zip(_barcode(barcodes), table["clone_label"].to_numpy(), strict=True)
+    )
+    labels = np.array([by_barcode.get(b, -1) for b in sample.barcodes])
+    seglevel = pd.read_csv(kept / "cnv_seglevel.tsv", sep="\t")
+    missing = np.full(len(seglevel), -1)
+    n_fitted = int(labels.max()) + 1
+    a, b = (
+        np.stack([seglevel.get(f"clone{c} {k}", missing) for c in range(n_fitted)], 1)
+        for k in ("A", "B")
+    )
+    return {"labels": labels, "seglevel": seglevel, "a": a, "b": b}
+
+
+def rescore(out: Path) -> int:
+    """Add `neutral_segments` to each record scored before it, from its outputs."""
+    from tests.scoring import matched, overlap
+    from tests.sim_fixtures import load_simulated
+
+    done = 0
+    for path in sorted((out / "records").glob("*.json")):
+        record = json.loads(path.read_text())
+        if "error" in record or "neutral_segments" in record:
+            continue
+        seed, j = int(record["seed"]), float(record["J"])
+        manifest = ROOT / "sim" / "manifests" / f"{record['manifest']}.toml"
+        draws = out / "draws" / f"rescore-s{seed:04d}"
+        sample = load_simulated(str(draw_member(seed, draws, manifest)))
+        run = _kept_run(sample, out / "outputs" / f"s{seed:04d}-J{j:g}")
+        planted, fitted = np.asarray(sample.labels), run["labels"]
+        scored = fitted >= 0
+        counts = overlap(planted[scored], fitted[scored], len(sample.clones),
+                         int(fitted.max()) + 1)  # fmt: skip
+        record["neutral_segments"] = _neutral(
+            sample, run, planted, matched(counts), record["clones"]
+        )
+        record.pop("neutral", None)
+        partial = path.with_suffix(".partial")
+        partial.write_text(json.dumps(record) + "\n")
+        partial.replace(path)
+        shutil.rmtree(draws, ignore_errors=True)
+        done += 1
+    return done
 
 
 def _record(out: Path, seed: int, j: float) -> Path:
@@ -369,7 +397,7 @@ def _seeds(text: str) -> list[int]:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("command", choices=("run", "report"))
+    parser.add_argument("command", choices=("run", "report", "rescore"))
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--seeds", default="0:60", help="START:STOP")
     parser.add_argument("--J", default=",".join(f"{j:g}" for j in J_VALUES))
@@ -378,6 +406,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--study2-J", type=float, default=J_VALUES[0],
                         help="the J Study 2's length curves are read at")  # fmt: skip
     arguments = parser.parse_args(argv)
+
+    if arguments.command == "rescore":
+        print(f"rescored {rescore(arguments.out)}")
+        return 0
 
     if arguments.command == "report":
         from tests.studies.population_report import report

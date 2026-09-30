@@ -78,3 +78,34 @@ def test_the_report_recovers_a_planted_crossing_within_its_interval(
     assert abs(detected["crossing"] - 5.5) < 0.15, detected["crossing"]
     assert low < 5.5 < high, (low, high)
     assert np.all(np.diff(np.nan_to_num(detected["rate"])) > -0.35)
+
+
+@pytest.mark.analytic
+def test_counted_rows_read_as_the_rows_they_stand_for() -> None:
+    """`curve` on rows carrying `count` equals `curve` on those rows repeated.
+
+    Study 3 counts its ~2,000 segments per clone rather than listing them;
+    the rates, their resampled intervals and the fit must not see the
+    difference.
+    """
+    import pandas as pd
+
+    import tests.studies.population_report as report
+
+    rng = np.random.default_rng(3)
+    counted = pd.DataFrame({
+        "seed": np.repeat(np.arange(30), 4),
+        "x": rng.uniform(0.5, 3.5, 120).round(2),
+        "y": rng.integers(0, 2, 120),
+        "count": rng.integers(1, 6, 120),
+    })  # fmt: skip
+    listed = counted.loc[counted.index.repeat(counted["count"])]
+    seeds = np.arange(30)
+    weights = report._weights(seeds, np.random.default_rng(4))[:200]
+
+    a = report.curve(counted, "x", "y", report.SNP_EDGES, seeds, weights, count="count")
+    b = report.curve(listed, "x", "y", report.SNP_EDGES, seeds, weights)
+
+    for key in ("rate", "low", "high", "n", "fitted"):
+        np.testing.assert_allclose(a[key], b[key], rtol=1e-6, err_msg=key)
+    assert a["crossing"] == pytest.approx(b["crossing"], rel=1e-6, nan_ok=True)

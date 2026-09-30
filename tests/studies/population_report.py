@@ -45,10 +45,10 @@ LENGTH_EDGES = np.round(np.arange(6.0, 8.51, 0.25), 2)
 LENGTH_DISPLAY = np.round(np.arange(6.0, 8.51, 0.125), 3)
 """The figure's finer bins; the rule reads `LENGTH_EDGES`."""
 
-SNP_EDGES = np.round(np.arange(1.0, 5.01, 0.5), 2)
-"""log10 SNP-covering UMIs of a neutral segment: Study 3's bins."""
+SNP_EDGES = np.round(np.arange(0.5, 3.51, 0.5), 2)
+"""log10 SNP-covering UMIs of a `(1, 1)` segment: Study 3's bins."""
 
-SNP_DISPLAY = np.round(np.arange(1.0, 5.01, 0.25), 2)
+SNP_DISPLAY = np.round(np.arange(0.5, 3.51, 0.25), 2)
 
 J_RAMP = ("#86b6ef", "#3987e5", "#1c5cab", "#0d366b")
 """An ordinal blue ramp, light to dark: J is ordered (validated, `--ordinal`)."""
@@ -86,19 +86,29 @@ def failures(out: Path) -> dict[float, list[dict[str, Any]]]:
     return failed
 
 
-NEUTRAL_COLUMNS = ("seed", "J", "manifest", "clone", "chr", "length", "bins",
-                   "snp_umis", "neutral", "specific")  # fmt: skip
-
-
 def neutral(out: Path) -> pd.DataFrame:
-    """One row per scored neutral segment; records scored before it have none."""
+    """Per member, J, log10 SNP UMIs (to 0.01) and outcome: how many `(1, 1)`
+    segments. Records scored before `neutral_segments` have none.
+
+    Segments number about 2,000 per clone, so they are counted rather than
+    listed: a segment enters the rates and the fit through its row's `count`.
+    """
     rows = []
     for path in sorted((out / "records").glob("*.json")):
         record = json.loads(path.read_text())
-        key = {"seed": record["seed"], "J": record["J"],
-               "manifest": record.get("manifest", "population")}  # fmt: skip
-        rows += [key | n for n in record.get("neutral", [])]
-    return pd.DataFrame(rows, columns=list(NEUTRAL_COLUMNS))
+        for clone in record.get("neutral_segments", []):
+            umis = np.asarray(clone["snp_umis"], dtype=float)
+            kept = umis > 0
+            rows.append(pd.DataFrame({
+                "seed": record["seed"], "J": record["J"],
+                "log_snp_umis": np.round(np.log10(umis[kept]), 2),
+                "specific": np.asarray(clone["specific"])[kept],
+            }))  # fmt: skip
+    if not rows:
+        return pd.DataFrame(columns=["seed", "J", "log_snp_umis", "specific", "count"])
+    frame = pd.concat(rows, ignore_index=True)
+    keys = ["seed", "J", "log_snp_umis", "specific"]
+    return frame.groupby(keys).size().rename("count").reset_index()
 
 
 def load(out: Path) -> tuple[pd.DataFrame, pd.DataFrame]:
@@ -179,6 +189,7 @@ def curve(
     *,
     crossing: bool = True,
     display: np.ndarray | None = None,
+    count: str | None = None,
 ) -> dict[str, Any]:
     """The rate per bin, its bootstrap 95% interval, counts, and the crossing.
 
@@ -189,7 +200,7 @@ def curve(
 
     A resample weights each member by how often it was drawn, so a member's
     clones enter together: the cluster bootstrap, computed without copying
-    rows.
+    rows. `count` names a column of how many items a row stands for.
     """
     n_bins = edges.size - 1
     centres = ((edges[:-1] + edges[1:]) / 2).tolist()
@@ -205,10 +216,11 @@ def curve(
     bins = _binned(frame[x].to_numpy(), edges)
     inside = (bins >= 0) & (bins < n_bins)
     values = frame[y].to_numpy(dtype=float)
+    many = np.ones(len(frame)) if count is None else frame[count].to_numpy(dtype=float)
     sums = np.zeros((seeds.size, n_bins))
     counts = np.zeros((seeds.size, n_bins))
-    np.add.at(sums, (member[inside], bins[inside]), values[inside])
-    np.add.at(counts, (member[inside], bins[inside]), 1.0)
+    np.add.at(sums, (member[inside], bins[inside]), (values * many)[inside])
+    np.add.at(counts, (member[inside], bins[inside]), many[inside])
 
     with np.errstate(invalid="ignore", divide="ignore"):
         rate = sums.sum(0) / counts.sum(0)
@@ -217,16 +229,14 @@ def curve(
 
     xs, ys = frame[x].to_numpy(dtype=float), frame[y].to_numpy(dtype=float)
     grid = np.linspace(edges[0], edges[-1], 101)
-    fits = [_fit(xs, ys, w[member]) for w in weights] if crossing else []
+    fits = [_fit(xs, ys, w[member] * many) for w in weights] if crossing else []
     crossings = np.array(
         [np.nan if f is None or f[1] <= 0 else -f[0] / f[1] for f in fits]
         if crossing
         else np.full(len(weights), np.nan)
     )
     finite = crossings[np.isfinite(crossings)]
-    fitted = (
-        _logistic(_fit(xs, ys, np.ones(xs.size)), grid) if crossing else grid * np.nan
-    )
+    fitted = _logistic(_fit(xs, ys, many), grid) if crossing else grid * np.nan
     with np.errstate(invalid="ignore"):
         band = (
             np.nanpercentile(
@@ -241,8 +251,8 @@ def curve(
         within = (fine >= 0) & (fine < display.size - 1)
         fine_sums = np.zeros((seeds.size, display.size - 1))
         fine_counts = np.zeros((seeds.size, display.size - 1))
-        np.add.at(fine_sums, (member[within], fine[within]), values[within])
-        np.add.at(fine_counts, (member[within], fine[within]), 1.0)
+        np.add.at(fine_sums, (member[within], fine[within]), (values * many)[within])
+        np.add.at(fine_counts, (member[within], fine[within]), many[within])
         with np.errstate(invalid="ignore", divide="ignore"):
             fine_rate = fine_sums.sum(0) / fine_counts.sum(0)
             fine_low, fine_high = np.nanpercentile(
@@ -265,7 +275,7 @@ def curve(
         "low": low.tolist(),
         "high": high.tolist(),
         "n": counts.sum(0).astype(int).tolist(),
-        "crossing": _crossing(xs, ys, np.ones(xs.size)) if crossing else float("nan"),
+        "crossing": _crossing(xs, ys, many) if crossing else float("nan"),
         "crossing_interval": (
             np.percentile(finite, [2.5, 97.5]).tolist()
             if finite.size
@@ -343,10 +353,9 @@ def summarize(out: Path, study2_j: float, seed: int = 544) -> dict[str, Any]:
 
     # NB Study 3, specificity, is read on Study 2's members and resamples.
     segments = neutral(out)
-    segments = segments[(segments["J"] == study2_j) & (segments["snp_umis"] > 0)]
-    segments = segments.assign(log_snp_umis=np.log10(segments["snp_umis"]))
+    segments = segments[segments["J"] == study2_j]
     study3 = {
-        "segments": len(segments),
+        "segments": int(segments["count"].sum()),
         "members": int(segments["seed"].nunique()) if len(segments) else 0,
         "specific": curve(
             segments,
@@ -356,6 +365,7 @@ def summarize(out: Path, study2_j: float, seed: int = 544) -> dict[str, Any]:
             members2,
             weights2,
             display=SNP_DISPLAY,
+            count="count",
         ),
     }
 
@@ -526,7 +536,7 @@ def figures(summary: dict[str, Any], into: Path) -> list[Path]:
         _panel(third, summary["study3"]["specific"], CLASS_COLOURS["all"], "All",
                0.0, None)  # fmt: skip
         third.set_xlabel(r"$\log_{10} |{\rm SNP\ UMIs\ in\ segment}|$")
-        third.set_ylabel("Specificity (≥ 90% of (1, 1) segments)")
+        third.set_ylabel("Specificity ((1, 1) segments called (1, 1))")
         third.set_ylim(-0.02, 1.02)
 
         for axis in (left, right):
