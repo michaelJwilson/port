@@ -69,12 +69,34 @@ def _bars(values: pd.Series) -> tuple[float, list[list[float]]]:
     return m, [[m - float(values.quantile(0.1))], [float(values.quantile(0.9)) - m]]
 
 
+def degenerate_counts(record: dict[str, Any]) -> dict[str, int]:
+    """Each start's runs flagged degenerate (`known_copy.degenerate`): `cnaster`'s NB at probability 1."""
+    rows = pd.DataFrame(record["rows"])
+    rows = rows[rows.problem.isin(record["done"])]
+    if "degenerate" not in rows:
+        return {}
+    flagged = rows.degenerate.fillna(False).astype(bool) | rows.start_degenerate.fillna(
+        False
+    ).astype(bool)
+    return {str(k): int(v) for k, v in rows[flagged].groupby("start").size().items()}
+
+
 def frame(record: dict[str, Any]) -> tuple[pd.DataFrame, np.ndarray]:
-    """The runs with their gaps to the realization's best, and the truth's gaps."""
+    """The runs with their gaps to the realization's best non-degenerate run, and the truth's gaps.
+
+    A degenerate run scores rows at probability 1 through `cnaster`'s negative
+    binomial (`known_copy.degenerate`); as the best it would set every gap by
+    thousands of nats, so it is neither the reference nor a point.
+    """
     rows = pd.DataFrame(record["rows"])
     rows = rows[rows.problem.isin(record["done"])]
     if "error" in rows:
         rows = rows[rows.error.isna()]
+    if "degenerate" in rows:
+        flagged = rows.degenerate.fillna(False).astype(
+            bool
+        ) | rows.start_degenerate.fillna(False).astype(bool)
+        rows = rows[~flagged]
     problems = record["problems"]
     best = rows.groupby("problem").llf.max().to_dict()
     for i in best:
@@ -90,7 +112,9 @@ def frame(record: dict[str, Any]) -> tuple[pd.DataFrame, np.ndarray]:
     return rows, truth
 
 
-def _table(tab: Any, missed: dict[str, tuple[float, float]]) -> None:
+def _table(
+    tab: Any, missed: dict[str, tuple[float, float]], flagged: dict[str, int]
+) -> None:
     n_rows = sum(1 + len(rows) for _, rows in TABLE)
     head = 0.06
     step = (1 - head) / (n_rows + 0.5)
@@ -135,7 +159,11 @@ def _table(tab: Any, missed: dict[str, tuple[float, float]]) -> None:
             tab.text(0.09, y, name, fontsize=8, transform=tab.transAxes, va="center")
             tab.text(0.33, y, text, fontsize=8, transform=tab.transAxes, va="center")
             a, b = missed.get(name, (np.nan, np.nan))
-            cell = "refused" if np.isnan(a) else f"{a:.1f} / {b:.1f}"
+            k = flagged.get(name, 0)
+            if np.isnan(a):
+                cell = f"degenerate ({k})" if k else "refused"
+            else:
+                cell = f"{a:.1f} / {b:.1f}" + (f" ({k} degen.)" if k else "")
             tab.text(
                 0.99,
                 y,
@@ -147,6 +175,46 @@ def _table(tab: Any, missed: dict[str, tuple[float, float]]) -> None:
             )
     rule(0.0, 1.2)
     tab.set_ylim(0, 1)
+
+
+def stamp(fig: Any, record: dict[str, Any]) -> str:
+    """The figure's reference, drawn on it: a hash of the record it plots and the code's commit.
+
+    `data` is the first 8 hex digits of SHA-256 over the pickled record;
+    `code` is the repository's short commit, `+` where the tree differs from
+    it. Two figures with one stamp were drawn from one record by one commit.
+    """
+    import hashlib
+    import subprocess
+
+    data = hashlib.sha256(pickle.dumps(record)).hexdigest()[:8]
+    here = Path(__file__).resolve().parent
+    commit = subprocess.run(
+        ["git", "rev-parse", "--short", "HEAD"],
+        cwd=here,
+        capture_output=True,
+        text=True,
+        check=False,
+    ).stdout.strip()
+    dirty = subprocess.run(
+        ["git", "status", "--porcelain", "--untracked-files=no"],
+        cwd=here,
+        capture_output=True,
+        text=True,
+        check=False,
+    ).stdout.strip()
+    text = f"data {data} · code {commit or 'unknown'}{'+' if dirty else ''}"
+    fig.text(
+        0.995,
+        0.005,
+        text,
+        ha="right",
+        va="bottom",
+        fontsize=7,
+        color="0.35",
+        family="monospace",
+    )
+    return text
 
 
 def figure(record: dict[str, Any], out: Path) -> Path:
@@ -245,7 +313,8 @@ def figure(record: dict[str, Any], out: Path) -> Path:
         str(n): (float(g.start_missed_pct.median()), float(g.missed_pct.median()))
         for n, g in d.groupby("start")
     }
-    _table(tab, missed)
+    _table(tab, missed, degenerate_counts(record))
+    stamp(fig, record)
     fig.savefig(out, dpi=150, bbox_inches="tight")
     plt.close(fig)
     return out

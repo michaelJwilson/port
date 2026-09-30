@@ -9,7 +9,7 @@ Exit: a start graduates to `extensions/copy_starts`' default if, polished by
   the study's.
 """
 
-from port.sandbox.known_copy.hmm import Fit, baum_welch, decode, missed
+from port.sandbox.known_copy.hmm import Fit, baum_welch, decode, degenerate, missed
 from port.sandbox.known_copy.problem import (
     FLOOR,
     KnownCopyProblem,
@@ -23,6 +23,7 @@ __all__ = [
     "KnownCopyProblem",
     "baum_welch",
     "decode",
+    "degenerate",
     "floored_bins",
     "missed",
     "problems",

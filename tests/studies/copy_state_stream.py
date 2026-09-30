@@ -146,6 +146,7 @@ def solve(
             "problem": problem.realization, "start": name, "seed": seed, "setting": setting, "seconds": seconds,
             "start_llf": at_start.log_likelihood, "start_missed": kc.missed(at_start.label, truth),
             "bw_seconds": fitted.seconds, "llf": fitted.log_likelihood, "missed": kc.missed(fitted.label, truth),
+            "start_degenerate": at_start.degenerate, "degenerate": fitted.degenerate,
             "log_mu": fitted.log_mu, "p_binom": fitted.p_binom,
         }  # fmt: skip
     except Exception as error:  # noqa: BLE001 -- a failed job is a result

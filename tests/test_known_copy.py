@@ -72,3 +72,19 @@ def test_every_start_returns_one_state_per_planted_state(name: str) -> None:
     assert log_mu.size == p.size == 2
     assert np.isfinite(log_mu).all()
     assert ((p > 0) & (p < 1)).all()
+
+
+@pytest.mark.analytic
+def test_a_fit_is_degenerate_exactly_where_cnasters_p_rounds_to_one() -> None:
+    """At the state Baum-Welch reached on dev_tree_1s_hard r0 (log mu -43.22, alpha 0.1184) `p` is 1.0; at log mu 0 it is not.
+
+    Checked against the kernel's own arithmetic, `1 / (1 + alpha * exposure * mu) >= 1.0`.
+    """
+    exposure = np.full(4, 1000.0)
+    label = np.array([0, 0, 1, 1])
+
+    assert kc.degenerate(np.array([-43.22, 0.0]), 0.1184, exposure, label)
+    assert not kc.degenerate(np.array([0.0, 0.3]), 0.1184, exposure, label)
+    assert not kc.degenerate(
+        np.array([0.0, -43.22]), 0.1184, exposure, np.zeros(4, dtype=int)
+    )
