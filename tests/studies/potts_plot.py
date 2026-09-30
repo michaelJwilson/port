@@ -449,8 +449,15 @@ def figure(record: dict[str, Any], out: Path) -> Path:
     ax.plot([], [], "o", color="0.4", mfc="white", label="ICM polish")
     ax.plot([], [], "D", color="0.4", mfc="white", ms=4, label="Color merge")
     ax.plot([], [], color="k", lw=0.9, label="Truth")
+    # NB a solver added to a finished stream runs on fewer realizations until it catches up: say which, and on how many
+    counts = d.groupby("solver").problem.nunique()
+    short = counts[counts < n_problems]
+    behind = "".join(
+        f"; #{', #'.join(str(NUMBER[s]) for s in sorted(g.index, key=lambda s: NUMBER[s]))} on {k}"
+        for k, g in short.groupby(short)
+    )
     ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.1), ncol=3, fontsize=7.5, frameon=False,
-              title=f"{Path(record['manifest']).stem}: Median for {n_problems} realization{'s' if n_problems > 1 else ''} $\\times$ {n_starts} random starts",
+              title=f"{Path(record['manifest']).stem}: Median for {n_problems} realization{'s' if n_problems > 1 else ''} $\\times$ {n_starts} random starts{behind}",
               title_fontsize=7.5)  # fmt: skip
     # NB ranked on each solver's own output: R_C by the median gap to the bound, R_M by the median Missed
     wrong = missed(d, n_spots(record))
