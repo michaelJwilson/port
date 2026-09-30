@@ -296,9 +296,10 @@ def figure(record: dict[str, Any], out: Path) -> Path:
     # NB solvers at the lowest energy: numbers in a row above them, each tied to its point
     crowded.sort()
     if crowded:
-        xs = np.array([x for x, _, _ in crowded])
-        centre = float(np.exp(np.log(xs).mean()))
-        spots = centre * 1.45 ** (np.arange(xs.size) - (xs.size - 1) / 2)
+        # NB each number above its own point, pushed right only as far as keeps a 1.35x gap to the last
+        spots: list[float] = []
+        for x, _, _ in crowded:
+            spots.append(max(x, spots[-1] * 1.35) if spots else x)
         top = FLOOR * 30
         for (x, y, solver), tx in zip(crowded, spots, strict=True):
             ax.annotate(str(NUMBER[solver]), (x, y), xytext=(tx, top), textcoords="data", fontsize=8, weight="bold",
