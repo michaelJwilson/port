@@ -19,7 +19,8 @@ their label arrays, and coarsening is a lookup `label[fine]` rather than a
 chain of parents.
 
 **What is derived and never stored.** A segment's contig, `start` (its first
-gene's `START`) and `end` (its last gene's `END`); `lengths`, segments per
+gene's `START`), `end` (its last gene's `END`), `length` (`end - start`) and
+`gene` (its first gene's index label); `lengths`, segments per
 contig -- the grid every lattice restarts on -- which cannot disagree with
 the labels and is never zero (#438 D5); and `boundary`, each contig's last
 segment. Moving an array between genes and segments is a `reduceat` or a
@@ -248,6 +249,18 @@ class Segmentation:
     def end(self) -> np.ndarray:
         values: np.ndarray = self.genes.end[self.last]
         return values
+
+    @property
+    def length(self) -> np.ndarray:
+        """Each segment's extent in base pairs, `end - start` (#540)."""
+        length: np.ndarray = self.end - self.start
+        return length
+
+    @property
+    def gene(self) -> np.ndarray:
+        """Each segment's first gene, by its index label in the table the root was read from (#540)."""
+        gene: np.ndarray = self.genes.key[self.first]
+        return gene
 
     @property
     def lengths(self) -> np.ndarray:
