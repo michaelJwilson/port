@@ -431,6 +431,9 @@ CalicoST's `rectangle_initialize_initial_clone` never returns (`cnaster` #248).
 `--shipped FILE` runs CalicoST's own configuration file instead, taking only
 the paths from the YAML; a sheet of several slices takes
 `configuration_cna_multi`. `docs/final-benchmark.md` compares it with `--sal`.
+`docs/baseline-release.md` states what `--sal` recovers at the baseline
+release, on CalicoST's samples and the drawn `dev_tree` family
+(`sim/manifests/baseline/`).
 
 **`port.sim.draw`** (#445) draws new samples from a version-3 manifest:
 clones from CalicoST's `shared.unique` counts or a mutation tree
