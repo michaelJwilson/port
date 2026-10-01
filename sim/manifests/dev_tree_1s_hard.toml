@@ -18,9 +18,11 @@ shared = 6
 unique = 3
 
 [cna.length]
-# NB exponential about CalicoST's fixed 10 Mb, floored at 1 Mb
+# NB exponential with median 10 Mb, CalicoST's fixed length, floored at 1 Mb: mean
+#    1e7 / ln 2 (#581). A mean of 1e7 put the median at 6.9 Mb and a third of
+#    drawn events under 5 Mb; #556's studies drew at that mean, to 8189d19.
 law = "exponential"
-mean = 1e7
+mean = 14426950.408889635
 minimum = 1e6
 
 [phasing]
