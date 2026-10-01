@@ -2,7 +2,7 @@
 
 **TL;DR:** (#577) `--sal` recovers the planted clones at ARI ≥ 0.969 on 5 of 6
 fixtures, in 67–264 s and ≤ 6.1 GB; CalicoST finishes none of the three it was
-run on within 30 minutes (`docs/final-benchmark.md`). `dev_tree_1s_hard`
+run on within 30 minutes (`docs/calicost-benchmark.md`). `dev_tree_1s_hard`
 fails at 0.21 (2 clones of 4), by the integer-clone merge (#575). Balanced
 gains are recovered at 0.000 on five fixtures and 0.878 on
 `dev_tree_1s_easy` r0 (#573).
