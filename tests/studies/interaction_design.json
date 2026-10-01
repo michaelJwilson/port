@@ -1,0 +1,272 @@
+{
+ "seed": 570,
+ "runs": 32,
+ "model": [
+  [
+   "floor"
+  ],
+  [
+   "start"
+  ],
+  [
+   "split"
+  ],
+  [
+   "dispersion"
+  ],
+  [
+   "solver"
+  ],
+  [
+   "floor",
+   "start"
+  ],
+  [
+   "floor",
+   "split"
+  ],
+  [
+   "floor",
+   "dispersion"
+  ],
+  [
+   "start",
+   "split"
+  ],
+  [
+   "start",
+   "dispersion"
+  ],
+  [
+   "split",
+   "dispersion"
+  ]
+ ],
+ "log_det": 70.16990520030907,
+ "configs": [
+  {
+   "floor": "300",
+   "start": "lattice",
+   "split": "off",
+   "dispersion": "rescale",
+   "solver": "glauber-merge"
+  },
+  {
+   "floor": "0",
+   "start": "lattice",
+   "split": "off",
+   "dispersion": "per-state",
+   "solver": "sw-field-glauber-merge"
+  },
+  {
+   "floor": "300",
+   "start": "kmeans++x5+em",
+   "split": "on",
+   "dispersion": "shared",
+   "solver": "alpha-rust-fuse-merge"
+  },
+  {
+   "floor": "300",
+   "start": "hmcx5+em",
+   "split": "off",
+   "dispersion": "rescale",
+   "solver": "alpha-rust-fuse-merge"
+  },
+  {
+   "floor": "300",
+   "start": "hmcx5+em",
+   "split": "on",
+   "dispersion": "shared",
+   "solver": "glauber-merge"
+  },
+  {
+   "floor": "0",
+   "start": "hmcx5+em",
+   "split": "off",
+   "dispersion": "rescale",
+   "solver": "icm"
+  },
+  {
+   "floor": "300",
+   "start": "hmcx5+em",
+   "split": "on",
+   "dispersion": "two-component",
+   "solver": "alpha-rust-fuse-merge"
+  },
+  {
+   "floor": "0",
+   "start": "kmeans++x5+em",
+   "split": "off",
+   "dispersion": "per-state",
+   "solver": "icm"
+  },
+  {
+   "floor": "0",
+   "start": "lattice",
+   "split": "on",
+   "dispersion": "shared",
+   "solver": "icm"
+  },
+  {
+   "floor": "0",
+   "start": "hmcx5+em",
+   "split": "on",
+   "dispersion": "rescale",
+   "solver": "glauber-merge"
+  },
+  {
+   "floor": "0",
+   "start": "hmcx5+em",
+   "split": "off",
+   "dispersion": "two-component",
+   "solver": "glauber-merge"
+  },
+  {
+   "floor": "0",
+   "start": "hmcx5+em",
+   "split": "on",
+   "dispersion": "per-state",
+   "solver": "alpha-rust-fuse-merge"
+  },
+  {
+   "floor": "300",
+   "start": "kmeans++x5+em",
+   "split": "on",
+   "dispersion": "per-state",
+   "solver": "sw-field-glauber-merge"
+  },
+  {
+   "floor": "300",
+   "start": "hmcx5+em",
+   "split": "off",
+   "dispersion": "per-state",
+   "solver": "glauber-merge"
+  },
+  {
+   "floor": "0",
+   "start": "lattice",
+   "split": "off",
+   "dispersion": "two-component",
+   "solver": "alpha-rust-fuse-merge"
+  },
+  {
+   "floor": "300",
+   "start": "kmeans++x5+em",
+   "split": "on",
+   "dispersion": "rescale",
+   "solver": "icm"
+  },
+  {
+   "floor": "300",
+   "start": "lattice",
+   "split": "on",
+   "dispersion": "two-component",
+   "solver": "glauber-merge"
+  },
+  {
+   "floor": "300",
+   "start": "kmeans++x5+em",
+   "split": "off",
+   "dispersion": "two-component",
+   "solver": "sw-field-glauber-merge"
+  },
+  {
+   "floor": "300",
+   "start": "lattice",
+   "split": "off",
+   "dispersion": "shared",
+   "solver": "sw-field-glauber-merge"
+  },
+  {
+   "floor": "300",
+   "start": "lattice",
+   "split": "off",
+   "dispersion": "two-component",
+   "solver": "icm"
+  },
+  {
+   "floor": "0",
+   "start": "lattice",
+   "split": "on",
+   "dispersion": "rescale",
+   "solver": "alpha-rust-fuse-merge"
+  },
+  {
+   "floor": "0",
+   "start": "lattice",
+   "split": "on",
+   "dispersion": "two-component",
+   "solver": "sw-field-glauber-merge"
+  },
+  {
+   "floor": "300",
+   "start": "lattice",
+   "split": "on",
+   "dispersion": "per-state",
+   "solver": "alpha-rust-fuse-merge"
+  },
+  {
+   "floor": "0",
+   "start": "hmcx5+em",
+   "split": "off",
+   "dispersion": "shared",
+   "solver": "alpha-rust-fuse-merge"
+  },
+  {
+   "floor": "300",
+   "start": "kmeans++x5+em",
+   "split": "off",
+   "dispersion": "shared",
+   "solver": "icm"
+  },
+  {
+   "floor": "0",
+   "start": "kmeans++x5+em",
+   "split": "on",
+   "dispersion": "per-state",
+   "solver": "glauber-merge"
+  },
+  {
+   "floor": "0",
+   "start": "lattice",
+   "split": "off",
+   "dispersion": "shared",
+   "solver": "glauber-merge"
+  },
+  {
+   "floor": "300",
+   "start": "hmcx5+em",
+   "split": "on",
+   "dispersion": "rescale",
+   "solver": "sw-field-glauber-merge"
+  },
+  {
+   "floor": "300",
+   "start": "kmeans++x5+em",
+   "split": "off",
+   "dispersion": "per-state",
+   "solver": "alpha-rust-fuse-merge"
+  },
+  {
+   "floor": "0",
+   "start": "kmeans++x5+em",
+   "split": "on",
+   "dispersion": "two-component",
+   "solver": "icm"
+  },
+  {
+   "floor": "0",
+   "start": "kmeans++x5+em",
+   "split": "on",
+   "dispersion": "shared",
+   "solver": "sw-field-glauber-merge"
+  },
+  {
+   "floor": "0",
+   "start": "kmeans++x5+em",
+   "split": "off",
+   "dispersion": "rescale",
+   "solver": "sw-field-glauber-merge"
+  }
+ ]
+}
