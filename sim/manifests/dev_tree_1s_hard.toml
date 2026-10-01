@@ -1,0 +1,35 @@
+# dev_tree_1s with CalicoST hard's CNA law and admixture (#556): its clone field matched to CalicoST's.
+version = 3
+extends = "dev_tree_1s.toml"
+
+[sample]
+name = "dev_tree_1s_hard"
+# NB `tests.sim_stages.realization_hash` of r0 as drawn here: a change to this
+#    manifest or to the simulator that moves it states the new one, so the hash
+#    names the generation (`tests/test_sim_r0_hash.py`).
+#    At 8189d19's mean of 1e7, r0 hashed to 7328c0d6.
+r0_hash = "ed2fcda1"
+
+[model]
+# NB CalicoST's tumour share, fitted per spot at its planted states: 0.835-0.910 by clone,
+#    mean normal fraction 0.14 (#556)
+admixture = "cell"
+normal_frac = 0.14
+
+[cna]
+# NB CalicoST's shared + local events, 6 shared and 3 per clone
+mode = "shared.unique"
+shared = 6
+unique = 3
+
+[cna.length]
+# NB exponential with median 10 Mb, CalicoST's fixed length, floored at 1 Mb: mean
+#    1e7 / ln 2 (#581). A mean of 1e7 put the median at 6.9 Mb and a third of
+#    drawn events under 5 Mb; #556's studies drew at that mean, to 8189d19.
+law = "exponential"
+mean = 14426950.408889635
+minimum = 1e6
+
+[phasing]
+# NB CalicoST writes A/B phased by haplotype
+switch_errors = false

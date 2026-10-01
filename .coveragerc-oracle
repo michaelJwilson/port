@@ -86,6 +86,7 @@ include =
     */sal/search/trws/*
     */sal/opt/emission_mixture.py
     */sal/opt/mixture.py
+    */sal/search/mixture_starts.py
     */sal/sim/potts.py
     */sal/backend.py
 # `sim/potts.py` joined on #312's pin bump: `energy`, the Potts referee
