@@ -68,9 +68,6 @@ KNOWN: dict[str, str] = {
     "port.extensions.integer_copy:success_probability_variance arg beta": "F2",
     "port.extensions.parameter_errors:shift_weights arg log_mus": "F5",
     "port.patch.hmm_nophasing.logmu_shift:shifts arg log_mus": "F5",
-    "port.extensions.outputs:states arg fit": "F6",
-    "port.extensions.outputs:binlevel arg fit": "F6",
-    "port.extensions.outputs:segments arg fit": "F6",
     "port.patch.hmrf.core_inference:pin_neutral arg result": "F6",
     # --- F4, F9, F14: HMM initialization ------------------------------------
     "port.patch.icm.interface:IcmResult termination": "F10",
