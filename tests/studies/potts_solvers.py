@@ -214,69 +214,8 @@ def per_call(out: Path, paths: list[str]) -> None:
     out.write_text(json.dumps(rows))
 
 
-def figure(rows_dir: Path, out: Path, which: str) -> None:
-    """Gap above the bound against runtime, one panel per sample, on its third captured call."""
-    import matplotlib as mpl
-
-    mpl.use("Agg")
-    from sal.opt.starts import Curve
-    from sal.qa.starts import gap_panels, start_styles
-    from sal.qa.style import notebook_style
-    from sal.search.mixture_starts import curve_band
-
-    grid = np.geomspace(1e-3, 30.0, 400)
-    panels: dict[str, dict[str, Any]] = {}
-    final: dict[str, dict[str, float]] = {}
-    order: list[str] = []
-
-    for tag, title in SAMPLES.items():
-        rows = json.loads((rows_dir / f"rows_{tag}.json").read_text())
-        # NB the third capture: the first call of the read-depth stage, the
-        #    largest clone count the run solves.
-        call = sorted({r["call"] for r in rows})[2]
-        chosen = [
-            r
-            for r in rows
-            if r["call"] == call and r["arm"].startswith("port:") == (which == "port")
-        ]
-        heading = (
-            f"{title}, {chosen[0]['n_nodes']:,} spots, {chosen[0]['n_states']} clones"
-        )
-        bands: dict[str, Any] = {}
-        gaps: dict[str, float] = {}
-
-        for r in chosen:
-            curves = [
-                Curve(
-                    instance=0,
-                    seed=i,
-                    seconds=np.maximum(np.asarray(c["seconds"]), 1e-3),
-                    values=np.asarray(c["gaps"]),
-                    gaps=np.asarray(c["gaps"]),
-                    handover=0,
-                )
-                for i, c in enumerate(r["curves"])
-            ]
-            bands[r["arm"]] = curve_band(curves, grid)
-            gaps[r["arm"]] = float(np.mean(r["final_gap"]))
-            order += [] if r["arm"] in order else [r["arm"]]
-
-        panels[heading] = {n: bands[n] for n in sorted(bands, key=gaps.__getitem__)}
-        final[heading] = gaps
-
-    with notebook_style():
-        drawn = gap_panels(
-            panels,
-            final,
-            start_styles(order),
-            ylabel="gap above TRW-S bound [nats]",
-            legend_above=0.1,
-        )
-        drawn.savefig(out, dpi=150, bbox_inches="tight", metadata={"Software": None})
-
-
 def main(argv: list[str] | None = None) -> None:
-    """The three subcommands."""
+    """The two subcommands; #541's notebook replaced the figure."""
     parser = argparse.ArgumentParser(
         description=__doc__.splitlines()[0] if __doc__ else None
     )
@@ -287,18 +226,12 @@ def main(argv: list[str] | None = None) -> None:
     two = sub.add_parser("per-call")
     two.add_argument("out", type=Path)
     two.add_argument("calls", nargs="+")
-    three = sub.add_parser("figure")
-    three.add_argument("rows", type=Path)
-    three.add_argument("out", type=Path)
-    three.add_argument("which", choices=["sal", "port"])
     arguments = parser.parse_args(argv)
 
     if arguments.command == "capture":
         capture(arguments.sample, arguments.out)
-    elif arguments.command == "per-call":
-        per_call(arguments.out, arguments.calls)
     else:
-        figure(arguments.rows, arguments.out, arguments.which)
+        per_call(arguments.out, arguments.calls)
 
 
 if __name__ == "__main__":
