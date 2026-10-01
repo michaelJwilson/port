@@ -605,6 +605,11 @@ def summarize_counts_for_blocks(
     )
 
 
+BIN_SPOT_BLOCK = 4096
+"""Spots per column block in `summarize_counts_for_bins` (#569): the
+temporaries are `(n_blocks, BIN_SPOT_BLOCK)`, 0.12 GB at 3,779 blocks."""
+
+
 def summarize_counts_for_bins(
     df_gene_snp: Any,
     adata: Any,
@@ -666,19 +671,26 @@ def summarize_counts_for_bins(
 
     by_gene = _group_indicator(columns[known], bin_rank[known], len(gene_names), n_bins)
 
-    # NB every block's phased B count at once; the choice is per block, not
-    #    per bin, so the bins never enter it.
-    phased = np.where(
-        np.asarray(phase_indicator).reshape(-1, 1),
-        single_X[:, 1, :],
-        single_total_bb_RD - single_X[:, 1, :],
-    )
-
     bin_single_X = np.zeros((n_bins, 2, n_spots), dtype=int)
-    bin_single_X[:, 1, :] = by_block.T @ phased
-    bin_single_X[:, 0, :] = _grouped_column_sums(adata.layers["count"], by_gene)
+    bin_single_total_bb_RD = np.empty((n_bins, n_spots), dtype=int)
+    phase = np.asarray(phase_indicator).reshape(-1, 1)
+    to_bins = by_block.T.tocsr()
 
-    bin_single_total_bb_RD = np.asarray(by_block.T @ single_total_bb_RD, dtype=int)
+    # NB every block's phased B count, then the bins' sums, in column blocks
+    #    of `BIN_SPOT_BLOCK` spots (#569): the choice is per block and the sums
+    #    per spot, so where the blocks fall cannot change a value, and the
+    #    `(n_blocks, n_spots)` phased matrix, its difference and the product
+    #    are never whole -- three arrays of `single_X`'s size, 2.8 GB of the
+    #    peak at 8,649 spots.
+    for start in range(0, n_spots, BIN_SPOT_BLOCK):
+        spots = slice(start, start + BIN_SPOT_BLOCK)
+        b_allele = single_X[:, 1, spots]
+        total = single_total_bb_RD[:, spots]
+        phased = np.where(phase, b_allele, total - b_allele)
+        bin_single_X[:, 1, spots] = to_bins @ phased
+        bin_single_total_bb_RD[:, spots] = to_bins @ total
+
+    bin_single_X[:, 0, :] = _grouped_column_sums(adata.layers["count"], by_gene)
 
     # NB from the bins as a labelling of the genes (#438). `cnaster` reindexes
     #    over every contig with zeros; a zero is a contig every lattice
