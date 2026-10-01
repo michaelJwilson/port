@@ -175,6 +175,24 @@ def _parser() -> argparse.ArgumentParser:
         help="the shrinkage's n0, in rows; 0 for none (#566); needs --per-state-dispersion",
     )
     parser.add_argument(
+        "--dispersion-bounds",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="hold per-state alpha >= --alpha-min and tau <= --tau-max (#566); on with --per-state-dispersion",
+    )
+    parser.add_argument(
+        "--alpha-min",
+        type=float,
+        default=None,
+        help="the per-state NB alpha's lower bound (#566); needs the bounds",
+    )
+    parser.add_argument(
+        "--tau-max",
+        type=float,
+        default=None,
+        help="the per-state BB tau's upper bound (#566); needs the bounds",
+    )
+    parser.add_argument(
         "--sal",
         action="store_true",
         help="snakes_and_ladders' labelling, and the mask, floor and start it implies (#312)",
@@ -306,6 +324,27 @@ def _refusals(arguments: argparse.Namespace, settings: Settings) -> list[str]:
         refused.append("--dispersion-prior-rows needs --per-state-dispersion")
     if (arguments.dispersion_prior_rows or 0.0) < 0.0:
         refused.append("--dispersion-prior-rows is a count of rows, >= 0")
+    if arguments.dispersion_bounds is not None and not arguments.per_state_dispersion:
+        refused.append("--dispersion-bounds needs --per-state-dispersion")
+    bounded = (
+        arguments.per_state_dispersion and arguments.dispersion_bounds is not False
+    )
+    refused += [
+        f"{flag} needs the dispersion bounds"
+        for flag, value in (
+            ("--alpha-min", arguments.alpha_min),
+            ("--tau-max", arguments.tau_max),
+        )
+        if value is not None and not bounded
+    ]
+    refused += [
+        f"{flag} must be positive"
+        for flag, value in (
+            ("--alpha-min", arguments.alpha_min),
+            ("--tau-max", arguments.tau_max),
+        )
+        if value is not None and value <= 0.0
+    ]
 
     # NB read by port's `pipeline_clone_assignment` alone, which `--no-patch`
     #    leaves out unless `--sal` installs it.
@@ -459,6 +498,12 @@ def main(argv: Sequence[str] | None = None) -> int:
 
             if arguments.dispersion_prior_rows is not None:
                 model["dispersion_prior_rows"] = arguments.dispersion_prior_rows
+            if arguments.dispersion_bounds is False:
+                model["dispersion_bounds"] = False
+            if arguments.alpha_min is not None:
+                model["alpha_min"] = arguments.alpha_min
+            if arguments.tau_max is not None:
+                model["tau_max"] = arguments.tau_max
 
         if arguments.sal and arguments.no_patch:
             selected = tuple(
@@ -641,9 +686,18 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "figures": figures,
                 "shift": shift,
                 "dispersion": (
-                    f"per-state, n0 {model.get('dispersion_prior_rows', 'default')}"
-                    if arguments.per_state_dispersion
-                    else "shared"
+                    {
+                        key: model[key]
+                        for key in (
+                            "per_state_dispersion",
+                            "dispersion_prior_rows",
+                            "dispersion_bounds",
+                            "alpha_min",
+                            "tau_max",
+                        )
+                        if key in model
+                    }
+                    or "shared"
                 ),
                 "copy_decode": f"lattice_decode ({arguments.copy_decode})"
                 if copy_cap

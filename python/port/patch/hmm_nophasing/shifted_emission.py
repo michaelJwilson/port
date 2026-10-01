@@ -94,7 +94,10 @@ from cnaster.logger import get_logger
 from sal.ragged import Ragged
 
 from port.patch.hmm_nophasing.gradient import (
+    ALPHA_MIN,
     DISPERSION_PRIOR_ROWS,
+    TAU_MAX,
+    DispersionBounds,
     DispersionShrinkage,
     EmGradient,
     analytic_bfgs,
@@ -340,6 +343,15 @@ class hmm_nophasing(UPSTREAM):  # type: ignore[misc]
     the per-state dispersions unshrunk.
     """
 
+    dispersion_bounds: bool = True
+    """With `per_state_dispersion`, hold `alpha_k >= alpha_min`, `tau_k <= tau_max` (#566); off fits unbounded."""
+
+    alpha_min: float = ALPHA_MIN
+    """The per-state `alpha`'s lower bound, read with `per_state_dispersion` (#566)."""
+
+    tau_max: float = TAU_MAX
+    """The per-state `tau`'s upper bound, read with `per_state_dispersion` (#566)."""
+
     def _clone_triples(self, encoder: Any, lengths: tuple[int, ...]) -> _Triples:
         """`(clone, obs, total)` compressed once over the whole genome.
 
@@ -486,11 +498,16 @@ class hmm_nophasing(UPSTREAM):  # type: ignore[misc]
                 if self.per_state_dispersion and self.dispersion_prior_rows > 0.0
                 else None
             )
-            kwargs["optimizer"] = analytic_bfgs(gradient, penalty)
-        elif self.per_state_dispersion and self.dispersion_prior_rows > 0.0:
-            # NB the shrinkage is a term of the closed-form objective; refused
-            #    rather than dropped where that objective is not the one fitted.
-            msg = "the dispersion prior needs the analytic gradient and BFGS"
+            bounds = (
+                DispersionBounds.for_fit(gradient, self.alpha_min, self.tau_max)
+                if self.per_state_dispersion and self.dispersion_bounds
+                else None
+            )
+            kwargs["optimizer"] = analytic_bfgs(gradient, penalty, bounds)
+        elif self.per_state_dispersion:
+            # NB the bounds and the shrinkage act inside port's M step; refused
+            #    rather than dropped where that M step is not the one run.
+            msg = "per-state dispersion needs the analytic gradient and BFGS"
             raise ValueError(msg)
 
         res: dict[str, Any] = super().optimize(

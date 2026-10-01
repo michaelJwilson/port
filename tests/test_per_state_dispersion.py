@@ -1,10 +1,14 @@
 """Per-state NB/BB dispersions, and the shrinkage toward the pooled one (#566).
 
 `run_cnaster_port --per-state-dispersion` fits one `alpha` and one `tau` per
-state through `cnaster`'s own `shared_*_dispersion=False` path, shrunk toward
-the pooled value by `DispersionShrinkage`. Three referees:
+state through `cnaster`'s own `shared_*_dispersion=False` path, bounded by
+`DispersionBounds` unless `--no-dispersion-bounds`, and shrunk toward the
+pooled value by `DispersionShrinkage` where `--dispersion-prior-rows` is
+given. Three referees:
 
-- `analytic`: states holding the same rows return the pooled fit;
+- `analytic`: states holding the same rows return the pooled fit; a state
+  holding three rows stops at `alpha_min`, `tau_max` rather than running to
+  `alpha -> 0`;
 - `oracle`: the penalized gradient against central differences of the
   penalized objective `cnaster`'s `cost_fn` scores;
 - `end2end`: planted per-state dispersions recovered from a fixture drawn
@@ -172,3 +176,37 @@ def test_planted_per_state_dispersions_are_recovered() -> None:
 
     pooled = float(np.asarray(shared["new_alphas"]).reshape(-1)[0])
     assert np.all(np.abs(pooled / planted_alpha - 1.0) > 0.25)
+
+
+@pytest.mark.analytic
+@pytest.mark.usefixtures("cnaster_config")
+def test_a_state_holding_three_rows_stops_at_the_bounds() -> None:
+    """Three rows at their exact means: unbounded, `alpha` runs below `alpha_min / 10`; bounded, it stops at `alpha_min`.
+
+    Realized: unbounded `alpha` 1.1e-10, `cnaster`'s own floor, and `tau`
+    7.1e4; bounded `alpha_min` and `tau_max` exactly. Their allele counts sit
+    at `p n`, so the likelihood's limit is `alpha -> 0`, `tau -> inf`.
+    """
+    from port.patch.hmm_nophasing.gradient import ALPHA_MIN, TAU_MAX
+
+    data = _drawn((0.05, 0.05), (100.0, 100.0), n_runs=12, run=50)
+    states = data["states"]
+    first = int(np.flatnonzero(states == 1)[0])
+    keep = np.r_[np.flatnonzero(states == 0), first : first + 3]
+    X = data["X"][keep].copy()
+    base, total = data["base"][keep], data["total"][keep]
+    X[-3:, 0, 0] = base[-3:, 0] * 2.0
+    total[-3:, 0] = 40.0
+    X[-3:, 1, 0] = 10.0
+
+    trimmed = dict(data, X=X, base=base, total=total, lengths=np.array([keep.size]))
+    bounded = _fit(trimmed, per_state_dispersion=True)
+    free = _fit(trimmed, per_state_dispersion=True, dispersion_bounds=False)
+
+    alpha_bounded = np.asarray(bounded["new_alphas"]).reshape(-1)
+    alpha_free = np.asarray(free["new_alphas"]).reshape(-1)
+
+    assert alpha_free[1] < ALPHA_MIN / 10.0
+    np.testing.assert_allclose(alpha_bounded[1], ALPHA_MIN, rtol=1e-9)
+    assert alpha_bounded.min() >= ALPHA_MIN * (1.0 - 1e-12)
+    assert np.asarray(bounded["new_taus"]).max() <= TAU_MAX * (1.0 + 1e-12)
