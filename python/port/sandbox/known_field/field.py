@@ -1,5 +1,12 @@
 """The RDR + BAF field of a drawn realization at its planted copy states and clone profiles (#556).
 
+Ticket: #556 -- the clone field of a drawn realization at its planted law,
+  the problem the study's solvers are compared on.
+Measurement: `docs/study-field-strength.md`, the field margins: median 9.2-9.8
+  nats per spot on dev_tree against 0.8 and 0.2 on CalicoST easy and hard.
+Exit: stays the study's, since the pipeline never knows the planted law;
+  retire with the study.
+
 - RDR: a spot's gene UMIs are DM(T_s, kappa q_k), q_k the baseline lambda
   times clone k's depth factor at its planted copies, normalized
   (`port.sim.entries.dirichlet_multinomial`). The log-likelihood less its

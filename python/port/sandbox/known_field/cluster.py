@@ -1,5 +1,13 @@
 """Field-weighted relabelling for Swendsen-Wang and Wolff, with a Glauber interleave (#559).
 
+Ticket: #559 -- field-weighted Swendsen-Wang and Wolff moves, with a
+  Glauber interleave.
+Measurement: `docs/study-field-strength.md`, 25 realizations x 50 starts on
+  `dev_tree_1s_hard`: 0.01 / 0.06 nats from TRW-S's bound with the
+  interleave, at 2.7-3.8x annealed Glauber's runtime.
+Exit: graduate to `extensions/` as a `label_solver` row if it beats the
+  admitted row end to end (#570); else retire.
+
 `sal`'s cluster moves recolour a Fortuin-Kasteleyn cluster by proposing a
 label uniformly and accepting on the field (`sal.sample.potts_mcmc.sweeps._recolour`).
 In a field the size of #556's -- 17.6 nats per spot on `dev_tree_1s` -- a
