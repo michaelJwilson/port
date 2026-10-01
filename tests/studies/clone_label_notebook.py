@@ -152,6 +152,13 @@ right.axvline(oracle["ari"], color="C2", lw=0.6, ls="--")
 right.legend(loc="lower right", fontsize=7, frameon=False)
 right.set(xlabel="clone ARI", title="starts, with --sal's solver and floor (start + states and field, s)")
 figure.tight_layout()
+import hashlib, subprocess
+data = hashlib.sha256(Path("data/clone_label_study_r0.json").read_bytes()).hexdigest()[:8]
+commit = subprocess.run(["git", "rev-parse", "--short=7", "HEAD"], capture_output=True, text=True).stdout.strip()
+dirty = subprocess.run(["git", "status", "--porcelain", "--untracked-files=no", "--", "../../python", "../../tests"],
+                       capture_output=True, text=True).stdout.strip()
+figure.text(0.995, 0.005, f"data {data} · code {commit or 'unknown'}{'+' if dirty else ''}",
+            ha="right", va="bottom", fontsize=6, color="0.4")
 # NB untracked (`tests.plots_dir`): the figure is this notebook's output above.
 Path("../../.cache/plots/studies").mkdir(parents=True, exist_ok=True)
 figure.savefig("../../.cache/plots/studies/clone_label_study.png", dpi=150, metadata={"Software": None})""",
