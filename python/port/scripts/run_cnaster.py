@@ -189,9 +189,9 @@ def _parser() -> argparse.ArgumentParser:
         help="lattice, per clone (#370), or shared, one pair per state (#327)",
     )
     parser.add_argument(
-        "--parsimony-decode",
+        "--no-parsimony-decode",
         action="store_true",
-        help="the lattice decode's prior -0.5 |A + B - 2| per bin (T- #471); off, flat",
+        help="a flat prior for the lattice decode, not -0.5 |A + B - 2| per bin (T- #471)",
     )
     parser.add_argument(
         "--warm-up",
@@ -245,7 +245,7 @@ class Settings(NamedTuple):
     baf_start: str
     """The BAF-only stage's start: `none`, `distinct`'s kept (#540)."""
     parsimony: float
-    """The lattice decode's prior weight: `0`, flat, `PARSIMONY` with `--parsimony-decode`."""
+    """The lattice decode's prior weight: `PARSIMONY`, `0`, flat, with `--no-parsimony-decode`."""
 
 
 def _settings(arguments: argparse.Namespace) -> Settings:
@@ -272,7 +272,7 @@ def _settings(arguments: argparse.Namespace) -> Settings:
             asked(arguments.hmm_start, "kmeans++x5+em" if arguments.sal else "none")
         ),
         baf_start=str(asked(arguments.baf_start, "none")),
-        parsimony=PARSIMONY if arguments.parsimony_decode else 0.0,
+        parsimony=0.0 if arguments.no_parsimony_decode else PARSIMONY,
     )
 
 
@@ -306,10 +306,10 @@ def _refusals(arguments: argparse.Namespace, settings: Settings) -> list[str]:
 
     # NB the prior is the lattice decode's alone; `shared` and `cnaster`'s
     #    decoders take none.
-    if arguments.parsimony_decode and not (
+    if arguments.no_parsimony_decode and not (
         settings.copy_cap and arguments.copy_decode == "lattice"
     ):
-        refused.append("--parsimony-decode needs the lattice copy decode")
+        refused.append("--no-parsimony-decode needs the lattice copy decode")
 
     # NB read by the `SHIFT_SWAPS` rows alone -- port's `hmm_nophasing` class
     #    and `run_core_inference`.
@@ -623,7 +623,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 + (", copy caps from the config" if copy_cap else "")
                 + (
                     f", parsimony {settings.parsimony}"
-                    if arguments.parsimony_decode
+                    if arguments.no_parsimony_decode
                     else ""
                 )
                 + (", refinement mask" if refinement_mask else "")

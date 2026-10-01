@@ -52,6 +52,7 @@ from typing import Any
 import cnaster.integer_copy
 import numpy as np
 
+from port.extensions.copy_likelihood import PARSIMONY
 from port.extensions.integer_copy import (
     DEFAULT_MAX_ALLELE_COPY,
     DEFAULT_MAX_TOTAL_COPY,
@@ -265,15 +266,15 @@ def decode_clone(
     total: int,
     *,
     decoder: str = "lattice",
-    parsimony: float = 0.0,
+    parsimony: float = PARSIMONY,
 ) -> tuple[np.ndarray, float, int]:
     """One clone's `(copies, loss, ploidy)`, as `cnaster`'s decoders return them.
 
     Decoded once, from the captured fit, at the first clone's call, by the
     selected `decoder`. `shared` returns its per-state
     pairs to every clone; `lattice` returns this clone's :class:`PairsByBin`,
-    under the log-prior `-parsimony |A + B - 2|` per bin: flat at `0`, the
-    default, and `copy_likelihood.PARSIMONY` with `--parsimony-decode`.
+    under the log-prior `-parsimony |A + B - 2|` per bin: `PARSIMONY`, the
+    default, and flat at `0` with `--no-parsimony-decode`.
     `loss` is the negative log-likelihood reached; `ploidy` the median total
     copy over this clone's bins.
     """
@@ -372,7 +373,7 @@ def decode_clone(
 @as_upstream(
     cnaster.integer_copy.hill_climbing_integer_copynumber_oneclone,
     decoder="lattice",
-    parsimony=0.0,
+    parsimony=PARSIMONY,
 )
 def hill_climbing_integer_copynumber_oneclone(
     arguments: dict[str, Any], options: dict[str, Any]
@@ -382,8 +383,8 @@ def hill_climbing_integer_copynumber_oneclone(
     `base_nb_mean` and the hill climb's own keywords are accepted and unused:
     the capture carries the fit the decode reads. `decoder` is one of
     `DECODERS`; `run_cnaster_port --copy-decode` binds it at install.
-    `parsimony` is the lattice decode's prior weight, `0` unless
-    `run_cnaster_port --parsimony-decode` binds `PARSIMONY` at install.
+    `parsimony` is the lattice decode's prior weight, `PARSIMONY` unless
+    `run_cnaster_port --no-parsimony-decode` binds `0` at install.
     """
     _, total = _caps(
         arguments.get("max_allele_copy", 5), arguments.get("max_total_copy", 6)
@@ -402,7 +403,7 @@ def hill_climbing_integer_copynumber_oneclone(
 @as_upstream(
     cnaster.integer_copy.hill_climbing_integer_copynumber_fixdiploid_milp,
     decoder="lattice",
-    parsimony=0.0,
+    parsimony=PARSIMONY,
 )
 def hill_climbing_integer_copynumber_fixdiploid_milp(
     arguments: dict[str, Any], options: dict[str, Any]
@@ -412,8 +413,8 @@ def hill_climbing_integer_copynumber_fixdiploid_milp(
     `base_nb_mean` and the hill climb's own keywords are accepted and unused:
     the capture carries the fit the decode reads. `decoder` is one of
     `DECODERS`; `run_cnaster_port --copy-decode` binds it at install.
-    `parsimony` is the lattice decode's prior weight, `0` unless
-    `run_cnaster_port --parsimony-decode` binds `PARSIMONY` at install.
+    `parsimony` is the lattice decode's prior weight, `PARSIMONY` unless
+    `run_cnaster_port --no-parsimony-decode` binds `0` at install.
     """
     _, total = _caps(
         arguments.get("max_allele_copy", 5), arguments.get("max_total_copy", 6)

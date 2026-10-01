@@ -24,8 +24,8 @@ from tests.source_graph import PACKAGE, TESTS
 BUDGET: dict[str, int] = {
     # NB 23: #520 removed --np-merge; `--png-copies` binds what the
     #    `_PNG_COPIES` switch held (#517 step 1). 24: #547's `--baf-start`,
-    #    the BAF-only stage's copy-state start. 25: `--parsimony-decode`, the
-    #    lattice decode's prior, off by default (T- #471).
+    #    the BAF-only stage's copy-state start. 25: `--no-parsimony-decode`, the
+    #    lattice decode's flat prior, opt-in (T- #471).
     "run_cnaster_port flags": 25,
     # NB 53: step 1 removed the two `_Selection` slots behind the decoder and
     #    solver switches; step 5 added `Settings`, the entry point's one

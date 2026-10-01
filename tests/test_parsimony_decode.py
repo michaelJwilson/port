@@ -1,13 +1,13 @@
-"""`run_cnaster_port --parsimony-decode`: the lattice decode's prior, off by default.
+"""`run_cnaster_port --no-parsimony-decode`: the lattice decode's prior, on by default.
 
 `lattice_decode` scores each `(A, B)` with the log-prior
 `-parsimony |A + B - 2|`. The entry point binds `parsimony` on the copy rows
-at install: `0`, a flat prior, without the flag, and `PARSIMONY` with it. What
+at install: `PARSIMONY` without the flag, and `0`, a flat prior, with it. What
 is pinned:
 
 - at `0` the prior is zero for every state (`analytic`);
-- without the flag `0` reaches `lattice_decode`, and with it the decode is
-  bitwise `lattice_decode`'s default call, the decode before this option
+- without the flag the decode is bitwise `lattice_decode`'s default call, the
+  decode before this option, and with it `0` reaches `lattice_decode`
   (`patch`);
 - the flag where no lattice decode reads it, and a negative weight, are
   refused (`infra`).
@@ -99,21 +99,21 @@ def test_a_parsimony_of_zero_is_a_flat_prior() -> None:
 
 
 @pytest.mark.patch
-def test_without_the_flag_zero_reaches_the_lattice_decode() -> None:
-    """The copy rows' default binds `parsimony=0`, and the decode receives it."""
-    calls = _decode(_clones())
+def test_with_the_flag_zero_reaches_the_lattice_decode() -> None:
+    """`--no-parsimony-decode` binds `parsimony=0`, and the decode receives it."""
+    calls = _decode(_clones(), parsimony=0.0)
 
     assert len(calls) == 1
     assert calls[0]["kwargs"]["parsimony"] == 0.0
 
 
 @pytest.mark.patch
-def test_with_the_flag_the_decode_is_bitwise_the_default_lattice_decode() -> None:
-    """`PARSIMONY` bound: pairs, fractions and likelihood equal `lattice_decode`'s default call."""
+def test_without_the_flag_the_decode_is_bitwise_the_default_lattice_decode() -> None:
+    """The rows' default: pairs, fractions and likelihood equal `lattice_decode`'s default call."""
     from port.extensions.copy_likelihood import lattice_decode
 
     clones = _clones()
-    calls = _decode(clones, parsimony=PARSIMONY)
+    calls = _decode(clones)
     before = lattice_decode(clones, normal_clone=0, max_total_copy=6)
     after = calls[0]["decoded"]
 
@@ -127,16 +127,16 @@ def test_with_the_flag_the_decode_is_bitwise_the_default_lattice_decode() -> Non
 
 
 @pytest.mark.infra
-def test_the_entry_point_binds_zero_unless_asked(tmp_path: Path) -> None:
-    """`Settings.parsimony`: `0` by default, `PARSIMONY` with `--parsimony-decode`."""
+def test_the_entry_point_binds_zero_only_when_asked(tmp_path: Path) -> None:
+    """`Settings.parsimony`: `PARSIMONY` by default, `0` with `--no-parsimony-decode`."""
     from port.scripts.run_cnaster import _parser, _settings
 
     config = str(tmp_path / "config.yaml")
 
-    assert _settings(_parser().parse_args([config])).parsimony == 0.0
+    assert _settings(_parser().parse_args([config])).parsimony == PARSIMONY
     assert (
-        _settings(_parser().parse_args([config, "--parsimony-decode"])).parsimony
-        == PARSIMONY
+        _settings(_parser().parse_args([config, "--no-parsimony-decode"])).parsimony
+        == 0.0
     )
 
 
@@ -150,7 +150,7 @@ def test_the_flag_where_no_lattice_decode_reads_it_is_refused(
     from port.scripts.run_cnaster import main
 
     with pytest.raises(SystemExit):
-        main([str(tmp_path / "config.yaml"), "--parsimony-decode", *extra])
+        main([str(tmp_path / "config.yaml"), "--no-parsimony-decode", *extra])
     assert "needs the lattice copy decode" in capsys.readouterr().err
 
 
