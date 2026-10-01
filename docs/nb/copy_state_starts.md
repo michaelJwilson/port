@@ -1,6 +1,6 @@
 # Copy-state starts at oracle clones (#540)
 
-**TL;DR.** On dev_tree 60 × 50 r0 at the planted clones: 42 starts, 1,015
+**TL;DR.** On dev_tree 60 × 50 r0 (`3381575a`) at the planted clones: 42 starts, 1,015
 trials, each polished by `sal`'s EM for up to 60 s and scored on the whole
 call.
 
@@ -78,7 +78,7 @@ under it with a 300 normal-UMI segment floor. The other starts are in
 `port.sandbox.extensions.copy_starts`.
 
 **Conditions.**
-- The calls come from one `--sal --oracle-start` run of dev_tree r0, rebuilt
+- The calls come from one `--sal --oracle-start` run of dev_tree 60 × 50 r0 (`3381575a`), rebuilt
   at the planted clones for both stages (`tests.studies.copy_starts capture`).
 - Every trial is a start, then `sal`'s EM on the whole call, within 60 s.
   Seeds 0-2; deterministic starts once. 4 forked workers on the 4-core host,
