@@ -68,6 +68,8 @@ ROLES: dict[str, Role] = {
     "port.extensions.segments": "extension",
     "port.extensions.vocabulary": "tool",
     # patch: rows
+    "port.patch.hmm_nophasing.bb_logpmf": "row",
+    "port.patch.hmm_nophasing.nb_logpmf": "row",
     "port.patch.hmm_nophasing.shifted_emission": "row",
     "port.patch.hmm_phased.coded_emission": "row",
     "port.patch.hmrf.clone_assignment": "row",

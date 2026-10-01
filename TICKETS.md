@@ -65,6 +65,8 @@ own.
   spatio-sequential simulator (#4)
 - Separate the two uses of `snakes_and_ladders`: a fixture that plants truth,
   and an oracle that referees an implementation (#69)
+- Baseline release: what `--sal` on `main` recovers, and the failures it ships
+  with (#577)
 
 ## Milestone 2.1 — Coverage over the whole of cnaster
 

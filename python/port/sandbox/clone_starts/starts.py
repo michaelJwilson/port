@@ -2,7 +2,7 @@
 
 Ticket: #541 -- which clone-label start places the spots best before a Potts
   solver, and which solver from it.
-Measurement: `docs/nb/clone_label_study.ipynb`, on dev_tree 60 x 50 r0.
+Measurement: `docs/nb/clone_label_study.ipynb`, on dev_tree 60 x 50 r0 (`3381575a`).
 Exit: a start graduates to `patch/` if, end to end under `--sal`, it is at
   least as accurate as `grid2` on dev_tree, easy, hard and
   `dev_shared_unique` and no slower; else it stays here with its numbers.

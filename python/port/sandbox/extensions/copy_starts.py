@@ -2,7 +2,7 @@
 
 Ticket: #540 -- which start places the HMM's copy states; #547 kept `sal`'s
   starts and the lattice live and set the rest aside.
-Measurement: #540's study at the planted clones of dev_tree r0 (1,015
+Measurement: #540's study at the planted clones of dev_tree 60 x 50 r0 (`3381575a`; 1,015
   trials; `docs/nb/copy_state_starts.ipynb`): `distinct` 40.4 nats below
   the best BAF-only fit, `rdr-quantiles` 25.3 from the BAF + RDR call and
   118.7 without it, `cna-mixture++` refused by `cnaster`.

@@ -4,6 +4,10 @@ extends = "dev_tree_1s.toml"
 
 [sample]
 name = "dev_tree_1s_easy"
+# NB `tests.sim_stages.realization_hash` of r0 as drawn here: a change to this
+#    manifest or to the simulator that moves it states the new one, so the hash
+#    names the generation (`tests/test_sim_r0_hash.py`).
+r0_hash = "0330bc21"
 
 [model]
 # NB CalicoST's tumour share, fitted per spot at its planted states: 0.835-0.910 by clone,
