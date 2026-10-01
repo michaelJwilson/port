@@ -612,13 +612,30 @@ def analytic_bfgs(gradient: Callable[[np.ndarray], np.ndarray]) -> Any:
             options=options,
         )
 
-        model._components = Components(float(result.x[n]), float(result.x[n + 1]))
+        # NB standard errors from the shared block of the objective's
+        #    Hessian, central differences of its gradient at the optimum:
+        #    conditional on every other coordinate, and with the posteriors
+        #    held, so a lower bound on the marginal error.
+        z = np.array(result.x, dtype=np.float64)
+        block = np.empty((2, 2))
+        step = 1e-4
+
+        for i in range(2):
+            unit = np.zeros_like(z)
+            unit[n + i] = step
+            block[:, i] = (augmented(z + unit)[1][n:] - augmented(z - unit)[1][n:]) / (
+                2.0 * step
+            )
+
+        model._components = Components(float(z[n]), float(z[n + 1]))
+        symmetric = 0.5 * (block + block.T)
+        try:
+            covariance = np.linalg.inv(symmetric)
+            model._components_errors = np.sqrt(np.clip(np.diag(covariance), 0.0, None))
+        except np.linalg.LinAlgError:
+            model._components_errors = None
+
         hess_inv = getattr(result, "hess_inv", None)
-        model._components_errors = (
-            np.sqrt(np.clip(np.diag(hess_inv)[n:], 0.0, None))
-            if hess_inv is not None
-            else None
-        )
         result.x = result.x[:n]
         if hess_inv is not None:
             result.hess_inv = hess_inv[:n, :n]

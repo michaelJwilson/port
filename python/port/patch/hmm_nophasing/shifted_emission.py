@@ -341,7 +341,7 @@ class hmm_nophasing(UPSTREAM):  # type: ignore[misc]
     """This fit's clone-shared dispersion, or `None`."""
 
     _components_errors: Any = None
-    """BFGS's inverse-Hessian standard errors on `(log alpha_shared, log tau_shared)`."""
+    """Standard errors on `(log alpha_shared, log tau_shared)`: the objective's shared Hessian block, conditional on the rest."""
 
     _row_components: Any = None
     """The last fit's clone-shared dispersion, for the static dense emission and the next fit's start."""
@@ -562,7 +562,7 @@ class hmm_nophasing(UPSTREAM):  # type: ignore[misc]
             errors = self._components_errors
             logger.info(
                 "two-component dispersion: alpha_shared %.4g, tau_shared %.4g "
-                "(rho %.4g); log-scale standard errors %s",
+                "(rho %.4g); conditional log-scale standard errors %s",
                 self._components.alpha,
                 float(np.exp(self._components.log_tau)),
                 self._components.rho,
