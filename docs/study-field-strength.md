@@ -11,7 +11,7 @@ On the hard analogue only TRW-S's decode, `--sal`'s Alpha-rust-fuse and
 max-product reach TRW-S's bound on every run from random labels. ICM stops
 13–15 nats above it, and neither polish moves it.
 
-Fixtures: CalicoST easy (`23989aa4`) and hard (`1ae26365`), the shipped
+Fixtures: CalicoST easy (`2d4ce9a9`) and hard (`8797710b`), the shipped
 samples. `dev_tree_1s` (`4687b541`), `dev_tree_1s_easy` (`d08e3a1b`) and
 `dev_tree_1s_hard` (`d2938975`) are each manifest's r0 hash; realization k
 is the k-th draw of `[sample] seed = 0`. This branch's `port.sim.draw` has no
@@ -47,12 +47,12 @@ here is the gamma sampler's: the hashes are `docs/baseline-release.md`'s.
 
 | | median margin [nats] | 10% margin | argmax wrong | ARI |
 | --- | --- | --- | --- | --- |
-| pipeline, CalicoST easy (`23989aa4`) | 0.8 | −2.1 | 0.360 | 0.271 |
-| pipeline, CalicoST hard (`1ae26365`) | 0.2 | −1.8 | 0.445 | 0.181 |
+| pipeline, CalicoST easy (`2d4ce9a9`) | 0.8 | −2.1 | 0.360 | 0.271 |
+| pipeline, CalicoST hard (`8797710b`) | 0.2 | −1.8 | 0.445 | 0.181 |
 | pipeline, `dev_tree_1s` r2–r4 (r0 `4687b541`) | 9.2–9.8 | 3.2–3.8 | 0.025–0.029 | 0.941–0.951 |
-| known law, CalicoST easy (`23989aa4`) | 3.5 | −0.1 | 0.105 | 0.737 |
+| known law, CalicoST easy (`2d4ce9a9`) | 3.5 | −0.1 | 0.105 | 0.737 |
 | known law, `dev_tree_1s_easy` r0–r2 (r0 `d08e3a1b`) | 3.8 | −0.1 | 0.105 | 0.726 |
-| known law, CalicoST hard (`1ae26365`) | 1.0 | −1.1 | 0.296 | 0.371 |
+| known law, CalicoST hard (`8797710b`) | 1.0 | −1.1 | 0.296 | 0.371 |
 | known law, `dev_tree_1s_hard` r0–r2 (r0 `d2938975`) | 0.9 | −1.4 | 0.312 | 0.342 |
 | known law, `dev_tree_1s` r0–r2 (r0 `4687b541`) | 17.6 | 8.2 | 0.002 | 0.996 |
 
