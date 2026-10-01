@@ -41,6 +41,7 @@ STATE: dict[str, Kind] = {
     "port.extensions.segments._CURRENT": "run",
     "port.patch.hmm_nophasing.rescale._ACTIVE": "run",
     "port.patch.hmm_nophasing.rescale._RECORDS": "run",
+    "port.patch.hmm_nophasing.shifted_emission.hmm_nophasing._row_components": "run",
     "port.patch.hmm_nophasing.shifted_emission.hmm_nophasing._row_rescale": "run",
     "port.patch.hmm_nophasing.shifted_emission.hmm_nophasing._row_shift": "run",
     "port.patch.hmrf.clone_assignment._BOUNDARY": "cache",
