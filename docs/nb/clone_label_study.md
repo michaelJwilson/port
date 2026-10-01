@@ -1,6 +1,6 @@
 # Clone-label starts × Potts solvers at dev_tree (#541)
 
-**TL;DR.** On dev_tree 60 × 50 r0 (6,000 spots, 2 slices), with copy states from
+**TL;DR.** On dev_tree 60 × 50 r0 (`3381575a`; 6,000 spots, 2 slices), with copy states from
 #540's `kmeans++x5+em` and fields built from each start's labels:
 
 - **The solver does not decide the outcome; the start does.** Every graph-cut
@@ -47,7 +47,7 @@
 assignment of each stage, on that fit's field, with `--sal` otherwise
 (`tests.studies.clone_labels e2e`, #553's `--sal`):
 
-| first assignment | dev_tree | dev_shared_unique | easy | hard |
+| first assignment | dev_tree r0 (`3381575a`) | dev_shared_unique r0 (`097bb52b`) | CalicoST easy (`23989aa4`) | CalicoST hard (`1ae26365`) |
 | --- | --- | --- | --- | --- |
 | `--sal` (none) | 1.0 (4) / 0.9825 | 0.9971 (4) / 0.9941 | 0.9861 (4) / 0.9035 | 0.9829 (4) / 0.9181 |
 | mean field | 1.0 (4) / 0.9825 | 0.9983 (4) / 0.9577 | 0.9861 (4) / 0.9035 | 0.9838 (4) / 0.9135 |
@@ -67,7 +67,7 @@ The starts stay in `port.sandbox.clone_starts` with these numbers; the
 solver stays `alpha-rust-fuse-merge`.
 
 **Conditions.**
-- The capture is one `--sal --oracle-start` run of dev_tree r0 (spot order
+- The capture is one `--sal --oracle-start` run of dev_tree r0 (`3381575a`; spot order
   checked against the truth). Its segmentation is that run's, the planted
   clones' BAF stage. Every field and start is built from labels alone, and
   the planted labels only score.
