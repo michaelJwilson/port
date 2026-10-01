@@ -2,16 +2,14 @@
 
 Guidance for Claude Code when working in this repository.
 
-This file mirrors [`snakes_and_ladders/CLAUDE.md`](https://github.com/michaelJwilson/snakes_and_ladders)
-section for section, in its order and under its headings, so the two diff
-against each other. Upstream remains authoritative: where a heading below
-carries less than upstream's does, upstream's governs the remainder; where
-the two disagree, this file wins, and the disagreement is the reason it is
-written down.
+This file follows the rules of the root
+[`snakes_and_ladders/CLAUDE.md`](https://github.com/michaelJwilson/snakes_and_ladders),
+and augments, refines or overrides them here. Where the two disagree, this
+file wins; it need not mirror upstream's sections or order.
 
 Everything specific to `port` is gathered under **The application** at the
-end. That is where a rule with no home under an upstream heading goes, and a
-rule that fits neither is a rule to delete rather than to place.
+end. A rule with no home under another heading goes there, and a rule that
+fits neither is a rule to delete rather than to place.
 
 ## Writing Style
 1.  **(Reviewer) Time is money and context windows are short:** Be concise
@@ -43,7 +41,7 @@ rule that fits neither is a rule to delete rather than to place.
     (`3381575a`). A name is not a dataset: the same name has held different
     data, and only the hash says which a number was measured on.
 
-These rules are paramount, as upstream states: every document, `CLAUDE.md`,
+These rules are paramount: every document, `CLAUDE.md`,
 docstring, comment, commit message, PR, and plan or comment posted to a
 thread. They are restated rather than referenced because a reader of `port`
 alone must not have to follow a link to find the rules governing every line
@@ -65,8 +63,7 @@ in a ticket first.
 
 ## Repository Map
 
-This file is authoritative. The repository is young, and upstream's map
-names documents that do not exist here yet:
+This file is authoritative:
 
 | Document | Job |
 | --- | --- |
@@ -81,7 +78,7 @@ The last three carry one list of milestones between them, and
 one file alone. A planning document that can drift silently is one that
 will.
 
-Add a document from the upstream map when the repository has the content
+Add a further document when the repository has the content
 for it, not ahead of it -- `DEV.md` and `INSTALL.md` when `README.md`
 can no longer carry both, `CHANGELOG.md` when `towncrier` has a release to
 build, `REFERENCES.md` when the citations outgrow **The application**.
@@ -89,10 +86,9 @@ build, `REFERENCES.md` when the citations outgrow **The application**.
 and the `ruff` rule set, so the tooling precedes the documents rather than
 waiting on them.
 
-Upstream carries submodules, each with its own `CLAUDE.md`. `port` has one
-package and one crate, so this file is the whole of the guidance. A
-submodule `CLAUDE.md` is added when a directory has details this file should
-not carry, not before.
+`port` has one package and one crate, so this file is the whole of the
+guidance. A submodule `CLAUDE.md` is added when a directory has details this
+file should not carry, not before.
 
 ## Environment & Tooling
 *   **Python (3.12):** Manage via `uv`. Run `uv sync --locked --all-extras`.
@@ -114,9 +110,9 @@ not carry, not before.
     diff.
 
 ## High Performance frameworks
-*   **Measurement.** Upstream's rule, and the one cited most often here.
-    Validity is established at every tier -- at gate sizes so a merge has
-    something to gate on, and at stress sizes because a claim that holds
+*   **Measurement.** The rule cited most often here. Validity is
+    established at every tier -- at gate sizes so a merge has something to
+    gate on, and at stress sizes because a claim that holds
     only where the problem is small is not the claim being made. A
     **speedup** is established at stress sizes alone. A ratio read at a gate
     size decides nothing in either direction, and an optimization whose only
@@ -132,20 +128,19 @@ not carry, not before.
 *   **The Oracle.** Every accelerated kernel keeps its pure Python/NumPy
     implementation as an oracle. Regression tests pin the accelerated output
     against it, and recover known values on sims.
-*   **Rust backend (`oxiport`).** Upstream's `oxi_snakes_and_ladders` rule,
-    read for `oxiport`: a CPU-bound hot path earns the port at $\ge 2\times$
-    over the vectorized NumPy reference at realistic sizes, and below that
-    the simpler code wins and the port is reverted rather than kept.
-*   **GPU.** Upstream's $\ge 10\times$ bar applies unchanged. `port` has no
+*   **Rust backend (`oxiport`).** A CPU-bound hot path earns the port at
+    $\ge 2\times$ over the vectorized NumPy reference at realistic sizes,
+    and below that the simpler code wins and the port is reverted rather
+    than kept.
+*   **GPU.** A GPU path earns its place at $\ge 10\times$. `port` has no
     GPU path today; the rule is here so that proposing one is a measurement
     rather than a preference.
 
 ## High Performance coding
 
-Upstream's section governs in full. Its principles are restated here; its
-evidence is not, because a number measured on upstream's fixtures is
-upstream's result, and quoting it here would be a claim this repository has
-not made.
+A principle is quoted here; its evidence is measured here. A number measured
+on another repository's fixtures is that repository's result, and quoting it
+would be a claim this one has not made.
 
 *   **Profile first.** `cProfile` decides what is worth testing and whether
     alternatives are superior.
@@ -161,9 +156,8 @@ not made.
     problem size alone is chosen on the wrong variable, and a default taken
     from one fixture is a default taken from one dataset.
 *   **Caches, memory layout, vectorization, branch misprediction, inlining,
-    allocation, the FFI boundary, parallelism and the GIL.** Upstream states
-    each, and the statement is not improved by restating it. Its exception
-    is noted here because it is the one most easily lost: the
+    allocation, the FFI boundary, parallelism and the GIL,** each considered
+    where the profile points. The exception most easily lost: the
     contiguous-layout rule stops at the Python boundary and inverts for a
     pure-Python inner loop.
 *   **Compiled backends.** `njit` for ease, Rust carries the load.
@@ -230,7 +224,7 @@ a test.
     the sizes the Measurement rule requires.
 3.  **Coverage:** the `--cov-fail-under` gate is maintained or raised. Never
     lower it to pass a PR. **The application** states what it is measured
-    against, which is not what upstream measures.
+    against.
 4.  **Docs & Tooling:** CI covers the new code. `ruff`, `mypy` and `cargo`
     checks pass locally. Documentation Sync is satisfied.
 5.  **Dependency Hygiene:** Follows the OSI-licence and external-tools
@@ -249,6 +243,10 @@ a test.
     for the application, `snakes_and_ladders`' for what is not application
     specific. `port.extensions.vocabulary` lists them and the words they
     retire.
+*   **One vocabulary, everywhere.** A concept takes one word in code,
+    output files, flags, logs, documents and tests alike. A reader who learns
+    a name once can follow it through a run, from the option that sets it to
+    the column that reports it.
 *   **A drop-in keeps `cnaster`'s signature.** Rebinding a name is how it
     installs, so the conventions govern what `port` owns, not what it
     replaces. Defaults included, in every table; a `port` option is
@@ -256,8 +254,16 @@ a test.
     install. Nothing a drop-in writes outlives the run.
 *   **Every module has one role, and lives where the role says.** `patch/`
     replaces a named `cnaster` function or serves one that does;
-    `extensions/` adds what has no counterpart; `sandbox/` holds what is set
-    aside, with its ticket, measurement and exit.
+    `extensions/` adds what has no counterpart, opt-in or a default its
+    measurement earned; `sandbox/` holds developed patches and extensions
+    that are not the default, each with its ticket, measurement and exit.
+    One whose exit resolves against it leaves the tree for a named reference
+    branch rather than staying set aside.
+*   **Complexity is budgeted.** A flag, constant, global or class names the
+    measurement that earned it; one that cannot is removed.
+*   **A docstring is a contract:** what the code does, its departure from
+    the reference, and its ticket. Measurements and history live in
+    `docs/` and tickets, where they can be superseded without editing code.
 *   **One implementation per concept,** in `tests/` as in the package. A
     known departure from any of these is a declared list that can only
     shrink.
@@ -275,8 +281,8 @@ a test.
 ## Conventions
 *   **Documentation Sync:** Any change affecting behaviour, CI, dev setup or
     math models must update, in the same PR, whichever documents it makes
-    inaccurate: `README.md`, `CLAUDE.md`, and whichever of the upstream map
-    exist by then. If the change is user-visible, add a fragment under
+    inaccurate: `README.md`, `CLAUDE.md`, and the rest of the Repository
+    Map. If the change is user-visible, add a fragment under
     `changelog.d/`, whose `README.md` states what counts as user-visible here
     -- a narrow set, because most of what this repository produces is not
     visible to an importer of `port`.
@@ -286,6 +292,8 @@ a test.
 *   **Define abstractions and APIs where they align and simplify multiple
     use cases.**
 *   **Dev Standards:** One PR per ticket, to minimize review and tests.
+*   **A stacked PR moves to `main` before its base merges.** Merged into a
+    base that has already landed, it lands nowhere, and nothing says so.
 *   **A ticket reports as it goes:** open a branch and draft a PR
     immediately when starting work.
 *   **Throughput:** one agent works at a time, in its own worktree, and it
@@ -307,9 +315,9 @@ a test.
 
 ## The application
 
-Everything above is upstream's, restated or adopted. Everything below is
-`port`'s, and exists because this repository validates a dependency it does
-not own.
+Everything above would hold of any scientific repository. Everything below
+is `port`'s, and exists because this repository validates a dependency it
+does not own.
 
 ### The three references
 
