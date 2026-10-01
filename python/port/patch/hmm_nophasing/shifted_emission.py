@@ -79,6 +79,10 @@ build once.
 
 The whole call, against the unshifted emission upstream runs: **1.12x** at
 3 x 1,000 and **1.83x** at 10 x 29,000, `K = 7`.
+
+The per-bin kernels are this module's `_nb_logpmf_1d` and `_bb_logpmf_1d`
+names, called from Python, so `port.pipeline.LOG_SPACE_SWAPS` rebinds them
+here as it does in `cnaster` (#560, #561).
 """
 
 from __future__ import annotations

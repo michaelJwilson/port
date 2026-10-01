@@ -17,10 +17,20 @@ copy ARI 0.8652 -> 0.9055; 60 x 50 and easy unchanged.
 The BAF-only stage (`params` without `m`) and `only_minor=True` calls have no
 exposure to condition on and keep the start they had: `distinct`'s where it is
 installed, `cnaster`'s otherwise.
+
+**`emission++` scores floored at 0 (#562).** `sal`'s `_seed_scores` returns
+the negative binomial's Bregman divergence, non-negative in exact arithmetic
+and `-1.6e-15` in float64 for a row a hair from a seed's mean; D-squared
+sampling then hands `rng.choice` a negative probability and the start is
+refused. :func:`fitted` floors the scores at 0 for the call, which is the
+exact divergence's sign and moves no score by more than its round-off.
+`sal` is read only, so landing the floor there is left to it.
 """
 
 from __future__ import annotations
 
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from typing import Any
 
 import numpy as np
@@ -32,6 +42,7 @@ __all__ = [
     "DEFAULT",
     "POLISH_SECONDS",
     "checked",
+    "clamped_divergence",
     "gmm_init",
     "instance_of",
 ]
@@ -110,6 +121,29 @@ def instance_of(
     )
 
 
+@contextmanager
+def clamped_divergence() -> Iterator[None]:
+    """`sal`'s emission++ divergences floored at 0 for the block (#562), restored after."""
+    import sal.opt.emission_mixture as upstream
+
+    original = upstream._seed_scores
+
+    def floored(observations: np.ndarray, at: Any) -> Callable[..., np.ndarray]:
+        score = original(observations, at)
+
+        def nonnegative(seed: float, candidates: np.ndarray) -> np.ndarray:
+            return np.asarray(np.maximum(score(seed, candidates), 0.0))
+
+        return nonnegative
+
+    upstream._seed_scores = floored
+
+    try:
+        yield
+    finally:
+        upstream._seed_scores = original
+
+
 def fitted(
     instance: Any, start: str, rng: np.random.Generator
 ) -> tuple[np.ndarray, np.ndarray]:
@@ -118,16 +152,19 @@ def fitted(
 
     chosen = lookup(start)
 
-    if isinstance(chosen, BestOf) and chosen.select is Selection.POLISHED:
-        _, best = chosen.polished(
-            instance, rng, seconds=POLISH_SECONDS, passes=None, tolerance=1e-6
-        )
-        components = best.components
-    else:
-        seeded = chosen(instance, rng)
-        components = polish(
-            instance, seeded.components, seconds=POLISH_SECONDS, tolerance=1e-6
-        ).components
+    # NB every start in-process: a best-of runs its seedings serially at
+    #    sal's default of one worker, so the floor reaches each of them.
+    with clamped_divergence():
+        if isinstance(chosen, BestOf) and chosen.select is Selection.POLISHED:
+            _, best = chosen.polished(
+                instance, rng, seconds=POLISH_SECONDS, passes=None, tolerance=1e-6
+            )
+            components = best.components
+        else:
+            seeded = chosen(instance, rng)
+            components = polish(
+                instance, seeded.components, seconds=POLISH_SECONDS, tolerance=1e-6
+            ).components
 
     from sal.emissions import CountPairEmission
 
