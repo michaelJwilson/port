@@ -61,8 +61,7 @@ clones.
   been at that level since #487's lattice decode (#565).
 - **Classes.** Balanced gains (A = B > 1) score 0.000 on CalicoST easy and
   hard and on r0 of `dev_tree`, `dev_tree_1s` and `dev_tree_1s_hard`, and
-  0.878 on
-  `dev_tree_1s_easy` r0. Each run puts the planted (2, 2) bins in the same
+  0.878 on `dev_tree_1s_easy` r0. Each run puts the planted (2, 2) bins in the same
   HMM state as that clone's neutral bins, so only the per-bin decode can
   separate them (#573).
 - **Runtime.** 67–74 s on CalicoST's 1-slice samples, 111–157 s on the
