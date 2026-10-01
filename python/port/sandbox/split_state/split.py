@@ -8,11 +8,11 @@ Exit: graduate to `patch/` as an option of the `run_core_inference` row if it
   raises exact altered on the `dev_tree` fixtures without costing CalicoST a
   clone; else retire.
 
-The read-depth + BAF HMM has `hmm.n_states` states. On `dev_tree` r0 it
-spends them on the balanced ladder and fits a one-copy loss and a
-copy-neutral LOH, which share a BAF, as one state at the LOH's depth. The
-integer decode then cannot tell them apart, and each bin of the pair decodes
-to the same `(A, B)`.
+The read-depth + BAF HMM has `hmm.n_states` states. On `dev_tree` r0
+42 x 42 (`93398396`) it spends them on the balanced ladder and fits a
+one-copy loss and a copy-neutral LOH, which share a BAF, as one state at the
+LOH's depth. The integer decode then cannot tell them apart, and each bin
+of the pair decodes to the same `(A, B)`.
 
 `split_init` reads that from the fit. For each unbalanced state
 (`|p - 0.5| >= 0.1`) it takes the bins decoded to it, per clone, and their
@@ -28,7 +28,8 @@ candidate. It returns the rates and BAFs to refit from:
 `port.sandbox.split_state.split_state` then refits once, with
 `max_iter_outer = 0`, on the clones the first fit returned, and keeps that
 fit's assignment. **The clones are the first fit's, spot for spot.** Letting
-the refit reassign them moved CalicoST hard from clone ARI 0.982 to 0.380.
+the refit reassign them moved CalicoST hard (`1ae26365`) from clone ARI
+0.982 to 0.380.
 """
 
 from __future__ import annotations

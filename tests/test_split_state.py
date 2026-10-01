@@ -90,6 +90,7 @@ def test_the_split_decodes_r0_s_losses_apart_from_its_loh() -> None:
 
     Planted truth, `dev_tree` r0 (`3381575a`). The clones are the first
     fit's, so clone ARI holds; the thresholds are this branch's measurement
+    on `dev_tree` r0 42 x 42 (`93398396`), 0.896 exact altered
     (`port.sandbox.split_state.split`).
     """
     from port.sandbox.split_state import split_state
