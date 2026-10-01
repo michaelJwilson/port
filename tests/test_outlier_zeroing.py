@@ -1,4 +1,4 @@
-"""CalicoST easy's 223 outlier genes, from the loader to the bins (#574).
+"""CalicoST easy (`23989aa4`): 223 outlier genes, from the loader to the bins (#574).
 
 `quality.local_outlier_filter` flags 223 genes carrying 49.4% of easy's UMIs.
 Each test follows them one stage further, against `cnaster`'s own call:
@@ -179,7 +179,9 @@ def test_both_binning_calls_cut_cnaster_s_bins_on_the_zeroed_counts(
 def test_the_outlier_filter_moves_easy_s_recovery_by_its_stated_amounts(
     easy: Any, binned: tuple[Any, list[tuple[Any, Any, Any]]]
 ) -> None:
-    """Off reproduces #487's head; on is `main`. Clones are recovered either way.
+    """CalicoST easy (`23989aa4`): off reproduces #487's head; on is `main`.
+
+    Clones are recovered either way.
 
     | filter | bins | copy ARI | exact altered | phase-free |
     | --- | --- | --- | --- | --- |
