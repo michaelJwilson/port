@@ -597,7 +597,8 @@ def test_the_decode_files_recompute_its_likelihood_and_path(
 
 
 @pytest.mark.oracle
-@pytest.mark.merge
+# NB no tier: `tests.ci` runs every `oracle` test in its release step, and a
+#    `merge` mark would run it twice (`tests/test_ci_entry.py`). 36 s.
 @pytest.mark.xdist_group("pipeline")
 def test_a_run_s_decode_files_recompute_the_decode(tmp_path: Path) -> None:
     """`run_cnaster_port` on the two-state copy lattice writes every stage
