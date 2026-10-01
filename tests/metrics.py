@@ -43,6 +43,8 @@ METRICS = {
     "clone_ari_int": ("ari_integer", 4),
     "copy_ari": ("copy_ari", 4),
     "state_ari": ("state_ari", 4),
+    "exact_altered": ("exact_altered", 4),
+    "exact_altered_pf": ("exact_altered_minor", 4),
     "wall_s": ("wall", 1),
     "peak_gb": ("peak_gb", 2),
 }
