@@ -116,6 +116,9 @@ class Recorded:
 
     samples: Samples | None = None
     barcodes: np.ndarray | None = None
+    normal_candidates: np.ndarray | None = None
+    """Per spot, in `barcodes`' order, whether `determine_normal_candidates`
+    named it normal (#613); `None` until it runs."""
 
     def table(self) -> pd.DataFrame | None:
         """`sample` and `sample_id` per barcode, or `None` if nothing was recorded."""

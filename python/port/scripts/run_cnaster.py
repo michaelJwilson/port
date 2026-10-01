@@ -82,6 +82,14 @@ def _parser() -> argparse.ArgumentParser:
         help="skip port's fitted and decoded tables beside cnaster's (#331); off with --no-patch",
     )
     parser.add_argument(
+        "--calicost-outputs",
+        action="store_true",
+        help=(
+            "also write CalicoST's file set, filled from the run, into "
+            "calicost_compatible/ in each run directory (#613); off by default"
+        ),
+    )
+    parser.add_argument(
         "--no-patch",
         action="store_true",
         help="run the same pipeline with nothing rebound, for the baseline arm",
@@ -339,6 +347,12 @@ def _refusals(arguments: argparse.Namespace, settings: Settings) -> list[str]:
 def main(argv: Sequence[str] | None = None) -> int:
     """Run the pipeline, patched unless `--no-patch` is given."""
     arguments = _parser().parse_args(argv)
+
+    # NB the CalicoST set is filled from port's stage files, so it needs them.
+    if arguments.calicost_outputs and (arguments.no_outputs or arguments.no_patch):
+        _parser().error(
+            "--calicost-outputs reads port's outputs: drop --no-outputs and --no-patch"
+        )
 
     # NB imported before the swaps are applied, so that the rebinding finds
     #    the entry point's own `from cnaster.omics import ...` bindings. The
@@ -689,6 +703,14 @@ def main(argv: Sequence[str] | None = None) -> int:
 
         decodes = stack.enter_context(recorded())
 
+        # NB the HMRF's posterior over clones, for CalicoST's
+        #    `posterior_clone_probability.npy` (#613); computed only when asked.
+        posteriors: list[Any] = []
+        if arguments.calicost_outputs:
+            from port.patch.hmrf.clone_assignment import recorded as hmrf_recorded
+
+            posteriors = stack.enter_context(hmrf_recorded())
+
         started = time.perf_counter()
         pipeline.run_cnaster(arguments.config)
         wall = time.perf_counter() - started
@@ -713,6 +735,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             sampled,
             fits[-1] if fits else None,
             decodes[-1] if decodes else None,
+            posteriors[-1] if posteriors else None,
+            calicost=arguments.calicost_outputs,
         )
     if kept is not None:
         _write_copy_sets(arguments.config, kept)
@@ -728,13 +752,18 @@ def _write_outputs(
     samples: Any = None,
     captured: Any = None,
     decode: Any = None,
+    posterior: Any = None,
+    *,
+    calicost: bool = False,
 ) -> None:
     """`port.extensions.outputs` into each run directory the run wrote.
 
     `lineage` is the run's segmentations (#438), `samples` its
     `port.extensions.samples` recording (#418), `captured` the last fit
     `copy_likelihood.capture` kept and `decode` the last integer decode
-    (#613); each is `None` or empty where the run made none.
+    (#613); each is `None` or empty where the run made none. `calicost`
+    also writes CalicoST's file set from them (`--calicost-outputs`), with
+    `posterior` the HMRF's last.
     """
     from pathlib import Path
 
@@ -742,6 +771,7 @@ def _write_outputs(
         RunRecord,
         config_keys,
         run_directories,
+        write_calicost_outputs,
         write_outputs,
     )
 
@@ -755,12 +785,22 @@ def _write_outputs(
         return
 
     record = RunRecord(
-        lineage=lineage, samples=samples, captured=captured, decode=decode
+        lineage=lineage,
+        samples=samples,
+        captured=captured,
+        decode=decode,
+        posterior=posterior,
     )
 
     for run in run_directories(Path(output_dir)):
         write_outputs(run, Path(config), flags, record)
         print(f"run_cnaster_port: outputs written to {run}", file=sys.stderr)
+        if calicost:
+            write_calicost_outputs(run, record)
+            print(
+                f"run_cnaster_port: CalicoST's file set written to {run}",
+                file=sys.stderr,
+            )
 
 
 def _write_copy_sets(config: str, kept: list[Any]) -> None:
