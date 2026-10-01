@@ -115,6 +115,9 @@ ROLES: dict[str, Role] = {
     "port.sim.normal_fit": "sim",
     # sandbox
     "port.sandbox.admixture.clone_mixture": "set aside",
+    "port.sandbox.known_field.cluster": "set aside",
+    "port.sandbox.known_field.color_merge": "set aside",
+    "port.sandbox.known_field.field": "set aside",
     "port.sandbox.admixture.probes.sim_probe": "set aside",
     "port.sandbox.admixture.variants": "set aside",
     "port.sandbox.clone_starts.problem": "set aside",

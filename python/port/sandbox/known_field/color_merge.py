@@ -1,5 +1,12 @@
 """The color merge: cnaster's `merge_assignment` loop, in closed form (#556).
 
+Ticket: #556 -- cnaster's clone-merge loop in closed form, set aside for
+  the study's solvers.
+Measurement: `docs/study-field-strength.md`, the polished column: ICM plus
+  the color merge from each solver's labelling, on `dev_tree_1s_hard`.
+Exit: graduate to `extensions/` if it lowers `--sal`'s energy end to end on
+  dev_tree, easy and hard; else retire.
+
 `cnaster.hmrf` relabels a whole clone u into another v, the pair that lowers
 the energy most, and repeats until no pair does (`cnaster.icm.merge_assignment`,
 reached when `merge=True`). Its cost walks every spot's neighbours per round;
