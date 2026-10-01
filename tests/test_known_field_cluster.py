@@ -13,7 +13,6 @@ import itertools
 import numpy as np
 import pytest
 from port.extensions import field_cluster as cluster
-from sal.sample.potts_mcmc.sweeps import adjacency_lists
 from sal.sim.graph import PottsGraph
 from sal.sim.potts import energy
 
@@ -134,8 +133,7 @@ def test_each_move_draws_its_enumerated_kernel(
     origin = (0, 0, 0, 1)
     exact = _kernel(graph, rows, move)[index[origin]]
     rng = np.random.default_rng(11)
-    offsets, neighbours, couplings = graph.compressed_adjacency()
-    lists = adjacency_lists(offsets, neighbours, couplings)
+    lists = cluster.neighbour_lists(graph)
     counts = np.zeros(len(states))
     for _ in range(DRAWS):
         state = np.array(origin, dtype=np.int64)

@@ -38,7 +38,13 @@ from typing import Any
 
 import numpy as np
 
-__all__ = ["anneal", "field_weighted_sw", "field_weighted_wolff", "heat_bath_labels"]
+__all__ = [
+    "anneal",
+    "field_weighted_sw",
+    "field_weighted_wolff",
+    "heat_bath_labels",
+    "neighbour_lists",
+]
 
 
 def heat_bath_labels(
@@ -49,6 +55,13 @@ def heat_bath_labels(
     return np.asarray(
         np.argmax(inverse_temperature * weights + gumbel, axis=1), dtype=np.int64
     )
+
+
+def neighbour_lists(graph: Any) -> Any:
+    """`sal`'s per-site neighbour lists of `graph`, the form :func:`field_weighted_wolff` walks."""
+    from sal.sample.potts_mcmc.sweeps import adjacency_lists
+
+    return adjacency_lists(*graph.compressed_adjacency())
 
 
 def field_weighted_sw(
@@ -84,7 +97,7 @@ def field_weighted_wolff(
 ) -> int:
     """One Wolff cluster in place, its label drawn from its field weight; returns its size.
 
-    `lists` is `sal.sample.potts_mcmc.sweeps.adjacency_lists` of the graph.
+    `lists` is :func:`neighbour_lists` of the graph.
     """
     bounds, incident, weights = lists.bounds, lists.incident, lists.weights
     seed = int(rng.integers(state.shape[0]))
@@ -125,12 +138,12 @@ def anneal(
     step is one cluster, as `sal.search.ground_state.run_annealed` counts it.
     """
     from sal.backend import Backend
-    from sal.sample.potts_mcmc.sweeps import adjacency_lists, sweep_at
+    from sal.sample.potts_mcmc.sweeps import sweep_at
     from sal.sim.potts import energy
 
     state = np.array(start, dtype=np.int64)
     offsets, neighbours, couplings = graph.compressed_adjacency()
-    lists = adjacency_lists(offsets, neighbours, couplings)
+    lists = neighbour_lists(graph)
     sweep = (
         sweep_at(rows, offsets, neighbours, couplings, Backend.RUST)
         if glauber
