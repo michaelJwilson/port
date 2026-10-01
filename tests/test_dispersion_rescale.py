@@ -185,6 +185,7 @@ def _first(result: Any, key: str) -> float:
 
 
 @pytest.mark.analytic
+@pytest.mark.cnaster
 @pytest.mark.usefixtures("cnaster_config")
 def test_equal_clones_fit_as_unrescaled_up_to_the_factors() -> None:
     """Two clones of 16 equal spots, six trials each: `alpha f` and `rho g` are the unrescaled fit's, to 1e-3.
