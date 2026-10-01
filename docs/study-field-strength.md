@@ -126,11 +126,12 @@ ICM and the color merge. Numbers are the table's in the figures.
 - **`--sal`'s solver holds.** Alpha-rust-fuse reaches the bound on every
   run of all three, in 20–24 ms.
 
-| | energy − planted labelling's | gap above TRW-S's bound |
-| --- | --- | --- |
-| `dev_tree_1s_easy` | ![](plots/studies/potts_dev_tree_1s_easy.png) | ![](plots/studies/potts_dev_tree_1s_easy_gap.png) |
-| `dev_tree_1s_hard` | ![](plots/studies/potts_dev_tree_1s_hard.png) | ![](plots/studies/potts_dev_tree_1s_hard_gap.png) |
-| `dev_tree_1s` | ![](plots/studies/potts_dev_tree_1s.png) | ![](plots/studies/potts_dev_tree_1s_gap.png) |
+The figures, energy less the planted labelling's and the gap above TRW-S's
+bound per manifest, are not committed. `python -m tests.studies.potts_stream
+MANIFEST OUT_DIR` draws `OUT_DIR/<stem>.png` as each problem finishes, and
+`python -m tests.studies.potts_plot OUT_DIR/<stem>.pkl` redraws it from the
+pickle. The six figures drawn for this section stay in history, as
+`potts_dev_tree_1s*.png` under `ba34716:docs/plots/studies/` (`git show`).
 
 ## Tuned solvers on `dev_tree_1s_hard`, 25 realizations × 50 starts (#559)
 
@@ -170,7 +171,9 @@ the color merge, Missed raw / polished, and the median runtime.
 - The two kernels keep the Boltzmann law exactly on a 4-site enumeration
   (`tests/test_known_field_cluster.py`).
 
-![](plots/studies/potts_dev_tree_1s_hard_tuned.png)
+The figure is not committed: `python -m tests.studies.potts_plot
+OUT_DIR/<stem>.pkl` redraws it from the merged stream
+(`git show ba34716:docs/plots/studies/potts_dev_tree_1s_hard_tuned.png`).
 
 ## The lognormal-length generation (#619)
 
@@ -199,7 +202,8 @@ exponential generation (`0330bc21`, `ed2fcda1`), which was not rerun. The known-
   T- #556's and T- #612's, and rerunning the studies on this generation is
   T- #620's.
 
-![](plots/sim/cna_lengths.png)
+`python -m tests.studies.cna_lengths` draws both laws per manifest, into
+`.cache/plots/sim/cna_lengths.png`.
 
 ## Findings beside the study
 

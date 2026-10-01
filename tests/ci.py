@@ -9,7 +9,7 @@ first failure stops the run with that step's exit code.
 | `--badges` | the judged and drop-in coverage guards, `check_badges` | pre-merge |
 | `--full` | the gate, the badges, then `merge` tests neither guard ran | pre-merge |
 | `--release` | `release`, `oracle` and `deprecate` | release |
-| `--figures` | `docs/plots`, drawn locally | on a figure change |
+| `--figures` | the dev instance's figures, into `.cache/plots` | on a figure change |
 
 The tiers partition the suite -- `critical`, none, `merge`, `release`,
 `deprecate`, at most one per test (`tests/test_marker_discipline.py`) -- so
@@ -25,7 +25,7 @@ tree's is not re-measured: its figure is a function of those inputs, so it
 still holds. `--force` measures it anyway.
 
 `--install` sets the `badges` merge driver `.gitattributes` names: a merge
-keeps this branch's badge files and figures rather than stopping on them,
+keeps this branch's badge files rather than stopping on them,
 and `--badges` then measures what the merged tree actually reads.
 """
 
@@ -197,7 +197,7 @@ def _unchanged() -> set[str]:
 
 
 def install() -> int:
-    """Name the merge driver `.gitattributes` routes badges and figures to."""
+    """Name the merge driver `.gitattributes` routes badges to."""
     for key, value in (
         ("merge.badges.name", "keep this branch's; tests.ci --badges re-measures"),
         ("merge.badges.driver", "true"),
@@ -213,7 +213,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--badges", action="store_true", help="coverage guards")
     parser.add_argument("--full", action="store_true", help="gate, badges, merge")
     parser.add_argument("--release", action="store_true", help="release and oracle")
-    parser.add_argument("--figures", action="store_true", help="draw docs/plots")
+    parser.add_argument("--figures", action="store_true", help="draw .cache/plots")
     parser.add_argument(
         "--record", action="store_true", help="write the measured figures"
     )

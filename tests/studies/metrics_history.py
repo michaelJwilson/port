@@ -1,6 +1,7 @@
 """Clone and copy-state ARI across `main`'s merges, from the metrics ledger's history runs (`tests.metrics.read`, #620).
 
-`python -m tests.studies.metrics_history [OUT.png [OUT_CLASSES.png]]`
+`python -m tests.studies.metrics_history [OUT.png [OUT_CLASSES.png]]`, by default
+`.cache/plots/metrics_history{,_classes}.png` (`tests.plots_dir`), untracked.
 
 A history row is a `tests/sim_audit.py::main` run whose note starts with
 `HISTORY`: `--sal` measured at an earlier merge of `main`, newest to oldest,
@@ -23,11 +24,12 @@ from pathlib import Path
 from typing import Any
 
 from tests.metrics import ROOT, SIM_TEST, UNMEASURED, read
+from tests.plots_dir import PLOTS
 
 HISTORY = "HISTORY"
 """The note prefix that marks a row as a measurement at an earlier merge."""
 
-OUT = ROOT / "docs" / "plots" / "metrics_history.png"
+OUT = PLOTS / "metrics_history.png"
 
 SERIES = {
     "clone_ari": "clone ARI",
@@ -49,7 +51,7 @@ CLASSES = {
 }
 """Integer copy recovery by planted class, the second figure: phased solid, phase-free dotted."""
 
-OUT_CLASSES = ROOT / "docs" / "plots" / "metrics_history_classes.png"
+OUT_CLASSES = PLOTS / "metrics_history_classes.png"
 
 SKIP = ">>>>"
 """Drawn horizontally in the gap between a folded run's first and last tick,

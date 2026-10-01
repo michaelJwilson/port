@@ -1,14 +1,16 @@
 name: Figures
 
-# Regenerate every figure in docs/plots/ and commit it to the pull request's
-# branch (#296): the dev instance's run_cnaster_port figures, and the
-# realization figures, eight runs of one planted genome with the likelihood's
-# errors (#291). The figures are a result, not a
-# referee: a matplotlib PDF carries a creation timestamp, so every run differs
-# byte for byte (#103), and nothing here compares them with the previous
-# ones. What this guarantees is that the figures in a pull request are the
-# figures its code draws. A branch another open pull request is based on is
-# the exception: its figures are uploaded rather than committed (#350).
+# Draw the dev instance's run_cnaster_port figures and the realization
+# figures, eight runs of one planted genome with the likelihood's errors
+# (#291), and upload them as a workflow artifact. The figures are a result,
+# not a referee: nothing here compares them with previous ones. What this
+# guarantees is that the figures a pull request's code draws can be read
+# beside it.
+#
+# Nothing is committed. `docs/plots/` tracks no PNG
+# (`tests/test_ci_entry.py`), and both generators write to `.cache/plots/`
+# (`tests/plots_dir.py`), untracked. The commit step #296 added, and the
+# stacked-branch check (#350) that existed only to decide it, are removed.
 
 on:
   pull_request:
@@ -30,20 +32,8 @@ jobs:
     #    peaking at 4.7 GB, run one at a time because a private repository's
     #    standard runner has 7 GB.
     timeout-minutes: 45
-    permissions:
-      # NB the only job in the repository that writes, and it writes only
-      #    `docs/plots/`: the commit below stages that directory and nothing
-      #    else, so no badge or coverage figure is ever written by CI and
-      #    `check_badges`' refusal in ci.yml still means what it says.
-      contents: write
-      # NB to list the pull requests based on this branch (#350).
-      pull-requests: read
     steps:
       - uses: actions/checkout@v4
-        with:
-          # NB the branch itself, not the merge commit `pull_request` checks
-          #    out by default, so there is something to push to.
-          ref: ${{ github.event.pull_request.head.ref || github.ref }}
 
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
@@ -58,48 +48,14 @@ jobs:
 
       - run: uv run --no-sync python -m tests.realizations --realizations 8 --jobs 1
 
-      # NB a branch another open pull request is based on is not committed
-      #    to (#350): every PDF carries a timestamp (#103), so a commit here
-      #    re-conflicts each child on docs/plots alone. Its figures are
-      #    uploaded instead, and the child's own run commits its figures.
-      - name: Is another pull request stacked on this branch
-        id: stacked
-        if: github.event_name == 'pull_request'
-        env:
-          GH_TOKEN: ${{ github.token }}
-          HEAD: ${{ github.event.pull_request.head.ref }}
-        run: |
-          children=$(gh pr list --repo "$GITHUB_REPOSITORY" --base "$HEAD" --state open --json number --jq 'length')
-          echo "children=$children" >> "$GITHUB_OUTPUT"
-          echo "$children open pull request(s) based on $HEAD"
-
-      # NB a pull request from a fork gets a read-only token, so the figures
-      #    are uploaded there instead of committed.
-      - name: Commit the figures
-        # NB never onto a pull request's branch (#403): the figures are drawn
-        #    locally by `python -m tests.ci --figures` and committed by the
-        #    change that moves them, so two open pull requests never both
-        #    carry a regenerated PDF. A dispatched run on `main` still commits.
-        if: github.event_name != 'pull_request'
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add docs/plots
-          if git diff --cached --quiet; then
-            echo "no figure changed"
-            exit 0
-          fi
-          # NB a push with GITHUB_TOKEN starts no workflow run, so this
-          #    cannot re-trigger itself.
-          git commit -m "Regenerate docs/plots with run_cnaster_port (#296)"
-          git push
-
       - name: Upload the figures
-        if: github.event_name == 'pull_request'
         uses: actions/upload-artifact@v4
         with:
           name: figures
+          # NB upload-artifact v4.4 skips hidden paths unless asked, and
+          #    `.cache/` is one.
+          include-hidden-files: true
           path: |
-            docs/plots/*.png
-            docs/plots/*.npz
-            docs/plots/lattice/*.png
+            .cache/plots/*.png
+            .cache/plots/*.npz
+            .cache/plots/lattice/*.png

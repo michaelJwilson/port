@@ -1,6 +1,7 @@
 """#619: the `[cna.length]` laws, exponential against lognormal, per defined quantity.
 
-`python -m tests.studies.cna_lengths` writes `docs/plots/sim/cna_lengths.png`:
+`python -m tests.studies.cna_lengths [OUT.png]` writes `.cache/plots/sim/cna_lengths.png`
+(untracked, `tests.plots_dir`) or `OUT.png`:
 one row per keying -- `dev_tree`'s mean of 50 Mb, `dev_tree_1s_hard`'s median
 of 10 Mb -- with the density (left) and the CDF (right) of the exponential the
 manifests drew to #619 and the lognormal they draw now. Both laws in a row
@@ -26,10 +27,12 @@ import numpy as np
 from port.sim.draw import extended, lognormal_median
 from scipy import stats
 
+from tests.plots_dir import PLOTS
+
 ROOT = Path(__file__).resolve().parents[2]
 MANIFESTS = ROOT / "sim" / "manifests"
 KEYED = ("dev_tree.toml", "dev_tree_1s_hard.toml")
-OUT = ROOT / "docs" / "plots" / "sim" / "cna_lengths.png"
+OUT = PLOTS / "sim" / "cna_lengths.png"
 EXPONENTIAL, LOGNORMAL = "#eb6834", "#2a78d6"
 """Categorical slots 2 and 1: the law drawn to #619, and the law drawn now."""
 

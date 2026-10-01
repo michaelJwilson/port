@@ -4,7 +4,8 @@
 
 writes `docs/nb/data/clone_label_study_r0.json` (the rows, without the
 workers' tracebacks), then the notebook, executed by `nbclient`, which reads
-only that file and draws `docs/plots/studies/clone_label_study.png`.
+only that file and draws `.cache/plots/studies/clone_label_study.png`
+(untracked, `tests.plots_dir`) beside its own output.
 """
 
 from __future__ import annotations
@@ -151,7 +152,9 @@ right.axvline(oracle["ari"], color="C2", lw=0.6, ls="--")
 right.legend(loc="lower right", fontsize=7, frameon=False)
 right.set(xlabel="clone ARI", title="starts, with --sal's solver and floor (start + states and field, s)")
 figure.tight_layout()
-figure.savefig("../plots/studies/clone_label_study.png", dpi=150, metadata={"Software": None})""",
+# NB untracked (`tests.plots_dir`): the figure is this notebook's output above.
+Path("../../.cache/plots/studies").mkdir(parents=True, exist_ok=True)
+figure.savefig("../../.cache/plots/studies/clone_label_study.png", dpi=150, metadata={"Software": None})""",
     ),
     (
         "markdown",

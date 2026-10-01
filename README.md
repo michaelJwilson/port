@@ -205,7 +205,7 @@ uv run python -m tests.ci                  # gate: ruff, mypy, critical + untier
 uv run python -m tests.ci --badges         # judged and drop-in coverage; --record writes them
 uv run python -m tests.ci --full           # gate, badges, then `merge` tests and benchmarks
 uv run python -m tests.ci --release        # `release` and `oracle`
-uv run python -m tests.ci --figures        # redraw docs/plots
+uv run python -m tests.ci --figures        # draw the dev instance's figures into .cache/plots
 uv run python -m tests.ci --install        # once per clone: the `badges` merge driver
 cargo clippy --all-targets -- -D warnings  # Rust lint
 cargo fmt --check                          # Rust format
@@ -217,9 +217,11 @@ A `deprecate` test runs only in the change that touches its module (against
 `--base`, `origin/main`) and at a release. The gate
 is `pytest -n 4`; a whole-pipeline test (`xdist_group("pipeline")`) runs one
 at a time, since four exceed 15 GB. Badges are measured and recorded locally
-by the change that moves them. `.gitattributes` sends `.badges/*.json` and
-`docs/plots/*` to the `badges` driver, which keeps the branch's copy on a
-merge; `--badges --record` and `--figures` then regenerate them.
+by the change that moves them. `.gitattributes` sends `.badges/*.json` to
+the `badges` driver, which keeps the branch's copy on a merge; `--badges
+--record` then regenerates them. Figures are not committed: every generator
+writes to `.cache/plots/` by default (untracked), and `docs/plots/` tracks no
+PNG outside `docs/plots/paper/` (`tests/test_ci_entry.py`).
 
 `mypy` reads its paths from `pyproject.toml` (`python/`, `tests/`). The
 compiled extension is typed by the hand-written stub
@@ -271,7 +273,7 @@ follows the arm unless asked: on in a patched run, off with `--no-patch`.
 | `--hmm-start` | `none`; `kmeans++x5+em` with `--sal` | the read-depth HMM's copy states: a sal mixture start (#489), seeded in sal's rate space (#547), or `lattice`, the integer `(A, B)` lattice; `emission++` scores floored at 0 (#562) | #547: dev_tree r0 (`3381575a`) clone ARI 0.8612 (5) to 1.0 (4); with the segment floor, CalicoST hard (`8797710b`) copy ARI 0.9055 to 0.9181 |
 | `--baf-start` | `none` | the BAF-only HMM's copy states from the lattice (#540) | |
 | `--copy-errors` | off | `cnv_copy_sets.tsv`: every `(A, B)` in each state's 95 per cent credible region (#353) | differentiates the whole objective once |
-| `--png-copies` | off | a PNG without metadata beside each PDF, for `docs/plots` (#452) | two runs of the same code write the same bytes |
+| `--png-copies` | off | a PNG without metadata beside each PDF, for figures compared across runs (#452) | two runs of the same code write the same bytes |
 | `--sample-layout`, `--genomic-colours` | unset | one panel per sample (#328); bins coloured per fitted state | |
 | `--warm-up` | off | compile every kernel before the clock starts (#211) | |
 | `--no-plots`, `--no-outputs`, `--time-stages`, `--audit-config`, `--list` | off | build figures and write none (#403); skip port's tables (#331); cost per swapped name; unused config (#324); the table | |
@@ -492,8 +494,8 @@ urn, with CalicoST easy's and hard's event laws and admixture (#556, #581);
 `median`; a mean keys the median at `mean exp(-sigma^2 / 2)`). The live
 `dev_tree*` manifests draw lognormal lengths at `sigma = 0.541`,
 `port.sim.laws.lognormal_sigma(0.10, 0.5)`: 10% of events below half the
-median, against 29-35% under the exponential (#619,
-`docs/plots/sim/cna_lengths.png`). `baseline/` and `population*.toml` stay
+median, against 29-35% under the exponential (#619;
+`python -m tests.studies.cna_lengths` draws both laws). `baseline/` and `population*.toml` stay
 exponential; `baseline/dev_tree.toml` freezes `dev_tree`'s exponential
 generation (`3381575a`), which `tests.sim_stages` caches as r0.
 Each `dev_tree*` manifest states `[sample] r0_hash`, its realization 0's
@@ -567,7 +569,7 @@ not carry, not before.
 | [STATUS.md](STATUS.md) | What has landed, with the measurement that established it |
 | [CLAUDE.md](CLAUDE.md) | The rules |
 | [docs/measurements.md](docs/measurements.md) | The timings, ratios and histories the package docstrings cited, by module and object (#517) |
-| [docs/metrics/](docs/metrics/) | The metrics ledger, append-only TSVs: `ledger.tsv` one measured value per line, `runs.tsv` one line per run (commit, timestamp, arguments, test, note), `definitions.tsv` what each metric means, versioned (#409, #620). `python -m tests.metrics --record` appends; `--render [--out PATH]` prints the wide table, which is not committed; `python -m tests.studies.metrics_history` redraws `docs/plots/metrics_history*.png` from it |
+| [docs/metrics/](docs/metrics/) | The metrics ledger, append-only TSVs: `ledger.tsv` one measured value per line, `runs.tsv` one line per run (commit, timestamp, arguments, test, note), `definitions.tsv` what each metric means, versioned (#409, #620). `python -m tests.metrics --record` appends; `--render [--out PATH]` prints the wide table, which is not committed; `python -m tests.studies.metrics_history` draws `.cache/plots/metrics_history*.png` from it |
 | [docs/study-recovery-population.md](docs/study-recovery-population.md) | `--sal` sensitivity against clone UMIs and CNA length, and the false positive rate, over 679 simulated runs (#544) |
 | [docs/templates/](docs/templates/README.md) | Templates for documents made outside the code: the work-in-flight page (#335) |
 
