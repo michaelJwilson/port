@@ -228,3 +228,28 @@ def test_a_state_holding_three_rows_stops_at_the_bounds() -> None:
     np.testing.assert_allclose(alpha_bounded[1], ALPHA_MIN, rtol=1e-9)
     assert alpha_bounded.min() >= ALPHA_MIN * (1.0 - 1e-12)
     assert np.asarray(bounded["new_taus"]).max() <= TAU_MAX * (1.0 + 1e-12)
+
+
+@pytest.mark.analytic
+def test_the_clone_assignment_scores_spots_at_the_pooled_dispersion() -> None:
+    """Per-state: every state at the occupancy-weighted geometric mean; shared: `cnaster`'s values unchanged."""
+    from port.patch.hmm_nophasing import hmm_nophasing
+    from port.patch.hmrf.clone_assignment import assignment_dispersions
+    from port.pipeline import with_attributes
+
+    res = {
+        "new_alphas": np.array([[0.01], [0.1], [1.0]]),
+        "new_taus": np.array([[10.0], [100.0], [1000.0]]),
+    }
+    decoded = np.array([[0, 0], [0, 1], [2, 2], [2, 2]])
+    weight = np.array([3.0, 1.0, 4.0]) / 8.0
+
+    alphas, taus = assignment_dispersions(
+        with_attributes(hmm_nophasing, per_state_dispersion=True), res, decoded
+    )
+    np.testing.assert_allclose(alphas, np.exp(weight @ np.log([0.01, 0.1, 1.0])))
+    np.testing.assert_allclose(taus, np.exp(weight @ np.log([10.0, 100.0, 1000.0])))
+
+    alphas, taus = assignment_dispersions(hmm_nophasing, res, decoded)
+    np.testing.assert_array_equal(alphas, [0.01, 0.1, 1.0])
+    np.testing.assert_array_equal(taus, [10.0, 100.0, 1000.0])
