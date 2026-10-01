@@ -69,10 +69,12 @@ def merge_pseudobulk_by_index_mix(
     total_bb_RD = np.zeros((n_obs, n_spots))
 
     tumor_prop = np.zeros(n_spots) if single_tumor_prop is not None else None
+    summed: list[Any] = []
 
     for k, idx in enumerate(clone_index):
         if len(idx) == 0:
             logger.warning(f"Clone {k} has no cells, skipping")
+            summed.append(idx)
             continue
 
         if single_tumor_prop is not None:
@@ -87,6 +89,8 @@ def merge_pseudobulk_by_index_mix(
             # NB assumes mean tumor proportion for all spots assigned to this clone.
             tumor_prop[k] = np.mean(single_tumor_prop[idx]) if len(idx) > 0 else 0.0  # type: ignore[index]
 
+        summed.append(idx)
+
         # NB upstream's `np.sum(x[..., idx], axis=-1)`, a block of rows at a
         #    time: each entry is the same sum over the same `idx` in the same
         #    order, and the gathered block stays in cache (#488).
@@ -94,6 +98,12 @@ def merge_pseudobulk_by_index_mix(
             X[rows, :, k] = np.sum(single_X[rows, :, idx], axis=-1)
             total_bb_RD[rows, k] = np.sum(single_total_bb_RD[rows, idx], axis=1)
             base_nb_mean[rows, k] = np.sum(single_base_nb_mean[rows, idx], axis=1)
+
+    # NB #566: each clone's dispersion factors, from the spots just summed;
+    #    a no-op unless `rescale.recording()` is open.
+    from port.patch.hmm_nophasing.rescale import record
+
+    record(X, single_base_nb_mean, single_total_bb_RD, summed)
 
     for k, idx in enumerate(clone_index):
         percentiles = [50, 75, 90, 95, 99, 100]

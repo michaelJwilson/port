@@ -163,6 +163,11 @@ def _parser() -> argparse.ArgumentParser:
         help="score the coded emission with sal's kernels (#425); on where the shift is",
     )
     parser.add_argument(
+        "--dispersion-rescale",
+        action="store_true",
+        help="fit per-spot NB/BB dispersions, each clone's pseudobulk at its moment-matched value (#566, #100); needs the shift",
+    )
+    parser.add_argument(
         "--sal",
         action="store_true",
         help="snakes_and_ladders' labelling, and the mask, floor and start it implies (#312)",
@@ -284,6 +289,16 @@ def _refusals(arguments: argparse.Namespace, settings: Settings) -> list[str]:
         )
         if asked and not settings.shift
     ]
+
+    # NB #566: an option of the shift's `hmm_nophasing` row, reading factors
+    #    port's `merge_pseudobulk_by_index_mix` (in `SWAPS`) records.
+    if arguments.dispersion_rescale and not settings.shift:
+        refused.append("--dispersion-rescale is read by the shift rows; --no-shift")
+    if arguments.dispersion_rescale and arguments.no_patch:
+        refused.append(
+            "--dispersion-rescale needs port's merge_pseudobulk_by_index_mix, "
+            "which --no-patch leaves out"
+        )
 
     # NB read by port's `pipeline_clone_assignment` alone, which `--no-patch`
     #    leaves out unless `--sal` installs it.
@@ -431,6 +446,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         #    That row is in `SHIFT_SWAPS`, so `--no-patch --shift` reads it.
         model: dict[str, Any] = {"emission_kernels": "sal"} if sal_emission_on else {}
 
+        # NB #566: per-spot dispersions, an option of the same row; the
+        #    pseudobulk row records each clone's factors while this is open.
+        if arguments.dispersion_rescale:
+            from port.patch.hmm_nophasing import rescale
+
+            model["dispersion_rescale"] = True
+            stack.enter_context(rescale.recording())
+
         if arguments.sal and arguments.no_patch:
             selected = tuple(
                 swap for swap in SWAPS if swap.name == "pipeline_clone_assignment"
@@ -560,6 +583,11 @@ def main(argv: Sequence[str] | None = None) -> int:
                 + (", floor merged smallest first" if floor else "")
                 + (", distinct initial states" if distinct else "")
                 + (", shift included" if shift else "")
+                + (
+                    ", per-spot dispersions rescaled per clone"
+                    if arguments.dispersion_rescale
+                    else ""
+                )
                 + (", rust lattices" if rust else "")
                 + (", sal included" if arguments.sal else "")
                 + (", no plots written" if arguments.no_plots else ""),
@@ -610,6 +638,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             {
                 "figures": figures,
                 "shift": shift,
+                "dispersion_rescale": bool(arguments.dispersion_rescale),
                 "copy_decode": f"lattice_decode ({arguments.copy_decode})"
                 if copy_cap
                 else "cnaster",
