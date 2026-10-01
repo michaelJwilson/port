@@ -671,11 +671,14 @@ def shared_decode(
 
 def captured_clones() -> list[tuple[np.ndarray, Pseudobulk, float]] | None:
     """Every captured clone's path, pseudobulk and shift, in the fit's order."""
+    from port.extensions.copy_errors import as_float
+
     fit = captured_fit()
 
     if fit is None:
         return None
 
+    fit = fit.intact()
     single_x, base, total, result = (
         fit.single_X,
         fit.single_base_nb_mean,
@@ -695,7 +698,7 @@ def captured_clones() -> list[tuple[np.ndarray, Pseudobulk, float]] | None:
     if shifts.size != path.shape[1]:
         shifts = np.zeros(path.shape[1])
 
-    profile = base.sum(axis=1)
+    profile = as_float(base).sum(axis=1)
     alpha = float(np.asarray(result["new_alphas"]).reshape(-1)[0])
     tau = float(np.asarray(result["new_taus"]).reshape(-1)[0])
     rows = []
@@ -703,10 +706,10 @@ def captured_clones() -> list[tuple[np.ndarray, Pseudobulk, float]] | None:
     for clone in range(path.shape[1]):
         spots = assignment == clone
         bulk = Pseudobulk(
-            counts_nb=single_x[:, 0, spots].sum(axis=1),
-            base_nb_mean=base[:, spots].sum(axis=1),
-            counts_bb=single_x[:, 1, spots].sum(axis=1),
-            total_bb_RD=total[:, spots].sum(axis=1),
+            counts_nb=as_float(single_x[:, 0, spots]).sum(axis=1),
+            base_nb_mean=as_float(base[:, spots]).sum(axis=1),
+            counts_bb=as_float(single_x[:, 1, spots]).sum(axis=1),
+            total_bb_RD=as_float(total[:, spots]).sum(axis=1),
             normal_log_lambda=np.log(profile / profile.sum()),
             dispersion=alpha,
             taus=tau,
