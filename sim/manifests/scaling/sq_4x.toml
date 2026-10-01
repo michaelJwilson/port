@@ -1,0 +1,10 @@
+# Scaling rung 4x: 131 x 131 = 17161 square spots (#569).
+version = 3
+extends = "base.toml"
+
+[sample]
+name = "sq_4x"
+
+[array]
+rows = 131
+columns = 131

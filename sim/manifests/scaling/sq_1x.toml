@@ -1,0 +1,10 @@
+# Scaling rung 1x: 66 x 66 = 4356 square spots (#569).
+version = 3
+extends = "base.toml"
+
+[sample]
+name = "sq_1x"
+
+[array]
+rows = 66
+columns = 66

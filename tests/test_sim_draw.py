@@ -28,6 +28,7 @@ from port.sim.draw import (
     from_document,
     hex_array,
     layout,
+    square_array,
 )
 from port.sim.files import located
 
@@ -125,6 +126,67 @@ def test_an_unknown_counts_sampler_is_refused() -> None:
 
     with pytest.raises(ValueError, match=r"\[model\] counts_sampler: one of"):
         from_document(document, MANIFESTS)
+
+
+@pytest.mark.infra
+def test_an_unknown_array_kind_is_refused() -> None:
+    """`[array] kind` names one of `ARRAYS`: `hex` or `square` (#569)."""
+    document = extended(MANIFESTS / "dev_tree.toml")
+    document["array"]["kind"] = "triangle"
+
+    with pytest.raises(ValueError, match=r"\[array\] kind 'triangle': one of"):
+        from_document(document, MANIFESTS)
+
+
+@pytest.mark.analytic
+def test_a_square_array_is_the_lattice_the_adjacency_reads_as_square() -> None:
+    """`square_array` against `port.extensions.adjacency`'s reading of it (#569).
+
+    Unit spacing, `rows x columns` distinct integer positions, `lattice_kind`
+    `square`, and every interior spot with its eight Moore neighbours at
+    distance 1 or sqrt(2) under the `knn` construction the run installs; the
+    hex array of the same size reads `triangular`.
+    """
+    from port.extensions.adjacency import knn_adjacency, lattice_kind
+
+    rows, cols, points = square_array(7, 9)
+
+    assert rows.size == 63
+    assert np.unique(np.column_stack([rows, cols]), axis=0).shape[0] == 63
+    assert lattice_kind(np.column_stack([rows, cols])) == "square"
+    assert lattice_kind(np.column_stack(hex_array(7, 9)[:2])) == "triangular"
+
+    graph = knn_adjacency(np.column_stack([rows, cols]), "moore").tocoo()
+    step = np.hypot(
+        rows[graph.row] - rows[graph.col], cols[graph.row] - cols[graph.col]
+    )
+    interior = (rows > 0) & (rows < 6) & (cols > 0) & (cols < 8)
+    assert np.all(step[interior[graph.row]] <= np.sqrt(2.0) + 1e-12)
+    assert np.array_equal(points, np.column_stack([cols, rows]).astype(np.float64))
+
+
+@pytest.mark.analytic
+def test_the_scaling_ladder_plants_every_clone_at_each_resolution() -> None:
+    """`sim/manifests/scaling`: three stated hexagons, apart, at 1x and 4x (#569).
+
+    The clones' shares of the array are a property of the shapes, not of
+    the resolution: each agrees between 66 x 66 and 131 x 131 to 0.01, the
+    rasterization error of a hexagon of radius 0.18 at 66 spots across.
+    """
+    shares = []
+    for side in (66, 131):
+        document = _merge(
+            extended(MANIFESTS / "scaling" / "sq_1x.toml"),
+            {"array": {"rows": side, "columns": side}},
+        )
+        manifest = from_document(document, MANIFESTS / "scaling")
+        _, _, points = square_array(side, side)
+        (labels,), shapes = layout(manifest, points, np.random.default_rng(0))
+        assert set(shapes) == {"clone_0", "clone_1", "clone_2"}
+        shares.append(np.bincount(labels + 1, minlength=4) / labels.size)
+
+    assert np.all(shares[0][1:] > 0.05)
+    np.testing.assert_allclose(shares[0], shares[1], atol=0.01)
 
 
 @pytest.mark.analytic

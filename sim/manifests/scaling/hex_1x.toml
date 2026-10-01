@@ -1,0 +1,11 @@
+# The 1x control on Visium's hex packing: 66 x 66 = 4,356 spots (#569).
+version = 3
+extends = "base.toml"
+
+[sample]
+name = "hex_1x"
+
+[array]
+kind = "hex"
+rows = 66
+columns = 66

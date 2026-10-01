@@ -1,0 +1,10 @@
+# Scaling rung 17.5x: 274 x 274 = 75076 square spots (#569).
+version = 3
+extends = "base.toml"
+
+[sample]
+name = "sq_17p5x"
+
+[array]
+rows = 274
+columns = 274

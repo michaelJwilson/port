@@ -1,0 +1,10 @@
+# Scaling rung 140x: 775 x 775 = 600625 square spots (#569).
+version = 3
+extends = "base.toml"
+
+[sample]
+name = "sq_140x"
+
+[array]
+rows = 775
+columns = 775

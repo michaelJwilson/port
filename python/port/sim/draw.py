@@ -5,7 +5,7 @@ Its clones, events, layout and counts are drawn from what the manifest states:
     version = 3
     [sample]      name, seed, output, realizations
     [reference]   baseline, coverage, snps; GRCh38 resources via $PORT_GRCH38
-    [array]       kind = "hex", rows, columns
+    [array]       kind = "hex" or "square", rows, columns
     [model]       admixture, normal_frac, dirichlet_concentration, bb_overdispersion,
                   snp_dispersion, snp_depth_follows_copies, counts_sampler
     [cna]         mode = "shared.unique" (shared, unique) or "tree"
@@ -330,8 +330,9 @@ def _check(manifest: DrawManifest) -> None:
         problems.append(f"[cna.length] law: one of {sorted(BY_LAW)}")
     if manifest.phasing["unit"] not in UNITS:
         problems.append(f"[phasing] unit: one of {sorted(UNITS)}")
-    if manifest.array["kind"] != "hex":
-        problems.append(f"[array] kind {manifest.array['kind']!r}: 'hex'")
+    if manifest.array["kind"] not in ARRAYS:
+        kind = manifest.array["kind"]
+        problems.append(f"[array] kind {kind!r}: one of {sorted(ARRAYS)}")
 
     known = set(manifest.tumour)
     for index, piece in enumerate(manifest.slices):
@@ -521,6 +522,23 @@ def hex_array(rows: int, columns: int) -> tuple[np.ndarray, np.ndarray, np.ndarr
     col = 2 * (index % columns) + row % 2
     points = np.column_stack([col / 2.0, row * np.sqrt(3.0) / 2.0])
     return row, col, points
+
+
+def square_array(rows: int, columns: int) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """A square grid at unit spacing: `array_row`, `array_col`, and points `(col, row)`.
+
+    Integer coordinates, axis neighbours at distance 1, as Visium HD's bins
+    and `port.extensions.adjacency.lattice_kind`'s `square` (#417, #569).
+    """
+    index = np.arange(rows * columns)
+    row = index // columns
+    col = index % columns
+    points = np.column_stack([col, row]).astype(np.float64)
+    return row, col, points
+
+
+ARRAYS = {"hex": hex_array, "square": square_array}
+"""`[array] kind` to its packing; `hex` is Visium's, `square` Visium HD's."""
 
 
 def polygon(
@@ -952,7 +970,7 @@ def realize(
     if not manifest.phasing["switch_errors"]:
         p_switch = np.zeros_like(p_switch)
 
-    rows, cols, points = hex_array(
+    rows, cols, points = ARRAYS[manifest.array["kind"]](
         int(manifest.array["rows"]), int(manifest.array["columns"])
     )
     codes = manifest.barcodes

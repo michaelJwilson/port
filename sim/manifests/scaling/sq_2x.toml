@@ -1,0 +1,10 @@
+# Scaling rung 2x: 93 x 93 = 8649 square spots (#569).
+version = 3
+extends = "base.toml"
+
+[sample]
+name = "sq_2x"
+
+[array]
+rows = 93
+columns = 93

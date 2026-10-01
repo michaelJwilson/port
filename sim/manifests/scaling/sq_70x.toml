@@ -1,0 +1,10 @@
+# Scaling rung 70x: 549 x 549 = 301401 square spots (#569).
+version = 3
+extends = "base.toml"
+
+[sample]
+name = "sq_70x"
+
+[array]
+rows = 549
+columns = 549

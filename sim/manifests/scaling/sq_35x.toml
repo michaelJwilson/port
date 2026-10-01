@@ -1,0 +1,10 @@
+# Scaling rung 35x: 388 x 388 = 150544 square spots (#569).
+version = 3
+extends = "base.toml"
+
+[sample]
+name = "sq_35x"
+
+[array]
+rows = 388
+columns = 388
