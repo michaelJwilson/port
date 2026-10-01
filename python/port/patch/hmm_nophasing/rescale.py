@@ -95,9 +95,16 @@ def alpha_rows(alphas: np.ndarray, rescale: Rescale) -> np.ndarray:
 
 
 def tau_rows(taus: np.ndarray, rescale: Rescale) -> np.ndarray:
-    """`(K, n_rows)` `tau` at `rho_row = rho g_row`: `(1 + tau) / g - 1`, never below `tau`."""
+    """`(K, n_rows)` `tau` at `rho_row = rho g_row`: `(1 + tau) / g - 1`, never below `tau`.
+
+    `inf` where `g = 0` -- no spot holds two trials, so the sum is binomial.
+    """
     tau = np.asarray(taus, dtype=np.float64).reshape(-1, 1)
-    out: np.ndarray = (1.0 + tau) / rescale.bb[None, :] - 1.0
+    g = rescale.bb[None, :]
+    with np.errstate(divide="ignore"):
+        out: np.ndarray = np.where(
+            g > 0.0, (1.0 + tau) / np.where(g > 0.0, g, 1.0) - 1.0, np.inf
+        )
     return out
 
 
@@ -120,21 +127,24 @@ def nb_logpmf(obs: Any, mean: Any, dispersion: Any) -> np.ndarray:
 
 
 def bb_logpmf(obs: Any, total: Any, p_binom: Any, taus: Any) -> np.ndarray:
-    """`cnaster`'s `_bb_logpmf_1d`, broadcasting: `a`, `b` floored, 0 where `k > n`."""
-    a = np.maximum(p_binom * taus, DISPERSION_FLOOR)
-    b = np.maximum((1.0 - p_binom) * taus, DISPERSION_FLOOR)
+    """`cnaster`'s `_bb_logpmf_1d`, broadcasting: `a`, `b` floored, 0 where `k > n`; binomial where `tau` is `inf`."""
+    binomial = np.isinf(taus)
+    finite = np.where(binomial, 1.0, taus)
+    a = np.maximum(p_binom * finite, DISPERSION_FLOOR)
+    b = np.maximum((1.0 - p_binom) * finite, DISPERSION_FLOOR)
     valid = (obs >= 0) & (total >= 0) & (obs <= total)
+    share = np.clip(p_binom, DISPERSION_FLOOR, 1.0 - DISPERSION_FLOOR)
 
-    with np.errstate(invalid="ignore"):
-        score = (
-            gammaln(total + 1.0)
-            - gammaln(obs + 1.0)
-            - gammaln(total - obs + 1.0)
-            + gammaln(obs + a)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        choose = gammaln(total + 1.0) - gammaln(obs + 1.0) - gammaln(total - obs + 1.0)
+        beta = (
+            gammaln(obs + a)
             + gammaln(total - obs + b)
             - gammaln(total + a + b)
             - (gammaln(a) + gammaln(b) - gammaln(a + b))
         )
+        limit = obs * np.log(share) + (total - obs) * np.log1p(-share)
+        score = choose + np.where(binomial, limit, beta)
 
     return np.where(valid, score, 0.0)
 

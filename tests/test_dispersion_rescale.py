@@ -262,7 +262,11 @@ def test_per_spot_dispersions_are_recovered_from_clones_of_8_and_64_spots() -> N
 @pytest.mark.usefixtures("cnaster_config")
 @pytest.mark.parametrize("shifted", [False, True])
 def test_the_rescaled_gradient_is_its_finite_difference(shifted: bool) -> None:
-    """`d cost_fn / d x` with per-row dispersions, against central differences at 1e-6, to 1e-5 relative."""
+    """`d cost_fn / d x` with per-row dispersions, against central differences at 1e-6, to 1e-5 relative.
+
+    A tenth of the rows have `g = 0` and score as the binomial, which is
+    what an aggregate of spots holding at most one trial each is.
+    """
     from port.patch.hmm_nophasing.gradient import EmGradient
     from port.patch.hmm_nophasing.rescale import Rescale
 
@@ -271,11 +275,10 @@ def test_the_rescaled_gradient_is_its_finite_difference(shifted: bool) -> None:
     model, plain, x, data = _problem(shifted=shifted, shared=True)
     rng = np.random.default_rng(2)
     lengths = tuple(int(n) for n in data["clone_lengths"])
-    model._rescale = Rescale(
-        rng.uniform(0.02, 0.5, len(lengths)),
-        rng.uniform(0.05, 1.0, sum(lengths)),
-        lengths,
-    )
+    # NB every tenth row with `g = 0`: no spot holds two trials, the binomial.
+    factor = rng.uniform(0.05, 1.0, sum(lengths))
+    factor[::10] = 0.0
+    model._rescale = Rescale(rng.uniform(0.02, 0.5, len(lengths)), factor, lengths)
     gradient = EmGradient.for_fit(
         model,
         data["X"],
