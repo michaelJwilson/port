@@ -47,7 +47,7 @@
 assignment of each stage, on that fit's field, with `--sal` otherwise
 (`tests.studies.clone_labels e2e`, #553's `--sal`):
 
-| first assignment | dev_tree r0 (`3381575a`) | dev_shared_unique r0 (`097bb52b`) | CalicoST easy (`23989aa4`) | CalicoST hard (`1ae26365`) |
+| first assignment | dev_tree r0 (`3381575a`) | dev_shared_unique r0 (`097bb52b`) | CalicoST easy (`2d4ce9a9`) | CalicoST hard (`8797710b`) |
 | --- | --- | --- | --- | --- |
 | `--sal` (none) | 1.0 (4) / 0.9825 | 0.9971 (4) / 0.9941 | 0.9861 (4) / 0.9035 | 0.9829 (4) / 0.9181 |
 | mean field | 1.0 (4) / 0.9825 | 0.9983 (4) / 0.9577 | 0.9861 (4) / 0.9035 | 0.9838 (4) / 0.9135 |
