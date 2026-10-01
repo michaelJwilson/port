@@ -31,8 +31,8 @@ Clone ARI (clones), integer copy ARI, exact altered (phase-free), wall, peak.
 
 | fixture | manifest | r | hash | clone ARI | copy ARI | exact altered | wall [s] | peak [GB] |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| CalicoST easy | shipped | ×3 | `23989aa4` | 0.9861 (4) | 0.8984 | 0.252 (0.630) | 74.2 / 69.9 / 73.2 | 3.2 |
-| CalicoST hard | shipped | ×3 | `1ae26365` | 0.9829 (4) | 0.9055 | 0.036 (0.627) | 69.7 / 67.4 / 68.7 | 3.2 |
+| CalicoST easy | shipped | ×3 | `2d4ce9a9` | 0.9861 (4) | 0.8984 | 0.252 (0.630) | 74.2 / 69.9 / 73.2 | 3.2 |
+| CalicoST hard | shipped | ×3 | `8797710b` | 0.9829 (4) | 0.9055 | 0.036 (0.627) | 69.7 / 67.4 / 68.7 | 3.2 |
 | `dev_tree` 60 × 50 | `st_dt` | 0 | `3381575a` | 1.0 (4) | 0.9828 | 0.920 (0.935) | 232.1 | 6.1 |
 | | | 1 | `563661f1` | 0.9993 (4) | 0.9781 | 0.918 (0.933) | 241.9 | 6.1 |
 | | | 2 | `c7f1ec6b` | 0.9986 (4) | 0.9751 | 0.886 (0.899) | 263.8 | 6.1 |

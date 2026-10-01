@@ -105,7 +105,13 @@ class Stages:
 
 
 def realization_hash(path: Path) -> str:
-    """The first 8 hex of SHA-256 over a realization's files, paths and bytes.
+    """The first 8 hex of SHA-256 over a realization's files, names and decoded bytes.
+
+    A file is keyed by its name with `.gz` stripped and hashed over its
+    decompressed bytes, so how a file is stored cannot move the hash (#595):
+    a sample with no `.gz` hashes as its stored bytes. A name present both
+    plain and `.gz` counts once where the two decode equal, and is refused
+    where they differ.
 
     Left out: the three files that record absolute paths, and what a run or
     a plot writes into the directory.
@@ -115,15 +121,25 @@ def realization_hash(path: Path) -> str:
 
     for directory, names, files in os.walk(path):
         names[:] = sorted(n for n in names if n not in {"output", "qa"})
+        decoded: dict[str, bytes] = {}
 
-        for name in sorted(files):
-            relative = Path(directory, name).relative_to(path).as_posix()
+        for name in files:
+            stored = Path(directory, name)
+            key = stored.relative_to(path).as_posix().removesuffix(".gz")
+            data = stored.read_bytes()
+            data = gzip.decompress(data) if name.endswith(".gz") else data
 
-            if relative in skipped:
+            if key in decoded and decoded[key] != data:
+                msg = f"{stored}: plain and .gz copies of {key} decode differently"
+                raise ValueError(msg)
+            decoded[key] = data
+
+        for key in sorted(decoded):
+            if key in skipped:
                 continue
 
-            digest.update(relative.encode())
-            digest.update(Path(directory, name).read_bytes())
+            digest.update(key.encode())
+            digest.update(decoded[key])
 
     return digest.hexdigest()[:8]
 
