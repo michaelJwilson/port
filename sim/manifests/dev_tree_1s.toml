@@ -22,7 +22,7 @@ columns = 50
 [model]
 # NB the Polya urn: the gamma draw's law at O(UMIs) per spot (#549)
 counts_sampler = "urn"
-# NB CalicoST's BAF overdispersion by moments (#556): normal spots 0.013 (easy) and
+# NB CalicoST's BAF overdispersion by moments (`tests.studies.field_strength calicost`): normal spots 0.013 (easy) and
 #    0.020 (hard), tumour clones -0.004 to 0.018 at their fitted tumour fractions, each +- 0.010; pooled 0.009
 bb_overdispersion = 0.01
 

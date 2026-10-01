@@ -300,6 +300,10 @@ a test.
 *   **Versioning:** `Cargo.toml` carries the version. `pyproject.toml`
     declares it dynamic and maturin reads it across, so the two cannot
     drift.
+*   **A figure carries its reference.** Every figure prints, visibly, a
+    hash of the data it plots and the commit that drew it. A figure quoted
+    in a thread, ticket or review then names what produced it, and two
+    figures that differ can be told apart without their files.
 
 ## The application
 

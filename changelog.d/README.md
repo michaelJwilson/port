@@ -23,7 +23,11 @@ audits, tickets, benchmark tables -- is not visible to anyone importing
 `port`, however much it matters to the work.
 
 **So a fragment is written when `python/port/` or the crate changes
-behaviour, and not otherwise.** A new test, a new audit document, a raised
+behaviour, and not otherwise.** `python/port/sandbox/` is no exception (#556):
+set aside is not hidden. A sandbox module is importable, its header cites the
+numbers that set it aside, and a later pull request graduates or retires it
+from there, so adding, moving, changing or retiring one takes a fragment
+naming the module and its ticket. A new test, a new audit document, a raised
 coverage floor and a `CLAUDE.md` edit are all changes to how this repository
 works rather than to what it ships, and adding fragments for them would make
 the changelog a second commit log.
@@ -40,3 +44,8 @@ merged work would date them to the wrong release. The history is in the
 commits and the pull requests.
 
 The convention starts here.
+
+One exception is recorded here, not repeated: when sandbox fragments became
+required (#556), every sandbox module that had none got one, dated to that
+pull request. They are unreleased, so none of them lands in a release it was
+not part of.
