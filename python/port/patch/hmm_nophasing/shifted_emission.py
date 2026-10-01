@@ -93,7 +93,12 @@ from cnaster.hmm_nophasing import hmm_nophasing as UPSTREAM
 from cnaster.logger import get_logger
 from sal.ragged import Ragged
 
-from port.patch.hmm_nophasing.gradient import EmGradient, analytic_bfgs
+from port.patch.hmm_nophasing.gradient import (
+    DISPERSION_PRIOR_ROWS,
+    DispersionShrinkage,
+    EmGradient,
+    analytic_bfgs,
+)
 from port.patch.hmm_nophasing.logmu_shift import shifts as logmu_shifts
 from port.patch.plotting.clone_paths import state_vector
 
@@ -296,7 +301,7 @@ class hmm_nophasing(UPSTREAM):  # type: ignore[misc]
     the thing it replaces would not be one.
     """
 
-    # NB the three options below are class attributes rather than keywords,
+    # NB the options below are class attributes rather than keywords,
     #    because the caller is `optimize_params` inside `cnaster` and a keyword
     #    would have to reach it through a function this repository does not
     #    replace. They are set on a subclass the `SHIFT_SWAPS` row installs
@@ -318,6 +323,21 @@ class hmm_nophasing(UPSTREAM):  # type: ignore[misc]
     `run_cnaster_port` binds `sal` unless `--no-sal-emission` (#425). Not a
     name rebind, because `cnaster`'s compiled kernels call `_nb_logpmf_1d` as
     a global and a Python function in its place breaks their compilation.
+    """
+
+    per_state_dispersion: bool = False
+    """Off, as `cnaster` is: one `alpha` and one `tau` for every state (#566).
+
+    On, `optimize` fits one of each per state -- `cnaster`'s own
+    `shared_NB_dispersion=False`, `shared_BB_dispersion=False` -- whatever
+    the caller passed; `run_cnaster_port --per-state-dispersion` binds it.
+    """
+
+    dispersion_prior_rows: float = DISPERSION_PRIOR_ROWS
+    """`n0` of :class:`~port.patch.hmm_nophasing.gradient.DispersionShrinkage` (#566).
+
+    Read only with `per_state_dispersion` and the analytic gradient; 0 fits
+    the per-state dispersions unshrunk.
     """
 
     def _clone_triples(self, encoder: Any, lengths: tuple[int, ...]) -> _Triples:
@@ -442,6 +462,12 @@ class hmm_nophasing(UPSTREAM):  # type: ignore[misc]
         """
         hmm_nophasing._row_shift = None
 
+        # NB #566: `cnaster` reads the two flags as keywords of this call, so
+        #    the option overrides them here, for this class's fits alone.
+        if self.per_state_dispersion:
+            kwargs["shared_NB_dispersion"] = False
+            kwargs["shared_BB_dispersion"] = False
+
         # NB the M step's gradient in closed form, through `minimize`'s
         #    callable `method` (#433); positional extras leave the fit as is,
         #    since the settings the gradient reads would then be unnamed.
@@ -452,11 +478,20 @@ class hmm_nophasing(UPSTREAM):  # type: ignore[misc]
             and not args
             and kwargs.get("optimizer", "BFGS") == "BFGS"
         ):
-            kwargs["optimizer"] = analytic_bfgs(
-                EmGradient.for_fit(
-                    self, X, n_states, base_nb_mean, total_bb_RD, **kwargs
-                )
+            gradient = EmGradient.for_fit(
+                self, X, n_states, base_nb_mean, total_bb_RD, **kwargs
             )
+            penalty = (
+                DispersionShrinkage.for_fit(gradient, self.dispersion_prior_rows)
+                if self.per_state_dispersion and self.dispersion_prior_rows > 0.0
+                else None
+            )
+            kwargs["optimizer"] = analytic_bfgs(gradient, penalty)
+        elif self.per_state_dispersion and self.dispersion_prior_rows > 0.0:
+            # NB the shrinkage is a term of the closed-form objective; refused
+            #    rather than dropped where that objective is not the one fitted.
+            msg = "the dispersion prior needs the analytic gradient and BFGS"
+            raise ValueError(msg)
 
         res: dict[str, Any] = super().optimize(
             X, lengths, n_states, base_nb_mean, total_bb_RD, *args, **kwargs

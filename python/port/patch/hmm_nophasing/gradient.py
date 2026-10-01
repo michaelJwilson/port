@@ -51,6 +51,8 @@ from scipy.special import digamma, expit
 
 __all__ = [
     "DISPERSION_FLOOR",
+    "DISPERSION_PRIOR_ROWS",
+    "DispersionShrinkage",
     "EmGradient",
     "analytic_bfgs",
     "bb_partials",
@@ -122,6 +124,25 @@ def bb_partials(
     d_b = np.where(valid & live_b, d_b, 0.0)
 
     return d_a * tau - d_b * tau, d_a * shape_a + d_b * shape_b
+
+
+def _sums(weight: np.ndarray, partial: np.ndarray, spread: bool) -> np.ndarray:
+    """`-sum_c w_kc d_kc` per state, or, with `spread`, its weighted variance about each state's mean.
+
+    The second is the centred outer product of the per-row scores, `sum_c
+    w_kc d_kc^2 - (sum_c w_kc d_kc)^2 / n_k`: an information estimate that is
+    non-negative at any point, which the curvature is not away from the
+    optimum (#566).
+    """
+    linear = np.sum(weight * partial, axis=1)
+
+    if not spread:
+        return -linear
+
+    occupancy = np.sum(weight, axis=1)
+    square = np.sum(weight * partial * partial, axis=1)
+    safe = np.where(occupancy > 0.0, occupancy, 1.0)
+    return np.where(occupancy > 0.0, square - linear * linear / safe, 0.0)
 
 
 @dataclass
@@ -229,8 +250,35 @@ class EmGradient:
 
         return self._pack(x, g_mu, g_p, g_alpha, g_tau)
 
+    def information(self, x: np.ndarray) -> dict[str, float]:
+        """Per-row information in `log alpha` and `log tau` at `x`, pooled over states (#566).
+
+        The centred score spread (:func:`_sums`) summed over states, over the
+        rows `N = sum gamma`: what one row carries about the shared
+        dispersion, for :class:`DispersionShrinkage`'s `h`.
+        """
+        model = self.model
+        _, log_mu, p_binom, alphas, taus = model.unpack_params(
+            x, self.n_states, *self.initial, **self.flags
+        )
+        gamma = np.asarray(model.state_posteriors)
+        rows = max(float(gamma.sum()), 1.0)
+
+        _, tau_spread = self._allele(gamma, p_binom, taus, spread=True)
+        out = {"bb": float(tau_spread.sum()) / rows}
+
+        if self.nb is not None and "m" in model.params:
+            _, alpha_spread = self._depth(self.nb, gamma, log_mu, alphas, spread=True)
+            out["nb"] = float(alpha_spread.sum()) / rows
+
+        return out
+
     def _allele(
-        self, gamma: np.ndarray, p_binom: np.ndarray, taus: np.ndarray
+        self,
+        gamma: np.ndarray,
+        p_binom: np.ndarray,
+        taus: np.ndarray,
+        spread: bool = False,
     ) -> tuple[np.ndarray, np.ndarray]:
         """Per-state `d f / d p` and `d f / d log tau`."""
         obs = self.bb.get_unique_obs(0)
@@ -241,7 +289,7 @@ class EmGradient:
             obs[None, :], total[None, :], p_binom[:, :1], taus[:, :1]
         )
 
-        return -np.sum(weight * d_p, axis=1), -np.sum(weight * d_tau, axis=1)
+        return -np.sum(weight * d_p, axis=1), _sums(weight, d_tau, spread)
 
     def _depth(
         self,
@@ -249,6 +297,7 @@ class EmGradient:
         gamma: np.ndarray,
         log_mu: np.ndarray,
         alphas: np.ndarray,
+        spread: bool = False,
     ) -> tuple[np.ndarray, np.ndarray]:
         """Per-state `d f / d log mu` and `d f / d log alpha`, shifted or not."""
         rates = np.asarray(log_mu, dtype=np.float64)[:, 0]
@@ -264,9 +313,11 @@ class EmGradient:
 
             d_eta, d_alpha = nb_partials(obs[None, :], mean, dispersions)
 
-            return -np.sum(weight * d_eta, axis=1), -np.sum(weight * d_alpha, axis=1)
+            return -np.sum(weight * d_eta, axis=1), _sums(weight, d_alpha, spread)
 
-        return self._shifted_depth(encoder, gamma, rates, dispersions, *shifted)
+        return self._shifted_depth(
+            encoder, gamma, rates, dispersions, *shifted, spread=spread
+        )
 
     def _shift_inputs(self) -> tuple[np.ndarray, tuple[int, ...]] | None:
         """The decode and clone lengths the shifted emission uses, or `None`.
@@ -303,6 +354,7 @@ class EmGradient:
         dispersions: np.ndarray,
         decode: np.ndarray,
         lengths: tuple[int, ...],
+        spread: bool = False,
     ) -> tuple[np.ndarray, np.ndarray]:
         """The shifted channel: rates `exp(log_mu_i - S_c)`, `S_c` moving with `log_mu`."""
         from port.patch.hmm_nophasing.shifted_emission import _stacked, _triples
@@ -350,7 +402,7 @@ class EmGradient:
 
         g_eta = per_clone.sum(axis=1) - share.T @ per_clone.sum(axis=0)
 
-        return -g_eta, -np.sum(weight * d_alpha, axis=1)
+        return -g_eta, _sums(weight, d_alpha, spread)
 
     def _pack(
         self,
@@ -420,7 +472,121 @@ BFGS_OPTIONS = frozenset(
 """The options `scipy.optimize.minimize(method="BFGS")` reads (scipy 1.18)."""
 
 
-def analytic_bfgs(gradient: Callable[[np.ndarray], np.ndarray]) -> Any:
+DISPERSION_PRIOR_ROWS = 0.0
+"""`n0`, the rows' worth of pooled information each state's dispersion is shrunk with (#566).
+
+Placeholder; set by held-out likelihood below.
+"""
+
+
+@dataclass
+class DispersionShrinkage:
+    r"""Per-state dispersions shrunk toward their pooled value, as a penalty (#566).
+
+    With per-state `log alpha_k` (and `log tau_k`) a state holding a handful
+    of rows can drive its `alpha` to 0, which scores those rows at
+    near-certainty (#560). Each per-state block `theta` is penalized
+
+    .. math::
+        P(\theta) = \frac{n_0 h}{2} \sum_k (\theta_k - \bar\theta)^2,
+        \qquad \bar\theta = \sum_k \frac{n_k}{N} \theta_k,
+
+    with `n_k = sum_i gamma_ik` a state's posterior occupancy (held, as the
+    data term holds it) and `h` the per-row information of the pooled fit
+    in `theta`. The data term's curvature in `theta_k` is then `n_k h`, so
+    to second order the minimizer is
+
+    .. math::
+        \theta_k \approx \frac{n_k \hat\theta_k + n_0 \bar\theta}{n_k + n_0},
+
+    the shrinkage toward the pooled estimate with weight `n0 / (n0 + n_k)`
+    #566 states. A state with no rows sits at the pooled value; equal
+    `theta` cost nothing, so a fit whose states agree returns the pooled one.
+
+    `h` is held per fit: the per-row score variance in `theta`, each state's
+    scores centred on their own mean, pooled over states and divided by `N`
+    (:meth:`EmGradient.information`), at the first point BFGS evaluates.
+    Held, so `P` is one function for the whole fit and its gradient is
+    exact. The score variance rather than the curvature, because the
+    curvature can be negative away from the optimum, and the first point is
+    the fit's start.
+    """
+
+    prior_rows: float
+    model: Any
+    blocks: dict[str, slice]
+    information: dict[str, float]
+
+    @classmethod
+    def for_fit(cls, gradient: EmGradient, prior_rows: float) -> DispersionShrinkage:
+        """The per-state blocks of `gradient`'s packed layout; shared or fixed ones are left out."""
+        params = gradient.model.params
+        flags = gradient.flags
+        n_states = gradient.n_states
+        fitting_nb = gradient.nb is not None and "m" in params
+
+        idx = n_states * (("s" in params) + fitting_nb + ("p" in params))
+        blocks: dict[str, slice] = {}
+
+        if fitting_nb and not flags["fix_NB_dispersion"]:
+            if not flags["shared_NB_dispersion"]:
+                blocks["nb"] = slice(idx, idx + n_states)
+            idx += 1 if flags["shared_NB_dispersion"] else n_states
+
+        if (
+            "p" in params
+            and not flags["fix_BB_dispersion"]
+            and not flags["shared_BB_dispersion"]
+        ):
+            blocks["bb"] = slice(idx, idx + n_states)
+
+        return cls(float(prior_rows), gradient.model, blocks, {})
+
+    def _occupancy(self) -> np.ndarray:
+        """`n_k`: each state's summed posterior over the rows."""
+        return np.asarray(self.model.state_posteriors, dtype=np.float64).sum(axis=1)
+
+    def hold_information(self, x: np.ndarray, data_gradient: EmGradient) -> None:
+        """`h` per block, once: the per-row information `data_gradient` reads at `x`."""
+        if self.information:
+            return
+
+        held = data_gradient.information(x)
+        self.information = {name: held.get(name, 0.0) for name in self.blocks}
+
+    def _parts(self, theta: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        """`theta - theta_bar` and the occupancy weights `n_k / N`."""
+        occupancy = self._occupancy()
+        weights = occupancy / max(float(occupancy.sum()), np.finfo(float).tiny)
+        return theta - float(weights @ theta), weights
+
+    def value(self, x: np.ndarray) -> float:
+        """`P(x)`, summed over the per-state blocks."""
+        total = 0.0
+
+        for name, block in self.blocks.items():
+            spread, _ = self._parts(x[block])
+            scale = self.prior_rows * self.information.get(name, 0.0)
+            total += 0.5 * scale * float(spread @ spread)
+
+        return total
+
+    def __call__(self, x: np.ndarray) -> np.ndarray:
+        """`d P / d x`: `n0 h (d_j - w_j sum_k d_k)` in each block, zero elsewhere."""
+        out = np.zeros_like(x, dtype=np.float64)
+
+        for name, block in self.blocks.items():
+            spread, weights = self._parts(x[block])
+            scale = self.prior_rows * self.information.get(name, 0.0)
+            out[block] = scale * (spread - weights * spread.sum())
+
+        return out
+
+
+def analytic_bfgs(
+    gradient: Callable[[np.ndarray], np.ndarray],
+    penalty: DispersionShrinkage | None = None,
+) -> Any:
     """A `scipy.optimize.minimize` `method` that is BFGS with `gradient` as `jac`.
 
     `cnaster` passes its `optimizer` argument to `minimize` as `method`, and a
@@ -430,6 +596,10 @@ def analytic_bfgs(gradient: Callable[[np.ndarray], np.ndarray]) -> Any:
     the gradient always reads the posteriors the value just used, and the
     callback's E step reads the emission at a point BFGS evaluated rather
     than at a finite-difference probe.
+
+    With `penalty` (#566) BFGS minimizes `cost_fn + P` and its gradient;
+    `cnaster`'s `cost_fn` and callback are unchanged, and `P`'s information
+    scale is held at the first point evaluated, once the posteriors exist.
     """
 
     def method(
@@ -444,7 +614,13 @@ def analytic_bfgs(gradient: Callable[[np.ndarray], np.ndarray]) -> Any:
 
         def value_and_gradient(x: np.ndarray) -> tuple[float, np.ndarray]:
             value = float(fun(x, *args))
-            return value, gradient(x)
+
+            if penalty is None:
+                return value, gradient(x)
+
+            if isinstance(gradient, EmGradient):
+                penalty.hold_information(x, gradient)
+            return value + penalty.value(x), gradient(x) + penalty(x)
 
         return scipy.optimize.minimize(
             value_and_gradient,

@@ -163,6 +163,18 @@ def _parser() -> argparse.ArgumentParser:
         help="score the coded emission with sal's kernels (#425); on where the shift is",
     )
     parser.add_argument(
+        "--per-state-dispersion",
+        action="store_true",
+        help="one NB alpha and one BB tau per state, shrunk toward the pooled fit (#566); needs the shift",
+    )
+    parser.add_argument(
+        "--dispersion-prior-rows",
+        type=float,
+        default=None,
+        metavar="N0",
+        help="the shrinkage's n0, in rows; 0 for none (#566); needs --per-state-dispersion",
+    )
+    parser.add_argument(
         "--sal",
         action="store_true",
         help="snakes_and_ladders' labelling, and the mask, floor and start it implies (#312)",
@@ -284,6 +296,16 @@ def _refusals(arguments: argparse.Namespace, settings: Settings) -> list[str]:
         )
         if asked and not settings.shift
     ]
+
+    # NB #566: an option of the same `hmm_nophasing` row.
+    if arguments.per_state_dispersion and not settings.shift:
+        refused.append("--per-state-dispersion is read by the shift rows; --no-shift")
+    if arguments.dispersion_prior_rows is not None and not (
+        arguments.per_state_dispersion
+    ):
+        refused.append("--dispersion-prior-rows needs --per-state-dispersion")
+    if (arguments.dispersion_prior_rows or 0.0) < 0.0:
+        refused.append("--dispersion-prior-rows is a count of rows, >= 0")
 
     # NB read by port's `pipeline_clone_assignment` alone, which `--no-patch`
     #    leaves out unless `--sal` installs it.
@@ -431,6 +453,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         #    That row is in `SHIFT_SWAPS`, so `--no-patch --shift` reads it.
         model: dict[str, Any] = {"emission_kernels": "sal"} if sal_emission_on else {}
 
+        # NB #566: per-state dispersions, an option of the same row.
+        if arguments.per_state_dispersion:
+            model["per_state_dispersion"] = True
+
+            if arguments.dispersion_prior_rows is not None:
+                model["dispersion_prior_rows"] = arguments.dispersion_prior_rows
+
         if arguments.sal and arguments.no_patch:
             selected = tuple(
                 swap for swap in SWAPS if swap.name == "pipeline_clone_assignment"
@@ -560,6 +589,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 + (", floor merged smallest first" if floor else "")
                 + (", distinct initial states" if distinct else "")
                 + (", shift included" if shift else "")
+                + (", per-state dispersions" if arguments.per_state_dispersion else "")
                 + (", rust lattices" if rust else "")
                 + (", sal included" if arguments.sal else "")
                 + (", no plots written" if arguments.no_plots else ""),
@@ -610,6 +640,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             {
                 "figures": figures,
                 "shift": shift,
+                "dispersion": (
+                    f"per-state, n0 {model.get('dispersion_prior_rows', 'default')}"
+                    if arguments.per_state_dispersion
+                    else "shared"
+                ),
                 "copy_decode": f"lattice_decode ({arguments.copy_decode})"
                 if copy_cap
                 else "cnaster",
