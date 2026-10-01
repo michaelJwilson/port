@@ -652,7 +652,7 @@ def sample_ids(n_slices: int, n_bytes: int, rng: np.random.Generator) -> list[st
 
 
 MAP_CACHE = Path(os.environ.get("PORT_CACHE", Path.home() / ".cache" / "port"))
-"""Where `genetic_map` keeps its parsed maps, one `.npz` per map file (#549)."""
+"""Where `genetic_map` keeps its parsed maps, one Parquet file per map (#549)."""
 
 
 def _map_digest(path: Path) -> str:
@@ -679,32 +679,57 @@ def _parse_map(path: Path) -> dict[str, tuple[np.ndarray, np.ndarray]]:
     return out
 
 
+def _write_map(out: dict[str, tuple[np.ndarray, np.ndarray]], path: Path) -> None:
+    """One uncompressed row group per contig; the contigs' order in the schema."""
+    import json
+
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    pos, cm = next(iter(out.values()))
+    schema = pa.schema(
+        [
+            ("pos", pa.from_numpy_dtype(pos.dtype)),
+            ("cm", pa.from_numpy_dtype(cm.dtype)),
+        ],
+        metadata={"contigs": json.dumps(list(out))},
+    )
+    with pq.ParquetWriter(path, schema, compression="none") as writer:
+        for pos, cm in out.values():
+            writer.write_table(pa.table({"pos": pos, "cm": cm}, schema=schema))
+
+
+def _read_map(path: Path) -> dict[str, tuple[np.ndarray, np.ndarray]]:
+    import json
+
+    import pyarrow.parquet as pq
+
+    handle = pq.ParquetFile(path, memory_map=True)
+    contigs = json.loads(handle.schema_arrow.metadata[b"contigs"])
+    out = {}
+    for group, contig in enumerate(contigs):
+        table = handle.read_row_group(group)
+        out[contig] = (table["pos"].to_numpy(), table["cm"].to_numpy())
+    return out
+
+
 @functools.lru_cache(maxsize=2)
 def genetic_map(path: Path) -> dict[str, tuple[np.ndarray, np.ndarray]]:
     """`chrom` (no `chr`) to its sorted positions and cM.
 
-    Parsed once per map file and kept in `MAP_CACHE` under the file's
-    SHA-256, so a changed map is parsed again: the text parse costs 1.2-2.8 s
-    and +0.62 GB peak RSS to hold 54 MB (#549). The cache is a copy of the
-    parse, never a source: deleting it changes nothing but the time.
+    Parsed once per map file and kept in `MAP_CACHE` as Parquet under the
+    file's SHA-256, so a changed map is parsed again: the text parse costs
+    1.2-2.8 s and +0.62 GB peak RSS to hold 54 MB (#549). The cache is a copy
+    of the parse, never a source: deleting it changes nothing but the time.
     """
-    cached = MAP_CACHE / f"genetic_map-{_map_digest(path)}.npz"
+    cached = MAP_CACHE / f"genetic_map-{_map_digest(path)}.parquet"
     if cached.exists():
-        with np.load(cached) as stored:
-            contigs = [
-                k.removesuffix(":pos") for k in stored.files if k.endswith(":pos")
-            ]
-            return {c: (stored[f"{c}:pos"], stored[f"{c}:cm"]) for c in contigs}
+        return _read_map(cached)
 
     out = _parse_map(path)
     cached.parent.mkdir(parents=True, exist_ok=True)
-    partial = cached.with_suffix(f".{os.getpid()}.npz")
-    arrays: Any = {
-        f"{c}:{k}": v
-        for c, (pos, cm) in out.items()
-        for k, v in (("pos", pos), ("cm", cm))
-    }
-    np.savez(partial, **arrays)
+    partial = cached.with_suffix(f".{os.getpid()}.partial")
+    _write_map(out, partial)
     partial.replace(cached)
     return out
 
