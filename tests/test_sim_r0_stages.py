@@ -143,7 +143,15 @@ def test_the_clone_stage_recovers_r0() -> None:
 
 def _fitted(run: Any, truth: Any) -> dict[tuple[int, int, int, str], float]:
     """Per planted event and clone: the mean fitted `log mu` over its segments."""
-    fitted = run.outputs["clone_labels.tsv"]
+    # NB the run's clones, merged where `port` merged them (#518, #613).
+    spots = run.outputs.get("spot_labels.tsv")
+    fitted = (
+        run.outputs["clone_labels.tsv"][["barcode", "clone_label"]]
+        if spots is None
+        else spots[["barcode", "clone_label_decode"]].rename(
+            columns={"clone_label_decode": "clone_label"}
+        )
+    )
     planted = pd.read_csv(truth / "truth_clone_labels.tsv", sep="\t")
     both = planted.merge(fitted, on="barcode")
     index = pd.crosstab(both["labels"], both["clone_label"]).idxmax(axis=1)

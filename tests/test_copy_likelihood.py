@@ -175,7 +175,7 @@ def test_the_entry_point_decodes_the_planted_pair_through_the_likelihood(
     Every clone-bin of the segment table is the planted pair, phase folded;
     each clone's `A` and `B` columns are the lattice decode's pairs bin for
     bin, so the file carries the per-bin decode rather than a per-state
-    summary of it; and `copy_decode.tsv` records the fractions it fitted,
+    summary of it; and `cnv_copy_clones.tsv` records the fractions it fitted,
     both 1 on this pure instance.
 
     This is the test that found #371's M-step defect: the fraction's bounded
@@ -200,7 +200,7 @@ def test_the_entry_point_decodes_the_planted_pair_through_the_likelihood(
         written = copies[[f"{column} A", f"{column} B"]].to_numpy()
         np.testing.assert_array_equal(written, decoded.pairs[clone])
 
-    fitted = pd.read_csv(output / "copy_decode.tsv", sep="\t")
+    fitted = pd.read_csv(output / "cnv_copy_clones.tsv", sep="\t")
 
     assert fitted["tumour_fraction"].to_list() == pytest.approx([1.0, 1.0])
 

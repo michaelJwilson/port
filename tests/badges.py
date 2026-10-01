@@ -213,9 +213,10 @@ def _recovery_badge(arm: str, record: dict[str, Any] | None) -> Badge:
     """Clone and copy-state recovery against the planted truth, one arm.
 
     Two adjusted Rand indices against the fixture that generated the data:
-    the run's `clone_labels.tsv` over spots, which carries #518's merge of
-    clones whose decoded `(A, B)` agree at 0.99 of bins, and each matched
-    clone-bin's decoded `(A, B)` against the state the fixture painted there.
+    the run's clones over spots, `spot_labels.tsv`'s `clone_label_decode`,
+    which is #518's merge of clones whose decoded `(A, B)` agree at 0.99 of
+    bins, and each matched clone-bin's decoded `(A, B)` against the state
+    the fixture painted there.
     Orange, a fixed colour: no threshold decides it, and the sample and
     configuration they were read at are in `measurements.json`.
     """
