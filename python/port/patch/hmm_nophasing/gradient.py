@@ -630,7 +630,7 @@ ALPHA_MIN = 1e-3
 """The per-state NB `alpha`'s lower bound with `--per-state-dispersion` (#566).
 
 Below every pooled `alpha` measured: 0.589 and 0.593 on CalicoST hard
-(`1ae26365`) and easy (`23989aa4`) under `--sal`, 0.058 and 0.072 on #540's
+(`8797710b`) and easy (`2d4ce9a9`) under `--sal`, 0.058 and 0.072 on #540's
 `dev_tree_1s_hard` r1 (`764709dc`) and r0 (`d2938975`).
 """
 
@@ -638,8 +638,9 @@ TAU_MAX = 1e5
 """The per-state BB `tau`'s upper bound, a concentration cap (#566).
 
 Above every finite pooled `tau` measured: 1,062 and 4,882 on CalicoST hard
-(`1ae26365`) and easy (`23989aa4`), 15,324 on #540's r1 (`764709dc`). #540's
-r0 (`d2938975`) pools at 3.5e6, the binomial in effect; at 111 trials, `tau = 1e5` inflates the variance by 0.1 per cent.
+(`8797710b`) and easy (`2d4ce9a9`), 15,324 on #540's r1 (`764709dc`). #540's
+r0 (`d2938975`) pools at 3.5e6, the binomial in effect; at 111 trials,
+`tau = 1e5` inflates the variance by 0.1 per cent.
 """
 
 
