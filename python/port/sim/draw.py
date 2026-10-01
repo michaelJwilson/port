@@ -3,7 +3,8 @@
 Its clones, events, layout and counts are drawn from what the manifest states:
 
     version = 3
-    [sample]      name, seed, output, realizations
+    [sample]      name, seed, output, realizations; r0_hash, which the draw does
+                  not read: r0's `realization_hash`, naming the generation (#583)
     [reference]   baseline, coverage, snps; GRCh38 resources via $PORT_GRCH38
     [array]       kind = "hex" or "square", rows, columns
     [model]       admixture, normal_frac, dirichlet_concentration, bb_overdispersion,
