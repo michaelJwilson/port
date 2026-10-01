@@ -10,8 +10,8 @@
 - **Sufficiency.** The rule stated in advance passes except for imbalanced gain, whose L50 interval is 0.36 dex (limit 0.3). That interval stopped narrowing after 219 more members, because the crossing lies on the plateau.
 
 The figure, sensitivity and false positive rate, is committed as
-`plots/studies/population_recovery.pdf`; `python -m tests.studies.population
-report --out DIR` redraws it, with its PNG, into `DIR/figures/`.
+`plots/studies/population_recovery.png`; `python -m tests.studies.population
+report --out DIR` redraws it into `DIR/figures/`.
 
 (a) Clone sensitivity against log10 clone UMIs, per J. (b) CNA sensitivity against length at J = 1, per copy-state class. (c) The false positive rate of true-(1,1) segments against the SNP-covering UMIs they hold, at J = 1.
 - A clone counts as detected when at least 90% of its spots are in its matched fitted clone.
@@ -110,7 +110,7 @@ Whether the (1,1) calls come from the HMM's states or from the integer-copy deco
 ## Data and reproduction
 
 - `plots/studies/population_records.jsonl.gz`: every record, one JSON per run.
-- `plots/studies/population_summary.json`, `population_tables.md`, and the figure as `.pdf` (the `.png` is no longer committed).
+- `plots/studies/population_summary.json`, `population_tables.md`, and the figure as `.png` (the `.pdf` is no longer committed).
 
 ```
 python -m tests.studies.population run --seeds 0:80 --J 0.8,1.0,1.4,2.8 --workers 4 --out DIR

@@ -13,8 +13,8 @@ can be read against a truth that is integer (#313).
 
 **CI runs this on every pull request and uploads the result** as a workflow
 artifact (`.github/workflows/figures.yml`), so the figures a pull request's
-code draws can be read beside it. They are not committed: `docs/plots/`
-tracks no PNG (`tests/test_ci_entry.py`).
+code draws can be read beside it. They are not committed: `docs/` tracks
+no PNG outside two exceptions (`tests/test_ci_entry.py`).
 
 They are not a referee. Nothing here compares a figure against a previous
 one. **They are PNG** (#452): a matplotlib PDF carries a creation timestamp,
@@ -150,8 +150,8 @@ def main() -> None:
 
         destination.mkdir(parents=True, exist_ok=True)
         # NB PDFs are not kept (#452). PNGs are overwritten by name rather
-        #    than globbed away: `realizations.png` and `umi_grow_*.png` beside
-        #    them are written by other scripts.
+        #    than globbed away: `realizations.png` beside them is written by
+        #    another script.
         for stale in destination.glob("*.pdf"):
             stale.unlink()
 

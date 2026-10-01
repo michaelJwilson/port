@@ -5,10 +5,10 @@ is a result, regenerated on demand by the command that draws it, and a
 generator whose default output is the repository re-adds what was removed.
 `.cache/` is in `.gitignore`, so a run with no output argument leaves
 `git status` clean. `tests/test_ci_entry.py` guards that no PNG is tracked
-under `docs/plots/`.
+under `docs/`.
 """
 
 from pathlib import Path
 
 PLOTS = Path(__file__).resolve().parent.parent / ".cache" / "plots"
-"""The default root of every generated figure, mirroring `docs/plots/`'s layout."""
+"""The default root of every generated figure, laid out as `docs/plots/` was at `ba34716`."""

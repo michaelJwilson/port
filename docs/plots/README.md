@@ -1,10 +1,14 @@
 # Figures
 
-**No PNG is committed here; each figure is regenerated on demand by the
-command below that draws it.** Every generator writes to `.cache/plots/` by
-default (`tests/plots_dir.py`), untracked, in this directory's layout.
-`tests/test_ci_entry.py` guards that `docs/plots/` tracks no PNG outside
-`docs/plots/paper/`, T- #624's paper set. The figures committed before are in
+**No PNG is committed here outside the two exceptions below; each figure
+is regenerated on demand by the command below that draws it.** Every
+generator writes to `.cache/plots/` by default (`tests/plots_dir.py`),
+untracked; the paths below are relative to it. `lattice/`, `sim/` and
+`sim_qa/` exist only there now.
+`tests/test_ci_entry.py` guards that `docs/` tracks no PNG outside
+`docs/plots/paper/`, T- #624's paper set, and
+`studies/population_recovery.png`, whose runs survive only as
+`studies/population_records.jsonl.gz`. The figures committed before are in
 history: `git show ba34716:docs/plots/<path>.png`.
 
 | figures | command |
@@ -28,9 +32,9 @@ genome with the likelihood's errors on one run and on the truth (#291).
 **They are PNG since #452**: `write_fig` writes one beside each PDF, without
 metadata, and the PDFs stay in the run directory.
 
-`studies/` keeps the population study's non-PNG outputs
+`studies/` keeps the population study's outputs
 (`population_records.jsonl.gz`, `population_summary.json`,
-`population_tables.md`, `population_recovery.pdf`) and
+`population_tables.md`, `population_recovery.png`) and
 `potts_solvers_table.tex`.
 
 ## The dev instance
