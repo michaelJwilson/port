@@ -178,8 +178,13 @@ def tabulated_spot_clone_field(
     return field
 
 
-def _integral(values: np.ndarray) -> bool:
-    """Every entry a non-negative integer a table can be built to."""
+def _integral_reference(values: np.ndarray) -> bool:
+    """Every entry a non-negative integer a table can be built to: the oracle.
+
+    Three whole-array passes and a temporary of `values`' size per pass;
+    on a strided `(n_obs, n_spots)` view of `single_X` that was 1.9 s and
+    +0.26 GB per call at 8,649 spots (#569).
+    """
     return bool(
         values.size == 0
         or (
@@ -188,6 +193,37 @@ def _integral(values: np.ndarray) -> bool:
             and float(values.max()) < LIMIT
         )
     )
+
+
+@njit(nogil=True, cache=True)
+def _integral_rows(values: Any) -> bool:  # pragma: no cover - compiled
+    """`_integral_reference` in one pass over a 2-D array, allocating nothing.
+
+    Stops at the first entry that fails: negative or NaN (`not v >= 0`), not
+    an integer, or at or past `LIMIT`.
+    """
+    n_rows, n_columns = values.shape
+    for i in range(n_rows):
+        for j in range(n_columns):
+            v = values[i, j]
+            if not v >= 0.0:
+                return False
+            if v != np.floor(v):
+                return False
+            if v >= LIMIT:
+                return False
+    return True
+
+
+def _integral(values: np.ndarray) -> bool:
+    """Every entry a non-negative integer a table can be built to.
+
+    `_integral_rows` on a 2-D array, read in place whatever its strides;
+    `_integral_reference` otherwise. The two agree on every input (#569).
+    """
+    if values.ndim != 2 or values.size == 0:
+        return _integral_reference(values)
+    return bool(_integral_rows(values))
 
 
 def field_kernel(

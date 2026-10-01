@@ -69,3 +69,24 @@ def test_field(
     weight = np.ones(fixture.n_spots)
     arm(fixture, weight)
     benchmark(arm, fixture, weight)
+
+
+INTEGRAL_GATE = {"n_obs": 400, "n_spots": 300}
+INTEGRAL_STRESS = {"n_obs": 3779, "n_spots": 8649}
+"""The stress size is the 2x rung's BAF stage, `(3779, 2, 8649)` (#569)."""
+
+
+@pytest.mark.benchmark
+@pytest.mark.parametrize("size", tiers(INTEGRAL_GATE, INTEGRAL_STRESS))
+@pytest.mark.parametrize("arm", ["reference", "compiled"])
+def test_integral_check(
+    benchmark: BenchmarkFixture, arm: str, size: dict[str, int]
+) -> None:
+    """The table kernel's integer check on a strided `single_X[:, 1, :]` view, warm."""
+    from port.patch.hmrf.tabulated_field import _integral, _integral_reference
+
+    counts = np.random.default_rng(0).poisson(2, (size["n_obs"], 2, size["n_spots"]))
+    view = counts[:, 1, :]
+    check = _integral if arm == "compiled" else _integral_reference
+    check(view)
+    assert benchmark(check, view)
