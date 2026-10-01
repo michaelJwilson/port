@@ -387,11 +387,11 @@ def likelihoods(truth: CoreInferenceTruth, captured: Any) -> tuple[float, float]
         raise ValueError(msg)
 
     inputs = pseudobulk(captured)
-    profile = captured.profile
+    profile = captured.single_base_nb_mean.sum(axis=1)
     log_lambda = np.log(profile / profile.sum())
     assignment = np.asarray(result["new_assignment"], dtype=np.int64)
     clones = np.unique(assignment)
-    n_obs = captured.clone_X.shape[0]
+    n_obs = captured.single_X.shape[0]
 
     def nll(rates: np.ndarray, p: np.ndarray, paths: np.ndarray) -> float:
         n_states = rates.size
