@@ -65,6 +65,7 @@ ROLES: dict[str, Role] = {
     "port.extensions.parameter_errors": "oracle",
     "port.extensions.realization_plot": "tool",
     "port.extensions.sal": "extension",
+    "port.extensions.samples": "extension",
     "port.extensions.segments": "extension",
     "port.extensions.vocabulary": "tool",
     # patch: rows

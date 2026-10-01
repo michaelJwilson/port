@@ -34,12 +34,14 @@ BUDGET: dict[str, int] = {
     #    page's `analysis.GenomicTruth`, the tracks' arguments that
     #    `clones_genomic.png` and `truth_combined` both draw. 56: #540's
     #    copy-start records, `CopyCall` and `CopyStart`; #547 moved `Row`,
-    #    the registry of the starts set aside, to `sandbox/`.
-    "classes": 56,
+    #    the registry of the starts set aside, to `sandbox/`. 58: T- #418's
+    #    `Samples`, checked at construction, and `Recorded`, a run's samples.
+    "classes": 58,
     # NB step 4: 18 records became NamedTuples; the dataclasses left carry
     #    mutable state, machinery or a `__post_init__` (#517 D). Step 8 moved
-    #    7 dataclasses and 1 NamedTuple to `sandbox/`.
-    "dataclasses": 19,
+    #    7 dataclasses and 1 NamedTuple to `sandbox/`. 21: T- #418's `Samples`
+    #    (a `__post_init__`) and `Recorded` (mutable state).
+    "dataclasses": 21,
     # NB 24: `analysis.GenomicTruth` (the truth page). 26: #540's
     #    `CopyCall` and `CopyStart` (`Row` in `sandbox/`, #547).
     "NamedTuples": 26,
@@ -58,8 +60,9 @@ CONCEPTS: dict[str, int] = {
     "run_arm": 2,
     "clone_path": 1,
     # NB 2: `combined_figure` records plotting arguments, `segments` a
-    #    segmentation lineage; `tests.sim_stages`'s wrapper is `logged`.
-    "recording": 2,
+    #    segmentation lineage; `tests.sim_stages`'s wrapper is `logged`. 3:
+    #    `samples` records a run's slices for its outputs (T- #418).
+    "recording": 3,
 }
 """Definitions of one concept across `python/port` and `tests/`, with the reason where not 1."""
 
