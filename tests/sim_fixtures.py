@@ -39,7 +39,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 import yaml
-from port.sim.files import decompress, located
+from port.sim.files import decompress, load_ids, located, read_bytes
 
 REPOSITORY = Path(__file__).resolve().parents[1]
 SIM_ROOT = REPOSITORY / "sim"
@@ -346,13 +346,13 @@ def crop(
         return out
     (out / "spatial").mkdir(parents=True, exist_ok=True)
     (out / "unique_snp_ids.npy").write_bytes(
-        (sample.path / "unique_snp_ids.npy").read_bytes()
+        read_bytes(sample.path / "unique_snp_ids.npy")
     )
     (out / "truth_acn_profile.tsv").write_bytes(
-        (sample.path / "truth_acn_profile.tsv").read_bytes()
+        read_bytes(sample.path / "truth_acn_profile.tsv")
     )
 
-    barcodes = (sample.path / "barcodes.txt").read_text().split()
+    barcodes = read_bytes(sample.path / "barcodes.txt").decode().split()
     rows = np.array([b in kept for b in barcodes])
     (out / "barcodes.txt").write_text(
         "\n".join(b for b, k in zip(barcodes, rows, strict=True) if k) + "\n"
@@ -368,12 +368,12 @@ def crop(
     )
 
     positions = sample.path / "spatial" / "tissue_positions_list.csv"
-    lines = positions.read_text().splitlines()
+    lines = read_bytes(positions).decode().splitlines()
     (out / "spatial" / "tissue_positions_list.csv").write_text(
         "\n".join(line for line in lines if line.split(",")[0] in kept) + "\n"
     )
 
-    truth = (sample.path / "truth_clone_labels.tsv").read_text().splitlines()
+    truth = read_bytes(sample.path / "truth_clone_labels.tsv").decode().splitlines()
     (out / "truth_clone_labels.tsv").write_text(
         "\n".join(
             [truth[0], *(line for line in truth[1:] if line.split("\t")[0] in kept)]
@@ -451,7 +451,7 @@ def purify(
 
     for name in (*INPUTS, *TRUTH):
         if not name.startswith("cell_snp") and not name.endswith(".h5ad"):
-            (out / name).write_bytes((sample.path / name).read_bytes())
+            (out / name).write_bytes(read_bytes(sample.path / name))
 
     by_barcode = dict(zip(sample.barcodes.astype(str), sample.labels, strict=True))
 
@@ -480,11 +480,11 @@ def purify(
     assay.X = sp.vstack(rows).tocsr().astype(counts.dtype)
     assay.write_h5ad(out / "filtered_feature_bc_matrix.h5ad")
 
-    snps = np.load(sample.path / "unique_snp_ids.npy", allow_pickle=True).astype(str)
+    snps = load_ids(sample.path / "unique_snp_ids.npy")
     chromosome = np.array([s.split("_")[0].removeprefix("chr") for s in snps])
     position = np.array([int(s.split("_")[1]) for s in snps])
     copies = sample.copies_at(chromosome, position)
-    barcodes = (sample.path / "barcodes.txt").read_text().split()
+    barcodes = read_bytes(sample.path / "barcodes.txt").decode().split()
     spot_labels = np.array([by_barcode[b] for b in barcodes])
     first = sp.load_npz(sample.path / "cell_snp_Aallele.npz").tocsr()
     second = sp.load_npz(sample.path / "cell_snp_Ballele.npz").tocsr()
