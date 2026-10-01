@@ -87,7 +87,7 @@ REDRAW = 0.0
 """Seconds between redraws from the runs finished so far, a realization in progress included: 0, after every job."""
 
 SETTINGS = Path(__file__).with_name("copy_sampler_settings.json")
-"""The settings tuned once on `dev_tree_1s_hard`'s first `--held-out` realizations, reused by `--settings`."""
+"""The settings tuned once on `dev_tree_1s_hard`'s first `--held-out` realizations (r0 `d2938975`), reused by `--settings`."""
 
 
 def _raw(problem: Any) -> dict[str, Any]:

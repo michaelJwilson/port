@@ -1,6 +1,6 @@
 # Study: copy-state starts at known clones (#540)
 
-**TL;DR:** on `dev_tree_1s_hard` at the planted clones (10 realizations × 10 seeds), seven starts end
+**TL;DR:** on `dev_tree_1s_hard` (r0 `d2938975`) at the planted clones (10 realizations × 10 seeds), seven starts end
 within 1.5% of rows missed after `--sal` Baum-Welch: `lattice` (1.0%), `lattice` + EM and `hmc` (1.1%),
 `prior`, `anneal` and parallel tempering (1.2%), and `gaussian-em` (1.4%, where it does not refuse).
 `cnaster`'s own `gmm_init` ends at 44.3%, CalicoST's at 31.3%, and every `emission++` variant at
@@ -26,6 +26,10 @@ at 19.9%.
    held-out realizations that are never evaluated (`copy_sampler_settings.json`).
 
 ## Results: `dev_tree_1s_hard`, 10 realizations × 10 seeds
+
+`dev_tree_1s_hard` r3–r12 of `[sample] seed = 0`, r0 hashing to `d2938975`
+(`tests.sim_stages.realization_hash`); r0–r2 tuned the samplers. The draws
+are the gamma sampler's: this branch's `port.sim.draw` has no `counts_sampler`.
 
 Median gap below the best fit reached on each realization [nats], at the start and after Baum-Welch; median
 rows missed; median seconds for start and Baum-Welch together. The planted states, polished, sit 126 nats

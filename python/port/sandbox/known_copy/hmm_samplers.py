@@ -79,7 +79,7 @@ DEFAULTS: dict[str, dict[str, float]] = {
 }
 """Each sampler's schedule where no `setting` is given: the values
 `tests.studies.copy_state_stream --tune` chose on `dev_tree_1s_hard`'s
-held-out realizations 0-2 (`tests/studies/copy_sampler_settings.json`), 5 seeds per
+held-out realizations 0-2 (r0 `d2938975`; `tests/studies/copy_sampler_settings.json`), 5 seeds per
 setting, the cheapest within 1 nat of the best median gap in log-likelihood at the start: median
 gap to the best start 80.3 / 87.4 / 103.0 nats against 136.0 / 119.4 / 211.6 at the schedules
 first written (anneal 1e3 over 24, tempering 1e3 for 6 rounds, hmc at 300, tuned on realization 0

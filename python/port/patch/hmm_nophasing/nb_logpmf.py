@@ -6,8 +6,8 @@ name, so :func:`patched` cannot reach them and they import this kernel
 instead; `hmrf.tabulated_field` restates it term for term. Retire when
 `cnaster` lands the fix. Measured: scipy to 1e-9 where scipy is exact
 (`alpha * lambda >= 1e-4`); cnaster to 1e-9 where its `p < 1`;
-dev_tree_1s_hard r0's degenerate fit, -23,359 nats unpatched, refits at
--75,505 nats and 1.3% missed.
+dev_tree_1s_hard r0 (`d2938975`)'s degenerate fit, -23,359 nats unpatched,
+refits at -75,505 nats and 1.3% missed.
 
 **Replaces** `_nb_logpmf_1d(obs, exposure, mu, alpha, out)` and, since
 `cnaster`'s compiled `_dense_nb_logpmf` binds it as a global at compile time,
@@ -18,7 +18,7 @@ dev_tree_1s_hard r0's degenerate fit, -23,359 nats unpatched, refits at
 any count -- when `p >= 1.0`. In float64 `p` rounds to exactly 1.0 once
 `alpha * lambda` is below about 1.1e-16, so a state whose mean falls far
 enough scores every row it holds at probability 1. Baum-Welch finds it: on
-`dev_tree_1s_hard` r0 one fit drove a state to `log mu = -43.22`, gave it
+`dev_tree_1s_hard` r0 (`d2938975`) one fit drove a state to `log mu = -43.22`, gave it
 7,632 of 7,688 rows, and reported -23,359 nats against the planted states'
 -76,306 (`port.sandbox.known_copy`).
 

@@ -58,7 +58,7 @@ def test_the_patched_kernel_is_cnasters_where_cnasters_p_is_below_one(
 
 @pytest.mark.bug
 def test_cnaster_scores_any_count_at_probability_one_once_p_rounds_to_one() -> None:
-    """At `log mu = -43.22`, the state Baum-Welch reached on dev_tree_1s_hard r0, upstream scores 1,000 UMIs at log P = 0.
+    """At `log mu = -43.22`, the state Baum-Welch reached on dev_tree_1s_hard r0 (`d2938975`), upstream scores 1,000 UMIs at log P = 0.
 
     The patch scores the same count at `k log(alpha lambda)`, below -30,000.
     """

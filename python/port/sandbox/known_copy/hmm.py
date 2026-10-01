@@ -56,8 +56,8 @@ def degenerate(
     `cnaster.hmm_nophasing.nbinom_logpmf_numba` returns 0 -- probability 1,
     for any count -- when `p = 1 / (1 + alpha * exposure * mu)` is at least
     1.0, which it is in float64 once `alpha * exposure * mu` is below about
-    1e-16. Baum-Welch finds that: on dev_tree_1s_hard r0 one fit drove a
-    state to log mu = -43, gave it 99% of rows, and scored -23,359 nats
+    1e-16. Baum-Welch finds that: on dev_tree_1s_hard r0 (`d2938975`) one fit
+    drove a state to log mu = -43, gave it 99% of rows, and scored -23,359 nats
     against the planted states' -76,306. The same arithmetic as the kernel,
     on each row at its own state.
     """

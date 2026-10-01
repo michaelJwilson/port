@@ -186,7 +186,7 @@ def test_the_lattice_start_places_the_states_that_drew_the_call_before_any_polis
 def test_every_seeding_row_is_a_rate_the_seam_can_place(covariate: bool) -> None:
     """B within the common trial count on both instances: a raw B count read over it seeded a rate above 1.
 
-    On dev_tree_1s_hard's first realization the uncovaried instance carried
+    On dev_tree_1s_hard's first realization (`d2938975`) the uncovaried instance carried
     raw B counts to 2,443 against 111 common trials, and `anneal`,
     `tempering`, `quantile` and `gaussian-em` raised "every beta must be
     positive". The totals are the observed ones on the uncovaried instance.

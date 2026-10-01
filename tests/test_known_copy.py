@@ -76,7 +76,7 @@ def test_every_start_returns_one_state_per_planted_state(name: str) -> None:
 
 @pytest.mark.analytic
 def test_a_fit_is_degenerate_exactly_where_cnasters_p_rounds_to_one() -> None:
-    """At the state Baum-Welch reached on dev_tree_1s_hard r0 (log mu -43.22, alpha 0.1184) `p` is 1.0; at log mu 0 it is not.
+    """At the state Baum-Welch reached on dev_tree_1s_hard r0 (`d2938975`; log mu -43.22, alpha 0.1184) `p` is 1.0; at log mu 0 it is not.
 
     Checked against the kernel's own arithmetic, `1 / (1 + alpha * exposure * mu) >= 1.0`.
     """

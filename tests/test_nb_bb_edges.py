@@ -261,7 +261,7 @@ def test_the_patched_kernel_floors_the_dispersion_in_both_terms() -> None:
 
 
 DEGENERATE = (-43.22, 0.1184, 1000.0, 1000.0)
-"""`(log mu, alpha, exposure, count)` of dev_tree_1s_hard r0's degenerate state (#560)."""
+"""`(log mu, alpha, exposure, count)` of dev_tree_1s_hard r0 (`d2938975`)'s degenerate state (#560)."""
 
 
 def _bound_kernel(module: str) -> float:
