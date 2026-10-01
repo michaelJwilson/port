@@ -594,10 +594,10 @@ DISPERSION_PRIOR_ROWS = 0.0
 """`n0`, the rows' worth of pooled information each state's dispersion is shrunk with (#566).
 
 0, no shrinkage, unless `--dispersion-prior-rows` states one. Held-out
-likelihood on #540's `dev_tree_1s_hard` r0-r2 (fit on r0 and r1, scored on
-the other two; grid 0, 10, 30, 100, 300, 1000) picks 30, by a mode change
-on r1 rather than a trend: there the neutral state splits in two at
-`n0 >= 30` (PR #567).
+likelihood on #540's `dev_tree_1s_hard` r0-r2 (`d2938975`, `764709dc`,
+`3adf249a`; fit on r0 and r1, scored on the other two; grid 0, 10, 30, 100,
+300, 1000) picks 30, by a mode change on r1 rather than a trend: there the
+neutral state splits in two at `n0 >= 30` (PR #567).
 """
 
 
@@ -629,16 +629,17 @@ def dispersion_blocks(gradient: EmGradient) -> dict[str, slice]:
 ALPHA_MIN = 1e-3
 """The per-state NB `alpha`'s lower bound with `--per-state-dispersion` (#566).
 
-Below every pooled `alpha` measured: 0.589 and 0.593 on CalicoST hard and
-easy under `--sal`, 0.058 and 0.072 on #540's `dev_tree_1s_hard` r1 and r0.
+Below every pooled `alpha` measured: 0.589 and 0.593 on CalicoST hard
+(`1ae26365`) and easy (`23989aa4`) under `--sal`, 0.058 and 0.072 on #540's
+`dev_tree_1s_hard` r1 (`764709dc`) and r0 (`d2938975`).
 """
 
 TAU_MAX = 1e5
 """The per-state BB `tau`'s upper bound, a concentration cap (#566).
 
 Above every finite pooled `tau` measured: 1,062 and 4,882 on CalicoST hard
-and easy, 15,324 on #540's r1. #540's r0 pools at 3.5e6, the binomial in
-effect; at 111 trials, `tau = 1e5` inflates the variance by 0.1 per cent.
+(`1ae26365`) and easy (`23989aa4`), 15,324 on #540's r1 (`764709dc`). #540's
+r0 (`d2938975`) pools at 3.5e6, the binomial in effect; at 111 trials, `tau = 1e5` inflates the variance by 0.1 per cent.
 """
 
 

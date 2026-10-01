@@ -289,8 +289,9 @@ def assignment_dispersions(
     state (`per_state_dispersion`), each is replaced by the occupancy-weighted
     geometric mean over `decoded`, the pooled value: scored per spot, a
     state's own wide dispersion makes any clone decoded to it absorb the
-    spots its neighbours disagree on -- measured, CalicoST easy and hard
-    lose every clone but one under `--per-state-dispersion` without this.
+    spots its neighbours disagree on -- measured, CalicoST easy (`23989aa4`)
+    and hard (`1ae26365`) lose every clone but one under
+    `--per-state-dispersion` without this.
     """
     from port.patch.plotting.clone_paths import state_vector
 
