@@ -266,7 +266,7 @@ follows the arm unless asked: on in a patched run, off with `--no-patch`.
 | `--sal` | off | alpha expansion with the Rust cut for the labelling (#312), and the next two | a lower Potts energy on every problem measured |
 | `--refinement-mask` | off; on with `--sal` | each read-depth sub-clone kept in its BAF clone, a 100-nat penalty (#348, #467) | with the floor merge, CalicoST hard clone ARI 0.303 to 0.982 |
 | `--floor-merge` | off; on with `--sal` | the clone-size floor met smallest first (#348) | alone, #338's three-sample instance: 2 planted clones fitted as 6 |
-| `--hmm-start` | `none`; `kmeans++x5+em` with `--sal` | the read-depth HMM's copy states: a sal mixture start (#489), seeded in sal's rate space (#547), or `lattice`, the integer `(A, B)` lattice; `emission++` scores floored at 0 (#562) | #547: dev_tree clone ARI 0.8612 (5) to 1.0 (4); with the segment floor, hard copy ARI 0.9055 to 0.9181 |
+| `--hmm-start` | `none`; `kmeans++x5+em` with `--sal` | the read-depth HMM's copy states: a sal mixture start (#489), seeded in sal's rate space (#547), or `lattice`, the integer `(A, B)` lattice; `emission++` scores floored at 0 (#562) | #547: dev_tree r0 (`3381575a`) clone ARI 0.8612 (5) to 1.0 (4); with the segment floor, CalicoST hard (`8797710b`) copy ARI 0.9055 to 0.9181 |
 | `--baf-start` | `none` | the BAF-only HMM's copy states from the lattice (#540) | |
 | `--copy-errors` | off | `cnv_copy_sets.tsv`: every `(A, B)` in each state's 95 per cent credible region (#353) | differentiates the whole objective once |
 | `--png-copies` | off | a PNG without metadata beside each PDF, for `docs/plots` (#452) | two runs of the same code write the same bytes |
@@ -335,11 +335,12 @@ read-depth binning, adjacent bins merge within each contig until each spans
 the minimum length and holds the larger of the normal floor and
 `quality.secondary_min_normal_umi`, which `cnaster` states and does not
 guarantee. The run's segment lineage then refuses any later level under
-either minimum. On dev_tree r0, tumour-clone RDR outlier rows (|log RDR
-deviation| > 0.5 at planted-neutral segments) fall from 1,163 of 2,895
-segments to 802 of 2,624 at 300 UMIs and 104 of 1,265 at 0.75 Mb. Under
-`--sal`, 300 keeps every clone ARI on dev_tree, easy and hard and raises
-hard's copy ARI from 0.9055 to 0.9181; with the lattice start, 200, 500, 700
+either minimum. On dev_tree r0 (`3381575a`), tumour-clone RDR outlier rows
+(|log RDR deviation| > 0.5 at planted-neutral segments) fall from 1,163 of
+2,895 segments to 802 of 2,624 at 300 UMIs and 104 of 1,265 at 0.75 Mb.
+Under `--sal`, 300 keeps every clone ARI on dev_tree r0 (`3381575a`),
+CalicoST easy (`2d4ce9a9`) and hard (`8797710b`) and raises hard's copy ARI
+from 0.9055 to 0.9181; with the lattice start, 200, 500, 700
 and 1,000 each gave some sample an extra clone (#547). The BAF-only stage's
 bins are untouched.
 
