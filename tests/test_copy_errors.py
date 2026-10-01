@@ -121,3 +121,30 @@ def test_each_planted_pair_is_in_its_state_s_set(tmp_path: Path) -> None:
     score = decode_one(0, tmp_path)
 
     assert all(score["covered"]), score
+
+
+@pytest.mark.bug
+@pytest.mark.parametrize("tau", [1e5, 1e12])
+def test_copy_errors_refuse_a_fit_where_jax_hmms_beta_binomial_is_unstable(
+    tau: float,
+) -> None:
+    """**T- #599:** at `tau >= STABLE_TAU` `--copy-errors` refuses rather than returning a wrong covariance.
+
+    `jax_hmm`'s beta-binomial subtracts `lgamma(tau)`-sized terms. Fails when
+    T- #599 fixes it and the guard is lifted.
+    """
+    import numpy as np
+    from port.extensions.copy_errors import Captured, pinned_errors
+
+    result = {
+        "new_log_mu": np.zeros((3, 1)),
+        "new_p_binom": np.full((3, 1), 0.5),
+        "new_alphas": np.array([[0.01]]),
+        "new_taus": np.array([[tau]]),
+    }
+    captured = Captured(
+        np.zeros((4, 2, 1)), np.array([4]), np.ones((4, 1)), np.ones((4, 1)), result
+    )
+
+    with pytest.raises(ValueError, match="T- #599"):
+        pinned_errors(captured)
