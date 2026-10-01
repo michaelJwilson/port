@@ -218,3 +218,25 @@ def test_the_lattice_channels_are_sals_count_pair_density() -> None:
         np.testing.assert_allclose(
             own, referee[np.arange(state.size), state], rtol=1e-10
         )
+
+
+@pytest.mark.bug
+@pytest.mark.parametrize("covariate", [True, False])
+def test_every_seeding_row_is_a_rate_the_seam_can_place(covariate: bool) -> None:
+    """B within the common trial count on both instances: a raw B count read over it seeded a rate above 1.
+
+    On dev_tree_1s_hard's first realization (`d2938975`) the uncovaried instance carried
+    raw B counts to 2,443 against 111 common trials, and `anneal`,
+    `tempering`, `quantile` and `gaussian-em` raised "every beta must be
+    positive". The totals are the observed ones on the uncovaried instance.
+    """
+    call = _call("rdrbaf")
+    call.trials[:10] = 5 * call.trials.max()
+    call.b[:10] = call.trials[:10] * 0.9
+    held = cs.instance(call, covariate=covariate)
+    rows = np.asarray(held.rows)
+
+    assert rows[:, 1].max() <= float(held.at.trials) + 1e-9
+    held.at(rows)  # NB raises ParameterDomainError on a rate above 1
+    if not covariate:
+        np.testing.assert_allclose(rows[:, 0], call.total[call.exposure > 0])

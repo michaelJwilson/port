@@ -51,6 +51,7 @@ __all__ = [
     "lattice_start",
     "polish_states",
     "run_start",
+    "seed_states",
     "with_error",
 ]
 
@@ -111,8 +112,12 @@ def instance(call: CopyCall, *, covariate: bool = True) -> Any:
     `port.patch.hmm_initialize.sal_mixture.instance_of`'s instance, whose
     seeding reads `sal`'s rate space (#547): exposure over `EXPOSURE_SCALE`,
     the B column over the common trial count. For `"baf"`, a constant
-    read-depth channel. Without `covariate`, the counts alone, seeded where
-    they lie.
+    read-depth channel. Without `covariate`, the totals as observed, and the
+    B column still the fraction over the common trial count: the seam reads
+    a row's successes over that count (`(b + 1/2) / (trials + 1)`), so a raw
+    B count above it is a rate above 1 and a negative beta-binomial beta,
+    which refused `anneal`, `tempering`, `quantile` and `gaussian-em` on the
+    dev_tree calls (#540).
     """
     from dataclasses import replace
 
@@ -138,7 +143,10 @@ def instance(call: CopyCall, *, covariate: bool = True) -> Any:
     if covariate:
         return held
 
-    return replace(held, covariate=None, seeding_rows=None)
+    # NB the covariate is the kept bins' exposure: rows[:, 0] times it is the observed total
+    rows = np.asarray(held.seeding_rows, dtype=np.float64)
+    counts = np.column_stack([rows[:, 0] * held.covariate[:, 0], rows[:, 1]])
+    return replace(held, covariate=None, seeding_rows=counts)
 
 
 def _place(held: Any, call: CopyCall, log_mu: Any, p_binom: Any) -> Any:
@@ -553,6 +561,41 @@ def _surviving(chosen: Any, held: Any, rng: np.random.Generator, seconds: float)
     return fits[int(np.argmax(finals))].components
 
 
+def seed_states(
+    name: str,
+    call: CopyCall,
+    rng: np.random.Generator,
+    *,
+    covariate: bool = True,
+    seconds: float = 60.0,
+    seeds: dict[str, Seed] | None = None,
+) -> tuple[np.ndarray, np.ndarray]:
+    """`name`'s states `(log mu, p)` on `call`, before any polish: what `run_start` hands its polish.
+
+    Port's own starts (`seeds`) are placed by `_place` at `EXPOSURE_SCALE`
+    per unit rate whichever instance holds them, and read back at it. A
+    `sal` start fitted on raw totals has its rate at the typical exposure:
+    the median. Reading a port start at the median put `cnaster-gmm`'s and
+    `distinct`'s states 2.3 below in log mu on dev_tree_1s_hard, and
+    `cnaster`'s Baum-Welch overflowed from them (#540).
+    """
+    chosen = LATTICE if seeds is None else seeds
+    components = _seeded(
+        name, call, instance(call, covariate=covariate), rng, seconds, chosen
+    )
+    if covariate or name in chosen:
+        log_mu, p = _read(call, components)
+    else:
+        log_mu, p = _read(
+            call, components, per=float(np.median(call.exposure[call.exposure > 0]))
+        )
+    return np.asarray(log_mu, dtype=np.float64), np.asarray(p, dtype=np.float64)
+
+
+Seeder = Callable[..., tuple[np.ndarray, np.ndarray]]
+"""`seed_states`' signature without `seeds`: how a caller with starts of its own seeds `run_start`."""
+
+
 def run_start(
     name: str,
     call: CopyCall,
@@ -563,38 +606,27 @@ def run_start(
     covariate: bool = True,
     seconds: float = 60.0,
     seeds: dict[str, Seed] | None = None,
+    seeder: Seeder | None = None,
 ) -> CopyStart:
     """`name` seeded on `seed_on` (default the call), polished on `fit_on` if given, then on the whole call, and scored there.
 
     `name` is one of `sal`'s mixture starts (`sal.search.mixture_starts`;
     `kmeans++x5+em` is `--sal`'s, #489) or of `seeds`, by default
-    `LATTICE`. Every start ends in the same polish on the same instance, so
-    two starts' log-likelihoods compare; `seconds` covers the whole cell.
+    `LATTICE`; `seeder`, given, seeds in place of `seed_states`. Every
+    start ends in the same polish on the same instance, so two starts'
+    log-likelihoods compare; `seconds` covers the whole cell.
     """
     from sal.search.mixture_starts import polish
 
     full = instance(call)
     source = seed_on if seed_on is not None else call
     opened = time.perf_counter()
-    components = _seeded(
-        name,
-        source,
-        instance(source, covariate=covariate),
-        rng,
-        seconds,
-        LATTICE if seeds is None else seeds,
-    )
-
-    if covariate:
-        log_mu, p = _read(source, components)
-    else:
-        # NB fitted on raw totals: the rate is the mean over the typical exposure.
-        log_mu, p = _read(
-            source,
-            components,
-            per=float(np.median(source.exposure[source.exposure > 0])),
+    if seeder is None:
+        log_mu, p = seed_states(
+            name, source, rng, covariate=covariate, seconds=seconds, seeds=seeds
         )
-
+    else:
+        log_mu, p = seeder(name, source, rng, covariate=covariate, seconds=seconds)
     handover = time.perf_counter() - opened
 
     if fit_on is not None:

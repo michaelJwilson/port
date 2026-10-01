@@ -75,7 +75,7 @@ from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
-from scipy.special import gammaln
+from scipy.special import gammaln, xlogy
 
 __all__ = [
     "FITS",
@@ -164,17 +164,22 @@ def mixed_parameters(
 
 
 def _nb(k: np.ndarray, mean: np.ndarray, alpha: float) -> np.ndarray:
-    """`cnaster`'s `nbinom_logpmf_numba`, with its zero for a non-positive mean."""
-    r = 1.0 / max(alpha, 1.0e-10)
+    """`cnaster`'s `nbinom_logpmf_numba`, with its zero for a non-positive mean.
+
+    In log space with `a = alpha * mean` (#560): `p = 1 / (1 + a)` rounds to
+    1 below `a` of about 1.1e-16, where the old form scored a count of 0 NaN
+    and a count of 1000 `-inf`. `alpha` is floored in `a` as in `r`.
+    """
+    alpha = max(alpha, 1.0e-10)
+    r = 1.0 / alpha
     positive = mean > 0.0
-    safe = np.where(positive, mean, 1.0)
-    p = 1.0 / (1.0 + alpha * safe)
+    scaled = alpha * np.where(positive, mean, 1.0)
     out = (
         gammaln(k + r)
         - gammaln(r)
         - gammaln(k + 1.0)
-        + r * np.log(p)
-        + k * np.log1p(-p)
+        - (r + k) * np.log1p(scaled)
+        + xlogy(k, scaled)
     )
     return np.asarray(np.where(positive, out, 0.0), dtype=np.float64)
 
