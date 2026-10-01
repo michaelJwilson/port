@@ -370,6 +370,8 @@ emission with `snakes_and_ladders`' dense log-emission, to 3.2e-12 of
 rather than 6; the lattice fixture is unchanged at 0.9985. It is not faster end
 to end. `--no-sal-emission` restores `cnaster`'s kernels. It rides on the
 shift rows, so `--no-shift` turns it off too, and `--distinct-init` with it.
+The copy decode reads the fit the shift's row captures, so `--no-shift` is
+refused while the copy rows are on: add `--no-copy-cap` (#576).
 
 **The M step's gradient is closed form** (#433). `cnaster` fits the
 emission by BFGS with a finite-difference gradient, one objective call per

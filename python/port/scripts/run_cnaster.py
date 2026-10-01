@@ -273,6 +273,13 @@ def _refusals(arguments: argparse.Namespace, settings: Settings) -> list[str]:
     #    unshifted fit's rates carry the baseline's per-clone scale (#353).
     if arguments.copy_errors and not settings.shift:
         refused.append("--copy-errors needs the shift; drop --no-shift")
+    # NB the copy rows decode the fit the shift's `run_core_inference` row
+    #    captures; without it the decode stopped hours in, with no captured
+    #    fit (#576). Refused here, naming the way out.
+    elif settings.copy_cap and not settings.shift:
+        refused.append(
+            "--no-shift leaves the copy decode no captured fit; add --no-copy-cap"
+        )
 
     # NB read by the `SHIFT_SWAPS` rows alone -- port's `hmm_nophasing` class
     #    and `run_core_inference`.
