@@ -776,15 +776,13 @@ def get_sample_list(adata: Any) -> tuple[list[str], np.ndarray]:
     """`cnaster.io.get_sample_list`, keyed by sample name rather than row order (#418).
 
     Upstream appends a name each time `obs["sample"]` changes between
-    adjacent rows. On rows sorted by sample, where first-seen order is sorted
-    order, this is upstream's, bitwise. Elsewhere it is a stated difference:
+    adjacent rows. Names here are kept in first-seen order, so on contiguous
+    rows -- sorted or not -- this is upstream's, bitwise. The one stated
+    difference is a fix:
 
     - **interleaved rows** (`A, B, A`): upstream returns `[A, B, A]`, every
       `A` spot takes code 2 and code 0 has no spot, which its assert does not
-      catch. Here `[A, B]`, every spot coded by name: a fix.
-    - **contiguous rows out of order** (`B.., A..`): upstream codes slices in
-      first-seen order, `[B, A]`, which is consistent but depends on row
-      order. Here `[A, B]`: a renumbering of the same partition.
+      catch. Here `[A, B]`, every spot coded by name.
 
     Names are read as `str` (`port.extensions.samples.samples_of`). The pair
     is recorded for the run's outputs while `port.extensions.samples` is

@@ -2,7 +2,7 @@
 
 `cnaster.io.get_sample_list` builds `(sample_list, sample_ids)` from runs of
 equal adjacent `obs["sample"]`; `port.patch.io.get_sample_list` builds them
-by name, sorted. The referees:
+by name, in first-seen order. The referees:
 
 - `bug`: `cnaster`'s pair on interleaved rows, which leaves code 0 empty;
 - `patch`: on sorted contiguous rows the drop-in is `cnaster`'s, bitwise,
@@ -65,13 +65,14 @@ def test_cnaster_leaves_a_slice_empty_on_interleaved_rows() -> None:
 
 
 @pytest.mark.patch
-def test_sorted_contiguous_rows_are_cnasters_bitwise() -> None:
-    """The pair, and the multi-slice adjacency built from it, as `cnaster`'s."""
+@pytest.mark.parametrize("rows", [["A"] * 30 + ["B"] * 20, ["B"] * 20 + ["A"] * 30])
+def test_contiguous_rows_are_cnasters_bitwise(rows: list[str]) -> None:
+    """The pair, and the multi-slice adjacency built from it, as `cnaster`'s,
+    whether the slices arrive sorted or not."""
     from cnaster.io import get_sample_list as upstream
     from cnaster.spatial import construct_multislice_lattice_adjacency
     from port.patch.io import get_sample_list as patched
 
-    rows = ["A"] * 30 + ["B"] * 20
     adata = _adata(rows)
     theirs = upstream(adata)
     ours = patched(adata)
@@ -80,7 +81,9 @@ def test_sorted_contiguous_rows_are_cnasters_bitwise() -> None:
     assert ours[1].dtype == theirs[1].dtype
     assert np.array_equal(ours[1], theirs[1])
 
-    coords = np.concatenate([_grid(5, 6), _grid(4, 5, offset=100.0)])
+    sizes = {"A": (5, 6), "B": (4, 5)}
+    first, second = theirs[0]
+    coords = np.concatenate([_grid(*sizes[first]), _grid(*sizes[second], offset=100.0)])
     reference = construct_multislice_lattice_adjacency(
         theirs[1], theirs[0], coords, None, 1, 1, 1
     )
@@ -95,7 +98,7 @@ def test_sorted_contiguous_rows_are_cnasters_bitwise() -> None:
 @pytest.mark.analytic
 @pytest.mark.parametrize("order", sorted(ORDERS))
 def test_every_spot_is_coded_by_its_own_name_in_any_order(order: str) -> None:
-    """Names sorted and distinct; `names[ids[i]]` is row `i`'s sample; no
+    """Names distinct, in first-seen order; `names[ids[i]]` is row `i`'s sample; no
     spot lost; the `np.unique` re-map is the identity; the same per-row
     sample under a permutation of the rows."""
     from port.extensions.samples import samples_of
@@ -106,7 +109,7 @@ def test_every_spot_is_coded_by_its_own_name_in_any_order(order: str) -> None:
     samples = samples_of(_adata(rows))
     names = np.asarray(samples.names)
 
-    assert list(samples.names) == sorted(set(rows))
+    assert list(samples.names) == list(dict.fromkeys(rows))
     assert names[samples.ids].tolist() == rows
     assert np.bincount(samples.ids).tolist() == [rows.count(n) for n in names]
     assert np.array_equal(np.unique(samples.ids), np.arange(len(names)))
@@ -122,15 +125,18 @@ def test_every_spot_is_coded_by_its_own_name_in_any_order(order: str) -> None:
 
     permutation = np.random.default_rng(0).permutation(len(rows))
     shuffled = samples_of(_adata([rows[i] for i in permutation]))
-    assert shuffled.names == samples.names
-    assert np.array_equal(shuffled.ids, samples.ids[permutation])
+    assert sorted(shuffled.names) == sorted(samples.names)
+    assert (
+        np.asarray(shuffled.names)[shuffled.ids].tolist()
+        == names[samples.ids[permutation]].tolist()
+    )
 
 
 @pytest.mark.infra
 def test_a_pair_the_unique_remap_would_renumber_is_refused() -> None:
     """`cnaster`'s `A, B, A` pair (codes `{1, 2}`, three names) and a short
     `sample_list` are refused, by the guard and by port's `run_core_inference`
-    before upstream runs; `Samples` refuses unsorted names and an empty code."""
+    before upstream runs; `Samples` refuses repeated names and an empty code."""
     from port.extensions.samples import Samples
     from port.patch.hmrf.core_inference import identity_remap, run_core_inference
 
@@ -154,8 +160,8 @@ def test_a_pair_the_unique_remap_would_renumber_is_refused() -> None:
             sample_list=["A", "B", "A"],
         )
 
-    with pytest.raises(ValueError, match="unique and sorted"):
-        Samples(("B", "A"), np.array([0, 1], dtype=np.int64))
+    with pytest.raises(ValueError, match="must be unique"):
+        Samples(("A", "A"), np.array([0, 1], dtype=np.int64))
 
     with pytest.raises(ValueError, match="needs a spot"):
         Samples(("A", "B"), np.array([1, 1], dtype=np.int64))
@@ -244,6 +250,7 @@ def test_a_reversed_sample_sheet_writes_the_same_clones_and_samples(
     (first, a, ma), (second, b, mb) = arms["sorted"], arms["reversed"]
 
     assert abs(first.ari - second.ari) <= 1e-12
-    assert ma["samples"] == mb["samples"] == sorted(sheet["sample_id"].astype(str))
+    assert ma["samples"] == list(sheet["sample_id"].astype(str))
+    assert mb["samples"] == ma["samples"][::-1]
     assert set(a["sample_id"]) == set(ma["samples"])
     pd.testing.assert_frame_equal(a[["sample_id"]], b[["sample_id"]])

@@ -231,8 +231,9 @@ departure is a stated fix, in its own docstring, and changes the result only
 in the regime named there (#466 lists them):
 
 - `get_aggregated_barcodes`: a slice id read from the barcode suffix (#446);
-- `get_sample_list`: slices keyed by name and sorted, where `cnaster` keys
-  them by runs of adjacent rows and drops a slice on interleaved rows (#418);
+- `get_sample_list`: slices keyed by name in first-seen order, where
+  `cnaster` keys them by runs of adjacent rows and drops a slice on
+  interleaved rows (#418);
 - `assign_initial_blocks`: no block across two chromosomes;
 - `summarize_counts_for_bins`: the normal-spot filter's flagged genes left
   out of every bin (#177), and a chromosome with no bins left out of

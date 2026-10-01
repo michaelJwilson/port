@@ -8,14 +8,16 @@ takes code 2, and code 0 has no spot.
 
 `Samples` is the pair built by name instead:
 
-- `names`: the distinct sample names, sorted;
+- `names`: the distinct sample names, in the order rows first name them;
 - `ids`: `int64`, one per `obs` row, the codes of
   `pd.Categorical(obs["sample"], categories=names)`.
 
-Sorted names make `cnaster.hmrf.run_core_inference`'s `np.unique` re-map of
-`ids` the identity, so `names[k]` and code `k` name one slice everywhere a
-consumer indexes by either. Row order is never read: a slice need not be
-contiguous.
+First-seen order is `cnaster`'s own on contiguous rows, so the pair is
+`cnaster`'s there, bitwise, sorted or not. Every code has a spot, so
+`cnaster.hmrf.run_core_inference`'s `np.unique` re-map of `ids` is the
+identity, and `names[k]` and code `k` name one slice everywhere a consumer
+indexes by either. A slice need not be contiguous: interleaved rows keep one
+name each.
 
 `recording()` keeps the `Samples` a run builds, so what is written after it
 (`port.extensions.outputs`) carries each spot's sample from the run rather
@@ -38,17 +40,17 @@ __all__ = ["Recorded", "Samples", "current", "observe", "recording", "samples_of
 
 @dataclass(frozen=True, eq=False)
 class Samples:
-    """A run's sample names, sorted, and each spot's code into them.
+    """A run's sample names, in first-seen order, and each spot's code into them.
 
     Raises
     ------
     ValueError
-        At construction, if `names` are not unique and sorted, or a code is
+        At construction, if `names` are not unique, or a code is
         outside `0..len(names) - 1`, or a name has no spot.
     """
 
     names: tuple[str, ...]
-    """The distinct sample names, sorted."""
+    """The distinct sample names, in the order rows first name them."""
 
     ids: np.ndarray
     """Per spot, `int64`, the position of its sample in `names`."""
@@ -56,8 +58,8 @@ class Samples:
     def __post_init__(self) -> None:
         names = list(self.names)
 
-        if names != sorted(set(names)):
-            msg = f"sample names must be unique and sorted: {names}"
+        if len(set(names)) != len(names):
+            msg = f"sample names must be unique: {names}"
             raise ValueError(msg)
 
         ids = np.asarray(self.ids)
@@ -102,7 +104,7 @@ def samples_of(adata: Any) -> Samples:
     which types a numeric `sample_id` as an integer.
     """
     values = adata.obs["sample"].astype(str).to_numpy()
-    names = tuple(sorted(set(values.tolist())))
+    names = tuple(str(name) for name in pd.unique(values))
     ids = pd.Categorical(values, categories=list(names)).codes.astype(np.int64)
 
     return Samples(names, ids)
