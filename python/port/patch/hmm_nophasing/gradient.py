@@ -41,7 +41,7 @@ from __future__ import annotations
 
 import inspect
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 import numpy as np
@@ -170,6 +170,8 @@ class EmGradient:
     """`port.patch.hmm_nophasing.rescale.Rescale`, or `None`: per-row dispersions (#566)."""
     rows: tuple[np.ndarray, ...] = ()
     """Per-row NB counts and exposure, BB counts and trials: the rescaled path's codes."""
+    shared_partials: dict[str, float] = field(default_factory=dict)
+    """The clone-shared dispersion's derivatives from the last call (#566)."""
 
     @classmethod
     def for_fit(
@@ -355,32 +357,42 @@ class EmGradient:
         taus: np.ndarray,
         spread: bool = False,
     ) -> tuple[np.ndarray, np.ndarray]:
-        """`_allele` per row, at `tau_row = (1 + tau) / g_row - 1` (#566).
+        """`_allele` per row, at `rho_row = rho_shared + g_row / (1 + tau)` (#566).
 
-        `d log tau_row / d log tau = tau / (g_row tau_row)`.
+        `tau_row = 1 / rho_row - 1`, so for `x` either `tau` or `tau_shared`
+        with weight `w` (`g_row`, or 1), `d log tau_row / d log x =
+        w x / (tau_row rho_row^2 (1 + x)^2)`. Without a shared part that is
+        `tau / (g_row tau_row)`. The shared part's derivative is kept in
+        `shared_partials["bb"]`.
         """
-        from port.patch.hmm_nophasing.rescale import tau_rows
+        from port.patch.hmm_nophasing.rescale import rho_rows
 
         _, _, obs, total = self.rows
+        components = self._components()
+        shared = 0.0 if components is None else components.rho
         tau = np.asarray(taus, dtype=np.float64)[:, :1]
-        per_row = tau_rows(tau, self.rescale)
-        # NB `g = 0`, no spot with two trials: the binomial, which `tau`
-        #    does not move.
-        binomial = np.isinf(per_row)
-        finite = np.where(binomial, 1.0, per_row)
+        rho = rho_rows(tau, self.rescale, shared)
+        # NB `rho_row = 0`, no spot with two trials and nothing shared: the
+        #    binomial, which no dispersion moves.
+        binomial = rho <= 0.0
+        safe = np.where(binomial, 1.0, rho)
+        per_row = 1.0 / safe - 1.0
 
-        d_p, d_tau = bb_partials(obs[None, :], total[None, :], p_binom[:, :1], finite)
+        d_p, d_tau = bb_partials(obs[None, :], total[None, :], p_binom[:, :1], per_row)
         share = np.clip(p_binom[:, :1], DISPERSION_FLOOR, 1.0 - DISPERSION_FLOOR)
         valid = (obs >= 0) & (total >= 0) & (obs <= total)
         limit = np.where(valid, obs / share - (total - obs) / (1.0 - share), 0.0)
         d_p = np.where(binomial, limit, d_p)
-        chain = np.where(
-            binomial,
-            0.0,
-            tau / (np.where(binomial, 1.0, self.rescale.bb[None, :]) * finite),
-        )
+        scale = np.where(binomial, 0.0, d_tau / (per_row * safe * safe))
+        chain = self.rescale.bb[None, :] * tau / (1.0 + tau) ** 2
 
-        return -np.sum(gamma * d_p, axis=1), _sums(gamma, d_tau * chain, spread)
+        if components is not None:
+            x = float(np.exp(components.log_tau))
+            self.shared_partials["bb"] = -float(
+                np.sum(gamma * scale) * x / (1.0 + x) ** 2
+            )
+
+        return -np.sum(gamma * d_p, axis=1), _sums(gamma, scale * chain, spread)
 
     def _depth_rows(
         self,
@@ -411,9 +423,19 @@ class EmGradient:
 
         clone_of = np.repeat(np.arange(len(lengths)), lengths)
         mean = exposure[None, :] * np.exp(rates[:, None] - shifts[clone_of][None, :])
-        dispersions = alpha_rows(np.asarray(alphas)[:, :1], self.rescale)
+        components = self._components()
+        shared = 0.0 if components is None else components.alpha
+        dispersions = alpha_rows(np.asarray(alphas)[:, :1], self.rescale, shared)
 
         d_eta, d_alpha = nb_partials(obs[None, :], mean, dispersions)
+
+        # NB `d log alpha_row / d log alpha_k = alpha_k f / alpha_row`, and the
+        #    shared part's `alpha_shared / alpha_row`.
+        if components is not None:
+            self.shared_partials["nb"] = -float(
+                np.sum(gamma * d_alpha * shared / dispersions)
+            )
+            d_alpha = d_alpha * (dispersions - shared) / dispersions
         per_clone = np.zeros((n_states, len(lengths)))
 
         for state in range(n_states):
@@ -424,6 +446,16 @@ class EmGradient:
         g_eta = per_clone.sum(axis=1) - share.T @ per_clone.sum(axis=0)
 
         return -g_eta, _sums(gamma, d_alpha, spread)
+
+    def _components(self) -> Any:
+        """The clone-shared dispersion the model is holding, or `None` (#566)."""
+        return getattr(self.model, "_components", None)
+
+    def component_gradient(self) -> np.ndarray:
+        """`d f / d (log alpha_shared, log tau_shared)` from the last call."""
+        return np.array(
+            [self.shared_partials.get("nb", 0.0), self.shared_partials.get("bb", 0.0)]
+        )
 
     def _clone_softmax(
         self, rates: np.ndarray, decode: np.ndarray, lengths: tuple[int, ...]
@@ -824,17 +856,78 @@ def analytic_bfgs(
 
             return value, slope if bounds is None else slope * bounds.free(x)
 
+        fitted = gradient if isinstance(gradient, EmGradient) else None
+        components = None if fitted is None else fitted._components()
+
+        if fitted is None or components is None:
+            result = scipy.optimize.minimize(
+                value_and_gradient,
+                x0 if bounds is None else bounds.clip(x0),
+                jac=True,
+                method="BFGS",
+                callback=callback,
+                options=options,
+            )
+            if bounds is not None:
+                result.x = bounds.clip(result.x)
+            return result
+
+        # NB #570: the clone-shared component and the per-state arms are
+        #    levels of one factor, never fitted together.
+        if penalty is not None or bounds is not None:
+            msg = "--dispersion-two-component with --per-state-dispersion"
+            raise ValueError(msg)
+
+        # NB #566's clone-shared dispersion: two coordinates `cnaster`'s
+        #    packing has not got, appended here and held on the model, where
+        #    the emission and the gradient read them. `cnaster` gets its own
+        #    coordinates back.
+        from port.patch.hmm_nophasing.rescale import Components
+
+        model = fitted.model
+        n = int(np.asarray(x0).size)
+
+        def augmented(z: np.ndarray) -> tuple[float, np.ndarray]:
+            model._components = Components(float(z[n]), float(z[n + 1]))
+            value, slope = value_and_gradient(z[:n])
+            return value, np.concatenate([slope, fitted.component_gradient()])
+
         result = scipy.optimize.minimize(
-            value_and_gradient,
-            x0 if bounds is None else bounds.clip(x0),
+            augmented,
+            np.concatenate([x0, [components.log_alpha, components.log_tau]]),
             jac=True,
             method="BFGS",
             callback=callback,
             options=options,
         )
 
-        if bounds is not None:
-            result.x = bounds.clip(result.x)
+        # NB standard errors from the shared block of the objective's
+        #    Hessian, central differences of its gradient at the optimum:
+        #    conditional on every other coordinate, and with the posteriors
+        #    held, so a lower bound on the marginal error.
+        z = np.array(result.x, dtype=np.float64)
+        block = np.empty((2, 2))
+        step = 1e-4
+
+        for i in range(2):
+            unit = np.zeros_like(z)
+            unit[n + i] = step
+            block[:, i] = (augmented(z + unit)[1][n:] - augmented(z - unit)[1][n:]) / (
+                2.0 * step
+            )
+
+        model._components = Components(float(z[n]), float(z[n + 1]))
+        symmetric = 0.5 * (block + block.T)
+        try:
+            covariance = np.linalg.inv(symmetric)
+            model._components_errors = np.sqrt(np.clip(np.diag(covariance), 0.0, None))
+        except np.linalg.LinAlgError:
+            model._components_errors = None
+
+        hess_inv = getattr(result, "hess_inv", None)
+        result.x = result.x[:n]
+        if hess_inv is not None:
+            result.hess_inv = hess_inv[:n, :n]
 
         return result
 

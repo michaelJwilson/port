@@ -272,6 +272,7 @@ follows the arm unless asked: on in a patched run, off with `--no-patch`.
 | `--per-state-dispersion` | off | one NB `alpha`, BB `tau` per state, `cnaster`'s `shared_*_dispersion=False` (#566) | CalicoST in PR #567 |
 | `--alpha-min`, `--tau-max` | 1e-3, 1e5 with `--per-state-dispersion` | the per-state bounds, always held: by projection in the M step and by a clamp at every emission call (#566, #570) | unbounded, a state on three exact rows ran to `alpha` 1.1e-10; `sal` refused one at 0.0 |
 | `--dispersion-prior-rows` | 0 | shrink each `log alpha_k`, `log tau_k` toward the pooled value with weight `n0 / (n0 + n_k)` (#566) | held-out pick on #540's problems: 30 |
+| `--dispersion-two-component` | off | with `--dispersion-rescale`, a clone-shared `alpha`, `tau` beside the per-spot ones (#566, #556) | planted 0.02 shared + 0.3 per spot: 0.019-0.022 and 0.26-0.31 over three seeds |
 | `--copy-errors` | off | `cnv_copy_sets.tsv`: every `(A, B)` in each state's 95 per cent credible region (#353) | differentiates the whole objective once |
 | `--png-copies` | off | a PNG without metadata beside each PDF, for `docs/plots` (#452) | two runs of the same code write the same bytes |
 | `--sample-layout`, `--genomic-colours` | unset | one panel per sample (#328); bins coloured per fitted state | |

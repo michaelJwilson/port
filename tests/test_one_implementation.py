@@ -25,23 +25,25 @@ BUDGET: dict[str, int] = {
     # NB 23: #520 removed --np-merge; `--png-copies` binds what the
     #    `_PNG_COPIES` switch held (#517 step 1). 28: #566's
     #    `--dispersion-rescale`, `--per-state-dispersion`,
-    #    `--dispersion-prior-rows`, `--alpha-min` and `--tau-max`.
-    "run_cnaster_port flags": 28,
+    #    `--dispersion-prior-rows`, `--alpha-min` and `--tau-max`. 29:
+    #    `--dispersion-two-component`.
+    "run_cnaster_port flags": 29,
     # NB 53: step 1 removed the two `_Selection` slots behind the decoder and
     #    solver switches; step 5 added `Settings`, the entry point's one
     #    resolution of its tri-state flags; step 8 added the `hmm_phased` row
     #    and moved 8 classes to `sandbox/` with their modules. 54: the truth
     #    page's `analysis.GenomicTruth`, the tracks' arguments that
     #    `clones_genomic.png` and `truth_combined` both draw. 57: #566's
-    #    `DispersionBounds`, `DispersionShrinkage` and `Rescale`.
-    "classes": 57,
+    #    `DispersionBounds`, `DispersionShrinkage`, `Rescale` and `Components`.
+    "classes": 58,
     # NB step 4: 18 records became NamedTuples; the dataclasses left carry
     #    mutable state, machinery or a `__post_init__` (#517 D). Step 8 moved
     #    7 dataclasses and 1 NamedTuple to `sandbox/`. 21: #566's
     #    `DispersionBounds` and `DispersionShrinkage`.
     "dataclasses": 21,
-    # NB 24: `analysis.GenomicTruth` (the truth page). 25: #566's `Rescale`.
-    "NamedTuples": 25,
+    # NB 24: `analysis.GenomicTruth` (the truth page). 26: #566's `Rescale`
+    #    and `Components`.
+    "NamedTuples": 26,
 }
 """`python/port` outside `sandbox/`."""
 
