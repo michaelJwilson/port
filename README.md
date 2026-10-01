@@ -162,7 +162,6 @@ uv sync --locked --extra test
 [CalicoST](https://github.com/raphael-group/CalicoST), the program `cnaster`
 was rewritten from, at a commit rather than a branch, because it is a
 reference this repository **reads and does not run** -- see
-`docs/audit-logmu-shift-calicost.md`,
 `docs/audit-integer-copy-calicost.md`,
 `docs/audit-cnaster-calicost-divergence.md` and, stage by stage against
 `--sal`, `docs/audit-calicost-methods.md` (#509). It is an extra rather than a
