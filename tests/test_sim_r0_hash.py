@@ -36,14 +36,15 @@ def _stated(path: Path) -> object:
 @pytest.mark.infra
 def test_every_dev_tree_manifest_states_its_own_r0_hash() -> None:
     """Stated in the file, so an extending manifest never inherits its base's
-    hash for a different draw; 8 lower-case hex; `R0_HASH` is `dev_tree`'s."""
-    assert len(HASHED) == 7
+    hash for a different draw; 8 lower-case hex; `R0_HASH` is the frozen
+    `baseline/dev_tree`'s, the generation `tests.sim_stages` caches (#619)."""
+    assert len(HASHED) == 8
     for path in HASHED:
         stated = _stated(path)
         assert isinstance(stated, str), path
         assert re.fullmatch(r"[0-9a-f]{8}", stated), path
 
-    assert _stated(MANIFESTS / "dev_tree.toml") == R0_HASH
+    assert _stated(MANIFESTS / "baseline" / "dev_tree.toml") == R0_HASH
 
 
 @pytest.mark.snapshot

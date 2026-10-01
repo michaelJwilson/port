@@ -1,6 +1,6 @@
 # Study wrapper (baseline measurement): dev_tree with 3 realizations.
 version = 3
-extends = "../dev_tree.toml"
+extends = "dev_tree.toml"
 
 [sample]
 name = "st_dt"

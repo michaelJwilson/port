@@ -13,7 +13,12 @@ Its clones, events, layout and counts are drawn from what the manifest states:
                   (trunk, per_leaf, per_internal); n_clones;
                   states = [[A, B], ...]. Defaults are CalicoST's easy
                   sample, `numcnas1.2`, state them
-    [cna.length]  law = "fixed" (size) or "exponential" (mean); minimum
+    [cna.length]  law = "fixed" (size), "exponential" (mean, minimum) or
+                  "lognormal" (sigma, minimum, and exactly one of mean or
+                  median): `max(L, minimum)`, `log L ~ Normal(log median,
+                  sigma^2)`; a stated mean keys median = mean exp(-sigma^2 / 2),
+                  so the stated quantity is the law's. `sigma` is
+                  `port.sim.laws.lognormal_sigma`'s (#619)
     [phasing]     switch_errors, nu, unit
     [layout]      overlap, radius, vertices, jitter
     [layout.size] optional: law = "loguniform" (minimum, maximum) or
@@ -113,7 +118,13 @@ BY_MODE = {
     "shared.unique": ("shared", "unique"),
     "tree": ("trunk", "per_leaf", "per_internal"),
 }
-BY_LAW = {"fixed": ("size",), "exponential": ("mean", "minimum")}
+BY_LAW = {
+    "fixed": ("size",),
+    "exponential": ("mean", "minimum"),
+    "lognormal": ("sigma", "minimum"),
+}
+LOGNORMAL_KEYS = ("mean", "median")
+"""`[cna.length] law = "lognormal"` states exactly one of these (#619)."""
 SIZE_LAWS = {"loguniform": ("minimum", "maximum"), "lognormal": ("median", "sigma")}
 """`[layout.size]`: each drawn clone's size in spots, per seed (#544). Optional:
 without it every drawn clone takes `[layout] radius`, as before."""
@@ -224,13 +235,18 @@ def extended(path: Path) -> dict[str, Any]:
     """`path`'s document laid over the one its `extends` names, recursively.
 
     Tables merge key by key and the extending file wins; `[[slice]]` and
-    every other value it states replace the base's.
+    every other value it states replace the base's. A `[cna.length]` that
+    states its `law` replaces the base's whole, so a law never inherits
+    another's parameters (#619: a `median` over a base's `mean`).
     """
     document = _anchored(tomllib.loads(path.read_text()), path.parent)
     parent = document.pop("extends", None)
     if parent is None:
         return document
-    return _merge(extended(path.parent / parent), document)
+    base = extended(path.parent / parent)
+    if "law" in document.get("cna", {}).get("length", {}) and "cna" in base:
+        base["cna"] = {k: v for k, v in base["cna"].items() if k != "length"}
+    return _merge(base, document)
 
 
 PATH_KEYS = (
@@ -332,8 +348,15 @@ def _check(manifest: DrawManifest) -> None:
         problems.append(f"[model] admixture {manifest.model['admixture']!r}")
     if manifest.model["counts_sampler"] not in COUNT_SAMPLERS:
         problems.append(f"[model] counts_sampler: one of {sorted(COUNT_SAMPLERS)}")
-    if manifest.cna["length"]["law"] not in BY_LAW:
+    length = manifest.cna["length"]
+    if length["law"] not in BY_LAW:
         problems.append(f"[cna.length] law: one of {sorted(BY_LAW)}")
+    elif length["law"] == "lognormal":
+        keyed = [k for k in LOGNORMAL_KEYS if k in length]
+        if len(keyed) != 1:
+            problems.append(
+                f"[cna.length] lognormal: exactly one of {LOGNORMAL_KEYS}, not {keyed}"
+            )
     size = manifest.layout.get("size")
     if size is not None:
         if size.get("law") not in SIZE_LAWS:
@@ -419,7 +442,18 @@ def _event_length(manifest: DrawManifest, rng: np.random.Generator) -> int:
     law = manifest.cna["length"]
     if law["law"] == "fixed":
         return int(law["size"])
+    if law["law"] == "lognormal":
+        median = lognormal_median(law)
+        drawn = rng.lognormal(np.log(median), float(law["sigma"]))
+        return int(max(drawn, float(law["minimum"])))
     return int(max(rng.exponential(float(law["mean"])), float(law["minimum"])))
+
+
+def lognormal_median(law: dict[str, Any]) -> float:
+    """`[cna.length]`'s lognormal median: stated, or `mean exp(-sigma^2 / 2)` (#619)."""
+    if "median" in law:
+        return float(law["median"])
+    return float(law["mean"]) * float(np.exp(-(float(law["sigma"]) ** 2) / 2.0))
 
 
 def _events(

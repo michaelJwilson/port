@@ -29,7 +29,7 @@ Scoring these archives with `tests.sim_audit.score` reproduces #532's table:
   - `rdrbaf_final_nstates7_smp.npz`, `manifest.json` and `run.json`.
 - `truth.tar.xz` (35 KB): the realization's `truth_*` files and
   `manifest.json`. `digest.json` names its `realization_hash`, 3381575a.
-  A redraw of `sim/manifests/dev_tree.toml` r0 that hashes otherwise is not
+  A redraw of `sim/manifests/baseline/dev_tree.toml` r0 that hashes otherwise is not
   this realization.
 
 Left out, because they are recomputable or superseded:
@@ -42,7 +42,7 @@ Left out, because they are recomputable or superseded:
 
 ```
 mkdir out && for t in calicost port; do tar -xJf $t.tar.xz -C out; done
-python -m port.sim.draw sim/manifests/dev_tree.toml --into DIR   # the counts, if a metric needs them
+python -m port.sim.draw sim/manifests/baseline/dev_tree.toml --into DIR   # the counts, if a metric needs them
 ```
 
 `tests.sim_audit.score(load_simulated(DIR/dev_tree/r0), out/<tool>, ...)`

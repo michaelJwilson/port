@@ -463,8 +463,8 @@ release, on CalicoST's samples and the drawn `dev_tree` family
 
 **`port.sim.draw`** (#445) draws new samples from a version-3 manifest:
 clones from CalicoST's `shared.unique` counts or a mutation tree
-(`snakes_and_ladders`' `random_topology`, rooted at `normal`), fixed or
-exponential event lengths, one or more slices with clones on N-gon regions,
+(`snakes_and_ladders`' `random_topology`, rooted at `normal`), fixed,
+exponential or lognormal event lengths, one or more slices with clones on N-gon regions,
 Visium barcodes with hexadecimal `sample_id`s, and phase switches at the
 genetic map's Haldane rate. Every assumption is a TOML key, and a manifest
 that omits one is refused; `sim/manifests/calicost_grch38.toml` states
@@ -487,6 +487,15 @@ committed realization) or as a Pólya urn (`urn`, `O(UMIs)` per spot, #549);
 `dev_tree_1s{,_easy,_hard}` put `dev_tree`'s clones on one slice under the
 urn, with CalicoST easy's and hard's event laws and admixture (#556, #581);
 `sim/manifests/baseline/` keeps the gamma copies the baseline ran.
+`[cna.length]` states `law = "fixed"` (`size`), `"exponential"` (`mean`,
+`minimum`) or `"lognormal"` (`sigma`, `minimum` and exactly one of `mean` or
+`median`; a mean keys the median at `mean exp(-sigma^2 / 2)`). The live
+`dev_tree*` manifests draw lognormal lengths at `sigma = 0.541`,
+`port.sim.laws.lognormal_sigma(0.10, 0.5)`: 10% of events below half the
+median, against 29-35% under the exponential (#619,
+`docs/plots/sim/cna_lengths.png`). `baseline/` and `population*.toml` stay
+exponential; `baseline/dev_tree.toml` freezes `dev_tree`'s exponential
+generation (`3381575a`), which `tests.sim_stages` caches as r0.
 Each `dev_tree*` manifest states `[sample] r0_hash`, its realization 0's
 `tests.sim_stages.realization_hash`, so a result names the generation it was
 drawn at; `tests/test_sim_r0_hash.py` redraws each to it.

@@ -1,17 +1,17 @@
-# Three tumour clones on a mutation tree, two slices (#445).
-# `python -m port.sim.draw sim/manifests/dev_tree.toml`
+# Three tumour clones on a mutation tree, two slices (#445): the exponential-length
+# generation (3381575a) every dev_tree r0 measurement to #619 ran on, frozen.
+# `python -m port.sim.draw sim/manifests/baseline/dev_tree.toml`
 version = 3
-extends = "calicost_grch38.toml"
+extends = "../calicost_grch38.toml"
 
 [sample]
 name = "dev_tree"
 # NB `tests.sim_stages.realization_hash` of r0 as drawn here: a change to this
 #    manifest or to the simulator that moves it states the new one, so the hash
 #    names the generation (`tests/test_sim_r0_hash.py`).
-#    Exponential lengths, to #619: 3381575a, frozen as `baseline/dev_tree.toml`.
-r0_hash = "3339b9a0"
+r0_hash = "3381575a"
 seed = 0
-output = "../generated"
+output = "../../generated"
 # NB count draws of the same clones, layout and phase, written as r0, r1, ...
 realizations = 1
 
@@ -36,11 +36,9 @@ mode = "tree"
 per_internal = 1
 
 [cna.length]
-law = "lognormal"
-# NB CalicoST's easy sample, cnasize5e7: the mean event length (#619).
+law = "exponential"
+# NB CalicoST's easy sample, cnasize5e7: the mean event length.
 mean = 5e7
-# NB 10% of events below half the median: port.sim.laws.lognormal_sigma(0.10, 0.5)
-sigma = 0.541
 minimum = 5e6
 
 [phasing]
