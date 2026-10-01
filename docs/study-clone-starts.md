@@ -6,6 +6,8 @@ phasing grid matches or beats every other start on all four samples:
 and hard. No start is adopted. Without #476's clone flags,
 `dev_shared_unique` collapses to one clone from every start. The UMI-grown
 start is seed-dependent: hard ends at 0.7267 (3 clones) from seed 0.
+#541's notebook (`docs/nb/clone_label_study.ipynb`) separates the start from
+the solver and the refit this study measured together.
 
 ## Method
 

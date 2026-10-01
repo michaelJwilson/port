@@ -9,7 +9,7 @@ solver is not what limits clone recovery (#497 was).
 
 ## Method
 
-`python -m tests.studies.potts_solvers capture | per-call | figure`.
+`python -m tests.studies.potts_solvers capture | per-call`.
 
 1. **Capture.** One `--sal --no-plots` run per sample (#487 + #496's
    loader), pickling every problem `pipeline_clone_assignment` hands its
@@ -59,13 +59,10 @@ host's.
 | `sal` icm-random | 1123.1 / 0.81 s | 677.3 / 0.32 s | 1090.7 / 0.25 s |
 | `sal` bifurcation | 2502.2 / 0.50 s | 1613.9 / 0.17 s | 1217.9 / 0.17 s |
 
-![sal's methods](plots/studies/potts_solvers_sal.png)
-
-![port's rows](plots/studies/potts_solvers_port.png)
-
-Each panel shows a sample's first read-depth-stage call, the largest clone
-count the run solves. The figures are split because `sal`'s start palette
-holds 14 colours.
+The runtime-against-gap figures this study drew are retired: #541's
+notebook (`docs/nb/clone_label_study.ipynb`) runs every solver from every
+clone-label start, on fields built from #540's copy states, and draws the
+figure that replaces them (`docs/plots/studies/clone_label_study.png`).
 
 ## End to end
 
