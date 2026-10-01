@@ -33,7 +33,7 @@ from __future__ import annotations
 import copy
 from collections import namedtuple
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 import anndata
 import numpy as np
@@ -80,6 +80,26 @@ Field for field the same, so a caller cannot tell the two apart by name. The
 patch test compares by field rather than by type, since two `namedtuple`s of
 the same shape are not the same class.
 """
+
+
+class NamedCounts(NamedTuple):
+    """Spots x genes CSR counts and their names: `exp_counts` under `sparse_counts`.
+
+    `cnaster`'s `exp_counts` is a `DataFrame`, and its one consumer,
+    `filter_normal_diffexp`, reads the gene names from it and then densifies
+    it (`.values`). The matrix alone has no names, so the sparse reading is
+    its own type rather than a `DataFrame` that densifies when read (#569).
+    """
+
+    matrix: Any
+    """`(n_spots, n_genes)` CSR, the count layer's values."""
+    spots: pd.Index
+    genes: pd.Index
+
+    @property
+    def columns(self) -> pd.Index:
+        """The genes, under the name the `DataFrame` gives them."""
+        return self.genes
 
 
 def _spot_umis(counts: Any) -> np.ndarray:
@@ -406,9 +426,8 @@ def load_input_data(
         sparse rather than dense. `False`, the default, is what `cnaster`
         returns and what its callers index; `True` is the measurement of what
         the dense forms cost, and changes the type every downstream consumer
-        sees. Under `True`, `exp_counts` **is** `adata.layers["count"]` rather
-        than a copy of it, so a consumer that mutates one mutates the other --
-        `cnaster`'s frame is a separate object.
+        sees. Under `True`, `exp_counts` is a :class:`NamedCounts` over the
+        count layer's CSR values (#569).
 
     Raises
     ------
@@ -724,11 +743,13 @@ def load_input_data(
         adata.layers["count"] = dense
 
     if sparse_counts:
-        # NB the layer's own format, unconverted. `cnaster` builds the frame
-        #    from CSC because `from_spmatrix` wants a column store; the one
-        #    live consumer takes `anndata.AnnData(exp_counts)`, which reads
-        #    either, so the conversion is 86 ms bought for the container.
-        exp_counts = adata.layers["count"]
+        # NB the layer's own format, unconverted, with the names the
+        #    `DataFrame` would carry (#569): `cnaster` builds the frame from
+        #    CSC because `from_spmatrix` wants a column store, and its one
+        #    consumer reads the gene names from it.
+        exp_counts = NamedCounts(
+            sp.csr_matrix(adata.layers["count"]), adata.obs.index, adata.var.index
+        )
     else:
         exp_counts = pd.DataFrame.sparse.from_spmatrix(
             sp.csc_matrix(stored),

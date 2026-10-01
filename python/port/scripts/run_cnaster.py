@@ -168,6 +168,11 @@ def _parser() -> argparse.ArgumentParser:
         help="snakes_and_ladders' labelling, and the mask, floor and start it implies (#312)",
     )
     parser.add_argument(
+        "--sparse-counts",
+        action="store_true",
+        help="keep the loader's counts and allele matrices sparse (#186, #569); off",
+    )
+    parser.add_argument(
         "--copy-errors",
         action="store_true",
         help="write cnv_copy_sets.tsv, each state's 95 per cent credible (A, B) (#353); needs the shift",
@@ -542,6 +547,13 @@ def main(argv: Sequence[str] | None = None) -> int:
                     "unshifted; the shift reaches the HMM only",
                     file=sys.stderr,
                 )
+
+        if arguments.sparse_counts:
+            # NB the loader's own option (#186): the counts layer, `exp_counts`
+            #    and both allele matrices stay CSR rather than dense (#569).
+            selected = with_options(
+                selected, "port.patch.io:load_input_data", sparse_counts=True
+            )
 
         if arguments.no_plots:
             # NB after every other table, so it rebinds whichever `write_fig`
