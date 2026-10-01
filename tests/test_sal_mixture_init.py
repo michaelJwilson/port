@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 from typing import Any
 
 import numpy as np
@@ -153,3 +154,178 @@ def test_the_baf_only_and_minor_calls_keep_upstreams_start(
             assert mine is None
         else:
             np.testing.assert_array_equal(mine, their)
+
+
+def _call(n_obs: int = 3000, seed: int = 0) -> Any:
+    """`_draw`'s bins as the start's `CopyCall`, read-depth + BAF stage."""
+    from port.patch.hmm_initialize.sal_mixture import _call as call_of
+
+    X, base, trials = _draw(n_obs, seed)
+    arguments = {
+        "X": X,
+        "base_nb_mean": base,
+        "total_bb_RD": trials,
+        "n_states": len(PLANTED),
+    }
+    return call_of(arguments, "rdrbaf")
+
+
+def _refusing(
+    monkeypatch: pytest.MonkeyPatch, rng: np.random.Generator, refused: set[int]
+) -> None:
+    """`sal`'s seeding, raising as its M step does on the streams `rng` spawns at `refused`.
+
+    Keyed by stream, not by call order, so a seeding is refused wherever it
+    runs: in `sal`'s best-of or in port's rerun of the survivors.
+    """
+    import sal.search.mixture_starts as starts
+    from port.patch.hmm_initialize import sal_mixture
+
+    inner = starts.lookup
+    chosen: Any = inner(sal_mixture.DEFAULT)
+    states = [
+        stream.bit_generator.state
+        for index, stream in enumerate(copy.deepcopy(rng).spawn(chosen.n))
+        if index in refused
+    ]
+
+    def lookup(name: str) -> Any:
+        found = inner(name)
+
+        if name != chosen.name:
+            return found
+
+        def seeding(instance: Any, generator: np.random.Generator) -> Any:
+            if generator.bit_generator.state in states:
+                msg = "mean and weight must be positive, got 0.0 and 1e-41"
+                raise ValueError(msg)
+
+            return found(instance, generator)
+
+        return seeding
+
+    monkeypatch.setattr(starts, "lookup", lookup)
+
+
+@pytest.mark.oracle
+def test_a_refused_seeding_is_dropped_and_the_best_survivor_kept(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """T- #596: one seeding of five refused, the start is the best of the other four.
+
+    Referee: those four seedings run alone, each on the stream `sal`'s
+    best-of spawns for it and polished to convergence, the best by final
+    log-likelihood.
+    """
+    import logging
+
+    from port.extensions import copy_starts
+    from port.patch.hmm_initialize import sal_mixture
+    from sal.search.mixture_starts import lookup, polish
+
+    call = _call()
+    held = copy_starts.instance(call)
+    chosen: Any = lookup(sal_mixture.DEFAULT)
+    seconds = sal_mixture.POLISH_SECONDS
+    streams = np.random.default_rng([0, 0]).spawn(chosen.n)
+    alone = [
+        polish(
+            held,
+            lookup(chosen.name)(held, streams[index]).components,
+            seconds=seconds / 2.0,
+            tolerance=1e-6,
+        )
+        for index in (0, 1, 3, 4)
+    ]
+    finals = [float(fit.log_likelihoods[-1]) for fit in alone]
+    best: Any = alone[int(np.argmax(finals))].components
+
+    _refusing(monkeypatch, np.random.default_rng([0, 0]), {2})
+
+    with caplog.at_level(logging.WARNING, logger="port.extensions.copy_starts"):
+        kept: Any = copy_starts._seeded(
+            sal_mixture.DEFAULT, call, held, np.random.default_rng([0, 0]), seconds, {}
+        )
+
+    np.testing.assert_allclose(
+        np.asarray(kept.total.mean), np.asarray(best.total.mean), rtol=1e-9
+    )
+    np.testing.assert_allclose(np.asarray(kept.rate), np.asarray(best.rate), rtol=1e-9)
+    assert [r.getMessage().split(":")[1] for r in caplog.records] == [
+        " seeding 2 dropped"
+    ]
+
+
+@pytest.mark.smoke
+def test_the_start_fails_only_when_every_seeding_is_refused(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Every seeding refused: the start raises, naming the start, rather than returning nothing."""
+    from port.extensions import copy_starts
+    from port.patch.hmm_initialize import sal_mixture
+
+    call = _call(600, seed=2)
+    held = copy_starts.instance(call)
+    _refusing(monkeypatch, np.random.default_rng(0), set(range(5)))
+
+    with pytest.raises(ValueError, match="refused every seeding"):
+        copy_starts._seeded(
+            sal_mixture.DEFAULT, call, held, np.random.default_rng(0), 10.0, {}
+        )
+
+
+REFUSED = "tests/data/sal_seeding_refused_hard.npz"
+"""The read-depth + BAF start's call on CalicoST hard (`8797710b`) with the
+outlier filter off (T- #596): `X`, `base`, `total`, `n_states` and
+`random_state` as `gmm_init` received them, 10,448 bins and 7 states."""
+
+
+@pytest.mark.release
+@pytest.mark.bug
+def test_sal_refuses_one_seeding_of_hard_with_the_filter_off(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """**T- #596:** `sal`'s best-of raises on the call; port's start drops seeding 1 and returns.
+
+    `sal`'s beta-binomial M step refuses a component EM collapsed to weight
+    1e-17 at a weighted trial count of 1.02. Fails when `sal` survives the
+    call, and port's guard can go.
+    """
+    import logging
+    from pathlib import Path
+
+    from port.extensions import copy_starts
+    from port.patch.hmm_initialize import sal_mixture
+    from sal.search.mixture_starts import lookup
+
+    saved = np.load(Path(__file__).parents[1] / REFUSED)
+    arguments = {
+        "X": saved["X"],
+        "base_nb_mean": saved["base"],
+        "total_bb_RD": saved["total"],
+        "n_states": int(saved["n_states"]),
+    }
+    call = sal_mixture._call(arguments, "rdrbaf")
+    held = copy_starts.instance(call)
+    chosen: Any = lookup(sal_mixture.DEFAULT)
+    seconds = sal_mixture.POLISH_SECONDS
+    rng = [int(saved["random_state"]), 0]
+
+    with pytest.raises(ValueError, match="trials must be >= 2 and weight positive"):
+        chosen.polished(
+            held,
+            np.random.default_rng(rng),
+            seconds=seconds / 2.0,
+            passes=None,
+            tolerance=1e-6,
+        )
+
+    with caplog.at_level(logging.WARNING, logger="port.extensions.copy_starts"):
+        kept: Any = copy_starts._seeded(
+            sal_mixture.DEFAULT, call, held, np.random.default_rng(rng), seconds, {}
+        )
+
+    assert [r.getMessage().split(":")[1] for r in caplog.records] == [
+        " seeding 1 dropped"
+    ]
+    assert np.asarray(kept.rate).size == int(saved["n_states"])
