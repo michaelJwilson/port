@@ -255,7 +255,9 @@ a test.
 *   **Every module has one role, and lives where the role says.** `patch/`
     replaces a named `cnaster` function or serves one that does;
     `extensions/` adds what has no counterpart, opt-in or a default its
-    measurement earned; `sandbox/` holds developed patches and extensions
+    measurement earned, and is defined in `cnaster`'s terms -- the stage it
+    attaches to and the data it reads and writes -- without having to match
+    any `cnaster` function; `sandbox/` holds developed patches and extensions
     that are not the default, each with its ticket, measurement and exit.
     One whose exit resolves against it leaves the tree for a named reference
     branch rather than staying set aside.
