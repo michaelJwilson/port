@@ -49,6 +49,9 @@ dominate `copy_ari`. ARI over bins whose planted pair takes one value is
 undefined (sklearn returns 1 if the decode is constant there, else 0), so a
 class planted as a single pair scores NaN, as does one not planted. Neutral
 is one pair by definition and has no ARI; `exact_neutral` stands in for it.
+Each `copy_ari*_pf` is the same ARI on phase-free pairs, `(min, max)` of the
+planted and of the decoded `(A, B)`, so a consistent phase swap scores as the
+phased ARI already does and an inconsistent one is forgiven.
 """
 
 from __future__ import annotations
@@ -90,6 +93,10 @@ class SimRecovery:
     copy_ari_loh: float
     copy_ari_balanced_gain: float
     copy_ari_unbalanced_gain: float
+    copy_ari_pf: float
+    copy_ari_loh_pf: float
+    copy_ari_balanced_gain_pf: float
+    copy_ari_unbalanced_gain_pf: float
     n_clones: int
     n_integer_clones: int
     exact: float
@@ -142,6 +149,12 @@ def planted_classes(t: np.ndarray) -> dict[str, np.ndarray]:
         "unbalanced_gain": gain & (major != minor),
         "neutral": t == NEUTRAL,
     }
+
+
+def phase_free(codes: np.ndarray) -> np.ndarray:
+    """`A * 1000 + B` codes as `(minor, major)`: `(A, B)` and `(B, A)` coded alike."""
+    major, minor = codes // 1_000, codes % 1_000
+    return np.asarray(np.minimum(major, minor) * 1_000 + np.maximum(major, minor))
 
 
 def class_ari(t: np.ndarray, ab: np.ndarray, where: np.ndarray) -> float:
@@ -242,6 +255,7 @@ def score(sample: SimulatedSample, output: Path, arm: str, wall: float) -> SimRe
     t, z, ab = (np.concatenate(x) for x in (truth, state, pair))
     altered = t != NEUTRAL
     swapped = (ab % 1_000) * 1_000 + ab // 1_000
+    t_pf, ab_pf = phase_free(t), phase_free(ab)
     either = (t == ab) | (t == swapped)
     classes = planted_classes(t)
     loh, balanced, unbalanced = (
@@ -264,6 +278,10 @@ def score(sample: SimulatedSample, output: Path, arm: str, wall: float) -> SimRe
         copy_ari_loh=class_ari(t, ab, loh),
         copy_ari_balanced_gain=class_ari(t, ab, balanced),
         copy_ari_unbalanced_gain=class_ari(t, ab, unbalanced),
+        copy_ari_pf=round(float(adjusted_rand_score(t_pf, ab_pf)), 4),
+        copy_ari_loh_pf=class_ari(t_pf, ab_pf, loh),
+        copy_ari_balanced_gain_pf=class_ari(t_pf, ab_pf, balanced),
+        copy_ari_unbalanced_gain_pf=class_ari(t_pf, ab_pf, unbalanced),
         n_clones=int(np.unique(fitted[scored]).size),
         n_integer_clones=int(np.unique(integer).size),
         exact=round(float(np.mean(t == ab)), 4),

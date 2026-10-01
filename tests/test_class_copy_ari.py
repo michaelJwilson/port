@@ -12,7 +12,7 @@ import numpy as np
 import pytest
 from sklearn.metrics import adjusted_rand_score
 
-from tests.sim_audit import class_ari, planted_classes
+from tests.sim_audit import class_ari, phase_free, planted_classes
 
 
 def _code(pairs: list[tuple[int, int]]) -> np.ndarray:
@@ -78,3 +78,32 @@ def test_a_class_planted_as_one_pair_or_not_at_all_is_nan() -> None:
     decode = _code([(2, 2), (3, 3), (1, 1)])
     assert np.isnan(class_ari(single, decode, planted_classes(single)["balanced_gain"]))
     assert np.isnan(class_ari(single, decode, planted_classes(single)["loh"]))
+
+
+@pytest.mark.oracle
+def test_each_phase_free_class_ari_is_sklearns_on_hand_sorted_pairs() -> None:
+    """Phase-free: the pairs sorted by hand to `(min, max)`, then sklearn per class.
+
+    The unbalanced gain's swaps `(2, 1) -> (1, 2)` and `(1, 3) -> (2, 1)` are
+    one consistent and one not; phase-free, the first is a hit.
+    """
+
+    def by_hand(codes: np.ndarray) -> np.ndarray:
+        return np.array(
+            [
+                min(c // 1_000, c % 1_000) * 1_000 + max(c // 1_000, c % 1_000)
+                for c in codes
+            ]
+        )
+
+    truth, decode = by_hand(TRUTH), by_hand(DECODE)
+    np.testing.assert_array_equal(phase_free(TRUTH), truth)
+    np.testing.assert_array_equal(phase_free(DECODE), decode)
+    classes = planted_classes(TRUTH)
+
+    for name in ("loh", "unbalanced_gain"):
+        index = BY_HAND[name]
+        expected = adjusted_rand_score(truth[index], decode[index])
+        assert class_ari(truth, decode, classes[name]) == pytest.approx(
+            expected, abs=5e-5
+        )
