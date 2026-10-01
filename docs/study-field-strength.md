@@ -11,6 +11,13 @@ On the hard analogue only TRW-S's decode, `--sal`'s Alpha-rust-fuse and
 max-product reach TRW-S's bound on every run from random labels. ICM stops
 13–15 nats above it, and neither polish moves it.
 
+Fixtures: CalicoST easy (`23989aa4`) and hard (`1ae26365`), the shipped
+samples. `dev_tree_1s` (`4687b541`), `dev_tree_1s_easy` (`d08e3a1b`) and
+`dev_tree_1s_hard` (`d2938975`) are each manifest's r0 hash; realization k
+is the k-th draw of `[sample] seed = 0`. This branch's `port.sim.draw` has no
+`counts_sampler` key, so the manifests' `"urn"` is ignored and every draw
+here is the gamma sampler's: the hashes are `docs/baseline-release.md`'s.
+
 ## Method
 
 `python -m tests.studies.field_strength pipeline | known | calicost`,
@@ -40,14 +47,14 @@ max-product reach TRW-S's bound on every run from random labels. ICM stops
 
 | | median margin [nats] | 10% margin | argmax wrong | ARI |
 | --- | --- | --- | --- | --- |
-| pipeline, CalicoST easy | 0.8 | −2.1 | 0.360 | 0.271 |
-| pipeline, CalicoST hard | 0.2 | −1.8 | 0.445 | 0.181 |
-| pipeline, `dev_tree_1s` r2–r4 | 9.2–9.8 | 3.2–3.8 | 0.025–0.029 | 0.941–0.951 |
-| known law, CalicoST easy | 3.5 | −0.1 | 0.105 | 0.737 |
-| known law, `dev_tree_1s_easy` (3 draws) | 3.8 | −0.1 | 0.105 | 0.726 |
-| known law, CalicoST hard | 1.0 | −1.1 | 0.296 | 0.371 |
-| known law, `dev_tree_1s_hard` (3 draws) | 0.9 | −1.4 | 0.312 | 0.342 |
-| known law, `dev_tree_1s` (3 draws) | 17.6 | 8.2 | 0.002 | 0.996 |
+| pipeline, CalicoST easy (`23989aa4`) | 0.8 | −2.1 | 0.360 | 0.271 |
+| pipeline, CalicoST hard (`1ae26365`) | 0.2 | −1.8 | 0.445 | 0.181 |
+| pipeline, `dev_tree_1s` r2–r4 (r0 `4687b541`) | 9.2–9.8 | 3.2–3.8 | 0.025–0.029 | 0.941–0.951 |
+| known law, CalicoST easy (`23989aa4`) | 3.5 | −0.1 | 0.105 | 0.737 |
+| known law, `dev_tree_1s_easy` r0–r2 (r0 `d08e3a1b`) | 3.8 | −0.1 | 0.105 | 0.726 |
+| known law, CalicoST hard (`1ae26365`) | 1.0 | −1.1 | 0.296 | 0.371 |
+| known law, `dev_tree_1s_hard` r0–r2 (r0 `d2938975`) | 0.9 | −1.4 | 0.312 | 0.342 |
+| known law, `dev_tree_1s` r0–r2 (r0 `4687b541`) | 17.6 | 8.2 | 0.002 | 0.996 |
 
 - **Equal across the three:**
   - UMI per spot: 2,972–2,996;
@@ -126,6 +133,8 @@ ICM and the color merge. Numbers are the table's in the figures.
 | `dev_tree_1s` | ![](plots/studies/potts_dev_tree_1s.png) | ![](plots/studies/potts_dev_tree_1s_gap.png) |
 
 ## Tuned solvers on `dev_tree_1s_hard`, 25 realizations × 50 starts (#559)
+
+`dev_tree_1s_hard` r3–r27 (r0 `d2938975`), tuned on r0–r2.
 
 Every sampler at its setting tuned on 3 held-out realizations
 (`tests/studies/potts_sampler_settings.json`); #559's field-weighted cluster

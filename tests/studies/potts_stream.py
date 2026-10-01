@@ -107,7 +107,7 @@ REPLICAS = 6
 """sal's `N_REPLICAS`: both tempering ladders, geometric between `T_END` and the start temperature."""
 
 SETTINGS = Path(__file__).with_name("potts_sampler_settings.json")
-"""The samplers' settings tuned once on `dev_tree_1s_hard`'s first 3 realizations, reused by `--settings`."""
+"""The samplers' settings tuned once on `dev_tree_1s_hard`'s first 3 realizations (r0 `d2938975`), reused by `--settings`."""
 
 _GRAPHS: dict[tuple[int, float], Any] = {}
 
