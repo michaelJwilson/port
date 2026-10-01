@@ -69,14 +69,6 @@ This file is authoritative:
 | --- | --- |
 | `README.md` | Project overview, installation, and the index to the rest |
 | `CLAUDE.md` | This file |
-| `ROADMAP.md` | The stages, and the loop a change passes through |
-| `TICKETS.md` | What is filed and not done, grouped by milestone |
-| `STATUS.md` | What has landed, with the measurement that established it |
-
-The last three carry one list of milestones between them, and
-`tests/test_planning_documents_agree.py` refuses a change that edits it in
-one file alone. A planning document that can drift silently is one that
-will.
 
 Add a further document when the repository has the content
 for it, not ahead of it -- `DEV.md` and `INSTALL.md` when `README.md`

@@ -8,9 +8,7 @@ the badge is what is derived.
 
 Run as `python -m tests.badges` to rewrite `.badges/*.json` from
 `.badges/measurements.json`. `tests/test_badges_agree.py` is what refuses a
-drift between the two, the same way
-`tests/test_planning_documents_agree.py` refuses a milestone edited in one
-document alone.
+drift between the two.
 
 ## Why the values are committed rather than computed in the badge
 

@@ -8,9 +8,7 @@ is what refuses a drift between them.
 
 The failure it catches is silent by construction: a badge is a committed JSON
 file, nothing renders it during a test run, and a coverage guard that moved
-leaves the README reading the old figure indefinitely. That is the same
-failure `tests/test_planning_documents_agree.py` exists for, one file further
-out.
+leaves the README reading the old figure indefinitely.
 
 `infra` throughout: this is `port`'s own bookkeeping and says nothing about
 whether `cnaster` computes anything correctly.

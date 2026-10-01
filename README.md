@@ -36,9 +36,7 @@ under `src/`, exposed to Python as `port.oxiport`.
 Ten numbers, and each is a claim rather than a decoration.
 `.badges/measurements.json` holds every value with the selection, denominator
 and commit that produced it, `python -m tests.badges` derives the badges from
-it, and `tests/test_badges_agree.py` fails when the two disagree -- the same
-guard `tests/test_planning_documents_agree.py` puts on the planning
-documents.
+it, and `tests/test_badges_agree.py` fails when the two disagree.
 
 **Four coverage guards, because one figure would answer four questions
 badly** (#159, #281). Three measure a dependency this repository does not
@@ -557,17 +555,14 @@ not carry, not before.
 | Registered markers | A test not checked against exactly one of `end2end`, `oracle`, `analytic`, `patch`, `backend`, `bug`, `warning`, `snapshot`, `smoke`, `infra` (#157), plus the second axes `critical` and `cnaster`, and the tiers `release`, `preprocessing` and `benchmark`. Only `end2end` and `oracle` count toward coverage, and CI runs neither the `oracle` tests nor their guard while #282 holds |
 | `--cov-fail-under` over the whole of `cnaster` | A figure that rises for importing less. The denominator is the dependency, so the number says how much of the subject is validated |
 | [`tests/test_coverage_scope.py`](tests/test_coverage_scope.py) | A gate silently measuring a fraction of the subject after a Python version bump |
-| [`tests/test_planning_documents_agree.py`](tests/test_planning_documents_agree.py) | The three planning documents naming different work |
 | [`.github/pull_request_template.md`](.github/pull_request_template.md) | A ratio with no pinned output, a patch with no ratio, an unstated difference between the references |
 
 ## The documents
 
 | Document | Contents |
 | --- | --- |
-| [ROADMAP.md](ROADMAP.md) | The stages, and the loop a change passes through |
-| [TICKETS.md](TICKETS.md) | What is filed and not done, grouped by the milestone it serves |
-| [STATUS.md](STATUS.md) | What has landed, with the measurement that established it |
 | [CLAUDE.md](CLAUDE.md) | The rules |
+| [Issues](https://github.com/michaelJwilson/port/issues) | What is filed and not done |
 | [docs/measurements.md](docs/measurements.md) | The timings, ratios and histories the package docstrings cited, by module and object (#517) |
 | [docs/metrics/](docs/metrics/) | The metrics ledger, append-only TSVs: `ledger.tsv` one measured value per line, `runs.tsv` one line per run (commit, timestamp, arguments, test, note), `definitions.tsv` what each metric means, versioned (#409, #620). `python -m tests.metrics --record` appends; `--render [--out PATH]` prints the wide table, which is not committed; `python -m tests.studies.metrics_history` draws `.cache/plots/metrics_history*.png` from it |
 | [docs/study-recovery-population.md](docs/study-recovery-population.md) | `--sal` sensitivity against clone UMIs and CNA length, and the false positive rate, over 679 simulated runs (#544) |
@@ -593,5 +588,3 @@ it rises only by validating more of the subject.
 | Two M steps sharing no solver, parameterization or start | agree to `5e-5` relative on `(alpha, beta)` at their maxima |
 | `cnaster`'s shipped EM criterion | stops `7.48` nats short at 19 per cent error in `alpha`, reporting `converged: True` |
 | `cnaster` maximises what upstream minimises | cost plus energy is `0` to `7.1e-15` across every labelling tried |
-
-`STATUS.md` carries the rest, and says which rows are unmeasured.
