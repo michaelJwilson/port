@@ -22,6 +22,7 @@ from tests.metrics import (
     TEST,
     TIMESTAMP,
     UNMEASURED,
+    check_identity,
     check_note,
     fixture_hash,
     read,
@@ -97,3 +98,45 @@ def test_the_hash_is_of_the_data_and_moves_with_it() -> None:
 
     assert fixture_hash(truth) == fixture_hash(fixtures.critical_instance())
     assert fixture_hash(truth) != fixture_hash(fixtures.critical_instance(seed=1))
+
+
+@pytest.mark.snapshot
+def test_each_fixture_name_holds_one_hash_and_each_hash_one_name() -> None:
+    """A history panel is one dataset (#588): across `read()`, `fixture` and
+    `fixture_hash` map one to one."""
+    rows = read()
+    hashes: dict[str, set[str]] = {}
+    names: dict[str, set[str]] = {}
+    for row in rows:
+        hashes.setdefault(row["fixture"], set()).add(row["fixture_hash"])
+        names.setdefault(row["fixture_hash"], set()).add(row["fixture"])
+
+    assert {f: h for f, h in hashes.items() if len(h) > 1} == {}
+    assert {h: f for h, f in names.items() if len(f) > 1} == {}
+    for row in rows:
+        check_identity(row["fixture"], row["fixture_hash"], rows)
+
+
+@pytest.mark.snapshot
+def test_the_calicost_rows_carry_the_shipped_samples_hash() -> None:
+    """`easy` and `hard` rows hash the committed sample as
+    `realization_hash` reads it now (#588)."""
+    from tests.sim_audit import SAMPLES
+    from tests.sim_fixtures import SIM_ROOT
+    from tests.sim_stages import realization_hash
+
+    for name, sample in SAMPLES.items():
+        recorded = {row["fixture_hash"] for row in read() if row["fixture"] == name}
+        assert recorded == {realization_hash(SIM_ROOT / sample)}, name
+
+
+@pytest.mark.infra
+def test_a_name_under_another_hash_is_refused() -> None:
+    rows = [{"fixture": "easy", "fixture_hash": "23989aa4"}]
+
+    check_identity("easy", "23989aa4", rows)
+    check_identity("hard", "1ae26365", rows)
+    with pytest.raises(ValueError, match="one dataset"):
+        check_identity("easy", "1065eb5b", rows)
+    with pytest.raises(ValueError, match="one dataset"):
+        check_identity("hard", "23989aa4", rows)
