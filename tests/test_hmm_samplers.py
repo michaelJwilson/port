@@ -41,8 +41,8 @@ def test_best_is_never_above_the_initial_point(name: str) -> None:
 
 @pytest.mark.infra
 def test_the_registry_names_the_samplers_the_module_runs() -> None:
-    """`copy_starts.HMM_SAMPLERS` is a literal, so importing `copy_starts` imports no sandbox; it must match `SAMPLERS`."""
-    from port.extensions.copy_starts import HMM_SAMPLERS
+    """`sandbox.extensions.copy_starts.HMM_SAMPLERS` is a literal, so importing it imports no sampler; it must match `SAMPLERS`."""
+    from port.sandbox.extensions.copy_starts import HMM_SAMPLERS
     from port.sandbox.known_copy.hmm_samplers import SAMPLERS
 
     assert HMM_SAMPLERS == SAMPLERS

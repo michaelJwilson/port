@@ -4,7 +4,8 @@
 `sal.opt.emission_mixture._seed_scores`, whose negative-binomial Bregman
 divergence is non-negative in exact arithmetic and about `-1.6e-15` in
 float64 for a row a hair from a seed's mean. D-squared sampling hands those
-to `rng.choice`, which refuses them. `sal_mixture.fitted` floors them at 0.
+to `rng.choice`, which refuses them. `copy_starts.run_start` seeds under
+`sal_mixture.clamped_divergence`, which floors them at 0.
 
 The rows are the rate-space pairs `sal_mixture.instance_of` builds, seeded
 through the same `CountPairSeeding` seam: 200 at `(2.0, 0.3)`; 200 whose
@@ -130,12 +131,12 @@ def test_the_floor_draws_sals_seeds_wherever_sal_draws_any() -> None:
 
 
 @pytest.mark.infra
-def test_fitted_floors_the_scores_for_the_call_and_restores_them(
+def test_a_start_seeds_under_the_floor_and_restores_it(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """`sal_mixture.fitted` seeds under the floor; `sal`'s own name is back afterwards."""
+    """`copy_starts`' seeding, which `--hmm-start` reaches, runs under the floor; `sal`'s own name is back afterwards."""
     import sal.opt.emission_mixture as upstream
-    from port.patch.hmm_initialize import sal_mixture
+    from port.extensions import copy_starts
 
     original = upstream._seed_scores
     seen: list[bool] = []
@@ -149,8 +150,11 @@ def test_fitted_floors_the_scores_for_the_call_and_restores_them(
 
     monkeypatch.setattr("sal.search.mixture_starts.lookup", lambda _: start)
 
+    call: Any = None
     with pytest.raises(Stop):
-        sal_mixture.fitted(object(), "emission++", np.random.default_rng(0))
+        copy_starts._seeded(
+            "emission++", call, object(), np.random.default_rng(0), 60.0, {}
+        )
 
     assert seen == [True]
     assert upstream._seed_scores is original

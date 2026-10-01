@@ -14,7 +14,7 @@ the planted clones (`port.sandbox.known_copy.problems`: 1 Mb bins under #551's
 300 normal-UMI floor, phased allele reads); the pool runs the starts while the
 next realization draws.
 
-- **Starts.** `STARTS`, one per family of `port.extensions.copy_starts`'
+- **Starts.** `STARTS`, one per family of `port.sandbox.extensions.copy_starts`'
   registry (`--all`: every start), each seeded as `run_start` seeds it but without
   its `sal` mixture polish: the start is the algorithm's own output. A
   stochastic start runs `--seeds` seeds, a deterministic one seed 0.
@@ -73,7 +73,7 @@ GRID: dict[str, tuple[dict[str, float], ...]] = {
     "emission++knn": tuple({"knn": k} for k in (0.003, 0.01, 0.03)),
 }  # fmt: skip
 """Each tuned start's settings: the samplers' schedules (`port.sandbox.known_copy.hmm_samplers`) and
-the emission++ variants' knobs (`copy_starts.EMISSION_VARIANTS`); each untuned default is in its grid."""
+the emission++ variants' knobs (`port.sandbox.extensions.copy_starts.EMISSION_VARIANTS`); each untuned default is in its grid."""
 
 UNTUNED = {"anneal-hmm": 4, "tempering-hmm": 4, "hmc-hmm": 5, "emission++trim": 1, "emission++trimx20hmm": 3,
            "emission++lloydx5hmm": 1, "emission++anchor": 1, "emission++knn": 1}  # fmt: skip
@@ -124,8 +124,8 @@ def seed_states(
     setting: dict[str, float] | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     """`name`'s states on `problem`, seeded as `copy_starts.run_start` seeds them, before its `sal` polish."""
-    from port.extensions.copy_starts import seed_states as seeded
-    from port.extensions.copy_starts import starts
+    from port.sandbox.extensions.copy_starts import seed_states as seeded
+    from port.sandbox.extensions.copy_starts import starts
 
     return seeded(
         name,
@@ -263,7 +263,7 @@ def run(
     import logging
 
     import port.sandbox.known_copy as kc
-    from port.extensions.copy_starts import starts
+    from port.sandbox.extensions.copy_starts import starts
 
     logging.disable(logging.INFO)
     out_dir.mkdir(parents=True, exist_ok=True)

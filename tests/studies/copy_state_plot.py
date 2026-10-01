@@ -242,7 +242,11 @@ def _table(
             a, b = missed.get(name, (np.nan, np.nan))
             k = flagged.get(name, 0)
             if np.isnan(a):
-                cell = f"degenerate ({k})" if k else ("refused" if name in ran else "not run")
+                cell = (
+                    f"degenerate ({k})"
+                    if k
+                    else ("refused" if name in ran else "not run")
+                )
             else:
                 cell = f"{a:.1f} / {b:.1f}" + (f" ({k} degen.)" if k else "")
             tab.text(

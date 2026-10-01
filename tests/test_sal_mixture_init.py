@@ -32,18 +32,11 @@ def _draw(n_obs: int = 3000, seed: int = 0) -> tuple[np.ndarray, ...]:
     return X, exposure.reshape(-1, 1), trials.reshape(-1, 1)
 
 
-@pytest.mark.oracle
-def test_the_start_recovers_the_planted_states() -> None:
-    """Every planted state is a fitted one, to 0.05 in log mu and 0.03 in p.
-
-    Referee: the parameters the bins were drawn at. The exposure and trials
-    vary per bin, so a start that ignored the covariate would read the
-    depth's spread as states.
-    """
-    from port.patch.hmm_initialize.sal_mixture import DEFAULT, gmm_init
+def _fitted(start: str) -> np.ndarray:
+    """`gmm_init`'s states under `start` on `_draw`'s bins, `(log mu, p)` per row."""
+    from port.patch.hmm_initialize.sal_mixture import gmm_init
 
     X, base, trials = _draw()
-
     log_mu, p_binom, _, _ = gmm_init(
         len(PLANTED),
         X,
@@ -55,17 +48,49 @@ def test_the_start_recovers_the_planted_states() -> None:
         None,
         random_state=0,
         only_minor=False,
-        start=DEFAULT,
+        start=start,
     )
+    return np.column_stack([log_mu.ravel(), p_binom.ravel()])
 
-    fitted = np.column_stack([log_mu.ravel(), p_binom.ravel()])
+
+def _near(fitted: np.ndarray, planted: np.ndarray) -> bool:
+    distance = np.abs(fitted - planted)
+    return bool(((distance[:, 0] < 0.05) & (distance[:, 1] < 0.03)).any())
+
+
+@pytest.mark.oracle
+def test_the_lattice_start_recovers_the_planted_states() -> None:
+    """Every planted state is a fitted one, to 0.05 in log mu and 0.03 in p.
+
+    Referee: the parameters the bins were drawn at. The exposure and trials
+    vary per bin, so a start that ignored the covariate would read the
+    depth's spread as states.
+    """
+    fitted = _fitted("lattice")
 
     for planted in PLANTED:
-        distance = np.abs(fitted - planted)
-        assert ((distance[:, 0] < 0.05) & (distance[:, 1] < 0.03)).any(), (
-            planted,
-            fitted,
-        )
+        assert _near(fitted, planted), (planted, fitted)
+
+
+@pytest.mark.bug
+def test_the_default_start_merges_the_loss_into_copy_neutral_loh() -> None:
+    """`kmeans++x5+em`, `--sal`'s, fits no state at the one-copy loss: #471.
+
+    Seeded in `sal`'s rate space (#547), its polish merges the loss (log mu
+    -0.69, p 0.05) with copy-neutral LOH (0, 0.05) into one state near
+    (-0.28, 0.05) and splits neutral in two; the lattice, from the same
+    bins, fits all four. This pins the defect: it fails once the default
+    start separates them, and #471 closes with it.
+    """
+    from port.patch.hmm_initialize.sal_mixture import DEFAULT
+
+    fitted = _fitted(DEFAULT)
+    loss, neutral_loh = PLANTED[1], PLANTED[3]
+
+    assert not _near(fitted, loss), fitted
+    assert not _near(fitted, neutral_loh), fitted
+    assert _near(fitted, PLANTED[0]), fitted
+    assert _near(fitted, PLANTED[2]), fitted
 
 
 @pytest.mark.infra
@@ -94,7 +119,11 @@ def test_the_start_is_handed_over_only_under_its_option(
 
     assert seen[0] is distinct.gmm_init
     assert seen[1].func is sal_mixture.gmm_init
-    assert seen[1].keywords == {"start": sal_mixture.DEFAULT, "distinct": True}
+    assert seen[1].keywords == {
+        "start": sal_mixture.DEFAULT,
+        "distinct": True,
+        "baf_start": None,
+    }
 
 
 @pytest.mark.patch

@@ -5,8 +5,9 @@ start than port's `distinct` GMM (#348) on every sample. End to end, any of
 the three polished best-of-five starts lifts CalicoST hard from clone ARI
 0.8652 (5 clones) to **0.9829 (4)**, copy ARI 0.8652 → 0.9055, and phase-free
 exact altered 0.497 → 0.627. `dev_tree` 60 × 50 and easy are unchanged.
-`--sal` now installs `kmeans++x5+em`, the most likely of the three per call
-(`--hmm-start`).
+`--sal` installed `kmeans++x5+em`, the most likely of the three per call
+(`--hmm-start`), until #547 replaced it with the lattice start
+(`docs/nb/copy_state_starts.md`).
 
 ## Method
 

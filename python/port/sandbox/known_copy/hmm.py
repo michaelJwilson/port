@@ -15,7 +15,7 @@ samples. The allele reads are phased by the truth, so no phase is modelled.
 `decode` scores and labels the rows at given states without fitting: the same
 forward-backward at `cnaster`'s initial dispersions.
 
-Both run under `port.patch.hmm_nophasing.nb_logpmf.patched` (#560):
+Both run under `port.pipeline.patched(LOG_SPACE_SWAPS)` (#560, #561):
 `cnaster`'s negative binomial scores any count at probability 1 once its `p`
 rounds to 1, and Baum-Welch drove a state there. `degenerate` still flags a
 fit whose state would be scored so by the unpatched kernel.
@@ -113,7 +113,7 @@ def baum_welch(
     from cnaster.hmm import pipeline_baum_welch
     from cnaster.hmm_nophasing import hmm_nophasing
 
-    from port.patch.hmm_nophasing.nb_logpmf import patched
+    from port.pipeline import LOG_SPACE_SWAPS, patched
 
     _configured()
     x, exposure, trials = _arrays(problem)
@@ -135,7 +135,7 @@ def baum_welch(
         ]
         extra["normal_lambda"] = normal / normal.sum()
         stack.enter_context(rust_lattices())
-    with stack, patched():
+    with stack, patched(LOG_SPACE_SWAPS):
         result = pipeline_baum_welch(
             None, x, np.asarray(problem.lengths), n_states, exposure, trials, np.zeros(x.shape[0]), None,
             hmmclass=hmmclass, params="smp", t=T, shared_NB_dispersion=True, shared_BB_dispersion=True,
@@ -189,10 +189,10 @@ def _decode_once(
     if shift is not None:
         exposure = exposure * np.exp(-np.asarray(shift, dtype=np.float64))[:, None]
     n_states = int(np.asarray(log_mu).size)
-    from port.patch.hmm_nophasing.nb_logpmf import patched
+    from port.pipeline import LOG_SPACE_SWAPS, patched
 
     opened = time.perf_counter()
-    with patched():
+    with patched(LOG_SPACE_SWAPS):
         rdr, baf = hmm_nophasing.compute_emission_probability_nb_betabinom(
             x, exposure, np.asarray(log_mu, dtype=np.float64).reshape(-1, 1), np.full((n_states, 1), ALPHA), trials,
             np.clip(np.asarray(p_binom, dtype=np.float64), 1e-4, 1 - 1e-4).reshape(-1, 1), np.full((n_states, 1), TAU),

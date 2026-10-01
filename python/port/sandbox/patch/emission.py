@@ -54,8 +54,8 @@ log-space negative binomial (#560) below**, against
 `cnaster`'s own, and that channel is bitwise; the read-depth kernel is
 `port.patch.hmm_nophasing.nb_logpmf._nb_logpmf_1d`, not `cnaster`'s:
 upstream's returns 0 -- probability 1 -- once `p = 1 / (1 + alpha lambda)`
-rounds to 1.0 (`alpha lambda < 1.1e-16`), and `nb_logpmf.patched()` cannot
-reach a kernel compiled in by name.
+rounds to 1.0 (`alpha lambda < 1.1e-16`), and `port.pipeline.LOG_SPACE_SWAPS`
+cannot reach a kernel compiled in by name.
 
 **Who would maintain it.** `snakes_and_ladders` carries this job:
 `NegativeBinomialEmission`, `BetaBinomialEmission` and `CountPairEmission`

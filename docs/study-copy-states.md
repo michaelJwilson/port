@@ -9,12 +9,12 @@ at 19.9%.
 
 ## Method
 
-`python -m tests.studies.copy_state_stream sim/manifests/dev_tree_1s_hard.toml OUT --problems N --seeds 10 --held-out 3 --settings tests/studies/copy_sampler_settings.json`.
+`python -m tests.studies.copy_state_stream sim/manifests/baseline/dev_tree_1s_hard.toml OUT --problems N --seeds 10 --held-out 3 --settings tests/studies/copy_sampler_settings.json`.
 
 1. **Problem.** Each realization of `dev_tree_1s_hard` is drawn and pseudobulked at its planted clones
    (`port.sandbox.known_copy.problems`): 1 Mb bins under #551's 300 normal-UMI floor, phased allele
    reads, clones stacked along the genome, 7 states. About 7,700 rows per realization.
-2. **Starts.** Every family in `port.extensions.copy_starts`, each as its own algorithm's output, with no
+2. **Starts.** Every family in `port.sandbox.extensions.copy_starts`, each as its own algorithm's output, with no
    `sal` mixture polish. A stochastic start runs 10 seeds.
 3. **Polish.** `--sal` Baum-Welch: `port.patch.hmm_nophasing` with the per-clone shift (#276, #293), `sal`
    emission kernels, analytic gradients and the Rust lattice. Every score, a start's included, is on this
@@ -72,6 +72,9 @@ stamped with its data hash and code commit.
   (`port.patch.hmm_nophasing.nb_logpmf`), pinned against scipy to 1e-9.
 - **Beta-binomial precision at large tau** (#561) and **negative `emission++` divergences** (#562): the
   latter clamped at 0 for the study.
+- The numerics now come from PR- #594 (`port.pipeline.LOG_SPACE_SWAPS`, `sal_mixture.clamped_divergence`).
+  The numbers above were measured under this branch's own patch, which swapped the negative binomial
+  alone; `port.sandbox.known_copy` now also runs PR- #594's beta-binomial (#561). Not rerun.
 - **`sal`'s surrogate samplers sample a Gaussian mixture on raw counts and snap to observed rows** (#563).
   Replaced in the study by samplers on the HMM's own NLL (`port.sandbox.known_copy.hmm_samplers`).
 - **The per-clone shift lets Baum-Welch split the neutral state** (#564): 42% missed from the truth start on

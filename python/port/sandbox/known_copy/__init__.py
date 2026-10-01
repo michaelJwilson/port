@@ -2,7 +2,7 @@
 
 Ticket: #540 -- which start places the HMM's copy states; revisited on the
   known-law sims of #556 with the clones known.
-Measurement: `docs/study-copy-states.md`, on `sim/manifests/dev_tree_1s*.toml`.
+Measurement: `docs/study-copy-states.md`, on `sim/manifests/baseline/dev_tree_1s_hard.toml`.
 Exit: a start graduates to `extensions/copy_starts`' default if, polished by
   Baum-Welch, it reaches the best log-likelihood on easy, hard and dev_tree
   and misses no more states than `--sal`'s `kmeans++x5+em`; else this stays
