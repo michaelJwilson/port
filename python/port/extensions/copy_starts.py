@@ -36,7 +36,7 @@ from typing import Any, NamedTuple
 
 import numpy as np
 
-from port.patch.hmm_initialize.sal_mixture import EXPOSURE_SCALE, clamped_divergence
+from port.patch.hmm_initialize.sal_mixture import EXPOSURE_SCALE
 
 __all__ = [
     "LATTICE",
@@ -498,23 +498,7 @@ def _seeded(
     seconds: float,
     seeds: dict[str, Seed],
 ) -> Any:
-    """The start's components on `held` (the instance of `call`); a best-of-n start polishes its own n within `seconds`.
-
-    `sal`'s emission++ scores are floored at 0 for the seeding (#562,
-    `sal_mixture.clamped_divergence`).
-    """
-    with clamped_divergence():
-        return _seeded_clamped(name, call, held, rng, seconds, seeds)
-
-
-def _seeded_clamped(
-    name: str,
-    call: CopyCall,
-    held: Any,
-    rng: np.random.Generator,
-    seconds: float,
-    seeds: dict[str, Seed],
-) -> Any:
+    """The start's components on `held` (the instance of `call`); a best-of-n start polishes its own n within `seconds`."""
     if name in seeds:
         return _place(held, call, *seeds[name](call, rng))
 

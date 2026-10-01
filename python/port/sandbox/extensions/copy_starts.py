@@ -746,9 +746,11 @@ def seed_states(
         return _hmm_sampled(name, call, rng, setting)
     if name not in (*EMISSION_VARIANTS, "prior", "hmc"):
         seeds = {n: seed for n, (_, seed) in _port_starts().items()}
-        return live_seed_states(
-            name, call, rng, covariate=covariate, seconds=seconds, seeds=seeds
-        )
+        # NB floored as `sal_mixture.gmm_init` floors `--hmm-start` (#562).
+        with clamped_divergence():
+            return live_seed_states(
+                name, call, rng, covariate=covariate, seconds=seconds, seeds=seeds
+            )
 
     held = instance(call, covariate=covariate)
     with clamped_divergence():

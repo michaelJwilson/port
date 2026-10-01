@@ -132,11 +132,11 @@ def test_the_calicost_rows_carry_the_shipped_samples_hash() -> None:
 
 @pytest.mark.infra
 def test_a_name_under_another_hash_is_refused() -> None:
-    rows = [{"fixture": "easy", "fixture_hash": "23989aa4"}]
+    rows = [{"fixture": "easy", "fixture_hash": "2d4ce9a9"}]
 
-    check_identity("easy", "23989aa4", rows)
-    check_identity("hard", "1ae26365", rows)
+    check_identity("easy", "2d4ce9a9", rows)
+    check_identity("hard", "8797710b", rows)
     with pytest.raises(ValueError, match="one dataset"):
         check_identity("easy", "1065eb5b", rows)
     with pytest.raises(ValueError, match="one dataset"):
-        check_identity("hard", "23989aa4", rows)
+        check_identity("hard", "2d4ce9a9", rows)

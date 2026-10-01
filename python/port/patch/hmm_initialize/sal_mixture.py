@@ -31,10 +31,9 @@ below neutral.
 the negative binomial's Bregman divergence, non-negative in exact arithmetic
 and `-1.6e-15` in float64 for a row a hair from a seed's mean; D-squared
 sampling then hands `rng.choice` a negative probability and the start is
-refused. `copy_starts.run_start` seeds under :func:`clamped_divergence`,
-which floors the scores at 0 for the call: the exact divergence's sign, and
-no score moved by more than its round-off. `sal` is read only, so landing
-the floor there is left to it.
+refused. :func:`gmm_init` floors the scores at 0 around the start, which is the
+exact divergence's sign and moves no score by more than its round-off.
+`sal` is read only, so landing the floor there is left to it.
 """
 
 from __future__ import annotations
@@ -153,29 +152,6 @@ def instance_of(
     )
 
 
-@contextmanager
-def clamped_divergence() -> Iterator[None]:
-    """`sal`'s emission++ divergences floored at 0 for the block (#562), restored after."""
-    import sal.opt.emission_mixture as upstream
-
-    original = upstream._seed_scores
-
-    def floored(observations: np.ndarray, at: Any) -> Callable[..., np.ndarray]:
-        score = original(observations, at)
-
-        def nonnegative(seed: float, candidates: np.ndarray) -> np.ndarray:
-            return np.asarray(np.maximum(score(seed, candidates), 0.0))
-
-        return nonnegative
-
-    upstream._seed_scores = floored
-
-    try:
-        yield
-    finally:
-        upstream._seed_scores = original
-
-
 def _call(arguments: dict[str, Any], stage: str) -> Any:
     """The initializer's arguments as `copy_starts.CopyCall`; no start reads positions."""
     from port.extensions.copy_starts import CopyCall
@@ -201,6 +177,29 @@ def _call(arguments: dict[str, Any], stage: str) -> Any:
     )
 
 
+@contextmanager
+def clamped_divergence() -> Iterator[None]:
+    """`sal`'s emission++ divergences floored at 0 for the block (#562), restored after."""
+    import sal.opt.emission_mixture as upstream
+
+    original = upstream._seed_scores
+
+    def floored(observations: np.ndarray, at: Any) -> Callable[..., np.ndarray]:
+        score = original(observations, at)
+
+        def nonnegative(seed: float, candidates: np.ndarray) -> np.ndarray:
+            return np.asarray(np.maximum(score(seed, candidates), 0.0))
+
+        return nonnegative
+
+    upstream._seed_scores = floored
+
+    try:
+        yield
+    finally:
+        upstream._seed_scores = original
+
+
 @as_upstream(UPSTREAM, start=None, distinct=False, baf_start=None)
 def gmm_init(arguments: dict[str, Any], options: dict[str, Any]) -> Any:
     """`cnaster`'s initializer signature; `start` on the BAF + RDR call, `baf_start` on the BAF-only one.
@@ -221,7 +220,10 @@ def gmm_init(arguments: dict[str, Any], options: dict[str, Any]) -> Any:
         return fallback(**arguments)
 
     rng = np.random.default_rng([int(arguments.get("random_state") or 0), 0])
-    result = run_start(
-        checked(chosen), _call(arguments, stage), rng, seconds=POLISH_SECONDS
-    )
+    # NB every start in-process: a best-of runs its seedings serially at
+    #    sal's default of one worker, so the floor reaches each of them (#562).
+    with clamped_divergence():
+        result = run_start(
+            checked(chosen), _call(arguments, stage), rng, seconds=POLISH_SECONDS
+        )
     return result.log_mu.reshape(-1, 1), result.p_binom.reshape(-1, 1), None, None

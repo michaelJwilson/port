@@ -374,6 +374,7 @@ def pinned_errors(captured: Captured, purity: np.ndarray | None = None) -> Pinne
     function, on the same path, so the coordinates held fixed are the ones
     the pin fixed.
     """
+    from port.patch.hmm_nophasing.dense_emission import STABLE_TAU
     from port.patch.hmm_nophasing.shifted_emission import neutral_state
 
     result = captured.res
@@ -381,6 +382,17 @@ def pinned_errors(captured: Captured, purity: np.ndarray | None = None) -> Pinne
     p_binom = _column(result["new_p_binom"])
     alpha = float(_column(result["new_alphas"])[0])
     tau = float(_column(result["new_taus"])[0])
+
+    # NB `jax_hmm`'s beta-binomial subtracts `lgamma(tau)`-sized terms; from
+    #    `STABLE_TAU` its error is past the curvature this covariance reads
+    #    (T- #599). Refused until it is fixed, rather than a wrong error bar.
+    if tau >= STABLE_TAU:
+        msg = (
+            f"--copy-errors: the fit's tau {tau:.3g} >= {STABLE_TAU:g}, where "
+            "jax_hmm's beta-binomial loses precision (T- #599); refused"
+        )
+        raise ValueError(msg)
+
     n_states = log_mu.size
     mu = np.exp(log_mu)
 

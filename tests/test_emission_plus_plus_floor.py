@@ -4,8 +4,7 @@
 `sal.opt.emission_mixture._seed_scores`, whose negative-binomial Bregman
 divergence is non-negative in exact arithmetic and about `-1.6e-15` in
 float64 for a row a hair from a seed's mean. D-squared sampling hands those
-to `rng.choice`, which refuses them. `copy_starts.run_start` seeds under
-`sal_mixture.clamped_divergence`, which floors them at 0.
+to `rng.choice`, which refuses them. `sal_mixture.gmm_init` floors them at 0.
 
 The rows are the rate-space pairs `sal_mixture.instance_of` builds, seeded
 through the same `CountPairSeeding` seam: 200 at `(2.0, 0.3)`; 200 whose
@@ -131,12 +130,12 @@ def test_the_floor_draws_sals_seeds_wherever_sal_draws_any() -> None:
 
 
 @pytest.mark.infra
-def test_a_start_seeds_under_the_floor_and_restores_it(
+def test_the_start_seeds_under_the_floor_and_restores_it(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """`copy_starts`' seeding, which `--hmm-start` reaches, runs under the floor; `sal`'s own name is back afterwards."""
+    """`sal_mixture.gmm_init` runs its start under the floor; `sal`'s own name is back afterwards."""
     import sal.opt.emission_mixture as upstream
-    from port.extensions import copy_starts
+    from port.patch.hmm_initialize import sal_mixture
 
     original = upstream._seed_scores
     seen: list[bool] = []
@@ -144,16 +143,28 @@ def test_a_start_seeds_under_the_floor_and_restores_it(
     class Stop(Exception):
         pass
 
-    def start(instance: Any, rng: np.random.Generator) -> Any:
+    def run_start(*_: Any, **__: Any) -> Any:
         seen.append(upstream._seed_scores is not original)
         raise Stop
 
-    monkeypatch.setattr("sal.search.mixture_starts.lookup", lambda _: start)
+    monkeypatch.setattr("port.extensions.copy_starts.run_start", run_start)
+    n_obs = 50
+    X = np.ones((n_obs, 2, 1))
+    column = np.full((n_obs, 1), 30.0)
 
-    call: Any = None
     with pytest.raises(Stop):
-        copy_starts._seeded(
-            "emission++", call, object(), np.random.default_rng(0), 60.0, {}
+        sal_mixture.gmm_init(
+            4,
+            X,
+            column,
+            column,
+            "smp",
+            None,
+            None,
+            None,
+            random_state=0,
+            only_minor=False,
+            start="emission++",
         )
 
     assert seen == [True]
