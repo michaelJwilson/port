@@ -541,8 +541,14 @@ def summarize_counts_for_blocks(
     cell_snp_Aallele: Any,
     cell_snp_Ballele: Any,
     unique_snp_ids: np.ndarray,
+    *,
+    count_dtype: Any = int,
 ) -> Any:
     """What `cnaster.omics.summarize_counts_for_blocks` returns, in three products.
+
+    `count_dtype` is the integer type of `single_X` and `single_total_bb_RD`:
+    `int`, `cnaster`'s, by default; `run_cnaster_port --narrow-counts` binds
+    `np.int32`, half the bytes of the run's largest arrays (#569).
 
     `cnaster` loops the blocks and, for each one, slices every spot's column
     out of three matrices:
@@ -586,14 +592,14 @@ def summarize_counts_for_blocks(
 
     a_allele = _grouped_column_sums(cell_snp_Aallele, by_snp)
 
-    single_X = np.zeros((n_blocks, 2, n_spots), dtype=int)
+    single_X = np.zeros((n_blocks, 2, n_spots), dtype=count_dtype)
     single_X[:, 1, :] = a_allele
     single_X[:, 0, :] = _grouped_column_sums(adata.layers["count"], by_gene)
 
     # NB the A sum again, where upstream recomputes it.
     single_total_bb_RD = (
         a_allele + _grouped_column_sums(cell_snp_Ballele, by_snp)
-    ).astype(int)
+    ).astype(count_dtype)
 
     # NB from the blocks as a labelling of the genes (#438): the contig runs
     #    of the segments the rows are indexed by, never zero, and recorded
@@ -614,8 +620,12 @@ def summarize_counts_for_bins(
     nu: float,  # noqa: ARG001 -- upstream takes it and never reads it
     logphase_shift: float,  # noqa: ARG001 -- likewise
     geneticmap_file: Any,  # noqa: ARG001 -- likewise
+    *,
+    count_dtype: Any = int,
 ) -> Any:
     """What `cnaster.omics.summarize_counts_for_bins` returns, in two products.
+
+    `count_dtype` as :func:`summarize_counts_for_blocks` takes it (#569).
 
     The same defect one level up: `cnaster` loops the bins, gathers each one's
     blocks, phases them and sums, then slices the count matrix per bin for the
@@ -674,11 +684,13 @@ def summarize_counts_for_bins(
         single_total_bb_RD - single_X[:, 1, :],
     )
 
-    bin_single_X = np.zeros((n_bins, 2, n_spots), dtype=int)
+    bin_single_X = np.zeros((n_bins, 2, n_spots), dtype=count_dtype)
     bin_single_X[:, 1, :] = by_block.T @ phased
     bin_single_X[:, 0, :] = _grouped_column_sums(adata.layers["count"], by_gene)
 
-    bin_single_total_bb_RD = np.asarray(by_block.T @ single_total_bb_RD, dtype=int)
+    bin_single_total_bb_RD = np.asarray(
+        by_block.T @ single_total_bb_RD, dtype=count_dtype
+    )
 
     # NB from the bins as a labelling of the genes (#438). `cnaster` reindexes
     #    over every contig with zeros; a zero is a contig every lattice

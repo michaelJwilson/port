@@ -268,6 +268,7 @@ follows the arm unless asked: on in a patched run, off with `--no-patch`.
 | `--floor-merge` | off; on with `--sal` | the clone-size floor met smallest first (#348) | alone, #338's three-sample instance: 2 planted clones fitted as 6 |
 | `--hmm-start` | `none`; `kmeans++x5+em` with `--sal` | the read-depth HMM's start from sal's covariate mixture (#489) | CalicoST hard clone ARI 0.8652 to 0.9829 |
 | `--sparse-counts` | off | the loader's counts, `exp_counts` and allele matrices kept sparse through `filter_normal_diffexp` (#186, #569) | outputs bitwise; peak 4.84 to 2.82 GB at 4,356 spots (#569) |
+| `--narrow-counts` | off | `single_X` and `single_total_bb_RD` held as `int32` by the block and bin summaries (#569) | outputs bitwise; peak 2.80 to 2.73 GB at 4,356 spots |
 | `--copy-errors` | off | `cnv_copy_sets.tsv`: every `(A, B)` in each state's 95 per cent credible region (#353) | differentiates the whole objective once |
 | `--png-copies` | off | a PNG without metadata beside each PDF, for `docs/plots` (#452) | two runs of the same code write the same bytes |
 | `--sample-layout`, `--genomic-colours` | unset | one panel per sample (#328); bins coloured per fitted state | |

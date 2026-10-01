@@ -173,6 +173,11 @@ def _parser() -> argparse.ArgumentParser:
         help="keep the loader's counts and allele matrices sparse (#186, #569); off",
     )
     parser.add_argument(
+        "--narrow-counts",
+        action="store_true",
+        help="hold single_X and single_total_bb_RD as int32, not int64 (#569); off",
+    )
+    parser.add_argument(
         "--copy-errors",
         action="store_true",
         help="write cnv_copy_sets.tsv, each state's 95 per cent credible (A, B) (#353); needs the shift",
@@ -554,6 +559,16 @@ def main(argv: Sequence[str] | None = None) -> int:
             selected = with_options(
                 selected, "port.patch.io:load_input_data", sparse_counts=True
             )
+
+        if arguments.narrow_counts:
+            # NB the block and bin summaries' integer type (#569): every count
+            #    is far below 2^31, so the values are the int64 ones.
+            import numpy as np
+
+            for summary in ("summarize_counts_for_blocks", "summarize_counts_for_bins"):
+                selected = with_options(
+                    selected, f"port.patch.omics:{summary}", count_dtype=np.int32
+                )
 
         if arguments.no_plots:
             # NB after every other table, so it rebinds whichever `write_fig`
