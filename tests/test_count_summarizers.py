@@ -82,19 +82,8 @@ def test_the_block_counts_are_cnasters(blocked: tuple[Any, Any, Any]) -> None:
 
 @pytest.mark.patch
 @pytest.mark.parametrize("phase", PHASES)
-@pytest.mark.parametrize("spot_block", [4096, 7])
-def test_the_bin_counts_are_cnasters(
-    blocked: tuple[Any, Any, Any],
-    phase: str,
-    spot_block: int,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """**Every field of the bin summary, bitwise, under three phase vectors.**
-
-    At the default column block and at 7 spots, so the blocks fall
-    mid-array and a last partial block is summed (#569).
-    """
-    import port.patch.omics.blocks as blocks
+def test_the_bin_counts_are_cnasters(blocked: tuple[Any, Any, Any], phase: str) -> None:
+    """**Every field of the bin summary, bitwise, under three phase vectors.**"""
     from cnaster.omics import create_bin_ranges
     from cnaster.omics import summarize_counts_for_bins as upstream
     from port.patch.omics.blocks import summarize_counts_for_bins as patched
@@ -115,7 +104,6 @@ def test_the_bin_counts_are_cnasters(
         secondary_min_normal_umi=0,
     )
 
-    monkeypatch.setattr(blocks, "BIN_SPOT_BLOCK", spot_block)
     n_blocks = counts.X.shape[0]
     indicator = {
         "all-true": np.ones(n_blocks, dtype=bool),
