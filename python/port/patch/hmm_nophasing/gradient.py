@@ -364,9 +364,21 @@ class EmGradient:
         _, _, obs, total = self.rows
         tau = np.asarray(taus, dtype=np.float64)[:, :1]
         per_row = tau_rows(tau, self.rescale)
+        # NB `g = 0`, no spot with two trials: the binomial, which `tau`
+        #    does not move.
+        binomial = np.isinf(per_row)
+        finite = np.where(binomial, 1.0, per_row)
 
-        d_p, d_tau = bb_partials(obs[None, :], total[None, :], p_binom[:, :1], per_row)
-        chain = tau / (self.rescale.bb[None, :] * per_row)
+        d_p, d_tau = bb_partials(obs[None, :], total[None, :], p_binom[:, :1], finite)
+        share = np.clip(p_binom[:, :1], DISPERSION_FLOOR, 1.0 - DISPERSION_FLOOR)
+        valid = (obs >= 0) & (total >= 0) & (obs <= total)
+        limit = np.where(valid, obs / share - (total - obs) / (1.0 - share), 0.0)
+        d_p = np.where(binomial, limit, d_p)
+        chain = np.where(
+            binomial,
+            0.0,
+            tau / (np.where(binomial, 1.0, self.rescale.bb[None, :]) * finite),
+        )
 
         return -np.sum(gamma * d_p, axis=1), _sums(gamma, d_tau * chain, spread)
 

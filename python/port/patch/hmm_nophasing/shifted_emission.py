@@ -521,6 +521,21 @@ class hmm_nophasing(UPSTREAM):  # type: ignore[misc]
             from port.patch.hmm_nophasing.rescale import find
 
             self._rescale = find(X)
+            logger.info(
+                "dispersion rescale: per-clone NB factor 1/S_eff %s, BB factor median %s",
+                np.array2string(self._rescale.nb, precision=5),
+                np.array2string(
+                    np.array(
+                        [
+                            np.median(part)
+                            for part in np.split(
+                                self._rescale.bb, np.cumsum(self._rescale.lengths)[:-1]
+                            )
+                        ]
+                    ),
+                    precision=5,
+                ),
+            )
         else:
             self._rescale = None
         hmm_nophasing._row_rescale = self._rescale
