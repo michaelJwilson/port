@@ -7,7 +7,7 @@ name: Figures
 # guarantees is that the figures a pull request's code draws can be read
 # beside it.
 #
-# Nothing is committed. `docs/plots/` tracks no PNG
+# Nothing is committed. `docs/` tracks no PNG outside two exceptions
 # (`tests/test_ci_entry.py`), and both generators write to `.cache/plots/`
 # (`tests/plots_dir.py`), untracked. The commit step #296 added, and the
 # stacked-branch check (#350) that existed only to decide it, are removed.
