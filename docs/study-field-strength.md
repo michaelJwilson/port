@@ -15,6 +15,9 @@ max-product reach TRW-S's bound on every run from random labels. ICM stops
 
 `python -m tests.studies.field_strength pipeline | known | calicost`,
 `python -m tests.studies.potts_stream`, `python -m tests.studies.calicost_figures`.
+Every `dev_tree_1s_hard` number here was drawn at the manifest of `8189d19`,
+events at mean 10 Mb (median 6.9 Mb); #581 has since moved it to a 10 Mb
+median.
 
 - **Pipeline field.** `--sal --oracle-start`'s first BAF + RDR inference,
   captured (`tests.studies.clone_labels capture`) and rebuilt at the planted
