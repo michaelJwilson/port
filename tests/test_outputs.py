@@ -22,7 +22,7 @@ N_STATES, N_BINS = 4, 30
 IDS, POSITIONS = ("0", "2", "5"), (1, 2, 0)
 
 
-def _run(tmp_path: Path, seed: int = 3) -> Path:
+def _run(tmp_path: Path, seed: int = 3, shift: np.ndarray | None = None) -> Path:
     rng = np.random.default_rng(seed)
     n_clones = len(IDS)
     pred_cnv = np.zeros((N_BINS, n_clones), dtype=int)
@@ -78,7 +78,7 @@ def _run(tmp_path: Path, seed: int = 3) -> Path:
         pred_cnv=pred_cnv,
         llf=-10.0,
         total_llf=np.nan,
-        new_log_mu_shift=np.array(None, dtype=object),
+        new_log_mu_shift=np.array(None, dtype=object) if shift is None else shift,
     )
 
     return run
@@ -329,9 +329,9 @@ def test_a_run_s_outputs_recover_the_planted_clones_and_the_flat_normal(
     The round trip's instance (two clones, three states, 40 bins). Each
     fitted clone's spots are one planted clone to 95 per cent (1.000 on this
     host), and the planted normal clone reads flat in `cnv_binlevel.tsv`:
-    its bins' states' `exp(logmu)` in `cnv_states.tsv`, joined on `Z`,
-    constant to 1 per cent about their mean -- `run_cnaster` leaves `mu`'s
-    scale unpinned -- and `p` 1/2 to 0.02 (0.499 here, 0.487 on CI's
+    `mu`, its state's rate with the clone's shift, constant to 1 per cent
+    about its own mean -- `run_cnaster` leaves `mu`'s scale unpinned -- and
+    `p` 1/2 to 0.02 (0.499 here, 0.487 on CI's
     runner). The segments reproduce `cnaster`'s own table bin for bin.
 
     The tumour clone's amplification is not judged here: at this run's three
@@ -363,7 +363,6 @@ def test_a_run_s_outputs_recover_the_planted_clones_and_the_flat_normal(
     bins = pd.read_csv(run / "cnv_binlevel.tsv", sep="\t")
     seglevel = pd.read_csv(run / "cnv_seglevel.tsv", sep="\t", comment="#")
     segments = pd.read_csv(run / "cnv_segments.tsv", sep="\t")
-    fitted = pd.read_csv(run / "cnv_states.tsv", sep="\t")
     labels = pd.read_csv(run / "clone_labels.tsv", sep="\t", comment="#")
     offset = np.concatenate([[0], np.cumsum(truth.lengths)[:-1]])
     planted_bin = (
@@ -384,8 +383,7 @@ def test_a_run_s_outputs_recover_the_planted_clones_and_the_flat_normal(
 
         if np.all(truth.states[int(planted.index[0]), planted_bin] == 0):
             normal += 1
-            rates = fitted[fitted.clone.astype(str) == str(clone)].set_index("state")
-            mu = np.exp(rates.logmu.to_numpy()[bins[f"clone{clone} Z"].to_numpy()])
+            mu = bins[f"clone{clone} mu"].to_numpy()
             np.testing.assert_allclose(mu, mu.mean(), rtol=1e-2)
             np.testing.assert_allclose(bins[f"clone{clone} p"], 0.5, atol=0.02)
 
@@ -398,8 +396,10 @@ def test_the_writer_returns_the_planted_states_of_a_perfect_decode(
 ) -> None:
     """A run directory written from the planted truth itself -- each clone's
     path its planted states, the posterior one-hot on them, one `(A, B)` per
-    state -- is read back as the truth: every bin's `p` and, through its `Z`
-    in `cnv_states.tsv`, its `logmu` the planted state's, the amplification's `mu` 5.0 and `p` 0.88 exactly, and the
+    state, a shift per clone -- is read back as the truth: every bin's `p`
+    the planted state's, its `logmu` through `Z` in `cnv_states.tsv` the
+    planted state's, and its and its segment's `mu` the planted rate times
+    `exp(shift)`, the amplification's `mu` 5.0 and `p` 0.88 exactly, and the
     segments the planted runs of state within each chromosome."""
     from port.extensions.outputs import binlevel, segments, states
 
@@ -429,6 +429,8 @@ def test_the_writer_returns_the_planted_states_of_a_perfect_decode(
         "new_p_binom": np.ravel(truth.p_binom)[:, None],
         "log_gamma": np.log(np.maximum(gamma, 1e-300)),
         "pred_cnv": truth.states.T,
+        # NB per position in `pred_cnv`, which here is the clone.
+        "new_log_mu_shift": np.array([0.0, 0.2])[: truth.states.shape[0]],
     }
     mu_planted = np.exp(np.ravel(truth.log_mu))
     p_planted = np.ravel(truth.p_binom)
@@ -443,6 +445,10 @@ def test_the_writer_returns_the_planted_states_of_a_perfect_decode(
             np.ravel(truth.log_mu)[path],
             rtol=1e-12,
         )
+        scale = np.exp(fit["new_log_mu_shift"][clone])
+        np.testing.assert_allclose(
+            table[f"clone{clone} mu"], mu_planted[path] * scale, rtol=1e-12
+        )
         np.testing.assert_allclose(
             table[f"clone{clone} p"], p_planted[path], rtol=1e-12
         )
@@ -455,6 +461,9 @@ def test_the_writer_returns_the_planted_states_of_a_perfect_decode(
         np.testing.assert_array_equal(runs.first_bin, np.concatenate([[0], breaks + 1]))
         np.testing.assert_array_equal(
             runs.states, [str(s) for s in path[runs.first_bin]]
+        )
+        np.testing.assert_allclose(
+            runs.mu, mu_planted[path[runs.first_bin]] * scale, rtol=1e-12
         )
 
     amplified = int(np.argmax(mu_planted))
@@ -514,13 +523,66 @@ def test_the_configured_agreement_is_what_write_outputs_uses(tmp_path: Path) -> 
     assert config_keys(config)["merge_agreement"] == 0.99
 
 
-@pytest.mark.infra
-def test_no_per_bin_mu_is_written(tmp_path: Path) -> None:
-    """`binlevel` and `segments` write no `mu` column (#613): a bin's rate is
-    its state's `logmu` in `cnv_states.tsv`, joined on `(clone, state)`."""
+# NB per position in `pred_cnv`, as `new_log_mu_shift` is: nonzero, distinct.
+SHIFT = np.array([0.0, 0.11, -0.07])
+
+
+@pytest.mark.analytic
+def test_a_bin_s_mu_is_its_state_s_rate_with_the_clone_s_shift(
+    tmp_path: Path,
+) -> None:
+    """`clone{c} mu` is `exp(logmu[Z] + shift_c)` to 1e-12, from the `.npz`
+    directly, and differs from the posterior mean of the state rates where
+    the posterior splits; a segment's `mu` is that rate's mean over its bins
+    (#613)."""
     from port.extensions.outputs import binlevel, segments
 
-    seglevel, _, fit = _load(_run(tmp_path))
-    columns = [*binlevel(seglevel, fit).columns, *segments(seglevel, fit).columns]
+    seglevel, _, fit = _load(_run(tmp_path, shift=SHIFT))
+    table = binlevel(seglevel, fit)
+    runs = segments(seglevel, fit)
+    log_mu = fit["new_log_mu"][:, 0]
 
-    assert [c for c in columns if c == "mu" or c.endswith(" mu")] == []
+    for clone, position in zip(IDS, POSITIONS, strict=True):
+        path = seglevel[f"clone{clone} Z"].to_numpy()
+        expected = np.exp(log_mu[path] + SHIFT[position])
+        mu = table[f"clone{clone} mu"].to_numpy()
+        np.testing.assert_allclose(mu, expected, rtol=1e-12)
+
+        averaged = np.exp(log_mu) @ np.exp(fit["log_gamma"][:, :, position])
+        assert np.all(np.abs(mu - averaged) > 1e-3)
+
+        own = runs[runs.clone == clone]
+        np.testing.assert_allclose(
+            own.mu,
+            [
+                expected[a : b + 1].mean()
+                for a, b in zip(own.first_bin, own.last_bin, strict=True)
+            ],
+            rtol=1e-12,
+        )
+
+
+@pytest.mark.infra
+def test_written_mu_joins_cnv_states_and_the_manifest_shift(tmp_path: Path) -> None:
+    """On file, `clone{c} mu` is `exp(logmu + log_mu_shift)`: `logmu` from
+    `cnv_states.tsv` joined on `(clone, state)` with `clone{c} Z`, the shift
+    from `manifest.json` at the clone's position; a run recording no shift
+    writes `exp(logmu)` (#613)."""
+    from port.extensions.outputs import write_outputs
+
+    for name, shift in (("shifted", SHIFT), ("unshifted", None)):
+        (tmp_path / name).mkdir()
+        run = _run(tmp_path / name, shift=shift)
+        write_outputs(run)
+        bins = pd.read_csv(run / "cnv_binlevel.tsv", sep="\t")
+        fitted = pd.read_csv(run / "cnv_states.tsv", sep="\t")
+        manifest = json.loads((run / "manifest.json").read_text())
+
+        for clone, position in manifest["clones"].items():
+            logmu = fitted[fitted.clone.astype(str) == clone].set_index("state").logmu
+            offset = 0.0 if shift is None else manifest["log_mu_shift"][position]
+            np.testing.assert_allclose(
+                bins[f"clone{clone} mu"],
+                np.exp(logmu.to_numpy()[bins[f"clone{clone} Z"].to_numpy()] + offset),
+                rtol=1e-12,
+            )

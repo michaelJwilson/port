@@ -13,14 +13,9 @@ all but `clone_labels.tsv`, below -- in each run directory that holds a
   to the deduplicated integer copies.
 - `cnv_segments.tsv`: per clone, the runs of equal `(A, B)` within a
   chromosome, their first and last bin, the fitted states they span, and
-  the posterior-mean `p` over the run. The deduplicated view.
-- `cnv_binlevel.tsv`: per bin and clone, the fitted state and the
-  posterior-mean `p` under `log_gamma`. The continuous view.
-
-A bin's rate is its state's: `logmu` in `cnv_states.tsv`, joined on
-`(clone, state)` with the bin's `clone{c} Z`. No per-bin `mu` is written
-(#613): the posterior mean of `exp(logmu)` is a rate of no state, and
-differed from `exp(logmu)` by up to 0.037.
+  the mean `mu` and posterior-mean `p` over the run. The deduplicated view.
+- `cnv_binlevel.tsv`: per bin and clone, the fitted state `Z`, its rate
+  `mu` and the posterior-mean `p` under `log_gamma`. The continuous view.
 - `clone_labels_integer.tsv`: `clone_labels.tsv` with each spot's clone
   also named by its integer copy profile (`integer_clones`, #344): clones
   whose `(A, B)` agree at no less than `int_copy_num.merge_agreement` of
@@ -33,6 +28,14 @@ differed from `exp(logmu)` by up to 0.037.
 - `manifest.json`: the run's shape and provenance -- states, clones,
   likelihoods, the shift, the configuration's copy caps and ploidy, the
   sample names in code order, and what `run_cnaster_port` was asked for.
+
+**A bin's `mu` is its state's rate in its clone** (#613): `clone{c} mu =
+exp(logmu[Z_c] + shift_c)`, with `logmu` the state's in `cnv_states.tsv`,
+`Z_c` the bin's `clone{c} Z` and `shift_c` the clone's HMM log-rate shift,
+`new_log_mu_shift` in the `.npz` and `log_mu_shift` in `manifest.json`;
+zero where the run records none. Not the integer decode's shift. It was the
+posterior mean of the state rates, a rate of no state. `cnaster`'s own
+`clone{c} logmu` in `cnv_seglevel.tsv` is `logmu[Z_c]`, without the shift.
 
 **Each spot's sample is the run's, not its barcode's** (#418, #365). Given
 the run's `port.extensions.samples` recording, the per-spot tables --
@@ -124,6 +127,22 @@ def clone_columns(seglevel: pd.DataFrame, pred_cnv: np.ndarray) -> dict[str, int
     return found
 
 
+def _rates(fit: dict[str, Any], position: int, path: np.ndarray) -> np.ndarray:
+    """`exp(logmu[Z] + shift)` per bin of one clone: its state's rate, shifted.
+
+    The shift is `new_log_mu_shift` at the clone's position, zero where the
+    run records none.
+    """
+    # NB `cnaster` without the shift stores None, read here as NaN.
+    recorded = np.ravel(
+        np.asarray(fit.get("new_log_mu_shift", np.nan), dtype=np.float64)
+    )
+    none = recorded.size == 1 and bool(np.isnan(recorded[0]))
+    offset = 0.0 if none else float(recorded[position])
+    rates: np.ndarray = np.exp(fit["new_log_mu"][path, 0] + offset)
+    return rates
+
+
 def _posterior_means(fit: dict[str, Any], position: int) -> np.ndarray:
     """The posterior-mean `p` per bin of one clone."""
     gamma = np.exp(fit["log_gamma"][:, :, position])
@@ -160,16 +179,18 @@ def states(
 
 
 def binlevel(seglevel: pd.DataFrame, fit: dict[str, Any]) -> pd.DataFrame:
-    """Per bin and clone: the fitted state `Z` and the posterior-mean `p`.
+    """Per bin and clone: the fitted state `Z`, its rate `mu` and the posterior-mean `p`.
 
-    The bin's rate is its state's `logmu` in `cnv_states.tsv`, joined on
-    `(clone, state)` with `clone{c} Z`; no per-bin `mu` is written (#613).
+    `clone{c} mu = exp(logmu[Z] + shift_c)`: the state's rate with the
+    clone's HMM shift (#613).
     """
     frame = seglevel[["CHR", "START", "END"]].copy()
 
     for clone, position in clone_columns(seglevel, fit["pred_cnv"]).items():
         p = _posterior_means(fit, position)
-        frame[f"clone{clone} Z"] = seglevel[f"clone{clone} Z"].to_numpy(dtype=int)
+        path = seglevel[f"clone{clone} Z"].to_numpy(dtype=int)
+        frame[f"clone{clone} Z"] = path
+        frame[f"clone{clone} mu"] = _rates(fit, position, path)
         frame[f"clone{clone} p"] = p
 
     return frame
@@ -178,8 +199,9 @@ def binlevel(seglevel: pd.DataFrame, fit: dict[str, Any]) -> pd.DataFrame:
 def segments(seglevel: pd.DataFrame, fit: dict[str, Any]) -> pd.DataFrame:
     """Per clone, the runs of equal `(A, B)` within a chromosome.
 
-    A run's rates are its `states`' `logmu` in `cnv_states.tsv`, joined on
-    `(clone, state)`; no per-run `mu` is written (#613).
+    `mu` is the mean over the run's bins of `exp(logmu[Z] + shift_c)`: the
+    single state's rate where the run spans one state, as `states` lists
+    (#613).
     """
     rows = []
     chromosome = seglevel["CHR"].to_numpy()
@@ -188,6 +210,7 @@ def segments(seglevel: pd.DataFrame, fit: dict[str, Any]) -> pd.DataFrame:
         p = _posterior_means(fit, position)
         pairs = seglevel[[f"clone{clone} A", f"clone{clone} B"]].to_numpy(dtype=int)
         path = seglevel[f"clone{clone} Z"].to_numpy(dtype=int)
+        mu = _rates(fit, position, path)
         # NB a run breaks where the pair or the chromosome changes.
         breaks = np.flatnonzero(
             np.any(pairs[1:] != pairs[:-1], axis=1)
@@ -209,6 +232,7 @@ def segments(seglevel: pd.DataFrame, fit: dict[str, Any]) -> pd.DataFrame:
                     "A": int(pairs[first, 0]),
                     "B": int(pairs[first, 1]),
                     "states": ",".join(str(s) for s in np.unique(path[first:stop])),
+                    "mu": float(mu[first:stop].mean()),
                     "p": float(p[first:stop].mean()),
                 }
             )
