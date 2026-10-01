@@ -457,6 +457,15 @@ the same clones and layout, each a complete sample in
 manifests use CalicoST's array, 60 rows of 50 per slice, and plant every
 clone above cnaster's fixed 200-spot ICM floor (#468): `dev_tree` 6,000
 spots over two slices, `dev_shared_unique` 3,000 on one.
+`[model] counts_sampler` draws that law as normalized gammas (`gamma`, every
+committed realization) or as a Pólya urn (`urn`, `O(UMIs)` per spot, #549);
+`[array] kind` is `hex` (Visium) or `square` (Visium HD, #569).
+`dev_tree_1s{,_easy,_hard}` put `dev_tree`'s clones on one slice under the
+urn, with CalicoST easy's and hard's event laws and admixture (#556, #581);
+`sim/manifests/baseline/` keeps the gamma copies the baseline ran.
+Each `dev_tree*` manifest states `[sample] r0_hash`, its realization 0's
+`tests.sim_stages.realization_hash`, so a result names the generation it was
+drawn at; `tests/test_sim_r0_hash.py` redraws each to it.
 `tests.sim_audit` runs and scores one realization:
 
     python -m port.sim.draw sim/manifests/dev_tree.toml
