@@ -27,8 +27,9 @@ BUDGET: dict[str, int] = {
     #    the BAF-only stage's copy-state start. 31: #566's
     #    `--dispersion-rescale`, `--dispersion-two-component`,
     #    `--per-state-dispersion`, `--dispersion-bounds`, `--alpha-min`,
-    #    `--tau-max` and `--dispersion-prior-rows`, combined for #570.
-    "run_cnaster_port flags": 31,
+    #    `--tau-max` and `--dispersion-prior-rows`, combined for #570. 32:
+    #    #481's `--split-state` (#471).
+    "run_cnaster_port flags": 32,
     # NB 53: step 1 removed the two `_Selection` slots behind the decoder and
     #    solver switches; step 5 added `Settings`, the entry point's one
     #    resolution of its tri-state flags; step 8 added the `hmm_phased` row

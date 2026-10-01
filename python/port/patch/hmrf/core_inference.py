@@ -39,6 +39,7 @@ per clone, as the balanced state whose raw `mu` is closest to 1
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 import numpy as np
@@ -58,6 +59,8 @@ __all__ = [
     "run_core_inference",
     "shift_for",
 ]
+
+logger = logging.getLogger(__name__)
 
 ZERO_NORMAL_SHIFT: list[bool] = [True]
 """Whether the normal clone's shift is set to zero (the default)."""
@@ -281,6 +284,11 @@ def run_core_inference(arguments: dict[str, Any], options: dict[str, Any]) -> An
     if is_shifted and "m" in str(arguments.get("params", "")):
         _NORMAL[:] = [pin_neutral(result)]
 
+        from port.patch.hmrf import split_state
+
+        if split_state.installed():
+            result = _split_and_refit(result, arguments)
+
         base = arguments.get("single_base_nb_mean")
 
         try:
@@ -292,3 +300,54 @@ def run_core_inference(arguments: dict[str, Any], options: dict[str, Any]) -> An
             clone_shifts(result, np.asarray(base), ZERO_NORMAL_SHIFT[0])
 
     return result
+
+
+def _split_and_refit(result: Any, arguments: dict[str, Any]) -> Any:
+    """`split_state`'s refit on the first fit's clones, under the RDR + BAF call only (#471)."""
+    from port.patch.hmrf.split_state import split_init
+
+    single_X = arguments["single_X"]
+    lengths = arguments["lengths"]
+    base = np.asarray(arguments["single_base_nb_mean"])
+
+    # NB the BAF-only call has no baseline, and no depth to split by.
+    if not np.any(base > 0):
+        return result
+
+    init = split_init(result, single_X, lengths, base)
+
+    if init is None:
+        logger.info("split state: no unbalanced state splits by depth")
+        return result
+
+    log_mu, p_binom, state, freed = init
+    logger.info(
+        f"split state: state {state} at log mu {log_mu[state, 0]:.3f}, "
+        f"state {freed} freed for {log_mu[freed, 0]:.3f}"
+    )
+
+    kept = np.asarray(result["new_assignment"])
+    clones = [np.flatnonzero(kept == label) for label in np.unique(kept)]
+    refit = UPSTREAM(
+        **{
+            **arguments,
+            "initial_clone_index": clones,
+            "init_log_mu": log_mu,
+            "init_p_binom": p_binom,
+            "max_iter_outer": 0,
+        }
+    )
+    _NORMAL[:] = [pin_neutral(refit)]
+
+    locked = bool(getattr(refit, "_locked", False))
+
+    if locked:
+        refit.unlock()
+
+    try:
+        refit["new_assignment"] = kept
+    finally:
+        if locked:
+            refit.lock()
+
+    return refit

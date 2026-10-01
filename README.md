@@ -242,6 +242,7 @@ run_cnaster_port --copy-decode shared config.yaml  # one integer pair per fitted
 run_cnaster_port --dispersion-rescale config.yaml  # per-spot dispersions, each clone's pseudobulk at its moment-matched value (#566)
 run_cnaster_port --time-stages config.yaml   # what the replacements cost in the run
 run_cnaster_port --floor-merge --refinement-mask config.yaml  # #348's clone patches, opt-in; --no-distinct-init drops the third
+run_cnaster_port --sal --split-state config.yaml  # one LOH/loss state split by depth and refitted on the same clones, opt-in (#471)
 python -m port.sandbox.np_merge config.yaml # sandbox: CalicoST's Neyman-Pearson merge of clones that decode alike (#497), not installed by default
 run_cnaster_port --hmm-start lattice config.yaml  # the read-depth HMM's start from the integer lattice (#547); --sal's is kmeans++x5+em
 run_calicost config.yaml                     # CalicoST on the same fixture files, at port's configuration
@@ -271,6 +272,7 @@ follows the arm unless asked: on in a patched run, off with `--no-patch`.
 | `--baf-start` | `none` | the BAF-only HMM's copy states from the lattice (#540) | |
 | `--dispersion-rescale` | off | per-spot NB `alpha`, BB `tau`; each clone's pseudobulk at `alpha / S_eff` and `rho g` (#566, #100) | 8 vs 64 spots: pseudobulk `alpha` 6.5x apart unrescaled, per-spot recovered to 25 per cent; CalicoST in the PR |
 | `--dispersion-two-component` | off | with `--dispersion-rescale`, a clone-shared `alpha`, `tau` beside the per-spot ones (#566, #556) | planted 0.02 shared + 0.3 per spot: 0.019-0.022 and 0.26-0.31 over three seeds |
+| `--split-state` | off | after the shifted RDR + BAF fit, the unbalanced state at two depths more than 0.3 apart in log ratio split, and one refit on the clones found (#471) | `dev_tree` r0, an earlier base: exact altered 0.707 to 0.896 |
 | `--per-state-dispersion` | off | one NB `alpha`, BB `tau` per state, `cnaster`'s `shared_*_dispersion=False` (#566) | CalicoST in PR #567 |
 | `--dispersion-bounds` | on with `--per-state-dispersion` | `alpha_k >= --alpha-min` (1e-3), `tau_k <= --tau-max` (1e5), by projection in the M step (#566) | unbounded, a state on three exact rows runs to `alpha` 1.1e-10 |
 | `--dispersion-prior-rows` | 0 | shrink each `log alpha_k`, `log tau_k` toward the pooled value with weight `n0 / (n0 + n_k)` (#566) | held-out pick on #540's problems: 30 |

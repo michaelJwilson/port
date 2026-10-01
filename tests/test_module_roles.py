@@ -105,6 +105,7 @@ ROLES: dict[str, Role] = {
     "port.patch.plotting.clone_paths": "row-helper",
     "port.patch.hmrf.invariants": "row-helper",
     "port.patch.hmrf.reindex": "row-helper",
+    "port.patch.hmrf.split_state": "row-helper",
     # sim
     "port.sim.analysis": "sim",
     "port.sim.draw": "sim",

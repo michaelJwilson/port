@@ -209,6 +209,11 @@ def _parser() -> argparse.ArgumentParser:
         help="with --dispersion-rescale, a clone-shared alpha and tau beside the per-spot ones (#566)",
     )
     parser.add_argument(
+        "--split-state",
+        action="store_true",
+        help="after the read-depth + BAF fit, split the unbalanced state whose bins fall at two depths more than 0.3 apart in log ratio, and refit once on the clones found (#471); needs the shift",
+    )
+    parser.add_argument(
         "--sal",
         action="store_true",
         help="snakes_and_ladders' labelling, and the mask, floor and start it implies (#312)",
@@ -377,6 +382,8 @@ def _refusals(arguments: argparse.Namespace, settings: Settings) -> list[str]:
 
     if arguments.dispersion_two_component and not arguments.dispersion_rescale:
         refused.append("--dispersion-two-component needs --dispersion-rescale")
+    if arguments.split_state and not settings.shift:
+        refused.append("--split-state refits the shifted fit; --no-shift")
     # NB #570: two levels of one dispersion factor; `analytic_bfgs` fits one.
     if arguments.dispersion_two_component and arguments.per_state_dispersion:
         refused.append("--dispersion-two-component with --per-state-dispersion")
@@ -549,6 +556,12 @@ def main(argv: Sequence[str] | None = None) -> int:
 
             if arguments.dispersion_two_component:
                 model["dispersion_two_component"] = True
+        # NB #471: the refit after the shifted RDR + BAF fit, read by
+        #    port's `run_core_inference` while this is open.
+        if arguments.split_state:
+            from port.patch.hmrf.split_state import split_state
+
+            stack.enter_context(split_state())
 
         if arguments.sal and arguments.no_patch:
             selected = tuple(
@@ -703,6 +716,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     if arguments.dispersion_rescale
                     else ""
                 )
+                + (", one state split by depth" if arguments.split_state else "")
                 + (", rust lattices" if rust else "")
                 + (", sal included" if arguments.sal else "")
                 + (
