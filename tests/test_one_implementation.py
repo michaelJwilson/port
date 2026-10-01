@@ -24,20 +24,23 @@ from tests.source_graph import PACKAGE, TESTS
 BUDGET: dict[str, int] = {
     # NB 23: #520 removed --np-merge; `--png-copies` binds what the
     #    `_PNG_COPIES` switch held (#517 step 1).
-    "run_cnaster_port flags": 23,
+    #    24: `--lean-counts`, the counts' bytes and not their values (#569).
+    "run_cnaster_port flags": 24,
     # NB 53: step 1 removed the two `_Selection` slots behind the decoder and
     #    solver switches; step 5 added `Settings`, the entry point's one
     #    resolution of its tri-state flags; step 8 added the `hmm_phased` row
     #    and moved 8 classes to `sandbox/` with their modules. 54: the truth
     #    page's `analysis.GenomicTruth`, the tracks' arguments that
     #    `clones_genomic.png` and `truth_combined` both draw.
-    "classes": 54,
+    #    55: `io.NamedCounts`, the sparse `exp_counts` and its names (#569).
+    "classes": 55,
     # NB step 4: 18 records became NamedTuples; the dataclasses left carry
     #    mutable state, machinery or a `__post_init__` (#517 D). Step 8 moved
     #    7 dataclasses and 1 NamedTuple to `sandbox/`.
     "dataclasses": 19,
     # NB 24: `analysis.GenomicTruth` (the truth page).
-    "NamedTuples": 24,
+    # NB 25: `io.NamedCounts` (#569).
+    "NamedTuples": 25,
 }
 """`python/port` outside `sandbox/`."""
 

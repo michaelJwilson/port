@@ -1,0 +1,10 @@
+# Scaling rung 100k: 316 x 316 = 99856 square spots (#569).
+version = 3
+extends = "base.toml"
+
+[sample]
+name = "sq_100k"
+
+[array]
+rows = 316
+columns = 316

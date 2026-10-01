@@ -48,6 +48,7 @@ import pandas as pd
 __all__ = [
     "Captured",
     "PinnedErrors",
+    "as_float",
     "captured_fits",
     "copy_sets",
     "pinned_errors",
@@ -71,13 +72,44 @@ EPS_P = 1e-6
 
 
 class Captured(NamedTuple):
-    """What `run_core_inference` was given, and what it returned."""
+    """What `run_core_inference` was given, and what it returned.
+
+    The three arrays are the ones the call was given, **not copies**: float64
+    copies of them were four `(n_obs, n_spots)` arrays held from the
+    read-depth stage to the end of the run, 4.56 GB at 37,636 spots (#569).
+    Readers convert what they sum with `as_float`, the values the copies
+    held. `checksum` is taken at capture and `intact` compares it, so a
+    caller that changed the arrays in place since is refused rather than
+    read.
+    """
 
     single_X: np.ndarray
     lengths: np.ndarray
     single_base_nb_mean: np.ndarray
     single_total_bb_RD: np.ndarray
     res: Any
+    checksum: tuple[float, float, float] | None = None
+    """The arrays' sums at capture; `None` for a record built by hand."""
+
+    def intact(self) -> Captured:
+        """`self`, after checking the arrays still sum as they did at capture."""
+        if self.checksum is not None and _checksum(self) != self.checksum:
+            msg = "a captured fit's inputs were changed in place after the capture"
+            raise RuntimeError(msg)
+        return self
+
+
+def _checksum(captured: Any) -> tuple[float, float, float]:
+    return (
+        float(np.sum(captured.single_X, dtype=np.float64)),
+        float(np.sum(captured.single_base_nb_mean, dtype=np.float64)),
+        float(np.sum(captured.single_total_bb_RD, dtype=np.float64)),
+    )
+
+
+def as_float(values: np.ndarray) -> np.ndarray:
+    """`values` as float64: what the readers sum, as the capture's copies held it."""
+    return np.asarray(values, dtype=np.float64)
 
 
 @contextlib.contextmanager
@@ -106,15 +138,14 @@ def captured_fits() -> Iterator[list[Captured]]:
         result = original(single_X, lengths, base, total, *rest, **kw)
 
         if kw.get("params") == "smp":
-            kept.append(
-                Captured(
-                    np.array(single_X, dtype=np.float64),
-                    np.asarray(lengths, dtype=np.int64),
-                    np.array(base, dtype=np.float64),
-                    np.array(total, dtype=np.float64),
-                    result,
-                )
+            fit = Captured(
+                np.asarray(single_X),
+                np.asarray(lengths, dtype=np.int64),
+                np.asarray(base),
+                np.asarray(total),
+                result,
             )
+            kept.append(fit._replace(checksum=_checksum(fit)))
 
         return result
 
@@ -154,12 +185,13 @@ def pseudobulk(captured: Captured) -> dict[str, np.ndarray]:
     along the genome (`clone_stack_obs`), so the objective is one sequence of
     `n_clones * n_obs` with `lengths` tiled. The assignment is the fit's own.
     """
+    captured = captured.intact()
     assignment = np.asarray(captured.res["new_assignment"], dtype=np.int64)
     clones = np.unique(assignment)
 
     def summed(values: np.ndarray) -> np.ndarray:
         return np.concatenate(
-            [values[..., assignment == c].sum(axis=-1) for c in clones]
+            [as_float(values[..., assignment == c]).sum(axis=-1) for c in clones]
         )
 
     return {
@@ -209,7 +241,7 @@ def pinned_objective(
     log_transmat = np.asarray(result["new_log_transmat"], dtype=np.float64)
 
     inputs = pseudobulk(captured)
-    profile = captured.single_base_nb_mean.sum(axis=1)
+    profile = as_float(captured.single_base_nb_mean).sum(axis=1)
     log_lambda = np.log(profile / profile.sum())
     path = np.asarray(result["pred_cnv"], dtype=np.int64)
     n_obs, n_clones = path.shape

@@ -387,7 +387,7 @@ def likelihoods(truth: CoreInferenceTruth, captured: Any) -> tuple[float, float]
         raise ValueError(msg)
 
     inputs = pseudobulk(captured)
-    profile = captured.single_base_nb_mean.sum(axis=1)
+    profile = np.asarray(captured.single_base_nb_mean, dtype=np.float64).sum(axis=1)
     log_lambda = np.log(profile / profile.sum())
     assignment = np.asarray(result["new_assignment"], dtype=np.int64)
     clones = np.unique(assignment)

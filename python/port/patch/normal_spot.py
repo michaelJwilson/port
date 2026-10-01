@@ -575,15 +575,29 @@ def flagged_genes(
 ) -> set[str]:
     """The genes `cnaster`'s filter removes, as `normal_spot.py:727-887` selects them."""
     import anndata
+    import pandas as pd
     import scanpy as sc
     from sklearn.cluster import KMeans
 
-    adata = anndata.AnnData(exp_counts)
-    adata.layers["count"] = exp_counts.values
+    from port.patch.io import NamedCounts
+
+    if isinstance(exp_counts, NamedCounts):
+        # NB the sparse reading (#569): the same counts and names, never
+        #    densified; every reduction below goes through `_summed`, which
+        #    reads either container.
+        adata = anndata.AnnData(
+            X=exp_counts.matrix,
+            obs=pd.DataFrame(index=exp_counts.spots),
+            var=pd.DataFrame(index=exp_counts.genes),
+        )
+        adata.layers["count"] = exp_counts.matrix
+    else:
+        adata = anndata.AnnData(exp_counts)
+        adata.layers["count"] = exp_counts.values  # noqa: PD011 -- cnaster's read, kept
     adata.obs["normal_candidate"] = normal_candidate
 
     gene_umi = dict(
-        zip(adata.var.index, np.sum(adata.layers["count"], axis=0), strict=True)
+        zip(adata.var.index, _summed(adata.layers["count"], 0), strict=True)
     )
 
     if sample_list is None:
@@ -598,15 +612,15 @@ def flagged_genes(
         sample: Any = adata[index, :].copy()
         normal = sample.obs["normal_candidate"]
 
-        if np.sum(sample.layers["count"][normal, :]) < sample.shape[1] * 10:
+        if _summed(sample.layers["count"][normal.to_numpy(), :]) < sample.shape[1] * 10:
             continue
 
         umi_threshold = np.percentile(
-            np.sum(sample.layers["count"], axis=0), quantile_threshold
+            _summed(sample.layers["count"], 0), quantile_threshold
         )
 
         sc.pp.filter_genes(sample, min_cells=10)
-        median = np.median(np.sum(sample.layers["count"], axis=1))
+        median = np.median(_summed(sample.layers["count"], 1))
         sc.pp.normalize_total(sample, target_sum=median)
         sc.pp.log1p(sample)
 
@@ -627,7 +641,7 @@ def flagged_genes(
 
         aggregated = np.vstack(
             [
-                np.sum(sample.layers["count"][clone == label, :], axis=0)
+                _summed(sample.layers["count"][clone == label, :], 0)
                 for label in ["normal", "unsure", "tumor"]
             ]
         )
@@ -651,6 +665,20 @@ def flagged_genes(
         )
 
     return flagged
+
+
+def _summed(counts: Any, axis: int | None = None) -> Any:
+    """`np.sum(counts, axis)` of a dense array, or of a sparse matrix as an array.
+
+    `scipy.sparse` sums to an `np.matrix`, which percentiles and stacks read
+    as two-dimensional; raveled, it is the dense sum's values (#569).
+    """
+    import scipy.sparse as sp
+
+    if not sp.issparse(counts):
+        return np.sum(counts, axis=axis)
+    total = counts.sum(axis=axis)
+    return total if axis is None else np.asarray(total).ravel()
 
 
 def _logfc(aggregated: np.ndarray, row: int, *, present: bool) -> np.ndarray:
@@ -721,7 +749,17 @@ def filter_normal_diffexp(
     membership = sp.csr_matrix(
         (np.ones(len(rows)), (rows, columns)), shape=(len(df_bininfo), genes.size)
     )
-    counts = np.asarray(exp_counts.to_numpy(), dtype=np.float64) * kept
-    retained: np.ndarray = np.asarray(membership @ counts.T)
+    from port.patch.io import NamedCounts
+
+    if isinstance(exp_counts, NamedCounts):
+        # NB integer counts summed in float64 below 2^53 are exact, so the
+        #    sparse product is the dense one's values (#569).
+        counts = sp.csr_matrix(exp_counts.matrix, dtype=np.float64) @ sp.diags(
+            kept.astype(np.float64)
+        )
+        retained: np.ndarray = (membership @ counts.T).toarray()
+    else:
+        dense = np.asarray(exp_counts.to_numpy(), dtype=np.float64) * kept
+        retained = np.asarray(membership @ dense.T)
 
     return retained

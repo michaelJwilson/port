@@ -496,8 +496,14 @@ size.
 """
 
 
-def _grouped_column_sums(matrix: Any, indicator: Any) -> np.ndarray:
+def _grouped_column_sums(
+    matrix: Any, indicator: Any, out: np.ndarray | None = None
+) -> np.ndarray:
     """`matrix`'s columns summed by group, as `(n_groups, n_rows_of_matrix)`.
+
+    Into `out` where given -- a slice of the caller's own array, whatever its
+    integer type -- so no `(n_groups, n_rows)` int64 is built to be copied
+    into it (#569).
 
     `indicator.T @ matrix.T` rather than `matrix @ indicator`, so the sparse
     operand leads and the result is the orientation the caller stores, without
@@ -513,7 +519,8 @@ def _grouped_column_sums(matrix: Any, indicator: Any) -> np.ndarray:
     counts = _as_matrix(matrix)
     n_rows = counts.shape[0]
 
-    out = np.zeros((indicator.shape[1], n_rows), dtype=np.int64)
+    if out is None:
+        out = np.zeros((indicator.shape[1], n_rows), dtype=np.int64)
 
     # NB in row blocks, because `scipy` needs the dense operand C-contiguous
     #    and `counts.T` is not: it copies, and an unchunked copy is the whole
@@ -541,8 +548,14 @@ def summarize_counts_for_blocks(
     cell_snp_Aallele: Any,
     cell_snp_Ballele: Any,
     unique_snp_ids: np.ndarray,
+    *,
+    count_dtype: Any = int,
 ) -> Any:
     """What `cnaster.omics.summarize_counts_for_blocks` returns, in three products.
+
+    `count_dtype` is the integer type of `single_X` and `single_total_bb_RD`:
+    `int`, `cnaster`'s, by default; `run_cnaster_port --narrow-counts` binds
+    `np.int32`, half the bytes of the run's largest arrays (#569).
 
     `cnaster` loops the blocks and, for each one, slices every spot's column
     out of three matrices:
@@ -584,16 +597,16 @@ def summarize_counts_for_blocks(
         columns[gene_rows], block_id[gene_rows], len(gene_names), n_blocks
     )
 
-    a_allele = _grouped_column_sums(cell_snp_Aallele, by_snp)
-
-    single_X = np.zeros((n_blocks, 2, n_spots), dtype=int)
-    single_X[:, 1, :] = a_allele
-    single_X[:, 0, :] = _grouped_column_sums(adata.layers["count"], by_gene)
+    # NB each sum written into the array that keeps it (#569): no int64
+    #    `(n_blocks, n_spots)` temporary per sum, three at 37,636 spots.
+    single_X = np.zeros((n_blocks, 2, n_spots), dtype=count_dtype)
+    _grouped_column_sums(cell_snp_Aallele, by_snp, out=single_X[:, 1, :])
+    _grouped_column_sums(adata.layers["count"], by_gene, out=single_X[:, 0, :])
 
     # NB the A sum again, where upstream recomputes it.
-    single_total_bb_RD = (
-        a_allele + _grouped_column_sums(cell_snp_Ballele, by_snp)
-    ).astype(int)
+    single_total_bb_RD = np.zeros((n_blocks, n_spots), dtype=count_dtype)
+    _grouped_column_sums(cell_snp_Ballele, by_snp, out=single_total_bb_RD)
+    single_total_bb_RD += single_X[:, 1, :]
 
     # NB from the blocks as a labelling of the genes (#438): the contig runs
     #    of the segments the rows are indexed by, never zero, and recorded
@@ -605,6 +618,11 @@ def summarize_counts_for_blocks(
     )
 
 
+BIN_SPOT_BLOCK = 4096
+"""Spots per column block in `summarize_counts_for_bins` (#569): its
+temporaries are `(n_blocks, BIN_SPOT_BLOCK)`, 0.12 GB at 3,789 blocks."""
+
+
 def summarize_counts_for_bins(
     df_gene_snp: Any,
     adata: Any,
@@ -614,8 +632,12 @@ def summarize_counts_for_bins(
     nu: float,  # noqa: ARG001 -- upstream takes it and never reads it
     logphase_shift: float,  # noqa: ARG001 -- likewise
     geneticmap_file: Any,  # noqa: ARG001 -- likewise
+    *,
+    count_dtype: Any = int,
 ) -> Any:
     """What `cnaster.omics.summarize_counts_for_bins` returns, in two products.
+
+    `count_dtype` as :func:`summarize_counts_for_blocks` takes it (#569).
 
     The same defect one level up: `cnaster` loops the bins, gathers each one's
     blocks, phases them and sums, then slices the count matrix per bin for the
@@ -666,19 +688,26 @@ def summarize_counts_for_bins(
 
     by_gene = _group_indicator(columns[known], bin_rank[known], len(gene_names), n_bins)
 
-    # NB every block's phased B count at once; the choice is per block, not
-    #    per bin, so the bins never enter it.
-    phased = np.where(
-        np.asarray(phase_indicator).reshape(-1, 1),
-        single_X[:, 1, :],
-        single_total_bb_RD - single_X[:, 1, :],
-    )
+    bin_single_X = np.zeros((n_bins, 2, n_spots), dtype=count_dtype)
+    bin_single_total_bb_RD = np.zeros((n_bins, n_spots), dtype=count_dtype)
+    phase = np.asarray(phase_indicator).reshape(-1, 1)
+    to_bins = by_block.T.tocsr()
 
-    bin_single_X = np.zeros((n_bins, 2, n_spots), dtype=int)
-    bin_single_X[:, 1, :] = by_block.T @ phased
-    bin_single_X[:, 0, :] = _grouped_column_sums(adata.layers["count"], by_gene)
+    # NB every block's phased B count, then the bins' sums, in column blocks
+    #    of `BIN_SPOT_BLOCK` spots, written into the outputs (#569): the
+    #    choice is per block and the sums per spot, so where the blocks fall
+    #    cannot change a value. Whole, the phased counts, their `total - B`
+    #    operand and two int64 products were 3.99 GB of the 37,636-spot
+    #    run's 13.05 GB peak.
+    for start in range(0, n_spots, BIN_SPOT_BLOCK):
+        spots = slice(start, start + BIN_SPOT_BLOCK)
+        b_allele = single_X[:, 1, spots]
+        total = single_total_bb_RD[:, spots]
+        phased = np.where(phase, b_allele, total - b_allele)
+        bin_single_X[:, 1, spots] = to_bins @ phased
+        bin_single_total_bb_RD[:, spots] = to_bins @ total
 
-    bin_single_total_bb_RD = np.asarray(by_block.T @ single_total_bb_RD, dtype=int)
+    _grouped_column_sums(adata.layers["count"], by_gene, out=bin_single_X[:, 0, :])
 
     # NB from the bins as a labelling of the genes (#438). `cnaster` reindexes
     #    over every contig with zeros; a zero is a contig every lattice

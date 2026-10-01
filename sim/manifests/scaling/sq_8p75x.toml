@@ -1,0 +1,10 @@
+# Scaling rung 8.75x: 194 x 194 = 37636 square spots (#569).
+version = 3
+extends = "base.toml"
+
+[sample]
+name = "sq_8p75x"
+
+[array]
+rows = 194
+columns = 194

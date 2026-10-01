@@ -82,10 +82,21 @@ def test_the_block_counts_are_cnasters(blocked: tuple[Any, Any, Any]) -> None:
 
 @pytest.mark.patch
 @pytest.mark.parametrize("phase", PHASES)
-def test_the_bin_counts_are_cnasters(blocked: tuple[Any, Any, Any], phase: str) -> None:
-    """**Every field of the bin summary, bitwise, under three phase vectors.**"""
+@pytest.mark.parametrize("spot_block", [4096, 7])
+def test_the_bin_counts_are_cnasters(
+    blocked: tuple[Any, Any, Any],
+    phase: str,
+    spot_block: int,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """**Every field of the bin summary, bitwise, under three phase vectors.**
+
+    At the default column block and at 7 spots, so the blocks fall
+    mid-array and a last partial block is summed (#569).
+    """
     from cnaster.omics import create_bin_ranges
     from cnaster.omics import summarize_counts_for_bins as upstream
+    from port.patch.omics import blocks
     from port.patch.omics.blocks import summarize_counts_for_bins as patched
 
     loaded, table, counts = blocked
@@ -104,6 +115,7 @@ def test_the_bin_counts_are_cnasters(blocked: tuple[Any, Any, Any], phase: str) 
         secondary_min_normal_umi=0,
     )
 
+    monkeypatch.setattr(blocks, "BIN_SPOT_BLOCK", spot_block)
     n_blocks = counts.X.shape[0]
     indicator = {
         "all-true": np.ones(n_blocks, dtype=bool),
@@ -225,3 +237,58 @@ def test_the_block_counts_are_the_planted_counts(
             expected[int(block)] = planted[np.ix_(rows, columns)].sum(axis=1)
 
     np.testing.assert_array_equal(counts.X[:, 0, :], expected)
+
+
+@pytest.mark.patch
+def test_narrow_counts_are_the_same_integers(blocked: tuple[Any, Any, Any]) -> None:
+    """`count_dtype=np.int32` holds the int64 summaries' values exactly (#569).
+
+    Block and bin summaries both, every field: `run_cnaster_port
+    --narrow-counts` changes the bytes of `single_X` and
+    `single_total_bb_RD` and nothing they say.
+    """
+    from port.patch.omics.blocks import (
+        summarize_counts_for_bins,
+        summarize_counts_for_blocks,
+    )
+
+    loaded, table, counts = blocked
+    arguments = (
+        loaded.adata,
+        loaded.cell_snp_Aallele,
+        loaded.cell_snp_Ballele,
+        loaded.unique_snp_ids,
+    )
+    wide = summarize_counts_for_blocks(table.copy(), *arguments)
+    narrow = summarize_counts_for_blocks(table.copy(), *arguments, count_dtype=np.int32)
+
+    assert narrow.X.dtype == np.int32
+    assert narrow.total_bb_RD.dtype == np.int32
+    _fields_equal(narrow, wide)
+
+    from cnaster.omics import create_bin_ranges
+
+    binned = create_bin_ranges(
+        table.copy(),
+        loaded.adata,
+        loaded.cell_snp_Aallele,
+        loaded.cell_snp_Ballele,
+        loaded.unique_snp_ids,
+        counts.X,
+        counts.total_bb_RD,
+        counts.lengths,
+        secondary_min_umi=1,
+        secondary_min_snp_umi=1,
+        secondary_min_normal_umi=0,
+    )
+    phase = np.arange(counts.X.shape[0]) % 2 == 0
+    rest = (phase, 1.0, 0.0, None)
+    _fields_equal(
+        summarize_counts_for_bins(
+            binned.copy(), loaded.adata, narrow.X, narrow.total_bb_RD, *rest,
+            count_dtype=np.int32,
+        ),
+        summarize_counts_for_bins(
+            binned.copy(), loaded.adata, wide.X, wide.total_bb_RD, *rest
+        ),
+    )  # fmt: skip

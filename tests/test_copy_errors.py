@@ -105,3 +105,47 @@ def test_each_planted_pair_is_in_its_state_s_set(tmp_path: Path) -> None:
     score = decode_one(0, tmp_path)
 
     assert all(score["covered"]), score
+
+
+@pytest.mark.patch
+def test_the_capture_reads_the_values_its_copies_held_and_refuses_a_change() -> None:
+    """`captured_fits` keeps references; its readers sum the float64 copies' values (#569).
+
+    `pseudobulk` on the captured references against the same sums over
+    `np.array(x, float64)`, bitwise, with the assignment changed after the
+    capture as the run's floor merge changes it; then an input changed in
+    place is refused by `intact`.
+    """
+    import port.patch.hmrf as patch
+    from port.extensions.copy_errors import Captured, captured_fits, pseudobulk
+
+    rng = np.random.default_rng(11)
+    n_obs, n_spots = 57, 1_003
+    single_x = rng.poisson(3.0, (n_obs, 2, n_spots)).astype(np.int32)
+    base = rng.gamma(2.0, 1e-4, (n_obs, n_spots))
+    total = (single_x[:, 1, :] + rng.poisson(3.0, (n_obs, n_spots))).astype(np.int32)
+    result = {"new_assignment": rng.choice([0, 1, 2], n_spots)}
+    lengths = np.array([n_obs])
+
+    original = patch.run_core_inference
+    patch.run_core_inference = lambda *_, **__: result
+    try:
+        with captured_fits() as kept:
+            patch.run_core_inference(single_x, lengths, base, total, params="smp")
+    finally:
+        patch.run_core_inference = original
+
+    result["new_assignment"] = np.where(result["new_assignment"] == 2, 1, 0)
+    copies = Captured(
+        np.array(single_x, dtype=np.float64),
+        lengths,
+        np.array(base, dtype=np.float64),
+        np.array(total, dtype=np.float64),
+        result,
+    )
+    for key, value in pseudobulk(copies).items():
+        np.testing.assert_array_equal(pseudobulk(kept[0])[key], value, err_msg=key)
+
+    single_x[0, 0, 0] += 1
+    with pytest.raises(RuntimeError, match="changed in place"):
+        pseudobulk(kept[0])

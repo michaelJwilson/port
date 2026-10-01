@@ -100,3 +100,35 @@ def test_counts_that_cannot_index_a_table_go_to_the_fused_kernel() -> None:
         dispatched(*_arguments(fixture, weight), np.empty(shape)),
         fused(*_arguments(fixture, weight), np.empty(shape)),
     )
+
+
+@pytest.mark.patch
+def test_the_one_pass_integer_check_decides_as_the_three_pass_one() -> None:
+    """`_integral` against `_integral_reference`, the decision bit for bit (#569).
+
+    Integer and float counts, strided views, a fraction, a negative, a NaN,
+    `LIMIT` and one below it, and an empty array: every way the table can
+    be refused, and the ways it cannot.
+    """
+    from port.patch.hmrf.tabulated_field import LIMIT, _integral, _integral_reference
+
+    rng = np.random.default_rng(5)
+    counts = rng.poisson(3, (40, 2, 70))
+    floats = counts.astype(np.float64)
+    cases = [
+        counts[:, 0, :],
+        counts[:, 1, :],
+        floats[:, 1, :],
+        floats[:, 1, :] + 0.5,
+        -counts[:, 0, :] - 1,
+        np.where(rng.random((40, 70)) < 0.01, np.nan, floats[:, 0, :]),
+        np.full((3, 4), float(LIMIT)),
+        np.full((3, 4), float(LIMIT - 1)),
+        np.empty((0, 5)),
+        floats[:, 0, 0],
+    ]
+    for case in cases:
+        assert _integral(case) is _integral_reference(case)
+    assert [_integral(c) for c in cases] == [
+        True, True, True, False, False, False, False, True, True, True
+    ]  # fmt: skip

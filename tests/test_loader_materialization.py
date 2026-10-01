@@ -142,7 +142,7 @@ def test_the_sparse_return_carries_every_field_the_dense_one_does(
 
     assert sp.issparse(sparse.cell_snp_Aallele)
     assert sp.issparse(sparse.adata.layers["count"])
-    assert sp.issparse(sparse.exp_counts)
+    assert sp.issparse(sparse.exp_counts.matrix)
 
     np.testing.assert_array_equal(
         sparse.adata.layers["count"].toarray(),
@@ -155,7 +155,14 @@ def test_the_sparse_return_carries_every_field_the_dense_one_does(
         sparse.cell_snp_Ballele.toarray(), dense.cell_snp_Ballele
     )
     np.testing.assert_array_equal(
-        sparse.exp_counts.toarray(), dense.exp_counts.sparse.to_dense().to_numpy()
+        sparse.exp_counts.matrix.toarray(),
+        dense.exp_counts.sparse.to_dense().to_numpy(),
+    )
+    np.testing.assert_array_equal(
+        np.asarray(sparse.exp_counts.columns), np.asarray(dense.exp_counts.columns)
+    )
+    np.testing.assert_array_equal(
+        np.asarray(sparse.exp_counts.spots), np.asarray(dense.exp_counts.index)
     )
     np.testing.assert_array_equal(
         np.asarray(sparse.adata.var.index), np.asarray(dense.adata.var.index)

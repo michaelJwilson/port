@@ -1,0 +1,47 @@
+# The scaling ladder's shared draw: one square slice, three planted clones (#569).
+# Each rung extends this and states only `[sample] name` and `[array]`.
+# `python -m port.sim.draw sim/manifests/scaling/<rung>.toml`
+version = 3
+extends = "../calicost_grch38.toml"
+
+[sample]
+seed = 0
+output = "../../generated/scaling"
+realizations = 1
+
+[array]
+# NB a square lattice at unit spacing, Visium HD's packing; `hex` is the 1x
+#    control's.
+kind = "square"
+
+[model]
+# NB the Polya urn: O(UMIs) per spot, independent of the 20,000 genes (#549).
+counts_sampler = "urn"
+
+[cna]
+mode = "tree"
+per_internal = 1
+
+[cna.length]
+law = "exponential"
+mean = 5e7
+minimum = 5e6
+
+[phasing]
+switch_errors = true
+
+[layout]
+overlap = false
+vertices = 6
+jitter = 0.2
+
+[[slice]]
+# NB stated centres and radii, so every rung plants the same shapes at its
+#    own resolution: at jitter 0.2 the three hexagons cannot touch.
+offset = [0.0, 0.0]
+clones = ["clone_0", "clone_1", "clone_2"]
+regions = [
+    { clone = "clone_0", center = [0.25, 0.27], radius = 0.18 },
+    { clone = "clone_1", center = [0.73, 0.30], radius = 0.18 },
+    { clone = "clone_2", center = [0.50, 0.74], radius = 0.18 },
+]

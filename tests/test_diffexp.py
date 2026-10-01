@@ -130,3 +130,29 @@ def test_the_bins_summed_after_the_filter_leave_the_flagged_genes_out() -> None:
         np.testing.assert_array_equal(
             summed.X[b, 0, :], counts[kept].sum(axis=1).to_numpy()
         )
+
+
+@pytest.mark.patch
+@pytest.mark.parametrize("per_bin", [1, 4])
+def test_the_sparse_counts_flag_and_retain_what_the_frame_does(per_bin: int) -> None:
+    """`NamedCounts`, the loader's sparse `exp_counts`, against the `DataFrame` (#569).
+
+    The same flagged genes, and the retained read depth equal to the bit:
+    the counts are integers, so the sparse product's float64 sums are exact.
+    """
+    import scipy.sparse as sp
+    from port.patch.io import NamedCounts
+    from port.patch.normal_spot import filter_normal_diffexp, flagged_genes
+
+    counts, normal, planted = _expression()
+    bins = _bins(list(counts.columns), per_bin)
+    named = NamedCounts(
+        sp.csr_matrix(counts.to_numpy()), pd.RangeIndex(len(counts)), counts.columns
+    )
+
+    assert flagged_genes(named, normal) == flagged_genes(counts, normal)
+    assert set(planted) <= flagged_genes(named, normal)
+    np.testing.assert_array_equal(
+        filter_normal_diffexp(named, bins, normal),
+        filter_normal_diffexp(counts, bins, normal),
+    )

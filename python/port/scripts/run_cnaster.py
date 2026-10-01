@@ -168,6 +168,11 @@ def _parser() -> argparse.ArgumentParser:
         help="snakes_and_ladders' labelling, and the mask, floor and start it implies (#312)",
     )
     parser.add_argument(
+        "--lean-counts",
+        action="store_true",
+        help="sparse loader counts and int32 block and bin counts, outputs bitwise (#569); off",
+    )
+    parser.add_argument(
         "--copy-errors",
         action="store_true",
         help="write cnv_copy_sets.tsv, each state's 95 per cent credible (A, B) (#353); needs the shift",
@@ -541,6 +546,21 @@ def main(argv: Sequence[str] | None = None) -> int:
                     "run_cnaster_port: --no-patch --shift assigns clones "
                     "unshifted; the shift reaches the HMM only",
                     file=sys.stderr,
+                )
+
+        if arguments.lean_counts:
+            # NB the loader's own option (#186): the counts layer, `exp_counts`
+            #    and both allele matrices stay CSR rather than dense (#569).
+            selected = with_options(
+                selected, "port.patch.io:load_input_data", sparse_counts=True
+            )
+            # NB the block and bin summaries' integer type (#569): every count
+            #    is far below 2^31, so the values are the int64 ones.
+            import numpy as np
+
+            for summary in ("summarize_counts_for_blocks", "summarize_counts_for_bins"):
+                selected = with_options(
+                    selected, f"port.patch.omics:{summary}", count_dtype=np.int32
                 )
 
         if arguments.no_plots:
