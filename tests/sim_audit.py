@@ -33,6 +33,13 @@ decoded `(A, B)` is the planted pair, and `exact_altered` the same over bins
 where the planted pair is not `(1, 1)`: `run_sim_analysis`'s `correct_rate`
 without the phase flip. `exact_altered_minor` allows it: a decoded `(B, A)`
 counts, so the minor and major copies are scored and the phase is not.
+
+The same two shares are also taken over three classes of planted pair:
+`loh`, one haplotype at 0 (deletions, copy-neutral and amplified LOH);
+`balanced_gain`, `A = B > 1`; and `unbalanced_gain`, both haplotypes present,
+`A + B > 2` and `A != B`. Each `_pf` form is phase-free, as
+`exact_altered_minor` is; for a balanced gain the two coincide. A class the
+sample does not plant scores NaN.
 """
 
 from __future__ import annotations
@@ -76,6 +83,12 @@ class SimRecovery:
     exact: float
     exact_altered: float
     exact_altered_minor: float
+    exact_loh: float
+    exact_loh_pf: float
+    exact_balanced_gain: float
+    exact_balanced_gain_pf: float
+    exact_unbalanced_gain: float
+    exact_unbalanced_gain_pf: float
     bins: int
     clone_of: dict[int, int] = field(default_factory=dict)
 
@@ -184,6 +197,15 @@ def score(sample: SimulatedSample, output: Path, arm: str, wall: float) -> SimRe
     altered = t != 1_001
     swapped = (ab % 1_000) * 1_000 + ab // 1_000
     either = (t == ab) | (t == swapped)
+    major, minor = t // 1_000, t % 1_000
+    loh = np.minimum(major, minor) == 0
+    gain = (major + minor > 2) & ~loh
+    balanced = gain & (major == minor)
+    unbalanced = gain & (major != minor)
+
+    def share(hit: np.ndarray, where: np.ndarray) -> float:
+        """`hit`'s share over `where`; NaN where the sample plants none."""
+        return round(float(np.mean(hit[where])), 4) if where.any() else float("nan")
 
     return SimRecovery(
         sample=sample.name,
@@ -199,6 +221,12 @@ def score(sample: SimulatedSample, output: Path, arm: str, wall: float) -> SimRe
         exact=round(float(np.mean(t == ab)), 4),
         exact_altered=round(float(np.mean((t == ab)[altered])), 4),
         exact_altered_minor=round(float(np.mean(either[altered])), 4),
+        exact_loh=share(t == ab, loh),
+        exact_loh_pf=share(either, loh),
+        exact_balanced_gain=share(t == ab, balanced),
+        exact_balanced_gain_pf=share(either, balanced),
+        exact_unbalanced_gain=share(t == ab, unbalanced),
+        exact_unbalanced_gain_pf=share(either, unbalanced),
         bins=int(covered.sum()),
         clone_of=clone_of,
     )

@@ -35,6 +35,9 @@ rule that fits neither is a rule to delete rather than to place.
 8.  **Open with a TL;DR:** every ticket, pull request, plan and review opens
     with the result -- the number, the decision, or what broke -- in O(1)
     lines before any context, so the opening does not grow with the body.
+9.  **Say which kind of number:** a pull request is PR- #578, a ticket
+    T- #574; the space before `#` keeps GitHub's link. Both share one
+    sequence, so a bare #578 leaves the reader to look it up.
 
 These rules are paramount, as upstream states: every document, `CLAUDE.md`,
 docstring, comment, commit message, PR, and plan or comment posted to a
