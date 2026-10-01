@@ -9,6 +9,7 @@ trusting that they were written to partition it.
 
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -68,13 +69,51 @@ def test_the_gate_and_the_serial_steps_do_not_overlap(
 
 @pytest.mark.infra
 def test_generated_files_merge_through_the_badges_driver() -> None:
-    """`.gitattributes` routes what `--badges` and `--figures` regenerate."""
+    """`.gitattributes` routes what `--badges` regenerates."""
     attributes = (ROOT / ".gitattributes").read_text()
-    for pattern in (".badges/*.json", "docs/plots/*.pdf", "docs/plots/*.png"):
+    for pattern in (".badges/*.json",):
         assert any(
             line.startswith(pattern) and "merge=badges" in line
             for line in attributes.splitlines()
         ), pattern
+
+
+PAPER_FIGURES = "docs/plots/paper/"
+"""The one tree under `docs/` allowed to track a PNG: T- #624's paper set."""
+
+POPULATION_FIGURE = "docs/plots/studies/population_recovery.png"
+"""Study result figure, regenerable only from population_records.jsonl.gz.
+
+#544's 679 pipeline runs are what drew it; `python -m tests.studies.population
+report` redraws it from their records, which the repository keeps only in that
+archive."""
+
+
+@pytest.mark.infra
+def test_no_png_is_tracked_under_docs() -> None:
+    """`docs/` tracks no PNG: a figure is regenerated on demand by the command
+    that draws it, into `.cache/plots/` (`tests/plots_dir.py`).
+
+    The exceptions are `docs/plots/paper/`, T- #624's paper set: the figures a
+    manuscript includes, which a reader needs without running the pipeline;
+    and `POPULATION_FIGURE`. `tests/data/figures/` holds test inputs and is
+    outside `docs/`.
+    """
+    tracked = subprocess.run(
+        ["git", "ls-files", "-z", "--", "docs"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.split("\0")
+    pngs = [
+        path
+        for path in tracked
+        if path.lower().endswith(".png")
+        and not path.startswith(PAPER_FIGURES)
+        and path != POPULATION_FIGURE
+    ]
+    assert not pngs, f"{len(pngs)} PNG(s) tracked under docs/: {pngs[:5]}"
 
 
 @pytest.mark.infra

@@ -89,7 +89,7 @@ class whatever the paper (#339)."""
 PAPER_WIDTH = LLNCS_TEXT_WIDTH_MM / 25.4
 """A text column, 4.80 in: the width `combined_figure` draws at (#280, #339).
 
-Measured from `docs/plots/`: the committed genomic figures are 20.03 in
+Measured from the genomic figures `docs/plots/` then tracked: 20.03 in
 wide, so `\\includegraphics[width=\\linewidth]` scales them by **0.240** and
 a 10 pt tick label lands at **2.4 pt** on the page. At a text column the
 figure is included at 1:1, so a declared size is the size on the page and

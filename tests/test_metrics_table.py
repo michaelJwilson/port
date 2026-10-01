@@ -11,18 +11,20 @@ run on the new data is recorded.
 
 import ast
 import datetime
+import hashlib
 import re
 from pathlib import Path
+from typing import Any
 
 import pytest
 
 from tests import fixtures, metrics
 from tests.metrics import (
+    COLUMNS,
     CONVERTED,
     METRICS,
     NOTE_CHARS,
     ROOT,
-    TABLE,
     TEST,
     TIMESTAMP,
     check_identity,
@@ -30,6 +32,7 @@ from tests.metrics import (
     definitions,
     fixture_hash,
     ledger,
+    parse,
     read,
     render,
     runs,
@@ -89,10 +92,30 @@ def test_definitions_are_numbered_from_one_and_cover_every_metric() -> None:
         assert found == list(range(1, len(found) + 1)), metric
 
 
-@pytest.mark.snapshot
-def test_the_committed_view_is_the_rendered_ledger() -> None:
-    """`docs/metrics.md` is generated: `python -m tests.metrics --render`."""
-    assert TABLE.read_text() == render()
+CONVERTED_ROWS = 73
+CONVERTED_SHA256 = "0bcb7c57193ac696ed08cca106200ab817914289c3900ba35187373810b44e10"
+"""The SHA-256 of the 73 data lines of the hand-edited `docs/metrics.md` at
+ef2261d, joined by newlines: the table the ledger was converted from (#620),
+read from git, not from the ledger."""
+
+
+@pytest.mark.infra
+def test_the_render_rebuilds_the_converted_rows() -> None:
+    """`--render`'s first 73 rows, parsed back and written in the old table's
+    form, hash to the table they were converted from: every cell of every
+    converted run survives the ledger, `[converted: ...]` remarks aside."""
+    rows = parse(render())[:CONVERTED_ROWS]
+    lines = [
+        "| "
+        + " | ".join(
+            row[c].split(CONVERTED)[0] if c == "note" else row[c] for c in COLUMNS
+        )
+        + " |"
+        for row in rows
+    ]
+
+    assert len(lines) == CONVERTED_ROWS
+    assert hashlib.sha256("\n".join(lines).encode()).hexdigest() == CONVERTED_SHA256
 
 
 @pytest.mark.infra
@@ -105,7 +128,6 @@ def test_a_recorded_run_writes_one_line_per_measured_metric(
         path = tmp_path / getattr(metrics, name).name
         path.write_text(getattr(metrics, name).read_text())
         monkeypatch.setattr(metrics, name, path)
-    monkeypatch.setattr(metrics, "TABLE", tmp_path / "metrics.md")
     monkeypatch.setattr(metrics, "_git", lambda *_: "abcdef0")
     recovery = {"fixture_hash": "07b82e92", "ari": 0.98765, "wall": 12.34}
     recovery |= {"copy_ari": float("nan"), "peak_gb": None}
@@ -121,7 +143,7 @@ def test_a_recorded_run_writes_one_line_per_measured_metric(
         "wall_s": "12.3",
     }
     assert read()[-1]["copy_ari"] == metrics.UNMEASURED
-    assert metrics.TABLE.read_text() == metrics.render()
+    assert not (metrics.ROOT / "docs" / "metrics.md").exists()
     with pytest.raises(ValueError, match="one dataset"):
         metrics.write(recovery, fixture="easy", args="", note="x", dirty=False)
 
@@ -218,3 +240,97 @@ def test_a_name_under_another_hash_is_refused() -> None:
         check_identity("easy", "1065eb5b", rows)
     with pytest.raises(ValueError, match="one dataset"):
         check_identity("hard", "2d4ce9a9", rows)
+
+
+@pytest.mark.infra
+def test_the_history_plots_draw_from_the_ledger(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`tests.studies.metrics_history` writes both figures from the ledger,
+    and each stamps the hash of the ledger's history rows.
+
+    `first_parent` reads `origin/main`, absent from a shallow checkout, so
+    the merge order is the ledger's own order here.
+    """
+    from matplotlib.figure import Figure
+
+    from tests.studies import metrics_history
+
+    rows = metrics_history.history()
+    monkeypatch.setattr(
+        metrics_history,
+        "first_parent",
+        lambda: list(dict.fromkeys(r["commit"].rstrip("+") for r in rows)),
+    )
+    stamps: list[str] = []
+    text = Figure.text
+
+    def spy(self: Figure, x: float, y: float, s: str, *a: Any, **k: Any) -> Any:
+        stamps.append(s)
+        return text(self, x, y, s, *a, **k)
+
+    monkeypatch.setattr(Figure, "text", spy)
+    out = [tmp_path / "history.png", tmp_path / "classes.png"]
+
+    metrics_history.main([str(p) for p in out])
+
+    assert all(p.stat().st_size > 0 for p in out)
+    data = hashlib.sha256(repr(rows).encode()).hexdigest()[:8]
+    assert [s.split()[1] for s in stamps] == [data, data]
+
+
+def _history_row(commit: str, fixture: str, clone_ari: str) -> dict[str, str]:
+    row = dict.fromkeys(COLUMNS, metrics.UNMEASURED)
+    row |= {"commit": commit, "fixture": fixture, "fixture_hash": "0" * 8}
+    return row | {"note": f"HISTORY #{commit} x", "clone_ari": clone_ari}
+
+
+@pytest.mark.infra
+def test_a_run_of_unchanged_merges_keeps_its_first_and_last_tick(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Merges a..d hold one value, e moves it, f adds a fixture, g repeats f:
+    a and d stand for a..d with one horizontal `SKIP` between them, below
+    the axis; e and f each start a tick; g joins f's run of two, drawn as
+    is. Tick labels stay plain `#NNN`."""
+    from matplotlib.axes import Axes
+
+    from tests.studies import metrics_history
+    from tests.studies.metrics_history import SKIP, axis, label, ticks
+
+    rows = [_history_row(c, "easy", "0.5") for c in "abcd"]
+    rows += [_history_row("e", "easy", "0.6")]
+    rows += [_history_row(c, "easy", "0.6") for c in "fg"]
+    rows += [_history_row(c, "hard", "0.1") for c in "fg"]
+    order = {c: k for k, c in enumerate("abcdefg")}
+
+    groups = ticks(rows, order)
+    shown, folds = axis(groups, {r["commit"]: label(r) for r in rows})
+
+    assert groups == [["a", "b", "c", "d"], ["e"], ["f", "g"]]
+    assert shown == [("a", "#a"), ("d", "#d"), ("e", "#e"), ("f", "#f"), ("g", "#g")]
+    assert folds == [0]
+
+    labels: list[str] = []
+    marks: list[tuple[str, float, float]] = []
+    set_labels, annotate = Axes.set_xticklabels, Axes.annotate
+
+    def spy_labels(self: Axes, names: list[str], *a: Any, **k: Any) -> Any:
+        labels.extend(names)
+        return set_labels(self, names, *a, **k)
+
+    def spy_annotate(self: Axes, text: str, *a: Any, **k: Any) -> Any:
+        marks.append((text, k["xy"][0], k["rotation"]))
+        return annotate(self, text, *a, **k)
+
+    monkeypatch.setattr(Axes, "set_xticklabels", spy_labels)
+    monkeypatch.setattr(Axes, "annotate", spy_annotate)
+    monkeypatch.setattr(metrics_history, "first_parent", lambda: list(order))
+    metrics_history.figure(rows, tmp_path / "folded.png")
+
+    assert labels == ["#a", "#d", "#e", "#f", "#g"]
+    assert not any(SKIP in name for name in labels)
+    ((text, x, rotation),) = marks
+    assert text == SKIP
+    assert 0 < x < 1
+    assert rotation == 0

@@ -62,7 +62,8 @@ host's.
 The runtime-against-gap figures this study drew are retired: #541's
 notebook (`docs/nb/clone_label_study.ipynb`) runs every solver from every
 clone-label start, on fields built from #540's copy states, and draws the
-figure that replaces them (`docs/plots/studies/clone_label_study.png`).
+figure that replaces them, in the notebook's output (`python -m tests.studies.clone_label_notebook RESULTS.pkl` also writes
+`.cache/plots/studies/clone_label_study.png`).
 
 ## End to end
 

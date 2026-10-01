@@ -1,24 +1,43 @@
 # Figures
 
-**What `run_cnaster_port` draws for the dev instance, committed so a change to
-the pipeline shows up as a change to a picture.** Nineteen of them, written at
-every stage of the run rather than at the end, and `genomic.png`,
-`spatial.png` and `combined.png`, the final four as two figures and as one page.
+**No PNG is committed here outside the two exceptions below; each figure
+is regenerated on demand by the command below that draws it.** Every
+generator writes to `.cache/plots/` by default (`tests/plots_dir.py`),
+untracked; the paths below are relative to it. `lattice/`, `sim/` and
+`sim_qa/` exist only there now.
+`tests/test_ci_entry.py` guards that `docs/` tracks no PNG outside
+`docs/plots/paper/`, T- #624's paper set, and
+`studies/population_recovery.png`, whose runs survive only as
+`studies/population_records.jsonl.gz`. The figures committed before are in
+history: `git show ba34716:docs/plots/<path>.png`.
 
-**CI regenerates every figure here on every pull request and commits the
-result** to the pull request's branch (`.github/workflows/figures.yml`,
-#296): the twenty-two below, and `realizations.png`, `realizations_truth.png`
-and `realizations.npz`, eight runs of one planted genome with the
-likelihood's errors on one run and on the truth (#291). A branch another
-open pull request is based on is the exception: its figures are uploaded as a
-workflow artifact rather than committed, because every PDF carried a
-timestamp and a commit there would re-conflict the pull request above it
-(#350). **They are PNG since #452**: `write_fig` writes one beside each PDF,
-without metadata, and the PDFs stay in the run directory. By hand:
-`python -m tests.generate_plots` (`--cnaster` for plain `cnaster`) and
-`python -m tests.realizations`.
+| figures | command |
+| --- | --- |
+| the dev instance's, below, and `lattice/` | `python -m tests.generate_plots [--out DIR]` (`--cnaster` for plain `cnaster`), or `python -m tests.ci --figures` |
+| `realizations.png`, `realizations_truth.png`, `realizations.npz` | `python -m tests.realizations [--output PATH]` |
+| `realizations_copies.png` | `python -m tests.copy_audit [--output PATH]` |
+| `metrics_history.png`, `metrics_history_classes.png` | `python -m tests.studies.metrics_history [OUT.png [OUT_CLASSES.png]]` |
+| `sim_qa/` | `python -m port.sim.analysis plot sim/generated/dev_tree/r0` (writes `<r>/qa/`) |
+| `sim/cna_lengths.png` | `python -m tests.studies.cna_lengths [OUT.png]` |
+| `studies/potts_*.png` | `python -m tests.studies.potts_plot STREAM.pkl` (`docs/study-field-strength.md`) |
+| `studies/copy_states_*.png` | `python -m tests.studies.copy_state_plot STREAM.pkl` (`docs/study-copy-states.md`) |
+| `studies/copy_state_starts.png`, `studies/clone_label_study.png` | `python -m tests.studies.copy_start_notebook RESULTS.pkl`, `python -m tests.studies.clone_label_notebook RESULTS.pkl` |
+| `studies/population_recovery.png` | `python -m tests.studies.population report --out DIR` |
 
-## The instance
+**CI draws the dev instance's and the realization figures on every pull
+request and uploads them** as a workflow artifact
+(`.github/workflows/figures.yml`); it no longer commits them (#296's commit
+step is removed). The realization figures are eight runs of one planted
+genome with the likelihood's errors on one run and on the truth (#291).
+**They are PNG since #452**: `write_fig` writes one beside each PDF, without
+metadata, and the PDFs stay in the run directory.
+
+`studies/` keeps the population study's outputs
+(`population_records.jsonl.gz`, `population_summary.json`,
+`population_tables.md`, `population_recovery.png`) and
+`potts_solvers_table.tex`.
+
+## The dev instance
 
 `M = 4` clones, `K = 10` planted states, `G = 1,000` bins over ten unequal
 chromosomes, `S = 1,000` spots. **Five** states are fitted, not the ten
@@ -34,11 +53,11 @@ before #298's normal clone, which made it loop forever (#304).
 
 ## What they are, and are not
 
-A figure here is a **result**, not a referee. Nothing compares one against a
+A figure is a **result**, not a referee. Nothing compares one against a
 previous one. A matplotlib PDF carries its creation time, so two
 regenerations differed byte for byte with nothing having changed; the PNGs
-carry no timestamp, so a figure changes in a diff only when its pixels do
-(#452, toward #103's byte reproduction).
+carry no timestamp, so two runs differ byte for byte only when their pixels
+do (#452, toward #103's byte reproduction).
 
 The run they come from is a completion claim, not a correctness one. No number
 in these plots has been compared against the planted truth; that is the
@@ -81,7 +100,8 @@ would change.
 
 ## `sim_qa/`: what a simulated sample planted (#452)
 
-`python -m port.sim.analysis plot sim/generated/dev_tree/r0`: one realization
+`python -m port.sim.analysis plot sim/generated/dev_tree/r0` writes these to
+`sim/generated/dev_tree/r0/qa/`: one realization
 of `sim/manifests/dev_tree.toml` (a mutation tree over three clones, two slices
 overlapping by half) at seed 0.
 

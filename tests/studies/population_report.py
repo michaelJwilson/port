@@ -540,7 +540,9 @@ def figures(summary: dict[str, Any], into: Path) -> list[Path]:
     Set as `port.extensions.combined_figure`'s spatial page is, so the row
     stands beside it in a paper: `page_style`, `llncs`'s text width, every
     text at `FONT_SIZE`, rules at `PROFILE_LINEWIDTH`, each letter over its
-    panel's leftmost text. Written as PDF, and as PNG at 300 dpi. The arm,
+    panel's leftmost text. Written as PNG at 300 dpi, with
+    `port.patch.utils.write_fig`'s PNG options: white face, no metadata, so
+    two draws differ byte for byte only when their pixels do (#452). The arm,
     the member counts and the bands' construction are stated in the study's
     document rather than on the figure.
     """
@@ -553,7 +555,7 @@ def figures(summary: dict[str, Any], into: Path) -> list[Path]:
     from port.patch.plot_genomic import PAPER_WIDTH
 
     into.mkdir(parents=True, exist_ok=True)
-    paths = [into / "population_recovery.pdf", into / "population_recovery.png"]
+    paths = [into / "population_recovery.png"]
 
     with page_style():
         mpl.rcParams.update({"font.size": FONT_SIZE, "axes.linewidth": LINEWIDTH,
@@ -627,7 +629,8 @@ def figures(summary: dict[str, Any], into: Path) -> list[Path]:
                      ha="left", va="bottom")  # fmt: skip
 
         for path in paths:
-            fig.savefig(path, dpi=300, facecolor="white")
+            fig.savefig(path, format="png", dpi=300, facecolor="white",
+                        metadata={"Software": None})  # fmt: skip
         plt.close(fig)
 
     return paths

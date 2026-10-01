@@ -1,16 +1,11 @@
 # Generated files keep this branch's copy on a merge rather than stopping it
 # (#403). `python -m tests.ci --install` defines the `badges` driver;
 # `python -m tests.ci --badges --record` then re-measures what the merged
-# tree reads, and `--figures` redraws the plots. Without the driver installed
-# git falls back to its ordinary merge, so nothing breaks, it only conflicts.
+# tree reads. Without the driver installed git falls back to its ordinary
+# merge, so nothing breaks, it only conflicts. `docs/plots/` tracks no
+# generated figure, so it has no line here.
 .badges/*.json merge=badges
-docs/plots/*.pdf binary merge=badges
-docs/plots/*.png binary merge=badges
-docs/plots/*.npz binary merge=badges
 
 # Lines are appended, one per run and one per measured value, so two branches
-# that each record a run both keep theirs (#409, #620). `docs/metrics.md` is
-# generated from them: after such a merge, `python -m tests.metrics --render`
-# rewrites it, and `tests/test_metrics_table.py` fails until it does.
+# that each record a run both keep theirs (#409, #620).
 docs/metrics/*.tsv merge=union
-docs/metrics.md merge=union

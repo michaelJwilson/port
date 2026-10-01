@@ -63,7 +63,8 @@ below the best (median). The `anchor` and `knn` variants joined after the first 
 `sal` refuses rather than floor it. The figure is `tests.studies.copy_state_plot` over the merged stream,
 stamped with its data hash and code commit.
 
-![](plots/studies/copy_states_dev_tree_1s_hard.png)
+The figure is not committed: `python -m tests.studies.copy_state_plot OUT/<stem>.pkl`
+redraws it beside the pickle (`git show ba34716:docs/plots/studies/copy_states_dev_tree_1s_hard.png`).
 
 ## Defects found, and what was done about them
 
