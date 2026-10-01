@@ -94,6 +94,7 @@ ROLES: dict[str, Role] = {
     "port.patch.hmm_nophasing.dense_emission": "row-helper",
     "port.patch.hmm_nophasing.gradient": "row-helper",
     "port.patch.hmm_nophasing.logmu_shift": "row-helper",
+    "port.patch.hmm_nophasing.rescale": "row-helper",
     "port.patch.hmrf.adjacency": "row-helper",
     "port.patch.hmrf.fused_field": "row-helper",
     "port.patch.hmrf.tabulated_field": "row-helper",

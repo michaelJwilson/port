@@ -320,6 +320,38 @@ class hmm_nophasing(UPSTREAM):  # type: ignore[misc]
     a global and a Python function in its place breaks their compilation.
     """
 
+    dispersion_rescale: bool = False
+    """Off, as `cnaster` is: `alpha`, `tau` score every pseudobulk row alike (#566).
+
+    On, the fitted `alpha`, `tau` are per spot and each row scores at its
+    clone's moment-matched value (`port.patch.hmm_nophasing.rescale`);
+    `run_cnaster_port --dispersion-rescale` binds it.
+    """
+
+    dispersion_two_component: bool = False
+    """With `dispersion_rescale`, add a clone-shared `alpha`, `tau` to the per-spot one (#566).
+
+    `alpha_row = alpha_shared + alpha_k / S_eff,c`,
+    `rho_row = rho_shared + rho_k g_row`
+    (:class:`~port.patch.hmm_nophasing.rescale.Components`), the two fitted
+    in the same M step; `run_cnaster_port --dispersion-two-component`.
+    """
+
+    _components: Any = None
+    """This fit's clone-shared dispersion, or `None`."""
+
+    _components_errors: Any = None
+    """Standard errors on `(log alpha_shared, log tau_shared)`: the objective's shared Hessian block, conditional on the rest."""
+
+    _row_components: Any = None
+    """The last fit's clone-shared dispersion, for the static dense emission and the next fit's start."""
+
+    _rescale: Any = None
+    """This fit's `Rescale`, found in `optimize`; read by the coded emission and the gradient."""
+
+    _row_rescale: Any = None
+    """The last rescaled fit's `Rescale`, for the static dense emission; class state as `_row_shift` is."""
+
     def _clone_triples(self, encoder: Any, lengths: tuple[int, ...]) -> _Triples:
         """`(clone, obs, total)` compressed once over the whole genome.
 
@@ -409,6 +441,29 @@ class hmm_nophasing(UPSTREAM):  # type: ignore[misc]
             base_nb_mean = np.asarray(base_nb_mean) * np.exp(-(shift - centre))[:, None]
             log_mu = np.asarray(log_mu) - centre
 
+        rescale = hmm_nophasing._row_rescale
+
+        if (
+            cls.dispersion_rescale
+            and rescale is not None
+            and np.asarray(X).shape[2] == 1
+            and np.asarray(X).shape[0] == rescale.bb.size
+        ):
+            rdr, baf = _rescaled_rows(
+                np.asarray(X)[:, 0, 0],
+                np.asarray(base_nb_mean, dtype=np.float64)[:, 0],
+                np.asarray(X)[:, 1, 0],
+                np.asarray(total_bb_RD, dtype=np.float64)[:, 0],
+                state_vector(log_mu),
+                alphas,
+                state_vector(p_binom),
+                taus,
+                np.zeros(1),
+                rescale,
+                hmm_nophasing._row_components if cls.dispersion_two_component else None,
+            )
+            return rdr[:, :, None], baf[:, :, None]
+
         scored: tuple[np.ndarray, np.ndarray]
         scored = UPSTREAM.compute_emission_probability_nb_betabinom(
             X, base_nb_mean, log_mu, alphas, total_bb_RD, p_binom, taus
@@ -442,6 +497,46 @@ class hmm_nophasing(UPSTREAM):  # type: ignore[misc]
         """
         hmm_nophasing._row_shift = None
 
+        # NB #566: the factors recorded for exactly these rows, or refused.
+        if self.dispersion_rescale:
+            from port.patch.hmm_nophasing.rescale import find
+
+            self._rescale = find(X)
+            logger.info(
+                "dispersion rescale: per-clone NB factor 1/S_eff %s, BB factor median %s",
+                np.array2string(self._rescale.nb, precision=5),
+                np.array2string(
+                    np.array(
+                        [
+                            np.median(part)
+                            for part in np.split(
+                                self._rescale.bb, np.cumsum(self._rescale.lengths)[:-1]
+                            )
+                        ]
+                    ),
+                    precision=5,
+                ),
+            )
+        else:
+            self._rescale = None
+        hmm_nophasing._row_rescale = self._rescale
+
+        # NB #566: the clone-shared part starts where the last fit left it,
+        #    or at `alpha` 0.1, `tau` 1,000.
+        if self.dispersion_two_component:
+            if self._rescale is None:
+                msg = "the two-component dispersion needs dispersion_rescale"
+                raise ValueError(msg)
+
+            from port.patch.hmm_nophasing.rescale import Components
+
+            self._components = hmm_nophasing._row_components or Components(
+                float(np.log(0.1)), float(np.log(1_000.0))
+            )
+        else:
+            self._components = None
+        hmm_nophasing._row_components = self._components
+
         # NB the M step's gradient in closed form, through `minimize`'s
         #    callable `method` (#433); positional extras leave the fit as is,
         #    since the settings the gradient reads would then be unnamed.
@@ -461,6 +556,20 @@ class hmm_nophasing(UPSTREAM):  # type: ignore[misc]
         res: dict[str, Any] = super().optimize(
             X, lengths, n_states, base_nb_mean, total_bb_RD, *args, **kwargs
         )
+
+        if self._components is not None:
+            hmm_nophasing._row_components = self._components
+            errors = self._components_errors
+            logger.info(
+                "two-component dispersion: alpha_shared %.4g, tau_shared %.4g "
+                "(rho %.4g); conditional log-scale standard errors %s",
+                self._components.alpha,
+                float(np.exp(self._components.log_tau)),
+                self._components.rho,
+                "unavailable"
+                if errors is None
+                else np.array2string(errors, precision=4),
+            )
 
         normal_lambda = kwargs.get("normal_lambda")
         clone_lengths = kwargs.get("clone_lengths")
@@ -537,6 +646,20 @@ class hmm_nophasing(UPSTREAM):  # type: ignore[misc]
         guessing at `hmm_nophasing.py:279`.
         """
         decode = self._decode()
+
+        if self._rescale is not None:
+            return self._rescaled_coded(
+                nbEncoder,
+                bbEncoder,
+                log_mu,
+                alphas,
+                p_binom,
+                taus,
+                normal_log_lambda,
+                clone_lengths,
+                decode,
+                clone_stack,
+            )
 
         if (
             not self.apply_logmu_shift
@@ -697,6 +820,100 @@ class hmm_nophasing(UPSTREAM):  # type: ignore[misc]
 
         return log_emit_rdr[:, :, None], log_emit_baf[:, :, None]
 
+    def _rescaled_coded(
+        self,
+        nbEncoder: Any,
+        bbEncoder: Any,
+        log_mu: np.ndarray,
+        alphas: np.ndarray,
+        p_binom: np.ndarray,
+        taus: np.ndarray,
+        normal_log_lambda: Any,
+        clone_lengths: Any,
+        decode: np.ndarray | None,
+        clone_stack: bool,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """The coded emission per row, each row at its clone's dispersions (#566).
+
+        Per row rather than per code: the BB factor is per bin and clone, so
+        no code is shared. Shifted by clone where the unrescaled path would
+        be; scored by numpy's `gammaln` whatever `emission_kernels` says.
+        """
+        rates = state_vector(log_mu)
+        shifts = np.zeros(1)
+
+        if (
+            self.apply_logmu_shift
+            and normal_log_lambda is not None
+            and clone_lengths is not None
+            and decode is not None
+        ):
+            lengths = _current(
+                tuple(int(length) for length in np.asarray(clone_lengths)),
+                int(np.asarray(decode).size),
+            )
+            per_clone = logmu_shifts(
+                rates,
+                np.asarray(decode, dtype=np.int64),
+                _stacked(normal_log_lambda, lengths),
+                np.asarray(lengths, dtype=np.int64),
+            )
+            shifts = np.repeat(per_clone, lengths)
+
+        rdr, baf = _rescaled_rows(
+            np.asarray(nbEncoder.obs_count, dtype=np.float64).reshape(-1),
+            np.asarray(nbEncoder.total_count, dtype=np.float64).reshape(-1),
+            np.asarray(bbEncoder.obs_count, dtype=np.float64).reshape(-1),
+            np.asarray(bbEncoder.total_count, dtype=np.float64).reshape(-1),
+            rates,
+            alphas,
+            state_vector(p_binom),
+            taus,
+            shifts,
+            self._rescale,
+            self._components,
+        )
+
+        if clone_stack:
+            return rdr, baf
+
+        return rdr[:, :, None], baf[:, :, None]
+
+
+def _rescaled_rows(
+    nb_obs: np.ndarray,
+    exposure: np.ndarray,
+    bb_obs: np.ndarray,
+    trials: np.ndarray,
+    rates: np.ndarray,
+    alphas: np.ndarray,
+    p_binom: np.ndarray,
+    taus: np.ndarray,
+    shifts: np.ndarray,
+    rescale: Any,
+    components: Any = None,
+) -> tuple[np.ndarray, np.ndarray]:
+    """`(K, n_rows)` NB and BB scores at each row's rescaled dispersions; `shifts` per row or one."""
+    from port.patch.hmm_nophasing.rescale import (
+        alpha_rows,
+        bb_logpmf,
+        nb_logpmf,
+        tau_rows,
+    )
+
+    mean = exposure[None, :] * np.exp(rates[:, None] - shifts[None, :])
+    shared_alpha = 0.0 if components is None else components.alpha
+    shared_rho = 0.0 if components is None else components.rho
+    rdr = nb_logpmf(nb_obs[None, :], mean, alpha_rows(alphas, rescale, shared_alpha))
+    baf = bb_logpmf(
+        bb_obs[None, :],
+        trials[None, :],
+        p_binom[:, None],
+        tau_rows(taus, rescale, shared_rho),
+    )
+
+    return rdr, baf
+
 
 def shifted(model: Any) -> bool:
     """Whether `model`, a class or an instance, fits with the shift applied.
@@ -711,5 +928,8 @@ def release() -> None:
     """Drop the last fit's shift; `port.pipeline.patched` calls this on exit (#517).
 
     Keyed by size, so a later fit of the same shape would read this one's.
+    The dispersion rescale and its clone-shared part go with it (#566).
     """
     hmm_nophasing._row_shift = None
+    hmm_nophasing._row_rescale = None
+    hmm_nophasing._row_components = None
