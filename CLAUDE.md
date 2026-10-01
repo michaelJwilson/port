@@ -38,6 +38,10 @@ rule that fits neither is a rule to delete rather than to place.
 9.  **Say which kind of number:** a pull request is PR- #578, a ticket
     T- #574; the space before `#` keeps GitHub's link. Both share one
     sequence, so a bare #578 leaves the reader to look it up.
+10. **Name data by its hash:** a measured result names its fixture by its
+    readable name and its hash, CalicoST easy (`2d4ce9a9`), dev_tree r0
+    (`3381575a`). A name is not a dataset: the same name has held different
+    data, and only the hash says which a number was measured on.
 
 These rules are paramount, as upstream states: every document, `CLAUDE.md`,
 docstring, comment, commit message, PR, and plan or comment posted to a

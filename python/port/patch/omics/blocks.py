@@ -770,21 +770,22 @@ def create_bin_ranges(
 MIN_SEGMENT_MB = 0.75
 """The read-depth segment floor `quality.min_segment_mb: true` sets, in Mb (#551).
 
-On dev_tree r0 it takes tumour-clone RDR outlier rows (|log RDR deviation| >
-0.5 at planted-neutral segments) from 1,163 to 104, and the segments from
-2,895 to 1,265."""
+On dev_tree r0 (`3381575a`) it takes tumour-clone RDR outlier rows (|log RDR
+deviation| > 0.5 at planted-neutral segments) from 1,163 to 104, and the
+segments from 2,895 to 1,265."""
 
 MIN_SEGMENT_NORMAL_UMI = 300.0
 """The normal-UMI floor `quality.min_segment_normal_umi: true` sets (#551).
 
-On dev_tree r0 it takes tumour-clone RDR outlier rows from 1,163 to 802 and
-the segments from 2,895 to 2,624."""
+On dev_tree r0 (`3381575a`) it takes tumour-clone RDR outlier rows from 1,163
+to 802 and the segments from 2,895 to 2,624."""
 
 SAL_NORMAL_UMI_FLOOR = MIN_SEGMENT_NORMAL_UMI
 """The normal-UMI floor `--sal` binds (#547). With `kmeans++x5+em` or the
-lattice start it holds every clone ARI on dev_tree, easy and hard and raises
-hard's copy ARI from 0.9055 to 0.9181; with the lattice, 200, 500, 700 and
-1,000 each gave some sample an extra clone."""
+lattice start it holds every clone ARI on dev_tree r0 (`3381575a`), CalicoST
+easy (`2d4ce9a9`) and hard (`8797710b`) and raises hard's copy ARI from
+0.9055 to 0.9181; with the lattice, 200, 500, 700 and 1,000 each gave some
+sample an extra clone."""
 
 
 def segment_floor(
