@@ -288,7 +288,11 @@ profile: clones whose `(A, B)` agree at no less than
 configuration's caps and the flags). Where that merge joins clones it also
 rewrites `clone_labels.tsv`: `clone_label` is the merged clone and
 `cnaster_clone_label` keeps `cnaster`'s, since the merge stands in for the
-Neyman-Pearson merge `--sal` no longer installs (#497). Off with
+Neyman-Pearson merge `--sal` no longer installs (#497). The per-spot
+tables -- `clone_labels.tsv`, `clone_labels_integer.tsv` and
+`baf_clone_labels.tsv` -- carry each spot's `sample` and its code
+`sample_id` from the run's slices rather than from the barcode suffix, and
+`manifest.json` lists the sample names in code order (#418). Off with
 `--no-patch`, so the baseline arm writes what `cnaster` writes.
 
 `port.pipeline.SWAPS` is the table -- one row per `cnaster` name `port`

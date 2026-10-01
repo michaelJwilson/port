@@ -676,6 +676,12 @@ def main(argv: Sequence[str] | None = None) -> int:
 
         lineage = stack.enter_context(recording())
 
+        # NB the slices `get_sample_list` builds, by name, for the per-spot
+        #    outputs (#418); empty under `--no-patch`.
+        from port.extensions import samples as sampling
+
+        sampled = stack.enter_context(sampling.recording())
+
         started = time.perf_counter()
         pipeline.run_cnaster(arguments.config)
         wall = time.perf_counter() - started
@@ -697,6 +703,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "parsimony": settings.parsimony if copy_cap else None,
             },
             lineage.table(),
+            sampled,
         )
     if kept is not None:
         _write_copy_sets(arguments.config, kept)
@@ -705,11 +712,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     return 0
 
 
-def _write_outputs(config: str, flags: dict[str, Any], segments: Any) -> None:
+def _write_outputs(
+    config: str, flags: dict[str, Any], segments: Any, samples: Any = None
+) -> None:
     """`port.extensions.outputs` into each run directory the run wrote.
 
     `segments` is the run's lineage, one row per gene and one label column
     per segmentation (#438), written beside them as `gene_segments.tsv`.
+    `samples` is the run's `port.extensions.samples` recording (#418).
     """
     from pathlib import Path
 
@@ -725,7 +735,7 @@ def _write_outputs(config: str, flags: dict[str, Any], segments: Any) -> None:
         return
 
     for run in run_directories(Path(output_dir)):
-        write_outputs(run, Path(config), flags)
+        write_outputs(run, Path(config), flags, samples)
         if len(segments):
             segments.to_csv(run / "gene_segments.tsv", sep="\t", index=False)
         print(f"run_cnaster_port: outputs written to {run}", file=sys.stderr)

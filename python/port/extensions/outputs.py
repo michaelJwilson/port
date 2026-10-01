@@ -26,8 +26,16 @@ all but `clone_labels.tsv`, below -- in each run directory that holds a
   the Neyman-Pearson merge `--sal` no longer installs (#497), and that merge
   wrote its clones there.
 - `manifest.json`: the run's shape and provenance -- states, clones,
-  likelihoods, the shift, the configuration's copy caps and ploidy, and
-  what `run_cnaster_port` was asked for.
+  likelihoods, the shift, the configuration's copy caps and ploidy, the
+  sample names in code order, and what `run_cnaster_port` was asked for.
+
+**Each spot's sample is the run's, not its barcode's** (#418, #365). Given
+the run's `port.extensions.samples` recording, the per-spot tables --
+`clone_labels.tsv`, `clone_labels_integer.tsv`, `baf_clone_labels.tsv` --
+carry `sample`, the name, and `sample_id`, its code into the manifest's
+`samples`. `cnaster` writes `sample_id` as the text after the barcode's last
+`_`, which names one sample per spot on barcodes such as `spot_N`. Without a
+recording the tables are as before.
 
 **A clone's columns are matched by content, not position.** The table's
 `clone{c}` columns carry `cnaster`'s clone id, and `pred_cnv` and `log_gamma`
@@ -44,10 +52,13 @@ from __future__ import annotations
 import json
 from collections.abc import Iterator
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
+
+if TYPE_CHECKING:
+    from port.extensions.samples import Recorded
 
 __all__ = [
     "CNASTER_LABEL",
@@ -62,6 +73,7 @@ __all__ = [
     "run_directories",
     "segments",
     "states",
+    "with_samples",
     "write_outputs",
 ]
 
@@ -302,6 +314,42 @@ def merged_clone_labels(integer: pd.DataFrame) -> pd.DataFrame | None:
     return labels
 
 
+def with_samples(labels: pd.DataFrame, spots: pd.DataFrame) -> pd.DataFrame:
+    """`labels` with `sample` and `sample_id` read from `spots` by barcode (#418).
+
+    `spots` is `port.extensions.samples.Recorded.table()`: one row per spot
+    of the run, indexed by barcode. `sample` goes before `sample_id`, which
+    keeps its column and takes the code.
+
+    Raises
+    ------
+    ValueError
+        If a barcode of `labels` is not a spot of the run.
+    """
+    barcodes = labels["barcode"]
+    missing = ~barcodes.isin(spots.index)
+
+    if missing.any():
+        msg = f"{int(missing.sum())} barcodes are not spots of the run: {barcodes[missing].head(3).tolist()}"
+        raise ValueError(msg)
+
+    labels = labels.copy()
+    codes = barcodes.map(spots["sample_id"]).astype(np.int64)
+
+    if "sample_id" in labels:
+        labels["sample_id"] = codes
+    else:
+        labels.insert(1, "sample_id", codes)
+
+    if "sample" in labels:
+        labels = labels.drop(columns="sample")
+
+    labels.insert(
+        labels.columns.get_loc("sample_id"), "sample", barcodes.map(spots["sample"])
+    )
+    return labels
+
+
 def config_keys(config: Path | None) -> dict[str, Any]:
     """The configuration's copy caps, ploidy and state count, where set."""
     if config is None:
@@ -324,9 +372,18 @@ def config_keys(config: Path | None) -> dict[str, Any]:
 
 
 def write_outputs(
-    run: Path, config: Path | None = None, flags: dict[str, Any] | None = None
+    run: Path,
+    config: Path | None = None,
+    flags: dict[str, Any] | None = None,
+    samples: Recorded | None = None,
 ) -> list[Path]:
-    """Write the four files into `run`; return their paths."""
+    """Write the files into `run`; return their paths.
+
+    `samples` is the run's recording (`port.extensions.samples.recording`);
+    given one, the per-spot tables carry each spot's `sample` and
+    `sample_id` from it, and `clone_labels.tsv` and `baf_clone_labels.tsv`
+    are rewritten to carry them.
+    """
     from importlib.metadata import PackageNotFoundError, version
 
     def installed(name: str) -> str:
@@ -352,13 +409,24 @@ def write_outputs(
         ("cnv_binlevel.tsv", binlevel(seglevel, fit)),
     ]
 
+    spots = None if samples is None else samples.table()
+
+    def placed(labels: pd.DataFrame) -> pd.DataFrame:
+        return labels if spots is None else with_samples(labels, spots)
+
     if (run / "clone_labels.tsv").exists():
-        integer = clone_labels_integer(run, seglevel, agreement)
+        integer = placed(clone_labels_integer(run, seglevel, agreement))
         tables.append(("clone_labels_integer.tsv", integer))
         merged = merged_clone_labels(integer)
 
         if merged is not None:
             tables.append(("clone_labels.tsv", merged))
+        elif spots is not None:
+            tables.append(("clone_labels.tsv", placed(cnaster_labels(run))))
+
+    if spots is not None and (run / "baf_clone_labels.tsv").exists():
+        baf = pd.read_csv(run / "baf_clone_labels.tsv", sep="\t", comment="#")
+        tables.append(("baf_clone_labels.tsv", placed(baf)))
 
     for name, table in tables:
         table.to_csv(run / name, sep="\t", index=False)
@@ -380,6 +448,9 @@ def write_outputs(
         "llf": finite(fit["llf"]),
         "total_llf": finite(fit["total_llf"]),
         "log_mu_shift": None if shift_value is None else shift_value,
+        "samples": None
+        if samples is None or samples.samples is None
+        else list(samples.samples.names),
         "integer_decoder": (flags or {}).get(
             "copy_decode", "cnaster MILP, first ploidy pass (max_medploidy=None)"
         ),

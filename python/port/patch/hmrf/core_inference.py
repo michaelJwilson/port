@@ -52,6 +52,7 @@ __all__ = [
     "UPSTREAM",
     "ZERO_NORMAL_SHIFT",
     "clone_shifts",
+    "identity_remap",
     "pin_neutral",
     "reindex_clones",
     "release",
@@ -244,6 +245,38 @@ def shift_for(pred_cnv: Any) -> tuple[float, int | None]:
     return 0.0, None
 
 
+def identity_remap(sample_ids: Any, sample_list: Any = None) -> None:
+    """Refuse `sample_ids` that upstream's `np.unique` re-map would renumber (#418).
+
+    `run_core_inference` maps each id to its rank among `np.unique(sample_ids)`
+    (`hmrf.py:453`) and the plots read `sample_list` by position, so the two
+    name one slice only where the ranks are `0..n-1` and `sample_list` has
+    `n` entries. `port.patch.io.get_sample_list` builds them so; a caller
+    that bypasses it is refused rather than silently renumbered.
+
+    Raises
+    ------
+    ValueError
+        If the re-map is not the identity, or `sample_list` is not one name
+        per id.
+    """
+    if sample_ids is None:
+        return
+
+    unique = np.unique(np.asarray(sample_ids))
+
+    if not np.array_equal(unique, np.arange(unique.size)):
+        msg = (
+            f"sample_ids {unique.tolist()} are not 0..{unique.size - 1}: "
+            "run_core_inference would renumber them"
+        )
+        raise ValueError(msg)
+
+    if sample_list is not None and len(sample_list) != unique.size:
+        msg = f"{len(sample_list)} names in sample_list for {unique.size} sample ids"
+        raise ValueError(msg)
+
+
 @as_upstream(UPSTREAM, hmm_start=None, distinct_init=False, baf_start=None)
 def run_core_inference(arguments: dict[str, Any], options: dict[str, Any]) -> Any:
     """Upstream's inference, then the neutral pin when the fit was shifted.
@@ -270,6 +303,8 @@ def run_core_inference(arguments: dict[str, Any], options: dict[str, Any]) -> An
             )
         elif options["distinct_init"]:
             arguments["hmm_initializer"] = distinct.gmm_init
+
+    identity_remap(arguments.get("sample_ids"), arguments.get("sample_list"))
 
     result = UPSTREAM(**arguments)
 
