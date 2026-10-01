@@ -177,7 +177,9 @@ the color merge, Missed raw / polished, and the median runtime.
 The live `_easy` and `_hard` now draw lognormal event lengths at σ = 0.541
 (`port.sim.laws.lognormal_sigma(0.10, 0.5)`): `_easy` at mean 50 Mb (r0
 `22a5eb85`), `_hard` at median 10 Mb (r0 `9ec90dc2`). The tables above are
-the exponential generation's (`baseline/`). The known-law field, r0–r2, by
+the exponential generation's (`baseline/`). The exponential rows below are
+`baseline/`'s (gamma sampler; `_hard` at mean 1e7), not the live
+exponential generation (`0330bc21`, `ed2fcda1`), which was not rerun. The known-law field, r0–r2, by
 `python -m tests.studies.field_strength known`:
 
 | | median margin [nats] | 10% margin | argmax wrong | ARI |
