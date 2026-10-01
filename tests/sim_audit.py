@@ -33,6 +33,33 @@ decoded `(A, B)` is the planted pair, and `exact_altered` the same over bins
 where the planted pair is not `(1, 1)`: `run_sim_analysis`'s `correct_rate`
 without the phase flip. `exact_altered_minor` allows it: a decoded `(B, A)`
 counts, so the minor and major copies are scored and the phase is not.
+
+The same two shares are also taken over three classes of planted pair:
+`loh`, one haplotype at 0 (deletions, copy-neutral and amplified LOH);
+`balanced_gain`, `A = B > 1`; and `unbalanced_gain`, both haplotypes present,
+`A + B > 2` and `A != B`. Each `_pf` form is phase-free, as
+`exact_altered_minor` is; for a balanced gain the two coincide. A class the
+sample does not plant scores NaN. `exact_neutral` is the share of planted
+`(1, 1)` bins decoded `(1, 1)`.
+
+`copy_ari_<class>` is the copy-state ARI restricted to the clone-bins of one
+planted class (#511), so a class is scored on how it partitions its own bins
+rather than on the pairs it shares with the ~6,500 neutral bins, which
+dominate `copy_ari`. ARI over bins whose planted pair takes one value is
+undefined (sklearn returns 1 if the decode is constant there, else 0), so a
+class planted as a single pair scores NaN, as does one not planted. Neutral
+is one pair by definition and has no ARI; `exact_neutral` stands in for it.
+Each `copy_ari*_pf` is the same ARI on phase-free pairs, `(min, max)` of the
+planted and of the decoded `(A, B)`, so a consistent phase swap scores as the
+phased ARI already does and an inconsistent one is forgiven.
+
+`confusion` is the planted `(A, B)` against the decoded, over every pair with
+`A + B <= max_total_copy` (`cnaster`'s 6 by default), as the fraction of each
+planted pair's clone-bins decoded to each pair: a row sums to 1. Planted
+rows only, and nonzero entries only; a decode outside the cap is `other`.
+`python -m tests.sim_audit` prints it as a table on stderr, every pair within
+the cap a row and a column; `--confusion-sampled` keeps the planted rows and
+the decoded columns alone.
 """
 
 from __future__ import annotations
@@ -40,6 +67,7 @@ from __future__ import annotations
 import argparse
 import json
 import resource
+import sys
 import tempfile
 import time
 import warnings
@@ -50,6 +78,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 import yaml
+from port.extensions.integer_copy import DEFAULT_MAX_TOTAL_COPY
 from port.sim.files import located
 
 from tests.recovery_audit import integer_clones
@@ -71,13 +100,28 @@ class SimRecovery:
     ari_integer: float
     state_ari: float
     copy_ari: float
+    copy_ari_loh: float
+    copy_ari_balanced_gain: float
+    copy_ari_unbalanced_gain: float
+    copy_ari_pf: float
+    copy_ari_loh_pf: float
+    copy_ari_balanced_gain_pf: float
+    copy_ari_unbalanced_gain_pf: float
     n_clones: int
     n_integer_clones: int
     exact: float
     exact_altered: float
     exact_altered_minor: float
+    exact_loh: float
+    exact_loh_pf: float
+    exact_balanced_gain: float
+    exact_balanced_gain_pf: float
+    exact_unbalanced_gain: float
+    exact_unbalanced_gain_pf: float
+    exact_neutral: float
     bins: int
     clone_of: dict[int, int] = field(default_factory=dict)
+    confusion: dict[str, dict[str, float]] = field(default_factory=dict)
 
 
 def _scratch() -> Path:
@@ -94,6 +138,109 @@ def _scratch() -> Path:
 def _barcode(values: pd.Series) -> np.ndarray:
     barcodes: np.ndarray = values.astype(str).to_numpy()
     return barcodes
+
+
+NEUTRAL = 1_001
+"""The planted pair `(1, 1)`, as `A * 1_000 + B`."""
+
+
+def planted_classes(t: np.ndarray) -> dict[str, np.ndarray]:
+    """Clone-bins by planted class, from pairs coded `A * 1_000 + B`.
+
+    `loh` one haplotype at 0; `balanced_gain` `A = B > 1`; `unbalanced_gain`
+    both present, `A + B > 2`, `A != B`; `neutral` `(1, 1)`. One partition
+    for every per-class metric in `score`.
+    """
+    major, minor = t // 1_000, t % 1_000
+    loh = np.minimum(major, minor) == 0
+    gain = (major + minor > 2) & ~loh
+    return {
+        "loh": loh,
+        "balanced_gain": gain & (major == minor),
+        "unbalanced_gain": gain & (major != minor),
+        "neutral": t == NEUTRAL,
+    }
+
+
+def phase_free(codes: np.ndarray) -> np.ndarray:
+    """`A * 1000 + B` codes as `(minor, major)`: `(A, B)` and `(B, A)` coded alike."""
+    major, minor = codes // 1_000, codes % 1_000
+    return np.asarray(np.minimum(major, minor) * 1_000 + np.maximum(major, minor))
+
+
+def class_ari(t: np.ndarray, ab: np.ndarray, where: np.ndarray) -> float:
+    """Copy-state ARI over the bins in `where`; NaN where the planted pairs
+    there take fewer than two values, ARI being undefined.
+    """
+    from sklearn.metrics import adjusted_rand_score
+
+    if np.unique(t[where]).size < 2:
+        return float("nan")
+    return round(float(adjusted_rand_score(t[where], ab[where])), 4)
+
+
+OTHER = "other"
+"""The decoded column for a pair outside `copy_states`, or a bin left unfit."""
+
+
+def copy_states(max_total: int) -> list[tuple[int, int]]:
+    """Every `(A, B)` with `A + B <= max_total`, by total, then by `A`."""
+    return [(a, n - a) for n in range(max_total + 1) for a in range(n + 1)]
+
+
+def _pair(code: int) -> str:
+    return f"{code // 1_000},{code % 1_000}"
+
+
+def copy_confusion(
+    t: np.ndarray, ab: np.ndarray, max_total: int
+) -> dict[str, dict[str, float]]:
+    """Planted against decoded `(A, B)`, as fractions of each planted row.
+
+    Rows are the planted pairs within `max_total`, columns every pair within
+    it and `OTHER`; zero entries are left out, so a row's values sum to 1.
+    """
+    states = {a * 1_000 + b for a, b in copy_states(max_total)}
+    confusion: dict[str, dict[str, float]] = {}
+
+    for planted in sorted(states & set(np.unique(t).tolist()), key=_order):
+        decoded = ab[t == planted]
+        named = [_pair(int(d)) if int(d) in states else OTHER for d in decoded]
+        values, counts = np.unique(named, return_counts=True)
+        confusion[_pair(planted)] = {
+            str(v): round(float(c) / decoded.size, 4)
+            for v, c in zip(values, counts, strict=True)
+        }
+    return confusion
+
+
+def _order(code: int) -> tuple[int, int]:
+    return (code // 1_000 + code % 1_000, code // 1_000)
+
+
+def confusion_table(
+    confusion: dict[str, dict[str, float]], max_total: int, *, sampled: bool = False
+) -> str:
+    """`confusion` as a markdown table, rows planted and columns decoded, in
+    `copy_states` order with `OTHER` last.
+
+    Every pair within `max_total` is a row and a column; `sampled` drops the
+    rows of pairs never planted and the columns of pairs never decoded.
+    """
+    decoded = {d for row in confusion.values() for d in row}
+    pairs = [f"{a},{b}" for a, b in copy_states(max_total)]
+    rows = [p for p in pairs if p in confusion] if sampled else pairs
+    columns = [p for p in pairs if p in decoded or not sampled]
+    columns += [OTHER] if OTHER in decoded or not sampled else []
+    lines = [
+        "| planted \\ decoded | " + " | ".join(columns) + " |",
+        "| --- |" + " --- |" * len(columns),
+    ]
+    for planted in rows:
+        row = confusion.get(planted, {})
+        cells = [f"{row[c]:.4f}" if c in row else "" for c in columns]
+        lines.append(f"| {planted} | " + " | ".join(cells) + " |")
+    return "\n".join(lines)
 
 
 def read_run(sample: SimulatedSample, output: Path) -> dict[str, Any]:
@@ -181,9 +328,18 @@ def score(sample: SimulatedSample, output: Path, arm: str, wall: float) -> SimRe
         pair.append(run["a"][covered, fit] * 1_000 + run["b"][covered, fit])
 
     t, z, ab = (np.concatenate(x) for x in (truth, state, pair))
-    altered = t != 1_001
+    altered = t != NEUTRAL
     swapped = (ab % 1_000) * 1_000 + ab // 1_000
+    t_pf, ab_pf = phase_free(t), phase_free(ab)
     either = (t == ab) | (t == swapped)
+    classes = planted_classes(t)
+    loh, balanced, unbalanced = (
+        classes[c] for c in ("loh", "balanced_gain", "unbalanced_gain")
+    )
+
+    def share(hit: np.ndarray, where: np.ndarray) -> float:
+        """`hit`'s share over `where`; NaN where the sample plants none."""
+        return round(float(np.mean(hit[where])), 4) if where.any() else float("nan")
 
     return SimRecovery(
         sample=sample.name,
@@ -194,13 +350,28 @@ def score(sample: SimulatedSample, output: Path, arm: str, wall: float) -> SimRe
         ari_integer=round(ari_integer, 4),
         state_ari=round(float(adjusted_rand_score(t, z)), 4),
         copy_ari=round(float(adjusted_rand_score(t, ab)), 4),
+        copy_ari_loh=class_ari(t, ab, loh),
+        copy_ari_balanced_gain=class_ari(t, ab, balanced),
+        copy_ari_unbalanced_gain=class_ari(t, ab, unbalanced),
+        copy_ari_pf=round(float(adjusted_rand_score(t_pf, ab_pf)), 4),
+        copy_ari_loh_pf=class_ari(t_pf, ab_pf, loh),
+        copy_ari_balanced_gain_pf=class_ari(t_pf, ab_pf, balanced),
+        copy_ari_unbalanced_gain_pf=class_ari(t_pf, ab_pf, unbalanced),
         n_clones=int(np.unique(fitted[scored]).size),
         n_integer_clones=int(np.unique(integer).size),
         exact=round(float(np.mean(t == ab)), 4),
         exact_altered=round(float(np.mean((t == ab)[altered])), 4),
         exact_altered_minor=round(float(np.mean(either[altered])), 4),
+        exact_loh=share(t == ab, loh),
+        exact_loh_pf=share(either, loh),
+        exact_balanced_gain=share(t == ab, balanced),
+        exact_balanced_gain_pf=share(either, balanced),
+        exact_unbalanced_gain=share(t == ab, unbalanced),
+        exact_unbalanced_gain_pf=share(either, unbalanced),
+        exact_neutral=share(t == ab, classes["neutral"]),
         bins=int(covered.sum()),
         clone_of=clone_of,
+        confusion=copy_confusion(t, ab, DEFAULT_MAX_TOTAL_COPY),
     )
 
 
@@ -286,6 +457,11 @@ def main() -> None:
         metavar="F1,F2,...",
         help="with --pure, tumour clone c's spots F_c normal instead",
     )
+    parser.add_argument(
+        "--confusion-sampled",
+        action="store_true",
+        help="print only planted rows and decoded columns of the confusion",
+    )
     parser.add_argument("flags", nargs=argparse.REMAINDER)
     arguments = parser.parse_args()
 
@@ -323,6 +499,15 @@ def main() -> None:
     print(
         "SIM "
         + json.dumps({**asdict(recovery), "set": arguments.set, "output": str(output)})
+    )
+    print(
+        confusion_table(
+            recovery.confusion,
+            DEFAULT_MAX_TOTAL_COPY,
+            sampled=arguments.confusion_sampled,
+        ),
+        file=sys.stderr,
+        flush=True,
     )
 
 

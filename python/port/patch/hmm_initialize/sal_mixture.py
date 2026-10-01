@@ -1,26 +1,45 @@
-"""The read-depth + BAF stage's HMM start from `sal`'s count-pair mixture starts, under the covariate (#489).
+"""The HMM's copy-state start from `sal`'s mixture starts or the integer lattice, polished by `sal`'s EM (#489, #540, #547).
 
 `cnaster`'s start, and `distinct`'s (#348), fit Gaussians to log depth ratios
-and BAFs. `sal.search.mixture_starts` fits the mixture **in the family the data
-came from**: a negative binomial on each bin's total with its `base_nb_mean`
-as exposure, times a beta-binomial on its B count out of `total_bb_RD`, each
-bin's exposure and trials its covariate (sal #933/#1083). Seeded in rate space
-by the named start and polished by `sal`'s EM, it hands the HMM its
-components as `(log_mu, p_binom)`.
+and BAFs. These fit the mixture **in the family the data came from**: a
+negative binomial on each bin's total with its `base_nb_mean` as exposure,
+times a beta-binomial on its B count out of `total_bb_RD`, each bin's
+exposure and trials its covariate (sal #933/#1083). A start is seeded,
+polished by `sal`'s EM and handed to the HMM as `(log_mu, p_binom)`, through
+`port.extensions.copy_starts.run_start`.
 
-#489 measured every `sal` start on the call's own pseudobulk (60 x 50, easy,
-hard). The polished best-of-five starts end nearest the best fit reached, and
-`kmeans++x5+em`, installed by `--sal`, is the only start that is at least as
-good end to end on every sample: CalicoST hard's clone ARI 0.8652 -> 0.9829,
-copy ARI 0.8652 -> 0.9055; 60 x 50 and easy unchanged.
+Options, bound at install from `run_cnaster_port`'s flags:
 
-The BAF-only stage (`params` without `m`) and `only_minor=True` calls have no
-exposure to condition on and keep the start they had: `distinct`'s where it is
-installed, `cnaster`'s otherwise.
+- `start`: the BAF + RDR stage's start. `--sal` installs `kmeans++x5+em`
+  (#489); `lattice` places the integer `(A, B)` lattice instead (#540).
+- `baf_start`: the BAF-only stage's start, which otherwise keeps
+  `distinct`'s where it is installed and `cnaster`'s elsewhere. That stage
+  has no read depth, so its depth channel is a constant.
+
+`only_minor=True` calls, the phasing's, keep the start they had.
+
+**Seeding (#547).** `sal`'s `CountPairSeeding` floors a component's
+negative-binomial mean at 1 and reads a row's second column as successes over
+the instance's common trial count, as `sal.sim.count_pairs.rate_space` writes
+it. `instance_of` divides the exposure by `EXPOSURE_SCALE`, so a loss's rate
+is above that floor, and writes the B column over the common trial count.
+The likelihood is the same model; only where a start can place a state
+changes. Before #547 every BAF was seeded near 0.01 and no read-depth state
+below neutral.
+
+**`emission++` scores floored at 0 (#562).** `sal`'s `_seed_scores` returns
+the negative binomial's Bregman divergence, non-negative in exact arithmetic
+and `-1.6e-15` in float64 for a row a hair from a seed's mean; D-squared
+sampling then hands `rng.choice` a negative probability and the start is
+refused. :func:`gmm_init` floors the scores at 0 around the start, which is the
+exact divergence's sign and moves no score by more than its round-off.
+`sal` is read only, so landing the floor there is left to it.
 """
 
 from __future__ import annotations
 
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from typing import Any
 
 import numpy as np
@@ -30,14 +49,16 @@ from port.patch._signature import as_upstream
 
 __all__ = [
     "DEFAULT",
+    "EXPOSURE_SCALE",
     "POLISH_SECONDS",
     "checked",
+    "clamped_divergence",
     "gmm_init",
     "instance_of",
 ]
 
 DEFAULT = "kmeans++x5+em"
-"""The start `--sal` installs: kmeans++ in rate space, best of five, each polished by EM."""
+"""The start `--sal` installs: kmeans++ in rate space, best of five, each polished by EM (#489)."""
 
 POLISH_SECONDS = 160.0
 """The seconds the start and its polish may spend, `sal`'s notebook budget."""
@@ -48,12 +69,27 @@ DISPERSION = 10.0
 CONCENTRATION = 1_000.0
 """The seam's beta-binomial `alpha + beta`, `backends.DEFAULT_TAU`."""
 
+EXPOSURE_SCALE = 100.0
+"""Exposure is divided by this before `sal` reads it, so a state's rate per unit exposure is `mu` times it (#547).
+
+`sal`'s seeding floors a component's negative-binomial mean at 1, which on
+`cnaster`'s `base_nb_mean` -- `mu` of order 1 -- would seed a loss (`mu`
+0.5) at neutral. The mean at each row is rate times exposure, so the
+likelihood is unchanged."""
+
 
 def checked(start: str) -> str:
-    """`start`, refused here if `sal` names no such start rather than hours in."""
+    """`start`, refused here if no copy-state start has that name rather than hours in: the lattice's, or `sal`'s."""
     from sal.search.mixture_starts import lookup
 
-    lookup(start)
+    from port.extensions.copy_starts import LATTICE
+
+    if start not in LATTICE:
+        try:
+            lookup(start)
+        except (KeyError, ValueError) as error:
+            msg = f"no copy-state start {start!r}: {sorted(LATTICE)} or sal's mixture starts"
+            raise ValueError(msg) from error
     return start
 
 
@@ -63,14 +99,18 @@ def instance_of(
     """The call's pseudobulk as `sal`'s `MixtureInstance`, conditioned on exposure and trials.
 
     Bins with zero exposure are left out, as `cnaster` scores their totals as
-    uninformative. Starts seed in rate space: the total per unit exposure and
-    the B count per trial, a bin of no trials read at the pooled rate.
+    uninformative. Starts seed in `sal`'s rate space (`rate_space`): the
+    total per unit of exposure over `EXPOSURE_SCALE`, and the B fraction over
+    the common trial count, a bin of no trials read at the pooled fraction.
     """
     from sal.opt.emission_mixture import CountPairSeeding
     from sal.search.mixture_starts import MixtureInstance
 
     counts = np.asarray(X, dtype=np.float64).reshape(X.shape[0], 2, -1)[:, :, 0]
-    exposure = np.asarray(base_nb_mean, dtype=np.float64).reshape(X.shape[0], -1)[:, 0]
+    exposure = (
+        np.asarray(base_nb_mean, dtype=np.float64).reshape(X.shape[0], -1)[:, 0]
+        / EXPOSURE_SCALE
+    )
     trials = np.asarray(total_bb_RD, dtype=np.float64).reshape(X.shape[0], -1)[:, 0]
     kept = exposure > 0.0
 
@@ -81,6 +121,7 @@ def instance_of(
     observations = counts[kept]
     covariate = np.column_stack([exposure, trials])[kept]
     pooled = observations[:, 1].sum() / max(covariate[:, 1].sum(), 1.0)
+    common = max(float(np.rint(np.median(covariate[:, 1]))), 1.0)
     rows = np.column_stack(
         [
             observations[:, 0] / covariate[:, 0],
@@ -89,14 +130,15 @@ def instance_of(
                 covariate[:, 1],
                 out=np.full(observations.shape[0], pooled),
                 where=covariate[:, 1] > 0,
-            ),
+            )
+            * common,
         ]
     )
     at = CountPairSeeding(
         dispersion=DISPERSION,
         concentration=CONCENTRATION,
         joint=False,
-        trials=max(float(np.rint(np.median(covariate[:, 1]))), 1.0),
+        trials=common,
     )
     return MixtureInstance(
         observations=observations,
@@ -110,60 +152,78 @@ def instance_of(
     )
 
 
-def fitted(
-    instance: Any, start: str, rng: np.random.Generator
-) -> tuple[np.ndarray, np.ndarray]:
-    """`(log_mu, p_binom)` of `start` on `instance`, polished by `sal`'s EM."""
-    from sal.search.mixture_starts import BestOf, Selection, lookup, polish
+def _call(arguments: dict[str, Any], stage: str) -> Any:
+    """The initializer's arguments as `copy_starts.CopyCall`; no start reads positions."""
+    from port.extensions.copy_starts import CopyCall
 
-    chosen = lookup(start)
-
-    if isinstance(chosen, BestOf) and chosen.select is Selection.POLISHED:
-        _, best = chosen.polished(
-            instance, rng, seconds=POLISH_SECONDS, passes=None, tolerance=1e-6
-        )
-        components = best.components
-    else:
-        seeded = chosen(instance, rng)
-        components = polish(
-            instance, seeded.components, seconds=POLISH_SECONDS, tolerance=1e-6
-        ).components
-
-    from sal.emissions import CountPairEmission
-
-    if not isinstance(components, CountPairEmission):  # invariant
-        msg = f"expected a CountPairEmission, got {type(components).__name__}"
-        raise TypeError(msg)
-
-    depth = np.asarray(components.total.mean, dtype=np.float64).reshape(-1)
-    rate = np.asarray(components.rate, dtype=np.float64).reshape(-1)
-    return np.log(np.maximum(depth, 1e-12)), rate
+    X = np.asarray(arguments["X"], dtype=np.float64)
+    n_rows = X.shape[0]
+    base = np.asarray(arguments["base_nb_mean"], dtype=np.float64).reshape(n_rows)
+    trials = np.asarray(arguments["total_bb_RD"], dtype=np.float64).reshape(n_rows)
+    unplaced = np.zeros(n_rows)
+    return CopyCall(
+        stage=stage,
+        n_states=int(arguments["n_states"]),
+        total=X[:, 0, 0],
+        b=X[:, 1, 0],
+        exposure=base if stage == "rdrbaf" else unplaced,
+        trials=trials,
+        clone=np.zeros(n_rows, dtype=np.int64),
+        contig=unplaced.astype(str),
+        start=unplaced,
+        length=unplaced,
+        planted=np.full((n_rows, 2), -1),
+        raw={},
+    )
 
 
-@as_upstream(UPSTREAM, start=None, distinct=False)
+@contextmanager
+def clamped_divergence() -> Iterator[None]:
+    """`sal`'s emission++ divergences floored at 0 for the block (#562), restored after."""
+    import sal.opt.emission_mixture as upstream
+
+    original = upstream._seed_scores
+
+    def floored(observations: np.ndarray, at: Any) -> Callable[..., np.ndarray]:
+        score = original(observations, at)
+
+        def nonnegative(seed: float, candidates: np.ndarray) -> np.ndarray:
+            return np.asarray(np.maximum(score(seed, candidates), 0.0))
+
+        return nonnegative
+
+    upstream._seed_scores = floored
+
+    try:
+        yield
+    finally:
+        upstream._seed_scores = original
+
+
+@as_upstream(UPSTREAM, start=None, distinct=False, baf_start=None)
 def gmm_init(arguments: dict[str, Any], options: dict[str, Any]) -> Any:
-    """`cnaster`'s initializer signature; `sal`'s `start` on the read-depth + BAF call.
+    """`cnaster`'s initializer signature; `start` on the BAF + RDR call, `baf_start` on the BAF-only one.
 
-    Elsewhere, and with no `start`, `cnaster`'s initializer, or
+    Elsewhere, and with neither, `cnaster`'s initializer, or
     `port.patch.hmm_initialize.distinct`'s where `distinct` is set.
-    `port.patch.hmrf.run_core_inference` binds both from its own options.
+    `port.patch.hmrf.run_core_inference` binds the options from its own.
     """
+    from port.extensions.copy_starts import run_start
     from port.patch.hmm_initialize import distinct
 
     params = str(arguments.get("params", ""))
-    start = options["start"]
+    stage = "rdrbaf" if "m" in params else "baf"
+    chosen = options["start"] if stage == "rdrbaf" else options["baf_start"]
 
-    if start is None or "m" not in params or arguments.get("only_minor", True):
+    if chosen is None or arguments.get("only_minor", True):
         fallback = distinct.gmm_init if options["distinct"] else distinct.UPSTREAM
         return fallback(**arguments)
 
-    n_states = int(arguments["n_states"])
-    X = np.asarray(arguments["X"])
-    base_nb_mean = np.asarray(arguments["base_nb_mean"])
-    total_bb_RD = np.asarray(arguments["total_bb_RD"])
     rng = np.random.default_rng([int(arguments.get("random_state") or 0), 0])
-
-    log_mu, p_binom = fitted(
-        instance_of(X, base_nb_mean, total_bb_RD, n_states), start, rng
-    )
-    return log_mu.reshape(-1, 1), p_binom.reshape(-1, 1), None, None
+    # NB every start in-process: a best-of runs its seedings serially at
+    #    sal's default of one worker, so the floor reaches each of them (#562).
+    with clamped_divergence():
+        result = run_start(
+            checked(chosen), _call(arguments, stage), rng, seconds=POLISH_SECONDS
+        )
+    return result.log_mu.reshape(-1, 1), result.p_binom.reshape(-1, 1), None, None

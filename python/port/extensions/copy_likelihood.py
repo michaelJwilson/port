@@ -37,8 +37,9 @@ from functools import lru_cache
 from typing import Any, Literal, NamedTuple
 
 import numpy as np
-from scipy.special import gammaln
+from scipy.special import gammaln, xlogy
 
+from port.patch.hmm_nophasing.bb_logpmf import rises
 from port.patch.hmm_nophasing.gradient import DISPERSION_FLOOR
 
 __all__ = [
@@ -111,6 +112,14 @@ def _emission(
     every state's row at once. The terms that do not depend on the state are
     computed once, in the order the sum reads them, so each element is the
     per-state expression's bitwise (#512).
+
+    The negative binomial is in log space with `a = alpha * mean`:
+    `log p = -log1p(a)`, `log(1 - p) = log(a) - log1p(a)` (#560). Forming
+    `p = 1 / (1 + a)` rounded `p` to 1 below `a` of about 1.1e-16, where a
+    count of 0 scored NaN and a count of 1000 `-inf` (truth -43,420 at
+    `a = 1e-19`), and lost digits of `log(1 - p)` below about 1e-4. `alpha`
+    is floored in `a` as in `r`, as `port.patch.hmm_nophasing.nb_logpmf`
+    does.
     """
     x = bulk.counts_nb[bins]
     exposure = bulk.base_nb_mean[bins]
@@ -122,13 +131,14 @@ def _emission(
                 mean <= 0.0, 0.0, x * np.log(mean) - mean - gammaln(x + 1.0)
             )
         else:
-            size = 1.0 / max(bulk.dispersion, DISPERSION_FLOOR)
-            success = 1.0 / (1.0 + bulk.dispersion * mean)
+            dispersion = max(bulk.dispersion, DISPERSION_FLOOR)
+            size = 1.0 / dispersion
+            scaled = dispersion * mean
             fixed = gammaln(x + size) - gammaln(size) - gammaln(x + 1.0)
             depth = np.where(
                 mean <= 0.0,
                 0.0,
-                fixed + size * np.log(success) + x * np.log1p(-success),
+                fixed - (size + x) * np.log1p(scaled) + xlogy(x, scaled),
             )
 
     k = bulk.counts_bb[bins]
@@ -141,13 +151,9 @@ def _emission(
     else:
         a = np.maximum(p * bulk.taus, DISPERSION_FLOOR)
         b = np.maximum((1.0 - p) * bulk.taus, DISPERSION_FLOOR)
-        allele = (
-            choose
-            + gammaln(k + a)
-            + gammaln(n - k + b)
-            - gammaln(n + a + b)
-            - (gammaln(a) + gammaln(b) - gammaln(a + b))
-        )
+        # NB rising factorials (#561): the `lgamma` form subtracts values
+        #    near `tau log tau` and loses 5e-3 nats at `tau = 1e12`.
+        allele = choose + rises(a, k) + rises(b, n - k) - rises(a + b, n)
 
     return np.asarray(depth + allele)
 

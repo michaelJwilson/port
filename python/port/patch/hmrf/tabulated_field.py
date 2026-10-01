@@ -17,6 +17,13 @@ argument, built in the same order of operations as `cnaster`'s
 `lgamma((n + a) + b)`, as upstream writes it -- and the per-bin sums run in
 the fused kernel's order, so `np.array_equal` is the bar against it.
 
+**Under `log_space=True`** the tables are those of
+`port.pipeline.LOG_SPACE_SWAPS`' kernels (#560, #561): the negative binomial
+reads `-r log1p(a) + k (log a - log1p(a))` with `a = alpha lambda`, and the
+beta-binomial's tables hold the rising factorials `R(x, j) = lgamma(x + j) -
+lgamma(x)` from `bb_logpmf.rise`, so no `lgamma(tau)` is subtracted. Bitwise
+the fused kernel's `log_space=True` path again.
+
 **Why not sal's kernels.** `sal.emissions.dense.log_emission` scores every
 state at every observation, where the field reads one per `(bin, clone)`;
 its negative binomial completes the exposure term in its own order (262.9 ulp
@@ -30,12 +37,14 @@ Counts that are not non-negative integers cannot index a table, and
 
 from __future__ import annotations
 
-from math import lgamma, log
+from functools import partial
+from math import lgamma, log, log1p
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
 from numba import njit
 
+from port.patch.hmm_nophasing.bb_logpmf import rise
 from port.patch.hmm_nophasing.gradient import DISPERSION_FLOOR
 from port.patch.hmrf.fused_field import fused_spot_clone_field
 
@@ -66,6 +75,7 @@ def tabulated_spot_clone_field(
     pred,
     rel_valid_emision_weight,
     out,
+    log_space=False,
 ):
     """`fused_spot_clone_field`'s `(n_spots, n_clones)` field, from tables.
 
@@ -110,6 +120,17 @@ def tabulated_spot_clone_field(
     for s in prange(n_states):
         a = max(p_binom[s] * taus[s], EPS)
         b = max((1.0 - p_binom[s]) * taus[s], EPS)
+
+        if log_space:
+            # NB `bb_logpmf.bb_logpmf`'s rising factorials, `j` from 0.
+            denominator[s] = 0.0
+
+            for j in range(bb_extent):
+                first[s, j] = rise(a, float(j))
+                second[s, j] = rise(b, float(j))
+                joint[s, j] = rise(a + b, float(j))
+            continue
+
         denominator[s] = lgamma(a) + lgamma(b) - lgamma(a + b)
 
         for j in range(bb_extent):
@@ -126,7 +147,7 @@ def tabulated_spot_clone_field(
         for o in range(n_obs):
             state = pred[o, c]
             mu = np.exp(log_mu[state])
-            alpha = alphas[state]
+            alpha = max(alphas[state], DISPERSION_FLOOR) if log_space else alphas[state]
             r = sizes[state]
             denom = denominator[state]
 
@@ -137,7 +158,17 @@ def tabulated_spot_clone_field(
                 rdr = 0.0
                 lambda_i = base_nb_mean[o, spot] * mu
 
-                if lambda_i > 0.0:
+                if lambda_i > 0.0 and log_space:
+                    # NB `nb_logpmf._nb_logpmf_1d` (#560): the coefficient,
+                    #    then `- r log1p(a)`, then `k (log a - log1p(a))`.
+                    a = alpha * lambda_i
+                    k = counts_nb[o, spot]
+                    rdr = (
+                        nb_coefficient[state, int(k)]
+                        - r * log1p(a)
+                        + k * (log(a) - log1p(a))
+                    )
+                elif lambda_i > 0.0:
                     p = 1.0 / (1.0 + alpha * lambda_i)
                     k = counts_nb[o, spot]
 
@@ -162,10 +193,19 @@ def tabulated_spot_clone_field(
                     binomial = (
                         log_factorial[nn] - log_factorial[kk] - log_factorial[nn - kk]
                     )
-                    numerator = (
-                        first[state, kk] + second[state, nn - kk] - joint[state, nn]
-                    )
-                    baf = binomial + numerator - denom
+                    if log_space:
+                        # NB `bb_logpmf.bb_logpmf`'s order.
+                        baf = (
+                            binomial
+                            + first[state, kk]
+                            + second[state, nn - kk]
+                            - joint[state, nn]
+                        )
+                    else:
+                        numerator = (
+                            first[state, kk] + second[state, nn - kk] - joint[state, nn]
+                        )
+                        baf = binomial + numerator - denom
 
                 accumulated_baf[spot] += baf
 
@@ -191,17 +231,24 @@ def _integral(values: np.ndarray) -> bool:
 
 
 def field_kernel(
-    counts_nb: np.ndarray, counts_bb: np.ndarray, total_bb_RD: np.ndarray
+    counts_nb: np.ndarray,
+    counts_bb: np.ndarray,
+    total_bb_RD: np.ndarray,
+    *,
+    log_space: bool = False,
 ) -> Any:
     """The kernel :func:`spot_clone_field` would run on these counts.
 
     The choice reads every count, so a caller scoring the same counts more
-    than once -- per clone, per sweep -- makes it once (#488).
+    than once -- per clone, per sweep -- makes it once (#488). `log_space`
+    is bound into the kernel it returns.
     """
     if _integral(counts_nb) and _integral(counts_bb) and _integral(total_bb_RD):
-        return tabulated_spot_clone_field
+        kernel = tabulated_spot_clone_field
+    else:
+        kernel = fused_spot_clone_field
 
-    return fused_spot_clone_field
+    return partial(kernel, log_space=True) if log_space else kernel
 
 
 def spot_clone_field(
@@ -216,10 +263,13 @@ def spot_clone_field(
     pred: np.ndarray,
     rel_valid_emision_weight: np.ndarray,
     out: np.ndarray,
+    *,
+    log_space: bool = False,
 ) -> Any:
     """The field from tables where the counts are integers, else the fused kernel's.
 
-    Both write `out`, and the two are bitwise equal where both apply.
+    Both write `out`, and the two are bitwise equal where both apply, with
+    `log_space` or without.
     """
     arguments = (
         counts_nb,
@@ -235,4 +285,6 @@ def spot_clone_field(
         out,
     )
 
-    return field_kernel(counts_nb, counts_bb, total_bb_RD)(*arguments)
+    return field_kernel(counts_nb, counts_bb, total_bb_RD, log_space=log_space)(
+        *arguments
+    )

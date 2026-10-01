@@ -1,6 +1,6 @@
 """#489: `sal`'s count-pair mixture starts on the read-depth + BAF HMM call, under the covariate.
 
-Three steps, each a subcommand of `python -m tests.studies.hmm_starts`:
+Two steps, each a subcommand of `python -m tests.studies.hmm_starts`:
 
 `capture SAMPLE OUT`
     One `--sal --hmm-start none --no-plots` arm, pickling every call of the
@@ -14,9 +14,10 @@ Three steps, each a subcommand of `python -m tests.studies.hmm_starts`:
     Port's `distinct` start is registered beside `sal`'s and run in-process
     (the pool's workers start fresh). `CONFIG` is the run's `config.yaml`,
     whose `hmm` section `distinct` reads.
-`figure DIR OUT.png`
-    The gap below the best fit reached against runtime, one panel per
-    sample, by `sal.qa.starts.gap_panels`.
+
+Its figure, `docs/plots/studies/hmm_starts.png`, is retired: #540's
+`docs/nb/copy_state_starts.ipynb` draws runtime against gap for every start
+on both stages.
 
 A pseudobulk of inferred clones has no generating truth, so the reference is
 the highest log-likelihood any trial reached and every gap is >= 0.
@@ -57,22 +58,6 @@ STARTS = (
     "datax5+em",
     "annealx5+em",
 )
-#: The surrogate starts hand over one fit between them; anneal stands for them.
-SHOWN = (
-    "distinct",
-    "prior",
-    "data",
-    "kmeans++",
-    "emission++",
-    "hmc",
-    "anneal",
-    "burn-in",
-    "datax5+em",
-    "kmeans++x5+em",
-    "emission++x5+em",
-    "annealx5+em",
-)
-SAMPLES = {"r0": "dev_tree 60 x 50", "easy": "CalicoST easy", "hard": "CalicoST hard"}
 _CALL: dict[str, Any] = {}
 
 
@@ -208,50 +193,6 @@ def per_call(config: Path, out: Path, init: Path, names: list[str]) -> None:
         )
 
 
-def figure(directory: Path, out: Path) -> None:
-    """Gap below the best fit reached against runtime, one panel per sample."""
-    import matplotlib as mpl
-
-    mpl.use("Agg")
-    from sal.qa.starts import gap_panels, start_styles
-    from sal.qa.style import notebook_style
-    from sal.search.mixture_starts import gap_band
-
-    grid = np.geomspace(1e-2, float(BUDGET_SECONDS), 400)
-    panels: dict[str, dict[str, Any]] = {}
-    final: dict[str, dict[str, float]] = {}
-    names: list[str] = []
-
-    for tag, title in SAMPLES.items():
-        with (directory / f"trials_{tag}.pkl").open("rb") as fh:
-            held = pickle.load(fh)
-        trials = held["trials"]
-        best = max(
-            float(t.polished.log_likelihoods[-1]) for ts in trials.values() for t in ts
-        )
-        gaps = {
-            n: float(
-                np.mean([best - float(t.polished.log_likelihoods[-1]) for t in ts])
-            )
-            for n, ts in trials.items()
-        }
-        keep = sorted((n for n in trials if n in SHOWN), key=gaps.__getitem__)
-        heading = f"{title}, {held['n']:,} bins x clones"
-        panels[heading] = {n: gap_band(trials[n], best, grid) for n in keep}
-        final[heading] = {n: gaps[n] for n in keep}
-        names += [n for n in keep if n not in names]
-
-    with notebook_style():
-        drawn = gap_panels(
-            panels,
-            final,
-            start_styles(names),
-            ylabel="gap below the best fit reached [nats]",
-            legend_above=0.3,
-        )
-        drawn.savefig(out, dpi=150, bbox_inches="tight", metadata={"Software": None})
-
-
 def main(argv: list[str] | None = None) -> None:
     """The three subcommands."""
     parser = argparse.ArgumentParser(description=(__doc__ or "").splitlines()[0])
@@ -264,17 +205,12 @@ def main(argv: list[str] | None = None) -> None:
     two.add_argument("out", type=Path)
     two.add_argument("init", type=Path)
     two.add_argument("starts", nargs="*")
-    three = sub.add_parser("figure")
-    three.add_argument("directory", type=Path)
-    three.add_argument("out", type=Path)
     arguments = parser.parse_args(argv)
 
     if arguments.command == "capture":
         capture(arguments.sample, arguments.out)
-    elif arguments.command == "per-call":
-        per_call(arguments.config, arguments.out, arguments.init, arguments.starts)
     else:
-        figure(arguments.directory, arguments.out)
+        per_call(arguments.config, arguments.out, arguments.init, arguments.starts)
 
 
 if __name__ == "__main__":

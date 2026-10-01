@@ -297,13 +297,16 @@ def pipeline_clone_assignment(
     *,
     label_solver: str = "icm",
     floor_merge: bool = False,
+    log_space: bool = False,
 ) -> tuple[np.ndarray, np.ndarray, float]:
     """What `cnaster.hmrf.pipeline_clone_assignment` returns, computed leaner.
 
     `label_solver` names the solver (`port.extensions.label_solver.SOLVERS`;
     `"icm"` is `cnaster`'s) and `floor_merge` replaces the ICM's floor with
     :func:`port.patch.icm.floor.enforce_floor`. `run_cnaster_port` binds
-    both at install, `--sal` and `--floor-merge` (#517).
+    both at install, `--sal` and `--floor-merge` (#517), and `log_space`
+    with `port.pipeline.LOG_SPACE_SWAPS`: the field's kernels are then that
+    table's (#560, #561).
     """
     import cnaster.hmrf as upstream
 
@@ -418,6 +421,7 @@ def pipeline_clone_assignment(
             #    the declared scale there is nothing to win by taking that
             #    risk.
             np.empty((n_spots, n_clones)),
+            log_space=log_space,
         )
     else:
         # NB the shift is the **candidate** clone's, not the spot's current
@@ -434,7 +438,12 @@ def pipeline_clone_assignment(
         # NB the counts are the same for every clone, so the kernel is chosen
         #    once rather than per column, and the rescaled exposure written
         #    into one buffer (#488).
-        kernel = field_kernel(pooled_X[:, 0, :], pooled_X[:, 1, :], pooled_total_bb_RD)
+        kernel = field_kernel(
+            pooled_X[:, 0, :],
+            pooled_X[:, 1, :],
+            pooled_total_bb_RD,
+            log_space=log_space,
+        )
         scaled = np.empty_like(pooled_base_nb_mean)
 
         for clone in range(n_clones):

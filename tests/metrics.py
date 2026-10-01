@@ -24,6 +24,7 @@ import argparse
 import datetime
 import hashlib
 import json
+import math
 import shlex
 import subprocess
 import sys
@@ -42,7 +43,23 @@ METRICS = {
     "clone_ari": ("ari", 4),
     "clone_ari_int": ("ari_integer", 4),
     "copy_ari": ("copy_ari", 4),
+    "copy_ari_loh": ("copy_ari_loh", 4),
+    "copy_ari_bgain": ("copy_ari_balanced_gain", 4),
+    "copy_ari_ugain": ("copy_ari_unbalanced_gain", 4),
+    "copy_ari_pf": ("copy_ari_pf", 4),
+    "copy_ari_loh_pf": ("copy_ari_loh_pf", 4),
+    "copy_ari_bgain_pf": ("copy_ari_balanced_gain_pf", 4),
+    "copy_ari_ugain_pf": ("copy_ari_unbalanced_gain_pf", 4),
     "state_ari": ("state_ari", 4),
+    "exact_altered": ("exact_altered", 4),
+    "exact_altered_pf": ("exact_altered_minor", 4),
+    "exact_loh": ("exact_loh", 4),
+    "exact_loh_pf": ("exact_loh_pf", 4),
+    "exact_bgain": ("exact_balanced_gain", 4),
+    "exact_bgain_pf": ("exact_balanced_gain_pf", 4),
+    "exact_ugain": ("exact_unbalanced_gain", 4),
+    "exact_ugain_pf": ("exact_unbalanced_gain_pf", 4),
+    "exact_neutral": ("exact_neutral", 4),
     "wall_s": ("wall", 1),
     "peak_gb": ("peak_gb", 2),
 }
@@ -103,6 +120,32 @@ def read(path: Path = TABLE) -> list[dict[str, str]]:
     ]
 
 
+def check_identity(fixture: str, digest: str, rows: list[dict[str, str]]) -> None:
+    """One name, one dataset (#588): refuse a row whose fixture holds another
+    `fixture_hash` in `rows`, or whose hash another fixture; raises otherwise.
+
+    A new generation under an old name would otherwise share its history
+    panel with data it was never measured on.
+    """
+    hashes = {r["fixture_hash"] for r in rows if r["fixture"] == fixture} - {digest}
+    names = {r["fixture"] for r in rows if r["fixture_hash"] == digest} - {fixture}
+    if hashes or names:
+        msg = (
+            f"{fixture} hashes to {digest}, but the table also holds {fixture} "
+            f"as {sorted(hashes)} and {digest} as {sorted(names)}: one fixture "
+            "name names one dataset"
+        )
+        raise ValueError(msg)
+
+
+def append(line: str, *, fixture: str, digest: str) -> None:
+    """Append `line` to `TABLE`, after `check_identity` against its rows."""
+    check_identity(fixture, digest, read())
+    with TABLE.open("a") as table:
+        table.write(line + "\n")
+    print(line)
+
+
 def _git(*arguments: str) -> str:
     return subprocess.run(
         ["git", *arguments], cwd=ROOT, capture_output=True, text=True, check=True
@@ -143,7 +186,9 @@ def row(
     }
     for column, (key, decimals) in METRICS.items():
         value = recovery.get(key)
-        cells[column] = UNMEASURED if value is None else f"{value:.{decimals}f}"
+        # NB NaN is a class the sample does not plant, unmeasured as None is
+        missing = value is None or math.isnan(value)
+        cells[column] = UNMEASURED if missing else f"{value:.{decimals}f}"
     return "| " + " | ".join(cells[c] for c in COLUMNS) + " |"
 
 
@@ -196,9 +241,7 @@ def record(arguments: argparse.Namespace) -> int:
         note=arguments.note,
         dirty=dirty,
     )
-    with TABLE.open("a") as table:
-        table.write(line + "\n")
-    print(line)
+    append(line, fixture=fixture, digest=recovery["fixture_hash"])
     return 0
 
 
@@ -207,7 +250,9 @@ def record_sample(arguments: argparse.Namespace, *, dirty: bool) -> int:
 
     `r0` is `dev_tree`'s realization 0, drawn if absent and refused unless it
     is the one `tests.sim_stages` names; `easy` and `hard` are CalicoST's.
-    The fixture hash is the sample's content hash (`realization_hash`).
+    The fixture hash is the sample's content hash (`realization_hash`), and
+    a name the table already holds under another hash is refused before the
+    run (`check_identity`).
     """
     from tests.sim_stages import r0, realization_hash
 
@@ -220,6 +265,11 @@ def record_sample(arguments: argparse.Namespace, *, dirty: bool) -> int:
 
         sample = SAMPLES.get(arguments.sample, arguments.sample)
         path = SIM_ROOT / sample
+
+    # NB checked before the run as well as at the append, so a refused name
+    #    costs no run
+    digest = realization_hash(path)
+    check_identity(arguments.sample, digest, read())
 
     audit = [
         *(item for entry in arguments.set for item in ("--set", entry)),
@@ -239,7 +289,7 @@ def record_sample(arguments: argparse.Namespace, *, dirty: bool) -> int:
         return completed.returncode or 1
 
     recovery = json.loads(lines[-1].removeprefix("SIM "))
-    recovery["fixture_hash"] = realization_hash(path)
+    recovery["fixture_hash"] = digest
     line = row(
         recovery,
         fixture=arguments.sample,
@@ -248,9 +298,7 @@ def record_sample(arguments: argparse.Namespace, *, dirty: bool) -> int:
         dirty=dirty,
         test=SIM_TEST,
     )
-    with TABLE.open("a") as table:
-        table.write(line + "\n")
-    print(line)
+    append(line, fixture=arguments.sample, digest=recovery["fixture_hash"])
     return 0
 
 
