@@ -104,6 +104,54 @@ null).
 names; one name repeats 16 times there and twice here. At each name's first
 row the two agree in `(A, B)`.
 
+## CalicoST-compatible set
+
+`run_cnaster_port --calicost-outputs` also writes CalicoST's file set
+(`calicost_supervised.py:360-445`) into `calicost_compatible/` in each run
+directory, filled from the stage files above:
+
+- `cnv_seglevel.tsv`: `CHR START END`, then `clone{c} A` and `clone{c} B`
+  per clone, the integer decode's pairs;
+- `cnv_perstate.tsv`: `clone{c} logmu`, `p`, `A` and `B` per HMM state;
+- `cnv_genelevel.tsv`: gene names, sorted, with `clone{s} A` and `clone{s} B`;
+- `clone_labels.tsv`: indexed by `BARCODES`, with `clone_label` and, given
+  an input tumour proportion, `tumor_proportion`;
+- `posterior_clone_probability.npy`: the HMRF's posterior over clones,
+  `(n_spots, n_clones)`;
+- `normal_candidate_barcodes.txt`: the normal candidates' positions among
+  the spots, one per line, as CalicoST writes them under that name;
+- `rdrbaf_final_nstates{K}_smp.npz`: CalicoST's nine keys, in its order.
+
+**Why a subdirectory.** The set reuses `cnaster`'s file names with other
+contents. A subdirectory named after neither tool keeps both sets, and it
+is not `calicost/`, which is what a CalicoST run's own directory is called
+in `tests/data/benchmarks`. `port.extensions.outputs.primary` and
+`run_directories` skip it, so scoring reads the run's own files.
+
+**Spots** are in the run's order, the order of the HMRF's posterior and
+`.npz`. Where the run has several samples, a barcode gets `_<sample>` unless
+it already ends with it, as CalicoST's joint runs name them. **Clones** are
+`cnaster`'s, before #518's merge, so the posterior's columns are the HMRF's.
+A posterior is written only where the HMRF's last labelling is the final
+one relabelled. Its columns are then renormalized over the clones that
+survived.
+
+**Differences** (`port.extensions.outputs.CALICOST_DIFFERENCES`).
+`tests/test_calicost_outputs.py` compares the set with the committed
+CalicoST run: file names, headers as clone-free templates, dtypes,
+`clone_labels.tsv`'s index, the `.npz`'s keys and dimensions, and the
+posterior's shape. It reads `cnv_seglevel.tsv` through CalicoST's
+`get_LoH_for_phylogeny`, and fails on any difference not listed here.
+
+| difference | regime | why it is a choice |
+| --- | --- | --- |
+| `absent cnv_event.tsv` | every run | CalicoST c1abcae's `summary_events` calls `strict_convert_copy_to_states`, which no CalicoST module defines (`utils_IO.py:1257`). It raises `NameError` once any clone has more than 10 bins off 0.5 BAF, so neither tool can write the file at this pin |
+| `absent cnv_diploid_seglevel.tsv`, `absent cnv_diploid_perstate.tsv`, `absent cnv_diploid_genelevel.tsv`, `absent cnv_diploid_event.tsv`, `absent cnv_triploid_seglevel.tsv`, `absent cnv_triploid_perstate.tsv`, `absent cnv_triploid_genelevel.tsv`, `absent cnv_triploid_event.tsv`, `absent cnv_tetraploid_seglevel.tsv`, `absent cnv_tetraploid_perstate.tsv`, `absent cnv_tetraploid_genelevel.tsv`, `absent cnv_tetraploid_event.tsv` | every run | port's lattice decode is one decode, so there are no fixed-ploidy passes to write. A copy under the diploid name would claim a constraint that no decode applied |
+| `absent mergedallspots_nstates{K}_sp.npz` | every run | CalicoST's BAF-stage checkpoint, which is not an output; port's BAF-stage clones are `spot_labels.tsv`'s `clone_label_baf` |
+| `absent calicost_config.txt`, `absent input_filelist.tsv`, `absent run.json` | every run | CalicoST's own run records; port's are the run directory's `run.json` and its configuration |
+| `npz values new_log_mu` | shifted runs | one shared table: column `c` is `log_mu - log_mu_shift_c`, the rate the shifted emission applies to `base_nb_mean`. CalicoST fits one table per clone |
+| `npz values new_alphas new_p_binom new_taus` | every run | shared by every clone, so they are repeated per column |
+
 ## Columns
 
 ### `run.json`
