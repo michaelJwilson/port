@@ -1,6 +1,6 @@
 # Study: recovery across a population of simulations (#544)
 
-**TL;DR:** `run_cnaster_port --sal` on 679 runs, each drawn from its own seed of `population.toml`:
+**TL;DR:** `run_cnaster_port --sal` on 679 runs, each drawn from its own seed of `population.toml` (seed 0 hashes to `1ef7403e`):
 - **Clones.** A clone is detected at half its rate at **10^6.08 UMIs** (95% interval [6.01, 6.16], about 1.2 × 10⁶). The coupling J = 1.0 and 1.4 give the same value. At J = 0.8 and 2.8 the threshold is 0.05–0.21 dex higher, and the paired intervals exclude zero.
 - **CNAs at J = 1.**
   - LOH is recovered at half its rate at **12.6 Mb** (L50 10^7.10).
@@ -28,6 +28,7 @@ The page is set as `combined.pdf`'s spatial row: 4.80 in wide, 7 pt text.
   - CNA lengths are exponential with mean 20 Mb and a floor of 1 Mb.
   - Counts come from the Pólya urn (#549).
   - `population_long.toml` is the same with a mean length of 60 Mb.
+  - A member's hash is `tests.sim_stages.realization_hash` of its drawn r0; the table names the first seed's of each manifest.
 - **Runs.** Each member runs `run_cnaster_port --sal --no-plots` once per `hmrf.spatial_weight` J. J_c = ln 2 is the critical coupling of the q = 4 Potts model on the triangular lattice; J runs from 1.15 to 4 × J_c.
 - **Scoring.**
   - Clones are matched by overlap on `clone_labels.tsv`.
@@ -37,9 +38,9 @@ The page is set as `combined.pdf`'s spatial row: 4.80 in wide, 7 pt text.
 
 | Stage | Seeds | Manifest | J | Records |
 | --- | --- | --- | --- | --- |
-| 1 | 0–79 | population | 0.8, 1.0, 1.4, 2.8 | 312 |
+| 1 | 0–79 | population (seed 0 `1ef7403e`) | 0.8, 1.0, 1.4, 2.8 | 312 |
 | 2 | 80–199 | population | 1.0 | 115 |
-| 3 | 1000–1059 | population_long | 1.0 | 58 |
+| 3 | 1000–1059 | population_long (seed 1000 `e68161e9`) | 1.0 | 58 |
 | 4 | 1060–1259 | population_long | 1.0 | 194 |
 
 - **Panel (a)** reads the 76 members that ran at every J. The comparison is paired: the same members and the same resamples at each J.
