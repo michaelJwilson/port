@@ -2,8 +2,10 @@
 
 Three kinds of test, by what decides them:
 
-- **`bug`**: a defect, written to fail when fixed. Port's two are #415's to
-  patch; `cnaster`'s stay pinned, and are not reported upstream.
+- **`bug`**: a defect, written to fail when fixed. Port's are #415's to
+  patch -- the `jax` gradient's `nan` at a zero-exposure bin was fixed by
+  #560 and is now `analytic` -- and `cnaster`'s stay pinned, and are not
+  reported upstream.
 - **`warning`**: a convention that is defensible and suspicious -- a sentinel,
   a fill, a silent `inf`.
 - **`oracle` / `patch`**: edges that are right today, against scipy or
@@ -145,13 +147,14 @@ def _jax_arguments() -> dict[str, np.ndarray]:
     }
 
 
-@pytest.mark.bug
-def test_one_zero_exposure_bin_makes_the_jax_gradient_nan() -> None:
-    """The masked branch of `jnp.where` is `0 * log1p(-1) = nan`, and it reaches the gradient.
+@pytest.mark.analytic
+def test_a_zero_exposure_bin_leaves_the_jax_gradient_finite() -> None:
+    """`jax.grad` of the emission is its central difference with a zero-exposure bin present.
 
-    The value is right -- a zero-exposure bin contributes 0, `cnaster`'s
-    convention -- and a central difference of it is finite; only the
-    gradient `jax` differentiates through the discarded branch is `nan`.
+    Checked against a central difference of the same total, to 1e-6
+    relative. The masked branch of `jnp.where` was `0 * log1p(-1) = nan` and
+    reached the gradient; #560's log-space score masks the mean before it
+    enters a log, so the discarded branch is finite.
     """
     import jax
     import jax.numpy as jnp
@@ -169,11 +172,8 @@ def test_one_zero_exposure_bin_makes_the_jax_gradient_nan() -> None:
     central = (total(log_mu + bump) - total(log_mu - bump)) / (2 * step)
     gradient = np.asarray(jax.grad(total)(log_mu))
 
-    assert np.isfinite(float(total(log_mu)))
-    assert np.isfinite(float(central))
-    assert np.isnan(gradient).all(), (
-        "the gradient is finite at a zero-exposure bin: the where is fixed"
-    )
+    assert np.isfinite(gradient).all()
+    np.testing.assert_allclose(gradient[0, 0], float(central), rtol=1e-6)
 
 
 # --- warning ---------------------------------------------------------------
