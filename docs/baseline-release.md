@@ -4,7 +4,8 @@
 fixtures, in 67–264 s and ≤ 6.1 GB; CalicoST finishes none of the three it was
 run on within 30 minutes (`docs/final-benchmark.md`). `dev_tree_1s_hard`
 fails at 0.21 (2 clones of 4), by the integer-clone merge (#575). Balanced
-gains are recovered at 0.000 everywhere (#573).
+gains are recovered at 0.000 on four fixtures and 0.878 on
+`dev_tree_1s_easy` r0 (#573).
 
 ## Conditions
 
@@ -58,8 +59,11 @@ clones.
 - **Copy states.** Copy ARI is 0.97–0.98 on the `dev_tree` family and 0.90 on
   CalicoST. Phased exact altered on hard, 0.036 against 0.627 phase-free, has
   been at that level since #487's lattice decode (#565).
-- **Classes.** Balanced gains (A = B > 1) score 0.000 on every fixture and in
-  every #566 arm (#573).
+- **Classes.** Balanced gains (A = B > 1) score 0.000 on CalicoST easy and
+  hard, `dev_tree` r0 and `dev_tree_1s_hard` r0, and 0.878 on
+  `dev_tree_1s_easy` r0. Each run puts the planted (2, 2) bins in the same
+  HMM state as that clone's neutral bins, so only the per-bin decode can
+  separate them (#573).
 - **Runtime.** 67–74 s on CalicoST's 1-slice samples, 111–157 s on the
   `dev_tree_1s` family, 232–264 s on 2-slice `dev_tree`. CalicoST, uncapped,
   takes 20,243 s on `dev_tree` r0 for 0.8538 (6 clones).
