@@ -263,7 +263,7 @@ follows the arm unless asked: on in a patched run, off with `--no-patch`.
 | `--distinct-init` | on where the shift is | the HMM starts from distinct GMM components (#348) | copy-state ARI 0.896 to 0.997 on `calicost_instance` |
 | `--copy-cap` | on; off with `--no-patch` | the likelihood decode under the configured cap (#313, #362) | `cnaster`'s decoders read no cap: A + B <= 6 |
 | `--copy-decode` | `lattice` | per-clone lattice Viterbi with tumour fraction (#370), or one pair per state, `shared` (#327) | |
-| `--parsimony-decode` | off: flat prior | the lattice decode's log-prior `-0.5 \|A + B - 2\|` per bin, on by default before T- #471; refused without the lattice decode | |
+| `--parsimony-decode` | off: flat prior | the lattice decode's log-prior `-0.5 \|A + B - 2\|` per bin, on by default before T- #471; refused without the lattice decode | PR- #609, `--sal`: copy ARI off 0.7213 / 0.068, on 0.9035 / 0.9181 on CalicoST easy (`2d4ce9a9`) / hard (`8797710b`) |
 | `--rust` | on; off with `--no-patch` | `cnaster`'s four lattices from `oxiport` (#318) | bitwise; compiled at build, not per process |
 | `--sal` | off | alpha expansion with the Rust cut for the labelling (#312), and the next two | a lower Potts energy on every problem measured |
 | `--refinement-mask` | off; on with `--sal` | each read-depth sub-clone kept in its BAF clone, a 100-nat penalty (#348, #467) | with the floor merge, CalicoST hard clone ARI 0.303 to 0.982 |
