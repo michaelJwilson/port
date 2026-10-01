@@ -398,7 +398,7 @@ def test_the_writer_returns_the_planted_states_of_a_perfect_decode(
     path its planted states, the posterior one-hot on them, one `(A, B)` per
     state, a shift per clone -- is read back as the truth: every bin's `p`
     the planted state's, its `logmu` through `Z` in `cnv_states.tsv` the
-    planted state's, and its and its segment's `mu` the planted rate times
+    planted state's, and its and its segment's `mu` the planted rate over
     `exp(shift)`, the amplification's `mu` 5.0 and `p` 0.88 exactly, and the
     segments the planted runs of state within each chromosome."""
     from port.extensions.outputs import binlevel, segments, states
@@ -447,7 +447,7 @@ def test_the_writer_returns_the_planted_states_of_a_perfect_decode(
         )
         scale = np.exp(fit["new_log_mu_shift"][clone])
         np.testing.assert_allclose(
-            table[f"clone{clone} mu"], mu_planted[path] * scale, rtol=1e-12
+            table[f"clone{clone} mu"], mu_planted[path] / scale, rtol=1e-12
         )
         np.testing.assert_allclose(
             table[f"clone{clone} p"], p_planted[path], rtol=1e-12
@@ -463,7 +463,7 @@ def test_the_writer_returns_the_planted_states_of_a_perfect_decode(
             runs.states, [str(s) for s in path[runs.first_bin]]
         )
         np.testing.assert_allclose(
-            runs.mu, mu_planted[path[runs.first_bin]] * scale, rtol=1e-12
+            runs.mu, mu_planted[path[runs.first_bin]] / scale, rtol=1e-12
         )
 
     amplified = int(np.argmax(mu_planted))
@@ -531,7 +531,7 @@ SHIFT = np.array([0.0, 0.11, -0.07])
 def test_a_bin_s_mu_is_its_state_s_rate_with_the_clone_s_shift(
     tmp_path: Path,
 ) -> None:
-    """`clone{c} mu` is `exp(logmu[Z] + shift_c)` to 1e-12, from the `.npz`
+    """`clone{c} mu` is `exp(logmu[Z] - shift_c)` to 1e-12, from the `.npz`
     directly, and differs from the posterior mean of the state rates where
     the posterior splits; a segment's `mu` is that rate's mean over its bins
     (#613)."""
@@ -544,7 +544,7 @@ def test_a_bin_s_mu_is_its_state_s_rate_with_the_clone_s_shift(
 
     for clone, position in zip(IDS, POSITIONS, strict=True):
         path = seglevel[f"clone{clone} Z"].to_numpy()
-        expected = np.exp(log_mu[path] + SHIFT[position])
+        expected = np.exp(log_mu[path] - SHIFT[position])
         mu = table[f"clone{clone} mu"].to_numpy()
         np.testing.assert_allclose(mu, expected, rtol=1e-12)
 
@@ -564,7 +564,7 @@ def test_a_bin_s_mu_is_its_state_s_rate_with_the_clone_s_shift(
 
 @pytest.mark.infra
 def test_written_mu_joins_cnv_states_and_the_manifest_shift(tmp_path: Path) -> None:
-    """On file, `clone{c} mu` is `exp(logmu + log_mu_shift)`: `logmu` from
+    """On file, `clone{c} mu` is `exp(logmu - log_mu_shift)`: `logmu` from
     `cnv_states.tsv` joined on `(clone, state)` with `clone{c} Z`, the shift
     from `manifest.json` at the clone's position; a run recording no shift
     writes `exp(logmu)` (#613)."""
@@ -583,6 +583,52 @@ def test_written_mu_joins_cnv_states_and_the_manifest_shift(tmp_path: Path) -> N
             offset = 0.0 if shift is None else manifest["log_mu_shift"][position]
             np.testing.assert_allclose(
                 bins[f"clone{clone} mu"],
-                np.exp(logmu.to_numpy()[bins[f"clone{clone} Z"].to_numpy()] + offset),
+                np.exp(logmu.to_numpy()[bins[f"clone{clone} Z"].to_numpy()] - offset),
                 rtol=1e-12,
             )
+
+
+@pytest.mark.oracle
+def test_a_bin_s_mu_is_the_rate_the_shifted_emission_evaluates(
+    tmp_path: Path,
+) -> None:
+    """Per clone, port's shifted emission of each bin's state scores the bin
+    as `cnaster`'s unshifted emission does at exposure `base * clone{c} mu`
+    and `log_mu = 0`: the written `mu` is the rate the fit used (#613)."""
+    from cnaster.hmm_nophasing import hmm_nophasing as upstream
+    from port.extensions.outputs import binlevel
+    from port.patch.hmm_nophasing import hmm_nophasing
+    from port.pipeline import with_attributes
+
+    seglevel, _, fit = _load(_run(tmp_path, shift=SHIFT))
+    table = binlevel(seglevel, fit)
+    shifted = with_attributes(hmm_nophasing, apply_logmu_shift=True)
+    rng = np.random.default_rng(7)
+    X = np.stack(
+        [rng.poisson(40, (N_BINS, 1)), rng.integers(0, 10, (N_BINS, 1))], axis=1
+    ).astype(float)
+    base = rng.uniform(20, 60, (N_BINS, 1))
+    total = np.full((N_BINS, 1), 10.0)
+    alphas, taus = np.full((N_STATES, 1), 0.1), np.full((N_STATES, 1), 30.0)
+    previous = hmm_nophasing._row_shift
+
+    try:
+        for clone, position in zip(IDS, POSITIONS, strict=True):
+            hmm_nophasing._row_shift = np.full(N_BINS, SHIFT[position])
+            ours = shifted.compute_emission_probability_nb_betabinom(
+                X, base, fit["new_log_mu"], alphas, total, fit["new_p_binom"], taus
+            )[0]
+            theirs = upstream.compute_emission_probability_nb_betabinom(
+                X,
+                base * table[f"clone{clone} mu"].to_numpy()[:, None],
+                np.zeros((N_STATES, 1)),
+                alphas,
+                total,
+                fit["new_p_binom"],
+                taus,
+            )[0]
+            path = table[f"clone{clone} Z"].to_numpy()
+            bins = np.arange(N_BINS)
+            np.testing.assert_allclose(ours[path, bins], theirs[path, bins], rtol=1e-12)
+    finally:
+        hmm_nophasing._row_shift = previous

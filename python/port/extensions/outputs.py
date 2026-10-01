@@ -30,10 +30,13 @@ all but `clone_labels.tsv`, below -- in each run directory that holds a
   sample names in code order, and what `run_cnaster_port` was asked for.
 
 **A bin's `mu` is its state's rate in its clone** (#613): `clone{c} mu =
-exp(logmu[Z_c] + shift_c)`, with `logmu` the state's in `cnv_states.tsv`,
+exp(logmu[Z_c] - shift_c)`, with `logmu` the state's in `cnv_states.tsv`,
 `Z_c` the bin's `clone{c} Z` and `shift_c` the clone's HMM log-rate shift,
 `new_log_mu_shift` in the `.npz` and `log_mu_shift` in `manifest.json`;
-zero where the run records none. Not the integer decode's shift. It was the
+zero where the run records none: `mu / Z_c`, the rate the shifted emission
+(`port.patch.hmm_nophasing`) and the lattice decode
+(`port.extensions.copy_likelihood`) evaluate. Not the integer decode's
+shift. It was the
 posterior mean of the state rates, a rate of no state. `cnaster`'s own
 `clone{c} logmu` in `cnv_seglevel.tsv` is `logmu[Z_c]`, without the shift.
 
@@ -128,7 +131,7 @@ def clone_columns(seglevel: pd.DataFrame, pred_cnv: np.ndarray) -> dict[str, int
 
 
 def _rates(fit: dict[str, Any], position: int, path: np.ndarray) -> np.ndarray:
-    """`exp(logmu[Z] + shift)` per bin of one clone: its state's rate, shifted.
+    """`exp(logmu[Z] - shift)` per bin of one clone: its state's rate, shifted.
 
     The shift is `new_log_mu_shift` at the clone's position, zero where the
     run records none.
@@ -139,7 +142,7 @@ def _rates(fit: dict[str, Any], position: int, path: np.ndarray) -> np.ndarray:
     )
     none = recorded.size == 1 and bool(np.isnan(recorded[0]))
     offset = 0.0 if none else float(recorded[position])
-    rates: np.ndarray = np.exp(fit["new_log_mu"][path, 0] + offset)
+    rates: np.ndarray = np.exp(fit["new_log_mu"][path, 0] - offset)
     return rates
 
 
@@ -181,7 +184,7 @@ def states(
 def binlevel(seglevel: pd.DataFrame, fit: dict[str, Any]) -> pd.DataFrame:
     """Per bin and clone: the fitted state `Z`, its rate `mu` and the posterior-mean `p`.
 
-    `clone{c} mu = exp(logmu[Z] + shift_c)`: the state's rate with the
+    `clone{c} mu = exp(logmu[Z] - shift_c)`: the state's rate with the
     clone's HMM shift (#613).
     """
     frame = seglevel[["CHR", "START", "END"]].copy()
@@ -199,7 +202,7 @@ def binlevel(seglevel: pd.DataFrame, fit: dict[str, Any]) -> pd.DataFrame:
 def segments(seglevel: pd.DataFrame, fit: dict[str, Any]) -> pd.DataFrame:
     """Per clone, the runs of equal `(A, B)` within a chromosome.
 
-    `mu` is the mean over the run's bins of `exp(logmu[Z] + shift_c)`: the
+    `mu` is the mean over the run's bins of `exp(logmu[Z] - shift_c)`: the
     single state's rate where the run spans one state, as `states` lists
     (#613).
     """

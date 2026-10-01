@@ -281,7 +281,7 @@ follows the arm unless asked: on in a patched run, off with `--no-patch`.
 `cnv_states.tsv` (each fitted state, the `(A, B)` each clone decodes it to,
 and its share of the clone's bins), `cnv_segments.tsv` (runs of equal
 `(A, B)`, with the mean `mu` over the run), `cnv_binlevel.tsv` (each
-bin's state `Z`, its rate `mu = exp(logmu[Z] + log_mu_shift_c)` with the
+bin's state `Z`, its rate `mu = exp(logmu[Z] - log_mu_shift_c)` with the
 clone's HMM shift, #613, and the posterior-mean `p`),
 `clone_labels_integer.tsv` (each spot's clone named by its integer copy
 profile: clones whose `(A, B)` agree at no less than
