@@ -9,8 +9,5 @@ docs/plots/*.png binary merge=badges
 docs/plots/*.npz binary merge=badges
 
 # Lines are appended, one per run and one per measured value, so two branches
-# that each record a run both keep theirs (#409, #620). `docs/metrics.md` is
-# generated from them: after such a merge, `python -m tests.metrics --render`
-# rewrites it, and `tests/test_metrics_table.py` fails until it does.
+# that each record a run both keep theirs (#409, #620).
 docs/metrics/*.tsv merge=union
-docs/metrics.md merge=union

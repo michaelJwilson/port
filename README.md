@@ -558,8 +558,7 @@ not carry, not before.
 | [STATUS.md](STATUS.md) | What has landed, with the measurement that established it |
 | [CLAUDE.md](CLAUDE.md) | The rules |
 | [docs/measurements.md](docs/measurements.md) | The timings, ratios and histories the package docstrings cited, by module and object (#517) |
-| [docs/metrics/](docs/metrics/) | The metrics ledger, append-only TSVs: `ledger.tsv` one measured value per line, `runs.tsv` one line per run (commit, timestamp, arguments, test, note), `definitions.tsv` what each metric means, versioned (#409, #620); `python -m tests.metrics --record` appends |
-| [docs/metrics.md](docs/metrics.md) | Generated from `docs/metrics/` by `python -m tests.metrics --render`, one table per fixture; not hand-edited (#620) |
+| [docs/metrics/](docs/metrics/) | The metrics ledger, append-only TSVs: `ledger.tsv` one measured value per line, `runs.tsv` one line per run (commit, timestamp, arguments, test, note), `definitions.tsv` what each metric means, versioned (#409, #620). `python -m tests.metrics --record` appends; `--render [--out PATH]` prints the wide table, which is not committed; `python -m tests.studies.metrics_history` redraws `docs/plots/metrics_history*.png` from it |
 | [docs/study-recovery-population.md](docs/study-recovery-population.md) | `--sal` sensitivity against clone UMIs and CNA length, and the false positive rate, over 679 simulated runs (#544) |
 | [docs/templates/](docs/templates/README.md) | Templates for documents made outside the code: the work-in-flight page (#335) |
 
