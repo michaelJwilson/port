@@ -159,7 +159,7 @@ def test_the_class_under_sal_emission_scores_as_it_does_under_cnasters(
     [
         ([], ("sal", True)),
         (["--no-sal-emission"], ("cnaster", True)),
-        (["--no-shift"], ("cnaster", False)),
+        (["--no-shift", "--no-copy-cap"], ("cnaster", False)),
         (["--no-patch", "--shift"], ("sal", False)),
     ],
     ids=["default", "no-sal-emission", "no-shift", "no-patch-shift"],
