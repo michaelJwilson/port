@@ -50,12 +50,18 @@ from cnaster.count_encoder import CountEncoder
 from scipy.special import digamma, expit
 
 __all__ = [
+    "ALPHA_MIN",
     "DISPERSION_FLOOR",
+    "DISPERSION_PRIOR_ROWS",
+    "TAU_MAX",
+    "DispersionBounds",
+    "DispersionShrinkage",
     "EmGradient",
     "analytic_bfgs",
     "bb_partials",
     "configured_method",
     "configured_solver",
+    "dispersion_blocks",
     "nb_partials",
 ]
 
@@ -122,6 +128,25 @@ def bb_partials(
     d_b = np.where(valid & live_b, d_b, 0.0)
 
     return d_a * tau - d_b * tau, d_a * shape_a + d_b * shape_b
+
+
+def _sums(weight: np.ndarray, partial: np.ndarray, spread: bool) -> np.ndarray:
+    """`-sum_c w_kc d_kc` per state, or, with `spread`, its weighted variance about each state's mean.
+
+    The second is the centred outer product of the per-row scores, `sum_c
+    w_kc d_kc^2 - (sum_c w_kc d_kc)^2 / n_k`: an information estimate that is
+    non-negative at any point, which the curvature is not away from the
+    optimum (#566).
+    """
+    linear = np.sum(weight * partial, axis=1)
+
+    if not spread:
+        return -linear
+
+    occupancy = np.sum(weight, axis=1)
+    square = np.sum(weight * partial * partial, axis=1)
+    safe = np.where(occupancy > 0.0, occupancy, 1.0)
+    return np.where(occupancy > 0.0, square - linear * linear / safe, 0.0)
 
 
 @dataclass
@@ -248,8 +273,43 @@ class EmGradient:
 
         return self._pack(x, g_mu, g_p, g_alpha, g_tau)
 
+    def information(self, x: np.ndarray) -> dict[str, float]:
+        """Per-row information in `log alpha` and `log tau` at `x`, pooled over states (#566).
+
+        The centred score spread (:func:`_sums`) summed over states, over the
+        rows `N = sum gamma`: what one row carries about the shared
+        dispersion, for :class:`DispersionShrinkage`'s `h`.
+        """
+        model = self.model
+        _, log_mu, p_binom, alphas, taus = model.unpack_params(
+            x, self.n_states, *self.initial, **self.flags
+        )
+        gamma = np.asarray(model.state_posteriors)
+        rows = max(float(gamma.sum()), 1.0)
+
+        if self.rescale is not None:
+            _, tau_spread = self._allele_rows(gamma, p_binom, taus, spread=True)
+        else:
+            _, tau_spread = self._allele(gamma, p_binom, taus, spread=True)
+        out = {"bb": float(tau_spread.sum()) / rows}
+
+        if self.nb is not None and "m" in model.params:
+            if self.rescale is not None:
+                _, alpha_spread = self._depth_rows(gamma, log_mu, alphas, spread=True)
+            else:
+                _, alpha_spread = self._depth(
+                    self.nb, gamma, log_mu, alphas, spread=True
+                )
+            out["nb"] = float(alpha_spread.sum()) / rows
+
+        return out
+
     def _allele(
-        self, gamma: np.ndarray, p_binom: np.ndarray, taus: np.ndarray
+        self,
+        gamma: np.ndarray,
+        p_binom: np.ndarray,
+        taus: np.ndarray,
+        spread: bool = False,
     ) -> tuple[np.ndarray, np.ndarray]:
         """Per-state `d f / d p` and `d f / d log tau`."""
         obs = self.bb.get_unique_obs(0)
@@ -260,7 +320,7 @@ class EmGradient:
             obs[None, :], total[None, :], p_binom[:, :1], taus[:, :1]
         )
 
-        return -np.sum(weight * d_p, axis=1), -np.sum(weight * d_tau, axis=1)
+        return -np.sum(weight * d_p, axis=1), _sums(weight, d_tau, spread)
 
     def _depth(
         self,
@@ -268,6 +328,7 @@ class EmGradient:
         gamma: np.ndarray,
         log_mu: np.ndarray,
         alphas: np.ndarray,
+        spread: bool = False,
     ) -> tuple[np.ndarray, np.ndarray]:
         """Per-state `d f / d log mu` and `d f / d log alpha`, shifted or not."""
         rates = np.asarray(log_mu, dtype=np.float64)[:, 0]
@@ -283,12 +344,18 @@ class EmGradient:
 
             d_eta, d_alpha = nb_partials(obs[None, :], mean, dispersions)
 
-            return -np.sum(weight * d_eta, axis=1), -np.sum(weight * d_alpha, axis=1)
+            return -np.sum(weight * d_eta, axis=1), _sums(weight, d_alpha, spread)
 
-        return self._shifted_depth(encoder, gamma, rates, dispersions, *shifted)
+        return self._shifted_depth(
+            encoder, gamma, rates, dispersions, *shifted, spread=spread
+        )
 
     def _allele_rows(
-        self, gamma: np.ndarray, p_binom: np.ndarray, taus: np.ndarray
+        self,
+        gamma: np.ndarray,
+        p_binom: np.ndarray,
+        taus: np.ndarray,
+        spread: bool = False,
     ) -> tuple[np.ndarray, np.ndarray]:
         """`_allele` per row, at `rho_row = rho_shared + g_row / (1 + tau)` (#566).
 
@@ -325,10 +392,14 @@ class EmGradient:
                 np.sum(gamma * scale) * x / (1.0 + x) ** 2
             )
 
-        return -np.sum(gamma * d_p, axis=1), -np.sum(gamma * scale * chain, axis=1)
+        return -np.sum(gamma * d_p, axis=1), _sums(gamma, scale * chain, spread)
 
     def _depth_rows(
-        self, gamma: np.ndarray, log_mu: np.ndarray, alphas: np.ndarray
+        self,
+        gamma: np.ndarray,
+        log_mu: np.ndarray,
+        alphas: np.ndarray,
+        spread: bool = False,
     ) -> tuple[np.ndarray, np.ndarray]:
         """`_depth` per row, at `alpha_row = alpha f_c` (#566); shifted where the fit is.
 
@@ -374,7 +445,7 @@ class EmGradient:
 
         g_eta = per_clone.sum(axis=1) - share.T @ per_clone.sum(axis=0)
 
-        return -g_eta, -np.sum(gamma * d_alpha, axis=1)
+        return -g_eta, _sums(gamma, d_alpha, spread)
 
     def _components(self) -> Any:
         """The clone-shared dispersion the model is holding, or `None` (#566)."""
@@ -447,6 +518,7 @@ class EmGradient:
         dispersions: np.ndarray,
         decode: np.ndarray,
         lengths: tuple[int, ...],
+        spread: bool = False,
     ) -> tuple[np.ndarray, np.ndarray]:
         """The shifted channel: rates `exp(log_mu_i - S_c)`, `S_c` moving with `log_mu`."""
         from port.patch.hmm_nophasing.shifted_emission import _triples
@@ -480,7 +552,7 @@ class EmGradient:
 
         g_eta = per_clone.sum(axis=1) - share.T @ per_clone.sum(axis=0)
 
-        return -g_eta, -np.sum(weight * d_alpha, axis=1)
+        return -g_eta, _sums(weight, d_alpha, spread)
 
     def _pack(
         self,
@@ -550,7 +622,200 @@ BFGS_OPTIONS = frozenset(
 """The options `scipy.optimize.minimize(method="BFGS")` reads (scipy 1.18)."""
 
 
-def analytic_bfgs(gradient: Callable[[np.ndarray], np.ndarray]) -> Any:
+DISPERSION_PRIOR_ROWS = 0.0
+"""`n0`, the rows' worth of pooled information each state's dispersion is shrunk with (#566).
+
+0, no shrinkage, unless `--dispersion-prior-rows` states one. Held-out
+likelihood on #540's `dev_tree_1s_hard` r0-r2 (fit on r0 and r1, scored on
+the other two; grid 0, 10, 30, 100, 300, 1000) picks 30, by a mode change
+on r1 rather than a trend: there the neutral state splits in two at
+`n0 >= 30` (PR #567).
+"""
+
+
+def dispersion_blocks(gradient: EmGradient) -> dict[str, slice]:
+    """Where `pack_params` puts the per-state `log alpha` (`nb`) and `log tau` (`bb`); shared or fixed blocks are left out."""
+    params = gradient.model.params
+    flags = gradient.flags
+    n_states = gradient.n_states
+    fitting_nb = gradient.nb is not None and "m" in params
+
+    idx = n_states * (("s" in params) + fitting_nb + ("p" in params))
+    blocks: dict[str, slice] = {}
+
+    if fitting_nb and not flags["fix_NB_dispersion"]:
+        if not flags["shared_NB_dispersion"]:
+            blocks["nb"] = slice(idx, idx + n_states)
+        idx += 1 if flags["shared_NB_dispersion"] else n_states
+
+    if (
+        "p" in params
+        and not flags["fix_BB_dispersion"]
+        and not flags["shared_BB_dispersion"]
+    ):
+        blocks["bb"] = slice(idx, idx + n_states)
+
+    return blocks
+
+
+ALPHA_MIN = 1e-3
+"""The per-state NB `alpha`'s lower bound with `--per-state-dispersion` (#566).
+
+Below every pooled `alpha` measured: 0.589 and 0.593 on CalicoST hard and
+easy under `--sal`, 0.058 and 0.072 on #540's `dev_tree_1s_hard` r1 and r0.
+"""
+
+TAU_MAX = 1e5
+"""The per-state BB `tau`'s upper bound, a concentration cap (#566).
+
+Above every finite pooled `tau` measured: 1,062 and 4,882 on CalicoST hard
+and easy, 15,324 on #540's r1. #540's r0 pools at 3.5e6, the binomial in
+effect; at 111 trials, `tau = 1e5` inflates the variance by 0.1 per cent.
+"""
+
+
+@dataclass
+class DispersionBounds:
+    """`alpha_k >= alpha_min` and `tau_k <= tau_max` on the per-state blocks, by projection (#566).
+
+    `cnaster` minimizes with BFGS and `bounds=None`, and BFGS takes no box.
+    So the M step minimizes the projected objective `f(clip(x))`: `cost_fn`
+    and the gradient are read at the clipped point, a coordinate past its
+    bound has zero gradient, and the result is returned clipped, so what
+    `cnaster` unpacks is inside the box. Bounds stop a runaway -- `alpha`
+    to 0 or `tau` to the binomial -- and sit outside what a fit reaches.
+    """
+
+    blocks: dict[str, slice]
+    log_alpha_min: float
+    log_tau_max: float
+
+    @classmethod
+    def for_fit(
+        cls, gradient: EmGradient, alpha_min: float, tau_max: float
+    ) -> DispersionBounds:
+        return cls(
+            dispersion_blocks(gradient),
+            float(np.log(alpha_min)),
+            float(np.log(tau_max)),
+        )
+
+    def clip(self, x: np.ndarray) -> np.ndarray:
+        """`x` with each per-state block inside its bound."""
+        out = np.array(x, dtype=np.float64, copy=True)
+
+        if "nb" in self.blocks:
+            out[self.blocks["nb"]] = np.maximum(
+                out[self.blocks["nb"]], self.log_alpha_min
+            )
+        if "bb" in self.blocks:
+            out[self.blocks["bb"]] = np.minimum(
+                out[self.blocks["bb"]], self.log_tau_max
+            )
+
+        return out
+
+    def free(self, x: np.ndarray) -> np.ndarray:
+        """1 where a coordinate is not past its bound, else 0: the projected gradient's mask."""
+        mask = np.ones_like(x, dtype=np.float64)
+
+        if "nb" in self.blocks:
+            mask[self.blocks["nb"]] = x[self.blocks["nb"]] >= self.log_alpha_min
+        if "bb" in self.blocks:
+            mask[self.blocks["bb"]] = x[self.blocks["bb"]] <= self.log_tau_max
+
+        return mask
+
+
+@dataclass
+class DispersionShrinkage:
+    r"""Per-state dispersions shrunk toward their pooled value, as a penalty (#566).
+
+    With per-state `log alpha_k` (and `log tau_k`) a state holding a handful
+    of rows can drive its `alpha` to 0, which scores those rows at
+    near-certainty (#560). Each per-state block `theta` is penalized
+
+    .. math::
+        P(\theta) = \frac{n_0 h}{2} \sum_k (\theta_k - \bar\theta)^2,
+        \qquad \bar\theta = \sum_k \frac{n_k}{N} \theta_k,
+
+    with `n_k = sum_i gamma_ik` a state's posterior occupancy (held, as the
+    data term holds it) and `h` the per-row information of the pooled fit
+    in `theta`. The data term's curvature in `theta_k` is then `n_k h`, so
+    to second order the minimizer is
+
+    .. math::
+        \theta_k \approx \frac{n_k \hat\theta_k + n_0 \bar\theta}{n_k + n_0},
+
+    the shrinkage toward the pooled estimate with weight `n0 / (n0 + n_k)`
+    #566 states. A state with no rows sits at the pooled value; equal
+    `theta` cost nothing, so a fit whose states agree returns the pooled one.
+
+    `h` is held per fit: the per-row score variance in `theta`, each state's
+    scores centred on their own mean, pooled over states and divided by `N`
+    (:meth:`EmGradient.information`), at the first point BFGS evaluates.
+    Held, so `P` is one function for the whole fit and its gradient is
+    exact. The score variance rather than the curvature, because the
+    curvature can be negative away from the optimum, and the first point is
+    the fit's start.
+    """
+
+    prior_rows: float
+    model: Any
+    blocks: dict[str, slice]
+    information: dict[str, float]
+
+    @classmethod
+    def for_fit(cls, gradient: EmGradient, prior_rows: float) -> DispersionShrinkage:
+        """The per-state blocks of `gradient`'s packed layout; shared or fixed ones are left out."""
+        return cls(float(prior_rows), gradient.model, dispersion_blocks(gradient), {})
+
+    def _occupancy(self) -> np.ndarray:
+        """`n_k`: each state's summed posterior over the rows."""
+        return np.asarray(self.model.state_posteriors, dtype=np.float64).sum(axis=1)
+
+    def hold_information(self, x: np.ndarray, data_gradient: EmGradient) -> None:
+        """`h` per block, once: the per-row information `data_gradient` reads at `x`."""
+        if self.information:
+            return
+
+        held = data_gradient.information(x)
+        self.information = {name: held.get(name, 0.0) for name in self.blocks}
+
+    def _parts(self, theta: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        """`theta - theta_bar` and the occupancy weights `n_k / N`."""
+        occupancy = self._occupancy()
+        weights = occupancy / max(float(occupancy.sum()), np.finfo(float).tiny)
+        return theta - float(weights @ theta), weights
+
+    def value(self, x: np.ndarray) -> float:
+        """`P(x)`, summed over the per-state blocks."""
+        total = 0.0
+
+        for name, block in self.blocks.items():
+            spread, _ = self._parts(x[block])
+            scale = self.prior_rows * self.information.get(name, 0.0)
+            total += 0.5 * scale * float(spread @ spread)
+
+        return total
+
+    def __call__(self, x: np.ndarray) -> np.ndarray:
+        """`d P / d x`: `n0 h (d_j - w_j sum_k d_k)` in each block, zero elsewhere."""
+        out = np.zeros_like(x, dtype=np.float64)
+
+        for name, block in self.blocks.items():
+            spread, weights = self._parts(x[block])
+            scale = self.prior_rows * self.information.get(name, 0.0)
+            out[block] = scale * (spread - weights * spread.sum())
+
+        return out
+
+
+def analytic_bfgs(
+    gradient: Callable[[np.ndarray], np.ndarray],
+    penalty: DispersionShrinkage | None = None,
+    bounds: DispersionBounds | None = None,
+) -> Any:
     """A `scipy.optimize.minimize` `method` that is BFGS with `gradient` as `jac`.
 
     `cnaster` passes its `optimizer` argument to `minimize` as `method`, and a
@@ -560,6 +825,12 @@ def analytic_bfgs(gradient: Callable[[np.ndarray], np.ndarray]) -> Any:
     the gradient always reads the posteriors the value just used, and the
     callback's E step reads the emission at a point BFGS evaluated rather
     than at a finite-difference probe.
+
+    With `penalty` (#566) BFGS minimizes `cost_fn + P` and its gradient;
+    `cnaster`'s `cost_fn` and callback are unchanged, and `P`'s information
+    scale is held at the first point evaluated, once the posteriors exist.
+    With `bounds` (#566) it minimizes `f(clip(x))` and returns the clipped
+    point (:class:`DispersionBounds`).
     """
 
     def method(
@@ -573,21 +844,39 @@ def analytic_bfgs(gradient: Callable[[np.ndarray], np.ndarray]) -> Any:
         options = {key: value for key, value in kwargs.items() if key in BFGS_OPTIONS}
 
         def value_and_gradient(x: np.ndarray) -> tuple[float, np.ndarray]:
-            value = float(fun(x, *args))
-            return value, gradient(x)
+            point = x if bounds is None else bounds.clip(x)
+            value = float(fun(point, *args))
+            slope = gradient(point)
+
+            if penalty is not None:
+                if isinstance(gradient, EmGradient):
+                    penalty.hold_information(point, gradient)
+                value += penalty.value(point)
+                slope = slope + penalty(point)
+
+            return value, slope if bounds is None else slope * bounds.free(x)
 
         fitted = gradient if isinstance(gradient, EmGradient) else None
         components = None if fitted is None else fitted._components()
 
         if fitted is None or components is None:
-            return scipy.optimize.minimize(
+            result = scipy.optimize.minimize(
                 value_and_gradient,
-                x0,
+                x0 if bounds is None else bounds.clip(x0),
                 jac=True,
                 method="BFGS",
                 callback=callback,
                 options=options,
             )
+            if bounds is not None:
+                result.x = bounds.clip(result.x)
+            return result
+
+        # NB #570: the clone-shared component and the per-state arms are
+        #    levels of one factor, never fitted together.
+        if penalty is not None or bounds is not None:
+            msg = "--dispersion-two-component with --per-state-dispersion"
+            raise ValueError(msg)
 
         # NB #566's clone-shared dispersion: two coordinates `cnaster`'s
         #    packing has not got, appended here and held on the model, where

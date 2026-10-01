@@ -98,6 +98,7 @@ from port.patch.hmrf.invariants import BoundaryInvariants, boundary_invariants
 __all__ = [
     "UPSTREAM",
     "PooledSmoothing",
+    "assignment_dispersions",
     "boundary",
     "pipeline_clone_assignment",
     "release",
@@ -279,6 +280,35 @@ def _clone_shifts(
     )
 
 
+def assignment_dispersions(
+    hmmclass: Any, res: Any, decoded: np.ndarray
+) -> tuple[np.ndarray, np.ndarray]:
+    """`(alphas, taus)` per state, as the clone assignment scores spots with them (#566).
+
+    `cnaster`'s own where the fit shares one value. Where it fits one per
+    state (`per_state_dispersion`), each is replaced by the occupancy-weighted
+    geometric mean over `decoded`, the pooled value: scored per spot, a
+    state's own wide dispersion makes any clone decoded to it absorb the
+    spots its neighbours disagree on -- measured, CalicoST easy and hard
+    lose every clone but one under `--per-state-dispersion` without this.
+    """
+    from port.patch.plotting.clone_paths import state_vector
+
+    alphas = state_vector(res["new_alphas"])
+    taus = state_vector(res["new_taus"])
+
+    if not getattr(hmmclass, "per_state_dispersion", False):
+        return alphas, taus
+
+    counts = np.bincount(np.asarray(decoded).ravel(), minlength=alphas.size)
+    weight = counts[: alphas.size] / max(float(counts.sum()), 1.0)
+
+    def pooled(values: np.ndarray) -> np.ndarray:
+        return np.full_like(values, float(np.exp(weight @ np.log(values))))
+
+    return pooled(alphas), pooled(taus)
+
+
 def pipeline_clone_assignment(
     single_X: np.ndarray,
     single_base_nb_mean: np.ndarray,
@@ -393,6 +423,7 @@ def pipeline_clone_assignment(
     #    per channel, then read one decoded state per (bin, clone) out of it --
     #    in one pass that materializes neither.
     shifts = _clone_shifts(hmmclass, res, decoded, single_base_nb_mean)
+    alphas, taus = assignment_dispersions(hmmclass, res, decoded)
 
     if shifts is None:
         field = spot_clone_field(
@@ -404,9 +435,9 @@ def pipeline_clone_assignment(
             #    state alone, because a state parameter has no second axis to
             #    index (#278).
             state_vector(res["new_log_mu"]),
-            state_vector(res["new_alphas"]),
+            alphas,
             state_vector(res["new_p_binom"]),
-            state_vector(res["new_taus"]),
+            taus,
             decoded,
             invariants.weight,
             # NB the buffer is the caller's, which is upstream's shape --
@@ -447,9 +478,9 @@ def pipeline_clone_assignment(
                 pooled_X[:, 1, :],
                 pooled_total_bb_RD,
                 state_vector(res["new_log_mu"]) - centre,
-                state_vector(res["new_alphas"]),
+                alphas,
                 state_vector(res["new_p_binom"]),
-                state_vector(res["new_taus"]),
+                taus,
                 np.ascontiguousarray(decoded[:, clone : clone + 1]),
                 invariants.weight,
                 np.empty((n_spots, 1)),

@@ -169,6 +169,36 @@ def _parser() -> argparse.ArgumentParser:
         help="score the coded emission with sal's kernels (#425); on where the shift is",
     )
     parser.add_argument(
+        "--per-state-dispersion",
+        action="store_true",
+        help="one NB alpha and one BB tau per state, bounded (#566); needs the shift",
+    )
+    parser.add_argument(
+        "--dispersion-prior-rows",
+        type=float,
+        default=None,
+        metavar="N0",
+        help="the shrinkage's n0, in rows; 0 for none (#566); needs --per-state-dispersion",
+    )
+    parser.add_argument(
+        "--dispersion-bounds",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="hold per-state alpha >= --alpha-min and tau <= --tau-max (#566); on with --per-state-dispersion",
+    )
+    parser.add_argument(
+        "--alpha-min",
+        type=float,
+        default=None,
+        help="the per-state NB alpha's lower bound (#566); needs the bounds",
+    )
+    parser.add_argument(
+        "--tau-max",
+        type=float,
+        default=None,
+        help="the per-state BB tau's upper bound (#566); needs the bounds",
+    )
+    parser.add_argument(
         "--dispersion-rescale",
         action="store_true",
         help="fit per-spot NB/BB dispersions, each clone's pseudobulk at its moment-matched value (#566, #100); needs the shift",
@@ -305,6 +335,36 @@ def _refusals(arguments: argparse.Namespace, settings: Settings) -> list[str]:
         if asked and not settings.shift
     ]
 
+    # NB #566: an option of the same `hmm_nophasing` row.
+    if arguments.per_state_dispersion and not settings.shift:
+        refused.append("--per-state-dispersion is read by the shift rows; --no-shift")
+    if arguments.dispersion_prior_rows is not None and not (
+        arguments.per_state_dispersion
+    ):
+        refused.append("--dispersion-prior-rows needs --per-state-dispersion")
+    if (arguments.dispersion_prior_rows or 0.0) < 0.0:
+        refused.append("--dispersion-prior-rows is a count of rows, >= 0")
+    if arguments.dispersion_bounds is not None and not arguments.per_state_dispersion:
+        refused.append("--dispersion-bounds needs --per-state-dispersion")
+    bounded = (
+        arguments.per_state_dispersion and arguments.dispersion_bounds is not False
+    )
+    refused += [
+        f"{flag} needs the dispersion bounds"
+        for flag, value in (
+            ("--alpha-min", arguments.alpha_min),
+            ("--tau-max", arguments.tau_max),
+        )
+        if value is not None and not bounded
+    ]
+    refused += [
+        f"{flag} must be positive"
+        for flag, value in (
+            ("--alpha-min", arguments.alpha_min),
+            ("--tau-max", arguments.tau_max),
+        )
+        if value is not None and value <= 0.0
+    ]
     # NB #566: an option of the shift's `hmm_nophasing` row, reading factors
     #    port's `merge_pseudobulk_by_index_mix` (in `SWAPS`) records.
     if arguments.dispersion_rescale and not settings.shift:
@@ -317,6 +377,9 @@ def _refusals(arguments: argparse.Namespace, settings: Settings) -> list[str]:
 
     if arguments.dispersion_two_component and not arguments.dispersion_rescale:
         refused.append("--dispersion-two-component needs --dispersion-rescale")
+    # NB #570: two levels of one dispersion factor; `analytic_bfgs` fits one.
+    if arguments.dispersion_two_component and arguments.per_state_dispersion:
+        refused.append("--dispersion-two-component with --per-state-dispersion")
 
     # NB read by port's `pipeline_clone_assignment` alone, which `--no-patch`
     #    leaves out unless `--sal` installs it.
@@ -464,6 +527,18 @@ def main(argv: Sequence[str] | None = None) -> int:
         #    That row is in `SHIFT_SWAPS`, so `--no-patch --shift` reads it.
         model: dict[str, Any] = {"emission_kernels": "sal"} if sal_emission_on else {}
 
+        # NB #566: per-state dispersions, an option of the same row.
+        if arguments.per_state_dispersion:
+            model["per_state_dispersion"] = True
+
+            if arguments.dispersion_prior_rows is not None:
+                model["dispersion_prior_rows"] = arguments.dispersion_prior_rows
+            if arguments.dispersion_bounds is False:
+                model["dispersion_bounds"] = False
+            if arguments.alpha_min is not None:
+                model["alpha_min"] = arguments.alpha_min
+            if arguments.tau_max is not None:
+                model["tau_max"] = arguments.tau_max
         # NB #566: per-spot dispersions, an option of the same row; the
         #    pseudobulk row records each clone's factors while this is open.
         if arguments.dispersion_rescale:
@@ -622,6 +697,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 + (", floor merged smallest first" if floor else "")
                 + (", distinct initial states" if distinct else "")
                 + (", shift included" if shift else "")
+                + (", per-state dispersions" if arguments.per_state_dispersion else "")
                 + (
                     ", per-spot dispersions rescaled per clone"
                     if arguments.dispersion_rescale
@@ -682,6 +758,20 @@ def main(argv: Sequence[str] | None = None) -> int:
             {
                 "figures": figures,
                 "shift": shift,
+                "dispersion": (
+                    {
+                        key: model[key]
+                        for key in (
+                            "per_state_dispersion",
+                            "dispersion_prior_rows",
+                            "dispersion_bounds",
+                            "alpha_min",
+                            "tau_max",
+                        )
+                        if key in model
+                    }
+                    or "shared"
+                ),
                 "dispersion_rescale": bool(arguments.dispersion_rescale),
                 "dispersion_two_component": bool(arguments.dispersion_two_component),
                 "copy_decode": f"lattice_decode ({arguments.copy_decode})"

@@ -24,8 +24,11 @@ from tests.source_graph import PACKAGE, TESTS
 BUDGET: dict[str, int] = {
     # NB 23: #520 removed --np-merge; `--png-copies` binds what the
     #    `_PNG_COPIES` switch held (#517 step 1). 24: #547's `--baf-start`,
-    #    the BAF-only stage's copy-state start.
-    "run_cnaster_port flags": 24,
+    #    the BAF-only stage's copy-state start. 31: #566's
+    #    `--dispersion-rescale`, `--dispersion-two-component`,
+    #    `--per-state-dispersion`, `--dispersion-bounds`, `--alpha-min`,
+    #    `--tau-max` and `--dispersion-prior-rows`, combined for #570.
+    "run_cnaster_port flags": 31,
     # NB 53: step 1 removed the two `_Selection` slots behind the decoder and
     #    solver switches; step 5 added `Settings`, the entry point's one
     #    resolution of its tri-state flags; step 8 added the `hmm_phased` row
@@ -33,15 +36,18 @@ BUDGET: dict[str, int] = {
     #    page's `analysis.GenomicTruth`, the tracks' arguments that
     #    `clones_genomic.png` and `truth_combined` both draw. 56: #540's
     #    copy-start records, `CopyCall` and `CopyStart`; #547 moved `Row`,
-    #    the registry of the starts set aside, to `sandbox/`.
-    "classes": 56,
+    #    the registry of the starts set aside, to `sandbox/`. 60: #566's
+    #    `DispersionBounds`, `DispersionShrinkage`, `Rescale`, `Components`.
+    "classes": 60,
     # NB step 4: 18 records became NamedTuples; the dataclasses left carry
     #    mutable state, machinery or a `__post_init__` (#517 D). Step 8 moved
-    #    7 dataclasses and 1 NamedTuple to `sandbox/`.
-    "dataclasses": 19,
+    #    7 dataclasses and 1 NamedTuple to `sandbox/`. 21: #566's
+    #    `DispersionBounds` and `DispersionShrinkage`.
+    "dataclasses": 21,
     # NB 24: `analysis.GenomicTruth` (the truth page). 26: #540's
-    #    `CopyCall` and `CopyStart` (`Row` in `sandbox/`, #547).
-    "NamedTuples": 26,
+    #    `CopyCall` and `CopyStart` (`Row` in `sandbox/`, #547). 28: #566's
+    #    `Rescale` and `Components`.
+    "NamedTuples": 28,
 }
 """`python/port` outside `sandbox/`."""
 
@@ -57,8 +63,9 @@ CONCEPTS: dict[str, int] = {
     "run_arm": 2,
     "clone_path": 1,
     # NB 2: `combined_figure` records plotting arguments, `segments` a
-    #    segmentation lineage; `tests.sim_stages`'s wrapper is `logged`.
-    "recording": 2,
+    #    segmentation lineage; `tests.sim_stages`'s wrapper is `logged`. 3:
+    #    #566's rescale factors, recorded per clone pseudobulk.
+    "recording": 3,
 }
 """Definitions of one concept across `python/port` and `tests/`, with the reason where not 1."""
 

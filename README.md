@@ -271,6 +271,9 @@ follows the arm unless asked: on in a patched run, off with `--no-patch`.
 | `--baf-start` | `none` | the BAF-only HMM's copy states from the lattice (#540) | |
 | `--dispersion-rescale` | off | per-spot NB `alpha`, BB `tau`; each clone's pseudobulk at `alpha / S_eff` and `rho g` (#566, #100) | 8 vs 64 spots: pseudobulk `alpha` 6.5x apart unrescaled, per-spot recovered to 25 per cent; CalicoST in the PR |
 | `--dispersion-two-component` | off | with `--dispersion-rescale`, a clone-shared `alpha`, `tau` beside the per-spot ones (#566, #556) | planted 0.02 shared + 0.3 per spot: 0.019-0.022 and 0.26-0.31 over three seeds |
+| `--per-state-dispersion` | off | one NB `alpha`, BB `tau` per state, `cnaster`'s `shared_*_dispersion=False` (#566) | CalicoST in PR #567 |
+| `--dispersion-bounds` | on with `--per-state-dispersion` | `alpha_k >= --alpha-min` (1e-3), `tau_k <= --tau-max` (1e5), by projection in the M step (#566) | unbounded, a state on three exact rows runs to `alpha` 1.1e-10 |
+| `--dispersion-prior-rows` | 0 | shrink each `log alpha_k`, `log tau_k` toward the pooled value with weight `n0 / (n0 + n_k)` (#566) | held-out pick on #540's problems: 30 |
 | `--copy-errors` | off | `cnv_copy_sets.tsv`: every `(A, B)` in each state's 95 per cent credible region (#353) | differentiates the whole objective once |
 | `--png-copies` | off | a PNG without metadata beside each PDF, for `docs/plots` (#452) | two runs of the same code write the same bytes |
 | `--sample-layout`, `--genomic-colours` | unset | one panel per sample (#328); bins coloured per fitted state | |
