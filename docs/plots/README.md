@@ -1,8 +1,10 @@
 # Figures
 
 **No PNG is committed here outside the two exceptions below; each figure
-is regenerated on demand by the command below that draws it.** Every generator writes to `.cache/plots/` by
-default (`tests/plots_dir.py`), untracked, in this directory's layout.
+is regenerated on demand by the command below that draws it.** Every
+generator writes to `.cache/plots/` by default (`tests/plots_dir.py`),
+untracked; the paths below are relative to it. `lattice/`, `sim/` and
+`sim_qa/` exist only there now.
 `tests/test_ci_entry.py` guards that `docs/` tracks no PNG outside
 `docs/plots/paper/`, T- #624's paper set, and
 `studies/population_recovery.png`, whose runs survive only as

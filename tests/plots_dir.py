@@ -11,4 +11,4 @@ under `docs/`.
 from pathlib import Path
 
 PLOTS = Path(__file__).resolve().parent.parent / ".cache" / "plots"
-"""The default root of every generated figure, mirroring `docs/plots/`'s layout."""
+"""The default root of every generated figure, laid out as `docs/plots/` was at `ba34716`."""
