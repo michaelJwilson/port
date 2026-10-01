@@ -455,7 +455,7 @@ CalicoST's `rectangle_initialize_initial_clone` never returns (`cnaster` #248).
 `python -m tests.recovery_audit --calicost` scores it with port's scorer.
 `--shipped FILE` runs CalicoST's own configuration file instead, taking only
 the paths from the YAML; a sheet of several slices takes
-`configuration_cna_multi`. `docs/final-benchmark.md` compares it with `--sal`.
+`configuration_cna_multi`. `docs/calicost-benchmark.md` records its runs.
 `docs/baseline-release.md` states what `--sal` recovers at the baseline
 release, on CalicoST's samples and the drawn `dev_tree` family
 (`sim/manifests/baseline/`).
