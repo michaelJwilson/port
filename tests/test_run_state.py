@@ -48,6 +48,7 @@ STATE: dict[str, Kind] = {
     "port.patch.hmrf.core_inference._NORMAL": "run",
     "port.patch.hmrf.core_inference._PROPAGATED": "run",
     "port.patch.hmrf.refinement._KEPT": "run",
+    "port.patch.hmrf.split_state._INSTALLED": "run",
     "port.patch.hmrf.run_core_inference": "rebind",
     "port.patch.integer_copy._RECORDERS": "run",
     "port.patch.integer_copy._SHARED": "cache",
