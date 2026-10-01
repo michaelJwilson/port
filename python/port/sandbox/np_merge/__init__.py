@@ -30,7 +30,7 @@ largest first and then of least summed statistic, are the merged groups.
 BAF-only stages score the beta-binomial alone (`params` without `m`).
 
 **What differs from CalicoST, and why.** The emission is `cnaster`'s
-unphased one, where a state is its own index (CalicoST's phased `2 n_states`
+unphased one, with the log-space negative binomial (#560), where a state is its own index (CalicoST's phased `2 n_states`
 indices never occur), and each clone's read-depth rates carry its own
 `new_log_mu_shift` (#435), which CalicoST's `tumor_prop is None` path does not
 have. With every shift zero the groups and statistics are CalicoST's, which
@@ -189,8 +189,15 @@ def _emissions(
     res: Any,
     shifts: np.ndarray,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """`(n_states, n_obs, n_clones)` read-depth and allele log-emissions, `cnaster`'s density."""
-    from cnaster.hmm_nophasing import _bb_logpmf_1d, _nb_logpmf_1d
+    """`(n_states, n_obs, n_clones)` read-depth and allele log-emissions.
+
+    `cnaster`'s beta-binomial, and the log-space negative binomial (#560):
+    `cnaster` to 1e-9 relative where its `p < 1`, and a vanishing rate no
+    longer scores a count at probability 1.
+    """
+    from cnaster.hmm_nophasing import _bb_logpmf_1d
+
+    from port.patch.hmm_nophasing.nb_logpmf import _nb_logpmf_1d
 
     log_mu = _column(res["new_log_mu"])
     alphas = _column(res["new_alphas"])
