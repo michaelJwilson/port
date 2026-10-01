@@ -116,3 +116,10 @@ overlapping by half) at seed 0.
 Clones carry `cnaster`'s numerals in every other figure: `Clone 0` is the normal.
 `python -m port.sim.analysis population <sample or manifest>` streams every
 realization through the same reading, holding running means only.
+
+## `sim/cna_lengths.png`: the `[cna.length]` laws (#619)
+
+`python -m tests.studies.cna_lengths`: the density and CDF of the exponential
+the `dev_tree*` manifests drew to #619 and the lognormal they draw now, at
+`dev_tree`'s mean of 50 Mb and `dev_tree_1s_hard`'s median of 10 Mb. Analytic
+(`scipy.stats`); the stamp names each manifest's file hash and `r0_hash`.

@@ -172,6 +172,35 @@ the color merge, Missed raw / polished, and the median runtime.
 
 ![](plots/studies/potts_dev_tree_1s_hard_tuned.png)
 
+## The lognormal-length generation (#619)
+
+The live `_easy` and `_hard` now draw lognormal event lengths at σ = 0.541
+(`port.sim.laws.lognormal_sigma(0.10, 0.5)`): `_easy` at mean 50 Mb (r0
+`22a5eb85`), `_hard` at median 10 Mb (r0 `9ec90dc2`). The tables above are
+the exponential generation's (`baseline/`). The exponential rows below are
+`baseline/`'s (gamma sampler; `_hard` at mean 1e7), not the live
+exponential generation (`0330bc21`, `ed2fcda1`), which was not rerun. The known-law field, r0–r2, by
+`python -m tests.studies.field_strength known`:
+
+| | median margin [nats] | 10% margin | argmax wrong | ARI |
+| --- | --- | --- | --- | --- |
+| CalicoST easy (`2d4ce9a9`) | 3.5 | −0.1 | 0.105 | 0.737 |
+| `dev_tree_1s_easy`, exponential (r0 `d08e3a1b`) | 3.8 | −0.1 | 0.105 | 0.726 |
+| `dev_tree_1s_easy`, lognormal (r0 `22a5eb85`) | 4.9 | 0.6 | 0.075 | 0.809 |
+| CalicoST hard (`8797710b`) | 1.0 | −1.1 | 0.296 | 0.371 |
+| `dev_tree_1s_hard`, exponential (r0 `d2938975`) | 0.9 | −1.4 | 0.312 | 0.342 |
+| `dev_tree_1s_hard`, lognormal (r0 `9ec90dc2`) | 1.7 | −1.2 | 0.217 | 0.524 |
+
+- **Fewer short events strengthen the field.** The margin drifts +1.4 nats
+  (+40%) from CalicoST on easy and +0.7 (+70%) on hard; the misassigned share
+  falls 3.0 and 7.9 points. The manifests no longer match CalicoST's field
+  to the 10% the exponential generation did.
+- **The drift is stated, not corrected here:** CalicoST's event mix is
+  T- #556's and T- #612's, and rerunning the studies on this generation is
+  T- #620's.
+
+![](plots/sim/cna_lengths.png)
+
 ## Findings beside the study
 
 - **cnaster's merge scores half the boundary.** `cnaster.icm.merge_assignment`

@@ -16,8 +16,9 @@ run a user gets, `--sal` and the shift included.
 that can move a stage: `python/port`, the lockfiles, `src/` and these three
 harness modules. A change elsewhere in `tests/` leaves the cache valid.
 
-Samples: `r0` is `dev_tree`'s realization 0, drawn on demand and refused if
-its content hash is not `R0_HASH`; `easy` and `hard` are CalicoST's committed
+Samples: `r0` is `dev_tree`'s realization 0 at the frozen exponential-length
+generation (`sim/manifests/baseline/dev_tree.toml`, #619), drawn on demand and
+refused if its content hash is not `R0_HASH`; `easy` and `hard` are CalicoST's committed
 samples (`tests.sim_fixtures`).
 """
 
@@ -40,8 +41,12 @@ ROOT = Path(__file__).resolve().parent.parent
 CACHE = ROOT / ".cache" / "sim_stages"
 
 R0 = ROOT / "sim" / "generated" / "dev_tree" / "r0"
+R0_MANIFEST = "sim/manifests/baseline/dev_tree.toml"
 R0_HASH = "3381575a"
-"""`dev_tree` r0 at CalicoST's 60 x 50 array per slice (#470): 6,000 spots."""
+"""`dev_tree` r0 at CalicoST's 60 x 50 array per slice (#470): 6,000 spots.
+The exponential-length generation every cached stage and r0 figure was measured
+on, frozen when the live `dev_tree.toml` moved to lognormal lengths (#619); a
+live draw writes the same directory and is refused here by its hash."""
 
 CAPTURED: tuple[str, ...] = (
     "initial_phase_given_partition",
@@ -148,7 +153,7 @@ def r0() -> Path:
     """`dev_tree`'s realization 0, drawn if absent, refused if not `R0_HASH`."""
     if not (R0 / "truth_clone_labels.tsv").is_file():
         subprocess.run(
-            [sys.executable, "-m", "port.sim.draw", "sim/manifests/dev_tree.toml"],
+            [sys.executable, "-m", "port.sim.draw", R0_MANIFEST],
             cwd=ROOT,
             check=True,
             capture_output=True,

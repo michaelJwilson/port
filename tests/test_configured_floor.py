@@ -34,11 +34,12 @@ def test_a_configured_floor_of_50_keeps_the_planted_small_clones(
     from tests.sim_audit import run_arm
     from tests.sim_fixtures import load_simulated
 
-    base = (MANIFESTS / "dev_tree.toml").read_text()
+    # NB the frozen exponential-length generation the figures were measured on (#619)
+    base = (MANIFESTS / "baseline" / "dev_tree.toml").read_text()
     manifest = tmp_path / "dev_tree_25.toml"
     manifest.write_text(
         base.replace(
-            'extends = "calicost_grch38.toml"',
+            'extends = "../calicost_grch38.toml"',
             f'extends = "{MANIFESTS / "calicost_grch38.toml"}"',
         )
         .replace("rows = 60", "rows = 25")
