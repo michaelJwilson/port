@@ -87,12 +87,16 @@ def contiguous(labels: np.ndarray) -> np.ndarray:
 
 def refit(fit: Any, result: Any, args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
     """`result`, or the refit from one state split by depth where the call qualifies."""
-    from cnaster.hmrf import run_core_inference as upstream
-
     from port.patch.hmm_nophasing.shifted_emission import shifted
+    from port.patch.hmrf.core_inference import UPSTREAM as upstream
     from port.sandbox.split_state.split import split_init
 
-    bound = inspect.signature(upstream).bind(*args, **kwargs)
+    # NB `cnaster`'s own signature, held at import: by the call the swaps have
+    #    rebound `cnaster.hmrf.run_core_inference` to port's wrapper, whose
+    #    own options (`hmm_start`, `distinct_init`) pass through unbound.
+    signature = inspect.signature(upstream)
+    options = {k: v for k, v in kwargs.items() if k not in signature.parameters}
+    bound = signature.bind(*args, **{k: v for k, v in kwargs.items() if k in signature.parameters})
     bound.apply_defaults()
     arguments = dict(bound.arguments)
     base = np.asarray(arguments["single_base_nb_mean"])
@@ -131,6 +135,7 @@ def refit(fit: Any, result: Any, args: tuple[Any, ...], kwargs: dict[str, Any]) 
     refitted = fit(
         **{
             **arguments,
+            **options,
             "initial_clone_index": clones,
             "init_log_mu": log_mu,
             "init_p_binom": p_binom,
