@@ -257,7 +257,7 @@ follows the arm unless asked: on in a patched run, off with `--no-patch`.
 | Option | Default | What | Measured |
 | --- | --- | --- | --- |
 | `--figure-swaps` | on; off with `--no-patch` | `FIGURE_SWAPS`: dpi and raster groups (#195), the genomic RDR line (#299), tiles and the copy profile (#309) | 47 per cent of a run; figure rendering 8,287 MB to 1,036 MB (#195) |
-| `--shift` | on; off with `--no-patch` | `SHIFT_SWAPS`: the per-clone `log Z_c` in the fit, the normal clone pinned to `mu = 1` (#276, #299) | without it a clone's rates return divided by its own normalizer |
+| `--shift` | on; off with `--no-patch` | `SHIFT_SWAPS`: the per-clone `log Z_c` in the fit, the normal clone pinned to `mu = 1` (#276, #299); and `LOG_SPACE_SWAPS`, `cnaster`'s NB and BB kernels where they are wrong (#560, #561) | without it a clone's rates return divided by its own normalizer; the kernels agree with 50-digit sums to 1e-9 where `cnaster`'s score a count at probability 1 or lose 5e-3 nats at `tau = 1e12` |
 | `--sal-emission` | on where the shift is | sal's dense log-emission for the coded NB/BB (#425) | 3.2e-12 of `cnaster`'s kernels, 3.5e-9 at the dispersion floor; no faster end to end |
 | `--distinct-init` | on where the shift is | the HMM starts from distinct GMM components (#348) | copy-state ARI 0.896 to 0.997 on `calicost_instance` |
 | `--copy-cap` | on; off with `--no-patch` | the likelihood decode under the configured cap (#313, #362) | `cnaster`'s decoders read no cap: A + B <= 6 |
@@ -266,7 +266,7 @@ follows the arm unless asked: on in a patched run, off with `--no-patch`.
 | `--sal` | off | alpha expansion with the Rust cut for the labelling (#312), and the next two | a lower Potts energy on every problem measured |
 | `--refinement-mask` | off; on with `--sal` | each read-depth sub-clone kept in its BAF clone, a 100-nat penalty (#348, #467) | with the floor merge, CalicoST hard clone ARI 0.303 to 0.982 |
 | `--floor-merge` | off; on with `--sal` | the clone-size floor met smallest first (#348) | alone, #338's three-sample instance: 2 planted clones fitted as 6 |
-| `--hmm-start` | `none`; `kmeans++x5+em` with `--sal` | the read-depth HMM's start from sal's covariate mixture (#489) | CalicoST hard clone ARI 0.8652 to 0.9829 |
+| `--hmm-start` | `none`; `kmeans++x5+em` with `--sal` | the read-depth HMM's start from sal's covariate mixture (#489); `emission++` scores floored at 0 (#562) | CalicoST hard clone ARI 0.8652 to 0.9829 |
 | `--copy-errors` | off | `cnv_copy_sets.tsv`: every `(A, B)` in each state's 95 per cent credible region (#353) | differentiates the whole objective once |
 | `--png-copies` | off | a PNG without metadata beside each PDF, for `docs/plots` (#452) | two runs of the same code write the same bytes |
 | `--sample-layout`, `--genomic-colours` | unset | one panel per sample (#328); bins coloured per fitted state | |

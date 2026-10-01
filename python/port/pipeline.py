@@ -55,6 +55,7 @@ __all__ = [
     "COPY_SWAPS",
     "FIGURE_DPI",
     "FIGURE_SWAPS",
+    "LOG_SPACE_SWAPS",
     "PLOT_OFF_SWAPS",
     "REFINEMENT_SWAPS",
     "RUN_STATE",
@@ -382,6 +383,48 @@ doing silently; `run_cnaster_port` installs it unless `--no-shift` is given,
 and the row binds `apply_logmu_shift=True` into the class it installs (#517).
 """
 
+
+LOG_SPACE_SWAPS: tuple[Swap, ...] = (
+    Swap(
+        "cnaster.hmm_nophasing",
+        "_nb_logpmf_1d",
+        "port.patch.hmm_nophasing.nb_logpmf:_nb_logpmf_1d",
+        560,
+    ),
+    Swap(
+        "cnaster.hmm_nophasing",
+        "_dense_nb_logpmf",
+        "port.patch.hmm_nophasing.nb_logpmf:_dense_nb_logpmf",
+        560,
+    ),
+    Swap(
+        "cnaster.hmm_nophasing",
+        "_bb_logpmf_1d",
+        "port.patch.hmm_nophasing.bb_logpmf:_bb_logpmf_1d",
+        561,
+    ),
+    Swap(
+        "cnaster.hmm_nophasing",
+        "_dense_bb_logpmf",
+        "port.patch.hmm_nophasing.bb_logpmf:_dense_bb_logpmf",
+        561,
+    ),
+)
+"""`cnaster`'s emission kernels where they are wrong, installed with the shift.
+
+`_nb_logpmf_1d` scores any count at probability 1 once `p = 1 / (1 + alpha
+lambda)` rounds to 1 (#560), and `_bb_logpmf_1d` cancels `lgamma` values
+near `tau log tau` (#561). Each row reaches every module binding the name:
+`cnaster.hmm_nophasing`, `cnaster.hmm_phased` and port's `shifted_emission`.
+A compiled kernel that calls one by name cannot be reached that way, so
+port's field takes `log_space=True` as an option of
+`pipeline_clone_assignment` instead.
+
+**Its own table, on where the shift is.** The kernels agree with `cnaster`'s
+to 1e-9 where `cnaster`'s are right and not bitwise, so not `SWAPS`; the
+shift's arm already departs from `cnaster`'s fit, and a `--no-shift` arm
+keeps `cnaster`'s kernels.
+"""
 
 PLOT_OFF_SWAPS: tuple[Swap, ...] = (
     Swap("cnaster.utils", "write_fig", "port.patch.utils:discard_fig", 403),

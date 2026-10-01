@@ -33,6 +33,7 @@ from typing import Any
 
 import pandas as pd
 import yaml
+from port.sim.files import located
 
 TIMEOUT = 1800
 """CalicoST's budget per case, in seconds (#494)."""
@@ -133,7 +134,7 @@ def baf_stage(sample: Any, output: Path) -> dict[str, Any]:
     )
     labels = pd.Series(fitted, index=meta.index)
     planted = pd.read_csv(
-        sample.path / "truth_clone_labels.tsv", sep="\t", index_col=0
+        located(sample.path / "truth_clone_labels.tsv"), sep="\t", index_col=0
     )["labels"]
     common = labels.index.intersection(planted.index)
     return {
