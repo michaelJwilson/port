@@ -1,10 +1,11 @@
 # Study: copy-state starts at known clones (#540)
 
-**TL;DR:** on `dev_tree_1s_hard` at the planted clones (6 of 10 realizations × 10 seeds so far), six
-starts end within 1.5% of rows missed after `--sal` Baum-Welch: `lattice` (0.9%), `prior`, parallel
-tempering and `hmc` (1.1%), `anneal` (1.2%) and `lattice` + EM (1.5%). `cnaster`'s own `gmm_init` ends at
-47.1%, CalicoST's at 32.6%, and every `emission++` variant at 9.0–31.3%. A start's own miss rate does not
-predict the fit's: 5 × `emission++` starts at 1.4% and ends at 14.1%.
+**TL;DR:** on `dev_tree_1s_hard` at the planted clones (10 realizations × 10 seeds), seven starts end
+within 1.5% of rows missed after `--sal` Baum-Welch: `lattice` (1.0%), `lattice` + EM and `hmc` (1.1%),
+`prior`, `anneal` and parallel tempering (1.2%), and `gaussian-em` (1.4%, where it does not refuse).
+`cnaster`'s own `gmm_init` ends at 44.3%, CalicoST's at 31.3%, and every `emission++` variant at
+18.2–38.3%. A start's own miss rate does not predict the fit's: 5 × `emission++` starts at 1.4% and ends
+at 19.9%.
 
 ## Method
 
@@ -24,35 +25,35 @@ predict the fit's: 5 × `emission++` starts at 1.4% and ends at 14.1%.
 5. **Tuning.** `anneal-hmm`, `tempering-hmm`, `hmc-hmm` and the `emission++` variants are tuned on 3
    held-out realizations that are never evaluated (`copy_sampler_settings.json`).
 
-## Results: `dev_tree_1s_hard`, 6 realizations × 10 seeds (10 in progress)
+## Results: `dev_tree_1s_hard`, 10 realizations × 10 seeds
 
 Median gap below the best fit reached on each realization [nats], at the start and after Baum-Welch; median
-rows missed; median seconds for start and Baum-Welch together. The planted states, polished, sit 135 nats
-below the best (median).
+rows missed; median seconds for start and Baum-Welch together. The planted states, polished, sit 126 nats
+below the best (median). The `anchor` and `knn` variants joined after the first realization and run on 9.
 
 | # | start | start gap | after BW | Missed start / after [%] | s |
 | --- | --- | --- | --- | --- | --- |
-| 4 | `lattice` | 4,384 | 112 | 1.1 / 0.9 | 34 |
-| 5 | `lattice` + EM | 4,391 | 105 | 1.1 / 1.5 | 42 |
-| 7 | `prior` | 11,372 | 130 | 1.4 / 1.1 | 11 |
-| 20 | parallel tempering on the HMM | 4,421 | 123 | 1.1 / 1.1 | 25 |
-| 21 | `hmc` on the HMM, warmed, T = 10 | 4,424 | 122 | 1.1 / 1.1 | 16 |
-| 19 | `anneal` on the HMM | 4,415 | 127 | 1.2 / 1.2 | 28 |
-| 11 | `gaussian-em` | 5,627 | 494 | 1.7 / 2.4 | 8 |
-| 10 | `emission++` | 4,910 | 215 | 1.8 / 9.0 | 10 |
-| 14 | 5 × `emission++` by HMM likelihood | 4,666 | 120 | 1.4 / 14.1 | 16 |
-| 13 | `emission++`, trimmed | 4,986 | 185 | 3.6 / 14.7 | 13 |
-| 6 | `rdr-quantiles` | 5,157 | 1,225 | 8.0 / 15.4 | 14 |
-| 15 | 20 × trimmed `emission++` | 4,645 | 194 | 1.4 / 17.8 | 20 |
-| 17 | `emission++`, neutral anchor (5 realizations) | 4,853 | 228 | 4.2 / 23.9 | 15 |
-| 18 | `emission++`, kNN seeds (5 realizations) | 5,169 | 220 | 5.7 / 28.1 | 13 |
-| 16 | 5 × Lloyd-refined `emission++` | 4,680 | 239 | 1.8 / 31.3 | 27 |
-| 9 | `k-means++` | 5,087 | 250 | 3.1 / 31.7 | 10 |
-| 2 | CalicoST `initialization_by_gmm` | 4,948 | 187 | 2.6 / 32.6 | 13 |
-| 12 | `quantile` | 5,200 | 427 | 2.0 / 41.6 | 10 |
-| 8 | `data` | 5,118 | 275 | 17.3 / 42.1 | 10 |
-| 3 | `distinct` (#348) | 5,012 | 363 | 9.1 / 45.1 | 14 |
-| 1 | `cnaster` `gmm_init` | 5,129 | 777 | 17.7 / 47.1 | 12 |
+| 4 | `lattice` | 4,354 | 112 | 1.1 / 1.0 | 35 |
+| 5 | `lattice` + EM | 4,381 | 105 | 1.1 / 1.1 | 43 |
+| 21 | `hmc` on the HMM, warmed, T = 10 | 4,395 | 120 | 1.1 / 1.1 | 19 |
+| 7 | `prior` | 13,733 | 130 | 1.4 / 1.2 | 13 |
+| 19 | `anneal` on the HMM | 4,384 | 122 | 1.2 / 1.2 | 31 |
+| 20 | parallel tempering on the HMM | 4,372 | 123 | 1.1 / 1.2 | 29 |
+| 11 | `gaussian-em` | 5,516 | 397 | 1.5 / 1.4 | 13 |
+| 6 | `rdr-quantiles` | 5,148 | 1,225 | 7.4 / 18.5 | 16 |
+| 10 | `emission++` | 4,927 | 213 | 1.9 / 18.2 | 11 |
+| 14 | 5 × `emission++` by HMM likelihood | 4,639 | 136 | 1.4 / 19.9 | 16 |
+| 15 | 20 × trimmed `emission++` | 4,624 | 199 | 1.4 / 21.2 | 22 |
+| 13 | `emission++`, trimmed | 4,961 | 202 | 3.0 / 22.4 | 13 |
+| 18 | `emission++`, kNN seeds | 5,160 | 231 | 6.0 / 25.1 | 14 |
+| 9 | `k-means++` | 5,081 | 253 | 4.6 / 26.6 | 12 |
+| 17 | `emission++`, neutral anchor | 4,833 | 229 | 3.0 / 29.9 | 16 |
+| 2 | CalicoST `initialization_by_gmm` | 4,921 | 197 | 2.6 / 31.3 | 13 |
+| 16 | 5 × Lloyd-refined `emission++` | 4,650 | 219 | 1.9 / 38.3 | 30 |
+| 12 | `quantile` | 5,132 | 279 | 2.0 / 41.6 | 12 |
+| 8 | `data` | 5,101 | 286 | 17.3 / 43.2 | 11 |
+| 1 | `cnaster` `gmm_init` | 5,114 | 743 | 16.0 / 44.3 | 13 |
+| 3 | `distinct` (#348) | 5,013 | 267 | 9.3 / 45.3 | 15 |
 
 `gaussian-em` refuses on some seeds: a component's variance collapses on the normal clone's point mass, and
 `sal` refuses rather than floor it. The figure is `tests.studies.copy_state_plot` over the merged stream,
