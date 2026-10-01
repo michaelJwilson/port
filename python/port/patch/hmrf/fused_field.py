@@ -42,7 +42,9 @@ limit.
 
 **Referee: bitwise.** The per-`(spot, clone)` additions run over `o` in the
 same order as the two-step's, on the same values, so `np.array_equal` is the
-bar.
+bar. With `log_space=True` the per-bin kernels are the rows of
+`port.pipeline.LOG_SPACE_SWAPS` (#560, #561), and the bar is the two-step
+under that table, bitwise again.
 
 **What is deliberately not changed.** `rel_valid_emision_weight` is carried
 as `cnaster` computes it, for the reason item 1 gives: it is #58's finding,
@@ -54,8 +56,12 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import numpy as np
-from cnaster.hmm_nophasing import _bb_logpmf_1d, _nb_logpmf_1d
+from cnaster.hmm_nophasing import _bb_logpmf_1d as cnaster_bb_logpmf_1d
+from cnaster.hmm_nophasing import _nb_logpmf_1d as cnaster_nb_logpmf_1d
 from numba import njit
+
+from port.patch.hmm_nophasing.bb_logpmf import _bb_logpmf_1d as log_space_bb_logpmf_1d
+from port.patch.hmm_nophasing.nb_logpmf import _nb_logpmf_1d as log_space_nb_logpmf_1d
 
 if TYPE_CHECKING:  # pragma: no cover - `prange` is `range` to a type checker
     prange = range
@@ -69,6 +75,9 @@ __all__ = ["fused_spot_clone_field"]
 #    of the emission as well as two of the field, and the bitwise claim below
 #    would then be about the wrong thing. Inside `cnaster` this is a local
 #    import from the same package.
+# NB imported under other names, so `LOG_SPACE_SWAPS` does not rebind them
+#    here: a compiled kernel resolves a global at its first compile, and one
+#    first compiled under the table would be cached with the table's kernel.
 
 
 @njit(nogil=True, cache=True, parallel=True, error_model="numpy")
@@ -84,6 +93,7 @@ def fused_spot_clone_field(
     pred,
     rel_valid_emision_weight,
     out=None,
+    log_space=False,
 ):
     """The `(n_spots, n_clones)` field, without an emission array.
 
@@ -105,6 +115,9 @@ def fused_spot_clone_field(
     the two-step materialized, so a caller that reuses it across outer
     iterations saves an allocation and not a footprint. Every entry is
     written before it is read, so a reused buffer needs no clearing.
+
+    `log_space` scores with `LOG_SPACE_SWAPS`' kernels (#560, #561) rather
+    than `cnaster`'s.
     """
     n_obs, n_spots = counts_nb.shape
     n_clones = pred.shape[1]
@@ -127,22 +140,40 @@ def fused_spot_clone_field(
 
             # NB one row per bin, contiguous, and only the state this clone
             #    decoded to -- which is the cut: n_clones of n_states.
-            _nb_logpmf_1d(
-                counts_nb[o, :],
-                base_nb_mean[o, :],
-                np.exp(log_mu[copy_state]),
-                alphas[copy_state],
-                scratch,
-            )
+            if log_space:
+                log_space_nb_logpmf_1d(
+                    counts_nb[o, :],
+                    base_nb_mean[o, :],
+                    np.exp(log_mu[copy_state]),
+                    alphas[copy_state],
+                    scratch,
+                )
+            else:
+                cnaster_nb_logpmf_1d(
+                    counts_nb[o, :],
+                    base_nb_mean[o, :],
+                    np.exp(log_mu[copy_state]),
+                    alphas[copy_state],
+                    scratch,
+                )
             accumulated_rdr += scratch
 
-            _bb_logpmf_1d(
-                counts_bb[o, :],
-                total_bb_RD[o, :],
-                p_binom[copy_state],
-                taus[copy_state],
-                scratch,
-            )
+            if log_space:
+                log_space_bb_logpmf_1d(
+                    counts_bb[o, :],
+                    total_bb_RD[o, :],
+                    p_binom[copy_state],
+                    taus[copy_state],
+                    scratch,
+                )
+            else:
+                cnaster_bb_logpmf_1d(
+                    counts_bb[o, :],
+                    total_bb_RD[o, :],
+                    p_binom[copy_state],
+                    taus[copy_state],
+                    scratch,
+                )
             accumulated_baf += scratch
 
         for spot in range(n_spots):

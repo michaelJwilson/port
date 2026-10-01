@@ -36,6 +36,7 @@ from typing import Any, NamedTuple
 from port.pipeline import (
     COPY_SWAPS,
     FIGURE_SWAPS,
+    LOG_SPACE_SWAPS,
     PLOT_OFF_SWAPS,
     REFINEMENT_SWAPS,
     SHIFT_SWAPS,
@@ -100,7 +101,10 @@ def _parser() -> argparse.ArgumentParser:
         "--shift",
         action=argparse.BooleanOptionalAction,
         default=None,
-        help="install SHIFT_SWAPS, the per-clone shift and its pin (#276, #299); on, off with --no-patch",
+        help=(
+            "install SHIFT_SWAPS, the per-clone shift and its pin (#276, #299), "
+            "and LOG_SPACE_SWAPS (#560, #561); on, off with --no-patch"
+        ),
     )
     parser.add_argument(
         "--refinement-mask",
@@ -338,6 +342,11 @@ def main(argv: Sequence[str] | None = None) -> int:
                 f"{swap.module}.{swap.name} <- {swap.replacement}  "
                 f"(#{swap.ticket}, changes the model; --no-shift to omit)"
             )
+        for swap in LOG_SPACE_SWAPS:
+            print(
+                f"{swap.module}.{swap.name} <- {swap.replacement}  "
+                f"(#{swap.ticket}, to 1e-9 where cnaster is right; with the shift)"
+            )
         for swap in REFINEMENT_SWAPS:
             print(
                 f"{swap.module}.{swap.name} <- {swap.replacement}  "
@@ -528,7 +537,14 @@ def main(argv: Sequence[str] | None = None) -> int:
                     selected, swap.replacement, decoder=arguments.copy_decode
                 )
         if shift:
-            selected = selected + SHIFT_SWAPS
+            # NB the emission kernels where `cnaster`'s are wrong (#560,
+            #    #561), on the arm that already departs from its fit; the
+            #    field compiles its kernels in, so it takes them as an option.
+            selected = with_options(
+                selected + SHIFT_SWAPS + LOG_SPACE_SWAPS,
+                "port.patch.hmrf:pipeline_clone_assignment",
+                log_space=True,
+            )
 
             # NB the genomic figure draws each clone's line at `mu / Z_c` when
             #    the fit it plots was shifted (#299).
