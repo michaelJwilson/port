@@ -39,9 +39,10 @@ from typing import Any, Literal, NamedTuple
 import numpy as np
 from scipy.special import gammaln
 
-from port.patch.hmm_nophasing.gradient import DISPERSION_FLOOR
+from port.patch.hmm_nophasing.gradient import ALPHA_MIN, DISPERSION_FLOOR, TAU_MAX
 
 __all__ = [
+    "DISPERSION_MODELS",
     "CopyFit",
     "Pseudobulk",
     "candidates",
@@ -75,17 +76,49 @@ it. On the pure easy fixture an unbounded search found the doubled genome.
 PURITY_GRID = (1.0, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3)
 """Where the start looks for a clone's tumour fraction."""
 
+DispersionModel = Literal["shared", "per-state", "rescale", "two-component"]
+
+DISPERSION_MODELS: tuple[DispersionModel, ...] = (
+    "shared",
+    "per-state",
+    "rescale",
+    "two-component",
+)
+"""#566's dispersion models, as `lattice_decode` fits them: the HMM's, decoded alike."""
+
+PER_SPOT_ALPHA_BOUNDS = (np.log(1e-8), np.log(1e4))
+"""Where a per-spot `alpha` is searched, in logs: a clone of `S_eff` spots
+scores at `alpha / S_eff`, and #568 fitted 363-402 on CalicoST."""
+
+SHARED_START = 1e-3
+"""The two-component model's clone-shared `alpha` and `rho` before the first M step."""
+
 
 class Pseudobulk(NamedTuple):
-    """One clone's summed counts and what the fit held fixed."""
+    """One clone's summed counts and what the fit held fixed.
+
+    `dispersion` and `taus` are one value, or one per lattice state under
+    the per-state model. The rest is #566's clone-size rescale, the identity
+    by default: each row scores at `alpha_row = shared_alpha + alpha
+    nb_factor` and `rho_row = shared_rho + rho bb_factor[bin]`, `rho = 1 /
+    (1 + tau)` (:func:`_effective`).
+    """
 
     counts_nb: np.ndarray
     base_nb_mean: np.ndarray
     counts_bb: np.ndarray
     total_bb_RD: np.ndarray
     normal_log_lambda: np.ndarray
-    dispersion: float
-    taus: float
+    dispersion: Any
+    taus: Any
+    nb_factor: float = 1.0
+    """`1 / S_eff,c`, `sum_s mu_s^2 / (sum_s mu_s)^2` over the clone's spots."""
+    bb_factor: np.ndarray | None = None
+    """Per bin `sum_s n_s (n_s - 1) / (N (N - 1))`; `None` leaves `tau` unscaled."""
+    shared_alpha: float = 0.0
+    """The clone-shared `alpha` beside the scaled per-spot one (two-component)."""
+    shared_rho: float = 0.0
+    """The clone-shared `rho` beside the scaled per-spot one (two-component)."""
 
 
 def candidates(max_total_copy: int) -> np.ndarray:
@@ -116,14 +149,18 @@ def _emission(
     exposure = bulk.base_nb_mean[bins]
     mean = exposure * np.exp(log_rate)
 
+    alpha = bulk.dispersion
+
     with np.errstate(divide="ignore", invalid="ignore"):
-        if bulk.dispersion <= 0.0:
+        if np.ndim(alpha) == 0 and alpha <= 0.0:
             depth = np.where(
                 mean <= 0.0, 0.0, x * np.log(mean) - mean - gammaln(x + 1.0)
             )
         else:
-            size = 1.0 / max(bulk.dispersion, DISPERSION_FLOOR)
-            success = 1.0 / (1.0 + bulk.dispersion * mean)
+            # NB `np.maximum` of two floats is `max`'s value: a scalar
+            #    `alpha` scores bitwise as before (#512).
+            size = 1.0 / np.maximum(alpha, DISPERSION_FLOOR)
+            success = 1.0 / (1.0 + alpha * mean)
             fixed = gammaln(x + size) - gammaln(size) - gammaln(x + 1.0)
             depth = np.where(
                 mean <= 0.0,
@@ -135,12 +172,19 @@ def _emission(
     n = bulk.total_bb_RD[bins]
     choose = gammaln(n + 1.0) - gammaln(k + 1.0) - gammaln(n - k + 1.0)
 
-    if not np.isfinite(bulk.taus):
+    taus = bulk.taus
+    binomial = ~np.isfinite(taus)
+
+    def limit() -> np.ndarray:
         share = np.clip(p, DISPERSION_FLOOR, 1.0 - DISPERSION_FLOOR)
-        allele = choose + k * np.log(share) + (n - k) * np.log1p(-share)
+        return np.asarray(choose + k * np.log(share) + (n - k) * np.log1p(-share))
+
+    if np.ndim(taus) == 0 and binomial:
+        allele = limit()
     else:
-        a = np.maximum(p * bulk.taus, DISPERSION_FLOOR)
-        b = np.maximum((1.0 - p) * bulk.taus, DISPERSION_FLOOR)
+        finite = np.where(binomial, 1.0, taus) if np.ndim(taus) else taus
+        a = np.maximum(p * finite, DISPERSION_FLOOR)
+        b = np.maximum((1.0 - p) * finite, DISPERSION_FLOOR)
         allele = (
             choose
             + gammaln(k + a)
@@ -148,6 +192,10 @@ def _emission(
             - gammaln(n + a + b)
             - (gammaln(a) + gammaln(b) - gammaln(a + b))
         )
+        if np.ndim(taus) and np.any(binomial):
+            # NB a row with no spot holding two trials scores as the
+            #    binomial, which no `tau` moves (#566).
+            allele = np.where(binomial, limit(), allele)
 
     return np.asarray(depth + allele)
 
@@ -169,16 +217,54 @@ def _parameters(
         return np.log(depth), np.where(alleles > 0, share, 0.5)
 
 
-def _with(bulk: Pseudobulk, alpha: float, tau: float) -> Pseudobulk:
-    return Pseudobulk(
-        bulk.counts_nb,
-        bulk.base_nb_mean,
-        bulk.counts_bb,
-        bulk.total_bb_RD,
-        bulk.normal_log_lambda,
-        alpha,
-        tau,
+def _with(
+    bulk: Pseudobulk,
+    alpha: Any,
+    tau: Any,
+    shared_alpha: float | None = None,
+    shared_rho: float | None = None,
+) -> Pseudobulk:
+    """`bulk` at `(alpha, tau)`, and at the shared parts where given."""
+    return bulk._replace(
+        dispersion=alpha,
+        taus=tau,
+        shared_alpha=bulk.shared_alpha if shared_alpha is None else shared_alpha,
+        shared_rho=bulk.shared_rho if shared_rho is None else shared_rho,
     )
+
+
+def _effective(bulk: Pseudobulk, index: Any) -> Pseudobulk:
+    """`bulk` at the `(alpha, tau)` its rows score at: the state rows `index` selects, rescaled.
+
+    `index` picks a per-state value's rows -- `(slice(None), None)` for every
+    state as a column, a path for each bin's state -- and leaves one value
+    alone. A bulk at the identity rescale and one value comes back as it
+    is, so the shared decode scores bitwise as before.
+    """
+    alpha, tau = bulk.dispersion, bulk.taus
+    plain = (
+        bulk.bb_factor is None and bulk.nb_factor == 1.0 and bulk.shared_alpha == 0.0
+    )
+    if plain and np.ndim(alpha) == 0 and np.ndim(tau) == 0:
+        return bulk
+    if np.ndim(alpha):
+        alpha = np.asarray(alpha, dtype=np.float64)[index]
+    if np.ndim(tau):
+        tau = np.asarray(tau, dtype=np.float64)[index]
+
+    if bulk.nb_factor != 1.0 or bulk.shared_alpha != 0.0:
+        alpha = bulk.shared_alpha + alpha * bulk.nb_factor
+
+    if bulk.bb_factor is not None:
+        with np.errstate(divide="ignore"):
+            rho = np.where(np.isfinite(tau), 1.0 / (1.0 + tau), 0.0)
+        rho_row = bulk.shared_rho + rho * bulk.bb_factor
+        with np.errstate(divide="ignore"):
+            tau = np.where(
+                rho_row > 0.0, 1.0 / np.where(rho_row > 0.0, rho_row, 1.0) - 1.0, np.inf
+            )
+
+    return _with(bulk, alpha, tau)
 
 
 def viterbi_oracle(
@@ -315,9 +401,15 @@ class CopyFit:
     paths: list[np.ndarray]
     shifts: np.ndarray
     purity: np.ndarray
-    dispersion: float
-    taus: float
+    dispersion: Any
+    """`alpha`: one value, or one per state under the per-state model."""
+    taus: Any
+    """`tau`, as `dispersion` is."""
     log_likelihood: float
+    shared_alpha: float = 0.0
+    """The two-component model's clone-shared `alpha`; 0 otherwise."""
+    shared_rho: float = 0.0
+    """The two-component model's clone-shared `rho`; 0 otherwise."""
 
 
 def _prior(states: np.ndarray, parsimony: float) -> np.ndarray:
@@ -335,7 +427,12 @@ def _log_emissions(
     """`(n_states, n_obs)` plus the prior, `-1e10` where a state cannot emit."""
     log_mu, p = _parameters(states, purity)
     bins = np.arange(bulk.counts_nb.size)
-    emission = _emission((log_mu - shift)[:, None], p[:, None], bulk, bins)
+    emission = _emission(
+        (log_mu - shift)[:, None],
+        p[:, None],
+        _effective(bulk, (slice(None), None)),
+        bins,
+    )
     emission = np.where(np.isfinite(emission), emission, -1e10)
     return np.asarray(emission + _prior(states, parsimony)[:, None])
 
@@ -418,7 +515,9 @@ def _on_path(
     """The clone's log-likelihood along `path`."""
     log_mu, p = _parameters(states, purity)
     bins = np.arange(path.size)
-    return float(np.sum(_emission(log_mu[path] - shift, p[path], bulk, bins)))
+    return float(
+        np.sum(_emission(log_mu[path] - shift, p[path], _effective(bulk, path), bins))
+    )
 
 
 def _dispersions(
@@ -460,6 +559,142 @@ def _dispersions(
     return alpha, tau
 
 
+def _state_scores(
+    k: int,
+    states: np.ndarray,
+    paths: list[np.ndarray],
+    bulks: list[Pseudobulk],
+    shifts: np.ndarray,
+    purity: np.ndarray,
+) -> Callable[[float, float], float]:
+    """The log-likelihood of every clone's bins on state `k`, at one `(alpha, tau)`."""
+    rows: list[tuple[np.ndarray, np.ndarray, Pseudobulk, np.ndarray]] = []
+    for path, bulk, shift, fraction in zip(paths, bulks, shifts, purity, strict=True):
+        bins = np.flatnonzero(path == k)
+        if bins.size:
+            log_mu, p = _parameters(states[k : k + 1], float(fraction))
+            rows.append((log_mu - float(shift), p, bulk, bins))
+
+    def score(a: float, t: float) -> float:
+        return float(
+            sum(
+                np.sum(_emission(rate, share, _with(bulk, a, t), bins))
+                for rate, share, bulk, bins in rows
+            )
+        )
+
+    return score
+
+
+def _search(objective: Callable[[float], float], bounds: tuple[float, float]) -> float:
+    """`exp` of the bounded Brent maximum of `objective` over a log-scale interval."""
+    from scipy.optimize import minimize_scalar
+
+    found = minimize_scalar(
+        lambda x: -objective(float(np.exp(x))), bounds=bounds, method="bounded"
+    )
+    return float(np.exp(found.x))
+
+
+def _fit_dispersions(
+    model: DispersionModel,
+    current: tuple[Any, Any, dict[str, float]],
+    data: tuple[np.ndarray, list[np.ndarray], list[Pseudobulk], np.ndarray, np.ndarray],
+    limits: tuple[float, float, float],
+) -> tuple[Any, Any, dict[str, float]]:
+    """One M step of `model`'s dispersions along the paths, each a bounded search (#566).
+
+    - `shared`: :func:`_dispersions`, as before.
+    - `per-state`: the pooled fit, then each occupied state's own `alpha`,
+      `tau` on its bins alone -- given the paths the likelihood separates by
+      state -- inside `alpha_min`, `tau_max`, shrunk in logs toward the
+      pooled value with weight `n0 / (n0 + n_k)`; an empty state takes the
+      pooled one.
+    - `rescale`: the per-spot `alpha`, `tau` through each clone's factors,
+      `alpha` over :data:`PER_SPOT_ALPHA_BOUNDS`.
+    - `two-component`: that, then the clone-shared `alpha` and `rho`.
+    """
+    alpha, tau, shared = current
+    states, paths, bulks, shifts, purity = data
+    alpha_min, tau_max, prior_rows = limits
+
+    def total(a: Any, t: Any, **parts: float) -> float:
+        merged = {**shared, **parts}
+        return sum(
+            _on_path(float(s), float(f), states, _with(b, a, t, **merged), z)
+            for z, b, s, f in zip(paths, bulks, shifts, purity, strict=True)
+        )
+
+    if model == "shared":
+        alpha, tau = _dispersions(alpha, tau, states, paths, bulks, shifts, purity)
+        return alpha, tau, shared
+
+    if model == "per-state":
+        alpha_bounds = (float(np.log(alpha_min)), ALPHA_BOUNDS[1])
+        tau_bounds = (TAU_BOUNDS[0], float(np.log(tau_max)))
+        pooled_tau = float(np.exp(np.mean(np.log(tau))))
+        pooled_alpha = _search(lambda a: total(a, pooled_tau), alpha_bounds)
+        pooled_tau = _search(lambda t: total(pooled_alpha, t), tau_bounds)
+        alphas = np.full(len(states), pooled_alpha)
+        taus = np.full(len(states), pooled_tau)
+
+        for k in range(len(states)):
+            n_k = float(sum(int(np.sum(path == k)) for path in paths))
+            if n_k == 0.0:
+                continue
+            score = _state_scores(k, states, paths, bulks, shifts, purity)
+            held_tau = float(taus[k])
+
+            def on_alpha(
+                a: float,
+                s: Callable[[float, float], float] = score,
+                t: float = held_tau,
+            ) -> float:
+                return s(a, t)
+
+            own_alpha = _search(on_alpha, alpha_bounds)
+
+            def on_tau(
+                t: float,
+                s: Callable[[float, float], float] = score,
+                a: float = own_alpha,
+            ) -> float:
+                return s(a, t)
+
+            own_tau = _search(on_tau, tau_bounds)
+            weight = prior_rows / (prior_rows + n_k)
+            alphas[k] = np.exp(
+                (1.0 - weight) * np.log(own_alpha) + weight * np.log(pooled_alpha)
+            )
+            taus[k] = np.exp(
+                (1.0 - weight) * np.log(own_tau) + weight * np.log(pooled_tau)
+            )
+
+        return (
+            np.clip(alphas, alpha_min, np.exp(ALPHA_BOUNDS[1])),
+            np.clip(taus, np.exp(TAU_BOUNDS[0]), tau_max),
+            shared,
+        )
+
+    alpha = _search(lambda a: total(a, tau), PER_SPOT_ALPHA_BOUNDS)
+    tau = _search(lambda t: total(alpha, t), TAU_BOUNDS)
+
+    if model == "two-component":
+        shared_alpha = _search(
+            lambda s: total(alpha, tau, shared_alpha=s), ALPHA_BOUNDS
+        )
+        # NB `rho_shared = 1 / (1 + tau_shared)`, searched as `tau_shared`.
+        shared_tau = _search(
+            lambda t: total(
+                alpha, tau, shared_alpha=shared_alpha, shared_rho=1.0 / (1.0 + t)
+            ),
+            TAU_BOUNDS,
+        )
+        shared = {"shared_alpha": shared_alpha, "shared_rho": 1.0 / (1.0 + shared_tau)}
+
+    return alpha, tau, shared
+
+
 def lattice_decode(
     clones: list[tuple[np.ndarray, Pseudobulk, float]],
     *,
@@ -471,6 +706,10 @@ def lattice_decode(
     fit_purity: bool = True,
     fit_shifts: bool = True,
     dispersion: Literal["fit", "held", "poisson"] = "fit",
+    model: DispersionModel = "shared",
+    alpha_min: float = ALPHA_MIN,
+    tau_max: float = TAU_MAX,
+    prior_rows: float = 0.0,
     em: bool = True,
     iterations: int = 5,
     max_inner: int = 10,
@@ -491,9 +730,20 @@ def lattice_decode(
     start. `dispersion`: `"fit"` in the M-step, `"held"` at the continuous
     fit's, `"poisson"` at the Poisson and binomial limits.
 
+    `model` is #566's, as the HMM fitted it (:data:`DISPERSION_MODELS`):
+    `shared`, one `alpha`, `tau`; `per-state`, one per lattice state, inside
+    `alpha_min`, `tau_max` and shrunk toward the pooled fit with weight
+    `prior_rows / (prior_rows + n_k)` in logs; `rescale`, one per-spot
+    value scored at each clone's moment-matched one (`Pseudobulk`'s
+    factors); `two-component`, that plus a clone-shared part.
+
     The flags are the simplifications the #362 audit measured; the defaults
     are the decode it adopted.
     """
+    if model not in DISPERSION_MODELS:
+        msg = f"dispersion model {model!r} is not one of {DISPERSION_MODELS}"
+        raise ValueError(msg)
+
     states = candidates(max_total_copy)
     n = len(states)
     transmat = np.log(
@@ -502,14 +752,39 @@ def lattice_decode(
     )
     start = np.full(n, -np.log(n))
     bulks = [bulk for _, bulk, _ in clones]
+
+    if model in ("shared", "per-state"):
+        # NB the factors score only the rescaled models; unscaled, a bulk is
+        #    the decode's as before.
+        bulks = [b._replace(nb_factor=1.0, bb_factor=None) for b in bulks]
+
     shifts = np.array([shift for _, _, shift in clones], dtype=np.float64)
     shifts[normal_clone] = 0.0
     purity = np.ones(len(clones))
+    alpha: Any
+    tau: Any
     alpha, tau = (
         (0.0, np.inf)
         if dispersion == "poisson"
-        else (bulks[0].dispersion, bulks[0].taus)
+        else (
+            float(np.asarray(bulks[0].dispersion).reshape(-1)[0]),
+            float(np.asarray(bulks[0].taus).reshape(-1)[0]),
+        )
     )
+    shared = {"shared_alpha": 0.0, "shared_rho": 0.0}
+
+    if model == "per-state" and dispersion != "poisson":
+        alpha = np.full(
+            len(states), float(np.clip(alpha, alpha_min, np.exp(ALPHA_BOUNDS[1])))
+        )
+        tau = np.full(len(states), float(np.clip(tau, np.exp(TAU_BOUNDS[0]), tau_max)))
+    if model == "two-component" and dispersion != "poisson":
+        # NB a small shared part to start: the M step moves it from there.
+        shared = {"shared_alpha": SHARED_START, "shared_rho": SHARED_START}
+
+    def scored(bulk: Pseudobulk) -> Pseudobulk:
+        return _with(bulk, alpha, tau, **shared)
+
     lengths = np.array([clones[0][0].size]) if lengths is None else lengths
     chain = (transmat, start, np.asarray(lengths))
     grid = PURITY_GRID if fit_purity else (1.0,)
@@ -519,7 +794,7 @@ def lattice_decode(
             purity[i], shifts[i] = _start(
                 states,
                 float(shifts[i]),
-                _with(bulk, alpha, tau),
+                scored(bulk),
                 chain,
                 parsimony,
                 grid,
@@ -534,7 +809,7 @@ def lattice_decode(
                 states,
                 float(shifts[i]),
                 float(purity[i]),
-                _with(bulk, alpha, tau),
+                scored(bulk),
                 parsimony,
             )
             path, score = _viterbi(emission, transmat, start, chain[2])
@@ -547,13 +822,13 @@ def lattice_decode(
 
     for _ in range(iterations if em else 0):
         for _ in range(max_inner):
-            before = (shifts.copy(), purity.copy(), alpha, tau)
+            before = (shifts.copy(), purity.copy(), alpha, tau, list(shared.values()))
 
             for i, bulk in enumerate(bulks):
                 if i == normal_clone:
                     continue
 
-                fitted = _with(bulk, alpha, tau)
+                fitted = scored(bulk)
 
                 if fit_shifts:
 
@@ -587,15 +862,19 @@ def lattice_decode(
                     )
 
             if dispersion == "fit":
-                alpha, tau = _dispersions(
-                    alpha, tau, states, paths, bulks, shifts, purity
+                alpha, tau, shared = _fit_dispersions(
+                    model,
+                    (alpha, tau, shared),
+                    (states, paths, bulks, shifts, purity),
+                    (alpha_min, tau_max, prior_rows),
                 )
 
             if (
                 np.allclose(shifts, before[0], atol=1e-4)
                 and np.allclose(purity, before[1], atol=1e-4)
-                and np.isclose(alpha, before[2], rtol=1e-3)
-                and np.isclose(tau, before[3], rtol=1e-3)
+                and np.allclose(alpha, before[2], rtol=1e-3)
+                and np.allclose(tau, before[3], rtol=1e-3)
+                and np.allclose(list(shared.values()), before[4], rtol=1e-3)
             ):
                 break
 
@@ -610,6 +889,8 @@ def lattice_decode(
         alpha,
         tau,
         total,
+        shared["shared_alpha"],
+        shared["shared_rho"],
     )
 
 
@@ -700,6 +981,8 @@ def captured_clones() -> list[tuple[np.ndarray, Pseudobulk, float]] | None:
     tau = float(np.asarray(result["new_taus"]).reshape(-1)[0])
     rows = []
 
+    from port.patch.hmm_nophasing.rescale import bb_factor, nb_factor
+
     for clone in range(path.shape[1]):
         spots = assignment == clone
         bulk = Pseudobulk(
@@ -710,6 +993,9 @@ def captured_clones() -> list[tuple[np.ndarray, Pseudobulk, float]] | None:
             normal_log_lambda=np.log(profile / profile.sum()),
             dispersion=alpha,
             taus=tau,
+            # NB #566's factors, read only by the rescaled decode models.
+            nb_factor=nb_factor(base[:, spots]),
+            bb_factor=bb_factor(total[:, spots]),
         )
         rows.append((path[:, clone], bulk, float(shifts[clone])))
 

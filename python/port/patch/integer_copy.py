@@ -267,6 +267,10 @@ def decode_clone(
     total: int,
     *,
     decoder: str = "lattice",
+    dispersion: str = "shared",
+    alpha_min: float | None = None,
+    tau_max: float | None = None,
+    prior_rows: float = 0.0,
 ) -> tuple[np.ndarray, float, int]:
     """One clone's `(copies, loss, ploidy)`, as `cnaster`'s decoders return them.
 
@@ -274,7 +278,9 @@ def decode_clone(
     selected `decoder`. `shared` returns its per-state
     pairs to every clone; `lattice` returns this clone's :class:`PairsByBin`.
     `loss` is the negative log-likelihood reached; `ploidy` the median total
-    copy over this clone's bins.
+    copy over this clone's bins. `dispersion` is the lattice decode's model
+    (`copy_likelihood.DISPERSION_MODELS`), the HMM's own, with its bounds
+    and shrinkage (#566).
     """
     from port.extensions.copy_likelihood import (
         captured_chain,
@@ -309,6 +315,7 @@ def decode_clone(
         _SHARED.get("key") != key
         or _SHARED.get("total") != total
         or _SHARED.get("decoder") != decoder
+        or _SHARED.get("dispersion") != dispersion
     ):
         if decoder == "lattice":
             named = captured_normal()
@@ -318,12 +325,18 @@ def decode_clone(
                 else named
             )
             lengths, stay = captured_chain()
+            from port.patch.hmm_nophasing.gradient import ALPHA_MIN, TAU_MAX
+
             decoded = lattice_decode(
                 clones,
                 normal_clone=normal_clone,
                 max_total_copy=total,
                 lengths=lengths,
                 stay=stay,
+                model=dispersion,  # type: ignore[arg-type]
+                alpha_min=ALPHA_MIN if alpha_min is None else alpha_min,
+                tau_max=TAU_MAX if tau_max is None else tau_max,
+                prior_rows=prior_rows,
             )
             _write_decode(decoded, normal_clone)
         else:
@@ -338,7 +351,13 @@ def decode_clone(
                 clones, n_states=log_mu.size, normal=normal, max_total_copy=total
             )
 
-        _SHARED.update(key=key, total=total, decoder=decoder, decoded=decoded)
+        _SHARED.update(
+            key=key,
+            total=total,
+            decoder=decoder,
+            dispersion=dispersion,
+            decoded=decoded,
+        )
         _SHARED["calls"] = {}
         for decodes in _RECORDERS:
             decodes.append(decoded)
@@ -358,7 +377,12 @@ def decode_clone(
 
 
 @as_upstream(
-    cnaster.integer_copy.hill_climbing_integer_copynumber_oneclone, decoder="lattice"
+    cnaster.integer_copy.hill_climbing_integer_copynumber_oneclone,
+    decoder="lattice",
+    dispersion="shared",
+    alpha_min=None,
+    tau_max=None,
+    prior_rows=0.0,
 )
 def hill_climbing_integer_copynumber_oneclone(
     arguments: dict[str, Any], options: dict[str, Any]
@@ -367,7 +391,8 @@ def hill_climbing_integer_copynumber_oneclone(
 
     `base_nb_mean` and the hill climb's own keywords are accepted and unused:
     the capture carries the fit the decode reads. `decoder` is one of
-    `DECODERS`; `run_cnaster_port --copy-decode` binds it at install.
+    `DECODERS`; `run_cnaster_port --copy-decode` binds it at install, and
+    the dispersion options with the HMM's (#566).
     """
     _, total = _caps(
         arguments.get("max_allele_copy", 5), arguments.get("max_total_copy", 6)
@@ -379,12 +404,20 @@ def hill_climbing_integer_copynumber_oneclone(
         arguments["pred_cnv"],
         total,
         decoder=options["decoder"],
+        dispersion=options["dispersion"],
+        alpha_min=options["alpha_min"],
+        tau_max=options["tau_max"],
+        prior_rows=options["prior_rows"],
     )
 
 
 @as_upstream(
     cnaster.integer_copy.hill_climbing_integer_copynumber_fixdiploid_milp,
     decoder="lattice",
+    dispersion="shared",
+    alpha_min=None,
+    tau_max=None,
+    prior_rows=0.0,
 )
 def hill_climbing_integer_copynumber_fixdiploid_milp(
     arguments: dict[str, Any], options: dict[str, Any]
@@ -393,7 +426,8 @@ def hill_climbing_integer_copynumber_fixdiploid_milp(
 
     `base_nb_mean` and the hill climb's own keywords are accepted and unused:
     the capture carries the fit the decode reads. `decoder` is one of
-    `DECODERS`; `run_cnaster_port --copy-decode` binds it at install.
+    `DECODERS`; `run_cnaster_port --copy-decode` binds it at install, and
+    the dispersion options with the HMM's (#566).
     """
     _, total = _caps(
         arguments.get("max_allele_copy", 5), arguments.get("max_total_copy", 6)
@@ -405,4 +439,8 @@ def hill_climbing_integer_copynumber_fixdiploid_milp(
         arguments["pred_cnv"],
         total,
         decoder=options["decoder"],
+        dispersion=options["dispersion"],
+        alpha_min=options["alpha_min"],
+        tau_max=options["tau_max"],
+        prior_rows=options["prior_rows"],
     )

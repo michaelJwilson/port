@@ -600,9 +600,26 @@ def main(argv: Sequence[str] | None = None) -> int:
 
             stack.enter_context(capture())
 
+            # NB the decode fits the HMM's dispersion model, with its bounds
+            #    and shrinkage (#566).
+            decode_dispersion = (
+                "two-component"
+                if arguments.dispersion_two_component
+                else "rescale"
+                if arguments.dispersion_rescale
+                else "per-state"
+                if arguments.per_state_dispersion
+                else "shared"
+            )
             for swap in COPY_SWAPS:
                 selected = with_options(
-                    selected, swap.replacement, decoder=arguments.copy_decode
+                    selected,
+                    swap.replacement,
+                    decoder=arguments.copy_decode,
+                    dispersion=decode_dispersion,
+                    alpha_min=arguments.alpha_min,
+                    tau_max=arguments.tau_max,
+                    prior_rows=arguments.dispersion_prior_rows or 0.0,
                 )
         if shift:
             selected = selected + SHIFT_SWAPS
