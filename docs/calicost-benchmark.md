@@ -4,7 +4,8 @@
 easy, hard and `dev_tree` 60 × 50 r0 in 30 minutes. The last clone assignment
 it wrote, its BAF stage, scores 0.6686 (3 clones), 0.4675 (2) and 0.8601 (3).
 Uncapped, with `n_clones 5`, it takes 20,243 s on `dev_tree` r0 and scores
-clone ARI 0.8538 (6 clones), copy ARI 0.9075. port's numbers on the same
+clone ARI 0.8538 (6 clones), copy ARI 0.9075, and decodes losses as copy-neutral
+LOH and balanced gains as neutral, as port does. port's numbers on the same
 fixtures are in `docs/baseline-release.md`.
 
 ## Conditions
@@ -55,10 +56,60 @@ CalicoST ran to completion on its shipped `configuration_cna_multi` with
 
 - CalicoST was resumed twice from its npz checkpoints after the process was
   killed. Its wall is summed to the last checkpoint of each segment
-  (5894 + 4697 + 9652 s). Read-depth fitting is 13,269 s of it (66%); #532
-  has the timing for each stage.
+  (5894 + 4697 + 9652 s).
 - Copy state ARI compares the HMM state index with the planted (A, B), so it
   is low by construction.
+
+### Every metric, from the committed outputs
+
+`tests/data/benchmarks/dev_tree_r0/calicost.tar.xz`, scored by
+`tests.sim_audit.score` against `dev_tree` r0 (`3381575a`) with no rerun.
+`_pf` is phase-free; `—` is a class planted as one pair or not planted, where
+ARI is undefined (`tests/sim_audit.py`).
+
+| metric | all | LOH | balanced gain | unbalanced gain | neutral |
+| --- | --- | --- | --- | --- | --- |
+| copy ARI | 0.9075 | 0.0018 | — | — | — |
+| copy ARI, `_pf` | 0.9075 | −0.0012 | — | — | — |
+| exact | 0.9792 | 0.717 | 0.000 | — | 0.9929 |
+| exact, `_pf` | | 0.717 | 0.000 | — | |
+
+Exact altered is 0.7095 both phased and phase-free. Clone matching is planted
+0 → 0, 1 → 1, 2 → 5, 3 → 4, with 6 fitted clones.
+
+Planted (A, B) against decoded, as a fraction of each planted pair's
+clone-bins (`--confusion-sampled`):
+
+| planted \ decoded | 0,1 | 0,2 | 1,1 | 1,2 | 3,3 |
+| --- | --- | --- | --- | --- | --- |
+| 0,1 | 0.0175 | 0.9649 |  | 0.0175 |  |
+| 1,0 |  | 0.8750 | 0.1250 |  |  |
+| 0,2 | 0.0028 | 0.9577 | 0.0197 | 0.0197 |  |
+| 1,1 | 0.0059 | 0.0005 | 0.9929 | 0.0005 | 0.0002 |
+| 2,2 |  |  | 1.0000 |  |  |
+
+- **Losses decode as copy-neutral LOH:** 96% of planted (0, 1) and 88% of
+  (1, 0) bins come back (0, 2). Total copy 1 is all but never decoded.
+- **Balanced gain decodes as neutral:** every planted (2, 2) bin comes back
+  (1, 1).
+- These are the two failures port's lattice decode shows on CalicoST easy
+  (T- #471, T- #573), so they are not port's alone.
+
+### Time per stage (`run.json`)
+
+| stage | s |
+| --- | --- |
+| parse | 1,017 |
+| BAF HMRF, 7 rounds | 3,934 |
+| merge | 27 |
+| read depth, clone 0 (8 rounds, 2,273 spots) | 1,337 |
+| read depth, clone 1 (10 rounds, 1,910 spots) | 5,723 |
+| read depth, clone 2 (7 rounds, 264 spots) | 1,891 |
+| read depth, clone 3 (5 rounds, 1,553 spots) | 4,318 |
+| combine, refit, reassign | 1,955 |
+| integer copies and outputs | 41 |
+
+Read-depth fitting is 13,269 s, 66% of the wall.
 
 ## Reproduce
 
