@@ -324,6 +324,16 @@ class CopyFit:
     dispersion: float
     taus: float
     log_likelihood: float
+    log_likelihoods: np.ndarray | None = None
+    """Per clone, its best path's log-likelihood: `log_likelihood` is their sum."""
+    normal_clone: int | None = None
+    """The clone held at `(1, 1)`, shift 0 and fraction 1; `None` where none is."""
+    parsimony: float | None = None
+    """The prior's weight per bin per unit of `|A + B - 2|`, where one applied."""
+    stay: float | None = None
+    """The chain's diagonal, the rest even over the other pairs."""
+    lengths: np.ndarray | None = None
+    """Bins per segment, the chain restarting at each."""
 
 
 def _prior(states: np.ndarray, parsimony: float) -> np.ndarray:
@@ -532,6 +542,8 @@ def lattice_decode(
                 SHIFT_WINDOW if fit_shifts else 0.0,
             )
 
+    scores = np.zeros(len(bulks))
+
     def e_step() -> tuple[list[np.ndarray], float]:
         paths, total = [], 0.0
 
@@ -545,6 +557,7 @@ def lattice_decode(
             )
             path, score = _viterbi(emission, transmat, start, chain[2])
             paths.append(path)
+            scores[i] = score
             total += score
 
         return paths, total
@@ -616,6 +629,11 @@ def lattice_decode(
         alpha,
         tau,
         total,
+        log_likelihoods=scores.copy(),
+        normal_clone=normal_clone,
+        parsimony=parsimony,
+        stay=stay,
+        lengths=np.asarray(chain[2], dtype=np.int64),
     )
 
 
@@ -675,9 +693,15 @@ def shared_decode(
     )
 
 
-def captured_clones() -> list[tuple[np.ndarray, Pseudobulk, float]] | None:
-    """Every captured clone's path, pseudobulk and shift, in the fit's order."""
-    fit = captured_fit()
+def captured_clones(
+    captured: Any = None,
+) -> list[tuple[np.ndarray, Pseudobulk, float]] | None:
+    """Every captured clone's path, pseudobulk and shift, in the fit's order.
+
+    `captured` is a `copy_errors.Captured`; the innermost `capture()`'s
+    last fit where none is given.
+    """
+    fit = captured_fit() if captured is None else captured
 
     if fit is None:
         return None
@@ -782,11 +806,13 @@ def captured_chain() -> tuple[np.ndarray | None, float]:
 
 
 @contextlib.contextmanager
-def capture() -> Iterator[None]:
+def capture() -> Iterator[list[Any]]:
     """Keep the RDR+BAF fit's inputs and result, for the decoder that follows.
 
     `port.extensions.copy_errors.captured_fits` for the block; the decode
-    reads the last `params="smp"` fit through :func:`captured_fit`.
+    reads the last `params="smp"` fit through :func:`captured_fit`. Yields
+    the list of fits, which the caller keeps once the block ends: the
+    outputs read the last of them (`port.extensions.outputs`, #613).
     """
     from port.extensions.copy_errors import captured_fits
 
@@ -794,6 +820,6 @@ def capture() -> Iterator[None]:
         _FITS.append(kept)
 
         try:
-            yield
+            yield kept
         finally:
             _FITS.remove(kept)
