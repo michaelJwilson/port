@@ -217,7 +217,10 @@ def run(design_path: Path, out: Path, samples: list[str], root: Path) -> None:
             if line is not None:
                 record["score"] = json.loads(line[4:])
             else:
-                record["error"] = done_run.stderr[-2000:]
+                # NB both ends: the call that failed and the error it raised
+                record["error"] = (
+                    done_run.stderr[:3000] + "\n...\n" + done_run.stderr[-3000:]
+                )
             with out.open("a") as handle:
                 handle.write(json.dumps(record) + "\n")
             print(
