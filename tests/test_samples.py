@@ -168,8 +168,8 @@ def test_a_pair_the_unique_remap_would_renumber_is_refused() -> None:
 def test_the_outputs_carry_the_recorded_sample_not_the_barcode_suffix(
     tmp_path: Path,
 ) -> None:
-    """`sample` and `sample_id` from the recording, where the barcode suffix
-    (`spot_N`) names one sample per spot; `manifest.json` lists the names."""
+    """`sample_id` is the recorded enum decoded to the sample's name, where
+    the barcode suffix (`spot_N`) names one sample per spot."""
     from port.extensions.outputs import with_samples
     from port.extensions.samples import observe, recording, samples_of
 
@@ -193,17 +193,12 @@ def test_the_outputs_carry_the_recorded_sample_not_the_barcode_suffix(
     assert spots is not None
     placed = with_samples(labels, spots)
 
-    assert placed.columns.tolist() == [
-        "barcode",
-        "sample",
-        "sample_id",
-        "x",
-        "y",
-        "clone_label",
-    ]
-    assert placed["sample"].tolist() == rows[::-1]
+    assert placed.columns.tolist() == ["barcode", "sample_id", "x", "y", "clone_label"]
+    assert placed["barcode"].tolist() == labels["barcode"].tolist()
+    assert placed["sample_id"].tolist() == rows[::-1]
+    enum = samples_of(adata).enum
     assert placed["sample_id"].tolist() == [
-        ["A", "B", "C"].index(name) for name in rows[::-1]
+        enum(int(spots.loc[b, "sample_id"])).name for b in labels["barcode"]
     ]
 
     with pytest.raises(ValueError, match="not spots of the run"):
@@ -217,7 +212,7 @@ def test_a_reversed_sample_sheet_writes_the_same_clones_and_samples(
     tmp_path: Path,
 ) -> None:
     """`dev_tree` r0, sample sheet sorted and reversed: recovery ARI equal to
-    1e-12, and the same `(barcode, sample, sample_id)` in `clone_labels.tsv`.
+    1e-12, and the same `(barcode, sample_id)` in `clone_labels.tsv`.
 
     `load_input_data` concatenates slices in sample-sheet order, so a
     reversed sheet is how unsorted rows reach `get_sample_list` from files;
@@ -250,6 +245,5 @@ def test_a_reversed_sample_sheet_writes_the_same_clones_and_samples(
 
     assert abs(first.ari - second.ari) <= 1e-12
     assert ma["samples"] == mb["samples"] == sorted(sheet["sample_id"].astype(str))
-    pd.testing.assert_frame_equal(
-        a[["sample", "sample_id"]], b[["sample", "sample_id"]]
-    )
+    assert set(a["sample_id"]) == set(ma["samples"])
+    pd.testing.assert_frame_equal(a[["sample_id"]], b[["sample_id"]])

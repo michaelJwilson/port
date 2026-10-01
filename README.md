@@ -290,8 +290,8 @@ rewrites `clone_labels.tsv`: `clone_label` is the merged clone and
 `cnaster_clone_label` keeps `cnaster`'s, since the merge stands in for the
 Neyman-Pearson merge `--sal` no longer installs (#497). The per-spot
 tables -- `clone_labels.tsv`, `clone_labels_integer.tsv` and
-`baf_clone_labels.tsv` -- carry each spot's `sample` and its code
-`sample_id` from the run's slices rather than from the barcode suffix, and
+`baf_clone_labels.tsv` -- carry each spot's `sample_id` as the run assigned
+it, its enum decoded to the sample's name, rather than the barcode suffix, and
 `manifest.json` lists the sample names in code order (#418). Off with
 `--no-patch`, so the baseline arm writes what `cnaster` writes.
 

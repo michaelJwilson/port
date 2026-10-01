@@ -32,8 +32,9 @@ all but `clone_labels.tsv`, below -- in each run directory that holds a
 **Each spot's sample is the run's, not its barcode's** (#418, #365). Given
 the run's `port.extensions.samples` recording, the per-spot tables --
 `clone_labels.tsv`, `clone_labels_integer.tsv`, `baf_clone_labels.tsv` --
-carry `sample`, the name, and `sample_id`, its code into the manifest's
-`samples`. `cnaster` writes `sample_id` as the text after the barcode's last
+carry `sample_id` as the run assigned it: in code a sample is its enum
+(`Samples.enum`), and on file that enum decoded to the sample's name, which
+the manifest's `samples` lists in code order. `cnaster` writes `sample_id` as the text after the barcode's last
 `_`, which names one sample per spot on barcodes such as `spot_N`. Without a
 recording the tables are as before.
 
@@ -315,11 +316,12 @@ def merged_clone_labels(integer: pd.DataFrame) -> pd.DataFrame | None:
 
 
 def with_samples(labels: pd.DataFrame, spots: pd.DataFrame) -> pd.DataFrame:
-    """`labels` with `sample` and `sample_id` read from `spots` by barcode (#418).
+    """`labels` with `sample_id` the run assigned each barcode, decoded to its name (#418).
 
     `spots` is `port.extensions.samples.Recorded.table()`: one row per spot
-    of the run, indexed by barcode. `sample` goes before `sample_id`, which
-    keeps its column and takes the code.
+    of the run, indexed by barcode, whose `sample` is the spot's enum decoded
+    to the sample's name. `sample_id` keeps its column, or goes after
+    `barcode`, and takes that name; a `sample` column is dropped.
 
     Raises
     ------
@@ -333,20 +335,13 @@ def with_samples(labels: pd.DataFrame, spots: pd.DataFrame) -> pd.DataFrame:
         msg = f"{int(missing.sum())} barcodes are not spots of the run: {barcodes[missing].head(3).tolist()}"
         raise ValueError(msg)
 
-    labels = labels.copy()
-    codes = barcodes.map(spots["sample_id"]).astype(np.int64)
+    labels = labels.drop(columns="sample", errors="ignore")
+    names = barcodes.map(spots["sample"]).astype(str)
 
     if "sample_id" in labels:
-        labels["sample_id"] = codes
+        labels["sample_id"] = names.to_numpy()
     else:
-        labels.insert(1, "sample_id", codes)
-
-    if "sample" in labels:
-        labels = labels.drop(columns="sample")
-
-    labels.insert(
-        labels.columns.get_loc("sample_id"), "sample", barcodes.map(spots["sample"])
-    )
+        labels.insert(1, "sample_id", names.to_numpy())
     return labels
 
 
@@ -380,8 +375,8 @@ def write_outputs(
     """Write the files into `run`; return their paths.
 
     `samples` is the run's recording (`port.extensions.samples.recording`);
-    given one, the per-spot tables carry each spot's `sample` and
-    `sample_id` from it, and `clone_labels.tsv` and `baf_clone_labels.tsv`
+    given one, the per-spot tables carry each spot's `sample_id` from it,
+    decoded to the sample's name, and `clone_labels.tsv` and `baf_clone_labels.tsv`
     are rewritten to carry them.
     """
     from importlib.metadata import PackageNotFoundError, version
