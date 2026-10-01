@@ -135,7 +135,6 @@ def test_fitted_floors_the_scores_for_the_call_and_restores_them(
 ) -> None:
     """`sal_mixture.fitted` seeds under the floor; `sal`'s own name is back afterwards."""
     import sal.opt.emission_mixture as upstream
-    import sal.search.mixture_starts as starts
     from port.patch.hmm_initialize import sal_mixture
 
     original = upstream._seed_scores
@@ -148,7 +147,7 @@ def test_fitted_floors_the_scores_for_the_call_and_restores_them(
         seen.append(upstream._seed_scores is not original)
         raise Stop
 
-    monkeypatch.setattr(starts, "lookup", lambda _: start)
+    monkeypatch.setattr("sal.search.mixture_starts.lookup", lambda _: start)
 
     with pytest.raises(Stop):
         sal_mixture.fitted(object(), "emission++", np.random.default_rng(0))
