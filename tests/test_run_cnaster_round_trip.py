@@ -121,8 +121,8 @@ def test_the_pipeline_completes_on_the_dev_instance(tmp_path: Path) -> None:
     balanced. Without one `find_diploid_balanced_state` raises, which is how
     #106 was found.
 
-    The figures this writes are the ones committed under `docs/plots/`;
-    `python -m tests.generate_plots` is the same call with the copy.
+    The figures this writes are the ones `python -m tests.generate_plots`
+    draws, the same call with the copy into `.cache/plots/`.
     """
     output = run_written(
         dev_instance(), tmp_path, port=False, max_iter_outer=1, max_iter=3, n_states=5

@@ -129,7 +129,7 @@ def write_fig(
     (#195, #517): `group_rasters` collapses the groups by `group_strategy`.
 
     `png_copy` also writes `<name>.png` beside the PDF, without metadata, for
-    the figures committed under `docs/plots/` (#452): a matplotlib PDF
+    figures compared across runs (#452): a matplotlib PDF
     carries its creation time, so two runs of the same code differ byte for
     byte and a PNG written without metadata does not.
     `run_cnaster_port --png-copies` binds it.

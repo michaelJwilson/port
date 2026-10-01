@@ -1,29 +1,26 @@
-"""Regenerate the committed figures under `docs/plots/`.
+"""Regenerate the dev instance's figures, by default under `.cache/plots/`.
 
-Run as `python -m tests.generate_plots`. It writes the dev instance's inputs
-through `tests.run_config.run_written`, runs **`run_cnaster_port`**
-on them, and copies what it wrote into the repository. `--cnaster` runs plain
+Run as `python -m tests.generate_plots [--out DIR]`. It writes the dev
+instance's inputs through `tests.run_config.run_written`, runs
+**`run_cnaster_port`** on them, and copies what it wrote into `DIR`
+(default `tests.plots_dir.PLOTS`, untracked). `--cnaster` runs plain
 `cnaster` instead, for a comparison.
 
-**Two sets.** `docs/plots/` is the dev instance as planted by default;
-`docs/plots/lattice/` is the same genome with `copy_lattice=True`, whose states
-are integer allele copies `(A, B)` (`tests.fixtures.COPY_LATTICE`), so its
-copy-number figures can be read against a truth that is integer (#313).
+**Two sets.** `DIR` is the dev instance as planted by default; `DIR/lattice/`
+is the same genome with `copy_lattice=True`, whose states are integer allele
+copies `(A, B)` (`tests.fixtures.COPY_LATTICE`), so its copy-number figures
+can be read against a truth that is integer (#313).
 
-**CI runs this on every pull request and commits the result** (#296,
-`.github/workflows/figures.yml`), so the figures in a pull request are the
-figures its code draws.
-
-**The figures are committed because a plot is a result.** #87 asks for them
-beside the code rather than in a run directory nobody keeps, so a change to
-the pipeline shows up as a change to a picture in a diff.
+**CI runs this on every pull request and uploads the result** as a workflow
+artifact (`.github/workflows/figures.yml`), so the figures a pull request's
+code draws can be read beside it. They are not committed: `docs/` tracks
+no PNG outside two exceptions (`tests/test_ci_entry.py`).
 
 They are not a referee. Nothing here compares a figure against a previous
-one. **They are committed as PNG** (#452): a matplotlib PDF carries a
-creation timestamp, so two runs differed byte for byte with nothing having
-changed, and re-conflicted every pull request stacked on another. The run
-still writes its PDFs; `run_cnaster_port --png-copies` has `write_fig` write a
-PNG beside each, without metadata, and those are what is copied. `--cnaster`
+one. **They are PNG** (#452): a matplotlib PDF carries a creation timestamp,
+so two runs differ byte for byte with nothing having changed. The run still
+writes its PDFs; `run_cnaster_port --png-copies` has `write_fig` write a PNG
+beside each, without metadata, and those are what is copied. `--cnaster`
 runs `cnaster`'s own `write_fig`, so it copies PDFs, for a local comparison.
 """
 
@@ -48,13 +45,8 @@ from port.extensions.combined_figure import (
 
 from tests.fixtures import COPY_LATTICE, CoreInferenceTruth, dev_instance
 from tests.he_slide import mock_he, write_he_slide
+from tests.plots_dir import PLOTS
 from tests.run_config import run_written
-
-PLOTS = Path(__file__).resolve().parent.parent / "docs" / "plots"
-"""Where the figures live in the repository."""
-
-LATTICE_PLOTS = PLOTS / "lattice"
-"""Where the copy-lattice set lives."""
 
 STATES = 8
 """What the run fits: the eight states each instance uses of those it plants.
@@ -113,18 +105,24 @@ def _write_combined(
 
 
 def main() -> None:
-    """Run the pipeline and copy its figures into `docs/plots/`."""
+    """Run the pipeline and copy its figures into `--out`."""
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument(
         "--cnaster",
         action="store_true",
         help="run plain cnaster rather than run_cnaster_port",
     )
+    parser.add_argument(
+        "--out", type=Path, default=PLOTS, help="where the figures go (untracked)"
+    )
     arguments = parser.parse_args()
 
     sets = (
-        (dev_instance(), PLOTS),
-        (dev_instance(n_states=len(COPY_LATTICE), copy_lattice=True), LATTICE_PLOTS),
+        (dev_instance(), arguments.out),
+        (
+            dev_instance(n_states=len(COPY_LATTICE), copy_lattice=True),
+            arguments.out / "lattice",
+        ),
     )
 
     for truth, destination in sets:
@@ -151,9 +149,9 @@ def main() -> None:
             _write_combined(recorded, truth, root, output)
 
         destination.mkdir(parents=True, exist_ok=True)
-        # NB PDFs are no longer committed (#452). PNGs are overwritten by name
-        #    rather than globbed away: `realizations.png` and `umi_grow_*.png`
-        #    beside them are written by other scripts.
+        # NB PDFs are not kept (#452). PNGs are overwritten by name rather
+        #    than globbed away: `realizations.png` beside them is written by
+        #    another script.
         for stale in destination.glob("*.pdf"):
             stale.unlink()
 

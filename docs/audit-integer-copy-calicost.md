@@ -1,6 +1,6 @@
 # Audit: integer copy-number decoding across the paper, CalicoST and `cnaster`
 
-Issue #131. Companion to `docs/audit-paper-cnaster.md`, which records that
+Issue #131. Companion to the paper-against-`cnaster` audit (#28), which records that
 `cnaster`'s decoder is the method the paper contrasts itself with; this one
 says how far it has moved since, and in which direction.
 
@@ -43,7 +43,7 @@ Three distinct charges: **ad-hoc weights**, **no uncertainty**, and
 **ill-posed ploidy regularisation**. They are separable and each is checkable.
 
 Note also that the paper's identity is `μ̄_k = (a_k + b_k)/2` -- the
-**de-biased** rate. `docs/audit-logmu-shift-calicost.md` records that neither
+**de-biased** rate. The `logmu_shift` audit (#131) records that neither
 implementation produces `μ̄`, so both decoders read an axis whose zero point is
 unset. That is upstream of everything below.
 
@@ -228,5 +228,5 @@ application specific -- it is about allele-specific copy number, not about
 HMMs or count emissions. The one exception is item 4: a family that can report
 the observed information at its MLE would let the credible region be built
 from upstream quantities, and that is `EmissionFamily`'s natural surface
-rather than `cnaster`'s. That is the same hook `docs/audit-logmu-shift-calicost.md`
+rather than `cnaster`'s. That is the same hook the `logmu_shift` audit (#131)
 asks for, from a different direction.

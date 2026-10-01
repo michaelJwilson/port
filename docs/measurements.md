@@ -127,7 +127,7 @@ Above `CLAUDE.md`'s 2x bar at every size measured, and it rises with both
 extents: the stride is `n_spots` and the number of strided probes is
 `n_obs`, so `cnaster`'s form worsens as either grows.
 `expected_runtime.tex`'s own derivation puts the genome at 2.9e5 segments
-rather than the 3.2e3 it states (`docs/audit-paper-internal.md` §3a), so the
+rather than the 3.2e3 it states (#27), so the
 range measured understates the size the method is aimed at.
 
 Three other forms were tried and are recorded so they are not retried:
@@ -205,8 +205,7 @@ than only on its size. One panel, two clones, `dpi=150`:
 | 16,000 | 1.509 s / 871 KB | **1.361 s / 635 KB** | 6.050 s / 1,506 KB |
 
 The crossover is between 250 and 1,000 bins, and `expected_runtime.tex`'s own
-derivation puts a genome at 2.9e5 segments (`docs/audit-paper-internal.md`
-§3a), so every instance the method is aimed at is far above it. The decision
+derivation puts a genome at 2.9e5 segments (#27), so every instance the method is aimed at is far above it. The decision
 is **keep rasterizing**, and it is a decision rather than a default because
 nothing had measured it.
 

@@ -13,7 +13,8 @@ result are kept. The objective the fit maximized is then
 rebuilt from those inputs in `jax` and differentiated at the fit by
 `port.extensions.parameter_errors`: nothing is re-fitted.
 
-Run as `python -m tests.realizations` to write the figure.
+Run as `python -m tests.realizations` to write the figure, by default to
+`.cache/plots/realizations.png` (`tests.plots_dir`), untracked.
 """
 
 from __future__ import annotations
@@ -32,6 +33,7 @@ from port.extensions.copy_errors import Captured
 from scipy.optimize import linear_sum_assignment
 
 from tests.fixtures import CoreInferenceTruth, _emission_families, core_inference_truth
+from tests.plots_dir import PLOTS
 from tests.run_config import run_written
 
 GENOME = {
@@ -455,9 +457,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         default=GENOME["seed"],
         help="draws which realization carries the error bars",
     )
-    parser.add_argument(
-        "--output", type=Path, default=Path("docs/plots/realizations.png")
-    )
+    parser.add_argument("--output", type=Path, default=PLOTS / "realizations.png")
     arguments = parser.parse_args(argv)
 
     from port.extensions.realization_plot import plot_realizations

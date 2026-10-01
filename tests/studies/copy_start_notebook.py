@@ -4,7 +4,8 @@
 
 writes `docs/nb/data/copy_state_starts_r0.json` (the rows, without the
 workers' tracebacks), then the notebook, executed by `nbclient`, which reads
-only that file and draws `docs/plots/studies/copy_state_starts.png`.
+only that file and draws `.cache/plots/studies/copy_state_starts.png`
+(untracked, `tests.plots_dir`) beside its own output.
 """
 
 from __future__ import annotations
@@ -20,7 +21,7 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[2]
 DATA = ROOT / "docs" / "nb" / "data" / "copy_state_starts_r0.json"
 NOTEBOOK = ROOT / "docs" / "nb" / "copy_state_starts.ipynb"
-FIGURE = ROOT / "docs" / "plots" / "studies" / "copy_state_starts.png"
+FIGURE = ROOT / ".cache" / "plots" / "studies" / "copy_state_starts.png"
 INTRO = ROOT / "docs" / "nb" / "copy_state_starts.md"
 """The notebook's opening cell: the result and its reading, written once the rows are in."""
 
@@ -165,7 +166,9 @@ with mpl.rc_context(figure_rc()):
         ax.set_title(f"{title}: {len(summary)} starts", loc="left")
     axes[0].set_ylabel("gap below the best fit reached [nats] (0 drawn at 0.1)")
     figure.tight_layout()
-    figure.savefig("../plots/studies/copy_state_starts.png", dpi=150, metadata={"Software": None})
+    # NB untracked (`tests.plots_dir`): the figure is this notebook's output below.
+    Path("../../.cache/plots/studies").mkdir(parents=True, exist_ok=True)
+    figure.savefig("../../.cache/plots/studies/copy_state_starts.png", dpi=150, metadata={"Software": None})
     plt.show()""",
     ),
     (

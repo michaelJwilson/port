@@ -1,6 +1,7 @@
 """Integer copies decoded from the error bars, against realizations (#353).
 
-Run as `python -m tests.copy_audit [--realizations 8] [--output PATH]`.
+Run as `python -m tests.copy_audit [--realizations 8] [--output PATH]`; `PATH`
+defaults to `.cache/plots/realizations_copies.png` (`tests.plots_dir`), untracked.
 
 `tests.realizations`' genome, planted on `COPY_LATTICE` so every state is an
 integer `(A, B)`, is realized `N` times; each realization is run through
@@ -42,6 +43,7 @@ import numpy as np
 import pandas as pd
 
 from tests.fixtures import COPY_LATTICE
+from tests.plots_dir import PLOTS
 from tests.scoring import matched, overlap
 
 Pair = tuple[int, int]
@@ -302,7 +304,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--realizations", type=int, default=8)
     parser.add_argument("--jobs", type=int, default=1)
     parser.add_argument(
-        "--output", type=Path, default=Path("docs/plots/realizations_copies.png")
+        "--output", type=Path, default=PLOTS / "realizations_copies.png"
     )
     arguments = parser.parse_args(argv)
 

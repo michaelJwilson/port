@@ -22,9 +22,9 @@ is a hypothesis for the plan to measure.
 
 CalicoST `c1abcae`; `cnaster` `4adad4d`; port at #507 (`4f7c8b9`); `sal`
 0.3.0. Paths: `C/` = `calicost/src/calicost`, `N/` = `cnaster`, `P/` =
-`python/port`. It extends `audit-cnaster-calicost-divergence.md`,
-`audit-integer-copy-calicost.md` and `audit-logmu-shift-calicost.md`
-(#131), and corrects one statement in the second of them (§8).
+`python/port`. It extends `audit-cnaster-calicost-divergence.md` and
+`audit-integer-copy-calicost.md` (#131), and corrects one statement in the
+second of them (§8).
 
 ## 0. Which configuration is compared
 
@@ -97,7 +97,7 @@ configuration-for-configuration comparison. Even there, `UNALIGNED`
 | HMM start | GMM, 7 components, `max_iter` 1, BAF clipped to [0.1, 0.9] (`C/utils_hmm.py:163-225`) | GMM, 28 components → 14 → 7 (`N/hmm_initialize.py:534-735`) | BAF stage `distinct` (#348); read-depth stage `sal` count-pair mixture, `kmeans++x5+em`, 160 s budget (#489) | different |
 | dispersion start | α 0.1, τ 30; after stage 2 all clones are set to max α and min τ (`C/calicost_main.py:266-267`) | α 0.5, τ 1,000 | same as `cnaster` | different start |
 | RDR cap | none | bins with RDR > 5 are excluded from the fit (`N/hmm_nophasing.py:808`) | inherited | different: high amplifications drop out of the fit |
-| per-clone library shift | only on the `_mix` path | not supported | per-clone `logmu_shift`, neutral state pinned to μ = 1 (#370/#375) | different; see `audit-logmu-shift-calicost.md` |
+| per-clone library shift | only on the `_mix` path | not supported | per-clone `logmu_shift`, neutral state pinned to μ = 1 (#370/#375) | different (#131) |
 | node potential | `weighted_sum`: logsumexp over states under γ (`C/hmrf.py:118-150`) | `max`: along the argmax path (`N/hmrf.py:103-171`) | `max`, fused, plus a 100-nat refinement-mask penalty | different from shipped |
 | prior | Potts + log clone frequency, floor −50 (`C/hmrf.py:514-523`) | Potts only | Potts only | different: CalicoST penalizes small clones |
 | label solver | one Gauss–Seidel sweep per outer iteration, a Python loop (`C/hmrf.py:128-147`) | ICM to convergence; fixed floor of 200 with random reassignment; greedy pair merges (`N/icm.py`) | α-expansion (Rust) fused with ICM, then floor merge at `min_spots_per_clone` (#492) | different: CalicoST takes 1 sweep, the others minimize the energy |
