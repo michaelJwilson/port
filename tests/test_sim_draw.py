@@ -103,14 +103,27 @@ def test_lambda_is_each_genes_share_of_normal_spot_umi() -> None:
 @pytest.mark.infra
 @pytest.mark.parametrize(
     ("table", "key"),
-    [("genome", "chromosome_lengths"), ("cna", "states"), ("layout", "jitter")],
-)
+    [
+        ("genome", "chromosome_lengths"), ("cna", "states"), ("layout", "jitter"),
+        ("model", "counts_sampler"),
+    ],
+)  # fmt: skip
 def test_a_manifest_that_omits_an_assumption_is_refused(table: str, key: str) -> None:
     """Nothing the draw assumes has a default in code (#445)."""
     document = extended(MANIFESTS / "dev_tree.toml")
     del document[table][key]
 
     with pytest.raises(ValueError, match=rf"\[{table}\] {key}"):
+        from_document(document, MANIFESTS)
+
+
+@pytest.mark.infra
+def test_an_unknown_counts_sampler_is_refused() -> None:
+    """`[model] counts_sampler` names one of `COUNT_SAMPLERS` (#549)."""
+    document = extended(MANIFESTS / "dev_tree.toml")
+    document["model"]["counts_sampler"] = "dirichlet"
+
+    with pytest.raises(ValueError, match=r"\[model\] counts_sampler: one of"):
         from_document(document, MANIFESTS)
 
 
@@ -447,3 +460,36 @@ def test_a_manifest_extended_from_elsewhere_keeps_its_base_paths(
 
     assert manifest.resolve(manifest.reference["coverage"]).exists()
     assert manifest.resolve(manifest.config["base"]).exists()
+
+
+@pytest.mark.patch
+def test_the_map_cache_returns_the_parse_and_follows_the_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`genetic_map` from its `.npz` equals the text parse, bitwise (#549).
+
+    The second call reads the cache the first wrote; editing the map file
+    changes its digest, so the edit is parsed rather than served stale.
+    """
+    from port.sim import draw
+
+    monkeypatch.setattr(draw, "MAP_CACHE", tmp_path / "cache")
+    path = tmp_path / "map.tab"
+    rows = ["chrom\tpos\tpos_cm", "chr1\t10\t0.1", "chr1\t30\t0.4",
+            "chrX\t50\t0.9", "chrX\t20\t0.2"]  # fmt: skip
+    path.write_text("\n".join(rows) + "\n")
+    parse = draw.genetic_map.__wrapped__
+
+    first = parse(path)
+    assert len(list((tmp_path / "cache").glob("*.npz"))) == 1
+    second = parse(path)
+
+    assert first.keys() == second.keys() == {"1", "X"}
+    for contig in first:
+        for a, b in zip(first[contig], second[contig], strict=True):
+            np.testing.assert_array_equal(a, b)
+            assert a.dtype == b.dtype
+    np.testing.assert_array_equal(second["X"][0], [20, 50])
+
+    path.write_text("\n".join([*rows, "chr2\t5\t0.0"]) + "\n")
+    assert parse(path).keys() == {"1", "X", "2"}
