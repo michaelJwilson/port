@@ -64,7 +64,13 @@ DRIVER = "cnaster.scripts.run_cnaster"
 ENTRY = "run_cnaster"
 """The driver's entry, looked up on the module by `run_cnaster_port` after its swaps."""
 
-OUTPUTS = ("clone_labels.tsv", "cnv_seglevel.tsv", "cnv_perstate.tsv", "cnv_states.tsv")
+OUTPUTS = (
+    "clone_labels.tsv",
+    "spot_labels.tsv",
+    "cnv_seglevel.tsv",
+    "cnv_perstate.tsv",
+    "cnv_copy_states.tsv",
+)
 """What a record keeps of the run's output directory: small, and placed."""
 
 KEYED = ("python/port", "src", "uv.lock", "Cargo.lock")

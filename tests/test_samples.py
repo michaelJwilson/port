@@ -174,9 +174,10 @@ def test_a_pair_the_unique_remap_would_renumber_is_refused() -> None:
 def test_the_outputs_carry_the_recorded_sample_not_the_barcode_suffix(
     tmp_path: Path,
 ) -> None:
-    """`sample_id` is the recorded enum decoded to the sample's name, where
-    the barcode suffix (`spot_N`) names one sample per spot."""
-    from port.extensions.outputs import with_samples
+    """`spot_labels.tsv`'s `sample` is the recorded enum decoded to the
+    sample's name and `sample_id` the enum, where the barcode suffix
+    (`spot_N`) names one sample per spot."""
+    from port.extensions.outputs import spot_labels
     from port.extensions.samples import observe, recording, samples_of
 
     rows = ORDERS["interleaved"]
@@ -197,18 +198,20 @@ def test_the_outputs_carry_the_recorded_sample_not_the_barcode_suffix(
     )
     spots = recorded.table()
     assert spots is not None
-    placed = with_samples(labels, spots)
+    placed = spot_labels(labels, None, spots, {0: 0})
 
-    assert placed.columns.tolist() == ["barcode", "sample_id", "x", "y", "clone_label"]
     assert placed["barcode"].tolist() == labels["barcode"].tolist()
-    assert placed["sample_id"].tolist() == rows[::-1]
+    assert placed["sample"].tolist() == rows[::-1]
     enum = samples_of(adata).enum
-    assert placed["sample_id"].tolist() == [
+    assert placed["sample"].tolist() == [
         enum(int(spots.loc[b, "sample_id"])).name for b in labels["barcode"]
+    ]
+    assert placed["sample_id"].tolist() == [
+        int(spots.loc[b, "sample_id"]) for b in labels["barcode"]
     ]
 
     with pytest.raises(ValueError, match="not spots of the run"):
-        with_samples(labels.assign(barcode="elsewhere"), spots)
+        spot_labels(labels.assign(barcode="elsewhere"), None, spots, {0: 0})
 
 
 @pytest.mark.end2end
@@ -218,7 +221,7 @@ def test_a_reversed_sample_sheet_writes_the_same_clones_and_samples(
     tmp_path: Path,
 ) -> None:
     """`dev_tree` r0, sample sheet sorted and reversed: recovery ARI equal to
-    1e-12, and the same `(barcode, sample_id)` in `clone_labels.tsv`.
+    1e-12, and the same `(barcode, sample)` in `spot_labels.tsv`.
 
     `load_input_data` concatenates slices in sample-sheet order, so a
     reversed sheet is how unsorted rows reach `get_sample_list` from files;
@@ -243,8 +246,11 @@ def test_a_reversed_sample_sheet_writes_the_same_clones_and_samples(
         ("reversed", {"paths.sample_sheet": str(reversed_sheet)}),
     ):
         recovery, output = run_arm(sample, [], overrides, tmp_path / arm)
-        labels = pd.read_csv(next(output.rglob("clone_labels.tsv")), sep="\t")
-        manifest = json.loads(next(output.rglob("manifest.json")).read_text())
+        labels = pd.read_csv(next(output.rglob("spot_labels.tsv")), sep="\t")
+        manifest = json.loads(next(output.rglob("run.json")).read_text())
+        manifest["samples"] = [
+            manifest["samples"][str(i)] for i in range(len(manifest["samples"]))
+        ]
         arms[arm] = (recovery, labels.set_index("barcode").sort_index(), manifest)
 
     (first, a, ma), (second, b, mb) = arms["sorted"], arms["reversed"]
@@ -252,5 +258,5 @@ def test_a_reversed_sample_sheet_writes_the_same_clones_and_samples(
     assert abs(first.ari - second.ari) <= 1e-12
     assert ma["samples"] == list(sheet["sample_id"].astype(str))
     assert mb["samples"] == ma["samples"][::-1]
-    assert set(a["sample_id"]) == set(ma["samples"])
-    pd.testing.assert_frame_equal(a[["sample_id"]], b[["sample_id"]])
+    assert set(a["sample"]) == set(ma["samples"])
+    pd.testing.assert_frame_equal(a[["sample"]], b[["sample"]])

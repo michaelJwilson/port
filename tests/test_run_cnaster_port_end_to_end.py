@@ -16,7 +16,6 @@ import warnings
 from pathlib import Path
 
 import numpy as np
-import pandas as pd
 import pytest
 
 
@@ -27,6 +26,7 @@ import pytest
 def test_the_entry_point_recovers_the_planted_clones(tmp_path: Path) -> None:
     """Both planted clones, at most 2 of 1,000 spots misplaced, through `run_cnaster_port`."""
     import matplotlib as mpl
+    from port.extensions.outputs import read_run_labels
     from port.scripts.run_cnaster import main
 
     from tests.fixtures import core_inference_truth
@@ -48,8 +48,9 @@ def test_the_entry_point_recovers_the_planted_clones(tmp_path: Path) -> None:
         warnings.simplefilter("ignore")
         assert main([str(config)]) == 0
 
-    labels = pd.read_csv(
-        next((written.root / "output").rglob("clone_labels.tsv")), sep="\t", comment="#"
+    # NB the run's clones, merged where `port` merged them (#518, #613).
+    labels = read_run_labels(
+        next((written.root / "output").rglob("clone_labels.tsv")).parent
     )
     spots = labels["barcode"].str.slice(2, 7).astype(int).to_numpy()
     fitted = np.empty(truth.labels.size, dtype=np.int64)

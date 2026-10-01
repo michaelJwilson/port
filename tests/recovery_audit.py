@@ -190,9 +190,12 @@ def _copies(
 
 def read_cnaster(truth: CoreInferenceTruth, output: Path) -> Reading:
     """A `run_cnaster` or `run_cnaster_port` run's outputs."""
+    from port.extensions.outputs import read_run_labels
+
     run = next(output.rglob("rdrbaf_final_nstates*_smp.npz"))
     fit = np.load(run, allow_pickle=True)
-    labels = pd.read_csv(run.parent / "clone_labels.tsv", sep="\t", comment="#")
+    # NB the run's clones, merged where `port` merged them (#518, #613).
+    labels = read_run_labels(run.parent)
     fitted = np.empty(truth.labels.size, dtype=np.int64)
     fitted[_spots(labels["barcode"])] = labels["clone_label"].to_numpy()
     n_fitted = int(fitted.max()) + 1

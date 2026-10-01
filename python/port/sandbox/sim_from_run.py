@@ -19,7 +19,9 @@ run's inputs (#116), which described the data but could not be drawn.
 
     python -m port.sandbox.sim_from_run <run dir> > sim/manifests/<name>.toml
 
-From `clone_labels.tsv` and `cnv_segments.tsv` of the run directory:
+From `clone_labels.tsv` -- `spot_labels.tsv` where `port` wrote it, for
+each spot's sample by name (#418) -- and `cnv_copy_segments.tsv` (#613) of
+the run directory:
 
 - `[cna]`: the clones with any segment other than `(1, 1)` are the tumour
   clones, the rest are `normal`; `shared` counts the first tumour clone's
@@ -65,11 +67,22 @@ class Run:
 
 
 def read_run(path: Path) -> Run:
-    """The run in `path`, a directory holding `clone_labels.tsv` and `cnv_segments.tsv`."""
+    """The run in `path`, a directory holding `clone_labels.tsv` and `cnv_copy_segments.tsv`.
+
+    `clone_label` is the HMRF's, whose ids the segments' `clone` carries;
+    `sample_id` is `spot_labels.tsv`'s `sample` where it exists.
+    """
+    labels = pd.read_csv(path / "clone_labels.tsv", sep="\t", comment="#")
+    spots = path / "spot_labels.tsv"
+
+    if spots.exists():
+        named = pd.read_csv(spots, sep="\t").set_index("barcode")["sample"]
+        labels["sample_id"] = labels["barcode"].map(named).to_numpy()
+
     return Run(
         name=path.name,
-        labels=pd.read_csv(path / "clone_labels.tsv", sep="\t"),
-        segments=pd.read_csv(path / "cnv_segments.tsv", sep="\t", comment="#"),
+        labels=labels,
+        segments=pd.read_csv(path / "cnv_copy_segments.tsv", sep="\t", comment="#"),
     )
 
 

@@ -78,7 +78,7 @@ DETECTED = 0.90
 RECOVERED = 0.90
 """An event is recovered when this share of its bins decodes to its pair."""
 
-KEPT = ("clone_labels.tsv", "cnv_seglevel.tsv")
+KEPT = ("clone_labels.tsv", "spot_labels.tsv", "cnv_seglevel.tsv")
 """A run's outputs kept beside its record, so a new score needs no rerun."""
 
 FLAGS = ("--sal", "--no-plots")
@@ -277,12 +277,14 @@ def _neutral(
 
 def _kept_run(sample: Any, kept: Path) -> dict[str, Any]:
     """`read_run`'s labels, seglevel, `a` and `b`, from a run's `KEPT` outputs."""
+    from port.extensions.outputs import read_run_labels
+
     from tests.sim_audit import _barcode
 
-    table = pd.read_csv(kept / "clone_labels.tsv", sep="\t", comment="#")
-    barcodes = table["barcode"] if "barcode" in table else table.iloc[:, 0]
+    # NB the run's clones, merged where `port` merged them (#518, #613).
+    table = read_run_labels(kept)
     by_barcode = dict(
-        zip(_barcode(barcodes), table["clone_label"].to_numpy(), strict=True)
+        zip(_barcode(table["barcode"]), table["clone_label"].to_numpy(), strict=True)
     )
     labels = np.array([by_barcode.get(b, -1) for b in sample.barcodes])
     seglevel = pd.read_csv(kept / "cnv_seglevel.tsv", sep="\t")
@@ -364,7 +366,9 @@ def run_member(
             kept = out / "outputs" / f"s{seed:04d}-J{j:g}"
             kept.mkdir(parents=True, exist_ok=True)
             for name in KEPT:
-                shutil.copy(next(output.rglob(name)), kept / name)
+                # NB `spot_labels.tsv` is `port`'s, absent from a baseline arm.
+                for found in sorted(output.rglob(name))[:1]:
+                    shutil.copy(found, kept / name)
         target = _record(out, seed, j)
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(json.dumps(record) + "\n")

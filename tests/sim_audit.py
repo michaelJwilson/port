@@ -245,14 +245,17 @@ def confusion_table(
 
 def read_run(sample: SimulatedSample, output: Path) -> dict[str, Any]:
     """Fitted labels per truth spot, and per-bin `Z`, `A`, `B` per fitted clone."""
+    from port.extensions.outputs import read_run_labels
+
     run = next(output.rglob("rdrbaf_final_nstates*_smp.npz"))
     fit = np.load(run, allow_pickle=True)
-    table = pd.read_csv(run.parent / "clone_labels.tsv", sep="\t", comment="#")
-    # NB CalicoST writes the barcodes as an index named `BARCODES` (#494);
-    #    `cnaster` as a `barcode` column.
-    barcodes = table["barcode"] if "barcode" in table else table.iloc[:, 0]
+    # NB the run's clones: `spot_labels.tsv`'s `clone_label_decode` where
+    #    `port` wrote it (#613), the merged clones `clone_labels.tsv` carried
+    #    before; else `clone_labels.tsv`, whose barcodes CalicoST writes as an
+    #    index named `BARCODES` (#494) and `cnaster` as a `barcode` column.
+    table = read_run_labels(run.parent)
     by_barcode = dict(
-        zip(_barcode(barcodes), table["clone_label"].to_numpy(), strict=True)
+        zip(_barcode(table["barcode"]), table["clone_label"].to_numpy(), strict=True)
     )
     labels = np.array([by_barcode.get(b, -1) for b in sample.barcodes])
 
@@ -289,7 +292,7 @@ def score(sample: SimulatedSample, output: Path, arm: str, wall: float) -> SimRe
     ari = float(adjusted_rand_score(sample.labels[scored], fitted[scored]))
     merged = integer_clones(run["a"], run["b"])
     integer = merged[fitted[scored]]
-    written = next(output.rglob("clone_labels_integer.tsv"), None)
+    written = next(output.rglob("spot_labels.tsv"), None)
 
     if written is not None:
         # NB the run's own integer clones, under the merge agreement its
@@ -298,7 +301,7 @@ def score(sample: SimulatedSample, output: Path, arm: str, wall: float) -> SimRe
         by_barcode = dict(
             zip(
                 _barcode(table["barcode"]),
-                table["integer_clone_label"].to_numpy(),
+                table["clone_label_decode"].to_numpy(),
                 strict=True,
             )
         )

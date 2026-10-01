@@ -283,7 +283,7 @@ def test_sal_recovers_the_planted_clones_on_the_dev_instance(tmp_path: object) -
     import warnings
     from pathlib import Path
 
-    import pandas as pd
+    from port.extensions.outputs import read_run_labels
     from port.scripts.run_cnaster import main
     from sklearn.metrics import adjusted_rand_score
 
@@ -308,10 +308,11 @@ def test_sal_recovers_the_planted_clones_on_the_dev_instance(tmp_path: object) -
             warnings.simplefilter("ignore")
             main([str(config), *arm])
 
-        labels = pd.read_csv(
-            next((root / "output").rglob("clone_labels.tsv")), sep="\t", comment="#"
+        # NB the run's clones, merged where `port` merged them (#518, #613).
+        labels = read_run_labels(
+            next((root / "output").rglob("clone_labels.tsv")).parent
         )
-        column = next(c for c in labels.columns if "clone" in c.lower())
+        column = "clone_label"
         spots = labels["barcode"].str.slice(2, 7).astype(int).to_numpy()
         fitted = np.empty(truth.labels.size, dtype=object)
         fitted[spots] = labels[column].astype(str).to_numpy()

@@ -228,37 +228,6 @@ def _clone_of(clones: list[Any], path: np.ndarray, calls: dict[bytes, int]) -> i
     return matches[seen % len(matches)]
 
 
-def _write_decode(decoded: Any, normal_clone: int, parsimony: float) -> None:
-    """`copy_decode.tsv` beside `cnaster`'s tables: what the lattice decode fitted."""
-    import pandas as pd
-
-    try:
-        from cnaster.config import get_global_config
-        from cnaster.utils import get_output_dir
-
-        output_dir = get_output_dir(get_global_config())
-    except (AttributeError, ImportError, TypeError):
-        return
-
-    from pathlib import Path
-
-    if not Path(output_dir).is_dir():
-        return
-
-    pd.DataFrame(
-        {
-            "clone": np.arange(len(decoded.pairs)),
-            "normal": np.arange(len(decoded.pairs)) == normal_clone,
-            "tumour_fraction": decoded.purity,
-            "shift": decoded.shifts,
-            "alpha": decoded.dispersion,
-            "tau": decoded.taus,
-            "log_likelihood": decoded.log_likelihood,
-            "parsimony": parsimony,
-        }
-    ).to_csv(Path(output_dir) / "copy_decode.tsv", sep="\t", index=False)
-
-
 def decode_clone(
     new_log_mu: Any,
     new_p_binom: Any,
@@ -332,7 +301,6 @@ def decode_clone(
                 stay=stay,
                 parsimony=parsimony,
             )
-            _write_decode(decoded, normal_clone, parsimony)
         else:
             _, normal = shift_for(pred_cnv)
 

@@ -62,7 +62,7 @@ def run(tmp_path_factory: pytest.TempPathFactory) -> dict[str, Any]:
         recomb.get_sitewise_transmat = original
 
     written_table = pd.read_csv(
-        next((written.root / "output").rglob("gene_segments.tsv")), sep="\t"
+        next((written.root / "output").rglob("cnv_lineage.tsv")), sep="\t"
     )
     return {
         "lineage": lineage,
@@ -124,10 +124,20 @@ def test_the_levels_nest_as_the_pipeline_builds_them(run: dict[str, Any]) -> Non
 @pytest.mark.merge
 @pytest.mark.xdist_group("pipeline")
 def test_the_run_writes_its_lineage(run: dict[str, Any]) -> None:
-    """`gene_segments.tsv` is the recorded lineage: coordinates and one label column per level."""
+    """`cnv_lineage.tsv` is the recorded lineage: coordinates, one label column
+    per named level and the last level as `segment_final` (#613)."""
+    from port.extensions.outputs import LEVELS
+
     lineage = run["lineage"]
     table = run["table"]
     expected = lineage.table()
+    *named, final = lineage.levels
 
-    assert list(table.columns) == list(expected.columns)
-    pd.testing.assert_frame_equal(table, expected, check_dtype=False)
+    pd.testing.assert_frame_equal(
+        table[["CHR", "START", "END"]], expected[["CHR", "START", "END"]]
+    )
+    np.testing.assert_array_equal(table["gene_index"], np.arange(len(expected)))
+    np.testing.assert_array_equal(table["segment_final"], expected[final])
+    for name in named:
+        if name in LEVELS:
+            np.testing.assert_array_equal(table[LEVELS[name]], expected[name])
