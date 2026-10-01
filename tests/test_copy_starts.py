@@ -252,7 +252,7 @@ def test_the_hmc_start_seeds_from_the_chains_best_draw() -> None:
     objective = surrogate(held)
     chain = chain_initializer(np.random.default_rng(3)).chain(objective)
     values = [float(objective(theta)) for theta in chain.draws]
-    best = at_locations(
+    best: Any = at_locations(
         held, objective.components(chain.draws[int(np.argmin(values))]).mean
     )
 
