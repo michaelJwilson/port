@@ -2,7 +2,7 @@
 
 Ticket: #541 -- which clone-label start and which Potts solver place the
   spots in their clones, with copy states from #540's starts.
-Measurement: `docs/nb/clone_label_study.ipynb`, on dev_tree 60 x 50 r0.
+Measurement: `docs/nb/clone_label_study.ipynb`, on dev_tree 60 x 50 r0 (`3381575a`).
 Exit: a start or solver graduates to `extensions/` or `patch/` if it is at
   least as accurate as `--sal`'s on dev_tree, easy, hard and
   `dev_shared_unique` end to end and no slower; else this stays the study's.
