@@ -18,8 +18,9 @@ from pathlib import Path
 from typing import Any
 
 import matplotlib as mpl
+import port.pipeline
 import pytest
-from port.pipeline import SWAPS, instrumented, patched, swap_sites
+from port.pipeline import SWAPS, Swap, instrumented, patched, swap_sites
 
 mpl.use("Agg")
 
@@ -60,14 +61,33 @@ def _original(swap: Any) -> Any:
     return getattr(sys.modules[swap.module], swap.name)
 
 
-@pytest.mark.infra
-@pytest.mark.parametrize("swap", SWAPS, ids=lambda swap: f"{swap.module}.{swap.name}")
-def test_every_replacement_accepts_what_it_replaces(swap: Any) -> None:
-    """A swap installs by rebinding a name, so the call has to survive it.
+TABLES: dict[str, tuple[Swap, ...]] = {
+    name: getattr(port.pipeline, name)
+    for name in port.pipeline.__all__
+    if name == "SWAPS" or name.endswith("_SWAPS")
+}
+"""Every table `port.pipeline` exports, so a new one is covered by being exported."""
 
-    Extra parameters are allowed only as keyword-only with a default --
-    `load_input_data` grows `sparse_counts` that way (#186) -- because a
-    caller that does not know about one is unaffected by it.
+ROWS = [(table, swap) for table, swaps in TABLES.items() for swap in swaps]
+
+DEPARTURES: dict[tuple[str, str], str] = {}
+"""The rows that do not yet accept what they replace: none since #517 step 1.
+
+Declared rather than skipped, so the list can only shrink: an undeclared
+departure fails, and so does a declared one that has been fixed, until its
+entry is removed in the same diff.
+"""
+
+
+def _departure(swap: Swap) -> str | None:
+    """How a replacement's signature differs from `cnaster`'s, or `None`.
+
+    Defaults are compared with names and kinds: a changed default changes
+    what every caller that omits the argument gets, which is the silent
+    behaviour change `CLAUDE.md` forbids. Extra parameters are allowed only
+    as keyword-only with a default -- `load_input_data` grows
+    `sparse_counts` that way (#186) -- because a caller that does not know
+    about one is unaffected by it.
     """
     upstream, replacement = (
         _accepts(_original(swap)),
@@ -75,13 +95,45 @@ def test_every_replacement_accepts_what_it_replaces(swap: Any) -> None:
     )
 
     shared = replacement[: len(upstream)]
-    assert shared == upstream, (
-        f"{swap.module}.{swap.name} takes {upstream}; {swap.replacement} takes {shared}"
-    )
+
+    if shared != upstream:
+        return f"takes {shared}, not {upstream}"
 
     for name, kind, default in replacement[len(upstream) :]:
-        assert kind is inspect.Parameter.KEYWORD_ONLY, f"{name} is positional and new"
-        assert default is not inspect.Parameter.empty, f"{name} is new and required"
+        if kind is not inspect.Parameter.KEYWORD_ONLY:
+            return f"{name} is positional and new"
+
+        if default is inspect.Parameter.empty:
+            return f"{name} is new and required"
+
+    return None
+
+
+@pytest.mark.infra
+def test_every_replacement_accepts_what_it_replaces() -> None:
+    """A swap installs by rebinding a name, so the call has to survive it.
+
+    Every table, not `SWAPS` alone: a row in `FIGURE_SWAPS` is installed by
+    the entry point's default as surely as one in `SWAPS` is (#517 E1).
+    """
+    departing = {
+        (table, swap.name): found
+        for table, swap in ROWS
+        if (found := _departure(swap)) is not None
+    }
+
+    assert set(departing) == set(DEPARTURES), (
+        f"undeclared: { ({k: v for k, v in departing.items() if k not in DEPARTURES}) }; "
+        f"now exact, remove: {sorted(set(DEPARTURES) - set(departing))}"
+    )
+
+
+@pytest.mark.infra
+def test_every_declared_departure_is_a_row() -> None:
+    """A departure whose row was removed is an entry nothing checks."""
+    rows = {(table, swap.name) for table, swap in ROWS}
+
+    assert set(DEPARTURES) <= rows, sorted(set(DEPARTURES) - rows)
 
 
 @pytest.mark.infra
@@ -211,16 +263,16 @@ def test_a_patched_run_reproduces_an_unpatched_one(
     entry point is what ships, so running it is a stronger claim than
     importing what it calls.
 
-    **The patched arm passes `--no-figure-swaps --no-approx`**, because two of the
-    three swap tables are in the entry point's default and neither makes this
+    **The patched arm passes `--no-figure-swaps --no-shift --no-copy-cap`**,
+    because those tables are in the entry point's default and none makes this
     claim: a figure at a different dpi is a different file by design (#195),
-    and the vectorized log-pmf agrees to 8.6e-13 rather than to the byte
-    (#240). `SWAPS` is the table that reproduces `cnaster`, so the two flags
-    select the claim being tested rather than weaken it.
-
-    That is the whole reason there are three tables. A row whose agreement is
-    a tolerance cannot live in `SWAPS` without making this assertion false,
-    and the assertion is what the speed claims are read against.
+    the shift changes every fitted rate (#276), and a stated cap changes the
+    decode (#313). `--no-shift` also leaves out the sal emission and the
+    distinct init its rows read. `SWAPS` is the table that reproduces
+    `cnaster`, so the flags select the claim being tested rather than weaken
+    it; without them 14 files differed, on main as here (#466). A row whose agreement is a tolerance
+    cannot live in `SWAPS` without making this assertion false; the one that
+    did, `--approx`'s vectorized log-pmf (#240), was retired (#466).
     """
     import subprocess
     import sys
@@ -246,7 +298,7 @@ def test_a_patched_run_reproduces_an_unpatched_one(
     baseline = tmp_path / "baseline"
     shutil.move(str(output), str(baseline))
 
-    run("--no-figure-swaps", "--no-approx")
+    run("--no-figure-swaps", "--no-shift", "--no-copy-cap")
 
     same, differ = _compare(baseline, output)
 
@@ -269,3 +321,14 @@ def test_the_timer_reports_every_swapped_name(tmp_path: Path) -> None:
 
         omics.summarize_blocks  # noqa: B018 -- the binding is the wrapper here
         assert spent["summarize_blocks"].calls == 0
+
+
+@pytest.mark.infra
+def test_an_option_the_replacement_does_not_take_is_refused_at_install() -> None:
+    """A typo in a bound option fails when the row installs, not at its first call."""
+    from port.pipeline import FIGURE_SWAPS, with_options
+
+    rows = with_options(FIGURE_SWAPS, "port.patch.utils:write_fig", dpii=72)
+
+    with pytest.raises(TypeError, match="dpii"), patched(rows):
+        pass

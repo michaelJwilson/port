@@ -86,7 +86,8 @@ def test_the_shift_is_computed_once_per_call(cnaster_config: None) -> None:
     """
     import port.patch.hmm_nophasing.shifted_emission as emission
     from cnaster.count_encoder import CountEncoder
-    from port.patch.hmm_nophasing import hmm_nophasing, logmu_shift
+    from port.patch.hmm_nophasing import hmm_nophasing
+    from port.pipeline import with_attributes
 
     n_states, n_clones, per_clone = 7, 3, 8
     n_segments = n_clones * per_clone
@@ -95,10 +96,7 @@ def test_the_shift_is_computed_once_per_call(cnaster_config: None) -> None:
     exposure = generator.integers(20, 60, n_segments).astype(np.float64)
     trials = generator.integers(10, 40, n_segments).astype(np.float64)
 
-    # NB read off the emission module rather than the package: `__init__`
-    #    exports a *function* called `logmu_shift` -- the context manager --
-    #    which shadows the module of that name, and the emission module is
-    #    where the binding being counted actually lives.
+    # NB read off the emission module, where the binding being counted lives.
     calls = 0
     original = emission.logmu_shifts  # type: ignore[attr-defined]
 
@@ -108,7 +106,7 @@ def test_the_shift_is_computed_once_per_call(cnaster_config: None) -> None:
 
         return original(*arguments, **keywords)  # type: ignore[arg-type]
 
-    model = hmm_nophasing()
+    model = with_attributes(hmm_nophasing, apply_logmu_shift=True)()
     model.state_posteriors = np.eye(n_states)[
         np.repeat(np.arange(n_clones), per_clone)
     ].T
@@ -116,25 +114,24 @@ def test_the_shift_is_computed_once_per_call(cnaster_config: None) -> None:
     emission.logmu_shifts = counted  # type: ignore[attr-defined]
 
     try:
-        with logmu_shift():
-            model.compute_emission_probability_nb_betabinom_coded(
-                CountEncoder(
-                    generator.poisson(exposure).astype(np.float64).reshape(-1, 1),
-                    exposure.reshape(-1, 1),
-                ),
-                CountEncoder(
-                    generator.binomial(trials.astype(int), 0.4)
-                    .astype(np.float64)
-                    .reshape(-1, 1),
-                    trials.reshape(-1, 1),
-                ),
-                generator.normal(0.0, 0.3, size=(n_states, 1)),
-                np.full((n_states, 1), 0.2),
-                generator.uniform(0.2, 0.8, size=(n_states, 1)),
-                np.full((n_states, 1), 25.0),
-                normal_log_lambda=generator.normal(0.0, 0.1, size=n_segments),
-                clone_lengths=np.full(n_clones, per_clone, dtype=np.int64),
-            )
+        model.compute_emission_probability_nb_betabinom_coded(
+            CountEncoder(
+                generator.poisson(exposure).astype(np.float64).reshape(-1, 1),
+                exposure.reshape(-1, 1),
+            ),
+            CountEncoder(
+                generator.binomial(trials.astype(int), 0.4)
+                .astype(np.float64)
+                .reshape(-1, 1),
+                trials.reshape(-1, 1),
+            ),
+            generator.normal(0.0, 0.3, size=(n_states, 1)),
+            np.full((n_states, 1), 0.2),
+            generator.uniform(0.2, 0.8, size=(n_states, 1)),
+            np.full((n_states, 1), 25.0),
+            normal_log_lambda=generator.normal(0.0, 0.1, size=n_segments),
+            clone_lengths=np.full(n_clones, per_clone, dtype=np.int64),
+        )
     finally:
         emission.logmu_shifts = original  # type: ignore[attr-defined]
 

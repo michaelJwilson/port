@@ -41,19 +41,23 @@ point calling the original.
 
 from __future__ import annotations
 
+import functools
 import sys
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from types import ModuleType
-from typing import Any
+from typing import Any, NamedTuple, TypeVar
+
+_T = TypeVar("_T")
 
 __all__ = [
     "COPY_SWAPS",
+    "FIGURE_DPI",
     "FIGURE_SWAPS",
-    "NUMERIC_SWAPS",
     "PLOT_OFF_SWAPS",
     "REFINEMENT_SWAPS",
+    "RUN_STATE",
     "SHIFT_SWAPS",
     "SWAPS",
     "Site",
@@ -62,13 +66,15 @@ __all__ = [
     "install",
     "instrumented",
     "patched",
+    "release",
     "swap_sites",
     "warm",
+    "with_attributes",
+    "with_options",
 ]
 
 
-@dataclass(frozen=True)
-class Swap:
+class Swap(NamedTuple):
     """One `cnaster` name, and what `port` puts in its place."""
 
     module: str
@@ -83,9 +89,16 @@ class Swap:
     ticket: int
     """The issue whose measurement justifies the replacement."""
 
+    options: tuple[tuple[str, Any], ...] = ()
+    """Keywords bound into the replacement at install (#517).
 
-@dataclass(frozen=True)
-class Site:
+    A replacement takes `cnaster`'s signature and defaults; what `port`
+    changes is a keyword bound here, so the table rather than a module
+    global says what an installed row does.
+    """
+
+
+class Site(NamedTuple):
     """One module whose binding of a name was rebound."""
 
     module: str
@@ -179,6 +192,12 @@ SWAPS: tuple[Swap, ...] = (
         174,
     ),
     Swap(
+        "cnaster.normal_spot",
+        "determine_normal_candidates",
+        "port.patch.normal_spot:determine_normal_candidates",
+        479,
+    ),
+    Swap(
         "cnaster.hmrf",
         "compute_loglike_spot_assignment",
         "port.patch.hmrf:compute_loglike_spot_assignment_strided",
@@ -190,6 +209,13 @@ SWAPS: tuple[Swap, ...] = (
         "port.patch.hmrf:pipeline_clone_assignment",
         206,
     ),
+    Swap(
+        "cnaster.pseudobulk",
+        "merge_pseudobulk_by_index_mix",
+        "port.patch.pseudobulk:merge_pseudobulk_by_index_mix",
+        488,
+    ),
+    Swap("cnaster.hmm_phased", "hmm_phased", "port.patch.hmm_phased:hmm_phased", 269),
 )
 """Every `cnaster` name `port` can replace by rebinding it.
 
@@ -197,53 +223,58 @@ Ordered as a run reaches them. The `ticket` column is what makes each row
 answerable: it names the issue carrying the ratio and the referee, so a row
 cannot be added here without a measurement behind it.
 
-**Every row here reproduces `cnaster` bitwise.** That is the property the
-whole-run test asserts, and it is why `FIGURE_SWAPS` is a separate table
-rather than three more rows: a figure written at half the dpi is a different
-file by design, and mixing the two would make "the patched run reproduces
-the unpatched one" a claim nobody could state.
+**Each row reproduces `cnaster` bitwise wherever `cnaster` is correct**, and
+the whole-run test asserts it on its fixture. Where a row departs, the
+departure is a stated fix, in its own docstring, and changes the result only
+in the regime named there (#466 lists them):
+
+- `get_aggregated_barcodes`: a slice id read from the barcode suffix (#446);
+- `assign_initial_blocks`: no block across two chromosomes;
+- `summarize_counts_for_bins`: the normal-spot filter's flagged genes left
+  out of every bin (#177), and a chromosome with no bins left out of
+  `lengths`;
+- `create_bin_ranges`: bins removed upstream dropped from the table (#105);
+- `get_sitewise_transmat`: cM per chromosome, `log 0.5` at each end, and a
+  segment's end at its last gene (#438);
+- `filter_normal_diffexp`: genes split on `,` (#165), and flagged genes
+  recorded for the bins (#177);
+- `construct_multislice_lattice_adjacency`: the lattice's own neighbours, 6
+  on a Visium hex grid, where `cnaster` takes 8 on scaled coordinates (#417);
+- `initialize_rectangular_clones`: new boundaries after 1,000 failed tries,
+  where `cnaster` loops (#304);
+- `normal_baf_bin_filter`: a removed bin's genes marked `is_interval =
+  False` (#105), and a chromosome with no bins left out of `lengths`.
+- `hmm_phased`: the coded emission reads the fitted parameter by state, so
+  a call scoring more than one spot returns a number where `cnaster` raises
+  `IndexError`; every call `run_cnaster` makes scores one spot (#269, #517).
+
+`FIGURE_SWAPS` is a separate table rather than more rows for a different reason:
+a figure written at half the dpi is a different file by design, not a fix.
 """
 
 
-NUMERIC_SWAPS: tuple[Swap, ...] = (
-    Swap(
-        "cnaster.hmm_nophasing",
-        "_nb_logpmf_1d",
-        "port.patch.hmm_nophasing:nb_logpmf_1d",
-        240,
-    ),
-)
-"""The replacements that agree to a **tolerance** rather than bitwise.
+FIGURE_DPI = 150
+"""What `FIGURE_SWAPS` binds `write_fig`'s `dpi` to, against `cnaster`'s 300 (#195).
 
-A third table for the same reason `FIGURE_SWAPS` is a second one: `SWAPS`
-carries a claim -- every row reproduces `cnaster` byte for byte -- and a row
-that agrees to 8.6e-13 does not make it. Putting it in `SWAPS` would not have
-made the claim false quietly; it would have made
-`tests/test_patched_entry_point.py` fail, which is the guard working. This is
-the honest place for it.
+Halving it quarters the raster: a 20x10 inch panel goes 6,000 x 3,000 pixels
+to 3,000 x 1,500, 72 MB of RGBA to 18 MB. Measured: `docs/measurements.md`,
+`port.pipeline.FIGURE_DPI`.
 
-**Off by default, and the reason is a measurement rather than caution.** On
-the kernel it is 1.78x across ten states. On a **whole run** at
-4,000 x 1,980 x 5 it recovers **-1.04 s and -0.051 GB** -- nothing, within
-noise -- because the live path goes through `CountEncoder` dedup before
-reaching the kernel, which is what #240 flagged as the thing that could make
-the ratio not survive. It did not survive.
-
-And it is not free. The 8.6e-13 disagreement -- round-off from
-`scipy.special.gammaln` against libm's `lgamma` -- propagates through the EM
-to a 3.2e-3 change in the fitted parameters and **flips one segment's integer
-copy number by 3** (#244). A patch that changes a scientific output for no
-measured gain is not a default; `--approx` is how it is turned on to study
-that amplification, which is the only thing it is currently good for.
-
-The 3.51x prefix-sum form needs a `k_max` bound and a fallback nothing has
-measured, and would have to clear the same whole-run test before it could
-default either.
+150 rather than lower because it is the floor at which a 20-inch panel still
+carries 3,000 pixels across, which is more than any screen shows it at and
+more than a page prints it at. Lower is available and is a judgement about
+the figures rather than about the arithmetic, so it is left to whoever is
+reading them.
 """
-
 
 FIGURE_SWAPS: tuple[Swap, ...] = (
-    Swap("cnaster.utils", "write_fig", "port.patch.utils:write_fig", 195),
+    Swap(
+        "cnaster.utils",
+        "write_fig",
+        "port.patch.utils:write_fig",
+        195,
+        (("dpi", FIGURE_DPI), ("group_rasters", True)),
+    ),
     Swap(
         "cnaster.plot_genomic",
         "plot_clones_genomic",
@@ -271,27 +302,28 @@ FIGURE_SWAPS: tuple[Swap, ...] = (
 )
 """The replacements that **change the output**, and the biggest win here.
 
-Three rows. `write_fig` is 47 per cent of a run (#195); `plot_clones_genomic`
+Five rows. `write_fig` writes the figures (#195); `plot_clones_genomic`
 draws each clone's RDR line at `mu / Z_c` when the shift is on, where its
 points are, rather than at the pinned `mu` (#299); `plot_clones_spatial`
 tiles each spot at 0.85 of the lattice pitch rather than a dot 0.53 of it
-across (#309). `write_fig` carries two defaults `cnaster` does not:
+across (#309); `plot_copy_number_profile` draws one row per clone, and
+`plot_ascn_legend` is its legend (#309). That last row is reached by no live
+call: `cnaster`'s only caller is the function the row above replaces (#466). `write_fig` is installed with two options bound:
 `dpi=150`, and one rasterizing group per axes rather than the two a
-gridline splits `cnaster`'s runs into. Together they
-take a run's plotting from 20.34 s to 3.84 s and its renderer buffers from
-8,287 MB to 1,036 MB.
+gridline splits `cnaster`'s runs into. Measured: `docs/measurements.md`,
+`port.pipeline.FIGURE_SWAPS`.
 
 Separate from `SWAPS` because `CLAUDE.md` forbids a silent behaviour change
-and all three are ones: a coarser raster, gridlines that paint under
-the data instead of over it, and a spot's area.
+and each row makes one: a coarser raster, gridlines that paint under the data
+instead of over it, the RDR line's level, a spot's area, and the profile's
+layout.
 
 **Separate, but on by default at the entry point.** `run_cnaster_port`
-installs this table unless `--no-figure-swaps` is given, because a win that large
+installs this table unless `--no-figure-swaps` or `--no-patch` is given, because a win that large
 sitting behind a flag is a win nobody gets. The table stays its own so the
 distinction survives the default: `SWAPS` is still the set that reproduces
 `cnaster` bitwise, `install()` still defaults to `SWAPS` alone, and the
-tests asserting that property still have something to assert. Merging the
-two would have bought the same 47 per cent and cost the claim.
+tests asserting that property still have something to assert.
 
 So the decision is still a reader's rather than a default's -- it is just
 the other way round, and `--no-figure-swaps` is where it is made.
@@ -304,6 +336,7 @@ SHIFT_SWAPS: tuple[Swap, ...] = (
         "hmm_nophasing",
         "port.patch.hmm_nophasing:hmm_nophasing",
         276,
+        (("apply_logmu_shift", True),),
     ),
     Swap(
         "cnaster.hmrf",
@@ -311,13 +344,19 @@ SHIFT_SWAPS: tuple[Swap, ...] = (
         "port.patch.hmrf:run_core_inference",
         293,
     ),
+    Swap(
+        "cnaster.hmrf",
+        "reindex_clones",
+        "port.patch.hmrf:reindex_clones",
+        362,
+    ),
 )
 """The per-clone `logmu_shift`, folded into the fit and **on by default**.
 
 `cnaster` computes `log Z_c = log sum_g lambda_g mu_{s_c(g)}` and discards
 it, so a clone whose events move its library is fitted against a baseline
-that does not account for them: on #292's genome the fit returned
-`mu / Z_c`, state by state, rather than the planted `mu` (#293). The model
+that does not account for them (#292, #293; `docs/measurements.md`,
+`port.pipeline.SHIFT_SWAPS`). The model
 these rows fit is `<u_gn> = lambda_g T_n mu / sum_g lambda_g mu`.
 
 Two rows because the shift has two jobs. The `hmm_nophasing` class applies it
@@ -326,12 +365,21 @@ posteriors and `hmm.py:155`'s rescore -- and `pipeline_clone_assignment`
 (in `SWAPS`) reads the class's flag to apply it per candidate clone. The
 `run_core_inference` row pins the result's scale, which the shifted
 likelihood does not set, once after the optimization: the normal clone's
-dominant balanced state is `mu = 1` (#299).
+dominant balanced state is `mu = 1` (#299), and then gives each clone its
+own column, less its `log Z_c`, the normal clone's at zero (#362). The
+`reindex_clones` row carries `p`, `alpha` and `tau` to one column per clone
+so that integer copy reads every clone's own rates.
+
+The two rows also carry three things the entry point turns on with the
+shift and off without it: the sal emission (#425) and the analytic M-step
+gradient (#433), options of port's `hmm_nophasing` row, and the
+distinct initializer (#348), which port's `run_core_inference` passes. Where
+a tumour proportion hands clone assignment to `cnaster` (#135), the per-clone
+shift is not applied there and the run says so (#466).
 
 Its own table because every fitted rate moves, which `CLAUDE.md` forbids
 doing silently; `run_cnaster_port` installs it unless `--no-shift` is given,
-and `port.patch.hmm_nophasing.logmu_shift()` is what turns the class's flag
-on for the run.
+and the row binds `apply_logmu_shift=True` into the class it installs (#517).
 """
 
 
@@ -341,7 +389,8 @@ PLOT_OFF_SWAPS: tuple[Swap, ...] = (
 """`run_cnaster_port --no-plots`: every figure is built and none is written.
 
 Installed after `FIGURE_SWAPS`, so it rebinds port's `write_fig` where that
-one is in place. Not a drop-in in the bitwise sense -- no file appears -- and
+one is in place -- in `port.patch.utils` too, for the run, since `patched()`
+rebinds every module holding the original; nothing in `port` calls it there. Not a drop-in in the bitwise sense -- no file appears -- and
 for that reason a table of its own, chosen by a flag and never by default.
 """
 
@@ -367,9 +416,10 @@ planted at `2 mu = 10` -- could not be decoded by any configuration. These
 read `int_copy_num.max_total_copy` and apply it to the total and to each
 allele; `tests/run_config.py` states 12.
 
-**Its own table, and on by default.** Where the configuration states no cap
-the decode is `cnaster`'s, bitwise (`tests/test_integer_copy_patch.py`); where
-it states one the output changes, which `SWAPS` promises never to do.
+**Its own table, and on by default.** Both rows decode by the HMM's
+likelihood only, with `mu`, each clone's shift, its path and the dispersions
+held (#362), so the output is not `cnaster`'s, which `SWAPS` promises never
+to change; `run_cnaster_port` installs `copy_likelihood.capture` with them.
 `run_cnaster_port` installs it unless `--no-copy-cap` is given, and
 `--no-patch` leaves it out with the rest.
 """
@@ -387,20 +437,22 @@ REFINEMENT_SWAPS: tuple[Swap, ...] = (
 
 `cnaster` builds the mask of which sub-clones each spot may take and drops
 it before the HMRF (`run_cnaster.py:1105`), so `icm_sweep_deque`'s 200-spot
-floor reassigns spots across BAF clones at random: on `calicost_instance` it
-merged all 16 sub-clones into one (ARI 0.000). The row keeps the mask;
+floor reassigns spots across BAF clones at random (`docs/measurements.md`,
+`port.pipeline.REFINEMENT_SWAPS`). The row keeps the mask;
 `port.patch.hmrf.clone_assignment` applies it while the problem is the one it
 was built for (`port.patch.hmrf.refinement`).
 
-**Its own table, and on by default**, because the clones change.
-`run_cnaster_port` installs it unless `--no-refinement-mask` is given, and
-`--no-patch` leaves it out with the rest.
+**Its own table, and off by default**, because the clones change.
+`run_cnaster_port --refinement-mask` installs it (#466). Its only reader is port's `pipeline_clone_assignment`, so
+`--no-patch` without `--sal` refuses it, and where a tumour proportion hands
+the call to `cnaster` (#135) the mask is not applied and the run says so.
 
-`--floor-merge`, also on by default, is the second half and needs no row:
-`port.patch.icm.floor.floor_merge()` makes `pipeline_clone_assignment` (in
-`SWAPS`) meet the clone-size floor smallest first, into each spot's best
+`--floor-merge`, also off by default, is the second half and needs no row:
+it binds `floor_merge=True` into `pipeline_clone_assignment` (in `SWAPS`),
+which then meets the clone-size floor smallest first, into each spot's best
 clone, at `hmrf.min_spots_per_clone`, instead of the sweep's all-at-once
-random reassignment at a fixed 200. It holds with or without the mask.
+random reassignment at a fixed 200. It holds with or without the mask, and
+is refused and dropped exactly where the mask is.
 """
 
 
@@ -409,6 +461,71 @@ def _resolve(target: str) -> Any:
     module_name, _, attribute = target.partition(":")
     __import__(module_name)
     return getattr(sys.modules[module_name], attribute)
+
+
+def with_options(
+    swaps: tuple[Swap, ...], replacement: str, **options: Any
+) -> tuple[Swap, ...]:
+    """`swaps`, with `options` bound into the rows that install `replacement`.
+
+    Keyed by the replacement rather than the `cnaster` name: two rows replace
+    `write_fig`, and an option belongs to one of them.
+    """
+    return tuple(
+        swap._replace(options=(*swap.options, *options.items()))
+        if swap.replacement == replacement
+        else swap
+        for swap in swaps
+    )
+
+
+def with_attributes(cls: type[_T], **attributes: Any) -> type[_T]:
+    """A subclass of `cls` under `cls`'s name, with `attributes` set on it (#517).
+
+    How a row that replaces a class binds its options: `cnaster` reads the
+    class's attributes where no keyword reaches (`optimize_params`, the
+    static emission `hmm.py:155` calls), so an option is a class attribute,
+    set on a subclass the row installs rather than on the class every caller
+    shares. Each must already be an attribute of `cls`, or it is refused.
+    """
+    unknown = [name for name in attributes if not hasattr(cls, name)]
+
+    if unknown:
+        msg = f"{cls.__qualname__} has no option {unknown}"
+        raise TypeError(msg)
+
+    return type(
+        cls.__name__,
+        (cls,),
+        {
+            **attributes,
+            "__module__": cls.__module__,
+            "__qualname__": cls.__qualname__,
+        },
+    )
+
+
+def _replacement(swap: Swap) -> Any:
+    """What a row installs: its replacement, with its options bound.
+
+    An option the replacement does not take is refused here, at install,
+    rather than at the row's first call, hours into a run. A class's options
+    are attributes of a subclass (:func:`with_attributes`).
+    """
+    import inspect
+
+    replacement = _resolve(swap.replacement)
+
+    if not swap.options:
+        return replacement
+
+    if isinstance(replacement, type):
+        return with_attributes(replacement, **dict(swap.options))
+
+    inspect.signature(replacement).bind_partial(**dict(swap.options))
+    bound = functools.partial(replacement, **dict(swap.options))
+    functools.update_wrapper(bound, replacement)
+    return bound
 
 
 def _bound_to(original: Any, name: str) -> list[ModuleType]:
@@ -424,19 +541,40 @@ def _bound_to(original: Any, name: str) -> list[ModuleType]:
     ]
 
 
-def swap_sites(swaps: tuple[Swap, ...] = SWAPS) -> tuple[Site, ...]:
-    """Where each swap would land, without landing it."""
+def _rebind(
+    swaps: tuple[Swap, ...],
+    replace: Callable[[Swap, Any], Any] | None,
+    undo: list[tuple[ModuleType, str, Any]] | None = None,
+) -> tuple[Site, ...]:
+    """Every site each swap reaches, rebound to `replace(swap, current)`.
+
+    The one walk behind `swap_sites`, `install`, `patched` and `instrumented`.
+    Swap by swap, in order, so a later row finds what an earlier one put in
+    place: `PLOT_OFF_SWAPS` rebinds the `write_fig` `FIGURE_SWAPS` installed.
+    `replace=None` rebinds nothing; `undo` collects what to put back.
+    """
     sites: list[Site] = []
 
     for swap in swaps:
         __import__(swap.module)
-        original = getattr(sys.modules[swap.module], swap.name)
-        sites.extend(
-            Site(module.__name__, swap.name)
-            for module in _bound_to(original, swap.name)
-        )
+        current = getattr(sys.modules[swap.module], swap.name)
+        new = None if replace is None else replace(swap, current)
+
+        for module in _bound_to(current, swap.name):
+            if replace is not None:
+                if undo is not None:
+                    undo.append((module, swap.name, current))
+
+                setattr(module, swap.name, new)
+
+            sites.append(Site(module.__name__, swap.name))
 
     return tuple(sites)
+
+
+def swap_sites(swaps: tuple[Swap, ...] = SWAPS) -> tuple[Site, ...]:
+    """Where each swap would land, without landing it."""
+    return _rebind(swaps, None)
 
 
 def install(swaps: tuple[Swap, ...] = SWAPS) -> tuple[Site, ...]:
@@ -446,18 +584,30 @@ def install(swaps: tuple[Swap, ...] = SWAPS) -> tuple[Site, ...]:
     `patched()` instead: leaving the swaps in place would make every later
     comparison of `cnaster` against `port` compare `port` with itself.
     """
-    rebound: list[Site] = []
+    return _rebind(swaps, lambda swap, _: _replacement(swap))
 
-    for swap in swaps:
-        __import__(swap.module)
-        original = getattr(sys.modules[swap.module], swap.name)
-        replacement = _resolve(swap.replacement)
 
-        for module in _bound_to(original, swap.name):
-            setattr(module, swap.name, replacement)
-            rebound.append(Site(module.__name__, swap.name))
+RUN_STATE: tuple[str, ...] = (
+    "port.patch.hmm_nophasing.shifted_emission:release",
+    "port.patch.hmrf.clone_assignment:release",
+    "port.patch.hmrf.core_inference:release",
+    "port.patch.hmrf.refinement:forget",
+    "port.patch.integer_copy:release",
+)
+"""What `patched` calls on exit: each drops what one run's rows held (#517).
 
-    return tuple(rebound)
+A module not yet imported held nothing, so it is not imported to be told so.
+"""
+
+
+def release() -> None:
+    """Call every imported `RUN_STATE` release."""
+    for target in RUN_STATE:
+        module_name, _, attribute = target.partition(":")
+        module = sys.modules.get(module_name)
+
+        if module is not None:
+            getattr(module, attribute)()
 
 
 @contextmanager
@@ -469,23 +619,14 @@ def patched(swaps: tuple[Swap, ...] = SWAPS) -> Iterator[tuple[Site, ...]]:
     that comparison vacuous.
     """
     undo: list[tuple[ModuleType, str, Any]] = []
-    rebound: list[Site] = []
 
     try:
-        for swap in swaps:
-            __import__(swap.module)
-            original = getattr(sys.modules[swap.module], swap.name)
-            replacement = _resolve(swap.replacement)
-
-            for module in _bound_to(original, swap.name):
-                undo.append((module, swap.name, original))
-                setattr(module, swap.name, replacement)
-                rebound.append(Site(module.__name__, swap.name))
-
-        yield tuple(rebound)
+        yield _rebind(swaps, lambda swap, _: _replacement(swap), undo)
     finally:
         for module, name, original in reversed(undo):
             setattr(module, name, original)
+
+        release()
 
 
 @dataclass
@@ -553,15 +694,7 @@ def instrumented(swaps: tuple[Swap, ...] = SWAPS) -> Iterator[dict[str, Spent]]:
         return call
 
     try:
-        for swap in swaps:
-            __import__(swap.module)
-            current = getattr(sys.modules[swap.module], swap.name)
-            wrapper = timing(swap.name, current)
-
-            for module in _bound_to(current, swap.name):
-                undo.append((module, swap.name, current))
-                setattr(module, swap.name, wrapper)
-
+        _rebind(swaps, lambda swap, current: timing(swap.name, current), undo)
         yield spent
     finally:
         for module, name, original in reversed(undo):

@@ -29,8 +29,14 @@ def get_sitewise_transmat(
     geneticmap_file: Any,
     nu: float,
     logphase_shift: float,
+    *,
+    composable: bool = False,
 ) -> np.ndarray:
-    """`log_sitewise_transmat`, one entry per `segment_key` segment."""
+    """`log_sitewise_transmat`, one entry per `segment_key` segment.
+
+    `composable` is #449's composable phase-switch law, off as `cnaster` is;
+    a row binds it at install where a run asks for it.
+    """
     from cnaster.config import get_global_config
 
     from port.extensions.segments import observe
@@ -39,7 +45,11 @@ def get_sitewise_transmat(
     genetic_map = _genetic_map(str(geneticmap_file))
 
     return segments.log_phase_switch(
-        genetic_map, nu, logphase_shift, get_global_config().phasing.min_prob
+        genetic_map,
+        nu,
+        logphase_shift,
+        get_global_config().phasing.min_prob,
+        composable=composable,
     )
 
 

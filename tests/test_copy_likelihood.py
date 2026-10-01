@@ -1,18 +1,17 @@
 """`port.extensions.copy_likelihood` against pseudobulks drawn from its own model (#327).
 
-The decoder claims that, with the path held, the pseudobulk likelihood the
-EM fits identifies each state's integer `(A, B)`. So the referee is the
-truth the counts were drawn from: a clone-sized pseudobulk under the
-shifted NB/BB model, planted `(A, B)` including totals above `cnaster`'s 6,
-decoded from a wrong start (`end2end` against the planted pairs). The
-likelihood-ratio set is held to contain the truth, and the decode to be the
-likelihood's own maximum over single-state moves (`analytic`).
+The shared decode claims that, with the path held, the pseudobulk
+likelihood the EM fits identifies each state's integer `(A, B)`. So the
+referee is the truth the counts were drawn from: a clone-sized pseudobulk
+under the shifted NB/BB model, planted `(A, B)` including totals above
+`cnaster`'s 6 (`end2end` against the planted pairs). The decode is held to
+be the likelihood's own maximum over single-state moves (`analytic`).
 """
 
 from __future__ import annotations
 
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pytest
@@ -54,49 +53,72 @@ def _draw(seed: int = 3, *, shift: bool = True) -> tuple[np.ndarray, Pseudobulk]
         counts_nb=counts_nb,
         base_nb_mean=base,
         counts_bb=counts_bb,
-        total_bb_rd=trials,
-        log_lambda=log_lambda,
-        alpha=alpha,
-        tau=tau,
+        total_bb_RD=trials,
+        normal_log_lambda=log_lambda,
+        dispersion=alpha,
+        taus=tau,
     )
     return path, bulk
 
 
+def _offset(path: np.ndarray, bulk: Pseudobulk) -> float:
+    """The planted clone's shift, `log Z_c`, as the draw applied it."""
+    total = PLANTED.sum(axis=1)
+    return float(
+        np.logaddexp.reduce(np.log(total / 2.0)[path] + bulk.normal_log_lambda)
+    )
+
+
 @pytest.mark.end2end
 @pytest.mark.parametrize("shift", [True, False], ids=["shifted", "unshifted"])
-def test_the_decode_recovers_every_planted_pair_from_a_wrong_start(shift: bool) -> None:
+def test_the_shared_decode_recovers_every_planted_pair(shift: bool) -> None:
     """All six states exactly, `(4, 6)` and `(5, 4)` above cnaster's cap included."""
-    from port.extensions.copy_likelihood import decode
+    from port.extensions.copy_likelihood import shared_decode
 
     path, bulk = _draw(shift=shift)
-    start = np.ones_like(PLANTED)
+    fitted = shared_decode(
+        [(path, bulk, _offset(path, bulk) if shift else 0.0)],
+        n_states=len(PLANTED),
+        normal=0,
+        max_total_copy=12,
+    )
 
-    decoded = decode(start, path, bulk, max_total_copy=12, neutral=0, shift=shift)
-
-    np.testing.assert_array_equal(decoded.copies, PLANTED)
-    assert decoded.passes <= 5
+    np.testing.assert_array_equal(fitted.states, PLANTED)
+    np.testing.assert_array_equal(fitted.pairs[0], PLANTED[path])
 
 
 @pytest.mark.analytic
-def test_the_decode_is_a_single_move_maximum_and_its_sets_hold_the_truth() -> None:
-    """No single state's move raises the likelihood; each set contains the planted pair."""
-    from port.extensions.copy_likelihood import candidates, decode, log_likelihood
-
-    path, bulk = _draw()
-    decoded = decode(
-        np.ones_like(PLANTED), path, bulk, max_total_copy=12, neutral=0, shift=True
+def test_the_shared_decode_is_each_states_likelihood_maximum() -> None:
+    """With the path held, no other pair for any one state raises the likelihood."""
+    from port.extensions.copy_likelihood import (
+        _emission,
+        _parameters,
+        candidates,
+        shared_decode,
     )
 
-    for k in range(1, len(PLANTED)):
-        assert tuple(PLANTED[k]) in decoded.sets[k]
+    path, bulk = _draw()
+    shift = _offset(path, bulk)
+    fitted = shared_decode(
+        [(path, bulk, shift)],
+        n_states=len(PLANTED),
+        normal=0,
+        max_total_copy=12,
+    )
 
+    def likelihood(copies: np.ndarray) -> float:
+        log_mu, p = _parameters(copies)
+        bins = np.arange(path.size)
+        return float(np.sum(_emission(log_mu[path] - shift, p[path], bulk, bins)))
+
+    best = likelihood(fitted.states)
+    assert best == pytest.approx(fitted.log_likelihood, rel=1e-12)
+
+    for k in range(1, len(PLANTED)):
         for pair in candidates(12):
-            trial = decoded.copies.copy()
+            trial = fitted.states.copy()
             trial[k] = pair
-            assert (
-                log_likelihood(trial, path, bulk, shift=True)
-                <= decoded.log_likelihood + 1e-9
-            )
+            assert likelihood(trial) <= best + 1e-9
 
 
 @pytest.mark.infra
@@ -110,19 +132,12 @@ def test_the_candidates_are_every_pair_under_the_cap() -> None:
     assert ((lattice.sum(axis=1) > 0) & (lattice.min(axis=1) >= 0)).all()
 
 
-@pytest.mark.end2end
-@pytest.mark.merge
-# NB one whole run at a time: four at once exceed 15 GB (#403).
-@pytest.mark.xdist_group("pipeline")
-def test_the_entry_point_decodes_the_planted_pair_through_the_likelihood(
-    tmp_path: Path,
-) -> None:
-    """`run_cnaster_port --copy-likelihood` on a two-state copy lattice.
-
-    The critical instance with `(1, 1)` and `(1, 2)` planted: every altered
-    clone-bin of the tumor clone is written as the planted pair, phase folded,
-    and the refinement ran once per decode.
-    """
+def _entry_point_run(
+    tmp_path: Path, argv: tuple[str, ...]
+) -> tuple[Any, list[Any], Any]:
+    """`run_cnaster_port` on the two-state copy lattice: the critical instance
+    with `(1, 1)` and `(1, 2)` planted. Returns the written segment table, the
+    decodes it made, and the run's output directory."""
     import warnings
 
     import matplotlib as mpl
@@ -143,28 +158,36 @@ def test_the_entry_point_decodes_the_planted_pair_through_the_likelihood(
     config = write_run_cnaster_config(
         written, truth, max_iter_outer=1, max_iter=3, n_states=2
     )
-    seen: list[object] = []
-    original = integer_copy._refine
+    with isolated_run(), warnings.catch_warnings(), integer_copy.recorded() as decodes:
+        warnings.simplefilter("ignore")
+        assert main([*argv, str(config)]) == 0
 
-    def counted(*arguments: object) -> object:
-        refined = original(*arguments)  # type: ignore[arg-type]
-        seen.extend(integer_copy.DECODED[-1:])
-        return refined
+    table = next((written.root / "output").rglob("cnv_seglevel.tsv"))
+    return pd.read_csv(table, sep="\t"), decodes, table.parent
 
-    integer_copy._refine = counted  # type: ignore[assignment]
 
-    try:
-        with isolated_run(), warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            assert main([str(config), "--copy-likelihood", "--no-plots"]) == 0
-    finally:
-        integer_copy._refine = original
+@pytest.mark.end2end
+def test_the_entry_point_decodes_the_planted_pair_through_the_likelihood(
+    tmp_path: Path,
+) -> None:
+    """The default decode, `lattice` (#370), written per bin to the files (#371).
 
-    assert seen, "the likelihood refinement never ran"
+    Every clone-bin of the segment table is the planted pair, phase folded;
+    each clone's `A` and `B` columns are the lattice decode's pairs bin for
+    bin, so the file carries the per-bin decode rather than a per-state
+    summary of it; and `copy_decode.tsv` records the fractions it fitted,
+    both 1 on this pure instance.
 
-    copies = pd.read_csv(
-        next((written.root / "output").rglob("cnv_seglevel.tsv")), sep="\t"
-    )
+    This is the test that found #371's M-step defect: the fraction's bounded
+    search returned 0.546 and wrote `(1, 3)`, 3,363 nats below the planted
+    `(1, 2)` at fraction 1.
+    """
+    import pandas as pd
+
+    copies, seen, output = _entry_point_run(tmp_path, ())
+
+    assert len(seen) == 1, "the decode ran once for the run, not once per clone"
+    decoded = seen[0]
     pairs = {
         tuple(sorted(pair))
         for column in ("clone0", "clone1")
@@ -172,3 +195,51 @@ def test_the_entry_point_decodes_the_planted_pair_through_the_likelihood(
     }
 
     assert pairs == {(1, 1), (1, 2)}
+
+    for clone, column in enumerate(("clone0", "clone1")):
+        written = copies[[f"{column} A", f"{column} B"]].to_numpy()
+        np.testing.assert_array_equal(written, decoded.pairs[clone])
+
+    fitted = pd.read_csv(output / "copy_decode.tsv", sep="\t")
+
+    assert fitted["tumour_fraction"].to_list() == pytest.approx([1.0, 1.0])
+
+
+@pytest.mark.patch
+def test_the_shared_decode_is_still_one_flag_away(tmp_path: Path) -> None:
+    """`--copy-decode shared` writes #327's per-state pairs through the path.
+
+    Each clone's written `A` and `B` are the shared decode's state pairs
+    indexed by that clone's `Z`, as before #371: the flag restores the
+    previous output rather than approximating it.
+    """
+    copies, seen, _ = _entry_point_run(tmp_path, ("--copy-decode", "shared"))
+
+    assert len(seen) == 1
+    states = seen[0].states
+
+    for column in ("clone0", "clone1"):
+        path = copies[f"{column} Z"].to_numpy().astype(np.int64) % len(states)
+        written = copies[[f"{column} A", f"{column} B"]].to_numpy()
+        np.testing.assert_array_equal(written, states[path])
+
+
+@pytest.mark.analytic
+def test_the_fraction_step_never_goes_uphill() -> None:
+    """A bounded search on an objective whose minimum is its endpoint.
+
+    `f(x) = min((x - 0.2)^2 + 0.05, 1 - x)` is least at `x = 1`, with a
+    shallower basin at 0.2 that a bounded Brent search settles in, since it
+    never scores the endpoint. The step returns the endpoint, and from any
+    start never a value above the start's (#371).
+    """
+    from port.extensions.copy_likelihood import PURITY_GRID, _monotone
+
+    def objective(x: float) -> float:
+        return min((x - 0.2) ** 2 + 0.05, 1.0 - x)
+
+    for current in (0.3, 0.6, 1.0):
+        chosen = _monotone(objective, current, (0.05, 1.0), PURITY_GRID)
+
+        assert objective(chosen) <= objective(current)
+        assert chosen == 1.0

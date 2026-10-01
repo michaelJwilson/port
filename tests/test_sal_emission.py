@@ -11,6 +11,8 @@ the nearer of the two in every case, 1.6e-9 against 2.6e-9 at that bound.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import numpy as np
 import pytest
 
@@ -129,31 +131,22 @@ def test_the_coded_emission_is_upstreams_to_a_stated_tolerance(
 def test_the_class_under_sal_emission_scores_as_it_does_under_cnasters(
     shifted: bool, cnaster_config: None
 ) -> None:
-    """The swapped class, both branches, with the flag on against off, to 1e-10.
+    """The swapped class, both branches, with the option on against off, to 1e-10.
 
     Unshifted: `coded_emission` against upstream's coded method. Shifted:
     the batched per-clone rows against the per-state `cnaster` kernels on
-    the same `(clone, obs, total)` triples. The flag is restored after.
+    the same `(clone, obs, total)` triples.
     """
-    from port.patch.hmm_nophasing import hmm_nophasing, logmu_shift, sal_emission
-
     from tests.test_shifted_emission import _call, _instance, _replacement
 
     instance = _instance()
 
-    def scored() -> tuple[np.ndarray, np.ndarray]:
-        if shifted:
-            with logmu_shift():
-                return _call(_replacement(instance), instance)
-        return _call(_replacement(instance), instance)
+    def scored(kernels: str) -> tuple[np.ndarray, np.ndarray]:
+        model = _replacement(instance, shifted=shifted, kernels=kernels)
+        return _call(model, instance)
 
-    theirs = scored()
-
-    with sal_emission():
-        assert hmm_nophasing.emission_kernels == "sal"
-        ours = scored()
-
-    assert hmm_nophasing.emission_kernels == "cnaster"
+    theirs = scored("cnaster")
+    ours = scored("sal")
 
     for mine, reference in zip(ours, theirs, strict=True):
         assert mine.shape == reference.shape
@@ -161,9 +154,64 @@ def test_the_class_under_sal_emission_scores_as_it_does_under_cnasters(
 
 
 @pytest.mark.infra
-def test_run_cnaster_scores_with_sal_s_kernels_unless_told_not_to() -> None:
-    """`--sal-emission` is the default (#425), and `--no-sal-emission` turns it off."""
-    from port.scripts.run_cnaster import _parser
+@pytest.mark.parametrize(
+    ("argv", "expected"),
+    [
+        ([], ("sal", True)),
+        (["--no-sal-emission"], ("cnaster", True)),
+        (["--no-shift"], ("cnaster", False)),
+        (["--no-patch", "--shift"], ("sal", False)),
+    ],
+    ids=["default", "no-sal-emission", "no-shift", "no-patch-shift"],
+)
+def test_run_cnaster_scores_with_sal_s_kernels_where_the_shift_reads_them(
+    argv: list[str],
+    expected: tuple[str, bool],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`--sal-emission` and `--distinct-init` follow the shift rows that read them.
 
-    assert _parser().parse_args([]).sal_emission is True
-    assert _parser().parse_args(["--no-sal-emission"]).sal_emission is False
+    Under `--no-shift` both were entered and neither read (#466); the run
+    said "distinct initial states" regardless.
+    """
+    import cnaster.hmm_nophasing
+    import cnaster.hmrf
+    import cnaster.scripts.run_cnaster as pipeline
+    from port.scripts.run_cnaster import main
+
+    config = tmp_path / "config.yaml"
+    config.write_text("{}\n")
+    seen: list[tuple[str, bool]] = []
+    monkeypatch.setattr(
+        pipeline,
+        "run_cnaster",
+        lambda *_: seen.append(
+            (
+                # NB `cnaster`'s class, where no shift row installed port's.
+                getattr(
+                    cnaster.hmm_nophasing.hmm_nophasing, "emission_kernels", "cnaster"
+                ),
+                getattr(cnaster.hmrf.run_core_inference, "keywords", {}).get(
+                    "distinct_init", False
+                ),
+            )
+        ),
+    )
+    main([*argv, "--no-rust", str(config)])
+
+    assert seen == [expected]
+
+
+@pytest.mark.infra
+@pytest.mark.parametrize("flag", ["--sal-emission", "--distinct-init"])
+def test_a_flag_the_shift_rows_read_is_refused_without_them(
+    flag: str, tmp_path: Path
+) -> None:
+    from port.scripts.run_cnaster import main
+
+    config = tmp_path / "config.yaml"
+    config.write_text("{}\n")
+
+    with pytest.raises(SystemExit):
+        main(["--no-shift", flag, "--no-rust", str(config)])

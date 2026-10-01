@@ -54,23 +54,14 @@ amount of care here can fix -- it is a property of the input.
 :func:`IntegerCopyResult` carries no flag claiming it was satisfied, because
 this module cannot check.
 
-`tests/test_integer_copy.py` measures what the scale costs, and the answer is
-not the obvious one. **A scale error corrupts the confidence rather than the
-answer.** At `(4, 2)` with `sigma_mubar = 0.08` the argmin stays `(4, 2)` at
-every error up to twenty per cent -- the lattice spacing in `mubar` is `0.5`
-and no competitor gets closer -- while the squared residual runs `0.00`,
-`0.56`, `3.52`, `9.00`, `56.25` and the credible set empties at eight per
-cent.
-
-That is the argument for the one-to-many map in one line: an argmin-only
-decoder returns the correct pair at a twenty per cent scale error with
-nothing to say the fit is fifty-six chi-square units from explaining it.
+**A scale error corrupts the confidence rather than the answer**, which
+`tests/test_integer_copy.py` measures. Measured: `docs/measurements.md`,
+`port.extensions.integer_copy`.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, NamedTuple
 
 import numpy as np
 from scipy.stats import chi2
@@ -104,8 +95,7 @@ CHANNELS = 2
 """`(rdr, baf)`. The degrees of freedom of the credible region."""
 
 
-@dataclass(frozen=True)
-class IntegerCopyResult:
+class IntegerCopyResult(NamedTuple):
     """One copy state decoded, with what the decoding is entitled to claim.
 
     Parameters

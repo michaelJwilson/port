@@ -244,7 +244,16 @@ a test.
     retire.
 *   **A drop-in keeps `cnaster`'s signature.** Rebinding a name is how it
     installs, so the conventions govern what `port` owns, not what it
-    replaces.
+    replaces. Defaults included, in every table; a `port` option is
+    keyword-only, defaults to `cnaster`'s behaviour, and is bound at
+    install. Nothing a drop-in writes outlives the run.
+*   **Every module has one role, and lives where the role says.** `patch/`
+    replaces a named `cnaster` function or serves one that does;
+    `extensions/` adds what has no counterpart; `sandbox/` holds what is set
+    aside, with its ticket, measurement and exit.
+*   **One implementation per concept,** in `tests/` as in the package. A
+    known departure from any of these is a declared list that can only
+    shrink.
 *   **Match the sibling.** A new entry point copies its nearest sibling's
     arguments, order and result; where the sibling is wrong, fix both or
     ticket it.

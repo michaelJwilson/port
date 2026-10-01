@@ -8,7 +8,7 @@ haplotype-A share under the admixture law.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from typing import NamedTuple
 
 import numpy as np
 
@@ -16,8 +16,7 @@ ADMIXTURE_LAWS = ("read", "cell")
 """How a tumour clone's normal fraction mixes: by reads or by cells."""
 
 
-@dataclass(frozen=True)
-class Event:
+class Event(NamedTuple):
     """One planted `(A, B)` over `[start, end)` of a chromosome, for one clone."""
 
     chromosome: str
@@ -27,8 +26,7 @@ class Event:
     b: int
 
 
-@dataclass(frozen=True)
-class Law:
+class Law(NamedTuple):
     """A fitted distribution: its family, its parameters and how well it fit.
 
     `lognormal` carries `mu` and `sigma` of the log; `negative_binomial`
@@ -89,7 +87,7 @@ def counted(values: np.ndarray, prefer: str) -> Law:
         "negative_binomial", {"mean": mean, "dispersion": dispersion}, ks_nb, ks_log
     )
     chosen = lognormal if prefer == "lognormal" else negative
-    return replace(chosen, n=int(np.asarray(values).size))
+    return chosen._replace(n=int(np.asarray(values).size))
 
 
 def allele_share(

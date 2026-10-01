@@ -40,6 +40,7 @@ its own callback still updates the posteriors.
 from __future__ import annotations
 
 import inspect
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
@@ -48,10 +49,22 @@ import scipy.optimize
 from cnaster.count_encoder import CountEncoder
 from scipy.special import digamma, expit
 
-__all__ = ["EmGradient", "analytic_bfgs", "bb_partials", "nb_partials"]
+__all__ = [
+    "DISPERSION_FLOOR",
+    "EmGradient",
+    "analytic_bfgs",
+    "bb_partials",
+    "configured_method",
+    "configured_solver",
+    "nb_partials",
+]
 
-FLOOR = 1e-10
-"""`cnaster`'s floor on `alpha` in `_nb_logpmf_1d` and on `a`, `b` in `_bb_logpmf_1d`."""
+DISPERSION_FLOOR = 1e-10
+"""`cnaster`'s floor on `alpha` in `_nb_logpmf_1d` and on `a`, `b` in `_bb_logpmf_1d`.
+
+The one statement of it: every port kernel that scores those two laws reads
+this, rather than restating the literal (#517).
+"""
 
 
 def nb_partials(
@@ -63,7 +76,7 @@ def nb_partials(
     -- has zero derivative, because its score does not move.
     """
     alpha = np.asarray(dispersion, dtype=np.float64)
-    size = 1.0 / np.maximum(alpha, FLOOR)
+    size = 1.0 / np.maximum(alpha, DISPERSION_FLOOR)
     scaled = alpha * mean
     success = 1.0 / (1.0 + scaled)
     live = (mean > 0.0) & (success < 1.0)
@@ -74,7 +87,7 @@ def nb_partials(
 
         # NB below the floor `r` is a constant and only `p` moves with alpha.
         through_size = np.where(
-            alpha > FLOOR,
+            alpha > DISPERSION_FLOOR,
             -size * (digamma(obs + size) - digamma(size) + np.log(success)),
             0.0,
         )
@@ -94,15 +107,15 @@ def bb_partials(
     tau = taus
     shape_a = p_binom * tau
     shape_b = (1.0 - p_binom) * tau
-    a = np.maximum(shape_a, FLOOR)
-    b = np.maximum(shape_b, FLOOR)
+    a = np.maximum(shape_a, DISPERSION_FLOOR)
+    b = np.maximum(shape_b, DISPERSION_FLOOR)
 
     joint = digamma(total + a + b) - digamma(a + b)
     d_a = digamma(obs + a) - digamma(a) - joint
     d_b = digamma(total - obs + b) - digamma(b) - joint
 
-    live_a = shape_a > FLOOR
-    live_b = shape_b > FLOOR
+    live_a = shape_a > DISPERSION_FLOOR
+    live_b = shape_b > DISPERSION_FLOOR
     valid = (obs >= 0) & (total >= 0) & (obs <= total)
 
     d_a = np.where(valid & live_a, d_a, 0.0)
@@ -261,13 +274,13 @@ class EmGradient:
         The same four conditions `compute_emission_probability_nb_betabinom_coded`
         reads, so the gradient is of the objective actually scored.
         """
-        from port.patch.hmm_nophasing.shifted_emission import _current
+        from port.patch.hmm_nophasing.shifted_emission import _current, shifted
 
         model = self.model
         decode = model._decode() if hasattr(model, "_decode") else None
 
         if (
-            not getattr(model, "apply_logmu_shift", False)
+            not shifted(model)
             or self.normal_log_lambda is None
             or self.clone_lengths is None
             or decode is None
@@ -389,7 +402,25 @@ class EmGradient:
         return np.concatenate(blocks) if blocks else np.zeros(0)
 
 
-def analytic_bfgs(gradient: EmGradient) -> Any:
+BFGS_OPTIONS = frozenset(
+    {
+        "maxiter",
+        "gtol",
+        "norm",
+        "eps",
+        "disp",
+        "return_all",
+        "finite_diff_rel_step",
+        "xrtol",
+        "c1",
+        "c2",
+        "hess_inv0",
+    }
+)
+"""The options `scipy.optimize.minimize(method="BFGS")` reads (scipy 1.18)."""
+
+
+def analytic_bfgs(gradient: Callable[[np.ndarray], np.ndarray]) -> Any:
     """A `scipy.optimize.minimize` `method` that is BFGS with `gradient` as `jac`.
 
     `cnaster` passes its `optimizer` argument to `minimize` as `method`, and a
@@ -405,11 +436,11 @@ def analytic_bfgs(gradient: EmGradient) -> Any:
         fun: Any, x0: np.ndarray, args: tuple[Any, ...] = (), **kwargs: Any
     ) -> scipy.optimize.OptimizeResult:
         callback = kwargs.pop("callback", None)
-        options = {
-            key: value
-            for key, value in kwargs.items()
-            if key not in {"jac", "hess", "hessp", "bounds", "constraints"}
-        }
+        # NB BFGS's own options only (#448): `cnaster` passes `ftol`, which
+        #    BFGS has not got, and `scipy` warns "Unknown solver options:
+        #    ftol" and drops it -- 13 times a run. Dropping it here is the
+        #    same fit, without the warning.
+        options = {key: value for key, value in kwargs.items() if key in BFGS_OPTIONS}
 
         def value_and_gradient(x: np.ndarray) -> tuple[float, np.ndarray]:
             value = float(fun(x, *args))
@@ -423,5 +454,97 @@ def analytic_bfgs(gradient: EmGradient) -> Any:
             callback=callback,
             options=options,
         )
+
+    return method
+
+
+def configured_solver() -> tuple[str, dict[str, float]]:
+    """`hmm.solver` and the `em_*` options `cnaster` pairs with it (#448).
+
+    `get_em_solver_params` is `cnaster`'s own map from the solver to its keys
+    -- `L-BFGS-B` reads `em_maxiter` and `em_ftol`, `BFGS` `em_xrtol` -- and
+    its M step reads neither: it runs BFGS whatever the configuration says.
+    `("BFGS", {})` where no configuration is set.
+    """
+    from cnaster.config import get_global_config
+    from cnaster.hmm_utils import get_em_solver_params
+
+    try:
+        solver = str(get_global_config().hmm.solver)
+        params = get_em_solver_params()
+    except (AttributeError, KeyError, TypeError, ValueError):
+        return "BFGS", {}
+
+    params.pop("disp", None)
+    return solver, params
+
+
+def configured_method(gradient: Callable[[np.ndarray], np.ndarray]) -> Any:
+    """The M step as the configuration states it, with `gradient` where it is used.
+
+    **Not installed** (#448): `cnaster` runs BFGS whatever `hmm.solver` says,
+    and the shipped configurations state `L-BFGS-B`, so installing this
+    changes the default fit. It is here for that decision, measured.
+
+    `BFGS` is :func:`analytic_bfgs` plus `em_xrtol`; `L-BFGS-B` takes
+    `em_maxiter` and `em_ftol` and `cnaster`'s `gtol`; `Nelder-Mead`, which
+    uses no gradient, takes `em_maxiter`, `em_xtol` and `em_ftol` as its
+    `maxiter`, `xatol` and `fatol`.
+    """
+    solver, params = configured_solver()
+
+    if solver == "BFGS":
+        bfgs = analytic_bfgs(gradient)
+
+        def with_xrtol(
+            fun: Any, x0: np.ndarray, args: tuple[Any, ...] = (), **kwargs: Any
+        ) -> Any:
+            if "xrtol" in params:
+                kwargs["xrtol"] = params["xrtol"]
+            return bfgs(fun, x0, args, **kwargs)
+
+        return with_xrtol
+
+    def method(
+        fun: Any, x0: np.ndarray, args: tuple[Any, ...] = (), **kwargs: Any
+    ) -> scipy.optimize.OptimizeResult:
+        callback = kwargs.pop("callback", None)
+
+        if solver == "L-BFGS-B":
+            options = {"gtol": kwargs.get("gtol", 1e-5)}
+            options["maxiter"] = int(
+                params.get("maxiter", kwargs.get("maxiter", 15000))
+            )
+            options["ftol"] = float(params.get("ftol", 2.2e-9))
+
+            def value_and_gradient(x: np.ndarray) -> tuple[float, np.ndarray]:
+                return float(fun(x, *args)), gradient(x)
+
+            return scipy.optimize.minimize(
+                value_and_gradient,
+                x0,
+                jac=True,
+                method="L-BFGS-B",
+                callback=callback,
+                options=options,
+            )
+
+        if solver == "Nelder-Mead":
+            options = {
+                "maxiter": int(params.get("maxiter", kwargs.get("maxiter", 1000))),
+                "xatol": float(params.get("xtol", 1e-4)),
+                "fatol": float(params.get("ftol", 1e-4)),
+            }
+            return scipy.optimize.minimize(
+                fun,
+                x0,
+                args=args,
+                method="Nelder-Mead",
+                callback=callback,
+                options=options,
+            )
+
+        msg = f"hmm.solver {solver!r} is not one cnaster supports"
+        raise ValueError(msg)
 
     return method

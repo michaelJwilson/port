@@ -1,6 +1,6 @@
 {
  "schemaVersion": 1,
- "label": "port",
- "message": "ARI clones 0.889 / copies 0.998",
- "color": "blue"
+ "label": "port ARI",
+ "message": "(clones, copies) = (1.000, 0.983)",
+ "color": "orange"
 }

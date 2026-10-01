@@ -1,10 +1,9 @@
-"""Two `cnaster.hmm_nophasing` kernels, rewritten (#250).
+"""`cnaster.hmm_nophasing`, rewritten where port applies the shift (#250).
 
-`nb_logpmf` is the vectorized negative-binomial log-pmf `NUMERIC_SWAPS`
-installs (#240); `logmu_shift` is `compute_logmu_shifts` as an axis reduction,
+`logmu_shift` is `compute_logmu_shifts` as an axis reduction,
 not installed (#234); `shifted_emission` is the class that **applies** that
 shift, which upstream computes and discards (#276), off by default;
-`dense_emission` (entered by `sal_emission()`) scores the coded emission with sal's dense log-emission,
+`dense_emission` (the `emission_kernels="sal"` option) scores the coded emission with sal's dense log-emission,
 which `--sal` enters (#425).
 
 The submodules keep the split; this re-exports them so a swap row can name
@@ -16,23 +15,9 @@ from __future__ import annotations
 from port.patch.hmm_nophasing.logmu_shift import (
     shifts,
 )
-from port.patch.hmm_nophasing.nb_logpmf import (
-    log_factorial,
-    nb_logpmf_1d,
-)
-from port.patch.hmm_nophasing.shifted_emission import (
-    finite_difference,
-    hmm_nophasing,
-    logmu_shift,
-    sal_emission,
-)
+from port.patch.hmm_nophasing.shifted_emission import hmm_nophasing
 
 __all__ = [
-    "finite_difference",
     "hmm_nophasing",
-    "log_factorial",
-    "logmu_shift",
-    "nb_logpmf_1d",
-    "sal_emission",
     "shifts",
 ]

@@ -15,11 +15,7 @@ The submodules keep the split; this re-exports them so a swap row can name
 
 from __future__ import annotations
 
-from port.extensions.label_solver import (
-    SOLVERS,
-    label_solver,
-    set_label_solver,
-)
+from port.extensions.label_solver import SOLVERS, solver_for
 from port.patch.icm.alpha_expansion import (
     alpha_expansion_sweep,
     potts_energy,
@@ -39,8 +35,7 @@ __all__ = [
     "alpha_expansion_sweep",
     "fold_unary",
     "icm_sweep",
-    "label_solver",
     "potts_energy",
     "potts_graph_from",
-    "set_label_solver",
+    "solver_for",
 ]

@@ -73,7 +73,7 @@ import tomllib
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 import numpy as np
 import pandas as pd
@@ -137,8 +137,7 @@ def references(directory: Path, names: tuple[str, ...]) -> Path:
 # --- the manifest --------------------------------------------------------------
 
 
-@dataclass(frozen=True)
-class Region:
+class Region(NamedTuple):
     """One clone's polygon on one slice, in fractions of the array's extent."""
 
     clone: str
@@ -151,8 +150,7 @@ class Region:
     """Each vertex's radius is `radius (1 + jitter U(-1, 1))`."""
 
 
-@dataclass(frozen=True)
-class Slice:
+class Slice(NamedTuple):
     clones: tuple[str, ...]
     regions: tuple[Region, ...]
     offset: tuple[float, float]
@@ -774,8 +772,7 @@ def draw(
     )
 
 
-@dataclass
-class Truth:
+class Truth(NamedTuple):
     """What every realization of a manifest shares: the clones and where they are."""
 
     clones: tuple[str, ...]

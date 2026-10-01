@@ -128,6 +128,21 @@ cnaster = { git = "https://github.com/michaelJwilson/cnaster", branch = "finish_
 # a moving target would silently change what the audits describe.
 calicost = { git = "https://github.com/raphael-group/CalicoST", rev = "c1abcae" }
 
+[tool.port.figures]
+# The one face every figure `run_cnaster_port` and `port.extensions` write
+# uses (`port.extensions.figure_style`). STIX ships with matplotlib, so it is
+# on every install, and its math fonts are the same face, so `$m_N$` labels
+# match their text. Alternatives, each available wherever matplotlib is
+# unless noted:
+#   family = "serif",      font = "DejaVu Serif",    mathtext = "dejavuserif"  # cnaster's own
+#   family = "sans-serif", font = "DejaVu Sans",     mathtext = "dejavusans"   # matplotlib's default
+#   family = "serif",      font = "cmr10",           mathtext = "cm"           # Computer Modern, as LaTeX
+#   family = "sans-serif", font = "Liberation Sans", mathtext = "stixsans"     # Arial metrics; system font
+#   family = "serif",      font = "Liberation Serif", mathtext = "stix"        # Times metrics; system font
+family = "serif"
+font = "STIXGeneral"
+mathtext = "stix"
+
 [tool.maturin]
 python-source = "python"
 module-name = "port.oxiport"
@@ -200,7 +215,7 @@ ignore_missing_imports = true
 # `@njit` erases the signature it decorates, so a patch kernel cannot be
 # annotated in a way --strict accepts. These are pinned bitwise against
 # cnaster instead, which is a stronger claim than a type.
-module = "port.patch.*"
+module = ["port.patch.*", "port.sandbox.patch.*"]
 disallow_untyped_defs = false
 disallow_untyped_calls = false
 

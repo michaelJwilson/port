@@ -30,10 +30,11 @@ from __future__ import annotations
 import ast
 import inspect
 import re
-from dataclasses import dataclass
 from functools import cache
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
+
+from port.extensions.integer_copy import DEFAULT_MAX_TOTAL_COPY
 
 __all__ = ["INDIRECT", "PORT_READS", "Finding", "audit", "cnaster_reads"]
 
@@ -50,17 +51,17 @@ INDIRECT: frozenset[tuple[str, str]] = frozenset(
 
 PORT_READS: dict[tuple[str, str], str] = {
     ("int_copy_num", "max_total_copy"): "--copy-cap (#313)",
+    ("int_copy_num", "merge_agreement"): "clone_labels_integer.tsv (#518)",
 }
 """Keys `cnaster` never reads that a `port` patch does, and the flag that reads them."""
 
 NUMBER = re.compile(r"^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$")
 
-DEFAULT_TOTAL_COPY = 6
+DEFAULT_TOTAL_COPY = DEFAULT_MAX_TOTAL_COPY
 """`cnaster.integer_copy`'s `max_total_copy`, which no key changes."""
 
 
-@dataclass(frozen=True)
-class Finding:
+class Finding(NamedTuple):
     """One key, what is wrong with it, and why."""
 
     key: str
@@ -197,8 +198,17 @@ def audit(document: dict[str, Any], *, check_paths: bool = True) -> list[Finding
             )
         )
 
+    from port.patch.integer_copy import stated_total
+
     copies = document.get("int_copy_num") or {}
-    total = int(copies.get("max_total_copy") or DEFAULT_TOTAL_COPY)
+
+    # NB parsed as `--copy-cap` parses it: `"none"` states no cap, and `0`
+    #    is refused rather than read as the default (#466).
+    try:
+        total = stated_total(copies.get("max_total_copy")) or DEFAULT_TOTAL_COPY
+    except ValueError as error:
+        findings.append(Finding("int_copy_num.max_total_copy", "invalid", str(error)))
+        total = DEFAULT_TOTAL_COPY
 
     bafdist = copies.get("nonbalance_bafdist")
 

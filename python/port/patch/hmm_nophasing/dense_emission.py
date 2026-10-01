@@ -13,7 +13,7 @@ family's own completion order (`Order.FAMILY`). The same edge behaviour as
 
 To a tolerance, not bitwise, so it is `--sal`'s rather than a `SWAPS` row;
 #244 is why a tolerance is measured end to end before it is anything else.
-Selected through `hmm_nophasing.emission_kernels` (`sal_emission()`), not a
+Selected by the `hmm_nophasing` row's `emission_kernels="sal"` option, not a
 name rebind: `cnaster`'s compiled kernels call `_nb_logpmf_1d` as a global.
 :func:`coded_emission` is upstream's coded method with every state scored in
 one call per spot, which is where the speed is.
@@ -24,6 +24,8 @@ from __future__ import annotations
 from typing import Any
 
 import numpy as np
+
+from port.patch.hmm_nophasing.gradient import DISPERSION_FLOOR
 
 __all__ = ["bb_states", "coded_emission", "nb_states"]
 
@@ -38,7 +40,8 @@ def nb_states(
     mu = np.asarray(mu, dtype=np.float64)
     dead = mu <= 0.0
     family = NegativeBinomialEmission(
-        dispersion=1.0 / np.maximum(np.asarray(dispersions, dtype=np.float64), 1.0e-10),
+        dispersion=1.0
+        / np.maximum(np.asarray(dispersions, dtype=np.float64), DISPERSION_FLOOR),
         mean=np.where(dead, 1.0, mu),
     )
     scores = log_emission(
@@ -61,8 +64,8 @@ def bb_states(
     p = np.asarray(p_binom, dtype=np.float64)
     t = np.asarray(taus, dtype=np.float64)
     family = BetaBinomialEmission(
-        alpha=np.maximum(p * t, 1e-10),
-        beta=np.maximum((1.0 - p) * t, 1e-10),
+        alpha=np.maximum(p * t, DISPERSION_FLOOR),
+        beta=np.maximum((1.0 - p) * t, DISPERSION_FLOOR),
         trials=np.ones_like(p),
     )
     return log_emission(

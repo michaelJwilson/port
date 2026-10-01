@@ -20,10 +20,8 @@ Eight parameters, of which four are the problem and four have defaults.
 
 **This is offered as a simplification, not a speedup.** `CLAUDE.md` splits
 the two, and the evidence here is the bitwise equivalence in
-`tests/test_icm_interface.py`. The fold does turn one indexed add per clone
-per spot *visit* into one vectorized add per spot *sweep*, and that measures
-1.19x at 400 spots and 1.38x at 20,000 -- below the 2x bar, so it is
-reported rather than claimed.
+`tests/test_icm_interface.py`. Measured: `docs/measurements.md`,
+`port.patch.icm.interface`.
 
 **Which `icm_sweep_deque`.** `cnaster.icm` defines that name four times, at
 lines 363, 513, 658 and 807; only the last survives the module body. The
@@ -41,6 +39,7 @@ the field and the couplings there too.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import NamedTuple
 
 import numpy as np
 
@@ -80,8 +79,7 @@ class CsrGraph:
         return int(self.indptr.shape[0] - 1)
 
 
-@dataclass(frozen=True)
-class IcmResult:
+class IcmResult(NamedTuple):
     """What the sweep returns, named.
 
     `cnaster` returns a bare `(niter, cost)` tuple, and the call site unpacks

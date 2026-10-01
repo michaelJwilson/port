@@ -32,7 +32,7 @@ import json
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 import numpy as np
 import pandas as pd
@@ -200,8 +200,23 @@ def binned_profile(r: Realization) -> pd.DataFrame:
     return table
 
 
-def plot_clones_genomic_truth(r: Realization, out: Path) -> Path:
-    """`plot_clones_genomic` over the true clone labels, on `binned_profile`'s 1 Mb bins.
+class GenomicTruth(NamedTuple):
+    """`plot_clones_genomic`'s arguments for the true clones on `binned_profile`'s bins."""
+
+    lengths: np.ndarray
+    """Bins per chromosome."""
+    counts: np.ndarray
+    """Bins x 2 x spots: UMI, and the planted haplotype's SNP count."""
+    expected: np.ndarray
+    """Bins x spots: the expected baseline UMI."""
+    trials: np.ndarray
+    """Bins x spots: SNP-covering UMI."""
+    groups: list[np.ndarray]
+    """Each true clone's spots, in `r.clones`' order."""
+
+
+def genomic_truth(r: Realization) -> GenomicTruth:
+    """Per 1 Mb bin and spot, what `plot_clones_genomic` reads, grouped by the true clones.
 
     Per bin and spot: UMI summed over the genes whose midpoint it holds,
     `lambda` summed likewise times the spot's UMI as the expected baseline,
@@ -209,10 +224,7 @@ def plot_clones_genomic_truth(r: Realization, out: Path) -> Path:
     phase undone by `truth_phase.npy`. Spots are grouped by
     `truth_clone_labels.tsv`, so each track is a true clone's pseudobulk.
     """
-    import matplotlib.pyplot as plt
     import scipy.sparse
-
-    from port.patch.plot_genomic import plot_clones_genomic
 
     table = binned_profile(r)
     offsets = np.concatenate([[0], np.cumsum(np.bincount(table["CHR"] - 1))[:-1]])
@@ -246,13 +258,24 @@ def plot_clones_genomic_truth(r: Realization, out: Path) -> Path:
     expected = lam[:, None] * np.asarray(counts.sum(axis=1)).ravel()[None, :]
 
     labels = r.truth["labels"].to_numpy()
-    groups = [np.flatnonzero(labels == clone) for clone in r.clones]
+    return GenomicTruth(
+        lengths=np.bincount(table["CHR"] - 1),
+        counts=np.stack([umi, successes], axis=1),
+        expected=expected,
+        trials=trials,
+        groups=[np.flatnonzero(labels == clone) for clone in r.clones],
+    )
+
+
+def plot_clones_genomic_truth(r: Realization, out: Path) -> Path:
+    """`plot_clones_genomic` over the true clone labels, on `binned_profile`'s 1 Mb bins (`genomic_truth`)."""
+    import matplotlib.pyplot as plt
+
+    from port.patch.plot_genomic import plot_clones_genomic
+
+    g = genomic_truth(r)
     figure = plot_clones_genomic(
-        np.bincount(table["CHR"] - 1),
-        np.stack([umi, successes], axis=1),
-        expected,
-        trials,
-        clone_index=groups,
+        g.lengths, g.counts, g.expected, g.trials, clone_index=g.groups
     )
     path = _save(figure, out / "clones_genomic.png")
     plt.close(figure)
@@ -260,15 +283,16 @@ def plot_clones_genomic_truth(r: Realization, out: Path) -> Path:
 
 
 def plot_clone_profiles(r: Realization, out: Path) -> Path:
-    """The planted `(A, B)` per clone, drawn by `cnaster`'s own profile plotter.
+    """The planted `(A, B)` per clone, drawn by `port`'s profile plotter.
 
-    `cnaster.plot_copy_number_profile`, which `port`'s combined figure uses for
-    an estimate, on the truth binned at 1 Mb: its palette, hatching and
-    mirror chevrons, so a planted and a decoded profile read alike. Rows keep
+    `port.patch.plot_copy_number_profile`, which draws an estimate's profile
+    in `combined.pdf`, on the truth binned at 1 Mb: its palette, hatching,
+    outlines and key, so a planted and a decoded profile read alike. Rows keep
     its numerals, `Clone 0` the normal, as every figure here does.
     """
     import matplotlib.pyplot as plt
-    from cnaster.plot_copy_number_profile import plot_copy_number_profile
+
+    from port.patch.plot_copy_number_profile import plot_copy_number_profile
 
     fig, ax = plt.subplots(figsize=(14, 0.55 * len(r.clones) + 1.6))
     fig.subplots_adjust(left=0.08, right=0.98, top=0.88, bottom=0.3)
@@ -332,13 +356,13 @@ def outline(
     return corner, float(upper[0] - lower[0] + 1), float(upper[1] - lower[1] + 1)
 
 
-def plot_spatial(r: Realization, out: Path) -> Path:
-    """Each slice at its place in the shared frame; the region they share dashed.
+def draw_spatial(
+    axes: Any, r: Realization, *, size: float = 9.0, fontsize: float = 9.0
+) -> list[str]:
+    """Each slice on its own axis in `axes`, at its place in the shared frame; the region they share dashed.
 
-    Slices that overlap image one piece of tissue, so a clone on both shows
-    inside the dashed region in both panels.
+    Returns the clones drawn, in `r.clones`' order, for the caller's key.
     """
-    import matplotlib.pyplot as plt
     from matplotlib.patches import Rectangle
 
     slices = list(dict.fromkeys(r.truth["sample_id"]))
@@ -350,11 +374,7 @@ def plot_spatial(r: Realization, out: Path) -> Path:
     origins = [np.array(o) * extent for o in offsets]
     shared = common_region(origins, extent)
 
-    aspect = extent[1] / extent[0]
-    fig, axes = plt.subplots(1, len(slices), squeeze=False,
-                             figsize=(3.3 * len(slices), 3.3 * aspect + 0.7))  # fmt: skip
-    fig.subplots_adjust(left=0.01, right=0.99, top=0.9, bottom=0.14, wspace=0.03)
-    for k, (ax, sid) in enumerate(zip(axes[0], slices, strict=True)):
+    for k, (ax, sid) in enumerate(zip(axes, slices, strict=True)):
         spots = r.truth[r.truth["sample_id"] == sid]
         x = spots["y"].to_numpy() / 2.0 + origins[k][0]
         y = spots["x"].to_numpy() * np.sqrt(3.0) / 2.0 + origins[k][1]
@@ -364,16 +384,9 @@ def plot_spatial(r: Realization, out: Path) -> Path:
                                    edgecolor=MUTED, linewidth=0.8))  # fmt: skip
         for clone in r.clones:
             on = spots["labels"].to_numpy() == clone
-            if not on.any():
-                continue
-            name = display(clone, r.clones)
-            ax.scatter(x[on], -y[on], s=9, color=clone_colour(clone, r.clones),
-                       edgecolors="white", linewidths=0.3)  # fmt: skip
-            if clone != "normal":
-                ax.text(np.median(x[on]), -np.median(y[on]), name, ha="center",
-                        va="center", fontsize=8, color=INK,
-                        bbox={"facecolor": "white", "edgecolor": "none",
-                              "alpha": 0.8, "pad": 1})  # fmt: skip
+            if on.any():
+                ax.scatter(x[on], -y[on], s=size, color=clone_colour(clone, r.clones),
+                           edgecolors="white", linewidths=0.3 * size / 9.0)  # fmt: skip
         # NB each panel its own slice, in frame coordinates: the dashed box
         #    says where the slices meet without the frame's empty margin.
         ax.set_xlim(origins[k][0] - 1, origins[k][0] + extent[0] + 1)
@@ -383,11 +396,31 @@ def plot_spatial(r: Realization, out: Path) -> Path:
         ax.set_yticks([])
         for side in ax.spines.values():
             side.set_visible(False)
-        ax.set_title(sid, loc="left", fontsize=9, color=INK)
+        ax.set_title(sid, loc="left", fontsize=fontsize, color=INK)
+    return [c for c in r.clones if (r.truth["labels"] == c).any()]
+
+
+def plot_spatial(r: Realization, out: Path) -> Path:
+    """Each slice at its place in the shared frame; the region they share dashed.
+
+    Slices that overlap image one piece of tissue, so a clone on both shows
+    inside the dashed region in both panels. Clones are named by the key
+    alone: a name on the tissue covers the spots it names.
+    """
+    import matplotlib.pyplot as plt
     from matplotlib.lines import Line2D
 
+    slices = list(dict.fromkeys(r.truth["sample_id"]))
+    first = r.truth[r.truth["sample_id"] == slices[0]]
+    aspect = (np.ptp(first["x"].to_numpy()) * np.sqrt(3.0) / 2.0) / (
+        np.ptp(first["y"].to_numpy()) / 2.0
+    )
+    fig, axes = plt.subplots(1, len(slices), squeeze=False,
+                             figsize=(3.3 * len(slices), 3.3 * aspect + 0.7))  # fmt: skip
+    fig.subplots_adjust(left=0.01, right=0.99, top=0.9, bottom=0.14, wspace=0.03)
+    present = draw_spatial(axes[0], r)
+
     # NB one legend for every slice, in the clones' order, on the left.
-    present = [c for c in r.clones if (r.truth["labels"] == c).any()]
     handles = [
         Line2D([], [], marker="o", linestyle="", markersize=5,
                color=clone_colour(c, r.clones), label=display(c, r.clones))
@@ -399,8 +432,7 @@ def plot_spatial(r: Realization, out: Path) -> Path:
     return _save(fig, out / "spatial.png", tight=False)
 
 
-@dataclass
-class Tree:
+class Tree(NamedTuple):
     """The clones' tree with its events in the order they arose."""
 
     parent: dict[str, str | None]
@@ -468,17 +500,30 @@ def tree(r: Realization) -> Tree:
     return Tree(parent, events, barcode)
 
 
-def plot_tree(r: Realization, out: Path) -> Path:
-    """The clones' tree along event time: each event at its time on its edge.
+def draw_tree(
+    ax: Any,
+    r: Realization,
+    *,
+    event_size: float = 7.5,
+    node_size: float = 8.5,
+    dot: float = 90.0,
+    name: Callable[[str], str] | None = None,
+    ancestors: bool = True,
+    edges: bool = False,
+) -> tuple[float, int]:
+    """The clones' tree on `ax`, along event time; returns its width in events and its leaves.
 
-    x is the number of events since `normal`, so an edge is as long as the
-    events on it and each sits at its own time, labelled
-    `chr::A/B::Mb` (whole Mb) above the edge; every node is named by its
-    binary barcode in one style, observed clones by their numeral too.
+    `name` names an observed clone, `display`'s numeral by default. Without
+    `ancestors`, an unobserved node is drawn unnamed: its barcode is its
+    children's common prefix.
+
+    With `edges`, an observed node's barcode is set on the axis's edge -- the
+    root's starting on the left, each leaf's ending on the right -- and its
+    name beside the node, so the caller sizes the tree between the two
+    (`truth_figure`). The texts carry `gid`s `name` and `barcode`.
     """
-    import matplotlib.pyplot as plt
-
     t = tree(r)
+    named = name or (lambda clone: display(clone, r.clones))
     children: dict[str, list[str]] = {}
     for node, up in t.parent.items():
         if up is not None:
@@ -515,34 +560,71 @@ def plot_tree(r: Realization, out: Path) -> Path:
     place("normal")
 
     width = max(at.values())
-    fig, ax = plt.subplots(figsize=(2.1 * width + 4.0, 0.9 * len(order) + 1.2))
+    small = dot / 90.0
     for node, up in t.parent.items():
         if up is None:
             continue
         ax.plot([at[up], at[up], at[node]], [y[up], y[node], y[node]],
-                color=MUTED, linewidth=1.2)  # fmt: skip
+                color=MUTED, linewidth=1.2 * small ** 0.5)  # fmt: skip
         for e in t.events[t.events["node"] == node].itertuples():
             x = e.time - 0.5
-            ax.plot([x, x], [y[node] - 0.06, y[node] + 0.06], color=INK, linewidth=1.0)
+            ax.plot([x, x], [y[node] - 0.06, y[node] + 0.06], color=INK,
+                    linewidth=1.0 * small ** 0.5)  # fmt: skip
             ax.text(x, y[node] + 0.1, e.label, ha="center", va="bottom",
-                    fontsize=7.5, color=INK)  # fmt: skip
+                    fontsize=event_size, color=INK)  # fmt: skip
     for node in t.parent:
         observed = node in r.clones
         colour = clone_colour(node, r.clones) if observed else "white"
-        ax.scatter(at[node], y[node], s=90 if observed else 40, color=colour,
-                   edgecolors=MUTED, linewidths=0.8, zorder=3)  # fmt: skip
-        name = t.barcode[node]
-        if observed:
-            name = f"{display(node, r.clones)}  {name}"
-        # NB one style for every node; the root's trunk leaves to its right,
-        #    so its name sits to its left.
+        ax.scatter(at[node], y[node], s=dot if observed else 0.45 * dot, color=colour,
+                   edgecolors=MUTED, linewidths=0.8 * small ** 0.5, zorder=3)  # fmt: skip
+        label = t.barcode[node]
         root = t.parent[node] is None
-        ax.text(at[node] + (-0.12 if root else 0.12), y[node], name, fontsize=8.5,
-                color=INK, va="center", ha="right" if root else "left",
-                family="monospace")  # fmt: skip
+        if observed and edges:
+            from matplotlib.transforms import blended_transform_factory
+
+            side = blended_transform_factory(ax.transAxes, ax.transData)
+            ax.annotate(named(node), (at[node], y[node]),
+                        xytext=(-4.0 if root else 4.0, 0.0),
+                        textcoords="offset points", fontsize=node_size, color=INK,
+                        va="center", ha="right" if root else "left",
+                        gid="name")  # fmt: skip
+            ax.text(0.0 if root else 1.0, y[node], label, transform=side,
+                    fontsize=node_size, color=INK, va="center",
+                    ha="left" if root else "right", family="monospace",
+                    gid="barcode")  # fmt: skip
+        elif observed:
+            label = f"{named(node)}  {label}"
+            # NB the root's trunk leaves to its right, so its name sits to
+            #    its left; a leaf's name follows it.
+            ax.text(at[node] + (-0.12 if root else 0.12), y[node], label,
+                    fontsize=node_size, color=INK, va="center",
+                    ha="right" if root else "left", family="monospace")  # fmt: skip
+        elif ancestors:
+            # NB an ancestor's name under it: level with it, the name ran
+            #    into the events labelled above its children's edges.
+            ax.text(at[node] + 0.12, y[node] - 0.12, label, fontsize=node_size,
+                    color=INK, va="top", ha="left", family="monospace")  # fmt: skip
     ax.set_xlim(-2.2, width + 2.2)
     ax.set_ylim(-0.8, len(order) - 0.2)
     ax.axis("off")
+    return width, len(order)
+
+
+def plot_tree(r: Realization, out: Path) -> Path:
+    """The clones' tree along event time: each event at its time on its edge.
+
+    x is the number of events since `normal`, so an edge is as long as the
+    events on it and each sits at its own time, labelled
+    `chr::A/B::Mb` (whole Mb) above the edge; every node is named by its
+    binary barcode in one style, observed clones by their numeral too.
+    """
+    import matplotlib.pyplot as plt
+
+    t = tree(r)
+    leaves = sum(1 for node in t.parent if node not in set(t.parent.values()))
+    depth = float(t.events["time"].max()) if len(t.events) else 1.0
+    fig, ax = plt.subplots(figsize=(2.1 * depth + 4.0, 0.9 * leaves + 1.2))
+    draw_tree(ax, r)
     return _save(fig, out / "mutation_tree.png")
 
 
@@ -771,8 +853,15 @@ PLOTS = (
 
 
 def plot(path: Path) -> list[Path]:
-    """Every truth figure of one realization, into `<path>/qa/`."""
-    return read(path).plot()
+    """Every truth figure of one realization, and all on one page, into `<path>/qa/`.
+
+    The page is `truth_combined.pdf` (`port.sim.truth_figure`), at
+    `combined.pdf`'s size and type.
+    """
+    from port.sim.truth_figure import write_truth_combined
+
+    r = read(path)
+    return [*r.plot(), write_truth_combined(r, path / "qa" / "truth_combined.pdf")]
 
 
 def stream(source: Path, into: Path | None = None) -> Iterator[Realization]:

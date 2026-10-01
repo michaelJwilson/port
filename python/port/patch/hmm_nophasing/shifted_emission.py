@@ -12,16 +12,18 @@ This folds it in:
     \exp(\theta_i) \longrightarrow \exp(\theta_i - \log Z_{c(g)})
 
 with :math:`\log Z_c` the quantity `cnaster`'s own `compute_logmu_shifts`
-returns. **Upstream's function is called, not reimplemented** -- the patch
-applies a quantity the dependency defines rather than deriving a second one
-that would then need refereeing against the first.
+defines. **Its definition is kept, and its function is not called**: `port`'s
+`shifts` computes the same quantity per clone, for the two reasons below, and
+`np.repeat` of it recovers upstream's array bitwise.
 
-## Off by default, because this changes every fitted RDR parameter
+## A class flag, because this changes every fitted RDR parameter
 
 `CLAUDE.md` forbids a silent behaviour change and enabling the shift is one:
-it debiases :math:`\log\mu` and every downstream number moves. Off, the call
-goes to `cnaster`'s own coded emission unchanged, which is the path
-`tests/test_buffered_emission.py` pins bitwise. The flag is a class
+it debiases :math:`\log\mu` and every downstream number moves. The class
+defaults it off; `run_cnaster_port` turns it on unless `--no-shift` is given
+(`port.pipeline.SHIFT_SWAPS`). Off, the call goes to `cnaster`'s own coded
+emission unchanged -- the path `tests/test_buffered_emission.py` pins
+bitwise -- or to sal's where `emission_kernels` is `"sal"`. The flag is a class
 attribute because `port` does not call this method -- `optimize_params` does,
 from inside `cnaster` -- so a keyword would have to be threaded through a
 function this repository does not replace.
@@ -81,27 +83,28 @@ The whole call, against the unshifted emission upstream runs: **1.12x** at
 
 from __future__ import annotations
 
-from collections.abc import Iterator
-from contextlib import contextmanager
 from math import exp
 from typing import Any, NamedTuple
 
 import numpy as np
-from cnaster.config import get_global_config
+from cnaster.config import get_global_config, start_time
 from cnaster.hmm_nophasing import _bb_logpmf_1d, _nb_logpmf_1d
 from cnaster.hmm_nophasing import hmm_nophasing as UPSTREAM
+from cnaster.logger import get_logger
 from sal.ragged import Ragged
 
 from port.patch.hmm_nophasing.gradient import EmGradient, analytic_bfgs
 from port.patch.hmm_nophasing.logmu_shift import shifts as logmu_shifts
 from port.patch.plotting.clone_paths import state_vector
 
+logger = get_logger(__name__, start_time=start_time)
+
 __all__ = [
     "UPSTREAM",
-    "finite_difference",
     "hmm_nophasing",
-    "logmu_shift",
     "neutral_state",
+    "release",
+    "shifted",
 ]
 
 NEUTRAL_BAF_TOLERANCE = 0.05
@@ -293,29 +296,28 @@ class hmm_nophasing(UPSTREAM):  # type: ignore[misc]
     the thing it replaces would not be one.
     """
 
-    apply_logmu_shift: bool = False
-    """Off by default. :func:`logmu_shift` is what turns it on.
+    # NB the three options below are class attributes rather than keywords,
+    #    because the caller is `optimize_params` inside `cnaster` and a keyword
+    #    would have to reach it through a function this repository does not
+    #    replace. They are set on a subclass the `SHIFT_SWAPS` row installs
+    #    (`port.pipeline.with_attributes`), never on this class (#517).
 
-    A class attribute rather than a keyword, because the caller is
-    `optimize_params` inside `cnaster` and a keyword would have to reach it
-    through a function this repository does not replace.
-    """
+    apply_logmu_shift: bool = False
+    """Off here, as `cnaster` is; the `SHIFT_SWAPS` row binds it on."""
 
     analytic_gradient: bool = True
     """On by default: the M step's gradient in closed form (#433).
 
     Off, BFGS differences `cost_fn` as `cnaster` does, one call per
-    coordinate. :func:`finite_difference` turns it off for a block.
+    coordinate.
     """
 
     emission_kernels: str = "cnaster"
     """`cnaster` (default) or `sal`: which kernels score the coded emission.
 
-    :func:`sal_emission` sets `sal`, which `run_cnaster` enters unless
-    `--no-sal-emission` (#425). A class
-    attribute for the reason `apply_logmu_shift` is one; not a name rebind,
-    because `cnaster`'s compiled kernels call `_nb_logpmf_1d` as a global and
-    a Python function in its place breaks their compilation.
+    `run_cnaster_port` binds `sal` unless `--no-sal-emission` (#425). Not a
+    name rebind, because `cnaster`'s compiled kernels call `_nb_logpmf_1d` as
+    a global and a Python function in its place breaks their compilation.
     """
 
     def _clone_triples(self, encoder: Any, lengths: tuple[int, ...]) -> _Triples:
@@ -372,8 +374,9 @@ class hmm_nophasing(UPSTREAM):  # type: ignore[misc]
     value cannot reach a different problem unnoticed.
     """
 
-    @staticmethod
+    @classmethod
     def compute_emission_probability_nb_betabinom(
+        cls,
         X: np.ndarray,
         base_nb_mean: np.ndarray,
         log_mu: np.ndarray,
@@ -392,7 +395,7 @@ class hmm_nophasing(UPSTREAM):  # type: ignore[misc]
         shift = hmm_nophasing._row_shift
 
         if (
-            hmm_nophasing.apply_logmu_shift
+            cls.apply_logmu_shift
             and shift is not None
             and shift.size == np.asarray(X).shape[0]
         ):
@@ -442,6 +445,8 @@ class hmm_nophasing(UPSTREAM):  # type: ignore[misc]
         # NB the M step's gradient in closed form, through `minimize`'s
         #    callable `method` (#433); positional extras leave the fit as is,
         #    since the settings the gradient reads would then be unnamed.
+        #    BFGS, as `cnaster` runs it, whatever `hmm.solver` states:
+        #    `configured_method` honours it and is not installed (#448).
         if (
             self.analytic_gradient
             and not args
@@ -539,6 +544,25 @@ class hmm_nophasing(UPSTREAM):  # type: ignore[misc]
             or clone_lengths is None
             or decode is None
         ):
+            if self.apply_logmu_shift:
+                # NB expected with the shift on: the BAF stage has no
+                #    exposure, and a first iteration has no decode yet. Said
+                #    at debug, and the exposure withheld from upstream so it
+                #    does not warn "not currently supported" for a shift that
+                #    applies from the next call (#362).
+                logger.debug(
+                    "logmu shift not applied on this call: %s",
+                    ", ".join(
+                        name
+                        for name, missing in (
+                            ("no exposure", normal_log_lambda is None),
+                            ("no clone lengths", clone_lengths is None),
+                            ("no decode yet", decode is None),
+                        )
+                        if missing
+                    ),
+                )
+                normal_log_lambda = None
             if self.emission_kernels == "sal":
                 from port.patch.hmm_nophasing.dense_emission import coded_emission
 
@@ -674,45 +698,18 @@ class hmm_nophasing(UPSTREAM):  # type: ignore[misc]
         return log_emit_rdr[:, :, None], log_emit_baf[:, :, None]
 
 
-@contextmanager
-def logmu_shift() -> Iterator[None]:
-    """Turn the shift on for the block, and back to what it was after.
+def shifted(model: Any) -> bool:
+    """Whether `model`, a class or an instance, fits with the shift applied.
 
-    The flag is a class attribute, so a run that set it and left it would make
-    every later comparison in the same process a shifted one. Restored rather
-    than cleared, so nesting does not lie.
+    `False` for `cnaster`'s class, which has no such option: the one gate
+    the clone assignment, the core inference and the gradient read (#517).
     """
-    previous = hmm_nophasing.apply_logmu_shift
-    hmm_nophasing.apply_logmu_shift = True
-
-    try:
-        yield
-    finally:
-        hmm_nophasing.apply_logmu_shift = previous
+    return bool(getattr(model, "apply_logmu_shift", False))
 
 
-@contextmanager
-def sal_emission() -> Iterator[None]:
-    """Score the coded emission with sal's dense kernels for the block (#425).
+def release() -> None:
+    """Drop the last fit's shift; `port.pipeline.patched` calls this on exit (#517).
 
-    Restored rather than cleared on the way out, as :func:`logmu_shift` is.
+    Keyed by size, so a later fit of the same shape would read this one's.
     """
-    previous = hmm_nophasing.emission_kernels
-    hmm_nophasing.emission_kernels = "sal"
-
-    try:
-        yield
-    finally:
-        hmm_nophasing.emission_kernels = previous
-
-
-@contextmanager
-def finite_difference() -> Iterator[None]:
-    """`cnaster`'s finite-difference gradient for the block (#433), restored after."""
-    previous = hmm_nophasing.analytic_gradient
-    hmm_nophasing.analytic_gradient = False
-
-    try:
-        yield
-    finally:
-        hmm_nophasing.analytic_gradient = previous
+    hmm_nophasing._row_shift = None

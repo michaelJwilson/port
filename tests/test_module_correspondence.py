@@ -11,12 +11,12 @@ package under that name, and its `__init__` re-exports them so a swap row
 names the package. Where a patch replaces nothing, it does not live under
 `patch/` at all.
 
-Two modules are exceptions and declare `MIRRORS` because a name cannot carry
-what they do: `cnaster` defines
-`compute_emission_probability_nb_betabinom` in **both** `hmm_nophasing` and
-`hmm_phased`, and `forward_lattice` and `backward_lattice` in both, so
-`emission` and `lattice` each unify a duplicate pair and cannot be named for
-one half of it.
+Two packages are exceptions and declare `MIRRORS` because a name cannot
+carry what they do: `cnaster` defines `forward_lattice` and
+`backward_lattice` in both `hmm_nophasing` and `hmm_phased`, so `lattice`
+unifies a duplicate pair, and `plotting`'s path helpers serve both
+`cnaster.plot_genomic` and `cnaster.plotting`. `emission`, the third, is set
+aside under `sandbox/patch/` (#517 step 8).
 
 `infra`: these assert `port`'s own layout. None says anything about a
 scientific result, and none can fail because `cnaster` changed.
@@ -34,14 +34,13 @@ import pytest
 from port.pipeline import (
     COPY_SWAPS,
     FIGURE_SWAPS,
-    NUMERIC_SWAPS,
     SHIFT_SWAPS,
     SWAPS,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
 
-UNIFIERS = ("emission", "lattice", "plotting")
+UNIFIERS = ("lattice", "plotting")
 """The two patches that replace a pair of `cnaster` modules rather than one.
 
 Named here rather than inferred so that adding a third is a decision someone
@@ -54,7 +53,7 @@ PRIVATE_SURFACE = frozenset(
         ("cnaster.hmm_nophasing", "_nb_logpmf_1d"),
         ("cnaster.hmm_phased", "_switch_betabinom_1d"),
         # The four layout helpers `plot_clones_genomic` is built from (#278).
-        # `port.patch.plotting.genomic` replaces that function and imports
+        # `port.sandbox.patch.plotting.genomic` replaces that function and imports
         # these rather than copying them: they draw the gridspec, the axis
         # furniture and the chromosome boundaries, and a copy would be 130
         # lines whose only job is to stay identical. Importing them is what
@@ -130,7 +129,7 @@ def test_every_swap_lands_in_the_module_named_for_its_target() -> None:
     renamed without its rows, fails here -- and both are how a layout stops
     meaning what it claims once nothing reads it.
     """
-    for swap in SWAPS + NUMERIC_SWAPS + FIGURE_SWAPS + SHIFT_SWAPS + COPY_SWAPS:
+    for swap in SWAPS + FIGURE_SWAPS + SHIFT_SWAPS + COPY_SWAPS:
         target, _, _ = swap.replacement.partition(":")
         expected = f"port.patch.{swap.module.rpartition('.')[2]}"
 
@@ -139,30 +138,6 @@ def test_every_swap_lands_in_the_module_named_for_its_target() -> None:
         )
 
         importlib.import_module(target)
-
-
-@pytest.mark.infra
-def test_what_replaces_nothing_does_not_live_under_patch() -> None:
-    """`patch/` means "replaces `cnaster`", so a module that does not is elsewhere.
-
-    `emission_family` wraps `snakes_and_ladders` and `hmm_init_trials` is
-    `port`'s own, so both are `extensions/`; `draw` plants truth, so it is
-    `sim/`. None may appear in a swap row: an extension installed over a
-    `cnaster` name is a patch that has not admitted to being one.
-    """
-    installed = {
-        swap.replacement.partition(":")[0]
-        for swap in SWAPS + NUMERIC_SWAPS + FIGURE_SWAPS + SHIFT_SWAPS + COPY_SWAPS
-    }
-
-    for name in (
-        "port.extensions.emission_family",
-        "port.sim.draw",
-        "port.extensions.hmm_init_trials",
-    ):
-        importlib.import_module(name)
-
-        assert name not in installed, f"{name} is installed but lives outside patch/"
 
 
 @pytest.mark.infra

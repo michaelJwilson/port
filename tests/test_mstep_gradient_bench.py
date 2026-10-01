@@ -64,7 +64,8 @@ def _fit_inputs(n_clones: int, n_obs: int) -> dict[str, Any]:
 
 
 def _fit(inputs: dict[str, Any], *, analytic: bool) -> dict[str, Any]:
-    from port.patch.hmm_nophasing import finite_difference, hmm_nophasing, logmu_shift
+    from port.patch.hmm_nophasing import hmm_nophasing
+    from port.pipeline import with_attributes
 
     arguments = dict(inputs)
     X = arguments.pop("X")
@@ -73,17 +74,13 @@ def _fit(inputs: dict[str, Any], *, analytic: bool) -> dict[str, Any]:
     base = arguments.pop("base_nb_mean")
     total = arguments.pop("total_bb_RD")
 
-    def run() -> dict[str, Any]:
-        result: dict[str, Any] = hmm_nophasing(params="smp", t=1 - 1e-6).optimize(
-            X, lengths, n_states, base, total, **arguments
-        )
-        return result
-
-    with logmu_shift():
-        if analytic:
-            return run()
-        with finite_difference():
-            return run()
+    model = with_attributes(
+        hmm_nophasing, apply_logmu_shift=True, analytic_gradient=analytic
+    )
+    result: dict[str, Any] = model(params="smp", t=1 - 1e-6).optimize(
+        X, lengths, n_states, base, total, **arguments
+    )
+    return result
 
 
 @pytest.mark.benchmark

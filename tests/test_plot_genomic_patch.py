@@ -116,7 +116,7 @@ def _planted(seed: int = 3) -> dict[str, Any]:
     }
 
 
-@pytest.mark.patch
+@pytest.mark.oracle
 def test_shifted_the_rdr_line_sits_on_the_normal_bins() -> None:
     """Each clone's neutral line at its normal bins' median RDR.
 
@@ -130,7 +130,6 @@ def test_shifted_the_rdr_line_sits_on_the_normal_bins() -> None:
 
     mpl.use("Agg")
 
-    from port.patch.hmm_nophasing import logmu_shift
     from port.patch.plot_genomic import fitted_levels
 
     planted = _planted()
@@ -143,8 +142,7 @@ def test_shifted_the_rdr_line_sits_on_the_normal_bins() -> None:
         normal = planted["path"][:, clone] == 0
         observed = float(np.median(rdr[normal]))
 
-        with logmu_shift():
-            levels = fitted_levels(planted["result"], clone, 60, base, shifted=True)
+        levels = fitted_levels(planted["result"], clone, 60, base, shifted=True)
 
         drawn = levels.rdr[levels.baf == 0.5]
 

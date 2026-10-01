@@ -1,5 +1,13 @@
 """A version-3 manifest from a finished `run_cnaster` run (#460), set aside.
 
+Ticket: #460 -- a version-3 manifest from a finished run, a tool kept here
+  at request: nothing reads its output, and its offsets are commented.
+Measurement: none recorded on a run; on a draw's truth written as a run's
+  outputs it recovers `dev_shared_unique`'s 3 clones, 1 shared and 2 unique
+  events (`tests/test_sandbox_sim_from_run.py`).
+Exit: graduate to `port.sim` once its unmeasured sections (slice offsets,
+  the tree, normal fractions) can be filled from a run.
+
 In the sandbox: nothing reads what it writes yet, and a manifest from it
 does not draw until its commented offsets are stated.
 

@@ -38,30 +38,25 @@ def _snapshot() -> dict[tuple[str, str], Any]:
 
 def _managers() -> list[tuple[str, Callable[[], AbstractContextManager[Any]]]]:
     from port.extensions.copy_likelihood import capture
-    from port.extensions.sal import sal
-    from port.patch.hmm_initialize.distinct import distinct_init
-    from port.patch.hmm_nophasing import logmu_shift
-    from port.patch.icm.floor import floor_merge
-    from port.patch.integer_copy import by_likelihood
     from port.patch.lattice import rust_lattices
     from port.pipeline import FIGURE_SWAPS, PLOT_OFF_SWAPS, SWAPS, patched
 
     return [
         ("capture", capture),
-        ("sal", sal),
-        ("distinct_init", distinct_init),
-        ("logmu_shift", logmu_shift),
-        ("floor_merge", floor_merge),
-        ("by_likelihood", by_likelihood),
         ("rust_lattices", rust_lattices),
         ("patched", lambda: patched(SWAPS + FIGURE_SWAPS + PLOT_OFF_SWAPS)),
     ]
 
 
 @pytest.mark.infra
-@pytest.mark.parametrize("index", range(8))
+@pytest.mark.parametrize("index", range(3))
 def test_a_raising_block_leaves_no_module_state_behind(index: int) -> None:
+    from port.pipeline import release
+
     name, manager = _managers()[index]
+    # NB `patched` releases each run's state on exit (#517), so what an
+    #    earlier test left is dropped first rather than read as a change.
+    release()
     before = _snapshot()
 
     def _raise_inside() -> None:

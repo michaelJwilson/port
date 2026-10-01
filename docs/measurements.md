@@ -1,0 +1,286 @@
+# Measurements
+
+The timings, speedups, memory figures, recovery scores and histories that
+the package's docstrings and comments cited, moved here verbatim so a
+docstring carries only its function's contract (#517). Each `##` section
+names the module and each `###` heading the function, class or constant the
+passage came from; that docstring points back here. A figure is as current
+as the commit that recorded it, and re-measuring one updates it here rather
+than in the code.
+
+## `port.extensions.parameter_errors`
+
+### module docstring
+
+The previous work is `cnaster/sandbox/hmm_nophasing_jax.py`, named because
+`CLAUDE.md` puts a dependency's `sandbox/` out of scope by default and an
+excursion has to say which tree it read and why. It could not be answered
+from the installed path: that tree is not in the wheel, so nothing installed
+differentiates this objective.
+
+`jax` is a dependency of this repository as of #287, added with permission
+because the alternative was writing the objective a third time.
+
+## `port.patch.reference`
+
+### module docstring
+
+**13.3x and 55.2 MB to 23.3 MB at 250,000 transcripts, which is a human
+reference's size.** The function reads one tab-separated file and hands back
+six columns, and `pandas` is 367 ms of that on its own.
+
+Measured at 250,000 transcripts, warm, best of five:
+
+    cnaster                430.65 ms   49.54 MB
+    column by column        42.84 ms   23.28 MB   10.1x, 2.1x less
+    through Arrow           60.53 ms   15.49 MB    7.1x, 3.2x less
+
+and at the dev instance's 1,213 transcripts, 3.94 / 1.90 / 4.03 ms.
+
+So it is **1.41x slower than the route it replaces at a stress size and a
+wash at a gate size**, for 33 per cent less peak and a function that is one
+expression rather than seven. `CLAUDE.md` is what decides which of those
+wins: a speedup claim needs 2x at a stress size and this is not offered as
+one; a simplification needs evidence of equivalence, which is the bitwise
+test. The cost is stated rather than buried -- `pyarrow` is 152 MB installed
+and the largest wheel in the environment, against 7.8 MB of peak saved on a
+stage that is 0.17 s of a whole run.
+
+## `port.patch.hmrf.invariants`
+
+### module docstring
+
+**Measured** by `pytest-benchmark`, both count passes together, minimum
+over the rounds it took:
+
+| `n_obs` | `n_spots` | per iteration |
+| ---: | ---: | ---: |
+| 240 | 160 | 0.041 ms |
+| 3,000 | 5,000 | 25.2 ms |
+| 10,000 | 2,500 | 48.5 ms |
+
+Against a boundary costing about 16 s that is under two tenths of a per
+cent, so this is a **simplification** rather than a speedup and is offered
+as one: the value is that a quantity which cannot change stops being
+recomputed, and the ratio is incidental. It multiplies by `max_iter_outer`,
+which is the only reason the absolute number is worth writing down at all.
+
+## `port.extensions.integer_copy`
+
+### module docstring
+
+`tests/test_integer_copy.py` measures what the scale costs, and the answer is
+not the obvious one. **A scale error corrupts the confidence rather than the
+answer.** At `(4, 2)` with `sigma_mubar = 0.08` the argmin stays `(4, 2)` at
+every error up to twenty per cent -- the lattice spacing in `mubar` is `0.5`
+and no competitor gets closer -- while the squared residual runs `0.00`,
+`0.56`, `3.52`, `9.00`, `56.25` and the credible set empties at eight per
+cent.
+
+That is the argument for the one-to-many map in one line: an argmin-only
+decoder returns the correct pair at a twenty per cent scale error with
+nothing to say the fit is fifty-six chi-square units from explaining it.
+
+## `port.patch.hmm_nophasing.logmu_shift`
+
+### module docstring
+
+It stays a `numba` kernel: the vectorized form the comment sketches is
+measurably slower than the compiled loop, so what this removes is the
+broadcast write, not the loop.
+
+On unequal clones: the earlier version kept a `CloneStack` view for equal
+lengths and it is gone with the vectorized reduction that needed it.
+
+### _per_clone
+
+Kept as `numba` and kept as upstream's shape of loop, because that is
+what the measurement says: a `scipy.special.logsumexp` over per-clone
+views is **2.1x slower** at the stress size and 3.9x at the gate one.
+
+### shifts
+
+At the segment count `expected_runtime.tex` derives, 2.9e5, the difference
+is also 2.3 MB against a handful of numbers.
+
+A comment above the `_per_clone` call, describing the rectangular path the
+module docstring records as removed:
+
+    # NB the rectangular fast path, detected rather than assumed. Where the
+    #    clones are equal the whole reduction is one call on a view that
+    #    copies nothing; where they are not, a view cannot exist and the
+    #    per-clone slices are still each contiguous.
+
+## `port.patch.hmrf.field`
+
+### module docstring
+
+**Measured**, minimum of three runs, `n_states = 7`:
+
+| `n_obs` | `n_spots` | clones | `cnaster` | this | ratio |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 3,000 | 5,000 | 4 | 69.6 ms | 17.8 ms | 3.90 |
+| 3,000 | 5,000 | 7 | 198.7 ms | 36.1 ms | 5.50 |
+| 10,000 | 2,500 | 7 | 483.6 ms | 67.4 ms | 7.17 |
+
+Above `CLAUDE.md`'s 2x bar at every size measured, and it rises with both
+extents: the stride is `n_spots` and the number of strided probes is
+`n_obs`, so `cnaster`'s form worsens as either grows.
+`expected_runtime.tex`'s own derivation puts the genome at 2.9e5 segments
+rather than the 3.2e3 it states (`docs/audit-paper-internal.md` §3a), so the
+range measured understates the size the method is aimed at.
+
+Three other forms were tried and are recorded so they are not retried:
+
+| form | ratio |
+| --- | ---: |
+| transposing the emission to `(n_states, n_spots, n_obs)` | 1.18-7.46, and needs the producer changed |
+| transposing at run time, then that kernel | 0.11 |
+| a `numpy` gather, `rdr[pred[:, c], arange(n_obs), :].sum(0)` | 0.32 |
+| the same gather on the transposed array | 0.09 |
+
+The transpose is the instructive one: it fixes the contiguity and leaves the
+scalar reduction, and measures roughly half what the reorder does at the same
+sizes -- 61.8 ms against 36.1 ms at 3,000 x 5,000 x 7. Both gathers
+materialize a fancy-indexed `(n_obs, n_spots)` copy per clone that a compiled
+loop does not have.
+
+**What the profile says next.** The producer that fills these arrays costs
+4,129 ms at 3,000 x 5,000 where the field costs 70 ms, so the field is under
+two per cent of the boundary and this patch moves about one per cent of it.
+It lands because it is free and bitwise, not because it moves the boundary.
+The algorithmic cut is issue #59 item 2 -- not materializing the
+`(n_states, n_obs, n_spots)` array at all.
+
+## `port.patch.icm.interface`
+
+### module docstring
+
+The fold does turn one indexed add per clone per spot *visit* into one
+vectorized add per spot *sweep*, and that measures 1.19x at 400 spots and
+1.38x at 20,000 -- below the 2x bar, so it is reported rather than claimed.
+
+## `port.patch.utils`
+
+### module docstring
+
+**20.34 s of plotting to 3.84 s, and 8,287 MB of `RendererAgg` to 1,036 MB.**
+Measured over a whole `run_cnaster` on the dev instance, 19 figures, with
+every figure's groups and buffers counted as it was written:
+
+| arm | plotting | groups | allocated | PDF |
+| --- | ---: | ---: | ---: | ---: |
+| `cnaster` | 20.34 s | 120 | 8,287 MB | 1,954 KB |
+| `dpi=150` (#209) | 5.87 s | 120 | 2,072 MB | 1,048 KB |
+| `dpi=150`, `sink` | **3.84 s** | **60** | **1,036 MB** | **839 KB** |
+| `dpi=150`, `sweep` | 5.16 s | 60 | 1,036 MB | 1,021 KB |
+| `dpi=150`, nothing rasterized | 5.08 s | 0 | 0 MB | 1,054 KB |
+
+**Two of the ticket's three claims did not survive being measured**, and
+both are recorded here rather than carried forward.
+
+*The group count is not the artist count.* The ticket read mixed mode as
+allocating a full-figure buffer per rasterized artist. `matplotlib`'s
+`allow_rasterization` starts rasterizing at the first rasterized artist and
+stops at the first one that is **not**, so a run of them shares one buffer.
+What splits `cnaster`'s runs is a gridline: `_format_track_axis` adds
+`ax.axhline(..., c="lightgray", linewidth=0.5, zorder=0)` per y tick
+(`plot_genomic.py:70`), between the rasterized errorbar at zorder 0 and the
+rasterized scatter at zorder 1. So the floor is one group per axes, not one
+per figure, and a collapse that refuses to touch the drawing refuses
+everywhere -- measured at 120 groups before and 120 after, byte for byte the
+same files.
+
+*Rasterizing is worth it, above about 500 bins.* The ticket asked whether
+these panels need rasterizing at all. At the dev instance's 1,000 bins the
+vector arm allocates nothing and is still slower, and it gets worse with the
+bin count, which is `CLAUDE.md`'s rule that cost depends on the data rather
+than only on its size. One panel, two clones, `dpi=150`:
+
+| bins | `cnaster` | `sink` | vector |
+| ---: | ---: | ---: | ---: |
+| 250 | 0.406 s / 56 KB | 0.292 s / 41 KB | **0.275 s / 31 KB** |
+| 1,000 | 0.436 s / 151 KB | **0.344 s / 115 KB** | 0.546 s / 107 KB |
+| 4,000 | 0.729 s / 407 KB | **0.603 s / 312 KB** | 1.645 s / 387 KB |
+| 16,000 | 1.509 s / 871 KB | **1.361 s / 635 KB** | 6.050 s / 1,506 KB |
+
+The crossover is between 250 and 1,000 bins, and `expected_runtime.tex`'s own
+derivation puts a genome at 2.9e5 segments (`docs/audit-paper-internal.md`
+§3a), so every instance the method is aimed at is far above it. The decision
+is **keep rasterizing**, and it is a decision rather than a default because
+nothing had measured it.
+
+A third hypothesis died earlier and is kept for the same reason:
+`bbox_inches="tight"` renders the figure twice and looked like the cost. It
+is **1.35x faster**, because the tight bbox shrinks the area that gets
+rasterized. Dropping it is worth having only alongside a dpi change; on its
+own it is a regression.
+
+### collapse_rasterizing_groups
+
+**The ticket's mechanism was wrong, and the measurement is why this
+function exists at all.** It read mixed mode as allocating a buffer per
+rasterized artist -- "four rasterized collections in one axes cost four
+full-figure buffers". `matplotlib` does not.
+
+Two groups per axes, measured: a whole run allocates **120 groups over 60
+rasterized artists on 39 axes** -- exactly two per artist, one per artist
+per `bbox_inches` pass -- and 8,287 MB of `RendererAgg` at `cnaster`'s dpi.
+
+`strict` on `cnaster`'s own figures: measured at 120 groups before and 120
+after, byte for byte the same files.
+
+### discard_fig
+
+Only the rendering is skipped, which is where a small run spends 31 to 45
+per cent of its time, in PDF text layout.
+
+## `port.patch.hmrf.adjacency`
+
+### module docstring
+
+**This is a simplification, and the speedup is beside the point.**
+`CLAUDE.md` separates the two: a patch that makes the code plainer lands on
+its evidence of equivalence alone. The ratio is large and the saving is not:
+
+| spots | non-zeros | `cast_csr` + `unpack_adjacency` | this | ratio |
+| ---: | ---: | ---: | ---: | ---: |
+| 1,200 | 7,192 | 2.8 ms | 0.014 ms | 202 |
+| 5,000 | 29,987 | 11.4 ms | 0.040 ms | 282 |
+| 20,000 | 119,994 | 52.7 ms | 0.951 ms | 55 |
+
+11 ms per outer iteration against a boundary that costs about 16 s
+(`docs/`, issue #59 item 1's profile) is under a tenth of a per cent. Landing
+it for the ratio would be reporting a number that does not matter; landing it
+because two Python loops become three array expressions is the argument.
+
+## `port.pipeline`
+
+### FIGURE_DPI
+
+Measured on one figure with four rasterized collections, written to PDF:
+
+    dpi=300, tight bbox -- cnaster   2,033 ms   35.1 MB
+    dpi=150, tight bbox                692 ms    9.9 MB   2.9x
+    dpi=150, no tight bbox             489 ms    9.8 MB   4.2x
+    dpi=300, tight, not rasterized   1,379 ms    2.1 MB
+
+### FIGURE_SWAPS
+
+`write_fig` is 47 per cent of a run (#195).
+
+Together they take a run's plotting from 20.34 s to 3.84 s and its renderer
+buffers from 8,287 MB to 1,036 MB.
+
+Merging the two would have bought the same 47 per cent and cost the claim.
+
+### SHIFT_SWAPS
+
+On #292's genome the fit returned `mu / Z_c`, state by state, rather than
+the planted `mu` (#293).
+
+### REFINEMENT_SWAPS
+
+On `calicost_instance` it merged all 16 sub-clones into one (ARI 0.000).
+
+#466: this said "on", the CLI never did.

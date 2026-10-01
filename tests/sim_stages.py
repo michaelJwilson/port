@@ -40,8 +40,8 @@ ROOT = Path(__file__).resolve().parent.parent
 CACHE = ROOT / ".cache" / "sim_stages"
 
 R0 = ROOT / "sim" / "generated" / "dev_tree" / "r0"
-R0_HASH = "93398396"
-"""`dev_tree` r0 at 42 x 42 (#470): every clone at 300 spots or more."""
+R0_HASH = "3381575a"
+"""`dev_tree` r0 at CalicoST's 60 x 50 array per slice (#470): 6,000 spots."""
 
 CAPTURED: tuple[str, ...] = (
     "initial_phase_given_partition",
@@ -197,7 +197,7 @@ def capturing(calls: list[Call], names: tuple[str, ...] = CAPTURED) -> Iterator[
     driver = importlib.import_module(DRIVER)
     undo: list[tuple[str, Any]] = []
 
-    def recording(name: str, current: Any) -> Any:
+    def logged(name: str, current: Any) -> Any:
         def call(*args: Any, **kwargs: Any) -> Any:
             result = current(*args, **kwargs)
             calls.append(Call(name, args, dict(kwargs), result))
@@ -209,7 +209,7 @@ def capturing(calls: list[Call], names: tuple[str, ...] = CAPTURED) -> Iterator[
         for name in names:
             current = getattr(driver, name)
             undo.append((name, current))
-            setattr(driver, name, recording(name, current))
+            setattr(driver, name, logged(name, current))
 
         yield
     finally:

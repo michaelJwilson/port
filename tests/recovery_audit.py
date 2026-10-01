@@ -45,6 +45,7 @@ defect, and `--set section.key=value` overrides any other entry.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import tempfile
 import time
@@ -56,9 +57,9 @@ from typing import Any
 import numpy as np
 import pandas as pd
 import yaml
-from scipy.optimize import linear_sum_assignment
 
 from tests.fixtures import CoreInferenceTruth
+from tests.scoring import matched, overlap
 
 __all__ = ["Recovery", "run_arm", "score"]
 
@@ -107,11 +108,6 @@ class Recovery:
     """Of those, spots planted in a tumor clone: each inflates the baseline."""
     m_step_calls: int = 0
     """Emission M-step solves `m_step_tol` reached; zero when it is unset."""
-
-
-def _match(confusion: np.ndarray) -> dict[int, int]:
-    rows, columns = linear_sum_assignment(-confusion)
-    return dict(zip(rows.tolist(), columns.tolist(), strict=True))
 
 
 @dataclass
@@ -288,9 +284,7 @@ def score(
 
     n_planted = int(truth.labels.max()) + 1
     n_fitted = int(fitted.max()) + 1
-    overlap = np.zeros((n_planted, n_fitted), dtype=np.int64)
-    np.add.at(overlap, (truth.labels, fitted), 1)
-    clone_of = _match(overlap)
+    clone_of = matched(overlap(truth.labels, fitted, n_planted, n_fitted))
 
     n_states = reading.log_mu.shape[0]
     mu_true = np.exp(np.asarray(truth.log_mu).ravel())
@@ -306,10 +300,8 @@ def score(
         [reading.pred[kept[:, clone_of[c]], clone_of[c]] for c in clone_of]
     )
 
-    co = np.zeros((mu_true.size, n_states), dtype=np.int64)
-    np.add.at(co, (planted, decoded), 1)
-    rows, columns = linear_sum_assignment(-co)
-    state_match = float(co[rows, columns].sum() / co.sum())
+    co = overlap(planted, decoded, mu_true.size, n_states)
+    state_match = float(sum(co[r, c] for r, c in matched(co).items()) / co.sum())
 
     def fold(p: np.ndarray) -> np.ndarray:
         folded: np.ndarray = np.minimum(p, 1.0 - p)
@@ -382,7 +374,7 @@ def likelihoods(truth: CoreInferenceTruth, captured: Any) -> tuple[float, float]
 
     from tests.realizations import _column, pseudobulk
 
-    result = captured.result
+    result = captured.res
     alpha = float(_column(result["new_alphas"])[0])
     tau = float(_column(result["new_taus"])[0])
     transition = np.asarray(result["new_log_transmat"], dtype=np.float64)
@@ -509,11 +501,10 @@ def run_arm(
     balanced clone, before the inputs are written (#440).
     """
     import cnaster.scripts.run_cnaster as pipeline
-    import port.patch.hmrf as patch
     import scipy.optimize
+    from port.extensions.copy_errors import Captured, captured_fits
     from port.scripts.run_cnaster import main
 
-    from tests.realizations import Captured
     from tests.run_config import write_run_cnaster_config
     from tests.tmp_inputs import write_tmp_inputs
     from tests.unsegment import unsegment
@@ -565,29 +556,6 @@ def run_arm(
         recovery.candidates_tumor = int((used & (truth.labels != 0)).sum())
         return recovery, output
 
-    # NB `port`'s `run_core_inference`, which the default shift installs, so
-    #    what is kept is the pinned result integer copy is handed.
-    kept: list[Captured] = []
-    original = patch.run_core_inference
-
-    def keep(
-        single_x: Any, lengths: Any, base: Any, total: Any, *rest: Any, **kw: Any
-    ) -> Any:
-        result = original(single_x, lengths, base, total, *rest, **kw)
-
-        if kw.get("params") == "smp":
-            kept.append(
-                Captured(
-                    np.array(single_x, dtype=np.float64),
-                    np.asarray(lengths, dtype=np.int64),
-                    np.array(base, dtype=np.float64),
-                    np.array(total, dtype=np.float64),
-                    result,
-                )
-            )
-
-        return result
-
     chosen: list[np.ndarray] = []
     determine = pipeline.determine_normal_candidates
 
@@ -623,14 +591,18 @@ def run_arm(
 
         return minimize(*arguments, **keywords)
 
-    if likelihood:
-        patch.run_core_inference = keep
-
     pipeline.determine_normal_candidates = candidates
     scipy.optimize.minimize = tightened
 
     try:
-        with warnings.catch_warnings():
+        with contextlib.ExitStack() as stack:
+            # NB `port`'s `run_core_inference`, which the default shift
+            #    installs, so what is kept is the pinned result integer copy
+            #    is handed.
+            kept: list[Captured] = (
+                stack.enter_context(captured_fits()) if likelihood else []
+            )
+            stack.enter_context(warnings.catch_warnings())
             warnings.simplefilter("ignore")
             started = time.perf_counter()
             if two_pass_normal:
@@ -642,7 +614,6 @@ def run_arm(
 
             wall = time.perf_counter() - started
     finally:
-        patch.run_core_inference = original
         pipeline.determine_normal_candidates = determine
         scipy.optimize.minimize = minimize
 

@@ -124,3 +124,28 @@ def test_it_returns_a_partition_that_passes_cnasters_own_test() -> None:
     np.testing.assert_array_equal(
         np.bincount(labels, minlength=4), [len(s) for s in index]
     )
+
+
+@pytest.mark.analytic
+def test_a_one_row_strip_returns_bands_that_pass_cnasters_own_test() -> None:
+    """200 spots in one row, four clones: no boundary draw can pass (#248).
+
+    Every spot shares one `y`, so the `y` split leaves two of four blocks
+    empty on every draw, and `cnaster` and the redraw loop alike spin. After
+    `RECTANGLE_REDRAWS` the partition is four bands of 50 along `x`, which
+    passes the 20 per cent test (threshold 10).
+    """
+    from port.patch.spatial import initialize_rectangular_clones
+
+    points = _grid(1, 200)
+    returned: list[Any] = []
+
+    assert _within(
+        20, lambda: returned.append(initialize_rectangular_clones(points, 4))
+    )
+
+    index, labels = returned[0]
+
+    assert sorted(np.concatenate(index).tolist()) == list(range(len(points)))
+    assert [len(spots) for spots in index] == [50, 50, 50, 50]
+    assert (np.diff(labels[np.argsort(points[:, 1])]) >= 0).all(), "bands along x"

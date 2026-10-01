@@ -220,6 +220,98 @@ def test_the_writer_leaves_cnaster_s_files_and_writes_valid_json(
     assert manifest["run_cnaster_port"] == {"shift": True}
 
 
+@pytest.mark.analytic
+def test_clones_that_decode_alike_are_one_integer_clone() -> None:
+    """Equal `(A, B)` at every bin is one clone, named by its smallest id;
+    one differing bin keeps two clones apart."""
+    from port.extensions.outputs import integer_clones
+
+    base = np.array([[1, 1], [2, 1], [1, 0], [1, 1]])
+    frame = pd.DataFrame({"CHR": [1, 1, 2, 2]})
+    near = base.copy()
+    near[2] = [1, 1]
+
+    for clone, profile in (("5", base), ("0", near), ("2", base), ("7", near)):
+        frame[f"clone{clone} A"], frame[f"clone{clone} B"] = profile.T
+
+    assert integer_clones(frame) == {"5": "2", "0": "0", "2": "2", "7": "0"}
+
+
+@pytest.mark.infra
+def test_the_integer_labels_keep_every_spot_s_fitted_label(tmp_path: Path) -> None:
+    """`clone_labels_integer.tsv` is `clone_labels.tsv` column for column,
+    plus each spot's integer clone; a spot with no clone keeps none."""
+    from port.extensions.outputs import integer_clones, write_outputs
+
+    run = _run(tmp_path)
+    seglevel, _, _ = _load(run)
+    # NB clone 5 decodes as clone 0 does.
+    for column in ("A", "B"):
+        seglevel[f"clone5 {column}"] = seglevel[f"clone0 {column}"]
+    seglevel.to_csv(run / "cnv_seglevel.tsv", sep="\t", index=False)
+
+    labels = pd.DataFrame(
+        {
+            "barcode": [f"BC{k}" for k in range(5)],
+            "sample_id": "S1",
+            "x": range(5),
+            "y": 0,
+            "clone_label": [0, 2, 5, np.nan, 5],
+        }
+    )
+    labels.to_csv(run / "clone_labels.tsv", sep="\t", index=False)
+    write_outputs(run)
+    written = pd.read_csv(run / "clone_labels_integer.tsv", sep="\t")
+
+    pd.testing.assert_frame_equal(written[labels.columns], labels)
+    assert integer_clones(seglevel)["5"] == "0"
+    np.testing.assert_array_equal(
+        written.integer_clone_label.to_numpy(), [0, 2, 0, np.nan, 0]
+    )
+
+
+@pytest.mark.infra
+def test_a_merge_rewrites_clone_labels_and_keeps_cnaster_s(tmp_path: Path) -> None:
+    """Merged clones are `clone_labels.tsv`'s `clone_label`; `cnaster`'s is kept.
+
+    Run twice, the writer reads `cnaster`'s labels back rather than its own,
+    so the file is the same after the second pass (#518). Where nothing
+    merges, `clone_labels.tsv` is `cnaster`'s byte for byte.
+    """
+    from port.extensions.outputs import CNASTER_LABEL, write_outputs
+
+    run = _run(tmp_path)
+    labels = pd.DataFrame(
+        {
+            "barcode": [f"BC{k}" for k in range(5)],
+            "sample_id": "S1",
+            "x": range(5),
+            "y": 0,
+            "clone_label": [0, 2, 5, np.nan, 5],
+        }
+    )
+    labels.to_csv(run / "clone_labels.tsv", sep="\t", index=False)
+    untouched = (run / "clone_labels.tsv").read_bytes()
+
+    write_outputs(run)
+
+    assert (run / "clone_labels.tsv").read_bytes() == untouched
+
+    seglevel, _, _ = _load(run)
+    for column in ("A", "B"):
+        seglevel[f"clone5 {column}"] = seglevel[f"clone0 {column}"]
+    seglevel.to_csv(run / "cnv_seglevel.tsv", sep="\t", index=False)
+
+    write_outputs(run)
+    once = (run / "clone_labels.tsv").read_bytes()
+    write_outputs(run)
+    rewritten = pd.read_csv(run / "clone_labels.tsv", sep="\t")
+
+    assert (run / "clone_labels.tsv").read_bytes() == once
+    np.testing.assert_array_equal(rewritten.clone_label, [0, 2, 0, np.nan, 0])
+    np.testing.assert_array_equal(rewritten[CNASTER_LABEL], labels.clone_label)
+
+
 def _truth() -> Any:
     from tests.fixtures import core_inference_truth
 
@@ -367,3 +459,53 @@ def test_the_writer_returns_the_planted_states_of_a_perfect_decode(
     assert len(held) >= 1
     assert np.exp(held.logmu.iloc[0]) == pytest.approx(5.0, rel=1e-12)
     assert held.p.iloc[0] == pytest.approx(0.88, rel=1e-12)
+
+
+def _profiles(disagreeing: dict[str, int], n_bins: int = 1000) -> pd.DataFrame:
+    """Clones `id -> bins that differ from the neutral profile`, over `n_bins`."""
+    frame = pd.DataFrame({"CHR": np.ones(n_bins, dtype=int)})
+
+    for clone, differing in disagreeing.items():
+        profile = np.ones((n_bins, 2), dtype=int)
+        profile[:differing] = [2, 1]
+        frame[f"clone{clone} A"], frame[f"clone{clone} B"] = profile.T
+
+    return frame
+
+
+@pytest.mark.analytic
+def test_the_agreement_rule_joins_what_agrees_and_no_less() -> None:
+    """At 0.99, profiles differing at 7 of 1,000 bins are one; at 14, two (#518).
+
+    `dev_tree`'s slice-split clone differs at 2 of 2,895 bins (0.9993) and
+    the closest distinct pair on the fixtures at 0.9863, so the thresholds
+    below bracket both. 0.99 is the default; 1.0 is the exact rule (#344).
+    """
+    from port.extensions.outputs import integer_clones
+
+    frame = _profiles({"0": 0, "1": 7, "2": 14})
+
+    assert integer_clones(frame) == {"0": "0", "1": "0", "2": "2"}
+    assert integer_clones(frame, 1.0) == {"0": "0", "1": "1", "2": "2"}
+    assert integer_clones(frame, 0.985) == {"0": "0", "1": "0", "2": "0"}
+
+
+@pytest.mark.infra
+@pytest.mark.parametrize("agreement", [0.0, -0.1, 1.5])
+def test_an_agreement_outside_the_unit_interval_is_refused(agreement: float) -> None:
+    """A share of bins must be in (0, 1]; 0 would merge every clone into one."""
+    from port.extensions.outputs import integer_clones
+
+    with pytest.raises(ValueError, match="merge agreement"):
+        integer_clones(_profiles({"0": 0}), agreement)
+
+
+@pytest.mark.infra
+def test_the_configured_agreement_is_what_write_outputs_uses(tmp_path: Path) -> None:
+    """`int_copy_num.merge_agreement` reaches `config_keys` and the manifest (#518)."""
+    from port.extensions.outputs import config_keys
+
+    config = tmp_path / "config.yaml"
+    config.write_text("int_copy_num:\n  merge_agreement: 0.99\n")
+
+    assert config_keys(config)["merge_agreement"] == 0.99

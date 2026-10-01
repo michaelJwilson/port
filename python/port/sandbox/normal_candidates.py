@@ -1,5 +1,13 @@
 """Normal candidates from the RDR+BAF fit rather than from BAF alone (#320).
 
+Ticket: #320 -- normal candidates from a first run's RDR+BAF normal clone,
+  set aside as 2 of 4 arms collapse to one clone.
+Measurement: `--two-pass-normal` against the default arm, ARI: dev 5 states
+  0.919 -> 0.859, dev 10 states 1.000 -> 0.000, lattice 5 states
+  0.606 -> 0.000, lattice 9 states 1.000 -> 1.000 (`docs/audit-recovery.md`).
+Exit: graduate to `extensions/`, run as a second pass, if #467's recovery
+  rows beat the default arm on 3 of 4 instances; else retire.
+
 `cnaster.normal_spot.determine_normal_candidates` takes the BAF-only clone
 with the least BAF deviation and relaxes a log-count percentile until it
 admits the whole clone. A tumor clone whose events BAF cannot see -- a

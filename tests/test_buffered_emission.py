@@ -3,7 +3,7 @@
 **Bitwise on both chains, and nothing allocated.** `cnaster` builds
 `(n_states, n_obs, n_spots)` per channel on every call -- and the phased
 class doubles the state axis on top -- for arrays whose shape never changes
-between outer iterations. `port.patch.emission.emission_into` writes into
+between outer iterations. `port.sandbox.patch.emission.emission_into` writes into
 buffers the caller owns and reproduces both entry points to the last bit,
 which is what says the allocation was the only thing removed.
 
@@ -93,7 +93,7 @@ def _upstream_columns(
 
 
 def _buffered(inputs: EmissionInputs, *, phased: bool) -> tuple[np.ndarray, np.ndarray]:
-    from port.patch.emission import emission_buffers, emission_into
+    from port.sandbox.patch.emission import emission_buffers, emission_into
 
     n_obs, n_spots = inputs.shape
     out_rdr, out_baf = emission_buffers(inputs.n_states, n_obs, n_spots, phased=phased)
@@ -197,7 +197,7 @@ def test_the_buffers_are_written_in_full_so_a_reused_one_needs_no_clearing() -> 
     it survives -- which is stronger than running twice and comparing, since
     two runs of a kernel that skipped the same entry would agree.
     """
-    from port.patch.emission import emission_buffers, emission_into
+    from port.sandbox.patch.emission import emission_buffers, emission_into
 
     inputs = _inputs(3)
     n_obs, n_spots = inputs.shape
@@ -238,7 +238,7 @@ def test_what_the_buffers_hold_is_what_cnaster_allocates_per_call() -> None:
     `tests/test_buffered_emission_bench.py` -- that is 672 MB unphased and
     **1.34 GB phased**, per call, twice per outer iteration (#90).
     """
-    from port.patch.emission import emission_buffers
+    from port.sandbox.patch.emission import emission_buffers
 
     n_states, n_obs, n_spots = 7, 3_000, 2_000
 

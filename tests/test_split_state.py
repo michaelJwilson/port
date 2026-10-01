@@ -1,4 +1,10 @@
-"""`--split-state`: one unbalanced state split by depth, refitted on fixed clones (#471)."""
+"""One unbalanced state split by depth, refitted on fixed clones (#471, #481): the sandbox's.
+
+`port.sandbox.split_state` is set aside, not installed by `run_cnaster_port`.
+Referees: `analytic`, the split on drawn states of known depth; `infra`, the
+context binds its one name and puts it back; `end2end` (`release`), `dev_tree`
+r0's altered bins against the planted truth under the context.
+"""
 
 from __future__ import annotations
 
@@ -45,7 +51,7 @@ def test_a_state_covering_two_depths_splits_at_their_gap() -> None:
     The freed state is the less occupied of the closest pair (0 and 1), and
     the split keeps the majority's depth: LOH 50 bins, loss 30.
     """
-    from port.patch.hmrf.split_state import split_init
+    from port.sandbox.split_state.split import split_init
 
     result, (X, lengths, base) = _fit(loh=50, loss=30)
     init = split_init(result, X, lengths, base)
@@ -67,7 +73,7 @@ def test_one_depth_or_a_balanced_state_does_not_split() -> None:
     A balanced state holds the diploid reference the integer decode pins, and
     its depth is read by the RDR channel already.
     """
-    from port.patch.hmrf.split_state import split_init
+    from port.sandbox.split_state.split import split_init
 
     single, (X, lengths, base) = _fit(loh=80, loss=0)
     balanced, (Xb, lengths_b, base_b) = _fit(loh=50, loss=30, p_unbalanced=0.5)
@@ -79,19 +85,48 @@ def test_one_depth_or_a_balanced_state_does_not_split() -> None:
 @pytest.mark.release
 @pytest.mark.end2end
 @pytest.mark.cnaster
-def test_split_state_decodes_r0_s_losses_apart_from_its_loh() -> None:
-    """r0 under `--sal --split-state`: altered bins at their planted `(A, B)`.
+def test_the_split_decodes_r0_s_losses_apart_from_its_loh() -> None:
+    """r0 under `--sal` with the split installed: altered bins at their planted `(A, B)`.
 
-    Planted truth, `dev_tree` r0 (`93398396`). Without the flag on this tree:
-    clone ARI 0.9997 and 0.707 of altered bins exact, because the HMM fits
-    one-copy losses at LOH depth (#471). The clones are the first fit's, so
-    clone ARI holds.
+    Planted truth, `dev_tree` r0 (`3381575a`). The clones are the first
+    fit's, so clone ARI holds; the thresholds are this branch's measurement
+    (`port.sandbox.split_state.split`).
     """
+    from port.sandbox.split_state import split_state
+
     from tests.sim_audit import run_arm
     from tests.sim_fixtures import load_simulated
     from tests.sim_stages import r0
 
-    recovery, _ = run_arm(load_simulated(str(r0())), ["--sal", "--split-state"])
+    with split_state():
+        recovery, _ = run_arm(load_simulated(str(r0())), ["--sal"])
 
     assert recovery.ari >= 0.99
     assert recovery.exact_altered >= 0.85
+
+
+@pytest.mark.infra
+@pytest.mark.cnaster
+def test_the_sandbox_split_binds_its_one_name_and_restores_it() -> None:
+    """Inside `split_state()`, `port.patch.hmrf.run_core_inference` is the sandbox's wrapper; after, the row's again."""
+    from port.patch import hmrf
+    from port.sandbox.split_state import installed, split_state
+
+    before = hmrf.run_core_inference
+
+    with split_state():
+        assert installed()
+        assert hmrf.run_core_inference is not before
+
+    assert not installed()
+    assert hmrf.run_core_inference is before
+
+
+@pytest.mark.analytic
+def test_the_kept_clones_name_the_refits_columns() -> None:
+    """Labels `{0, 1, 2, 4}`, clone 3 emptied: renumbered `{0, 1, 2, 3}` in order, so label 4 names column 3 (#570)."""
+    from port.sandbox.split_state import contiguous
+
+    labels = np.array([4, 0, 0, 2, 1, 4, 2])
+
+    np.testing.assert_array_equal(contiguous(labels), [3, 0, 0, 2, 1, 3, 2])

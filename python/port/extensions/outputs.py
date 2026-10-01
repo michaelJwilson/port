@@ -3,8 +3,8 @@
 `run_cnaster` records the continuous fit and the integer copies only through
 the fitted state index `Z` of `cnv_seglevel.tsv`: several of `K` fitted states
 decode to one integer `(A, B)`, and the map between the two views is left
-implicit. This writes the seam explicitly, beside `cnaster`'s own files and
-without touching them, in each run directory that holds a
+implicit. This writes the seam explicitly, beside `cnaster`'s own files --
+all but `clone_labels.tsv`, below -- in each run directory that holds a
 `cnv_seglevel.tsv` and its `rdrbaf_final_nstates{K}_smp.npz`:
 
 - `cnv_states.tsv`: one row per fitted state and clone -- the state's
@@ -16,6 +16,15 @@ without touching them, in each run directory that holds a
   the posterior-mean `mu` and `p` over the run. The deduplicated view.
 - `cnv_binlevel.tsv`: per bin and clone, the fitted state and the
   posterior-mean `mu` and `p` under `log_gamma`. The continuous view.
+- `clone_labels_integer.tsv`: `clone_labels.tsv` with each spot's clone
+  also named by its integer copy profile (`integer_clones`, #344): clones
+  whose `(A, B)` agree at no less than `int_copy_num.merge_agreement` of
+  bins, 0.99 unless stated, are one clone (#518).
+- `clone_labels.tsv` itself, where that merge joins clones: `clone_label`
+  becomes the merged clone and `cnaster_clone_label` keeps `cnaster`'s. The
+  one file of `cnaster`'s this module rewrites, because the merge replaces
+  the Neyman-Pearson merge `--sal` no longer installs (#497), and that merge
+  wrote its clones there.
 - `manifest.json`: the run's shape and provenance -- states, clones,
   likelihoods, the shift, the configuration's copy caps and ploidy, and
   what `run_cnaster_port` was asked for.
@@ -41,9 +50,15 @@ import numpy as np
 import pandas as pd
 
 __all__ = [
+    "CNASTER_LABEL",
+    "MERGE_AGREEMENT",
     "binlevel",
     "clone_columns",
+    "clone_labels_integer",
+    "cnaster_labels",
     "config_keys",
+    "integer_clones",
+    "merged_clone_labels",
     "run_directories",
     "segments",
     "states",
@@ -178,6 +193,115 @@ def segments(seglevel: pd.DataFrame, fit: dict[str, Any]) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+MERGE_AGREEMENT = 0.99
+"""The share of bins at which two integer profiles must agree to be one clone, unset.
+
+0.99 because the split pair it exists to join agrees at 0.9993 on `dev_tree`
+and every distinct pair on CalicoST easy, hard and `dev_tree` at 0.9863 or
+less (#518); 1.0 joins only identical profiles (#344).
+"""
+
+
+def integer_clones(
+    frame: pd.DataFrame, agreement: float = MERGE_AGREEMENT
+) -> dict[str, str]:
+    """Each clone id -> the smallest id whose integer copy profile it matches.
+
+    `frame` is `cnv_seglevel.tsv`, or any table with `clone{c} A` and
+    `clone{c} B` per bin. In id order, each clone joins the first earlier
+    named clone whose `(A, B)` agree with its own at no less than
+    `agreement` of the bins, and names itself otherwise; the smallest id
+    names a group, so the normal clone keeps `0`. At 1.0, every bin (#344).
+
+    Below 1.0 it is #518's merge: on `dev_tree` 60 x 50 without the
+    Neyman-Pearson merge, one planted clone split by slice decodes alike at
+    0.9993 of 2,895 bins, while every distinct pair on CalicoST easy, hard
+    and `dev_tree` agrees at 0.9863 or less.
+    """
+    if not 0.0 < agreement <= 1.0:
+        msg = f"merge agreement must be in (0, 1], got {agreement!r}"
+        raise ValueError(msg)
+
+    ids = [c.split()[0][len("clone") :] for c in frame.columns if c.endswith(" A")]
+    ordered = sorted(
+        ids, key=lambda c: (not c.isdigit(), int(c) if c.isdigit() else 0, c)
+    )
+    named: list[tuple[str, np.ndarray]] = []
+    names: dict[str, str] = {}
+
+    for clone in ordered:
+        profile = frame[[f"clone{clone} A", f"clone{clone} B"]].to_numpy(dtype=int)
+        match = next(
+            (
+                name
+                for name, other in named
+                if float(np.mean(np.all(profile == other, axis=1))) >= agreement
+            ),
+            None,
+        )
+
+        if match is None:
+            named.append((clone, profile))
+            match = clone
+
+        names[clone] = match
+
+    return names
+
+
+CNASTER_LABEL = "cnaster_clone_label"
+"""The column of `clone_labels.tsv` that keeps `cnaster`'s clone once merged."""
+
+
+def cnaster_labels(run: Path) -> pd.DataFrame:
+    """`clone_labels.tsv` as `cnaster` wrote it, whether or not it was merged since."""
+    labels = pd.read_csv(run / "clone_labels.tsv", sep="\t", comment="#")
+
+    if CNASTER_LABEL in labels:
+        labels["clone_label"] = labels.pop(CNASTER_LABEL)
+
+    return labels
+
+
+def clone_labels_integer(
+    run: Path, seglevel: pd.DataFrame, agreement: float = MERGE_AGREEMENT
+) -> pd.DataFrame:
+    """`clone_labels.tsv` with `integer_clone_label` beside `clone_label`."""
+    labels = cnaster_labels(run)
+    merged = integer_clones(seglevel, agreement)
+
+    def name(label: Any) -> Any:
+        if pd.isna(label):
+            return label
+        key = str(int(label)) if float(label).is_integer() else str(label)
+        return int(merged[key]) if merged.get(key, "").isdigit() else merged.get(key)
+
+    labels["integer_clone_label"] = labels["clone_label"].map(name)
+    return labels
+
+
+def merged_clone_labels(integer: pd.DataFrame) -> pd.DataFrame | None:
+    """`clone_labels.tsv` with the merged clone as `clone_label`, or `None`.
+
+    `None` where the merge joins no clones, so the file stays `cnaster`'s
+    byte for byte; else `cnaster`'s clone moves to `cnaster_clone_label`.
+    """
+    same = (
+        integer["integer_clone_label"]
+        .astype(str)
+        .eq(integer["clone_label"].astype(str))
+        | integer["clone_label"].isna()
+    )
+
+    if bool(same.all()):
+        return None
+
+    labels = integer.drop(columns="integer_clone_label")
+    labels[CNASTER_LABEL] = labels["clone_label"]
+    labels["clone_label"] = integer["integer_clone_label"]
+    return labels
+
+
 def config_keys(config: Path | None) -> dict[str, Any]:
     """The configuration's copy caps, ploidy and state count, where set."""
     if config is None:
@@ -185,7 +309,7 @@ def config_keys(config: Path | None) -> dict[str, Any]:
 
     import yaml
 
-    wanted = {"n_states", "max_total_copy", "ploidy", "output_dir"}
+    wanted = {"n_states", "max_total_copy", "merge_agreement", "ploidy", "output_dir"}
     found: dict[str, Any] = {}
 
     def walk(node: Any) -> None:
@@ -219,27 +343,46 @@ def write_outputs(
     run = Path(run)
     seglevel, perstate, fit = _load(run)
     written = []
+    stated = config_keys(config).get("merge_agreement")
+    agreement = MERGE_AGREEMENT if stated is None else float(stated)
 
-    for name, table in (
+    tables = [
         ("cnv_states.tsv", states(seglevel, perstate, fit)),
         ("cnv_segments.tsv", segments(seglevel, fit)),
         ("cnv_binlevel.tsv", binlevel(seglevel, fit)),
-    ):
+    ]
+
+    if (run / "clone_labels.tsv").exists():
+        integer = clone_labels_integer(run, seglevel, agreement)
+        tables.append(("clone_labels_integer.tsv", integer))
+        merged = merged_clone_labels(integer)
+
+        if merged is not None:
+            tables.append(("clone_labels.tsv", merged))
+
+    for name, table in tables:
         table.to_csv(run / name, sep="\t", index=False)
         written.append(run / name)
 
     shift = fit.get("new_log_mu_shift")
-    shift_value = None if shift is None else shift.item()
+    # NB one shift per clone since the shift is written per clone (#362).
+    shift_value = (
+        None
+        if shift is None
+        else [finite(v) for v in np.asarray(shift, dtype=float).reshape(-1)]
+    )
     manifest = {
         "n_states": int(fit["n_states"]),
         "n_bins": len(seglevel),
         "clones": clone_columns(seglevel, fit["pred_cnv"]),
+        "integer_clones": integer_clones(seglevel, agreement),
+        "merge_agreement": agreement,
         "llf": finite(fit["llf"]),
         "total_llf": finite(fit["total_llf"]),
-        "log_mu_shift": None
-        if shift_value is None
-        else np.asarray(shift_value, dtype=float).tolist(),
-        "integer_decoder": "cnaster MILP, first ploidy pass (max_medploidy=None)",
+        "log_mu_shift": None if shift_value is None else shift_value,
+        "integer_decoder": (flags or {}).get(
+            "copy_decode", "cnaster MILP, first ploidy pass (max_medploidy=None)"
+        ),
         "config": config_keys(config),
         "run_cnaster_port": flags or {},
         "versions": {name: installed(name) for name in ("cnaster", "port")},

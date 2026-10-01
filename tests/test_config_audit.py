@@ -59,15 +59,18 @@ def test_the_scan_counts_code_and_not_comments_or_strings() -> None:
 
 @pytest.mark.warning
 def test_the_shipped_config_carries_what_324_tabulates() -> None:
-    """Four unread keys, two unused tolerances, three strings, a floor, two off."""
+    """Four unread keys, two unused tolerances, a floor, two off.
+
+    The three `em_*` tolerances were YAML 1.1 strings (`1e-4`) until #448
+    wrote them as floats; the audit no longer finds them.
+    """
     shipped = yaml.safe_load(SHIPPED.read_text())
 
     assert _kinds(shipped, check_paths=False) == UNUSED | {
-        ("hmm.em_xtol", "string"),
-        ("hmm.em_ftol", "string"),
-        ("hmm.em_xrtol", "string"),
         ("int_copy_num.nonbalance_bafdist", "disabled"),
         ("int_copy_num.nondiploid_rdrdist", "disabled"),
+        # NB port's, stated for #518; `run_cnaster` ignores it.
+        ("int_copy_num.merge_agreement", "port"),
     }
 
 

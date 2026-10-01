@@ -40,10 +40,28 @@ from typing import Any
 
 import numpy as np
 
-__all__ = ["Genes", "GeneticMap", "Segmentation"]
+__all__ = ["Genes", "GeneticMap", "Segmentation", "composable_log_switch"]
 
 DROPPED = -1
 """The label of a gene a segmentation does not keep."""
+
+
+NUMERIC_FLOOR = 1e-12
+"""The composable law's only floor: a zero distance stays finite in log space."""
+
+
+def composable_log_switch(
+    distance: np.ndarray, nu: float, logphase_shift: float
+) -> np.ndarray:
+    """`log((1 - exp(-2 nu' d)) / 2)`, `nu' = nu exp(-logphase_shift)` (#449).
+
+    `d` in centimorgans, as `cnaster` reads the map. Composes over any
+    binning: `(1 - 2 p_ab)(1 - 2 p_bc) = 1 - 2 p_ac`, up to `NUMERIC_FLOOR`.
+    """
+    rate = nu * np.exp(-logphase_shift)
+    switch = -0.5 * np.expm1(-2.0 * rate * np.asarray(distance, dtype=np.float64))
+    log_switch: np.ndarray = np.log(np.clip(switch, NUMERIC_FLOOR, 0.5))
+    return log_switch
 
 
 @dataclass(frozen=True, eq=False)
@@ -304,8 +322,13 @@ class Segmentation:
         nu: float,
         logphase_shift: float,
         min_prob: float,
+        *,
+        composable: bool = False,
     ) -> np.ndarray:
         """`cnaster`'s `log_sitewise_transmat` over this segmentation, contig by contig.
+
+        `composable` is #449's law, :meth:`_composable_switch`, which no run
+        installs yet: `port.patch.recomb.get_sitewise_transmat(..., composable=True)`.
 
         Entry `k` is the log probability of a phase switch between segment `k`
         and `k + 1`: Haldane's `(1 - exp(-2 nu d)) / 2` over the centimorgan
@@ -332,12 +355,42 @@ class Segmentation:
             distance = cm_start[1:] - cm_end[:-1]
             within = ~self.boundary[:-1] & np.isfinite(distance)
 
+        if composable:
+            return self._composable_switch(distance, within, nu, logphase_shift)
+
+        with np.errstate(invalid="ignore"):
             switch = np.full(self.n_segments, min_prob)
             switch[:-1][within] = (1.0 - np.exp(-2.0 * nu * distance[within])) / 2.0
 
         switch[switch < min_prob] = min_prob
 
         log_switch = np.minimum(np.log(0.5), np.log(switch) - logphase_shift)
+        log_switch[self.boundary] = np.log(0.5)
+
+        return log_switch
+
+    def _composable_switch(
+        self,
+        distance: np.ndarray,
+        within: np.ndarray,
+        nu: float,
+        logphase_shift: float,
+    ) -> np.ndarray:
+        """`(1 - exp(-2 nu' d)) / 2` with `nu' = nu exp(-logphase_shift)` (#449).
+
+        `cnaster` multiplies each bin's probability by `exp(-logphase_shift)`
+        and floors it at `min_prob`, so the switch probability between two
+        SNPs depends on how many bins lie between them. Folding the factor
+        into the rate keeps its small-distance value -- `nu' d` is `cnaster`'s
+        `e^2 nu d` -- and composes over any binning: `(1 - 2 p_ab)(1 - 2
+        p_bc) = 1 - 2 p_ac`. No floor but `NUMERIC_FLOOR`, which only keeps
+        a zero distance finite. A distance the map cannot place is
+        independence, `1/2`, as at a contig's end.
+        """
+        log_switch = np.full(self.n_segments, np.log(0.5))
+        log_switch[:-1][within] = composable_log_switch(
+            distance[within], nu, logphase_shift
+        )
         log_switch[self.boundary] = np.log(0.5)
 
         return log_switch

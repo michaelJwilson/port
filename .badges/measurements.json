@@ -45,71 +45,79 @@
   }
  },
  "whole_run": {
-  "instance": "3800x1980x5",
-  "tier": "stress",
-  "commit": "49ea116",
-  "shape": {
-   "n_obs": 3800,
-   "n_spots": 1980,
-   "n_states": 5,
-   "n_clones": 4
-  },
-  "arms": [
-   {
-    "arm": "cnaster",
-    "returncode": 0,
-    "seconds": 205.88835674200072,
-    "peak_rss_gb": 12.338790893554688
+  "instance": "dev_tree r0: 60 x 50 spots per slice, 2 slices, 6,000 spots, 4 planted clones (tests.sim_stages.R0_HASH)",
+  "tier": "dev_tree",
+  "commit": "b4e60f0",
+  "arms": [],
+  "ratio": null,
+  "note": "Not measured on dev_tree: mem reads / until run_cnaster_port and --no-patch are measured there, each arm in its own process. The last ratio, 3.21X memory and 1.70X runtime at 3800x1980x5 (stress, 49ea116), is kept under superseded; it is not comparable, being read at another instance. Speed is against CalicoST, under speed.",
+  "superseded": {
+   "instance": "3800x1980x5",
+   "tier": "stress",
+   "commit": "49ea116",
+   "shape": {
+    "n_obs": 3800,
+    "n_spots": 1980,
+    "n_states": 5,
+    "n_clones": 4
    },
-   {
-    "arm": "patched",
-    "returncode": 0,
-    "seconds": 121.2072700409999,
-    "peak_rss_gb": 3.8521652221679688
-   }
-  ],
-  "ratio": {
-   "runtime": 1.6986,
-   "memory": 3.2104
-  },
-  "repetitions": [
-   {
-    "runtime": 1.7619,
-    "memory": 3.2104,
-    "cnaster_seconds": 209.61,
-    "patched_seconds": 118.97
-   },
-   {
-    "runtime": 1.6879,
-    "memory": 3.2109,
-    "cnaster_seconds": 202.44,
-    "patched_seconds": 119.94
-   },
-   {
+   "arms": [
+    {
+     "arm": "cnaster",
+     "returncode": 0,
+     "seconds": 205.88835674200072,
+     "peak_rss_gb": 12.338790893554688
+    },
+    {
+     "arm": "patched",
+     "returncode": 0,
+     "seconds": 121.2072700409999,
+     "peak_rss_gb": 3.8521652221679688
+    }
+   ],
+   "ratio": {
     "runtime": 1.6986,
-    "memory": 3.2031,
-    "cnaster_seconds": 205.89,
-    "patched_seconds": 121.21
+    "memory": 3.2104
+   },
+   "repetitions": [
+    {
+     "runtime": 1.7619,
+     "memory": 3.2104,
+     "cnaster_seconds": 209.61,
+     "patched_seconds": 118.97
+    },
+    {
+     "runtime": 1.6879,
+     "memory": 3.2109,
+     "cnaster_seconds": 202.44,
+     "patched_seconds": 119.94
+    },
+    {
+     "runtime": 1.6986,
+     "memory": 3.2031,
+     "cnaster_seconds": 205.89,
+     "patched_seconds": 121.21
+    }
+   ],
+   "_intent": "run_cnaster patched against --no-patch, wall time and peak RSS, each arm in its own process. The instance is the largest whose **unpatched** arm completes on this host: 4000x1980x5 took SIGKILL four times out of four, the last with the host otherwise idle, while 3800x1980x5 completes at 12.34-12.36 GB of 16,095 MB. key_instance (10,000 x 5,000) does not fit unpatched either -- 8 GB of emission array (#90) -- so the comparison has always run at the largest instance both arms complete, and that size has now moved down once. This measurement is #91.",
+   "arms_are": "`--no-patch`, nothing rebound, against the entry point's default: SWAPS plus FIGURE_SWAPS. The figure swaps are in the default as of 1c0a496, so this is what a user gets rather than what the bitwise-reproducing subset gets.",
+   "note": "Median of 3 pairs, each arm in its own process, on an otherwise idle host. **Not comparable with the 1.5941x and 3.0734x this badge carried at 7b12d7c**: those were read at 4000x1980x5, and a ratio is a statement about two implementations only where everything else was equal. The instance is not, so the older figures are superseded rather than corrected. Nothing installed changed in between -- `SWAPS` and `FIGURE_SWAPS` are byte-identical to 7b12d7c, eight of the nine installed replacements are unchanged and the ninth moved 13 lines (#249's `label_solver` branch, defaulting to `icm`). **Most of both is the figure swap** (#195): peak RSS is 12.35 GB against 3.85, and the emission array is about 0.3 GB of that, so plotting is what caps the run and not the emission array (#90). Runtime is below `CLAUDE.md`'s 2x bar and reads as such; memory is above it.",
+   "_probe": {
+    "why": "The unpatched arm no longer completes at 4000x1980x5. Measured four times: three paired runs and one probe with the host otherwise idle, SIGKILL every time at 12.124-12.128 GB of the 16,095 MB available. The host has no cgroup cap, so this is the arm's requirement rather than contention -- #90's 'does not fit unpatched' arriving at the stress instance, not only at key_instance.",
+    "killed_at_4000x1980x5": {
+     "returncode": -9,
+     "seconds": 213.87,
+     "peak_rss_gb": 12.1276,
+     "host": "idle"
+    },
+    "fits_at_3600x1980x5": {
+     "returncode": 0,
+     "seconds": 190.97,
+     "peak_rss_gb": 10.3846
+    },
+    "pending": "Settled: three pairs at 3800x1980x5, all six arms returning 0, recorded above.",
+    "harness": "The first attempt at 3800 died too, at 12.059 GB, although the standalone probe of the same instance had completed at 12.167 GB. The driver built the fixture in the parent and still held every array while the arms ran, so the harness was competing with what it measured. It now releases the fixture and collects before either arm starts, and the unpatched arm reaches 12.34-12.36 GB and completes -- higher than any of the five kills. So the kill point was never a ceiling and never the arm's requirement; it was whatever else was resident."
    }
-  ],
-  "_intent": "run_cnaster patched against --no-patch, wall time and peak RSS, each arm in its own process. The instance is the largest whose **unpatched** arm completes on this host: 4000x1980x5 took SIGKILL four times out of four, the last with the host otherwise idle, while 3800x1980x5 completes at 12.34-12.36 GB of 16,095 MB. key_instance (10,000 x 5,000) does not fit unpatched either -- 8 GB of emission array (#90) -- so the comparison has always run at the largest instance both arms complete, and that size has now moved down once. This measurement is #91.",
-  "arms_are": "`--no-patch`, nothing rebound, against the entry point's default: SWAPS plus FIGURE_SWAPS. The figure swaps are in the default as of 1c0a496, so this is what a user gets rather than what the bitwise-reproducing subset gets.",
-  "note": "Median of 3 pairs, each arm in its own process, on an otherwise idle host. **Not comparable with the 1.5941x and 3.0734x this badge carried at 7b12d7c**: those were read at 4000x1980x5, and a ratio is a statement about two implementations only where everything else was equal. The instance is not, so the older figures are superseded rather than corrected. Nothing installed changed in between -- `SWAPS` and `FIGURE_SWAPS` are byte-identical to 7b12d7c, eight of the nine installed replacements are unchanged and the ninth moved 13 lines (#249's `label_solver` branch, defaulting to `icm`). **Most of both is the figure swap** (#195): peak RSS is 12.35 GB against 3.85, and the emission array is about 0.3 GB of that, so plotting is what caps the run and not the emission array (#90). Runtime is below `CLAUDE.md`'s 2x bar and reads as such; memory is above it.",
-  "_probe": {
-   "why": "The unpatched arm no longer completes at 4000x1980x5. Measured four times: three paired runs and one probe with the host otherwise idle, SIGKILL every time at 12.124-12.128 GB of the 16,095 MB available. The host has no cgroup cap, so this is the arm's requirement rather than contention -- #90's 'does not fit unpatched' arriving at the stress instance, not only at key_instance.",
-   "killed_at_4000x1980x5": {
-    "returncode": -9,
-    "seconds": 213.87,
-    "peak_rss_gb": 12.1276,
-    "host": "idle"
-   },
-   "fits_at_3600x1980x5": {
-    "returncode": 0,
-    "seconds": 190.97,
-    "peak_rss_gb": 10.3846
-   },
-   "pending": "Settled: three pairs at 3800x1980x5, all six arms returning 0, recorded above.",
-   "harness": "The first attempt at 3800 died too, at 12.059 GB, although the standalone probe of the same instance had completed at 12.167 GB. The driver built the fixture in the parent and still held every array while the arms ran, so the harness was competing with what it measured. It now releases the fixture and collects before either arm starts, and the unpatched arm reaches 12.34-12.36 GB and completes -- higher than any of the five kills. So the kill point was never a ceiling and never the arm's requirement; it was whatever else was resident."
   }
  },
  "patched": {
@@ -122,36 +130,51 @@
   "note": "Executed cnaster lines inside functions run_cnaster_port replaces by default (SWAPS, FIGURE_SWAPS, SHIFT_SWAPS; for a class, only overridden methods), over every cnaster line an unpatched run_cnaster executes on the dev instance with numba disabled. Measured by python -m tests.patched_share (#302); not checked per pull request, because it needs a whole run."
  },
  "recovery": {
-  "instance": "dev: 1,600 spots x 1,000 bins, 4 clones, 10 planted states (8 used)",
-  "configuration": "the figures': 8 states, max_iter_outer=1, max_iter=3 (tests/generate_plots.py)",
-  "commit": "3dfea5f",
+  "instance": "dev_tree r0: sim/manifests/dev_tree.toml, 60 x 50 spots per slice, 2 slices, 6,000 spots, 4 planted clones (tests.sim_stages.R0_HASH)",
+  "configuration": "the sample's own config.yaml, int_copy_num.merge_agreement 0.99",
+  "commit": "741fcfb",
   "arms": {
    "port": {
     "flags": [
-     "--refinement-mask",
-     "--floor-merge"
+     "--no-plots"
     ],
-    "ari": 0.5382,
-    "ari_integer": 0.8892,
-    "state_ari": 0.2597,
-    "copy_ari": 0.9982,
-    "wall_s": 62.85,
-    "peak_gb": 5.87
+    "ari": 1.0,
+    "ari_integer": 1.0,
+    "state_ari": 0.147,
+    "copy_ari": 0.9828,
+    "exact_altered": 0.9197,
+    "clones": 4,
+    "integer_clones": 4,
+    "wall_s": 284.83,
+    "peak_gb": 6.1
    },
    "sal": {
     "flags": [
      "--sal",
-     "--refinement-mask",
-     "--floor-merge"
+     "--no-plots"
     ],
-    "ari": 0.9107,
-    "ari_integer": 0.9107,
-    "state_ari": 0.2121,
-    "copy_ari": 0.9971,
-    "wall_s": 37.64,
-    "peak_gb": 3.19
+    "ari": 1.0,
+    "ari_integer": 1.0,
+    "state_ari": 0.0778,
+    "copy_ari": 0.9828,
+    "exact_altered": 0.9197,
+    "clones": 4,
+    "integer_clones": 4,
+    "wall_s": 185.29,
+    "peak_gb": 6.13
    }
   },
-  "note": "python -m tests.recovery_audit [-- --sal], one run each, each its own process, on an otherwise idle host. The badge shows the integer indices: ari_integer, fitted clone labels over 1,600 spots after merging clones of one decoded (A, B) profile (#344); copy_ari, each matched clone-bin's phased (A, B) from cnv_seglevel.tsv against the state the fixture painted there (clones matched by spot overlap). Recorded beside them, not shown: ari, the clone labels before merging, and state_ari, the fitted state Z per clone-bin. Not measured per pull request: each arm is a whole run. Both arms ran with #348's --refinement-mask and --floor-merge, then on by default and opt-in since, so they are recorded as flags."
+  "note": "python -m tests.sim_audit --sample generated/dev_tree/r0 [-- --sal] --no-plots, one run each, each its own process, pinned to one core (taskset -c 0, NUMBA_NUM_THREADS=1). The badge shows ari, the run's clone_labels.tsv over 6,000 spots, which carries #518's merge of clones whose decoded (A, B) agree at 0.99 of bins, and copy_ari, each matched clone-bin's phased (A, B) against the planted state. Recorded beside them, not shown: state_ari, the fitted state Z per clone-bin, and exact_altered."
+ },
+ "speed": {
+  "sample": "dev_tree r0, as recovery.instance",
+  "commit": "741fcfb",
+  "calicost_seconds": 20243.0,
+  "calicost_run": "#532: CalicoST's shipped configuration_cna_multi, n_clones 5, uncapped, 3 cores, summed over two resumes from its checkpoints (docs/final-benchmark.md)",
+  "port_seconds": 185.29,
+  "port_cores": 1,
+  "port_arm": "run_cnaster_port --sal, the recovery sal arm's wall",
+  "assumption": "CalicoST's 3-core wall is taken as its 1-core time, which favours CalicoST",
+  "ratio": 109.25
  }
 }

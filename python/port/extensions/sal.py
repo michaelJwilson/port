@@ -17,15 +17,12 @@ swap installed, and `run_cnaster_port --no-patch --sal` installs it alone.
 
 from __future__ import annotations
 
-import contextlib
-from collections.abc import Iterator
-from dataclasses import dataclass
+from typing import Any, NamedTuple
 
-__all__ = ["SAL_ROWS", "SalRow", "sal"]
+__all__ = ["SAL_ROWS", "SalRow", "sal_options"]
 
 
-@dataclass(frozen=True)
-class SalRow:
+class SalRow(NamedTuple):
     """One `cnaster` stage, what replaces it, and the measurement behind it."""
 
     stage: str
@@ -89,27 +86,20 @@ SAL_ROWS: tuple[SalRow, ...] = (
 #312's R7, the label merge in sal, landed as `merge_small_labels`."""
 
 
-@contextlib.contextmanager
-def sal(rows: tuple[SalRow, ...] = SAL_ROWS, *, shift: bool = False) -> Iterator[None]:
-    """Install the rows for the block, and restore the solver on the way out.
+def sal_options(
+    rows: tuple[SalRow, ...] = SAL_ROWS, *, shift: bool = False
+) -> dict[str, Any]:
+    """The options `--sal` binds into `pipeline_clone_assignment` (#517).
 
     Refuses, naming the row, when `shift` is on and a row cannot honour it,
     rather than fitting unshifted without saying so (#312, R8).
     """
-    from port.extensions.label_solver import _SELECTED, set_label_solver
-
     refused = [row.stage for row in rows if shift and not row.honours_shift]
 
     if refused:
         msg = f"--sal cannot honour --shift in: {', '.join(refused)}"
         raise ValueError(msg)
 
-    previous = _SELECTED.name
-
-    try:
-        for row in rows:
-            set_label_solver(row.solver)
-
-        yield
-    finally:
-        set_label_solver(previous)
+    # NB every row selects the labelling; the last one's stands, as when
+    #    each was set in turn.
+    return {"label_solver": rows[-1].solver} if rows else {}

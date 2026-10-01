@@ -57,6 +57,7 @@ import jax.scipy.special as jsp
 import numpy as np
 
 from port.extensions import jax_setup  # noqa: F401  (float64, before any array)
+from port.patch.hmm_nophasing.gradient import DISPERSION_FLOOR
 from port.patch.plotting.clone_paths import state_vector
 
 __all__ = [
@@ -111,7 +112,7 @@ def emission(
     exposure = jnp.asarray(base_nb_mean)[None, :]
 
     mean = exposure * jnp.exp(rates)
-    size = 1.0 / jnp.maximum(dispersions, 1e-10)
+    size = 1.0 / jnp.maximum(dispersions, DISPERSION_FLOOR)
     success = 1.0 / (1.0 + dispersions * mean)
 
     read_depth = jnp.where(
@@ -127,8 +128,8 @@ def emission(
     successes = jnp.asarray(counts_bb)[None, :]
     trials = jnp.asarray(total_bb_RD)[None, :]
 
-    alpha = jnp.maximum(probabilities * concentrations, 1e-10)
-    beta = jnp.maximum((1.0 - probabilities) * concentrations, 1e-10)
+    alpha = jnp.maximum(probabilities * concentrations, DISPERSION_FLOOR)
+    beta = jnp.maximum((1.0 - probabilities) * concentrations, DISPERSION_FLOOR)
 
     allele = (
         jsp.gammaln(trials + 1.0)

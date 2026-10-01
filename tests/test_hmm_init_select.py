@@ -20,7 +20,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 from port.extensions.emission_family import count_pair_family
-from port.patch.hmm_initialize.backends import (
+from port.sandbox.patch.hmm_initialize.backends import (
     DEFAULT_ALPHA,
     DEFAULT_TAU,
     Candidate,

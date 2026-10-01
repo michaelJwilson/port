@@ -4,12 +4,12 @@
 [![oracle](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/michaelJwilson/port/main/.badges/coverage-oracle.json)](#what-the-badges-mean)
 [![drop-in](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/michaelJwilson/port/main/.badges/coverage-dropin.json)](#what-the-badges-mean)
 [![all](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/michaelJwilson/port/main/.badges/coverage-reach.json)](#what-the-badges-mean)
-[![speed](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/michaelJwilson/port/main/.badges/run-speed.json)](#what-the-badges-mean)
+[![speedup](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/michaelJwilson/port/main/.badges/run-speed.json)](#what-the-badges-mean)
 [![mem](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/michaelJwilson/port/main/.badges/run-mem.json)](#what-the-badges-mean)
 [![instance](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/michaelJwilson/port/main/.badges/instance.json)](#what-the-badges-mean)
+[![port ARI](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/michaelJwilson/port/main/.badges/recovery-port.json)](#what-the-badges-mean)
+[![sal ARI](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/michaelJwilson/port/main/.badges/recovery-sal.json)](#what-the-badges-mean)
 [![patched](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/michaelJwilson/port/main/.badges/patched.json)](#what-the-badges-mean)
-[![port](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/michaelJwilson/port/main/.badges/recovery-port.json)](#what-the-badges-mean)
-[![sal](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/michaelJwilson/port/main/.badges/recovery-sal.json)](#what-the-badges-mean)
 
 A scientific repository built on
 [`snakes_and_ladders`](https://github.com/michaelJwilson/snakes_and_ladders),
@@ -53,14 +53,21 @@ the table.
 | **all** | the other eight markers | `cnaster` + `python/port` | how much is merely **run**, rather than judged against anything outside `cnaster` |
 | **drop-in** | `patch or cnaster` | `python/port/patch` | how much of what `port` wrote to replace something is reached by the test comparing it with the something. The one guard whose denominator is ours, so the one with a high floor |
 
-**`speed` and `mem`** are patched `run_cnaster` against `--no-patch`: wall
-time and peak resident memory, each arm in its own process, in ratio units.
+**`speedup`** is CalicoST's wall over `run_cnaster_port --sal`'s on
+`dev_tree` r0 (60 x 50 per slice, 6,000 spots): CalicoST's 20,243 s
+(#532, 3 cores) taken as its one-core time, which favours CalicoST, against
+`port` pinned to one core. The sample, both walls and the commit are in
+`measurements.json`.
 
-**`instance`** is what makes those two readable, and `CLAUDE.md` is explicit
-that a ratio read at a gate size decides nothing -- so the three are a set.
-It carries the size as `obs x spots x states`, which is what a tier name
-cannot: two instances both called stress can differ by more than the patch
-being measured does. It asserts nothing and is blue for that reason.
+**`mem`** is patched `run_cnaster` against `--no-patch`: peak resident
+memory, each arm in its own process, in ratio units. It reads `/` until both
+arms are measured on `dev_tree`; the last ratio, 3.21X at 3800 x 1980 x 5,
+is kept in `measurements.json` as superseded, since a ratio read at another
+instance is not comparable.
+
+**`instance`** names the sample the badges are read at, `dev_tree` r0, and
+`CLAUDE.md` is explicit that a ratio read at a gate size decides nothing. It
+asserts nothing and is blue for that reason.
 
 **`patched`** is how much of what a run executes `port` has replaced: of
 the `cnaster` lines an unpatched `run_cnaster` executes on the dev instance
@@ -69,17 +76,16 @@ default row of `run_cnaster_port` replaces -- for a class, its overridden
 methods (#302). Measured by `python -m tests.patched_share`, not per pull
 request, since it is a whole run; blue, because it asserts nothing.
 
-**`port` and `sal`** are recovery against the planted truth, for
-`run_cnaster_port`'s default and for `--sal`, both on the integer decode: the
-adjusted Rand index of the fitted clone labels against the planted ones over
-spots, after merging clones of one decoded `(A, B)` profile (#344), and of
-each clone-bin's phased `(A, B)` against the state the fixture painted there.
-The continuous indices, before merging and of the fitted state, are recorded
-beside them in `measurements.json`. Measured
-by `python -m tests.recovery_audit` on the dev instance at the figures'
-configuration (#313); the instance, configuration and commit are in
-`measurements.json`. Not per pull request, since each is a whole run; blue,
-because the configuration they were read at is not on the badge.
+**`port ARI` and `sal ARI`** are recovery against the planted truth on
+`dev_tree` r0, for `run_cnaster_port`'s default and for `--sal`, as
+`(clones, copies)`: the adjusted Rand index of the run's `clone_labels.tsv`
+against the planted clones over spots -- after #518's merge of clones whose
+decoded `(A, B)` agree at 0.99 of bins -- and of each clone-bin's phased
+`(A, B)` against the state the fixture painted there. Measured by
+`python -m tests.sim_audit --sample generated/dev_tree/r0`; the sample,
+configuration and commit are in `measurements.json`. Not per pull request,
+since each is a whole run; orange, a fixed colour that no threshold
+decides.
 
 `tests/test_badges_agree.py` is what keeps them together. It refuses a
 recorded ratio that does not name its instance, carry exactly two arms, and
@@ -159,8 +165,9 @@ uv sync --locked --extra test
 was rewritten from, at a commit rather than a branch, because it is a
 reference this repository **reads and does not run** -- see
 `docs/audit-logmu-shift-calicost.md`,
-`docs/audit-integer-copy-calicost.md` and
-`docs/audit-cnaster-calicost-divergence.md`. It is an extra rather than a
+`docs/audit-integer-copy-calicost.md`,
+`docs/audit-cnaster-calicost-divergence.md` and, stage by stage against
+`--sal`, `docs/audit-calicost-methods.md` (#509). It is an extra rather than a
 dependency because nothing on the default path imports it.
 
 `track` is the other odd one, and it is the one to read before running
@@ -231,24 +238,55 @@ run_cnaster_port --sal config.yaml           # snakes_and_ladders routines where
 run_cnaster_port --no-copy-cap config.yaml   # cnaster's integer copy caps, A + B <= 6, whatever the config states
 run_cnaster_port --sample-layout 3,1 config.yaml  # clone spatial plots, one panel per sample
 run_cnaster_port --genomic-colours states config.yaml  # clones_genomic coloured per fitted state, not per integer pair
-run_cnaster_port --copy-likelihood config.yaml  # integer copies re-decoded by the HMM's pseudobulk likelihood
+run_cnaster_port --copy-decode shared config.yaml  # one integer pair per fitted state; default: lattice Viterbi per clone
 run_cnaster_port --time-stages config.yaml   # what the replacements cost in the run
 run_cnaster_port --floor-merge --refinement-mask config.yaml  # #348's clone patches, opt-in; --no-distinct-init drops the third
-run_cnaster_port --sal --split-state config.yaml  # one LOH/loss state split by depth and refitted on the same clones, opt-in (#471)
+python -m port.sandbox.np_merge config.yaml # sandbox: CalicoST's Neyman-Pearson merge of clones that decode alike (#497), not installed by default
+run_cnaster_port --hmm-start kmeans++x5+em config.yaml  # the read-depth HMM's start from sal's covariate mixture (#489); on with --sal
 run_calicost config.yaml                     # CalicoST on the same fixture files, at port's configuration
+run_calicost --shipped configuration_cna config.yaml  # CalicoST's own configuration file, the run's paths (#494)
 run_cnaster_port --no-outputs config.yaml    # skip the fitted/decoded tables below
 run_cnaster_port --list                      # what would be rebound, and why
 run_cnaster_port --audit-config config.yaml # what the config states that cnaster does not use (#324)
 ```
 
+**The options, their defaults and what measured them.** `run_cnaster_port
+--help` gives each in one line; the numbers are here. A tri-state option
+follows the arm unless asked: on in a patched run, off with `--no-patch`.
+
+| Option | Default | What | Measured |
+| --- | --- | --- | --- |
+| `--figure-swaps` | on; off with `--no-patch` | `FIGURE_SWAPS`: dpi and raster groups (#195), the genomic RDR line (#299), tiles and the copy profile (#309) | 47 per cent of a run; figure rendering 8,287 MB to 1,036 MB (#195) |
+| `--shift` | on; off with `--no-patch` | `SHIFT_SWAPS`: the per-clone `log Z_c` in the fit, the normal clone pinned to `mu = 1` (#276, #299) | without it a clone's rates return divided by its own normalizer |
+| `--sal-emission` | on where the shift is | sal's dense log-emission for the coded NB/BB (#425) | 3.2e-12 of `cnaster`'s kernels, 3.5e-9 at the dispersion floor; no faster end to end |
+| `--distinct-init` | on where the shift is | the HMM starts from distinct GMM components (#348) | copy-state ARI 0.896 to 0.997 on `calicost_instance` |
+| `--copy-cap` | on; off with `--no-patch` | the likelihood decode under the configured cap (#313, #362) | `cnaster`'s decoders read no cap: A + B <= 6 |
+| `--copy-decode` | `lattice` | per-clone lattice Viterbi with tumour fraction (#370), or one pair per state, `shared` (#327) | |
+| `--rust` | on; off with `--no-patch` | `cnaster`'s four lattices from `oxiport` (#318) | bitwise; compiled at build, not per process |
+| `--sal` | off | alpha expansion with the Rust cut for the labelling (#312), and the next two | a lower Potts energy on every problem measured |
+| `--refinement-mask` | off; on with `--sal` | each read-depth sub-clone kept in its BAF clone, a 100-nat penalty (#348, #467) | with the floor merge, CalicoST hard clone ARI 0.303 to 0.982 |
+| `--floor-merge` | off; on with `--sal` | the clone-size floor met smallest first (#348) | alone, #338's three-sample instance: 2 planted clones fitted as 6 |
+| `--hmm-start` | `none`; `kmeans++x5+em` with `--sal` | the read-depth HMM's start from sal's covariate mixture (#489) | CalicoST hard clone ARI 0.8652 to 0.9829 |
+| `--copy-errors` | off | `cnv_copy_sets.tsv`: every `(A, B)` in each state's 95 per cent credible region (#353) | differentiates the whole objective once |
+| `--png-copies` | off | a PNG without metadata beside each PDF, for `docs/plots` (#452) | two runs of the same code write the same bytes |
+| `--sample-layout`, `--genomic-colours` | unset | one panel per sample (#328); bins coloured per fitted state | |
+| `--warm-up` | off | compile every kernel before the clock starts (#211) | |
+| `--no-plots`, `--no-outputs`, `--time-stages`, `--audit-config`, `--list` | off | build figures and write none (#403); skip port's tables (#331); cost per swapped name; unused config (#324); the table | |
+
 **A patched run also writes the seam between the fit and the integers**
-(#331): beside `cnaster`'s files, and without touching them,
-`port.extensions.outputs` writes `cnv_states.tsv` (each fitted state, the
-`(A, B)` each clone decodes it to, and its share of the clone's bins),
-`cnv_segments.tsv` (runs of equal `(A, B)`), `cnv_binlevel.tsv` (the
-posterior-mean `mu` and `p` per bin) and `manifest.json` (states, clones,
-likelihoods, the configuration's caps and the flags). Off with `--no-patch`,
-so the baseline arm writes what `cnaster` writes.
+(#331): beside `cnaster`'s files, `port.extensions.outputs` writes
+`cnv_states.tsv` (each fitted state, the `(A, B)` each clone decodes it to,
+and its share of the clone's bins), `cnv_segments.tsv` (runs of equal
+`(A, B)`), `cnv_binlevel.tsv` (the posterior-mean `mu` and `p` per bin),
+`clone_labels_integer.tsv` (each spot's clone named by its integer copy
+profile: clones whose `(A, B)` agree at no less than
+`int_copy_num.merge_agreement` of bins, 0.99 unless stated, are one clone,
+#344, #518) and `manifest.json` (states, clones, likelihoods, the
+configuration's caps and the flags). Where that merge joins clones it also
+rewrites `clone_labels.tsv`: `clone_label` is the merged clone and
+`cnaster_clone_label` keeps `cnaster`'s, since the merge stands in for the
+Neyman-Pearson merge `--sal` no longer installs (#497). Off with
+`--no-patch`, so the baseline arm writes what `cnaster` writes.
 
 `port.pipeline.SWAPS` is the table -- one row per `cnaster` name `port`
 replaces, each naming the ticket that measured it -- and `patched()` is the
@@ -262,6 +300,12 @@ speed claims worth reading. `FIGURE_SWAPS` is a second table that does not:
 lowering the dpi and merging the rasterizing groups writes a different file
 by design (#195). It is **in the default** because it is the largest win
 here, and `--no-figure-swaps` is the arm that reproduces bitwise.
+
+**The figure swaps also set one face for every figure**, `cnaster`'s and
+`port`'s: `[tool.port.figures]` in `pyproject.toml` names it (STIX, with its
+math fonts, by default; the alternatives are commented there), and
+`port.extensions.figure_style` refuses a face matplotlib cannot find rather
+than falling back to another.
 
 Measured at 4,000 x 1,980 x 5, against `--no-patch`:
 
@@ -277,7 +321,8 @@ So the figure swaps are most of the runtime win and all of the memory one.
 under `A + B <= 6` and `A, B <= 5` and reads no key that changes them, so a
 planted total of 10 cannot be decoded. `COPY_SWAPS` reads
 `int_copy_num.max_total_copy` and applies it to both caps; a configuration
-without the key decodes exactly as `cnaster` does. The MILP decoder, called
+without the key, or with `none`, decodes exactly as `cnaster` does, and a
+value that is not an integer of at least 2 is refused at start. The MILP decoder, called
 as `run_cnaster` calls it, returns planted totals of 10 to 12 exactly at a
 stated 12, and none of them at `cnaster`'s 6 (`tests/test_integer_copy_patch.py`).
 
@@ -296,11 +341,18 @@ pair share a colour. `states` colours each fitted state separately, with its
 continuous `2mu` and `p` in the legend. Unset, the choice is `cnaster`'s:
 integer copies where the figure has them, states elsewhere.
 
-**`--copy-likelihood` is off by default** (#327). It re-decodes integer
-copies by the HMM's pseudobulk NB/BB likelihood, holding the fitted path, and
-starts from the MILP's answer. On the lattice fixture it decodes 0.794 of
-altered clone-bins exactly, against the MILP's 0.417, and costs 5 s per run
-(`docs/audit-recovery.md`).
+**Integer copies are decoded by likelihood, per clone and bin** (#367, #371).
+The copy rows (on with `--copy-cap`) run `lattice_decode`: one state per
+`(A, B)` with `A + B` at most the configured cap, Viterbi along each clone's
+bins on its own pseudobulk NB/BB counts, and an EM fitting each clone's
+shift and tumour fraction `rho` against a diploid normal. So a loss and an
+LOH the HMM fitted as one state still decode apart by depth, and admixed
+normal cells no longer read as balanced states. The normal clone, held at
+`(1, 1)`, shift 0 and `rho = 1`, is the one with the largest share of
+balanced bins, as `clone_shifts` names it (#389). `--copy-decode shared`
+keeps one pair per fitted state (#327). `dev_tree` r0 at 60 x 50 under
+`--sal`: copy ARI 0.981, 0.936 of altered bins exact up to phase, against
+cnaster's decoder's 0.956 and 0.707 at 42 x 42.
 
 **`--rust` is on by default** (#318). It runs `cnaster`'s four
 forward/backward lattices from `port.oxiport`, bitwise `cnaster`'s
@@ -316,14 +368,15 @@ emission with `snakes_and_ladders`' dense log-emission, to 3.2e-12 of
 `cnaster`'s kernels. On the dev instance the default run's clone ARI rises
 0.7927 to 0.8653 and its integer ARI 0.9242 to 0.9905, fitting 5 clones for 4
 rather than 6; the lattice fixture is unchanged at 0.9985. It is not faster end
-to end. `--no-sal-emission` restores `cnaster`'s kernels.
+to end. `--no-sal-emission` restores `cnaster`'s kernels. It rides on the
+shift rows, so `--no-shift` turns it off too, and `--distinct-init` with it.
 
 **The M step's gradient is closed form** (#433). `cnaster` fits the
 emission by BFGS with a finite-difference gradient, one objective call per
 packed coordinate; `port` supplies the derivative instead
 (`port.patch.hmm_nophasing.gradient`), pinned against `jax`'s. On the dev
-instance the M step falls from 11.1 s to 2.0 s. `finite_difference()`
-restores `cnaster`'s gradient for a block.
+instance the M step falls from 11.1 s to 2.0 s. The row's
+`analytic_gradient=False` option restores `cnaster`'s gradient.
 
 **The spatial graph is validated before the HMRF sees it** (#417). The run
 builds it from `port.extensions.adjacency`: by default each spot's `k`
@@ -356,18 +409,18 @@ first, into each spot's best remaining clone. `--refinement-mask` passes the
 mask. `--distinct-init` stops `gmm_init` keeping near-duplicate normal
 components as separate states. With all three on, the run recovers clone ARI
 0.774 (1.000 integer) and copy-state ARI 0.997. The floor merge alone removes
-the collapse. `--floor-merge` and `--refinement-mask` are opt-in: each alone
-splits #338's three-sample instance, 2 planted clones into 6 fitted.
+the collapse. `--floor-merge` and `--refinement-mask` are opt-in on the
+default arm, where each alone splits #338's three-sample instance, 2 planted
+clones into 6 fitted, and on with `--sal` (#467). There the mask is a 100-nat
+penalty rather than `-inf`, so the read-depth stage can still move a spot the
+BAF stage misplaced: with `--sal`, CalicoST hard goes from clone ARI 0.303 (2
+clones for 4) to 0.982, easy from 0.944 to 0.986, and `dev`, r0 and the
+three-sample instance stay at 1.000, 0.998 and 1.000.
 `--distinct-init` is on by default.
-
-**`--split-state`** (#471, opt-in). The read-depth + BAF HMM fits a one-copy
-loss and a copy-neutral LOH, which share a BAF, as one state at the LOH's
-depth, so both decode to one `(A, B)`. After that fit, the flag splits the
-unbalanced state whose bins fall into two depths more than 0.3 apart in log
-ratio, frees the closer of the two nearest states, and refits once on the
-clones already found. Clone labels do not change. On `dev_tree` r0 under
-`--sal`, altered bins decoded exact go from 0.707 to 0.896. Letting the refit
-reassign clones cost CalicoST hard 0.60 clone ARI, so it does not.
+The mask and the floor are read by port's clone assignment alone, so
+`--no-patch` refuses them, and where a tumour proportion hands the assignment
+to `cnaster` the run warns that they, and the per-clone shift, are not applied
+(#466).
 
 **`run_calicost`** (#347) translates the same YAML and runs CalicoST in-process
 on the same files, into `<output_dir>_calicost`. `--align` (the default)
@@ -375,6 +428,9 @@ replaces the CalicoST constants that have a `cnaster` counterpart;
 `--no-align` keeps CalicoST's own. It refuses the initial-clone layout on which
 CalicoST's `rectangle_initialize_initial_clone` never returns (`cnaster` #248).
 `python -m tests.recovery_audit --calicost` scores it with port's scorer.
+`--shipped FILE` runs CalicoST's own configuration file instead, taking only
+the paths from the YAML; a sheet of several slices takes
+`configuration_cna_multi`. `docs/final-benchmark.md` compares it with `--sal`.
 
 **`port.sim.draw`** (#445) draws new samples from a version-3 manifest:
 clones from CalicoST's `shared.unique` counts or a mutation tree
@@ -392,10 +448,10 @@ the library; κ = 100 matches the normal spots' per-(gene, spot) nonzero share
 (0.90%) and `log10` moments. Each (SNP, spot) is drawn independently from the
 `snp_spot_umi` law. `[sample] realizations` redraws the counts and phase over
 the same clones and layout, each a complete sample in
-`sim/generated/<name>/r<k>/`, untracked; `dev_tree` draws in 14.8 s. Both dev
-manifests plant every clone at 300 spots or more, above cnaster's fixed
-200-spot ICM floor (#468): `dev_tree` 3,528 spots over two 42 x 42 slices,
-`dev_shared_unique` 2,500 on one 50 x 50.
+`sim/generated/<name>/r<k>/`, untracked; `dev_tree` draws in 23.0 s. Both dev
+manifests use CalicoST's array, 60 rows of 50 per slice, and plant every
+clone above cnaster's fixed 200-spot ICM floor (#468): `dev_tree` 6,000
+spots over two slices, `dev_shared_unique` 3,000 on one.
 `tests.sim_audit` runs and scores one realization:
 
     python -m port.sim.draw sim/manifests/dev_tree.toml
@@ -463,6 +519,7 @@ not carry, not before.
 | [TICKETS.md](TICKETS.md) | What is filed and not done, grouped by the milestone it serves |
 | [STATUS.md](STATUS.md) | What has landed, with the measurement that established it |
 | [CLAUDE.md](CLAUDE.md) | The rules |
+| [docs/measurements.md](docs/measurements.md) | The timings, ratios and histories the package docstrings cited, by module and object (#517) |
 | [docs/metrics.md](docs/metrics.md) | One row per recovery run: commit, timestamp, fixture hash, test, arguments, clone/copy/state ARI, wall, peak, note (#409) |
 | [docs/templates/](docs/templates/README.md) | Templates for documents made outside the code: the work-in-flight page (#335) |
 

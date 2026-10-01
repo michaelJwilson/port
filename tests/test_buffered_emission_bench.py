@@ -2,7 +2,7 @@
 
 **The claim is the allocation, not the ratio.** `cnaster` builds
 `(n_states, n_obs, n_spots)` per channel on every call and the phased class
-doubles the state axis; `port.patch.emission.emission_into` writes into
+doubles the state axis; `port.sandbox.patch.emission.emission_into` writes into
 buffers the caller keeps. At the stress size below that is 1.34 GB the
 phased entry point allocates per call and this one does not, twice per outer
 iteration (#90).
@@ -82,7 +82,7 @@ def _run_cnaster(inputs: Inputs) -> tuple[np.ndarray, np.ndarray]:
 
 
 def _run_buffered(inputs: Inputs, buffers: tuple[np.ndarray, np.ndarray]) -> None:
-    from port.patch.emission import emission_into
+    from port.sandbox.patch.emission import emission_into
 
     emission_into(
         inputs["single_X"][:, 0, :],
@@ -111,7 +111,7 @@ def test_the_emission(
     outside the timer: both are `numba` kernels and a first call on a cold
     cache is compilation rather than work (#204).
     """
-    from port.patch.emission import emission_buffers
+    from port.sandbox.patch.emission import emission_buffers
 
     inputs = _inputs(**size)
 

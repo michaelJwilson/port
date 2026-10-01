@@ -90,8 +90,10 @@ def test_one_minus_inf_shift_makes_every_row_of_the_shifted_emission_nan() -> No
     is where it is not. `clone_assignment.py:407` centres the same way.
     """
     from cnaster.hmm_nophasing import hmm_nophasing as upstream
-    from port.patch.hmm_nophasing import hmm_nophasing, logmu_shift
+    from port.patch.hmm_nophasing import hmm_nophasing
+    from port.pipeline import with_attributes
 
+    shifted = with_attributes(hmm_nophasing, apply_logmu_shift=True)
     case = _shifted_instance()
     shift = case["shift"].copy()
     shift[3] = -np.inf
@@ -101,8 +103,8 @@ def test_one_minus_inf_shift_makes_every_row_of_the_shifted_emission_nan() -> No
     hmm_nophasing._row_shift = shift
 
     try:
-        with logmu_shift(), np.errstate(invalid="ignore", over="ignore"):
-            ours = hmm_nophasing.compute_emission_probability_nb_betabinom(
+        with np.errstate(invalid="ignore", over="ignore"):
+            ours = shifted.compute_emission_probability_nb_betabinom(
                 case["X"],
                 case["base"],
                 case["rates"][:, None],
