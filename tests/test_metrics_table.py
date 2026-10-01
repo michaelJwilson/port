@@ -286,10 +286,16 @@ def _history_row(commit: str, fixture: str, clone_ari: str) -> dict[str, str]:
 
 
 @pytest.mark.infra
-def test_a_run_of_unchanged_merges_keeps_its_first_and_last_tick() -> None:
-    """Merges a..d hold one value, e moves it, f adds a fixture, g and h repeat
-    f: a and d stand for a..d, the last labelled `>>>> #d`; e and f each start
-    a tick; g joins f's run of two, drawn as is."""
+def test_a_run_of_unchanged_merges_keeps_its_first_and_last_tick(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Merges a..d hold one value, e moves it, f adds a fixture, g repeats f:
+    a and d stand for a..d with one horizontal `SKIP` between them, below
+    the axis; e and f each start a tick; g joins f's run of two, drawn as
+    is. Tick labels stay plain `#NNN`."""
+    from matplotlib.axes import Axes
+
+    from tests.studies import metrics_history
     from tests.studies.metrics_history import SKIP, axis, label, ticks
 
     rows = [_history_row(c, "easy", "0.5") for c in "abcd"]
@@ -299,13 +305,32 @@ def test_a_run_of_unchanged_merges_keeps_its_first_and_last_tick() -> None:
     order = {c: k for k, c in enumerate("abcdefg")}
 
     groups = ticks(rows, order)
-    shown = axis(groups, {r["commit"]: label(r) for r in rows})
+    shown, folds = axis(groups, {r["commit"]: label(r) for r in rows})
 
     assert groups == [["a", "b", "c", "d"], ["e"], ["f", "g"]]
-    assert shown == [
-        ("a", "#a"),
-        ("d", f"{SKIP} #d"),
-        ("e", "#e"),
-        ("f", "#f"),
-        ("g", "#g"),
-    ]
+    assert shown == [("a", "#a"), ("d", "#d"), ("e", "#e"), ("f", "#f"), ("g", "#g")]
+    assert folds == [0]
+
+    labels: list[str] = []
+    marks: list[tuple[str, float, float]] = []
+    set_labels, annotate = Axes.set_xticklabels, Axes.annotate
+
+    def spy_labels(self: Axes, names: list[str], *a: Any, **k: Any) -> Any:
+        labels.extend(names)
+        return set_labels(self, names, *a, **k)
+
+    def spy_annotate(self: Axes, text: str, *a: Any, **k: Any) -> Any:
+        marks.append((text, k["xy"][0], k["rotation"]))
+        return annotate(self, text, *a, **k)
+
+    monkeypatch.setattr(Axes, "set_xticklabels", spy_labels)
+    monkeypatch.setattr(Axes, "annotate", spy_annotate)
+    monkeypatch.setattr(metrics_history, "first_parent", lambda: list(order))
+    metrics_history.figure(rows, tmp_path / "folded.png")
+
+    assert labels == ["#a", "#d", "#e", "#f", "#g"]
+    assert not any(SKIP in name for name in labels)
+    ((text, x, rotation),) = marks
+    assert text == SKIP
+    assert 0 < x < 1
+    assert rotation == 0

@@ -8,7 +8,7 @@ recorded after the fact. The x axis is `main`'s first-parent order, read from
 git, so a merge that touched no pipeline code and carries its predecessor's
 figures is absent rather than drawn flat, and a run of three or more merges
 whose plotted metrics did not move keeps its first and last merge, the last
-labelled `>>>> #NNN` (`ticks`, `axis`). One panel per `fixture_hash`,
+with `>>>>` drawn between them (`ticks`, `axis`). One panel per `fixture_hash`,
 labelled with its fixture name, so a panel holds one dataset (#588); one line
 per metric (`SERIES`); a second figure plots integer copy recovery by
 planted class (`CLASSES`). The figure carries its data hash and code commit.
@@ -52,8 +52,8 @@ CLASSES = {
 OUT_CLASSES = ROOT / "docs" / "plots" / "metrics_history_classes.png"
 
 SKIP = ">>>>"
-"""Prefixes the last tick of a folded run: the merges before it, back to the
-run's first, are skipped."""
+"""Drawn horizontally in the gap between a folded run's first and last tick,
+below the axis: the merges between them are skipped."""
 
 
 def history() -> list[dict[str, str]]:
@@ -87,21 +87,22 @@ def ticks(rows: list[dict[str, str]], order: dict[str, int]) -> list[list[str]]:
     return groups
 
 
-def axis(groups: list[list[str]], names: dict[str, str]) -> list[tuple[str, str]]:
-    """The x ticks, as `(commit, label)`: each of `ticks`' runs of three or
-    more unchanged merges keeps its first and its last merge, the last
-    labelled `>>>> #NNN` (`SKIP`) for the merges skipped between them; shorter runs keep
-    every merge."""
-    found: list[tuple[str, str]] = []
+def axis(
+    groups: list[list[str]], names: dict[str, str]
+) -> tuple[list[tuple[str, str]], list[int]]:
+    """The x ticks, as `(commit, "#NNN")`, and the folds: each of `ticks`'
+    runs of three or more unchanged merges keeps its first and its last
+    merge, and the fold is the index of the first, so `SKIP` goes between it
+    and the next tick. Shorter runs keep every merge."""
+    shown: list[tuple[str, str]] = []
+    folds: list[int] = []
     for group in groups:
         if len(group) < 3:
-            found += [(c, names[c]) for c in group]
+            shown += [(c, names[c]) for c in group]
         else:
-            found += [
-                (group[0], names[group[0]]),
-                (group[-1], f"{SKIP} {names[group[-1]]}"),
-            ]
-    return found
+            folds.append(len(shown))
+            shown += [(group[0], names[group[0]]), (group[-1], names[group[-1]])]
+    return shown, folds
 
 
 def first_parent() -> list[str]:
@@ -138,7 +139,7 @@ def figure(
     order = {c: k for k, c in enumerate(first_parent())}
     rows = [r for r in rows if r["commit"].rstrip("+") in order]
     names = {r["commit"].rstrip("+"): label(r) for r in rows}
-    shown = axis(ticks(rows, order), names)
+    shown, folds = axis(ticks(rows, order), names)
     x = {c: k for k, (c, _) in enumerate(shown)}
     # NB the stamp hashes every history row on main, skipped merges included
     stamped = rows
@@ -173,6 +174,18 @@ def figure(
     ax = axes[-1, 0]
     ax.set_xticks(range(len(shown)))
     ax.set_xticklabels([name for _, name in shown], rotation=90, fontsize=7)
+    for k in folds:
+        ax.annotate(
+            SKIP,
+            xy=(k + 0.5, 0),
+            xycoords=("data", "axes fraction"),
+            xytext=(0, -4),
+            textcoords="offset points",
+            ha="center",
+            va="top",
+            rotation=0,
+            fontsize=7,
+        )
     ax.set_xlabel("Merge to main (oldest left)")
     fig.text(
         0.99,
