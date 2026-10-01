@@ -39,7 +39,16 @@ The same two shares are also taken over three classes of planted pair:
 `balanced_gain`, `A = B > 1`; and `unbalanced_gain`, both haplotypes present,
 `A + B > 2` and `A != B`. Each `_pf` form is phase-free, as
 `exact_altered_minor` is; for a balanced gain the two coincide. A class the
-sample does not plant scores NaN.
+sample does not plant scores NaN. `exact_neutral` is the share of planted
+`(1, 1)` bins decoded `(1, 1)`.
+
+`copy_ari_<class>` is the copy-state ARI restricted to the clone-bins of one
+planted class (#511), so a class is scored on how it partitions its own bins
+rather than on the pairs it shares with the ~6,500 neutral bins, which
+dominate `copy_ari`. ARI over bins whose planted pair takes one value is
+undefined (sklearn returns 1 if the decode is constant there, else 0), so a
+class planted as a single pair scores NaN, as does one not planted. Neutral
+is one pair by definition and has no ARI; `exact_neutral` stands in for it.
 """
 
 from __future__ import annotations
@@ -78,6 +87,9 @@ class SimRecovery:
     ari_integer: float
     state_ari: float
     copy_ari: float
+    copy_ari_loh: float
+    copy_ari_balanced_gain: float
+    copy_ari_unbalanced_gain: float
     n_clones: int
     n_integer_clones: int
     exact: float
@@ -89,6 +101,7 @@ class SimRecovery:
     exact_balanced_gain_pf: float
     exact_unbalanced_gain: float
     exact_unbalanced_gain_pf: float
+    exact_neutral: float
     bins: int
     clone_of: dict[int, int] = field(default_factory=dict)
 
@@ -107,6 +120,39 @@ def _scratch() -> Path:
 def _barcode(values: pd.Series) -> np.ndarray:
     barcodes: np.ndarray = values.astype(str).to_numpy()
     return barcodes
+
+
+NEUTRAL = 1_001
+"""The planted pair `(1, 1)`, as `A * 1_000 + B`."""
+
+
+def planted_classes(t: np.ndarray) -> dict[str, np.ndarray]:
+    """Clone-bins by planted class, from pairs coded `A * 1_000 + B`.
+
+    `loh` one haplotype at 0; `balanced_gain` `A = B > 1`; `unbalanced_gain`
+    both present, `A + B > 2`, `A != B`; `neutral` `(1, 1)`. One partition
+    for every per-class metric in `score`.
+    """
+    major, minor = t // 1_000, t % 1_000
+    loh = np.minimum(major, minor) == 0
+    gain = (major + minor > 2) & ~loh
+    return {
+        "loh": loh,
+        "balanced_gain": gain & (major == minor),
+        "unbalanced_gain": gain & (major != minor),
+        "neutral": t == NEUTRAL,
+    }
+
+
+def class_ari(t: np.ndarray, ab: np.ndarray, where: np.ndarray) -> float:
+    """Copy-state ARI over the bins in `where`; NaN where the planted pairs
+    there take fewer than two values, ARI being undefined.
+    """
+    from sklearn.metrics import adjusted_rand_score
+
+    if np.unique(t[where]).size < 2:
+        return float("nan")
+    return round(float(adjusted_rand_score(t[where], ab[where])), 4)
 
 
 def read_run(sample: SimulatedSample, output: Path) -> dict[str, Any]:
@@ -194,14 +240,13 @@ def score(sample: SimulatedSample, output: Path, arm: str, wall: float) -> SimRe
         pair.append(run["a"][covered, fit] * 1_000 + run["b"][covered, fit])
 
     t, z, ab = (np.concatenate(x) for x in (truth, state, pair))
-    altered = t != 1_001
+    altered = t != NEUTRAL
     swapped = (ab % 1_000) * 1_000 + ab // 1_000
     either = (t == ab) | (t == swapped)
-    major, minor = t // 1_000, t % 1_000
-    loh = np.minimum(major, minor) == 0
-    gain = (major + minor > 2) & ~loh
-    balanced = gain & (major == minor)
-    unbalanced = gain & (major != minor)
+    classes = planted_classes(t)
+    loh, balanced, unbalanced = (
+        classes[c] for c in ("loh", "balanced_gain", "unbalanced_gain")
+    )
 
     def share(hit: np.ndarray, where: np.ndarray) -> float:
         """`hit`'s share over `where`; NaN where the sample plants none."""
@@ -216,6 +261,9 @@ def score(sample: SimulatedSample, output: Path, arm: str, wall: float) -> SimRe
         ari_integer=round(ari_integer, 4),
         state_ari=round(float(adjusted_rand_score(t, z)), 4),
         copy_ari=round(float(adjusted_rand_score(t, ab)), 4),
+        copy_ari_loh=class_ari(t, ab, loh),
+        copy_ari_balanced_gain=class_ari(t, ab, balanced),
+        copy_ari_unbalanced_gain=class_ari(t, ab, unbalanced),
         n_clones=int(np.unique(fitted[scored]).size),
         n_integer_clones=int(np.unique(integer).size),
         exact=round(float(np.mean(t == ab)), 4),
@@ -227,6 +275,7 @@ def score(sample: SimulatedSample, output: Path, arm: str, wall: float) -> SimRe
         exact_balanced_gain_pf=share(either, balanced),
         exact_unbalanced_gain=share(t == ab, unbalanced),
         exact_unbalanced_gain_pf=share(either, unbalanced),
+        exact_neutral=share(t == ab, classes["neutral"]),
         bins=int(covered.sum()),
         clone_of=clone_of,
     )
