@@ -280,7 +280,8 @@ follows the arm unless asked: on in a patched run, off with `--no-patch`.
 (#331): beside `cnaster`'s files, `port.extensions.outputs` writes
 `cnv_states.tsv` (each fitted state, the `(A, B)` each clone decodes it to,
 and its share of the clone's bins), `cnv_segments.tsv` (runs of equal
-`(A, B)`), `cnv_binlevel.tsv` (the posterior-mean `mu` and `p` per bin),
+`(A, B)`), `cnv_binlevel.tsv` (each bin's state `Z` and posterior-mean `p`;
+its rate is the state's `logmu` in `cnv_states.tsv`, #613),
 `clone_labels_integer.tsv` (each spot's clone named by its integer copy
 profile: clones whose `(A, B)` agree at no less than
 `int_copy_num.merge_agreement` of bins, 0.99 unless stated, are one clone,

@@ -168,25 +168,22 @@ def test_the_states_carry_the_fit_the_decoding_and_the_shares(tmp_path: Path) ->
 
 @pytest.mark.analytic
 def test_the_posterior_means_lie_within_the_states(tmp_path: Path) -> None:
-    """A posterior mean is the posterior's weights on the states' `mu` and
-    `p`, to 1e-12 against the weights taken from the `.npz` directly, and so
-    lies within the states' range."""
+    """A posterior mean is the posterior's weights on the states' `p`, to
+    1e-12 against the weights taken from the `.npz` directly, and so lies
+    within the states' range."""
     from port.extensions.outputs import binlevel
 
     seglevel, _, fit = _load(_run(tmp_path))
     table = binlevel(seglevel, fit)
-    mu, p = np.exp(fit["new_log_mu"][:, 0]), fit["new_p_binom"][:, 0]
+    p = fit["new_p_binom"][:, 0]
 
     for clone in IDS:
-        means = table[f"clone{clone} mu"].to_numpy()
-        assert np.all((means >= mu.min() - 1e-12) & (means <= mu.max() + 1e-12))
         assert np.all(
             (table[f"clone{clone} p"] >= p.min() - 1e-12)
             & (table[f"clone{clone} p"] <= p.max() + 1e-12)
         )
         position = POSITIONS[IDS.index(clone)]
         weights = np.exp(fit["log_gamma"][:, :, position])
-        np.testing.assert_allclose(means, mu @ weights, rtol=1e-12)
         np.testing.assert_allclose(table[f"clone{clone} p"], p @ weights, rtol=1e-12)
 
 
@@ -332,8 +329,9 @@ def test_a_run_s_outputs_recover_the_planted_clones_and_the_flat_normal(
     The round trip's instance (two clones, three states, 40 bins). Each
     fitted clone's spots are one planted clone to 95 per cent (1.000 on this
     host), and the planted normal clone reads flat in `cnv_binlevel.tsv`:
-    `mu` constant to 1 per cent about its own mean -- `run_cnaster` leaves
-    `mu`'s scale unpinned -- and `p` 1/2 to 0.02 (0.499 here, 0.487 on CI's
+    its bins' states' `exp(logmu)` in `cnv_states.tsv`, joined on `Z`,
+    constant to 1 per cent about their mean -- `run_cnaster` leaves `mu`'s
+    scale unpinned -- and `p` 1/2 to 0.02 (0.499 here, 0.487 on CI's
     runner). The segments reproduce `cnaster`'s own table bin for bin.
 
     The tumour clone's amplification is not judged here: at this run's three
@@ -365,6 +363,7 @@ def test_a_run_s_outputs_recover_the_planted_clones_and_the_flat_normal(
     bins = pd.read_csv(run / "cnv_binlevel.tsv", sep="\t")
     seglevel = pd.read_csv(run / "cnv_seglevel.tsv", sep="\t", comment="#")
     segments = pd.read_csv(run / "cnv_segments.tsv", sep="\t")
+    fitted = pd.read_csv(run / "cnv_states.tsv", sep="\t")
     labels = pd.read_csv(run / "clone_labels.tsv", sep="\t", comment="#")
     offset = np.concatenate([[0], np.cumsum(truth.lengths)[:-1]])
     planted_bin = (
@@ -385,7 +384,8 @@ def test_a_run_s_outputs_recover_the_planted_clones_and_the_flat_normal(
 
         if np.all(truth.states[int(planted.index[0]), planted_bin] == 0):
             normal += 1
-            mu = bins[f"clone{clone} mu"].to_numpy()
+            rates = fitted[fitted.clone.astype(str) == str(clone)].set_index("state")
+            mu = np.exp(rates.logmu.to_numpy()[bins[f"clone{clone} Z"].to_numpy()])
             np.testing.assert_allclose(mu, mu.mean(), rtol=1e-2)
             np.testing.assert_allclose(bins[f"clone{clone} p"], 0.5, atol=0.02)
 
@@ -398,8 +398,8 @@ def test_the_writer_returns_the_planted_states_of_a_perfect_decode(
 ) -> None:
     """A run directory written from the planted truth itself -- each clone's
     path its planted states, the posterior one-hot on them, one `(A, B)` per
-    state -- is read back as the truth: every bin's `mu` and `p` the planted
-    state's, the amplification's `mu` 5.0 and `p` 0.88 exactly, and the
+    state -- is read back as the truth: every bin's `p` and, through its `Z`
+    in `cnv_states.tsv`, its `logmu` the planted state's, the amplification's `mu` 5.0 and `p` 0.88 exactly, and the
     segments the planted runs of state within each chromosome."""
     from port.extensions.outputs import binlevel, segments, states
 
@@ -433,11 +433,15 @@ def test_the_writer_returns_the_planted_states_of_a_perfect_decode(
     mu_planted = np.exp(np.ravel(truth.log_mu))
     p_planted = np.ravel(truth.p_binom)
     table = binlevel(seglevel, fit)
+    fitted = states(seglevel, perstate, fit)
 
     for clone in range(truth.states.shape[0]):
         path = truth.states[clone]
+        rates = fitted[fitted.clone == str(clone)].set_index("state").logmu
         np.testing.assert_allclose(
-            table[f"clone{clone} mu"], mu_planted[path], rtol=1e-12
+            rates.to_numpy()[table[f"clone{clone} Z"].to_numpy()],
+            np.ravel(truth.log_mu)[path],
+            rtol=1e-12,
         )
         np.testing.assert_allclose(
             table[f"clone{clone} p"], p_planted[path], rtol=1e-12
@@ -449,13 +453,12 @@ def test_the_writer_returns_the_planted_states_of_a_perfect_decode(
             (path[1:] != path[:-1]) | (chromosome[1:] != chromosome[:-1])
         )
         np.testing.assert_array_equal(runs.first_bin, np.concatenate([[0], breaks + 1]))
-        np.testing.assert_allclose(
-            runs.mu, mu_planted[path[runs.first_bin]], rtol=1e-12
+        np.testing.assert_array_equal(
+            runs.states, [str(s) for s in path[runs.first_bin]]
         )
 
     amplified = int(np.argmax(mu_planted))
-    rows = states(seglevel, perstate, fit)
-    held = rows[(rows.state == amplified) & (rows.share > 0)]
+    held = fitted[(fitted.state == amplified) & (fitted.share > 0)]
     assert len(held) >= 1
     assert np.exp(held.logmu.iloc[0]) == pytest.approx(5.0, rel=1e-12)
     assert held.p.iloc[0] == pytest.approx(0.88, rel=1e-12)
@@ -509,3 +512,15 @@ def test_the_configured_agreement_is_what_write_outputs_uses(tmp_path: Path) -> 
     config.write_text("int_copy_num:\n  merge_agreement: 0.99\n")
 
     assert config_keys(config)["merge_agreement"] == 0.99
+
+
+@pytest.mark.infra
+def test_no_per_bin_mu_is_written(tmp_path: Path) -> None:
+    """`binlevel` and `segments` write no `mu` column (#613): a bin's rate is
+    its state's `logmu` in `cnv_states.tsv`, joined on `(clone, state)`."""
+    from port.extensions.outputs import binlevel, segments
+
+    seglevel, _, fit = _load(_run(tmp_path))
+    columns = [*binlevel(seglevel, fit).columns, *segments(seglevel, fit).columns]
+
+    assert [c for c in columns if c == "mu" or c.endswith(" mu")] == []

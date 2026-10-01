@@ -13,9 +13,14 @@ all but `clone_labels.tsv`, below -- in each run directory that holds a
   to the deduplicated integer copies.
 - `cnv_segments.tsv`: per clone, the runs of equal `(A, B)` within a
   chromosome, their first and last bin, the fitted states they span, and
-  the posterior-mean `mu` and `p` over the run. The deduplicated view.
+  the posterior-mean `p` over the run. The deduplicated view.
 - `cnv_binlevel.tsv`: per bin and clone, the fitted state and the
-  posterior-mean `mu` and `p` under `log_gamma`. The continuous view.
+  posterior-mean `p` under `log_gamma`. The continuous view.
+
+A bin's rate is its state's: `logmu` in `cnv_states.tsv`, joined on
+`(clone, state)` with the bin's `clone{c} Z`. No per-bin `mu` is written
+(#613): the posterior mean of `exp(logmu)` is a rate of no state, and
+differed from `exp(logmu)` by up to 0.037.
 - `clone_labels_integer.tsv`: `clone_labels.tsv` with each spot's clone
   also named by its integer copy profile (`integer_clones`, #344): clones
   whose `(A, B)` agree at no less than `int_copy_num.merge_agreement` of
@@ -119,13 +124,12 @@ def clone_columns(seglevel: pd.DataFrame, pred_cnv: np.ndarray) -> dict[str, int
     return found
 
 
-def _posterior_means(fit: dict[str, Any], position: int) -> tuple[np.ndarray, ...]:
-    """The posterior-mean `mu` and `p` per bin of one clone."""
+def _posterior_means(fit: dict[str, Any], position: int) -> np.ndarray:
+    """The posterior-mean `p` per bin of one clone."""
     gamma = np.exp(fit["log_gamma"][:, :, position])
     gamma = gamma / gamma.sum(axis=0, keepdims=True)
-    mu = np.exp(fit["new_log_mu"][:, 0]) @ gamma
-    p = fit["new_p_binom"][:, 0] @ gamma
-    return mu, p
+    p: np.ndarray = fit["new_p_binom"][:, 0] @ gamma
+    return p
 
 
 def states(
@@ -156,25 +160,32 @@ def states(
 
 
 def binlevel(seglevel: pd.DataFrame, fit: dict[str, Any]) -> pd.DataFrame:
-    """Per bin and clone: the fitted state and the posterior-mean `mu`, `p`."""
+    """Per bin and clone: the fitted state `Z` and the posterior-mean `p`.
+
+    The bin's rate is its state's `logmu` in `cnv_states.tsv`, joined on
+    `(clone, state)` with `clone{c} Z`; no per-bin `mu` is written (#613).
+    """
     frame = seglevel[["CHR", "START", "END"]].copy()
 
     for clone, position in clone_columns(seglevel, fit["pred_cnv"]).items():
-        mu, p = _posterior_means(fit, position)
+        p = _posterior_means(fit, position)
         frame[f"clone{clone} Z"] = seglevel[f"clone{clone} Z"].to_numpy(dtype=int)
-        frame[f"clone{clone} mu"] = mu
         frame[f"clone{clone} p"] = p
 
     return frame
 
 
 def segments(seglevel: pd.DataFrame, fit: dict[str, Any]) -> pd.DataFrame:
-    """Per clone, the runs of equal `(A, B)` within a chromosome."""
+    """Per clone, the runs of equal `(A, B)` within a chromosome.
+
+    A run's rates are its `states`' `logmu` in `cnv_states.tsv`, joined on
+    `(clone, state)`; no per-run `mu` is written (#613).
+    """
     rows = []
     chromosome = seglevel["CHR"].to_numpy()
 
     for clone, position in clone_columns(seglevel, fit["pred_cnv"]).items():
-        mu, p = _posterior_means(fit, position)
+        p = _posterior_means(fit, position)
         pairs = seglevel[[f"clone{clone} A", f"clone{clone} B"]].to_numpy(dtype=int)
         path = seglevel[f"clone{clone} Z"].to_numpy(dtype=int)
         # NB a run breaks where the pair or the chromosome changes.
@@ -198,7 +209,6 @@ def segments(seglevel: pd.DataFrame, fit: dict[str, Any]) -> pd.DataFrame:
                     "A": int(pairs[first, 0]),
                     "B": int(pairs[first, 1]),
                     "states": ",".join(str(s) for s in np.unique(path[first:stop])),
-                    "mu": float(mu[first:stop].mean()),
                     "p": float(p[first:stop].mean()),
                 }
             )
