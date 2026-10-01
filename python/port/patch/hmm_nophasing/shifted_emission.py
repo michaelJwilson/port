@@ -93,7 +93,15 @@ from cnaster.hmm_nophasing import hmm_nophasing as UPSTREAM
 from cnaster.logger import get_logger
 from sal.ragged import Ragged
 
-from port.patch.hmm_nophasing.gradient import EmGradient, analytic_bfgs
+from port.patch.hmm_nophasing.gradient import (
+    ALPHA_MIN,
+    DISPERSION_PRIOR_ROWS,
+    TAU_MAX,
+    DispersionBounds,
+    DispersionShrinkage,
+    EmGradient,
+    analytic_bfgs,
+)
 from port.patch.hmm_nophasing.logmu_shift import shifts as logmu_shifts
 from port.patch.plotting.clone_paths import state_vector
 
@@ -296,7 +304,7 @@ class hmm_nophasing(UPSTREAM):  # type: ignore[misc]
     the thing it replaces would not be one.
     """
 
-    # NB the three options below are class attributes rather than keywords,
+    # NB the options below are class attributes rather than keywords,
     #    because the caller is `optimize_params` inside `cnaster` and a keyword
     #    would have to reach it through a function this repository does not
     #    replace. They are set on a subclass the `SHIFT_SWAPS` row installs
@@ -319,6 +327,31 @@ class hmm_nophasing(UPSTREAM):  # type: ignore[misc]
     name rebind, because `cnaster`'s compiled kernels call `_nb_logpmf_1d` as
     a global and a Python function in its place breaks their compilation.
     """
+
+    per_state_dispersion: bool = False
+    """Off, as `cnaster` is: one `alpha` and one `tau` for every state (#566).
+
+    On, `optimize` fits one of each per state -- `cnaster`'s own
+    `shared_NB_dispersion=False`, `shared_BB_dispersion=False` -- whatever
+    the caller passed; `run_cnaster_port --per-state-dispersion` binds it.
+    """
+
+    dispersion_prior_rows: float = DISPERSION_PRIOR_ROWS
+    """`n0` of :class:`~port.patch.hmm_nophasing.gradient.DispersionShrinkage` (#566).
+
+    Read only with `per_state_dispersion` and the analytic gradient; 0 fits
+    the per-state dispersions unshrunk.
+    """
+
+    alpha_min: float = ALPHA_MIN
+    """The per-state `alpha`'s lower bound, read with `per_state_dispersion` (#566).
+
+    Always held: in the M step by projection, and at every emission call by
+    a clamp, so no point a line search or a refit proposes reaches `sal`
+    below it."""
+
+    tau_max: float = TAU_MAX
+    """The per-state `tau`'s upper bound, read with `per_state_dispersion` (#566)."""
 
     dispersion_rescale: bool = False
     """Off, as `cnaster` is: `alpha`, `tau` score every pseudobulk row alike (#566).
@@ -478,6 +511,12 @@ class hmm_nophasing(UPSTREAM):  # type: ignore[misc]
         """
         hmm_nophasing._row_shift = None
 
+        # NB #566: `cnaster` reads the two flags as keywords of this call, so
+        #    the option overrides them here, for this class's fits alone.
+        if self.per_state_dispersion:
+            kwargs["shared_NB_dispersion"] = False
+            kwargs["shared_BB_dispersion"] = False
+
         # NB #566: the factors recorded for exactly these rows, or refused.
         if self.dispersion_rescale:
             from port.patch.hmm_nophasing.rescale import find
@@ -512,11 +551,25 @@ class hmm_nophasing(UPSTREAM):  # type: ignore[misc]
             and not args
             and kwargs.get("optimizer", "BFGS") == "BFGS"
         ):
-            kwargs["optimizer"] = analytic_bfgs(
-                EmGradient.for_fit(
-                    self, X, n_states, base_nb_mean, total_bb_RD, **kwargs
-                )
+            gradient = EmGradient.for_fit(
+                self, X, n_states, base_nb_mean, total_bb_RD, **kwargs
             )
+            penalty = (
+                DispersionShrinkage.for_fit(gradient, self.dispersion_prior_rows)
+                if self.per_state_dispersion and self.dispersion_prior_rows > 0.0
+                else None
+            )
+            bounds = (
+                DispersionBounds.for_fit(gradient, self.alpha_min, self.tau_max)
+                if self.per_state_dispersion
+                else None
+            )
+            kwargs["optimizer"] = analytic_bfgs(gradient, penalty, bounds)
+        elif self.per_state_dispersion:
+            # NB the bounds and the shrinkage act inside port's M step; refused
+            #    rather than dropped where that M step is not the one run.
+            msg = "per-state dispersion needs the analytic gradient and BFGS"
+            raise ValueError(msg)
 
         res: dict[str, Any] = super().optimize(
             X, lengths, n_states, base_nb_mean, total_bb_RD, *args, **kwargs
@@ -574,6 +627,24 @@ class hmm_nophasing(UPSTREAM):  # type: ignore[misc]
 
         return res
 
+    def bounded_dispersions(
+        self, alphas: np.ndarray, taus: np.ndarray
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """`alphas` and `taus` inside the per-state bounds, or as given without per-state dispersions.
+
+        The bounds at the call, not only in the M step: a line search, a
+        refit or a start can hand the emission a point the projection never
+        saw, and `sal` refuses `alpha <= 0` (#570). Shared dispersions pass
+        through untouched, as `cnaster` fits them.
+        """
+        if not self.per_state_dispersion:
+            return alphas, taus
+
+        return (
+            np.maximum(np.asarray(alphas, dtype=np.float64), self.alpha_min),
+            np.minimum(np.asarray(taus, dtype=np.float64), self.tau_max),
+        )
+
     def compute_emission_probability_nb_betabinom_coded(
         self,
         nbEncoder: Any,
@@ -597,6 +668,8 @@ class hmm_nophasing(UPSTREAM):  # type: ignore[misc]
         guessing at `hmm_nophasing.py:279`.
         """
         decode = self._decode()
+
+        alphas, taus = self.bounded_dispersions(alphas, taus)
 
         if self._rescale is not None:
             return self._rescaled_coded(

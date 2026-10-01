@@ -269,6 +269,9 @@ follows the arm unless asked: on in a patched run, off with `--no-patch`.
 | `--floor-merge` | off; on with `--sal` | the clone-size floor met smallest first (#348) | alone, #338's three-sample instance: 2 planted clones fitted as 6 |
 | `--hmm-start` | `none`; `kmeans++x5+em` with `--sal` | the read-depth HMM's start from sal's covariate mixture (#489) | CalicoST hard clone ARI 0.8652 to 0.9829 |
 | `--dispersion-rescale` | off | per-spot NB `alpha`, BB `tau`; each clone's pseudobulk at `alpha / S_eff` and `rho g` (#566, #100) | 8 vs 64 spots: pseudobulk `alpha` 6.5x apart unrescaled, per-spot recovered to 25 per cent; CalicoST in the PR |
+| `--per-state-dispersion` | off | one NB `alpha`, BB `tau` per state, `cnaster`'s `shared_*_dispersion=False` (#566) | CalicoST in PR #567 |
+| `--alpha-min`, `--tau-max` | 1e-3, 1e5 with `--per-state-dispersion` | the per-state bounds, always held: by projection in the M step and by a clamp at every emission call (#566, #570) | unbounded, a state on three exact rows ran to `alpha` 1.1e-10; `sal` refused one at 0.0 |
+| `--dispersion-prior-rows` | 0 | shrink each `log alpha_k`, `log tau_k` toward the pooled value with weight `n0 / (n0 + n_k)` (#566) | held-out pick on #540's problems: 30 |
 | `--copy-errors` | off | `cnv_copy_sets.tsv`: every `(A, B)` in each state's 95 per cent credible region (#353) | differentiates the whole objective once |
 | `--png-copies` | off | a PNG without metadata beside each PDF, for `docs/plots` (#452) | two runs of the same code write the same bytes |
 | `--sample-layout`, `--genomic-colours` | unset | one panel per sample (#328); bins coloured per fitted state | |
