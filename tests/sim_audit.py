@@ -52,6 +52,14 @@ is one pair by definition and has no ARI; `exact_neutral` stands in for it.
 Each `copy_ari*_pf` is the same ARI on phase-free pairs, `(min, max)` of the
 planted and of the decoded `(A, B)`, so a consistent phase swap scores as the
 phased ARI already does and an inconsistent one is forgiven.
+
+`confusion` is the planted `(A, B)` against the decoded, over every pair with
+`A + B <= max_total_copy` (`cnaster`'s 6 by default), as the fraction of each
+planted pair's clone-bins decoded to each pair: a row sums to 1. Planted
+rows only, and nonzero entries only; a decode outside the cap is `other`.
+`python -m tests.sim_audit` prints it as a table on stderr, every pair within
+the cap a row and a column; `--confusion-sampled` keeps the planted rows and
+the decoded columns alone.
 """
 
 from __future__ import annotations
@@ -59,6 +67,7 @@ from __future__ import annotations
 import argparse
 import json
 import resource
+import sys
 import tempfile
 import time
 import warnings
@@ -69,6 +78,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 import yaml
+from port.extensions.integer_copy import DEFAULT_MAX_TOTAL_COPY
 from port.sim.files import located
 
 from tests.recovery_audit import integer_clones
@@ -111,6 +121,7 @@ class SimRecovery:
     exact_neutral: float
     bins: int
     clone_of: dict[int, int] = field(default_factory=dict)
+    confusion: dict[str, dict[str, float]] = field(default_factory=dict)
 
 
 def _scratch() -> Path:
@@ -166,6 +177,70 @@ def class_ari(t: np.ndarray, ab: np.ndarray, where: np.ndarray) -> float:
     if np.unique(t[where]).size < 2:
         return float("nan")
     return round(float(adjusted_rand_score(t[where], ab[where])), 4)
+
+
+OTHER = "other"
+"""The decoded column for a pair outside `copy_states`, or a bin left unfit."""
+
+
+def copy_states(max_total: int) -> list[tuple[int, int]]:
+    """Every `(A, B)` with `A + B <= max_total`, by total, then by `A`."""
+    return [(a, n - a) for n in range(max_total + 1) for a in range(n + 1)]
+
+
+def _pair(code: int) -> str:
+    return f"{code // 1_000},{code % 1_000}"
+
+
+def copy_confusion(
+    t: np.ndarray, ab: np.ndarray, max_total: int
+) -> dict[str, dict[str, float]]:
+    """Planted against decoded `(A, B)`, as fractions of each planted row.
+
+    Rows are the planted pairs within `max_total`, columns every pair within
+    it and `OTHER`; zero entries are left out, so a row's values sum to 1.
+    """
+    states = {a * 1_000 + b for a, b in copy_states(max_total)}
+    confusion: dict[str, dict[str, float]] = {}
+
+    for planted in sorted(states & set(np.unique(t).tolist()), key=_order):
+        decoded = ab[t == planted]
+        named = [_pair(int(d)) if int(d) in states else OTHER for d in decoded]
+        values, counts = np.unique(named, return_counts=True)
+        confusion[_pair(planted)] = {
+            str(v): round(float(c) / decoded.size, 4)
+            for v, c in zip(values, counts, strict=True)
+        }
+    return confusion
+
+
+def _order(code: int) -> tuple[int, int]:
+    return (code // 1_000 + code % 1_000, code // 1_000)
+
+
+def confusion_table(
+    confusion: dict[str, dict[str, float]], max_total: int, *, sampled: bool = False
+) -> str:
+    """`confusion` as a markdown table, rows planted and columns decoded, in
+    `copy_states` order with `OTHER` last.
+
+    Every pair within `max_total` is a row and a column; `sampled` drops the
+    rows of pairs never planted and the columns of pairs never decoded.
+    """
+    decoded = {d for row in confusion.values() for d in row}
+    pairs = [f"{a},{b}" for a, b in copy_states(max_total)]
+    rows = [p for p in pairs if p in confusion] if sampled else pairs
+    columns = [p for p in pairs if p in decoded or not sampled]
+    columns += [OTHER] if OTHER in decoded or not sampled else []
+    lines = [
+        "| planted \\ decoded | " + " | ".join(columns) + " |",
+        "| --- |" + " --- |" * len(columns),
+    ]
+    for planted in rows:
+        row = confusion.get(planted, {})
+        cells = [f"{row[c]:.4f}" if c in row else "" for c in columns]
+        lines.append(f"| {planted} | " + " | ".join(cells) + " |")
+    return "\n".join(lines)
 
 
 def read_run(sample: SimulatedSample, output: Path) -> dict[str, Any]:
@@ -296,6 +371,7 @@ def score(sample: SimulatedSample, output: Path, arm: str, wall: float) -> SimRe
         exact_neutral=share(t == ab, classes["neutral"]),
         bins=int(covered.sum()),
         clone_of=clone_of,
+        confusion=copy_confusion(t, ab, DEFAULT_MAX_TOTAL_COPY),
     )
 
 
@@ -381,6 +457,11 @@ def main() -> None:
         metavar="F1,F2,...",
         help="with --pure, tumour clone c's spots F_c normal instead",
     )
+    parser.add_argument(
+        "--confusion-sampled",
+        action="store_true",
+        help="print only planted rows and decoded columns of the confusion",
+    )
     parser.add_argument("flags", nargs=argparse.REMAINDER)
     arguments = parser.parse_args()
 
@@ -418,6 +499,15 @@ def main() -> None:
     print(
         "SIM "
         + json.dumps({**asdict(recovery), "set": arguments.set, "output": str(output)})
+    )
+    print(
+        confusion_table(
+            recovery.confusion,
+            DEFAULT_MAX_TOTAL_COPY,
+            sampled=arguments.confusion_sampled,
+        ),
+        file=sys.stderr,
+        flush=True,
     )
 
 

@@ -12,7 +12,15 @@ import numpy as np
 import pytest
 from sklearn.metrics import adjusted_rand_score
 
-from tests.sim_audit import class_ari, phase_free, planted_classes
+from tests.sim_audit import (
+    OTHER,
+    class_ari,
+    confusion_table,
+    copy_confusion,
+    copy_states,
+    phase_free,
+    planted_classes,
+)
 
 
 def _code(pairs: list[tuple[int, int]]) -> np.ndarray:
@@ -107,3 +115,53 @@ def test_each_phase_free_class_ari_is_sklearns_on_hand_sorted_pairs() -> None:
         assert class_ari(truth, decode, classes[name]) == pytest.approx(
             expected, abs=5e-5
         )
+
+
+@pytest.mark.oracle
+def test_the_confusion_is_sklearns_row_normalised_matrix_within_the_cap() -> None:
+    """Planted rows against `confusion_matrix(normalize="true")`, to 5e-5.
+
+    At cap 3, `(1, 3)`, `(3, 3)` and `(2, 2)` lie outside: their planted rows
+    are dropped, and a decode to one of them is `other`.
+    """
+    from sklearn.metrics import confusion_matrix
+
+    cap = 3
+    states = [a * 1_000 + b for a, b in copy_states(cap)]
+    inside = np.isin(TRUTH, states)
+    decoded = np.where(np.isin(DECODE, states), DECODE, -1)
+    labels = [*states, -1]
+    matrix = confusion_matrix(
+        TRUTH[inside], decoded[inside], labels=labels, normalize="true"
+    )
+    confusion = copy_confusion(TRUTH, DECODE, cap)
+
+    assert len(copy_states(cap)) == 10
+    assert set(confusion) == {"0,1", "1,0", "0,2", "1,1", "2,1"}
+    for i, planted in enumerate(states):
+        row = confusion.get(f"{planted // 1_000},{planted % 1_000}")
+        if row is None:
+            assert not matrix[i].any()
+            continue
+        assert sum(row.values()) == pytest.approx(1.0, abs=5e-4)
+        for j, code in enumerate(labels):
+            name = OTHER if code < 0 else f"{code // 1_000},{code % 1_000}"
+            assert row.get(name, 0.0) == pytest.approx(matrix[i, j], abs=5e-5)
+
+
+@pytest.mark.analytic
+def test_the_sampled_table_drops_unplanted_rows_and_undecoded_columns() -> None:
+    """At cap 3: full is 10 rows by 10 pairs and `other`; sampled keeps the
+    5 planted rows and the 6 pairs decoded from them, and no `other`, as the
+    one decode outside the cap is of a row outside it.
+    """
+    confusion = copy_confusion(TRUTH, DECODE, 3)
+    full = confusion_table(confusion, 3).splitlines()
+    sampled = confusion_table(confusion, 3, sampled=True).splitlines()
+
+    assert len(full) == 2 + 10
+    assert full[0].count("|") == 1 + 1 + 11
+    assert [line.split(" | ")[0] for line in sampled[2:]] == [
+        "| 0,1", "| 1,0", "| 0,2", "| 1,1", "| 2,1"
+    ]  # fmt: skip
+    assert sampled[0] == "| planted \\ decoded | 0,1 | 1,0 | 0,2 | 1,1 | 1,2 | 2,1 |"
