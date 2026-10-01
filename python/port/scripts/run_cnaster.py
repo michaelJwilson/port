@@ -168,14 +168,9 @@ def _parser() -> argparse.ArgumentParser:
         help="snakes_and_ladders' labelling, and the mask, floor and start it implies (#312)",
     )
     parser.add_argument(
-        "--sparse-counts",
+        "--lean-counts",
         action="store_true",
-        help="keep the loader's counts and allele matrices sparse (#186, #569); off",
-    )
-    parser.add_argument(
-        "--narrow-counts",
-        action="store_true",
-        help="hold single_X and single_total_bb_RD as int32, not int64 (#569); off",
+        help="sparse loader counts and int32 block and bin counts, outputs bitwise (#569); off",
     )
     parser.add_argument(
         "--copy-errors",
@@ -553,14 +548,12 @@ def main(argv: Sequence[str] | None = None) -> int:
                     file=sys.stderr,
                 )
 
-        if arguments.sparse_counts:
+        if arguments.lean_counts:
             # NB the loader's own option (#186): the counts layer, `exp_counts`
             #    and both allele matrices stay CSR rather than dense (#569).
             selected = with_options(
                 selected, "port.patch.io:load_input_data", sparse_counts=True
             )
-
-        if arguments.narrow_counts:
             # NB the block and bin summaries' integer type (#569): every count
             #    is far below 2^31, so the values are the int64 ones.
             import numpy as np
