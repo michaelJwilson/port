@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 from typing import Any
 
 import numpy as np
@@ -124,3 +125,140 @@ def test_the_baf_only_and_minor_calls_keep_upstreams_start(
             assert mine is None
         else:
             np.testing.assert_array_equal(mine, their)
+
+
+def _refusing(
+    monkeypatch: pytest.MonkeyPatch, rng: np.random.Generator, refused: set[int]
+) -> None:
+    """`sal`'s seeding, raising as its M step does on the streams `rng` spawns at `refused`.
+
+    Keyed by stream, not by call order, so a seeding is refused wherever it
+    runs: in `sal`'s best-of or in port's rerun of the survivors.
+    """
+    import sal.search.mixture_starts as starts
+    from port.patch.hmm_initialize import sal_mixture
+
+    inner = starts.lookup
+    chosen: Any = inner(sal_mixture.DEFAULT)
+    states = [
+        stream.bit_generator.state
+        for index, stream in enumerate(copy.deepcopy(rng).spawn(chosen.n))
+        if index in refused
+    ]
+
+    def lookup(name: str) -> Any:
+        found = inner(name)
+
+        if name != chosen.name:
+            return found
+
+        def seeding(instance: Any, generator: np.random.Generator) -> Any:
+            if generator.bit_generator.state in states:
+                msg = "mean and weight must be positive, got 0.0 and 1e-41"
+                raise ValueError(msg)
+
+            return found(instance, generator)
+
+        return seeding
+
+    monkeypatch.setattr(starts, "lookup", lookup)
+
+
+@pytest.mark.oracle
+def test_a_refused_seeding_is_dropped_and_the_best_survivor_kept(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """T- #596: one seeding of five refused, the start is the best of the other four.
+
+    Referee: those four seedings run alone, each on the stream `sal`'s
+    best-of spawns for it and polished to convergence, the best by final
+    log-likelihood.
+    """
+    from port.patch.hmm_initialize import sal_mixture
+    from sal.search.mixture_starts import lookup, polish
+
+    X, base, trials = _draw()
+    instance = sal_mixture.instance_of(X, base, trials, len(PLANTED))
+    chosen: Any = lookup(sal_mixture.DEFAULT)
+    streams = np.random.default_rng([0, 0]).spawn(chosen.n)
+    alone = [
+        polish(
+            instance,
+            lookup(chosen.name)(instance, streams[index]).components,
+            seconds=sal_mixture.POLISH_SECONDS,
+            tolerance=1e-6,
+        )
+        for index in (0, 1, 3, 4)
+    ]
+    finals = [float(fit.log_likelihoods[-1]) for fit in alone]
+    best: Any = alone[int(np.argmax(finals))].components
+
+    before = len(sal_mixture.dropped())
+    _refusing(monkeypatch, np.random.default_rng([0, 0]), {2})
+    log_mu, p_binom = sal_mixture.fitted(
+        instance, sal_mixture.DEFAULT, np.random.default_rng([0, 0])
+    )
+
+    np.testing.assert_allclose(
+        log_mu, np.log(np.asarray(best.total.mean).reshape(-1)), rtol=1e-9
+    )
+    np.testing.assert_allclose(p_binom, np.asarray(best.rate).reshape(-1), rtol=1e-9)
+    assert [index for index, _ in sal_mixture.dropped()[before:]] == [2]
+
+
+@pytest.mark.smoke
+def test_the_start_fails_only_when_every_seeding_is_refused(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Every seeding refused: the start raises, naming the start, rather than returning nothing."""
+    from port.patch.hmm_initialize import sal_mixture
+
+    X, base, trials = _draw(600, seed=2)
+    instance = sal_mixture.instance_of(X, base, trials, len(PLANTED))
+    _refusing(monkeypatch, np.random.default_rng(0), set(range(5)))
+
+    with pytest.raises(ValueError, match="refused every seeding"):
+        sal_mixture.fitted(instance, sal_mixture.DEFAULT, np.random.default_rng(0))
+
+
+REFUSED = "tests/data/sal_seeding_refused_hard.npz"
+"""The read-depth + BAF start's call on CalicoST hard (`1ae26365`) with the
+outlier filter off (T- #596): `X`, `base`, `total` and `n_states` as
+`instance_of` received them, 13,688 bins and 7 states."""
+
+
+@pytest.mark.release
+@pytest.mark.bug
+def test_sal_refuses_one_seeding_of_hard_with_the_filter_off() -> None:
+    """**T- #596:** `sal`'s best-of raises on the call; port's start drops seeding 2 and returns.
+
+    `sal`'s dispersion M step refuses a component EM collapsed to weight
+    1e-41. Fails when `sal` survives the call, and port's guard can go.
+    """
+    from pathlib import Path
+
+    from port.patch.hmm_initialize import sal_mixture
+    from sal.search.mixture_starts import lookup
+
+    call = np.load(Path(__file__).parents[1] / REFUSED)
+    instance = sal_mixture.instance_of(
+        call["X"], call["base"], call["total"], int(call["n_states"])
+    )
+    chosen: Any = lookup(sal_mixture.DEFAULT)
+
+    with pytest.raises(ValueError, match="mean and weight must be positive"):
+        chosen.polished(
+            instance,
+            np.random.default_rng([0, 0]),
+            seconds=sal_mixture.POLISH_SECONDS,
+            passes=None,
+            tolerance=1e-6,
+        )
+
+    before = len(sal_mixture.dropped())
+    log_mu, p_binom = sal_mixture.fitted(
+        instance, sal_mixture.DEFAULT, np.random.default_rng([0, 0])
+    )
+
+    assert [index for index, _ in sal_mixture.dropped()[before:]] == [2]
+    assert log_mu.shape == p_binom.shape == (7,)
