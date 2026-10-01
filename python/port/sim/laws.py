@@ -3,7 +3,8 @@
 `Law` is a fitted distribution with the evidence for it; `fit_lognormal` and
 `fit_negative_binomial` fit the two families spot and SNP totals are drawn
 from; `Event` is one planted `(A, B)`; `allele_share` is the expected
-haplotype-A share under the admixture law.
+haplotype-A share under the admixture law; `lognormal_sigma` is the spread of
+the `[cna.length]` lognormal law (#619).
 """
 
 from __future__ import annotations
@@ -88,6 +89,20 @@ def counted(values: np.ndarray, prefer: str) -> Law:
     )
     chosen = lognormal if prefer == "lognormal" else negative
     return chosen._replace(n=int(np.asarray(values).size))
+
+
+def lognormal_sigma(share: float, below: float) -> float:
+    """sigma of a lognormal with `share` of its mass below `below` times its median (#619).
+
+    A lognormal of median `m` is `log L ~ Normal(log m, sigma^2)`, so
+    `P(L < below m) = Φ(log(below) / sigma)`. Setting it to `share` and solving,
+    `sigma = log(below) / Φ⁻¹(share) = log(1 / below) / Φ⁻¹(1 - share)`, positive
+    for `below < 1` and `share < 1/2`. At `share = 0.10`, `below = 0.5`:
+    `sigma = ln 2 / 1.2816 = 0.5409`, which `[cna.length]` states as `0.541`.
+    """
+    from scipy.stats import norm
+
+    return float(np.log(1.0 / below) / norm.ppf(1.0 - share))
 
 
 def allele_share(
