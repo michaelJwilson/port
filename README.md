@@ -239,6 +239,7 @@ run_cnaster_port --no-copy-cap config.yaml   # cnaster's integer copy caps, A + 
 run_cnaster_port --sample-layout 3,1 config.yaml  # clone spatial plots, one panel per sample
 run_cnaster_port --genomic-colours states config.yaml  # clones_genomic coloured per fitted state, not per integer pair
 run_cnaster_port --copy-decode shared config.yaml  # one integer pair per fitted state; default: lattice Viterbi per clone
+run_cnaster_port --parsimony-decode config.yaml  # the lattice decode's prior -0.5 |A + B - 2|; default: flat
 run_cnaster_port --time-stages config.yaml   # what the replacements cost in the run
 run_cnaster_port --floor-merge --refinement-mask config.yaml  # #348's clone patches, opt-in; --no-distinct-init drops the third
 python -m port.sandbox.np_merge config.yaml # sandbox: CalicoST's Neyman-Pearson merge of clones that decode alike (#497), not installed by default
@@ -262,6 +263,7 @@ follows the arm unless asked: on in a patched run, off with `--no-patch`.
 | `--distinct-init` | on where the shift is | the HMM starts from distinct GMM components (#348) | copy-state ARI 0.896 to 0.997 on `calicost_instance` |
 | `--copy-cap` | on; off with `--no-patch` | the likelihood decode under the configured cap (#313, #362) | `cnaster`'s decoders read no cap: A + B <= 6 |
 | `--copy-decode` | `lattice` | per-clone lattice Viterbi with tumour fraction (#370), or one pair per state, `shared` (#327) | |
+| `--parsimony-decode` | off: flat prior | the lattice decode's log-prior `-0.5 \|A + B - 2\|` per bin, on by default before T- #471; refused without the lattice decode | |
 | `--rust` | on; off with `--no-patch` | `cnaster`'s four lattices from `oxiport` (#318) | bitwise; compiled at build, not per process |
 | `--sal` | off | alpha expansion with the Rust cut for the labelling (#312), and the next two | a lower Potts energy on every problem measured |
 | `--refinement-mask` | off; on with `--sal` | each read-depth sub-clone kept in its BAF clone, a 100-nat penalty (#348, #467) | with the floor merge, CalicoST hard clone ARI 0.303 to 0.982 |
