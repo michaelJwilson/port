@@ -168,8 +168,8 @@ def test_on_it_applies_cnasters_own_shift(cnaster_config: None) -> None:
 
     The referee is `cnaster`'s `compute_logmu_shifts` and `_nb_logpmf_1d`,
     both called directly here, so what is checked is that the quantity
-    reaches the kernel. To 1e-9 relative: the shifted path scores with the
-    log-space negative binomial (#560), `cnaster` where its `p < 1`.
+    reaches the kernel rather than that two implementations of it agree.
+    Bitwise, because nothing is reassociated between the two.
     """
     from cnaster.hmm_nophasing import _nb_logpmf_1d, compute_logmu_shifts
 
@@ -203,11 +203,9 @@ def test_on_it_applies_cnasters_own_shift(cnaster_config: None) -> None:
                 expected,
             )
 
-            np.testing.assert_allclose(
+            np.testing.assert_array_equal(
                 rdr[state, start:stop],
                 expected,
-                rtol=1e-9,
-                atol=1e-9,
                 err_msg=f"clone {clone}, state {state}",
             )
 

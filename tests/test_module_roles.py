@@ -68,6 +68,8 @@ ROLES: dict[str, Role] = {
     "port.extensions.segments": "extension",
     "port.extensions.vocabulary": "tool",
     # patch: rows
+    "port.patch.hmm_nophasing.bb_logpmf": "row",
+    "port.patch.hmm_nophasing.nb_logpmf": "row",
     "port.patch.hmm_nophasing.shifted_emission": "row",
     "port.patch.hmm_phased.coded_emission": "row",
     "port.patch.hmrf.clone_assignment": "row",
@@ -94,7 +96,6 @@ ROLES: dict[str, Role] = {
     "port.patch.hmm_nophasing.dense_emission": "row-helper",
     "port.patch.hmm_nophasing.gradient": "row-helper",
     "port.patch.hmm_nophasing.logmu_shift": "row-helper",
-    "port.patch.hmm_nophasing.nb_logpmf": "row-helper",
     "port.patch.hmrf.adjacency": "row-helper",
     "port.patch.hmrf.fused_field": "row-helper",
     "port.patch.hmrf.tabulated_field": "row-helper",

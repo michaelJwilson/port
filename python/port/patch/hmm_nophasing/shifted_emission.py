@@ -80,16 +80,9 @@ build once.
 The whole call, against the unshifted emission upstream runs: **1.12x** at
 3 x 1,000 and **1.83x** at 10 x 29,000, `K = 7`.
 
-## The negative binomial is log space (#560)
-
-**Referee: `cnaster` to 1e-9 relative where `cnaster`'s `p < 1`; the
-log-space negative binomial (#560) below.**
-The shifted path scores with
-`port.patch.hmm_nophasing.nb_logpmf._nb_logpmf_1d`, not `cnaster`'s:
-upstream's returns 0 -- probability 1 -- once `p = 1 / (1 + alpha lambda)`
-rounds to 1.0 (`alpha lambda < 1.1e-16`), and `nb_logpmf.patched()` cannot
-reach a kernel imported by name. The unshifted path is `super()`'s and stays
-bitwise `cnaster`.
+The per-bin kernels are this module's `_nb_logpmf_1d` and `_bb_logpmf_1d`
+names, called from Python, so `port.pipeline.LOG_SPACE_SWAPS` rebinds them
+here as it does in `cnaster` (#560, #561).
 """
 
 from __future__ import annotations
@@ -99,14 +92,13 @@ from typing import Any, NamedTuple
 
 import numpy as np
 from cnaster.config import get_global_config, start_time
-from cnaster.hmm_nophasing import _bb_logpmf_1d
+from cnaster.hmm_nophasing import _bb_logpmf_1d, _nb_logpmf_1d
 from cnaster.hmm_nophasing import hmm_nophasing as UPSTREAM
 from cnaster.logger import get_logger
 from sal.ragged import Ragged
 
 from port.patch.hmm_nophasing.gradient import EmGradient, analytic_bfgs
 from port.patch.hmm_nophasing.logmu_shift import shifts as logmu_shifts
-from port.patch.hmm_nophasing.nb_logpmf import _nb_logpmf_1d
 from port.patch.plotting.clone_paths import state_vector
 
 logger = get_logger(__name__, start_time=start_time)

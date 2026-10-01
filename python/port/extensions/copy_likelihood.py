@@ -39,6 +39,7 @@ from typing import Any, Literal, NamedTuple
 import numpy as np
 from scipy.special import gammaln, xlogy
 
+from port.patch.hmm_nophasing.bb_logpmf import rises
 from port.patch.hmm_nophasing.gradient import DISPERSION_FLOOR
 
 __all__ = [
@@ -150,13 +151,9 @@ def _emission(
     else:
         a = np.maximum(p * bulk.taus, DISPERSION_FLOOR)
         b = np.maximum((1.0 - p) * bulk.taus, DISPERSION_FLOOR)
-        allele = (
-            choose
-            + gammaln(k + a)
-            + gammaln(n - k + b)
-            - gammaln(n + a + b)
-            - (gammaln(a) + gammaln(b) - gammaln(a + b))
-        )
+        # NB rising factorials (#561): the `lgamma` form subtracts values
+        #    near `tau log tau` and loses 5e-3 nats at `tau = 1e12`.
+        allele = choose + rises(a, k) + rises(b, n - k) - rises(a + b, n)
 
     return np.asarray(depth + allele)
 

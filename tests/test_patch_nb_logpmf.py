@@ -58,7 +58,7 @@ def test_the_patched_kernel_is_cnasters_where_cnasters_p_is_below_one(
 
 @pytest.mark.bug
 def test_cnaster_scores_any_count_at_probability_one_once_p_rounds_to_one() -> None:
-    """At `log mu = -43.22`, the state Baum-Welch reached on dev_tree_1s_hard r0 (`d2938975`), upstream scores 1,000 UMIs at log P = 0.
+    """At `log mu = -43.22`, the state Baum-Welch reached on dev_tree_1s_hard r0, upstream scores 1,000 UMIs at log P = 0.
 
     The patch scores the same count at `k log(alpha lambda)`, below -30,000.
     """
@@ -80,13 +80,22 @@ def test_the_patched_pmf_sums_to_one(mu: float) -> None:
     assert logsumexp(out) == pytest.approx(0.0, abs=1e-9)
 
 
-@pytest.mark.patch
-def test_patched_installs_both_kernels_and_restores_them() -> None:
-    """Inside, `cnaster.hmm_nophasing`'s two NB names are the patch's; outside, upstream's again."""
-    import cnaster.hmm_nophasing as upstream
+@pytest.mark.oracle
+@pytest.mark.parametrize("mean", [1e-17, 1e-12, 1e-6])
+def test_the_patched_kernel_is_the_brute_force_negative_binomial_below_scipys_range(
+    mean: float,
+) -> None:
+    """Where scipy forms `p` and loses digits, the 50-digit sums of logs, to 1e-9 relative.
 
-    before = (upstream._nb_logpmf_1d, upstream._dense_nb_logpmf)
-    with patch.patched():
-        assert upstream._nb_logpmf_1d is patch._nb_logpmf_1d
-        assert upstream._dense_nb_logpmf is patch._dense_nb_logpmf
-    assert (upstream._nb_logpmf_1d, upstream._dense_nb_logpmf) == before
+    At a mean of 1e-17 (`alpha * lambda = 1.2e-18`) upstream scores every
+    count 0; a count of 1000 is -41,224 nats.
+    """
+    from tests.exact_densities import nb_logpmf
+
+    alpha = 0.12
+    counts = COUNTS[COUNTS <= 1000]
+    out = np.zeros(counts.size)
+    patch._nb_logpmf_1d(counts, np.ones(counts.size), mean, alpha, out)
+    exact = [nb_logpmf(int(k), mean, alpha) for k in counts]
+
+    np.testing.assert_allclose(out, exact, rtol=1e-9, atol=1e-12)

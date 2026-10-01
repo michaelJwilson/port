@@ -1,38 +1,33 @@
 """`cnaster.hmm_nophasing._nb_logpmf_1d`, in log space so a vanishing mean cannot score a count at probability 1 (#560).
 
-**A row helper (#560).** `shifted_emission`, `hmm_phased.coded_emission`,
-`hmrf.fused_field` and `hmrf.tabulated_field` compile `_nb_logpmf_1d` in by
-name, so :func:`patched` cannot reach them and they import this kernel
-instead; `hmrf.tabulated_field` restates it term for term. Retire when
-`cnaster` lands the fix. Measured: scipy to 1e-9 where scipy is exact
-(`alpha * lambda >= 1e-4`); cnaster to 1e-9 where its `p < 1`;
-dev_tree_1s_hard r0 (`d2938975`)'s degenerate fit, -23,359 nats unpatched,
-refits at -75,505 nats and 1.3% missed.
-
-**Replaces** `_nb_logpmf_1d(obs, exposure, mu, alpha, out)` and, since
-`cnaster`'s compiled `_dense_nb_logpmf` binds it as a global at compile time,
-`_dense_nb_logpmf(X_nb, base_nb_mean, log_mu, alphas)` beside it.
+**A row (#560).** `port.pipeline.LOG_SPACE_SWAPS` rebinds `_nb_logpmf_1d`
+and, since `cnaster`'s compiled `_dense_nb_logpmf` binds it as a global at
+compile time, `_dense_nb_logpmf` beside it, wherever `cnaster` binds them.
+`port.patch.hmrf`'s field, the M-step gradient, `copy_likelihood` and
+`jax_hmm` score the same arithmetic. Retire when `cnaster` lands the fix.
 
 **The defect.** Upstream forms `p = 1 / (1 + alpha * lambda)` and calls
 `nbinom_logpmf_numba(k, r, p)`, which returns `0.0` -- probability 1, for
 any count -- when `p >= 1.0`. In float64 `p` rounds to exactly 1.0 once
 `alpha * lambda` is below about 1.1e-16, so a state whose mean falls far
 enough scores every row it holds at probability 1. Baum-Welch finds it: on
-`dev_tree_1s_hard` r0 (`d2938975`) one fit drove a state to `log mu = -43.22`, gave it
+`dev_tree_1s_hard` r0 one fit drove a state to `log mu = -43.22`, gave it
 7,632 of 7,688 rows, and reported -23,359 nats against the planted states'
--76,306 (`port.sandbox.known_copy`).
+-76,306.
 
-**The fix.** With `a = alpha * lambda`: `log p = -log1p(a)` and
+**The fix.** With `a = max(alpha, 1e-10) * lambda`: `log p = -log1p(a)` and
 `log(1 - p) = log(a) - log1p(a)`, so no probability is formed and none
 rounds. `lambda <= 0` still scores 0, upstream's convention for an
-unobserved bin. `-lgamma(k + 1)` is kept, as upstream's
-`parameter_terms_only=True` keeps it: the full log pmf.
+unobserved bin. `alpha` is floored in `a` as upstream floors it in `r`;
+upstream leaves `p` unfloored, which is the same defect reached through
+`alpha < 1.1e-16 / lambda`.
 
-**Referee.** `scipy.stats.nbinom.logpmf`, and upstream's
-kernel where it is defined (`a >= 1e-8`), to 1e-9 relative
-(`tests/test_patch_nb_logpmf.py`). Not bitwise: `log1p` and `log` of a sum
-differ from `log` of a quotient in the last place, so this is installed by
-:func:`patched` around a fit, not a `SWAPS` row.
+**Referee.** `scipy.stats.nbinom.logpmf` where scipy is exact
+(`alpha * lambda >= 1e-4`), `mpmath` at 50 digits below it, and upstream's
+kernel where its `p < 1`, each to 1e-9 relative
+(`tests/test_patch_nb_logpmf.py`, `tests/test_log_space_sites.py`). Not
+bitwise: `log1p` and `log` of a sum differ from `log` of a quotient in the
+last place, so this is its own table, not a `SWAPS` row.
 
 **Ratio.** Not an optimization: one `log1p` and one `log` per score, where
 upstream took one `log` of `p` and one of `1 - p`.
@@ -40,8 +35,6 @@ upstream took one `log` of `p` and one of `1 - p`.
 
 from __future__ import annotations
 
-from collections.abc import Iterator
-from contextlib import contextmanager
 from math import lgamma, log, log1p
 from typing import TYPE_CHECKING
 
@@ -53,7 +46,7 @@ if TYPE_CHECKING:  # pragma: no cover - `prange` is `range` to a type checker
 else:
     from numba import prange
 
-__all__ = ["_dense_nb_logpmf", "_nb_logpmf_1d", "patched"]
+__all__ = ["_dense_nb_logpmf", "_nb_logpmf_1d"]
 
 
 @njit(nogil=True, cache=True, error_model="numpy")
@@ -89,19 +82,3 @@ def _dense_nb_logpmf(X_nb, base_nb_mean, log_mu, alphas):
                 X_nb[:, s], base_nb_mean[:, s], mu_val, alpha_val, out[i, :, s]
             )
     return out
-
-
-@contextmanager
-def patched() -> Iterator[None]:
-    """`cnaster.hmm_nophasing`'s two NB kernels replaced by these, restored on the way out."""
-    import cnaster.hmm_nophasing as upstream
-
-    names = ("_nb_logpmf_1d", "_dense_nb_logpmf")
-    originals = {name: getattr(upstream, name) for name in names}
-    try:
-        upstream._nb_logpmf_1d = _nb_logpmf_1d
-        upstream._dense_nb_logpmf = _dense_nb_logpmf
-        yield
-    finally:
-        for name, original in originals.items():
-            setattr(upstream, name, original)
