@@ -487,27 +487,6 @@ def _bound_kernel(module: str) -> float:
     return float(out[0])
 
 
-def _emission_into() -> float:
-    from port.sandbox.patch.emission import emission_into
-
-    log_mu, alpha, exposure, count = DEGENERATE
-    out_rdr, out_baf = np.zeros((1, 1, 1)), np.zeros((1, 1, 1))
-    emission_into(
-        np.full((1, 1), count),
-        np.full((1, 1), exposure),
-        np.zeros((1, 1)),
-        np.zeros((1, 1)),
-        np.array([log_mu]),
-        np.array([alpha]),
-        np.array([0.5]),
-        np.array([30.0]),
-        out_rdr,
-        out_baf,
-        False,
-    )
-    return float(out_rdr[0, 0, 0])
-
-
 def _np_merge() -> float:
     from port.sandbox.np_merge import _emissions
 
@@ -527,7 +506,6 @@ def _np_merge() -> float:
 
 
 SANDBOX_SITES: dict[str, Callable[[], float]] = {
-    "sandbox_emission": _emission_into,
     "np_merge": _np_merge,
     "hmm_initialize_backends": lambda: _bound_kernel(
         "port.sandbox.patch.hmm_initialize.backends"

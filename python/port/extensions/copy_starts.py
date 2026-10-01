@@ -140,6 +140,7 @@ def instance(call: CopyCall, *, covariate: bool = True) -> Any:
         return held
 
     # NB the covariate is the kept bins' exposure: rows[:, 0] times it is the observed total
+    rows = np.asarray(held.seeding_rows, dtype=np.float64)
     counts = np.column_stack([rows[:, 0] * held.covariate[:, 0], rows[:, 1]])
     return replace(held, covariate=None, seeding_rows=counts)
 
