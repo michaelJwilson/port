@@ -387,6 +387,8 @@ emission with `snakes_and_ladders`' dense log-emission, to 3.2e-12 of
 rather than 6; the lattice fixture is unchanged at 0.9985. It is not faster end
 to end. `--no-sal-emission` restores `cnaster`'s kernels. It rides on the
 shift rows, so `--no-shift` turns it off too, and `--distinct-init` with it.
+The copy decode reads the fit the shift's row captures, so `--no-shift` is
+refused while the copy rows are on: add `--no-copy-cap` (#576).
 
 **The M step's gradient is closed form** (#433). `cnaster` fits the
 emission by BFGS with a finite-difference gradient, one objective call per
@@ -448,6 +450,9 @@ CalicoST's `rectangle_initialize_initial_clone` never returns (`cnaster` #248).
 `--shipped FILE` runs CalicoST's own configuration file instead, taking only
 the paths from the YAML; a sheet of several slices takes
 `configuration_cna_multi`. `docs/final-benchmark.md` compares it with `--sal`.
+`docs/baseline-release.md` states what `--sal` recovers at the baseline
+release, on CalicoST's samples and the drawn `dev_tree` family
+(`sim/manifests/baseline/`).
 
 **`port.sim.draw`** (#445) draws new samples from a version-3 manifest:
 clones from CalicoST's `shared.unique` counts or a mutation tree
@@ -469,6 +474,15 @@ the same clones and layout, each a complete sample in
 manifests use CalicoST's array, 60 rows of 50 per slice, and plant every
 clone above cnaster's fixed 200-spot ICM floor (#468): `dev_tree` 6,000
 spots over two slices, `dev_shared_unique` 3,000 on one.
+`[model] counts_sampler` draws that law as normalized gammas (`gamma`, every
+committed realization) or as a Pólya urn (`urn`, `O(UMIs)` per spot, #549);
+`[array] kind` is `hex` (Visium) or `square` (Visium HD, #569).
+`dev_tree_1s{,_easy,_hard}` put `dev_tree`'s clones on one slice under the
+urn, with CalicoST easy's and hard's event laws and admixture (#556, #581);
+`sim/manifests/baseline/` keeps the gamma copies the baseline ran.
+Each `dev_tree*` manifest states `[sample] r0_hash`, its realization 0's
+`tests.sim_stages.realization_hash`, so a result names the generation it was
+drawn at; `tests/test_sim_r0_hash.py` redraws each to it.
 `tests.sim_audit` runs and scores one realization:
 
     python -m port.sim.draw sim/manifests/dev_tree.toml

@@ -1,0 +1,7 @@
+# Study wrapper (baseline measurement): dev_tree_1s_hard with 3 realizations.
+version = 3
+extends = "dev_tree_1s_hard.toml"
+
+[sample]
+name = "st_hard_bb01"
+realizations = 3

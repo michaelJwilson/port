@@ -6,7 +6,8 @@ the entries spread about it, and so how many are zero:
 - **genes**, Dirichlet-multinomial: spot `s` draws its gene shares
   `p_s ~ Dirichlet(kappa q)`, `q` the normal baseline `lambda` (times the
   clone's depth factor in `port.sim.draw`), and its UMI
-  `Multinomial(N_s, p_s)`. Gene `g`'s entries are then about NB with shape
+  `Multinomial(N_s, p_s)`, or the same law as a Pólya urn (#549). Gene `g`'s
+  entries are then about NB with shape
   `kappa q_g`: a rare gene sparse and clumped, an abundant one near Poisson.
   `kappa` is the scanned value whose draw, at CalicoST's normal spots' own
   totals, is nearest their nonzero entries in total variation;
@@ -186,7 +187,8 @@ def dirichlet_multinomial(
     """Row `s`: `Multinomial(depth[s], p_s)`, `p_s ~ Dirichlet(kappa q)`.
 
     `q` is `weights[:, labels[s]]` over its sum; the Dirichlet is drawn as
-    normalized gammas, so a column of weight 0 is never drawn.
+    normalized gammas, so a column of weight 0 is never drawn. `O(n_genes)`
+    per spot; the default, and `dirichlet_multinomial_urn`'s referee (#549).
     """
     import scipy.sparse
 
@@ -200,6 +202,60 @@ def dirichlet_multinomial(
             row[live] = rng.multinomial(int(total), shares / shares.sum())
         rows.append(scipy.sparse.csr_matrix(row))
     return scipy.sparse.vstack(rows, format="csr")
+
+
+def dirichlet_multinomial_urn(
+    depth: np.ndarray,
+    weights: np.ndarray,
+    labels: np.ndarray,
+    kappa: float,
+    rng: np.random.Generator,
+) -> Any:
+    """Row `s`: `DM(depth[s], kappa q)`, drawn by the Pólya urn (#549).
+
+    `q` is `weights[:, labels[s]]` over its sum. The spot's UMIs are seated
+    by a Chinese restaurant (`port.sim.kernels.seated`) and each table takes
+    one gene from `q`, so a spot costs `O(depth)` rather than the
+    `O(n_genes)` gammas and binomials of `dirichlet_multinomial`, which draws
+    the same law and is its referee. The two consume `rng` differently, so a
+    seed draws different counts under each. A column of weight 0 is never
+    drawn.
+    """
+    import scipy.sparse
+
+    from port.sim.kernels import seated
+
+    q = weights / weights.sum(axis=0, keepdims=True)
+    cumulative = np.cumsum(q, axis=0).T.copy()
+    indices, values, indptr = [], [], [0]
+
+    for total, clone in zip(depth, labels, strict=True):
+        cdf = cumulative[clone]
+        if int(total) <= 0 or not cdf[-1] > 0:
+            indptr.append(indptr[-1])
+            continue
+        sizes = seated(int(total), float(kappa), rng.random((int(total), 2)))
+        genes = np.searchsorted(cdf, rng.random(sizes.size) * cdf[-1], side="right")
+        drawn = np.bincount(genes, weights=sizes, minlength=q.shape[0])
+        kept = np.flatnonzero(drawn)
+        indices.append(kept)
+        values.append(drawn[kept].astype(np.int64))
+        indptr.append(indptr[-1] + kept.size)
+
+    return scipy.sparse.csr_matrix(
+        (
+            np.concatenate(values) if values else np.zeros(0, np.int64),
+            np.concatenate(indices).astype(np.int32)
+            if indices
+            else np.zeros(0, np.int32),
+            np.asarray(indptr),
+        ),
+        shape=(len(depth), q.shape[0]),
+    )
+
+
+COUNT_SAMPLERS = {"gamma": dirichlet_multinomial, "urn": dirichlet_multinomial_urn}
+"""`[model] counts_sampler`: one law, two draws of it (#549)."""
 
 
 def snp_law(depths: np.ndarray, a: float, b: float, n_snps: int) -> Mixture:

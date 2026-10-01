@@ -86,6 +86,22 @@ def test_the_neutral_state_decodes_on_total_two_by_its_allele_fraction(
 
 
 @pytest.mark.infra
+def test_the_copy_decode_without_the_shift_is_refused(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """`--no-shift` with the copy rows on is refused at the command line, not hours into the run (#576)."""
+    from port.scripts.run_cnaster import main
+
+    config = tmp_path / "config.yaml"
+    config.write_text("{}\n")
+
+    for argv in ([str(config), "--no-shift"], [str(config), "--sal", "--no-shift"]):
+        with pytest.raises(SystemExit):
+            main(argv)
+        assert "add --no-copy-cap" in capsys.readouterr().err
+
+
+@pytest.mark.infra
 def test_copy_errors_without_the_shift_is_refused(tmp_path: Path) -> None:
     from port.scripts.run_cnaster import main
 
