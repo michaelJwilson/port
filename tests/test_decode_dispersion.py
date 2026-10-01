@@ -168,3 +168,23 @@ def test_the_two_component_decode_finds_the_clone_shared_part() -> None:
 
     assert 0.01 < both.shared_alpha < 0.04
     assert both.log_likelihood >= rescaled.log_likelihood - 1e-6
+
+
+@pytest.mark.end2end
+def test_per_state_rescaled_dispersions_recover_per_spot_values_behind_clones_8x_apart() -> (
+    None
+):
+    """Per spot 0.05 and 1.0 by state, clones of `S_eff` 8 and 64: each state within 40 per cent.
+
+    Neither the per-state fit of pseudobulk values (one per state, both
+    clones) nor the rescaled fit (one per spot, every state) can hold both
+    the state's and the clone's factor.
+    """
+    planted = np.array([0.05, 0.05, 1.0, 1.0])
+    paths, bulks = _planted(planted, nb_factors=(1.0 / 8.0, 1.0 / 64.0))
+    both = _decode(paths, bulks, "per-state-rescale")
+    alphas = np.asarray(both.dispersion)[_lattice_index()]
+
+    np.testing.assert_allclose(alphas, planted, rtol=0.4)
+    for model in ("per-state", "rescale"):
+        assert both.log_likelihood > _decode(paths, bulks, model).log_likelihood

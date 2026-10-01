@@ -228,7 +228,12 @@ def _clone_of(clones: list[Any], path: np.ndarray, calls: dict[bytes, int]) -> i
 
 
 def _write_decode(decoded: Any, normal_clone: int) -> None:
-    """`copy_decode.tsv` beside `cnaster`'s tables: what the lattice decode fitted."""
+    """`copy_decode.tsv` beside `cnaster`'s tables: what the lattice decode fitted.
+
+    A per-state fit (#566) writes the occupancy-weighted geometric mean of
+    its `alpha` and `tau` there, and every state's own values, with the
+    bins each holds, to `copy_decode_states.tsv`.
+    """
     import pandas as pd
 
     try:
@@ -246,14 +251,35 @@ def _write_decode(decoded: Any, normal_clone: int) -> None:
 
     from port.extensions.copy_likelihood import PARSIMONY
 
+    alpha, tau = decoded.dispersion, decoded.taus
+
+    if np.ndim(alpha) or np.ndim(tau):
+        occupancy = np.bincount(
+            np.concatenate(decoded.paths), minlength=len(decoded.states)
+        ).astype(np.float64)
+        alphas = np.broadcast_to(np.asarray(alpha, dtype=np.float64), occupancy.shape)
+        taus = np.broadcast_to(np.asarray(tau, dtype=np.float64), occupancy.shape)
+        pd.DataFrame(
+            {
+                "A": decoded.states[:, 0],
+                "B": decoded.states[:, 1],
+                "bins": occupancy.astype(np.int64),
+                "alpha": alphas,
+                "tau": taus,
+            }
+        ).to_csv(Path(output_dir) / "copy_decode_states.tsv", sep="\t", index=False)
+        weight = occupancy / max(float(occupancy.sum()), 1.0)
+        alpha = float(np.exp(np.sum(weight * np.log(alphas))))
+        tau = float(np.exp(np.sum(weight * np.log(taus))))
+
     pd.DataFrame(
         {
             "clone": np.arange(len(decoded.pairs)),
             "normal": np.arange(len(decoded.pairs)) == normal_clone,
             "tumour_fraction": decoded.purity,
             "shift": decoded.shifts,
-            "alpha": decoded.dispersion,
-            "tau": decoded.taus,
+            "alpha": alpha,
+            "tau": tau,
             "log_likelihood": decoded.log_likelihood,
             "parsimony": PARSIMONY,
         }

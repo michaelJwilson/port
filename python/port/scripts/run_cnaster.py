@@ -605,6 +605,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             decode_dispersion = (
                 "two-component"
                 if arguments.dispersion_two_component
+                else "per-state-rescale"
+                if arguments.dispersion_rescale and arguments.per_state_dispersion
                 else "rescale"
                 if arguments.dispersion_rescale
                 else "per-state"

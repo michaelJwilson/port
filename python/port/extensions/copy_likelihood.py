@@ -76,12 +76,15 @@ it. On the pure easy fixture an unbounded search found the doubled genome.
 PURITY_GRID = (1.0, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3)
 """Where the start looks for a clone's tumour fraction."""
 
-DispersionModel = Literal["shared", "per-state", "rescale", "two-component"]
+DispersionModel = Literal[
+    "shared", "per-state", "rescale", "per-state-rescale", "two-component"
+]
 
 DISPERSION_MODELS: tuple[DispersionModel, ...] = (
     "shared",
     "per-state",
     "rescale",
+    "per-state-rescale",
     "two-component",
 )
 """#566's dispersion models, as `lattice_decode` fits them: the HMM's, decoded alike."""
@@ -576,12 +579,18 @@ def _state_scores(
             rows.append((log_mu - float(shift), p, bulk, bins))
 
     def score(a: float, t: float) -> float:
-        return float(
-            sum(
-                np.sum(_emission(rate, share, _with(bulk, a, t), bins))
-                for rate, share, bulk, bins in rows
+        total = 0.0
+        for rate, share, bulk, bins in rows:
+            # NB the clone's factors, then the state's bins: a per-bin `tau`
+            #    is sliced to the rows scored.
+            scaled = _effective(_with(bulk, a, t), None)
+            tau = scaled.taus[bins] if np.ndim(scaled.taus) else scaled.taus
+            total += float(
+                np.sum(
+                    _emission(rate, share, _with(scaled, scaled.dispersion, tau), bins)
+                )
             )
-        )
+        return total
 
     return score
 
@@ -612,6 +621,8 @@ def _fit_dispersions(
       pooled one.
     - `rescale`: the per-spot `alpha`, `tau` through each clone's factors,
       `alpha` over :data:`PER_SPOT_ALPHA_BOUNDS`.
+    - `per-state-rescale`: `per-state`'s fit of per-spot values, each state's
+      scored through each clone's factors: `alpha_k / S_eff,c`, `rho_k g`.
     - `two-component`: that, then the clone-shared `alpha` and `rho`.
     """
     alpha, tau, shared = current
@@ -629,8 +640,14 @@ def _fit_dispersions(
         alpha, tau = _dispersions(alpha, tau, states, paths, bulks, shifts, purity)
         return alpha, tau, shared
 
-    if model == "per-state":
-        alpha_bounds = (float(np.log(alpha_min)), ALPHA_BOUNDS[1])
+    if model in ("per-state", "per-state-rescale"):
+        # NB rescaled, the per-state values are per spot, as the HMM's are.
+        alpha_bounds = (
+            float(np.log(alpha_min)),
+            PER_SPOT_ALPHA_BOUNDS[1]
+            if model == "per-state-rescale"
+            else ALPHA_BOUNDS[1],
+        )
         tau_bounds = (TAU_BOUNDS[0], float(np.log(tau_max)))
         pooled_tau = float(np.exp(np.mean(np.log(tau))))
         pooled_alpha = _search(lambda a: total(a, pooled_tau), alpha_bounds)
@@ -671,7 +688,7 @@ def _fit_dispersions(
             )
 
         return (
-            np.clip(alphas, alpha_min, np.exp(ALPHA_BOUNDS[1])),
+            np.clip(alphas, alpha_min, np.exp(alpha_bounds[1])),
             np.clip(taus, np.exp(TAU_BOUNDS[0]), tau_max),
             shared,
         )
@@ -735,7 +752,8 @@ def lattice_decode(
     `alpha_min`, `tau_max` and shrunk toward the pooled fit with weight
     `prior_rows / (prior_rows + n_k)` in logs; `rescale`, one per-spot
     value scored at each clone's moment-matched one (`Pseudobulk`'s
-    factors); `two-component`, that plus a clone-shared part.
+    factors); `per-state-rescale`, one per-spot value per state, so scored;
+    `two-component`, `rescale` plus a clone-shared part.
 
     The flags are the simplifications the #362 audit measured; the defaults
     are the decode it adopted.
@@ -773,10 +791,11 @@ def lattice_decode(
     )
     shared = {"shared_alpha": 0.0, "shared_rho": 0.0}
 
-    if model == "per-state" and dispersion != "poisson":
-        alpha = np.full(
-            len(states), float(np.clip(alpha, alpha_min, np.exp(ALPHA_BOUNDS[1])))
-        )
+    if model in ("per-state", "per-state-rescale") and dispersion != "poisson":
+        ceiling = (
+            PER_SPOT_ALPHA_BOUNDS if model == "per-state-rescale" else ALPHA_BOUNDS
+        )[1]
+        alpha = np.full(len(states), float(np.clip(alpha, alpha_min, np.exp(ceiling))))
         tau = np.full(len(states), float(np.clip(tau, np.exp(TAU_BOUNDS[0]), tau_max)))
     if model == "two-component" and dispersion != "poisson":
         # NB a small shared part to start: the M step moves it from there.
