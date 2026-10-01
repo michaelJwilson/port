@@ -2,10 +2,10 @@
 
 Guidance for Claude Code when working in this repository.
 
-This file is the whole of the rules, and it is enforced as written. It
-began as a copy of [`snakes_and_ladders/CLAUDE.md`](https://github.com/michaelJwilson/snakes_and_ladders)
-and no longer follows it: upstream's is a reference, not an authority, and a
-rule that is not written here does not bind.
+This file follows the rules of the root
+[`snakes_and_ladders/CLAUDE.md`](https://github.com/michaelJwilson/snakes_and_ladders),
+and augments, refines or overrides them here. Where the two disagree, this
+file wins; it need not mirror upstream's sections or order.
 
 Everything specific to `port` is gathered under **The application** at the
 end. A rule with no home under another heading goes there, and a rule that
@@ -276,12 +276,6 @@ a test.
 *   **Meaning by type, not by value.** Two readings of an input are two
     types.
 *   **NumPy at the boundary;** tensors only behind a `torch` or `jax` name.
-*   **An output records what the run assigned, not what can be parsed
-    back.** A per-spot output is keyed by the spot's barcode and carries the
-    `sample_id` the run gave it. In code a sample is its enum; on file it is
-    that enum decoded to the sample's name, so a file reads without the run
-    that wrote it. A value read out of an identifier is a guess about the
-    input, not a record of the run.
 *   **Every convention has a guard test,** or it drifts.
 
 ## Conventions
