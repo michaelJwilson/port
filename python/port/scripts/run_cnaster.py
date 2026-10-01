@@ -168,6 +168,11 @@ def _parser() -> argparse.ArgumentParser:
         help="fit per-spot NB/BB dispersions, each clone's pseudobulk at its moment-matched value (#566, #100); needs the shift",
     )
     parser.add_argument(
+        "--dispersion-two-component",
+        action="store_true",
+        help="with --dispersion-rescale, a clone-shared alpha and tau beside the per-spot ones (#566)",
+    )
+    parser.add_argument(
         "--sal",
         action="store_true",
         help="snakes_and_ladders' labelling, and the mask, floor and start it implies (#312)",
@@ -299,6 +304,9 @@ def _refusals(arguments: argparse.Namespace, settings: Settings) -> list[str]:
             "--dispersion-rescale needs port's merge_pseudobulk_by_index_mix, "
             "which --no-patch leaves out"
         )
+
+    if arguments.dispersion_two_component and not arguments.dispersion_rescale:
+        refused.append("--dispersion-two-component needs --dispersion-rescale")
 
     # NB read by port's `pipeline_clone_assignment` alone, which `--no-patch`
     #    leaves out unless `--sal` installs it.
@@ -453,6 +461,9 @@ def main(argv: Sequence[str] | None = None) -> int:
 
             model["dispersion_rescale"] = True
             stack.enter_context(rescale.recording())
+
+            if arguments.dispersion_two_component:
+                model["dispersion_two_component"] = True
 
         if arguments.sal and arguments.no_patch:
             selected = tuple(
@@ -639,6 +650,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "figures": figures,
                 "shift": shift,
                 "dispersion_rescale": bool(arguments.dispersion_rescale),
+                "dispersion_two_component": bool(arguments.dispersion_two_component),
                 "copy_decode": f"lattice_decode ({arguments.copy_decode})"
                 if copy_cap
                 else "cnaster",
