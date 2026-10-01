@@ -1,8 +1,8 @@
-"""Clone and copy-state ARI across `main`'s merges, from `docs/metrics.md`'s history rows.
+"""Clone and copy-state ARI across `main`'s merges, from the metrics ledger's history runs (`tests.metrics.read`, #620).
 
 `python -m tests.studies.metrics_history [OUT.png [OUT_CLASSES.png]]`
 
-A history row is a `tests/sim_audit.py::main` row whose note starts with
+A history row is a `tests/sim_audit.py::main` run whose note starts with
 `HISTORY`: `--sal` measured at an earlier merge of `main`, newest to oldest,
 recorded after the fact. The x axis is `main`'s first-parent order, read from
 git, so a merge that touched no pipeline code and carries its predecessor's
