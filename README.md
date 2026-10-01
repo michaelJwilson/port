@@ -239,6 +239,7 @@ run_cnaster_port --no-copy-cap config.yaml   # cnaster's integer copy caps, A + 
 run_cnaster_port --sample-layout 3,1 config.yaml  # clone spatial plots, one panel per sample
 run_cnaster_port --genomic-colours states config.yaml  # clones_genomic coloured per fitted state, not per integer pair
 run_cnaster_port --copy-decode shared config.yaml  # one integer pair per fitted state; default: lattice Viterbi per clone
+run_cnaster_port --dispersion-rescale config.yaml  # per-spot dispersions, each clone's pseudobulk at its moment-matched value (#566)
 run_cnaster_port --time-stages config.yaml   # what the replacements cost in the run
 run_cnaster_port --floor-merge --refinement-mask config.yaml  # #348's clone patches, opt-in; --no-distinct-init drops the third
 python -m port.sandbox.np_merge config.yaml # sandbox: CalicoST's Neyman-Pearson merge of clones that decode alike (#497), not installed by default
@@ -267,6 +268,10 @@ follows the arm unless asked: on in a patched run, off with `--no-patch`.
 | `--refinement-mask` | off; on with `--sal` | each read-depth sub-clone kept in its BAF clone, a 100-nat penalty (#348, #467) | with the floor merge, CalicoST hard clone ARI 0.303 to 0.982 |
 | `--floor-merge` | off; on with `--sal` | the clone-size floor met smallest first (#348) | alone, #338's three-sample instance: 2 planted clones fitted as 6 |
 | `--hmm-start` | `none`; `kmeans++x5+em` with `--sal` | the read-depth HMM's start from sal's covariate mixture (#489) | CalicoST hard clone ARI 0.8652 to 0.9829 |
+| `--dispersion-rescale` | off | per-spot NB `alpha`, BB `tau`; each clone's pseudobulk at `alpha / S_eff` and `rho g` (#566, #100) | 8 vs 64 spots: pseudobulk `alpha` 6.5x apart unrescaled, per-spot recovered to 25 per cent; CalicoST in the PR |
+| `--per-state-dispersion` | off | one NB `alpha`, BB `tau` per state, `cnaster`'s `shared_*_dispersion=False` (#566) | CalicoST in PR #567 |
+| `--dispersion-bounds` | on with `--per-state-dispersion` | `alpha_k >= --alpha-min` (1e-3), `tau_k <= --tau-max` (1e5), by projection in the M step (#566) | unbounded, a state on three exact rows runs to `alpha` 1.1e-10 |
+| `--dispersion-prior-rows` | 0 | shrink each `log alpha_k`, `log tau_k` toward the pooled value with weight `n0 / (n0 + n_k)` (#566) | held-out pick on #540's problems: 30 |
 | `--copy-errors` | off | `cnv_copy_sets.tsv`: every `(A, B)` in each state's 95 per cent credible region (#353) | differentiates the whole objective once |
 | `--png-copies` | off | a PNG without metadata beside each PDF, for `docs/plots` (#452) | two runs of the same code write the same bytes |
 | `--sample-layout`, `--genomic-colours` | unset | one panel per sample (#328); bins coloured per fitted state | |

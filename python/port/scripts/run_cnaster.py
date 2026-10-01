@@ -165,7 +165,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--per-state-dispersion",
         action="store_true",
-        help="one NB alpha and one BB tau per state, shrunk toward the pooled fit (#566); needs the shift",
+        help="one NB alpha and one BB tau per state, bounded (#566); needs the shift",
     )
     parser.add_argument(
         "--dispersion-prior-rows",
@@ -191,6 +191,11 @@ def _parser() -> argparse.ArgumentParser:
         type=float,
         default=None,
         help="the per-state BB tau's upper bound (#566); needs the bounds",
+    )
+    parser.add_argument(
+        "--dispersion-rescale",
+        action="store_true",
+        help="fit per-spot NB/BB dispersions, each clone's pseudobulk at its moment-matched value (#566, #100); needs the shift",
     )
     parser.add_argument(
         "--sal",
@@ -345,6 +350,15 @@ def _refusals(arguments: argparse.Namespace, settings: Settings) -> list[str]:
         )
         if value is not None and value <= 0.0
     ]
+    # NB #566: an option of the shift's `hmm_nophasing` row, reading factors
+    #    port's `merge_pseudobulk_by_index_mix` (in `SWAPS`) records.
+    if arguments.dispersion_rescale and not settings.shift:
+        refused.append("--dispersion-rescale is read by the shift rows; --no-shift")
+    if arguments.dispersion_rescale and arguments.no_patch:
+        refused.append(
+            "--dispersion-rescale needs port's merge_pseudobulk_by_index_mix, "
+            "which --no-patch leaves out"
+        )
 
     # NB read by port's `pipeline_clone_assignment` alone, which `--no-patch`
     #    leaves out unless `--sal` installs it.
@@ -504,6 +518,13 @@ def main(argv: Sequence[str] | None = None) -> int:
                 model["alpha_min"] = arguments.alpha_min
             if arguments.tau_max is not None:
                 model["tau_max"] = arguments.tau_max
+        # NB #566: per-spot dispersions, an option of the same row; the
+        #    pseudobulk row records each clone's factors while this is open.
+        if arguments.dispersion_rescale:
+            from port.patch.hmm_nophasing import rescale
+
+            model["dispersion_rescale"] = True
+            stack.enter_context(rescale.recording())
 
         if arguments.sal and arguments.no_patch:
             selected = tuple(
@@ -635,6 +656,11 @@ def main(argv: Sequence[str] | None = None) -> int:
                 + (", distinct initial states" if distinct else "")
                 + (", shift included" if shift else "")
                 + (", per-state dispersions" if arguments.per_state_dispersion else "")
+                + (
+                    ", per-spot dispersions rescaled per clone"
+                    if arguments.dispersion_rescale
+                    else ""
+                )
                 + (", rust lattices" if rust else "")
                 + (", sal included" if arguments.sal else "")
                 + (", no plots written" if arguments.no_plots else ""),
@@ -699,6 +725,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     }
                     or "shared"
                 ),
+                "dispersion_rescale": bool(arguments.dispersion_rescale),
                 "copy_decode": f"lattice_decode ({arguments.copy_decode})"
                 if copy_cap
                 else "cnaster",

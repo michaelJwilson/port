@@ -120,14 +120,32 @@ def test_states_holding_the_same_rows_return_the_pooled_dispersions(
 
 @pytest.mark.oracle
 @pytest.mark.usefixtures("cnaster_config")
+@pytest.mark.parametrize("rescaled", [False, True])
 @pytest.mark.parametrize("shifted", [False, True])
-def test_the_penalized_gradient_is_its_finite_difference(shifted: bool) -> None:
-    """`d (cost_fn + P) / d x` against central differences, step 1e-6, to 1e-5 relative."""
-    from port.patch.hmm_nophasing.gradient import DispersionShrinkage
+def test_the_penalized_gradient_is_its_finite_difference(
+    shifted: bool, rescaled: bool
+) -> None:
+    """`d (cost_fn + P) / d x` against central differences, step 1e-6, to 1e-5 relative; per-row dispersions too."""
+    from port.patch.hmm_nophasing.gradient import DispersionShrinkage, EmGradient
+    from port.patch.hmm_nophasing.rescale import Rescale
 
     from tests.test_mstep_gradient import _cnaster_value, _problem
 
-    model, gradient, x, _ = _problem(shifted=shifted, shared=False)
+    model, gradient, x, data = _problem(shifted=shifted, shared=False)
+
+    if rescaled:
+        rng = np.random.default_rng(2)
+        lengths = tuple(int(n) for n in data["clone_lengths"])
+        model._rescale = Rescale(
+            rng.uniform(0.02, 0.5, len(lengths)),
+            rng.uniform(0.05, 1.0, sum(lengths)),
+            lengths,
+        )
+        settings = {k: v for k, v in data.items() if k not in ("X", "base", "total")}
+        gradient = EmGradient.for_fit(
+            model, data["X"], gradient.n_states, data["base"], data["total"], **settings
+        )
+
     penalty = DispersionShrinkage.for_fit(gradient, 40.0)
     penalty.hold_information(x, gradient)
 

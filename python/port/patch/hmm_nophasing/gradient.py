@@ -166,6 +166,10 @@ class EmGradient:
     bb: CountEncoder
     normal_log_lambda: np.ndarray | None
     clone_lengths: Any
+    rescale: Any = None
+    """`port.patch.hmm_nophasing.rescale.Rescale`, or `None`: per-row dispersions (#566)."""
+    rows: tuple[np.ndarray, ...] = ()
+    """Per-row NB counts and exposure, BB counts and trials: the rescaled path's codes."""
 
     @classmethod
     def for_fit(
@@ -233,6 +237,13 @@ class EmGradient:
                 None if normal_lambda is None else np.log(normal_lambda)
             ),
             clone_lengths=setting["clone_lengths"],
+            rescale=getattr(model, "_rescale", None),
+            rows=(
+                np.asarray(X[:, 0, 0], dtype=np.float64),
+                base[:, 0],
+                np.asarray(X[:, 1, 0], dtype=np.float64),
+                np.asarray(total_bb_RD, dtype=np.float64)[:, 0],
+            ),
         )
 
     def __call__(self, x: np.ndarray) -> np.ndarray:
@@ -243,14 +254,20 @@ class EmGradient:
         )
         gamma = np.asarray(model.state_posteriors)
 
-        g_p, g_tau = self._allele(gamma, p_binom, taus)
+        if self.rescale is not None:
+            g_p, g_tau = self._allele_rows(gamma, p_binom, taus)
+        else:
+            g_p, g_tau = self._allele(gamma, p_binom, taus)
 
         # NB zeros where the depth channel is not fitted; `_pack` then
         #    leaves its blocks out, as `pack_params` does.
         g_mu = g_alpha = np.zeros(self.n_states)
 
         if self.nb is not None and "m" in model.params:
-            g_mu, g_alpha = self._depth(self.nb, gamma, log_mu, alphas)
+            if self.rescale is not None:
+                g_mu, g_alpha = self._depth_rows(gamma, log_mu, alphas)
+            else:
+                g_mu, g_alpha = self._depth(self.nb, gamma, log_mu, alphas)
 
         return self._pack(x, g_mu, g_p, g_alpha, g_tau)
 
@@ -268,11 +285,19 @@ class EmGradient:
         gamma = np.asarray(model.state_posteriors)
         rows = max(float(gamma.sum()), 1.0)
 
-        _, tau_spread = self._allele(gamma, p_binom, taus, spread=True)
+        if self.rescale is not None:
+            _, tau_spread = self._allele_rows(gamma, p_binom, taus, spread=True)
+        else:
+            _, tau_spread = self._allele(gamma, p_binom, taus, spread=True)
         out = {"bb": float(tau_spread.sum()) / rows}
 
         if self.nb is not None and "m" in model.params:
-            _, alpha_spread = self._depth(self.nb, gamma, log_mu, alphas, spread=True)
+            if self.rescale is not None:
+                _, alpha_spread = self._depth_rows(gamma, log_mu, alphas, spread=True)
+            else:
+                _, alpha_spread = self._depth(
+                    self.nb, gamma, log_mu, alphas, spread=True
+                )
             out["nb"] = float(alpha_spread.sum()) / rows
 
         return out
@@ -323,6 +348,97 @@ class EmGradient:
             encoder, gamma, rates, dispersions, *shifted, spread=spread
         )
 
+    def _allele_rows(
+        self,
+        gamma: np.ndarray,
+        p_binom: np.ndarray,
+        taus: np.ndarray,
+        spread: bool = False,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """`_allele` per row, at `tau_row = (1 + tau) / g_row - 1` (#566).
+
+        `d log tau_row / d log tau = tau / (g_row tau_row)`.
+        """
+        from port.patch.hmm_nophasing.rescale import tau_rows
+
+        _, _, obs, total = self.rows
+        tau = np.asarray(taus, dtype=np.float64)[:, :1]
+        per_row = tau_rows(tau, self.rescale)
+
+        d_p, d_tau = bb_partials(obs[None, :], total[None, :], p_binom[:, :1], per_row)
+        chain = tau / (self.rescale.bb[None, :] * per_row)
+
+        return -np.sum(gamma * d_p, axis=1), _sums(gamma, d_tau * chain, spread)
+
+    def _depth_rows(
+        self,
+        gamma: np.ndarray,
+        log_mu: np.ndarray,
+        alphas: np.ndarray,
+        spread: bool = False,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """`_depth` per row, at `alpha_row = alpha f_c` (#566); shifted where the fit is.
+
+        `log alpha_row = log alpha + log f_c`, so `d / d log alpha` is the
+        row's own.
+        """
+        from port.patch.hmm_nophasing.rescale import alpha_rows
+
+        obs, exposure, _, _ = self.rows
+        rates = np.asarray(log_mu, dtype=np.float64)[:, 0]
+        n_states = rates.size
+        shifted = self._shift_inputs()
+
+        if shifted is None:
+            lengths = self.rescale.lengths
+            shifts = np.zeros(len(lengths))
+            share = np.zeros((len(lengths), n_states))
+        else:
+            decode, lengths = shifted
+            shifts, share = self._clone_softmax(rates, decode, lengths)
+
+        clone_of = np.repeat(np.arange(len(lengths)), lengths)
+        mean = exposure[None, :] * np.exp(rates[:, None] - shifts[clone_of][None, :])
+        dispersions = alpha_rows(np.asarray(alphas)[:, :1], self.rescale)
+
+        d_eta, d_alpha = nb_partials(obs[None, :], mean, dispersions)
+        per_clone = np.zeros((n_states, len(lengths)))
+
+        for state in range(n_states):
+            per_clone[state] = np.bincount(
+                clone_of, weights=gamma[state] * d_eta[state], minlength=len(lengths)
+            )
+
+        g_eta = per_clone.sum(axis=1) - share.T @ per_clone.sum(axis=0)
+
+        return -g_eta, _sums(gamma, d_alpha, spread)
+
+    def _clone_softmax(
+        self, rates: np.ndarray, decode: np.ndarray, lengths: tuple[int, ...]
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """`S_c` per clone and the softmax weights `P[c, j]` of its segments decoded to `j`."""
+        from port.patch.hmm_nophasing.shifted_emission import _stacked
+
+        n_states = rates.size
+        n_clones = len(lengths)
+        terms = rates[decode] + _stacked(self.normal_log_lambda, lengths)
+        clone_of = np.repeat(np.arange(n_clones), lengths)
+        shifts = np.full(n_clones, -np.inf)
+        np.maximum.at(shifts, clone_of, terms)
+        finite = np.isfinite(shifts)
+        safe = np.where(finite, shifts, 0.0)
+        mass = np.exp(terms - safe[clone_of])
+        sums = np.bincount(clone_of, weights=mass, minlength=n_clones)
+        shifts = np.where(finite, safe + np.log(np.where(sums > 0, sums, 1.0)), shifts)
+
+        share = np.zeros((n_clones, n_states))
+        np.add.at(share, (clone_of, decode), mass)
+        share = np.where(
+            sums[:, None] > 0, share / np.where(sums > 0, sums, 1.0)[:, None], 0.0
+        )
+
+        return shifts, share
+
     def _shift_inputs(self) -> tuple[np.ndarray, tuple[int, ...]] | None:
         """The decode and clone lengths the shifted emission uses, or `None`.
 
@@ -361,7 +477,7 @@ class EmGradient:
         spread: bool = False,
     ) -> tuple[np.ndarray, np.ndarray]:
         """The shifted channel: rates `exp(log_mu_i - S_c)`, `S_c` moving with `log_mu`."""
-        from port.patch.hmm_nophasing.shifted_emission import _stacked, _triples
+        from port.patch.hmm_nophasing.shifted_emission import _triples
 
         n_states = rates.size
         triples = _triples(encoder.obs_count, encoder.total_count, lengths)
@@ -369,21 +485,7 @@ class EmGradient:
         n_clones = len(lengths)
 
         # NB the per-clone softmax over segments, `P[c, j]`, and `S_c` with it.
-        terms = rates[decode] + _stacked(self.normal_log_lambda, lengths)
-        clone_of = np.repeat(np.arange(n_clones), lengths)
-        shifts = np.full(n_clones, -np.inf)
-        np.maximum.at(shifts, clone_of, terms)
-        finite = np.isfinite(shifts)
-        safe = np.where(finite, shifts, 0.0)
-        mass = np.exp(terms - safe[clone_of])
-        sums = np.bincount(clone_of, weights=mass, minlength=n_clones)
-        shifts = np.where(finite, safe + np.log(np.where(sums > 0, sums, 1.0)), shifts)
-
-        share = np.zeros((n_clones, n_states))
-        np.add.at(share, (clone_of, decode), mass)
-        share = np.where(
-            sums[:, None] > 0, share / np.where(sums > 0, sums, 1.0)[:, None], 0.0
-        )
+        shifts, share = self._clone_softmax(rates, decode, lengths)
 
         code_clone = np.repeat(np.arange(n_clones), np.diff(triples.bounds))
         weight = np.zeros((n_states, n_codes))
