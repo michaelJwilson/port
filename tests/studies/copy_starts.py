@@ -13,7 +13,7 @@ Subcommands of `python -m tests.studies.copy_starts`:
     `(A, B)`: `copy_starts.write_captured`.
 `run CAPTURE OUT.pkl [--arm ARM ...]`
     The arms of #540 on the captured calls through
-    `port.extensions.copy_starts`, each start polished by `sal`'s EM under
+    `port.sandbox.extensions.copy_starts`, each start polished by `sal`'s EM under
     `BUDGET_SECONDS`, `SEEDS`, `WORKERS`.
 
 `docs/nb/copy_state_starts.ipynb` reads what `run` writes.
@@ -36,16 +36,22 @@ BUDGET_SECONDS = 60.0
 """The start and its polish, per trial: #489 gave 160 s; its starts stopped inside 60 s but for `hmc`."""
 
 
-def capture(sample_name: str, out: Path) -> None:
-    """Run `--sal --oracle-start` once, and rebuild each stage's initializer call at the planted clones."""
+def capture(
+    sample_name: str, out: Path, overrides: dict[str, Any] | None = None
+) -> None:
+    """Run `--sal --oracle-start` once, and rebuild each stage's initializer call at the planted clones.
+
+    `overrides` sets configuration keys, `section.key` to a value, as
+    `tests.sim_audit --set` does: the #551 segment floor, for one.
+    """
     import matplotlib as mpl
 
     mpl.use("Agg")
     from cnaster.hmrf_utils import clone_stack_obs
     from cnaster.pseudobulk import merge_pseudobulk_by_index_mix
     from port.extensions import segments
-    from port.extensions.copy_starts import write_captured
     from port.patch.hmrf import core_inference
+    from port.sandbox.extensions.copy_starts import write_captured
 
     from tests.sim_audit import run_arm
     from tests.sim_fixtures import load_simulated
@@ -77,7 +83,7 @@ def capture(sample_name: str, out: Path) -> None:
     core_inference.UPSTREAM = capturing
     try:
         with segments.recording() as lineage:
-            _, output = run_arm(sample, ["--sal", "--no-plots"], oracle=True)
+            _, output = run_arm(sample, ["--sal", "--no-plots"], overrides, oracle=True)
     finally:
         core_inference.UPSTREAM = real
 
@@ -147,6 +153,7 @@ def main(argv: list[str] | None = None) -> None:
     one = sub.add_parser("capture")
     one.add_argument("sample")
     one.add_argument("out", type=Path)
+    one.add_argument("--set", action="append", default=[], metavar="K=V")
     two = sub.add_parser("run")
     two.add_argument("capture", type=Path)
     two.add_argument("out", type=Path)
@@ -160,9 +167,15 @@ def main(argv: list[str] | None = None) -> None:
     arguments = parser.parse_args(argv)
 
     if arguments.command == "capture":
-        capture(arguments.sample, arguments.out)
+        import yaml
+
+        overrides = {
+            k: yaml.safe_load(v)
+            for k, _, v in (entry.partition("=") for entry in arguments.set)
+        }
+        capture(arguments.sample, arguments.out, overrides)
     else:
-        from port.extensions.copy_starts import read_captured
+        from port.sandbox.extensions.copy_starts import read_captured
 
         from tests.studies.copy_start_arms import ARMS, run_arms
 
