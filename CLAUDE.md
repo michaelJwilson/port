@@ -312,6 +312,10 @@ a test.
     hash of the data it plots and the commit that drew it. A figure quoted
     in a thread, ticket or review then names what produced it, and two
     figures that differ can be told apart without their files.
+*   **Figures are PNG, regenerated rather than committed.** A PNG carries
+    no timestamp, so a figure changes only when its pixels do. CI draws the
+    figures and uploads them; the repository commits only the curated set
+    under `docs/plots/paper/`, and a guard holds the rest out.
 
 ## The application
 
