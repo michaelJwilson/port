@@ -343,11 +343,12 @@ class hmm_nophasing(UPSTREAM):  # type: ignore[misc]
     the per-state dispersions unshrunk.
     """
 
-    dispersion_bounds: bool = True
-    """With `per_state_dispersion`, hold `alpha_k >= alpha_min`, `tau_k <= tau_max` (#566); off fits unbounded."""
-
     alpha_min: float = ALPHA_MIN
-    """The per-state `alpha`'s lower bound, read with `per_state_dispersion` (#566)."""
+    """The per-state `alpha`'s lower bound, read with `per_state_dispersion` (#566).
+
+    Always held: in the M step by projection, and at every emission call by
+    a clamp, so no point a line search or a refit proposes reaches `sal`
+    below it."""
 
     tau_max: float = TAU_MAX
     """The per-state `tau`'s upper bound, read with `per_state_dispersion` (#566)."""
@@ -560,7 +561,7 @@ class hmm_nophasing(UPSTREAM):  # type: ignore[misc]
             )
             bounds = (
                 DispersionBounds.for_fit(gradient, self.alpha_min, self.tau_max)
-                if self.per_state_dispersion and self.dispersion_bounds
+                if self.per_state_dispersion
                 else None
             )
             kwargs["optimizer"] = analytic_bfgs(gradient, penalty, bounds)
@@ -626,6 +627,24 @@ class hmm_nophasing(UPSTREAM):  # type: ignore[misc]
 
         return res
 
+    def bounded_dispersions(
+        self, alphas: np.ndarray, taus: np.ndarray
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """`alphas` and `taus` inside the per-state bounds, or as given without per-state dispersions.
+
+        The bounds at the call, not only in the M step: a line search, a
+        refit or a start can hand the emission a point the projection never
+        saw, and `sal` refuses `alpha <= 0` (#570). Shared dispersions pass
+        through untouched, as `cnaster` fits them.
+        """
+        if not self.per_state_dispersion:
+            return alphas, taus
+
+        return (
+            np.maximum(np.asarray(alphas, dtype=np.float64), self.alpha_min),
+            np.minimum(np.asarray(taus, dtype=np.float64), self.tau_max),
+        )
+
     def compute_emission_probability_nb_betabinom_coded(
         self,
         nbEncoder: Any,
@@ -649,6 +668,8 @@ class hmm_nophasing(UPSTREAM):  # type: ignore[misc]
         guessing at `hmm_nophasing.py:279`.
         """
         decode = self._decode()
+
+        alphas, taus = self.bounded_dispersions(alphas, taus)
 
         if self._rescale is not None:
             return self._rescaled_coded(

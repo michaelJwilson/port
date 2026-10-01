@@ -2,7 +2,7 @@
 
 `run_cnaster_port --per-state-dispersion` fits one `alpha` and one `tau` per
 state through `cnaster`'s own `shared_*_dispersion=False` path, bounded by
-`DispersionBounds` unless `--no-dispersion-bounds`, and shrunk toward the
+`DispersionBounds` always, and shrunk toward the
 pooled value by `DispersionShrinkage` where `--dispersion-prior-rows` is
 given. Three referees:
 
@@ -199,11 +199,13 @@ def test_planted_per_state_dispersions_are_recovered() -> None:
 @pytest.mark.analytic
 @pytest.mark.usefixtures("cnaster_config")
 def test_a_state_holding_three_rows_stops_at_the_bounds() -> None:
-    """Three rows at their exact means: unbounded, `alpha` runs below `alpha_min / 10`; bounded, it stops at `alpha_min`.
+    """Three rows at their exact means stop at `alpha_min` and `tau_max`, where the likelihood's limit is `alpha -> 0`, `tau -> inf`.
 
-    Realized: unbounded `alpha` 1.1e-10, `cnaster`'s own floor, and `tau`
-    7.1e4; bounded `alpha_min` and `tau_max` exactly. Their allele counts sit
-    at `p n`, so the likelihood's limit is `alpha -> 0`, `tau -> inf`.
+    Their counts sit at the mean and their allele counts at `p n`, so the
+    likelihood rises without bound as the dispersion vanishes. Before the
+    bounds were made unconditional, the unbounded fit ran to `alpha`
+    1.1e-10, `cnaster`'s own floor, and `tau` 7.1e4 (#566). Realized here:
+    `alpha_min` and `tau_max` exactly.
     """
     from port.patch.hmm_nophasing.gradient import ALPHA_MIN, TAU_MAX
 
@@ -219,12 +221,9 @@ def test_a_state_holding_three_rows_stops_at_the_bounds() -> None:
 
     trimmed = dict(data, X=X, base=base, total=total, lengths=np.array([keep.size]))
     bounded = _fit(trimmed, per_state_dispersion=True)
-    free = _fit(trimmed, per_state_dispersion=True, dispersion_bounds=False)
 
     alpha_bounded = np.asarray(bounded["new_alphas"]).reshape(-1)
-    alpha_free = np.asarray(free["new_alphas"]).reshape(-1)
 
-    assert alpha_free[1] < ALPHA_MIN / 10.0
     np.testing.assert_allclose(alpha_bounded[1], ALPHA_MIN, rtol=1e-9)
     assert alpha_bounded.min() >= ALPHA_MIN * (1.0 - 1e-12)
     assert np.asarray(bounded["new_taus"]).max() <= TAU_MAX * (1.0 + 1e-12)
@@ -253,3 +252,33 @@ def test_the_clone_assignment_scores_spots_at_the_pooled_dispersion() -> None:
     alphas, taus = assignment_dispersions(hmm_nophasing, res, decoded)
     np.testing.assert_array_equal(alphas, [0.01, 0.1, 1.0])
     np.testing.assert_array_equal(taus, [10.0, 100.0, 1000.0])
+
+
+@pytest.mark.analytic
+def test_every_emission_call_holds_the_bounds() -> None:
+    """Per-state: `alpha` 0 and 3e-83 reach the emission at `alpha_min`, `tau` 1e9 at `tau_max`; shared: untouched (#570).
+
+    The values #570's run handed `sal`, which refused them; the M step's
+    projection had not seen that point.
+    """
+    from port.patch.hmm_nophasing import hmm_nophasing
+    from port.patch.hmm_nophasing.gradient import ALPHA_MIN, TAU_MAX
+    from port.pipeline import with_attributes
+
+    alphas = np.array([[0.0], [3.0e-83], [1.7], [ALPHA_MIN]])
+    taus = np.array([[10.0], [1.0e9], [TAU_MAX], [50.0]])
+
+    per_state = with_attributes(hmm_nophasing, per_state_dispersion=True)
+    held_alphas, held_taus = per_state(params="smp", t=1 - 1e-4).bounded_dispersions(
+        alphas, taus
+    )
+
+    np.testing.assert_array_equal(
+        held_alphas, [[ALPHA_MIN], [ALPHA_MIN], [1.7], [ALPHA_MIN]]
+    )
+    np.testing.assert_array_equal(held_taus, [[10.0], [TAU_MAX], [TAU_MAX], [50.0]])
+
+    shared = hmm_nophasing(params="smp", t=1 - 1e-4)
+    shared_alphas, shared_taus = shared.bounded_dispersions(alphas, taus)
+    assert shared_alphas is alphas
+    assert shared_taus is taus

@@ -175,22 +175,16 @@ def _parser() -> argparse.ArgumentParser:
         help="the shrinkage's n0, in rows; 0 for none (#566); needs --per-state-dispersion",
     )
     parser.add_argument(
-        "--dispersion-bounds",
-        action=argparse.BooleanOptionalAction,
-        default=None,
-        help="hold per-state alpha >= --alpha-min and tau <= --tau-max (#566); on with --per-state-dispersion",
-    )
-    parser.add_argument(
         "--alpha-min",
         type=float,
         default=None,
-        help="the per-state NB alpha's lower bound (#566); needs the bounds",
+        help="the per-state NB alpha's lower bound, 1e-3 unless given (#566); needs --per-state-dispersion",
     )
     parser.add_argument(
         "--tau-max",
         type=float,
         default=None,
-        help="the per-state BB tau's upper bound (#566); needs the bounds",
+        help="the per-state BB tau's upper bound, 1e5 unless given (#566); needs --per-state-dispersion",
     )
     parser.add_argument(
         "--dispersion-rescale",
@@ -329,18 +323,15 @@ def _refusals(arguments: argparse.Namespace, settings: Settings) -> list[str]:
         refused.append("--dispersion-prior-rows needs --per-state-dispersion")
     if (arguments.dispersion_prior_rows or 0.0) < 0.0:
         refused.append("--dispersion-prior-rows is a count of rows, >= 0")
-    if arguments.dispersion_bounds is not None and not arguments.per_state_dispersion:
-        refused.append("--dispersion-bounds needs --per-state-dispersion")
-    bounded = (
-        arguments.per_state_dispersion and arguments.dispersion_bounds is not False
-    )
+    # NB per-state dispersions are always bounded: unbounded, a state on a
+    #    few exact rows runs to `alpha` 1.1e-10 (#566), which `sal` refuses.
     refused += [
-        f"{flag} needs the dispersion bounds"
+        f"{flag} needs --per-state-dispersion"
         for flag, value in (
             ("--alpha-min", arguments.alpha_min),
             ("--tau-max", arguments.tau_max),
         )
-        if value is not None and not bounded
+        if value is not None and not arguments.per_state_dispersion
     ]
     refused += [
         f"{flag} must be positive"
@@ -512,8 +503,6 @@ def main(argv: Sequence[str] | None = None) -> int:
 
             if arguments.dispersion_prior_rows is not None:
                 model["dispersion_prior_rows"] = arguments.dispersion_prior_rows
-            if arguments.dispersion_bounds is False:
-                model["dispersion_bounds"] = False
             if arguments.alpha_min is not None:
                 model["alpha_min"] = arguments.alpha_min
             if arguments.tau_max is not None:
@@ -717,7 +706,6 @@ def main(argv: Sequence[str] | None = None) -> int:
                         for key in (
                             "per_state_dispersion",
                             "dispersion_prior_rows",
-                            "dispersion_bounds",
                             "alpha_min",
                             "tau_max",
                         )
