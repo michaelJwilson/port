@@ -28,7 +28,7 @@ candidate. It returns the rates and BAFs to refit from:
 `port.sandbox.split_state.split_state` then refits once, with
 `max_iter_outer = 0`, on the clones the first fit returned, and keeps that
 fit's assignment. **The clones are the first fit's, spot for spot.** Letting
-the refit reassign them moved CalicoST hard (`1ae26365`) from clone ARI
+the refit reassign them moved CalicoST hard (`8797710b`) from clone ARI
 0.982 to 0.380.
 """
 
