@@ -397,17 +397,21 @@ def determine_normal_candidates(
     `run_cnaster` then calls `np.where(None)` and raises, so a configuration
     that names its normal spots cannot run. The loader has annotated them;
     `port.patch.io.load_input_data` keeps the annotation per spot, and this
-    returns it. Every other branch is `cnaster`'s call, unchanged.
+    returns it. Every other branch is `cnaster`'s call, unchanged. Either
+    way the candidates are kept in an open `port.extensions.samples`
+    recording, for the CalicoST-compatible outputs (#613).
     """
     if config.preprocessing.normalidx_file is None:
-        return _UPSTREAM_CANDIDATES(
-            config,
-            res,
-            baf_profiles,
-            single_X,
-            single_X_rdr,
-            smooth_mat,
-            single_tumor_prop=single_tumor_prop,
+        return _recorded(
+            _UPSTREAM_CANDIDATES(
+                config,
+                res,
+                baf_profiles,
+                single_X,
+                single_X_rdr,
+                smooth_mat,
+                single_tumor_prop=single_tumor_prop,
+            )
         )
 
     from port.patch.io import NORMAL_SPOTS
@@ -419,7 +423,17 @@ def determine_normal_candidates(
         )
         raise RuntimeError(msg)
 
-    return NORMAL_SPOTS[0].copy()
+    return _recorded(NORMAL_SPOTS[0].copy())
+
+
+def _recorded(candidates: Any) -> Any:
+    """`candidates`, kept in the open samples recording if there is one."""
+    from port.extensions.samples import current
+
+    recording = current()
+    if recording is not None and candidates is not None:
+        recording.normal_candidates = np.asarray(candidates, dtype=bool).copy()
+    return candidates
 
 
 def normal_baf_bin_filter(
