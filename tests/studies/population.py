@@ -336,6 +336,8 @@ def run_member(
     seed: int, js: tuple[float, ...], out: Path, manifest: Path = MANIFEST
 ) -> None:
     """Draw seed `seed`, run and score it at each `J`, keep only the records."""
+    from port.extensions.outputs import primary
+
     from tests.sim_audit import run_arm
     from tests.sim_fixtures import load_simulated
 
@@ -367,7 +369,7 @@ def run_member(
             kept.mkdir(parents=True, exist_ok=True)
             for name in KEPT:
                 # NB `spot_labels.tsv` is `port`'s, absent from a baseline arm.
-                for found in sorted(output.rglob(name))[:1]:
+                for found in sorted(primary(output.rglob(name)))[:1]:
                     shutil.copy(found, kept / name)
         target = _record(out, seed, j)
         target.parent.mkdir(parents=True, exist_ok=True)

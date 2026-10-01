@@ -190,9 +190,10 @@ def _copies(
 
 def read_cnaster(truth: CoreInferenceTruth, output: Path) -> Reading:
     """A `run_cnaster` or `run_cnaster_port` run's outputs."""
-    from port.extensions.outputs import read_run_labels
+    from port.extensions.outputs import primary, read_run_labels
 
-    run = next(output.rglob("rdrbaf_final_nstates*_smp.npz"))
+    # NB the run's own `.npz`, not `--calicost-outputs`' copy beside it (#613).
+    run = primary(output.rglob("rdrbaf_final_nstates*_smp.npz"))[0]
     fit = np.load(run, allow_pickle=True)
     # NB the run's clones, merged where `port` merged them (#518, #613).
     labels = read_run_labels(run.parent)

@@ -245,9 +245,10 @@ def confusion_table(
 
 def read_run(sample: SimulatedSample, output: Path) -> dict[str, Any]:
     """Fitted labels per truth spot, and per-bin `Z`, `A`, `B` per fitted clone."""
-    from port.extensions.outputs import read_run_labels
+    from port.extensions.outputs import primary, read_run_labels
 
-    run = next(output.rglob("rdrbaf_final_nstates*_smp.npz"))
+    # NB the run's own `.npz`, not `--calicost-outputs`' copy beside it (#613).
+    run = primary(output.rglob("rdrbaf_final_nstates*_smp.npz"))[0]
     fit = np.load(run, allow_pickle=True)
     # NB the run's clones: `spot_labels.tsv`'s `clone_label_decode` where
     #    `port` wrote it (#613), the merged clones `clone_labels.tsv` carried
