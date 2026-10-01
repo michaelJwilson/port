@@ -147,6 +147,7 @@ def _installed() -> set[str]:
     from port.pipeline import (
         COPY_SWAPS,
         FIGURE_SWAPS,
+        LOG_SPACE_SWAPS,
         REFINEMENT_SWAPS,
         SHIFT_SWAPS,
         SWAPS,
@@ -160,6 +161,7 @@ def _installed() -> set[str]:
         SHIFT_SWAPS,
         COPY_SWAPS,
         REFINEMENT_SWAPS,
+        LOG_SPACE_SWAPS,
     ):
         for swap in table:
             module_name, _, attribute = swap.replacement.partition(":")

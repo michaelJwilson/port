@@ -36,6 +36,7 @@ from typing import Any, NamedTuple
 from port.pipeline import (
     COPY_SWAPS,
     FIGURE_SWAPS,
+    LOG_SPACE_SWAPS,
     PLOT_OFF_SWAPS,
     REFINEMENT_SWAPS,
     SHIFT_SWAPS,
@@ -100,7 +101,10 @@ def _parser() -> argparse.ArgumentParser:
         "--shift",
         action=argparse.BooleanOptionalAction,
         default=None,
-        help="install SHIFT_SWAPS, the per-clone shift and its pin (#276, #299); on, off with --no-patch",
+        help=(
+            "install SHIFT_SWAPS, the per-clone shift and its pin (#276, #299), "
+            "and LOG_SPACE_SWAPS (#560, #561); on, off with --no-patch"
+        ),
     )
     parser.add_argument(
         "--refinement-mask",
@@ -118,7 +122,13 @@ def _parser() -> argparse.ArgumentParser:
         "--hmm-start",
         default=None,
         metavar="START",
-        help="the read-depth HMM's start, a sal mixture start (#489); none, kmeans++x5+em with --sal",
+        help="the read-depth HMM's copy-state start, a sal mixture start or lattice (#489, #547); none, kmeans++x5+em with --sal",
+    )
+    parser.add_argument(
+        "--baf-start",
+        default=None,
+        metavar="START",
+        help="the BAF-only HMM's copy-state start, a sal mixture start or lattice (#540); none keeps distinct's",
     )
     parser.add_argument(
         "--distinct-init",
@@ -226,7 +236,9 @@ class Settings(NamedTuple):
     distinct: bool
     """The distinct initializer: on where the shift is, off with `--no-patch`."""
     hmm_start: str
-    """sal's HMM start: `none`, `kmeans++x5+em` with `--sal` (#489)."""
+    """The read-depth HMM's copy-state start: `none`, `kmeans++x5+em` with `--sal` (#489)."""
+    baf_start: str
+    """The BAF-only stage's start: `none`, `distinct`'s kept (#540)."""
 
 
 def _settings(arguments: argparse.Namespace) -> Settings:
@@ -250,6 +262,7 @@ def _settings(arguments: argparse.Namespace) -> Settings:
         hmm_start=str(
             asked(arguments.hmm_start, "kmeans++x5+em" if arguments.sal else "none")
         ),
+        baf_start=str(asked(arguments.baf_start, "none")),
     )
 
 
@@ -273,6 +286,13 @@ def _refusals(arguments: argparse.Namespace, settings: Settings) -> list[str]:
     #    unshifted fit's rates carry the baseline's per-clone scale (#353).
     if arguments.copy_errors and not settings.shift:
         refused.append("--copy-errors needs the shift; drop --no-shift")
+    # NB the copy rows decode the fit the shift's `run_core_inference` row
+    #    captures; without it the decode stopped hours in, with no captured
+    #    fit (#576). Refused here, naming the way out.
+    elif settings.copy_cap and not settings.shift:
+        refused.append(
+            "--no-shift leaves the copy decode no captured fit; add --no-copy-cap"
+        )
 
     # NB read by the `SHIFT_SWAPS` rows alone -- port's `hmm_nophasing` class
     #    and `run_core_inference`.
@@ -281,6 +301,7 @@ def _refusals(arguments: argparse.Namespace, settings: Settings) -> list[str]:
         for flag, asked in (
             ("--sal-emission", arguments.sal_emission),
             ("--distinct-init", arguments.distinct_init),
+            ("--baf-start", arguments.baf_start),
         )
         if asked and not settings.shift
     ]
@@ -320,6 +341,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(
                 f"{swap.module}.{swap.name} <- {swap.replacement}  "
                 f"(#{swap.ticket}, changes the model; --no-shift to omit)"
+            )
+        for swap in LOG_SPACE_SWAPS:
+            print(
+                f"{swap.module}.{swap.name} <- {swap.replacement}  "
+                f"(#{swap.ticket}, to 1e-9 where cnaster is right; with the shift)"
             )
         for swap in REFINEMENT_SWAPS:
             print(
@@ -492,6 +518,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             from port.patch.hmm_initialize.sal_mixture import checked
 
             inference["hmm_start"] = checked(hmm_start)
+        if settings.baf_start != "none":
+            from port.patch.hmm_initialize.sal_mixture import checked
+
+            inference["baf_start"] = checked(settings.baf_start)
 
         # NB the copy rows decode by the HMM's likelihood only (#362), which
         #    reads each clone's counts from the fit this captures; entered
@@ -507,7 +537,14 @@ def main(argv: Sequence[str] | None = None) -> int:
                     selected, swap.replacement, decoder=arguments.copy_decode
                 )
         if shift:
-            selected = selected + SHIFT_SWAPS
+            # NB the emission kernels where `cnaster`'s are wrong (#560,
+            #    #561), on the arm that already departs from its fit; the
+            #    field compiles its kernels in, so it takes them as an option.
+            selected = with_options(
+                selected + SHIFT_SWAPS + LOG_SPACE_SWAPS,
+                "port.patch.hmrf:pipeline_clone_assignment",
+                log_space=True,
+            )
 
             # NB the genomic figure draws each clone's line at `mu / Z_c` when
             #    the fit it plots was shifted (#299).
@@ -529,6 +566,15 @@ def main(argv: Sequence[str] | None = None) -> int:
 
         if arguments.sal:
             from port.extensions.sal import sal_options
+            from port.patch.omics.blocks import SAL_NORMAL_UMI_FLOOR
+
+            # NB the read-depth segment floor (#551) the lattice start was
+            #    tuned at (#547); a configuration's `quality` keys still win.
+            selected = with_options(
+                selected,
+                "port.patch.omics:create_bin_ranges",
+                normal_umi_floor=SAL_NORMAL_UMI_FLOOR,
+            )
 
             selected = with_options(
                 selected,
@@ -556,12 +602,22 @@ def main(argv: Sequence[str] | None = None) -> int:
                 + (", figures included" if figures else "")
                 + (", copy caps from the config" if copy_cap else "")
                 + (", refinement mask" if refinement_mask else "")
-                + (f", sal HMM start {hmm_start}" if hmm_start != "none" else "")
+                + (f", HMM start {hmm_start}" if hmm_start != "none" else "")
+                + (
+                    f", BAF start {settings.baf_start}"
+                    if settings.baf_start != "none"
+                    else ""
+                )
                 + (", floor merged smallest first" if floor else "")
                 + (", distinct initial states" if distinct else "")
                 + (", shift included" if shift else "")
                 + (", rust lattices" if rust else "")
                 + (", sal included" if arguments.sal else "")
+                + (
+                    ", read-depth segments of 300 normal UMI unless configured"
+                    if arguments.sal
+                    else ""
+                )
                 + (", no plots written" if arguments.no_plots else ""),
                 file=sys.stderr,
             )

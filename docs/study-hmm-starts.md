@@ -5,12 +5,13 @@ start than port's `distinct` GMM (#348) on every sample. End to end, any of
 the three polished best-of-five starts lifts CalicoST hard from clone ARI
 0.8652 (5 clones) to **0.9829 (4)**, copy ARI 0.8652 → 0.9055, and phase-free
 exact altered 0.497 → 0.627. `dev_tree` 60 × 50 and easy are unchanged.
-`--sal` now installs `kmeans++x5+em`, the most likely of the three per call
-(`--hmm-start`).
+`--sal` installed `kmeans++x5+em`, the most likely of the three per call
+(`--hmm-start`), until #547 replaced it with the lattice start
+(`docs/nb/copy_state_starts.md`).
 
 ## Method
 
-`python -m tests.studies.hmm_starts capture | per-call | figure`.
+`python -m tests.studies.hmm_starts capture | per-call`.
 
 1. **Capture.** One `--sal --hmm-start none` run per sample, pickling every
    initializer call. The read-depth + BAF call is the one studied:
@@ -46,7 +47,9 @@ exact altered 0.497 → 0.627. `dev_tree` 60 × 50 and easy are unchanged.
 | `burn-in` | 104.9 ± 4.5 / 2 s | 70.6 ± 4.1 / 2 s | 50.7 ± 3.1 / 2 s |
 | `gaussian-em` | refused | refused | refused |
 
-![gap against runtime](plots/studies/hmm_starts.png)
+The figure this table drew, `plots/studies/hmm_starts.png`, is retired: #540's
+`docs/nb/copy_state_starts.ipynb` draws runtime against gap for every start
+on both the BAF-only and the BAF + RDR stage.
 
 ## Failings, and what was done about them
 

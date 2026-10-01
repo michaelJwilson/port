@@ -11,6 +11,10 @@ family's own completion order (`Order.FAMILY`). The same edge behaviour as
   `alpha`, `beta` floored at `EPS`;
 - a non-positive rate `mu` scores 0 everywhere, as `exposure * mu <= 0` does.
 
+A state with `tau >= STABLE_TAU` is scored by `bb_logpmf._bb_logpmf_1d`
+instead (#561): sal fills its tables with `lgamma` and loses
+`eps tau log tau`, 1.9e-10 nats at 1e5 and 3.4e-3 at 1e12 against `mpmath`.
+
 To a tolerance, not bitwise, so it is `--sal`'s rather than a `SWAPS` row;
 #244 is why a tolerance is measured end to end before it is anything else.
 Selected by the `hmm_nophasing` row's `emission_kernels="sal"` option, not a
@@ -27,7 +31,10 @@ import numpy as np
 
 from port.patch.hmm_nophasing.gradient import DISPERSION_FLOOR
 
-__all__ = ["bb_states", "coded_emission", "nb_states"]
+__all__ = ["STABLE_TAU", "bb_states", "coded_emission", "nb_states"]
+
+STABLE_TAU = 1e5
+"""The concentration from which a state's beta-binomial is port's (#561), not sal's."""
 
 
 def nb_states(
@@ -57,23 +64,36 @@ def nb_states(
 def bb_states(
     obs: np.ndarray, trials: np.ndarray, p_binom: np.ndarray, taus: np.ndarray
 ) -> np.ndarray:
-    """`(K, n)`: every state's `_bb_logpmf_1d` in one call."""
+    """`(K, n)`: every state's `_bb_logpmf_1d` in one call; `tau >= STABLE_TAU` by port's kernel."""
     from sal.emissions import BetaBinomialEmission
     from sal.emissions.dense import Order, log_emission
 
+    from port.patch.hmm_nophasing.bb_logpmf import _bb_logpmf_1d
+
     p = np.asarray(p_binom, dtype=np.float64)
     t = np.asarray(taus, dtype=np.float64)
+    successes = np.asarray(obs, dtype=np.float64)
+    total = np.asarray(trials, dtype=np.float64)
     family = BetaBinomialEmission(
         alpha=np.maximum(p * t, DISPERSION_FLOOR),
         beta=np.maximum((1.0 - p) * t, DISPERSION_FLOOR),
         trials=np.ones_like(p),
     )
-    return log_emission(
-        family,
-        np.asarray(obs, dtype=np.float64),
-        np.asarray(trials, dtype=np.float64)[:, None],
-        order=Order.FAMILY,
+    scores = np.asarray(
+        log_emission(family, successes, total[:, None], order=Order.FAMILY)
     )
+
+    for state in np.flatnonzero(t >= STABLE_TAU):
+        _bb_logpmf_1d(
+            successes,
+            total,
+            float(p[state]),
+            float(t[state]),
+            scores[state],
+            DISPERSION_FLOOR,
+        )
+
+    return scores
 
 
 def coded_emission(

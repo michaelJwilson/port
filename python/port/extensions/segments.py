@@ -19,7 +19,8 @@ their label arrays, and coarsening is a lookup `label[fine]` rather than a
 chain of parents.
 
 **What is derived and never stored.** A segment's contig, `start` (its first
-gene's `START`) and `end` (its last gene's `END`); `lengths`, segments per
+gene's `START`), `end` (its last gene's `END`), `length` (`end - start`) and
+`gene` (its first gene's index label); `lengths`, segments per
 contig -- the grid every lattice restarts on -- which cannot disagree with
 the labels and is never zero (#438 D5); and `boundary`, each contig's last
 segment. Moving an array between genes and segments is a `reduceat` or a
@@ -250,6 +251,18 @@ class Segmentation:
         return values
 
     @property
+    def length(self) -> np.ndarray:
+        """Each segment's extent in base pairs, `end - start` (#540)."""
+        length: np.ndarray = self.end - self.start
+        return length
+
+    @property
+    def gene(self) -> np.ndarray:
+        """Each segment's first gene, by its index label in the table the root was read from (#540)."""
+        gene: np.ndarray = self.genes.key[self.first]
+        return gene
+
+    @property
     def lengths(self) -> np.ndarray:
         """Segments per contig, in contig order: the grid a lattice restarts on."""
         if not self.n_segments:
@@ -275,6 +288,52 @@ class Segmentation:
         mapped = np.full(self.n_segments, DROPPED, dtype=np.int64)
         mapped[fine] = coarse
         return bool(np.all(mapped[fine] == coarse))
+
+    # -- the floor (#551) ----------------------------------------------------
+
+    def short(self, min_length: float, weight: Any, min_weight: float) -> np.ndarray:
+        """Each segment spanning under `min_length` bp or holding under `min_weight` of a per-gene `weight`.
+
+        A contig's only segment is never short: it has nothing to merge with.
+        """
+        alone = np.repeat(self.lengths == 1, self.lengths)
+        held = self.aggregate(np.asarray(weight, dtype=np.float64))
+        below = (self.end - self.start < min_length) | (held < min_weight)
+        short: np.ndarray = below & ~alone
+        return short
+
+    def floored(
+        self, min_length: float, weight: Any, min_weight: float, *, name: str
+    ) -> Segmentation:
+        """Adjacent segments merged within each contig until none is `short` (#551).
+
+        Greedy along each contig, as `cnaster`'s `greedy_binning_nobreak`
+        merges blocks: a merged segment closes once it spans `min_length` bp,
+        first gene's `START` to last gene's `END`, and holds `min_weight`; a
+        contig's unclosed remainder joins the segment before it. Unlike
+        `cnaster`'s, the merge crosses the BAF breakpoints, which bound
+        `cnaster`'s own and so leave a run of short segments short.
+        """
+        contig, start, end = self.contig, self.start, self.end
+        held = self.aggregate(np.asarray(weight, dtype=np.float64))
+        parent = np.zeros(self.n_segments, dtype=np.int64)
+        label, first, opened, total, closed = -1, 0, 0, 0.0, True
+
+        for k in range(self.n_segments):
+            if k == 0 or contig[k] != contig[k - 1]:
+                first, closed = label + 1, True
+            if closed:
+                label, opened, total = label + 1, int(start[k]), 0.0
+            parent[k] = label
+            total += float(held[k])
+            closed = end[k] - opened >= min_length and total >= min_weight
+
+            at_boundary = k == self.n_segments - 1 or contig[k + 1] != contig[k]
+            if at_boundary and not closed and label > first:
+                parent[parent == label] = label - 1
+                label -= 1
+
+        return self.coarsen(parent, name=name)
 
     # -- moving arrays between genes and segments ----------------------------
 
@@ -474,13 +533,26 @@ class Lineage:
     levels: dict[str, Segmentation] = field(default_factory=dict)
     excluded_genes: set[str] = field(default_factory=set)
     """Genes a step removed from read depth: the differential-expression filter's (#440)."""
+    floor: tuple[float, np.ndarray, float] | None = None
+    """`(min_length, weight, min_weight)` every level recorded after the floor must meet (#551)."""
 
     def record(self, segmentation: Segmentation, name: str) -> Segmentation:
         """Keep `segmentation` under `name`, suffixed `.2`, `.3` if the name repeats.
 
         Every step is kept, identical to the last or not: that a step changed
-        nothing is itself what the lineage records.
+        nothing is itself what the lineage records. Once a floor is set, a
+        level with a `short` segment is refused.
         """
+        if self.floor is not None:
+            short = segmentation.short(*self.floor)
+            if short.any():
+                msg = (
+                    f"{name}: {int(short.sum())} of {segmentation.n_segments} "
+                    f"segments under the floor, {self.floor[0]:g} bp and "
+                    f"{self.floor[2]:g} normal UMI (#551)"
+                )
+                raise ValueError(msg)
+
         unique, suffix = name, 2
         while unique in self.levels:
             unique, suffix = f"{name}.{suffix}", suffix + 1
