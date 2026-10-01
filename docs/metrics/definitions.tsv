@@ -1,0 +1,26 @@
+metric	definition	since	scorer	meaning
+clone_ari	1	c84aa06	tests.recovery_audit.score,tests.sim_audit.score	fitted clone labels against planted, ARI per spot
+clone_ari_int	1	c84aa06	tests.recovery_audit.score,tests.sim_audit.score	clone_ari after merging clones of one decoded (A, B) profile (#344)
+copy_ari	1	c84aa06	tests.recovery_audit.score,tests.sim_audit.score	decoded phased (A, B) against planted state, ARI per clone-bin
+copy_ari_loh	1	a552ca6	tests.sim_audit.score	copy_ari over planted LOH clone-bins only (one haplotype at 0); absent where not planted or planted as one (A, B) (#511)
+copy_ari_bgain	1	a552ca6	tests.sim_audit.score	copy_ari over planted balanced-gain clone-bins only (A = B > 1); absent where not planted or planted as one (A, B) (#511)
+copy_ari_ugain	1	a552ca6	tests.sim_audit.score	copy_ari over planted unbalanced-gain clone-bins only; absent where not planted or planted as one (A, B) (#511)
+copy_ari_pf	1	d43ebf7	tests.sim_audit.score	copy_ari on phase-free pairs, (min, max) of planted and decoded (A, B) (#511)
+copy_ari_loh_pf	1	d43ebf7	tests.sim_audit.score	copy_ari_loh on phase-free (min, max) pairs (#511)
+copy_ari_bgain_pf	1	d43ebf7	tests.sim_audit.score	copy_ari_bgain on phase-free (min, max) pairs (#511)
+copy_ari_ugain_pf	1	d43ebf7	tests.sim_audit.score	copy_ari_ugain on phase-free (min, max) pairs (#511)
+state_ari	1	c84aa06	tests.recovery_audit.score,tests.sim_audit.score	the continuous copy state before integer decoding against planted, ARI per clone-bin
+exact_altered	1	e9715d4	tests.sim_audit.score	share of planted-altered clone-bins decoded as exactly the planted (A, B)
+exact_altered_pf	1	e9715d4	tests.sim_audit.score	exact_altered up to phase (tests.sim_audit's exact_altered_minor)
+exact_loh	1	9bc13e0	tests.sim_audit.score	exact share over planted LOH clone-bins (one haplotype at 0); absent where not planted
+exact_loh_pf	1	9bc13e0	tests.sim_audit.score	exact_loh up to phase
+exact_bgain	1	9bc13e0	tests.sim_audit.score	exact share over planted balanced gains (A = B > 1); absent where not planted
+exact_bgain_pf	1	9bc13e0	tests.sim_audit.score	exact_bgain up to phase
+exact_ugain	1	9bc13e0	tests.sim_audit.score	exact share over planted unbalanced gains; absent where not planted
+exact_ugain_pf	1	9bc13e0	tests.sim_audit.score	exact_ugain up to phase
+exact_neutral	1	a552ca6	tests.sim_audit.score	share of planted (1, 1) clone-bins decoded (1, 1), in place of a neutral ARI, which one planted label leaves undefined (#511)
+wall_s	1	c84aa06	tests.recovery_audit.score,tests.sim_audit.score	the run's wall time, seconds
+peak_gb	1	c84aa06	tests.recovery_audit.score,tests.sim_audit.score	the run's resident peak, GB
+fixture_hash	1	c84aa06	tests.metrics.fixture_hash	sha256[:8] of a CoreInferenceTruth's fields by dtype, shape and bytes; dev (07b82e92), built in memory with no directory to hash; test_the_latest_dev_row_is_the_dev_fixture_built_now checks it
+fixture_hash	2	cada1af	tests.sim_stages.realization_hash	a sample directory's stored bytes: the 7073269 easy and hard runs were recorded as 1065eb5b and 79cf7e62 (.gz only), 23989aa4 and 1ae26365 after 81e893a committed plain copies (#588); r0 (93398396, 42x42, #470) keeps its hash as recorded, that generation no longer drawn on main
+fixture_hash	3	b3e9aab	tests.sim_stages.realization_hash	each file's decoded bytes keyed by its name without .gz (#595), so storage cannot move it: easy 2d4ce9a9 (formerly 23989aa4), hard 8797710b (formerly 1ae26365); every easy and hard run carries it

@@ -1,12 +1,14 @@
-"""Clone and copy-state ARI across `main`'s merges, from `docs/metrics.md`'s history rows.
+"""Clone and copy-state ARI across `main`'s merges, from the metrics ledger's history runs (`tests.metrics.read`, #620).
 
 `python -m tests.studies.metrics_history [OUT.png [OUT_CLASSES.png]]`
 
-A history row is a `tests/sim_audit.py::main` row whose note starts with
+A history row is a `tests/sim_audit.py::main` run whose note starts with
 `HISTORY`: `--sal` measured at an earlier merge of `main`, newest to oldest,
 recorded after the fact. The x axis is `main`'s first-parent order, read from
 git, so a merge that touched no pipeline code and carries its predecessor's
-figures is absent rather than drawn flat. One panel per `fixture_hash`,
+figures is absent rather than drawn flat, and a run of three or more merges
+whose plotted metrics did not move keeps its first and last merge, the last
+with `>>>>` drawn between them (`ticks`, `axis`). One panel per `fixture_hash`,
 labelled with its fixture name, so a panel holds one dataset (#588); one line
 per metric (`SERIES`); a second figure plots integer copy recovery by
 planted class (`CLASSES`). The figure carries its data hash and code commit.
@@ -49,12 +51,58 @@ CLASSES = {
 
 OUT_CLASSES = ROOT / "docs" / "plots" / "metrics_history_classes.png"
 
+SKIP = ">>>>"
+"""Drawn horizontally in the gap between a folded run's first and last tick,
+below the axis: the merges between them are skipped."""
+
 
 def history() -> list[dict[str, str]]:
     """The history rows, in the table's order."""
     return [
         r for r in read() if r["test"] == SIM_TEST and r["note"].startswith(HISTORY)
     ]
+
+
+def ticks(rows: list[dict[str, str]], order: dict[str, int]) -> list[list[str]]:
+    """`rows`' merges in `order`, grouped into ticks: a merge joins the
+    previous tick where no plotted metric (`SERIES` or `CLASSES`, so both
+    figures share their ticks) on any fixture differs from its last recorded
+    value, compared as recorded strings. A fixture compares only where it has
+    values; a value that moves, or a fixture or metric first measured, starts
+    a new tick."""
+    by: dict[str, dict[tuple[str, str, str], str]] = {}
+    for row in rows:
+        values = by.setdefault(row["commit"].rstrip("+"), {})
+        for metric in (*SERIES, *CLASSES):
+            if row[metric] != UNMEASURED:
+                values[(row["fixture"], row["fixture_hash"], metric)] = row[metric]
+    groups: list[list[str]] = []
+    last: dict[tuple[str, str, str], str] = {}
+    for commit in sorted(by, key=order.__getitem__):
+        if not groups or any(last.get(k) != v for k, v in by[commit].items()):
+            groups.append([commit])
+        else:
+            groups[-1].append(commit)
+        last |= by[commit]
+    return groups
+
+
+def axis(
+    groups: list[list[str]], names: dict[str, str]
+) -> tuple[list[tuple[str, str]], list[int]]:
+    """The x ticks, as `(commit, "#NNN")`, and the folds: each of `ticks`'
+    runs of three or more unchanged merges keeps its first and its last
+    merge, and the fold is the index of the first, so `SKIP` goes between it
+    and the next tick. Shorter runs keep every merge."""
+    shown: list[tuple[str, str]] = []
+    folds: list[int] = []
+    for group in groups:
+        if len(group) < 3:
+            shown += [(c, names[c]) for c in group]
+        else:
+            folds.append(len(shown))
+            shown += [(group[0], names[group[0]]), (group[-1], names[group[-1]])]
+    return shown, folds
 
 
 def first_parent() -> list[str]:
@@ -79,7 +127,6 @@ def figure(
     rows: list[dict[str, str]],
     out: Path,
     series: dict[str, str] | None = None,
-    ylabel: str = "ARI or share",
 ) -> Path:
     """One panel per `fixture_hash`, one line per metric in `series` (default `SERIES`), x in `main`'s merge order."""
     series = SERIES if series is None else series
@@ -90,14 +137,17 @@ def figure(
 
     order = {c: k for k, c in enumerate(first_parent())}
     rows = [r for r in rows if r["commit"].rstrip("+") in order]
-    commits = sorted({r["commit"].rstrip("+") for r in rows}, key=order.__getitem__)
-    x = {c: k for k, c in enumerate(commits)}
     names = {r["commit"].rstrip("+"): label(r) for r in rows}
+    shown, folds = axis(ticks(rows, order), names)
+    x = {c: k for k, (c, _) in enumerate(shown)}
+    # NB the stamp hashes every history row on main, skipped merges included
+    stamped = rows
+    rows = [r for r in rows if r["commit"].rstrip("+") in x]
     datasets = sorted({(r["fixture"], r["fixture_hash"]) for r in rows})
 
     fig, axes = plt.subplots(
         len(datasets), 1, sharex=True, squeeze=False,
-        figsize=(max(6.0, 0.42 * len(commits) + 2.5), 1.9 * len(datasets) + 1.2),
+        figsize=(max(6.0, 0.42 * len(shown) + 2.5), 1.9 * len(datasets) + 1.2),
     )  # fmt: skip
     for ax, (fixture, digest) in zip(axes[:, 0], datasets, strict=True):
         mine = sorted(
@@ -114,20 +164,32 @@ def figure(
                 xs, ys = zip(*points, strict=True)
                 ax.plot(xs, ys, ("-" if k < 4 else ":") if series is SERIES else ("-" if k % 2 == 0 else ":"), marker="o", ms=2.5, lw=1,
                         color=plt.get_cmap("tab10")(k if series is SERIES else k // 2), label=name)  # fmt: skip
-        ax.set_ylabel(f"{fixture}\n{digest}\n{ylabel}", fontsize=7)
+        ax.set_ylabel(f"{fixture}\n{digest}", fontsize=7)
         ax.set_ylim(-0.05, 1.05)
         ax.grid(axis="y", lw=0.3)
     axes[0, 0].legend(
         fontsize=6.5, ncol=3, frameon=False, loc="lower left", bbox_to_anchor=(0, 1.02)
     )
     ax = axes[-1, 0]
-    ax.set_xticks(range(len(commits)))
-    ax.set_xticklabels([names[c] for c in commits], rotation=90, fontsize=7)
-    ax.set_xlabel("Merge to main (oldest left)")
+    ax.set_xticks(range(len(shown)))
+    ax.set_xticklabels([name for _, name in shown], rotation=90, fontsize=7)
+    for k in folds:
+        ax.annotate(
+            SKIP,
+            xy=(k + 0.5, 0),
+            xycoords=("data", "axes fraction"),
+            xytext=(0, -4),
+            textcoords="offset points",
+            ha="center",
+            va="top",
+            rotation=0,
+            fontsize=7,
+        )
+    ax.set_xlabel("Merged PR (oldest left)")
     fig.text(
         0.99,
         0.01,
-        stamp(rows),
+        stamp(stamped),
         ha="right",
         va="bottom",
         fontsize=6,
@@ -173,7 +235,6 @@ def main(argv: list[str] | None = None) -> None:
             rows,
             Path(args[1]) if len(args) > 1 else OUT_CLASSES,
             CLASSES,
-            "share exact",
         )
     )
 
