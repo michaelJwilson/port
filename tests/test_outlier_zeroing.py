@@ -1,4 +1,4 @@
-"""CalicoST easy (`23989aa4`): 223 outlier genes, from the loader to the bins (#574).
+"""CalicoST easy (`2d4ce9a9`): 223 outlier genes, from the loader to the bins (T- #574).
 
 `quality.local_outlier_filter` flags 223 genes carrying 49.4% of easy's UMIs.
 Each test follows them one stage further, against `cnaster`'s own call:
@@ -9,9 +9,11 @@ Each test follows them one stage further, against `cnaster`'s own call:
   zeroed counts and cut the same bins as `cnaster`'s own function, 1,847 then
   1,690. Restoring the 223 genes' counts moves neither, so the bin count is
   decided upstream of binning, by the read depth the filter leaves.
-- **Outputs:** the filter off reproduces #487's head exactly, 1,716 bins and
-  phase-free exact altered 0.750; on, `main` reads 1,690 and 0.630. The 0.750
-  was an unfiltered run, not a binning departure.
+- **Outputs:** the filter off reproduces PR- #487's head exactly, 1,716 bins
+  and phase-free exact altered 0.750; on reads 1,690 and 0.630. The 0.750 was
+  an unfiltered run, not a binning departure.
+- **Default:** the filter stays on, as `cnaster` and the shipped config set
+  it: after PR- #553 it leads on every copy metric (T- #593).
 """
 
 from __future__ import annotations
@@ -109,6 +111,41 @@ def test_the_loaders_zero_the_outlier_genes_and_no_other(
         np.testing.assert_array_equal(_dense(ours.layers["count"]), counts)
 
 
+@pytest.mark.merge
+@pytest.mark.patch
+def test_with_the_flag_off_the_loaders_keep_every_outlier_gene(
+    easy: Any, tmp_path: Path
+) -> None:
+    """`local_outlier_filter: false`: dense and sparse reads equal `cnaster`'s, the 223 genes counted.
+
+    The flag, not the loader, decides the zeroing: the genes the filter flags
+    when on carry their counts when off, in port's reads as in `cnaster`'s.
+    """
+    from cnaster.io import load_input_data as upstream
+    from port.patch.io import load_input_data
+
+    on, on_arguments = _config(easy, tmp_path / "on", True)
+    flagged = upstream(on, **on_arguments).adata
+    config, arguments = _config(easy, tmp_path / "off", False)
+    theirs = upstream(config, **arguments).adata
+    counts = _dense(theirs.layers["count"])
+    zeroed = _zeroed(
+        _dense(flagged.layers["count"]),
+        _dense(
+            theirs[list(flagged.obs.index), list(flagged.var.index)].layers["count"]
+        ),
+    )
+
+    assert zeroed.size == OUTLIERS
+    assert (counts[:, zeroed].sum(axis=0) > 0).all()
+
+    for sparse in (False, True):
+        ours = load_input_data(config, **arguments, sparse_counts=sparse).adata
+        assert list(ours.var.index) == list(theirs.var.index)
+        assert list(ours.obs.index) == list(theirs.obs.index)
+        np.testing.assert_array_equal(_dense(ours.layers["count"]), counts)
+
+
 @pytest.fixture(scope="module")
 def binned(easy: Any) -> tuple[Any, list[tuple[Any, Any, Any]]]:
     """One `--sal` run on easy, and each `create_bin_ranges` call's inputs and output."""
@@ -130,7 +167,9 @@ def binned(easy: Any) -> tuple[Any, list[tuple[Any, Any, Any]]]:
     setattr(driver, BINNING, capture)
 
     try:
-        recovery, _ = run_arm(easy, ["--sal", "--no-plots"])
+        recovery, _ = run_arm(
+            easy, ["--sal", "--no-plots"], {"quality.local_outlier_filter": True}
+        )
     finally:
         setattr(driver, BINNING, current)
 
@@ -179,7 +218,7 @@ def test_both_binning_calls_cut_cnaster_s_bins_on_the_zeroed_counts(
 def test_the_outlier_filter_moves_easy_s_recovery_by_its_stated_amounts(
     easy: Any, binned: tuple[Any, list[tuple[Any, Any, Any]]]
 ) -> None:
-    """CalicoST easy (`23989aa4`): off reproduces #487's head; on is `main`.
+    """CalicoST easy (`2d4ce9a9`): off reproduces PR- #487's head; on is `cnaster`'s.
 
     Clones are recovered either way.
 
