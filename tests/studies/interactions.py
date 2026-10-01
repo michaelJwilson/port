@@ -13,7 +13,8 @@ allocation, on the clone labels, so it enters as a main effect alone.
 
 `run` scores each configuration on each sample with `tests.sim_audit`, one
 subprocess per run, appending a JSON line per run, so an interrupted stream
-resumes where it stopped. `analyse` fits, per metric, a least-squares model
+resumes where it stopped; with `INTERACTIONS_LOCK` set, each run holds
+that lock file. `analyse` fits, per metric, a least-squares model
 of `MODEL` plus a sample offset, with standard errors from the residuals.
 
 Levels, and what selects each:
@@ -199,6 +200,11 @@ def run(design_path: Path, out: Path, samples: list[str], root: Path) -> None:
             where = root / f"{Path(sample).name}_{index:02d}"
             command = [sys.executable, "-m", "tests.sim_audit", "--sample", sample,
                        "--root", str(where), *(f"--set={s}" for s in sets), "--", *flags]  # fmt: skip
+            # NB one job at a time on the host: each run takes the lock alone,
+            #    so another measurement's runs interleave rather than overlap.
+            lock = os.environ.get("INTERACTIONS_LOCK")
+            if lock:
+                command = ["flock", lock, *command]
             started = time.perf_counter()
             done_run = subprocess.run(command, capture_output=True, text=True, timeout=1800,
                                       env={**os.environ, **env}, check=False)  # fmt: skip
