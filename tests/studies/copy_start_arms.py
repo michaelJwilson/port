@@ -1,7 +1,7 @@
 """#540's arms: every copy-state start, and what masking, smoothing, outliers and RDR do to the best few.
 
 Each arm is a list of `Job`s; each job is one start on one stage at one seed,
-through `port.extensions.copy_starts`, and returns one row of results. Jobs
+through `port.sandbox.extensions.copy_starts`, and returns one row of results. Jobs
 run in forked workers, which inherit the captured calls.
 
 - `starts`: every start on every stage it takes.
@@ -79,7 +79,7 @@ def _window_name(window: dict[str, Any]) -> str:
 
 
 def _jobs(arm: str, seeds: list[int]) -> list[Job]:
-    from port.extensions.copy_starts import starts
+    from port.sandbox.extensions.copy_starts import starts
 
     jobs: list[Job] = []
     stages = [s for s in ("baf", "rdrbaf") if s in _CALLS]
@@ -123,7 +123,7 @@ def _jobs(arm: str, seeds: list[int]) -> list[Job]:
 
 
 def _corrupt(call: Any, variant: str) -> tuple[Any, Any]:
-    from port.extensions.copy_starts import corrupted
+    from port.sandbox.extensions.copy_starts import corrupted
 
     kind, rest = variant.split(" ", 1)
     fraction = float(rest.split("%")[0]) / 100.0
@@ -133,7 +133,7 @@ def _corrupt(call: Any, variant: str) -> tuple[Any, Any]:
 
 
 def _run(job: Job, seconds: float) -> dict[str, Any]:
-    from port.extensions import copy_starts as cs
+    from port.sandbox.extensions import copy_starts as cs
 
     call = _CALLS[job.stage]
     rng = np.random.default_rng([job.seed, 540])
@@ -241,7 +241,7 @@ def run_arms(
     `only` keeps the jobs of those starts alone: how a start added later
     joins an earlier run's rows.
     """
-    from port.extensions.copy_starts import planted_states
+    from port.sandbox.extensions.copy_starts import planted_states
 
     _init(calls)
     jobs = [
