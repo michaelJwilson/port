@@ -1,13 +1,14 @@
 """Clone and copy-state ARI across `main`'s merges, from `docs/metrics.md`'s history rows.
 
-`python -m tests.studies.metrics_history [OUT.png]`
+`python -m tests.studies.metrics_history [OUT.png [OUT_CLASSES.png]]`
 
 A history row is a `tests/sim_audit.py::main` row whose note starts with
 `HISTORY`: `--sal` measured at an earlier merge of `main`, newest to oldest,
 recorded after the fact. The x axis is `main`'s first-parent order, read from
 git, so a merge that touched no pipeline code and carries its predecessor's
 figures is absent rather than drawn flat. One panel per fixture, one line per
-metric (`SERIES`). The figure carries its data hash and code commit.
+metric (`SERIES`); a second figure plots integer copy recovery by
+planted class (`CLASSES`). The figure carries its data hash and code commit.
 """
 
 from __future__ import annotations
@@ -35,6 +36,18 @@ SERIES = {
 }
 """Each metric plotted, and its legend name: ARIs solid, the exact-altered shares dotted."""
 
+CLASSES = {
+    "exact_loh": "LOH",
+    "exact_loh_pf": "LOH, phase-free",
+    "exact_bgain": "balanced gain",
+    "exact_bgain_pf": "balanced gain, phase-free",
+    "exact_ugain": "unbalanced gain",
+    "exact_ugain_pf": "unbalanced gain, phase-free",
+}
+"""Integer copy recovery by planted class, the second figure: phased solid, phase-free dotted."""
+
+OUT_CLASSES = ROOT / "docs" / "plots" / "metrics_history_classes.png"
+
 
 def history() -> list[dict[str, str]]:
     """The history rows, in the table's order."""
@@ -61,7 +74,14 @@ def label(row: dict[str, str]) -> str:
     return words[1] if len(words) > 1 else row["commit"]
 
 
-def figure(rows: list[dict[str, str]], out: Path) -> Path:
+def figure(
+    rows: list[dict[str, str]],
+    out: Path,
+    series: dict[str, str] | None = None,
+    ylabel: str = "ARI or share",
+) -> Path:
+    """One panel per fixture, one line per metric in `series` (default `SERIES`), x in `main`'s merge order."""
+    series = SERIES if series is None else series
     import matplotlib as mpl
 
     mpl.use("Agg")
@@ -83,7 +103,7 @@ def figure(rows: list[dict[str, str]], out: Path) -> Path:
             (r for r in rows if r["fixture"] == fixture),
             key=lambda r: x[r["commit"].rstrip("+")],
         )
-        for k, (column, name) in enumerate(SERIES.items()):
+        for k, (column, name) in enumerate(series.items()):
             points = [
                 (x[r["commit"].rstrip("+")], float(r[column]))
                 for r in mine
@@ -91,9 +111,9 @@ def figure(rows: list[dict[str, str]], out: Path) -> Path:
             ]
             if points:
                 xs, ys = zip(*points, strict=True)
-                ax.plot(xs, ys, "-" if k < 4 else ":", marker="o", ms=2.5, lw=1,
-                        color=plt.get_cmap("tab10")(k), label=name)  # fmt: skip
-        ax.set_ylabel(fixture, fontsize=7)
+                ax.plot(xs, ys, ("-" if k < 4 else ":") if series is SERIES else ("-" if k % 2 == 0 else ":"), marker="o", ms=2.5, lw=1,
+                        color=plt.get_cmap("tab10")(k if series is SERIES else k // 2), label=name)  # fmt: skip
+        ax.set_ylabel(f"{fixture}\n{ylabel}", fontsize=7)
         ax.set_ylim(-0.05, 1.05)
         ax.grid(axis="y", lw=0.3)
     axes[0, 0].legend(
@@ -145,7 +165,16 @@ def stamp(rows: list[dict[str, Any]]) -> str:
 
 def main(argv: list[str] | None = None) -> None:
     args = sys.argv[1:] if argv is None else argv
-    print(figure(history(), Path(args[0]) if args else OUT))
+    rows = history()
+    print(figure(rows, Path(args[0]) if args else OUT))
+    print(
+        figure(
+            rows,
+            Path(args[1]) if len(args) > 1 else OUT_CLASSES,
+            CLASSES,
+            "share exact",
+        )
+    )
 
 
 if __name__ == "__main__":

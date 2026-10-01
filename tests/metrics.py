@@ -24,6 +24,7 @@ import argparse
 import datetime
 import hashlib
 import json
+import math
 import shlex
 import subprocess
 import sys
@@ -45,6 +46,12 @@ METRICS = {
     "state_ari": ("state_ari", 4),
     "exact_altered": ("exact_altered", 4),
     "exact_altered_pf": ("exact_altered_minor", 4),
+    "exact_loh": ("exact_loh", 4),
+    "exact_loh_pf": ("exact_loh_pf", 4),
+    "exact_bgain": ("exact_balanced_gain", 4),
+    "exact_bgain_pf": ("exact_balanced_gain_pf", 4),
+    "exact_ugain": ("exact_unbalanced_gain", 4),
+    "exact_ugain_pf": ("exact_unbalanced_gain_pf", 4),
     "wall_s": ("wall", 1),
     "peak_gb": ("peak_gb", 2),
 }
@@ -145,7 +152,9 @@ def row(
     }
     for column, (key, decimals) in METRICS.items():
         value = recovery.get(key)
-        cells[column] = UNMEASURED if value is None else f"{value:.{decimals}f}"
+        # NB NaN is a class the sample does not plant, unmeasured as None is
+        missing = value is None or math.isnan(value)
+        cells[column] = UNMEASURED if missing else f"{value:.{decimals}f}"
     return "| " + " | ".join(cells[c] for c in COLUMNS) + " |"
 
 
