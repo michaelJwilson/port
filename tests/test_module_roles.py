@@ -52,6 +52,7 @@ ROLES: dict[str, Role] = {
     "port.extensions.config_audit": "extension",
     "port.extensions.copy_errors": "extension",
     "port.extensions.copy_starts": "extension",
+    "port.extensions.field_cluster": "extension",
     "port.extensions.copy_likelihood": "extension",
     "port.extensions.emission_family": "oracle",
     "port.extensions.figure_style": "extension",
@@ -117,7 +118,6 @@ ROLES: dict[str, Role] = {
     "port.sim.normal_fit": "sim",
     # sandbox
     "port.sandbox.admixture.clone_mixture": "set aside",
-    "port.sandbox.known_field.cluster": "set aside",
     "port.sandbox.known_field.color_merge": "set aside",
     "port.sandbox.known_field.field": "set aside",
     "port.sandbox.admixture.probes.sim_probe": "set aside",

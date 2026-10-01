@@ -45,6 +45,8 @@ Solver = Literal[
     "icm-numba-floor",
     "icm-argmax-floor",
     "alpha-rust-fuse-merge",
+    "glauber-merge",
+    "sw-field-glauber-merge",
 ]
 SOLVERS: tuple[Solver, ...] = (
     "icm",
@@ -56,6 +58,8 @@ SOLVERS: tuple[Solver, ...] = (
     "icm-numba-floor",
     "icm-argmax-floor",
     "alpha-rust-fuse-merge",
+    "glauber-merge",
+    "sw-field-glauber-merge",
 )
 """`icm` is `cnaster`'s. `alpha`, `alpha-rust` and `icm-numba` are
 `snakes_and_ladders`' (#246, #312): alpha expansion with its Python or Rust
@@ -128,6 +132,12 @@ def sweep_for(name: Solver) -> Any:
 
     if name == "alpha-rust-fuse-merge":
         return fusion_then_merge
+
+    if name == "glauber-merge":
+        return functools.partial(annealed_then_merge, move=None)
+
+    if name == "sw-field-glauber-merge":
+        return functools.partial(annealed_then_merge, move="swendsen-wang")
 
     return sal_icm_sweep
 
@@ -409,5 +419,83 @@ def fusion_then_merge(
             backend=Backend.NUMBA,
         )
         return result.labelling, result.sweeps
+
+    return _solve(field, graph, assignment, beta, search)
+
+
+ANNEALED: dict[str | None, tuple[float, int]] = {
+    None: (0.5, 250),
+    "swendsen-wang": (1.0, 250),
+}
+"""Start temperature and sweeps per move, as `tests/studies/potts_sampler_settings.json` tuned them
+on `dev_tree_1s_hard` (#556, #559): `sal:anneal` and `port:sw-field-glauber`, each annealed to
+0.05 on sal's exponential schedule."""
+
+
+def annealed_then_merge(
+    field: Any,
+    graph: Any,
+    assignment: Any,
+    beta: float,
+    *,
+    move: str | None,
+    tol: float = 0.0,
+    epsilon: float = 0.0,
+    min_clone_spots: int = 200,
+    cost_zeropoint: float = 0.0,
+    onehot_allowed_clones: Any = None,
+) -> Any:
+    """An annealed chain from the caller's labelling, then sal's floor (#570).
+
+    `move=None` is sal's single-site heat bath (Glauber); `"swendsen-wang"`
+    is #559's field-weighted cluster move with a Glauber sweep after each
+    step (`port.extensions.field_cluster.anneal`). Seeded at 0, as the
+    fused row's descent is, and floored as :func:`fusion_then_merge` is, so
+    the labelling search is the only difference between the rows.
+    """
+    del tol, epsilon, cost_zeropoint, onehot_allowed_clones
+
+    import numpy as np
+    from sal.backend import Backend
+    from sal.cost import Cost
+    from sal.opt.budget import Budget
+    from sal.sample.potts_mcmc.moves import PottsMove
+    from sal.sample.schedule import ScheduleParams, ScheduleShape
+    from sal.search.ground_state import Problem, run_annealed
+    from sal.search.icm import merge_small_labels
+
+    t_start, sweeps = ANNEALED[move]
+    schedule = ScheduleParams(ScheduleShape.EXPONENTIAL, t_start, 0.05)
+
+    def search(potts: Any, values: Any, start: Any) -> tuple[Any, int]:
+        rng = np.random.default_rng(0)
+
+        if move is None:
+            problem = Problem(potts, values, values.shape[1])
+            budget = Budget(Cost.SITE_VISITS, sweeps * problem.visits_per_sweep)
+            annealed = run_annealed(
+                problem,
+                budget,
+                rng,
+                PottsMove("single-site"),
+                schedule=schedule,
+                start=start,
+            ).labelling
+        else:
+            from port.extensions.field_cluster import anneal
+
+            temperature = schedule.build(sweeps)
+            temperatures = np.array([temperature(k) for k in range(sweeps)])
+            annealed, _ = anneal(potts, values, start, rng, temperatures, move, True)
+
+        result = merge_small_labels(
+            potts,
+            values,
+            np.asarray(annealed, dtype=np.int64),
+            np.random.default_rng(0),
+            min_sites=max(int(min_clone_spots), 1),
+            backend=Backend.NUMBA,
+        )
+        return result.labelling, result.sweeps + sweeps
 
     return _solve(field, graph, assignment, beta, search)

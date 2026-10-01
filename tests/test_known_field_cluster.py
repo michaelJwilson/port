@@ -12,7 +12,7 @@ import itertools
 
 import numpy as np
 import pytest
-from port.sandbox.known_field import cluster
+from port.extensions import field_cluster as cluster
 from sal.sample.potts_mcmc.sweeps import adjacency_lists
 from sal.sim.graph import PottsGraph
 from sal.sim.potts import energy

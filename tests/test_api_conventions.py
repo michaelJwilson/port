@@ -52,6 +52,8 @@ KNOWN: dict[str, str] = {
     "port.extensions.label_solver:fusion_then_merge arg tol": "F8",
     "port.extensions.label_solver:fusion_then_merge sibling": "F8",
     "port.extensions.label_solver:expansion_then_merge sibling": "F8",
+    "port.extensions.label_solver:annealed_then_merge arg beta": "F2",
+    "port.extensions.label_solver:annealed_then_merge arg tol": "F8",
     "port.extensions.label_solver:sal_icm_floor_sweep sibling": "F8",
     # NB the argmax-start row (#410 step 3) carries the seam's words until
     #    F2/F8 rename its siblings with it.

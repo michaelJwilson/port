@@ -81,7 +81,7 @@ FIELD_WEIGHTED = {
     "port:wolff-field": ("wolff", False),
     "port:wolff-field-glauber": ("wolff", True),
 }
-"""#559's cluster moves (`port.sandbox.known_field.cluster`): the move, and whether a Glauber sweep follows each."""
+"""#559's cluster moves (`port.extensions.field_cluster`): the move, and whether a Glauber sweep follows each."""
 
 CLUSTER_TEMPERING = "sal:cluster-tempering"
 """sal's `cluster_tempering` (its #1090): `TEMPERING`'s ladder, one Swendsen-Wang pass per replica per step and
@@ -164,7 +164,7 @@ def _sample(solver: str, field: np.ndarray, start: np.ndarray, rng: np.random.Ge
     A ladder runs ``sweeps // REPLICAS`` steps of `REPLICAS` replicas, so
     `sweeps` counts replica sweeps for every entry.
     """
-    from port.sandbox.known_field.cluster import anneal
+    from port.extensions.field_cluster import anneal
     from sal.cost import Cost
     from sal.opt.budget import Budget
     from sal.sample.potts_mcmc.chains import cluster_tempering, parallel_tempering

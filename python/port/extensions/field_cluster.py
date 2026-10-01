@@ -1,12 +1,7 @@
 """Field-weighted relabelling for Swendsen-Wang and Wolff, with a Glauber interleave (#559).
 
-Ticket: #559 -- field-weighted Swendsen-Wang and Wolff moves, with a
-  Glauber interleave.
-Measurement: `docs/study-field-strength.md`, 25 realizations x 50 starts on
-  `dev_tree_1s_hard`: 0.01 / 0.06 nats from TRW-S's bound with the
-  interleave, at 2.7-3.8x annealed Glauber's runtime.
-Exit: graduate to `extensions/` as a `label_solver` row if it beats the
-  admitted row end to end (#570); else retire.
+Promoted from `port.sandbox.known_field.cluster` for #570, where it is one
+level of the clone-labelling factor (`label_solver`'s `sw-field-glauber-merge`).
 
 `sal`'s cluster moves recolour a Fortuin-Kasteleyn cluster by proposing a
 label uniformly and accepting on the field (`sal.sample.potts_mcmc.sweeps._recolour`).
@@ -47,11 +42,13 @@ __all__ = ["anneal", "field_weighted_sw", "field_weighted_wolff", "heat_bath_lab
 
 
 def heat_bath_labels(
-    weights: np.ndarray, beta: float, rng: np.random.Generator
+    weights: np.ndarray, inverse_temperature: float, rng: np.random.Generator
 ) -> np.ndarray:
-    """One label per row of `weights`, drawn with probability proportional to ``exp(beta * weights)``, by Gumbel-max."""
+    """One label per row of `weights`, drawn with probability proportional to ``exp(inverse_temperature * weights)``, by Gumbel-max."""
     gumbel = -np.log(-np.log(rng.random(weights.shape)))
-    return np.asarray(np.argmax(beta * weights + gumbel, axis=1), dtype=np.int64)
+    return np.asarray(
+        np.argmax(inverse_temperature * weights + gumbel, axis=1), dtype=np.int64
+    )
 
 
 def field_weighted_sw(
@@ -59,20 +56,22 @@ def field_weighted_sw(
     graph: Any,
     rows: np.ndarray,
     rng: np.random.Generator,
-    beta: float,
+    inverse_temperature: float,
 ) -> None:
     """One Swendsen-Wang pass in place: `sal`'s bonds, each cluster's label drawn from its field weight."""
     from sal.sample.potts_mcmc.sweeps import bond_probability, bond_roots
 
     first, second = graph.edge_index[:, 0], graph.edge_index[:, 1]
     like = state[first] == state[second]
-    active = like & (rng.random(first.size) < bond_probability(graph, beta))
+    active = like & (
+        rng.random(first.size) < bond_probability(graph, inverse_temperature)
+    )
     roots = bond_roots(graph.n_nodes, graph.edge_index[active])
     sums = np.zeros_like(rows)
     np.add.at(sums, roots, rows)
     heads = np.unique(roots)
     labels = np.empty(graph.n_nodes, dtype=np.int64)
-    labels[heads] = heat_bath_labels(sums[heads], beta, rng)
+    labels[heads] = heat_bath_labels(sums[heads], inverse_temperature, rng)
     state[:] = labels[roots]
 
 
@@ -81,7 +80,7 @@ def field_weighted_wolff(
     rows: np.ndarray,
     lists: Any,
     rng: np.random.Generator,
-    beta: float,
+    inverse_temperature: float,
 ) -> int:
     """One Wolff cluster in place, its label drawn from its field weight; returns its size.
 
@@ -99,12 +98,14 @@ def field_weighted_wolff(
             neighbour = incident[position]
             if inside[neighbour] or state[neighbour] != colour:
                 continue
-            if rng.random() < 1.0 - np.exp(-beta * weights[position]):
+            if rng.random() < 1.0 - np.exp(-inverse_temperature * weights[position]):
                 inside[neighbour] = True
                 cluster.append(neighbour)
                 frontier.append(neighbour)
     members = np.asarray(cluster, dtype=np.int64)
-    state[members] = heat_bath_labels(rows[members].sum(axis=0)[None, :], beta, rng)[0]
+    state[members] = heat_bath_labels(
+        rows[members].sum(axis=0)[None, :], inverse_temperature, rng
+    )[0]
     return members.size
 
 
@@ -137,16 +138,16 @@ def anneal(
     )
     best, best_energy = state.copy(), float(energy(graph, rows, state))
     for temperature in np.asarray(temperatures, dtype=np.float64):
-        beta = 1.0 / float(temperature)
+        inverse_temperature = 1.0 / float(temperature)
         if move == "swendsen-wang":
-            field_weighted_sw(state, graph, rows, rng, beta)
+            field_weighted_sw(state, graph, rows, rng, inverse_temperature)
         elif move == "wolff":
-            field_weighted_wolff(state, rows, lists, rng, beta)
+            field_weighted_wolff(state, rows, lists, rng, inverse_temperature)
         else:
             msg = f"move {move!r}: swendsen-wang or wolff"
             raise ValueError(msg)
         if sweep is not None:
-            sweep(state, rng, beta)
+            sweep(state, rng, inverse_temperature)
         current = float(energy(graph, rows, state))
         if current < best_energy:
             best, best_energy = state.copy(), current

@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
+from port.extensions.label_solver import Solver
 
 from tests.test_alpha_expansion import _lattice
 
@@ -321,3 +322,35 @@ def test_sal_recovers_the_planted_clones_on_the_dev_instance(tmp_path: object) -
 
     assert scores["--sal"] >= 0.99, scores
     assert scores["default"] < 0.99, scores
+
+
+@pytest.mark.analytic
+@pytest.mark.parametrize("name", ["glauber-merge", "sw-field-glauber-merge"])
+def test_an_annealed_row_is_the_argmax_without_coupling(name: Solver) -> None:
+    """At `beta = 0` the MAP labelling is each site's best clone (#570).
+
+    With no coupling every site's conditional law is its own field's, which
+    the chain cools to its mode by the schedule's 0.05 end; a floor of one
+    spot dissolves nothing. Against `np.argmax` directly: 0 of 400 differ.
+    """
+    from port.extensions.label_solver import sweep_for
+
+    field, graph, _, _ = _lattice(20, 5, seed=4, beta=0.6)
+    labelling = np.arange(400, dtype=np.int64) % 5
+    sweep_for(name)(field, graph, labelling, 0.0, min_clone_spots=1)
+
+    np.testing.assert_array_equal(labelling, np.argmax(field, axis=1))
+
+
+@pytest.mark.smoke
+@pytest.mark.parametrize("name", ["glauber-merge", "sw-field-glauber-merge"])
+def test_an_annealed_row_keeps_the_clone_floor(name: Solver) -> None:
+    """No clone an annealed row returns is under `min_clone_spots` (#570)."""
+    from port.extensions.label_solver import sweep_for
+
+    field, graph, _, beta = _lattice(40, 16, seed=9, beta=0.6)
+    labelling = np.arange(1600, dtype=np.int64) % 16
+    sweep_for(name)(field, graph, labelling, beta, min_clone_spots=200)
+    sizes = np.bincount(labelling, minlength=16)
+
+    assert np.all((sizes == 0) | (sizes >= 200)), f"clone sizes {sizes}"
