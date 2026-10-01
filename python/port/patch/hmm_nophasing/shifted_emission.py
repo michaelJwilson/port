@@ -328,6 +328,24 @@ class hmm_nophasing(UPSTREAM):  # type: ignore[misc]
     `run_cnaster_port --dispersion-rescale` binds it.
     """
 
+    dispersion_two_component: bool = False
+    """With `dispersion_rescale`, add a clone-shared `alpha`, `tau` to the per-spot one (#566).
+
+    `alpha_row = alpha_shared + alpha_k / S_eff,c`,
+    `rho_row = rho_shared + rho_k g_row`
+    (:class:`~port.patch.hmm_nophasing.rescale.Components`), the two fitted
+    in the same M step; `run_cnaster_port --dispersion-two-component`.
+    """
+
+    _components: Any = None
+    """This fit's clone-shared dispersion, or `None`."""
+
+    _components_errors: Any = None
+    """BFGS's inverse-Hessian standard errors on `(log alpha_shared, log tau_shared)`."""
+
+    _row_components: Any = None
+    """The last fit's clone-shared dispersion, for the static dense emission and the next fit's start."""
+
     _rescale: Any = None
     """This fit's `Rescale`, found in `optimize`; read by the coded emission and the gradient."""
 
@@ -442,6 +460,7 @@ class hmm_nophasing(UPSTREAM):  # type: ignore[misc]
                 taus,
                 np.zeros(1),
                 rescale,
+                hmm_nophasing._row_components if cls.dispersion_two_component else None,
             )
             return rdr[:, :, None], baf[:, :, None]
 
@@ -502,6 +521,22 @@ class hmm_nophasing(UPSTREAM):  # type: ignore[misc]
             self._rescale = None
         hmm_nophasing._row_rescale = self._rescale
 
+        # NB #566: the clone-shared part starts where the last fit left it,
+        #    or at `alpha` 0.1, `tau` 1,000.
+        if self.dispersion_two_component:
+            if self._rescale is None:
+                msg = "the two-component dispersion needs dispersion_rescale"
+                raise ValueError(msg)
+
+            from port.patch.hmm_nophasing.rescale import Components
+
+            self._components = hmm_nophasing._row_components or Components(
+                float(np.log(0.1)), float(np.log(1_000.0))
+            )
+        else:
+            self._components = None
+        hmm_nophasing._row_components = self._components
+
         # NB the M step's gradient in closed form, through `minimize`'s
         #    callable `method` (#433); positional extras leave the fit as is,
         #    since the settings the gradient reads would then be unnamed.
@@ -521,6 +556,20 @@ class hmm_nophasing(UPSTREAM):  # type: ignore[misc]
         res: dict[str, Any] = super().optimize(
             X, lengths, n_states, base_nb_mean, total_bb_RD, *args, **kwargs
         )
+
+        if self._components is not None:
+            hmm_nophasing._row_components = self._components
+            errors = self._components_errors
+            logger.info(
+                "two-component dispersion: alpha_shared %.4g, tau_shared %.4g "
+                "(rho %.4g); log-scale standard errors %s",
+                self._components.alpha,
+                float(np.exp(self._components.log_tau)),
+                self._components.rho,
+                "unavailable"
+                if errors is None
+                else np.array2string(errors, precision=4),
+            )
 
         normal_lambda = kwargs.get("normal_lambda")
         clone_lengths = kwargs.get("clone_lengths")
@@ -822,6 +871,7 @@ class hmm_nophasing(UPSTREAM):  # type: ignore[misc]
             taus,
             shifts,
             self._rescale,
+            self._components,
         )
 
         if clone_stack:
@@ -841,6 +891,7 @@ def _rescaled_rows(
     taus: np.ndarray,
     shifts: np.ndarray,
     rescale: Any,
+    components: Any = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     """`(K, n_rows)` NB and BB scores at each row's rescaled dispersions; `shifts` per row or one."""
     from port.patch.hmm_nophasing.rescale import (
@@ -851,9 +902,14 @@ def _rescaled_rows(
     )
 
     mean = exposure[None, :] * np.exp(rates[:, None] - shifts[None, :])
-    rdr = nb_logpmf(nb_obs[None, :], mean, alpha_rows(alphas, rescale))
+    shared_alpha = 0.0 if components is None else components.alpha
+    shared_rho = 0.0 if components is None else components.rho
+    rdr = nb_logpmf(nb_obs[None, :], mean, alpha_rows(alphas, rescale, shared_alpha))
     baf = bb_logpmf(
-        bb_obs[None, :], trials[None, :], p_binom[:, None], tau_rows(taus, rescale)
+        bb_obs[None, :],
+        trials[None, :],
+        p_binom[:, None],
+        tau_rows(taus, rescale, shared_rho),
     )
 
     return rdr, baf
@@ -872,5 +928,8 @@ def release() -> None:
     """Drop the last fit's shift; `port.pipeline.patched` calls this on exit (#517).
 
     Keyed by size, so a later fit of the same shape would read this one's.
+    The dispersion rescale and its clone-shared part go with it (#566).
     """
     hmm_nophasing._row_shift = None
+    hmm_nophasing._row_rescale = None
+    hmm_nophasing._row_components = None

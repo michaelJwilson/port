@@ -41,6 +41,7 @@ from scipy.special import gammaln
 from port.patch.hmm_nophasing.gradient import DISPERSION_FLOOR
 
 __all__ = [
+    "Components",
     "Rescale",
     "alpha_rows",
     "bb_factor",
@@ -51,6 +52,7 @@ __all__ = [
     "nb_logpmf",
     "record",
     "recording",
+    "rho_rows",
     "tau_rows",
 ]
 
@@ -87,23 +89,58 @@ def bb_factor(trials: np.ndarray) -> np.ndarray:
     return np.where(total > 1.0, pairs / safe, 1.0)
 
 
-def alpha_rows(alphas: np.ndarray, rescale: Rescale) -> np.ndarray:
-    """`(K, n_rows)` each state's per-spot `alpha` at each row's clone."""
+class Components(NamedTuple):
+    """The clone-shared dispersion beside the per-spot one: `--dispersion-two-component` (#566).
+
+    `alpha_row = alpha_shared + alpha_k / S_eff,c` and `rho_row = rho_shared
+    + rho_k g_row`: a clone-level effect -- #556's tumour gene program, sd
+    1.78 about `lambda` against 0.35 for normal spots -- does not average
+    away with clone size, and the per-spot term does. Held in logs, as the
+    M step fits them; `rho_shared = 1 / (1 + tau_shared)`.
+    """
+
+    log_alpha: float
+    log_tau: float
+
+    @property
+    def alpha(self) -> float:
+        return float(np.exp(self.log_alpha))
+
+    @property
+    def rho(self) -> float:
+        return float(1.0 / (1.0 + np.exp(self.log_tau)))
+
+
+RHO_CEILING = 1.0 - 1e-9
+"""`rho_row` held below 1, where `tau_row = 1 / rho - 1` reaches 0."""
+
+
+def alpha_rows(alphas: np.ndarray, rescale: Rescale, shared: float = 0.0) -> np.ndarray:
+    """`(K, n_rows)`: `shared + alpha_k f_c`, each state's per-spot `alpha` at each row's clone."""
     alpha = np.asarray(alphas, dtype=np.float64).reshape(-1, 1)
-    out: np.ndarray = alpha * rescale.nb_rows[None, :]
+    out: np.ndarray = shared + alpha * rescale.nb_rows[None, :]
     return out
 
 
-def tau_rows(taus: np.ndarray, rescale: Rescale) -> np.ndarray:
-    """`(K, n_rows)` `tau` at `rho_row = rho g_row`: `(1 + tau) / g - 1`, never below `tau`.
-
-    `inf` where `g = 0` -- no spot holds two trials, so the sum is binomial.
-    """
+def rho_rows(taus: np.ndarray, rescale: Rescale, shared: float = 0.0) -> np.ndarray:
+    """`(K, n_rows)`: `rho_row = shared + g_row / (1 + tau_k)`, below 1."""
     tau = np.asarray(taus, dtype=np.float64).reshape(-1, 1)
-    g = rescale.bb[None, :]
+    out: np.ndarray = np.minimum(
+        shared + rescale.bb[None, :] / (1.0 + tau), RHO_CEILING
+    )
+    return out
+
+
+def tau_rows(taus: np.ndarray, rescale: Rescale, shared: float = 0.0) -> np.ndarray:
+    """`(K, n_rows)` `tau_row = 1 / rho_row - 1`; `(1 + tau) / g - 1` without a shared part.
+
+    `inf` where `rho_row = 0` -- no spot holds two trials and nothing is
+    shared, so the sum is binomial.
+    """
+    rho = rho_rows(taus, rescale, shared)
     with np.errstate(divide="ignore"):
         out: np.ndarray = np.where(
-            g > 0.0, (1.0 + tau) / np.where(g > 0.0, g, 1.0) - 1.0, np.inf
+            rho > 0.0, 1.0 / np.where(rho > 0.0, rho, 1.0) - 1.0, np.inf
         )
     return out
 
