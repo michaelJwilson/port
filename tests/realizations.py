@@ -355,8 +355,8 @@ def fit_one(genome: dict[str, Any] | None, index: int, root: Path, errors: bool)
     realization = realize(truth, index)
     captured = run(realization, root / f"realization-{index}")
 
-    if captured.single_X.shape[0] != truth.states.shape[1]:
-        msg = f"{captured.single_X.shape[0]} bins survived of {truth.states.shape[1]}"
+    if captured.clone_X.shape[0] != truth.states.shape[1]:
+        msg = f"{captured.clone_X.shape[0]} bins survived of {truth.states.shape[1]}"
         raise ValueError(msg)
 
     return fitted(realization, captured, errors=errors)

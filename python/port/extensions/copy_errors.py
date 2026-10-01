@@ -48,6 +48,7 @@ import pandas as pd
 __all__ = [
     "Captured",
     "PinnedErrors",
+    "captured",
     "captured_fits",
     "copy_sets",
     "pinned_errors",
@@ -71,13 +72,60 @@ EPS_P = 1e-6
 
 
 class Captured(NamedTuple):
-    """What `run_core_inference` was given, and what it returned."""
+    """What `run_core_inference` was given, summed per fitted clone, and what it returned.
 
-    single_X: np.ndarray
+    Every reader sums the inputs over each clone's spots, so the capture
+    keeps those sums rather than float64 copies of the `(n_obs, n_spots)`
+    inputs: four such copies were held from the read-depth stage to the end
+    of the run, 1.03 GB at 8,649 spots (#569). The sums are the copies'
+    sums, column for column, so every reader's arithmetic is unchanged.
+    """
+
+    clone_X: np.ndarray
+    """`(n_obs, 2, n_clones)`: each clone's spots' `single_X`, as float64, summed."""
     lengths: np.ndarray
-    single_base_nb_mean: np.ndarray
-    single_total_bb_RD: np.ndarray
+    clone_base_nb_mean: np.ndarray
+    """`(n_obs, n_clones)`, likewise."""
+    clone_total_bb_RD: np.ndarray
+    """`(n_obs, n_clones)`, likewise."""
     res: Any
+    clones: np.ndarray
+    """The labels the columns sum, `np.unique` of `res["new_assignment"]`."""
+    profile: np.ndarray
+    """`(n_obs,)`: `single_base_nb_mean` as float64, summed over every spot."""
+
+
+def captured(
+    single_X: Any, lengths: Any, base: Any, total: Any, result: Any
+) -> Captured:
+    """One fit's capture: its inputs summed per clone as the readers sum them.
+
+    Each column is `np.asarray(x[..., assignment == c], float64).sum(-1)`:
+    the fancy index copies only clone `c`'s spots, and the sum runs over the
+    same float64 values in the same layout as over the float64 copy of the
+    whole array, so it is the same sum (#569).
+    """
+    assignment = np.asarray(result["new_assignment"], dtype=np.int64)
+    clones = np.unique(assignment)
+
+    def summed(values: Any) -> np.ndarray:
+        return np.stack(
+            [
+                np.asarray(values[..., assignment == c], dtype=np.float64).sum(axis=-1)
+                for c in clones
+            ],
+            axis=-1,
+        )
+
+    return Captured(
+        summed(np.asarray(single_X)),
+        np.asarray(lengths, dtype=np.int64),
+        summed(np.asarray(base)),
+        summed(np.asarray(total)),
+        result,
+        clones,
+        np.asarray(base, dtype=np.float64).sum(axis=1),
+    )
 
 
 @contextlib.contextmanager
@@ -106,15 +154,7 @@ def captured_fits() -> Iterator[list[Captured]]:
         result = original(single_X, lengths, base, total, *rest, **kw)
 
         if kw.get("params") == "smp":
-            kept.append(
-                Captured(
-                    np.array(single_X, dtype=np.float64),
-                    np.asarray(lengths, dtype=np.int64),
-                    np.array(base, dtype=np.float64),
-                    np.array(total, dtype=np.float64),
-                    result,
-                )
-            )
+            kept.append(captured(single_X, lengths, base, total, result))
 
         return result
 
@@ -154,22 +194,19 @@ def pseudobulk(captured: Captured) -> dict[str, np.ndarray]:
     along the genome (`clone_stack_obs`), so the objective is one sequence of
     `n_clones * n_obs` with `lengths` tiled. The assignment is the fit's own.
     """
-    assignment = np.asarray(captured.res["new_assignment"], dtype=np.int64)
-    clones = np.unique(assignment)
+    clones = captured.clones
 
     def summed(values: np.ndarray) -> np.ndarray:
-        return np.concatenate(
-            [values[..., assignment == c].sum(axis=-1) for c in clones]
-        )
+        return np.concatenate([values[..., k] for k in range(clones.size)])
 
     return {
-        "counts_nb": summed(captured.single_X[:, 0, :]),
-        "counts_bb": summed(captured.single_X[:, 1, :]),
+        "counts_nb": summed(captured.clone_X[:, 0, :]),
+        "counts_bb": summed(captured.clone_X[:, 1, :]),
         # NB a bin with no normal baseline expects no depth; its NB term is then
         #    `0 * log 0`, whose gradient is `nan`. Floored, it scores a zero
         #    count as certain to within `BASE_FLOOR`, and differentiates.
-        "base_nb_mean": np.maximum(summed(captured.single_base_nb_mean), BASE_FLOOR),
-        "total_bb_RD": summed(captured.single_total_bb_RD),
+        "base_nb_mean": np.maximum(summed(captured.clone_base_nb_mean), BASE_FLOOR),
+        "total_bb_RD": summed(captured.clone_total_bb_RD),
         "lengths": np.tile(captured.lengths, clones.size),
         "n_clones": np.asarray(clones.size),
     }
@@ -209,7 +246,7 @@ def pinned_objective(
     log_transmat = np.asarray(result["new_log_transmat"], dtype=np.float64)
 
     inputs = pseudobulk(captured)
-    profile = captured.single_base_nb_mean.sum(axis=1)
+    profile = captured.profile
     log_lambda = np.log(profile / profile.sum())
     path = np.asarray(result["pred_cnv"], dtype=np.int64)
     n_obs, n_clones = path.shape

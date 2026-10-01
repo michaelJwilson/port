@@ -105,3 +105,45 @@ def test_each_planted_pair_is_in_its_state_s_set(tmp_path: Path) -> None:
     score = decode_one(0, tmp_path)
 
     assert all(score["covered"]), score
+
+
+@pytest.mark.patch
+def test_the_clone_summed_capture_is_the_full_copy_summed_bitwise() -> None:
+    """`captured` against the float64 copies it replaces, summed as the readers sum them (#569).
+
+    Each clone's column against `np.array(x, float64)[..., assignment == c]
+    .sum(-1)`, and the profile against the copy's `.sum(axis=1)`, with a
+    label that has no spots left out as `np.unique` leaves it.
+    """
+    from port.extensions.copy_errors import captured
+
+    rng = np.random.default_rng(11)
+    n_obs, n_spots = 57, 1_003
+    single_x = rng.poisson(3.0, (n_obs, 2, n_spots))
+    base = rng.gamma(2.0, 1e-4, (n_obs, n_spots))
+    total = single_x[:, 1, :] + rng.poisson(3.0, (n_obs, n_spots))
+    assignment = rng.choice([0, 1, 3, 4], n_spots)
+    result = {"new_assignment": assignment}
+
+    kept = captured(single_x, np.array([n_obs]), base, total, result)
+    copies = (
+        np.array(single_x, dtype=np.float64),
+        np.array(base, dtype=np.float64),
+        np.array(total, dtype=np.float64),
+    )
+
+    np.testing.assert_array_equal(kept.clones, [0, 1, 3, 4])
+    for k, c in enumerate(kept.clones):
+        spots = assignment == c
+        for channel in (0, 1):
+            np.testing.assert_array_equal(
+                kept.clone_X[:, channel, k],
+                copies[0][:, channel, :][..., spots].sum(-1),
+            )
+        np.testing.assert_array_equal(
+            kept.clone_base_nb_mean[:, k], copies[1][..., spots].sum(-1)
+        )
+        np.testing.assert_array_equal(
+            kept.clone_total_bb_RD[:, k], copies[2][..., spots].sum(-1)
+        )
+    np.testing.assert_array_equal(kept.profile, copies[1].sum(axis=1))

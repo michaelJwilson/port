@@ -676,13 +676,8 @@ def captured_clones() -> list[tuple[np.ndarray, Pseudobulk, float]] | None:
     if fit is None:
         return None
 
-    single_x, base, total, result = (
-        fit.single_X,
-        fit.single_base_nb_mean,
-        fit.single_total_bb_RD,
-        fit.res,
-    )
-    assignment = np.asarray(result["new_assignment"], dtype=np.int64)
+    result = fit.res
+    column = {int(c): k for k, c in enumerate(fit.clones)}
     log_mu = np.asarray(result["new_log_mu"], dtype=np.float64).reshape(-1)
     path = np.asarray(result["pred_cnv"], dtype=np.int64)
     path = path.reshape(path.shape[0], -1) % log_mu.size
@@ -695,18 +690,21 @@ def captured_clones() -> list[tuple[np.ndarray, Pseudobulk, float]] | None:
     if shifts.size != path.shape[1]:
         shifts = np.zeros(path.shape[1])
 
-    profile = base.sum(axis=1)
+    profile = fit.profile
     alpha = float(np.asarray(result["new_alphas"]).reshape(-1)[0])
     tau = float(np.asarray(result["new_taus"]).reshape(-1)[0])
     rows = []
 
+    zeros = np.zeros(fit.clone_X.shape[0])
+
     for clone in range(path.shape[1]):
-        spots = assignment == clone
+        # NB a clone with no spots sums to zero, as the empty selection did.
+        k = column.get(clone)
         bulk = Pseudobulk(
-            counts_nb=single_x[:, 0, spots].sum(axis=1),
-            base_nb_mean=base[:, spots].sum(axis=1),
-            counts_bb=single_x[:, 1, spots].sum(axis=1),
-            total_bb_RD=total[:, spots].sum(axis=1),
+            counts_nb=zeros if k is None else fit.clone_X[:, 0, k],
+            base_nb_mean=zeros if k is None else fit.clone_base_nb_mean[:, k],
+            counts_bb=zeros if k is None else fit.clone_X[:, 1, k],
+            total_bb_RD=zeros if k is None else fit.clone_total_bb_RD[:, k],
             normal_log_lambda=np.log(profile / profile.sum()),
             dispersion=alpha,
             taus=tau,
