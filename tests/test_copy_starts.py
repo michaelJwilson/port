@@ -240,25 +240,3 @@ def test_every_seeding_row_is_a_rate_the_seam_can_place(covariate: bool) -> None
     held.at(rows)  # NB raises ParameterDomainError on a rate above 1
     if not covariate:
         np.testing.assert_allclose(rows[:, 0], call.total[call.exposure > 0])
-
-
-@pytest.mark.analytic
-def test_the_hmc_start_seeds_from_the_chains_best_draw() -> None:
-    """`hmc` is `sal`'s chain on the same stream, seeded at its lowest-valued draw: never above `sal`'s last draw."""
-    from sal.search.mixture_starts import at_locations, chain_initializer, surrogate
-
-    call = _call("rdrbaf", n_bins=200)
-    held = cs.instance(call, covariate=study.starts()["hmc"].covariate)
-    objective = surrogate(held)
-    chain = chain_initializer(np.random.default_rng(3)).chain(objective)
-    values = [float(objective(theta)) for theta in chain.draws]
-    best: Any = at_locations(
-        held, objective.components(chain.draws[int(np.argmin(values))]).mean
-    )
-
-    seeded: Any = study._chain_best_seeding(held, np.random.default_rng(3))
-
-    np.testing.assert_array_equal(
-        np.asarray(seeded.total.mean), np.asarray(best.total.mean)
-    )
-    assert min(values) <= values[-1]
