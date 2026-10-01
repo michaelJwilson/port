@@ -6,8 +6,9 @@ A history row is a `tests/sim_audit.py::main` row whose note starts with
 `HISTORY`: `--sal` measured at an earlier merge of `main`, newest to oldest,
 recorded after the fact. The x axis is `main`'s first-parent order, read from
 git, so a merge that touched no pipeline code and carries its predecessor's
-figures is absent rather than drawn flat. One panel per fixture, one line per
-metric (`SERIES`); a second figure plots integer copy recovery by
+figures is absent rather than drawn flat. One panel per `fixture_hash`,
+labelled with its fixture name, so a panel holds one dataset (#588); one line
+per metric (`SERIES`); a second figure plots integer copy recovery by
 planted class (`CLASSES`). The figure carries its data hash and code commit.
 """
 
@@ -80,7 +81,7 @@ def figure(
     series: dict[str, str] | None = None,
     ylabel: str = "ARI or share",
 ) -> Path:
-    """One panel per fixture, one line per metric in `series` (default `SERIES`), x in `main`'s merge order."""
+    """One panel per `fixture_hash`, one line per metric in `series` (default `SERIES`), x in `main`'s merge order."""
     series = SERIES if series is None else series
     import matplotlib as mpl
 
@@ -92,15 +93,15 @@ def figure(
     commits = sorted({r["commit"].rstrip("+") for r in rows}, key=order.__getitem__)
     x = {c: k for k, c in enumerate(commits)}
     names = {r["commit"].rstrip("+"): label(r) for r in rows}
-    fixtures = sorted({r["fixture"] for r in rows})
+    datasets = sorted({(r["fixture"], r["fixture_hash"]) for r in rows})
 
     fig, axes = plt.subplots(
-        len(fixtures), 1, sharex=True, squeeze=False,
-        figsize=(max(6.0, 0.42 * len(commits) + 2.5), 1.9 * len(fixtures) + 1.2),
+        len(datasets), 1, sharex=True, squeeze=False,
+        figsize=(max(6.0, 0.42 * len(commits) + 2.5), 1.9 * len(datasets) + 1.2),
     )  # fmt: skip
-    for ax, fixture in zip(axes[:, 0], fixtures, strict=True):
+    for ax, (fixture, digest) in zip(axes[:, 0], datasets, strict=True):
         mine = sorted(
-            (r for r in rows if r["fixture"] == fixture),
+            (r for r in rows if (r["fixture"], r["fixture_hash"]) == (fixture, digest)),
             key=lambda r: x[r["commit"].rstrip("+")],
         )
         for k, (column, name) in enumerate(series.items()):
@@ -113,7 +114,7 @@ def figure(
                 xs, ys = zip(*points, strict=True)
                 ax.plot(xs, ys, ("-" if k < 4 else ":") if series is SERIES else ("-" if k % 2 == 0 else ":"), marker="o", ms=2.5, lw=1,
                         color=plt.get_cmap("tab10")(k if series is SERIES else k // 2), label=name)  # fmt: skip
-        ax.set_ylabel(f"{fixture}\n{ylabel}", fontsize=7)
+        ax.set_ylabel(f"{fixture}\n{digest}\n{ylabel}", fontsize=7)
         ax.set_ylim(-0.05, 1.05)
         ax.grid(axis="y", lw=0.3)
     axes[0, 0].legend(
