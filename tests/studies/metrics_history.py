@@ -127,7 +127,6 @@ def figure(
     rows: list[dict[str, str]],
     out: Path,
     series: dict[str, str] | None = None,
-    ylabel: str = "ARI or share",
 ) -> Path:
     """One panel per `fixture_hash`, one line per metric in `series` (default `SERIES`), x in `main`'s merge order."""
     series = SERIES if series is None else series
@@ -165,7 +164,7 @@ def figure(
                 xs, ys = zip(*points, strict=True)
                 ax.plot(xs, ys, ("-" if k < 4 else ":") if series is SERIES else ("-" if k % 2 == 0 else ":"), marker="o", ms=2.5, lw=1,
                         color=plt.get_cmap("tab10")(k if series is SERIES else k // 2), label=name)  # fmt: skip
-        ax.set_ylabel(f"{fixture}\n{digest}\n{ylabel}", fontsize=7)
+        ax.set_ylabel(f"{fixture}\n{digest}", fontsize=7)
         ax.set_ylim(-0.05, 1.05)
         ax.grid(axis="y", lw=0.3)
     axes[0, 0].legend(
@@ -186,7 +185,7 @@ def figure(
             rotation=0,
             fontsize=7,
         )
-    ax.set_xlabel("Merge to main (oldest left)")
+    ax.set_xlabel("Merged PR (oldest left)")
     fig.text(
         0.99,
         0.01,
@@ -236,7 +235,6 @@ def main(argv: list[str] | None = None) -> None:
             rows,
             Path(args[1]) if len(args) > 1 else OUT_CLASSES,
             CLASSES,
-            "share exact",
         )
     )
 
