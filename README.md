@@ -282,7 +282,7 @@ shape, label maps, decoder and versions); `cnv_lineage.tsv` and
 `cnv_bins.tsv` (each gene's segment at every step, #438, and the final
 bins); `cnv_hmm_states.tsv`, `cnv_hmm_transmat.tsv`, `cnv_hmm_clones.tsv`
 and `cnv_hmm_bins.tsv` (the HMM's parameters, each clone's shift and
-log-likelihood, and per clone and bin its state, `mu = exp(log_mu +
+log-likelihood, and per clone and bin its state, `mu = exp(log_mu -
 log_mu_shift)`, pooled counts and observed RDR and BAF);
 `cnv_copy_clones.tsv`, `cnv_copy_states.tsv`, `cnv_copy_bins.tsv`,
 `cnv_copy_segments.tsv` and `cnv_copy_genes.tsv` (the integer decode's fit,

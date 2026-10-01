@@ -88,14 +88,10 @@ run's `llf`, posterior and path to 1e-10 relative
 (`tests/test_output_stages.py`). `run.json` carries both numbers:
 `log_likelihood` (the files' sum) and `log_likelihood_cnaster`.
 
-**`mu` and the shift's sign.** `cnv_hmm_bins.mu` is `exp(log_mu[hmm_state] +
-log_mu_shift)`, as PR #623 defined it. Both emissions apply the rate
-`exp(log_mu - log_mu_shift)` to `base_nb_mean`: the shifted HMM
-(`port.patch.hmm_nophasing.shifted_emission`) and the lattice decode
-(`copy_likelihood._log_emissions`). The decode's log-likelihood on easy is
-recomputed to 1e-11 nats under `-` and is 59.0 nats lower under `+`.
-`cnv_copy_bins.mu` is the decode's predicted rate in the emission's
-convention. The difference is stated here pending a decision on #623's sign.
+**`mu`.** `cnv_hmm_bins.mu` is `exp(log_mu[hmm_state] - log_mu_shift)`, the
+rate the shifted HMM applies to `base_nb_mean`
+(`port.patch.hmm_nophasing.shifted_emission`); `cnv_copy_bins.mu` is the
+lattice decode's predicted rate in the same convention.
 
 **Not recorded, so not written** (TODO T- #613): the SNPs per bin (the
 lineage records genes only), and the HMRF's `total_llf`, which `cnaster`
@@ -205,7 +201,7 @@ Stage: core inference.
 | `bin` | int | - | bin |
 | `hmm_state` | int | - | the run's decoded state, `pred_cnv` |
 | `hmm_state_probability` | float | - | the run's posterior probability of `hmm_state` |
-| `mu` | float | rate | exp(log_mu[hmm_state] + log_mu_shift) |
+| `mu` | float | rate | exp(log_mu[hmm_state] - log_mu_shift), the rate the emission applies |
 | `p_binom` | float | - | p_binom[hmm_state] |
 | `X_depth` | int | UMI | read depth pooled over the clone's spots, `X` channel 0 |
 | `X_allele` | int | UMI | B-allele count pooled over the clone's spots, `X` channel 1 |

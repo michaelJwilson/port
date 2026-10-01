@@ -43,9 +43,9 @@ recomputation, and `tests/test_output_stages.py` holds them to the run.
   `cnaster`'s `llf` beside the sum, so the difference is read rather than
   hidden.
 
-**`mu` per bin** (#613, PR #623): `cnv_hmm_bins.mu = exp(log_mu[hmm_state] +
-log_mu_shift)`. The shifted emission's rate is `exp(log_mu - log_mu_shift)`;
-`cnv_copy_bins.mu` is the decode's own predicted rate in that convention.
+**`mu` per bin** (#613): `cnv_hmm_bins.mu = exp(log_mu[hmm_state] -
+log_mu_shift)`, the rate the shifted emission applies to `base_nb_mean`;
+`cnv_copy_bins.mu` is the decode's predicted rate in the same convention.
 
 **Each spot's sample is the run's, not its barcode's** (#418, #365): with
 the run's `port.extensions.samples` recording, `sample` is the sample's name
@@ -200,7 +200,12 @@ SCHEMA: dict[str, tuple[Column, ...]] = {
             "-",
             "the run's posterior probability of `hmm_state`",
         ),
-        _C("mu", "float", "rate", "exp(log_mu[hmm_state] + log_mu_shift)"),
+        _C(
+            "mu",
+            "float",
+            "rate",
+            "exp(log_mu[hmm_state] - log_mu_shift), the rate the emission applies",
+        ),
         _C("p_binom", "float", "-", "p_binom[hmm_state]"),
         _C(
             "X_depth",
@@ -882,7 +887,7 @@ def _hmm_bins_table(run: _Run) -> pd.DataFrame:
                 "hmm_state_probability": np.nan
                 if gamma is None
                 else np.exp(gamma[path, np.arange(run.n_obs)]),
-                "mu": np.exp(log_mu[path] + run.shift(clone)),
+                "mu": np.exp(log_mu[path] - run.shift(clone)),
                 "p_binom": p_binom[path],
             }
         )

@@ -400,7 +400,7 @@ def test_the_stage_files_join_on_their_keys(
     """Every `(clone, bin)` once in both stages' bin files, every clone in
     both clone files and `run.json`; the label maps are bijections where
     they say so; segments tile each clone's bins and expand to its pairs;
-    genes join the lineage's final bin; `mu` is `exp(log_mu + log_mu_shift)`
+    genes join the lineage's final bin; `mu` is `exp(log_mu - log_mu_shift)`
     (#623) and `rdr_observed` the counts' ratio, both to 1e-12."""
     run, drawn, _ = written
     manifest = json.loads((run / "run.json").read_text())
@@ -483,7 +483,7 @@ def test_the_stage_files_join_on_their_keys(
         _read(run, "cnv_hmm_clones.tsv"), on="clone"
     )
     np.testing.assert_allclose(
-        joined["mu"], np.exp(joined["log_mu"] + joined["log_mu_shift"]), rtol=1e-12
+        joined["mu"], np.exp(joined["log_mu"] - joined["log_mu_shift"]), rtol=1e-12
     )
     np.testing.assert_allclose(
         hmm_bins["rdr_observed"],
