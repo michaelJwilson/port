@@ -1,22 +1,23 @@
-"""The copy-state HMM's negative log-likelihood as a `sal` `Objective`, and `sal`'s samplers on it (#634).
+"""Copy-state starts sampled on the HMM's own NLL by `sal`'s samplers, through a `sal` `Objective` (#540, #634).
 
-Ticket: #634 -- run `sal.sample.hmc`'s `sample`, `anneal` and
-  `parallel_tempering` on the objective `hmm_samplers` samples, at equal
-  gradient evaluations, and retire port's copy if they match.
+Ticket: #634 -- `sal.sample.hmc`'s `sample`, `anneal` and
+  `parallel_tempering` replaced port's own samplers on this objective
+  (`hmm_samplers`, deleted) after matching them at equal evaluations.
 Measurement: `tests.studies.copy_state_stream` on
-  `sim/manifests/baseline/dev_tree_1s_hard.toml` r3-r12, 10 seeds, against
-  the PR #557 rerun's records of `hmm_samplers`' arms.
-Exit: retire with `hmm_samplers` and the #540 study; or graduate if `sal`
-  gains an HMM objective for the count pair on segmented sequences with
-  fixed-parameter masks (#634 gaps 1-3), which replaces `HmmObjective`.
+  `sim/manifests/baseline/dev_tree_1s_hard.toml` r3-r12, 10 seeds (PR #642):
+  median rows missed after Baum-Welch 1.14 / 1.12 / 1.14% against port's
+  1.19 / 1.17 / 1.10% (anneal / tempering / hmc), n = 100 each.
+Exit: retire with the #540 study; or graduate if `sal` gains an HMM
+  objective for the count pair on segmented sequences with fixed-parameter
+  masks (#634 gaps 1-3), which replaces `HmmObjective`.
 
-**The objective.** `HmmObjective` is `hmm_samplers.negative_log_likelihood`
-in `sal`'s terms: `jax_hmm.marginal_negative_log_likelihood` of
-`jax_hmm.emission` on the clone-stacked rows, per segment (`lengths`), over
-`theta = (log_mu, logit p_binom)`, one of each per state. The dispersions,
-the stickiness and the uniform start probabilities are held, at the values
-the constructor is given. `theta` crosses from torch to JAX as a `float64`
-array and the value and gradient come back as tensors; `__call__` is
+**The objective.** `HmmObjective` is `jax_hmm.marginal_negative_log_likelihood`
+of `jax_hmm.emission` on the clone-stacked rows, per segment (`lengths`),
+over `theta = (log_mu, logit p_binom)`, one of each per state. The
+dispersions, the stickiness and the uniform start probabilities are held,
+at `known_copy.hmm`'s `ALPHA`, `TAU` and `T` (`objective_for`), the values
+`known_copy.decode` scores a start at. No per-clone shift (#276). `theta`
+crosses from torch to JAX as a `float64` array; `__call__` is
 differentiable by a `torch.autograd.Function` carrying JAX's gradient, and
 `value_and_gradient` and `energy` are declared (`sal.opt.objective`), so
 `sal` reads the gradient from JAX rather than from a graph.
@@ -24,31 +25,27 @@ differentiable by a `torch.autograd.Function` carrying JAX's gradient, and
 **Evaluations are points, not calls.** A `sal` transition asks for the
 value at its start and end point beside the trajectory's gradients, and
 `anneal` and `parallel_tempering` ask again for the point they kept. Every
-one of those points is also a point the trajectory took a gradient at, so
+one of those points is also a point a trajectory took a gradient at, so
 the objective keeps the last `MEMO` points' value and gradient and
-`evaluations` counts the forward-backward passes actually run. That is the
-count `hmm_samplers` reports (`LEAPFROG + 1` per trajectory, plus each
-chain's initial point), so the two are compared at equal evaluations.
+`evaluations` counts the forward-backward passes actually run.
 
-**The arms.** `sample(name, ...)` mirrors `hmm_samplers.sample`: the same
-initial point (`hmm_samplers.initial_point`, the first draw from `rng`), the
-same trajectory length (8 leapfrog steps), no more forward-backward passes
-(`DEFAULTS`), the best point any trajectory reached. What differs is `sal`'s:
+**The starts.** `sample(name, ...)`: the initial point is `initial_point`,
+the first draw from `rng`; trajectories are `LEAPFROG` leapfrog steps; the
+start is the best point `sal` reports.
 
-- `hmc-sal-hmm`: `sal.sample.hmc.sample` at `temperature`, `draws` draws; with
+- `hmc-hmm`: `sal.sample.hmc.sample` at `temperature`, `draws` draws; with
   `adapt`, after `sal`'s `Adaptation` warm-up of `warmup` proposals (dual
   averaging toward `target` from `step`, a diagonal mass), else at the fixed
   `step` after `warmup` burn-in proposals. The best of the draws.
-- `anneal-sal-hmm`: `sal.sample.hmc.anneal` on an `ExponentialTempSchedule`
+- `anneal-hmm`: `sal.sample.hmc.anneal` on an `ExponentialTempSchedule`
   from `t_start` to 1 over `steps` proposals, at the fixed `step`.
-- `tempering-sal-hmm`: `sal.sample.hmc.parallel_tempering` on 4 rungs
+- `tempering-hmm`: `sal.sample.hmc.parallel_tempering` on `RUNGS` rungs
   geometric from 1 to `t_top`, `rounds` rounds, at the fixed `step`; every
   replica starts at the initial point, as `sal` starts them.
 
-`sal`'s step needs no rescaling with temperature: its momentum is drawn
-with variance `T`, which is `hmm_samplers`' `sqrt(T)`-scaled step in other
-units. `sal` has no step adaptation in `anneal` or `parallel_tempering`,
-so there `step` is a tuned constant.
+`sal`'s step needs no rescaling with temperature: its momentum is drawn with
+variance `T`. `sal` has no step adaptation in `anneal` or
+`parallel_tempering`, so there `step` is a tuned constant.
 """
 
 from __future__ import annotations
@@ -71,37 +68,40 @@ __all__ = [
     "SAMPLERS",
     "HmmObjective",
     "Sampled",
+    "initial_point",
+    "negative_log_likelihood",
     "objective_for",
     "sample",
 ]
 
 LEAPFROG = 8
-"""Leapfrog steps per proposal, `hmm_samplers.LEAPFROG`: 9 gradients each."""
+"""Leapfrog steps per proposal: 8 passes each, the first gradient being the last proposal's end."""
 
 MEMO = 64
 """Points whose value and gradient are kept: a tempering round's 4 replicas of 9 points each fit."""
 
 HMC_ADAPT = 8
-"""`hmc-sal-hmm`'s warm-up where a `setting` names none: `hmm_samplers.HMC_ADAPT`."""
+"""`hmc-hmm`'s warm-up where a setting names none."""
 
 RUNGS = 4
-"""`tempering-sal-hmm`: replicas on the ladder, as `hmm_samplers.RUNGS`."""
+"""`tempering-hmm`: replicas on the ladder."""
 
 DEFAULTS: dict[str, dict[str, float]] = {
-    "anneal-sal-hmm": {"t_start": 1e2, "steps": 54, "step": 1e-2},
-    "tempering-sal-hmm": {"t_top": 1e2, "rounds": 13, "step": 1e-2},
-    "hmc-sal-hmm": {"temperature": 10.0, "warmup": 12, "draws": 13, "step": 1e-3, "adapt": 1.0, "target": 0.65},
+    "anneal-hmm": {"t_start": 1e2, "steps": 54, "step": 3e-3},
+    "tempering-hmm": {"t_top": 1e4, "rounds": 13, "step": 1e-3},
+    "hmc-hmm": {"temperature": 1.0, "warmup": 12, "draws": 13, "step": 1e-3, "adapt": 1.0, "target": 0.65},
 }  # fmt: skip
-"""Each arm's knobs where no `setting` is given: `hmm_samplers.DEFAULTS`' schedules, and the proposals
-that spend no more passes than `hmm_samplers`' arm. `sal` reuses a proposal's first gradient (the end
-of the last), so a proposal costs 8 passes against port's 9: 54 annealing steps (433 passes against
-port's 48 for 433), 13 tempering rounds (417 against 12 for 436), 12 + 13 hmc proposals (201-208
-against 8 + 16 for 217).
+"""Each start's knobs where no `setting` is given: the values `tests.studies.copy_state_stream --tune` chose
+on `dev_tree_1s_hard`'s held-out realizations 0-2 (`tests/studies/copy_sampler_settings.json`), 5 seeds
+per setting, over grids shaped as port's samplers' were (9 / 9 / 7 settings).
 
-The step is `hmm_samplers.STEP0`, 1e-2, for `anneal` and `tempering`. `hmc`'s warm-up is 12 rather
-than port's 8 and starts at 1e-3: `sal`'s `Adaptation` raises when the chain does not move in the
-2 proposals it records at a warm-up of 8, which it did on all 5 seeds of `dev_tree_1s_hard`
-realization 0 at steps of 1e-3, 3e-3 and 1e-2, and at 12 from 3e-3."""
+Budgets are the passes port's deleted samplers spent at their tuned schedules, not exceeded: 54
+annealing steps (433 passes against 433), 13 tempering rounds (417 against 436), 12 + 13 hmc
+proposals (204-207 against 217), counted on realization 0, 10 seeds.
+
+`hmc`'s warm-up is 12 rather than port's 8, from a step of 1e-3: `sal`'s `Adaptation` raised (zero
+warm-up variance) when the chain did not move in the 2 proposals it records at a warm-up of 8, on all
+5 seeds of realization 0 at steps of 1e-3, 3e-3 and 1e-2 (#634, gap 5)."""
 
 
 SAMPLERS = tuple(DEFAULTS)
@@ -271,6 +271,37 @@ class HmmObjective:
         return self._evaluate(x)[0]
 
 
+def initial_point(
+    total: np.ndarray, exposure: np.ndarray, n_states: int, rng: np.random.Generator
+) -> np.ndarray:
+    """`[log_mu, logit p]`: `log_mu` uniform over the observed log depth ratios' 5-95% range, `p` on (0.05, 0.95)."""
+    with np.errstate(divide="ignore", invalid="ignore"):
+        ratio = np.log(np.asarray(total, float) / np.asarray(exposure, float))
+    finite = ratio[np.isfinite(ratio)]
+    # NB a call with no exposure (the BAF-only stage) has no depth to read.
+    low, high = np.quantile(finite, [0.05, 0.95]) if finite.size else (0.0, 0.0)
+    log_mu = rng.uniform(low, high, n_states)
+    p = rng.uniform(0.05, 0.95, n_states)
+    return np.concatenate([log_mu, np.log(p / (1.0 - p))])
+
+
+def negative_log_likelihood(
+    log_mu: Any,
+    p_binom: Any,
+    total: np.ndarray,
+    b: np.ndarray,
+    exposure: np.ndarray,
+    trials: np.ndarray,
+    lengths: Any,
+) -> float:
+    """The objective the starts sample, at given states: `p_binom` clipped to `[1e-4, 1 - 1e-4]` as `decode` clips it."""
+    log_mu = np.asarray(log_mu, dtype=np.float64).ravel()
+    p = np.clip(np.asarray(p_binom, dtype=np.float64).ravel(), 1e-4, 1 - 1e-4)
+    theta = np.concatenate([log_mu, np.log(p / (1.0 - p))])
+    objective = objective_for(total, b, exposure, trials, lengths, log_mu.size, theta)
+    return objective.energy(theta)
+
+
 def objective_for(
     total: np.ndarray,
     b: np.ndarray,
@@ -280,7 +311,7 @@ def objective_for(
     n_states: int,
     start: np.ndarray,
 ) -> HmmObjective:
-    """`HmmObjective` at the values `hmm_samplers` holds: `known_copy.hmm`'s `ALPHA`, `TAU` and `T`."""
+    """`HmmObjective` at `known_copy.hmm`'s `ALPHA`, `TAU` and `T`, the values `decode` scores a start at."""
     from port.sandbox.known_copy.hmm import ALPHA, TAU, T
 
     return HmmObjective(
@@ -300,13 +331,16 @@ def sample(
     rng: np.random.Generator,
     setting: dict[str, float] | None = None,
 ) -> Sampled:
-    """`name`'s best states `(log_mu, p_binom)` by `sal`'s sampler, one of `SAMPLERS`; `setting` in place of `DEFAULTS[name]`."""
+    """`name`'s best states `(log_mu, p_binom)` by `sal`'s sampler, one of `SAMPLERS`; `setting` in place of `DEFAULTS[name]`.
+
+    `nll` is the lowest value the sampler reports; `initial_nll` the initial
+    point's. `anneal` and `tempering` count the initial point, so for them
+    `nll <= initial_nll`; `hmc` keeps the best of its draws alone.
+    """
     from sal.sample.chain import Adaptation
     from sal.sample.hmc import anneal, parallel_tempering
     from sal.sample.hmc import sample as hmc_sample
     from sal.sample.schedule import ExponentialTempSchedule
-
-    from port.sandbox.known_copy.hmm_samplers import initial_point
 
     if name not in DEFAULTS:
         msg = f"{name!r} is not one of {SAMPLERS}"
@@ -316,7 +350,7 @@ def sample(
     objective = objective_for(total, b, exposure, trials, lengths, n_states, theta0)
     initial = objective.energy(theta0)
     step = float(knobs["step"])
-    if name == "hmc-sal-hmm":
+    if name == "hmc-hmm":
         adapt, warmup = bool(knobs["adapt"]), int(knobs.get("warmup", HMC_ADAPT))
         chain = hmc_sample(
             objective, rng, int(knobs["draws"]), step_size=step, n_steps=LEAPFROG,
@@ -327,7 +361,7 @@ def sample(
         values = np.array([objective.energy(d) for d in draws])
         finite = np.where(np.isfinite(values), values, np.inf)
         best_theta, best = draws[int(np.argmin(finite))], float(np.min(finite))
-    elif name == "anneal-sal-hmm":
+    elif name == "anneal-hmm":
         schedule = ExponentialTempSchedule(
             float(knobs["t_start"]), 1.0, int(knobs["steps"])
         )

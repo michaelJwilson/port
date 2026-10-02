@@ -2,12 +2,14 @@
 
 - `oracle`: the adapter's value is `cnaster`'s forward lattice normalizer at
   the same states, an independent implementation, and on the way it is
-  port's own JAX NLL (`hmm_samplers.negative_log_likelihood`) to round-off.
+  port's JAX NLL (`jax_hmm`'s emission and forward, unjitted) to round-off.
 - `analytic`: its gradient is the central difference of its value, and
   `sal`'s autograd route through `__call__` returns the declared gradient.
-- `analytic`: each `sal` arm, seeded, keeps a point no worse than its start,
-  reports the NLL of the states it returns, spends no more forward-backward
-  passes than its budget, and reproduces itself from the same seed.
+- `analytic`: each `sal` start, seeded, reports the NLL of the states it
+  returns, spends no more forward-backward passes than port's deleted
+  sampler did, reproduces itself from the same seed, and, where it counts
+  its initial point (`anneal`, `tempering`), is no worse than it.
+- `infra`: the registry's literal `HMM_SAMPLERS` names the module's.
 """
 
 from __future__ import annotations
@@ -19,7 +21,7 @@ import pytest
 
 
 def _rows() -> dict[str, Any]:
-    """`test_hmm_samplers`' instance: 3 states planted on 2 clones of 120 rows."""
+    """3 states planted on 2 clones of 120 rows (#540's sampler test instance)."""
     rng = np.random.default_rng(540)
     n = 120
     state = (np.arange(2 * n) // 40) % 3
@@ -51,13 +53,13 @@ def test_the_adapter_is_cnasters_forward_and_ports_nll() -> None:
 
     `cnaster`'s emission and recursion are `numba` (`test_jax_hmm` realizes
     1e-15 relative on the forward); port's NLL is the same JAX arithmetic
-    under another `jit`, so only reduction order can differ. Realized: 0.0
-    against port (bitwise) and 7.8e-14 against `cnaster`, on NLLs 2,222-6,453.
+    without `jit`, so only reduction order can differ. Realized 6.0e-15
+    against port and 7.8e-14 against `cnaster`, on NLLs 2,222-6,453.
     """
     import torch
     from cnaster.hmm_nophasing import _bb_logpmf_1d, _nb_logpmf_1d, hmm_nophasing
+    from port.extensions.jax_hmm import emission, marginal_negative_log_likelihood
     from port.sandbox.known_copy.hmm import ALPHA, TAU, T
-    from port.sandbox.known_copy.hmm_samplers import negative_log_likelihood
     from scipy.special import logsumexp
 
     rows = _rows()
@@ -70,10 +72,15 @@ def test_the_adapter_is_cnasters_forward_and_ports_nll() -> None:
         theta = np.concatenate([log_mu, np.log(p / (1 - p))])
         ours = float(_objective(rows, theta)(torch.from_numpy(theta)))
 
-        port = negative_log_likelihood(
-            log_mu, p, rows["total"], rows["b"], rows["exposure"], rows["trials"],
-            rows["lengths"],
+        scores = emission(
+            log_mu, np.full(k, ALPHA), p, np.full(k, TAU), rows["total"],
+            rows["exposure"], rows["b"], rows["trials"],
         )  # fmt: skip
+        port = float(
+            marginal_negative_log_likelihood(
+                scores, np.full(k, -np.log(k)), log_transmat, rows["lengths"]
+            )
+        )
         np.testing.assert_allclose(ours, port, rtol=1e-12, atol=0.0)
 
         dense = np.zeros((k, n_obs))
@@ -128,25 +135,27 @@ def test_the_gradient_is_the_central_difference() -> None:
 
 
 @pytest.mark.analytic
-@pytest.mark.parametrize("name", ["hmc-sal-hmm", "anneal-sal-hmm", "tempering-sal-hmm"])
-def test_sal_arms_keep_their_best_within_budget(name: str) -> None:
-    """Seeds 0-2: best <= initial, the NLL re-evaluated at the returned states is the one reported, and passes <= the port arm's.
+@pytest.mark.parametrize("name", ["hmc-hmm", "anneal-hmm", "tempering-hmm"])
+def test_the_starts_keep_their_best_within_budget(name: str) -> None:
+    """Seeds 0-2: the NLL re-evaluated at the returned states is the one reported, passes within budget, reproducible.
 
-    The budget is `hmm_samplers`' at its defaults: 9 gradients per
-    trajectory plus each chain's initial point -- 433 for `anneal-hmm`, 436
-    for `tempering-hmm`, 217 for `hmc-hmm`.
+    The budget is what port's deleted samplers spent at their tuned
+    schedules: 9 gradients per trajectory plus each chain's initial point --
+    433 for `anneal-hmm`, 436 for `tempering-hmm`, 217 for `hmc-hmm`.
+    `anneal` and `tempering` count the initial point among their best, so
+    neither ends above it; `hmc` keeps the best of its draws alone.
     """
-    from port.sandbox.known_copy.hmm_objective import sample
-    from port.sandbox.known_copy.hmm_samplers import negative_log_likelihood
+    from port.sandbox.known_copy.hmm_objective import negative_log_likelihood, sample
 
-    budget = {"anneal-sal-hmm": 433, "tempering-sal-hmm": 436, "hmc-sal-hmm": 217}[name]
+    budget = {"anneal-hmm": 433, "tempering-hmm": 436, "hmc-hmm": 217}[name]
     rows = _rows()
     for seed in range(3):
         found = sample(
             name, rows["total"], rows["b"], rows["exposure"], rows["trials"],
             rows["lengths"], 3, np.random.default_rng(seed),
         )  # fmt: skip
-        assert found.nll <= found.initial_nll
+        if name != "hmc-hmm":
+            assert found.nll <= found.initial_nll
         assert 0 < found.evaluations <= budget
         again = negative_log_likelihood(
             found.log_mu, found.p_binom, rows["total"], rows["b"], rows["exposure"],
@@ -159,3 +168,12 @@ def test_sal_arms_keep_their_best_within_budget(name: str) -> None:
         )  # fmt: skip
         assert repeat.nll == found.nll
         np.testing.assert_array_equal(repeat.log_mu, found.log_mu)
+
+
+@pytest.mark.infra
+def test_the_registry_names_the_samplers_the_module_runs() -> None:
+    """`sandbox.extensions.copy_starts.HMM_SAMPLERS` is a literal, so importing it imports no sampler; it must match `SAMPLERS`."""
+    from port.sandbox.extensions.copy_starts import HMM_SAMPLERS
+    from port.sandbox.known_copy.hmm_objective import SAMPLERS
+
+    assert HMM_SAMPLERS == SAMPLERS

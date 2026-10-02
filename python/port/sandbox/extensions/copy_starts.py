@@ -24,7 +24,7 @@ anyone rerunning the study (`tests.studies.copy_starts`):
 - **Port's own starts (#540)**: `EMISSION_VARIANTS` (emission++ seeding
   with trimming, coverage weighting, pooling, Lloyd rounds, or best-of-n by
   the HMM's likelihood), `HMM_SAMPLERS` (samplers on the HMM's own
-  likelihood, `port.sandbox.known_copy.hmm_samplers`), `calicost-gmm`, and
+  likelihood, `sal`'s through `port.sandbox.known_copy.hmm_objective`), `calicost-gmm`, and
   `sal`'s `prior` and `hmc` with port's corrections; `seed_states` gives any
   start's states before its polish.
 - **The arms**, which change the start and never the score: `masked` and
@@ -62,7 +62,6 @@ __all__ = [
     "EMISSION_VARIANTS",
     "HMM_SAMPLERS",
     "MASKS",
-    "SAL_HMM_SAMPLERS",
     "STAGES",
     "CopyCall",
     "CopyStart",
@@ -535,9 +534,9 @@ def _registry() -> dict[str, Row]:
     # NB `sal`'s surrogate `anneal`, `tempering`, `hmc` (snapped to observed
     #    rows) and its best-of-5-with-EM starts are no longer in the #540
     #    study; they stay by name for `run_cnaster --sal`.
-    for name in (*HMM_SAMPLERS, *EMISSION_VARIANTS):
+    for name in EMISSION_VARIANTS:
         rows[name] = Row(name, "port (#540)", STAGES, covariate=True, stochastic=True)
-    for name in SAL_HMM_SAMPLERS:
+    for name in HMM_SAMPLERS:
         rows[name] = Row(name, "sal (#634)", STAGES, covariate=True, stochastic=True)
     return rows
 
@@ -570,10 +569,7 @@ Baum-Welch; `lattice` shows the start's miss does not predict the fit's."""
 
 
 HMM_SAMPLERS = ("anneal-hmm", "tempering-hmm", "hmc-hmm")
-"""Port's samplers on the HMM's own NLL (`port.sandbox.known_copy.hmm_samplers`), no snapping."""
-
-SAL_HMM_SAMPLERS = ("anneal-sal-hmm", "tempering-sal-hmm", "hmc-sal-hmm")
-"""`sal.sample.hmc`'s samplers on the same NLL through `port.sandbox.known_copy.hmm_objective` (#634)."""
+"""`sal.sample.hmc`'s samplers on the HMM's own NLL (`port.sandbox.known_copy.hmm_objective`, #634), no snapping."""
 
 
 @functools.cache
@@ -592,10 +588,9 @@ def _hmm_sampled(
     rng: np.random.Generator,
     setting: dict[str, float] | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """`HMM_SAMPLERS`' or `SAL_HMM_SAMPLERS`' states on the call's rows: `(log mu, p)`, not snapped; `setting` in place of the sampler's defaults."""
-    from port.sandbox.known_copy import hmm_objective, hmm_samplers
+    """`HMM_SAMPLERS`' states on the call's rows: `(log mu, p)`, not snapped; `setting` in place of the sampler's defaults."""
+    from port.sandbox.known_copy.hmm_objective import sample
 
-    sample = hmm_objective.sample if name in SAL_HMM_SAMPLERS else hmm_samplers.sample
     sampled = sample(
         name, call.total, call.b, call.exposure, call.trials, call.raw["lengths"],
         call.n_states, rng, setting,
@@ -697,7 +692,7 @@ def _emission_variant(
 ) -> Any:
     """`EMISSION_VARIANTS[name]`: one draw, or the best of `draws` by the HMM's NLL at each draw's states, nothing fitted.
 
-    Scored by `port.sandbox.known_copy.hmm_samplers.negative_log_likelihood`
+    Scored by `port.sandbox.known_copy.hmm_objective.negative_log_likelihood`
     (`jax_hmm`'s forward recursion at `known_copy.hmm.ALPHA`, `TAU`, `T`) on
     the call's rows, each draw's states read as `seed_states` reads them. A
     variant with no seeding change draws `sal`'s own `emission_seeding`.
@@ -714,7 +709,7 @@ def _emission_variant(
 
     if draws == 1:
         return draw()
-    from port.sandbox.known_copy.hmm_samplers import negative_log_likelihood
+    from port.sandbox.known_copy.hmm_objective import negative_log_likelihood
 
     best: tuple[float, Any] = (np.inf, None)
     for _ in range(draws):
@@ -744,11 +739,10 @@ def seed_states(
     totals at the median exposure. `prior` and `hmc` are `sal`'s with port's
     corrections (`_prior_seeding`, `_chain_best_seeding`).
     """
-    samplers = (*HMM_SAMPLERS, *SAL_HMM_SAMPLERS)
-    if setting is not None and name not in (*samplers, *EMISSION_VARIANTS):
-        msg = f"{name!r} takes no setting; tunable: {samplers}, {tuple(EMISSION_VARIANTS)}"
+    if setting is not None and name not in (*HMM_SAMPLERS, *EMISSION_VARIANTS):
+        msg = f"{name!r} takes no setting; tunable: {HMM_SAMPLERS}, {tuple(EMISSION_VARIANTS)}"
         raise ValueError(msg)
-    if name in samplers:
+    if name in HMM_SAMPLERS:
         # NB the sampler's states as drawn: `_read(_place(...))` would move p
         #    to `(p n + 1/2) / (n + 1)` on the seam's common trial count `n`.
         return _hmm_sampled(name, call, rng, setting)

@@ -62,10 +62,10 @@ TABLE = (
         ("emission++anchor", "First seed neutral, trimmed, then 10 Lloyd rounds"),
         ("emission++knn", "Trimmed seeds, each its 0.3% nearest rows pooled"),
     )),
-    ("port, samplers on the HMM", (
-        ("anneal-hmm", "Best point of HMC under falling temperature"),
-        ("tempering-hmm", "Best point of 4 HMC replicas on a ladder"),
-        ("hmc-hmm", "Best draw of a warmed HMC chain at a tuned temperature"),
+    ("sal, samplers on the HMM (#634)", (
+        ("anneal-hmm", "Best point of sal's HMC anneal under falling temperature"),
+        ("tempering-hmm", "Best point of sal's parallel tempering, 4 HMC replicas"),
+        ("hmc-hmm", "Best draw of sal's HMC chain after dual-averaging warm-up"),
     )),
 )  # fmt: skip
 
@@ -93,7 +93,7 @@ SOURCE = {
     **{name: "sal" for _, rows in TABLE for name, _ in rows},
     "cnaster-gmm": "cnaster", "calicost-gmm": "CalicoST", "distinct": "port", "lattice": "port",
     "lattice-em": "port", "rdr-quantiles": "port", "emission++trim": "port",
-    "emission++x5hmm": "port", "emission++trimx20hmm": "port", "emission++lloydx5hmm": "port", "emission++anchor": "port", "emission++knn": "port", "anneal-hmm": "port", "tempering-hmm": "port", "hmc-hmm": "port",
+    "emission++x5hmm": "port", "emission++trimx20hmm": "port", "emission++lloydx5hmm": "port", "emission++anchor": "port", "emission++knn": "port",
 }  # fmt: skip
 """Each start's source: the package whose code it runs."""
 COLOUR = {name: plt_colour(k) for name, k in NUMBER.items()}
