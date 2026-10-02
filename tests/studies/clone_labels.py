@@ -150,6 +150,7 @@ def first_round(start: str) -> Iterator[None]:
     from port.patch.icm.alpha_expansion import potts_energy
     from port.patch.icm.interface import IcmResult
     from port.sandbox.clone_starts.starts import STARTS
+    from sal.opt.termination import Termination
 
     real_inference, real_sweep_for = core_inference.UPSTREAM, label_solver.sweep_for
     fresh = [False]
@@ -177,7 +178,11 @@ def first_round(start: str) -> Iterator[None]:
                 Shim, np.random.default_rng(0), field=field, k=field.shape[1]
             )
             assignment[:] = labels
-            return IcmResult(1, -potts_energy(field, graph, assignment, beta))
+            return IcmResult(
+                1,
+                -potts_energy(field, graph, assignment, beta),
+                Termination.after(1, converged=False),
+            )
 
         return sweep
 

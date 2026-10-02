@@ -42,6 +42,7 @@ from dataclasses import dataclass
 from typing import NamedTuple
 
 import numpy as np
+from sal.opt.termination import Termination
 
 __all__ = ["CsrGraph", "IcmResult", "fold_unary", "icm_sweep"]
 
@@ -88,6 +89,8 @@ class IcmResult(NamedTuple):
 
     niter: int
     cost: float
+    termination: Termination
+    """Whether and why the sweep stopped (`snakes_and_ladders`' `Termination`, T- #617)."""
 
 
 def fold_unary(
@@ -227,4 +230,10 @@ def icm_sweep(
         epsilon=epsilon,
     )
 
-    return IcmResult(niter=int(niter), cost=float(cost))
+    # NB the queue empties or the sweep never returns: `icm_sweep_deque` has
+    #    no iteration cap, so every return is its criterion met.
+    return IcmResult(
+        niter=int(niter),
+        cost=float(cost),
+        termination=Termination.after(int(niter), converged=True),
+    )
