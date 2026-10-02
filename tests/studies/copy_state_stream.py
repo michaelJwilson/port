@@ -1,6 +1,6 @@
 """#540: copy-state starts at known clones on a stream of drawn realizations, polished by the HMM's Baum-Welch.
 
-`python -m tests.studies.copy_state_stream MANIFEST OUT_DIR [--problems 5] [--seeds 3] [--held-out 3] [--first 0] [--settings PATH] [--workers 4] [--all]`
+`python -m tests.studies.copy_state_stream MANIFEST OUT_DIR [--problems 5] [--seeds 3] [--held-out 3] [--first 0] [--settings PATH] [--workers 4] [--all | --starts NAME ...]`
 
 `... --tune` tunes port's samplers on the HMM (`anneal-hmm`, `tempering-hmm`,
 `hmc-hmm`) on the `--held-out` realizations and writes `SETTINGS`, as
@@ -66,6 +66,9 @@ GRID: dict[str, tuple[dict[str, float], ...]] = {
     "anneal-hmm": tuple({"t_start": t, "steps": n} for t in (1e2, 1e3, 1e4) for n in (12, 24, 48)),
     "tempering-hmm": tuple({"t_top": t, "rounds": n} for t in (1e2, 1e3, 1e4) for n in (3, 6, 12)),
     "hmc-hmm": tuple({"temperature": t} for t in (1.0, 3.0, 10.0, 30.0, 100.0, 300.0, 1000.0)),
+    "anneal-sal-hmm": tuple({"t_start": t, "step": e} for t in (1e2, 1e3, 1e4) for e in (1e-3, 3e-3, 1e-2)),
+    "tempering-sal-hmm": tuple({"t_top": t, "step": e} for t in (1e2, 1e3, 1e4) for e in (1e-3, 3e-3, 1e-2)),
+    "hmc-sal-hmm": tuple({"temperature": t} for t in (1.0, 3.0, 10.0, 30.0, 100.0, 300.0, 1000.0)),
     "emission++trim": tuple({"trim": t} for t in (0.005, 0.02, 0.05, 0.1)),
     "emission++trimx20hmm": tuple({"trim": t, "draws": n} for t in (0.005, 0.02, 0.05) for n in (10, 20)),
     "emission++lloydx5hmm": tuple({"lloyd": r} for r in (1, 3, 10)),
@@ -73,9 +76,17 @@ GRID: dict[str, tuple[dict[str, float], ...]] = {
     "emission++knn": tuple({"knn": k} for k in (0.003, 0.01, 0.03)),
 }  # fmt: skip
 """Each tuned start's settings: the samplers' schedules (`port.sandbox.known_copy.hmm_samplers`) and
-the emission++ variants' knobs (`port.sandbox.extensions.copy_starts.EMISSION_VARIANTS`); each untuned default is in its grid."""
+the emission++ variants' knobs (`port.sandbox.extensions.copy_starts.EMISSION_VARIANTS`); each untuned default is in its grid.
 
-UNTUNED = {"anneal-hmm": 4, "tempering-hmm": 4, "hmc-hmm": 5, "emission++trim": 1, "emission++trimx20hmm": 3,
+`sal`'s arms (`port.sandbox.known_copy.hmm_objective`, #634) get port's grid shapes, 9 / 9 / 7, over
+`sal`'s own knobs: the budget is held at port's tuned arm's passes (`hmm_objective.DEFAULTS`) and
+the fixed step searched in its place, around the 3.3-3.8e-3 port's adaptation settles at on
+realization 0; `hmc-sal-hmm` adapts its step and mass by `sal`'s dual averaging, so only the
+temperature is searched, over port's 7. Port's tuning grid varied the budget; these hold it, so
+`TOLERANCE`'s "cheapest" is a tie broken by seconds."""
+
+UNTUNED = {"anneal-hmm": 4, "tempering-hmm": 4, "hmc-hmm": 5, "anneal-sal-hmm": 2, "tempering-sal-hmm": 2,
+           "hmc-sal-hmm": 2, "emission++trim": 1, "emission++trimx20hmm": 3,
            "emission++lloydx5hmm": 1, "emission++anchor": 1, "emission++knn": 1}  # fmt: skip
 """Each grid's index of the schedule the samplers were written with, reported beside the tuned one."""
 
@@ -257,6 +268,7 @@ def run(
     held_out: int = 3,
     settings: Path | None = None,
     reuse: tuple[Path, ...] = (),
+    only: tuple[str, ...] = (),
 ) -> Path:
     """The stream after the `held_out` realizations; returns the pickle it keeps current."""
     import json
@@ -272,7 +284,7 @@ def run(
         if first or merge
         else f"copy_{manifest.stem}.pkl"
     )
-    names = list(starts()) if everything else list(STARTS)
+    names = list(only) if only else list(starts()) if everything else list(STARTS)
     tuned: dict[str, dict[str, float]] = {}
     if settings is not None:
         loaded = json.loads(settings.read_text())
@@ -458,6 +470,13 @@ def main(argv: list[str] | None = None) -> None:
         help="with --tune, only these starts; the others' settings are kept",
     )
     parser.add_argument(
+        "--starts",
+        nargs="+",
+        default=(),
+        metavar="NAME",
+        help="only these starts of the registry, in place of STARTS",
+    )
+    parser.add_argument(
         "--all",
         action="store_true",
         help="every start of the registry, not one per family",
@@ -483,6 +502,7 @@ def main(argv: list[str] | None = None) -> None:
         arguments.held_out,
         arguments.settings,
         tuple(arguments.reuse),
+        tuple(arguments.starts),
     )
 
 
