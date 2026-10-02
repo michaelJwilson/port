@@ -313,25 +313,25 @@ class Segmentation:
         contig's unclosed remainder joins the segment before it. Unlike
         `cnaster`'s, the merge crosses the BAF breakpoints, which bound
         `cnaster`'s own and so leave a run of short segments short.
+        The greedy rule is sal's `Ragged.floored` (T- #632).
         """
-        contig, start, end = self.contig, self.start, self.end
         held = self.aggregate(np.asarray(weight, dtype=np.float64))
-        parent = np.zeros(self.n_segments, dtype=np.int64)
-        label, first, opened, total, closed = -1, 0, 0, 0.0, True
+        parent = np.zeros(0, dtype=np.int64)
 
-        for k in range(self.n_segments):
-            if k == 0 or contig[k] != contig[k - 1]:
-                first, closed = label + 1, True
-            if closed:
-                label, opened, total = label + 1, int(start[k]), 0.0
-            parent[k] = label
-            total += float(held[k])
-            closed = end[k] - opened >= min_length and total >= min_weight
+        if self.n_segments:
+            from sal.ragged import Ragged
 
-            at_boundary = k == self.n_segments - 1 or contig[k + 1] != contig[k]
-            if at_boundary and not closed and label > first:
-                parent[parent == label] = label - 1
-                label -= 1
+            # NB sal's greedy floor (sal #1141). It reads only the extent, the
+            #    weight and the groups, so it runs on a placeholder of two
+            #    positions per segment: `Ragged` refuses one (sal #666).
+            placeholder = Ragged(np.zeros(2 * self.n_segments), (2,) * self.n_segments)
+            _, parent = placeholder.floored(
+                min_length,
+                weight=held,
+                min_weight=min_weight,
+                groups=self.contig,
+                extent=np.column_stack([self.start, self.end]),
+            )
 
         return self.coarsen(parent, name=name)
 
