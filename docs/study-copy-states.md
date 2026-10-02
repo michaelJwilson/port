@@ -87,6 +87,52 @@ The HMM likelihood has higher-scoring wrong optima: an extra deep-loss state and
 (#471, #564). A start's miss rate therefore does not predict the fit's: `lattice` starts at 1.0% missed
 and ends at 59.3% on one screened realization.
 
+## hmm++ (#635)
+
+**Not competitive with `lattice`.** The best variant, `hmm++diploid`, misses 7.6% of rows after Baum-Welch
+(median, r3–r12, 10 seeds) against `emission++` 18.2% and `lattice` 1.1%. 67 of its 100 runs miss over 2%,
+against 70 of 100 for `emission++` and 2 of 10 for `lattice`. 396 of the 418 failing runs of the hmm++ arms
+and `emission++` split the neutral state (#564).
+
+hmm++ is emission++'s D-sampling with each row's divergence taken to its state on the HMM decoded with
+the states chosen so far (`sal.likelihood.ragged.viterbi` at `known_copy.hmm.T`, `ALPHA`, `TAU`). The
+arms are `port.sandbox.extensions.copy_starts.HMM_PLUS_PLUS`. Same-run `emission++` and `lattice` reproduce
+#557's records run for run. Seconds are from runs under the host lock: start plus Baum-Welch, the seeding's
+own share in brackets.
+
+| start | missed after BW [IQR] | runs > 2% | s |
+| --- | --- | --- | --- |
+| `lattice` | 1.1% [0.9–1.2] | 2 / 10 | 11.3 [1.77] |
+| `hmm++diploid`: first seed the pooled diploid row | 7.6% [1.2–33.0] | 67 / 100 | 9.5 [1.04] |
+| `hmm++x3med`: lower median of 3 by HMM NLL | 7.9% [1.2–39.0] | 64 / 100 | 14.9 [3.53] |
+| `hmm++cap`: costs capped at the 99th percentile | 14.7% [1.2–39.4] | 63 / 100 | 10.2 [1.06] |
+| `hmm++` | 15.0% [1.2–40.6] | 65 / 100 | 12.0 [1.23] |
+| `hmm++x3hmm`: best of 3 by HMM NLL | 18.1% [1.2–41.6] | 64 / 100 | 12.1 [3.42] |
+| `emission++` | 18.2% [1.5–39.5] | 70 / 100 | 8.5 [0.32] |
+| `hmm++nll`: cost −log p at the decoded state | 40.8% [19.9–49.9] | 89 / 100 | 9.3 [0.12] |
+
+- **The spike claim was false.** A row's cost at its decoded state is never below its divergence to the
+  nearest state, so stickiness cannot lower a spike's weight. On a synthetic call, 200 seeds, the spike
+  is picked by `emission++` / `hmm++` 47 / 47 times at K = 3 and 5 / 5 at K = 2
+  (`tests/test_hmm_plus_plus.py`).
+- **`nll`** weights rows by their counts. −log p is the divergence under the HMM's dispersions plus the
+  saturated term, 8.39 nats per row (median). That term holds about 1,661 of the 1,790 nats.
+- **Segment-level** (`hmm++seg`, `hmm++segpool`; a decoded run drawn and its pooled row seeded) missed
+  65.5% and 51.7% on held-out r0 (5 seeds). With j states decoded, one run spans several planted states,
+  so its pooled row is none of them. Pooling would need finer segments; one untested option is to split
+  runs at change points of the row cost.
+- **Failure modes**, from each run's states and occupancy (log mu relative to the neutral; Hungarian
+  match; validated at 0 of 8 on `lattice`'s passing runs). Classes overlap. Of the failing runs, (ii)
+  split neutral (≥ 2 balanced states each on ≥ 2% of rows) accounts for 396 of 418. (iii), a spurious
+  imbalanced state, accounts for 0, and (i), a planted state over 2% unmatched, for 1. (v) drift (start
+  ≤ 2%, after BW > 2%) accounts for `hmm++` 32 / 65, `emission++` 32 / 70 and `hmm++diploid` 53 / 67.
+  A start state decoding no row occurs on every passing run as well, so it is not a failure class.
+- **Lead for #564: a merge after Baum-Welch.** In 203 of 420 failing runs (48%), the split's balanced
+  states are within |Δ log mu| < 0.05 and |Δ p| < 0.01. That figure rises to 75% at (0.1, 0.02). It is an
+  upper bound on what merging such states and refitting once would recover, and it is untested. A merge
+  would make the choice of start secondary. On r10 `lattice` itself ends at 44.9% this way, from a 1.0%
+  start: two halves 0.008 apart in log mu, 72 nats above the planted fit.
+
 ## Upstream correspondence
 
 `snakes_and_ladders` has no per-clone normalization and no copy-state HMM start. Expressing the problem

@@ -27,6 +27,9 @@ anyone rerunning the study (`tests.studies.copy_starts`):
   likelihood, `port.sandbox.known_copy.hmm_samplers`), `calicost-gmm`, and
   `sal`'s `prior` and `hmc` with port's corrections; `seed_states` gives any
   start's states before its polish.
+- **hmm++ (#635)**: `HMM_PLUS_PLUS`, emission++'s D-sampling with each row's
+  divergence taken to its state on the HMM decoded with the states chosen
+  so far (`_hmm_plus_plus_seeding`).
 - **The arms**, which change the start and never the score: `masked` and
   `smoothed` give the rows a start seeds (and optionally fits) on;
   `corrupted` replaces rows with outliers.
@@ -60,6 +63,7 @@ from port.patch.hmm_initialize.sal_mixture import clamped_divergence
 
 __all__ = [
     "EMISSION_VARIANTS",
+    "HMM_PLUS_PLUS",
     "HMM_SAMPLERS",
     "MASKS",
     "STAGES",
@@ -534,7 +538,7 @@ def _registry() -> dict[str, Row]:
     # NB `sal`'s surrogate `anneal`, `tempering`, `hmc` (snapped to observed
     #    rows) and its best-of-5-with-EM starts are no longer in the #540
     #    study; they stay by name for `run_cnaster --sal`.
-    for name in (*HMM_SAMPLERS, *EMISSION_VARIANTS):
+    for name in (*HMM_SAMPLERS, *EMISSION_VARIANTS, *HMM_PLUS_PLUS):
         rows[name] = Row(name, "port (#540)", STAGES, covariate=True, stochastic=True)
     return rows
 
@@ -568,6 +572,33 @@ Baum-Welch; `lattice` shows the start's miss does not predict the fit's."""
 
 HMM_SAMPLERS = ("anneal-hmm", "tempering-hmm", "hmc-hmm")
 """Port's samplers on the HMM's own NLL (`port.sandbox.known_copy.hmm_samplers`), no snapping."""
+
+
+HMM_PLUS_PLUS: dict[str, dict[str, Any]] = {
+    "hmm++": {},
+    "hmm++diploid": {"diploid": True},
+    "hmm++nll": {"nll": True},
+    "hmm++seg": {"segment": "sum"},
+    "hmm++segpool": {"segment": "pooled"},
+    "hmm++cap": {"cap": 0.99},
+    "hmm++x3hmm": {"draws": 3},
+    "hmm++x3med": {"draws": 3, "pick": "median"},
+}
+"""#635's starts, `_hmm_plus_plus_seeding`'s options by name: `diploid`, the first state the pooled
+diploid row rather than a uniform row; `nll`, each position's cost the negative log emission at its
+decoded state rather than the divergence to it; `segment`, a decoded run drawn and pooled rather
+than a row, weighted by its summed divergence (`sum`) or its length times its pooled row's
+(`pooled`); `cap`, each row's cost capped at that quantile of the costs; `draws`, the best of
+that many by the HMM's NLL at each draw's states, or with `pick` `"median"` the lower-median one.
+
+Set aside (#635): none is competitive with `lattice`. `tests.studies.copy_state_stream --starts` on
+`dev_tree_1s_hard` r3-r12 (`d2938975`), 10 seeds: median rows missed after `--sal` Baum-Welch [IQR],
+runs over 2% of 100: `hmm++diploid` 7.6% [1.2-33.0], 67; `hmm++x3med` 7.9% [1.2-39.0], 64; `hmm++cap`
+14.7% [1.2-39.4], 63; `hmm++` 15.0% [1.2-40.6], 65; `hmm++x3hmm` 18.1% [1.2-41.6], 64; `hmm++nll` 40.8%
+[19.9-49.9], 89; against `emission++` 18.2% [1.5-39.5], 70 and `lattice` 1.1% [0.9-1.2], 2 of 10.
+396 of the 418 failing hmm++ and emission++ runs split the neutral state (#564). `hmm++seg` and
+`hmm++segpool`, screened on held-out r0 (5 seeds), missed 65.5% and 51.7% (median): at j states a
+decoded run spans several planted states, so its pooled row is none of them."""
 
 
 @functools.cache
@@ -744,7 +775,7 @@ def seed_states(
         # NB the sampler's states as drawn: `_read(_place(...))` would move p
         #    to `(p n + 1/2) / (n + 1)` on the seam's common trial count `n`.
         return _hmm_sampled(name, call, rng, setting)
-    if name not in (*EMISSION_VARIANTS, "prior", "hmc"):
+    if name not in (*EMISSION_VARIANTS, *HMM_PLUS_PLUS, "prior", "hmc"):
         seeds = {n: seed for n, (_, seed) in _port_starts().items()}
         # NB floored as `sal_mixture.gmm_init` floors `--hmm-start` (#562).
         with clamped_divergence():
@@ -756,6 +787,8 @@ def seed_states(
     with clamped_divergence():
         if name in EMISSION_VARIANTS:
             components = _emission_variant(name, call, held, rng, setting)
+        elif name in HMM_PLUS_PLUS:
+            components = _hmm_plus_plus_best(call, held, rng, **HMM_PLUS_PLUS[name])
         elif name == "prior":
             components = _prior_seeding(held, rng)
         else:
@@ -767,6 +800,250 @@ def seed_states(
             call, components, per=float(np.median(call.exposure[call.exposure > 0]))
         )
     return np.asarray(log_mu, dtype=np.float64), np.asarray(p, dtype=np.float64)
+
+
+def _decoded(
+    call: CopyCall, held: Any, centres: np.ndarray, *, sticky: bool = True
+) -> tuple[np.ndarray, np.ndarray]:
+    """The HMM decoded at the states at `centres` (seam rate space): each position's state and the `(rows, states)` log emission.
+
+    `sal.likelihood.ragged.viterbi` over the call's segments (`lengths`), on
+    `port.extensions.jax_hmm.emission` at the dispersions and stickiness
+    `hmm_samplers` holds (`known_copy.hmm.ALPHA`, `TAU`, `T`), starts uniform,
+    `p` clipped as `hmm_samplers.negative_log_likelihood` clips it. The states
+    are read from the seam as `seed_states` reads them; the result covers
+    every row of the call. Without `sticky`, the transitions are uniform: no
+    persistence, so the path is each row's most probable state alone.
+    """
+    from sal.likelihood.ragged import viterbi
+    from sal.ragged import Ragged
+
+    from port.extensions import jax_setup  # noqa: F401
+    from port.extensions.jax_hmm import emission
+    from port.sandbox.known_copy.hmm import ALPHA, TAU, T
+
+    log_mu, p = _read(call, held.at(np.asarray(centres, dtype=np.float64)))
+    p = np.clip(p, 1e-4, 1 - 1e-4)
+    k = int(p.size)
+    log_emission = np.asarray(
+        emission(
+            log_mu,
+            np.full(k, ALPHA),
+            p,
+            np.full(k, TAU),
+            call.total,
+            call.exposure,
+            call.b,
+            call.trials,
+        ),  # fmt: skip
+        dtype=np.float64,
+    ).T
+    if sticky:
+        log_transition = np.full((k, k), np.log((1.0 - T) / max(k - 1, 1)))
+        np.fill_diagonal(log_transition, np.log(T))
+    else:
+        log_transition = np.full((k, k), -np.log(k))
+    lengths = tuple(int(v) for v in np.ravel(call.raw["lengths"]))
+    paths = viterbi(
+        Ragged(log_emission, lengths), np.full(k, -np.log(k)), log_transition
+    )
+    return np.asarray(paths.path, dtype=np.int64), log_emission
+
+
+def _seam_rows(call: CopyCall) -> np.ndarray:
+    """The call's rows the seam holds, in its order: those with exposure, all of them for BAF only."""
+    if call.stage != "rdrbaf":
+        return np.arange(call.n_rows)
+    return np.flatnonzero(call.exposure > 0.0)
+
+
+def _hmm_plus_plus_costs(
+    call: CopyCall,
+    held: Any,
+    centres: np.ndarray,
+    *,
+    nll: bool = False,
+    sticky: bool = True,
+) -> np.ndarray:
+    """hmm++'s weight on each seam row for the next seed, given the states at `centres`: its cost at its decoded state, floored at 0.
+
+    The cost is `_divergences`' Bregman divergence of the row to its decoded
+    state, emission++'s score, read at the decoded state in place of the
+    nearest; with `nll`, the negative log emission there instead.
+    """
+    path, log_emission = _decoded(call, held, centres, sticky=sticky)
+    # NB the seam leaves out rows of zero exposure (`instance_of`); the decode reads them all.
+    kept = _seam_rows(call)
+    path = path[kept]
+    at = np.arange(path.size)
+    if nll:
+        cost: np.ndarray = np.maximum(-log_emission[kept][at, path], 0.0)
+        return cost
+    rows = np.asarray(held.rows, dtype=np.float64)
+    divergence: np.ndarray = _divergences(held, rows, centres)[at, path]
+    return divergence
+
+
+def _runs(call: CopyCall, path: np.ndarray) -> np.ndarray:
+    """Each seam row's run: maximal stretches of one decoded state within one of the call's segments, numbered in order."""
+    lengths = np.ravel(call.raw["lengths"]).astype(np.int64)
+    first = np.zeros(path.size, dtype=bool)
+    first[np.concatenate([[0], np.cumsum(lengths)[:-1]])] = True
+    first[1:] |= path[1:] != path[:-1]
+    run: np.ndarray = (np.cumsum(first) - 1)[_seam_rows(call)]
+    return run
+
+
+def _segment_seed(
+    call: CopyCall,
+    held: Any,
+    centres: np.ndarray,
+    rng: np.random.Generator,
+    *,
+    weight: str,
+    sticky: bool = True,
+) -> np.ndarray:
+    """The next state of segment-level hmm++: a decoded run drawn by its weight, its rows pooled.
+
+    `weight` `"sum"`: the run's summed divergence of each row to its nearest
+    state so far (emission++'s score); `"pooled"`: the run's length times the
+    divergence of its pooled row to the state nearest it, so a run that a
+    state fits scores near 0 whatever its length. The state is the run's
+    pooled row (`_pooled`: depth by exposure, B share by allele reads).
+    """
+    rows = np.asarray(held.rows, dtype=np.float64)
+    n = rows.shape[0]
+    if held.covariate is None:
+        depth, trials = np.ones(n), np.ones(n)
+    else:
+        depth = np.asarray(held.covariate, dtype=np.float64)[:, 0]
+        trials = np.asarray(held.covariate, dtype=np.float64)[:, 1]
+    path, _ = _decoded(call, held, centres, sticky=sticky)
+    run = _runs(call, path)
+    _, run = np.unique(run, return_inverse=True)
+    members = [np.flatnonzero(run == r) for r in range(int(run.max()) + 1)]
+    means = np.array([_pooled(rows[m], depth[m], trials[m]) for m in members])
+    if weight == "sum":
+        nearest = _divergences(held, rows, centres).min(axis=1)
+        score = np.bincount(run, nearest, minlength=len(members))
+    elif weight == "pooled":
+        sizes = np.array([m.size for m in members], dtype=np.float64)
+        score = sizes * _divergences(held, means, centres).min(axis=1)
+    else:
+        msg = f"weight is sum or pooled, not {weight}"
+        raise ValueError(msg)
+    total = float(score.sum())
+    pick = (
+        int(rng.integers(len(members)))
+        if total <= 0.0
+        else int(rng.choice(len(members), p=score / total))
+    )
+    seed: np.ndarray = means[pick]
+    return seed
+
+
+def _diploid_row(held: Any) -> int:
+    """The row `sal.search.mixture_starts.at_locations` places at the pooled diploid state: every row's depth pooled by exposure, B share 1/2."""
+    rows = np.asarray(held.rows, dtype=np.float64)
+    n = rows.shape[0]
+    depth = (
+        np.ones(n)
+        if held.covariate is None
+        else np.asarray(held.covariate, dtype=np.float64)[:, 0]
+    )
+    location = np.array(
+        [
+            float((rows[:, 0] * depth).sum() / max(depth.sum(), 1e-12)),
+            0.5 * float(held.at.trials),
+        ]
+    )
+    return int(((rows - location[None, :]) ** 2).sum(axis=1).argmin())
+
+
+def _hmm_plus_plus_seeding(
+    call: CopyCall,
+    held: Any,
+    rng: np.random.Generator,
+    *,
+    diploid: bool = False,
+    nll: bool = False,
+    segment: str = "",
+    cap: float = 1.0,
+    sticky: bool = True,
+) -> Any:
+    """hmm++ (#635): emission++'s D-sampling on each row's divergence to its state on the HMM decoded so far.
+
+    The first state is a uniformly drawn row, as `sal`'s emission++ draws it,
+    or with `diploid` the row nearest the pooled diploid state. Each next
+    state is a row drawn with probability proportional to
+    `_hmm_plus_plus_costs` at the states chosen so far (a uniform row if every
+    cost is 0), handed over through `at_locations` as emission++'s are; or,
+    with `segment`, a decoded run's pooled row (`_segment_seed`, `segment`
+    its weight), handed over as it is. `cap` caps each row's cost at that
+    quantile of the costs, so no row carries a large share. One Viterbi
+    decode per added state.
+    """
+    import torch
+    from sal.search.mixture_starts import at_locations
+
+    rows = np.asarray(held.rows, dtype=np.float64)
+    n = rows.shape[0]
+    centres = [rows[_diploid_row(held) if diploid else int(rng.integers(n))]]
+    for _ in range(1, held.n_components):
+        placed = np.array(centres)
+        if segment:
+            centres.append(
+                _segment_seed(call, held, placed, rng, weight=segment, sticky=sticky)
+            )
+            continue
+        cost = _hmm_plus_plus_costs(call, held, placed, nll=nll, sticky=sticky)
+        if cap < 1.0:
+            cost = np.minimum(cost, np.quantile(cost, cap))
+        total = float(cost.sum())
+        pick = (
+            int(rng.integers(n)) if total <= 0.0 else int(rng.choice(n, p=cost / total))
+        )
+        centres.append(rows[pick])
+    if segment:
+        return held.at(np.array(centres))
+    return at_locations(held, torch.as_tensor(np.array(centres), dtype=torch.float64))
+
+
+def _hmm_plus_plus_best(
+    call: CopyCall,
+    held: Any,
+    rng: np.random.Generator,
+    *,
+    draws: int = 1,
+    pick: str = "best",
+    **options: Any,
+) -> Any:
+    """`_hmm_plus_plus_seeding` once, or one of `draws` by the HMM's NLL at each draw's states.
+
+    `pick` `"best"`: the lowest NLL, as `_emission_variant` picks; `"median"`:
+    the lower median, the same draws in the same order. The HMM's
+    likelihood barely ranks fits by correctness (PR- #557's records), so the
+    lowest may be the wrong mode.
+    """
+    if draws == 1:
+        return _hmm_plus_plus_seeding(call, held, rng, **options)
+    from port.sandbox.known_copy.hmm_samplers import negative_log_likelihood
+
+    scored: list[tuple[float, Any]] = []
+    for _ in range(draws):
+        components = _hmm_plus_plus_seeding(call, held, rng, **options)
+        log_mu, p = _read(call, components)
+        nll = negative_log_likelihood(
+            log_mu, p, call.total, call.b, call.exposure, call.trials, call.raw["lengths"]
+        )  # fmt: skip
+        scored.append((nll, components))
+    order = np.argsort([nll for nll, _ in scored], kind="stable")
+    if pick == "best":
+        return scored[int(order[0])][1]
+    if pick == "median":
+        return scored[int(order[(draws - 1) // 2])][1]
+    msg = f"pick is best or median, not {pick}"
+    raise ValueError(msg)
 
 
 def _prior_seeding(held: Any, rng: np.random.Generator) -> Any:
