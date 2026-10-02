@@ -57,18 +57,29 @@ def _refused(seed: int) -> bool:
 
 
 @pytest.mark.bug
-def test_sals_emission_plus_plus_refuses_a_round_off_negative_divergence() -> None:
-    """11 of 20 generators raise "Probabilities are not non-negative" through sal's own seam."""
-    assert sum(_refused(seed) for seed in range(20)) == 11
+def test_sals_emission_plus_plus_no_longer_refuses_a_round_off_negative_divergence() -> (
+    None
+):
+    """0 of 20 generators raise "Probabilities are not non-negative" through sal's own seam.
+
+    11 of 20 did at sal `3ad4b04`; sal #1136 (`aa699a59`) floors round-off
+    negatives in the D-squared draw. T- #632 PR B retires the workaround.
+    """
+    assert sum(_refused(seed) for seed in range(20)) == 0
 
 
 @pytest.mark.oracle
 def test_the_floored_scores_are_the_exact_divergence() -> None:
-    """From a `(2.0, 0.3)` seed, each near row's floored score is the 50-digit divergence, to 1e-14 absolute.
+    """From a `(2.0, 0.3)` seed, each near row's floored score is the 50-digit divergence, to 2e-14 absolute.
 
-    The exact negative-binomial divergence there is below 1e-24 and the
-    beta-binomial deviance is clamped to 0 by `sal`; unfloored, 194 of the
-    200 near rows score as low as `-1.6e-15`.
+    The exact negative-binomial divergence there is below 1e-24, and sal's
+    negative-binomial part of each score lies within 1.6e-15 of it. At sal `3ad4b04` the
+    beta-binomial deviance was clamped to 0 and 102 of the 200 near rows
+    scored as low as `-1.6e-15`. Since sal #1136 the deviance at
+    concentration 1000 takes the Stirling-difference path above shape 100
+    and reads `+1.43e-14` where it is 0, so no near row is negative and the
+    near scores are 1.28e-14 to 1.59e-14: the tolerance was 1e-14 before
+    the bump (T- #632 PR A).
     """
     from port.patch.hmm_initialize.sal_mixture import clamped_divergence
     from sal.opt.emission_mixture import _seed_scores as unfloored
@@ -85,15 +96,17 @@ def test_the_floored_scores_are_the_exact_divergence() -> None:
 
     exact = [nb_divergence(y, 2.0, SIZE) for y in rows[near, 0]]
 
-    assert (raw[near] < 0.0).sum() > 100
+    assert (raw[near] < 0.0).sum() == 0
     assert (floored >= 0.0).all()
-    np.testing.assert_allclose(floored[near], exact, rtol=0, atol=1e-14)
+    np.testing.assert_allclose(floored[near], exact, rtol=0, atol=2e-14)
     np.testing.assert_array_equal(floored[raw >= 0.0], raw[raw >= 0.0])
 
 
 @pytest.mark.patch
 def test_the_floor_draws_sals_seeds_wherever_sal_draws_any() -> None:
-    """Under the floor every generator seeds, and the 9 sal does not refuse draw the same rows.
+    """Under the floor every generator seeds, and draws the same rows as sal on all 20.
+
+    9 of 20 completed unfloored at sal `3ad4b04`; 20 do since sal #1136.
 
     Flooring moves only scores below 0, which `rng.choice` never accepted, so
     a draw sal completes is the same draw.
@@ -126,7 +139,7 @@ def test_the_floor_draws_sals_seeds_wherever_sal_draws_any() -> None:
         completed += 1
         np.testing.assert_array_equal(floored, raw)
 
-    assert completed == 9
+    assert completed == 20
 
 
 @pytest.mark.infra

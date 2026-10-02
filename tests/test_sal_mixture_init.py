@@ -215,7 +215,9 @@ def test_a_refused_seeding_is_dropped_and_the_best_survivor_kept(
 
     Referee: those four seedings run alone, each on the stream `sal`'s
     best-of spawns for it and polished to convergence, the best by final
-    log-likelihood.
+    log-likelihood. Since sal #1136 `sal`'s best-of skips the refused
+    seeding itself, so port's fallback logs nothing (at sal `3ad4b04` it
+    logged "seeding 2 dropped"; T- #632 PR A).
     """
     import logging
 
@@ -251,9 +253,7 @@ def test_a_refused_seeding_is_dropped_and_the_best_survivor_kept(
         np.asarray(kept.total.mean), np.asarray(best.total.mean), rtol=1e-9
     )
     np.testing.assert_allclose(np.asarray(kept.rate), np.asarray(best.rate), rtol=1e-9)
-    assert [r.getMessage().split(":")[1] for r in caplog.records] == [
-        " seeding 2 dropped"
-    ]
+    assert [r.getMessage() for r in caplog.records] == []
 
 
 @pytest.mark.smoke
