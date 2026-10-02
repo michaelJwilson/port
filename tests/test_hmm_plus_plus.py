@@ -8,7 +8,8 @@
   state keeps its full divergence to that state: hmm++ does not seed it less
   often than emission++. #635 expected the opposite; on the fixture below
   with 3 states, 200 seeds, the spike is seeded by `sal`'s emission++ 47
-  times and by hmm++ 47.
+  times and by hmm++ 47; with 2 states, where seeding it costs a planted
+  state, 5 and 5.
 - With one state chosen the decode is that state everywhere, so the second
   seed's law is emission++'s, at uniform transitions and at the sticky ones
   alike; the first is a uniform row in both.
@@ -86,6 +87,39 @@ def test_a_spike_is_weighted_no_less_than_by_emission_plus_plus() -> None:
     assert by_emission >= 30
     assert by_hmm >= 30
     assert abs(by_hmm - by_emission) <= 18
+
+
+@pytest.mark.analytic
+@pytest.mark.merge
+def test_with_two_states_the_spike_is_drawn_at_emission_plus_plus_rate() -> None:
+    """K=2: a spike costs a planted state. The second seed's law is emission++'s, so the rates agree: measured 5 and 5 of 200."""
+    from port.extensions.copy_starts import instance
+    from port.patch.hmm_initialize.sal_mixture import clamped_divergence
+    from port.sandbox.extensions import copy_starts as cs
+    from sal.search.mixture_starts import emission_seeding
+
+    call = _call(n_states=2)
+    held = instance(call)
+    spike = float(np.asarray(held.rows, dtype=np.float64)[SPIKE, 0])
+
+    def seeded(components: Any) -> bool:
+        depth = np.asarray(components.total.mean, dtype=np.float64).ravel()
+        return bool(np.any(np.isclose(depth, spike)))
+
+    draws = 200
+    with clamped_divergence():
+        by_emission = sum(
+            seeded(emission_seeding(held, np.random.default_rng(s)).components)
+            for s in range(draws)
+        )
+        by_hmm = sum(
+            seeded(cs._hmm_plus_plus_seeding(call, held, np.random.default_rng(s)))
+            for s in range(draws)
+        )
+    # NB three binomial standard errors at 2.5% of 200 draws is 7 draws.
+    assert 1 <= by_emission <= 15
+    assert 1 <= by_hmm <= 15
+    assert abs(by_hmm - by_emission) <= 7
 
 
 @pytest.mark.analytic

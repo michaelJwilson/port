@@ -589,7 +589,16 @@ diploid row rather than a uniform row; `nll`, each position's cost the negative 
 decoded state rather than the divergence to it; `segment`, a decoded run drawn and pooled rather
 than a row, weighted by its summed divergence (`sum`) or its length times its pooled row's
 (`pooled`); `cap`, each row's cost capped at that quantile of the costs; `draws`, the best of
-that many by the HMM's NLL at each draw's states, or with `pick` `"median"` the lower-median one."""
+that many by the HMM's NLL at each draw's states, or with `pick` `"median"` the lower-median one.
+
+Set aside (#635): none is competitive with `lattice`. `tests.studies.copy_state_stream --starts` on
+`dev_tree_1s_hard` r3-r12 (`d2938975`), 10 seeds: median rows missed after `--sal` Baum-Welch [IQR],
+runs over 2% of 100: `hmm++diploid` 7.6% [1.2-33.0], 67; `hmm++x3med` 7.9% [1.2-39.0], 64; `hmm++cap`
+14.7% [1.2-39.4], 63; `hmm++` 15.0% [1.2-40.6], 65; `hmm++x3hmm` 18.1% [1.2-41.6], 64; `hmm++nll` 40.8%
+[19.9-49.9], 89; against `emission++` 18.2% [1.5-39.5], 70 and `lattice` 1.1% [0.9-1.2], 2 of 10.
+396 of the 418 failing hmm++ and emission++ runs split the neutral state (#564). `hmm++seg` and
+`hmm++segpool`, screened on held-out r0 (5 seeds), missed 65.5% and 51.7% (median): at j states a
+decoded run spans several planted states, so its pooled row is none of them."""
 
 
 @functools.cache
