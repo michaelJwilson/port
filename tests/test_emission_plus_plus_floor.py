@@ -1,6 +1,7 @@
 """#562: `sal`'s emission++ divergences floored at 0 around port's mixture start.
 
-`run_cnaster_port --sal --hmm-start emission++...` seeds through
+`run_cnaster_port --sal --hmm-start emission++...` seeded through (the flag
+now refuses it; the start is sandboxed)
 `sal.opt.emission_mixture._seed_scores`, whose negative-binomial Bregman
 divergence is non-negative in exact arithmetic and about `-1.6e-15` in
 float64 for a row a hair from a seed's mean. D-squared sampling handed those
