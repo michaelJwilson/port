@@ -257,8 +257,13 @@ def run(
     held_out: int = 3,
     settings: Path | None = None,
     reuse: tuple[Path, ...] = (),
+    drop: tuple[str, ...] = (),
 ) -> Path:
-    """The stream after the `held_out` realizations; returns the pickle it keeps current."""
+    """The stream after the `held_out` realizations; returns the pickle it keeps current.
+
+    A start in `drop` gets no new job; its `reuse` rows are still kept, so a start can leave mid-stream
+    and its realizations so far stay in the record.
+    """
     import json
     import logging
 
@@ -362,7 +367,11 @@ def run(
             kept = [reused_rows[(problem.realization, *job)] for job in jobs
                     if (problem.realization, *job) in reused_rows]  # fmt: skip
             rows.extend(kept)
-            jobs = [j for j in jobs if (problem.realization, *j) not in reused_rows]
+            jobs = [
+                j
+                for j in jobs
+                if (problem.realization, *j) not in reused_rows and j[0] not in drop
+            ]
             print(f"  reused {len(kept)} runs, {len(jobs)} to run", flush=True)
             if not jobs:
                 done.append(problem.realization)
@@ -434,6 +443,13 @@ def main(argv: list[str] | None = None) -> None:
         "realization there, and its truth, are taken rather than rerun",
     )
     parser.add_argument(
+        "--drop",
+        nargs="+",
+        default=(),
+        metavar="START",
+        help="starts given no new job; their --reuse rows are kept",
+    )
+    parser.add_argument(
         "--held-out",
         type=int,
         default=3,
@@ -483,6 +499,7 @@ def main(argv: list[str] | None = None) -> None:
         arguments.held_out,
         arguments.settings,
         tuple(arguments.reuse),
+        tuple(arguments.drop),
     )
 
 
