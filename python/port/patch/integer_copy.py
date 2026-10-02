@@ -327,6 +327,15 @@ def decode_clone(
     from port.patch.hmm_nophasing.shifted_emission import neutral_state
     from port.patch.hmrf.core_inference import shift_for
 
+    # NB refused before the capture is read: after it, a bad decoder or
+    #    prior was reported as a missing capture and never reached (T- #617).
+    if decoder not in DECODERS:
+        msg = f"copy decoder {decoder!r} is not one of {DECODERS}"
+        raise ValueError(msg)
+    if not parsimony >= 0.0:
+        msg = f"parsimony {parsimony!r} is not a non-negative number"
+        raise ValueError(msg)
+
     clones = captured_clones()
 
     if clones is None:
@@ -340,13 +349,6 @@ def decode_clone(
     path = np.asarray(pred_cnv, dtype=np.int64).reshape(-1) % log_mu.size
     fit = captured_fit()
     key = id(fit.res) if fit is not None else id(clones)
-
-    if decoder not in DECODERS:
-        msg = f"copy decoder {decoder!r} is not one of {DECODERS}"
-        raise ValueError(msg)
-    if not parsimony >= 0.0:
-        msg = f"parsimony {parsimony!r} is not a non-negative number"
-        raise ValueError(msg)
 
     if (
         _SHARED.get("key") != key

@@ -20,7 +20,6 @@ from tests.source_graph import counting_mentions, tables
 
 UNCOUNTED = frozenset(
     {
-        "FIGURE_SWAPS:plot_ascn_legend",
         "FIGURE_SWAPS:plot_clones_genomic",
         "FIGURE_SWAPS:plot_clones_spatial",
         "FIGURE_SWAPS:plot_copy_number_profile",
@@ -34,7 +33,7 @@ UNCOUNTED = frozenset(
         "SWAPS:summarize_blocks",
     }
 )
-"""12 of 32 rows. The five figure rows have no truth to count against."""
+"""11 of 31 rows. The four figure rows have no truth to count against."""
 
 
 def _uncounted() -> set[str]:
