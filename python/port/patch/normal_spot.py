@@ -687,6 +687,11 @@ def filter_normal_diffexp(
 
     `cnaster`'s signature and return. The flagged genes are also recorded on
     the run's lineage, which is what reconnects the filter (#177).
+
+    **Only inside `port.extensions.segments.recording()`**, which
+    `run_cnaster_port` enters (T- #617). Outside one there is no lineage, the
+    genes are not left out of the bins, and the run is `cnaster`'s: the
+    filter inert, as #177 found it.
     """
     import scipy.sparse as sp
 

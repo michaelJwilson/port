@@ -382,8 +382,14 @@ NORMAL_SPOTS: list[np.ndarray] = []
 
 `cnaster` annotates them (`tumor_annotation`) and then never reads them back
 as candidates, so `port.patch.normal_spot.determine_normal_candidates` reads
-them here. Empty when the last load had no file.
+them here. Empty when the last load had no file, and after the run
+(:func:`release`, T- #617).
 """
+
+
+def release() -> None:
+    """Drop the run's normal spots; `port.pipeline.patched` calls this on exit (T- #617)."""
+    NORMAL_SPOTS.clear()
 
 
 def load_input_data(
