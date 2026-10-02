@@ -519,18 +519,23 @@ class Default(NamedTuple):
 
 
 DEFAULTS: tuple[Default, ...] = (
-    Default("min_segment_normal_umi", "--min-segment-normal-umi", 551),
     Default("refinement_mask", "--refinement-mask", 467),
     Default("floor", "--floor-merge", 348),
 )
 """`port`'s own behaviours on by default, outside `SWAPS` (T- #617, rule 8).
 
-None comes from `snakes_and_ladders`, so `--sal` no longer selects them: on
+Neither comes from `snakes_and_ladders`, so `--sal` no longer selects them: on
 in every patched arm, off with their `--no-` flag, and off with `--no-patch`
-unless `--sal` (which installs `pipeline_clone_assignment` alone) asks for the
-last two. The segment floor binds `MIN_SEGMENT_NORMAL_UMI` into
-`create_bin_ranges`; the mask installs `REFINEMENT_SWAPS`; the floor merge
-binds `floor_merge=True` into `pipeline_clone_assignment`. The `--sal` arm is
+unless `--sal` (which installs `pipeline_clone_assignment` alone) asks. The
+mask installs `REFINEMENT_SWAPS`; the floor merge binds `floor_merge=True`
+into `pipeline_clone_assignment`.
+
+**The 300-normal-UMI segment floor is not here; it stays `--sal`'s.** On the
+default arm it made `tests/test_copy_likelihood.py`'s critical copy instance
+decode the planted `(1, 2)` as `(1, 3)`: 1000 bins merge into 888, and the
+lattice decode's EM then alternates between tumour fraction 1 with `(1, 2)`
+and 0.5 with `(1, 3)` (identical depth and allele share), stopping on 0.5
+at log-likelihood -19,942.74 where fraction 1 reaches -18,966.85 (PR- #645). The `--sal` arm is
 unchanged. Alone, the mask or the floor merge over-split #338's three-sample
 instance (6 fitted clones against 2 planted); together with `--sal` they
 recover CalicoST hard at clone ARI 0.982 against 0.303 (#467).

@@ -1,8 +1,8 @@
 """`run_cnaster_port`'s defaults of port's own (`port.pipeline.DEFAULTS`, T- #617 rule 8).
 
-`--sal` selects sal's labelling and the `kmeans++x5+em` start alone; the
-segment floor, the refinement mask and the floor merge are on in every
-patched arm, each with an off flag. What is pinned: each arm's settings
+`--sal` selects sal's labelling, the `kmeans++x5+em` start and the segment
+floor; the refinement mask and the floor merge are on in every patched arm,
+each with an off flag. The floor stays `--sal`'s (PR- #645). What is pinned: each arm's settings
 (`infra`), and that the `--sal` arm resolves as it did before the move.
 """
 
@@ -14,14 +14,15 @@ from typing import Any
 import pytest
 
 ARMS = {
-    (): (True, True, True, "none"),
+    (): (False, True, True, "none"),
     ("--sal",): (True, True, True, "kmeans++x5+em"),
     ("--no-patch",): (False, False, False, "none"),
     # NB no shift, so no `run_core_inference` to read a start (T- #617).
     ("--no-patch", "--sal"): (False, True, True, "none"),
     ("--sal", "--no-shift"): (True, True, True, "none"),
-    ("--no-min-segment-normal-umi",): (False, True, True, "none"),
-    ("--no-refinement-mask", "--no-floor-merge"): (True, False, False, "none"),
+    ("--min-segment-normal-umi",): (True, True, True, "none"),
+    ("--sal", "--no-min-segment-normal-umi"): (False, True, True, "kmeans++x5+em"),
+    ("--no-refinement-mask", "--no-floor-merge"): (False, False, False, "none"),
     ("--sal", "--no-floor-merge"): (True, True, False, "kmeans++x5+em"),
 }
 """Flags -> (segment floor, refinement mask, floor merge, HMM start)."""

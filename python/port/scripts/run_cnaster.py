@@ -131,7 +131,7 @@ def _parser() -> argparse.ArgumentParser:
         "--min-segment-normal-umi",
         action=argparse.BooleanOptionalAction,
         default=None,
-        help="floor read-depth segments at 300 normal UMI where the config states no quality key (#551, #547); on, off with --no-patch",
+        help="floor read-depth segments at 300 normal UMI where the config states no quality key (#551, #547); off, on with --sal, refused with --no-patch",
     )
     parser.add_argument(
         "--hmm-start",
@@ -254,7 +254,7 @@ class Settings(NamedTuple):
     floor: bool
     """The floor merge (`DEFAULTS`): on, off with `--no-patch` unless `--sal` (#467)."""
     min_segment_normal_umi: bool
-    """The read-depth segment floor (`DEFAULTS`): on, off with `--no-patch` (#551)."""
+    """The read-depth segment floor: on with `--sal` alone (#551, T- #617; not in `DEFAULTS`)."""
     distinct: bool
     """The distinct initializer: on where the shift is, off with `--no-patch`."""
     hmm_start: str
@@ -284,7 +284,11 @@ def _settings(arguments: argparse.Namespace) -> Settings:
         copy_cap=bool(asked(arguments.copy_cap, patch)),
         refinement_mask=bool(asked(arguments.refinement_mask, patch or arguments.sal)),
         floor=bool(asked(arguments.floor_merge, patch or arguments.sal)),
-        min_segment_normal_umi=bool(asked(arguments.min_segment_normal_umi, patch)),
+        # NB `--sal`'s alone: on the default arm it decodes the critical
+        #    copy instance's planted (1, 2) as (1, 3) (PR- #645, T- #617).
+        min_segment_normal_umi=bool(
+            asked(arguments.min_segment_normal_umi, patch and arguments.sal)
+        ),
         distinct=bool(asked(arguments.distinct_init, shift and patch)),
         # NB read by the shift's `run_core_inference` alone, so `--sal`'s
         #    start is its default only where that row is installed (T- #617).

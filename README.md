@@ -267,7 +267,7 @@ follows the arm unless asked: on in a patched run, off with `--no-patch`.
 | `--sal` | off | alpha expansion with the Rust cut for the labelling (#312), and `--hmm-start kmeans++x5+em` | a lower Potts energy on every problem measured |
 | `--refinement-mask` | on; off with `--no-patch` unless `--sal` | each read-depth sub-clone kept in its BAF clone, a 100-nat penalty (#348, #467) | with the floor merge, CalicoST hard clone ARI 0.303 to 0.982 |
 | `--floor-merge` | on; off with `--no-patch` unless `--sal` | the clone-size floor met smallest first (#348) | alone, #338's three-sample instance: 2 planted clones fitted as 6 |
-| `--min-segment-normal-umi` | on; off with `--no-patch` | read-depth segments floored at 300 normal UMI where no `quality` key is stated (#551) | see below |
+| `--min-segment-normal-umi` | off; on with `--sal`; refused with `--no-patch` | read-depth segments floored at 300 normal UMI where no `quality` key is stated (#551) | see below |
 | `--hmm-start` | `none`; `kmeans++x5+em` with `--sal` and the shift; refused without the shift | the read-depth HMM's copy states: a sal mixture start (#489), seeded in sal's rate space (#547), or `lattice`, the integer `(A, B)` lattice; `emission++` scores floored at 0 (#562) | #547: dev_tree r0 (`3381575a`) clone ARI 0.8612 (5) to 1.0 (4); with the segment floor, CalicoST hard (`8797710b`) copy ARI 0.9055 to 0.9181 |
 | `--baf-start` | `none` | the BAF-only HMM's copy states from the lattice (#540) | |
 | `--copy-errors` | off | `cnv_copy_sets.tsv`: every `(A, B)` in each state's 95 per cent credible region (#353) | differentiates the whole objective once |
@@ -336,8 +336,9 @@ as `run_cnaster` calls it, returns planted totals of 10 to 12 exactly at a
 stated 12, and none of them at `cnaster`'s 6 (`tests/test_integer_copy_patch.py`).
 
 **`quality.min_segment_mb` and `quality.min_segment_normal_umi` floor the
-read-depth segments** (#551). `run_cnaster_port` sets the normal floor at 300
-unless `--no-min-segment-normal-umi` or `--no-patch`; a stated key wins: `true` is
+read-depth segments** (#551). `--sal` or `--min-segment-normal-umi` sets the
+normal floor at 300; not on by default, where it decodes the critical copy
+instance's planted `(1, 2)` as `(1, 3)` (PR- #645); a stated key wins: `true` is
 0.75 Mb or 300 normal-spot UMIs, a number sets the value, `false` is off. At the
 read-depth binning, adjacent bins merge within each contig until each spans
 the minimum length and holds the larger of the normal floor and
