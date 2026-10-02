@@ -112,8 +112,8 @@ Every `tests.sim_audit` ledger row was measured with it, and its scorer's
 lattice (`tests.sim_audit.copy_states`) is the same `A + B <= 6`. No sim
 manifest or CalicoST sample plants an allele above 3, nor
 `tests.fixtures.COPY_LATTICE` one above 5, so no planted state referees the
-choice. `cnaster`'s 5 is `MAX_ALLELE_COPY`; which default `port` keeps is
-open on T- #617.
+choice. 6 is kept by the user's decision on T- #617, over that ticket's plan
+to restore `cnaster`'s 5, which is `MAX_ALLELE_COPY`.
 """
 
 
