@@ -686,6 +686,16 @@ QUESTIONS: dict[str, tuple[str, str]] = {
 }
 """Each committed file under `OUT`: the question it answers, and its source."""
 
+KEY_STUDIES: dict[str, tuple[str, str, str]] = {
+    "key_studies/554_clone-starts.png": (
+        "Does the clone-label start or the Potts solver decide the clones, and what does each start reach?",
+        "`docs/nb/clone_label_study.ipynb` via `tests.studies.clone_label_notebook` (#541, PR #554)",
+        "`python -m tests.studies.clone_labels capture SAMPLE CAPTURE.npz`, `... run CAPTURE.npz OUT.pkl`, "
+        "`python -m tests.studies.clone_label_notebook OUT.pkl`",
+    ),
+}
+"""Each key study's figure (label `key_study`) under `OUT/key_studies/`: question, source, regenerate command."""
+
 
 def readme(
     fixture: str,
@@ -697,6 +707,9 @@ def readme(
 ) -> str:
     """`OUT/README.md`: the run's headline metrics, then each file's question and source."""
     rows = "\n".join(f"| `{k}` | {q} | {s} |" for k, (q, s) in QUESTIONS.items())
+    studies = "\n".join(
+        f"| `{k}` | {q} | {s} | {r} |" for k, (q, s, r) in KEY_STUDIES.items()
+    )
     return f"""# Paper figures: {fixture} r0 ({digest})
 
 **TL;DR:** clone ARI {recovery["ari"]:.4f}, copy ARI (phase-free)
@@ -721,6 +734,14 @@ the fixture has no H&E image, and the run never reads the mock.
 | File | Question | Source |
 | --- | --- | --- |
 {rows}
+
+## Key studies
+
+Each figure is redrawn when its study is rerun, and stamped `data <hash> · code <sha>`.
+
+| File | Question | Source | Regenerate |
+| --- | --- | --- | --- |
+{studies}
 """
 
 

@@ -40,3 +40,11 @@ the fixture has no H&E image, and the run never reads the mock.
 | `compare/copy_confusion.png` | Which (A, B) is each planted pair decoded as? | `confusion_figure`: `tests.sim_audit.copy_confusion` |
 | `compare/copy_genomic_truth_vs_fit.png` | Where along the genome is a matched clone's (A, B) decoded wrong, or swapped? | `genomic_compare_figure`: `score`'s clone-bins |
 | `compare/exact_by_class.png` | Which planted classes are recovered exactly, with and without phase? | `exact_figure`: `tests.sim_audit.planted_classes` |
+
+## Key studies
+
+Each figure is redrawn when its study is rerun, and stamped `data <hash> · code <sha>`.
+
+| File | Question | Source | Regenerate |
+| --- | --- | --- | --- |
+| `key_studies/554_clone-starts.png` | Does the clone-label start or the Potts solver decide the clones, and what does each start reach? | `docs/nb/clone_label_study.ipynb` via `tests.studies.clone_label_notebook` (#541, PR #554) | `python -m tests.studies.clone_labels capture SAMPLE CAPTURE.npz`, `... run CAPTURE.npz OUT.pkl`, `python -m tests.studies.clone_label_notebook OUT.pkl` |
