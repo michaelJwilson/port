@@ -1,6 +1,6 @@
 """#540: copy-state starts at known clones on a stream of drawn realizations, polished by the HMM's Baum-Welch.
 
-`python -m tests.studies.copy_state_stream MANIFEST OUT_DIR [--problems 5] [--seeds 3] [--held-out 3] [--first 0] [--settings PATH] [--workers 4] [--all]`
+`python -m tests.studies.copy_state_stream MANIFEST OUT_DIR [--problems 5] [--seeds 3] [--held-out 3] [--first 0] [--settings PATH] [--workers 4] [--all | --starts NAME ...]`
 
 `... --tune` tunes port's samplers on the HMM (`anneal-hmm`, `tempering-hmm`,
 `hmc-hmm`) on the `--held-out` realizations and writes `SETTINGS`, as
@@ -15,14 +15,15 @@ the planted clones (`port.sandbox.known_copy.problems`: 1 Mb bins under #551's
 next realization draws.
 
 - **Starts.** `STARTS`, one per family of `port.sandbox.extensions.copy_starts`'
-  registry (`--all`: every start), each seeded as `run_start` seeds it but without
+  registry (`--all`: every start; `--starts`: those named), each seeded as `run_start` seeds it but without
   its `sal` mixture polish: the start is the algorithm's own output. A
   stochastic start runs `--seeds` seeds, a deterministic one seed 0.
 - **Polish.** `cnaster`'s Baum-Welch on the clones stacked along the genome
   (`known_copy.baum_welch`), from the start's states.
 - **Scored.** The log-likelihood at the start's states (`known_copy.decode`)
   and after Baum-Welch; the rows whose state is not the planted one under the
-  best 1-1 matching of states (`known_copy.missed`), before and after.
+  best 1-1 matching of states (`known_copy.missed`), before and after; the
+  states and each state's decoded rows, before and after (#635).
 - **Truth.** Per realization, the planted states decoded and polished by the
   same Baum-Welch.
 
@@ -165,13 +166,16 @@ def solve(
             "bw_seconds": fitted.seconds, "llf": fitted.log_likelihood, "missed": kc.missed(fitted.label, truth),
             "start_degenerate": at_start.degenerate, "degenerate": fitted.degenerate,
             "log_mu": fitted.log_mu, "p_binom": fitted.p_binom,
+            "start_log_mu": np.asarray(log_mu, dtype=np.float64), "start_p_binom": np.asarray(p, dtype=np.float64),
+            "start_occupancy": np.bincount(at_start.label, minlength=np.asarray(log_mu).size),
+            "occupancy": np.bincount(fitted.label, minlength=fitted.log_mu.size),
         }  # fmt: skip
     except Exception as error:  # noqa: BLE001 -- a failed job is a result
         return {"problem": problem.realization, "start": name, "seed": seed,
                 "error": f"{type(error).__name__}: {error}", "trace": traceback.format_exc(limit=4)}  # fmt: skip
 
 
-def _warm() -> None:
+def _warm(names: tuple[str, ...] = STARTS) -> None:
     """Every start and the Baum-Welch once on a small call, so no compilation lands in a timing."""
     from types import SimpleNamespace
 
@@ -188,17 +192,17 @@ def _warm() -> None:
         length=np.full(2 * n, 1e6), lengths=np.array([n, n]), planted=np.column_stack([1 - state, np.ones(2 * n, int)]),
         n_states=2, truth_label=state,
     )  # fmt: skip
-    for name in STARTS:
+    for name in names:
         solve(tiny, name, 0)
     for name, grid in GRID.items():
         solve(tiny, name, 0, grid[0], polish=False)
 
 
-def _init() -> None:
+def _init(names: tuple[str, ...] = STARTS) -> None:
     import logging
 
     logging.disable(logging.INFO)
-    _warm()
+    _warm(names)
 
 
 def _describe(problem: Any) -> dict[str, Any]:
@@ -210,6 +214,8 @@ def _describe(problem: Any) -> dict[str, Any]:
     return {"truth_start_llf": at.log_likelihood, "truth_start_missed": kc.missed(at.label, truth),
             "truth_llf": fitted.log_likelihood, "truth_missed": kc.missed(fitted.label, truth),
             "n_rows": int(problem.total.size), "n_states": problem.n_states, "states": problem.states.tolist(),
+            "truth_log_mu": np.asarray(problem.truth_log_mu).tolist(), "truth_p_binom": np.asarray(problem.truth_p_binom).tolist(),
+            "truth_occupancy": np.bincount(truth, minlength=problem.n_states).tolist(),
             "draw_seconds": problem.draw_seconds, "build_seconds": problem.build_seconds}  # fmt: skip
 
 
@@ -257,6 +263,7 @@ def run(
     held_out: int = 3,
     settings: Path | None = None,
     reuse: tuple[Path, ...] = (),
+    only: tuple[str, ...] = (),
 ) -> Path:
     """The stream after the `held_out` realizations; returns the pickle it keeps current."""
     import json
@@ -272,7 +279,7 @@ def run(
         if first or merge
         else f"copy_{manifest.stem}.pkl"
     )
-    names = list(starts()) if everything else list(STARTS)
+    names = list(only) if only else list(starts()) if everything else list(STARTS)
     tuned: dict[str, dict[str, float]] = {}
     if settings is not None:
         loaded = json.loads(settings.read_text())
@@ -343,7 +350,9 @@ def run(
                   f"{errors} errors; plot redrawn", flush=True)  # fmt: skip
 
     context = mp.get_context("spawn")
-    with ProcessPoolExecutor(workers, mp_context=context, initializer=_init) as pool:
+    with ProcessPoolExecutor(
+        workers, mp_context=context, initializer=_init, initargs=(tuple(names),)
+    ) as pool:
         total = held_out + first + n_problems
         for problem in kc.problems(manifest, total, realizations=total):
             if problem.realization < held_out + first:
@@ -462,6 +471,13 @@ def main(argv: list[str] | None = None) -> None:
         action="store_true",
         help="every start of the registry, not one per family",
     )
+    parser.add_argument(
+        "--starts",
+        nargs="+",
+        default=(),
+        metavar="NAME",
+        help="only these starts of the registry, in place of STARTS",
+    )
     arguments = parser.parse_args(argv)
     if arguments.tune:
         retune(
@@ -483,6 +499,7 @@ def main(argv: list[str] | None = None) -> None:
         arguments.held_out,
         arguments.settings,
         tuple(arguments.reuse),
+        tuple(arguments.starts),
     )
 
 

@@ -67,6 +67,15 @@ TABLE = (
         ("tempering-hmm", "Best point of 4 HMC replicas on a ladder"),
         ("hmc-hmm", "Best draw of a warmed HMC chain at a tuned temperature"),
     )),
+    ("port, hmm++ (#635)", (
+        ("hmm++", f"{tt('emission++')} on the divergence to the decoded state"),
+        ("hmm++diploid", f"{tt('hmm++')}, first seed the pooled diploid row"),
+        ("hmm++nll", f"{tt('hmm++')} weighted by the negative log emission"),
+        ("hmm++cap", f"{tt('hmm++')}, each row's cost capped at the 99th percentile"),
+        ("hmm++x3hmm", f"Best of 3 {tt('hmm++')} draws by HMM likelihood"),
+        ("hmm++seg", "A decoded run drawn by its summed divergence, pooled"),
+        ("hmm++segpool", "A decoded run drawn by length x pooled divergence, pooled"),
+    )),
 )  # fmt: skip
 
 
@@ -85,6 +94,8 @@ LABEL = {
     "emission++trimx20hmm": r"20$\times$trim", "emission++lloydx5hmm": r"5$\times$lloyd",
     "emission++anchor": "emission++ (anchor)", "emission++knn": "emission++ (knn)", "gaussian-em": "gaussian-em", "quantile": "quantile",
     "anneal-hmm": "anneal", "tempering-hmm": "parallel tempering", "hmc-hmm": "hmc",
+    "hmm++": "hmm++", "hmm++diploid": "hmm++ (diploid)", "hmm++nll": "hmm++ (nll)", "hmm++cap": "hmm++ (cap)", "hmm++x3hmm": r"3$\times$hmm++",
+    "hmm++seg": "hmm++ (segment)", "hmm++segpool": "hmm++ (segment, pooled)",
 }  # fmt: skip
 """A start's label; `5x`: the best of five draws."""
 NUMBER = {name: k + 1 for k, name in enumerate(n for _, rows in TABLE for n, _ in rows)}
@@ -94,6 +105,7 @@ SOURCE = {
     "cnaster-gmm": "cnaster", "calicost-gmm": "CalicoST", "distinct": "port", "lattice": "port",
     "lattice-em": "port", "rdr-quantiles": "port", "emission++trim": "port",
     "emission++x5hmm": "port", "emission++trimx20hmm": "port", "emission++lloydx5hmm": "port", "emission++anchor": "port", "emission++knn": "port", "anneal-hmm": "port", "tempering-hmm": "port", "hmc-hmm": "port",
+    **{name: "port" for name in ("hmm++", "hmm++diploid", "hmm++nll", "hmm++cap", "hmm++x3hmm", "hmm++seg", "hmm++segpool")},
 }  # fmt: skip
 """Each start's source: the package whose code it runs."""
 COLOUR = {name: plt_colour(k) for name, k in NUMBER.items()}
