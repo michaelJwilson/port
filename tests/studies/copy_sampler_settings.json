@@ -1,5 +1,5 @@
 {
-  "_provenance": "tests.studies.copy_state_stream --tune on baseline/dev_tree_1s_hard.toml realizations 0-2, 5 seeds per setting; the cheapest setting within 1.0 nats of the best median gap in log-likelihood at the start's states (#540)",
+  "_provenance": "tests.studies.copy_state_stream --tune on baseline/dev_tree_1s_hard.toml realizations 0-2, 5 seeds per setting; the cheapest setting within 1.0 nats of the best median gap in log-likelihood at the start's states (#540); the *-sal-hmm arms likewise at sal b61dfba under the host lock, their gaps to the best sal arm's run (#634)",
   "anneal-hmm": {
     "steps": 48,
     "t_start": 100.0,
@@ -50,5 +50,25 @@
     "median_gap": 212.311,
     "seconds": 2.688,
     "default_median_gap": 306.541
+  },
+  "anneal-sal-hmm": {
+    "step": 0.003,
+    "t_start": 100.0,
+    "median_gap": 88.473,
+    "seconds": 11.763,
+    "default_median_gap": 2093.539
+  },
+  "hmc-sal-hmm": {
+    "temperature": 1.0,
+    "median_gap": 99.141,
+    "seconds": 5.491,
+    "default_median_gap": 112.749
+  },
+  "tempering-sal-hmm": {
+    "step": 0.001,
+    "t_top": 10000.0,
+    "median_gap": 109.369,
+    "seconds": 11.103,
+    "default_median_gap": 2093.539
   }
 }
