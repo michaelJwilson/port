@@ -50,7 +50,7 @@ import scipy.optimize
 from cnaster.count_encoder import CountEncoder
 from scipy.special import digamma, expit
 
-from port.patch.hmm_nophasing.bb_logpmf import digamma_rise
+from port.patch.hmm_nophasing.bb_logpmf import DISPERSION_FLOOR, digamma_rise
 
 __all__ = [
     "DISPERSION_FLOOR",
@@ -61,13 +61,6 @@ __all__ = [
     "configured_solver",
     "nb_partials",
 ]
-
-DISPERSION_FLOOR = 1e-10
-"""`cnaster`'s floor on `alpha` in `_nb_logpmf_1d` and on `a`, `b` in `_bb_logpmf_1d`.
-
-The one statement of it: every port kernel that scores those two laws reads
-this, rather than restating the literal (#517).
-"""
 
 
 def nb_partials(

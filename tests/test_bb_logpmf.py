@@ -232,3 +232,48 @@ def test_sals_beta_binomial_is_not_a_pmf_at_a_large_concentration() -> None:
     )
 
     assert abs(logsumexp(scores[0])) > 1.0
+
+
+def _binomial_exact(p: float) -> np.ndarray:
+    """The binomial log pmf from its definition, in `decimal` at 50 digits."""
+    from decimal import Decimal, getcontext
+    from math import comb
+
+    getcontext().prec = 50
+    share = Decimal(p)
+    return np.array(
+        [
+            float(
+                Decimal(comb(TRIALS, int(k))).ln()
+                + int(k) * share.ln()
+                + (TRIALS - int(k)) * (1 - share).ln()
+            )
+            for k in COUNTS
+        ]
+    )
+
+
+@pytest.mark.oracle
+@pytest.mark.parametrize("p", [0.3, 0.5, 1e-3])
+def test_the_kernel_at_an_infinite_concentration_is_the_binomial(p: float) -> None:
+    """`tau = inf` scored NaN (T- #617); it is the binomial, to 1e-11 absolute."""
+    np.testing.assert_allclose(
+        _kernel(p, np.inf), _binomial_exact(p), rtol=0, atol=1e-11
+    )
+
+
+@pytest.mark.analytic
+def test_the_limit_is_continuous_in_the_concentration() -> None:
+    """At 1e16 the beta-binomial is the binomial to within `n^2 / tau`."""
+    np.testing.assert_allclose(_kernel(0.3, 1e16), _kernel(0.3, np.inf), atol=1e-11)
+
+
+@pytest.mark.analytic
+@pytest.mark.parametrize(("p", "count"), [(0.0, 1.0), (1.0, 0.0)])
+def test_the_limit_at_a_share_of_zero_or_one_excludes_the_other_allele(
+    p: float, count: float
+) -> None:
+    from port.patch.hmm_nophasing.bb_logpmf import binomial_logpmf
+
+    assert binomial_logpmf(count, 1.0, p) == -np.inf
+    assert binomial_logpmf(1.0 - count, 1.0, p) == 0.0
