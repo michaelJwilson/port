@@ -690,6 +690,8 @@ RUN_STATE: tuple[str, ...] = (
     "port.patch.hmrf.core_inference:release",
     "port.patch.hmrf.refinement:forget",
     "port.patch.integer_copy:release",
+    "port.patch.io:release",
+    "port.patch.recomb:release",
 )
 """What `patched` calls on exit: each drops what one run's rows held (#517).
 

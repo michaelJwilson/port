@@ -68,7 +68,12 @@ instance alpha expansion alone takes the clone ARI from 0.919 to 0.386, and
 the sequence to 1.000 (#312)."""
 
 ENVIRONMENT = "PORT_LABEL_SOLVER"
-"""Read once per call, so a subprocess arm can select without a flag."""
+"""Read once per call, so a subprocess arm can select without a flag.
+
+**Overrides the solver bound at install**: a stated departure from rule 1
+of T- #617, held by `tests/test_environment_reads.py`. Unset, the bound
+solver runs.
+"""
 
 
 def _checked(name: str, source: str) -> Solver:

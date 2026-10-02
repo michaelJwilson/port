@@ -710,9 +710,14 @@ def create_bin_ranges(
 ) -> Any:
     """`cnaster.omics.create_bin_ranges`, without the rows its merge leaves unbinned (#438 D8, #105).
 
-    `min_segment_normal_umi`, which `run_cnaster_port` binds
-    (`MIN_SEGMENT_NORMAL_UMI`, `port.pipeline.DEFAULTS`), is the read-depth
-    segment floor where the configuration states none (#551): `segment_floor`.
+    `min_segment_normal_umi`, which `run_cnaster_port --sal` binds
+    (`MIN_SEGMENT_NORMAL_UMI`), is the read-depth segment floor where the
+    configuration states none (#551): `segment_floor`.
+
+    **A stated departure from `cnaster`** (T- #617): the bins are re-cut on
+    `quality.min_segment_mb` and `quality.min_segment_normal_umi`, keys
+    `cnaster` does not read, wherever the configuration states either, with
+    or without the bound option.
 
     `normal_baf_bin_filter` sets `bin_id` to missing for every bin it removes,
     and the merge (`key="bin_id"`, `run_cnaster.py:983`) carries the missing

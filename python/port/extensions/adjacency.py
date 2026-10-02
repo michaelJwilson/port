@@ -85,7 +85,13 @@ CHOICES: dict[str, tuple[str, ...]] = {
 
 
 def adjacency_setting(name: str) -> str:
-    """The construction or the square grid's neighbourhood, refusing a typo."""
+    """The construction or the square grid's neighbourhood, refusing a typo.
+
+    **Read from the environment** (`ENVIRONMENT`), not bound at install: a
+    stated departure from rule 1 of T- #617, held by
+    `tests/test_environment_reads.py`. Unset, the defaults are `cnaster`'s
+    construction (`knn`) and the Moore neighbourhood.
+    """
     import os
 
     value = os.environ.get(ENVIRONMENT[name], DEFAULTS[name])
