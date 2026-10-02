@@ -19,8 +19,9 @@ Both modules re-derive how `pred_cnv` is laid out and both guard the state
 parameters' second column, so the duplication is between them rather than
 inside either. That is what makes this a unifier and not two patches that
 happen to share a helper -- the same reason `patch/lattice` is exempt from
-the naming rule. `plot_loh_density`'s replacement, the third, is set aside
-under `sandbox/patch/plotting/` (#289, #517 step 8).
+the naming rule. `plot_loh_density`'s replacement, the third, was set aside
+under `sandbox/patch/plotting/` (#289, #517 step 8) and moved to the
+branch `reference/205-278-emission-genomic-loh` (T- #617).
 
 `cnaster.plotting` joined with `spatial` (#309), and it is also the name the
 package carries, which is where `FIGURE_SWAPS` finds `plot_clones_spatial`.

@@ -24,6 +24,7 @@ ticket, measurement and exit, and a new one arrives with them.
 from __future__ import annotations
 
 import ast
+from pathlib import Path
 from typing import Literal
 
 import pytest
@@ -136,11 +137,8 @@ ROLES: dict[str, Role] = {
     "port.sandbox.normal_candidates": "set aside",
     "port.sandbox.np_merge.__main__": "set aside",
     "port.sandbox.np_merge.merge": "set aside",
-    "port.sandbox.patch.emission": "set aside",
     "port.sandbox.patch.hmm_initialize.backends": "set aside",
     "port.sandbox.patch.hmm_initialize.filtering": "set aside",
-    "port.sandbox.patch.plotting.genomic": "set aside",
-    "port.sandbox.patch.plotting.loh_density": "set aside",
     "port.sandbox.sal_hmm_init": "set aside",
     "port.sandbox.sim_from_run": "set aside",
     "port.sandbox.wolff_init": "set aside",
@@ -259,3 +257,30 @@ def test_every_sandbox_module_states_its_ticket_measurement_and_exit() -> None:
         f"missing a header: {sorted(headerless - SANDBOX_HEADERLESS)}; "
         f"headed, remove from SANDBOX_HEADERLESS: {sorted(SANDBOX_HEADERLESS - headerless)}"
     )
+
+
+@pytest.mark.infra
+def test_no_live_module_imports_the_sandbox() -> None:
+    """`sandbox/` is installed by nothing, so nothing outside it imports it (T- #617)."""
+    package = Path(__file__).resolve().parents[1] / "python" / "port"
+    found = []
+
+    for path in sorted(package.rglob("*.py")):
+        if "sandbox" in path.relative_to(package).parts:
+            continue
+
+        for node in ast.walk(ast.parse(path.read_text())):
+            names = (
+                [alias.name for alias in node.names]
+                if isinstance(node, ast.Import)
+                else [node.module or ""]
+                if isinstance(node, ast.ImportFrom)
+                else []
+            )
+            found += [
+                f"{path.relative_to(package)}: {name}"
+                for name in names
+                if name == "port.sandbox" or name.startswith("port.sandbox.")
+            ]
+
+    assert found == []
