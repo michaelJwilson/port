@@ -686,6 +686,17 @@ QUESTIONS: dict[str, tuple[str, str]] = {
 }
 """Each committed file under `OUT`: the question it answers, and its source."""
 
+KEY_STUDIES: dict[str, tuple[str, str, str]] = {
+    "key_studies/546_population.png": (
+        "At J = 1, how many UMIs does a clone need to be detected, how long must a CNA be to be recovered, "
+        "and how often is a true-(1,1) segment called altered?",
+        "`tests.studies.population_report.figures` (#544, PR #546)",
+        "`python -m tests.studies.population run --seeds 0:200 --J 1 --out DIR`, then `... run --seeds 1000:1260 "
+        "--J 1 --manifest sim/manifests/population_long.toml --out DIR`, then `... report --out DIR --study2-J 1`",
+    ),
+}
+"""Each key study's figure (label `key_study`) under `OUT/key_studies/`: question, source, regenerate command."""
+
 
 def readme(
     fixture: str,
@@ -697,6 +708,9 @@ def readme(
 ) -> str:
     """`OUT/README.md`: the run's headline metrics, then each file's question and source."""
     rows = "\n".join(f"| `{k}` | {q} | {s} |" for k, (q, s) in QUESTIONS.items())
+    studies = "\n".join(
+        f"| `{k}` | {q} | {s} | {r} |" for k, (q, s, r) in KEY_STUDIES.items()
+    )
     return f"""# Paper figures: {fixture} r0 ({digest})
 
 **TL;DR:** clone ARI {recovery["ari"]:.4f}, copy ARI (phase-free)
@@ -721,6 +735,14 @@ the fixture has no H&E image, and the run never reads the mock.
 | File | Question | Source |
 | --- | --- | --- |
 {rows}
+
+## Key studies
+
+Each figure is redrawn when its study is rerun, and stamped `data <hash> · code <sha>`.
+
+| File | Question | Source | Regenerate |
+| --- | --- | --- | --- |
+{studies}
 """
 
 
