@@ -102,3 +102,35 @@ def test_a_mostly_one_way_graph_is_refused() -> None:
 
     with pytest.raises(AdjacencyError, match="reciprocated"):
         potts_graph_from(CsrGraph.from_matrix(one_way), 0.6)
+
+
+def _symmetrized_from_csr(graph: Any, beta: float) -> Any:
+    """The construction `from_directed_csr` replaced (T- #632): `(A + A^T) * beta / 2` through `from_csr`."""
+    from sal.sim.graph import PottsGraph
+
+    n = int(graph.indptr.size - 1)
+    matrix = sp.csr_matrix((graph.weights, graph.indices, graph.indptr), shape=(n, n))
+    matrix.eliminate_zeros()
+    symmetric = ((matrix + matrix.T) * (0.5 * float(beta))).tocsr()
+    symmetric.sort_indices()
+    return PottsGraph.from_csr(symmetric.indptr, symmetric.indices, symmetric.data)
+
+
+@pytest.mark.patch
+@pytest.mark.parametrize("beta", [0.6, 1.3, 7.0])
+def test_from_directed_csr_builds_the_symmetrized_graph_bitwise(beta: float) -> None:
+    """`cnaster`'s directed kNN graph (40 x 40) with random weights: same edges, same couplings."""
+    from cnaster.spatial import construct_lattice_adjacency
+    from port.patch.icm.alpha_expansion import potts_graph_from
+    from port.patch.icm.interface import CsrGraph
+
+    _, directed = construct_lattice_adjacency(
+        _square(40).astype(float), unit_xsquared=1, unit_ysquared=1
+    )
+    directed = directed.tocsr()
+    directed.data = np.random.default_rng(1).uniform(0.1, 3.0, directed.nnz)
+    graph = CsrGraph.from_matrix(directed)
+    ours, oracle = potts_graph_from(graph, beta), _symmetrized_from_csr(graph, beta)
+
+    assert ours.edges == oracle.edges
+    assert ours.coupling == oracle.coupling

@@ -1,6 +1,6 @@
 """The lattice decode's compiled Viterbi and broadcast emission, against the NumPy they replace (#512).
 
-`copy_likelihood._viterbi` compiles :func:`viterbi_oracle`'s recursion and
+`copy_likelihood._viterbi` is sal's compiled ragged Viterbi (T- #632) and
 `_log_emissions` scores every state in one broadcast call instead of one
 call per state. Both claim the previous code's output bitwise, ties
 included, so the referee is that code (`oracle`); the per-state emission is
@@ -46,7 +46,7 @@ def _bulk(rng: np.random.Generator, n_obs: int, alpha: float, tau: float) -> obj
 def test_the_compiled_viterbi_is_the_numpy_recursion_bitwise(
     n_states: int, rounded: bool
 ) -> None:
-    """Path and score equal, over two contigs; rounding plants ties, where the first maximum wins."""
+    """Path and score equal, over three contigs, one of a single bin; rounding plants ties, where the first maximum wins."""
     from port.extensions.copy_likelihood import _viterbi, viterbi_oracle
 
     rng = np.random.default_rng(n_states + rounded)
@@ -54,7 +54,7 @@ def test_the_compiled_viterbi_is_the_numpy_recursion_bitwise(
     emission[rng.random(emission.shape) < 0.05] = -1e10
     if rounded:
         emission = np.round(emission)
-    chain = _chain(n_states, [150, 151])
+    chain = _chain(n_states, [150, 1, 150])
 
     compiled = _viterbi(emission, *chain)
     oracle = viterbi_oracle(emission, *chain)

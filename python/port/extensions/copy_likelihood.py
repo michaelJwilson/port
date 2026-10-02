@@ -33,7 +33,6 @@ from __future__ import annotations
 import contextlib
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
-from functools import lru_cache
 from typing import Any, Literal, NamedTuple
 
 import numpy as np
@@ -195,7 +194,7 @@ def viterbi_oracle(
 ) -> tuple[np.ndarray, float]:
     """`(n_states, n_obs)` emissions; the best path, restarted at each length.
 
-    The NumPy recursion :func:`_viterbi` compiles, kept as its oracle (#512).
+    The NumPy recursion :func:`_viterbi`'s sal kernel reproduces, kept as its oracle (#512, T- #632).
     """
     path = np.empty(log_emission.shape[1], dtype=np.int64)
     total = 0.0
@@ -223,71 +222,6 @@ def viterbi_oracle(
     return path, total
 
 
-@lru_cache(maxsize=1)
-def _viterbi_kernel() -> Callable[..., float]:
-    """:func:`viterbi_oracle`'s recursion, compiled once (#512).
-
-    The same additions in the same order, and the first maximum on a tie as
-    `np.argmax` takes it, so the path and the score are the oracle's bitwise.
-    """
-    from numba import njit
-
-    @njit(cache=True)
-    def kernel(
-        log_emission: np.ndarray,
-        log_transmat: np.ndarray,
-        log_startprob: np.ndarray,
-        lengths: np.ndarray,
-        path: np.ndarray,
-    ) -> float:
-        n_states = log_transmat.shape[0]
-        total = 0.0
-        start = 0
-        delta = np.empty(n_states)
-        moved = np.empty(n_states)
-
-        for length in lengths:
-            stop = start + length
-            back = np.empty((stop - start, n_states), dtype=np.int64)
-
-            for j in range(n_states):
-                delta[j] = log_startprob[j] + log_emission[j, start]
-
-            for t in range(start + 1, stop):
-                for j in range(n_states):
-                    best = 0
-                    top = delta[0] + log_transmat[0, j]
-
-                    for i in range(1, n_states):
-                        score = delta[i] + log_transmat[i, j]
-                        if score > top:
-                            top = score
-                            best = i
-
-                    back[t - start, j] = best
-                    moved[j] = top + log_emission[j, t]
-
-                for j in range(n_states):
-                    delta[j] = moved[j]
-
-            last = 0
-            for j in range(1, n_states):
-                if delta[j] > delta[last]:
-                    last = j
-
-            path[stop - 1] = last
-            total += delta[last]
-
-            for t in range(stop - 1, start, -1):
-                path[t - 1] = back[t - start, path[t]]
-
-            start = stop
-
-        return total
-
-    return kernel
-
-
 def _viterbi(
     log_emission: np.ndarray,
     log_transmat: np.ndarray,
@@ -296,18 +230,48 @@ def _viterbi(
 ) -> tuple[np.ndarray, float]:
     """`(n_states, n_obs)` emissions; the best path, restarted at each length.
 
-    Compiled (:func:`_viterbi_kernel`); :func:`viterbi_oracle` is the NumPy
-    recursion it reproduces bitwise.
+    sal's compiled `likelihood.ragged.viterbi` (sal #1138, T- #632), which
+    adds in :func:`viterbi_oracle`'s order and breaks a tie to the lower
+    state, so the path and the score are the oracle's bitwise. A one-bin
+    contig is decoded here, as the oracle decodes it: sal's `Ragged`
+    refuses a one-position segment (sal #666). The score is the segments'
+    maxima summed in order from zero, as the oracle sums them.
     """
-    path = np.empty(log_emission.shape[1], dtype=np.int64)
-    total = _viterbi_kernel()(
-        np.ascontiguousarray(log_emission, dtype=np.float64),
-        np.ascontiguousarray(log_transmat, dtype=np.float64),
-        np.ascontiguousarray(log_startprob, dtype=np.float64),
-        np.asarray(lengths, dtype=np.int64),
-        path,
-    )
-    return path, float(total)
+    from sal.likelihood.ragged import viterbi
+    from sal.ragged import Ragged
+
+    density = np.ascontiguousarray(np.asarray(log_emission, dtype=np.float64).T)
+    start_prob = np.asarray(log_startprob, dtype=np.float64)
+    sizes = np.asarray(lengths, dtype=np.int64)
+    starts = np.concatenate([[0], np.cumsum(sizes)[:-1]]).astype(np.int64)
+    single = sizes == 1
+    path = np.empty(density.shape[0], dtype=np.int64)
+    maxima = np.empty(sizes.size)
+
+    for segment in np.flatnonzero(single):
+        joint = start_prob + density[starts[segment]]
+        path[starts[segment]] = int(np.argmax(joint))
+        maxima[segment] = joint[path[starts[segment]]]
+
+    if (~single).any():
+        kept = np.concatenate(
+            [
+                np.arange(s, s + n)
+                for s, n in zip(starts[~single], sizes[~single], strict=True)
+            ]
+        )
+        decoded = viterbi(
+            Ragged(density[kept], tuple(int(n) for n in sizes[~single])),
+            start_prob,
+            np.asarray(log_transmat, dtype=np.float64),
+        )
+        path[kept] = decoded.path
+        maxima[~single] = decoded.log_joint
+
+    total = 0.0
+    for score in maxima:
+        total += float(score)
+    return path, total
 
 
 @dataclass
