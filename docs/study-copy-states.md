@@ -73,7 +73,7 @@ redraws it beside the pickle (`git show ba34716:docs/plots/studies/copy_states_d
   (`port.patch.hmm_nophasing.nb_logpmf`), pinned against scipy to 1e-9.
 - **Beta-binomial precision at large tau** (#561) and **negative `emission++` divergences** (#562): the
   latter clamped at 0 for the study.
-- The numerics now come from PR- #594 (`port.pipeline.LOG_SPACE_SWAPS`, `sal_mixture.clamped_divergence`).
+- The numerics now come from PR- #594 (`port.pipeline.LOG_SPACE_SWAPS`; the divergence floor is sal #1136's since T- #632).
   The numbers above were measured under this branch's own patch, which swapped the negative binomial
   alone; `port.sandbox.known_copy` now also runs PR- #594's beta-binomial (#561). Not rerun.
 - **`sal`'s surrogate samplers sample a Gaussian mixture on raw counts and snap to observed rows** (#563).
