@@ -582,13 +582,14 @@ HMM_PLUS_PLUS: dict[str, dict[str, Any]] = {
     "hmm++segpool": {"segment": "pooled"},
     "hmm++cap": {"cap": 0.99},
     "hmm++x3hmm": {"draws": 3},
+    "hmm++x3med": {"draws": 3, "pick": "median"},
 }
 """#635's starts, `_hmm_plus_plus_seeding`'s options by name: `diploid`, the first state the pooled
 diploid row rather than a uniform row; `nll`, each position's cost the negative log emission at its
 decoded state rather than the divergence to it; `segment`, a decoded run drawn and pooled rather
 than a row, weighted by its summed divergence (`sum`) or its length times its pooled row's
 (`pooled`); `cap`, each row's cost capped at that quantile of the costs; `draws`, the best of
-that many by the HMM's NLL at each draw's states."""
+that many by the HMM's NLL at each draw's states, or with `pick` `"median"` the lower-median one."""
 
 
 @functools.cache
@@ -1005,23 +1006,35 @@ def _hmm_plus_plus_best(
     rng: np.random.Generator,
     *,
     draws: int = 1,
+    pick: str = "best",
     **options: Any,
 ) -> Any:
-    """`_hmm_plus_plus_seeding` once, or the best of `draws` by the HMM's NLL at each draw's states, as `_emission_variant` picks."""
+    """`_hmm_plus_plus_seeding` once, or one of `draws` by the HMM's NLL at each draw's states.
+
+    `pick` `"best"`: the lowest NLL, as `_emission_variant` picks; `"median"`:
+    the lower median, the same draws in the same order. The HMM's
+    likelihood barely ranks fits by correctness (PR- #557's records), so the
+    lowest may be the wrong mode.
+    """
     if draws == 1:
         return _hmm_plus_plus_seeding(call, held, rng, **options)
     from port.sandbox.known_copy.hmm_samplers import negative_log_likelihood
 
-    best: tuple[float, Any] = (np.inf, None)
+    scored: list[tuple[float, Any]] = []
     for _ in range(draws):
         components = _hmm_plus_plus_seeding(call, held, rng, **options)
         log_mu, p = _read(call, components)
         nll = negative_log_likelihood(
             log_mu, p, call.total, call.b, call.exposure, call.trials, call.raw["lengths"]
         )  # fmt: skip
-        if best[1] is None or nll < best[0]:
-            best = (nll, components)
-    return best[1]
+        scored.append((nll, components))
+    order = np.argsort([nll for nll, _ in scored], kind="stable")
+    if pick == "best":
+        return scored[int(order[0])][1]
+    if pick == "median":
+        return scored[int(order[(draws - 1) // 2])][1]
+    msg = f"pick is best or median, not {pick}"
+    raise ValueError(msg)
 
 
 def _prior_seeding(held: Any, rng: np.random.Generator) -> Any:
