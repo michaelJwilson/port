@@ -10,7 +10,7 @@ from typing import Any
 import numpy as np
 import pytest
 
-from tests.studies.paper_figures import OUT, QUESTIONS, Compared
+from tests.studies.paper_figures import KEY_STUDIES, OUT, QUESTIONS, Compared
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -18,7 +18,7 @@ ROOT = Path(__file__).resolve().parent.parent
 @pytest.mark.infra
 def test_the_paper_readme_lists_exactly_the_committed_files() -> None:
     """`docs/plots/paper/README.md`'s table names every tracked file under
-    `docs/plots/paper/` but itself, once, and `QUESTIONS` names the same."""
+    `docs/plots/paper/` but itself, once, and `QUESTIONS` with `KEY_STUDIES` names the same."""
     tracked = subprocess.run(
         ["git", "ls-files", "--", OUT.relative_to(ROOT).as_posix()],
         cwd=ROOT,
@@ -33,7 +33,7 @@ def test_the_paper_readme_lists_exactly_the_committed_files() -> None:
 
     assert len(listed) == len(set(listed))
     assert sorted(listed) == committed
-    assert sorted(QUESTIONS) == committed
+    assert sorted(QUESTIONS | KEY_STUDIES) == committed
 
 
 def _tiny() -> Compared:
