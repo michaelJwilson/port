@@ -81,15 +81,15 @@ __all__ = [
 ]
 
 
-def potts_graph_from(graph: CsrGraph, beta: float) -> PottsGraph:
+def potts_graph_from(graph: CsrGraph, spatial_weight: float) -> PottsGraph:
     """`port`'s CSR adjacency as upstream's `PottsGraph`, one-way edges included.
 
     `cnaster`'s ICM sums each spot's own row, so on a directed graph its
-    coupling is `beta * sum_i sum_{j in row i} A_ij [s_i = s_j]`. Over an
-    unordered pair that is `beta * (A_ij + A_ji)`, which `PottsGraph` --
-    counting each edge once -- carries as `beta * (A_ij + A_ji) / 2`: the
+    coupling is `spatial_weight * sum_i sum_{j in row i} A_ij [s_i = s_j]`. Over an
+    unordered pair that is `spatial_weight * (A_ij + A_ji)`, which `PottsGraph` --
+    counting each edge once -- carries as `spatial_weight * (A_ij + A_ji) / 2`: the
     same energy up to the factor of two every symmetric graph already had.
-    A reciprocated pair keeps `beta * w`, bitwise the upper triangle this
+    A reciprocated pair keeps `spatial_weight * w`, bitwise the upper triangle this
     replaces; a one-way pair enters at half, where the upper-triangle read
     kept it whole when `i < j` and dropped it when `i > j` (#417).
 
@@ -114,9 +114,9 @@ def potts_graph_from(graph: CsrGraph, beta: float) -> PottsGraph:
     )
     matrix.eliminate_zeros()
 
-    if matrix.nnz and matrix.data.min() * float(beta) < 0.0:
+    if matrix.nnz and matrix.data.min() * float(spatial_weight) < 0.0:
         msg = (
-            f"a coupling of {matrix.data.min() * float(beta)}; alpha expansion's "
+            f"a coupling of {matrix.data.min() * float(spatial_weight)}; alpha expansion's "
             "bound requires a metric, so a negative coupling is refused rather "
             "than clipped"
         )
@@ -132,13 +132,15 @@ def potts_graph_from(graph: CsrGraph, beta: float) -> PottsGraph:
         )
         raise AdjacencyError(msg)
 
-    symmetric = ((matrix + matrix.T) * (0.5 * float(beta))).tocsr()
+    symmetric = ((matrix + matrix.T) * (0.5 * float(spatial_weight))).tocsr()
     symmetric.sort_indices()
 
     return PottsGraph.from_csr(symmetric.indptr, symmetric.indices, symmetric.data)
 
 
-def forbidden_as_finite(values: np.ndarray, graph: CsrGraph, beta: float) -> np.ndarray:
+def forbidden_as_finite(
+    values: np.ndarray, graph: CsrGraph, spatial_weight: float
+) -> np.ndarray:
     """`values` with each `-inf` replaced by a penalty no labelling pays (#366).
 
     Upstream minimizes `-sum h[s] - sum J [s == s']`, so a label's field entry
@@ -166,7 +168,7 @@ def forbidden_as_finite(values: np.ndarray, graph: CsrGraph, beta: float) -> np.
     indptr = np.asarray(graph.indptr)
     n_sites = indptr.size - 1
     sites = np.repeat(np.arange(n_sites), np.diff(indptr))
-    weights = beta * np.asarray(graph.weights, dtype=np.float64)
+    weights = spatial_weight * np.asarray(graph.weights, dtype=np.float64)
     rows = np.bincount(sites, weights=weights, minlength=n_sites)
     columns = np.bincount(np.asarray(graph.indices), weights=weights, minlength=n_sites)
     incident = 0.5 * (rows + columns)
@@ -176,20 +178,20 @@ def forbidden_as_finite(values: np.ndarray, graph: CsrGraph, beta: float) -> np.
 
 
 def potts_energy(
-    field: np.ndarray, graph: CsrGraph, assignment: np.ndarray, beta: float
+    field: np.ndarray, graph: CsrGraph, assignment: np.ndarray, spatial_weight: float
 ) -> float:
     """The Potts energy of a labelling, for comparing two solvers.
 
     `cnaster`'s field goes in unchanged: upstream's `energy` negates it
     itself, so `-potts_energy(...)` is `cnaster`'s own objective up to the
-    constant `beta * sum(weights)`. **Lower is better.** This is the referee
+    constant `spatial_weight * sum(weights)`. **Lower is better.** This is the referee
     #246 uses -- it says which labelling is the better MAP solution without
     needing either solver to be right, which it can only do if it scores the
     objective `cnaster` maximizes rather than its negation.
     """
     return float(
         energy(
-            potts_graph_from(graph, beta),
+            potts_graph_from(graph, spatial_weight),
             np.asarray(field, dtype=np.float64),
             np.asarray(assignment, dtype=np.int64),
         )
@@ -200,9 +202,9 @@ def alpha_expansion_sweep(
     field: np.ndarray,
     graph: CsrGraph,
     assignment: np.ndarray,
-    beta: float,
+    spatial_weight: float,
     *,
-    tol: float = 0.0,
+    tolerance: float = 0.0,
     epsilon: float = 0.0,
     min_clone_spots: int = 200,
     cost_zeropoint: float = 0.0,
@@ -220,23 +222,25 @@ def alpha_expansion_sweep(
     `assignment` is **updated in place**, as `icm_sweep` does, because the
     call site reads the array rather than a return value.
 
-    `tol`, `epsilon`, `min_clone_spots` and `cost_zeropoint` are accepted and
+    `tolerance`, `epsilon`, `min_clone_spots` and `cost_zeropoint` are accepted and
     **not used**: they are ICM's convergence and perturbation knobs and have
     no counterpart in an algorithm that terminates on monotonicity. Accepted
     rather than refused so the two solvers are interchangeable at the call
     site; ignored rather than approximated so nothing pretends to honour
     them.
     """
-    del tol, epsilon, min_clone_spots, cost_zeropoint, onehot_allowed_clones
+    del tolerance, epsilon, min_clone_spots, cost_zeropoint, onehot_allowed_clones
 
     # NB *not* negated: upstream's energy is `-sum h[s] - sum J [s == s]`,
     #    so `h = field` is already `cnaster`'s objective with the sign
     #    upstream's minimizer wants. See the module docstring.
-    values = forbidden_as_finite(np.asarray(field, dtype=np.float64), graph, beta)
+    values = forbidden_as_finite(
+        np.asarray(field, dtype=np.float64), graph, spatial_weight
+    )
 
     # NB `n_states` is the field's column count, which sal infers (#410).
     result = alpha_expansion(
-        potts_graph_from(graph, beta),
+        potts_graph_from(graph, spatial_weight),
         values,
         start=np.asarray(assignment, dtype=np.int64).copy(),
         backend=backend,

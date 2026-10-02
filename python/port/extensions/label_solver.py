@@ -21,7 +21,10 @@ from __future__ import annotations
 
 import functools
 import os
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
+
+if TYPE_CHECKING:
+    from port.patch.icm.interface import IcmResult
 
 __all__ = [
     "SOLVERS",
@@ -137,7 +140,7 @@ def sweep_for(name: Solver) -> Any:
     return sal_icm_sweep
 
 
-def _finite(field: Any, graph: Any, beta: float) -> Any:
+def _finite(field: Any, graph: Any, spatial_weight: float) -> Any:
     """`field` with each `-inf` a penalty no labelling pays, before sal reads it.
 
     sal's expansion makes no move on a field holding `-inf` (#373 B0), and
@@ -150,12 +153,23 @@ def _finite(field: Any, graph: Any, beta: float) -> Any:
 
     from port.patch.icm.alpha_expansion import forbidden_as_finite
 
-    return forbidden_as_finite(np.asarray(field, dtype=np.float64), graph, beta)
+    return forbidden_as_finite(
+        np.asarray(field, dtype=np.float64), graph, spatial_weight
+    )
 
 
 def expansion_then_floor(
-    field: Any, graph: Any, assignment: Any, beta: float, **knobs: Any
-) -> Any:
+    field: Any,
+    graph: Any,
+    assignment: Any,
+    spatial_weight: float,
+    *,
+    tolerance: float = 0.0,
+    epsilon: float = 0.0,
+    min_clone_spots: int = 200,
+    cost_zeropoint: float = 0.0,
+    onehot_allowed_clones: Any = None,
+) -> IcmResult:
     """Alpha expansion (Rust cut), then `cnaster`'s ICM with its knobs.
 
     The expansion finds the lower-energy basin; the ICM keeps `cnaster`'s
@@ -169,12 +183,26 @@ def expansion_then_floor(
     from port.patch.icm.interface import icm_sweep
 
     # NB a mask is already in `field`; the ICM's floor is what reads it.
-    sal.alpha_expansion_sweep(field, graph, assignment, beta, backend=Backend.RUST)
+    sal.alpha_expansion_sweep(
+        field, graph, assignment, spatial_weight, backend=Backend.RUST
+    )
 
-    return icm_sweep(field, graph, assignment, beta, **knobs)
+    return icm_sweep(
+        field,
+        graph,
+        assignment,
+        spatial_weight,
+        tolerance=tolerance,
+        epsilon=epsilon,
+        min_clone_spots=min_clone_spots,
+        cost_zeropoint=cost_zeropoint,
+        onehot_allowed_clones=onehot_allowed_clones,
+    )
 
 
-def _solve(field: Any, graph: Any, assignment: Any, beta: float, search: Any) -> Any:
+def _solve(
+    field: Any, graph: Any, assignment: Any, spatial_weight: float, search: Any
+) -> IcmResult:
     """The part every sal row shares: the finite field, the Potts graph, the result.
 
     `search(potts, values, start)` returns `(labelling, sweeps, termination)`,
@@ -188,8 +216,8 @@ def _solve(field: Any, graph: Any, assignment: Any, beta: float, search: Any) ->
     from port.patch.icm.alpha_expansion import potts_graph_from
     from port.patch.icm.interface import IcmResult
 
-    values = _finite(field, graph, beta)
-    potts = potts_graph_from(graph, beta)
+    values = _finite(field, graph, spatial_weight)
+    potts = potts_graph_from(graph, spatial_weight)
     labelling, sweeps, termination = search(
         potts, values, np.asarray(assignment, dtype=np.int64).copy()
     )
@@ -208,14 +236,14 @@ def sal_icm_sweep(
     field: Any,
     graph: Any,
     assignment: Any,
-    beta: float,
+    spatial_weight: float,
     *,
-    tol: float = 0.0,
+    tolerance: float = 0.0,
     epsilon: float = 0.0,
     min_clone_spots: int = 200,
     cost_zeropoint: float = 0.0,
     onehot_allowed_clones: Any = None,
-) -> Any:
+) -> IcmResult:
     """`icm_sweep`'s signature, upstream's single-site descent in `numba`.
 
     The same move set as `cnaster`'s `icm_sweep_deque`, so what differs is
@@ -231,7 +259,7 @@ def sal_icm_sweep(
     same reason -- including `min_clone_spots`: the merge below 200 spots is
     `cnaster`'s, not the descent's.
     """
-    del tol, epsilon, min_clone_spots, cost_zeropoint, onehot_allowed_clones
+    del tolerance, epsilon, min_clone_spots, cost_zeropoint, onehot_allowed_clones
 
     import numpy as np
     from sal.backend import Backend
@@ -243,18 +271,18 @@ def sal_icm_sweep(
         )
         return result.labelling, 1, result.termination
 
-    return _solve(field, graph, assignment, beta, search)
+    return _solve(field, graph, assignment, spatial_weight, search)
 
 
 def _sal_floor(
     field: Any,
     graph: Any,
     assignment: Any,
-    beta: float,
+    spatial_weight: float,
     min_clone_spots: int,
     *,
     expand: bool,
-) -> Any:
+) -> IcmResult:
     """sal end to end: an optional Rust expansion, then its ICM at `cnaster`'s floor.
 
     `merge_small_labels` is `iterated_conditional_modes` from the given start
@@ -286,57 +314,61 @@ def _sal_floor(
         )
         return result.labelling, result.sweeps, result.termination
 
-    return _solve(field, graph, assignment, beta, search)
+    return _solve(field, graph, assignment, spatial_weight, search)
 
 
 def expansion_then_merge(
     field: Any,
     graph: Any,
     assignment: Any,
-    beta: float,
+    spatial_weight: float,
     *,
-    tol: float = 0.0,
+    tolerance: float = 0.0,
     epsilon: float = 0.0,
     min_clone_spots: int = 200,
     cost_zeropoint: float = 0.0,
     onehot_allowed_clones: Any = None,
-) -> Any:
+) -> IcmResult:
     """Alpha expansion (Rust cut), then sal's merge at `cnaster`'s floor."""
-    del tol, epsilon, cost_zeropoint, onehot_allowed_clones
+    del tolerance, epsilon, cost_zeropoint, onehot_allowed_clones
 
-    return _sal_floor(field, graph, assignment, beta, min_clone_spots, expand=True)
+    return _sal_floor(
+        field, graph, assignment, spatial_weight, min_clone_spots, expand=True
+    )
 
 
 def sal_icm_floor_sweep(
     field: Any,
     graph: Any,
     assignment: Any,
-    beta: float,
+    spatial_weight: float,
     *,
-    tol: float = 0.0,
+    tolerance: float = 0.0,
     epsilon: float = 0.0,
     min_clone_spots: int = 200,
     cost_zeropoint: float = 0.0,
     onehot_allowed_clones: Any = None,
-) -> Any:
+) -> IcmResult:
     """sal's `numba` descent with `cnaster`'s floor built in."""
-    del tol, epsilon, cost_zeropoint, onehot_allowed_clones
+    del tolerance, epsilon, cost_zeropoint, onehot_allowed_clones
 
-    return _sal_floor(field, graph, assignment, beta, min_clone_spots, expand=False)
+    return _sal_floor(
+        field, graph, assignment, spatial_weight, min_clone_spots, expand=False
+    )
 
 
 def sal_icm_argmax_sweep(
     field: Any,
     graph: Any,
     assignment: Any,
-    beta: float,
+    spatial_weight: float,
     *,
-    tol: float = 0.0,
+    tolerance: float = 0.0,
     epsilon: float = 0.0,
     min_clone_spots: int = 200,
     cost_zeropoint: float = 0.0,
     onehot_allowed_clones: Any = None,
-) -> Any:
+) -> IcmResult:
     """sal's `numba` descent from the field's argmax, with `cnaster`'s floor (#410).
 
     sal #1121: a cold start at each site's best clone rather than the
@@ -344,7 +376,7 @@ def sal_icm_argmax_sweep(
     `min_sites` dissolving any clone under the floor. `assignment` is read
     only for its dtype and written in place.
     """
-    del tol, epsilon, cost_zeropoint, onehot_allowed_clones
+    del tolerance, epsilon, cost_zeropoint, onehot_allowed_clones
 
     import numpy as np
     from sal.backend import Backend
@@ -362,21 +394,21 @@ def sal_icm_argmax_sweep(
         )
         return result.labelling, result.sweeps, result.termination
 
-    return _solve(field, graph, assignment, beta, search)
+    return _solve(field, graph, assignment, spatial_weight, search)
 
 
 def fusion_then_merge(
     field: Any,
     graph: Any,
     assignment: Any,
-    beta: float,
+    spatial_weight: float,
     *,
-    tol: float = 0.0,
+    tolerance: float = 0.0,
     epsilon: float = 0.0,
     min_clone_spots: int = 200,
     cost_zeropoint: float = 0.0,
     onehot_allowed_clones: Any = None,
-) -> Any:
+) -> IcmResult:
     """Fuse the expansion's labelling with the argmax descent's, then sal's floor.
 
     sal #1125's fusion move: per site, one proposal's label or the other's,
@@ -385,7 +417,7 @@ def fusion_then_merge(
     sal's `numba` descent from the field's argmax, which reach different
     minima; the floor follows as in :func:`expansion_then_merge`.
     """
-    del tol, epsilon, cost_zeropoint, onehot_allowed_clones
+    del tolerance, epsilon, cost_zeropoint, onehot_allowed_clones
 
     import numpy as np
     from sal.backend import Backend
@@ -420,4 +452,4 @@ def fusion_then_merge(
         )
         return result.labelling, result.sweeps, result.termination
 
-    return _solve(field, graph, assignment, beta, search)
+    return _solve(field, graph, assignment, spatial_weight, search)

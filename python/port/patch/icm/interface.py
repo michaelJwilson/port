@@ -14,7 +14,7 @@ Seven of them are not information the solver needs:
 What is left is the problem: a unary field, a weighted graph, a coupling, a
 starting labelling, and the solver's own stopping and exploration knobs.
 
-    icm_sweep(field, graph, assignment, beta, *, tol, epsilon, min_clone_spots)
+    icm_sweep(field, graph, assignment, spatial_weight, *, tolerance, epsilon, min_clone_spots)
 
 Eight parameters, of which four are the problem and four have defaults.
 
@@ -125,7 +125,7 @@ def fold_unary(
     Notes
     -----
     **Bitwise, not approximately.** `cnaster` computes
-    `single_llf[i, c] + log_persample_weights[c, s] + w_edge[c] * beta`, left
+    `single_llf[i, c] + log_persample_weights[c, s] + w_edge[c] * spatial_weight`, left
     to right. Folding the first two moves no arithmetic: the same two floats
     are added first, and the edge term is added to the same intermediate. The
     mask is exact for the same reason -- `-inf + finite` is `-inf`, so
@@ -170,9 +170,9 @@ def icm_sweep(
     field: np.ndarray,
     graph: CsrGraph,
     assignment: np.ndarray,
-    beta: float,
+    spatial_weight: float,
     *,
-    tol: float = 0.0,
+    tolerance: float = 0.0,
     epsilon: float = 0.0,
     min_clone_spots: int = 200,
     cost_zeropoint: float = 0.0,
@@ -190,7 +190,7 @@ def icm_sweep(
     field : np.ndarray
         The unary cost per `(spot, clone)`, with the per-sample weights and
         the allowed-clone mask already folded in by :func:`fold_unary`.
-    beta : float
+    spatial_weight : float
         The spatial coupling, `spatial_weight / temp` in `cnaster`'s terms.
         One number because the solver uses one number.
     assignment : np.ndarray
@@ -215,13 +215,13 @@ def icm_sweep(
         adj_indices=graph.indices,
         adj_weights=graph.weights,
         new_assignment=assignment,
-        spatial_weight=beta,
+        spatial_weight=spatial_weight,
         posterior=None,
         # NB `None` unless the refinement's mask applies (#348): the field
         #    already carries it, and only the floor's reassignment needs it
         #    passed, since it reads no field.
         onehot_allowed_clones=onehot_allowed_clones,
-        tol=tol,
+        tol=tolerance,
         log_persample_weights=None,
         sample_ids=None,
         cost_zeropoint=cost_zeropoint,
