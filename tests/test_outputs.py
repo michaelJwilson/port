@@ -509,3 +509,86 @@ def test_the_configured_agreement_is_what_write_outputs_uses(tmp_path: Path) -> 
     config.write_text("int_copy_num:\n  merge_agreement: 0.99\n")
 
     assert config_keys(config)["merge_agreement"] == 0.99
+
+
+@pytest.mark.infra
+def test_a_directory_an_earlier_run_left_is_not_this_run_s(tmp_path: Path) -> None:
+    """`since` keeps the directories written at or after it (T- #617)."""
+    import os
+
+    from port.extensions.outputs import run_directories
+
+    run = _run(tmp_path)
+    table = run / "cnv_seglevel.tsv"
+    os.utime(table, (1_000.0, 1_000.0))
+
+    assert list(run_directories(tmp_path)) == [run]
+    assert list(run_directories(tmp_path, since=1_000.0)) == [run]
+    assert list(run_directories(tmp_path, since=1_001.0)) == []
+
+
+@pytest.mark.infra
+def test_two_fits_of_different_k_in_one_directory_are_told_apart(
+    tmp_path: Path,
+) -> None:
+    """`n_states` names the fit; without it two fits are refused, not guessed."""
+    import shutil
+
+    from port.extensions.outputs import final_fit, write_outputs
+
+    run = _run(tmp_path)
+    shutil.copy(
+        run / f"rdrbaf_final_nstates{N_STATES}_smp.npz",
+        run / f"rdrbaf_final_nstates{N_STATES + 3}_smp.npz",
+    )
+
+    assert final_fit(run, N_STATES).name == f"rdrbaf_final_nstates{N_STATES}_smp.npz"
+    with pytest.raises(ValueError, match="2 fits"):
+        final_fit(run)
+    with pytest.raises(FileNotFoundError):
+        final_fit(run, N_STATES + 1)
+
+    config = tmp_path / "config.yaml"
+    config.write_text(f"hmm:\n  n_states: {N_STATES}\n")
+    written = write_outputs(run, config)
+
+    assert json.loads((run / "manifest.json").read_text())["n_states"] == N_STATES
+    assert run / "manifest.json" in written
+
+
+@pytest.mark.infra
+def test_copy_sets_go_beside_the_fit_this_run_wrote(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Not beside the newest fit under `output_dir`, another K's (T- #617)."""
+    import os
+
+    from port.extensions import copy_errors
+    from port.scripts.run_cnaster import _write_copy_sets
+
+    ours, other = (
+        tmp_path / "clone3_rectangle0_w1.0",
+        tmp_path / "clone4_rectangle0_w1.0",
+    )
+    ours.mkdir()
+    other.mkdir()
+    (ours / "rdrbaf_final_nstates4_smp.npz").write_bytes(b"")
+    (other / "rdrbaf_final_nstates7_smp.npz").write_bytes(b"")
+    os.utime(ours / "rdrbaf_final_nstates4_smp.npz", (2_000.0, 2_000.0))
+    os.utime(other / "rdrbaf_final_nstates7_smp.npz", (3_000.0, 3_000.0))
+
+    placed: list[Path] = []
+
+    def write(run: Path, captured: object) -> Path:
+        placed.append(Path(run))
+        return Path(run) / "cnv_copy_sets.tsv"
+
+    monkeypatch.setattr(copy_errors, "write_copy_sets", write)
+    config = tmp_path / "config.yaml"
+    config.write_text(f"paths:\n  output_dir: {tmp_path}\nhmm:\n  n_states: 4\n")
+
+    _write_copy_sets(str(config), ["fit"], since=1_500.0)
+    assert placed == [ours]
+
+    _write_copy_sets(str(config), ["fit"], since=2_500.0)
+    assert placed == [ours]
