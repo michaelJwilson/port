@@ -276,3 +276,98 @@ def test_pairs_by_bin_answer_the_path_per_bin_and_anything_else_per_state() -> N
     np.testing.assert_array_equal(copies[:, 1], [1, 2])
     np.testing.assert_array_equal(copies[np.array([1, 0])], [[1, 2], [1, 1]])
     assert type(copies[:, 0]) is np.ndarray
+
+
+def _lattice_size(allele: int, total: int) -> int:
+    """Pairs with `0 < A + B <= total` and `A, B <= allele`, by closed form.
+
+    At total `n` the major allele runs over `[max(0, n - allele), min(allele, n)]`.
+    """
+    return sum(
+        max(0, min(allele, n) - max(0, n - allele) + 1) for n in range(1, total + 1)
+    )
+
+
+@pytest.mark.analytic
+@pytest.mark.parametrize("allele", [1, 3, 4, 5, 6, 12, None])
+def test_the_lattice_is_every_pair_within_both_caps(allele: int | None) -> None:
+    """`candidates(6, allele)`: the closed-form count, `(6, 0)` iff `allele >= 6`.
+
+    25 pairs at `cnaster`'s `(5, 6)`, 27 at `(6, 6)` (T- #617); `None` is the
+    total alone, the same lattice as `allele = 6`, element for element.
+    """
+    from port.extensions.copy_likelihood import candidates
+    from port.extensions.integer_copy import acn_lattice
+
+    lattice = candidates(6, allele)
+    bound = 6 if allele is None else allele
+    pairs = {(int(a), int(b)) for a, b in lattice}
+
+    assert len(lattice) == len(pairs) == _lattice_size(bound, 6)
+    assert pairs == set(acn_lattice(max_allele_copy=bound, max_total_copy=6))
+    assert ((6, 0) in pairs) == ((0, 6) in pairs) == (bound >= 6)
+    if allele is None:
+        np.testing.assert_array_equal(lattice, candidates(6, 6))
+    assert _lattice_size(5, 6) == 25
+    assert _lattice_size(6, 6) == 27
+
+
+@pytest.mark.infra
+@pytest.mark.parametrize("unconfigured", [5, 6])
+@pytest.mark.parametrize("stated", [None, 6, 12])
+def test_the_drop_ins_decode_under_the_named_allele_cap(
+    monkeypatch: pytest.MonkeyPatch, unconfigured: int, stated: int | None
+) -> None:
+    """Both rows pass the allele cap to the decode rather than discarding it.
+
+    Holds for either unconfigured default (T- #617): without the key the cap
+    is `UNCONFIGURED_MAX_ALLELE_COPY` and `(6, 0)` is decodable iff it is 6; a
+    stated cap of 6 or more sets both caps and admits `(6, 0)` either way.
+    `configured_caps`, which `copy_errors` reads, keeps `cnaster`'s `(5, 6)`.
+    """
+    from port.extensions.copy_likelihood import candidates
+    from port.patch import integer_copy
+
+    monkeypatch.setattr(integer_copy, "UNCONFIGURED_MAX_ALLELE_COPY", unconfigured)
+    received: list[tuple[int, int | None]] = []
+
+    def decode(*arguments: Any, **options: Any) -> tuple[np.ndarray, float, int]:
+        received.append((arguments[3], options["max_allele_copy"]))
+        return np.ones((1, 2), dtype=np.int64), 0.0, 2
+
+    monkeypatch.setattr(integer_copy, "decode_clone", decode)
+    caps = {} if stated is None else {"max_total_copy": stated}
+
+    with _config(**caps):
+        integer_copy.hill_climbing_integer_copynumber_fixdiploid_milp(
+            *_inputs(BASE[1]), **MILP_ARGUMENTS
+        )
+        integer_copy.hill_climbing_integer_copynumber_oneclone(
+            *_inputs(BASE[1]), max_medploidy=2
+        )
+        configured = integer_copy.configured_caps()
+
+    expected = (6, unconfigured) if stated is None else (stated, stated)
+    assert received == [expected, expected]
+    assert configured == ((5, 6) if stated is None else (stated, stated))
+
+    total, allele = expected
+    pairs = {(int(a), int(b)) for a, b in candidates(total, allele)}
+    assert ((6, 0) in pairs) == (allele >= 6)
+
+
+@pytest.mark.patch
+def test_cnasters_allele_cap_is_the_one_port_names() -> None:
+    """`MAX_ALLELE_COPY` is `cnaster`'s signature default in both decoders, 5."""
+    import inspect
+
+    import cnaster.integer_copy
+    from port.patch.integer_copy import MAX_ALLELE_COPY, MAX_TOTAL_COPY
+
+    for name in (
+        "hill_climbing_integer_copynumber_oneclone",
+        "hill_climbing_integer_copynumber_fixdiploid_milp",
+    ):
+        parameters = inspect.signature(getattr(cnaster.integer_copy, name)).parameters
+        assert parameters["max_allele_copy"].default == MAX_ALLELE_COPY == 5
+        assert parameters["max_total_copy"].default == MAX_TOTAL_COPY == 6

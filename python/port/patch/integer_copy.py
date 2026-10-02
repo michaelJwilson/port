@@ -35,8 +35,11 @@ with each state's most frequent pair on this clone. So every file and figure
 that reads `A` and `B` per bin carries the lattice decode, with no change to
 `cnaster`'s writer, whose gene-to-bin map exists only inside its loop.
 
-The copy caps are `int_copy_num.max_total_copy` from the configuration, as
-before (#313); without the key, `cnaster`'s `A + B <= 6`.
+The copy caps are `int_copy_num.max_total_copy` from the configuration, for
+the total and each allele (#313). Without the key the total is `cnaster`'s
+`A + B <= 6` and each allele is :data:`UNCONFIGURED_MAX_ALLELE_COPY`, 6, not
+`cnaster`'s 5: a stated difference (T- #617), so `(6, 0)` and `(0, 6)` are
+decodable where `cnaster`'s lattice excludes them.
 
 The clone's counts come from `copy_likelihood.capture`, which
 `run_cnaster_port` installs with these rows; a clone it cannot identify is an
@@ -61,8 +64,10 @@ from port.patch._signature import as_upstream
 
 __all__ = [
     "DECODERS",
+    "UNCONFIGURED_MAX_ALLELE_COPY",
     "PairsByBin",
     "configured_caps",
+    "decode_caps",
     "decode_clone",
     "hill_climbing_integer_copynumber_fixdiploid_milp",
     "hill_climbing_integer_copynumber_oneclone",
@@ -96,6 +101,21 @@ MAX_ALLELE_COPY = DEFAULT_MAX_ALLELE_COPY
 MAX_TOTAL_COPY = DEFAULT_MAX_TOTAL_COPY
 """`cnaster`'s default, in both signatures (`port.extensions.integer_copy`)."""
 
+UNCONFIGURED_MAX_ALLELE_COPY = 6
+"""The decode's per-allele cap where no `int_copy_num.max_total_copy` is stated.
+
+**A stated difference from `cnaster`** (T- #617). `cnaster`'s decoders bound
+each allele at `max_allele_copy=5` (`cnaster/integer_copy.py:106`, `:576`)
+and `run_cnaster` passes no other. `port`'s decode bounds each allele by the
+total, 6, so its lattice is `cnaster`'s 25 pairs and `(6, 0)`, `(0, 6)`: 27.
+Every `tests.sim_audit` ledger row was measured with it, and its scorer's
+lattice (`tests.sim_audit.copy_states`) is the same `A + B <= 6`. No sim
+manifest or CalicoST sample plants an allele above 3, nor
+`tests.fixtures.COPY_LATTICE` one above 5, so no planted state referees the
+choice. `cnaster`'s 5 is `MAX_ALLELE_COPY`; which default `port` keeps is
+open on T- #617.
+"""
+
 
 def stated_total(value: Any) -> int | None:
     """`int_copy_num.max_total_copy` as a cap, `None` where no cap is stated.
@@ -120,12 +140,17 @@ def stated_total(value: Any) -> int | None:
     return int(total)
 
 
-def configured_caps() -> tuple[int, int]:
-    """`(max_allele_copy, max_total_copy)`: the configured cap for both, else `cnaster`'s."""
+def _stated_cap() -> int | None:
+    """The configuration's `int_copy_num.max_total_copy`, by `stated_total`."""
     from cnaster.config import get_global_config
 
     section = getattr(get_global_config(), "int_copy_num", None)
-    total = stated_total(getattr(section, "max_total_copy", None))
+    return stated_total(getattr(section, "max_total_copy", None))
+
+
+def configured_caps() -> tuple[int, int]:
+    """`(max_allele_copy, max_total_copy)`: the configured cap for both, else `cnaster`'s."""
+    total = _stated_cap()
 
     if total is None:
         return MAX_ALLELE_COPY, MAX_TOTAL_COPY
@@ -133,9 +158,20 @@ def configured_caps() -> tuple[int, int]:
     return total, total
 
 
+def decode_caps() -> tuple[int, int]:
+    """`(max_allele_copy, max_total_copy)` the decode applies: the configured cap
+    for both, else `UNCONFIGURED_MAX_ALLELE_COPY` and `cnaster`'s total."""
+    total = _stated_cap()
+
+    if total is None:
+        return UNCONFIGURED_MAX_ALLELE_COPY, MAX_TOTAL_COPY
+
+    return total, total
+
+
 def _caps(max_allele_copy: int, max_total_copy: int) -> tuple[int, int]:
-    """The caps to decode under: the configuration's where the caller left the default."""
-    allele, total = configured_caps()
+    """The caps to decode under: `decode_caps()` where the caller left the default."""
+    allele, total = decode_caps()
 
     return (
         allele if max_allele_copy == MAX_ALLELE_COPY else max_allele_copy,
@@ -265,6 +301,7 @@ def decode_clone(
     pred_cnv: Any,
     total: int,
     *,
+    max_allele_copy: int | None = None,
     decoder: str = "lattice",
     parsimony: float = PARSIMONY,
 ) -> tuple[np.ndarray, float, int]:
@@ -276,7 +313,8 @@ def decode_clone(
     under the log-prior `-parsimony |A + B - 2|` per bin: `PARSIMONY`, the
     default, and flat at `0` with `--no-parsimony-decode`.
     `loss` is the negative log-likelihood reached; `ploidy` the median total
-    copy over this clone's bins.
+    copy over this clone's bins. Each allele is at most `max_allele_copy`,
+    and at most `total` where it is `None`.
     """
     from port.extensions.copy_likelihood import (
         captured_chain,
@@ -313,6 +351,7 @@ def decode_clone(
     if (
         _SHARED.get("key") != key
         or _SHARED.get("total") != total
+        or _SHARED.get("allele") != max_allele_copy
         or _SHARED.get("decoder") != decoder
         or _SHARED.get("parsimony") != parsimony
     ):
@@ -328,6 +367,7 @@ def decode_clone(
                 clones,
                 normal_clone=normal_clone,
                 max_total_copy=total,
+                max_allele_copy=max_allele_copy,
                 lengths=lengths,
                 stay=stay,
                 parsimony=parsimony,
@@ -342,12 +382,17 @@ def decode_clone(
                 )
 
             decoded = shared_decode(
-                clones, n_states=log_mu.size, normal=normal, max_total_copy=total
+                clones,
+                n_states=log_mu.size,
+                normal=normal,
+                max_total_copy=total,
+                max_allele_copy=max_allele_copy,
             )
 
         _SHARED.update(
             key=key,
             total=total,
+            allele=max_allele_copy,
             decoder=decoder,
             parsimony=parsimony,
             decoded=decoded,
@@ -386,8 +431,9 @@ def hill_climbing_integer_copynumber_oneclone(
     `parsimony` is the lattice decode's prior weight, `PARSIMONY` unless
     `run_cnaster_port --no-parsimony-decode` binds `0` at install.
     """
-    _, total = _caps(
-        arguments.get("max_allele_copy", 5), arguments.get("max_total_copy", 6)
+    allele, total = _caps(
+        arguments.get("max_allele_copy", MAX_ALLELE_COPY),
+        arguments.get("max_total_copy", MAX_TOTAL_COPY),
     )
 
     return decode_clone(
@@ -395,6 +441,7 @@ def hill_climbing_integer_copynumber_oneclone(
         arguments["new_p_binom"],
         arguments["pred_cnv"],
         total,
+        max_allele_copy=allele,
         decoder=options["decoder"],
         parsimony=options["parsimony"],
     )
@@ -416,8 +463,9 @@ def hill_climbing_integer_copynumber_fixdiploid_milp(
     `parsimony` is the lattice decode's prior weight, `PARSIMONY` unless
     `run_cnaster_port --no-parsimony-decode` binds `0` at install.
     """
-    _, total = _caps(
-        arguments.get("max_allele_copy", 5), arguments.get("max_total_copy", 6)
+    allele, total = _caps(
+        arguments.get("max_allele_copy", MAX_ALLELE_COPY),
+        arguments.get("max_total_copy", MAX_TOTAL_COPY),
     )
 
     return decode_clone(
@@ -425,6 +473,7 @@ def hill_climbing_integer_copynumber_fixdiploid_milp(
         arguments["new_p_binom"],
         arguments["pred_cnv"],
         total,
+        max_allele_copy=allele,
         decoder=options["decoder"],
         parsimony=options["parsimony"],
     )
