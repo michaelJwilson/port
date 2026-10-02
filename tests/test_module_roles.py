@@ -131,7 +131,7 @@ ROLES: dict[str, Role] = {
     "port.sandbox.integer_decoding.rdr_summary": "set aside",
     "port.sandbox.integer_decoding.schemes": "set aside",
     "port.sandbox.known_copy.hmm": "set aside",
-    "port.sandbox.known_copy.hmm_samplers": "set aside",
+    "port.sandbox.known_copy.hmm_objective": "set aside",
     "port.sandbox.known_copy.problem": "set aside",
     "port.sandbox.normal_candidates": "set aside",
     "port.sandbox.np_merge.__main__": "set aside",
