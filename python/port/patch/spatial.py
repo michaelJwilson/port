@@ -76,6 +76,11 @@ def construct_multislice_lattice_adjacency(
     Same graph, same weights, same order: the per-slice matrices come from
     `cnaster`'s own `construct_lattice_adjacency`, and only how they are
     assembled differs.
+
+    **Not installed** (T- #617): `SWAPS` binds `lattice_multislice_adjacency`
+    over this name (#417). It is kept as the bitwise referee of the sparse
+    assembly, `_block_diagonal`, which the installed row shares
+    (`tests/test_preprocessing_spatial.py`).
     """
     logger.info("Solving for multi-slice adjacency (and spot-pooling) matrix.")
 
