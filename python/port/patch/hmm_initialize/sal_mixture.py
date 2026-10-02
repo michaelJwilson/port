@@ -47,6 +47,7 @@ __all__ = [
     "DEFAULT",
     "EXPOSURE_SCALE",
     "POLISH_SECONDS",
+    "SANDBOXED",
     "checked",
     "gmm_init",
     "instance_of",
@@ -73,12 +74,31 @@ EXPOSURE_SCALE = 100.0
 likelihood is unchanged."""
 
 
+SANDBOXED = ("emission++",)
+"""`sal` starts refused here, by name prefix, and kept for study in `port.sandbox.extensions.copy_starts`.
+
+`emission++` misses 18.2% of rows after `--sal` Baum-Welch against the
+lattice's 1.1% (PR- #637, `dev_tree_1s_hard` r3-r12, 10 seeds), 70 of 100 runs
+above 2%; best-of-k by likelihood is worse (41.9% at k = 30) and the medoid
+that matches the lattice costs k runs (PR- #637). The failures are a split
+neutral state (#564, PR- #636)."""
+
+
 def checked(start: str) -> str:
-    """`start`, refused here if no copy-state start has that name rather than hours in: the lattice's, or `sal`'s."""
+    """`start`, refused here if no copy-state start has that name rather than hours in: the lattice's, or `sal`'s.
+
+    `sal`'s starts named in `SANDBOXED` are refused too.
+    """
     from sal.search.mixture_starts import lookup
 
     from port.extensions.copy_starts import LATTICE
 
+    if start.startswith(SANDBOXED):
+        msg = (
+            f"copy-state start {start!r} is sandboxed: "
+            "port.sandbox.extensions.copy_starts keeps it for study"
+        )
+        raise ValueError(msg)
     if start not in LATTICE:
         try:
             lookup(start)

@@ -95,6 +95,20 @@ def test_the_default_start_merges_the_loss_into_copy_neutral_loh() -> None:
 
 
 @pytest.mark.infra
+@pytest.mark.parametrize("start", ["emission++", "emission++x5", "emission++x5+em"])
+def test_sandboxed_starts_are_refused_at_the_flag(start: str) -> None:
+    """`--hmm-start` and `--baf-start` refuse `sal`'s emission++ starts; the lattice and kmeans++ pass."""
+    from port.patch.hmm_initialize import sal_mixture
+    from sal.search.mixture_starts import lookup
+
+    lookup(start)  # NB sal still has the name; port refuses it.
+    with pytest.raises(ValueError, match="sandboxed"):
+        sal_mixture.checked(start)
+    assert sal_mixture.checked(sal_mixture.DEFAULT) == sal_mixture.DEFAULT
+    assert sal_mixture.checked("lattice") == "lattice"
+
+
+@pytest.mark.infra
 def test_the_start_is_handed_over_only_under_its_option(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
