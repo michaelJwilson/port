@@ -706,13 +706,13 @@ def create_bin_ranges(
     max_binlength: float = 5e6,
     key: str = "block_id",
     *,
-    normal_umi_floor: float | None = None,
+    min_segment_normal_umi: float | None = None,
 ) -> Any:
     """`cnaster.omics.create_bin_ranges`, without the rows its merge leaves unbinned (#438 D8, #105).
 
-    `normal_umi_floor`, which `--sal` binds (`SAL_NORMAL_UMI_FLOOR`), is the
-    read-depth segment floor where the configuration states none (#551):
-    `segment_floor`.
+    `min_segment_normal_umi`, which `run_cnaster_port` binds
+    (`MIN_SEGMENT_NORMAL_UMI`, `port.pipeline.DEFAULTS`), is the read-depth
+    segment floor where the configuration states none (#551): `segment_floor`.
 
     `normal_baf_bin_filter` sets `bin_id` to missing for every bin it removes,
     and the merge (`key="bin_id"`, `run_cnaster.py:983`) carries the missing
@@ -753,7 +753,7 @@ def create_bin_ranges(
         )
         table = table.loc[~unbinned]
 
-    min_segment, min_normal = segment_floor(normal_umi_floor)
+    min_segment, min_normal = segment_floor(min_segment_normal_umi)
 
     if min_segment is not None or min_normal is not None:
         table = floor_bins(
@@ -775,17 +775,14 @@ deviation| > 0.5 at planted-neutral segments) from 1,163 to 104, and the
 segments from 2,895 to 1,265."""
 
 MIN_SEGMENT_NORMAL_UMI = 300.0
-"""The normal-UMI floor `quality.min_segment_normal_umi: true` sets (#551).
+"""The normal-UMI floor `quality.min_segment_normal_umi: true` sets (#551),
+and the one `run_cnaster_port` binds where no key is stated (#547,
+`port.pipeline.DEFAULTS`).
 
 On dev_tree r0 (`3381575a`) it takes tumour-clone RDR outlier rows from 1,163
-to 802 and the segments from 2,895 to 2,624."""
-
-SAL_NORMAL_UMI_FLOOR = MIN_SEGMENT_NORMAL_UMI
-"""The normal-UMI floor `--sal` binds (#547). With `kmeans++x5+em` or the
-lattice start it holds every clone ARI on dev_tree r0 (`3381575a`), CalicoST
-easy (`2d4ce9a9`) and hard (`8797710b`) and raises hard's copy ARI from
-0.9055 to 0.9181; with the lattice, 200, 500, 700 and 1,000 each gave some
-sample an extra clone."""
+to 802 and the segments from 2,895 to 2,624. Under `--sal` it holds every
+clone ARI on dev_tree r0, CalicoST easy (`2d4ce9a9`) and hard (`8797710b`) and
+raises hard's copy ARI from 0.9055 to 0.9181 (#547)."""
 
 
 def segment_floor(
@@ -796,7 +793,7 @@ def segment_floor(
     A key stated `false` or `none` is off, `true` its default
     (`MIN_SEGMENT_MB`, `MIN_SEGMENT_NORMAL_UMI`) and a number itself. An
     absent key is off, but for the normal floor, which is then `normal_umi`:
-    what `--sal` binds. Either one switches the floor on; the normal floor
+    what `run_cnaster_port` binds (`port.pipeline.DEFAULTS`). Either one switches the floor on; the normal floor
     is then at least `secondary_min_normal_umi`.
     """
     from cnaster.config import get_global_config
