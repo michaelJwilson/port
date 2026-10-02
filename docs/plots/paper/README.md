@@ -40,3 +40,11 @@ the fixture has no H&E image, and the run never reads the mock.
 | `compare/copy_confusion.png` | Which (A, B) is each planted pair decoded as? | `confusion_figure`: `tests.sim_audit.copy_confusion` |
 | `compare/copy_genomic_truth_vs_fit.png` | Where along the genome is a matched clone's (A, B) decoded wrong, or swapped? | `genomic_compare_figure`: `score`'s clone-bins |
 | `compare/exact_by_class.png` | Which planted classes are recovered exactly, with and without phase? | `exact_figure`: `tests.sim_audit.planted_classes` |
+
+## Key studies
+
+Each figure is redrawn when its study is rerun, and stamped `data <hash> · code <sha>`.
+
+| File | Question | Source | Regenerate |
+| --- | --- | --- | --- |
+| `key_studies/557_copy-states.png` | Which copy-state start, polished by `--sal` Baum-Welch, recovers the planted states at known clones? | `tests.studies.copy_state_plot` (#540, PR #557) | `python -m tests.studies.copy_state_stream sim/manifests/baseline/dev_tree_1s_hard.toml OUT --problems 10 --seeds 10 --held-out 3 --settings tests/studies/copy_sampler_settings.json` |
