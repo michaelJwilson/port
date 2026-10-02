@@ -53,6 +53,7 @@ _T = TypeVar("_T")
 
 __all__ = [
     "COPY_SWAPS",
+    "DEFAULTS",
     "FIGURE_DPI",
     "FIGURE_SWAPS",
     "LOG_SPACE_SWAPS",
@@ -61,6 +62,7 @@ __all__ = [
     "RUN_STATE",
     "SHIFT_SWAPS",
     "SWAPS",
+    "Default",
     "Site",
     "Swap",
     "Warmed",
@@ -489,17 +491,54 @@ floor reassigns spots across BAF clones at random (`docs/measurements.md`,
 `port.patch.hmrf.clone_assignment` applies it while the problem is the one it
 was built for (`port.patch.hmrf.refinement`).
 
-**Its own table, and off by default**, because the clones change.
-`run_cnaster_port --refinement-mask` installs it (#466). Its only reader is port's `pipeline_clone_assignment`, so
+**Its own table**, because the clones change; `run_cnaster_port` installs it
+by default (`DEFAULTS`). Its only reader is port's `pipeline_clone_assignment`, so
 `--no-patch` without `--sal` refuses it, and where a tumour proportion hands
 the call to `cnaster` (#135) the mask is not applied and the run says so.
 
-`--floor-merge`, also off by default, is the second half and needs no row:
+`--floor-merge`, also on by default, is the second half and needs no row:
 it binds `floor_merge=True` into `pipeline_clone_assignment` (in `SWAPS`),
 which then meets the clone-size floor smallest first, into each spot's best
 clone, at `hmrf.min_spots_per_clone`, instead of the sweep's all-at-once
 random reassignment at a fixed 200. It holds with or without the mask, and
 is refused and dropped exactly where the mask is.
+"""
+
+
+class Default(NamedTuple):
+    """A behaviour of `port`'s own that `run_cnaster_port` turns on by default."""
+
+    setting: str
+    """The `run_cnaster_port` setting it is (`port.scripts.run_cnaster.Settings`)."""
+
+    flag: str
+    """The flag that asks for it; `--no-` and the rest turns it off."""
+
+    ticket: int
+    """The issue whose measurement justifies it."""
+
+
+DEFAULTS: tuple[Default, ...] = (
+    Default("refinement_mask", "--refinement-mask", 467),
+    Default("floor", "--floor-merge", 348),
+)
+"""`port`'s own behaviours on by default, outside `SWAPS` (T- #617, rule 8).
+
+Neither comes from `snakes_and_ladders`, so `--sal` no longer selects them: on
+in every patched arm, off with their `--no-` flag, and off with `--no-patch`
+unless `--sal` (which installs `pipeline_clone_assignment` alone) asks. The
+mask installs `REFINEMENT_SWAPS`; the floor merge binds `floor_merge=True`
+into `pipeline_clone_assignment`.
+
+**The 300-normal-UMI segment floor is not here; it stays `--sal`'s.** On the
+default arm it made `tests/test_copy_likelihood.py`'s critical copy instance
+decode the planted `(1, 2)` as `(1, 3)`: 1000 bins merge into 888, and the
+lattice decode's EM then alternates between tumour fraction 1 with `(1, 2)`
+and 0.5 with `(1, 3)` (identical depth and allele share), stopping on 0.5
+at log-likelihood -19,942.74 where fraction 1 reaches -18,966.85 (PR- #645). The `--sal` arm is
+unchanged. Alone, the mask or the floor merge over-split #338's three-sample
+instance (6 fitted clones against 2 planted); together with `--sal` they
+recover CalicoST hard at clone ARI 0.982 against 0.303 (#467).
 """
 
 
