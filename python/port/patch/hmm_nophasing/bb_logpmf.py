@@ -34,7 +34,7 @@ where its own loss is below that. `cnaster`'s conventions are kept: `a` and
 
 from __future__ import annotations
 
-from math import expm1, lgamma, log, log1p
+from math import expm1, inf, lgamma, log, log1p
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -47,14 +47,23 @@ else:
     from numba import prange
 
 __all__ = [
+    "DISPERSION_FLOOR",
     "STIRLING",
     "_bb_logpmf_1d",
     "_dense_bb_logpmf",
     "bb_logpmf",
+    "binomial_logpmf",
     "digamma_rise",
     "rise",
     "rises",
 ]
+
+DISPERSION_FLOOR = 1e-10
+"""`cnaster`'s floor on `alpha` in `_nb_logpmf_1d` and on `a`, `b` in `_bb_logpmf_1d`.
+
+The one statement of it (T- #617): `port.patch.hmm_nophasing.gradient`,
+`port.patch.hmrf.tabulated_field` and the kernels below read it.
+"""
 
 STIRLING = 1e3
 """The shape at and above which `R(x, m)` is Stirling's differenced series rather than two `lgamma`."""
@@ -89,7 +98,27 @@ def bb_logpmf(k: float, n: float, a: float, b: float) -> float:
 
 
 @njit(nogil=True, cache=True, error_model="numpy")
-def _bb_logpmf_1d(obs, total, p_binom, tau, out, EPS=1e-10):
+def binomial_logpmf(k: float, n: float, p: float) -> float:
+    """The binomial log pmf, the beta-binomial's `tau -> inf` limit; 0 where it scores 0."""
+    if k < 0.0 or n < 0.0 or k > n:
+        return 0.0
+    out = lgamma(n + 1.0) - lgamma(k + 1.0) - lgamma(n - k + 1.0)
+    if k > 0.0:
+        out += k * log(p) if p > 0.0 else -inf
+    if n - k > 0.0:
+        out += (n - k) * log1p(-p) if p < 1.0 else -inf
+    return out
+
+
+@njit(nogil=True, cache=True, error_model="numpy")
+def _bb_logpmf_1d(obs, total, p_binom, tau, out, EPS=DISPERSION_FLOOR):
+    # NB `tau = inf` is the binomial: the shapes are infinite and the series
+    #    in `rise` is `inf * 0`, NaN (T- #617). Finite `tau` is unchanged.
+    if tau == inf:
+        for i in range(len(obs)):
+            out[i] = binomial_logpmf(obs[i], total[i], p_binom)
+        return
+
     alpha = max(p_binom * tau, EPS)
     beta = max((1.0 - p_binom) * tau, EPS)
 
@@ -98,7 +127,7 @@ def _bb_logpmf_1d(obs, total, p_binom, tau, out, EPS=1e-10):
 
 
 @njit(nogil=True, cache=True, parallel=True, error_model="numpy")
-def _dense_bb_logpmf(X_bb, total_bb_RD, p_binom, taus, EPS=1e-10):
+def _dense_bb_logpmf(X_bb, total_bb_RD, p_binom, taus, EPS=DISPERSION_FLOOR):
     n_states = p_binom.shape[0]
     n_obs, n_spots = X_bb.shape
     out = np.zeros((n_states, n_obs, n_spots), dtype=np.float64)

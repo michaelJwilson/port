@@ -55,8 +55,11 @@ else:
 
 __all__ = ["field_kernel", "spot_clone_field", "tabulated_spot_clone_field"]
 
-EPS = 1e-10
-"""`cnaster`'s floors: `alpha` in `_nb_logpmf_1d`, `a` and `b` in `_bb_logpmf_1d`."""
+EPS = DISPERSION_FLOOR
+"""`cnaster`'s floors: `alpha` in `_nb_logpmf_1d`, `a` and `b` in `_bb_logpmf_1d`.
+
+`port.patch.hmm_nophasing.bb_logpmf.DISPERSION_FLOOR`, the one statement (T- #617).
+"""
 
 LIMIT = 2**24
 """The largest count a table is built to; beyond it the fused kernel scores."""
