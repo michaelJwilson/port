@@ -170,7 +170,7 @@
   "sample": "dev_tree r0, as recovery.instance",
   "commit": "741fcfb",
   "calicost_seconds": 20243.0,
-  "calicost_run": "#532: CalicoST's shipped configuration_cna_multi, n_clones 5, uncapped, 3 cores, summed over two resumes from its checkpoints (docs/final-benchmark.md)",
+  "calicost_run": "#532: CalicoST's shipped configuration_cna_multi, n_clones 5, uncapped, 3 cores, summed over two resumes from its checkpoints (docs/calicost-benchmark.md)",
   "port_seconds": 185.29,
   "port_cores": 1,
   "port_arm": "run_cnaster_port --sal, the recovery sal arm's wall",
