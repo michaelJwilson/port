@@ -3,6 +3,9 @@
 - `oracle`: the adapter's value is `cnaster`'s forward lattice normalizer at
   the same states, an independent implementation, and on the way it is
   port's JAX NLL (`jax_hmm`'s emission and forward, unjitted) to round-off.
+- `oracle`: its value and gradient are `sal`'s `EmissionHmmObjective` of a
+  `CountPairEmission` (sal #1169, T- #671), a third implementation, mapped
+  to port's `theta` by the chain rule.
 - `analytic`: its gradient is the central difference of its value, and
   `sal`'s autograd route through `__call__` returns the declared gradient.
 - `analytic`: each `sal` start, seeded, reports the NLL of the states it
@@ -98,6 +101,63 @@ def test_the_adapter_is_cnasters_forward_and_ports_nll() -> None:
         ends = np.cumsum(rows["lengths"]) - 1
         theirs = -float(np.sum(logsumexp(np.asarray(lattice)[:, ends], axis=0)))
         np.testing.assert_allclose(ours, theirs, rtol=1e-9, atol=0.0)
+
+
+@pytest.mark.oracle
+def test_the_adapter_is_sals_count_pair_hmm_objective() -> None:
+    """At 5 random states: `sal`'s `EmissionHmmObjective` value to 1e-12 relative, gradient to 1e-10 of the norm.
+
+    `sal` names the beta-binomial by `alpha` and `beta`, so port's `theta` maps
+    as `log mean = log_mu`, `log alpha = log tau + log sigmoid(u)`,
+    `log beta = log tau + log sigmoid(-u)`, the chain held at the uniform
+    start and `T`, and the gradient returns by `d/du = g_alpha (1 - p) -
+    g_beta p`. Realized 7.3e-14 and 5.5e-12 (sal 253c84f), on NLLs
+    2,244-6,507.
+    """
+    import torch
+    from port.sandbox.known_copy.hmm import ALPHA, TAU, T
+    from sal.emissions import CountPairEmission
+    from sal.opt.hmm import EmissionHmmObjective
+    from sal.ragged import Ragged
+
+    rows = _rows()
+    k = 3
+    half = np.full(k, TAU / 2.0)
+    family = CountPairEmission(
+        np.full(k, 1.0 / ALPHA), np.ones(k), half, half, np.ones(k), joint=False
+    )
+    sal = EmissionHmmObjective(
+        Ragged(np.stack([rows["total"], rows["b"]], axis=1), tuple(rows["lengths"])),
+        family,
+        covariate=np.stack([rows["exposure"], rows["trials"]], axis=1),
+    )
+    chain = np.where(np.eye(k, dtype=bool), T, (1.0 - T) / (k - 1))
+    at = sal.theta_from_truth(np.full(k, 1.0 / k), chain, **family.named_parameters())
+    blocks = sal.blocks
+    rng = np.random.default_rng(634)
+    for _ in range(5):
+        log_mu, u = rng.uniform(-0.8, 0.5, k), rng.uniform(-2.0, 2.0, k)
+        theta = np.concatenate([log_mu, u])
+        value, gradient = _objective(rows, theta).value_and_gradient(
+            torch.from_numpy(theta)
+        )
+
+        full = at.clone()
+        full[blocks["mean"]] = torch.from_numpy(log_mu)
+        full[blocks["alpha"]] = np.log(TAU) - torch.from_numpy(np.logaddexp(0.0, -u))
+        full[blocks["beta"]] = np.log(TAU) - torch.from_numpy(np.logaddexp(0.0, u))
+        theirs, score = sal.value_and_gradient(full)
+        p = 1.0 / (1.0 + np.exp(-u))
+        mapped = np.concatenate([
+            score[blocks["mean"]].numpy(),
+            score[blocks["alpha"]].numpy() * (1.0 - p) - score[blocks["beta"]].numpy() * p,
+        ])  # fmt: skip
+
+        np.testing.assert_allclose(float(value), float(theirs), rtol=1e-12, atol=0.0)
+        np.testing.assert_allclose(
+            gradient.numpy(), mapped, rtol=0.0,
+            atol=1e-10 * float(np.linalg.norm(mapped)),
+        )  # fmt: skip
 
 
 @pytest.mark.analytic

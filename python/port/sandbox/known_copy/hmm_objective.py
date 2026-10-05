@@ -7,9 +7,11 @@ Measurement: `tests.studies.copy_state_stream` on
   `sim/manifests/baseline/dev_tree_1s_hard.toml` r3-r12, 10 seeds (PR #642):
   median rows missed after Baum-Welch 1.14 / 1.12 / 1.14% against port's
   1.19 / 1.17 / 1.10% (anneal / tempering / hmc), n = 100 each.
-Exit: retire with the #540 study; or graduate if `sal` gains an HMM
-  objective for the count pair on segmented sequences with fixed-parameter
-  masks (#634 gaps 1-3), which replaces `HmmObjective`.
+Exit: retire with the #540 study; or graduate when `sal`'s count-pair HMM
+  objective costs no more per evaluation. At `sal` 253c84f it is this
+  module's `oracle` (`EmissionHmmObjective` of a `CountPairEmission`, #634
+  gaps 1-3) and costs 1.6x per value and gradient, with no JAX twin for the
+  pair, and `Restricted` cannot hold `tau` with `p` free (T- #671).
 
 **The objective.** `HmmObjective` is `jax_hmm.marginal_negative_log_likelihood`
 of `jax_hmm.emission` on the clone-stacked rows, per segment (`lengths`),
