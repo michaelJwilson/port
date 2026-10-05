@@ -89,10 +89,17 @@ include =
     */sal/search/mixture_starts.py
     */sal/sim/potts.py
     */sal/backend.py
+    */sal/opt/objective.py
+    */sal/opt/termination.py
 # `sim/potts.py` joined on #312's pin bump: `energy`, the Potts referee
 # #246 scores both solvers with, is imported from where it is defined since
 # sal main stopped re-exporting it from `search.alpha_expansion`. The
 # surface did not grow in what is refereed, only in where it is named.
+# `opt/objective.py` joined with T- #634: `tests/test_hmm_objective.py`
+# referees the copy-state HMM NLL against `sal`'s value-and-gradient route.
+# `opt/termination.py` joined with T- #617 WP4: `tests/test_integer_em.py`
+# checks the decode's `Termination` against `sal`'s `Stop`. The coverage
+# figure below predates both and is not re-measured here.
 # `backend.py` joined with `--sal` (#312): the Rust minimum cut is selected by
 # its `Backend`, and `tests/test_sal_rows.py` pins that cut to the Python one.
 #

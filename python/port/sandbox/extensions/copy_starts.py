@@ -59,7 +59,6 @@ from port.extensions.copy_starts import (
 )
 from port.extensions.copy_starts import run_start as live_run_start
 from port.extensions.copy_starts import seed_states as live_seed_states
-from port.patch.hmm_initialize.sal_mixture import clamped_divergence
 
 __all__ = [
     "EMISSION_VARIANTS",
@@ -667,7 +666,7 @@ def _variant_seeding(
     - `lloyd`: that many hard-assignment rounds (argmin divergence, pooled
       state per group) before the states are handed over.
 
-    Divergences are floored at 0 as `sal_mixture.clamped_divergence` floors them.
+    Divergences are floored at 0, as sal #1136's D-squared draw floors them.
     """
     rows = np.asarray(held.rows, dtype=np.float64)
     n, k = rows.shape[0], held.n_components
@@ -775,20 +774,17 @@ def seed_states(
         return _hmm_sampled(name, call, rng, setting)
     if name not in (*EMISSION_VARIANTS, "prior", "hmc"):
         seeds = {n: seed for n, (_, seed) in _port_starts().items()}
-        # NB floored as `sal_mixture.gmm_init` floors `--hmm-start` (#562).
-        with clamped_divergence():
-            return live_seed_states(
-                name, call, rng, covariate=covariate, seconds=seconds, seeds=seeds
-            )
+        return live_seed_states(
+            name, call, rng, covariate=covariate, seconds=seconds, seeds=seeds
+        )
 
     held = instance(call, covariate=covariate)
-    with clamped_divergence():
-        if name in EMISSION_VARIANTS:
-            components = _emission_variant(name, call, held, rng, setting)
-        elif name == "prior":
-            components = _prior_seeding(held, rng)
-        else:
-            components = _chain_best_seeding(held, rng)
+    if name in EMISSION_VARIANTS:
+        components = _emission_variant(name, call, held, rng, setting)
+    elif name == "prior":
+        components = _prior_seeding(held, rng)
+    else:
+        components = _chain_best_seeding(held, rng)
     if covariate:
         log_mu, p = _read(call, components)
     else:

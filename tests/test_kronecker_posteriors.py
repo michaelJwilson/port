@@ -61,3 +61,16 @@ def test_the_kronecker_posteriors_are_cnasters_lattices(
     assert ours.shape == theirs.shape
     np.testing.assert_allclose(ours, theirs, rtol=0, atol=1e-9)
     np.testing.assert_allclose(logsumexp(ours, axis=0), 0.0, atol=1e-12)
+
+
+@pytest.mark.patch
+@pytest.mark.parametrize("n_states", range(1, 10))
+def test_kronecker_order_is_the_reorder_it_replaces(n_states: int) -> None:
+    """sal #1144's `kronecker_order` against the index port built (T- #632): a permutation, so bitwise."""
+    from sal.likelihood.ragged import kronecker_order
+
+    ours = (2 * np.arange(n_states)[None, :] + np.arange(2)[:, None]).reshape(-1)
+    order = kronecker_order(2 * n_states, layer_major=True)
+
+    assert np.array_equal(np.argsort(order), ours)
+    assert np.array_equal(order[ours], np.arange(2 * n_states))

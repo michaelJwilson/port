@@ -41,20 +41,17 @@ def kronecker_state_posteriors(
     `log_emission` is `cnaster`'s `(2 K, n_obs, n_spots)`, summed over spots
     as the lattices sum it. `diagonal` is `PEANLIZE_PHASE_ONLY_ON_SAME_CNV`.
     """
-    from sal.likelihood.ragged import SwitchKind, posteriors
+    from sal.likelihood.ragged import SwitchKind, kronecker_order, posteriors
     from sal.ragged import Ragged
     from scipy.special import logsumexp
 
-    n_paired, n_obs = log_emission.shape[0], log_emission.shape[1]
-    n_states = n_paired // 2
+    n_paired = log_emission.shape[0]
 
-    # NB `cnaster`'s state `a * K + i` is sal's `2 i + a`.
-    ours = (2 * np.arange(n_states)[None, :] + np.arange(2)[:, None]).reshape(-1)
-    density = np.empty((n_obs, n_paired))
-    density[:, ours] = np.sum(log_emission, axis=2).T
-
-    initial = np.empty(n_paired)
-    initial[ours] = np.log(0.5) + np.concatenate([log_startprob, log_startprob])
+    # NB `cnaster`'s state `a * K + i` is sal's `2 i + a` (sal #1144): `order`
+    #    takes `cnaster`'s axis into sal's, `argsort(order)` takes it back.
+    order = kronecker_order(n_paired, layer_major=True)
+    density = np.sum(log_emission, axis=2).T[:, order]
+    initial = (np.log(0.5) + np.concatenate([log_startprob, log_startprob]))[order]
 
     # NB the step into `t` reads `cnaster`'s entry `t - 1`; a segment's first
     #    position is never read, so its value only has to be a probability.
@@ -91,5 +88,5 @@ def kronecker_state_posteriors(
         )
         log_posterior[kept] = np.asarray(result.log_posterior)
 
-    log_gamma: np.ndarray = log_posterior[:, ours].T
+    log_gamma: np.ndarray = log_posterior[:, np.argsort(order)].T
     return log_gamma
