@@ -20,7 +20,7 @@ from typing import Any
 
 import numpy as np
 
-__all__ = ["get_sitewise_transmat"]
+__all__ = ["get_sitewise_transmat", "release"]
 
 
 def get_sitewise_transmat(
@@ -63,6 +63,15 @@ def _genetic_map(path: str) -> Any:
     from pathlib import Path
 
     return _read_map(path, Path(path).stat().st_mtime_ns)
+
+
+def release() -> None:
+    """Drop the maps read this run; `port.pipeline.patched` calls this on exit (T- #617).
+
+    The cache is keyed by path and version, so a later run would read the
+    same map; it is dropped so that nothing a run read outlives it.
+    """
+    _read_map.cache_clear()
 
 
 @functools.lru_cache(maxsize=4)
