@@ -746,6 +746,16 @@ QUESTIONS: dict[str, tuple[str, str]] = {
 }
 """Each committed file under `OUT`: the question it answers, and its source."""
 
+KEY_STUDIES: dict[str, tuple[str, str, str]] = {
+    "key_studies/557_copy-states.png": (
+        "Which copy-state start, polished by `--sal` Baum-Welch, recovers the planted states at known clones?",
+        "`tests.studies.copy_state_plot` (#540, PR #557)",
+        "`python -m tests.studies.copy_state_stream sim/manifests/baseline/dev_tree_1s_hard.toml OUT "
+        "--problems 10 --seeds 10 --held-out 3 --settings tests/studies/copy_sampler_settings.json`",
+    ),
+}
+"""Each key study's figure (label `key_study`) under `OUT/key_studies/`: question, source, regenerate command."""
+
 
 def ledger_name(fixture: str, digest: str) -> str:
     """The run's fixture name in the metrics ledger: one per r0 generation."""
@@ -762,6 +772,9 @@ def readme(
 ) -> str:
     """`OUT/README.md`: the run's headline metrics, then each file's question and source."""
     rows = "\n".join(f"| `{k}` | {q} | {s} |" for k, (q, s) in QUESTIONS.items())
+    studies = "\n".join(
+        f"| `{k}` | {q} | {s} | {r} |" for k, (q, s, r) in KEY_STUDIES.items()
+    )
     return f"""# Paper figures: {fixture} r0 ({digest})
 
 **TL;DR:** clone ARI {recovery["ari"]:.4f}, copy ARI (phase-free)
@@ -789,6 +802,14 @@ and its stamp names both records' data hashes.
 | File | Question | Source |
 | --- | --- | --- |
 {rows}
+
+## Key studies
+
+Each figure is redrawn when its study is rerun, and stamped `data <hash> · code <sha>`.
+
+| File | Question | Source | Regenerate |
+| --- | --- | --- | --- |
+{studies}
 """
 
 
