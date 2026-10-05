@@ -61,7 +61,9 @@ jobs:
             .cache/plots/lattice/*.png
 
       # NB the paper set (T- #624) is committed under `docs/plots/paper/`;
-      #    uploaded as its own artifact so a reviewer downloads it alone.
+      #    uploaded as its own artifact so a reviewer downloads it alone,
+      #    `solvers/solver_combined.png` (T- #660) with it: drawn from two
+      #    study records by `paper_figures --solvers`, not in this job.
       #    Absent until T- #624 lands, so a missing set is not an error.
       - name: Upload the paper figures
         uses: actions/upload-artifact@v4
