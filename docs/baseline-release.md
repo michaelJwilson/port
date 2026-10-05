@@ -148,3 +148,39 @@ against 253.4 s, 1.0 (4), 0.9825 and 0.9040 for `--sal` above.
 - `dev_tree_1s_hard`: 2, 2 and 1 integer clones of 4 (#575).
 - `--sal --no-shift` stops in the integer decode with no captured fit (#576).
 - `cnaster --no-patch` stops on a `bin_id` index (#105).
+
+## `snakes_and_ladders` `3ad4b04` → `b61dfba` (T- #632 PR A)
+
+**TL;DR:** every scored metric equals PR #631's (`9a47d97`) on 3 fixtures;
+clone labels and integer A/B copy numbers are bitwise unchanged. The HMM's
+fitted parameters move, by at most 1.6e-2 relative (τ, easy), through sal
+#1136's beta-binomial density above shape 100. Wall is 1.03–1.06× the old
+pin on one host, one run each, which this measurement does not establish.
+
+- Host: Xeon @ 2.10 GHz, 4 cores (PR #631 ran on a 2.80 GHz host). Each pin
+  ran here, serially under the host lock, numba warmed by an untimed easy
+  run; load1 0.44–0.49 at each start. The old pin (`dbfff01`) reproduces
+  PR #631's output files bitwise, so the host moves wall and nothing else.
+- Same command and scoring as above. Ledger: `6a9f3a8-*` (b61dfba) and
+  `dbfff01-*` (3ad4b04 control), 2026-10-01 23:47–00:00 UTC.
+
+| fixture | hash | clone_ari | clone_ari_int | copy_ari | copy_ari_pf | exact_altered | exact_altered_pf | bins | wall_s #631 / 3ad4b04 / b61dfba | peak_gb #631 / 3ad4b04 / b61dfba |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `easy` | `2d4ce9a9` | 0.9861 | 0.9861 | 0.9035 | 0.9031 | 0.2667 | 0.7231 | 1248 | 99.2 / 57.2 / 60.4 | 3.22 / 3.19 / 3.20 |
+| `hard` | `8797710b` | 0.9829 | 0.9829 | 0.9181 | 0.9181 | 0.1654 | 0.7244 | 1263 | 101.8 / 62.0 / 64.1 | 3.22 / 3.19 / 3.19 |
+| `dev_tree_1s_easy_ln_r0` | `22a5eb85` | 0.9780 | 0.9780 | 0.9768 | 0.9784 | 0.5310 | 0.9646 | 1831 | 172.0 / 102.2 / 105.3 | 3.64 / 3.62 / 3.62 |
+
+Scores are one column because old and new are equal to 4 decimals on all
+24 scored values, `clone_of` and the confusion tables. What moved, b61dfba
+against the same-host 3ad4b04 run (`rdrbaf_final_nstates7_smp.npz`):
+
+| fixture | log-likelihood | τ (BB), max rel | log μ, max abs | HMM state of a bin × clone |
+| --- | --- | --- | --- | --- |
+| `easy` | −50198.673 → −50198.947 | 1.6e-2 (6006 → 6099) | 2.1e-3 | 187 of 4992 differ; A, B equal |
+| `hard` | Δ 1.5e-6 | 7.8e-8 | 1.3e-7 | equal |
+| `dev_tree_1s_easy_ln_r0` | Δ 7.2e-8 | 5.4e-9 | 8.2e-10 | equal |
+
+τ is 6,006, 1,524 and 1,211, above sal's Stirling-difference threshold of
+100, so the beta-binomial density is the stage that moved; the
+negative-binomial shape 1/α is 2.2, 2.1 and 11.3, below it. The log-likelihoods are
+of two density implementations and are not ranked against each other.
