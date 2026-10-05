@@ -9,6 +9,21 @@
 - **False positives.** A true-(1,1) segment is called something else at a rate of **1.08 × 10⁻³** ([0.90, 1.30] × 10⁻³). The rate is flat across its SNP UMIs.
 - **Sufficiency.** The rule stated in advance passes except for imbalanced gain, whose L50 interval is 0.36 dex (limit 0.3). That interval stopped narrowing after 219 more members, because the crossing lies on the plateau.
 
+**Rerun of the J = 1 arm at f4a0cc0 (sal b61dfba, #633):** the 445 members that ran at J = 1, one
+thread per worker as before (#638: the result depends on the thread count). J = 0.8, 1.4 and 2.8 were not
+rerun, so panel (a) of the rerun's figure is J = 1 alone, over the 193 base members, not the 76 paired.
+- **Runs that raised: 0 of 445**, against 12 of 445 at J = 1 (13 of 679 over every J): none of the 11 `trials must be >= 2` or
+  the 1 `M step did not settle` recurs. sal #1136 rewrote that EM; the cause is not isolated further.
+- **Clones.** UMI50 10^6.08 [6.03, 6.13], against 10^6.12 [6.06, 6.17] (191 members; 2 raised).
+- **CNAs.** LOH L50 10^7.10 [7.01, 7.19], unchanged. Balanced gains 10^7.81 [7.75, 7.87] (65 Mb), against
+  10^7.97 [7.90, 8.06]: the intervals do not overlap. Imbalanced gains stay on the plateau, 10^8.08 [7.92, 8.28].
+- **False positives.** 1.13 × 10⁻³ [0.95, 1.34] (1,536 of 1,358,202 segments), against 1.08 × 10⁻³ [0.90, 1.30].
+- **Per member** on the 433 that ran in both: 173 have identical clone scores. Spot-weighted clone completeness
+  has median 0.744 → 0.759, and 697 clones are detected against 682 of 1,299. 235 members move by more than
+  0.001, 101 up and 134 down. Fitted clones exceed planted by 2 in 23 members, against 5.
+- Key figure: `docs/plots/paper/key_studies/546_population.png` (`data 6daefbd0 · code f4a0cc0`). The
+  numbers below are the original's.
+
 The figure, sensitivity and false positive rate, is committed as
 `plots/studies/population_recovery.png`; `python -m tests.studies.population
 report --out DIR` redraws it into `DIR/figures/`.

@@ -9,6 +9,11 @@ start is seed-dependent: hard ends at 0.7267 (3 clones) from seed 0.
 #541's notebook (`docs/nb/clone_label_study.ipynb`) separates the start from
 the solver and the refit this study measured together.
 
+**#541 rerun at 7d1ba8b (sal b61dfba):** the notebook's end-to-end table, at default threads, reproduces
+`--sal`'s own start on all four samples: dev_tree 1.0 (4), CalicoST easy 0.9861 (4) and hard 0.9829 (4);
+`dev_shared_unique` reads 0.9983 (4), 0.9971 in #554. No start is adopted. At 1 thread, easy reads 0.9851 (#638).
+Key figure: `docs/plots/paper/key_studies/554_clone-starts.png`.
+
 ## Method
 
 `python -m tests.studies.clone_starts SAMPLE START SEED [FLAGS]`, one arm per

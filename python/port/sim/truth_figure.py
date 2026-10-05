@@ -10,9 +10,10 @@ Top to bottom, at `llncs`'s text width and height, 7 pt throughout, as
   under its mirror and copy-number key, the rows `combined.pdf` draws;
 - **(c)** RDR and BAF along the genome per true clone
   (`analysis.genomic_truth`), drawn by `plot_clones_genomic`, each clone
-  named with its barcode from (a);
-- **(d)** the true clone of each spot, per slice (`analysis.draw_spatial`),
-  named by its key alone.
+  named with its barcode from (a).
+
+The true clone of each spot is not drawn here: `analysis.plot_spatial` draws
+it as its own figure, `truth/spatial.png` (T- #660).
 
 (b) and (c) share one left and one right edge, so a chromosome boundary is
 at one place on the page in both; (b) names the chromosomes for them. Clones
@@ -26,11 +27,11 @@ import argparse
 from pathlib import Path
 from typing import Any
 
-from port.sim.analysis import Realization, clone_colour, display, read
+from port.sim.analysis import Realization, display, read
 
 __all__ = ["truth_combined_figure", "write_truth_combined"]
 
-HEIGHTS = {"tree": 1.0, "profile": 1.0, "genomic": 4.0, "spatial": 1.6}
+HEIGHTS = {"tree": 1.0, "profile": 1.0, "genomic": 5.6}
 """Inches per panel, summing to `TEXT_HEIGHT` less its rounding."""
 
 LEFT = 0.42
@@ -47,9 +48,8 @@ def _symbol(r: Realization) -> Any:
 
 
 def truth_combined_figure(r: Realization, width: float | None = None) -> Any:
-    """The four panels on one page, `width` wide (`llncs`'s by default) and `TEXT_HEIGHT` tall."""
+    """The three panels on one page, `width` wide (`llncs`'s by default) and `TEXT_HEIGHT` tall."""
     import matplotlib.pyplot as plt
-    from matplotlib.lines import Line2D
 
     from port.extensions.combined_figure import (
         FONT_SIZE,
@@ -69,7 +69,6 @@ def truth_combined_figure(r: Realization, width: float | None = None) -> Any:
     from port.patch.plot_genomic import PAPER_WIDTH, plot_clones_genomic
     from port.sim.analysis import (
         binned_profile,
-        draw_spatial,
         draw_tree,
         genomic_truth,
         tree,
@@ -85,7 +84,7 @@ def truth_combined_figure(r: Realization, width: float | None = None) -> Any:
         panels: Any = figure.subfigures(
             len(HEIGHTS), 1, height_ratios=list(HEIGHTS.values()), hspace=0.0
         )
-        tree_fig, profile_fig, genomic_fig, spatial_fig = panels
+        tree_fig, profile_fig, genomic_fig = panels
 
         # (a)
         tree_ax = tree_fig.add_axes((0.02, 0.02, 0.96, 0.88))
@@ -133,22 +132,6 @@ def truth_combined_figure(r: Realization, width: float | None = None) -> Any:
                 if text.get_text().startswith("chr"):
                     text.set_visible(False)
 
-        # (d)
-        slices = list(dict.fromkeys(r.truth["sample_id"]))
-        spatial_axes = [
-            spatial_fig.add_axes((0.02 + k * 0.42, 0.04, 0.4, 0.86))
-            for k in range(len(slices))
-        ]
-        present = draw_spatial(spatial_axes, r, size=1.6, fontsize=FONT_SIZE)
-        handles = [
-            Line2D([], [], marker="s", linestyle="", markersize=4,
-                   color=clone_colour(c, r.clones), label=symbol(c))
-            for c in present
-        ]  # fmt: skip
-        spatial_fig.legend(handles=handles, loc="lower right", bbox_to_anchor=(0.99, 0.04),
-                           ncol=1, frameon=False, handletextpad=0.3,
-                           borderaxespad=0.0)  # fmt: skip
-
         for panel in panels:
             _set_text(panel, FONT_SIZE)
         profile_ax.tick_params(axis="x", pad=-4)
@@ -181,7 +164,7 @@ def truth_combined_figure(r: Realization, width: float | None = None) -> Any:
                          title_on_edge=True)  # fmt: skip
         _thin(profile_ax.get_xticklabels(), renderer)
 
-        for panel, letter in zip(panels, "abcd", strict=True):
+        for panel, letter in zip(panels, "abc", strict=True):
             panel.text(0.0, 1.0, f"({letter})", fontsize=LABEL_SIZE, ha="left",
                        va="top")  # fmt: skip
         figure.canvas.draw()

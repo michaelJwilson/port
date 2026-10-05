@@ -9,8 +9,9 @@ Its clones, events, layout and counts are drawn from what the manifest states:
     [array]       kind = "hex" or "square", rows, columns
     [model]       admixture, normal_frac, dirichlet_concentration, bb_overdispersion,
                   snp_dispersion, snp_depth_follows_copies, counts_sampler
-    [cna]         mode = "shared.unique" (shared, unique) or "tree"
-                  (trunk, per_leaf, per_internal); n_clones;
+    [cna]         mode = "shared.unique" (shared, unique), "tree"
+                  (trunk, per_leaf, per_internal) or "felsenstein"
+                  (expected_cnas); n_clones;
                   states = [[A, B], ...]. Defaults are CalicoST's easy
                   sample, `numcnas1.2`, state them
     [cna.length]  law = "fixed" (size), "exponential" (mean, minimum) or
@@ -51,7 +52,10 @@ topology on `normal` and the tumour clones with `snakes_and_ladders`'
 `random_topology` -- uniform over unrooted binary trees -- and roots it at
 `normal`: the edge out of `normal` is the trunk and carries `trunk` events,
 each edge into a clone `per_leaf` and each edge into an unobserved ancestor
-`per_internal`. A clone carries every event on its path from
+`per_internal`. `felsenstein` draws the same topology -- uniform over the
+`(2n - 3)!!` rooted binary trees on `n = n_clones` labelled leaves
+(Felsenstein 1978) -- and Poisson event counts per edge whose means sum to
+`expected_cnas` (`_felsenstein_counts`). A clone carries every event on its path from
 the root, later ones overriding earlier ones where they overlap. `(1, 1)`
 elsewhere.
 
@@ -117,6 +121,7 @@ default in code: a manifest that leaves one out is refused, naming it."""
 BY_MODE = {
     "shared.unique": ("shared", "unique"),
     "tree": ("trunk", "per_leaf", "per_internal"),
+    "felsenstein": ("expected_cnas",),
 }
 BY_LAW = {
     "fixed": ("size",),
@@ -344,6 +349,13 @@ def _check(manifest: DrawManifest) -> None:
 
     if mode not in BY_MODE:
         problems.append(f"[cna] mode {mode!r}: one of {sorted(BY_MODE)}")
+    elif mode == "felsenstein":
+        leaves = int(manifest.cna["n_clones"])
+        if leaves < 2 or float(manifest.cna["expected_cnas"]) < leaves:
+            problems.append(
+                f"[cna] felsenstein: n_clones >= 2 and expected_cnas >= n_clones, "
+                f"not {leaves} and {manifest.cna['expected_cnas']}"
+            )
     if manifest.model["admixture"] not in ADMIXTURE_LAWS:
         problems.append(f"[model] admixture {manifest.model['admixture']!r}")
     if manifest.model["counts_sampler"] not in COUNT_SAMPLERS:
@@ -474,17 +486,47 @@ def _events(
     return tuple(out)
 
 
+def _felsenstein_counts(
+    parent: dict[str, str | None], leaves: set[str], expected: float,
+    rng: np.random.Generator,
+) -> dict[str, int]:  # fmt: skip
+    """Events per edge of a `felsenstein` tree: each leaf edge `1 + Poisson(m)`, every other edge `Poisson(m)`.
+
+    Choices, not consequences of the model: one event is held on each leaf
+    edge so no clone's profile equals its parent's, and so no two sibling
+    clones are drawn identical; the remaining `expected - leaves` is spread
+    equally over every edge, the trunk included, `m = (expected - leaves) /
+    edges`. The expected total is `expected` exactly. Edges are visited in
+    sorted order, one Poisson draw each, before any event is placed.
+    """
+    edges = sorted(n for n in parent if parent[n] is not None)
+    rate = (expected - len(leaves)) / len(edges)
+    return {
+        node: int(rng.poisson(rate)) + (1 if node in leaves else 0) for node in edges
+    }
+
+
 def draw_tree(manifest: DrawManifest, rng: np.random.Generator) -> CloneTree:
     """The clones' tree and the events on each of its edges."""
     parent = _topology(manifest, rng)
-    shared_unique = manifest.cna["mode"] == "shared.unique"
-    counts = manifest.cna
-    trunk = int(counts["shared" if shared_unique else "trunk"])
-    leaf = int(counts["unique" if shared_unique else "per_leaf"])
-    internal = 0 if shared_unique else int(counts["per_internal"])
+    mode = manifest.cna["mode"]
     leaves = set(manifest.tumour)
+    if mode == "felsenstein":
+        counts = _felsenstein_counts(
+            parent, leaves, float(manifest.cna["expected_cnas"]), rng
+        )
+        edge_events: dict[str, tuple[Event, ...]] = {"normal": ()}
+        for node in sorted(counts):
+            edge_events[node] = _events(manifest, counts[node], rng)
+        return CloneTree(parent, edge_events, manifest.tumour)
 
-    edge_events: dict[str, tuple[Event, ...]] = {"normal": ()}
+    shared_unique = mode == "shared.unique"
+    table = manifest.cna
+    trunk = int(table["shared" if shared_unique else "trunk"])
+    leaf = int(table["unique" if shared_unique else "per_leaf"])
+    internal = 0 if shared_unique else int(table["per_internal"])
+
+    edge_events = {"normal": ()}
     for node in sorted(n for n in parent if n != "normal"):
         if parent[node] == "normal":
             count = trunk
