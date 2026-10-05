@@ -78,8 +78,8 @@ def _texts(figure: Any) -> list[str]:
 
 @pytest.mark.snapshot
 def test_the_compare_figures_draw_what_their_inputs_hold(tmp_path: Path) -> None:
-    """Figures 14-17 on a tiny truth and fit, no pipeline run: the ARI and
-    matching in 14, the confusion's shares in 15, one mark per swapped or
+    """Figures 14-17 on a tiny truth and fit, no pipeline run: the matching in
+    14 and no title (T- #660: the ARI is the README's), the confusion's shares in 15, one mark per swapped or
     wrong bin in 16, the per-class shares in 17, each written with its stamp."""
     import matplotlib as mpl
 
@@ -91,7 +91,7 @@ def test_the_compare_figures_draw_what_their_inputs_hold(tmp_path: Path) -> None
     c = _tiny()
 
     labels = pf.labels_figure(c)
-    assert "clone ARI 0.8125" in labels._suptitle.get_text()
+    assert labels._suptitle is None
     texts = _texts(labels)
     assert "$m_1$ $\\leftrightarrow$ fit 1" in texts
     assert "fit 3, unmatched" in texts
@@ -125,3 +125,27 @@ def test_the_compare_figures_draw_what_their_inputs_hold(tmp_path: Path) -> None
     written = pf.compare_figures(c, tmp_path, "tiny 00000000 · code 0000000")
     assert [p.name for p in written] == list(pf.FIGURES)
     assert all(p.stat().st_size > 0 for p in written)
+
+
+@pytest.mark.infra
+def test_the_solver_panel_draws_only_the_tables_solvers() -> None:
+    """T- #660: a stream holding a solver `potts_plot.TABLE` dropped draws
+    none of its runs; the kept solver's runs are all drawn."""
+    from tests.studies import potts_plot
+
+    rows = [
+        {"problem": 0, "solver": solver, "seed": seed, "seconds": 1.0, "energy": 5.0,
+         "polish_seconds": 0.1, "polished": 4.0, "both_seconds": 0.2, "both": 4.0}
+        for solver in ("sal:icm", "port:icm") for seed in range(3)
+    ]  # fmt: skip
+    record = {
+        "rows": rows,
+        "done": [0],
+        "problems": {0: {"truth_energy": 3.0, "bound": 1.0}},
+    }
+
+    drawn = potts_plot.frame(record)
+
+    assert "port:icm" not in potts_plot.NUMBER
+    assert sorted(set(drawn.solver)) == ["sal:icm"]
+    assert len(drawn) == 3

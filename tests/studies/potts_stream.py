@@ -52,18 +52,17 @@ from typing import Any
 
 import numpy as np
 
-DROPPED = frozenset({"sal:bifurcation", "port:alpha", "port:alpha-rust-merge"})
-"""Out of the stream: bifurcation (#541), `alpha` (Alpha-rust's pure-Python twin), and the deprecated floor merge."""
+DROPPED = frozenset({
+    "sal:bifurcation", "port:alpha", "port:alpha-rust-merge",
+    "port:alpha-rust", "port:alpha-rust-icm", "port:icm-numba", "port:icm",
+})  # fmt: skip
+"""Out of the stream: bifurcation (#541), `alpha` (Alpha-rust's pure-Python twin), the deprecated floor merge,
+and, for the paper's figure (T- #660), `alpha-rust` and `alpha-rust-icm` (`alpha-rust-fuse-merge` stays),
+`icm-numba` and cnaster's `icm`. `clone_label_arms` still runs them."""
 
-EXTRA = (
-    "sal:trws",
-    "sal:cluster-tempering",
-    "port:sw-field",
-    "port:sw-field-glauber",
-    "port:wolff-field",
-    "port:wolff-field-glauber",
-)
-"""Entries beyond the harness's: TRW-S's decoded labelling, sal's cluster tempering, and #559's field-weighted cluster moves."""
+EXTRA = ("sal:trws",)
+"""Entries beyond the harness's: TRW-S's decoded labelling. `CLUSTER_TEMPERING` and #559's
+`FIELD_WEIGHTED` cluster moves left the stream with T- #660; `--only` still runs them."""
 
 SAMPLERS = {
     "sal:anneal": "single-site",
@@ -142,7 +141,10 @@ def _warm() -> None:
     field = np.random.default_rng(0).normal(size=(100, 3))
     patch = SimpleNamespace(realization=-1, field=field, planted=field.argmax(1), indptr=indptr, indices=indices,
                             weights=weights, spatial_weight=1.0, n_spots=100)  # fmt: skip
-    for solver in [s for s in arms._solvers() if s not in DROPPED] + list(EXTRA):
+    # NB every solver `--only` can name, the ones T- #660 dropped from the stream included
+    retired = {"sal:bifurcation", "port:alpha", "port:alpha-rust-merge"}
+    runnable = [s for s in arms._solvers() if s not in retired]
+    for solver in [*runnable, *EXTRA, CLUSTER_TEMPERING, *FIELD_WEIGHTED]:
         solve(
             patch,
             solver,

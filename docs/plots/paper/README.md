@@ -1,27 +1,30 @@
-# Paper figures: dev_tree_1s_easy r0 (22a5eb85)
+# Paper figures: dev_tree_1s_easy r0 (7ba9b01f)
 
-**TL;DR:** clone ARI 0.9780, copy ARI (phase-free)
-0.9784, exact altered (phase-free)
-0.9646 (phased 0.5310), from one
+**TL;DR:** clone ARI 0.9798, copy ARI (phase-free)
+0.9335, exact altered (phase-free)
+0.8992 (phased 0.1473), from one
 `run_cnaster_port --sal --png-copies` run on `sim/manifests/dev_tree_1s_easy.toml` r0 at
-code `0eaac23`: 226 s wall, 3.54 GB peak.
-Ledger `run_id` `0eaac23-dev_tree_1s_easy_ln_r0-1935` (`docs/metrics/`, fixture `dev_tree_1s_easy_ln_r0`).
+code `dbf5436`: 177 s wall, 3.61 GB peak.
+Ledger `run_id` `dbf5436-dev_tree_1s_easy_r0_7ba9b01f-1607` (`docs/metrics/`, fixture `dev_tree_1s_easy_r0_7ba9b01f`).
 
 Regenerate from a clean tree, so the stamp carries no `+`; it draws r0 into
 `.cache/paper_figures/` where `--draw` is not given, and refuses any r0 not
-hashing to `22a5eb85`:
+hashing to `7ba9b01f`:
 
     python -m tests.studies.paper_figures --fixture dev_tree_1s_easy --out docs/plots/paper
 
 `--truth-only` writes `truth/` alone, with no run. Every figure is stamped
-`dev_tree_1s_easy 22a5eb85 · code <sha>`. `run/spatial.png` and `run/combined.png`
+`dev_tree_1s_easy 7ba9b01f · code <sha>`. `run/spatial.png` and `run/combined.png`
 draw panel (a) on a slide mocked from the planted labels (`tests.he_slide`):
 the fixture has no H&E image, and the run never reads the mock.
 `truth/phase.png` is flat: this r0 plants 0 phase switches.
+`solvers/solver_combined.png` is not drawn from this fixture: `--solvers POTTS.pkl COPY.pkl`
+draws it from a `tests.studies.potts_stream` and a `tests.studies.copy_state_stream` record,
+and its stamp names both records' data hashes.
 
 | File | Question | Source |
 | --- | --- | --- |
-| `truth/truth_combined.png` | What was planted, on one page: tree, (A, B) profile, RDR and BAF per clone, spatial clones? | `port.sim.truth_figure.truth_combined_figure` |
+| `truth/truth_combined.png` | What was planted, on one page: tree, (A, B) profile, RDR and BAF per clone? | `port.sim.truth_figure.truth_combined_figure` |
 | `truth/mutation_tree.png` | Which events sit on which edge of the clone tree? | `port.sim.analysis.plot_tree` |
 | `truth/spatial.png` | Which clone was each spot drawn from? | `port.sim.analysis.plot_spatial` |
 | `truth/clones_genomic.png` | What RDR and BAF does each planted clone give along the genome? | `port.sim.analysis.plot_clones_genomic_truth` |
@@ -40,6 +43,7 @@ the fixture has no H&E image, and the run never reads the mock.
 | `compare/copy_confusion.png` | Which (A, B) is each planted pair decoded as? | `confusion_figure`: `tests.sim_audit.copy_confusion` |
 | `compare/copy_genomic_truth_vs_fit.png` | Where along the genome is a matched clone's (A, B) decoded wrong, or swapped? | `genomic_compare_figure`: `score`'s clone-bins |
 | `compare/exact_by_class.png` | Which planted classes are recovered exactly, with and without phase? | `exact_figure`: `tests.sim_audit.planted_classes` |
+| `solvers/solver_combined.png` | How far above the best does each spatial solver and each copy-state start end, and how fast? | `solver_figure`: `tests.studies.potts_plot.draw`, `tests.studies.copy_state_plot.draw` |
 
 ## Key studies
 

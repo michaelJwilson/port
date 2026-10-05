@@ -2,6 +2,7 @@
 
     python -m tests.studies.paper_figures [--fixture dev_tree_1s_easy] [--draw DIR]
         [--out docs/plots/paper] [--truth-only]
+    python -m tests.studies.paper_figures --solvers POTTS.pkl COPY.pkl [--out docs/plots/paper]
 
 draws `sim/manifests/<fixture>.toml`'s r0 (or reads it from `--draw`, the
 directory holding `<fixture>/r0`), refuses it unless it hashes to the
@@ -14,11 +15,17 @@ manifest's `r0_hash`, and writes into `OUT`:
   genomic and spatial pages drawn from it as `tests.generate_plots` draws
   them, beside a slide mocked from the planted labels (`tests.he_slide`);
 - `compare/`, figures 14-17: the run against the truth, through
-  `tests.sim_audit.score`'s matching, `copy_confusion` and planted classes.
+  `tests.sim_audit.score`'s matching, `copy_confusion` and planted classes;
+- `solvers/`, figure 18 (`--solvers POTTS.pkl COPY.pkl`, no fixture run):
+  `solver_combined.png`, the spatial solvers (`tests.studies.potts_plot`) left
+  and the copy-state starts (`tests.studies.copy_state_plot`) right, each
+  panel's key in its legend, no table (T- #660).
 
 Every figure carries `<fixture> <hash> · code <sha>`, the commit read before
 anything is written, `+` where the tree differs from it. A run is appended to
-the metrics ledger (`tests.metrics.write`) as `<fixture>_ln_r0`, and
+the metrics ledger (`tests.metrics.write`) as `<fixture>_r0_<hash>`, one
+ledger name per generation, since the ledger refuses a name that names two
+datasets (T- #660; `<fixture>_ln_r0` before it), and
 `OUT/README.md` is written with its `run_id`.
 """
 
@@ -417,11 +424,8 @@ def labels_figure(c: Compared) -> Any:
         handles=key, loc="lower center", ncol=min(len(key), 5), fontsize=7,
         frameon=False, bbox_to_anchor=(0.5, 0.04),
     )  # fmt: skip
-    figure.suptitle(
-        f"clone ARI {c.ari:.4f}; planted $\\leftrightarrow$ fitted by Hungarian matching on spot overlap",
-        fontsize=9, color=INK,
-    )  # fmt: skip
-    figure.subplots_adjust(left=0.02, right=0.98, top=0.84, bottom=0.14, wspace=0.05)
+    # NB no title: the clone ARI is the README's TL;DR (T- #660).
+    figure.subplots_adjust(left=0.02, right=0.98, top=0.92, bottom=0.14, wspace=0.05)
     return figure
 
 
@@ -606,9 +610,61 @@ def compare_figures(c: Compared, out: Path, text: str) -> list[Path]:
     return written
 
 
+SOLVERS = "solver_combined.png"
+"""Figure 18, under `solvers/`."""
+
+
+def data_hash(record: dict[str, Any]) -> str:
+    """The study plots' `data` stamp: SHA-256 of the pickled record, 8 hex digits."""
+    import hashlib
+    import pickle
+
+    return hashlib.sha256(pickle.dumps(record)).hexdigest()[:8]
+
+
+def solver_figure(potts: dict[str, Any], copies: dict[str, Any]) -> Any:
+    """18: the spatial solvers' gap panel left, centred on the truth, the copy-state starts' right, both untitled, each keyed in its legend, no table."""
+    import matplotlib.pyplot as plt
+
+    from tests.studies import copy_state_plot, potts_plot
+
+    figure, (left, right) = plt.subplots(1, 2, figsize=(12.0, 5.6))
+    potts_plot.draw(left, potts, key=True, centre=True)
+    copy_state_plot.draw(right, copies, key=True)
+    for ax, letter in ((left, "a"), (right, "b")):
+        # NB the stated face sets "Runtime [s]" taller than the studies' own figures do
+        ax.get_legend().set_bbox_to_anchor((0.5, -0.14))
+        ax.text(-0.12, 1.04, f"({letter})", transform=ax.transAxes, fontsize=10,
+                ha="left", va="bottom", color=INK)  # fmt: skip
+    figure.subplots_adjust(left=0.07, right=0.98, top=0.92, bottom=0.36, wspace=0.22)
+    return figure
+
+
+def solver_figures(potts: Path, copies: Path, out: Path, commit: str) -> Path:
+    """Figure 18 into `out`, stamped with each record's data hash and the code."""
+    import pickle
+
+    import matplotlib.pyplot as plt
+    from port.extensions.figure_style import figure_font
+
+    out.mkdir(parents=True, exist_ok=True)
+    records = [pickle.loads(p.read_bytes()) for p in (potts, copies)]
+    text = (
+        f"potts {data_hash(records[0])} · copy states {data_hash(records[1])}"
+        f" · code {commit}"
+    )
+    with figure_font():
+        figure = solver_figure(*records)
+        stamp(figure, text)
+        figure.savefig(out / SOLVERS, dpi=DPI, facecolor="white",
+                       metadata={"Software": None})  # fmt: skip
+        plt.close(figure)
+    return out / SOLVERS
+
+
 QUESTIONS: dict[str, tuple[str, str]] = {
     "truth/truth_combined.png": (
-        "What was planted, on one page: tree, (A, B) profile, RDR and BAF per clone, spatial clones?",
+        "What was planted, on one page: tree, (A, B) profile, RDR and BAF per clone?",
         "`port.sim.truth_figure.truth_combined_figure`",
     ),
     "truth/mutation_tree.png": (
@@ -683,6 +739,10 @@ QUESTIONS: dict[str, tuple[str, str]] = {
         "Which planted classes are recovered exactly, with and without phase?",
         "`exact_figure`: `tests.sim_audit.planted_classes`",
     ),
+    "solvers/solver_combined.png": (
+        "How far above the best does each spatial solver and each copy-state start end, and how fast?",
+        "`solver_figure`: `tests.studies.potts_plot.draw`, `tests.studies.copy_state_plot.draw`",
+    ),
 }
 """Each committed file under `OUT`: the question it answers, and its source."""
 
@@ -696,6 +756,11 @@ KEY_STUDIES: dict[str, tuple[str, str, str]] = {
     ),
 }
 """Each key study's figure (label `key_study`) under `OUT/key_studies/`: question, source, regenerate command."""
+
+
+def ledger_name(fixture: str, digest: str) -> str:
+    """The run's fixture name in the metrics ledger: one per r0 generation."""
+    return f"{fixture}_r0_{digest}"
 
 
 def readme(
@@ -718,7 +783,7 @@ def readme(
 {recovery["exact_altered_minor"]:.4f} (phased {recovery["exact_altered"]:.4f}), from one
 `run_cnaster_port {" ".join(FLAGS)}` run on `sim/manifests/{fixture}.toml` r0 at
 code `{commit}`: {recovery["wall"]:.0f} s wall, {recovery["peak_gb"]:.2f} GB peak.
-Ledger `run_id` `{run_id}` (`docs/metrics/`, fixture `{fixture}_ln_r0`).
+Ledger `run_id` `{run_id}` (`docs/metrics/`, fixture `{ledger_name(fixture, digest)}`).
 
 Regenerate from a clean tree, so the stamp carries no `+`; it draws r0 into
 `.cache/paper_figures/` where `--draw` is not given, and refuses any r0 not
@@ -731,6 +796,9 @@ hashing to `{digest}`:
 draw panel (a) on a slide mocked from the planted labels (`tests.he_slide`):
 the fixture has no H&E image, and the run never reads the mock.
 `truth/phase.png` is flat: this r0 plants {switches} phase switches.
+`solvers/solver_combined.png` is not drawn from this fixture: `--solvers POTTS.pkl COPY.pkl`
+draws it from a `tests.studies.potts_stream` and a `tests.studies.copy_state_stream` record,
+and its stamp names both records' data hashes.
 
 | File | Question | Source |
 | --- | --- | --- |
@@ -756,7 +824,14 @@ def main(argv: list[str] | None = None) -> int:
                         help="the directory holding <fixture>/r0; drawn if not given")  # fmt: skip
     parser.add_argument("--out", type=Path, default=OUT)
     parser.add_argument("--truth-only", action="store_true", help="figures 1-8 alone")
+    parser.add_argument("--solvers", nargs=2, type=Path, default=None,
+                        metavar=("POTTS.pkl", "COPY.pkl"),
+                        help="figure 18 alone, from a potts_stream and a copy_state_stream record")  # fmt: skip
     arguments = parser.parse_args(argv)
+    if arguments.solvers is not None:
+        potts, copies = arguments.solvers
+        print(solver_figures(potts, copies, arguments.out / "solvers", code()))
+        return 0
 
     # NB read before anything is written, so the set's own files never mark it `+`
     commit = code()
@@ -785,7 +860,7 @@ def main(argv: list[str] | None = None) -> int:
     recovery = {**run.recovery, "fixture_hash": digest, "peak_gb": run.peak_gb}
     run_id = write(
         recovery,
-        fixture=f"{arguments.fixture}_ln_r0",
+        fixture=ledger_name(arguments.fixture, digest),
         args=" ".join(FLAGS),
         note=f"#624 paper figures: {arguments.fixture} r0 {digest}, --sal",
         dirty=commit.endswith("+"),
