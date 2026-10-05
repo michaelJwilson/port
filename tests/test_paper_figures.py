@@ -78,8 +78,8 @@ def _texts(figure: Any) -> list[str]:
 
 @pytest.mark.snapshot
 def test_the_compare_figures_draw_what_their_inputs_hold(tmp_path: Path) -> None:
-    """Figures 14-17 on a tiny truth and fit, no pipeline run: the ARI and
-    matching in 14, the confusion's shares in 15, one mark per swapped or
+    """Figures 14-17 on a tiny truth and fit, no pipeline run: the matching in
+    14 and no title (T- #660: the ARI is the README's), the confusion's shares in 15, one mark per swapped or
     wrong bin in 16, the per-class shares in 17, each written with its stamp."""
     import matplotlib as mpl
 
@@ -91,7 +91,7 @@ def test_the_compare_figures_draw_what_their_inputs_hold(tmp_path: Path) -> None
     c = _tiny()
 
     labels = pf.labels_figure(c)
-    assert "clone ARI 0.8125" in labels._suptitle.get_text()
+    assert labels._suptitle is None
     texts = _texts(labels)
     assert "$m_1$ $\\leftrightarrow$ fit 1" in texts
     assert "fit 3, unmatched" in texts
