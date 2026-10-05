@@ -20,8 +20,7 @@ with `cnaster` is an assumption.
 `compute_emission_probability_nb_betabinom_coded` appeared in no swap table.
 #517 step 8 installed the first and last (the `reindex_clones` row reorders
 through `hmrf.reindex`; `hmm_phased` is a `SWAPS` row) and moved the two
-figures to `sandbox/patch/plotting/`, since moved to the branch
-`reference/205-278-emission-genomic-loh` (T- #617). The next one is declared below with
+figures to `sandbox/patch/plotting/`. The next one is declared below with
 its reason, which makes it a decision rather than a default.
 """
 
