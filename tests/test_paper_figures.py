@@ -125,3 +125,27 @@ def test_the_compare_figures_draw_what_their_inputs_hold(tmp_path: Path) -> None
     written = pf.compare_figures(c, tmp_path, "tiny 00000000 · code 0000000")
     assert [p.name for p in written] == list(pf.FIGURES)
     assert all(p.stat().st_size > 0 for p in written)
+
+
+@pytest.mark.infra
+def test_the_solver_panel_draws_only_the_tables_solvers() -> None:
+    """T- #660: a stream holding a solver `potts_plot.TABLE` dropped draws
+    none of its runs; the kept solver's runs are all drawn."""
+    from tests.studies import potts_plot
+
+    rows = [
+        {"problem": 0, "solver": solver, "seed": seed, "seconds": 1.0, "energy": 5.0,
+         "polish_seconds": 0.1, "polished": 4.0, "both_seconds": 0.2, "both": 4.0}
+        for solver in ("sal:icm", "port:icm") for seed in range(3)
+    ]  # fmt: skip
+    record = {
+        "rows": rows,
+        "done": [0],
+        "problems": {0: {"truth_energy": 3.0, "bound": 1.0}},
+    }
+
+    drawn = potts_plot.frame(record)
+
+    assert "port:icm" not in potts_plot.NUMBER
+    assert sorted(set(drawn.solver)) == ["sal:icm"]
+    assert len(drawn) == 3
