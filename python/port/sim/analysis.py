@@ -528,16 +528,15 @@ def draw_tree(
     for node, up in t.parent.items():
         if up is not None:
             children.setdefault(up, []).append(node)
+    # NB each edge is as long as its events, one unit apiece, and an edge with
+    #    none one unit: at half a unit, an eventless ancestor sat on its
+    #    children's first ticks and their labels ran over it (T- #660).
+    count = t.events.groupby("node").size().to_dict()
     at = {"normal": 0.0}
-    for e in t.events.itertuples():
-        at[e.node] = max(at.get(e.node, 0.0), float(e.time))
-    for node, up in t.parent.items():
-        if node not in at:
-            at[node] = at.get(up or "normal", 0.0) + 0.5
 
     def settle(node: str) -> None:
         for child in children.get(node, []):
-            at[child] = max(at[child], at[node] + 0.5)
+            at[child] = at[node] + max(int(count.get(child, 0)), 1)
             settle(child)
 
     settle("normal")
@@ -566,8 +565,10 @@ def draw_tree(
             continue
         ax.plot([at[up], at[up], at[node]], [y[up], y[node], y[node]],
                 color=MUTED, linewidth=1.2 * small ** 0.5)  # fmt: skip
-        for e in t.events[t.events["node"] == node].itertuples():
-            x = e.time - 0.5
+        for k, e in enumerate(
+            t.events[t.events["node"] == node].sort_values("time").itertuples()
+        ):
+            x = at[up] + k + 0.5
             ax.plot([x, x], [y[node] - 0.06, y[node] + 0.06], color=INK,
                     linewidth=1.0 * small ** 0.5)  # fmt: skip
             ax.text(x, y[node] + 0.1, e.label, ha="center", va="bottom",
