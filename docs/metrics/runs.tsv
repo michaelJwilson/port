@@ -72,3 +72,5 @@ aec3403-dev_tree_1s_easy_r0-0606	2026-10-01T06:06Z	aec3403	-- --sal --no-plots	t
 aec3403-dev_tree_1s_hard_r0-0611	2026-10-01T06:11Z	aec3403	-- --sal --no-plots	tests/sim_audit.py::main	HISTORY #537 Re-land #530, #531, #533, #535 on main: #517 steps 5–8
 261c8b2-dev_tree_1s_easy_r0-0621	2026-10-01T06:21Z	261c8b2	-- --sal --no-plots	tests/sim_audit.py::main	HISTORY #522 Re-land #521 on main: 0.99 integer-clone agreement (#518)
 261c8b2-dev_tree_1s_hard_r0-0627	2026-10-01T06:27Z	261c8b2	-- --sal --no-plots	tests/sim_audit.py::main	HISTORY #522 Re-land #521 on main: 0.99 integer-clone agreement (#518)
+0eaac23-dev_tree_1s_easy_ln_r0-1935	2026-10-01T19:35Z	0eaac23	--sal --png-copies	tests/sim_audit.py::main	#624 paper figures: dev_tree_1s_easy r0 22a5eb85, --sal
+dbf5436-dev_tree_1s_easy_r0_7ba9b01f-1607	2026-10-05T16:07Z	dbf5436	--sal --png-copies	tests/sim_audit.py::main	#624 paper figures: dev_tree_1s_easy r0 7ba9b01f, --sal
