@@ -53,7 +53,7 @@ PRIVATE_SURFACE = frozenset(
         ("cnaster.hmm_nophasing", "_nb_logpmf_1d"),
         ("cnaster.hmm_phased", "_switch_betabinom_1d"),
         # The four layout helpers `plot_clones_genomic` is built from (#278).
-        # `port.patch.plot_genomic` replaces that function and imports
+        # `port.sandbox.patch.plotting.genomic` replaces that function and imports
         # these rather than copying them: they draw the gridspec, the axis
         # furniture and the chromosome boundaries, and a copy would be 130
         # lines whose only job is to stay identical. Importing them is what

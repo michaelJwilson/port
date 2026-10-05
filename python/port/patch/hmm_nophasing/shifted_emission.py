@@ -22,8 +22,8 @@ defines. **Its definition is kept, and its function is not called**: `port`'s
 it debiases :math:`\log\mu` and every downstream number moves. The class
 defaults it off; `run_cnaster_port` turns it on unless `--no-shift` is given
 (`port.pipeline.SHIFT_SWAPS`). Off, the call goes to `cnaster`'s own coded
-emission unchanged -- the path `tests/test_buffered_emission.py` pinned
-bitwise, now on `reference/205-278-emission-genomic-loh` (T- #617) -- or to sal's where `emission_kernels` is `"sal"`. The flag is a class
+emission unchanged -- the path `tests/test_buffered_emission.py` pins
+bitwise -- or to sal's where `emission_kernels` is `"sal"`. The flag is a class
 attribute because `port` does not call this method -- `optimize_params` does,
 from inside `cnaster` -- so a keyword would have to be threaded through a
 function this repository does not replace.
