@@ -48,6 +48,8 @@ CORRESPONDENCE: dict[str, tuple[str, ...]] = {
     "sal.opt.emission_mixture": ("cnaster.hmm_initialize",),
     "sal.opt.mixture": ("cnaster.hmm_initialize",),
     "sal.search.mixture_starts": ("cnaster.hmm_initialize",),
+    "sal.opt.objective": ("cnaster.hmm_nophasing",),
+    "sal.opt.termination": ("cnaster.integer_copy",),
 }
 """Each declared upstream module, and the `cnaster` code whose claim rests on it.
 

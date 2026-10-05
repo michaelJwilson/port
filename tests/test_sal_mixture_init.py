@@ -216,8 +216,8 @@ def test_a_refused_seeding_is_dropped_and_the_best_survivor_kept(
     Referee: those four seedings run alone, each on the stream `sal`'s
     best-of spawns for it and polished to convergence, the best by final
     log-likelihood. Since sal #1136 `sal`'s best-of skips the refused
-    seeding itself, so port's fallback logs nothing (at sal `3ad4b04` it
-    logged "seeding 2 dropped"; T- #632 PR A).
+    seeding itself, and T- #632 PR B retired port's fallback, which logged
+    "seeding 2 dropped" at sal `3ad4b04`.
     """
     import logging
 
@@ -260,7 +260,7 @@ def test_a_refused_seeding_is_dropped_and_the_best_survivor_kept(
 def test_the_start_fails_only_when_every_seeding_is_refused(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Every seeding refused: the start raises, naming the start, rather than returning nothing."""
+    """Every seeding refused: sal's best-of raises, naming the start, rather than returning nothing."""
     from port.extensions import copy_starts
     from port.patch.hmm_initialize import sal_mixture
 
@@ -268,7 +268,7 @@ def test_the_start_fails_only_when_every_seeding_is_refused(
     held = copy_starts.instance(call)
     _refusing(monkeypatch, np.random.default_rng(0), set(range(5)))
 
-    with pytest.raises(ValueError, match="refused every seeding"):
+    with pytest.raises(ValueError, match="every one of 5 seedings"):
         copy_starts._seeded(
             sal_mixture.DEFAULT, call, held, np.random.default_rng(0), 10.0, {}
         )
@@ -281,17 +281,15 @@ outlier filter off (T- #596): `X`, `base`, `total`, `n_states` and
 
 
 @pytest.mark.release
-@pytest.mark.bug
-def test_sal_refuses_one_seeding_of_hard_with_the_filter_off(
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    """**T- #596:** `sal`'s best-of raises on the call; port's start drops seeding 1 and returns.
+@pytest.mark.patch
+def test_sal_survives_the_call_it_refused_on_hard_with_the_filter_off() -> None:
+    """**T- #596**, retired by sal #1136 (T- #632): `sal`'s best-of returns on the call, and port hands over its best.
 
-    `sal`'s beta-binomial M step refuses a component EM collapsed to weight
-    1e-17 at a weighted trial count of 1.02. Fails when `sal` survives the
-    call, and port's guard can go.
+    At sal `3ad4b04` the beta-binomial M step refused a component EM
+    collapsed to weight 1e-17 at a weighted trial count of 1.02, the best-of
+    raised, and port's `_surviving` dropped seeding 1. Referee: `sal`'s
+    `polished` on the same stream; port's start is its components.
     """
-    import logging
     from pathlib import Path
 
     from port.extensions import copy_starts
@@ -311,21 +309,19 @@ def test_sal_refuses_one_seeding_of_hard_with_the_filter_off(
     seconds = sal_mixture.POLISH_SECONDS
     rng = [int(saved["random_state"]), 0]
 
-    with pytest.raises(ValueError, match="trials must be >= 2 and weight positive"):
-        chosen.polished(
-            held,
-            np.random.default_rng(rng),
-            seconds=seconds / 2.0,
-            passes=None,
-            tolerance=1e-6,
-        )
+    _, best = chosen.polished(
+        held,
+        np.random.default_rng(rng),
+        seconds=seconds / 2.0,
+        passes=None,
+        tolerance=1e-6,
+    )
+    kept: Any = copy_starts._seeded(
+        sal_mixture.DEFAULT, call, held, np.random.default_rng(rng), seconds, {}
+    )
 
-    with caplog.at_level(logging.WARNING, logger="port.extensions.copy_starts"):
-        kept: Any = copy_starts._seeded(
-            sal_mixture.DEFAULT, call, held, np.random.default_rng(rng), seconds, {}
-        )
-
-    assert [r.getMessage().split(":")[1] for r in caplog.records] == [
-        " seeding 1 dropped"
-    ]
     assert np.asarray(kept.rate).size == int(saved["n_states"])
+    # NB both polish under a wall-clock budget, so to the sibling test's 1e-9.
+    np.testing.assert_allclose(
+        np.asarray(kept.rate), np.asarray(best.components.rate), rtol=1e-9
+    )

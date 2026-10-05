@@ -30,8 +30,6 @@ outliers and records are in `port.sandbox.extensions.copy_starts`
 
 from __future__ import annotations
 
-import copy
-import logging
 import time
 from collections.abc import Callable
 from typing import Any, NamedTuple
@@ -39,8 +37,6 @@ from typing import Any, NamedTuple
 import numpy as np
 
 from port.patch.hmm_initialize.sal_mixture import EXPOSURE_SCALE
-
-logger = logging.getLogger(__name__)
 
 __all__ = [
     "LATTICE",
@@ -507,55 +503,13 @@ def _seeded(
 
     chosen = lookup(name)
     if isinstance(chosen, BestOf) and chosen.select is Selection.POLISHED:
-        # NB `polished` spawns one stream per seeding from `rng`; a copy taken
-        #    first hands the survivors the same streams (T- #596).
-        spare = copy.deepcopy(rng)
-
-        try:
-            _, best = chosen.polished(
-                held, rng, seconds=seconds / 2.0, passes=None, tolerance=1e-6
-            )
-            return best.components
-        except ValueError:
-            return _surviving(chosen, held, spare, seconds / 2.0)
+        # NB sal's best-of skips a seeding that raises and names it in the
+        #    note (sal #1136), which port's `_surviving` did (T- #596, T- #632).
+        _, best = chosen.polished(
+            held, rng, seconds=seconds / 2.0, passes=None, tolerance=1e-6
+        )
+        return best.components
     return chosen(held, rng).components
-
-
-def _surviving(chosen: Any, held: Any, rng: np.random.Generator, seconds: float) -> Any:
-    """The best polished seeding of `chosen` among those `sal` does not refuse (T- #596).
-
-    On CalicoST hard (`8797710b`) with the outlier filter off, one seeding's
-    EM collapses a component to weight 1e-41 and `sal`'s dispersion M step
-    raises, which ended the run. The seedings are independent: each runs
-    again on the stream `polished` spawned for it, under the same per-round
-    budget, a refused one is logged and dropped, and the best by final
-    log-likelihood is kept. The start fails only when every seeding does.
-    """
-    from sal.search.mixture_starts import lookup, polish
-
-    rounds = -(-chosen.n // min(chosen.workers, chosen.n))
-    fits = []
-
-    for index, stream in enumerate(rng.spawn(chosen.n)):
-        try:
-            seeded = lookup(chosen.name)(held, stream)
-            fits.append(
-                polish(
-                    held,
-                    seeded.components,
-                    seconds=seconds / rounds,
-                    tolerance=1e-6,
-                )
-            )
-        except ValueError as error:
-            logger.warning(f"{chosen.key}: seeding {index} dropped: {error}")
-
-    if not fits:
-        msg = f"{chosen.key}: sal refused every seeding"
-        raise ValueError(msg)
-
-    finals = [float(fit.log_likelihoods[-1]) for fit in fits]
-    return fits[int(np.argmax(finals))].components
 
 
 def seed_states(
