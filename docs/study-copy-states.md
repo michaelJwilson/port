@@ -70,6 +70,16 @@ compared.
 | 1 | `cnaster` `gmm_init` | 5,114 | 743 | 16.0 / 44.3 | 8 |
 | 3 | `distinct` (#348) | 5,013 | 267 | 9.3 / 45.3 | 9 |
 
+Rows 19-21 are port's own samplers, deleted in #634 for `sal.sample.hmc`'s on the same objective
+(`port.sandbox.known_copy.hmm_objective`), tuned on r0-r2 and run on r3-r12 × 10 seeds (PR- #642,
+n = 100 each, start and Baum-Welch seconds under the host lock with only the six sampler starts):
+
+| start | start gap | after BW | Missed after [%], median (95% bootstrap) | runs > 5% missed | s |
+| --- | --- | --- | --- | --- | --- |
+| `anneal`, `sal` / port | 4,372 / 4,384 | 126 / 122 | 1.14 (1.07-1.19) / 1.19 (1.12-1.68) | 24% / 37% | 20.8 / 19.6 |
+| tempering, `sal` / port | 4,425 / 4,372 | 127 / 123 | 1.12 (1.09-1.18) / 1.17 (1.11-1.60) | 15% / 29% | 19.5 / 17.5 |
+| `hmc`, `sal` / port | 4,404 / 4,395 | 122 / 120 | 1.14 (1.09-1.19) / 1.10 (1.08-1.20) | 16% / 25% | 13.8 / 13.6 |
+
 `gaussian-em` refuses on 80 of 100 runs, as in the original: a component's variance collapses on the normal
 clone's point mass, and `sal` refuses rather than floor it (`ValueError` at the variance floor, every error
 of the rerun). The figure is `tests.studies.copy_state_plot` over the merged stream,
@@ -85,12 +95,13 @@ code 67d8874`); `python -m tests.studies.copy_state_plot OUT/<stem>.pkl` redraws
   (`port.patch.hmm_nophasing.nb_logpmf`), pinned against scipy to 1e-9.
 - **Beta-binomial precision at large tau** (#561) and **negative `emission++` divergences** (#562): the
   latter clamped at 0 for the study.
-- The numerics now come from PR- #594 (`port.pipeline.LOG_SPACE_SWAPS`, `sal_mixture.clamped_divergence`).
+- The numerics now come from PR- #594 (`port.pipeline.LOG_SPACE_SWAPS`; the divergence floor is sal #1136's since T- #632).
   The numbers above were measured under this branch's own patch, which swapped the negative binomial
   alone; `port.sandbox.known_copy` now also runs PR- #594's beta-binomial (#561). Rerun at 67d8874: the
 table above, which matches the original on 17 of 21 starts.
 - **`sal`'s surrogate samplers sample a Gaussian mixture on raw counts and snap to observed rows** (#563).
-  Replaced in the study by samplers on the HMM's own NLL (`port.sandbox.known_copy.hmm_samplers`).
+  Replaced in the study by samplers on the HMM's own NLL: port's own at first, `sal.sample.hmc`'s through
+  `port.sandbox.known_copy.hmm_objective` since #634.
 - **The per-clone shift lets Baum-Welch split the neutral state** (#564): 42% missed from the truth start on
   one realization, at a 505-nat higher likelihood than the correct fit.
 

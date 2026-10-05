@@ -206,12 +206,12 @@ NAME_GAP = 4.0
 
 
 def _fit_tree(ax: Any) -> None:
-    """(a)'s x limits set so the tree fills the genome panels' width between its barcodes.
+    """(a)'s x limits set so the tree fills the genome panels' width up to its barcodes.
 
-    The root's barcode starts on the axis's left edge and each leaf's ends on
-    its right (`draw_tree(edges=True)`). The root sits `NAME_GAP` right of its
-    name after its barcode, and the tree is stretched until the leaf whose
-    name comes closest to its barcode is `NAME_GAP` from it.
+    The root, unlabelled at event time 0, sits `NAME_GAP` in from the axis's
+    left edge; each leaf's barcode ends on its right (`draw_tree(edges=True)`),
+    and the tree is stretched until the leaf whose name comes closest to its
+    barcode is `NAME_GAP` from it.
     """
     figure = ax.get_figure(root=True)
     renderer = figure.canvas.get_renderer()
@@ -226,22 +226,14 @@ def _fit_tree(ax: Any) -> None:
     def offset(text: Any) -> float:
         return abs(float(text.xyann[0])) / 72.0
 
-    names = [t for t in ax.texts if t.get_gid() == "name"]
+    leaves = [t for t in ax.texts if t.get_gid() == "name"]
     barcodes = {
         round(float(t.get_position()[1]), 6): t
         for t in ax.texts
         if t.get_gid() == "barcode"
     }
-    root = min(names, key=lambda t: t.xy[0])
-    leaves = [t for t in names if t is not root]
-    x0 = float(root.xy[0])
-    start = (
-        left
-        + inches(barcodes[round(float(root.xy[1]), 6)])
-        + gap
-        + inches(root)
-        + offset(root)
-    )
+    x0 = 0.0
+    start = left + gap
     # NB per leaf, the most inches per unit of event time it allows.
     scale = min(
         (
@@ -274,6 +266,28 @@ def symbol_of(label: str) -> str:
     from port.extensions.combined_figure import clone_symbol
 
     return str(clone_symbol(label))
+
+
+def simulated_tree_figure(r: Realization, width: float | None = None) -> Any:
+    """`truth_combined_figure`'s panel (a) alone: the simulated clone tree, `width` wide (T- #660)."""
+    import matplotlib.pyplot as plt
+
+    from port.extensions.combined_figure import FONT_SIZE, _put, page_style
+    from port.patch.plot_genomic import PAPER_WIDTH
+    from port.sim.analysis import draw_tree
+
+    width = PAPER_WIDTH if width is None else width
+    with page_style():
+        figure: Any = plt.figure(
+            figsize=(width, HEIGHTS["tree"]), dpi=300, facecolor="white"
+        )
+        ax = figure.add_axes((0.02, 0.02, 0.96, 0.88))
+        draw_tree(ax, r, event_size=FONT_SIZE, node_size=FONT_SIZE, dot=18.0,
+                  name=_symbol(r), ancestors=False, edges=True)  # fmt: skip
+        _put(ax, LEFT, width - 0.05)
+        figure.canvas.draw()
+        _fit_tree(ax)
+    return figure
 
 
 def write_truth_combined(r: Realization, out: Path) -> Path:
