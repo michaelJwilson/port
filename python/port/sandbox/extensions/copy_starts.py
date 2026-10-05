@@ -19,8 +19,11 @@ anyone rerunning the study (`tests.studies.copy_starts`):
   the stages it takes and whether it reads the covariate. `sal`'s mixture
   starts (`sal.search.mixture_starts`; `kmeans++x5+em` was `--sal`'s,
   #489), `cnaster`'s `gmm_init` and `cna_mixture_init`, port's `distinct`
-  (#348), `rdr-quantiles`, and the lattice by EM (`lattice-em`), all
-  seeded, then polished by `sal`'s EM, on the same objective.
+  (#348), `rdr-quantiles`, and the lattice by EM (`lattice-em`: the
+  lattice with `soft_weights`, set aside here by T- #660), all seeded, then
+  polished by `sal`'s EM, on the same objective. `sal`'s `data` start is
+  `sal`'s own and runs through the same lookup; T- #660 dropped it, with
+  `distinct`, `rdr-quantiles` and `lattice-em`, from the study's figure.
 - **Port's own starts (#540)**: `EMISSION_VARIANTS` (emission++ seeding
   with trimming, coverage weighting, pooling, Lloyd rounds, or best-of-n by
   the HMM's likelihood), `HMM_SAMPLERS` (samplers on the HMM's own
@@ -80,6 +83,7 @@ __all__ = [
     "run_start",
     "seed_states",
     "smoothed",
+    "soft_weights",
     "starts",
     "write_captured",
 ]
@@ -370,6 +374,29 @@ def pooled_exposure(call: CopyCall) -> np.ndarray:
     return expected
 
 
+def soft_weights(
+    density: np.ndarray, iterations: int = 3
+) -> tuple[np.ndarray, np.ndarray, float]:
+    """`lattice_start`'s assignment by EM: the E step's posteriors under the weights, and the mixture log-likelihood.
+
+    The weights, NB size, BB concentration and error rate are then its M
+    step, on a lattice held fixed (`lattice-em`, #540). Moved here from
+    `port.extensions.copy_starts.lattice_start`'s `em` flag (T- #660).
+    """
+    from scipy.special import logsumexp
+
+    n, k = density.shape
+    log_weight = np.full(k, -np.log(k))
+    floor = 1.0 / (10.0 * n)
+    responsibility = np.zeros((n, k))
+    for _ in range(iterations):
+        joint = density + log_weight
+        responsibility = np.exp(joint - logsumexp(joint, axis=1, keepdims=True))
+        log_weight = np.log(np.maximum(responsibility.mean(axis=0), floor))
+    joint = density + log_weight
+    return responsibility, log_weight, float(logsumexp(joint, axis=1).sum())
+
+
 def rdr_quantile_states(call: CopyCall) -> tuple[np.ndarray, np.ndarray]:
     """`n_states` states from read depth alone: rows cut at quantiles of log RDR, each group's pooled folded BAF.
 
@@ -482,7 +509,7 @@ def _port_starts() -> dict[
         ),
         "lattice-em": (
             Row("lattice-em", "port (#540)", both, covariate=True, stochastic=False),
-            lambda call, _rng: lattice_start(call, em=True),
+            lambda call, _rng: lattice_start(call, weights=soft_weights),
         ),
         "rdr-quantiles": (
             Row("rdr-quantiles", "port (#540)", both, covariate=True, stochastic=False),

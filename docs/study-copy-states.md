@@ -16,6 +16,8 @@ at 19.9%.
    reads, clones stacked along the genome, 7 states. About 7,700 rows per realization.
 2. **Starts.** Every family in `port.sandbox.extensions.copy_starts`, each as its own algorithm's output, with no
    `sal` mixture polish. A stochastic start runs 10 seeds.
+   Since T- #660 `STARTS` holds the 9 the paper figure draws (`calicost-gmm`, `lattice`, `prior`, `kmeans++`,
+   `emission++`, `gaussian-em` and the three HMM samplers); `--all` runs the rest. The table below predates it.
 3. **Polish.** `--sal` Baum-Welch: `port.patch.hmm_nophasing` with the per-clone shift (#276, #293), `sal`
    emission kernels, analytic gradients and the Rust lattice. Every score, a start's included, is on this
    objective: a start is decoded, shifted per clone, and rescored.

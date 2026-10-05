@@ -43,6 +43,8 @@ __all__ = [
     "STAGES",
     "CopyCall",
     "CopyStart",
+    "Weights",
+    "classified",
     "instance",
     "lattice_start",
     "polish_states",
@@ -323,8 +325,35 @@ def _fit_shapes(
     return size, concentration, error
 
 
+Weights = Callable[[np.ndarray, int], tuple[np.ndarray, np.ndarray, float]]
+"""`(rows, states)` log density and iterations to responsibilities, log state weights and the criterion."""
+
+
+def classified(
+    density: np.ndarray, iterations: int = 3
+) -> tuple[np.ndarray, np.ndarray, float]:
+    """Each row's state by likelihood plus log weight, iterated: the classification likelihood a mixture's weights give.
+
+    Without the weights every row takes whichever state suits it, so the
+    tail of the depth distribution takes the gains and the bulk's scale
+    drifts below its median. Returns the hard responsibilities, the log
+    weights and the classification log-likelihood, the lattice held fixed.
+    """
+    n, k = density.shape
+    log_weight = np.full(k, -np.log(k))
+    floor = 1.0 / (10.0 * n)
+    responsibility = np.zeros((n, k))
+    for _ in range(iterations):
+        joint = density + log_weight
+        responsibility = np.zeros((n, k))
+        responsibility[np.arange(n), np.argmax(joint, axis=1)] = 1.0
+        log_weight = np.log(np.maximum(responsibility.mean(axis=0), floor))
+    joint = density + log_weight
+    return responsibility, log_weight, float(joint.max(axis=1).sum())
+
+
 def lattice_start(
-    call: CopyCall, *, rounds: int = LATTICE_ROUNDS, em: bool = False
+    call: CopyCall, *, rounds: int = LATTICE_ROUNDS, weights: Weights = classified
 ) -> tuple[np.ndarray, np.ndarray]:
     """`n_states` of the integer `(A, B)` lattice, as `lattice_decode` places them, chosen by the rows (#540).
 
@@ -335,10 +364,9 @@ def lattice_start(
     exposure and trials.
 
     - Rows are assigned by likelihood plus log occupancy, iterated, the
-      classification likelihood a mixture's weights give. With `em`, the
-      assignment is the E step's posteriors instead, and the weights, NB
-      size, BB concentration and error rate their M step: EM on a lattice
-      held fixed.
+      classification likelihood a mixture's weights give (`classified`).
+      `weights` replaces that assignment: the sandbox's `lattice-em` passes
+      the E step's posteriors (`port.sandbox.extensions.copy_starts`, T- #660).
     - The tumour fraction (`LATTICE_PURITY`) and read-depth scale
       (`LATTICE_SCALE`) are those of the highest classification likelihood
       once each point's NB size, BB concentration and error rate are fitted
@@ -374,39 +402,8 @@ def lattice_start(
         density: np.ndarray = depth(rates(log_mu), size) + allele(share, concentration)
         return density
 
-    def fitted_weights(
-        density: np.ndarray, iterations: int = 3
-    ) -> tuple[np.ndarray, np.ndarray, float]:
-        """Responsibilities, state weights and the criterion, the lattice held fixed.
-
-        Hard (`em` false): each row's state by likelihood plus log weight,
-        iterated, the classification likelihood a mixture's weights give;
-        without the weights every row takes whichever state suits it, so the
-        tail of the depth distribution takes the gains and the bulk's scale
-        drifts below its median. EM: the posteriors under the weights, and
-        the mixture log-likelihood.
-        """
-        from scipy.special import logsumexp
-
-        n, k = density.shape
-        log_weight = np.full(k, -np.log(k))
-        floor = 1.0 / (10.0 * n)
-        responsibility = np.zeros((n, k))
-        for _ in range(iterations):
-            joint = density + log_weight
-            if em:
-                responsibility = np.exp(joint - logsumexp(joint, axis=1, keepdims=True))
-            else:
-                responsibility = np.zeros((n, k))
-                responsibility[np.arange(n), np.argmax(joint, axis=1)] = 1.0
-            log_weight = np.log(np.maximum(responsibility.mean(axis=0), floor))
-        joint = density + log_weight
-        criterion = (
-            float(logsumexp(joint, axis=1).sum())
-            if em
-            else float(joint.max(axis=1).sum())
-        )
-        return responsibility, log_weight, criterion
+    def fitted_weights(density: np.ndarray) -> tuple[np.ndarray, np.ndarray, float]:
+        return weights(density, 3)
 
     size, concentration, error = 20.0, 200.0, 0.01
     grid = [
@@ -485,9 +482,9 @@ Seed = Callable[[CopyCall, np.random.Generator], tuple[Any, Any]]
 
 LATTICE: dict[str, Seed] = {
     "lattice": lambda call, _rng: lattice_start(call),
-    "lattice-em": lambda call, _rng: lattice_start(call, em=True),
 }
-"""port's starts that run live: the lattice, by classification and by EM."""
+"""port's start that runs live: the lattice, by classification. Its EM twin,
+`lattice-em`, is the sandbox's (T- #660)."""
 
 
 def _seeded(
