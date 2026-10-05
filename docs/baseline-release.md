@@ -184,3 +184,25 @@ against the same-host 3ad4b04 run (`rdrbaf_final_nstates7_smp.npz`):
 100, so the beta-binomial density is the stage that moved; the
 negative-binomial shape 1/α is 2.2, 2.1 and 11.3, below it. The log-likelihoods are
 of two density implementations and are not ranked against each other.
+
+## `snakes_and_ladders` `b61dfba` → `253c84f` (T- #671)
+
+**TL;DR:** on 3 fixtures every `--sal` score equals the old pin's, and on the
+two simulated ones every output `.tsv` and `.npz` is bitwise equal (12 of 12
+files each). Wall is 1.04–1.06× the old pin, one run each, which does not
+establish a ratio.
+
+- Host: 4 cores; each pin ran serially under the host lock, numba warmed by
+  an untimed `dev` run, load1 1.3–2.1 at each start, 2026-10-05
+  22:35–23:07 UTC. The old pin ran `cb0baca` (`main`), the new one the
+  T- #671 branch at `10888f7`, whose `python/port/` differs from `main`
+  only in a sandbox docstring.
+- `dev` is `tests.recovery_audit --instance dev --states 8 --outer 1
+  --iterations 3 -- --sal`; the others are `tests.sim_audit -- --sal
+  --no-plots`. The scores also equal PR- #656's tier R at `e112e0a`.
+
+| fixture | hash | clone_ari | clone_ari_int | copy_ari | copy_ari_pf | exact_altered | exact_altered_pf | bins | wall_s b61dfba / 253c84f |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `dev` | `07b82e92` | 1.0 | 1.0 | 0.9992 | — | — | — | — | 111.9 / 117.0 |
+| `dev_tree_1s_easy_r0` | `d08e3a1b` | 0.9721 | 0.9721 | 0.9730 | 0.9752 | 0.5246 | 0.9549 | 1838 | 140.2 / 146.3 |
+| `dev_tree_1s_hard_r0` | `d2938975` | 0.2187 | 0.2187 | 0.4019 | 0.4018 | 0.0 | 0.1358 | 1786 | 133.0 / 141.1 |
