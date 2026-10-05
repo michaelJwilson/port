@@ -27,8 +27,7 @@ import pandas as pd
 
 NAMES = {
     "field_argmax": "field-argmax", "anneal": "glauber", "tempering": "parallel tempering",
-    "alpha-rust-fuse-merge": "alpha-rust-fuse", "trws": "trw-s", "cluster-tempering": "cluster tempering",
-    "sw-field-glauber": "sw-field + glauber", "wolff-field-glauber": "wolff-field + glauber",
+    "alpha-rust-fuse-merge": "alpha-rust-fuse", "trws": "trw-s",
 }  # fmt: skip
 """The names the figure prints where they differ from the solver's own."""
 
@@ -48,31 +47,25 @@ TABLE = (
     ("Graph cuts", (
         ("sal:alpha-expansion", "Each clone in turn claims spots by a min cut"),
         ("sal:alpha-beta-swap", "Min-cut swaps between two clones at a time"),
-        ("port:alpha-rust", f"{tt('alpha-expansion')}, Rust min cut"),
-        ("port:alpha-rust-fuse-merge", f"{tt('alpha-rust')} fused with argmax descent (--sal)"),
-        ("port:alpha-rust-icm", f"{tt('alpha-rust')}, then cnaster's {tt('icm')}"),
+        ("port:alpha-rust-fuse-merge", f"Rust {tt('alpha-expansion')} fused with argmax descent (--sal)"),
     )),
     ("Local descent", (
         ("sal:icm", "Each spot to its best clone given neighbours, in order"),
-        ("port:icm-numba", f"sal's {tt('icm')}, compiled"),
         ("sal:icm-random", f"{tt('icm')} in a random order: heat bath at T = 0"),
-        ("port:icm", f"cnaster's {tt('icm')}, random spot order"),
         ("sal:field_argmax", "Each spot's best clone, neighbours ignored"),
     )),
     ("Sampling, message passing", (
         ("sal:anneal", "Single-site heat bath, annealed"),
         ("sal:swendsen-wang", "Cluster moves over bonded spots, annealed"),
         ("sal:wolff", "One grown cluster flipped per move, annealed"),
-        ("port:sw-field", f"{tt('swendsen-wang')}, each cluster's clone drawn from its field"),
-        ("port:sw-field-glauber", f"{tt('sw-field')}, a {tt('glauber')} sweep after each move"),
-        ("port:wolff-field", f"{tt('wolff')}, the cluster's clone drawn from its field"),
-        ("port:wolff-field-glauber", f"{tt('wolff-field')}, a {tt('glauber')} sweep after each move"),
         ("sal:tempering", f"{tt('glauber')} replicas on a temperature ladder, swapped"),
-        ("sal:cluster-tempering", f"{tt('swendsen-wang')} replicas on the ladder, Houdayer moves between them"),
         ("sal:max-product", "Loopy max-product belief propagation"),
         ("sal:trws", "Tree-reweighted message passing: its decode"),
     )),
 )  # fmt: skip
+"""The solvers drawn (T- #660). Set aside from the figure, still in `clone_label_arms` or `--only`:
+`alpha-rust`, `alpha-rust-icm`, `icm-numba`, cnaster's `icm`, the four field-weighted cluster moves
+and cluster tempering."""
 NUMBER = {
     solver: k + 1 for k, solver in enumerate(s for _, rows in TABLE for s, _ in rows)
 }
@@ -107,7 +100,8 @@ def _bars(values: pd.Series) -> tuple[float, list[list[float]]]:
 def frame(record: dict[str, Any]) -> pd.DataFrame:
     """The record's successful runs on finished realizations, with their bound, truth and cumulative runtimes."""
     rows = pd.DataFrame(record["rows"])
-    rows = rows[rows.problem.isin(record["done"])]
+    # NB a stream may hold solvers `TABLE` no longer draws (T- #660)
+    rows = rows[rows.problem.isin(record["done"]) & rows.solver.isin(NUMBER)]
     if "error" in rows:
         rows = rows[rows.error.isna()]
     problems = record["problems"]
@@ -293,12 +287,16 @@ def stamp(fig: Any, record: dict[str, Any]) -> str:
     return text
 
 
-def figure(record: dict[str, Any], out: Path) -> Path:
-    """The gap figure and its table, written to `out`."""
-    import matplotlib as mpl
+def draw(
+    ax: Any, record: dict[str, Any], key: bool = False, centre: bool = False
+) -> pd.DataFrame:
+    """The gap panel on `ax`: each solver's runs against runtime, numbered as in `TABLE`; returns the runs drawn.
 
-    mpl.use("Agg")
-    import matplotlib.pyplot as plt
+    `key` adds each solver's number and name to the legend below the axes,
+    for a figure that draws no table beside it (`solver_combined`, T- #660).
+    `centre` widens the gap axis, in decades, until the truth's median is its
+    midpoint; no limit narrows, so no point is clipped.
+    """
     from matplotlib.ticker import FixedLocator, FuncFormatter
 
     d = frame(record)
@@ -306,11 +304,6 @@ def figure(record: dict[str, Any], out: Path) -> Path:
     d[["y", "py", "by"]] = d[["y", "py", "by"]].clip(lower=FLOOR)
     n_problems, n_starts = len(record["done"]), record["starts"]
 
-    plt.rcParams.update({"font.size": 9})
-    fig = plt.figure(figsize=(15.5, 6.2))
-    grid = fig.add_gridspec(1, 2, width_ratios=[1.2, 1], wspace=0.04)
-    ax, tab = fig.add_subplot(grid[0]), fig.add_subplot(grid[1])
-    tab.axis("off")
     truths = np.array(
         [
             max(p["truth_energy"] - p["bound"], FLOOR)
@@ -434,7 +427,12 @@ def figure(record: dict[str, Any], out: Path) -> Path:
         float(d.groupby("solver").seconds.quantile(0.1).min()) * 0.6, slowest * 1.3
     )
     ax.set_yscale("log")
-    ax.set_ylim(FLOOR * 0.5, float(d.y.max()) * 3)
+    low, high = FLOOR * 0.5, float(d.y.max()) * 3
+    if centre:
+        truth = float(np.median(truths))
+        reach = max(truth / low, high / truth)
+        low, high = truth / reach, truth * reach
+    ax.set_ylim(low, high)
     ax.yaxis.set_major_locator(FixedLocator([FLOOR, *10.0 ** np.arange(-1, 7)]))
     ax.yaxis.set_major_formatter(
         FuncFormatter(
@@ -456,9 +454,29 @@ def figure(record: dict[str, Any], out: Path) -> Path:
         f"; #{', #'.join(str(NUMBER[s]) for s in sorted(g.index, key=lambda s: NUMBER[s]))} on {k}"
         for k, g in short.groupby(short)
     )
+    if key:
+        for solver in sorted(set(d.solver), key=lambda s: NUMBER[s]):
+            ax.plot([], [], "s" if solver.startswith("port:") else "o", color=_colour(solver),
+                    label=f"{NUMBER[solver]} {label(solver)}")  # fmt: skip
     ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.1), ncol=3, fontsize=7.5, frameon=False,
               title=f"{Path(record['manifest']).stem}: Median for {n_problems} realization{'s' if n_problems > 1 else ''} $\\times$ {n_starts} random starts{behind}",
               title_fontsize=7.5)  # fmt: skip
+    return d
+
+
+def figure(record: dict[str, Any], out: Path) -> Path:
+    """The gap figure and its table, written to `out`."""
+    import matplotlib as mpl
+
+    mpl.use("Agg")
+    import matplotlib.pyplot as plt
+
+    plt.rcParams.update({"font.size": 9})
+    fig = plt.figure(figsize=(15.5, 6.2))
+    grid = fig.add_gridspec(1, 2, width_ratios=[1.2, 1], wspace=0.04)
+    ax, tab = fig.add_subplot(grid[0]), fig.add_subplot(grid[1])
+    tab.axis("off")
+    d = draw(ax, record)
     # NB ranked on each solver's own output: R_C by the median gap to the bound, R_M by the median Missed
     wrong = missed(d, n_spots(record))
     rank_cost = ranks({str(n): float(g.y.median()) for n, g in d.groupby("solver")})
