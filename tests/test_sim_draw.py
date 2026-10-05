@@ -605,3 +605,52 @@ def test_the_map_cache_returns_the_parse_and_follows_the_file(
 
     path.write_text("\n".join([*rows, "chr2\t5\t0.0"]) + "\n")
     assert parse(path).keys() == {"1", "X", "2"}
+
+
+def _felsenstein(leaves: int, expected: float) -> DrawManifest:
+    """`dev_tree_1s_easy`'s `[cna]` and genome at `leaves` clones, opted into `felsenstein`; no resources read."""
+    manifest = from_document(extended(MANIFESTS / "dev_tree_1s_easy.toml"))
+    cna = {**manifest.tables["cna"], "mode": "felsenstein", "n_clones": leaves,
+           "expected_cnas": expected}  # fmt: skip
+    return DrawManifest({**manifest.tables, "cna": cna}, manifest.slices, manifest.root)
+
+
+@pytest.mark.analytic
+def test_felsenstein_trees_are_uniform_over_rooted_shapes_with_the_expected_events() -> (
+    None
+):
+    """T- #660: on 3 clones the (2 x 3 - 3)!! = 3 rooted binary trees, named by
+    the clone that branches off the founder alone, each drawn 1/3 of the time;
+    the mean event count `expected_cnas` = 7; every leaf edge at least one
+    event; within `SIGMAS` standard errors over 3,000 seeds."""
+    from port.sim.draw import draw_tree
+
+    manifest = _felsenstein(3, 7.0)
+    n = 3_000
+    outgroup: list[str] = []
+    totals = np.zeros(n)
+    for seed in range(n):
+        tree = draw_tree(manifest, np.random.default_rng(seed))
+        under_founder = [c for c, p in tree.parent.items() if p == "founder"]
+        assert len(under_founder) == 2
+        (alone,) = [c for c in under_founder if c in manifest.tumour]
+        outgroup.append(alone)
+        assert all(len(tree.edge_events[c]) >= 1 for c in manifest.tumour)
+        totals[seed] = sum(len(e) for e in tree.edge_events.values())
+
+    shares = pd.Series(outgroup).value_counts(normalize=True)
+    assert sorted(shares.index) == list(manifest.tumour)
+    third = np.sqrt((1 / 3) * (2 / 3) / n)
+    assert np.allclose(shares.to_numpy(), 1 / 3, atol=SIGMAS * third)
+    # NB the total is 3 held events plus a Poisson of mean 4: its variance is 4
+    assert totals.mean() == pytest.approx(7.0, abs=SIGMAS * np.sqrt(4.0 / n))
+    assert totals.min() >= 3
+
+
+@pytest.mark.infra
+def test_felsenstein_refuses_fewer_expected_events_than_clones() -> None:
+    """`expected_cnas` below `n_clones` cannot hold one event per leaf edge."""
+    document = extended(MANIFESTS / "dev_tree_1s_easy.toml")
+    document["cna"]["expected_cnas"] = 2
+    with pytest.raises(ValueError, match="felsenstein"):
+        from_document(document)
