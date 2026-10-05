@@ -76,6 +76,8 @@ class Genes:
     """Each gene's row in the table it was read from."""
     key: np.ndarray
     """Each gene's index label in that table: what a later table is matched on."""
+    name: np.ndarray | None = None
+    """Each gene's `gene` in that table, where it has the column (#613)."""
 
     @classmethod
     def from_table(cls, table: Any) -> Genes:
@@ -94,6 +96,9 @@ class Genes:
             end=np.asarray(table["END"], dtype=np.int64)[row],
             row=row,
             key=np.asarray(table.index)[row],
+            name=np.asarray(table["gene"], dtype=object)[row]
+            if "gene" in table
+            else None,
         )
 
     @property

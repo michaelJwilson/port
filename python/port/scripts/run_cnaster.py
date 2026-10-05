@@ -544,10 +544,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         #    reads each clone's counts from the fit this captures; entered
         #    before `patched`, so the shift's row installs the capturing
         #    `run_core_inference`.
+        fits: list[Any] = []
         if copy_cap:
             from port.extensions.copy_likelihood import capture
 
-            stack.enter_context(capture())
+            fits = stack.enter_context(capture())
 
             for swap in COPY_SWAPS:
                 selected = with_options(
@@ -682,6 +683,12 @@ def main(argv: Sequence[str] | None = None) -> int:
 
         sampled = stack.enter_context(sampling.recording())
 
+        # NB each integer decode the run makes, for the decode's files (#613);
+        #    empty where `cnaster`'s decoders run.
+        from port.patch.integer_copy import recorded
+
+        decodes = stack.enter_context(recorded())
+
         started = time.perf_counter()
         pipeline.run_cnaster(arguments.config)
         wall = time.perf_counter() - started
@@ -702,8 +709,10 @@ def main(argv: Sequence[str] | None = None) -> int:
                 else "cnaster",
                 "parsimony": settings.parsimony if copy_cap else None,
             },
-            lineage.table(),
+            lineage,
             sampled,
+            fits[-1] if fits else None,
+            decodes[-1] if decodes else None,
         )
     if kept is not None:
         _write_copy_sets(arguments.config, kept)
@@ -713,17 +722,28 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 
 def _write_outputs(
-    config: str, flags: dict[str, Any], segments: Any, samples: Any = None
+    config: str,
+    flags: dict[str, Any],
+    lineage: Any,
+    samples: Any = None,
+    captured: Any = None,
+    decode: Any = None,
 ) -> None:
     """`port.extensions.outputs` into each run directory the run wrote.
 
-    `segments` is the run's lineage, one row per gene and one label column
-    per segmentation (#438), written beside them as `gene_segments.tsv`.
-    `samples` is the run's `port.extensions.samples` recording (#418).
+    `lineage` is the run's segmentations (#438), `samples` its
+    `port.extensions.samples` recording (#418), `captured` the last fit
+    `copy_likelihood.capture` kept and `decode` the last integer decode
+    (#613); each is `None` or empty where the run made none.
     """
     from pathlib import Path
 
-    from port.extensions.outputs import config_keys, run_directories, write_outputs
+    from port.extensions.outputs import (
+        RunRecord,
+        config_keys,
+        run_directories,
+        write_outputs,
+    )
 
     output_dir = config_keys(Path(config)).get("output_dir")
 
@@ -734,10 +754,12 @@ def _write_outputs(
         )
         return
 
+    record = RunRecord(
+        lineage=lineage, samples=samples, captured=captured, decode=decode
+    )
+
     for run in run_directories(Path(output_dir)):
-        write_outputs(run, Path(config), flags, samples)
-        if len(segments):
-            segments.to_csv(run / "gene_segments.tsv", sep="\t", index=False)
+        write_outputs(run, Path(config), flags, record)
         print(f"run_cnaster_port: outputs written to {run}", file=sys.stderr)
 
 

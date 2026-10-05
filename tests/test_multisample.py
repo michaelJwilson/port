@@ -58,6 +58,7 @@ def test_the_entry_point_recovers_the_shared_clones_in_every_sample(
     """One clone labelling across three samples: every clone in every sample,
     at most 2 spots per sample misplaced."""
     import matplotlib as mpl
+    from port.extensions.outputs import read_run_labels
     from port.scripts.run_cnaster import main
 
     from tests.run_config import isolated_run, write_run_cnaster_config
@@ -85,7 +86,8 @@ def test_the_entry_point_recovers_the_shared_clones_in_every_sample(
     # NB the claim is the labelling, so nothing is rendered (#403); the
     #    panels are `test_sample_layout_draws_a_panel_per_sample_in_the_runs_colours`'s.
     assert not list(output.rglob("*.pdf")), "--no-plots wrote a figure"
-    labels = pd.read_csv(next(output.rglob("clone_labels.tsv")), sep="\t", comment="#")
+    # NB the run's clones, merged where `port` merged them (#518, #613).
+    labels = read_run_labels(next(output.rglob("clone_labels.tsv")).parent)
     spots = labels["barcode"].str.slice(2, 7).astype(int).to_numpy()
     fitted = np.full(truth.n_spots, -1, dtype=np.int64)
     fitted[spots] = labels["clone_label"].to_numpy()
