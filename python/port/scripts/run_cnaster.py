@@ -49,6 +49,14 @@ from port.pipeline import (
     with_options,
 )
 
+GENOMIC_FIGURE = "port.patch.plot_genomic:plot_clones_genomic"
+"""The `FIGURE_SWAPS` row the shift installs with or without the figure swaps."""
+
+
+def _installs(selected: tuple[Any, ...], replacement: str) -> bool:
+    """Whether a row of `selected` installs `replacement`."""
+    return any(swap.replacement == replacement for swap in selected)
+
 
 def _layout(text: str) -> tuple[int, int]:
     """`"3,1"` as `(3, 1)`, both positive."""
@@ -282,8 +290,13 @@ def _settings(arguments: argparse.Namespace) -> Settings:
             asked(arguments.min_segment_normal_umi, patch and arguments.sal)
         ),
         distinct=bool(asked(arguments.distinct_init, shift and patch)),
+        # NB read by the shift's `run_core_inference` alone, so `--sal`'s
+        #    start is its default only where that row is installed (T- #617).
         hmm_start=str(
-            asked(arguments.hmm_start, "kmeans++x5+em" if arguments.sal else "none")
+            asked(
+                arguments.hmm_start,
+                "kmeans++x5+em" if arguments.sal and shift else "none",
+            )
         ),
         baf_start=str(asked(arguments.baf_start, "none")),
         parsimony=0.0 if arguments.no_parsimony_decode else PARSIMONY,
@@ -333,6 +346,7 @@ def _refusals(arguments: argparse.Namespace, settings: Settings) -> list[str]:
             ("--sal-emission", arguments.sal_emission),
             ("--distinct-init", arguments.distinct_init),
             ("--baf-start", arguments.baf_start),
+            ("--hmm-start", arguments.hmm_start),
         )
         if asked and not settings.shift
     ]
@@ -584,22 +598,29 @@ def main(argv: Sequence[str] | None = None) -> int:
                     parsimony=settings.parsimony,
                 )
         if shift:
+            selected = selected + SHIFT_SWAPS + LOG_SPACE_SWAPS
+
             # NB the emission kernels where `cnaster`'s are wrong (#560,
             #    #561), on the arm that already departs from its fit; the
             #    field compiles its kernels in, so it takes them as an option.
-            selected = with_options(
-                selected + SHIFT_SWAPS + LOG_SPACE_SWAPS,
-                "port.patch.hmrf:pipeline_clone_assignment",
-                log_space=True,
-            )
+            #    `--no-patch --shift` without `--sal` leaves its row out.
+            if _installs(selected, "port.patch.hmrf:pipeline_clone_assignment"):
+                selected = with_options(
+                    selected,
+                    "port.patch.hmrf:pipeline_clone_assignment",
+                    log_space=True,
+                )
 
             # NB the genomic figure draws each clone's line at `mu / Z_c` when
-            #    the fit it plots was shifted (#299).
-            selected = with_options(
-                selected,
-                "port.patch.plot_genomic:plot_clones_genomic",
-                logmu_shift=True,
-            )
+            #    the fit it plots was shifted (#299). Without the figure
+            #    swaps `cnaster`'s figure draws the line at `mu` and the
+            #    points at `mu / Z_c`, so the shift brings this one row
+            #    (T- #617).
+            if not figures:
+                selected = selected + tuple(
+                    swap for swap in FIGURE_SWAPS if swap.replacement == GENOMIC_FIGURE
+                )
+            selected = with_options(selected, GENOMIC_FIGURE, logmu_shift=True)
 
         if model:
             selected = with_options(
@@ -665,6 +686,11 @@ def main(argv: Sequence[str] | None = None) -> int:
                 + (", floor merged smallest first" if floor else "")
                 + (", distinct initial states" if distinct else "")
                 + (", shift included" if shift else "")
+                + (
+                    ", the genomic figure's shifted line"
+                    if shift and not figures
+                    else ""
+                )
                 + (", rust lattices" if rust else "")
                 + (", sal included" if arguments.sal else "")
                 + (
@@ -711,6 +737,9 @@ def main(argv: Sequence[str] | None = None) -> int:
 
         sampled = stack.enter_context(sampling.recording())
 
+        # NB the wall clock the run's files are dated by, so outputs go to
+        #    the directories this run wrote and not an earlier one's (T- #617).
+        since = time.time()
         started = time.perf_counter()
         pipeline.run_cnaster(arguments.config)
         wall = time.perf_counter() - started
@@ -733,22 +762,29 @@ def main(argv: Sequence[str] | None = None) -> int:
             },
             lineage.table(),
             sampled,
+            since=since,
         )
     if kept is not None:
-        _write_copy_sets(arguments.config, kept)
+        _write_copy_sets(arguments.config, kept, since=since)
 
     print(f"run_cnaster_port: {wall:.2f}s", file=sys.stderr)
     return 0
 
 
 def _write_outputs(
-    config: str, flags: dict[str, Any], segments: Any, samples: Any = None
+    config: str,
+    flags: dict[str, Any],
+    segments: Any,
+    samples: Any = None,
+    *,
+    since: float | None = None,
 ) -> None:
     """`port.extensions.outputs` into each run directory the run wrote.
 
     `segments` is the run's lineage, one row per gene and one label column
     per segmentation (#438), written beside them as `gene_segments.tsv`.
     `samples` is the run's `port.extensions.samples` recording (#418).
+    `since` excludes the directories an earlier run left (T- #617).
     """
     from pathlib import Path
 
@@ -763,15 +799,22 @@ def _write_outputs(
         )
         return
 
-    for run in run_directories(Path(output_dir)):
+    for run in run_directories(Path(output_dir), since):
         write_outputs(run, Path(config), flags, samples)
         if len(segments):
             segments.to_csv(run / "gene_segments.tsv", sep="\t", index=False)
         print(f"run_cnaster_port: outputs written to {run}", file=sys.stderr)
 
 
-def _write_copy_sets(config: str, kept: list[Any]) -> None:
-    """Write the credible sets beside the run's final fit."""
+def _write_copy_sets(
+    config: str, kept: list[Any], *, since: float | None = None
+) -> None:
+    """Write the credible sets beside the final fit this run wrote.
+
+    The fit is the one of the configured `hmm.n_states` written at or after
+    `since`, not the newest under `output_dir`, which may be another
+    configuration's (T- #617). With none, nothing is written, and it says so.
+    """
     from pathlib import Path
 
     import yaml
@@ -782,12 +825,29 @@ def _write_copy_sets(config: str, kept: list[Any]) -> None:
         print("run_cnaster_port: --copy-errors kept no fit", file=sys.stderr)
         return
 
-    output = Path(yaml.safe_load(Path(config).read_text())["paths"]["output_dir"])
-    fits = sorted(
-        output.rglob("rdrbaf_final_nstates*_smp.npz"), key=lambda p: p.stat().st_mtime
+    stated = yaml.safe_load(Path(config).read_text())
+    output = Path(stated["paths"]["output_dir"])
+    n_states = (stated.get("hmm") or {}).get("n_states")
+    pattern = (
+        "rdrbaf_final_nstates*_smp.npz"
+        if n_states is None
+        else f"rdrbaf_final_nstates{int(n_states)}_smp.npz"
     )
-    run = fits[-1].parent if fits else output
-    path = write_copy_sets(run, kept[-1])
+    fits = [
+        fit
+        for fit in output.rglob(pattern)
+        if since is None or fit.stat().st_mtime >= since
+    ]
+
+    if len(fits) != 1:
+        print(
+            f"run_cnaster_port: --copy-errors found {len(fits)} fits this run "
+            f"wrote under {output}; cnv_copy_sets.tsv not written",
+            file=sys.stderr,
+        )
+        return
+
+    path = write_copy_sets(fits[0].parent, kept[-1])
     print(f"run_cnaster_port: wrote {path}", file=sys.stderr)
 
 

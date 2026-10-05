@@ -556,7 +556,18 @@ def with_options(
 
     Keyed by the replacement rather than the `cnaster` name: two rows replace
     `write_fig`, and an option belongs to one of them.
+
+    Raises
+    ------
+    ValueError
+        If no row of `swaps` installs `replacement`: an option bound to a
+        row that is not installed is never read, and was silently dropped
+        (T- #617).
     """
+    if not any(swap.replacement == replacement for swap in swaps):
+        msg = f"no selected row installs {replacement}; {sorted(options)} would be dropped"
+        raise ValueError(msg)
+
     return tuple(
         swap._replace(options=(*swap.options, *options.items()))
         if swap.replacement == replacement

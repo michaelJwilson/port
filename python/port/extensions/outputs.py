@@ -80,6 +80,7 @@ __all__ = [
     "clone_labels_integer",
     "cnaster_labels",
     "config_keys",
+    "final_fit",
     "integer_clones",
     "merged_clone_labels",
     "run_directories",
@@ -90,17 +91,64 @@ __all__ = [
 ]
 
 
-def run_directories(output_dir: Path) -> Iterator[Path]:
-    """Each directory under `output_dir` holding a finished run's tables."""
+def run_directories(output_dir: Path, since: float | None = None) -> Iterator[Path]:
+    """Each directory under `output_dir` holding a finished run's tables.
+
+    Given `since`, a `time.time()`, only those whose `cnv_seglevel.tsv` was
+    written at or after it: `output_dir` is shared by every configuration
+    that names it, and a directory an earlier run left is not this run's
+    (T- #617).
+    """
     for table in sorted(Path(output_dir).rglob("cnv_seglevel.tsv")):
+        if since is not None and table.stat().st_mtime < since:
+            continue
         if any(table.parent.glob("rdrbaf_final_nstates*_smp.npz")):
             yield table.parent
 
 
-def _load(run: Path) -> tuple[pd.DataFrame, pd.DataFrame, dict[str, Any]]:
+def final_fit(run: Path, n_states: int | None = None) -> Path:
+    """The run's `rdrbaf_final_nstates{K}_smp.npz`, of `n_states` where given.
+
+    `cnaster` names its fit by `K` and nothing else, so two fits of
+    different `K` share one directory, and `cnv_seglevel.tsv` there is the
+    last one's. Without `n_states` only a lone fit is unambiguous (T- #617).
+
+    Raises
+    ------
+    FileNotFoundError
+        If `run` holds no such fit.
+    ValueError
+        If it holds several and `n_states` does not say which.
+    """
+    run = Path(run)
+
+    if n_states is not None:
+        path = run / f"rdrbaf_final_nstates{int(n_states)}_smp.npz"
+        if not path.exists():
+            msg = f"{run} holds no fit of {n_states} states"
+            raise FileNotFoundError(msg)
+        return path
+
+    fits = sorted(run.glob("rdrbaf_final_nstates*_smp.npz"))
+
+    if not fits:
+        msg = f"{run} holds no final fit"
+        raise FileNotFoundError(msg)
+    if len(fits) > 1:
+        msg = (
+            f"{run} holds {len(fits)} fits ({', '.join(p.name for p in fits)}); "
+            "state hmm.n_states to say which"
+        )
+        raise ValueError(msg)
+    return fits[0]
+
+
+def _load(
+    run: Path, n_states: int | None = None
+) -> tuple[pd.DataFrame, pd.DataFrame, dict[str, Any]]:
     seglevel = pd.read_csv(run / "cnv_seglevel.tsv", sep="\t", comment="#")
     perstate = pd.read_csv(run / "cnv_perstate.tsv", sep="\t", comment="#")
-    (npz,) = sorted(run.glob("rdrbaf_final_nstates*_smp.npz"))
+    npz = final_fit(run, n_states)
 
     with np.load(npz, allow_pickle=True) as fit:
         return seglevel, perstate, {key: fit[key] for key in fit.files}
@@ -430,7 +478,8 @@ def write_outputs(
         return number if np.isfinite(number) else None
 
     run = Path(run)
-    seglevel, perstate, fit = _load(run)
+    n_states = config_keys(config).get("n_states")
+    seglevel, perstate, fit = _load(run, None if n_states is None else int(n_states))
     written = []
     stated = config_keys(config).get("merge_agreement")
     agreement = MERGE_AGREEMENT if stated is None else float(stated)
