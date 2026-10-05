@@ -417,11 +417,8 @@ def labels_figure(c: Compared) -> Any:
         handles=key, loc="lower center", ncol=min(len(key), 5), fontsize=7,
         frameon=False, bbox_to_anchor=(0.5, 0.04),
     )  # fmt: skip
-    figure.suptitle(
-        f"clone ARI {c.ari:.4f}; planted $\\leftrightarrow$ fitted by Hungarian matching on spot overlap",
-        fontsize=9, color=INK,
-    )  # fmt: skip
-    figure.subplots_adjust(left=0.02, right=0.98, top=0.84, bottom=0.14, wspace=0.05)
+    # NB no title: the clone ARI is the README's TL;DR (T- #660).
+    figure.subplots_adjust(left=0.02, right=0.98, top=0.92, bottom=0.14, wspace=0.05)
     return figure
 
 
@@ -608,7 +605,7 @@ def compare_figures(c: Compared, out: Path, text: str) -> list[Path]:
 
 QUESTIONS: dict[str, tuple[str, str]] = {
     "truth/truth_combined.png": (
-        "What was planted, on one page: tree, (A, B) profile, RDR and BAF per clone, spatial clones?",
+        "What was planted, on one page: tree, (A, B) profile, RDR and BAF per clone?",
         "`port.sim.truth_figure.truth_combined_figure`",
     ),
     "truth/mutation_tree.png": (
