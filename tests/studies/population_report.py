@@ -533,7 +533,9 @@ PAGE_HEIGHT = 1.75
 """Inches: the row of three panels on `llncs`'s 4.80 in text width."""
 
 
-def figures(summary: dict[str, Any], into: Path) -> list[Path]:
+def figures(
+    summary: dict[str, Any], into: Path, stamp: str | None = None
+) -> list[Path]:
     """(a) clone sensitivity by UMIs per J; (b) CNA sensitivity by length per
     class; (c) the `(1, 1)` segments' false positive rate by their SNP UMIs.
 
@@ -628,6 +630,10 @@ def figures(summary: dict[str, Any], into: Path) -> list[Path]:
             fig.text(x0, top + 0.03, f"({letter})", fontsize=LABEL_SIZE,
                      ha="left", va="bottom")  # fmt: skip
 
+        if stamp is not None:
+            fig.text(
+                0.995, 0.005, stamp, fontsize=4, color="0.4", ha="right", va="bottom"
+            )
         for path in paths:
             fig.savefig(path, format="png", dpi=300, facecolor="white",
                         metadata={"Software": None})  # fmt: skip
@@ -636,10 +642,33 @@ def figures(summary: dict[str, Any], into: Path) -> list[Path]:
     return paths
 
 
+def stamp_text(out: Path) -> str:
+    """`data <hash> · code <sha>`: SHA-256 over `out`'s records, and the repository's commit, `+` if dirty."""
+    import hashlib
+    import subprocess
+
+    digest = hashlib.sha256()
+    for record in sorted((out / "records").glob("*.json")):
+        digest.update(record.name.encode() + record.read_bytes())
+    root = Path(__file__).resolve().parents[2]
+
+    def git(*args: str) -> str:
+        done = subprocess.run(
+            ["git", *args], cwd=root, capture_output=True, text=True, check=False
+        )
+        return done.stdout.strip()
+
+    commit = git("rev-parse", "--short=7", "HEAD") or "unknown"
+    dirty = git(
+        "status", "--porcelain", "--untracked-files=no", "--", "python", "tests"
+    )
+    return f"data {digest.hexdigest()[:8]} · code {commit}{'+' if dirty else ''}"
+
+
 def report(out: Path, study2_j: float) -> dict[str, Any]:
     """Summarize `out`'s records, write the summary and figures beside them."""
     summary = summarize(out, study2_j)
-    figures(summary, out / "figures")
+    figures(summary, out / "figures", stamp_text(out))
     slim: dict[str, Any] = json.loads(json.dumps(summary, default=float))
     for entry in slim["study1"].values():
         for key in ("detected", "completeness"):

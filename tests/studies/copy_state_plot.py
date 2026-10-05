@@ -38,29 +38,15 @@ def tt(name: str) -> str:
 
 
 TABLE = (
-    ("cnaster, CalicoST, port", (
-        ("cnaster-gmm", f"cnaster's {tt('gmm_init')}: a Gaussian mixture"),
+    ("CalicoST, port", (
         ("calicost-gmm", f"CalicoST's {tt('initialization_by_gmm')}, clones stacked"),
-        ("distinct", f"{tt('gmm_init')} among distinct components (#348)"),
         ("lattice", "Integer (A, B) lattice, chosen by the rows"),
-        ("lattice-em", f"The {tt('lattice')}, refined by soft EM"),
-        ("rdr-quantiles", "Quantiles of log RDR, pooled BAF"),
     )),
     ("sal, one draw", (
         ("prior", "Drawn from a prior on the observed range"),
-        ("data", "Rows drawn uniformly"),
         ("kmeans++", f"{tt('k-means++')} on the raw count pair"),
         ("emission++", "Seeds by the NB x BB Bregman divergence"),
         ("gaussian-em", "Gaussian mixture on read depth, by EM"),
-        ("quantile", "Each channel's quantiles, paired"),
-    )),
-    ("port, emission++ variants", (
-        ("emission++trim", f"{tt('emission++')}, farthest 0.5% of rows never drawn"),
-        ("emission++x5hmm", f"Best of 5 {tt('emission++')} draws by HMM likelihood"),
-        ("emission++trimx20hmm", f"Best of 20 {tt('emission++ (trim)')} by HMM likelihood"),
-        ("emission++lloydx5hmm", "Best of 5 by HMM: trimmed, coverage-weighted, 10 Lloyd rounds"),
-        ("emission++anchor", "First seed neutral, trimmed, then 10 Lloyd rounds"),
-        ("emission++knn", "Trimmed seeds, each its 0.3% nearest rows pooled"),
     )),
     ("port, samplers on the HMM", (
         ("anneal-hmm", "Best point of HMC under falling temperature"),
@@ -68,6 +54,8 @@ TABLE = (
         ("hmc-hmm", "Best draw of a warmed HMC chain at a tuned temperature"),
     )),
 )  # fmt: skip
+"""The starts drawn (T- #660). Set aside from the figure, still in the registry: `cnaster-gmm`,
+`distinct`, `lattice-em`, `rdr-quantiles`, `data`, `quantile` and the emission++ variants."""
 
 
 def plt_colour(number: int) -> tuple[float, float, float, float]:
@@ -78,22 +66,17 @@ def plt_colour(number: int) -> tuple[float, float, float, float]:
 
 
 LABEL = {
-    "cnaster-gmm": "cnaster-gmm", "calicost-gmm": "calicost-gmm", "distinct": "distinct", "lattice": "lattice",
-    "lattice-em": "lattice + em", "rdr-quantiles": "rdr-quantiles", "prior": "prior", "data": "data",
-    "kmeans++": "k-means++", "emission++": "emission++", "emission++trim": "emission++ (trim)",
-    "emission++x5hmm": r"5$\times$emission++",
-    "emission++trimx20hmm": r"20$\times$trim", "emission++lloydx5hmm": r"5$\times$lloyd",
-    "emission++anchor": "emission++ (anchor)", "emission++knn": "emission++ (knn)", "gaussian-em": "gaussian-em", "quantile": "quantile",
+    "calicost-gmm": "calicost-gmm", "lattice": "lattice", "prior": "prior", "kmeans++": "k-means++",
+    "emission++": "emission++", "gaussian-em": "gaussian-em",
     "anneal-hmm": "anneal", "tempering-hmm": "parallel tempering", "hmc-hmm": "hmc",
 }  # fmt: skip
-"""A start's label; `5x`: the best of five draws."""
+"""A start's label."""
 NUMBER = {name: k + 1 for k, name in enumerate(n for _, rows in TABLE for n, _ in rows)}
 NUMBER_TEXT = {name: str(k) for name, k in NUMBER.items()}
 SOURCE = {
     **{name: "sal" for _, rows in TABLE for name, _ in rows},
-    "cnaster-gmm": "cnaster", "calicost-gmm": "CalicoST", "distinct": "port", "lattice": "port",
-    "lattice-em": "port", "rdr-quantiles": "port", "emission++trim": "port",
-    "emission++x5hmm": "port", "emission++trimx20hmm": "port", "emission++lloydx5hmm": "port", "emission++anchor": "port", "emission++knn": "port", "anneal-hmm": "port", "tempering-hmm": "port", "hmc-hmm": "port",
+    "calicost-gmm": "CalicoST", "lattice": "port", "anneal-hmm": "port", "tempering-hmm": "port",
+    "hmc-hmm": "port",
 }  # fmt: skip
 """Each start's source: the package whose code it runs."""
 COLOUR = {name: plt_colour(k) for name, k in NUMBER.items()}
@@ -302,22 +285,18 @@ def stamp(fig: Any, record: dict[str, Any]) -> str:
     return text
 
 
-def figure(record: dict[str, Any], out: Path) -> Path:
-    import matplotlib as mpl
+def draw(ax: Any, record: dict[str, Any], key: bool = False) -> pd.DataFrame:
+    """The gap panel on `ax`: each start's runs against runtime, numbered as in `TABLE`; returns the runs drawn.
 
-    mpl.use("Agg")
-    import matplotlib.pyplot as plt
+    `key` adds each start's number and name to the legend below the axes,
+    for a figure that draws no table beside it (`solver_combined`, T- #660).
+    """
     from matplotlib.ticker import FixedLocator, FuncFormatter
 
     d, truth = frame(record)
     # NB every realization with rows counts, reused ones included; one still running is also named in progress
     n_problems = int(d.problem.nunique())
     n_partial = len(set(d.problem) - set(record.get("complete", record["done"])))
-    plt.rcParams.update({"font.size": 9})
-    fig = plt.figure(figsize=(15.5, 6.2))
-    grid = fig.add_gridspec(1, 2, width_ratios=[1.2, 1], wspace=0.04)
-    ax, tab = fig.add_subplot(grid[0]), fig.add_subplot(grid[1])
-    tab.axis("off")
     ax.axhspan(
         float(np.quantile(truth, 0.1)),
         float(np.quantile(truth, 0.9)),
@@ -407,10 +386,35 @@ def figure(record: dict[str, Any], out: Path) -> Path:
         f"; #{', #'.join(str(NUMBER[s]) for s in sorted(g.index, key=lambda s: NUMBER[s]))} on {k}"
         for k, g in short.groupby(short)
     )
+    if key:
+        for name in sorted(set(d.start) & set(NUMBER), key=lambda n: NUMBER[n]):
+            ax.plot(
+                [],
+                [],
+                "o",
+                color=COLOUR[name],
+                label=f"{NUMBER[name]} {LABEL.get(name, name)}",
+            )
     ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.1), ncol=3, fontsize=7.5, frameon=False,
               title=f"{Path(record['manifest']).stem}: Median for {n_problems} realization{'s' if n_problems != 1 else ''}"
                     + (f" ({n_partial} in progress)" if n_partial else "") + f" $\\times$ {record['seeds']} seeds{behind}",
               title_fontsize=7.5)  # fmt: skip
+    return d
+
+
+def figure(record: dict[str, Any], out: Path) -> Path:
+    """The gap figure and its table, written to `out`."""
+    import matplotlib as mpl
+
+    mpl.use("Agg")
+    import matplotlib.pyplot as plt
+
+    plt.rcParams.update({"font.size": 9})
+    fig = plt.figure(figsize=(15.5, 6.2))
+    grid = fig.add_gridspec(1, 2, width_ratios=[1.2, 1], wspace=0.04)
+    ax, tab = fig.add_subplot(grid[0]), fig.add_subplot(grid[1])
+    tab.axis("off")
+    d = draw(ax, record)
     missed = {
         str(n): (float(g.start_missed_pct.median()), float(g.missed_pct.median()))
         for n, g in d.groupby("start")
