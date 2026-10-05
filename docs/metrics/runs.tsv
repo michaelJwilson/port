@@ -72,12 +72,6 @@ aec3403-dev_tree_1s_easy_r0-0606	2026-10-01T06:06Z	aec3403	-- --sal --no-plots	t
 aec3403-dev_tree_1s_hard_r0-0611	2026-10-01T06:11Z	aec3403	-- --sal --no-plots	tests/sim_audit.py::main	HISTORY #537 Re-land #530, #531, #533, #535 on main: #517 steps 5–8
 261c8b2-dev_tree_1s_easy_r0-0621	2026-10-01T06:21Z	261c8b2	-- --sal --no-plots	tests/sim_audit.py::main	HISTORY #522 Re-land #521 on main: 0.99 integer-clone agreement (#518)
 261c8b2-dev_tree_1s_hard_r0-0627	2026-10-01T06:27Z	261c8b2	-- --sal --no-plots	tests/sim_audit.py::main	HISTORY #522 Re-land #521 on main: 0.99 integer-clone agreement (#518)
-6a9f3a8-easy-2347	2026-10-01T23:47Z	6a9f3a8	-- --sal --no-plots	tests/sim_audit.py::main	sal b61dfba (T- #632 PR A)
-6a9f3a8-hard-2349	2026-10-01T23:49Z	6a9f3a8	-- --sal --no-plots	tests/sim_audit.py::main	sal b61dfba (T- #632 PR A)
-6a9f3a8-dev_tree_1s_easy_ln_r0-2352	2026-10-01T23:52Z	6a9f3a8	-- --sal --no-plots	tests/sim_audit.py::main	sal b61dfba (T- #632 PR A)
-dbfff01-easy-2356	2026-10-01T23:56Z	dbfff01	-- --sal --no-plots	tests/sim_audit.py::main	sal 3ad4b04, same-host control for sal b61dfba (T- #632 PR A)
-dbfff01-hard-2358	2026-10-01T23:58Z	dbfff01	-- --sal --no-plots	tests/sim_audit.py::main	sal 3ad4b04, same-host control for sal b61dfba (T- #632 PR A)
-dbfff01-dev_tree_1s_easy_ln_r0-0000	2026-10-02T00:00Z	dbfff01	-- --sal --no-plots	tests/sim_audit.py::main	sal 3ad4b04, same-host control for sal b61dfba (T- #632 PR A)
 efdebfd-easy-1653	2026-10-01T16:53Z	efdebfd	-- --sal --no-plots	tests/sim_audit.py::main	--sal baseline at efdebfd; concurrent host; wall confounded
 efdebfd-hard-1655	2026-10-01T16:55Z	efdebfd	-- --sal --no-plots	tests/sim_audit.py::main	--sal baseline at efdebfd; concurrent host; wall confounded
 efdebfd-dev_tree_r0-1700	2026-10-01T17:00Z	efdebfd	-- --sal --no-plots	tests/sim_audit.py::main	--sal baseline at efdebfd; concurrent host; wall confounded
@@ -111,4 +105,10 @@ efdebfd-dev_tree_1s_hard_bb01_r2-1735	2026-10-01T17:35Z	efdebfd	-- --sal --no-pl
 9a47d97-dev_tree_1s_ln_r0-2208	2026-10-01T22:08Z	9a47d97	-- --sal --no-plots	tests/sim_audit.py::main	--sal baseline: 18 fixtures, idle host, numba warm, serial
 9a47d97-dev_tree_1s_easy_ln_r0-2212	2026-10-01T22:12Z	9a47d97	-- --sal --no-plots	tests/sim_audit.py::main	--sal baseline: 18 fixtures, idle host, numba warm, serial
 9a47d97-dev_tree_1s_hard_ln_r0-2215	2026-10-01T22:15Z	9a47d97	-- --sal --no-plots	tests/sim_audit.py::main	--sal baseline: 18 fixtures, idle host, numba warm, serial
+6a9f3a8-easy-2347	2026-10-01T23:47Z	6a9f3a8	-- --sal --no-plots	tests/sim_audit.py::main	sal b61dfba (T- #632 PR A)
+6a9f3a8-hard-2349	2026-10-01T23:49Z	6a9f3a8	-- --sal --no-plots	tests/sim_audit.py::main	sal b61dfba (T- #632 PR A)
+6a9f3a8-dev_tree_1s_easy_ln_r0-2352	2026-10-01T23:52Z	6a9f3a8	-- --sal --no-plots	tests/sim_audit.py::main	sal b61dfba (T- #632 PR A)
+dbfff01-easy-2356	2026-10-01T23:56Z	dbfff01	-- --sal --no-plots	tests/sim_audit.py::main	sal 3ad4b04, same-host control for sal b61dfba (T- #632 PR A)
+dbfff01-hard-2358	2026-10-01T23:58Z	dbfff01	-- --sal --no-plots	tests/sim_audit.py::main	sal 3ad4b04, same-host control for sal b61dfba (T- #632 PR A)
+dbfff01-dev_tree_1s_easy_ln_r0-0000	2026-10-02T00:00Z	dbfff01	-- --sal --no-plots	tests/sim_audit.py::main	sal 3ad4b04, same-host control for sal b61dfba (T- #632 PR A)
 dbf5436-dev_tree_1s_easy_r0_7ba9b01f-1607	2026-10-05T16:07Z	dbf5436	--sal --png-copies	tests/sim_audit.py::main	#624 paper figures: dev_tree_1s_easy r0 7ba9b01f, --sal
