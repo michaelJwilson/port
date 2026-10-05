@@ -72,8 +72,6 @@ KNOWN: dict[str, str] = {
     "port.extensions.outputs:binlevel arg fit": "F6",
     "port.extensions.outputs:segments arg fit": "F6",
     "port.patch.hmrf.core_inference:pin_neutral arg result": "F6",
-    # --- F4, F9, F14: HMM initialization ------------------------------------
-    "port.patch.icm.interface:IcmResult termination": "F10",
 }
 """Departures found by #401's audit, keyed `module:name kind word`."""
 

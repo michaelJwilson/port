@@ -133,6 +133,10 @@ class PinnedErrors(NamedTuple):
     `mu` row and column are zero. `decrement` is the Newton decrement
     `g' S g`, which says whether the point is an optimum of the objective the
     covariance is the curvature of.
+
+    No `Termination` (T- #617): nothing here iterates. The covariance is
+    one evaluation at the fit it is given, and `decrement` is what says
+    whether that fit stopped at an optimum.
     """
 
     mu: np.ndarray

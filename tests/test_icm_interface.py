@@ -368,3 +368,17 @@ def test_the_graph_is_the_matrixs_own_arrays() -> None:
     assert wrapped.indices is graph.indices
     assert wrapped.weights is graph.data
     assert wrapped.n_spots == N_SPOTS
+
+
+@pytest.mark.infra
+def test_the_sweep_reports_convergence_with_its_sweep_count() -> None:
+    """`icm_sweep_deque` has no cap, so every return is its criterion met (T- #617)."""
+    field, graph, assignment, _ = _problem()
+    np.random.seed(SEED)  # noqa: NPY002
+
+    result = icm_sweep(
+        field, CsrGraph.from_matrix(graph), assignment.copy(), BETA, min_clone_spots=0
+    )
+
+    assert result.termination.converged
+    assert result.termination.iterations == result.niter
