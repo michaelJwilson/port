@@ -17,6 +17,8 @@ expansion finds the lower-energy basin, then `cnaster`'s ICM applies its
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import numpy as np
 import pytest
 
@@ -271,17 +273,17 @@ def test_sal_recovers_the_critical_instance(cnaster_config: None) -> None:
 
 @pytest.mark.end2end
 @pytest.mark.release
-def test_sal_recovers_the_planted_clones_on_the_dev_instance(tmp_path: object) -> None:
-    """ARI 1.000 against the planted labels, where the default reaches 0.919.
+def test_sal_recovers_the_planted_clones_on_the_dev_instance(tmp_path: Path) -> None:
+    """ARI 1.000 against the planted labels, stated at 0.99.
 
     The dev instance at the figures' configuration (one outer iteration,
     three EM iterations, five states). Realized three times in three runs
-    for each arm (#312); stated at 0.99 so a spot or two of drift fails
-    no-one, and the default arm pinned below it so the comparison stays one.
+    (#312); stated at 0.99 so a spot or two of drift fails no-one. The
+    default arm was pinned below 0.99 while it reached 0.919; it reaches 1.0
+    on main at sal `3ad4b04` and `b61dfba` alike (PR #633), so that pin and
+    its run are retired (T- #632).
     """
-    import tempfile
     import warnings
-    from pathlib import Path
 
     import pandas as pd
     from port.scripts.run_cnaster import main
@@ -293,31 +295,23 @@ def test_sal_recovers_the_planted_clones_on_the_dev_instance(tmp_path: object) -
     from tests.unsegment import unsegment
 
     truth = dev_instance()
-    scores = {}
+    written = write_tmp_inputs(
+        truth, unsegment(truth, flip_every=0, unassigned_genes=0), tmp_path
+    )
+    config = write_run_cnaster_config(
+        written, truth, max_iter_outer=1, max_iter=3, n_states=5
+    )
 
-    for arm in ([], ["--sal"]):
-        root = Path(tempfile.mkdtemp())
-        written = write_tmp_inputs(
-            truth, unsegment(truth, flip_every=0, unassigned_genes=0), root
-        )
-        config = write_run_cnaster_config(
-            written, truth, max_iter_outer=1, max_iter=3, n_states=5
-        )
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        main([str(config), "--sal"])
 
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            main([str(config), *arm])
+    labels = pd.read_csv(
+        next((tmp_path / "output").rglob("clone_labels.tsv")), sep="\t", comment="#"
+    )
+    column = next(c for c in labels.columns if "clone" in c.lower())
+    spots = labels["barcode"].str.slice(2, 7).astype(int).to_numpy()
+    fitted = np.empty(truth.labels.size, dtype=object)
+    fitted[spots] = labels[column].astype(str).to_numpy()
 
-        labels = pd.read_csv(
-            next((root / "output").rglob("clone_labels.tsv")), sep="\t", comment="#"
-        )
-        column = next(c for c in labels.columns if "clone" in c.lower())
-        spots = labels["barcode"].str.slice(2, 7).astype(int).to_numpy()
-        fitted = np.empty(truth.labels.size, dtype=object)
-        fitted[spots] = labels[column].astype(str).to_numpy()
-        scores[" ".join(arm) or "default"] = adjusted_rand_score(
-            truth.labels, fitted.astype(str)
-        )
-
-    assert scores["--sal"] >= 0.99, scores
-    assert scores["default"] < 0.99, scores
+    assert adjusted_rand_score(truth.labels, fitted.astype(str)) >= 0.99

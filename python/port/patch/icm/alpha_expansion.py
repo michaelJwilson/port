@@ -93,8 +93,9 @@ def potts_graph_from(graph: CsrGraph, spatial_weight: float) -> PottsGraph:
     replaces; a one-way pair enters at half, where the upper-triangle read
     kept it whole when `i < j` and dropped it when `i > j` (#417).
 
-    Built by sal's `PottsGraph.from_csr` (#1113) on the symmetrized matrix,
-    with no Python loop over entries. Refused: a negative coupling -- alpha
+    Built by sal's `PottsGraph.from_directed_csr` (sal #1140), which halves
+    `A_ij + A_ji`, then scaled by `spatial_weight` once: bitwise the symmetrized
+    `from_csr` call it replaces (T- #632). Refused: a negative coupling -- alpha
     expansion's bound requires a metric -- and a graph whose reciprocated
     share of edges is under `port.extensions.adjacency.RECIPROCATED`, where
     one-way edges are no longer the boundary's.
@@ -132,10 +133,14 @@ def potts_graph_from(graph: CsrGraph, spatial_weight: float) -> PottsGraph:
         )
         raise AdjacencyError(msg)
 
-    symmetric = ((matrix + matrix.T) * (0.5 * float(spatial_weight))).tocsr()
-    symmetric.sort_indices()
-
-    return PottsGraph.from_csr(symmetric.indptr, symmetric.indices, symmetric.data)
+    # NB scaled after the halving, as `(A + A^T) * (spatial_weight / 2)` rounded: one
+    #    product per edge either way, so the couplings agree bitwise.
+    halved = PottsGraph.from_directed_csr(matrix.indptr, matrix.indices, matrix.data)
+    return PottsGraph(
+        halved.n_nodes,
+        halved.edges,
+        tuple((halved.edge_coupling * float(spatial_weight)).tolist()),
+    )
 
 
 def forbidden_as_finite(

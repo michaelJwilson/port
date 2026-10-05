@@ -56,7 +56,7 @@ FLAGS = ("--sal", "--png-copies")
 
 TRUTH = (
     "truth_combined.png",
-    "mutation_tree.png",
+    "simulated_tree.png",
     "spatial.png",
     "clones_genomic.png",
     "clone_profiles.png",
@@ -193,21 +193,29 @@ def truth_figures(path: Path, out: Path, text: str) -> list[Path]:
     import matplotlib.pyplot as plt
     from port.extensions.combined_figure import page_style
     from port.sim import analysis
-    from port.sim.truth_figure import truth_combined_figure
+    from port.sim.truth_figure import simulated_tree_figure, truth_combined_figure
 
     r = analysis.read(path)
     with stamping(text):
         written = r.plot(out)
 
-    figure = truth_combined_figure(r)
-    stamp(figure, text, top=True)
-    with page_style():
-        figure.savefig(
-            out / "truth_combined.png", dpi=300, facecolor="white",
-            metadata={"Software": None},
-        )  # fmt: skip
-    plt.close(figure)
-    return [out / "truth_combined.png", *written]
+    # NB `mutation_tree.png` is not a paper figure: `simulated_tree.png` is
+    #    `truth_combined`'s panel (a) alone (T- #660).
+    (out / "mutation_tree.png").unlink(missing_ok=True)
+    written = [w for w in written if w.name != "mutation_tree.png"]
+    pages = (
+        ("truth_combined.png", truth_combined_figure(r)),
+        ("simulated_tree.png", simulated_tree_figure(r)),
+    )
+    for name, figure in pages:
+        stamp(figure, text, top=True)
+        with page_style():
+            figure.savefig(
+                out / name, dpi=300, facecolor="white",
+                metadata={"Software": None},
+            )  # fmt: skip
+        plt.close(figure)
+    return [*(out / name for name, _ in pages), *written]
 
 
 def mock_slide(coords: np.ndarray, labels: np.ndarray, root: Path) -> Any:
@@ -667,9 +675,9 @@ QUESTIONS: dict[str, tuple[str, str]] = {
         "What was planted, on one page: tree, (A, B) profile, RDR and BAF per clone?",
         "`port.sim.truth_figure.truth_combined_figure`",
     ),
-    "truth/mutation_tree.png": (
-        "Which events sit on which edge of the clone tree?",
-        "`port.sim.analysis.plot_tree`",
+    "truth/simulated_tree.png": (
+        "Which events sit on which edge of the simulated clone tree?",
+        "`port.sim.truth_figure.simulated_tree_figure`, `truth_combined`'s panel (a)",
     ),
     "truth/spatial.png": (
         "Which clone was each spot drawn from?",

@@ -27,19 +27,15 @@ The likelihood is the same model; only where a start can place a state
 changes. Before #547 every BAF was seeded near 0.01 and no read-depth state
 below neutral.
 
-**`emission++` scores floored at 0 (#562).** `sal`'s `_seed_scores` returns
-the negative binomial's Bregman divergence, non-negative in exact arithmetic
-and `-1.6e-15` in float64 for a row a hair from a seed's mean; D-squared
-sampling then hands `rng.choice` a negative probability and the start is
-refused. :func:`gmm_init` floors the scores at 0 around the start, which is the
-exact divergence's sign and moves no score by more than its round-off.
-`sal` is read only, so landing the floor there is left to it.
+**`emission++` scores floored at 0 (#562).** A D-squared draw handed
+`rng.choice` a round-off negative divergence (`-1.6e-15`) and the start was
+refused. sal #1136 floors each divergence at 0 in the draw itself, where
+port's patch of `_seed_scores` floored it, so the patch is retired (T- #632)
+and the draws are unchanged.
 """
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterator
-from contextlib import contextmanager
 from typing import Any
 
 import numpy as np
@@ -52,7 +48,6 @@ __all__ = [
     "EXPOSURE_SCALE",
     "POLISH_SECONDS",
     "checked",
-    "clamped_divergence",
     "gmm_init",
     "instance_of",
 ]
@@ -177,29 +172,6 @@ def _call(arguments: dict[str, Any], stage: str) -> Any:
     )
 
 
-@contextmanager
-def clamped_divergence() -> Iterator[None]:
-    """`sal`'s emission++ divergences floored at 0 for the block (#562), restored after."""
-    import sal.opt.emission_mixture as upstream
-
-    original = upstream._seed_scores
-
-    def floored(observations: np.ndarray, at: Any) -> Callable[..., np.ndarray]:
-        score = original(observations, at)
-
-        def nonnegative(seed: float, candidates: np.ndarray) -> np.ndarray:
-            return np.asarray(np.maximum(score(seed, candidates), 0.0))
-
-        return nonnegative
-
-    upstream._seed_scores = floored
-
-    try:
-        yield
-    finally:
-        upstream._seed_scores = original
-
-
 @as_upstream(UPSTREAM, start=None, distinct=False, baf_start=None)
 def gmm_init(arguments: dict[str, Any], options: dict[str, Any]) -> Any:
     """`cnaster`'s initializer signature; `start` on the BAF + RDR call, `baf_start` on the BAF-only one.
@@ -220,10 +192,7 @@ def gmm_init(arguments: dict[str, Any], options: dict[str, Any]) -> Any:
         return fallback(**arguments)
 
     rng = np.random.default_rng([int(arguments.get("random_state") or 0), 0])
-    # NB every start in-process: a best-of runs its seedings serially at
-    #    sal's default of one worker, so the floor reaches each of them (#562).
-    with clamped_divergence():
-        result = run_start(
-            checked(chosen), _call(arguments, stage), rng, seconds=POLISH_SECONDS
-        )
+    result = run_start(
+        checked(chosen), _call(arguments, stage), rng, seconds=POLISH_SECONDS
+    )
     return result.log_mu.reshape(-1, 1), result.p_binom.reshape(-1, 1), None, None

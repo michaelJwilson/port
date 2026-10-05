@@ -144,3 +144,51 @@ def test_the_floor_is_off_unless_the_config_sets_it(
         assert segment_floor() == expected
     finally:
         set_global_config(previous)
+
+
+def _greedy_parent(
+    bins: Segmentation, weight: np.ndarray, min_length: float, min_weight: float
+) -> np.ndarray:
+    """The loop `Ragged.floored` replaced (T- #632): each segment's merged parent."""
+    contig, start, end = bins.contig, bins.start, bins.end
+    held = bins.aggregate(np.asarray(weight, dtype=np.float64))
+    parent = np.zeros(bins.n_segments, dtype=np.int64)
+    label, first, opened, total, closed = -1, 0, 0, 0.0, True
+    for k in range(bins.n_segments):
+        if k == 0 or contig[k] != contig[k - 1]:
+            first, closed = label + 1, True
+        if closed:
+            label, opened, total = label + 1, int(start[k]), 0.0
+        parent[k] = label
+        total += float(held[k])
+        closed = end[k] - opened >= min_length and total >= min_weight
+        at_boundary = k == bins.n_segments - 1 or contig[k + 1] != contig[k]
+        if at_boundary and not closed and label > first:
+            parent[parent == label] = label - 1
+            label -= 1
+    return parent
+
+
+@pytest.mark.patch
+@pytest.mark.parametrize("seed", [7, 11, 23, 31])
+@pytest.mark.parametrize(
+    ("min_length", "min_weight"),
+    [(7.5e5, 100.0), (2e6, 0.0), (0.0, 300.0), (5e6, 900.0)],
+)
+def test_sals_floor_merges_as_the_loop_it_replaces(
+    seed: int, min_length: float, min_weight: float
+) -> None:
+    """sal #1141's `Ragged.floored` against port's greedy loop: the same parent for every segment."""
+    from port.extensions.segments import Segmentation
+
+    bins = Segmentation.from_table(_table(seed), "bin_id")
+    weight = np.random.default_rng(seed).integers(0, 60, bins.genes.n_genes)
+    floored = bins.floored(min_length, weight, min_weight, name="floored")
+
+    oracle = bins.coarsen(
+        _greedy_parent(bins, weight, min_length, min_weight), name="oracle"
+    )
+
+    assert floored.n_segments == oracle.n_segments
+    for field in ("contig", "start", "end"):
+        assert np.array_equal(getattr(floored, field), getattr(oracle, field))
