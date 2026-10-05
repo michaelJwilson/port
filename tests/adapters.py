@@ -389,8 +389,8 @@ def upstream_beta_binomial_m_step(
     seconds = time.perf_counter() - start
 
     return MStepResult(
-        alpha=np.asarray(result.emissions.alpha, dtype=np.float64),
-        beta=np.asarray(result.emissions.beta, dtype=np.float64),
+        alpha=np.asarray(result.components.alpha, dtype=np.float64),
+        beta=np.asarray(result.components.beta, dtype=np.float64),
         converged=bool(result.converged),
         iterations=int(result.iterations),
         seconds=seconds,
