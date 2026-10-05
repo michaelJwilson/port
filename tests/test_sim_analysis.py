@@ -169,7 +169,7 @@ def _visible_texts(figure: Any) -> list[Any]:
 def test_the_truth_page_is_combined_pdfs_page_with_everything_on_it(
     drawn: Drawn,
 ) -> None:
-    """`llncs`'s 122 mm by 193 mm, lettered (a) to (d), no text over `FONT_SIZE`,
+    """`llncs`'s 122 mm by 193 mm, lettered (a) to (c), no text over `FONT_SIZE`,
     and every text and legend on the page to half a pixel."""
     from port.extensions.combined_figure import FONT_SIZE, TEXT_HEIGHT
     from port.sim.truth_figure import truth_combined_figure
@@ -188,7 +188,7 @@ def test_the_truth_page_is_combined_pdfs_page_with_everything_on_it(
     assert figure.get_size_inches()[0] * 25.4 == pytest.approx(122.0)
     assert figure.get_size_inches()[1] == pytest.approx(TEXT_HEIGHT)
     assert [panel.texts[-1].get_text() for panel in figure.subfigs] == [
-        f"({k})" for k in "abcd"
+        f"({k})" for k in "abc"
     ]
     assert max(t.get_fontsize() for t in texts) <= FONT_SIZE
 
@@ -204,13 +204,12 @@ def test_the_truth_page_is_combined_pdfs_page_with_everything_on_it(
 @pytest.mark.merge
 def test_the_genome_panels_share_one_left_and_one_right_edge(drawn: Drawn) -> None:
     """(b)'s key and rows and (c)'s tracks start and end at one x, so a
-    chromosome boundary is at one place in both; (d) names its clones by its
-    key alone."""
+    chromosome boundary is at one place in both."""
     from port.sim.truth_figure import truth_combined_figure
 
     figure = truth_combined_figure(read(drawn.path))
     renderer = figure.canvas.get_renderer()
-    _, profile, genomic, spatial = figure.subfigs
+    _, profile, genomic = figure.subfigs
     axes = [*profile.axes, *genomic.axes]
     boxes = [ax.get_window_extent(renderer) for ax in axes]
 
@@ -218,7 +217,6 @@ def test_the_genome_panels_share_one_left_and_one_right_edge(drawn: Drawn) -> No
     for box in boxes:
         assert box.x0 == pytest.approx(boxes[0].x0, abs=0.5)
         assert box.x1 == pytest.approx(boxes[0].x1, abs=0.5)
-    assert all(not ax.texts for ax in spatial.axes)
 
 
 @pytest.mark.infra
@@ -230,7 +228,7 @@ def test_the_tree_spans_the_genome_panels_between_its_barcodes(drawn: Drawn) -> 
 
     figure = truth_combined_figure(read(drawn.path))
     renderer = figure.canvas.get_renderer()
-    tree_panel, _, genomic, _ = figure.subfigs
+    tree_panel, _, genomic = figure.subfigs
     (tree_ax,) = tree_panel.axes
     track = genomic.axes[0].get_window_extent(renderer)
     barcodes = [t for t in tree_ax.texts if t.get_gid() == "barcode"]
