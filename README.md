@@ -279,7 +279,9 @@ follows the arm unless asked: on in a patched run, off with `--no-patch`.
 (#331): beside `cnaster`'s files, `port.extensions.outputs` writes
 `cnv_states.tsv` (each fitted state, the `(A, B)` each clone decodes it to,
 and its share of the clone's bins), `cnv_segments.tsv` (runs of equal
-`(A, B)`), `cnv_binlevel.tsv` (the posterior-mean `mu` and `p` per bin),
+`(A, B)`, with the mean `mu` over the run), `cnv_binlevel.tsv` (each
+bin's state `Z`, its rate `mu = exp(logmu[Z] - log_mu_shift_c)` with the
+clone's HMM shift, #613, and the posterior-mean `p`),
 `clone_labels_integer.tsv` (each spot's clone named by its integer copy
 profile: clones whose `(A, B)` agree at no less than
 `int_copy_num.merge_agreement` of bins, 0.99 unless stated, are one clone,
@@ -457,7 +459,7 @@ CalicoST's `rectangle_initialize_initial_clone` never returns (`cnaster` #248).
 `python -m tests.recovery_audit --calicost` scores it with port's scorer.
 `--shipped FILE` runs CalicoST's own configuration file instead, taking only
 the paths from the YAML; a sheet of several slices takes
-`configuration_cna_multi`. `docs/final-benchmark.md` compares it with `--sal`.
+`configuration_cna_multi`. `docs/calicost-benchmark.md` records its runs.
 `docs/baseline-release.md` states what `--sal` recovers at the baseline
 release, on CalicoST's samples and the drawn `dev_tree` family
 (`sim/manifests/baseline/`).
