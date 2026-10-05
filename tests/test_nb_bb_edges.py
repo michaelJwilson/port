@@ -391,31 +391,6 @@ def test_cnasters_kernel_scores_every_count_zero_below_the_dispersion_floor() ->
 #    than among them.
 
 
-def _bulk(counts: np.ndarray, alpha: float):  # type: ignore[no-untyped-def]
-    """A pseudobulk whose allele channel scores exactly 0: no trials, `tau = inf`."""
-    from port.extensions.copy_likelihood import Pseudobulk
-
-    zeros = np.zeros_like(counts)
-    return Pseudobulk(
-        counts_nb=counts,
-        base_nb_mean=np.ones_like(counts),
-        counts_bb=zeros,
-        total_bb_RD=zeros,
-        normal_log_lambda=zeros,
-        dispersion=alpha,
-        taus=np.inf,
-    )
-
-
-def _schemes(counts: np.ndarray, mean: float, alpha: float) -> np.ndarray:
-    from port.sandbox.integer_decoding.schemes import _emission
-
-    bins = np.arange(counts.size)
-    return np.asarray(
-        _emission(np.log(mean), np.array(0.5), _bulk(counts, alpha), bins)
-    )
-
-
 def _clone_mixture(counts: np.ndarray, mean: float, alpha: float) -> np.ndarray:
     from port.sandbox.admixture.clone_mixture import _nb
 
@@ -429,7 +404,6 @@ def _variants(counts: np.ndarray, mean: float, alpha: float) -> np.ndarray:
 
 
 SANDBOX_KERNELS: dict[str, Scorer] = {
-    "schemes": _schemes,
     "clone_mixture": _clone_mixture,
     "variants": _variants,
 }

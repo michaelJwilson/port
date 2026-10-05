@@ -128,8 +128,6 @@ ROLES: dict[str, Role] = {
     "port.sandbox.extensions.copy_starts": "set aside",
     "port.sandbox.extensions.hmm_init_trials": "set aside",
     "port.sandbox.integer_decoding.calicost_decoders": "set aside",
-    "port.sandbox.integer_decoding.rdr_summary": "set aside",
-    "port.sandbox.integer_decoding.schemes": "set aside",
     "port.sandbox.known_copy.hmm": "set aside",
     "port.sandbox.known_copy.hmm_samplers": "set aside",
     "port.sandbox.known_copy.problem": "set aside",

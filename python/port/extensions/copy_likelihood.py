@@ -23,9 +23,10 @@ Measured on CalicoST's simulated samples (#362), pure and admixed, easy and
 hard, with planted and fitted clones: the lattice decode is best on 6 of 8
 fits by copy ARI and within 0.004 on the other 2, and scores 0.97-0.99 of
 altered clone-bins exactly (phase-free) on the pure samples against about
-0.6 on the admixed ones. What it was chosen over -- tempered E-steps, EMs
-over the continuous states, fixed or relaxed dispersions, CalicoST's own
-decoders -- is in `port.sandbox.integer_decoding`.
+0.6 on the admixed ones. What it was chosen over: CalicoST's own decoders,
+in `port.sandbox.integer_decoding`; tempered E-steps, EMs over the
+continuous states and fixed or relaxed dispersions, on the branch
+`reference/362-integer-decoding` (T- #617).
 """
 
 from __future__ import annotations
