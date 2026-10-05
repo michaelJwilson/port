@@ -256,6 +256,7 @@ follows the arm unless asked: on in a patched run, off with `--no-patch`.
 
 | Option | Default | What | Measured |
 | --- | --- | --- | --- |
+| `--no-patch` | off | nothing rebound: `cnaster`'s run, the baseline arm; the tri-state defaults follow it | |
 | `--figure-swaps` | on; off with `--no-patch` | `FIGURE_SWAPS`: dpi and raster groups (#195), the genomic RDR line (#299), tiles and the copy profile (#309) | 47 per cent of a run; figure rendering 8,287 MB to 1,036 MB (#195) |
 | `--shift` | on; off with `--no-patch` | `SHIFT_SWAPS`: the per-clone `log Z_c` in the fit, the normal clone pinned to `mu = 1` (#276, #299); and `LOG_SPACE_SWAPS`, `cnaster`'s NB and BB kernels where they are wrong (#560, #561) | without it a clone's rates return divided by its own normalizer; the kernels agree with 50-digit sums to 1e-9 where `cnaster`'s score a count at probability 1 or lose 5e-3 nats at `tau = 1e12` |
 | `--sal-emission` | on where the shift is | sal's dense log-emission for the coded NB/BB (#425) | 3.2e-12 of `cnaster`'s kernels, 3.5e-9 at the dispersion floor; no faster end to end |

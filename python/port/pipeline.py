@@ -300,22 +300,18 @@ FIGURE_SWAPS: tuple[Swap, ...] = (
         "port.patch.plot_copy_number_profile:plot_copy_number_profile",
         309,
     ),
-    Swap(
-        "cnaster.plot_copy_number_profile",
-        "plot_ascn_legend",
-        "port.patch.plot_copy_number_profile:plot_ascn_legend",
-        309,
-    ),
 )
 """The replacements that **change the output**, and the biggest win here.
 
-Five rows. `write_fig` writes the figures (#195); `plot_clones_genomic`
+Four rows. `write_fig` writes the figures (#195); `plot_clones_genomic`
 draws each clone's RDR line at `mu / Z_c` when the shift is on, where its
 points are, rather than at the pinned `mu` (#299); `plot_clones_spatial`
 tiles each spot at 0.85 of the lattice pitch rather than a dot 0.53 of it
-across (#309); `plot_copy_number_profile` draws one row per clone, and
-`plot_ascn_legend` is its legend (#309). That last row is reached by no live
-call: `cnaster`'s only caller is the function the row above replaces (#466). `write_fig` is installed with two options bound:
+across (#309); `plot_copy_number_profile` draws one row per clone (#309).
+Its legend, `port.patch.plot_copy_number_profile.plot_ascn_legend`, is
+called by that replacement directly and has no row: `cnaster`'s only caller
+of its own legend is the function the row replaces, so a legend row was
+reached by no live call (#466, removed by T- #617). `write_fig` is installed with two options bound:
 `dpi=150`, and one rasterizing group per axes rather than the two a
 gridline splits `cnaster`'s runs into. Measured: `docs/measurements.md`,
 `port.pipeline.FIGURE_SWAPS`.

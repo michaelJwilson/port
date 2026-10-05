@@ -58,6 +58,27 @@ def _installs(selected: tuple[Any, ...], replacement: str) -> bool:
     return any(swap.replacement == replacement for swap in selected)
 
 
+def _timed(selected: tuple[Any, ...]) -> tuple[Any, ...]:
+    """`SWAPS`, `FIGURE_SWAPS` and every other selected row, once per binding.
+
+    A row that replaces a class is left out: the timer wraps a binding in a
+    function, and a class `cnaster` subclasses or reads attributes from
+    cannot be one.
+    """
+    import importlib
+    import inspect
+
+    rows: dict[tuple[str, str], Any] = {}
+
+    for swap in (*SWAPS, *FIGURE_SWAPS, *selected):
+        module = importlib.import_module(swap.module)
+
+        if not inspect.isclass(getattr(module, swap.name, None)):
+            rows.setdefault((swap.module, swap.name), swap)
+
+    return tuple(rows.values())
+
+
 def _layout(text: str) -> tuple[int, int]:
     """`"3,1"` as `(3, 1)`, both positive."""
     try:
@@ -719,8 +740,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         # NB the figure swap is timed whether or not it is installed, so the
         #    two arms print the same rows and `write_fig` can be compared
         #    against itself rather than inferred from the whole-run delta.
+        #    Every other selected row is timed too (T- #617): the shift, copy
+        #    and refinement tables were not.
         spent = (
-            stack.enter_context(instrumented(SWAPS + FIGURE_SWAPS))
+            stack.enter_context(instrumented(_timed(selected)))
             if arguments.time_stages
             else None
         )
