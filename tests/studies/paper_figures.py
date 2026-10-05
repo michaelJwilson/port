@@ -403,8 +403,6 @@ def labels_figure(c: Compared) -> Any:
                    color=MUTED)  # fmt: skip
         ax.set_aspect("equal")
         ax.set_title(title, fontsize=9, color=INK)
-        # NB the stated face sets "Runtime [s]" taller than the studies' own figures do
-        ax.get_legend().set_bbox_to_anchor((0.5, -0.14))
         ax.set_xticks([])
         ax.set_yticks([])
         for side in ax.spines.values():
