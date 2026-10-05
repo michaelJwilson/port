@@ -274,6 +274,7 @@ follows the arm unless asked: on in a patched run, off with `--no-patch`.
 | `--png-copies` | off | a PNG without metadata beside each PDF, for `docs/plots` (#452) | two runs of the same code write the same bytes |
 | `--sample-layout`, `--genomic-colours` | unset | one panel per sample (#328); bins coloured per fitted state | |
 | `--warm-up` | off | compile every kernel before the clock starts (#211) | |
+| `--calicost-outputs` | off | also write CalicoST's file set into `calicost_compatible/` (#613) | |
 | `--no-plots`, `--no-outputs`, `--time-stages`, `--audit-config`, `--list` | off | build figures and write none (#403); skip port's tables (#331); cost per swapped name; unused config (#324); the table | |
 
 **A patched run also writes one file set per pipeline stage** (#331, #613),
@@ -294,7 +295,9 @@ stated, #344, #518). Rows are long and join on `clone`, `bin`, `state` and
 `gene_index`; the decode's files and the counts recompute its likelihood.
 `docs/outputs.md` states every column, its unit and what the files cannot
 recompute. Off with `--no-patch`, so the baseline arm writes what `cnaster`
-writes.
+writes. `--calicost-outputs` also writes CalicoST's own file set, filled
+from these, into `calicost_compatible/`; `docs/outputs.md` lists every
+difference from CalicoST's.
 
 `port.pipeline.SWAPS` is the table -- one row per `cnaster` name `port`
 replaces, each naming the ticket that measured it -- and `patched()` is the

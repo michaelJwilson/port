@@ -74,20 +74,25 @@ if TYPE_CHECKING:
     from port.extensions.segments import Lineage
 
 __all__ = [
+    "CALICOST_DIFFERENCES",
+    "CALICOST_DIR",
     "LABELS",
     "MERGE_AGREEMENT",
     "SCHEMA",
     "Column",
     "RunRecord",
+    "calicost_differences",
     "clone_columns",
     "config_keys",
     "copy_class",
     "decode_log_likelihoods",
     "hmm_log_likelihoods",
     "integer_clones",
+    "primary",
     "read_run_labels",
     "run_directories",
     "spot_labels",
+    "write_calicost_outputs",
     "write_outputs",
 ]
 
@@ -417,11 +422,31 @@ class RunRecord:
     samples: Recorded | None = None
     captured: Any = None
     decode: CopyFit | None = None
+    posterior: tuple[np.ndarray, np.ndarray] | None = None
+    """The last `(new_assignment, posterior)` the HMRF recorded
+    (`port.patch.hmrf.clone_assignment.recorded`), for the CalicoST set."""
+
+
+CALICOST_DIR = "calicost_compatible"
+"""The run directory's subdirectory holding the CalicoST-compatible set.
+
+A subdirectory because the set reuses `cnaster`'s own file names --
+`cnv_seglevel.tsv`, `cnv_perstate.tsv`, `cnv_genelevel.tsv`,
+`clone_labels.tsv`, `rdrbaf_final_nstates{K}_smp.npz` -- with other
+contents. Not `calicost/`, which is what a CalicoST run's own output
+directory is called here (`tests/data/benchmarks/dev_tree_r0`), so a
+reader skipping this one never skips CalicoST's.
+"""
+
+
+def primary(paths: Any) -> list[Path]:
+    """`paths` without those inside a :data:`CALICOST_DIR`: the run's own files."""
+    return [Path(p) for p in paths if CALICOST_DIR not in Path(p).parts]
 
 
 def run_directories(output_dir: Path) -> Iterator[Path]:
     """Each directory under `output_dir` holding a finished run's tables."""
-    for table in sorted(Path(output_dir).rglob("cnv_seglevel.tsv")):
+    for table in sorted(primary(Path(output_dir).rglob("cnv_seglevel.tsv"))):
         if any(table.parent.glob("rdrbaf_final_nstates*_smp.npz")):
             yield table.parent
 
@@ -1432,3 +1457,326 @@ def write_outputs(
     (run / "run.json").write_text(json.dumps(_json(manifest), indent=1) + "\n")
     written.append(run / "run.json")
     return written
+
+
+# --- the CalicoST-compatible set (#613 section 3) ------------------------------
+
+CALICOST_DIFFERENCES: dict[str, str] = {
+    "absent cnv_event.tsv": "CalicoST c1abcae's `summary_events` calls an undefined `strict_convert_copy_to_states`",
+    "absent cnv_diploid_seglevel.tsv": "one integer decode, no fixed-ploidy passes",
+    "absent cnv_diploid_perstate.tsv": "one integer decode, no fixed-ploidy passes",
+    "absent cnv_diploid_genelevel.tsv": "one integer decode, no fixed-ploidy passes",
+    "absent cnv_diploid_event.tsv": "one integer decode, no fixed-ploidy passes",
+    "absent cnv_triploid_seglevel.tsv": "one integer decode, no fixed-ploidy passes",
+    "absent cnv_triploid_perstate.tsv": "one integer decode, no fixed-ploidy passes",
+    "absent cnv_triploid_genelevel.tsv": "one integer decode, no fixed-ploidy passes",
+    "absent cnv_triploid_event.tsv": "one integer decode, no fixed-ploidy passes",
+    "absent cnv_tetraploid_seglevel.tsv": "one integer decode, no fixed-ploidy passes",
+    "absent cnv_tetraploid_perstate.tsv": "one integer decode, no fixed-ploidy passes",
+    "absent cnv_tetraploid_genelevel.tsv": "one integer decode, no fixed-ploidy passes",
+    "absent cnv_tetraploid_event.tsv": "one integer decode, no fixed-ploidy passes",
+    "absent mergedallspots_nstates{K}_sp.npz": "the BAF stage's checkpoint, not an output",
+    "absent calicost_config.txt": "CalicoST's configuration; port's is `run.json`",
+    "absent input_filelist.tsv": "CalicoST's input list; port's is the sample sheet",
+    "absent run.json": "port's run record is the run directory's `run.json`",
+    "npz values new_log_mu": "per clone `log_mu - log_mu_shift`: one shared table, shifted",
+    "npz values new_alphas new_p_binom new_taus": "shared by every clone, repeated per column",
+}
+"""Every difference from CalicoST's file set the guard can find, and why.
+
+Keyed as :func:`calicost_differences` names them; `docs/outputs.md` states
+each with its regime. A difference not listed here fails the guard.
+"""
+
+CALICOST_NPZ = (
+    "prev_assignment",
+    "new_log_mu",
+    "new_alphas",
+    "new_p_binom",
+    "new_taus",
+    "log_gamma",
+    "pred_cnv",
+    "total_llf",
+    "new_assignment",
+)
+"""`rdrbaf_final_nstates{K}_smp.npz`'s keys in CalicoST's file, in its order."""
+
+
+def _per_clone(run: _Run, key: str) -> np.ndarray:
+    values = _state_vector(run.res, key)
+    return np.repeat(values[:, None], len(run.positions), axis=1)
+
+
+def _posterior_by_clone(run: _Run, record: RunRecord) -> np.ndarray | None:
+    """The HMRF posterior with one column per final clone, in clone order.
+
+    The recorded columns are the HMRF's clones before `cnaster` compacts and
+    reindexes them; each final clone takes the recorded column whose spots
+    are its own. `None` where the two partitions are not one relabelled.
+    """
+    if record.posterior is None:
+        return None
+
+    recorded, posterior = record.posterior
+    final = np.asarray(run.res.get("new_assignment", []), dtype=np.int64)
+    if final.size != recorded.size or posterior.shape[0] != final.size:
+        return None
+
+    columns = []
+    for clone in sorted(run.positions):
+        spots = final == clone
+        labels = np.unique(recorded[spots])
+        if labels.size != 1 or not np.array_equal(recorded == labels[0], spots):
+            return None
+        columns.append(int(labels[0]))
+
+    kept = posterior[:, columns]
+    normalized: np.ndarray = kept / kept.sum(axis=1, keepdims=True)
+    return normalized
+
+
+def _calicost_barcodes(labels: pd.DataFrame, spots: pd.DataFrame | None) -> np.ndarray:
+    """Each spot's barcode as CalicoST names it in a joint run: `_<sample>` appended
+    where the run has several samples and the barcode does not end with it."""
+    barcodes: np.ndarray = labels["barcode"].astype(str).to_numpy()
+    if spots is None or spots["sample"].nunique() < 2:
+        return barcodes
+    sample = labels["barcode"].astype(str).map(spots["sample"]).astype(str).to_numpy()
+    return np.array(
+        [
+            b if b.endswith(f"_{s}") else f"{b}_{s}"
+            for b, s in zip(barcodes, sample, strict=True)
+        ]
+    )
+
+
+def write_calicost_outputs(run: Path, record: RunRecord | None = None) -> list[Path]:
+    """CalicoST's file set, filled from `port`'s run, into `run / CALICOST_DIR`.
+
+    Reads the stage files :func:`write_outputs` wrote and `cnaster`'s
+    `clone_labels.tsv` and `.npz`. Spots are in the run's order where the
+    samples recording keeps it, else `clone_labels.tsv`'s; the posterior and
+    the normal candidates are written where the run recorded them.
+    `docs/outputs.md` states every difference from CalicoST's own.
+    """
+    run = Path(run)
+    record = RunRecord() if record is None else record
+    source = _sources(run, None, record)
+    into = run / CALICOST_DIR
+    into.mkdir(exist_ok=True)
+    written: list[Path] = []
+    clones = sorted(source.positions)
+    copies = pd.read_csv(run / "cnv_copy_bins.tsv", sep="\t")
+    states = pd.read_csv(run / "cnv_copy_states.tsv", sep="\t")
+
+    seglevel = source.seglevel[["CHR", "START", "END"]].copy()
+    for clone in clones:
+        own = copies[copies.clone == clone].sort_values("bin")
+        seglevel[f"clone{clone} A"] = own["A"].to_numpy(np.int64)
+        seglevel[f"clone{clone} B"] = own["B"].to_numpy(np.int64)
+    seglevel.to_csv(into / "cnv_seglevel.tsv", sep="\t", index=False)
+    written.append(into / "cnv_seglevel.tsv")
+
+    log_mu = _state_vector(source.res, "new_log_mu")
+    p_binom = _state_vector(source.res, "new_p_binom")
+    perstate = pd.DataFrame(index=range(source.n_states))
+    for clone in clones:
+        own = states[states.clone == clone].sort_values("state")
+        perstate[f"clone{clone} logmu"] = log_mu - source.shift(clone)
+        perstate[f"clone{clone} p"] = p_binom
+        perstate[f"clone{clone} A"] = own["A"].to_numpy(np.int64)
+        perstate[f"clone{clone} B"] = own["B"].to_numpy(np.int64)
+    perstate.to_csv(into / "cnv_perstate.tsv", sep="\t", index=False)
+    written.append(into / "cnv_perstate.tsv")
+
+    if (run / "cnv_copy_genes.tsv").exists():
+        genes = pd.read_csv(run / "cnv_copy_genes.tsv", sep="\t", keep_default_na=False)
+        genes = genes[genes["gene"].astype(str) != ""]
+        # NB CalicoST maps each name to its last bin and sorts the names
+        #    (`find_integer_copynumber.get_genelevel_cnv_oneclone`).
+        frames = []
+        for position, clone in enumerate(clones):
+            own = genes[genes.clone == clone].drop_duplicates("gene", keep="last")
+            frames.append(
+                own.set_index("gene")[["A", "B"]].rename(
+                    columns={"A": f"clone{position} A", "B": f"clone{position} B"}
+                )
+            )
+        genelevel = pd.concat(frames, axis=1).sort_index()
+        genelevel.index.name = None
+        genelevel.to_csv(into / "cnv_genelevel.tsv", sep="\t", header=True, index=True)
+        written.append(into / "cnv_genelevel.tsv")
+
+    npz = into / f"rdrbaf_final_nstates{source.n_states}_smp.npz"
+    shifts = np.array([source.shift(clone) for clone in clones])
+    order = [source.positions[clone] for clone in clones]
+    log_gamma = np.asarray(source.res["log_gamma"], dtype=np.float64)
+    np.savez(
+        npz,
+        prev_assignment=np.asarray(source.res["prev_assignment"], dtype=np.int64),
+        new_log_mu=log_mu[:, None] - shifts[None, :],
+        new_alphas=_per_clone(source, "new_alphas"),
+        new_p_binom=_per_clone(source, "new_p_binom"),
+        new_taus=_per_clone(source, "new_taus"),
+        log_gamma=log_gamma[:, :, order],
+        pred_cnv=_paths(source.res["pred_cnv"], source.n_states)[:, order],
+        total_llf=np.asarray(source.res.get("total_llf", np.nan), dtype=np.float64),
+        new_assignment=np.asarray(source.res["new_assignment"], dtype=np.int64),
+    )
+    written.append(npz)
+
+    labels = source.labels("clone_labels.tsv")
+    if labels is not None:
+        barcodes = labels["barcode"].astype(str)
+        samples = record.samples
+        order_spots = np.arange(len(labels))
+        if samples is not None and samples.barcodes is not None:
+            run_order = pd.Index(barcodes).get_indexer(
+                np.asarray(samples.barcodes, dtype=str)
+            )
+            if np.all(run_order >= 0) and run_order.size == len(labels):
+                order_spots = run_order
+        ordered = labels.iloc[order_spots].reset_index(drop=True)
+        spots = None if samples is None else samples.table()
+        frame = pd.DataFrame(
+            {"clone_label": ordered["clone_label"].to_numpy()},
+            index=pd.Index(_calicost_barcodes(ordered, spots), name="BARCODES"),
+        )
+        if "tumor_proportion" in ordered:
+            frame["tumor_proportion"] = ordered["tumor_proportion"].to_numpy()
+        frame.to_csv(into / "clone_labels.tsv", sep="\t", header=True, index=True)
+        written.append(into / "clone_labels.tsv")
+
+    posterior = _posterior_by_clone(source, record)
+    if posterior is not None:
+        np.save(into / "posterior_clone_probability.npy", posterior)
+        written.append(into / "posterior_clone_probability.npy")
+
+    samples = record.samples
+    if samples is not None and samples.normal_candidates is not None:
+        # NB CalicoST writes the candidates' positions among the spots, under
+        #    a barcode file name (`calicost_supervised.py:194`).
+        pd.Series(np.flatnonzero(samples.normal_candidates)).to_csv(
+            into / "normal_candidate_barcodes.txt", header=False, index=False
+        )
+        written.append(into / "normal_candidate_barcodes.txt")
+
+    return written
+
+
+def _template(column: str) -> str:
+    """`clone3 A` -> `clone{c} A`: a header read without its clone count."""
+    import re
+
+    return re.sub(r"^clone\d+ ", "clone{c} ", str(column))
+
+
+def _kind(values: Any) -> str:
+    dtype = np.asarray(values).dtype
+    return "int" if dtype.kind in "iu" else "float" if dtype.kind == "f" else dtype.kind
+
+
+def calicost_differences(ours: Path, reference: Path) -> list[str]:
+    """Every difference between `ours` and a CalicoST output directory.
+
+    Compared: file names (with `nstates{K}` as `{K}`), each table's columns
+    as templates in order and their types, `clone_labels.tsv`'s index name,
+    the `.npz`'s keys, their types, dimensions and which carry a clone axis,
+    the posterior's shape and the candidates' type. A file only one side
+    holds is a difference of its own; the rest are read through
+    `calicost.phylogeny_startle.get_LoH_for_phylogeny`, CalicoST's reader
+    of `cnv_seglevel.tsv`. Each difference is a key of :data:`CALICOST_DIFFERENCES` or new.
+    """
+    import re
+
+    from calicost.phylogeny_startle import get_LoH_for_phylogeny
+
+    def names(directory: Path) -> set[str]:
+        return {
+            re.sub(r"nstates\d+", "nstates{K}", p.name)
+            for p in directory.iterdir()
+            if p.is_file()
+        }
+
+    # NB what CalicoST's writer writes (`calicost_supervised.py:376-445`), of
+    #    which the committed archive keeps a part.
+    writes = {
+        f"cnv{p}_{t}.tsv"
+        for p in ("", "_diploid", "_triploid", "_tetraploid")
+        for t in ("seglevel", "perstate", "genelevel", "event")
+    }
+    theirs_names = names(reference) | writes
+    found = [f"absent {name}" for name in sorted(theirs_names - names(ours))]
+    found += [f"extra {name}" for name in sorted(names(ours) - theirs_names)]
+
+    for name in ("cnv_seglevel.tsv", "cnv_perstate.tsv"):
+        if (reference / name).exists() and (ours / name).exists():
+            theirs = pd.read_csv(reference / name, sep="\t")
+            mine = pd.read_csv(ours / name, sep="\t")
+            if list(dict.fromkeys(map(_template, theirs.columns))) != list(
+                dict.fromkeys(map(_template, mine.columns))
+            ):
+                found.append(f"columns {name}")
+            kinds = {_template(c): _kind(theirs[c]) for c in theirs.columns}
+            for column in mine.columns:
+                if kinds.get(_template(column), _kind(mine[column])) != _kind(
+                    mine[column]
+                ):
+                    found.append(f"dtype {name} {_template(column)}")
+                    break
+
+    if (reference / "clone_labels.tsv").exists() and (
+        ours / "clone_labels.tsv"
+    ).exists():
+        theirs = pd.read_csv(reference / "clone_labels.tsv", sep="\t", index_col=0)
+        mine = pd.read_csv(ours / "clone_labels.tsv", sep="\t", index_col=0)
+        if theirs.index.name != mine.index.name or list(theirs.columns) != [
+            c for c in mine.columns if c != "tumor_proportion"
+        ]:
+            found.append("columns clone_labels.tsv")
+        if _kind(theirs["clone_label"]) != _kind(mine["clone_label"]):
+            found.append("dtype clone_labels.tsv clone_label")
+
+    (theirs_npz,) = sorted(reference.glob("rdrbaf_final_nstates*_smp.npz"))
+    (mine_npz,) = sorted(ours.glob("rdrbaf_final_nstates*_smp.npz"))
+    with (
+        np.load(theirs_npz, allow_pickle=True) as a,
+        np.load(mine_npz, allow_pickle=True) as b,
+    ):
+        if list(a.files) != list(b.files):
+            found.append("npz keys")
+        for key in set(a.files) & set(b.files):
+            if (_kind(a[key]), a[key].ndim) != (_kind(b[key]), b[key].ndim):
+                found.append(f"npz dtype {key}")
+        n_clones = b["pred_cnv"].shape[1]
+        for key in ("new_log_mu", "new_alphas", "new_p_binom", "new_taus", "log_gamma"):
+            if b[key].shape[-1] != n_clones:
+                found.append(f"npz clone axis {key}")
+
+    for name in ("posterior_clone_probability.npy",):
+        if (reference / name).exists() and (ours / name).exists():
+            theirs_p, mine_p = np.load(reference / name), np.load(ours / name)
+            if theirs_p.ndim != mine_p.ndim or _kind(theirs_p) != _kind(mine_p):
+                found.append(f"dtype {name}")
+            with np.load(mine_npz) as b:
+                if mine_p.shape != (b["new_assignment"].size, b["pred_cnv"].shape[1]):
+                    found.append(f"shape {name}")
+
+    name = "normal_candidate_barcodes.txt"
+    if (reference / name).exists() and (ours / name).exists():
+        theirs_c = pd.read_csv(reference / name, header=None)
+        mine_c = pd.read_csv(ours / name, header=None)
+        if theirs_c.shape[1] != mine_c.shape[1] or _kind(theirs_c[0]) != _kind(
+            mine_c[0]
+        ):
+            found.append(f"dtype {name}")
+
+    # NB CalicoST's own reader, on our file; it concatenates one frame per
+    #    LoH event and raises "No objects to concatenate" where there is none.
+    try:
+        get_LoH_for_phylogeny(pd.read_csv(ours / "cnv_seglevel.tsv", sep="\t"), 1)
+    except ValueError as error:
+        if "No objects to concatenate" not in str(error):
+            raise
+
+    return found

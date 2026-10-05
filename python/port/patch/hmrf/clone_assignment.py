@@ -84,8 +84,10 @@ fit cannot produce raises there rather than being delegated (#278).
 
 from __future__ import annotations
 
+import contextlib
 import copy
 import time
+from collections.abc import Iterator
 from typing import Any, NamedTuple
 
 import numpy as np
@@ -100,9 +102,49 @@ __all__ = [
     "PooledSmoothing",
     "boundary",
     "pipeline_clone_assignment",
+    "recorded",
     "release",
     "require_unpooled",
 ]
+
+_RECORDERS: list[list[tuple[np.ndarray, np.ndarray]]] = []
+"""The lists open `recorded()` blocks collect posteriors into."""
+
+
+@contextlib.contextmanager
+def recorded() -> Iterator[list[tuple[np.ndarray, np.ndarray]]]:
+    """Each call's `(new_assignment, posterior)` in the block, in call order (#613).
+
+    `posterior` is `(n_spots, n_clones)`: per spot, the softmax over clones
+    of the field the solver read plus `spatial_weight` times the adjacency
+    weight to each clone under the returned assignment -- CalicoST's
+    `hmrf_reassignment_posterior` (`hmrf.py:65`) on `port`'s field. The list
+    is the caller's; nothing is kept once the block ends, and nothing is
+    computed while no block is open.
+    """
+    posteriors: list[tuple[np.ndarray, np.ndarray]] = []
+    _RECORDERS.append(posteriors)
+
+    try:
+        yield posteriors
+    finally:
+        _RECORDERS.remove(posteriors)
+
+
+def _posterior(
+    unary: np.ndarray, adjacency_mat: Any, spatial_weight: float, assignment: Any
+) -> np.ndarray:
+    """Per spot, the softmax over clones of `unary` plus the Potts coupling."""
+    from scipy.special import logsumexp
+
+    labels = np.asarray(assignment, dtype=np.int64)
+    onehot = np.zeros((labels.size, unary.shape[1]))
+    held = (labels >= 0) & (labels < unary.shape[1])
+    onehot[np.flatnonzero(held), labels[held]] = 1.0
+    logits = unary + spatial_weight * np.asarray(adjacency_mat @ onehot)
+    posterior: np.ndarray = np.exp(logits - logsumexp(logits, axis=1, keepdims=True))
+    return posterior
+
 
 logger = get_logger(__name__, start_time=start_time)
 """`cnaster`'s own function, captured at import.
@@ -465,6 +507,8 @@ def pipeline_clone_assignment(
             )
             field[:, clone] = column[:, 0]
 
+    seen = field
+
     if get_global_config().hmrf.fixed_assignment:
         logger.warning("Assuming a fixed clone assignment")
     else:
@@ -496,6 +540,7 @@ def pipeline_clone_assignment(
         #    the sweep runs floorless, the floor is met after it, and a
         #    second sweep settles what the merge moved.
         folded = fold_unary(field, log_persample_weights, sample_ids)
+        seen = folded
         graph = CsrGraph.from_matrix(adjacency_mat)
 
         # NB the floor is `hmrf.min_spots_per_clone` where the configuration
@@ -590,5 +635,10 @@ def pipeline_clone_assignment(
     log_likelihood += spatial_weight * np.sum(
         new_assignment[rows[upper]] == new_assignment[columns[upper]]
     )
+
+    if _RECORDERS:
+        posterior = _posterior(seen, adjacency_mat, spatial_weight, new_assignment)
+        for posteriors in _RECORDERS:
+            posteriors.append((new_assignment.copy(), posterior))
 
     return new_assignment, field, log_likelihood
