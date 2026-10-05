@@ -501,7 +501,7 @@ def tree(r: Realization) -> Tree:
 
 
 ROOT = "root"
-"""The drawn tree's root, the normal genome: parent of the `normal` leaf and the tumour."""
+"""The drawn tree's root, an unobserved ancestor: parent of the `normal` leaf and the tumour."""
 
 
 def draw_tree(
@@ -521,20 +521,20 @@ def draw_tree(
     `ancestors`, an unobserved node is drawn unnamed: its barcode is its
     children's common prefix.
 
-    The tree is drawn binary and ladderized (T- #660): the root, the normal
-    genome, splits into `normal`, a leaf with no events, on top and the
-    tumour below; at each later split the branch with fewer leaves, then
-    fewer events, goes above.
+    The tree is drawn binary and ladderized (T- #660): the root, an
+    unobserved ancestor drawn unfilled and unlabelled, splits into `normal`,
+    a leaf with no events, on top and the tumour below; at each later split
+    the branch with fewer leaves, then fewer events, goes above.
 
-    With `edges`, an observed node's barcode is set on the axis's edge -- the
-    root's starting on the left, each leaf's ending on the right -- and its
-    name beside the node, so the caller sizes the tree between the two
-    (`truth_figure`). The texts carry `gid`s `name` and `barcode`.
+    With `edges`, each observed leaf's barcode ends on the axis's right edge
+    and its name sits beside the node, so the caller sizes the tree between
+    the root and the barcodes (`truth_figure`). The texts carry `gid`s
+    `name` and `barcode`.
     """
     t = tree(r)
     named = name or (lambda clone: display(clone, r.clones))
-    # NB the tree is drawn binary: the root, the normal genome, splits into
-    #    `normal`, a leaf with no events, and the tumour (T- #660).
+    # NB the tree is drawn binary: an unobserved root splits into `normal`, a
+    #    leaf with no events, and the tumour (T- #660).
     parent: dict[str, str | None] = {ROOT: None, "normal": ROOT} | {
         node: ROOT if up == "normal" else up
         for node, up in t.parent.items()
@@ -603,12 +603,14 @@ def draw_tree(
             ax.text(x, y[node] + 0.1, e.label, ha="center", va="bottom",
                     fontsize=event_size, color=INK)  # fmt: skip
     for node, up in parent.items():
-        # NB the root is the normal genome: drawn, named and coded as `normal`.
-        clone = "normal" if node == ROOT else node
+        # NB the root is an unobserved ancestor: unfilled, unnamed, uncoded.
+        clone = node
         observed = clone in r.clones
         colour = clone_colour(clone, r.clones) if observed else "white"
         ax.scatter(at[node], y[node], s=dot if observed else 0.45 * dot, color=colour,
                    edgecolors=MUTED, linewidths=0.8 * small ** 0.5, zorder=3)  # fmt: skip
+        if node == ROOT:
+            continue
         label = t.barcode[clone]
         root = up is None
         if observed and edges:
