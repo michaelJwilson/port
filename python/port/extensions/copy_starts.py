@@ -45,9 +45,9 @@ logger = logging.getLogger(__name__)
 __all__ = [
     "LATTICE",
     "STAGES",
-    "Weights",
     "CopyCall",
     "CopyStart",
+    "Weights",
     "classified",
     "instance",
     "lattice_start",
@@ -333,7 +333,9 @@ Weights = Callable[[np.ndarray, int], tuple[np.ndarray, np.ndarray, float]]
 """`(rows, states)` log density and iterations to responsibilities, log state weights and the criterion."""
 
 
-def classified(density: np.ndarray, iterations: int = 3) -> tuple[np.ndarray, np.ndarray, float]:
+def classified(
+    density: np.ndarray, iterations: int = 3
+) -> tuple[np.ndarray, np.ndarray, float]:
     """Each row's state by likelihood plus log weight, iterated: the classification likelihood a mixture's weights give.
 
     Without the weights every row takes whichever state suits it, so the
