@@ -287,11 +287,15 @@ def stamp(fig: Any, record: dict[str, Any]) -> str:
     return text
 
 
-def draw(ax: Any, record: dict[str, Any], key: bool = False) -> pd.DataFrame:
+def draw(
+    ax: Any, record: dict[str, Any], key: bool = False, centre: bool = False
+) -> pd.DataFrame:
     """The gap panel on `ax`: each solver's runs against runtime, numbered as in `TABLE`; returns the runs drawn.
 
     `key` adds each solver's number and name to the legend below the axes,
     for a figure that draws no table beside it (`solver_combined`, T- #660).
+    `centre` widens the gap axis, in decades, until the truth's median is its
+    midpoint; no limit narrows, so no point is clipped.
     """
     from matplotlib.ticker import FixedLocator, FuncFormatter
 
@@ -423,7 +427,12 @@ def draw(ax: Any, record: dict[str, Any], key: bool = False) -> pd.DataFrame:
         float(d.groupby("solver").seconds.quantile(0.1).min()) * 0.6, slowest * 1.3
     )
     ax.set_yscale("log")
-    ax.set_ylim(FLOOR * 0.5, float(d.y.max()) * 3)
+    low, high = FLOOR * 0.5, float(d.y.max()) * 3
+    if centre:
+        truth = float(np.median(truths))
+        reach = max(truth / low, high / truth)
+        low, high = truth / reach, truth * reach
+    ax.set_ylim(low, high)
     ax.yaxis.set_major_locator(FixedLocator([FLOOR, *10.0 ** np.arange(-1, 7)]))
     ax.yaxis.set_major_formatter(
         FuncFormatter(

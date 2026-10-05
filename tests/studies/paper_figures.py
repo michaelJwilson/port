@@ -623,19 +623,16 @@ def data_hash(record: dict[str, Any]) -> str:
 
 
 def solver_figure(potts: dict[str, Any], copies: dict[str, Any]) -> Any:
-    """18: the spatial solvers' gap panel left, the copy-state starts' right, each keyed in its legend, no table."""
+    """18: the spatial solvers' gap panel left, centred on the truth and untitled, the copy-state starts' right, each keyed in its legend, no table."""
     import matplotlib.pyplot as plt
 
     from tests.studies import copy_state_plot, potts_plot
 
     figure, (left, right) = plt.subplots(1, 2, figsize=(12.0, 5.6))
-    potts_plot.draw(left, potts, key=True)
+    potts_plot.draw(left, potts, key=True, centre=True)
     copy_state_plot.draw(right, copies, key=True)
-    for ax, letter, title in (
-        (left, "a", "Spatial solver: clone labels"),
-        (right, "b", "Initialization: copy states"),
-    ):
-        ax.set_title(title, fontsize=9, color=INK)
+    right.set_title("Initialization: copy states", fontsize=9, color=INK)
+    for ax, letter in ((left, "a"), (right, "b")):
         # NB the stated face sets "Runtime [s]" taller than the studies' own figures do
         ax.get_legend().set_bbox_to_anchor((0.5, -0.14))
         ax.text(-0.12, 1.04, f"({letter})", transform=ax.transAxes, fontsize=10,
