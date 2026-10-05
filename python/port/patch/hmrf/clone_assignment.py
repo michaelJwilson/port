@@ -307,6 +307,12 @@ def pipeline_clone_assignment(
     both at install, `--sal` and `--floor-merge` (#517), and `log_space`
     with `port.pipeline.LOG_SPACE_SWAPS`: the field's kernels are then that
     table's (#560, #561).
+
+    **A stated departure from `cnaster`** (#468, T- #617): the clone-size
+    floor is `hmrf.min_spots_per_clone` where the configuration states it
+    (`port.patch.icm.floor.configured_floor`; 100 in `tests/data`'s
+    configuration), and `cnaster`'s 200 only where it does not. `cnaster`
+    reads no key.
     """
     import cnaster.hmrf as upstream
 

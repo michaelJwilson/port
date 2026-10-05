@@ -56,7 +56,7 @@ FLAGS = ("--sal", "--png-copies")
 
 TRUTH = (
     "truth_combined.png",
-    "mutation_tree.png",
+    "simulated_tree.png",
     "spatial.png",
     "clones_genomic.png",
     "clone_profiles.png",
@@ -193,21 +193,29 @@ def truth_figures(path: Path, out: Path, text: str) -> list[Path]:
     import matplotlib.pyplot as plt
     from port.extensions.combined_figure import page_style
     from port.sim import analysis
-    from port.sim.truth_figure import truth_combined_figure
+    from port.sim.truth_figure import simulated_tree_figure, truth_combined_figure
 
     r = analysis.read(path)
     with stamping(text):
         written = r.plot(out)
 
-    figure = truth_combined_figure(r)
-    stamp(figure, text, top=True)
-    with page_style():
-        figure.savefig(
-            out / "truth_combined.png", dpi=300, facecolor="white",
-            metadata={"Software": None},
-        )  # fmt: skip
-    plt.close(figure)
-    return [out / "truth_combined.png", *written]
+    # NB `mutation_tree.png` is not a paper figure: `simulated_tree.png` is
+    #    `truth_combined`'s panel (a) alone (T- #660).
+    (out / "mutation_tree.png").unlink(missing_ok=True)
+    written = [w for w in written if w.name != "mutation_tree.png"]
+    pages = (
+        ("truth_combined.png", truth_combined_figure(r)),
+        ("simulated_tree.png", simulated_tree_figure(r)),
+    )
+    for name, figure in pages:
+        stamp(figure, text, top=True)
+        with page_style():
+            figure.savefig(
+                out / name, dpi=300, facecolor="white",
+                metadata={"Software": None},
+            )  # fmt: skip
+        plt.close(figure)
+    return [*(out / name for name, _ in pages), *written]
 
 
 def mock_slide(coords: np.ndarray, labels: np.ndarray, root: Path) -> Any:
@@ -667,9 +675,9 @@ QUESTIONS: dict[str, tuple[str, str]] = {
         "What was planted, on one page: tree, (A, B) profile, RDR and BAF per clone?",
         "`port.sim.truth_figure.truth_combined_figure`",
     ),
-    "truth/mutation_tree.png": (
-        "Which events sit on which edge of the clone tree?",
-        "`port.sim.analysis.plot_tree`",
+    "truth/simulated_tree.png": (
+        "Which events sit on which edge of the simulated clone tree?",
+        "`port.sim.truth_figure.simulated_tree_figure`, `truth_combined`'s panel (a)",
     ),
     "truth/spatial.png": (
         "Which clone was each spot drawn from?",
@@ -746,6 +754,29 @@ QUESTIONS: dict[str, tuple[str, str]] = {
 }
 """Each committed file under `OUT`: the question it answers, and its source."""
 
+KEY_STUDIES: dict[str, tuple[str, str, str]] = {
+    "key_studies/557_copy-states.png": (
+        "Which copy-state start, polished by `--sal` Baum-Welch, recovers the planted states at known clones?",
+        "`tests.studies.copy_state_plot` (#540, PR #557)",
+        "`python -m tests.studies.copy_state_stream sim/manifests/baseline/dev_tree_1s_hard.toml OUT "
+        "--problems 10 --seeds 10 --held-out 3 --settings tests/studies/copy_sampler_settings.json`",
+    ),
+    "key_studies/554_clone-starts.png": (
+        "Does the clone-label start or the Potts solver decide the clones, and what does each start reach?",
+        "`docs/nb/clone_label_study.ipynb` via `tests.studies.clone_label_notebook` (#541, PR #554)",
+        "`python -m tests.studies.clone_labels capture SAMPLE CAPTURE.npz`, `... run CAPTURE.npz OUT.pkl`, "
+        "`python -m tests.studies.clone_label_notebook OUT.pkl`",
+    ),
+    "key_studies/546_population.png": (
+        "At J = 1, how many UMIs does a clone need to be detected, how long must a CNA be to be recovered, "
+        "and how often is a true-(1,1) segment called altered?",
+        "`tests.studies.population_report.figures` (#544, PR #546)",
+        "`python -m tests.studies.population run --seeds 0:200 --J 1 --out DIR`, then `... run --seeds 1000:1260 "
+        "--J 1 --manifest sim/manifests/population_long.toml --out DIR`, then `... report --out DIR --study2-J 1`",
+    ),
+}
+"""Each key study's figure (label `key_study`) under `OUT/key_studies/`: question, source, regenerate command."""
+
 
 def ledger_name(fixture: str, digest: str) -> str:
     """The run's fixture name in the metrics ledger: one per r0 generation."""
@@ -762,6 +793,9 @@ def readme(
 ) -> str:
     """`OUT/README.md`: the run's headline metrics, then each file's question and source."""
     rows = "\n".join(f"| `{k}` | {q} | {s} |" for k, (q, s) in QUESTIONS.items())
+    studies = "\n".join(
+        f"| `{k}` | {q} | {s} | {r} |" for k, (q, s, r) in KEY_STUDIES.items()
+    )
     return f"""# Paper figures: {fixture} r0 ({digest})
 
 **TL;DR:** clone ARI {recovery["ari"]:.4f}, copy ARI (phase-free)
@@ -789,6 +823,14 @@ and its stamp names both records' data hashes.
 | File | Question | Source |
 | --- | --- | --- |
 {rows}
+
+## Key studies
+
+Each figure is redrawn when its study is rerun, and stamped `data <hash> · code <sha>`.
+
+| File | Question | Source | Regenerate |
+| --- | --- | --- | --- |
+{studies}
 """
 
 

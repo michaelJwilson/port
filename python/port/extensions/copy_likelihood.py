@@ -32,10 +32,11 @@ from __future__ import annotations
 
 import contextlib
 from collections.abc import Callable, Iterator
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Literal, NamedTuple
 
 import numpy as np
+from sal.opt.termination import Termination
 from scipy.special import gammaln, xlogy
 
 from port.patch.hmm_nophasing.bb_logpmf import rises
@@ -88,13 +89,19 @@ class Pseudobulk(NamedTuple):
     taus: float
 
 
-def candidates(max_total_copy: int) -> np.ndarray:
-    """Every `(A, B)` with `0 < A + B <= max_total_copy`, `(n, 2)`."""
+def candidates(max_total_copy: int, max_allele_copy: int | None = None) -> np.ndarray:
+    """Every `(A, B)` with `0 < A + B <= max_total_copy` and `A, B <= max_allele_copy`.
+
+    `(n, 2)`, in `A`-major order. `max_allele_copy=None` bounds each allele
+    by the total alone, which is the same lattice as `max_allele_copy =
+    max_total_copy`.
+    """
+    allele = max_total_copy if max_allele_copy is None else max_allele_copy
     return np.array(
         [
             (a, b)
-            for a in range(max_total_copy + 1)
-            for b in range(max_total_copy + 1)
+            for a in range(allele + 1)
+            for b in range(allele + 1)
             if 0 < a + b <= max_total_copy
         ],
         dtype=np.int64,
@@ -288,6 +295,13 @@ class CopyFit:
     dispersion: float
     taus: float
     log_likelihood: float
+    termination: Termination = field(kw_only=True)
+    """Whether and why the decode stopped (T- #617).
+
+    `lattice_decode`: converged where its last EM iteration left the paths
+    and the parameters where it found them; its `iterations` otherwise, the
+    budget. `shared_decode` solves exactly, in one pass.
+    """
 
 
 def _prior(states: np.ndarray, parsimony: float) -> np.ndarray:
@@ -435,6 +449,7 @@ def lattice_decode(
     *,
     normal_clone: int,
     max_total_copy: int,
+    max_allele_copy: int | None = None,
     lengths: np.ndarray | None = None,
     stay: float = 1.0 - 1e-7,
     parsimony: float = PARSIMONY,
@@ -464,7 +479,7 @@ def lattice_decode(
     The flags are the simplifications the #362 audit measured; the defaults
     are the decode it adopted.
     """
-    states = candidates(max_total_copy)
+    states = candidates(max_total_copy, max_allele_copy)
     n = len(states)
     transmat = np.log(
         np.full((n, n), (1.0 - stay) / (n - 1))
@@ -514,9 +529,13 @@ def lattice_decode(
         return paths, total
 
     paths, total = e_step()
+    done, settled = 0, False
 
     for _ in range(iterations if em else 0):
-        for _ in range(max_inner):
+        before_paths = [path.copy() for path in paths]
+        stable = False
+
+        for inner in range(max_inner):
             before = (shifts.copy(), purity.copy(), alpha, tau)
 
             for i, bulk in enumerate(bulks):
@@ -567,9 +586,17 @@ def lattice_decode(
                 and np.isclose(alpha, before[2], rtol=1e-3)
                 and np.isclose(tau, before[3], rtol=1e-3)
             ):
+                stable = inner == 0
                 break
 
         paths, total = e_step()
+        done += 1
+        settled = stable and all(
+            np.array_equal(old, new)
+            for old, new in zip(before_paths, paths, strict=True)
+        )
+        # NB no early exit on `settled`: the iterations run as before, so
+        #    the decode is bitwise; the flag reports the last one.
 
     return CopyFit(
         [states[path] for path in paths],
@@ -580,6 +607,7 @@ def lattice_decode(
         alpha,
         tau,
         total,
+        termination=Termination.after(done, converged=settled),
     )
 
 
@@ -589,6 +617,7 @@ def shared_decode(
     n_states: int,
     normal: int,
     max_total_copy: int,
+    max_allele_copy: int | None = None,
 ) -> CopyFit:
     """Each continuous state's `(A, B)`, one pair shared by every clone.
 
@@ -597,7 +626,7 @@ def shared_decode(
     pair, and each state's argmax over the lattice solves the one-pair-per-
     state MILP exactly. `normal` is `(1, 1)`; a state no clone visits is too.
     """
-    lattice = candidates(max_total_copy)
+    lattice = candidates(max_total_copy, max_allele_copy)
     log_mu, p = _parameters(lattice)
     states = np.ones((n_states, 2), dtype=np.int64)
     paths = [np.asarray(path, dtype=np.int64) for path, _, _ in clones]
@@ -636,6 +665,8 @@ def shared_decode(
         bulks[0].dispersion,
         bulks[0].taus,
         total,
+        # NB exact: each state's argmax over the lattice is the MILP's.
+        termination=Termination.after(1, converged=True),
     )
 
 

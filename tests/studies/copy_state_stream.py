@@ -1,9 +1,9 @@
 """#540: copy-state starts at known clones on a stream of drawn realizations, polished by the HMM's Baum-Welch.
 
-`python -m tests.studies.copy_state_stream MANIFEST OUT_DIR [--problems 5] [--seeds 3] [--held-out 3] [--first 0] [--settings PATH] [--workers 4] [--all]`
+`python -m tests.studies.copy_state_stream MANIFEST OUT_DIR [--problems 5] [--seeds 3] [--held-out 3] [--first 0] [--settings PATH] [--workers 4] [--all | --starts NAME ...]`
 
-`... --tune` tunes port's samplers on the HMM (`anneal-hmm`, `tempering-hmm`,
-`hmc-hmm`) on the `--held-out` realizations and writes `SETTINGS`, as
+`... --tune` tunes the samplers on the HMM (`anneal-hmm`, `tempering-hmm`,
+`hmc-hmm`, `sal`'s since #634) on the `--held-out` realizations and writes `SETTINGS`, as
 `potts_stream` tunes its samplers: a grid per sampler (`GRID`), `TUNING_SEEDS` seeds per setting, the
 cheapest setting whose median gap in log-likelihood at the start's own states
 is within `TOLERANCE` of the best setting's. The held-out realizations are
@@ -62,8 +62,8 @@ SECONDS = 60.0
 """A best-of-n start's budget for its own polishes, as `run_start` gives it."""
 
 GRID: dict[str, tuple[dict[str, float], ...]] = {
-    "anneal-hmm": tuple({"t_start": t, "steps": n} for t in (1e2, 1e3, 1e4) for n in (12, 24, 48)),
-    "tempering-hmm": tuple({"t_top": t, "rounds": n} for t in (1e2, 1e3, 1e4) for n in (3, 6, 12)),
+    "anneal-hmm": tuple({"t_start": t, "step": e} for t in (1e2, 1e3, 1e4) for e in (1e-3, 3e-3, 1e-2)),
+    "tempering-hmm": tuple({"t_top": t, "step": e} for t in (1e2, 1e3, 1e4) for e in (1e-3, 3e-3, 1e-2)),
     "hmc-hmm": tuple({"temperature": t} for t in (1.0, 3.0, 10.0, 30.0, 100.0, 300.0, 1000.0)),
     "emission++trim": tuple({"trim": t} for t in (0.005, 0.02, 0.05, 0.1)),
     "emission++trimx20hmm": tuple({"trim": t, "draws": n} for t in (0.005, 0.02, 0.05) for n in (10, 20)),
@@ -71,10 +71,17 @@ GRID: dict[str, tuple[dict[str, float], ...]] = {
     "emission++anchor": tuple({"lloyd": r} for r in (1, 3, 10)),
     "emission++knn": tuple({"knn": k} for k in (0.003, 0.01, 0.03)),
 }  # fmt: skip
-"""Each tuned start's settings: the samplers' schedules (`port.sandbox.known_copy.hmm_samplers`) and
-the emission++ variants' knobs (`port.sandbox.extensions.copy_starts.EMISSION_VARIANTS`); each untuned default is in its grid."""
+"""Each tuned start's settings: the samplers' knobs (`port.sandbox.known_copy.hmm_objective`) and
+the emission++ variants' knobs (`port.sandbox.extensions.copy_starts.EMISSION_VARIANTS`); each untuned default is in its grid.
 
-UNTUNED = {"anneal-hmm": 4, "tempering-hmm": 4, "hmc-hmm": 5, "emission++trim": 1, "emission++trimx20hmm": 3,
+The samplers are `sal`'s since #634, on port's deleted samplers' grid shapes, 9 / 9 / 7: the
+budget is held at what port's tuned samplers spent (`hmm_objective.DEFAULTS`) and the fixed step
+searched in its place, around the 3.3-3.8e-3 port's step adaptation settled at on realization 0;
+`hmc-hmm` adapts its step and mass by `sal`'s dual averaging, so only the temperature is searched.
+Port's grid varied the budget; these hold it, so `TOLERANCE`'s "cheapest" is a tie broken by
+seconds."""
+
+UNTUNED = {"anneal-hmm": 2, "tempering-hmm": 2, "hmc-hmm": 2, "emission++trim": 1, "emission++trimx20hmm": 3,
            "emission++lloydx5hmm": 1, "emission++anchor": 1, "emission++knn": 1}  # fmt: skip
 """Each grid's index of the schedule the samplers were written with, reported beside the tuned one."""
 
@@ -257,8 +264,14 @@ def run(
     held_out: int = 3,
     settings: Path | None = None,
     reuse: tuple[Path, ...] = (),
+    only: tuple[str, ...] = (),
+    drop: tuple[str, ...] = (),
 ) -> Path:
-    """The stream after the `held_out` realizations; returns the pickle it keeps current."""
+    """The stream after the `held_out` realizations; returns the pickle it keeps current.
+
+    A start in `drop` gets no new job; its `reuse` rows are still kept, so a start can leave mid-stream
+    and its realizations so far stay in the record.
+    """
     import json
     import logging
 
@@ -272,7 +285,7 @@ def run(
         if first or merge
         else f"copy_{manifest.stem}.pkl"
     )
-    names = list(starts()) if everything else list(STARTS)
+    names = list(only) if only else list(starts()) if everything else list(STARTS)
     tuned: dict[str, dict[str, float]] = {}
     if settings is not None:
         loaded = json.loads(settings.read_text())
@@ -362,7 +375,11 @@ def run(
             kept = [reused_rows[(problem.realization, *job)] for job in jobs
                     if (problem.realization, *job) in reused_rows]  # fmt: skip
             rows.extend(kept)
-            jobs = [j for j in jobs if (problem.realization, *j) not in reused_rows]
+            jobs = [
+                j
+                for j in jobs
+                if (problem.realization, *j) not in reused_rows and j[0] not in drop
+            ]
             print(f"  reused {len(kept)} runs, {len(jobs)} to run", flush=True)
             if not jobs:
                 done.append(problem.realization)
@@ -434,6 +451,13 @@ def main(argv: list[str] | None = None) -> None:
         "realization there, and its truth, are taken rather than rerun",
     )
     parser.add_argument(
+        "--drop",
+        nargs="+",
+        default=(),
+        metavar="START",
+        help="starts given no new job; their --reuse rows are kept",
+    )
+    parser.add_argument(
         "--held-out",
         type=int,
         default=3,
@@ -456,6 +480,13 @@ def main(argv: list[str] | None = None) -> None:
         default=list(GRID),
         choices=list(GRID),
         help="with --tune, only these starts; the others' settings are kept",
+    )
+    parser.add_argument(
+        "--starts",
+        nargs="+",
+        default=(),
+        metavar="NAME",
+        help="only these starts of the registry, in place of STARTS",
     )
     parser.add_argument(
         "--all",
@@ -483,6 +514,8 @@ def main(argv: list[str] | None = None) -> None:
         arguments.held_out,
         arguments.settings,
         tuple(arguments.reuse),
+        tuple(arguments.starts),
+        tuple(arguments.drop),
     )
 
 

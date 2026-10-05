@@ -24,7 +24,7 @@ decoded as `(1, 1)`. So after the pin each clone's shift, `log Z_c =
 logsumexp_g(log mu_{z(g, c)} + log lambda_g)` -- the one the emission
 applies, with `lambda` the baseline `cnaster` sums over every spot
 (`hmrf.py:476`) -- is recorded in `new_log_mu_shift`, `(n_clones,)`, the
-normal clone's at zero while `ZERO_NORMAL_SHIFT` holds (the default).
+normal clone's at zero (`ZERO_NORMAL_SHIFT`).
 
 **Per-clone rates are never stored.** The result carries the pinned table
 and the shifts; `reindex_clones` permutes the shifts with the clones and
@@ -39,7 +39,7 @@ per clone, as the balanced state whose raw `mu` is closest to 1
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Final
 
 import numpy as np
 from cnaster.hmrf import reindex_clones as UPSTREAM_REINDEX
@@ -60,8 +60,12 @@ __all__ = [
     "shift_for",
 ]
 
-ZERO_NORMAL_SHIFT: list[bool] = [True]
-"""Whether the normal clone's shift is set to zero (the default)."""
+ZERO_NORMAL_SHIFT: Final = True
+"""The normal clone's shift is set to zero.
+
+A constant: it was a one-element list any caller could flip, a switch that
+bypassed install (T- #617). Nothing in `port` set it otherwise.
+"""
 
 
 def pin_neutral(result: Any) -> int:
@@ -324,6 +328,6 @@ def run_core_inference(arguments: dict[str, Any], options: dict[str, Any]) -> An
             decoded = False
 
         if base is not None and decoded:
-            clone_shifts(result, np.asarray(base), ZERO_NORMAL_SHIFT[0])
+            clone_shifts(result, np.asarray(base), ZERO_NORMAL_SHIFT)
 
     return result

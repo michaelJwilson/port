@@ -121,3 +121,27 @@ def test_the_viterbi_em_recovers_a_planted_tumour_fraction(seed: int) -> None:
     assert abs(fitted.purity[1] - PURITY) < 0.03
     for pairs, planted in zip(fitted.pairs, paths, strict=True):
         np.testing.assert_array_equal(pairs, LOH_PAIRS[planted])
+
+
+@pytest.mark.infra
+@pytest.mark.parametrize("seed", [0, 1])
+def test_the_decode_reports_why_it_stopped(seed: int) -> None:
+    """Converged at a fixed point; one Viterbi pass without EM is its budget (T- #617)."""
+    from sal.opt.termination import Stop
+
+    paths, bulks = _planted(seed)
+    clones = [(z, b, 0.0) for z, b in zip(paths, bulks, strict=True)]
+    kwargs = {
+        "normal_clone": 0,
+        "max_total_copy": 6,
+        "lengths": np.array([N_OBS]),
+        "fit_purity": False,
+    }
+
+    fitted = lattice_decode(clones, **kwargs)  # type: ignore[arg-type]
+    assert fitted.termination.converged
+    assert 1 <= fitted.termination.iterations <= 5
+
+    once = lattice_decode(clones, em=False, **kwargs)  # type: ignore[arg-type]
+    assert once.termination.reason is Stop.BUDGET
+    assert once.termination.iterations == 0

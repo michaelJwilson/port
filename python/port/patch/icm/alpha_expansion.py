@@ -250,4 +250,8 @@ def alpha_expansion_sweep(
     labelling = np.asarray(result.labelling, dtype=assignment.dtype)
     assignment[:] = labelling
 
-    return IcmResult(niter=int(result.cycles), cost=float(result.energy))
+    return IcmResult(
+        niter=int(result.cycles),
+        cost=float(result.energy),
+        termination=result.termination,
+    )

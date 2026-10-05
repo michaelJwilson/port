@@ -312,8 +312,11 @@ class hmm_nophasing(UPSTREAM):  # type: ignore[misc]
     analytic_gradient: bool = True
     """On by default: the M step's gradient in closed form (#433).
 
-    Off, BFGS differences `cost_fn` as `cnaster` does, one call per
-    coordinate.
+    **A stated departure from `cnaster`** (T- #617): `cnaster`'s BFGS
+    differences `cost_fn`, one call per coordinate, and so does this class
+    with the attribute off. Unlike the two options above it is on in the
+    class itself, so every arm that installs a `SHIFT_SWAPS` row takes it
+    unless that row binds it off.
     """
 
     emission_kernels: str = "cnaster"

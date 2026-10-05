@@ -249,8 +249,8 @@ a test.
     `extensions/` adds what has no counterpart, opt-in or a default its
     measurement earned; `sandbox/` holds developed patches and extensions
     that are not the default, each with its ticket, measurement and exit.
-    One whose exit resolves against it leaves the tree for a named reference
-    branch rather than staying set aside.
+    It is the only place developed code that is not in production lives;
+    none moves to another branch.
 *   **Complexity is budgeted.** A flag, constant, global or class names the
     measurement that earned it; one that cannot is removed.
 *   **A docstring is a contract:** what the code does, its departure from
@@ -310,6 +310,8 @@ a test.
     under `docs/plots/paper/`, and a guard holds the rest out.
     `docs/plots/studies/population_recovery.png` is the one other exception:
     its pipeline runs survive only as `population_records.jsonl.gz`.
+    A key study (label `key_study`) commits its key figure under
+    `docs/plots/paper/key_studies/`, redrawn when the study is rerun.
 
 ## The application
 

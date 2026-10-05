@@ -68,7 +68,12 @@ instance alpha expansion alone takes the clone ARI from 0.919 to 0.386, and
 the sequence to 1.000 (#312)."""
 
 ENVIRONMENT = "PORT_LABEL_SOLVER"
-"""Read once per call, so a subprocess arm can select without a flag."""
+"""Read once per call, so a subprocess arm can select without a flag.
+
+**Overrides the solver bound at install**: a stated departure from rule 1
+of T- #617, held by `tests/test_environment_reads.py`. Unset, the bound
+solver runs.
+"""
 
 
 def _checked(name: str, source: str) -> Solver:
@@ -172,7 +177,8 @@ def expansion_then_floor(
 def _solve(field: Any, graph: Any, assignment: Any, beta: float, search: Any) -> Any:
     """The part every sal row shares: the finite field, the Potts graph, the result.
 
-    `search(potts, values, start)` returns `(labelling, sweeps)`; `assignment`
+    `search(potts, values, start)` returns `(labelling, sweeps, termination)`,
+    the last stage's `Termination`; `assignment`
     is written in place with its dtype kept, and the cost is the Potts energy
     of the labelling returned. One implementation for the five rows (#517).
     """
@@ -184,14 +190,18 @@ def _solve(field: Any, graph: Any, assignment: Any, beta: float, search: Any) ->
 
     values = _finite(field, graph, beta)
     potts = potts_graph_from(graph, beta)
-    labelling, sweeps = search(
+    labelling, sweeps, termination = search(
         potts, values, np.asarray(assignment, dtype=np.int64).copy()
     )
 
     labelling = np.asarray(labelling, dtype=assignment.dtype)
     assignment[:] = labelling
 
-    return IcmResult(niter=int(sweeps), cost=float(energy(potts, values, labelling)))
+    return IcmResult(
+        niter=int(sweeps),
+        cost=float(energy(potts, values, labelling)),
+        termination=termination,
+    )
 
 
 def sal_icm_sweep(
@@ -227,11 +237,11 @@ def sal_icm_sweep(
     from sal.backend import Backend
     from sal.search.icm import iterated_conditional_modes
 
-    def search(potts: Any, values: Any, start: Any) -> tuple[Any, int]:
+    def search(potts: Any, values: Any, start: Any) -> tuple[Any, int, Any]:
         result = iterated_conditional_modes(
             potts, values, np.random.default_rng(0), start=start, backend=Backend.NUMBA
         )
-        return result.labelling, 1
+        return result.labelling, 1, result.termination
 
     return _solve(field, graph, assignment, beta, search)
 
@@ -257,7 +267,7 @@ def _sal_floor(
     from sal.search.alpha_expansion import alpha_expansion
     from sal.search.icm import merge_small_labels
 
-    def search(potts: Any, values: Any, start: Any) -> tuple[Any, int]:
+    def search(potts: Any, values: Any, start: Any) -> tuple[Any, int, Any]:
         if expand:
             start = np.asarray(
                 alpha_expansion(
@@ -274,7 +284,7 @@ def _sal_floor(
             min_sites=max(int(min_clone_spots), 1),
             backend=Backend.NUMBA,
         )
-        return result.labelling, result.sweeps
+        return result.labelling, result.sweeps, result.termination
 
     return _solve(field, graph, assignment, beta, search)
 
@@ -340,7 +350,7 @@ def sal_icm_argmax_sweep(
     from sal.backend import Backend
     from sal.search.icm import iterated_conditional_modes
 
-    def search(potts: Any, values: Any, start: Any) -> tuple[Any, int]:
+    def search(potts: Any, values: Any, start: Any) -> tuple[Any, int, Any]:
         del start
         result = iterated_conditional_modes(
             potts,
@@ -350,7 +360,7 @@ def sal_icm_argmax_sweep(
             min_sites=max(int(min_clone_spots), 1),
             backend=Backend.NUMBA,
         )
-        return result.labelling, result.sweeps
+        return result.labelling, result.sweeps, result.termination
 
     return _solve(field, graph, assignment, beta, search)
 
@@ -382,7 +392,7 @@ def fusion_then_merge(
     from sal.search.alpha_expansion import alpha_expansion, fuse
     from sal.search.icm import iterated_conditional_modes, merge_small_labels
 
-    def search(potts: Any, values: Any, start: Any) -> tuple[Any, int]:
+    def search(potts: Any, values: Any, start: Any) -> tuple[Any, int, Any]:
         expanded = alpha_expansion(
             potts, values, start=start, backend=Backend.RUST
         ).labelling
@@ -408,6 +418,6 @@ def fusion_then_merge(
             min_sites=max(int(min_clone_spots), 1),
             backend=Backend.NUMBA,
         )
-        return result.labelling, result.sweeps
+        return result.labelling, result.sweeps, result.termination
 
     return _solve(field, graph, assignment, beta, search)

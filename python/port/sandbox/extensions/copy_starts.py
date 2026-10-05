@@ -27,7 +27,7 @@ anyone rerunning the study (`tests.studies.copy_starts`):
 - **Port's own starts (#540)**: `EMISSION_VARIANTS` (emission++ seeding
   with trimming, coverage weighting, pooling, Lloyd rounds, or best-of-n by
   the HMM's likelihood), `HMM_SAMPLERS` (samplers on the HMM's own
-  likelihood, `port.sandbox.known_copy.hmm_samplers`), `calicost-gmm`, and
+  likelihood, `sal`'s through `port.sandbox.known_copy.hmm_objective`), `calicost-gmm`, and
   `sal`'s `prior` and `hmc` with port's corrections; `seed_states` gives any
   start's states before its polish.
 - **The arms**, which change the start and never the score: `masked` and
@@ -560,8 +560,10 @@ def _registry() -> dict[str, Row]:
     # NB `sal`'s surrogate `anneal`, `tempering`, `hmc` (snapped to observed
     #    rows) and its best-of-5-with-EM starts are no longer in the #540
     #    study; they stay by name for `run_cnaster --sal`.
-    for name in (*HMM_SAMPLERS, *EMISSION_VARIANTS):
+    for name in EMISSION_VARIANTS:
         rows[name] = Row(name, "port (#540)", STAGES, covariate=True, stochastic=True)
+    for name in HMM_SAMPLERS:
+        rows[name] = Row(name, "sal (#634)", STAGES, covariate=True, stochastic=True)
     return rows
 
 
@@ -593,7 +595,7 @@ Baum-Welch; `lattice` shows the start's miss does not predict the fit's."""
 
 
 HMM_SAMPLERS = ("anneal-hmm", "tempering-hmm", "hmc-hmm")
-"""Port's samplers on the HMM's own NLL (`port.sandbox.known_copy.hmm_samplers`), no snapping."""
+"""`sal.sample.hmc`'s samplers on the HMM's own NLL (`port.sandbox.known_copy.hmm_objective`, #634), no snapping."""
 
 
 @functools.cache
@@ -613,7 +615,7 @@ def _hmm_sampled(
     setting: dict[str, float] | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     """`HMM_SAMPLERS`' states on the call's rows: `(log mu, p)`, not snapped; `setting` in place of the sampler's defaults."""
-    from port.sandbox.known_copy.hmm_samplers import sample
+    from port.sandbox.known_copy.hmm_objective import sample
 
     sampled = sample(
         name, call.total, call.b, call.exposure, call.trials, call.raw["lengths"],
@@ -716,7 +718,7 @@ def _emission_variant(
 ) -> Any:
     """`EMISSION_VARIANTS[name]`: one draw, or the best of `draws` by the HMM's NLL at each draw's states, nothing fitted.
 
-    Scored by `port.sandbox.known_copy.hmm_samplers.negative_log_likelihood`
+    Scored by `port.sandbox.known_copy.hmm_objective.negative_log_likelihood`
     (`jax_hmm`'s forward recursion at `known_copy.hmm.ALPHA`, `TAU`, `T`) on
     the call's rows, each draw's states read as `seed_states` reads them. A
     variant with no seeding change draws `sal`'s own `emission_seeding`.
@@ -733,7 +735,7 @@ def _emission_variant(
 
     if draws == 1:
         return draw()
-    from port.sandbox.known_copy.hmm_samplers import negative_log_likelihood
+    from port.sandbox.known_copy.hmm_objective import negative_log_likelihood
 
     best: tuple[float, Any] = (np.inf, None)
     for _ in range(draws):
