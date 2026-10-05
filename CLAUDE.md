@@ -310,6 +310,8 @@ a test.
     under `docs/plots/paper/`, and a guard holds the rest out.
     `docs/plots/studies/population_recovery.png` is the one other exception:
     its pipeline runs survive only as `population_records.jsonl.gz`.
+    A key study (label `key_study`) commits its key figure under
+    `docs/plots/paper/key_studies/`, redrawn when the study is rerun.
 
 ## The application
 
