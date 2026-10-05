@@ -376,6 +376,7 @@ def test_the_covariance_comes_from_upstream() -> None:
 
     covariance = np.asarray(parameter_covariance(objective, fitted.theta).detach())
     components = objective.components(fitted.theta)
+    assert isinstance(components, BetaBinomialEmission)
     alpha = np.asarray(components.alpha.detach(), dtype=np.float64)
     beta = np.asarray(components.beta.detach(), dtype=np.float64)
 
