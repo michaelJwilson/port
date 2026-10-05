@@ -49,15 +49,14 @@ from typing import Any
 import numpy as np
 
 STARTS = (
-    "emission++trim", "emission++x5hmm", "emission++trimx20hmm", "emission++lloydx5hmm",
-    "emission++anchor", "emission++knn",
-    "cnaster-gmm", "calicost-gmm", "distinct", "lattice", "lattice-em", "rdr-quantiles",
-    "prior", "data", "kmeans++", "emission++", "gaussian-em", "quantile",
+    "calicost-gmm", "lattice", "prior", "kmeans++", "emission++", "gaussian-em",
     "anneal-hmm", "tempering-hmm", "hmc-hmm",
 )  # fmt: skip
-"""One start per family of the registry, the emission++ variants first. Out of the study, still in
-the registry: `sal`'s surrogate `anneal`, `tempering`, `hmc` (snapped to observed rows, #563) and
-its best-of-5-with-EM starts, `--sal`'s `kmeans++x5+em` among them."""
+"""The starts the paper's initialization figure draws (T- #660). Out of the study, still in the
+registry (`--all` runs them): `cnaster-gmm`, `distinct`, `lattice-em`, `rdr-quantiles`, `data`,
+`quantile`, the emission++ variants (`EMISSION_VARIANTS`), `sal`'s surrogate `anneal`,
+`tempering`, `hmc` (snapped to observed rows, #563) and its best-of-5-with-EM starts,
+`--sal`'s `kmeans++x5+em` among them."""
 
 SECONDS = 60.0
 """A best-of-n start's budget for its own polishes, as `run_start` gives it."""
@@ -191,7 +190,8 @@ def _warm() -> None:
     for name in STARTS:
         solve(tiny, name, 0)
     for name, grid in GRID.items():
-        solve(tiny, name, 0, grid[0], polish=False)
+        if name in STARTS:
+            solve(tiny, name, 0, grid[0], polish=False)
 
 
 def _init() -> None:
