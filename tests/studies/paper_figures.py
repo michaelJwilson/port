@@ -753,6 +753,12 @@ KEY_STUDIES: dict[str, tuple[str, str, str]] = {
         "`python -m tests.studies.copy_state_stream sim/manifests/baseline/dev_tree_1s_hard.toml OUT "
         "--problems 10 --seeds 10 --held-out 3 --settings tests/studies/copy_sampler_settings.json`",
     ),
+    "key_studies/554_clone-starts.png": (
+        "Does the clone-label start or the Potts solver decide the clones, and what does each start reach?",
+        "`docs/nb/clone_label_study.ipynb` via `tests.studies.clone_label_notebook` (#541, PR #554)",
+        "`python -m tests.studies.clone_labels capture SAMPLE CAPTURE.npz`, `... run CAPTURE.npz OUT.pkl`, "
+        "`python -m tests.studies.clone_label_notebook OUT.pkl`",
+    ),
 }
 """Each key study's figure (label `key_study`) under `OUT/key_studies/`: question, source, regenerate command."""
 
