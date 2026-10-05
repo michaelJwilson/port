@@ -38,10 +38,10 @@ TABLE = (
         ("emission++", "Seeds by the NB x BB Bregman divergence"),
         ("gaussian-em", "Gaussian mixture on read depth, by EM"),
     )),
-    ("port, samplers on the HMM", (
-        ("anneal-hmm", "Best point of HMC under falling temperature"),
-        ("tempering-hmm", "Best point of 4 HMC replicas on a ladder"),
-        ("hmc-hmm", "Best draw of a warmed HMC chain at a tuned temperature"),
+    ("sal, samplers on the HMM (#634)", (
+        ("anneal-hmm", "Best point of sal's HMC anneal under falling temperature"),
+        ("tempering-hmm", "Best point of sal's parallel tempering, 4 HMC replicas"),
+        ("hmc-hmm", "Best draw of sal's HMC chain after dual-averaging warm-up"),
     )),
 )  # fmt: skip
 """The starts drawn (T- #660). Set aside from the figure, still in the registry: `cnaster-gmm`,
@@ -65,8 +65,7 @@ NUMBER = {name: k + 1 for k, name in enumerate(n for _, rows in TABLE for n, _ i
 NUMBER_TEXT = {name: str(k) for name, k in NUMBER.items()}
 SOURCE = {
     **{name: "sal" for _, rows in TABLE for name, _ in rows},
-    "calicost-gmm": "CalicoST", "lattice": "port", "anneal-hmm": "port", "tempering-hmm": "port",
-    "hmc-hmm": "port",
+    "calicost-gmm": "CalicoST", "lattice": "port",
 }  # fmt: skip
 """Each start's source: the package whose code it runs."""
 COLOUR = {name: plt_colour(k) for name, k in NUMBER.items()}

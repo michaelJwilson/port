@@ -3,8 +3,9 @@
 `run_cnaster_port --sal --hmm-start emission++...` seeds through
 `sal.opt.emission_mixture._seed_scores`, whose negative-binomial Bregman
 divergence is non-negative in exact arithmetic and about `-1.6e-15` in
-float64 for a row a hair from a seed's mean. D-squared sampling hands those
-to `rng.choice`, which refuses them. `sal_mixture.gmm_init` floors them at 0.
+float64 for a row a hair from a seed's mean. D-squared sampling handed those
+to `rng.choice`, which refused them. Port floored them at 0 around
+`sal_mixture.gmm_init` until sal #1136 floored them in the draw (T- #632).
 
 The rows are the rate-space pairs `sal_mixture.instance_of` builds, seeded
 through the same `CountPairSeeding` seam: 200 at `(2.0, 0.3)`; 200 whose
@@ -69,116 +70,59 @@ def test_sals_emission_plus_plus_no_longer_refuses_a_round_off_negative_divergen
 
 
 @pytest.mark.oracle
-def test_the_floored_scores_are_the_exact_divergence() -> None:
-    """From a `(2.0, 0.3)` seed, each near row's floored score is the 50-digit divergence, to 2e-14 absolute.
+def test_sals_scores_are_the_exact_divergence() -> None:
+    """From a `(2.0, 0.3)` seed, each near row's score is the 50-digit divergence, to 2e-14 absolute.
 
     The exact negative-binomial divergence there is below 1e-24, and sal's
-    negative-binomial part of each score lies within 1.6e-15 of it. At sal `3ad4b04` the
-    beta-binomial deviance was clamped to 0 and 102 of the 200 near rows
-    scored as low as `-1.6e-15`. Since sal #1136 the deviance at
-    concentration 1000 takes the Stirling-difference path above shape 100
-    and reads `+1.43e-14` where it is 0, so no near row is negative and the
-    near scores are 1.28e-14 to 1.59e-14: the tolerance was 1e-14 before
-    the bump (T- #632 PR A).
+    negative-binomial part of each score lies within 1.6e-15 of it. At sal
+    `3ad4b04` the beta-binomial deviance was clamped to 0 and 102 of the 200
+    near rows scored as low as `-1.6e-15`. Since sal #1136 the deviance at
+    concentration 1000 takes the Stirling-difference path above shape 100 and
+    reads `+1.43e-14` where it is 0, so no near row is negative and the near
+    scores are 1.28e-14 to 1.59e-14.
     """
-    from port.patch.hmm_initialize.sal_mixture import clamped_divergence
-    from sal.opt.emission_mixture import _seed_scores as unfloored
+    from sal.opt.emission_mixture import _seed_scores
 
     rows = _rows()
     candidates = np.arange(rows.shape[0], dtype=np.float64)
     near = slice(200, 400)
-    raw = unfloored(rows, _seam())(0.0, candidates)
-
-    with clamped_divergence():
-        import sal.opt.emission_mixture as upstream
-
-        floored = upstream._seed_scores(rows, _seam())(0.0, candidates)
-
+    raw = _seed_scores(rows, _seam())(0.0, candidates)
     exact = [nb_divergence(y, 2.0, SIZE) for y in rows[near, 0]]
 
-    assert (raw[near] < 0.0).sum() == 0
-    assert (floored >= 0.0).all()
-    np.testing.assert_allclose(floored[near], exact, rtol=0, atol=2e-14)
-    np.testing.assert_array_equal(floored[raw >= 0.0], raw[raw >= 0.0])
+    assert (raw >= 0.0).all()
+    np.testing.assert_allclose(raw[near], exact, rtol=0, atol=2e-14)
+
+
+def _port_floor(score: Any) -> Any:
+    """The `_seed_scores` patch T- #632 retired: each divergence floored at 0."""
+
+    def nonnegative(seed: float, candidates: np.ndarray) -> np.ndarray:
+        return np.asarray(np.maximum(score(seed, candidates), 0.0))
+
+    return nonnegative
 
 
 @pytest.mark.patch
-def test_the_floor_draws_sals_seeds_wherever_sal_draws_any() -> None:
-    """Under the floor every generator seeds, and draws the same rows as sal on all 20.
+def test_sals_draw_is_the_retired_floors_draw() -> None:
+    """sal's own D-squared draw against the same draw under port's retired floor: equal rows on 20 generators.
 
-    9 of 20 completed unfloored at sal `3ad4b04`; 20 do since sal #1136.
-
-    Flooring moves only scores below 0, which `rng.choice` never accepted, so
-    a draw sal completes is the same draw.
+    sal #1136 floors each divergence at 0 before the running minimum, where
+    port's patch floored it, so retiring the patch moves no seed.
     """
-    import sal.opt.emission_mixture as upstream
-    from port.patch.hmm_initialize.sal_mixture import clamped_divergence
+    from sal.opt.emission_mixture import _seed_scores
     from sal.opt.mixture import emission_mixture_plus_plus
 
     rows = _rows()
     indices = np.arange(rows.shape[0], dtype=np.float64)
-    completed = 0
 
     for seed in range(20):
-        with clamped_divergence():
-            floored = emission_mixture_plus_plus(
-                indices,
-                3,
-                upstream._seed_scores(rows, _seam()),
-                np.random.default_rng(seed),
-            )
-        try:
-            raw = emission_mixture_plus_plus(
-                indices,
-                3,
-                upstream._seed_scores(rows, _seam()),
-                np.random.default_rng(seed),
-            )
-        except ValueError:
-            continue
-        completed += 1
-        np.testing.assert_array_equal(floored, raw)
-
-    assert completed == 20
-
-
-@pytest.mark.infra
-def test_the_start_seeds_under_the_floor_and_restores_it(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """`sal_mixture.gmm_init` runs its start under the floor; `sal`'s own name is back afterwards."""
-    import sal.opt.emission_mixture as upstream
-    from port.patch.hmm_initialize import sal_mixture
-
-    original = upstream._seed_scores
-    seen: list[bool] = []
-
-    class Stop(Exception):
-        pass
-
-    def run_start(*_: Any, **__: Any) -> Any:
-        seen.append(upstream._seed_scores is not original)
-        raise Stop
-
-    monkeypatch.setattr("port.extensions.copy_starts.run_start", run_start)
-    n_obs = 50
-    X = np.ones((n_obs, 2, 1))
-    column = np.full((n_obs, 1), 30.0)
-
-    with pytest.raises(Stop):
-        sal_mixture.gmm_init(
-            4,
-            X,
-            column,
-            column,
-            "smp",
-            None,
-            None,
-            None,
-            random_state=0,
-            only_minor=False,
-            start="emission++",
+        sals = emission_mixture_plus_plus(
+            indices, 3, _seed_scores(rows, _seam()), np.random.default_rng(seed)
         )
-
-    assert seen == [True]
-    assert upstream._seed_scores is original
+        ported = emission_mixture_plus_plus(
+            indices,
+            3,
+            _port_floor(_seed_scores(rows, _seam())),
+            np.random.default_rng(seed),
+        )
+        np.testing.assert_array_equal(sals, ported)
