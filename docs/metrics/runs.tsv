@@ -78,3 +78,37 @@ aec3403-dev_tree_1s_hard_r0-0611	2026-10-01T06:11Z	aec3403	-- --sal --no-plots	t
 dbfff01-easy-2356	2026-10-01T23:56Z	dbfff01	-- --sal --no-plots	tests/sim_audit.py::main	sal 3ad4b04, same-host control for sal b61dfba (T- #632 PR A)
 dbfff01-hard-2358	2026-10-01T23:58Z	dbfff01	-- --sal --no-plots	tests/sim_audit.py::main	sal 3ad4b04, same-host control for sal b61dfba (T- #632 PR A)
 dbfff01-dev_tree_1s_easy_ln_r0-0000	2026-10-02T00:00Z	dbfff01	-- --sal --no-plots	tests/sim_audit.py::main	sal 3ad4b04, same-host control for sal b61dfba (T- #632 PR A)
+efdebfd-easy-1653	2026-10-01T16:53Z	efdebfd	-- --sal --no-plots	tests/sim_audit.py::main	--sal baseline at efdebfd; concurrent host; wall confounded
+efdebfd-hard-1655	2026-10-01T16:55Z	efdebfd	-- --sal --no-plots	tests/sim_audit.py::main	--sal baseline at efdebfd; concurrent host; wall confounded
+efdebfd-dev_tree_r0-1700	2026-10-01T17:00Z	efdebfd	-- --sal --no-plots	tests/sim_audit.py::main	--sal baseline at efdebfd; concurrent host; wall confounded
+efdebfd-dev_tree_r1-1705	2026-10-01T17:05Z	efdebfd	-- --sal --no-plots	tests/sim_audit.py::main	--sal baseline at efdebfd; concurrent host; wall confounded
+efdebfd-dev_tree_r2-1710	2026-10-01T17:10Z	efdebfd	-- --sal --no-plots	tests/sim_audit.py::main	--sal baseline at efdebfd; concurrent host; wall confounded
+efdebfd-dev_tree_1s_r0-1712	2026-10-01T17:12Z	efdebfd	-- --sal --no-plots	tests/sim_audit.py::main	--sal baseline at efdebfd; concurrent host; wall confounded
+efdebfd-dev_tree_1s_r1-1715	2026-10-01T17:15Z	efdebfd	-- --sal --no-plots	tests/sim_audit.py::main	--sal baseline at efdebfd; concurrent host; wall confounded
+efdebfd-dev_tree_1s_r2-1718	2026-10-01T17:18Z	efdebfd	-- --sal --no-plots	tests/sim_audit.py::main	--sal baseline at efdebfd; concurrent host; wall confounded
+efdebfd-dev_tree_1s_easy_r0-1721	2026-10-01T17:21Z	efdebfd	-- --sal --no-plots	tests/sim_audit.py::main	--sal baseline at efdebfd; concurrent host; wall confounded
+efdebfd-dev_tree_1s_easy_bb01_r1-1724	2026-10-01T17:24Z	efdebfd	-- --sal --no-plots	tests/sim_audit.py::main	--sal baseline at efdebfd; concurrent host; wall confounded
+efdebfd-dev_tree_1s_easy_bb01_r2-1727	2026-10-01T17:27Z	efdebfd	-- --sal --no-plots	tests/sim_audit.py::main	--sal baseline at efdebfd; concurrent host; wall confounded
+efdebfd-dev_tree_1s_hard_r0-1730	2026-10-01T17:30Z	efdebfd	-- --sal --no-plots	tests/sim_audit.py::main	--sal baseline at efdebfd; concurrent host; wall confounded
+efdebfd-dev_tree_1s_hard_bb01_r1-1733	2026-10-01T17:33Z	efdebfd	-- --sal --no-plots	tests/sim_audit.py::main	--sal baseline at efdebfd; concurrent host; wall confounded
+efdebfd-dev_tree_1s_hard_bb01_r2-1735	2026-10-01T17:35Z	efdebfd	-- --sal --no-plots	tests/sim_audit.py::main	--sal baseline at efdebfd; concurrent host; wall confounded
+0eaac23-dev_tree_1s_easy_ln_r0-1935	2026-10-01T19:35Z	0eaac23	--sal --png-copies	tests/sim_audit.py::main	#624 paper figures: dev_tree_1s_easy r0 22a5eb85, --sal
+9a47d97-easy-2105	2026-10-01T21:05Z	9a47d97	-- --sal --no-plots	tests/sim_audit.py::main	--sal baseline: 18 fixtures, idle host, numba warm, serial
+9a47d97-hard-2108	2026-10-01T21:08Z	9a47d97	-- --sal --no-plots	tests/sim_audit.py::main	--sal baseline: 18 fixtures, idle host, numba warm, serial
+9a47d97-dev_tree_r0-2113	2026-10-01T21:13Z	9a47d97	-- --sal --no-plots	tests/sim_audit.py::main	--sal baseline: 18 fixtures, idle host, numba warm, serial
+9a47d97-dev_tree_r1-2119	2026-10-01T21:19Z	9a47d97	-- --sal --no-plots	tests/sim_audit.py::main	--sal baseline: 18 fixtures, idle host, numba warm, serial
+9a47d97-dev_tree_r2-2124	2026-10-01T21:24Z	9a47d97	-- --sal --no-plots	tests/sim_audit.py::main	--sal baseline: 18 fixtures, idle host, numba warm, serial
+9a47d97-dev_tree_1s_r0-2127	2026-10-01T21:27Z	9a47d97	-- --sal --no-plots	tests/sim_audit.py::main	--sal baseline: 18 fixtures, idle host, numba warm, serial
+9a47d97-dev_tree_1s_r1-2131	2026-10-01T21:31Z	9a47d97	-- --sal --no-plots	tests/sim_audit.py::main	--sal baseline: 18 fixtures, idle host, numba warm, serial
+9a47d97-dev_tree_1s_r2-2135	2026-10-01T21:35Z	9a47d97	-- --sal --no-plots	tests/sim_audit.py::main	--sal baseline: 18 fixtures, idle host, numba warm, serial
+9a47d97-dev_tree_1s_easy_r0-2140	2026-10-01T21:40Z	9a47d97	-- --sal --no-plots	tests/sim_audit.py::main	--sal baseline: 18 fixtures, idle host, numba warm, serial
+9a47d97-dev_tree_1s_easy_bb01_r1-2143	2026-10-01T21:43Z	9a47d97	-- --sal --no-plots	tests/sim_audit.py::main	--sal baseline: 18 fixtures, idle host, numba warm, serial
+9a47d97-dev_tree_1s_easy_bb01_r2-2147	2026-10-01T21:47Z	9a47d97	-- --sal --no-plots	tests/sim_audit.py::main	--sal baseline: 18 fixtures, idle host, numba warm, serial
+9a47d97-dev_tree_1s_hard_r0-2151	2026-10-01T21:51Z	9a47d97	-- --sal --no-plots	tests/sim_audit.py::main	--sal baseline: 18 fixtures, idle host, numba warm, serial
+9a47d97-dev_tree_1s_hard_bb01_r1-2155	2026-10-01T21:55Z	9a47d97	-- --sal --no-plots	tests/sim_audit.py::main	--sal baseline: 18 fixtures, idle host, numba warm, serial
+9a47d97-dev_tree_1s_hard_bb01_r2-2158	2026-10-01T21:58Z	9a47d97	-- --sal --no-plots	tests/sim_audit.py::main	--sal baseline: 18 fixtures, idle host, numba warm, serial
+9a47d97-dev_tree_ln_r0-2204	2026-10-01T22:04Z	9a47d97	-- --sal --no-plots	tests/sim_audit.py::main	--sal baseline: 18 fixtures, idle host, numba warm, serial
+9a47d97-dev_tree_1s_ln_r0-2208	2026-10-01T22:08Z	9a47d97	-- --sal --no-plots	tests/sim_audit.py::main	--sal baseline: 18 fixtures, idle host, numba warm, serial
+9a47d97-dev_tree_1s_easy_ln_r0-2212	2026-10-01T22:12Z	9a47d97	-- --sal --no-plots	tests/sim_audit.py::main	--sal baseline: 18 fixtures, idle host, numba warm, serial
+9a47d97-dev_tree_1s_hard_ln_r0-2215	2026-10-01T22:15Z	9a47d97	-- --sal --no-plots	tests/sim_audit.py::main	--sal baseline: 18 fixtures, idle host, numba warm, serial
+dbf5436-dev_tree_1s_easy_r0_7ba9b01f-1607	2026-10-05T16:07Z	dbf5436	--sal --png-copies	tests/sim_audit.py::main	#624 paper figures: dev_tree_1s_easy r0 7ba9b01f, --sal
