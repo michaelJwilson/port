@@ -759,6 +759,13 @@ KEY_STUDIES: dict[str, tuple[str, str, str]] = {
         "`python -m tests.studies.clone_labels capture SAMPLE CAPTURE.npz`, `... run CAPTURE.npz OUT.pkl`, "
         "`python -m tests.studies.clone_label_notebook OUT.pkl`",
     ),
+    "key_studies/546_population.png": (
+        "At J = 1, how many UMIs does a clone need to be detected, how long must a CNA be to be recovered, "
+        "and how often is a true-(1,1) segment called altered?",
+        "`tests.studies.population_report.figures` (#544, PR #546)",
+        "`python -m tests.studies.population run --seeds 0:200 --J 1 --out DIR`, then `... run --seeds 1000:1260 "
+        "--J 1 --manifest sim/manifests/population_long.toml --out DIR`, then `... report --out DIR --study2-J 1`",
+    ),
 }
 """Each key study's figure (label `key_study`) under `OUT/key_studies/`: question, source, regenerate command."""
 
