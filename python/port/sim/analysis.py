@@ -500,6 +500,10 @@ def tree(r: Realization) -> Tree:
     return Tree(parent, events, barcode)
 
 
+ROOT = "root"
+"""The drawn tree's unobserved root, parent of `normal` and the tumour."""
+
+
 def draw_tree(
     ax: Any,
     r: Realization,
@@ -517,29 +521,39 @@ def draw_tree(
     `ancestors`, an unobserved node is drawn unnamed: its barcode is its
     children's common prefix.
 
-    With `edges`, an observed node's barcode is set on the axis's edge -- the
-    root's starting on the left, each leaf's ending on the right -- and its
-    name beside the node, so the caller sizes the tree between the two
-    (`truth_figure`). The texts carry `gid`s `name` and `barcode`.
+    The tree is drawn binary: an unobserved root, unlabelled, splits into
+    `normal`, a leaf with no events, and the tumour (T- #660).
+
+    With `edges`, each observed leaf's barcode ends on the axis's right edge
+    and its name sits beside the node, so the caller sizes the tree between
+    the root and the barcodes (`truth_figure`). The texts carry `gid`s
+    `name` and `barcode`.
     """
     t = tree(r)
     named = name or (lambda clone: display(clone, r.clones))
+    # NB the tree is drawn binary: an unobserved root splits into `normal`, a
+    #    leaf with no events, and the tumour (T- #660).
+    parent: dict[str, str | None] = {ROOT: None, "normal": ROOT} | {
+        node: ROOT if up == "normal" else up
+        for node, up in t.parent.items()
+        if up is not None
+    }
     children: dict[str, list[str]] = {}
-    for node, up in t.parent.items():
+    for node, up in parent.items():
         if up is not None:
             children.setdefault(up, []).append(node)
     # NB each edge is as long as its events, one unit apiece, and an edge with
     #    none one unit: at half a unit, an eventless ancestor sat on its
     #    children's first ticks and their labels ran over it (T- #660).
     count = t.events.groupby("node").size().to_dict()
-    at = {"normal": 0.0}
+    at = {ROOT: 0.0}
 
     def settle(node: str) -> None:
         for child in children.get(node, []):
             at[child] = at[node] + max(int(count.get(child, 0)), 1)
             settle(child)
 
-    settle("normal")
+    settle(ROOT)
     order: list[str] = []
 
     def walk(node: str) -> None:
@@ -548,7 +562,7 @@ def draw_tree(
         if not children.get(node):
             order.append(node)
 
-    walk("normal")
+    walk(ROOT)
     y = {leaf: float(i) for i, leaf in enumerate(order)}
 
     def place(node: str) -> float:
@@ -556,11 +570,11 @@ def draw_tree(
             y[node] = float(np.mean([place(c) for c in children[node]]))
         return y[node]
 
-    place("normal")
+    place(ROOT)
 
     width = max(at.values())
     small = dot / 90.0
-    for node, up in t.parent.items():
+    for node, up in parent.items():
         if up is None:
             continue
         ax.plot([at[up], at[up], at[node]], [y[up], y[node], y[node]],
@@ -573,13 +587,13 @@ def draw_tree(
                     linewidth=1.0 * small ** 0.5)  # fmt: skip
             ax.text(x, y[node] + 0.1, e.label, ha="center", va="bottom",
                     fontsize=event_size, color=INK)  # fmt: skip
-    for node in t.parent:
+    for node, up in parent.items():
         observed = node in r.clones
         colour = clone_colour(node, r.clones) if observed else "white"
         ax.scatter(at[node], y[node], s=dot if observed else 0.45 * dot, color=colour,
                    edgecolors=MUTED, linewidths=0.8 * small ** 0.5, zorder=3)  # fmt: skip
-        label = t.barcode[node]
-        root = t.parent[node] is None
+        label = t.barcode.get(node, t.barcode["normal"])
+        root = up is None
         if observed and edges:
             from matplotlib.transforms import blended_transform_factory
 
@@ -600,7 +614,7 @@ def draw_tree(
             ax.text(at[node] + (-0.12 if root else 0.12), y[node], label,
                     fontsize=node_size, color=INK, va="center",
                     ha="right" if root else "left", family="monospace")  # fmt: skip
-        elif ancestors:
+        elif ancestors and node != ROOT:
             # NB an ancestor's name under it: level with it, the name ran
             #    into the events labelled above its children's edges.
             ax.text(at[node] + 0.12, y[node] - 0.12, label, fontsize=node_size,
@@ -622,7 +636,8 @@ def plot_tree(r: Realization, out: Path) -> Path:
     import matplotlib.pyplot as plt
 
     t = tree(r)
-    leaves = sum(1 for node in t.parent if node not in set(t.parent.values()))
+    # NB `normal` is drawn as a leaf too (`draw_tree`)
+    leaves = 1 + sum(1 for node in t.parent if node not in set(t.parent.values()))
     depth = float(t.events["time"].max()) if len(t.events) else 1.0
     fig, ax = plt.subplots(figsize=(2.1 * depth + 4.0, 0.9 * leaves + 1.2))
     draw_tree(ax, r)
