@@ -501,7 +501,7 @@ def tree(r: Realization) -> Tree:
 
 
 ROOT = "root"
-"""The drawn tree's unobserved root, parent of `normal` and the tumour."""
+"""The drawn tree's root, the normal genome: parent of the `normal` leaf and the tumour."""
 
 
 def draw_tree(
@@ -521,18 +521,20 @@ def draw_tree(
     `ancestors`, an unobserved node is drawn unnamed: its barcode is its
     children's common prefix.
 
-    The tree is drawn binary: an unobserved root, unlabelled, splits into
-    `normal`, a leaf with no events, and the tumour (T- #660).
+    The tree is drawn binary and ladderized (T- #660): the root, the normal
+    genome, splits into `normal`, a leaf with no events, on top and the
+    tumour below; at each later split the branch with fewer leaves, then
+    fewer events, goes above.
 
-    With `edges`, each observed leaf's barcode ends on the axis's right edge
-    and its name sits beside the node, so the caller sizes the tree between
-    the root and the barcodes (`truth_figure`). The texts carry `gid`s
-    `name` and `barcode`.
+    With `edges`, an observed node's barcode is set on the axis's edge -- the
+    root's starting on the left, each leaf's ending on the right -- and its
+    name beside the node, so the caller sizes the tree between the two
+    (`truth_figure`). The texts carry `gid`s `name` and `barcode`.
     """
     t = tree(r)
     named = name or (lambda clone: display(clone, r.clones))
-    # NB the tree is drawn binary: an unobserved root splits into `normal`, a
-    #    leaf with no events, and the tumour (T- #660).
+    # NB the tree is drawn binary: the root, the normal genome, splits into
+    #    `normal`, a leaf with no events, and the tumour (T- #660).
     parent: dict[str, str | None] = {ROOT: None, "normal": ROOT} | {
         node: ROOT if up == "normal" else up
         for node, up in t.parent.items()
@@ -554,16 +556,29 @@ def draw_tree(
             settle(child)
 
     settle(ROOT)
+
+    def leaves(node: str) -> int:
+        return sum(leaves(c) for c in children[node]) if node in children else 1
+
+    def events(node: str) -> int:
+        below = sum(events(c) for c in children.get(node, []))
+        return int(count.get(node, 0)) + below
+
     order: list[str] = []
 
     def walk(node: str) -> None:
-        for child in sorted(children.get(node, [])):
+        # NB ladderized from the top: `normal` first, then at each split the
+        #    branch with fewer leaves, then fewer events, then by name.
+        for child in sorted(
+            children.get(node, []),
+            key=lambda c: (c != "normal", leaves(c), events(c), c),
+        ):
             walk(child)
         if not children.get(node):
             order.append(node)
 
     walk(ROOT)
-    y = {leaf: float(i) for i, leaf in enumerate(order)}
+    y = {leaf: float(len(order) - 1 - i) for i, leaf in enumerate(order)}
 
     def place(node: str) -> float:
         if node not in y:
@@ -588,17 +603,19 @@ def draw_tree(
             ax.text(x, y[node] + 0.1, e.label, ha="center", va="bottom",
                     fontsize=event_size, color=INK)  # fmt: skip
     for node, up in parent.items():
-        observed = node in r.clones
-        colour = clone_colour(node, r.clones) if observed else "white"
+        # NB the root is the normal genome: drawn, named and coded as `normal`.
+        clone = "normal" if node == ROOT else node
+        observed = clone in r.clones
+        colour = clone_colour(clone, r.clones) if observed else "white"
         ax.scatter(at[node], y[node], s=dot if observed else 0.45 * dot, color=colour,
                    edgecolors=MUTED, linewidths=0.8 * small ** 0.5, zorder=3)  # fmt: skip
-        label = t.barcode.get(node, t.barcode["normal"])
+        label = t.barcode[clone]
         root = up is None
         if observed and edges:
             from matplotlib.transforms import blended_transform_factory
 
             side = blended_transform_factory(ax.transAxes, ax.transData)
-            ax.annotate(named(node), (at[node], y[node]),
+            ax.annotate(named(clone), (at[node], y[node]),
                         xytext=(-4.0 if root else 4.0, 0.0),
                         textcoords="offset points", fontsize=node_size, color=INK,
                         va="center", ha="right" if root else "left",
@@ -608,13 +625,13 @@ def draw_tree(
                     ha="left" if root else "right", family="monospace",
                     gid="barcode")  # fmt: skip
         elif observed:
-            label = f"{named(node)}  {label}"
+            label = f"{named(clone)}  {label}"
             # NB the root's trunk leaves to its right, so its name sits to
             #    its left; a leaf's name follows it.
             ax.text(at[node] + (-0.12 if root else 0.12), y[node], label,
                     fontsize=node_size, color=INK, va="center",
                     ha="right" if root else "left", family="monospace")  # fmt: skip
-        elif ancestors and node != ROOT:
+        elif ancestors:
             # NB an ancestor's name under it: level with it, the name ran
             #    into the events labelled above its children's edges.
             ax.text(at[node] + 0.12, y[node] - 0.12, label, fontsize=node_size,

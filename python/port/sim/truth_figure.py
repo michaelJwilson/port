@@ -206,12 +206,12 @@ NAME_GAP = 4.0
 
 
 def _fit_tree(ax: Any) -> None:
-    """(a)'s x limits set so the tree fills the genome panels' width up to its barcodes.
+    """(a)'s x limits set so the tree fills the genome panels' width between its barcodes.
 
-    The root, unlabelled at event time 0, sits `NAME_GAP` in from the axis's
-    left edge; each leaf's barcode ends on its right (`draw_tree(edges=True)`),
-    and the tree is stretched until the leaf whose name comes closest to its
-    barcode is `NAME_GAP` from it.
+    The root's barcode starts on the axis's left edge and each leaf's ends on
+    its right (`draw_tree(edges=True)`). The root sits `NAME_GAP` right of its
+    name after its barcode, and the tree is stretched until the leaf whose
+    name comes closest to its barcode is `NAME_GAP` from it.
     """
     figure = ax.get_figure(root=True)
     renderer = figure.canvas.get_renderer()
@@ -226,14 +226,22 @@ def _fit_tree(ax: Any) -> None:
     def offset(text: Any) -> float:
         return abs(float(text.xyann[0])) / 72.0
 
-    leaves = [t for t in ax.texts if t.get_gid() == "name"]
+    names = [t for t in ax.texts if t.get_gid() == "name"]
     barcodes = {
         round(float(t.get_position()[1]), 6): t
         for t in ax.texts
         if t.get_gid() == "barcode"
     }
-    x0 = 0.0
-    start = left + gap
+    root = min(names, key=lambda t: t.xy[0])
+    leaves = [t for t in names if t is not root]
+    x0 = float(root.xy[0])
+    start = (
+        left
+        + inches(barcodes[round(float(root.xy[1]), 6)])
+        + gap
+        + inches(root)
+        + offset(root)
+    )
     # NB per leaf, the most inches per unit of event time it allows.
     scale = min(
         (
