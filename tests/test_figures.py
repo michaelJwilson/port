@@ -9,8 +9,7 @@ some harness outside this repository writes.
 
 **`plot_loh_density`'s figure has no test here.** The render-only test it had
 asserted `is not None`, which `CLAUDE.md` forbids, and was dropped on #355;
-`tests/test_plot_loh_density.py` compared port's renderer with it, and moved
-with it to `reference/205-278-emission-genomic-loh` (T- #617). What a
+`tests/test_plot_loh_density.py` compares port's renderer with it. What a
 figure test would be -- byte reproduction, which needs the matplotlib
 timestamp pinned first -- is #103's.
 """
