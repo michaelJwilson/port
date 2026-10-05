@@ -133,7 +133,6 @@ ROLES: dict[str, Role] = {
     "port.sandbox.known_copy.hmm": "set aside",
     "port.sandbox.known_copy.hmm_samplers": "set aside",
     "port.sandbox.known_copy.problem": "set aside",
-    "port.sandbox.normal_candidates": "set aside",
     "port.sandbox.np_merge.__main__": "set aside",
     "port.sandbox.np_merge.merge": "set aside",
     "port.sandbox.patch.emission": "set aside",

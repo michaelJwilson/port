@@ -71,8 +71,9 @@ The seconds order the starts within a sample and are not a benchmark (#494 is).
   0.001–0.004 elsewhere.
 
 No start matches or beats the grid on every sample and arm, so none is
-adopted. `sandbox/wolff_init.umi_grow` and `sandbox/normal_candidates` stay
-in the sandbox, their numbers here.
+adopted. `sandbox/wolff_init.umi_grow` stays in the sandbox, and
+`sandbox/normal_candidates` is on the branch `reference/320-normal-candidates`
+(T- #617), their numbers here.
 
 ## Upstream correspondence
 

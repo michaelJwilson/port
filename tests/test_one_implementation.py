@@ -54,7 +54,7 @@ CONCEPTS: dict[str, int] = {
     #    responsibility distance, a different cost.
     "Hungarian matcher": 2,
     # NB 2: `tests.recovery_audit` runs a planted lattice with its hooks
-    #    (normal oracle, M-step tolerance, two-pass), `tests.sim_audit` a
+    #    (normal oracle, M-step tolerance), `tests.sim_audit` a
     #    written sim sample with its overrides; they share the scorer and the
     #    capture, not the arm.
     "run_arm": 2,

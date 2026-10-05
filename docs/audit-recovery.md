@@ -98,7 +98,8 @@ The two events separate only with enough states **and** `--sal`.
 ## A realistic selector (sandbox)
 
 `port.sandbox.normal_candidates.two_pass` takes the candidates from a first
-run's fitted normal clone (#320). Scored with `--two-pass-normal`:
+run's fitted normal clone (#320). Scored with `--two-pass-normal`; both now
+live on the branch `reference/320-normal-candidates` (T- #617):
 
 | instance | config | tumor candidates | ARI | mu err | copies (altered) |
 | --- | --- | ---: | ---: | ---: | ---: |
@@ -108,7 +109,7 @@ run's fitted normal clone (#320). Scored with `--two-pass-normal`:
 | lattice | C | 0 | 1.000 | 0.026 | 0.749 |
 
 It equals the oracle wherever the first pass labels the clones exactly, and
-inherits the oracle's collapse. It stays in the sandbox.
+inherits the oracle's collapse. It left `main` for that branch (T- #617).
 
 ## LOH and mirrored LOH (#332)
 
