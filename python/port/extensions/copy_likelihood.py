@@ -89,13 +89,19 @@ class Pseudobulk(NamedTuple):
     taus: float
 
 
-def candidates(max_total_copy: int) -> np.ndarray:
-    """Every `(A, B)` with `0 < A + B <= max_total_copy`, `(n, 2)`."""
+def candidates(max_total_copy: int, max_allele_copy: int | None = None) -> np.ndarray:
+    """Every `(A, B)` with `0 < A + B <= max_total_copy` and `A, B <= max_allele_copy`.
+
+    `(n, 2)`, in `A`-major order. `max_allele_copy=None` bounds each allele
+    by the total alone, which is the same lattice as `max_allele_copy =
+    max_total_copy`.
+    """
+    allele = max_total_copy if max_allele_copy is None else max_allele_copy
     return np.array(
         [
             (a, b)
-            for a in range(max_total_copy + 1)
-            for b in range(max_total_copy + 1)
+            for a in range(allele + 1)
+            for b in range(allele + 1)
             if 0 < a + b <= max_total_copy
         ],
         dtype=np.int64,
@@ -471,6 +477,7 @@ def lattice_decode(
     *,
     normal_clone: int,
     max_total_copy: int,
+    max_allele_copy: int | None = None,
     lengths: np.ndarray | None = None,
     stay: float = 1.0 - 1e-7,
     parsimony: float = PARSIMONY,
@@ -500,7 +507,7 @@ def lattice_decode(
     The flags are the simplifications the #362 audit measured; the defaults
     are the decode it adopted.
     """
-    states = candidates(max_total_copy)
+    states = candidates(max_total_copy, max_allele_copy)
     n = len(states)
     transmat = np.log(
         np.full((n, n), (1.0 - stay) / (n - 1))
@@ -625,6 +632,7 @@ def shared_decode(
     n_states: int,
     normal: int,
     max_total_copy: int,
+    max_allele_copy: int | None = None,
 ) -> CopyFit:
     """Each continuous state's `(A, B)`, one pair shared by every clone.
 
@@ -633,7 +641,7 @@ def shared_decode(
     pair, and each state's argmax over the lattice solves the one-pair-per-
     state MILP exactly. `normal` is `(1, 1)`; a state no clone visits is too.
     """
-    lattice = candidates(max_total_copy)
+    lattice = candidates(max_total_copy, max_allele_copy)
     log_mu, p = _parameters(lattice)
     states = np.ones((n_states, 2), dtype=np.int64)
     paths = [np.asarray(path, dtype=np.int64) for path, _, _ in clones]
