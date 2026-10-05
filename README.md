@@ -264,9 +264,10 @@ follows the arm unless asked: on in a patched run, off with `--no-patch`.
 | `--copy-decode` | `lattice` | per-clone lattice Viterbi with tumour fraction (#370), or one pair per state, `shared` (#327) | |
 | `--no-parsimony-decode` | off: the prior on | a flat prior for the lattice decode, in place of its log-prior `-0.5 \|A + B - 2\|` per bin; refused without the lattice decode | PR- #609, `--sal`: copy ARI with the prior 0.9035 / 0.9181, flat 0.7213 / 0.068 on CalicoST easy (`2d4ce9a9`) / hard (`8797710b`) |
 | `--rust` | on; off with `--no-patch` | `cnaster`'s four lattices from `oxiport` (#318) | bitwise; compiled at build, not per process |
-| `--sal` | off | alpha expansion with the Rust cut for the labelling (#312), and the next two | a lower Potts energy on every problem measured |
-| `--refinement-mask` | off; on with `--sal` | each read-depth sub-clone kept in its BAF clone, a 100-nat penalty (#348, #467) | with the floor merge, CalicoST hard clone ARI 0.303 to 0.982 |
-| `--floor-merge` | off; on with `--sal` | the clone-size floor met smallest first (#348) | alone, #338's three-sample instance: 2 planted clones fitted as 6 |
+| `--sal` | off | alpha expansion with the Rust cut for the labelling (#312), and `--hmm-start kmeans++x5+em` | a lower Potts energy on every problem measured |
+| `--refinement-mask` | on; off with `--no-patch` unless `--sal` | each read-depth sub-clone kept in its BAF clone, a 100-nat penalty (#348, #467) | with the floor merge, CalicoST hard clone ARI 0.303 to 0.982 |
+| `--floor-merge` | on; off with `--no-patch` unless `--sal` | the clone-size floor met smallest first (#348) | alone, #338's three-sample instance: 2 planted clones fitted as 6 |
+| `--min-segment-normal-umi` | off; on with `--sal`; refused with `--no-patch` | read-depth segments floored at 300 normal UMI where no `quality` key is stated (#551) | see below |
 | `--hmm-start` | `none`; `kmeans++x5+em` with `--sal` | the read-depth HMM's copy states: a sal mixture start (#489), seeded in sal's rate space (#547), or `lattice`, the integer `(A, B)` lattice; `emission++` scores floored at 0 (#562) | #547: dev_tree r0 (`3381575a`) clone ARI 0.8612 (5) to 1.0 (4); with the segment floor, CalicoST hard (`8797710b`) copy ARI 0.9055 to 0.9181 |
 | `--baf-start` | `none` | the BAF-only HMM's copy states from the lattice (#540) | |
 | `--copy-errors` | off | `cnv_copy_sets.tsv`: every `(A, B)` in each state's 95 per cent credible region (#353) | differentiates the whole objective once |
@@ -337,8 +338,9 @@ as `run_cnaster` calls it, returns planted totals of 10 to 12 exactly at a
 stated 12, and none of them at `cnaster`'s 6 (`tests/test_integer_copy_patch.py`).
 
 **`quality.min_segment_mb` and `quality.min_segment_normal_umi` floor the
-read-depth segments** (#551). `--sal` sets the normal floor at 300; otherwise
-off unless the configuration sets either, and a stated key wins: `true` is
+read-depth segments** (#551). `--sal` or `--min-segment-normal-umi` sets the
+normal floor at 300; not on by default, where it decodes the critical copy
+instance's planted `(1, 2)` as `(1, 3)` (PR- #645); a stated key wins: `true` is
 0.75 Mb or 300 normal-spot UMIs, a number sets the value, `false` is off. At the
 read-depth binning, adjacent bins merge within each contig until each spans
 the minimum length and holds the larger of the normal floor and
@@ -438,9 +440,9 @@ first, into each spot's best remaining clone. `--refinement-mask` passes the
 mask. `--distinct-init` stops `gmm_init` keeping near-duplicate normal
 components as separate states. With all three on, the run recovers clone ARI
 0.774 (1.000 integer) and copy-state ARI 0.997. The floor merge alone removes
-the collapse. `--floor-merge` and `--refinement-mask` are opt-in on the
-default arm, where each alone splits #338's three-sample instance, 2 planted
-clones into 6 fitted, and on with `--sal` (#467). There the mask is a 100-nat
+the collapse. `--floor-merge` and `--refinement-mask` are on together by
+default (`port.pipeline.DEFAULTS`, T- #617): each alone splits #338's
+three-sample instance, 2 planted clones into 6 fitted (#467). There the mask is a 100-nat
 penalty rather than `-inf`, so the read-depth stage can still move a spot the
 BAF stage misplaced: with `--sal`, CalicoST hard goes from clone ARI 0.303 (2
 clones for 4) to 0.982, easy from 0.944 to 0.986, and `dev`, r0 and the

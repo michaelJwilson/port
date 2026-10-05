@@ -35,6 +35,7 @@ from typing import Any, NamedTuple
 
 from port.pipeline import (
     COPY_SWAPS,
+    DEFAULTS,
     FIGURE_SWAPS,
     LOG_SPACE_SWAPS,
     PLOT_OFF_SWAPS,
@@ -110,13 +111,19 @@ def _parser() -> argparse.ArgumentParser:
         "--refinement-mask",
         action=argparse.BooleanOptionalAction,
         default=None,
-        help="keep read-depth sub-clones inside their BAF clone (#348, #467); off, on with --sal",
+        help="keep read-depth sub-clones inside their BAF clone (#348, #467); on, off with --no-patch unless --sal",
     )
     parser.add_argument(
         "--floor-merge",
         action=argparse.BooleanOptionalAction,
         default=None,
-        help="meet the clone-size floor smallest first (#348); off, on with --sal",
+        help="meet the clone-size floor smallest first (#348); on, off with --no-patch unless --sal",
+    )
+    parser.add_argument(
+        "--min-segment-normal-umi",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="floor read-depth segments at 300 normal UMI where the config states no quality key (#551, #547); off, on with --sal, refused with --no-patch",
     )
     parser.add_argument(
         "--hmm-start",
@@ -175,7 +182,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--sal",
         action="store_true",
-        help="snakes_and_ladders' labelling, and the mask, floor and start it implies (#312)",
+        help="snakes_and_ladders' labelling (#312) and the HMM start kmeans++x5+em (#489)",
     )
     parser.add_argument(
         "--copy-errors",
@@ -235,9 +242,11 @@ class Settings(NamedTuple):
     copy_cap: bool
     """`COPY_SWAPS`: on, off with `--no-patch` -- a baseline decodes under `cnaster`'s caps."""
     refinement_mask: bool
-    """`REFINEMENT_SWAPS`: off, on with `--sal` (#467)."""
+    """`REFINEMENT_SWAPS` (`DEFAULTS`): on, off with `--no-patch` unless `--sal` (#467)."""
     floor: bool
-    """The floor merge: off, on with `--sal` (#467)."""
+    """The floor merge (`DEFAULTS`): on, off with `--no-patch` unless `--sal` (#467)."""
+    min_segment_normal_umi: bool
+    """The read-depth segment floor: on with `--sal` alone (#551, T- #617; not in `DEFAULTS`)."""
     distinct: bool
     """The distinct initializer: on where the shift is, off with `--no-patch`."""
     hmm_start: str
@@ -265,8 +274,13 @@ def _settings(arguments: argparse.Namespace) -> Settings:
         rust=bool(asked(arguments.rust, patch)),
         sal_emission=bool(asked(arguments.sal_emission, shift)),
         copy_cap=bool(asked(arguments.copy_cap, patch)),
-        refinement_mask=bool(asked(arguments.refinement_mask, arguments.sal)),
-        floor=bool(asked(arguments.floor_merge, arguments.sal)),
+        refinement_mask=bool(asked(arguments.refinement_mask, patch or arguments.sal)),
+        floor=bool(asked(arguments.floor_merge, patch or arguments.sal)),
+        # NB `--sal`'s alone: on the default arm it decodes the critical
+        #    copy instance's planted (1, 2) as (1, 3) (PR- #645, T- #617).
+        min_segment_normal_umi=bool(
+            asked(arguments.min_segment_normal_umi, patch and arguments.sal)
+        ),
         distinct=bool(asked(arguments.distinct_init, shift and patch)),
         hmm_start=str(
             asked(arguments.hmm_start, "kmeans++x5+em" if arguments.sal else "none")
@@ -333,6 +347,14 @@ def _refusals(arguments: argparse.Namespace, settings: Settings) -> list[str]:
             "pipeline_clone_assignment, which --no-patch leaves out"
         )
 
+    # NB bound into port's `create_bin_ranges`, a `SWAPS` row `--no-patch`
+    #    leaves out with or without `--sal`.
+    if settings.min_segment_normal_umi and arguments.no_patch:
+        refused.append(
+            "--min-segment-normal-umi needs port's create_bin_ranges, "
+            "which --no-patch leaves out"
+        )
+
     return refused
 
 
@@ -373,6 +395,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(
                 f"{swap.module}.{swap.name} <- {swap.replacement}  "
                 f"(#{swap.ticket}, likelihood decode, caps from the config; --no-copy-cap to omit)"
+            )
+        for default in DEFAULTS:
+            print(
+                f"{default.setting}  (#{default.ticket}, port's own, on by default; "
+                f"--no-{default.flag.removeprefix('--')} to omit)"
             )
         from port.patch.lattice import RUST_LATTICES
 
@@ -511,10 +538,10 @@ def main(argv: Sequence[str] | None = None) -> int:
                     _parser().error(f"--copy-cap: {finding.detail}")
 
             selected = selected + COPY_SWAPS
-        # NB opt-in on the default arm, where each alone over-splits #338's
-        #    three-sample instance (6 fitted clones against 2 planted); on with
-        #    --sal, which with both recovers CalicoST hard at 0.982 against
-        #    0.303 and keeps every other fixture measured (#467).
+        # NB on by default together (`DEFAULTS`, T- #617 rule 8): each alone
+        #    over-splits #338's three-sample instance (6 fitted clones against
+        #    2 planted), and with --sal both recover CalicoST hard at 0.982
+        #    against 0.303 (#467).
         refinement_mask, floor = settings.refinement_mask, settings.floor
         if refinement_mask:
             selected = selected + REFINEMENT_SWAPS
@@ -584,17 +611,19 @@ def main(argv: Sequence[str] | None = None) -> int:
                 selected, "port.patch.hmrf:run_core_inference", **inference
             )
 
-        if arguments.sal:
-            from port.extensions.sal import sal_options
-            from port.patch.omics.blocks import SAL_NORMAL_UMI_FLOOR
+        if settings.min_segment_normal_umi:
+            from port.patch.omics.blocks import MIN_SEGMENT_NORMAL_UMI
 
             # NB the read-depth segment floor (#551) the lattice start was
             #    tuned at (#547); a configuration's `quality` keys still win.
             selected = with_options(
                 selected,
                 "port.patch.omics:create_bin_ranges",
-                normal_umi_floor=SAL_NORMAL_UMI_FLOOR,
+                min_segment_normal_umi=MIN_SEGMENT_NORMAL_UMI,
             )
+
+        if arguments.sal:
+            from port.extensions.sal import sal_options
 
             selected = with_options(
                 selected,
@@ -640,7 +669,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 + (", sal included" if arguments.sal else "")
                 + (
                     ", read-depth segments of 300 normal UMI unless configured"
-                    if arguments.sal
+                    if settings.min_segment_normal_umi
                     else ""
                 )
                 + (", no plots written" if arguments.no_plots else ""),
