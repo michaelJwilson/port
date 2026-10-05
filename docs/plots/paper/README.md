@@ -44,3 +44,13 @@ and its stamp names both records' data hashes.
 | `compare/copy_genomic_truth_vs_fit.png` | Where along the genome is a matched clone's (A, B) decoded wrong, or swapped? | `genomic_compare_figure`: `score`'s clone-bins |
 | `compare/exact_by_class.png` | Which planted classes are recovered exactly, with and without phase? | `exact_figure`: `tests.sim_audit.planted_classes` |
 | `solvers/solver_combined.png` | How far above the best does each spatial solver and each copy-state start end, and how fast? | `solver_figure`: `tests.studies.potts_plot.draw`, `tests.studies.copy_state_plot.draw` |
+
+## Key studies
+
+Each figure is redrawn when its study is rerun, and stamped `data <hash> · code <sha>`.
+
+| File | Question | Source | Regenerate |
+| --- | --- | --- | --- |
+| `key_studies/557_copy-states.png` | Which copy-state start, polished by `--sal` Baum-Welch, recovers the planted states at known clones? | `tests.studies.copy_state_plot` (#540, PR #557) | `python -m tests.studies.copy_state_stream sim/manifests/baseline/dev_tree_1s_hard.toml OUT --problems 10 --seeds 10 --held-out 3 --settings tests/studies/copy_sampler_settings.json` |
+| `key_studies/554_clone-starts.png` | Does the clone-label start or the Potts solver decide the clones, and what does each start reach? | `docs/nb/clone_label_study.ipynb` via `tests.studies.clone_label_notebook` (#541, PR #554) | `python -m tests.studies.clone_labels capture SAMPLE CAPTURE.npz`, `... run CAPTURE.npz OUT.pkl`, `python -m tests.studies.clone_label_notebook OUT.pkl` |
+| `key_studies/546_population.png` | At J = 1, how many UMIs does a clone need to be detected, how long must a CNA be to be recovered, and how often is a true-(1,1) segment called altered? | `tests.studies.population_report.figures` (#544, PR #546) | `python -m tests.studies.population run --seeds 0:200 --J 1 --out DIR`, then `... run --seeds 1000:1260 --J 1 --manifest sim/manifests/population_long.toml --out DIR`, then `... report --out DIR --study2-J 1` |

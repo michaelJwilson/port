@@ -329,7 +329,9 @@ So the figure swaps are most of the runtime win and all of the memory one.
 under `A + B <= 6` and `A, B <= 5` and reads no key that changes them, so a
 planted total of 10 cannot be decoded. `COPY_SWAPS` reads
 `int_copy_num.max_total_copy` and applies it to both caps; a configuration
-without the key, or with `none`, decodes exactly as `cnaster` does, and a
+without the key, or with `none`, decodes under `cnaster`'s `A + B <= 6` but
+bounds each allele by 6, not `cnaster`'s 5, so `(6, 0)` and `(0, 6)` are
+decodable (`UNCONFIGURED_MAX_ALLELE_COPY`, a stated difference, T- #617). A
 value that is not an integer of at least 2 is refused at start. The MILP decoder, called
 as `run_cnaster` calls it, returns planted totals of 10 to 12 exactly at a
 stated 12, and none of them at `cnaster`'s 6 (`tests/test_integer_copy_patch.py`).
