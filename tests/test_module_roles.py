@@ -117,12 +117,9 @@ ROLES: dict[str, Role] = {
     "port.sim.truth_figure": "sim",
     "port.sim.normal_fit": "sim",
     # sandbox
-    "port.sandbox.admixture.clone_mixture": "set aside",
     "port.sandbox.known_field.cluster": "set aside",
     "port.sandbox.known_field.color_merge": "set aside",
     "port.sandbox.known_field.field": "set aside",
-    "port.sandbox.admixture.probes.sim_probe": "set aside",
-    "port.sandbox.admixture.variants": "set aside",
     "port.sandbox.clone_starts.problem": "set aside",
     "port.sandbox.clone_starts.starts": "set aside",
     "port.sandbox.extensions.copy_starts": "set aside",
@@ -144,7 +141,6 @@ ROLES: dict[str, Role] = {
     "port.sandbox.sal_hmm_init": "set aside",
     "port.sandbox.sim_from_run": "set aside",
     "port.sandbox.wolff_init": "set aside",
-    "port.sandbox.wolff_umi_init": "set aside",
 }
 """Every module that is not a package `__init__`, by role."""
 

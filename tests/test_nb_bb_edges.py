@@ -416,22 +416,8 @@ def _schemes(counts: np.ndarray, mean: float, alpha: float) -> np.ndarray:
     )
 
 
-def _clone_mixture(counts: np.ndarray, mean: float, alpha: float) -> np.ndarray:
-    from port.sandbox.admixture.clone_mixture import _nb
-
-    return _nb(counts, np.full(counts.shape, mean), alpha)
-
-
-def _variants(counts: np.ndarray, mean: float, alpha: float) -> np.ndarray:
-    from port.sandbox.admixture.variants import _nb
-
-    return _nb(counts, np.full(counts.shape, mean), alpha)
-
-
 SANDBOX_KERNELS: dict[str, Scorer] = {
     "schemes": _schemes,
-    "clone_mixture": _clone_mixture,
-    "variants": _variants,
 }
 
 
