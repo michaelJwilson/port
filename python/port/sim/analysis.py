@@ -588,6 +588,10 @@ def draw_tree(
     place(ROOT)
 
     width = max(at.values())
+    # NB every leaf ends at the deepest one's time, so leaves and their labels
+    #    line up; a leaf's edge runs on past its last event (T- #660).
+    for leaf in order:
+        at[leaf] = width
     small = dot / 90.0
     for node, up in parent.items():
         if up is None:
