@@ -20,6 +20,7 @@ from typing import Any
 import matplotlib.pyplot as plt
 from cnaster.config import start_time
 from cnaster.logger import get_logger
+from matplotlib.text import Text
 
 logger = get_logger(__name__, start_time=start_time)
 
@@ -133,6 +134,17 @@ def write_fig(
     carries its creation time, so two runs of the same code differ byte for
     byte and a PNG written without metadata does not.
     `run_cnaster_port --png-copies` binds it.
+
+    **Departure: the written figure keeps no renderer (T- #692).** Every
+    `Text` caches the renderer that last drew it. After a PDF write that is
+    the `MixedModeRenderer`, which holds the `PdfFile`, which holds each
+    rasterizing group's image as a view of that group's full-page
+    `RendererAgg` buffer. `cnaster`'s function leaves them for as long as the
+    figure lives: its caller's reference, then a reference cycle until a
+    full collection. Here each `Text` is reset to the `None` it starts with,
+    as `matplotlib` does on pickling, and the buffers are freed on return.
+    The file written is the same. Measured: `docs/measurements.md`,
+    `port.patch.utils.write_fig`.
     """
     if fig is None:
         fig = plt.figure()
@@ -167,6 +179,10 @@ def write_fig(
         )
 
     plt.close(fig)
+
+    # NB the renderer each `Text` cached holds the PDF's rasters (T- #692).
+    for text in fig.findobj(Text):
+        text._renderer = None
 
 
 def discard_fig(
