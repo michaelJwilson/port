@@ -28,11 +28,13 @@ Fixtures, each named by its hash:
 
 from __future__ import annotations
 
+import gc
 import importlib
 import warnings
 from pathlib import Path
 
 import matplotlib as mpl
+import matplotlib.pyplot as plt
 import pytest
 import yaml
 from port.sim.fixtures import (
@@ -60,6 +62,9 @@ def _run(package: str, config: Path, root: Path) -> Path:
 
     Seeded and restored as `isolated_run` does, and `package`'s own global
     configuration restored after, so neither arm reads what the other left.
+    The figures it leaves open are closed and collected: on CalicoST easy an
+    arm peaks at 11.8 GB and holds 11.8 GB after it returns, 1.2 GB once
+    closed, so the second arm would otherwise start where the first peaked.
     """
     document = yaml.safe_load(config.read_text())
     output = root / package
@@ -78,6 +83,8 @@ def _run(package: str, config: Path, root: Path) -> Path:
             entry.run_cnaster(str(own))
         finally:
             globals_.set_global_config(saved)
+            plt.close("all")
+            gc.collect()
 
     return output
 
@@ -152,7 +159,8 @@ def test_run_cnamaste_writes_cnasters_bytes_on_the_gate_instance(
         "[194, 3, 77, 23] spots for 4 clones; the rejection loop needs every "
         "clone over 0.2 * 297 / 4 = 14.85, and the 3-spot block never is "
         "(spatial.py:240). At n_clones 3 and 2 the run instead exceeds the "
-        "host's 15 GB in finalize's plot_clones_genomic."
+        "13.9 GB at which this host kills it, in finalize's "
+        "plot_clones_genomic."
     ),
 )
 def test_run_cnamaste_writes_cnasters_bytes_on_the_dev_instance(
