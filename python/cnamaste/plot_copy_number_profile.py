@@ -248,7 +248,12 @@ def plot_copy_number_profile(
     figsize: Any = None,
     palette_name: str = "chisel_single",
 ) -> Any:
-    """`cnaster`'s profile, one row per clone, aberrations hatched A then B."""
+    """`cnaster`'s profile, one row per clone, aberrations hatched A then B.
+
+    `port`'s `axis` (T- #683) is not taken: this draws `cnaster`'s axis,
+    which is `port`'s at `axis=None`, until T- #670 PR9 takes up the options
+    `FIGURE_SWAPS` binds.
+    """
     state_style, _ = _palette(palette_name)
     clone_ids = [c.split(" ")[0][5:] for c in df_cnv.columns if c.endswith(" A")]
     clone_ids = _order(df_cnv, clone_ids)
