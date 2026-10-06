@@ -3,8 +3,8 @@
 **`port.patch.hmm_nophasing.bb_logpmf` (#561), moved in by T- #670 PR4.**
 `cnamaste.hmm_nophasing` imports `_bb_logpmf_1d` and `_dense_bb_logpmf` in
 place of `cnaster`'s, so every compiled caller reads them under `cnaster`'s
-names. `port`'s NumPy helpers `rises` and `digamma_rise`, which no
-`cnamaste` module calls, stay behind.
+names. `port`'s NumPy helpers `rises`, `rises_on_distinct` (#702) and
+`digamma_rise`, which no `cnamaste` module calls, stay behind.
 
 **The defect.** Upstream evaluates
 `lgamma(k + a) + lgamma(n - k + b) - lgamma(n + a + b) - (lgamma(a) +
