@@ -24,9 +24,8 @@ manifest's `r0_hash`, and writes into `OUT`:
 
 Every figure carries `<fixture> <hash> · code <sha>`, the commit read before
 anything is written, `+` where the tree differs from it. A run is appended to
-the metrics ledger (`port.qa.ledger.write`) as `<fixture>_r0_<hash>`, one
-ledger name per generation, since the ledger refuses a name that names two
-datasets (T- #660; `<fixture>_ln_r0` before it), and
+the metrics ledger (`port.qa.ledger.write`) as `<fixture>_r0`, its hash in
+the ledger's `fixture_hash` column (`<fixture>_ln_r0` before T- #660), and
 `OUT/README.md` is written with its `run_id`.
 """
 
@@ -809,9 +808,9 @@ KEY_STUDIES: dict[str, tuple[str, str, str]] = {
 """Each key study's figure (label `key_study`) under `OUT/key_studies/`: question, source, regenerate command."""
 
 
-def ledger_name(fixture: str, digest: str) -> str:
-    """The run's fixture name in the metrics ledger: one per r0 generation."""
-    return f"{fixture}_r0_{digest}"
+def ledger_name(fixture: str) -> str:
+    """The run's fixture name in the metrics ledger; its hash, the generation, is its own column."""
+    return f"{fixture}_r0"
 
 
 def readme(
@@ -834,7 +833,7 @@ def readme(
 {recovery["exact_altered_minor"]:.4f} (phased {recovery["exact_altered"]:.4f}), from one
 `run_cnaster_port {" ".join(FLAGS)}` run on `sim/manifests/{fixture}.toml` r0 at
 code `{commit}`: {recovery["wall"]:.0f} s wall, {recovery["peak_gb"]:.2f} GB peak.
-Ledger `run_id` `{run_id}` (`docs/metrics/`, fixture `{ledger_name(fixture, digest)}`).
+Ledger `run_id` `{run_id}` (`docs/metrics/`, fixture `{ledger_name(fixture)}` `{digest}`).
 
 Regenerate from a clean tree, so the stamp carries no `+`; it draws r0 into
 `.cache/paper_figures/` where `--draw` is not given, and refuses any r0 not
@@ -915,7 +914,7 @@ def main(argv: list[str] | None = None) -> int:
     recovery = {**run.recovery, "fixture_hash": digest, "peak_gb": run.peak_gb}
     run_id = write(
         recovery,
-        fixture=ledger_name(arguments.fixture, digest),
+        fixture=ledger_name(arguments.fixture),
         args=" ".join(FLAGS),
         note=f"#624 paper figures: {arguments.fixture} r0 {digest}, --sal",
         dirty=commit.endswith("+"),
