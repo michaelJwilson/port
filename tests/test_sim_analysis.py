@@ -326,6 +326,16 @@ def _panels(r: Any) -> tuple[Any, Any, Any]:
     return figure, tree_ax, genomic
 
 
+def _headed_in_order(genomic: Any) -> list[str]:
+    """(c)'s clone headers, top to bottom."""
+    return [
+        t.get_text()
+        for ax in genomic.axes
+        for t in ax.texts
+        if t.get_visible() and "(" in t.get_text()
+    ]
+
+
 def _headed(genomic: Any) -> set[str]:
     return {
         t.get_text()
@@ -470,6 +480,83 @@ def test_above_10_events_a_is_the_tree_without_events(dense: Drawn) -> None:
         and shown(t.barcode[c])[4] == "\N{HORIZONTAL ELLIPSIS}"
         for c in r.clones
     )
+
+
+def _leaves(ax: Any) -> list[tuple[str, tuple[float, ...]]]:
+    """A tree axis's named nodes top to bottom, each with its dot's colour."""
+    dots = {
+        tuple(np.round(c.get_offsets()[0], 6)): tuple(c.get_facecolor()[0])
+        for c in ax.collections
+    }
+    names = sorted(
+        (x for x in ax.texts if x.get_gid() == "name"), key=lambda x: -x.xy[1]
+    )
+    return [(x.get_text(), dots[tuple(np.round(x.xy, 6))]) for x in names]
+
+
+@pytest.mark.infra
+@pytest.mark.merge
+@pytest.mark.parametrize("fixture", ["drawn", "dense"])
+def test_clones_read_n_1_2_down_the_tree_and_alike_in_every_truth_figure(
+    fixture: str, request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """(a)'s leaves, (b)'s rows and (c)'s headers read $m_N$, $m_1$, $m_2$, ...
+    top to bottom; `simulated_tree`, `spatial`, `clone_profiles` and
+    `clones_genomic` give each clone (by its colour, and its spot count) the
+    same name. The truth files' clone names are not read (PR- #701)."""
+    import matplotlib.colors as mcolors
+    import matplotlib.pyplot as plt
+    from port.extensions.combined_figure import clone_symbol
+    from port.sim import analysis
+    from port.sim.truth_figure import simulated_tree_figure
+
+    r = read(request.getfixturevalue(fixture).path)
+    symbols = [r"$m_N$", *(rf"$m_{k}$" for k in range(1, len(r.clones)))]
+    figure, tree_ax, genomic = _panels(r)
+    figure.canvas.draw()
+    leaves = _leaves(tree_ax)
+    colour = dict(leaves)
+    rows = figure.subfigs[1].axes[-1].get_yticklabels()
+
+    assert [name for name, _ in leaves] == symbols
+    assert [x.get_text() for x in rows][::-1] == symbols
+    assert [h.split(" (")[0] for h in _headed_in_order(genomic)] == symbols
+    tree_figure = simulated_tree_figure(r)
+    assert _leaves(tree_figure.axes[0]) == leaves
+    plt.close(tree_figure)
+    plt.close(figure)
+
+    caught: dict[str, Any] = {}
+
+    def keep(fig: Any, path: Path, *, tight: bool = True) -> Path:
+        caught[path.name] = fig
+        return path
+
+    monkeypatch.setattr(analysis, "_save", keep)
+    for plotter in (analysis.plot_spatial, analysis.plot_clone_profiles,
+                    analysis.plot_clones_genomic_truth):  # fmt: skip
+        plotter(r, Path("unwritten"))
+
+    (key,) = caught["spatial.png"].legends
+    for text, handle in zip(key.get_texts(), key.legend_handles, strict=True):
+        assert (
+            mcolors.to_rgba(handle.get_color()) == colour[clone_symbol(text.get_text())]
+        )
+    profile = caught["clone_profiles.png"].axes[0].get_yticklabels()
+    assert [clone_symbol(x.get_text()) for x in profile][::-1] == symbols
+    named = [x for ax in caught["clones_genomic.png"].axes for x in ax.texts
+             if x.get_text().startswith("Clone")]  # fmt: skip
+    spots = [x for ax in caught["clones_genomic.png"].axes for x in ax.texts
+             if x.get_text().endswith("snp-umis")]  # fmt: skip
+    assert [clone_symbol(x.get_text()) for x in named] == symbols
+    for k, clone in enumerate(r.clones):
+        assert colour[symbols[k]] == mcolors.to_rgba(
+            analysis.clone_colour(clone, r.clones)
+        )
+        count = int((r.truth["labels"] == clone).sum())
+        assert spots[k].get_text().startswith(f"{count:_} spots")
+    for fig in caught.values():
+        plt.close(fig)
 
 
 @pytest.mark.infra

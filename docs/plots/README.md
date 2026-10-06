@@ -138,6 +138,10 @@ overlapping by half) at seed 0.
   numbers, and every chromosome boundary on (b) and each track (PR- #701)
 
 Clones carry `cnaster`'s numerals in every other figure: `Clone 0` is the normal.
+Every truth figure numbers the clones down the drawn tree, normal first
+(`analysis.tree_order`, which `analysis.read` applies to `Realization.clones`):
+$m_k$ and `Clone k` are the tree's k-th tumour clone, which need not be
+`clone_{k-1}` in the truth files (PR- #701).
 `python -m port.sim.analysis population <sample or manifest>` streams every
 realization through the same reading, holding running means only.
 

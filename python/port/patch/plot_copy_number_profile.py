@@ -227,8 +227,13 @@ def plot_copy_number_profile(
     palette_name: str = "chisel_single",
     *,
     axis: GenomicAxis | Ticks | None = None,
+    rows: list[str] | None = None,
 ) -> Any:
     """`cnaster`'s profile, one row per clone, aberrations hatched A then B.
+
+    `rows`, the clone ids of `df_cnv`'s `clone<id> A` columns top to bottom,
+    sets the rows' order; `None` is `cnaster`'s, least aberrant first
+    (PR- #701).
 
     `axis`, a `port.extensions.genomic_axis.GenomicAxis` on `df_cnv`'s bins
     or a `Ticks` made on them, draws the segments and boundaries on its
@@ -237,7 +242,7 @@ def plot_copy_number_profile(
     """
     state_style, _ = _palette(palette_name)
     clone_ids = [c.split(" ")[0][5:] for c in df_cnv.columns if c.endswith(" A")]
-    clone_ids = _order(df_cnv, clone_ids)
+    clone_ids = _order(df_cnv, clone_ids) if rows is None else list(rows)
     num_clones = len(clone_ids)
 
     if ax is None:

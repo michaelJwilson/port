@@ -128,7 +128,9 @@ def truth_combined_figure(
             (0.0, (sum(ROWS) + KEY[0]) / tall, 1.0, KEY[1] / tall)
         )
         profile_ax = profile_fig.add_axes((0.0, ROWS[0] / tall, 1.0, ROWS[1] / tall))
-        plot_copy_number_profile(binned_profile(r), ax=profile_ax, axis=genome)
+        # NB rows in (a)'s order, `r.clones`', as (c)'s tracks are (PR- #701).
+        plot_copy_number_profile(binned_profile(r), ax=profile_ax, axis=genome,
+                                 rows=[str(k) for k in range(len(r.clones))])  # fmt: skip
         # NB the plotter's own key, at fixed page coordinates, is redrawn into
         #    `legend_ax`, which is placed with the rows.
         profile_fig.axes[-1].remove()

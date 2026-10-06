@@ -30,7 +30,7 @@ import argparse
 import functools
 import json
 from collections.abc import Callable, Iterator
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, NamedTuple
 
@@ -116,9 +116,10 @@ class Realization:
 
 
 def read(path: Path) -> Realization:
+    """The realization at `path`, its `clones` in `tree_order` (PR- #701)."""
     truth = pd.read_csv(path / "truth_clone_labels.tsv", sep="\t")
     names = sorted(set(truth["labels"]) - {"normal"})
-    return Realization(
+    r = Realization(
         path=path,
         manifest=json.loads((path / "manifest.json").read_text()),
         truth=truth,
@@ -130,6 +131,8 @@ def read(path: Path) -> Realization:
         ),
         clones=("normal", *names),
     )
+    # NB the display order, not the data's: the truth files keep their names.
+    return replace(r, clones=tree_order(r))
 
 
 def display(clone: str, clones: tuple[str, ...]) -> str:
@@ -312,8 +315,8 @@ def plot_clone_profiles(r: Realization, out: Path, *, metric: bool = False) -> P
     `port.patch.plot_copy_number_profile`, which draws an estimate's profile
     in `combined.pdf`, on the truth binned at 1 Mb: its palette, hatching,
     outlines and key, so a planted and a decoded profile read alike. Rows keep
-    its numerals, `Clone 0` the normal, as every figure here does. `metric`
-    as `binned_axis`.
+    its numerals, `Clone 0` the normal, as every figure here does, top to
+    bottom in `tree_order` (PR- #701). `metric` as `binned_axis`.
     """
     import matplotlib.pyplot as plt
 
@@ -323,7 +326,8 @@ def plot_clone_profiles(r: Realization, out: Path, *, metric: bool = False) -> P
     fig, ax = plt.subplots(figsize=(14, 0.55 * len(r.clones) + 1.6))
     fig.subplots_adjust(left=0.08, right=0.98, top=0.88, bottom=0.3)
     genome = binned_axis(r, metric=metric)
-    plot_copy_number_profile(binned_profile(r), ax=ax, axis=genome)
+    plot_copy_number_profile(binned_profile(r), ax=ax, axis=genome,
+                             rows=[str(k) for k in range(len(r.clones))])  # fmt: skip
     disclose(fig, genome)
 
     ax.set_yticklabels([t.get_text() for t in ax.get_yticklabels()],
@@ -554,38 +558,29 @@ ROOT = "root"
 """The drawn tree's root, an unobserved ancestor: parent of the `normal` leaf and the tumour."""
 
 
-def draw_tree(
-    ax: Any,
-    r: Realization,
-    *,
-    event_size: float = 7.5,
-    node_size: float = 8.5,
-    dot: float = 90.0,
-    name: Callable[[str], str] | None = None,
-    ancestors: bool = True,
-    edges: bool = False,
-) -> tuple[float, int]:
-    """The clones' tree on `ax`, along event time; returns its width in events and its leaves.
+class Layout(NamedTuple):
+    """Where `draw_tree` puts each node: its parent, event time and height."""
 
-    `name` names an observed clone, `display`'s numeral by default. Without
-    `ancestors`, an unobserved node is drawn unnamed: its barcode is its
-    children's common prefix.
+    tree: Tree
+    parent: dict[str, str | None]
+    """Each node's parent in the binary tree drawn, `ROOT` on top."""
+    x: dict[str, float]
+    """Each node's x: event time, every leaf at the deepest one's."""
+    y: dict[str, float]
+    """Each node's y: leaves at `0 .. n - 1`, top highest; an inner node at its children's mean."""
+    leaves: list[str]
+    """The leaves, top to bottom."""
+
+
+def layout(r: Realization) -> Layout:
+    """The clones' tree as `draw_tree` lays it out, from `r.tree` alone.
 
     The tree is drawn binary and ladderized (T- #660): the root, an
-    unobserved ancestor drawn unfilled and unlabelled, splits into `normal`,
-    a leaf with no events, on top and the tumour below; at each later split
-    the branch with fewer leaves, then fewer events, goes above.
-
-    With `edges`, each observed leaf's barcode ends on the axis's right edge
-    and its name sits beside the node, so the caller sizes the tree between
-    the root and the barcodes (`truth_figure`). The texts carry `gid`s
-    `name` and `barcode`.
-
-    Above `MANY_EVENTS` events the edges carry no events, only the topology
-    (PR- #701).
+    unobserved ancestor, splits into `normal`, a leaf with no events, on top
+    and the tumour below; at each later split the branch with fewer leaves,
+    then fewer events, goes above.
     """
     t = tree(r)
-    named = name or (lambda clone: display(clone, r.clones))
     # NB the tree is drawn binary: an unobserved root splits into `normal`, a
     #    leaf with no events, and the tumour (T- #660).
     parent: dict[str, str | None] = {ROOT: None, "normal": ROOT} | {
@@ -645,6 +640,58 @@ def draw_tree(
     #    line up; a leaf's edge runs on past its last event (T- #660).
     for leaf in order:
         at[leaf] = width
+    return Layout(t, parent, at, y, order)
+
+
+def tree_order(r: Realization) -> tuple[str, ...]:
+    """`r.clones` top to bottom as `draw_tree` draws them: `normal`, then the
+    tumour clones by height, ties left to right (PR- #701).
+
+    `read` orders `Realization.clones` by it, so every figure that numbers a
+    clone by its place in `clones` (`display`, `clone_colour`,
+    `binned_profile`, `genomic_truth`) numbers it from the tree's top: the
+    drawn $m_1$ is the tree's first tumour clone, whatever the truth files
+    name it.
+    """
+    lay = layout(r)
+    drawn = sorted(
+        (c for c in r.clones if c in lay.y), key=lambda c: (-lay.y[c], lay.x[c])
+    )
+    return (*drawn, *(c for c in r.clones if c not in lay.y))
+
+
+def draw_tree(
+    ax: Any,
+    r: Realization,
+    *,
+    event_size: float = 7.5,
+    node_size: float = 8.5,
+    dot: float = 90.0,
+    name: Callable[[str], str] | None = None,
+    ancestors: bool = True,
+    edges: bool = False,
+) -> tuple[float, int]:
+    """The clones' tree on `ax`, along event time; returns its width in events and its leaves.
+
+    `name` names an observed clone, `display`'s numeral by default. Without
+    `ancestors`, an unobserved node is drawn unnamed: its barcode is its
+    children's common prefix.
+
+    Laid out by `layout`; the root, an unobserved ancestor, is drawn
+    unfilled and unlabelled.
+
+    With `edges`, each observed leaf's barcode ends on the axis's right edge
+    and its name sits beside the node, so the caller sizes the tree between
+    the root and the barcodes (`truth_figure`). The texts carry `gid`s
+    `name` and `barcode`.
+
+    Above `MANY_EVENTS` events the edges carry no events, only the topology
+    (PR- #701).
+    """
+    lay = layout(r)
+    t, parent, at, y, order = lay
+    width = max(at.values())
+    named = name or (lambda clone: display(clone, r.clones))
     small = dot / 90.0
     many = len(t.events) > MANY_EVENTS
     for node, up in parent.items():
