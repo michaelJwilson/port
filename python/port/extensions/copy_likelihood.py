@@ -39,7 +39,7 @@ import numpy as np
 from sal.opt.termination import Termination
 from scipy.special import gammaln, xlogy
 
-from port.patch.hmm_nophasing.bb_logpmf import rises
+from port.patch.hmm_nophasing.bb_logpmf import rises_on_distinct
 from port.patch.hmm_nophasing.gradient import DISPERSION_FLOOR
 
 __all__ = [
@@ -160,8 +160,14 @@ def _emission(
         a = np.maximum(p * bulk.taus, DISPERSION_FLOOR)
         b = np.maximum((1.0 - p) * bulk.taus, DISPERSION_FLOOR)
         # NB rising factorials (#561): the `lgamma` form subtracts values
-        #    near `tau log tau` and loses 5e-3 nats at `tau = 1e12`.
-        allele = choose + rises(a, k) + rises(b, n - k) - rises(a + b, n)
+        #    near `tau log tau` and loses 5e-3 nats at `tau = 1e12`. Each is
+        #    taken on the distinct counts and gathered, bitwise (#702).
+        allele = (
+            choose
+            + rises_on_distinct(a, k)
+            + rises_on_distinct(b, n - k)
+            - rises_on_distinct(a + b, n)
+        )
 
     return np.asarray(depth + allele)
 
