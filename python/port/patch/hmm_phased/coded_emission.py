@@ -34,7 +34,7 @@ from cnaster.hmm_nophasing import _bb_logpmf_1d, _nb_logpmf_1d
 from cnaster.hmm_phased import _switch_betabinom_1d
 from cnaster.hmm_phased import hmm_phased as UPSTREAM
 
-from port.patch.plotting.clone_paths import state_vector
+from port.patch._clone_paths import state_vector
 
 __all__ = ["compute_emission_probability_nb_betabinom_coded", "hmm_phased"]
 

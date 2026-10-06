@@ -23,10 +23,10 @@ import pytest
 
 mpl.use("Agg")
 
-from tests.fixtures import CoreInferenceTruth, core_inference_truth
-from tests.run_config import write_run_cnaster_config
-from tests.tmp_inputs import write_tmp_inputs, written_config
-from tests.unsegment import unsegment
+from port.sim.inputs import write_tmp_inputs, written_config
+from port.sim.run_config import write_run_cnaster_config
+from port.sim.truth import CoreInferenceTruth, core_inference_truth
+from port.sim.unsegment import unsegment
 
 LATTICE = (10, 10)
 """A hundred spots. These draw pictures; none of them fits anything."""

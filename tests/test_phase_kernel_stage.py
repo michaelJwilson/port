@@ -19,10 +19,9 @@ from typing import Any
 import numpy as np
 import pandas as pd
 import pytest
-
-from tests.fixtures import CoreInferenceTruth
-from tests.run_config import PlantedInstance
-from tests.tmp_inputs import WrittenInputs, read_to_bins, written_config
+from port.sim.inputs import WrittenInputs, read_to_bins, written_config
+from port.sim.run_config import PlantedInstance
+from port.sim.truth import CoreInferenceTruth
 
 pytestmark = pytest.mark.preprocessing
 

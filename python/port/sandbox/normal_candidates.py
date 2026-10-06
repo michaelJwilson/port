@@ -24,7 +24,7 @@ the same configuration. RDR sees what BAF could not, so a clone carrying
 balanced gains is separated from the normal one before its spots are summed
 into the baseline.
 
-**Measured** (`python -m tests.recovery_audit --two-pass-normal`, against
+**Measured** (`audited`, then `tests.recovery_audit --two-pass-normal`, against
 the default arm; `docs/audit-recovery.md`):
 
 | instance, config | tumor candidates | ARI | mean `mu` err | altered copies exact |
@@ -56,7 +56,7 @@ from typing import Any
 import numpy as np
 import yaml
 
-__all__ = ["candidates", "normal_clone_spots", "two_pass"]
+__all__ = ["audited", "candidates", "normal_clone_spots", "two_pass"]
 
 
 def normal_clone_spots(fit: Any) -> np.ndarray:
@@ -141,6 +141,28 @@ def two_pass(argv: Sequence[str]) -> int:
 
     with candidates(spots):
         return main(list(argv))
+
+
+def audited(truth: Any, flags: list[str], **options: Any) -> Any:
+    """The measurement above: `port.qa.audit.audit_truth` with `two_pass`.
+
+    The candidates scored are the first pass's normal clone; `options` are
+    `audit_truth`'s. Was `tests.recovery_audit --two-pass-normal` until
+    T- #673 G3, when the audit moved into the package, which imports nothing
+    from `sandbox/`.
+    """
+    from port.qa.audit import audit_truth
+
+    def first_pass(root: Path) -> np.ndarray:
+        fit = np.load(
+            next((root / "output_first_pass").rglob("rdrbaf_final_nstates*_smp.npz")),
+            allow_pickle=True,
+        )
+        return normal_clone_spots(fit)
+
+    return audit_truth(
+        truth, flags, entry=two_pass, candidates_used=first_pass, **options
+    )
 
 
 if __name__ == "__main__":  # pragma: no cover - a sandbox entry, run by hand

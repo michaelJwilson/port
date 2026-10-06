@@ -37,7 +37,7 @@ recovers at ARI 1.000, so what three change is what is measured."""
 
 
 def _base() -> Any:
-    from tests.fixtures import core_inference_truth
+    from port.sim.truth import core_inference_truth
 
     return core_inference_truth(**INSTANCE)
 
@@ -59,11 +59,11 @@ def test_the_entry_point_recovers_the_shared_clones_in_every_sample(
     at most 2 spots per sample misplaced."""
     import matplotlib as mpl
     from port.scripts.run_cnaster import main
+    from port.sim.inputs import write_tmp_inputs
+    from port.sim.run_config import isolated_run, write_run_cnaster_config
+    from port.sim.unsegment import unsegment
 
-    from tests.run_config import isolated_run, write_run_cnaster_config
     from tests.test_core_inference_end_to_end import _adjusted_rand_index
-    from tests.tmp_inputs import write_tmp_inputs
-    from tests.unsegment import unsegment
 
     mpl.use("Agg")
     multi = _multi()

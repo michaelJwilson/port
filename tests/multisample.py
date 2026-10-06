@@ -1,7 +1,7 @@
 """Several realizations of one genome, as samples on one grid (#328).
 
 A multi-sample fixture whose samples share their clones by construction:
-`tests.realizations.realize` redraws the counts of one planted genome, so
+`port.sim.realizations.realize` redraws the counts of one planted genome, so
 states, labels, segmentation and exposure are common and only the draw
 differs. Sample 0 is the genome's own draw.
 
@@ -19,8 +19,7 @@ import dataclasses
 from dataclasses import dataclass
 
 import numpy as np
-
-from tests.fixtures import CoreInferenceTruth
+from port.sim.truth import CoreInferenceTruth
 
 
 @dataclass(frozen=True)
@@ -61,7 +60,7 @@ def multi_sample_truth(
     and differ in their counts alone, the regime #328's audit found `cnaster`
     correct for.
     """
-    from tests.realizations import realize
+    from port.sim.realizations import realize
 
     if n_samples < 1:
         msg = f"a fixture needs at least one sample, got {n_samples}"

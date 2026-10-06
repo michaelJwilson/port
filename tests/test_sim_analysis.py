@@ -25,9 +25,9 @@ from port.sim.analysis import (
     tree,
 )
 from port.sim.draw import Drawn, draw
+from port.sim.fixtures import references
 from port.sim.truth_figure import NAME_GAP
 
-from tests.sim_fixtures import references
 from tests.test_sim_draw import _manifest
 
 

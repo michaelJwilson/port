@@ -27,11 +27,11 @@ import numpy as np
 import pytest
 
 if TYPE_CHECKING:
-    from tests.fixtures import CoreInferenceTruth
+    from port.sim.truth import CoreInferenceTruth
 
 
 def _truth(**overrides: object) -> CoreInferenceTruth:
-    from tests.fixtures import COPY_LATTICE, dev_instance
+    from port.sim.truth import COPY_LATTICE, dev_instance
 
     settings: dict[str, object] = {
         "n_states": len(COPY_LATTICE),
@@ -44,7 +44,7 @@ def _truth(**overrides: object) -> CoreInferenceTruth:
 
 @pytest.mark.analytic
 def test_the_loh_states_are_their_integer_pairs_held_off_the_boundary() -> None:
-    from tests.fixtures import COPY_LATTICE, LOH_EPSILON, LOH_STATES
+    from port.sim.truth import COPY_LATTICE, LOH_EPSILON, LOH_STATES
 
     truth = _truth()
     first = len(COPY_LATTICE)
@@ -105,7 +105,7 @@ def test_the_drawn_allele_fraction_is_the_planted_phase() -> None:
 
 @pytest.mark.snapshot
 def test_loh_off_draws_what_the_lattice_drew() -> None:
-    from tests.fixtures import COPY_LATTICE, dev_instance
+    from port.sim.truth import COPY_LATTICE, dev_instance
 
     before = dev_instance(n_states=len(COPY_LATTICE), copy_lattice=True)
     again = _truth(loh=False)
@@ -117,7 +117,7 @@ def test_loh_off_draws_what_the_lattice_drew() -> None:
 
 @pytest.mark.infra
 def test_loh_is_refused_where_it_cannot_be_mirrored() -> None:
-    from tests.fixtures import dev_instance
+    from port.sim.truth import dev_instance
 
     with pytest.raises(ValueError, match="needs copy_lattice"):
         dev_instance(loh=True)

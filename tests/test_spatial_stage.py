@@ -16,9 +16,8 @@ from typing import Any
 
 import numpy as np
 import pytest
-
-from tests.fixtures import CoreInferenceTruth, core_inference_truth
-from tests.run_config import PlantedInstance
+from port.sim.run_config import PlantedInstance
+from port.sim.truth import CoreInferenceTruth, core_inference_truth
 
 pytestmark = pytest.mark.preprocessing
 
@@ -34,7 +33,7 @@ out-degree of **every** spot rather than an upper bound on it.
 """
 
 ISOTROPIC = {"unit_xsquared": 1, "unit_ysquared": 1}
-"""What `tests/run_config.py` sets, against the shipped 9 and 3.
+"""What `python/port/sim/run_config.py` sets, against the shipped 9 and 3.
 
 The shipped pair scales `x` and `y` differently, for Visium's hexagonal
 packing. The fixture's lattice is square, so the isotropic pair is the one
@@ -46,7 +45,7 @@ the same set and the comparison below has an answer.
 def _coordinates(truth: CoreInferenceTruth) -> np.ndarray:
     """The lattice the fixture planted, in `(row, column)` order.
 
-    `tests/tmp_inputs.py` writes the lattice row as `x`, so a spot's index is
+    `python/port/sim/inputs.py` writes the lattice row as `x`, so a spot's index is
     `row * columns + column` and the geometry is recoverable from the index
     alone -- which is what lets a neighbourhood be predicted rather than read.
     """

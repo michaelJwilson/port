@@ -59,8 +59,6 @@ from matplotlib.lines import Line2D
 
 __all__ = [
     "COLOUR_MODES",
-    "LLNCS_TEXT_WIDTH_MM",
-    "PAPER_WIDTH",
     "UPSTREAM",
     "UPSTREAM_WIDTH",
     "Levels",
@@ -81,20 +79,6 @@ COLOUR_MODES = ("integer", "states")
 
 UPSTREAM_WIDTH = 20.0
 """What `_create_clone_gridspec` hardcodes, in inches."""
-
-LLNCS_TEXT_WIDTH_MM = 122.0
-"""`\\textwidth` of `\\documentclass[runningheads,11pt]{llncs}`, fixed by the
-class whatever the paper (#339)."""
-
-PAPER_WIDTH = LLNCS_TEXT_WIDTH_MM / 25.4
-"""A text column, 4.80 in: the width `combined_figure` draws at (#280, #339).
-
-Measured from the genomic figures `docs/plots/` then tracked: 20.03 in
-wide, so `\\includegraphics[width=\\linewidth]` scales them by **0.240** and
-a 10 pt tick label lands at **2.4 pt** on the page. At a text column the
-figure is included at 1:1, so a declared size is the size on the page and
-nothing has to be undone at the point of inclusion.
-"""
 
 
 def clone_groups(
@@ -125,9 +109,9 @@ def fitted_clone_path(res_combine: Any, clone: int, n_obs: int) -> np.ndarray:
     `pred_cnv` comes either with one column per clone (`run_core_inference`
     deconcatenates) or with the clones concatenated along the genome; a
     column is one clone's path, sliced by
-    `port.patch.plotting.clone_paths.clone_path` as the concatenation is.
+    `port.patch._clone_paths.clone_path` as the concatenation is.
     """
-    from port.patch.plotting.clone_paths import clone_path
+    from port.patch._clone_paths import clone_path
 
     pred = np.asarray(res_combine["pred_cnv"], dtype=np.int64)
     n_states = np.asarray(res_combine["new_log_mu"]).shape[0]
@@ -204,7 +188,7 @@ def bin_colours(
         names = [""] * n_states
 
         if colour_by == "states":
-            from port.patch.plotting.clone_paths import state_vector
+            from port.patch._clone_paths import state_vector
 
             mu = np.exp(state_vector(res_combine["new_log_mu"]))
             p = state_vector(res_combine["new_p_binom"])
@@ -244,7 +228,7 @@ def fitted_levels(
     the baseline summed over spots and normalized, as `hmrf.py:476` builds
     it. BAF is the fitted `p`, drawn with its mirror `1 - p`.
     """
-    from port.patch.plotting.clone_paths import state_vector
+    from port.patch._clone_paths import state_vector
 
     log_mu = state_vector(res_combine["new_log_mu"])
     p_binom = state_vector(res_combine["new_p_binom"])

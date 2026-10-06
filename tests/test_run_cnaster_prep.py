@@ -19,10 +19,9 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-
-from tests.fixtures import CoreInferenceTruth, core_inference_truth
-from tests.tmp_inputs import Binned, read_to_bins, write_tmp_inputs, written_config
-from tests.unsegment import unsegment
+from port.sim.inputs import Binned, read_to_bins, write_tmp_inputs, written_config
+from port.sim.truth import CoreInferenceTruth, core_inference_truth
+from port.sim.unsegment import unsegment
 
 pytestmark = [pytest.mark.preprocessing]
 

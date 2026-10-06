@@ -5,7 +5,7 @@ data and, with `only_minor=False` (the read-depth stage), keeps the `K` with
 the most posterior mass (`hmm_initialize.py:444`). Mass is where the data is:
 on a genome that is mostly normal, the most populated components are slices
 of the normal cluster and their mirror images, which at `p = 0.5` are the
-same point. Measured on `tests.fixtures.calicost_instance`: six of the eight
+same point. Measured on `port.sim.truth.calicost_instance`: six of the eight
 initial states at `p` 0.497 to 0.503 and `log mu` -0.25 to 0.07, two for
 eight planted events, and the fit kept three planted states in one fitted
 state (copy-state ARI 0.896 against CalicoST's 0.999, which fits eight states

@@ -24,7 +24,7 @@ The cost is that they can go stale, and the test is what pays it.
 | judged, oracle, reach | the three coverage guards | per pull request |
 | memory, instance | a whole `run_cnaster`, both arms, on `dev_tree` r0 | by hand |
 | speed | `run_cnaster_port --sal` on `dev_tree` r0, one core, against CalicoST's recorded wall (#532) | by hand |
-| patched | `python -m tests.patched_share`, one unpatched run (#302) | by hand |
+| patched | `run_benchmark --patched-share`, one unpatched run (#302) | by hand |
 | port, sal | `python -m tests.sim_audit` on `dev_tree` r0, default and `--sal` | by hand |
 
 The `instance` badge carries the size the two ratios were read at, because
@@ -40,6 +40,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from port.qa.benchmark import BADGES, MEASUREMENTS
+
 UNMEASURED = "/"
 """What a badge reads before its measurement exists.
 
@@ -49,8 +51,6 @@ one rendering that asserts nothing.
 """
 
 ROOT = Path(__file__).resolve().parent.parent
-BADGES = ROOT / ".badges"
-MEASUREMENTS = BADGES / "measurements.json"
 
 __all__ = [
     "BADGES",
@@ -229,46 +229,6 @@ def _recovery_badge(arm: str, record: dict[str, Any] | None) -> Badge:
         f"(clones, copies) = ({values['ari']:.3f}, {values['copy_ari']:.3f})",
         "orange",
     )
-
-
-INPUTS = ("python", "tests", "src", "pyproject.toml", "uv.lock", "Cargo.lock")
-"""What a coverage figure is a function of: the code, the tests, the locks and
-the configuration that selects them. `.badges` itself is not an input."""
-
-
-def inputs_hash() -> str:
-    """One digest over every input file, so an unchanged tree skips a pass (#403).
-
-    Paths and contents both enter it, so a renamed file moves it. Bytecode
-    and the extension module are outputs, and are left out.
-    """
-    import hashlib
-
-    digest = hashlib.sha256()
-    files: list[Path] = []
-
-    for name in INPUTS:
-        path = ROOT / name
-        if path.is_file():
-            files.append(path)
-        elif path.is_dir():
-            files.extend(
-                p
-                for p in path.rglob("*")
-                if p.is_file()
-                and "__pycache__" not in p.parts
-                and p.suffix in {".py", ".rs", ".pyi", ".toml", ".cfg"}
-            )
-
-    for path in sorted(files):
-        digest.update(path.relative_to(ROOT).as_posix().encode())
-        digest.update(path.read_bytes())
-
-    for rc in sorted(ROOT.glob(".coveragerc*")):
-        digest.update(rc.name.encode())
-        digest.update(rc.read_bytes())
-
-    return digest.hexdigest()[:16]
 
 
 def load() -> dict[str, Any]:

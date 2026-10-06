@@ -2,7 +2,7 @@
 
 **No PNG is committed here outside the two exceptions below; each figure
 is regenerated on demand by the command below that draws it.** Every
-generator writes to `.cache/plots/` by default (`tests/plots_dir.py`),
+generator writes to `.cache/plots/` by default (`port.qa.provenance.PLOTS`),
 untracked; the paths below are relative to it. `lattice/`, `sim/` and
 `sim_qa/` exist only there now.
 `tests/test_ci_entry.py` guards that `docs/` tracks no PNG outside
@@ -13,16 +13,16 @@ history: `git show ba34716:docs/plots/<path>.png`.
 
 | figures | command |
 | --- | --- |
-| the dev instance's, below, and `lattice/` | `python -m tests.generate_plots [--out DIR]` (`--cnaster` for plain `cnaster`), or `python -m tests.ci --figures` |
-| `realizations.png`, `realizations_truth.png`, `realizations.npz` | `python -m tests.realizations [--output PATH]` |
-| `realizations_copies.png` | `python -m tests.copy_audit [--output PATH]` |
-| `metrics_history.png`, `metrics_history_classes.png` | `python -m tests.studies.metrics_history [OUT.png [OUT_CLASSES.png]]` |
+| the dev instance's, below, and `lattice/` | `run_figures [--out DIR]` (`--cnaster` for plain `cnaster`), or `python -m tests.ci --figures` |
+| `realizations.png`, `realizations_truth.png`, `realizations.npz` | `run_audit --errors [--output PATH]` |
+| `realizations_copies.png` | `run_audit --copy [--output PATH]` |
+| `metrics_history.png`, `metrics_history_classes.png` | `run_study --metrics-history [OUT.png [OUT_CLASSES.png]]` |
 | `sim_qa/` | `python -m port.sim.analysis plot sim/generated/dev_tree/r0` (writes `<r>/qa/`) |
-| `sim/cna_lengths.png` | `python -m tests.studies.cna_lengths [OUT.png]` |
-| `studies/potts_*.png` | `python -m tests.studies.potts_plot STREAM.pkl` (`docs/study-field-strength.md`) |
-| `studies/copy_states_*.png` | `python -m tests.studies.copy_state_plot STREAM.pkl` (`docs/study-copy-states.md`) |
-| `studies/copy_state_starts.png`, `studies/clone_label_study.png` | `python -m tests.studies.copy_start_notebook RESULTS.pkl`, `python -m tests.studies.clone_label_notebook RESULTS.pkl` |
-| `studies/population_recovery.png` | `python -m tests.studies.population report --out DIR` |
+| `sim/cna_lengths.png` | `run_study --cna-lengths [OUT.png]` |
+| `studies/potts_*.png` | `run_study --potts-plot STREAM.pkl` (`docs/study-field-strength.md`) |
+| `studies/copy_states_*.png` | `run_study --copy-state-plot STREAM.pkl` (`docs/study-copy-states.md`) |
+| `studies/copy_state_starts.png`, `studies/clone_label_study.png` | `run_study --copy-start-notebook RESULTS.pkl`, `run_study --clone-label-notebook RESULTS.pkl` |
+| `studies/population_recovery.png` | `run_study --population report --out DIR` |
 
 **CI draws the dev instance's and the realization figures on every pull
 request and uploads them** as a workflow artifact
@@ -91,7 +91,7 @@ height below as (c) and (d). No captions. `port.extensions.combined_figure` redr
 writes each page at exactly its size, so it is included at
 `width=\linewidth` unscaled.
 
-The slide is **mocked** from the planted labels (`tests/he_slide.py`) and
+The slide is **mocked** from the planted labels (`python/port/sim/he_slide.py`) and
 read back through `cnaster.he.get_he_image`, as `run_cnaster` reads a slide.
 It is
 written beside the run's inputs, not into them: in them, `load_input_data`
@@ -139,7 +139,7 @@ realization through the same reading, holding running means only.
 
 ## `sim/cna_lengths.png`: the `[cna.length]` laws (#619)
 
-`python -m tests.studies.cna_lengths`: the density and CDF of the exponential
+`run_study --cna-lengths`: the density and CDF of the exponential
 the `dev_tree*` manifests drew to #619 and the lognormal they draw now, at
 `dev_tree`'s mean of 50 Mb and `dev_tree_1s_hard`'s median of 10 Mb. Analytic
 (`scipy.stats`); the stamp names each manifest's file hash and `r0_hash`.

@@ -15,8 +15,8 @@ import pandas as pd
 import pytest
 from port.sandbox.sim_from_run import read_run, to_toml
 from port.sim.draw import Drawn, draw, extended, from_document
+from port.sim.fixtures import SIM_ROOT, references
 
-from tests.sim_fixtures import SIM_ROOT, references
 from tests.test_sim_draw import _manifest
 
 MANIFESTS = SIM_ROOT / "manifests"

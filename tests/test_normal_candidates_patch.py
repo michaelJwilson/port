@@ -115,8 +115,7 @@ def test_the_configured_file_reaches_the_loader_and_the_candidates(
     """
     from port.patch import io
     from port.patch.io import load_input_data
-
-    from tests.fixtures import balanced_clone
+    from port.sim.truth import balanced_clone
 
     truth, _, written, _ = planted_instance
     balanced = balanced_clone(truth)
