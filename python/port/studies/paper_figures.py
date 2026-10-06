@@ -42,6 +42,7 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+
 from port.extensions.figure_style import GRID, INK, MUTED, axes_style
 from port.qa import provenance
 from port.qa.provenance import ROOT
