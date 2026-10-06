@@ -4,8 +4,8 @@
 0.9335, exact altered (phase-free)
 0.8992 (phased 0.1473), from one
 `run_cnaster_port --sal --png-copies` run on `sim/manifests/dev_tree_1s_easy.toml` r0 at
-code `3cf5be3`: 153 s wall, 3.49 GB peak.
-Ledger `run_id` `3cf5be3-dev_tree_1s_easy_r0_7ba9b01f-0802` (`docs/metrics/`, fixture `dev_tree_1s_easy_r0_7ba9b01f`).
+code `3debbd6`: 142 s wall, 3.43 GB peak.
+Ledger `run_id` `3debbd6-dev_tree_1s_easy_r0_7ba9b01f-1357` (`docs/metrics/`, fixture `dev_tree_1s_easy_r0_7ba9b01f`).
 
 Regenerate from a clean tree, so the stamp carries no `+`; it draws r0 into
 `.cache/paper_figures/` where `--draw` is not given, and refuses any r0 not
@@ -43,7 +43,7 @@ The genomic panels of `truth/truth_combined.png`, `truth/clones_genomic.png`,
 | `run/clones_spatial.png` | Which fitted clone is each spot? | the run's `plots/clones_spatial.png` |
 | `run/clones_genomic.png` | What RDR and BAF did the run fit per clone? | the run's `plots/clones_genomic.png` |
 | `run/rdr_baf_clones_genomic.png` | What RDR and BAF were the clones fitted to? | the run's `plots/rdr_baf_clones_genomic.png` |
-| `compare/clones_truth_vs_fit.png` | Do the fitted clones recover the planted ones, and which matches which? | `labels_figure`: `tests.sim_audit.score`'s ARI and matching |
+| `compare/clones_truth_vs_fit.png` | Do the fitted clones recover the planted ones, and which matches which? | `labels_figure`: `port.qa.audit.score_sample`'s ARI and matching |
 | `compare/copy_confusion.png` | Which (A, B) is each planted pair decoded as? | `confusion_figure`: `port.qa.scoring.copy_confusion` |
 | `compare/copy_genomic_truth_vs_fit.png` | Where along the genome is a matched clone's (A, B) decoded wrong, or swapped? | `genomic_compare_figure`: `score`'s clone-bins |
 | `compare/exact_by_class.png` | Which planted classes are recovered exactly, with and without phase? | `exact_figure`: `port.qa.scoring.exact_by_class` |
