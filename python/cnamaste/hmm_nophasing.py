@@ -13,8 +13,8 @@ below the marked seam. `cnaster`'s class is kept as `_cnaster_hmm_nophasing`,
 which `port`'s subclasses and `hmm_phased` keeps as its base, as `port`'s
 does. Two options, class attributes as in `port`: `analytic_gradient`, on,
 the M step's gradient in closed form (#433, #244); `apply_logmu_shift`, off
-as in `cnaster`, the per-clone `log Z_c` folded into the depth channel
-(#276). `port`'s third, `emission_kernels`, moved in by T- #670 PR6b once
+in the class as in `cnaster`, the per-clone `log Z_c` folded into the depth
+channel (#276), which `run_cnamaste` binds on from T- #670 PR7 (`SHIFTED`). `port`'s third, `emission_kernels`, moved in by T- #670 PR6b once
 `cnamaste` declared `sal`: `"cnaster"` by default, or `"sal"`, which scores
 the coded emission with `sal`'s dense tables (`cnamaste.dense_emission`,
 #425), to a tolerance rather than bitwise.

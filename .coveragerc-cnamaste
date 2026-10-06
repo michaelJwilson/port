@@ -29,6 +29,9 @@ source =
 # tests added. 64.15% at PR5 (6904 statements, 2475 missed), with the HMM
 # fit-chain tests added. 65.23% at PR6 (6928 statements, 2409 missed), with
 # the initialization tests added. 66.85% at PR6b (7325 statements, 2428
-# missed), with the `sal` emission and start tests added.
+# missed), with the `sal` emission and start tests added. 66.27% at PR7
+# (7825 statements, 2639 missed), with the clone-assignment tests added: the
+# floor holds at 66, `spot_clone_field`'s 125 statements being mostly `@njit`
+# bodies the JIT hides (77 missed).
 fail_under = 66
 precision = 2

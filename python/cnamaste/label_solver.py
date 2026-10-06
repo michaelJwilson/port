@@ -54,7 +54,6 @@ __all__ = [
     "fusion_then_merge",
     "icm_sweep",
     "merge_assignment",
-    "potts_energy",
     "potts_graph_from",
     "solver_for",
     "spatial_log_prior",
@@ -244,21 +243,6 @@ def forbidden_as_finite(
 
     finite_values: np.ndarray = np.where(forbidden, penalty[:, None], values)
     return finite_values
-
-
-def potts_energy(
-    field: np.ndarray, graph: CsrGraph, assignment: np.ndarray, spatial_weight: float
-) -> float:
-    """`sal`'s Potts energy of a labelling, `-sum h[s] - sum J [s == s']`: lower is better."""
-    from sal.sim.potts import energy
-
-    return float(
-        energy(
-            potts_graph_from(graph, spatial_weight),
-            np.asarray(field, dtype=np.float64),
-            np.asarray(assignment, dtype=np.int64),
-        )
-    )
 
 
 def fusion_then_merge(
