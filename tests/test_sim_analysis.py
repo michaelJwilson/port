@@ -302,15 +302,17 @@ def dense(tmp_path_factory: pytest.TempPathFactory) -> Drawn:
 
 
 @pytest.mark.infra
-def test_a_barcode_over_8_bits_keeps_4_bits_at_each_end() -> None:
-    """`shown` keeps a barcode of up to `BARCODE_SHOWN` (8) bits whole and cuts
-    a longer one to its first and last 4 bits around "…" (PR- #701)."""
+def test_a_barcode_over_10_bits_keeps_4_bits_at_each_end() -> None:
+    """`shown` keeps a barcode of up to `MANY_EVENTS` (10) bits whole and cuts
+    a longer one to its first and last `BARCODE_SHOWN // 2` (4) bits around
+    "…" (PR- #701)."""
     from port.sim.analysis import BARCODE_SHOWN, MANY_EVENTS, shown
 
     assert (MANY_EVENTS, BARCODE_SHOWN) == (10, 8)
     assert shown("10110") == "10110"
     assert shown("10110100") == "10110100"
-    assert shown("101101001") == "1011\N{HORIZONTAL ELLIPSIS}1001"
+    assert shown("101101001") == "101101001"
+    assert shown("1011010010") == "1011010010"
     assert shown("1100" + "0" * 56 + "0011") == "1100\N{HORIZONTAL ELLIPSIS}0011"
     assert shown("10110100101") == "1011\N{HORIZONTAL ELLIPSIS}0101"
 
@@ -355,7 +357,7 @@ def test_at_10_events_or_fewer_a_is_the_tree(drawn: Drawn) -> None:
     assert [x.get_text() for x in tree_ax.texts] == [x.get_text() for x in ax.texts]
     assert len(tree_ax.lines) == len(ax.lines) > 0
     assert {x.get_text() for x in tree_ax.texts if x.get_gid() == "barcode"} == {
-        shown(t.barcode[c]) for c in r.clones
+        t.barcode[c] for c in r.clones
     }
     symbol = _symbol(r)
     assert _headed(genomic) == {
@@ -438,9 +440,9 @@ def test_the_leaves_alone_sit_where_the_tree_places_its_leaves(drawn: Drawn) -> 
 
 @pytest.mark.infra
 @pytest.mark.merge
-def test_above_10_events_a_is_the_leaves_with_cut_barcodes(dense: Drawn) -> None:
+def test_above_10_events_a_is_the_leaves_and_c_cuts_barcodes(dense: Drawn) -> None:
     """Above `MANY_EVENTS`, (a) is `draw_tree`'s leaves alone, no edge, each
-    named with its barcode cut by `shown`, which (c)'s headers repeat (PR- #701)."""
+    named with its whole barcode; (c)'s headers cut it by `shown` (PR- #701)."""
     from port.sim.analysis import MANY_EVENTS, shown
     from port.sim.truth_figure import _symbol
 
@@ -453,8 +455,13 @@ def test_above_10_events_a_is_the_leaves_with_cut_barcodes(dense: Drawn) -> None
     assert len(t.events) > MANY_EVENTS
     assert not tree_ax.lines
     assert len(tree_ax.collections) == len(r.clones)
-    assert barcodes == {shown(t.barcode[c]) for c in r.clones}
-    assert all(len(b) == 9 and b[4] == "\N{HORIZONTAL ELLIPSIS}" for b in barcodes)
+    assert barcodes == {t.barcode[c] for c in r.clones}
+    assert all(len(b) == len(t.events) for b in barcodes)
+    assert all(
+        len(shown(t.barcode[c])) == 9
+        and shown(t.barcode[c])[4] == "\N{HORIZONTAL ELLIPSIS}"
+        for c in r.clones
+    )
     assert _headed(genomic) == {
         f"{symbol(c)} ({shown(t.barcode[c])})" for c in r.clones
     }

@@ -531,16 +531,17 @@ not read at a page's width. Above it `draw_tree` drops the events from its
 edges and `truth_figure` draws (a) as the leaves alone."""
 
 BARCODE_SHOWN = 8
-"""Bits of a barcode shown whole; a longer one shows its first 4, "…", its last 4 (PR- #701)."""
+"""Bits of a cut barcode shown: its first 4, "…", its last 4 (PR- #701)."""
 
 
 def shown(code: str) -> str:
-    """`code` as a figure shows it: whole up to `BARCODE_SHOWN` bits, else its
-    first and last `BARCODE_SHOWN // 2` around "…" (PR- #701).
+    """`code` as (c)'s clone headers show it: whole up to `MANY_EVENTS` bits,
+    else its first and last `BARCODE_SHOWN // 2` around "…" (PR- #701).
 
     A barcode has one bit per event, so its length is the tree's event count.
+    The tree, and (a), always show a barcode whole.
     """
-    if len(code) <= BARCODE_SHOWN:
+    if len(code) <= MANY_EVENTS:
         return code
     half = BARCODE_SHOWN // 2
     return code[:half] + "\N{HORIZONTAL ELLIPSIS}" + code[-half:]
@@ -671,7 +672,7 @@ def draw_tree(
                    edgecolors=MUTED, linewidths=0.8 * small ** 0.5, zorder=3)  # fmt: skip
         if node == ROOT:
             continue
-        label = shown(t.barcode[clone])
+        label = t.barcode[clone]
         root = up is None
         if observed and edges:
             from matplotlib.transforms import blended_transform_factory

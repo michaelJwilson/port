@@ -13,7 +13,7 @@ Top to bottom, at `llncs`'s text width and height, 7 pt throughout, as
 - **(c)** RDR and BAF along the genome per true clone
   (`analysis.genomic_truth`), drawn by `plot_clones_genomic`, each clone
   named with its barcode from (a), its last track labelled in Mb. A
-  barcode is shown as `analysis.shown` cuts it.
+  barcode is shown whole in (a) and as `analysis.shown` cuts it in (c).
 
 (b) and (c) share one `port.extensions.genomic_axis.GenomicAxis`, ticked
 every 10 Mb (T- #683).
