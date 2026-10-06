@@ -37,6 +37,8 @@ from typing import Any, NamedTuple
 import numpy as np
 import pandas as pd
 
+from port.extensions.figure_style import GRID, INK, MUTED, axes_style
+
 SERIES = (
     "#2a78d6", "#eb6834", "#1baf7a", "#eda100",
     "#e87ba4", "#008300", "#4a3aa7", "#e34948",
@@ -46,7 +48,6 @@ SERIES = (
 NEUTRAL = "#b5b3ad"
 """`normal`, and the `(1, 1)` state."""
 
-INK, MUTED, GRID = "#0b0b0b", "#52514e", "#e4e2dc"
 
 CLONE_SLOTS = 3
 """Clones share one scatter, so all pairs are on screen: three slots validate."""
@@ -144,16 +145,6 @@ def state_colours(states: list[list[int]]) -> dict[tuple[int, int], str]:
     for slot, (a, b) in enumerate(states):
         colours[(int(a), int(b))] = SERIES[slot % len(SERIES)]
     return colours
-
-
-def _style(ax: Any) -> None:
-    for side in ("top", "right"):
-        ax.spines[side].set_visible(False)
-    for side in ("left", "bottom"):
-        ax.spines[side].set_color(MUTED)
-    ax.tick_params(colors=MUTED, labelcolor=INK, labelsize=8)
-    ax.grid(color=GRID, linewidth=0.6)
-    ax.set_axisbelow(True)
 
 
 def _chromosome_axis(ax: Any, r: Realization) -> None:
@@ -833,7 +824,7 @@ def entries_panel(
     ax.set_yscale("log")
     ax.set_xlabel(xlabel, fontsize=8, color=MUTED)
     ax.legend(frameon=False, fontsize=6.5, loc="upper left", bbox_to_anchor=(0, -0.16))
-    _style(ax)
+    axes_style(ax)
 
 
 def plot_coverage(r: Realization, out: Path) -> Path:

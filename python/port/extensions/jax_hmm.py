@@ -57,8 +57,8 @@ import jax.scipy.special as jsp
 import numpy as np
 
 from port.extensions import jax_setup  # noqa: F401  (float64, before any array)
+from port.patch._clone_paths import state_vector
 from port.patch.hmm_nophasing.gradient import DISPERSION_FLOOR
-from port.patch.plotting.clone_paths import state_vector
 
 __all__ = [
     "emission",
