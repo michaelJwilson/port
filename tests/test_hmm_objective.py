@@ -1,11 +1,12 @@
 """The copy-state HMM's NLL as a `sal` `Objective`, and `sal`'s samplers on it (#634).
 
 - `oracle`: the adapter's value is `cnaster`'s forward lattice normalizer at
-  the same states, an independent implementation, and on the way it is
-  port's JAX NLL (`jax_hmm`'s emission and forward, unjitted) to round-off.
+  the same states, an independent implementation, and port's JAX NLL
+  (`jax_hmm`'s emission and forward, unjitted), a second one.
 - `oracle`: its value and gradient are `sal`'s `EmissionHmmObjective` of a
-  `CountPairEmission` (sal #1169, T- #671), a third implementation, mapped
-  to port's `theta` by the chain rule.
+  `RateConcentrationCountPairEmission` restricted to `mean` and `rate`
+  (sal #1169, #1205; T- #671, T- #707) on its `RUST` route, a third
+  implementation beside the adapter's `JAX` twin.
 - `analytic`: its gradient is the central difference of its value, and
   `sal`'s autograd route through `__call__` returns the declared gradient.
 - `analytic`: each `sal` start, seeded, reports the NLL of the states it
@@ -55,9 +56,9 @@ def test_the_adapter_is_cnasters_forward_and_ports_nll() -> None:
     """At 5 random states: `cnaster`'s `forward_lattice` to 1e-9 relative, port's JAX NLL to 1e-12.
 
     `cnaster`'s emission and recursion are `numba` (`test_jax_hmm` realizes
-    1e-15 relative on the forward); port's NLL is the same JAX arithmetic
-    without `jit`, so only reduction order can differ. Realized 6.0e-15
-    against port and 7.8e-14 against `cnaster`, on NLLs 2,222-6,453.
+    1e-15 relative on the forward); port's NLL is `jax_hmm`'s JAX, and the
+    adapter `sal`'s JAX twin since T- #707. Realized 4.2e-14 against port
+    and 7.7e-14 against `cnaster` (sal 006e49d), on NLLs 2,222-6,453.
     """
     import torch
     from cnaster.hmm_nophasing import _bb_logpmf_1d, _nb_logpmf_1d, hmm_nophasing
@@ -107,56 +108,48 @@ def test_the_adapter_is_cnasters_forward_and_ports_nll() -> None:
 def test_the_adapter_is_sals_count_pair_hmm_objective() -> None:
     """At 5 random states: `sal`'s `EmissionHmmObjective` value to 1e-12 relative, gradient to 1e-10 of the norm.
 
-    `sal` names the beta-binomial by `alpha` and `beta`, so port's `theta` maps
-    as `log mean = log_mu`, `log alpha = log tau + log sigmoid(u)`,
-    `log beta = log tau + log sigmoid(-u)`, the chain held at the uniform
-    start and `T`, and the gradient returns by `d/du = g_alpha (1 - p) -
-    g_beta p`. Realized 7.3e-14 and 5.5e-12 (sal 253c84f), on NLLs
+    `sal`'s `RateConcentrationCountPairEmission` (sal #1205) names the
+    beta-binomial by `rate` and `concentration`, and `Restricted` varies
+    `mean` and `rate` with the dispersions, the uniform start and `T` held,
+    so its `theta` is port's `(log_mu, logit p_binom)` and no map or chain
+    rule is written here. The adapter is that objective's JAX twin; this is
+    its default `RUST` route, the compiled E step and a torch backward.
+    Realized 4.8e-14 and 5.6e-12 (sal 006e49d, T- #707), on NLLs
     2,244-6,507.
     """
     import torch
     from port.sandbox.known_copy.hmm import ALPHA, TAU, T
-    from sal.emissions import CountPairEmission
+    from sal.emissions import RateConcentrationCountPairEmission
     from sal.opt.hmm import EmissionHmmObjective
+    from sal.opt.objective import Restricted, coordinates
     from sal.ragged import Ragged
 
     rows = _rows()
     k = 3
-    half = np.full(k, TAU / 2.0)
-    family = CountPairEmission(
-        np.full(k, 1.0 / ALPHA), np.ones(k), half, half, np.ones(k), joint=False
-    )
-    sal = EmissionHmmObjective(
+    family = RateConcentrationCountPairEmission(
+        np.full(k, 1.0 / ALPHA), np.ones(k), np.full(k, 0.5), np.full(k, TAU),
+        np.ones(k), joint=False,
+    )  # fmt: skip
+    full = EmissionHmmObjective(
         Ragged(np.stack([rows["total"], rows["b"]], axis=1), tuple(rows["lengths"])),
         family,
         covariate=np.stack([rows["exposure"], rows["trials"]], axis=1),
     )
     chain = np.where(np.eye(k, dtype=bool), T, (1.0 - T) / (k - 1))
-    at = sal.theta_from_truth(np.full(k, 1.0 / k), chain, **family.named_parameters())
-    blocks = sal.blocks
+    at = full.theta_from_truth(np.full(k, 1.0 / k), chain, **family.named_parameters())
+    sal = Restricted(full, at, coordinates(full, ["mean", "rate"]))
     rng = np.random.default_rng(634)
     for _ in range(5):
-        log_mu, u = rng.uniform(-0.8, 0.5, k), rng.uniform(-2.0, 2.0, k)
-        theta = np.concatenate([log_mu, u])
+        theta = np.concatenate([rng.uniform(-0.8, 0.5, k), rng.uniform(-2.0, 2.0, k)])
         value, gradient = _objective(rows, theta).value_and_gradient(
             torch.from_numpy(theta)
         )
-
-        full = at.clone()
-        full[blocks["mean"]] = torch.from_numpy(log_mu)
-        full[blocks["alpha"]] = np.log(TAU) - torch.from_numpy(np.logaddexp(0.0, -u))
-        full[blocks["beta"]] = np.log(TAU) - torch.from_numpy(np.logaddexp(0.0, u))
-        theirs, score = sal.value_and_gradient(full)
-        p = 1.0 / (1.0 + np.exp(-u))
-        mapped = np.concatenate([
-            score[blocks["mean"]].numpy(),
-            score[blocks["alpha"]].numpy() * (1.0 - p) - score[blocks["beta"]].numpy() * p,
-        ])  # fmt: skip
+        theirs, score = sal.value_and_gradient(torch.from_numpy(theta))
 
         np.testing.assert_allclose(float(value), float(theirs), rtol=1e-12, atol=0.0)
         np.testing.assert_allclose(
-            gradient.numpy(), mapped, rtol=0.0,
-            atol=1e-10 * float(np.linalg.norm(mapped)),
+            gradient.numpy(), score.numpy(), rtol=0.0,
+            atol=1e-10 * float(np.linalg.norm(score.numpy())),
         )  # fmt: skip
 
 

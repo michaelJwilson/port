@@ -77,9 +77,16 @@ UNMATCHED_FAMILIES = {
     "GaussianEmission",
     "PoissonEmission",
     "BinomialEmission",
+    "RateConcentrationBetaBinomialEmission",
+    "RateConcentrationCountPairEmission",
 }
 """Upstream families with no `cnaster` counterpart, **excluded from the
 denominator** by `.coveragerc-oracle`'s `exclude_also`.
+
+The two rate-concentration readings arrived with sal #1205 (T- #707). They
+score as the `alpha, beta` families they subclass, and no test referees a
+`cnaster` kernel against them: `tests/test_hmm_objective.py` uses the pair to
+referee port's sandbox `HmmObjective`, not the subject.
 
 `CountPairEmission` left this set on #232 and its statements entered the
 denominator with it, which is why the surface is 2,582 rather than 2,164.
