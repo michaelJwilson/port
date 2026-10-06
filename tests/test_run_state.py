@@ -49,6 +49,7 @@ STATE: dict[str, Kind] = {
     "port.studies.clone_label_arms._graph": "rebind",
     "port.studies.copy_start_arms._CALLS": "run",
     "port.studies.hmm_starts._CALL": "run",
+    "port.studies.copy_state_stream._WARM": "cache",
     "port.studies.potts_stream._GRAPHS": "cache",
     # NB `port.qa.audit.audit_truth` records the normal candidates a run used,
     #    or plants the oracle's, and restores the name in its `finally`

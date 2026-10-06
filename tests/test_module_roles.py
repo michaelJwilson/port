@@ -110,6 +110,7 @@ ROLES: dict[str, Role] = {
     "port.studies.potts_solvers": "tool",
     "port.studies.potts_stream": "tool",
     "port.studies.records": "tool",
+    "port.studies.stage": "tool",
     "port.studies.stream": "tool",
     # patch: rows
     "port.patch.hmm_nophasing.bb_logpmf": "row",
@@ -181,9 +182,7 @@ ROLES: dict[str, Role] = {
     "port.sandbox.integer_decoding.calicost_decoders": "set aside",
     "port.sandbox.integer_decoding.rdr_summary": "set aside",
     "port.sandbox.integer_decoding.schemes": "set aside",
-    "port.sandbox.known_copy.hmm": "set aside",
-    "port.sandbox.known_copy.hmm_objective": "set aside",
-    "port.sandbox.known_copy.problem": "set aside",
+    "port.sandbox.extensions.hmm_objective": "set aside",
     "port.sandbox.normal_candidates": "set aside",
     "port.sandbox.np_merge.__main__": "set aside",
     "port.sandbox.np_merge.merge": "set aside",
