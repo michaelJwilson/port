@@ -258,11 +258,6 @@ def draw(
             if i in record["done"]
         ]
     )
-    if key:
-        # NB in units of the truth's median gap over realizations: its line at 1, its band its spread
-        scale = float(np.median(truths))
-        d[["y", "py", "by"]] = (d[["y", "py", "by"]] / scale).clip(lower=FLOOR)
-        truths = truths / scale
     # NB the truth's own spread over realizations: its 10-90% range, as the points' bars
     ax.axhspan(
         float(np.quantile(truths, 0.1)),
@@ -393,7 +388,7 @@ def draw(
             lambda v, _: "0" if v == FLOOR else f"$10^{{{round(np.log10(v))}}}$"
         )
     )
-    ax.set_ylabel("Gap [arb. normalization]" if key else "Gap [Nats]")
+    ax.set_ylabel("Gap [nats]" if key else "Gap [Nats]")
     ax.set_xlabel("Runtime [s]")
 
     if key:

@@ -238,13 +238,6 @@ def draw(ax: Any, record: dict[str, Any], key: bool = False) -> pd.DataFrame:
     from matplotlib.ticker import FixedLocator, FuncFormatter
 
     d, truth = frame(record)
-    if key:
-        # NB in units of the truth's median gap over realizations: its line at 1, its band its spread
-        scale = float(np.median(truth))
-        d = d.assign(
-            y=(d.y / scale).clip(lower=FLOOR), by=(d.by / scale).clip(lower=FLOOR)
-        )
-        truth = truth / scale
     # NB every realization with rows counts, reused ones included; one still running is also named in progress
     n_problems = int(d.problem.nunique())
     n_partial = len(set(d.problem) - set(record.get("complete", record["done"])))
@@ -331,7 +324,7 @@ def draw(ax: Any, record: dict[str, Any], key: bool = False) -> pd.DataFrame:
         )
     )
     ax.set_xlabel("Runtime [s]")
-    ax.set_ylabel("Gap [arb. normalization]" if key else "Gap [Nats]")
+    ax.set_ylabel("Gap [nats]" if key else "Gap [Nats]")
     if key:
         after = d.groupby("start").missed_pct.median()
         ordered = sorted(set(d.start) & set(NUMBER), key=lambda n: NUMBER[n])
