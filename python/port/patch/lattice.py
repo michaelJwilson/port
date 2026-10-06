@@ -21,23 +21,9 @@ same `logsumexp` runs over the same `buf` in the same order, and the
 transition each step reads is the same matrix `cnaster` would have read.
 `tests/test_unified_lattice.py` is where that is asserted.
 
-It is not offered as a speedup and does not measure as one. At `K = 7`,
-`G = 3,000`, `S = 50`, minimum over the rounds `pytest-benchmark` took:
-
-| chain | pass | `cnaster` | this | ratio |
-| --- | --- | ---: | ---: | ---: |
-| unphased | forward | 5.098 ms | 4.339 ms | 1.18 |
-| unphased | backward | 9.454 ms | 8.350 ms | 1.13 |
-| phased | forward | 14.174 ms | 14.345 ms | 0.99 |
-| phased | backward | 31.535 ms | 32.743 ms | 0.96 |
-
-**0.96x to 1.18x, and none of it is the claim.** `CLAUDE.md` puts a speedup
-at 2x measured at a stress size and this is nowhere near it in either
-direction; what the table says is that one implementation for four costs
-nothing. The unphased rows gain what the phased rows lose: the transition is
-copied into a buffer once instead of being indexed out of `log_transmat` per
-step, which helps where the transition is constant and is dead weight where
-it is rebuilt per site anyway.
+It is not offered as a speedup and does not measure as one: 0.96x to
+1.18x at `K = 7`, `G = 3,000`, `S = 50` (`docs/measurements.md`,
+`port.patch.lattice`).
 
 **Who would maintain it.** `snakes_and_ladders` carries this job already, and
 carries it further: `sal.oxisal.ragged_posteriors` runs the

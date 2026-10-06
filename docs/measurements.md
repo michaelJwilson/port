@@ -283,3 +283,50 @@ the planted `mu` (#293).
 On `calicost_instance` it merged all 16 sub-clones into one (ARI 0.000).
 
 #466: this said "on", the CLI never did.
+
+## `port.patch.lattice`
+
+### module docstring
+
+It is not offered as a speedup and does not measure as one. At `K = 7`,
+`G = 3,000`, `S = 50`, minimum over the rounds `pytest-benchmark` took:
+
+| chain | pass | `cnaster` | this | ratio |
+| --- | --- | ---: | ---: | ---: |
+| unphased | forward | 5.098 ms | 4.339 ms | 1.18 |
+| unphased | backward | 9.454 ms | 8.350 ms | 1.13 |
+| phased | forward | 14.174 ms | 14.345 ms | 0.99 |
+| phased | backward | 31.535 ms | 32.743 ms | 0.96 |
+
+**0.96x to 1.18x, and none of it is the claim.** `CLAUDE.md` puts a speedup
+at 2x measured at a stress size and this is nowhere near it in either
+direction; what the table says is that one implementation for four costs
+nothing. The unphased rows gain what the phased rows lose: the transition is
+copied into a buffer once instead of being indexed out of `log_transmat` per
+step, which helps where the transition is constant and is dead weight where
+it is rebuilt per site anyway.
+
+## `port.patch.hmrf.fused_field`
+
+### module docstring
+
+n_clones` fewer evaluations. Measured against item 1's reordered field:
+
+| `n_obs` | `n_spots` | states | clones | two-step | fused | ratio |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 3,000 | 5,000 | 7 | 4 | 16,046 ms | 7,698 ms | 2.08 |
+| 3,000 | 5,000 | 7 | 7 | 16,102 ms | 14,043 ms | 1.15 |
+| 10,000 | 2,500 | 7 | 4 | 26,735 ms | 14,449 ms | 1.85 |
+
+`CLAUDE.md` puts a speedup claim at 2x, and this clears it **only where
+`n_clones < n_states`**. At `n_clones == n_states` there is no flop to save
+and the 1.15x is the materialization alone. Stated rather than averaged:
+the ratio is `n_states / n_clones` and a reader can compute their own.
+
+Measured at `n_states = 7`, `n_obs = 30,000`, `n_spots = 5,000` on a machine
+with 13 GB free: the fused form completed in **67.9 s**; the two-step
+allocated its first 8.4 GB channel and the process was **killed by the
+kernel** on the second. That is a size the two-step cannot run and this can,
+which is a capability rather than a ratio -- and the kill is worth naming,
+because an OOM death reads as infrastructure breaking rather than as a stated
+limit.

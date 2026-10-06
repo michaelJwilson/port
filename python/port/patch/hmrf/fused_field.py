@@ -13,18 +13,8 @@ profile. This does both in one pass and materializes nothing.
 *The flops.* The two-step scores every one of `n_states` states at every
 `(bin, spot)`; the field then reads `pred[o, c]`, so at most `n_clones` of
 them are ever used. Fusing scores only what is read, a factor `n_states /
-n_clones` fewer evaluations. Measured against item 1's reordered field:
-
-| `n_obs` | `n_spots` | states | clones | two-step | fused | ratio |
-| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 3,000 | 5,000 | 7 | 4 | 16,046 ms | 7,698 ms | 2.08 |
-| 3,000 | 5,000 | 7 | 7 | 16,102 ms | 14,043 ms | 1.15 |
-| 10,000 | 2,500 | 7 | 4 | 26,735 ms | 14,449 ms | 1.85 |
-
-`CLAUDE.md` puts a speedup claim at 2x, and this clears it **only where
-`n_clones < n_states`**. At `n_clones == n_states` there is no flop to save
-and the 1.15x is the materialization alone. Stated rather than averaged:
-the ratio is `n_states / n_clones` and a reader can compute their own.
+n_clones` fewer evaluations: a speedup only where `n_clones < n_states`
+(`docs/measurements.md`, `port.patch.hmrf.fused_field`).
 
 *The memory, which is the claim that does not depend on the ratio.* The two
 emission channels are `2 * n_states * n_obs * n_spots * 8` bytes -- 1.68 GB
@@ -32,13 +22,8 @@ at 3,000 x 5,000, **16.8 GB at 30,000 x 5,000**. The fused form holds its
 four `(n_obs, n_spots)` inputs, 4.8 GB at that size, and allocates an
 `(n_spots, n_clones)` output.
 
-Measured at `n_states = 7`, `n_obs = 30,000`, `n_spots = 5,000` on a machine
-with 13 GB free: the fused form completed in **67.9 s**; the two-step
-allocated its first 8.4 GB channel and the process was **killed by the
-kernel** on the second. That is a size the two-step cannot run and this can,
-which is a capability rather than a ratio -- and the kill is worth naming,
-because an OOM death reads as infrastructure breaking rather than as a stated
-limit.
+At a size the two-step cannot allocate, the fused form completes
+(`docs/measurements.md`, `port.patch.hmrf.fused_field`).
 
 **Referee: bitwise.** The per-`(spot, clone)` additions run over `o` in the
 same order as the two-step's, on the same values, so `np.array_equal` is the
