@@ -735,12 +735,20 @@ def _page(width: float, height: float, rect: tuple[float, float, float, float]) 
     )
 
 
-def _genomic_page(genomic: Call, profile: Call, width: float, scale: float) -> Any:
+def _genomic_page(
+    genomic: Call, profile: Call, width: float, scale: float, metric: bool = False
+) -> Any:
     """The genomic figure with its tracks and profile rows `scale` times
-    their base height."""
+    their base height; on `metric`, the decoded CNAs widened (T- #683)."""
     # NB `port`'s profile directly: the page is drawn after the run, when
     #    `FIGURE_SWAPS` has been restored and `cnaster`'s names are its own.
-    from port.extensions.genomic_axis import Ticks, resolve
+    from port.extensions.genomic_axis import (
+        GenomicAxis,
+        Ticks,
+        altered_bins,
+        disclose,
+        resolve,
+    )
     from port.patch.plot_copy_number_profile import plot_copy_number_profile
     from port.patch.plot_genomic import plot_clones_genomic
 
@@ -762,6 +770,9 @@ def _genomic_page(genomic: Call, profile: Call, width: float, scale: float) -> A
     #    where it places none (T- #683).
     df_cnv = genomic.kwargs["df_cnv"]
     genome = resolve(Ticks(), df_cnv, len(df_cnv))
+
+    if metric and genome is not None:
+        genome = GenomicAxis.of_table(df_cnv, altered_bins(df_cnv))
     plot_clones_genomic(
         *genomic.args,
         **{
@@ -803,6 +814,7 @@ def _genomic_page(genomic: Call, profile: Call, width: float, scale: float) -> A
     figure.canvas.draw()
     figure.set_layout_engine("none")
     _place_genomic(figure, top, profile_ax, legend_ax)
+    disclose(figure, genome)
     return figure
 
 
@@ -845,10 +857,13 @@ def genomic_figure(
     recorded: Recorded,
     width: float | None = None,
     height: float = TEXT_HEIGHT - CAPTION_ROOM,
+    *,
+    metric: bool = False,
 ) -> Any:
     """(a) `clones_genomic` over (b) `copy_number_profile`, `width` by
     `height` inches, the text block's less `CAPTION_ROOM` by default; no
-    caption.
+    caption. On `metric`, every bin `df_cnv` decodes altered in any clone is
+    drawn wider (`port.extensions.genomic_axis`, T- #683).
 
     Everything but the tracks and the profile's rows is fixed in points, so
     the two are scaled together until the page is `height` tall: from the
@@ -863,11 +878,11 @@ def genomic_figure(
     width = PAPER_WIDTH if width is None else width
     genomic, profile = recorded.genomic, recorded.profile
     scales = [1.0]
-    heights = [_genomic_page(genomic, profile, width, 1.0).get_size_inches()[1]]
+    heights = [_genomic_page(genomic, profile, width, 1.0, metric).get_size_inches()[1]]
     scales.append(height / heights[0])
 
     for _ in range(4):
-        figure = _genomic_page(genomic, profile, width, scales[-1])
+        figure = _genomic_page(genomic, profile, width, scales[-1], metric)
         heights.append(figure.get_size_inches()[1])
 
         if abs(heights[-1] - height) < 0.005:
@@ -1043,10 +1058,13 @@ def combined_figure(
     width: float | None = None,
     height: float = TEXT_HEIGHT,
     labels: str = "integer",
+    *,
+    metric: bool = False,
 ) -> Any:
     """The spatial figure over the genomic one on one page, `height` tall.
 
-    `labels` names (b)'s clones as `spatial_figure` does (#344).
+    `labels` names (b)'s clones as `spatial_figure` does (#344); `metric`
+    is `genomic_figure`'s.
 
     (a) and (b) are the spatial figure's, drawn at the head exactly as it
     draws them; (c) and (d) are the genomic figure's, drawn the rest of the
@@ -1056,7 +1074,7 @@ def combined_figure(
 
     spatial = spatial_figure(recorded, he_frame, width, labels)
     above = float(spatial.get_size_inches()[1])
-    figure = genomic_figure(recorded, width, height - above)
+    figure = genomic_figure(recorded, width, height - above, metric=metric)
     dpi = figure.dpi
     wide, tall = figure.get_size_inches()
 

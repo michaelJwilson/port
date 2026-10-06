@@ -255,3 +255,70 @@ def test_ticks_are_all_a_default_arm_figure_gains(
     )
     np.testing.assert_array_equal(_pixels(ticked, strip=True), _pixels(linear))
     plt.close("all")
+
+
+@pytest.mark.analytic
+def test_on_the_metric_a_cna_is_drawn_at_twice_its_extent() -> None:
+    """A 3-bin CNA among 24 bins: its profile segment drawn 6 bins wide, each
+    normal segment `(W - 2A) / N` times its bins, and a segment spanning both
+    the sum of the two, to 1e-12."""
+    import matplotlib as mpl
+    import matplotlib.pyplot as plt
+    from matplotlib.colors import to_rgba
+    from matplotlib.patches import Rectangle
+
+    mpl.use("Agg")
+    from port.patch.plot_copy_number_profile import plot_copy_number_profile
+
+    n = 24
+    table = pd.DataFrame(
+        {
+            "CHR": np.repeat([1, 2], n // 2),
+            "START": np.tile(np.arange(n // 2), 2) * 5_000_000,
+            "clone0 A": 1,
+            "clone0 B": 1,
+            "clone1 A": 1,
+            "clone1 B": 1,
+        }
+    )
+    table["END"] = table["START"] + 5_000_000
+    table.loc[15:17, "clone1 A"] = 2
+    genome = GenomicAxis.of_table(table, altered_bins(table))
+    figure = plot_copy_number_profile(table, axis=genome)
+    widths = sorted(
+        patch.get_width()
+        for patch in figure.axes[0].patches
+        if isinstance(patch, Rectangle) and to_rgba(patch.get_facecolor())[3] > 0.0
+        and patch.get_width() < n
+    )  # fmt: skip
+    normal_scale = (n - 2 * 3) / (n - 3)
+
+    assert genome.altered_scale == ALTERED_SCALE
+    # NB clone0's chr1 and chr2, the CNA's bins in the latter; clone1's chr1,
+    #    and its chr2's normal runs either side of the CNA, and the CNA.
+    expected = [12 * normal_scale, 9 * normal_scale + 6.0, 12 * normal_scale]
+    expected += [3 * normal_scale, 6.0, 6 * normal_scale]
+    np.testing.assert_allclose(widths, sorted(expected), rtol=1e-12)
+    plt.close(figure)
+
+
+@pytest.mark.infra
+def test_a_warped_figure_states_its_scale_in_its_stamp() -> None:
+    """`disclose` sets `axis: altered` times the scale where the axis is warped, and
+    `paper_figures.stamp` appends it; a linear axis adds nothing."""
+    import matplotlib as mpl
+    import matplotlib.pyplot as plt
+
+    mpl.use("Agg")
+    from port.extensions.genomic_axis import disclose
+    from port.studies.paper_figures import stamp
+
+    for altered, suffix in (
+        (None, ""),
+        (np.array([[0, 10_000_000]]), " · axis: altered \N{MULTIPLICATION SIGN}2.00"),
+    ):
+        figure = plt.figure()
+        disclose(figure, GenomicAxis(LENGTHS, altered))
+        stamp(figure, "fixture 7ba9b01f · code abc1234")
+        assert figure.texts[-1].get_text() == f"fixture 7ba9b01f · code abc1234{suffix}"
+        plt.close(figure)

@@ -4,8 +4,8 @@
 0.9335, exact altered (phase-free)
 0.8992 (phased 0.1473), from one
 `run_cnaster_port --sal --png-copies` run on `sim/manifests/dev_tree_1s_easy.toml` r0 at
-code `26f310b`: 146 s wall, 3.43 GB peak.
-Ledger `run_id` `26f310b-dev_tree_1s_easy_r0_7ba9b01f-0749` (`docs/metrics/`, fixture `dev_tree_1s_easy_r0_7ba9b01f`).
+code `3cf5be3`: 153 s wall, 3.49 GB peak.
+Ledger `run_id` `3cf5be3-dev_tree_1s_easy_r0_7ba9b01f-0802` (`docs/metrics/`, fixture `dev_tree_1s_easy_r0_7ba9b01f`).
 
 Regenerate from a clean tree, so the stamp carries no `+`; it draws r0 into
 `.cache/paper_figures/` where `--draw` is not given, and refuses any r0 not
@@ -21,6 +21,10 @@ the fixture has no H&E image, and the run never reads the mock.
 `solvers/solver_combined.png` is not drawn from this fixture: `--solvers POTTS.pkl COPY.pkl`
 draws it from a `port.studies.potts_stream` and a `port.studies.copy_state_stream` record,
 and its stamp names both records' data hashes.
+The genomic panels of `truth/truth_combined.png`, `truth/clones_genomic.png`,
+`truth/clone_profiles.png`, `run/genomic.png`, `run/combined.png` and
+`compare/copy_genomic_truth_vs_fit.png` draw every altered bin at 2x its extent
+(`port.extensions.genomic_axis`, T- #683), and their stamps end `· axis: altered` and the scale used.
 
 | File | Question | Source |
 | --- | --- | --- |
