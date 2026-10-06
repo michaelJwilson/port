@@ -25,6 +25,7 @@ from port.sim.analysis import (
     tree,
 )
 from port.sim.draw import Drawn, draw
+from port.sim.truth_figure import NAME_GAP
 
 from tests.sim_fixtures import references
 from tests.test_sim_draw import _manifest
@@ -222,8 +223,9 @@ def test_the_genome_panels_share_one_left_and_one_right_edge(drawn: Drawn) -> No
 @pytest.mark.infra
 @pytest.mark.merge
 def test_the_tree_spans_the_genome_panels_between_its_barcodes(drawn: Drawn) -> None:
-    """(a)'s root barcode starts on (c)'s left edge and each leaf's ends on its
-    right; no name runs into a barcode or past its node's side."""
+    """(a) spans (c)'s width: its unlabelled root sits `NAME_GAP` in from (c)'s
+    left edge and every leaf's barcode ends on its right; no name runs into a
+    barcode or past its node's side."""
     from port.sim.truth_figure import truth_combined_figure
 
     figure = truth_combined_figure(read(drawn.path))
@@ -233,14 +235,16 @@ def test_the_tree_spans_the_genome_panels_between_its_barcodes(drawn: Drawn) -> 
     track = genomic.axes[0].get_window_extent(renderer)
     barcodes = [t for t in tree_ax.texts if t.get_gid() == "barcode"]
     names = [t for t in tree_ax.texts if t.get_gid() == "name"]
-    boxes = sorted(
-        (t.get_window_extent(renderer) for t in barcodes), key=lambda b: b.x0
-    )
-    root, leaves = boxes[0], boxes[1:]
+    boxes = [t.get_window_extent(renderer) for t in barcodes]
+    tree = tree_ax.get_window_extent(renderer)
 
     assert len(barcodes) == len(names) == len(read(drawn.path).clones)
-    assert root.x0 == pytest.approx(track.x0, abs=0.5)
-    for leaf in leaves:
+    assert tree.x0 == pytest.approx(track.x0, abs=0.5)
+    # NB the root is at event time 0.
+    assert tree_ax.transData.transform((0.0, 0.0))[0] == pytest.approx(
+        track.x0 + NAME_GAP * figure.dpi / 72.0, abs=0.5
+    )
+    for leaf in boxes:
         assert leaf.x1 == pytest.approx(track.x1, abs=0.5)
     for name in names:
         box = name.get_window_extent(renderer)
