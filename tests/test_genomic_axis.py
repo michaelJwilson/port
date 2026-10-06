@@ -188,6 +188,30 @@ def test_ticks_land_on_exact_10_mb_multiples() -> None:
         assert labels == [f"{v / 1e6:g}" for v in expected]
 
 
+@pytest.mark.infra
+def test_an_unlabelled_axis_marks_its_ticks_and_labels_none() -> None:
+    """`labels=False` on the axis draws every 10 Mb mark and no Mb label,
+    whatever `draw` asks; the default labels them (PR- #701)."""
+    import matplotlib.pyplot as plt
+
+    expected = int(np.sum(LENGTHS // 10_000_000))
+    texts = {}
+    for labels in (True, False):
+        axis = GenomicAxis.of_table(_bins(), labels=labels)
+        figure, ax = plt.subplots(figsize=(12, 1))
+        ax.set_xlim(0, axis.width)
+        axis.draw(ax, labels=True)
+        figure.canvas.draw()
+        ticks = ax.xaxis.get_minor_ticks(len(ax.xaxis.get_minorticklocs()))
+        assert sum(t.tick1line.get_visible() for t in ticks) == expected
+        texts[labels] = [t.label1.get_text() for t in ticks
+                         if t.label1.get_visible() and t.label1.get_text()]  # fmt: skip
+        plt.close(figure)
+
+    assert texts[True]
+    assert texts[False] == []
+
+
 @pytest.mark.analytic
 def test_altered_bins_are_the_union_over_clones_and_tables() -> None:
     """A bin is altered where any clone of any table is not `(1, 1)`."""

@@ -198,13 +198,16 @@ def binned_profile(r: Realization) -> pd.DataFrame:
     return table
 
 
-def binned_axis(r: Realization, *, metric: bool = False) -> Any:
+def binned_axis(r: Realization, *, metric: bool = False, labels: bool = True) -> Any:
     """The genomic axis of `binned_profile`'s 1 Mb bins, ticked every 10 Mb;
-    on `metric`, every bin planted altered in any clone drawn wider (T- #683)."""
+    on `metric`, every bin planted altered in any clone drawn wider (T- #683);
+    without `labels`, its ticks unlabelled (PR- #701)."""
     from port.extensions.genomic_axis import GenomicAxis, altered_bins
 
     table = binned_profile(r)
-    return GenomicAxis.of_table(table, altered_bins(table) if metric else None)
+    return GenomicAxis.of_table(
+        table, altered_bins(table) if metric else None, labels=labels
+    )
 
 
 def bp_axis(r: Realization) -> Any:

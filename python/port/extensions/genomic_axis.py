@@ -29,7 +29,7 @@ its argument, the same object, so a figure drawn through it is the linear
 axis bit for bit.
 
 **What `draw` adds.** Minor ticks, inward, every `every` base pairs, and on
-a labelled axis their values in Mb, each chromosome labelled at the least
+a labelled axis (`labels`, both the axis's and the call's) their values in Mb, each chromosome labelled at the least
 stride of `STRIDES` whose labels do not overlap at the size drawn. The
 chromosome boundaries and names stay each figure's own, drawn at `edges`:
 the figures style them differently, and a default-arm figure keeps
@@ -205,7 +205,8 @@ class GenomicAxis:
     `(starts, ends)` in base pairs one per unit, says the base unit is a
     bin; `None` says it is a base pair. `altered` is `(k, 2)` intervals
     `[start, end)` of the base coordinate drawn `altered_scale` times their extent
-    (module docstring); `None` is the identity.
+    (module docstring); `None` is the identity. Without `labels`, `draw`
+    marks the ticks and labels none, whatever a plotter asks (PR- #701).
     """
 
     def __init__(
@@ -217,12 +218,14 @@ class GenomicAxis:
         bins: tuple[np.ndarray, np.ndarray] | None = None,
         names: Sequence[Any] | None = None,
         every: float = TICK_EVERY,
+        labels: bool = True,
     ) -> None:
         self.lengths = np.asarray(lengths, dtype=np.int64)
         self.names = (
             list(names) if names is not None else list(range(1, self.lengths.size + 1))
         )
         self.every = float(every)
+        self.labels = labels
         self.offsets = np.concatenate([[0], np.cumsum(self.lengths)])
         self.width = int(self.offsets[-1])
         self.bins = bins
@@ -266,6 +269,7 @@ class GenomicAxis:
         altered_scale: float = ALTERED_SCALE,
         *,
         every: float = TICK_EVERY,
+        labels: bool = True,
     ) -> GenomicAxis:
         """The axis of a bin table, `CHR START END` one row per bin, in its row order."""
         import pandas as pd
@@ -280,6 +284,7 @@ class GenomicAxis:
             bins=(table["START"].to_numpy(), table["END"].to_numpy()),
             names=names,
             every=every,
+            labels=labels,
         )
 
     @property
@@ -398,9 +403,11 @@ class GenomicAxis:
         )
 
     def draw(self, ax: Any, *, labels: bool = True) -> None:
-        """`ax`'s minor x ticks every `every` bp, inward; on `labels`, their Mb, thinned."""
+        """`ax`'s minor x ticks every `every` bp, inward; on `labels` and the
+        axis's own, their Mb, thinned."""
         from matplotlib.ticker import FixedLocator, NullFormatter
 
+        labels = labels and self.labels
         positions, chromosomes, multiples, every = self._ticks()
         texts = [f"{k * every / 1e6:g}" for k in multiples.tolist()]
         ax.xaxis.set_minor_locator(FixedLocator(positions.tolist()))

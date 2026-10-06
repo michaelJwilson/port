@@ -366,30 +366,65 @@ def test_at_10_events_or_fewer_a_is_the_tree(drawn: Drawn) -> None:
     plt.close(figure)
 
 
+def _marks(ax: Any) -> list[Any]:
+    """`ax`'s visible minor tick marks within its x limits."""
+    lo, hi = ax.get_xlim()
+    return [t for t in ax.xaxis.get_minor_ticks(len(ax.xaxis.get_minorticklocs()))
+            if t.tick1line.get_visible() and lo <= t.get_loc() <= hi]  # fmt: skip
+
+
 @pytest.mark.infra
 @pytest.mark.merge
-def test_b_and_c_mark_every_10_mb_at_paper_width(drawn: Drawn) -> None:
-    """(b) and each clone's last track in (c) carry one visible minor tick mark
-    per 10 Mb multiple of each chromosome, `floor(L / 10 Mb)` summed, inward,
-    2 pt long and 0.5 pt wide (`genomic_axis.draw`, PR- #701)."""
+def test_only_the_last_track_marks_every_10_mb_at_paper_width(drawn: Drawn) -> None:
+    """The page's last track carries one visible minor tick mark per 10 Mb
+    multiple of each chromosome, `floor(L / 10 Mb)` summed, inward, 2 pt long
+    and 0.5 pt wide (`genomic_axis.draw`); (b) and every other track of (c)
+    carry none (PR- #701)."""
     import matplotlib.pyplot as plt
 
     r = read(drawn.path)
     expected = int(np.sum(np.asarray(r.lengths) // 10_000_000))
     figure, _, genomic = _panels(r)
     figure.canvas.draw()
-    profile = figure.subfigs[1].axes[-1]
-    last = [ax for ax in genomic.axes if ax.get_ylabel() == "BAF"]
+    *others, last = genomic.axes
+    marks = _marks(last)
 
     assert expected > 0
-    assert len(last) == len(r.clones)
-    for ax in (profile, *last):
-        lo, hi = ax.get_xlim()
-        marks = [t for t in ax.xaxis.get_minor_ticks(len(ax.xaxis.get_minorticklocs()))
-                 if t.tick1line.get_visible() and lo <= t.get_loc() <= hi]  # fmt: skip
-        assert len(marks) == expected
-        assert all(t.tick1line.get_markersize() == 2.0 for t in marks)
-        assert all(t.tick1line.get_markeredgewidth() == 0.5 for t in marks)
+    assert len(marks) == expected
+    assert all(t.tick1line.get_markersize() == 2.0 for t in marks)
+    assert all(t.tick1line.get_markeredgewidth() == 0.5 for t in marks)
+    for ax in (*figure.subfigs[1].axes, *others):
+        assert _marks(ax) == []
+    plt.close(figure)
+
+
+@pytest.mark.infra
+@pytest.mark.merge
+def test_no_mb_label_is_drawn_and_the_last_track_alone_names_contigs(
+    drawn: Drawn,
+) -> None:
+    """No minor tick label anywhere on the page (the Mb numbers); the page's
+    last track names the chromosomes, each at its left boundary, and no other
+    axis, nor `cnaster`'s own names, shows a `chr` text (PR- #701)."""
+    import matplotlib.pyplot as plt
+    from port.sim.analysis import binned_axis
+
+    r = read(drawn.path)
+    figure, _, genomic = _panels(r)
+    figure.canvas.draw()
+    axes = [ax for panel in figure.subfigs for ax in panel.axes]
+    last = genomic.axes[-1]
+
+    for ax in axes:
+        ticks = ax.xaxis.get_minor_ticks(len(ax.xaxis.get_minorticklocs()))
+        assert not [t for t in ticks if t.label1.get_visible() and t.label1.get_text()]
+    contigs = [t for t in _visible_texts(figure) if t.get_text().startswith("chr")]
+    on_last = [t for t in last.get_xticklabels() if t.get_visible() and t.get_text()]
+
+    assert on_last
+    assert {id(t) for t in contigs} == {id(t) for t in on_last}
+    edges = set(binned_axis(r).edges[:-1].tolist())
+    assert all(float(t.get_position()[0]) in edges for t in on_last)
     plt.close(figure)
 
 

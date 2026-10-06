@@ -133,7 +133,9 @@ overlapping by half) at seed 0.
   `truth_combined.pdf` by `plot`: the tree (over 10 events, its leaves alone
   where the tree places them, PR- #701), the profiles, the tracks and the
   spatial map on one page at `combined.pdf`'s 122 mm by 193 mm and 7 pt, the
-  profile and tracks on one left and right edge, clones as $m_N$, $m_1$, ...
+  profile and tracks on one left and right edge, clones as $m_N$, $m_1$, ...;
+  the 10 Mb marks and the chromosome names on the last track alone, no Mb
+  numbers, and every chromosome boundary on (b) and each track (PR- #701)
 
 Clones carry `cnaster`'s numerals in every other figure: `Clone 0` is the normal.
 `python -m port.sim.analysis population <sample or manifest>` streams every
