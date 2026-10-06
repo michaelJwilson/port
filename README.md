@@ -493,6 +493,15 @@ committed realization) or as a Pólya urn (`urn`, `O(UMIs)` per spot, #549);
 `dev_tree_1s{,_easy,_hard}` put `dev_tree`'s clones on one slice under the
 urn, with CalicoST easy's and hard's event laws and admixture (#556, #581);
 `sim/manifests/baseline/` keeps the gamma copies the baseline ran.
+`dev_tree_1s_dense` (r0 `33e3471e`, T- #698) is `dev_tree_1s_easy` at 60
+expected events of lognormal mean 150 Mb. Its 64 events sum to 2.38 genomes
+and cover 0.920 of it: `port.sim.draw.altered_share`, the bp share where
+any clone is not `(1, 1)`, a union over clones rather than a sum of lengths.
+An event plants an absolute `(A, B)`, so a clone's state is the last event on
+its own path covering a locus. Under the fixture's `[cna] loh =
+"irreversible"`, an event keeps every haplotype its lineage has lost at 0
+and changes its clone. Without the key, as every other manifest draws,
+11 of 679 events over 100 `dev_tree_1s_easy` trees regain a lost haplotype.
 `[cna.length]` states `law = "fixed"` (`size`), `"exponential"` (`mean`,
 `minimum`) or `"lognormal"` (`sigma`, `minimum` and exactly one of `mean` or
 `median`; a mean keys the median at `mean exp(-sigma^2 / 2)`). The live
