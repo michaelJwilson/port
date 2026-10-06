@@ -221,16 +221,20 @@ def test_the_field_is_ports_and_the_strided_reduction_cnasters() -> None:
     from port.patch.hmrf.fused_field import fused_spot_clone_field as port_fused
     from port.patch.hmrf.tabulated_field import spot_clone_field as port_field
 
-    arguments = _field_inputs()
+    arguments: tuple[Any, ...] = _field_inputs()
     shape = (arguments[0].shape[1], arguments[8].shape[1])
+    # NB `port`'s kernels take `log_space`, which `cnamaste`'s do not; each
+    #    pair is called with the same arguments, the buffer last.
+    pairs: list[tuple[Any, Any]] = [
+        (spot_clone_field, port_field),
+        (fused_spot_clone_field, port_fused),
+    ]
 
-    ours = spot_clone_field(*arguments, np.empty(shape))
-    theirs = port_field(*arguments, np.empty(shape), log_space=True)
-    np.testing.assert_array_equal(ours, theirs)
-    np.testing.assert_array_equal(
-        fused_spot_clone_field(*arguments, np.empty(shape)),
-        port_fused(*arguments, np.empty(shape), log_space=True),
-    )
+    for ours, theirs in pairs:
+        np.testing.assert_array_equal(
+            ours(*arguments, np.empty(shape)),
+            theirs(*arguments, np.empty(shape), log_space=True),
+        )
 
     generator = np.random.default_rng(1)
     emission = [generator.normal(size=(4, 30, 50)) for _ in range(2)]
@@ -347,7 +351,7 @@ def test_the_clone_assignment_is_ports(
     model = type("hmm_nophasing", (hmm_nophasing,), {"apply_logmu_shift": shift})
     band = problem["prev_assignment"]
     mask = np.eye(3, dtype=bool)[band] | (band[:, None] == 2)
-    options = {"label_solver": label_solver, "floor_merge": floor_merge}
+    options: dict[str, Any] = {"label_solver": label_solver, "floor_merge": floor_merge}
 
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
@@ -401,7 +405,7 @@ def test_the_tumour_mixed_field_is_cnasters() -> None:
 
     problem = _assignment_problem()
     n_spots = problem["prev_assignment"].size
-    mixed = {
+    mixed: dict[str, Any] = {
         "single_tumor_prop": np.random.default_rng(5).uniform(0.6, 1.0, n_spots),
         "smooth_mat": sp.identity(n_spots, format="csr"),
     }
