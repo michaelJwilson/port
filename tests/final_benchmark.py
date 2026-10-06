@@ -1,6 +1,7 @@
 """#494: `run_cnaster_port --sal` and CalicoST under its own settings, on easy, hard and `dev_tree`.
 
-`python -m tests.final_benchmark SAMPLE {port,calicost} [--repeats N]` runs one
+`python -m tests.final_benchmark SAMPLE {port,calicost} [--repeats N]
+[--timeout S] [--n-clones K] [--root DIR]` runs one
 tool on one sample in a child process and prints one `BENCH` JSON line: clone
 ARI (clones), copy ARI, exact altered and its phase-free form, wall and the
 child's peak RSS.
@@ -206,33 +207,63 @@ def _with_clones(shipped: Path, n_clones: int | None, root: Path) -> Path:
     return edited
 
 
-def calicost(
-    name: str, timeout: int = TIMEOUT, n_clones: int | None = None
-) -> dict[str, Any]:
-    """CalicoST on its shipped configuration, under `timeout`, scored as port is.
+STAGED = "staged.json"
+"""Under a kept `root`: the staged configuration and whether it is joint, so a rerun resumes."""
 
-    `n_clones` replaces the shipped file's clone count, its one edited value.
+
+def staged(sample: Any, root: Path) -> tuple[Path, bool]:
+    """The sample's inputs staged under `root` for CalicoST; reused where `root` holds them already.
+
+    CalicoST skips a stage whose checkpoint (`*.npz`) its output directory
+    already holds, so a run killed part way resumes when rerun on the same
+    `root` (#532: the uncapped `dev_tree` r0 run was resumed twice).
     """
-    from tests.sim_audit import _drawn_config, score
+    from tests.sim_audit import _drawn_config
     from tests.sim_fixtures import write_sim_inputs
 
-    sample = _sample(name)
-    root = Path(tempfile.mkdtemp())
-    config = (
+    marker = root / STAGED
+
+    if marker.is_file():
+        record = json.loads(marker.read_text())
+        return Path(record["config"]), bool(record["joint"])
+
+    root.mkdir(parents=True, exist_ok=True)
+    config = Path(
         _drawn_config(sample, root, {})
         if (sample.path / "snp").is_dir()
         else write_sim_inputs(sample, root, {})
     )
-    joint = joint_inputs(Path(config), root)
+    joint = joint_inputs(config, root)
+    marker.write_text(json.dumps({"config": str(config), "joint": joint}))
+    return config, joint
+
+
+def calicost(
+    name: str,
+    timeout: int = TIMEOUT,
+    n_clones: int | None = None,
+    root: Path | None = None,
+) -> dict[str, Any]:
+    """CalicoST on its shipped configuration, under `timeout`, scored as port is.
+
+    `n_clones` replaces the shipped file's clone count, its one edited value.
+    `timeout` 0 runs uncapped. A kept `root` resumes a killed run from
+    CalicoST's checkpoints (`staged`); `wall` is then this attempt's alone.
+    """
+    from tests.sim_audit import score
+
+    sample = _sample(name)
+    root = Path(tempfile.mkdtemp()) if root is None else root
+    config, joint = staged(sample, root)
     tool = "CalicoST (shipped" + ("" if n_clones is None else f", n_clones {n_clones}")
-    tool += f", cap {timeout} s)"
+    tool += ", uncapped)" if timeout == 0 else f", cap {timeout} s)"
+    capped = [] if timeout == 0 else ["timeout", str(timeout)]
     started = time.perf_counter()
 
     try:
         subprocess.run(
             [
-                "timeout",
-                str(timeout),
+                *capped,
                 sys.executable,
                 "-c",
                 "from port.scripts.run_calicost import main; raise SystemExit(main())",
@@ -298,16 +329,27 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("tool", choices=["port", "calicost"])
     parser.add_argument("--repeats", type=int, default=3)
     parser.add_argument(
-        "--timeout", type=int, default=TIMEOUT, help="CalicoST's cap [s]"
+        "--timeout",
+        type=int,
+        default=TIMEOUT,
+        help="CalicoST's cap [s]; 0 runs uncapped",
     )
     parser.add_argument(
         "--n-clones", type=int, default=None, help="CalicoST's n_clones (shipped: 3)"
+    )
+    parser.add_argument(
+        "--root",
+        type=Path,
+        default=None,
+        help="CalicoST's working directory, kept so a rerun resumes (default: a new one)",
     )
     arguments = parser.parse_args(argv)
     row = (
         port(arguments.sample, arguments.repeats)
         if arguments.tool == "port"
-        else calicost(arguments.sample, arguments.timeout, arguments.n_clones)
+        else calicost(
+            arguments.sample, arguments.timeout, arguments.n_clones, arguments.root
+        )
     )
     print("BENCH " + json.dumps({"sample": arguments.sample, **row}), flush=True)
 

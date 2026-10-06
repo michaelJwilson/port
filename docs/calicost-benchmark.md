@@ -29,6 +29,16 @@ fixtures are in `docs/baseline-release.md`.
   round, scored at its last completed round) where the merge had not run. It
   is not comparable with a final ARI: the read-depth stage had not finished.
 
+## Reproduce on `dev_tree` r0
+
+`tests/calicost_benchmark.sh [ROOT]` reruns the uncapped comparison below on the fixture it was measured on:
+- **Fixture:** it draws `sim/manifests/baseline/dev_tree.toml` r0 and refuses it unless it hashes to `3381575a`.
+- **CalicoST:** shipped `configuration_cna_multi` with `n_clones 5`, no cap. A killed attempt is rerun on the same kept root and resumes from CalicoST's checkpoints (`tests.final_benchmark.staged`, `--root`); `TRIES` defaults to 3, and the wall is the attempts' sum.
+- **port:** `run_cnaster_port --sal`, `REPEATS` times (default 3), median wall.
+- **Output:** every `BENCH` line goes to `ROOT/bench.jsonl`, and the script prints the table.
+
+Run it alone on the host; `LOCK=<file>` holds a flock.
+
 ## Results, capped at 1,800 s
 
 | sample | clone ARI | wall | peak |
