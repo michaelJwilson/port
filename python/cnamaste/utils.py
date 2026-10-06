@@ -14,6 +14,7 @@ import numpy as np
 import pandas as pd
 import scipy
 from anndata.io import read_elem, write_elem
+from matplotlib.text import Text
 from numba import njit
 
 from cnamaste.config import get_global_config, start_time
@@ -381,6 +382,11 @@ def write_fig(
     `png_copy` also writes `<name>.png` beside the PDF, without metadata, for
     figures compared across runs (#452): a matplotlib PDF carries its
     creation time, and a PNG written without metadata does not.
+
+    The written figure keeps no renderer (T- #692, PR- #713): each `Text` is
+    reset to the `None` it starts with, so the PDF's full-page raster buffers
+    are freed on return rather than held for as long as the figure lives.
+    The file written is the same.
     """
     if fig is None:
         fig = plt.figure()
@@ -415,6 +421,10 @@ def write_fig(
         )
 
     plt.close(fig)
+
+    # NB the renderer each `Text` cached holds the PDF's rasters (T- #692).
+    for text in fig.findobj(Text):
+        text._renderer = None
 
 
 def discard_fig(

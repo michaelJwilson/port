@@ -7,29 +7,34 @@ Measurement: `port.studies.copy_state_stream` on
   `sim/manifests/baseline/dev_tree_1s_hard.toml` r3-r12, 10 seeds (PR #642):
   median rows missed after Baum-Welch 1.14 / 1.12 / 1.14% against port's
   1.19 / 1.17 / 1.10% (anneal / tempering / hmc), n = 100 each.
-Exit: retire with the #540 study; or graduate when `sal`'s count-pair HMM
-  objective costs no more per evaluation. At `sal` 253c84f it is this
-  module's `oracle` (`EmissionHmmObjective` of a `CountPairEmission`, #634
-  gaps 1-3) and costs 1.6x per value and gradient, with no JAX twin for the
-  pair, and `Restricted` cannot hold `tau` with `p` free (T- #671).
+Exit: retire with the #540 study. Built on `sal`'s count-pair HMM objective
+  since T- #707 (sal 006e49d): `Backend.JAX` costs 0.42-0.50x port's former
+  jitted `jax_hmm` forward at 4 threads and 0.38-0.51x at 1 core, per value
+  and gradient on PR- #672's instance, so that forward was deleted.
 
-**The objective.** `HmmObjective` is `jax_hmm.marginal_negative_log_likelihood`
-of `jax_hmm.emission` on the clone-stacked rows, per segment (`lengths`),
-over `theta = (log_mu, logit p_binom)`, one of each per state. The
-dispersions, the stickiness and the uniform start probabilities are held,
-at `known_copy.hmm`'s `ALPHA`, `TAU` and `T` (`objective_for`), the values
-`known_copy.decode` scores a start at. No per-clone shift (#276). `theta`
-crosses from torch to JAX as a `float64` array; `__call__` is
-differentiable by a `torch.autograd.Function` carrying JAX's gradient, and
-`value_and_gradient` and `energy` are declared (`sal.opt.objective`), so
-`sal` reads the gradient from JAX rather than from a graph.
+**The objective.** `HmmObjective` is `sal`'s `EmissionHmmObjective`
+(`backend=Backend.JAX`, sal #1169, #1206) of a
+`RateConcentrationCountPairEmission` (sal #1205), independent form, on the
+clone-stacked rows as a `Ragged` of segments (`lengths`), exposure and
+trials as its covariate. `Restricted` varies its `mean` and `rate` blocks,
+so `theta = (log_mu, logit p_binom)`, one of each per state; the
+dispersions, the stickiness and the uniform start probabilities are held at
+`known_copy.hmm`'s `ALPHA`, `TAU` and `T` (`objective_for`), the values
+`known_copy.decode` scores a start at. No per-clone shift (#276).
+`value_and_gradient` and `energy` are declared (`sal.opt.objective`), and
+`__call__` returns the same JAX value, differentiable by a
+`torch.autograd.Function` carrying JAX's gradient.
 
-**Evaluations are points, not calls.** A `sal` transition asks for the
-value at its start and end point beside the trajectory's gradients, and
-`anneal` and `parallel_tempering` ask again for the point they kept. Every
-one of those points is also a point a trajectory took a gradient at, so
-the objective keeps the last `MEMO` points' value and gradient and
-`evaluations` counts the forward-backward passes actually run.
+**Departure from `sal`.** `sal`'s own `__call__` is autograd through its
+torch forward, its oracle route: `sal`'s samplers read potentials through
+`__call__`, so it would run a second, slower implementation beside the JAX
+gradient and differ from it at round-off. `_Carried` keeps one.
+
+**Evaluations are passes.** `evaluations` counts the JAX value-and-gradient
+passes run. `sal` carries `U` and `grad U` along a chain (sal #1217, #1222),
+so the former 64-point memo is gone; the last point's pass is kept, because
+`sample` scores the initial point and `anneal` then asks for its value and
+gradient again (435 passes against a budget of 433 without it, T- #707).
 
 **The starts.** `sample(name, ...)`: the initial point is `initial_point`,
 the first draw from `rng`; trajectories are `LEAPFROG` leapfrog steps; the
@@ -46,27 +51,21 @@ start is the best point `sal` reports.
   replica starts at the initial point, as `sal` starts them.
 
 `sal`'s step needs no rescaling with temperature: its momentum is drawn with
-variance `T`. `sal` has no step adaptation in `anneal` or
-`parallel_tempering`, so there `step` is a tuned constant.
+variance `T`. `anneal` and `parallel_tempering` run at the tuned constant
+`step`; sal #1208's `adaptation` for them is not adopted (T- #707).
 """
 
 from __future__ import annotations
 
-import functools
-from collections import OrderedDict
 from collections.abc import Mapping
-from typing import TYPE_CHECKING, Any, NamedTuple
+from typing import Any, NamedTuple
 
 import numpy as np
 import torch
 
-if TYPE_CHECKING:
-    from collections.abc import Callable
-
 __all__ = [
     "DEFAULTS",
     "LEAPFROG",
-    "MEMO",
     "SAMPLERS",
     "HmmObjective",
     "Sampled",
@@ -79,9 +78,6 @@ __all__ = [
 LEAPFROG = 8
 """Leapfrog steps per proposal: 8 passes each, the first gradient being the last proposal's end."""
 
-MEMO = 64
-"""Points whose value and gradient are kept: a tempering round's 4 replicas of 9 points each fit."""
-
 HMC_ADAPT = 8
 """`hmc-hmm`'s warm-up where a setting names none."""
 
@@ -91,7 +87,7 @@ RUNGS = 4
 DEFAULTS: dict[str, dict[str, float]] = {
     "anneal-hmm": {"t_start": 1e2, "steps": 54, "step": 3e-3},
     "tempering-hmm": {"t_top": 1e4, "rounds": 13, "step": 1e-3},
-    "hmc-hmm": {"temperature": 1.0, "warmup": 12, "draws": 13, "step": 1e-3, "adapt": 1.0, "target": 0.65},
+    "hmc-hmm": {"temperature": 1.0, "warmup": HMC_ADAPT, "draws": 13, "step": 1e-3, "adapt": 1.0, "target": 0.65},
 }  # fmt: skip
 """Each start's knobs where no `setting` is given: the values `port.studies.copy_state_stream --tune` chose
 on `dev_tree_1s_hard`'s held-out realizations 0-2 (`python/port/studies/copy_sampler_settings.json`), 5 seeds
@@ -99,11 +95,14 @@ per setting, over grids shaped as port's samplers' were (9 / 9 / 7 settings).
 
 Budgets are the passes port's deleted samplers spent at their tuned schedules, not exceeded: 54
 annealing steps (433 passes against 433), 13 tempering rounds (417 against 436), 12 + 13 hmc
-proposals (204-207 against 217), counted on realization 0, 10 seeds.
+proposals (204-207 against 217), counted on realization 0, 10 seeds; 8 + 13 hmc proposals since
+T- #707.
 
-`hmc`'s warm-up is 12 rather than port's 8, from a step of 1e-3: `sal`'s `Adaptation` raised (zero
-warm-up variance) when the chain did not move in the 2 proposals it records at a warm-up of 8, on all
-5 seeds of realization 0 at steps of 1e-3, 3e-3 and 1e-2 (#634, gap 5)."""
+`hmc`'s warm-up is port's 8 (`HMC_ADAPT`). It was 12 at `sal` b61dfba-253c84f, whose `Adaptation`
+raised on zero warm-up variance when the chain did not move in the 2 proposals it records at 8 (#634,
+gap 5); `sal` #1207 regularizes that variance and reports the coordinate on `Adapted.flat` (T- #707).
+At 8 on `sal` 006e49d, realization 0 (`d2938975`), seeds 0-3: best NLL 79,704-79,802 (median 79,724)
+against 79,677-79,770 (median 79,725) at 12, at 188 passes against 220; none refused. Not re-tuned."""
 
 
 SAMPLERS = tuple(DEFAULTS)
@@ -117,37 +116,6 @@ class Sampled(NamedTuple):
     nll: float
     initial_nll: float
     evaluations: int
-
-
-@functools.cache
-def _compiled(n_states: int, lengths: tuple[int, ...]) -> Any:
-    """`(theta, data, log_startprob, log_transmat, alphas, taus) -> (nll, grad)`, jitted for one shape."""
-    import jax
-
-    from port.extensions import jax_setup  # noqa: F401  (float64, before any array)
-    from port.extensions.jax_hmm import emission, marginal_negative_log_likelihood
-
-    k = n_states
-    lengths_array = np.asarray(lengths)
-
-    def nll(theta: Any, data: tuple[Any, ...], held: tuple[Any, ...]) -> Any:
-        total, b, exposure, trials = data
-        log_startprob, log_transmat, alphas, taus = held
-        log_emission = emission(
-            theta[:k],
-            alphas,
-            jax.nn.sigmoid(theta[k:]),
-            taus,
-            total,
-            exposure,
-            b,
-            trials,
-        )
-        return marginal_negative_log_likelihood(
-            log_emission, log_startprob, log_transmat, lengths_array
-        )
-
-    return jax.jit(jax.value_and_grad(nll))
 
 
 class _Carried(torch.autograd.Function):
@@ -202,39 +170,46 @@ class HmmObjective:
         stay: float,
         start: np.ndarray,
     ) -> None:
+        from sal.backend import Backend
+        from sal.emissions import RateConcentrationCountPairEmission
+        from sal.opt.hmm import EmissionHmmObjective
+        from sal.opt.objective import Restricted, coordinates
+        from sal.ragged import Ragged
+
         k = int(n_states)
         self.n_states = k
         self.lengths = tuple(int(v) for v in np.ravel(lengths))
-        self.data = tuple(
-            np.asarray(v, dtype=np.float64) for v in (total, b, exposure, trials)
+        data = [np.asarray(v, dtype=np.float64) for v in (total, b, exposure, trials)]
+        family = RateConcentrationCountPairEmission(
+            np.full(k, 1.0 / float(alpha)), np.ones(k), np.full(k, 0.5),
+            np.full(k, float(tau)), np.ones(k), joint=False,
+        )  # fmt: skip
+        full = EmissionHmmObjective(
+            Ragged(np.stack(data[:2], axis=1), self.lengths),
+            family,
+            covariate=np.stack(data[2:], axis=1),
+            backend=Backend.JAX,
         )
-        move = np.log((1.0 - stay) / max(k - 1, 1))
-        self.held = (
-            np.full(k, -np.log(k)),
-            np.where(np.eye(k, dtype=bool), np.log(stay), move),
-            np.full(k, float(alpha)),
-            np.full(k, float(tau)),
+        chain = np.full((k, k), (1.0 - stay) / max(k - 1, 1))
+        np.fill_diagonal(chain, stay)
+        at = full.theta_from_truth(
+            np.full(k, 1.0 / k), chain, **family.named_parameters()
         )
+        self._sal = Restricted(full, at, coordinates(full, ["mean", "rate"]))
         self.start = np.asarray(start, dtype=np.float64).copy()
         self.evaluations = 0
-        self._memo: OrderedDict[bytes, tuple[float, np.ndarray]] = OrderedDict()
-        self._run: Callable[..., Any] = _compiled(k, self.lengths)
+        self._last: tuple[bytes, float, np.ndarray] | None = None
 
     def _evaluate(self, x: np.ndarray) -> tuple[float, np.ndarray]:
-        """`(U(x), dU/dx)`, from the memo where `x` was evaluated among the last `MEMO` points."""
-        x = np.ascontiguousarray(x, dtype=np.float64)
+        """`(U(x), dU/dx)`: one pass of `sal`'s JAX twin, or the last pass's where `x` is its point."""
+        x = np.array(x, dtype=np.float64)
         key = x.tobytes()
-        kept = self._memo.get(key)
-        if kept is not None:
-            self._memo.move_to_end(key)
-            return kept
-        value, grad = self._run(x, self.data, self.held)
-        found = (float(value), np.asarray(grad, dtype=np.float64))
+        if self._last is not None and self._last[0] == key:
+            return self._last[1], self._last[2]
+        value, grad = self._sal.value_and_gradient(torch.from_numpy(x))
         self.evaluations += 1
-        self._memo[key] = found
-        if len(self._memo) > MEMO:
-            self._memo.popitem(last=False)
-        return found
+        self._last = (key, float(value), grad.numpy())
+        return self._last[1], self._last[2]
 
     def initial(self) -> torch.Tensor:
         """The start `theta`, as given."""
