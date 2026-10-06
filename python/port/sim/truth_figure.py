@@ -5,12 +5,15 @@ r"""What a realization planted, on one page at `combined.pdf`'s size and type.
 Top to bottom, at `llncs`'s text width and height, 7 pt throughout, as
 `port.extensions.combined_figure` sets an estimate:
 
-- **(a)** the clones' tree, each event at its time (`analysis.draw_tree`);
+- **(a)** the clones' tree, each event at its time (`analysis.draw_tree`),
+  or above `analysis.MANY_EVENTS` events its leaves alone, left to right as
+  (c) stacks them (`analysis.draw_leaves`, T- #TKT);
 - **(b)** each clone's planted `(A, B)`, drawn by `port`'s profile plotter
   under its mirror and copy-number key, the rows `combined.pdf` draws;
 - **(c)** RDR and BAF along the genome per true clone
   (`analysis.genomic_truth`), drawn by `plot_clones_genomic`, each clone
-  named with its barcode from (a), its last track labelled in Mb.
+  named with its barcode from (a), its last track labelled in Mb. A
+  barcode is shown as `analysis.shown` cuts it.
 
 (b) and (c) share one `port.extensions.genomic_axis.GenomicAxis`, ticked
 every 10 Mb (T- #683).
@@ -76,10 +79,13 @@ def truth_combined_figure(
     )
     from port.patch.plot_genomic import plot_clones_genomic
     from port.sim.analysis import (
+        MANY_EVENTS,
         binned_axis,
         binned_profile,
+        draw_leaves,
         draw_tree,
         genomic_truth,
+        shown,
         tree,
     )
 
@@ -98,8 +104,13 @@ def truth_combined_figure(
 
         # (a)
         tree_ax = tree_fig.add_axes((0.02, 0.02, 0.96, 0.88))
-        draw_tree(tree_ax, r, event_size=FONT_SIZE, node_size=FONT_SIZE, dot=18.0,
-                  name=symbol, ancestors=False, edges=True)  # fmt: skip
+        leaves_only = len(tree(r).events) > MANY_EVENTS
+        if leaves_only:
+            draw_leaves(tree_ax, r, node_size=FONT_SIZE, dot=18.0, name=symbol)
+        else:
+            draw_tree(tree_ax, r, event_size=FONT_SIZE, node_size=FONT_SIZE,
+                      dot=18.0, name=symbol, ancestors=False,
+                      edges=True)  # fmt: skip
 
         # (b): the key, then the rows, as `combined.pdf` draws its profile.
         legend_ax = profile_fig.add_axes((0.0, 0.72, 1.0, 0.2))
@@ -128,7 +139,7 @@ def truth_combined_figure(
             for text in ax.texts:
                 clone = named.get(text.get_text())
                 if clone is not None and text.get_visible():
-                    text.set_text(f"{symbol(clone)} ({barcode[clone]})")
+                    text.set_text(f"{symbol(clone)} ({shown(barcode[clone])})")
         for ax in genomic_fig.axes:
             ticks = ax.get_yticks()
             if ticks.size > 2:
@@ -137,7 +148,7 @@ def truth_combined_figure(
                 bottom, top = ax.get_yticklabels()
                 bottom.set_verticalalignment("bottom")
                 top.set_verticalalignment("top")
-            ax.set_ylabel(ax.get_ylabel(), rotation=0, ha="right", va="center")
+            ax.set_ylabel(ax.get_ylabel(), rotation=90, ha="center", va="bottom")
             # NB (b) names the same edges.
             for text in ax.texts:
                 if text.get_text().startswith("chr"):
@@ -169,10 +180,10 @@ def truth_combined_figure(
         _stack_tracks(genomic_fig)
         _put(tree_ax, LEFT, right)
         figure.canvas.draw()
-        _fit_tree(tree_ax)
+        if not leaves_only:
+            _fit_tree(tree_ax)
         plot_ascn_legend(legend_ax, box_w=LEGEND_BOX, box_h=0.8, tick_len=0.1,
-                         label_fontsize=FONT_SIZE, span=right - LEFT,
-                         title_on_edge=True)  # fmt: skip
+                         label_fontsize=FONT_SIZE, span=right - LEFT)  # fmt: skip
         _thin(profile_ax.get_xticklabels(), renderer)
 
         for panel, letter in zip(panels, "abc", strict=True):
@@ -284,7 +295,7 @@ def symbol_of(label: str) -> str:
 
 
 def simulated_tree_figure(r: Realization, width: float | None = None) -> Any:
-    """`truth_combined_figure`'s panel (a) alone: the simulated clone tree, `width` wide (T- #660)."""
+    """The simulated clone tree, `width` wide, at any event count: `truth_combined_figure`'s panel (a) alone up to `MANY_EVENTS` events (T- #660, T- #TKT)."""
     import matplotlib.pyplot as plt
 
     from port.extensions.combined_figure import FONT_SIZE, _put, page_style

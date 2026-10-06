@@ -525,6 +525,25 @@ def tree(r: Realization) -> Tree:
     return Tree(parent, events, barcode)
 
 
+MANY_EVENTS = 10
+"""The user's legibility rule (T- #TKT): a tree of more than 10 events does
+not read at a page's width. Above it `truth_figure` draws (a) as the leaves
+alone (`draw_leaves`) and `shown` cuts every barcode to `BARCODE_SHOWN`."""
+
+BARCODE_SHOWN = 8
+"""Characters of a barcode shown above `MANY_EVENTS`: its first 7, then "…" (T- #TKT)."""
+
+
+def shown(code: str) -> str:
+    """`code` as a figure shows it: whole up to `MANY_EVENTS` bits, else its first 7 and "…".
+
+    A barcode has one bit per event, so its length is the tree's event count.
+    """
+    if len(code) <= MANY_EVENTS:
+        return code
+    return code[: BARCODE_SHOWN - 1] + "\N{HORIZONTAL ELLIPSIS}"
+
+
 ROOT = "root"
 """The drawn tree's root, an unobserved ancestor: parent of the `normal` leaf and the tumour."""
 
@@ -640,7 +659,7 @@ def draw_tree(
                    edgecolors=MUTED, linewidths=0.8 * small ** 0.5, zorder=3)  # fmt: skip
         if node == ROOT:
             continue
-        label = t.barcode[clone]
+        label = shown(t.barcode[clone])
         root = up is None
         if observed and edges:
             from matplotlib.transforms import blended_transform_factory
@@ -671,6 +690,44 @@ def draw_tree(
     ax.set_ylim(-0.8, len(order) - 0.2)
     ax.axis("off")
     return width, len(order)
+
+
+def draw_leaves(
+    ax: Any,
+    r: Realization,
+    *,
+    node_size: float = 8.5,
+    dot: float = 90.0,
+    name: Callable[[str], str] | None = None,
+) -> int:
+    """The tree's leaves without its edges on `ax`: one marker per clone, `normal` included; returns their count.
+
+    Left to right in `r.clones`' order, the order `genomic_truth` stacks the
+    clones top to bottom, each marker coloured as `draw_tree` colours it,
+    its name (`name`, `display`'s numeral by default) to its right and its
+    barcode (`shown`) under the name. The texts carry `gid`s `name` and
+    `barcode`, as `draw_tree`'s do. For a tree of more than `MANY_EVENTS`
+    events (T- #TKT).
+    """
+    t = tree(r)
+    named = name or (lambda clone: display(clone, r.clones))
+    small = dot / 90.0
+    for k, clone in enumerate(r.clones):
+        ax.scatter(k, 0.0, s=dot, color=clone_colour(clone, r.clones),
+                   edgecolors=MUTED, linewidths=0.8 * small ** 0.5,
+                   zorder=3)  # fmt: skip
+        for text, rise, gid, family in (
+            (named(clone), 2.0, "name", None),
+            (shown(t.barcode[clone]), -2.0, "barcode", "monospace"),
+        ):
+            ax.annotate(text, (k, 0.0), xytext=(4.0, rise),
+                        textcoords="offset points", fontsize=node_size, color=INK,
+                        va="bottom" if rise > 0 else "top", ha="left",
+                        family=family, gid=gid)  # fmt: skip
+    ax.set_xlim(-0.5, len(r.clones) - 0.5)
+    ax.set_ylim(-1.0, 1.0)
+    ax.axis("off")
+    return len(r.clones)
 
 
 def plot_tree(r: Realization, out: Path) -> Path:
