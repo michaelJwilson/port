@@ -17,8 +17,9 @@ Top to bottom, at `llncs`'s text width and height, 7 pt throughout, as
 
 (b) and (c) share one `port.extensions.genomic_axis.GenomicAxis`, its Mb
 unlabelled (T- #683, PR- #701). The page's last track alone carries the
-10 Mb marks and the chromosome names; every track and (b) keep the
-chromosome boundaries.
+10 Mb marks, outward, and every contig's name, staggered where adjacent
+contigs are short (`genomic_axis.name_contigs`); every track and (b) keep
+the chromosome boundaries.
 
 The true clone of each spot is not drawn here: `analysis.plot_spatial` draws
 it as its own figure, `truth/spatial.png` (T- #660).
@@ -91,7 +92,7 @@ def truth_combined_figure(
         page_style,
     )
     from port.extensions.figure_style import PAPER_WIDTH
-    from port.extensions.genomic_axis import disclose
+    from port.extensions.genomic_axis import disclose, name_contigs
     from port.patch.plot_copy_number_profile import (
         plot_ascn_legend,
         plot_copy_number_profile,
@@ -180,24 +181,24 @@ def truth_combined_figure(
             if ax is not genomic_fig.axes[-1]:
                 ax.xaxis.set_minor_locator(NullLocator())
         bottom_ax = genomic_fig.axes[-1]
-        bottom_ax.set_xticks(starts, contigs, rotation=45, ha="left")
-        bottom_ax.tick_params(axis="x", which="major", bottom=False,
-                              labelbottom=True, pad=1.0)  # fmt: skip
+        bottom_ax.set_xticks([])
 
         for panel in panels:
             _set_text(panel, FONT_SIZE)
         figure.canvas.draw()
 
         # NB one left and one right edge for the key, the rows and each
-        #    track; the right pulled in until no chromosome name runs off
-        #    the page, as `combined_figure` fits its own.
+        #    track; the right pulled in until no contig name runs off the
+        #    page, as `combined_figure` fits its own. Every contig is named,
+        #    staggered where adjacent ones are short (`name_contigs`).
         renderer = figure.canvas.get_renderer()
         right = width - RIGHT
         for _ in range(3):
             for ax in [legend_ax, profile_ax, *genomic_fig.axes]:
                 _put(ax, LEFT, right)
             figure.canvas.draw()
-            names = [t for t in bottom_ax.get_xticklabels() if t.get_text()]
+            name_contigs(bottom_ax, starts, contigs, size=FONT_SIZE)
+            names = [t for t in bottom_ax.texts if t.get_gid() == "contig"]
             overrun = (
                 max(t.get_window_extent(renderer).x1 for t in names) / figure.dpi
                 - width
@@ -206,13 +207,13 @@ def truth_combined_figure(
                 break
             right -= overrun + LABEL_GAP / 72.0
 
-        _stack_tracks(genomic_fig)
+        foot = name_contigs(bottom_ax, starts, contigs, size=FONT_SIZE)
+        _stack_tracks(genomic_fig, foot)
         _put(tree_ax, LEFT, right)
         figure.canvas.draw()
         _fit_tree(tree_ax)
         plot_ascn_legend(legend_ax, box_w=LEGEND_BOX, box_h=0.8, tick_len=0.1,
                          label_fontsize=FONT_SIZE, span=right - LEFT)  # fmt: skip
-        _thin(bottom_ax.get_xticklabels(), renderer)
 
         for panel, letter in zip(panels, "abc", strict=True):
             panel.text(0.0, 1.0, f"({letter})", fontsize=LABEL_SIZE, ha="left",
@@ -228,12 +229,10 @@ TRACK_GAP = 0.02
 STATS_ROW = 0.13
 """Inches above each clone's RDR track for its name and state line."""
 
-CONTIG_ROW = 0.27
-"""Inches under the last track for its chromosome names, at 45 degrees (PR- #701)."""
 
-
-def _stack_tracks(panel: Any) -> None:
-    """(c)'s tracks filling its panel: per clone, its name row, RDR, then BAF.
+def _stack_tracks(panel: Any, foot: float) -> None:
+    """(c)'s tracks filling its panel over `foot` inches for the contig
+    names: per clone, its name row, RDR, then BAF.
 
     `plot_clones_genomic` spaces the tracks for its own page, which in a
     subfigure leaves white at the head and foot; the tracks take it.
@@ -242,7 +241,7 @@ def _stack_tracks(panel: Any) -> None:
 
     dpi = panel.get_figure(root=True).dpi
     box = panel.bbox
-    top, bottom = box.y1 / dpi - 0.02, box.y0 / dpi + CONTIG_ROW
+    top, bottom = box.y1 / dpi - 0.02, box.y0 / dpi + foot
     tracks = list(panel.axes)
     clones = len(tracks) // 2
     height = (top - bottom - clones * (STATS_ROW + TRACK_GAP)) / len(tracks)
@@ -302,17 +301,6 @@ def _fit_tree(ax: Any) -> None:
         for leaf in leaves
     )
     ax.set_xlim(x0 - (start - left) / scale, x0 + (right - start) / scale)
-
-
-def _thin(labels: Any, renderer: Any) -> None:
-    """Hide each label that overlaps the last one kept, left to right: the small chromosomes' names."""
-    kept = None
-    for label in labels:
-        box = label.get_window_extent(renderer)
-        if kept is not None and box.overlaps(kept):
-            label.set_visible(False)
-            continue
-        kept = box
 
 
 def symbol_of(label: str) -> str:

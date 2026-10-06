@@ -400,10 +400,11 @@ def _marks(ax: Any) -> list[Any]:
 @pytest.mark.merge
 def test_only_the_last_track_marks_every_10_mb_at_paper_width(drawn: Drawn) -> None:
     """The page's last track carries one visible minor tick mark per 10 Mb
-    multiple of each chromosome, `floor(L / 10 Mb)` summed, inward, 2 pt long
-    and 0.5 pt wide (`genomic_axis.draw`); (b) and every other track of (c)
-    carry none (PR- #701)."""
+    multiple of each chromosome, `floor(L / 10 Mb)` summed, outward under the
+    axis, 2 pt long and 0.5 pt wide (`genomic_axis.draw`); (b) and every
+    other track of (c) carry none (PR- #701 and its follow-up)."""
     import matplotlib.pyplot as plt
+    from matplotlib.markers import TICKDOWN
 
     r = read(drawn.path)
     expected = int(np.sum(np.asarray(r.lengths) // 10_000_000))
@@ -416,6 +417,7 @@ def test_only_the_last_track_marks_every_10_mb_at_paper_width(drawn: Drawn) -> N
     assert len(marks) == expected
     assert all(t.tick1line.get_markersize() == 2.0 for t in marks)
     assert all(t.tick1line.get_markeredgewidth() == 0.5 for t in marks)
+    assert all(t.tick1line.get_marker() == TICKDOWN for t in marks)
     for ax in (*figure.subfigs[1].axes, *others):
         assert _marks(ax) == []
     plt.close(figure)
@@ -423,35 +425,61 @@ def test_only_the_last_track_marks_every_10_mb_at_paper_width(drawn: Drawn) -> N
 
 @pytest.mark.infra
 @pytest.mark.merge
-def test_no_mb_label_is_drawn_and_the_last_track_alone_names_contigs(
-    drawn: Drawn,
+@pytest.mark.parametrize("which", ["drawn", "dense"])
+def test_no_mb_label_is_drawn_and_every_contig_is_named_once_clear(
+    which: str, request: pytest.FixtureRequest
 ) -> None:
-    """No minor tick label anywhere on the page (the Mb numbers); the page's
-    last track names the chromosomes, each at its left boundary, and no other
-    axis, nor `cnaster`'s own names, shows a contig name (PR- #701)."""
+    """No minor tick label anywhere on the page (the Mb numbers). Every
+    contig with any width has exactly one name, its number, under the last
+    track and centred on it, overlapping no other name, with one "chr" for
+    the rows; no other axis, nor `cnaster`'s own names, shows a contig name
+    -- including the contigs `NORMAL_FLOOR` squeezes on dense (PR- #701
+    follow-up)."""
     import re
 
     import matplotlib.pyplot as plt
     from port.sim.analysis import binned_axis
 
-    r = read(drawn.path)
+    r = read(request.getfixturevalue(which).path)
     figure, _, genomic = _panels(r)
     figure.canvas.draw()
+    renderer = figure.canvas.get_renderer()
     axes = [ax for panel in figure.subfigs for ax in panel.axes]
     last = genomic.axes[-1]
 
     for ax in axes:
         ticks = ax.xaxis.get_minor_ticks(len(ax.xaxis.get_minorticklocs()))
         assert not [t for t in ticks if t.label1.get_visible() and t.label1.get_text()]
-    # NB a contig name is `chr` and its name alone; (a)'s events start `chr` too.
-    contigs = [t for t in _visible_texts(figure)
-               if re.fullmatch(r"chr\w+", t.get_text())]  # fmt: skip
-    on_last = [t for t in last.get_xticklabels() if t.get_visible() and t.get_text()]
+    # NB a `cnaster` contig name is `chr` and its name; (a)'s events start
+    #    `chr` too, and carry `::`.
+    assert not [t for t in _visible_texts(figure)
+                if re.fullmatch(r"chr\w+", t.get_text())]  # fmt: skip
+    names = sorted(
+        (t for t in last.texts if t.get_gid() == "contig" and t.get_visible()),
+        key=lambda t: float(t.get_position()[0]),
+    )
+    edges = binned_axis(r).edges
+    spans = [(a, b) for a, b in itertools.pairwise(edges.tolist()) if b > a]
 
-    assert on_last
-    assert {id(t) for t in contigs} == {id(t) for t in on_last}
-    edges = set(binned_axis(r).edges[:-1].tolist())
-    assert all(float(t.get_position()[0]) in edges for t in on_last)
+    assert len(names) == len(spans)
+    for text, (a, b) in zip(names, spans, strict=True):
+        assert float(text.get_position()[0]) == pytest.approx((a + b) / 2)
+        assert re.fullmatch(r"\w+", text.get_text())
+    boxes = [t.get_window_extent(renderer) for t in names]
+    for i, j in itertools.combinations(range(len(boxes)), 2):
+        assert not boxes[i].overlaps(boxes[j]), (
+            names[i].get_text(),
+            names[j].get_text(),
+        )
+    assert [t.get_text() for t in last.texts if t.get_gid() == "contig-axis"] == ["chr"]
+    # NB (a)'s barcodes and the key's copy numbers are digits too; (b)'s
+    #    rows and (c) name nothing else so.
+    assert all(
+        t.get_gid() in ("contig", "contig-axis")
+        for ax in [*figure.subfigs[1].axes[1:], *genomic.axes]
+        for t in ax.texts
+        if t.get_visible() and re.fullmatch(r"\d+|X|Y", t.get_text())
+    )
     plt.close(figure)
 
 
@@ -537,7 +565,7 @@ def test_clones_read_n_1_2_down_the_tree_and_alike_in_every_truth_figure(
                     analysis.plot_clones_genomic_truth):  # fmt: skip
         plotter(r, Path("unwritten"))
 
-    (key,) = caught["spatial.png"].legends
+    (key,) = [ax.get_legend() for ax in caught["spatial.png"].axes if ax.get_legend()]
     for text, handle in zip(key.get_texts(), key.legend_handles, strict=True):
         assert (
             mcolors.to_rgba(handle.get_color()) == colour[clone_symbol(text.get_text())]
@@ -597,3 +625,33 @@ def test_the_mirror_key_starts_on_b_s_left_edge_and_is_labelled_on_its_right(
     _, profile, _ = figure.subfigs
     legend_ax, profile_ax = profile.axes[:2]
     mirror_key_holds(legend_ax, profile_ax)
+
+
+@pytest.mark.infra
+@pytest.mark.merge
+def test_truth_combined_reads_clones_profile_tracks(drawn: Drawn) -> None:
+    """The truth page is (a) the tree, (b) the profile under its key, (c) the
+    tracks: `PANELS`, the run's combined page's order (PR- #701 follow-up)."""
+    import matplotlib.pyplot as plt
+    from port.extensions.combined_figure import PANELS
+
+    from tests.test_combined_figure import panels_in_order
+
+    figure, tree_ax, genomic = _panels(read(drawn.path))
+    _, profile, _ = figure.subfigs
+    letters = [t for panel in figure.subfigs for t in panel.texts]
+
+    assert (
+        tuple(
+            panels_in_order(
+                letters,
+                {
+                    "clones": [tree_ax],
+                    "profile": list(profile.axes),
+                    "tracks": list(genomic.axes),
+                },
+            )
+        )
+        == PANELS
+    )
+    plt.close(figure)

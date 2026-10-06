@@ -3,16 +3,20 @@ r"""Two figures from a run, and both on one page, at `llncs`'s width (#309, #339
 Drawn once at their printed size, 122 mm wide, and included at
 `width=\linewidth` with nothing scaled:
 
-- `genomic_figure`, the text block's height: **(a)** `clones_genomic`, RDR
-  and BAF along the genome per clone, drawn by `port.patch.plot_genomic`;
-  **(b)** `copy_number_profile`, the integer copies per clone, drawn by
-  `port.patch.plot_copy_number_profile`, which names the chromosomes for
-  both, under its mirror and copy-number key.
+- `genomic_figure`, the text block's height: **(a)** `copy_number_profile`,
+  the integer copies per clone, drawn by `port.patch.plot_copy_number_profile`
+  under its mirror and copy-number key; **(b)** `clones_genomic`, RDR and
+  BAF along the genome per clone, drawn by `port.patch.plot_genomic`, its
+  last track naming every contig for both (`genomic_axis.name_contigs`).
 - `spatial_figure`, about a quarter of that: **(a)** the H&E slide, as
   `cnaster.he.get_he_image` reads it; **(b)** `clones_spatial`, the fitted
-  clone of each spot tiled by `port.patch.plotting.spatial`, keyed on the
-  right edge. Square and on the spot coordinates, so a clone boundary in (b)
-  reads against the tissue in (a).
+  clone of each spot tiled by `port.patch.plotting.spatial`, keyed on its
+  right. Each at the spots' aspect, equal x and y scale, on the spot
+  coordinates, so a clone boundary in (b) reads against the tissue in (a).
+
+`combined_figure` stacks them as (a) the spatial figure, (b) the profile and
+(c) the tracks: `PANELS`, the order `port.sim.truth_figure` draws the truth
+in, the clones' structure first and the profile second (PR- #701 follow-up).
 
 Clones are named as the paper names them, $m_N$ for the normal and $m_1$,
 $m_2$, ... for the rest.
@@ -20,7 +24,7 @@ $m_2$, ... for the rest.
 **One left edge and one right edge.** After one pass of the layout each page
 is frozen and placed by hand: the genomic tracks, the profile and its key
 share a left and a right edge, so a chromosome boundary in (a) is over the
-same boundary in (b). Every line is `PROFILE_LINEWIDTH` wide. Each letter
+same boundary in (a). Every line is `PROFILE_LINEWIDTH` wide. Each letter
 sits on its panel's leftmost text or edge: the slide's extent ticks, the
 clones' left edge -- their rows are the slide's, so only the slide labels
 them -- and the genomic figure's left column `NAME_INSET` in, where the
@@ -89,6 +93,12 @@ before the mirror swatches stacked (PR- #701)."""
 PROFILE_ROWS = 0.8
 """The profile's axis against its base height: its rows 20% shorter, the
 difference given to the tracks."""
+
+PANELS = ("clones", "profile", "tracks")
+"""The panels of `combined_figure` and `truth_combined_figure`, top to bottom,
+as (a), (b), (c): the clones' structure -- the slide and the fitted clones,
+or the planted tree -- then the copy-number profile under its key, then RDR
+and BAF per clone (PR- #701 follow-up)."""
 
 TOP_LINE = 0.1
 """Inches above the tracks for the top clone's statistics line."""
@@ -352,8 +362,8 @@ def _fit_tracks(panel: Any) -> None:
                 text.set_y(1.0)
                 text.set_in_layout(False)
             if text.get_text().startswith("chr"):
-                # NB the profile below names the chromosomes on the same
-                #    edges, so the tracks drop theirs and take the height.
+                # NB `cnaster`'s names, one per track, give way to the last
+                #    track's (`genomic_axis.name_contigs`).
                 text.set_visible(False)
                 text.set_in_layout(False)
 
@@ -489,10 +499,13 @@ def _inches(figure: Any, artists: Any, edge: str) -> list[float]:
 
 
 def _cut(
-    figure: Any, foot: float, letters: list[tuple[Any, float, float, str]]
+    figure: Any,
+    foot: float,
+    letters: list[tuple[Any, float, float, str]],
+    head: Any = (),
 ) -> None:
     """Cut `foot` inches off the page, set each letter, and cut the head to
-    a `LABEL_GAP` over the highest.
+    a `LABEL_GAP` over the highest of them and of `head`'s artists.
 
     Each letter is `(text, x, y, alignment)`, in inches on the uncut page:
     a letter is set as a fraction of the page, so it is set after each cut.
@@ -503,6 +516,8 @@ def _cut(
     width = figure.get_size_inches()[0]
 
     def resize(below: float, above: float) -> None:
+        # NB a head already at its cut reads a float's width short of it.
+        below, above = (0.0 if -1e-6 < v < 0.0 else v for v in (below, above))
         if min(below, above) < 0.0:
             msg = (
                 f"the page is short by {-min(below, above):.3f} in; give it more slack"
@@ -535,7 +550,7 @@ def _cut(
     #    floats, enough to shift an image's edge across a pixel.
     resize(foot, 0.0)
     place()
-    highest = max(_inches(figure, [text for text, *_ in letters], "y1"))
+    highest = max(_inches(figure, [*(text for text, *_ in letters), *head], "y1"))
     resize(0.0, figure.get_size_inches()[1] - highest - LABEL_GAP / 72.0)
     place()
 
@@ -571,22 +586,33 @@ def _left_column(
     return column, column + max(furniture, widest / dpi + gap)
 
 
-def _place_genomic(figure: Any, top: Any, profile_ax: Any, legend_ax: Any) -> None:
-    """(a)'s tracks and (b)'s profile on one left and one right edge.
+def _place_genomic(
+    figure: Any,
+    top: Any,
+    profile_ax: Any,
+    legend_ax: Any,
+    contigs: tuple[list[float], list[str]],
+    below: float,
+) -> None:
+    """(a)'s profile over (b)'s tracks, on one left and one right edge.
 
     Run once the layout is drawn and frozen, when every extent is known:
 
     - the left edge is `_left_column`'s, and the right edge is pulled in
-      until no chromosome name runs off the page, so bin `i` of (b) is under
-      bin `i` of (a);
-    - the white between clones, and between (a) and (b)'s key, is closed by
-      `GAP_CLOSED`;
-    - (a)'s letter over its first statistics line on the column, (b)'s in
-      the column level with its key, and the page cut to its text, a
-      `LABEL_GAP` clear at the head and foot.
+      until no contig name runs off the page, so bin `i` of (a) is over bin
+      `i` of (b);
+    - (a)'s key a `LABEL_GAP` under the head, its rows under it; (b)'s
+      first statistics line a letter's row and a `LABEL_GAP` under (a)'s
+      rows, and the white between clones closed by `GAP_CLOSED`;
+    - every contig named under the last track (`genomic_axis.name_contigs`),
+      which alone carries the 10 Mb marks;
+    - (a)'s letter on the column level with its key, (b)'s over its first
+      statistics line, and the page cut to its text, a `LABEL_GAP` clear at
+      the head and foot.
     """
     from matplotlib.transforms import blended_transform_factory
 
+    from port.extensions.genomic_axis import name_contigs
     from port.patch.plot_copy_number_profile import plot_ascn_legend
 
     renderer = figure.canvas.get_renderer()
@@ -594,24 +620,28 @@ def _place_genomic(figure: Any, top: Any, profile_ax: Any, legend_ax: Any) -> No
     width, height = figure.get_size_inches()
     gap = LABEL_GAP / 72.0
     tracks = list(top.axes)
+    foot_ax = tracks[-1]
     letters = [figure.text(0.0, 0.0, f"({k})", fontsize=LABEL_SIZE) for k in "ab"]
     column, left = _left_column(figure, tracks, profile_ax)
     right = max(ax.get_window_extent(renderer).x1 for ax in tracks) / dpi
-    chromosomes = list(profile_ax.get_xticklabels())
+    # NB `below` points: the Mb labels' row, where the last track draws them, over the names.
+    mb = below
 
     for _ in range(3):
         for ax in [*tracks, profile_ax, legend_ax]:
             _put(ax, left, right)
 
         figure.canvas.draw()
-        overrun = (
-            max(t.get_window_extent(renderer).x1 for t in chromosomes) / dpi - width
-        )
+        name_contigs(foot_ax, *contigs, size=FONT_SIZE, below=mb)
+        names = [t for t in foot_ax.texts if t.get_gid() == "contig"]
+        overrun = max(t.get_window_extent(renderer).x1 for t in names) / dpi - width
 
         if overrun <= 0.0:
             break
 
         right -= overrun + gap
+
+    name_contigs(foot_ax, *contigs, size=FONT_SIZE, below=mb)
 
     # NB each clone's state fractions follow its name, so a clone with many
     #    states wraps its key onto rows rather than running off the page.
@@ -659,17 +689,19 @@ def _place_genomic(figure: Any, top: Any, profile_ax: Any, legend_ax: Any) -> No
         span=right - left,
     )
 
-    # NB one measurement, then every move at once: the first statistics
-    #    line a letter's height and two `gap` under the head; the white
-    #    between clones, from a clone's statistics line to the BAF axis over
-    #    it, closed by `GAP_CLOSED`, each clone moving by that much of every
-    #    gap above it; and the white between (a)'s last axis and (b)'s key,
-    #    counted with a letter's row, `raised`, which (b)'s letter sat in
-    #    before it moved to the column beside the key.
+    # NB the key's top a `gap` under the head, the rows with it; then the
+    #    white between clones, from a clone's statistics line to the BAF
+    #    axis over it, closed by `GAP_CLOSED`, each clone moving by that much
+    #    of every gap above it; then the tracks, their first statistics line
+    #    a letter's row, `raised`, and a `gap` under the profile's rows.
     figure.canvas.draw()
     raised = max(t.get_window_extent(renderer).height for t in letters) / dpi + gap
-    stats = [t for t in tracks[0].texts if t.get_visible()]
-    lift = height - raised - gap - max(_inches(figure, stats, "y1"))
+    key = [*legend_ax.patches, *legend_ax.texts]
+    lift = height - gap - max(_inches(figure, key, "y1"))
+
+    for ax in (profile_ax, legend_ax):
+        _up(ax, lift)
+
     rows = [tracks[k : k + 2] for k in range(0, len(tracks), 2)]
     between = [
         _inches(figure, [upper[-1]], "y0")[0]
@@ -682,22 +714,27 @@ def _place_genomic(figure: Any, top: Any, profile_ax: Any, legend_ax: Any) -> No
         for upper, lower in pairwise(rows)
     ]
     shifts = np.concatenate([[0.0], np.cumsum(GAP_CLOSED * np.asarray(between))])
-    # NB the last track's Mb labels (T- #683) count as its foot.
-    foot = rows[-1][-1]
-    mb = [t for t in foot.get_xticklabels(minor=True) if t.get_text()]
-    white = min(_inches(figure, [foot, *foot.get_yticklabels(), *mb], "y0")) - max(
-        _inches(figure, [*legend_ax.patches, *legend_ax.texts], "y1")
-    )
 
     for row, shift in zip(rows, shifts, strict=True):
         for ax in row:
-            _up(ax, lift + shift)
+            _up(ax, shift)
 
-    for ax in (profile_ax, legend_ax):
-        _up(ax, lift + shifts[-1] + white - (1.0 - GAP_CLOSED) * (white + raised))
+    figure.canvas.draw()
+    head = tracks[0]
+    stats = [t for t in head.texts if t.get_visible()]
+    first = max(
+        _inches(
+            figure, [*stats, *([head.get_legend()] if head.get_legend() else [])], "y1"
+        )
+    )
+    under = min(_inches(figure, [profile_ax, *profile_ax.get_yticklabels()], "y0"))
+    drop = under - raised - gap - first
 
-    # NB (a)'s letter over its first statistics line, (b)'s level with its
-    #    key's first title, both on the column; the foot a `gap` under the
+    for ax in tracks:
+        _up(ax, drop)
+
+    # NB (a)'s letter level with its key's label, (b)'s over its first
+    #    statistics line, both on the column; the foot a `gap` under the
     #    lowest text.
     figure.canvas.draw()
     lowest = min(
@@ -716,9 +753,10 @@ def _place_genomic(figure: Any, top: Any, profile_ax: Any, legend_ax: Any) -> No
         figure,
         lowest - gap,
         [
-            (letters[0], column, max(_inches(figure, stats, "y1")) + gap / 2, "bottom"),
-            (letters[1], column, (title.y0 + title.y1) / 2 / dpi, "center"),
+            (letters[0], column, (title.y0 + title.y1) / 2 / dpi, "center"),
+            (letters[1], column, max(_inches(figure, stats, "y1")) + gap / 2, "bottom"),
         ],
+        head=key,
     )
 
 
@@ -743,6 +781,8 @@ def _genomic_page(
     their base height; on `metric`, the decoded CNAs widened (T- #683)."""
     # NB `port`'s profile directly: the page is drawn after the run, when
     #    `FIGURE_SWAPS` has been restored and `cnaster`'s names are its own.
+    from matplotlib.ticker import NullLocator
+
     from port.extensions.genomic_axis import (
         GenomicAxis,
         Ticks,
@@ -764,8 +804,8 @@ def _genomic_page(
     )
     total = sum(heights) + FOOT
     figure = _page(width, total, (0.0, FOOT / total, 1.0, 1.0 - FOOT / total))
-    rows: Any = figure.subfigures(2, 1, height_ratios=heights, hspace=0.02)
-    top, middle = rows[0], rows[1]
+    rows: Any = figure.subfigures(2, 1, height_ratios=heights[::-1], hspace=0.02)
+    middle, top = rows[0], rows[1]
 
     # NB one axis for (a) and (b), on the bins `df_cnv` places, `cnaster`'s
     #    where it places none (T- #683).
@@ -774,19 +814,6 @@ def _genomic_page(
 
     if metric and genome is not None:
         genome = GenomicAxis.of_table(df_cnv, altered_bins(df_cnv))
-    plot_clones_genomic(
-        *genomic.args,
-        **{
-            **genomic.kwargs,
-            "figure": top,
-            "pointsize": 0.4,
-            "linewidth": 0.3,
-            "chrtext_shift": -0.9,
-            "axis": genome,
-        },
-    )
-    _fit_tracks(top)
-    _colour_by_state(top, genomic)
 
     # NB the mirror and copy key above the profile.
     legend_ax, profile_ax = middle.subplots(
@@ -805,16 +832,40 @@ def _genomic_page(
     #    engine does not manage; it is redrawn into an axis that is managed.
     middle.axes[-1].remove()
     legend_ax.axis("off")
+    # NB the contigs are named under the last track, which alone carries the
+    #    10 Mb marks; the profile keeps its boundaries (PR- #701 follow-up).
+    contigs = (
+        [float(x) for x in profile_ax.get_xticks()],
+        [t.get_text() for t in profile_ax.get_xticklabels()],
+    )
+    profile_ax.set_xticks([])
+    profile_ax.xaxis.set_minor_locator(NullLocator())
+
+    plot_clones_genomic(
+        *genomic.args,
+        **{
+            **genomic.kwargs,
+            "figure": top,
+            "pointsize": 0.4,
+            "linewidth": 0.3,
+            "chrtext_shift": -0.9,
+            "axis": genome,
+        },
+    )
+    _fit_tracks(top)
+    _colour_by_state(top, genomic)
+
+    for ax in top.axes[:-1]:
+        ax.xaxis.set_minor_locator(NullLocator())
 
     for panel in (top, middle):
         _set_text(panel, FONT_SIZE)
-    # NB a point lower than the profile's own -5 pt, clear of its bottom edge.
-    profile_ax.tick_params(axis="x", pad=-4)
 
     # NB laid out once and frozen, then placed on the page by hand.
     figure.canvas.draw()
     figure.set_layout_engine("none")
-    _place_genomic(figure, top, profile_ax, legend_ax)
+    below = 1.15 * FONT_SIZE if genome is not None and genome.labels else 0.0
+    _place_genomic(figure, top, profile_ax, legend_ax, contigs, below)
     disclose(figure, genome)
     return figure
 
@@ -897,9 +948,11 @@ def genomic_figure(
 
 
 def _place_spatial(figure: Any, slide_ax: Any, spatial_ax: Any) -> None:
-    """(a) the slide on the left, (b)'s key on the right edge and (b) left of
-    it, square and as large as fits across; each letter over its panel's
-    top-left, on (a)'s extent ticks, and the page cut to its text."""
+    """(a) the slide on the left, (b) right of it and (b)'s key right of
+    that; each panel at the spots' aspect, equal x and y scale, as large as
+    fits across and no taller than wide-as-fits, so no white is left in its
+    box; each letter over its panel's top-left, on (a)'s extent ticks, and
+    the page cut to its text (PR- #701 follow-up)."""
     renderer = figure.canvas.get_renderer()
     dpi = figure.dpi
     width, height = figure.get_size_inches()
@@ -920,11 +973,21 @@ def _place_spatial(figure: Any, slide_ax: Any, spatial_ax: Any) -> None:
     left = NAME_INSET / 72.0 + ticks(slide_ax)
     right = width - gap
     clones_right = right - key.get_window_extent(renderer).width / dpi - 2 * gap
-    side = (clones_right - left - SPATIAL_GAP - ticks(spatial_ax)) / 2
+    # NB each panel at the spots' own aspect, so no white is left inside
+    #    its box: as wide as fits across, and no taller than that width
+    #    (the square bound the page budgets), narrowed where it is tall.
+    across = (clones_right - left - SPATIAL_GAP - ticks(spatial_ax)) / 2
+    (x0, x1), (y0, y1) = spatial_ax.get_xlim(), spatial_ax.get_ylim()
+    tall = abs(y1 - y0) / abs(x1 - x0)
+    side = min(across, across * tall)
+    wide = side / tall
     bottom = height - side - 1.0
-    _put(slide_ax, left, left + side, bottom, side)
-    _put(spatial_ax, clones_right - side, clones_right, bottom, side)
-    anchor = (right - (clones_right - side)) / side
+    _put(slide_ax, left, left + wide, bottom, side)
+    start = left + wide + SPATIAL_GAP + ticks(spatial_ax)
+    _put(spatial_ax, start, start + wide, bottom, side)
+    clones_right = start + wide
+    right = clones_right + 2 * gap + key.get_window_extent(renderer).width / dpi
+    anchor = (right - start) / wide
     key.set_bbox_to_anchor((anchor, 0.0), transform=spatial_ax.transAxes)
 
     figure.canvas.draw()
@@ -947,7 +1010,7 @@ def _place_spatial(figure: Any, slide_ax: Any, spatial_ax: Any) -> None:
     #    as it ends, by what it falls short of the right edge.
     figure.canvas.draw()
     short = right - key.get_window_extent(renderer).x1 / dpi
-    key.set_bbox_to_anchor((anchor + short / side, 0.0), transform=spatial_ax.transAxes)
+    key.set_bbox_to_anchor((anchor + short / wide, 0.0), transform=spatial_ax.transAxes)
 
 
 def integer_labels(assignment: Any, df_cnv: Any) -> Any:
@@ -1029,8 +1092,8 @@ def spatial_figure(
     width: float | None = None,
     labels: str = "integer",
 ) -> Any:
-    """(a) the H&E slide and (b) `clones_spatial`, square and as large as fit
-    across `width` inches, (b) keyed on the right edge; no caption.
+    """(a) the H&E slide and (b) `clones_spatial`, at the spots' aspect and
+    as large as fit across `width` inches, (b) keyed on its right; no caption.
 
     `labels` as `_draw_spatial` takes it: "integer" (#344) or "continuous".
     """
@@ -1064,12 +1127,15 @@ def combined_figure(
 ) -> Any:
     """The spatial figure over the genomic one on one page, `height` tall.
 
-    `labels` names (b)'s clones as `spatial_figure` does (#344); `metric`
-    is `genomic_figure`'s.
+    `labels` names the clones as `spatial_figure` does (#344); `metric` is
+    `genomic_figure`'s.
 
-    (a) and (b) are the spatial figure's, drawn at the head exactly as it
-    draws them; (c) and (d) are the genomic figure's, drawn the rest of the
-    height. So the page is the two figures stacked, each as on its own page.
+    (a) is the spatial figure, the slide and the clones, drawn at the head
+    exactly as it draws them; (b), the profile under its key, and (c), the
+    tracks, are the genomic figure's, drawn the rest of the height. So the
+    page is the two figures stacked, each as on its own page, in
+    `truth_combined`'s order: the clones' structure, the profile, the
+    tracks (`PANELS`, PR- #701 follow-up).
     """
     import matplotlib.pyplot as plt
 
@@ -1092,7 +1158,7 @@ def combined_figure(
 
     for ax, box in kept:
         _put(ax, box.x0 / dpi, box.x1 / dpi, box.y0 / dpi, box.height / dpi)
-    for (text, (x, y)), letter in zip(letters, "cd", strict=True):
+    for (text, (x, y)), letter in zip(letters, "bc", strict=True):
         text.set_position((x, y * tall / (tall + above)))
         text.set_text(f"({letter})")
 
@@ -1117,7 +1183,9 @@ def combined_figure(
         transform=spatial_ax.transAxes,
     )
 
-    for text in spatial.texts:
+    # NB the slide and the clones are one panel here, (a), the clones'
+    #    structure as the truth page's tree is: its first letter alone.
+    for text in spatial.texts[:1]:
         x, y = text.get_position()
         figure.text(
             x,

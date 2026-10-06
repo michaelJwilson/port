@@ -30,15 +30,18 @@ if TYPE_CHECKING:
 
 __all__ = [
     "DEFAULT",
+    "FIT_MARGIN",
     "GRID",
     "INK",
     "LLNCS_TEXT_WIDTH_MM",
     "MUTED",
     "PAPER_WIDTH",
+    "STAMP_ROOM",
     "apply",
     "axes_style",
     "figure_font",
     "figure_rc",
+    "fit_to_content",
     "stated",
 ]
 
@@ -61,6 +64,40 @@ a 10 pt tick label lands at **2.4 pt** on the page. At a text column the
 figure is included at 1:1, so a declared size is the size on the page and
 nothing has to be undone at the point of inclusion.
 """
+
+
+FIT_MARGIN = 0.03
+"""Inches of white `fit_to_content` leaves at a page's head and sides."""
+
+STAMP_ROOM = 0.1
+"""Inches `fit_to_content` leaves at a page's foot: a 6 pt stamp's row."""
+
+
+def fit_to_content(figure: Any) -> None:
+    """The page cut to what its axes draw, `FIT_MARGIN` at the head and
+    sides and `STAMP_ROOM` at the foot; each axis keeps its size in inches.
+
+    For a page whose axes hold their aspect (a spatial map, `set_aspect`
+    "equal"), which otherwise leaves the white its aspect does not fill as
+    bands round the axes. What an axis anchors -- its legend, title and
+    texts -- moves with it; a figure-level text or legend does not, so a
+    caller anchors its key to an axis (PR- #701 follow-up).
+    """
+    figure.canvas.draw()
+    renderer = figure.canvas.get_renderer()
+    dpi = figure.dpi
+    box = figure.get_tightbbox(renderer)
+    kept = [(ax, ax.get_window_extent(renderer).frozen()) for ax in figure.get_axes()]
+    width = box.width + 2 * FIT_MARGIN
+    height = box.height + FIT_MARGIN + STAMP_ROOM
+    figure.set_size_inches(width, height)
+
+    for ax, at in kept:
+        x0 = at.x0 / dpi - box.x0 + FIT_MARGIN
+        y0 = at.y0 / dpi - box.y0 + STAMP_ROOM
+        ax.set_position(
+            (x0 / width, y0 / height, at.width / dpi / width, at.height / dpi / height)
+        )
 
 
 def axes_style(ax: Any, *, labelsize: float = 8, grid: bool = True) -> None:

@@ -25,6 +25,11 @@ in its own panel, in its own coordinates, with white space between, and
 every panel colours the clones as the whole run does. Unset -- the default --
 is upstream's single axis exactly. `run_cnaster_port --sample-layout 3,1`
 binds `preferred_sample_layout` at install.
+
+**The page is cut to its axes (PR- #701 follow-up).** Departure from
+upstream: its `base_width` by `base_height` page leaves white bands where
+the section's aspect does not fill it; here the page is cut to what the
+axes draw (`figure_style.fit_to_content`), each axis at its size.
 """
 
 from __future__ import annotations
@@ -35,6 +40,8 @@ from typing import Any
 import matplotlib.colors as mcolors
 import numpy as np
 import scipy.spatial
+
+from port.extensions.figure_style import fit_to_content
 
 TILE = 0.85
 """A tile's side, as a fraction of the lattice pitch; the rest is the gap."""
@@ -232,6 +239,7 @@ def plot_clones_spatial(
             fontsize=9,
         )
 
+    fit_to_content(figure)
     return figure
 
 
@@ -287,4 +295,5 @@ def _panels(
     for ax in axes.flat[len(panels) :]:
         ax.axis("off")
 
+    fit_to_content(figure)
     return figure

@@ -80,14 +80,16 @@ component-wise work around `tests/test_run_cnaster_round_trip.py`.
 The final four as two figures at a text column (#309, #280, #339).
 `genomic.png` is 122 mm wide and `llncs`'s 193 mm text height less 1.5 in
 (`CAPTION_ROOM`), so its caption fits on the page: (a)
-`clones_genomic` over (b) `copy_number_profile`, (b)'s axis spanning (a)'s
-tracks so their chromosome boundaries line up. `spatial.png` is 122 mm wide
-and about a quarter of the block tall: (a) an H&E slide and (b) `clones_spatial`,
-square and as large as fit across, (b)'s clones keyed on the right edge
-and named by their integer copy profile (#344).
+`copy_number_profile` under its key over (b) `clones_genomic`, (a)'s axis
+spanning (b)'s tracks so their chromosome boundaries line up, the last track
+naming every contig, staggered where adjacent contigs are short. `spatial.png`
+is 122 mm wide and about a quarter of the block tall: (a) an H&E slide and
+(b) `clones_spatial`, each at the spots' aspect and as large as fit across,
+(b)'s clones keyed on its right and named by their integer copy profile (#344).
 `combined.png` is both on one page, the full 122 by 193 mm: the spatial
-figure at the head as (a) and (b), the genomic figure drawn the rest of the
-height below as (c) and (d). No captions. `port.extensions.combined_figure` redraws the run's own calls and
+figure at the head as (a), the genomic figure drawn the rest of the height
+below as (b) and (c) -- `truth_combined.png`'s order, the clones' structure,
+then the profile, then the tracks (`combined_figure.PANELS`). No captions. `port.extensions.combined_figure` redraws the run's own calls and
 writes each page at exactly its size, so it is included at
 `width=\linewidth` unscaled.
 
@@ -134,8 +136,10 @@ overlapping by half) at seed 0.
   PR- #701), the profiles, the tracks and the
   spatial map on one page at `combined.pdf`'s 122 mm by 193 mm and 7 pt, the
   profile and tracks on one left and right edge, clones as $m_N$, $m_1$, ...;
-  the 10 Mb marks and the chromosome names on the last track alone, no Mb
-  numbers, and every chromosome boundary on (b) and each track (PR- #701)
+  the 10 Mb marks, outward, and every contig's name on the last track alone,
+  staggered where adjacent contigs are short, no Mb numbers, and every
+  chromosome boundary on (b) and each track (PR- #701 and its follow-up);
+  (a), (b), (c) as `combined.png`'s (`combined_figure.PANELS`)
 
 Clones carry `cnaster`'s numerals in every other figure: `Clone 0` is the normal.
 Every truth figure numbers the clones down the drawn tree, normal first
