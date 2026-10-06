@@ -845,6 +845,10 @@ the fixture has no H&E image, and the run never reads the mock.
 `solvers/solver_combined.png` is not drawn from this fixture: `--solvers POTTS.pkl COPY.pkl`
 draws it from a `tests.studies.potts_stream` and a `tests.studies.copy_state_stream` record,
 and its stamp names both records' data hashes.
+The genomic panels of `truth/truth_combined.png`, `truth/clones_genomic.png`,
+`truth/clone_profiles.png`, `run/genomic.png`, `run/combined.png` and
+`compare/copy_genomic_truth_vs_fit.png` draw every altered bin at 2x its extent
+(`port.extensions.genomic_axis`, T- #683), and their stamps end `· axis: altered` and the scale used.
 
 | File | Question | Source |
 | --- | --- | --- |
