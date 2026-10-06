@@ -222,25 +222,55 @@ def _describe(problem: Any) -> dict[str, Any]:
 def tune(
     pool: ProcessPoolExecutor, held_out: list[Any], names: tuple[str, ...] = tuple(GRID)
 ) -> dict[str, dict[str, float]]:
-    """Each of `GRID`'s samplers' setting: the cheapest within `TOLERANCE` of the best median gap on `held_out`."""
+    """Each of `GRID`'s samplers' setting: the cheapest within `TOLERANCE` of the best median gap on `held_out`.
+
+    Two rounds (#716): every setting from one seed per held-out realization,
+    then the settings `harness.halve` keeps get the other `TUNING_SEEDS - 1`
+    seeds, and the choice is among those alone. The gap is to the best
+    log-likelihood any tuning run reached on that realization.
+    """
     import pandas as pd
 
-    futures = [pool.submit(solve, p, name, seed, setting, False)
-               for p in held_out for name in names for setting in GRID[name] for seed in range(TUNING_SEEDS)]  # fmt: skip
-    rows = [f.result() for f in futures]
+    rows: list[dict[str, Any]] = []
+
+    def run(jobs: list[tuple[str, int, dict[str, float]]]) -> pd.DataFrame:
+        futures = [
+            pool.submit(solve, p, name, seed, setting, False)
+            for name, seed, setting in jobs
+            for p in held_out
+        ]
+        rows.extend(f.result() for f in futures)
+        frame = pd.DataFrame([r for r in rows if "error" not in r])
+        top = frame.groupby("problem").start_llf.max()
+        frame["gap"] = frame.problem.map(top) - frame.start_llf
+        frame["key"] = frame.setting.map(lambda s: tuple(sorted(s.items())))
+        return frame
+
+    frame = run([(name, 0, setting) for name in names for setting in GRID[name]])
+    kept = {
+        str(name): harness.halve(g, TOLERANCE) for name, g in frame.groupby("start")
+    }
+    frame = run(
+        [
+            (name, seed, dict(key))
+            for name, keys in kept.items()
+            for key in keys
+            for seed in range(1, TUNING_SEEDS)
+        ]
+    )
     failed = [r for r in rows if "error" in r]
     if failed:
         print(
             f"{len(failed)} tuning runs failed, e.g. {failed[0]['error'][:120]}",
             flush=True,
         )
-    frame = pd.DataFrame([r for r in rows if "error" not in r])
-    top = frame.groupby("problem").start_llf.max()
-    frame["gap"] = frame.problem.map(top) - frame.start_llf
-    frame["key"] = frame.setting.map(lambda s: tuple(sorted(s.items())))
+    print(f"tuning: {len(rows)} runs against the full grid's "
+          f"{sum(len(GRID[n]) for n in names) * TUNING_SEEDS * len(held_out)}", flush=True)  # fmt: skip
     chosen: dict[str, dict[str, float]] = {}
     for name, g in frame.groupby("start"):
-        key, best, by = harness.cheapest(g, TOLERANCE)
+        full = g.groupby("key").gap.size() == TUNING_SEEDS * len(held_out)
+        key, best, _ = harness.cheapest(g[g.key.isin(full[full].index)], TOLERANCE)
+        by = g.groupby("key").agg(gap=("gap", "median"))
         default = GRID[str(name)][UNTUNED[str(name)]]
         chosen[str(name)] = {**dict(key), "median_gap": round(float(best.gap), 3),
                              "seconds": round(float(best.seconds), 3),

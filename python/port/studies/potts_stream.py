@@ -14,11 +14,13 @@ the pool solves it while the next one draws.
 - **Tuning.** The first `--held-out` realizations tune the samplers (`TUNED`)
   and are not evaluated; with `--settings`, the samplers take that file's
   settings (`SETTINGS`) and nothing is tuned, the held-out realizations still
-  skipped. Each sampler runs `GRID` -- the start temperature, the end fixed at
-  `T_END` so the last sweeps are a descent, and the sweep budget; for a
-  tempering ladder, its hottest replica and its replica sweeps -- from
-  `TUNING_STARTS` random labellings each. It keeps the cheapest setting whose
-  median gap to TRW-S's bound is within `TOLERANCE` nats of the best setting's.
+  skipped. Each sampler searches `GRID` -- the start temperature, the end fixed
+  at `T_END` so the last sweeps are a descent, the sweep budget and the
+  warm-up; for a tempering ladder, its hottest replica and its replica sweeps
+  -- in three rounds (`tune`): cheap budgets first, the dearest only where
+  more sweeps still help, then `TUNING_STARTS` starts for the settings that
+  survive a one-start round. It keeps the cheapest of those whose median gap
+  to TRW-S's bound is within `TOLERANCE` nats of the best's.
 - **Evaluation.** The next `--problems` realizations run every solver of
   #541's harness (`port.studies.clone_label_arms`) but bifurcation, port's
   pure-Python `alpha` and the floor-merge row, plus TRW-S's own decoded
@@ -152,6 +154,9 @@ def grid(solver: str) -> tuple[dict[str, float], ...]:
     return GRID
 
 
+PILOT = 10
+"""Wolff's calibration pilot runs a tenth of the steps on the same schedule, compressed (#716)."""
+
 TUNING_STARTS = 5
 TOLERANCE = 0.1
 """Nats: a setting within this of the best median gap is as good, and the cheapest of those is kept."""
@@ -251,11 +256,13 @@ def _sample(solver: str, field: np.ndarray, start: np.ndarray, rng: np.random.Ge
         calibrated: int | None = None
         if solver == "sal:wolff-heat-bath":
             # NB sal budgets a Wolff step at a sweep's visits and flips one cluster, so it spends a
-            #    fraction of the budget; a pilot measures the visits a step costs, and the run takes
-            #    as many steps as spend the budget the other samplers get. The pilot is timed too.
+            #    fraction of the budget; a pilot of `PILOT`-th the steps on the same schedule, compressed,
+            #    measures the visits a step costs, and the run takes as many steps as spend the budget
+            #    the other samplers get. The pilot is timed too.
+            pilot_steps = max(1, sweeps // PILOT)
             pilot = run_annealed(problem, budget, np.random.default_rng(rng.integers(2**63)), move,
-                                 schedule=cast(Any, schedule), start=start)  # fmt: skip
-            calibrated = max(1, round(sweeps * budget.size / max(pilot.spent, 1)))
+                                 schedule=cast(Any, schedule), steps=pilot_steps, start=start)  # fmt: skip
+            calibrated = max(1, round(pilot_steps * budget.size / max(pilot.spent, 1)))
         best = run_annealed(problem, budget, rng, move, schedule=cast(Any, schedule), steps=calibrated,
                             start=start).labelling  # fmt: skip
     return np.asarray(best, dtype=np.int64)
@@ -333,25 +340,74 @@ def _describe(problem: Any) -> dict[str, Any]:
 def tune(
     pool: ProcessPoolExecutor, held_out: list[Any], samplers: tuple[str, ...] = TUNED
 ) -> tuple[dict[str, dict[str, float]], list[dict[str, Any]]]:
-    """Each of `samplers`' setting: the cheapest in `GRID` within `TOLERANCE` of the best median gap on `held_out`."""
+    """Each of `samplers`' setting: the cheapest in `GRID` within `TOLERANCE` of the best median gap on `held_out`.
+
+    Three rounds rather than the whole grid at every start (#716):
+
+    1. every start temperature and warm-up at the two cheaper sweep budgets,
+       one start per held-out realization;
+    2. the dearest budget only where the middle one still beat the cheapest by
+       more than `TOLERANCE` -- the gap falls with sweeps, so where it has
+       stopped falling the dearest budget is not run;
+    3. the settings `harness.halve` keeps from rounds 1-2 get the remaining
+       `TUNING_STARTS - 1` starts, and the choice is among those alone.
+
+    Each round submits its longest jobs first. `default_gap` is sal's default
+    setting's median over the runs it got: one start per realization unless it
+    went on to round 3.
+    """
     import pandas as pd
 
     bounds = {p.realization: _describe(p)["bound"] for p in held_out}
-    futures = [pool.submit(solve, p, solver, seed, setting)
-               for p in held_out for solver in samplers for setting in grid(solver) for seed in range(TUNING_STARTS)]  # fmt: skip
-    rows = [f.result() for f in futures]
-    frame = pd.DataFrame([r for r in rows if "error" not in r])
-    frame["gap"] = frame.energy - frame.problem.map(bounds)
-    frame["key"] = frame.setting.map(
-        lambda s: (s["t_start"], s["sweeps"], s.get("warm", 0.0))
+    rows: list[dict[str, Any]] = []
+
+    def run(jobs: list[tuple[str, int, dict[str, float]]]) -> pd.DataFrame:
+        # NB the longest first, so no worker idles behind one long job at a round's end
+        jobs = sorted(jobs, key=lambda job: -job[2]["sweeps"])
+        futures = [
+            pool.submit(solve, p, solver, seed, setting)
+            for solver, seed, setting in jobs
+            for p in held_out
+        ]
+        rows.extend(f.result() for f in futures)
+        frame = pd.DataFrame([r for r in rows if "error" not in r])
+        frame["gap"] = frame.energy - frame.problem.map(bounds)
+        frame["key"] = frame.setting.map(
+            lambda s: (s["t_start"], s["sweeps"], s.get("warm", 0.0))
+        )
+        return frame
+
+    cheap, middle, dear = sorted({g["sweeps"] for g in GRID})
+    frame = run(
+        [
+            (solver, 0, g)
+            for solver in samplers
+            for g in grid(solver)
+            if g["sweeps"] != dear
+        ]
     )
+    median = frame.groupby(["solver", "key"]).gap.median()
+    falling = [(solver, 0, g) for solver in samplers for g in grid(solver) if g["sweeps"] == dear
+               and median.get((solver, (g["t_start"], middle, g["warm"])), np.inf)
+               < median.get((solver, (g["t_start"], cheap, g["warm"])), np.inf) - TOLERANCE]  # fmt: skip
+    frame = run(falling)
+    kept = {
+        str(solver): harness.halve(g, TOLERANCE)
+        for solver, g in frame.groupby("solver")
+    }
+    frame = run([(solver, seed, {"t_start": t, "sweeps": n, "warm": w})
+                 for solver, keys in kept.items() for t, n, w in keys for seed in range(1, TUNING_STARTS)])  # fmt: skip
+    print(f"tuning: {len(rows)} runs against the full grid's "
+          f"{sum(len(grid(s)) for s in samplers) * TUNING_STARTS * len(held_out)}", flush=True)  # fmt: skip
     chosen: dict[str, dict[str, float]] = {}
     for solver, g in frame.groupby("solver"):
-        key, best, by = harness.cheapest(g, TOLERANCE)
+        full = g.groupby("key").gap.size() == TUNING_STARTS * len(held_out)
+        key, best, _ = harness.cheapest(g[g.key.isin(full[full].index)], TOLERANCE)
+        by = g.groupby("key").gap.median()
         t_start, sweeps, warm = key
         chosen[str(solver)] = {"t_start": float(t_start), "sweeps": int(sweeps), "warm": float(warm),
-                               "gap": float(best.gap), "default_gap": float(by.gap.get((2.0, 1000, 0.0), np.nan))}  # fmt: skip
-        print(f"tuned {solver}: T0 {t_start}, {sweeps} sweeps, median gap {best.gap:.2f} nats "
+                               "gap": float(best.gap), "default_gap": float(by.get((2.0, 1000, 0.0), np.nan))}  # fmt: skip
+        print(f"tuned {solver}: T0 {t_start}, {sweeps} sweeps, warm {warm}, median gap {best.gap:.2f} nats "
               f"({best.seconds:.2f} s); sal's default {chosen[str(solver)]['default_gap']:.2f}", flush=True)  # fmt: skip
     return chosen, rows
 
