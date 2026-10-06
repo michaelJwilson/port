@@ -48,7 +48,7 @@ from port.studies import records
 from port.studies import stream as harness
 
 STARTS = (
-    "calicost-gmm", "lattice", "prior", "kmeans++", "emission++", "gaussian-em",
+    "calicost-gmm", "lattice", "prior", "kmeans++", "emission++",
     "anneal-hmm", "tempering-hmm", "hmc-hmm",
 )  # fmt: skip
 """The starts the paper's initialization figure draws (T- #660). Out of the study, still in the

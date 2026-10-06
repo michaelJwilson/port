@@ -37,7 +37,6 @@ TABLE = (
         ("prior", "Drawn from a prior on the observed range"),
         ("kmeans++", f"{tt('k-means++')} on the raw count pair"),
         ("emission++", "Seeds by the NB x BB Bregman divergence"),
-        ("gaussian-em", "Gaussian mixture on read depth, by EM"),
     )),
     ("sal, samplers on the HMM (#634)", (
         ("anneal-hmm", "Best point of sal's HMC anneal under falling temperature"),
@@ -64,7 +63,7 @@ SOURCE = {
 """Each start's source: the package whose code it runs."""
 KEY_NAMES = {
     "calicost-gmm": "CalicoST-GMM", "lattice": "Lattice", "prior": "Prior", "kmeans++": r"$k$-means++",
-    "emission++": "Emission++", "gaussian-em": "Gaussian-EM", "anneal-hmm": "Anneal",
+    "emission++": "Emission++", "anneal-hmm": "Anneal",
     "tempering-hmm": "Parallel tempering", "hmc-hmm": "HMC",
 }  # fmt: skip
 """The names `solver_combined`'s key prints (#716)."""
