@@ -29,7 +29,7 @@ The genomic panels of `truth/truth_combined.png`, `truth/clones_genomic.png`,
 | File | Question | Source |
 | --- | --- | --- |
 | `truth/truth_combined.png` | What was planted, on one page: tree, (A, B) profile, RDR and BAF per clone? | `port.sim.truth_figure.truth_combined_figure` |
-| `truth/simulated_tree.png` | Which events sit on which edge of the simulated clone tree? | `port.sim.truth_figure.simulated_tree_figure`, `truth_combined`'s panel (a) |
+| `truth/simulated_tree.png` | Which events sit on which edge of the simulated clone tree? | `port.sim.truth_figure.simulated_tree_figure`, `truth_combined`'s panel (a) up to 10 events |
 | `truth/spatial.png` | Which clone was each spot drawn from? | `port.sim.analysis.plot_spatial` |
 | `truth/clones_genomic.png` | What RDR and BAF does each planted clone give along the genome? | `port.sim.analysis.plot_clones_genomic_truth` |
 | `truth/clone_profiles.png` | What (A, B) does each clone carry along the genome? | `port.sim.analysis.plot_clone_profiles` |

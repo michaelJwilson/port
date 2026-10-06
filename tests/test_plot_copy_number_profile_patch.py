@@ -203,7 +203,7 @@ def test_the_mirror_key_starts_on_the_axis_and_is_labelled_on_its_right(
 ) -> None:
     """Every caller's key, sized by `span` or by its own text: the swatches on
     the axis's left edge (0.5 px), `MIRROR` right of them and clear of the
-    colour bar's title (T- #TKT)."""
+    colour bar's title (PR- #701)."""
     import matplotlib.pyplot as plt
     from port.patch.plot_copy_number_profile import MIRROR, plot_ascn_legend
 

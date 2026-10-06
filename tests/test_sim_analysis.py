@@ -300,7 +300,7 @@ def dense(tmp_path_factory: pytest.TempPathFactory) -> Drawn:
 @pytest.mark.infra
 def test_a_barcode_over_many_events_is_its_first_7_bits_and_an_ellipsis() -> None:
     """`shown` keeps a barcode of up to `MANY_EVENTS` bits whole and cuts a
-    longer one to `BARCODE_SHOWN` characters (T- #TKT)."""
+    longer one to `BARCODE_SHOWN` characters (PR- #701)."""
     from port.sim.analysis import BARCODE_SHOWN, MANY_EVENTS, shown
 
     assert (MANY_EVENTS, BARCODE_SHOWN) == (10, 8)
@@ -331,7 +331,7 @@ def _headed(genomic: Any) -> set[str]:
 @pytest.mark.merge
 def test_at_10_events_or_fewer_a_is_the_tree_with_whole_barcodes(drawn: Drawn) -> None:
     """At `MANY_EVENTS` or fewer, (a) is `draw_tree`'s tree, text for text and
-    line for line, and (c) heads each clone with its whole barcode (T- #TKT)."""
+    line for line, and (c) heads each clone with its whole barcode (PR- #701)."""
     import matplotlib.pyplot as plt
     from port.extensions.combined_figure import FONT_SIZE
     from port.sim.analysis import MANY_EVENTS, draw_tree
@@ -362,7 +362,7 @@ def test_above_10_events_a_is_the_leaves_in_c_s_order_with_cut_barcodes(
 ) -> None:
     """Above `MANY_EVENTS`, (a) draws no edge: one marker per clone, `normal`
     included, left to right in (c)'s top-to-bottom order, each named with its
-    barcode cut by `shown`, which (c)'s headers repeat (T- #TKT)."""
+    barcode cut by `shown`, which (c)'s headers repeat (PR- #701)."""
     from matplotlib.colors import to_rgb
     from port.sim.analysis import BARCODE_SHOWN, MANY_EVENTS, clone_colour, shown
     from port.sim.truth_figure import _symbol
@@ -406,7 +406,7 @@ def test_the_mirror_key_starts_on_b_s_left_edge_and_is_labelled_on_its_right(
     drawn: Drawn,
 ) -> None:
     """(b)'s mirror swatches start on the profile axis's left edge (0.5 px),
-    with `MIRROR` to their right, clear of the colour bar's title (T- #TKT)."""
+    with `MIRROR` to their right, clear of the colour bar's title (PR- #701)."""
     from port.patch.plot_copy_number_profile import MIRROR
 
     figure, _, _ = _panels(read(drawn.path))

@@ -7,7 +7,7 @@ Top to bottom, at `llncs`'s text width and height, 7 pt throughout, as
 
 - **(a)** the clones' tree, each event at its time (`analysis.draw_tree`),
   or above `analysis.MANY_EVENTS` events its leaves alone, left to right as
-  (c) stacks them (`analysis.draw_leaves`, T- #TKT);
+  (c) stacks them (`analysis.draw_leaves`, PR- #701);
 - **(b)** each clone's planted `(A, B)`, drawn by `port`'s profile plotter
   under its mirror and copy-number key, the rows `combined.pdf` draws;
 - **(c)** RDR and BAF along the genome per true clone
@@ -295,7 +295,7 @@ def symbol_of(label: str) -> str:
 
 
 def simulated_tree_figure(r: Realization, width: float | None = None) -> Any:
-    """The simulated clone tree, `width` wide, at any event count: `truth_combined_figure`'s panel (a) alone up to `MANY_EVENTS` events (T- #660, T- #TKT)."""
+    """The simulated clone tree, `width` wide, at any event count: `truth_combined_figure`'s panel (a) alone up to `MANY_EVENTS` events (T- #660, PR- #701)."""
     import matplotlib.pyplot as plt
 
     from port.extensions.combined_figure import FONT_SIZE, _put, page_style

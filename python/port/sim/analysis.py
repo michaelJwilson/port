@@ -526,12 +526,12 @@ def tree(r: Realization) -> Tree:
 
 
 MANY_EVENTS = 10
-"""The user's legibility rule (T- #TKT): a tree of more than 10 events does
+"""The user's legibility rule (PR- #701): a tree of more than 10 events does
 not read at a page's width. Above it `truth_figure` draws (a) as the leaves
 alone (`draw_leaves`) and `shown` cuts every barcode to `BARCODE_SHOWN`."""
 
 BARCODE_SHOWN = 8
-"""Characters of a barcode shown above `MANY_EVENTS`: its first 7, then "…" (T- #TKT)."""
+"""Characters of a barcode shown above `MANY_EVENTS`: its first 7, then "…" (PR- #701)."""
 
 
 def shown(code: str) -> str:
@@ -707,7 +707,7 @@ def draw_leaves(
     its name (`name`, `display`'s numeral by default) to its right and its
     barcode (`shown`) under the name. The texts carry `gid`s `name` and
     `barcode`, as `draw_tree`'s do. For a tree of more than `MANY_EVENTS`
-    events (T- #TKT).
+    events (PR- #701).
     """
     t = tree(r)
     named = name or (lambda clone: display(clone, r.clones))

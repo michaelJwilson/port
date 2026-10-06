@@ -110,7 +110,8 @@ overlapping by half) at seed 0.
   `combined.pdf` uses, so a planted and a decoded profile share palette,
   hatching, outlines and key;
 - `mutation_tree.png`: along event order, each event `chr::A/B::Mb` (whole Mb) at its time
-  on its edge; each node its binary barcode, the founder's event the leading bit;
+  on its edge; each node its binary barcode, the founder's event the leading bit,
+  over 10 events its first 7 bits and "…" (`analysis.shown`, PR- #701);
 - `spatial.png`: each slice, titled by its `sample_id`, cropped to itself in
   the shared frame; the region the slices share dashed, and a clone on both
   slices inside it; clones named by one legend for every slice, on the left,
@@ -129,7 +130,8 @@ overlapping by half) at seed 0.
   per-entry law is shown for them.
 
 - `truth_combined.png`: `python -m port.sim.truth_figure`, written as
-  `truth_combined.pdf` by `plot`: the tree, the profiles, the tracks and the
+  `truth_combined.pdf` by `plot`: the tree (over 10 events, the clones alone,
+  PR- #701), the profiles, the tracks and the
   spatial map on one page at `combined.pdf`'s 122 mm by 193 mm and 7 pt, the
   profile and tracks on one left and right edge, clones as $m_N$, $m_1$, ...
 

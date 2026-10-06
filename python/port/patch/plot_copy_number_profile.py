@@ -359,7 +359,7 @@ def plot_copy_number_profile(
 
 
 MIRROR = "(Co-located) Mirror"
-"""The mirror swatches' label, right of them in every figure that draws the key (T- #TKT)."""
+"""The mirror swatches' label, right of them in every figure that draws the key (PR- #701)."""
 
 
 def plot_ascn_legend(
