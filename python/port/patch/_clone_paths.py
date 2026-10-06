@@ -1,5 +1,9 @@
 """The two shapes the fit produces, and nothing else (#278).
 
+A helper every fit-chain and figure row reads, named for no `cnaster`
+module, so it sits beside `_signature` rather than under `plotting/`, where it
+was until T- #673 G7: a state vector is not a plot.
+
 **`cnaster` supports layouts it cannot produce, and the support is the
 defect.** Five sites branch on how `pred_cnv` is laid out and two more guard
 a second column of the state parameters; every branch resolves the same way
