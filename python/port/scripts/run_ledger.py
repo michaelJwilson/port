@@ -7,7 +7,9 @@ one `ledger` line per measured metric under its latest definition. The note
 is at most `NOTE_CHARS` characters, written as a commit subject, stating what
 change the run measures.
 
-`run_ledger --best clone_ari [--fixture dev]` prints the ledger line, joined
+`--benchmark` marks a recorded run as one of a sweep over every fixture, and
+`--last-benchmark` prints the latest sweep's runs. `run_ledger --best
+clone_ari [--fixture dev]` prints the ledger line, joined
 to its run, that maximizes a metric under its latest definition. `--render
 [--out PATH]` prints the wide view, one row per run and one column per
 metric, `—` where a run has no line, to stdout or to `PATH`. Nothing commits
@@ -80,6 +82,7 @@ def record(arguments: argparse.Namespace) -> int:
         args=shlex.join([*audit, "--", *flags]),
         note=arguments.note,
         dirty=dirty,
+        benchmark=arguments.benchmark,
     )
     return 0
 
@@ -135,6 +138,7 @@ def record_sample(arguments: argparse.Namespace, *, dirty: bool) -> int:
         args=shlex.join([*audit, "--", *flags]),
         note=arguments.note,
         dirty=dirty,
+        benchmark=arguments.benchmark,
         test=ledger.SIM_TEST,
     )
     return 0
@@ -156,6 +160,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         "--out", type=Path, default=None, help="with --render, a file to write"
     )
     parser.add_argument("--dirty", action="store_true", help="record uncommitted")
+    parser.add_argument(
+        "--benchmark",
+        action="store_true",
+        help="with --record, one run of a sweep over every fixture",
+    )
+    parser.add_argument(
+        "--last-benchmark",
+        action="store_true",
+        help="the runs of the latest benchmark sweep, one per line",
+    )
     parser.add_argument(
         "--note", default=None, help=f"with --record, <= {ledger.NOTE_CHARS} characters"
     )
@@ -187,6 +201,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         else:
             arguments.out.write_text(ledger.render())
             print(arguments.out)
+        return 0
+    if arguments.last_benchmark:
+        for run in ledger.last_benchmark():
+            print("\t".join(run[c] for c in ledger.RUN_COLUMNS))
         return 0
     if arguments.best:
         found = ledger.best(arguments.best, arguments.fixture)

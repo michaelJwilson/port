@@ -106,12 +106,16 @@ read from git, not from the ledger."""
 def test_the_render_rebuilds_the_converted_rows() -> None:
     """`--render`'s first 73 rows, parsed back and written in the old table's
     form, hash to the table they were converted from: every cell of every
-    converted run survives the ledger, `[converted: ...]` remarks and the
-    hash keying the fixture aside."""
+    converted run survives the ledger, `[converted: ...]` remarks, the hash
+    keying the fixture and the later `benchmark` column aside."""
     rows = parse(render())[:CONVERTED_ROWS]
     kept = {"note": lambda v: v.split(CONVERTED)[0], "fixture": fixture_stem}
     lines = [
-        "| " + " | ".join(kept.get(c, lambda v: v)(row[c]) for c in COLUMNS) + " |"
+        "| "
+        + " | ".join(
+            kept.get(c, lambda v: v)(row[c]) for c in COLUMNS if c != "benchmark"
+        )
+        + " |"
         for row in rows
     ]
 
@@ -140,6 +144,8 @@ def test_a_recorded_run_writes_one_line_per_measured_metric(
     assert found.startswith("abcdef0-dev_07b82e92-")
     mine = [line for line in metrics.ledger() if line["run_id"] == found]
     assert {line["fixture"] for line in mine} == {"dev_07b82e92"}
+    run = next(r for r in metrics.runs() if r["run_id"] == found)
+    assert run["benchmark"] == "false"
     assert {line["metric"]: line["value"] for line in mine} == {
         "clone_ari": "0.9877",
         "wall_s": "12.3",
@@ -264,6 +270,21 @@ def test_best_takes_a_bare_name_only_where_it_names_one_dataset() -> None:
     found = metrics.best("clone_ari", "dev_tree_1s_hard_r0_9ec90dc2")
     assert found is not None
     assert found["fixture_hash"] == "9ec90dc2"
+
+
+@pytest.mark.infra
+def test_the_last_benchmark_is_one_run_per_fixture_at_one_commit() -> None:
+    """`benchmark` is `true` or `false`; the latest sweep's runs share a commit
+    and each measures a fixture the others do not."""
+    assert {r["benchmark"] for r in runs()} <= {"true", "false"}
+    sweep = metrics.last_benchmark()
+    assert sweep
+    assert len({r["commit"] for r in sweep}) == 1
+    keys = [
+        next(line["fixture"] for line in ledger() if line["run_id"] == r["run_id"])
+        for r in sweep
+    ]
+    assert len(keys) == len(set(keys))
 
 
 @pytest.mark.infra

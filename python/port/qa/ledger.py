@@ -4,7 +4,9 @@ Three append-only, tab-separated files, each with a header line:
 
 - `ledger.tsv`: `run_id fixture fixture_hash metric definition value`, one
   line per measured value; an unmeasured metric has no line;
-- `runs.tsv`: `run_id timestamp commit arm test note`, one line per run;
+- `runs.tsv`: `run_id timestamp commit arm test note benchmark`, one line
+  per run; `benchmark` is `true` where the run is one of a sweep over every
+  fixture the ledger held at its commit (`last_benchmark`), else `false`;
 - `definitions.tsv`: `metric definition since scorer meaning`, what each
   metric means. Changing what a metric measures appends a definition, never
   edits one, and values under different definitions are not compared.
@@ -39,10 +41,10 @@ RUNS = LEDGER_DIR / "runs.tsv"
 DEFINITIONS = LEDGER_DIR / "definitions.tsv"
 
 LEDGER_COLUMNS = ("run_id", "fixture", "fixture_hash", "metric", "definition", "value")
-RUN_COLUMNS = ("run_id", "timestamp", "commit", "arm", "test", "note")
+RUN_COLUMNS = ("run_id", "timestamp", "commit", "arm", "test", "note", "benchmark")
 DEFINITION_COLUMNS = ("metric", "definition", "since", "scorer", "meaning")
 
-KEYS = ("commit", "timestamp", "fixture", "fixture_hash", "test", "args")
+KEYS = ("commit", "timestamp", "fixture", "fixture_hash", "test", "args", "benchmark")
 METRICS = {
     "clone_ari": ("ari", 4),
     "clone_ari_int": ("ari_integer", 4),
@@ -194,6 +196,7 @@ def read() -> list[dict[str, str]]:
             "test": run["test"],
             "args": run["arm"],
             "note": run["note"],
+            "benchmark": run["benchmark"],
         }
         row |= dict.fromkeys(METRICS, UNMEASURED)
         for line in mine:
@@ -253,6 +256,7 @@ def entries(
     taken: set[str],
     current: dict[str, str],
     test: str = TEST,
+    benchmark: bool = False,
 ) -> tuple[dict[str, str], list[dict[str, str]]]:
     """A run's `runs` line and its `ledger` lines, one per measured metric
     under `current`'s definition of it; NaN and None have no line."""
@@ -265,6 +269,7 @@ def entries(
         "arm": args,
         "test": test,
         "note": note,
+        "benchmark": "true" if benchmark else "false",
     }
     lines = []
     for metric, (key, decimals) in METRICS.items():
@@ -293,6 +298,7 @@ def write(
     note: str,
     dirty: bool,
     test: str = TEST,
+    benchmark: bool = False,
 ) -> str:
     """Append a run to `runs` and `ledger` under `fixture_key`, after
     `check_identity`; returns the run's id."""
@@ -309,6 +315,7 @@ def write(
         taken={r["run_id"] for r in runs()},
         current=latest(),
         test=test,
+        benchmark=benchmark,
     )
     append_tsv(RUNS, RUN_COLUMNS, [run])
     append_tsv(LEDGER, LEDGER_COLUMNS, lines)
@@ -350,6 +357,15 @@ def best(metric: str, fixture: str | None) -> dict[str, str] | None:
         return None
     run = next(r for r in runs() if r["run_id"] == found["run_id"])
     return run | found
+
+
+def last_benchmark() -> list[dict[str, str]]:
+    """The runs of the latest commit with a `benchmark` run, in `runs` order: the last sweep over every fixture."""
+    marked = [r for r in runs() if r["benchmark"] == "true"]
+    if not marked:
+        return []
+    commit = marked[-1]["commit"]
+    return [r for r in marked if r["commit"] == commit]
 
 
 VIEW = """\
