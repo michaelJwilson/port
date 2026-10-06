@@ -78,9 +78,10 @@ build, `REFERENCES.md` when the citations outgrow **The application**.
 and the `ruff` rule set, so the tooling precedes the documents rather than
 waiting on them.
 
-`port` has one package and one crate, so this file is the whole of the
-guidance. A submodule `CLAUDE.md` is added when a directory has details this
-file should not carry, not before.
+`port` has two packages and one crate -- `port`, and `cnamaste`, the copy of
+`cnaster`'s forward path that ships on its own with its own coverage gate --
+so this file is the whole of the guidance. A submodule `CLAUDE.md` is added
+when a directory has details this file should not carry, not before.
 
 ## Environment & Tooling
 *   **Python (3.12):** Manage via `uv`. Run `uv sync --locked --all-extras`.
