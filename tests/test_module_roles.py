@@ -66,6 +66,7 @@ ROLES: dict[str, Role] = {
     "port.extensions.copy_likelihood": "extension",
     "port.extensions.emission_family": "oracle",
     "port.extensions.figure_style": "extension",
+    "port.extensions.genomic_axis": "extension",
     "port.extensions.integer_copy": "oracle",
     "port.extensions.jax_hmm": "oracle",
     "port.extensions.jax_setup": "extension",

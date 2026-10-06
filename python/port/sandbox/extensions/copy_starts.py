@@ -719,7 +719,7 @@ def _emission_variant(
     """`EMISSION_VARIANTS[name]`: one draw, or the best of `draws` by the HMM's NLL at each draw's states, nothing fitted.
 
     Scored by `port.sandbox.known_copy.hmm_objective.negative_log_likelihood`
-    (`jax_hmm`'s forward recursion at `known_copy.hmm.ALPHA`, `TAU`, `T`) on
+    (`sal`'s JAX twin of the forward recursion at `known_copy.hmm.ALPHA`, `TAU`, `T`) on
     the call's rows, each draw's states read as `seed_states` reads them. A
     variant with no seeding change draws `sal`'s own `emission_seeding`.
     """
