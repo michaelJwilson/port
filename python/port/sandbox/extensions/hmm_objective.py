@@ -24,8 +24,8 @@ clone-stacked rows as a `Ragged` of segments (`lengths`), exposure and
 trials as its covariate. `Restricted` varies its `mean` and `rate` blocks,
 so `theta = (log_mu, logit p_binom)`, one of each per state; the
 dispersions, the stickiness and the uniform start probabilities are held at
-`known_copy.hmm`'s `ALPHA`, `TAU` and `T` (`objective_for`), the values
-`known_copy.decode` scores a start at. No per-clone shift (#276).
+`ALPHA`, `TAU` and `T` (`objective_for`), `cnaster`'s initial
+dispersions and the shipped configuration's stickiness. No per-clone shift (#276).
 `value_and_gradient` and `energy` are declared (`sal.opt.objective`), and
 `__call__` returns the same value, differentiable by a
 `torch.autograd.Function` carrying the kernel's gradient.
@@ -67,6 +67,12 @@ from typing import Any, NamedTuple
 
 import numpy as np
 import torch
+
+T = 1.0 - 1e-7
+"""`hmm.t` of `tests/data/zenodo_sim_config.yaml`: the probability a clone stays in its state from one bin to the next."""
+
+ALPHA, TAU = 0.5, 1_000.0
+"""`hmm_nophasing.get_initial_params`' NB and beta-binomial dispersions: what an unfitted start is scored at."""
 
 __all__ = [
     "DEFAULTS",
@@ -293,8 +299,7 @@ def objective_for(
     n_states: int,
     start: np.ndarray,
 ) -> HmmObjective:
-    """`HmmObjective` at `known_copy.hmm`'s `ALPHA`, `TAU` and `T`, the values `decode` scores a start at."""
-    from port.sandbox.known_copy.hmm import ALPHA, TAU, T
+    """`HmmObjective` at `ALPHA`, `TAU` and `T`."""
 
     return HmmObjective(
         total, b, exposure, trials, lengths, n_states,
