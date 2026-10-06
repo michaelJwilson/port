@@ -23,6 +23,7 @@ source =
 # lowered to pass one. 58.85% at PR1 (5405 statements, 2224 missed), JIT on,
 # under `not release and cnamaste`: the gate instance's equivalence test.
 # 61.92% at PR2 (5556 statements, 2116 missed), the same selection with the
-# figure, plot-off and #105 / #113 tests added.
-fail_under = 61
+# figure, plot-off and #105 / #113 tests added. 62.38% at PR3 (6460
+# statements, 2430 missed), with dev and the preprocessing tests added.
+fail_under = 62
 precision = 2

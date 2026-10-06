@@ -76,7 +76,23 @@ def run_cnaster(config_path, over_rides=None, *, plots=True):
 
     `plots=False` builds every figure and writes none (#403, T- #670 PR2):
     `port`'s `run_cnaster_port --no-plots`, as `run_cnamaste --no-plots`.
+
+    The run records its segmentations (`cnamaste.segments`, #438) and samples
+    (`cnamaste.samples`, #418) as `run_cnaster_port` does, which the moved
+    preprocessing reads (T- #670 PR3), and drops what its loader and genetic
+    map cache held when it returns.
     """
+    from cnamaste import io, recomb, samples, segments
+
+    with segments.recording(), samples.recording():
+        try:
+            _run_cnaster(config_path, over_rides, plots=plots)
+        finally:
+            io.release()
+            recomb.release()
+
+
+def _run_cnaster(config_path, over_rides=None, *, plots=True):
     write_fig = _write_fig if plots else discard_fig
 
     logger.runtime_phase = "prep."
@@ -1480,13 +1496,10 @@ def run_cnaster(config_path, over_rides=None, *, plots=True):
                     )
                 )
 
-            # NB #105: a bin `normal_baf_bin_filter` removed leaves its genes'
-            #    `bin_id` null, which `cnaster` casts to INT_MIN and indexes
-            #    with. A gene with no bin has no copy number, as every other
-            #    consumer of `bin_id` already reads it.
-            df_genes = df_gene_snp[
-                df_gene_snp.is_interval & df_gene_snp.bin_id.notnull()
-            ]
+            # NB #105: a gene of a bin `normal_baf_bin_filter` removed is no
+            #    interval there, and `create_bin_ranges` drops its rows
+            #    (T- #670 PR3, from `port`), so every `bin_id` here is set.
+            df_genes = df_gene_snp[df_gene_snp.is_interval]
             bin_ids = df_genes["bin_id"].to_numpy(dtype=int)
 
             clone_copies = best_integer_copies[res_combine["pred_cnv"][:, s]]

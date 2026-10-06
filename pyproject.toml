@@ -193,7 +193,6 @@ extend-exclude = [
   "python/cnamaste/phasing.py",
   "python/cnamaste/plot_genomic.py",
   "python/cnamaste/plotting.py",
-  "python/cnamaste/pseudobulk.py",
   "python/cnamaste/recomb.py",
   "python/cnamaste/reference.py",
   "python/cnamaste/run.py",
@@ -261,7 +260,7 @@ files = ["python", "tests"]
 # NB `cnamaste`'s untyped `cnaster` code, read as `cnaster` is (below): the
 #    modules `[tool.ruff]` excludes, `CNAMASTE_UNLINTED` in `test_module_roles`.
 exclude = [
-  "^python/cnamaste/(annotation|cna_hmrf_result|config|count_encoder|filter|he|hmm|hmm_emission|hmm_initialize|hmm_nophasing|hmm_phased|hmm_utils|hmrf|hmrf_utils|icm|integer_copy|io|logger|normal_spot|omics|palette|phasing|plot_genomic|plotting|pseudobulk|recomb|reference|run|spatial|spatio_genomic_counts|utils)\\.py$",
+  "^python/cnamaste/(annotation|cna_hmrf_result|config|count_encoder|filter|he|hmm|hmm_emission|hmm_initialize|hmm_nophasing|hmm_phased|hmm_utils|hmrf|hmrf_utils|icm|integer_copy|io|logger|normal_spot|omics|palette|phasing|plot_genomic|plotting|recomb|reference|run|spatial|spatio_genomic_counts|utils)\\.py$",
 ]
 
 [[tool.mypy.overrides]]

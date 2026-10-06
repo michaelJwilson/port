@@ -20,8 +20,9 @@ Fixtures, each named by its hash:
   25 x 40 spots, 40 bins), `350fbd2b` by `fixture_hash`, one outer and three
   EM iterations;
 - dev (`07b82e92`), the `release` tier, five states as
-  `test_the_pipeline_completes_on_the_dev_instance` fits it. **Not run:**
-  under `isolated_run`'s seed `cnaster` itself never returns (below);
+  `test_the_pipeline_completes_on_the_dev_instance` fits it, without
+  figures. Unpatched `cnaster` never returns on it (T- #692); with row 15
+  moved in (PR3) both arms do;
 - CalicoST easy (`2d4ce9a9`, `realization_hash`), the `release` tier, at
   `zenodo_sim_config.yaml`'s settings with the normal-spot BAF interval
   widened to `(0.0, 1.0)`, as `run_config` widens it (#105): at the shipped
@@ -33,6 +34,7 @@ from __future__ import annotations
 
 import gc
 import importlib
+import sys
 import warnings
 from contextlib import ExitStack
 from pathlib import Path
@@ -42,7 +44,8 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import pytest
 import yaml
-from port.pipeline import FIGURE_SWAPS, PLOT_OFF_SWAPS, Swap, patched
+from port.extensions import samples, segments
+from port.pipeline import FIGURE_SWAPS, PLOT_OFF_SWAPS, SWAPS, Swap, patched
 from port.sim.fixtures import (
     EASY,
     load_simulated,
@@ -58,13 +61,42 @@ mpl.use("Agg")
 ENTRIES = {"cnaster": "cnaster.scripts.run_cnaster", "cnamaste": "cnamaste.run"}
 """Each package's `run_cnaster`, by package."""
 
-ABSORBED: tuple[Swap, ...] = tuple(swap._replace(options=()) for swap in FIGURE_SWAPS)
+PREPROCESSING = frozenset(
+    {
+        "port.patch.io:load_input_data",
+        "port.patch.io:get_aggregated_barcodes",
+        "port.patch.io:get_sample_list",
+        "port.patch.omics:form_gene_snp_table",
+        "port.patch.omics:assign_initial_blocks",
+        "port.patch.omics:summarize_blocks",
+        "port.patch.omics:summarize_counts_for_blocks",
+        "port.patch.omics:summarize_counts_for_bins",
+        "port.patch.omics:create_bin_ranges",
+        "port.patch.recomb:get_sitewise_transmat",
+        "port.patch.normal_spot:filter_normal_diffexp",
+        "port.patch.spatial:lattice_multislice_adjacency",
+        "port.patch.spatial:best_equal_partition",
+        "port.patch.spatial:initialize_rectangular_clones",
+        "port.patch.normal_spot:normal_baf_bin_filter",
+        "port.patch.normal_spot:determine_normal_candidates",
+        "port.patch.pseudobulk:merge_pseudobulk_by_index_mix",
+    }
+)
+"""PR3's `SWAPS` rows: `docs/port-forward.md` rows 6 and 8-23. Row 7,
+`get_reference_genes`, needs `pyarrow`, which `cnamaste` does not declare."""
+
+ABSORBED: tuple[Swap, ...] = (
+    *(swap._replace(options=()) for swap in FIGURE_SWAPS),
+    *(swap for swap in SWAPS if swap.replacement in PREPROCESSING),
+)
 """The `port` rows `cnamaste` holds, installed on the `cnaster` arm.
 
 PR2: `docs/port-forward.md` rows 1-4, `FIGURE_SWAPS`, at `cnaster`'s
 defaults -- `port` binds `write_fig`'s `dpi=150` and `group_rasters`, which
 `cnamaste` takes up as defaults only at PR9. Row 5, plot-off, is
-`run_cnaster(..., plots=False)`, against `PLOT_OFF_SWAPS`.
+`run_cnaster(..., plots=False)`, against `PLOT_OFF_SWAPS`. PR3:
+`PREPROCESSING`, under the segment and sample recording `run_cnaster_port`
+enters, as `run_cnamaste` enters its own.
 """
 
 NARROWED = "(0.4, 0.6)"
@@ -111,6 +143,8 @@ def _run(package: str, config: Path, root: Path, *, plots: bool = True) -> Path:
         stack.enter_context(warnings.catch_warnings())
         if package == "cnaster":
             stack.enter_context(patched(swaps))
+            stack.enter_context(segments.recording())
+            stack.enter_context(samples.recording())
         warnings.simplefilter("ignore")
         try:
             entry.run_cnaster(str(own), **keywords)
@@ -183,30 +217,21 @@ def test_run_cnamaste_writes_absorbed_cnasters_bytes_on_the_gate_instance(
 @pytest.mark.release
 @pytest.mark.xdist_group("pipeline")
 @pytest.mark.usefixtures("_fixed_dates")
-@pytest.mark.xfail(
-    run=False,
-    strict=True,
-    reason=(
-        "cnaster hangs: under isolated_run's seed the rectangular clone "
-        "initializer (spatial.py:240) splits BAF clone 2 (297 spots) into 4 "
-        "blocks of [194, 3, 77, 23] spots for 4 clones; its rejection loop "
-        "needs every clone over 0.2 * 297 / 4 = 14.85, and the 3-spot block "
-        "never is. At n_clones 3 and 2 the run instead exceeds the 13.9 GB "
-        "at which this host kills it, in finalize's genomic clone figure."
-    ),
-)
 def test_run_cnamaste_writes_absorbed_cnasters_bytes_on_the_dev_instance(
     tmp_path: Path,
 ) -> None:
+    """T- #692: both arms return, row 15's initializer redrawing where
+    `cnaster`'s loops. Without figures: at `cnaster`'s 300 dpi the first
+    genomic figure takes either arm past this host's 14 GB (PR3)."""
     truth = dev_instance()
     assert fixture_hash(truth) == DEV_HASH
     _, config = write_for_run(
         truth, tmp_path / "inputs", max_iter_outer=1, max_iter=3, n_states=5
     )
 
-    files, fits = _equal_runs(config, tmp_path)
+    files, fits = _equal_runs(config, tmp_path, plots=False)
 
-    assert files >= 25
+    assert files >= 6
     assert fits >= 1
 
 
@@ -270,6 +295,7 @@ def test_run_cnamaste_without_plots_writes_what_ports_plot_off_writes(
 def test_a_bin_the_normal_baf_filter_removes_leaves_its_genes_out(
     planted_instance: tuple[CoreInferenceTruth, object, object, Path],
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """#105: `cnaster` indexes with a removed bin's null `bin_id`; `cnamaste` drops it.
 
@@ -289,8 +315,11 @@ def test_a_bin_the_normal_baf_filter_removes_leaves_its_genes_out(
     for side in ("narrowed", "widened"):
         (tmp_path / side).mkdir()
 
-    with pytest.raises(IndexError, match="out of bounds"):
-        _run("cnaster", narrowed, tmp_path / "narrowed")
+    # NB `cnaster` alone: from PR3 `ABSORBED` carries `port`'s fix too.
+    with monkeypatch.context() as unpatched:
+        unpatched.setattr(sys.modules[__name__], "ABSORBED", ())
+        with pytest.raises(IndexError, match="out of bounds"):
+            _run("cnaster", narrowed, tmp_path / "narrowed")
 
     def genes(run: Path, root: Path) -> pd.DataFrame:
         (table,) = _run("cnamaste", run, root).rglob("cnv_genelevel.tsv")

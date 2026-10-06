@@ -1,8 +1,17 @@
+"""`cnaster.recomb` at the pin, with `port.patch.recomb`'s `get_sitewise_transmat` moved in by T- #670 PR3.
+
+Per-contig centimorgans and contig-end independence (#438), below the marked
+seam; the map is read once per file version until `release()`.
+"""
+
 import numpy as np
 
 from cnamaste.config import get_global_config, start_time
 from cnamaste.logger import get_logger
 from cnamaste.reference import get_reference_recomb_rates
+# NB what `port`'s replacements below import (T- #670 PR3).
+import functools
+from typing import Any
 
 logger = get_logger(__name__, start_time=start_time)
 
@@ -111,71 +120,6 @@ def assign_centiMorgans(chr_pos_vector, ref_positions_cM):
     return position_cM
 
 
-def get_sitewise_transmat(
-    segment_key, df_gene_snp, geneticmap_file, nu, logphase_shift
-):
-    """
-    Phase switch probability from recombination rate / genetic distance [cM].
-
-    segment_key: e.g. block_id, bin_id, etc.
-    """
-    logger.info(
-        f"Constructing sitewise transition matrix for phasing given recombination rates."
-    )
-
-    ref_positions_cM = get_reference_recomb_rates(geneticmap_file)
-
-    # NB sorted contig,start per block.
-    sorted_chr_pos_first = df_gene_snp.groupby(segment_key).agg(
-        {"CHR": "first", "START": "first"}
-    )
-
-    sorted_chr_pos_last = df_gene_snp.groupby(segment_key).agg(
-        {"CHR": "last", "END": "last"}
-    )
-
-    if sorted_chr_pos_first.index.isna().any():
-        logger.warning(f"Found ill-defined group with None entries for group.")
-
-    # NB dataframe to list.
-    sorted_chr_pos_first = list(
-        zip(sorted_chr_pos_first.CHR.to_numpy(), sorted_chr_pos_first.START.to_numpy())
-    )
-
-    sorted_chr_pos_last = list(
-        zip(sorted_chr_pos_last.CHR.to_numpy(), sorted_chr_pos_last.END.to_numpy())
-    )
-
-    # NB [(chr1, start1), (chr1, end1), (chr2, start2), (chr2, end2), ...]) construct ...
-    tmp_sorted_chr_pos = [
-        val for pair in zip(sorted_chr_pos_first, sorted_chr_pos_last) for val in pair
-    ]
-
-    # NB positions in cM of [(chr1, start1), (chr1, end1), (chr2, start2), (chr2, end2), ...])
-    position_cM = assign_centiMorgans(tmp_sorted_chr_pos, ref_positions_cM)
-
-    # NB tmp_sorted_chr_pos used to identify chromosome switches.
-    phase_switch_prob = compute_numbat_phase_switch_prob(
-        position_cM, tmp_sorted_chr_pos, nu
-    )
-
-    # NB transition matrix for phasing.
-    log_sitewise_transmat = np.minimum(
-        np.log(0.5), np.log(phase_switch_prob) - logphase_shift
-    )
-
-    # NB positions -> pairs by sampling at rate 2.
-    # log_sitewise_transmat = log_sitewise_transmat[
-    #     np.arange(1, len(log_sitewise_transmat), 2)
-    # ]
-
-    log_sitewise_transmat = log_sitewise_transmat[1::2]
-
-    logger.info(
-        f"Solved for (recombination based) sitewise transition matrix for phasing with shape={log_sitewise_transmat.shape}."
-    )
-
-    return log_sitewise_transmat
 
 
 """
@@ -296,3 +240,77 @@ def get_sitewise_transmat(df_gene_snp, geneticmap_file, nu, logphase_shift):
 
     return log_sitewise_transmat
 """
+
+
+# --- `port.patch.recomb`, moved in by T- #670 PR3 -------------------------------
+#
+# `cnaster.recomb.get_sitewise_transmat`, computed from a :class:`Segmentation` (#438).
+#
+# The drop-in keeps `cnaster`'s signature and its kernel, and fixes two things
+# in it, both stated in `port.extensions.segments.Segmentation.log_phase_switch`:
+# centimorgans are read per contig (chr2-9 no longer inherit chr1's last value),
+# and a contig's last segment is independence rather than continuity.
+#
+# The segments are `df_gene_snp`'s gene rows labelled by `segment_key`, in id
+# order, which is the order `summarize_counts_for_blocks` and
+# `summarize_counts_for_bins` index their rows in; a labelling whose id order
+# is not genomic order, whose genes are not contiguous, or with a segment that
+# holds no gene, is refused rather than returned misaligned. A segment ends at
+# its last gene's `END`, where `cnaster` reads the last row's, a SNP.
+
+
+def get_sitewise_transmat(
+    segment_key: str,
+    df_gene_snp: Any,
+    geneticmap_file: Any,
+    nu: float,
+    logphase_shift: float,
+    *,
+    composable: bool = False,
+) -> np.ndarray:
+    """`log_sitewise_transmat`, one entry per `segment_key` segment.
+
+    `composable` is #449's composable phase-switch law, off as `cnaster` is;
+    a row binds it at install where a run asks for it.
+    """
+    from cnamaste.config import get_global_config
+
+    from cnamaste.segments import observe
+
+    segments = observe(df_gene_snp, segment_key)
+    genetic_map = _genetic_map(str(geneticmap_file))
+
+    return segments.log_phase_switch(
+        genetic_map,
+        nu,
+        logphase_shift,
+        get_global_config().phasing.min_prob,
+        composable=composable,
+    )
+
+def _genetic_map(path: str) -> Any:
+    """The map at `path`, read once per file version (#438 D4).
+
+    `run_cnaster` asks for the kernel four times and `cnaster` re-reads the
+    map each time. Keyed on the path and its modification time, so a map
+    rewritten between runs in one process is read again.
+    """
+    from pathlib import Path
+
+    return _read_map(path, Path(path).stat().st_mtime_ns)
+
+def release() -> None:
+    """Drop the maps read this run; `port.pipeline.patched` calls this on exit (T- #617).
+
+    The cache is keyed by path and version, so a later run would read the
+    same map; it is dropped so that nothing a run read outlives it.
+    """
+    _read_map.cache_clear()
+
+@functools.lru_cache(maxsize=4)
+def _read_map(path: str, mtime: int) -> Any:  # noqa: ARG001 -- the cache key
+    from cnamaste.reference import get_reference_recomb_rates
+
+    from cnamaste.segments import GeneticMap
+
+    return GeneticMap.from_frame(get_reference_recomb_rates(path))

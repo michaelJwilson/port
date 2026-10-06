@@ -1,3 +1,28 @@
+"""`cnaster.pseudobulk.merge_pseudobulk_by_index_mix`, summing a block of bins at a time.
+
+**Proposed for `cnaster`, written here.** Upstream gathers every spot of a
+clone, `single_X[:, :, idx]`, into a fresh `(n_obs, 2, len(idx))` array and
+then sums it: at 6,000 spots the gather streams the whole count matrix through
+memory once per clone and call, and the profile of #487's `--sal` run puts
+24.4 s of self time over 31 calls here (#488). Gathering and summing
+`BLOCK` bins at a time keeps the gathered block in cache. Every entry is the
+same `np.sum` over the same spots in the same order, so the return is
+**bitwise** upstream's, which `tests/test_pseudobulk_patch.py` pins.
+
+The body is otherwise upstream's, line for line.
+
+`port.patch.pseudobulk` (#488), moved in by T- #670 PR3 in place of
+`cnaster`'s module, whose one function it was.
+"""
+
+# ruff: noqa: G004, E501, N806, N803, PLR2004, PLW2901, B007, PLR1736
+# NB upstream's body, kept line for line so the two diff.
+
+from __future__ import annotations
+
+from collections.abc import Iterator
+from typing import Any
+
 import numpy as np
 
 from cnamaste.config import start_time
@@ -5,16 +30,40 @@ from cnamaste.logger import get_logger
 
 logger = get_logger(__name__, start_time=start_time)
 
+__all__ = ["BLOCK", "merge_pseudobulk_by_index_mix"]
+
+BLOCK = 256
+"""Bins gathered and summed at once."""
+
+
+def _blocks(n_obs: int) -> Iterator[slice]:
+    """`BLOCK`-bin slices covering `range(n_obs)`, none of one bin unless all are.
+
+    NB numpy sums a `(1, n)` block as one flat vector, in another order than
+    the rows of a taller block, and the last bit differs (3.6e-15 at 257
+    bins, `tests/test_pseudobulk_patch.py`); every height from 2 to 39 was
+    measured equal. A trailing bin therefore joins the block before it.
+    """
+    starts = list(range(0, n_obs, BLOCK))
+
+    if len(starts) > 1 and n_obs - starts[-1] == 1:
+        starts.pop()
+
+    for index, start in enumerate(starts):
+        stop = starts[index + 1] if index + 1 < len(starts) else n_obs
+        yield slice(start, stop)
+
 
 def merge_pseudobulk_by_index_mix(
-    single_X,
-    single_base_nb_mean,
-    single_total_bb_RD,
-    clone_index,
-    single_tumor_prop=None,
-    threshold=0.5,
-    normal_clone_index=None,
-):
+    single_X: np.ndarray,
+    single_base_nb_mean: np.ndarray,
+    single_total_bb_RD: np.ndarray,
+    clone_index: Any,
+    single_tumor_prop: np.ndarray | None = None,
+    threshold: float = 0.5,
+    normal_clone_index: int | None = None,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray | None]:
+    """Upstream's pseudobulk per clone; see the module docstring."""
     n_obs = single_X.shape[0]
 
     # NB overloads 'spots' as clones.
@@ -42,12 +91,15 @@ def merge_pseudobulk_by_index_mix(
             idx = idx[tumor_mask]
 
             # NB assumes mean tumor proportion for all spots assigned to this clone.
-            tumor_prop[k] = np.mean(single_tumor_prop[idx]) if len(idx) > 0 else 0.0
+            tumor_prop[k] = np.mean(single_tumor_prop[idx]) if len(idx) > 0 else 0.0  # type: ignore[index]
 
-        X[:, :, k] = np.sum(single_X[:, :, idx], axis=-1)
-
-        total_bb_RD[:, k] = np.sum(single_total_bb_RD[:, idx], axis=1)
-        base_nb_mean[:, k] = np.sum(single_base_nb_mean[:, idx], axis=1)
+        # NB upstream's `np.sum(x[..., idx], axis=-1)`, a block of rows at a
+        #    time: each entry is the same sum over the same `idx` in the same
+        #    order, and the gathered block stays in cache (#488).
+        for rows in _blocks(n_obs):
+            X[rows, :, k] = np.sum(single_X[rows, :, idx], axis=-1)
+            total_bb_RD[rows, k] = np.sum(single_total_bb_RD[rows, idx], axis=1)
+            base_nb_mean[rows, k] = np.sum(single_base_nb_mean[rows, idx], axis=1)
 
     for k, idx in enumerate(clone_index):
         percentiles = [50, 75, 90, 95, 99, 100]
@@ -78,11 +130,11 @@ def merge_pseudobulk_by_index_mix(
                 atol=1e-6,
             ):
                 logger.warning(
-                    f"Expected consistency between normal baseline normalization total umi for the clone, {np.nansum(X[:,0,k])} != {np.sum(base_nb_mean[:,k])}"
+                    f"Expected consistency between normal baseline normalization total umi for the clone, {np.nansum(X[:, 0, k])} != {np.sum(base_nb_mean[:, k])}"
                 )
 
             logger.info(
-                f"Found median umis={np.median(X[:, 0, k])} and median RDR={np.median(rdrs[valid_rdr]):.3f} for clone {k} with {100. * np.mean(valid_rdr > 0.0):.3f}% valid."
+                f"Found median umis={np.median(X[:, 0, k])} and median RDR={np.median(rdrs[valid_rdr]):.3f} for clone {k} with {100.0 * np.mean(valid_rdr > 0.0):.3f}% valid."
             )
             logger.info(
                 f"Found umi percentiles=\n{np.percentile(X[:, 0, k], percentiles)}\nfor\n{percentiles} [%]."
@@ -127,11 +179,11 @@ def merge_pseudobulk_by_index_mix(
                     atol=1e-6,
                 ):
                     logger.warning(
-                        f"Expected consistency between normal baseline normalization total UMI for the clone, {np.nansum(X[:,0,k])} != {np.sum(base_nb_mean[:,k])}"
+                        f"Expected consistency between normal baseline normalization total UMI for the clone, {np.nansum(X[:, 0, k])} != {np.sum(base_nb_mean[:, k])}"
                     )
 
                 logger.info(
-                    f"Found median UMIs={np.median(X[:, 0, k])} and median RDR={np.median(rdrs[valid_rdr]):.3f} for clone {k} with {100. * np.mean(valid_rdr > 0.0):.3f}% valid."
+                    f"Found median UMIs={np.median(X[:, 0, k])} and median RDR={np.median(rdrs[valid_rdr]):.3f} for clone {k} with {100.0 * np.mean(valid_rdr > 0.0):.3f}% valid."
                 )
                 logger.info(
                     f"Found UMI percentiles=\n{np.percentile(X[:, 0, k], percentiles)}\nfor\n{percentiles} [%]."

@@ -1,3 +1,13 @@
+"""`cnaster.omics` at the pin, with `port.patch.omics`' replacements moved in by T- #670 PR3.
+
+`form_gene_snp_table`, `assign_initial_blocks` (#190, #189, #466),
+`summarize_blocks` (#191), `summarize_counts_for_blocks` and
+`summarize_counts_for_bins` (#198, #440) and `create_bin_ranges` (#438, #105,
+#551) are `port`'s, below the marked seams; `cnaster`'s
+`assign_initial_blocks` and `create_bin_ranges` are kept as `_cnaster_*`,
+which `port`'s delegate to.
+"""
+
 from collections import namedtuple
 
 import numpy as np
@@ -9,6 +19,10 @@ from cnamaste.recomb import get_sitewise_transmat
 from cnamaste.reference import get_reference_genes
 from cnamaste.spatio_genomic_counts import SpatioGenomicCounts
 from cnamaste.utils import cacher
+# NB what `port`'s replacements below import (T- #670 PR3).
+from typing import Any
+import scipy.sparse as sp
+from cnamaste.segments import Segmentation, current, observe
 
 logger = get_logger(__name__, start_time=start_time)
 
@@ -117,126 +131,6 @@ def greedy_binning_nobreak(
 
 
 # TODO assumes reference gene contains all those present in Visium anndata.
-@cacher("gene_snp_table.tsv")
-def form_gene_snp_table(
-    unique_snp_ids,
-    hgtable_file,
-    adata,
-    verbose=False,
-    num_preceeding_rows=100,  # MAGIC
-):
-    logger.info(f"Forming gene & snp meta data.")
-
-    # NB includes both gene and SNP info: CHR, START, END, snp_id, gene, is_interval
-    df_gene = get_reference_genes(hgtable_file)
-
-    logger.info(f"Filtering reference genes to those in visium.")
-
-    common_genes = set(df_gene.gene) & set(adata.var.index)
-    genes_not_in_reference = set(adata.var.index) - common_genes
-
-    logger.info(
-        f"Found {100. * len(common_genes) / len(adata.var.index):.2f}% of visium genes to be in reference."
-    )
-
-    # NB enriched for sex-chromosome and mitochondrial genes, many lncRNAs/antisense/pseudogenes, and CT antigens commonly over-expressed in tumors.
-    logger.info(
-        f"Found {len(genes_not_in_reference):_} genes to be in visium but not in reference:"
-    )
-
-    genes_sorted = sorted(genes_not_in_reference)
-
-    if verbose:
-        for i in range(0, len(genes_sorted), 10):
-            chunk = genes_sorted[i : i + 10]
-            logger.info(", ".join(chunk))
-
-    # NB limits reference genes to those present in (filtered) AnnData UMIs.
-    df_gene = df_gene[df_gene.gene.isin(adata.var.index)]
-
-    # NB add SNP info: {contig}_{pos}_{ref}_{alt}.
-    snp_chr = np.array([int(x.split("_")[0]) for x in unique_snp_ids])
-    snp_pos = np.array([int(x.split("_")[1]) for x in unique_snp_ids])
-    snp_end = snp_pos + 1
-
-    # NB vertical concatenation
-    df_gene_snp = pd.concat(
-        [
-            df_gene,
-            pd.DataFrame(
-                {
-                    "CHR": snp_chr,
-                    "START": snp_pos,
-                    "END": snp_end,
-                    "snp_id": unique_snp_ids,
-                    "gene": None,
-                    "is_interval": False,
-                }
-            ),
-        ],
-        ignore_index=True,
-    )
-
-    logger.debug(f"Sorting df_gene_snp")
-
-    df_gene_snp.sort_values(by=["CHR", "START"], inplace=True)
-
-    logger.debug(f"Assigning genes to SNPs")
-
-    """
-    Assigns genes to each SNP:  for each SNP (with not null snp_id), find the previous gene (is_interval == True)
-    such that the SNP start position is within the gene start & end interval.
-    """
-
-    # NB == is_gene
-    vec_is_interval = df_gene_snp.is_interval.to_numpy()
-
-    vec_chr = df_gene_snp.CHR.to_numpy()
-    vec_start = df_gene_snp.START.to_numpy()
-    vec_end = df_gene_snp.END.to_numpy()
-
-    # NB loops over sites.
-    for i in np.where(df_gene_snp.gene.isnull())[0]:
-        # TODO first SNP has no gene.
-        if i == 0:
-            continue
-
-        this_pos = vec_start[i]
-
-        # NB look for an overlapping gene, closest in START, in the previous {num_preceeding_rows} rows (on same contig).
-        j = i - 1
-
-        # NB assigns closest in start.
-        while j >= 0 and j >= (i - num_preceeding_rows) and (vec_chr[j] == vec_chr[i]):
-            if (
-                vec_is_interval[j]
-                and vec_start[j] <= this_pos
-                and vec_end[j] > this_pos
-            ):
-                df_gene_snp.iloc[i, 4] = df_gene_snp.iloc[j]["gene"]
-                break
-
-            j -= 1
-
-    logger.debug(f"Assigned SNPs to genes.")
-
-    # NB remove SNPs that have no corresponding genes.
-    isin = ~df_gene_snp.gene.isnull()
-
-    # TODO retaining 84.623% of SNPs with known gene (given Gencode filtered by AnnData) for num_preceeding_rows=50.
-    logger.info(
-        f"Retaining {100.0 * np.mean(isin[~df_gene_snp.is_interval]):.3f}% of snps with matched gene (given reference filtered by visium panel) for num_preceeding_rows={num_preceeding_rows}."
-    )
-
-    logger.info(
-        f"Failed to find overlapping gene for:\n{df_gene_snp[df_gene_snp.gene.isnull()]}"
-    )
-
-    df_gene_snp = df_gene_snp[isin]
-
-    logger.info(f"Created gene-snp query table:\n{df_gene_snp.head()}")
-
-    return df_gene_snp
 
 
 def binned_gene_snp(df_gene_snp, key="bin_id"):
@@ -278,222 +172,13 @@ def binned_gene_snp(df_gene_snp, key="bin_id"):
     return table_bininfo
 
 
-def summarize_blocks(
-    gene_snp_table,
-    adata,
-    cell_snp_Aallele,
-    cell_snp_Ballele,
-    unique_snp_ids,
-    block_key=None,
-    normal_candidates=None,
-    sort_key="total_umi",
-):
-    logger.info(f"Summarizing blocks ...")
-
-    assert block_key is not None, "block_key must be specified"
-    assert block_key in gene_snp_table.columns, f"{block_key} not in DataFrame"
-
-    map_snp_index = {x: i for i, x in enumerate(unique_snp_ids)}
-
-    block_summary = gene_snp_table.groupby(block_key).agg(
-        num_snps=("snp_id", lambda x: x.notna().sum()),
-        num_genes=("is_interval", "sum"),
-        genes=("gene", lambda x: list({g for g in x if g is not None})),
-        snp_ids=("snp_id", lambda x: [s for s in x if s is not None]),
-        chr=("CHR", "first"),
-        start=("START", "min"),
-        end=("END", "max"),
-    )
-
-    # NB Mbp -> Kbp.
-    block_summary["length"] = 1_000.0 * (block_summary["end"] - block_summary["start"])
-
-    gene_names = adata.var.index.to_numpy()
-    gene_index_map = {g: i for i, g in enumerate(gene_names)}
-    count_matrix = adata.layers["count"]  # (n_spots, n_genes)
-
-    total_umis = np.zeros(len(block_summary), dtype=int)
-    snp_umis = np.zeros(len(block_summary), dtype=int)
-
-    normal_umis = np.zeros(len(block_summary), dtype=int)
-    normal_snp_umis = np.zeros(len(block_summary), dtype=int)
-
-    if normal_candidates is not None:
-        assert count_matrix.shape[0] == len(
-            normal_candidates
-        ), f"{count_matrix.shape[0]} != {len(normal_candidates)}"
-
-        assert cell_snp_Aallele.shape[0] == len(
-            normal_candidates
-        ), f"{cell_snp_Aallele.shape[0]} != {len(normal_candidates)}"
-        assert cell_snp_Ballele.shape[0] == len(
-            normal_candidates
-        ), f"{cell_snp_Ballele.shape[0]} != {len(normal_candidates)}"
-
-    for idx, (block_id, row) in enumerate(block_summary.iterrows()):
-        genes = row["genes"]
-        if genes:
-            gene_idx = [gene_index_map[g] for g in genes if g in gene_index_map]
-            if gene_idx:
-                block_sum = count_matrix[:, gene_idx].sum()
-                total_umis[idx] = int(block_sum)
-
-                # Calculate normal spot UMIs
-                if normal_candidates is not None:
-                    normal_umis[idx] = int(
-                        count_matrix[normal_candidates, :][:, gene_idx].sum()
-                    )
-
-        # SNP-covering UMIs
-        snp_ids = row["snp_ids"]
-        if snp_ids:
-            # TODO HACK?
-            snp_idx = np.array([map_snp_index[s] for s in snp_ids if s])
-            if len(snp_idx) > 0:
-                snp_umis[idx] = int(
-                    cell_snp_Aallele[:, snp_idx].sum()
-                    + cell_snp_Ballele[:, snp_idx].sum()
-                )
-
-                # Calculate SNP-covering UMIs for normal spots
-                if normal_candidates is not None:
-                    normal_snp_umis[idx] = int(
-                        cell_snp_Aallele[np.ix_(normal_candidates, snp_idx)].sum()
-                        + cell_snp_Ballele[np.ix_(normal_candidates, snp_idx)].sum()
-                    )
-
-    block_summary["total_umi"] = total_umis
-    block_summary["snp_umi"] = snp_umis
-
-    block_summary["normal_umi"] = normal_umis
-    block_summary["normal_snp_umi"] = normal_snp_umis
-
-    if sort_key is not None:
-        block_summary = block_summary.sort_values(sort_key, ascending=False)
-
-    # TODO MAGIC keyword
-    max_rows = 25
-
-    logger.info(
-        f"Breakdown of genes/snps/umi per {block_key} sorted by {sort_key} (top {max_rows}):"
-    )
-    logger.info(
-        f"{'block id':<10}\t{'chr':>4}\t{'start':>12}\t{'length':>12} [Kbp]\t{'snps':>8}\t{'genes':>8}\t{'total umi':>12}\t{'snp umi':>12}\t{'normal umi':>12}\t{'normal snp umi':>12}"
-    )
-    logger.info("-" * 136)
-
-    for ii, (block_id, row) in enumerate(block_summary.iterrows()):
-        logger.info(
-            f"{block_id:<10}\t{row['chr']:>4}\t{row['start']:>12}\t{row['length'] / 1.e6:>12}\t{row['num_snps']:>8}\t{row['num_genes']:>8}\t"
-            f"{row['total_umi']:>12}\t{row['snp_umi']:>12}\t{row['normal_umi']:>12}\t{row['normal_snp_umi']:>12}"
-        )
-
-        if ii > max_rows:
-            break
-
-    logger.info(
-        f"\n"
-        f"median block length: {block_summary['length'].median() / 1.e6:.1f} [Kbp],\n"
-        f"mean block length: {block_summary['length'].mean() / 1.e6:.1f} [Kbp],\n"
-        f"median snps/block: {block_summary['num_snps'].median():.1f},\n"
-        f"median genes/block: {block_summary['num_genes'].median():.1f},\n"
-        f"median umis/block: {block_summary['total_umi'].median():.1f},\n"
-        f"median snp-umis/block: {block_summary['snp_umi'].median():.1f},\n"
-        f"total blocks: {len(block_summary):_},\n"
-        f"total umis: {block_summary['total_umi'].sum():_},\n"
-        f"total snp-umis: {block_summary['snp_umi'].sum():_},\n"
-        f"total normal umis: {block_summary['normal_umi'].sum():_},\n"
-        f"total normal snp-umis: {block_summary['normal_snp_umi'].sum():_},\n"
-        f"blocks with 0 umis: {(block_summary['total_umi'] == 0).mean():.1%},\n"
-        f"blocks with <100 umis: {(block_summary['total_umi'] < 100).mean():.1%},\n"
-        f"blocks with snp-umis, but no gene-umis: {((block_summary['snp_umi'] > 0) & (block_summary['total_umi'] == 0)).mean():.1%}\n"
-    )
-
-    if block_summary.index.isna().any():
-        logger.warning(f"Found ill-defined group:/n{block_summary.loc[np.nan]}")
 
 
 # @cacher("blocked_counts.hdf5")
-def summarize_counts_for_blocks(
-    df_gene_snp,
-    adata,
-    cell_snp_Aallele,
-    cell_snp_Ballele,
-    unique_snp_ids,
-):
-    """
-    Aggregates gene-level total UMI counts (from spatial transcriptomics)
-    and site-level allele counts (A and B haplotypes from matched SNPs)
-    into broader local segments (blocks).
-    """
-    logger.info(f"Aggregating (snp, umi) counts for genome segmentation.")
-
-    # NB precompute mapping: snp_id -> index
-    map_snp_index = {x: i for i, x in enumerate(unique_snp_ids)}
-
-    # NB filter to snps only (drop genes).
-    df_snps = df_gene_snp[df_gene_snp.snp_id.notna()].copy()
-    df_snps["snp_idx"] = df_snps.snp_id.map(map_snp_index)
-
-    # NB arrays of snp indexs grouped by block_id
-    snp_groups = df_snps.groupby("block_id")["snp_idx"].apply(np.array)
-
-    # TODO HACK?  df_gene_snp.gene.notna()
-    # NB no repeated genes.
-    df_genes = df_gene_snp[df_gene_snp.is_interval == True].copy()
-    gene_groups = df_genes.groupby("block_id")["gene"].apply(lambda x: list(set(x)))
-
-    # NB block_ids formed by merging overlapping genes into intervals, merging said intervals
-    #    until a threshold min. snp-covering reads and assigning counts to intervals below.
-    blocks = df_gene_snp.block_id.unique()
-    n_blocks = len(blocks)
-    n_spots = adata.shape[0]
-
-    # NB 0 is total umis;  1 index is haplotype 0 counts at each site.
-    single_X = np.zeros((n_blocks, 2, n_spots), dtype=int)
-    single_base_nb_mean = np.zeros((n_blocks, n_spots))
-    single_total_bb_RD = np.zeros((n_blocks, n_spots), dtype=int)
-
-    # precompute gene counts if using sparse matrix (for efficiency)
-    gene_counts = adata.layers["count"]  # (n_spots, n_genes)
-    gene_names = adata.var.index.to_numpy()
-
-    # TODO numba
-    for block_id in blocks:
-        # NB BAF/SNPs
-        if block_id in snp_groups.index:
-            snp_idx = snp_groups[block_id]
-            if len(snp_idx) > 0:
-                # NB sum haplotype A counts for SNPs in block.
-                single_X[block_id, 1, :] = cell_snp_Aallele[:, snp_idx].sum(axis=1)
-
-                # NB sum haplotype A + haplotype B counts for SNPs in block.
-                single_total_bb_RD[block_id, :] = cell_snp_Aallele[:, snp_idx].sum(
-                    axis=1
-                ) + cell_snp_Ballele[:, snp_idx].sum(axis=1)
-
-        # NB RDR/Genes
-        if block_id in gene_groups.index:
-            genes = gene_groups[block_id]
-
-            # NB genes in df_gene_snp must be present in visium.
-            gene_mask = np.isin(gene_names, genes)
-
-            if gene_mask.any():
-                single_X[block_id, 0, :] = gene_counts[:, gene_mask].sum(axis=1)
-
-    # NB list of (unique) blocks grouped by contig.
-    lengths = df_gene_snp.groupby("CHR")["block_id"].nunique().to_numpy()
-
-    assert single_X.ndim == 3
-
-    return SpatioGenomicCounts(
-        lengths, single_X, single_base_nb_mean, single_total_bb_RD
-    )
 
 
 # @cacher("blocked_gene_snp_table.tsv")
-def assign_initial_blocks(
+def _cnaster_assign_initial_blocks(
     df_gene_snp,
     adata,
     cell_snp_Aallele,
@@ -741,7 +426,7 @@ def assign_initial_blocks(
 
 
 # @cacher("binned_gene_snp_table.tsv")
-def create_bin_ranges(
+def _cnaster_create_bin_ranges(
     df_gene_snp,
     adata,
     cell_snp_Aallele,
@@ -909,115 +594,1089 @@ def create_bin_ranges(
 
 
 # @cacher("binned_counts.hdf5")
-def summarize_counts_for_bins(
-    df_gene_snp,
-    adata,
-    single_X,
-    single_total_bb_RD,
-    phase_indicator,
-    nu,
-    logphase_shift,
-    geneticmap_file,
-):
+
+
+# --- `port.patch.omics.blocks`, moved in by T- #670 PR3 -------------------------------
+#
+# `cnaster.omics`, with the Python walks over the genome vectorized.
+#
+# **Proposed for `cnaster`, written here.** #190. `form_gene_snp_table` assigns
+# each SNP to the gene interval containing it by walking backwards through the
+# sorted table in Python, up to `num_preceeding_rows` at a time, and writing the
+# result with a `pandas` scalar assignment per SNP:
+#
+# ```python
+# for i in np.where(df_gene_snp.gene.isna())[0]:
+#     ...
+#     df_gene_snp.iloc[i, 4] = df_gene_snp.iloc[j]["gene"]
+# ```
+#
+# Those two `iloc` calls are **66 per cent of the function** at 782 SNPs -- 782
+# of them, 260 microseconds each. A Visium slide carries 500,000 SNPs, where the
+# same line is over two minutes on its own.
+#
+# The assignment is a window search over a sorted table, so it vectorizes
+# exactly: one pass per offset rather than one Python iteration per SNP, and the
+# first match at the smallest offset wins, which is what walking backwards and
+# breaking means.
+#
+# `port` cannot land the change (`CLAUDE.md`, **Working against a repository you
+# do not own**), so it is written here with its referee beside it in
+# `tests/test_preprocessing_omics.py`. The return is **bitwise** what `cnaster`
+# returns, column for column and row for row.
+#
+# **Not carried across:** `cnaster` decorates the function with
+# `@cacher("gene_snp_table.tsv")`. The cache is orthogonal to what is being
+# measured and writing one from a patch would put a second file under the same
+# name, so this is the undecorated function.
+
+
+GENE_COLUMN = 4
+"""`cnaster` writes the gene by position -- `df_gene_snp.iloc[i, 4]`.
+
+Recorded rather than used: this patch writes the column by name. It is here
+because the position is what makes `cnaster`'s write fragile (#189), and a
+reader comparing the two should be able to see that they address the same
+column.
+"""
+
+def preceding_gene(
+    chromosome: np.ndarray,
+    start: np.ndarray,
+    end: np.ndarray,
+    is_interval: np.ndarray,
+    unassigned: np.ndarray,
+    num_preceeding_rows: int,
+) -> np.ndarray:
+    """For each unassigned row, the nearest preceding gene containing it.
+
+    `-1` where there is none. `cnaster` finds this by walking backwards from
+    each row and breaking at the first gene interval that contains the SNP's
+    position, stopping at `num_preceeding_rows` rows, at the start of the
+    table, or at a change of chromosome.
+
+    **The chromosome test is a stop and not a skip**, and it does not need to
+    be reproduced as one: the table is sorted by `(CHR, START)`, so every row
+    before the first one on another chromosome is on another chromosome too.
+    Requiring a match is therefore the same condition, and it is the one that
+    vectorizes.
+
+    One pass per offset, and a row keeps the match from the **smallest**
+    offset, which is what breaking out of a backwards walk means. That is
+    `num_preceeding_rows` passes over the table rather than one Python
+    iteration and two `pandas` scalar accesses per SNP.
     """
-    Attributes:
-    ----------
-    df_gene_snp : pd.DataFrame
-        Contain "block_id" column to indicate which genes/snps belong to which block.
+    rows = np.flatnonzero(unassigned)
+    found = np.full(rows.size, -1, dtype=np.int64)
 
-    Returns
-    ----------
-    lengths : array, (n_chromosomes,)
-        Number of blocks per chromosome.
+    if not rows.size:
+        return found
 
-    single_X : array, (n_bins, 2, n_spots)
-        Transcript counts and B allele count per bin per cell.
+    position = start[rows]
 
-    single_base_nb_mean : array, (n_bins, n_spots)
-        Baseline transcript counts in normal diploid per bin per cell.
+    for offset in range(1, num_preceeding_rows + 1):
+        candidate = rows - offset
+        open_rows = (candidate >= 0) & (found < 0)
 
-    single_total_bb_RD : array, (n_bins, n_spots)
-        Total allele count per bin per cell.
+        if not open_rows.any():
+            break
 
-    log_sitewise_transmat : array, (n_bins,)
-        Log phase switch probability between each pair of adjacent bins.
+        safe = np.where(open_rows, candidate, 0)
+        hit = (
+            open_rows
+            & is_interval[safe]
+            & (chromosome[safe] == chromosome[rows])
+            & (start[safe] <= position)
+            & (end[safe] > position)
+        )
+        found = np.where(hit, safe, found)
+
+    return found
+
+def form_gene_snp_table(
+    unique_snp_ids: np.ndarray,
+    hgtable_file: str,
+    adata: Any,
+    verbose: bool = False,  # noqa: ARG001 -- upstream's signature, and unused there too
+    num_preceeding_rows: int = 100,
+) -> Any:
+    """What `cnaster.omics.form_gene_snp_table` returns, without the walk.
+
+    `verbose` is upstream's and gates a log of the genes absent from the
+    reference. It is kept in the signature so a caller can be pointed at
+    either function, and does nothing here for the same reason it does little
+    there.
     """
-    logger.info(f"Summarizing counts for bins.")
+    logger.info("Forming gene & snp meta data.")
 
-    has_assigned_bin = ~df_gene_snp.bin_id.isnull()
+    # NB `port.patch.reference`, not `cnaster.reference`: the read is 13.3x
+    #    with `polars` at a human reference's size (#185), and the frame it
+    #    returns is bitwise the same.
+    df_gene = get_reference_genes(hgtable_file)
 
-    bins = df_gene_snp.loc[has_assigned_bin, "bin_id"].unique()
-
-    # NB last axis is the number of spot (barcodes).
-    n_bins = len(bins)
-    n_spots = adata.shape[0]
-
-    bin_single_X = np.zeros((n_bins, 2, n_spots), dtype=int)
-    bin_single_base_nb_mean = np.zeros((n_bins, n_spots))
-    bin_single_total_bb_RD = np.zeros((n_bins, n_spots), dtype=int)
+    common_genes = set(df_gene.gene) & set(adata.var.index)
 
     logger.info(
-        f"Retaining {100. * np.mean(has_assigned_bin):.2f}% of gene/snps with assigned bin."
+        f"Found {100.0 * len(common_genes) / len(adata.var.index):.2f}% of "
+        "visium genes to be in reference."
     )
 
-    # NB unique block ids and gene names per bin.
-    df_bin_contents = (
-        df_gene_snp[has_assigned_bin]
-        .groupby("bin_id", sort=True)
-        .agg({"block_id": set, "gene": set})
+    df_gene = df_gene[df_gene.gene.isin(adata.var.index)]
+
+    # NB `{contig}_{pos}_{ref}_{alt}`, parsed as upstream parses it.
+    parsed = np.array(
+        [identifier.split("_")[:2] for identifier in unique_snp_ids], dtype=np.int64
+    ).reshape(-1, 2)
+    snp_chr, snp_pos = parsed[:, 0], parsed[:, 1]
+
+    df_gene_snp = pd.concat(
+        [
+            df_gene,
+            pd.DataFrame(
+                {
+                    "CHR": snp_chr,
+                    "START": snp_pos,
+                    "END": snp_pos + 1,
+                    "snp_id": unique_snp_ids,
+                    "gene": None,
+                    "is_interval": False,
+                }
+            ),
+        ],
+        ignore_index=True,
     )
 
-    if df_bin_contents.index.isna().any():
-        logger.warning(f"Found ill-defined group with None entries for group.")
+    df_gene_snp = df_gene_snp.sort_values(by=["CHR", "START"])
 
-    block_sets = df_bin_contents["block_id"].to_numpy()
-    gene_sets = df_bin_contents["gene"].to_numpy()
+    unassigned = df_gene_snp.gene.isna().to_numpy()
+    found = preceding_gene(
+        df_gene_snp.CHR.to_numpy(),
+        df_gene_snp.START.to_numpy(),
+        df_gene_snp.END.to_numpy(),
+        df_gene_snp.is_interval.to_numpy(),
+        unassigned,
+        num_preceeding_rows,
+    )
+
+    genes = df_gene_snp.gene.to_numpy(copy=True)
+    rows = np.flatnonzero(unassigned)
+    matched = found >= 0
+
+    genes[rows[matched]] = genes[found[matched]]
+    df_gene_snp["gene"] = genes
+
+    isin = ~df_gene_snp.gene.isna()
+
+    logger.info(
+        f"Retaining {100.0 * np.mean(isin[~df_gene_snp.is_interval]):.3f}% of snps "
+        "with matched gene (given reference filtered by visium panel) for "
+        f"num_preceeding_rows={num_preceeding_rows}."
+    )
+
+    return df_gene_snp[isin]
+
+def merged_gene_intervals(
+    chromosome: np.ndarray, start: np.ndarray, end: np.ndarray
+) -> np.ndarray:
+    """Where each run of overlapping gene intervals begins.
+
+    `cnaster` merges them by walking the gene rows and extending the last
+    interval whenever the next one overlaps it. Sorted by `(CHR, START)`, that
+    is the classic sweep: a new run begins exactly where a gene's start is at
+    or past the running maximum of the ends before it.
+
+    Within a chromosome the running maximum may be taken over the whole
+    chromosome rather than over the current run, because the two agree: if a
+    start were below a maximum attained in an **earlier** run, that run would
+    not have ended where it did, so the maximum is always attained inside the
+    current one.
+
+    **Across chromosomes it may not**, and that is the one thing the sweep has
+    to be told. Positions restart at each chromosome, so a running maximum
+    carried over from the last chromosome exceeds every start on the next one
+    and swallows it whole. The accumulation is therefore reset per
+    chromosome -- twenty-two short calls rather than one long one.
+    """
+    if not chromosome.size:
+        return np.zeros(0, dtype=np.int64)
+
+    new_chromosome = np.concatenate(([True], chromosome[1:] != chromosome[:-1]))
+    bounds = np.flatnonzero(new_chromosome)
+
+    reach = np.empty_like(end)
+
+    for first, last in zip(bounds, np.append(bounds[1:], end.size), strict=True):
+        reach[first:last] = np.maximum.accumulate(end[first:last])
+
+    disjoint = np.concatenate(([True], start[1:] >= reach[:-1]))
+
+    return np.flatnonzero(new_chromosome | disjoint)
+
+def block_of_row(
+    chromosome: np.ndarray, start: np.ndarray, interval_row: np.ndarray
+) -> np.ndarray:
+    """Which merged interval each row of the table falls in.
+
+    `cnaster` finds this the other way round -- for each merged interval, a
+    full-table `np.where` over the overlap condition, then the first and last
+    row it matched. That is `n_intervals` passes over `n_rows`, which at a
+    slide's scale is the product of two large numbers where the table is
+    already sorted.
+
+    The intervals tile the rows in order, which `cnaster` asserts, so the
+    interval a row belongs to is the last one that starts at or before it.
+    One `searchsorted` gives every row at once.
+    """
+    keys = chromosome.astype(np.int64) * (1 << 40) + start.astype(np.int64)
+    edges = keys[interval_row]
+
+    # NB genes open their own interval, so a gene row sitting exactly on an
+    #    edge belongs to that interval rather than to the one before it; a SNP
+    #    at the same key does too, since the gene precedes it in sort order.
+    placed = np.searchsorted(edges, keys, side="right") - 1
+
+    return np.clip(placed, 0, None)
+
+def assign_initial_blocks(
+    df_gene_snp: Any,
+    adata: Any,
+    cell_snp_Aallele: Any,
+    cell_snp_Ballele: Any,
+    unique_snp_ids: np.ndarray,
+    initial_min_umi: int,
+) -> Any:
+    """What `cnaster.omics.assign_initial_blocks` returns, in three passes.
+
+    `cnaster` takes two quadratic loops to get here:
+
+    *   one full-table `np.where` per merged gene interval, to find the rows
+        that interval covers -- `n_intervals` passes over `n_rows`;
+    *   one re-count of every SNP-covering UMI in `[s, t)` for **every**
+        candidate upper bound `t`, which its own comment marks
+        `TODO recalculates for every upper bound`.
+
+    Both answer questions the sort order has already answered. The intervals
+    tile the rows, so a row's interval is a `searchsorted`; and the UMI total
+    over a run of blocks is a difference of prefix sums, so the smallest `t`
+    meeting the threshold is another one.
+
+    **The two `summarize_blocks` calls stay**, because their log lines are
+    the only thing they produce and removing them is a behaviour change. They
+    come from `port.patch.omics.summaries` instead (#191), which logs the same lines
+    from two passes and a `bincount` rather than a fancy-indexed slice of the
+    count matrix per block -- 39% of this function, computed rather than
+    looped.
+
+    **One stated difference (#466):** a block never spans two chromosomes.
+    Where the last chromosome holds a single merged interval and the previous
+    chromosome's trailing blocks never reach `initial_min_umi`, `cnaster`
+    tests `reach_end` before `change_chr` and closes one block across both
+    chromosomes; here the block ends at the chromosome's end. Every later
+    stage reads blocks per chromosome, so `cnaster`'s block is a defect.
+    """
+    from cnamaste.omics import summarize_blocks
+
+    if "known_id" in df_gene_snp.columns:
+        # NB upstream as imported, not as `cnaster.omics` binds it now: under
+        #    `patched()` that name is this function, and the call recursed
+        #    without end on any run with `annotation.clone_ranges` (#466).
+        return _cnaster_assign_initial_blocks(
+            df_gene_snp,
+            adata,
+            cell_snp_Aallele,
+            cell_snp_Ballele,
+            unique_snp_ids,
+            initial_min_umi,
+        )
+
+    chromosome = df_gene_snp.CHR.to_numpy()
+    start = df_gene_snp.START.to_numpy()
+    end = df_gene_snp.END.to_numpy()
+    is_interval = df_gene_snp.is_interval.to_numpy().astype(bool)
+
+    gene_rows = np.flatnonzero(is_interval)
+    opens = merged_gene_intervals(
+        chromosome[gene_rows], start[gene_rows], end[gene_rows]
+    )
+    interval_row = gene_rows[opens]
+
+    logger.info(
+        f"Merged {100.0 * (1.0 - opens.size / max(gene_rows.size, 1)):.3f}% of "
+        "genes to ranges as overlapping."
+    )
+
+    initial_block_id = block_of_row(chromosome, start, interval_row)
+    df_gene_snp["initial_block_id"] = initial_block_id
+
+    block_starts = np.searchsorted(initial_block_id, np.arange(opens.size), side="left")
+    block_stops = np.searchsorted(initial_block_id, np.arange(opens.size), side="right")
+
+    summarize_blocks(
+        df_gene_snp,
+        adata,
+        cell_snp_Aallele,
+        cell_snp_Ballele,
+        unique_snp_ids,
+        block_key="initial_block_id",
+    )
+
+    # NB one pass for every SNP's UMI total, then one per initial block. The
+    #    loop below reads prefix sums of these rather than re-summing the
+    #    allele matrices for every candidate upper bound.
+    per_snp = (
+        np.asarray(cell_snp_Aallele.sum(axis=0)).ravel()
+        + np.asarray(cell_snp_Ballele.sum(axis=0)).ravel()
+    )
+
+    snp_index = {site: index for index, site in enumerate(unique_snp_ids)}
+    snp_rows = np.flatnonzero(df_gene_snp.snp_id.notna().to_numpy())
+    snp_columns = np.array(
+        [snp_index[site] for site in df_gene_snp.snp_id.to_numpy()[snp_rows]],
+        dtype=np.int64,
+    )
+
+    per_block = np.bincount(
+        initial_block_id[snp_rows],
+        weights=per_snp[snp_columns],
+        minlength=opens.size,
+    )
+    cumulative = np.concatenate(([0.0], np.cumsum(per_block)))
+    block_chr = chromosome[interval_row]
+
+    block_ranges_new: list[tuple[int, int]] = []
+    lower = 0
+
+    while lower < opens.size:
+        same_chromosome = np.flatnonzero(block_chr[lower:] != block_chr[lower])
+        last_on_chromosome = (
+            opens.size if not same_chromosome.size else lower + int(same_chromosome[0])
+        )
+
+        reached = np.searchsorted(
+            cumulative[lower + 1 : last_on_chromosome + 1],
+            cumulative[lower] + initial_min_umi,
+            side="left",
+        )
+        upper = min(lower + 1 + int(reached), last_on_chromosome)
+        totals = cumulative[upper] - cumulative[lower]
+
+        merge_back = (
+            totals < initial_min_umi
+            and lower > 0
+            and block_chr[lower - 1] == block_chr[lower]
+        )
+        span = (int(block_starts[lower]), int(block_stops[upper - 1]))
+
+        if merge_back:
+            block_ranges_new[-1] = (block_ranges_new[-1][0], span[1])
+        else:
+            block_ranges_new.append(span)
+
+        lower = upper
+
+    block_id = np.zeros(len(df_gene_snp), dtype=np.int64)
+
+    for index, (first, last) in enumerate(block_ranges_new):
+        block_id[first:last] = index
+
+    df_gene_snp["block_id"] = block_id
+
+    logger.info(
+        "Updated genome segmentation given (population phased) genotypes and "
+        f"min. snp-covering umi={initial_min_umi} per segment."
+    )
+
+    summarize_blocks(
+        df_gene_snp,
+        adata,
+        cell_snp_Aallele,
+        cell_snp_Ballele,
+        unique_snp_ids,
+        block_key="block_id",
+    )
+
+    return df_gene_snp.drop(columns=["initial_block_id"])
+
+def _positions(
+    values: np.ndarray, vocabulary: np.ndarray
+) -> tuple[np.ndarray, np.ndarray]:
+    """Where each of `values` sits in `vocabulary`, and which ones are in it.
+
+    A dictionary comprehension over a column is a Python loop per row, which
+    is the cost the products below exist to remove -- so the lookup is a
+    `searchsorted` against the sorted vocabulary instead.
+    """
+    order = np.argsort(vocabulary)
+    ordered = vocabulary[order]
+
+    slot = np.clip(np.searchsorted(ordered, values), 0, ordered.size - 1)
+    known = ordered[slot] == values
+
+    return order[slot], known
+
+def _group_indicator(
+    rows: np.ndarray, groups: np.ndarray, n_rows: int, n_groups: int
+) -> Any:
+    """A sparse `(n_rows, n_groups)` 0/1 matrix marking each row's group.
+
+    Summing a matrix's columns by group is a product with this. `cnaster`
+    does it the other way -- one fancy-indexed slice of the whole matrix per
+    group, each one `n_spots` deep -- which is `n_groups` passes over the data
+    where the product is one.
+
+    Duplicate `(row, group)` pairs are dropped rather than summed, because
+    upstream gathers each group's members as a **set** and a repeated member
+    contributes once.
+    """
+    if not rows.size:
+        return sp.csr_matrix((n_rows, n_groups), dtype=np.int64)
+
+    # NB one key per pair rather than `np.unique(..., axis=0)`, which sorts
+    #    the rows of a two-column array and costs several times sorting the
+    #    integers those rows encode.
+    keys = np.unique(rows.astype(np.int64) * n_groups + groups.astype(np.int64))
+    row, group = np.divmod(keys, n_groups)
+
+    return sp.csr_matrix(
+        (np.ones(keys.size, dtype=np.int64), (row, group)),
+        shape=(n_rows, n_groups),
+    )
+
+SPOT_BLOCK = 64
+"""How many spots the grouped sum multiplies at once.
+
+`scipy` wants its dense operand C-contiguous and the transpose it is handed is
+not, so it copies. Copying the whole count matrix makes the peak **larger**
+than the per-slice loop this replaces, which would be buying time with memory.
+In row blocks the copy is bounded at `SPOT_BLOCK` rows, and the block size is
+a real trade rather than a free choice -- at 2,500 spots, against `cnaster`'s
+229.5 ms and 56.4 MB:
+
+| `SPOT_BLOCK` | time | peak |
+| ---: | ---: | ---: |
+| unchunked | 1.91x | 0.64x |
+| 1024 | 2.85x | 0.78x |
+| 256 | 4.14x | 0.94x |
+| **64** | **3.60x** | **0.99x** |
+| 32 | 3.45x | 1.00x |
+
+64 is where the peak stops regressing against what it replaces. 256 is 15%
+faster and 6% above upstream's peak, which is the wrong side of a patch whose
+point is to allocate less.
+
+Where the blocks fall cannot change a value: a spot's column sums do not
+depend on any other spot's, and the sweep above is bitwise identical at every
+size.
+"""
+
+def _grouped_column_sums(matrix: Any, indicator: Any) -> np.ndarray:
+    """`matrix`'s columns summed by group, as `(n_groups, n_rows_of_matrix)`.
+
+    `indicator.T @ matrix.T` rather than `matrix @ indicator`, so the sparse
+    operand leads and the result is the orientation the caller stores, without
+    a transpose of a large array.
+
+    **The product is densified deliberately.** Two sparse operands give a
+    sparse result, and `np.asarray` of one is a zero-dimensional object array
+    rather than its values -- so a caller that stored it would store garbage
+    instead of failing. The answer is `(n_groups, n_spots)`, which is the
+    dense shape the caller writes into either way. The loader returns dense
+    counts today and sparse under `sparse_counts` (#186), so both reach here.
+    """
+    counts = _as_matrix(matrix)
+    n_rows = counts.shape[0]
+
+    out = np.zeros((indicator.shape[1], n_rows), dtype=np.int64)
+
+    # NB in row blocks, because `scipy` needs the dense operand C-contiguous
+    #    and `counts.T` is not: it copies, and an unchunked copy is the whole
+    #    matrix. The column sums are independent per row, so where the blocks
+    #    fall cannot change a value.
+    for start in range(0, n_rows, SPOT_BLOCK):
+        block = counts[start : start + SPOT_BLOCK]
+        product = indicator.T @ (block.toarray() if sp.issparse(block) else block).T
+
+        out[:, start : start + SPOT_BLOCK] = (
+            product.toarray() if sp.issparse(product) else product
+        )
+
+    return out
+
+def _as_matrix(counts: Any) -> Any:
+    """`counts` as something that can be multiplied, sparse or dense."""
+    return counts if sp.issparse(counts) else np.asarray(counts)
+
+def summarize_counts_for_blocks(
+    df_gene_snp: Any,
+    adata: Any,
+    cell_snp_Aallele: Any,
+    cell_snp_Ballele: Any,
+    unique_snp_ids: np.ndarray,
+) -> Any:
+    """What `cnaster.omics.summarize_counts_for_blocks` returns, in three products.
+
+    `cnaster` loops the blocks and, for each one, slices every spot's column
+    out of three matrices:
+
+    ```python
+    single_X[block_id, 1, :] = cell_snp_Aallele[:, snp_idx].sum(axis=1)
+    single_total_bb_RD[block_id, :] = (cell_snp_Aallele[:, snp_idx].sum(axis=1)
+                                       + cell_snp_Ballele[:, snp_idx].sum(axis=1))
+    gene_mask = np.isin(gene_names, genes)
+    single_X[block_id, 0, :] = gene_counts[:, gene_mask].sum(axis=1)
+    ```
+
+    Three things there, and the first is free: **the A-allele sum is computed
+    twice**, once for its own row and once inside the total. The second is
+    `np.isin` over every gene name per block, which is `n_blocks * n_genes`.
+    The third is the loop itself -- a grouped column sum is a product with a
+    0/1 indicator, and three products replace all of it.
+    """
+    logger.info("Aggregating (snp, umi) counts for genome segmentation.")
+
+    block_id = df_gene_snp.block_id.to_numpy()
+    n_blocks = df_gene_snp.block_id.nunique()
+    n_spots = adata.shape[0]
+
+    snp_rows = np.flatnonzero(df_gene_snp.snp_id.notna().to_numpy())
+    snp_columns, _ = _positions(
+        df_gene_snp.snp_id.to_numpy()[snp_rows], np.asarray(unique_snp_ids)
+    )
+    by_snp = _group_indicator(
+        snp_columns, block_id[snp_rows], len(unique_snp_ids), n_blocks
+    )
 
     gene_names = adata.var.index.to_numpy()
-    gene_index_map = {g: i for i, g in enumerate(gene_names)}
-    count_matrix = adata.layers["count"]  # (n_spots, n_genes), sparse or dense.
+    is_gene = df_gene_snp.is_interval.to_numpy().astype(bool)
+    columns, known = _positions(df_gene_snp.gene.to_numpy(), gene_names)
+    gene_rows = np.flatnonzero(is_gene & known)
 
-    for b in range(df_bin_contents.shape[0]):
-        # BAF (SNPs): gather involved blocks
-        involved_blocks = [x for x in block_sets[b] if x is not None]
-        if involved_blocks:
-            ib = np.fromiter(involved_blocks, dtype=int)
-            # phased B counts per block
-            phased = np.where(
-                phase_indicator[ib].reshape(-1, 1),
-                single_X[ib, 1, :],
-                single_total_bb_RD[ib, :] - single_X[ib, 1, :],
-            )
-            # NB H0 counts for each bin (summed over blocks).
-            bin_single_X[b, 1, :] = phased.sum(axis=0)
-
-            # NB H0+H1 counts for each bin (summed over blocks).
-            bin_single_total_bb_RD[b, :] = single_total_bb_RD[ib, :].sum(axis=0)
-
-        # RDR (genes): gather involved gene indices
-        involved_genes = [x for x in gene_sets[b] if x is not None]
-        if involved_genes:
-            gene_idx = [
-                gene_index_map[g] for g in involved_genes if g in gene_index_map
-            ]
-            if gene_idx:
-                block_sum = count_matrix[:, gene_idx].sum(axis=1)
-                # Handle scipy.sparse result
-                bin_single_X[b, 0, :] = np.asarray(block_sum).ravel()
-        else:
-            logger.debug(f"No genes found for bin row {b}.")
-
-    chr_order = df_gene_snp.CHR.unique()
-    lengths = (
-        df_gene_snp.loc[has_assigned_bin]
-        .groupby("CHR")["bin_id"]
-        .nunique()
-        .reindex(chr_order, fill_value=0)
-        .to_numpy()
+    by_gene = _group_indicator(
+        columns[gene_rows], block_id[gene_rows], len(gene_names), n_blocks
     )
 
-    assert bin_single_X.ndim == 3
+    a_allele = _grouped_column_sums(cell_snp_Aallele, by_snp)
+
+    single_X = np.zeros((n_blocks, 2, n_spots), dtype=int)
+    single_X[:, 1, :] = a_allele
+    single_X[:, 0, :] = _grouped_column_sums(adata.layers["count"], by_gene)
+
+    # NB the A sum again, where upstream recomputes it.
+    single_total_bb_RD = (
+        a_allele + _grouped_column_sums(cell_snp_Ballele, by_snp)
+    ).astype(int)
+
+    # NB from the blocks as a labelling of the genes (#438): the contig runs
+    #    of the segments the rows are indexed by, never zero, and recorded
+    #    while a run records its lineage.
+    lengths = observe(df_gene_snp, "block_id", "blocks").lengths
 
     return SpatioGenomicCounts(
-        lengths, bin_single_X, bin_single_base_nb_mean, bin_single_total_bb_RD
+        lengths, single_X, np.zeros((n_blocks, n_spots)), single_total_bb_RD
     )
+
+def summarize_counts_for_bins(
+    df_gene_snp: Any,
+    adata: Any,
+    single_X: np.ndarray,
+    single_total_bb_RD: np.ndarray,
+    phase_indicator: np.ndarray,
+    nu: float,  # noqa: ARG001 -- upstream takes it and never reads it
+    logphase_shift: float,  # noqa: ARG001 -- likewise
+    geneticmap_file: Any,  # noqa: ARG001 -- likewise
+) -> Any:
+    """What `cnaster.omics.summarize_counts_for_bins` returns, in two products.
+
+    The same defect one level up: `cnaster` loops the bins, gathers each one's
+    blocks, phases them and sums, then slices the count matrix per bin for the
+    genes. **The phasing does not depend on the bin** -- it is a `where` over
+    every block at once -- and what remains is two grouped sums.
+
+    **Three of the parameters are upstream's and unread**, here and there:
+    `nu`, `logphase_shift` and `geneticmap_file`. Its docstring promises a
+    `log_sitewise_transmat` return computed from the genetic map, and the
+    function returns a `SpatioGenomicCounts` with no such field. They are kept
+    in the signature so a caller can be pointed at either function; #196 is
+    where the signature belongs.
+    """
+    logger.info("Summarizing counts for bins.")
+
+    assigned = df_gene_snp.bin_id.notna().to_numpy()
+    bin_id = df_gene_snp.bin_id.to_numpy()
+
+    logger.info(
+        f"Retaining {100.0 * np.mean(assigned):.2f}% of gene/snps with assigned bin."
+    )
+
+    # NB upstream groups by bin_id with sort=True, so the output row for a bin
+    #    is its rank among the sorted ids rather than the id itself.
+    bins, bin_rank = np.unique(bin_id[assigned], return_inverse=True)
+    n_bins, n_spots = bins.size, adata.shape[0]
+
+    block_of_row = df_gene_snp.block_id.to_numpy()[assigned]
+    has_block = pd.notna(block_of_row)
+
+    by_block = _group_indicator(
+        np.asarray(block_of_row[has_block], dtype=np.int64),
+        bin_rank[has_block],
+        single_X.shape[0],
+        n_bins,
+    )
+
+    gene_names = adata.var.index.to_numpy()
+    columns, known = _positions(df_gene_snp.gene.to_numpy()[assigned], gene_names)
+
+    # NB genes the differential-expression filter flagged earlier in the run
+    #    leave the read depth of every bin summed after it (#440, #177): the
+    #    filter's own bins are re-cut before its result could be used.
+    lineage = current()
+    if lineage is not None and lineage.excluded_genes:
+        flagged = np.isin(gene_names[columns], list(lineage.excluded_genes))
+        known = known & ~flagged
+
+    by_gene = _group_indicator(columns[known], bin_rank[known], len(gene_names), n_bins)
+
+    # NB every block's phased B count at once; the choice is per block, not
+    #    per bin, so the bins never enter it.
+    phased = np.where(
+        np.asarray(phase_indicator).reshape(-1, 1),
+        single_X[:, 1, :],
+        single_total_bb_RD - single_X[:, 1, :],
+    )
+
+    bin_single_X = np.zeros((n_bins, 2, n_spots), dtype=int)
+    bin_single_X[:, 1, :] = by_block.T @ phased
+    bin_single_X[:, 0, :] = _grouped_column_sums(adata.layers["count"], by_gene)
+
+    bin_single_total_bb_RD = np.asarray(by_block.T @ single_total_bb_RD, dtype=int)
+
+    # NB from the bins as a labelling of the genes (#438). `cnaster` reindexes
+    #    over every contig with zeros; a zero is a contig every lattice
+    #    restarts on and never reaches (D5), so none is written.
+    lengths = observe(df_gene_snp, "bin_id", "bins").lengths
+
+    return SpatioGenomicCounts(
+        lengths, bin_single_X, np.zeros((n_bins, n_spots)), bin_single_total_bb_RD
+    )
+
+def create_bin_ranges(
+    df_gene_snp: Any,
+    adata: Any,
+    cell_snp_Aallele: Any,
+    cell_snp_Ballele: Any,
+    unique_snp_ids: Any,
+    single_X: Any,
+    single_total_bb_RD: Any,
+    refined_lengths: Any,
+    secondary_min_umi: Any,
+    secondary_min_snp_umi: Any,
+    secondary_min_normal_umi: Any,
+    normal_candidates: Any = None,
+    max_binlength: float = 5e6,
+    key: str = "block_id",
+    *,
+    min_segment_normal_umi: float | None = None,
+) -> Any:
+    """`cnaster.omics.create_bin_ranges`, without the rows its merge leaves unbinned (#438 D8, #105).
+
+    `min_segment_normal_umi`, which `run_cnaster_port --sal` binds
+    (`MIN_SEGMENT_NORMAL_UMI`), is the read-depth segment floor where the
+    configuration states none (#551): `segment_floor`.
+
+    **A stated departure from `cnaster`** (T- #617): the bins are re-cut on
+    `quality.min_segment_mb` and `quality.min_segment_normal_umi`, keys
+    `cnaster` does not read, wherever the configuration states either, with
+    or without the bound option.
+
+    `normal_baf_bin_filter` sets `bin_id` to missing for every bin it removes,
+    and the merge (`key="bin_id"`, `run_cnaster.py:983`) carries the missing
+    ids through. `run_cnaster` then casts `bin_id` to `int` over every gene
+    (`run_cnaster.py:1476`): a missing id becomes `INT_MIN` and indexes out of
+    bounds, so any removed bin ends the run at its last stage, after the
+    inference. Dropping those rows here is the fix #105 names -- a gene in a
+    removed bin has no copy number -- and every other consumer of the table
+    already skips them. The rows' index labels are kept, so the lineage still
+    places every remaining gene.
+    """
+    table = _cnaster_create_bin_ranges(
+        df_gene_snp,
+        adata,
+        cell_snp_Aallele,
+        cell_snp_Ballele,
+        unique_snp_ids,
+        single_X,
+        single_total_bb_RD,
+        refined_lengths,
+        secondary_min_umi,
+        secondary_min_snp_umi,
+        secondary_min_normal_umi,
+        normal_candidates=normal_candidates,
+        max_binlength=max_binlength,
+        key=key,
+    )
+
+    if key != "bin_id":
+        return table
+
+    unbinned = table["bin_id"].isna().to_numpy()
+
+    if unbinned.any():
+        logger.info(
+            f"Dropping {int(unbinned.sum())} rows whose bins the normal-BAF "
+            "filter removed, so the gene-level output can index them (#105)."
+        )
+        table = table.loc[~unbinned]
+
+    min_segment, min_normal = segment_floor(min_segment_normal_umi)
+
+    if min_segment is not None or min_normal is not None:
+        table = floor_bins(
+            table,
+            adata,
+            normal_candidates,
+            min_length=(min_segment or 0.0) * 1e6,
+            min_normal_umi=max(float(secondary_min_normal_umi), min_normal or 0.0),
+        )
+
+    return table
+
+MIN_SEGMENT_MB = 0.75
+"""The read-depth segment floor `quality.min_segment_mb: true` sets, in Mb (#551).
+
+On dev_tree r0 (`3381575a`) it takes tumour-clone RDR outlier rows (|log RDR
+deviation| > 0.5 at planted-neutral segments) from 1,163 to 104, and the
+segments from 2,895 to 1,265."""
+
+MIN_SEGMENT_NORMAL_UMI = 300.0
+"""The normal-UMI floor `quality.min_segment_normal_umi: true` sets (#551),
+and the one `run_cnaster_port` binds where no key is stated (#547,
+`port.pipeline.DEFAULTS`).
+
+On dev_tree r0 (`3381575a`) it takes tumour-clone RDR outlier rows from 1,163
+to 802 and the segments from 2,895 to 2,624. Under `--sal` it holds every
+clone ARI on dev_tree r0, CalicoST easy (`2d4ce9a9`) and hard (`8797710b`) and
+raises hard's copy ARI from 0.9055 to 0.9181 (#547)."""
+
+def segment_floor(
+    normal_umi: float | None = None,
+) -> tuple[float | None, float | None]:
+    """`(Mb, normal UMI)`: `quality.min_segment_mb` and `quality.min_segment_normal_umi` from `cnaster`'s global config.
+
+    A key stated `false` or `none` is off, `true` its default
+    (`MIN_SEGMENT_MB`, `MIN_SEGMENT_NORMAL_UMI`) and a number itself. An
+    absent key is off, but for the normal floor, which is then `normal_umi`:
+    what `run_cnaster_port` binds (`port.pipeline.DEFAULTS`). Either one switches the floor on; the normal floor
+    is then at least `secondary_min_normal_umi`.
+    """
+    from cnamaste.config import get_global_config
+
+    section = getattr(get_global_config(), "quality", None)
+
+    def read(key: str, default: float, unstated: float | None) -> float | None:
+        if not hasattr(section, key):
+            return unstated
+        value = getattr(section, key)
+        if value is None or value is False:
+            return None
+        return default if value is True else float(value)
+
+    return (
+        read("min_segment_mb", MIN_SEGMENT_MB, None),
+        read("min_segment_normal_umi", MIN_SEGMENT_NORMAL_UMI, normal_umi),
+    )
+
+def floor_bins(
+    table: Any,
+    adata: Any,
+    normal_candidates: Any,
+    *,
+    min_length: float,
+    min_normal_umi: float,
+) -> Any:
+    """`table`'s bins merged within each contig to `min_length` bp and `min_normal_umi` normal-spot UMIs (#551).
+
+    `cnaster`'s `create_bin_ranges` states `secondary_min_normal_umi` and
+    does not guarantee it: it merges only inside each BAF breakpoint run, and
+    a run of one block is never checked. `Segmentation.floored` merges
+    across them. Normal UMIs are counted per gene over `normal_candidates`, as
+    `cnaster` counts them per block, without the genes the
+    differential-expression filter removed (#440). While the run records its
+    lineage, the merge is recorded as `bins-floored` and the floor is set, so
+    every later level is checked against it.
+    """
+    lineage = current()
+    genes = None if lineage is None else lineage.genes
+    bins = Segmentation.from_table(table, "bin_id", genes)
+
+    counts = adata.layers["count"]
+    normal = np.zeros(adata.shape[0], dtype=bool)
+    if normal_candidates is not None:
+        normal[np.asarray(normal_candidates)] = True
+    per_column = np.asarray(counts[normal].sum(axis=0), dtype=np.float64).ravel()
+
+    names = table["gene"].reindex(bins.genes.key).to_numpy()
+    gene_names = adata.var.index.to_numpy()
+    known = pd.notna(names)
+    columns = np.zeros(names.size, dtype=np.int64)
+    columns[known], found = _positions(names[known], gene_names)
+    known[known] = found
+    if lineage is not None and lineage.excluded_genes:
+        known &= ~np.isin(names, list(lineage.excluded_genes))
+
+    weight = np.where(known, per_column[columns], 0.0)
+    floored = bins.floored(min_length, weight, min_normal_umi, name="bins-floored")
+    parent = dict(
+        zip(bins.ids.tolist(), floored.label[bins.first].tolist(), strict=True)
+    )
+
+    logger.info(
+        f"Floored {bins.n_segments} bins to {floored.n_segments}: each at least "
+        f"{min_length:_.0f} bp and {min_normal_umi:g} normal UMI (#551)."
+    )
+
+    table = table.copy()
+    table["bin_id"] = table["bin_id"].map(parent)
+
+    if lineage is not None:
+        lineage.floor = (min_length, weight, min_normal_umi)
+        lineage.record(floored, "bins-floored")
+
+    return table
+
+
+# --- `port.patch.omics.summaries`, moved in by T- #670 PR3 -------------------------------
+#
+# `cnaster.omics.summarize_blocks`, computed rather than looped (#191).
+#
+# **0.465 s of `assign_initial_blocks`' 1.183 s, twice over, and the function
+# returns nothing: every figure it computes exists to be logged.**
+#
+# `cnaster` builds its summary with a `groupby(...).agg(...)` over four Python
+# lambdas and then loops the blocks, taking a fancy-indexed column slice of the
+# full count matrix per block:
+#
+# ```python
+# block_sum = count_matrix[:, gene_idx].sum()
+# snp_umis[idx] = cell_snp_Aallele[:, snp_idx].sum() + cell_snp_Ballele[:, snp_idx].sum()
+# ```
+#
+# Each of those is a segment sum of per-gene and per-SNP column totals, so all
+# of them together are two passes over the matrices and a `bincount`.
+#
+# **The log lines are the contract here, not a return value**, so that is what
+# the equivalence test compares: `tests/test_summaries_patch.py` captures both
+# functions' output and asserts the lines are identical.
+#
+# Two details that a faster summary gets wrong if it is not looking for them:
+#
+# *   the genes of a block are taken as a **set**, so a gene name appearing on
+#     two rows of one block contributes its UMIs once;
+# *   the SNPs are taken as a **list**, so a repeated `snp_id` contributes
+#     twice. The two are not symmetric and upstream's aggregation says so.
+
+
+MAX_ROWS = 25
+"""How many blocks the breakdown lists. `cnaster`'s own magic number."""
+
+def _segment_first(values: np.ndarray, block: np.ndarray, blocks: int) -> np.ndarray:
+    """The first value in each block, in block order."""
+    first = np.zeros(blocks, dtype=values.dtype)
+    order = np.argsort(block, kind="stable")[::-1]
+    first[block[order]] = values[order]
+
+    return first
+
+def block_summary(
+    gene_snp_table: Any,
+    adata: Any,
+    cell_snp_Aallele: Any,
+    cell_snp_Ballele: Any,
+    unique_snp_ids: np.ndarray,
+    block_key: str,
+    normal_candidates: Any = None,
+    sort_key: str | None = "total_umi",
+) -> Any:
+    """`cnaster`'s `block_summary` frame, without the per-block slice."""
+    block = gene_snp_table[block_key].to_numpy()
+    keys = np.unique(block)
+    position = np.searchsorted(keys, block)
+    blocks = keys.size
+
+    is_interval = gene_snp_table.is_interval.to_numpy().astype(bool)
+    snp_id = gene_snp_table.snp_id.to_numpy()
+    gene = gene_snp_table.gene.to_numpy()
+    chromosome = gene_snp_table.CHR.to_numpy()
+    start = gene_snp_table.START.to_numpy()
+    end = gene_snp_table.END.to_numpy()
+
+    # NB an object column carrying both `None` and `NaN`, so the test is
+    #    `pd.notna` rather than a comparison -- upstream's `notna().sum()`
+    #    and `[s for s in x if s is not None]` differ on a `NaN`, and this
+    #    reproduces each where it is used.
+    has_snp = pd.notna(snp_id)
+
+    summary = pd.DataFrame(
+        {
+            "num_snps": np.bincount(position[has_snp], minlength=blocks),
+            "num_genes": np.bincount(
+                position, weights=is_interval.astype(float), minlength=blocks
+            ).astype(np.int64),
+            "chr": _segment_first(chromosome, position, blocks),
+            "start": np.minimum.reduceat(
+                start, np.searchsorted(position, np.arange(blocks))
+            )
+            if blocks
+            else np.zeros(0),
+            "end": np.maximum.reduceat(
+                end, np.searchsorted(position, np.arange(blocks))
+            )
+            if blocks
+            else np.zeros(0),
+        },
+        index=pd.Index(keys, name=block_key),
+    )
+
+    summary["length"] = 1_000.0 * (summary["end"] - summary["start"])
+
+    count_matrix = adata.layers["count"]
+    gene_totals = np.asarray(np.sum(count_matrix, axis=0)).ravel()
+    gene_index = {name: index for index, name in enumerate(adata.var.index.to_numpy())}
+
+    # NB a set per block upstream, so a gene name on two rows counts once.
+    present = np.array([name in gene_index for name in gene], dtype=bool)
+    pairs = (
+        np.unique(
+            np.stack(
+                [
+                    position[present],
+                    np.array(
+                        [gene_index[name] for name in gene[present]], dtype=np.int64
+                    ),
+                ],
+                axis=1,
+            ),
+            axis=0,
+        )
+        if present.any()
+        else np.zeros((0, 2), dtype=np.int64)
+    )
+
+    summary["total_umi"] = np.bincount(
+        pairs[:, 0], weights=gene_totals[pairs[:, 1]], minlength=blocks
+    ).astype(np.int64)
+
+    snp_index = {site: index for index, site in enumerate(unique_snp_ids)}
+    named = has_snp & np.array([bool(value) for value in snp_id], dtype=bool)
+    columns = np.array([snp_index[value] for value in snp_id[named]], dtype=np.int64)
+    snp_totals = (
+        np.asarray(cell_snp_Aallele.sum(axis=0)).ravel()
+        + np.asarray(cell_snp_Ballele.sum(axis=0)).ravel()
+    )
+
+    summary["snp_umi"] = np.bincount(
+        position[named], weights=snp_totals[columns], minlength=blocks
+    ).astype(np.int64)
+
+    summary["normal_umi"] = np.zeros(blocks, dtype=np.int64)
+    summary["normal_snp_umi"] = np.zeros(blocks, dtype=np.int64)
+
+    if normal_candidates is not None:
+        normal_gene = np.asarray(
+            np.sum(count_matrix[normal_candidates, :], axis=0)
+        ).ravel()
+        summary["normal_umi"] = np.bincount(
+            pairs[:, 0], weights=normal_gene[pairs[:, 1]], minlength=blocks
+        ).astype(np.int64)
+
+        normal_snp = (
+            np.asarray(cell_snp_Aallele[normal_candidates, :].sum(axis=0)).ravel()
+            + np.asarray(cell_snp_Ballele[normal_candidates, :].sum(axis=0)).ravel()
+        )
+        summary["normal_snp_umi"] = np.bincount(
+            position[named], weights=normal_snp[columns], minlength=blocks
+        ).astype(np.int64)
+
+    if sort_key is not None:
+        summary = summary.sort_values(sort_key, ascending=False)
+
+    return summary
+
+def summarize_blocks(
+    gene_snp_table: Any,
+    adata: Any,
+    cell_snp_Aallele: Any,
+    cell_snp_Ballele: Any,
+    unique_snp_ids: np.ndarray,
+    block_key: str | None = None,
+    normal_candidates: Any = None,
+    sort_key: str | None = "total_umi",
+) -> None:
+    """What `cnaster.omics.summarize_blocks` logs, line for line."""
+    logger.info("Summarizing blocks ...")
+
+    if block_key is None:  # invariant
+        msg = "block_key must be specified"
+        raise AssertionError(msg)
+    if block_key not in gene_snp_table.columns:  # invariant
+        msg = f"{block_key} not in DataFrame"
+        raise AssertionError(msg)
+
+    summary = block_summary(
+        gene_snp_table,
+        adata,
+        cell_snp_Aallele,
+        cell_snp_Ballele,
+        unique_snp_ids,
+        block_key,
+        normal_candidates,
+        sort_key,
+    )
+
+    logger.info(
+        f"Breakdown of genes/snps/umi per {block_key} sorted by {sort_key} "
+        f"(top {MAX_ROWS}):"
+    )
+    logger.info(
+        f"{'block id':<10}\t{'chr':>4}\t{'start':>12}\t{'length':>12} [Kbp]\t"
+        f"{'snps':>8}\t{'genes':>8}\t{'total umi':>12}\t{'snp umi':>12}\t"
+        f"{'normal umi':>12}\t{'normal snp umi':>12}"
+    )
+    logger.info("-" * 136)
+
+    # NB `itertuples`, not `iterrows`: a row Series takes one dtype for the
+    #    whole row, so an all-numeric frame prints its integers as floats.
+    #    Upstream's frame carries two list columns and is therefore object,
+    #    which keeps them integers -- the same lines, from a different
+    #    accident. This is the deliberate version of it.
+    for index, row in enumerate(summary.itertuples(index=True)):
+        logger.info(
+            f"{row.Index:<10}\t{row.chr:>4}\t{row.start:>12}\t"
+            f"{row.length / 1.0e6:>12}\t{row.num_snps:>8}\t"
+            f"{row.num_genes:>8}\t{row.total_umi:>12}\t{row.snp_umi:>12}\t"
+            f"{row.normal_umi:>12}\t{row.normal_snp_umi:>12}"
+        )
+
+        if index > MAX_ROWS:
+            break
+
+    logger.info(
+        f"\n"
+        f"median block length: {summary['length'].median() / 1.0e6:.1f} [Kbp],\n"
+        f"mean block length: {summary['length'].mean() / 1.0e6:.1f} [Kbp],\n"
+        f"median snps/block: {summary['num_snps'].median():.1f},\n"
+        f"median genes/block: {summary['num_genes'].median():.1f},\n"
+        f"median umis/block: {summary['total_umi'].median():.1f},\n"
+        f"median snp-umis/block: {summary['snp_umi'].median():.1f},\n"
+        f"total blocks: {len(summary):_},\n"
+        f"total umis: {summary['total_umi'].sum():_},\n"
+        f"total snp-umis: {summary['snp_umi'].sum():_},\n"
+        f"total normal umis: {summary['normal_umi'].sum():_},\n"
+        f"total normal snp-umis: {summary['normal_snp_umi'].sum():_},\n"
+        f"blocks with 0 umis: {(summary['total_umi'] == 0).mean():.1%},\n"
+        f"blocks with <100 umis: {(summary['total_umi'] < 100).mean():.1%},\n"
+        "blocks with snp-umis, but no gene-umis: "
+        f"{((summary['snp_umi'] > 0) & (summary['total_umi'] == 0)).mean():.1%}\n"
+    )
+
+    if summary.index.isna().any():
+        logger.warning(f"Found ill-defined group:/n{summary.loc[np.nan]}")
