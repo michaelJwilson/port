@@ -26,7 +26,7 @@ import pandas as pd
 
 from port.qa.statistics import bars, ranks
 from port.studies import records
-from port.studies.figures import PORT_MARK, key_below, merged, stamp, tab20, tt
+from port.studies.figures import key_below, merged, stamp, tab20, tt
 
 NAMES = {
     "field_argmax": "field-argmax", "anneal": "glauber", "tempering": "parallel tempering",
@@ -394,11 +394,9 @@ def draw(
              ({"marker": "o", "color": "0.4", "markerfacecolor": "white", "markersize": 5}, "ICM polish"),
              ({"marker": "D", "color": "0.4", "markerfacecolor": "white", "markersize": 4}, "Color merge"),
              ({"line": True, "color": "k"}, "Truth")],
-            [(label(s) + (PORT_MARK if s.startswith("port:") else ""), tab20(NUMBER[s]), polished[s][1])
+            [(label(s), tab20(NUMBER[s]), polished[s][1])
              for s in ordered],
-            [f"{PORT_MARK} port: alpha-rust-fuse, sal's Rust alpha expansion fused with sal's ICM from the field's argmax, "
-             "then the small-clone merge (--sal's solver).",
-             "Percentages: spots unlike their planted clone, after ICM and the color merge."],
+            [],
         )  # fmt: skip
         return d
     ax.plot([], [], "o", color="0.4", label="sal")

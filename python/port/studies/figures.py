@@ -69,10 +69,6 @@ def stamp(fig: Any, record: dict[str, Any]) -> str:
     return text
 
 
-PORT_MARK = "\u2020"
-"""Marks a method `port` derived, named in the key's footnote."""
-
-
 def key_below(
     ax: Any,
     title: str,
@@ -84,7 +80,7 @@ def key_below(
     top: float = -0.17,
     row: float = 0.055,
 ) -> None:
-    """A key under `ax`: the stages' markers in their own column, then the methods in two columns of name and missed %.
+    """A key under `ax`, its `title` above the axes' top right: the stages' markers in their own column, then the methods in two columns of name and missed %.
 
     `stages` are `(plot keywords, label)`, drawn as a marker or a line; `entries` are
     `(name, colour, missed %)`, filled down the first column then the second;
@@ -117,8 +113,9 @@ def key_below(
             )
         ax.add_line(line)
 
-    text(0.5, top, title, ha="center")
-    header = top - row
+    # NB the title sits above the axes' top-right corner, clear of the x label and the key
+    ax.text(1.0, 1.01, title, transform=t, ha="right", va="bottom", fontsize=fontsize)
+    header = top
     rows = (len(entries) + 1) // 2
     columns = ((0.30, 0.62), (0.67, 0.99))
     for k, (keywords, label) in enumerate(stages):

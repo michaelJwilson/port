@@ -621,13 +621,13 @@ def solver_figure(potts: dict[str, Any], copies: dict[str, Any]) -> Any:
 
     from port.studies import copy_state_plot, potts_plot
 
-    figure, (left, right) = plt.subplots(1, 2, figsize=(12.0, 6.4))
+    figure, (left, right) = plt.subplots(1, 2, figsize=(12.0, 5.0))
     potts_plot.draw(left, potts, key=True, centre=True)
     copy_state_plot.draw(right, copies, key=True)
     for ax, letter in ((left, "a"), (right, "b")):
         ax.text(-0.12, 1.04, f"({letter})", transform=ax.transAxes, fontsize=10,
                 ha="left", va="bottom", color=INK)  # fmt: skip
-    figure.subplots_adjust(left=0.07, right=0.98, top=0.93, bottom=0.44, wspace=0.22)
+    figure.subplots_adjust(left=0.07, right=0.98, top=0.93, bottom=0.36, wspace=0.22)
     return figure
 
 

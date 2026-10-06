@@ -26,7 +26,7 @@ import pandas as pd
 
 from port.qa.statistics import bars, ranks
 from port.studies import records
-from port.studies.figures import PORT_MARK, key_below, merged, stamp, tab20, tt
+from port.studies.figures import key_below, merged, stamp, tab20, tt
 
 TABLE = (
     ("CalicoST, port", (
@@ -334,12 +334,10 @@ def draw(ax: Any, record: dict[str, Any], key: bool = False) -> pd.DataFrame:
             + (f" ({n_partial} in progress)" if n_partial else ""),
             [({"marker": "o", "color": "0.4", "markersize": 5}, "Initialized"),
              ({"marker": "o", "color": "0.4", "markerfacecolor": "white", "markersize": 5}, "Baum-Welch"),
-             ({"line": True, "color": "k"}, "Truth"),
-             ({"marker": r"$\leftarrow$", "color": "0.4", "markersize": 9}, r"$\leq 10^{-1}$ s")],
-            [(LABEL.get(n, n) + (PORT_MARK if SOURCE[n] == "port" else ""), COLOUR[n], float(after[n]))
+             ({"line": True, "color": "k"}, "Truth")],
+            [(LABEL.get(n, n), COLOUR[n], float(after[n]))
              for n in ordered],
-            [f"{PORT_MARK} port: lattice, the integer (A, B) lattice's states, chosen by the rows.",
-             "Percentages: rows (clone x bin) not in their planted state after Baum-Welch, states matched 1-1."],
+            [],
         )  # fmt: skip
         return d
     ax.plot([], [], "o", color="0.4", label="Start")
