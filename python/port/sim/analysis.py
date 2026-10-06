@@ -442,6 +442,8 @@ def plot_spatial(r: Realization, out: Path) -> Path:
     import matplotlib.pyplot as plt
     from matplotlib.lines import Line2D
 
+    from port.extensions.figure_style import fit_to_content
+
     slices = list(dict.fromkeys(r.truth["sample_id"]))
     first = r.truth[r.truth["sample_id"] == slices[0]]
     aspect = (np.ptp(first["x"].to_numpy()) * np.sqrt(3.0) / 2.0) / (
@@ -452,15 +454,19 @@ def plot_spatial(r: Realization, out: Path) -> Path:
     fig.subplots_adjust(left=0.01, right=0.99, top=0.9, bottom=0.14, wspace=0.03)
     present = draw_spatial(axes[0], r)
 
-    # NB one legend for every slice, in the clones' order, on the left.
+    # NB one legend for every slice, in the clones' order, under the first
+    #    slice and anchored to it, so the page is cut to the axes and their
+    #    key with no band left (`fit_to_content`, PR- #715).
     handles = [
         Line2D([], [], marker="o", linestyle="", markersize=5,
                color=clone_colour(c, r.clones), label=display(c, r.clones))
         for c in present
     ]  # fmt: skip
-    fig.legend(handles=handles, loc="lower left", bbox_to_anchor=(0.01, 0.0),
-               ncol=len(handles), frameon=False, fontsize=8, handletextpad=0.2,
-               columnspacing=1.0)  # fmt: skip
+    axes[0][0].legend(handles=handles, loc="upper left", bbox_to_anchor=(0.0, 0.0),
+                      ncol=len(handles), frameon=False, fontsize=8,
+                      handletextpad=0.2, columnspacing=1.0,
+                      borderaxespad=0.2)  # fmt: skip
+    fit_to_content(fig)
     return _save(fig, out / "spatial.png", tight=False)
 
 
