@@ -146,7 +146,8 @@ def test_each_figure_is_a_column_wide_with_one_text_size(
     """`llncs`'s 122 mm wide, the genomic figure its 193 mm less
     `CAPTION_ROOM` tall to 0.005 in, each lettered (a) and (b), and no text
     over `FONT_SIZE`."""
-    from port.extensions.combined_figure import CAPTION_ROOM, FONT_SIZE, TEXT_HEIGHT
+    from port.extensions.combined_figure import FONT_SIZE
+    from port.extensions.figure_style import CAPTION_ROOM, TEXT_HEIGHT
 
     genomic, spatial = _figures(tmp_path)
 
@@ -355,25 +356,25 @@ def test_the_spatial_labels_are_integer_by_default_or_continuous(
 def test_the_combined_page_is_the_two_figures_stacked(
     cnaster_config: None, tmp_path: Path
 ) -> None:
-    """One page, 122 mm by 193 mm to 0.005 in, lettered (a) to (c).
+    """One page, 122 mm by 193 mm less `CAPTION_ROOM` to 0.005 in, lettered
+    (a) to (c).
 
     (a)'s slide and clones sit where the spatial figure puts them, to a
     pixel, measured from the head: the page is the spatial figure over a
     genomic one drawn the rest of the height.
     """
     import matplotlib.pyplot as plt
-    from port.extensions.combined_figure import (
-        TEXT_HEIGHT,
-        combined_figure,
-        spatial_figure,
-    )
+    from port.extensions.combined_figure import combined_figure, spatial_figure
+    from port.extensions.figure_style import CAPTION_ROOM, TEXT_HEIGHT
 
     recorded, frame = _recorded(tmp_path)
     combined = combined_figure(recorded, frame)
     spatial = spatial_figure(recorded, frame)
 
     assert combined.get_size_inches()[0] * 25.4 == pytest.approx(122.0)
-    assert combined.get_size_inches()[1] == pytest.approx(TEXT_HEIGHT, abs=0.005)
+    assert combined.get_size_inches()[1] == pytest.approx(
+        TEXT_HEIGHT - CAPTION_ROOM, abs=0.005
+    )
     assert sorted(t.get_text() for t in combined.texts) == ["(a)", "(b)", "(c)"]
 
     placed = combined.get_axes()[-2:]

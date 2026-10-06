@@ -11,10 +11,11 @@ checkout, and are :data:`DEFAULT` otherwise, which a test holds equal to the
 file. A face matplotlib cannot find is refused by name rather than left to
 fall back silently to another.
 
-The palette (`INK`, `MUTED`, `GRID`, `axes_style`) and the page width
-(`PAPER_WIDTH`) are page geometry and style with no `cnaster` counterpart;
-`port.sim.analysis`, `port.patch.plot_genomic` and the paper figures each
-held a copy until T- #673 G7.
+The palette (`INK`, `MUTED`, `GRID`, `axes_style`) and the page geometry
+(`PAPER_WIDTH`, `TEXT_HEIGHT`, `CAPTION_ROOM`, `page_size`) are style with no
+`cnaster` counterpart; `port.sim.analysis`, `port.patch.plot_genomic` and the
+paper figures each held a copy of the palette until T- #673 G7, and
+`combined_figure` the text height until T- #733.
 """
 
 from __future__ import annotations
@@ -23,25 +24,31 @@ import contextlib
 import tomllib
 from collections.abc import Iterator
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 if TYPE_CHECKING:
     from matplotlib.typing import RcKeyType
 
 __all__ = [
+    "CAPTION_ROOM",
     "DEFAULT",
     "FIT_MARGIN",
     "GRID",
     "INK",
+    "LLNCS_TEXT_HEIGHT_MM",
     "LLNCS_TEXT_WIDTH_MM",
     "MUTED",
+    "PAGE_FRACTIONS",
     "PAPER_WIDTH",
     "STAMP_ROOM",
+    "TEXT_HEIGHT",
+    "Page",
     "apply",
     "axes_style",
     "figure_font",
     "figure_rc",
     "fit_to_content",
+    "page_size",
     "stated",
 ]
 
@@ -65,12 +72,59 @@ figure is included at 1:1, so a declared size is the size on the page and
 nothing has to be undone at the point of inclusion.
 """
 
+LLNCS_TEXT_HEIGHT_MM = 193.0
+"""`\\textheight` of `\\documentclass[runningheads,11pt]{llncs}`, 549.14 pt; the
+running head is set above it, so `runningheads` does not change it (T- #733)."""
+
+TEXT_HEIGHT = LLNCS_TEXT_HEIGHT_MM / 25.4
+"""The text block's height, 7.60 in."""
+
+CAPTION_ROOM = 1.5
+"""Inches of the text block a figure leaves for its caption (T- #733).
+
+A page drawn `PAPER_WIDTH` by `TEXT_HEIGHT` and included at
+`width=\\linewidth` under a one-line `\\caption` is 23.0 pt too large for
+the page (`pdflatex`, stock `llncs`); 1.5 in leaves a caption of several
+lines with `\\textfloatsep`.
+"""
+
+Page = Literal["third", "half", "three_quarters", "full"]
+"""The heights a paper figure is drawn at, as a share of the text block."""
+
+PAGE_FRACTIONS: dict[Page, float] = {
+    "third": 1 / 3,
+    "half": 1 / 2,
+    "three_quarters": 3 / 4,
+    "full": 1.0,
+}
+"""Each `Page`'s share of the text block less `CAPTION_ROOM`."""
+
 
 FIT_MARGIN = 0.03
 """Inches of white `fit_to_content` leaves at a page's head and sides."""
 
 STAMP_ROOM = 0.1
 """Inches `fit_to_content` leaves at a page's foot: a 6 pt stamp's row."""
+
+
+def page_size(page: Page = "full", columns: int = 1) -> tuple[float, float]:
+    """Inches, width by height, of one of `columns` figures on a row `page` tall.
+
+    The row is `PAGE_FRACTIONS[page]` of `TEXT_HEIGHT - CAPTION_ROOM`, so
+    "full" is the whole text block less its caption and every share leaves
+    its caption that room in proportion; each figure is `PAPER_WIDTH /
+    columns` wide, included at `width=\\linewidth` in a minipage of
+    `1/columns` of the line at 1:1, e.g. the two spatial maps on a "third"
+    row, and a 2x2 grid at "half" or "three_quarters" (T- #733).
+    """
+    if page not in PAGE_FRACTIONS:
+        message = f"page {page!r} is not one of {sorted(PAGE_FRACTIONS)}"
+        raise ValueError(message)
+    if columns < 1:
+        message = f"columns {columns} is under 1"
+        raise ValueError(message)
+
+    return PAPER_WIDTH / columns, PAGE_FRACTIONS[page] * (TEXT_HEIGHT - CAPTION_ROOM)
 
 
 def fit_to_content(figure: Any) -> None:

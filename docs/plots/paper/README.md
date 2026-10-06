@@ -18,6 +18,9 @@ hashing to `7ba9b01f`:
 draw panel (a) on a slide mocked from the planted labels (`port.sim.he_slide`):
 the fixture has no H&E image, and the run never reads the mock.
 `truth/phase.png` is flat: this r0 plants 0 phase switches.
+`truth/truth_combined.png` and `run/combined.png` predate T- #733: drawn
+the full 193 mm text height, they leave no room for a caption until
+regenerated at 193 mm less `CAPTION_ROOM` (1.5 in).
 `solver_combined.png` is not drawn from this fixture: `--solvers POTTS.record COPY.record`
 draws it from a `port.studies.potts_stream` and a `port.studies.copy_state_stream` record,
 and its stamp names both records' data hashes.

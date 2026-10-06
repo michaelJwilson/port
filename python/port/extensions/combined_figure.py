@@ -50,6 +50,7 @@ from typing import Any, NamedTuple
 
 import numpy as np
 
+from port.extensions.figure_style import CAPTION_ROOM, TEXT_HEIGHT
 from port.patch.plot_copy_number_profile import KEY_GROWTH
 from port.patch.plot_copy_number_profile import LINEWIDTH as PROFILE_LINEWIDTH
 
@@ -73,13 +74,6 @@ profile's clone names, the RDR and BAF labels, and the letters."""
 
 SPATIAL_GAP = 0.17
 """Inches between the slide and the clones' extent ticks."""
-
-TEXT_HEIGHT = 193.0 / 25.4
-"""`llncs`'s `\\textheight`, 193 mm in inches: the genomic figure's height."""
-
-CAPTION_ROOM = 1.5
-"""Inches left under the genomic figure for its caption: `genomic.pdf` is
-`TEXT_HEIGHT` less this, the combined page `TEXT_HEIGHT` itself."""
 
 FOOT = 0.4
 """Inches of slack under the layout, trimmed off at the end."""
@@ -1180,12 +1174,13 @@ def combined_figure(
     recorded: Recorded,
     he_frame: Any,
     width: float | None = None,
-    height: float = TEXT_HEIGHT,
+    height: float = TEXT_HEIGHT - CAPTION_ROOM,
     labels: str = "integer",
     *,
     metric: bool = False,
 ) -> Any:
-    """The spatial figure over the genomic one on one page, `height` tall.
+    """The spatial figure over the genomic one on one page, `height` tall, the
+    text block's less `CAPTION_ROOM` by default, as `genomic_figure` (T- #733).
 
     `labels` names the clones as `spatial_figure` does (#344); `metric` is
     `genomic_figure`'s.
