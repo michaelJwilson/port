@@ -121,3 +121,4 @@ df1550e-dev_tree_1s_r0-2155	2026-10-02T21:55Z	df1550e	-- --sal --no-plots	tests/
 261c8b2-dev_tree_1s_r0-2158	2026-10-02T21:58Z	261c8b2	-- --sal --no-plots	tests/sim_audit.py::main	HISTORY #522 Re-land #521 on main: 0.99 integer-clone agreement (#518)
 4899b5f-dev_tree_1s_r0-2201	2026-10-02T22:01Z	4899b5f	-- --sal --no-plots	tests/sim_audit.py::main	HISTORY #542 Integer-clone merge at 0.99 by default, clone_labels.tsv c…
 dbf5436-dev_tree_1s_easy_r0_7ba9b01f-1607	2026-10-05T16:07Z	dbf5436	--sal --png-copies	tests/sim_audit.py::main	#624 paper figures: dev_tree_1s_easy r0 7ba9b01f, --sal
+26f310b-dev_tree_1s_easy_r0_7ba9b01f-0749	2026-10-06T07:49Z	26f310b	--sal --png-copies	tests/sim_audit.py::main	#624 paper figures: dev_tree_1s_easy r0 7ba9b01f, --sal

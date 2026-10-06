@@ -10,9 +10,9 @@ replacement by name; **none** is a row with no direct test.
 | # | stage | table | `cnaster` | replacement | depends on | tests |
 | ---: | --- | --- | --- | --- | --- | --- |
 | 1 | standalone | FIGURE_SWAPS | `cnaster/utils.py:275` `write_fig` | `port.patch.utils:write_fig` (#195) | -- | `test_combined_figure.py`, `test_figure_dpi.py`, `test_plot_off.py` |
-| 2 | standalone | FIGURE_SWAPS | `cnaster/plot_genomic.py:412` `plot_clones_genomic` | `port.patch.plot_genomic:plot_clones_genomic` (#299) | `port.patch.hmm_nophasing.logmu_shift`, `port.patch.plotting.clone_paths` | `test_combined_figure.py`, `test_plot_genomic_patch.py` |
+| 2 | standalone | FIGURE_SWAPS | `cnaster/plot_genomic.py:412` `plot_clones_genomic` | `port.patch.plot_genomic:plot_clones_genomic` (#299) | `port.extensions.genomic_axis`, `port.patch.hmm_nophasing.logmu_shift`, `port.patch.plotting.clone_paths` | `test_combined_figure.py`, `test_genomic_axis.py`, `test_plot_genomic_patch.py` |
 | 3 | standalone | FIGURE_SWAPS | `cnaster/plotting.py:240` `plot_clones_spatial` | `port.patch.plotting:plot_clones_spatial` (#309) | `port.extensions.multisample` | `test_multisample.py`, `test_plot_spatial_patch.py` |
-| 4 | standalone | FIGURE_SWAPS | `cnaster/plot_copy_number_profile.py:144` `plot_copy_number_profile` | `port.patch.plot_copy_number_profile:plot_copy_number_profile` (#309) | -- | `test_plot_copy_number_profile_patch.py` |
+| 4 | standalone | FIGURE_SWAPS | `cnaster/plot_copy_number_profile.py:144` `plot_copy_number_profile` | `port.patch.plot_copy_number_profile:plot_copy_number_profile` (#309) | `port.extensions.genomic_axis` | `test_genomic_axis.py`, `test_plot_copy_number_profile_patch.py` |
 | 5 | standalone | PLOT_OFF_SWAPS | `cnaster/utils.py:275` `write_fig` | `port.patch.utils:discard_fig` (#403) | -- | `test_plot_off.py` |
 | 6 | preprocessing | SWAPS | `cnaster/normal_spot.py:925` `normal_baf_bin_filter` | `port.patch.normal_spot:normal_baf_bin_filter` (#174) | `port.extensions.segments`, `port.patch.io` | `test_normal_baf_patch.py` |
 | 7 | preprocessing | SWAPS | `cnaster/reference.py:33` `get_reference_genes` | `port.patch.reference:get_reference_genes` (#185) | -- | `test_preprocessing_sweep_bench.py`, `test_reference_patch.py` |
