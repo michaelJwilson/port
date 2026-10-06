@@ -29,6 +29,7 @@ from pathlib import Path
 from typing import Any, NamedTuple
 
 import numpy as np
+
 from port.qa.statistics import measured
 
 SWEEPS = 1000

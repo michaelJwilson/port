@@ -1,6 +1,6 @@
 """#490: one arm of the clone-start study.
 
-`python -m tests.studies.clone_starts SAMPLE START SEED [FLAGS ...]` runs
+`run_study --clone-starts SAMPLE START SEED [FLAGS ...]` runs
 `--sal --no-plots FLAGS` on `SAMPLE` from the named BAF-stage start and prints
 one `ROW` line: start, seed, BAF-stage clone ARI, final clone ARI, clones,
 copy ARI, exact altered, phase-free exact altered, wall. `docs/study-clone-starts.md`
@@ -18,7 +18,6 @@ START is one of
 
 from __future__ import annotations
 
-import sys
 import time
 from pathlib import Path
 from typing import Any
@@ -26,9 +25,10 @@ from typing import Any
 import matplotlib as mpl
 import numpy as np
 import pandas as pd
+from sklearn.metrics import adjusted_rand_score
+
 from port.qa.audit import audit_sample
 from port.sim.fixtures import load_simulated
-from sklearn.metrics import adjusted_rand_score
 
 mpl.use("Agg")
 
@@ -128,7 +128,3 @@ def main(argv: list[str]) -> None:
         round(wall, 1),
         flush=True,
     )
-
-
-if __name__ == "__main__":
-    main(sys.argv[1:])

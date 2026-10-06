@@ -1,4 +1,4 @@
-"""`docs/plots/paper/` and the figures `tests.studies.paper_figures` adds (#624)."""
+"""`docs/plots/paper/` and the figures `port.studies.paper_figures` adds (#624)."""
 
 from __future__ import annotations
 
@@ -9,8 +9,7 @@ from typing import Any
 
 import numpy as np
 import pytest
-
-from tests.studies.paper_figures import KEY_STUDIES, OUT, QUESTIONS, Compared
+from port.studies.paper_figures import KEY_STUDIES, OUT, QUESTIONS, Compared
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -85,8 +84,7 @@ def test_the_compare_figures_draw_what_their_inputs_hold(tmp_path: Path) -> None
 
     mpl.use("Agg")
     import matplotlib.pyplot as plt
-
-    from tests.studies import paper_figures as pf
+    from port.studies import paper_figures as pf
 
     c = _tiny()
 
@@ -131,7 +129,7 @@ def test_the_compare_figures_draw_what_their_inputs_hold(tmp_path: Path) -> None
 def test_the_solver_panel_draws_only_the_tables_solvers() -> None:
     """T- #660: a stream holding a solver `potts_plot.TABLE` dropped draws
     none of its runs; the kept solver's runs are all drawn."""
-    from tests.studies import potts_plot
+    from port.studies import potts_plot
 
     rows = [
         {"problem": 0, "solver": solver, "seed": seed, "seconds": 1.0, "energy": 5.0,

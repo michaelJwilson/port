@@ -1,6 +1,6 @@
 """Clone and copy-state ARI across `main`'s merges, from the metrics ledger's history runs (`port.qa.ledger.read`, #620).
 
-`python -m tests.studies.metrics_history [OUT.png [OUT_CLASSES.png]]`, by default
+`run_study --metrics-history [OUT.png [OUT_CLASSES.png]]`, by default
 `.cache/plots/metrics_history{,_classes}.png` (`port.qa.provenance.PLOTS`), untracked.
 
 A history row is a `tests/sim_audit.py::main` run whose note starts with
@@ -221,7 +221,3 @@ def main(argv: list[str] | None = None) -> None:
             CLASSES,
         )
     )
-
-
-if __name__ == "__main__":
-    main()

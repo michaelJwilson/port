@@ -3,7 +3,7 @@
 Ticket: #634 -- `sal.sample.hmc`'s `sample`, `anneal` and
   `parallel_tempering` replaced port's own samplers on this objective
   (`hmm_samplers`, deleted) after matching them at equal evaluations.
-Measurement: `tests.studies.copy_state_stream` on
+Measurement: `port.studies.copy_state_stream` on
   `sim/manifests/baseline/dev_tree_1s_hard.toml` r3-r12, 10 seeds (PR #642):
   median rows missed after Baum-Welch 1.14 / 1.12 / 1.14% against port's
   1.19 / 1.17 / 1.10% (anneal / tempering / hmc), n = 100 each.
@@ -93,8 +93,8 @@ DEFAULTS: dict[str, dict[str, float]] = {
     "tempering-hmm": {"t_top": 1e4, "rounds": 13, "step": 1e-3},
     "hmc-hmm": {"temperature": 1.0, "warmup": 12, "draws": 13, "step": 1e-3, "adapt": 1.0, "target": 0.65},
 }  # fmt: skip
-"""Each start's knobs where no `setting` is given: the values `tests.studies.copy_state_stream --tune` chose
-on `dev_tree_1s_hard`'s held-out realizations 0-2 (`tests/studies/copy_sampler_settings.json`), 5 seeds
+"""Each start's knobs where no `setting` is given: the values `port.studies.copy_state_stream --tune` chose
+on `dev_tree_1s_hard`'s held-out realizations 0-2 (`python/port/studies/copy_sampler_settings.json`), 5 seeds
 per setting, over grids shaped as port's samplers' were (9 / 9 / 7 settings).
 
 Budgets are the passes port's deleted samplers spent at their tuned schedules, not exceeded: 54

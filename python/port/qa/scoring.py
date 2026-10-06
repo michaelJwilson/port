@@ -6,7 +6,7 @@ fitted label it shares the most spots (or bins) with, one to one, by
 compared as pairs coded `A * 1_000 + B`, by planted class (#511).
 
 `tests.scoring`, `tests.sim_audit`, `tests.recovery_audit.integer_clones`
-and `tests.studies.paper_figures.exact_by_class` each held a part of this.
+and `port.studies.paper_figures.exact_by_class` each held a part of this.
 `port.extensions.outputs.integer_clones` merges a run's written table under
 an agreement threshold; `integer_clones` here is its exact rule (1.0) on
 decoded arrays, which every scorer reads.

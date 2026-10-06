@@ -1,6 +1,6 @@
-"""#540: `tests.studies.copy_state_stream`'s runs against runtime, each start numbered as in the table beside it.
+"""#540: `port.studies.copy_state_stream`'s runs against runtime, each start numbered as in the table beside it.
 
-`python -m tests.studies.copy_state_plot STREAM.pkl` writes `<stem>.png` beside
+`run_study --copy-state-plot STREAM.pkl` writes `<stem>.png` beside
 the pickle: each run's log-likelihood below the best any run reached on its
 realization -- there is no bound for an HMM's likelihood -- on a log axis whose
 bottom tick, "0", holds the runs at that best. A filled marker is the start's
@@ -24,9 +24,9 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
-from port.qa.statistics import bars, ranks
 
-from tests.studies.plot_common import merged, stamp, tab20, tt
+from port.qa.statistics import bars, ranks
+from port.studies.figures import merged, stamp, tab20, tt
 
 TABLE = (
     ("CalicoST, port", (
@@ -367,7 +367,3 @@ def main(argv: list[str] | None = None) -> None:
     paths = [Path(p) for p in (argv if argv is not None else sys.argv[1:])]
     record = merged([pickle.loads(p.read_bytes()) for p in paths])
     print(figure(record, paths[0].with_suffix(".png")))
-
-
-if __name__ == "__main__":
-    main()

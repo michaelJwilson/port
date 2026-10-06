@@ -1,10 +1,10 @@
 """#556: clone-field strength, dev_tree against CalicoST easy/hard, and what sets it.
 
-Subcommands of `python -m tests.studies.field_strength`:
+Subcommands of `run_study --field-strength`:
 
 `pipeline CAPTURE.npz ...`
     The pipeline's field at the planted clones: `--sal --oracle-start`'s first
-    BAF + RDR inference, captured by `tests.studies.clone_labels capture`,
+    BAF + RDR inference, captured by `port.studies.clone_labels capture`,
     rebuilt at the planted labels (`port.sandbox.clone_starts.problem.build`).
 `known MANIFEST.toml ...`
     The known-law field (`port.sandbox.known_field`) of each manifest's first
@@ -189,13 +189,13 @@ def events(profile: pd.DataFrame, clones: list[str]) -> pd.DataFrame:
 
 def calicost() -> None:
     import anndata
-    import port.sandbox.known_field as kf
     import scipy.sparse as sp
-    from port.sim.fixtures import SIM_ROOT
     from scipy.optimize import curve_fit
     from scipy.spatial import cKDTree
 
-    from tests.studies.calicost_figures import SAMPLES, baseline, baseline_counts
+    import port.sandbox.known_field as kf
+    from port.sim.fixtures import SIM_ROOT
+    from port.studies.calicost_figures import SAMPLES, baseline, baseline_counts
 
     base = baseline()
     gene_loci = (
@@ -351,7 +351,3 @@ def main(argv: list[str] | None = None) -> None:
         known(arguments.manifests)
     else:
         calicost()
-
-
-if __name__ == "__main__":
-    main()

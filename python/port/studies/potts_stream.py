@@ -1,7 +1,7 @@
 """#556: Potts solvers from random labels on a stream of known-law problems, the plot redrawn per problem.
 
-`python -m tests.studies.potts_stream MANIFEST OUT_DIR [--problems 25] [--starts 50] [--held-out 3] [--workers 4]`
-`python -m tests.studies.potts_stream MANIFEST OUT_DIR --tune SAMPLER ...` tunes
+`run_study --potts-stream MANIFEST OUT_DIR [--problems 25] [--starts 50] [--held-out 3] [--workers 4]`
+`run_study --potts-stream MANIFEST OUT_DIR --tune SAMPLER ...` tunes
 only the named samplers on the held-out realizations and merges them into `SETTINGS`.
 `--only SOLVER ...` runs a subset, `--merge PKL ...` draws it with earlier streams.
 
@@ -20,7 +20,7 @@ the pool solves it while the next one draws.
   `TUNING_STARTS` random labellings each. It keeps the cheapest setting whose
   median gap to TRW-S's bound is within `TOLERANCE` nats of the best setting's.
 - **Evaluation.** The next `--problems` realizations run every solver of
-  #541's harness (`tests.studies.clone_label_arms`) but bifurcation, port's
+  #541's harness (`port.studies.clone_label_arms`) but bifurcation, port's
   pure-Python `alpha` and the floor-merge row, plus TRW-S's own decoded
   labelling, from `--starts` random labellings; the samplers at their tuned
   settings. Each run is polished twice: sal's ICM, then the color merge
@@ -29,7 +29,7 @@ the pool solves it while the next one draws.
 Per problem it records the planted labelling's energy and TRW-S's lower bound,
 per run the energy and the labels unlike the planted ones, raw and after each
 polish. When a problem's runs are all in it pickles `OUT_DIR/<stem>.pkl` and
-redraws `OUT_DIR/<stem>.png` (`tests.studies.potts_plot`).
+redraws `OUT_DIR/<stem>.png` (`port.studies.potts_plot`).
 
 Timing: the graph is built once per worker per problem, outside the timed
 solve; seconds are per job with `--workers` jobs sharing the host.
@@ -40,17 +40,16 @@ from __future__ import annotations
 import argparse
 import itertools
 import json
-import multiprocessing as mp
 import pickle
-import subprocess
-import sys
 import time
 import traceback
-from concurrent.futures import FIRST_COMPLETED, Future, ProcessPoolExecutor, wait
+from concurrent.futures import Future, ProcessPoolExecutor
 from pathlib import Path
 from typing import Any
 
 import numpy as np
+
+from port.studies import stream as harness
 
 DROPPED = frozenset({
     "sal:bifurcation", "port:alpha", "port:alpha-rust-merge",
@@ -113,7 +112,7 @@ _GRAPHS: dict[tuple[int, float], Any] = {}
 
 def _init() -> None:
     """Build each problem's graph once per worker, then warm every solver up on a small patch."""
-    import tests.studies.clone_label_arms as arms
+    import port.studies.clone_label_arms as arms
 
     build = arms._graph
 
@@ -131,9 +130,8 @@ def _warm() -> None:
     """Every solver once on a 10 x 10 patch, q = 3: numba compiles here, not in a timed job."""
     from types import SimpleNamespace
 
+    import port.studies.clone_label_arms as arms
     from port.sandbox.known_field import hex_graph
-
-    import tests.studies.clone_label_arms as arms
 
     rows, cols = np.divmod(np.arange(100), 10)
     points = np.column_stack([cols + 0.5 * (rows % 2), rows * np.sqrt(3) / 2])
@@ -154,7 +152,7 @@ def _warm() -> None:
 
 
 def _hold(index: int, problem: Any) -> None:
-    import tests.studies.clone_label_arms as arms
+    import port.studies.clone_label_arms as arms
 
     arms._HELD["capture"], arms._HELD["problem"] = problem, index
 
@@ -166,13 +164,14 @@ def _sample(solver: str, field: np.ndarray, start: np.ndarray, rng: np.random.Ge
     A ladder runs ``sweeps // REPLICAS`` steps of `REPLICAS` replicas, so
     `sweeps` counts replica sweeps for every entry.
     """
-    from port.sandbox.known_field.cluster import anneal
     from sal.cost import Cost
     from sal.opt.budget import Budget
     from sal.sample.potts_mcmc.chains import cluster_tempering, parallel_tempering
     from sal.sample.potts_mcmc.moves import PottsMove
     from sal.sample.schedule import ScheduleParams, ScheduleShape
     from sal.search.ground_state import Problem, run_annealed
+
+    from port.sandbox.known_field.cluster import anneal
 
     t_start, sweeps = float(setting["t_start"]), int(setting["sweeps"])
     steps = max(1, sweeps // REPLICAS)
@@ -203,10 +202,10 @@ def solve(
     problem: Any, solver: str, seed: int, setting: dict[str, float] | None = None
 ) -> dict[str, Any]:
     """One run from random labels, then its two polishes; a failure is a row."""
-    from port.sandbox.known_field import color_merge, missed
     from sal.sim.potts import energy
 
-    import tests.studies.clone_label_arms as arms
+    import port.studies.clone_label_arms as arms
+    from port.sandbox.known_field import color_merge, missed
 
     try:
         _hold(problem.realization, problem)
@@ -255,7 +254,7 @@ def _describe(problem: Any) -> dict[str, Any]:
     from sal.sim.potts import energy
     from sklearn.metrics import adjusted_rand_score
 
-    import tests.studies.clone_label_arms as arms
+    import port.studies.clone_label_arms as arms
 
     _hold(problem.realization, problem)
     _, graph = arms._graph(problem.spatial_weight)
@@ -283,13 +282,12 @@ def tune(
     frame["key"] = frame.setting.map(lambda s: (s["t_start"], s["sweeps"]))
     chosen: dict[str, dict[str, float]] = {}
     for solver, g in frame.groupby("solver"):
-        by = g.groupby("key").agg(gap=("gap", "median"), seconds=("seconds", "median"))
-        good = by[by.gap <= by.gap.min() + TOLERANCE].sort_values("seconds")
-        t_start, sweeps = good.index[0]
+        key, best, by = harness.cheapest(g, TOLERANCE)
+        t_start, sweeps = key
         chosen[str(solver)] = {"t_start": float(t_start), "sweeps": int(sweeps),
-                               "gap": float(good.gap.iloc[0]), "default_gap": float(by.gap.get((2.0, 1000), np.nan))}  # fmt: skip
-        print(f"tuned {solver}: T0 {t_start}, {sweeps} sweeps, median gap {good.gap.iloc[0]:.2f} nats "
-              f"({good.seconds.iloc[0]:.2f} s); sal's default {chosen[str(solver)]['default_gap']:.2f}", flush=True)  # fmt: skip
+                               "gap": float(best.gap), "default_gap": float(by.gap.get((2.0, 1000), np.nan))}  # fmt: skip
+        print(f"tuned {solver}: T0 {t_start}, {sweeps} sweeps, median gap {best.gap:.2f} nats "
+              f"({best.seconds:.2f} s); sal's default {chosen[str(solver)]['default_gap']:.2f}", flush=True)  # fmt: skip
     return chosen, rows
 
 
@@ -306,9 +304,8 @@ def run(
     merge: tuple[Path, ...] = (),
 ) -> Path:
     """Tune on the first `held_out` realizations, then stream the next `n_problems`; returns the pickle it keeps current."""
+    import port.studies.clone_label_arms as arms
     from port.sandbox.known_field import problems
-
-    import tests.studies.clone_label_arms as arms
 
     out_dir.mkdir(parents=True, exist_ok=True)
     out = out_dir / (
@@ -327,8 +324,7 @@ def run(
     opened = time.perf_counter()
     total = held_out + first + n_problems
     stream = problems(manifest, total, realizations=total)
-    context = mp.get_context("spawn")
-    with ProcessPoolExecutor(workers, mp_context=context, initializer=_init) as pool:
+    with harness.pool(workers, _init) as pool:
         skipped = list(itertools.islice(stream, held_out))
         for _ in itertools.islice(stream, first):
             pass
@@ -340,12 +336,8 @@ def run(
             tuning_rows = []
 
         def drain(block: bool) -> None:
-            finished, _ = wait(
-                futures, timeout=None if block else 0, return_when=FIRST_COMPLETED
-            )
-            for future in finished:
-                index = futures.pop(future)
-                rows.append(future.result())
+            for index, row in harness.finished(futures, block):
+                rows.append(row)
                 pending[index] -= 1
                 if pending[index]:
                     continue
@@ -353,16 +345,7 @@ def run(
                 record = {"manifest": str(manifest), "problems": held, "rows": rows, "done": done, "solvers": solvers,
                           "starts": starts, "tuned": tuned, "tuning": tuning_rows, "held_out": held_out}  # fmt: skip
                 out.write_bytes(pickle.dumps(record))
-                subprocess.run(
-                    [
-                        sys.executable,
-                        "-m",
-                        "tests.studies.potts_plot",
-                        str(out),
-                        *map(str, merge),
-                    ],
-                    check=False,
-                )
+                harness.redraw("potts-plot", out, merge)
                 errors = sum("error" in r for r in rows)
                 print(f"[{time.perf_counter() - opened:6.0f}s] problem {index} solved; "
                       f"{len(done)}/{n_problems} done, {errors} errors; plot redrawn", flush=True)  # fmt: skip
@@ -399,8 +382,7 @@ def retune(
     if unknown:
         msg = f"not tunable: {sorted(unknown)}; tunable: {TUNED}"
         raise ValueError(msg)
-    context = mp.get_context("spawn")
-    with ProcessPoolExecutor(workers, mp_context=context, initializer=_init) as pool:
+    with harness.pool(workers, _init) as pool:
         chosen, _ = tune(
             pool, list(problems(manifest, held_out, realizations=held_out)), samplers
         )
@@ -465,7 +447,3 @@ def main(argv: list[str] | None = None) -> None:
     run(arguments.manifest, arguments.out_dir, arguments.problems, arguments.starts, arguments.held_out,
         arguments.workers, arguments.settings, tuple(arguments.only) if arguments.only else None, arguments.first,
         tuple(arguments.merge))  # fmt: skip
-
-
-if __name__ == "__main__":
-    main()

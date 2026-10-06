@@ -63,6 +63,15 @@ KNOWN: dict[str, str] = {
     "port.qa.audit:audit_errors arg seed": "G3",
     "port.sim.realizations:realize arg seed": "G3",
     "port.sim.realizations:chosen arg seed": "G3",
+    # NB G5: the studies, moved the same way; a job's `seed` is a field of
+    #    the records they pickle, so renaming it breaks every earlier record.
+    "port.studies.copy_state_stream:solve arg seed": "G5",
+    "port.studies.potts_stream:solve arg seed": "G5",
+    "port.studies.clone_label_arms:Job field seed": "G5",
+    "port.studies.copy_start_arms:Job field seed": "G5",
+    "port.studies.population:run_member arg seed": "G5",
+    "port.studies.population:draw_member arg seed": "G5",
+    "port.studies.population_report:summarize arg seed": "G5",
 }
 """Departures found by #401's audit, keyed `module:name kind word`."""
 

@@ -11,7 +11,7 @@ Regenerate from a clean tree, so the stamp carries no `+`; it draws r0 into
 `.cache/paper_figures/` where `--draw` is not given, and refuses any r0 not
 hashing to `7ba9b01f`:
 
-    python -m tests.studies.paper_figures --fixture dev_tree_1s_easy --out docs/plots/paper
+    run_study --paper-figures --fixture dev_tree_1s_easy --out docs/plots/paper
 
 `--truth-only` writes `truth/` alone, with no run. Every figure is stamped
 `dev_tree_1s_easy 7ba9b01f · code <sha>`. `run/spatial.png` and `run/combined.png`
@@ -19,7 +19,7 @@ draw panel (a) on a slide mocked from the planted labels (`port.sim.he_slide`):
 the fixture has no H&E image, and the run never reads the mock.
 `truth/phase.png` is flat: this r0 plants 0 phase switches.
 `solvers/solver_combined.png` is not drawn from this fixture: `--solvers POTTS.pkl COPY.pkl`
-draws it from a `tests.studies.potts_stream` and a `tests.studies.copy_state_stream` record,
+draws it from a `port.studies.potts_stream` and a `port.studies.copy_state_stream` record,
 and its stamp names both records' data hashes.
 
 | File | Question | Source |
@@ -43,7 +43,7 @@ and its stamp names both records' data hashes.
 | `compare/copy_confusion.png` | Which (A, B) is each planted pair decoded as? | `confusion_figure`: `port.qa.scoring.copy_confusion` |
 | `compare/copy_genomic_truth_vs_fit.png` | Where along the genome is a matched clone's (A, B) decoded wrong, or swapped? | `genomic_compare_figure`: `score`'s clone-bins |
 | `compare/exact_by_class.png` | Which planted classes are recovered exactly, with and without phase? | `exact_figure`: `port.qa.scoring.exact_by_class` |
-| `solvers/solver_combined.png` | How far above the best does each spatial solver and each copy-state start end, and how fast? | `solver_figure`: `tests.studies.potts_plot.draw`, `tests.studies.copy_state_plot.draw` |
+| `solvers/solver_combined.png` | How far above the best does each spatial solver and each copy-state start end, and how fast? | `solver_figure`: `port.studies.potts_plot.draw`, `port.studies.copy_state_plot.draw` |
 
 ## Key studies
 
@@ -51,6 +51,6 @@ Each figure is redrawn when its study is rerun, and stamped `data <hash> · code
 
 | File | Question | Source | Regenerate |
 | --- | --- | --- | --- |
-| `key_studies/557_copy-states.png` | Which copy-state start, polished by `--sal` Baum-Welch, recovers the planted states at known clones? | `tests.studies.copy_state_plot` (#540, PR #557) | `python -m tests.studies.copy_state_stream sim/manifests/baseline/dev_tree_1s_hard.toml OUT --problems 10 --seeds 10 --held-out 3 --settings tests/studies/copy_sampler_settings.json` |
-| `key_studies/554_clone-starts.png` | Does the clone-label start or the Potts solver decide the clones, and what does each start reach? | `docs/nb/clone_label_study.ipynb` via `tests.studies.clone_label_notebook` (#541, PR #554) | `python -m tests.studies.clone_labels capture SAMPLE CAPTURE.npz`, `... run CAPTURE.npz OUT.pkl`, `python -m tests.studies.clone_label_notebook OUT.pkl` |
-| `key_studies/546_population.png` | At J = 1, how many UMIs does a clone need to be detected, how long must a CNA be to be recovered, and how often is a true-(1,1) segment called altered? | `tests.studies.population_report.figures` (#544, PR #546) | `python -m tests.studies.population run --seeds 0:200 --J 1 --out DIR`, then `... run --seeds 1000:1260 --J 1 --manifest sim/manifests/population_long.toml --out DIR`, then `... report --out DIR --study2-J 1` |
+| `key_studies/557_copy-states.png` | Which copy-state start, polished by `--sal` Baum-Welch, recovers the planted states at known clones? | `port.studies.copy_state_plot` (#540, PR #557) | `run_study --copy-state-stream sim/manifests/baseline/dev_tree_1s_hard.toml OUT --problems 10 --seeds 10 --held-out 3 --settings python/port/studies/copy_sampler_settings.json` |
+| `key_studies/554_clone-starts.png` | Does the clone-label start or the Potts solver decide the clones, and what does each start reach? | `docs/nb/clone_label_study.ipynb` via `port.studies.clone_label_notebook` (#541, PR #554) | `run_study --clone-labels capture SAMPLE CAPTURE.npz`, `... run CAPTURE.npz OUT.pkl`, `run_study --clone-label-notebook OUT.pkl` |
+| `key_studies/546_population.png` | At J = 1, how many UMIs does a clone need to be detected, how long must a CNA be to be recovered, and how often is a true-(1,1) segment called altered? | `port.studies.population_report.figures` (#544, PR #546) | `run_study --population run --seeds 0:200 --J 1 --out DIR`, then `... run --seeds 1000:1260 --J 1 --manifest sim/manifests/population_long.toml --out DIR`, then `... report --out DIR --study2-J 1` |

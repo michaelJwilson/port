@@ -8,13 +8,13 @@ member is run once per analysis coupling `J` (`hmrf.spatial_weight`, read by
 J starts just above the lattice's critical coupling (`J_CRITICAL`): below it
 the prior orders nothing, so the study reads J where it does.
 
-    python -m tests.studies.population run --seeds 0:40 --J 0.8 --out DIR
-    python -m tests.studies.population report --out DIR --study2-J 0.8
+    run_study --population run --seeds 0:40 --J 0.8 --out DIR
+    run_study --population report --out DIR --study2-J 0.8
 
 `run` is resumable: a `(seed, J)` with a record in `DIR/records/` is skipped.
 Each worker runs one thread, one worker per core, and a member's draw and
 run directories are deleted once its records are written, so the disk a
-study holds is its records and each run's `KEPT` outputs in `DIR/outputs/`. `report` is `tests.studies.population_report`.
+study holds is its records and each run's `KEPT` outputs in `DIR/outputs/`. `report` is `port.studies.population_report`.
 
 **Scored per tumour clone:** its spots, the sum of its spots' drawn UMIs,
 and its completeness -- the share of its spots in the fitted clone matched
@@ -55,7 +55,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[3]
 MANIFEST = ROOT / "sim" / "manifests" / "population.toml"
 
 J_CRITICAL = float(np.log(2.0))
@@ -412,7 +412,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if arguments.command == "report":
-        from tests.studies.population_report import report
+        from port.studies.population_report import report
 
         report(arguments.out, arguments.study2_J)
         return 0
@@ -435,7 +435,3 @@ def main(argv: list[str] | None = None) -> int:
         for line in pool.imap_unordered(_worker, tasks):
             print(line, flush=True)
     return 0
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())

@@ -11,13 +11,13 @@ below are that rule made checkable, each against the import graph
 | `row-helper` | `patch/` | reached from a row, a pipeline entry point or `pipeline` |
 | `extension` | `extensions/` | reached from a row, a pipeline entry point or `pipeline` |
 | `oracle` | `extensions/` | imported by an `end2end` or `oracle` test |
-| `tool` | `extensions/`, `qa/` | reached from no row or pipeline entry point: a figure, record or measurement tool |
+| `tool` | `extensions/`, `qa/`, `studies/` | reached from no row or pipeline entry point: a figure, record or measurement tool |
 | `sim`, `script`, `pipeline` | `sim/`, `scripts/`, `port.pipeline` | where they are |
 | `set aside` | `sandbox/` | installed by nothing |
 
 **Live** is what the pipeline entry points reach: `PIPELINE` (`run_cnaster_port`,
 `run_calicost`), `port.pipeline` and the rows. The QA entry points
-(`run_ledger`, `run_audit`, `run_benchmark`, `run_figures`, T- #673) are `script`s too, but tools: they may reach `tool`
+(`run_ledger`, `run_audit`, `run_benchmark`, `run_figures`, `run_study`, T- #673) are `script`s too, but tools: they may reach `tool`
 modules, and no pipeline entry point may.
 
 A module reached by nothing lives in `sandbox/`, mirroring the tree it left
@@ -56,6 +56,7 @@ ROLES: dict[str, Role] = {
     "port.scripts.run_benchmark": "script",
     "port.scripts.run_figures": "script",
     "port.scripts.run_ledger": "script",
+    "port.scripts.run_study": "script",
     # extensions
     "port.extensions.adjacency": "extension",
     "port.extensions.combined_figure": "tool",
@@ -85,6 +86,29 @@ ROLES: dict[str, Role] = {
     "port.qa.provenance": "tool",
     "port.qa.scoring": "tool",
     "port.qa.statistics": "tool",
+    # studies: measurements run by hand (T- #673 G5), reached from `run_study`
+    "port.studies.calicost_figures": "tool",
+    "port.studies.clone_label_arms": "tool",
+    "port.studies.clone_label_notebook": "tool",
+    "port.studies.clone_labels": "tool",
+    "port.studies.clone_starts": "tool",
+    "port.studies.cna_lengths": "tool",
+    "port.studies.copy_start_arms": "tool",
+    "port.studies.copy_start_notebook": "tool",
+    "port.studies.copy_starts": "tool",
+    "port.studies.copy_state_plot": "tool",
+    "port.studies.copy_state_stream": "tool",
+    "port.studies.field_strength": "tool",
+    "port.studies.figures": "tool",
+    "port.studies.hmm_starts": "tool",
+    "port.studies.metrics_history": "tool",
+    "port.studies.paper_figures": "tool",
+    "port.studies.population": "tool",
+    "port.studies.population_report": "tool",
+    "port.studies.potts_plot": "tool",
+    "port.studies.potts_solvers": "tool",
+    "port.studies.potts_stream": "tool",
+    "port.studies.stream": "tool",
     # patch: rows
     "port.patch.hmm_nophasing.bb_logpmf": "row",
     "port.patch.hmm_nophasing.nb_logpmf": "row",
@@ -177,7 +201,7 @@ WHERE: dict[Role, tuple[str, ...]] = {
     "row-helper": ("port.patch.",),
     "extension": ("port.extensions.",),
     "oracle": ("port.extensions.",),
-    "tool": ("port.extensions.", "port.qa."),
+    "tool": ("port.extensions.", "port.qa.", "port.studies."),
     "sim": ("port.sim.",),
     "script": ("port.scripts.",),
     "pipeline": ("port.pipeline",),
@@ -293,12 +317,17 @@ def test_every_sandbox_module_states_its_ticket_measurement_and_exit() -> None:
 
 @pytest.mark.infra
 def test_no_live_module_imports_the_sandbox() -> None:
-    """`sandbox/` is installed by nothing, so nothing outside it imports it (T- #617)."""
+    """`sandbox/` is installed by nothing, so nothing outside it imports it (T- #617).
+
+    A study is the exception: `studies/` measures what `sandbox/` set aside,
+    which is each sandbox module's stated measurement, and is reached from
+    no pipeline entry point (T- #673 G5), so its imports install nothing.
+    """
     package = Path(__file__).resolve().parents[1] / "python" / "port"
     found = []
 
     for path in sorted(package.rglob("*.py")):
-        if "sandbox" in path.relative_to(package).parts:
+        if {"sandbox", "studies"} & set(path.relative_to(package).parts):
             continue
 
         for node in ast.walk(ast.parse(path.read_text())):

@@ -1,6 +1,6 @@
 """#556: CalicoST's easy and hard samples staged as `port.sim` realizations, and their truth figures drawn, each on its own.
 
-`python -m tests.studies.calicost_figures OUT_DIR [easy|hard ...]` writes
+`run_study --calicost-figures OUT_DIR [easy|hard ...]` writes
 `OUT_DIR/<key>/qa/*.png` and `truth_combined.pdf`.
 
 CalicoST writes the labels and the (A, B) profile, not a tree, a phase or a
@@ -94,6 +94,7 @@ def tree_from(profile: pd.DataFrame, clones: list[str]) -> pd.DataFrame:
 def stage(key: str, out: Path) -> Path:
     """CalicoST `key` written as a realization directory under `out/key`."""
     import anndata
+
     from port.sim.fixtures import SIM_ROOT
 
     src = SIM_ROOT / SAMPLES[key]
@@ -160,7 +161,3 @@ def main(argv: list[str] | None = None) -> None:
         print(
             key, write_truth_combined(realization, root / "qa" / "truth_combined.pdf")
         )
-
-
-if __name__ == "__main__":
-    main()

@@ -79,7 +79,7 @@ under it with a 300 normal-UMI segment floor. The other starts are in
 
 **Conditions.**
 - The calls come from one `--sal --oracle-start` run of dev_tree 60 × 50 r0 (`3381575a`), rebuilt
-  at the planted clones for both stages (`tests.studies.copy_starts capture`).
+  at the planted clones for both stages (`port.studies.copy_starts capture`).
 - Every trial is a start, then `sal`'s EM on the whole call, within 60 s.
   Seeds 0-2; deterministic starts once. 4 forked workers on the 4-core host,
   one thread each, with nothing else running. Seconds include the start.
@@ -88,5 +88,5 @@ under it with a 300 normal-UMI segment floor. The other starts are in
   0.05 of its folded p (BAF only: p alone).
 - The capture is `data/copy_state_starts_capture_r0.npz`, the trials
   `data/copy_state_starts_r0.json`. Regenerate with
-  `python -m tests.studies.copy_starts run docs/nb/data/copy_state_starts_capture_r0.npz OUT.pkl`,
-  then `python -m tests.studies.copy_start_notebook OUT.pkl`.
+  `run_study --copy-starts run docs/nb/data/copy_state_starts_capture_r0.npz OUT.pkl`,
+  then `run_study --copy-start-notebook OUT.pkl`.

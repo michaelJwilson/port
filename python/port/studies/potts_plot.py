@@ -1,6 +1,6 @@
-"""#556: `tests.studies.potts_stream`'s runs against runtime, each solver numbered as in the table beside it.
+"""#556: `port.studies.potts_stream`'s runs against runtime, each solver numbered as in the table beside it.
 
-`python -m tests.studies.potts_plot STREAM.pkl` writes `<stem>.png` beside the
+`run_study --potts-plot STREAM.pkl` writes `<stem>.png` beside the
 pickle: energy less TRW-S's lower bound, on a log axis whose bottom tick, "0",
 holds every run at the bound, with a solid black line at the planted
 labelling's gap (its median over realizations) in a dark grey band (its 10-90%
@@ -24,9 +24,9 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
-from port.qa.statistics import bars, ranks
 
-from tests.studies.plot_common import merged, stamp, tab20, tt
+from port.qa.statistics import bars, ranks
+from port.studies.figures import merged, stamp, tab20, tt
 
 NAMES = {
     "field_argmax": "field-argmax", "anneal": "glauber", "tempering": "parallel tempering",
@@ -452,7 +452,3 @@ def main(argv: list[str] | None = None) -> None:
     record = merged([pickle.loads(p.read_bytes()) for p in paths])
     print(figure(record, stream.with_suffix(".png")))
     stream.with_name("potts_solvers_table.tex").write_text(table_tex())
-
-
-if __name__ == "__main__":
-    main()

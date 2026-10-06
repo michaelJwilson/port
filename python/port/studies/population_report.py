@@ -27,6 +27,7 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
+
 from port.qa.statistics import bootstrap_interval, resample_weights
 
 BOOTSTRAP = 2000
@@ -420,27 +421,27 @@ def SUFFICIENT(study1: dict[Any, Any], study2: dict[str, Any]) -> dict[str, Any]
     half with an L50 interval at most `MAX_WIDTH_DEX` wide, or is resolved
     as never reaching (or never falling below) one half in the drawn range.
     """
-    failures = []
+    failed: list[str] = []
     for j, entry in study1.items():
         width = np.diff(entry["detected"]["crossing_interval"])[0]
         if not np.isfinite(width) or width > MAX_WIDTH_DEX:
-            failures.append(f"J={j:g}: UMI50 interval {width:.2f} dex")
+            failed.append(f"J={j:g}: UMI50 interval {width:.2f} dex")
         thin = [c for c, n in zip(entry["detected"]["centres"], entry["detected"]["n"], strict=True)
                 if n < MIN_PER_BIN]  # fmt: skip
         if thin:
-            failures.append(f"J={j:g}: bins with < {MIN_PER_BIN} clones at {thin}")
+            failed.append(f"J={j:g}: bins with < {MIN_PER_BIN} clones at {thin}")
     for name, entry in study2.items():
         curve_ = entry["recovered"]
         if sum(n >= MIN_PER_BIN for n in curve_["n"]) < 3:
-            failures.append(f"{name}: fewer than 3 bins with {MIN_PER_BIN} events")
+            failed.append(f"{name}: fewer than 3 bins with {MIN_PER_BIN} events")
         read = verdict(curve_, LENGTH_EDGES[0], LENGTH_EDGES[-1])
         entry["verdict"] = read
         width = np.diff(curve_["crossing_interval"])[0]
         if read == "unresolved" or (
             read == "crossed" and (not np.isfinite(width) or width > MAX_WIDTH_DEX)
         ):
-            failures.append(f"{name}: L50 {read}, interval {width:.2f} dex")
-    return {"passes": not failures, "failures": failures}
+            failed.append(f"{name}: L50 {read}, interval {width:.2f} dex")
+    return {"passes": not failed, "failures": failed}
 
 
 CLASS_NAMES = {
@@ -544,6 +545,7 @@ def figures(
 
     mpl.use("Agg")
     import matplotlib.pyplot as plt
+
     from port.extensions.combined_figure import FONT_SIZE, LABEL_SIZE, page_style
     from port.extensions.figure_style import PAPER_WIDTH
     from port.patch.plot_copy_number_profile import LINEWIDTH
@@ -616,7 +618,9 @@ def figures(
         to_figure = fig.transFigure.inverted()
         for axis, letter in zip((left, right, third), "abc", strict=True):
             box = axis.get_tightbbox()
-            assert box is not None
+            if box is None:
+                msg = "an axis with no extent: nothing drawn to place its letter beside"
+                raise ValueError(msg)
             x0 = box.transformed(to_figure).x0
             top = axis.get_position().y1
             fig.text(x0, top + 0.03, f"({letter})", fontsize=LABEL_SIZE,

@@ -1,6 +1,6 @@
 """#619: the `[cna.length]` laws, exponential against lognormal, per defined quantity.
 
-`python -m tests.studies.cna_lengths [OUT.png]` writes `.cache/plots/sim/cna_lengths.png`
+`run_study --cna-lengths [OUT.png]` writes `.cache/plots/sim/cna_lengths.png`
 (untracked, `port.qa.provenance.PLOTS`) or `OUT.png`:
 one row per keying -- `dev_tree`'s mean of 50 Mb, `dev_tree_1s_hard`'s median
 of 10 Mb -- with the density (left) and the CDF (right) of the exponential the
@@ -16,18 +16,18 @@ and the commit that drew it.
 
 from __future__ import annotations
 
-import sys
 import tomllib
 from pathlib import Path
 from typing import Any
 
 import numpy as np
+from scipy import stats
+
 from port.qa import provenance
 from port.qa.provenance import PLOTS
 from port.sim.draw import extended, lognormal_median
-from scipy import stats
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[3]
 MANIFESTS = ROOT / "sim" / "manifests"
 KEYED = ("dev_tree.toml", "dev_tree_1s_hard.toml")
 OUT = PLOTS / "sim" / "cna_lengths.png"
@@ -63,6 +63,7 @@ def main(argv: list[str] | None = None) -> int:
 
     mpl.use("Agg")
     import matplotlib.pyplot as plt
+
     from port.extensions.figure_style import figure_rc
 
     out = Path(argv[0]) if argv else OUT
@@ -129,7 +130,3 @@ def main(argv: list[str] | None = None) -> int:
 
     print(out)
     return 0
-
-
-if __name__ == "__main__":
-    sys.exit(main(sys.argv[1:]))

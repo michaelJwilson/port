@@ -1,6 +1,6 @@
 """#540: copy-state starts at known clones on a stream of drawn realizations, polished by the HMM's Baum-Welch.
 
-`python -m tests.studies.copy_state_stream MANIFEST OUT_DIR [--problems 5] [--seeds 3] [--held-out 3] [--first 0] [--settings PATH] [--workers 4] [--all | --starts NAME ...]`
+`run_study --copy-state-stream MANIFEST OUT_DIR [--problems 5] [--seeds 3] [--held-out 3] [--first 0] [--settings PATH] [--workers 4] [--all | --starts NAME ...]`
 
 `... --tune` tunes the samplers on the HMM (`anneal-hmm`, `tempering-hmm`,
 `hmc-hmm`, `sal`'s since #634) on the `--held-out` realizations and writes `SETTINGS`, as
@@ -29,24 +29,23 @@ next realization draws.
 There is no bound: the gap is to the best log-likelihood any run reached on
 that realization. When a realization's runs are all in, it pickles
 `OUT_DIR/<stem>.pkl` and redraws `OUT_DIR/<stem>.png`
-(`tests.studies.copy_state_plot`). Each worker warms up on a small drawn call
+(`port.studies.copy_state_plot`). Each worker warms up on a small drawn call
 first; seconds are per job with `--workers` jobs sharing the host.
 """
 
 from __future__ import annotations
 
 import argparse
-import multiprocessing as mp
 import pickle
-import subprocess
-import sys
 import time
 import traceback
-from concurrent.futures import FIRST_COMPLETED, Future, ProcessPoolExecutor, wait
+from concurrent.futures import Future, ProcessPoolExecutor
 from pathlib import Path
 from typing import Any
 
 import numpy as np
+
+from port.studies import stream as harness
 
 STARTS = (
     "calicost-gmm", "lattice", "prior", "kmeans++", "emission++", "gaussian-em",
@@ -109,7 +108,7 @@ def _raw(problem: Any) -> dict[str, Any]:
     def column(values: np.ndarray) -> np.ndarray:
         return np.asarray(values, dtype=np.float64)[:, None]
 
-    config = (Path(__file__).resolve().parents[2] / CONFIG).read_text()
+    config = (Path(__file__).resolve().parents[3] / CONFIG).read_text()
     return {"X": np.stack([problem.total, problem.b], axis=1)[:, :, None].astype(np.float64),
             "base_nb_mean": column(problem.exposure), "total_bb_RD": column(problem.trials),
             "lengths": np.asarray(problem.lengths), "log_sitewise_transmat": np.zeros(problem.total.size),
@@ -241,13 +240,12 @@ def tune(
     frame["key"] = frame.setting.map(lambda s: tuple(sorted(s.items())))
     chosen: dict[str, dict[str, float]] = {}
     for name, g in frame.groupby("start"):
-        by = g.groupby("key").agg(gap=("gap", "median"), seconds=("seconds", "median"))
-        good = by[by.gap <= by.gap.min() + TOLERANCE].sort_values("seconds")
+        key, best, by = harness.cheapest(g, TOLERANCE)
         default = GRID[str(name)][UNTUNED[str(name)]]
-        chosen[str(name)] = {**dict(good.index[0]), "median_gap": round(float(good.gap.iloc[0]), 3),
-                             "seconds": round(float(good.seconds.iloc[0]), 3),
+        chosen[str(name)] = {**dict(key), "median_gap": round(float(best.gap), 3),
+                             "seconds": round(float(best.seconds), 3),
                              "default_median_gap": round(float(by.gap.get(tuple(sorted(default.items())), np.nan)), 3)}  # fmt: skip
-        print(f"tuned {name}: {dict(good.index[0])}, median gap {good.gap.iloc[0]:.1f} nats ({good.seconds.iloc[0]:.2f} s); "
+        print(f"tuned {name}: {dict(key)}, median gap {best.gap:.1f} nats ({best.seconds:.2f} s); "
               f"untuned {chosen[str(name)]['default_median_gap']:.1f}", flush=True)  # fmt: skip
     return chosen
 
@@ -320,25 +318,12 @@ def run(
         record = {"manifest": str(manifest), "problems": held, "rows": rows, "done": shown, "complete": list(done),
                   "starts": names, "seeds": seeds, "tuned": tuned, "held_out": held_out}  # fmt: skip
         out.write_bytes(pickle.dumps(record))
-        subprocess.run(
-            [
-                sys.executable,
-                "-m",
-                "tests.studies.copy_state_plot",
-                str(out),
-                *map(str, merge),
-            ],
-            check=False,
-        )
+        harness.redraw("copy-state-plot", out, merge)
         drawn[0] = time.perf_counter()
 
     def drain(block: bool) -> None:
-        finished, _ = wait(
-            futures, timeout=None if block else 0, return_when=FIRST_COMPLETED
-        )
-        for future in finished:
-            index = futures.pop(future)
-            rows.append(future.result())
+        for index, row in harness.finished(futures, block):
+            rows.append(row)
             pending[index] -= 1
             if pending[index]:
                 if time.perf_counter() - drawn[0] >= REDRAW:
@@ -355,8 +340,7 @@ def run(
             print(f"[{time.perf_counter() - opened:6.0f}s] problem {index} solved; {len(done)}/{n_problems} done, "
                   f"{errors} errors; plot redrawn", flush=True)  # fmt: skip
 
-    context = mp.get_context("spawn")
-    with ProcessPoolExecutor(workers, mp_context=context, initializer=_init) as pool:
+    with harness.pool(workers, _init) as pool:
         total = held_out + first + n_problems
         for problem in kc.problems(manifest, total, realizations=total):
             if problem.realization < held_out + first:
@@ -406,12 +390,11 @@ def retune(
     import port.sandbox.known_copy as kc
 
     logging.disable(logging.INFO)
-    context = mp.get_context("spawn")
-    with ProcessPoolExecutor(workers, mp_context=context, initializer=_init) as pool:
+    with harness.pool(workers, _init) as pool:
         chosen = tune(
             pool, list(kc.problems(manifest, held_out, realizations=held_out)), names
         )
-    provenance = (f"tests.studies.copy_state_stream --tune on {manifest.name} realizations 0-{held_out - 1}, "
+    provenance = (f"run_study --copy-state-stream --tune on {manifest.name} realizations 0-{held_out - 1}, "
                   f"{TUNING_SEEDS} seeds per setting; the cheapest setting within {TOLERANCE} nats of the best "
                   "median gap in log-likelihood at the start's states (#540)")  # fmt: skip
     earlier = json.loads(SETTINGS.read_text()) if SETTINGS.exists() else {}
@@ -517,7 +500,3 @@ def main(argv: list[str] | None = None) -> None:
         tuple(arguments.starts),
         tuple(arguments.drop),
     )
-
-
-if __name__ == "__main__":
-    main()

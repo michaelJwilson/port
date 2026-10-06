@@ -1,6 +1,6 @@
 """#541's study: clone-label starts x Potts solvers on dev_tree, copy states from #540.
 
-`python -m tests.studies.clone_labels capture SAMPLE OUT.npz` runs `--sal
+`run_study --clone-labels capture SAMPLE OUT.npz` runs `--sal
 --oracle-start` once and keeps the spot-level inputs of the first BAF + RDR
 inference -- every spot's counts, exposure and trials, the bins' lengths and
 phase-switch kernel, the adjacency, the coupling -- with the normal
@@ -9,10 +9,10 @@ then builds its own problem from those inputs and a labelling
 (`port.sandbox.clone_starts.problem`), so no arm reads the oracle but the
 scoring.
 
-`python -m tests.studies.clone_labels run CAPTURE OUT.pkl [--arm ARM]` runs
-the arms (`tests.studies.clone_label_arms`).
+`run_study --clone-labels run CAPTURE OUT.pkl [--arm ARM]` runs
+the arms (`port.studies.clone_label_arms`).
 
-`python -m tests.studies.clone_labels e2e SAMPLE START` runs `--sal` end to
+`run_study --clone-labels e2e SAMPLE START` runs `--sal` end to
 end with `START` in place of the first clone-assignment solve of each stage
 (`first_round`), and prints `sim_audit`'s `SIM` row.
 """
@@ -53,6 +53,7 @@ def capture(
     mpl.use("Agg")
     import scipy.sparse as sp
     import yaml
+
     from port.patch import normal_spot
     from port.patch.hmrf import core_inference
     from port.qa.audit import audit_sample
@@ -146,12 +147,13 @@ def first_round(start: str) -> Iterator[None]:
     `run_core_inference` begins, from that fit's field, and leaves every later
     round to `--sal`'s solver.
     """
+    from sal.opt.termination import Termination
+
     from port.extensions import label_solver
     from port.patch.hmrf import core_inference
     from port.patch.icm.alpha_expansion import potts_energy
     from port.patch.icm.interface import IcmResult
     from port.sandbox.clone_starts.starts import STARTS
-    from sal.opt.termination import Termination
 
     real_inference, real_sweep_for = core_inference.UPSTREAM, label_solver.sweep_for
     fresh = [False]
@@ -249,7 +251,7 @@ def main(argv: list[str] | None = None) -> None:
     elif arguments.command == "capture":
         capture(arguments.sample, arguments.out)
     else:
-        from tests.studies.clone_label_arms import run_arms
+        from port.studies.clone_label_arms import run_arms
 
         run_arms(
             arguments.capture,
@@ -258,7 +260,3 @@ def main(argv: list[str] | None = None) -> None:
             workers=arguments.workers,
             retry=arguments.retry,
         )
-
-
-if __name__ == "__main__":
-    main()

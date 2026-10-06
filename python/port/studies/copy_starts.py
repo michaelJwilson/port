@@ -1,6 +1,6 @@
 """#540: copy-state starts for the BAF, then the BAF + RDR, HMM at oracle clones.
 
-Subcommands of `python -m tests.studies.copy_starts`:
+Subcommands of `run_study --copy-starts`:
 
 `capture SAMPLE OUT.npz`
     One `--sal --oracle-start --no-plots` arm on the sample, recording each
@@ -49,6 +49,7 @@ def capture(
     mpl.use("Agg")
     from cnaster.hmrf_utils import clone_stack_obs
     from cnaster.pseudobulk import merge_pseudobulk_by_index_mix
+
     from port.extensions import segments
     from port.patch.hmrf import core_inference
     from port.qa.audit import audit_sample
@@ -177,8 +178,7 @@ def main(argv: list[str] | None = None) -> None:
         capture(arguments.sample, arguments.out, overrides)
     else:
         from port.sandbox.extensions.copy_starts import read_captured
-
-        from tests.studies.copy_start_arms import ARMS, run_arms
+        from port.studies.copy_start_arms import ARMS, run_arms
 
         opened = time.perf_counter()
         results = run_arms(
@@ -205,7 +205,3 @@ def main(argv: list[str] | None = None) -> None:
         with arguments.out.open("wb") as fh:
             pickle.dump(results, fh, protocol=5)
         print(f"{time.perf_counter() - opened:.0f} s", file=sys.stderr)
-
-
-if __name__ == "__main__":
-    main()

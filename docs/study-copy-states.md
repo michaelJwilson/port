@@ -13,7 +13,7 @@ seeds ends at 1.1% missed ([0.9, 4.2] over r9–r12); the run of highest likelih
 
 ## Method
 
-`python -m tests.studies.copy_state_stream sim/manifests/baseline/dev_tree_1s_hard.toml OUT --problems N --seeds 10 --held-out 3 --settings tests/studies/copy_sampler_settings.json`.
+`run_study --copy-state-stream sim/manifests/baseline/dev_tree_1s_hard.toml OUT --problems N --seeds 10 --held-out 3 --settings python/port/studies/copy_sampler_settings.json`.
 
 1. **Problem.** Each realization of `dev_tree_1s_hard` is drawn and pseudobulked at its planted clones
    (`port.sandbox.known_copy.problems`): 1 Mb bins under #551's 300 normal-UMI floor, phased allele
@@ -82,11 +82,11 @@ n = 100 each, start and Baum-Welch seconds under the host lock with only the six
 
 `gaussian-em` refuses on 80 of 100 runs, as in the original: a component's variance collapses on the normal
 clone's point mass, and `sal` refuses rather than floor it (`ValueError` at the variance floor, every error
-of the rerun). The figure is `tests.studies.copy_state_plot` over the merged stream,
+of the rerun). The figure is `port.studies.copy_state_plot` over the merged stream,
 stamped with its data hash and code commit.
 
 The key figure is committed as `docs/plots/paper/key_studies/557_copy-states.png` (`data 7cee0a0a ·
-code 67d8874`); `python -m tests.studies.copy_state_plot OUT/<stem>.pkl` redraws it beside the pickle.
+code 67d8874`); `run_study --copy-state-plot OUT/<stem>.pkl` redraws it beside the pickle.
 
 ## Defects found, and what was done about them
 

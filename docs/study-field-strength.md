@@ -20,11 +20,11 @@ here is the gamma sampler's: the hashes are `docs/baseline-release.md`'s.
 
 ## Method
 
-`python -m tests.studies.field_strength pipeline | known | calicost`,
-`python -m tests.studies.potts_stream`, `python -m tests.studies.calicost_figures`.
+`run_study --field-strength pipeline | known | calicost`,
+`run_study --potts-stream`, `run_study --calicost-figures`.
 
 - **Pipeline field.** `--sal --oracle-start`'s first BAF + RDR inference,
-  captured (`tests.studies.clone_labels capture`) and rebuilt at the planted
+  captured (`port.studies.clone_labels capture`) and rebuilt at the planted
   labels (`port.sandbox.clone_starts.problem.build`). β = 1, 6 neighbours.
 - **Known-law field.** `port.sandbox.known_field`: each realization drawn
   in memory and scored under the draw's own law at its planted states.
@@ -67,7 +67,7 @@ here is the gamma sampler's: the hashes are `docs/baseline-release.md`'s.
 
 ## What sets it, and the manifests' numbers
 
-`python -m tests.studies.field_strength calicost` computes every number below
+`run_study --field-strength calicost` computes every number below
 from CalicoST's planted truth. The manifests carry them.
 
 | | easy | hard | dev_tree (before) | manifest key |
@@ -127,9 +127,9 @@ ICM and the color merge. Numbers are the table's in the figures.
   run of all three, in 20–24 ms.
 
 The figures, energy less the planted labelling's and the gap above TRW-S's
-bound per manifest, are not committed. `python -m tests.studies.potts_stream
+bound per manifest, are not committed. `run_study --potts-stream
 MANIFEST OUT_DIR` draws `OUT_DIR/<stem>.png` as each problem finishes, and
-`python -m tests.studies.potts_plot OUT_DIR/<stem>.pkl` redraws it from the
+`run_study --potts-plot OUT_DIR/<stem>.pkl` redraws it from the
 pickle. The six figures drawn for this section stay in history, as
 `potts_dev_tree_1s*.png` under `ba34716:docs/plots/studies/` (`git show`).
 
@@ -138,7 +138,7 @@ pickle. The six figures drawn for this section stay in history, as
 `dev_tree_1s_hard` r3–r27 (r0 `d2938975`), tuned on r0–r2.
 
 Every sampler at its setting tuned on 3 held-out realizations
-(`tests/studies/potts_sampler_settings.json`); #559's field-weighted cluster
+(`python/port/studies/potts_sampler_settings.json`); #559's field-weighted cluster
 moves and `sal`'s cluster tempering joined the finished stream by
 `potts_stream --only --merge`. Gap above TRW-S's bound, median / 90th
 percentile over 25 × 50 runs, the share at the bound, the median after ICM and
@@ -171,7 +171,7 @@ the color merge, Missed raw / polished, and the median runtime.
 - The two kernels keep the Boltzmann law exactly on a 4-site enumeration
   (`tests/test_known_field_cluster.py`).
 
-The figure is not committed: `python -m tests.studies.potts_plot
+The figure is not committed: `run_study --potts-plot
 OUT_DIR/<stem>.pkl` redraws it from the merged stream
 (`git show ba34716:docs/plots/studies/potts_dev_tree_1s_hard_tuned.png`).
 
@@ -183,7 +183,7 @@ The live `_easy` and `_hard` now draw lognormal event lengths at σ = 0.541
 the exponential generation's (`baseline/`). The exponential rows below are
 `baseline/`'s (gamma sampler; `_hard` at mean 1e7), not the live
 exponential generation (`0330bc21`, `ed2fcda1`), which was not rerun. The known-law field, r0–r2, by
-`python -m tests.studies.field_strength known`:
+`run_study --field-strength known`:
 
 | | median margin [nats] | 10% margin | argmax wrong | ARI |
 | --- | --- | --- | --- | --- |
@@ -202,7 +202,7 @@ exponential generation (`0330bc21`, `ed2fcda1`), which was not rerun. The known-
   T- #556's and T- #612's, and rerunning the studies on this generation is
   T- #620's.
 
-`python -m tests.studies.cna_lengths` draws both laws per manifest, into
+`run_study --cna-lengths` draws both laws per manifest, into
 `.cache/plots/sim/cna_lengths.png`.
 
 ## Findings beside the study
@@ -213,7 +213,7 @@ exponential generation (`0330bc21`, `ed2fcda1`), which was not rerun. The known-
   gain at half the energy the merge removes.
   - `tests/test_known_field.py` pins this as a `bug` test.
   - The color merge follows the energy.
-- **CalicoST's figures.** `tests.studies.calicost_figures` stages CalicoST's
+- **CalicoST's figures.** `port.studies.calicost_figures` stages CalicoST's
   samples as `port.sim` realizations and draws them.
   - The tree is derived from the profile.
   - No phase is recorded, so there is no phase figure.
