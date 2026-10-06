@@ -612,22 +612,60 @@ def best_equal_partition(
 
     return index, assignment
 
-RECTANGLE_TRIES = 1_000
-"""Block assignments tried before the block boundaries are redrawn.
-
-`cnaster` draws the boundaries once and then retries only the assignment,
-which cannot succeed when a block is too small: with `n_clones` a perfect
-square every clone takes exactly one block, so a small block is a small
-clone on every try (#304).
-"""
-
 RECTANGLE_REDRAWS = 10
-"""Boundary redraws before the partition falls back to equal-count bands.
+"""Boundary redraws, after an infeasible draw, before the partition is banded.
 
-A redraw cannot help when the coordinates themselves leave a block empty on
-every draw: a one-row strip puts every spot in one band of the other axis,
-so two of four blocks are always empty (#248).
+A draw is infeasible when no assignment of its blocks to clones passes
+`cnaster`'s test (:func:`admits_assignment`), and `cnaster`'s loop then never
+returns (T- #692). A redraw cannot help when the coordinates themselves leave
+a block empty on every draw: a one-row strip puts every spot in one band of
+the other axis, so two of four blocks are always empty (#248).
 """
+
+
+def admits_assignment(block_sizes: np.ndarray, n_clones: int, floor: float) -> bool:
+    """Whether some assignment of blocks to clones gives every clone `> floor` spots.
+
+    `cnaster`'s loop draws block-to-clone maps from `randint` and repairs any
+    that leave a clone empty. Every surjective map is a `randint` draw with
+    probability `n_clones ** -n_blocks > 0`, and the repair returns only
+    surjective maps, so the loop reaches exactly the surjections. With
+    `floor >= 0` a passing map is surjective, so the loop returns, with
+    probability one, exactly when this is `True`.
+
+    A depth-first search, largest block first, placing each block on a clone
+    and pruning on the spots and blocks still needed. A block is tried on one
+    clone per distinct current total, since clones of equal total are
+    interchangeable. `n_blocks` is `ceil(sqrt(n_clones)) ** 2`.
+    """
+    sizes = sorted((int(size) for size in block_sizes), reverse=True)
+    need = int(np.floor(floor)) + 1
+    remaining = [*np.cumsum(sizes[::-1])[::-1].tolist(), 0]
+    totals = [0] * n_clones
+
+    def place(block: int) -> bool:
+        deficits = [need - total for total in totals if total < need]
+        if not deficits:
+            return True
+        if block == len(sizes) or len(deficits) > len(sizes) - block:
+            return False
+        if sum(deficits) > remaining[block]:
+            return False
+
+        tried = set()
+        for clone in range(n_clones):
+            if totals[clone] in tried:
+                continue
+            tried.add(totals[clone])
+            totals[clone] += sizes[block]
+            if place(block + 1):
+                return True
+            totals[clone] -= sizes[block]
+
+        return False
+
+    return place(0)
+
 
 def _banded(coords: np.ndarray, n_clones: int) -> tuple[list[np.ndarray], np.ndarray]:
     """`n_clones` equal-count bands along the axis with the most distinct values.
@@ -650,24 +688,26 @@ def initialize_rectangular_clones(
 ) -> tuple[list[np.ndarray], np.ndarray]:
     """`cnaster.spatial.initialize_rectangular_clones`, which terminates.
 
-    **`cnaster`'s never returns on some inputs.** It dices the coordinates
-    into `p x p` blocks at Dirichlet-drawn boundaries, then loops `while
-    True` assigning blocks to clones at random until every clone holds more
-    than 20 per cent of an equal share of spots. The boundaries are drawn
-    once, before the loop. When one block holds fewer spots than that and
-    `n_clones = p ** 2`, so that each clone takes exactly one block, no
-    assignment passes and the loop spins forever. #298's normal clone makes
-    a 12-row band on the dev instance that does exactly this.
+    **Contract.** `cnaster`'s signature, defaults and return: the spots split
+    into `n_clones` clones by `p x p` rectangular blocks, `p =
+    ceil(sqrt(n_clones))`, at Dirichlet-drawn boundaries, every clone holding
+    more than `0.2 * n_spots / n_clones` spots.
 
-    Here the same boundaries, the same random stream and the same test, with
-    one change: after :data:`RECTANGLE_TRIES` failed assignments the
-    boundaries are redrawn from the same stream. Wherever `cnaster` returns
-    within that many tries this returns the same, bitwise; where it would
-    not return, this does.
+    **Departure (T- #692, #304, #248).** `cnaster` draws the boundaries once
+    and loops `while True` over block-to-clone assignments. When the blocks
+    admit no passing assignment it never returns: on dev (`07b82e92`) BAF
+    clone 2's 297 spots fall in blocks of [194, 3, 77, 23] against a floor of
+    14.85 spots at four clones. Here each draw is first tested by
+    :func:`admits_assignment`, which draws nothing: admitted, `cnaster`'s own
+    loop runs, uncapped, on the same stream, so wherever `cnaster` returns
+    this is its result, bitwise; refused, the boundaries are redrawn from the
+    same stream, up to :data:`RECTANGLE_REDRAWS` times; every draw refused,
+    the partition is :func:`_banded`'s.
 
-    After :data:`RECTANGLE_REDRAWS` redraws also fail, the coordinates
-    cannot pass on any draw, and the partition is :func:`_banded`'s instead
-    (#248). That is a stated difference: `cnaster` does not return there.
+    `port.patch.spatial`'s as of PR- #700, less its return type: `port`
+    returns a `RectangularClones` carrying `snakes_and_ladders`' `Termination`;
+    `cnamaste` does not depend on `snakes_and_ladders`, so this returns
+    `cnaster`'s two-tuple and logs how the search ended.
     """
     # NB the legacy global stream, deliberately: `cnaster` draws from it, and
     #    the same draws in the same order are what makes this bitwise.
@@ -699,20 +739,31 @@ def initialize_rectangular_clones(
 
         return block_id
 
-    block_id = blocks()
-    tries = 0
-    redraws = 0
+    floor = 0.2 * coords.shape[0] / n_clones
+
+    draws = 0
+
+    while draws <= RECTANGLE_REDRAWS:
+        block_id = blocks()
+        sizes = np.bincount(block_id, minlength=p**2)
+        draws += 1
+
+        if admits_assignment(sizes, n_clones, floor):
+            break
+
+        logger.info(
+            f"Rectangular blocks {sizes.tolist()} admit no {n_clones} clones above "
+            f"{floor:.2f} spots; redrawing (T- #692)."
+        )
+    else:
+        logger.info(
+            f"Rectangular clone initialization infeasible after {draws} draws: "
+            f"{n_clones} equal-count bands (T- #692)."
+        )
+
+        return _banded(coords, n_clones)
 
     while True:
-        if tries == RECTANGLE_TRIES:
-            if redraws == RECTANGLE_REDRAWS:
-                return _banded(coords, n_clones)
-
-            block_id = blocks()
-            tries = 0
-            redraws += 1
-
-        tries += 1
         block_clone_map = np.random.randint(low=0, high=n_clones, size=p**2)  # noqa: NPY002
 
         while len(np.unique(block_clone_map)) < n_clones:
@@ -724,7 +775,7 @@ def initialize_rectangular_clones(
         clone_id = block_clone_map[block_id]
         initial_clone_index = [np.where(clone_id == i)[0] for i in range(n_clones)]
 
-        if min(len(x) for x in initial_clone_index) > 0.2 * coords.shape[0] / n_clones:
+        if min(len(x) for x in initial_clone_index) > floor:
             return initial_clone_index, clone_id
 
 def construct_multislice_lattice_adjacency(
