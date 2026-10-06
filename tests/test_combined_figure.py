@@ -464,7 +464,8 @@ def test_the_combined_page_reads_clones_profile_tracks(
 @pytest.mark.infra
 def test_a_spatial_page_is_cut_to_its_axes() -> None:
     """`plot_clones_spatial` on a tall 4 by 10 section: equal x and y scale,
-    the tiles' box at the section's aspect to 1%, and the page's content
+    the tiles' box at the section's aspect to 1%, the key wrapped no wider
+    than the tiles, and the page's content
     `FIT_MARGIN` from the head and sides and `STAMP_ROOM` from the foot to
     a pixel, so no band of white is left (PR- #715)."""
     import matplotlib as mpl
@@ -476,7 +477,7 @@ def test_a_spatial_page_is_cut_to_its_axes() -> None:
 
     rows, columns = np.meshgrid(np.arange(4.0), np.arange(10.0))
     coords = np.column_stack([rows.ravel(), columns.ravel()])
-    assignment = pd.Series([f"clone {k % 3}" for k in range(len(coords))])
+    assignment = pd.Series([f"clone {k % 5}" for k in range(len(coords))])
     figure = plot_clones_spatial(coords, assignment)
     figure.canvas.draw()
     renderer = figure.canvas.get_renderer()
@@ -488,6 +489,7 @@ def test_a_spatial_page_is_cut_to_its_axes() -> None:
     width, height = figure.get_size_inches()
 
     assert ax.get_aspect() == 1.0
+    assert ax.get_legend().get_window_extent(renderer).width <= box.width + 1.0
     assert box.height / box.width == pytest.approx((y1 - y0) / (x1 - x0), rel=0.01)
     assert content.x0 == pytest.approx(FIT_MARGIN, abs=1.0 / dpi)
     assert width - content.x1 == pytest.approx(FIT_MARGIN, abs=1.0 / dpi)

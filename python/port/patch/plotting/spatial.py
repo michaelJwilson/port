@@ -150,7 +150,8 @@ def draw_clones_spatial(
     if not legend:
         return
 
-    ax.legend(
+    _key(
+        ax,
         [
             Line2D(
                 [0],
@@ -164,10 +165,19 @@ def draw_clones_spatial(
             for colour, clone in zip(colours, clone_ids, strict=True)
         ],
         [cast_clone_label(clone) for clone in clone_ids],
+        len(clone_ids),
+    )
+
+
+def _key(ax: Any, handles: Any, labels: list[str], columns: int) -> Any:
+    """Upstream's key under `ax`, in `columns` columns."""
+    return ax.legend(
+        handles,
+        labels,
         handlelength=0.1,
         loc="upper left",
         bbox_to_anchor=(0.05, 0.02),
-        ncol=len(clone_ids),
+        ncol=columns,
         frameon=False,
         fontsize=8,
         borderaxespad=0.0,
@@ -251,12 +261,17 @@ def _key_within(ax: Any) -> None:
     if legend is None:
         return
     figure = ax.get_figure(root=True)
+    figure.canvas.draw()
     renderer = figure.canvas.get_renderer()
     width = ax.get_window_extent(renderer).width
-    columns = legend._ncols
+    handles = list(legend.legend_handles)
+    labels = [text.get_text() for text in legend.get_texts()]
+    columns = len(labels)
+    # NB a legend lays out its box once, so a narrower one is a new one.
     while columns > 1 and legend.get_window_extent(renderer).width > width:
         columns -= 1
-        legend.set_ncols(columns)
+        legend.remove()
+        legend = _key(ax, handles, labels, columns)
         figure.canvas.draw()
 
 
