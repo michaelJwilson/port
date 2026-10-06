@@ -89,7 +89,10 @@ is 122 mm wide and about a quarter of the block tall: (a) an H&E slide and
 `combined.png` is both on one page, the full 122 by 193 mm: the spatial
 figure at the head as (a), the genomic figure drawn the rest of the height
 below as (b) and (c) -- `truth_combined.png`'s order, the clones' structure,
-then the profile, then the tracks (`combined_figure.PANELS`). No captions. `port.extensions.combined_figure` redraws the run's own calls and
+then the profile, then the tracks (`combined_figure.PANELS`). Its key, rows and tracks
+name the clones in one order, the fitted clone index, normal first
+(`combined_figure.clone_order`); a clone merged under integer labels is
+named in its group's key entry, `$m_N$, $m_3$` (PR- #715). No captions. `port.extensions.combined_figure` redraws the run's own calls and
 writes each page at exactly its size, so it is included at
 `width=\linewidth` unscaled.
 

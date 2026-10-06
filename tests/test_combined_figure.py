@@ -90,8 +90,9 @@ def test_recording_calls_through_and_restores() -> None:
     ) == before
 
 
-def _recorded(tmp_path: Path, n_clones: int = 3) -> tuple[Any, Any]:
-    """A run's three recorded calls on the 3 by 3 fixture, and its slide."""
+def _recorded(tmp_path: Path, n_clones: int = 3, tall: float = 1.0) -> tuple[Any, Any]:
+    """A run's three recorded calls on the 3 by 3 fixture, its rows `tall`
+    times as far apart as its columns, and its slide."""
     from cnaster.he import get_he_image
     from port.extensions.combined_figure import Call, Recorded
     from port.sim.he_slide import mock_he, write_he_slide
@@ -100,7 +101,7 @@ def _recorded(tmp_path: Path, n_clones: int = 3) -> tuple[Any, Any]:
     arguments, keywords = _genomic_arguments()
     n_spots = arguments[1].shape[2]
     rows, columns = np.unravel_index(np.arange(n_spots), (3, 3))
-    coords = np.column_stack([rows, columns]).astype(float)
+    coords = np.column_stack([rows, tall * columns]).astype(float)
     assignment = pd.Series([f"clone {k % n_clones}" for k in range(n_spots)])
     write_he_slide(mock_he(clone_bands(3, 3, 3), (3, 3), seed=1), tmp_path)
     recorded = Recorded(
@@ -319,8 +320,9 @@ def test_the_spatial_labels_are_integer_by_default_or_continuous(
     cnaster_config: None, tmp_path: Path
 ) -> None:
     """Two clones that decode alike at every bin are one clone under the
-    default "integer" labels -- two keyed, $m_N$ and $m_1$ -- and stay two
-    under "continuous": three keyed, as the fit found them (#344)."""
+    default "integer" labels -- two entries, $m_N$ and "$m_1$, $m_2$", the
+    merged clone named in its group's entry (PR- #715) -- and stay two under
+    "continuous": three keyed, as the fit found them (#344)."""
     import matplotlib as mpl
 
     mpl.use("Agg")
@@ -340,7 +342,7 @@ def test_the_spatial_labels_are_integer_by_default_or_continuous(
         return [t.get_text() for t in figure.axes[1].get_legend().get_texts()]
 
     assert keyed("continuous") == ["$m_N$", "$m_1$", "$m_2$"]
-    assert keyed("integer") == ["$m_N$", "$m_1$"]
+    assert keyed("integer") == ["$m_N$", "$m_1$, $m_2$"]
 
     with pytest.raises(ValueError, match="integer"):
         spatial_figure(recorded, frame, labels="decoded")
@@ -497,4 +499,57 @@ def test_a_spatial_page_is_cut_to_its_axes() -> None:
     assert width - content.x1 == pytest.approx(FIT_MARGIN, abs=1.0 / dpi)
     assert height - content.y1 == pytest.approx(FIT_MARGIN, abs=1.0 / dpi)
     assert content.y0 == pytest.approx(STAMP_ROOM, abs=1.0 / dpi)
+    plt.close(figure)
+
+
+@pytest.mark.infra
+@pytest.mark.merge
+def test_the_combined_page_s_spatial_panels_are_square_keyed_clear_and_in_order(
+    cnaster_config: None, tmp_path: Path
+) -> None:
+    """On the rendered page, for a section 3 times as tall as wide: (a)'s
+    slide and clone map each a square box (1 px) with square limits, the
+    clone key clear of both; and (a)'s key, (b)'s rows and (c)'s tracks
+    name the clones in one order, `clone_order`'s (PR- #715)."""
+    import matplotlib.pyplot as plt
+    from port.extensions.combined_figure import (
+        clone_order,
+        clone_symbol,
+        combined_figure,
+    )
+
+    recorded, frame = _recorded(tmp_path, tall=3.0)
+    figure = combined_figure(recorded, frame)
+    figure.canvas.draw()
+    renderer = figure.canvas.get_renderer()
+    slide, clones = figure.get_axes()[-2:]
+    key = clones.get_legend().get_window_extent(renderer)
+
+    for ax in (slide, clones):
+        box = ax.get_window_extent(renderer)
+        (x0, x1), (y0, y1) = ax.get_xlim(), ax.get_ylim()
+        assert box.width == pytest.approx(box.height, abs=1.0)
+        assert abs(x1 - x0) == pytest.approx(abs(y1 - y0))
+        assert not key.overlaps(box)
+
+    profile, tracks = figure.subfigs
+    # NB tick labels run bottom to top.
+    rows = [t.get_text() for t in profile.axes[1].get_yticklabels()][::-1]
+    named = [
+        t.get_text()
+        for ax in tracks.axes
+        for t in ax.texts
+        if t.get_visible() and t.get_text().startswith("$m")
+    ]
+    ids = [
+        c[len("clone") : -len(" A")]
+        for c in recorded.profile.args[0].columns
+        if c.endswith(" A")
+    ]
+    expected = [clone_symbol(str(k)) for k in clone_order(ids)]
+    keyed = [t.get_text().split(", ")[0] for t in clones.get_legend().get_texts()]
+
+    assert rows == expected
+    assert named == expected
+    assert keyed == [m for m in expected if m in keyed]
     plt.close(figure)

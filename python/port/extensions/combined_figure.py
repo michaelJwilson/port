@@ -414,9 +414,22 @@ def clone_symbol(label: str) -> str:
     return rf"$m_{number}$" if number < 10 else rf"$m_{{{number}}}$"
 
 
-def _clone_key(ax: Any, clone_ids: Any, colours: list[str]) -> None:
-    """The clones in one column left of `ax`, the key's bottom on the axis's."""
-    from cnaster.utils import cast_clone_label
+def clone_order(ids: Any) -> list[str]:
+    """`ids` in the fitted clones' index order, the normal (0) first: the
+    order of (a)'s key, (b)'s rows and (c)'s tracks on the run's page, as
+    the tree's is on the truth page (PR- #715). A non-integer id sorts
+    after the integers, by name, as `outputs.integer_clones` orders them."""
+
+    def index(clone: Any) -> tuple[bool, int, str]:
+        tail = str(clone).split()[-1]
+        return (not tail.isdigit(), int(tail) if tail.isdigit() else 0, tail)
+
+    return sorted((str(c) for c in ids), key=index)
+
+
+def _clone_key(ax: Any, names: list[str], colours: list[str]) -> None:
+    """The clones in one column, `names` against `colours`; placed by
+    `_place_spatial` right of `ax`, the key's bottom on the axis's."""
     from matplotlib.lines import Line2D
 
     entries = [
@@ -425,7 +438,7 @@ def _clone_key(ax: Any, clone_ids: Any, colours: list[str]) -> None:
     ]
     ax.legend(
         entries,
-        [clone_symbol(cast_clone_label(clone)) for clone in clone_ids],
+        names,
         ncol=1,
         loc="lower right",
         bbox_to_anchor=(-0.04, 0.0),
@@ -823,7 +836,10 @@ def _genomic_page(
         1,
         height_ratios=(key, scale * profile_rows),
     )
-    plot_copy_number_profile(profile.args[0], ax=profile_ax, axis=genome)
+    # NB rows in the fitted clones' index order, as (c)'s tracks are (PR- #715).
+    frame = profile.args[0]
+    ids = [c[len("clone") : -len(" A")] for c in frame.columns if c.endswith(" A")]
+    plot_copy_number_profile(frame, ax=profile_ax, axis=genome, rows=clone_order(ids))
     profile_ax.set_yticklabels(
         [clone_symbol(t.get_text()) for t in profile_ax.get_yticklabels()]
     )
@@ -986,6 +1002,7 @@ def _place_spatial(figure: Any, slide_ax: Any, spatial_ax: Any) -> None:
     for ax in (slide_ax, spatial_ax):
         ax.set_xlim(xc - half, xc + half)
         ax.set_ylim(yc - half, yc + half)
+        ax.set_aspect("equal", adjustable="box")
     bottom = height - side - 1.0
     _put(slide_ax, left, left + wide, bottom, side)
     start = left + wide + SPATIAL_GAP + ticks(spatial_ax)
@@ -1043,6 +1060,9 @@ def _draw_spatial(
     copy profile (#344) -- which needs the run's profile call -- or
     "continuous" for the fit's own clones.
     """
+    from cnaster.utils import cast_clone_label
+
+    from port.extensions.outputs import integer_clones
     from port.patch.plotting.spatial import draw_clones_spatial, spot_colours
 
     if recorded.spatial is None:  # invariant
@@ -1073,7 +1093,23 @@ def _draw_spatial(
     if upstream_key is not None:
         upstream_key.remove()
     _, clone_ids, colours = spot_colours(assignment)
-    _clone_key(spatial_ax, clone_ids, colours)
+    # NB in index order; under "integer" labels, a clone whose integer copy
+    #    profile matches an earlier one's at every bin has its spots drawn
+    #    as that clone's and is named in that clone's entry (PR- #715).
+    members: dict[str, list[str]] = {}
+    if labels == "integer" and recorded.profile is not None:
+        for clone, group in integer_clones(recorded.profile.args[0]).items():
+            members.setdefault(group, []).append(clone)
+    keyed = dict(zip((str(c) for c in clone_ids), colours, strict=True))
+    order = clone_order(keyed)
+    names = [
+        ", ".join(
+            clone_symbol(cast_clone_label(f"clone {m}"))
+            for m in clone_order(members.get(clone.split()[-1], [clone.split()[-1]]))
+        )
+        for clone in order
+    ]
+    _clone_key(spatial_ax, names, [keyed[c] for c in order])
 
     image, extent = slide_image(he_frame)
     slide_ax.imshow(image, extent=extent, interpolation="none")
@@ -1176,7 +1212,12 @@ def combined_figure(
     # NB the slide's axis, then the clones', as `_draw_spatial` adds them.
     old_axes = spatial.get_axes()[:2]
 
+    # NB the spatial page's square limits too: without them each new axis
+    #    holds its aspect on the spots' own extent, and shrinks to it.
     for new, old in zip((slide_ax, spatial_ax), old_axes, strict=True):
+        new.set_xlim(old.get_xlim())
+        new.set_ylim(old.get_ylim())
+        new.set_aspect("equal", adjustable="box")
         box = old.get_window_extent(source)
         _put(new, box.x0 / dpi, box.x1 / dpi, box.y0 / dpi + tall, box.height / dpi)
 
