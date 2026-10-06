@@ -8,13 +8,16 @@
 # The dependencies are `cnaster`'s at its locked pin `4adad4d`, verbatim, so
 # the copy runs wherever `cnaster` does.
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=77"]  # NB 77: an SPDX `license` string (PEP 639)
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "cnamaste"
 version = "0.1.0"
 description = "cnaster's forward path, developed and shipped on its own"
+# NB MIT, as `port` is: the licence is `cnaster`'s owner's decision (T- #670).
+license = "MIT"
+license-files = ["LICENSE"]
 authors = [{ name = "M. J. Wilson" }]
 requires-python = ">=3.12.2"
 dependencies = [
