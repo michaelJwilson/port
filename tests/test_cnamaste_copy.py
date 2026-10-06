@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import gc
 import importlib
+import logging
 import sys
 import warnings
 from contextlib import ExitStack
@@ -50,6 +51,7 @@ from port.pipeline import (
     FIGURE_SWAPS,
     LOG_SPACE_SWAPS,
     PLOT_OFF_SWAPS,
+    SHIFT_SWAPS,
     SWAPS,
     Swap,
     patched,
@@ -93,10 +95,22 @@ PREPROCESSING = frozenset(
 """PR3's `SWAPS` rows: `docs/port-forward.md` rows 6 and 8-23. Row 7,
 `get_reference_genes`, needs `pyarrow`, which `cnamaste` does not declare."""
 
+FIT_CHAIN: tuple[Swap, ...] = (
+    *(swap for swap in SWAPS if swap.name == "hmm_phased"),
+    *(
+        swap._replace(options=())
+        for swap in SHIFT_SWAPS
+        if swap.name == "hmm_nophasing"
+    ),
+)
+"""PR5's rows: `docs/port-forward.md` rows 25 (`SWAPS`) and 26 (`SHIFT_SWAPS`),
+the second without the `apply_logmu_shift=True` `port` binds."""
+
 ABSORBED: tuple[Swap, ...] = (
     *(swap._replace(options=()) for swap in FIGURE_SWAPS),
     *(swap for swap in SWAPS if swap.replacement in PREPROCESSING),
     *LOG_SPACE_SWAPS,
+    *FIT_CHAIN,
 )
 """The `port` rows `cnamaste` holds, installed on the `cnaster` arm.
 
@@ -108,7 +122,8 @@ defaults only at PR9. Row 5, plot-off, is
 `PREPROCESSING`, under the segment and sample recording `run_cnaster_port`
 enters, as `run_cnamaste` enters its own. PR4: rows 27-30,
 `LOG_SPACE_SWAPS`, which `port` installs with its shift and `cnamaste` holds
-without it.
+without it. PR5: `FIT_CHAIN`, rows 25-26 at `cnamaste`'s defaults, the
+shift off and the analytic gradient on.
 """
 
 NARROWED = "(0.4, 0.6)"
@@ -380,15 +395,15 @@ def test_run_cnamaste_completes_calicost_easy_at_the_shipped_interval(
 @pytest.mark.merge
 @pytest.mark.xdist_group("pipeline")
 @pytest.mark.usefixtures("_fixed_dates")
-def test_the_log_space_kernels_keep_devs_clones_and_move_its_fit_by_under_2e_3(
+def test_the_log_space_kernels_keep_devs_clones_and_move_its_fit_by_under_1e_8(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """PR4 against the previous state, `cnaster` with PR3's rows only, on dev.
+    """PR4's kernels alone, on dev: `cnaster` with every other absorbed row.
 
     Every spot keeps its clone; each fitted state parameter moves by under
-    2e-3 relative (measured 1.6e-3, `new_log_mu`). Not a gate-instance claim:
-    there 2 of 1,000 spots change BAF clone, and the read-depth fit then ends
-    at another optimum (log-likelihood -1,312 against -1,205).
+    1e-8 relative (measured 1.2e-9, `new_log_mu`). At PR4, under `cnaster`'s
+    finite-difference M step, the same swap moved it by 1.6e-3; PR5's
+    analytic gradient is the difference (#244).
     """
     truth = dev_instance()
     assert fixture_hash(truth) == DEV_HASH
@@ -397,8 +412,8 @@ def test_the_log_space_kernels_keep_devs_clones_and_move_its_fit_by_under_2e_3(
     )
     previous = tuple(swap for swap in ABSORBED if swap not in LOG_SPACE_SWAPS)
 
-    with monkeypatch.context() as pr3:
-        pr3.setattr(sys.modules[__name__], "ABSORBED", previous)
+    with monkeypatch.context() as cnasters_kernels:
+        cnasters_kernels.setattr(sys.modules[__name__], "ABSORBED", previous)
         before = _run("cnaster", config, tmp_path, plots=False)
     after = _run("cnamaste", config, tmp_path, plots=False)
 
@@ -413,7 +428,7 @@ def test_the_log_space_kernels_keep_devs_clones_and_move_its_fit_by_under_2e_3(
 
     fits = [np.load(read(r, "*.npz")) for r in (before, after)]
     for name in ("new_log_mu", "new_alphas", "new_p_binom", "new_taus"):
-        np.testing.assert_allclose(fits[1][name], fits[0][name], rtol=2e-3, atol=0)
+        np.testing.assert_allclose(fits[1][name], fits[0][name], rtol=1e-8, atol=0)
 
 
 @pytest.mark.infra
@@ -433,3 +448,62 @@ def test_the_audits_cnamaste_arm_refuses_what_only_port_reads(
 
     with pytest.raises(ValueError, match="run_cnamaste takes no flags"):
         audit_truth(critical_instance(), cnamaste=True, **keywords)  # type: ignore[arg-type]
+
+
+class _Kept(logging.Handler):
+    """Keeps every record it is handed."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.records: list[logging.LogRecord] = []
+
+    def emit(self, record: logging.LogRecord) -> None:
+        self.records.append(record)
+
+
+@pytest.mark.bug
+@pytest.mark.cnamaste
+@pytest.mark.merge
+@pytest.mark.xdist_group("pipeline")
+@pytest.mark.usefixtures("_fixed_dates")
+def test_the_integer_copy_log_says_log_mu_is_not_normalized(
+    planted_instance: tuple[CoreInferenceTruth, object, object, Path],
+    tmp_path: Path,
+) -> None:
+    """#136: `cnaster` logs that it normalized `log_mu` before the integer copy
+    decoder, and prints one array as both "new" and "given"; the normalization
+    is commented out. `cnamaste` logs that the decoder reads it unnormalized.
+    The gate instance, without figures: one message per clone per ploidy."""
+    truth = planted_instance[0]
+    assert fixture_hash(truth) == GATE_HASH
+    _, config = write_for_run(truth, tmp_path / "inputs", max_iter_outer=1, max_iter=3)
+
+    def messages(package: str) -> list[str]:
+        # NB imported first: `get_logger` clears the handlers of the logger
+        #    it configures, so one added before the import is dropped.
+        logger = logging.getLogger(importlib.import_module(ENTRIES[package]).__name__)
+        handler = _Kept()
+        records = handler.records
+        logger.addHandler(handler)
+        try:
+            _run(package, config, tmp_path, plots=False)
+        finally:
+            logger.removeHandler(handler)
+        return [
+            record.getMessage()
+            for record in records
+            if record.getMessage().startswith("For clone ")
+            and "mu" in record.getMessage()
+        ]
+
+    claimed = messages("cnaster")
+    stated = messages("cnamaste")
+
+    assert claimed
+    for message in claimed:
+        assert "normalized log mu to sum_bin lambda * np.exp(log_mu) = 1." in message
+        new, given = message.split("yielding new mu=\n")[1].split("\ngiven mu=\n")
+        assert new == given.removesuffix(".")
+
+    assert len(stated) == len(claimed)
+    assert all("not normalized" in message for message in stated)

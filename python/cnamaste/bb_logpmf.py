@@ -3,8 +3,9 @@
 **`port.patch.hmm_nophasing.bb_logpmf` (#561), moved in by T- #670 PR4.**
 `cnamaste.hmm_nophasing` imports `_bb_logpmf_1d` and `_dense_bb_logpmf` in
 place of `cnaster`'s, so every compiled caller reads them under `cnaster`'s
-names. `port`'s NumPy helpers `rises`, `rises_on_distinct` (#702) and
-`digamma_rise`, which no `cnamaste` module calls, stay behind.
+names. `port`'s NumPy helpers `rises` and `rises_on_distinct` (#702), which
+no `cnamaste` module calls, stay behind; `digamma_rise` came in with T- #670
+PR5, for `cnamaste.gradient`.
 
 **The defect.** Upstream evaluates
 `lgamma(k + a) + lgamma(n - k + b) - lgamma(n + a + b) - (lgamma(a) +
@@ -39,6 +40,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 from numba import njit
+from scipy.special import digamma
 
 if TYPE_CHECKING:  # pragma: no cover - `prange` is `range` to a type checker
     prange = range
@@ -52,6 +54,7 @@ __all__ = [
     "_dense_bb_logpmf",
     "bb_logpmf",
     "binomial_logpmf",
+    "digamma_rise",
     "rise",
 ]
 
@@ -151,3 +154,26 @@ def _dense_bb_logpmf(
                 X_bb[:, s], total_bb_RD[:, s], p_val, tau_val, out[i, :, s], EPS
             )
     return out
+
+
+def digamma_rise(x: np.ndarray, m: np.ndarray) -> np.ndarray:
+    """`psi(x + m) - psi(x)`, broadcast, without cancellation at large `x`.
+
+    The derivative of :func:`rise` in `x`. Below `STIRLING` the two
+    `digamma`; at and above, the asymptotic series differenced as `rise`
+    differences Stirling's: `log1p(m / x)` plus the `1 / (2 y)`,
+    `1 / (12 y^2)` and `1 / (120 y^4)` terms, each from `expm1`. The
+    truncation is below `1 / (252 x^6)`, 4e-21 at 1e3.
+    """
+    x = np.asarray(x, dtype=np.float64)
+    m = np.asarray(m, dtype=np.float64)
+    large = x >= STIRLING
+    safe = np.where(large, x, STIRLING)
+    step = np.log1p(m / safe)
+    series = (
+        step
+        - np.expm1(-step) / (2.0 * safe)
+        - np.expm1(-2.0 * step) / (12.0 * safe**2)
+        + np.expm1(-4.0 * step) / (120.0 * safe**4)
+    )
+    return np.where(large, series, digamma(x + m) - digamma(x))

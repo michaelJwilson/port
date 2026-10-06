@@ -80,8 +80,9 @@ def run_cnaster(config_path, over_rides=None, *, plots=True):
     The run records its segmentations (`cnamaste.segments`, #438) and samples
     (`cnamaste.samples`, #418) as `run_cnaster_port` does, which the moved
     preprocessing reads (T- #670 PR3), and drops what its loader and genetic
-    map cache held when it returns.
+    map cache held when it returns, and the last shifted fit's shift (PR5).
     """
+    from cnamaste import hmm_nophasing as fit
     from cnamaste import io, recomb, samples, segments
 
     with segments.recording(), samples.recording():
@@ -90,6 +91,7 @@ def run_cnaster(config_path, over_rides=None, *, plots=True):
         finally:
             io.release()
             recomb.release()
+            fit.release()
 
 
 def _run_cnaster(config_path, over_rides=None, *, plots=True):
@@ -1383,29 +1385,15 @@ def _run_cnaster(config_path, over_rides=None, *, plots=True):
                 f"Found state usage for clone {cid}:\n{pd.DataFrame({'state': us, 'counts': cnts})}"
             )
 
-            # NB adjust log_mu such that sum_bin lambda * np.exp(log_mu) = 1.
-            lambd = base_nb_mean[:, s] / np.sum(base_nb_mean[:, s])
-
-            # NB scales inferred log_mu for this clone according to the library expression.
             idx = s if res_combine["new_log_mu"].shape[1] > 1 else 0
 
-            # TODO no correction for impacy of cnas on library size?
-            # adjusted_log_mu = (
-            #     np.log(
-            #         np.exp(res_combine["new_log_mu"][:, idx])
-            #         / np.sum(
-            #             lambd * np.exp(res_combine["new_log_mu"][this_pred_cnv, idx])
-            #         )
-            #     )
-            #     if config.run.legacy
-            #     else res_combine["new_log_mu"][:, idx]
-            # )  # TODO HACK BUG?
-
-            # TODO HACK BUG?
-            adjusted_log_mu = res_combine["new_log_mu"][:, idx]
+            # NB #136: `cnaster` logs that it normalized `log_mu` to
+            #    `sum_bin lambda * exp(log_mu) = 1` and passes it unchanged, the
+            #    normalization commented out. The log now says what is done.
+            clone_log_mu = res_combine["new_log_mu"][:, idx]
 
             logger.info(
-                f"For clone {cid}, normalized log mu to sum_bin lambda * np.exp(log_mu) = 1.; yielding new mu=\n{np.exp(adjusted_log_mu)}\ngiven mu=\n{np.exp(res_combine["new_log_mu"][:, idx])}."
+                f"For clone {cid}, the integer copy decoder reads the fitted mu, not normalized to sum_bin lambda * mu = 1 (#136):\n{np.exp(clone_log_mu)}."
             )
 
             # TODO finalize integer copy number determination.
@@ -1415,7 +1403,7 @@ def _run_cnaster(config_path, over_rides=None, *, plots=True):
             if max_medploidy is not None:
                 best_integer_copies, loss, best_ploidy = (
                     hill_climbing_integer_copynumber_oneclone(
-                        adjusted_log_mu,
+                        clone_log_mu,
                         base_nb_mean[:, s],
                         res_combine["new_p_binom"][:, idx],
                         this_pred_cnv,
@@ -1428,7 +1416,7 @@ def _run_cnaster(config_path, over_rides=None, *, plots=True):
                     loss,
                     best_ploidy,
                 ) = hill_climbing_integer_copynumber_fixdiploid_milp(
-                    adjusted_log_mu,
+                    clone_log_mu,
                     base_nb_mean[:, s],
                     res_combine["new_p_binom"][:, idx],
                     this_pred_cnv,

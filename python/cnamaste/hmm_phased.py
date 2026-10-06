@@ -1,3 +1,14 @@
+"""`cnaster.hmm_phased` at the pin, its coded emission `port`'s (T- #670 PR5).
+
+Row 25, `port.patch.hmm_phased:hmm_phased` (#269), below the marked seam.
+`cnaster`'s coded emission reads the fitted parameter by spot, so a call
+scoring more than one spot raises `IndexError`; `port`'s reads it by state,
+and equals `cnaster`'s on every one-spot call `run_cnaster` makes.
+`cnaster`'s class is kept as `_cnaster_hmm_phased`. Its base is `cnaster`'s
+`hmm_nophasing`, `_cnaster_hmm_nophasing`, as `port`'s is: the phasing fit
+keeps `cnaster`'s finite-difference M step.
+"""
+
 from math import exp, lgamma
 
 import numpy as np
@@ -7,9 +18,11 @@ from cnamaste.count_encoder import CountEncoder
 from cnamaste.hmm_nophasing import (
     _bb_logpmf_1d,
     _nb_logpmf_1d,
-    hmm_nophasing,
     numba_logsumexp,
 )
+# NB `cnaster`'s class, under its `cnaster` name, as `port`'s `hmm_phased`
+#    inherits it (T- #670 PR5).
+from cnamaste.hmm_nophasing import _cnaster_hmm_nophasing as hmm_nophasing
 
 PEANLIZE_PHASE_ONLY_ON_SAME_CNV = False  # TODO config derived.
 
@@ -75,7 +88,7 @@ def update_combined_transmat(
         out_transmat[n_states:, n_states:] = self_trans + log_transmat
 
 
-class hmm_phased(hmm_nophasing):
+class _cnaster_hmm_phased(hmm_nophasing):
     def __init__(self, params="stmp", t=1 - 1e-4):
         super().__init__(params=params, t=t)
 
@@ -280,3 +293,113 @@ class hmm_phased(hmm_nophasing):
             cumlen += le
 
         return log_beta
+
+
+# --- `port.patch.hmm_phased.coded_emission`, moved in by T- #670 PR5 ----------
+
+# NB what `port`'s replacements below import.
+from typing import Any
+
+from cnamaste.clone_paths import state_vector
+
+
+def compute_emission_probability_nb_betabinom_coded(
+    nbEncoder: Any,
+    bbEncoder: Any,
+    log_mu: np.ndarray,
+    alphas: np.ndarray,
+    p_binom: np.ndarray,
+    taus: np.ndarray,
+    clone_stack: bool = True,
+    scratch_rdr: Any = None,
+    scratch_baf: Any = None,
+    normal_log_lambda: Any = None,
+    clone_lengths: Any = None,
+) -> tuple[np.ndarray, np.ndarray]:
+    """`cnaster`'s, with the parameter read by state rather than by spot (#269).
+
+    `cnaster`'s binds `n_states, n_spots = log_mu.shape`, then replaces
+    `n_spots` with the data's and indexes `log_mu[i, s]` by it: any call
+    with more than one spot raises `IndexError` on the `(n_states, 1)`
+    parameter every fit returns.
+    """
+    del normal_log_lambda, clone_lengths
+
+    rates = np.exp(state_vector(log_mu))
+    dispersions = state_vector(alphas)
+    probabilities = state_vector(p_binom)
+    concentrations = state_vector(taus)
+
+    n_states = len(rates)
+    n_spots = nbEncoder.n_spots
+
+    if n_spots != bbEncoder.n_spots:  # invariant
+        msg = "Encoders must have identical spot counts"
+        raise AssertionError(msg)
+
+    rdr_columns, baf_columns = [], []
+
+    for spot in range(n_spots):
+        nb_endog = nbEncoder.get_unique_obs(spot)
+        nb_exposure = nbEncoder.get_unique_total(spot)
+
+        bb_endog = bbEncoder.get_unique_obs(spot)
+        bb_exposure = bbEncoder.get_unique_total(spot)
+
+        rdr_uniq = (
+            scratch_rdr[spot]
+            if scratch_rdr is not None
+            else np.zeros((n_states, len(nb_endog)))
+        )
+        baf_uniq = (
+            scratch_baf[spot]
+            if scratch_baf is not None
+            else np.zeros((n_states, len(bb_endog)))
+        )
+
+        for state in range(n_states):
+            _nb_logpmf_1d(
+                nb_endog,
+                nb_exposure,
+                rates[state],
+                dispersions[state],
+                rdr_uniq[state, :],
+            )
+            _bb_logpmf_1d(
+                bb_endog,
+                bb_exposure,
+                probabilities[state],
+                concentrations[state],
+                baf_uniq[state, :],
+            )
+
+        switched = _switch_betabinom_1d(
+            baf_uniq, bb_endog, bb_exposure, probabilities, concentrations
+        )
+
+        rdr_columns.append(
+            nbEncoder.decode_array(np.vstack((rdr_uniq, rdr_uniq)), spot)
+        )
+        baf_columns.append(
+            bbEncoder.decode_array(np.vstack((baf_uniq, switched)), spot)
+        )
+
+    if clone_stack:
+        return (
+            np.concatenate(rdr_columns, axis=1),
+            np.concatenate(baf_columns, axis=1),
+        )
+
+    return np.stack(rdr_columns, axis=2), np.stack(baf_columns, axis=2)
+
+
+class hmm_phased(_cnaster_hmm_phased):
+    """`port.patch.hmm_phased:hmm_phased` (#269, #517): the coded emission by state.
+
+    Every live call scores one spot, where this equals `cnaster`'s; a caller
+    scoring pooled spots gets a number rather than `IndexError`.
+    """
+
+    compute_emission_probability_nb_betabinom_coded = staticmethod(
+        compute_emission_probability_nb_betabinom_coded
+    )

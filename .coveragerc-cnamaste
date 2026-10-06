@@ -26,6 +26,7 @@ source =
 # figure, plot-off and #105 / #113 tests added. 62.38% at PR3 (6460
 # statements, 2430 missed), with dev and the preprocessing tests added.
 # 62.42% at PR4 (6492 statements, 2440 missed), with the log-space kernel
-# tests added.
-fail_under = 62
+# tests added. 64.15% at PR5 (6904 statements, 2475 missed), with the HMM
+# fit-chain tests added.
+fail_under = 64
 precision = 2

@@ -1,3 +1,14 @@
+"""`cnaster.hmm` at the pin; `pipeline_baum_welch` says it fits no mixture (T- #670 PR5).
+
+`cnaster` hands `tumor_prop` to `hmm_nophasing.optimize`, which never reads
+it (#135): a run given a proportion fits under no mixture, and nothing says
+so. Here the proportion is not handed on, `optimize` no longer takes it, and
+a proportion given warns. The clone assignment and the normal-spot stage,
+which do read it, are unchanged.
+"""
+
+import warnings
+
 import numpy as np
 import scipy.special
 
@@ -98,6 +109,15 @@ def pipeline_baum_welch(
         if "p" in params:
             logger.info(f"Assumed initial p_binom:\n{init_p_binom}")
 
+    # NB #135: `cnaster` passes this to `optimize`, which never reads it.
+    if tumor_prop is not None:
+        message = (
+            "pipeline_baum_welch: the HMM fits no tumour mixture, so the "
+            "tumor_prop given is not used by this fit (#135)."
+        )
+        logger.warning(message)
+        warnings.warn(message, UserWarning, stacklevel=2)
+
     hmm_model = hmmclass(params=params, t=t)
 
     res = hmm_model.optimize(
@@ -107,7 +127,6 @@ def pipeline_baum_welch(
         base_nb_mean,
         total_bb_RD,
         log_sitewise_transmat=log_sitewise_transmat,
-        tumor_prop=tumor_prop,
         fix_NB_dispersion=fix_NB_dispersion,
         shared_NB_dispersion=shared_NB_dispersion,
         fix_BB_dispersion=fix_BB_dispersion,
