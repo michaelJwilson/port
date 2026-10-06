@@ -340,22 +340,26 @@ def test_the_covariance_comes_from_upstream() -> None:
     this model needs to identify its parameters, and it is why the fixture
     here is the larger one. #6 owns the negative binomial half.
     """
+    from sal.emissions import BetaBinomialEmission
     from sal.opt.fit import fit, parameter_covariance
-    from sal.opt.hmm import BetaBinomialHmmObjective
+    from sal.opt.hmm import EmissionHmmObjective
 
     from tests.fixtures import beta_binomial_chains
 
     fixture = beta_binomial_chains(n_states=3, sequence_length=600, n_sequences=8)
     observations = np.asarray(fixture.dataset.observations)
 
-    objective = BetaBinomialHmmObjective(
-        observations, fixture.n_states, np.full(fixture.n_states, float(fixture.trials))
+    # NB sal's one HMM objective over any family (sal #1189 deprecated the
+    #    per-family `BetaBinomialHmmObjective`, T- #671).
+    family = BetaBinomialEmission(
+        np.full(fixture.n_states, float(fixture.trials)), fixture.alpha, fixture.beta
     )
+    objective = EmissionHmmObjective(observations, family)
     start = objective.theta_from_truth(
         fixture.dataset.initial,
         fixture.dataset.transition,
-        fixture.alpha,
-        fixture.beta,
+        alpha=fixture.alpha,
+        beta=fixture.beta,
     )
     # NB the tolerance is stated rather than left to upstream's 1e-8 default,
     #    which sits inside this objective's noise floor. At the optimum the
@@ -371,9 +375,10 @@ def test_the_covariance_comes_from_upstream() -> None:
     assert fitted.converged
 
     covariance = np.asarray(parameter_covariance(objective, fitted.theta).detach())
-    emissions = objective.emissions(fitted.theta)
-    alpha = np.asarray(emissions.alpha.detach(), dtype=np.float64)
-    beta = np.asarray(emissions.beta.detach(), dtype=np.float64)
+    components = objective.components(fitted.theta)
+    assert isinstance(components, BetaBinomialEmission)
+    alpha = np.asarray(components.alpha.detach(), dtype=np.float64)
+    beta = np.asarray(components.beta.detach(), dtype=np.float64)
 
     # NB the packed vector is (log_initial, log_transition, alpha, beta), so
     #    the per-state pair sits at these two offsets.
