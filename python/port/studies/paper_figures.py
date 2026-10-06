@@ -639,7 +639,8 @@ def solver_figure(potts: dict[str, Any], copies: dict[str, Any]) -> Any:
     above, label, foot = 0.2, 0.4, 0.12
     height = above + SOLVER_PANEL + label + line * (rows + 1) + foot
     figure = plt.figure(figsize=(width, height))
-    left, gap, right = 0.42, 0.42, 0.06
+    # NB (b) shares (a)'s y label, so the gap between them holds only (b)'s tick labels
+    left, gap, right = 0.42, 0.3, 0.06
     panel = (width - left - gap - right) / 2
     bottom = height - above - SOLVER_PANEL
     axes = {k: figure.add_axes(((left + i * (panel + gap)) / width, bottom / height, panel / width, SOLVER_PANEL / height))
@@ -666,9 +667,10 @@ def solver_figure(potts: dict[str, Any], copies: dict[str, Any]) -> Any:
             text.set_text(text.get_text().removeprefix(f"{fixture}: ").capitalize())
             text.set_position((0.0, 1.01))
             text.set_horizontalalignment("left")
+    axes["b"].set_ylabel("")
     for k, ax in axes.items():
         ax.tick_params(labelsize=FONT_SIZE, length=2.5, pad=1.5)
-        ax.text(-0.3 / panel, 1.01, f"({k})", transform=ax.transAxes, fontsize=FONT_SIZE,
+        ax.text(-0.27 / panel, 1.01, f"({k})", transform=ax.transAxes, fontsize=FONT_SIZE,
                 ha="left", va="bottom", color=INK)  # fmt: skip
     return figure
 

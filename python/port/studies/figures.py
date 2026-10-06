@@ -120,7 +120,12 @@ def key_below(
     header = top
     # NB one column where the panel is narrow (half a 122 mm page), two where it is wide
     rows = -(-len(entries) // columns)
-    spans = ((0.38, 1.0),) if columns == 1 else ((0.30, 0.62), (0.67, 0.99))
+    # NB without the stage column the methods take its room too
+    spans = (
+        ((0.38 if marks else 0.02, 1.0),)
+        if columns == 1
+        else ((0.30, 0.62), (0.67, 0.99))
+    )
     # NB a figure whose panels share their stages keys them once (`marks` on one panel only)
     for k, (keywords, label) in enumerate(stages if marks else []):
         y = header - row * (k + 1)
