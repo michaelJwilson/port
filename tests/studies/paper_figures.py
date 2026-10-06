@@ -33,12 +33,9 @@ from __future__ import annotations
 
 import argparse
 import contextlib
-import resource
 import shutil
-import subprocess
 import sys
 import tempfile
-import time
 import tomllib
 from collections.abc import Iterator
 from dataclasses import asdict, dataclass
@@ -46,6 +43,8 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+from port.qa import provenance
+from port.qa.statistics import measured
 
 from tests.metrics import ROOT
 
@@ -98,18 +97,6 @@ INK, MUTED, GRID = "#0b0b0b", "#52514e", "#e4e2dc"
 WRONG = "#e34948"
 SWAPPED = "#4a3aa7"
 """Figure 16's marks: a bin decoded to another pair, and one decoded to the planted pair's swap."""
-
-
-def code(root: Path = ROOT) -> str:
-    """The short commit, `+` where tracked files differ from it."""
-
-    def git(*arguments: str) -> str:
-        return subprocess.run(
-            ["git", *arguments], cwd=root, capture_output=True, text=True, check=True
-        ).stdout.strip()
-
-    dirty = git("status", "--porcelain", "--untracked-files=no")
-    return git("rev-parse", "--short=7", "HEAD") + ("+" if dirty else "")
 
 
 def stamp(figure: Any, text: str, *, top: bool = False) -> None:
@@ -259,12 +246,9 @@ def run_figures(sample: Any, root: Path, out: Path, text: str) -> Run:
 
     from tests.sim_audit import run_arm
 
-    with stamping(text), recording() as recorded:
-        started = time.perf_counter()
+    with stamping(text), recording() as recorded, measured() as cost:
         recovery, output = run_arm(sample, list(FLAGS), None, root / "run")
-        wall = time.perf_counter() - started
 
-    peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024**2
     frame = mock_slide(sample.coords, sample.labels, root)
 
     # NB at their declared size, not a tight box, as `tests.generate_plots`
@@ -284,7 +268,7 @@ def run_figures(sample: Any, root: Path, out: Path, text: str) -> Run:
     for name in RUN_COPIED:
         shutil.copy(next(output.rglob(f"plots/{name}")), out / name)
 
-    return Run(asdict(recovery), output, round(wall, 1), round(peak, 2))
+    return Run(asdict(recovery), output, round(cost.wall_s, 1), round(cost.peak_gb, 2))
 
 
 @dataclass
@@ -622,14 +606,6 @@ SOLVERS = "solver_combined.png"
 """Figure 18, under `solvers/`."""
 
 
-def data_hash(record: dict[str, Any]) -> str:
-    """The study plots' `data` stamp: SHA-256 of the pickled record, 8 hex digits."""
-    import hashlib
-    import pickle
-
-    return hashlib.sha256(pickle.dumps(record)).hexdigest()[:8]
-
-
 def solver_figure(potts: dict[str, Any], copies: dict[str, Any]) -> Any:
     """18: the spatial solvers' gap panel left, centred on the truth, the copy-state starts' right, both untitled, each keyed in its legend, no table."""
     import matplotlib.pyplot as plt
@@ -658,7 +634,8 @@ def solver_figures(potts: Path, copies: Path, out: Path, commit: str) -> Path:
     out.mkdir(parents=True, exist_ok=True)
     records = [pickle.loads(p.read_bytes()) for p in (potts, copies)]
     text = (
-        f"potts {data_hash(records[0])} · copy states {data_hash(records[1])}"
+        f"potts {provenance.digest(pickle.dumps(records[0]))}"
+        f" · copy states {provenance.digest(pickle.dumps(records[1]))}"
         f" · code {commit}"
     )
     with figure_font():
@@ -850,11 +827,15 @@ def main(argv: list[str] | None = None) -> int:
     arguments = parser.parse_args(argv)
     if arguments.solvers is not None:
         potts, copies = arguments.solvers
-        print(solver_figures(potts, copies, arguments.out / "solvers", code()))
+        print(
+            solver_figures(
+                potts, copies, arguments.out / "solvers", provenance.commit()
+            )
+        )
         return 0
 
     # NB read before anything is written, so the set's own files never mark it `+`
-    commit = code()
+    commit = provenance.commit()
     path = realization(arguments.fixture, arguments.draw)
     digest = stated_hash(arguments.fixture)
     text = f"{arguments.fixture} {digest} · code {commit}"

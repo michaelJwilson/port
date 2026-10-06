@@ -11,7 +11,7 @@ below are that rule made checkable, each against the import graph
 | `row-helper` | `patch/` | reached from a row, a script or `pipeline` |
 | `extension` | `extensions/` | reached from a row, a script or `pipeline` |
 | `oracle` | `extensions/` | imported by an `end2end` or `oracle` test |
-| `tool` | `extensions/` | reached from no row or script: a figure or record tool |
+| `tool` | `extensions/`, `qa/` | reached from no row or script: a figure, record or measurement tool |
 | `sim`, `script`, `pipeline` | `sim/`, `scripts/`, `port.pipeline` | where they are |
 | `set aside` | `sandbox/` | installed by nothing |
 
@@ -69,6 +69,9 @@ ROLES: dict[str, Role] = {
     "port.extensions.samples": "extension",
     "port.extensions.segments": "extension",
     "port.extensions.vocabulary": "tool",
+    # qa: what measures and records a run (T- #673), reached from no row or script
+    "port.qa.provenance": "tool",
+    "port.qa.statistics": "tool",
     # patch: rows
     "port.patch.hmm_nophasing.bb_logpmf": "row",
     "port.patch.hmm_nophasing.nb_logpmf": "row",
@@ -154,7 +157,7 @@ WHERE: dict[Role, tuple[str, ...]] = {
     "row-helper": ("port.patch.",),
     "extension": ("port.extensions.",),
     "oracle": ("port.extensions.",),
-    "tool": ("port.extensions.",),
+    "tool": ("port.extensions.", "port.qa."),
     "sim": ("port.sim.",),
     "script": ("port.scripts.",),
     "pipeline": ("port.pipeline",),

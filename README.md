@@ -536,6 +536,7 @@ trains a reader to ignore `git status`.
 | Path | Contents |
 | --- | --- |
 | `python/port/` | The Python package; `python-source` in `pyproject.toml` |
+| `python/port/qa/` | What measures and records a run: `statistics` (bars, ranks, bootstrap intervals, wall and peak memory) and `provenance` (the commit, the inputs' digest, a figure's stamp), one implementation each (T- #673) |
 | `src/` | The Rust crate `oxiport`, bound as `port.oxiport` |
 | `tests/` | The suite; `testpaths` in `pyproject.toml` |
 | `sim/` | CalicoST's simulated samples, their normal fits, and `manifests/` that draw them |

@@ -43,6 +43,7 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+from port.qa import provenance
 
 ROOT = Path(__file__).resolve().parent.parent
 LEDGER_DIR = ROOT / "docs" / "metrics"
@@ -103,9 +104,6 @@ NOTE_CHARS = 72
 """A commit subject's limit, so a note reads as one."""
 
 TIMESTAMP = "%Y-%m-%dT%H:%MZ"
-
-INPUTS = ("python", "src", "tests", "pyproject.toml", "uv.lock", "Cargo.lock")
-"""What a run's commit must hold for the run to be that commit's."""
 
 
 def fixture_hash(truth: Any) -> str:
@@ -234,12 +232,6 @@ def check_identity(fixture: str, digest: str, rows: list[dict[str, str]]) -> Non
         raise ValueError(msg)
 
 
-def _git(*arguments: str) -> str:
-    return subprocess.run(
-        ["git", *arguments], cwd=ROOT, capture_output=True, text=True, check=True
-    ).stdout.strip()
-
-
 def check_note(note: str) -> None:
     """One line, not blank, within `NOTE_CHARS`, no `|` or tab; raises otherwise."""
     bad = "\n" in note or "|" in note or "\t" in note
@@ -322,7 +314,7 @@ def write(
         fixture=fixture,
         args=args,
         note=note,
-        commit=_git("rev-parse", "--short=7", "HEAD") + ("+" if dirty else ""),
+        commit=provenance.head() + ("+" if dirty else ""),
         timestamp=datetime.datetime.now(datetime.UTC).strftime(TIMESTAMP),
         taken={r["run_id"] for r in runs()},
         current=latest(),
@@ -341,7 +333,7 @@ def record(arguments: argparse.Namespace) -> int:
         print("--record needs --note: what change this run measures")
         return 1
     check_note(arguments.note)
-    dirty = bool(_git("status", "--porcelain", "--", *INPUTS))
+    dirty = provenance.dirty(*provenance.INPUTS, untracked=True)
     if dirty and not arguments.dirty:
         print("inputs are uncommitted; commit them, or pass --dirty")
         return 1

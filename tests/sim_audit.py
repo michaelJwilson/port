@@ -66,10 +66,8 @@ from __future__ import annotations
 
 import argparse
 import json
-import resource
 import sys
 import tempfile
-import time
 import warnings
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -79,6 +77,7 @@ import numpy as np
 import pandas as pd
 import yaml
 from port.extensions.integer_copy import DEFAULT_MAX_TOTAL_COPY
+from port.qa.statistics import measured, peak_gb
 from port.sim.files import located
 
 from tests.recovery_audit import integer_clones
@@ -418,9 +417,9 @@ def run_arm(
 
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        started = time.perf_counter()
-        main([*flags, str(config)])
-        wall = time.perf_counter() - started
+        with measured() as cost:
+            main([*flags, str(config)])
+        wall = cost.wall_s
 
     output = root / "output"
     arm = " ".join(["oracle-start", *flags] if oracle else flags) or "default"
@@ -493,9 +492,7 @@ def main() -> None:
     recovery, output = run_arm(
         sample, flags, overrides, arguments.root, oracle=arguments.oracle_start
     )
-    recovery.peak_gb = round(
-        resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024**2, 2
-    )
+    recovery.peak_gb = round(peak_gb(), 2)
     print(
         "SIM "
         + json.dumps({**asdict(recovery), "set": arguments.set, "output": str(output)})

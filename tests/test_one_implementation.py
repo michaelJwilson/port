@@ -38,12 +38,15 @@ BUDGET: dict[str, int] = {
     #    the registry of the starts set aside, to `sandbox/`. 58: T- #418's
     #    `Samples`, checked at construction, and `Recorded`, a run's samples.
     #    59: T- #617 WP2's `pipeline.Default`, a flag's default and its off flag.
-    "classes": 59,
+    #    60: T- #673 G1's `port.qa.statistics.Measured`, the wall seconds and
+    #    peak memory every audit and study read for itself.
+    "classes": 60,
     # NB step 4: 18 records became NamedTuples; the dataclasses left carry
     #    mutable state, machinery or a `__post_init__` (#517 D). Step 8 moved
     #    7 dataclasses and 1 NamedTuple to `sandbox/`. 21: T- #418's `Samples`
-    #    (a `__post_init__`) and `Recorded` (mutable state).
-    "dataclasses": 21,
+    #    (a `__post_init__`) and `Recorded` (mutable state). 22: T- #673 G1's
+    #    `Measured` (mutable state: filled when its block exits).
+    "dataclasses": 22,
     # NB 24: `analysis.GenomicTruth` (the truth page). 26: #540's
     #    `CopyCall` and `CopyStart` (`Row` in `sandbox/`, #547). 27: T- #617
     #    WP2's `pipeline.Default`.
@@ -66,6 +69,11 @@ CONCEPTS: dict[str, int] = {
     #    segmentation lineage; `tests.sim_stages`'s wrapper is `logged`. 3:
     #    `samples` records a run's slices for its outputs (T- #418).
     "recording": 3,
+    # NB 1 each since T- #673 G1, from 7 and 4: `port.qa.provenance.head`
+    #    runs `git rev-parse` for 7 functions and a notebook cell, and
+    #    `port.qa.statistics.peak_gb` reads `ru_maxrss` for 4 functions.
+    "commit reader": 1,
+    "peak memory reader": 1,
 }
 """Definitions of one concept across `python/port` and `tests/`, with the reason where not 1."""
 
@@ -87,6 +95,18 @@ def _referenced(node: ast.AST) -> set[str]:
         sub.id if isinstance(sub, ast.Name) else sub.attr
         for sub in ast.walk(node)
         if isinstance(sub, ast.Name | ast.Attribute)
+    }
+
+
+def _arguments(node: ast.AST) -> set[str]:
+    """The string literals a call inside `node` takes positionally, alone or in a list."""
+    return {
+        item.value
+        for sub in ast.walk(node)
+        if isinstance(sub, ast.Call)
+        for arg in sub.args
+        for item in (arg.elts if isinstance(arg, ast.List | ast.Tuple) else [arg])
+        if isinstance(item, ast.Constant) and isinstance(item.value, str)
     }
 
 
@@ -122,6 +142,8 @@ def _measured() -> dict[str, int]:
         "run_arm": sum(f.name == "run_arm" for f in functions),
         "clone_path": sum(f.name == "clone_path" for f in functions),
         "recording": sum(f.name == "recording" for f in functions),
+        "commit reader": sum("rev-parse" in _arguments(f) for f in functions),
+        "peak memory reader": sum("ru_maxrss" in _referenced(f) for f in functions),
     }
 
 

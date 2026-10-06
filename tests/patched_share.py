@@ -27,6 +27,8 @@ import warnings
 from pathlib import Path
 from typing import Any
 
+from port.qa import provenance
+
 from tests.badges import MEASUREMENTS
 
 INSTANCE = "dev"
@@ -160,12 +162,7 @@ def main() -> None:
         return
 
     hit, total = share(executed_lines(), patched_lines())
-    commit = subprocess.run(
-        ["git", "rev-parse", "--short", "HEAD"],
-        capture_output=True,
-        text=True,
-        check=True,
-    ).stdout.strip()
+    commit = provenance.head()
 
     recorded = json.loads(MEASUREMENTS.read_text())
     recorded["patched"] = {
