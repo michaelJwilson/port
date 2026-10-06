@@ -86,12 +86,19 @@ class Realization:
 
         return scipy.sparse.load_npz(self.path / "snp" / "cell_snp_Ballele.npz")
 
-    def plot(self, out: Path | None = None) -> list[Path]:
-        """Every truth figure of this realization, into `out` (default `<path>/qa/`)."""
+    def plot(self, out: Path | None = None, *, metric: bool = False) -> list[Path]:
+        """Every truth figure of this realization, into `out` (default
+        `<path>/qa/`); on `metric`, the `WARPED` ones on the metric (T- #683)."""
         import matplotlib as mpl
 
         mpl.use("Agg")
-        return [figure(self, out or self.path / "qa") for figure in PLOTS]
+        into = out or self.path / "qa"
+        return [
+            figure(self, into, metric=True)
+            if metric and figure in WARPED
+            else figure(self, into)
+            for figure in PLOTS
+        ]
 
     @property
     def lengths(self) -> np.ndarray:
@@ -191,6 +198,22 @@ def binned_profile(r: Realization) -> pd.DataFrame:
     return table
 
 
+def binned_axis(r: Realization, *, metric: bool = False) -> Any:
+    """The genomic axis of `binned_profile`'s 1 Mb bins, ticked every 10 Mb;
+    on `metric`, every bin planted altered in any clone drawn wider (T- #683)."""
+    from port.extensions.genomic_axis import GenomicAxis, altered_bins
+
+    table = binned_profile(r)
+    return GenomicAxis.of_table(table, altered_bins(table) if metric else None)
+
+
+def bp_axis(r: Realization) -> Any:
+    """The genomic axis in base pairs, as `Realization.genome` places loci (T- #683)."""
+    from port.extensions.genomic_axis import GenomicAxis
+
+    return GenomicAxis(r.lengths)
+
+
 class GenomicTruth(NamedTuple):
     """`plot_clones_genomic`'s arguments for the true clones on `binned_profile`'s bins."""
 
@@ -258,36 +281,47 @@ def genomic_truth(r: Realization) -> GenomicTruth:
     )
 
 
-def plot_clones_genomic_truth(r: Realization, out: Path) -> Path:
-    """`plot_clones_genomic` over the true clone labels, on `binned_profile`'s 1 Mb bins (`genomic_truth`)."""
+def plot_clones_genomic_truth(
+    r: Realization, out: Path, *, metric: bool = False
+) -> Path:
+    """`plot_clones_genomic` over the true clone labels, on `binned_profile`'s
+    1 Mb bins (`genomic_truth`); `metric` as `binned_axis`."""
     import matplotlib.pyplot as plt
 
+    from port.extensions.genomic_axis import disclose
     from port.patch.plot_genomic import plot_clones_genomic
 
     g = genomic_truth(r)
+    genome = binned_axis(r, metric=metric)
     figure = plot_clones_genomic(
-        g.lengths, g.counts, g.expected, g.trials, clone_index=g.groups
-    )
+        g.lengths, g.counts, g.expected, g.trials, clone_index=g.groups,
+        axis=genome,
+    )  # fmt: skip
+    disclose(figure, genome)
     path = _save(figure, out / "clones_genomic.png")
     plt.close(figure)
     return path
 
 
-def plot_clone_profiles(r: Realization, out: Path) -> Path:
+def plot_clone_profiles(r: Realization, out: Path, *, metric: bool = False) -> Path:
     """The planted `(A, B)` per clone, drawn by `port`'s profile plotter.
 
     `port.patch.plot_copy_number_profile`, which draws an estimate's profile
     in `combined.pdf`, on the truth binned at 1 Mb: its palette, hatching,
     outlines and key, so a planted and a decoded profile read alike. Rows keep
-    its numerals, `Clone 0` the normal, as every figure here does.
+    its numerals, `Clone 0` the normal, as every figure here does. `metric`
+    as `binned_axis`.
     """
     import matplotlib.pyplot as plt
 
+    from port.extensions.genomic_axis import disclose
     from port.patch.plot_copy_number_profile import plot_copy_number_profile
 
     fig, ax = plt.subplots(figsize=(14, 0.55 * len(r.clones) + 1.6))
     fig.subplots_adjust(left=0.08, right=0.98, top=0.88, bottom=0.3)
-    plot_copy_number_profile(binned_profile(r), ax=ax)
+    genome = binned_axis(r, metric=metric)
+    plot_copy_number_profile(binned_profile(r), ax=ax, axis=genome)
+    disclose(fig, genome)
 
     ax.set_yticklabels([t.get_text() for t in ax.get_yticklabels()],
                        rotation=0, ha="right", fontsize=9)  # fmt: skip
@@ -701,6 +735,7 @@ def plot_phase(r: Realization, out: Path) -> Path:
     _draw_chromosome_boundaries(
         [ax], r.lengths, np.arange(1, r.lengths.size + 1), -0.25
     )
+    bp_axis(r).draw(ax)
 
     for c, (start, length) in enumerate(
         zip(r.offsets, r.lengths, strict=True), start=1
@@ -750,6 +785,7 @@ def plot_baseline(r: Realization, out: Path) -> Path:
     _draw_chromosome_boundaries(
         [ax], r.lengths, np.arange(1, r.lengths.size + 1), -0.25
     )
+    bp_axis(r).draw(ax)
     # NB genes at lambda = 0 have no log; only their share is stated.
     ax.text(1.0, 1.02, f"dropout rate={zero.mean():.2f}", transform=ax.transAxes,
             ha="right", va="bottom", fontsize=8)  # fmt: skip
@@ -880,6 +916,10 @@ PLOTS = (
     plot_baseline,
     plot_coverage,
 )
+
+
+WARPED = (plot_clone_profiles, plot_clones_genomic_truth)
+"""The `PLOTS` that draw CNAs along the genome, and take `metric` (T- #683)."""
 
 
 def plot(path: Path) -> list[Path]:

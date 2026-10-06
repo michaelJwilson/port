@@ -49,6 +49,8 @@ from dataclasses import dataclass
 from types import ModuleType
 from typing import Any, NamedTuple, TypeVar
 
+from port.extensions.genomic_axis import Ticks
+
 _T = TypeVar("_T")
 
 __all__ = [
@@ -287,6 +289,7 @@ FIGURE_SWAPS: tuple[Swap, ...] = (
         "plot_clones_genomic",
         "port.patch.plot_genomic:plot_clones_genomic",
         299,
+        (("axis", Ticks()),),
     ),
     Swap(
         "cnaster.plotting",
@@ -299,6 +302,7 @@ FIGURE_SWAPS: tuple[Swap, ...] = (
         "plot_copy_number_profile",
         "port.patch.plot_copy_number_profile:plot_copy_number_profile",
         309,
+        (("axis", Ticks()),),
     ),
 )
 """The replacements that **change the output**, and the biggest win here.
@@ -314,7 +318,9 @@ of its own legend is the function the row replaces, so a legend row was
 reached by no live call (#466, removed by T- #617). `write_fig` is installed with two options bound:
 `dpi=150`, and one rasterizing group per axes rather than the two a
 gridline splits `cnaster`'s runs into. Measured: `docs/measurements.md`,
-`port.pipeline.FIGURE_SWAPS`.
+`port.pipeline.FIGURE_SWAPS`. The two genomic rows bind `axis=Ticks()`: a
+tick every 10 Mb on the bins `df_cnv` places, on `cnaster`'s linear axis
+(T- #683).
 
 Separate from `SWAPS` because `CLAUDE.md` forbids a silent behaviour change
 and each row makes one: a coarser raster, gridlines that paint under the data
