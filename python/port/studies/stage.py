@@ -212,12 +212,15 @@ def at_oracle_clones(
 
 
 def missed(label: np.ndarray, truth: np.ndarray) -> int:
-    """Rows whose state is not the planted one, under the 1-1 matching of fitted to planted states that misses fewest."""
-    from scipy.optimize import linear_sum_assignment
+    """Rows whose state is not the planted one, under the 1-1 matching of fitted to planted states that misses fewest.
+
+    The audits' matcher (`port.qa.scoring.matched` on `overlap`), on states
+    rather than clones.
+    """
+    from port.qa.scoring import matched, overlap
 
     label, truth = np.asarray(label, dtype=np.int64), np.asarray(truth, dtype=np.int64)
     n = int(max(label.max(), truth.max())) + 1
-    agree = np.zeros((n, n), dtype=np.int64)
-    np.add.at(agree, (label, truth), 1)
-    rows, cols = linear_sum_assignment(-agree)
-    return int(label.size - agree[rows, cols].sum())
+    counts = overlap(truth, label, n, n)
+    kept = sum(int(counts[p, f]) for p, f in matched(counts).items())
+    return int(label.size - kept)

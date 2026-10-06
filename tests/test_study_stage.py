@@ -84,13 +84,13 @@ def test_the_stage_is_the_runs_baum_welch_at_the_planted_clones(
     def study(found: stage.Stage) -> tuple[float, float, int, int]:
         one, two = found.run(), found.run()
         truth = truth_label(found)
-        planted = scored(found, *oracle_states(found), truth, fit=True)
+        planted = scored(found, *oracle_states(found), truth, polish=True)
         own = scored(
             found,
             found.arguments["init_log_mu"],
             found.arguments["init_p_binom"],
             truth,
-            fit=True,
+            polish=True,
         )
         assert found.X.shape[0] == found.planted.shape[0] == found.clone.size
         assert found.n_clones == 4

@@ -146,9 +146,9 @@ def seed_states(
 
 
 def scored(
-    stage: Any, log_mu: Any, p_binom: Any, truth: np.ndarray, *, fit: bool
+    stage: Any, log_mu: Any, p_binom: Any, truth: np.ndarray, *, polish: bool
 ) -> dict[str, Any]:
-    """The run's Baum-Welch call at `stage` from `(log_mu, p_binom)`: fitted, or with `fit` false scored at them (`max_iter = 0`)."""
+    """The run's Baum-Welch call at `stage` from `(log_mu, p_binom)`: fitted, or with `polish` false scored at them (`max_iter = 0`)."""
     shape = np.shape(stage.arguments["init_log_mu"])
     log_mu = np.asarray(log_mu, dtype=np.float64).reshape(shape)
     p_binom = np.clip(np.asarray(p_binom, dtype=np.float64), 1e-4, 1 - 1e-4).reshape(
@@ -156,7 +156,7 @@ def scored(
     )
     opened = time.perf_counter()
     result = stage.run(
-        init_log_mu=log_mu, init_p_binom=p_binom, **({} if fit else {"max_iter": 0})
+        init_log_mu=log_mu, init_p_binom=p_binom, **({} if polish else {"max_iter": 0})
     )
     label = np.asarray(result.profile.pred_cnv, dtype=np.int64).ravel()
     return {"seconds": time.perf_counter() - opened, "llf": float(result.llf), "missed": stage_module().missed(label, truth),
@@ -179,11 +179,11 @@ def solve(
         log_mu, p = seed_states(name, call, np.random.default_rng([seed, 540]), setting)
         seconds = time.perf_counter() - opened
         truth = truth_label(stage)
-        at_start = scored(stage, log_mu, p, truth, fit=False)
+        at_start = scored(stage, log_mu, p, truth, polish=False)
         if not polish:
             return {"problem": realization, "start": name, "seed": seed, "setting": setting,
                     "seconds": seconds, "start_llf": at_start["llf"]}  # fmt: skip
-        fitted = scored(stage, log_mu, p, truth, fit=True)
+        fitted = scored(stage, log_mu, p, truth, polish=True)
         return {
             "problem": realization, "start": name, "seed": seed, "setting": setting, "seconds": seconds,
             "start_llf": at_start["llf"], "start_missed": at_start["missed"],
@@ -224,20 +224,20 @@ def describe(stage: Any, realization: int) -> dict[str, Any]:
     """The realization's references: the planted states, and the run's own initializer, each scored and fitted."""
     truth = truth_label(stage)
     planted = oracle_states(stage)
-    at, fitted = (scored(stage, *planted, truth, fit=f) for f in (False, True))
+    at, fitted = (scored(stage, *planted, truth, polish=f) for f in (False, True))
     run_at = scored(
         stage,
         stage.arguments["init_log_mu"],
         stage.arguments["init_p_binom"],
         truth,
-        fit=False,
+        polish=False,
     )
     run_fit = scored(
         stage,
         stage.arguments["init_log_mu"],
         stage.arguments["init_p_binom"],
         truth,
-        fit=True,
+        polish=True,
     )
     return {"truth_start_llf": at["llf"], "truth_start_missed": at["missed"],
             "truth_llf": fitted["llf"], "truth_missed": fitted["missed"],
