@@ -87,6 +87,7 @@ def test_every_lognormal_manifest_states_the_derived_sigma() -> None:
     assert [p.name for p in paths] == [
         "dev_tree.toml",
         "dev_tree_1s.toml",
+        "dev_tree_1s_dense.toml",
         "dev_tree_1s_easy.toml",
         "dev_tree_1s_hard.toml",
     ]
