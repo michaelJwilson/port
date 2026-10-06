@@ -41,11 +41,19 @@ from pathlib import Path
 
 import matplotlib as mpl
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 import pytest
 import yaml
 from port.extensions import samples, segments
-from port.pipeline import FIGURE_SWAPS, PLOT_OFF_SWAPS, SWAPS, Swap, patched
+from port.pipeline import (
+    FIGURE_SWAPS,
+    LOG_SPACE_SWAPS,
+    PLOT_OFF_SWAPS,
+    SWAPS,
+    Swap,
+    patched,
+)
 from port.sim.fixtures import (
     EASY,
     load_simulated,
@@ -88,6 +96,7 @@ PREPROCESSING = frozenset(
 ABSORBED: tuple[Swap, ...] = (
     *(swap._replace(options=()) for swap in FIGURE_SWAPS),
     *(swap for swap in SWAPS if swap.replacement in PREPROCESSING),
+    *LOG_SPACE_SWAPS,
 )
 """The `port` rows `cnamaste` holds, installed on the `cnaster` arm.
 
@@ -96,7 +105,9 @@ defaults -- `port` binds `write_fig`'s `dpi=150` and `group_rasters`, which
 `cnamaste` takes up as defaults only at PR9. Row 5, plot-off, is
 `run_cnaster(..., plots=False)`, against `PLOT_OFF_SWAPS`. PR3:
 `PREPROCESSING`, under the segment and sample recording `run_cnaster_port`
-enters, as `run_cnamaste` enters its own.
+enters, as `run_cnamaste` enters its own. PR4: rows 27-30,
+`LOG_SPACE_SWAPS`, which `port` installs with its shift and `cnamaste` holds
+without it.
 """
 
 NARROWED = "(0.4, 0.6)"
@@ -301,8 +312,9 @@ def test_a_bin_the_normal_baf_filter_removes_leaves_its_genes_out(
 
     The gate instance at `NARROWED`: 18 of 40 bins removed. `cnaster` raises
     `IndexError` at the gene-level table (`run_cnaster.py:1483`). `cnamaste`
-    completes: its gene-level table is the widened run's 113 genes less 45,
-    each with integer copies, where `cnaster` wrote none.
+    completes: its gene-level table is the widened run's 113 genes less 51,
+    each with integer copies, where `cnaster` wrote none. (Less 45 at PR3:
+    PR4's log-space kernels move this run's normal-spot fit.)
     """
     truth = planted_instance[0]
     assert fixture_hash(truth) == GATE_HASH
@@ -329,7 +341,7 @@ def test_a_bin_the_normal_baf_filter_removes_leaves_its_genes_out(
     kept = genes(config, tmp_path / "widened")
 
     assert set(lost.index) < set(kept.index)
-    assert (len(kept), len(lost)) == (113, 68)
+    assert (len(kept), len(lost)) == (113, 62)
     assert not lost.isna().to_numpy().any()
     assert all(dtype.kind == "i" for dtype in lost.dtypes)
 
@@ -359,6 +371,48 @@ def test_run_cnamaste_completes_calicost_easy_at_the_shipped_interval(
 
     assert len(genes) > 0
     assert not genes.isna().to_numpy().any()
+
+
+@pytest.mark.patch
+@pytest.mark.cnamaste
+@pytest.mark.preprocessing
+@pytest.mark.merge
+@pytest.mark.xdist_group("pipeline")
+@pytest.mark.usefixtures("_fixed_dates")
+def test_the_log_space_kernels_keep_devs_clones_and_move_its_fit_by_under_2e_3(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """PR4 against the previous state, `cnaster` with PR3's rows only, on dev.
+
+    Every spot keeps its clone; each fitted state parameter moves by under
+    2e-3 relative (measured 1.6e-3, `new_log_mu`). Not a gate-instance claim:
+    there 2 of 1,000 spots change BAF clone, and the read-depth fit then ends
+    at another optimum (log-likelihood -1,312 against -1,205).
+    """
+    truth = dev_instance()
+    assert fixture_hash(truth) == DEV_HASH
+    _, config = write_for_run(
+        truth, tmp_path / "inputs", max_iter_outer=1, max_iter=3, n_states=5
+    )
+    previous = tuple(swap for swap in ABSORBED if swap not in LOG_SPACE_SWAPS)
+
+    with monkeypatch.context() as pr3:
+        pr3.setattr(sys.modules[__name__], "ABSORBED", previous)
+        before = _run("cnaster", config, tmp_path, plots=False)
+    after = _run("cnamaste", config, tmp_path, plots=False)
+
+    def read(root: Path, pattern: str) -> Path:
+        (found,) = root.rglob(pattern)
+        return found
+
+    labels = [
+        pd.read_csv(read(r, "clone_labels.tsv"), sep="\t") for r in (before, after)
+    ]
+    pd.testing.assert_frame_equal(*labels)
+
+    fits = [np.load(read(r, "*.npz")) for r in (before, after)]
+    for name in ("new_log_mu", "new_alphas", "new_p_binom", "new_taus"):
+        np.testing.assert_allclose(fits[1][name], fits[0][name], rtol=2e-3, atol=0)
 
 
 @pytest.mark.infra

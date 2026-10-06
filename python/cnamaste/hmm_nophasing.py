@@ -1,3 +1,14 @@
+"""`cnaster.hmm_nophasing` at the pin, its four log-pmf kernels `port`'s (T- #670 PR4).
+
+`_nb_logpmf_1d` and `_dense_nb_logpmf` come from `cnamaste.nb_logpmf` (#560),
+`_bb_logpmf_1d` and `_dense_bb_logpmf` from `cnamaste.bb_logpmf` (#561): log
+space, so a vanishing mean cannot score a count at probability 1, and exact
+at a large concentration. Bound here by import, so `hmm_phased` and every
+compiled caller read them under their `cnaster` names. `cnaster`'s
+`nbinom_logpmf_numba` and `betabinom_logpmf_numba`, which only its kernels
+called, are gone with them.
+"""
+
 import pprint
 import time
 from math import exp, lgamma, log
@@ -8,101 +19,13 @@ import scipy.special
 from numba import njit, prange
 from scipy.optimize import OptimizeResult
 
+from cnamaste.bb_logpmf import _bb_logpmf_1d, _dense_bb_logpmf
 from cnamaste.config import start_time
 from cnamaste.count_encoder import CountEncoder
 from cnamaste.logger import get_logger
+from cnamaste.nb_logpmf import _dense_nb_logpmf, _nb_logpmf_1d
 
 logger = get_logger(__name__, start_time=start_time)
-
-
-@njit(nogil=True, cache=True, inline="always", fastmath=False, error_model="numpy")
-def nbinom_logpmf_numba(k, r, p, parameter_terms_only=True):
-    if p <= 0.0 or p >= 1.0 or r <= 0.0 or k < 0:
-        return 0.0
-
-    log_coeff = lgamma(k + r) - lgamma(r)
-
-    if parameter_terms_only:
-        log_coeff -= lgamma(k + 1)
-
-    return log_coeff + r * log(p) + k * log(1.0 - p)
-
-
-@njit(nogil=True, cache=True, inline="always", fastmath=False, error_model="numpy")
-def betabinom_logpmf_numba(k, n, alpha, beta, parameter_terms_only=True):
-    if alpha <= 0.0 or beta <= 0.0 or n < 0 or k < 0 or k > n:
-        return 0.0
-
-    log_beta_num = lgamma(k + alpha) + lgamma(n - k + beta) - lgamma(n + alpha + beta)
-    log_beta_denom = lgamma(alpha) + lgamma(beta) - lgamma(alpha + beta)
-
-    if parameter_terms_only:
-        log_binom_coeff = lgamma(n + 1) - lgamma(k + 1) - lgamma(n - k + 1)
-        return log_binom_coeff + log_beta_num - log_beta_denom
-    else:
-        return log_beta_num - log_beta_denom
-
-
-@njit(nogil=True, cache=True, error_model="numpy")
-def _nb_logpmf_1d(obs, exposure, mu, alpha, out):
-    r = 1.0 / max(alpha, 1.0e-10)
-
-    for i in range(len(obs)):
-        k = obs[i]
-        lambda_i = exposure[i] * mu
-
-        if lambda_i <= 0.0:
-            out[i] = 0.0
-            continue
-
-        p = 1.0 / (1.0 + alpha * lambda_i)
-        out[i] = nbinom_logpmf_numba(k, r, p)
-
-
-@njit(nogil=True, cache=True, error_model="numpy")
-def _bb_logpmf_1d(obs, total, p_binom, tau, out, EPS=1e-10):
-    alpha = max(p_binom * tau, EPS)
-    beta = max((1.0 - p_binom) * tau, EPS)
-
-    for i in range(len(obs)):
-        out[i] = betabinom_logpmf_numba(obs[i], total[i], alpha, beta)
-
-
-@njit(nogil=True, cache=True, parallel=True, error_model="numpy")
-def _dense_nb_logpmf(X_nb, base_nb_mean, log_mu, alphas):
-    n_states = log_mu.shape[0]
-    n_obs, n_spots = X_nb.shape
-
-    out = np.zeros((n_states, n_obs, n_spots), dtype=np.float64)
-
-    for i in prange(n_states):
-        mu_val = exp(log_mu[i, 0])
-        alpha_val = alphas[i, 0]
-
-        for s in range(n_spots):
-            _nb_logpmf_1d(
-                X_nb[:, s], base_nb_mean[:, s], mu_val, alpha_val, out[i, :, s]
-            )
-
-    return out
-
-
-@njit(nogil=True, cache=True, parallel=True, error_model="numpy")
-def _dense_bb_logpmf(X_bb, total_bb_RD, p_binom, taus, EPS=1e-10):
-    n_states = p_binom.shape[0]
-    n_obs, n_spots = X_bb.shape
-
-    out = np.zeros((n_states, n_obs, n_spots), dtype=np.float64)
-
-    for i in prange(n_states):
-        p_val = p_binom[i, 0]
-        tau_val = taus[i, 0]
-
-        for s in range(n_spots):
-            _bb_logpmf_1d(
-                X_bb[:, s], total_bb_RD[:, s], p_val, tau_val, out[i, :, s], EPS
-            )
-    return out
 
 
 @njit(cache=True, inline="always", fastmath=False, error_model="numpy")
