@@ -242,7 +242,7 @@ def mirror_key_holds(legend_ax: Any, edge_ax: Any) -> None:
     label = mirror.get_window_extent(renderer)
     left = edge_ax.get_window_extent(renderer).x0
 
-    assert MIRROR == "Co-located Mirror"
+    assert MIRROR == "Local Mirror"
     assert upper.x0 == pytest.approx(left, abs=0.5)
     assert lower.x0 == pytest.approx(left, abs=0.5)
     assert lower.y1 < upper.y0

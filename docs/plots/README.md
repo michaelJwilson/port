@@ -84,7 +84,7 @@ The final four as two figures at a text column (#309, #280, #339).
 spanning (b)'s tracks so their chromosome boundaries line up, the last track
 naming every contig, staggered where adjacent contigs are short. `spatial.png`
 is 122 mm wide and about a quarter of the block tall: (a) an H&E slide and
-(b) `clones_spatial`, each at the spots' aspect and as large as fit across,
+(b) `clones_spatial`, each square, its spots at one scale and centred, as large as fit across,
 (b)'s clones keyed on its right and named by their integer copy profile (#344).
 `combined.png` is both on one page, the full 122 by 193 mm: the spatial
 figure at the head as (a), the genomic figure drawn the rest of the height
@@ -133,7 +133,8 @@ overlapping by half) at seed 0.
 
 - `truth_combined.png`: `python -m port.sim.truth_figure`, written as
   `truth_combined.pdf` by `plot`: the tree (over 10 events, no events on its edges,
-  PR- #701), the profiles, the tracks and the
+  PR- #701), the profiles under their key -- the two mirror swatches stacked,
+  "Local Mirror" centred between them, and the copy-number bar (PR- #715) -- the tracks and the
   spatial map on one page at `combined.pdf`'s 122 mm by 193 mm and 7 pt, the
   profile and tracks on one left and right edge, clones as $m_N$, $m_1$, ...;
   the 10 Mb marks, outward, and every contig's name on the last track alone,

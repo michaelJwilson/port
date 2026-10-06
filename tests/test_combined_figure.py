@@ -263,8 +263,8 @@ def test_the_profile_spans_the_tracks_on_one_left_column(
 def test_the_spatial_panels_are_square_and_keyed_on_the_right_edge(
     cnaster_config: None, tmp_path: Path
 ) -> None:
-    """(a) the slide and (b) the clones, of one size, each box at its spots'
-    aspect to 1% (square here: a 3 by 3 section); (b)'s key one
+    """(a) the slide and (b) the clones, of one size, each box square and its
+    data at one scale on both axes to 1%; (b)'s key one
     column on the page's right edge, a `LABEL_GAP` in, its bottom on (b)'s,
     each clone named $m$; (b)'s rows labelled by (a)'s alone; each letter
     over its panel's top-left text or corner, the head a `LABEL_GAP` over
@@ -280,11 +280,13 @@ def test_the_spatial_panels_are_square_and_keyed_on_the_right_edge(
     box = key.get_window_extent(renderer)
 
     assert slide.get_images(), "(a) is the slide"
-    (x0, x1), (y0, y1) = clones.get_xlim(), clones.get_ylim()
-    assert tiles.height / tiles.width == pytest.approx(
-        abs(y1 - y0) / abs(x1 - x0), rel=0.01
-    )
     assert here.width == pytest.approx(here.height, abs=1.0)
+    for ax, frame in ((slide, here), (clones, tiles)):
+        (x0, x1), (y0, y1) = ax.get_xlim(), ax.get_ylim()
+        assert abs(x1 - x0) / frame.width == pytest.approx(
+            abs(y1 - y0) / frame.height, rel=0.01
+        )
+        assert (x0, x1, y0, y1) == clones.get_xlim() + clones.get_ylim()
     assert (tiles.width, tiles.height) == pytest.approx(
         (here.width, here.height), abs=1.0
     )

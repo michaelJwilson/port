@@ -11,8 +11,9 @@ Drawn once at their printed size, 122 mm wide, and included at
 - `spatial_figure`, about a quarter of that: **(a)** the H&E slide, as
   `cnaster.he.get_he_image` reads it; **(b)** `clones_spatial`, the fitted
   clone of each spot tiled by `port.patch.plotting.spatial`, keyed on its
-  right. Each at the spots' aspect, equal x and y scale, on the spot
-  coordinates, so a clone boundary in (b) reads against the tissue in (a).
+  right. Each square, its spots at one scale on both axes and centred, on
+  the spot coordinates, so a clone boundary in (b) reads against the tissue
+  in (a).
 
 `combined_figure` stacks them as (a) the spatial figure, (b) the profile and
 (c) the tracks: `PANELS`, the order `port.sim.truth_figure` draws the truth
@@ -949,10 +950,9 @@ def genomic_figure(
 
 def _place_spatial(figure: Any, slide_ax: Any, spatial_ax: Any) -> None:
     """(a) the slide on the left, (b) right of it and (b)'s key right of
-    that; each panel at the spots' aspect, equal x and y scale, as large as
-    fits across and no taller than wide-as-fits, so no white is left in its
-    box; each letter over its panel's top-left, on (a)'s extent ticks, and
-    the page cut to its text (PR- #715)."""
+    that; each panel's box square and as large as fits across, its data at
+    one scale on both axes and centred in it; each letter over its panel's
+    top-left, on (a)'s extent ticks, and the page cut to its text (PR- #715)."""
     renderer = figure.canvas.get_renderer()
     dpi = figure.dpi
     width, height = figure.get_size_inches()
@@ -973,14 +973,19 @@ def _place_spatial(figure: Any, slide_ax: Any, spatial_ax: Any) -> None:
     left = NAME_INSET / 72.0 + ticks(slide_ax)
     right = width - gap
     clones_right = right - key.get_window_extent(renderer).width / dpi - 2 * gap
-    # NB each panel at the spots' own aspect, so no white is left inside
-    #    its box: as wide as fits across, and no taller than that width
-    #    (the square bound the page budgets), narrowed where it is tall.
-    across = (clones_right - left - SPATIAL_GAP - ticks(spatial_ax)) / 2
+    # NB each panel square, as large as fits across: the box's height is
+    #    the page's budget, and its width is set equal to it (user, PR-
+    #    #715). Both panels' limits are the spots' widened about their
+    #    centre to a square, so the data keep one scale on both axes,
+    #    centred, and a boundary sits at one place in both.
+    side = (clones_right - left - SPATIAL_GAP - ticks(spatial_ax)) / 2
+    wide = side
     (x0, x1), (y0, y1) = spatial_ax.get_xlim(), spatial_ax.get_ylim()
-    tall = abs(y1 - y0) / abs(x1 - x0)
-    side = min(across, across * tall)
-    wide = side / tall
+    half = max(abs(x1 - x0), abs(y1 - y0)) / 2
+    xc, yc = (x0 + x1) / 2, (y0 + y1) / 2
+    for ax in (slide_ax, spatial_ax):
+        ax.set_xlim(xc - half, xc + half)
+        ax.set_ylim(yc - half, yc + half)
     bottom = height - side - 1.0
     _put(slide_ax, left, left + wide, bottom, side)
     start = left + wide + SPATIAL_GAP + ticks(spatial_ax)
@@ -1092,8 +1097,8 @@ def spatial_figure(
     width: float | None = None,
     labels: str = "integer",
 ) -> Any:
-    """(a) the H&E slide and (b) `clones_spatial`, at the spots' aspect and
-    as large as fit across `width` inches, (b) keyed on its right; no caption.
+    """(a) the H&E slide and (b) `clones_spatial`, square and as large as fit
+    across `width` inches, (b) keyed on its right; no caption.
 
     `labels` as `_draw_spatial` takes it: "integer" (#344) or "continuous".
     """

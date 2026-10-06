@@ -366,7 +366,7 @@ def plot_copy_number_profile(
     return fig
 
 
-MIRROR = "Co-located Mirror"
+MIRROR = "Local Mirror"
 """The mirror swatches' label, right of them in every figure that draws the key (PR- #701)."""
 
 MIRROR_GAP = 0.15
