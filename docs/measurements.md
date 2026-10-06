@@ -229,6 +229,31 @@ per `bbox_inches` pass -- and 8,287 MB of `RendererAgg` at `cnaster`'s dpi.
 `strict` on `cnaster`'s own figures: measured at 120 groups before and 120
 after, byte for byte the same files.
 
+### write_fig
+
+**Releasing the renderer each `Text` cached (T- #692 part 2).** Peak RSS of
+one whole `run_cnaster`, sampled every 50 ms, one run per arm under
+`host.lock`, `cnaster` pin `4adad4d`, `matplotlib` 3.11.2. `release` is
+`cnaster`'s figures written by this function at `cnaster`'s defaults, its
+"before" `cnaster`'s own `write_fig`; `port`
+is `FIGURE_SWAPS`.
+
+| instance | arm | peak before | peak after | write_fig before / after |
+| --- | --- | ---: | ---: | ---: |
+| gate (`350fbd2b`) | `release` | 5.06 GiB | 1.89 GiB | 11.3 / 11.2 s |
+| gate (`350fbd2b`) | `port` | 1.91 GiB | 1.51 GiB | 3.3 / 3.2 s |
+| CalicoST easy (`2d4ce9a9`) | `release` | 11.82 GiB | 4.22 GiB | 60.8 / 39.9 s |
+| CalicoST easy (`2d4ce9a9`) | `port` | 3.96 GiB | 3.25 GiB | 11.8 / 11.8 s |
+
+Before the change RSS rose by about 1.4 GiB per genomic figure at 300 dpi on
+easy and fell to 1.21 GiB only after `plt.close("all")` and `gc.collect()`.
+Each `Text` holds the `MixedModeRenderer`, which holds the `PdfFile`, whose
+`_images` are views of each rasterizing group's full-page `RendererAgg`
+buffer; a `gc.collect()` in this function freed nothing, because the
+caller's `fig` still reaches them. All 25 output files of every pair above
+are byte-identical. The easy `write_fig` times are one run each and are not
+a speedup claim.
+
 ### discard_fig
 
 Only the rendering is skipped, which is where a small run spends 31 to 45
