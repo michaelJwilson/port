@@ -24,7 +24,7 @@ The cost is that they can go stale, and the test is what pays it.
 | judged, oracle, reach | the three coverage guards | per pull request |
 | memory, instance | a whole `run_cnaster`, both arms, on `dev_tree` r0 | by hand |
 | speed | `run_cnaster_port --sal` on `dev_tree` r0, one core, against CalicoST's recorded wall (#532) | by hand |
-| patched | `python -m tests.patched_share`, one unpatched run (#302) | by hand |
+| patched | `run_benchmark --patched-share`, one unpatched run (#302) | by hand |
 | port, sal | `python -m tests.sim_audit` on `dev_tree` r0, default and `--sal` | by hand |
 
 The `instance` badge carries the size the two ratios were read at, because
@@ -40,6 +40,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from port.qa.benchmark import BADGES, MEASUREMENTS
+
 UNMEASURED = "/"
 """What a badge reads before its measurement exists.
 
@@ -49,8 +51,6 @@ one rendering that asserts nothing.
 """
 
 ROOT = Path(__file__).resolve().parent.parent
-BADGES = ROOT / ".badges"
-MEASUREMENTS = BADGES / "measurements.json"
 
 __all__ = [
     "BADGES",

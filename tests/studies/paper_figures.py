@@ -12,7 +12,7 @@ manifest's `r0_hash`, and writes into `OUT`:
   `port.sim.truth_figure.truth_combined_figure`, no run needed;
 - `run/`, figures 9-13: one `run_cnaster_port --sal --png-copies` run through
   `port.qa.audit.audit_sample`, its named PNGs copied out, and the combined,
-  genomic and spatial pages drawn from it as `tests.generate_plots` draws
+  genomic and spatial pages drawn from it as `run_figures` draws
   them, beside a slide mocked from the planted labels (`port.sim.he_slide`);
 - `compare/`, figures 14-17: the run against the truth, through
   `port.qa.audit.score_sample`'s matching, `copy_confusion` and planted classes;
@@ -247,7 +247,7 @@ def run_figures(sample: Any, root: Path, out: Path, text: str) -> Run:
 
     frame = mock_slide(sample.coords, sample.labels, root)
 
-    # NB at their declared size, not a tight box, as `tests.generate_plots`
+    # NB at their declared size, not a tight box, as `run_figures`
     #    writes them: the page is included at 1:1.
     with page_style():
         for name, figure in (

@@ -71,7 +71,7 @@ asserts nothing and is blue for that reason.
 the `cnaster` lines an unpatched `run_cnaster` executes on the dev instance
 (`numba` disabled, so a kernel's body counts), the share inside a function a
 default row of `run_cnaster_port` replaces -- for a class, its overridden
-methods (#302). Measured by `python -m tests.patched_share`, not per pull
+methods (#302). Measured by `run_benchmark --patched-share`, not per pull
 request, since it is a whole run; blue, because it asserts nothing.
 
 **`port ARI` and `sal ARI`** are recovery against the planted truth on
@@ -536,7 +536,7 @@ trains a reader to ignore `git status`.
 | Path | Contents |
 | --- | --- |
 | `python/port/` | The Python package; `python-source` in `pyproject.toml` |
-| `python/port/qa/` | What measures and records a run: `statistics` (bars, ranks, bootstrap intervals, wall and peak memory), `provenance` (the commit, the inputs' digest, a figure's stamp), `scoring` (a fit against its planted truth), `audit` (a run scored, behind `run_audit`) and `ledger` (`docs/metrics/`, behind `run_ledger`), one implementation each (T- #673) |
+| `python/port/qa/` | What measures and records a run: `statistics` (bars, ranks, bootstrap intervals, wall and peak memory), `provenance` (the commit, the inputs' digest, a figure's stamp), `scoring` (a fit against its planted truth), `audit` (a run scored, behind `run_audit`), `benchmark` (behind `run_benchmark` and `run_figures`) and `ledger` (`docs/metrics/`, behind `run_ledger`), one implementation each (T- #673) |
 | `src/` | The Rust crate `oxiport`, bound as `port.oxiport` |
 | `tests/` | The suite; `testpaths` in `pyproject.toml` |
 | `sim/` | CalicoST's simulated samples, their normal fits, and `manifests/` that draw them |

@@ -44,7 +44,7 @@ jobs:
 
       - run: uv sync --locked --extra dev --extra test
 
-      - run: uv run --no-sync python -m tests.generate_plots
+      - run: uv run --no-sync python -m port.scripts.run_figures
 
       - run: uv run --no-sync python -m port.scripts.run_audit --errors --realizations 8 --jobs 1
 
