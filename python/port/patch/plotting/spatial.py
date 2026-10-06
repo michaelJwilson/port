@@ -26,7 +26,7 @@ every panel colours the clones as the whole run does. Unset -- the default --
 is upstream's single axis exactly. `run_cnaster_port --sample-layout 3,1`
 binds `preferred_sample_layout` at install.
 
-**The page is cut to its axes (PR- #701 follow-up).** Departure from
+**The page is cut to its axes (PR- #715).** Departure from
 upstream: its `base_width` by `base_height` page leaves white bands where
 the section's aspect does not fill it; here the page is cut to what the
 axes draw (`figure_style.fit_to_content`), each axis at its size.

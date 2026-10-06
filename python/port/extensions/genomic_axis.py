@@ -74,7 +74,7 @@ NORMAL_FLOOR = 0.25
 """The normal intervals' least scale, where `ALTERED_SCALE` would leave them none (T- #683)."""
 
 TICK_LENGTH = 2.0
-"""Points: a tick under the track, outward, clear of the points it marks (PR- #701 follow-up)."""
+"""Points: a tick under the track, outward, clear of the points it marks (PR- #715)."""
 
 CONTIG_PAD = 1.0
 """Points between two contig names on one row of `name_contigs`."""

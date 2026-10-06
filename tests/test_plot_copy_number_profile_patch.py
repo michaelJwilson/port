@@ -205,7 +205,7 @@ def test_the_mirror_key_starts_on_the_axis_and_is_labelled_on_its_right(
     standalone profile's: the swatches
     stacked, apart, on the axis's left edge (0.5 px), `MIRROR` right of them,
     centred on the white between them (0.5 px) and clear of the colour bar's
-    title (PR- #701)."""
+    title (PR- #715)."""
     import matplotlib.pyplot as plt
     from port.patch.plot_copy_number_profile import (
         plot_ascn_legend,
@@ -229,7 +229,7 @@ def mirror_key_holds(legend_ax: Any, edge_ax: Any) -> None:
     """The mirror key's geometry on `legend_ax`: its two swatches one above
     the other, not overlapping, their left edges on `edge_ax`'s (0.5 px);
     `MIRROR` right of them, its centre on the white between them (0.5 px),
-    and left of the colour bar's title (PR- #701)."""
+    and left of the colour bar's title (PR- #715)."""
     from port.patch.plot_copy_number_profile import MIRROR
 
     renderer = legend_ax.figure.canvas.get_renderer()

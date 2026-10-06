@@ -456,7 +456,7 @@ def plot_spatial(r: Realization, out: Path) -> Path:
 
     # NB one legend for every slice, in the clones' order, under the first
     #    slice and anchored to it, so the page is cut to the axes and their
-    #    key with no band left (`fit_to_content`, PR- #701 follow-up).
+    #    key with no band left (`fit_to_content`, PR- #715).
     handles = [
         Line2D([], [], marker="o", linestyle="", markersize=5,
                color=clone_colour(c, r.clones), label=display(c, r.clones))

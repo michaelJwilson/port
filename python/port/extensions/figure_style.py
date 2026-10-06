@@ -81,7 +81,7 @@ def fit_to_content(figure: Any) -> None:
     "equal"), which otherwise leaves the white its aspect does not fill as
     bands round the axes. What an axis anchors -- its legend, title and
     texts -- moves with it; a figure-level text or legend does not, so a
-    caller anchors its key to an axis (PR- #701 follow-up).
+    caller anchors its key to an axis (PR- #715).
     """
     figure.canvas.draw()
     renderer = figure.canvas.get_renderer()

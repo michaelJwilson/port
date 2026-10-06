@@ -402,7 +402,7 @@ def test_only_the_last_track_marks_every_10_mb_at_paper_width(drawn: Drawn) -> N
     """The page's last track carries one visible minor tick mark per 10 Mb
     multiple of each chromosome, `floor(L / 10 Mb)` summed, outward under the
     axis, 2 pt long and 0.5 pt wide (`genomic_axis.draw`); (b) and every
-    other track of (c) carry none (PR- #701 and its follow-up)."""
+    other track of (c) carry none (PR- #701, PR- #715)."""
     import matplotlib.pyplot as plt
     from matplotlib.markers import TICKDOWN
 
@@ -433,8 +433,8 @@ def test_no_mb_label_is_drawn_and_every_contig_is_named_once_clear(
     contig with any width has exactly one name, its number, under the last
     track and centred on it, overlapping no other name, with one "chr" for
     the rows; no other axis, nor `cnaster`'s own names, shows a contig name
-    -- including the contigs `NORMAL_FLOOR` squeezes on dense (PR- #701
-    follow-up)."""
+    -- including the contigs `NORMAL_FLOOR` squeezes on dense (PR-
+    #715)."""
     import re
 
     import matplotlib.pyplot as plt
@@ -618,7 +618,7 @@ def test_the_mirror_key_starts_on_b_s_left_edge_and_is_labelled_on_its_right(
 ) -> None:
     """(b)'s mirror swatches stacked on the profile axis's left edge (0.5 px),
     `MIRROR` right of them and centred on the white between them (0.5 px),
-    clear of the colour bar's title (PR- #701)."""
+    clear of the colour bar's title (PR- #715)."""
     from tests.test_plot_copy_number_profile_patch import mirror_key_holds
 
     figure, _, _ = _panels(read(drawn.path))
@@ -631,7 +631,7 @@ def test_the_mirror_key_starts_on_b_s_left_edge_and_is_labelled_on_its_right(
 @pytest.mark.merge
 def test_truth_combined_reads_clones_profile_tracks(drawn: Drawn) -> None:
     """The truth page is (a) the tree, (b) the profile under its key, (c) the
-    tracks: `PANELS`, the run's combined page's order (PR- #701 follow-up)."""
+    tracks: `PANELS`, the run's combined page's order (PR- #715)."""
     import matplotlib.pyplot as plt
     from port.extensions.combined_figure import PANELS
 

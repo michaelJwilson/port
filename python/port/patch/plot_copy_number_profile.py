@@ -374,7 +374,7 @@ MIRROR_GAP = 0.15
 
 KEY_GROWTH = (0.6 + 1.575 * 0.8 + 0.05) / (0.6 + 0.8 + 0.05)
 """A key axis's height against its height before the swatches stacked
-(PR- #701), at the default `box_h` 0.8: its y range runs from the numerals'
+(PR- #715), at the default `box_h` 0.8: its y range runs from the numerals'
 -0.6 to 0.05 over the upper swatch, at `(1.5 + MIRROR_GAP / 2) * box_h`,
 where it ran to 0.05 over the bar. A caller grows its key row by this so a
 box keeps its size on the page."""

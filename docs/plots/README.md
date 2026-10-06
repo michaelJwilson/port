@@ -138,7 +138,7 @@ overlapping by half) at seed 0.
   profile and tracks on one left and right edge, clones as $m_N$, $m_1$, ...;
   the 10 Mb marks, outward, and every contig's name on the last track alone,
   staggered where adjacent contigs are short, no Mb numbers, and every
-  chromosome boundary on (b) and each track (PR- #701 and its follow-up);
+  chromosome boundary on (b) and each track (PR- #701, PR- #715);
   (a), (b), (c) as `combined.png`'s (`combined_figure.PANELS`)
 
 Clones carry `cnaster`'s numerals in every other figure: `Clone 0` is the normal.

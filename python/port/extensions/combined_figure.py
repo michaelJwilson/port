@@ -16,7 +16,7 @@ Drawn once at their printed size, 122 mm wide, and included at
 
 `combined_figure` stacks them as (a) the spatial figure, (b) the profile and
 (c) the tracks: `PANELS`, the order `port.sim.truth_figure` draws the truth
-in, the clones' structure first and the profile second (PR- #701 follow-up).
+in, the clones' structure first and the profile second (PR- #715).
 
 Clones are named as the paper names them, $m_N$ for the normal and $m_1$,
 $m_2$, ... for the rest.
@@ -88,7 +88,7 @@ LEGEND_BOX = 0.2
 
 LEGEND_ROW = 0.24 * KEY_GROWTH
 """The profile's key row against the profile's base height, 1.0: 0.24
-before the mirror swatches stacked (PR- #701)."""
+before the mirror swatches stacked (PR- #715)."""
 
 PROFILE_ROWS = 0.8
 """The profile's axis against its base height: its rows 20% shorter, the
@@ -98,7 +98,7 @@ PANELS = ("clones", "profile", "tracks")
 """The panels of `combined_figure` and `truth_combined_figure`, top to bottom,
 as (a), (b), (c): the clones' structure -- the slide and the fitted clones,
 or the planted tree -- then the copy-number profile under its key, then RDR
-and BAF per clone (PR- #701 follow-up)."""
+and BAF per clone (PR- #715)."""
 
 TOP_LINE = 0.1
 """Inches above the tracks for the top clone's statistics line."""
@@ -833,7 +833,7 @@ def _genomic_page(
     middle.axes[-1].remove()
     legend_ax.axis("off")
     # NB the contigs are named under the last track, which alone carries the
-    #    10 Mb marks; the profile keeps its boundaries (PR- #701 follow-up).
+    #    10 Mb marks; the profile keeps its boundaries (PR- #715).
     contigs = (
         [float(x) for x in profile_ax.get_xticks()],
         [t.get_text() for t in profile_ax.get_xticklabels()],
@@ -952,7 +952,7 @@ def _place_spatial(figure: Any, slide_ax: Any, spatial_ax: Any) -> None:
     that; each panel at the spots' aspect, equal x and y scale, as large as
     fits across and no taller than wide-as-fits, so no white is left in its
     box; each letter over its panel's top-left, on (a)'s extent ticks, and
-    the page cut to its text (PR- #701 follow-up)."""
+    the page cut to its text (PR- #715)."""
     renderer = figure.canvas.get_renderer()
     dpi = figure.dpi
     width, height = figure.get_size_inches()
@@ -1135,7 +1135,7 @@ def combined_figure(
     tracks, are the genomic figure's, drawn the rest of the height. So the
     page is the two figures stacked, each as on its own page, in
     `truth_combined`'s order: the clones' structure, the profile, the
-    tracks (`PANELS`, PR- #701 follow-up).
+    tracks (`PANELS`, PR- #715).
     """
     import matplotlib.pyplot as plt
 

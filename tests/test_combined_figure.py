@@ -436,8 +436,8 @@ def test_the_combined_page_reads_clones_profile_tracks(
     cnaster_config: None, tmp_path: Path
 ) -> None:
     """The run's page is (a) the slide and the clones, (b) the profile under
-    its key, (c) the tracks: `PANELS`, `truth_combined`'s order (PR- #701
-    follow-up)."""
+    its key, (c) the tracks: `PANELS`, `truth_combined`'s order (PR-
+    #715)."""
     import matplotlib.pyplot as plt
     from port.extensions.combined_figure import PANELS, combined_figure
 
@@ -466,7 +466,7 @@ def test_a_spatial_page_is_cut_to_its_axes() -> None:
     """`plot_clones_spatial` on a tall 4 by 10 section: equal x and y scale,
     the tiles' box at the section's aspect to 1%, and the page's content
     `FIT_MARGIN` from the head and sides and `STAMP_ROOM` from the foot to
-    a pixel, so no band of white is left (PR- #701 follow-up)."""
+    a pixel, so no band of white is left (PR- #715)."""
     import matplotlib as mpl
 
     mpl.use("Agg")
