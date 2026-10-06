@@ -502,6 +502,8 @@ its own path covering a locus. Under the fixture's `[cna] loh =
 "irreversible"`, an event keeps every haplotype its lineage has lost at 0
 and changes its clone. Without the key, as every other manifest draws,
 11 of 679 events over 100 `dev_tree_1s_easy` trees regain a lost haplotype.
+The key is opt-in so older fixtures keep their hashes, and required of every
+new manifest.
 `[cna.length]` states `law = "fixed"` (`size`), `"exponential"` (`mean`,
 `minimum`) or `"lognormal"` (`sigma`, `minimum` and exactly one of `mean` or
 `median`; a mean keys the median at `mean exp(-sigma^2 / 2)`). The live
