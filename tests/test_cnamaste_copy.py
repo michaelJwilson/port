@@ -12,11 +12,14 @@ The referee is the installed `cnaster`, T- #670's unpatched oracle: the copy
 is the same code, so equality says the copy is complete and isolated, not
 that either is right.
 
-Fixtures, by `port.sim.truth.fixture_hash`:
+Fixtures, each named by its hash:
 - the gate instance (`planted_and_written`'s truth: 2 clones, 3 states,
-  25 x 40 spots, 40 bins), `350fbd2b`, one outer and three EM iterations;
+  25 x 40 spots, 40 bins), `350fbd2b` by `fixture_hash`, one outer and three
+  EM iterations;
 - dev (`07b82e92`), the `release` tier, five states as
-  `test_the_pipeline_completes_on_the_dev_instance` fits it.
+  `test_the_pipeline_completes_on_the_dev_instance` fits it;
+- CalicoST easy (`2d4ce9a9`, `realization_hash`), the `release` tier, at
+  `zenodo_sim_config.yaml`'s settings.
 """
 
 from __future__ import annotations
@@ -28,6 +31,13 @@ from pathlib import Path
 import matplotlib as mpl
 import pytest
 import yaml
+from port.sim.fixtures import (
+    EASY,
+    load_simulated,
+    realization_hash,
+    references,
+    write_sim_inputs,
+)
 from port.sim.run_config import isolated_run, write_for_run
 from port.sim.truth import CoreInferenceTruth, dev_instance, fixture_hash
 
@@ -38,6 +48,7 @@ ENTRIES = {"cnaster": "cnaster.scripts.run_cnaster", "cnamaste": "cnamaste.run"}
 
 GATE_HASH = "350fbd2b"
 DEV_HASH = "07b82e92"
+EASY_HASH = "2d4ce9a9"
 
 
 def _run(package: str, config: Path, root: Path) -> Path:
@@ -84,13 +95,10 @@ def _differ(left: Path, right: Path) -> tuple[set[str], list[str]]:
     return lone, differ
 
 
-def _equal_runs(
-    truth: CoreInferenceTruth, root: Path, **config: object
-) -> tuple[int, int]:
-    """Both arms on `truth`; the number of files each wrote, and of `.npz`."""
-    _, path = write_for_run(truth, root / "inputs", **config)
-    cnaster = _run("cnaster", path, root)
-    cnamaste = _run("cnamaste", path, root)
+def _equal_runs(config: Path, root: Path) -> tuple[int, int]:
+    """Both arms on `config`; the number of files each wrote, and of `.npz`."""
+    cnaster = _run("cnaster", config, root)
+    cnamaste = _run("cnamaste", config, root)
 
     lone, differ = _differ(cnaster, cnamaste)
     assert not lone, f"written by one arm only: {sorted(lone)}"
@@ -116,8 +124,9 @@ def test_run_cnamaste_writes_cnasters_bytes_on_the_gate_instance(
 ) -> None:
     truth = planted_instance[0]
     assert fixture_hash(truth) == GATE_HASH
+    _, config = write_for_run(truth, tmp_path / "inputs", max_iter_outer=1, max_iter=3)
 
-    files, fits = _equal_runs(truth, tmp_path, max_iter_outer=1, max_iter=3)
+    files, fits = _equal_runs(config, tmp_path)
 
     # NB the tables, the fits and the 19 figures, so equality is not vacuous
     assert files >= 25
@@ -135,8 +144,49 @@ def test_run_cnamaste_writes_cnasters_bytes_on_the_dev_instance(
 ) -> None:
     truth = dev_instance()
     assert fixture_hash(truth) == DEV_HASH
+    _, config = write_for_run(
+        truth, tmp_path / "inputs", max_iter_outer=1, max_iter=3, n_states=5
+    )
 
-    files, fits = _equal_runs(truth, tmp_path, max_iter_outer=1, max_iter=3, n_states=5)
+    files, fits = _equal_runs(config, tmp_path)
 
     assert files >= 25
     assert fits >= 1
+
+
+@pytest.mark.oracle
+@pytest.mark.cnamaste
+@pytest.mark.preprocessing
+@pytest.mark.release
+@pytest.mark.xdist_group("pipeline")
+@pytest.mark.usefixtures("_fixed_dates")
+def test_run_cnamaste_writes_cnasters_bytes_on_calicost_easy(tmp_path: Path) -> None:
+    """CalicoST's shipped sample at `zenodo_sim_config.yaml`'s settings."""
+    if references() is None:
+        pytest.skip("CalicoST's GRCh38_resources not found; set $PORT_GRCH38")
+    sample = load_simulated(EASY)
+    assert realization_hash(sample.path) == EASY_HASH
+
+    files, fits = _equal_runs(write_sim_inputs(sample, tmp_path / "inputs"), tmp_path)
+
+    assert files >= 25
+    assert fits >= 1
+
+
+@pytest.mark.infra
+@pytest.mark.parametrize(
+    "keywords",
+    [{"flags": ["--sal"]}, {"flags": [], "likelihood": True}],
+    ids=["flags", "likelihood"],
+)
+def test_the_audits_cnamaste_arm_refuses_what_only_port_reads(
+    keywords: dict[str, object],
+) -> None:
+    """`run_audit --recovery --cnamaste` runs `cnamaste`'s `run_cnaster`, which
+    takes no flags; `--likelihood` reads port's fit. Both are refused before
+    any input is written."""
+    from port.qa.audit import audit_truth
+    from port.sim.truth import critical_instance
+
+    with pytest.raises(ValueError, match="run_cnamaste takes no flags"):
+        audit_truth(critical_instance(), cnamaste=True, **keywords)  # type: ignore[arg-type]

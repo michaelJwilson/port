@@ -798,6 +798,13 @@ def plant_diffexp(
     return [str(g) for g in adata.var.index[top]]
 
 
+def _run_cnamaste(argv: list[str]) -> None:
+    """`run_cnamaste CONFIG` in process: `cnamaste`'s `run_cnaster` (T- #670)."""
+    import cnamaste.run
+
+    cnamaste.run.run_cnaster(argv[0])
+
+
 def audit_truth(
     truth: CoreInferenceTruth,
     flags: list[str],
@@ -813,6 +820,7 @@ def audit_truth(
     candidates_used: Callable[[Path], np.ndarray] | None = None,
     calicost: bool = False,
     diffexp: tuple[float, int] | None = None,
+    cnamaste: bool = False,
 ) -> tuple[Recovery, Path]:
     """Run `run_cnaster_port` with `flags` on `truth`'s inputs, and score it.
 
@@ -843,8 +851,12 @@ def audit_truth(
     `diffexp = (fold, n_genes)` plants differential expression: the
     `n_genes` highest-UMI genes scaled by `fold` in every spot outside the
     balanced clone, before the inputs are written (#440).
+    `cnamaste` runs `run_cnamaste` (T- #670) in place of `run_cnaster_port`:
+    `cnamaste`'s own `run_cnaster`, which takes no flags, with the normal
+    candidates read from `cnamaste.run` as they are from `cnaster`'s.
     """
-    import cnaster.scripts.run_cnaster as pipeline
+    import importlib
+
     import scipy.optimize
 
     from port.extensions.copy_errors import Captured, captured_fits
@@ -852,6 +864,10 @@ def audit_truth(
     from port.sim.inputs import write_tmp_inputs
     from port.sim.run_config import write_run_cnaster_config
     from port.sim.unsegment import unsegment
+
+    if cnamaste and (flags or likelihood or calicost or entry is not None):
+        msg = "run_cnamaste takes no flags, and --likelihood hooks port's fit"
+        raise ValueError(msg)
 
     root = Path(tempfile.mkdtemp())
     pre_image = unsegment(truth, flip_every=0, unassigned_genes=0)
@@ -870,6 +886,12 @@ def audit_truth(
         document = yaml.safe_load(config.read_text())
         overridden(document, overrides)
         config.write_text(yaml.safe_dump(document))
+
+    pipeline: Any = importlib.import_module(
+        "cnamaste.run" if cnamaste else "cnaster.scripts.run_cnaster"
+    )
+    if cnamaste:
+        entry = _run_cnamaste
 
     if calicost:
         from port.scripts.run_calicost import main as run_calicost
@@ -946,7 +968,7 @@ def audit_truth(
         pipeline.determine_normal_candidates = determine
         scipy.optimize.minimize = minimize
 
-    arm = " ".join(flags) or "default"
+    arm = "cnamaste" if cnamaste else " ".join(flags) or "default"
     recovery = score_truth(truth, root / "output", arm, cost.wall_s)
     recovery.m_step_calls = tightened_calls[0]
     used = picked[-1]

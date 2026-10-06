@@ -1,7 +1,7 @@
 """`run_audit`: one run of `run_cnaster_port` scored against its planted truth (T- #673 G3).
 
     run_audit --sim [--sample easy|hard|<name>] [--set K=V] [--oracle-start] [-- flags]
-    run_audit --recovery [--instance dev] [--lattice] [--set K=V] [-- flags]
+    run_audit --recovery [--instance dev] [--lattice] [--set K=V] [--cnamaste] [-- flags]
     run_audit --copy [--realizations 8] [--output PATH]
     run_audit --errors [--realizations 8] [--output PATH]
 
@@ -75,6 +75,8 @@ def _parser() -> argparse.ArgumentParser:
                         help="--recovery: the planted normal spots as the normal candidates (upper bound)")  # fmt: skip
     parser.add_argument("--m-step-tol", type=float, default=None,
                         help="--recovery: ftol and gtol for the emission M step, which cnaster hard-codes (#30)")  # fmt: skip
+    parser.add_argument("--cnamaste", action="store_true",
+                        help="--recovery: run run_cnamaste (T- #670) in place of run_cnaster_port; it takes no flags")  # fmt: skip
     parser.add_argument("--calicost", action="store_true",
                         help="--recovery: run run_calicost on the same inputs; flags go to it (#347)")  # fmt: skip
     parser.add_argument("--diffexp", nargs=2, type=float, metavar=("FOLD", "N_GENES"),
@@ -168,6 +170,7 @@ def _recovery(arguments: argparse.Namespace) -> None:
         oracle_normal=arguments.oracle_normal,
         m_step_tol=arguments.m_step_tol,
         calicost=arguments.calicost,
+        cnamaste=arguments.cnamaste,
         diffexp=(
             None
             if arguments.diffexp is None

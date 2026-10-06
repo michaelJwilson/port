@@ -53,6 +53,7 @@ def record(arguments: argparse.Namespace) -> int:
         "--outer", str(arguments.outer),
         "--iterations", str(arguments.iterations),
         *(item for entry in arguments.set for item in ("--set", entry)),
+        *(["--cnamaste"] if arguments.cnamaste else []),
     ]  # fmt: skip
     flags = [f for f in arguments.flags if f != "--"]
     command = [
@@ -169,6 +170,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     parser.add_argument("--lattice", action="store_true")
     parser.add_argument("--loh", action="store_true")
+    parser.add_argument(
+        "--cnamaste", action="store_true", help="run run_cnamaste (T- #670)"
+    )
     parser.add_argument("--states", type=int, default=8)
     parser.add_argument("--outer", type=int, default=1)
     parser.add_argument("--iterations", type=int, default=3)
