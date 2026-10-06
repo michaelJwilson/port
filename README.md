@@ -271,8 +271,7 @@ follows the arm unless asked: on in a patched run, off with `--no-patch`.
 | `--min-segment-normal-umi` | off; on with `--sal`; refused with `--no-patch` | read-depth segments floored at 300 normal UMI where no `quality` key is stated (#551) | see below |
 | `--hmm-start` | `none`; `kmeans++x5+em` with `--sal` and the shift; refused without the shift | the read-depth HMM's copy states: a sal mixture start (#489), seeded in sal's rate space (#547), or `lattice`, the integer `(A, B)` lattice; `emission++` scores floored at 0 (#562) | #547: dev_tree r0 (`3381575a`) clone ARI 0.8612 (5) to 1.0 (4); with the segment floor, CalicoST hard (`8797710b`) copy ARI 0.9055 to 0.9181 |
 | `--baf-start` | `none` | the BAF-only HMM's copy states from the lattice (#540) | |
-| `--copy-errors` | off | `cnv_copy_sets.tsv`: every `(A, B)` in each state's 95 per cent credible region (#353); `cnv_segment_sets.tsv`: every `(A, B)` within the level of each decoded segment's best, by the point decode's likelihood with shift and fraction refitted (#705) | differentiates the whole objective once; one emission table per refit grid point |
-| `--copy-errors-level` | 0.95 | the level of both sets: 0.9545 is 2 sigma, 0.9973 3 sigma (#705) | none |
+| `--copy-errors` | off | `cnv_copy_sets.tsv`: every `(A, B)` in each state's 95 per cent credible region (#353) | differentiates the whole objective once |
 | `--png-copies` | off | a PNG without metadata beside each PDF, for figures compared across runs (#452) | two runs of the same code write the same bytes |
 | `--sample-layout`, `--genomic-colours` | unset | one panel per sample (#328); bins coloured per fitted state | |
 | `--warm-up` | off | compile every kernel before the clock starts (#211) | |

@@ -101,8 +101,10 @@ LEVELS = {"2sigma": 0.9545, "3sigma": 0.9973}
 """The credible levels each event is scored at (#705); the arms write the
 widest, with each pair's distance, so the narrower is read from the same run."""
 
-SETS = ("--copy-errors", "--copy-errors-level", f"{max(LEVELS.values())}")
-"""The credible sets at the widest of `LEVELS`, so each is read from one run."""
+SETS = ("--copy-errors",)
+"""The per-state credible sets (#353), at the entry point's 95 per cent; the
+segment sets come from `port.sandbox.extensions.segment_sets`, written at
+the widest of `LEVELS` so each level is read from one run."""
 
 ARMS: dict[str, tuple[str, ...]] = {
     "sal": FLAGS,
@@ -652,6 +654,19 @@ def _record(out: Path, seed: int, j: float) -> Path:
     return out / "records" / f"s{seed:04d}-J{j:g}.json"
 
 
+def _segment_sets(arm: str, output: Path) -> Any:
+    """`port.sandbox.extensions.segment_sets`' writer around a run, for an arm
+    with the credible sets; nothing for `sal`. Set aside for version 2 (#705)."""
+    import contextlib
+
+    if "--copy-errors" not in ARMS[arm]:
+        return contextlib.nullcontext()
+
+    from port.sandbox.extensions.segment_sets import writing_segment_sets
+
+    return writing_segment_sets(output, level=max(LEVELS.values()))
+
+
 def run_member(
     seed: int,
     js: tuple[float, ...],
@@ -678,9 +693,10 @@ def run_member(
         base = {"seed": seed, "J": j, "flags": flags, "arm": arm,
                 "manifest": manifest.stem}  # fmt: skip
         try:
-            _, output = audit_sample(
-                sample, flags, {"hmrf.spatial_weight": j}, root=runs
-            )
+            with _segment_sets(arm, runs / "output"):
+                _, output = audit_sample(
+                    sample, flags, {"hmrf.spatial_weight": j}, root=runs
+                )
         except Exception as error:  # noqa: BLE001 -- a failed run is a result
             import traceback
 

@@ -64,7 +64,6 @@ ROLES: dict[str, Role] = {
     "port.extensions.copy_errors": "extension",
     "port.extensions.copy_starts": "extension",
     "port.extensions.copy_likelihood": "extension",
-    "port.extensions.segment_sets": "extension",
     "port.extensions.emission_family": "oracle",
     "port.extensions.figure_style": "extension",
     "port.extensions.genomic_axis": "extension",
@@ -168,6 +167,7 @@ ROLES: dict[str, Role] = {
     "port.sim.normal_fit": "sim",
     # sandbox
     "port.sandbox.admixture.clone_mixture": "set aside",
+    "port.sandbox.extensions.segment_sets": "set aside",
     "port.sandbox.known_field.cluster": "set aside",
     "port.sandbox.known_field.color_merge": "set aside",
     "port.sandbox.known_field.field": "set aside",

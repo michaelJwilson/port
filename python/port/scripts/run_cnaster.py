@@ -219,12 +219,6 @@ def _parser() -> argparse.ArgumentParser:
         help="write cnv_copy_sets.tsv, each state's 95 per cent credible (A, B) (#353); needs the shift",
     )
     parser.add_argument(
-        "--copy-errors-level",
-        type=float,
-        default=0.95,
-        help="the level of --copy-errors' sets, per state and per segment: 0.9545 is 2 sigma, 0.9973 3 sigma (#705)",
-    )
-    parser.add_argument(
         "--copy-decode",
         choices=("lattice", "shared"),
         default="lattice",
@@ -525,11 +519,6 @@ def main(argv: Sequence[str] | None = None) -> int:
         from port.extensions.copy_errors import captured_fits
 
         kept = stack.enter_context(captured_fits()) if arguments.copy_errors else None
-        # NB the point decodes, so the sets are taken at their shifts and
-        #    tumour fractions (#705).
-        from port.patch.integer_copy import recorded
-
-        decodes = stack.enter_context(recorded()) if arguments.copy_errors else None
 
         selected = SWAPS if not arguments.no_patch else ()
 
@@ -799,13 +788,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             since=since,
         )
     if kept is not None:
-        _write_copy_sets(
-            arguments.config,
-            kept,
-            since=since,
-            decodes=decodes,
-            level=arguments.copy_errors_level,
-        )
+        _write_copy_sets(arguments.config, kept, since=since)
 
     print(f"run_cnaster_port: {wall:.2f}s", file=sys.stderr)
     return 0
@@ -847,22 +830,14 @@ def _write_outputs(
 
 
 def _write_copy_sets(
-    config: str,
-    kept: list[Any],
-    *,
-    since: float | None = None,
-    decodes: list[Any] | None = None,
-    level: float = 0.95,
+    config: str, kept: list[Any], *, since: float | None = None
 ) -> None:
     """Write the credible sets beside the final fit this run wrote.
 
     The fit is the one of the configured `hmm.n_states` written at or after
     `since`, not the newest under `output_dir`, which may be another
-    configuration's (T- #617). With none, nothing is written, and it says so.
-    Beside them, each decoded segment's set by the point decode's likelihood
-    (`cnv_segment_sets.tsv`, #705), from the last of `decodes` that decoded
-    this fit's clones and bins; without one, it says so. A fit
-    `pinned_errors` refuses writes no per-state sets, and says so.
+    configuration's (T- #617). With none, nothing is written, and it says so,
+    as for a fit `pinned_errors` refuses (#705).
     """
     from pathlib import Path
 
@@ -896,50 +871,18 @@ def _write_copy_sets(
         )
         return
 
-    # NB a refused fit (T- #599's large tau) leaves no per-state sets and
-    #    says so; the run it follows completed, and its outputs stand (#705).
+    # NB a refused fit (T- #599's large tau) leaves no sets and says so; the
+    #    run it follows completed, and its outputs stand (#705).
     try:
-        path = write_copy_sets(fits[0].parent, kept[-1], level=level)
-        print(f"run_cnaster_port: wrote {path}", file=sys.stderr)
+        path = write_copy_sets(fits[0].parent, kept[-1])
     except ValueError as refused:
         print(
             f"run_cnaster_port: {refused}; cnv_copy_sets.tsv not written",
             file=sys.stderr,
         )
-
-    decode = _decode_of(kept[-1], decodes or [])
-
-    if decode is None:
-        print(
-            "run_cnaster_port: --copy-errors has no point decode of the final "
-            "fit; cnv_segment_sets.tsv not written",
-            file=sys.stderr,
-        )
         return
 
-    from port.extensions.segment_sets import write_segment_sets
-
-    path = write_segment_sets(fits[0].parent, decode, kept[-1], level=level)
     print(f"run_cnaster_port: wrote {path}", file=sys.stderr)
-
-
-def _decode_of(captured: Any, decodes: list[Any]) -> Any:
-    """The last point decode whose clones and bins are `captured`'s, or `None`."""
-    import numpy as np
-
-    if not decodes:
-        return None
-
-    path = np.asarray(captured.res["pred_cnv"])
-    path = path.reshape(path.shape[0], -1)
-
-    for decode in reversed(decodes):
-        if len(decode.shifts) == path.shape[1] and all(
-            np.asarray(pairs).shape[0] == path.shape[0] for pairs in decode.pairs
-        ):
-            return decode
-
-    return None
 
 
 def _report(spent: dict[str, Spent], wall: float, *, patched: bool) -> None:

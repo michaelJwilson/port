@@ -1,4 +1,15 @@
-"""Each decoded segment's credible pairs, by the point decode's own likelihood (#705).
+"""Set aside for version 2 (#705): each decoded segment's credible pairs, by the point decode's own likelihood.
+
+Ticket: #705 -- why planted (1,2) and (2,2) gains decode (1,1); the
+  population study that would measure it is blocked by the owner, and the
+  sets wait for version 2.
+Measurement: one long-arm member (s1074, `population_long.toml`, J = 1):
+  96 of 97 segment sets hold one pair; with an event's boundaries given,
+  (1,1) sits at deviance 35-141 on every missed (2,2) event and 389 on a
+  (1,2) event decoded right on 21 per cent of its bins (3 sigma: 11.8).
+Exit: graduate to `extensions/` and `run_cnaster_port --copy-errors` when
+  #705's paired study (`errors`, `flat`, `shared`) reports them across the
+  population; else it stays the study's tool.
 
 `copy_errors` takes a set per continuous state from the curvature of the
 continuous fit: on the #544 population its errors are `sigma_p` of about
@@ -40,6 +51,8 @@ which every candidate shares, so the differences are on equal terms.
 
 from __future__ import annotations
 
+import contextlib
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any, NamedTuple
 
@@ -52,6 +65,7 @@ __all__ = [
     "segment_sets",
     "segments",
     "write_segment_sets",
+    "writing_segment_sets",
 ]
 
 SHIFT_STEPS = np.round(np.arange(-0.1, 0.1001, 0.01), 3)
@@ -260,3 +274,38 @@ def write_segment_sets(
         )
         segment_set_table(found, decode).to_csv(handle, sep="\t", index=False)
     return path
+
+
+@contextlib.contextmanager
+def writing_segment_sets(output: Path, *, level: float = 0.95) -> Iterator[None]:
+    """Around a whole `run_cnaster_port`: afterwards, the segment sets beside its final fit.
+
+    Collects the run's `params="smp"` fits (`copy_errors.captured_fits`) and
+    its point decodes (`port.patch.integer_copy.recorded`), and writes
+    :func:`write_segment_sets` into the directory of the newest
+    `rdrbaf_final_nstates*_smp.npz` under `output`, from the last decode
+    whose clones and bins are the last fit's. Without either, nothing is
+    written. How `port.studies.population` reaches these sets without the
+    entry point installing them.
+    """
+    from port.extensions.copy_errors import captured_fits
+    from port.patch.integer_copy import recorded
+
+    with captured_fits() as kept, recorded() as decodes:
+        yield
+
+    fits = sorted(
+        Path(output).rglob("rdrbaf_final_nstates*_smp.npz"),
+        key=lambda f: f.stat().st_mtime,
+    )
+    if not kept or not fits:
+        return
+    captured = kept[-1]
+    path = np.asarray(captured.res["pred_cnv"])
+    path = path.reshape(path.shape[0], -1)
+    for decode in reversed(decodes):
+        if len(decode.shifts) == path.shape[1] and all(
+            np.asarray(pairs).shape[0] == path.shape[0] for pairs in decode.pairs
+        ):
+            write_segment_sets(fits[-1].parent, decode, captured, level=level)
+            return

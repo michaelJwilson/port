@@ -1,4 +1,4 @@
-"""Each decoded segment's set by the point decode's likelihood (#705).
+"""Each decoded segment's set by the point decode's likelihood, set aside for version 2 (#705).
 
 What is pinned here:
 
@@ -59,7 +59,7 @@ def _decode(pairs: np.ndarray, rho: float = 1.0) -> _Decode:
 @pytest.mark.analytic
 def test_segments_are_runs_of_one_pair_split_at_contigs() -> None:
     """Path [0 0 1 1 1 0] over contigs of 4 and 2 is [0, 2), [2, 4), [4, 5), [5, 6)."""
-    from port.extensions.segment_sets import segments
+    from port.sandbox.extensions.segment_sets import segments
 
     found = segments(np.array([0, 0, 1, 1, 1, 0]), np.array([4, 2]))
 
@@ -79,7 +79,7 @@ def test_counts_at_their_expectation_recover_the_planted_pair_alone(
     cnaster_config: None,
 ) -> None:
     """At 1e4 reads a bin, (1, 2)'s 20 bins admit (1, 2) only; at 10, more, (1, 2) among them."""
-    from port.extensions.segment_sets import segment_sets
+    from port.sandbox.extensions.segment_sets import segment_sets
 
     pairs = _planted()
     sets = {}
@@ -105,7 +105,11 @@ def test_counts_at_their_expectation_recover_the_planted_pair_alone(
 def test_each_deviance_is_the_brute_force_refit_s(cnaster_config: None) -> None:
     """Clone 1 at fraction 0.8: every candidate's deviance against a plain loop over the grid."""
     from port.extensions.copy_likelihood import _emission, _parameters, _with
-    from port.extensions.segment_sets import FRACTION_STEPS, SHIFT_STEPS, segment_sets
+    from port.sandbox.extensions.segment_sets import (
+        FRACTION_STEPS,
+        SHIFT_STEPS,
+        segment_sets,
+    )
 
     pairs = _planted()
     bulk, _ = _clone(pairs, 50.0, rho=0.8)
@@ -146,7 +150,7 @@ def test_each_deviance_is_the_brute_force_refit_s(cnaster_config: None) -> None:
 def test_the_per_bin_table_is_each_bin_s_emission(cnaster_config: None) -> None:
     """`bin_loglik` at clone 1's fraction 0.8, bin by bin, against `_emission` per pair."""
     from port.extensions.copy_likelihood import _emission, _parameters, _with
-    from port.extensions.segment_sets import bin_loglik
+    from port.sandbox.extensions.segment_sets import bin_loglik
 
     pairs = _planted()
     bulk, _ = _clone(pairs, 50.0, rho=0.8)

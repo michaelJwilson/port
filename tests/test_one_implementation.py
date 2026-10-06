@@ -26,9 +26,8 @@ BUDGET: dict[str, int] = {
     #    `_PNG_COPIES` switch held (#517 step 1). 24: #547's `--baf-start`,
     #    the BAF-only stage's copy-state start. 25: `--no-parsimony-decode`, the
     #    lattice decode's flat prior, opt-in (T- #471). 26: T- #617 WP2's
-    #    `--min-segment-normal-umi`, the floor off `--sal` (T- #667). 27:
-    #    `--copy-errors-level`, the sets' level, 2 or 3 sigma (T- #705).
-    "run_cnaster_port flags": 27,
+    #    `--min-segment-normal-umi`, the floor off `--sal` (T- #667).
+    "run_cnaster_port flags": 26,
     # NB 53: step 1 removed the two `_Selection` slots behind the decoder and
     #    solver switches; step 5 added `Settings`, the entry point's one
     #    resolution of its tri-state flags; step 8 added the `hmm_phased` row
@@ -50,9 +49,8 @@ BUDGET: dict[str, int] = {
     #    `paper_figures`' `Run` and `Compared`, `potts_solvers.PortStart`
     #    (dataclasses), the two `Job`s (NamedTuples) and `clone_labels`' shim.
     #    80: T- #683's `GenomicAxis`, `Ticks`, `_Thinned`: the one genomic
-    #    axis, its data-free form a swap row binds, and its Mb labels. 81:
-    #    T- #705's `segment_sets.SegmentSet`, a decoded segment's set.
-    "classes": 81,
+    #    axis, its data-free form a swap row binds, and its Mb labels.
+    "classes": 80,
     # NB step 4: 18 records became NamedTuples; the dataclasses left carry
     #    mutable state, machinery or a `__post_init__` (#517 D). Step 8 moved
     #    7 dataclasses and 1 NamedTuple to `sandbox/`. 21: T- #418's `Samples`
@@ -67,8 +65,7 @@ BUDGET: dict[str, int] = {
     #    `CopyCall` and `CopyStart` (`Row` in `sandbox/`, #547). 27: T- #617
     #    WP2's `pipeline.Default`. 28: G6's `port.sim.he_slide.Slide`, moved.
     #    30: G3's `Fit` and `Summary`, moved. 32: G5's two `Job`s, moved.
-    #    33: T- #705's `SegmentSet`.
-    "NamedTuples": 33,
+    "NamedTuples": 32,
 }
 """`python/port` outside `sandbox/`."""
 
