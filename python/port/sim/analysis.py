@@ -527,21 +527,24 @@ def tree(r: Realization) -> Tree:
 
 MANY_EVENTS = 10
 """The user's legibility rule (PR- #701): a tree of more than 10 events does
-not read at a page's width. Above it `truth_figure` draws (a) as the leaves
-alone (`draw_leaves`) and `shown` cuts every barcode to `BARCODE_SHOWN`."""
+not read at a page's width. Above it `draw_tree` drops the events from its
+edges, `truth_figure` draws (a) as the leaves alone, and `shown` cuts every
+barcode to `BARCODE_SHOWN` bits."""
 
 BARCODE_SHOWN = 8
-"""Characters of a barcode shown above `MANY_EVENTS`: its first 7, then "…" (PR- #701)."""
+"""Bits of a barcode shown above `MANY_EVENTS`: its first 4, "…", its last 4 (PR- #701)."""
 
 
 def shown(code: str) -> str:
-    """`code` as a figure shows it: whole up to `MANY_EVENTS` bits, else its first 7 and "…".
+    """`code` as a figure shows it: whole up to `MANY_EVENTS` bits, else its
+    first and last `BARCODE_SHOWN // 2` around "…".
 
     A barcode has one bit per event, so its length is the tree's event count.
     """
     if len(code) <= MANY_EVENTS:
         return code
-    return code[: BARCODE_SHOWN - 1] + "\N{HORIZONTAL ELLIPSIS}"
+    half = BARCODE_SHOWN // 2
+    return code[:half] + "\N{HORIZONTAL ELLIPSIS}" + code[-half:]
 
 
 ROOT = "root"
@@ -558,6 +561,7 @@ def draw_tree(
     name: Callable[[str], str] | None = None,
     ancestors: bool = True,
     edges: bool = False,
+    leaves_only: bool = False,
 ) -> tuple[float, int]:
     """The clones' tree on `ax`, along event time; returns its width in events and its leaves.
 
@@ -574,6 +578,10 @@ def draw_tree(
     and its name sits beside the node, so the caller sizes the tree between
     the root and the barcodes (`truth_figure`). The texts carry `gid`s
     `name` and `barcode`.
+
+    Above `MANY_EVENTS` events the edges carry no events, only the topology
+    (PR- #701). With `leaves_only`, the leaves alone, each where the tree
+    places it: no edge, no inner node, no event.
     """
     t = tree(r)
     named = name or (lambda clone: display(clone, r.clones))
@@ -637,11 +645,14 @@ def draw_tree(
     for leaf in order:
         at[leaf] = width
     small = dot / 90.0
+    many = len(t.events) > MANY_EVENTS
     for node, up in parent.items():
-        if up is None:
+        if up is None or leaves_only:
             continue
         ax.plot([at[up], at[up], at[node]], [y[up], y[node], y[node]],
                 color=MUTED, linewidth=1.2 * small ** 0.5)  # fmt: skip
+        if many:
+            continue
         for k, e in enumerate(
             t.events[t.events["node"] == node].sort_values("time").itertuples()
         ):
@@ -652,6 +663,8 @@ def draw_tree(
                     fontsize=event_size, color=INK)  # fmt: skip
     for node, up in parent.items():
         # NB the root is an unobserved ancestor: unfilled, unnamed, uncoded.
+        if leaves_only and node not in order:
+            continue
         clone = node
         observed = clone in r.clones
         colour = clone_colour(clone, r.clones) if observed else "white"
@@ -690,44 +703,6 @@ def draw_tree(
     ax.set_ylim(-0.8, len(order) - 0.2)
     ax.axis("off")
     return width, len(order)
-
-
-def draw_leaves(
-    ax: Any,
-    r: Realization,
-    *,
-    node_size: float = 8.5,
-    dot: float = 90.0,
-    name: Callable[[str], str] | None = None,
-) -> int:
-    """The tree's leaves without its edges on `ax`: one marker per clone, `normal` included; returns their count.
-
-    Left to right in `r.clones`' order, the order `genomic_truth` stacks the
-    clones top to bottom, each marker coloured as `draw_tree` colours it,
-    its name (`name`, `display`'s numeral by default) to its right and its
-    barcode (`shown`) under the name. The texts carry `gid`s `name` and
-    `barcode`, as `draw_tree`'s do. For a tree of more than `MANY_EVENTS`
-    events (PR- #701).
-    """
-    t = tree(r)
-    named = name or (lambda clone: display(clone, r.clones))
-    small = dot / 90.0
-    for k, clone in enumerate(r.clones):
-        ax.scatter(k, 0.0, s=dot, color=clone_colour(clone, r.clones),
-                   edgecolors=MUTED, linewidths=0.8 * small ** 0.5,
-                   zorder=3)  # fmt: skip
-        for text, rise, gid, family in (
-            (named(clone), 2.0, "name", None),
-            (shown(t.barcode[clone]), -2.0, "barcode", "monospace"),
-        ):
-            ax.annotate(text, (k, 0.0), xytext=(4.0, rise),
-                        textcoords="offset points", fontsize=node_size, color=INK,
-                        va="bottom" if rise > 0 else "top", ha="left",
-                        family=family, gid=gid)  # fmt: skip
-    ax.set_xlim(-0.5, len(r.clones) - 0.5)
-    ax.set_ylim(-1.0, 1.0)
-    ax.axis("off")
-    return len(r.clones)
 
 
 def plot_tree(r: Realization, out: Path) -> Path:

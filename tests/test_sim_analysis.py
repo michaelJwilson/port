@@ -302,15 +302,16 @@ def dense(tmp_path_factory: pytest.TempPathFactory) -> Drawn:
 
 
 @pytest.mark.infra
-def test_a_barcode_over_many_events_is_its_first_7_bits_and_an_ellipsis() -> None:
+def test_a_barcode_over_many_events_keeps_4_bits_at_each_end() -> None:
     """`shown` keeps a barcode of up to `MANY_EVENTS` bits whole and cuts a
-    longer one to `BARCODE_SHOWN` characters (PR- #701)."""
+    longer one to its first and last 4 bits around "…" (PR- #701)."""
     from port.sim.analysis import BARCODE_SHOWN, MANY_EVENTS, shown
 
     assert (MANY_EVENTS, BARCODE_SHOWN) == (10, 8)
+    assert shown("10110") == "10110"
     assert shown("1" * 10) == "1" * 10
-    assert shown("10" * 32) == "1010101\N{HORIZONTAL ELLIPSIS}"
-    assert len(shown("0" * 11)) == BARCODE_SHOWN
+    assert shown("1100" + "0" * 56 + "0011") == "1100\N{HORIZONTAL ELLIPSIS}0011"
+    assert shown("10110100101") == "1011\N{HORIZONTAL ELLIPSIS}0101"
 
 
 def _panels(r: Any) -> tuple[Any, Any, Any]:
@@ -359,49 +360,97 @@ def test_at_10_events_or_fewer_a_is_the_tree_with_whole_barcodes(drawn: Drawn) -
     plt.close(figure)
 
 
+def _scatter(ax: Any) -> list[tuple[float, float]]:
+    """Each marker's centre on `ax`, in pixels."""
+    return [tuple(ax.transData.transform(c.get_offsets()[0])) for c in ax.collections]
+
+
+def _tree_axes(r: Any, *, leaves_only: bool) -> tuple[Any, Any]:
+    """`draw_tree` as `truth_combined`'s (a) draws it, on a fixed axis."""
+    import matplotlib.pyplot as plt
+    from port.extensions.combined_figure import FONT_SIZE
+    from port.sim.analysis import draw_tree
+    from port.sim.truth_figure import _fit_tree, _symbol
+
+    figure: Any = plt.figure(figsize=(4.8, 1.0), dpi=300)
+    ax = figure.add_axes((0.09, 0.02, 0.9, 0.88))
+    draw_tree(ax, r, event_size=FONT_SIZE, node_size=FONT_SIZE, dot=18.0,
+              name=_symbol(r), ancestors=False, edges=True,
+              leaves_only=leaves_only)  # fmt: skip
+    figure.canvas.draw()
+    _fit_tree(ax)
+    figure.canvas.draw()
+    return figure, ax
+
+
 @pytest.mark.infra
 @pytest.mark.merge
-def test_above_10_events_a_is_the_leaves_in_c_s_order_with_cut_barcodes(
-    dense: Drawn,
-) -> None:
-    """Above `MANY_EVENTS`, (a) draws no edge: one marker per clone, `normal`
-    included, left to right in (c)'s top-to-bottom order, each named with its
-    barcode cut by `shown`, which (c)'s headers repeat (PR- #701)."""
-    from matplotlib.colors import to_rgb
-    from port.sim.analysis import BARCODE_SHOWN, MANY_EVENTS, clone_colour, shown
+def test_the_leaves_alone_sit_where_the_tree_places_its_leaves(drawn: Drawn) -> None:
+    """`draw_tree(leaves_only=True)` draws one marker per leaf, `normal`
+    included, each within 0.5 px of the tree's own, and no edge (PR- #701)."""
+    import matplotlib.pyplot as plt
+
+    r = read(drawn.path)
+    full_figure, full = _tree_axes(r, leaves_only=False)
+    alone_figure, alone = _tree_axes(r, leaves_only=True)
+    nodes, leaves = _scatter(full), _scatter(alone)
+    names = [x.get_text() for x in alone.texts if x.get_gid() == "name"]
+
+    assert not alone.lines
+    assert len(leaves) == len(r.clones) == len(names)
+    for x, y in leaves:
+        assert min(abs(x - u) + abs(y - v) for u, v in nodes) < 0.5
+    assert names == [x.get_text() for x in full.texts if x.get_gid() == "name"]
+    plt.close(full_figure)
+    plt.close(alone_figure)
+
+
+@pytest.mark.infra
+@pytest.mark.merge
+def test_above_10_events_a_is_the_leaves_with_cut_barcodes(dense: Drawn) -> None:
+    """Above `MANY_EVENTS`, (a) is `draw_tree`'s leaves alone, no edge, each
+    named with its barcode cut by `shown`, which (c)'s headers repeat (PR- #701)."""
+    from port.sim.analysis import MANY_EVENTS, shown
     from port.sim.truth_figure import _symbol
 
     r = read(dense.path)
     t = tree(r)
-    figure, tree_ax, genomic = _panels(r)
-    renderer = figure.canvas.get_renderer()
-    names = [x for x in tree_ax.texts if x.get_gid() == "name"]
-    barcodes = [x for x in tree_ax.texts if x.get_gid() == "barcode"]
-    markers = tree_ax.collections
-    xs = [float(m.get_offsets()[0, 0]) for m in markers]
+    _, tree_ax, genomic = _panels(r)
+    barcodes = {x.get_text() for x in tree_ax.texts if x.get_gid() == "barcode"}
     symbol = _symbol(r)
-    headers = [
-        x
-        for ax in genomic.axes
-        for x in ax.texts
-        if x.get_visible() and "(" in x.get_text()
-    ]
-    top_down = sorted(headers, key=lambda x: -x.get_window_extent(renderer).y0)
 
     assert len(t.events) > MANY_EVENTS
     assert not tree_ax.lines
-    assert list(xs) == sorted(xs)
-    assert len(xs) == len(r.clones)
-    assert [x.get_text() for x in names] == [symbol(c) for c in r.clones]
-    assert [x.get_text() for x in barcodes] == [shown(t.barcode[c]) for c in r.clones]
-    assert all(len(x.get_text()) == BARCODE_SHOWN for x in barcodes)
-    assert [x.get_text() for x in top_down] == [
+    assert len(tree_ax.collections) == len(r.clones)
+    assert barcodes == {shown(t.barcode[c]) for c in r.clones}
+    assert all(len(b) == 9 and b[4] == "\N{HORIZONTAL ELLIPSIS}" for b in barcodes)
+    assert _headed(genomic) == {
         f"{symbol(c)} ({shown(t.barcode[c])})" for c in r.clones
-    ]
-    np.testing.assert_allclose(
-        [m.get_facecolors()[0, :3] for m in markers],
-        [to_rgb(clone_colour(c, r.clones)) for c in r.clones],
-    )
+    }
+
+
+@pytest.mark.infra
+@pytest.mark.merge
+def test_the_tree_s_edges_carry_events_up_to_10_and_none_above(
+    drawn: Drawn, dense: Drawn
+) -> None:
+    """`draw_tree` labels and ticks each event on its edge at `MANY_EVENTS` or
+    fewer; above, it draws the topology, nodes, names and barcodes alone (PR- #701)."""
+    import matplotlib.pyplot as plt
+    from port.sim.analysis import MANY_EVENTS, draw_tree
+
+    for fixture, many in ((drawn, False), (dense, True)):
+        r = read(fixture.path)
+        t = tree(r)
+        figure, ax = plt.subplots()
+        draw_tree(ax, r)
+        labels = {x.get_text() for x in ax.texts} & set(t.events["label"])
+        edges = len(ax.lines) - (0 if many else len(t.events))
+
+        assert (len(t.events) > MANY_EVENTS) is many
+        assert labels == (set() if many else set(t.events["label"]))
+        assert edges == len(t.parent)
+        plt.close(figure)
 
 
 @pytest.mark.infra

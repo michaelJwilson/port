@@ -6,8 +6,8 @@ Top to bottom, at `llncs`'s text width and height, 7 pt throughout, as
 `port.extensions.combined_figure` sets an estimate:
 
 - **(a)** the clones' tree, each event at its time (`analysis.draw_tree`),
-  or above `analysis.MANY_EVENTS` events its leaves alone, left to right as
-  (c) stacks them (`analysis.draw_leaves`, PR- #701);
+  or above `analysis.MANY_EVENTS` events its leaves alone, each where the
+  tree places it (`draw_tree(leaves_only=True)`, PR- #701);
 - **(b)** each clone's planted `(A, B)`, drawn by `port`'s profile plotter
   under its mirror and copy-number key, the rows `combined.pdf` draws;
 - **(c)** RDR and BAF along the genome per true clone
@@ -82,7 +82,6 @@ def truth_combined_figure(
         MANY_EVENTS,
         binned_axis,
         binned_profile,
-        draw_leaves,
         draw_tree,
         genomic_truth,
         shown,
@@ -104,13 +103,9 @@ def truth_combined_figure(
 
         # (a)
         tree_ax = tree_fig.add_axes((0.02, 0.02, 0.96, 0.88))
-        leaves_only = len(tree(r).events) > MANY_EVENTS
-        if leaves_only:
-            draw_leaves(tree_ax, r, node_size=FONT_SIZE, dot=18.0, name=symbol)
-        else:
-            draw_tree(tree_ax, r, event_size=FONT_SIZE, node_size=FONT_SIZE,
-                      dot=18.0, name=symbol, ancestors=False,
-                      edges=True)  # fmt: skip
+        draw_tree(tree_ax, r, event_size=FONT_SIZE, node_size=FONT_SIZE,
+                  dot=18.0, name=symbol, ancestors=False, edges=True,
+                  leaves_only=len(tree(r).events) > MANY_EVENTS)  # fmt: skip
 
         # (b): the key, then the rows, as `combined.pdf` draws its profile.
         legend_ax = profile_fig.add_axes((0.0, 0.72, 1.0, 0.2))
@@ -180,8 +175,7 @@ def truth_combined_figure(
         _stack_tracks(genomic_fig)
         _put(tree_ax, LEFT, right)
         figure.canvas.draw()
-        if not leaves_only:
-            _fit_tree(tree_ax)
+        _fit_tree(tree_ax)
         plot_ascn_legend(legend_ax, box_w=LEGEND_BOX, box_h=0.8, tick_len=0.1,
                          label_fontsize=FONT_SIZE, span=right - LEFT)  # fmt: skip
         _thin(profile_ax.get_xticklabels(), renderer)
