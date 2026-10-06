@@ -38,11 +38,13 @@ columns, `snp_umis` and `specific`, one entry per segment.
 
 **Scored against the credible sets** (#705), under an arm that runs
 `--copy-errors`: for each event, the share of its visible bins whose
-continuous state's 95% set (`cnv_copy_sets.tsv`, folded `A >= B`) holds the
-planted pair (`covered`), the share where it holds `(1, 1)` too
-(`ambiguous`), the share whose set is empty (`empty`: no pair within the
-level of the state's fit), and the mean set size. The arms (`ARMS`) differ only in the
-run's flags; each writes its own `--out`, and its records name it.
+continuous state's set in its clone (`cnv_copy_sets.tsv`, folded `A >= B`,
+taken at the point decode's shift and tumour fraction) holds the planted pair
+(`covered`), the share where it holds `(1, 1)` too (`ambiguous`), the share
+whose set is empty (`empty`), the mean set size, and each missed bin by the
+#705 explanation it falls under; once per level of `LEVELS` (`sets_2sigma`,
+`sets_3sigma`). The arms (`ARMS`) differ only in the run's flags; each writes
+its own `--out`, and its records name it.
 
 **A run that raises is a result**: its record carries the error and no
 clones, and the report counts such runs per J rather than dropping the member
@@ -94,11 +96,18 @@ KEPT_IF_WRITTEN = ("cnv_copy_sets.tsv",)
 
 FLAGS = ("--sal", "--no-plots")
 
+LEVELS = {"2sigma": 0.9545, "3sigma": 0.9973}
+"""The credible levels each event is scored at (#705); the arms write the
+widest, with each pair's distance, so the narrower is read from the same run."""
+
+SETS = ("--copy-errors", "--copy-errors-level", f"{max(LEVELS.values())}")
+"""The credible sets at the widest of `LEVELS`, so each is read from one run."""
+
 ARMS: dict[str, tuple[str, ...]] = {
     "sal": FLAGS,
-    "errors": (*FLAGS, "--copy-errors"),
-    "flat": (*FLAGS, "--copy-errors", "--no-parsimony-decode"),
-    "shared": (*FLAGS, "--copy-errors", "--copy-decode", "shared"),
+    "errors": (*FLAGS, *SETS),
+    "flat": (*FLAGS, *SETS, "--no-parsimony-decode"),
+    "shared": (*FLAGS, *SETS, "--copy-decode", "shared"),
 }
 """The decode arms of #705: `sal` is the study as #544 ran it; the others add
 the credible sets and change only the point decode."""
@@ -186,43 +195,121 @@ def clone_events(path: Path) -> dict[str, list[tuple[str, int, int, int, int]]]:
     return out
 
 
-def credible_sets(table: pd.DataFrame) -> dict[int, set[tuple[int, int]]]:
-    """Each continuous state's credible pairs from `cnv_copy_sets.tsv`; an empty set has none."""
-    sets: dict[int, set[tuple[int, int]]] = {}
-    for state, rows in table.groupby("state"):
-        pairs = rows.dropna(subset=["A", "B"])
-        sets[int(state)] = {
-            (int(a), int(b)) for a, b in zip(pairs["A"], pairs["B"], strict=True)
-        }
+Sets = dict[tuple[int, int], set[tuple[int, int]]]
+"""Credible pairs by `(clone, state)`; clone `-1` where the sets are per state."""
+
+
+def credible_sets(table: pd.DataFrame, level: float | None = None) -> Sets:
+    """Each `(clone, state)`'s credible pairs from `cnv_copy_sets.tsv`.
+
+    With `level`, a pair is kept where its `distance` is within that level's
+    threshold (`chi2`, 1 degree of freedom for the neutral state, else 2),
+    so it must be no wider than the table's own; without, or for a table
+    with no `distance`, every written pair. An empty set has none.
+    """
+    from scipy.stats import chi2
+
+    table = table.copy()
+    if "clone" not in table:
+        table["clone"] = -1
+    pairs = table.dropna(subset=["A", "B"])
+    if level is not None and "distance" in pairs:
+        if level > float(table["level"].max()) + 1e-9:
+            msg = f"level {level} is wider than the table's {table['level'].max()}"
+            raise ValueError(msg)
+        dof = np.where(pairs["neutral"].astype(bool), 1, 2)
+        pairs = pairs[pairs["distance"].to_numpy(float) <= chi2.ppf(level, dof)]
+    sets: Sets = {
+        (int(c), int(k)): set()
+        for c, k in zip(table["clone"], table["state"], strict=True)
+    }
+    for c, k, a, b in zip(
+        pairs["clone"], pairs["state"], pairs["A"], pairs["B"], strict=True
+    ):
+        sets[int(c), int(k)].add((int(a), int(b)))
     return sets
 
 
-def set_coverage(
-    states: np.ndarray, planted: tuple[int, int], sets: dict[int, set[tuple[int, int]]]
-) -> tuple[float, float, float, float]:
-    """`(covered, ambiguous, empty, mean size)` over bins in `states`, against the folded `planted`.
+def clone_sets(sets: Sets, clone: int) -> dict[int, set[tuple[int, int]]]:
+    """`clone`'s sets by state, or the per-state sets where the table has no clones."""
+    own = {k: pairs for (c, k), pairs in sets.items() if c == clone}
+    return own or {k: pairs for (c, k), pairs in sets.items() if c == -1}
 
-    `covered`: the share of bins whose state's set holds the planted pair;
-    `ambiguous`: the share whose set holds it and `(1, 1)` both, where the
-    counts cannot tell the event from no event; `empty`: the share whose set
-    holds no pair. A state with no set holds nothing.
+
+def set_scores(
+    states: np.ndarray,
+    right: np.ndarray,
+    planted: tuple[int, int],
+    sets: dict[int, set[tuple[int, int]]],
+) -> dict[str, float]:
+    """Each bin's state's set against the folded `planted`, and why a missed bin was.
+
+    Shares over the bins: `covered`, the set holds the planted pair;
+    `ambiguous`, it holds `(1, 1)` too, so the counts cannot tell the event
+    from none; `empty`, it holds no pair; and `set_size`, its mean size. A
+    state with no set holds nothing.
+
+    Counts over the bins the point decode missed (`right` false), one per
+    #705 explanation: `miss_ambiguous` (1, the truth and `(1, 1)` both in
+    the set), `miss_decoder` (2, the truth in and `(1, 1)` out),
+    `miss_empty` (3a, no pair in the set) and `miss_excluded` (3b, a set
+    without the truth).
     """
-    if states.size == 0:
-        return 0.0, 0.0, 0.0, 0.0
     folded = (max(planted), min(planted))
     held = [sets.get(int(state), set()) for state in states]
-    covered = float(np.mean([folded in h for h in held]))
-    ambiguous = float(np.mean([folded in h and (1, 1) in h for h in held]))
-    empty = float(np.mean([not h for h in held]))
-    return covered, ambiguous, empty, float(np.mean([len(h) for h in held]))
+    has = np.array([folded in h for h in held], dtype=bool)
+    neutral = np.array([(1, 1) in h for h in held], dtype=bool)
+    empty = np.array([not h for h in held], dtype=bool)
+    size = np.array([len(h) for h in held], dtype=np.float64)
+    missed = ~np.asarray(right, dtype=bool)
+
+    def share(mask: np.ndarray) -> float:
+        return round(float(mask.mean()), 4) if mask.size else 0.0
+
+    return {
+        "covered": share(has),
+        "ambiguous": share(has & neutral),
+        "empty": share(empty),
+        "set_size": round(float(size.mean()), 3) if size.size else 0.0,
+        "miss_ambiguous": int((missed & has & neutral).sum()),
+        "miss_decoder": int((missed & has & ~neutral).sum()),
+        "miss_empty": int((missed & empty).sum()),
+        "miss_excluded": int((missed & ~empty & ~has).sum()),
+    }
+
+
+def _read_sets(directory: Path) -> dict[str, Sets] | None:
+    """The credible sets a run wrote under `directory` at each of `LEVELS` it
+    can be read at, by level name, or `None` without them."""
+    written = next(directory.rglob("cnv_copy_sets.tsv"), None)
+    if written is None:
+        return None
+    table = pd.read_csv(written, sep="\t", comment="#")
+    if "distance" not in table:
+        return {"written": credible_sets(table)}
+    widest = float(table["level"].max())
+    return {
+        name: credible_sets(table, level)
+        for name, level in LEVELS.items()
+        if level <= widest + 1e-9
+    }
 
 
 def score_member(sample: Any, output: Path) -> dict[str, Any]:
     """Per tumour clone its size, UMIs and completeness; per event its recovery."""
     from port.qa.audit import read_run
+
+    return score_run(sample, read_run(sample, output), _read_sets(output))
+
+
+def score_run(
+    sample: Any,
+    run: dict[str, Any],
+    sets: dict[str, Sets] | None = None,
+) -> dict[str, Any]:
+    """:func:`score_member` on `read_run`'s fields, scored on each of `sets` where given."""
     from port.qa.scoring import matched, overlap
 
-    run = read_run(sample, output)
     fitted = np.asarray(run["labels"])
     scored = fitted >= 0
     planted = np.asarray(sample.labels)
@@ -236,12 +323,6 @@ def score_member(sample: Any, output: Path) -> dict[str, Any]:
     chrom = seglevel["CHR"].astype(str).str.removeprefix("chr").to_numpy()
     middle = ((seglevel["START"] + seglevel["END"]) // 2).to_numpy()
     truth = sample.copies_at(chrom, middle)
-    written = next(output.rglob("cnv_copy_sets.tsv"), None)
-    sets = (
-        None
-        if written is None
-        else credible_sets(pd.read_csv(written, sep="\t", comment="#"))
-    )
 
     clones, scored_events = [], []
     for c, name in enumerate(sample.clones):
@@ -275,14 +356,15 @@ def score_member(sample: Any, output: Path) -> dict[str, Any]:
             right = np.minimum(a, b) == min(pa, pb)
             right &= np.maximum(a, b) == max(pa, pb)
             share = float(right[visible].mean()) if visible.any() else 0.0
-            credible: dict[str, float] = {}
+            credible: dict[str, Any] = {}
             if sets is not None:
                 states = seglevel[f"clone{m} Z"].to_numpy()[visible].astype(np.int64)
-                covered, ambiguous, empty, size = set_coverage(states, (pa, pb), sets)
-                credible = {"covered": round(covered, 4),
-                            "ambiguous": round(ambiguous, 4),
-                            "empty": round(empty, 4),
-                            "set_size": round(size, 3)}  # fmt: skip
+                credible = {
+                    f"sets_{name}": set_scores(
+                        states, right[visible], (pa, pb), clone_sets(found, m)
+                    )
+                    for name, found in sets.items()
+                }
             scored_events.append(
                 credible
                 | {
@@ -392,6 +474,34 @@ def rescore(out: Path) -> int:
     return done
 
 
+def rescore_sets(out: Path) -> int:
+    """Rescore each record whose run kept `cnv_copy_sets.tsv`, from its outputs.
+
+    The whole record's clones and events are rebuilt by :func:`score_run`, so
+    records scored by an earlier :func:`set_scores` carry the current fields.
+    """
+    from port.sim.fixtures import load_simulated
+
+    done = 0
+    for path in sorted((out / "records").glob("*.json")):
+        record = json.loads(path.read_text())
+        seed, j = int(record["seed"]), float(record["J"])
+        kept = out / "outputs" / f"s{seed:04d}-J{j:g}"
+        sets = None if "error" in record else _read_sets(kept)
+        if sets is None:
+            continue
+        manifest = ROOT / "sim" / "manifests" / f"{record['manifest']}.toml"
+        draws = out / "draws" / f"rescore-s{seed:04d}"
+        sample = load_simulated(str(draw_member(seed, draws, manifest)))
+        record |= score_run(sample, _kept_run(sample, kept), sets)
+        partial = path.with_suffix(".partial")
+        partial.write_text(json.dumps(record) + "\n")
+        partial.replace(path)
+        shutil.rmtree(draws, ignore_errors=True)
+        done += 1
+    return done
+
+
 def _record(out: Path, seed: int, j: float) -> Path:
     return out / "records" / f"s{seed:04d}-J{j:g}.json"
 
@@ -473,7 +583,7 @@ def _seeds(text: str) -> list[int]:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("command", choices=("run", "report", "rescore"))
+    parser.add_argument("command", choices=("run", "report", "rescore", "rescore-sets"))
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--seeds", default="0:60", help="START:STOP")
     parser.add_argument("--J", default=",".join(f"{j:g}" for j in J_VALUES))
@@ -485,6 +595,9 @@ def main(argv: list[str] | None = None) -> int:
                         help="the J Study 2's length curves are read at")  # fmt: skip
     arguments = parser.parse_args(argv)
 
+    if arguments.command == "rescore-sets":
+        print(f"rescored {rescore_sets(arguments.out)}")
+        return 0
     if arguments.command == "rescore":
         print(f"rescored {rescore(arguments.out)}")
         return 0

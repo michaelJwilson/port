@@ -115,27 +115,63 @@ def test_counted_rows_read_as_the_rows_they_stand_for() -> None:
 
 @pytest.mark.analytic
 def test_credible_set_coverage_counts_bins_by_their_states_set() -> None:
-    """Folded planted pairs against each bin's state's set, an empty set holding nothing (#705).
+    """Folded planted pairs against each bin's state's set, and why each miss was (#705).
 
     State 0's set holds (1, 1) and (2, 1); state 1's holds (2, 1) alone;
     state 2's is empty, written as `copy_set_table` writes one. A planted
-    (1, 2) over bins in states [0, 0, 1, 2] is covered on 3 of 4, ambiguous
-    with (1, 1) on 2 of 4, empty on 1 of 4, at a mean set size of
-    (2 + 2 + 1 + 0) / 4.
+    (1, 2) over bins in states [0, 0, 1, 2], the point decode right on the
+    third alone, is covered on 3 of 4, ambiguous on 2, empty on 1, at a mean
+    set size (2 + 2 + 1 + 0) / 4; its 3 misses are 2 ambiguous, 1 empty.
     """
     import pandas as pd
-    from port.studies.population import credible_sets, set_coverage
+    from port.studies.population import clone_sets, credible_sets, set_scores
 
     table = pd.DataFrame(
         {"state": [0, 0, 1, 2], "A": [1, 2, 2, pd.NA], "B": [1, 1, 1, pd.NA]}
     )
-    sets = credible_sets(table)
+    sets = clone_sets(credible_sets(table), 3)
 
     assert sets == {0: {(1, 1), (2, 1)}, 1: {(2, 1)}, 2: set()}
-    scored = set_coverage(np.array([0, 0, 1, 2]), (1, 2), sets)
-    assert scored == (0.75, 0.5, 0.25, 1.25)
-    assert set_coverage(np.array([], dtype=np.int64), (1, 2), sets) == (0, 0, 0, 0)
-    assert set_coverage(np.array([7]), (1, 2), sets) == (0.0, 0.0, 1.0, 0.0)
+    right = np.array([False, False, True, False])
+    scored = set_scores(np.array([0, 0, 1, 2]), right, (1, 2), sets)
+    assert scored == {
+        "covered": 0.75, "ambiguous": 0.5, "empty": 0.25, "set_size": 1.25,
+        "miss_ambiguous": 2, "miss_decoder": 0, "miss_empty": 1, "miss_excluded": 0,
+    }  # fmt: skip
+    assert set_scores(np.array([7]), np.array([False]), (1, 2), sets)["miss_empty"] == 1
+
+
+@pytest.mark.analytic
+def test_a_narrower_level_keeps_the_pairs_within_its_threshold() -> None:
+    """Read at 2 sigma from a 3 sigma table: `chi2(0.9545, 2) = 6.18`, `chi2(0.9545, 1) = 4.0`.
+
+    Clone 1's state 4 holds (2, 1) at distance 1 and (3, 1) at 8: both at
+    3 sigma (11.8), (2, 1) alone at 2 sigma. The neutral state's (2, 0) at
+    5 is within 1 degree of freedom's 3 sigma (9.0) and outside its 2 sigma.
+    """
+    import pandas as pd
+    from port.studies.population import clone_sets, credible_sets
+
+    table = pd.DataFrame(
+        {
+            "clone": [1, 1, 1],
+            "state": [4, 4, 0],
+            "neutral": [False, False, True],
+            "level": [0.9973] * 3,
+            "A": [2, 3, 2],
+            "B": [1, 1, 0],
+            "distance": [1.0, 8.0, 5.0],
+        }
+    )
+
+    assert clone_sets(credible_sets(table, 0.9973), 1) == {
+        4: {(2, 1), (3, 1)},
+        0: {(2, 0)},
+    }
+    assert clone_sets(credible_sets(table, 0.9545), 1) == {4: {(2, 1)}, 0: set()}
+    assert clone_sets(credible_sets(table, 0.9545), 0) == {}
+    with pytest.raises(ValueError, match="wider"):
+        credible_sets(table, 0.999)
 
 
 @pytest.mark.infra
