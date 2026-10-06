@@ -51,8 +51,10 @@ BUDGET: dict[str, int] = {
     #    80: T- #683's `GenomicAxis`, `Ticks`, `_Thinned`: the one genomic
     #    axis, its data-free form a swap row binds, and its Mb labels.
     #    81: T- #692's `RectangularClones`, `cnaster`'s two-tuple carrying the
-    #    rectangular init's `Termination`.
-    "classes": 81,
+    #    rectangular init's `Termination`. 83: #716's `potts_stream.WarmSchedule`
+    #    and `_Warmed`, sal's exponential schedule held at `t_start` for a
+    #    warm-up, which sal's `ScheduleParams` cannot state (#721).
+    "classes": 83,
     # NB step 4: 18 records became NamedTuples; the dataclasses left carry
     #    mutable state, machinery or a `__post_init__` (#517 D). Step 8 moved
     #    7 dataclasses and 1 NamedTuple to `sandbox/`. 21: T- #418's `Samples`
@@ -62,7 +64,9 @@ BUDGET: dict[str, int] = {
     #    three audit records (mutable: an arm fills `peak_gb` and candidates).
     #    33: G5's three study records, moved.
     #    34: T- #683's `Ticks`, frozen: a swap row's bound option.
-    "dataclasses": 34,
+    #    36: #716's `WarmSchedule` and `_Warmed`, frozen: what `run_annealed`
+    #    calls `build` on.
+    "dataclasses": 36,
     # NB 24: `analysis.GenomicTruth` (the truth page). 26: #540's
     #    `CopyCall` and `CopyStart` (`Row` in `sandbox/`, #547). 27: T- #617
     #    WP2's `pipeline.Default`. 28: G6's `port.sim.he_slide.Slide`, moved.
