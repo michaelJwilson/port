@@ -50,8 +50,11 @@ def _symbol(r: Realization) -> Any:
     return lambda clone: clone_symbol(display(clone, r.clones))
 
 
-def truth_combined_figure(r: Realization, width: float | None = None) -> Any:
-    """The three panels on one page, `width` wide (`llncs`'s by default) and `TEXT_HEIGHT` tall."""
+def truth_combined_figure(
+    r: Realization, width: float | None = None, *, metric: bool = False
+) -> Any:
+    """The three panels on one page, `width` wide (`llncs`'s by default) and
+    `TEXT_HEIGHT` tall; on `metric`, the planted CNAs drawn wider (T- #683)."""
     import matplotlib.pyplot as plt
 
     from port.extensions.combined_figure import (
@@ -65,6 +68,7 @@ def truth_combined_figure(r: Realization, width: float | None = None) -> Any:
         _set_text,
         page_style,
     )
+    from port.extensions.genomic_axis import disclose
     from port.patch.plot_copy_number_profile import (
         plot_ascn_legend,
         plot_copy_number_profile,
@@ -80,7 +84,7 @@ def truth_combined_figure(r: Realization, width: float | None = None) -> Any:
 
     width = PAPER_WIDTH if width is None else width
     symbol = _symbol(r)
-    genome = binned_axis(r)
+    genome = binned_axis(r, metric=metric)
 
     with page_style():
         figure: Any = plt.figure(
@@ -174,6 +178,7 @@ def truth_combined_figure(r: Realization, width: float | None = None) -> Any:
             panel.text(0.0, 1.0, f"({letter})", fontsize=LABEL_SIZE, ha="left",
                        va="top")  # fmt: skip
         figure.canvas.draw()
+    disclose(figure, genome)
     return figure
 
 

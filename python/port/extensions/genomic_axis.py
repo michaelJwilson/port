@@ -59,6 +59,7 @@ __all__ = [
     "GenomicAxis",
     "Ticks",
     "altered_bins",
+    "disclose",
     "resolve",
 ]
 
@@ -488,6 +489,13 @@ def altered_bins(*tables: pd.DataFrame) -> np.ndarray:
 
     edges = np.diff(np.concatenate([[0], mask.astype(np.int8), [0]]))
     return np.column_stack([np.flatnonzero(edges == 1), np.flatnonzero(edges == -1)])
+
+
+def disclose(figure: Any, axis: GenomicAxis | None) -> None:
+    """`axis.label` as `figure`'s label, where the axis is warped: the stamp
+    a figure carries appends it, so a warped figure says so (T- #683)."""
+    if axis is not None and axis.label is not None:
+        figure.set_label(axis.label)
 
 
 def resolve(
