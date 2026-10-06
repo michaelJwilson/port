@@ -46,6 +46,7 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+from port.extensions.figure_style import GRID, INK, MUTED, axes_style
 
 from tests.metrics import ROOT
 
@@ -94,7 +95,6 @@ CLASSES = {
 DPI = 150
 """`port.sim.analysis`'s and `port.pipeline.FIGURE_DPI`'s."""
 
-INK, MUTED, GRID = "#0b0b0b", "#52514e", "#e4e2dc"
 WRONG = "#e34948"
 SWAPPED = "#4a3aa7"
 """Figure 16's marks: a bin decoded to another pair, and one decoded to the planted pair's swap."""
@@ -366,14 +366,6 @@ def compared(
     )
 
 
-def _style(ax: Any) -> None:
-    for side in ("top", "right"):
-        ax.spines[side].set_visible(False)
-    for side in ("left", "bottom"):
-        ax.spines[side].set_color(MUTED)
-    ax.tick_params(colors=MUTED, labelcolor=INK, labelsize=7)
-
-
 def _colours(n: int) -> list[str]:
     """`port.sim.analysis`'s clone colours: the normal grey, then the series."""
     from port.sim.analysis import NEUTRAL, SERIES
@@ -512,7 +504,7 @@ def genomic_compare_figure(c: Compared) -> Any:
             ax.axvline(edge, color=GRID, linewidth=0.6, zorder=0)
         ax.set_ylim(-1.0, top + 0.5)
         ax.set_yticks(range(top + 1))
-        _style(ax)
+        axes_style(ax, labelsize=7, grid=False)
         ax.set_ylabel(f"{c.names[p]} / fit {f}", fontsize=7, color=INK)
         ax.text(
             1.0, 1.0, f"{int(swapped.sum())} swapped, {int(wrong.sum())} wrong of {same.size}",
@@ -587,7 +579,7 @@ def exact_figure(c: Compared) -> Any:
               bbox_to_anchor=(0.5, 1.13))  # fmt: skip
     ax.grid(axis="y", color=GRID, linewidth=0.6)
     ax.set_axisbelow(True)
-    _style(ax)
+    axes_style(ax, labelsize=7, grid=False)
     figure.tight_layout()
     return figure
 

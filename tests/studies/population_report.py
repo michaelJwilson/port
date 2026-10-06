@@ -553,8 +553,8 @@ def figures(
     mpl.use("Agg")
     import matplotlib.pyplot as plt
     from port.extensions.combined_figure import FONT_SIZE, LABEL_SIZE, page_style
+    from port.extensions.figure_style import PAPER_WIDTH
     from port.patch.plot_copy_number_profile import LINEWIDTH
-    from port.patch.plot_genomic import PAPER_WIDTH
 
     into.mkdir(parents=True, exist_ok=True)
     paths = [into / "population_recovery.png"]
