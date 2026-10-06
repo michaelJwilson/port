@@ -686,10 +686,9 @@ def main() -> None:
 
     from port.sim import truth as sim_truth
 
-    from tests import fixtures
     from tests.metrics import fixture_hash
 
-    instance = getattr(fixtures, f"{arguments.instance}_instance")
+    instance = getattr(sim_truth, f"{arguments.instance}_instance")
     truth = (
         instance(
             n_states=len(sim_truth.COPY_LATTICE), copy_lattice=True, loh=arguments.loh
