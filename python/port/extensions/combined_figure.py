@@ -11,9 +11,9 @@ Drawn once at their printed size, 122 mm wide, and included at
 - `spatial_figure`, about a quarter of that: **(a)** the H&E slide, as
   `cnaster.he.get_he_image` reads it; **(b)** `clones_spatial`, the fitted
   clone of each spot tiled by `port.patch.plotting.spatial`, keyed on its
-  right. Each square, its spots at one scale on both axes and centred, on
-  the spot coordinates, so a clone boundary in (b) reads against the tissue
-  in (a).
+  right. Each in a square footprint, its spots at one scale on both axes on
+  its left and bottom axes, which alone frame them, on the spot coordinates,
+  so a clone boundary in (b) reads against the tissue in (a).
 
 `combined_figure` stacks them as (a) the spatial figure, (b) the profile and
 (c) the tracks: `PANELS`, the order `port.sim.truth_figure` draws the truth
@@ -470,6 +470,23 @@ def _extents(ax: Any, coords: np.ndarray) -> None:
         spine.set_visible(True)
         spine.set_linewidth(PROFILE_LINEWIDTH)
         spine.set_edgecolor("black")
+
+
+def _frame(ax: Any, x: tuple[float, float], y: tuple[float, float]) -> None:
+    """`ax`'s frame round the data alone: the left and bottom spines bound
+    to `y` and `x`, the data's extent, the top and right ones not drawn, so
+    no line encloses the white a square footprint leaves; an image (the
+    slide) clipped to the same extent (PR- #715)."""
+    from matplotlib.patches import Rectangle
+
+    for image in ax.get_images():
+        image.set_clip_path(
+            Rectangle((x[0], y[0]), x[1] - x[0], y[1] - y[0], transform=ax.transData)
+        )
+    ax.spines["left"].set_bounds(*y)
+    ax.spines["bottom"].set_bounds(*x)
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
 
 
 def _put(
@@ -966,8 +983,9 @@ def genomic_figure(
 
 def _place_spatial(figure: Any, slide_ax: Any, spatial_ax: Any) -> None:
     """(a) the slide on the left, (b) right of it and (b)'s key right of
-    that; each panel's box square and as large as fits across, its data at
-    one scale on both axes and centred in it; each letter over its panel's
+    that; each panel's footprint square and as large as fits across, its
+    data at one scale on both axes on its left and bottom axes, framed by
+    those two alone; each letter over its panel's
     top-left, on (a)'s extent ticks, and the page cut to its text (PR- #715)."""
     renderer = figure.canvas.get_renderer()
     dpi = figure.dpi
@@ -989,20 +1007,21 @@ def _place_spatial(figure: Any, slide_ax: Any, spatial_ax: Any) -> None:
     left = NAME_INSET / 72.0 + ticks(slide_ax)
     right = width - gap
     clones_right = right - key.get_window_extent(renderer).width / dpi - 2 * gap
-    # NB each panel square, as large as fits across: the box's height is
-    #    the page's budget, and its width is set equal to it (user, PR-
-    #    #715). Both panels' limits are the spots' widened about their
-    #    centre to a square, so the data keep one scale on both axes,
-    #    centred, and a boundary sits at one place in both.
+    # NB each panel's footprint square, as large as fits across: the box's
+    #    height is the page's budget, and its width is set equal to it
+    #    (user, PR- #715). Both panels' limits start at the spots' left and
+    #    bottom edges, so the spots sit on the left and bottom axes, at one
+    #    scale on both, the room a square needs given to the right (or the
+    #    top); the frame is drawn round the spots alone (`_frame`).
     side = (clones_right - left - SPATIAL_GAP - ticks(spatial_ax)) / 2
     wide = side
     (x0, x1), (y0, y1) = spatial_ax.get_xlim(), spatial_ax.get_ylim()
-    half = max(abs(x1 - x0), abs(y1 - y0)) / 2
-    xc, yc = (x0 + x1) / 2, (y0 + y1) / 2
+    span = max(x1 - x0, y1 - y0)
     for ax in (slide_ax, spatial_ax):
-        ax.set_xlim(xc - half, xc + half)
-        ax.set_ylim(yc - half, yc + half)
+        ax.set_xlim(x0, x0 + span)
+        ax.set_ylim(y0, y0 + span)
         ax.set_aspect("equal", adjustable="box")
+        _frame(ax, (x0, x1), (y0, y1))
     bottom = height - side - 1.0
     _put(slide_ax, left, left + wide, bottom, side)
     start = left + wide + SPATIAL_GAP + ticks(spatial_ax)
@@ -1218,6 +1237,7 @@ def combined_figure(
         new.set_xlim(old.get_xlim())
         new.set_ylim(old.get_ylim())
         new.set_aspect("equal", adjustable="box")
+        _frame(new, old.spines["bottom"].get_bounds(), old.spines["left"].get_bounds())
         box = old.get_window_extent(source)
         _put(new, box.x0 / dpi, box.x1 / dpi, box.y0 / dpi + tall, box.height / dpi)
 

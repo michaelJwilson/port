@@ -84,7 +84,7 @@ The final four as two figures at a text column (#309, #280, #339).
 spanning (b)'s tracks so their chromosome boundaries line up, the last track
 naming every contig, staggered where adjacent contigs are short. `spatial.png`
 is 122 mm wide and about a quarter of the block tall: (a) an H&E slide and
-(b) `clones_spatial`, each square, its spots at one scale and centred, as large as fit across,
+(b) `clones_spatial`, each in a square footprint, its spots at one scale on its left and bottom axes, which alone frame them, as large as fit across,
 (b)'s clones keyed on its right and named by their integer copy profile (#344).
 `combined.png` is both on one page, the full 122 by 193 mm: the spatial
 figure at the head as (a), the genomic figure drawn the rest of the height

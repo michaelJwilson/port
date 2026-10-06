@@ -508,8 +508,10 @@ def test_the_combined_page_s_spatial_panels_are_square_keyed_clear_and_in_order(
     cnaster_config: None, tmp_path: Path
 ) -> None:
     """On the rendered page, for a section 3 times as tall as wide: (a)'s
-    slide and clone map each a square box (1 px) with square limits, the
-    clone key clear of both; and (a)'s key, (b)'s rows and (c)'s tracks
+    slide and clone map each a square footprint (1 px) with square limits,
+    the spots on the left and bottom axes, the frame -- the left and bottom
+    spines alone -- within the spots' extent (1 px), the clone key clear of
+    both; and (a)'s key, (b)'s rows and (c)'s tracks
     name the clones in one order, `clone_order`'s (PR- #715)."""
     import matplotlib.pyplot as plt
     from port.extensions.combined_figure import (
@@ -525,12 +527,37 @@ def test_the_combined_page_s_spatial_panels_are_square_keyed_clear_and_in_order(
     slide, clones = figure.get_axes()[-2:]
     key = clones.get_legend().get_window_extent(renderer)
 
+    spots = clones.collections[0].get_datalim(clones.transData)
+
     for ax in (slide, clones):
         box = ax.get_window_extent(renderer)
         (x0, x1), (y0, y1) = ax.get_xlim(), ax.get_ylim()
         assert box.width == pytest.approx(box.height, abs=1.0)
         assert abs(x1 - x0) == pytest.approx(abs(y1 - y0))
         assert not key.overlaps(box)
+        # NB the spots on the left and bottom axes, the room to the right.
+        assert spots.x0 == pytest.approx(x0)
+        assert spots.y0 == pytest.approx(y0)
+        corners = ax.transData.transform([(spots.x0, spots.y0), (spots.x1, spots.y1)])
+        assert not ax.spines["top"].get_visible()
+        assert not ax.spines["right"].get_visible()
+        # NB along its length: a spine's extent across it takes its ticks.
+        (left,) = (
+            ax.spines["left"]
+            .get_path()
+            .transformed(ax.spines["left"].get_transform())
+            .get_extents()
+            .intervaly.reshape(1, 2)
+        )
+        (bottom,) = (
+            ax.spines["bottom"]
+            .get_path()
+            .transformed(ax.spines["bottom"].get_transform())
+            .get_extents()
+            .intervalx.reshape(1, 2)
+        )
+        assert corners[0][1] - 1.0 <= left[0] <= left[1] <= corners[1][1] + 1.0
+        assert corners[0][0] - 1.0 <= bottom[0] <= bottom[1] <= corners[1][0] + 1.0
 
     profile, tracks = figure.subfigs
     # NB tick labels run bottom to top.
