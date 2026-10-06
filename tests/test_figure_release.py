@@ -26,14 +26,16 @@ mpl.use("Agg")
 
 
 def _pinned(writer: Callable[..., None], path: Path, **keywords: Any) -> int:
-    """Bytes of raster buffer live `PdfFile`s hold after `writer` returns."""
+    """Bytes of raster buffer the `PdfFile`s `writer` left live hold after it returns.
+
+    Only those it created: a `PdfFile` an earlier test on the same worker left
+    live is that test's, not `writer`'s.
+    """
     from matplotlib.backends.backend_pdf import PdfFile
 
     gc.collect()
     gc.disable()
     try:
-        # NB only this write's files: another test's live figure, in the same
-        #    worker, holds its own `PdfFile`, and is not this writer's to release
         before = {id(live) for live in gc.get_objects() if isinstance(live, PdfFile)}
         figure = _figure()
         writer(str(path), figure, **keywords)
