@@ -401,7 +401,7 @@ def draw(
         key_below(
             ax,
             f"{Path(record['manifest']).stem}: median of {n_problems} realization{'s' if n_problems > 1 else ''}",
-            [({"marker": "o", "color": "0.4", "markersize": 5}, "Initialized"),
+            [({"marker": "o", "color": "0.4", "markersize": 5}, "Initial"),
              ({"marker": "o", "color": "0.4", "markerfacecolor": "white", "markersize": 5}, "Polish"),
              ({"marker": "D", "color": "0.4", "markerfacecolor": "white", "markersize": 4}, "Merge"),
              ({"line": True, "color": "k"}, "Truth")],

@@ -339,7 +339,7 @@ def draw(
             ax,
             f"{Path(record['manifest']).stem}: median of {n_problems} realization{'s' if n_problems != 1 else ''}"
             + (f" ({n_partial} in progress)" if n_partial else ""),
-            [({"marker": "o", "color": "0.4", "markersize": 5}, "Initialized"),
+            [({"marker": "o", "color": "0.4", "markersize": 5}, "Initial"),
              ({"marker": "o", "color": "0.4", "markerfacecolor": "white", "markersize": 5}, "Polish"),
              ({"line": True, "color": "k"}, "Truth")],
             [(KEY_NAMES.get(n, n), COLOUR[n], float(after[n]))

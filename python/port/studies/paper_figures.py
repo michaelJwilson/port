@@ -651,7 +651,7 @@ def solver_figure(potts: dict[str, Any], copies: dict[str, Any]) -> Any:
         "columns": 1,
     }
     potts_plot.draw(axes["a"], potts, key=True, centre=True, key_style=style)
-    # NB Initialized, Polish and Truth mean the same in both panels: keyed once, under (a)
+    # NB Initial, Polish and Truth mean the same in both panels: keyed once, under (a)
     copy_state_plot.draw(
         axes["b"], copies, key=True, key_style={**style, "marks": False}
     )
