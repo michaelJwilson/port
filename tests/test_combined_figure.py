@@ -90,8 +90,9 @@ def test_recording_calls_through_and_restores() -> None:
     ) == before
 
 
-def _recorded(tmp_path: Path, n_clones: int = 3) -> tuple[Any, Any]:
-    """A run's three recorded calls on the 3 by 3 fixture, and its slide."""
+def _recorded(tmp_path: Path, n_clones: int = 3, tall: float = 1.0) -> tuple[Any, Any]:
+    """A run's three recorded calls on the 3 by 3 fixture, its rows `tall`
+    times as far apart as its columns, and its slide."""
     from cnaster.he import get_he_image
     from port.extensions.combined_figure import Call, Recorded
     from port.sim.he_slide import mock_he, write_he_slide
@@ -100,7 +101,7 @@ def _recorded(tmp_path: Path, n_clones: int = 3) -> tuple[Any, Any]:
     arguments, keywords = _genomic_arguments()
     n_spots = arguments[1].shape[2]
     rows, columns = np.unravel_index(np.arange(n_spots), (3, 3))
-    coords = np.column_stack([rows, columns]).astype(float)
+    coords = np.column_stack([rows, tall * columns]).astype(float)
     assignment = pd.Series([f"clone {k % n_clones}" for k in range(n_spots)])
     write_he_slide(mock_he(clone_bands(3, 3, 3), (3, 3), seed=1), tmp_path)
     recorded = Recorded(
@@ -210,19 +211,22 @@ def test_each_page_is_written_at_its_size_with_nothing_past_it(
 def test_the_profile_spans_the_tracks_on_one_left_column(
     cnaster_config: None, tmp_path: Path
 ) -> None:
-    """(b)'s axis and key have (a)'s left and right edges to 1.5 px, so bin `i`
-    is under bin `i`; (b)'s names and (a)'s RDR and BAF labels start on the
-    column `NAME_INSET` in, clear of the axes; (a)'s letter over its first
-    statistics line and (b)'s level with its key, both on the column; the
-    head a `LABEL_GAP` over them."""
+    """(a)'s axis and key have (b)'s left and right edges to 1.5 px, so bin `i`
+    is over bin `i`; (a)'s names and (b)'s RDR and BAF labels start on the
+    column `NAME_INSET` in, clear of the axes; (a)'s letter level with its
+    key and (b)'s over its first statistics line, both on the column; the
+    head a `LABEL_GAP` over the key; the mirror key as `mirror_key_holds` says
+    (PR- #701)."""
     from port.extensions.combined_figure import LABEL_GAP, NAME_INSET
+
+    from tests.test_plot_copy_number_profile_patch import mirror_key_holds
 
     figure, _ = _figures(tmp_path)
     renderer = figure.canvas.get_renderer()
     gap = LABEL_GAP / 72.0 * figure.dpi
     column = NAME_INSET / 72.0 * figure.dpi
-    tracks = figure.subfigs[0].axes
-    key, profile = figure.subfigs[1].axes
+    key, profile = figure.subfigs[0].axes
+    tracks = figure.subfigs[1].axes
     edges = [ax.get_window_extent(renderer) for ax in tracks]
     left, right = min(b.x0 for b in edges), max(b.x1 for b in edges)
 
@@ -239,16 +243,20 @@ def test_the_profile_spans_the_tracks_on_one_left_column(
 
     first, second = (t.get_window_extent(renderer) for t in figure.texts)
     stats = max(
-        t.get_window_extent(renderer).y1 for t in tracks[0].texts if t.get_visible()
+        t.get_window_extent(renderer).y1
+        for t in tracks[0].texts
+        if t.get_visible() and t.get_gid() is None
     )
     title = key.texts[0].get_window_extent(renderer)
+    top = max(p.get_window_extent(renderer).y1 for p in [*key.patches, *key.texts])
     assert first.x0 == pytest.approx(column, abs=1.5)
-    assert stats - 0.5 <= first.y0 <= stats + gap
-    assert second.x0 == pytest.approx(column, abs=1.5)
-    assert (second.y0 + second.y1) / 2 == pytest.approx(
+    assert (first.y0 + first.y1) / 2 == pytest.approx(
         (title.y0 + title.y1) / 2, abs=1.0
     )
-    assert figure.bbox.y1 - first.y1 == pytest.approx(gap, abs=1.5)
+    assert second.x0 == pytest.approx(column, abs=1.5)
+    assert stats - 0.5 <= second.y0 <= stats + gap
+    assert figure.bbox.y1 - top == pytest.approx(gap, abs=1.5)
+    mirror_key_holds(key, profile)
 
 
 @pytest.mark.infra
@@ -256,7 +264,8 @@ def test_the_profile_spans_the_tracks_on_one_left_column(
 def test_the_spatial_panels_are_square_and_keyed_on_the_right_edge(
     cnaster_config: None, tmp_path: Path
 ) -> None:
-    """(a) the slide and (b) the clones, square and of one size; (b)'s key one
+    """(a) the slide and (b) the clones, of one size, each box square and its
+    data at one scale on both axes to 1%; (b)'s key one
     column on the page's right edge, a `LABEL_GAP` in, its bottom on (b)'s,
     each clone named $m$; (b)'s rows labelled by (a)'s alone; each letter
     over its panel's top-left text or corner, the head a `LABEL_GAP` over
@@ -273,6 +282,12 @@ def test_the_spatial_panels_are_square_and_keyed_on_the_right_edge(
 
     assert slide.get_images(), "(a) is the slide"
     assert here.width == pytest.approx(here.height, abs=1.0)
+    for ax, frame in ((slide, here), (clones, tiles)):
+        (x0, x1), (y0, y1) = ax.get_xlim(), ax.get_ylim()
+        assert abs(x1 - x0) / frame.width == pytest.approx(
+            abs(y1 - y0) / frame.height, rel=0.01
+        )
+        assert (x0, x1, y0, y1) == clones.get_xlim() + clones.get_ylim()
     assert (tiles.width, tiles.height) == pytest.approx(
         (here.width, here.height), abs=1.0
     )
@@ -305,8 +320,9 @@ def test_the_spatial_labels_are_integer_by_default_or_continuous(
     cnaster_config: None, tmp_path: Path
 ) -> None:
     """Two clones that decode alike at every bin are one clone under the
-    default "integer" labels -- two keyed, $m_N$ and $m_1$ -- and stay two
-    under "continuous": three keyed, as the fit found them (#344)."""
+    default "integer" labels -- two entries, $m_N$ and "$m_1$, $m_2$", the
+    merged clone named in its group's entry (PR- #715) -- and stay two under
+    "continuous": three keyed, as the fit found them (#344)."""
     import matplotlib as mpl
 
     mpl.use("Agg")
@@ -326,7 +342,7 @@ def test_the_spatial_labels_are_integer_by_default_or_continuous(
         return [t.get_text() for t in figure.axes[1].get_legend().get_texts()]
 
     assert keyed("continuous") == ["$m_N$", "$m_1$", "$m_2$"]
-    assert keyed("integer") == ["$m_N$", "$m_1$"]
+    assert keyed("integer") == ["$m_N$", "$m_1$, $m_2$"]
 
     with pytest.raises(ValueError, match="integer"):
         spatial_figure(recorded, frame, labels="decoded")
@@ -339,11 +355,11 @@ def test_the_spatial_labels_are_integer_by_default_or_continuous(
 def test_the_combined_page_is_the_two_figures_stacked(
     cnaster_config: None, tmp_path: Path
 ) -> None:
-    """One page, 122 mm by 193 mm to 0.005 in, lettered (a) to (d).
+    """One page, 122 mm by 193 mm to 0.005 in, lettered (a) to (c).
 
-    (a) and (b) sit where the spatial figure puts them, to a pixel, measured
-    from the head: the page is the spatial figure over a genomic one drawn
-    the rest of the height.
+    (a)'s slide and clones sit where the spatial figure puts them, to a
+    pixel, measured from the head: the page is the spatial figure over a
+    genomic one drawn the rest of the height.
     """
     import matplotlib.pyplot as plt
     from port.extensions.combined_figure import (
@@ -358,7 +374,7 @@ def test_the_combined_page_is_the_two_figures_stacked(
 
     assert combined.get_size_inches()[0] * 25.4 == pytest.approx(122.0)
     assert combined.get_size_inches()[1] == pytest.approx(TEXT_HEIGHT, abs=0.005)
-    assert sorted(t.get_text() for t in combined.texts) == ["(a)", "(b)", "(c)", "(d)"]
+    assert sorted(t.get_text() for t in combined.texts) == ["(a)", "(b)", "(c)"]
 
     placed = combined.get_axes()[-2:]
     for new, old in zip(placed, spatial.get_axes()[:2], strict=True):
@@ -389,3 +405,178 @@ def test_the_hatch_stripes_are_one_width() -> None:
 
     assert pytest.approx(period - HATCH_LINEWIDTH) == HATCH_LINEWIDTH
     assert pytest.approx(2.0649, abs=1e-4) == HATCH_LINEWIDTH
+
+
+def panels_in_order(letters: list[Any], panels: dict[str, list[Any]]) -> list[str]:
+    """`panels`' names top to bottom by their axes' tops, each lettered in
+    turn: the k-th letter from the head reads `(a)`, `(b)`, ... and sits
+    under the panel before its own and over the panel after it."""
+    figure = next(iter(panels.values()))[0].get_figure(root=True)
+    renderer = figure.canvas.get_renderer()
+
+    def extent(axes: list[Any]) -> tuple[float, float]:
+        boxes = [ax.get_window_extent(renderer) for ax in axes]
+        return min(b.y0 for b in boxes), max(b.y1 for b in boxes)
+
+    order = sorted(panels, key=lambda name: -extent(panels[name])[1])
+    boxes = sorted(
+        (t.get_window_extent(renderer) for t in letters), key=lambda b: -b.y1
+    )
+    texts = sorted(letters, key=lambda t: -t.get_window_extent(renderer).y1)
+
+    assert [t.get_text() for t in texts] == [f"({k})" for k in "abc"[: len(order)]]
+    for k, box in enumerate(boxes):
+        middle = (box.y0 + box.y1) / 2
+        if k > 0:
+            assert middle < extent(panels[order[k - 1]])[0]
+        if k + 1 < len(order):
+            assert middle > extent(panels[order[k + 1]])[1]
+    return order
+
+
+@pytest.mark.infra
+@pytest.mark.merge
+def test_the_combined_page_reads_clones_profile_tracks(
+    cnaster_config: None, tmp_path: Path
+) -> None:
+    """The run's page is (a) the slide and the clones, (b) the profile under
+    its key, (c) the tracks: `PANELS`, `truth_combined`'s order (PR-
+    #715)."""
+    import matplotlib.pyplot as plt
+    from port.extensions.combined_figure import PANELS, combined_figure
+
+    recorded, frame = _recorded(tmp_path)
+    figure = combined_figure(recorded, frame)
+    profile, tracks = figure.subfigs
+
+    assert (
+        tuple(
+            panels_in_order(
+                list(figure.texts),
+                {
+                    "clones": figure.get_axes()[-2:],
+                    "profile": list(profile.axes),
+                    "tracks": list(tracks.axes),
+                },
+            )
+        )
+        == PANELS
+    )
+    plt.close(figure)
+
+
+@pytest.mark.infra
+def test_a_spatial_page_is_cut_to_its_axes() -> None:
+    """`plot_clones_spatial` on a tall 4 by 10 section: equal x and y scale,
+    the tiles' box at the section's aspect to 1%, the key wrapped no wider
+    than the tiles, and the page's content
+    `FIT_MARGIN` from the head and sides and `STAMP_ROOM` from the foot to
+    a pixel, so no band of white is left (PR- #715)."""
+    import matplotlib as mpl
+
+    mpl.use("Agg")
+    import matplotlib.pyplot as plt
+    from port.extensions.figure_style import FIT_MARGIN, STAMP_ROOM
+    from port.patch.plotting.spatial import plot_clones_spatial
+
+    rows, columns = np.meshgrid(np.arange(4.0), np.arange(10.0))
+    coords = np.column_stack([rows.ravel(), columns.ravel()])
+    assignment = pd.Series([f"clone {k % 5}" for k in range(len(coords))])
+    figure = plot_clones_spatial(coords, assignment)
+    figure.canvas.draw()
+    renderer = figure.canvas.get_renderer()
+    (ax,) = figure.axes
+    box = ax.get_window_extent(renderer)
+    (x0, x1), (y0, y1) = ax.get_xlim(), ax.get_ylim()
+    content = figure.get_tightbbox(renderer)
+    dpi = figure.dpi
+    width, height = figure.get_size_inches()
+
+    assert ax.get_aspect() == 1.0
+    assert ax.get_legend().get_window_extent(renderer).width <= box.width + 1.0
+    assert box.height / box.width == pytest.approx((y1 - y0) / (x1 - x0), rel=0.01)
+    assert content.x0 == pytest.approx(FIT_MARGIN, abs=1.0 / dpi)
+    assert width - content.x1 == pytest.approx(FIT_MARGIN, abs=1.0 / dpi)
+    assert height - content.y1 == pytest.approx(FIT_MARGIN, abs=1.0 / dpi)
+    assert content.y0 == pytest.approx(STAMP_ROOM, abs=1.0 / dpi)
+    plt.close(figure)
+
+
+@pytest.mark.infra
+@pytest.mark.merge
+def test_the_combined_page_s_spatial_panels_are_square_keyed_clear_and_in_order(
+    cnaster_config: None, tmp_path: Path
+) -> None:
+    """On the rendered page, for a section 3 times as tall as wide: (a)'s
+    slide and clone map each a square footprint (1 px) with square limits,
+    the spots on the left and bottom axes, the frame -- the left and bottom
+    spines alone -- within the spots' extent (1 px), the clone key clear of
+    both; and (a)'s key, (b)'s rows and (c)'s tracks
+    name the clones in one order, `clone_order`'s (PR- #715)."""
+    import matplotlib.pyplot as plt
+    from port.extensions.combined_figure import (
+        clone_order,
+        clone_symbol,
+        combined_figure,
+    )
+
+    recorded, frame = _recorded(tmp_path, tall=3.0)
+    figure = combined_figure(recorded, frame)
+    figure.canvas.draw()
+    renderer = figure.canvas.get_renderer()
+    slide, clones = figure.get_axes()[-2:]
+    key = clones.get_legend().get_window_extent(renderer)
+
+    spots = clones.collections[0].get_datalim(clones.transData)
+
+    for ax in (slide, clones):
+        box = ax.get_window_extent(renderer)
+        (x0, x1), (y0, y1) = ax.get_xlim(), ax.get_ylim()
+        assert box.width == pytest.approx(box.height, abs=1.0)
+        assert abs(x1 - x0) == pytest.approx(abs(y1 - y0))
+        assert not key.overlaps(box)
+        # NB the spots on the left and bottom axes, the room to the right.
+        assert spots.x0 == pytest.approx(x0)
+        assert spots.y0 == pytest.approx(y0)
+        corners = ax.transData.transform([(spots.x0, spots.y0), (spots.x1, spots.y1)])
+        assert not ax.spines["top"].get_visible()
+        assert not ax.spines["right"].get_visible()
+        # NB along its length: a spine's extent across it takes its ticks.
+        (left,) = (
+            ax.spines["left"]
+            .get_path()
+            .transformed(ax.spines["left"].get_transform())
+            .get_extents()
+            .intervaly.reshape(1, 2)
+        )
+        (bottom,) = (
+            ax.spines["bottom"]
+            .get_path()
+            .transformed(ax.spines["bottom"].get_transform())
+            .get_extents()
+            .intervalx.reshape(1, 2)
+        )
+        assert corners[0][1] - 1.0 <= left[0] <= left[1] <= corners[1][1] + 1.0
+        assert corners[0][0] - 1.0 <= bottom[0] <= bottom[1] <= corners[1][0] + 1.0
+
+    profile, tracks = figure.subfigs
+    # NB tick labels run bottom to top.
+    rows = [t.get_text() for t in profile.axes[1].get_yticklabels()][::-1]
+    named = [
+        t.get_text()
+        for ax in tracks.axes
+        for t in ax.texts
+        if t.get_visible() and t.get_text().startswith("$m")
+    ]
+    ids = [
+        c[len("clone") : -len(" A")]
+        for c in recorded.profile.args[0].columns
+        if c.endswith(" A")
+    ]
+    expected = [clone_symbol(str(k)) for k in clone_order(ids)]
+    keyed = [t.get_text().split(", ")[0] for t in clones.get_legend().get_texts()]
+
+    assert rows == expected
+    assert named == expected
+    assert keyed == [m for m in expected if m in keyed]
+    plt.close(figure)

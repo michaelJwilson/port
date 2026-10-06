@@ -2,7 +2,7 @@
 
     run_study --paper-figures [--fixture dev_tree_1s_easy] [--draw DIR]
         [--out docs/plots/paper] [--truth-only]
-    run_study --paper-figures --solvers POTTS.pkl COPY.pkl [--out docs/plots/paper]
+    run_study --paper-figures --solvers POTTS.record COPY.record [--out docs/plots/paper]
 
 draws `sim/manifests/<fixture>.toml`'s r0 (or reads it from `--draw`, the
 directory holding `<fixture>/r0`), refuses it unless it hashes to the
@@ -16,10 +16,11 @@ manifest's `r0_hash`, and writes into `OUT`:
   them, beside a slide mocked from the planted labels (`port.sim.he_slide`);
 - `compare/`, figures 14-17: the run against the truth, through
   `port.qa.audit.score_sample`'s matching, `copy_confusion` and planted classes;
-- `solvers/`, figure 18 (`--solvers POTTS.pkl COPY.pkl`, no fixture run):
-  `solver_combined.png`, the spatial solvers (`port.studies.potts_plot`) left
-  and the copy-state starts (`port.studies.copy_state_plot`) right, each
-  panel's key in its legend, no table (T- #660).
+- `solver_combined.png`, figure 18 (`--solvers POTTS.record COPY.record`, no
+  fixture run), at the top level beside the run's pages: the spatial solvers
+  (`port.studies.potts_plot`) left of the copy-state starts
+  (`port.studies.copy_state_plot`), each keyed below, no table (T- #660), on
+  the 122 mm column `combined.png` is drawn on.
 
 Every figure carries `<fixture> <hash> · code <sha>`, the commit read before
 anything is written, `+` where the tree differs from it. A run is appended to
@@ -612,46 +613,86 @@ def compare_figures(c: Compared, out: Path, text: str) -> list[Path]:
 
 
 SOLVERS = "solver_combined.png"
-"""Figure 18, under `solvers/`."""
+"""Figure 18, beside the run's pages in `docs/plots/paper/`."""
+
+SOLVER_PANEL = 2.2
+"""Inches: each panel's axes height. (a) left of (b), each keyed below in one column, on one 122 mm page."""
 
 
 def solver_figure(potts: dict[str, Any], copies: dict[str, Any]) -> Any:
-    """18: the spatial solvers' gap panel left, centred on the truth, the copy-state starts' right, both untitled, each keyed in its legend, no table."""
-    import matplotlib.pyplot as plt
+    """18: the spatial solvers' gap panel left of the copy-state starts', each keyed below its axes (`figures.key_below`).
 
+    Sized as `combined.png` is: `llncs`'s 122 mm column, every text at
+    `combined_figure.FONT_SIZE`, saved at 300 dpi, so it is included at
+    `width=\\linewidth` with nothing scaled.
+    """
+    import matplotlib.pyplot as plt
+    from matplotlib.text import Text
+
+    from port.extensions.combined_figure import FONT_SIZE
     from port.studies import copy_state_plot, potts_plot
 
-    figure, (left, right) = plt.subplots(1, 2, figsize=(12.0, 5.6))
-    potts_plot.draw(left, potts, key=True, centre=True)
-    copy_state_plot.draw(right, copies, key=True)
-    for ax, letter in ((left, "a"), (right, "b")):
-        # NB the stated face sets "Runtime [s]" taller than the studies' own figures do
-        ax.get_legend().set_bbox_to_anchor((0.5, -0.14))
-        ax.text(-0.12, 1.04, f"({letter})", transform=ax.transAxes, fontsize=10,
+    width = 122.0 / 25.4
+    line = FONT_SIZE * 1.5 / 72.0
+    # NB the key's rows under the x label: the longer of the two panels' methods sets the height
+    rows = max(len(potts_plot.KEY_NAMES), len(copy_state_plot.KEY_NAMES))
+    above, label, foot = 0.2, 0.4, 0.12
+    height = above + SOLVER_PANEL + label + line * (rows + 1) + foot
+    figure = plt.figure(figsize=(width, height))
+    # NB (b) shares (a)'s y label, so the gap between them holds only (b)'s tick labels
+    left, gap, right = 0.42, 0.3, 0.06
+    panel = (width - left - gap - right) / 2
+    bottom = height - above - SOLVER_PANEL
+    axes = {k: figure.add_axes(((left + i * (panel + gap)) / width, bottom / height, panel / width, SOLVER_PANEL / height))
+            for i, k in enumerate("ab")}  # fmt: skip
+    style = {
+        "fontsize": FONT_SIZE,
+        "row": line / SOLVER_PANEL,
+        "top": -label / SOLVER_PANEL,
+        "columns": 1,
+    }
+    potts_plot.draw(axes["a"], potts, key=True, centre=True, key_style=style)
+    # NB Initial, Polish and Truth mean the same in both panels: keyed once, under (a)
+    copy_state_plot.draw(
+        axes["b"], copies, key=True, key_style={**style, "marks": False}
+    )
+    for text in figure.findobj(Text):
+        text.set_fontsize(FONT_SIZE)
+    # NB each key's title names the fixture; at half the page two titles and two letters
+    #    collide, so the fixture moves to the stamp, each title keeps its count and starts at
+    #    its panel's left edge, the letter before it
+    fixture = Path(potts["manifest"]).stem
+    for text in figure.findobj(Text):
+        if text.get_text().startswith(f"{fixture}: "):
+            text.set_text(text.get_text().removeprefix(f"{fixture}: ").capitalize())
+            text.set_position((0.0, 1.01))
+            text.set_horizontalalignment("left")
+    axes["b"].set_ylabel("")
+    for k, ax in axes.items():
+        ax.tick_params(labelsize=FONT_SIZE, length=2.5, pad=1.5)
+        ax.text(-0.27 / panel, 1.01, f"({k})", transform=ax.transAxes, fontsize=FONT_SIZE,
                 ha="left", va="bottom", color=INK)  # fmt: skip
-    figure.subplots_adjust(left=0.07, right=0.98, top=0.92, bottom=0.36, wspace=0.22)
     return figure
 
 
 def solver_figures(potts: Path, copies: Path, out: Path, commit: str) -> Path:
     """Figure 18 into `out`, stamped with each record's data hash and the code."""
-    import pickle
-
     import matplotlib.pyplot as plt
 
     from port.extensions.figure_style import figure_font
+    from port.studies import records as stored
 
     out.mkdir(parents=True, exist_ok=True)
-    records = [pickle.loads(p.read_bytes()) for p in (potts, copies)]
+    records = [stored.read(p) for p in (potts, copies)]
     text = (
-        f"potts {provenance.digest(pickle.dumps(records[0]))}"
-        f" · copy states {provenance.digest(pickle.dumps(records[1]))}"
+        f"{Path(records[0]['manifest']).stem} · potts {stored.digest(records[0])}"
+        f" · copy states {stored.digest(records[1])}"
         f" · code {commit}"
     )
     with figure_font():
         figure = solver_figure(*records)
         stamp(figure, text)
-        figure.savefig(out / SOLVERS, dpi=DPI, facecolor="white",
+        figure.savefig(out / SOLVERS, dpi=300, facecolor="white",
                        metadata={"Software": None})  # fmt: skip
         plt.close(figure)
     return out / SOLVERS
@@ -664,7 +705,7 @@ QUESTIONS: dict[str, tuple[str, str]] = {
     ),
     "truth/simulated_tree.png": (
         "Which events sit on which edge of the simulated clone tree?",
-        "`port.sim.truth_figure.simulated_tree_figure`, `truth_combined`'s panel (a)",
+        "`port.sim.truth_figure.simulated_tree_figure`, `truth_combined`'s panel (a) alone",
     ),
     "truth/spatial.png": (
         "Which clone was each spot drawn from?",
@@ -734,7 +775,7 @@ QUESTIONS: dict[str, tuple[str, str]] = {
         "Which planted classes are recovered exactly, with and without phase?",
         "`exact_figure`: `port.qa.scoring.exact_by_class`",
     ),
-    "solvers/solver_combined.png": (
+    "solver_combined.png": (
         "How far above the best does each spatial solver and each copy-state start end, and how fast?",
         "`solver_figure`: `port.studies.potts_plot.draw`, `port.studies.copy_state_plot.draw`",
     ),
@@ -803,7 +844,7 @@ hashing to `{digest}`:
 draw panel (a) on a slide mocked from the planted labels (`port.sim.he_slide`):
 the fixture has no H&E image, and the run never reads the mock.
 `truth/phase.png` is flat: this r0 plants {switches} phase switches.
-`solvers/solver_combined.png` is not drawn from this fixture: `--solvers POTTS.pkl COPY.pkl`
+`solver_combined.png` is not drawn from this fixture: `--solvers POTTS.record COPY.record`
 draws it from a `port.studies.potts_stream` and a `port.studies.copy_state_stream` record,
 and its stamp names both records' data hashes.
 The genomic panels of `truth/truth_combined.png`, `truth/clones_genomic.png`,
@@ -836,16 +877,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out", type=Path, default=OUT)
     parser.add_argument("--truth-only", action="store_true", help="figures 1-8 alone")
     parser.add_argument("--solvers", nargs=2, type=Path, default=None,
-                        metavar=("POTTS.pkl", "COPY.pkl"),
+                        metavar=("POTTS.record", "COPY.record"),
                         help="figure 18 alone, from a potts_stream and a copy_state_stream record")  # fmt: skip
     arguments = parser.parse_args(argv)
     if arguments.solvers is not None:
         potts, copies = arguments.solvers
-        print(
-            solver_figures(
-                potts, copies, arguments.out / "solvers", provenance.commit()
-            )
-        )
+        print(solver_figures(potts, copies, arguments.out, provenance.commit()))
         return 0
 
     # NB read before anything is written, so the set's own files never mark it `+`

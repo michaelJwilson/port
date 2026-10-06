@@ -1,7 +1,7 @@
 """#562: `sal`'s emission++ divergences floored at 0 around port's mixture start.
 
 `run_cnaster_port --sal --hmm-start emission++...` seeds through
-`sal.opt.emission_mixture._seed_scores`, whose negative-binomial Bregman
+`sal.opt.emission_mixture.seed_scores` (public since sal #1236), whose negative-binomial Bregman
 divergence is non-negative in exact arithmetic and about `-1.6e-15` in
 float64 for a row a hair from a seed's mean. D-squared sampling handed those
 to `rng.choice`, which refused them. Port floored them at 0 around
@@ -81,12 +81,12 @@ def test_sals_scores_are_the_exact_divergence() -> None:
     reads `+1.43e-14` where it is 0, so no near row is negative and the near
     scores are 1.28e-14 to 1.59e-14.
     """
-    from sal.opt.emission_mixture import _seed_scores
+    from sal.opt.emission_mixture import seed_scores
 
     rows = _rows()
     candidates = np.arange(rows.shape[0], dtype=np.float64)
     near = slice(200, 400)
-    raw = _seed_scores(rows, _seam())(0.0, candidates)
+    raw = seed_scores(rows, _seam())(0.0, candidates)
     exact = [nb_divergence(y, 2.0, SIZE) for y in rows[near, 0]]
 
     assert (raw >= 0.0).all()
@@ -109,7 +109,7 @@ def test_sals_draw_is_the_retired_floors_draw() -> None:
     sal #1136 floors each divergence at 0 before the running minimum, where
     port's patch floored it, so retiring the patch moves no seed.
     """
-    from sal.opt.emission_mixture import _seed_scores
+    from sal.opt.emission_mixture import seed_scores
     from sal.opt.mixture import emission_mixture_plus_plus
 
     rows = _rows()
@@ -117,12 +117,12 @@ def test_sals_draw_is_the_retired_floors_draw() -> None:
 
     for seed in range(20):
         sals = emission_mixture_plus_plus(
-            indices, 3, _seed_scores(rows, _seam()), np.random.default_rng(seed)
+            indices, 3, seed_scores(rows, _seam()), np.random.default_rng(seed)
         )
         ported = emission_mixture_plus_plus(
             indices,
             3,
-            _port_floor(_seed_scores(rows, _seam())),
+            _port_floor(seed_scores(rows, _seam())),
             np.random.default_rng(seed),
         )
         np.testing.assert_array_equal(sals, ported)
