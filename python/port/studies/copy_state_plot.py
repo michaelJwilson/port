@@ -229,7 +229,7 @@ def draw(
     ax: Any,
     record: dict[str, Any],
     key: bool = False,
-    key_style: dict[str, float] | None = None,
+    key_style: dict[str, Any] | None = None,
 ) -> pd.DataFrame:
     """The gap panel on `ax`: each start's runs against runtime, numbered as in `TABLE`; returns the runs drawn.
 
@@ -340,7 +340,7 @@ def draw(
             f"{Path(record['manifest']).stem}: median of {n_problems} realization{'s' if n_problems != 1 else ''}"
             + (f" ({n_partial} in progress)" if n_partial else ""),
             [({"marker": "o", "color": "0.4", "markersize": 5}, "Initialized"),
-             ({"marker": "o", "color": "0.4", "markerfacecolor": "white", "markersize": 5}, "Baum-Welch"),
+             ({"marker": "o", "color": "0.4", "markerfacecolor": "white", "markersize": 5}, "Polish"),
              ({"line": True, "color": "k"}, "Truth")],
             [(KEY_NAMES.get(n, n), COLOUR[n], float(after[n]))
              for n in ordered],

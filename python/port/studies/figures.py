@@ -80,6 +80,7 @@ def key_below(
     top: float = -0.17,
     row: float = 0.055,
     columns: int = 2,
+    marks: bool = True,
 ) -> None:
     """A key under `ax`, its `title` above the axes' top right: the stages' markers in their own column, then the methods in two columns of name and missed %.
 
@@ -120,7 +121,8 @@ def key_below(
     # NB one column where the panel is narrow (half a 122 mm page), two where it is wide
     rows = -(-len(entries) // columns)
     spans = ((0.38, 1.0),) if columns == 1 else ((0.30, 0.62), (0.67, 0.99))
-    for k, (keywords, label) in enumerate(stages):
+    # NB a figure whose panels share their stages keys them once (`marks` on one panel only)
+    for k, (keywords, label) in enumerate(stages if marks else []):
         y = header - row * (k + 1)
         mark(0.02, y, keywords)
         text(0.05 if columns == 2 else 0.08, y, label)

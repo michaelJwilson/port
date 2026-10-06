@@ -72,12 +72,12 @@ FLOOR = 1e-2
 
 KEY_NAMES = {
     "sal:alpha-expansion": "Alpha-expansion", "sal:alpha-beta-swap": "Alpha-beta-swap",
-    "sal:icm": "ICM-vector", "sal:icm-random": "ICM-random", "sal:field_argmax": "Field-argmax",
+    "sal:icm": "ICM", "sal:field_argmax": "Field-argmax",
     "sal:anneal": "Glauber", "sal:swendsen-wang-heat-bath": "Swendsen-Wang", "sal:wolff-heat-bath": "Wolff",
-    "sal:tempering": "Parallel tempering", "sal:max-product": "Max-product", "sal:trws": "TRW-S",
+    "sal:tempering": "Parallel tempering", "sal:trws": "TRW-S",
 }  # fmt: skip
-"""The names `solver_combined`'s key prints, and the solvers it draws: `alpha-rust-fuse` is not
-among them (deprecated from the figure, #716)."""
+"""The names `solver_combined`'s key prints, and the solvers it draws: `alpha-rust-fuse`,
+`icm-random` and `max-product` are not among them (deprecated from the figure, #716)."""
 
 
 def label(solver: str) -> str:
@@ -235,7 +235,7 @@ def draw(
     record: dict[str, Any],
     key: bool = False,
     centre: bool = False,
-    key_style: dict[str, float] | None = None,
+    key_style: dict[str, Any] | None = None,
 ) -> pd.DataFrame:
     """The gap panel on `ax`: each solver's runs against runtime, numbered as in `TABLE`; returns the runs drawn.
 
@@ -402,8 +402,8 @@ def draw(
             ax,
             f"{Path(record['manifest']).stem}: median of {n_problems} realization{'s' if n_problems > 1 else ''}",
             [({"marker": "o", "color": "0.4", "markersize": 5}, "Initialized"),
-             ({"marker": "o", "color": "0.4", "markerfacecolor": "white", "markersize": 5}, "ICM polish"),
-             ({"marker": "D", "color": "0.4", "markerfacecolor": "white", "markersize": 4}, "Color merge"),
+             ({"marker": "o", "color": "0.4", "markerfacecolor": "white", "markersize": 5}, "Polish"),
+             ({"marker": "D", "color": "0.4", "markerfacecolor": "white", "markersize": 4}, "Merge"),
              ({"line": True, "color": "k"}, "Truth")],
             [(KEY_NAMES[s], tab20(NUMBER[s]), polished[s][1])
              for s in ordered],
