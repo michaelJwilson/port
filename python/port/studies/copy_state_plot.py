@@ -225,7 +225,12 @@ def _table(
     tab.set_ylim(0, 1)
 
 
-def draw(ax: Any, record: dict[str, Any], key: bool = False) -> pd.DataFrame:
+def draw(
+    ax: Any,
+    record: dict[str, Any],
+    key: bool = False,
+    key_style: dict[str, float] | None = None,
+) -> pd.DataFrame:
     """The gap panel on `ax`: each start's runs against runtime, numbered as in `TABLE`; returns the runs drawn.
 
     `key` draws, for a figure with no table beside it (`solver_combined`, T- #660),
@@ -340,6 +345,7 @@ def draw(ax: Any, record: dict[str, Any], key: bool = False) -> pd.DataFrame:
             [(KEY_NAMES.get(n, n), COLOUR[n], float(after[n]))
              for n in ordered],
             [],
+            **(key_style or {}),
         )  # fmt: skip
         return d
     ax.plot([], [], "o", color="0.4", label="Start")

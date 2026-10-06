@@ -231,7 +231,11 @@ def _table(
 
 
 def draw(
-    ax: Any, record: dict[str, Any], key: bool = False, centre: bool = False
+    ax: Any,
+    record: dict[str, Any],
+    key: bool = False,
+    centre: bool = False,
+    key_style: dict[str, float] | None = None,
 ) -> pd.DataFrame:
     """The gap panel on `ax`: each solver's runs against runtime, numbered as in `TABLE`; returns the runs drawn.
 
@@ -404,6 +408,7 @@ def draw(
             [(KEY_NAMES[s], tab20(NUMBER[s]), polished[s][1])
              for s in ordered],
             [],
+            **(key_style or {}),
         )  # fmt: skip
         return d
     ax.plot([], [], "o", color="0.4", label="sal")

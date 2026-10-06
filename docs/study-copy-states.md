@@ -93,7 +93,7 @@ stamped with its data hash and code commit.
 
 `sim/manifests/dev_tree_1s_hard.toml` r3–r12 (r0 `9ec90dc2`, lognormal event lengths, #619): the same name as
 the table above, a different dataset. Record data `34aa0151`, drawn as panel (b) of
-`docs/plots/paper/solvers/solver_combined.png`. `STARTS` only, `--seeds 10 --held-out 3 --settings
+`docs/plots/paper/solver_combined.png`. `STARTS` only, `--seeds 10 --held-out 3 --settings
 tests/studies/copy_sampler_settings.json`, 3 workers under the host lock, code `9efa28d`, sal `253c84f`.
 
 Medians over realizations × seeds (`lattice` is deterministic: 10 runs). Gap columns as above; the planted

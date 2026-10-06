@@ -16,10 +16,11 @@ manifest's `r0_hash`, and writes into `OUT`:
   them, beside a slide mocked from the planted labels (`port.sim.he_slide`);
 - `compare/`, figures 14-17: the run against the truth, through
   `port.qa.audit.score_sample`'s matching, `copy_confusion` and planted classes;
-- `solvers/`, figure 18 (`--solvers POTTS.record COPY.record`, no fixture run):
-  `solver_combined.png`, the spatial solvers (`port.studies.potts_plot`) left
-  and the copy-state starts (`port.studies.copy_state_plot`) right, each
-  panel's key in its legend, no table (T- #660).
+- `solver_combined.png`, figure 18 (`--solvers POTTS.record COPY.record`, no
+  fixture run), at the top level beside the run's pages: the spatial solvers
+  (`port.studies.potts_plot`) over the copy-state starts
+  (`port.studies.copy_state_plot`), each keyed below, no table (T- #660), on
+  the 122 mm column `combined.png` is drawn on.
 
 Every figure carries `<fixture> <hash> · code <sha>`, the commit read before
 anything is written, `+` where the tree differs from it. A run is appended to
@@ -612,22 +613,60 @@ def compare_figures(c: Compared, out: Path, text: str) -> list[Path]:
 
 
 SOLVERS = "solver_combined.png"
-"""Figure 18, under `solvers/`."""
+"""Figure 18, beside the run's pages in `docs/plots/paper/`."""
+
+SOLVER_PANEL = 2.1
+"""Inches: each panel's axes height. (a) over (b), each keyed below, on one 122 mm column."""
 
 
 def solver_figure(potts: dict[str, Any], copies: dict[str, Any]) -> Any:
-    """18: the spatial solvers' gap panel left, centred on the truth, the copy-state starts' right, both untitled, each keyed below its axes (`figures.key_below`), no table."""
-    import matplotlib.pyplot as plt
+    """18: the spatial solvers' gap panel over the copy-state starts', each keyed below its axes (`figures.key_below`).
 
+    Sized as `combined.png` is: `llncs`'s 122 mm column, every text at
+    `combined_figure.FONT_SIZE`, saved at 300 dpi, so it is included at
+    `width=\\linewidth` with nothing scaled.
+    """
+    import matplotlib.pyplot as plt
+    from matplotlib.text import Text
+
+    from port.extensions.combined_figure import FONT_SIZE
     from port.studies import copy_state_plot, potts_plot
 
-    figure, (left, right) = plt.subplots(1, 2, figsize=(12.0, 5.0))
-    potts_plot.draw(left, potts, key=True, centre=True)
-    copy_state_plot.draw(right, copies, key=True)
-    for ax, letter in ((left, "a"), (right, "b")):
-        ax.text(-0.12, 1.04, f"({letter})", transform=ax.transAxes, fontsize=10,
+    width = 122.0 / 25.4
+    line = FONT_SIZE * 1.5 / 72.0
+    # NB per panel: the title over the axes, the axes, the x label, then the key's rows
+    rows = {"a": 6, "b": 5}
+    below = {k: 0.42 + line * (n + 0.5) for k, n in rows.items()}
+    above, foot = 0.22, 0.12
+    height = sum(above + SOLVER_PANEL + below[k] for k in rows) + foot
+    figure = plt.figure(figsize=(width, height))
+    left, right = 0.52, 0.08
+    y = height
+    axes = {}
+    for k in rows:
+        y -= above + SOLVER_PANEL
+        axes[k] = figure.add_axes(
+            (
+                left / width,
+                y / height,
+                (width - left - right) / width,
+                SOLVER_PANEL / height,
+            )
+        )
+        y -= below[k]
+    style = {
+        "fontsize": FONT_SIZE,
+        "row": line / SOLVER_PANEL,
+        "top": -0.42 / SOLVER_PANEL,
+    }
+    potts_plot.draw(axes["a"], potts, key=True, centre=True, key_style=style)
+    copy_state_plot.draw(axes["b"], copies, key=True, key_style=style)
+    for text in figure.findobj(Text):
+        text.set_fontsize(FONT_SIZE)
+    for k, ax in axes.items():
+        ax.tick_params(labelsize=FONT_SIZE, length=2.5, pad=1.5)
+        ax.text(-left / (width - left - right), 1.02, f"({k})", transform=ax.transAxes, fontsize=FONT_SIZE,
                 ha="left", va="bottom", color=INK)  # fmt: skip
-    figure.subplots_adjust(left=0.07, right=0.98, top=0.93, bottom=0.36, wspace=0.22)
     return figure
 
 
@@ -648,7 +687,7 @@ def solver_figures(potts: Path, copies: Path, out: Path, commit: str) -> Path:
     with figure_font():
         figure = solver_figure(*records)
         stamp(figure, text)
-        figure.savefig(out / SOLVERS, dpi=DPI, facecolor="white",
+        figure.savefig(out / SOLVERS, dpi=300, facecolor="white",
                        metadata={"Software": None})  # fmt: skip
         plt.close(figure)
     return out / SOLVERS
@@ -731,7 +770,7 @@ QUESTIONS: dict[str, tuple[str, str]] = {
         "Which planted classes are recovered exactly, with and without phase?",
         "`exact_figure`: `port.qa.scoring.exact_by_class`",
     ),
-    "solvers/solver_combined.png": (
+    "solver_combined.png": (
         "How far above the best does each spatial solver and each copy-state start end, and how fast?",
         "`solver_figure`: `port.studies.potts_plot.draw`, `port.studies.copy_state_plot.draw`",
     ),
@@ -800,7 +839,7 @@ hashing to `{digest}`:
 draw panel (a) on a slide mocked from the planted labels (`port.sim.he_slide`):
 the fixture has no H&E image, and the run never reads the mock.
 `truth/phase.png` is flat: this r0 plants {switches} phase switches.
-`solvers/solver_combined.png` is not drawn from this fixture: `--solvers POTTS.record COPY.record`
+`solver_combined.png` is not drawn from this fixture: `--solvers POTTS.record COPY.record`
 draws it from a `port.studies.potts_stream` and a `port.studies.copy_state_stream` record,
 and its stamp names both records' data hashes.
 The genomic panels of `truth/truth_combined.png`, `truth/clones_genomic.png`,
@@ -838,11 +877,7 @@ def main(argv: list[str] | None = None) -> int:
     arguments = parser.parse_args(argv)
     if arguments.solvers is not None:
         potts, copies = arguments.solvers
-        print(
-            solver_figures(
-                potts, copies, arguments.out / "solvers", provenance.commit()
-            )
-        )
+        print(solver_figures(potts, copies, arguments.out, provenance.commit()))
         return 0
 
     # NB read before anything is written, so the set's own files never mark it `+`
