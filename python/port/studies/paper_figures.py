@@ -456,11 +456,16 @@ def confusion_figure(c: Compared) -> Any:
     return figure
 
 
+MB_PAD = 12.0
+"""Points from the axis to the chromosome numbers, under the Mb labels."""
+
+
 def genomic_compare_figure(c: Compared) -> Any:
     """16: planted and decoded `(A, B)` along the genome per matched clone, mismatched bins marked."""
     import matplotlib.pyplot as plt
     from matplotlib.lines import Line2D
 
+    from port.extensions.genomic_axis import GenomicAxis
     from port.sim.analysis import SERIES
 
     n = len(c.clone_of)
@@ -499,6 +504,12 @@ def genomic_compare_figure(c: Compared) -> Any:
     axes[-1].set_xticks(c.edges[:-1] + lengths / 2,
                         [str(i) for i in range(1, lengths.size + 1)])  # fmt: skip
     axes[-1].tick_params(axis="x", labelsize=6)
+    # NB a tick every 10 Mb, labelled on the last row; the chromosome numbers
+    #    a row below their Mb (T- #683).
+    genome = GenomicAxis(lengths.astype(np.int64))
+    for ax in axes:
+        genome.draw(ax, labels=ax is axes[-1])
+    axes[-1].tick_params(axis="x", which="major", pad=MB_PAD)
     axes[-1].set_xlim(c.edges[0], c.edges[-1])
     axes[-1].set_xlabel("chromosome", fontsize=8, color=INK)
     key = [

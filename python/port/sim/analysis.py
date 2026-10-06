@@ -191,6 +191,20 @@ def binned_profile(r: Realization) -> pd.DataFrame:
     return table
 
 
+def binned_axis(r: Realization) -> Any:
+    """The genomic axis of `binned_profile`'s 1 Mb bins, ticked every 10 Mb (T- #683)."""
+    from port.extensions.genomic_axis import GenomicAxis
+
+    return GenomicAxis.of_table(binned_profile(r))
+
+
+def bp_axis(r: Realization) -> Any:
+    """The genomic axis in base pairs, as `Realization.genome` places loci (T- #683)."""
+    from port.extensions.genomic_axis import GenomicAxis
+
+    return GenomicAxis(r.lengths)
+
+
 class GenomicTruth(NamedTuple):
     """`plot_clones_genomic`'s arguments for the true clones on `binned_profile`'s bins."""
 
@@ -266,8 +280,9 @@ def plot_clones_genomic_truth(r: Realization, out: Path) -> Path:
 
     g = genomic_truth(r)
     figure = plot_clones_genomic(
-        g.lengths, g.counts, g.expected, g.trials, clone_index=g.groups
-    )
+        g.lengths, g.counts, g.expected, g.trials, clone_index=g.groups,
+        axis=binned_axis(r),
+    )  # fmt: skip
     path = _save(figure, out / "clones_genomic.png")
     plt.close(figure)
     return path
@@ -287,7 +302,7 @@ def plot_clone_profiles(r: Realization, out: Path) -> Path:
 
     fig, ax = plt.subplots(figsize=(14, 0.55 * len(r.clones) + 1.6))
     fig.subplots_adjust(left=0.08, right=0.98, top=0.88, bottom=0.3)
-    plot_copy_number_profile(binned_profile(r), ax=ax)
+    plot_copy_number_profile(binned_profile(r), ax=ax, axis=binned_axis(r))
 
     ax.set_yticklabels([t.get_text() for t in ax.get_yticklabels()],
                        rotation=0, ha="right", fontsize=9)  # fmt: skip
@@ -701,6 +716,7 @@ def plot_phase(r: Realization, out: Path) -> Path:
     _draw_chromosome_boundaries(
         [ax], r.lengths, np.arange(1, r.lengths.size + 1), -0.25
     )
+    bp_axis(r).draw(ax)
 
     for c, (start, length) in enumerate(
         zip(r.offsets, r.lengths, strict=True), start=1
@@ -750,6 +766,7 @@ def plot_baseline(r: Realization, out: Path) -> Path:
     _draw_chromosome_boundaries(
         [ax], r.lengths, np.arange(1, r.lengths.size + 1), -0.25
     )
+    bp_axis(r).draw(ax)
     # NB genes at lambda = 0 have no log; only their share is stated.
     ax.text(1.0, 1.02, f"dropout rate={zero.mean():.2f}", transform=ax.transAxes,
             ha="right", va="bottom", fontsize=8)  # fmt: skip
