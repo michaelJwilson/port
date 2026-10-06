@@ -101,8 +101,9 @@ ABSORBED: tuple[Swap, ...] = (
 """The `port` rows `cnamaste` holds, installed on the `cnaster` arm.
 
 PR2: `docs/port-forward.md` rows 1-4, `FIGURE_SWAPS`, at `cnaster`'s
-defaults -- `port` binds `write_fig`'s `dpi=150` and `group_rasters`, which
-`cnamaste` takes up as defaults only at PR9. Row 5, plot-off, is
+defaults -- `port` binds `write_fig`'s `dpi=150` and `group_rasters`, and
+rows 2 and 4's `axis=Ticks()` (T- #683), which `cnamaste` takes up as
+defaults only at PR9. Row 5, plot-off, is
 `run_cnaster(..., plots=False)`, against `PLOT_OFF_SWAPS`. PR3:
 `PREPROCESSING`, under the segment and sample recording `run_cnaster_port`
 enters, as `run_cnamaste` enters its own. PR4: rows 27-30,

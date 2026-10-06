@@ -40,6 +40,8 @@ from matplotlib.collections import LineCollection
 from matplotlib.patches import Rectangle
 from matplotlib.transforms import IdentityTransform
 
+from port.extensions.genomic_axis import GenomicAxis, Ticks, resolve
+
 __all__ = [
     "HATCH",
     "HATCH_ANGLE",
@@ -222,8 +224,16 @@ def plot_copy_number_profile(
     plot_chrname: bool = True,
     figsize: Any = None,
     palette_name: str = "chisel_single",
+    *,
+    axis: GenomicAxis | Ticks | None = None,
 ) -> Any:
-    """`cnaster`'s profile, one row per clone, aberrations hatched A then B."""
+    """`cnaster`'s profile, one row per clone, aberrations hatched A then B.
+
+    `axis`, a `port.extensions.genomic_axis.GenomicAxis` on `df_cnv`'s bins
+    or a `Ticks` made on them, draws the segments and boundaries on its
+    coordinate and ticks every 10 Mb, unlabelled: the chromosome names hold
+    the line below the rows (T- #683). `None` is `cnaster`'s axis.
+    """
     state_style, _ = _palette(palette_name)
     clone_ids = [c.split(" ")[0][5:] for c in df_cnv.columns if c.endswith(" A")]
     clone_ids = _order(df_cnv, clone_ids)
@@ -235,6 +245,11 @@ def plot_copy_number_profile(
         fig.subplots_adjust(bottom=0.25)
     else:
         fig = ax.figure
+
+    genome = resolve(axis, df_cnv, len(df_cnv))
+
+    def at(u: Any) -> Any:
+        return u if genome is None else genome.warp(u)
 
     h = height / num_clones
     gap = 0.2 * h
@@ -254,11 +269,12 @@ def plot_copy_number_profile(
             y0 = gap / 2 + h * (num_clones - k - 1)
 
             for s, e in get_intervals(a_states * 1_000 + b_states)[0]:
+                x0, x1 = at(ch_offset + s), at(ch_offset + e)
                 _segment(
                     ax,
-                    ch_offset + s,
+                    x0,
                     y0,
-                    e - s,
+                    x1 - x0,
                     row,
                     a_states[s],
                     b_states[s],
@@ -268,6 +284,9 @@ def plot_copy_number_profile(
         ch_offset += len(df_ch)
 
     ch_coords.append(ch_offset)
+
+    if genome is not None:
+        ch_coords = list(genome.edges)
 
     # NB unclipped: the first and last edges sit on the x limits, where the
     #    axes clip would cut them to half the width of every other line.
@@ -314,6 +333,9 @@ def plot_copy_number_profile(
         ax.tick_params(axis="x", labelbottom=True, bottom=False, pad=-5)
     else:
         ax.set_xticks([])
+
+    if genome is not None:
+        genome.draw(ax, labels=False)
 
     ax.set_yticks([h * (i + 0.5) for i in range(num_clones)])
     ax.set_yticklabels(
