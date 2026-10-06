@@ -9,7 +9,7 @@ change the run measures.
 
 `--benchmark` marks a recorded run as one of a sweep over every fixture, and
 `--last-benchmark` prints the latest sweep's runs. `run_ledger --best
-clone_ari [--fixture dev]` prints the ledger line, joined
+clone_ari [--fixture dev [--fixture-hash H]]` prints the ledger line, joined
 to its run, that maximizes a metric under its latest definition. `--render
 [--out PATH]` prints the wide view, one row per run and one column per
 metric, `—` where a run has no line, to stdout or to `PATH`. Nothing commits
@@ -92,10 +92,9 @@ def record_sample(arguments: argparse.Namespace, *, dirty: bool) -> int:
 
     `r0` is `dev_tree`'s realization 0, drawn if absent and refused unless it
     is the one `port.sim.fixtures.R0_HASH` names; `easy` and `hard` are CalicoST's.
-    The fixture hash is the sample's content hash (`realization_hash`), the
-    ledger records the run as `<sample>_<hash>` (`ledger.fixture_key`), and a
-    hash the ledger holds under another key is refused before the run
-    (`check_identity`).
+    The fixture hash is the sample's content hash (`realization_hash`), in its
+    own column beside the sample's name, and a hash the ledger holds under
+    another name is refused before the run (`check_identity`).
     """
     from port.sim.fixtures import SAMPLES, SIM_ROOT, r0, realization_hash
 
@@ -109,9 +108,7 @@ def record_sample(arguments: argparse.Namespace, *, dirty: bool) -> int:
     # NB checked before the run as well as at the write, so a refused name
     #    costs no run
     digest = realization_hash(path)
-    ledger.check_identity(
-        ledger.fixture_key(arguments.sample, digest), digest, ledger.ledger()
-    )
+    ledger.check_identity(arguments.sample, digest, ledger.ledger())
 
     audit = [
         *(item for entry in arguments.set for item in ("--set", entry)),
@@ -153,6 +150,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         "--best", choices=list(ledger.METRICS), help="the line maximizing it"
     )
     parser.add_argument("--fixture", default=None, help="with --best, one fixture")
+    parser.add_argument(
+        "--fixture-hash",
+        default=None,
+        help="with --best --fixture, one generation where the name holds several",
+    )
     parser.add_argument(
         "--render", action="store_true", help="the wide view, to stdout or --out"
     )
@@ -207,7 +209,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             print("\t".join(run[c] for c in ledger.RUN_COLUMNS))
         return 0
     if arguments.best:
-        found = ledger.best(arguments.best, arguments.fixture)
+        found = ledger.best(arguments.best, arguments.fixture, arguments.fixture_hash)
         print(ledger.UNMEASURED if found is None else json.dumps(found))
         return 0
     parser.print_help()

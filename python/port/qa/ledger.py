@@ -17,10 +17,11 @@ run is recorded against `provenance.head`, so the files live in the
 checkout `provenance.ROOT` names. `.gitattributes` merges them as `union`,
 so two branches that each append a run both keep theirs.
 
-A ledger fixture is a key, `<name>_<hash>` (`fixture_key`): the name a run
-was asked for, then the first 8 hex digits of the data it ran on. Two
-generations of one manifest are two keys, so no name is read as the other's
-data, and `best` takes a bare name only while it names one dataset.
+A dataset is the pair `fixture`, `fixture_hash`: the name a run was asked
+for, and the 8 hex digits of the data it ran on, in their own columns. A name
+holds every generation drawn under it, one hash each; a hash holds one name
+(`check_identity`), and `best` takes a name alone only while it holds one
+hash.
 """
 
 from __future__ import annotations
@@ -99,25 +100,6 @@ TIMESTAMP = "%Y-%m-%dT%H:%MZ"
 
 def fixture_name(instance: str, *, lattice: bool, loh: bool) -> str:
     return instance + ("-lattice" if lattice else "") + ("-loh" if loh else "")
-
-
-HASHED = re.compile(r"(?P<stem>.+)_(?P<digest>[0-9a-f]{8})")
-"""A fixture key: its stem, `_`, and the 8 hex digits of `fixture_hash`."""
-
-
-def fixture_stem(fixture: str) -> str:
-    """`fixture` without a trailing `_<hash>`: the name the run was asked for."""
-    found = HASHED.fullmatch(fixture)
-    return fixture if found is None else found["stem"]
-
-
-def fixture_key(fixture: str, digest: str) -> str:
-    """`<stem>_<digest>`, the ledger's name for `fixture` run on `digest`'s data;
-    a trailing hash already on `fixture` is replaced, so the key is idempotent."""
-    if re.fullmatch(r"[0-9a-f]{8}", digest) is None:
-        msg = f"a fixture hash is 8 hex digits, got {digest!r}"
-        raise ValueError(msg)
-    return f"{fixture_stem(fixture)}_{digest}"
 
 
 def read_tsv(path: Path, columns: Sequence[str]) -> list[dict[str, str]]:
@@ -207,19 +189,21 @@ def read() -> list[dict[str, str]]:
 
 
 def check_identity(fixture: str, digest: str, rows: list[dict[str, str]]) -> None:
-    """One name, one dataset (#588): refuse a fixture holding another
-    `fixture_hash` in `rows`, or a hash another fixture; raises otherwise.
+    """One hash, one name (#588): refuse `digest` where `rows` hold it under
+    another fixture name; raises otherwise.
 
-    A new generation under an old name would otherwise share its history
-    panel with data it was never measured on.
+    A name may hold several hashes, one per generation: the pair is the
+    dataset, and a history panel is drawn per pair. A dataset under two names
+    would split its history in two.
     """
-    hashes = {r["fixture_hash"] for r in rows if r["fixture"] == fixture} - {digest}
+    if re.fullmatch(r"[0-9a-f]{8}", digest) is None:
+        msg = f"a fixture hash is 8 hex digits, got {digest!r}"
+        raise ValueError(msg)
     names = {r["fixture"] for r in rows if r["fixture_hash"] == digest} - {fixture}
-    if hashes or names:
+    if names:
         msg = (
-            f"{fixture} hashes to {digest}, but the ledger also holds {fixture} "
-            f"as {sorted(hashes)} and {digest} as {sorted(names)}: one fixture "
-            "name names one dataset"
+            f"{fixture} hashes to {digest}, but the ledger holds {digest} as "
+            f"{sorted(names)}: one dataset has one name"
         )
         raise ValueError(msg)
 
@@ -300,10 +284,9 @@ def write(
     test: str = TEST,
     benchmark: bool = False,
 ) -> str:
-    """Append a run to `runs` and `ledger` under `fixture_key`, after
-    `check_identity`; returns the run's id."""
+    """Append a run to `runs` and `ledger`, after `check_identity`; returns
+    the run's id."""
     recorded = ledger()
-    fixture = fixture_key(fixture, recovery["fixture_hash"])
     check_identity(fixture, recovery["fixture_hash"], recorded)
     run, lines = entries(
         recovery,
@@ -325,32 +308,35 @@ def write(
     return run["run_id"]
 
 
-def resolve(fixture: str, rows: list[dict[str, str]]) -> str:
-    """The key `fixture` names in `rows`: itself if a key there, else the one
-    key whose stem it is; raises where a bare name names several datasets."""
-    keys = {r["fixture"] for r in rows}
-    if fixture in keys:
-        return fixture
-    found = sorted(k for k in keys if fixture_stem(k) == fixture)
-    if len(found) > 1:
-        msg = f"{fixture} names {len(found)} datasets, pass one key: {found}"
+def resolve(
+    fixture: str, digest: str | None, rows: list[dict[str, str]]
+) -> tuple[str, str | None]:
+    """The dataset `fixture` (and `digest`, if given) names in `rows`: a name
+    alone resolves to its one hash, and raises where it holds several."""
+    if digest is not None:
+        return fixture, digest
+    hashes = sorted({r["fixture_hash"] for r in rows if r["fixture"] == fixture})
+    if len(hashes) > 1:
+        msg = f"{fixture} holds {len(hashes)} datasets, pass one hash: {hashes}"
         raise ValueError(msg)
-    return found[0] if found else fixture
+    return fixture, (hashes[0] if hashes else None)
 
 
-def best(metric: str, fixture: str | None) -> dict[str, str] | None:
+def best(
+    metric: str, fixture: str | None, digest: str | None = None
+) -> dict[str, str] | None:
     """The ledger line maximizing `metric` under its latest definition, over
-    `fixture`'s lines if given (a key, or a name with one key: `resolve`),
-    joined to its run."""
+    one dataset's lines if given (`fixture`, and `digest` where the name holds
+    several: `resolve`), joined to its run."""
     definition = latest()[metric]
     recorded = ledger()
-    key = None if fixture is None else resolve(fixture, recorded)
+    dataset = None if fixture is None else resolve(fixture, digest, recorded)
     lines = [
         line
         for line in recorded
         if line["metric"] == metric
         and line["definition"] == definition
-        and (key is None or line["fixture"] == key)
+        and (dataset is None or (line["fixture"], line["fixture_hash"]) == dataset)
     ]
     found = max(lines, key=lambda line: float(line["value"]), default=None)
     if found is None:

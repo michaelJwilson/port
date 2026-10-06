@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Any
 
 from port.qa import provenance
-from port.qa.ledger import ROOT, SIM_TEST, UNMEASURED, fixture_stem, read
+from port.qa.ledger import ROOT, SIM_TEST, UNMEASURED, read
 from port.qa.provenance import PLOTS
 
 HISTORY = "HISTORY"
@@ -166,8 +166,7 @@ def figure(
                 xs, ys = zip(*points, strict=True)
                 ax.plot(xs, ys, ("-" if k < 4 else ":") if series is SERIES else ("-" if k % 2 == 0 else ":"), marker="o", ms=2.5, lw=1,
                         color=plt.get_cmap("tab10")(k if series is SERIES else k // 2), label=name)  # fmt: skip
-        # NB the fixture is keyed `<name>_<hash>`, so the label splits it
-        ax.set_ylabel(f"{fixture_stem(fixture)}\n{digest}", fontsize=7)
+        ax.set_ylabel(f"{fixture}\n{digest}", fontsize=7)
         ax.set_ylim(-0.05, 1.05)
         ax.grid(axis="y", lw=0.3)
     axes[0, 0].legend(

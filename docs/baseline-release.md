@@ -27,10 +27,10 @@ peak ≤ 6.15 GB; against `efdebfd` on 14 shared fixtures the wall ratio is
 - Every run is in `docs/metrics/` at `9a47d97`, under the fixture names
   below. The three r0 hashes the ledger already named keep those names
   (`dev_tree_1s_r0`, `dev_tree_1s_easy_r0`, `dev_tree_1s_hard_r0`): one hash,
-  one name (#588). The ledger has since keyed every fixture `<name>_<hash>`
-  and dropped `_ln` (#727): `dev_tree_1s_hard_ln_r0` is
-  `dev_tree_1s_hard_r0_9ec90dc2`, `dev_tree_1s_hard_r0` is
-  `dev_tree_1s_hard_r0_d2938975`.
+  one name (#588). The ledger has since dropped `_ln` (#739): a name holds
+  one hash per generation, the hash in its own `fixture_hash` column, so
+  `dev_tree_1s_hard_ln_r0` is `dev_tree_1s_hard_r0` at `9ec90dc2`, beside
+  `dev_tree_1s_hard_r0` at `d2938975`.
 
 ## Results
 
