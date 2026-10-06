@@ -4,8 +4,8 @@
 0.9335, exact altered (phase-free)
 0.8992 (phased 0.1473), from one
 `run_cnaster_port --sal --png-copies` run on `sim/manifests/dev_tree_1s_easy.toml` r0 at
-code `a7c9efa`: 139 s wall, 3.42 GB peak.
-Ledger `run_id` `a7c9efa-dev_tree_1s_easy_r0_7ba9b01f-1506` (`docs/metrics/`, fixture `dev_tree_1s_easy_r0_7ba9b01f`).
+code `202b6fa`: 139 s wall, 3.42 GB peak.
+Ledger `run_id` `202b6fa-dev_tree_1s_easy_r0_7ba9b01f-1602` (`docs/metrics/`, fixture `dev_tree_1s_easy_r0_7ba9b01f`).
 
 Regenerate from a clean tree, so the stamp carries no `+`; it draws r0 into
 `.cache/paper_figures/` where `--draw` is not given, and refuses any r0 not
@@ -29,7 +29,7 @@ The genomic panels of `truth/truth_combined.png`, `truth/clones_genomic.png`,
 | File | Question | Source |
 | --- | --- | --- |
 | `truth/truth_combined.png` | What was planted, on one page: tree, (A, B) profile, RDR and BAF per clone? | `port.sim.truth_figure.truth_combined_figure` |
-| `truth/simulated_tree.png` | Which events sit on which edge of the simulated clone tree? | `port.sim.truth_figure.simulated_tree_figure`, `truth_combined`'s panel (a) up to 10 events |
+| `truth/simulated_tree.png` | Which events sit on which edge of the simulated clone tree? | `port.sim.truth_figure.simulated_tree_figure`, `truth_combined`'s panel (a) alone |
 | `truth/spatial.png` | Which clone was each spot drawn from? | `port.sim.analysis.plot_spatial` |
 | `truth/clones_genomic.png` | What RDR and BAF does each planted clone give along the genome? | `port.sim.analysis.plot_clones_genomic_truth` |
 | `truth/clone_profiles.png` | What (A, B) does each clone carry along the genome? | `port.sim.analysis.plot_clone_profiles` |
