@@ -356,7 +356,7 @@ the other axis, so two of four blocks are always empty (#248).
 """
 
 
-class RectangularClones(tuple):  # type: ignore[type-arg]
+class RectangularClones(tuple[list[np.ndarray], np.ndarray]):
     """`cnaster`'s `(initial_clone_index, clone_id)`, with how the search ended.
 
     A two-tuple, so every call site that unpacks `cnaster`'s return unpacks
@@ -398,7 +398,7 @@ def admits_assignment(block_sizes: np.ndarray, n_clones: int, floor: float) -> b
     """
     sizes = sorted((int(size) for size in block_sizes), reverse=True)
     need = int(np.floor(floor)) + 1
-    remaining = np.cumsum(sizes[::-1])[::-1].tolist() + [0]
+    remaining = [*np.cumsum(sizes[::-1])[::-1].tolist(), 0]
     totals = [0] * n_clones
 
     def place(block: int) -> bool:
@@ -509,9 +509,12 @@ def initialize_rectangular_clones(
 
     floor = 0.2 * coords.shape[0] / n_clones
 
-    for draw in range(RECTANGLE_REDRAWS + 1):
+    draws = 0
+
+    while draws <= RECTANGLE_REDRAWS:
         block_id = blocks()
         sizes = np.bincount(block_id, minlength=p**2)
+        draws += 1
 
         if admits_assignment(sizes, n_clones, floor):
             break
@@ -522,16 +525,14 @@ def initialize_rectangular_clones(
         )
     else:
         termination = Termination(
-            converged=False, iterations=RECTANGLE_REDRAWS + 1, reason=Stop.INFEASIBLE
+            converged=False, iterations=draws, reason=Stop.INFEASIBLE
         )
         logger.info(
             f"Rectangular clone initialization {termination.reason}: "
             f"{n_clones} equal-count bands (T- #692)."
         )
 
-        return RectangularClones(
-            *_banded(coords, n_clones), termination, RECTANGLE_REDRAWS + 1
-        )
+        return RectangularClones(*_banded(coords, n_clones), termination, draws)
 
     while True:
         block_clone_map = np.random.randint(low=0, high=n_clones, size=p**2)  # noqa: NPY002
@@ -549,8 +550,8 @@ def initialize_rectangular_clones(
             return RectangularClones(
                 initial_clone_index,
                 clone_id,
-                Termination.after(draw + 1, converged=True),
-                draw,
+                Termination.after(draws, converged=True),
+                draws - 1,
             )
 
 
