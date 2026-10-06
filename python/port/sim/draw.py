@@ -13,7 +13,8 @@ Its clones, events, layout and counts are drawn from what the manifest states:
                   (trunk, per_leaf, per_internal) or "felsenstein"
                   (expected_cnas); n_clones;
                   states = [[A, B], ...]. Defaults are CalicoST's easy
-                  sample, `numcnas1.2`, state them
+                  sample, `numcnas1.2`, state them; optional
+                  loh = "reversible" or "irreversible" (T- #698)
     [cna.length]  law = "fixed" (size), "exponential" (mean, minimum) or
                   "lognormal" (sigma, minimum, and exactly one of mean or
                   median): `max(L, minimum)`, `log L ~ Normal(log median,
@@ -58,6 +59,21 @@ each edge into a clone `per_leaf` and each edge into an unobserved ancestor
 `expected_cnas` (`_felsenstein_counts`). A clone carries every event on its path from
 the root, later ones overriding earlier ones where they overlap. `(1, 1)`
 elsewhere.
+
+**Overlaps** (T- #698). An event plants an absolute `(A, B)` from `[cna]
+states`, so a clone's state at a locus is the last event on its path that
+covers it (`clone_copies`): never negative, never outside `states`, and an
+event on another branch may cover the same loci without touching this
+lineage. `[cna] loh` says what an event may plant over its lineage's state:
+absent or `"reversible"`, any state of `states`, as every manifest before
+T- #698 drew; `"irreversible"`, a state that keeps every haplotype the
+lineage has lost at 0 across the event's span, and that differs from the
+lineage's state somewhere in it (`admissible`). Its edges are then drawn
+root first, and a placement with no admissible state is redrawn. The rule
+is opt-in, so the manifests before T- #698 keep their hashes, and required
+of every new manifest (`tests/test_sim_loh_rule.py`).
+`altered_share` is the share of the genome, in base pairs, where any tumour
+clone is not `(1, 1)`: a union over clones, not a sum of event lengths.
 
 **Phase.** One phasing for all slices, as the SNPs are phased on the
 pseudobulk: between consecutive SNPs of a chromosome the reported phase
@@ -130,6 +146,13 @@ BY_LAW = {
 }
 LOGNORMAL_KEYS = ("mean", "median")
 """`[cna.length] law = "lognormal"` states exactly one of these (#619)."""
+LOH_RULES = ("reversible", "irreversible")
+"""`[cna] loh`, optional: what an event may plant over its lineage (T- #698).
+Absent reads as `"reversible"`, the draw of every manifest before it."""
+PLACEMENTS = 1_000
+"""Placements tried per `loh = "irreversible"` event before the draw is refused.
+On `dev_tree_1s_dense`'s trees at seeds 0-99, 453 of 5,892 events took more
+than one, and none more than 7 (T- #698)."""
 SIZE_LAWS = {"loguniform": ("minimum", "maximum"), "lognormal": ("median", "sigma")}
 """`[layout.size]`: each drawn clone's size in spots, per seed (#544). Optional:
 without it every drawn clone takes `[layout] radius`, as before."""
@@ -356,6 +379,8 @@ def _check(manifest: DrawManifest) -> None:
                 f"[cna] felsenstein: n_clones >= 2 and expected_cnas >= n_clones, "
                 f"not {leaves} and {manifest.cna['expected_cnas']}"
             )
+    if manifest.cna.get("loh", "reversible") not in LOH_RULES:
+        problems.append(f"[cna] loh {manifest.cna['loh']!r}: one of {LOH_RULES}")
     if manifest.model["admixture"] not in ADMIXTURE_LAWS:
         problems.append(f"[model] admixture {manifest.model['admixture']!r}")
     if manifest.model["counts_sampler"] not in COUNT_SAMPLERS:
@@ -468,20 +493,92 @@ def lognormal_median(law: dict[str, Any]) -> float:
     return float(law["mean"]) * float(np.exp(-(float(law["sigma"]) ** 2) / 2.0))
 
 
+def _placement(
+    manifest: DrawManifest, rng: np.random.Generator
+) -> tuple[str, int, int]:
+    """A chromosome by length, a length from `[cna.length]`, a start uniform on it."""
+    lengths = np.asarray(manifest.genome["chromosome_lengths"], dtype=np.float64)
+    index = int(rng.choice(lengths.size, p=lengths / lengths.sum()))
+    span = min(_event_length(manifest, rng), int(lengths[index]))
+    start = int(rng.integers(0, int(lengths[index]) - span + 1))
+    return str(index + 1), start, start + span
+
+
 def _events(
     manifest: DrawManifest, count: int, rng: np.random.Generator
 ) -> tuple[Event, ...]:
-    """`count` events: a chromosome by length, a start uniform on it, a state."""
-    lengths = np.asarray(manifest.genome["chromosome_lengths"], dtype=np.float64)
+    """`count` events: a placement, then a state uniform on `[cna] states`."""
     states = [tuple(s) for s in manifest.cna["states"]]
     out = []
 
     for _ in range(count):
-        index = int(rng.choice(lengths.size, p=lengths / lengths.sum()))
-        span = min(_event_length(manifest, rng), int(lengths[index]))
-        start = int(rng.integers(0, int(lengths[index]) - span + 1))
+        chromosome, start, end = _placement(manifest, rng)
         a, b = states[int(rng.integers(len(states)))]
-        out.append(Event(str(index + 1), start, start + span, int(a), int(b)))
+        out.append(Event(chromosome, start, end, int(a), int(b)))
+
+    return tuple(out)
+
+
+def lineage_states(
+    lineage: tuple[Event, ...], chromosome: str, start: int, end: int
+) -> list[tuple[int, int]]:
+    """The lineage's `(A, B)` on each piece of `[start, end)` its events cut it into.
+
+    The last event of `lineage` covering a piece sets it, `(1, 1)` where none does.
+    """
+    on = [e for e in lineage if e.chromosome == chromosome]
+    cuts = {start, end} | {p for e in on for p in (e.start, e.end) if start < p < end}
+    out = []
+
+    for left, right in itertools.pairwise(sorted(cuts)):
+        state = (1, 1)
+        for e in on:
+            if e.start <= left and right <= e.end:
+                state = (e.a, e.b)
+        out.append(state)
+
+    return out
+
+
+def admissible(
+    states: list[tuple[int, int]], pieces: list[tuple[int, int]]
+) -> list[tuple[int, int]]:
+    """The states an `loh = "irreversible"` event may plant over `pieces`, in `states`' order.
+
+    A haplotype at 0 on any piece stays 0, and the state differs from the
+    lineage's on at least one piece, so the event changes the clone.
+    """
+    return [
+        (a, b)
+        for a, b in states
+        if all((pa > 0 or a == 0) and (pb > 0 or b == 0) for pa, pb in pieces)
+        and any((a, b) != piece for piece in pieces)
+    ]
+
+
+def _lineage_events(
+    manifest: DrawManifest,
+    count: int,
+    lineage: tuple[Event, ...],
+    rng: np.random.Generator,
+) -> tuple[Event, ...]:
+    """`count` events drawn on top of `lineage`, each on top of the ones before it."""
+    states = [(int(a), int(b)) for a, b in manifest.cna["states"]]
+    out: list[Event] = []
+
+    for _ in range(count):
+        for _ in range(PLACEMENTS):
+            chromosome, start, end = _placement(manifest, rng)
+            pieces = lineage_states((*lineage, *out), chromosome, start, end)
+            allowed = admissible(states, pieces)
+            if allowed:
+                break
+        else:
+            msg = f"[cna] loh = irreversible: no admissible state in {PLACEMENTS} placements"
+            raise ValueError(msg)
+
+        a, b = allowed[int(rng.integers(len(allowed)))]
+        out.append(Event(chromosome, start, end, a, b))
 
     return tuple(out)
 
@@ -507,34 +604,44 @@ def _felsenstein_counts(
 
 
 def draw_tree(manifest: DrawManifest, rng: np.random.Generator) -> CloneTree:
-    """The clones' tree and the events on each of its edges."""
+    """The clones' tree and the events on each of its edges.
+
+    Edges in name order; under `[cna] loh = "irreversible"` root first, each
+    edge's events drawn on top of its ancestors' (T- #698).
+    """
     parent = _topology(manifest, rng)
     mode = manifest.cna["mode"]
     leaves = set(manifest.tumour)
+
     if mode == "felsenstein":
         counts = _felsenstein_counts(
             parent, leaves, float(manifest.cna["expected_cnas"]), rng
         )
-        edge_events: dict[str, tuple[Event, ...]] = {"normal": ()}
+    else:
+        shared_unique = mode == "shared.unique"
+        table = manifest.cna
+        trunk = int(table["shared" if shared_unique else "trunk"])
+        leaf = int(table["unique" if shared_unique else "per_leaf"])
+        internal = 0 if shared_unique else int(table["per_internal"])
+        counts = {
+            node: trunk
+            if parent[node] == "normal"
+            else (leaf if node in leaves else internal)
+            for node in parent
+            if node != "normal"
+        }
+
+    edge_events: dict[str, tuple[Event, ...]] = {"normal": ()}
+    if manifest.cna.get("loh", "reversible") == "reversible":
         for node in sorted(counts):
             edge_events[node] = _events(manifest, counts[node], rng)
         return CloneTree(parent, edge_events, manifest.tumour)
 
-    shared_unique = mode == "shared.unique"
-    table = manifest.cna
-    trunk = int(table["shared" if shared_unique else "trunk"])
-    leaf = int(table["unique" if shared_unique else "per_leaf"])
-    internal = 0 if shared_unique else int(table["per_internal"])
-
-    edge_events = {"normal": ()}
-    for node in sorted(n for n in parent if n != "normal"):
-        if parent[node] == "normal":
-            count = trunk
-        else:
-            count = leaf if node in leaves else internal
-        edge_events[node] = _events(manifest, count, rng)
-
-    return CloneTree(parent, edge_events, manifest.tumour)
+    tree = CloneTree(parent, edge_events, manifest.tumour)
+    for node in sorted(counts, key=lambda n: (len(tree.path(n)), n)):
+        lineage = tuple(e for up in tree.path(node)[:-1] for e in edge_events[up])
+        edge_events[node] = _lineage_events(manifest, counts[node], lineage, rng)
+    return tree
 
 
 def clone_copies(
@@ -576,6 +683,19 @@ def truth_profile(
         frame[f"{clones[label]}_A_copy"] = copies[:, label, 0]
         frame[f"{clones[label]}_B_copy"] = copies[:, label, 1]
     return frame
+
+
+def altered_share(tree: CloneTree, chromosome_lengths: list[int]) -> float:
+    """The share of the genome, in bp, where any tumour clone is not `(1, 1)` (T- #698).
+
+    A union over the clones on `truth_profile`'s segments, so loci covered by
+    several events, on one lineage or on several, count once.
+    """
+    profile = truth_profile(tree, tree.leaves, chromosome_lengths)
+    copies = profile.filter(regex=r"_[AB]_copy$").to_numpy()
+    altered = np.any(copies != 1, axis=1)
+    extent = (profile["end"] - profile["start"]).to_numpy()
+    return float(extent[altered].sum() / sum(int(n) for n in chromosome_lengths))
 
 
 def tree_table(tree: CloneTree) -> pd.DataFrame:
