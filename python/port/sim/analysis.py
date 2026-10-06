@@ -558,22 +558,14 @@ ROOT = "root"
 """The drawn tree's root, an unobserved ancestor: parent of the `normal` leaf and the tumour."""
 
 
-class Layout(NamedTuple):
-    """Where `draw_tree` puts each node: its parent, event time and height."""
-
-    tree: Tree
-    parent: dict[str, str | None]
-    """Each node's parent in the binary tree drawn, `ROOT` on top."""
-    x: dict[str, float]
-    """Each node's x: event time, every leaf at the deepest one's."""
-    y: dict[str, float]
-    """Each node's y: leaves at `0 .. n - 1`, top highest; an inner node at its children's mean."""
-    leaves: list[str]
-    """The leaves, top to bottom."""
-
-
-def layout(r: Realization) -> Layout:
-    """The clones' tree as `draw_tree` lays it out, from `r.tree` alone.
+def layout(
+    r: Realization,
+) -> tuple[Tree, dict[str, str | None], dict[str, float], dict[str, float], list[str]]:
+    """The clones' tree as `draw_tree` lays it out, from `r.tree` alone:
+    `(tree, parent, x, y, leaves)`, each node's parent in the binary tree
+    drawn (`ROOT` on top), its x (event time, every leaf at the deepest
+    one's), its y (leaves at `0 .. n - 1`, top highest; an inner node at its
+    children's mean), and the leaves top to bottom.
 
     The tree is drawn binary and ladderized (T- #660): the root, an
     unobserved ancestor, splits into `normal`, a leaf with no events, on top
@@ -640,7 +632,7 @@ def layout(r: Realization) -> Layout:
     #    line up; a leaf's edge runs on past its last event (T- #660).
     for leaf in order:
         at[leaf] = width
-    return Layout(t, parent, at, y, order)
+    return t, parent, at, y, order
 
 
 def tree_order(r: Realization) -> tuple[str, ...]:
@@ -653,11 +645,9 @@ def tree_order(r: Realization) -> tuple[str, ...]:
     drawn $m_1$ is the tree's first tumour clone, whatever the truth files
     name it.
     """
-    lay = layout(r)
-    drawn = sorted(
-        (c for c in r.clones if c in lay.y), key=lambda c: (-lay.y[c], lay.x[c])
-    )
-    return (*drawn, *(c for c in r.clones if c not in lay.y))
+    _, _, x, y, _ = layout(r)
+    drawn = sorted((c for c in r.clones if c in y), key=lambda c: (-y[c], x[c]))
+    return (*drawn, *(c for c in r.clones if c not in y))
 
 
 def draw_tree(
@@ -688,8 +678,7 @@ def draw_tree(
     Above `MANY_EVENTS` events the edges carry no events, only the topology
     (PR- #701).
     """
-    lay = layout(r)
-    t, parent, at, y, order = lay
+    t, parent, at, y, order = layout(r)
     width = max(at.values())
     named = name or (lambda clone: display(clone, r.clones))
     small = dot / 90.0
