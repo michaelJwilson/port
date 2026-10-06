@@ -63,7 +63,7 @@ SOURCE = {
 }  # fmt: skip
 """Each start's source: the package whose code it runs."""
 KEY_NAMES = {
-    "calicost-gmm": "CalicoST-GMM", "lattice": "Lattice", "prior": "Prior", "kmeans++": "K-means++",
+    "calicost-gmm": "CalicoST-GMM", "lattice": "Lattice", "prior": "Prior", "kmeans++": r"$k$-means++",
     "emission++": "Emission++", "gaussian-em": "Gaussian-EM", "anneal-hmm": "Anneal",
     "tempering-hmm": "Parallel tempering", "hmc-hmm": "HMC",
 }  # fmt: skip
@@ -75,7 +75,7 @@ COLOUR = {name: tab20(k) for name, k in NUMBER.items()}
 DODGE = 1.12
 FLOOR = 1e-2
 
-RUNTIME_FLOOR = 1e-1
+RUNTIME_FLOOR = 0.5
 """With `key`, runtimes below it are drawn at it, a left arrow marking the bound [s]."""
 """The "0" tick: runs within `FLOOR` nats of the best."""
 
