@@ -67,9 +67,9 @@ def capture(sample_name: str, out: Path) -> None:
 
     mpl.use("Agg")
     from port.patch.hmm_initialize import distinct
+    from port.sim.fixtures import load_simulated
 
     from tests.sim_audit import run_arm
-    from tests.sim_fixtures import load_simulated
 
     out.mkdir(parents=True, exist_ok=True)
     real = distinct.gmm_init

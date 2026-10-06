@@ -32,7 +32,7 @@ from port.qa import provenance
 from tests.badges import MEASUREMENTS
 
 INSTANCE = "dev"
-"""What the run is measured on: `tests.fixtures.dev_instance`, five states."""
+"""What the run is measured on: `port.sim.truth.dev_instance`, five states."""
 
 
 def _lines(function: Any) -> tuple[str, set[int]]:
@@ -109,9 +109,10 @@ def _run(report: Path) -> None:
 
     mpl.use("Agg")
 
-    from tests.fixtures import dev_instance
+    from port.sim.run_config import run_written
+    from port.sim.truth import dev_instance
+
     from tests.generate_plots import STATES
-    from tests.run_config import run_written
 
     # NB `__path__`, not `__file__`: this pin ships `cnaster` as a namespace
     #    package, with no `__init__.py` to name.

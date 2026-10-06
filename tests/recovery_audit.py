@@ -25,7 +25,7 @@ What is scored:
 **Integer copies need a truth that is integer.** The dev instance plants
 `mu` in `[1.5, 5]` and `p` in `[0.58, 0.88]`, which is no `(A, B)`, and three
 of its states exceed `cnaster`'s `max_total_copy = 6`; `--lattice` plants
-`tests.fixtures.COPY_LATTICE` on the same genome instead, where
+`port.sim.truth.COPY_LATTICE` on the same genome instead, where
 `2 mu = A + B` exactly.
 
 `--likelihood` rebuilds the objective the HMM maximized
@@ -58,8 +58,7 @@ import pandas as pd
 import yaml
 from port.qa.scoring import integer_clones, matched, overlap
 from port.qa.statistics import measured, peak_gb
-
-from tests.fixtures import CoreInferenceTruth
+from port.sim.truth import CoreInferenceTruth
 
 __all__ = ["Recovery", "run_arm", "score"]
 
@@ -142,12 +141,12 @@ def _spots(barcodes: pd.Series) -> np.ndarray:
 def planted_rows(seglevel: pd.DataFrame, truth: CoreInferenceTruth) -> np.ndarray:
     """The `seglevel` row covering each planted bin's gene, or `-1`.
 
-    `tests/tmp_inputs.py` writes bin `k` of a chromosome as one gene at
+    `python/port/sim/inputs.py` writes bin `k` of a chromosome as one gene at
     `k * GENE_SPACING`, so a row covers a planted bin when its `[START, END]`
     holds that gene's start on the same chromosome. A table with one row per
     planted bin is read as the planted bins in order.
     """
-    from tests.tmp_inputs import GENE_SPACING
+    from port.sim.inputs import GENE_SPACING
 
     n_bins = int(np.sum(truth.lengths))
 
@@ -437,9 +436,8 @@ def plant_diffexp(
     Poisson-redrawn at the scaled mean from a fixed stream, so the counts stay
     counts.
     """
+    from port.sim.truth import balanced_clone
     from scipy import sparse
-
-    from tests.fixtures import balanced_clone
 
     adata = pre_image.adata
     counts = np.asarray(adata.layers["count"])
@@ -488,10 +486,9 @@ def run_arm(
     import scipy.optimize
     from port.extensions.copy_errors import Captured, captured_fits
     from port.scripts.run_cnaster import main
-
-    from tests.run_config import write_run_cnaster_config
-    from tests.tmp_inputs import write_tmp_inputs
-    from tests.unsegment import unsegment
+    from port.sim.inputs import write_tmp_inputs
+    from port.sim.run_config import write_run_cnaster_config
+    from port.sim.unsegment import unsegment
 
     root = Path(tempfile.mkdtemp())
     pre_image = unsegment(truth, flip_every=0, unassigned_genes=0)
@@ -644,7 +641,7 @@ def main() -> None:
     parser.add_argument(
         "--loh",
         action="store_true",
-        help="with --lattice, add mirrored LOH (fixtures.LOH_STATES)",
+        help="with --lattice, add mirrored LOH (port.sim.truth.LOH_STATES)",
     )
     parser.add_argument(
         "--likelihood", action="store_true", help="-log P(x) at the fit and the truth"
@@ -687,13 +684,15 @@ def main() -> None:
     parser.add_argument("flags", nargs=argparse.REMAINDER)
     arguments = parser.parse_args()
 
+    from port.sim import truth as sim_truth
+
     from tests import fixtures
     from tests.metrics import fixture_hash
 
     instance = getattr(fixtures, f"{arguments.instance}_instance")
     truth = (
         instance(
-            n_states=len(fixtures.COPY_LATTICE), copy_lattice=True, loh=arguments.loh
+            n_states=len(sim_truth.COPY_LATTICE), copy_lattice=True, loh=arguments.loh
         )
         if arguments.lattice
         else instance()

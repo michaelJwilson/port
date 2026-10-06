@@ -1,7 +1,7 @@
 """Realizations of one planted genome, each fitted by `run_cnaster_port` (#291).
 
 The genome -- segments, events, clone bands, exposure, depth -- is planted
-once by `tests.fixtures.core_inference_truth`. A **realization** redraws only
+once by `port.sim.truth.core_inference_truth`. A **realization** redraws only
 the counts, through the same families and the same per-spot streams the
 fixture uses, keyed on a realization seed instead of the genome's. So the
 scatter across realizations is the sampling variation of one experiment,
@@ -30,11 +30,11 @@ import numpy as np
 import torch
 from port.extensions import copy_errors as _copy_errors
 from port.extensions.copy_errors import Captured
+from port.sim.run_config import run_written
+from port.sim.truth import CoreInferenceTruth, _emission_families, core_inference_truth
 from scipy.optimize import linear_sum_assignment
 
-from tests.fixtures import CoreInferenceTruth, _emission_families, core_inference_truth
 from tests.plots_dir import PLOTS
-from tests.run_config import run_written
 
 GENOME = {
     "n_clones": 3,
@@ -98,7 +98,7 @@ def planted_genome(
     `determine_normal_baseline` needs: without one, at the fixture's default
     rates, a planted `(5, 0.88)` came back as `mu = 0.92, p = 0.12`.
 
-    `lattice` plants `tests.fixtures.COPY_LATTICE` instead of `PLANTED_MU` and
+    `lattice` plants `port.sim.truth.COPY_LATTICE` instead of `PLANTED_MU` and
     the fixture's allele fractions, so every state is an integer `(A, B)`
     with `2 mu = A + B` (#353); the genome is otherwise the same.
     """

@@ -42,7 +42,7 @@ SID = "calicost"
 
 def baseline() -> pd.DataFrame:
     """`sim/normal_baseline.txt.gz`: the genes, their loci and lambda."""
-    from tests.sim_fixtures import SIM_ROOT
+    from port.sim.fixtures import SIM_ROOT
 
     return pd.read_csv(SIM_ROOT / "normal_baseline.txt.gz", sep="\t", comment="#")
 
@@ -94,8 +94,7 @@ def tree_from(profile: pd.DataFrame, clones: list[str]) -> pd.DataFrame:
 def stage(key: str, out: Path) -> Path:
     """CalicoST `key` written as a realization directory under `out/key`."""
     import anndata
-
-    from tests.sim_fixtures import SIM_ROOT
+    from port.sim.fixtures import SIM_ROOT
 
     src = SIM_ROOT / SAMPLES[key]
     root = out / key
@@ -132,8 +131,7 @@ def stage(key: str, out: Path) -> Path:
 
 def _manifest(clones: list[str], key: str) -> dict[str, Any]:
     from port.sim import draw
-
-    from tests.sim_fixtures import REPOSITORY
+    from port.sim.fixtures import REPOSITORY
 
     tables = draw.read_manifest(REPOSITORY / "sim/manifests/dev_tree_1s.toml").tables
     tables = json.loads(json.dumps(tables, default=str))

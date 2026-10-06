@@ -17,8 +17,7 @@ from typing import Any
 import numpy as np
 import pytest
 import scipy.sparse as sp
-
-from tests.run_config import PlantedInstance
+from port.sim.run_config import PlantedInstance
 
 pytestmark = pytest.mark.preprocessing
 

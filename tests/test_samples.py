@@ -225,10 +225,9 @@ def test_a_reversed_sample_sheet_writes_the_same_clones_and_samples(
     interleaved rows cannot (the `analytic` test covers them).
     """
     import matplotlib as mpl
+    from port.sim.fixtures import load_simulated, r0
 
     from tests.sim_audit import run_arm
-    from tests.sim_fixtures import load_simulated
-    from tests.sim_stages import r0
 
     mpl.use("Agg")
     r0()

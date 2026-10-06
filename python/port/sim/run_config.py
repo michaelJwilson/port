@@ -1,7 +1,7 @@
 """The configuration `run_cnaster` reads, written for a temporary fixture.
 
 `cnaster` ships `zenodo_sim_config.yaml` as the worked example, and this is
-that file with the paths pointed at what `tests/tmp_inputs.py` wrote and the
+that file with the paths pointed at what `python/port/sim/inputs.py` wrote and the
 scale reduced to the dev instance. It is kept in this shape, section for
 section, so a key the script starts reading is a diff against the original
 rather than a discovery.
@@ -35,9 +35,9 @@ from typing import Any
 import numpy as np
 import yaml
 
-from tests.fixtures import CoreInferenceTruth, core_inference_truth
-from tests.tmp_inputs import FILTERED_FEATURE_NAME, WrittenInputs, write_tmp_inputs
-from tests.unsegment import Unsegmented, unsegment
+from port.sim.inputs import FILTERED_FEATURE_NAME, WrittenInputs, write_tmp_inputs
+from port.sim.truth import CoreInferenceTruth, core_inference_truth
+from port.sim.unsegment import Unsegmented, unsegment
 
 GATE_LATTICE = (25, 40)
 GATE_OBS = 40

@@ -12,16 +12,15 @@ this one, and what the round trip adds is that they are reachable from the
 files at all -- and that a stage nobody had run does not raise.
 
 Two defects and one fixture gap were found by getting this far: #105, #106,
-and the widened confidence interval `tests/run_config.py` states.
+and the widened confidence interval `python/port/sim/run_config.py` states.
 """
 
 from pathlib import Path
 
 import matplotlib as mpl
 import pytest
-
-from tests.fixtures import dev_instance
-from tests.run_config import PlantedInstance, run_written
+from port.sim.run_config import PlantedInstance, run_written
+from port.sim.truth import dev_instance
 
 mpl.use("Agg")
 """No display in CI, and the figures are written rather than shown."""

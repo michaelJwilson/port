@@ -39,18 +39,22 @@ BUDGET: dict[str, int] = {
     #    `Samples`, checked at construction, and `Recorded`, a run's samples.
     #    59: T- #617 WP2's `pipeline.Default`, a flag's default and its off flag.
     #    60: T- #673 G1's `port.qa.statistics.Measured`, the wall seconds and
-    #    peak memory every audit and study read for itself.
-    "classes": 60,
+    #    peak memory every audit and study read for itself. 66: T- #673 G6
+    #    moved the simulation machinery from `tests/` into `port.sim`:
+    #    `CoreInferenceTruth`, `SimulatedSample`, `WrittenInputs`, `Binned`,
+    #    `Unsegmented` (frozen dataclasses) and `Slide` (a NamedTuple).
+    "classes": 66,
     # NB step 4: 18 records became NamedTuples; the dataclasses left carry
     #    mutable state, machinery or a `__post_init__` (#517 D). Step 8 moved
     #    7 dataclasses and 1 NamedTuple to `sandbox/`. 21: T- #418's `Samples`
     #    (a `__post_init__`) and `Recorded` (mutable state). 22: T- #673 G1's
-    #    `Measured` (mutable state: filled when its block exits).
-    "dataclasses": 22,
+    #    `Measured` (mutable state: filled when its block exits). 27: G6's five
+    #    frozen records, moved with the machinery rather than added.
+    "dataclasses": 27,
     # NB 24: `analysis.GenomicTruth` (the truth page). 26: #540's
     #    `CopyCall` and `CopyStart` (`Row` in `sandbox/`, #547). 27: T- #617
-    #    WP2's `pipeline.Default`.
-    "NamedTuples": 27,
+    #    WP2's `pipeline.Default`. 28: G6's `port.sim.he_slide.Slide`, moved.
+    "NamedTuples": 28,
 }
 """`python/port` outside `sandbox/`."""
 

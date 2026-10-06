@@ -19,7 +19,7 @@ LABELS = np.array([0, 1, 1, 2])
 
 
 def _sample() -> object:
-    from tests.sim_fixtures import SimulatedSample
+    from port.sim.fixtures import SimulatedSample
 
     return SimulatedSample(
         name="toy",

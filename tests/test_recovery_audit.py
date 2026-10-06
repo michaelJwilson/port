@@ -34,7 +34,7 @@ def test_the_copy_lattice_plants_integer_allele_copies() -> None:
     is no integer pair. `mu` is stored as its log, so it round-trips to
     round-off rather than to the bit.
     """
-    from tests.fixtures import COPY_LATTICE, dev_instance
+    from port.sim.truth import COPY_LATTICE, dev_instance
 
     truth = dev_instance(n_states=len(COPY_LATTICE), copy_lattice=True)
     copies = np.asarray(COPY_LATTICE, dtype=np.float64)
@@ -50,7 +50,7 @@ def test_the_copy_lattice_plants_integer_allele_copies() -> None:
 @pytest.mark.snapshot
 def test_the_default_grid_is_unchanged() -> None:
     """`copy_lattice` is off by default, so every other fixture draws as before."""
-    from tests.fixtures import dev_instance
+    from port.sim.truth import dev_instance
 
     truth = dev_instance()
 
@@ -64,7 +64,7 @@ def test_the_default_grid_is_unchanged() -> None:
 
 @pytest.mark.infra
 def test_a_state_count_beyond_the_lattice_is_refused() -> None:
-    from tests.fixtures import COPY_LATTICE, dev_instance
+    from port.sim.truth import COPY_LATTICE, dev_instance
 
     with pytest.raises(ValueError, match="copy lattice has"):
         dev_instance(n_states=len(COPY_LATTICE) + 1, copy_lattice=True)
@@ -72,8 +72,8 @@ def test_a_state_count_beyond_the_lattice_is_refused() -> None:
 
 def _lattice_run(*, oracle_normal: bool) -> Recovery:
     import matplotlib as mpl
+    from port.sim.truth import COPY_LATTICE, dev_instance
 
-    from tests.fixtures import COPY_LATTICE, dev_instance
     from tests.recovery_audit import run_arm
 
     mpl.use("Agg")

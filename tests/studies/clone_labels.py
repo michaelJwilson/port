@@ -55,9 +55,9 @@ def capture(
     import yaml
     from port.patch import normal_spot
     from port.patch.hmrf import core_inference
+    from port.sim.fixtures import load_simulated
 
     from tests.sim_audit import run_arm
-    from tests.sim_fixtures import load_simulated
 
     path = Path(sample_name)
     sample = (
@@ -201,9 +201,9 @@ def e2e(sample_name: str, start: str) -> None:
     from dataclasses import asdict
 
     from port.qa.statistics import measured
+    from port.sim.fixtures import load_simulated
 
     from tests.sim_audit import run_arm
-    from tests.sim_fixtures import load_simulated
 
     path = Path(sample_name)
     sample = (

@@ -433,7 +433,7 @@ peak, which says plotting caps this run rather than the emission array --
 a different regime from #90's declared scale, not a contradiction of it.
 
 **Three clone-assignment patches, one on by default** (#348). On
-`tests.fixtures.calicost_instance`, `cnaster` ends with one clone (ARI 0.000):
+`port.sim.truth.calicost_instance`, `cnaster` ends with one clone (ARI 0.000):
 `run_cnaster.py:1105` drops the read-depth refinement's allowed-clone mask, and
 `icm_sweep_deque` then moves every clone under 200 spots at random into the one
 that reached 200. `--floor-merge` keeps the floor but merges the smallest clone
@@ -503,7 +503,7 @@ median, against 29-35% under the exponential (#619;
 exponential; `baseline/dev_tree.toml` freezes `dev_tree`'s exponential
 generation (`3381575a`), which `tests.sim_stages` caches as r0.
 Each `dev_tree*` manifest states `[sample] r0_hash`, its realization 0's
-`tests.sim_stages.realization_hash`, so a result names the generation it was
+`port.sim.fixtures.realization_hash`, so a result names the generation it was
 drawn at; `tests/test_sim_r0_hash.py` redraws each to it.
 `tests.sim_audit` runs and scores one realization:
 
@@ -522,7 +522,7 @@ the manifest draws only once the offsets are stated:
 `[tool.port] max_file_bytes` (5 MB): GitHub rejects 100 MiB, and a clone keeps
 every version. CalicoST's samples and `sim/normal_baseline.txt.gz` are
 stored compressed (`port.sim.files`, deterministic gzip where the format is
-not compressed already); `tests.sim_fixtures.stage` writes a run's inputs
+not compressed already); `port.sim.fixtures.stage` writes a run's inputs
 out plain under the names `cnaster` opens.
 
 `cnaster` appends a fit record to `cnaster.perf` in the repository root on

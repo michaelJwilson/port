@@ -9,7 +9,7 @@ drops the mask (`run_cnaster.py:1105`, `# onehot_allowed_clones=None,`).
 Without it the refinement is an unconstrained `n_baf * n_clones_rdr`-label
 problem, and `icm_sweep_deque`'s floor finishes it: any clone under 200 spots
 has its spots **randomly** reassigned to a clone that has 200 (`icm.py:940`),
-regardless of BAF clone. Measured on `tests.fixtures.calicost_instance`, whose
+regardless of BAF clone. Measured on `port.sim.truth.calicost_instance`, whose
 BAF stage recovers the planted four clones exactly: 16 sub-clones of about 100
 spots, one of which reached 200 after the first sweep, so 1,509 of 1,600
 spots were moved into it and the run ended with one clone (ARI 0.000).

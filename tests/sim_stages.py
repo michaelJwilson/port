@@ -18,18 +18,15 @@ harness modules. A change elsewhere in `tests/` leaves the cache valid.
 
 Samples: `r0` is `dev_tree`'s realization 0 at the frozen exponential-length
 generation (`sim/manifests/baseline/dev_tree.toml`, #619), drawn on demand and
-refused if its content hash is not `R0_HASH`; `easy` and `hard` are CalicoST's committed
-samples (`tests.sim_fixtures`).
+refused if its content hash is not `R0_HASH` (`port.sim.fixtures`); `easy` and `hard` are CalicoST's committed
+samples (`port.sim.fixtures`).
 """
 
 from __future__ import annotations
 
 import gzip
 import hashlib
-import os
 import pickle
-import subprocess
-import sys
 import tempfile
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -37,16 +34,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from port.sim.fixtures import R0_HASH, r0, realization_hash
+
 ROOT = Path(__file__).resolve().parent.parent
 CACHE = ROOT / ".cache" / "sim_stages"
-
-R0 = ROOT / "sim" / "generated" / "dev_tree" / "r0"
-R0_MANIFEST = "sim/manifests/baseline/dev_tree.toml"
-R0_HASH = "3381575a"
-"""`dev_tree` r0 at CalicoST's 60 x 50 array per slice (#470): 6,000 spots.
-The exponential-length generation every cached stage and r0 figure was measured
-on, frozen when the live `dev_tree.toml` moved to lognormal lengths (#619); a
-live draw writes the same directory and is refused here by its hash."""
 
 CAPTURED: tuple[str, ...] = (
     "initial_phase_given_partition",
@@ -68,7 +59,7 @@ OUTPUTS = ("clone_labels.tsv", "cnv_seglevel.tsv", "cnv_perstate.tsv", "cnv_stat
 """What a record keeps of the run's output directory: small, and placed."""
 
 KEYED = ("python/port", "src", "uv.lock", "Cargo.lock")
-HARNESS = ("tests/sim_stages.py", "tests/sim_audit.py", "tests/sim_fixtures.py")
+HARNESS = ("tests/sim_stages.py", "tests/sim_audit.py")
 
 
 @dataclass
@@ -109,72 +100,9 @@ class Stages:
         return calls[index]
 
 
-def realization_hash(path: Path) -> str:
-    """The first 8 hex of SHA-256 over a realization's files, names and decoded bytes.
-
-    A file is keyed by its name with `.gz` stripped and hashed over its
-    decompressed bytes, so how a file is stored cannot move the hash (#595):
-    a sample with no `.gz` hashes as its stored bytes. A name present both
-    plain and `.gz` counts once where the two decode equal, and is refused
-    where they differ.
-
-    Left out: the three files that record absolute paths, and what a run or
-    a plot writes into the directory.
-    """
-    skipped = {"config.yaml", "manifest.json", "sample_sheet.tsv"}
-    digest = hashlib.sha256()
-
-    for directory, names, files in os.walk(path):
-        names[:] = sorted(n for n in names if n not in {"output", "qa"})
-        decoded: dict[str, bytes] = {}
-
-        for name in files:
-            stored = Path(directory, name)
-            key = stored.relative_to(path).as_posix().removesuffix(".gz")
-            data = stored.read_bytes()
-            data = gzip.decompress(data) if name.endswith(".gz") else data
-
-            if key in decoded and decoded[key] != data:
-                msg = f"{stored}: plain and .gz copies of {key} decode differently"
-                raise ValueError(msg)
-            decoded[key] = data
-
-        for key in sorted(decoded):
-            if key in skipped:
-                continue
-
-            digest.update(key.encode())
-            digest.update(decoded[key])
-
-    return digest.hexdigest()[:8]
-
-
-def r0() -> Path:
-    """`dev_tree`'s realization 0, drawn if absent, refused if not `R0_HASH`."""
-    if not (R0 / "truth_clone_labels.tsv").is_file():
-        subprocess.run(
-            [sys.executable, "-m", "port.sim.draw", R0_MANIFEST],
-            cwd=ROOT,
-            check=True,
-            capture_output=True,
-        )
-
-    found = realization_hash(R0)
-
-    if found != R0_HASH:
-        msg = (
-            f"{R0} hashes to {found}, not {R0_HASH}: the manifest or the "
-            "simulator changed, so every cached stage of r0 is stale"
-        )
-        raise RuntimeError(msg)
-
-    return R0
-
-
 def _sample(name: str) -> tuple[Any, str]:
     """The `SimulatedSample`, and the content key it is cached under."""
-    from tests.sim_audit import SAMPLES
-    from tests.sim_fixtures import load_simulated
+    from port.sim.fixtures import SAMPLES, load_simulated
 
     if name == "r0":
         r0()

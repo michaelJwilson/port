@@ -26,15 +26,15 @@ from typing import Any
 
 import numpy as np
 import pytest
-
-from tests.adapters import from_core_inference_truth
-from tests.fixtures import (
+from port.sim.truth import (
     CoreInferenceTruth,
     core_inference_truth,
     critical_instance,
     dev_instance,
     key_instance,
 )
+
+from tests.adapters import from_core_inference_truth
 
 DECLARED_SPOTS = 5_000
 """`S` at the scale #87 names, and the one the inference does not fit in."""

@@ -121,6 +121,12 @@ ROLES: dict[str, Role] = {
     "port.patch.hmrf.reindex": "row-helper",
     # sim
     "port.sim.analysis": "sim",
+    "port.sim.fixtures": "sim",
+    "port.sim.he_slide": "sim",
+    "port.sim.inputs": "sim",
+    "port.sim.run_config": "sim",
+    "port.sim.truth": "sim",
+    "port.sim.unsegment": "sim",
     "port.sim.draw": "sim",
     "port.sim.entries": "sim",
     "port.sim.files": "sim",

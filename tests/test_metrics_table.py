@@ -35,8 +35,8 @@ from port.qa.ledger import (
     render,
     runs,
 )
+from port.sim import truth as sim_truth
 
-from tests import fixtures
 from tests.metrics import fixture_hash
 
 
@@ -183,7 +183,7 @@ def test_the_latest_dev_run_is_the_dev_fixture_built_now() -> None:
     recorded = [row for row in read() if row["fixture"] == "dev"]
     assert recorded, "no dev run: run_ledger --record"
 
-    built = fixture_hash(fixtures.dev_instance())
+    built = fixture_hash(sim_truth.dev_instance())
 
     assert built == recorded[-1]["fixture_hash"], (
         f"dev_instance now builds {built}, the latest dev run is "
@@ -193,10 +193,10 @@ def test_the_latest_dev_run_is_the_dev_fixture_built_now() -> None:
 
 @pytest.mark.infra
 def test_the_hash_is_of_the_data_and_moves_with_it() -> None:
-    truth = fixtures.critical_instance()
+    truth = sim_truth.critical_instance()
 
-    assert fixture_hash(truth) == fixture_hash(fixtures.critical_instance())
-    assert fixture_hash(truth) != fixture_hash(fixtures.critical_instance(seed=1))
+    assert fixture_hash(truth) == fixture_hash(sim_truth.critical_instance())
+    assert fixture_hash(truth) != fixture_hash(sim_truth.critical_instance(seed=1))
 
 
 @pytest.mark.snapshot
@@ -220,9 +220,7 @@ def test_each_fixture_name_holds_one_hash_and_each_hash_one_name() -> None:
 def test_the_calicost_runs_carry_the_shipped_samples_hash() -> None:
     """`easy` and `hard` lines hash the committed sample as
     `realization_hash` reads it now (#588)."""
-    from tests.sim_audit import SAMPLES
-    from tests.sim_fixtures import SIM_ROOT
-    from tests.sim_stages import realization_hash
+    from port.sim.fixtures import SAMPLES, SIM_ROOT, realization_hash
 
     for name, sample in SAMPLES.items():
         recorded = {

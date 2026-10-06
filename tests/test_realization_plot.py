@@ -48,7 +48,8 @@ def test_a_realization_redraws_the_counts_and_nothing_else() -> None:
     (0.80 for a standard normal) and a largest below 4.5 over 600 bin-spot
     cells (exceeded with probability 0.004). Realized 0.76 and 2.88.
     """
-    from tests.fixtures import core_inference_truth
+    from port.sim.truth import core_inference_truth
+
     from tests.realizations import realize
 
     truth = core_inference_truth(
@@ -81,7 +82,8 @@ def test_states_are_matched_by_responsibility_not_by_index() -> None:
     and the match has to be the closest rather than an equal one. Reading
     by index would return the identity; the relabelling is what comes back.
     """
-    from tests.fixtures import core_inference_truth
+    from port.sim.truth import core_inference_truth
+
     from tests.realizations import match_states
 
     truth = core_inference_truth(

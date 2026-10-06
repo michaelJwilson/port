@@ -47,6 +47,16 @@ KNOWN: dict[str, str] = {
     "port.extensions.outputs:binlevel arg fit": "F6",
     "port.extensions.outputs:segments arg fit": "F6",
     "port.patch.hmrf.core_inference:pin_neutral arg result": "F6",
+    # --- T- #673 G6: the simulation machinery, moved from `tests/` ----------
+    # NB `SKIPPED` hid these under `tests/`. `CoreInferenceTruth.seed` is a
+    #    field `tests.metrics.fixture_hash` hashes by name, so renaming it
+    #    moves every recorded dev fixture (`07b82e92`); the builders' `seed`
+    #    and `max_iter` follow it and `cnaster`'s configuration key.
+    "port.sim.truth:CoreInferenceTruth field seed": "G6",
+    "port.sim.truth:core_inference_truth arg seed": "G6",
+    "port.sim.he_slide:mock_he arg seed": "G6",
+    "port.sim.fixtures:purify arg seed": "G6",
+    "port.sim.run_config:run_cnaster_config arg max_iter": "G6",
 }
 """Departures found by #401's audit, keyed `module:name kind word`."""
 

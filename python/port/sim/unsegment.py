@@ -31,7 +31,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from tests.fixtures import CoreInferenceTruth
+from port.sim.truth import CoreInferenceTruth
 
 GENES_PER_BIN = (1, 6)
 """Genes per bin, drawn in this half-open range rather than fixed.

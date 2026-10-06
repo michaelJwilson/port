@@ -58,9 +58,9 @@ def capture(sample_name: str, out: Path) -> None:
 
     mpl.use("Agg")
     import port.extensions.label_solver as solvers
+    from port.sim.fixtures import load_simulated
 
     from tests.sim_audit import run_arm
-    from tests.sim_fixtures import load_simulated
 
     out.mkdir(parents=True, exist_ok=True)
     real = solvers.sweep_for

@@ -46,8 +46,7 @@ def _config(sample: Any, root: Path, on: bool) -> tuple[Any, dict[str, Any]]:
     """`sample`'s config with the outlier filter `on`, set global, and the loader's arguments."""
     import yaml
     from cnaster.config import YAMLConfig, set_global_config
-
-    from tests.sim_fixtures import write_sim_inputs
+    from port.sim.fixtures import write_sim_inputs
 
     path = write_sim_inputs(sample, root, {"quality.local_outlier_filter": on})
     config = YAMLConfig(yaml.safe_load(path.read_text()))
@@ -75,8 +74,7 @@ def _zeroed(counts: np.ndarray, raw: np.ndarray) -> np.ndarray:
 
 @pytest.fixture(scope="module")
 def easy() -> Any:
-    from tests.sim_audit import SAMPLES
-    from tests.sim_fixtures import load_simulated
+    from port.sim.fixtures import SAMPLES, load_simulated
 
     return load_simulated(SAMPLES["easy"])
 

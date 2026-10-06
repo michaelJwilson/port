@@ -42,7 +42,7 @@ HIGH = ((2, 8), (1, 9), (6, 6), (5, 7), (4, 8))
 N_OBS = 100
 
 MILP_ARGUMENTS = {"nonbalance_bafdist": 1.0, "nondiploid_rdrdist": 10.0}
-"""What `run_cnaster` passes, from `tests/run_config.py`'s `int_copy_num`;
+"""What `run_cnaster` passes, from `python/port/sim/run_config.py`'s `int_copy_num`;
 `max_medploidy` is left at its default of 4, as `run_cnaster` leaves it."""
 
 

@@ -28,12 +28,12 @@ def test_the_entry_point_recovers_the_planted_clones(tmp_path: Path) -> None:
     """Both planted clones, at most 2 of 1,000 spots misplaced, through `run_cnaster_port`."""
     import matplotlib as mpl
     from port.scripts.run_cnaster import main
+    from port.sim.inputs import write_tmp_inputs
+    from port.sim.run_config import isolated_run, write_run_cnaster_config
+    from port.sim.truth import core_inference_truth
+    from port.sim.unsegment import unsegment
 
-    from tests.fixtures import core_inference_truth
-    from tests.run_config import isolated_run, write_run_cnaster_config
     from tests.test_core_inference_end_to_end import _adjusted_rand_index
-    from tests.tmp_inputs import write_tmp_inputs
-    from tests.unsegment import unsegment
 
     mpl.use("Agg")
     truth = core_inference_truth(

@@ -15,7 +15,7 @@ hashing to `7ba9b01f`:
 
 `--truth-only` writes `truth/` alone, with no run. Every figure is stamped
 `dev_tree_1s_easy 7ba9b01f · code <sha>`. `run/spatial.png` and `run/combined.png`
-draw panel (a) on a slide mocked from the planted labels (`tests.he_slide`):
+draw panel (a) on a slide mocked from the planted labels (`port.sim.he_slide`):
 the fixture has no H&E image, and the run never reads the mock.
 `truth/phase.png` is flat: this r0 plants 0 phase switches.
 `solvers/solver_combined.png` is not drawn from this fixture: `--solvers POTTS.pkl COPY.pkl`

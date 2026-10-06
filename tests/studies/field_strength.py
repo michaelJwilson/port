@@ -191,10 +191,10 @@ def calicost() -> None:
     import anndata
     import port.sandbox.known_field as kf
     import scipy.sparse as sp
+    from port.sim.fixtures import SIM_ROOT
     from scipy.optimize import curve_fit
     from scipy.spatial import cKDTree
 
-    from tests.sim_fixtures import SIM_ROOT
     from tests.studies.calicost_figures import SAMPLES, baseline, baseline_counts
 
     base = baseline()

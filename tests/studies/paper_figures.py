@@ -13,7 +13,7 @@ manifest's `r0_hash`, and writes into `OUT`:
 - `run/`, figures 9-13: one `run_cnaster_port --sal --png-copies` run through
   `tests.sim_audit.run_arm`, its named PNGs copied out, and the combined,
   genomic and spatial pages drawn from it as `tests.generate_plots` draws
-  them, beside a slide mocked from the planted labels (`tests.he_slide`);
+  them, beside a slide mocked from the planted labels (`port.sim.he_slide`);
 - `compare/`, figures 14-17: the run against the truth, through
   `tests.sim_audit.score`'s matching, `copy_confusion` and planted classes;
 - `solvers/`, figure 18 (`--solvers POTTS.pkl COPY.pkl`, no fixture run):
@@ -148,7 +148,7 @@ def stated_hash(fixture: str) -> str:
 def realization(fixture: str, draw: Path | None) -> Path:
     """`<draw>/<fixture>/r0`, drawn into `.cache/paper_figures/` where no `draw`
     is given; refused unless it hashes to the manifest's `r0_hash`."""
-    from tests.sim_stages import realization_hash
+    from port.sim.fixtures import realization_hash
 
     if draw is None:
         draw = ROOT / ".cache" / "paper_figures"
@@ -158,8 +158,7 @@ def realization(fixture: str, draw: Path | None) -> Path:
 
             from port.sim.draw import _merge, read_manifest
             from port.sim.draw import draw as drawn
-
-            from tests.sim_fixtures import references
+            from port.sim.fixtures import references
 
             manifest = read_manifest(MANIFESTS / f"{fixture}.toml")
             one = {"sample": {"realizations": 1}}
@@ -205,15 +204,14 @@ def truth_figures(path: Path, out: Path, text: str) -> list[Path]:
 
 
 def mock_slide(coords: np.ndarray, labels: np.ndarray, root: Path) -> Any:
-    """A slide stained by the planted clones (`tests.he_slide`), read back as
+    """A slide stained by the planted clones (`port.sim.he_slide`), read back as
     `run_cnaster` reads one; each lattice cell takes its nearest spot's clone.
 
     Written beside the run's inputs, not into them, so the run never reads it.
     """
     from cnaster.he import get_he_image
+    from port.sim.he_slide import mock_he, write_he_slide
     from scipy.spatial import cKDTree
-
-    from tests.he_slide import mock_he, write_he_slide
 
     lattice = (int(coords[:, 0].max()) + 1, int(coords[:, 1].max()) + 1)
     cells = np.indices(lattice).reshape(2, -1).T
@@ -778,7 +776,7 @@ hashing to `{digest}`:
 
 `--truth-only` writes `truth/` alone, with no run. Every figure is stamped
 `{fixture} {digest} · code <sha>`. `run/spatial.png` and `run/combined.png`
-draw panel (a) on a slide mocked from the planted labels (`tests.he_slide`):
+draw panel (a) on a slide mocked from the planted labels (`port.sim.he_slide`):
 the fixture has no H&E image, and the run never reads the mock.
 `truth/phase.png` is flat: this r0 plants {switches} phase switches.
 `solvers/solver_combined.png` is not drawn from this fixture: `--solvers POTTS.pkl COPY.pkl`
@@ -837,8 +835,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     from port.qa.ledger import SIM_TEST, write
-
-    from tests.sim_fixtures import load_simulated
+    from port.sim.fixtures import load_simulated
 
     sample = load_simulated(path.name, path.parent)
     with tempfile.TemporaryDirectory() as scratch:

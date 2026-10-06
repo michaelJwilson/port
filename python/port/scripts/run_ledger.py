@@ -32,17 +32,6 @@ from pathlib import Path
 from port.qa import ledger, provenance
 
 
-def _checkout() -> None:
-    """Put the checkout on `sys.path`: `--record --sample` reads `tests/`' fixtures.
-
-    The audits and the simulation fixtures are `tests/` modules until T- #673
-    G3 and G6 move them into the package; the ledger is the checkout's own
-    record, so a run is recorded from a checkout in any case.
-    """
-    if str(ledger.ROOT) not in sys.path:
-        sys.path.insert(0, str(ledger.ROOT))
-
-
 def record(arguments: argparse.Namespace) -> int:
     if arguments.note is None:
         print("--record needs --note: what change this run measures")
@@ -99,21 +88,17 @@ def record_sample(arguments: argparse.Namespace, *, dirty: bool) -> int:
     """A run on a simulated sample: `tests.sim_audit` in its own process (#467).
 
     `r0` is `dev_tree`'s realization 0, drawn if absent and refused unless it
-    is the one `tests.sim_stages` names; `easy` and `hard` are CalicoST's.
+    is the one `port.sim.fixtures.R0_HASH` names; `easy` and `hard` are CalicoST's.
     The fixture hash is the sample's content hash (`realization_hash`), and
     a name the ledger already holds under another hash is refused before the
     run (`check_identity`).
     """
-    _checkout()
-    from tests.sim_stages import r0, realization_hash
+    from port.sim.fixtures import SAMPLES, SIM_ROOT, r0, realization_hash
 
     if arguments.sample == "r0":
         path = r0()
         sample = "generated/dev_tree/r0"
     else:
-        from tests.sim_audit import SAMPLES
-        from tests.sim_fixtures import SIM_ROOT
-
         sample = SAMPLES.get(arguments.sample, arguments.sample)
         path = SIM_ROOT / sample
 
