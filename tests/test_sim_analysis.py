@@ -302,14 +302,15 @@ def dense(tmp_path_factory: pytest.TempPathFactory) -> Drawn:
 
 
 @pytest.mark.infra
-def test_a_barcode_over_many_events_keeps_4_bits_at_each_end() -> None:
-    """`shown` keeps a barcode of up to `MANY_EVENTS` bits whole and cuts a
-    longer one to its first and last 4 bits around "…" (PR- #701)."""
+def test_a_barcode_over_8_bits_keeps_4_bits_at_each_end() -> None:
+    """`shown` keeps a barcode of up to `BARCODE_SHOWN` (8) bits whole and cuts
+    a longer one to its first and last 4 bits around "…" (PR- #701)."""
     from port.sim.analysis import BARCODE_SHOWN, MANY_EVENTS, shown
 
     assert (MANY_EVENTS, BARCODE_SHOWN) == (10, 8)
     assert shown("10110") == "10110"
-    assert shown("1" * 10) == "1" * 10
+    assert shown("10110100") == "10110100"
+    assert shown("101101001") == "1011\N{HORIZONTAL ELLIPSIS}1001"
     assert shown("1100" + "0" * 56 + "0011") == "1100\N{HORIZONTAL ELLIPSIS}0011"
     assert shown("10110100101") == "1011\N{HORIZONTAL ELLIPSIS}0101"
 
@@ -334,12 +335,13 @@ def _headed(genomic: Any) -> set[str]:
 
 @pytest.mark.infra
 @pytest.mark.merge
-def test_at_10_events_or_fewer_a_is_the_tree_with_whole_barcodes(drawn: Drawn) -> None:
+def test_at_10_events_or_fewer_a_is_the_tree(drawn: Drawn) -> None:
     """At `MANY_EVENTS` or fewer, (a) is `draw_tree`'s tree, text for text and
-    line for line, and (c) heads each clone with its whole barcode (PR- #701)."""
+    line for line, and (c) heads each clone with its barcode as `shown` cuts
+    it (PR- #701)."""
     import matplotlib.pyplot as plt
     from port.extensions.combined_figure import FONT_SIZE
-    from port.sim.analysis import MANY_EVENTS, draw_tree
+    from port.sim.analysis import MANY_EVENTS, draw_tree, shown
     from port.sim.truth_figure import _symbol
 
     r = read(drawn.path)
@@ -353,10 +355,39 @@ def test_at_10_events_or_fewer_a_is_the_tree_with_whole_barcodes(drawn: Drawn) -
     assert [x.get_text() for x in tree_ax.texts] == [x.get_text() for x in ax.texts]
     assert len(tree_ax.lines) == len(ax.lines) > 0
     assert {x.get_text() for x in tree_ax.texts if x.get_gid() == "barcode"} == {
-        t.barcode[c] for c in r.clones
+        shown(t.barcode[c]) for c in r.clones
     }
     symbol = _symbol(r)
-    assert _headed(genomic) == {f"{symbol(c)} ({t.barcode[c]})" for c in r.clones}
+    assert _headed(genomic) == {
+        f"{symbol(c)} ({shown(t.barcode[c])})" for c in r.clones
+    }
+    plt.close(figure)
+
+
+@pytest.mark.infra
+@pytest.mark.merge
+def test_b_and_c_mark_every_10_mb_at_paper_width(drawn: Drawn) -> None:
+    """(b) and each clone's last track in (c) carry one visible minor tick mark
+    per 10 Mb multiple of each chromosome, `floor(L / 10 Mb)` summed, inward,
+    2 pt long and 0.5 pt wide (`genomic_axis.draw`, PR- #701)."""
+    import matplotlib.pyplot as plt
+
+    r = read(drawn.path)
+    expected = int(np.sum(np.asarray(r.lengths) // 10_000_000))
+    figure, _, genomic = _panels(r)
+    figure.canvas.draw()
+    profile = figure.subfigs[1].axes[-1]
+    last = [ax for ax in genomic.axes if ax.get_ylabel() == "BAF"]
+
+    assert expected > 0
+    assert len(last) == len(r.clones)
+    for ax in (profile, *last):
+        lo, hi = ax.get_xlim()
+        marks = [t for t in ax.xaxis.get_minor_ticks(len(ax.xaxis.get_minorticklocs()))
+                 if t.tick1line.get_visible() and lo <= t.get_loc() <= hi]  # fmt: skip
+        assert len(marks) == expected
+        assert all(t.tick1line.get_markersize() == 2.0 for t in marks)
+        assert all(t.tick1line.get_markeredgewidth() == 0.5 for t in marks)
     plt.close(figure)
 
 

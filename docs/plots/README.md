@@ -111,8 +111,8 @@ overlapping by half) at seed 0.
   hatching, outlines and key;
 - `mutation_tree.png`: along event order, each event `chr::A/B::Mb` (whole Mb) at its time
   on its edge; each node its binary barcode, the founder's event the leading bit,
-  over 10 events its first 4 bits, "…" and its last 4 (`analysis.shown`), and
-  no events on the edges (PR- #701);
+  over 8 bits its first 4 bits, "…" and its last 4 (`analysis.shown`), and
+  over 10 events no events on the edges (PR- #701);
 - `spatial.png`: each slice, titled by its `sample_id`, cropped to itself in
   the shared frame; the region the slices share dashed, and a clone on both
   slices inside it; clones named by one legend for every slice, on the left,

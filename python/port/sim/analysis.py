@@ -528,20 +528,19 @@ def tree(r: Realization) -> Tree:
 MANY_EVENTS = 10
 """The user's legibility rule (PR- #701): a tree of more than 10 events does
 not read at a page's width. Above it `draw_tree` drops the events from its
-edges, `truth_figure` draws (a) as the leaves alone, and `shown` cuts every
-barcode to `BARCODE_SHOWN` bits."""
+edges and `truth_figure` draws (a) as the leaves alone."""
 
 BARCODE_SHOWN = 8
-"""Bits of a barcode shown above `MANY_EVENTS`: its first 4, "…", its last 4 (PR- #701)."""
+"""Bits of a barcode shown whole; a longer one shows its first 4, "…", its last 4 (PR- #701)."""
 
 
 def shown(code: str) -> str:
-    """`code` as a figure shows it: whole up to `MANY_EVENTS` bits, else its
-    first and last `BARCODE_SHOWN // 2` around "…".
+    """`code` as a figure shows it: whole up to `BARCODE_SHOWN` bits, else its
+    first and last `BARCODE_SHOWN // 2` around "…" (PR- #701).
 
     A barcode has one bit per event, so its length is the tree's event count.
     """
-    if len(code) <= MANY_EVENTS:
+    if len(code) <= BARCODE_SHOWN:
         return code
     half = BARCODE_SHOWN // 2
     return code[:half] + "\N{HORIZONTAL ELLIPSIS}" + code[-half:]
