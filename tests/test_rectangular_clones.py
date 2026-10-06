@@ -162,18 +162,13 @@ def test_bitwise_on_every_seed_cnaster_returns(
     assert refused > 0, "the sweep never reached the case cnaster loops on"
 
 
-@pytest.mark.oracle
-@pytest.mark.parametrize(
-    "n_clones", [2, 3, 4, pytest.param(5, marks=pytest.mark.merge)]
-)
-def test_feasibility_agrees_with_enumerating_every_assignment(n_clones: int) -> None:
+def _feasibility_against_enumeration(n_clones: int) -> None:
     """`admits_assignment` against every map of blocks onto clones.
 
     `cnaster`'s loop reaches exactly the surjective maps, so a draw admits a
     passing assignment iff one surjection gives every clone more than the
-    floor. Enumerated outright -- `n_clones ** p ** 2` maps; 1,953,125 at
-    five clones on nine blocks, 17 s, so `merge` -- over 200 seeded block
-    sizes per count, three in four drawn skewed (Dirichlet 0.3) so that
+    floor. Enumerated outright -- `n_clones ** p ** 2` maps -- over 200
+    seeded block sizes, three in four drawn skewed (Dirichlet 0.3) so that
     blocks below the floor are common.
     """
     from port.patch.spatial import admits_assignment
@@ -201,6 +196,20 @@ def test_feasibility_agrees_with_enumerating_every_assignment(n_clones: int) -> 
         admitted += expected
 
     assert 0 < admitted < 200, "the sizes never reached one of the two answers"
+
+
+@pytest.mark.oracle
+@pytest.mark.parametrize("n_clones", [2, 3, 4])
+def test_feasibility_agrees_with_enumerating_every_assignment(n_clones: int) -> None:
+    """Four blocks, every map onto 2 to 4 clones, against `admits_assignment`."""
+    _feasibility_against_enumeration(n_clones)
+
+
+@pytest.mark.oracle
+@pytest.mark.merge
+def test_feasibility_agrees_with_enumeration_on_nine_blocks() -> None:
+    """Nine blocks onto five clones: 1,953,125 maps per size, 17 s, so `merge`."""
+    _feasibility_against_enumeration(5)
 
 
 def _within(seconds: int, call: Any) -> bool:
