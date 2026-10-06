@@ -1,4 +1,4 @@
-"""`tests.sim_fixtures.stage` writes into its target, never into the sample (#492).
+"""`port.sim.fixtures.stage` writes into its target, never into the sample (#492).
 
 A CalicoST sample loaded by absolute path carried the path as its name, and
 `into / name` resolved to the sample itself: staging unlinked every committed
@@ -16,7 +16,7 @@ import pytest
 def test_a_sample_loaded_by_absolute_path_stages_into_the_target(
     tmp_path: Path,
 ) -> None:
-    from tests.sim_fixtures import EASY, SIM_ROOT, load_simulated, stage
+    from port.sim.fixtures import EASY, SIM_ROOT, load_simulated, stage
 
     source = SIM_ROOT / EASY
     committed = sorted(p for p in source.rglob("*") if p.is_file())

@@ -1,4 +1,4 @@
-"""`tests.sim_stages.realization_hash` reads decoded content, not storage (#595).
+"""`port.sim.fixtures.realization_hash` reads decoded content, not storage (#595).
 
 A sample's files may be committed plain, as `.gz`, or both. The hash keys
 each file by its name without `.gz` and hashes its decompressed bytes, so
@@ -13,8 +13,7 @@ import hashlib
 from pathlib import Path
 
 import pytest
-
-from tests.sim_stages import realization_hash
+from port.sim.fixtures import realization_hash
 
 FILES = {
     "barcodes.txt": b"AAAC-1\nAAAG-1\n",

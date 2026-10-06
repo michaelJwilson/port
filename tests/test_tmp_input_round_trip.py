@@ -1,7 +1,7 @@
 """A binned fixture, written as files and loaded back (#68).
 
-`tests/unsegment.py` builds a pre-image at the gene and block level;
-`tests/tmp_inputs.py` writes it as the files `run_cnaster` is pointed at. This
+`python/port/sim/unsegment.py` builds a pre-image at the gene and block level;
+`python/port/sim/inputs.py` writes it as the files `run_cnaster` is pointed at. This
 closes the loop over `cnaster.io.load_input_data` -- the real entry point,
 not one function of it -- and then over the binning, so the planted truth
 makes the whole trip from a temporary directory back to the bins it started
@@ -13,10 +13,9 @@ from typing import Any
 
 import numpy as np
 import pytest
-
-from tests.fixtures import core_inference_truth
-from tests.tmp_inputs import load_written, write_tmp_inputs
-from tests.unsegment import unsegment
+from port.sim.inputs import load_written, write_tmp_inputs
+from port.sim.truth import core_inference_truth
+from port.sim.unsegment import unsegment
 
 
 def _written(tmp_path: Path, n_obs: int = 20) -> tuple[Any, Any, Any]:

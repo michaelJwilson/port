@@ -46,8 +46,7 @@ def _config(sample: Any, root: Path, on: bool) -> tuple[Any, dict[str, Any]]:
     """`sample`'s config with the outlier filter `on`, set global, and the loader's arguments."""
     import yaml
     from cnaster.config import YAMLConfig, set_global_config
-
-    from tests.sim_fixtures import write_sim_inputs
+    from port.sim.fixtures import write_sim_inputs
 
     path = write_sim_inputs(sample, root, {"quality.local_outlier_filter": on})
     config = YAMLConfig(yaml.safe_load(path.read_text()))
@@ -75,8 +74,7 @@ def _zeroed(counts: np.ndarray, raw: np.ndarray) -> np.ndarray:
 
 @pytest.fixture(scope="module")
 def easy() -> Any:
-    from tests.sim_audit import SAMPLES
-    from tests.sim_fixtures import load_simulated
+    from port.sim.fixtures import SAMPLES, load_simulated
 
     return load_simulated(SAMPLES["easy"])
 
@@ -149,7 +147,8 @@ def test_with_the_flag_off_the_loaders_keep_every_outlier_gene(
 @pytest.fixture(scope="module")
 def binned(easy: Any) -> tuple[Any, list[tuple[Any, Any, Any]]]:
     """One `--sal` run on easy, and each `create_bin_ranges` call's inputs and output."""
-    from tests.sim_audit import run_arm
+    from port.qa.audit import audit_sample
+
     from tests.sim_stages import DRIVER
 
     driver = importlib.import_module(DRIVER)
@@ -167,7 +166,7 @@ def binned(easy: Any) -> tuple[Any, list[tuple[Any, Any, Any]]]:
     setattr(driver, BINNING, capture)
 
     try:
-        recovery, _ = run_arm(
+        recovery, _ = audit_sample(
             easy, ["--sal", "--no-plots"], {"quality.local_outlier_filter": True}
         )
     finally:
@@ -227,10 +226,10 @@ def test_the_outlier_filter_moves_easy_s_recovery_by_its_stated_amounts(
     | off | 1,716 | 0.884 | 0.369 | 0.750 |
     | on  | 1,690 | 0.898 | 0.252 | 0.630 |
     """
-    from tests.sim_audit import run_arm
+    from port.qa.audit import audit_sample
 
     on, _ = binned
-    off, _ = run_arm(
+    off, _ = audit_sample(
         easy, ["--sal", "--no-plots"], {"quality.local_outlier_filter": False}
     )
 

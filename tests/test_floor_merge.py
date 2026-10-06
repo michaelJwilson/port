@@ -253,15 +253,14 @@ def test_sal_recovers_dev_where_the_hard_mask_froze_the_baf_boundary(
     """
     import numpy as np
     from port.patch.hmrf import refinement
+    from port.qa.audit import audit_truth
+    from port.sim import truth as sim_truth
 
-    from tests import fixtures
-    from tests.recovery_audit import run_arm
-
-    soft, _ = run_arm(fixtures.dev_instance(), ["--sal"])
+    soft, _ = audit_truth(sim_truth.dev_instance(), ["--sal"])
 
     assert soft.ari >= 0.99, soft.ari
 
     monkeypatch.setattr(refinement, "MASK_PENALTY", np.inf)
-    hard, _ = run_arm(fixtures.dev_instance(), ["--sal"])
+    hard, _ = audit_truth(sim_truth.dev_instance(), ["--sal"])
 
     assert hard.ari < 0.9, hard.ari

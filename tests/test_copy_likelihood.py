@@ -144,11 +144,10 @@ def _entry_point_run(
     import pandas as pd
     from port.patch import integer_copy
     from port.scripts.run_cnaster import main
-
-    from tests.fixtures import critical_instance
-    from tests.run_config import isolated_run, write_run_cnaster_config
-    from tests.tmp_inputs import write_tmp_inputs
-    from tests.unsegment import unsegment
+    from port.sim.inputs import write_tmp_inputs
+    from port.sim.run_config import isolated_run, write_run_cnaster_config
+    from port.sim.truth import critical_instance
+    from port.sim.unsegment import unsegment
 
     mpl.use("Agg")
     truth = critical_instance(copy_lattice=True)

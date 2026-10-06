@@ -29,16 +29,15 @@ from typing import Any
 
 import numpy as np
 import pytest
-from pytest_benchmark.fixture import BenchmarkFixture
-
-from tests.fixtures import dev_instance
-from tests.run_config import (
+from port.sim.inputs import read_to_bins, write_tmp_inputs, written_config
+from port.sim.run_config import (
     FLIP_EVERY,
     SHIPPED_T_PHASEING,
     write_run_cnaster_config,
 )
-from tests.tmp_inputs import read_to_bins, write_tmp_inputs, written_config
-from tests.unsegment import unsegment
+from port.sim.truth import dev_instance
+from port.sim.unsegment import unsegment
+from pytest_benchmark.fixture import BenchmarkFixture
 
 pytestmark = [pytest.mark.preprocessing, pytest.mark.release]
 """`release`, and the reason is a defect rather than the duration.

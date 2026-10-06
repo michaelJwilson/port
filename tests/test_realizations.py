@@ -1,8 +1,8 @@
-"""One realization of `tests.realizations`' genome, through `run_cnaster_port` (#291).
+"""One realization of `port.sim.realizations`' genome, through `run_cnaster_port` (#291).
 
 `release`: each realization is a whole pipeline run, 35 to 40 s, in its own
 process because a run peaks at 4.7 GB. The figure is
-`python -m tests.realizations`; these two tests pin what its drawn
+`run_audit --errors`; these two tests pin what its drawn
 realization (4 of 8, seed 12) says, at the planted genome it is drawn for.
 """
 
@@ -15,8 +15,8 @@ import numpy as np
 import pytest
 
 if TYPE_CHECKING:
-    from tests.fixtures import CoreInferenceTruth
-    from tests.realizations import Fit
+    from port.sim.realizations import Fit
+    from port.sim.truth import CoreInferenceTruth
 
     First = tuple[CoreInferenceTruth, Fit]
 
@@ -25,10 +25,10 @@ pytestmark = pytest.mark.release
 
 @pytest.fixture(scope="module")
 def first(tmp_path_factory: pytest.TempPathFactory) -> First:
-    from tests.realizations import GENOME, chosen, fit_one, planted_genome
+    from port.sim.realizations import GENOME, chosen, fit_one, planted_genome
 
     root: Path = tmp_path_factory.mktemp("realizations")
-    index = chosen(8, int(GENOME["seed"]))  # type: ignore[call-overload]
+    index = chosen(8, int(GENOME["seed"]))
 
     return planted_genome(), fit_one(None, index, root, errors=True)
 
@@ -67,7 +67,7 @@ def test_the_fit_is_many_standard_errors_from_the_planted_rates(first: First) ->
     Undiagnosed (#293), and pinned as found: written to fail when every
     unpinned `mu` is within five of its standard errors of truth.
     """
-    from tests.realizations import planted_minor, planted_mu
+    from port.sim.realizations import planted_minor, planted_mu
 
     truth, fit = first
     assert fit.covariance is not None

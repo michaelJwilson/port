@@ -11,7 +11,7 @@ fixtures are in `docs/baseline-release.md`.
 ## Conditions
 
 - Host: 4 cores, one job at a time.
-- CalicoST: c1abcae, `python -m tests.final_benchmark SAMPLE calicost`:
+- CalicoST: c1abcae, `run_benchmark --final SAMPLE calicost`:
   `run_calicost --shipped configuration_cna --no-align --no-figures`, once,
   under `timeout 1800`. Every value but the paths is CalicoST's shipped file,
   among them `n_clones 3`, `n_clones_rdr 2`, `npart_phasing 3`,
@@ -20,14 +20,24 @@ fixtures are in `docs/baseline-release.md`.
   `configuration_cna_multi`, with no alignment files. Its drawn slices name
   spots `<barcode>_<sample_id>`, which CalicoST's joint loader suffixes again,
   so the benchmark stages a copy with the suffix removed
-  (`final_benchmark.joint_inputs`); the counts are unchanged.
+  (`port.qa.benchmark.joint_inputs`); the counts are unchanged.
 - Peak is the child's maximum RSS.
 - A run stopped by the cap is scored on the last clone assignment it wrote
-  (`final_benchmark.baf_stage`): the BAF stage after CalicoST's
+  (`port.qa.benchmark.baf_stage`): the BAF stage after CalicoST's
   Neyman–Pearson merge (`mergedallspots_nstates7_sp.npz`), or before it
   (`allspots_nstates7_sp.npz`, which CalicoST rewrites after every HMRF
   round, scored at its last completed round) where the merge had not run. It
   is not comparable with a final ARI: the read-depth stage had not finished.
+
+## Reproduce on `dev_tree` r0
+
+`tests/calicost_benchmark.sh [ROOT]` reruns the uncapped comparison below on the fixture it was measured on:
+- **Fixture:** it draws `sim/manifests/baseline/dev_tree.toml` r0 and refuses it unless it hashes to `3381575a`.
+- **CalicoST:** shipped `configuration_cna_multi` with `n_clones 5`, no cap. A killed attempt is rerun on the same kept root and resumes from CalicoST's checkpoints (`port.qa.benchmark.staged`, `--root`); `TRIES` defaults to 3, and the wall is the attempts' sum.
+- **port:** `run_cnaster_port --sal`, `REPEATS` times (default 3), median wall.
+- **Output:** every `BENCH` line goes to `ROOT/bench.jsonl`, and the script prints the table.
+
+Run it alone on the host; `LOCK=<file>` holds a flock.
 
 ## Results, capped at 1,800 s
 
@@ -114,7 +124,7 @@ Read-depth fitting is 13,269 s, 66% of the wall.
 ## Reproduce
 
 ```
-python -m tests.final_benchmark numcnas1.2_cnasize5e7_ploidy2_random0 calicost
+run_benchmark --final numcnas1.2_cnasize5e7_ploidy2_random0 calicost
 ```
 
 and the same for `numcnas6.3_cnasize1e7_ploidy2_random0` and `dev_tree` r0

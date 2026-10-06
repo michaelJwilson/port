@@ -459,7 +459,7 @@ COPY_SWAPS: tuple[Swap, ...] = (
 `A, B <= 5`, and reads no key that would change them, so #313's chr7 --
 planted at `2 mu = 10` -- could not be decoded by any configuration. These
 read `int_copy_num.max_total_copy` and apply it to the total and to each
-allele; `tests/run_config.py` states 12.
+allele; `python/port/sim/run_config.py` states 12.
 
 **Its own table, and on by default.** Both rows decode by the HMM's
 likelihood only, with `mu`, each clone's shift, its path and the dispersions

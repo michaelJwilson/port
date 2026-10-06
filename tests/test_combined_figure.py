@@ -94,9 +94,8 @@ def _recorded(tmp_path: Path, n_clones: int = 3) -> tuple[Any, Any]:
     """A run's three recorded calls on the 3 by 3 fixture, and its slide."""
     from cnaster.he import get_he_image
     from port.extensions.combined_figure import Call, Recorded
-
-    from tests.fixtures import clone_bands
-    from tests.he_slide import mock_he, write_he_slide
+    from port.sim.he_slide import mock_he, write_he_slide
+    from port.sim.truth import clone_bands
 
     arguments, keywords = _genomic_arguments()
     n_spots = arguments[1].shape[2]

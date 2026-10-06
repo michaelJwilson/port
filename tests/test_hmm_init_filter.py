@@ -27,9 +27,8 @@ from port.sandbox.patch.hmm_initialize.filtering import (
     design_matrix,
     filter_observations,
 )
+from port.sim.truth import CoreInferenceTruth, core_inference_truth
 from sklearn.mixture import GaussianMixture
-
-from tests.fixtures import CoreInferenceTruth, core_inference_truth
 
 MIN_BINOM, MAX_BINOM = 0.01, 0.99
 """The bounds `tests/conftest.py` configures, which `gmm_init` reads globally."""

@@ -3,7 +3,7 @@
 87 statements at **0.00 per cent** under the judged guard, and the whole module:
 `run_cnaster` imports all three functions and calls them when
 `annotation.clone_label` or `annotation.clone_ranges` names a file. Both are
-`None` in `zenodo_sim_config.yaml` and in `tests/run_config.py`, so the branch
+`None` in `zenodo_sim_config.yaml` and in `python/port/sim/run_config.py`, so the branch
 ships unexercised, and the module is the second largest block of live
 `cnaster` code nothing in this repository had ever run.
 
@@ -19,10 +19,9 @@ from typing import Any
 import numpy as np
 import pandas as pd
 import pytest
-
-from tests.fixtures import CoreInferenceTruth, balanced_clone
-from tests.run_config import PlantedInstance, run_cnaster_config
-from tests.tmp_inputs import GENE_SPACING, WrittenInputs, written_config
+from port.sim.inputs import GENE_SPACING, WrittenInputs, written_config
+from port.sim.run_config import PlantedInstance, run_cnaster_config
+from port.sim.truth import CoreInferenceTruth, balanced_clone
 
 pytestmark = pytest.mark.preprocessing
 
@@ -192,7 +191,7 @@ def test_the_annotated_normal_baseline_follows_the_planted_exposure(
 def clone_range_file(planted: CoreInferenceTruth, written: WrittenInputs) -> Path:
     """The planted copy states as genomic ranges, one row per bin.
 
-    `tests/tmp_inputs.py` lays each bin's genes at `GENE_SPACING` intervals
+    `python/port/sim/inputs.py` lays each bin's genes at `GENE_SPACING` intervals
     within its chromosome, so a bin **is** an interval of that width and the
     ranges are written to match. One column per clone carries the state, which
     is what `assign_clone_ranges` collapses on.

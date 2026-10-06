@@ -7,13 +7,17 @@ within 1.5% of rows missed after `--sal` Baum-Welch: `lattice`, `lattice` + EM a
 18.1–32.2%. A start's own miss rate does not predict the fit's: 5 × `emission++` starts at 1.4% and ends
 at 19.9%.
 
+**The paper's `solver_combined.png` draws a second generation (T- #662):** `sim/manifests/dev_tree_1s_hard.toml`,
+lognormal lengths, r0 `9ec90dc2`, not the exponential `baseline/` manifest (r0 `d2938975`) below. There the three
+HMM samplers end at 1.7% missed and `lattice` at 11.9%; see **Results: lognormal `dev_tree_1s_hard`**.
+
 **Rerun at 67d8874 (sal b61dfba, #633):** these are the rerun's numbers. It reproduces the original to 0.1
 point on 17 of 21 starts, and `gaussian-em` refuses 80 of 100 runs in both. The medoid of 30 `emission++`
 seeds ends at 1.1% missed ([0.9, 4.2] over r9–r12); the run of highest likelihood among them ends at 41.9%.
 
 ## Method
 
-`python -m tests.studies.copy_state_stream sim/manifests/baseline/dev_tree_1s_hard.toml OUT --problems N --seeds 10 --held-out 3 --settings tests/studies/copy_sampler_settings.json`.
+`run_study --copy-state-stream sim/manifests/baseline/dev_tree_1s_hard.toml OUT --problems N --seeds 10 --held-out 3 --settings python/port/studies/copy_sampler_settings.json`.
 
 1. **Problem.** Each realization of `dev_tree_1s_hard` is drawn and pseudobulked at its planted clones
    (`port.sandbox.known_copy.problems`): 1 Mb bins under #551's 300 normal-UMI floor, phased allele
@@ -34,7 +38,7 @@ seeds ends at 1.1% missed ([0.9, 4.2] over r9–r12); the run of highest likelih
 ## Results: `dev_tree_1s_hard`, 10 realizations × 10 seeds
 
 `dev_tree_1s_hard` r3–r12 of `[sample] seed = 0`, r0 hashing to `d2938975`
-(`tests.sim_stages.realization_hash`); r0–r2 tuned the samplers. The draws
+(`port.sim.fixtures.realization_hash`); r0–r2 tuned the samplers. The draws
 are the gamma sampler's: this branch's `port.sim.draw` has no `counts_sampler`.
 
 Median gap below the best fit reached on each realization [nats], at the start and after Baum-Welch; median
@@ -82,11 +86,49 @@ n = 100 each, start and Baum-Welch seconds under the host lock with only the six
 
 `gaussian-em` refuses on 80 of 100 runs, as in the original: a component's variance collapses on the normal
 clone's point mass, and `sal` refuses rather than floor it (`ValueError` at the variance floor, every error
-of the rerun). The figure is `tests.studies.copy_state_plot` over the merged stream,
+of the rerun). The figure is `port.studies.copy_state_plot` over the merged stream,
 stamped with its data hash and code commit.
 
+## Results: lognormal `dev_tree_1s_hard`, 10 realizations × 10 seeds (T- #662)
+
+`sim/manifests/dev_tree_1s_hard.toml` r3–r12 (r0 `9ec90dc2`, lognormal event lengths, #619): the same name as
+the table above, a different dataset. Record data `34aa0151`, drawn as panel (b) of
+`docs/plots/paper/solvers/solver_combined.png`. `STARTS` only, `--seeds 10 --held-out 3 --settings
+tests/studies/copy_sampler_settings.json`, 3 workers under the host lock, code `9efa28d`, sal `253c84f`.
+
+Medians over realizations × seeds (`lattice` is deterministic: 10 runs). Gap columns as above; the planted
+states, polished, sit 115 nats below the best and miss 2.9% of rows (median).
+
+| start | runs | start gap | after BW | Missed start / after [%] | runs > 5% missed | s |
+| --- | --- | --- | --- | --- | --- | --- |
+| `anneal-hmm` | 100 | 4,285 | 142 | 1.6 / 1.7 | 22% | 59 |
+| `tempering-hmm` | 100 | 4,384 | 141 | 1.7 / 1.7 | 17% | 63 |
+| `hmc-hmm` | 98 | 4,345 | 149 | 1.7 / 1.7 | 13% | 56 |
+| `gaussian-em` | 100 | 5,777 | 632 | 3.0 / 2.4 | 35% | 52 |
+| `prior` | 100 | 16,192 | 584 | 2.9 / 2.6 | 24% | 53 |
+| `lattice` | 10 | 4,243 | 139 | 1.5 / 11.9 | 70% | 62 |
+| `emission++` | 100 | 4,927 | 300 | 3.3 / 24.5 | 67% | 62 |
+| `kmeans++` | 100 | 5,159 | 442 | 6.5 / 29.8 | 83% | 54 |
+| `calicost-gmm` | 100 | 4,829 | 437 | 4.4 / 38.6 | 94% | 59 |
+
+- **`lattice`'s neutral-state split (#564).** Missed after Baum-Welch per realization, r3–r12: 22.4, 1.4, 12.1,
+  1.1, 31.3, 11.6, 8.6, 2.1, 28.1, 31.9%. It starts within 1.5% (median) on every realization; Baum-Welch then
+  splits the neutral state, as on r3 and r5 (T- #662). The planted states, polished, miss 27.4–44.5% on r3, r7,
+  r11 and r12, so the split is a property of the likelihood on this generation, not of the start. On the
+  `baseline/` generation `lattice` ends at 1.1%.
+- **Two refusals.** `hmc-hmm` seed 4 on r11 and r12: `sal`'s warm-up refuses a chain that never moved.
+  `gaussian-em` refused 50 of 50 runs on r3–r7 in PR- #661's record (data `8ab44e62`), on the venv's earlier sal
+  (not recorded); on sal `253c84f` it refuses none, at #661's code `901ea94` and at `9efa28d` alike (r3, seed 0,
+  same rows missed). Its numbers depend on the sal commit.
+- **Assembly.** r3–r7 of `calicost-gmm`, `lattice`, `prior`, `kmeans++`, `emission++` are #661's runs: at
+  `9efa28d` r3 seed 0 reproduces them bit for bit (missed and log-likelihood). The HMM samplers became `sal`'s
+  after #661 (#634) and `gaussian-em` changed with sal, so those four reran on r3–r7; r8–r12 ran in full.
+- **Seconds.** Jobs timed 03:23–04:14Z on 2026-10-06 shared the host with unlocked test gates; their r3–r5 jobs
+  reran under the lock, results identical (120 of 120), r3's median job 84 s → 59 s. #661's reused rows
+  (2026-10-05) sit within the interquartile range of the same starts' r8–r12 jobs.
+
 The key figure is committed as `docs/plots/paper/key_studies/557_copy-states.png` (`data 7cee0a0a ·
-code 67d8874`); `python -m tests.studies.copy_state_plot OUT/<stem>.pkl` redraws it beside the pickle.
+code 67d8874`); `run_study --copy-state-plot OUT/<stem>.pkl` redraws it beside the pickle.
 
 ## Defects found, and what was done about them
 

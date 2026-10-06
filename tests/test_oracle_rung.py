@@ -18,13 +18,10 @@ from dataclasses import dataclass
 
 import numpy as np
 import pytest
+from port.sim.truth import CoreInferenceTruth, core_inference_truth
 from sal.ragged import Ragged
 
-from tests.fixtures import (
-    CoreInferenceTruth,
-    circulant_transition,
-    core_inference_truth,
-)
+from tests.fixtures import circulant_transition
 
 LATTICE_SIDE = 6
 """A 36-node lattice: enough for the spatial prior to bind, small enough to fit."""

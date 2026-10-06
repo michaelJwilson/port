@@ -52,7 +52,7 @@ def test_every_start_returns_one_state_per_planted_state(name: str) -> None:
     """
     from types import SimpleNamespace
 
-    from tests.studies.copy_state_stream import seed_states
+    from port.studies.copy_state_stream import seed_states
 
     rng = np.random.default_rng(0)
     n = 300

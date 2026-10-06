@@ -9,7 +9,7 @@ configuration key reaches (#81), inside the sweep. It works in two steps
   those at or over the floor, whatever the field says about the spot.
 
 When the floor cannot be met by every clone, the few clones that meet it
-absorb the rest. Measured on `tests.fixtures.calicost_instance`: 16 read-depth
+absorb the rest. Measured on `port.sim.truth.calicost_instance`: 16 read-depth
 sub-clones of about 100 spots each, one of which reached 200, and 1,509 of
 1,600 spots were moved into it; the run ended with one clone.
 

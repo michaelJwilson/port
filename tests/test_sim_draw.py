@@ -31,8 +31,7 @@ from port.sim.draw import (
     square_array,
 )
 from port.sim.files import located
-
-from tests.sim_fixtures import EASY, HARD, SIM_ROOT, references
+from port.sim.fixtures import EASY, HARD, SIM_ROOT, references
 
 MANIFESTS = SIM_ROOT / "manifests"
 SIGMAS = 4.0
@@ -431,8 +430,7 @@ def test_realizations_share_the_clones_and_redraw_counts_and_phase(
     for more realizations leaves the first one's bits unchanged.
     """
     import anndata
-
-    from tests.sim_fixtures import load_simulated
+    from port.sim.fixtures import load_simulated
 
     one = draw(_manifest("dev_tree"), tmp_path / "one", resources=resources)
     two = draw(

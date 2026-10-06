@@ -47,6 +47,31 @@ KNOWN: dict[str, str] = {
     "port.extensions.outputs:binlevel arg fit": "F6",
     "port.extensions.outputs:segments arg fit": "F6",
     "port.patch.hmrf.core_inference:pin_neutral arg result": "F6",
+    # --- T- #673 G6: the simulation machinery, moved from `tests/` ----------
+    # NB `SKIPPED` hid these under `tests/`. `CoreInferenceTruth.seed` is a
+    #    field `tests.metrics.fixture_hash` hashes by name, so renaming it
+    #    moves every recorded dev fixture (`07b82e92`); the builders' `seed`
+    #    and `max_iter` follow it and `cnaster`'s configuration key.
+    "port.sim.truth:CoreInferenceTruth field seed": "G6",
+    "port.sim.truth:core_inference_truth arg seed": "G6",
+    "port.sim.he_slide:mock_he arg seed": "G6",
+    "port.sim.fixtures:purify arg seed": "G6",
+    "port.sim.run_config:run_cnaster_config arg max_iter": "G6",
+    # NB G3: the audits and realizations, moved the same way; `max_iter` is
+    #    `run_cnaster_config`'s, which `audit_truth` passes through.
+    "port.qa.audit:audit_truth arg max_iter": "G3",
+    "port.qa.audit:audit_errors arg seed": "G3",
+    "port.sim.realizations:realize arg seed": "G3",
+    "port.sim.realizations:chosen arg seed": "G3",
+    # NB G5: the studies, moved the same way; a job's `seed` is a field of
+    #    the records they pickle, so renaming it breaks every earlier record.
+    "port.studies.copy_state_stream:solve arg seed": "G5",
+    "port.studies.potts_stream:solve arg seed": "G5",
+    "port.studies.clone_label_arms:Job field seed": "G5",
+    "port.studies.copy_start_arms:Job field seed": "G5",
+    "port.studies.population:run_member arg seed": "G5",
+    "port.studies.population:draw_member arg seed": "G5",
+    "port.studies.population_report:summarize arg seed": "G5",
 }
 """Departures found by #401's audit, keyed `module:name kind word`."""
 

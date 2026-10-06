@@ -12,8 +12,7 @@ from pathlib import Path
 
 import pytest
 from port.sim.files import compress, located, read_bytes
-
-from tests.sim_fixtures import REPOSITORY
+from port.sim.fixtures import REPOSITORY
 
 PLAIN = {
     "sim/normal_baseline.txt.gz": "1ec533480ec0435919a475a326fcc71781e3f30b90249920819f411297c2188e",
