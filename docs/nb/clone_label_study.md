@@ -55,7 +55,7 @@ end-to-end runs ran serially at default threads: at 1 thread, 6 of 16 differ (#6
 **End to end: no start is adopted, and `--sal` keeps its own.** Clone ARI
 (clones) / copy ARI. Each run puts the start in place of the first clone
 assignment of each stage, on that fit's field, with `--sal` otherwise
-(`tests.studies.clone_labels e2e`, #553's `--sal`):
+(`port.studies.clone_labels e2e`, #553's `--sal`):
 
 | first assignment | dev_tree r0 (`3381575a`) | dev_shared_unique r0 (`097bb52b`) | CalicoST easy (`2d4ce9a9`) | CalicoST hard (`8797710b`) |
 | --- | --- | --- | --- | --- |
@@ -93,6 +93,6 @@ solver stays `alpha-rust-fuse-merge`.
   End-to-end runs: one at a time, default threads (#638: the result depends on the
   thread count; 3 at once also exceeds the host's 15 GB on dev_tree).
 - Regenerate with
-  `python -m tests.studies.clone_labels capture SAMPLE CAPTURE.npz`, then
+  `run_study --clone-labels capture SAMPLE CAPTURE.npz`, then
   `run CAPTURE.npz OUT.pkl`, then
-  `python -m tests.studies.clone_label_notebook OUT.pkl`.
+  `run_study --clone-label-notebook OUT.pkl`.

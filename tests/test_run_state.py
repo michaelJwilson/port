@@ -36,6 +36,20 @@ from tests.source_graph import ROOT, state_writes
 Kind = Literal["switch", "run", "cache", "rebind"]
 
 STATE: dict[str, Kind] = {
+    # NB the studies, run by hand and reached from no pipeline entry point
+    #    (T- #673 G5, from `tests/studies/`): each rebinds what it measures
+    #    for its own process, or keeps what its workers share.
+    "port.extensions.label_solver.sweep_for": "rebind",
+    "port.patch.hmm_initialize.distinct.gmm_init": "rebind",
+    "port.patch.hmrf.core_inference.UPSTREAM": "rebind",
+    "port.patch.normal_spot.determine_normal_candidates": "rebind",
+    "port.patch.utils.write_fig": "rebind",
+    "port.sim.analysis._save": "rebind",
+    "port.studies.clone_label_arms._HELD": "run",
+    "port.studies.clone_label_arms._graph": "rebind",
+    "port.studies.copy_start_arms._CALLS": "run",
+    "port.studies.hmm_starts._CALL": "run",
+    "port.studies.potts_stream._GRAPHS": "cache",
     # NB `port.qa.audit.audit_truth` records the normal candidates a run used,
     #    or plants the oracle's, and restores the name in its `finally`
     #    (T- #673 G3, from `tests.recovery_audit`).

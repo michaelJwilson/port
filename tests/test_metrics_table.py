@@ -245,15 +245,14 @@ def test_a_name_under_another_hash_is_refused() -> None:
 def test_the_history_plots_draw_from_the_ledger(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """`tests.studies.metrics_history` writes both figures from the ledger,
+    """`port.studies.metrics_history` writes both figures from the ledger,
     and each stamps the hash of the ledger's history rows.
 
     `first_parent` reads `origin/main`, absent from a shallow checkout, so
     the merge order is the ledger's own order here.
     """
     from matplotlib.figure import Figure
-
-    from tests.studies import metrics_history
+    from port.studies import metrics_history
 
     rows = metrics_history.history()
     monkeypatch.setattr(
@@ -293,9 +292,8 @@ def test_a_run_of_unchanged_merges_keeps_its_first_and_last_tick(
     the axis; e and f each start a tick; g joins f's run of two, drawn as
     is. Tick labels stay plain `#NNN`."""
     from matplotlib.axes import Axes
-
-    from tests.studies import metrics_history
-    from tests.studies.metrics_history import SKIP, axis, label, ticks
+    from port.studies import metrics_history
+    from port.studies.metrics_history import SKIP, axis, label, ticks
 
     rows = [_history_row(c, "easy", "0.5") for c in "abcd"]
     rows += [_history_row("e", "easy", "0.6")]

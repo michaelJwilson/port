@@ -36,7 +36,7 @@ __all__ = ["Capture", "Problem", "build", "load", "pseudobulk"]
 
 
 class Capture(NamedTuple):
-    """One run's spot-level inputs to its first BAF + RDR inference (`tests.studies.clone_labels capture`)."""
+    """One run's spot-level inputs to its first BAF + RDR inference (`port.studies.clone_labels capture`)."""
 
     counts: np.ndarray
     """`(bins, spots)` total UMIs."""
@@ -72,7 +72,7 @@ class Capture(NamedTuple):
 
 
 def load(path: Path) -> Capture:
-    """A capture written by `tests.studies.clone_labels capture`."""
+    """A capture written by `port.studies.clone_labels capture`."""
     held = np.load(path)
     single_X = held["single_X"]
     return Capture(

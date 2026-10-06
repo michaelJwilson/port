@@ -16,7 +16,7 @@ Key figure: `docs/plots/paper/key_studies/554_clone-starts.png`.
 
 ## Method
 
-`python -m tests.studies.clone_starts SAMPLE START SEED [FLAGS]`, one arm per
+`run_study --clone-starts SAMPLE START SEED [FLAGS]`, one arm per
 row, `--sal --no-plots` on #503's pipeline. The starts:
 - `grid2` / `grid3`: `cnaster`'s rectangles per slice, `npart_phasing` 2 or 3.
 - `grow`: `port.sandbox.wolff_init.umi_grow`, clones grown from the deepest

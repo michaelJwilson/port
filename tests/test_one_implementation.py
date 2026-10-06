@@ -45,8 +45,10 @@ BUDGET: dict[str, int] = {
     #    `Unsegmented` (frozen dataclasses) and `Slide` (a NamedTuple). 71:
     #    G3 moved the audits' `SimRecovery`, `Recovery` and `Reading`
     #    (dataclasses) and `port.sim.realizations`' `Fit` and `Summary`
-    #    (NamedTuples) from `tests/`.
-    "classes": 71,
+    #    (NamedTuples) from `tests/`. 77: G5 moved the studies, with
+    #    `paper_figures`' `Run` and `Compared`, `potts_solvers.PortStart`
+    #    (dataclasses), the two `Job`s (NamedTuples) and `clone_labels`' shim.
+    "classes": 77,
     # NB step 4: 18 records became NamedTuples; the dataclasses left carry
     #    mutable state, machinery or a `__post_init__` (#517 D). Step 8 moved
     #    7 dataclasses and 1 NamedTuple to `sandbox/`. 21: T- #418's `Samples`
@@ -54,12 +56,13 @@ BUDGET: dict[str, int] = {
     #    `Measured` (mutable state: filled when its block exits). 27: G6's five
     #    frozen records, moved with the machinery rather than added. 30: G3's
     #    three audit records (mutable: an arm fills `peak_gb` and candidates).
-    "dataclasses": 30,
+    #    33: G5's three study records, moved.
+    "dataclasses": 33,
     # NB 24: `analysis.GenomicTruth` (the truth page). 26: #540's
     #    `CopyCall` and `CopyStart` (`Row` in `sandbox/`, #547). 27: T- #617
     #    WP2's `pipeline.Default`. 28: G6's `port.sim.he_slide.Slide`, moved.
-    #    30: G3's `Fit` and `Summary`, moved.
-    "NamedTuples": 30,
+    #    30: G3's `Fit` and `Summary`, moved. 32: G5's two `Job`s, moved.
+    "NamedTuples": 32,
 }
 """`python/port` outside `sandbox/`."""
 

@@ -1,6 +1,6 @@
 """#541: `docs/nb/clone_label_study.ipynb`, built and executed from `clone_labels run`'s results.
 
-    python -m tests.studies.clone_label_notebook RESULTS.pkl
+    run_study --clone-label-notebook RESULTS.pkl
 
 writes `docs/nb/data/clone_label_study_r0.json` (the rows, without the
 workers' tracebacks), then the notebook, executed by `nbclient`, which reads
@@ -18,7 +18,7 @@ from typing import Any
 
 import numpy as np
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[3]
 DATA = ROOT / "docs" / "nb" / "data" / "clone_label_study_r0.json"
 NOTEBOOK = ROOT / "docs" / "nb" / "clone_label_study.ipynb"
 INTRO = ROOT / "docs" / "nb" / "clone_label_study.md"
@@ -254,7 +254,3 @@ def main(argv: list[str] | None = None) -> None:
         with arguments.results.open("rb") as fh:
             summarize(pickle.load(fh), DATA)
     build(INTRO.read_text(), NOTEBOOK)
-
-
-if __name__ == "__main__":
-    main()

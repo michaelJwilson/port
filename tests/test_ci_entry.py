@@ -84,7 +84,7 @@ PAPER_FIGURES = "docs/plots/paper/"
 POPULATION_FIGURE = "docs/plots/studies/population_recovery.png"
 """Study result figure, regenerable only from population_records.jsonl.gz.
 
-#544's 679 pipeline runs are what drew it; `python -m tests.studies.population
+#544's 679 pipeline runs are what drew it; `run_study --population
 report` redraws it from their records, which the repository keeps only in that
 archive."""
 

@@ -13,7 +13,7 @@ Exit: graduate a start to `extensions/` if it beats `kmeans++x5+em`'s clone
 Set aside by #547: `port.extensions.copy_starts` runs `sal`'s mixture
 starts (`kmeans++x5+em`, `--sal`'s) and the lattice. What else #540's study
 (`docs/nb/copy_state_starts.ipynb`) compared lives here, for #541 and for
-anyone rerunning the study (`tests.studies.copy_starts`):
+anyone rerunning the study (`port.studies.copy_starts`):
 
 - **The starts** (`starts()`, `run_start`): a `Row` names each, its source,
   the stages it takes and whether it reads the covariate. `sal`'s mixture
@@ -578,8 +578,8 @@ EMISSION_VARIANTS: dict[str, dict[str, float]] = {
 """Port's emission++ variants (#540): `_variant_seeding`'s options, and `draws`, the best of that
 many by the HMM's NLL at each draw's states. A `setting` replaces options by name.
 
-Tuned by `tests.studies.copy_state_stream --tune` on `dev_tree_1s_hard`'s held-out realizations 0-2
-(r0 `d2938975`; `tests/studies/copy_sampler_settings.json`): median gap in start log-likelihood to the best, tuned
+Tuned by `port.studies.copy_state_stream --tune` on `dev_tree_1s_hard`'s held-out realizations 0-2
+(r0 `d2938975`; `python/port/studies/copy_sampler_settings.json`): median gap in start log-likelihood to the best, tuned
 against first written, `trim` 0.005 against 0.02: 234.6 / 336.2 nats; `trimx20hmm` 0.005 over 20:
 58.4 / 229.5; `lloydx5hmm` 10 rounds against 3: 49.6 / 160.7; `anchor` 10 rounds against 3:
 212.3 / 306.5; `knn` 0.3% of rows against 1%: 202.2 / 210.8. The screen below was at the first values.

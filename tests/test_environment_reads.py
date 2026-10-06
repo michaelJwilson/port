@@ -31,6 +31,9 @@ READS: dict[str, str] = {
         "(moved from tests/, T- #673 G3)"
     ),
     "python/port/sim/draw.py": "PORT_CACHE locates the simulator's map cache",
+    "python/port/studies/population.py": (
+        "pins each member's thread pools to one thread (moved from tests/, T- #673 G5)"
+    ),
     "python/port/sim/fixtures.py": (
         "PORT_GRCH38 locates CalicoST's GRCh38 resources for the committed "
         "samples (moved from tests/, T- #673 G6)"

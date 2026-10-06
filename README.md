@@ -499,7 +499,7 @@ urn, with CalicoST easy's and hard's event laws and admixture (#556, #581);
 `dev_tree*` manifests draw lognormal lengths at `sigma = 0.541`,
 `port.sim.laws.lognormal_sigma(0.10, 0.5)`: 10% of events below half the
 median, against 29-35% under the exponential (#619;
-`python -m tests.studies.cna_lengths` draws both laws). `baseline/` and `population*.toml` stay
+`run_study --cna-lengths` draws both laws). `baseline/` and `population*.toml` stay
 exponential; `baseline/dev_tree.toml` freezes `dev_tree`'s exponential
 generation (`3381575a`), which `tests.sim_stages` caches as r0.
 Each `dev_tree*` manifest states `[sample] r0_hash`, its realization 0's
@@ -537,6 +537,7 @@ trains a reader to ignore `git status`.
 | --- | --- |
 | `python/port/` | The Python package; `python-source` in `pyproject.toml` |
 | `python/port/qa/` | What measures and records a run: `statistics` (bars, ranks, bootstrap intervals, wall and peak memory), `provenance` (the commit, the inputs' digest, a figure's stamp), `scoring` (a fit against its planted truth), `audit` (a run scored, behind `run_audit`), `benchmark` (behind `run_benchmark` and `run_figures`) and `ledger` (`docs/metrics/`, behind `run_ledger`), one implementation each (T- #673) |
+| `python/port/studies/` | The studies, run by hand: `run_study --<study>`, each module stating what it measured and where (T- #673) |
 | `src/` | The Rust crate `oxiport`, bound as `port.oxiport` |
 | `tests/` | The suite; `testpaths` in `pyproject.toml` |
 | `sim/` | CalicoST's simulated samples, their normal fits, and `manifests/` that draw them |
@@ -571,7 +572,7 @@ not carry, not before.
 | [CLAUDE.md](CLAUDE.md) | The rules |
 | [Issues](https://github.com/michaelJwilson/port/issues) | What is filed and not done |
 | [docs/measurements.md](docs/measurements.md) | The timings, ratios and histories the package docstrings cited, by module and object (#517) |
-| [docs/metrics/](docs/metrics/) | The metrics ledger, append-only TSVs: `ledger.tsv` one measured value per line, `runs.tsv` one line per run (commit, timestamp, arguments, test, note), `definitions.tsv` what each metric means, versioned (#409, #620). `run_ledger --record` appends (`port.qa.ledger`); `--render [--out PATH]` prints the wide table, which is not committed; `python -m tests.studies.metrics_history` draws `.cache/plots/metrics_history*.png` from it |
+| [docs/metrics/](docs/metrics/) | The metrics ledger, append-only TSVs: `ledger.tsv` one measured value per line, `runs.tsv` one line per run (commit, timestamp, arguments, test, note), `definitions.tsv` what each metric means, versioned (#409, #620). `run_ledger --record` appends (`port.qa.ledger`); `--render [--out PATH]` prints the wide table, which is not committed; `run_study --metrics-history` draws `.cache/plots/metrics_history*.png` from it |
 | [docs/study-recovery-population.md](docs/study-recovery-population.md) | `--sal` sensitivity against clone UMIs and CNA length, and the false positive rate, over 679 simulated runs (#544) |
 | [docs/templates/](docs/templates/README.md) | Templates for documents made outside the code: the work-in-flight page (#335) |
 

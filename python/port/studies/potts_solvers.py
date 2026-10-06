@@ -1,6 +1,6 @@
 """#492: `sal`'s Potts solvers and port's label-solver rows on captured clone-assignment problems.
 
-Three steps, each a subcommand of `python -m tests.studies.potts_solvers`:
+Three steps, each a subcommand of `run_study --potts-solvers`:
 
 `capture SAMPLE OUT`
     One `--sal --no-plots` arm on `SAMPLE`, pickling every problem
@@ -105,9 +105,10 @@ def capture(sample_name: str, out: Path) -> None:
 
 
 def _load(path: str) -> tuple[Any, dict[str, Any]]:
+    from sal.search.ground_state import Rung
+
     from port.patch.icm.alpha_expansion import potts_graph_from
     from port.patch.icm.interface import CsrGraph
-    from sal.search.ground_state import Rung
 
     with Path(path).open("rb") as fh:
         call: dict[str, Any] = pickle.load(fh)
@@ -138,9 +139,10 @@ class PortStart:
     def starts(self, objective: Any) -> list[Any]:
         """The row's labelling of the captured problem."""
         import torch
+        from sal.track import current
+
         from port.extensions.label_solver import sweep_for
         from port.patch.icm.interface import icm_sweep
-        from sal.track import current
 
         _, call = _load(self.path)
         sweep = icm_sweep if self.row == "icm" else sweep_for(self.row)  # type: ignore[arg-type]
@@ -231,7 +233,3 @@ def main(argv: list[str] | None = None) -> None:
         capture(arguments.sample, arguments.out)
     else:
         per_call(arguments.out, arguments.calls)
-
-
-if __name__ == "__main__":
-    main()

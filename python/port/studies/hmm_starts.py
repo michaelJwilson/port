@@ -1,6 +1,6 @@
 """#489: `sal`'s count-pair mixture starts on the read-depth + BAF HMM call, under the covariate.
 
-Two steps, each a subcommand of `python -m tests.studies.hmm_starts`:
+Two steps, each a subcommand of `run_study --hmm-starts`:
 
 `capture SAMPLE OUT`
     One `--sal --hmm-start none --no-plots` arm, pickling every call of the
@@ -101,8 +101,9 @@ def capture(sample_name: str, out: Path) -> None:
 
 def _distinct_seeding(instance: Any, rng: np.random.Generator) -> Any:
     """port's `distinct.gmm_init` (#348) as a `sal` start."""
-    from port.patch.hmm_initialize import distinct
     from sal.search.projection import Seeding
+
+    from port.patch.hmm_initialize import distinct
 
     call = _CALL["call"]
     log_mu, p_binom, _, _ = distinct.gmm_init(
@@ -126,7 +127,6 @@ def per_call(config: Path, out: Path, init: Path, names: list[str]) -> None:
     """Every start on the call, into `out` as a pickle of trials and refusals."""
     import yaml
     from cnaster.config import YAMLConfig, set_global_config
-    from port.patch.hmm_initialize.sal_mixture import instance_of
     from sal.cost import Cost
     from sal.opt.budget import Budget, compare
     from sal.search.mixture_starts import (
@@ -136,6 +136,8 @@ def per_call(config: Path, out: Path, init: Path, names: list[str]) -> None:
     from sal.search.mixture_starts import (
         STARTS as SAL_STARTS,
     )
+
+    from port.patch.hmm_initialize.sal_mixture import instance_of
 
     set_global_config(YAMLConfig(yaml.safe_load(config.read_text())))
     with init.open("rb") as fh:
@@ -210,7 +212,3 @@ def main(argv: list[str] | None = None) -> None:
         capture(arguments.sample, arguments.out)
     else:
         per_call(arguments.config, arguments.out, arguments.init, arguments.starts)
-
-
-if __name__ == "__main__":
-    main()

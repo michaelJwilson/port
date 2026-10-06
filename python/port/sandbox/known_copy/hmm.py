@@ -1,7 +1,7 @@
 """The copy-state HMM's Baum-Welch at known clones: `cnaster`'s own, on the clones stacked along the genome.
 
 Ticket: #540 -- copy-state starts at known clones, polished by Baum-Welch
-  (`tests/studies/copy_state_stream.py`).
+  (`python/port/studies/copy_state_stream.py`).
 Measurement: `docs/study-copy-states.md`: each start's gap in log-likelihood
   and share of rows off their planted state, before and after Baum-Welch.
 Exit: retire with the study; a start it finds better graduates through

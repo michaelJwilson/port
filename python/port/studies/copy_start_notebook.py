@@ -1,6 +1,6 @@
 """#540: `docs/nb/copy_state_starts.ipynb`, built and executed from `copy_starts run`'s results.
 
-    python -m tests.studies.copy_start_notebook RESULTS.pkl
+    run_study --copy-start-notebook RESULTS.pkl
 
 writes `docs/nb/data/copy_state_starts_r0.json` (the rows, without the
 workers' tracebacks), then the notebook, executed by `nbclient`, which reads
@@ -18,7 +18,7 @@ from typing import Any
 
 import numpy as np
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[3]
 DATA = ROOT / "docs" / "nb" / "data" / "copy_state_starts_r0.json"
 NOTEBOOK = ROOT / "docs" / "nb" / "copy_state_starts.ipynb"
 FIGURE = ROOT / ".cache" / "plots" / "studies" / "copy_state_starts.png"
@@ -248,7 +248,3 @@ def main(argv: list[str] | None = None) -> None:
         with arguments.results.open("rb") as fh:
             summarize(pickle.load(fh), DATA)
     build(INTRO.read_text(), NOTEBOOK)
-
-
-if __name__ == "__main__":
-    main()
