@@ -653,7 +653,7 @@ def _variant_seeding(
     knn: float = 0.0,
     lloyd: float = 0,
 ) -> Any:
-    """`sal`'s emission++ D-sampling (`emission_mixture_plus_plus` over `_seed_scores`), with port's changes (#540).
+    """`sal`'s emission++ D-sampling (`emission_mixture_plus_plus` over `seed_scores`), with port's changes (#540).
 
     - `trim`: rows above the `1 - trim` quantile of the current score get
       probability 0, so an outlier row cannot seed;

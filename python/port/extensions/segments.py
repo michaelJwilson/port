@@ -319,13 +319,12 @@ class Segmentation:
         parent = np.zeros(0, dtype=np.int64)
 
         if self.n_segments:
-            from sal.ragged import Ragged
+            from sal.ragged import floor_lengths
 
-            # NB sal's greedy floor (sal #1141). It reads only the extent, the
-            #    weight and the groups, so it runs on a placeholder of two
-            #    positions per segment: `Ragged` refuses one (sal #666).
-            placeholder = Ragged(np.zeros(2 * self.n_segments), (2,) * self.n_segments)
-            _, parent = placeholder.floored(
+            # NB sal's greedy floor (sal #1141) on lengths alone (sal #1233): it
+            #    reads the extent, the weight and the groups, and no values.
+            _, parent = floor_lengths(
+                (1,) * self.n_segments,
                 min_length,
                 weight=held,
                 min_weight=min_weight,

@@ -32,11 +32,14 @@ def _pinned(writer: Callable[..., None], path: Path, **keywords: Any) -> int:
     gc.collect()
     gc.disable()
     try:
+        # NB only this write's files: another test's live figure, in the same
+        #    worker, holds its own `PdfFile`, and is not this writer's to release
+        before = {id(live) for live in gc.get_objects() if isinstance(live, PdfFile)}
         figure = _figure()
         writer(str(path), figure, **keywords)
         buffers: dict[int, int] = {}
         for live in gc.get_objects():
-            if isinstance(live, PdfFile):
+            if isinstance(live, PdfFile) and id(live) not in before:
                 for image, _, _ in live._images.values():
                     base = image
                     while getattr(base, "base", None) is not None:
