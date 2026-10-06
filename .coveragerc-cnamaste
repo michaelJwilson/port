@@ -27,6 +27,7 @@ source =
 # statements, 2430 missed), with dev and the preprocessing tests added.
 # 62.42% at PR4 (6492 statements, 2440 missed), with the log-space kernel
 # tests added. 64.15% at PR5 (6904 statements, 2475 missed), with the HMM
-# fit-chain tests added.
-fail_under = 64
+# fit-chain tests added. 65.23% at PR6 (6928 statements, 2409 missed), with
+# the initialization tests added.
+fail_under = 65
 precision = 2

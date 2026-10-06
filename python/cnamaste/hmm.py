@@ -1,10 +1,14 @@
-"""`cnaster.hmm` at the pin; `pipeline_baum_welch` says it fits no mixture (T- #670 PR5).
+"""`cnaster.hmm` at the pin; `pipeline_baum_welch` says it fits no mixture (T- #670 PR5) and initializes itself (PR6).
 
 `cnaster` hands `tumor_prop` to `hmm_nophasing.optimize`, which never reads
 it (#135): a run given a proportion fits under no mixture, and nothing says
 so. Here the proportion is not handed on, `optimize` no longer takes it, and
 a proportion given warns. The clone assignment and the normal-spot stage,
 which do read it, are unchanged.
+
+Given no `init_log_mu` or `init_p_binom`, its default, `cnaster`'s
+`pipeline_baum_welch` raises `TypeError` calling `gmm_init` (#143). Here it
+calls `gmm_init` with its full signature and fits from what it returns.
 """
 
 import warnings
@@ -85,12 +89,19 @@ def pipeline_baum_welch(
     if ((init_log_mu is None) and ("m" in params)) or (
         (init_p_binom is None) and ("p" in params)
     ):
-        tmp_log_mu, tmp_p_binom = gmm_init(
+        # NB #143: `cnaster` passes five of `gmm_init`'s eight positional
+        #    arguments and unpacks two of its four results, so this branch,
+        #    the signature's own default, raised `TypeError`. `gmm_init`
+        #    reads none of the three it omitted; `log_transmat` is not in scope.
+        tmp_log_mu, tmp_p_binom, _, _ = gmm_init(
             n_states,
             X,
             base_nb_mean,
             total_bb_RD,
             params,
+            lengths,
+            None,
+            log_sitewise_transmat,
             random_state=random_state,
             in_log_space=in_log_space,
             only_minor=only_minor,

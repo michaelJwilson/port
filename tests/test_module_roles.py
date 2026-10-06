@@ -378,7 +378,7 @@ CNAMASTE_ROLES: dict[str, CnamasteRole] = {
     "cnamaste.gradient": "added",
     "cnamaste.hmm": "ported",
     "cnamaste.hmm_emission": "copy",
-    "cnamaste.hmm_initialize": "copy",
+    "cnamaste.hmm_initialize": "ported",
     "cnamaste.hmm_nophasing": "ported",
     "cnamaste.hmm_phased": "ported",
     "cnamaste.hmm_utils": "copy",

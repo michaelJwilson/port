@@ -55,6 +55,7 @@ from port.pipeline import (
     SWAPS,
     Swap,
     patched,
+    with_options,
 )
 from port.sim.fixtures import (
     EASY,
@@ -123,7 +124,10 @@ defaults only at PR9. Row 5, plot-off, is
 enters, as `run_cnamaste` enters its own. PR4: rows 27-30,
 `LOG_SPACE_SWAPS`, which `port` installs with its shift and `cnamaste` holds
 without it. PR5: `FIT_CHAIN`, rows 25-26 at `cnamaste`'s defaults, the
-shift off and the analytic gradient on.
+shift off and the analytic gradient on. PR6 adds no row: `distinct` (#348)
+is an option of `gmm_init`, off, which `port` installs with row 33; the
+segment floor (#551) is PR3's `create_bin_ranges`, off unless configured,
+pinned against `--sal`'s binding below.
 """
 
 NARROWED = "(0.4, 0.6)"
@@ -448,6 +452,53 @@ def test_the_audits_cnamaste_arm_refuses_what_only_port_reads(
 
     with pytest.raises(ValueError, match="run_cnamaste takes no flags"):
         audit_truth(critical_instance(), cnamaste=True, **keywords)  # type: ignore[arg-type]
+
+
+@pytest.mark.oracle
+@pytest.mark.cnamaste
+@pytest.mark.preprocessing
+@pytest.mark.xdist_group("pipeline")
+@pytest.mark.usefixtures("_fixed_dates")
+def test_the_segment_floor_by_configuration_writes_what_sals_binding_writes(
+    planted_instance: tuple[CoreInferenceTruth, object, object, Path],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The 300 normal-UMI segment floor (#551), `--sal`'s alone (T- #667).
+
+    `run_cnaster_port --sal` binds `min_segment_normal_umi=300` into
+    `create_bin_ranges`; `cnamaste` has no flags, and its floor is the
+    configuration's `quality.min_segment_normal_umi: true`. On the gate
+    instance, without figures, the two write the same bytes, and the floor
+    takes the segments from 40 to 38 (T- #670 PR6).
+    """
+    from port.patch.omics.blocks import MIN_SEGMENT_NORMAL_UMI
+
+    truth = planted_instance[0]
+    assert fixture_hash(truth) == GATE_HASH
+    _, config = write_for_run(truth, tmp_path / "inputs", max_iter_outer=1, max_iter=3)
+    document = yaml.safe_load(config.read_text())
+    assert "min_segment_normal_umi" not in document["quality"]
+    document["quality"]["min_segment_normal_umi"] = True
+    floored = tmp_path / "floored.yaml"
+    floored.write_text(yaml.safe_dump(document))
+
+    bound = with_options(
+        ABSORBED,
+        "port.patch.omics:create_bin_ranges",
+        min_segment_normal_umi=MIN_SEGMENT_NORMAL_UMI,
+    )
+    with monkeypatch.context() as sal:
+        sal.setattr(sys.modules[__name__], "ABSORBED", bound)
+        cnaster = _run("cnaster", config, tmp_path, plots=False)
+    cnamaste = _run("cnamaste", floored, tmp_path, plots=False)
+
+    lone, differ = _differ(cnaster, cnamaste)
+    assert not lone, f"written by one arm only: {sorted(lone)}"
+    assert not differ, f"differ: {differ}"
+
+    (table,) = cnamaste.rglob("cnv_seglevel.tsv")
+    assert len(pd.read_csv(table, sep="\t")) == 38
 
 
 class _Kept(logging.Handler):

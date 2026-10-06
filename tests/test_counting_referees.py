@@ -26,7 +26,6 @@ UNCOUNTED = frozenset(
         "FIGURE_SWAPS:write_fig",
         "PLOT_OFF_SWAPS:write_fig",
         "SWAPS:assign_initial_blocks",
-        "SWAPS:create_bin_ranges",
         "SWAPS:get_aggregated_barcodes",
         "SWAPS:get_reference_genes",
         "SWAPS:initialize_rectangular_clones",

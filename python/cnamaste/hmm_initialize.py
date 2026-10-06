@@ -1,3 +1,18 @@
+"""`cnaster.hmm_initialize` at the pin; `gmm_init` takes `port`'s distinct start as an option (T- #670 PR6).
+
+`port.patch.hmm_initialize.distinct` (#348) is below the marked seam:
+with `distinct=True` and `only_minor=False`, components within one
+Mahalanobis radius of a heavier one give it their mass before the `K`
+heaviest are kept. Off, as in `cnaster` and as `port` leaves it without its
+shift; `port`'s `run_core_inference` binds it with the shift (row 33, PR7).
+Reached here as `hmm_initializer=functools.partial(gmm_init, distinct=True)`.
+
+`port.patch.hmm_initialize.sal_mixture`'s starts, `sal`'s `kmeans++x5+em`
+(#489) and the lattice (#540), are not moved: each seeds and polishes on
+`sal`'s `MixtureInstance` and EM, and `cnamaste` does not declare `sal`.
+#236, the GMM's equal vote per bin, is fixed only by those starts.
+"""
+
 import numpy as np
 import pandas as pd
 from scipy.optimize import minimize
@@ -305,6 +320,8 @@ def gmm_init(
     in_log_space=True,
     only_minor=True,
     mirrored_baf_augmentation=True,
+    *,
+    distinct=False,
 ):
     logger.info(
         f"Initializing HMM emission with GMM (only_minor={only_minor}, log_space={in_log_space}, mirrored_baf={mirrored_baf_augmentation})."
@@ -410,7 +427,11 @@ def gmm_init(
 
         X_gmm_fit = np.vstack([X_gmm_original, X_gmm_flipped])
 
-    gmm = GaussianMixture(
+    # NB `port`'s option (#348, T- #670 PR6): the top-K selection by mass
+    #    among distinct components; `only_minor=True` is `cnaster`'s either way.
+    mixture = _Distinct if (distinct and not only_minor) else GaussianMixture
+
+    gmm = mixture(
         n_components=n_components_fit,
         max_iter=max_iter,
         random_state=random_state,
@@ -744,3 +765,54 @@ def gmm_init(
 
     return gmm_log_mu, gmm_p_binom, alphas, taus
     """
+
+
+# --- `port.patch.hmm_initialize.distinct`, moved in by T- #670 PR6 -------------------------------
+
+RADIUS = 1.0
+"""Mahalanobis distance under which two components are one state (#348)."""
+
+
+def distinct_weights(means, covariances, posteriors):
+    """`posteriors` with each component's mass moved onto a heavier twin.
+
+    Greedy by total mass: a component within :data:`RADIUS` of one already
+    kept gives its column to it and keeps zeros. The row sums are unchanged.
+    """
+    merged = np.array(posteriors, dtype=np.float64, copy=True)
+    order = np.argsort(-merged.sum(axis=0), kind="stable")
+    kept = []
+
+    for component in order:
+        for head in kept:
+            difference = means[component] - means[head]
+            pooled = 0.5 * (covariances[component] + covariances[head])
+            if difference @ np.linalg.solve(pooled, difference) < RADIUS**2:
+                merged[:, head] += merged[:, component]
+                merged[:, component] = 0.0
+                break
+        else:
+            kept.append(int(component))
+
+    return merged
+
+
+class _Distinct(GaussianMixture):
+    """`GaussianMixture` whose `predict_proba` merges indistinguishable components.
+
+    `cnaster`'s `gmm_init` with `only_minor=False` keeps the `K` of `2K`
+    components with the most posterior mass. On a genome that is mostly
+    normal those are slices of the normal cluster and their mirror images;
+    on CalicoST's instance six of eight initial states sat at `p` 0.497 to
+    0.503 (#348). Merged first, the selection is by mass among components
+    that differ.
+    """
+
+    def predict_proba(self, X):
+        posteriors = super().predict_proba(X)
+        covariances = np.asarray(self.covariances_)
+
+        if self.covariance_type == "diag":
+            covariances = np.stack([np.diag(c) for c in covariances])
+
+        return distinct_weights(np.asarray(self.means_), covariances, posteriors)
