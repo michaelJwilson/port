@@ -17,9 +17,13 @@ Fixtures, each named by its hash:
   25 x 40 spots, 40 bins), `350fbd2b` by `fixture_hash`, one outer and three
   EM iterations;
 - dev (`07b82e92`), the `release` tier, five states as
-  `test_the_pipeline_completes_on_the_dev_instance` fits it;
+  `test_the_pipeline_completes_on_the_dev_instance` fits it. **Not run:**
+  under `isolated_run`'s seed `cnaster` itself never returns (below);
 - CalicoST easy (`2d4ce9a9`, `realization_hash`), the `release` tier, at
-  `zenodo_sim_config.yaml`'s settings.
+  `zenodo_sim_config.yaml`'s settings with the normal-spot BAF interval
+  widened to `(0.0, 1.0)`, as `run_config` widens it (#105): at the shipped
+  `(0.01, 0.99)` `cnaster`'s own gene table raises `IndexError` on a removed
+  bin (`run_cnaster.py:1483`), in both arms alike.
 """
 
 from __future__ import annotations
@@ -139,6 +143,18 @@ def test_run_cnamaste_writes_cnasters_bytes_on_the_gate_instance(
 @pytest.mark.release
 @pytest.mark.xdist_group("pipeline")
 @pytest.mark.usefixtures("_fixed_dates")
+@pytest.mark.xfail(
+    run=False,
+    strict=True,
+    reason=(
+        "cnaster hangs: under isolated_run's seed, BAF clone 2 (297 spots) "
+        "is split by initialize_rectangular_clones into 4 blocks of "
+        "[194, 3, 77, 23] spots for 4 clones; the rejection loop needs every "
+        "clone over 0.2 * 297 / 4 = 14.85, and the 3-spot block never is "
+        "(spatial.py:240). At n_clones 3 and 2 the run instead exceeds the "
+        "host's 15 GB in finalize's plot_clones_genomic."
+    ),
+)
 def test_run_cnamaste_writes_cnasters_bytes_on_the_dev_instance(
     tmp_path: Path,
 ) -> None:
@@ -167,7 +183,11 @@ def test_run_cnamaste_writes_cnasters_bytes_on_calicost_easy(tmp_path: Path) -> 
     sample = load_simulated(EASY)
     assert realization_hash(sample.path) == EASY_HASH
 
-    files, fits = _equal_runs(write_sim_inputs(sample, tmp_path / "inputs"), tmp_path)
+    # NB widened as `run_config` widens it (#105); see the module docstring.
+    widened = {"quality.normal_allele_specific_confidence": "(0.0, 1.0)"}
+    config = write_sim_inputs(sample, tmp_path / "inputs", widened)
+
+    files, fits = _equal_runs(config, tmp_path)
 
     assert files >= 25
     assert fits >= 1

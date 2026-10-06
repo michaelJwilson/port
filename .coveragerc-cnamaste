@@ -20,6 +20,7 @@ source =
 
 [report]
 # The floor is the measurement, raised as each T- #670 PR lands and never
-# lowered to pass one.
-fail_under = 0
+# lowered to pass one. 58.85% at PR1 (5405 statements, 2224 missed), JIT on,
+# under `not release and cnamaste`: the gate instance's equivalence test.
+fail_under = 58
 precision = 2
