@@ -154,13 +154,12 @@ def test_run_cnamaste_writes_cnasters_bytes_on_the_gate_instance(
     run=False,
     strict=True,
     reason=(
-        "cnaster hangs: under isolated_run's seed, BAF clone 2 (297 spots) "
-        "is split by initialize_rectangular_clones into 4 blocks of "
-        "[194, 3, 77, 23] spots for 4 clones; the rejection loop needs every "
-        "clone over 0.2 * 297 / 4 = 14.85, and the 3-spot block never is "
-        "(spatial.py:240). At n_clones 3 and 2 the run instead exceeds the "
-        "13.9 GB at which this host kills it, in finalize's "
-        "plot_clones_genomic."
+        "cnaster hangs: under isolated_run's seed the rectangular clone "
+        "initializer (spatial.py:240) splits BAF clone 2 (297 spots) into 4 "
+        "blocks of [194, 3, 77, 23] spots for 4 clones; its rejection loop "
+        "needs every clone over 0.2 * 297 / 4 = 14.85, and the 3-spot block "
+        "never is. At n_clones 3 and 2 the run instead exceeds the 13.9 GB "
+        "at which this host kills it, in finalize's genomic clone figure."
     ),
 )
 def test_run_cnamaste_writes_cnasters_bytes_on_the_dev_instance(

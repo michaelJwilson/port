@@ -855,8 +855,6 @@ def audit_truth(
     `cnamaste`'s own `run_cnaster`, which takes no flags, with the normal
     candidates read from `cnamaste.run` as they are from `cnaster`'s.
     """
-    import importlib
-
     import scipy.optimize
 
     from port.extensions.copy_errors import Captured, captured_fits
@@ -887,11 +885,14 @@ def audit_truth(
         overridden(document, overrides)
         config.write_text(yaml.safe_dump(document))
 
-    pipeline: Any = importlib.import_module(
-        "cnamaste.run" if cnamaste else "cnaster.scripts.run_cnaster"
-    )
+    # NB two static imports rather than `importlib`, so `tests/source_graph`
+    #    still reads the `determine_normal_candidates` rebinding below.
     if cnamaste:
+        import cnamaste.run as pipeline
+
         entry = _run_cnamaste
+    else:
+        import cnaster.scripts.run_cnaster as pipeline
 
     if calicost:
         from port.scripts.run_calicost import main as run_calicost
