@@ -31,33 +31,8 @@ KNOWN: dict[str, str] = {
     # --- F1, F8, F10: the label-solver seam ---------------------------------
     "port.patch.icm.interface:IcmResult field cost": "F1",
     "port.patch.icm.interface:IcmResult field niter": "F10",
-    "port.patch.icm.alpha_expansion:potts_graph_from arg beta": "F2",
-    "port.patch.icm.alpha_expansion:potts_energy arg beta": "F2",
-    "port.patch.icm.alpha_expansion:alpha_expansion_sweep arg beta": "F2",
-    "port.patch.icm.alpha_expansion:forbidden_as_finite arg beta": "F2",
-    "port.patch.icm.alpha_expansion:alpha_expansion_sweep arg tol": "F8",
-    "port.extensions.label_solver:expansion_then_floor arg beta": "F2",
-    "port.extensions.label_solver:sal_icm_sweep arg beta": "F2",
-    "port.extensions.label_solver:sal_icm_sweep arg tol": "F8",
-    "port.extensions.label_solver:expansion_then_floor sibling": "F8",
-    "port.extensions.label_solver:sal_icm_sweep sibling": "F8",
-    # NB the seam's two floored sal solvers (#410 step 3): the caller passes
-    #    `beta` and `tol` by name, so they carry the seam's words until F2/F8
-    #    rename all five together.
-    "port.extensions.label_solver:expansion_then_merge arg beta": "F2",
-    "port.extensions.label_solver:expansion_then_merge arg tol": "F8",
-    "port.extensions.label_solver:sal_icm_floor_sweep arg beta": "F2",
-    "port.extensions.label_solver:sal_icm_floor_sweep arg tol": "F8",
-    "port.extensions.label_solver:fusion_then_merge arg beta": "F2",
-    "port.extensions.label_solver:fusion_then_merge arg tol": "F8",
-    "port.extensions.label_solver:fusion_then_merge sibling": "F8",
-    "port.extensions.label_solver:expansion_then_merge sibling": "F8",
-    "port.extensions.label_solver:sal_icm_floor_sweep sibling": "F8",
-    # NB the argmax-start row (#410 step 3) carries the seam's words until
-    #    F2/F8 rename its siblings with it.
-    "port.extensions.label_solver:sal_icm_argmax_sweep arg beta": "F2",
-    "port.extensions.label_solver:sal_icm_argmax_sweep arg tol": "F8",
-    "port.extensions.label_solver:sal_icm_argmax_sweep sibling": "F8",
+    # NB its keyword-only `backend` is the sal option the rows bind
+    #    (`Backend.RUST`); the seam's other arguments match `icm_sweep`.
     "port.patch.icm.alpha_expansion:alpha_expansion_sweep sibling": "F8",
     # --- F2, F3, F5: count-kernel and data names ----------------------------
     "port.patch.normal_spot:cumulative_and_mass arg alpha": "F3",

@@ -139,7 +139,7 @@ def test_a_negative_coupling_is_refused_rather_than_clipped() -> None:
     field, graph, _, _ = _lattice(4, 2, seed=1, beta=1.0)
 
     with pytest.raises(ValueError, match="metric"):
-        potts_graph_from(graph, beta=-1.0)
+        potts_graph_from(graph, spatial_weight=-1.0)
 
 
 @pytest.mark.warning
