@@ -592,7 +592,6 @@ def _place_genomic(
     profile_ax: Any,
     legend_ax: Any,
     contigs: tuple[list[float], list[str]],
-    below: float,
 ) -> None:
     """(a)'s profile over (b)'s tracks, on one left and one right edge.
 
@@ -624,15 +623,13 @@ def _place_genomic(
     letters = [figure.text(0.0, 0.0, f"({k})", fontsize=LABEL_SIZE) for k in "ab"]
     column, left = _left_column(figure, tracks, profile_ax)
     right = max(ax.get_window_extent(renderer).x1 for ax in tracks) / dpi
-    # NB `below` points: the Mb labels' row, where the last track draws them, over the names.
-    mb = below
 
     for _ in range(3):
         for ax in [*tracks, profile_ax, legend_ax]:
             _put(ax, left, right)
 
         figure.canvas.draw()
-        name_contigs(foot_ax, *contigs, size=FONT_SIZE, below=mb)
+        name_contigs(foot_ax, *contigs, size=FONT_SIZE)
         names = [t for t in foot_ax.texts if t.get_gid() == "contig"]
         overrun = max(t.get_window_extent(renderer).x1 for t in names) / dpi - width
 
@@ -641,7 +638,7 @@ def _place_genomic(
 
         right -= overrun + gap
 
-    name_contigs(foot_ax, *contigs, size=FONT_SIZE, below=mb)
+    name_contigs(foot_ax, *contigs, size=FONT_SIZE)
 
     # NB each clone's state fractions follow its name, so a clone with many
     #    states wraps its key onto rows rather than running off the page.
@@ -812,8 +809,12 @@ def _genomic_page(
     df_cnv = genomic.kwargs["df_cnv"]
     genome = resolve(Ticks(), df_cnv, len(df_cnv))
 
-    if metric and genome is not None:
-        genome = GenomicAxis.of_table(df_cnv, altered_bins(df_cnv))
+    # NB no Mb numbers, as on the truth page: the marks and the contig names
+    #    under the last track (PR- #715).
+    if genome is not None:
+        genome = GenomicAxis.of_table(
+            df_cnv, altered_bins(df_cnv) if metric else None, labels=False
+        )
 
     # NB the mirror and copy key above the profile.
     legend_ax, profile_ax = middle.subplots(
@@ -864,8 +865,7 @@ def _genomic_page(
     # NB laid out once and frozen, then placed on the page by hand.
     figure.canvas.draw()
     figure.set_layout_engine("none")
-    below = 1.15 * FONT_SIZE if genome is not None and genome.labels else 0.0
-    _place_genomic(figure, top, profile_ax, legend_ax, contigs, below)
+    _place_genomic(figure, top, profile_ax, legend_ax, contigs)
     disclose(figure, genome)
     return figure
 

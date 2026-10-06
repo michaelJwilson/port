@@ -239,8 +239,25 @@ def plot_clones_spatial(
             fontsize=9,
         )
 
+    _key_within(ax)
     fit_to_content(figure)
     return figure
+
+
+def _key_within(ax: Any) -> None:
+    """The key under `ax` wrapped onto rows until it is no wider than `ax`,
+    so the page cut to its content is the section's width (PR- #715)."""
+    legend = ax.get_legend()
+    if legend is None:
+        return
+    figure = ax.get_figure(root=True)
+    renderer = figure.canvas.get_renderer()
+    width = ax.get_window_extent(renderer).width
+    columns = legend._ncols
+    while columns > 1 and legend.get_window_extent(renderer).width > width:
+        columns -= 1
+        legend.set_ncols(columns)
+        figure.canvas.draw()
 
 
 def _panels(
