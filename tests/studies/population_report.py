@@ -27,6 +27,7 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
+from port.qa.statistics import bootstrap_interval, resample_weights
 
 BOOTSTRAP = 2000
 """Resamples of the members, per curve."""
@@ -173,12 +174,6 @@ def _logistic(fit: tuple[float, float] | None, grid: np.ndarray) -> np.ndarray:
     return curve_
 
 
-def _weights(seeds: np.ndarray, rng: np.random.Generator) -> np.ndarray:
-    """`(BOOTSTRAP, n_seeds)`: how often each member is drawn in each resample."""
-    picks = rng.integers(0, seeds.size, (BOOTSTRAP, seeds.size))
-    return np.stack([np.bincount(p, minlength=seeds.size) for p in picks])
-
-
 def curve(
     frame: pd.DataFrame,
     x: str,
@@ -224,8 +219,7 @@ def curve(
 
     with np.errstate(invalid="ignore", divide="ignore"):
         rate = sums.sum(0) / counts.sum(0)
-        rates = (weights @ sums) / (weights @ counts)
-    low, high = np.nanpercentile(rates, [2.5, 97.5], axis=0)
+    low, high = bootstrap_interval(sums, counts, weights)
 
     xs, ys = frame[x].to_numpy(dtype=float), frame[y].to_numpy(dtype=float)
     grid = np.linspace(edges[0], edges[-1], 101)
@@ -255,9 +249,7 @@ def curve(
         np.add.at(fine_counts, (member[within], fine[within]), many[within])
         with np.errstate(invalid="ignore", divide="ignore"):
             fine_rate = fine_sums.sum(0) / fine_counts.sum(0)
-            fine_low, fine_high = np.nanpercentile(
-                (weights @ fine_sums) / (weights @ fine_counts), [2.5, 97.5], axis=0
-            )
+        fine_low, fine_high = bootstrap_interval(fine_sums, fine_counts, weights)
         shown = {
             "centres": ((display[:-1] + display[1:]) / 2).tolist(),
             "rate": fine_rate.tolist(),
@@ -301,7 +293,7 @@ def summarize(out: Path, study2_j: float, seed: int = 544) -> dict[str, Any]:
     js = sorted(base_clones["J"].unique())
     at = base_clones.groupby("J")["seed"].apply(set)
     seeds = np.array(sorted(set.intersection(*(at[j] for j in js))))
-    weights = _weights(seeds, rng)
+    weights = resample_weights(seeds.size, BOOTSTRAP, rng)
     paired = base_clones[base_clones["seed"].isin(seeds)]
 
     study1: dict[float, dict[str, Any]] = {}
@@ -333,7 +325,7 @@ def summarize(out: Path, study2_j: float, seed: int = 544) -> dict[str, Any]:
     # NB Study 2 is read at one J, on every member run there.
     default = events[events["J"] == study2_j] if len(events) else events
     members2 = np.array(sorted(clones.loc[clones["J"] == study2_j, "seed"].unique()))
-    weights2 = _weights(members2, rng)
+    weights2 = resample_weights(members2.size, BOOTSTRAP, rng)
     study2 = {}
     for name in ("LOH", "balanced gain", "imbalanced gain", "all"):
         frame = default if name == "all" else default[default["class"] == name]
@@ -644,25 +636,11 @@ def figures(
 
 def stamp_text(out: Path) -> str:
     """`data <hash> · code <sha>`: SHA-256 over `out`'s records, and the repository's commit, `+` if dirty."""
-    import hashlib
-    import subprocess
+    from port.qa import provenance
 
-    digest = hashlib.sha256()
-    for record in sorted((out / "records").glob("*.json")):
-        digest.update(record.name.encode() + record.read_bytes())
-    root = Path(__file__).resolve().parents[2]
-
-    def git(*args: str) -> str:
-        done = subprocess.run(
-            ["git", *args], cwd=root, capture_output=True, text=True, check=False
-        )
-        return done.stdout.strip()
-
-    commit = git("rev-parse", "--short=7", "HEAD") or "unknown"
-    dirty = git(
-        "status", "--porcelain", "--untracked-files=no", "--", "python", "tests"
-    )
-    return f"data {digest.hexdigest()[:8]} · code {commit}{'+' if dirty else ''}"
+    records = sorted((out / "records").glob("*.json"))
+    data = b"".join(r.name.encode() + r.read_bytes() for r in records)
+    return provenance.stamp(provenance.digest(data), "python", "tests")
 
 
 def report(out: Path, study2_j: float) -> dict[str, Any]:
@@ -698,8 +676,7 @@ def _pooled(
     many = frame["count"].to_numpy(dtype=float)
     hits = np.bincount(member, frame[y].to_numpy() * many, seeds.size)
     total = np.bincount(member, many, seeds.size)
-    with np.errstate(invalid="ignore", divide="ignore"):
-        low, high = np.nanpercentile((weights @ hits) / (weights @ total), [2.5, 97.5])
+    low, high = bootstrap_interval(hits, total, weights)
     return {"rate": float(hits.sum() / total.sum()), "low": float(low),
             "high": float(high), "false": int(hits.sum())}  # fmt: skip
 

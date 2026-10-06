@@ -247,7 +247,8 @@ a test.
 *   **Every module has one role, and lives where the role says.** `patch/`
     replaces a named `cnaster` function or serves one that does;
     `extensions/` adds what has no counterpart, opt-in or a default its
-    measurement earned; `sandbox/` holds developed patches and extensions
+    measurement earned; `qa/` measures and records runs, reached from no
+    row or pipeline; `sandbox/` holds developed patches and extensions
     that are not the default, each with its ticket, measurement and exit.
     It is the only place developed code that is not in production lives;
     none moves to another branch.

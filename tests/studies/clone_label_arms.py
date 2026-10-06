@@ -29,6 +29,7 @@ from pathlib import Path
 from typing import Any, NamedTuple
 
 import numpy as np
+from port.qa.statistics import measured
 
 SWEEPS = 1000
 """#492's budget: 1,000 sweeps of site visits for each `sal` method."""
@@ -144,21 +145,21 @@ def _bound(field: np.ndarray, beta: float) -> tuple[float, float, float]:
     from sal.search.trws import trws
 
     _, graph = _graph(beta)
-    opened = time.perf_counter()
-    found = trws(graph, field)
-    return float(found.bound), float(found.energy), time.perf_counter() - opened
+    with measured() as cost:
+        found = trws(graph, field)
+    return float(found.bound), float(found.energy), cost.wall_s
 
 
 def _start(job: Job) -> tuple[np.ndarray, float]:
     from port.sandbox.clone_starts.starts import STARTS
 
-    opened = time.perf_counter()
-    labels = STARTS[job.start].run(
-        _HELD["capture"],
-        np.random.default_rng([job.seed, 541]),
-        field=_HELD["grid2"].field,
-    )
-    return np.asarray(labels, dtype=np.int64), time.perf_counter() - opened
+    with measured() as cost:
+        labels = STARTS[job.start].run(
+            _HELD["capture"],
+            np.random.default_rng([job.seed, 541]),
+            field=_HELD["grid2"].field,
+        )
+    return np.asarray(labels, dtype=np.int64), cost.wall_s
 
 
 def _build(labels: np.ndarray, seed: int, states: Any = None) -> Any:
@@ -189,15 +190,15 @@ def _starts_arm(job: Job) -> list[dict[str, Any]]:
     for solver in _solvers():
         seeds = range(3) if solver.split(":")[1] in STOCHASTIC_SOLVERS else range(1)
         for seed in seeds:
-            opened = time.perf_counter()
-            try:
-                solved = _solve(solver, problem.field, problem.labels,
-                                np.random.default_rng([seed, 492]), beta)  # fmt: skip
-            except Exception as error:  # noqa: BLE001 -- a refusal is a result
-                rows.append({**base, "solver": solver, "solver_seed": seed,
-                             "error": f"{type(error).__name__}: {error}"})  # fmt: skip
-                continue
-            seconds = time.perf_counter() - opened
+            with measured() as cost:
+                try:
+                    solved = _solve(solver, problem.field, problem.labels,
+                                    np.random.default_rng([seed, 492]), beta)  # fmt: skip
+                except Exception as error:  # noqa: BLE001 -- a refusal is a result
+                    rows.append({**base, "solver": solver, "solver_seed": seed,
+                                 "error": f"{type(error).__name__}: {error}"})  # fmt: skip
+                    continue
+            seconds = cost.wall_s
             floored = _floored(problem.field, solved)
             rows.append({
                 **base, "solver": solver, "solver_seed": seed, "solve_seconds": seconds,
@@ -215,12 +216,14 @@ def _alternating_arm(job: Job) -> list[dict[str, Any]]:
     rows = [{**job._asdict(), "round": 0, "seconds": elapsed,
              **_scored(problem.labels, problem.field, beta)}]  # fmt: skip
     for round_ in range(1, 5):
-        opened = time.perf_counter()
-        solved = _solve(job.solver, problem.field, problem.labels,
-                        np.random.default_rng([round_, 492]), beta)  # fmt: skip
-        floored = _floored(problem.field, solved)
-        problem = _build(floored, job.seed, states=(problem.log_mu, problem.p_binom))
-        elapsed += time.perf_counter() - opened
+        with measured() as cost:
+            solved = _solve(job.solver, problem.field, problem.labels,
+                            np.random.default_rng([round_, 492]), beta)  # fmt: skip
+            floored = _floored(problem.field, solved)
+            problem = _build(
+                floored, job.seed, states=(problem.log_mu, problem.p_binom)
+            )
+        elapsed += cost.wall_s
         rows.append({**job._asdict(), "round": round_, "seconds": elapsed,
                      **_scored(problem.labels, problem.field, beta)})  # fmt: skip
     return rows
@@ -249,12 +252,13 @@ def _joint_arm(job: Job) -> list[dict[str, Any]]:
     temperatures = TEMPERATURES if job.arm == "joint-anneal" else (1.0,) * 5
 
     for step, temperature in enumerate(temperatures):
-        opened = time.perf_counter()
-        drawn = _floored(
-            problem.field, _heat_bath(problem.field, problem.labels, temperature, step)
-        )
-        problem = _build(drawn, job.seed, states=(problem.log_mu, problem.p_binom))
-        elapsed += time.perf_counter() - opened
+        with measured() as cost:
+            drawn = _floored(
+                problem.field,
+                _heat_bath(problem.field, problem.labels, temperature, step),
+            )
+            problem = _build(drawn, job.seed, states=(problem.log_mu, problem.p_binom))
+        elapsed += cost.wall_s
         scored = _scored(problem.labels, problem.field, beta)
         if (
             job.arm == "joint-sample"
@@ -271,11 +275,11 @@ def _joint_arm(job: Job) -> list[dict[str, Any]]:
         )
 
     final = best if job.arm == "joint-sample" else problem
-    opened = time.perf_counter()
-    solved = _floored(final.field, _solve("port:alpha-rust-fuse-merge", final.field,
-                                          final.labels, np.random.default_rng(0), beta))  # fmt: skip
-    problem = _build(solved, job.seed, states=(final.log_mu, final.p_binom))
-    elapsed += time.perf_counter() - opened
+    with measured() as cost:
+        solved = _floored(final.field, _solve("port:alpha-rust-fuse-merge", final.field,
+                                              final.labels, np.random.default_rng(0), beta))  # fmt: skip
+        problem = _build(solved, job.seed, states=(final.log_mu, final.p_binom))
+    elapsed += cost.wall_s
     rows.append({**job._asdict(), "step": "solved", "seconds": elapsed,
                  **_scored(problem.labels, problem.field, beta)})  # fmt: skip
     return rows

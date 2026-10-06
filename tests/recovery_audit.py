@@ -48,7 +48,6 @@ import argparse
 import contextlib
 import json
 import tempfile
-import time
 import warnings
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -57,9 +56,10 @@ from typing import Any
 import numpy as np
 import pandas as pd
 import yaml
+from port.qa.scoring import integer_clones, matched, overlap
+from port.qa.statistics import measured, peak_gb
 
 from tests.fixtures import CoreInferenceTruth
-from tests.scoring import matched, overlap
 
 __all__ = ["Recovery", "run_arm", "score"]
 
@@ -250,22 +250,6 @@ def read_calicost(truth: CoreInferenceTruth, output: Path) -> Reading:
         a=a,
         b=b,
     )
-
-
-def integer_clones(a: np.ndarray, b: np.ndarray) -> np.ndarray:
-    """Each fitted clone's label after merging clones of one `(A, B)` profile.
-
-    Index `c` holds the smallest clone whose decoded `(A, B)` equals clone
-    `c`'s at every bin (#344), so the normal clone keeps `0`.
-    """
-    merged = np.arange(a.shape[1])
-    seen: dict[bytes, int] = {}
-
-    for clone in range(a.shape[1]):
-        profile = np.stack([a[:, clone], b[:, clone]]).astype(np.int64)
-        merged[clone] = seen.setdefault(profile.tobytes(), clone)
-
-    return merged
 
 
 def score(
@@ -536,9 +520,9 @@ def run_arm(
 
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            started = time.perf_counter()
-            run_calicost([str(config), *flags])
-            wall = time.perf_counter() - started
+            with measured() as cost:
+                run_calicost([str(config), *flags])
+            wall = cost.wall_s
 
         output = root / "output_calicost"
         arm = " ".join(["calicost", *flags])
@@ -604,21 +588,19 @@ def run_arm(
             )
             stack.enter_context(warnings.catch_warnings())
             warnings.simplefilter("ignore")
-            started = time.perf_counter()
+            cost = stack.enter_context(measured())
             if two_pass_normal:
                 from port.sandbox.normal_candidates import two_pass
 
                 two_pass([str(config), *flags])
             else:
                 main([str(config), *flags])
-
-            wall = time.perf_counter() - started
     finally:
         pipeline.determine_normal_candidates = determine
         scipy.optimize.minimize = minimize
 
     arm = " ".join(flags) or "default"
-    recovery = score(truth, root / "output", arm, wall)
+    recovery = score(truth, root / "output", arm, cost.wall_s)
     recovery.m_step_calls = tightened_calls[0]
     used = chosen[-1]
 
@@ -739,11 +721,7 @@ def main() -> None:
             else (arguments.diffexp[0], int(arguments.diffexp[1]))
         ),
     )
-    import resource
-
-    recovery.peak_gb = round(
-        resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024**2, 2
-    )
+    recovery.peak_gb = round(peak_gb(), 2)
     print(
         "RECOVERY "
         + json.dumps(

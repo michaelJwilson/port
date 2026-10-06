@@ -16,14 +16,13 @@ and the commit that drew it.
 
 from __future__ import annotations
 
-import hashlib
-import subprocess
 import sys
 import tomllib
 from pathlib import Path
 from typing import Any
 
 import numpy as np
+from port.qa import provenance
 from port.sim.draw import extended, lognormal_median
 from scipy import stats
 
@@ -54,19 +53,10 @@ def stamp_text() -> str:
     parts = []
     for name in KEYED:
         path = MANIFESTS / name
-        digest = hashlib.sha256(path.read_bytes()).hexdigest()[:8]
+        digest = provenance.digest(path.read_bytes())
         r0 = tomllib.loads(path.read_text())["sample"]["r0_hash"]
         parts.append(f"{path.stem} {digest} (r0 {r0})")
-
-    def git(*args: str) -> str:
-        done = subprocess.run(
-            ["git", *args], cwd=ROOT, capture_output=True, text=True, check=False
-        )
-        return done.stdout.strip()
-
-    commit = git("rev-parse", "--short", "HEAD") or "unknown"
-    dirty = "+" if git("status", "--porcelain", "--untracked-files=no") else ""
-    return f"data {' · '.join(parts)} · code {commit}{dirty}"
+    return provenance.stamp(" · ".join(parts))
 
 
 def main(argv: list[str] | None = None) -> int:

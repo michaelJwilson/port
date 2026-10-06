@@ -18,7 +18,7 @@ study holds is its records and each run's `KEPT` outputs in `DIR/outputs/`. `rep
 
 **Scored per tumour clone:** its spots, the sum of its spots' drawn UMIs,
 and its completeness -- the share of its spots in the fitted clone matched
-to it by overlap (`tests.scoring.matched`), on `clone_labels.tsv`, which
+to it by overlap (`port.qa.scoring.matched`), on `clone_labels.tsv`, which
 carries #518's merge. Detected at completeness >= `DETECTED`.
 
 **Scored per event of a detected clone** (every event on its path from the
@@ -168,7 +168,8 @@ def clone_events(path: Path) -> dict[str, list[tuple[str, int, int, int, int]]]:
 
 def score_member(sample: Any, output: Path) -> dict[str, Any]:
     """Per tumour clone its size, UMIs and completeness; per event its recovery."""
-    from tests.scoring import matched, overlap
+    from port.qa.scoring import matched, overlap
+
     from tests.sim_audit import read_run
 
     run = read_run(sample, output)
@@ -297,7 +298,8 @@ def _kept_run(sample: Any, kept: Path) -> dict[str, Any]:
 
 def rescore(out: Path) -> int:
     """Add `neutral_segments` to each record scored before it, from its outputs."""
-    from tests.scoring import matched, overlap
+    from port.qa.scoring import matched, overlap
+
     from tests.sim_fixtures import load_simulated
 
     done = 0

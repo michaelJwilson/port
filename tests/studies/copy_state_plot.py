@@ -24,8 +24,9 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
+from port.qa.statistics import bars, ranks
 
-from tests.studies.plot_common import ranks, stamp, tt
+from tests.studies.plot_common import merged, stamp, tab20, tt
 
 TABLE = (
     ("CalicoST, port", (
@@ -48,13 +49,6 @@ TABLE = (
 `distinct`, `lattice-em`, `rdr-quantiles`, `data`, `quantile` and the emission++ variants."""
 
 
-def plt_colour(number: int) -> tuple[float, float, float, float]:
-    """The `number`th start's colour: `tab20`, cycled."""
-    from matplotlib import colormaps
-
-    return tuple(colormaps["tab20"]((number - 1) % 20))  # type: ignore[return-value]
-
-
 LABEL = {
     "calicost-gmm": "calicost-gmm", "lattice": "lattice", "prior": "prior", "kmeans++": "k-means++",
     "emission++": "emission++", "gaussian-em": "gaussian-em",
@@ -68,17 +62,12 @@ SOURCE = {
     "calicost-gmm": "CalicoST", "lattice": "port",
 }  # fmt: skip
 """Each start's source: the package whose code it runs."""
-COLOUR = {name: plt_colour(k) for name, k in NUMBER.items()}
+COLOUR = {name: tab20(k) for name, k in NUMBER.items()}
 """One colour per start, by its number."""
 
 DODGE = 1.12
 FLOOR = 1e-2
 """The "0" tick: runs within `FLOOR` nats of the best."""
-
-
-def _bars(values: pd.Series) -> tuple[float, list[list[float]]]:
-    m = float(values.median())
-    return m, [[m - float(values.quantile(0.1))], [float(values.quantile(0.9)) - m]]
 
 
 def degenerate_counts(record: dict[str, Any]) -> dict[str, int]:
@@ -256,17 +245,17 @@ def draw(ax: Any, record: dict[str, Any], key: bool = False) -> pd.DataFrame:
         if name not in NUMBER:
             continue
         colour = COLOUR[str(name)]
-        x, xe = _bars(g.seconds)
+        x, xe = bars(g.seconds)
         # NB each start displaced by its own factor, up to 0.1 decades either side, so equal runtimes do not overlap
         spread = 10 ** (0.2 * (NUMBER[str(name)] / max(NUMBER.values()) - 0.5))
         x *= spread
         xe = [[e * spread for e in side] for side in xe]
-        y, ye = _bars(g.y)
+        y, ye = bars(g.y)
         ax.errorbar(
             x, y, xerr=xe, yerr=ye, fmt="o", color=colour, ms=5, lw=0.8, capsize=2.5
         )
-        bx, bxe = _bars(g.bseconds)
-        by, bye = _bars(g.by)
+        bx, bxe = bars(g.bseconds)
+        by, bye = bars(g.by)
         # NB the Baum-Welch points crowd near 10 s: spread three times as wide, up to 0.3 decades either side
         bspread = spread**3
         bx *= DODGE * bspread
@@ -371,19 +360,6 @@ def figure(record: dict[str, Any], out: Path) -> Path:
     fig.savefig(out, dpi=150, bbox_inches="tight")
     plt.close(fig)
     return out
-
-
-def merged(records: list[dict[str, Any]]) -> dict[str, Any]:
-    """One record from windows of the same manifest: their rows together, a realization done in any of them."""
-    record = dict(records[0])
-    for other in records[1:]:
-        if Path(other["manifest"]).stem != Path(record["manifest"]).stem:
-            msg = f"{other['manifest']} is not {record['manifest']}"
-            raise ValueError(msg)
-        record["problems"] = {**other["problems"], **record["problems"]}
-        record["rows"] = [*record["rows"], *other["rows"]]
-        record["done"] = sorted({*record["done"], *other["done"]})
-    return record
 
 
 def main(argv: list[str] | None = None) -> None:

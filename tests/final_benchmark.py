@@ -22,25 +22,19 @@ from __future__ import annotations
 
 import argparse
 import json
-import resource
-import statistics
 import subprocess
 import sys
 import tempfile
-import time
 from pathlib import Path
 from typing import Any
 
 import pandas as pd
 import yaml
+from port.qa.statistics import measured, median_wall, peak_gb
 from port.sim.files import located
 
 TIMEOUT = 1800
 """CalicoST's budget per case, in seconds (#494)."""
-
-
-def _child_peak_gb() -> float:
-    return resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss / 1024**2
 
 
 def _shipped(joint: bool) -> Path:
@@ -71,11 +65,8 @@ def _sample(name: str) -> Any:
 
 def port(name: str, repeats: int) -> dict[str, Any]:
     """`tests.sim_audit --sal` in a child, `repeats` times; the last run's scores, the median wall."""
-    walls, row = [], {}
-
-    for _ in range(repeats):
-        started = time.perf_counter()
-        done = subprocess.run(
+    done, wall, walls = median_wall(
+        lambda: subprocess.run(
             [
                 sys.executable,
                 "-m",
@@ -89,10 +80,11 @@ def port(name: str, repeats: int) -> dict[str, Any]:
             capture_output=True,
             text=True,
             check=True,
-        )
-        walls.append(time.perf_counter() - started)
-        line = next(x for x in done.stdout.splitlines() if x.startswith("SIM "))
-        row = json.loads(line[4:])
+        ),
+        repeats,
+    )
+    line = next(x for x in done.stdout.splitlines() if x.startswith("SIM "))
+    row = json.loads(line[4:])
 
     return {
         "tool": "port --sal",
@@ -103,9 +95,9 @@ def port(name: str, repeats: int) -> dict[str, Any]:
         "copy_ari": row["copy_ari"],
         "exact_altered": row["exact_altered"],
         "exact_altered_minor": row["exact_altered_minor"],
-        "wall": round(statistics.median(walls), 1),
+        "wall": round(wall, 1),
         "walls": [round(w, 1) for w in walls],
-        "peak_gb": round(_child_peak_gb(), 2),
+        "peak_gb": round(peak_gb(children=True), 2),
     }
 
 
@@ -226,41 +218,45 @@ def calicost(
     joint = joint_inputs(Path(config), root)
     tool = "CalicoST (shipped" + ("" if n_clones is None else f", n_clones {n_clones}")
     tool += f", cap {timeout} s)"
-    started = time.perf_counter()
+    failed: subprocess.CalledProcessError | None = None
 
-    try:
-        subprocess.run(
-            [
-                "timeout",
-                str(timeout),
-                sys.executable,
-                "-c",
-                "from port.scripts.run_calicost import main; raise SystemExit(main())",
-                str(config),
-                "--shipped",
-                str(_with_clones(_shipped(joint), n_clones, root)),
-                "--no-align",
-                "--no-figures",
-            ],
-            capture_output=True,
-            text=True,
-            check=True,
-        )
-    except subprocess.CalledProcessError as error:
-        wall = time.perf_counter() - started
-        reached = [x for x in error.stderr.splitlines() if " - " in x][-1:]
+    with measured() as cost:
+        try:
+            subprocess.run(
+                [
+                    "timeout",
+                    str(timeout),
+                    sys.executable,
+                    "-c",
+                    "from port.scripts.run_calicost import main; raise SystemExit(main())",
+                    str(config),
+                    "--shipped",
+                    str(_with_clones(_shipped(joint), n_clones, root)),
+                    "--no-align",
+                    "--no-figures",
+                ],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+        except subprocess.CalledProcessError as error:
+            failed = error
+
+    wall = cost.wall_s
+
+    if failed is not None:
+        reached = [x for x in failed.stderr.splitlines() if " - " in x][-1:]
         return {
             "tool": tool,
             "finished": False,
-            "returncode": error.returncode,
+            "returncode": failed.returncode,
             "wall": round(wall, 1),
-            "peak_gb": round(_child_peak_gb(), 2),
-            "reached": reached[0][:200] if reached else error.stderr[-400:],
+            "peak_gb": round(peak_gb(children=True), 2),
+            "reached": reached[0][:200] if reached else failed.stderr[-400:],
             "output": str(root / "output_calicost"),
             **baf_stage(sample, root / "output_calicost"),
         }
 
-    wall = time.perf_counter() - started
     print(f"calicost output: {root / 'output_calicost'}", file=sys.stderr, flush=True)
 
     try:
@@ -271,7 +267,7 @@ def calicost(
             "finished": True,
             "scored": f"{type(error).__name__}: {error}",
             "wall": round(wall, 1),
-            "peak_gb": round(_child_peak_gb(), 2),
+            "peak_gb": round(peak_gb(children=True), 2),
             "output": str(root / "output_calicost"),
         }
 
@@ -286,7 +282,7 @@ def calicost(
         "exact_altered": recovery.exact_altered,
         "exact_altered_minor": recovery.exact_altered_minor,
         "wall": round(wall, 1),
-        "peak_gb": round(_child_peak_gb(), 2),
+        "peak_gb": round(peak_gb(children=True), 2),
         "output": str(root / "output_calicost"),
     }
 

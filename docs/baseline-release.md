@@ -31,7 +31,7 @@ peak ≤ 6.15 GB; against `efdebfd` on 14 shared fixtures the wall ratio is
 
 ## Results
 
-Metric names are the ledger's (`tests/metrics.py`); `_pf` is phase-free,
+Metric names are the ledger's (`port.qa.ledger.METRICS`); `_pf` is phase-free,
 `—` a class not planted. `copy_ari_bgain` is undefined on every fixture
 (one balanced pair planted). Clones: fitted / integer.
 

@@ -24,8 +24,9 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
+from port.qa.statistics import bars, ranks
 
-from tests.studies.plot_common import ranks, stamp, tt
+from tests.studies.plot_common import merged, stamp, tab20, tt
 
 NAMES = {
     "field_argmax": "field-argmax", "anneal": "glauber", "tempering": "parallel tempering",
@@ -69,23 +70,10 @@ FLOOR = 1e-2
 """The gap figure's "0": runs within `FLOOR` nats of the bound."""
 
 
-def _colour(solver: str) -> Any:
-    """The solver's colour: `tab20` by its number, cycled."""
-    from matplotlib import colormaps
-
-    return colormaps["tab20"]((NUMBER[solver] - 1) % 20)
-
-
 def label(solver: str) -> str:
     """The name printed for `solver`, its `sal:`/`port:` source dropped."""
     name = solver.split(":", 1)[1]
     return NAMES.get(name, name)
-
-
-def _bars(values: pd.Series) -> tuple[float, list[list[float]]]:
-    """The median and its distances to the 10% and 90% quantiles, as `errorbar` takes them."""
-    m = float(values.median())
-    return m, [[m - float(values.quantile(0.1))], [float(values.quantile(0.9)) - m]]
 
 
 def frame(record: dict[str, Any]) -> pd.DataFrame:
@@ -270,19 +258,19 @@ def draw(
     lowest = float(d.groupby("solver").y.median().min())
     crowded: list[tuple[float, float, str]] = []
     for solver, g in d.groupby("solver"):
-        colour = _colour(str(solver))
+        colour = tab20(NUMBER[str(solver)])
         marker = "s" if solver.startswith("port:") else "o"
-        x, xe = _bars(g.seconds)
+        x, xe = bars(g.seconds)
         # NB each solver displaced by its own factor, up to 0.1 decades either side, so equal runtimes do not overlap
         spread = 10 ** (0.2 * (NUMBER[str(solver)] / max(NUMBER.values()) - 0.5))
         x *= spread
         xe = [[e * spread for e in side] for side in xe]
-        y, ye = _bars(g.y)
+        y, ye = bars(g.y)
         ax.errorbar(
             x, y, xerr=xe, yerr=ye, fmt=marker, color=colour, ms=5, lw=0.8, capsize=2.5
         )
-        px, pxe = _bars(g.pseconds)
-        py, pye = _bars(g.py)
+        px, pxe = bars(g.pseconds)
+        py, pye = bars(g.py)
         px *= DODGE * spread
         pxe = [[e * spread for e in side] for side in pxe]
         if (g.y - g.py).abs().max() > 0.5:
@@ -309,8 +297,8 @@ def draw(
                 lw=0.8,
                 capsize=2.5,
             )
-        bx, bxe = _bars(g.bseconds)
-        by, bye = _bars(g.by)
+        bx, bxe = bars(g.bseconds)
+        by, bye = bars(g.by)
         bx *= DODGE**2 * spread
         bxe = [[e * spread for e in side] for side in bxe]
         if (g.py - g.by).abs().max() > 0.5:
@@ -360,7 +348,7 @@ def draw(
             spots.append(max(x, spots[-1] * 1.35) if spots else x)
         top = FLOOR * 30
         for (x, y, solver), tx in zip(crowded, spots, strict=True):
-            ax.annotate(str(NUMBER[solver]), (x, y), xytext=(tx, top), textcoords="data", fontsize=8, weight="bold", color=_colour(solver),
+            ax.annotate(str(NUMBER[solver]), (x, y), xytext=(tx, top), textcoords="data", fontsize=8, weight="bold", color=tab20(NUMBER[solver]),
                         ha="center", va="bottom", arrowprops={"arrowstyle": "-", "color": "0.6", "lw": 0.5, "shrinkA": 0, "shrinkB": 3})  # fmt: skip
 
     ax.set_xscale("log")
@@ -401,7 +389,7 @@ def draw(
     )
     if key:
         for solver in sorted(set(d.solver), key=lambda s: NUMBER[s]):
-            ax.plot([], [], "s" if solver.startswith("port:") else "o", color=_colour(solver),
+            ax.plot([], [], "s" if solver.startswith("port:") else "o", color=tab20(NUMBER[solver]),
                     label=f"{NUMBER[solver]} {label(solver)}")  # fmt: skip
     ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.1), ncol=3, fontsize=7.5, frameon=False,
               title=f"{Path(record['manifest']).stem}: Median for {n_problems} realization{'s' if n_problems > 1 else ''} $\\times$ {n_starts} random starts{behind}",
@@ -455,19 +443,6 @@ def table_tex() -> str:
                 rf"{NUMBER[solver]} & {label(solver)}$^{{\mathrm{{{mark}}}}}$ & {escape(text)} \\"
             )
     return "\n".join([*lines, r"\bottomrule", r"\end{tabular}"]) + "\n"
-
-
-def merged(records: list[dict[str, Any]]) -> dict[str, Any]:
-    """One record from streams of the same manifest: their rows together, a realization done in any of them."""
-    record = dict(records[0])
-    for other in records[1:]:
-        if Path(other["manifest"]).stem != Path(record["manifest"]).stem:
-            msg = f"{other['manifest']} is not {record['manifest']}"
-            raise ValueError(msg)
-        record["problems"] = {**other["problems"], **record["problems"]}
-        record["rows"] = [*record["rows"], *other["rows"]]
-        record["done"] = sorted({*record["done"], *other["done"]})
-    return record
 
 
 def main(argv: list[str] | None = None) -> None:

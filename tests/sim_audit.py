@@ -66,10 +66,8 @@ from __future__ import annotations
 
 import argparse
 import json
-import resource
 import sys
 import tempfile
-import time
 import warnings
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -79,10 +77,22 @@ import numpy as np
 import pandas as pd
 import yaml
 from port.extensions.integer_copy import DEFAULT_MAX_TOTAL_COPY
+from port.qa.scoring import (
+    NEUTRAL,
+    class_ari,
+    confusion_table,
+    copy_confusion,
+    exact_by_class,
+    integer_clones,
+    matched,
+    overlap,
+    phase_free,
+    planted_classes,
+    swapped,
+)
+from port.qa.statistics import measured, peak_gb
 from port.sim.files import located
 
-from tests.recovery_audit import integer_clones
-from tests.scoring import matched, overlap
 from tests.sim_fixtures import EASY, HARD, SimulatedSample, load_simulated
 
 SAMPLES = {"easy": EASY, "hard": HARD}
@@ -138,109 +148,6 @@ def _scratch() -> Path:
 def _barcode(values: pd.Series) -> np.ndarray:
     barcodes: np.ndarray = values.astype(str).to_numpy()
     return barcodes
-
-
-NEUTRAL = 1_001
-"""The planted pair `(1, 1)`, as `A * 1_000 + B`."""
-
-
-def planted_classes(t: np.ndarray) -> dict[str, np.ndarray]:
-    """Clone-bins by planted class, from pairs coded `A * 1_000 + B`.
-
-    `loh` one haplotype at 0; `balanced_gain` `A = B > 1`; `unbalanced_gain`
-    both present, `A + B > 2`, `A != B`; `neutral` `(1, 1)`. One partition
-    for every per-class metric in `score`.
-    """
-    major, minor = t // 1_000, t % 1_000
-    loh = np.minimum(major, minor) == 0
-    gain = (major + minor > 2) & ~loh
-    return {
-        "loh": loh,
-        "balanced_gain": gain & (major == minor),
-        "unbalanced_gain": gain & (major != minor),
-        "neutral": t == NEUTRAL,
-    }
-
-
-def phase_free(codes: np.ndarray) -> np.ndarray:
-    """`A * 1000 + B` codes as `(minor, major)`: `(A, B)` and `(B, A)` coded alike."""
-    major, minor = codes // 1_000, codes % 1_000
-    return np.asarray(np.minimum(major, minor) * 1_000 + np.maximum(major, minor))
-
-
-def class_ari(t: np.ndarray, ab: np.ndarray, where: np.ndarray) -> float:
-    """Copy-state ARI over the bins in `where`; NaN where the planted pairs
-    there take fewer than two values, ARI being undefined.
-    """
-    from sklearn.metrics import adjusted_rand_score
-
-    if np.unique(t[where]).size < 2:
-        return float("nan")
-    return round(float(adjusted_rand_score(t[where], ab[where])), 4)
-
-
-OTHER = "other"
-"""The decoded column for a pair outside `copy_states`, or a bin left unfit."""
-
-
-def copy_states(max_total: int) -> list[tuple[int, int]]:
-    """Every `(A, B)` with `A + B <= max_total`, by total, then by `A`."""
-    return [(a, n - a) for n in range(max_total + 1) for a in range(n + 1)]
-
-
-def _pair(code: int) -> str:
-    return f"{code // 1_000},{code % 1_000}"
-
-
-def copy_confusion(
-    t: np.ndarray, ab: np.ndarray, max_total: int
-) -> dict[str, dict[str, float]]:
-    """Planted against decoded `(A, B)`, as fractions of each planted row.
-
-    Rows are the planted pairs within `max_total`, columns every pair within
-    it and `OTHER`; zero entries are left out, so a row's values sum to 1.
-    """
-    states = {a * 1_000 + b for a, b in copy_states(max_total)}
-    confusion: dict[str, dict[str, float]] = {}
-
-    for planted in sorted(states & set(np.unique(t).tolist()), key=_order):
-        decoded = ab[t == planted]
-        named = [_pair(int(d)) if int(d) in states else OTHER for d in decoded]
-        values, counts = np.unique(named, return_counts=True)
-        confusion[_pair(planted)] = {
-            str(v): round(float(c) / decoded.size, 4)
-            for v, c in zip(values, counts, strict=True)
-        }
-    return confusion
-
-
-def _order(code: int) -> tuple[int, int]:
-    return (code // 1_000 + code % 1_000, code // 1_000)
-
-
-def confusion_table(
-    confusion: dict[str, dict[str, float]], max_total: int, *, sampled: bool = False
-) -> str:
-    """`confusion` as a markdown table, rows planted and columns decoded, in
-    `copy_states` order with `OTHER` last.
-
-    Every pair within `max_total` is a row and a column; `sampled` drops the
-    rows of pairs never planted and the columns of pairs never decoded.
-    """
-    decoded = {d for row in confusion.values() for d in row}
-    pairs = [f"{a},{b}" for a, b in copy_states(max_total)]
-    rows = [p for p in pairs if p in confusion] if sampled else pairs
-    columns = [p for p in pairs if p in decoded or not sampled]
-    columns += [OTHER] if OTHER in decoded or not sampled else []
-    lines = [
-        "| planted \\ decoded | " + " | ".join(columns) + " |",
-        "| --- |" + " --- |" * len(columns),
-    ]
-    for planted in rows:
-        row = confusion.get(planted, {})
-        cells = [f"{row[c]:.4f}" if c in row else "" for c in columns]
-        lines.append(f"| {planted} | " + " | ".join(cells) + " |")
-    return "\n".join(lines)
 
 
 def read_run(sample: SimulatedSample, output: Path) -> dict[str, Any]:
@@ -329,17 +236,16 @@ def score(sample: SimulatedSample, output: Path, arm: str, wall: float) -> SimRe
 
     t, z, ab = (np.concatenate(x) for x in (truth, state, pair))
     altered = t != NEUTRAL
-    swapped = (ab % 1_000) * 1_000 + ab // 1_000
     t_pf, ab_pf = phase_free(t), phase_free(ab)
-    either = (t == ab) | (t == swapped)
+    either = (t == ab) | (t == swapped(ab))
     classes = planted_classes(t)
     loh, balanced, unbalanced = (
         classes[c] for c in ("loh", "balanced_gain", "unbalanced_gain")
     )
-
-    def share(hit: np.ndarray, where: np.ndarray) -> float:
-        """`hit`'s share over `where`; NaN where the sample plants none."""
-        return round(float(np.mean(hit[where])), 4) if where.any() else float("nan")
+    # NB NaN where the sample plants none of a class
+    exact = {
+        k: (round(e, 4), round(f, 4)) for k, (e, f, _) in exact_by_class(t, ab).items()
+    }
 
     return SimRecovery(
         sample=sample.name,
@@ -362,13 +268,13 @@ def score(sample: SimulatedSample, output: Path, arm: str, wall: float) -> SimRe
         exact=round(float(np.mean(t == ab)), 4),
         exact_altered=round(float(np.mean((t == ab)[altered])), 4),
         exact_altered_minor=round(float(np.mean(either[altered])), 4),
-        exact_loh=share(t == ab, loh),
-        exact_loh_pf=share(either, loh),
-        exact_balanced_gain=share(t == ab, balanced),
-        exact_balanced_gain_pf=share(either, balanced),
-        exact_unbalanced_gain=share(t == ab, unbalanced),
-        exact_unbalanced_gain_pf=share(either, unbalanced),
-        exact_neutral=share(t == ab, classes["neutral"]),
+        exact_loh=exact["loh"][0],
+        exact_loh_pf=exact["loh"][1],
+        exact_balanced_gain=exact["balanced_gain"][0],
+        exact_balanced_gain_pf=exact["balanced_gain"][1],
+        exact_unbalanced_gain=exact["unbalanced_gain"][0],
+        exact_unbalanced_gain_pf=exact["unbalanced_gain"][1],
+        exact_neutral=exact["neutral"][0],
         bins=int(covered.sum()),
         clone_of=clone_of,
         confusion=copy_confusion(t, ab, DEFAULT_MAX_TOTAL_COPY),
@@ -418,9 +324,9 @@ def run_arm(
 
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        started = time.perf_counter()
-        main([*flags, str(config)])
-        wall = time.perf_counter() - started
+        with measured() as cost:
+            main([*flags, str(config)])
+        wall = cost.wall_s
 
     output = root / "output"
     arm = " ".join(["oracle-start", *flags] if oracle else flags) or "default"
@@ -493,9 +399,7 @@ def main() -> None:
     recovery, output = run_arm(
         sample, flags, overrides, arguments.root, oracle=arguments.oracle_start
     )
-    recovery.peak_gb = round(
-        resource.getrusage(resource.RUSAGE_SELF).ru_maxrss / 1024**2, 2
-    )
+    recovery.peak_gb = round(peak_gb(), 2)
     print(
         "SIM "
         + json.dumps({**asdict(recovery), "set": arguments.set, "output": str(output)})

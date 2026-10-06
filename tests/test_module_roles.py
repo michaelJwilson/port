@@ -8,12 +8,17 @@ below are that rule made checkable, each against the import graph
 | role | where | checked |
 | --- | --- | --- |
 | `row` | `patch/` | defines what a swap row installs, and every such module is one |
-| `row-helper` | `patch/` | reached from a row, a script or `pipeline` |
-| `extension` | `extensions/` | reached from a row, a script or `pipeline` |
+| `row-helper` | `patch/` | reached from a row, a pipeline entry point or `pipeline` |
+| `extension` | `extensions/` | reached from a row, a pipeline entry point or `pipeline` |
 | `oracle` | `extensions/` | imported by an `end2end` or `oracle` test |
-| `tool` | `extensions/` | reached from no row or script: a figure or record tool |
+| `tool` | `extensions/`, `qa/` | reached from no row or pipeline entry point: a figure, record or measurement tool |
 | `sim`, `script`, `pipeline` | `sim/`, `scripts/`, `port.pipeline` | where they are |
 | `set aside` | `sandbox/` | installed by nothing |
+
+**Live** is what the pipeline entry points reach: `PIPELINE` (`run_cnaster_port`,
+`run_calicost`), `port.pipeline` and the rows. The QA entry points
+(`run_ledger`, T- #673) are `script`s too, but tools: they may reach `tool`
+modules, and no pipeline entry point may.
 
 A module reached by nothing lives in `sandbox/`, mirroring the tree it left
 (`sandbox/patch/...`, `sandbox/extensions/...`), so graduating is a move
@@ -47,6 +52,7 @@ ROLES: dict[str, Role] = {
     "port.pipeline": "pipeline",
     "port.scripts.run_calicost": "script",
     "port.scripts.run_cnaster": "script",
+    "port.scripts.run_ledger": "script",
     # extensions
     "port.extensions.adjacency": "extension",
     "port.extensions.combined_figure": "tool",
@@ -69,6 +75,11 @@ ROLES: dict[str, Role] = {
     "port.extensions.samples": "extension",
     "port.extensions.segments": "extension",
     "port.extensions.vocabulary": "tool",
+    # qa: what measures and records a run (T- #673), reached from no row or script
+    "port.qa.ledger": "tool",
+    "port.qa.provenance": "tool",
+    "port.qa.scoring": "tool",
+    "port.qa.statistics": "tool",
     # patch: rows
     "port.patch.hmm_nophasing.bb_logpmf": "row",
     "port.patch.hmm_nophasing.nb_logpmf": "row",
@@ -154,7 +165,7 @@ WHERE: dict[Role, tuple[str, ...]] = {
     "row-helper": ("port.patch.",),
     "extension": ("port.extensions.",),
     "oracle": ("port.extensions.",),
-    "tool": ("port.extensions.",),
+    "tool": ("port.extensions.", "port.qa."),
     "sim": ("port.sim.",),
     "script": ("port.scripts.",),
     "pipeline": ("port.pipeline",),
@@ -172,8 +183,13 @@ def _by(role: Role) -> set[str]:
     return {name for name, declared in ROLES.items() if declared == role}
 
 
+PIPELINE = frozenset({"port.scripts.run_calicost", "port.scripts.run_cnaster"})
+"""The pipeline entry points: what a user runs to infer copy numbers. Every
+other `script` is a QA tool entry point (T- #673)."""
+
+
 def _live() -> frozenset[str]:
-    roots = {"port.pipeline"} | _by("script") | row_modules()
+    roots = {"port.pipeline"} | PIPELINE | row_modules()
     return reached(roots)
 
 
@@ -219,6 +235,7 @@ def test_live_and_set_aside_are_what_the_graph_says() -> None:
     """
     live = _live()
 
+    assert _by("script") >= PIPELINE, sorted(PIPELINE - _by("script"))
     assert _by("extension") <= live, sorted(_by("extension") - live)
     assert _by("row-helper") <= live, sorted(_by("row-helper") - live)
     assert not (_by("tool") & live), sorted(_by("tool") & live)
