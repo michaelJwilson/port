@@ -12,12 +12,15 @@ did alike, written once:
   no compilation lands in a timed job;
 - `cheapest`: the tuning rule, the cheapest setting within `tolerance` of the
   best median gap;
+- `halve`: which settings a first, one-start-per-realization round sends on
+  to the full count of starts (successive halving, #716);
 - `finished`: the jobs a wait returns, removed from the pending map;
 - `redraw`: the stream's figure, redrawn by `run_study` in a child process.
 """
 
 from __future__ import annotations
 
+import math
 import multiprocessing as mp
 import subprocess
 import sys
@@ -28,7 +31,7 @@ from typing import Any
 
 import pandas as pd
 
-__all__ = ["cheapest", "finished", "pool", "redraw"]
+__all__ = ["cheapest", "finished", "halve", "pool", "redraw"]
 
 
 def pool(workers: int, initializer: Callable[[], None]) -> ProcessPoolExecutor:
@@ -50,6 +53,18 @@ def cheapest(
     by = group.groupby("key").agg(gap=("gap", "median"), seconds=("seconds", "median"))
     good = by[by.gap <= by.gap.min() + tolerance].sort_values("seconds")
     return good.index[0], good.iloc[0], by
+
+
+def halve(group: pd.DataFrame, tolerance: float, keep: float = 1 / 3) -> set[Any]:
+    """The keys of one solver's first round that go on: every key within `tolerance` of the best median `gap`, and the best `keep` of all.
+
+    A first round of one start per realization ranks the settings; only these
+    get the rest of the starts, so `cheapest` chooses among settings measured
+    at the full count and the rest cost one start each.
+    """
+    by = group.groupby("key").gap.median().sort_values()
+    best = set(by.index[: max(1, math.ceil(len(by) * keep))])
+    return best | set(by.index[by <= by.min() + tolerance])
 
 
 def finished(

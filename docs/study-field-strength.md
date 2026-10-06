@@ -129,7 +129,7 @@ ICM and the color merge. Numbers are the table's in the figures.
 The figures, energy less the planted labelling's and the gap above TRW-S's
 bound per manifest, are not committed. `run_study --potts-stream
 MANIFEST OUT_DIR` draws `OUT_DIR/<stem>.png` as each problem finishes, and
-`run_study --potts-plot OUT_DIR/<stem>.pkl` redraws it from the
+`run_study --potts-plot OUT_DIR/<stem>.record` redraws it from the
 pickle. The six figures drawn for this section stay in history, as
 `potts_dev_tree_1s*.png` under `ba34716:docs/plots/studies/` (`git show`).
 
@@ -172,7 +172,7 @@ the color merge, Missed raw / polished, and the median runtime.
   (`tests/test_known_field_cluster.py`).
 
 The figure is not committed: `run_study --potts-plot
-OUT_DIR/<stem>.pkl` redraws it from the merged stream
+OUT_DIR/<stem>.record` redraws it from the merged stream
 (`git show ba34716:docs/plots/studies/potts_dev_tree_1s_hard_tuned.png`).
 
 ## The lognormal-length generation (#619)
