@@ -56,8 +56,10 @@ BUDGET: dict[str, int] = {
     #    warm-up, which sal's `ScheduleParams` cannot state (#721). 86: #730's
     #    `port.studies.stage.Stage` and `Member` (NamedTuples), the run's call
     #    at a stage and a realization on disk, and `_Done`, the exception that
-    #    stops the run once the study has its stage.
-    "classes": 86,
+    #    stops the run once the study has its stage. 88: #735's `stage.Field`,
+    #    the run's clone-assignment problem, and `potts_stream.Problem`, one
+    #    with its realization (`known_field.KnownProblem`, in `sandbox/`, gone).
+    "classes": 88,
     # NB step 4: 18 records became NamedTuples; the dataclasses left carry
     #    mutable state, machinery or a `__post_init__` (#517 D). Step 8 moved
     #    7 dataclasses and 1 NamedTuple to `sandbox/`. 21: T- #418's `Samples`
@@ -74,8 +76,8 @@ BUDGET: dict[str, int] = {
     #    `CopyCall` and `CopyStart` (`Row` in `sandbox/`, #547). 27: T- #617
     #    WP2's `pipeline.Default`. 28: G6's `port.sim.he_slide.Slide`, moved.
     #    30: G3's `Fit` and `Summary`, moved. 32: G5's two `Job`s, moved.
-    #    34: #730's `Stage` and `Member`.
-    "NamedTuples": 34,
+    #    34: #730's `Stage` and `Member`. 36: #735's `Field` and `Problem`.
+    "NamedTuples": 36,
 }
 """`python/port` outside `sandbox/`."""
 

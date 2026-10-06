@@ -56,6 +56,8 @@ STATE: dict[str, Kind] = {
     #    (T- #673 G3, from `tests.recovery_audit`).
     "cnaster.scripts.run_cnaster.determine_normal_candidates": "rebind",
     "cnaster.hmm_initialize.GaussianMixture": "rebind",
+    # NB #735: `port.studies.stage` wraps the installed clone assignment for one `run_core_inference` call and restores it
+    "cnaster.hmrf.pipeline_clone_assignment": "rebind",
     "port.extensions.copy_likelihood._FITS": "run",
     "port.extensions.samples._CURRENT": "run",
     "port.extensions.segments._CURRENT": "run",
