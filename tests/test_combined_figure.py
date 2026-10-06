@@ -143,23 +143,30 @@ def _texts(figure: Any) -> list[Any]:
 def test_each_figure_is_a_column_wide_with_one_text_size(
     cnaster_config: None, tmp_path: Path
 ) -> None:
-    """`llncs`'s 122 mm wide, the genomic figure its 193 mm less
-    `CAPTION_ROOM` tall to 0.005 in, each lettered (a) and (b), and no text
-    over `FONT_SIZE`."""
+    """A text column wide, the genomic figure the text block less
+    `CAPTION_ROOM` tall to 0.005 in, each lettered (a) and (b), and every text
+    at `FONT_SIZE`, the submission's `MIN_FONT_SIZE` (T- #740)."""
     from port.extensions.combined_figure import FONT_SIZE
-    from port.extensions.figure_style import CAPTION_ROOM, TEXT_HEIGHT
+    from port.extensions.figure_style import (
+        CAPTION_ROOM,
+        MIN_FONT_SIZE,
+        PAPER_WIDTH,
+        TEXT_HEIGHT,
+        page_size,
+    )
 
     genomic, spatial = _figures(tmp_path)
 
     for figure in (genomic, spatial):
-        assert figure.get_size_inches()[0] * 25.4 == pytest.approx(122.0)
+        assert figure.get_size_inches()[0] == pytest.approx(PAPER_WIDTH)
         assert [t.get_text() for t in figure.texts] == ["(a)", "(b)"]
         assert max(t.get_fontsize() for t in _texts(figure)) <= FONT_SIZE
+        assert min(t.get_fontsize() for t in _texts(figure)) >= MIN_FONT_SIZE
 
     assert genomic.get_size_inches()[1] == pytest.approx(
         TEXT_HEIGHT - CAPTION_ROOM, abs=0.005
     )
-    assert spatial.get_size_inches()[1] < TEXT_HEIGHT / 3
+    assert spatial.get_size_inches()[1] <= page_size("third")[1] + 0.005
 
 
 @pytest.mark.infra
@@ -170,7 +177,7 @@ def test_each_page_is_written_at_its_size_with_nothing_past_it(
     """Each PDF's MediaBox is its figure's size to 0.1 pt, and every text and
     legend is on the page to half a pixel.
 
-    `llncs` fixes `\\textwidth` at 122 mm, so a page written wider is scaled
+    The paper fixes `\\textwidth` at `PAPER_WIDTH`, so a page written wider is scaled
     down by `\\includegraphics[width=\\linewidth]` and its text shrinks with
     it. At a tight bounding box the page grew to 6.66 in at 6.5 (#339).
     """
@@ -262,7 +269,7 @@ def test_the_profile_spans_the_tracks_on_one_left_column(
 
 @pytest.mark.infra
 @pytest.mark.merge
-def test_the_spatial_panels_are_square_and_keyed_on_the_right_edge(
+def test_the_spatial_panels_are_square_keyed_on_the_right_and_centred(
     cnaster_config: None, tmp_path: Path
 ) -> None:
     """(a) the slide and (b) the clones, of one size, each box square and its
@@ -270,8 +277,10 @@ def test_the_spatial_panels_are_square_and_keyed_on_the_right_edge(
     column on the page's right edge, a `LABEL_GAP` in, its bottom on (b)'s,
     each clone named $m$; (b)'s rows labelled by (a)'s alone; each letter
     over its panel's top-left text or corner, the head a `LABEL_GAP` over
-    them."""
-    from port.extensions.combined_figure import LABEL_GAP
+    them. The squares capped to a "third" page, the row is centred: the white
+    right of the key, less a `LABEL_GAP`, is the white left of (a)'s tick
+    labels, less `NAME_INSET`, to 2 px (T- #740)."""
+    from port.extensions.combined_figure import LABEL_GAP, NAME_INSET
 
     _, figure = _figures(tmp_path)
     renderer = figure.canvas.get_renderer()
@@ -294,7 +303,13 @@ def test_the_spatial_panels_are_square_and_keyed_on_the_right_edge(
     )
     assert here.x1 < tiles.x0
     assert tiles.x1 <= box.x0
-    assert box.x1 == pytest.approx(figure.bbox.x1 - gap, abs=1.5)
+    labels = [
+        t.get_window_extent(renderer)
+        for t in slide.get_yticklabels()
+        if t.get_visible()
+    ]
+    left = min(t.x0 for t in labels) - NAME_INSET / 72.0 * figure.dpi
+    assert figure.bbox.x1 - gap - box.x1 == pytest.approx(left, abs=2.0)
     assert box.y0 == pytest.approx(tiles.y0, abs=1.0)
     assert [t.get_text() for t in key.get_texts()] == ["$m_N$", "$m_1$", "$m_2$"]
     assert len({round(t.get_window_extent(renderer).x0) for t in key.get_texts()}) == 1
@@ -356,7 +371,7 @@ def test_the_spatial_labels_are_integer_by_default_or_continuous(
 def test_the_combined_page_is_the_two_figures_stacked(
     cnaster_config: None, tmp_path: Path
 ) -> None:
-    """One page, 122 mm by 193 mm less `CAPTION_ROOM` to 0.005 in, lettered
+    """One page, the text block less `CAPTION_ROOM` to 0.005 in, lettered
     (a) to (c).
 
     (a)'s slide and clones sit where the spatial figure puts them, to a
@@ -365,13 +380,13 @@ def test_the_combined_page_is_the_two_figures_stacked(
     """
     import matplotlib.pyplot as plt
     from port.extensions.combined_figure import combined_figure, spatial_figure
-    from port.extensions.figure_style import CAPTION_ROOM, TEXT_HEIGHT
+    from port.extensions.figure_style import CAPTION_ROOM, PAPER_WIDTH, TEXT_HEIGHT
 
     recorded, frame = _recorded(tmp_path)
     combined = combined_figure(recorded, frame)
     spatial = spatial_figure(recorded, frame)
 
-    assert combined.get_size_inches()[0] * 25.4 == pytest.approx(122.0)
+    assert combined.get_size_inches()[0] == pytest.approx(PAPER_WIDTH)
     assert combined.get_size_inches()[1] == pytest.approx(
         TEXT_HEIGHT - CAPTION_ROOM, abs=0.005
     )
