@@ -70,6 +70,35 @@ def set_numba_seed(value):
 
 logger = get_logger(__name__, start_time=start_time)
 
+# NB T- #670 PR7: what `run_cnaster_port --sal` binds into rows 24 and 31-34,
+#    bound here at the two `run_core_inference` calls.
+SHIFTED = type(
+    hmm_nophasing.__name__,
+    (hmm_nophasing,),
+    {
+        # NB the per-clone `log Z_c` in the depth channel (#276, #292, #293):
+        #    `port`'s `SHIFT_SWAPS` row binds it on by default.
+        "apply_logmu_shift": True,
+        "__module__": hmm_nophasing.__module__,
+        "__qualname__": hmm_nophasing.__qualname__,
+    },
+)
+"""`hmm_nophasing` with the shift on, as `port`'s row 26 installs it."""
+
+INFERENCE = {
+    # NB #348: on `port`'s default arm with the shift; merges indistinguishable
+    #    components before the `K` heaviest are kept (CalicoST: 6 of 8
+    #    initial states at p 0.497 to 0.503 without it).
+    "distinct_init": True,
+    # NB #410, `SAL_ROWS`: dev instance clone ARI 0.9795 -> 1.000 and 50
+    #    nats lower Potts energy at 10,000 spots and ten clones.
+    "label_solver": "alpha-rust-fuse-merge",
+    # NB #348, #467: with the refinement mask, CalicoST hard 0.303 -> 0.982.
+    "floor_merge": True,
+}
+"""`run_core_inference`'s options as `run_cnaster_port --sal` binds them (T- #670
+PR7). `hmm_start` and the `sal` emission (#489, #425) stay off until PR9."""
+
 
 def run_cnaster(config_path, over_rides=None, *, plots=True):
     """`cnaster`'s `run_cnaster`, under `cnamaste`.
@@ -663,7 +692,7 @@ def _run_cnaster(config_path, over_rides=None, *, plots=True):
         sample_ids=sample_ids,
         sample_list=sample_list,
         max_iter_outer=config.hmrf.max_iter_outer,
-        hmmclass=hmm_nophasing,  # NB {hmm_nophasing, hmm_phased, hmm_nophasing_jax}
+        hmmclass=SHIFTED,  # NB {hmm_nophasing, hmm_phased, hmm_nophasing_jax}
         params="sp",
         t=config.hmm.t,
         random_state=config.hmm.gmm_random_state,
@@ -678,6 +707,7 @@ def _run_cnaster(config_path, over_rides=None, *, plots=True):
         tumorprop_threshold=config.hmrf.tumorprop_threshold,
         propagate_hmm_param_errors=False,
         deconcatenate_clones=False,
+        **INFERENCE,
     )
     # TODO
     # res.lock()
@@ -1082,6 +1112,10 @@ def _run_cnaster(config_path, over_rides=None, *, plots=True):
     )
 
     # TODO HACK  >>>>>>>>
+    # NB T- #670 PR7, row 24: the refinement's allowed-clone mask reaches the
+    #    clone assignment (#348), where `cnaster` dropped it.
+    onehot_allowed_clones = None
+
     if config.annotation.clone_label is not None:
         global_initial_clone_index = known_clone_assignment
     else:
@@ -1113,7 +1147,7 @@ def _run_cnaster(config_path, over_rides=None, *, plots=True):
         sample_ids=sample_ids,
         sample_list=sample_list,
         max_iter_outer=config.hmrf.max_iter_outer,
-        hmmclass=hmm_nophasing,
+        hmmclass=SHIFTED,
         params="smp",
         t=config.hmm.t,
         random_state=config.hmm.gmm_random_state,
@@ -1128,9 +1162,10 @@ def _run_cnaster(config_path, over_rides=None, *, plots=True):
         tumorprop_threshold=config.hmrf.tumorprop_threshold,
         init_p_binom=None,
         init_log_mu=None,
-        # onehot_allowed_clones=None,
+        onehot_allowed_clones=onehot_allowed_clones,
         propagate_hmm_param_errors=False,
         deconcatenate_clones=True,
+        **INFERENCE,
     )
 
     logger.info(f"Solved for res_combine=\n{res_combine}")

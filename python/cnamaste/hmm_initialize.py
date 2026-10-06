@@ -3,9 +3,9 @@
 `port.patch.hmm_initialize.distinct` (#348) is below the marked seam:
 with `distinct=True` and `only_minor=False`, components within one
 Mahalanobis radius of a heavier one give it their mass before the `K`
-heaviest are kept. Off, as in `cnaster` and as `port` leaves it without its
-shift; `port`'s `run_core_inference` binds it with the shift (row 33, PR7).
-Reached here as `hmm_initializer=functools.partial(gmm_init, distinct=True)`.
+heaviest are kept. Off, as in `cnaster`; `cnamaste.hmrf.run_core_inference`
+binds it as `distinct_init` (row 33), and `run_cnamaste` turns it on with the
+shift (T- #670 PR7), as `port` does.
 
 **T- #670 PR6b: `port.patch.hmm_initialize.sal_mixture`'s starts** --
 `sal`'s `kmeans++x5+em` (#489) and the lattice (#540) -- are `gmm_init`'s
@@ -14,8 +14,9 @@ seeds and polishes on `sal`'s `MixtureInstance` and EM (`cnamaste.copy_starts`),
 and fixes #236: the GMM divides the exposure out of the mean and leaves it in
 the variance, so every bin votes equally; these fit the negative binomial
 and beta-binomial with each bin's exposure and trials as its covariate.
-`only_minor=True` calls, the phasing's, keep the GMM. `port`'s
-`run_core_inference` binds `start` with the shift (row 33, PR7).
+`only_minor=True` calls, the phasing's, keep the GMM.
+`cnamaste.hmrf.run_core_inference` binds them as `hmm_start` and `baf_start`
+(row 33); `run_cnamaste` leaves both off until T- #670 PR9.
 """
 
 import numpy as np

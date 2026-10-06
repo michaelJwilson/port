@@ -1,5 +1,40 @@
+"""`cnaster.hmrf` at the pin, its clone assignment `port`'s (T- #670 PR7).
+
+`docs/port-forward.md` rows 31-34, moved in below the marked seam:
+
+- row 31, `compute_loglike_spot_assignment`: the spot loop innermost, a
+  vector accumulation; bitwise `cnaster`'s (#59 item 1);
+- row 32, `pipeline_clone_assignment`: `port.patch.hmrf.clone_assignment`,
+  the field fused and tabulated (`cnamaste.spot_clone_field`, #59 items
+  2-4), the solver behind one interface (`cnamaste.label_solver`), the
+  floor met smallest first (#348), and the read-depth refinement's mask
+  (row 24, #348, #467). `cnaster`'s is `_cnaster_pipeline_clone_assignment`,
+  which the tumour-mixed field still takes (#135);
+- row 33, `run_core_inference`: the initializer's options (#348, #489,
+  #540), the sample-id check (#418), and with the shift the neutral state
+  pinned to `mu = 1` and each clone's `log Z_c` recorded (#293, #299, #362);
+- row 34, `reindex_clones`: every fitted parameter one value per state
+  (#278), the clones' shifts permuted with them (#362, #501).
+
+**Departures from `port`'s, stated.** The options are keywords of
+`run_core_inference`, which hands the clone assignment's on, where `port`
+binds each row's at install. The refinement mask travels as an argument
+(`RefinementMask`), where `port` holds it in a module global; the boundary's
+invariants are computed per call, where `port` caches them by `id()`. Both
+compute the same; neither outlives the call. The field is the log-space one
+alone (`cnamaste`'s kernels since PR4). The reindexed decode and shifts that
+`port` keeps for its integer decode are not kept: that decode moves at PR8.
+
+**Defects fixed (#483).** The merge's boundary gain counts both sides of
+each edge, and the reported `total_llf`'s spatial term is the energy the
+solvers minimize (`cnamaste.label_solver.merge_assignment`,
+`spatial_log_prior`). `port`'s rows carry both defects still.
+"""
+
 import copy
+import functools
 import time
+from typing import Any
 
 import numpy as np
 import scipy.special
@@ -13,7 +48,8 @@ from cnamaste.hmm import pipeline_baum_welch
 from cnamaste.hmm_initialize import cna_mixture_init, gmm_init
 from cnamaste.hmm_phased import hmm_phased
 from cnamaste.hmrf_utils import cast_csr, clone_stack_obs
-from cnamaste.icm import icm_sweep_deque, merge_assignment, unpack_adjacency
+from cnamaste.icm import icm_sweep_deque, unpack_adjacency
+from cnamaste.label_solver import merge_assignment, spatial_log_prior
 from cnamaste.logger import get_logger
 from cnamaste.pseudobulk import merge_pseudobulk_by_index_mix
 from cnamaste.hmm_nophasing import get_log_transmat
@@ -153,25 +189,35 @@ def compute_loglike_spot_assignment(
     # NB Numba evaluates .ndim at compile_time. This creates a zero-cost branch.
     is_1d_pred = pred.ndim == 1
 
-    for spot in prange(n_spots):
-        for c in range(n_clones):
-            spot_log_like_rdr, spot_log_like_baf = 0.0, 0.0
+    # NB T- #670 PR7, row 31 (#59 item 1): `port.patch.hmrf.field`'s order.
+    #    The spot loop is innermost and contiguous, a vector accumulation; the
+    #    additions per `(spot, clone)` run over `o` as `cnaster`'s did, so
+    #    the result is bitwise its. `prange` moves to the clone loop, where
+    #    each clone writes its own column.
+    for c in prange(n_clones):
+        accumulated_rdr = np.zeros(n_spots)
+        accumulated_baf = np.zeros(n_spots)
 
-            for o in range(n_obs):
-                copy_state = pred[c * n_obs + o] if is_1d_pred else pred[o, c]
+        for o in range(n_obs):
+            copy_state = pred[c * n_obs + o] if is_1d_pred else pred[o, c]
 
-                spot_log_like_rdr += log_emission_rdr[copy_state, o, spot]
-                spot_log_like_baf += log_emission_baf[copy_state, o, spot]
+            for spot in range(n_spots):
+                accumulated_rdr[spot] += log_emission_rdr[copy_state, o, spot]
+                accumulated_baf[spot] += log_emission_baf[copy_state, o, spot]
 
+        for spot in range(n_spots):
             loglike_spot_clone_assignment[spot, c] = (
-                rel_valid_emision_weight[spot] * spot_log_like_rdr + spot_log_like_baf
+                rel_valid_emision_weight[spot] * accumulated_rdr[spot]
+                + accumulated_baf[spot]
             )
 
     return loglike_spot_clone_assignment
 
 
 # NB aggregate by smooth mat. with tumor/normal mix, spot reassignment, concatenated by clone?
-def pipeline_clone_assignment(
+# NB T- #670 PR7: `cnaster`'s, which `pipeline_clone_assignment` below hands
+#    the tumour-mixed field to (#135).
+def _cnaster_pipeline_clone_assignment(
     single_X,
     single_base_nb_mean,
     single_total_bb_RD,
@@ -387,19 +433,10 @@ def pipeline_clone_assignment(
     #         )
     #     )
 
-    adj_rows, adj_cols = adjacency_mat.nonzero()
-
-    # NB mask to prevent double counting (upper triangle)
-    unique_edges_mask = adj_rows < adj_cols
-
-    select_adj_rows = adj_rows[unique_edges_mask]
-    select_adj_cols = adj_cols[unique_edges_mask]
-
-    num_aligned = np.sum(
-        new_assignment[select_adj_rows] == new_assignment[select_adj_cols]
-    )
-
-    log_likelihood += spatial_weight * num_aligned
+    # NB T- #670 PR7 (#483 defect 2): the energy the solvers minimize, each
+    #    stored entry at `spatial_weight * w / 2`, where `cnaster` counted
+    #    the entries with `i < j`, unweighted.
+    log_likelihood += spatial_log_prior(new_assignment, adjacency_mat, spatial_weight)
 
     return new_assignment, loglike_spot_clone_assignment, log_likelihood
 
@@ -443,7 +480,38 @@ def run_core_inference(
     tumorprop_threshold=0.5,
     propagate_hmm_param_errors=False,
     deconcatenate_clones=False,
+    *,
+    hmm_start=None,
+    distinct_init=False,
+    baf_start=None,
+    label_solver="icm",
+    floor_merge=False,
+    onehot_allowed_clones=None,
 ):
+    """`cnaster`'s inference, with `port`'s row 33 (T- #670 PR7).
+
+    Options, each `cnaster`'s behaviour by default, which `run_cnamaste`
+    binds as `run_cnaster_port --sal` does: `distinct_init` (#348), and
+    `hmm_start` / `baf_start`, each stage's copy-state start (#489, #540),
+    are `gmm_init`'s; `label_solver`, `floor_merge` and
+    `onehot_allowed_clones`, the read-depth refinement's mask (row 24), are
+    the clone assignment's. With a shifted `hmmclass` and a read-depth fit,
+    the result is pinned once after the optimization (`pin_neutral`,
+    `clone_shifts`).
+    """
+    # NB passed rather than rebound: `cnaster` binds the initializer as a
+    #    default argument (#348). `gmm_init` holds every start.
+    if hmm_initializer is gmm_init and (
+        hmm_start is not None or baf_start is not None or distinct_init
+    ):
+        hmm_initializer = functools.partial(
+            gmm_init, start=hmm_start, distinct=distinct_init, baf_start=baf_start
+        )
+
+    identity_remap(sample_ids, sample_list)
+
+    refinement = RefinementMask(onehot_allowed_clones)
+
     # NB num. of genomic bins, num. pseudobulk (clones, spots, ...)
     n_obs, _, _ = single_X.shape
 
@@ -617,6 +685,9 @@ def run_core_inference(
             single_tumor_prop=single_tumor_prop,
             hmmclass=hmmclass,
             merge=merge,
+            label_solver=label_solver,
+            floor_merge=floor_merge,
+            refinement=refinement,
         )
         """
         # NB new assignment did not populate an input clone.
@@ -796,96 +867,20 @@ def run_core_inference(
 
         res["pred_cnv"] = np.argmax(res["log_gamma"], axis=0)
 
+    # NB T- #670 PR7, row 33 (#293, #362): the shifted likelihood sets no
+    #    scale, so the result is pinned once, after the whole optimization.
+    if shifted(hmmclass) and "m" in str(params):
+        pin_neutral(res)
+
+        try:
+            decoded = res["pred_cnv"] is not None
+        except KeyError:
+            decoded = False
+
+        if decoded:
+            clone_shifts(res, np.asarray(single_base_nb_mean), ZERO_NORMAL_SHIFT)
+
     return res
-
-
-def reindex_clones(res_combine, posterior=None, single_tumor_prop=None):
-    assert single_tumor_prop is None, "single_tumor_prop must be None"
-
-    EPS_BAF = 0.05  # MAGIC
-    new_res_combine = copy.copy(res_combine)
-
-    assignments = res_combine["new_assignment"]
-    clone_labels = np.unique(assignments)
-    n_clones = len(clone_labels)
-
-    pred_cnv = res_combine["pred_cnv"]
-
-    is_concatenated = pred_cnv.ndim == 1
-
-    if is_concatenated:
-        n_obs = len(pred_cnv) // n_clones
-    else:
-        n_obs = pred_cnv.shape[0]
-
-    assert res_combine["new_p_binom"].shape[1] == 1
-
-    baf_profile_list = []
-    for c in range(n_clones):
-        if is_concatenated:
-            clone_path = pred_cnv[c * n_obs : (c + 1) * n_obs]
-        else:
-            clone_path = pred_cnv[:, c]
-
-        baf_profile_list.append(res_combine["new_p_binom"][clone_path, 0])
-
-    baf_profiles = np.column_stack(baf_profile_list).T
-
-    # NB normal clone minimizes deviation from 0.5 (outside the EPS_BAF deadband)
-    baf_penalty = np.maximum(np.abs(baf_profiles - 0.5) - EPS_BAF, 0)
-    cid_normal = int(np.argmin(np.sum(baf_penalty, axis=1)))
-
-    unique_clones, spot_counts = np.unique(assignments, return_counts=True)
-
-    mask_rest = unique_clones != cid_normal
-    cid_rest = unique_clones[mask_rest]
-    counts_rest = spot_counts[mask_rest]
-
-    cid_rest_sorted = cid_rest[np.argsort(counts_rest)]
-
-    reidx = np.concatenate(([cid_normal], cid_rest_sorted)).astype(int)
-
-    logger.info(
-        f"Remapping clone index: {cid_normal} (normal) to 0, otherwise sorted by spot count."
-    )
-
-    max_id = np.max(unique_clones)
-    palette = np.zeros(max_id + 1, dtype=int)
-
-    for new_idx, old_idx in enumerate(reidx):
-        palette[old_idx] = new_idx
-
-    new_res_combine["new_assignment"] = palette[assignments]
-
-    for key in ["new_log_mu", "new_alphas", "new_p_binom", "new_taus"]:
-        if res_combine[key].shape[1] > 1:
-            new_res_combine[key] = res_combine[key][:, reidx]
-
-    if is_concatenated:
-        concat_idx = np.concatenate(
-            [np.arange(c * n_obs, c * n_obs + n_obs) for c in reidx]
-        )
-
-        new_res_combine["pred_cnv"] = pred_cnv[concat_idx]
-
-        if "log_gamma" in res_combine.keys():
-            new_res_combine["log_gamma"] = res_combine["log_gamma"][:, concat_idx]
-
-    else:
-        if pred_cnv.shape[1] > 1:
-            new_res_combine["pred_cnv"] = pred_cnv[:, reidx]
-
-        if "log_gamma" in res_combine.keys():
-            log_gamma = res_combine["log_gamma"]
-            if log_gamma.ndim == 3 and log_gamma.shape[2] > 1:
-                new_res_combine["log_gamma"] = log_gamma[:, :, reidx]
-
-    if posterior is not None and posterior.shape[1] > 1:
-        new_posterior = copy.copy(posterior)[:, reidx]
-    else:
-        new_posterior = posterior
-
-    return new_res_combine, new_posterior
 
 
 # TODO FINAL
@@ -1034,3 +1029,602 @@ def merge_by_minspots(
         merged_res["log_gamma"] = res["log_gamma"][:, :, rep_clones]
 
     return merging_groups, merged_res
+
+
+# --- `port.patch.hmrf`'s rows 32-34, moved in by T- #670 PR7 --------------------------
+
+from cnamaste.clone_paths import parameter_by_path, state_vector  # noqa: E402
+from cnamaste.hmm_nophasing import (  # noqa: E402
+    NEUTRAL_BAF_TOLERANCE,
+    neutral_state,
+    shifted,
+)
+
+ZERO_NORMAL_SHIFT = True
+"""The normal clone's shift is set to zero (#362)."""
+
+MASK_PENALTY = 100.0
+"""Nats a spot's field loses on a sub-clone of another BAF clone (#467).
+
+Finite, so a strong read-depth preference can still correct a spot the BAF
+stage misplaced; `-inf` made the BAF stage's boundary final. Measured in
+`port` with `--sal --refinement-mask --floor-merge` (clone ARI; `-inf` in
+brackets): `dev` 1.000 (0.868), CalicoST hard 0.982 (0.982), easy 0.986.
+"""
+
+
+class RefinementMask:
+    """The read-depth refinement's allowed-clone mask, for one inference (row 24, #348).
+
+    `initialize_rdr_clone_refininement` returns it and `cnaster`'s call to
+    `run_core_inference` drops it (`# onehot_allowed_clones=None`). Without
+    it the refinement is an unconstrained `n_baf * n_clones_rdr`-label
+    problem, which `cnaster`'s floor finishes by moving spots at random
+    (#348: 1,509 of 1,600 spots into one clone, ARI 0.000). Applied to a
+    problem of its shape whose labelling keeps to it, and narrowed to the
+    surviving clones as `run_core_inference` relabels them.
+    """
+
+    def __init__(self, mask=None):
+        self.mask = None if mask is None else np.asarray(mask, dtype=bool)
+
+    def kept(self):
+        return self.mask is not None
+
+    def for_problem(self, assignment, n_clones):
+        """The mask, if it describes this problem and this labelling."""
+        if self.mask is None:
+            return None
+
+        labels = np.asarray(assignment, dtype=np.int64)
+
+        if self.mask.shape != (labels.size, n_clones):
+            logger.info(
+                f"Refinement mask {self.mask.shape} not applied to "
+                f"{labels.size} x {n_clones}."
+            )
+            return None
+        if (
+            labels.max(initial=-1) >= n_clones
+            or not self.mask[np.arange(labels.size), labels].all()
+        ):
+            logger.info("Refinement mask not applied: the assignment already crosses it.")
+            return None
+
+        logger.info(f"Applying the refinement mask over {n_clones} clones (#348).")
+        return self.mask
+
+    def compact(self, assignment):
+        """Keep the columns of the clones `assignment` still uses, ascending (`hmrf.py:648`)."""
+        if self.mask is not None:
+            survivors = np.unique(np.asarray(assignment, dtype=np.int64))
+            if survivors.size < self.mask.shape[1]:
+                self.mask = self.mask[:, survivors]
+
+
+def identity_remap(sample_ids, sample_list=None):
+    """Refuse `sample_ids` that `run_core_inference`'s re-map would renumber (#418).
+
+    The plots read `sample_list` by position, so ids and names agree only
+    where the ranks are `0..n-1` and `sample_list` has `n` entries.
+    """
+    if sample_ids is None:
+        return
+
+    unique = np.unique(np.asarray(sample_ids))
+
+    if not np.array_equal(unique, np.arange(unique.size)):
+        msg = (
+            f"sample_ids {unique.tolist()} are not 0..{unique.size - 1}: "
+            "run_core_inference would renumber them"
+        )
+        raise ValueError(msg)
+
+    if sample_list is not None and len(sample_list) != unique.size:
+        msg = f"{len(sample_list)} names in sample_list for {unique.size} sample ids"
+        raise ValueError(msg)
+
+
+def _relocked(result, key, value):
+    """`result[key] = value`, unlocking a locked `CnaHMRFResult` for the one assignment."""
+    locked = bool(getattr(result, "_locked", False))
+
+    if locked:
+        result.unlock()
+
+    try:
+        result[key] = value
+    finally:
+        if locked:
+            result.lock()
+
+
+def pin_neutral(result):
+    """Set the neutral state's `mu` to 1 in `result`, in place; return the state (#293, #299).
+
+    The shifted mean `lambda_g T_n mu / sum_g lambda_g mu` is unchanged by
+    `mu -> c mu`, so the rates carry an arbitrary common factor until this.
+    """
+    column = np.asarray(result["new_log_mu"])
+    rates = state_vector(column)
+    try:
+        path = np.asarray(result["pred_cnv"])
+    except KeyError:
+        path = None
+
+    neutral = neutral_state(
+        rates,
+        state_vector(result["new_p_binom"]),
+        path if path is not None and path.ndim == 2 else None,
+    )
+    _relocked(result, "new_log_mu", (rates - rates[neutral]).reshape(column.shape))
+
+    return neutral
+
+
+def clone_shifts(res, base_nb_mean, zero_normal=True):
+    """Record each clone's `log Z_c` over the pinned rates in `new_log_mu_shift`; return them (#362).
+
+    The normal clone is the one with the largest share of bins in balanced
+    states; with `zero_normal` its shift is 0.
+    """
+    rates = state_vector(np.asarray(res["new_log_mu"]))
+    balanced = (
+        np.abs(state_vector(np.asarray(res["new_p_binom"])) - 0.5)
+        <= NEUTRAL_BAF_TOLERANCE
+    )
+    path = np.asarray(res["pred_cnv"], dtype=np.int64)
+    path = path.reshape(path.shape[0], -1)
+
+    with np.errstate(divide="ignore", invalid="ignore"):
+        log_lambda = np.log(np.sum(base_nb_mean, axis=1) / np.sum(base_nb_mean))
+
+    kept = np.isfinite(log_lambda)
+    shifts = np.array(
+        [
+            float(scipy.special.logsumexp(rates[path[kept, c]] + log_lambda[kept]))
+            for c in range(path.shape[1])
+        ]
+    )
+
+    if zero_normal:
+        shifts[int(np.argmax(balanced[path].mean(axis=0)))] = 0.0
+
+    _relocked(res, "new_log_mu_shift", shifts)
+
+    return shifts
+
+
+PARAMETERS = ("new_log_mu", "new_alphas", "new_p_binom", "new_taus")
+"""The four the M step fits, each one value per state."""
+
+EPS_BAF = 0.05
+"""`cnaster`'s dead band around a balanced BAF, kept at its value."""
+
+
+def reindex_clones(res_combine, posterior=None, single_tumor_prop=None):
+    """`cnaster`'s reindex, every parameter one value per state, the shifts permuted (row 34).
+
+    `port.patch.hmrf.reindex` and `core_inference.reindex_clones`: every
+    fitted parameter is checked to be one value per state (`state_vector`,
+    #278) and the reorder of a second column `cnaster` keeps for parameters
+    that cannot have one is gone; `new_log_mu_shift`, which `cnaster` does
+    not permute, moves with the clones (#362, #501). The normal clone,
+    least far outside the dead band, is 0; the rest by spot count.
+    """
+    if single_tumor_prop is not None:  # invariant
+        msg = "single_tumor_prop must be None"
+        raise AssertionError(msg)
+
+    for key in PARAMETERS:
+        state_vector(res_combine[key], key)
+
+    new_res_combine = copy.copy(res_combine)
+
+    assignments = res_combine["new_assignment"]
+    n_clones = len(np.unique(assignments))
+
+    pred_cnv = np.asarray(res_combine["pred_cnv"])
+    is_concatenated = pred_cnv.ndim == 1
+    n_obs = len(pred_cnv) // n_clones if is_concatenated else pred_cnv.shape[0]
+
+    baf_profiles = np.stack(
+        [
+            parameter_by_path(
+                res_combine["new_p_binom"],
+                pred_cnv[c * n_obs : (c + 1) * n_obs]
+                if is_concatenated
+                else pred_cnv[:, c],
+            )
+            for c in range(n_clones)
+        ]
+    )
+
+    baf_penalty = np.maximum(np.abs(baf_profiles - 0.5) - EPS_BAF, 0)
+    cid_normal = int(np.argmin(np.sum(baf_penalty, axis=1)))
+
+    unique_clones, spot_counts = np.unique(assignments, return_counts=True)
+
+    mask_rest = unique_clones != cid_normal
+    cid_rest = unique_clones[mask_rest]
+    counts_rest = spot_counts[mask_rest]
+
+    cid_rest_sorted = cid_rest[np.argsort(counts_rest)]
+    reidx = np.concatenate(([cid_normal], cid_rest_sorted)).astype(int)
+
+    logger.info(
+        f"Remapping clone index: {cid_normal} (normal) to 0, "
+        f"otherwise sorted by spot count."
+    )
+
+    palette = np.zeros(int(np.max(unique_clones)) + 1, dtype=int)
+
+    for new_idx, old_idx in enumerate(reidx):
+        palette[old_idx] = new_idx
+
+    new_res_combine["new_assignment"] = palette[assignments]
+
+    if is_concatenated:
+        concat_idx = np.concatenate(
+            [np.arange(c * n_obs, c * n_obs + n_obs) for c in reidx]
+        )
+
+        new_res_combine["pred_cnv"] = pred_cnv[concat_idx]
+
+        # NB `.keys()`: `CnaHMRFResult` defines no `__contains__`.
+        if "log_gamma" in res_combine.keys():
+            new_res_combine["log_gamma"] = res_combine["log_gamma"][:, concat_idx]
+
+    else:
+        if pred_cnv.shape[1] > 1:
+            new_res_combine["pred_cnv"] = pred_cnv[:, reidx]
+
+        if "log_gamma" in res_combine.keys():
+            log_gamma = res_combine["log_gamma"]
+
+            if log_gamma.ndim == 3 and log_gamma.shape[2] > 1:
+                new_res_combine["log_gamma"] = log_gamma[:, :, reidx]
+
+    if posterior is not None and posterior.shape[1] > 1:
+        new_posterior = copy.copy(posterior)[:, reidx]
+    else:
+        new_posterior = posterior
+
+    # NB by `__getitem__`: `CnaHMRFResult` has no `get` (#501).
+    try:
+        shifts = res_combine["new_log_mu_shift"]
+    except (KeyError, TypeError):
+        shifts = None
+
+    if shifts is None or np.ndim(shifts) != 1:
+        return new_res_combine, new_posterior
+
+    # NB the permutation by matching columns, as `port` recovers it.
+    old = pred_cnv.reshape(pred_cnv.shape[0], -1)
+    after = np.asarray(new_res_combine["pred_cnv"])
+    new = after.reshape(after.shape[0], -1)
+    order = []
+
+    for column in range(new.shape[1]):
+        matches = [
+            c
+            for c in range(old.shape[1])
+            if c not in order and np.array_equal(old[:, c], new[:, column])
+        ]
+        order.append(matches[0] if matches else column)
+
+    _relocked(
+        new_res_combine,
+        "new_log_mu_shift",
+        np.asarray(shifts, dtype=np.float64)[order],
+    )
+
+    return new_res_combine, new_posterior
+
+
+class PooledSmoothing(ValueError):
+    """A `smooth_mat` that pools a spot with any spot but itself (#513)."""
+
+
+def require_unpooled(smooth_mat):
+    """Refuse a `smooth_mat` other than `None` or the identity (#513).
+
+    The counts are read unpooled; `cnaster` only ever builds the identity.
+    """
+    if smooth_mat is None:
+        return
+
+    import scipy.sparse as sp
+
+    matrix = sp.csr_matrix(smooth_mat)
+    n_spots = matrix.shape[0]
+
+    if (
+        matrix.shape == (n_spots, n_spots)
+        and np.array_equal(matrix.indptr, np.arange(n_spots + 1))
+        and np.array_equal(matrix.indices, np.arange(n_spots))
+        and np.all(matrix.data == 1)
+    ):
+        return
+
+    msg = (
+        "smooth_mat pools spots with their neighbours; the clone assignment "
+        "reads counts unpooled and supports only the identity (#513)"
+    )
+    raise PooledSmoothing(msg)
+
+
+def _decoded(pred, n_obs):
+    """`pred` as `(n_obs, n_clones)`: the flat form is clone-major, `pred[c * n_obs + o]`."""
+    if pred.ndim == 2:
+        return pred
+
+    return np.ascontiguousarray(pred.reshape(-1, n_obs).T)
+
+
+def pipeline_clone_assignment(
+    single_X,
+    single_base_nb_mean,
+    single_total_bb_RD,
+    res,
+    pred,
+    adjacency_mat,
+    prev_assignment,
+    sample_ids,
+    spatial_weight,
+    smooth_mat=None,
+    log_persample_weights=None,
+    single_tumor_prop=None,
+    hmmclass=None,
+    merge=False,
+    *,
+    label_solver="icm",
+    floor_merge=False,
+    refinement=None,
+) -> Any:
+    """`port.patch.hmrf.pipeline_clone_assignment` (#206, #59): what `cnaster`'s returns, computed leaner.
+
+    The field fused and tabulated, one pass that materializes no emission
+    array (`cnamaste.spot_clone_field`), and with a shifted `hmmclass` each
+    clone's column under its own `log Z_c` (#276, #293). `label_solver`
+    names the solver (`cnamaste.label_solver.SOLVERS`; `"icm"` is
+    `cnaster`'s), `floor_merge` meets the floor smallest first (#348), and
+    `refinement` carries the read-depth refinement's mask (#348, #467). The
+    floor is `hmrf.min_spots_per_clone` where the configuration states it
+    (#468), `cnaster`'s 200 where it does not.
+
+    The tumour-mixed field is `cnaster`'s (`_cnaster_pipeline_clone_assignment`,
+    #135), and a `smooth_mat` that pools is refused (#513).
+    """
+    from cnamaste.label_solver import (
+        CsrGraph,
+        configured_floor,
+        enforce_floor,
+        fold_unary,
+        solver_for,
+        sweep_for,
+    )
+    from cnamaste.logmu_shift import clone_log_normalizers
+    from cnamaste.spot_clone_field import (
+        adjacency_coo,
+        boundary_invariants,
+        field_kernel,
+        spot_clone_field,
+    )
+
+    if single_tumor_prop is not None:
+        logger.info("Delegating clone assignment to cnaster: the tumour-mixed field (#135).")
+
+        dropped = [
+            flag
+            for flag, on in (
+                ("the refinement mask", refinement is not None and refinement.kept()),
+                ("the floor merge", floor_merge),
+                ("the shift", shifted(hmmclass)),
+            )
+            if on
+        ]
+        if dropped:
+            logger.warning(
+                f"{' and '.join(dropped)} not applied: clone assignment "
+                "delegates to cnaster for the tumour-mixed field (#135)."
+            )
+
+        return _cnaster_pipeline_clone_assignment(
+            single_X,
+            single_base_nb_mean,
+            single_total_bb_RD,
+            res,
+            pred,
+            adjacency_mat,
+            prev_assignment,
+            sample_ids,
+            spatial_weight,
+            smooth_mat=smooth_mat,
+            log_persample_weights=log_persample_weights,
+            single_tumor_prop=single_tumor_prop,
+            hmmclass=hmmclass,
+            merge=merge,
+        )
+
+    n_obs, _, n_spots = single_X.shape
+    n_states = res["new_p_binom"].shape[0]
+
+    decoded = _decoded(pred, n_obs)
+    n_clones = decoded.shape[1]
+
+    started = time.time()
+    new_assignment = copy.copy(prev_assignment)
+
+    logger.info(
+        f"Solving (pooled) emission likelihood for X.shape={single_X.shape}, "
+        f"n_states={n_states} and {n_clones} clones with {hmmclass.__name__}, "
+        f"is_tumor_mixed=False and merge={merge}."
+    )
+
+    # NB no pooling (#513): `cnaster` builds `smooth_mat` as the identity.
+    require_unpooled(smooth_mat)
+
+    # NB functions of the input data alone (#59 item 4).
+    invariants = boundary_invariants(single_base_nb_mean, single_total_bb_RD)
+    weight = (
+        invariants.relative_channel_weight(np.arange(n_spots + 1), np.arange(n_spots))
+        if smooth_mat is not None
+        else np.ones(n_spots, dtype=np.float64)
+    )
+
+    log_mu = state_vector(res["new_log_mu"])
+    alphas = state_vector(res["new_alphas"])
+    p_binom = state_vector(res["new_p_binom"])
+    taus = state_vector(res["new_taus"])
+
+    shifts = (
+        clone_log_normalizers(log_mu, decoded, single_base_nb_mean)
+        if shifted(hmmclass)
+        else None
+    )
+
+    if shifts is None:
+        field = spot_clone_field(
+            single_X[:, 0, :],
+            single_base_nb_mean,
+            single_X[:, 1, :],
+            single_total_bb_RD,
+            log_mu,
+            alphas,
+            p_binom,
+            taus,
+            decoded,
+            weight,
+            np.empty((n_spots, n_clones)),
+        )
+    else:
+        # NB the candidate clone's shift: a spot scored against clone `c` is
+        #    scored under `c`'s normalizer, as `base * exp(-shift_c)`. Both
+        #    factors relative to the shifts' mean, which keeps each in range.
+        field = np.empty((n_spots, n_clones))
+        centre = float(np.mean(shifts))
+        kernel = field_kernel(single_X[:, 0, :], single_X[:, 1, :], single_total_bb_RD)
+        scaled = np.empty_like(single_base_nb_mean)
+
+        for clone in range(n_clones):
+            np.multiply(
+                single_base_nb_mean, np.exp(-(shifts[clone] - centre)), out=scaled
+            )
+            column = kernel(
+                single_X[:, 0, :],
+                scaled,
+                single_X[:, 1, :],
+                single_total_bb_RD,
+                log_mu - centre,
+                alphas,
+                p_binom,
+                taus,
+                np.ascontiguousarray(decoded[:, clone : clone + 1]),
+                weight,
+                np.empty((n_spots, 1)),
+            )
+            field[:, clone] = column[:, 0]
+
+    if get_global_config().hmrf.fixed_assignment:
+        logger.warning("Assuming a fixed clone assignment")
+    else:
+        solver = solver_for(label_solver)
+        sweep = sweep_for(solver)
+
+        logger.info(f"Solving for updated clone assignment with {solver}.")
+
+        # NB the refinement's mask into the field, less `MASK_PENALTY` (#467),
+        #    and to the solver and floor as the knob.
+        mask = None if refinement is None else refinement.for_problem(new_assignment, n_clones)
+        knobs = {} if mask is None else {"onehot_allowed_clones": mask}
+
+        if mask is not None:
+            unmasked = field
+            field = np.where(mask, field, field - MASK_PENALTY)
+
+        folded = fold_unary(field, log_persample_weights, sample_ids)
+        graph = CsrGraph.from_matrix(adjacency_mat)
+
+        # NB with the floor merge the sweep runs floorless and the floor is
+        #    met after it, smallest first (#348).
+        knobs["min_clone_spots"] = 0 if floor_merge else configured_floor()
+
+        result = sweep(folded, graph, new_assignment, spatial_weight, **knobs)
+
+        if floor_merge:
+            emptied = enforce_floor(folded, new_assignment, configured_floor())
+
+            if emptied:
+                logger.info(
+                    f"Merged {emptied} clones under {configured_floor()} spots, "
+                    "smallest first (#348)."
+                )
+                result = sweep(folded, graph, new_assignment, spatial_weight, **knobs)
+                enforce_floor(folded, new_assignment, configured_floor())
+
+        niter, new_cost = result.niter, result.cost
+
+        logger.info(f"Ready for potential merging of clones?  {merge}.")
+
+        # NB the COO triple only where it is consumed (#59 item 3).
+        if merge:
+            adj_spots, adj_neighbors, adj_weights = adjacency_coo(adjacency_mat)
+
+        while merge:
+            # NB both sides of each boundary edge (#483 defect 1).
+            new_cost, best_merge_cost, best_merge_pair = merge_assignment(
+                field,
+                adj_spots,
+                adj_neighbors,
+                adj_weights,
+                new_assignment,
+                spatial_weight,
+                log_persample_weights=log_persample_weights,
+                sample_ids=sample_ids,
+            )
+
+            if best_merge_cost > new_cost:
+                first, second = best_merge_pair
+                merged = int((new_assignment == first).sum())
+
+                new_assignment[new_assignment == first] = second
+
+                logger.info(
+                    f"Merged {merged} spots from clone {first} into clone {second} "
+                    f"with new cost={best_merge_cost} given original "
+                    f"cost={new_cost:.6e}."
+                )
+
+                new_cost = best_merge_cost
+            else:
+                logger.info(
+                    f"No more beneficial merges available (best merge "
+                    f"cost={best_merge_cost} given original cost={new_cost:.6e})."
+                )
+                break
+
+        _, counts = np.unique(new_assignment, return_counts=True)
+
+        logger.info(
+            f"Found new clone assignment with new cost {new_cost:.6e} in {niter} "
+            f"iterations ({time.time() - started:.2f}s with clone breakdown=\n"
+            f"{[f'{share:.3f}' for share in counts / counts.sum()]})."
+        )
+
+        # NB `run_core_inference` relabels the survivors ascending; the mask
+        #    follows, so it still describes the next iteration's problem.
+        if mask is not None:
+            refinement.compact(new_assignment)
+            field = unmasked
+
+    logger.info("Computing ln likelihood for hmrf.")
+
+    log_likelihood = float(
+        np.sum(np.take_along_axis(field, new_assignment.astype(int)[:, None], axis=1))
+    )
+
+    # NB the energy the solvers minimize (#483 defect 2).
+    log_likelihood += spatial_log_prior(new_assignment, adjacency_mat, spatial_weight)
+
+    return new_assignment, field, log_likelihood

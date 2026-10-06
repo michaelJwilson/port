@@ -1209,6 +1209,52 @@ def _stacked(normal_log_lambda: Any, lengths: tuple[int, ...]) -> np.ndarray:
     raise ValueError(msg)
 
 
+NEUTRAL_BAF_TOLERANCE = 0.05
+"""How far from 0.5 a state's allele fraction may sit and still be neutral.
+
+0.05 admits the 0.4873-0.4999 #292's fits return for the planted 0.5 and
+refuses the next planted state, 0.42 (#293). Moved in by T- #670 PR7 for
+`hmrf.run_core_inference`'s pin.
+"""
+
+
+def neutral_state(
+    log_mu: np.ndarray, p_binom: np.ndarray, path: np.ndarray | None = None
+) -> int:
+    """The state pinned to `mu = 1`: the normal clone's dominant balanced state (#299).
+
+    `port.patch.hmm_nophasing.shifted_emission.neutral_state`, moved in by
+    T- #670 PR7. Balanced is within :data:`NEUTRAL_BAF_TOLERANCE` of 0.5.
+    Given the decoded `path`, `(n_obs, n_clones)`, the normal clone has the
+    largest share of bins in balanced states, and the pinned state is its
+    most occupied balanced one. Without a path, or where no clone decodes to
+    a balanced state, the balanced state with the lowest `mu`; where none is
+    balanced, the one closest to 0.5.
+    """
+    rates = np.asarray(log_mu, dtype=np.float64).reshape(-1)
+    distance = np.abs(np.asarray(p_binom, dtype=np.float64).reshape(-1) - 0.5)
+    balanced = distance <= NEUTRAL_BAF_TOLERANCE
+
+    if not balanced.any():
+        return int(np.argmin(distance))
+
+    if path is not None:
+        decoded = np.asarray(path, dtype=np.int64)
+        decoded = decoded.reshape(decoded.shape[0], -1)
+        share = balanced[decoded].mean(axis=0)
+        normal = int(np.argmax(share))
+
+        if share[normal] > 0.0:
+            counts = np.bincount(decoded[:, normal], minlength=rates.size)
+            counts = np.where(balanced, counts, -1)
+
+            return int(np.argmax(counts))
+
+    candidates = np.flatnonzero(balanced)
+
+    return int(candidates[np.argmin(rates[candidates])])
+
+
 class hmm_nophasing(_cnaster_hmm_nophasing):
     """`port.patch.hmm_nophasing:hmm_nophasing` (#276, #433): `cnaster`'s
     class, with the analytic gradient and, when the flag is set, the shift.
@@ -1367,7 +1413,7 @@ class hmm_nophasing(_cnaster_hmm_nophasing):
 
         The rates are returned as fitted. The shifted mean `base * mu / sum
         lambda mu` is unchanged by `mu -> c mu`, so their scale is arbitrary
-        here; `port.patch.hmrf.run_core_inference` (PR7) pins it once, after the
+        here; `cnamaste.hmrf.run_core_inference` pins it once, after the
         whole optimization.
         """
         hmm_nophasing._row_shift = None

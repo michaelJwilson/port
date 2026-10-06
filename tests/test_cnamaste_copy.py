@@ -51,6 +51,7 @@ from port.pipeline import (
     FIGURE_SWAPS,
     LOG_SPACE_SWAPS,
     PLOT_OFF_SWAPS,
+    REFINEMENT_SWAPS,
     SHIFT_SWAPS,
     SWAPS,
     Swap,
@@ -98,20 +99,46 @@ PREPROCESSING = frozenset(
 
 FIT_CHAIN: tuple[Swap, ...] = (
     *(swap for swap in SWAPS if swap.name == "hmm_phased"),
-    *(
-        swap._replace(options=())
-        for swap in SHIFT_SWAPS
-        if swap.name == "hmm_nophasing"
-    ),
+    *(swap for swap in SHIFT_SWAPS if swap.name == "hmm_nophasing"),
 )
 """PR5's rows: `docs/port-forward.md` rows 25 (`SWAPS`) and 26 (`SHIFT_SWAPS`),
-the second without the `apply_logmu_shift=True` `port` binds."""
+the second with the `apply_logmu_shift=True` `port` binds from PR7 on."""
+
+CLONE_ASSIGNMENT: tuple[Swap, ...] = with_options(
+    with_options(
+        (
+            *(
+                swap
+                for swap in SWAPS
+                if swap.name
+                in {"compute_loglike_spot_assignment", "pipeline_clone_assignment"}
+            ),
+            *REFINEMENT_SWAPS,
+            *(
+                swap
+                for swap in SHIFT_SWAPS
+                if swap.name in {"run_core_inference", "reindex_clones"}
+            ),
+        ),
+        "port.patch.hmrf:pipeline_clone_assignment",
+        label_solver="alpha-rust-fuse-merge",
+        floor_merge=True,
+        log_space=True,
+    ),
+    "port.patch.hmrf:run_core_inference",
+    distinct_init=True,
+)
+"""PR7's rows: `docs/port-forward.md` rows 24 and 31-34, with the options
+`run_cnaster_port --sal` binds: `--sal`'s solver, the floor merge, the
+refinement mask, log space with the shift, and the distinct start."""
+
 
 ABSORBED: tuple[Swap, ...] = (
     *(swap._replace(options=()) for swap in FIGURE_SWAPS),
     *(swap for swap in SWAPS if swap.replacement in PREPROCESSING),
     *LOG_SPACE_SWAPS,
     *FIT_CHAIN,
+    *CLONE_ASSIGNMENT,
 )
 """The `port` rows `cnamaste` holds, installed on the `cnaster` arm.
 
@@ -130,7 +157,12 @@ segment floor (#551) is PR3's `create_bin_ranges`, off unless configured,
 pinned against `--sal`'s binding below. PR6b adds none either: the `sal`
 emission (#425) is `hmm_nophasing`'s `emission_kernels`, and the `sal` and
 lattice starts (#489, #540) are `gmm_init`'s `start` and `baf_start`, each
-off, which `port` installs with its shift (`test_cnamaste_sal.py`).
+off, which `port` installs with its shift (`test_cnamaste_sal.py`). PR7:
+`CLONE_ASSIGNMENT` and the shift, the `port --sal` path for rows 24 and
+31-34 without its start and `sal` emission. `cnamaste`'s fixes to #483,
+which `port` does not carry, move no byte here: the merges are the same,
+and `merge_by_minspots` writes `total_llf` as NaN in both arms
+(`hmrf.py:1012`). `test_cnamaste_clones.py` pins them.
 """
 
 NARROWED = "(0.4, 0.6)"

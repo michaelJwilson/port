@@ -388,11 +388,12 @@ CNAMASTE_ROLES: dict[str, CnamasteRole] = {
     "cnamaste.hmm_nophasing": "ported",
     "cnamaste.hmm_phased": "ported",
     "cnamaste.hmm_utils": "copy",
-    "cnamaste.hmrf": "copy",
+    "cnamaste.hmrf": "ported",
     "cnamaste.hmrf_utils": "copy",
     "cnamaste.icm": "copy",
     "cnamaste.integer_copy": "copy",
     "cnamaste.io": "ported",
+    "cnamaste.label_solver": "added",
     "cnamaste.logger": "copy",
     "cnamaste.logmu_shift": "added",
     "cnamaste.nb_logpmf": "added",
@@ -411,6 +412,7 @@ CNAMASTE_ROLES: dict[str, CnamasteRole] = {
     "cnamaste.spatial": "ported",
     "cnamaste.spatio_genomic_counts": "copy",
     "cnamaste.spot_adjacency": "added",
+    "cnamaste.spot_clone_field": "added",
     "cnamaste.utils": "ported",
 }
 """Every `cnamaste` module that is not its package `__init__`, by role."""
