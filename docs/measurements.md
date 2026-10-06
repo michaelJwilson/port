@@ -81,6 +81,18 @@ That is the argument for the one-to-many map in one line: an argmin-only
 decoder returns the correct pair at a twenty per cent scale error with
 nothing to say the fit is fifty-six chi-square units from explaining it.
 
+## `port.patch.hmm_nophasing.bb_logpmf`
+
+### `rises_on_distinct`
+
+The integer-copy likelihood (`port.extensions.copy_likelihood._emission`)
+takes three rising factorials per `(state, bin)`. Over the 7,287 calls of a
+dev_tree r0 `--sal` run (#702), the median call is 4 states over 655
+pseudobulk bins with 220 distinct counts, and the largest 25 states over
+2,829 bins with 594. `tests/test_rises_on_distinct_bench.py`, minimum of
+rounds: 91.7 to 56.1 us at the former (1.64x) and 1,589 to 430 us at the
+latter (3.69x). Bitwise (`tests/test_rises_on_distinct.py`).
+
 ## `port.patch.hmm_nophasing.logmu_shift`
 
 ### module docstring
@@ -228,6 +240,31 @@ per `bbox_inches` pass -- and 8,287 MB of `RendererAgg` at `cnaster`'s dpi.
 
 `strict` on `cnaster`'s own figures: measured at 120 groups before and 120
 after, byte for byte the same files.
+
+### write_fig
+
+**Releasing the renderer each `Text` cached (T- #692 part 2).** Peak RSS of
+one whole `run_cnaster`, sampled every 50 ms, one run per arm under
+`host.lock`, `cnaster` pin `4adad4d`, `matplotlib` 3.11.2. `release` is
+`cnaster`'s figures written by this function at `cnaster`'s defaults, its
+"before" `cnaster`'s own `write_fig`; `port`
+is `FIGURE_SWAPS`.
+
+| instance | arm | peak before | peak after | write_fig before / after |
+| --- | --- | ---: | ---: | ---: |
+| gate (`350fbd2b`) | `release` | 5.06 GiB | 1.89 GiB | 11.3 / 11.2 s |
+| gate (`350fbd2b`) | `port` | 1.91 GiB | 1.51 GiB | 3.3 / 3.2 s |
+| CalicoST easy (`2d4ce9a9`) | `release` | 11.82 GiB | 4.22 GiB | 60.8 / 39.9 s |
+| CalicoST easy (`2d4ce9a9`) | `port` | 3.96 GiB | 3.25 GiB | 11.8 / 11.8 s |
+
+Before the change RSS rose by about 1.4 GiB per genomic figure at 300 dpi on
+easy and fell to 1.21 GiB only after `plt.close("all")` and `gc.collect()`.
+Each `Text` holds the `MixedModeRenderer`, which holds the `PdfFile`, whose
+`_images` are views of each rasterizing group's full-page `RendererAgg`
+buffer; a `gc.collect()` in this function freed nothing, because the
+caller's `fig` still reaches them. All 25 output files of every pair above
+are byte-identical. The easy `write_fig` times are one run each and are not
+a speedup claim.
 
 ### discard_fig
 

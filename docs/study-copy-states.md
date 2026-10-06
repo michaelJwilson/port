@@ -116,7 +116,8 @@ states, polished, sit 115 nats below the best and miss 2.9% of rows (median).
   splits the neutral state, as on r3 and r5 (T- #662). The planted states, polished, miss 27.4–44.5% on r3, r7,
   r11 and r12, so the split is a property of the likelihood on this generation, not of the start. On the
   `baseline/` generation `lattice` ends at 1.1%.
-- **Two refusals.** `hmc-hmm` seed 4 on r11 and r12: `sal`'s warm-up refuses a chain that never moved.
+- **Two refusals.** `hmc-hmm` seed 4 on r11 and r12: `sal`'s warm-up refuses a chain that never moved. sal #1207
+  (`006e49d`, T- #707) reports such a coordinate on `Adapted.flat` instead; these runs were not repeated.
   `gaussian-em` refused 50 of 50 runs on r3–r7 in PR- #661's record (data `8ab44e62`), on the venv's earlier sal
   (not recorded); on sal `253c84f` it refuses none, at #661's code `901ea94` and at `9efa28d` alike (r3, seed 0,
   same rows missed). Its numbers depend on the sal commit.
