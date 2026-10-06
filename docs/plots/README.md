@@ -130,8 +130,8 @@ overlapping by half) at seed 0.
   per-entry law is shown for them.
 
 - `truth_combined.png`: `python -m port.sim.truth_figure`, written as
-  `truth_combined.pdf` by `plot`: the tree (over 10 events, its leaves alone
-  where the tree places them, PR- #701), the profiles, the tracks and the
+  `truth_combined.pdf` by `plot`: the tree (over 10 events, no events on its edges,
+  PR- #701), the profiles, the tracks and the
   spatial map on one page at `combined.pdf`'s 122 mm by 193 mm and 7 pt, the
   profile and tracks on one left and right edge, clones as $m_N$, $m_1$, ...;
   the 10 Mb marks and the chromosome names on the last track alone, no Mb

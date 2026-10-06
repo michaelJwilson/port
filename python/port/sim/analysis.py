@@ -564,7 +564,6 @@ def draw_tree(
     name: Callable[[str], str] | None = None,
     ancestors: bool = True,
     edges: bool = False,
-    leaves_only: bool = False,
 ) -> tuple[float, int]:
     """The clones' tree on `ax`, along event time; returns its width in events and its leaves.
 
@@ -583,8 +582,7 @@ def draw_tree(
     `name` and `barcode`.
 
     Above `MANY_EVENTS` events the edges carry no events, only the topology
-    (PR- #701). With `leaves_only`, the leaves alone, each where the tree
-    places it: no edge, no inner node, no event.
+    (PR- #701).
     """
     t = tree(r)
     named = name or (lambda clone: display(clone, r.clones))
@@ -650,7 +648,7 @@ def draw_tree(
     small = dot / 90.0
     many = len(t.events) > MANY_EVENTS
     for node, up in parent.items():
-        if up is None or leaves_only:
+        if up is None:
             continue
         ax.plot([at[up], at[up], at[node]], [y[up], y[node], y[node]],
                 color=MUTED, linewidth=1.2 * small ** 0.5)  # fmt: skip
@@ -666,8 +664,6 @@ def draw_tree(
                     fontsize=event_size, color=INK)  # fmt: skip
     for node, up in parent.items():
         # NB the root is an unobserved ancestor: unfilled, unnamed, uncoded.
-        if leaves_only and node not in order:
-            continue
         clone = node
         observed = clone in r.clones
         colour = clone_colour(clone, r.clones) if observed else "white"

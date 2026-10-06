@@ -6,8 +6,8 @@ Top to bottom, at `llncs`'s text width and height, 7 pt throughout, as
 `port.extensions.combined_figure` sets an estimate:
 
 - **(a)** the clones' tree, each event at its time (`analysis.draw_tree`),
-  or above `analysis.MANY_EVENTS` events its leaves alone, each where the
-  tree places it (`draw_tree(leaves_only=True)`, PR- #701);
+  above `analysis.MANY_EVENTS` events without them, its edges and whole
+  barcodes alone (PR- #701);
 - **(b)** each clone's planted `(A, B)`, drawn by `port`'s profile plotter
   under its mirror and copy-number key, the rows `combined.pdf` draws;
 - **(c)** RDR and BAF along the genome per true clone
@@ -96,7 +96,6 @@ def truth_combined_figure(
     )
     from port.patch.plot_genomic import plot_clones_genomic
     from port.sim.analysis import (
-        MANY_EVENTS,
         binned_axis,
         binned_profile,
         draw_tree,
@@ -121,8 +120,7 @@ def truth_combined_figure(
         # (a)
         tree_ax = tree_fig.add_axes((0.02, 0.02, 0.96, 0.88))
         draw_tree(tree_ax, r, event_size=FONT_SIZE, node_size=FONT_SIZE,
-                  dot=18.0, name=symbol, ancestors=False, edges=True,
-                  leaves_only=len(tree(r).events) > MANY_EVENTS)  # fmt: skip
+                  dot=18.0, name=symbol, ancestors=False, edges=True)  # fmt: skip
 
         # (b): the key, then the rows, as `combined.pdf` draws its profile.
         tall = HEIGHTS["profile"]
@@ -321,7 +319,7 @@ def symbol_of(label: str) -> str:
 
 
 def simulated_tree_figure(r: Realization, width: float | None = None) -> Any:
-    """The simulated clone tree, `width` wide, at any event count: `truth_combined_figure`'s panel (a) alone up to `MANY_EVENTS` events (T- #660, PR- #701)."""
+    """The simulated clone tree, `width` wide, at any event count: `truth_combined_figure`'s panel (a) alone (T- #660, PR- #701)."""
     import matplotlib.pyplot as plt
 
     from port.extensions.combined_figure import FONT_SIZE, _put, page_style

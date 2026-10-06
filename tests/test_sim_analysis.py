@@ -335,27 +335,23 @@ def _headed(genomic: Any) -> set[str]:
     }
 
 
-@pytest.mark.infra
-@pytest.mark.merge
-def test_at_10_events_or_fewer_a_is_the_tree(drawn: Drawn) -> None:
-    """At `MANY_EVENTS` or fewer, (a) is `draw_tree`'s tree, text for text and
-    line for line, and (c) heads each clone with its barcode as `shown` cuts
-    it (PR- #701)."""
+def _a_is_the_tree(r: Any) -> Any:
+    """(a) against `draw_tree(edges=True)` on its own axis, text for text and
+    line for line; (c)'s headers each clone's name and `shown` barcode."""
     import matplotlib.pyplot as plt
     from port.extensions.combined_figure import FONT_SIZE
-    from port.sim.analysis import MANY_EVENTS, draw_tree, shown
+    from port.sim.analysis import draw_tree, shown
     from port.sim.truth_figure import _symbol
 
-    r = read(drawn.path)
     t = tree(r)
     _, tree_ax, genomic = _panels(r)
     figure, ax = plt.subplots()
     draw_tree(ax, r, event_size=FONT_SIZE, node_size=FONT_SIZE, dot=18.0,
               name=_symbol(r), ancestors=False, edges=True)  # fmt: skip
 
-    assert len(t.events) <= MANY_EVENTS
     assert [x.get_text() for x in tree_ax.texts] == [x.get_text() for x in ax.texts]
     assert len(tree_ax.lines) == len(ax.lines) > 0
+    assert len(tree_ax.collections) == len(ax.collections)
     assert {x.get_text() for x in tree_ax.texts if x.get_gid() == "barcode"} == {
         t.barcode[c] for c in r.clones
     }
@@ -364,6 +360,23 @@ def test_at_10_events_or_fewer_a_is_the_tree(drawn: Drawn) -> None:
         f"{symbol(c)} ({shown(t.barcode[c])})" for c in r.clones
     }
     plt.close(figure)
+    return tree_ax
+
+
+@pytest.mark.infra
+@pytest.mark.merge
+def test_at_10_events_or_fewer_a_is_the_tree(drawn: Drawn) -> None:
+    """At `MANY_EVENTS` or fewer, (a) is `draw_tree`'s tree, text for text and
+    line for line, each event on its edge, and (c) heads each clone with its
+    whole barcode (PR- #701)."""
+    from port.sim.analysis import MANY_EVENTS
+
+    r = read(drawn.path)
+    t = tree(r)
+    tree_ax = _a_is_the_tree(r)
+
+    assert len(t.events) <= MANY_EVENTS
+    assert set(t.events["label"]) <= {x.get_text() for x in tree_ax.texts}
 
 
 def _marks(ax: Any) -> list[Any]:
@@ -432,78 +445,31 @@ def test_no_mb_label_is_drawn_and_the_last_track_alone_names_contigs(
     plt.close(figure)
 
 
-def _scatter(ax: Any) -> list[tuple[float, float]]:
-    """Each marker's centre on `ax`, in pixels."""
-    return [tuple(ax.transData.transform(c.get_offsets()[0])) for c in ax.collections]
-
-
-def _tree_axes(r: Any, *, leaves_only: bool) -> tuple[Any, Any]:
-    """`draw_tree` as `truth_combined`'s (a) draws it, on a fixed axis."""
-    import matplotlib.pyplot as plt
-    from port.extensions.combined_figure import FONT_SIZE
-    from port.sim.analysis import draw_tree
-    from port.sim.truth_figure import _fit_tree, _symbol
-
-    figure: Any = plt.figure(figsize=(4.8, 1.0), dpi=300)
-    ax = figure.add_axes((0.09, 0.02, 0.9, 0.88))
-    draw_tree(ax, r, event_size=FONT_SIZE, node_size=FONT_SIZE, dot=18.0,
-              name=_symbol(r), ancestors=False, edges=True,
-              leaves_only=leaves_only)  # fmt: skip
-    figure.canvas.draw()
-    _fit_tree(ax)
-    figure.canvas.draw()
-    return figure, ax
-
-
 @pytest.mark.infra
 @pytest.mark.merge
-def test_the_leaves_alone_sit_where_the_tree_places_its_leaves(drawn: Drawn) -> None:
-    """`draw_tree(leaves_only=True)` draws one marker per leaf, `normal`
-    included, each within 0.5 px of the tree's own, and no edge (PR- #701)."""
-    import matplotlib.pyplot as plt
-
-    r = read(drawn.path)
-    full_figure, full = _tree_axes(r, leaves_only=False)
-    alone_figure, alone = _tree_axes(r, leaves_only=True)
-    nodes, leaves = _scatter(full), _scatter(alone)
-    names = [x.get_text() for x in alone.texts if x.get_gid() == "name"]
-
-    assert not alone.lines
-    assert len(leaves) == len(r.clones) == len(names)
-    for x, y in leaves:
-        assert min(abs(x - u) + abs(y - v) for u, v in nodes) < 0.5
-    assert names == [x.get_text() for x in full.texts if x.get_gid() == "name"]
-    plt.close(full_figure)
-    plt.close(alone_figure)
-
-
-@pytest.mark.infra
-@pytest.mark.merge
-def test_above_10_events_a_is_the_leaves_and_c_cuts_barcodes(dense: Drawn) -> None:
-    """Above `MANY_EVENTS`, (a) is `draw_tree`'s leaves alone, no edge, each
-    named with its whole barcode; (c)'s headers cut it by `shown` (PR- #701)."""
+def test_above_10_events_a_is_the_tree_without_events(dense: Drawn) -> None:
+    """Above `MANY_EVENTS`, (a) is `draw_tree`'s tree, text for text and line
+    for line, its edges with no event, each leaf named with its whole
+    barcode; (c)'s headers cut it by `shown` to 4 bits, "…", 4 (PR- #701)."""
     from port.sim.analysis import MANY_EVENTS, shown
-    from port.sim.truth_figure import _symbol
 
     r = read(dense.path)
     t = tree(r)
-    _, tree_ax, genomic = _panels(r)
-    barcodes = {x.get_text() for x in tree_ax.texts if x.get_gid() == "barcode"}
-    symbol = _symbol(r)
+    tree_ax = _a_is_the_tree(r)
 
     assert len(t.events) > MANY_EVENTS
-    assert not tree_ax.lines
-    assert len(tree_ax.collections) == len(r.clones)
-    assert barcodes == {t.barcode[c] for c in r.clones}
-    assert all(len(b) == len(t.events) for b in barcodes)
+    assert {x.get_gid() for x in tree_ax.texts} == {"name", "barcode"}
+    assert not set(t.events["label"]) & {x.get_text() for x in tree_ax.texts}
+    assert all(
+        len(x.get_text()) == len(t.events)
+        for x in tree_ax.texts
+        if x.get_gid() == "barcode"
+    )
     assert all(
         len(shown(t.barcode[c])) == 9
         and shown(t.barcode[c])[4] == "\N{HORIZONTAL ELLIPSIS}"
         for c in r.clones
     )
-    assert _headed(genomic) == {
-        f"{symbol(c)} ({shown(t.barcode[c])})" for c in r.clones
-    }
 
 
 @pytest.mark.infra
