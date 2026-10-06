@@ -51,8 +51,15 @@ BUDGET: dict[str, int] = {
     #    80: T- #683's `GenomicAxis`, `Ticks`, `_Thinned`: the one genomic
     #    axis, its data-free form a swap row binds, and its Mb labels.
     #    81: T- #692's `RectangularClones`, `cnaster`'s two-tuple carrying the
-    #    rectangular init's `Termination`.
-    "classes": 81,
+    #    rectangular init's `Termination`. 83: #716's `potts_stream.WarmSchedule`
+    #    and `_Warmed`, sal's exponential schedule held at `t_start` for a
+    #    warm-up, which sal's `ScheduleParams` cannot state (#721). 86: #730's
+    #    `port.studies.stage.Stage` and `Member` (NamedTuples), the run's call
+    #    at a stage and a realization on disk, and `_Done`, the exception that
+    #    stops the run once the study has its stage. 88: #735's `stage.Field`,
+    #    the run's clone-assignment problem, and `potts_stream.Problem`, one
+    #    with its realization (`known_field.KnownProblem`, in `sandbox/`, gone).
+    "classes": 88,
     # NB step 4: 18 records became NamedTuples; the dataclasses left carry
     #    mutable state, machinery or a `__post_init__` (#517 D). Step 8 moved
     #    7 dataclasses and 1 NamedTuple to `sandbox/`. 21: T- #418's `Samples`
@@ -62,12 +69,15 @@ BUDGET: dict[str, int] = {
     #    three audit records (mutable: an arm fills `peak_gb` and candidates).
     #    33: G5's three study records, moved.
     #    34: T- #683's `Ticks`, frozen: a swap row's bound option.
-    "dataclasses": 34,
+    #    36: #716's `WarmSchedule` and `_Warmed`, frozen: what `run_annealed`
+    #    calls `build` on.
+    "dataclasses": 36,
     # NB 24: `analysis.GenomicTruth` (the truth page). 26: #540's
     #    `CopyCall` and `CopyStart` (`Row` in `sandbox/`, #547). 27: T- #617
     #    WP2's `pipeline.Default`. 28: G6's `port.sim.he_slide.Slide`, moved.
     #    30: G3's `Fit` and `Summary`, moved. 32: G5's two `Job`s, moved.
-    "NamedTuples": 32,
+    #    34: #730's `Stage` and `Member`. 36: #735's `Field` and `Problem`.
+    "NamedTuples": 36,
 }
 """`python/port` outside `sandbox/`."""
 

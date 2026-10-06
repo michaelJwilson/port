@@ -20,7 +20,7 @@ manifest's `r0_hash`, and writes into `OUT`:
   fixture run), at the top level beside the run's pages: the spatial solvers
   (`port.studies.potts_plot`) left of the copy-state starts
   (`port.studies.copy_state_plot`), each keyed below, no table (T- #660), on
-  the 122 mm column `combined.png` is drawn on.
+  the text column `combined.png` is drawn on.
 
 Every figure carries `<fixture> <hash> · code <sha>`, the commit read before
 anything is written, `+` where the tree differs from it. A run is appended to
@@ -101,8 +101,8 @@ SWAPPED = "#4a3aa7"
 
 def stamp(figure: Any, text: str, *, top: bool = False) -> None:
     """`text` in the figure's bottom-right corner, or its top-right where a
-    page fills the bottom, muted, 6 pt, in the stated face."""
-    from port.extensions.figure_style import figure_font
+    page fills the bottom, muted, at `MIN_FONT_SIZE`, in the stated face."""
+    from port.extensions.figure_style import MIN_FONT_SIZE, figure_font
 
     y, va = (0.998, "top") if top else (0.002, "bottom")
     # NB a warped genomic axis says so (`genomic_axis.disclose`, T- #683).
@@ -110,7 +110,9 @@ def stamp(figure: Any, text: str, *, top: bool = False) -> None:
     if label.startswith("axis:"):
         text = f"{text} · {label}"
     with figure_font():
-        figure.text(0.998, y, text, ha="right", va=va, fontsize=6, color=MUTED)
+        figure.text(
+            0.998, y, text, ha="right", va=va, fontsize=MIN_FONT_SIZE, color=MUTED
+        )
 
 
 @contextlib.contextmanager
@@ -615,13 +617,13 @@ SOLVERS = "solver_combined.png"
 """Figure 18, beside the run's pages in `docs/plots/paper/`."""
 
 SOLVER_PANEL = 2.2
-"""Inches: each panel's axes height. (a) left of (b), each keyed below in one column, on one 122 mm page."""
+"""Inches: each panel's axes height. (a) left of (b), each keyed below in one column, on one text-column page."""
 
 
 def solver_figure(potts: dict[str, Any], copies: dict[str, Any]) -> Any:
     """18: the spatial solvers' gap panel left of the copy-state starts', each keyed below its axes (`figures.key_below`).
 
-    Sized as `combined.png` is: `llncs`'s 122 mm column, every text at
+    Sized as `combined.png` is: the paper's text column, every text at
     `combined_figure.FONT_SIZE`, saved at 300 dpi, so it is included at
     `width=\\linewidth` with nothing scaled.
     """
@@ -629,9 +631,10 @@ def solver_figure(potts: dict[str, Any], copies: dict[str, Any]) -> Any:
     from matplotlib.text import Text
 
     from port.extensions.combined_figure import FONT_SIZE
+    from port.extensions.figure_style import PAPER_WIDTH
     from port.studies import copy_state_plot, potts_plot
 
-    width = 122.0 / 25.4
+    width = PAPER_WIDTH
     line = FONT_SIZE * 1.5 / 72.0
     # NB the key's rows under the x label: the longer of the two panels' methods sets the height
     rows = max(len(potts_plot.KEY_NAMES), len(copy_state_plot.KEY_NAMES))

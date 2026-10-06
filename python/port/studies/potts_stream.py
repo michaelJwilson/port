@@ -1,13 +1,19 @@
-"""#556: Potts solvers from random labels on a stream of known-law problems, the plot redrawn per problem.
+"""#556: Potts solvers from random labels on a stream of the run's clone-assignment problems, the plot redrawn per problem.
 
-`run_study --potts-stream MANIFEST OUT_DIR [--problems 25] [--starts 50] [--held-out 3] [--workers 4]`
+`run_study --potts-stream MANIFEST OUT_DIR [--problems 25] [--starts 50] [--held-out 3] [--workers 4] [--states run]`
 `run_study --potts-stream MANIFEST OUT_DIR --tune SAMPLER ...` tunes
 only the named samplers on the held-out realizations and merges them into `SETTINGS`.
 `--only SOLVER ...` runs a subset, `--merge PKL ...` draws it with earlier streams.
 
-The main process draws each realization of `MANIFEST` in memory and builds its
-field at the planted copy states and profiles (`port.sandbox.known_field`);
-the pool solves it while the next one draws.
+The main process draws each realization of `MANIFEST` and runs
+`run_cnaster_port --sal` on it to the RDR + BAF stage's clone assignment, at
+the planted clones (`port.studies.stage.at_clone_assignment`, #735): the
+field, graph and coupling are the ones the run's solver is handed there. The
+Baum-Welch before it starts from the run's own initial states, or with
+`--states planted` from the planted ones, a second oracle input. The pool
+solves each problem while the next one is built. Until #735 the field was the
+planted law's (`port.sandbox.known_field`, deleted): a different problem, so
+its numbers do not compare with these.
 
 - **Warmup.** Each worker runs every solver once on a 10 x 10 patch before
   any timed job, so no compilation lands in a timing.
@@ -26,9 +32,9 @@ the pool solves it while the next one draws.
   pure-Python `alpha` and the floor-merge row, plus TRW-S's own decoded
   labelling, from `--starts` random labellings; the samplers at their tuned
   settings. Each run is polished twice: sal's ICM, then the color merge
-  (`known_field.color_merge`, cnaster's `merge_assignment` rule).
+  (`port.sandbox.extensions.color_merge`, cnaster's `merge_assignment` rule).
 
-Per problem it records the planted labelling's energy and TRW-S's lower bound,
+Per problem it records the planted labelling's energy, TRW-S's lower bound and its spots,
 per run the energy and the labels unlike the planted ones, raw and after each
 polish. When a problem's runs are all in it writes `OUT_DIR/<stem>.record`
 (`port.studies.records`: Parquet and JSON) and redraws `OUT_DIR/<stem>.png` (`port.studies.potts_plot`).
@@ -44,14 +50,16 @@ import itertools
 import json
 import time
 import traceback
+from collections.abc import Iterator
 from concurrent.futures import Future, ProcessPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, NamedTuple, cast
 
 import numpy as np
 
 from port.studies import records
+from port.studies import stage as at
 from port.studies import stream as harness
 
 DROPPED = frozenset({
@@ -65,8 +73,8 @@ and, for the paper's figure (T- #660), `alpha-rust` and `alpha-rust-icm` (`alpha
 place (#716). `clone_label_arms` still runs them."""
 
 EXTRA = ("sal:trws",)
-"""Entries beyond the harness's: TRW-S's decoded labelling. `CLUSTER_TEMPERING` and #559's
-`FIELD_WEIGHTED` cluster moves left the stream with T- #660; `--only` still runs them."""
+"""Entries beyond the harness's: TRW-S's decoded labelling. `CLUSTER_TEMPERING` left the stream with
+T- #660; `--only` still runs it."""
 
 SAMPLERS = {
     "sal:anneal": "single-site",
@@ -81,19 +89,11 @@ of `swendsen-wang` and `wolff` is accepted on that field and freezes in a field 
 TEMPERING = "sal:tempering"
 """sal's `parallel_tempering`: a ladder of single-site heat-bath replicas, swapped."""
 
-FIELD_WEIGHTED = {
-    "port:sw-field": ("swendsen-wang", False),
-    "port:sw-field-glauber": ("swendsen-wang", True),
-    "port:wolff-field": ("wolff", False),
-    "port:wolff-field-glauber": ("wolff", True),
-}
-"""#559's cluster moves (`port.sandbox.known_field.cluster`): the move, and whether a Glauber sweep follows each."""
-
 CLUSTER_TEMPERING = "sal:cluster-tempering"
 """sal's `cluster_tempering` (its #1090): `TEMPERING`'s ladder, one Swendsen-Wang pass per replica per step and
 Houdayer moves between replicas."""
 
-TUNED = (*SAMPLERS, TEMPERING, *FIELD_WEIGHTED, CLUSTER_TEMPERING)
+TUNED = (*SAMPLERS, TEMPERING, CLUSTER_TEMPERING)
 """Every entry that runs at a tuned annealing setting."""
 
 T_END = 0.05
@@ -162,9 +162,72 @@ REPLICAS = 6
 """sal's `N_REPLICAS`: both tempering ladders, geometric between `T_END` and the start temperature."""
 
 SETTINGS = Path(__file__).with_name("potts_sampler_settings.json")
-"""The samplers' settings tuned once on `dev_tree_1s_hard`'s first 3 realizations (r0 `d2938975`), reused by `--settings`."""
+"""The samplers' settings tuned once on `dev_tree_1s_hard`'s first 3 realizations (r0 `d2938975`), reused by `--settings`.
+
+Tuned on the planted-law field `port.sandbox.known_field` built before #735,
+not the run's: retuning on the run's field is #723's."""
 
 _GRAPHS: dict[tuple[int, float], Any] = {}
+
+
+class Problem(NamedTuple):
+    """One realization's clone-assignment problem, the run's (`port.studies.stage.Field`)."""
+
+    realization: int
+    hash: str
+    field: np.ndarray
+    planted: np.ndarray
+    indptr: np.ndarray
+    indices: np.ndarray
+    weights: np.ndarray
+    spatial_weight: float
+    states: str
+    draw_seconds: float
+    field_seconds: float
+
+    @property
+    def n_spots(self) -> int:
+        return int(self.field.shape[0])
+
+
+def problems(
+    manifest: Path, root: Path, n: int, first: int = 0, states: str = "run"
+) -> Iterator[Problem]:
+    """Realizations `first`, ..., `first + n - 1` of `manifest`, each drawn and run to its field only when asked for."""
+    import shutil
+
+    drawn = at.members(manifest, root / ".sim", n=n, first=first)
+    while True:
+        opened = time.perf_counter()
+        member = next(drawn, None)
+        if member is None:
+            return
+        draw_seconds = time.perf_counter() - opened
+        scratch = root / f".run_r{member.realization}"
+        try:
+            found = at.at_clone_assignment(
+                member.sample, lambda f: f, states=states, root=scratch
+            )
+        finally:
+            shutil.rmtree(scratch, ignore_errors=True)
+        yield Problem(member.realization, member.hash, found.field, found.planted, found.indptr, found.indices,
+                      found.weights, found.spatial_weight, states, draw_seconds, found.seconds)  # fmt: skip
+
+
+def hex_graph(points: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """CSR `(indptr, indices, weights)` of each point's nearest neighbours at weight 1: the warm-up's patch."""
+    import scipy.sparse as sp
+    from scipy.spatial import cKDTree
+
+    tree = cKDTree(points)
+    spacing = float(np.min(tree.query(points, k=2)[0][:, 1]))
+    pairs = tree.query_pairs(spacing * 1.01, output_type="ndarray")
+    n = len(points)
+    rows = np.concatenate([pairs[:, 0], pairs[:, 1]])
+    cols = np.concatenate([pairs[:, 1], pairs[:, 0]])
+    matrix = sp.csr_matrix((np.ones(rows.size), (rows, cols)), shape=(n, n))
+    matrix.sort_indices()
+    return matrix.indptr, matrix.indices, matrix.data
 
 
 def _init() -> None:
@@ -188,7 +251,6 @@ def _warm() -> None:
     from types import SimpleNamespace
 
     import port.studies.clone_label_arms as arms
-    from port.sandbox.known_field import hex_graph
 
     rows, cols = np.divmod(np.arange(100), 10)
     points = np.column_stack([cols + 0.5 * (rows % 2), rows * np.sqrt(3) / 2])
@@ -199,7 +261,7 @@ def _warm() -> None:
     # NB every solver `--only` can name, the ones T- #660 dropped from the stream included
     retired = {"sal:bifurcation", "port:alpha", "port:alpha-rust-merge"}
     runnable = [s for s in arms._solvers() if s not in retired]
-    for solver in [*runnable, *EXTRA, CLUSTER_TEMPERING, *FIELD_WEIGHTED]:
+    for solver in [*runnable, *EXTRA, CLUSTER_TEMPERING]:
         solve(
             patch,
             solver,
@@ -225,9 +287,8 @@ def _sample(solver: str, field: np.ndarray, start: np.ndarray, rng: np.random.Ge
     from sal.opt.budget import Budget
     from sal.sample.potts_mcmc.chains import cluster_tempering, parallel_tempering
     from sal.sample.potts_mcmc.moves import PottsMove
-    from sal.search.ground_state import Problem, run_annealed
-
-    from port.sandbox.known_field.cluster import anneal
+    from sal.search.ground_state import Problem as SalProblem
+    from sal.search.ground_state import run_annealed
 
     t_start, sweeps = float(setting["t_start"]), int(setting["sweeps"])
     schedule = WarmSchedule(t_start, T_END, float(setting.get("warm", 0.0)))
@@ -240,14 +301,8 @@ def _sample(solver: str, field: np.ndarray, start: np.ndarray, rng: np.random.Ge
     elif solver == TEMPERING:
         ladder = tuple(float(t) for t in np.geomspace(t_start, T_END, REPLICAS))
         best = parallel_tempering(graph, field, ladder, rng, steps).best
-    elif solver in FIELD_WEIGHTED:
-        temperature = schedule.build(sweeps)
-        temperatures = np.array([temperature(k) for k in range(sweeps)])
-        best, _ = anneal(
-            graph, field, start, rng, temperatures, *FIELD_WEIGHTED[solver]
-        )
     else:
-        problem = Problem(graph, field, field.shape[1])
+        problem = SalProblem(graph, field, field.shape[1])
         budget = Budget(Cost.SITE_VISITS, sweeps * problem.visits_per_sweep)
         move = PottsMove(SAMPLERS[solver])
         calibrated: int | None = None
@@ -273,7 +328,8 @@ def solve(
     from sal.sim.potts import energy
 
     import port.studies.clone_label_arms as arms
-    from port.sandbox.known_field import color_merge, missed
+    from port.sandbox.extensions.color_merge import color_merge
+    from port.studies.stage import missed
 
     try:
         _hold(problem.realization, problem)
@@ -332,6 +388,7 @@ def _describe(problem: Any) -> dict[str, Any]:
     return {"bound": bound, "trws_energy": trws_energy, "trws_seconds": trws_seconds,
             "truth_energy": energy(graph, problem.field, problem.planted), "q": int(problem.field.shape[1]),
             "draw_seconds": problem.draw_seconds, "field_seconds": problem.field_seconds,
+            "spots": problem.n_spots, "hash": problem.hash, "states": problem.states,
             "argmax_ari": adjusted_rand_score(problem.planted, problem.field.argmax(1))}  # fmt: skip
 
 
@@ -421,10 +478,10 @@ def run(
     only: tuple[str, ...] | None = None,
     first: int = 0,
     merge: tuple[Path, ...] = (),
+    states: str = "run",
 ) -> Path:
     """Tune on the first `held_out` realizations, then stream the next `n_problems`; returns the record it keeps current."""
     import port.studies.clone_label_arms as arms
-    from port.sandbox.known_field import problems
 
     out_dir.mkdir(parents=True, exist_ok=True)
     out = out_dir / (
@@ -443,14 +500,11 @@ def run(
     done: list[int] = []
     futures: dict[Future[dict[str, Any]], int] = {}
     opened = time.perf_counter()
-    total = held_out + first + n_problems
-    stream = problems(manifest, total, realizations=total)
     with harness.pool(workers, _init) as pool:
-        skipped = list(itertools.islice(stream, held_out))
-        for _ in itertools.islice(stream, first):
-            pass
         if settings is None:
-            tuned, tuning_rows = tune(pool, skipped)
+            tuned, tuning_rows = tune(
+                pool, list(problems(manifest, out_dir, held_out, states=states))
+            )
         else:
             loaded = json.loads(settings.read_text())
             tuned = {k: v for k, v in loaded.items() if not k.startswith("_")}
@@ -464,15 +518,19 @@ def run(
                     continue
                 done.append(index)
                 record = {"manifest": str(manifest), "problems": held, "rows": rows, "done": done, "solvers": solvers,
-                          "starts": starts, "tuned": tuned, "tuning": tuning_rows, "held_out": held_out}  # fmt: skip
+                          "starts": starts, "tuned": tuned, "tuning": tuning_rows, "held_out": held_out,
+                          "states": states}  # fmt: skip
                 records.write(out, record)
                 harness.redraw("potts-plot", out, merge)
                 errors = sum("error" in r for r in rows)
                 print(f"[{time.perf_counter() - opened:6.0f}s] problem {index} solved; "
                       f"{len(done)}/{n_problems} done, {errors} errors; plot redrawn", flush=True)  # fmt: skip
 
-        # NB the next realization draws here while the pool solves the last
-        for problem in stream:
+        # NB the next realization draws here while the pool solves the last; the held-out
+        #    realizations are never built for evaluation
+        for problem in problems(
+            manifest, out_dir, n_problems, held_out + first, states
+        ):
             held[problem.realization] = _describe(problem)
             print(f"[{time.perf_counter() - opened:6.0f}s] drew {problem.realization}: truth - bound "
                   f"{held[problem.realization]['truth_energy'] - held[problem.realization]['bound']:.2f} nats", flush=True)  # fmt: skip
@@ -497,18 +555,21 @@ def run(
 
 
 def retune(
-    manifest: Path, samplers: tuple[str, ...], held_out: int, workers: int
+    manifest: Path,
+    samplers: tuple[str, ...],
+    held_out: int,
+    workers: int,
+    root: Path,
+    states: str = "run",
 ) -> None:
     """`tune` for `samplers` alone on `manifest`'s first `held_out` realizations, merged into `SETTINGS`."""
-    from port.sandbox.known_field import problems
-
     unknown = set(samplers) - set(TUNED)
     if unknown:
         msg = f"not tunable: {sorted(unknown)}; tunable: {TUNED}"
         raise ValueError(msg)
     with harness.pool(workers, _init) as pool:
         chosen, _ = tune(
-            pool, list(problems(manifest, held_out, realizations=held_out)), samplers
+            pool, list(problems(manifest, root, held_out, states=states)), samplers
         )
     settings = json.loads(SETTINGS.read_text())
     for solver, setting in chosen.items():
@@ -559,6 +620,12 @@ def main(argv: list[str] | None = None) -> None:
         metavar="PKL",
         help="earlier streams drawn with this one",
     )
+    parser.add_argument(
+        "--states",
+        choices=("run", "planted"),
+        default="run",
+        help="the Baum-Welch before the field starts from the run's states or the planted ones",
+    )
     arguments = parser.parse_args(argv)
     if arguments.tune is not None:
         retune(
@@ -566,8 +633,10 @@ def main(argv: list[str] | None = None) -> None:
             tuple(arguments.tune),
             arguments.held_out,
             arguments.workers,
+            arguments.out_dir,
+            arguments.states,
         )
         return
     run(arguments.manifest, arguments.out_dir, arguments.problems, arguments.starts, arguments.held_out,
         arguments.workers, arguments.settings, tuple(arguments.only) if arguments.only else None, arguments.first,
-        tuple(arguments.merge))  # fmt: skip
+        tuple(arguments.merge), arguments.states)  # fmt: skip

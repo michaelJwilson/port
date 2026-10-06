@@ -43,7 +43,7 @@ def _rows() -> dict[str, Any]:
 
 
 def _objective(rows: dict[str, Any], theta: np.ndarray) -> Any:
-    from port.sandbox.known_copy.hmm_objective import objective_for
+    from port.sandbox.extensions.hmm_objective import objective_for
 
     return objective_for(
         rows["total"], rows["b"], rows["exposure"], rows["trials"],
@@ -63,7 +63,7 @@ def test_the_adapter_is_cnasters_forward_and_ports_nll() -> None:
     import torch
     from cnaster.hmm_nophasing import _bb_logpmf_1d, _nb_logpmf_1d, hmm_nophasing
     from port.extensions.jax_hmm import emission, marginal_negative_log_likelihood
-    from port.sandbox.known_copy.hmm import ALPHA, TAU, T
+    from port.sandbox.extensions.hmm_objective import ALPHA, TAU, T
     from scipy.special import logsumexp
 
     rows = _rows()
@@ -118,7 +118,7 @@ def test_the_adapter_is_sals_count_pair_hmm_objective() -> None:
     2,244-6,507.
     """
     import torch
-    from port.sandbox.known_copy.hmm import ALPHA, TAU, T
+    from port.sandbox.extensions.hmm_objective import ALPHA, TAU, T
     from sal.emissions import RateConcentrationCountPairEmission
     from sal.opt.hmm import EmissionHmmObjective
     from sal.opt.objective import Restricted, coordinates
@@ -198,7 +198,7 @@ def test_the_starts_keep_their_best_within_budget(name: str) -> None:
     `anneal` and `tempering` count the initial point among their best, so
     neither ends above it; `hmc` keeps the best of its draws alone.
     """
-    from port.sandbox.known_copy.hmm_objective import negative_log_likelihood, sample
+    from port.sandbox.extensions.hmm_objective import negative_log_likelihood, sample
 
     budget = {"anneal-hmm": 433, "tempering-hmm": 436, "hmc-hmm": 217}[name]
     rows = _rows()
@@ -227,6 +227,6 @@ def test_the_starts_keep_their_best_within_budget(name: str) -> None:
 def test_the_registry_names_the_samplers_the_module_runs() -> None:
     """`sandbox.extensions.copy_starts.HMM_SAMPLERS` is a literal, so importing it imports no sampler; it must match `SAMPLERS`."""
     from port.sandbox.extensions.copy_starts import HMM_SAMPLERS
-    from port.sandbox.known_copy.hmm_objective import SAMPLERS
+    from port.sandbox.extensions.hmm_objective import SAMPLERS
 
     assert HMM_SAMPLERS == SAMPLERS

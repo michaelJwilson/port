@@ -79,7 +79,7 @@ RUNTIME_FLOOR = 0.5
 
 
 def degenerate_counts(record: dict[str, Any]) -> dict[str, int]:
-    """Each start's runs flagged degenerate (`known_copy.degenerate`): `cnaster`'s NB at probability 1."""
+    """Each start's runs flagged degenerate (`known_copy.degenerate`, before #730): `cnaster`'s NB at probability 1."""
     rows = pd.DataFrame(record["rows"])
     rows = rows[rows.problem.isin(record["done"])]
     if "degenerate" not in rows:
@@ -94,7 +94,7 @@ def frame(record: dict[str, Any]) -> tuple[pd.DataFrame, np.ndarray]:
     """The runs with their gaps to the realization's best non-degenerate run, and the truth's gaps.
 
     A degenerate run scores rows at probability 1 through `cnaster`'s negative
-    binomial (`known_copy.degenerate`); as the best it would set every gap by
+    binomial (`known_copy.degenerate`, before #730); as the best it would set every gap by
     thousands of nats, so it is neither the reference nor a point.
     """
     rows = pd.DataFrame(record["rows"])
