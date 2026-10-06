@@ -17,11 +17,12 @@ planted class (`CLASSES`). The figure carries its data hash and code commit.
 
 from __future__ import annotations
 
-import hashlib
 import subprocess
 import sys
 from pathlib import Path
 from typing import Any
+
+from port.qa import provenance
 
 from tests.metrics import ROOT, SIM_TEST, UNMEASURED, read
 from tests.plots_dir import PLOTS
@@ -207,25 +208,7 @@ def figure(
 
 def stamp(rows: list[dict[str, Any]]) -> str:
     """`data <hash> · code <commit>`: SHA-256 of the rows plotted, and the repository's commit."""
-    data = hashlib.sha256(repr(rows).encode()).hexdigest()[:8]
-    commit = (
-        subprocess.run(
-            ["git", "rev-parse", "--short=7", "HEAD"],
-            cwd=ROOT,
-            capture_output=True,
-            text=True,
-            check=False,
-        ).stdout.strip()
-        or "unknown"
-    )
-    dirty = subprocess.run(
-        ["git", "status", "--porcelain", "--untracked-files=no"],
-        cwd=ROOT,
-        capture_output=True,
-        text=True,
-        check=False,
-    ).stdout.strip()
-    return f"data {data} · code {commit}{'+' if dirty else ''}"
+    return provenance.stamp(provenance.digest(repr(rows).encode()))
 
 
 def main(argv: list[str] | None = None) -> None:

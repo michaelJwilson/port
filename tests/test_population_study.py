@@ -89,6 +89,7 @@ def test_counted_rows_read_as_the_rows_they_stand_for() -> None:
     difference.
     """
     import pandas as pd
+    from port.qa.statistics import resample_weights
 
     import tests.studies.population_report as report
 
@@ -101,7 +102,9 @@ def test_counted_rows_read_as_the_rows_they_stand_for() -> None:
     })  # fmt: skip
     listed = counted.loc[counted.index.repeat(counted["count"])]
     seeds = np.arange(30)
-    weights = report._weights(seeds, np.random.default_rng(4))[:200]
+    weights = resample_weights(seeds.size, report.BOOTSTRAP, np.random.default_rng(4))[
+        :200
+    ]
 
     a = report.curve(counted, "x", "y", report.SNP_EDGES, seeds, weights, count="count")
     b = report.curve(listed, "x", "y", report.SNP_EDGES, seeds, weights)

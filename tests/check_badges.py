@@ -27,7 +27,9 @@ import os
 import sys
 from pathlib import Path
 
-from tests.badges import MEASUREMENTS, inputs_hash, load, write
+from port.qa.provenance import inputs_hash
+
+from tests.badges import MEASUREMENTS, load, write
 
 TOLERANCE = 0.005
 """How far a recorded figure may sit from the measured one, in points.

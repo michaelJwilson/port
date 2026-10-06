@@ -128,7 +128,7 @@ def test_a_recorded_run_writes_one_line_per_measured_metric(
         path = tmp_path / getattr(metrics, name).name
         path.write_text(getattr(metrics, name).read_text())
         monkeypatch.setattr(metrics, name, path)
-    monkeypatch.setattr(metrics, "_git", lambda *_: "abcdef0")
+    monkeypatch.setattr("port.qa.provenance.head", lambda: "abcdef0")
     recovery = {"fixture_hash": "07b82e92", "ari": 0.98765, "wall": 12.34}
     recovery |= {"copy_ari": float("nan"), "peak_gb": None}
 

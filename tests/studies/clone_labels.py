@@ -198,8 +198,9 @@ def first_round(start: str) -> Iterator[None]:
 def e2e(sample_name: str, start: str) -> None:
     """`--sal` end to end with `start` at each stage's first assignment; `sim_audit`'s `SIM` line."""
     import json
-    import time
     from dataclasses import asdict
+
+    from port.qa.statistics import measured
 
     from tests.sim_audit import run_arm
     from tests.sim_fixtures import load_simulated
@@ -210,13 +211,13 @@ def e2e(sample_name: str, start: str) -> None:
         if path.is_absolute()
         else load_simulated(sample_name)
     )
-    opened = time.perf_counter()
-    if start == "none":
-        recovery, _ = run_arm(sample, ["--sal", "--no-plots"])
-    else:
-        with first_round(start):
+    with measured() as cost:
+        if start == "none":
             recovery, _ = run_arm(sample, ["--sal", "--no-plots"])
-    row = {**asdict(recovery), "start": start, "wall": time.perf_counter() - opened}
+        else:
+            with first_round(start):
+                recovery, _ = run_arm(sample, ["--sal", "--no-plots"])
+    row = {**asdict(recovery), "start": start, "wall": cost.wall_s}
     print("SIM " + json.dumps(row, default=str))
 
 
