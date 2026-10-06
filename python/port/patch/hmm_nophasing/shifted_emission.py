@@ -97,9 +97,9 @@ from cnaster.hmm_nophasing import hmm_nophasing as UPSTREAM
 from cnaster.logger import get_logger
 from sal.ragged import Ragged
 
+from port.patch._clone_paths import state_vector
 from port.patch.hmm_nophasing.gradient import EmGradient, analytic_bfgs
 from port.patch.hmm_nophasing.logmu_shift import shifts as logmu_shifts
-from port.patch.plotting.clone_paths import state_vector
 
 logger = get_logger(__name__, start_time=start_time)
 
