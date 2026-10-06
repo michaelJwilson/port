@@ -38,12 +38,16 @@ BUDGET: dict[str, int] = {
     #    the registry of the starts set aside, to `sandbox/`. 58: T- #418's
     #    `Samples`, checked at construction, and `Recorded`, a run's samples.
     #    59: T- #617 WP2's `pipeline.Default`, a flag's default and its off flag.
-    "classes": 59,
+    #    62: T- #683's `GenomicAxis`, the one genomic axis every genomic figure
+    #    draws on; `Ticks`, its data-free form a swap row binds; `_Thinned`,
+    #    the Mb labels laid out at draw time.
+    "classes": 62,
     # NB step 4: 18 records became NamedTuples; the dataclasses left carry
     #    mutable state, machinery or a `__post_init__` (#517 D). Step 8 moved
     #    7 dataclasses and 1 NamedTuple to `sandbox/`. 21: T- #418's `Samples`
-    #    (a `__post_init__`) and `Recorded` (mutable state).
-    "dataclasses": 21,
+    #    (a `__post_init__`) and `Recorded` (mutable state). 22: T- #683's
+    #    `Ticks`, frozen: a swap row's bound option.
+    "dataclasses": 22,
     # NB 24: `analysis.GenomicTruth` (the truth page). 26: #540's
     #    `CopyCall` and `CopyStart` (`Row` in `sandbox/`, #547). 27: T- #617
     #    WP2's `pipeline.Default`.

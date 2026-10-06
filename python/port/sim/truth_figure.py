@@ -10,7 +10,10 @@ Top to bottom, at `llncs`'s text width and height, 7 pt throughout, as
   under its mirror and copy-number key, the rows `combined.pdf` draws;
 - **(c)** RDR and BAF along the genome per true clone
   (`analysis.genomic_truth`), drawn by `plot_clones_genomic`, each clone
-  named with its barcode from (a).
+  named with its barcode from (a), its last track labelled in Mb.
+
+(b) and (c) share one `port.extensions.genomic_axis.GenomicAxis`, ticked
+every 10 Mb (T- #683).
 
 The true clone of each spot is not drawn here: `analysis.plot_spatial` draws
 it as its own figure, `truth/spatial.png` (T- #660).
@@ -68,6 +71,7 @@ def truth_combined_figure(r: Realization, width: float | None = None) -> Any:
     )
     from port.patch.plot_genomic import PAPER_WIDTH, plot_clones_genomic
     from port.sim.analysis import (
+        binned_axis,
         binned_profile,
         draw_tree,
         genomic_truth,
@@ -76,6 +80,7 @@ def truth_combined_figure(r: Realization, width: float | None = None) -> Any:
 
     width = PAPER_WIDTH if width is None else width
     symbol = _symbol(r)
+    genome = binned_axis(r)
 
     with page_style():
         figure: Any = plt.figure(
@@ -94,7 +99,7 @@ def truth_combined_figure(r: Realization, width: float | None = None) -> Any:
         # (b): the key, then the rows, as `combined.pdf` draws its profile.
         legend_ax = profile_fig.add_axes((0.0, 0.72, 1.0, 0.2))
         profile_ax = profile_fig.add_axes((0.0, 0.25, 1.0, 0.42))
-        plot_copy_number_profile(binned_profile(r), ax=profile_ax)
+        plot_copy_number_profile(binned_profile(r), ax=profile_ax, axis=genome)
         # NB the plotter's own key, at fixed page coordinates, is redrawn into
         #    `legend_ax`, which is placed with the rows.
         profile_fig.axes[-1].remove()
@@ -108,7 +113,8 @@ def truth_combined_figure(r: Realization, width: float | None = None) -> Any:
         g = genomic_truth(r)
         plot_clones_genomic(g.lengths, g.counts, g.expected, g.trials,
                             clone_index=g.groups, figure=genomic_fig,
-                            pointsize=0.4, linewidth=0.3, chrtext_shift=-0.9)  # fmt: skip
+                            pointsize=0.4, linewidth=0.3, chrtext_shift=-0.9,
+                            axis=genome)  # fmt: skip
         _fit_tracks(genomic_fig)
         # NB each clone's name followed by its barcode, as (a) sets it.
         barcode = tree(r).barcode
@@ -177,6 +183,9 @@ TRACK_GAP = 0.02
 STATS_ROW = 0.13
 """Inches above each clone's RDR track for its name and state line."""
 
+MB_ROW = 0.12
+"""Inches under the last track for its Mb labels (T- #683)."""
+
 
 def _stack_tracks(panel: Any) -> None:
     """(c)'s tracks filling its panel: per clone, its name row, RDR, then BAF.
@@ -188,7 +197,7 @@ def _stack_tracks(panel: Any) -> None:
 
     dpi = panel.get_figure(root=True).dpi
     box = panel.bbox
-    top, bottom = box.y1 / dpi - 0.02, box.y0 / dpi + 0.04
+    top, bottom = box.y1 / dpi - 0.02, box.y0 / dpi + 0.04 + MB_ROW
     tracks = list(panel.axes)
     clones = len(tracks) // 2
     height = (top - bottom - clones * (STATS_ROW + TRACK_GAP)) / len(tracks)
