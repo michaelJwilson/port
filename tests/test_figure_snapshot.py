@@ -88,9 +88,9 @@ def main() -> None:
     import tempfile
 
     import matplotlib.image as mimage
+    from port.sim.inputs import written_config
 
     from tests.conftest import SHIPPED_EM_FTOL, cnaster_test_config
-    from tests.tmp_inputs import written_config
 
     FROZEN.mkdir(parents=True, exist_ok=True)
 

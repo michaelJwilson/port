@@ -13,10 +13,10 @@ field. The end-to-end run and its size are
 
 import numpy as np
 import pytest
+from port.sim.truth import CoreInferenceTruth, core_inference_truth
 from scipy import stats
 
 from tests.adapters import from_core_inference_truth
-from tests.fixtures import CoreInferenceTruth, core_inference_truth
 
 CHI_SQUARE_ALPHA = 0.001
 """Rejection level for the goodness-of-fit tests.
@@ -315,8 +315,7 @@ def test_a_spot_s_counts_come_from_its_own_stream() -> None:
     lattice, so widening it re-labels the spots that were already there.
     """
     import torch
-
-    from tests.fixtures import _emission_families
+    from port.sim.truth import _emission_families
 
     truth = core_inference_truth()
     spot = 13
@@ -356,7 +355,7 @@ def test_every_size_plants_a_normal_clone_of_at_least_thirty_per_cent(
     At three sizes, the dev instance's among them. Checked against the
     fixture's own construction, hence `smoke`.
     """
-    from tests.fixtures import NORMAL_SHARE
+    from port.sim.truth import NORMAL_SHARE
 
     truth = core_inference_truth(
         n_clones=n_clones, n_states=4, lattice=lattice, n_obs=60, n_segments=2

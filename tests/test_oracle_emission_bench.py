@@ -25,10 +25,11 @@ from typing import Any
 import numpy as np
 import pytest
 import torch
+from port.sim.truth import _emission_families, dev_instance
 from pytest_benchmark.fixture import BenchmarkFixture
 
 from tests.adapters import from_core_inference_truth
-from tests.fixtures import _emission_families, dev_instance, tiers
+from tests.fixtures import tiers
 
 GATE_OBS = 200
 """The dev instance's bin axis, reduced. Its `M`, `K` and `S` are untouched."""

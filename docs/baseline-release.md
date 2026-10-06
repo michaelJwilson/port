@@ -21,7 +21,7 @@ peak ≤ 6.15 GB; against `efdebfd` on 14 shared fixtures the wall ratio is
 - CalicoST easy and hard are the shipped samples. `dev_tree*` are drawn by
   `python -m port.sim.draw sim/manifests/baseline/st_*.toml` (r0–r2) and,
   for the lognormal segment lengths of #621, by `sim/manifests/<name>.toml`
-  (r0). The hash is `tests.sim_stages.realization_hash`; the 12 `st_*`
+  (r0). The hash is `port.sim.fixtures.realization_hash`; the 12 `st_*`
   draws reproduce the hashes recorded at `ac00498`, and
   `dev_tree_1s_easy_ln_r0` the `22a5eb85` of #627.
 - Every run is in `docs/metrics/` at `9a47d97`, under the fixture names
@@ -31,7 +31,7 @@ peak ≤ 6.15 GB; against `efdebfd` on 14 shared fixtures the wall ratio is
 
 ## Results
 
-Metric names are the ledger's (`tests/metrics.py`); `_pf` is phase-free,
+Metric names are the ledger's (`port.qa.ledger.METRICS`); `_pf` is phase-free,
 `—` a class not planted. `copy_ari_bgain` is undefined on every fixture
 (one balanced pair planted). Clones: fitted / integer.
 

@@ -22,12 +22,12 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import torch
+from port.sim.truth import CoreInferenceTruth
 from sal.emissions import BetaBinomialEmission
 from sal.opt.hmm import forward_log_likelihood_from_density
 
 from tests.fixtures import (
     BetaBinomialChains,
-    CoreInferenceTruth,
     NegativeBinomialChains,
     PhasedChains,
     PottsLabels,

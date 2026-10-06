@@ -49,6 +49,19 @@ run_cnaster_port = "port.scripts.run_cnaster:main"
 # CalicoST on the same configuration, for the three-reference comparison
 # (#347). Needs the `calicost` extra; nothing imports CalicoST until it runs.
 run_calicost = "port.scripts.run_calicost:main"
+# The metrics ledger in `docs/metrics/`: record an audit run, render the wide
+# view, or query the best value (T- #673). A QA tool entry point, not a
+# pipeline one: it reaches `port.qa`, and no pipeline entry point does.
+run_ledger = "port.scripts.run_ledger:main"
+# A run scored against its planted truth: `--sim`, `--recovery`, `--copy` or
+# `--errors` (T- #673). A QA tool entry point, as `run_ledger` is.
+run_audit = "port.scripts.run_audit:main"
+# `--final`: port against CalicoST on one sample; `--patched-share`: the
+# badge's share; `run_figures`: the dev instance's figures (T- #673).
+run_benchmark = "port.scripts.run_benchmark:main"
+run_figures = "port.scripts.run_figures:main"
+# `run_study --<study> ...`: one of `port.studies`, run by hand (T- #673).
+run_study = "port.scripts.run_study:main"
 
 [project.optional-dependencies]
 dev = [

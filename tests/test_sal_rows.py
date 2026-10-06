@@ -251,8 +251,8 @@ def test_sal_recovers_the_critical_instance(cnaster_config: None) -> None:
     """
     from port.extensions.sal import sal_options
     from port.pipeline import SWAPS, patched, with_options
+    from port.sim.truth import critical_instance
 
-    from tests.fixtures import critical_instance
     from tests.test_core_inference_end_to_end import _adjusted_rand_index, _run
 
     truth = critical_instance()
@@ -287,12 +287,11 @@ def test_sal_recovers_the_planted_clones_on_the_dev_instance(tmp_path: Path) -> 
 
     import pandas as pd
     from port.scripts.run_cnaster import main
+    from port.sim.inputs import write_tmp_inputs
+    from port.sim.run_config import write_run_cnaster_config
+    from port.sim.truth import dev_instance
+    from port.sim.unsegment import unsegment
     from sklearn.metrics import adjusted_rand_score
-
-    from tests.fixtures import dev_instance
-    from tests.run_config import write_run_cnaster_config
-    from tests.tmp_inputs import write_tmp_inputs
-    from tests.unsegment import unsegment
 
     truth = dev_instance()
     written = write_tmp_inputs(

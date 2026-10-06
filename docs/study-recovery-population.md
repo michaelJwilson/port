@@ -25,7 +25,7 @@ rerun, so panel (a) of the rerun's figure is J = 1 alone, over the 193 base memb
   numbers below are the original's.
 
 The figure, sensitivity and false positive rate, is committed as
-`plots/studies/population_recovery.png`; `python -m tests.studies.population
+`plots/studies/population_recovery.png`; `run_study --population
 report --out DIR` redraws it into `DIR/figures/`.
 
 (a) Clone sensitivity against log10 clone UMIs, per J. (b) CNA sensitivity against length at J = 1, per copy-state class. (c) The false positive rate of true-(1,1) segments against the SNP-covering UMIs they hold, at J = 1.
@@ -37,7 +37,7 @@ The page is set as `combined.pdf`'s spatial row: 4.80 in wide, 7 pt text.
 
 ## Method
 
-`python -m tests.studies.population run | rescore | report` (#546).
+`run_study --population run | rescore | report` (#546).
 
 - **Members.** One member is one seed of `sim/manifests/population.toml`: a 60 × 50 slice with 3 tumour clones.
   - Each clone's size is drawn log-uniform over 100–1,000 spots (`[layout.size]`).
@@ -45,7 +45,7 @@ The page is set as `combined.pdf`'s spatial row: 4.80 in wide, 7 pt text.
   - CNA lengths are exponential with mean 20 Mb and a floor of 1 Mb.
   - Counts come from the Pólya urn (#549).
   - `population_long.toml` is the same with a mean length of 60 Mb.
-  - A member's hash is `tests.sim_stages.realization_hash` of its drawn r0; the table names the first seed's of each manifest.
+  - A member's hash is `port.sim.fixtures.realization_hash` of its drawn r0; the table names the first seed's of each manifest.
 - **Runs.** Each member runs `run_cnaster_port --sal --no-plots` once per `hmrf.spatial_weight` J. J_c = ln 2 is the critical coupling of the q = 4 Potts model on the triangular lattice; J runs from 1.15 to 4 × J_c.
 - **Scoring.**
   - Clones are matched by overlap on `clone_labels.tsv`.
@@ -128,11 +128,11 @@ Whether the (1,1) calls come from the HMM's states or from the integer-copy deco
 - `plots/studies/population_summary.json`, `population_tables.md`, and the figure as `.png` (the `.pdf` is no longer committed).
 
 ```
-python -m tests.studies.population run --seeds 0:80 --J 0.8,1.0,1.4,2.8 --workers 4 --out DIR
-python -m tests.studies.population run --seeds 80:200 --J 1.0 --workers 4 --out DIR
-python -m tests.studies.population run --seeds 1000:1260 --J 1.0 --workers 4 \
+run_study --population run --seeds 0:80 --J 0.8,1.0,1.4,2.8 --workers 4 --out DIR
+run_study --population run --seeds 80:200 --J 1.0 --workers 4 --out DIR
+run_study --population run --seeds 1000:1260 --J 1.0 --workers 4 \
     --manifest sim/manifests/population_long.toml --out DIR
-python -m tests.studies.population report --out DIR --study2-J 1.0
+run_study --population report --out DIR --study2-J 1.0
 ```
 
 cnaster 4adad4d, snakes_and_ladders 3ad4b04, port c2fb3cf plus the figure commits on #546.

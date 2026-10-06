@@ -18,8 +18,7 @@ stated difference and is recorded in the last test here.
 
 import numpy as np
 import pytest
-
-from tests.fixtures import CoreInferenceTruth, dev_instance
+from port.sim.truth import CoreInferenceTruth, dev_instance
 
 NORMAL_STATE = 0
 """Which state the fixture plants as diploid and balanced."""

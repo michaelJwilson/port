@@ -19,11 +19,12 @@ from typing import Any
 
 import numpy as np
 import pytest
+from port.sim.inputs import WrittenInputs, written_config
+from port.sim.run_config import PlantedInstance
+from port.sim.truth import balanced_clone
 
 from tests.adapters import range_filter_loop
-from tests.fixtures import balanced_clone, synthetic_ranges
-from tests.run_config import PlantedInstance
-from tests.tmp_inputs import WrittenInputs, written_config
+from tests.fixtures import synthetic_ranges
 
 pytestmark = pytest.mark.preprocessing
 
@@ -264,7 +265,7 @@ def test_the_gene_file_removes_the_genes_it_names_and_no_others(
 ) -> None:
     """**`filter_gene_file`, which no run in this repository has ever taken.**
 
-    `zenodo_sim_config.yaml` leaves it `None` and so does `tests/run_config.py`,
+    `zenodo_sim_config.yaml` leaves it `None` and so does `python/port/sim/run_config.py`,
     so the branch ships unexercised. The claim is exact and comes from the
     fixture rather than from the loader: name ten planted genes, and the ten
     are gone and everything else is where it was.
@@ -476,13 +477,12 @@ def outlier_configs(
 ) -> dict[str, Path]:
     """The same instance's configuration with each outlier branch turned on.
 
-    `tests/run_config.py` leaves both off, as `zenodo_sim_config.yaml` does, so
+    `python/port/sim/run_config.py` leaves both off, as `zenodo_sim_config.yaml` does, so
     these are written here rather than added there: turning one on for the
     whole suite would change what every other stage test is measuring.
     """
     import yaml
-
-    from tests.run_config import run_cnaster_config
+    from port.sim.run_config import run_cnaster_config
 
     truth, _, written, _ = planted_instance
     paths = {}
@@ -697,9 +697,9 @@ def test_the_range_filter_matches_the_loop_on_the_shipped_hla_file() -> None:
     """GRCh38's `HLA_regions.bed`, as `get_filter_ranges` reads it, over chr6 SNPs."""
     from cnaster.filter import get_filter_ranges
     from port.patch.io import _range_mask
+    from port.sim.fixtures import references
 
     from tests.adapters import range_filter_loop
-    from tests.sim_fixtures import references
 
     resources = references()
 
@@ -759,10 +759,9 @@ def test_the_patched_loader_is_cnasters_on_a_drawn_sample(tmp_path: Path) -> Non
     from cnaster.config import YAMLConfig, set_global_config
     from cnaster.io import load_input_data as theirs
     from port.patch.io import load_input_data as ours
+    from port.qa.audit import drawn_config
     from port.sim.draw import main as draw
-
-    from tests.sim_audit import _drawn_config
-    from tests.sim_fixtures import load_simulated
+    from port.sim.fixtures import load_simulated
 
     manifests = Path(__file__).resolve().parents[1] / "sim" / "manifests"
     manifest = tmp_path / "dev_tree.toml"
@@ -777,7 +776,7 @@ def test_the_patched_loader_is_cnasters_on_a_drawn_sample(tmp_path: Path) -> Non
     assert draw([str(manifest), "--into", str(tmp_path / "drawn")]) == 0
 
     sample = load_simulated("r0", tmp_path / "drawn" / "dev_tree")
-    path = _drawn_config(sample, tmp_path / "run", {})
+    path = drawn_config(sample, tmp_path / "run", {})
     config = YAMLConfig(yaml.safe_load(path.read_text()))
     set_global_config(config)
     arguments = {

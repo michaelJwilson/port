@@ -5,7 +5,7 @@
 - the shipped `zenodo_sim_config.yaml`, vendored at `cnaster` `4adad4d`,
   carries exactly the findings #324 tabulates (`warning`: shipped values
   that assert more than the code does with them);
-- `tests/run_config.py` carries exactly the findings its docstring states,
+- `python/port/sim/run_config.py` carries exactly the findings its docstring states,
   so a key `cnaster` starts or stops reading fails here (`warning`);
 - `run_cnaster_port --audit-config` lists them and runs nothing (`infra`).
 """
@@ -83,10 +83,10 @@ def test_the_test_config_carries_only_what_it_states(tmp_path: Path) -> None:
     so a plain `run_cnaster` ignores the 12 the test config states, while
     `run_cnaster_port --copy-cap` applies it. Reported as `port`, not `unread`.
     """
-    from tests.fixtures import dev_instance
-    from tests.run_config import run_cnaster_config
-    from tests.tmp_inputs import write_tmp_inputs
-    from tests.unsegment import unsegment
+    from port.sim.inputs import write_tmp_inputs
+    from port.sim.run_config import run_cnaster_config
+    from port.sim.truth import dev_instance
+    from port.sim.unsegment import unsegment
 
     truth = dev_instance()
     written = write_tmp_inputs(

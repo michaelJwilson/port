@@ -17,9 +17,8 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-
-from tests import fixtures, metrics
-from tests.metrics import (
+from port.qa import ledger as metrics
+from port.qa.ledger import (
     COLUMNS,
     CONVERTED,
     METRICS,
@@ -30,13 +29,15 @@ from tests.metrics import (
     check_identity,
     check_note,
     definitions,
-    fixture_hash,
     ledger,
     parse,
     read,
     render,
     runs,
 )
+from port.sim import truth as sim_truth
+
+from tests.metrics import fixture_hash
 
 
 @pytest.mark.infra
@@ -128,7 +129,7 @@ def test_a_recorded_run_writes_one_line_per_measured_metric(
         path = tmp_path / getattr(metrics, name).name
         path.write_text(getattr(metrics, name).read_text())
         monkeypatch.setattr(metrics, name, path)
-    monkeypatch.setattr(metrics, "_git", lambda *_: "abcdef0")
+    monkeypatch.setattr("port.qa.provenance.head", lambda: "abcdef0")
     recovery = {"fixture_hash": "07b82e92", "ari": 0.98765, "wall": 12.34}
     recovery |= {"copy_ari": float("nan"), "peak_gb": None}
 
@@ -180,9 +181,9 @@ def test_a_note_that_is_not_one_short_line_is_refused(note: str) -> None:
 @pytest.mark.infra
 def test_the_latest_dev_run_is_the_dev_fixture_built_now() -> None:
     recorded = [row for row in read() if row["fixture"] == "dev"]
-    assert recorded, "no dev run: python -m tests.metrics --record"
+    assert recorded, "no dev run: run_ledger --record"
 
-    built = fixture_hash(fixtures.dev_instance())
+    built = fixture_hash(sim_truth.dev_instance())
 
     assert built == recorded[-1]["fixture_hash"], (
         f"dev_instance now builds {built}, the latest dev run is "
@@ -192,10 +193,10 @@ def test_the_latest_dev_run_is_the_dev_fixture_built_now() -> None:
 
 @pytest.mark.infra
 def test_the_hash_is_of_the_data_and_moves_with_it() -> None:
-    truth = fixtures.critical_instance()
+    truth = sim_truth.critical_instance()
 
-    assert fixture_hash(truth) == fixture_hash(fixtures.critical_instance())
-    assert fixture_hash(truth) != fixture_hash(fixtures.critical_instance(seed=1))
+    assert fixture_hash(truth) == fixture_hash(sim_truth.critical_instance())
+    assert fixture_hash(truth) != fixture_hash(sim_truth.critical_instance(seed=1))
 
 
 @pytest.mark.snapshot
@@ -219,9 +220,7 @@ def test_each_fixture_name_holds_one_hash_and_each_hash_one_name() -> None:
 def test_the_calicost_runs_carry_the_shipped_samples_hash() -> None:
     """`easy` and `hard` lines hash the committed sample as
     `realization_hash` reads it now (#588)."""
-    from tests.sim_audit import SAMPLES
-    from tests.sim_fixtures import SIM_ROOT
-    from tests.sim_stages import realization_hash
+    from port.sim.fixtures import SAMPLES, SIM_ROOT, realization_hash
 
     for name, sample in SAMPLES.items():
         recorded = {
@@ -246,15 +245,14 @@ def test_a_name_under_another_hash_is_refused() -> None:
 def test_the_history_plots_draw_from_the_ledger(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """`tests.studies.metrics_history` writes both figures from the ledger,
+    """`port.studies.metrics_history` writes both figures from the ledger,
     and each stamps the hash of the ledger's history rows.
 
     `first_parent` reads `origin/main`, absent from a shallow checkout, so
     the merge order is the ledger's own order here.
     """
     from matplotlib.figure import Figure
-
-    from tests.studies import metrics_history
+    from port.studies import metrics_history
 
     rows = metrics_history.history()
     monkeypatch.setattr(
@@ -294,9 +292,8 @@ def test_a_run_of_unchanged_merges_keeps_its_first_and_last_tick(
     the axis; e and f each start a tick; g joins f's run of two, drawn as
     is. Tick labels stay plain `#NNN`."""
     from matplotlib.axes import Axes
-
-    from tests.studies import metrics_history
-    from tests.studies.metrics_history import SKIP, axis, label, ticks
+    from port.studies import metrics_history
+    from port.studies.metrics_history import SKIP, axis, label, ticks
 
     rows = [_history_row(c, "easy", "0.5") for c in "abcd"]
     rows += [_history_row("e", "easy", "0.6")]

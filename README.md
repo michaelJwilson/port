@@ -71,7 +71,7 @@ asserts nothing and is blue for that reason.
 the `cnaster` lines an unpatched `run_cnaster` executes on the dev instance
 (`numba` disabled, so a kernel's body counts), the share inside a function a
 default row of `run_cnaster_port` replaces -- for a class, its overridden
-methods (#302). Measured by `python -m tests.patched_share`, not per pull
+methods (#302). Measured by `run_benchmark --patched-share`, not per pull
 request, since it is a whole run; blue, because it asserts nothing.
 
 **`port ARI` and `sal ARI`** are recovery against the planted truth on
@@ -80,7 +80,7 @@ request, since it is a whole run; blue, because it asserts nothing.
 against the planted clones over spots -- after #518's merge of clones whose
 decoded `(A, B)` agree at 0.99 of bins -- and of each clone-bin's phased
 `(A, B)` against the state the fixture painted there. Measured by
-`python -m tests.sim_audit --sample generated/dev_tree/r0`; the sample,
+`run_audit --sim --sample generated/dev_tree/r0`; the sample,
 configuration and commit are in `measurements.json`. Not per pull request,
 since each is a whole run; orange, a fixed colour that no threshold
 decides.
@@ -433,7 +433,7 @@ peak, which says plotting caps this run rather than the emission array --
 a different regime from #90's declared scale, not a contradiction of it.
 
 **Three clone-assignment patches, one on by default** (#348). On
-`tests.fixtures.calicost_instance`, `cnaster` ends with one clone (ARI 0.000):
+`port.sim.truth.calicost_instance`, `cnaster` ends with one clone (ARI 0.000):
 `run_cnaster.py:1105` drops the read-depth refinement's allowed-clone mask, and
 `icm_sweep_deque` then moves every clone under 200 spots at random into the one
 that reached 200. `--floor-merge` keeps the floor but merges the smallest clone
@@ -459,7 +459,7 @@ on the same files, into `<output_dir>_calicost`. `--align` (the default)
 replaces the CalicoST constants that have a `cnaster` counterpart;
 `--no-align` keeps CalicoST's own. It refuses the initial-clone layout on which
 CalicoST's `rectangle_initialize_initial_clone` never returns (`cnaster` #248).
-`python -m tests.recovery_audit --calicost` scores it with port's scorer.
+`run_audit --recovery --calicost` scores it with port's scorer.
 `--shipped FILE` runs CalicoST's own configuration file instead, taking only
 the paths from the YAML; a sheet of several slices takes
 `configuration_cna_multi`. `docs/calicost-benchmark.md` records its runs.
@@ -499,16 +499,16 @@ urn, with CalicoST easy's and hard's event laws and admixture (#556, #581);
 `dev_tree*` manifests draw lognormal lengths at `sigma = 0.541`,
 `port.sim.laws.lognormal_sigma(0.10, 0.5)`: 10% of events below half the
 median, against 29-35% under the exponential (#619;
-`python -m tests.studies.cna_lengths` draws both laws). `baseline/` and `population*.toml` stay
+`run_study --cna-lengths` draws both laws). `baseline/` and `population*.toml` stay
 exponential; `baseline/dev_tree.toml` freezes `dev_tree`'s exponential
 generation (`3381575a`), which `tests.sim_stages` caches as r0.
 Each `dev_tree*` manifest states `[sample] r0_hash`, its realization 0's
-`tests.sim_stages.realization_hash`, so a result names the generation it was
+`port.sim.fixtures.realization_hash`, so a result names the generation it was
 drawn at; `tests/test_sim_r0_hash.py` redraws each to it.
-`tests.sim_audit` runs and scores one realization:
+`run_audit --sim` (`port.qa.audit`) runs and scores one realization:
 
     python -m port.sim.draw sim/manifests/dev_tree.toml
-    python -m tests.sim_audit --sample generated/dev_tree/r0 -- --sal
+    run_audit --sim --sample generated/dev_tree/r0 -- --sal
 
 `port.sandbox.sim_from_run` (#460, set aside) writes a version-3 manifest
 from a finished run's `clone_labels.tsv` and `cnv_segments.tsv`: its clones,
@@ -522,7 +522,7 @@ the manifest draws only once the offsets are stated:
 `[tool.port] max_file_bytes` (5 MB): GitHub rejects 100 MiB, and a clone keeps
 every version. CalicoST's samples and `sim/normal_baseline.txt.gz` are
 stored compressed (`port.sim.files`, deterministic gzip where the format is
-not compressed already); `tests.sim_fixtures.stage` writes a run's inputs
+not compressed already); `port.sim.fixtures.stage` writes a run's inputs
 out plain under the names `cnaster` opens.
 
 `cnaster` appends a fit record to `cnaster.perf` in the repository root on
@@ -536,6 +536,8 @@ trains a reader to ignore `git status`.
 | Path | Contents |
 | --- | --- |
 | `python/port/` | The Python package; `python-source` in `pyproject.toml` |
+| `python/port/qa/` | What measures and records a run: `statistics` (bars, ranks, bootstrap intervals, wall and peak memory), `provenance` (the commit, the inputs' digest, a figure's stamp), `scoring` (a fit against its planted truth), `audit` (a run scored, behind `run_audit`), `benchmark` (behind `run_benchmark` and `run_figures`) and `ledger` (`docs/metrics/`, behind `run_ledger`), one implementation each (T- #673) |
+| `python/port/studies/` | The studies, run by hand: `run_study --<study>`, each module stating what it measured and where (T- #673) |
 | `src/` | The Rust crate `oxiport`, bound as `port.oxiport` |
 | `tests/` | The suite; `testpaths` in `pyproject.toml` |
 | `sim/` | CalicoST's simulated samples, their normal fits, and `manifests/` that draw them |
@@ -570,7 +572,7 @@ not carry, not before.
 | [CLAUDE.md](CLAUDE.md) | The rules |
 | [Issues](https://github.com/michaelJwilson/port/issues) | What is filed and not done |
 | [docs/measurements.md](docs/measurements.md) | The timings, ratios and histories the package docstrings cited, by module and object (#517) |
-| [docs/metrics/](docs/metrics/) | The metrics ledger, append-only TSVs: `ledger.tsv` one measured value per line, `runs.tsv` one line per run (commit, timestamp, arguments, test, note), `definitions.tsv` what each metric means, versioned (#409, #620). `python -m tests.metrics --record` appends; `--render [--out PATH]` prints the wide table, which is not committed; `python -m tests.studies.metrics_history` draws `.cache/plots/metrics_history*.png` from it |
+| [docs/metrics/](docs/metrics/) | The metrics ledger, append-only TSVs: `ledger.tsv` one measured value per line, `runs.tsv` one line per run (commit, timestamp, arguments, test, note), `definitions.tsv` what each metric means, versioned (#409, #620). `run_ledger --record` appends (`port.qa.ledger`); `--render [--out PATH]` prints the wide table, which is not committed; `run_study --metrics-history` draws `.cache/plots/metrics_history*.png` from it |
 | [docs/study-recovery-population.md](docs/study-recovery-population.md) | `--sal` sensitivity against clone UMIs and CNA length, and the false positive rate, over 679 simulated runs (#544) |
 | [docs/templates/](docs/templates/README.md) | Templates for documents made outside the code: the work-in-flight page (#335) |
 

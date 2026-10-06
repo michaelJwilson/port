@@ -36,8 +36,7 @@ def test_solver_options_are_the_ones_that_solver_takes() -> None:
 def test_an_unknown_solver_is_refused() -> None:
     """A name outside the supported set stops the fit rather than starting one."""
     from cnaster.hmm_utils import get_solver
-
-    from tests.tmp_inputs import written_config
+    from port.sim.inputs import written_config
 
     with written_config({"hmm": {"solver": "Powell"}}), pytest.raises(AssertionError):
         get_solver()

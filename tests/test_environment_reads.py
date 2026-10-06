@@ -22,7 +22,22 @@ READS: dict[str, str] = {
     "python/port/extensions/label_solver.py": (
         "PORT_LABEL_SOLVER overrides the bound solver for a benchmark arm (#246)"
     ),
+    "python/port/qa/benchmark.py": (
+        "the patched share's child inherits the environment with "
+        "NUMBA_DISABLE_JIT set (moved from tests/, T- #673 G4)"
+    ),
+    "python/port/qa/audit.py": (
+        "PORT_SIM_CACHE keeps a cropped or purified sample between runs "
+        "(moved from tests/, T- #673 G3)"
+    ),
     "python/port/sim/draw.py": "PORT_CACHE locates the simulator's map cache",
+    "python/port/studies/population.py": (
+        "pins each member's thread pools to one thread (moved from tests/, T- #673 G5)"
+    ),
+    "python/port/sim/fixtures.py": (
+        "PORT_GRCH38 locates CalicoST's GRCh38 resources for the committed "
+        "samples (moved from tests/, T- #673 G6)"
+    ),
 }
 """Each file that reads the environment, and why."""
 

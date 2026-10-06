@@ -109,9 +109,9 @@ each allele at `max_allele_copy=5` (`cnaster/integer_copy.py:106`, `:576`)
 and `run_cnaster` passes no other. `port`'s decode bounds each allele by the
 total, 6, so its lattice is `cnaster`'s 25 pairs and `(6, 0)`, `(0, 6)`: 27.
 Every `tests.sim_audit` ledger row was measured with it, and its scorer's
-lattice (`tests.sim_audit.copy_states`) is the same `A + B <= 6`. No sim
+lattice (`port.qa.scoring.copy_states`) is the same `A + B <= 6`. No sim
 manifest or CalicoST sample plants an allele above 3, nor
-`tests.fixtures.COPY_LATTICE` one above 5, so no planted state referees the
+`port.sim.truth.COPY_LATTICE` one above 5, so no planted state referees the
 choice. 6 is kept by the user's decision on T- #617, over that ticket's plan
 to restore `cnaster`'s 5, which is `MAX_ALLELE_COPY`.
 """

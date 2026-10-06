@@ -15,8 +15,7 @@ trip -- which is the gap #68 still has.
 
 import numpy as np
 import pytest
-
-from tests.fixtures import core_inference_truth, weierstrass_exposure
+from port.sim.truth import core_inference_truth, weierstrass_exposure
 
 
 @pytest.mark.bug
@@ -127,8 +126,7 @@ def test_the_binner_does_not_carry_the_exposure() -> None:
     itself validated.
     """
     from cnaster.omics import summarize_counts_for_bins
-
-    from tests.unsegment import unsegment
+    from port.sim.unsegment import unsegment
 
     truth = core_inference_truth(
         n_clones=2, n_states=3, lattice=(6, 6), n_obs=20, n_segments=2

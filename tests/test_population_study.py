@@ -18,7 +18,7 @@ import pytest
 @pytest.mark.analytic
 def test_a_clone_carries_every_event_on_its_path_root_first(tmp_path: Path) -> None:
     """`truth_tree.tsv` rows compose root to leaf; each class is the pair's."""
-    from tests.studies.population import clone_events, copy_class
+    from port.studies.population import clone_events, copy_class
 
     (tmp_path / "truth_tree.tsv").write_text(
         "node\tparent\tchr\tstart\tend\tA\tB\n"
@@ -49,7 +49,7 @@ def test_the_report_recovers_a_planted_crossing_within_its_interval(
     slope 6 per dex. The point estimate is within 0.15 dex of 5.5 and the
     95% interval, over resampled members, contains it.
     """
-    import tests.studies.population_report as report
+    import port.studies.population_report as report
 
     monkeypatch.setattr(report, "BOOTSTRAP", 300)
     rng = np.random.default_rng(544)
@@ -89,8 +89,8 @@ def test_counted_rows_read_as_the_rows_they_stand_for() -> None:
     difference.
     """
     import pandas as pd
-
-    import tests.studies.population_report as report
+    import port.studies.population_report as report
+    from port.qa.statistics import resample_weights
 
     rng = np.random.default_rng(3)
     counted = pd.DataFrame({
@@ -101,7 +101,9 @@ def test_counted_rows_read_as_the_rows_they_stand_for() -> None:
     })  # fmt: skip
     listed = counted.loc[counted.index.repeat(counted["count"])]
     seeds = np.arange(30)
-    weights = report._weights(seeds, np.random.default_rng(4))[:200]
+    weights = resample_weights(seeds.size, report.BOOTSTRAP, np.random.default_rng(4))[
+        :200
+    ]
 
     a = report.curve(counted, "x", "y", report.SNP_EDGES, seeds, weights, count="count")
     b = report.curve(listed, "x", "y", report.SNP_EDGES, seeds, weights)

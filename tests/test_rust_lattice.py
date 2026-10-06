@@ -211,8 +211,8 @@ def test_the_critical_instance_recovers_its_labelling_through_rust(
     that generated the data is the referee rather than `cnaster`'s kernel.
     """
     from port.patch.lattice import rust_lattices
+    from port.sim.truth import critical_instance
 
-    from tests.fixtures import critical_instance
     from tests.test_core_inference_end_to_end import _adjusted_rand_index, _run
 
     truth = critical_instance()
@@ -238,11 +238,12 @@ def test_a_rust_run_reproduces_a_numba_one(tmp_path: Path) -> None:
     import subprocess
     import sys
 
-    from tests.fixtures import core_inference_truth
-    from tests.run_config import write_run_cnaster_config
+    from port.sim.inputs import write_tmp_inputs
+    from port.sim.run_config import write_run_cnaster_config
+    from port.sim.truth import core_inference_truth
+    from port.sim.unsegment import unsegment
+
     from tests.test_patched_entry_point import _compare
-    from tests.tmp_inputs import write_tmp_inputs
-    from tests.unsegment import unsegment
 
     truth = core_inference_truth(
         n_clones=2, n_states=3, lattice=(25, 40), n_obs=40, n_segments=3, seed=11

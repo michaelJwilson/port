@@ -65,11 +65,12 @@ def truth_combined_figure(r: Realization, width: float | None = None) -> Any:
         _set_text,
         page_style,
     )
+    from port.extensions.figure_style import PAPER_WIDTH
     from port.patch.plot_copy_number_profile import (
         plot_ascn_legend,
         plot_copy_number_profile,
     )
-    from port.patch.plot_genomic import PAPER_WIDTH, plot_clones_genomic
+    from port.patch.plot_genomic import plot_clones_genomic
     from port.sim.analysis import (
         binned_axis,
         binned_profile,
@@ -282,7 +283,7 @@ def simulated_tree_figure(r: Realization, width: float | None = None) -> Any:
     import matplotlib.pyplot as plt
 
     from port.extensions.combined_figure import FONT_SIZE, _put, page_style
-    from port.patch.plot_genomic import PAPER_WIDTH
+    from port.extensions.figure_style import PAPER_WIDTH
     from port.sim.analysis import draw_tree
 
     width = PAPER_WIDTH if width is None else width

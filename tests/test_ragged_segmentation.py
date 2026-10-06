@@ -13,9 +13,8 @@ constructing it, the floor by driving its refusal.
 
 import numpy as np
 import pytest
+from port.sim.truth import core_inference_truth, dev_instance, ragged_lengths
 from sal.ragged import MINIMUM_LENGTH, Ragged
-
-from tests.fixtures import core_inference_truth, dev_instance, ragged_lengths
 
 BOUNDARY_SEGMENTS = 200
 """Segments in the instance that measures the restart.

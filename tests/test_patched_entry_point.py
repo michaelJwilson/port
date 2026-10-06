@@ -277,7 +277,7 @@ def test_a_patched_run_reproduces_an_unpatched_one(
     import subprocess
     import sys
 
-    from tests.run_config import write_for_run
+    from port.sim.run_config import write_for_run
 
     written, config = write_for_run(
         planted_instance[0], tmp_path, max_iter_outer=1, max_iter=3

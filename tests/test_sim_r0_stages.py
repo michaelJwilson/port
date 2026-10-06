@@ -46,7 +46,7 @@ def _events(truth: Any) -> list[tuple[int, int, int, str, int, int]]:
 
 @pytest.fixture(scope="module")
 def r0() -> Any:
-    from tests.sim_stages import r0
+    from port.sim.fixtures import r0
 
     return r0()
 
@@ -56,8 +56,7 @@ def depth(r0: Any) -> dict[tuple[int, int, int, str], tuple[int, float]]:
     """Per planted event and clone: its genes, and its log read-depth ratio to normal."""
     import anndata as ad
     import scipy.sparse as sp
-
-    from tests.sim_fixtures import references
+    from port.sim.fixtures import references
 
     resources = references()
 
