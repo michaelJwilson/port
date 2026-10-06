@@ -7,7 +7,7 @@ untracked; the paths below are relative to it. `lattice/`, `sim/` and
 `sim_qa/` exist only there now.
 `tests/test_ci_entry.py` guards that `docs/` tracks no PNG outside
 `docs/plots/paper/`, T- #624's paper set, and
-`docs/studies/population_recovery.png`, whose runs survive only as
+`docs/plots/studies/population_recovery.png`, whose runs survive only as
 `docs/studies/population_records.jsonl.gz`. The figures committed before are in
 history: `git show ba34716:docs/plots/<path>.png`.
 
@@ -32,10 +32,11 @@ genome with the likelihood's errors on one run and on the truth (#291).
 **They are PNG since #452**: `write_fig` writes one beside each PDF, without
 metadata, and the PDFs stay in the run directory.
 
-`docs/studies/` keeps the population study's outputs
+Figures live under `docs/plots/`; a study's other outputs under
+`docs/studies/`. `docs/plots/studies/` keeps the population study's figure,
+`population_recovery.png`; `docs/studies/` its records, summary and tables
 (`population_records.jsonl.gz`, `population_summary.json`,
-`population_tables.md`, `population_recovery.png`) and
-`potts_solvers_table.tex`; it was `docs/plots/studies/` before.
+`population_tables.md`) and `potts_solvers_table.tex`.
 
 ## The dev instance
 
