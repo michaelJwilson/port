@@ -70,6 +70,16 @@ FLOOR = 1e-2
 """The gap figure's "0": runs within `FLOOR` nats of the bound."""
 
 
+KEY_NAMES = {
+    "sal:alpha-expansion": "Alpha-expansion", "sal:alpha-beta-swap": "Alpha-beta-swap",
+    "sal:icm": "ICM-vector", "sal:icm-random": "ICM-random", "sal:field_argmax": "Field-argmax",
+    "sal:anneal": "Glauber", "sal:swendsen-wang": "Swendsen-Wang", "sal:wolff": "Wolff",
+    "sal:tempering": "Parallel tempering", "sal:max-product": "Max-product", "sal:trws": "TRW-S",
+}  # fmt: skip
+"""The names `solver_combined`'s key prints, and the solvers it draws: `alpha-rust-fuse` is not
+among them (deprecated from the figure, #716)."""
+
+
 def label(solver: str) -> str:
     """The name printed for `solver`, its `sal:`/`port:` source dropped."""
     name = solver.split(":", 1)[1]
@@ -235,6 +245,8 @@ def draw(
     from matplotlib.ticker import FixedLocator, FuncFormatter
 
     d = frame(record)
+    if key:
+        d = d[d.solver.isin(KEY_NAMES)]
     d = d.assign(y=d.energy - d.bound, py=d.polished - d.bound, by=d.both - d.bound)
     d[["y", "py", "by"]] = d[["y", "py", "by"]].clip(lower=FLOOR)
     n_problems, n_starts = len(record["done"]), record["starts"]
@@ -394,7 +406,7 @@ def draw(
              ({"marker": "o", "color": "0.4", "markerfacecolor": "white", "markersize": 5}, "ICM polish"),
              ({"marker": "D", "color": "0.4", "markerfacecolor": "white", "markersize": 4}, "Color merge"),
              ({"line": True, "color": "k"}, "Truth")],
-            [(label(s), tab20(NUMBER[s]), polished[s][1])
+            [(KEY_NAMES[s], tab20(NUMBER[s]), polished[s][1])
              for s in ordered],
             [],
         )  # fmt: skip

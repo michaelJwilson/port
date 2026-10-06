@@ -62,6 +62,13 @@ SOURCE = {
     "calicost-gmm": "CalicoST", "lattice": "port",
 }  # fmt: skip
 """Each start's source: the package whose code it runs."""
+KEY_NAMES = {
+    "calicost-gmm": "CalicoST-GMM", "lattice": "Lattice", "prior": "Prior", "kmeans++": "K-means++",
+    "emission++": "Emission++", "gaussian-em": "Gaussian-EM", "anneal-hmm": "Anneal",
+    "tempering-hmm": "Parallel tempering", "hmc-hmm": "HMC",
+}  # fmt: skip
+"""The names `solver_combined`'s key prints (#716)."""
+
 COLOUR = {name: tab20(k) for name, k in NUMBER.items()}
 """One colour per start, by its number."""
 
@@ -335,7 +342,7 @@ def draw(ax: Any, record: dict[str, Any], key: bool = False) -> pd.DataFrame:
             [({"marker": "o", "color": "0.4", "markersize": 5}, "Initialized"),
              ({"marker": "o", "color": "0.4", "markerfacecolor": "white", "markersize": 5}, "Baum-Welch"),
              ({"line": True, "color": "k"}, "Truth")],
-            [(LABEL.get(n, n), COLOUR[n], float(after[n]))
+            [(KEY_NAMES.get(n, n), COLOUR[n], float(after[n]))
              for n in ordered],
             [],
         )  # fmt: skip
