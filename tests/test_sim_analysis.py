@@ -286,3 +286,324 @@ def test_the_truth_page_writes_byte_for_byte_at_its_size(
     assert box is not None
     assert float(box.group(1)) == pytest.approx(122.0 / 25.4 * 72.0, abs=0.1)
     assert float(box.group(2)) == pytest.approx(193.0 / 25.4 * 72.0, abs=0.1)
+
+
+@pytest.fixture(scope="module")
+def dense(tmp_path_factory: pytest.TempPathFactory) -> Drawn:
+    """`dev_tree_1s_dense`'s tree, r0 (`33e3471e`)'s 64 events, on a 20 x 20 array."""
+    resources = references()
+    if resources is None:
+        pytest.skip("CalicoST's GRCh38_resources not found; set $PORT_GRCH38")
+    return draw(
+        _manifest("dev_tree_1s_dense"),
+        tmp_path_factory.mktemp("dense"),
+        resources=resources,
+    )
+
+
+@pytest.mark.infra
+def test_a_barcode_over_10_bits_keeps_4_bits_at_each_end() -> None:
+    """`shown` keeps a barcode of up to `MANY_EVENTS` (10) bits whole and cuts
+    a longer one to its first and last `BARCODE_SHOWN // 2` (4) bits around
+    "…" (PR- #701)."""
+    from port.sim.analysis import BARCODE_SHOWN, MANY_EVENTS, shown
+
+    assert (MANY_EVENTS, BARCODE_SHOWN) == (10, 8)
+    assert shown("10110") == "10110"
+    assert shown("10110100") == "10110100"
+    assert shown("101101001") == "101101001"
+    assert shown("1011010010") == "1011010010"
+    assert shown("1100" + "0" * 56 + "0011") == "1100\N{HORIZONTAL ELLIPSIS}0011"
+    assert shown("10110100101") == "1011\N{HORIZONTAL ELLIPSIS}0101"
+
+
+def _panels(r: Any) -> tuple[Any, Any, Any]:
+    from port.sim.truth_figure import truth_combined_figure
+
+    figure = truth_combined_figure(r)
+    tree_panel, _, genomic = figure.subfigs
+    (tree_ax,) = tree_panel.axes
+    return figure, tree_ax, genomic
+
+
+def _headed_in_order(genomic: Any) -> list[str]:
+    """(c)'s clone headers, top to bottom."""
+    return [
+        t.get_text()
+        for ax in genomic.axes
+        for t in ax.texts
+        if t.get_visible() and "(" in t.get_text()
+    ]
+
+
+def _headed(genomic: Any) -> set[str]:
+    return {
+        t.get_text()
+        for ax in genomic.axes
+        for t in ax.texts
+        if t.get_visible() and "(" in t.get_text()
+    }
+
+
+def _a_is_the_tree(r: Any) -> Any:
+    """(a) against `draw_tree(edges=True)` on its own axis, text for text and
+    line for line; (c)'s headers each clone's name and `shown` barcode."""
+    import matplotlib.pyplot as plt
+    from port.extensions.combined_figure import FONT_SIZE
+    from port.sim.analysis import draw_tree, shown
+    from port.sim.truth_figure import _symbol
+
+    t = tree(r)
+    _, tree_ax, genomic = _panels(r)
+    figure, ax = plt.subplots()
+    draw_tree(ax, r, event_size=FONT_SIZE, node_size=FONT_SIZE, dot=18.0,
+              name=_symbol(r), ancestors=False, edges=True)  # fmt: skip
+
+    assert [x.get_text() for x in tree_ax.texts] == [x.get_text() for x in ax.texts]
+    assert len(tree_ax.lines) == len(ax.lines) > 0
+    assert len(tree_ax.collections) == len(ax.collections)
+    assert {x.get_text() for x in tree_ax.texts if x.get_gid() == "barcode"} == {
+        t.barcode[c] for c in r.clones
+    }
+    symbol = _symbol(r)
+    assert _headed(genomic) == {
+        f"{symbol(c)} ({shown(t.barcode[c])})" for c in r.clones
+    }
+    plt.close(figure)
+    return tree_ax
+
+
+@pytest.mark.infra
+@pytest.mark.merge
+def test_at_10_events_or_fewer_a_is_the_tree(drawn: Drawn) -> None:
+    """At `MANY_EVENTS` or fewer, (a) is `draw_tree`'s tree, text for text and
+    line for line, each event on its edge, and (c) heads each clone with its
+    whole barcode (PR- #701)."""
+    from port.sim.analysis import MANY_EVENTS
+
+    r = read(drawn.path)
+    t = tree(r)
+    tree_ax = _a_is_the_tree(r)
+
+    assert len(t.events) <= MANY_EVENTS
+    assert set(t.events["label"]) <= {x.get_text() for x in tree_ax.texts}
+
+
+def _marks(ax: Any) -> list[Any]:
+    """`ax`'s visible minor tick marks within its x limits."""
+    lo, hi = ax.get_xlim()
+    return [t for t in ax.xaxis.get_minor_ticks(len(ax.xaxis.get_minorticklocs()))
+            if t.tick1line.get_visible() and lo <= t.get_loc() <= hi]  # fmt: skip
+
+
+@pytest.mark.infra
+@pytest.mark.merge
+def test_only_the_last_track_marks_every_10_mb_at_paper_width(drawn: Drawn) -> None:
+    """The page's last track carries one visible minor tick mark per 10 Mb
+    multiple of each chromosome, `floor(L / 10 Mb)` summed, inward, 2 pt long
+    and 0.5 pt wide (`genomic_axis.draw`); (b) and every other track of (c)
+    carry none (PR- #701)."""
+    import matplotlib.pyplot as plt
+
+    r = read(drawn.path)
+    expected = int(np.sum(np.asarray(r.lengths) // 10_000_000))
+    figure, _, genomic = _panels(r)
+    figure.canvas.draw()
+    *others, last = genomic.axes
+    marks = _marks(last)
+
+    assert expected > 0
+    assert len(marks) == expected
+    assert all(t.tick1line.get_markersize() == 2.0 for t in marks)
+    assert all(t.tick1line.get_markeredgewidth() == 0.5 for t in marks)
+    for ax in (*figure.subfigs[1].axes, *others):
+        assert _marks(ax) == []
+    plt.close(figure)
+
+
+@pytest.mark.infra
+@pytest.mark.merge
+def test_no_mb_label_is_drawn_and_the_last_track_alone_names_contigs(
+    drawn: Drawn,
+) -> None:
+    """No minor tick label anywhere on the page (the Mb numbers); the page's
+    last track names the chromosomes, each at its left boundary, and no other
+    axis, nor `cnaster`'s own names, shows a contig name (PR- #701)."""
+    import re
+
+    import matplotlib.pyplot as plt
+    from port.sim.analysis import binned_axis
+
+    r = read(drawn.path)
+    figure, _, genomic = _panels(r)
+    figure.canvas.draw()
+    axes = [ax for panel in figure.subfigs for ax in panel.axes]
+    last = genomic.axes[-1]
+
+    for ax in axes:
+        ticks = ax.xaxis.get_minor_ticks(len(ax.xaxis.get_minorticklocs()))
+        assert not [t for t in ticks if t.label1.get_visible() and t.label1.get_text()]
+    # NB a contig name is `chr` and its name alone; (a)'s events start `chr` too.
+    contigs = [t for t in _visible_texts(figure)
+               if re.fullmatch(r"chr\w+", t.get_text())]  # fmt: skip
+    on_last = [t for t in last.get_xticklabels() if t.get_visible() and t.get_text()]
+
+    assert on_last
+    assert {id(t) for t in contigs} == {id(t) for t in on_last}
+    edges = set(binned_axis(r).edges[:-1].tolist())
+    assert all(float(t.get_position()[0]) in edges for t in on_last)
+    plt.close(figure)
+
+
+@pytest.mark.infra
+@pytest.mark.merge
+def test_above_10_events_a_is_the_tree_without_events(dense: Drawn) -> None:
+    """Above `MANY_EVENTS`, (a) is `draw_tree`'s tree, text for text and line
+    for line, its edges with no event, each leaf named with its whole
+    barcode; (c)'s headers cut it by `shown` to 4 bits, "…", 4 (PR- #701)."""
+    from port.sim.analysis import MANY_EVENTS, shown
+
+    r = read(dense.path)
+    t = tree(r)
+    tree_ax = _a_is_the_tree(r)
+
+    assert len(t.events) > MANY_EVENTS
+    assert {x.get_gid() for x in tree_ax.texts} == {"name", "barcode"}
+    assert not set(t.events["label"]) & {x.get_text() for x in tree_ax.texts}
+    assert all(
+        len(x.get_text()) == len(t.events)
+        for x in tree_ax.texts
+        if x.get_gid() == "barcode"
+    )
+    assert all(
+        len(shown(t.barcode[c])) == 9
+        and shown(t.barcode[c])[4] == "\N{HORIZONTAL ELLIPSIS}"
+        for c in r.clones
+    )
+
+
+def _leaves(ax: Any) -> list[tuple[str, tuple[float, ...]]]:
+    """A tree axis's named nodes top to bottom, each with its dot's colour."""
+    dots = {
+        tuple(np.round(c.get_offsets()[0], 6)): tuple(c.get_facecolor()[0])
+        for c in ax.collections
+    }
+    names = sorted(
+        (x for x in ax.texts if x.get_gid() == "name"), key=lambda x: -x.xy[1]
+    )
+    return [(x.get_text(), dots[tuple(np.round(x.xy, 6))]) for x in names]
+
+
+@pytest.mark.infra
+@pytest.mark.merge
+@pytest.mark.parametrize("fixture", ["drawn", "dense"])
+def test_clones_read_n_1_2_down_the_tree_and_alike_in_every_truth_figure(
+    fixture: str, request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """(a)'s leaves, (b)'s rows and (c)'s headers read $m_N$, $m_1$, $m_2$, ...
+    top to bottom; `simulated_tree`, `spatial`, `clone_profiles` and
+    `clones_genomic` give each clone (by its colour, and its spot count) the
+    same name. The truth files' clone names are not read (PR- #701)."""
+    import matplotlib.colors as mcolors
+    import matplotlib.pyplot as plt
+    from port.extensions.combined_figure import clone_symbol
+    from port.sim import analysis
+    from port.sim.truth_figure import simulated_tree_figure
+
+    r = read(request.getfixturevalue(fixture).path)
+    symbols = [r"$m_N$", *(rf"$m_{k}$" for k in range(1, len(r.clones)))]
+    figure, tree_ax, genomic = _panels(r)
+    figure.canvas.draw()
+    leaves = _leaves(tree_ax)
+    colour = dict(leaves)
+    rows = figure.subfigs[1].axes[-1].get_yticklabels()
+
+    assert [name for name, _ in leaves] == symbols
+    assert [x.get_text() for x in rows][::-1] == symbols
+    assert [h.split(" (")[0] for h in _headed_in_order(genomic)] == symbols
+    tree_figure = simulated_tree_figure(r)
+    assert _leaves(tree_figure.axes[0]) == leaves
+    plt.close(tree_figure)
+    plt.close(figure)
+
+    caught: dict[str, Any] = {}
+
+    def keep(fig: Any, path: Path, *, tight: bool = True) -> Path:
+        caught[path.name] = fig
+        return path
+
+    monkeypatch.setattr(analysis, "_save", keep)
+    for plotter in (analysis.plot_spatial, analysis.plot_clone_profiles,
+                    analysis.plot_clones_genomic_truth):  # fmt: skip
+        plotter(r, Path("unwritten"))
+
+    (key,) = caught["spatial.png"].legends
+    for text, handle in zip(key.get_texts(), key.legend_handles, strict=True):
+        assert (
+            mcolors.to_rgba(handle.get_color()) == colour[clone_symbol(text.get_text())]
+        )
+    profile = caught["clone_profiles.png"].axes[0].get_yticklabels()
+    assert [clone_symbol(x.get_text()) for x in profile][::-1] == symbols
+    named = [x for ax in caught["clones_genomic.png"].axes for x in ax.texts
+             if x.get_text().startswith("Clone")]  # fmt: skip
+    spots = [x for ax in caught["clones_genomic.png"].axes for x in ax.texts
+             if x.get_text().endswith("snp-umis")]  # fmt: skip
+    assert [clone_symbol(x.get_text()) for x in named] == symbols
+    for k, clone in enumerate(r.clones):
+        assert colour[symbols[k]] == mcolors.to_rgba(
+            analysis.clone_colour(clone, r.clones)
+        )
+        count = int((r.truth["labels"] == clone).sum())
+        assert spots[k].get_text().startswith(f"{count:_} spots")
+    for fig in caught.values():
+        plt.close(fig)
+
+
+@pytest.mark.infra
+@pytest.mark.merge
+def test_the_tree_s_edges_carry_events_up_to_10_and_none_above(
+    drawn: Drawn, dense: Drawn
+) -> None:
+    """`draw_tree` labels and ticks each event on its edge at `MANY_EVENTS` or
+    fewer; above, it draws the topology, nodes, names and barcodes alone (PR- #701)."""
+    import matplotlib.pyplot as plt
+    from port.sim.analysis import MANY_EVENTS, draw_tree
+
+    for fixture, many in ((drawn, False), (dense, True)):
+        r = read(fixture.path)
+        t = tree(r)
+        figure, ax = plt.subplots()
+        draw_tree(ax, r)
+        labels = {x.get_text() for x in ax.texts} & set(t.events["label"])
+        edges = len(ax.lines) - (0 if many else len(t.events))
+
+        assert (len(t.events) > MANY_EVENTS) is many
+        assert labels == (set() if many else set(t.events["label"]))
+        assert edges == len(t.parent)
+        plt.close(figure)
+
+
+@pytest.mark.infra
+@pytest.mark.merge
+def test_the_mirror_key_starts_on_b_s_left_edge_and_is_labelled_on_its_right(
+    drawn: Drawn,
+) -> None:
+    """(b)'s mirror swatches start on the profile axis's left edge (0.5 px),
+    with `MIRROR` to their right, clear of the colour bar's title (PR- #701)."""
+    from port.patch.plot_copy_number_profile import MIRROR
+
+    figure, _, _ = _panels(read(drawn.path))
+    renderer = figure.canvas.get_renderer()
+    _, profile, _ = figure.subfigs
+    legend_ax, profile_ax = profile.axes[:2]
+    swatches = [p.get_window_extent(renderer) for p in legend_ax.patches[:4]]
+    (mirror,) = [x for x in legend_ax.texts if x.get_text() == MIRROR]
+    (title,) = [x for x in legend_ax.texts if "CNA" in x.get_text()]
+    label = mirror.get_window_extent(renderer)
+
+    assert MIRROR == "(Co-located) Mirror"
+    assert min(b.x0 for b in swatches) == pytest.approx(
+        profile_ax.get_window_extent(renderer).x0, abs=0.5
+    )
+    assert label.x0 > max(b.x1 for b in swatches)
+    assert label.x1 < title.get_window_extent(renderer).x0

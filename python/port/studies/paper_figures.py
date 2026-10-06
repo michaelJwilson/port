@@ -664,7 +664,7 @@ QUESTIONS: dict[str, tuple[str, str]] = {
     ),
     "truth/simulated_tree.png": (
         "Which events sit on which edge of the simulated clone tree?",
-        "`port.sim.truth_figure.simulated_tree_figure`, `truth_combined`'s panel (a)",
+        "`port.sim.truth_figure.simulated_tree_figure`, `truth_combined`'s panel (a) alone",
     ),
     "truth/spatial.png": (
         "Which clone was each spot drawn from?",

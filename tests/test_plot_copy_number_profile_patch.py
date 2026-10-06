@@ -194,3 +194,32 @@ def test_the_hatch_is_clipped_to_its_segment_at_its_angle_and_spacing() -> None:
 
         starts = [segment[0][0] for segment in hatch.get_segments()]
         np.testing.assert_allclose(np.diff(starts), HATCH_SPACING * figure.dpi)
+
+
+@pytest.mark.infra
+@pytest.mark.parametrize("span", [None, 16.0])
+def test_the_mirror_key_starts_on_the_axis_and_is_labelled_on_its_right(
+    span: float | None,
+) -> None:
+    """Every caller's key, sized by `span` or by its own text: the swatches on
+    the axis's left edge (0.5 px), `MIRROR` right of them and clear of the
+    colour bar's title (PR- #701)."""
+    import matplotlib.pyplot as plt
+    from port.patch.plot_copy_number_profile import MIRROR, plot_ascn_legend
+
+    figure: Any = plt.figure(figsize=(5.0, 0.4), dpi=100)
+    ax = figure.add_axes((0.1, 0.2, 0.8, 0.6))
+    plot_ascn_legend(ax, label_fontsize=7, span=span)
+    figure.canvas.draw()
+    renderer = figure.canvas.get_renderer()
+    swatches = [p.get_window_extent(renderer) for p in ax.patches[:4]]
+    (mirror,) = [t for t in ax.texts if t.get_text() == MIRROR]
+    (title,) = [t for t in ax.texts if "CNA" in t.get_text()]
+    label = mirror.get_window_extent(renderer)
+
+    assert min(b.x0 for b in swatches) == pytest.approx(
+        ax.get_window_extent(renderer).x0, abs=0.5
+    )
+    assert label.x0 > max(b.x1 for b in swatches)
+    assert label.x1 < title.get_window_extent(renderer).x0
+    plt.close(figure)

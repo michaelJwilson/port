@@ -5,21 +5,26 @@ r"""What a realization planted, on one page at `combined.pdf`'s size and type.
 Top to bottom, at `llncs`'s text width and height, 7 pt throughout, as
 `port.extensions.combined_figure` sets an estimate:
 
-- **(a)** the clones' tree, each event at its time (`analysis.draw_tree`);
+- **(a)** the clones' tree, each event at its time (`analysis.draw_tree`),
+  above `analysis.MANY_EVENTS` events without them, its edges and whole
+  barcodes alone (PR- #701);
 - **(b)** each clone's planted `(A, B)`, drawn by `port`'s profile plotter
   under its mirror and copy-number key, the rows `combined.pdf` draws;
 - **(c)** RDR and BAF along the genome per true clone
   (`analysis.genomic_truth`), drawn by `plot_clones_genomic`, each clone
-  named with its barcode from (a), its last track labelled in Mb.
+  named with its barcode from (a). A barcode is shown whole in (a) and as
+  `analysis.shown` cuts it in (c).
 
-(b) and (c) share one `port.extensions.genomic_axis.GenomicAxis`, ticked
-every 10 Mb (T- #683).
+(b) and (c) share one `port.extensions.genomic_axis.GenomicAxis`, its Mb
+unlabelled (T- #683, PR- #701). The page's last track alone carries the
+10 Mb marks and the chromosome names; every track and (b) keep the
+chromosome boundaries.
 
 The true clone of each spot is not drawn here: `analysis.plot_spatial` draws
 it as its own figure, `truth/spatial.png` (T- #660).
 
 (b) and (c) share one left and one right edge, so a chromosome boundary is
-at one place on the page in both; (b) names the chromosomes for them. Clones
+at one place on the page in both. Clones
 are named as the paper names them, $m_N$ for the normal. The phase and the
 count laws stay in their own figures, `phase.png` and `coverage.png`.
 """
@@ -34,8 +39,22 @@ from port.sim.analysis import Realization, display, read
 
 __all__ = ["truth_combined_figure", "write_truth_combined"]
 
-HEIGHTS = {"tree": 1.0, "profile": 1.0, "genomic": 5.6}
-"""Inches per panel, summing to `TEXT_HEIGHT` less its rounding."""
+KEY = (0.05, 0.2)
+"""Inches: (b)'s gap between its key and its rows, and the key's height."""
+
+ROWS = (0.04, 0.42)
+"""Inches: (b)'s foot under its rows, unlabelled (PR- #701), and the rows' height."""
+
+KEY_TOP = 0.075
+"""Inches over (b)'s key: with (a)'s foot, the white between (a) and (b) (PR- #701)."""
+
+HEIGHTS = {
+    "tree": 0.9,
+    "profile": sum(ROWS) + sum(KEY) + KEY_TOP,
+    "genomic": 7.6 - 0.9 - (sum(ROWS) + sum(KEY) + KEY_TOP),
+}
+"""Inches per panel, summing to `TEXT_HEIGHT` less its rounding; (a) 0.9,
+10% under its 1.0 before PR- #701."""
 
 LEFT = 0.42
 """Inches from the page's left edge to the genome panels' axes: room for the RDR and BAF labels."""
@@ -56,6 +75,7 @@ def truth_combined_figure(
     """The three panels on one page, `width` wide (`llncs`'s by default) and
     `TEXT_HEIGHT` tall; on `metric`, the planted CNAs drawn wider (T- #683)."""
     import matplotlib.pyplot as plt
+    from matplotlib.ticker import NullLocator
 
     from port.extensions.combined_figure import (
         FONT_SIZE,
@@ -80,12 +100,13 @@ def truth_combined_figure(
         binned_profile,
         draw_tree,
         genomic_truth,
+        shown,
         tree,
     )
 
     width = PAPER_WIDTH if width is None else width
     symbol = _symbol(r)
-    genome = binned_axis(r, metric=metric)
+    genome = binned_axis(r, metric=metric, labels=False)
 
     with page_style():
         figure: Any = plt.figure(
@@ -98,13 +119,18 @@ def truth_combined_figure(
 
         # (a)
         tree_ax = tree_fig.add_axes((0.02, 0.02, 0.96, 0.88))
-        draw_tree(tree_ax, r, event_size=FONT_SIZE, node_size=FONT_SIZE, dot=18.0,
-                  name=symbol, ancestors=False, edges=True)  # fmt: skip
+        draw_tree(tree_ax, r, event_size=FONT_SIZE, node_size=FONT_SIZE,
+                  dot=18.0, name=symbol, ancestors=False, edges=True)  # fmt: skip
 
         # (b): the key, then the rows, as `combined.pdf` draws its profile.
-        legend_ax = profile_fig.add_axes((0.0, 0.72, 1.0, 0.2))
-        profile_ax = profile_fig.add_axes((0.0, 0.25, 1.0, 0.42))
-        plot_copy_number_profile(binned_profile(r), ax=profile_ax, axis=genome)
+        tall = HEIGHTS["profile"]
+        legend_ax = profile_fig.add_axes(
+            (0.0, (sum(ROWS) + KEY[0]) / tall, 1.0, KEY[1] / tall)
+        )
+        profile_ax = profile_fig.add_axes((0.0, ROWS[0] / tall, 1.0, ROWS[1] / tall))
+        # NB rows in (a)'s order, `r.clones`', as (c)'s tracks are (PR- #701).
+        plot_copy_number_profile(binned_profile(r), ax=profile_ax, axis=genome,
+                                 rows=[str(k) for k in range(len(r.clones))])  # fmt: skip
         # NB the plotter's own key, at fixed page coordinates, is redrawn into
         #    `legend_ax`, which is placed with the rows.
         profile_fig.axes[-1].remove()
@@ -113,6 +139,12 @@ def truth_combined_figure(
         )
         for text in profile_ax.get_yticklabels():
             text.set_rotation(0)
+        # NB the chromosome names move to the page's last track; (b) keeps
+        #    its boundaries, and neither names nor marks (PR- #701).
+        starts = list(profile_ax.get_xticks())
+        contigs = [t.get_text() for t in profile_ax.get_xticklabels()]
+        profile_ax.set_xticks([])
+        profile_ax.xaxis.set_minor_locator(NullLocator())
 
         # (c)
         g = genomic_truth(r)
@@ -128,7 +160,7 @@ def truth_combined_figure(
             for text in ax.texts:
                 clone = named.get(text.get_text())
                 if clone is not None and text.get_visible():
-                    text.set_text(f"{symbol(clone)} ({barcode[clone]})")
+                    text.set_text(f"{symbol(clone)} ({shown(barcode[clone])})")
         for ax in genomic_fig.axes:
             ticks = ax.get_yticks()
             if ticks.size > 2:
@@ -137,15 +169,21 @@ def truth_combined_figure(
                 bottom, top = ax.get_yticklabels()
                 bottom.set_verticalalignment("bottom")
                 top.set_verticalalignment("top")
-            ax.set_ylabel(ax.get_ylabel(), rotation=0, ha="right", va="center")
-            # NB (b) names the same edges.
+            ax.set_ylabel(ax.get_ylabel(), rotation=90, ha="center", va="bottom")
+            # NB `cnaster`'s names, 10 pt at 45 degrees, give way to the
+            #    last track's ticks; the marks stay on the last track alone.
             for text in ax.texts:
                 if text.get_text().startswith("chr"):
                     text.set_visible(False)
+            if ax is not genomic_fig.axes[-1]:
+                ax.xaxis.set_minor_locator(NullLocator())
+        bottom_ax = genomic_fig.axes[-1]
+        bottom_ax.set_xticks(starts, contigs, rotation=45, ha="left")
+        bottom_ax.tick_params(axis="x", which="major", bottom=False,
+                              labelbottom=True, pad=1.0)  # fmt: skip
 
         for panel in panels:
             _set_text(panel, FONT_SIZE)
-        profile_ax.tick_params(axis="x", pad=-4)
         figure.canvas.draw()
 
         # NB one left and one right edge for the key, the rows and each
@@ -157,7 +195,7 @@ def truth_combined_figure(
             for ax in [legend_ax, profile_ax, *genomic_fig.axes]:
                 _put(ax, LEFT, right)
             figure.canvas.draw()
-            names = [t for t in profile_ax.get_xticklabels() if t.get_text()]
+            names = [t for t in bottom_ax.get_xticklabels() if t.get_text()]
             overrun = (
                 max(t.get_window_extent(renderer).x1 for t in names) / figure.dpi
                 - width
@@ -171,9 +209,8 @@ def truth_combined_figure(
         figure.canvas.draw()
         _fit_tree(tree_ax)
         plot_ascn_legend(legend_ax, box_w=LEGEND_BOX, box_h=0.8, tick_len=0.1,
-                         label_fontsize=FONT_SIZE, span=right - LEFT,
-                         title_on_edge=True)  # fmt: skip
-        _thin(profile_ax.get_xticklabels(), renderer)
+                         label_fontsize=FONT_SIZE, span=right - LEFT)  # fmt: skip
+        _thin(bottom_ax.get_xticklabels(), renderer)
 
         for panel, letter in zip(panels, "abc", strict=True):
             panel.text(0.0, 1.0, f"({letter})", fontsize=LABEL_SIZE, ha="left",
@@ -189,8 +226,8 @@ TRACK_GAP = 0.02
 STATS_ROW = 0.13
 """Inches above each clone's RDR track for its name and state line."""
 
-MB_ROW = 0.12
-"""Inches under the last track for its Mb labels (T- #683)."""
+CONTIG_ROW = 0.27
+"""Inches under the last track for its chromosome names, at 45 degrees (PR- #701)."""
 
 
 def _stack_tracks(panel: Any) -> None:
@@ -203,7 +240,7 @@ def _stack_tracks(panel: Any) -> None:
 
     dpi = panel.get_figure(root=True).dpi
     box = panel.bbox
-    top, bottom = box.y1 / dpi - 0.02, box.y0 / dpi + 0.04 + MB_ROW
+    top, bottom = box.y1 / dpi - 0.02, box.y0 / dpi + CONTIG_ROW
     tracks = list(panel.axes)
     clones = len(tracks) // 2
     height = (top - bottom - clones * (STATS_ROW + TRACK_GAP)) / len(tracks)
@@ -284,7 +321,7 @@ def symbol_of(label: str) -> str:
 
 
 def simulated_tree_figure(r: Realization, width: float | None = None) -> Any:
-    """`truth_combined_figure`'s panel (a) alone: the simulated clone tree, `width` wide (T- #660)."""
+    """The simulated clone tree, `width` wide, at any event count: `truth_combined_figure`'s panel (a) alone (T- #660, PR- #701)."""
     import matplotlib.pyplot as plt
 
     from port.extensions.combined_figure import FONT_SIZE, _put, page_style

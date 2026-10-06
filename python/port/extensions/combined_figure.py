@@ -655,7 +655,6 @@ def _place_genomic(figure: Any, top: Any, profile_ax: Any, legend_ax: Any) -> No
         tick_len=0.1,
         label_fontsize=FONT_SIZE,
         span=right - left,
-        title_on_edge=True,
     )
 
     # NB one measurement, then every move at once: the first statistics

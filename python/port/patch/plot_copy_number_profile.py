@@ -13,8 +13,8 @@ it (`swatch`) -- so both alleles read at the row's full height.
 A >= B and to the left where A < B, so a pair of segments whose alleles are
 swapped between clones -- what the chevrons marked -- hatch in opposite
 directions, and every segment carries its orientation rather than only
-mirrored ones. The legend shows the two orientations, unnumbered, under
-"Mirror": what it keys is that a pair hatches opposite ways.
+mirrored ones. The legend shows the two orientations, unnumbered, with
+`MIRROR` to their right: what it keys is that a pair hatches opposite ways.
 
 **The hatch is drawn, not a matplotlib hatch.** A hatch pattern is fixed at
 45 degrees and a spacing matplotlib chooses. Here each aberrant segment
@@ -46,6 +46,7 @@ __all__ = [
     "HATCH",
     "HATCH_ANGLE",
     "HATCH_SPACING",
+    "MIRROR",
     "hatch_of",
     "plot_ascn_legend",
     "plot_copy_number_profile",
@@ -226,8 +227,13 @@ def plot_copy_number_profile(
     palette_name: str = "chisel_single",
     *,
     axis: GenomicAxis | Ticks | None = None,
+    rows: list[str] | None = None,
 ) -> Any:
     """`cnaster`'s profile, one row per clone, aberrations hatched A then B.
+
+    `rows`, the clone ids of `df_cnv`'s `clone<id> A` columns top to bottom,
+    sets the rows' order; `None` is `cnaster`'s, least aberrant first
+    (PR- #701).
 
     `axis`, a `port.extensions.genomic_axis.GenomicAxis` on `df_cnv`'s bins
     or a `Ticks` made on them, draws the segments and boundaries on its
@@ -236,7 +242,7 @@ def plot_copy_number_profile(
     """
     state_style, _ = _palette(palette_name)
     clone_ids = [c.split(" ")[0][5:] for c in df_cnv.columns if c.endswith(" A")]
-    clone_ids = _order(df_cnv, clone_ids)
+    clone_ids = _order(df_cnv, clone_ids) if rows is None else list(rows)
     num_clones = len(clone_ids)
 
     if ax is None:
@@ -357,6 +363,10 @@ def plot_copy_number_profile(
     return fig
 
 
+MIRROR = "(Co-located) Mirror"
+"""The mirror swatches' label, right of them in every figure that draws the key (PR- #701)."""
+
+
 def plot_ascn_legend(
     ax: Any,
     box_w: float = 0.8,
@@ -366,17 +376,14 @@ def plot_ascn_legend(
     palette_name: str = "chisel_single",
     *,
     span: float | None = None,
-    title_on_edge: bool = False,
 ) -> Any:
-    """The mirror swatches and `cnaster`'s colour bar, each titled on its left.
+    """The mirror swatches, `MIRROR` to their right, then `cnaster`'s colour bar titled on its left.
 
-    Two swatches, black lines on white, one per hatch orientation, and
-    "Mirror" to their left, in the margin or,
-    with `title_on_edge`, starting on the axis's left edge. Then the copy-number
-    bar with "$\\mathbb{N}$-CNA" to its left, on the same line. With `span`,
-    the axis runs `0` to `span` and the bar ends there, so a caller that sets
-    the axis over its plot gets the swatches on the plot's left edge, "Mirror"
-    in the margin, and the bar on its right edge.
+    The swatches, black lines on white, one per hatch orientation, start on
+    the axis's left edge, so a caller that sets the axis over its plot gets
+    them on the plot's left edge. With `span`, the axis runs `0` to `span`
+    and the bar ends there, on the plot's right edge; without it, the axis is
+    sized to the swatches, their label, the bar's title and the bar.
     """
     state_style, ordered_acn = _palette(palette_name)
     ax.axis("off")
@@ -385,20 +392,6 @@ def plot_ascn_legend(
     label_y = -tick_len - 0.04
     text = {"fontsize": label_fontsize, "clip_on": False}
     start = 0.0
-
-    # NB with `title_on_edge`, "Mirror" starts on the axis's left edge -- the
-    #    caller's common left axis -- and the swatches follow it; otherwise it
-    #    ends a gap before them, in the margin.
-    if title_on_edge:
-        ax.set_xlim(0.0, span if span is not None else 1.0)
-        title = ax.text(
-            0.0, box_h / 2, "Mirror", ha="left", va="center_baseline", **text
-        )
-        renderer = ax.figure.canvas.get_renderer()
-        right = title.get_window_extent(renderer).x1
-        start = ax.transData.inverted().transform((right, 0.0))[0] + gap
-    else:
-        ax.text(-gap, box_h / 2, "Mirror", ha="right", va="center_baseline", **text)
 
     for k, orientation in enumerate((HATCH[1], HATCH[-1])):
         x = start + k * (box_w + gap)
@@ -420,10 +413,27 @@ def plot_ascn_legend(
         )
 
     phase_end = start + 2 * box_w + gap
+    mirror = ax.text(
+        phase_end + gap, box_h / 2, MIRROR, ha="left", va="center_baseline", **text
+    )
+    title = ax.text(
+        0.0, box_h / 2, r"$\mathbb{N}$-CNA", ha="right", va="center_baseline", **text
+    )
 
     bar = len(ordered_acn) * box_w
-    end = span if span is not None else phase_end + 3 * box_w + bar
+    if span is None:
+        # NB data units per pixel follow from the axis's width once its
+        #    limits are set: the two labels' pixels and the rest's units
+        #    solve for the end that fits both.
+        renderer = ax.figure.canvas.get_renderer()
+        pixels = ax.get_window_extent(renderer).width
+        words = sum(t.get_window_extent(renderer).width for t in (mirror, title))
+        rest = phase_end + gap + 3 * gap + 3 * gap + bar
+        end = rest / max(1.0 - words / pixels, 0.5)
+    else:
+        end = span
     x0 = end - bar
+    title.set_x(x0 - 3 * gap)
 
     for i, label in enumerate(ordered_acn):
         ax.add_patch(
@@ -440,14 +450,6 @@ def plot_ascn_legend(
         ax.plot([xc, xc], [-tick_len, 0.0], color="black", linewidth=LINEWIDTH)
         ax.text(xc, label_y, str(label), ha="center", va="top", **text)
 
-    ax.text(
-        x0 - 3 * gap,
-        box_h / 2,
-        r"$\mathbb{N}$-CNA",
-        ha="right",
-        va="center_baseline",
-        **text,
-    )
     ax.set_xlim(0.0, end)
     ax.set_ylim(-0.6, box_h + 0.05)
     ax.set_aspect("auto")

@@ -30,7 +30,7 @@ import argparse
 import functools
 import json
 from collections.abc import Callable, Iterator
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, NamedTuple
 
@@ -116,9 +116,10 @@ class Realization:
 
 
 def read(path: Path) -> Realization:
+    """The realization at `path`, its `clones` in `tree_order` (PR- #701)."""
     truth = pd.read_csv(path / "truth_clone_labels.tsv", sep="\t")
     names = sorted(set(truth["labels"]) - {"normal"})
-    return Realization(
+    r = Realization(
         path=path,
         manifest=json.loads((path / "manifest.json").read_text()),
         truth=truth,
@@ -130,6 +131,8 @@ def read(path: Path) -> Realization:
         ),
         clones=("normal", *names),
     )
+    # NB the display order, not the data's: the truth files keep their names.
+    return replace(r, clones=tree_order(r))
 
 
 def display(clone: str, clones: tuple[str, ...]) -> str:
@@ -198,13 +201,16 @@ def binned_profile(r: Realization) -> pd.DataFrame:
     return table
 
 
-def binned_axis(r: Realization, *, metric: bool = False) -> Any:
+def binned_axis(r: Realization, *, metric: bool = False, labels: bool = True) -> Any:
     """The genomic axis of `binned_profile`'s 1 Mb bins, ticked every 10 Mb;
-    on `metric`, every bin planted altered in any clone drawn wider (T- #683)."""
+    on `metric`, every bin planted altered in any clone drawn wider (T- #683);
+    without `labels`, its ticks unlabelled (PR- #701)."""
     from port.extensions.genomic_axis import GenomicAxis, altered_bins
 
     table = binned_profile(r)
-    return GenomicAxis.of_table(table, altered_bins(table) if metric else None)
+    return GenomicAxis.of_table(
+        table, altered_bins(table) if metric else None, labels=labels
+    )
 
 
 def bp_axis(r: Realization) -> Any:
@@ -309,8 +315,8 @@ def plot_clone_profiles(r: Realization, out: Path, *, metric: bool = False) -> P
     `port.patch.plot_copy_number_profile`, which draws an estimate's profile
     in `combined.pdf`, on the truth binned at 1 Mb: its palette, hatching,
     outlines and key, so a planted and a decoded profile read alike. Rows keep
-    its numerals, `Clone 0` the normal, as every figure here does. `metric`
-    as `binned_axis`.
+    its numerals, `Clone 0` the normal, as every figure here does, top to
+    bottom in `tree_order` (PR- #701). `metric` as `binned_axis`.
     """
     import matplotlib.pyplot as plt
 
@@ -320,7 +326,8 @@ def plot_clone_profiles(r: Realization, out: Path, *, metric: bool = False) -> P
     fig, ax = plt.subplots(figsize=(14, 0.55 * len(r.clones) + 1.6))
     fig.subplots_adjust(left=0.08, right=0.98, top=0.88, bottom=0.3)
     genome = binned_axis(r, metric=metric)
-    plot_copy_number_profile(binned_profile(r), ax=ax, axis=genome)
+    plot_copy_number_profile(binned_profile(r), ax=ax, axis=genome,
+                             rows=[str(k) for k in range(len(r.clones))])  # fmt: skip
     disclose(fig, genome)
 
     ax.set_yticklabels([t.get_text() for t in ax.get_yticklabels()],
@@ -525,39 +532,47 @@ def tree(r: Realization) -> Tree:
     return Tree(parent, events, barcode)
 
 
+MANY_EVENTS = 10
+"""The user's legibility rule (PR- #701): a tree of more than 10 events does
+not read at a page's width. Above it `draw_tree` drops the events from its
+edges and `truth_figure` draws (a) as the leaves alone."""
+
+BARCODE_SHOWN = 8
+"""Bits of a cut barcode shown: its first 4, "…", its last 4 (PR- #701)."""
+
+
+def shown(code: str) -> str:
+    """`code` as (c)'s clone headers show it: whole up to `MANY_EVENTS` bits,
+    else its first and last `BARCODE_SHOWN // 2` around "…" (PR- #701).
+
+    A barcode has one bit per event, so its length is the tree's event count.
+    The tree, and (a), always show a barcode whole.
+    """
+    if len(code) <= MANY_EVENTS:
+        return code
+    half = BARCODE_SHOWN // 2
+    return code[:half] + "\N{HORIZONTAL ELLIPSIS}" + code[-half:]
+
+
 ROOT = "root"
 """The drawn tree's root, an unobserved ancestor: parent of the `normal` leaf and the tumour."""
 
 
-def draw_tree(
-    ax: Any,
+def layout(
     r: Realization,
-    *,
-    event_size: float = 7.5,
-    node_size: float = 8.5,
-    dot: float = 90.0,
-    name: Callable[[str], str] | None = None,
-    ancestors: bool = True,
-    edges: bool = False,
-) -> tuple[float, int]:
-    """The clones' tree on `ax`, along event time; returns its width in events and its leaves.
-
-    `name` names an observed clone, `display`'s numeral by default. Without
-    `ancestors`, an unobserved node is drawn unnamed: its barcode is its
-    children's common prefix.
+) -> tuple[Tree, dict[str, str | None], dict[str, float], dict[str, float], list[str]]:
+    """The clones' tree as `draw_tree` lays it out, from `r.tree` alone:
+    `(tree, parent, x, y, leaves)`, each node's parent in the binary tree
+    drawn (`ROOT` on top), its x (event time, every leaf at the deepest
+    one's), its y (leaves at `0 .. n - 1`, top highest; an inner node at its
+    children's mean), and the leaves top to bottom.
 
     The tree is drawn binary and ladderized (T- #660): the root, an
-    unobserved ancestor drawn unfilled and unlabelled, splits into `normal`,
-    a leaf with no events, on top and the tumour below; at each later split
-    the branch with fewer leaves, then fewer events, goes above.
-
-    With `edges`, each observed leaf's barcode ends on the axis's right edge
-    and its name sits beside the node, so the caller sizes the tree between
-    the root and the barcodes (`truth_figure`). The texts carry `gid`s
-    `name` and `barcode`.
+    unobserved ancestor, splits into `normal`, a leaf with no events, on top
+    and the tumour below; at each later split the branch with fewer leaves,
+    then fewer events, goes above.
     """
     t = tree(r)
-    named = name or (lambda clone: display(clone, r.clones))
     # NB the tree is drawn binary: an unobserved root splits into `normal`, a
     #    leaf with no events, and the tumour (T- #660).
     parent: dict[str, str | None] = {ROOT: None, "normal": ROOT} | {
@@ -617,12 +632,64 @@ def draw_tree(
     #    line up; a leaf's edge runs on past its last event (T- #660).
     for leaf in order:
         at[leaf] = width
+    return t, parent, at, y, order
+
+
+def tree_order(r: Realization) -> tuple[str, ...]:
+    """`r.clones` top to bottom as `draw_tree` draws them: `normal`, then the
+    tumour clones by height, ties left to right (PR- #701).
+
+    `read` orders `Realization.clones` by it, so every figure that numbers a
+    clone by its place in `clones` (`display`, `clone_colour`,
+    `binned_profile`, `genomic_truth`) numbers it from the tree's top: the
+    drawn $m_1$ is the tree's first tumour clone, whatever the truth files
+    name it.
+    """
+    _, _, x, y, _ = layout(r)
+    drawn = sorted((c for c in r.clones if c in y), key=lambda c: (-y[c], x[c]))
+    return (*drawn, *(c for c in r.clones if c not in y))
+
+
+def draw_tree(
+    ax: Any,
+    r: Realization,
+    *,
+    event_size: float = 7.5,
+    node_size: float = 8.5,
+    dot: float = 90.0,
+    name: Callable[[str], str] | None = None,
+    ancestors: bool = True,
+    edges: bool = False,
+) -> tuple[float, int]:
+    """The clones' tree on `ax`, along event time; returns its width in events and its leaves.
+
+    `name` names an observed clone, `display`'s numeral by default. Without
+    `ancestors`, an unobserved node is drawn unnamed: its barcode is its
+    children's common prefix.
+
+    Laid out by `layout`; the root, an unobserved ancestor, is drawn
+    unfilled and unlabelled.
+
+    With `edges`, each observed leaf's barcode ends on the axis's right edge
+    and its name sits beside the node, so the caller sizes the tree between
+    the root and the barcodes (`truth_figure`). The texts carry `gid`s
+    `name` and `barcode`.
+
+    Above `MANY_EVENTS` events the edges carry no events, only the topology
+    (PR- #701).
+    """
+    t, parent, at, y, order = layout(r)
+    width = max(at.values())
+    named = name or (lambda clone: display(clone, r.clones))
     small = dot / 90.0
+    many = len(t.events) > MANY_EVENTS
     for node, up in parent.items():
         if up is None:
             continue
         ax.plot([at[up], at[up], at[node]], [y[up], y[node], y[node]],
                 color=MUTED, linewidth=1.2 * small ** 0.5)  # fmt: skip
+        if many:
+            continue
         for k, e in enumerate(
             t.events[t.events["node"] == node].sort_values("time").itertuples()
         ):
