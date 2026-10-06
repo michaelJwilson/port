@@ -25,7 +25,7 @@ from sal.emissions import (
     EmissionFamily,
     NegativeBinomialEmission,
 )
-from sal.ragged import MINIMUM_LENGTH, Ragged
+from sal.ragged import Ragged
 
 if TYPE_CHECKING:
     pass
@@ -311,11 +311,13 @@ def weierstrass_exposure(
     return np.outer(shaped, library)
 
 
-MINIMUM_SEGMENT = MINIMUM_LENGTH
-"""The shortest chromosome the fixture may plant, which is upstream's floor.
+MINIMUM_SEGMENT = 2
+"""The shortest chromosome the fixture may plant: two bins, so each carries a transition.
 
-Aliased rather than re-stated so that a change upstream is a change here, and
-so the reason travels with it: one position carries no transition.
+Port's own since sal #1233 lowered `Ragged`'s floor to one position. The
+alias it replaces moved with upstream, and that moved the dev instance's
+partition and hash (07b82e92 to aa63209e) with no change here; a fixture's
+draw is this repository's to state.
 """
 
 
@@ -338,9 +340,9 @@ def ragged_lengths(
     integral and sums exactly. `concentration` sets the spread: smaller is more
     unequal, and 2.0 puts the dev instance's extremes about 3x apart.
 
-    The floor is upstream's and not this repository's: a segment of one
-    position is an initial distribution and no transition, and `Ragged` refuses
-    it where the shape is declared.
+    The floor is `MINIMUM_SEGMENT`, this repository's: `Ragged` admits a
+    segment of one position since sal #1233, and a planted chromosome keeps
+    at least one transition.
 
     Raises
     ------

@@ -19,8 +19,8 @@ history: `git show ba34716:docs/plots/<path>.png`.
 | `metrics_history.png`, `metrics_history_classes.png` | `run_study --metrics-history [OUT.png [OUT_CLASSES.png]]` |
 | `sim_qa/` | `python -m port.sim.analysis plot sim/generated/dev_tree/r0` (writes `<r>/qa/`) |
 | `sim/cna_lengths.png` | `run_study --cna-lengths [OUT.png]` |
-| `studies/potts_*.png` | `run_study --potts-plot STREAM.pkl` (`docs/study-field-strength.md`) |
-| `studies/copy_states_*.png` | `run_study --copy-state-plot STREAM.pkl` (`docs/study-copy-states.md`) |
+| `studies/potts_*.png` | `run_study --potts-plot STREAM.record` (`docs/study-field-strength.md`) |
+| `studies/copy_states_*.png` | `run_study --copy-state-plot STREAM.record` (`docs/study-copy-states.md`) |
 | `studies/copy_state_starts.png`, `studies/clone_label_study.png` | `run_study --copy-start-notebook RESULTS.pkl`, `run_study --clone-label-notebook RESULTS.pkl` |
 | `studies/population_recovery.png` | `run_study --population report --out DIR` |
 

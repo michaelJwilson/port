@@ -27,8 +27,8 @@ next realization draws.
   same Baum-Welch.
 
 There is no bound: the gap is to the best log-likelihood any run reached on
-that realization. When a realization's runs are all in, it pickles
-`OUT_DIR/<stem>.pkl` and redraws `OUT_DIR/<stem>.png`
+that realization. When a realization's runs are all in, it writes
+`OUT_DIR/<stem>.record` (`port.studies.records`) and redraws `OUT_DIR/<stem>.png`
 (`port.studies.copy_state_plot`). Each worker warms up on a small drawn call
 first; seconds are per job with `--workers` jobs sharing the host.
 """
@@ -36,7 +36,6 @@ first; seconds are per job with `--workers` jobs sharing the host.
 from __future__ import annotations
 
 import argparse
-import pickle
 import time
 import traceback
 from concurrent.futures import Future, ProcessPoolExecutor
@@ -45,15 +44,16 @@ from typing import Any
 
 import numpy as np
 
+from port.studies import records
 from port.studies import stream as harness
 
 STARTS = (
-    "calicost-gmm", "lattice", "prior", "kmeans++", "emission++", "gaussian-em",
-    "anneal-hmm", "tempering-hmm", "hmc-hmm",
+    "calicost-gmm", "lattice", "prior", "kmeans++", "emission++",
+    "tempering-hmm", "hmc-hmm",
 )  # fmt: skip
 """The starts the paper's initialization figure draws (T- #660). Out of the study, still in the
 registry (`--all` runs them): `cnaster-gmm`, `distinct`, `lattice-em`, `rdr-quantiles`, `data`,
-`quantile`, the emission++ variants (`EMISSION_VARIANTS`), `sal`'s surrogate `anneal`,
+`quantile`, the emission++ variants (`EMISSION_VARIANTS`), `anneal-hmm` (#716), `sal`'s surrogate `anneal`,
 `tempering`, `hmc` (snapped to observed rows, #563) and its best-of-5-with-EM starts,
 `--sal`'s `kmeans++x5+em` among them."""
 
@@ -222,25 +222,55 @@ def _describe(problem: Any) -> dict[str, Any]:
 def tune(
     pool: ProcessPoolExecutor, held_out: list[Any], names: tuple[str, ...] = tuple(GRID)
 ) -> dict[str, dict[str, float]]:
-    """Each of `GRID`'s samplers' setting: the cheapest within `TOLERANCE` of the best median gap on `held_out`."""
+    """Each of `GRID`'s samplers' setting: the cheapest within `TOLERANCE` of the best median gap on `held_out`.
+
+    Two rounds (#716): every setting from one seed per held-out realization,
+    then the settings `harness.halve` keeps get the other `TUNING_SEEDS - 1`
+    seeds, and the choice is among those alone. The gap is to the best
+    log-likelihood any tuning run reached on that realization.
+    """
     import pandas as pd
 
-    futures = [pool.submit(solve, p, name, seed, setting, False)
-               for p in held_out for name in names for setting in GRID[name] for seed in range(TUNING_SEEDS)]  # fmt: skip
-    rows = [f.result() for f in futures]
+    rows: list[dict[str, Any]] = []
+
+    def run(jobs: list[tuple[str, int, dict[str, float]]]) -> pd.DataFrame:
+        futures = [
+            pool.submit(solve, p, name, seed, setting, False)
+            for name, seed, setting in jobs
+            for p in held_out
+        ]
+        rows.extend(f.result() for f in futures)
+        frame = pd.DataFrame([r for r in rows if "error" not in r])
+        top = frame.groupby("problem").start_llf.max()
+        frame["gap"] = frame.problem.map(top) - frame.start_llf
+        frame["key"] = frame.setting.map(lambda s: tuple(sorted(s.items())))
+        return frame
+
+    frame = run([(name, 0, setting) for name in names for setting in GRID[name]])
+    kept = {
+        str(name): harness.halve(g, TOLERANCE) for name, g in frame.groupby("start")
+    }
+    frame = run(
+        [
+            (name, seed, dict(key))
+            for name, keys in kept.items()
+            for key in keys
+            for seed in range(1, TUNING_SEEDS)
+        ]
+    )
     failed = [r for r in rows if "error" in r]
     if failed:
         print(
             f"{len(failed)} tuning runs failed, e.g. {failed[0]['error'][:120]}",
             flush=True,
         )
-    frame = pd.DataFrame([r for r in rows if "error" not in r])
-    top = frame.groupby("problem").start_llf.max()
-    frame["gap"] = frame.problem.map(top) - frame.start_llf
-    frame["key"] = frame.setting.map(lambda s: tuple(sorted(s.items())))
+    print(f"tuning: {len(rows)} runs against the full grid's "
+          f"{sum(len(GRID[n]) for n in names) * TUNING_SEEDS * len(held_out)}", flush=True)  # fmt: skip
     chosen: dict[str, dict[str, float]] = {}
     for name, g in frame.groupby("start"):
-        key, best, by = harness.cheapest(g, TOLERANCE)
+        full = g.groupby("key").gap.size() == TUNING_SEEDS * len(held_out)
+        key, best, _ = harness.cheapest(g[g.key.isin(full[full].index)], TOLERANCE)
+        by = g.groupby("key").agg(gap=("gap", "median"))
         default = GRID[str(name)][UNTUNED[str(name)]]
         chosen[str(name)] = {**dict(key), "median_gap": round(float(best.gap), 3),
                              "seconds": round(float(best.seconds), 3),
@@ -265,7 +295,7 @@ def run(
     only: tuple[str, ...] = (),
     drop: tuple[str, ...] = (),
 ) -> Path:
-    """The stream after the `held_out` realizations; returns the pickle it keeps current.
+    """The stream after the `held_out` realizations; returns the record it keeps current.
 
     A start in `drop` gets no new job; its `reuse` rows are still kept, so a start can leave mid-stream
     and its realizations so far stay in the record.
@@ -279,9 +309,9 @@ def run(
     logging.disable(logging.INFO)
     out_dir.mkdir(parents=True, exist_ok=True)
     out = out_dir / (
-        f"copy_{manifest.stem}_r{first}.pkl"
+        f"copy_{manifest.stem}_r{first}{records.SUFFIX}"
         if first or merge
-        else f"copy_{manifest.stem}.pkl"
+        else f"copy_{manifest.stem}{records.SUFFIX}"
     )
     names = list(only) if only else list(starts()) if everything else list(STARTS)
     tuned: dict[str, dict[str, float]] = {}
@@ -294,7 +324,7 @@ def run(
     reused_rows: dict[tuple[int, str, int], dict[str, Any]] = {}
     reused_truth: dict[int, dict[str, Any]] = {}
     for path in reuse:
-        earlier = pickle.loads(path.read_bytes())
+        earlier = records.read(path)
         reused_truth |= earlier["problems"]
         for row in earlier["rows"]:
             if row["start"] in names and row["problem"] in earlier["complete"]:
@@ -317,7 +347,7 @@ def run(
         )
         record = {"manifest": str(manifest), "problems": held, "rows": rows, "done": shown, "complete": list(done),
                   "starts": names, "seeds": seeds, "tuned": tuned, "held_out": held_out}  # fmt: skip
-        out.write_bytes(pickle.dumps(record))
+        records.write(out, record)
         harness.redraw("copy-state-plot", out, merge)
         drawn[0] = time.perf_counter()
 

@@ -1,7 +1,7 @@
 """#556: `port.studies.potts_stream`'s runs against runtime, each solver numbered as in the table beside it.
 
-`run_study --potts-plot STREAM.pkl` writes `<stem>.png` beside the
-pickle: energy less TRW-S's lower bound, on a log axis whose bottom tick, "0",
+`run_study --potts-plot STREAM.record` writes `<stem>.png` beside the
+record: energy less TRW-S's lower bound, on a log axis whose bottom tick, "0",
 holds every run at the bound, with a solid black line at the planted
 labelling's gap (its median over realizations) in a dark grey band (its 10-90%
 range).
@@ -17,7 +17,6 @@ ones, the median over the same runs as the points: raw / after ICM and the color
 
 from __future__ import annotations
 
-import pickle
 import sys
 from pathlib import Path
 from typing import Any
@@ -26,7 +25,8 @@ import numpy as np
 import pandas as pd
 
 from port.qa.statistics import bars, ranks
-from port.studies.figures import merged, stamp, tab20, tt
+from port.studies import records
+from port.studies.figures import key_below, merged, stamp, tab20, tt
 
 NAMES = {
     "field_argmax": "field-argmax", "anneal": "glauber", "tempering": "parallel tempering",
@@ -48,8 +48,8 @@ TABLE = (
     )),
     ("Sampling, message passing", (
         ("sal:anneal", "Single-site heat bath, annealed"),
-        ("sal:swendsen-wang", "Cluster moves over bonded spots, annealed"),
-        ("sal:wolff", "One grown cluster flipped per move, annealed"),
+        ("sal:swendsen-wang-heat-bath", "Every bonded cluster relabelled by its field's heat bath, annealed"),
+        ("sal:wolff-heat-bath", "One grown cluster relabelled by its field's heat bath, annealed"),
         ("sal:tempering", f"{tt('glauber')} replicas on a temperature ladder, swapped"),
         ("sal:max-product", "Loopy max-product belief propagation"),
         ("sal:trws", "Tree-reweighted message passing: its decode"),
@@ -68,6 +68,16 @@ DODGE = 1.12
 
 FLOOR = 1e-2
 """The gap figure's "0": runs within `FLOOR` nats of the bound."""
+
+
+KEY_NAMES = {
+    "sal:alpha-expansion": "Alpha-expansion", "sal:alpha-beta-swap": "Alpha-beta-swap",
+    "sal:icm": "ICM", "sal:field_argmax": "Field-argmax",
+    "sal:anneal": "Glauber", "sal:swendsen-wang-heat-bath": "Swendsen-Wang", "sal:wolff-heat-bath": "Wolff",
+    "sal:tempering": "Parallel tempering", "sal:trws": "TRW-S",
+}  # fmt: skip
+"""The names `solver_combined`'s key prints, and the solvers it draws: `alpha-rust-fuse`,
+`icm-random` and `max-product` are not among them (deprecated from the figure, #716)."""
 
 
 def label(solver: str) -> str:
@@ -221,18 +231,26 @@ def _table(
 
 
 def draw(
-    ax: Any, record: dict[str, Any], key: bool = False, centre: bool = False
+    ax: Any,
+    record: dict[str, Any],
+    key: bool = False,
+    centre: bool = False,
+    key_style: dict[str, Any] | None = None,
 ) -> pd.DataFrame:
     """The gap panel on `ax`: each solver's runs against runtime, numbered as in `TABLE`; returns the runs drawn.
 
-    `key` adds each solver's number and name to the legend below the axes,
-    for a figure that draws no table beside it (`solver_combined`, T- #660).
+    `key` draws, for a figure with no table beside it (`solver_combined`, T- #660),
+    a key below the axes instead of the legend: the stages' markers, then each
+    solver unnumbered with its missed % after both polishes, `port`'s marked
+    and named in a footnote; every solver a circle.
     `centre` widens the gap axis, in decades, until the truth's median is its
     midpoint; no limit narrows, so no point is clipped.
     """
     from matplotlib.ticker import FixedLocator, FuncFormatter
 
     d = frame(record)
+    if key:
+        d = d[d.solver.isin(KEY_NAMES)]
     d = d.assign(y=d.energy - d.bound, py=d.polished - d.bound, by=d.both - d.bound)
     d[["y", "py", "by"]] = d[["y", "py", "by"]].clip(lower=FLOOR)
     n_problems, n_starts = len(record["done"]), record["starts"]
@@ -259,7 +277,7 @@ def draw(
     crowded: list[tuple[float, float, str]] = []
     for solver, g in d.groupby("solver"):
         colour = tab20(NUMBER[str(solver)])
-        marker = "s" if solver.startswith("port:") else "o"
+        marker = "o" if key or not solver.startswith("port:") else "s"
         x, xe = bars(g.seconds)
         # NB each solver displaced by its own factor, up to 0.1 decades either side, so equal runtimes do not overlap
         spread = 10 ** (0.2 * (NUMBER[str(solver)] / max(NUMBER.values()) - 0.5))
@@ -326,6 +344,8 @@ def draw(
                 lw=0.8,
                 capsize=2.5,
             )
+        if key:
+            continue
         if abs(y - lowest) < FLOOR:
             crowded.append((x, y, solver))
         else:
@@ -372,9 +392,25 @@ def draw(
             lambda v, _: "0" if v == FLOOR else f"$10^{{{round(np.log10(v))}}}$"
         )
     )
-    ax.set_ylabel("Gap [Nats]")
+    ax.set_ylabel("Gap [nats]" if key else "Gap [Nats]")
     ax.set_xlabel("Runtime [s]")
 
+    if key:
+        polished = missed(d, n_spots(record))
+        ordered = sorted(set(d.solver), key=lambda s: NUMBER[s])
+        key_below(
+            ax,
+            f"{Path(record['manifest']).stem}: median of {n_problems} realization{'s' if n_problems > 1 else ''}",
+            [({"marker": "o", "color": "0.4", "markersize": 5}, "Initial"),
+             ({"marker": "o", "color": "0.4", "markerfacecolor": "white", "markersize": 5}, "Polish"),
+             ({"marker": "D", "color": "0.4", "markerfacecolor": "white", "markersize": 4}, "Merge"),
+             ({"line": True, "color": "k"}, "Truth")],
+            [(KEY_NAMES[s], tab20(NUMBER[s]), polished[s][1])
+             for s in ordered],
+            [],
+            **(key_style or {}),
+        )  # fmt: skip
+        return d
     ax.plot([], [], "o", color="0.4", label="sal")
     ax.plot([], [], "s", color="0.4", label="port")
     ax.plot([], [], "o", color="0.4", mfc="white", label="ICM polish")
@@ -446,9 +482,9 @@ def table_tex() -> str:
 
 
 def main(argv: list[str] | None = None) -> None:
-    """`STREAM.pkl [EARLIER.pkl ...]`: the figure beside the first, over all of them."""
+    """`STREAM.record [EARLIER.record ...]`: the figure beside the first, over all of them."""
     paths = [Path(p) for p in (argv if argv is not None else sys.argv[1:])]
     stream = paths[0]
-    record = merged([pickle.loads(p.read_bytes()) for p in paths])
+    record = merged([records.read(p) for p in paths])
     print(figure(record, stream.with_suffix(".png")))
     stream.with_name("potts_solvers_table.tex").write_text(table_tex())
