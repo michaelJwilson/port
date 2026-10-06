@@ -4,8 +4,8 @@
 0.9335, exact altered (phase-free)
 0.8992 (phased 0.1473), from one
 `run_cnaster_port --sal --png-copies` run on `sim/manifests/dev_tree_1s_easy.toml` r0 at
-code `4c55c85`: 140 s wall, 3.48 GB peak.
-Ledger `run_id` `4c55c85-dev_tree_1s_easy_r0_7ba9b01f-1948` (`docs/metrics/`, fixture `dev_tree_1s_easy_r0_7ba9b01f`).
+code `786d9bb`: 140 s wall, 3.41 GB peak.
+Ledger `run_id` `786d9bb-dev_tree_1s_easy_r0_7ba9b01f-2027` (`docs/metrics/`, fixture `dev_tree_1s_easy_r0_7ba9b01f`).
 
 Regenerate from a clean tree, so the stamp carries no `+`; it draws r0 into
 `.cache/paper_figures/` where `--draw` is not given, and refuses any r0 not
