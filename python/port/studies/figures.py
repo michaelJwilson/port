@@ -79,6 +79,7 @@ def key_below(
     fontsize: float = 7.5,
     top: float = -0.17,
     row: float = 0.055,
+    columns: int = 2,
 ) -> None:
     """A key under `ax`, its `title` above the axes' top right: the stages' markers in their own column, then the methods in two columns of name and missed %.
 
@@ -116,17 +117,18 @@ def key_below(
     # NB the title sits above the axes' top-right corner, clear of the x label and the key
     ax.text(1.0, 1.01, title, transform=t, ha="right", va="bottom", fontsize=fontsize)
     header = top
-    rows = (len(entries) + 1) // 2
-    columns = ((0.30, 0.62), (0.67, 0.99))
+    # NB one column where the panel is narrow (half a 122 mm page), two where it is wide
+    rows = -(-len(entries) // columns)
+    spans = ((0.38, 1.0),) if columns == 1 else ((0.30, 0.62), (0.67, 0.99))
     for k, (keywords, label) in enumerate(stages):
         y = header - row * (k + 1)
         mark(0.02, y, keywords)
-        text(0.05, y, label)
+        text(0.05 if columns == 2 else 0.08, y, label)
     for k, (name, colour, missed) in enumerate(entries):
-        left, right = columns[k // rows]
+        left, right = spans[k // rows]
         y = header - row * (k % rows + 1)
         mark(left, y, {"marker": "o", "color": colour, "markersize": 5})
-        text(left + 0.025, y, name)
+        text(left + (0.05 if columns == 1 else 0.025), y, name)
         text(right, y, f"{missed:.1f}%", ha="right")
     bottom = header - row * (max(rows, len(stages)) + 1)
     for k, note in enumerate(notes):

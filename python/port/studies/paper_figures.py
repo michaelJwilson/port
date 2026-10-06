@@ -18,7 +18,7 @@ manifest's `r0_hash`, and writes into `OUT`:
   `port.qa.audit.score_sample`'s matching, `copy_confusion` and planted classes;
 - `solver_combined.png`, figure 18 (`--solvers POTTS.record COPY.record`, no
   fixture run), at the top level beside the run's pages: the spatial solvers
-  (`port.studies.potts_plot`) over the copy-state starts
+  (`port.studies.potts_plot`) left of the copy-state starts
   (`port.studies.copy_state_plot`), each keyed below, no table (T- #660), on
   the 122 mm column `combined.png` is drawn on.
 
@@ -615,12 +615,12 @@ def compare_figures(c: Compared, out: Path, text: str) -> list[Path]:
 SOLVERS = "solver_combined.png"
 """Figure 18, beside the run's pages in `docs/plots/paper/`."""
 
-SOLVER_PANEL = 2.1
-"""Inches: each panel's axes height. (a) over (b), each keyed below, on one 122 mm column."""
+SOLVER_PANEL = 2.2
+"""Inches: each panel's axes height. (a) left of (b), each keyed below in one column, on one 122 mm page."""
 
 
 def solver_figure(potts: dict[str, Any], copies: dict[str, Any]) -> Any:
-    """18: the spatial solvers' gap panel over the copy-state starts', each keyed below its axes (`figures.key_below`).
+    """18: the spatial solvers' gap panel left of the copy-state starts', each keyed below its axes (`figures.key_below`).
 
     Sized as `combined.png` is: `llncs`'s 122 mm column, every text at
     `combined_figure.FONT_SIZE`, saved at 300 dpi, so it is included at
@@ -634,38 +634,38 @@ def solver_figure(potts: dict[str, Any], copies: dict[str, Any]) -> Any:
 
     width = 122.0 / 25.4
     line = FONT_SIZE * 1.5 / 72.0
-    # NB per panel: the title over the axes, the axes, the x label, then the key's rows
-    rows = {"a": 6, "b": 5}
-    below = {k: 0.42 + line * (n + 0.5) for k, n in rows.items()}
-    above, foot = 0.22, 0.12
-    height = sum(above + SOLVER_PANEL + below[k] for k in rows) + foot
+    # NB the key's rows under the x label: the longer of the two panels' methods sets the height
+    rows = max(len(potts_plot.KEY_NAMES), len(copy_state_plot.KEY_NAMES))
+    above, label, foot = 0.2, 0.4, 0.12
+    height = above + SOLVER_PANEL + label + line * (rows + 1) + foot
     figure = plt.figure(figsize=(width, height))
-    left, right = 0.52, 0.08
-    y = height
-    axes = {}
-    for k in rows:
-        y -= above + SOLVER_PANEL
-        axes[k] = figure.add_axes(
-            (
-                left / width,
-                y / height,
-                (width - left - right) / width,
-                SOLVER_PANEL / height,
-            )
-        )
-        y -= below[k]
+    left, gap, right = 0.42, 0.42, 0.06
+    panel = (width - left - gap - right) / 2
+    bottom = height - above - SOLVER_PANEL
+    axes = {k: figure.add_axes(((left + i * (panel + gap)) / width, bottom / height, panel / width, SOLVER_PANEL / height))
+            for i, k in enumerate("ab")}  # fmt: skip
     style = {
         "fontsize": FONT_SIZE,
         "row": line / SOLVER_PANEL,
-        "top": -0.42 / SOLVER_PANEL,
+        "top": -label / SOLVER_PANEL,
+        "columns": 1,
     }
     potts_plot.draw(axes["a"], potts, key=True, centre=True, key_style=style)
     copy_state_plot.draw(axes["b"], copies, key=True, key_style=style)
     for text in figure.findobj(Text):
         text.set_fontsize(FONT_SIZE)
+    # NB each key's title names the fixture; at half the page two titles and two letters
+    #    collide, so the fixture moves to the stamp, each title keeps its count and starts at
+    #    its panel's left edge, the letter before it
+    fixture = Path(potts["manifest"]).stem
+    for text in figure.findobj(Text):
+        if text.get_text().startswith(f"{fixture}: "):
+            text.set_text(text.get_text().removeprefix(f"{fixture}: ").capitalize())
+            text.set_position((0.0, 1.01))
+            text.set_horizontalalignment("left")
     for k, ax in axes.items():
         ax.tick_params(labelsize=FONT_SIZE, length=2.5, pad=1.5)
-        ax.text(-left / (width - left - right), 1.02, f"({k})", transform=ax.transAxes, fontsize=FONT_SIZE,
+        ax.text(-0.3 / panel, 1.01, f"({k})", transform=ax.transAxes, fontsize=FONT_SIZE,
                 ha="left", va="bottom", color=INK)  # fmt: skip
     return figure
 
@@ -680,7 +680,7 @@ def solver_figures(potts: Path, copies: Path, out: Path, commit: str) -> Path:
     out.mkdir(parents=True, exist_ok=True)
     records = [stored.read(p) for p in (potts, copies)]
     text = (
-        f"potts {stored.digest(records[0])}"
+        f"{Path(records[0]['manifest']).stem} · potts {stored.digest(records[0])}"
         f" · copy states {stored.digest(records[1])}"
         f" · code {commit}"
     )
