@@ -35,12 +35,14 @@ import argparse
 from pathlib import Path
 from typing import Any
 
+from port.patch.plot_copy_number_profile import KEY_GROWTH
 from port.sim.analysis import Realization, display, read
 
 __all__ = ["truth_combined_figure", "write_truth_combined"]
 
-KEY = (0.05, 0.2)
-"""Inches: (b)'s gap between its key and its rows, and the key's height."""
+KEY = (0.05, 0.2 * KEY_GROWTH)
+"""Inches: (b)'s gap between its key and its rows, and the key's height,
+0.2 before the mirror swatches stacked (PR- #701)."""
 
 ROWS = (0.04, 0.42)
 """Inches: (b)'s foot under its rows, unlabelled (PR- #701), and the rows' height."""

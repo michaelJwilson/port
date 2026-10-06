@@ -588,22 +588,12 @@ def test_the_tree_s_edges_carry_events_up_to_10_and_none_above(
 def test_the_mirror_key_starts_on_b_s_left_edge_and_is_labelled_on_its_right(
     drawn: Drawn,
 ) -> None:
-    """(b)'s mirror swatches start on the profile axis's left edge (0.5 px),
-    with `MIRROR` to their right, clear of the colour bar's title (PR- #701)."""
-    from port.patch.plot_copy_number_profile import MIRROR
+    """(b)'s mirror swatches stacked on the profile axis's left edge (0.5 px),
+    `MIRROR` right of them and centred on the white between them (0.5 px),
+    clear of the colour bar's title (PR- #701)."""
+    from tests.test_plot_copy_number_profile_patch import mirror_key_holds
 
     figure, _, _ = _panels(read(drawn.path))
-    renderer = figure.canvas.get_renderer()
     _, profile, _ = figure.subfigs
     legend_ax, profile_ax = profile.axes[:2]
-    swatches = [p.get_window_extent(renderer) for p in legend_ax.patches[:4]]
-    (mirror,) = [x for x in legend_ax.texts if x.get_text() == MIRROR]
-    (title,) = [x for x in legend_ax.texts if "CNA" in x.get_text()]
-    label = mirror.get_window_extent(renderer)
-
-    assert MIRROR == "(Co-located) Mirror"
-    assert min(b.x0 for b in swatches) == pytest.approx(
-        profile_ax.get_window_extent(renderer).x0, abs=0.5
-    )
-    assert label.x0 > max(b.x1 for b in swatches)
-    assert label.x1 < title.get_window_extent(renderer).x0
+    mirror_key_holds(legend_ax, profile_ax)

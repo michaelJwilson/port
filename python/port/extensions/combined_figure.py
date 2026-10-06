@@ -45,6 +45,7 @@ from typing import Any, NamedTuple
 
 import numpy as np
 
+from port.patch.plot_copy_number_profile import KEY_GROWTH
 from port.patch.plot_copy_number_profile import LINEWIDTH as PROFILE_LINEWIDTH
 
 FONT_SIZE = 7.0
@@ -81,8 +82,9 @@ FOOT = 0.4
 LEGEND_BOX = 0.2
 """Inches, one box of the profile's key."""
 
-LEGEND_ROW = 0.24
-"""The profile's key row against the profile's base height, 1.0."""
+LEGEND_ROW = 0.24 * KEY_GROWTH
+"""The profile's key row against the profile's base height, 1.0: 0.24
+before the mirror swatches stacked (PR- #701)."""
 
 PROFILE_ROWS = 0.8
 """The profile's axis against its base height: its rows 20% shorter, the

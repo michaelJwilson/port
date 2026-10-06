@@ -214,8 +214,11 @@ def test_the_profile_spans_the_tracks_on_one_left_column(
     is under bin `i`; (b)'s names and (a)'s RDR and BAF labels start on the
     column `NAME_INSET` in, clear of the axes; (a)'s letter over its first
     statistics line and (b)'s level with its key, both on the column; the
-    head a `LABEL_GAP` over them."""
+    head a `LABEL_GAP` over them; the mirror key as `mirror_key_holds` says
+    (PR- #701)."""
     from port.extensions.combined_figure import LABEL_GAP, NAME_INSET
+
+    from tests.test_plot_copy_number_profile_patch import mirror_key_holds
 
     figure, _ = _figures(tmp_path)
     renderer = figure.canvas.get_renderer()
@@ -249,6 +252,7 @@ def test_the_profile_spans_the_tracks_on_one_left_column(
         (title.y0 + title.y1) / 2, abs=1.0
     )
     assert figure.bbox.y1 - first.y1 == pytest.approx(gap, abs=1.5)
+    mirror_key_holds(key, profile)
 
 
 @pytest.mark.infra

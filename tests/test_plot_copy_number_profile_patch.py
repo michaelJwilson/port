@@ -201,25 +201,53 @@ def test_the_hatch_is_clipped_to_its_segment_at_its_angle_and_spacing() -> None:
 def test_the_mirror_key_starts_on_the_axis_and_is_labelled_on_its_right(
     span: float | None,
 ) -> None:
-    """Every caller's key, sized by `span` or by its own text: the swatches on
-    the axis's left edge (0.5 px), `MIRROR` right of them and clear of the
-    colour bar's title (PR- #701)."""
+    """Every caller's key, sized by `span` or by its own text, and the
+    standalone profile's: the swatches
+    stacked, apart, on the axis's left edge (0.5 px), `MIRROR` right of them,
+    centred on the white between them (0.5 px) and clear of the colour bar's
+    title (PR- #701)."""
     import matplotlib.pyplot as plt
-    from port.patch.plot_copy_number_profile import MIRROR, plot_ascn_legend
+    from port.patch.plot_copy_number_profile import (
+        plot_ascn_legend,
+        plot_copy_number_profile,
+    )
 
-    figure: Any = plt.figure(figsize=(5.0, 0.4), dpi=100)
-    ax = figure.add_axes((0.1, 0.2, 0.8, 0.6))
+    figure: Any = plt.figure(figsize=(5.0, 0.6), dpi=100)
+    ax = figure.add_axes((0.1, 0.1, 0.8, 0.8))
     plot_ascn_legend(ax, label_fontsize=7, span=span)
     figure.canvas.draw()
-    renderer = figure.canvas.get_renderer()
-    swatches = [p.get_window_extent(renderer) for p in ax.patches[:4]]
-    (mirror,) = [t for t in ax.texts if t.get_text() == MIRROR]
-    (title,) = [t for t in ax.texts if "CNA" in t.get_text()]
-    label = mirror.get_window_extent(renderer)
-
-    assert min(b.x0 for b in swatches) == pytest.approx(
-        ax.get_window_extent(renderer).x0, abs=0.5
-    )
-    assert label.x0 > max(b.x1 for b in swatches)
-    assert label.x1 < title.get_window_extent(renderer).x0
+    mirror_key_holds(ax, ax)
     plt.close(figure)
+
+    page = plot_copy_number_profile(_profile())
+    page.canvas.draw()
+    mirror_key_holds(page.axes[1], page.axes[1])
+    plt.close(page)
+
+
+def mirror_key_holds(legend_ax: Any, edge_ax: Any) -> None:
+    """The mirror key's geometry on `legend_ax`: its two swatches one above
+    the other, not overlapping, their left edges on `edge_ax`'s (0.5 px);
+    `MIRROR` right of them, its centre on the white between them (0.5 px),
+    and left of the colour bar's title (PR- #701)."""
+    from port.patch.plot_copy_number_profile import MIRROR
+
+    renderer = legend_ax.figure.canvas.get_renderer()
+    upper, lower = sorted(
+        (p.get_window_extent(renderer) for p in legend_ax.patches[:4:2]),
+        key=lambda b: -b.y0,
+    )
+    (mirror,) = [t for t in legend_ax.texts if t.get_text() == MIRROR]
+    (title,) = [t for t in legend_ax.texts if "CNA" in t.get_text()]
+    label = mirror.get_window_extent(renderer)
+    left = edge_ax.get_window_extent(renderer).x0
+
+    assert MIRROR == "Co-located Mirror"
+    assert upper.x0 == pytest.approx(left, abs=0.5)
+    assert lower.x0 == pytest.approx(left, abs=0.5)
+    assert lower.y1 < upper.y0
+    assert (label.y0 + label.y1) / 2 == pytest.approx(
+        (lower.y1 + upper.y0) / 2, abs=0.5
+    )
+    assert label.x0 > max(upper.x1, lower.x1)
+    assert label.x1 < title.get_window_extent(renderer).x0
