@@ -165,4 +165,6 @@ exclude_also =
     ^class GaussianEmission
     ^class PoissonEmission
     ^class BinomialEmission
+    ^class RateConcentrationBetaBinomialEmission
+    ^class RateConcentrationCountPairEmission
 
