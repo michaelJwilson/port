@@ -179,7 +179,9 @@ def _steps(
         steps.append(("release", _pytest(RELEASE, workers=min(n, 2)), {}))
 
     if arguments.figures:
-        steps.append(("figures", [sys.executable, "-m", "tests.generate_plots"], {}))
+        steps.append(
+            ("figures", [sys.executable, "-m", "port.scripts.run_figures"], {})
+        )
 
     return steps
 

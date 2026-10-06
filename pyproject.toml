@@ -56,6 +56,10 @@ run_ledger = "port.scripts.run_ledger:main"
 # A run scored against its planted truth: `--sim`, `--recovery`, `--copy` or
 # `--errors` (T- #673). A QA tool entry point, as `run_ledger` is.
 run_audit = "port.scripts.run_audit:main"
+# `--final`: port against CalicoST on one sample; `--patched-share`: the
+# badge's share; `run_figures`: the dev instance's figures (T- #673).
+run_benchmark = "port.scripts.run_benchmark:main"
+run_figures = "port.scripts.run_figures:main"
 
 [project.optional-dependencies]
 dev = [

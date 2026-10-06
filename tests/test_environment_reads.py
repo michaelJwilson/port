@@ -22,6 +22,10 @@ READS: dict[str, str] = {
     "python/port/extensions/label_solver.py": (
         "PORT_LABEL_SOLVER overrides the bound solver for a benchmark arm (#246)"
     ),
+    "python/port/qa/benchmark.py": (
+        "the patched share's child inherits the environment with "
+        "NUMBA_DISABLE_JIT set (moved from tests/, T- #673 G4)"
+    ),
     "python/port/qa/audit.py": (
         "PORT_SIM_CACHE keeps a cropped or purified sample between runs "
         "(moved from tests/, T- #673 G3)"
