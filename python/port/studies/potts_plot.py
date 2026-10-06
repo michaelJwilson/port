@@ -48,8 +48,9 @@ TABLE = (
     )),
     ("Sampling, message passing", (
         ("sal:anneal", "Single-site heat bath, annealed"),
-        ("sal:swendsen-wang", "Cluster moves over bonded spots, annealed"),
-        ("sal:wolff", "One grown cluster flipped per move, annealed"),
+        ("sal:swendsen-wang-heat-bath", "Every bonded cluster relabelled by its field's heat bath, annealed"),
+        ("sal:wolff-heat-bath", "One grown cluster relabelled by its field's heat bath, annealed"),
+        ("port:wolff-heat-bath-glauber", f"{tt('wolff-heat-bath')} then a {tt('glauber')} sweep per step"),
         ("sal:tempering", f"{tt('glauber')} replicas on a temperature ladder, swapped"),
         ("sal:max-product", "Loopy max-product belief propagation"),
         ("sal:trws", "Tree-reweighted message passing: its decode"),
@@ -73,7 +74,8 @@ FLOOR = 1e-2
 KEY_NAMES = {
     "sal:alpha-expansion": "Alpha-expansion", "sal:alpha-beta-swap": "Alpha-beta-swap",
     "sal:icm": "ICM-vector", "sal:icm-random": "ICM-random", "sal:field_argmax": "Field-argmax",
-    "sal:anneal": "Glauber", "sal:swendsen-wang": "Swendsen-Wang", "sal:wolff": "Wolff",
+    "sal:anneal": "Glauber", "sal:swendsen-wang-heat-bath": "Swendsen-Wang", "sal:wolff-heat-bath": "Wolff",
+    "port:wolff-heat-bath-glauber": "Wolff+Glauber",
     "sal:tempering": "Parallel tempering", "sal:max-product": "Max-product", "sal:trws": "TRW-S",
 }  # fmt: skip
 """The names `solver_combined`'s key prints, and the solvers it draws: `alpha-rust-fuse` is not

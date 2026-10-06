@@ -55,21 +55,29 @@ from port.studies import stream as harness
 DROPPED = frozenset({
     "sal:bifurcation", "port:alpha", "port:alpha-rust-merge",
     "port:alpha-rust", "port:alpha-rust-icm", "port:icm-numba", "port:icm",
+    "sal:swendsen-wang", "sal:wolff",
 })  # fmt: skip
 """Out of the stream: bifurcation (#541), `alpha` (Alpha-rust's pure-Python twin), the deprecated floor merge,
 and, for the paper's figure (T- #660), `alpha-rust` and `alpha-rust-icm` (`alpha-rust-fuse-merge` stays),
-`icm-numba` and cnaster's `icm`. `clone_label_arms` still runs them."""
+`icm-numba` and cnaster's `icm`; and the uniform-proposal cluster moves, their heat-bath variants in their
+place (#716). `clone_label_arms` still runs them."""
 
-EXTRA = ("sal:trws",)
-"""Entries beyond the harness's: TRW-S's decoded labelling. `CLUSTER_TEMPERING` and #559's
+EXTRA = ("sal:trws", "port:wolff-heat-bath-glauber")
+"""Entries beyond the harness's: TRW-S's decoded labelling, and `WOLFF_GLAUBER`. `CLUSTER_TEMPERING` and #559's
 `FIELD_WEIGHTED` cluster moves left the stream with T- #660; `--only` still runs them."""
 
 SAMPLERS = {
     "sal:anneal": "single-site",
-    "sal:swendsen-wang": "swendsen-wang",
-    "sal:wolff": "wolff",
+    "sal:swendsen-wang-heat-bath": "swendsen-wang-heat-bath",
+    "sal:wolff-heat-bath": "wolff-heat-bath",
 }
-"""sal's annealed chains (`run_annealed`), by `sal`'s move set."""
+"""sal's annealed chains (`run_annealed`), by `sal`'s move set. The cluster moves are sal's heat-bath
+variants (its #1142): each cluster's label drawn from its summed field, where the uniform proposal
+of `swendsen-wang` and `wolff` is accepted on that field and freezes in a field of this size."""
+
+WOLFF_GLAUBER = "port:wolff-heat-bath-glauber"
+"""sal's heat-bath Wolff cluster then one sal heat-bath sweep per step, composed here: `run_annealed`
+takes one move set, and the interleave moves the boundary sites a single cluster cannot split off."""
 
 TEMPERING = "sal:tempering"
 """sal's `parallel_tempering`: a ladder of single-site heat-bath replicas, swapped."""
@@ -86,7 +94,7 @@ CLUSTER_TEMPERING = "sal:cluster-tempering"
 """sal's `cluster_tempering` (its #1090): `TEMPERING`'s ladder, one Swendsen-Wang pass per replica per step and
 Houdayer moves between replicas."""
 
-TUNED = (*SAMPLERS, TEMPERING, *FIELD_WEIGHTED, CLUSTER_TEMPERING)
+TUNED = (*SAMPLERS, WOLFF_GLAUBER, TEMPERING, *FIELD_WEIGHTED, CLUSTER_TEMPERING)
 """Every entry that runs at a tuned annealing setting."""
 
 T_END = 0.05
@@ -233,6 +241,16 @@ def _sample(solver: str, field: np.ndarray, start: np.ndarray, rng: np.random.Ge
     elif solver == TEMPERING:
         ladder = tuple(float(t) for t in np.geomspace(t_start, T_END, REPLICAS))
         best = parallel_tempering(graph, field, ladder, rng, steps).best
+    elif solver == WOLFF_GLAUBER:
+        # NB as for Wolff below: a pilot at one step per sweep measures the visits a step costs,
+        #    and the run takes as many steps as spend the other samplers' budget
+        visits = sweeps * (graph.n_nodes + 2 * len(graph.edges))
+        _, spent = _wolff_glauber(graph, field, start, np.random.default_rng(rng.integers(2**63)),
+                                  schedule.build(sweeps), sweeps)  # fmt: skip
+        n_steps = max(1, round(sweeps * visits / max(spent, 1)))
+        best, _ = _wolff_glauber(
+            graph, field, start, rng, schedule.build(n_steps), n_steps
+        )
     elif solver in FIELD_WEIGHTED:
         temperature = schedule.build(sweeps)
         temperatures = np.array([temperature(k) for k in range(sweeps)])
@@ -244,7 +262,7 @@ def _sample(solver: str, field: np.ndarray, start: np.ndarray, rng: np.random.Ge
         budget = Budget(Cost.SITE_VISITS, sweeps * problem.visits_per_sweep)
         move = PottsMove(SAMPLERS[solver])
         calibrated: int | None = None
-        if solver == "sal:wolff":
+        if solver == "sal:wolff-heat-bath":
             # NB sal budgets a Wolff step at a sweep's visits and flips one cluster, so it spends a
             #    fraction of the budget; a pilot measures the visits a step costs, and the run takes
             #    as many steps as spend the budget the other samplers get. The pilot is timed too.
@@ -254,6 +272,38 @@ def _sample(solver: str, field: np.ndarray, start: np.ndarray, rng: np.random.Ge
         best = run_annealed(problem, budget, rng, move, schedule=cast(Any, schedule), steps=calibrated,
                             start=start).labelling  # fmt: skip
     return np.asarray(best, dtype=np.int64)
+
+
+def _wolff_glauber(graph: Any, field: np.ndarray, start: np.ndarray, rng: np.random.Generator,
+                   temperature: Any, steps: int) -> tuple[np.ndarray, int]:  # fmt: skip
+    """`WOLFF_GLAUBER` for `steps` steps on `temperature`: the lowest-energy labelling visited, and
+    the site visits spent, in sal's `step_visits` units."""
+    from sal.backend import Backend
+    from sal.sample.potts_mcmc.chains import step_visits
+    from sal.sample.potts_mcmc.moves import PottsMove
+    from sal.sample.potts_mcmc.sweeps import (
+        adjacency_lists,
+        sweep_at,
+        wolff_heat_bath_sweep,
+    )
+    from sal.sim.potts import energy
+
+    state = np.array(start, dtype=np.int64)
+    offsets, neighbours, couplings = graph.compressed_adjacency()
+    lists = adjacency_lists(offsets, neighbours, couplings)
+    sweep = sweep_at(field, offsets, neighbours, couplings, Backend.RUST)
+    per_sweep = step_visits(PottsMove.SINGLE_SITE, graph)
+    best, best_energy, spent = state.copy(), float(energy(graph, field, state)), 0
+    for k in range(steps):
+        beta = 1.0 / float(temperature(k))
+        size = wolff_heat_bath_sweep(state, field, offsets, neighbours, couplings, rng, None, graph,
+                                     beta=beta, lists=lists)  # fmt: skip
+        sweep(state, rng, beta)
+        spent += step_visits(PottsMove.WOLFF_HEAT_BATH, graph, size) + per_sweep
+        current = float(energy(graph, field, state))
+        if current < best_energy:
+            best, best_energy = state.copy(), current
+    return best, spent
 
 
 def solve(
