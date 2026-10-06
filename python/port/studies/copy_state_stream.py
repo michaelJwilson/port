@@ -27,8 +27,8 @@ next realization draws.
   same Baum-Welch.
 
 There is no bound: the gap is to the best log-likelihood any run reached on
-that realization. When a realization's runs are all in, it pickles
-`OUT_DIR/<stem>.pkl` and redraws `OUT_DIR/<stem>.png`
+that realization. When a realization's runs are all in, it writes
+`OUT_DIR/<stem>.record` (`port.studies.records`) and redraws `OUT_DIR/<stem>.png`
 (`port.studies.copy_state_plot`). Each worker warms up on a small drawn call
 first; seconds are per job with `--workers` jobs sharing the host.
 """
@@ -36,7 +36,6 @@ first; seconds are per job with `--workers` jobs sharing the host.
 from __future__ import annotations
 
 import argparse
-import pickle
 import time
 import traceback
 from concurrent.futures import Future, ProcessPoolExecutor
@@ -45,6 +44,7 @@ from typing import Any
 
 import numpy as np
 
+from port.studies import records
 from port.studies import stream as harness
 
 STARTS = (
@@ -265,7 +265,7 @@ def run(
     only: tuple[str, ...] = (),
     drop: tuple[str, ...] = (),
 ) -> Path:
-    """The stream after the `held_out` realizations; returns the pickle it keeps current.
+    """The stream after the `held_out` realizations; returns the record it keeps current.
 
     A start in `drop` gets no new job; its `reuse` rows are still kept, so a start can leave mid-stream
     and its realizations so far stay in the record.
@@ -279,9 +279,9 @@ def run(
     logging.disable(logging.INFO)
     out_dir.mkdir(parents=True, exist_ok=True)
     out = out_dir / (
-        f"copy_{manifest.stem}_r{first}.pkl"
+        f"copy_{manifest.stem}_r{first}{records.SUFFIX}"
         if first or merge
-        else f"copy_{manifest.stem}.pkl"
+        else f"copy_{manifest.stem}{records.SUFFIX}"
     )
     names = list(only) if only else list(starts()) if everything else list(STARTS)
     tuned: dict[str, dict[str, float]] = {}
@@ -294,7 +294,7 @@ def run(
     reused_rows: dict[tuple[int, str, int], dict[str, Any]] = {}
     reused_truth: dict[int, dict[str, Any]] = {}
     for path in reuse:
-        earlier = pickle.loads(path.read_bytes())
+        earlier = records.read(path)
         reused_truth |= earlier["problems"]
         for row in earlier["rows"]:
             if row["start"] in names and row["problem"] in earlier["complete"]:
@@ -317,7 +317,7 @@ def run(
         )
         record = {"manifest": str(manifest), "problems": held, "rows": rows, "done": shown, "complete": list(done),
                   "starts": names, "seeds": seeds, "tuned": tuned, "held_out": held_out}  # fmt: skip
-        out.write_bytes(pickle.dumps(record))
+        records.write(out, record)
         harness.redraw("copy-state-plot", out, merge)
         drawn[0] = time.perf_counter()
 

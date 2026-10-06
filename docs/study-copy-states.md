@@ -129,7 +129,7 @@ states, polished, sit 115 nats below the best and miss 2.9% of rows (median).
   (2026-10-05) sit within the interquartile range of the same starts' r8–r12 jobs.
 
 The key figure is committed as `docs/plots/paper/key_studies/557_copy-states.png` (`data 7cee0a0a ·
-code 67d8874`); `run_study --copy-state-plot OUT/<stem>.pkl` redraws it beside the pickle.
+code 67d8874`); `run_study --copy-state-plot OUT/<stem>.record` redraws it beside the record.
 
 ## Defects found, and what was done about them
 

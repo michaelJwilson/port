@@ -6,7 +6,7 @@ module of `port.studies` whose `main(argv)` takes the arguments after its
 flag with its own parser; `run_study --<study> --help` prints them.
 
     run_study --potts-stream MANIFEST OUT_DIR [--problems N] ...
-    run_study --copy-state-plot STREAM.pkl [EARLIER.pkl ...]
+    run_study --copy-state-plot STREAM.record [EARLIER.record ...]
     run_study --population run MANIFEST OUT ...
 """
 

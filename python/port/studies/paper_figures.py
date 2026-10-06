@@ -2,7 +2,7 @@
 
     run_study --paper-figures [--fixture dev_tree_1s_easy] [--draw DIR]
         [--out docs/plots/paper] [--truth-only]
-    run_study --paper-figures --solvers POTTS.pkl COPY.pkl [--out docs/plots/paper]
+    run_study --paper-figures --solvers POTTS.record COPY.record [--out docs/plots/paper]
 
 draws `sim/manifests/<fixture>.toml`'s r0 (or reads it from `--draw`, the
 directory holding `<fixture>/r0`), refuses it unless it hashes to the
@@ -16,7 +16,7 @@ manifest's `r0_hash`, and writes into `OUT`:
   them, beside a slide mocked from the planted labels (`port.sim.he_slide`);
 - `compare/`, figures 14-17: the run against the truth, through
   `port.qa.audit.score_sample`'s matching, `copy_confusion` and planted classes;
-- `solvers/`, figure 18 (`--solvers POTTS.pkl COPY.pkl`, no fixture run):
+- `solvers/`, figure 18 (`--solvers POTTS.record COPY.record`, no fixture run):
   `solver_combined.png`, the spatial solvers (`port.studies.potts_plot`) left
   and the copy-state starts (`port.studies.copy_state_plot`) right, each
   panel's key in its legend, no table (T- #660).
@@ -616,36 +616,33 @@ SOLVERS = "solver_combined.png"
 
 
 def solver_figure(potts: dict[str, Any], copies: dict[str, Any]) -> Any:
-    """18: the spatial solvers' gap panel left, centred on the truth, the copy-state starts' right, both untitled, each keyed in its legend, no table."""
+    """18: the spatial solvers' gap panel left, centred on the truth, the copy-state starts' right, both untitled, each keyed below its axes (`figures.key_below`), no table."""
     import matplotlib.pyplot as plt
 
     from port.studies import copy_state_plot, potts_plot
 
-    figure, (left, right) = plt.subplots(1, 2, figsize=(12.0, 5.6))
+    figure, (left, right) = plt.subplots(1, 2, figsize=(12.0, 6.4))
     potts_plot.draw(left, potts, key=True, centre=True)
     copy_state_plot.draw(right, copies, key=True)
     for ax, letter in ((left, "a"), (right, "b")):
-        # NB the stated face sets "Runtime [s]" taller than the studies' own figures do
-        ax.get_legend().set_bbox_to_anchor((0.5, -0.14))
         ax.text(-0.12, 1.04, f"({letter})", transform=ax.transAxes, fontsize=10,
                 ha="left", va="bottom", color=INK)  # fmt: skip
-    figure.subplots_adjust(left=0.07, right=0.98, top=0.92, bottom=0.36, wspace=0.22)
+    figure.subplots_adjust(left=0.07, right=0.98, top=0.93, bottom=0.44, wspace=0.22)
     return figure
 
 
 def solver_figures(potts: Path, copies: Path, out: Path, commit: str) -> Path:
     """Figure 18 into `out`, stamped with each record's data hash and the code."""
-    import pickle
-
     import matplotlib.pyplot as plt
 
     from port.extensions.figure_style import figure_font
+    from port.studies import records as stored
 
     out.mkdir(parents=True, exist_ok=True)
-    records = [pickle.loads(p.read_bytes()) for p in (potts, copies)]
+    records = [stored.read(p) for p in (potts, copies)]
     text = (
-        f"potts {provenance.digest(pickle.dumps(records[0]))}"
-        f" · copy states {provenance.digest(pickle.dumps(records[1]))}"
+        f"potts {stored.digest(records[0])}"
+        f" · copy states {stored.digest(records[1])}"
         f" · code {commit}"
     )
     with figure_font():
@@ -803,7 +800,7 @@ hashing to `{digest}`:
 draw panel (a) on a slide mocked from the planted labels (`port.sim.he_slide`):
 the fixture has no H&E image, and the run never reads the mock.
 `truth/phase.png` is flat: this r0 plants {switches} phase switches.
-`solvers/solver_combined.png` is not drawn from this fixture: `--solvers POTTS.pkl COPY.pkl`
+`solvers/solver_combined.png` is not drawn from this fixture: `--solvers POTTS.record COPY.record`
 draws it from a `port.studies.potts_stream` and a `port.studies.copy_state_stream` record,
 and its stamp names both records' data hashes.
 The genomic panels of `truth/truth_combined.png`, `truth/clones_genomic.png`,
@@ -836,7 +833,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out", type=Path, default=OUT)
     parser.add_argument("--truth-only", action="store_true", help="figures 1-8 alone")
     parser.add_argument("--solvers", nargs=2, type=Path, default=None,
-                        metavar=("POTTS.pkl", "COPY.pkl"),
+                        metavar=("POTTS.record", "COPY.record"),
                         help="figure 18 alone, from a potts_stream and a copy_state_stream record")  # fmt: skip
     arguments = parser.parse_args(argv)
     if arguments.solvers is not None:

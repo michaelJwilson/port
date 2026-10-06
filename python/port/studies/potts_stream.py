@@ -28,8 +28,8 @@ the pool solves it while the next one draws.
 
 Per problem it records the planted labelling's energy and TRW-S's lower bound,
 per run the energy and the labels unlike the planted ones, raw and after each
-polish. When a problem's runs are all in it pickles `OUT_DIR/<stem>.pkl` and
-redraws `OUT_DIR/<stem>.png` (`port.studies.potts_plot`).
+polish. When a problem's runs are all in it writes `OUT_DIR/<stem>.record`
+(`port.studies.records`: Parquet and JSON) and redraws `OUT_DIR/<stem>.png` (`port.studies.potts_plot`).
 
 Timing: the graph is built once per worker per problem, outside the timed
 solve; seconds are per job with `--workers` jobs sharing the host.
@@ -40,15 +40,16 @@ from __future__ import annotations
 import argparse
 import itertools
 import json
-import pickle
 import time
 import traceback
 from concurrent.futures import Future, ProcessPoolExecutor
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 
+from port.studies import records
 from port.studies import stream as harness
 
 DROPPED = frozenset({
@@ -92,10 +93,59 @@ T_END = 0.05
 """sal's `ANNEAL_END`: cold enough that the last sweeps are a descent."""
 
 GRID = tuple(
-    {"t_start": t, "sweeps": s}
-    for t, s in itertools.product((0.25, 0.5, 1.0, 2.0, 8.0, 32.0), (250, 1000, 4000))
+    {"t_start": t, "sweeps": s, "warm": w}
+    for t, s, w in itertools.product(
+        (0.25, 0.5, 1.0, 2.0, 8.0, 32.0), (250, 1000, 4000), (0.0, 0.1, 0.25)
+    )
 )
-"""Start temperature x sweep budget. sal's default is T = 2, 1,000 sweeps; the field's margins run to 18 nats."""
+"""Start temperature x sweep budget x warm-up. sal's default is T = 2, 1,000 sweeps, no warm-up; the
+field's margins run to 18 nats. `warm` is the fraction of the steps held at the start temperature
+before the exponential ramp (:class:`WarmSchedule`); a tempering ladder has no ramp and takes `warm` 0."""
+
+
+@dataclass(frozen=True)
+class _Warmed:
+    """A schedule held at `t_start` for its first `held` steps, then `ramp`."""
+
+    n_steps: int
+    t_start: float
+    held: int
+    ramp: Any
+
+    def __call__(self, step: int) -> float:
+        return self.t_start if step < self.held else float(self.ramp(step - self.held))
+
+
+@dataclass(frozen=True)
+class WarmSchedule:
+    """sal's exponential `ScheduleParams` with a warm-up: `warm` of the steps at `t_start` first.
+
+    The chain equilibrates at its hottest temperature before it cools, so the
+    ramp starts from a sample of that temperature rather than from the random
+    labelling. sal's `ScheduleParams` holds only at the end; `run_annealed`
+    calls `build(n_steps)` on whatever it is given.
+    """
+
+    t_start: float
+    t_end: float
+    warm: float = 0.0
+
+    def build(self, n_steps: int) -> _Warmed:
+        from sal.sample.schedule import ScheduleParams, ScheduleShape
+
+        held = min(int(self.warm * n_steps), n_steps - 1)
+        ramp = ScheduleParams(
+            ScheduleShape.EXPONENTIAL, self.t_start, self.t_end
+        ).build(n_steps - held)
+        return _Warmed(n_steps, self.t_start, held, ramp)
+
+
+def grid(solver: str) -> tuple[dict[str, float], ...]:
+    """`GRID` for `solver`: a tempering ladder's without the warm-up it has no use for."""
+    if solver in (TEMPERING, CLUSTER_TEMPERING):
+        return tuple(g for g in GRID if g["warm"] == 0.0)
+    return GRID
+
 
 TUNING_STARTS = 5
 TOLERANCE = 0.1
@@ -168,12 +218,12 @@ def _sample(solver: str, field: np.ndarray, start: np.ndarray, rng: np.random.Ge
     from sal.opt.budget import Budget
     from sal.sample.potts_mcmc.chains import cluster_tempering, parallel_tempering
     from sal.sample.potts_mcmc.moves import PottsMove
-    from sal.sample.schedule import ScheduleParams, ScheduleShape
     from sal.search.ground_state import Problem, run_annealed
 
     from port.sandbox.known_field.cluster import anneal
 
     t_start, sweeps = float(setting["t_start"]), int(setting["sweeps"])
+    schedule = WarmSchedule(t_start, T_END, float(setting.get("warm", 0.0)))
     steps = max(1, sweeps // REPLICAS)
     best: Any
     if solver == CLUSTER_TEMPERING:
@@ -184,16 +234,24 @@ def _sample(solver: str, field: np.ndarray, start: np.ndarray, rng: np.random.Ge
         ladder = tuple(float(t) for t in np.geomspace(t_start, T_END, REPLICAS))
         best = parallel_tempering(graph, field, ladder, rng, steps).best
     elif solver in FIELD_WEIGHTED:
-        temperature = ScheduleParams(ScheduleShape.EXPONENTIAL, t_start, T_END).build(
-            sweeps
+        temperature = schedule.build(sweeps)
+        temperatures = np.array([temperature(k) for k in range(sweeps)])
+        best, _ = anneal(
+            graph, field, start, rng, temperatures, *FIELD_WEIGHTED[solver]
         )
-        schedule = np.array([temperature(k) for k in range(sweeps)])
-        best, _ = anneal(graph, field, start, rng, schedule, *FIELD_WEIGHTED[solver])
     else:
         problem = Problem(graph, field, field.shape[1])
         budget = Budget(Cost.SITE_VISITS, sweeps * problem.visits_per_sweep)
-        best = run_annealed(problem, budget, rng, PottsMove(SAMPLERS[solver]),
-                            schedule=ScheduleParams(ScheduleShape.EXPONENTIAL, t_start, T_END),
+        move = PottsMove(SAMPLERS[solver])
+        calibrated: int | None = None
+        if solver == "sal:wolff":
+            # NB sal budgets a Wolff step at a sweep's visits and flips one cluster, so it spends a
+            #    fraction of the budget; a pilot measures the visits a step costs, and the run takes
+            #    as many steps as spend the budget the other samplers get. The pilot is timed too.
+            pilot = run_annealed(problem, budget, np.random.default_rng(rng.integers(2**63)), move,
+                                 schedule=cast(Any, schedule), start=start)  # fmt: skip
+            calibrated = max(1, round(sweeps * budget.size / max(pilot.spent, 1)))
+        best = run_annealed(problem, budget, rng, move, schedule=cast(Any, schedule), steps=calibrated,
                             start=start).labelling  # fmt: skip
     return np.asarray(best, dtype=np.int64)
 
@@ -275,17 +333,19 @@ def tune(
 
     bounds = {p.realization: _describe(p)["bound"] for p in held_out}
     futures = [pool.submit(solve, p, solver, seed, setting)
-               for p in held_out for solver in samplers for setting in GRID for seed in range(TUNING_STARTS)]  # fmt: skip
+               for p in held_out for solver in samplers for setting in grid(solver) for seed in range(TUNING_STARTS)]  # fmt: skip
     rows = [f.result() for f in futures]
     frame = pd.DataFrame([r for r in rows if "error" not in r])
     frame["gap"] = frame.energy - frame.problem.map(bounds)
-    frame["key"] = frame.setting.map(lambda s: (s["t_start"], s["sweeps"]))
+    frame["key"] = frame.setting.map(
+        lambda s: (s["t_start"], s["sweeps"], s.get("warm", 0.0))
+    )
     chosen: dict[str, dict[str, float]] = {}
     for solver, g in frame.groupby("solver"):
         key, best, by = harness.cheapest(g, TOLERANCE)
-        t_start, sweeps = key
-        chosen[str(solver)] = {"t_start": float(t_start), "sweeps": int(sweeps),
-                               "gap": float(best.gap), "default_gap": float(by.gap.get((2.0, 1000), np.nan))}  # fmt: skip
+        t_start, sweeps, warm = key
+        chosen[str(solver)] = {"t_start": float(t_start), "sweeps": int(sweeps), "warm": float(warm),
+                               "gap": float(best.gap), "default_gap": float(by.gap.get((2.0, 1000, 0.0), np.nan))}  # fmt: skip
         print(f"tuned {solver}: T0 {t_start}, {sweeps} sweeps, median gap {best.gap:.2f} nats "
               f"({best.seconds:.2f} s); sal's default {chosen[str(solver)]['default_gap']:.2f}", flush=True)  # fmt: skip
     return chosen, rows
@@ -303,13 +363,15 @@ def run(
     first: int = 0,
     merge: tuple[Path, ...] = (),
 ) -> Path:
-    """Tune on the first `held_out` realizations, then stream the next `n_problems`; returns the pickle it keeps current."""
+    """Tune on the first `held_out` realizations, then stream the next `n_problems`; returns the record it keeps current."""
     import port.studies.clone_label_arms as arms
     from port.sandbox.known_field import problems
 
     out_dir.mkdir(parents=True, exist_ok=True)
     out = out_dir / (
-        f"{manifest.stem}_r{first}.pkl" if only or first else f"{manifest.stem}.pkl"
+        f"{manifest.stem}_r{first}{records.SUFFIX}"
+        if only or first
+        else f"{manifest.stem}{records.SUFFIX}"
     )
     solvers = (
         list(only)
@@ -344,7 +406,7 @@ def run(
                 done.append(index)
                 record = {"manifest": str(manifest), "problems": held, "rows": rows, "done": done, "solvers": solvers,
                           "starts": starts, "tuned": tuned, "tuning": tuning_rows, "held_out": held_out}  # fmt: skip
-                out.write_bytes(pickle.dumps(record))
+                records.write(out, record)
                 harness.redraw("potts-plot", out, merge)
                 errors = sum("error" in r for r in rows)
                 print(f"[{time.perf_counter() - opened:6.0f}s] problem {index} solved; "
@@ -358,7 +420,10 @@ def run(
             pending[problem.realization] = len(solvers) * starts
             for solver in solvers:
                 setting = (
-                    {k: tuned[solver][k] for k in ("t_start", "sweeps")}
+                    {
+                        k: tuned[solver].get(k, 0.0)
+                        for k in ("t_start", "sweeps", "warm")
+                    }
                     if solver in tuned
                     else None
                 )
@@ -388,7 +453,7 @@ def retune(
         )
     settings = json.loads(SETTINGS.read_text())
     for solver, setting in chosen.items():
-        settings[solver] = {"t_start": setting["t_start"], "sweeps": setting["sweeps"],
+        settings[solver] = {"t_start": setting["t_start"], "sweeps": setting["sweeps"], "warm": setting["warm"],
                             "median_gap": round(setting["gap"], 3), "default_median_gap": round(setting["default_gap"], 3)}  # fmt: skip
     SETTINGS.write_text(json.dumps(settings, indent=2) + "\n")
 

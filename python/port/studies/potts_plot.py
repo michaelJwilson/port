@@ -1,7 +1,7 @@
 """#556: `port.studies.potts_stream`'s runs against runtime, each solver numbered as in the table beside it.
 
-`run_study --potts-plot STREAM.pkl` writes `<stem>.png` beside the
-pickle: energy less TRW-S's lower bound, on a log axis whose bottom tick, "0",
+`run_study --potts-plot STREAM.record` writes `<stem>.png` beside the
+record: energy less TRW-S's lower bound, on a log axis whose bottom tick, "0",
 holds every run at the bound, with a solid black line at the planted
 labelling's gap (its median over realizations) in a dark grey band (its 10-90%
 range).
@@ -17,7 +17,6 @@ ones, the median over the same runs as the points: raw / after ICM and the color
 
 from __future__ import annotations
 
-import pickle
 import sys
 from pathlib import Path
 from typing import Any
@@ -26,7 +25,8 @@ import numpy as np
 import pandas as pd
 
 from port.qa.statistics import bars, ranks
-from port.studies.figures import merged, stamp, tab20, tt
+from port.studies import records
+from port.studies.figures import PORT_MARK, key_below, merged, stamp, tab20, tt
 
 NAMES = {
     "field_argmax": "field-argmax", "anneal": "glauber", "tempering": "parallel tempering",
@@ -225,8 +225,10 @@ def draw(
 ) -> pd.DataFrame:
     """The gap panel on `ax`: each solver's runs against runtime, numbered as in `TABLE`; returns the runs drawn.
 
-    `key` adds each solver's number and name to the legend below the axes,
-    for a figure that draws no table beside it (`solver_combined`, T- #660).
+    `key` draws, for a figure with no table beside it (`solver_combined`, T- #660),
+    a key below the axes instead of the legend: the stages' markers, then each
+    solver unnumbered with its missed % after both polishes, `port`'s marked
+    and named in a footnote; every solver a circle.
     `centre` widens the gap axis, in decades, until the truth's median is its
     midpoint; no limit narrows, so no point is clipped.
     """
@@ -244,6 +246,11 @@ def draw(
             if i in record["done"]
         ]
     )
+    if key:
+        # NB in units of the truth's median gap over realizations: its line at 1, its band its spread
+        scale = float(np.median(truths))
+        d[["y", "py", "by"]] = (d[["y", "py", "by"]] / scale).clip(lower=FLOOR)
+        truths = truths / scale
     # NB the truth's own spread over realizations: its 10-90% range, as the points' bars
     ax.axhspan(
         float(np.quantile(truths, 0.1)),
@@ -259,7 +266,7 @@ def draw(
     crowded: list[tuple[float, float, str]] = []
     for solver, g in d.groupby("solver"):
         colour = tab20(NUMBER[str(solver)])
-        marker = "s" if solver.startswith("port:") else "o"
+        marker = "o" if key or not solver.startswith("port:") else "s"
         x, xe = bars(g.seconds)
         # NB each solver displaced by its own factor, up to 0.1 decades either side, so equal runtimes do not overlap
         spread = 10 ** (0.2 * (NUMBER[str(solver)] / max(NUMBER.values()) - 0.5))
@@ -326,6 +333,8 @@ def draw(
                 lw=0.8,
                 capsize=2.5,
             )
+        if key:
+            continue
         if abs(y - lowest) < FLOOR:
             crowded.append((x, y, solver))
         else:
@@ -372,9 +381,26 @@ def draw(
             lambda v, _: "0" if v == FLOOR else f"$10^{{{round(np.log10(v))}}}$"
         )
     )
-    ax.set_ylabel("Gap [Nats]")
+    ax.set_ylabel("Gap [arb. normalization]" if key else "Gap [Nats]")
     ax.set_xlabel("Runtime [s]")
 
+    if key:
+        polished = missed(d, n_spots(record))
+        ordered = sorted(set(d.solver), key=lambda s: NUMBER[s])
+        key_below(
+            ax,
+            f"{Path(record['manifest']).stem}: median of {n_problems} realization{'s' if n_problems > 1 else ''}",
+            [({"marker": "o", "color": "0.4", "markersize": 5}, "Initialized"),
+             ({"marker": "o", "color": "0.4", "markerfacecolor": "white", "markersize": 5}, "ICM polish"),
+             ({"marker": "D", "color": "0.4", "markerfacecolor": "white", "markersize": 4}, "Color merge"),
+             ({"line": True, "color": "k"}, "Truth")],
+            [(label(s) + (PORT_MARK if s.startswith("port:") else ""), tab20(NUMBER[s]), polished[s][1])
+             for s in ordered],
+            [f"{PORT_MARK} port: alpha-rust-fuse, sal's Rust alpha expansion fused with sal's ICM from the field's argmax, "
+             "then the small-clone merge (--sal's solver).",
+             "Percentages: spots unlike their planted clone, after ICM and the color merge."],
+        )  # fmt: skip
+        return d
     ax.plot([], [], "o", color="0.4", label="sal")
     ax.plot([], [], "s", color="0.4", label="port")
     ax.plot([], [], "o", color="0.4", mfc="white", label="ICM polish")
@@ -446,9 +472,9 @@ def table_tex() -> str:
 
 
 def main(argv: list[str] | None = None) -> None:
-    """`STREAM.pkl [EARLIER.pkl ...]`: the figure beside the first, over all of them."""
+    """`STREAM.record [EARLIER.record ...]`: the figure beside the first, over all of them."""
     paths = [Path(p) for p in (argv if argv is not None else sys.argv[1:])]
     stream = paths[0]
-    record = merged([pickle.loads(p.read_bytes()) for p in paths])
+    record = merged([records.read(p) for p in paths])
     print(figure(record, stream.with_suffix(".png")))
     stream.with_name("potts_solvers_table.tex").write_text(table_tex())

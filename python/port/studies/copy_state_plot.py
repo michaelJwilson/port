@@ -1,7 +1,7 @@
 """#540: `port.studies.copy_state_stream`'s runs against runtime, each start numbered as in the table beside it.
 
-`run_study --copy-state-plot STREAM.pkl` writes `<stem>.png` beside
-the pickle: each run's log-likelihood below the best any run reached on its
+`run_study --copy-state-plot STREAM.record` writes `<stem>.png` beside
+the record: each run's log-likelihood below the best any run reached on its
 realization -- there is no bound for an HMM's likelihood -- on a log axis whose
 bottom tick, "0", holds the runs at that best. A filled marker is the start's
 own states, decoded by the HMM without fitting; the open marker after the
@@ -17,7 +17,6 @@ states, the median over the same runs: at the start / after Baum-Welch.
 
 from __future__ import annotations
 
-import pickle
 import sys
 from pathlib import Path
 from typing import Any
@@ -26,7 +25,8 @@ import numpy as np
 import pandas as pd
 
 from port.qa.statistics import bars, ranks
-from port.studies.figures import merged, stamp, tab20, tt
+from port.studies import records
+from port.studies.figures import PORT_MARK, key_below, merged, stamp, tab20, tt
 
 TABLE = (
     ("CalicoST, port", (
@@ -67,6 +67,9 @@ COLOUR = {name: tab20(k) for name, k in NUMBER.items()}
 
 DODGE = 1.12
 FLOOR = 1e-2
+
+RUNTIME_FLOOR = 1e-1
+"""With `key`, runtimes below it are drawn at it, a left arrow marking the bound [s]."""
 """The "0" tick: runs within `FLOOR` nats of the best."""
 
 
@@ -220,12 +223,21 @@ def _table(
 def draw(ax: Any, record: dict[str, Any], key: bool = False) -> pd.DataFrame:
     """The gap panel on `ax`: each start's runs against runtime, numbered as in `TABLE`; returns the runs drawn.
 
-    `key` adds each start's number and name to the legend below the axes,
-    for a figure that draws no table beside it (`solver_combined`, T- #660).
+    `key` draws, for a figure with no table beside it (`solver_combined`, T- #660),
+    a key below the axes instead of the legend: the stages' markers, then each
+    start unnumbered with its missed % after Baum-Welch, `port`'s marked and
+    named in a footnote.
     """
     from matplotlib.ticker import FixedLocator, FuncFormatter
 
     d, truth = frame(record)
+    if key:
+        # NB in units of the truth's median gap over realizations: its line at 1, its band its spread
+        scale = float(np.median(truth))
+        d = d.assign(
+            y=(d.y / scale).clip(lower=FLOOR), by=(d.by / scale).clip(lower=FLOOR)
+        )
+        truth = truth / scale
     # NB every realization with rows counts, reused ones included; one still running is also named in progress
     n_problems = int(d.problem.nunique())
     n_partial = len(set(d.problem) - set(record.get("complete", record["done"])))
@@ -245,7 +257,8 @@ def draw(ax: Any, record: dict[str, Any], key: bool = False) -> pd.DataFrame:
         if name not in NUMBER:
             continue
         colour = COLOUR[str(name)]
-        x, xe = bars(g.seconds)
+        limited = key and float(g.seconds.median()) < RUNTIME_FLOOR
+        x, xe = bars(g.seconds.clip(lower=RUNTIME_FLOOR) if key else g.seconds)
         # NB each start displaced by its own factor, up to 0.1 decades either side, so equal runtimes do not overlap
         spread = 10 ** (0.2 * (NUMBER[str(name)] / max(NUMBER.values()) - 0.5))
         x *= spread
@@ -278,12 +291,16 @@ def draw(ax: Any, record: dict[str, Any], key: bool = False) -> pd.DataFrame:
             lw=0.8,
             capsize=2.5,
         )
+        if limited:
+            # NB an upper limit: the median start ran in under RUNTIME_FLOOR
+            ax.annotate("", (x / 2.2, y), (x, y), arrowprops={"arrowstyle": "-|>", "color": colour, "lw": 1.0,
+                                                               "shrinkA": 4, "shrinkB": 0})  # fmt: skip
         points.append((x, y, str(name)))
         rightmost = max(rightmost, bx + bxe[1][0])
 
     # NB numbers placed left of their points, stacked upward in 0.25-decade steps where they would overlap
     placed: list[tuple[float, float]] = []
-    for x, y, name in sorted(points, key=lambda p: (p[0], p[1])):
+    for x, y, name in [] if key else sorted(points, key=lambda p: (p[0], p[1])):
         lx, ly = np.log10(x), np.log10(y)
         while any(abs(lx - px) < 0.3 and abs(ly - py) < 0.2 for px, py in placed):
             ly += 0.25
@@ -295,7 +312,7 @@ def draw(ax: Any, record: dict[str, Any], key: bool = False) -> pd.DataFrame:
     ax.set_xscale("log")
     ax.set_yscale("log")
     ax.set_xlim(
-        float(d.seconds.quantile(0.02)) * 0.5,
+        RUNTIME_FLOOR / 3 if key else float(d.seconds.quantile(0.02)) * 0.5,
         rightmost * 1.3,
     )
     # NB one decade below the truth's median gap, three above
@@ -307,7 +324,24 @@ def draw(ax: Any, record: dict[str, Any], key: bool = False) -> pd.DataFrame:
         )
     )
     ax.set_xlabel("Runtime [s]")
-    ax.set_ylabel("Gap [Nats]")
+    ax.set_ylabel("Gap [arb. normalization]" if key else "Gap [Nats]")
+    if key:
+        after = d.groupby("start").missed_pct.median()
+        ordered = sorted(set(d.start) & set(NUMBER), key=lambda n: NUMBER[n])
+        key_below(
+            ax,
+            f"{Path(record['manifest']).stem}: median of {n_problems} realization{'s' if n_problems != 1 else ''}"
+            + (f" ({n_partial} in progress)" if n_partial else ""),
+            [({"marker": "o", "color": "0.4", "markersize": 5}, "Initialized"),
+             ({"marker": "o", "color": "0.4", "markerfacecolor": "white", "markersize": 5}, "Baum-Welch"),
+             ({"line": True, "color": "k"}, "Truth"),
+             ({"marker": r"$\leftarrow$", "color": "0.4", "markersize": 9}, r"$\leq 10^{-1}$ s")],
+            [(LABEL.get(n, n) + (PORT_MARK if SOURCE[n] == "port" else ""), COLOUR[n], float(after[n]))
+             for n in ordered],
+            [f"{PORT_MARK} port: lattice, the integer (A, B) lattice's states, chosen by the rows.",
+             "Percentages: rows (clone x bin) not in their planted state after Baum-Welch, states matched 1-1."],
+        )  # fmt: skip
+        return d
     ax.plot([], [], "o", color="0.4", label="Start")
     ax.plot([], [], "o", color="0.4", mfc="white", label="Baum-Welch")
     ax.plot([], [], color="k", lw=0.9, label="Truth")
@@ -363,7 +397,7 @@ def figure(record: dict[str, Any], out: Path) -> Path:
 
 
 def main(argv: list[str] | None = None) -> None:
-    """`STREAM.pkl [EARLIER.pkl ...]`: the figure beside the first, over all of them."""
+    """`STREAM.record [EARLIER.record ...]`: the figure beside the first, over all of them."""
     paths = [Path(p) for p in (argv if argv is not None else sys.argv[1:])]
-    record = merged([pickle.loads(p.read_bytes()) for p in paths])
+    record = merged([records.read(p) for p in paths])
     print(figure(record, paths[0].with_suffix(".png")))
