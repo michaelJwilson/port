@@ -25,7 +25,7 @@ rerun, so panel (a) of the rerun's figure is J = 1 alone, over the 193 base memb
   numbers below are the original's.
 
 The figure, sensitivity and false positive rate, is committed as
-`plots/studies/population_recovery.png`; `run_study --population
+`plots/paper/key_studies/population_recovery.png`; `run_study --population
 report --out DIR` redraws it into `DIR/figures/`.
 
 (a) Clone sensitivity against log10 clone UMIs, per J. (b) CNA sensitivity against length at J = 1, per copy-state class. (c) The false positive rate of true-(1,1) segments against the SNP-covering UMIs they hold, at J = 1.

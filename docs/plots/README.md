@@ -1,13 +1,13 @@
 # Figures
 
-**No PNG is committed here outside the two exceptions below; each figure
-is regenerated on demand by the command below that draws it.** Every
+**No PNG is committed here outside `paper/`; each figure is regenerated on
+demand by the command below that draws it.** Every
 generator writes to `.cache/plots/` by default (`port.qa.provenance.PLOTS`),
 untracked; the paths below are relative to it. `lattice/`, `sim/` and
 `sim_qa/` exist only there now.
 `tests/test_ci_entry.py` guards that `docs/` tracks no PNG outside
-`docs/plots/paper/`, T- #624's paper set, and
-`studies/population_recovery.png`, whose runs survive only as
+`docs/plots/paper/`, T- #624's paper set, which includes the population
+study's `key_studies/population_recovery.png`; its runs survive only as
 `studies/population_records.jsonl.gz`. The figures committed before are in
 history: `git show ba34716:docs/plots/<path>.png`.
 
@@ -22,7 +22,7 @@ history: `git show ba34716:docs/plots/<path>.png`.
 | `studies/potts_*.png` | `run_study --potts-plot STREAM.record` (`docs/study-field-strength.md`) |
 | `studies/copy_states_*.png` | `run_study --copy-state-plot STREAM.record` (`docs/study-copy-states.md`) |
 | `studies/copy_state_starts.png`, `studies/clone_label_study.png` | `run_study --copy-start-notebook RESULTS.pkl`, `run_study --clone-label-notebook RESULTS.pkl` |
-| `studies/population_recovery.png` | `run_study --population report --out DIR` |
+| `paper/key_studies/population_recovery.png` | `run_study --population report --out DIR` |
 
 **CI draws the dev instance's and the realization figures on every pull
 request and uploads them** as a workflow artifact
@@ -34,7 +34,7 @@ metadata, and the PDFs stay in the run directory.
 
 `studies/` keeps the population study's outputs
 (`population_records.jsonl.gz`, `population_summary.json`,
-`population_tables.md`, `population_recovery.png`) and
+`population_tables.md`; the figure is under `paper/key_studies/`) and
 `potts_solvers_table.tex`.
 
 ## The dev instance
