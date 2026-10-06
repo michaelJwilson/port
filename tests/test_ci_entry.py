@@ -81,7 +81,7 @@ def test_generated_files_merge_through_the_badges_driver() -> None:
 PAPER_FIGURES = "docs/plots/paper/"
 """The one tree under `docs/` allowed to track a PNG: T- #624's paper set."""
 
-POPULATION_FIGURE = "docs/plots/studies/population_recovery.png"
+POPULATION_FIGURE = "docs/studies/population_recovery.png"
 """Study result figure, regenerable only from population_records.jsonl.gz.
 
 #544's 679 pipeline runs are what drew it; `run_study --population

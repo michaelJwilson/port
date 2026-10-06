@@ -25,7 +25,7 @@ rerun, so panel (a) of the rerun's figure is J = 1 alone, over the 193 base memb
   numbers below are the original's.
 
 The figure, sensitivity and false positive rate, is committed as
-`plots/studies/population_recovery.png`; `run_study --population
+`studies/population_recovery.png`; `run_study --population
 report --out DIR` redraws it into `DIR/figures/`.
 
 (a) Clone sensitivity against log10 clone UMIs, per J. (b) CNA sensitivity against length at J = 1, per copy-state class. (c) The false positive rate of true-(1,1) segments against the SNP-covering UMIs they hold, at J = 1.
@@ -124,8 +124,8 @@ Whether the (1,1) calls come from the HMM's states or from the integer-copy deco
 
 ## Data and reproduction
 
-- `plots/studies/population_records.jsonl.gz`: every record, one JSON per run.
-- `plots/studies/population_summary.json`, `population_tables.md`, and the figure as `.png` (the `.pdf` is no longer committed).
+- `studies/population_records.jsonl.gz`: every record, one JSON per run.
+- `studies/population_summary.json`, `population_tables.md`, and the figure as `.png` (the `.pdf` is no longer committed).
 
 ```
 run_study --population run --seeds 0:80 --J 0.8,1.0,1.4,2.8 --workers 4 --out DIR

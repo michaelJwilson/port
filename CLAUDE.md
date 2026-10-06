@@ -309,7 +309,7 @@ a test.
     no timestamp, so a figure changes only when its pixels do. CI draws the
     figures and uploads them; the repository commits only the curated set
     under `docs/plots/paper/`, and a guard holds the rest out.
-    `docs/plots/studies/population_recovery.png` is the one other exception:
+    `docs/studies/population_recovery.png` is the one other exception:
     its pipeline runs survive only as `population_records.jsonl.gz`.
     A key study (label `key_study`) commits its key figure under
     `docs/plots/paper/key_studies/`, redrawn when the study is rerun.
