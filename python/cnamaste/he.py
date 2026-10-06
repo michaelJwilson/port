@@ -3,6 +3,7 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 import polars as pl
 from scipy.spatial import cKDTree
 
@@ -93,7 +94,8 @@ def get_he_image(spaceranger_dir, res="hires", pos=None, num_labels=4):
 
     if pos is not None:
         # NB limited to in_tissue=True
-        pos = pl.from_pandas(pos)
+        # NB #113 item 1: column by column, as `pl.from_pandas` needs `pyarrow`.
+        pos = pl.DataFrame({column: pos[column].to_list() for column in pos.columns})
 
         columns = ("red", "green", "blue")
         tissue_frame = join_tables_xy(pos, tissue_frame, columns)
@@ -122,4 +124,6 @@ def get_he_image(spaceranger_dir, res="hires", pos=None, num_labels=4):
 
     logger.info(f"Merged with h&e with result:\n{tissue_frame}")
 
-    return tissue_frame.to_pandas()
+    # NB #113 item 1, T- #670 PR2: polars' `to_pandas` needs `pyarrow`, which neither
+    #    `cnaster` nor `cnamaste` declares; a dict of columns does not.
+    return pd.DataFrame(tissue_frame.to_dict(as_series=False))

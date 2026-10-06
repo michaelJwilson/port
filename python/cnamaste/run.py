@@ -52,7 +52,8 @@ from cnamaste.spatial import (
     initialize_rdr_clone_refininement,
     construct_multislice_lattice_adjacency,
 )
-from cnamaste.utils import configure_output_dir, pause, write_fig, write_tsv
+from cnamaste.utils import configure_output_dir, discard_fig, pause, write_tsv
+from cnamaste.utils import write_fig as _write_fig
 from cnamaste.annotation import load_clone_labels, load_clone_ranges, assign_clone_ranges
 
 # from cnaster.sim import load_tables_to_matrices
@@ -70,7 +71,14 @@ def set_numba_seed(value):
 logger = get_logger(__name__, start_time=start_time)
 
 
-def run_cnaster(config_path, over_rides=None):
+def run_cnaster(config_path, over_rides=None, *, plots=True):
+    """`cnaster`'s `run_cnaster`, under `cnamaste`.
+
+    `plots=False` builds every figure and writes none (#403, T- #670 PR2):
+    `port`'s `run_cnaster_port --no-plots`, as `run_cnamaste --no-plots`.
+    """
+    write_fig = _write_fig if plots else discard_fig
+
     logger.runtime_phase = "prep."
     logger.info("----  Welcome to cna-maste  ----")
 
@@ -1472,7 +1480,13 @@ def run_cnaster(config_path, over_rides=None):
                     )
                 )
 
-            df_genes = df_gene_snp[df_gene_snp.is_interval]
+            # NB #105: a bin `normal_baf_bin_filter` removed leaves its genes'
+            #    `bin_id` null, which `cnaster` casts to INT_MIN and indexes
+            #    with. A gene with no bin has no copy number, as every other
+            #    consumer of `bin_id` already reads it.
+            df_genes = df_gene_snp[
+                df_gene_snp.is_interval & df_gene_snp.bin_id.notnull()
+            ]
             bin_ids = df_genes["bin_id"].to_numpy(dtype=int)
 
             clone_copies = best_integer_copies[res_combine["pred_cnv"][:, s]]
@@ -1736,9 +1750,15 @@ def main():
         help="Override configuration keys with dot notation, e.g. -o paths.sample_sheet=/path/to/sheet.csv",
     )
 
+    parser.add_argument(
+        "--no-plots",
+        action="store_true",
+        help="build every figure and write none (#403)",
+    )
+
     args = parser.parse_args()
 
-    run_cnaster(args.config_path, over_rides=args.over_rides)
+    run_cnaster(args.config_path, over_rides=args.over_rides, plots=not args.no_plots)
 
 
 if __name__ == "__main__":

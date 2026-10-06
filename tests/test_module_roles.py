@@ -21,8 +21,8 @@ below are that rule made checkable, each against the import graph
 modules, and no pipeline entry point may.
 
 `cnamaste` (T- #670) ships on its own and has its own scope at the end of
-this file: `entry` and `copy` roles, reached from `run_cnamaste`, importing
-neither `cnaster` nor `port`.
+this file: `copy`, `ported` and `added` roles, reached from `run_cnamaste`,
+importing neither `cnaster` nor `port`.
 
 A module reached by nothing lives in `sandbox/`, mirroring the tree it left
 (`sandbox/patch/...`, `sandbox/extensions/...`), so graduating is a move
@@ -355,21 +355,24 @@ def test_no_live_module_imports_the_sandbox() -> None:
 # --- `cnamaste`: its own scope (T- #670) -----------------------------------
 #
 # `cnamaste` ships on its own, so it is not a `port` module and takes none of
-# `port`'s roles. Two of its own: `entry`, what its build declares as a
-# console script; `copy`, a `cnaster` module copied from the locked pin with
-# only its live `cnaster` imports rewritten. A later T- #670 PR that changes a
-# module gives it a role saying how it departs.
+# `port`'s roles. Three of its own: `copy`, a `cnaster` module copied from the
+# locked pin with only its live `cnaster` imports rewritten; `ported`, a
+# `cnaster` module into which a T- #670 PR moved `port`'s replacements, each
+# departure stated where it is made; `added`, `port` code with no `cnaster`
+# module, moved in for a ported one. Which modules are console scripts is
+# `CNAMASTE_ENTRIES`'.
 
-CnamasteRole = Literal["entry", "copy"]
+CnamasteRole = Literal["copy", "ported", "added"]
 
 CNAMASTE_ROLES: dict[str, CnamasteRole] = {
-    "cnamaste.run": "entry",
+    "cnamaste.run": "ported",
     "cnamaste.annotation": "copy",
+    "cnamaste.clone_paths": "added",
     "cnamaste.cna_hmrf_result": "copy",
     "cnamaste.config": "copy",
     "cnamaste.count_encoder": "copy",
     "cnamaste.filter": "copy",
-    "cnamaste.he": "copy",
+    "cnamaste.he": "ported",
     "cnamaste.hmm": "copy",
     "cnamaste.hmm_emission": "copy",
     "cnamaste.hmm_initialize": "copy",
@@ -386,15 +389,15 @@ CNAMASTE_ROLES: dict[str, CnamasteRole] = {
     "cnamaste.omics": "copy",
     "cnamaste.palette": "copy",
     "cnamaste.phasing": "copy",
-    "cnamaste.plot_copy_number_profile": "copy",
-    "cnamaste.plot_genomic": "copy",
-    "cnamaste.plotting": "copy",
+    "cnamaste.plot_copy_number_profile": "ported",
+    "cnamaste.plot_genomic": "ported",
+    "cnamaste.plotting": "ported",
     "cnamaste.pseudobulk": "copy",
     "cnamaste.recomb": "copy",
     "cnamaste.reference": "copy",
     "cnamaste.spatial": "copy",
     "cnamaste.spatio_genomic_counts": "copy",
-    "cnamaste.utils": "copy",
+    "cnamaste.utils": "ported",
 }
 """Every `cnamaste` module that is not its package `__init__`, by role."""
 
@@ -434,6 +437,18 @@ def test_every_cnamaste_module_has_a_role() -> None:
     )
 
 
+def _entries() -> set[str]:
+    return {value.partition(":")[0] for value in CNAMASTE_ENTRIES.values()}
+
+
+def _pinned(stem: str) -> Path:
+    """The installed `cnaster` module `cnamaste.<stem>` was copied from."""
+    import cnaster
+
+    installed = Path(next(iter(cnaster.__path__)))
+    return installed / ("scripts/run_cnaster.py" if stem == "run" else f"{stem}.py")
+
+
 @pytest.mark.infra
 def test_the_cnamaste_entries_are_what_its_build_declares() -> None:
     """`run_cnamaste` is declared by `cnamaste`'s own build, and nowhere else."""
@@ -444,15 +459,13 @@ def test_the_cnamaste_entries_are_what_its_build_declares() -> None:
 
     assert own["project"]["scripts"] == CNAMASTE_ENTRIES
     assert not set(CNAMASTE_ENTRIES) & set(port["project"]["scripts"])
-    assert {v.partition(":")[0] for v in CNAMASTE_ENTRIES.values()} == _cnamaste_by(
-        "entry"
-    )
+    assert _entries() <= set(CNAMASTE_ROLES)
 
 
 @pytest.mark.infra
 def test_every_cnamaste_module_is_reached_from_its_entry() -> None:
     """The copy is the forward path: nothing in it that `run_cnamaste` cannot reach."""
-    live = reached(_cnamaste_by("entry"))
+    live = reached(_entries())
 
     assert set(CNAMASTE_ROLES) <= live, sorted(set(CNAMASTE_ROLES) - live)
 
@@ -474,24 +487,84 @@ def test_cnamaste_imports_neither_cnaster_nor_port() -> None:
 def test_every_copy_is_the_pinned_cnaster_module_with_its_imports_rewritten() -> None:
     """A `copy` reads, byte for byte, as the installed `cnaster` module at the
     pin with each live `from cnaster.` / `import cnaster.` naming `cnamaste`.
-    The entry is `cnaster/scripts/run_cnaster.py`'s copy."""
+    `cnamaste.run` is `cnaster/scripts/run_cnaster.py`'s."""
     import json
     from importlib.metadata import distribution
-
-    import cnaster
 
     pinned = json.loads(distribution("cnaster").read_text("direct_url.json") or "{}")
     assert pinned["vcs_info"]["commit_id"].startswith(PIN)
 
-    installed = Path(next(iter(cnaster.__path__)))
-    differ = []
-    for name in {*_cnamaste_by("copy"), *_cnamaste_by("entry")}:
-        stem = name.removeprefix("cnamaste.")
-        source = installed / (
-            "scripts/run_cnaster.py" if stem == "run" else f"{stem}.py"
+    differ = [
+        name
+        for name in _cnamaste_by("copy")
+        if _LIVE_CNASTER_IMPORT.sub(
+            r"\1\2 cnamaste\3", _pinned(name.removeprefix("cnamaste.")).read_text()
         )
-        rewritten = _LIVE_CNASTER_IMPORT.sub(r"\1\2 cnamaste\3", source.read_text())
-        if rewritten != modules("cnamaste")[name].read_text():
-            differ.append(name)
+        != modules("cnamaste")[name].read_text()
+    ]
 
     assert differ == []
+
+
+@pytest.mark.infra
+def test_a_ported_module_departs_and_says_where_an_added_one_has_no_cnaster_module() -> (
+    None
+):
+    """A `ported` module is not its pinned copy, and names the T- #670 PR that
+    changed it; an `added` one has no `cnaster` module of its name."""
+    silent = []
+    for name in _cnamaste_by("ported"):
+        stem = name.removeprefix("cnamaste.")
+        text = modules("cnamaste")[name].read_text()
+        copied = _LIVE_CNASTER_IMPORT.sub(r"\1\2 cnamaste\3", _pinned(stem).read_text())
+
+        if text == copied or not re.search(r"T- #670 PR\d", text):
+            silent.append(name)
+
+    assert silent == []
+    assert [
+        name
+        for name in _cnamaste_by("added")
+        if _pinned(name.removeprefix("cnamaste.")).exists()
+    ] == []
+
+
+CNAMASTE_UNLINTED = {
+    "annotation", "cna_hmrf_result", "config", "count_encoder", "filter", "he",
+    "hmm", "hmm_emission", "hmm_initialize", "hmm_nophasing", "hmm_phased",
+    "hmm_utils", "hmrf", "hmrf_utils", "icm", "integer_copy", "io", "logger",
+    "normal_spot", "omics", "palette", "phasing", "plot_genomic", "plotting",
+    "pseudobulk", "recomb", "reference", "run", "spatial",
+    "spatio_genomic_counts", "utils",
+}  # fmt: skip
+"""`cnamaste` modules outside `ruff` and `mypy --strict`: a declared list that
+only shrinks. Every `copy` is here, since linting it would break its byte
+pin; a `ported` module leaves when the whole of it is `port`'s code, and an
+`added` one is never here."""
+
+
+@pytest.mark.infra
+def test_the_unlinted_cnamaste_modules_are_the_declared_list() -> None:
+    """`pyproject.toml`'s `ruff` and `mypy` exclusions name `CNAMASTE_UNLINTED`."""
+    import tomllib
+
+    config = tomllib.loads((ROOT / "pyproject.toml").read_text())
+    ruff = {
+        Path(path).stem
+        for path in config["tool"]["ruff"]["extend-exclude"]
+        if path.startswith("python/cnamaste/")
+    }
+    (mypy,) = [
+        pattern
+        for pattern in config["tool"]["mypy"]["exclude"]
+        if "cnamaste" in pattern
+    ]
+    found = {
+        name.removeprefix("cnamaste.")
+        for name, path in modules("cnamaste").items()
+        if re.search(mypy, path.relative_to(ROOT).as_posix())
+    }
+
+    assert ruff == found == CNAMASTE_UNLINTED
+    assert set(_cnamaste_by("copy")) <= {f"cnamaste.{m}" for m in CNAMASTE_UNLINTED}
+    assert not {f"cnamaste.{m}" for m in CNAMASTE_UNLINTED} & _cnamaste_by("added")

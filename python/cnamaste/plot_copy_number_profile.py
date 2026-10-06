@@ -1,16 +1,99 @@
+"""`cnaster.plot_copy_number_profile`, one row per clone and aberrations hatched.
+
+`cnaster` draws each clone as two half-rows, A above B, and marks a segment
+whose alleles are swapped in another clone with chevrons. At a text column's
+width the half-rows are 0.1 in tall and the chevrons fill them.
+
+**One row per clone.** A normal segment, `(1, 1)`, is the faint normal
+colour as before. Any other segment is filled with A's colour and hatched
+with B's -- A first, each as its box on `plot_ascn_legend`'s colour bar shows
+it (`swatch`) -- so both alleles read at the row's full height.
+
+**The hatch orientation is the mirror.** Hatching rises to the right where
+A >= B and to the left where A < B, so a pair of segments whose alleles are
+swapped between clones -- what the chevrons marked -- hatch in opposite
+directions, and every segment carries its orientation rather than only
+mirrored ones. The legend shows the two orientations, unnumbered, under
+"Mirror": what it keys is that a pair hatches opposite ways.
+
+**The hatch is drawn, not a matplotlib hatch.** A hatch pattern is fixed at
+45 degrees and a spacing matplotlib chooses. Here each aberrant segment
+carries a `LineCollection` of B's colour clipped to it, at `HATCH_ANGLE`
+from the horizontal and `HATCH_SPACING` apart, both in inches on the page,
+so the lines keep their angle and density whatever the axis's data scale.
+
+`port.patch.plot_copy_number_profile` (#309, #339), moved in by T- #670 PR2
+in place of `cnaster`'s module, whose page it changes by design;
+`tests/test_cnamaste_figures.py` pins it against `port`'s. `get_intervals`
+is `cnaster`'s.
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
 import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+from matplotlib.collections import LineCollection
 from matplotlib.patches import Rectangle
+from matplotlib.transforms import IdentityTransform
 
 from cnamaste.palette import get_full_palette
 from cnamaste.utils import cast_clone_label
 
-NORMAL_OPACITY = 0.25
+__all__ = [
+    "HATCH",
+    "HATCH_ANGLE",
+    "HATCH_SPACING",
+    "get_intervals",
+    "hatch_of",
+    "plot_ascn_legend",
+    "plot_copy_number_profile",
+    "swatch",
+]
+
+COPY_COLOURS = {
+    2: "#feb24c",
+    3: "#fd8d3c",
+    4: "#fc4e2a",
+    5: "#e31a1c",
+    6: "#bd0026",
+    "7+": "#660013",
+}
+"""Copies 2 to 7+ on `chisel_single`'s scale, its `khaki` 2 dropped: each
+moves one step redder along ColorBrewer's YlOrRd, which adds a red (#339)."""
+
+HATCH = {1: 1, -1: -1}
+"""Rising to the right where A >= B (`h=0`), to the left where A < B (`h=1`)."""
+
+HATCH_ANGLE = 35.0
+"""Degrees from the horizontal: flatter than a 45-degree hatch, so a row a
+tenth of an inch tall carries several lines, and steep enough that the two
+phases cross at 70 degrees and read apart."""
+
+HATCH_SPACING = 0.10
+"""Inches between lines, along the row: wide enough that each stripe, A's
+and B's, reads at print size."""
+
+HATCH_LINEWIDTH = 72.0 * HATCH_SPACING * float(np.sin(np.radians(HATCH_ANGLE))) / 2.0
+"""Points: half the lines' period measured across them, `HATCH_SPACING`
+along the row times the sine of `HATCH_ANGLE`, so A's stripes and B's are the
+same width (2.065 pt at 0.10 in and 35 degrees)."""
+
+NORMAL_OPACITY = 0.35
+"""Copy 1's opacity over white, for a normal `(1, 1)` segment and a hatch's
+1: over `cnaster`'s 0.25, so it reads as blue rather than as the page (#339
+had halved it to 0.125, which read as white), and still paler than copy 2's
+orange, so the aberrations are what the eye finds."""
+
+LINEWIDTH = 0.5
+"""Points, for each row's outline and the chromosome boundaries: what
+`plot_clones_genomic` draws its boundaries at."""
 
 
-def get_intervals(pred_cnv):
+def get_intervals(pred_cnv: Any) -> tuple[list[tuple[int, int]], list[Any]]:
     """
     Find contiguous intervals in the state label array (pred_cnv)
     where the copy number state is the same. Vectorized for performance.
@@ -31,332 +114,345 @@ def get_intervals(pred_cnv):
     return intervals, labs
 
 
-def _draw_mirror_chevrons(
-    ax: plt.Axes, x0: float, y_b: float, w: float, h_sub: float, direction: int
-):
-    """
-    Mirrored events, e.g. (A, B) -> (B, A) between clones on the same segment,
-    shaded by tight, vertical, mirrored chevrons according to the mirror direction.
-    """
-    n_chev = 2
-    chev_unit = w * 0.48
-    gap = w * 0.04
-    total_w = n_chev * chev_unit + (n_chev - 1) * gap
-    x_start = x0 + (w - total_w) / 2.0
-
-    y_high = y_b + 2 * h_sub
-    y_low = y_b
-
-    for i in range(n_chev):
-        cx_left = x_start + i * (chev_unit + gap)
-        cx_right = cx_left + chev_unit
-        cx_mid = (cx_left + cx_right) / 2.0
-
-        xs = [cx_left, cx_mid, cx_right]
-        ys = [y_low, y_high, y_low] if direction > 0 else [y_high, y_low, y_high]
-
-        ax.plot(
-            xs,
-            ys,
-            color="black",
-            linewidth=1.2,
-            alpha=0.5,
-            solid_capstyle="round",
-        )
-
-
-def plot_ascn_legend(
-    ax: plt.Axes,
-    box_w: float = 0.8,
-    box_h: float = 0.8,
-    tick_len: float = 0.08,
-    label_fontsize: int = 10,
-    palette_name: str = "chisel_single",
-):
-    """Draw a horizontal color bar legend for single-allele cna values."""
+def _palette(palette_name: str) -> tuple[dict[Any, Any], Any]:
+    """`cnaster`'s palette, `COPY_COLOURS` over it for `chisel_single`."""
     state_style, ordered_acn = get_full_palette(palette_name)
-    boxes = list(ordered_acn)
 
-    ax.axis("off")
+    if palette_name == "chisel_single":
+        state_style = {**state_style, **COPY_COLOURS}
 
-    swatch_w = box_w * 0.5
-    ax.add_patch(
-        Rectangle((0.0, 0.0), swatch_w, box_h, facecolor="white", edgecolor="black")
+    return state_style, ordered_acn
+
+
+def swatch(style: Any, copies: Any) -> tuple[float, float, float]:
+    """Copy number `copies`'s colour as its legend box shows it, opaque.
+
+    Copy 1 is `cnaster`'s colour at `NORMAL_OPACITY` over white, so a fill or
+    hatch line of it is the colour of its box rather than the full colour the
+    box fades: lines of a translucent colour would vanish into the fill.
+    """
+    rgb = np.asarray(
+        mcolors.to_rgb(style.get(copies, style.get("default", "lightgray")))
     )
+    alpha = NORMAL_OPACITY if copies == 1 else 1.0
+    r, g, b = alpha * rgb + (1.0 - alpha)
+    return float(r), float(g), float(b)
 
-    _draw_mirror_chevrons(ax, 0.0, 0.0, swatch_w, box_h / 2, direction=1)
 
-    ax.text(
-        swatch_w / 2.0,
-        -tick_len - 0.04,
-        "Mirror",
-        ha="center",
-        va="top",
-        fontsize=label_fontsize,
-    )
+def _order(df_cnv: pd.DataFrame, clone_ids: list[str]) -> list[str]:
+    """`cnaster`'s order: least aberrant clone first, by segment deviation."""
+    deviations = []
 
-    x0 = swatch_w + 0.5
+    for cid in clone_ids:
+        a_col = df_cnv[f"clone{cid} A"].fillna(1).to_numpy()
+        b_col = df_cnv[f"clone{cid} B"].fillna(1).to_numpy()
+        starts = [s for s, _ in get_intervals(a_col * 1_000 + b_col)[0]]
+        deviations.append(np.sum(np.abs(a_col[starts] - 1) + np.abs(b_col[starts] - 1)))
 
-    for i, label in enumerate(boxes):
-        color = state_style.get(label)
-        rect = Rectangle(
-            (x0 + i * box_w, 0.0),
-            box_w,
-            box_h,
-            facecolor=mcolors.to_rgba(
-                color, alpha=(NORMAL_OPACITY if label == 1 else 1.0)
-            ),
-            edgecolor="black",
+    return [clone_ids[i] for i in np.argsort(deviations)]
+
+
+def _segment(
+    ax: Any, x0: float, y0: float, w: float, h: float, a: Any, b: Any, style: Any
+) -> None:
+    """One segment: faint if normal, else A's fill under B's hatch, its two
+    ends drawn as boundaries."""
+    default = style.get("default", "lightgray")
+
+    if a == 1 and b == 1:
+        ax.add_patch(
+            Rectangle(
+                (x0, y0),
+                w,
+                h,
+                facecolor=mcolors.to_rgba(style.get(1, default), NORMAL_OPACITY),
+                edgecolor="none",
+                linewidth=0,
+            )
         )
+        return
 
-        ax.add_patch(rect)
-
-        xc = x0 + i * box_w + box_w / 2.0
-        ax.plot([xc, xc], [-tick_len, 0.0], color="black", linewidth=0.8)
-        ax.text(
-            xc,
-            -tick_len - 0.04,
-            str(label),
-            ha="center",
-            va="top",
-            fontsize=label_fontsize,
-        )
-
-    total_boxes_w = len(boxes) * box_w
-
-    ax.text(
-        x0 + total_boxes_w + 0.2,
-        box_h / 2.0,
-        r"$\mathbb{N}$" + "-CNA",
-        fontsize=12,
-        ha="left",
-        va="center",
+    fill = Rectangle(
+        (x0, y0), w, h, facecolor=swatch(style, a), edgecolor="none", linewidth=0
+    )
+    ax.add_patch(fill)
+    _hatch(ax, fill, swatch(style, b), HATCH[1 if a >= b else -1])
+    # NB the aberration's ends, at the outline's weight: where it starts and
+    #    stops reads without following the fill's edge into the next colour.
+    ax.vlines(
+        [x0, x0 + w],
+        ymin=y0,
+        ymax=y0 + h,
+        linewidth=LINEWIDTH,
+        colors="black",
+        zorder=3,
+        clip_on=False,
     )
 
-    # Adjust x limit to encapsulate the entire updated legend span
-    ax.set_xlim(0.0, x0 + total_boxes_w + 2.0)
-    ax.set_ylim(-0.5, box_h + 0.2)
-    ax.set_aspect("auto")
 
-    return ax
+class _Hatch(LineCollection):
+    """B's lines over one fill, laid out when drawn, in the page's inches.
+
+    At draw time the fill's extent on the page is known, so exactly the
+    lines that cross it are made: `HATCH_SPACING` apart along its bottom
+    edge, at `HATCH_ANGLE`, clipped to it.
+    """
+
+    def __init__(self, fill: Rectangle, colour: Any, orientation: int) -> None:
+        # NB under the outlines (zorder 3), over the fill (1).
+        super().__init__([], colors=[colour], linewidths=HATCH_LINEWIDTH, zorder=1.5)
+        self.fill = fill
+        self.orientation = orientation
+        self.set_transform(IdentityTransform())
+
+    def draw(self, renderer: Any) -> None:
+        box = self.fill.get_window_extent(renderer)
+        dpi = self.figure.dpi if self.figure is not None else 72.0
+        spacing = HATCH_SPACING * dpi
+        run = box.height / np.tan(np.radians(HATCH_ANGLE))
+        starts = np.arange(box.x0 - run, box.x1 + run + spacing, spacing)
+        ends = starts + self.orientation * run
+        self.set_segments(
+            [[(x0, box.y0), (x1, box.y1)] for x0, x1 in zip(starts, ends, strict=True)]
+        )
+        super().draw(renderer)
+
+
+def _hatch(ax: Any, fill: Rectangle, colour: Any, orientation: int) -> None:
+    """Attach B's lines to `fill`, drawn over it."""
+    hatch = _Hatch(fill, colour, orientation)
+    ax.add_collection(hatch, autolim=False)
+    # NB as a path and its transform, after `add_collection`: a `Rectangle`
+    #    is turned into a clip box, and `add_collection` then replaces it
+    #    with the axis's own, which is what let the lines cross rows.
+    hatch.set_clip_path(fill.get_path(), fill.get_transform())
+    fill.set_gid(f"hatch{orientation:+d}")
+
+
+def hatch_of(ax: Any, fill: Rectangle) -> tuple[int, Any] | None:
+    """A fill's hatch orientation and B's colour, or `None` where it is plain."""
+    for collection in ax.collections:
+        if isinstance(collection, _Hatch) and collection.fill is fill:
+            return collection.orientation, collection.get_edgecolor()[0]
+
+    return None
 
 
 def plot_copy_number_profile(
     df_cnv: pd.DataFrame,
-    ax: plt.Axes = None,
+    ax: Any = None,
     height: float = 1.0,
-    title: str = None,
+    title: Any = None,
     show_clone_name: bool = True,
     plot_chrname: bool = True,
-    figsize: tuple = None,
+    figsize: Any = None,
     palette_name: str = "chisel_single",
-):
-    """
-    Plot (allele-specific) per-clone cna profiles where horizontal width is strictly
-    proportional to the number of genomic segments.
-    """
-
-    state_style, _ = get_full_palette(palette_name)
-
+) -> Any:
+    """`cnaster`'s profile, one row per clone, aberrations hatched A then B."""
+    state_style, _ = _palette(palette_name)
     clone_ids = [c.split(" ")[0][5:] for c in df_cnv.columns if c.endswith(" A")]
-
-    A_full = df_cnv[[f"clone{cid} A" for cid in clone_ids]].fillna(1).to_numpy()
-    B_full = df_cnv[[f"clone{cid} B" for cid in clone_ids]].fillna(1).to_numpy()
-
-    deviations = []
-    for k in range(len(clone_ids)):
-        a_col, b_col = A_full[:, k], B_full[:, k]
-
-        # Combine into a single state array to identify contiguous blocks
-        encoded = a_col * 1_000 + b_col
-        intervals, _ = get_intervals(encoded)
-
-        # Extract the start indices of each interval
-        starts = [s for s, e in intervals]
-
-        a_rle = a_col[starts]
-        b_rle = b_col[starts]
-
-        # Sum the deviation of just the segments (unweighted by genomic length)
-        deviations.append(np.sum(np.abs(a_rle - 1) + np.abs(b_rle - 1)))
-
-    clone_ids = [clone_ids[i] for i in np.argsort(deviations)]
-
+    clone_ids = _order(df_cnv, clone_ids)
     num_clones = len(clone_ids)
 
     if ax is None:
-        figsize = figsize or (15, max(3.0, 1.2 * num_clones))
+        figsize = figsize or (15, max(2.0, 0.6 * num_clones))
         fig, ax = plt.subplots(figsize=figsize, dpi=300, facecolor="white")
-
-        fig.subplots_adjust(bottom=0.15)
+        fig.subplots_adjust(bottom=0.25)
     else:
         fig = ax.figure
 
     h = height / num_clones
-    clone_gap = 0.2 * h
-    h_pair = h - clone_gap
-    h_sub = h_pair / 2
-    y_gap = clone_gap / 2
+    gap = 0.2 * h
+    row = h - gap
 
     ch_offset = 0
-    ch_coords = []
-    chs = []
+    ch_coords: list[int] = []
+    chs: list[Any] = []
 
     for ch, df_ch in df_cnv.groupby("CHR", sort=False):
         chs.append(ch)
         ch_coords.append(ch_offset)
-        n_rows = len(df_ch)
 
-        A_mat = df_ch[[f"clone{cid} A" for cid in clone_ids]].to_numpy()
-        B_mat = df_ch[[f"clone{cid} B" for cid in clone_ids]].to_numpy()
+        for k, cid in enumerate(clone_ids):
+            a_states = df_ch[f"clone{cid} A"].to_numpy()
+            b_states = df_ch[f"clone{cid} B"].to_numpy()
+            y0 = gap / 2 + h * (num_clones - k - 1)
 
-        # Keep directions to dictate the orientation of the chevron (up/down)
-        dirs_mat = np.zeros_like(A_mat, dtype=int)
-        dirs_mat[A_mat > B_mat] = 1
-        dirs_mat[A_mat < B_mat] = -1
-
-        has_mirror = np.zeros(n_rows, dtype=bool)
-
-        for c in range(num_clones):
-            exact_swap = (
-                (A_mat == B_mat[:, [c]]) & (B_mat == A_mat[:, [c]]) & (A_mat != B_mat)
-            )
-            has_mirror |= np.any(exact_swap, axis=1)
-
-        for k, _ in enumerate(clone_ids):
-            a_states = A_mat[:, k]
-            b_states = B_mat[:, k]
-
-            dirs = dirs_mat[:, k]
-
-            encoded_states = a_states * 1_000 + b_states * 10 + has_mirror.astype(int)
-            intervals, _ = get_intervals(encoded_states)
-
-            k_plot = num_clones - k - 1
-            y_b = y_gap + h * k_plot
-            y_a = h_sub + y_b
-
-            for s, e in intervals:
-                x0 = ch_offset + s
-                w = e - s
-
-                cna, cnb = a_states[s], b_states[s]
-                is_mirror, direction = has_mirror[s], dirs[s]
-
-                ax.add_patch(
-                    Rectangle(
-                        (x0, y_b),
-                        w,
-                        h_sub,
-                        facecolor=state_style.get(
-                            cnb, state_style.get("default", "lightgray")
-                        ),
-                        edgecolor="none",
-                        linewidth=0,
-                        alpha=(NORMAL_OPACITY if cnb == 1 else 1.0),
-                    )
+            for s, e in get_intervals(a_states * 1_000 + b_states)[0]:
+                _segment(
+                    ax,
+                    ch_offset + s,
+                    y0,
+                    e - s,
+                    row,
+                    a_states[s],
+                    b_states[s],
+                    state_style,
                 )
 
-                ax.add_patch(
-                    Rectangle(
-                        (x0, y_a),
-                        w,
-                        h_sub,
-                        facecolor=state_style.get(
-                            cna, state_style.get("default", "lightgray")
-                        ),
-                        edgecolor="none",
-                        linewidth=0,
-                        alpha=(NORMAL_OPACITY if cna == 1 else 1.0),
-                    )
-                )
-
-                if is_mirror and direction != 0:
-                    _draw_mirror_chevrons(ax, x0, y_b, w, h_sub, direction)
-
-        ch_offset += n_rows
+        ch_offset += len(df_ch)
 
     ch_coords.append(ch_offset)
 
+    # NB unclipped: the first and last edges sit on the x limits, where the
+    #    axes clip would cut them to half the width of every other line.
     for k in range(num_clones):
-        y_b_k = k * h + y_gap
+        y0 = gap / 2 + k * h
         ax.vlines(
             ch_coords,
-            ymin=y_b_k,
-            ymax=y_b_k + h_pair,
-            linewidth=1,
+            ymin=y0,
+            ymax=y0 + row,
+            linewidth=LINEWIDTH,
             colors="black",
+            zorder=3,
             clip_on=False,
         )
-
-    for k in range(num_clones):
-        y_b_k = k * h + y_gap
-        for y0 in (y_b_k, y_b_k + h_sub):
-            ax.add_patch(
-                Rectangle(
-                    (0, y0),
-                    ch_offset,
-                    h_sub,
-                    facecolor="none",
-                    edgecolor="black",
-                    linewidth=1,
-                )
+        ax.add_patch(
+            Rectangle(
+                (0, y0),
+                ch_offset,
+                row,
+                facecolor="none",
+                edgecolor="black",
+                linewidth=LINEWIDTH,
+                zorder=3,
+                clip_on=False,
             )
+        )
 
     ax.grid(False)
     ax.set_xlim(0, ch_offset)
+    ax.set_ylim(0, num_clones * h)
     ax.set_xlabel("")
 
     for spine in ax.spines.values():
         spine.set_visible(False)
 
     if plot_chrname and chs:
-        midpoints = [ch_coords[i] for i in range(len(ch_coords) - 1)]
-        ax.set_xticks(midpoints)
-
-        chr_labels = [f"chr{ch}" if str(ch).isdigit() else str(ch) for ch in chs]
-
-        ax.set_xticklabels(chr_labels, rotation=45, fontsize=8, ha="left")
-        ax.tick_params(
-            axis="x",
-            labeltop=False,
-            labelbottom=True,
-            top=False,
-            bottom=False,
-            pad=-5,
+        ax.set_xticks(ch_coords[:-1])
+        ax.set_xticklabels(
+            [f"chr{ch}" if str(ch).isdigit() else str(ch) for ch in chs],
+            rotation=45,
+            fontsize=8,
+            ha="left",
         )
+        ax.tick_params(axis="x", labelbottom=True, bottom=False, pad=-5)
     else:
         ax.set_xticks([])
 
     ax.set_yticks([h * (i + 0.5) for i in range(num_clones)])
-    ylabels = [
-        f"Clone {cid}" if show_clone_name else str(cid) for cid in reversed(clone_ids)
-    ]
-    # NB cast to Roman.
-    ylabels = [cast_clone_label(cid) for cid in ylabels]
+    ax.set_yticklabels(
+        [
+            cast_clone_label(f"Clone {cid}" if show_clone_name else str(cid))
+            for cid in reversed(clone_ids)
+        ],
+        fontsize=8,
+        va="center",
+    )
+    ax.tick_params(axis="y", which="major", left=True, right=False, length=4)
 
-    ax.set_yticklabels(ylabels, fontsize=8, va="center", ha="left", rotation=90)
-
-    minor_positions, minor_labels = [], []
-    for k in range(num_clones):
-        minor_positions.extend(
-            [k * h + y_gap + h_sub * 0.5, k * h + y_gap + h_sub * 1.5]
-        )
-        minor_labels.extend(["B", "A"])
-
-    ax.set_yticks(minor_positions, minor=True)
-    ax.set_yticklabels(minor_labels, minor=True, fontsize=6)
-    ax.tick_params(axis="y", which="minor", left=False, right=False, pad=2)
-
-    ax.set_ylim(0, num_clones * h)
-    ax.tick_params(axis="y", which="major", left=True, right=False, length=4, pad=20)
-
-    # TODO BUG ch_coords[0] aligned.
-    legend_ax = fig.add_axes([0.15, 0.025, 0.7, 0.05])
-
+    legend_ax = fig.add_axes((0.15, 0.025, 0.7, 0.05))
     plot_ascn_legend(legend_ax, palette_name=palette_name)
 
     if title:
         ax.set_title(title)
 
     return fig
+
+
+def plot_ascn_legend(
+    ax: Any,
+    box_w: float = 0.8,
+    box_h: float = 0.8,
+    tick_len: float = 0.08,
+    label_fontsize: float = 10,
+    palette_name: str = "chisel_single",
+    *,
+    span: float | None = None,
+    title_on_edge: bool = False,
+) -> Any:
+    """The mirror swatches and `cnaster`'s colour bar, each titled on its left.
+
+    Two swatches, black lines on white, one per hatch orientation, and
+    "Mirror" to their left, in the margin or,
+    with `title_on_edge`, starting on the axis's left edge. Then the copy-number
+    bar with "$\\mathbb{N}$-CNA" to its left, on the same line. With `span`,
+    the axis runs `0` to `span` and the bar ends there, so a caller that sets
+    the axis over its plot gets the swatches on the plot's left edge, "Mirror"
+    in the margin, and the bar on its right edge.
+    """
+    state_style, ordered_acn = _palette(palette_name)
+    ax.axis("off")
+
+    gap = 0.15 * box_w
+    label_y = -tick_len - 0.04
+    text = {"fontsize": label_fontsize, "clip_on": False}
+    start = 0.0
+
+    # NB with `title_on_edge`, "Mirror" starts on the axis's left edge -- the
+    #    caller's common left axis -- and the swatches follow it; otherwise it
+    #    ends a gap before them, in the margin.
+    if title_on_edge:
+        ax.set_xlim(0.0, span if span is not None else 1.0)
+        title = ax.text(
+            0.0, box_h / 2, "Mirror", ha="left", va="center_baseline", **text
+        )
+        renderer = ax.figure.canvas.get_renderer()
+        right = title.get_window_extent(renderer).x1
+        start = ax.transData.inverted().transform((right, 0.0))[0] + gap
+    else:
+        ax.text(-gap, box_h / 2, "Mirror", ha="right", va="center_baseline", **text)
+
+    for k, orientation in enumerate((HATCH[1], HATCH[-1])):
+        x = start + k * (box_w + gap)
+        box = Rectangle(
+            (x, 0.0), box_w, box_h, facecolor="white", edgecolor="none", linewidth=0
+        )
+        ax.add_patch(box)
+        _hatch(ax, box, "black", orientation)
+        ax.add_patch(
+            Rectangle(
+                (x, 0.0),
+                box_w,
+                box_h,
+                facecolor="none",
+                edgecolor="black",
+                linewidth=LINEWIDTH,
+                zorder=3,
+            )
+        )
+
+    phase_end = start + 2 * box_w + gap
+
+    bar = len(ordered_acn) * box_w
+    end = span if span is not None else phase_end + 3 * box_w + bar
+    x0 = end - bar
+
+    for i, label in enumerate(ordered_acn):
+        ax.add_patch(
+            Rectangle(
+                (x0 + i * box_w, 0.0),
+                box_w,
+                box_h,
+                facecolor=swatch(state_style, label),
+                edgecolor="black",
+                linewidth=LINEWIDTH,
+            )
+        )
+        xc = x0 + i * box_w + box_w / 2.0
+        ax.plot([xc, xc], [-tick_len, 0.0], color="black", linewidth=LINEWIDTH)
+        ax.text(xc, label_y, str(label), ha="center", va="top", **text)
+
+    ax.text(
+        x0 - 3 * gap,
+        box_h / 2,
+        r"$\mathbb{N}$-CNA",
+        ha="right",
+        va="center_baseline",
+        **text,
+    )
+    ax.set_xlim(0.0, end)
+    ax.set_ylim(-0.6, box_h + 0.05)
+    ax.set_aspect("auto")
+
+    return ax

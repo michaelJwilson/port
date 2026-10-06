@@ -222,8 +222,10 @@ PNG outside `docs/plots/paper/` (`tests/test_ci_entry.py`).
 
 `cnamaste` (`python/cnamaste/`, T- #670) has its own gate: the `cnamaste`
 tests, measured against `python/cnamaste` alone under `.coveragerc-cnamaste`'s
-floor. Being `cnaster`'s code at the pin, it is outside `ruff` and is read by
-`mypy` as `cnaster` is.
+floor. Its modules that are still `cnaster`'s code at the pin are outside
+`ruff` and read by `mypy` as `cnaster` is: a declared list,
+`CNAMASTE_UNLINTED` in `tests/test_module_roles.py`, that shrinks as T- #670
+moves `port`'s code in.
 
 `mypy` reads its paths from `pyproject.toml` (`python/`, `tests/`). The
 compiled extension is typed by the hand-written stub
@@ -543,7 +545,7 @@ trains a reader to ignore `git status`.
 | `python/port/` | The Python package; `python-source` in `pyproject.toml` |
 | `python/port/qa/` | What measures and records a run: `statistics` (bars, ranks, bootstrap intervals, wall and peak memory), `provenance` (the commit, the inputs' digest, a figure's stamp), `scoring` (a fit against its planted truth), `audit` (a run scored, behind `run_audit`), `benchmark` (behind `run_benchmark` and `run_figures`) and `ledger` (`docs/metrics/`, behind `run_ledger`), one implementation each (T- #673) |
 | `python/port/studies/` | The studies, run by hand: `run_study --<study>`, each module stating what it measured and where (T- #673) |
-| `python/cnamaste/` | `cnaster`'s forward path, copied at the pin with its imports rewritten, behind `run_cnamaste`; its own build (`uv build --wheel python/cnamaste`) and coverage gate (T- #670) |
+| `python/cnamaste/` | `cnaster`'s forward path, copied at the pin with its imports rewritten, behind `run_cnamaste`, into which T- #670 moves `port`'s replacements stage by stage; its own build (`uv build --wheel python/cnamaste`) and coverage gate (T- #670) |
 | `src/` | The Rust crate `oxiport`, bound as `port.oxiport` |
 | `tests/` | The suite; `testpaths` in `pyproject.toml` |
 | `sim/` | CalicoST's simulated samples, their normal fits, and `manifests/` that draw them |

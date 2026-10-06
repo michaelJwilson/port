@@ -164,11 +164,43 @@ module-name = "port.oxiport"
 
 [tool.ruff]
 target-version = "py312"
-# NB `cnamaste` is `cnaster`'s code at the pin, copied with only its imports
-#    rewritten (T- #670 PR1), and `test_module_roles` pins it byte for byte.
-#    Linting or formatting it here would break that pin; a later T- #670 PR
-#    that rewrites a module brings it under these rules.
-extend-exclude = ["python/cnamaste"]
+# NB `cnamaste`'s modules that are `cnaster`'s code: each copy at the pin,
+#    which `test_module_roles` pins byte for byte, and each ported module
+#    still holding copied code (T- #670). A declared list that only shrinks,
+#    `CNAMASTE_UNLINTED` there; a module whose whole is `port`'s leaves it.
+extend-exclude = [
+  "python/cnamaste/annotation.py",
+  "python/cnamaste/cna_hmrf_result.py",
+  "python/cnamaste/config.py",
+  "python/cnamaste/count_encoder.py",
+  "python/cnamaste/filter.py",
+  "python/cnamaste/he.py",
+  "python/cnamaste/hmm.py",
+  "python/cnamaste/hmm_emission.py",
+  "python/cnamaste/hmm_initialize.py",
+  "python/cnamaste/hmm_nophasing.py",
+  "python/cnamaste/hmm_phased.py",
+  "python/cnamaste/hmm_utils.py",
+  "python/cnamaste/hmrf.py",
+  "python/cnamaste/hmrf_utils.py",
+  "python/cnamaste/icm.py",
+  "python/cnamaste/integer_copy.py",
+  "python/cnamaste/io.py",
+  "python/cnamaste/logger.py",
+  "python/cnamaste/normal_spot.py",
+  "python/cnamaste/omics.py",
+  "python/cnamaste/palette.py",
+  "python/cnamaste/phasing.py",
+  "python/cnamaste/plot_genomic.py",
+  "python/cnamaste/plotting.py",
+  "python/cnamaste/pseudobulk.py",
+  "python/cnamaste/recomb.py",
+  "python/cnamaste/reference.py",
+  "python/cnamaste/run.py",
+  "python/cnamaste/spatial.py",
+  "python/cnamaste/spatio_genomic_counts.py",
+  "python/cnamaste/utils.py",
+]
 
 [tool.ruff.lint]
 ignore = [
@@ -226,8 +258,11 @@ unfixable = [
 [tool.mypy]
 strict = true
 files = ["python", "tests"]
-# NB `cnamaste` is untyped `cnaster` code, read as `cnaster` is (below).
-exclude = ["^python/cnamaste/"]
+# NB `cnamaste`'s untyped `cnaster` code, read as `cnaster` is (below): the
+#    modules `[tool.ruff]` excludes, `CNAMASTE_UNLINTED` in `test_module_roles`.
+exclude = [
+  "^python/cnamaste/(annotation|cna_hmrf_result|config|count_encoder|filter|he|hmm|hmm_emission|hmm_initialize|hmm_nophasing|hmm_phased|hmm_utils|hmrf|hmrf_utils|icm|integer_copy|io|logger|normal_spot|omics|palette|phasing|plot_genomic|plotting|pseudobulk|recomb|reference|run|spatial|spatio_genomic_counts|utils)\\.py$",
+]
 
 [[tool.mypy.overrides]]
 module = "pytest_benchmark.*"
@@ -250,9 +285,9 @@ module = "cnaster.*"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
-# `cnamaste` (T- #670) is `cnaster`'s forward path copied at the pin, so it
-# is typed as `cnaster` is: not followed, its names `Any`. A module a later
-# T- #670 PR types leaves this list.
+# `cnamaste` (T- #670) is `cnaster`'s forward path copied at the pin, so an
+# import of it is typed as `cnaster` is: not followed, its names `Any`. Its
+# modules outside the `exclude` above are checked as files all the same.
 module = ["cnamaste", "cnamaste.*"]
 follow_imports = "skip"
 
