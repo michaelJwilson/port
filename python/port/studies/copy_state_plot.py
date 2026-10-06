@@ -39,13 +39,12 @@ TABLE = (
         ("emission++", "Seeds by the NB x BB Bregman divergence"),
     )),
     ("sal, samplers on the HMM (#634)", (
-        ("anneal-hmm", "Best point of sal's HMC anneal under falling temperature"),
         ("tempering-hmm", "Best point of sal's parallel tempering, 4 HMC replicas"),
         ("hmc-hmm", "Best draw of sal's HMC chain after dual-averaging warm-up"),
     )),
 )  # fmt: skip
 """The starts drawn (T- #660). Set aside from the figure, still in the registry: `cnaster-gmm`,
-`distinct`, `lattice-em`, `rdr-quantiles`, `data`, `quantile` and the emission++ variants."""
+`distinct`, `lattice-em`, `rdr-quantiles`, `data`, `quantile`, the emission++ variants and `anneal-hmm` (#716)."""
 
 
 LABEL = {
@@ -63,7 +62,7 @@ SOURCE = {
 """Each start's source: the package whose code it runs."""
 KEY_NAMES = {
     "calicost-gmm": "CalicoST-GMM", "lattice": "Lattice", "prior": "Prior", "kmeans++": r"$k$-means++",
-    "emission++": "Emission++", "anneal-hmm": "Anneal",
+    "emission++": "Emission++",
     "tempering-hmm": "Parallel tempering", "hmc-hmm": "HMC",
 }  # fmt: skip
 """The names `solver_combined`'s key prints (#716)."""
@@ -252,6 +251,7 @@ def draw(ax: Any, record: dict[str, Any], key: bool = False) -> pd.DataFrame:
 
     points: list[tuple[float, float, str]] = []
     rightmost = 0.0
+    top = 0.0
     for name, g in d.groupby("start"):
         if name not in NUMBER:
             continue
@@ -263,6 +263,7 @@ def draw(ax: Any, record: dict[str, Any], key: bool = False) -> pd.DataFrame:
         x *= spread
         xe = [[e * spread for e in side] for side in xe]
         y, ye = bars(g.y)
+        top = max(top, y + ye[1][0])
         ax.errorbar(
             x, y, xerr=xe, yerr=ye, fmt="o", color=colour, ms=5, lw=0.8, capsize=2.5
         )
@@ -314,8 +315,10 @@ def draw(ax: Any, record: dict[str, Any], key: bool = False) -> pd.DataFrame:
         RUNTIME_FLOOR / 3 if key else float(d.seconds.quantile(0.02)) * 0.5,
         rightmost * 1.3,
     )
-    # NB one decade below the truth's median gap, three above
-    ax.set_ylim(float(np.median(truth)) / 10, float(np.median(truth)) * 1e3)
+    # NB one decade below the truth's median gap; three above, or above the highest start's error bar
+    ax.set_ylim(
+        float(np.median(truth)) / 10, max(float(np.median(truth)) * 1e3, top * 2)
+    )
     ax.yaxis.set_major_locator(FixedLocator([FLOOR, *10.0 ** np.arange(-1, 8)]))
     ax.yaxis.set_major_formatter(
         FuncFormatter(
