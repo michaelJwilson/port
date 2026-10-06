@@ -39,7 +39,7 @@ TIMEOUT = 1800
 
 def _shipped(joint: bool) -> Path:
     """CalicoST's `configuration_cna`, or `configuration_cna_multi` for several slices."""
-    from tests.sim_fixtures import references
+    from port.sim.fixtures import references
 
     resources = references()
 
@@ -53,7 +53,7 @@ def _shipped(joint: bool) -> Path:
 
 
 def _sample(name: str) -> Any:
-    from tests.sim_fixtures import load_simulated
+    from port.sim.fixtures import load_simulated
 
     path = Path(name)
     return (
@@ -205,8 +205,9 @@ def calicost(
 
     `n_clones` replaces the shipped file's clone count, its one edited value.
     """
+    from port.sim.fixtures import write_sim_inputs
+
     from tests.sim_audit import _drawn_config, score
-    from tests.sim_fixtures import write_sim_inputs
 
     sample = _sample(name)
     root = Path(tempfile.mkdtemp())

@@ -34,7 +34,7 @@ seeds ends at 1.1% missed ([0.9, 4.2] over r9–r12); the run of highest likelih
 ## Results: `dev_tree_1s_hard`, 10 realizations × 10 seeds
 
 `dev_tree_1s_hard` r3–r12 of `[sample] seed = 0`, r0 hashing to `d2938975`
-(`tests.sim_stages.realization_hash`); r0–r2 tuned the samplers. The draws
+(`port.sim.fixtures.realization_hash`); r0–r2 tuned the samplers. The draws
 are the gamma sampler's: this branch's `port.sim.draw` has no `counts_sampler`.
 
 Median gap below the best fit reached on each realization [nats], at the start and after Baum-Welch; median

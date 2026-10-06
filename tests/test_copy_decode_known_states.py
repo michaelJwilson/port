@@ -25,9 +25,8 @@ from __future__ import annotations
 import numpy as np
 import pytest
 from port.extensions.copy_likelihood import Pseudobulk, _emission, shared_decode
+from port.sim.truth import COPY_LATTICE, CoreInferenceTruth, core_inference_truth
 from scipy.optimize import minimize_scalar
-
-from tests.fixtures import COPY_LATTICE, CoreInferenceTruth, core_inference_truth
 
 N_STATES = 7
 """Seven of `COPY_LATTICE`'s nine: identifiable from BAF as well as RDR."""

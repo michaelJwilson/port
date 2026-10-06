@@ -299,8 +299,7 @@ def _kept_run(sample: Any, kept: Path) -> dict[str, Any]:
 def rescore(out: Path) -> int:
     """Add `neutral_segments` to each record scored before it, from its outputs."""
     from port.qa.scoring import matched, overlap
-
-    from tests.sim_fixtures import load_simulated
+    from port.sim.fixtures import load_simulated
 
     done = 0
     for path in sorted((out / "records").glob("*.json")):
@@ -336,8 +335,9 @@ def run_member(
     seed: int, js: tuple[float, ...], out: Path, manifest: Path = MANIFEST
 ) -> None:
     """Draw seed `seed`, run and score it at each `J`, keep only the records."""
+    from port.sim.fixtures import load_simulated
+
     from tests.sim_audit import run_arm
-    from tests.sim_fixtures import load_simulated
 
     todo = [j for j in js if not _record(out, seed, j).exists()]
     if not todo:

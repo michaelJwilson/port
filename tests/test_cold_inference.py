@@ -12,8 +12,7 @@ package, an invariant, or the planted truth decides each expected value.
 
 import numpy as np
 import pytest
-
-from tests.fixtures import CoreInferenceTruth, core_inference_truth
+from port.sim.truth import CoreInferenceTruth, core_inference_truth
 
 LATTICE = (20, 30)
 """Six hundred spots: above the label solver's floor for two clones."""

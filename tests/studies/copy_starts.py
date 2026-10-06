@@ -52,9 +52,9 @@ def capture(
     from port.extensions import segments
     from port.patch.hmrf import core_inference
     from port.sandbox.extensions.copy_starts import write_captured
+    from port.sim.fixtures import load_simulated
 
     from tests.sim_audit import run_arm
-    from tests.sim_fixtures import load_simulated
 
     path = Path(sample_name)
     sample = (

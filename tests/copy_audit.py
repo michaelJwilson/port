@@ -42,8 +42,8 @@ from typing import Any
 import numpy as np
 import pandas as pd
 from port.qa.scoring import matched, overlap
+from port.sim.truth import COPY_LATTICE
 
-from tests.fixtures import COPY_LATTICE
 from tests.plots_dir import PLOTS
 
 Pair = tuple[int, int]

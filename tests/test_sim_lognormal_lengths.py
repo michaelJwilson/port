@@ -16,10 +16,9 @@ from typing import Any
 import numpy as np
 import pytest
 from port.sim.draw import _event_length, extended, from_document, lognormal_median
+from port.sim.fixtures import SIM_ROOT
 from port.sim.laws import lognormal_sigma
 from scipy import stats
-
-from tests.sim_fixtures import SIM_ROOT
 
 MANIFESTS = SIM_ROOT / "manifests"
 DRAWS = 20_000

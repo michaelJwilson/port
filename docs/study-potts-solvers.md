@@ -113,7 +113,7 @@ serves them; this study gives no reason to want it.
 
 ## Found on the way
 
-`tests.sim_fixtures.stage` staged a CalicoST sample loaded by absolute path
+`port.sim.fixtures.stage` staged a CalicoST sample loaded by absolute path
 into itself: `into / "/abs"` is `/abs`. That unlinked every committed input
 and linked it to itself. The target is now `into / Path(name).name`, and
 staging into the sample is refused (`tests/test_stage_inputs.py`).

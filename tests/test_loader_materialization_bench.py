@@ -37,11 +37,11 @@ from typing import Any
 import pytest
 from cnaster.io import load_input_data as cnaster_loader
 from port.patch.io import load_input_data as patched_loader
+from port.sim.inputs import written_config
+from port.sim.run_config import planted_and_written
 from pytest_benchmark.fixture import BenchmarkFixture
 
 from tests.fixtures import tiers
-from tests.run_config import planted_and_written
-from tests.tmp_inputs import written_config
 
 pytestmark = pytest.mark.preprocessing
 

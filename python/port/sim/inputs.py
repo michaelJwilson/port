@@ -1,6 +1,6 @@
 """Write a pre-image to the files `cnaster.io.load_input_data` reads (#68).
 
-`tests/unsegment.py` takes a binned fixture back to genes and blocks. This
+`python/port/sim/unsegment.py` takes a binned fixture back to genes and blocks. This
 takes that pre-image the rest of the way: to a sample sheet, a barcode list, a
 SNP id array, two sparse allele matrices, an `AnnData` and a spatial table --
 the files `run_cnaster` is pointed at.
@@ -36,8 +36,8 @@ import numpy as np
 import pandas as pd
 import scipy.sparse as sp
 
-from tests.fixtures import CoreInferenceTruth
-from tests.unsegment import Unsegmented
+from port.sim.truth import CoreInferenceTruth
+from port.sim.unsegment import Unsegmented
 
 GENE_SPACING = 200_000
 """Base pairs between one planted bin's gene interval and the next.

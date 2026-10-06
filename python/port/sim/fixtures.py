@@ -27,11 +27,22 @@ sheet, pointed at the stage, and the configuration: `zenodo_sim_config.yaml`, th
 with its paths pointed here. The gene table and genetic map are CalicoST's
 `GRCh38_resources`, which the sample directory does not carry; `references`
 finds them, and a test that needs them skips where they are absent.
+
+`realization_hash` names a sample by its content and `r0` draws `dev_tree`'s
+realization 0, refused unless it hashes to `R0_HASH`: the fixture identity
+the ledger records (#588, #595). Moved from `tests.sim_fixtures` and
+`tests.sim_stages` (T- #673 G6), so a shipped audit can load and name its
+samples; `tests.sim_stages.realization_hash`, the name `definitions.tsv`
+cites, is this function imported.
 """
 
 from __future__ import annotations
 
+import gzip
+import hashlib
 import os
+import subprocess
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -39,9 +50,11 @@ from typing import Any
 import numpy as np
 import pandas as pd
 import yaml
+
 from port.sim.files import decompress, load_ids, located, read_bytes
 
-REPOSITORY = Path(__file__).resolve().parents[1]
+REPOSITORY = Path(__file__).resolve().parents[3]
+"""The checkout: the committed samples and their configuration are its files."""
 SIM_ROOT = REPOSITORY / "sim"
 """Where the committed samples live."""
 
@@ -87,6 +100,10 @@ EASY = sample_name(n_global=1, n_local=2, cna_size=5e7, ploidy=2, realization=0)
 
 HARD = sample_name(n_global=6, n_local=3, cna_size=1e7, ploidy=2, realization=0)
 """Six shared and three clone-specific events per clone, 10 Mb each."""
+
+
+SAMPLES = {"easy": EASY, "hard": HARD}
+"""The committed samples by the short names the audits and the ledger take."""
 
 
 @dataclass(frozen=True)
@@ -230,11 +247,11 @@ def references() -> Path | None:
     return None
 
 
-ZENODO_CONFIG = Path(__file__).parent / "data" / "zenodo_sim_config.yaml"
+ZENODO_CONFIG = REPOSITORY / "tests" / "data" / "zenodo_sim_config.yaml"
 
 
-def sim_config(sample: SimulatedSample, root: Path, resources: Path) -> dict[str, Any]:
-    """`zenodo_sim_config.yaml`, pointed at `sample` and writing under `root`."""
+def sim_config(root: Path, resources: Path) -> dict[str, Any]:
+    """`zenodo_sim_config.yaml`, reading the sample sheet under `root` and writing there."""
     document: dict[str, Any] = yaml.safe_load(ZENODO_CONFIG.read_text())
     document["paths"] = {
         "sample_sheet": str(root / "sample_sheet.tsv"),
@@ -305,7 +322,7 @@ def write_sim_inputs(
         }
     ).to_csv(root / "sample_sheet.tsv", sep="\t", index=False)
 
-    document = sim_config(sample, root, resources)
+    document = sim_config(root, resources)
 
     for key, value in (overrides or {}).items():
         section, _, name = key.partition(".")
@@ -514,3 +531,74 @@ def purify(
     (out / ".complete").touch()
 
     return out
+
+
+R0 = SIM_ROOT / "generated" / "dev_tree" / "r0"
+R0_MANIFEST = "sim/manifests/baseline/dev_tree.toml"
+R0_HASH = "3381575a"
+"""`dev_tree` r0 at CalicoST's 60 x 50 array per slice (#470): 6,000 spots.
+The exponential-length generation every cached stage and r0 figure was measured
+on, frozen when the live `dev_tree.toml` moved to lognormal lengths (#619); a
+live draw writes the same directory and is refused here by its hash."""
+
+
+def realization_hash(path: Path) -> str:
+    """The first 8 hex of SHA-256 over a realization's files, names and decoded bytes.
+
+    A file is keyed by its name with `.gz` stripped and hashed over its
+    decompressed bytes, so how a file is stored cannot move the hash (#595):
+    a sample with no `.gz` hashes as its stored bytes. A name present both
+    plain and `.gz` counts once where the two decode equal, and is refused
+    where they differ.
+
+    Left out: the three files that record absolute paths, and what a run or
+    a plot writes into the directory.
+    """
+    skipped = {"config.yaml", "manifest.json", "sample_sheet.tsv"}
+    digest = hashlib.sha256()
+
+    for directory, names, files in os.walk(path):
+        names[:] = sorted(n for n in names if n not in {"output", "qa"})
+        decoded: dict[str, bytes] = {}
+
+        for name in files:
+            stored = Path(directory, name)
+            key = stored.relative_to(path).as_posix().removesuffix(".gz")
+            data = stored.read_bytes()
+            data = gzip.decompress(data) if name.endswith(".gz") else data
+
+            if key in decoded and decoded[key] != data:
+                msg = f"{stored}: plain and .gz copies of {key} decode differently"
+                raise ValueError(msg)
+            decoded[key] = data
+
+        for key in sorted(decoded):
+            if key in skipped:
+                continue
+
+            digest.update(key.encode())
+            digest.update(decoded[key])
+
+    return digest.hexdigest()[:8]
+
+
+def r0() -> Path:
+    """`dev_tree`'s realization 0, drawn if absent, refused if not `R0_HASH`."""
+    if not (R0 / "truth_clone_labels.tsv").is_file():
+        subprocess.run(
+            [sys.executable, "-m", "port.sim.draw", R0_MANIFEST],
+            cwd=REPOSITORY,
+            check=True,
+            capture_output=True,
+        )
+
+    found = realization_hash(R0)
+
+    if found != R0_HASH:
+        msg = (
+            f"{R0} hashes to {found}, not {R0_HASH}: the manifest or the "
+            "simulator changed, so every cached stage of r0 is stale"
+        )
+        raise RuntimeError(msg)
+
+    return R0

@@ -45,7 +45,7 @@ The page is set as `combined.pdf`'s spatial row: 4.80 in wide, 7 pt text.
   - CNA lengths are exponential with mean 20 Mb and a floor of 1 Mb.
   - Counts come from the Pólya urn (#549).
   - `population_long.toml` is the same with a mean length of 60 Mb.
-  - A member's hash is `tests.sim_stages.realization_hash` of its drawn r0; the table names the first seed's of each manifest.
+  - A member's hash is `port.sim.fixtures.realization_hash` of its drawn r0; the table names the first seed's of each manifest.
 - **Runs.** Each member runs `run_cnaster_port --sal --no-plots` once per `hmrf.spatial_weight` J. J_c = ln 2 is the critical coupling of the q = 4 Potts model on the triangular lattice; J runs from 1.15 to 4 × J_c.
 - **Scoring.**
   - Clones are matched by overlap on `clone_labels.tsv`.

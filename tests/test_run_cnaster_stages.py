@@ -16,21 +16,20 @@ from typing import Any
 
 import numpy as np
 import pytest
-
-from tests.fixtures import CoreInferenceTruth, balanced_clone, core_inference_truth
-from tests.run_config import (
-    FLIP_EVERY,
-    SHIPPED_T_PHASEING,
-    PlantedInstance,
-    write_run_cnaster_config,
-)
-from tests.tmp_inputs import (
+from port.sim.inputs import (
     WrittenInputs,
     read_to_bins,
     write_tmp_inputs,
     written_config,
 )
-from tests.unsegment import unsegment
+from port.sim.run_config import (
+    FLIP_EVERY,
+    SHIPPED_T_PHASEING,
+    PlantedInstance,
+    write_run_cnaster_config,
+)
+from port.sim.truth import CoreInferenceTruth, balanced_clone, core_inference_truth
+from port.sim.unsegment import unsegment
 
 pytestmark = pytest.mark.preprocessing
 
@@ -866,7 +865,7 @@ def test_the_normal_baseline_is_a_distribution_over_bins(
 SHIPPED_NORMAL_CONFIDENCE = (0.01, 0.99)
 """`zenodo_sim_config.yaml`'s `quality.normal_allele_specific_confidence`.
 
-`tests/run_config.py` widens it to `(0.0, 1.0)` so the fixture's bins survive
+`python/port/sim/run_config.py` widens it to `(0.0, 1.0)` so the fixture's bins survive
 into the round trip, so the shipped value is restated here and passed
 explicitly: what the filter does at what ships is the claim, and a test reading
 the widened configuration would be measuring the widening.

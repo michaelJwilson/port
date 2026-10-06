@@ -25,11 +25,10 @@ def run(tmp_path_factory: pytest.TempPathFactory) -> dict[str, Any]:
     from port.extensions.segments import recording
     from port.patch import recomb
     from port.scripts.run_cnaster import main
-
-    from tests.fixtures import core_inference_truth
-    from tests.run_config import isolated_run, write_run_cnaster_config
-    from tests.tmp_inputs import write_tmp_inputs
-    from tests.unsegment import unsegment
+    from port.sim.inputs import write_tmp_inputs
+    from port.sim.run_config import isolated_run, write_run_cnaster_config
+    from port.sim.truth import core_inference_truth
+    from port.sim.unsegment import unsegment
 
     mpl.use("Agg")
     root = tmp_path_factory.mktemp("lineage")

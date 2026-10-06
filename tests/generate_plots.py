@@ -1,14 +1,14 @@
 """Regenerate the dev instance's figures, by default under `.cache/plots/`.
 
 Run as `python -m tests.generate_plots [--out DIR]`. It writes the dev
-instance's inputs through `tests.run_config.run_written`, runs
+instance's inputs through `port.sim.run_config.run_written`, runs
 **`run_cnaster_port`** on them, and copies what it wrote into `DIR`
 (default `tests.plots_dir.PLOTS`, untracked). `--cnaster` runs plain
 `cnaster` instead, for a comparison.
 
 **Two sets.** `DIR` is the dev instance as planted by default; `DIR/lattice/`
 is the same genome with `copy_lattice=True`, whose states are integer allele
-copies `(A, B)` (`tests.fixtures.COPY_LATTICE`), so its copy-number figures
+copies `(A, B)` (`port.sim.truth.COPY_LATTICE`), so its copy-number figures
 can be read against a truth that is integer (#313).
 
 **CI runs this on every pull request and uploads the result** as a workflow
@@ -42,11 +42,11 @@ from port.extensions.combined_figure import (
     recording,
     spatial_figure,
 )
+from port.sim.he_slide import mock_he, write_he_slide
+from port.sim.run_config import run_written
+from port.sim.truth import COPY_LATTICE, CoreInferenceTruth, dev_instance
 
-from tests.fixtures import COPY_LATTICE, CoreInferenceTruth, dev_instance
-from tests.he_slide import mock_he, write_he_slide
 from tests.plots_dir import PLOTS
-from tests.run_config import run_written
 
 STATES = 8
 """What the run fits: the eight states each instance uses of those it plants.

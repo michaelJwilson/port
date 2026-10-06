@@ -21,17 +21,16 @@ from typing import Any
 import numpy as np
 import pytest
 import scipy.stats
-
-from tests.fixtures import CoreInferenceTruth, balanced_clone
-from tests.run_config import PlantedInstance
-from tests.tmp_inputs import read_to_bins, written_config
+from port.sim.inputs import read_to_bins, written_config
+from port.sim.run_config import PlantedInstance
+from port.sim.truth import CoreInferenceTruth, balanced_clone
 
 pytestmark = pytest.mark.preprocessing
 
 SHIPPED_CONFIDENCE = (0.01, 0.99)
 """`zenodo_sim_config.yaml`'s `quality.normal_allele_specific_confidence`.
 
-`tests/run_config.py` widens it to `(0.0, 1.0)`, under which the filter removes
+`python/port/sim/run_config.py` widens it to `(0.0, 1.0)`, under which the filter removes
 nothing and the comparison would be between two empty masks.
 """
 

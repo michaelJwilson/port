@@ -91,7 +91,7 @@ height below as (c) and (d). No captions. `port.extensions.combined_figure` redr
 writes each page at exactly its size, so it is included at
 `width=\linewidth` unscaled.
 
-The slide is **mocked** from the planted labels (`tests/he_slide.py`) and
+The slide is **mocked** from the planted labels (`python/port/sim/he_slide.py`) and
 read back through `cnaster.he.get_he_image`, as `run_cnaster` reads a slide.
 It is
 written beside the run's inputs, not into them: in them, `load_input_data`

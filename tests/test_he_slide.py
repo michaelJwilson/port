@@ -13,9 +13,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import pytest
-
-from tests.fixtures import clone_bands
-from tests.he_slide import mock_he, write_he_slide
+from port.sim.he_slide import mock_he, write_he_slide
+from port.sim.truth import clone_bands
 
 LATTICE = (20, 16)
 N_CLONES = 4
@@ -28,7 +27,7 @@ def _read(tmp_path: Path) -> tuple[pd.DataFrame, np.ndarray]:
     write_he_slide(mock_he(labels, LATTICE, seed=5), tmp_path)
 
     rows, columns = np.unravel_index(np.arange(labels.size), LATTICE)
-    # NB `tissue_positions.csv` as `tests/tmp_inputs.py` writes it.
+    # NB `tissue_positions.csv` as `python/port/sim/inputs.py` writes it.
     positions = pd.DataFrame(
         {
             "barcode": [f"BC{spot}" for spot in range(labels.size)],

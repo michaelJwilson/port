@@ -41,11 +41,7 @@ from tests.adapters import (
     cnaster_beta_binomial_objective,
     upstream_beta_binomial_m_step,
 )
-from tests.fixtures import (
-    BetaBinomialChains,
-    beta_binomial_chains,
-    planted_posterior,
-)
+from tests.fixtures import BetaBinomialChains, beta_binomial_chains, planted_posterior
 
 SOLVER_AGREEMENT = 1e-3
 """Relative tolerance between the two M steps' `(alpha, beta)`.

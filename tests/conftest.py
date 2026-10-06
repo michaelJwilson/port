@@ -129,7 +129,7 @@ def cnaster_config(tmp_path: Path) -> Iterator[None]:
     At `cnaster`'s own solver settings. A global left behind is a test that
     passes alone and fails in a suite, so what was there is restored.
     """
-    from tests.tmp_inputs import written_config
+    from port.sim.inputs import written_config
 
     with written_config(cnaster_test_config(tmp_path, SHIPPED_EM_FTOL, 100)):
         yield
@@ -143,7 +143,7 @@ def cnaster_converged_config(tmp_path: Path) -> Iterator[None]:
     shipped criterion is a separate question, and the tests that ask it take
     `cnaster_config` instead.
     """
-    from tests.tmp_inputs import written_config
+    from port.sim.inputs import written_config
 
     with written_config(cnaster_test_config(tmp_path, CONVERGED_EM_FTOL, 5_000)):
         yield
@@ -183,7 +183,7 @@ def cnaster_config_switch(tmp_path: Path) -> Iterator[Callable[[float, int], Non
     criterion falls short of the maximum needs both within one body, because
     the shortfall is a difference and neither run alone is the answer.
     """
-    from tests.tmp_inputs import written_config
+    from port.sim.inputs import written_config
 
     with ExitStack() as stack:
         yield lambda em_ftol, em_maxiter: stack.enter_context(
@@ -195,10 +195,10 @@ def cnaster_config_switch(tmp_path: Path) -> Iterator[Callable[[float, int], Non
 def planted_instance(tmp_path_factory: pytest.TempPathFactory) -> Any:
     """The gate instance, planted and written once for the session.
 
-    `tests.run_config.planted_and_written` at its defaults. Tests add files
+    `port.sim.run_config.planted_and_written` at its defaults. Tests add files
     beside it under names of their own and never rewrite what it wrote.
     """
-    from tests.run_config import planted_and_written
+    from port.sim.run_config import planted_and_written
 
     return planted_and_written(tmp_path_factory.mktemp("gate"))
 
@@ -206,7 +206,7 @@ def planted_instance(tmp_path_factory: pytest.TempPathFactory) -> Any:
 @pytest.fixture(scope="module")
 def gate_config(planted_instance: Any) -> Iterator[Any]:
     """The gate instance's run configuration, installed for the module."""
-    from tests.tmp_inputs import written_config
+    from port.sim.inputs import written_config
 
     with written_config(planted_instance[3]) as config:
         yield config

@@ -26,10 +26,10 @@ from typing import Any
 import matplotlib as mpl
 import numpy as np
 import pandas as pd
+from port.sim.fixtures import load_simulated
 from sklearn.metrics import adjusted_rand_score
 
 from tests.sim_audit import run_arm
-from tests.sim_fixtures import load_simulated
 
 mpl.use("Agg")
 

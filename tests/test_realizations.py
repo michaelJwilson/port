@@ -15,7 +15,8 @@ import numpy as np
 import pytest
 
 if TYPE_CHECKING:
-    from tests.fixtures import CoreInferenceTruth
+    from port.sim.truth import CoreInferenceTruth
+
     from tests.realizations import Fit
 
     First = tuple[CoreInferenceTruth, Fit]

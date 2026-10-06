@@ -19,8 +19,7 @@ import dataclasses
 from dataclasses import dataclass
 
 import numpy as np
-
-from tests.fixtures import CoreInferenceTruth
+from port.sim.truth import CoreInferenceTruth
 
 
 @dataclass(frozen=True)

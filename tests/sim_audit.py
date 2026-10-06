@@ -15,7 +15,7 @@ The four ARIs are `tests.recovery_audit`'s, on the sample's truth:
 - **copy state, integer**: the decoded `(A, B)` against the same.
 
 `--pure` first redraws the tumour spots as pure tumour
-(`tests.sim_fixtures.purify`): the simulated spots carry about 8 per cent
+(`port.sim.fixtures.purify`): the simulated spots carry about 8 per cent
 normal admixture, which no pair `(A, B)` at `p = A / (A + B)` can fit.
 
 `--oracle-start` sets `annotation.clone_label` to the sample's
@@ -92,10 +92,7 @@ from port.qa.scoring import (
 )
 from port.qa.statistics import measured, peak_gb
 from port.sim.files import located
-
-from tests.sim_fixtures import EASY, HARD, SimulatedSample, load_simulated
-
-SAMPLES = {"easy": EASY, "hard": HARD}
+from port.sim.fixtures import SAMPLES, SimulatedSample, load_simulated
 
 
 @dataclass
@@ -308,8 +305,7 @@ def run_arm(
 ) -> tuple[SimRecovery, Path]:
     """`run_cnaster_port` with `flags` on `sample`, scored."""
     from port.scripts.run_cnaster import main
-
-    from tests.sim_fixtures import write_sim_inputs
+    from port.sim.fixtures import write_sim_inputs
 
     root = Path(tempfile.mkdtemp()) if root is None else root
     known = {
@@ -349,7 +345,7 @@ def main() -> None:
     parser.add_argument(
         "--pure",
         action="store_true",
-        help="redraw the tumour spots pure (`tests.sim_fixtures.purify`) first",
+        help="redraw the tumour spots pure (`port.sim.fixtures.purify`) first",
     )
     parser.add_argument(
         "--window",
@@ -374,7 +370,7 @@ def main() -> None:
     sample = load_simulated(SAMPLES.get(arguments.sample, arguments.sample))
 
     if arguments.window:
-        from tests.sim_fixtures import crop
+        from port.sim.fixtures import crop
 
         window = tuple(float(v) for v in arguments.window.split(","))
         assert len(window) == 4
@@ -383,7 +379,7 @@ def main() -> None:
         print(f"WINDOW {list(window)} spots={sample.barcodes.size}", flush=True)
 
     if arguments.pure:
-        from tests.sim_fixtures import purify
+        from port.sim.fixtures import purify
 
         normal = tuple(
             float(f) for f in arguments.normal_fraction.split(",") if f.strip()

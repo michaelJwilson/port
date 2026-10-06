@@ -40,11 +40,7 @@ from tests.adapters import (
     cnaster_potts_adjacency,
     upstream_potts_energy,
 )
-from tests.fixtures import (
-    PottsLabels,
-    enumerate_minimum_energy,
-    potts_labels,
-)
+from tests.fixtures import PottsLabels, enumerate_minimum_energy, potts_labels
 
 SIGN_TOLERANCE = 1e-12
 """Absolute tolerance on `cost + energy == 0`.

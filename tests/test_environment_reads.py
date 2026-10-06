@@ -23,6 +23,10 @@ READS: dict[str, str] = {
         "PORT_LABEL_SOLVER overrides the bound solver for a benchmark arm (#246)"
     ),
     "python/port/sim/draw.py": "PORT_CACHE locates the simulator's map cache",
+    "python/port/sim/fixtures.py": (
+        "PORT_GRCH38 locates CalicoST's GRCh38 resources for the committed "
+        "samples (moved from tests/, T- #673 G6)"
+    ),
 }
 """Each file that reads the environment, and why."""
 
