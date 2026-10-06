@@ -4047,7 +4047,7 @@ wheels = [
 [[package]]
 name = "snakes-and-ladders"
 version = "0.3.0"
-source = { git = "https://github.com/michaelJwilson/snakes_and_ladders?branch=main#ab5e76350c1e913c55a259e29eba472c0362c4dc" }
+source = { git = "https://github.com/michaelJwilson/snakes_and_ladders?branch=main#9730280fd2e2f03619c7de25c8a45dded71a60dd" }
 dependencies = [
     { name = "jax" },
     { name = "matplotlib" },
