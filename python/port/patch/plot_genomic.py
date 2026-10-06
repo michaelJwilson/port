@@ -57,6 +57,8 @@ from cnaster.utils import get_intervals
 from matplotlib.collections import LineCollection
 from matplotlib.lines import Line2D
 
+from port.extensions.genomic_axis import GenomicAxis, Ticks, resolve
+
 __all__ = [
     "COLOUR_MODES",
     "UPSTREAM",
@@ -350,6 +352,7 @@ def plot_clones_genomic(
     colour_by: str | None = None,
     preferred_colour_by: str | None = None,
     logmu_shift: bool = False,
+    axis: GenomicAxis | Ticks | None = None,
 ) -> Any:
     """Per clone, RDR and BAF along the genome, with the fitted levels.
 
@@ -368,6 +371,12 @@ def plot_clones_genomic(
     `logmu_shift` draws each clone's RDR line at `mu / Z_c`, where its points
     are, for a fit the shift was applied to (#299); `run_cnaster_port` binds
     it with `SHIFT_SWAPS` (#517).
+
+    `axis`, a `port.extensions.genomic_axis.GenomicAxis` on these bins or a
+    `Ticks` made on `df_cnv`'s, draws the points, levels and chromosome
+    boundaries on its coordinate and ticks every 10 Mb (T- #683); `None`, or
+    `Ticks` without `df_cnv`, which carries the bins' base pairs, is
+    `cnaster`'s axis.
     """
 
     if df_cnv is not None and res_combine is None:
@@ -401,7 +410,8 @@ def plot_clones_genomic(
     shifted = logmu_shift and has_rdr
 
     n_obs = X.shape[0]
-    x = np.arange(n_obs)
+    genome = resolve(axis, df_cnv, n_obs)
+    x = np.arange(n_obs) if genome is None else genome.warp(np.arange(n_obs))
     per_clone = 2 if has_rdr else 1
 
     if figure is None:
@@ -483,6 +493,11 @@ def plot_clones_genomic(
                 res_combine, clone, n_obs, single_base_nb_mean, shifted
             )
 
+            if genome is not None:
+                levels = levels._replace(
+                    starts=genome.warp(levels.starts), ends=genome.warp(levels.ends)
+                )
+
             if ax_rdr is not None:
                 _horizontal(ax_rdr, levels, levels.rdr)
 
@@ -527,7 +542,16 @@ def plot_clones_genomic(
         if df_cnv is not None
         else 1 + np.arange(len(lengths))
     )
-    _draw_chromosome_boundaries(axes, lengths, chromosomes, chrtext_shift)
+    if genome is None:
+        _draw_chromosome_boundaries(axes, lengths, chromosomes, chrtext_shift)
+    else:
+        _draw_chromosome_boundaries(
+            axes, np.diff(genome.edges), chromosomes, chrtext_shift
+        )
+
+        # NB each clone's lowest track ticked, the page's last labelled.
+        for ax in axes[per_clone - 1 :: per_clone]:
+            genome.draw(ax, labels=ax is axes[-1])
 
     if owned:
         figure.tight_layout()
