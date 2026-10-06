@@ -33,10 +33,11 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import functools
 import shutil
 import tempfile
 import tomllib
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
@@ -104,6 +105,10 @@ def stamp(figure: Any, text: str, *, top: bool = False) -> None:
     from port.extensions.figure_style import figure_font
 
     y, va = (0.998, "top") if top else (0.002, "bottom")
+    # NB a warped genomic axis says so (`genomic_axis.disclose`, T- #683).
+    label = figure.get_label()
+    if label.startswith("axis:"):
+        text = f"{text} · {label}"
     with figure_font():
         figure.text(0.998, y, text, ha="right", va=va, fontsize=6, color=MUTED)
 
@@ -183,14 +188,14 @@ def truth_figures(path: Path, out: Path, text: str) -> list[Path]:
 
     r = analysis.read(path)
     with stamping(text):
-        written = r.plot(out)
+        written = r.plot(out, metric=True)
 
     # NB `mutation_tree.png` is not a paper figure: `simulated_tree.png` is
     #    `truth_combined`'s panel (a) alone (T- #660).
     (out / "mutation_tree.png").unlink(missing_ok=True)
     written = [w for w in written if w.name != "mutation_tree.png"]
     pages = (
-        ("truth_combined.png", truth_combined_figure(r)),
+        ("truth_combined.png", truth_combined_figure(r, metric=True)),
         ("simulated_tree.png", simulated_tree_figure(r)),
     )
     for name, figure in pages:
@@ -254,9 +259,9 @@ def run_figures(sample: Any, root: Path, out: Path, text: str) -> Run:
     #    writes them: the page is included at 1:1.
     with page_style():
         for name, figure in (
-            ("genomic.png", genomic_figure(recorded)),
+            ("genomic.png", genomic_figure(recorded, metric=True)),
             ("spatial.png", spatial_figure(recorded, frame)),
-            ("combined.png", combined_figure(recorded, frame)),
+            ("combined.png", combined_figure(recorded, frame, metric=True)),
         ):
             stamp(figure, text, top=True)
             figure.savefig(
@@ -456,13 +461,27 @@ def confusion_figure(c: Compared) -> Any:
     return figure
 
 
-def genomic_compare_figure(c: Compared) -> Any:
-    """16: planted and decoded `(A, B)` along the genome per matched clone, mismatched bins marked."""
+MB_PAD = 12.0
+"""Points from the axis to the chromosome numbers, under the Mb labels."""
+
+
+def genomic_compare_figure(c: Compared, *, metric: bool = False) -> Any:
+    """16: planted and decoded `(A, B)` along the genome per matched clone,
+    mismatched bins marked; on `metric`, every bin planted or decoded altered
+    in any matched clone drawn wider (T- #683)."""
     import matplotlib.pyplot as plt
     from matplotlib.lines import Line2D
 
+    from port.extensions.genomic_axis import GenomicAxis, disclose
     from port.sim.analysis import SERIES
 
+    lengths = np.diff(c.edges)
+    altered = np.any(c.truth != 1, axis=(1, 2)) | np.any(c.decoded != 1, axis=(1, 2))
+    genome = GenomicAxis(
+        lengths.astype(np.int64),
+        np.column_stack([c.start, c.end])[altered] if metric else None,
+    )
+    start, end, edges = genome.warp(c.start), genome.warp(c.end), genome.edges
     n = len(c.clone_of)
     top = int(max(c.truth.max(), c.decoded.max(), 2))
     figure, axes = plt.subplots(n, 1, figsize=(7.0, 0.4 + 1.25 * n), sharex=True)
@@ -472,19 +491,19 @@ def genomic_compare_figure(c: Compared) -> Any:
     for k, (ax, (p, f)) in enumerate(zip(axes, c.clone_of.items(), strict=True)):
         truth, decoded = c.truth[:, k], c.decoded[:, k]
         for column, colour, shift in allele:
-            ax.hlines(truth[:, column] + shift, c.start, c.end, color=colour,
+            ax.hlines(truth[:, column] + shift, start, end, color=colour,
                       linewidth=3.0, alpha=0.35)  # fmt: skip
-            ax.hlines(decoded[:, column] + shift, c.start, c.end, color=colour,
+            ax.hlines(decoded[:, column] + shift, start, end, color=colour,
                       linewidth=0.9)  # fmt: skip
         same = np.all(truth == decoded, axis=1)
         swapped = ~same & np.all(truth == decoded[:, ::-1], axis=1)
         wrong = ~same & ~swapped
-        middle = (c.start + c.end) / 2
+        middle = (start + end) / 2
         ax.plot(middle[swapped], np.full(swapped.sum(), -0.75), "|", color=SWAPPED,
                 markersize=5, markeredgewidth=0.6)  # fmt: skip
         ax.plot(middle[wrong], np.full(wrong.sum(), -0.75), "|", color=WRONG,
                 markersize=5, markeredgewidth=0.6)  # fmt: skip
-        for edge in c.edges:
+        for edge in edges:
             ax.axvline(edge, color=GRID, linewidth=0.6, zorder=0)
         ax.set_ylim(-1.0, top + 0.5)
         ax.set_yticks(range(top + 1))
@@ -495,11 +514,15 @@ def genomic_compare_figure(c: Compared) -> Any:
             transform=ax.transAxes, ha="right", va="bottom", fontsize=6.5, color=MUTED,
         )  # fmt: skip
 
-    lengths = np.diff(c.edges)
-    axes[-1].set_xticks(c.edges[:-1] + lengths / 2,
+    axes[-1].set_xticks((edges[:-1] + edges[1:]) / 2,
                         [str(i) for i in range(1, lengths.size + 1)])  # fmt: skip
     axes[-1].tick_params(axis="x", labelsize=6)
-    axes[-1].set_xlim(c.edges[0], c.edges[-1])
+    # NB a tick every 10 Mb, labelled on the last row; the chromosome numbers
+    #    a row below their Mb (T- #683).
+    for ax in axes:
+        genome.draw(ax, labels=ax is axes[-1])
+    axes[-1].tick_params(axis="x", which="major", pad=MB_PAD)
+    axes[-1].set_xlim(edges[0], edges[-1])
     axes[-1].set_xlabel("chromosome", fontsize=8, color=INK)
     key = [
         Line2D([], [], color=SERIES[0], linewidth=3.0, alpha=0.35, label="planted A"),
@@ -512,6 +535,7 @@ def genomic_compare_figure(c: Compared) -> Any:
     figure.legend(handles=key, loc="upper center", ncol=6, fontsize=6.5,
                   frameon=False)  # fmt: skip
     figure.tight_layout(rect=(0, 0.01, 1, 0.97))
+    disclose(figure, genome)
     return figure
 
 
@@ -558,10 +582,12 @@ def exact_figure(c: Compared) -> Any:
     return figure
 
 
-FIGURES = {
+FIGURES: dict[str, Callable[[Compared], Any]] = {
     "clones_truth_vs_fit.png": labels_figure,
     "copy_confusion.png": confusion_figure,
-    "copy_genomic_truth_vs_fit.png": genomic_compare_figure,
+    "copy_genomic_truth_vs_fit.png": functools.partial(
+        genomic_compare_figure, metric=True
+    ),
     "exact_by_class.png": exact_figure,
 }
 
@@ -780,6 +806,10 @@ the fixture has no H&E image, and the run never reads the mock.
 `solvers/solver_combined.png` is not drawn from this fixture: `--solvers POTTS.pkl COPY.pkl`
 draws it from a `port.studies.potts_stream` and a `port.studies.copy_state_stream` record,
 and its stamp names both records' data hashes.
+The genomic panels of `truth/truth_combined.png`, `truth/clones_genomic.png`,
+`truth/clone_profiles.png`, `run/genomic.png`, `run/combined.png` and
+`compare/copy_genomic_truth_vs_fit.png` draw every altered bin at 2x its extent
+(`port.extensions.genomic_axis`, T- #683), and their stamps end `· axis: altered` and the scale used.
 
 | File | Question | Source |
 | --- | --- | --- |
