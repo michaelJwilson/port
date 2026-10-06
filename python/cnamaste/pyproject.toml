@@ -6,7 +6,9 @@
 #   uv build --wheel python/cnamaste
 #
 # The dependencies are `cnaster`'s at its locked pin `4adad4d`, verbatim, so
-# the copy runs wherever `cnaster` does.
+# the copy runs wherever `cnaster` does, plus `snakes_and_ladders` (T- #670
+# PR6b, the owner's decision on T- #670): `sal`'s emission tables, mixture
+# starts and segment floor, at the commit `port`'s `uv.lock` pins.
 [build-system]
 requires = ["setuptools>=77"]  # NB 77: an SPDX `license` string (PEP 639)
 build-backend = "setuptools.build_meta"
@@ -36,6 +38,9 @@ dependencies = [
     "pyranges",
     "hmmlearn",
     "pysam",
+    # NB the commit `port`'s `uv.lock` resolves `[tool.uv.sources]`'s `main`
+    #    to; a direct reference, since `cnamaste` ships without `port`'s lock.
+    "snakes_and_ladders @ git+https://github.com/michaelJwilson/snakes_and_ladders@9730280fd2e2f03619c7de25c8a45dded71a60dd",
 ]
 
 [project.optional-dependencies]

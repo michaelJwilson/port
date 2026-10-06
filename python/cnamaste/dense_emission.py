@@ -1,0 +1,183 @@
+"""`cnaster`'s coded NB/BB emission, scored by sal's dense log-emission (#425).
+
+`port.patch.hmm_nophasing.dense_emission`, moved in by T- #670 PR6b with its
+imports rewritten: `cnamaste.hmm_nophasing`'s `emission_kernels="sal"`.
+
+`_nb_logpmf_1d` and `_bb_logpmf_1d` score one state over a vector of counts,
+`lgamma` per score. `sal.emissions.dense.log_emission` scores every state of
+the same family at once from sal's tables in Rust (sal #1132), in the
+family's own completion order (`Order.FAMILY`). The same edge behaviour as
+`cnaster`'s:
+
+- a zero exposure or trial count scores 0, which sal reads as unobserved;
+- `alpha` floored at 1e-10 for the negative binomial, and the beta-binomial's
+  `alpha`, `beta` floored at `EPS`;
+- a non-positive rate `mu` scores 0 everywhere, as `exposure * mu <= 0` does.
+
+A state with `tau >= STABLE_TAU` is scored by `cnamaste.bb_logpmf._bb_logpmf_1d`
+instead (#561): sal fills its tables with `lgamma` and loses
+`eps tau log tau`, 1.9e-10 nats at 1e5 and 3.4e-3 at 1e12 against `mpmath`.
+
+To a tolerance, not bitwise, so it is `--sal`'s rather than a `SWAPS` row;
+#244 is why a tolerance is measured end to end before it is anything else.
+Selected by the `hmm_nophasing` row's `emission_kernels="sal"` option, not a
+name rebind: `cnaster`'s compiled kernels call `_nb_logpmf_1d` as a global.
+:func:`coded_emission` is upstream's coded method with every state scored in
+one call per spot, which is where the speed is.
+
+**The distinct counts are kept across calls where the caller holds a cache**
+(#702). sal scores each family on the distinct counts of the observations
+(sal #924) and finds them with a `torch.unique` per call; an EM scores the
+same observations every iteration, so `distinct`, given, is installed as
+sal's `reusing_distinct` cache and each array's distinct values are found
+once. A hit is verified by `torch.equal`, so the scores are bitwise those
+without it.
+"""
+
+from __future__ import annotations
+
+import contextlib
+from collections.abc import Iterator
+from typing import Any
+
+import numpy as np
+
+from cnamaste.bb_logpmf import DISPERSION_FLOOR, _bb_logpmf_1d
+
+__all__ = ["STABLE_TAU", "bb_states", "coded_emission", "nb_states"]
+
+Distinct = dict[Any, Any]
+"""sal's `DistinctCache`: held by the caller, installed per call (#702)."""
+
+
+@contextlib.contextmanager
+def _reusing(distinct: Distinct | None) -> Iterator[None]:
+    """sal's `reusing_distinct(distinct)`, or nothing when no cache is held."""
+    if distinct is None:
+        yield
+        return
+
+    from sal.emissions.rising import reusing_distinct
+
+    with reusing_distinct(distinct):
+        yield
+
+
+STABLE_TAU = 1e5
+"""The concentration from which a state's beta-binomial is port's (#561), not sal's."""
+
+
+def nb_states(
+    obs: np.ndarray,
+    exposure: np.ndarray,
+    mu: np.ndarray,
+    dispersions: np.ndarray,
+    *,
+    distinct: Distinct | None = None,
+) -> np.ndarray:
+    """`(K, n)`: every state's `_nb_logpmf_1d` in one call; a rate <= 0 scores 0."""
+    from sal.emissions import NegativeBinomialEmission
+    from sal.emissions.dense import Order, log_emission
+
+    mu = np.asarray(mu, dtype=np.float64)
+    dead = mu <= 0.0
+    family = NegativeBinomialEmission(
+        dispersion=1.0
+        / np.maximum(np.asarray(dispersions, dtype=np.float64), DISPERSION_FLOOR),
+        mean=np.where(dead, 1.0, mu),
+    )
+    with _reusing(distinct):
+        scores = log_emission(
+            family,
+            np.asarray(obs, dtype=np.float64),
+            np.asarray(exposure, dtype=np.float64)[:, None],
+            order=Order.FAMILY,
+        )
+    scores[dead] = 0.0
+    return scores
+
+
+def bb_states(
+    obs: np.ndarray,
+    trials: np.ndarray,
+    p_binom: np.ndarray,
+    taus: np.ndarray,
+    *,
+    distinct: Distinct | None = None,
+) -> np.ndarray:
+    """`(K, n)`: every state's `_bb_logpmf_1d` in one call; `tau >= STABLE_TAU` by port's kernel."""
+    from sal.emissions import BetaBinomialEmission
+    from sal.emissions.dense import Order, log_emission
+
+    p = np.asarray(p_binom, dtype=np.float64)
+    t = np.asarray(taus, dtype=np.float64)
+    successes = np.asarray(obs, dtype=np.float64)
+    total = np.asarray(trials, dtype=np.float64)
+    family = BetaBinomialEmission(
+        alpha=np.maximum(p * t, DISPERSION_FLOOR),
+        beta=np.maximum((1.0 - p) * t, DISPERSION_FLOOR),
+        trials=np.ones_like(p),
+    )
+    with _reusing(distinct):
+        scores = np.asarray(
+            log_emission(family, successes, total[:, None], order=Order.FAMILY)
+        )
+
+    for state in np.flatnonzero(t >= STABLE_TAU):
+        _bb_logpmf_1d(
+            successes,
+            total,
+            float(p[state]),
+            float(t[state]),
+            scores[state],
+            DISPERSION_FLOOR,
+        )
+
+    return scores
+
+
+def coded_emission(
+    nbEncoder: Any,
+    bbEncoder: Any,
+    log_mu: np.ndarray,
+    alphas: np.ndarray,
+    p_binom: np.ndarray,
+    taus: np.ndarray,
+    *,
+    clone_stack: bool = True,
+    distinct: Distinct | None = None,
+) -> tuple[np.ndarray, np.ndarray]:
+    """`hmm_nophasing.compute_emission_probability_nb_betabinom_coded`, unshifted.
+
+    Upstream's loop over spots, decode and stack, with each spot's states
+    scored together: one NB and one BB family of `n_states` per spot.
+    """
+    n_spots = nbEncoder.n_spots
+
+    if bbEncoder.n_spots != n_spots:  # invariant
+        msg = "the encoders must cover the same spots"
+        raise AssertionError(msg)
+
+    rdr, baf = [], []
+
+    for spot in range(n_spots):
+        mu = np.exp(np.asarray(log_mu, dtype=np.float64)[:, spot])
+        alpha = np.asarray(alphas, dtype=np.float64)[:, spot]
+        p = np.asarray(p_binom, dtype=np.float64)[:, spot]
+        tau = np.asarray(taus, dtype=np.float64)[:, spot]
+
+        nb_endog = np.asarray(nbEncoder.get_unique_obs(spot), dtype=np.float64)
+        nb_exposure = np.asarray(nbEncoder.get_unique_total(spot), dtype=np.float64)
+        bb_endog = np.asarray(bbEncoder.get_unique_obs(spot), dtype=np.float64)
+        bb_trials = np.asarray(bbEncoder.get_unique_total(spot), dtype=np.float64)
+
+        rdr_unique = nb_states(nb_endog, nb_exposure, mu, alpha, distinct=distinct)
+        baf_unique = bb_states(bb_endog, bb_trials, p, tau, distinct=distinct)
+
+        rdr.append(nbEncoder.decode_array(rdr_unique, spot))
+        baf.append(bbEncoder.decode_array(baf_unique, spot))
+
+    if clone_stack:
+        return np.concatenate(rdr, axis=1), np.concatenate(baf, axis=1)
+
+    return np.stack(rdr, axis=2), np.stack(baf, axis=2)

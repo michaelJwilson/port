@@ -28,6 +28,7 @@ source =
 # 62.42% at PR4 (6492 statements, 2440 missed), with the log-space kernel
 # tests added. 64.15% at PR5 (6904 statements, 2475 missed), with the HMM
 # fit-chain tests added. 65.23% at PR6 (6928 statements, 2409 missed), with
-# the initialization tests added.
-fail_under = 65
+# the initialization tests added. 66.85% at PR6b (7325 statements, 2428
+# missed), with the `sal` emission and start tests added.
+fail_under = 66
 precision = 2

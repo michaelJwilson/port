@@ -22,7 +22,9 @@ modules, and no pipeline entry point may.
 
 `cnamaste` (T- #670) ships on its own and has its own scope at the end of
 this file: `copy`, `ported` and `added` roles, reached from `run_cnamaste`,
-importing neither `cnaster` nor `port`.
+importing neither `cnaster` nor `port`, and nothing its build does not
+declare. `snakes_and_ladders` is declared (T- #670 PR6b): the owner's
+decision on T- #670 lets `cnamaste` depend on `sal` for now.
 
 A module reached by nothing lives in `sandbox/`, mirroring the tree it left
 (`sandbox/patch/...`, `sandbox/extensions/...`), so graduating is a move
@@ -114,6 +116,7 @@ ROLES: dict[str, Role] = {
     "port.studies.potts_plot": "tool",
     "port.studies.potts_solvers": "tool",
     "port.studies.potts_stream": "tool",
+    "port.studies.records": "tool",
     "port.studies.stream": "tool",
     # patch: rows
     "port.patch.hmm_nophasing.bb_logpmf": "row",
@@ -373,7 +376,9 @@ CNAMASTE_ROLES: dict[str, CnamasteRole] = {
     "cnamaste.clone_paths": "added",
     "cnamaste.cna_hmrf_result": "copy",
     "cnamaste.config": "copy",
+    "cnamaste.copy_starts": "added",
     "cnamaste.count_encoder": "copy",
+    "cnamaste.dense_emission": "added",
     "cnamaste.filter": "copy",
     "cnamaste.he": "ported",
     "cnamaste.gradient": "added",
@@ -490,6 +495,74 @@ def test_cnamaste_imports_neither_cnaster_nor_port() -> None:
     )
 
     assert found == []
+
+
+CNAMASTE_UNDECLARED = {"h5py", "seaborn"}
+"""Distributions `cnamaste` imports and its build does not declare: `cnaster`'s
+own omissions at the pin, which its copies keep. A declared list that only
+shrinks."""
+
+
+def _declared() -> tuple[set[str], str]:
+    """`cnamaste`'s declared distributions, normalized, and its `sal` requirement."""
+    import tomllib
+
+    project = tomllib.loads((PACKAGES["cnamaste"] / "pyproject.toml").read_text())[
+        "project"
+    ]
+    requirements = list(project["dependencies"]) + [
+        r for extra in project["optional-dependencies"].values() for r in extra
+    ]
+    names = {
+        re.sub(r"[-_.]+", "-", re.split(r"[\s<>=@\[;~!]", r, maxsplit=1)[0]).lower()
+        for r in requirements
+    }
+    (sal,) = [r for r in requirements if r.startswith("snakes_and_ladders")]
+    return names, sal
+
+
+@pytest.mark.infra
+def test_cnamaste_imports_only_what_its_build_declares() -> None:
+    """Every third-party module `cnamaste` imports is a declared distribution's.
+
+    `sal` was imported undeclared from PR3 (`segments`' floor) to PR6; PR6b
+    declares it (T- #670), and this is the guard that would have said so.
+    """
+    import sys
+    from importlib.metadata import packages_distributions
+
+    imported = {
+        top.partition(".")[0]
+        for path in modules("cnamaste").values()
+        for top in _imported(path)
+    } - {"cnamaste", "__future__", *sys.stdlib_module_names}
+    owners = packages_distributions()
+    declared, _ = _declared()
+    undeclared = {
+        re.sub(r"[-_.]+", "-", owners[name][0]).lower()
+        for name in imported
+        if name in owners
+    } - declared
+
+    assert imported <= set(owners), sorted(imported - set(owners))
+    assert undeclared == CNAMASTE_UNDECLARED
+
+
+@pytest.mark.infra
+def test_cnamaste_pins_sal_where_ports_lock_does() -> None:
+    """`cnamaste`'s `sal` is the commit `uv.lock` resolves `port`'s to."""
+    import tomllib
+
+    _, sal = _declared()
+    lock = tomllib.loads((ROOT / "uv.lock").read_text())
+    (source,) = [
+        package["source"]["git"]
+        for package in lock["package"]
+        if package["name"] == "snakes-and-ladders"
+    ]
+    repository, _, commit = source.partition("#")
+
+    assert sal == (f"snakes_and_ladders @ git+{repository.partition('?')[0]}@{commit}")
 
 
 @pytest.mark.infra

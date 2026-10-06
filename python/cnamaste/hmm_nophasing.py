@@ -14,8 +14,10 @@ which `port`'s subclasses and `hmm_phased` keeps as its base, as `port`'s
 does. Two options, class attributes as in `port`: `analytic_gradient`, on,
 the M step's gradient in closed form (#433, #244); `apply_logmu_shift`, off
 as in `cnaster`, the per-clone `log Z_c` folded into the depth channel
-(#276). `port`'s third, `emission_kernels="sal"` (#425), needs `sal`, which
-`cnamaste` does not declare, and stays behind.
+(#276). `port`'s third, `emission_kernels`, moved in by T- #670 PR6b once
+`cnamaste` declared `sal`: `"cnaster"` by default, or `"sal"`, which scores
+the coded emission with `sal`'s dense tables (`cnamaste.dense_emission`,
+#425), to a tolerance rather than bitwise.
 
 `_run_optimization_pipeline` no longer takes `tumor_prop` (#135): it never
 read it, so a proportion handed in was fitted under no mixture with nothing
@@ -1229,6 +1231,14 @@ class hmm_nophasing(_cnaster_hmm_nophasing):
     one call per coordinate, as this class does with the attribute off.
     """
 
+    emission_kernels: str = "cnaster"
+    """`cnaster` (default) or `sal`: which kernels score the coded emission (#425, T- #670 PR6b).
+
+    `port`'s `run_cnaster_port` binds `sal` where the shift is. Not a name
+    rebind, because the compiled kernels call `_nb_logpmf_1d` as a global and
+    a Python function in its place breaks their compilation.
+    """
+
     def _clone_triples(self, encoder: Any, lengths: tuple[int, ...]) -> _Triples:
         """`(clone, obs, total)` compressed once over the whole genome.
 
@@ -1252,6 +1262,17 @@ class hmm_nophasing(_cnaster_hmm_nophasing):
             )
 
         return cache[key][1]
+
+    def _distinct(self) -> dict[Any, Any]:
+        """sal's distinct-count cache for this instance's dense emission (#702).
+
+        Held on the instance as `_triple_cache` is: one fit scores the same
+        observations every iteration, and sal verifies each hit against the
+        values, so a stale entry is a miss rather than a wrong score.
+        """
+        cache: dict[Any, Any] = getattr(self, "_distinct_cache", None) or {}
+        self._distinct_cache = cache
+        return cache
 
     def _decode(self) -> np.ndarray | None:
         """The hard decode the shift is taken at, or `None` if unavailable.
@@ -1472,6 +1493,20 @@ class hmm_nophasing(_cnaster_hmm_nophasing):
                     ),
                 )
                 normal_log_lambda = None
+            if self.emission_kernels == "sal":
+                from cnamaste.dense_emission import coded_emission
+
+                return coded_emission(
+                    nbEncoder,
+                    bbEncoder,
+                    log_mu,
+                    alphas,
+                    p_binom,
+                    taus,
+                    clone_stack=clone_stack,
+                    distinct=self._distinct(),
+                )
+
             unshifted: tuple[np.ndarray, np.ndarray]
             unshifted = super().compute_emission_probability_nb_betabinom_coded(
                 nbEncoder,
@@ -1535,14 +1570,25 @@ class hmm_nophasing(_cnaster_hmm_nophasing):
             scratch_baf[0] if scratch_baf else np.zeros((n_states, len(bb_endog)))
         )
 
-        for state in range(n_states):
-            _bb_logpmf_1d(
+        if self.emission_kernels == "sal":
+            from cnamaste.dense_emission import bb_states
+
+            baf_uniq[:] = bb_states(
                 bb_endog,
                 bb_exposure,
-                probabilities[state],
-                concentrations[state],
-                baf_uniq[state, :],
+                probabilities,
+                concentrations,
+                distinct=self._distinct(),
             )
+        else:
+            for state in range(n_states):
+                _bb_logpmf_1d(
+                    bb_endog,
+                    bb_exposure,
+                    probabilities[state],
+                    concentrations[state],
+                    baf_uniq[state, :],
+                )
 
         log_emit_baf = bbEncoder.decode_array(baf_uniq, 0)
 
@@ -1557,6 +1603,18 @@ class hmm_nophasing(_cnaster_hmm_nophasing):
             first, last = int(triples.bounds[clone]), int(triples.bounds[clone + 1])
 
             if first == last:
+                continue
+
+            if self.emission_kernels == "sal":
+                from cnamaste.dense_emission import nb_states
+
+                rdr_uniq[:, first:last] = nb_states(
+                    triples.obs[first:last],
+                    triples.total[first:last],
+                    np.exp(rates - shifts[clone]),
+                    dispersions,
+                    distinct=self._distinct(),
+                )
                 continue
 
             for state in range(n_states):

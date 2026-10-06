@@ -7,10 +7,15 @@ heaviest are kept. Off, as in `cnaster` and as `port` leaves it without its
 shift; `port`'s `run_core_inference` binds it with the shift (row 33, PR7).
 Reached here as `hmm_initializer=functools.partial(gmm_init, distinct=True)`.
 
-`port.patch.hmm_initialize.sal_mixture`'s starts, `sal`'s `kmeans++x5+em`
-(#489) and the lattice (#540), are not moved: each seeds and polishes on
-`sal`'s `MixtureInstance` and EM, and `cnamaste` does not declare `sal`.
-#236, the GMM's equal vote per bin, is fixed only by those starts.
+**T- #670 PR6b: `port.patch.hmm_initialize.sal_mixture`'s starts** --
+`sal`'s `kmeans++x5+em` (#489) and the lattice (#540) -- are `gmm_init`'s
+`start` (the BAF + RDR call) and `baf_start` (the BAF-only call), off. Each
+seeds and polishes on `sal`'s `MixtureInstance` and EM (`cnamaste.copy_starts`),
+and fixes #236: the GMM divides the exposure out of the mean and leaves it in
+the variance, so every bin votes equally; these fit the negative binomial
+and beta-binomial with each bin's exposure and trials as its covariate.
+`only_minor=True` calls, the phasing's, keep the GMM. `port`'s
+`run_core_inference` binds `start` with the shift (row 33, PR7).
 """
 
 import numpy as np
@@ -322,7 +327,28 @@ def gmm_init(
     mirrored_baf_augmentation=True,
     *,
     distinct=False,
+    start=None,
+    baf_start=None,
 ):
+    # NB `port`'s `sal_mixture.gmm_init` (#489, #540, T- #670 PR6b): a
+    #    stage's start in place of the GMM, on `only_minor=False` calls alone.
+    chosen = start if "m" in params else baf_start
+    if chosen is not None and not only_minor:
+        from cnamaste.copy_starts import POLISH_SECONDS, call_of, checked, run_start
+
+        rng = np.random.default_rng([int(random_state or 0), 0])
+        result = run_start(
+            checked(chosen),
+            call_of(X, base_nb_mean, total_bb_RD, n_states, params),
+            rng,
+            seconds=POLISH_SECONDS,
+        )
+        logger.info(
+            f"Initialized HMM emission with {chosen} in {result.seconds:.1f} s "
+            f"(log-likelihood {result.log_likelihood:.6e})."
+        )
+        return result.log_mu.reshape(-1, 1), result.p_binom.reshape(-1, 1), None, None
+
     logger.info(
         f"Initializing HMM emission with GMM (only_minor={only_minor}, log_space={in_log_space}, mirrored_baf={mirrored_baf_augmentation})."
     )

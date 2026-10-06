@@ -127,7 +127,10 @@ without it. PR5: `FIT_CHAIN`, rows 25-26 at `cnamaste`'s defaults, the
 shift off and the analytic gradient on. PR6 adds no row: `distinct` (#348)
 is an option of `gmm_init`, off, which `port` installs with row 33; the
 segment floor (#551) is PR3's `create_bin_ranges`, off unless configured,
-pinned against `--sal`'s binding below.
+pinned against `--sal`'s binding below. PR6b adds none either: the `sal`
+emission (#425) is `hmm_nophasing`'s `emission_kernels`, and the `sal` and
+lattice starts (#489, #540) are `gmm_init`'s `start` and `baf_start`, each
+off, which `port` installs with its shift (`test_cnamaste_sal.py`).
 """
 
 NARROWED = "(0.4, 0.6)"

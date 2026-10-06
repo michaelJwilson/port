@@ -225,7 +225,10 @@ tests, measured against `python/cnamaste` alone under `.coveragerc-cnamaste`'s
 floor. Its modules that are still `cnaster`'s code at the pin are outside
 `ruff` and read by `mypy` as `cnaster` is: a declared list,
 `CNAMASTE_UNLINTED` in `tests/test_module_roles.py`, that shrinks as T- #670
-moves `port`'s code in.
+moves `port`'s code in. It declares `cnaster`'s dependencies and
+`snakes_and_ladders`, at the commit `uv.lock` pins (T- #670 PR6b), and
+imports nothing undeclared but `cnaster`'s own two omissions, `h5py` and
+`seaborn` (`test_cnamaste_imports_only_what_its_build_declares`).
 
 `mypy` reads its paths from `pyproject.toml` (`python/`, `tests/`). The
 compiled extension is typed by the hand-written stub
