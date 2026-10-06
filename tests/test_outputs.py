@@ -310,7 +310,7 @@ def test_a_merge_rewrites_clone_labels_and_keeps_cnaster_s(tmp_path: Path) -> No
 
 
 def _truth() -> Any:
-    from tests.fixtures import core_inference_truth
+    from port.sim.truth import core_inference_truth
 
     return core_inference_truth(
         n_clones=2, n_states=3, lattice=(25, 40), n_obs=40, n_segments=3, seed=11
@@ -341,9 +341,8 @@ def test_a_run_s_outputs_recover_the_planted_clones_and_the_flat_normal(
     of_a_perfect_decode` judges the writer on the amplification, exactly.
     """
     from port.extensions.outputs import run_directories, write_outputs
-
-    from tests.run_config import run_written
-    from tests.tmp_inputs import GENE_SPACING
+    from port.sim.inputs import GENE_SPACING
+    from port.sim.run_config import run_written
 
     truth = _truth()
     # NB `cnaster`'s ICM draws from numpy's global generator unseeded, so the

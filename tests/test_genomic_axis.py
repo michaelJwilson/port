@@ -311,8 +311,7 @@ def test_a_warped_figure_states_its_scale_in_its_stamp() -> None:
 
     mpl.use("Agg")
     from port.extensions.genomic_axis import disclose
-
-    from tests.studies.paper_figures import stamp
+    from port.studies.paper_figures import stamp
 
     for altered, suffix in (
         (None, ""),

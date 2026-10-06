@@ -84,7 +84,7 @@ PAPER_FIGURES = "docs/plots/paper/"
 POPULATION_FIGURE = "docs/plots/studies/population_recovery.png"
 """Study result figure, regenerable only from population_records.jsonl.gz.
 
-#544's 679 pipeline runs are what drew it; `python -m tests.studies.population
+#544's 679 pipeline runs are what drew it; `run_study --population
 report` redraws it from their records, which the repository keeps only in that
 archive."""
 
@@ -92,7 +92,7 @@ archive."""
 @pytest.mark.infra
 def test_no_png_is_tracked_under_docs() -> None:
     """`docs/` tracks no PNG: a figure is regenerated on demand by the command
-    that draws it, into `.cache/plots/` (`tests/plots_dir.py`).
+    that draws it, into `.cache/plots/` (`port.qa.provenance.PLOTS`).
 
     The exceptions are `docs/plots/paper/`, T- #624's paper set: the figures a
     manuscript includes, which a reader needs without running the pipeline;
@@ -117,27 +117,23 @@ def test_no_png_is_tracked_under_docs() -> None:
 
 
 @pytest.mark.infra
-def test_the_input_hash_moves_with_an_input_and_not_otherwise(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_the_input_hash_moves_with_an_input_and_not_otherwise(tmp_path: Path) -> None:
     """A skipped badge pass is only as safe as this: an edit moves the digest,
     a badge write does not."""
-    from tests import badges
+    from port.qa.provenance import inputs_hash
 
     (tmp_path / "python").mkdir()
     (tmp_path / "python" / "a.py").write_text("x = 1\n")
     (tmp_path / "uv.lock").write_text("lock\n")
     (tmp_path / ".badges").mkdir()
-    monkeypatch.setattr(badges, "ROOT", tmp_path)
-
-    first = badges.inputs_hash()
+    first = inputs_hash(tmp_path)
     (tmp_path / ".badges" / "measurements.json").write_text("{}\n")
-    assert badges.inputs_hash() == first, "a badge write moved the digest"
+    assert inputs_hash(tmp_path) == first, "a badge write moved the digest"
 
     (tmp_path / "python" / "a.py").write_text("x = 2\n")
-    assert badges.inputs_hash() != first, "an edit to the code did not move it"
+    assert inputs_hash(tmp_path) != first, "an edit to the code did not move it"
 
     (tmp_path / "python" / "a.py").write_text("x = 1\n")
-    assert badges.inputs_hash() == first
+    assert inputs_hash(tmp_path) == first
     (tmp_path / "python" / "a.py").rename(tmp_path / "python" / "b.py")
-    assert badges.inputs_hash() != first, "a rename did not move it"
+    assert inputs_hash(tmp_path) != first, "a rename did not move it"

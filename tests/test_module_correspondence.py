@@ -173,7 +173,10 @@ def test_every_module_has_one_of_the_four_jobs() -> None:
 
     Four jobs: `patch/` replaces a named `cnaster` function or class,
     `extensions/` adds what has no counterpart, `sim/` simulates, and
-    everything else realizes `run_cnaster_port` with those in place. A module
+    everything else realizes `run_cnaster_port` with those in place. `qa/`
+    measures and records runs of the four (T- #673): the audits' and
+    studies' statistics and provenance, reached from no row or pipeline;
+    `studies/` holds the studies themselves, run by hand. A module
     with none of them goes to `sandbox/`.
 
     **This is the test the refactor exists for.** Moving four modules is an
@@ -185,7 +188,7 @@ def test_every_module_has_one_of_the_four_jobs() -> None:
     outside the coverage denominator and outside the claims, which is the
     whole of what it means -- so it simply does not appear here.
     """
-    allowed = {"patch", "extensions", "sim", "scripts", "sandbox"}
+    allowed = {"patch", "extensions", "sim", "scripts", "sandbox", "qa", "studies"}
 
     package = ROOT / "python" / "port"
     stray = []

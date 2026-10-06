@@ -9,7 +9,7 @@ solver is not what limits clone recovery (#497 was).
 
 ## Method
 
-`python -m tests.studies.potts_solvers capture | per-call`.
+`run_study --potts-solvers capture | per-call`.
 
 1. **Capture.** One `--sal --no-plots` run per sample (#487 + #496's
    loader), pickling every problem `pipeline_clone_assignment` hands its
@@ -62,7 +62,7 @@ host's.
 The runtime-against-gap figures this study drew are retired: #541's
 notebook (`docs/nb/clone_label_study.ipynb`) runs every solver from every
 clone-label start, on fields built from #540's copy states, and draws the
-figure that replaces them, in the notebook's output (`python -m tests.studies.clone_label_notebook RESULTS.pkl` also writes
+figure that replaces them, in the notebook's output (`run_study --clone-label-notebook RESULTS.pkl` also writes
 `.cache/plots/studies/clone_label_study.png`).
 
 ## End to end
@@ -113,7 +113,7 @@ serves them; this study gives no reason to want it.
 
 ## Found on the way
 
-`tests.sim_fixtures.stage` staged a CalicoST sample loaded by absolute path
+`port.sim.fixtures.stage` staged a CalicoST sample loaded by absolute path
 into itself: `into / "/abs"` is `/abs`. That unlinked every committed input
 and linked it to itself. The target is now `into / Path(name).name`, and
 staging into the sample is refused (`tests/test_stage_inputs.py`).

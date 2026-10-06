@@ -1,6 +1,6 @@
 """Each `dev_tree*` manifest names the generation it draws by r0's hash (#583).
 
-A manifest states `[sample] r0_hash`: `tests.sim_stages.realization_hash` of
+A manifest states `[sample] r0_hash`: `port.sim.fixtures.realization_hash` of
 its realization 0. A change to the manifest or to the simulator that moves
 r0 must state the new hash in the same change, so a study, a table or a
 ticket can say which draw it ran on, and a draw from an older checkout is
@@ -19,9 +19,7 @@ from pathlib import Path
 
 import pytest
 from port.sim.draw import _merge, draw, read_manifest
-
-from tests.sim_fixtures import SIM_ROOT, references
-from tests.sim_stages import R0_HASH, realization_hash
+from port.sim.fixtures import R0_HASH, SIM_ROOT, realization_hash, references
 
 MANIFESTS = SIM_ROOT / "manifests"
 HASHED = sorted(MANIFESTS.rglob("dev_tree*.toml"))

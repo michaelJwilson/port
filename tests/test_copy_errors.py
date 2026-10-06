@@ -116,7 +116,7 @@ def test_each_planted_pair_is_in_its_state_s_set(tmp_path: Path) -> None:
 
     Tolerance and realized value are in #353's pull request.
     """
-    from tests.copy_audit import decode_one
+    from port.qa.audit import decode_one
 
     score = decode_one(0, tmp_path)
 

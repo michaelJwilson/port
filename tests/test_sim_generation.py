@@ -1,4 +1,4 @@
-"""`tests.sim_fixtures`' `crop` and `purify(normal=...)` against their definitions (#380)."""
+"""`port.sim.fixtures`' `crop` and `purify(normal=...)` against their definitions (#380)."""
 
 from __future__ import annotations
 
@@ -21,9 +21,7 @@ def test_a_crop_keeps_the_window_every_input_in_step(tmp_path: Path) -> None:
     """
     import anndata as ad
     import scipy.sparse as sp
-
-    from tests.sim_audit import SAMPLES
-    from tests.sim_fixtures import crop, load_simulated
+    from port.sim.fixtures import SAMPLES, crop, load_simulated
 
     sample = load_simulated(SAMPLES["easy"])
     x, y = sample.coords[:, 0], sample.coords[:, 1]
@@ -63,9 +61,7 @@ def test_a_planted_normal_fraction_sets_the_loh_allele_share(tmp_path: Path) -> 
     loop, over the per-PR budget.
     """
     import scipy.sparse as sp
-
-    from tests.sim_audit import SAMPLES
-    from tests.sim_fixtures import crop, load_simulated, purify, references
+    from port.sim.fixtures import SAMPLES, crop, load_simulated, purify, references
 
     if references() is None:
         pytest.skip("CalicoST's GRCh38_resources not found")

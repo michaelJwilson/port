@@ -869,7 +869,7 @@ def genomic_figure(
     the two are scaled together until the page is `height` tall: from the
     base scale, then by the secant through two pages, to 0.005 in.
     """
-    from port.patch.plot_genomic import PAPER_WIDTH
+    from port.extensions.figure_style import PAPER_WIDTH
 
     if recorded.genomic is None or recorded.profile is None:
         msg = f"the run made {recorded.calls}; the genomic figure needs both"
@@ -1035,7 +1035,7 @@ def spatial_figure(
     """
     import matplotlib.pyplot as plt
 
-    from port.patch.plot_genomic import PAPER_WIDTH
+    from port.extensions.figure_style import PAPER_WIDTH
 
     if recorded.spatial is None:
         msg = f"the run made {recorded.calls}; the spatial figure needs its clones"

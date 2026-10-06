@@ -6,7 +6,6 @@ each one re-derives how `pred_cnv` is laid out, and each one branches on a
 second column of the state parameters that the fit cannot produce.
 """
 
-from port.patch.plotting.clone_paths import clone_path, clone_paths, state_vector
 from port.patch.plotting.spatial import plot_clones_spatial
 
 MIRRORS: tuple[str, ...] = (
@@ -28,8 +27,5 @@ package carries, which is where `FIGURE_SWAPS` finds `plot_clones_spatial`.
 
 __all__ = [
     "MIRRORS",
-    "clone_path",
-    "clone_paths",
     "plot_clones_spatial",
-    "state_vector",
 ]

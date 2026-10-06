@@ -53,8 +53,9 @@ from cnaster.utils import get_intervals
 from matplotlib.collections import LineCollection
 from matplotlib.lines import Line2D
 
-from port.patch.plot_genomic import PAPER_WIDTH, UPSTREAM_WIDTH
-from port.patch.plotting.clone_paths import clone_path, state_vector
+from port.extensions.figure_style import PAPER_WIDTH
+from port.patch._clone_paths import clone_path, state_vector
+from port.patch.plot_genomic import UPSTREAM_WIDTH
 
 logger = get_logger(__name__, start_time=start_time)
 

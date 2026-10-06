@@ -38,38 +38,58 @@ BUDGET: dict[str, int] = {
     #    the registry of the starts set aside, to `sandbox/`. 58: T- #418's
     #    `Samples`, checked at construction, and `Recorded`, a run's samples.
     #    59: T- #617 WP2's `pipeline.Default`, a flag's default and its off flag.
-    #    62: T- #683's `GenomicAxis`, the one genomic axis every genomic figure
-    #    draws on; `Ticks`, its data-free form a swap row binds; `_Thinned`,
-    #    the Mb labels laid out at draw time.
-    "classes": 62,
+    #    60: T- #673 G1's `port.qa.statistics.Measured`, the wall seconds and
+    #    peak memory every audit and study read for itself. 66: T- #673 G6
+    #    moved the simulation machinery from `tests/` into `port.sim`:
+    #    `CoreInferenceTruth`, `SimulatedSample`, `WrittenInputs`, `Binned`,
+    #    `Unsegmented` (frozen dataclasses) and `Slide` (a NamedTuple). 71:
+    #    G3 moved the audits' `SimRecovery`, `Recovery` and `Reading`
+    #    (dataclasses) and `port.sim.realizations`' `Fit` and `Summary`
+    #    (NamedTuples) from `tests/`. 77: G5 moved the studies, with
+    #    `paper_figures`' `Run` and `Compared`, `potts_solvers.PortStart`
+    #    (dataclasses), the two `Job`s (NamedTuples) and `clone_labels`' shim.
+    #    80: T- #683's `GenomicAxis`, `Ticks`, `_Thinned`: the one genomic
+    #    axis, its data-free form a swap row binds, and its Mb labels.
+    "classes": 80,
     # NB step 4: 18 records became NamedTuples; the dataclasses left carry
     #    mutable state, machinery or a `__post_init__` (#517 D). Step 8 moved
     #    7 dataclasses and 1 NamedTuple to `sandbox/`. 21: T- #418's `Samples`
-    #    (a `__post_init__`) and `Recorded` (mutable state). 22: T- #683's
-    #    `Ticks`, frozen: a swap row's bound option.
-    "dataclasses": 22,
+    #    (a `__post_init__`) and `Recorded` (mutable state). 22: T- #673 G1's
+    #    `Measured` (mutable state: filled when its block exits). 27: G6's five
+    #    frozen records, moved with the machinery rather than added. 30: G3's
+    #    three audit records (mutable: an arm fills `peak_gb` and candidates).
+    #    33: G5's three study records, moved.
+    #    34: T- #683's `Ticks`, frozen: a swap row's bound option.
+    "dataclasses": 34,
     # NB 24: `analysis.GenomicTruth` (the truth page). 26: #540's
     #    `CopyCall` and `CopyStart` (`Row` in `sandbox/`, #547). 27: T- #617
-    #    WP2's `pipeline.Default`.
-    "NamedTuples": 27,
+    #    WP2's `pipeline.Default`. 28: G6's `port.sim.he_slide.Slide`, moved.
+    #    30: G3's `Fit` and `Summary`, moved. 32: G5's two `Job`s, moved.
+    "NamedTuples": 32,
 }
 """`python/port` outside `sandbox/`."""
 
 CONCEPTS: dict[str, int] = {
-    # NB 2: `tests.scoring.matched` pairs labels by overlap for every scorer
-    #    (step 7); `tests.realizations.match_states` pairs states by
+    # NB 2: `port.qa.scoring.matched` pairs labels by overlap for every scorer
+    #    (step 7); `port.sim.realizations.match_states` pairs states by
     #    responsibility distance, a different cost.
     "Hungarian matcher": 2,
-    # NB 2: `tests.recovery_audit` runs a planted lattice with its hooks
-    #    (normal oracle, M-step tolerance, two-pass), `tests.sim_audit` a
-    #    written sim sample with its overrides; they share the scorer and the
-    #    capture, not the arm.
-    "run_arm": 2,
+    # NB 2: `port.qa.audit.audit_truth` runs an in-memory instance with its
+    #    hooks (normal oracle, M-step tolerance, an `entry` and its
+    #    candidates), `audit_sample` a sample on disk with its overrides; they
+    #    share `timed`, `overridden` and the matcher, not the arm (T- #673 G3,
+    #    from the two `run_arm`s).
+    "audit arm": 2,
     "clone_path": 1,
     # NB 2: `combined_figure` records plotting arguments, `segments` a
     #    segmentation lineage; `tests.sim_stages`'s wrapper is `logged`. 3:
     #    `samples` records a run's slices for its outputs (T- #418).
     "recording": 3,
+    # NB 1 each since T- #673 G1, from 7 and 4: `port.qa.provenance.head`
+    #    runs `git rev-parse` for 7 functions and a notebook cell, and
+    #    `port.qa.statistics.peak_gb` reads `ru_maxrss` for 4 functions.
+    "commit reader": 1,
+    "peak memory reader": 1,
 }
 """Definitions of one concept across `python/port` and `tests/`, with the reason where not 1."""
 
@@ -91,6 +111,18 @@ def _referenced(node: ast.AST) -> set[str]:
         sub.id if isinstance(sub, ast.Name) else sub.attr
         for sub in ast.walk(node)
         if isinstance(sub, ast.Name | ast.Attribute)
+    }
+
+
+def _arguments(node: ast.AST) -> set[str]:
+    """The string literals a call inside `node` takes positionally, alone or in a list."""
+    return {
+        item.value
+        for sub in ast.walk(node)
+        if isinstance(sub, ast.Call)
+        for arg in sub.args
+        for item in (arg.elts if isinstance(arg, ast.List | ast.Tuple) else [arg])
+        if isinstance(item, ast.Constant) and isinstance(item.value, str)
     }
 
 
@@ -123,9 +155,11 @@ def _measured() -> dict[str, int]:
         "Hungarian matcher": sum(
             "linear_sum_assignment" in _referenced(f) for f in functions
         ),
-        "run_arm": sum(f.name == "run_arm" for f in functions),
+        "audit arm": sum(f.name in {"audit_sample", "audit_truth"} for f in functions),
         "clone_path": sum(f.name == "clone_path" for f in functions),
         "recording": sum(f.name == "recording" for f in functions),
+        "commit reader": sum("rev-parse" in _arguments(f) for f in functions),
+        "peak memory reader": sum("ru_maxrss" in _referenced(f) for f in functions),
     }
 
 

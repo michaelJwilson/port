@@ -16,9 +16,8 @@ from typing import Any
 
 import numpy as np
 import pytest
-
-from tests.fixtures import core_inference_truth
-from tests.unsegment import Unsegmented, unsegment
+from port.sim.truth import core_inference_truth
+from port.sim.unsegment import Unsegmented, unsegment
 
 
 def _rebin(pre_image: Unsegmented) -> Any:

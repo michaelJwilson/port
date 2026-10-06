@@ -16,9 +16,9 @@ from typing import Any
 
 import numpy as np
 import pytest
+from port.sim.truth import core_inference_truth
 
 from tests.adapters import from_core_inference_truth
-from tests.fixtures import core_inference_truth
 
 
 @contextmanager

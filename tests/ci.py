@@ -19,7 +19,7 @@ where its module differs from `--base` (`origin/main`), and at a release. `--rec
 `.badges/measurements.json` and regenerates the badges, so the change that
 moves a figure carries it (`CLAUDE.md`: badges are local).
 
-A guard whose recorded input hash (`tests.badges.inputs_hash`: `python/`,
+A guard whose recorded input hash (`port.qa.provenance.inputs_hash`: `python/`,
 `tests/`, `src/`, the locks, `pyproject.toml`, the coverage configs) is the
 tree's is not re-measured: its figure is a function of those inputs, so it
 still holds. `--force` measures it anyway.
@@ -179,14 +179,18 @@ def _steps(
         steps.append(("release", _pytest(RELEASE, workers=min(n, 2)), {}))
 
     if arguments.figures:
-        steps.append(("figures", [sys.executable, "-m", "tests.generate_plots"], {}))
+        steps.append(
+            ("figures", [sys.executable, "-m", "port.scripts.run_figures"], {})
+        )
 
     return steps
 
 
 def _unchanged() -> set[str]:
     """Guards whose recorded input hash is the tree's: their figure still holds."""
-    from tests.badges import inputs_hash, load
+    from port.qa.provenance import inputs_hash
+
+    from tests.badges import load
 
     digest = inputs_hash()
     return {

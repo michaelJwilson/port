@@ -15,8 +15,7 @@ import logging
 from typing import Any
 
 import pytest
-
-from tests.run_config import PlantedInstance
+from port.sim.run_config import PlantedInstance
 
 pytestmark = pytest.mark.preprocessing
 

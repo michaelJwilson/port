@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
-from port.patch.plotting.clone_paths import (
+from port.patch._clone_paths import (
     clone_path,
     clone_paths,
     parameter_by_path,
