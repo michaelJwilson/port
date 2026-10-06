@@ -75,8 +75,8 @@ def pin_neutral(result: Any) -> int:
     may be locked; it is unlocked for the one assignment and locked again if
     it was.
     """
+    from port.patch._clone_paths import state_vector
     from port.patch.hmm_nophasing.shifted_emission import neutral_state
-    from port.patch.plotting.clone_paths import state_vector
 
     column = np.asarray(result["new_log_mu"])
     rates = state_vector(column)
@@ -130,8 +130,8 @@ def clone_shifts(
     """
     from scipy.special import logsumexp
 
+    from port.patch._clone_paths import state_vector
     from port.patch.hmm_nophasing.shifted_emission import NEUTRAL_BAF_TOLERANCE
-    from port.patch.plotting.clone_paths import state_vector
 
     rates = state_vector(np.asarray(res["new_log_mu"]))
     balanced = (
