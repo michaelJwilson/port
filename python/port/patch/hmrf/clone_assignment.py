@@ -267,9 +267,9 @@ def _clone_shifts(
     was taken against, and `decoded` is the `(n_obs, n_clones)` path the
     field reads.
     """
+    from port.patch._clone_paths import state_vector
     from port.patch.hmm_nophasing.logmu_shift import clone_log_normalizers
     from port.patch.hmm_nophasing.shifted_emission import shifted
-    from port.patch.plotting.clone_paths import state_vector
 
     if not shifted(hmmclass):
         return None
@@ -317,13 +317,13 @@ def pipeline_clone_assignment(
     import cnaster.hmrf as upstream
 
     from port.extensions.label_solver import solver_for, sweep_for
+    from port.patch._clone_paths import state_vector
     from port.patch.hmm_nophasing.shifted_emission import shifted
     from port.patch.hmrf.adjacency import adjacency_coo
     from port.patch.hmrf.refinement import MASK_PENALTY, compact, mask_for
     from port.patch.hmrf.tabulated_field import field_kernel, spot_clone_field
     from port.patch.icm.floor import configured_floor, enforce_floor
     from port.patch.icm.interface import CsrGraph, fold_unary, icm_sweep
-    from port.patch.plotting.clone_paths import state_vector
 
     reason = _delegates(single_tumor_prop)
 

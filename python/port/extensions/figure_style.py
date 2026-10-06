@@ -1,4 +1,4 @@
-"""One figure font, stated in `pyproject.toml` (`[tool.port.figures]`).
+"""One figure font, palette and page width, the font stated in `pyproject.toml` (`[tool.port.figures]`).
 
 `cnaster.plotting` sets `font.family` to DejaVu Serif when it is imported and
 its plots set seaborn's theme when they run, and `port`'s combined figure
@@ -10,6 +10,11 @@ The values are read from `pyproject.toml` where the package runs from a
 checkout, and are :data:`DEFAULT` otherwise, which a test holds equal to the
 file. A face matplotlib cannot find is refused by name rather than left to
 fall back silently to another.
+
+The palette (`INK`, `MUTED`, `GRID`, `axes_style`) and the page width
+(`PAPER_WIDTH`) are page geometry and style with no `cnaster` counterpart;
+`port.sim.analysis`, `port.patch.plot_genomic` and the paper figures each
+held a copy until T- #673 G7.
 """
 
 from __future__ import annotations
@@ -23,10 +28,52 @@ from typing import TYPE_CHECKING, Any, cast
 if TYPE_CHECKING:
     from matplotlib.typing import RcKeyType
 
-__all__ = ["DEFAULT", "apply", "figure_font", "figure_rc", "stated"]
+__all__ = [
+    "DEFAULT",
+    "GRID",
+    "INK",
+    "LLNCS_TEXT_WIDTH_MM",
+    "MUTED",
+    "PAPER_WIDTH",
+    "apply",
+    "axes_style",
+    "figure_font",
+    "figure_rc",
+    "stated",
+]
 
 DEFAULT: dict[str, str] = {"family": "serif", "font": "STIXGeneral", "mathtext": "stix"}
 """`[tool.port.figures]` as shipped; used where no `pyproject.toml` is found."""
+
+INK, MUTED, GRID = "#0b0b0b", "#52514e", "#e4e2dc"
+"""Text and marks, axes and ticks, grid lines: the truth page's and the paper figures' one palette (T- #673 G7)."""
+
+LLNCS_TEXT_WIDTH_MM = 122.0
+"""`\\textwidth` of `\\documentclass[runningheads,11pt]{llncs}`, fixed by the
+class whatever the paper (#339)."""
+
+PAPER_WIDTH = LLNCS_TEXT_WIDTH_MM / 25.4
+"""A text column, 4.80 in: the width `combined_figure` draws at (#280, #339).
+
+Measured from the genomic figures `docs/plots/` then tracked: 20.03 in
+wide, so `\\includegraphics[width=\\linewidth]` scales them by **0.240** and
+a 10 pt tick label lands at **2.4 pt** on the page. At a text column the
+figure is included at 1:1, so a declared size is the size on the page and
+nothing has to be undone at the point of inclusion.
+"""
+
+
+def axes_style(ax: Any, *, labelsize: float = 8, grid: bool = True) -> None:
+    """Open axes in `MUTED`, labels in `INK`, and a `GRID` grid behind the marks unless `grid` is off."""
+    for side in ("top", "right"):
+        ax.spines[side].set_visible(False)
+    for side in ("left", "bottom"):
+        ax.spines[side].set_color(MUTED)
+    ax.tick_params(colors=MUTED, labelcolor=INK, labelsize=labelsize)
+    if grid:
+        ax.grid(color=GRID, linewidth=0.6)
+        ax.set_axisbelow(True)
+
 
 PYPROJECT = Path(__file__).resolve().parents[3] / "pyproject.toml"
 
