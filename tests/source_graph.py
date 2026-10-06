@@ -21,6 +21,9 @@ if TYPE_CHECKING:
 
 ROOT = Path(__file__).resolve().parents[1]
 PACKAGE = ROOT / "python" / "port"
+PACKAGES = {"port": PACKAGE, "cnamaste": ROOT / "python" / "cnamaste"}
+"""Each package read here, by its import name. `cnamaste` is T- #670's copy
+of `cnaster`'s forward path, which ships on its own."""
 TESTS = ROOT / "tests"
 
 COUNTING = frozenset({"end2end", "oracle"})
@@ -56,16 +59,23 @@ __all__ = [
 
 
 @cache
-def modules() -> dict[str, Path]:
-    """Every module under `python/port`, by dotted name; a package by its own."""
+def modules(package: str = "port") -> dict[str, Path]:
+    """Every module under `python/<package>`, by dotted name; a package by its own."""
     found = {}
+    root = PACKAGES[package]
 
-    for path in sorted(PACKAGE.rglob("*.py")):
-        parts = path.relative_to(PACKAGE.parent).with_suffix("").parts
+    for path in sorted(root.rglob("*.py")):
+        parts = path.relative_to(root.parent).with_suffix("").parts
         name = ".".join(parts).removesuffix(".__init__")
         found[name] = path
 
     return found
+
+
+def _known(name: str) -> dict[str, Path]:
+    """The modules of the package `name` belongs to; none for a third party's."""
+    package = name.partition(".")[0]
+    return modules(package) if package in PACKAGES else {}
 
 
 @cache
@@ -80,7 +90,7 @@ def _base(module: str, node: ast.ImportFrom) -> str:
 
     parts = module.split(".")
 
-    if modules()[module].name != "__init__.py":
+    if _known(module)[module].name != "__init__.py":
         parts = parts[:-1]
 
     parts = parts[: len(parts) - (node.level - 1)]
@@ -91,7 +101,7 @@ def _base(module: str, node: ast.ImportFrom) -> str:
 def _exports(package: str) -> dict[str, str]:
     """What a package's `__init__` re-exports, by name, to the defining module."""
     out: dict[str, str] = {}
-    path = modules().get(package)
+    path = _known(package).get(package)
 
     if path is None or path.name != "__init__.py":
         return out
@@ -108,7 +118,7 @@ def _exports(package: str) -> dict[str, str]:
 
 def _target(base: str, name: str) -> str:
     """The module `from base import name` lands in, seeing through re-exports."""
-    known = modules()
+    known = _known(base)
 
     if f"{base}.{name}" in known:
         return f"{base}.{name}"
@@ -129,7 +139,7 @@ def edges(module: str) -> frozenset[str]:
     `"port.x:y"` string is an edge too: it is how a swap row names what it
     installs.
     """
-    known = modules()
+    known = _known(module)
     out: set[str] = set()
 
     for node in ast.walk(_tree(known[module])):
@@ -152,9 +162,9 @@ def edges(module: str) -> frozenset[str]:
 
 def reached(roots: Iterable[str]) -> frozenset[str]:
     """Everything `roots` import, transitively, not counting a package's re-exports."""
-    known = modules()
-    seen: set[str] = set()
     stack = list(roots)
+    known = _known(stack[0]) if stack else {}
+    seen: set[str] = set()
 
     while stack:
         module = stack.pop()

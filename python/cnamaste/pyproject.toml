@@ -1,0 +1,49 @@
+# `cnamaste`'s own distribution (T- #670 PR1), separate from `port`'s wheel:
+# the repository's maturin build binds `python-source = "python"` and
+# `module-name = "port.oxiport"`, so only `port` enters that wheel.
+#
+# Built from this directory, which is the package itself:
+#   uv build --wheel python/cnamaste
+#
+# The dependencies are `cnaster`'s at its locked pin `4adad4d`, verbatim, so
+# the copy runs wherever `cnaster` does.
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cnamaste"
+version = "0.1.0"
+description = "cnaster's forward path, developed and shipped on its own"
+authors = [{ name = "M. J. Wilson" }]
+requires-python = ">=3.12.2"
+dependencies = [
+    "numpy>=1.26.0",
+    "matplotlib",
+    "scipy",
+    "scikit-learn",
+    "pandas>=2.0.0,<3",
+    "scanpy>=1.9.0",
+    "anndata>=0.8.0",
+    "numba>=0.61.0",
+    "rich==14.0.0",
+    "polars>=1.30.0",
+    "pyyaml>=6.0",
+    "pybedtools",
+    "pyranges",
+    "hmmlearn",
+    "pysam",
+]
+
+[project.optional-dependencies]
+jax = ["jax>=0.4.34"]
+
+[project.scripts]
+# `cnaster`'s `run_cnaster = "cnaster.scripts.run_cnaster:main"`, under the copy.
+run_cnamaste = "cnamaste.run:main"
+
+[tool.setuptools]
+# NB this directory is the package, so it maps to itself rather than to a
+#    `src/` or `python/` beneath it.
+package-dir = { "cnamaste" = "." }
+packages = ["cnamaste"]

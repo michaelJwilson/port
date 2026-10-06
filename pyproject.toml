@@ -157,11 +157,18 @@ font = "STIXGeneral"
 mathtext = "stix"
 
 [tool.maturin]
+# NB binds `port` alone: `python/cnamaste/` (T- #670) sits beside it and is
+#    built by its own `python/cnamaste/pyproject.toml`, outside this wheel.
 python-source = "python"
 module-name = "port.oxiport"
 
 [tool.ruff]
 target-version = "py312"
+# NB `cnamaste` is `cnaster`'s code at the pin, copied with only its imports
+#    rewritten (T- #670 PR1), and `test_module_roles` pins it byte for byte.
+#    Linting or formatting it here would break that pin; a later T- #670 PR
+#    that rewrites a module brings it under these rules.
+extend-exclude = ["python/cnamaste"]
 
 [tool.ruff.lint]
 ignore = [
@@ -219,6 +226,8 @@ unfixable = [
 [tool.mypy]
 strict = true
 files = ["python", "tests"]
+# NB `cnamaste` is untyped `cnaster` code, read as `cnaster` is (below).
+exclude = ["^python/cnamaste/"]
 
 [[tool.mypy.overrides]]
 module = "pytest_benchmark.*"
@@ -239,6 +248,13 @@ disallow_untyped_calls = false
 # would lose the half that is checkable.
 module = "cnaster.*"
 ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# `cnamaste` (T- #670) is `cnaster`'s forward path copied at the pin, so it
+# is typed as `cnaster` is: not followed, its names `Any`. A module a later
+# T- #670 PR types leaves this list.
+module = ["cnamaste", "cnamaste.*"]
+follow_imports = "skip"
 
 [[tool.mypy.overrides]]
 module = "numba.*"
@@ -392,6 +408,10 @@ markers = [
     #    function it replaces. A replacement with no such test is one nobody
     #    compared, and `tests/test_dropin_correspondence.py` refuses it.
     "cnaster: compares a drop-in replacement with the cnaster implementation it replaces, on a fixture",
+    # NB a subject, as `cnaster` is: what `cnamaste`'s own coverage gate
+    #    (`.coveragerc-cnamaste`, T- #670) selects. A test carries it *and*
+    #    its referee.
+    "cnamaste: drives cnamaste, the copy of cnaster's forward path; selects cnamaste's coverage gate",
 ]
 
 

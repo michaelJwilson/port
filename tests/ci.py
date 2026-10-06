@@ -6,7 +6,7 @@ first failure stops the run with that step's exit code.
 | flag | runs | budget, 4 cores |
 | --- | --- | --- |
 | `--gate` (default) | ruff, mypy, every test in no tier or `critical` | 60 s |
-| `--badges` | the judged and drop-in coverage guards, `check_badges` | pre-merge |
+| `--badges` | the judged and drop-in coverage guards, `check_badges`; `cnamaste`'s gate | pre-merge |
 | `--full` | the gate, the badges, then `merge` tests neither guard ran | pre-merge |
 | `--release` | `release`, `oracle` and `deprecate` | release |
 | `--figures` | the dev instance's figures, into `.cache/plots` | on a figure change |
@@ -52,6 +52,10 @@ DROPIN = "not release and (patch or cnaster)"
 correspondence test is what makes a replacement compared, however seldom the
 gate runs it, and a guard that dropped it would read the replacement as
 uncompared (#403: the drop-in figure fell 90.57 -> 89.53 without this)."""
+CNAMASTE = "not release and cnamaste"
+"""`cnamaste`'s own coverage gate (T- #670): the tests that drive it, measured
+against `python/cnamaste` alone (`.coveragerc-cnamaste`), floor included.
+It measures, as the two guards do, so it may run a test another step ran."""
 MERGE_REST = "merge and not end2end and not patch and not cnaster"
 """The `merge` tests neither coverage guard runs, so `--full` runs each once."""
 
@@ -164,6 +168,21 @@ def _steps(
                 f"[tests.ci] inputs unchanged, not re-measured: {', '.join(sorted(unchanged))}"
             )
         steps.append(("check badges", check, {}))
+        steps.append(
+            (
+                "cnamaste coverage",
+                _pytest(
+                    CNAMASTE,
+                    workers=n,
+                    cov=(
+                        "--cov",
+                        "--cov-config=.coveragerc-cnamaste",
+                        "--cov-report=term:skip-covered",
+                    ),
+                ),
+                {**sysmon, "COVERAGE_FILE": ".coverage-cnamaste"},
+            )
+        )
 
     if arguments.full:
         steps += [

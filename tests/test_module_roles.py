@@ -20,6 +20,10 @@ below are that rule made checkable, each against the import graph
 (`run_ledger`, `run_audit`, `run_benchmark`, `run_figures`, `run_study`, T- #673) are `script`s too, but tools: they may reach `tool`
 modules, and no pipeline entry point may.
 
+`cnamaste` (T- #670) ships on its own and has its own scope at the end of
+this file: `entry` and `copy` roles, reached from `run_cnamaste`, importing
+neither `cnaster` nor `port`.
+
 A module reached by nothing lives in `sandbox/`, mirroring the tree it left
 (`sandbox/patch/...`, `sandbox/extensions/...`), so graduating is a move
 back; #517 step 8 moved the last of them. Every sandbox module states its
@@ -29,12 +33,13 @@ ticket, measurement and exit, and a new one arrives with them.
 from __future__ import annotations
 
 import ast
+import re
 from pathlib import Path
 from typing import Literal
 
 import pytest
 
-from tests.source_graph import modules, reached, row_modules
+from tests.source_graph import PACKAGES, ROOT, modules, reached, row_modules
 
 Role = Literal[
     "row",
@@ -345,3 +350,148 @@ def test_no_live_module_imports_the_sandbox() -> None:
             ]
 
     assert found == []
+
+
+# --- `cnamaste`: its own scope (T- #670) -----------------------------------
+#
+# `cnamaste` ships on its own, so it is not a `port` module and takes none of
+# `port`'s roles. Two of its own: `entry`, what its build declares as a
+# console script; `copy`, a `cnaster` module copied from the locked pin with
+# only its live `cnaster` imports rewritten. A later T- #670 PR that changes a
+# module gives it a role saying how it departs.
+
+CnamasteRole = Literal["entry", "copy"]
+
+CNAMASTE_ROLES: dict[str, CnamasteRole] = {
+    "cnamaste.run": "entry",
+    "cnamaste.annotation": "copy",
+    "cnamaste.cna_hmrf_result": "copy",
+    "cnamaste.config": "copy",
+    "cnamaste.count_encoder": "copy",
+    "cnamaste.filter": "copy",
+    "cnamaste.he": "copy",
+    "cnamaste.hmm": "copy",
+    "cnamaste.hmm_emission": "copy",
+    "cnamaste.hmm_initialize": "copy",
+    "cnamaste.hmm_nophasing": "copy",
+    "cnamaste.hmm_phased": "copy",
+    "cnamaste.hmm_utils": "copy",
+    "cnamaste.hmrf": "copy",
+    "cnamaste.hmrf_utils": "copy",
+    "cnamaste.icm": "copy",
+    "cnamaste.integer_copy": "copy",
+    "cnamaste.io": "copy",
+    "cnamaste.logger": "copy",
+    "cnamaste.normal_spot": "copy",
+    "cnamaste.omics": "copy",
+    "cnamaste.palette": "copy",
+    "cnamaste.phasing": "copy",
+    "cnamaste.plot_copy_number_profile": "copy",
+    "cnamaste.plot_genomic": "copy",
+    "cnamaste.plotting": "copy",
+    "cnamaste.pseudobulk": "copy",
+    "cnamaste.recomb": "copy",
+    "cnamaste.reference": "copy",
+    "cnamaste.spatial": "copy",
+    "cnamaste.spatio_genomic_counts": "copy",
+    "cnamaste.utils": "copy",
+}
+"""Every `cnamaste` module that is not its package `__init__`, by role."""
+
+CNAMASTE_ENTRIES = {"run_cnamaste": "cnamaste.run:main"}
+"""The console scripts `python/cnamaste/pyproject.toml` declares."""
+
+PIN = "4adad4d"
+"""The `cnaster` commit the copy was taken from: `uv.lock`'s pin."""
+
+_LIVE_CNASTER_IMPORT = re.compile(r"^(\s*)(from|import) cnaster(\.|\s)", re.MULTILINE)
+
+
+def _cnamaste_by(role: CnamasteRole) -> set[str]:
+    return {name for name, declared in CNAMASTE_ROLES.items() if declared == role}
+
+
+def _imported(path: Path) -> set[str]:
+    """Every module name `path` imports, at any depth of its body."""
+    names: set[str] = set()
+    for node in ast.walk(ast.parse(path.read_text())):
+        if isinstance(node, ast.Import):
+            names |= {alias.name for alias in node.names}
+        elif isinstance(node, ast.ImportFrom) and not node.level:
+            names.add(node.module or "")
+    return names
+
+
+@pytest.mark.infra
+def test_every_cnamaste_module_has_a_role() -> None:
+    found = {
+        name for name, path in modules("cnamaste").items() if path.name != "__init__.py"
+    }
+
+    assert found == set(CNAMASTE_ROLES), (
+        f"no role: {sorted(found - set(CNAMASTE_ROLES))}; "
+        f"gone: {sorted(set(CNAMASTE_ROLES) - found)}"
+    )
+
+
+@pytest.mark.infra
+def test_the_cnamaste_entries_are_what_its_build_declares() -> None:
+    """`run_cnamaste` is declared by `cnamaste`'s own build, and nowhere else."""
+    import tomllib
+
+    own = tomllib.loads((PACKAGES["cnamaste"] / "pyproject.toml").read_text())
+    port = tomllib.loads((ROOT / "pyproject.toml").read_text())
+
+    assert own["project"]["scripts"] == CNAMASTE_ENTRIES
+    assert not set(CNAMASTE_ENTRIES) & set(port["project"]["scripts"])
+    assert {v.partition(":")[0] for v in CNAMASTE_ENTRIES.values()} == _cnamaste_by(
+        "entry"
+    )
+
+
+@pytest.mark.infra
+def test_every_cnamaste_module_is_reached_from_its_entry() -> None:
+    """The copy is the forward path: nothing in it that `run_cnamaste` cannot reach."""
+    live = reached(_cnamaste_by("entry"))
+
+    assert set(CNAMASTE_ROLES) <= live, sorted(set(CNAMASTE_ROLES) - live)
+
+
+@pytest.mark.infra
+def test_cnamaste_imports_neither_cnaster_nor_port() -> None:
+    """It ships on its own: an import of either would make one a dependency."""
+    found = sorted(
+        f"{name}: {imported}"
+        for name, path in modules("cnamaste").items()
+        for imported in _imported(path)
+        if imported.partition(".")[0] in {"cnaster", "port"}
+    )
+
+    assert found == []
+
+
+@pytest.mark.infra
+def test_every_copy_is_the_pinned_cnaster_module_with_its_imports_rewritten() -> None:
+    """A `copy` reads, byte for byte, as the installed `cnaster` module at the
+    pin with each live `from cnaster.` / `import cnaster.` naming `cnamaste`.
+    The entry is `cnaster/scripts/run_cnaster.py`'s copy."""
+    import json
+    from importlib.metadata import distribution
+
+    import cnaster
+
+    pinned = json.loads(distribution("cnaster").read_text("direct_url.json") or "{}")
+    assert pinned["vcs_info"]["commit_id"].startswith(PIN)
+
+    installed = Path(next(iter(cnaster.__path__)))
+    differ = []
+    for name in {*_cnamaste_by("copy"), *_cnamaste_by("entry")}:
+        stem = name.removeprefix("cnamaste.")
+        source = installed / (
+            "scripts/run_cnaster.py" if stem == "run" else f"{stem}.py"
+        )
+        rewritten = _LIVE_CNASTER_IMPORT.sub(r"\1\2 cnamaste\3", source.read_text())
+        if rewritten != modules("cnamaste")[name].read_text():
+            differ.append(name)
+
+    assert differ == []
