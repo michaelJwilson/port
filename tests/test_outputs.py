@@ -590,7 +590,7 @@ def test_copy_sets_go_beside_the_fit_this_run_wrote(
 
     placed: list[Path] = []
 
-    def write(run: Path, captured: object) -> Path:
+    def write(run: Path, captured: object, **_: object) -> Path:
         placed.append(Path(run))
         return Path(run) / "cnv_copy_sets.tsv"
 
@@ -603,6 +603,31 @@ def test_copy_sets_go_beside_the_fit_this_run_wrote(
 
     _write_copy_sets(str(config), ["fit"], since=2_500.0)
     assert placed == [ours]
+
+
+@pytest.mark.infra
+def test_a_refused_fit_leaves_the_run_and_says_so(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """T- #599's refusal writes no sets and does not fail the run it follows (#705)."""
+    from port.extensions import copy_errors
+    from port.scripts.run_cnaster import _write_copy_sets
+
+    (tmp_path / "rdrbaf_final_nstates4_smp.npz").write_bytes(b"")
+
+    def refuse(run: Path, captured: object, **_: object) -> Path:
+        msg = "--copy-errors: the fit's tau 6e+05 >= 100000 (T- #599); refused"
+        raise ValueError(msg)
+
+    monkeypatch.setattr(copy_errors, "write_copy_sets", refuse)
+    config = tmp_path / "config.yaml"
+    config.write_text(f"paths:\n  output_dir: {tmp_path}\nhmm:\n  n_states: 4\n")
+
+    _write_copy_sets(str(config), ["fit"])
+
+    assert "T- #599); refused; cnv_copy_sets.tsv not written" in capsys.readouterr().err
 
 
 # NB per position in `pred_cnv`, as `new_log_mu_shift` is: nonzero, distinct.
