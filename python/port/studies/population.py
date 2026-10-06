@@ -36,6 +36,14 @@ covariate is the SNP-covering UMI it holds: `A + B` summed over the SNPs in
 `[START, END)` and over the planted clone's spots. Stored per clone as two
 columns, `snp_umis` and `specific`, one entry per segment.
 
+**Scored against the credible sets** (#705), under an arm that runs
+`--copy-errors`: for each event, the share of its visible bins whose
+continuous state's 95% set (`cnv_copy_sets.tsv`, folded `A >= B`) holds the
+planted pair (`covered`), the share where it holds `(1, 1)` too
+(`ambiguous`), the share whose set is empty (`empty`: no pair within the
+level of the state's fit), and the mean set size. The arms (`ARMS`) differ only in the
+run's flags; each writes its own `--out`, and its records name it.
+
 **A run that raises is a result**: its record carries the error and no
 clones, and the report counts such runs per J rather than dropping the member
 silently.
@@ -81,7 +89,19 @@ RECOVERED = 0.90
 KEPT = ("clone_labels.tsv", "cnv_seglevel.tsv")
 """A run's outputs kept beside its record, so a new score needs no rerun."""
 
+KEPT_IF_WRITTEN = ("cnv_copy_sets.tsv",)
+"""Kept as `KEPT` is, where the arm's flags write them."""
+
 FLAGS = ("--sal", "--no-plots")
+
+ARMS: dict[str, tuple[str, ...]] = {
+    "sal": FLAGS,
+    "errors": (*FLAGS, "--copy-errors"),
+    "flat": (*FLAGS, "--copy-errors", "--no-parsimony-decode"),
+    "shared": (*FLAGS, "--copy-errors", "--copy-decode", "shared"),
+}
+"""The decode arms of #705: `sal` is the study as #544 ran it; the others add
+the credible sets and change only the point decode."""
 
 CLASSES = {
     "LOH": {(1, 0), (0, 1), (2, 0), (0, 2)},
@@ -166,6 +186,37 @@ def clone_events(path: Path) -> dict[str, list[tuple[str, int, int, int, int]]]:
     return out
 
 
+def credible_sets(table: pd.DataFrame) -> dict[int, set[tuple[int, int]]]:
+    """Each continuous state's credible pairs from `cnv_copy_sets.tsv`; an empty set has none."""
+    sets: dict[int, set[tuple[int, int]]] = {}
+    for state, rows in table.groupby("state"):
+        pairs = rows.dropna(subset=["A", "B"])
+        sets[int(state)] = {
+            (int(a), int(b)) for a, b in zip(pairs["A"], pairs["B"], strict=True)
+        }
+    return sets
+
+
+def set_coverage(
+    states: np.ndarray, planted: tuple[int, int], sets: dict[int, set[tuple[int, int]]]
+) -> tuple[float, float, float, float]:
+    """`(covered, ambiguous, empty, mean size)` over bins in `states`, against the folded `planted`.
+
+    `covered`: the share of bins whose state's set holds the planted pair;
+    `ambiguous`: the share whose set holds it and `(1, 1)` both, where the
+    counts cannot tell the event from no event; `empty`: the share whose set
+    holds no pair. A state with no set holds nothing.
+    """
+    if states.size == 0:
+        return 0.0, 0.0, 0.0, 0.0
+    folded = (max(planted), min(planted))
+    held = [sets.get(int(state), set()) for state in states]
+    covered = float(np.mean([folded in h for h in held]))
+    ambiguous = float(np.mean([folded in h and (1, 1) in h for h in held]))
+    empty = float(np.mean([not h for h in held]))
+    return covered, ambiguous, empty, float(np.mean([len(h) for h in held]))
+
+
 def score_member(sample: Any, output: Path) -> dict[str, Any]:
     """Per tumour clone its size, UMIs and completeness; per event its recovery."""
     from port.qa.audit import read_run
@@ -185,6 +236,12 @@ def score_member(sample: Any, output: Path) -> dict[str, Any]:
     chrom = seglevel["CHR"].astype(str).str.removeprefix("chr").to_numpy()
     middle = ((seglevel["START"] + seglevel["END"]) // 2).to_numpy()
     truth = sample.copies_at(chrom, middle)
+    written = next(output.rglob("cnv_copy_sets.tsv"), None)
+    sets = (
+        None
+        if written is None
+        else credible_sets(pd.read_csv(written, sep="\t", comment="#"))
+    )
 
     clones, scored_events = [], []
     for c, name in enumerate(sample.clones):
@@ -218,8 +275,17 @@ def score_member(sample: Any, output: Path) -> dict[str, Any]:
             right = np.minimum(a, b) == min(pa, pb)
             right &= np.maximum(a, b) == max(pa, pb)
             share = float(right[visible].mean()) if visible.any() else 0.0
+            credible: dict[str, float] = {}
+            if sets is not None:
+                states = seglevel[f"clone{m} Z"].to_numpy()[visible].astype(np.int64)
+                covered, ambiguous, empty, size = set_coverage(states, (pa, pb), sets)
+                credible = {"covered": round(covered, 4),
+                            "ambiguous": round(ambiguous, 4),
+                            "empty": round(empty, 4),
+                            "set_size": round(size, 3)}  # fmt: skip
             scored_events.append(
-                {
+                credible
+                | {
                     "clone": name,
                     "chr": chromosome,
                     "length": int(end - start),
@@ -331,7 +397,11 @@ def _record(out: Path, seed: int, j: float) -> Path:
 
 
 def run_member(
-    seed: int, js: tuple[float, ...], out: Path, manifest: Path = MANIFEST
+    seed: int,
+    js: tuple[float, ...],
+    out: Path,
+    manifest: Path = MANIFEST,
+    arm: str = "sal",
 ) -> None:
     """Draw seed `seed`, run and score it at each `J`, keep only the records."""
     from port.qa.audit import audit_sample
@@ -348,10 +418,12 @@ def run_member(
     for j in todo:
         runs = out / "runs" / f"s{seed:04d}-J{j:g}"
         started = time.perf_counter()
-        base = {"seed": seed, "J": j, "flags": list(FLAGS), "manifest": manifest.stem}
+        flags = list(ARMS[arm])
+        base = {"seed": seed, "J": j, "flags": flags, "arm": arm,
+                "manifest": manifest.stem}  # fmt: skip
         try:
             _, output = audit_sample(
-                sample, list(FLAGS), {"hmrf.spatial_weight": j}, root=runs
+                sample, flags, {"hmrf.spatial_weight": j}, root=runs
             )
         except Exception as error:  # noqa: BLE001 -- a failed run is a result
             import traceback
@@ -365,6 +437,10 @@ def run_member(
             kept.mkdir(parents=True, exist_ok=True)
             for name in KEPT:
                 shutil.copy(next(output.rglob(name)), kept / name)
+            for name in KEPT_IF_WRITTEN:
+                found = next(output.rglob(name), None)
+                if found is not None:
+                    shutil.copy(found, kept / name)
         target = _record(out, seed, j)
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(json.dumps(record) + "\n")
@@ -373,14 +449,14 @@ def run_member(
     shutil.rmtree(draws, ignore_errors=True)
 
 
-def _worker(task: tuple[int, tuple[float, ...], str, str]) -> str:
-    seed, js, out, manifest = task
+def _worker(task: tuple[int, tuple[float, ...], str, str, str]) -> str:
+    seed, js, out, manifest, arm = task
     log = Path(out) / "logs" / f"s{seed:04d}.log"
     log.parent.mkdir(parents=True, exist_ok=True)
     with log.open("a") as handle:
         sys.stdout = sys.stderr = handle
         try:
-            run_member(seed, js, Path(out), Path(manifest))
+            run_member(seed, js, Path(out), Path(manifest), arm)
         except Exception as error:  # noqa: BLE001 -- recorded, the study goes on
             import traceback
 
@@ -403,6 +479,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--J", default=",".join(f"{j:g}" for j in J_VALUES))
     parser.add_argument("--workers", type=int, default=4)
     parser.add_argument("--manifest", type=Path, default=MANIFEST)
+    parser.add_argument("--arm", choices=list(ARMS), default="sal",
+                        help="the decode arm (#705); one --out per arm")  # fmt: skip
     parser.add_argument("--study2-J", type=float, default=J_VALUES[0],
                         help="the J Study 2's length curves are read at")  # fmt: skip
     arguments = parser.parse_args(argv)
@@ -428,7 +506,7 @@ def main(argv: list[str] | None = None) -> int:
 
     js = tuple(float(j) for j in arguments.J.split(","))
     cores = min(arguments.workers, os.cpu_count() or 1)
-    tasks = [(s, js, str(arguments.out), str(arguments.manifest))
+    tasks = [(s, js, str(arguments.out), str(arguments.manifest), arguments.arm)
              for s in _seeds(arguments.seeds)]  # fmt: skip
     context = multiprocessing.get_context("spawn")
     with context.Pool(cores, maxtasksperchild=1) as pool:

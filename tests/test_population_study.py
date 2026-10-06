@@ -111,3 +111,41 @@ def test_counted_rows_read_as_the_rows_they_stand_for() -> None:
     for key in ("rate", "low", "high", "n", "fitted"):
         np.testing.assert_allclose(a[key], b[key], rtol=1e-6, err_msg=key)
     assert a["crossing"] == pytest.approx(b["crossing"], rel=1e-6, nan_ok=True)
+
+
+@pytest.mark.analytic
+def test_credible_set_coverage_counts_bins_by_their_states_set() -> None:
+    """Folded planted pairs against each bin's state's set, an empty set holding nothing (#705).
+
+    State 0's set holds (1, 1) and (2, 1); state 1's holds (2, 1) alone;
+    state 2's is empty, written as `copy_set_table` writes one. A planted
+    (1, 2) over bins in states [0, 0, 1, 2] is covered on 3 of 4, ambiguous
+    with (1, 1) on 2 of 4, empty on 1 of 4, at a mean set size of
+    (2 + 2 + 1 + 0) / 4.
+    """
+    import pandas as pd
+    from port.studies.population import credible_sets, set_coverage
+
+    table = pd.DataFrame(
+        {"state": [0, 0, 1, 2], "A": [1, 2, 2, pd.NA], "B": [1, 1, 1, pd.NA]}
+    )
+    sets = credible_sets(table)
+
+    assert sets == {0: {(1, 1), (2, 1)}, 1: {(2, 1)}, 2: set()}
+    scored = set_coverage(np.array([0, 0, 1, 2]), (1, 2), sets)
+    assert scored == (0.75, 0.5, 0.25, 1.25)
+    assert set_coverage(np.array([], dtype=np.int64), (1, 2), sets) == (0, 0, 0, 0)
+    assert set_coverage(np.array([7]), (1, 2), sets) == (0.0, 0.0, 1.0, 0.0)
+
+
+@pytest.mark.infra
+def test_every_arm_is_the_study_s_flags_plus_decode_options() -> None:
+    """`ARMS` changes only the decode: each starts with `FLAGS` (#705)."""
+    from port.studies.population import ARMS, FLAGS
+
+    assert ARMS["sal"] == FLAGS
+    for name, flags in ARMS.items():
+        assert flags[: len(FLAGS)] == FLAGS, name
+    assert all(
+        "--copy-errors" in flags for name, flags in ARMS.items() if name != "sal"
+    )
