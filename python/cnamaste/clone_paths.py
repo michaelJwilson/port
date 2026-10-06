@@ -1,8 +1,8 @@
 """The two shapes the fit produces, and nothing else (#278).
 
-`port.patch.plotting.clone_paths`, moved in by T- #670 PR2 for
-`plot_clones_genomic`; it has no `cnaster` counterpart. The fit chain's
-replacements read it too, from T- #670 PR5.
+`port.patch._clone_paths` (`port.patch.plotting.clone_paths` until T- #673
+G7), moved in by T- #670 PR2 for `plot_clones_genomic`; it has no `cnaster`
+counterpart. The fit chain's replacements read it too, from T- #670 PR5.
 
 **`cnaster` supports layouts it cannot produce, and the support is the
 defect.** Five sites branch on how `pred_cnv` is laid out and two more guard
