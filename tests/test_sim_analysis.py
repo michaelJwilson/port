@@ -170,9 +170,16 @@ def _visible_texts(figure: Any) -> list[Any]:
 def test_the_truth_page_is_combined_pdfs_page_with_everything_on_it(
     drawn: Drawn,
 ) -> None:
-    """`llncs`'s 122 mm by 193 mm, lettered (a) to (c), no text over `FONT_SIZE`,
-    and every text and legend on the page to half a pixel."""
-    from port.extensions.combined_figure import FONT_SIZE, TEXT_HEIGHT
+    """The text block less `CAPTION_ROOM`, lettered (a) to (c), every text at
+    `FONT_SIZE`, the submission's `MIN_FONT_SIZE` (T- #740), and every text and
+    legend on the page to half a pixel."""
+    from port.extensions.combined_figure import FONT_SIZE
+    from port.extensions.figure_style import (
+        CAPTION_ROOM,
+        MIN_FONT_SIZE,
+        PAPER_WIDTH,
+        TEXT_HEIGHT,
+    )
     from port.sim.truth_figure import truth_combined_figure
 
     figure = truth_combined_figure(read(drawn.path))
@@ -186,12 +193,13 @@ def test_the_truth_page_is_combined_pdfs_page_with_everything_on_it(
         if legend is not None
     ]
 
-    assert figure.get_size_inches()[0] * 25.4 == pytest.approx(122.0)
-    assert figure.get_size_inches()[1] == pytest.approx(TEXT_HEIGHT)
+    assert figure.get_size_inches()[0] == pytest.approx(PAPER_WIDTH)
+    assert figure.get_size_inches()[1] == pytest.approx(TEXT_HEIGHT - CAPTION_ROOM)
     assert [panel.texts[-1].get_text() for panel in figure.subfigs] == [
         f"({k})" for k in "abc"
     ]
     assert max(t.get_fontsize() for t in texts) <= FONT_SIZE
+    assert min(t.get_fontsize() for t in texts) >= MIN_FONT_SIZE
 
     for artist in [*texts, *legends]:
         extent = artist.get_window_extent(renderer)
@@ -272,7 +280,8 @@ def test_the_tree_spans_the_genome_panels_between_its_barcodes(drawn: Drawn) -> 
 def test_the_truth_page_writes_byte_for_byte_at_its_size(
     drawn: Drawn, tmp_path: Path
 ) -> None:
-    """Two writes are one file: no creation date (#452); its MediaBox is the page to 0.1 pt."""
+    """Two writes are one file: no creation date (#452); its MediaBox is the page,
+    the text block less `CAPTION_ROOM` tall (T- #733, T- #740), to 0.1 pt."""
     import re
 
     from port.sim.truth_figure import write_truth_combined
@@ -284,8 +293,8 @@ def test_the_truth_page_writes_byte_for_byte_at_its_size(
 
     assert first == second
     assert box is not None
-    assert float(box.group(1)) == pytest.approx(122.0 / 25.4 * 72.0, abs=0.1)
-    assert float(box.group(2)) == pytest.approx(193.0 / 25.4 * 72.0, abs=0.1)
+    assert float(box.group(1)) == pytest.approx(468.31 / 72.27 * 72.0, abs=0.1)
+    assert float(box.group(2)) == pytest.approx((590.99 / 72.27 - 1.5) * 72.0, abs=0.1)
 
 
 @pytest.fixture(scope="module")
