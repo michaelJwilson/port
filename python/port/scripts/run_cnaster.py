@@ -222,7 +222,7 @@ def _parser() -> argparse.ArgumentParser:
         "--copy-errors-level",
         type=float,
         default=0.95,
-        help="the credible level of --copy-errors' sets: 0.9545 is 2 sigma, 0.9973 3 sigma (#705)",
+        help="the level of --copy-errors' sets, per state and per segment: 0.9545 is 2 sigma, 0.9973 3 sigma (#705)",
     )
     parser.add_argument(
         "--copy-decode",
@@ -859,9 +859,10 @@ def _write_copy_sets(
     The fit is the one of the configured `hmm.n_states` written at or after
     `since`, not the newest under `output_dir`, which may be another
     configuration's (T- #617). With none, nothing is written, and it says so.
-    The sets are per clone through the last point decode of `decodes` where
-    it decoded this fit's clones and bins (#705), and per state otherwise,
-    which it says. A fit `pinned_errors` refuses writes no sets, and says so.
+    Beside them, each decoded segment's set by the point decode's likelihood
+    (`cnv_segment_sets.tsv`, #705), from the last of `decodes` that decoded
+    this fit's clones and bins; without one, it says so. A fit
+    `pinned_errors` refuses writes no per-state sets, and says so.
     """
     from pathlib import Path
 
@@ -895,26 +896,30 @@ def _write_copy_sets(
         )
         return
 
-    decode = _decode_of(kept[-1], decodes or [])
-
-    if decode is None:
-        print(
-            "run_cnaster_port: --copy-errors has no point decode of the final "
-            "fit; sets are per state, at fraction 1 and no offset",
-            file=sys.stderr,
-        )
-
-    # NB a refused fit (T- #599's large tau) leaves no sets and says so; the
-    #    run it follows completed, and its outputs stand (#705).
+    # NB a refused fit (T- #599's large tau) leaves no per-state sets and
+    #    says so; the run it follows completed, and its outputs stand (#705).
     try:
-        path = write_copy_sets(fits[0].parent, kept[-1], level=level, decode=decode)
+        path = write_copy_sets(fits[0].parent, kept[-1], level=level)
+        print(f"run_cnaster_port: wrote {path}", file=sys.stderr)
     except ValueError as refused:
         print(
             f"run_cnaster_port: {refused}; cnv_copy_sets.tsv not written",
             file=sys.stderr,
         )
+
+    decode = _decode_of(kept[-1], decodes or [])
+
+    if decode is None:
+        print(
+            "run_cnaster_port: --copy-errors has no point decode of the final "
+            "fit; cnv_segment_sets.tsv not written",
+            file=sys.stderr,
+        )
         return
 
+    from port.extensions.segment_sets import write_segment_sets
+
+    path = write_segment_sets(fits[0].parent, decode, kept[-1], level=level)
     print(f"run_cnaster_port: wrote {path}", file=sys.stderr)
 
 

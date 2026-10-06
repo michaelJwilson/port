@@ -50,7 +50,9 @@ __all__ = [
     "captured_chain",
     "captured_clones",
     "captured_normal",
+    "clones_of",
     "lattice_decode",
+    "normal_of",
     "shared_decode",
     "viterbi_oracle",
 ]
@@ -677,6 +679,12 @@ def captured_clones() -> list[tuple[np.ndarray, Pseudobulk, float]] | None:
     if fit is None:
         return None
 
+    return clones_of(fit)
+
+
+def clones_of(captured: Any) -> list[tuple[np.ndarray, Pseudobulk, float]]:
+    """:func:`captured_clones` of a given fit (`copy_errors.Captured`)."""
+    fit = captured
     single_x, base, total, result = (
         fit.single_X,
         fit.single_base_nb_mean,
@@ -736,12 +744,18 @@ def captured_normal() -> int | None:
     diploid: on CalicoST easy and hard under `--sal` it named a tumour clone,
     held it at fraction 1 and shift 0, and decoded its LOH bins as `(1, 5)`.
     """
-    from port.patch.hmm_nophasing.shifted_emission import NEUTRAL_BAF_TOLERANCE
-
     fit = captured_fit()
 
     if fit is None:
         return None
+
+    return normal_of(fit)
+
+
+def normal_of(captured: Any) -> int:
+    """:func:`captured_normal` of a given fit (`copy_errors.Captured`)."""
+    fit = captured
+    from port.patch.hmm_nophasing.shifted_emission import NEUTRAL_BAF_TOLERANCE
 
     result = fit.res
     p_binom = np.asarray(result["new_p_binom"], dtype=np.float64).reshape(-1)

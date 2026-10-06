@@ -133,12 +133,13 @@ def test_credible_set_coverage_counts_bins_by_their_states_set() -> None:
 
     assert sets == {0: {(1, 1), (2, 1)}, 1: {(2, 1)}, 2: set()}
     right = np.array([False, False, True, False])
-    scored = set_scores(np.array([0, 0, 1, 2]), right, (1, 2), sets)
+    held = [sets[0], sets[0], sets[1], sets[2]]
+    scored = set_scores(held, right, (1, 2))
     assert scored == {
         "covered": 0.75, "ambiguous": 0.5, "empty": 0.25, "set_size": 1.25,
         "miss_ambiguous": 2, "miss_decoder": 0, "miss_empty": 1, "miss_excluded": 0,
     }  # fmt: skip
-    assert set_scores(np.array([7]), np.array([False]), (1, 2), sets)["miss_empty"] == 1
+    assert set_scores([set()], np.array([False]), (1, 2))["miss_empty"] == 1
 
 
 @pytest.mark.analytic
@@ -172,6 +173,38 @@ def test_a_narrower_level_keeps_the_pairs_within_its_threshold() -> None:
     assert clone_sets(credible_sets(table, 0.9545), 0) == {}
     with pytest.raises(ValueError, match="wider"):
         credible_sets(table, 0.999)
+
+
+@pytest.mark.analytic
+def test_segment_sets_read_per_bin_folded_at_a_level() -> None:
+    """`cnv_segment_sets.tsv` read at 2 sigma from 3 sigma: `chi2(0.9545, 2) = 6.18`.
+
+    Clone 0's bins [0, 3) hold (2, 1) at deviance 0 and (1, 1) at 8: both at
+    3 sigma (11.8), the first alone at 2 sigma. Bins [3, 5) hold (1, 2),
+    folded to (2, 1). Clone 1 is absent and reads as no sets.
+    """
+    import pandas as pd
+    from port.studies.population import segment_bins
+
+    table = pd.DataFrame(
+        {
+            "clone": [0, 0, 0],
+            "start_bin": [0, 0, 3],
+            "end_bin": [3, 3, 5],
+            "level": [0.9973] * 3,
+            "A": [2, 1, 1],
+            "B": [1, 1, 2],
+            "deviance": [0.0, 8.0, 0.0],
+        }
+    )
+
+    wide = segment_bins(table, 5, 0.9973)
+    narrow = segment_bins(table, 5, 0.9545)
+    assert wide[0] == [{(2, 1), (1, 1)}] * 3 + [{(2, 1)}] * 2
+    assert narrow[0] == [{(2, 1)}] * 5
+    assert 1 not in narrow
+    with pytest.raises(ValueError, match="wider"):
+        segment_bins(table, 5, 0.999)
 
 
 @pytest.mark.infra

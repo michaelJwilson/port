@@ -33,19 +33,6 @@ Phasing makes the allele label arbitrary, so `p` is folded to the minor
 fraction and the lattice is the unphased one (`acn_lattice(phased=False)`,
 `A >= B`, `p = B / (A + B)`). Folding flips the sign of the `(mu, p)`
 covariance where it applies and leaves the variances alone.
-
-## Per clone, through the point decode's shift and tumour fraction (#705)
-
-Given the point decode (`copy_likelihood.lattice_decode`'s `CopyFit`), the
-sets are taken per clone and state (:func:`clone_copy_sets`): each pair is
-carried into the fit's coordinates by the decode's own forward model -- its
-tumour fraction `rho_c` and the offset between the continuous fit's shift and
-the decode's -- and tested there against the state's covariance. Without
-it, a state the decode reaches by a fraction or a shift has an empty set:
-on the #544 population (no admixture planted), a `(2, 2)` state fitted at
-`mu = 1.87 +- 0.038` lies at distance 11.6 from `(2, 2)`, past 5.99.
-`rho_c` and the offset are held at the decode's: their error is not in
-the region.
 """
 
 from __future__ import annotations
@@ -60,10 +47,8 @@ import pandas as pd
 
 __all__ = [
     "Captured",
-    "CloneSet",
     "PinnedErrors",
     "captured_fits",
-    "clone_copy_sets",
     "copy_sets",
     "pinned_errors",
     "pinned_objective",
@@ -424,13 +409,18 @@ def pinned_errors(captured: Captured, purity: np.ndarray | None = None) -> Pinne
     # NB what the data identify: a state no bin visits has no information,
     #    and an allele fraction at its boundary (an LOH state on a pure
     #    sample) has no curvature in its logit. Both are held.
-    free = np.array([k for k in range(n_states) if k != neutral and k in visited])
+    # NB integer even when empty: a fit visiting the neutral state alone has
+    #    no free rate, and an empty float array cannot index (#705, s1077).
+    free = np.array(
+        [k for k in range(n_states) if k != neutral and k in visited], dtype=np.int64
+    )
     shares = np.array(
         [
             k
             for k in range(n_states)
             if k in visited and BOUNDARY < p_binom[k] < 1.0 - BOUNDARY
-        ]
+        ],
+        dtype=np.int64,
     )
     held = np.clip(p_binom, EPS_P, 1.0 - EPS_P)
     objective = pinned_objective(captured, free, purity, shares, held)
@@ -531,143 +521,6 @@ def copy_sets(
     return decoded
 
 
-class CloneSet(NamedTuple):
-    """One clone's state's set: each `(A, B, distance)` within `level`, nearest first."""
-
-    clone: int
-    state: int
-    offset: float
-    purity: float
-    best: tuple[int, int]
-    distance: float
-    threshold: float
-    level: float
-    consistent: tuple[tuple[int, int, float], ...]
-
-
-def clone_copy_sets(
-    errors: PinnedErrors,
-    path: np.ndarray,
-    offsets: np.ndarray,
-    purity: np.ndarray,
-    *,
-    level: float = 0.95,
-    max_allele_copy: int | None = None,
-    max_total_copy: int | None = None,
-) -> list[CloneSet]:
-    """Every `(A, B)` each clone's visited states admit, at `level`.
-
-    `path` is the continuous fit's `(n_obs, n_clones)` states; `offsets[c]`
-    the log factor between the fit's rates and the decode's in clone `c`
-    (the continuous shift less the decode's); `purity[c]` its tumour
-    fraction. A pair `(A, B)`, `A >= B`, predicts in clone `c`
-    `mu = exp(offsets[c]) (rho_c (A + B) / 2 + 1 - rho_c)` and minor share
-    `(rho_c B + 1 - rho_c) / (rho_c (A + B) + 2 (1 - rho_c))`, as
-    `copy_likelihood._parameters` does, and is in the set where its distance
-    under the state's covariance is within `chi2(level, 2)`. The neutral
-    state's `mu` is pinned and carries no error, so it is tested on its
-    allele fraction alone over the pairs of total 2, at `chi2(level, 1)`.
-    """
-    from scipy.stats import chi2
-
-    from port.extensions.copy_likelihood import _parameters
-    from port.extensions.integer_copy import acn_lattice
-    from port.patch.integer_copy import configured_caps
-
-    allele, total = configured_caps()
-    lattice = np.array(
-        acn_lattice(
-            max_allele_copy=allele if max_allele_copy is None else max_allele_copy,
-            max_total_copy=total if max_total_copy is None else max_total_copy,
-            phased=False,
-        ),
-        dtype=np.int64,
-    )
-    lattice = np.column_stack([lattice.max(axis=1), lattice.min(axis=1)])
-    neutral_pairs = np.array([(1, 1), (2, 0)], dtype=np.int64)
-    path = np.asarray(path, dtype=np.int64).reshape(len(path), -1) % errors.mu.size
-    sets = []
-
-    for clone in range(path.shape[1]):
-        rho, offset = float(purity[clone]), float(offsets[clone])
-
-        for state in np.unique(path[:, clone]).tolist():
-            observed = np.array([errors.mu[state], errors.minor[state]])
-
-            if state == errors.neutral:
-                pairs = neutral_pairs
-                _, share = _parameters(pairs[:, ::-1], rho)
-                variance = errors.covariance[state, 1, 1] + VARIANCE_FLOOR
-                distances = (share - observed[1]) ** 2 / variance
-                threshold = float(chi2.ppf(level, 1))
-            else:
-                pairs = lattice
-                log_mu, share = _parameters(pairs[:, ::-1], rho)
-                predicted = np.column_stack([np.exp(log_mu + offset), share])
-                covariance = errors.covariance[state] + np.eye(2) * VARIANCE_FLOOR
-                residual = predicted - observed
-                distances = np.einsum(
-                    "ij,jk,ik->i", residual, np.linalg.inv(covariance), residual
-                )
-                threshold = float(chi2.ppf(level, 2))
-
-            order = np.argsort(distances, kind="stable")
-            best = int(order[0])
-            sets.append(
-                CloneSet(
-                    clone=clone,
-                    state=int(state),
-                    offset=offset,
-                    purity=rho,
-                    best=(int(pairs[best, 0]), int(pairs[best, 1])),
-                    distance=float(distances[best]),
-                    threshold=threshold,
-                    level=level,
-                    consistent=tuple(
-                        (int(pairs[i, 0]), int(pairs[i, 1]), float(distances[i]))
-                        for i in order
-                        if distances[i] <= threshold
-                    ),
-                )
-            )
-
-    return sets
-
-
-def clone_copy_set_table(errors: PinnedErrors, sets: list[CloneSet]) -> pd.DataFrame:
-    """:func:`copy_set_table` per clone: one row per `(clone, state, A, B)`, with its
-    distance; an empty set has one row with `A`, `B` and `distance` empty."""
-    rows = []
-
-    for found in sets:
-        state = found.state
-        base = {
-            "clone": found.clone,
-            "state": state,
-            "neutral": state == errors.neutral,
-            "mu": float(errors.mu[state]),
-            "p_minor": float(errors.minor[state]),
-            "sigma_mu": float(np.sqrt(errors.covariance[state, 0, 0])),
-            "sigma_p": float(np.sqrt(errors.covariance[state, 1, 1])),
-            "offset": found.offset,
-            "tumour_fraction": found.purity,
-            "best_A": found.best[0],
-            "best_B": found.best[1],
-            "best_distance": found.distance,
-            "threshold": found.threshold,
-            "level": found.level,
-            "set_size": len(found.consistent),
-        }
-
-        if not found.consistent:
-            rows.append({**base, "A": pd.NA, "B": pd.NA, "distance": pd.NA})
-
-        for a, b, distance in found.consistent:
-            rows.append({**base, "A": a, "B": b, "distance": distance})
-
-    return pd.DataFrame(rows)
-
-
 def copy_set_table(errors: PinnedErrors, decoded: list[Any]) -> pd.DataFrame:
     """One row per `(state, A, B)` in a state's set; a state whose set is empty
     has one row with `A` and `B` empty, so it is reported rather than dropped."""
@@ -698,49 +551,18 @@ def copy_set_table(errors: PinnedErrors, decoded: list[Any]) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def write_copy_sets(
-    run: Path,
-    captured: Captured,
-    *,
-    level: float = 0.95,
-    decode: Any = None,
-) -> Path:
-    """Write `cnv_copy_sets.tsv` into `run`, and return its path.
-
-    With `decode`, the point decode's `CopyFit` on this fit, the sets are per
-    clone, through its shifts and tumour fractions (:func:`clone_copy_sets`);
-    without, per state at fraction 1 and no offset (:func:`copy_sets`).
-    """
+def write_copy_sets(run: Path, captured: Captured, *, level: float = 0.95) -> Path:
+    """Write `cnv_copy_sets.tsv` into `run`, and return its path."""
     errors = pinned_errors(captured)
+    table = copy_set_table(errors, copy_sets(errors, level=level))
+    path = Path(run) / "cnv_copy_sets.tsv"
 
-    if decode is None:
-        table = copy_set_table(errors, copy_sets(errors, level=level))
-        scope = "fitted state"
-    else:
-        result = captured.res
-        path = np.asarray(result["pred_cnv"], dtype=np.int64)
-        path = path.reshape(path.shape[0], -1)
-        try:
-            continuous = _column(result["new_log_mu_shift"])
-        except (KeyError, TypeError, ValueError):
-            continuous = np.zeros(path.shape[1])
-        if continuous.size != path.shape[1]:
-            continuous = np.zeros(path.shape[1])
-        offsets = continuous - np.asarray(decode.shifts, dtype=np.float64)
-        sets = clone_copy_sets(
-            errors, path, offsets, np.asarray(decode.purity), level=level
-        )
-        table = clone_copy_set_table(errors, sets)
-        scope = "clone's fitted state, at the point decode's shift and fraction"
-
-    path_out = Path(run) / "cnv_copy_sets.tsv"
-
-    with path_out.open("w") as handle:
+    with path.open("w") as handle:
         handle.write(
             f"# every (A, B) inside the {level:.2%} credible region of each "
-            f"{scope} (#353, #705); state {errors.neutral} is pinned to mu = 1; "
+            f"fitted state (#353); state {errors.neutral} is pinned to mu = 1; "
             f"Newton decrement {errors.decrement:.3e}\n"
         )
         table.to_csv(handle, sep="\t", index=False)
 
-    return path_out
+    return path

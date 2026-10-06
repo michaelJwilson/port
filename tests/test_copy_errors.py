@@ -6,8 +6,6 @@ What is pinned here:
   among them, and it widens with the covariance (`analytic`);
 - the neutral state, pinned to `mu = 1`, decodes on total 2 alone, by its
   allele fraction (`analytic`);
-- per clone, a state reached through the decode's tumour fraction and
-  shift admits its pair there and not at fraction 1 (`analytic`, #705);
 - `--copy-errors` refuses an unshifted fit, whose scale is not the pin's
   (`infra`);
 - one realization of the integer genome: each planted pair is in its fitted
@@ -85,64 +83,6 @@ def test_the_neutral_state_decodes_on_total_two_by_its_allele_fraction(
     assert balanced[0].consistent == ((1, 1),)
     assert lost[0].consistent == ((2, 0),)
     assert balanced[0].threshold == pytest.approx(3.841, abs=1e-3)
-
-
-@pytest.mark.analytic
-def test_a_clone_s_fraction_and_offset_carry_its_pair_into_the_set(
-    cnaster_config: None,
-) -> None:
-    """(2, 2) at fraction 0.8 and offset -0.05 is `mu = e^-0.05 1.8 = 1.712`.
-
-    With 2 per cent errors that state admits (2, 2) only in the clone whose
-    fraction and offset the decode fitted; in the pure, unshifted clone the
-    nearest (2, 2) is `mu = 2`, 14 sigma away, and the set is empty -- the
-    #705 population's `mu = 1.87 +- 0.038` failure, at a planted fraction.
-    """
-    from port.extensions.copy_errors import clone_copy_sets
-
-    rho, offset = 0.8, -0.05
-    mu = np.exp(offset) * (rho * 4 / 2 + 1 - rho)
-    errors = _errors([1.0, mu], [0.49, 0.5], (0.02, 0.01))
-    path = np.array([[1, 1], [1, 1], [0, 0]])
-
-    sets = clone_copy_sets(
-        errors,  # type: ignore[arg-type]
-        path,
-        np.array([0.0, offset]),
-        np.array([1.0, rho]),
-        level=0.9973,
-    )
-    by_clone = {(s.clone, s.state): s for s in sets}
-
-    assert by_clone[1, 1].best == (2, 2)
-    assert by_clone[1, 1].distance == pytest.approx(0.0, abs=1e-9)
-    assert [(a, b) for a, b, _ in by_clone[1, 1].consistent] == [(2, 2)]
-    assert by_clone[0, 1].consistent == ()
-    assert by_clone[0, 1].best == (2, 2)
-    assert by_clone[0, 1].distance > by_clone[0, 1].threshold
-    assert [(a, b) for a, b, _ in by_clone[1, 0].consistent] == [(1, 1)]
-    assert by_clone[1, 1].threshold == pytest.approx(11.829, abs=1e-3)
-
-
-@pytest.mark.analytic
-def test_a_lost_allele_at_a_fraction_reads_on_its_admixed_share(
-    cnaster_config: None,
-) -> None:
-    """The neutral state's `(2, 0)` at fraction 0.6 has minor share 0.2, not 0."""
-    from port.extensions.copy_errors import clone_copy_sets
-
-    errors = _errors([1.0], [0.2], (0.0, 0.01))
-    path = np.zeros((3, 2), dtype=np.int64)
-
-    sets = clone_copy_sets(
-        errors,  # type: ignore[arg-type]
-        path,
-        np.zeros(2),
-        np.array([1.0, 0.6]),
-    )
-
-    assert sets[0].consistent == ()
-    assert [(a, b) for a, b, _ in sets[1].consistent] == [(2, 0)]
 
 
 @pytest.mark.infra

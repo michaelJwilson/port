@@ -59,6 +59,7 @@ import os
 import shutil
 import sys
 import time
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -91,7 +92,7 @@ RECOVERED = 0.90
 KEPT = ("clone_labels.tsv", "cnv_seglevel.tsv")
 """A run's outputs kept beside its record, so a new score needs no rerun."""
 
-KEPT_IF_WRITTEN = ("cnv_copy_sets.tsv",)
+KEPT_IF_WRITTEN = ("cnv_copy_sets.tsv", "cnv_segment_sets.tsv")
 """Kept as `KEPT` is, where the arm's flags write them."""
 
 FLAGS = ("--sal", "--no-plots")
@@ -237,17 +238,15 @@ def clone_sets(sets: Sets, clone: int) -> dict[int, set[tuple[int, int]]]:
 
 
 def set_scores(
-    states: np.ndarray,
+    held: list[set[tuple[int, int]]],
     right: np.ndarray,
     planted: tuple[int, int],
-    sets: dict[int, set[tuple[int, int]]],
 ) -> dict[str, float]:
-    """Each bin's state's set against the folded `planted`, and why a missed bin was.
+    """Each bin's set (folded, `A >= B`) against the folded `planted`, and why a missed bin was.
 
     Shares over the bins: `covered`, the set holds the planted pair;
     `ambiguous`, it holds `(1, 1)` too, so the counts cannot tell the event
-    from none; `empty`, it holds no pair; and `set_size`, its mean size. A
-    state with no set holds nothing.
+    from none; `empty`, it holds no pair; and `set_size`, its mean size.
 
     Counts over the bins the point decode missed (`right` false), one per
     #705 explanation: `miss_ambiguous` (1, the truth and `(1, 1)` both in
@@ -256,7 +255,6 @@ def set_scores(
     without the truth).
     """
     folded = (max(planted), min(planted))
-    held = [sets.get(int(state), set()) for state in states]
     has = np.array([folded in h for h in held], dtype=bool)
     neutral = np.array([(1, 1) in h for h in held], dtype=bool)
     empty = np.array([not h for h in held], dtype=bool)
@@ -278,34 +276,125 @@ def set_scores(
     }
 
 
-def _read_sets(directory: Path) -> dict[str, Sets] | None:
-    """The credible sets a run wrote under `directory` at each of `LEVELS` it
-    can be read at, by level name, or `None` without them."""
-    written = next(directory.rglob("cnv_copy_sets.tsv"), None)
-    if written is None:
-        return None
-    table = pd.read_csv(written, sep="\t", comment="#")
-    if "distance" not in table:
-        return {"written": credible_sets(table)}
-    widest = float(table["level"].max())
-    return {
-        name: credible_sets(table, level)
-        for name, level in LEVELS.items()
-        if level <= widest + 1e-9
-    }
+SegmentSets = dict[int, list[set[tuple[int, int]]]]
+"""Per clone of the decode, each bin's segment's folded pairs."""
+
+
+def segment_bins(table: pd.DataFrame, n_obs: int, level: float) -> SegmentSets:
+    """Each clone's per-bin sets from `cnv_segment_sets.tsv`, at `level`.
+
+    A pair is kept where its `deviance` is within `chi2(level, 2)`; `level`
+    must be no wider than the table's own. Pairs are folded, `A >= B`.
+    """
+    from scipy.stats import chi2
+
+    if level > float(table["level"].max()) + 1e-9:
+        msg = f"level {level} is wider than the table's {table['level'].max()}"
+        raise ValueError(msg)
+    kept = table[table["deviance"].to_numpy(float) <= chi2.ppf(level, 2)]
+    out: SegmentSets = {}
+    for (clone, start, end), rows in kept.groupby(["clone", "start_bin", "end_bin"]):
+        pairs = {
+            (max(int(a), int(b)), min(int(a), int(b)))
+            for a, b in zip(rows["A"], rows["B"], strict=True)
+        }
+        bins = out.setdefault(int(clone), [set() for _ in range(n_obs)])
+        for i in range(int(start), int(end)):
+            bins[i] = pairs
+    return out
+
+
+def _decoded_agree(table: pd.DataFrame, run: dict[str, Any]) -> float:
+    """The share of clone-bins whose segment's decoded pair is `cnv_seglevel`'s, folded."""
+    agree, total = 0, 0
+    segments = table.drop_duplicates(["clone", "start_bin", "end_bin"])
+    for clone, start, end, a, b in zip(
+        segments["clone"], segments["start_bin"], segments["end_bin"],
+        segments["decoded_A"], segments["decoded_B"], strict=True,
+    ):  # fmt: skip
+        if int(clone) >= run["a"].shape[1]:
+            continue
+        span = slice(int(start), int(end))
+        major = np.maximum(run["a"][span, clone], run["b"][span, clone])
+        minor = np.minimum(run["a"][span, clone], run["b"][span, clone])
+        agree += int(((major == max(a, b)) & (minor == min(a, b))).sum())
+        total += int(end) - int(start)
+    return round(agree / total, 4) if total else 0.0
+
+
+def _read_sets(directory: Path) -> dict[str, pd.DataFrame]:
+    """The tables `--copy-errors` wrote under `directory`, by kind."""
+    found = {}
+    for kind, name in (
+        ("state", "cnv_copy_sets.tsv"),
+        ("segment", "cnv_segment_sets.tsv"),
+    ):
+        written = next(directory.rglob(name), None)
+        if written is not None:
+            found[kind] = pd.read_csv(written, sep="\t", comment="#")
+    return found
+
+
+def _bin_sets(
+    tables: dict[str, pd.DataFrame], run: dict[str, Any]
+) -> dict[str, Callable[[int, np.ndarray], list[set[tuple[int, int]]]]]:
+    """Per `<kind>_<level>`, each fitted clone's visible bins' sets.
+
+    `state`: the bin's continuous state's set (`cnv_copy_sets.tsv`, read at
+    the levels its distances allow, as written otherwise); `segment`: its
+    decoded segment's (`cnv_segment_sets.tsv`).
+    """
+    seglevel = run["seglevel"]
+    lookups: dict[str, Callable[[int, np.ndarray], list[set[tuple[int, int]]]]] = {}
+
+    if "state" in tables:
+        table = tables["state"]
+        levels = (
+            {"written": None}
+            if "distance" not in table
+            else {k: v for k, v in LEVELS.items() if v <= table["level"].max() + 1e-9}
+        )
+        for name, level in levels.items():
+            found = credible_sets(table, level)
+
+            def by_state(
+                m: int, visible: np.ndarray, found: Sets = found
+            ) -> list[set[tuple[int, int]]]:
+                states = seglevel[f"clone{m} Z"].to_numpy()[visible].astype(np.int64)
+                own = clone_sets(found, m)
+                return [own.get(int(z), set()) for z in states]
+
+            lookups[f"state_{name}"] = by_state
+
+    if "segment" in tables:
+        table = tables["segment"]
+        for name, level in LEVELS.items():
+            if level > table["level"].max() + 1e-9:
+                continue
+            bins = segment_bins(table, len(seglevel), level)
+
+            def by_segment(
+                m: int, visible: np.ndarray, bins: SegmentSets = bins
+            ) -> list[set[tuple[int, int]]]:
+                own = bins.get(m)
+                return [own[i] if own else set() for i in np.flatnonzero(visible)]
+
+            lookups[f"segment_{name}"] = by_segment
+
+    return lookups
 
 
 def score_member(sample: Any, output: Path) -> dict[str, Any]:
     """Per tumour clone its size, UMIs and completeness; per event its recovery."""
     from port.qa.audit import read_run
 
-    return score_run(sample, read_run(sample, output), _read_sets(output))
+    return score_run(sample, read_run(sample, output), _read_sets(output) or None)
 
 
 def score_run(
     sample: Any,
     run: dict[str, Any],
-    sets: dict[str, Sets] | None = None,
+    sets: dict[str, pd.DataFrame] | None = None,
 ) -> dict[str, Any]:
     """:func:`score_member` on `read_run`'s fields, scored on each of `sets` where given."""
     from port.qa.scoring import matched, overlap
@@ -323,6 +412,7 @@ def score_run(
     chrom = seglevel["CHR"].astype(str).str.removeprefix("chr").to_numpy()
     middle = ((seglevel["START"] + seglevel["END"]) // 2).to_numpy()
     truth = sample.copies_at(chrom, middle)
+    lookups = _bin_sets(sets or {}, run)
 
     clones, scored_events = [], []
     for c, name in enumerate(sample.clones):
@@ -356,15 +446,10 @@ def score_run(
             right = np.minimum(a, b) == min(pa, pb)
             right &= np.maximum(a, b) == max(pa, pb)
             share = float(right[visible].mean()) if visible.any() else 0.0
-            credible: dict[str, Any] = {}
-            if sets is not None:
-                states = seglevel[f"clone{m} Z"].to_numpy()[visible].astype(np.int64)
-                credible = {
-                    f"sets_{name}": set_scores(
-                        states, right[visible], (pa, pb), clone_sets(found, m)
-                    )
-                    for name, found in sets.items()
-                }
+            credible = {
+                f"sets_{name}": set_scores(lookup(m, visible), right[visible], (pa, pb))
+                for name, lookup in lookups.items()
+            }
             scored_events.append(
                 credible
                 | {
@@ -380,7 +465,12 @@ def score_run(
                 }
             )
 
-    return {"n_fitted": int(np.unique(fitted[scored]).size), "clones": clones,
+    agree = (
+        {}
+        if "segment" not in (sets or {})
+        else {"segment_agree": _decoded_agree((sets or {})["segment"], run)}
+    )
+    return agree | {"n_fitted": int(np.unique(fitted[scored]).size), "clones": clones,
             "events": scored_events,
             "neutral_segments": _neutral(sample, run, planted, match, clones)}  # fmt: skip
 
@@ -487,8 +577,8 @@ def rescore_sets(out: Path) -> int:
         record = json.loads(path.read_text())
         seed, j = int(record["seed"]), float(record["J"])
         kept = out / "outputs" / f"s{seed:04d}-J{j:g}"
-        sets = None if "error" in record else _read_sets(kept)
-        if sets is None:
+        sets = {} if "error" in record else _read_sets(kept)
+        if not sets:
             continue
         manifest = ROOT / "sim" / "manifests" / f"{record['manifest']}.toml"
         draws = out / "draws" / f"rescore-s{seed:04d}"
