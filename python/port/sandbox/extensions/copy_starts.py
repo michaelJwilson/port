@@ -653,7 +653,7 @@ def _variant_seeding(
     knn: float = 0.0,
     lloyd: float = 0,
 ) -> Any:
-    """`sal`'s emission++ D-sampling (`emission_mixture_plus_plus` over `_seed_scores`), with port's changes (#540).
+    """`sal`'s emission++ D-sampling (`emission_mixture_plus_plus` over `seed_scores`), with port's changes (#540).
 
     - `trim`: rows above the `1 - trim` quantile of the current score get
       probability 0, so an outlier row cannot seed;
@@ -719,7 +719,7 @@ def _emission_variant(
     """`EMISSION_VARIANTS[name]`: one draw, or the best of `draws` by the HMM's NLL at each draw's states, nothing fitted.
 
     Scored by `port.sandbox.known_copy.hmm_objective.negative_log_likelihood`
-    (`sal`'s JAX twin of the forward recursion at `known_copy.hmm.ALPHA`, `TAU`, `T`) on
+    (`sal`'s compiled forward recursion at `known_copy.hmm.ALPHA`, `TAU`, `T`) on
     the call's rows, each draw's states read as `seed_states` reads them. A
     variant with no seeding change draws `sal`'s own `emission_seeding`.
     """

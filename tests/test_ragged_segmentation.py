@@ -13,8 +13,13 @@ constructing it, the floor by driving its refusal.
 
 import numpy as np
 import pytest
-from port.sim.truth import core_inference_truth, dev_instance, ragged_lengths
-from sal.ragged import MINIMUM_LENGTH, Ragged
+from port.sim.truth import (
+    MINIMUM_SEGMENT,
+    core_inference_truth,
+    dev_instance,
+    ragged_lengths,
+)
+from sal.ragged import Ragged
 
 BOUNDARY_SEGMENTS = 200
 """Segments in the instance that measures the restart.
@@ -67,14 +72,14 @@ def test_upstream_accepts_the_planted_genome() -> None:
 
 @pytest.mark.smoke
 def test_a_chromosome_below_the_floor_is_refused() -> None:
-    """One bin is an initial distribution and no transition, so upstream says no.
+    """Upstream admits one bin since sal #1233; the fixture's floor stays two, its own.
 
-    The floor is upstream's, and `ragged_lengths` takes it from there rather
-    than choosing its own: `MINIMUM_SEGMENT` is an alias, so a change upstream
-    is a change here.
+    `Ragged` scores a one-position segment as its start times its emission,
+    so it constructs; `ragged_lengths` plants no chromosome below
+    `MINIMUM_SEGMENT`, and refuses a genome the floor does not fit.
     """
-    with pytest.raises(ValueError, match="at least 2 positions"):
-        Ragged(values=np.zeros(4), lengths=(1, 3))
+    assert Ragged(values=np.zeros(4), lengths=(1, 3)).n_segments == 2
+    assert MINIMUM_SEGMENT == 2
 
     rng = np.random.default_rng(0)
     with pytest.raises(ValueError, match="do not fit"):
@@ -84,7 +89,7 @@ def test_a_chromosome_below_the_floor_is_refused() -> None:
     #    partitions of a genome barely wider than the floor, all legal.
     for seed in range(1000):
         drawn = ragged_lengths(30, 10, rng=np.random.default_rng(seed))
-        assert drawn.min() >= MINIMUM_LENGTH
+        assert drawn.min() >= MINIMUM_SEGMENT
         assert drawn.sum() == 30
 
 
