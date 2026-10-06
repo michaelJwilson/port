@@ -29,6 +29,8 @@ from port.qa.ledger import (
     check_identity,
     check_note,
     definitions,
+    fixture_key,
+    fixture_stem,
     ledger,
     parse,
     read,
@@ -104,14 +106,12 @@ read from git, not from the ledger."""
 def test_the_render_rebuilds_the_converted_rows() -> None:
     """`--render`'s first 73 rows, parsed back and written in the old table's
     form, hash to the table they were converted from: every cell of every
-    converted run survives the ledger, `[converted: ...]` remarks aside."""
+    converted run survives the ledger, `[converted: ...]` remarks and the
+    hash keying the fixture aside."""
     rows = parse(render())[:CONVERTED_ROWS]
+    kept = {"note": lambda v: v.split(CONVERTED)[0], "fixture": fixture_stem}
     lines = [
-        "| "
-        + " | ".join(
-            row[c].split(CONVERTED)[0] if c == "note" else row[c] for c in COLUMNS
-        )
-        + " |"
+        "| " + " | ".join(kept.get(c, lambda v: v)(row[c]) for c in COLUMNS) + " |"
         for row in rows
     ]
 
@@ -137,8 +137,9 @@ def test_a_recorded_run_writes_one_line_per_measured_metric(
         recovery, fixture="dev", args="-- --sal", note="a test run", dirty=False
     )
 
-    assert found.startswith("abcdef0-dev-")
+    assert found.startswith("abcdef0-dev_07b82e92-")
     mine = [line for line in metrics.ledger() if line["run_id"] == found]
+    assert {line["fixture"] for line in mine} == {"dev_07b82e92"}
     assert {line["metric"]: line["value"] for line in mine} == {
         "clone_ari": "0.9877",
         "wall_s": "12.3",
@@ -180,7 +181,7 @@ def test_a_note_that_is_not_one_short_line_is_refused(note: str) -> None:
 
 @pytest.mark.infra
 def test_the_latest_dev_run_is_the_dev_fixture_built_now() -> None:
-    recorded = [row for row in read() if row["fixture"] == "dev"]
+    recorded = [row for row in read() if fixture_stem(row["fixture"]) == "dev"]
     assert recorded, "no dev run: run_ledger --record"
 
     built = fixture_hash(sim_truth.dev_instance())
@@ -224,9 +225,45 @@ def test_the_calicost_runs_carry_the_shipped_samples_hash() -> None:
 
     for name, sample in SAMPLES.items():
         recorded = {
-            line["fixture_hash"] for line in ledger() if line["fixture"] == name
+            line["fixture_hash"]
+            for line in ledger()
+            if fixture_stem(line["fixture"]) == name
         }
         assert recorded == {realization_hash(SIM_ROOT / sample)}, name
+
+
+@pytest.mark.infra
+def test_every_fixture_is_keyed_by_its_hash() -> None:
+    """Each ledger line's fixture is `<name>_<fixture_hash>`, so no name is
+    read as another generation's data."""
+    for line in ledger():
+        assert line["fixture"] == fixture_key(line["fixture"], line["fixture_hash"])
+
+
+@pytest.mark.infra
+def test_a_key_replaces_a_trailing_hash_and_refuses_a_malformed_one() -> None:
+    assert (
+        fixture_key("dev_tree_1s_hard_r0", "9ec90dc2") == "dev_tree_1s_hard_r0_9ec90dc2"
+    )
+    assert fixture_key("dev_tree_1s_hard_r0_d2938975", "9ec90dc2") == (
+        "dev_tree_1s_hard_r0_9ec90dc2"
+    )
+    assert fixture_stem("easy") == "easy"
+    with pytest.raises(ValueError, match="8 hex digits"):
+        fixture_key("easy", "2d4ce9a")
+
+
+@pytest.mark.infra
+def test_best_takes_a_bare_name_only_where_it_names_one_dataset() -> None:
+    """`easy` has one key; `dev_tree_1s_hard_r0` has two generations."""
+    found = metrics.best("clone_ari", "easy")
+    assert found is not None
+    assert found["fixture"] == "easy_2d4ce9a9"
+    with pytest.raises(ValueError, match="2 datasets"):
+        metrics.best("clone_ari", "dev_tree_1s_hard_r0")
+    found = metrics.best("clone_ari", "dev_tree_1s_hard_r0_9ec90dc2")
+    assert found is not None
+    assert found["fixture_hash"] == "9ec90dc2"
 
 
 @pytest.mark.infra

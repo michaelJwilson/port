@@ -25,8 +25,7 @@ manifest's `r0_hash`, and writes into `OUT`:
 Every figure carries `<fixture> <hash> · code <sha>`, the commit read before
 anything is written, `+` where the tree differs from it. A run is appended to
 the metrics ledger (`port.qa.ledger.write`) as `<fixture>_r0_<hash>`, one
-ledger name per generation, since the ledger refuses a name that names two
-datasets (T- #660; `<fixture>_ln_r0` before it), and
+ledger key per generation (`port.qa.ledger.fixture_key`), and
 `OUT/README.md` is written with its `run_id`.
 """
 
@@ -807,8 +806,10 @@ KEY_STUDIES: dict[str, tuple[str, str, str]] = {
 
 
 def ledger_name(fixture: str, digest: str) -> str:
-    """The run's fixture name in the metrics ledger: one per r0 generation."""
-    return f"{fixture}_r0_{digest}"
+    """The run's fixture key in the metrics ledger: one per r0 generation."""
+    from port.qa.ledger import fixture_key
+
+    return fixture_key(f"{fixture}_r0", digest)
 
 
 def readme(

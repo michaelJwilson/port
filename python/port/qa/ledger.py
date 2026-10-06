@@ -14,12 +14,18 @@ this module is its table API, moved from `tests.metrics` (T- #673 G2). A
 run is recorded against `provenance.head`, so the files live in the
 checkout `provenance.ROOT` names. `.gitattributes` merges them as `union`,
 so two branches that each append a run both keep theirs.
+
+A ledger fixture is a key, `<name>_<hash>` (`fixture_key`): the name a run
+was asked for, then the first 8 hex digits of the data it ran on. Two
+generations of one manifest are two keys, so no name is read as the other's
+data, and `best` takes a bare name only while it names one dataset.
 """
 
 from __future__ import annotations
 
 import datetime
 import math
+import re
 from collections.abc import Iterable, Sequence
 from pathlib import Path
 from typing import Any
@@ -91,6 +97,25 @@ TIMESTAMP = "%Y-%m-%dT%H:%MZ"
 
 def fixture_name(instance: str, *, lattice: bool, loh: bool) -> str:
     return instance + ("-lattice" if lattice else "") + ("-loh" if loh else "")
+
+
+HASHED = re.compile(r"(?P<stem>.+)_(?P<digest>[0-9a-f]{8})")
+"""A fixture key: its stem, `_`, and the 8 hex digits of `fixture_hash`."""
+
+
+def fixture_stem(fixture: str) -> str:
+    """`fixture` without a trailing `_<hash>`: the name the run was asked for."""
+    found = HASHED.fullmatch(fixture)
+    return fixture if found is None else found["stem"]
+
+
+def fixture_key(fixture: str, digest: str) -> str:
+    """`<stem>_<digest>`, the ledger's name for `fixture` run on `digest`'s data;
+    a trailing hash already on `fixture` is replaced, so the key is idempotent."""
+    if re.fullmatch(r"[0-9a-f]{8}", digest) is None:
+        msg = f"a fixture hash is 8 hex digits, got {digest!r}"
+        raise ValueError(msg)
+    return f"{fixture_stem(fixture)}_{digest}"
 
 
 def read_tsv(path: Path, columns: Sequence[str]) -> list[dict[str, str]]:
@@ -269,9 +294,10 @@ def write(
     dirty: bool,
     test: str = TEST,
 ) -> str:
-    """Append a run to `runs` and `ledger`, after `check_identity`; returns
-    the run's id."""
+    """Append a run to `runs` and `ledger` under `fixture_key`, after
+    `check_identity`; returns the run's id."""
     recorded = ledger()
+    fixture = fixture_key(fixture, recovery["fixture_hash"])
     check_identity(fixture, recovery["fixture_hash"], recorded)
     run, lines = entries(
         recovery,
@@ -292,16 +318,32 @@ def write(
     return run["run_id"]
 
 
+def resolve(fixture: str, rows: list[dict[str, str]]) -> str:
+    """The key `fixture` names in `rows`: itself if a key there, else the one
+    key whose stem it is; raises where a bare name names several datasets."""
+    keys = {r["fixture"] for r in rows}
+    if fixture in keys:
+        return fixture
+    found = sorted(k for k in keys if fixture_stem(k) == fixture)
+    if len(found) > 1:
+        msg = f"{fixture} names {len(found)} datasets, pass one key: {found}"
+        raise ValueError(msg)
+    return found[0] if found else fixture
+
+
 def best(metric: str, fixture: str | None) -> dict[str, str] | None:
     """The ledger line maximizing `metric` under its latest definition, over
-    `fixture`'s lines if given, joined to its run."""
+    `fixture`'s lines if given (a key, or a name with one key: `resolve`),
+    joined to its run."""
     definition = latest()[metric]
+    recorded = ledger()
+    key = None if fixture is None else resolve(fixture, recorded)
     lines = [
         line
-        for line in ledger()
+        for line in recorded
         if line["metric"] == metric
         and line["definition"] == definition
-        and (fixture is None or line["fixture"] == fixture)
+        and (key is None or line["fixture"] == key)
     ]
     found = max(lines, key=lambda line: float(line["value"]), default=None)
     if found is None:

@@ -89,9 +89,10 @@ def record_sample(arguments: argparse.Namespace, *, dirty: bool) -> int:
 
     `r0` is `dev_tree`'s realization 0, drawn if absent and refused unless it
     is the one `port.sim.fixtures.R0_HASH` names; `easy` and `hard` are CalicoST's.
-    The fixture hash is the sample's content hash (`realization_hash`), and
-    a name the ledger already holds under another hash is refused before the
-    run (`check_identity`).
+    The fixture hash is the sample's content hash (`realization_hash`), the
+    ledger records the run as `<sample>_<hash>` (`ledger.fixture_key`), and a
+    hash the ledger holds under another key is refused before the run
+    (`check_identity`).
     """
     from port.sim.fixtures import SAMPLES, SIM_ROOT, r0, realization_hash
 
@@ -105,7 +106,9 @@ def record_sample(arguments: argparse.Namespace, *, dirty: bool) -> int:
     # NB checked before the run as well as at the write, so a refused name
     #    costs no run
     digest = realization_hash(path)
-    ledger.check_identity(arguments.sample, digest, ledger.ledger())
+    ledger.check_identity(
+        ledger.fixture_key(arguments.sample, digest), digest, ledger.ledger()
+    )
 
     audit = [
         *(item for entry in arguments.set for item in ("--set", entry)),

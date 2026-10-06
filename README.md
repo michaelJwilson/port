@@ -583,7 +583,7 @@ not carry, not before.
 | [CLAUDE.md](CLAUDE.md) | The rules |
 | [Issues](https://github.com/michaelJwilson/port/issues) | What is filed and not done |
 | [docs/measurements.md](docs/measurements.md) | The timings, ratios and histories the package docstrings cited, by module and object (#517) |
-| [docs/metrics/](docs/metrics/) | The metrics ledger, append-only TSVs: `ledger.tsv` one measured value per line, `runs.tsv` one line per run (commit, timestamp, arguments, test, note), `definitions.tsv` what each metric means, versioned (#409, #620). `run_ledger --record` appends (`port.qa.ledger`); `--render [--out PATH]` prints the wide table, which is not committed; `run_study --metrics-history` draws `.cache/plots/metrics_history*.png` from it |
+| [docs/metrics/](docs/metrics/) | The metrics ledger, append-only TSVs: `ledger.tsv` one measured value per line, `runs.tsv` one line per run (commit, timestamp, arguments, test, note), `definitions.tsv` what each metric means, versioned (#409, #620). A fixture is keyed `<name>_<hash>`, one key per dataset. `run_ledger --record` appends (`port.qa.ledger`); `--render [--out PATH]` prints the wide table, which is not committed; `run_study --metrics-history` draws `.cache/plots/metrics_history*.png` from it |
 | [docs/study-recovery-population.md](docs/study-recovery-population.md) | `--sal` sensitivity against clone UMIs and CNA length, and the false positive rate, over 679 simulated runs (#544) |
 | [docs/templates/](docs/templates/README.md) | Templates for documents made outside the code: the work-in-flight page (#335) |
 
