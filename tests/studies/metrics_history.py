@@ -1,4 +1,4 @@
-"""Clone and copy-state ARI across `main`'s merges, from the metrics ledger's history runs (`tests.metrics.read`, #620).
+"""Clone and copy-state ARI across `main`'s merges, from the metrics ledger's history runs (`port.qa.ledger.read`, #620).
 
 `python -m tests.studies.metrics_history [OUT.png [OUT_CLASSES.png]]`, by default
 `.cache/plots/metrics_history{,_classes}.png` (`tests.plots_dir`), untracked.
@@ -23,8 +23,8 @@ from pathlib import Path
 from typing import Any
 
 from port.qa import provenance
+from port.qa.ledger import ROOT, SIM_TEST, UNMEASURED, read
 
-from tests.metrics import ROOT, SIM_TEST, UNMEASURED, read
 from tests.plots_dir import PLOTS
 
 HISTORY = "HISTORY"

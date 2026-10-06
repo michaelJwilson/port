@@ -56,10 +56,10 @@ from typing import Any
 import numpy as np
 import pandas as pd
 import yaml
+from port.qa.scoring import integer_clones, matched, overlap
 from port.qa.statistics import measured, peak_gb
 
 from tests.fixtures import CoreInferenceTruth
-from tests.scoring import matched, overlap
 
 __all__ = ["Recovery", "run_arm", "score"]
 
@@ -250,22 +250,6 @@ def read_calicost(truth: CoreInferenceTruth, output: Path) -> Reading:
         a=a,
         b=b,
     )
-
-
-def integer_clones(a: np.ndarray, b: np.ndarray) -> np.ndarray:
-    """Each fitted clone's label after merging clones of one `(A, B)` profile.
-
-    Index `c` holds the smallest clone whose decoded `(A, B)` equals clone
-    `c`'s at every bin (#344), so the normal clone keeps `0`.
-    """
-    merged = np.arange(a.shape[1])
-    seen: dict[bytes, int] = {}
-
-    for clone in range(a.shape[1]):
-        profile = np.stack([a[:, clone], b[:, clone]]).astype(np.int64)
-        merged[clone] = seen.setdefault(profile.tobytes(), clone)
-
-    return merged
 
 
 def score(

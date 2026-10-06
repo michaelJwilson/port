@@ -23,7 +23,7 @@ manifest's `r0_hash`, and writes into `OUT`:
 
 Every figure carries `<fixture> <hash> · code <sha>`, the commit read before
 anything is written, `+` where the tree differs from it. A run is appended to
-the metrics ledger (`tests.metrics.write`) as `<fixture>_r0_<hash>`, one
+the metrics ledger (`port.qa.ledger.write`) as `<fixture>_r0_<hash>`, one
 ledger name per generation, since the ledger refuses a name that names two
 datasets (T- #660; `<fixture>_ln_r0` before it), and
 `OUT/README.md` is written with its `run_id`.
@@ -44,9 +44,8 @@ from typing import Any
 
 import numpy as np
 from port.qa import provenance
+from port.qa.provenance import ROOT
 from port.qa.statistics import measured
-
-from tests.metrics import ROOT
 
 MANIFESTS = ROOT / "sim" / "manifests"
 OUT = ROOT / "docs" / "plots" / "paper"
@@ -88,7 +87,7 @@ CLASSES = {
     "unbalanced_gain": "unbalanced gain",
     "neutral": "neutral",
 }
-"""`tests.sim_audit.planted_classes`, in figure 17's order, with their labels."""
+"""`port.qa.scoring.CLASSES`, in figure 17's order, with their labels."""
 
 DPI = 150
 """`port.sim.analysis`'s and `port.pipeline.FIGURE_DPI`'s."""
@@ -302,9 +301,10 @@ def compared(
     """`score`'s bins, rebuilt, and refused unless they give its `confusion` and `exact`."""
     from port.extensions.combined_figure import clone_symbol
     from port.extensions.integer_copy import DEFAULT_MAX_TOTAL_COPY
+    from port.qa.scoring import copy_confusion
     from port.sim.analysis import display, read
 
-    from tests.sim_audit import copy_confusion, read_run
+    from tests.sim_audit import read_run
 
     r = read(path)
     run = read_run(sample, output)
@@ -426,11 +426,10 @@ def _codes(pairs: np.ndarray) -> np.ndarray:
 
 
 def confusion_figure(c: Compared) -> Any:
-    """15: `tests.sim_audit.copy_confusion` as a heatmap, planted rows and decoded columns that occur."""
+    """15: `port.qa.scoring.copy_confusion` as a heatmap, planted rows and decoded columns that occur."""
     import matplotlib.pyplot as plt
     from port.extensions.integer_copy import DEFAULT_MAX_TOTAL_COPY
-
-    from tests.sim_audit import OTHER, copy_confusion, copy_states
+    from port.qa.scoring import OTHER, copy_confusion, copy_states
 
     t, ab = _codes(c.truth).T.ravel(), _codes(c.decoded).T.ravel()
     confusion = copy_confusion(t, ab, DEFAULT_MAX_TOTAL_COPY)
@@ -525,21 +524,10 @@ def genomic_compare_figure(c: Compared) -> Any:
 
 def exact_by_class(c: Compared) -> dict[str, tuple[float, float, int]]:
     """Per `CLASSES`: exact, exact phase-free, and clone-bins; NaN where none is planted."""
-    from tests.sim_audit import planted_classes
+    from port.qa import scoring
 
     t, ab = _codes(c.truth).T.ravel(), _codes(c.decoded).T.ravel()
-    swapped = (ab % 1_000) * 1_000 + ab // 1_000
-    classes = planted_classes(t)
-    found = {}
-    for name in CLASSES:
-        where = classes[name]
-        if not where.any():
-            found[name] = (float("nan"), float("nan"), 0)
-            continue
-        exact = float(np.mean((t == ab)[where]))
-        either = float(np.mean(((t == ab) | (t == swapped))[where]))
-        found[name] = (exact, either, int(where.sum()))
-    return found
+    return scoring.exact_by_class(t, ab)
 
 
 def exact_figure(c: Compared) -> Any:
@@ -714,7 +702,7 @@ QUESTIONS: dict[str, tuple[str, str]] = {
     ),
     "compare/copy_confusion.png": (
         "Which (A, B) is each planted pair decoded as?",
-        "`confusion_figure`: `tests.sim_audit.copy_confusion`",
+        "`confusion_figure`: `port.qa.scoring.copy_confusion`",
     ),
     "compare/copy_genomic_truth_vs_fit.png": (
         "Where along the genome is a matched clone's (A, B) decoded wrong, or swapped?",
@@ -722,7 +710,7 @@ QUESTIONS: dict[str, tuple[str, str]] = {
     ),
     "compare/exact_by_class.png": (
         "Which planted classes are recovered exactly, with and without phase?",
-        "`exact_figure`: `tests.sim_audit.planted_classes`",
+        "`exact_figure`: `port.qa.scoring.exact_by_class`",
     ),
     "solvers/solver_combined.png": (
         "How far above the best does each spatial solver and each copy-state start end, and how fast?",
@@ -848,7 +836,8 @@ def main(argv: list[str] | None = None) -> int:
     if arguments.truth_only:
         return 0
 
-    from tests.metrics import SIM_TEST, write
+    from port.qa.ledger import SIM_TEST, write
+
     from tests.sim_fixtures import load_simulated
 
     sample = load_simulated(path.name, path.parent)

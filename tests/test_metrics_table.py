@@ -17,9 +17,8 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-
-from tests import fixtures, metrics
-from tests.metrics import (
+from port.qa import ledger as metrics
+from port.qa.ledger import (
     COLUMNS,
     CONVERTED,
     METRICS,
@@ -30,13 +29,15 @@ from tests.metrics import (
     check_identity,
     check_note,
     definitions,
-    fixture_hash,
     ledger,
     parse,
     read,
     render,
     runs,
 )
+
+from tests import fixtures
+from tests.metrics import fixture_hash
 
 
 @pytest.mark.infra
@@ -180,7 +181,7 @@ def test_a_note_that_is_not_one_short_line_is_refused(note: str) -> None:
 @pytest.mark.infra
 def test_the_latest_dev_run_is_the_dev_fixture_built_now() -> None:
     recorded = [row for row in read() if row["fixture"] == "dev"]
-    assert recorded, "no dev run: python -m tests.metrics --record"
+    assert recorded, "no dev run: run_ledger --record"
 
     built = fixture_hash(fixtures.dev_instance())
 

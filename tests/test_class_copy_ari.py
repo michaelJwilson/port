@@ -1,4 +1,4 @@
-"""`tests.sim_audit`'s copy-state ARI per planted class (#511).
+"""`port.qa.scoring`'s copy-state ARI per planted class (#511).
 
 `class_ari` over `planted_classes` is the copy ARI on one class's clone-bins.
 The referee is sklearn's `adjusted_rand_score` on bins selected by hand, by
@@ -10,9 +10,7 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
-from sklearn.metrics import adjusted_rand_score
-
-from tests.sim_audit import (
+from port.qa.scoring import (
     OTHER,
     class_ari,
     confusion_table,
@@ -21,6 +19,7 @@ from tests.sim_audit import (
     phase_free,
     planted_classes,
 )
+from sklearn.metrics import adjusted_rand_score
 
 
 def _code(pairs: list[tuple[int, int]]) -> np.ndarray:

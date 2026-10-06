@@ -173,7 +173,7 @@ def test_a_merged_bin_maps_back_to_each_planted_bin_it_covers() -> None:
 @pytest.mark.analytic
 def test_clones_of_one_integer_profile_merge_to_the_smallest() -> None:
     """Equal `(A, B)` at every bin is one clone; one differing B keeps two."""
-    from tests.recovery_audit import integer_clones
+    from port.qa.scoring import integer_clones
 
     a = np.array([[1, 1, 1, 2], [1, 1, 1, 2], [2, 2, 2, 2]])
     b = np.array([[1, 1, 1, 1], [1, 0, 1, 1], [1, 1, 1, 1]])
