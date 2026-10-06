@@ -81,6 +81,18 @@ That is the argument for the one-to-many map in one line: an argmin-only
 decoder returns the correct pair at a twenty per cent scale error with
 nothing to say the fit is fifty-six chi-square units from explaining it.
 
+## `port.patch.hmm_nophasing.bb_logpmf`
+
+### `rises_on_distinct`
+
+The integer-copy likelihood (`port.extensions.copy_likelihood._emission`)
+takes three rising factorials per `(state, bin)`. Over the 7,287 calls of a
+dev_tree r0 `--sal` run (#702), the median call is 4 states over 655
+pseudobulk bins with 220 distinct counts, and the largest 25 states over
+2,829 bins with 594. `tests/test_rises_on_distinct_bench.py`, minimum of
+rounds: 91.7 to 56.1 us at the former (1.64x) and 1,589 to 430 us at the
+latter (3.69x). Bitwise (`tests/test_rises_on_distinct.py`).
+
 ## `port.patch.hmm_nophasing.logmu_shift`
 
 ### module docstring
