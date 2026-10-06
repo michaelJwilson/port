@@ -405,7 +405,9 @@ def test_no_mb_label_is_drawn_and_the_last_track_alone_names_contigs(
 ) -> None:
     """No minor tick label anywhere on the page (the Mb numbers); the page's
     last track names the chromosomes, each at its left boundary, and no other
-    axis, nor `cnaster`'s own names, shows a `chr` text (PR- #701)."""
+    axis, nor `cnaster`'s own names, shows a contig name (PR- #701)."""
+    import re
+
     import matplotlib.pyplot as plt
     from port.sim.analysis import binned_axis
 
@@ -418,7 +420,9 @@ def test_no_mb_label_is_drawn_and_the_last_track_alone_names_contigs(
     for ax in axes:
         ticks = ax.xaxis.get_minor_ticks(len(ax.xaxis.get_minorticklocs()))
         assert not [t for t in ticks if t.label1.get_visible() and t.label1.get_text()]
-    contigs = [t for t in _visible_texts(figure) if t.get_text().startswith("chr")]
+    # NB a contig name is `chr` and its name alone; (a)'s events start `chr` too.
+    contigs = [t for t in _visible_texts(figure)
+               if re.fullmatch(r"chr\w+", t.get_text())]  # fmt: skip
     on_last = [t for t in last.get_xticklabels() if t.get_visible() and t.get_text()]
 
     assert on_last

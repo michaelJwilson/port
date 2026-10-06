@@ -199,7 +199,9 @@ def test_an_unlabelled_axis_marks_its_ticks_and_labels_none() -> None:
     for labels in (True, False):
         axis = GenomicAxis.of_table(_bins(), labels=labels)
         figure, ax = plt.subplots(figsize=(12, 1))
+        # NB no major tick: matplotlib drops a minor tick that lands on one.
         ax.set_xlim(0, axis.width)
+        ax.set_xticks([])
         axis.draw(ax, labels=True)
         figure.canvas.draw()
         ticks = ax.xaxis.get_minor_ticks(len(ax.xaxis.get_minorticklocs()))
