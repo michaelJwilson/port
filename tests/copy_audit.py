@@ -41,10 +41,10 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
+from port.qa.scoring import matched, overlap
 
 from tests.fixtures import COPY_LATTICE
 from tests.plots_dir import PLOTS
-from tests.scoring import matched, overlap
 
 Pair = tuple[int, int]
 

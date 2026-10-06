@@ -55,7 +55,7 @@ BUDGET: dict[str, int] = {
 """`python/port` outside `sandbox/`."""
 
 CONCEPTS: dict[str, int] = {
-    # NB 2: `tests.scoring.matched` pairs labels by overlap for every scorer
+    # NB 2: `port.qa.scoring.matched` pairs labels by overlap for every scorer
     #    (step 7); `tests.realizations.match_states` pairs states by
     #    responsibility distance, a different cost.
     "Hungarian matcher": 2,
