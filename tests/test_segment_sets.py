@@ -7,7 +7,8 @@ What is pinned here:
   thousandth of the depth widens the set to hold it among others
   (`analytic`);
 - each set's deviance is the brute-force refit's: the clone's
-  log-likelihood maximized over the same grid by a plain loop (`oracle`).
+  log-likelihood maximized over the same grid by a plain loop (`oracle`);
+- the per-bin table is the emission each bin's pair scores (`oracle`).
 """
 
 from __future__ import annotations
@@ -139,3 +140,26 @@ def test_each_deviance_is_the_brute_force_refit_s(cnaster_config: None) -> None:
     assert {(a, b) for a, b, _ in gain.consistent} == {
         k for k, v in scores.items() if 2 * (top - v) <= gain.threshold
     }
+
+
+@pytest.mark.oracle
+def test_the_per_bin_table_is_each_bin_s_emission(cnaster_config: None) -> None:
+    """`bin_loglik` at clone 1's fraction 0.8, bin by bin, against `_emission` per pair."""
+    from port.extensions.copy_likelihood import _emission, _parameters, _with
+    from port.extensions.segment_sets import bin_loglik
+
+    pairs = _planted()
+    bulk, _ = _clone(pairs, 50.0, rho=0.8)
+    decode = _decode(pairs, rho=0.8)
+    lattice, loglik, decoded = bin_loglik(
+        decode, [(pairs, bulk, 0.0), (pairs, bulk, 0.0)]
+    )
+
+    fitted = _with(bulk, decode.dispersion, decode.taus)
+    for k in (0, 7, len(lattice) - 1):
+        log_mu, p = _parameters(lattice[k : k + 1], 0.8)
+        expected = _emission(
+            np.full(60, log_mu[0]), np.full(60, p[0]), fitted, np.arange(60)
+        )
+        np.testing.assert_array_equal(loglik[1, :, k], expected)
+    assert [tuple(lattice[i]) for i in decoded[1, 19:22]] == [(1, 1), (1, 2), (1, 2)]

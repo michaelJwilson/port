@@ -26,6 +26,11 @@ What is held, and why:
 - **the dispersions** (`alpha`, `tau`), at the decode's;
 - **the normal clone** at shift 0 and fraction 1, as the decode holds it.
 
+Beside the sets, :func:`bin_loglik` keeps each bin's log-likelihood under
+every pair at the decode's shift and fraction, so a set over any other run
+of bins -- a planted event's, where the decode drew no boundary -- is a sum
+away, with no rerun.
+
 The shift and fraction are the clone's, shared by all its segments, so the
 others anchor them; refitted per segment alone, two parameters would absorb
 a segment's two observables and admit nearly every pair. The refit is on a
@@ -41,7 +46,13 @@ from typing import Any, NamedTuple
 import numpy as np
 import pandas as pd
 
-__all__ = ["SegmentSet", "segment_sets", "segments", "write_segment_sets"]
+__all__ = [
+    "SegmentSet",
+    "bin_loglik",
+    "segment_sets",
+    "segments",
+    "write_segment_sets",
+]
 
 SHIFT_STEPS = np.round(np.arange(-0.1, 0.1001, 0.01), 3)
 """Offsets from the decode's shift the refit searches."""
@@ -99,22 +110,13 @@ def segment_sets(
     """
     from scipy.stats import chi2
 
-    from port.extensions.copy_likelihood import (
-        _emission,
-        _parameters,
-        _with,
-        candidates,
-    )
-    from port.patch.integer_copy import decode_caps
+    from port.extensions.copy_likelihood import _emission, _parameters, _with
 
     threshold = float(chi2.ppf(level, 2))
     # NB the configured lattice and every pair the decode used: the lattice
     #    decode's states are the lattice, the shared decode's one per state.
-    allele, total_cap = decode_caps()
     decoded_states = np.asarray(decode.states, dtype=np.int64)
-    states = np.unique(
-        np.vstack([candidates(total_cap, allele), decoded_states]), axis=0
-    )
+    states = _lattice(decode)
     position = {(int(a), int(b)): k for k, (a, b) in enumerate(states)}
     out = []
 
@@ -167,6 +169,43 @@ def segment_sets(
     return out
 
 
+def _lattice(decode: Any) -> np.ndarray:
+    """The configured lattice and every pair the decode used, sorted."""
+    from port.extensions.copy_likelihood import candidates
+    from port.patch.integer_copy import decode_caps
+
+    allele, total_cap = decode_caps()
+    decoded_states = np.asarray(decode.states, dtype=np.int64)
+    return np.unique(np.vstack([candidates(total_cap, allele), decoded_states]), axis=0)
+
+
+def bin_loglik(
+    decode: Any, clones: list[tuple[np.ndarray, Any, float]]
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """`(pairs, loglik, decoded)`: each clone's per-bin NB + BB log-likelihood
+    under every pair, `(n_clones, n_obs, n_pairs)`, at the decode's shift,
+    fraction and dispersions, and each bin's decoded pair's index."""
+    from port.extensions.copy_likelihood import _emission, _parameters, _with
+
+    pairs = _lattice(decode)
+    position = {(int(a), int(b)): k for k, (a, b) in enumerate(pairs)}
+    decoded_states = np.asarray(decode.states, dtype=np.int64)
+    tables, decoded = [], []
+
+    for clone, (_, bulk, _) in enumerate(clones):
+        fitted = _with(bulk, decode.dispersion, decode.taus)
+        assigned = decoded_states[np.asarray(decode.paths[clone], dtype=np.int64)]
+        log_mu, p = _parameters(pairs, float(decode.purity[clone]))
+        bins = np.arange(assigned.shape[0])
+        table = _emission(
+            (log_mu - float(decode.shifts[clone]))[:, None], p[:, None], fitted, bins
+        )
+        tables.append(np.where(np.isfinite(table), table, -1e10).T)
+        decoded.append([position[int(a), int(b)] for a, b in assigned])
+
+    return pairs, np.stack(tables), np.asarray(decoded, dtype=np.int64)
+
+
 def segment_set_table(found: list[SegmentSet], decode: Any) -> pd.DataFrame:
     """One row per `(clone, segment, A, B)` in a set, phased as decoded."""
     rows = []
@@ -197,11 +236,20 @@ def write_segment_sets(
     *,
     level: float = 0.95,
 ) -> Path:
-    """Write `cnv_segment_sets.tsv` into `run` for `decode` of `captured`, and return its path."""
+    """Write `cnv_segment_sets.tsv` and `cnv_bin_loglik.npz` (:func:`bin_loglik`)
+    into `run` for `decode` of `captured`, and return the first's path."""
     from port.extensions.copy_likelihood import clones_of, normal_of
 
+    clones = clones_of(captured)
     found = segment_sets(
-        decode, clones_of(captured), normal_of(captured), captured.lengths, level=level
+        decode, clones, normal_of(captured), captured.lengths, level=level
+    )
+    pairs, loglik, decoded = bin_loglik(decode, clones)
+    np.savez_compressed(
+        Path(run) / "cnv_bin_loglik.npz",
+        pairs=pairs,
+        loglik=loglik.astype(np.float32),
+        decoded=decoded,
     )
     path = Path(run) / "cnv_segment_sets.tsv"
     with path.open("w") as handle:

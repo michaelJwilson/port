@@ -207,6 +207,31 @@ def test_segment_sets_read_per_bin_folded_at_a_level() -> None:
         segment_bins(table, 5, 0.999)
 
 
+@pytest.mark.analytic
+def test_a_known_event_s_set_folds_phase_per_bin() -> None:
+    """Two bins prefer (1, 2) and (2, 1) by 3 nats each, phase switched between them.
+
+    Folded per bin, (2, 1) scores 0 on both; (1, 1) scores -3 on each, a
+    deviance of 2 * 6 = 12, outside 3 sigma (11.8); (2, 2) at -1 each, 4,
+    inside 2 sigma (6.18). Without the per-bin fold, (2, 1) would pay 3.
+    """
+    from port.studies.population import known_set
+
+    pairs = np.array([(1, 1), (1, 2), (2, 1), (2, 2)])
+    loglik = np.array([[-3.0, 0.0, -3.0, -1.0], [-3.0, -3.0, 0.0, -1.0], [9, 9, 9, 9]])
+    visible = np.array([True, True, False])
+
+    found = known_set(pairs, loglik, visible, (1, 2), 0.9973)
+
+    assert found["best"] == [2, 1]
+    assert found["covered"]
+    assert not found["ambiguous"]
+    assert found["set_size"] == 2
+    assert found["deviance_truth"] == 0.0
+    assert found["deviance_neutral"] == 12.0
+    assert known_set(pairs, loglik, visible, (1, 2), 0.9545)["set_size"] == 2
+
+
 @pytest.mark.infra
 def test_every_arm_is_the_study_s_flags_plus_decode_options() -> None:
     """`ARMS` changes only the decode: each starts with `FLAGS` (#705)."""

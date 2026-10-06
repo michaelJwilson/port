@@ -92,7 +92,7 @@ RECOVERED = 0.90
 KEPT = ("clone_labels.tsv", "cnv_seglevel.tsv")
 """A run's outputs kept beside its record, so a new score needs no rerun."""
 
-KEPT_IF_WRITTEN = ("cnv_copy_sets.tsv", "cnv_segment_sets.tsv")
+KEPT_IF_WRITTEN = ("cnv_copy_sets.tsv", "cnv_segment_sets.tsv", "cnv_bin_loglik.npz")
 """Kept as `KEPT` is, where the arm's flags write them."""
 
 FLAGS = ("--sal", "--no-plots")
@@ -322,9 +322,55 @@ def _decoded_agree(table: pd.DataFrame, run: dict[str, Any]) -> float:
     return round(agree / total, 4) if total else 0.0
 
 
-def _read_sets(directory: Path) -> dict[str, pd.DataFrame]:
-    """The tables `--copy-errors` wrote under `directory`, by kind."""
-    found = {}
+def known_set(
+    pairs: np.ndarray,
+    loglik: np.ndarray,
+    visible: np.ndarray,
+    planted: tuple[int, int],
+    level: float,
+) -> dict[str, Any]:
+    """The set over a planted event's own bins, from `cnv_bin_loglik.npz`.
+
+    `loglik` is one clone's `(n_obs, n_pairs)`. Each pair is folded per bin,
+    the better of its two phases, since phasing switches within an event;
+    the event's bins are held at one folded pair and the rest as decoded,
+    so `l(A, B)` differs from pair to pair by the event's sum alone. The set
+    is every folded pair within `chi2(level, 2)` of the best. Shift and
+    fraction stay at the decode's.
+    """
+    from scipy.stats import chi2
+
+    folded = sorted({(max(int(a), int(b)), min(int(a), int(b))) for a, b in pairs})
+    position = {(int(a), int(b)): k for k, (a, b) in enumerate(pairs)}
+    rows = loglik[np.asarray(visible, dtype=bool)].astype(np.float64)
+    totals = np.array(
+        [
+            np.maximum(
+                rows[:, position[a, b]], rows[:, position.get((b, a), position[a, b])]
+            ).sum()
+            for a, b in folded
+        ]
+    )
+    deviance = 2.0 * (totals.max() - totals)
+    threshold = float(chi2.ppf(level, 2))
+    found = {pair for pair, d in zip(folded, deviance, strict=True) if d <= threshold}
+    index = {pair: k for k, pair in enumerate(folded)}
+    truth = (max(planted), min(planted))
+    return {
+        "covered": truth in found,
+        "ambiguous": truth in found and (1, 1) in found,
+        "set_size": len(found),
+        "best": list(folded[int(np.argmax(totals))]),
+        "deviance_truth": (
+            round(float(deviance[index[truth]]), 3) if truth in index else None
+        ),
+        "deviance_neutral": round(float(deviance[index[1, 1]]), 3),
+    }
+
+
+def _read_sets(directory: Path) -> dict[str, Any]:
+    """What `--copy-errors` wrote under `directory`, by kind."""
+    found: dict[str, Any] = {}
     for kind, name in (
         ("state", "cnv_copy_sets.tsv"),
         ("segment", "cnv_segment_sets.tsv"),
@@ -332,11 +378,15 @@ def _read_sets(directory: Path) -> dict[str, pd.DataFrame]:
         written = next(directory.rglob(name), None)
         if written is not None:
             found[kind] = pd.read_csv(written, sep="\t", comment="#")
+    written = next(directory.rglob("cnv_bin_loglik.npz"), None)
+    if written is not None:
+        with np.load(written) as table:
+            found["bins"] = {key: table[key] for key in table.files}
     return found
 
 
 def _bin_sets(
-    tables: dict[str, pd.DataFrame], run: dict[str, Any]
+    tables: dict[str, Any], run: dict[str, Any]
 ) -> dict[str, Callable[[int, np.ndarray], list[set[tuple[int, int]]]]]:
     """Per `<kind>_<level>`, each fitted clone's visible bins' sets.
 
@@ -394,7 +444,7 @@ def score_member(sample: Any, output: Path) -> dict[str, Any]:
 def score_run(
     sample: Any,
     run: dict[str, Any],
-    sets: dict[str, pd.DataFrame] | None = None,
+    sets: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """:func:`score_member` on `read_run`'s fields, scored on each of `sets` where given."""
     from port.qa.scoring import matched, overlap
@@ -446,10 +496,16 @@ def score_run(
             right = np.minimum(a, b) == min(pa, pb)
             right &= np.maximum(a, b) == max(pa, pb)
             share = float(right[visible].mean()) if visible.any() else 0.0
-            credible = {
+            credible: dict[str, Any] = {
                 f"sets_{name}": set_scores(lookup(m, visible), right[visible], (pa, pb))
                 for name, lookup in lookups.items()
             }
+            bins = (sets or {}).get("bins")
+            if bins is not None and m < bins["loglik"].shape[0] and visible.any():
+                for level_name, level in LEVELS.items():
+                    credible[f"known_{level_name}"] = known_set(
+                        bins["pairs"], bins["loglik"][m], visible, (pa, pb), level
+                    )
             scored_events.append(
                 credible
                 | {
