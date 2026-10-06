@@ -249,8 +249,8 @@ in the regime named there (#466 lists them):
   recorded for the bins (#177);
 - `construct_multislice_lattice_adjacency`: the lattice's own neighbours, 6
   on a Visium hex grid, where `cnaster` takes 8 on scaled coordinates (#417);
-- `initialize_rectangular_clones`: new boundaries after 1,000 failed tries,
-  where `cnaster` loops (#304);
+- `initialize_rectangular_clones`: new boundaries where no assignment of
+  the drawn blocks can pass, where `cnaster` loops (#304, T- #692);
 - `normal_baf_bin_filter`: a removed bin's genes marked `is_interval =
   False` (#105), and a chromosome with no bins left out of `lengths`.
 - `hmm_phased`: the coded emission reads the fitted parameter by state, so
