@@ -264,6 +264,16 @@ Measured on one figure with four rasterized collections, written to PDF:
     dpi=150, no tight bbox             489 ms    9.8 MB   4.2x
     dpi=300, tight, not rasterized   1,379 ms    2.1 MB
 
+### T- #692 part 2: one genomic figure's peak
+
+`tests/test_figure_memory.py` carries the table. On CalicoST easy
+(`2d4ce9a9`), a captured `plot_clones_genomic` call replayed alone costs
++116 MB to draw under either implementation. Writing it costs +1,577 MB at
+`cnaster`'s `write_fig` and +311 MB at this module's row (5.1x). Four calls
+replayed twice in one process retain at most +94 MB, so no figure is left
+open. `cnaster`'s 11.8-13.9 GB arms are the run's arrays plus the 1.6 GB
+write.
+
 ### FIGURE_SWAPS
 
 `write_fig` is 47 per cent of a run (#195).
