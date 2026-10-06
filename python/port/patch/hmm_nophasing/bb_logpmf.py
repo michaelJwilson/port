@@ -56,6 +56,7 @@ __all__ = [
     "digamma_rise",
     "rise",
     "rises",
+    "rises_on_distinct",
 ]
 
 DISPERSION_FLOOR = 1e-10
@@ -158,6 +159,30 @@ def rises(x: np.ndarray, m: np.ndarray) -> np.ndarray:
     series = m * np.log(safe) + ((safe + m - 0.5) * step - m) + correction
     small = gammaln(x + m) - gammaln(x)
     return np.where(m == 0.0, 0.0, np.where(large, series, small))
+
+
+def rises_on_distinct(x: np.ndarray, m: np.ndarray) -> np.ndarray:
+    """:func:`rises`, evaluated on the distinct counts of `m` and gathered (#702).
+
+    `m` is one count per bin along the last axis and `x` a shape constant
+    along it -- a scalar, or one row per state as `(..., 1)`. Then a bin's
+    value depends on its count alone, so `rises(x, distinct)` gathered by
+    each bin's index is the per-bin evaluation: elementwise, so bitwise.
+    Measured: `docs/measurements.md`,
+    `port.patch.hmm_nophasing.bb_logpmf.rises_on_distinct`.
+
+    A shape that varies along the bins, or an `m` that is not one-dimensional,
+    takes :func:`rises` unchanged.
+    """
+    m = np.asarray(m, dtype=np.float64)
+    x = np.asarray(x, dtype=np.float64)
+    if m.ndim != 1 or (x.ndim > 0 and x.shape[-1] != 1):
+        return rises(x, m)
+    distinct, inverse = np.unique(m, return_inverse=True)
+    if distinct.size == m.size:
+        return rises(x, m)
+    gathered: np.ndarray = rises(x, distinct)[..., inverse]
+    return gathered
 
 
 def digamma_rise(x: np.ndarray, m: np.ndarray) -> np.ndarray:

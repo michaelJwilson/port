@@ -206,3 +206,24 @@ establish a ratio.
 | `dev` | `07b82e92` | 1.0 | 1.0 | 0.9992 | — | — | — | — | 111.9 / 117.0 |
 | `dev_tree_1s_easy_r0` | `d08e3a1b` | 0.9721 | 0.9721 | 0.9730 | 0.9752 | 0.5246 | 0.9549 | 1838 | 140.2 / 146.3 |
 | `dev_tree_1s_hard_r0` | `d2938975` | 0.2187 | 0.2187 | 0.4019 | 0.4018 | 0.0 | 0.1358 | 1786 | 133.0 / 141.1 |
+
+## `snakes_and_ladders` `253c84f` → `006e49d` (T- #707)
+
+**TL;DR:** on `dev_tree_1s_easy_r0` and `dev_tree_1s_hard_r0` every `--sal`
+score and all 12 output `.tsv`/`.npz` files are bitwise equal. On `dev` the
+scores are equal; fitted `mu` and `p` differ at the 3rd decimal, inside the
+spread of 3 runs of the old pin (T- #696).
+
+- Host: 4 cores; one fixture at a time under the host lock, 2026-10-06
+  15:38–16:29 UTC, load1 1.1–5.0 at each start. The old pin ran `66111c9`
+  (`main`), the new one the bump alone at `69be257`. Both read the same
+  drawn samples. Commands as for T- #671 above.
+- `dev`, fitted `mu` of state 1: old pin 2.0158, 1.9935 and 2.0262 (3
+  runs); new pin 2.0105. `mu_error_mean` 0.0827–0.0836 old, 0.0831 new.
+  Every other score field is equal across the 4 runs.
+
+| fixture | hash | clone_ari | clone_ari_int | copy_ari | copy_ari_pf | exact | exact_altered | bins | wall_s 253c84f / 006e49d |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `dev` | `07b82e92` | 1.0 | 1.0 | 0.9992 | — | — | — | — | 113.2 / 114.9 |
+| `dev_tree_1s_easy_r0` | `7ba9b01f` | 0.9798 | 0.9798 | 0.9326 | 0.9335 | 0.9690 | 0.1473 | 1816 | 121.6 / 114.0 |
+| `dev_tree_1s_hard_r0` | `9ec90dc2` | 0.9372 | 0.9372 | 0.7618 | 0.7614 | 0.9753 | 0.4034 | 1811 | 87.4 / 88.0 |

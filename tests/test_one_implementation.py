@@ -50,7 +50,9 @@ BUDGET: dict[str, int] = {
     #    (dataclasses), the two `Job`s (NamedTuples) and `clone_labels`' shim.
     #    80: T- #683's `GenomicAxis`, `Ticks`, `_Thinned`: the one genomic
     #    axis, its data-free form a swap row binds, and its Mb labels.
-    "classes": 80,
+    #    81: T- #692's `RectangularClones`, `cnaster`'s two-tuple carrying the
+    #    rectangular init's `Termination`.
+    "classes": 81,
     # NB step 4: 18 records became NamedTuples; the dataclasses left carry
     #    mutable state, machinery or a `__post_init__` (#517 D). Step 8 moved
     #    7 dataclasses and 1 NamedTuple to `sandbox/`. 21: T- #418's `Samples`
