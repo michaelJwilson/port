@@ -22,6 +22,10 @@ READS: dict[str, str] = {
     "python/port/extensions/label_solver.py": (
         "PORT_LABEL_SOLVER overrides the bound solver for a benchmark arm (#246)"
     ),
+    "python/port/qa/audit.py": (
+        "PORT_SIM_CACHE keeps a cropped or purified sample between runs "
+        "(moved from tests/, T- #673 G3)"
+    ),
     "python/port/sim/draw.py": "PORT_CACHE locates the simulator's map cache",
     "python/port/sim/fixtures.py": (
         "PORT_GRCH38 locates CalicoST's GRCh38 resources for the committed "

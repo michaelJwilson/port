@@ -26,10 +26,9 @@ from typing import Any
 import matplotlib as mpl
 import numpy as np
 import pandas as pd
+from port.qa.audit import audit_sample
 from port.sim.fixtures import load_simulated
 from sklearn.metrics import adjusted_rand_score
-
-from tests.sim_audit import run_arm
 
 mpl.use("Agg")
 
@@ -75,11 +74,11 @@ def main(argv: list[str]) -> None:
         from port.sandbox.wolff_init import wolff_start
 
         with wolff_start(seed=seed, method="grow"):
-            recovery, output = run_arm(sample, arm, overrides)
+            recovery, output = audit_sample(sample, arm, overrides)
     elif start == "normal-first":
         import port.patch.hmrf as patch
 
-        _, first = run_arm(sample, arm, overrides)
+        _, first = audit_sample(sample, arm, overrides)
         normal = normal_spots(first)
         order = pd.read_csv(
             next(first.glob("*/clone_labels.tsv")), sep="\t", index_col=0
@@ -109,11 +108,11 @@ def main(argv: list[str]) -> None:
 
         patch.run_core_inference = wrapped
         try:
-            recovery, output = run_arm(sample, arm, overrides)
+            recovery, output = audit_sample(sample, arm, overrides)
         finally:
             patch.run_core_inference = original
     else:
-        recovery, output = run_arm(sample, arm, overrides)
+        recovery, output = audit_sample(sample, arm, overrides)
 
     wall = time.perf_counter() - opened
     print(

@@ -55,9 +55,8 @@ def capture(
     import yaml
     from port.patch import normal_spot
     from port.patch.hmrf import core_inference
+    from port.qa.audit import audit_sample
     from port.sim.fixtures import load_simulated
-
-    from tests.sim_audit import run_arm
 
     path = Path(sample_name)
     sample = (
@@ -83,7 +82,9 @@ def capture(
     core_inference.UPSTREAM = capturing
     normal_spot.determine_normal_candidates = choosing
     try:
-        _, output = run_arm(sample, ["--sal", "--no-plots"], overrides, oracle=True)
+        _, output = audit_sample(
+            sample, ["--sal", "--no-plots"], overrides, oracle=True
+        )
     finally:
         core_inference.UPSTREAM = real_inference
         normal_spot.determine_normal_candidates = real_candidates
@@ -200,10 +201,9 @@ def e2e(sample_name: str, start: str) -> None:
     import json
     from dataclasses import asdict
 
+    from port.qa.audit import audit_sample
     from port.qa.statistics import measured
     from port.sim.fixtures import load_simulated
-
-    from tests.sim_audit import run_arm
 
     path = Path(sample_name)
     sample = (
@@ -213,10 +213,10 @@ def e2e(sample_name: str, start: str) -> None:
     )
     with measured() as cost:
         if start == "none":
-            recovery, _ = run_arm(sample, ["--sal", "--no-plots"])
+            recovery, _ = audit_sample(sample, ["--sal", "--no-plots"])
         else:
             with first_round(start):
-                recovery, _ = run_arm(sample, ["--sal", "--no-plots"])
+                recovery, _ = audit_sample(sample, ["--sal", "--no-plots"])
     row = {**asdict(recovery), "start": start, "wall": cost.wall_s}
     print("SIM " + json.dumps(row, default=str))
 

@@ -58,9 +58,8 @@ def capture(sample_name: str, out: Path) -> None:
 
     mpl.use("Agg")
     import port.extensions.label_solver as solvers
+    from port.qa.audit import audit_sample
     from port.sim.fixtures import load_simulated
-
-    from tests.sim_audit import run_arm
 
     out.mkdir(parents=True, exist_ok=True)
     real = solvers.sweep_for
@@ -98,7 +97,7 @@ def capture(sample_name: str, out: Path) -> None:
             if path.is_absolute()
             else load_simulated(sample_name)
         )
-        recovery, _ = run_arm(sample, ["--sal", "--no-plots"])
+        recovery, _ = audit_sample(sample, ["--sal", "--no-plots"])
     finally:
         solvers.sweep_for = real
 

@@ -14,8 +14,9 @@ the chain and Potts builders only unit tests read.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import TYPE_CHECKING
+import hashlib
+from dataclasses import dataclass, fields
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import torch
@@ -915,3 +916,22 @@ def key_instance(**overrides: object) -> CoreInferenceTruth:
     }
     settings.update(overrides)
     return core_inference_truth(**settings)  # type: ignore[arg-type]
+
+
+def fixture_hash(truth: Any) -> str:
+    """A digest of the data a fixture built, not of the code that built it.
+
+    Every field of the `CoreInferenceTruth`, by dtype, shape and bytes: a run
+    reproduces only where the same arrays still come out, whatever changed in
+    between.
+    """
+    digest = hashlib.sha256()
+    for field in fields(truth):
+        value = getattr(truth, field.name)
+        digest.update(field.name.encode())
+        if isinstance(value, np.ndarray):
+            digest.update(f"{value.dtype.str}{value.shape}".encode())
+            digest.update(np.ascontiguousarray(value).tobytes())
+        else:
+            digest.update(repr(value).encode())
+    return digest.hexdigest()[:8]

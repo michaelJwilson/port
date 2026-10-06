@@ -5,7 +5,7 @@
 writes `docs/nb/data/clone_label_study_r0.json` (the rows, without the
 workers' tracebacks), then the notebook, executed by `nbclient`, which reads
 only that file and draws `.cache/plots/studies/clone_label_study.png`
-(untracked, `tests.plots_dir`) beside its own output.
+(untracked, `port.qa.provenance.PLOTS`) beside its own output.
 """
 
 from __future__ import annotations
@@ -157,7 +157,7 @@ figure.tight_layout()
 data = provenance.digest(Path("data/clone_label_study_r0.json").read_bytes())
 figure.text(0.995, 0.005, provenance.stamp(data, "python", "tests"),
             ha="right", va="bottom", fontsize=6, color="0.4")
-# NB untracked (`tests.plots_dir`): the figure is this notebook's output above.
+# NB untracked (`port.qa.provenance.PLOTS`): the figure is this notebook's output above.
 Path("../../.cache/plots/studies").mkdir(parents=True, exist_ok=True)
 figure.savefig("../../.cache/plots/studies/clone_label_study.png", dpi=150, metadata={"Software": None})""",
     ),

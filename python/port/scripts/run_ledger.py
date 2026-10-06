@@ -1,8 +1,8 @@
 """`run_ledger`: record a run into the metrics ledger, render it, or query it (#409, #620).
 
 `run_ledger --record --note "..." [--instance dev] [--lattice] -- [flags]`
-runs `tests.recovery_audit` in its own process, so `peak_gb` is that run's
-(`--sample easy` runs `tests.sim_audit` instead), appends the `runs` line and
+runs `run_audit --recovery` in its own process, so `peak_gb` is that run's
+(`--sample easy` runs `run_audit --sim` instead), appends the `runs` line and
 one `ledger` line per measured metric under its latest definition. The note
 is at most `NOTE_CHARS` characters, written as a commit subject, stating what
 change the run measures.
@@ -56,7 +56,7 @@ def record(arguments: argparse.Namespace) -> int:
     ]  # fmt: skip
     flags = [f for f in arguments.flags if f != "--"]
     command = [
-        sys.executable, "-m", "tests.recovery_audit",
+        sys.executable, "-m", "port.scripts.run_audit", "--recovery",
         "--instance", arguments.instance,
         *(["--lattice"] if arguments.lattice else []),
         *(["--loh"] if arguments.loh else []),
@@ -85,7 +85,7 @@ def record(arguments: argparse.Namespace) -> int:
 
 
 def record_sample(arguments: argparse.Namespace, *, dirty: bool) -> int:
-    """A run on a simulated sample: `tests.sim_audit` in its own process (#467).
+    """A run on a simulated sample: `run_audit --sim` in its own process (#467).
 
     `r0` is `dev_tree`'s realization 0, drawn if absent and refused unless it
     is the one `port.sim.fixtures.R0_HASH` names; `easy` and `hard` are CalicoST's.
@@ -113,7 +113,7 @@ def record_sample(arguments: argparse.Namespace, *, dirty: bool) -> int:
     ]
     flags = [f for f in arguments.flags if f != "--"]
     command = [
-        sys.executable, "-m", "tests.sim_audit", "--sample", sample,
+        sys.executable, "-m", "port.scripts.run_audit", "--sim", "--sample", sample,
         *audit, "--", *flags,
     ]  # fmt: skip
     completed = subprocess.run(

@@ -5,7 +5,7 @@ tool on one sample in a child process and prints one `BENCH` JSON line: clone
 ARI (clones), copy ARI, exact altered and its phase-free form, wall and the
 child's peak RSS.
 
-**port** is `tests.sim_audit --sal`, repeated `--repeats` times on a warm numba
+**port** is `run_audit --sim -- --sal`, repeated `--repeats` times on a warm numba
 cache; the wall is the median.
 
 **CalicoST** is `run_calicost --shipped configuration_cna --no-align
@@ -15,7 +15,7 @@ runs the simulated example, every value but the paths as shipped, and its own ha
 TIMEOUT`; a case that reaches it is recorded as not finished, with the clone
 ARI of the BAF stage's `mergedallspots` fit where CalicoST wrote one.
 
-Both are scored by `tests.sim_audit.score` on what they wrote.
+Both are scored by `port.qa.audit.score_sample` on what they wrote.
 """
 
 from __future__ import annotations
@@ -64,13 +64,14 @@ def _sample(name: str) -> Any:
 
 
 def port(name: str, repeats: int) -> dict[str, Any]:
-    """`tests.sim_audit --sal` in a child, `repeats` times; the last run's scores, the median wall."""
+    """`run_audit --sim -- --sal` in a child, `repeats` times; the last run's scores, the median wall."""
     done, wall, walls = median_wall(
         lambda: subprocess.run(
             [
                 sys.executable,
                 "-m",
-                "tests.sim_audit",
+                "port.scripts.run_audit",
+                "--sim",
                 "--sample",
                 name,
                 "--",
@@ -205,14 +206,13 @@ def calicost(
 
     `n_clones` replaces the shipped file's clone count, its one edited value.
     """
+    from port.qa.audit import drawn_config, score_sample
     from port.sim.fixtures import write_sim_inputs
-
-    from tests.sim_audit import _drawn_config, score
 
     sample = _sample(name)
     root = Path(tempfile.mkdtemp())
     config = (
-        _drawn_config(sample, root, {})
+        drawn_config(sample, root, {})
         if (sample.path / "snp").is_dir()
         else write_sim_inputs(sample, root, {})
     )
@@ -261,7 +261,7 @@ def calicost(
     print(f"calicost output: {root / 'output_calicost'}", file=sys.stderr, flush=True)
 
     try:
-        recovery = score(sample, root / "output_calicost", "calicost", wall)
+        recovery = score_sample(sample, root / "output_calicost", "calicost", wall)
     except Exception as error:  # noqa: BLE001 -- the run is kept; the scoring is reported
         return {
             "tool": tool,

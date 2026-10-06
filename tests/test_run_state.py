@@ -36,6 +36,10 @@ from tests.source_graph import ROOT, state_writes
 Kind = Literal["switch", "run", "cache", "rebind"]
 
 STATE: dict[str, Kind] = {
+    # NB `port.qa.audit.audit_truth` records the normal candidates a run used,
+    #    or plants the oracle's, and restores the name in its `finally`
+    #    (T- #673 G3, from `tests.recovery_audit`).
+    "cnaster.scripts.run_cnaster.determine_normal_candidates": "rebind",
     "cnaster.hmm_initialize.GaussianMixture": "rebind",
     "port.extensions.copy_likelihood._FITS": "run",
     "port.extensions.samples._CURRENT": "run",

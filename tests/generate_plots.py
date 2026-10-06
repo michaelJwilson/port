@@ -3,7 +3,7 @@
 Run as `python -m tests.generate_plots [--out DIR]`. It writes the dev
 instance's inputs through `port.sim.run_config.run_written`, runs
 **`run_cnaster_port`** on them, and copies what it wrote into `DIR`
-(default `tests.plots_dir.PLOTS`, untracked). `--cnaster` runs plain
+(default `port.qa.provenance.PLOTS`, untracked). `--cnaster` runs plain
 `cnaster` instead, for a comparison.
 
 **Two sets.** `DIR` is the dev instance as planted by default; `DIR/lattice/`
@@ -42,11 +42,10 @@ from port.extensions.combined_figure import (
     recording,
     spatial_figure,
 )
+from port.qa.provenance import PLOTS
 from port.sim.he_slide import mock_he, write_he_slide
 from port.sim.run_config import run_written
 from port.sim.truth import COPY_LATTICE, CoreInferenceTruth, dev_instance
-
-from tests.plots_dir import PLOTS
 
 STATES = 8
 """What the run fits: the eight states each instance uses of those it plants.

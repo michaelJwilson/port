@@ -11,11 +11,11 @@ manifest's `r0_hash`, and writes into `OUT`:
 - `truth/`, figures 1-8: `port.sim.analysis`'s figures and
   `port.sim.truth_figure.truth_combined_figure`, no run needed;
 - `run/`, figures 9-13: one `run_cnaster_port --sal --png-copies` run through
-  `tests.sim_audit.run_arm`, its named PNGs copied out, and the combined,
+  `port.qa.audit.audit_sample`, its named PNGs copied out, and the combined,
   genomic and spatial pages drawn from it as `tests.generate_plots` draws
   them, beside a slide mocked from the planted labels (`port.sim.he_slide`);
 - `compare/`, figures 14-17: the run against the truth, through
-  `tests.sim_audit.score`'s matching, `copy_confusion` and planted classes;
+  `port.qa.audit.score_sample`'s matching, `copy_confusion` and planted classes;
 - `solvers/`, figure 18 (`--solvers POTTS.pkl COPY.pkl`, no fixture run):
   `solver_combined.png`, the spatial solvers (`tests.studies.potts_plot`) left
   and the copy-state starts (`tests.studies.copy_state_plot`) right, each
@@ -240,11 +240,10 @@ def run_figures(sample: Any, root: Path, out: Path, text: str) -> Run:
         recording,
         spatial_figure,
     )
-
-    from tests.sim_audit import run_arm
+    from port.qa.audit import audit_sample
 
     with stamping(text), recording() as recorded, measured() as cost:
-        recovery, output = run_arm(sample, list(FLAGS), None, root / "run")
+        recovery, output = audit_sample(sample, list(FLAGS), None, root / "run")
 
     frame = mock_slide(sample.coords, sample.labels, root)
 
@@ -273,7 +272,7 @@ class Compared:
     """The truth and the fit, as figures 14-17 read them.
 
     Spots: `coords`, `planted` and `fitted` labels (`-1` unscored). Bins: the
-    covered clone-bins of `tests.sim_audit.score`, per matched clone, in
+    covered clone-bins of `port.qa.audit.score_sample`, per matched clone, in
     `clone_of`'s order, with genome coordinates `start`, `end` and the
     chromosome `edges`.
     """
@@ -299,10 +298,9 @@ def compared(
     """`score`'s bins, rebuilt, and refused unless they give its `confusion` and `exact`."""
     from port.extensions.combined_figure import clone_symbol
     from port.extensions.integer_copy import DEFAULT_MAX_TOTAL_COPY
+    from port.qa.audit import read_run
     from port.qa.scoring import copy_confusion
     from port.sim.analysis import display, read
-
-    from tests.sim_audit import read_run
 
     r = read(path)
     run = read_run(sample, output)
@@ -688,7 +686,7 @@ QUESTIONS: dict[str, tuple[str, str]] = {
     ),
     "compare/clones_truth_vs_fit.png": (
         "Do the fitted clones recover the planted ones, and which matches which?",
-        "`labels_figure`: `tests.sim_audit.score`'s ARI and matching",
+        "`labels_figure`: `port.qa.audit.score_sample`'s ARI and matching",
     ),
     "compare/copy_confusion.png": (
         "Which (A, B) is each planted pair decoded as?",

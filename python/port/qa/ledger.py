@@ -61,7 +61,7 @@ METRICS = {
     "wall_s": ("wall", 1),
     "peak_gb": ("peak_gb", 2),
 }
-"""Metric -> (`tests.recovery_audit.Recovery` field, decimals); the seed of
+"""Metric -> (`port.qa.audit.Recovery` field, decimals); the seed of
 `definitions.tsv`, each as definition 1."""
 
 COLUMNS = (*KEYS, *METRICS, "note")
@@ -76,10 +76,12 @@ begins: the note as recorded, then what the hand-edited `docs/metrics.md`'s
 preamble said of it."""
 
 TEST = "tests/recovery_audit.py::main"
-"""The function computing a `--record` run's metrics, as `path::name`."""
+"""The audit a `--record` run's metrics come from, as `path::name`: the name
+every recovery row has carried since #409. It delegates to `run_audit
+--recovery` (T- #673 G3) and stays so the append-only rows resolve."""
 
 SIM_TEST = "tests/sim_audit.py::main"
-"""The same, for a `--record --sample` run (#467)."""
+"""The same, for a `--record --sample` run (#467): `run_audit --sim`."""
 
 NOTE_CHARS = 72
 """A commit subject's limit, so a note reads as one."""

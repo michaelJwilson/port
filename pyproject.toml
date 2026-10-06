@@ -53,6 +53,9 @@ run_calicost = "port.scripts.run_calicost:main"
 # view, or query the best value (T- #673). A QA tool entry point, not a
 # pipeline one: it reaches `port.qa`, and no pipeline entry point does.
 run_ledger = "port.scripts.run_ledger:main"
+# A run scored against its planted truth: `--sim`, `--recovery`, `--copy` or
+# `--errors` (T- #673). A QA tool entry point, as `run_ledger` is.
+run_audit = "port.scripts.run_audit:main"
 
 [project.optional-dependencies]
 dev = [

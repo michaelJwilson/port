@@ -57,6 +57,12 @@ KNOWN: dict[str, str] = {
     "port.sim.he_slide:mock_he arg seed": "G6",
     "port.sim.fixtures:purify arg seed": "G6",
     "port.sim.run_config:run_cnaster_config arg max_iter": "G6",
+    # NB G3: the audits and realizations, moved the same way; `max_iter` is
+    #    `run_cnaster_config`'s, which `audit_truth` passes through.
+    "port.qa.audit:audit_truth arg max_iter": "G3",
+    "port.qa.audit:audit_errors arg seed": "G3",
+    "port.sim.realizations:realize arg seed": "G3",
+    "port.sim.realizations:chosen arg seed": "G3",
 }
 """Departures found by #401's audit, keyed `module:name kind word`."""
 

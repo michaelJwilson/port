@@ -2,7 +2,7 @@
 
 **No PNG is committed here outside the two exceptions below; each figure
 is regenerated on demand by the command below that draws it.** Every
-generator writes to `.cache/plots/` by default (`tests/plots_dir.py`),
+generator writes to `.cache/plots/` by default (`port.qa.provenance.PLOTS`),
 untracked; the paths below are relative to it. `lattice/`, `sim/` and
 `sim_qa/` exist only there now.
 `tests/test_ci_entry.py` guards that `docs/` tracks no PNG outside
@@ -14,8 +14,8 @@ history: `git show ba34716:docs/plots/<path>.png`.
 | figures | command |
 | --- | --- |
 | the dev instance's, below, and `lattice/` | `python -m tests.generate_plots [--out DIR]` (`--cnaster` for plain `cnaster`), or `python -m tests.ci --figures` |
-| `realizations.png`, `realizations_truth.png`, `realizations.npz` | `python -m tests.realizations [--output PATH]` |
-| `realizations_copies.png` | `python -m tests.copy_audit [--output PATH]` |
+| `realizations.png`, `realizations_truth.png`, `realizations.npz` | `run_audit --errors [--output PATH]` |
+| `realizations_copies.png` | `run_audit --copy [--output PATH]` |
 | `metrics_history.png`, `metrics_history_classes.png` | `python -m tests.studies.metrics_history [OUT.png [OUT_CLASSES.png]]` |
 | `sim_qa/` | `python -m port.sim.analysis plot sim/generated/dev_tree/r0` (writes `<r>/qa/`) |
 | `sim/cna_lengths.png` | `python -m tests.studies.cna_lengths [OUT.png]` |
