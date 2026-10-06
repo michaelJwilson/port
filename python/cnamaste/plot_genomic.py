@@ -380,6 +380,11 @@ def plot_clones_genomic(
     `colour_by` is `"integer"`, `"states"` or, unset, `preferred_colour_by`;
     the preference applies only where it can, so a call without `df_cnv`
     preferring `"integer"` colours by state as upstream does.
+
+    `port`'s `axis` (T- #683, `port.extensions.genomic_axis`) is not taken:
+    this draws `cnaster`'s axis, which is `port`'s at `axis=None`. `port`
+    binds `axis=Ticks()` in `FIGURE_SWAPS`; `cnamaste` takes up the bound
+    options at T- #670 PR9.
     """
 
     if df_cnv is not None and res_combine is None:
