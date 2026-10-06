@@ -80,7 +80,7 @@ request, since it is a whole run; blue, because it asserts nothing.
 against the planted clones over spots -- after #518's merge of clones whose
 decoded `(A, B)` agree at 0.99 of bins -- and of each clone-bin's phased
 `(A, B)` against the state the fixture painted there. Measured by
-`python -m tests.sim_audit --sample generated/dev_tree/r0`; the sample,
+`run_audit --sim --sample generated/dev_tree/r0`; the sample,
 configuration and commit are in `measurements.json`. Not per pull request,
 since each is a whole run; orange, a fixed colour that no threshold
 decides.
@@ -459,7 +459,7 @@ on the same files, into `<output_dir>_calicost`. `--align` (the default)
 replaces the CalicoST constants that have a `cnaster` counterpart;
 `--no-align` keeps CalicoST's own. It refuses the initial-clone layout on which
 CalicoST's `rectangle_initialize_initial_clone` never returns (`cnaster` #248).
-`python -m tests.recovery_audit --calicost` scores it with port's scorer.
+`run_audit --recovery --calicost` scores it with port's scorer.
 `--shipped FILE` runs CalicoST's own configuration file instead, taking only
 the paths from the YAML; a sheet of several slices takes
 `configuration_cna_multi`. `docs/calicost-benchmark.md` records its runs.
@@ -505,10 +505,10 @@ generation (`3381575a`), which `tests.sim_stages` caches as r0.
 Each `dev_tree*` manifest states `[sample] r0_hash`, its realization 0's
 `port.sim.fixtures.realization_hash`, so a result names the generation it was
 drawn at; `tests/test_sim_r0_hash.py` redraws each to it.
-`tests.sim_audit` runs and scores one realization:
+`run_audit --sim` (`port.qa.audit`) runs and scores one realization:
 
     python -m port.sim.draw sim/manifests/dev_tree.toml
-    python -m tests.sim_audit --sample generated/dev_tree/r0 -- --sal
+    run_audit --sim --sample generated/dev_tree/r0 -- --sal
 
 `port.sandbox.sim_from_run` (#460, set aside) writes a version-3 manifest
 from a finished run's `clone_labels.tsv` and `cnv_segments.tsv`: its clones,
@@ -536,7 +536,7 @@ trains a reader to ignore `git status`.
 | Path | Contents |
 | --- | --- |
 | `python/port/` | The Python package; `python-source` in `pyproject.toml` |
-| `python/port/qa/` | What measures and records a run: `statistics` (bars, ranks, bootstrap intervals, wall and peak memory), `provenance` (the commit, the inputs' digest, a figure's stamp), `scoring` (a fit against its planted truth) and `ledger` (`docs/metrics/`, behind `run_ledger`), one implementation each (T- #673) |
+| `python/port/qa/` | What measures and records a run: `statistics` (bars, ranks, bootstrap intervals, wall and peak memory), `provenance` (the commit, the inputs' digest, a figure's stamp), `scoring` (a fit against its planted truth), `audit` (a run scored, behind `run_audit`) and `ledger` (`docs/metrics/`, behind `run_ledger`), one implementation each (T- #673) |
 | `src/` | The Rust crate `oxiport`, bound as `port.oxiport` |
 | `tests/` | The suite; `testpaths` in `pyproject.toml` |
 | `sim/` | CalicoST's simulated samples, their normal fits, and `manifests/` that draw them |

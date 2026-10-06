@@ -148,10 +148,9 @@ def test_the_shims_are_put_back(tmp_path: Path) -> None:
 @pytest.mark.analytic
 def test_a_merged_bin_maps_back_to_each_planted_bin_it_covers() -> None:
     """Rows spanning two planted genes cover both; a gene no row spans is -1."""
+    from port.qa.audit import planted_rows
     from port.sim.inputs import GENE_LENGTH, GENE_SPACING
     from port.sim.truth import core_inference_truth
-
-    from tests.recovery_audit import planted_rows
 
     truth = core_inference_truth(n_obs=40, lattice=(6, 6), seed=3)
     first = int(truth.lengths[0])
@@ -191,12 +190,11 @@ def test_calicost_recovers_the_planted_clones_of_the_dev_instance() -> None:
     """
     pytest.importorskip("calicost")
     import matplotlib as mpl
+    from port.qa.audit import audit_truth
     from port.sim.truth import dev_instance
 
-    from tests.recovery_audit import run_arm
-
     mpl.use("Agg")
-    recovery, _ = run_arm(dev_instance(), ["--no-figures"], calicost=True)
+    recovery, _ = audit_truth(dev_instance(), ["--no-figures"], calicost=True)
 
     assert recovery.ari >= 0.5, recovery
 

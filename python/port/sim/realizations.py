@@ -13,30 +13,28 @@ result are kept. The objective the fit maximized is then
 rebuilt from those inputs in `jax` and differentiated at the fit by
 `port.extensions.parameter_errors`: nothing is re-fitted.
 
-Run as `python -m tests.realizations` to write the figure, by default to
-`.cache/plots/realizations.png` (`tests.plots_dir`), untracked.
+`run_audit --errors` (`port.qa.audit.audit_errors`) draws the figure, by
+default to `.cache/plots/realizations.png`, untracked. Moved from
+`tests/realizations.py` (T- #673 G3), so the audits can realize a genome.
 """
 
 from __future__ import annotations
 
-import argparse
 import dataclasses
-import tempfile
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, NamedTuple
 
 import numpy as np
 import torch
+from scipy.optimize import linear_sum_assignment
+
 from port.extensions import copy_errors as _copy_errors
 from port.extensions.copy_errors import Captured
 from port.sim.run_config import run_written
 from port.sim.truth import CoreInferenceTruth, _emission_families, core_inference_truth
-from scipy.optimize import linear_sum_assignment
 
-from tests.plots_dir import PLOTS
-
-GENOME = {
+GENOME: dict[str, Any] = {
     "n_clones": 3,
     "n_states": 3,
     "lattice": (30, 40),
@@ -445,93 +443,3 @@ def summarize(
         bias=((estimate - planted) / sigma).T,
         spread=(others.std(axis=0, ddof=1) / sigma).T,
     )
-
-
-def main(argv: Sequence[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--realizations", type=int, default=8)
-    parser.add_argument("--jobs", type=int, default=1)
-    parser.add_argument(
-        "--seed",
-        type=int,
-        default=GENOME["seed"],
-        help="draws which realization carries the error bars",
-    )
-    parser.add_argument("--output", type=Path, default=PLOTS / "realizations.png")
-    arguments = parser.parse_args(argv)
-
-    from port.extensions.realization_plot import plot_realizations
-
-    index = chosen(arguments.realizations, arguments.seed)
-
-    with tempfile.TemporaryDirectory() as scratch:
-        truth, fits = realizations(
-            arguments.realizations, Path(scratch), jobs=arguments.jobs, single=index
-        )
-
-    single = fits[index]
-    assert single.covariance is not None
-
-    others = [(fit.mu, fit.p) for at, fit in enumerate(fits) if at != index]
-    labels = [
-        f"planted ({np.exp(mu):g}, {p:g})"
-        for mu, p in zip(truth.log_mu, planted_minor(truth), strict=True)
-    ]
-    arguments.output.parent.mkdir(parents=True, exist_ok=True)
-
-    # NB two figures, the same points: the errors on the realization drawn,
-    #    and the errors on the truth, from the same likelihood at the planted
-    #    parameters on that realization's data.
-    figure = plot_realizations(
-        planted=(planted_mu(truth), planted_minor(truth)),
-        single=(single.mu, single.p, single.covariance),
-        others=others,
-        labels=labels,
-    )
-    figure.savefig(arguments.output, dpi=150)
-
-    at_truth = arguments.output.with_name(
-        f"{arguments.output.stem}_truth{arguments.output.suffix}"
-    )
-    figure = plot_realizations(
-        planted=(planted_mu(truth), planted_minor(truth)),
-        single=(single.mu, single.p, None),
-        others=others,
-        labels=labels,
-        planted_covariance=single.truth_covariance,
-    )
-    figure.savefig(at_truth, dpi=150)
-
-    summary = summarize(truth, fits, index)
-    np.savez(
-        arguments.output.with_suffix(".npz"),
-        planted_mu=planted_mu(truth),
-        planted_p=planted_minor(truth),
-        mu=np.stack([fit.mu for fit in fits]),
-        p=np.stack([fit.p for fit in fits]),
-        single=index,
-        covariance=single.covariance,
-        truth_covariance=np.full((1,), np.nan)
-        if single.truth_covariance is None
-        else single.truth_covariance,
-        decrement=np.nan if single.decrement is None else single.decrement,
-        bias=summary.bias,
-        spread=summary.spread,
-    )
-
-    print(
-        f"wrote {arguments.output} and {at_truth}; realization {index} carries "
-        "the errors, "
-        f"Newton decrement {single.decrement:.2e}"
-    )
-    for state in range(truth.log_mu.size):
-        print(
-            f"state {state}: bias {summary.bias[state].round(2)} sigma, "
-            f"spread {summary.spread[state].round(2)} x stated"
-        )
-
-    return 0
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())

@@ -42,32 +42,38 @@ BUDGET: dict[str, int] = {
     #    peak memory every audit and study read for itself. 66: T- #673 G6
     #    moved the simulation machinery from `tests/` into `port.sim`:
     #    `CoreInferenceTruth`, `SimulatedSample`, `WrittenInputs`, `Binned`,
-    #    `Unsegmented` (frozen dataclasses) and `Slide` (a NamedTuple).
-    "classes": 66,
+    #    `Unsegmented` (frozen dataclasses) and `Slide` (a NamedTuple). 71:
+    #    G3 moved the audits' `SimRecovery`, `Recovery` and `Reading`
+    #    (dataclasses) and `port.sim.realizations`' `Fit` and `Summary`
+    #    (NamedTuples) from `tests/`.
+    "classes": 71,
     # NB step 4: 18 records became NamedTuples; the dataclasses left carry
     #    mutable state, machinery or a `__post_init__` (#517 D). Step 8 moved
     #    7 dataclasses and 1 NamedTuple to `sandbox/`. 21: T- #418's `Samples`
     #    (a `__post_init__`) and `Recorded` (mutable state). 22: T- #673 G1's
     #    `Measured` (mutable state: filled when its block exits). 27: G6's five
-    #    frozen records, moved with the machinery rather than added.
-    "dataclasses": 27,
+    #    frozen records, moved with the machinery rather than added. 30: G3's
+    #    three audit records (mutable: an arm fills `peak_gb` and candidates).
+    "dataclasses": 30,
     # NB 24: `analysis.GenomicTruth` (the truth page). 26: #540's
     #    `CopyCall` and `CopyStart` (`Row` in `sandbox/`, #547). 27: T- #617
     #    WP2's `pipeline.Default`. 28: G6's `port.sim.he_slide.Slide`, moved.
-    "NamedTuples": 28,
+    #    30: G3's `Fit` and `Summary`, moved.
+    "NamedTuples": 30,
 }
 """`python/port` outside `sandbox/`."""
 
 CONCEPTS: dict[str, int] = {
     # NB 2: `port.qa.scoring.matched` pairs labels by overlap for every scorer
-    #    (step 7); `tests.realizations.match_states` pairs states by
+    #    (step 7); `port.sim.realizations.match_states` pairs states by
     #    responsibility distance, a different cost.
     "Hungarian matcher": 2,
-    # NB 2: `tests.recovery_audit` runs a planted lattice with its hooks
-    #    (normal oracle, M-step tolerance, two-pass), `tests.sim_audit` a
-    #    written sim sample with its overrides; they share the scorer and the
-    #    capture, not the arm.
-    "run_arm": 2,
+    # NB 2: `port.qa.audit.audit_truth` runs an in-memory instance with its
+    #    hooks (normal oracle, M-step tolerance, an `entry` and its
+    #    candidates), `audit_sample` a sample on disk with its overrides; they
+    #    share `timed`, `overridden` and the matcher, not the arm (T- #673 G3,
+    #    from the two `run_arm`s).
+    "audit arm": 2,
     "clone_path": 1,
     # NB 2: `combined_figure` records plotting arguments, `segments` a
     #    segmentation lineage; `tests.sim_stages`'s wrapper is `logged`. 3:
@@ -143,7 +149,7 @@ def _measured() -> dict[str, int]:
         "Hungarian matcher": sum(
             "linear_sum_assignment" in _referenced(f) for f in functions
         ),
-        "run_arm": sum(f.name == "run_arm" for f in functions),
+        "audit arm": sum(f.name in {"audit_sample", "audit_truth"} for f in functions),
         "clone_path": sum(f.name == "clone_path" for f in functions),
         "recording": sum(f.name == "recording" for f in functions),
         "commit reader": sum("rev-parse" in _arguments(f) for f in functions),

@@ -225,9 +225,8 @@ def test_a_reversed_sample_sheet_writes_the_same_clones_and_samples(
     interleaved rows cannot (the `analytic` test covers them).
     """
     import matplotlib as mpl
+    from port.qa.audit import audit_sample
     from port.sim.fixtures import load_simulated, r0
-
-    from tests.sim_audit import run_arm
 
     mpl.use("Agg")
     r0()
@@ -241,7 +240,7 @@ def test_a_reversed_sample_sheet_writes_the_same_clones_and_samples(
         ("sorted", {}),
         ("reversed", {"paths.sample_sheet": str(reversed_sheet)}),
     ):
-        recovery, output = run_arm(sample, [], overrides, tmp_path / arm)
+        recovery, output = audit_sample(sample, [], overrides, tmp_path / arm)
         labels = pd.read_csv(next(output.rglob("clone_labels.tsv")), sep="\t")
         manifest = json.loads(next(output.rglob("manifest.json")).read_text())
         arms[arm] = (recovery, labels.set_index("barcode").sort_index(), manifest)

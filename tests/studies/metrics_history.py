@@ -1,7 +1,7 @@
 """Clone and copy-state ARI across `main`'s merges, from the metrics ledger's history runs (`port.qa.ledger.read`, #620).
 
 `python -m tests.studies.metrics_history [OUT.png [OUT_CLASSES.png]]`, by default
-`.cache/plots/metrics_history{,_classes}.png` (`tests.plots_dir`), untracked.
+`.cache/plots/metrics_history{,_classes}.png` (`port.qa.provenance.PLOTS`), untracked.
 
 A history row is a `tests/sim_audit.py::main` run whose note starts with
 `HISTORY`: `--sal` measured at an earlier merge of `main`, newest to oldest,
@@ -24,8 +24,7 @@ from typing import Any
 
 from port.qa import provenance
 from port.qa.ledger import ROOT, SIM_TEST, UNMEASURED, read
-
-from tests.plots_dir import PLOTS
+from port.qa.provenance import PLOTS
 
 HISTORY = "HISTORY"
 """The note prefix that marks a row as a measurement at an earlier merge."""

@@ -1,6 +1,6 @@
 """The realization figure's pieces, each against what it claims (#291).
 
-The figure itself is drawn by `python -m tests.realizations`, which runs
+The figure itself is drawn by `run_audit --errors`, which runs
 `run_cnaster_port` once per realization and is minutes long. What is checked
 here is what the figure rests on and can be checked in seconds: that a
 contour is where it says, that a realization changes the counts and nothing
@@ -48,9 +48,8 @@ def test_a_realization_redraws_the_counts_and_nothing_else() -> None:
     (0.80 for a standard normal) and a largest below 4.5 over 600 bin-spot
     cells (exceeded with probability 0.004). Realized 0.76 and 2.88.
     """
+    from port.sim.realizations import realize
     from port.sim.truth import core_inference_truth
-
-    from tests.realizations import realize
 
     truth = core_inference_truth(
         n_clones=2, n_states=3, lattice=(4, 5), n_obs=30, n_segments=2, seed=3
@@ -82,9 +81,8 @@ def test_states_are_matched_by_responsibility_not_by_index() -> None:
     and the match has to be the closest rather than an equal one. Reading
     by index would return the identity; the relabelling is what comes back.
     """
+    from port.sim.realizations import match_states
     from port.sim.truth import core_inference_truth
-
-    from tests.realizations import match_states
 
     truth = core_inference_truth(
         n_clones=2, n_states=3, lattice=(4, 5), n_obs=30, n_segments=2, seed=3

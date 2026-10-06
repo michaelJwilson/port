@@ -168,9 +168,8 @@ def clone_events(path: Path) -> dict[str, list[tuple[str, int, int, int, int]]]:
 
 def score_member(sample: Any, output: Path) -> dict[str, Any]:
     """Per tumour clone its size, UMIs and completeness; per event its recovery."""
+    from port.qa.audit import read_run
     from port.qa.scoring import matched, overlap
-
-    from tests.sim_audit import read_run
 
     run = read_run(sample, output)
     fitted = np.asarray(run["labels"])
@@ -278,7 +277,7 @@ def _neutral(
 
 def _kept_run(sample: Any, kept: Path) -> dict[str, Any]:
     """`read_run`'s labels, seglevel, `a` and `b`, from a run's `KEPT` outputs."""
-    from tests.sim_audit import _barcode
+    from port.qa.audit import _barcode
 
     table = pd.read_csv(kept / "clone_labels.tsv", sep="\t", comment="#")
     barcodes = table["barcode"] if "barcode" in table else table.iloc[:, 0]
@@ -335,9 +334,8 @@ def run_member(
     seed: int, js: tuple[float, ...], out: Path, manifest: Path = MANIFEST
 ) -> None:
     """Draw seed `seed`, run and score it at each `J`, keep only the records."""
+    from port.qa.audit import audit_sample
     from port.sim.fixtures import load_simulated
-
-    from tests.sim_audit import run_arm
 
     todo = [j for j in js if not _record(out, seed, j).exists()]
     if not todo:
@@ -352,7 +350,7 @@ def run_member(
         started = time.perf_counter()
         base = {"seed": seed, "J": j, "flags": list(FLAGS), "manifest": manifest.stem}
         try:
-            _, output = run_arm(
+            _, output = audit_sample(
                 sample, list(FLAGS), {"hmrf.spatial_weight": j}, root=runs
             )
         except Exception as error:  # noqa: BLE001 -- a failed run is a result

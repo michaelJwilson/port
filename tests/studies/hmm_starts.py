@@ -67,9 +67,8 @@ def capture(sample_name: str, out: Path) -> None:
 
     mpl.use("Agg")
     from port.patch.hmm_initialize import distinct
+    from port.qa.audit import audit_sample
     from port.sim.fixtures import load_simulated
-
-    from tests.sim_audit import run_arm
 
     out.mkdir(parents=True, exist_ok=True)
     real = distinct.gmm_init
@@ -95,7 +94,7 @@ def capture(sample_name: str, out: Path) -> None:
             if path.is_absolute()
             else load_simulated(sample_name)
         )
-        run_arm(sample, ["--sal", "--hmm-start", "none", "--no-plots"])
+        audit_sample(sample, ["--sal", "--hmm-start", "none", "--no-plots"])
     finally:
         distinct.gmm_init = real
 

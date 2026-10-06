@@ -92,7 +92,7 @@ archive."""
 @pytest.mark.infra
 def test_no_png_is_tracked_under_docs() -> None:
     """`docs/` tracks no PNG: a figure is regenerated on demand by the command
-    that draws it, into `.cache/plots/` (`tests/plots_dir.py`).
+    that draws it, into `.cache/plots/` (`port.qa.provenance.PLOTS`).
 
     The exceptions are `docs/plots/paper/`, T- #624's paper set: the figures a
     manuscript includes, which a reader needs without running the pipeline;

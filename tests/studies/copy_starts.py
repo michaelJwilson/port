@@ -51,10 +51,9 @@ def capture(
     from cnaster.pseudobulk import merge_pseudobulk_by_index_mix
     from port.extensions import segments
     from port.patch.hmrf import core_inference
+    from port.qa.audit import audit_sample
     from port.sandbox.extensions.copy_starts import write_captured
     from port.sim.fixtures import load_simulated
-
-    from tests.sim_audit import run_arm
 
     path = Path(sample_name)
     sample = (
@@ -83,7 +82,9 @@ def capture(
     core_inference.UPSTREAM = capturing
     try:
         with segments.recording() as lineage:
-            _, output = run_arm(sample, ["--sal", "--no-plots"], overrides, oracle=True)
+            _, output = audit_sample(
+                sample, ["--sal", "--no-plots"], overrides, oracle=True
+            )
     finally:
         core_inference.UPSTREAM = real
 

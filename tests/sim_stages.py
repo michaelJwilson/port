@@ -174,8 +174,7 @@ def _record(
     from dataclasses import asdict
 
     import pandas as pd
-
-    from tests.sim_audit import run_arm
+    from port.qa.audit import audit_sample
 
     driver = importlib.import_module(DRIVER)
 
@@ -193,7 +192,7 @@ def _record(
 
     try:
         with tempfile.TemporaryDirectory() as scratch:
-            recovery, output = run_arm(
+            recovery, output = audit_sample(
                 sample, list(flags), overrides, Path(scratch), oracle=oracle
             )
             for table in OUTPUTS:

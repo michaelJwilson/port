@@ -22,7 +22,7 @@ import numpy as np
 import pytest
 
 if TYPE_CHECKING:
-    from tests.recovery_audit import Recovery
+    from port.qa.audit import Recovery
 
 
 @pytest.mark.analytic
@@ -72,13 +72,12 @@ def test_a_state_count_beyond_the_lattice_is_refused() -> None:
 
 def _lattice_run(*, oracle_normal: bool) -> Recovery:
     import matplotlib as mpl
+    from port.qa.audit import audit_truth
     from port.sim.truth import COPY_LATTICE, dev_instance
-
-    from tests.recovery_audit import run_arm
 
     mpl.use("Agg")
     truth = dev_instance(n_states=len(COPY_LATTICE), copy_lattice=True)
-    recovery, _ = run_arm(
+    recovery, _ = audit_truth(
         truth,
         [],
         n_states=len(COPY_LATTICE),

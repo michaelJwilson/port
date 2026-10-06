@@ -9,7 +9,7 @@ name: Figures
 #
 # Nothing is committed. `docs/` tracks no PNG outside two exceptions
 # (`tests/test_ci_entry.py`), and both generators write to `.cache/plots/`
-# (`tests/plots_dir.py`), untracked. The commit step #296 added, and the
+# (`port.qa.provenance.PLOTS`), untracked. The commit step #296 added, and the
 # stacked-branch check (#350) that existed only to decide it, are removed.
 
 on:
@@ -46,7 +46,7 @@ jobs:
 
       - run: uv run --no-sync python -m tests.generate_plots
 
-      - run: uv run --no-sync python -m tests.realizations --realizations 8 --jobs 1
+      - run: uv run --no-sync python -m port.scripts.run_audit --errors --realizations 8 --jobs 1
 
       - name: Upload the figures
         uses: actions/upload-artifact@v4

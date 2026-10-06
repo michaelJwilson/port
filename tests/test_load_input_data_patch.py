@@ -759,10 +759,9 @@ def test_the_patched_loader_is_cnasters_on_a_drawn_sample(tmp_path: Path) -> Non
     from cnaster.config import YAMLConfig, set_global_config
     from cnaster.io import load_input_data as theirs
     from port.patch.io import load_input_data as ours
+    from port.qa.audit import drawn_config
     from port.sim.draw import main as draw
     from port.sim.fixtures import load_simulated
-
-    from tests.sim_audit import _drawn_config
 
     manifests = Path(__file__).resolve().parents[1] / "sim" / "manifests"
     manifest = tmp_path / "dev_tree.toml"
@@ -777,7 +776,7 @@ def test_the_patched_loader_is_cnasters_on_a_drawn_sample(tmp_path: Path) -> Non
     assert draw([str(manifest), "--into", str(tmp_path / "drawn")]) == 0
 
     sample = load_simulated("r0", tmp_path / "drawn" / "dev_tree")
-    path = _drawn_config(sample, tmp_path / "run", {})
+    path = drawn_config(sample, tmp_path / "run", {})
     config = YAMLConfig(yaml.safe_load(path.read_text()))
     set_global_config(config)
     arguments = {

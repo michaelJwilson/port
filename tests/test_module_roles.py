@@ -17,7 +17,7 @@ below are that rule made checkable, each against the import graph
 
 **Live** is what the pipeline entry points reach: `PIPELINE` (`run_cnaster_port`,
 `run_calicost`), `port.pipeline` and the rows. The QA entry points
-(`run_ledger`, T- #673) are `script`s too, but tools: they may reach `tool`
+(`run_ledger`, `run_audit`, T- #673) are `script`s too, but tools: they may reach `tool`
 modules, and no pipeline entry point may.
 
 A module reached by nothing lives in `sandbox/`, mirroring the tree it left
@@ -52,6 +52,7 @@ ROLES: dict[str, Role] = {
     "port.pipeline": "pipeline",
     "port.scripts.run_calicost": "script",
     "port.scripts.run_cnaster": "script",
+    "port.scripts.run_audit": "script",
     "port.scripts.run_ledger": "script",
     # extensions
     "port.extensions.adjacency": "extension",
@@ -76,6 +77,7 @@ ROLES: dict[str, Role] = {
     "port.extensions.segments": "extension",
     "port.extensions.vocabulary": "tool",
     # qa: what measures and records a run (T- #673), reached from no row or script
+    "port.qa.audit": "tool",
     "port.qa.ledger": "tool",
     "port.qa.provenance": "tool",
     "port.qa.scoring": "tool",
@@ -124,6 +126,7 @@ ROLES: dict[str, Role] = {
     "port.sim.fixtures": "sim",
     "port.sim.he_slide": "sim",
     "port.sim.inputs": "sim",
+    "port.sim.realizations": "sim",
     "port.sim.run_config": "sim",
     "port.sim.truth": "sim",
     "port.sim.unsegment": "sim",

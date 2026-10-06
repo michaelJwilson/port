@@ -1,4 +1,4 @@
-"""`tests.sim_audit.read_run` on both writers' layouts (#494).
+"""`port.qa.audit.read_run` on both writers' layouts (#494).
 
 `cnaster` writes `clone_labels.tsv` with a `barcode` column; CalicoST writes
 its barcodes as an index named `BARCODES`, and leaves out a clone's
@@ -63,7 +63,7 @@ def test_both_label_layouts_read_alike_and_a_skipped_clone_reads_as_minus_one(
     tmp_path: Path,
 ) -> None:
     """The `BARCODES` index reads as the `barcode` column; clone 1's absent pairs are -1."""
-    from tests.sim_audit import read_run
+    from port.qa.audit import read_run
 
     _write(tmp_path / "cnaster" / "run", calicost=False)
     _write(tmp_path / "calicost" / "run", calicost=True)

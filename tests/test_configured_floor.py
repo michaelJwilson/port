@@ -29,10 +29,9 @@ def test_a_configured_floor_of_50_keeps_the_planted_small_clones(
     the default arm 1 (0.0). With the configured 50: `--sal` 4 clones at
     0.991, the default arm 6 at 0.798.
     """
+    from port.qa.audit import audit_sample
     from port.sim.draw import main as draw
     from port.sim.fixtures import load_simulated
-
-    from tests.sim_audit import run_arm
 
     # NB the frozen exponential-length generation the figures were measured on (#619)
     base = (MANIFESTS / "baseline" / "dev_tree.toml").read_text()
@@ -55,7 +54,7 @@ def test_a_configured_floor_of_50_keeps_the_planted_small_clones(
     assert sizes[0] < 200 <= sizes[-1]
 
     recovery: Any
-    recovery, _ = run_arm(sample, ["--sal"])
+    recovery, _ = audit_sample(sample, ["--sal"])
 
     assert recovery.n_clones == sample.n_clones
     assert recovery.ari >= 0.95
