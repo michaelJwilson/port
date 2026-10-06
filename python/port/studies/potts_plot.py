@@ -109,8 +109,12 @@ def missed(d: pd.DataFrame, n_labels: int) -> dict[str, tuple[float, float]]:
 
 
 def n_spots(record: dict[str, Any]) -> int:
-    """The spots each realization labels: the manifest's array."""
+    """The spots each realization labels: the run's (#735), the median over problems; before it, the manifest's array."""
     from port.sim.draw import read_manifest
+
+    spots = [p["spots"] for p in record.get("problems", {}).values() if "spots" in p]
+    if spots:
+        return int(np.median(spots))
 
     array = read_manifest(Path(record["manifest"])).array
     return int(array["rows"]) * int(array["columns"])

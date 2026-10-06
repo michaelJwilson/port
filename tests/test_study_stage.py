@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import itertools
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pytest
@@ -103,3 +104,54 @@ def test_the_stage_is_the_runs_baum_welch_at_the_planted_clones(
 
     assert one == two
     assert planted < own
+
+
+@pytest.mark.release
+@pytest.mark.oracle
+def test_the_field_is_cnasters_at_the_planted_clones_less_the_clone_shift(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """On dev_tree_1s_hard r0 (`9ec90dc2`): `--sal`'s clone-assignment field against `cnaster`'s own on the same call.
+
+    Without the per-clone rate shift (#362, a stated departure) the installed
+    field (`port.patch.hmrf`'s fused, tabulated kernel) is `cnaster.hmrf.
+    pipeline_clone_assignment`'s, bitwise. With it, as the run solves, it
+    differs: realized at 3.7 nats at most, argmax unchanged on 95.2% of spots.
+    The `Field` handed to the study is the installed one, its planted labels
+    the run's assignment, its graph the run's adjacency (#735).
+    """
+    import port.patch.hmrf.clone_assignment as assignment
+    import scipy.sparse as sp
+    from port.studies import stage
+
+    monkeypatch.chdir(Path(__file__).resolve().parents[1])
+    member = next(
+        stage.members(
+            Path("sim/manifests/dev_tree_1s_hard.toml"), tmp_path / "sim", n=1
+        )
+    )
+
+    def fields(args: tuple[Any, ...], arguments: dict[str, Any], installed: Any) -> Any:
+        _, shifted, _ = installed(*args, **arguments)
+        _, theirs, _ = assignment.UPSTREAM(*args, **arguments)
+        with monkeypatch.context() as unshift:
+            unshift.setattr(assignment, "_clone_shifts", lambda *_: None)
+            _, unshifted, _ = installed(*args, **arguments)
+        bound = stage._bind(args, arguments)
+        return np.asarray(shifted), np.asarray(theirs), np.asarray(unshifted), bound
+
+    shifted, theirs, unshifted, bound = stage._drive(
+        member.sample, "rdrbaf", None, tmp_path / "run", lambda _: {}, fields
+    )
+    found = stage.at_clone_assignment(
+        member.sample, lambda f: f, root=tmp_path / "again"
+    )
+
+    np.testing.assert_array_equal(unshifted, theirs)
+    assert np.abs(shifted - theirs).max() > 0
+    assert (shifted.argmax(1) == theirs.argmax(1)).mean() > 0.9
+    np.testing.assert_array_equal(found.field, shifted)
+    np.testing.assert_array_equal(found.planted, np.asarray(bound["prev_assignment"]))
+    adjacency = sp.csr_matrix((found.weights, found.indices, found.indptr))
+    assert (adjacency != sp.csr_matrix(bound["adjacency_mat"])).nnz == 0
+    assert found.spatial_weight == bound["spatial_weight"]
