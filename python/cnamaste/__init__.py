@@ -8,7 +8,9 @@ reaches, and that script as `cnamaste.run`, copied from the locked pin
 T- #670's later PRs move `port`'s replacements in one stage at a time, each
 departure stated where it is made. PR2: the figures (`write_fig`,
 `plot_clones_genomic`, `plot_clones_spatial`, `plot_copy_number_profile`),
-`run_cnamaste --no-plots`, and the fixes for #105 and #113.
+`run_cnamaste --no-plots`, and the fixes for #105 and #113. PR3: the
+preprocessing (`docs/port-forward.md` rows 6 and 8-23), with T- #692's
+terminating rectangular initializer.
 `tests/test_module_roles.py` says which modules are still copies.
 
 Nothing here imports `cnaster` or `port`. The installed `cnaster`, with the
