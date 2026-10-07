@@ -665,11 +665,6 @@ def combined(summary: dict[str, Any], into: Path) -> Path:
     from port.extensions.combined_figure import page_style
     from port.extensions.figure_style import PAPER_WIDTH
 
-    if "t_arm" not in summary:
-        msg = (
-            f"{COMBINED} needs #729's t arm (summary['t_arm']); (b) is not drawn empty"
-        )
-        raise ValueError(msg)
     into.mkdir(parents=True, exist_ok=True)
     with page_style():
         _style()
