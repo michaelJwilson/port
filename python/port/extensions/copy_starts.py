@@ -388,7 +388,7 @@ def lattice_start(
             return np.exp(log_mu) * EXPOSURE_SCALE
         return np.full(log_mu.size, CONSTANT_TOTAL * EXPOSURE_SCALE)
 
-    def scored(
+    def log_density(
         log_mu: np.ndarray, p: np.ndarray, size: float, concentration: float
     ) -> np.ndarray:
         """`(rows, states)` log density."""
@@ -414,26 +414,26 @@ def lattice_start(
         """The criterion at this fraction and scale, once its shapes and error rate are fitted."""
         log_mu, p = placed(*grid_point)
         responsibility, _, _ = fitted_weights(
-            scored(log_mu, with_error(p, error), size, concentration)
+            log_density(log_mu, with_error(p, error), size, concentration)
         )
         r, c, e = _fit_shapes(
             channels, rates(log_mu), p, responsibility, concentration, error
         )
-        return fitted_weights(scored(log_mu, with_error(p, e), r, c))[2]
+        return fitted_weights(log_density(log_mu, with_error(p, e), r, c))[2]
 
     purity, scale = max(grid, key=fitted)
     log_mu, p = placed(purity, scale)
 
     for _ in range(rounds):
         responsibility, _, _ = fitted_weights(
-            scored(log_mu, with_error(p, error), size, concentration)
+            log_density(log_mu, with_error(p, error), size, concentration)
         )
         size, concentration, error = _fit_shapes(
             channels, rates(log_mu), p, responsibility, concentration, error
         )
 
     p = with_error(p, error)
-    _, log_weight, _ = fitted_weights(scored(log_mu, p, size, concentration))
+    _, log_weight, _ = fitted_weights(log_density(log_mu, p, size, concentration))
     picked = np.argsort(-log_weight, kind="stable")[: call.n_states]
     return log_mu[picked], p[picked]
 

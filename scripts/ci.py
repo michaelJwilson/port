@@ -1,6 +1,6 @@
 """The one way to run CI, locally or in a workflow (#403).
 
-`python -m tests.ci` runs the gate. Each step prints its wall time, and the
+`python -m scripts.ci` runs the gate. Each step prints its wall time, and the
 first failure stops the run with that step's exit code.
 
 | flag | runs | budget, 4 cores |
@@ -161,7 +161,7 @@ def _steps(
         if unchanged:
             check.append("--skip=" + ",".join(sorted(unchanged)))
             print(
-                f"[tests.ci] inputs unchanged, not re-measured: {', '.join(sorted(unchanged))}"
+                f"[scripts.ci] inputs unchanged, not re-measured: {', '.join(sorted(unchanged))}"
             )
         steps.append(("check badges", check, {}))
 
@@ -190,7 +190,7 @@ def _unchanged() -> set[str]:
     """Guards whose recorded input hash is the tree's: their figure still holds."""
     from port.qa.provenance import inputs_hash
 
-    from tests.badges import load
+    from scripts.badges import load
 
     digest = inputs_hash()
     return {
@@ -203,7 +203,7 @@ def _unchanged() -> set[str]:
 def install() -> int:
     """Name the merge driver `.gitattributes` routes badges to."""
     for key, value in (
-        ("merge.badges.name", "keep this branch's; tests.ci --badges re-measures"),
+        ("merge.badges.name", "keep this branch's; scripts.ci --badges re-measures"),
         ("merge.badges.driver", "true"),
     ):
         subprocess.run(["git", "config", key, value], check=True)
@@ -212,7 +212,7 @@ def install() -> int:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="python -m tests.ci", description=__doc__)
+    parser = argparse.ArgumentParser(prog="python -m scripts.ci", description=__doc__)
     parser.add_argument("--gate", action="store_true", help="lint, types, the gate")
     parser.add_argument("--badges", action="store_true", help="coverage guards")
     parser.add_argument("--full", action="store_true", help="gate, badges, merge")
@@ -254,13 +254,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         ).returncode
         if code == 5 and environment.get("PORT_CI_EMPTY_OK"):
             code = 0
-        print(f"[tests.ci] {name}: {time.perf_counter() - began:.1f} s", flush=True)
+        print(f"[scripts.ci] {name}: {time.perf_counter() - began:.1f} s", flush=True)
 
         if code:
-            print(f"[tests.ci] {name} failed with exit code {code}")
+            print(f"[scripts.ci] {name} failed with exit code {code}")
             return code
 
-    print(f"[tests.ci] total: {time.perf_counter() - started:.1f} s")
+    print(f"[scripts.ci] total: {time.perf_counter() - started:.1f} s")
     return 0
 
 

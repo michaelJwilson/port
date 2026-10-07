@@ -195,7 +195,7 @@ def test_no_marker_is_empty(collected_items: list[pytest.Item]) -> None:
 def test_a_test_runs_in_at_most_one_tier(collected_items: list[pytest.Item]) -> None:
     """`critical`, `merge` and `release` partition the suite with the gate.
 
-    `python -m tests.ci` selects each step by one tier, so a test in two
+    `python -m scripts.ci` selects each step by one tier, so a test in two
     would run twice or, deselected by one step's expression, not at all.
     """
     offenders = {

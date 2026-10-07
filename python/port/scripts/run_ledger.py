@@ -31,6 +31,7 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
+from port.extensions.repository import ROOT
 from port.qa import ledger, provenance
 
 
@@ -66,7 +67,7 @@ def record(arguments: argparse.Namespace) -> int:
         "--", *flags,
     ]  # fmt: skip
     completed = subprocess.run(
-        command, cwd=ledger.ROOT, capture_output=True, text=True, check=False
+        command, cwd=ROOT, capture_output=True, text=True, check=False
     )
     lines = [
         line for line in completed.stdout.splitlines() if line.startswith("RECOVERY ")
@@ -120,7 +121,7 @@ def record_sample(arguments: argparse.Namespace, *, dirty: bool) -> int:
         *audit, "--", *flags,
     ]  # fmt: skip
     completed = subprocess.run(
-        command, cwd=ledger.ROOT, capture_output=True, text=True, check=False
+        command, cwd=ROOT, capture_output=True, text=True, check=False
     )
     lines = [line for line in completed.stdout.splitlines() if line.startswith("SIM ")]
     if completed.returncode or not lines:

@@ -22,8 +22,9 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from port.extensions.repository import ROOT
 from port.qa import provenance
-from port.qa.ledger import ROOT, SIM_TEST, UNMEASURED, read
+from port.qa.ledger import SIM_TEST, UNMEASURED, read
 from port.qa.provenance import PLOTS
 
 HISTORY = "HISTORY"

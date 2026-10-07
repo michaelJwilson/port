@@ -484,6 +484,36 @@ shape of `3e-4`, so a draw is all one allele to within the tolerance
 `tests/test_loh_fixture.py` states."""
 
 
+def spot_counts(
+    family: Any,
+    spot_states: np.ndarray,
+    base_nb_mean: np.ndarray,
+    total_bb_RD: np.ndarray,
+    entropy: tuple[int, ...],
+) -> tuple[np.ndarray, np.ndarray]:
+    """`(n_obs, n_spots)` count and success draws, spot `s` from `default_rng([*entropy, s])`.
+
+    `spot_states[s]` is spot `s`'s state per bin; the covariate is its
+    exposure and trials. The one draw `core_inference_truth` (`entropy =
+    (seed,)`) and `realize` (`(genome_seed, seed)`) share (#749 WP9).
+    """
+    n_obs, n_spots = base_nb_mean.shape
+    counts_nb = np.empty((n_obs, n_spots), dtype=np.float64)
+    counts_bb = np.empty((n_obs, n_spots), dtype=np.float64)
+
+    for spot in range(n_spots):
+        covariate = np.stack([base_nb_mean[:, spot], total_bb_RD[:, spot]], axis=-1)
+        drawn = family.sample(
+            spot_states[spot],
+            np.random.default_rng([*entropy, spot]),
+            covariate=torch.as_tensor(covariate),
+        )
+        counts_nb[:, spot] = drawn[..., 0]
+        counts_bb[:, spot] = drawn[..., 1]
+
+    return counts_nb, counts_bb
+
+
 def core_inference_truth(
     *,
     n_clones: int = 3,
@@ -677,19 +707,13 @@ def core_inference_truth(
     total_bb_RD = rng.integers(*reads, (n_obs, n_spots)).astype(np.float64)
     switch_prob = rng.uniform(*switch, n_obs)
 
-    family = _emission_families(log_mu, alphas, p_binom, taus)
-    counts_nb = np.empty((n_obs, n_spots), dtype=np.float64)
-    counts_bb = np.empty((n_obs, n_spots), dtype=np.float64)
-
-    for spot in range(n_spots):
-        covariate = np.stack([base_nb_mean[:, spot], total_bb_RD[:, spot]], axis=-1)
-        drawn = family.sample(
-            states[labels[spot]],
-            np.random.default_rng([seed, spot]),
-            covariate=torch.as_tensor(covariate),
-        )
-        counts_nb[:, spot] = drawn[..., 0]
-        counts_bb[:, spot] = drawn[..., 1]
+    counts_nb, counts_bb = spot_counts(
+        _emission_families(log_mu, alphas, p_binom, taus),
+        states[labels],
+        base_nb_mean,
+        total_bb_RD,
+        (seed,),
+    )
 
     return CoreInferenceTruth(
         labels=labels,

@@ -44,8 +44,8 @@ from typing import Any
 import numpy as np
 
 from port.extensions.figure_style import GRID, INK, MUTED, axes_style
+from port.extensions.repository import ROOT
 from port.qa import provenance
-from port.qa.provenance import ROOT
 from port.qa.statistics import measured
 
 MANIFESTS = ROOT / "sim" / "manifests"
@@ -71,17 +71,6 @@ RUN_COPIED = (
     "clones_genomic.png",
     "rdr_baf_clones_genomic.png",
 )
-RUN_PAGES = ("combined.png", "genomic.png", "spatial.png")
-"""Figures 9-13, under `run/`: the pages drawn here, the rest copied."""
-
-COMPARE = (
-    "clones_truth_vs_fit.png",
-    "copy_confusion.png",
-    "copy_genomic_truth_vs_fit.png",
-    "exact_by_class.png",
-)
-"""Figures 14-17, under `compare/`."""
-
 CLASSES = {
     "loh": "LOH",
     "balanced_gain": r"$p = 0.5,\ \mu > 1$",
@@ -236,18 +225,20 @@ def mock_slide(coords: np.ndarray, labels: np.ndarray, root: Path) -> Any:
     """A slide stained by the planted clones (`port.sim.he_slide`), read back as
     `run_cnaster` reads one; each lattice cell takes its nearest spot's clone.
 
-    Written beside the run's inputs, not into them, so the run never reads it.
+    Written beside the run's inputs, not into them, so the run never reads it;
+    read through `port.patch.he.he_image`, so its labels are `1..num_labels`
+    (#311, T- #771).
     """
-    from cnaster.he import get_he_image
     from scipy.spatial import cKDTree
 
+    from port.patch.he import he_image
     from port.sim.he_slide import mock_he, write_he_slide
 
     lattice = (int(coords[:, 0].max()) + 1, int(coords[:, 1].max()) + 1)
     cells = np.indices(lattice).reshape(2, -1).T
     _, nearest = cKDTree(coords).query(cells)
     write_he_slide(mock_he(labels[nearest], lattice), root / "slide")
-    return get_he_image(str(root / "slide"), res="hires", pos=None)
+    return he_image(str(root / "slide"), res="hires", pos=None)
 
 
 @dataclass
@@ -378,9 +369,9 @@ def compared(
 
 def _colours(n: int) -> list[str]:
     """`port.sim.analysis`'s clone colours: the normal grey, then the series."""
-    from port.sim.analysis import NEUTRAL, SERIES
+    from port.extensions.figure_style import NEUTRAL_COLOUR, SERIES
 
-    return [NEUTRAL, *(SERIES[k % len(SERIES)] for k in range(n - 1))]
+    return [NEUTRAL_COLOUR, *(SERIES[k % len(SERIES)] for k in range(n - 1))]
 
 
 def labels_figure(c: Compared) -> Any:
@@ -494,8 +485,8 @@ def genomic_compare_figure(c: Compared, *, metric: bool = False) -> Any:
     import matplotlib.pyplot as plt
     from matplotlib.lines import Line2D
 
+    from port.extensions.figure_style import SERIES
     from port.extensions.genomic_axis import GenomicAxis, disclose
-    from port.sim.analysis import SERIES
 
     lengths = np.diff(c.edges)
     altered = np.any(c.truth != 1, axis=(1, 2)) | np.any(c.decoded != 1, axis=(1, 2))
@@ -573,7 +564,7 @@ def exact_figure(c: Compared) -> Any:
     """17: exact recovery by planted class, phased and phase-free."""
     import matplotlib.pyplot as plt
 
-    from port.sim.analysis import SERIES
+    from port.extensions.figure_style import SERIES
 
     shares = exact_by_class(c)
     figure, ax = plt.subplots(figsize=(5.0, 2.8))

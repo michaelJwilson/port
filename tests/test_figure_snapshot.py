@@ -16,9 +16,10 @@ from typing import Any
 import numpy as np
 import pytest
 
+from tests import TESTS
 from tests.figure_checks import recorded_combined_calls
 
-FROZEN = Path(__file__).parent / "data" / "figures"
+FROZEN = TESTS / "data" / "figures"
 DPI = 100
 
 

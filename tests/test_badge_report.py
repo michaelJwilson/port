@@ -1,6 +1,6 @@
 """The report that tells a pull request what it moved (#271).
 
-`tests/badge_report.py` is `port`'s own machinery, not the subject's
+`scripts/badge_report.py` is `port`'s own machinery, not the subject's
 behaviour, so these are `infra` -- the one marker `CLAUDE.md` reserves for
 this repository's rules, and which it asks to stay sparing. Nothing here
 reaches `cnaster`.
@@ -17,7 +17,7 @@ from typing import Any
 
 import pytest
 
-from tests.badge_report import NO_BASE, render, rows
+from scripts.badge_report import NO_BASE, render, rows
 
 
 def _measurements(**guards: Any) -> dict[str, Any]:
@@ -170,7 +170,7 @@ def test_the_real_measurements_render() -> None:
     and a renderer that only ever saw the fixtures above would break on it
     without anyone noticing until CI.
     """
-    from tests.badges import load
+    from scripts.badges import load
 
     recorded = load()
     report = render(recorded, recorded)

@@ -49,15 +49,6 @@ from port.patch.reference import get_reference_genes
 
 logger = get_logger(__name__, start_time=start_time)
 
-GENE_COLUMN = 4
-"""`cnaster` writes the gene by position -- `df_gene_snp.iloc[i, 4]`.
-
-Recorded rather than used: this patch writes the column by name. It is here
-because the position is what makes `cnaster`'s write fragile (#189), and a
-reader comparing the two should be able to see that they address the same
-column.
-"""
-
 
 def preceding_gene(
     chromosome: np.ndarray,

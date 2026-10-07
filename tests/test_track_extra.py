@@ -22,11 +22,10 @@ README.
 from __future__ import annotations
 
 import tomllib
-from pathlib import Path
 
 import pytest
 
-ROOT = Path(__file__).resolve().parents[1]
+from tests import ROOT
 
 
 @pytest.mark.infra
