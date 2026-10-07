@@ -168,6 +168,7 @@ ROLES: dict[str, Role] = {
     "port.sim.truth_figure": "sim",
     "port.sim.normal_fit": "sim",
     # sandbox
+    "port.sandbox.extensions.label_solvers": "set aside",
     "port.sandbox.extensions.segment_sets": "set aside",
     "port.sandbox.extensions.color_merge": "set aside",
     "port.sandbox.clone_starts.problem": "set aside",
