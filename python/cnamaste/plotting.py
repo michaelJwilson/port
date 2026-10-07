@@ -407,6 +407,57 @@ def _key(ax: Any, handles: Any, labels: list[str], columns: int) -> Any:
     )
 
 
+def _key_within(ax: Any) -> None:
+    """The key under `ax` wrapped onto rows until it is no wider than `ax`,
+    so the page cut to its content is the section's width (PR- #715)."""
+    legend = ax.get_legend()
+    if legend is None:
+        return
+    figure = ax.get_figure(root=True)
+    figure.canvas.draw()
+    renderer = figure.canvas.get_renderer()
+    width = ax.get_window_extent(renderer).width
+    handles = list(legend.legend_handles)
+    labels = [text.get_text() for text in legend.get_texts()]
+    columns = len(labels)
+    # NB a legend lays out its box once, so a narrower one is a new one.
+    while columns > 1 and legend.get_window_extent(renderer).width > width:
+        columns -= 1
+        legend.remove()
+        legend = _key(ax, handles, labels, columns)
+        figure.canvas.draw()
+
+
+FIT_MARGIN = 0.03
+"""Inches of white `fit_to_content` leaves at a page's head and sides."""
+
+STAMP_ROOM = 0.17
+"""Inches `fit_to_content` leaves at a page's foot."""
+
+
+def fit_to_content(figure: Any) -> None:
+    """The page cut to what its axes draw; each axis keeps its size in inches.
+
+    `port.extensions.figure_style.fit_to_content`, which `cnamaste` cannot
+    import; PR- #715's departure from upstream's fixed page.
+    """
+    figure.canvas.draw()
+    renderer = figure.canvas.get_renderer()
+    dpi = figure.dpi
+    box = figure.get_tightbbox(renderer)
+    kept = [(ax, ax.get_window_extent(renderer).frozen()) for ax in figure.get_axes()]
+    width = box.width + 2 * FIT_MARGIN
+    height = box.height + FIT_MARGIN + STAMP_ROOM
+    figure.set_size_inches(width, height)
+
+    for ax, at in kept:
+        x0 = at.x0 / dpi - box.x0 + FIT_MARGIN
+        y0 = at.y0 / dpi - box.y0 + STAMP_ROOM
+        ax.set_position(
+            (x0 / width, y0 / height, at.width / dpi / width, at.height / dpi / height)
+        )
+
+
 def plot_clones_spatial(
     coords: np.ndarray,
     assignment: Any,
