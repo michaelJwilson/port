@@ -169,13 +169,18 @@ def decode_caps() -> tuple[int, int]:
     return total, total
 
 
-def _caps(max_allele_copy: int, max_total_copy: int) -> tuple[int, int]:
-    """The caps to decode under: `decode_caps()` where the caller left the default."""
+def _caps(arguments: dict[str, Any]) -> tuple[int, int]:
+    """The caps to decode under: each the caller passed, `decode_caps()`'s where it passed none.
+
+    `arguments` are a row's, as given (`as_upstream`), so a cap passed at
+    `cnaster`'s default value is still a cap passed; `cnaster`'s own call
+    passes neither (`run_cnaster.py:1393,1406`).
+    """
     allele, total = decode_caps()
 
     return (
-        allele if max_allele_copy == MAX_ALLELE_COPY else max_allele_copy,
-        total if max_total_copy == MAX_TOTAL_COPY else max_total_copy,
+        int(arguments.get("max_allele_copy", allele)),
+        int(arguments.get("max_total_copy", total)),
     )
 
 
@@ -433,10 +438,7 @@ def hill_climbing_integer_copynumber_oneclone(
     `parsimony` is the lattice decode's prior weight, `PARSIMONY` unless
     `run_cnaster_port --no-parsimony-decode` binds `0` at install.
     """
-    allele, total = _caps(
-        arguments.get("max_allele_copy", MAX_ALLELE_COPY),
-        arguments.get("max_total_copy", MAX_TOTAL_COPY),
-    )
+    allele, total = _caps(arguments)
 
     return decode_clone(
         arguments["new_log_mu"],
@@ -465,10 +467,7 @@ def hill_climbing_integer_copynumber_fixdiploid_milp(
     `parsimony` is the lattice decode's prior weight, `PARSIMONY` unless
     `run_cnaster_port --no-parsimony-decode` binds `0` at install.
     """
-    allele, total = _caps(
-        arguments.get("max_allele_copy", MAX_ALLELE_COPY),
-        arguments.get("max_total_copy", MAX_TOTAL_COPY),
-    )
+    allele, total = _caps(arguments)
 
     return decode_clone(
         arguments["new_log_mu"],

@@ -27,13 +27,12 @@ its reason, which makes it a decision rather than a default.
 from __future__ import annotations
 
 import ast
-from pathlib import Path
 
 import pytest
 
-ROOT = Path(__file__).resolve().parent.parent
+from tests import ROOT, TESTS
+
 PATCH = ROOT / "python" / "port" / "patch"
-TESTS = Path(__file__).resolve().parent
 
 UNINSTALLED: dict[str, str] = {}
 """Drop-ins deliberately in no swap table, and why.

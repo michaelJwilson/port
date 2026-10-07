@@ -23,11 +23,11 @@ from typing import Any
 import numpy as np
 from scipy import stats
 
+from port.extensions.repository import ROOT
 from port.qa import provenance
 from port.qa.provenance import PLOTS
 from port.sim.draw import extended, lognormal_median
 
-ROOT = Path(__file__).resolve().parents[3]
 MANIFESTS = ROOT / "sim" / "manifests"
 KEYED = ("dev_tree.toml", "dev_tree_1s_hard.toml")
 OUT = PLOTS / "sim" / "cna_lengths.png"

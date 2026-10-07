@@ -30,9 +30,9 @@ class _Decode(NamedTuple):
 
 def _clone(pairs: np.ndarray, depth: float, rho: float = 1.0) -> tuple[Any, Any]:
     """A pseudobulk whose counts are their expectation under `pairs` at `rho`."""
-    from port.extensions.copy_likelihood import Pseudobulk, _parameters
+    from port.extensions.copy_likelihood import Pseudobulk, pair_rate_and_share
 
-    log_mu, p = _parameters(pairs, rho)
+    log_mu, p = pair_rate_and_share(pairs, rho)
     base = np.full(pairs.shape[0], depth)
     total = np.full(pairs.shape[0], depth / 4)
     bulk = Pseudobulk(
@@ -104,7 +104,11 @@ def test_counts_at_their_expectation_recover_the_planted_pair_alone(
 @pytest.mark.oracle
 def test_each_deviance_is_the_brute_force_refit_s(cnaster_config: None) -> None:
     """Clone 1 at fraction 0.8: every candidate's deviance against a plain loop over the grid."""
-    from port.extensions.copy_likelihood import _emission, _parameters, _with
+    from port.extensions.copy_likelihood import (
+        pair_rate_and_share,
+        pseudobulk_log_pmf,
+        with_dispersions,
+    )
     from port.sandbox.extensions.segment_sets import (
         FRACTION_STEPS,
         SHIFT_STEPS,
@@ -123,7 +127,7 @@ def test_each_deviance_is_the_brute_force_refit_s(cnaster_config: None) -> None:
     )
     gain = next(f for f in found if f.clone == 1 and f.start == 20)
 
-    fitted = _with(bulk, decode.dispersion, decode.taus)
+    fitted = with_dispersions(bulk, decode.dispersion, decode.taus)
     states = decode.states
 
     def loglik(candidate: np.ndarray) -> float:
@@ -132,8 +136,10 @@ def test_each_deviance_is_the_brute_force_refit_s(cnaster_config: None) -> None:
             for f in np.unique(np.clip(0.8 + FRACTION_STEPS, 0.05, 1.0)):
                 held = pairs.copy()
                 held[20:40] = candidate
-                log_mu, p = _parameters(held, float(f))
-                value = float(np.sum(_emission(log_mu - d, p, fitted, np.arange(60))))
+                log_mu, p = pair_rate_and_share(held, float(f))
+                value = float(
+                    np.sum(pseudobulk_log_pmf(log_mu - d, p, fitted, np.arange(60)))
+                )
                 best = max(best, value)
         return best
 
@@ -148,8 +154,12 @@ def test_each_deviance_is_the_brute_force_refit_s(cnaster_config: None) -> None:
 
 @pytest.mark.oracle
 def test_the_per_bin_table_is_each_bin_s_emission(cnaster_config: None) -> None:
-    """`bin_loglik` at clone 1's fraction 0.8, bin by bin, against `_emission` per pair."""
-    from port.extensions.copy_likelihood import _emission, _parameters, _with
+    """`bin_loglik` at clone 1's fraction 0.8, bin by bin, against `pseudobulk_log_pmf` per pair."""
+    from port.extensions.copy_likelihood import (
+        pair_rate_and_share,
+        pseudobulk_log_pmf,
+        with_dispersions,
+    )
     from port.sandbox.extensions.segment_sets import bin_loglik
 
     pairs = _planted()
@@ -159,10 +169,10 @@ def test_the_per_bin_table_is_each_bin_s_emission(cnaster_config: None) -> None:
         decode, [(pairs, bulk, 0.0), (pairs, bulk, 0.0)]
     )
 
-    fitted = _with(bulk, decode.dispersion, decode.taus)
+    fitted = with_dispersions(bulk, decode.dispersion, decode.taus)
     for k in (0, 7, len(lattice) - 1):
-        log_mu, p = _parameters(lattice[k : k + 1], 0.8)
-        expected = _emission(
+        log_mu, p = pair_rate_and_share(lattice[k : k + 1], 0.8)
+        expected = pseudobulk_log_pmf(
             np.full(60, log_mu[0]), np.full(60, p[0]), fitted, np.arange(60)
         )
         np.testing.assert_array_equal(loglik[1, :, k], expected)

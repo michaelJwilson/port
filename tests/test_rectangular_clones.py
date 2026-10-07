@@ -11,13 +11,15 @@ from __future__ import annotations
 
 import itertools
 import signal
-from pathlib import Path
 from typing import Any
 
 import numpy as np
 import pytest
 
-DATA = Path(__file__).resolve().parent / "data"
+from tests import TESTS
+from tests.adapters import square_coords
+
+DATA = TESTS / "data"
 
 TRY_CAP = 3_000
 """`randint` calls `cnaster`'s loop may make before a seed counts as not returning.
@@ -42,10 +44,6 @@ def _coords(name: str) -> np.ndarray:
     coords: np.ndarray = np.load(DATA / f"{name}.npz")["coords"]
 
     return coords
-
-
-def _grid(rows: int, columns: int) -> np.ndarray:
-    return np.array([(r, c) for r in range(rows) for c in range(columns)])
 
 
 def _assert_same(ours: Any, theirs: Any) -> None:
@@ -109,7 +107,9 @@ def test_where_cnaster_returns_it_returns_the_same(
     from cnaster.spatial import initialize_rectangular_clones as upstream
     from port.patch.spatial import initialize_rectangular_clones as replacement
 
-    points = _coords("rectangular_returns") if coords == "returns" else _grid(12, 40)
+    points = (
+        _coords("rectangular_returns") if coords == "returns" else square_coords(12, 40)
+    )
 
     _assert_same(
         replacement(points, n_clones, random_state=seed),
@@ -137,7 +137,7 @@ def test_bitwise_on_every_seed_cnaster_returns(
     inputs = {
         "hang": _coords("rectangular_hang"),
         "returns": _coords("rectangular_returns"),
-        "grid": _grid(12, 40),
+        "grid": square_coords(12, 40),
     }
     returned = refused = 0
 
@@ -172,7 +172,7 @@ def test_feasibility_agrees_with_enumerating_every_assignment(n_clones: int) -> 
     floor. Enumerated outright -- `n_clones ** p ** 2` maps; 1,953,125 at
     five clones on nine blocks -- over 200 seeded block sizes per count,
     three in four drawn skewed (Dirichlet 0.3) so that blocks below the floor
-    are common. `oracle`, so `tests.ci` runs it in the release step.
+    are common. `oracle`, so `scripts.ci` runs it in the release step.
     """
     from port.patch.spatial import admits_assignment
 
@@ -282,7 +282,7 @@ def test_a_one_row_strip_returns_bands_and_says_infeasible() -> None:
     from port.patch.spatial import RECTANGLE_REDRAWS, initialize_rectangular_clones
     from sal.opt.termination import Stop
 
-    points = _grid(1, 200)
+    points = square_coords(1, 200)
     returned: list[Any] = []
 
     assert _within(

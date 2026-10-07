@@ -23,6 +23,7 @@ from port.sim.inputs import WrittenInputs, written_config
 from port.sim.run_config import PlantedInstance
 from port.sim.truth import balanced_clone
 
+from tests import ROOT
 from tests.adapters import range_filter_loop
 from tests.fixtures import synthetic_ranges
 
@@ -756,14 +757,14 @@ def test_the_patched_loader_is_cnasters_on_a_drawn_sample(tmp_path: Path) -> Non
     drops. A drawn sample reaches both. Referee: `cnaster`'s loader, called.
     """
     import yaml
-    from cnaster.config import YAMLConfig, set_global_config
     from cnaster.io import load_input_data as theirs
     from port.patch.io import load_input_data as ours
     from port.qa.audit import drawn_config
     from port.sim.draw import main as draw
     from port.sim.fixtures import load_simulated
+    from port.sim.inputs import written_config
 
-    manifests = Path(__file__).resolve().parents[1] / "sim" / "manifests"
+    manifests = ROOT / "sim" / "manifests"
     manifest = tmp_path / "dev_tree.toml"
     manifest.write_text(
         (manifests / "dev_tree.toml")
@@ -777,28 +778,27 @@ def test_the_patched_loader_is_cnasters_on_a_drawn_sample(tmp_path: Path) -> Non
 
     sample = load_simulated("r0", tmp_path / "drawn" / "dev_tree")
     path = drawn_config(sample, tmp_path / "run", {})
-    config = YAMLConfig(yaml.safe_load(path.read_text()))
-    set_global_config(config)
-    arguments = {
-        "filter_gene_file": config.references.filtergenelist_file,
-        "filter_range_file": config.references.filterregion_file,
-        "min_snp_umis": config.quality.spot_min_snp_umis,
-        "min_percent_expressed_spots": config.quality.min_percent_expressed_spots,
-    }
+    with written_config(yaml.safe_load(path.read_text())) as config:
+        arguments = {
+            "filter_gene_file": config.references.filtergenelist_file,
+            "filter_range_file": config.references.filterregion_file,
+            "min_snp_umis": config.quality.spot_min_snp_umis,
+            "min_percent_expressed_spots": config.quality.min_percent_expressed_spots,
+        }
 
-    their = theirs(config, **arguments)
-    our = ours(config, **arguments)
+        their = theirs(config, **arguments)
+        our = ours(config, **arguments)
 
-    assert config.quality.local_outlier_filter
-    for name in ("cell_snp_Aallele", "cell_snp_Ballele", "unique_snp_ids"):
+        assert config.quality.local_outlier_filter
+        for name in ("cell_snp_Aallele", "cell_snp_Ballele", "unique_snp_ids"):
+            np.testing.assert_array_equal(
+                getattr(our, name), getattr(their, name), err_msg=name
+            )
+        assert our.barcodes.equals(their.barcodes)
+        assert our.exp_counts.equals(their.exp_counts)
         np.testing.assert_array_equal(
-            getattr(our, name), getattr(their, name), err_msg=name
+            np.asarray(our.adata.layers["count"]),
+            np.asarray(their.adata.layers["count"]),
         )
-    assert our.barcodes.equals(their.barcodes)
-    assert our.exp_counts.equals(their.exp_counts)
-    np.testing.assert_array_equal(
-        np.asarray(our.adata.layers["count"]),
-        np.asarray(their.adata.layers["count"]),
-    )
-    assert our.adata.obs.equals(their.adata.obs)
-    assert our.adata.var.equals(their.adata.var)
+        assert our.adata.obs.equals(their.adata.obs)
+        assert our.adata.var.equals(their.adata.var)

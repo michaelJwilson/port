@@ -1,17 +1,17 @@
-"""`docs/port-forward.md` is what `tests.port_forward` writes (T- #617 WP11)."""
+"""`docs/port-forward.md` is what `scripts.port_forward` writes (T- #617 WP11)."""
 
 from __future__ import annotations
 
 import pytest
 
-from tests.port_forward import OUT, STAGES, render, rows
+from scripts.port_forward import OUT, STAGES, render, rows
 from tests.source_graph import tables
 
 
 @pytest.mark.infra
 def test_the_committed_table_is_the_generated_one() -> None:
     """A row added, removed or re-tested regenerates the table in the same change."""
-    assert OUT.read_text() == render(), "run python -m tests.port_forward"
+    assert OUT.read_text() == render(), "run python -m scripts.port_forward"
 
 
 @pytest.mark.infra

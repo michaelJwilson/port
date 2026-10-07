@@ -19,9 +19,8 @@ not this file's.
 import numpy as np
 import pytest
 from port.patch.hmrf.field import compute_loglike_spot_assignment_strided
-from port.patch.hmrf.fused_field import fused_spot_clone_field
 
-from tests.fixtures import SpotCloneField, spot_clone_field
+from tests.fixtures import SpotCloneField, fused_field_of, spot_clone_field
 
 
 def _cnaster_two_step(
@@ -81,22 +80,6 @@ def _cnaster_two_step(
     return field
 
 
-def _fused(fixture: SpotCloneField, weight: np.ndarray) -> np.ndarray:
-    field: np.ndarray = fused_spot_clone_field(
-        fixture.counts_nb,
-        fixture.base_nb_mean,
-        fixture.counts_bb,
-        fixture.total_bb_RD,
-        fixture.log_mu,
-        fixture.alphas,
-        fixture.p_binom,
-        fixture.taus,
-        fixture.pred,
-        weight,
-    )
-    return field
-
-
 @pytest.mark.patch
 @pytest.mark.parametrize(
     ("n_states", "n_clones"),
@@ -113,7 +96,7 @@ def test_the_fused_field_is_bitwise_the_two_step(n_states: int, n_clones: int) -
     weight = np.ones(fixture.n_spots)
 
     np.testing.assert_array_equal(
-        _cnaster_two_step(fixture, weight), _fused(fixture, weight)
+        _cnaster_two_step(fixture, weight), fused_field_of(fixture, weight)
     )
 
 
@@ -141,7 +124,7 @@ def test_the_fused_field_carries_the_relative_channel_weight() -> None:
 
     np.testing.assert_array_equal(
         _cnaster_two_step(fixture, weight, counts_nb, counts_bb),
-        _fused(fixture, weight),
+        fused_field_of(fixture, weight),
     )
 
 
@@ -164,7 +147,7 @@ def test_the_fused_field_allocates_no_emission_array() -> None:
     assert fixture.emission_gigabytes == pytest.approx(expected)
 
     weight = np.ones(fixture.n_spots)
-    field = _fused(fixture, weight)
+    field = fused_field_of(fixture, weight)
 
     assert field.shape == (fixture.n_spots, fixture.n_clones)
 
@@ -193,10 +176,10 @@ def test_the_fused_field_scores_only_the_decoded_states() -> None:
     unused = sorted(set(range(fixture.n_states)) - used)
     assert unused, "the fixture must leave a state undecoded for this to test anything"
 
-    before = _fused(fixture, weight)
+    before = fused_field_of(fixture, weight)
 
     perturbed = spot_clone_field(n_states=5, n_clones=2)
     perturbed.log_mu[unused[0]] += 5.0
     perturbed.p_binom[unused[0]] = 0.99
 
-    np.testing.assert_array_equal(before, _fused(perturbed, weight))
+    np.testing.assert_array_equal(before, fused_field_of(perturbed, weight))

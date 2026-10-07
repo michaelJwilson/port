@@ -329,22 +329,21 @@ def test_on_the_metric_a_cna_is_drawn_at_twice_its_extent() -> None:
 
 
 @pytest.mark.infra
-def test_a_warped_figure_states_its_scale_in_its_stamp() -> None:
-    """`disclose` sets `axis: altered` times the scale where the axis is warped, and
-    `paper_figures.stamp` appends it; a linear axis adds nothing."""
+def test_a_warped_figure_states_its_scale_in_its_label() -> None:
+    """`disclose` labels a figure `axis: altered` times the scale where the axis is
+    warped, and leaves a linear one unlabelled; `paper_figures` puts it in the
+    README rather than a stamp (#743)."""
     import matplotlib as mpl
     import matplotlib.pyplot as plt
 
     mpl.use("Agg")
     from port.extensions.genomic_axis import disclose
-    from port.studies.paper_figures import stamp
 
-    for altered, suffix in (
+    for altered, label in (
         (None, ""),
-        (np.array([[0, 10_000_000]]), " · axis: altered \N{MULTIPLICATION SIGN}2.00"),
+        (np.array([[0, 10_000_000]]), "axis: altered \N{MULTIPLICATION SIGN}2.00"),
     ):
         figure = plt.figure()
         disclose(figure, GenomicAxis(LENGTHS, altered))
-        stamp(figure, "fixture 7ba9b01f · code abc1234")
-        assert figure.texts[-1].get_text() == f"fixture 7ba9b01f · code abc1234{suffix}"
+        assert figure.get_label() == label
         plt.close(figure)

@@ -27,7 +27,6 @@ from __future__ import annotations
 import ast
 import importlib
 import pkgutil
-from pathlib import Path
 
 import port.patch
 import pytest
@@ -38,7 +37,7 @@ from port.pipeline import (
     SWAPS,
 )
 
-ROOT = Path(__file__).resolve().parents[1]
+from tests import ROOT
 
 UNIFIERS = ("lattice", "plotting")
 """The two patches that replace a pair of `cnaster` modules rather than one.

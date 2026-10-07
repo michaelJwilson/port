@@ -9,7 +9,7 @@ altered and its phase-free form, wall and the child's peak RSS. `--timeout 0`
 runs CalicoST uncapped, and `--root` keeps its working directory so a rerun
 resumes from its checkpoints (PR- #677). `--patched-share` measures the share
 of executed `cnaster` lines `run_cnaster_port` replaces and records it in
-`.badges/measurements.json`; `python -m tests.badges` renders the badge. What
+`.badges/measurements.json`; `python -m scripts.badges` renders the badge. What
 each measures is `port.qa.benchmark`'s.
 """
 

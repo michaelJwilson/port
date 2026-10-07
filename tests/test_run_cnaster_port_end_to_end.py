@@ -19,6 +19,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from tests.fixtures import partition_ari
+
 
 @pytest.mark.end2end
 @pytest.mark.merge
@@ -32,8 +34,6 @@ def test_the_entry_point_recovers_the_planted_clones(tmp_path: Path) -> None:
     from port.sim.run_config import isolated_run, write_run_cnaster_config
     from port.sim.truth import core_inference_truth
     from port.sim.unsegment import unsegment
-
-    from tests.test_core_inference_end_to_end import _adjusted_rand_index
 
     mpl.use("Agg")
     truth = core_inference_truth(
@@ -68,4 +68,4 @@ def test_the_entry_point_recovers_the_planted_clones(tmp_path: Path) -> None:
 
     assert len(majority) == truth.n_clones
     assert wrong <= 2, f"{wrong} of {truth.n_spots} spots in the wrong clone"
-    assert _adjusted_rand_index(truth.labels, fitted) >= 0.99
+    assert partition_ari(truth.labels, fitted) >= 0.99

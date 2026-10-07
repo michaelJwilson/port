@@ -21,7 +21,6 @@ Field-reading starts read `grid2`'s field: the profiles `grid2`'s labels give.
 
 from __future__ import annotations
 
-import multiprocessing
 import pickle
 import time
 import traceback
@@ -69,7 +68,7 @@ JOINT_STARTS = ("grid2", "normal-first", "mean field", "posterior draw")
 BETA_STARTS = ("grid2", "normal-first", "mean field", "posterior draw")
 TEMPERATURES = (8.0, 4.0, 2.0, 1.0, 0.5)
 
-_HELD: dict[str, Any] = {}
+HELD: dict[str, Any] = {}
 
 
 class Job(NamedTuple):
@@ -80,40 +79,47 @@ class Job(NamedTuple):
     factor: float = 1.0
 
 
-def _solvers() -> list[str]:
+def solver_names() -> list[str]:
     from sal.search.ground_state import METHODS
 
     return [f"sal:{m}" for m in METHODS] + [f"port:{r}" for r in PORT_ROWS]
 
 
-def _graph(beta: float) -> Any:
+def potts_graph(spatial_weight: float) -> Any:
     from port.patch.icm.alpha_expansion import potts_graph_from
     from port.patch.icm.interface import CsrGraph
 
-    capture = _HELD["capture"]
+    capture = HELD["capture"]
     csr = CsrGraph(capture.indptr, capture.indices, capture.weights)
-    return csr, potts_graph_from(csr, beta)
+    return csr, potts_graph_from(csr, spatial_weight)
 
 
-def _solve(
+def solve_from(
     solver: str,
     field: np.ndarray,
     labels: np.ndarray,
     rng: np.random.Generator,
-    beta: float,
+    spatial_weight: float,
 ) -> np.ndarray:
     """`solver` from `labels` on `field` at coupling `beta`, floorless."""
-    csr, graph = _graph(beta)
+    csr, graph = potts_graph(spatial_weight)
     labels = np.asarray(labels, dtype=np.int64).copy()
     kind, name = solver.split(":", 1)
 
     if kind == "port":
         from port.extensions.label_solver import sweep_for
         from port.patch.icm.interface import icm_sweep
+        from port.sandbox.extensions.label_solvers import SWEEPS as SET_ASIDE
 
-        sweep = icm_sweep if name == "icm" else sweep_for(name)  # type: ignore[arg-type]
+        sweep = (
+            icm_sweep
+            if name == "icm"
+            else SET_ASIDE[name]
+            if name in SET_ASIDE
+            else sweep_for(name)  # type: ignore[arg-type]
+        )
         np.random.seed(int(rng.integers(2**31)))  # noqa: NPY002 -- cnaster's ICM reads it
-        sweep(field, csr, labels, beta, min_clone_spots=0)
+        sweep(field, csr, labels, spatial_weight, min_clone_spots=0)
         return labels
 
     from sal.cost import Cost
@@ -135,20 +141,22 @@ def _floored(field: np.ndarray, labels: np.ndarray) -> np.ndarray:
     from port.patch.icm.floor import enforce_floor
 
     labels = np.asarray(labels, dtype=np.int64).copy()
-    enforce_floor(field, labels, _HELD["capture"].floor)
+    enforce_floor(field, labels, HELD["capture"].floor)
     return labels
 
 
-def _scored(labels: np.ndarray, field: np.ndarray, beta: float) -> dict[str, Any]:
+def _labelling_scores(
+    labels: np.ndarray, field: np.ndarray, beta: float
+) -> dict[str, Any]:
     from sal.sim.potts import energy
     from sklearn.metrics import adjusted_rand_score
 
-    _, graph = _graph(beta)
+    _, graph = potts_graph(beta)
     labels = np.asarray(labels, dtype=np.int64)
     sizes = np.bincount(labels, minlength=field.shape[1])
     used = sizes[sizes > 0]
     return {
-        "ari": float(adjusted_rand_score(_HELD["capture"].planted, labels)),
+        "ari": float(adjusted_rand_score(HELD["capture"].planted, labels)),
         "clones": int(used.size),
         "smallest": int(used.min()),
         "energy": float(energy(graph, field, labels)),
@@ -159,7 +167,7 @@ def _scored(labels: np.ndarray, field: np.ndarray, beta: float) -> dict[str, Any
 def _bound(field: np.ndarray, beta: float) -> tuple[float, float, float]:
     from sal.search.trws import trws
 
-    _, graph = _graph(beta)
+    _, graph = potts_graph(beta)
     with measured() as cost:
         found = trws(graph, field)
     return float(found.bound), float(found.energy), cost.wall_s
@@ -170,9 +178,9 @@ def _start(job: Job) -> tuple[np.ndarray, float]:
 
     with measured() as cost:
         labels = STARTS[job.start].run(
-            _HELD["capture"],
+            HELD["capture"],
             np.random.default_rng([job.seed, 541]),
-            field=_HELD["grid2"].field,
+            field=HELD["grid2"].field,
         )
     return np.asarray(labels, dtype=np.int64), cost.wall_s
 
@@ -181,7 +189,7 @@ def _build(labels: np.ndarray, seed: int, states: Any = None) -> Any:
     from port.sandbox.clone_starts.problem import build
 
     return build(
-        _HELD["capture"],
+        HELD["capture"],
         labels,
         np.random.default_rng([seed, 540]),
         states=states,
@@ -192,22 +200,28 @@ def _build(labels: np.ndarray, seed: int, states: Any = None) -> Any:
 def _starts_arm(job: Job) -> list[dict[str, Any]]:
     labels, start_seconds = _start(job)
     problem = _build(labels, job.seed)
-    beta = _HELD["capture"].spatial_weight
+    beta = HELD["capture"].spatial_weight
     bound, trws_energy, trws_seconds = _bound(problem.field, beta)
     base = {**job._asdict(), "bound": bound, "trws_energy": trws_energy,
             "trws_seconds": trws_seconds, "start_seconds": start_seconds,
             "build_seconds": problem.seconds, "states_by": problem.states_by}  # fmt: skip
-    rows = [{**base, "solver": "start", **_scored(problem.labels, problem.field, beta)}]
+    rows = [
+        {
+            **base,
+            "solver": "start",
+            **_labelling_scores(problem.labels, problem.field, beta),
+        }
+    ]
 
     if job.seed >= SOLVED:
         return rows
 
-    for solver in _solvers():
+    for solver in solver_names():
         seeds = range(3) if solver.split(":")[1] in STOCHASTIC_SOLVERS else range(1)
         for seed in seeds:
             with measured() as cost:
                 try:
-                    solved = _solve(solver, problem.field, problem.labels,
+                    solved = solve_from(solver, problem.field, problem.labels,
                                     np.random.default_rng([seed, 492]), beta)  # fmt: skip
                 except Exception as error:  # noqa: BLE001 -- a refusal is a result
                     rows.append({**base, "solver": solver, "solver_seed": seed,
@@ -217,22 +231,22 @@ def _starts_arm(job: Job) -> list[dict[str, Any]]:
             floored = _floored(problem.field, solved)
             rows.append({
                 **base, "solver": solver, "solver_seed": seed, "solve_seconds": seconds,
-                **_scored(solved, problem.field, beta),
-                **{f"floored_{k}": v for k, v in _scored(floored, problem.field, beta).items()},
+                **_labelling_scores(solved, problem.field, beta),
+                **{f"floored_{k}": v for k, v in _labelling_scores(floored, problem.field, beta).items()},
             })  # fmt: skip
     return rows
 
 
 def _alternating_arm(job: Job) -> list[dict[str, Any]]:
     labels, start_seconds = _start(job)
-    beta = _HELD["capture"].spatial_weight
+    beta = HELD["capture"].spatial_weight
     problem = _build(labels, job.seed)
     elapsed = start_seconds + problem.seconds
     rows = [{**job._asdict(), "round": 0, "seconds": elapsed,
-             **_scored(problem.labels, problem.field, beta)}]  # fmt: skip
+             **_labelling_scores(problem.labels, problem.field, beta)}]  # fmt: skip
     for round_ in range(1, 5):
         with measured() as cost:
-            solved = _solve(job.solver, problem.field, problem.labels,
+            solved = solve_from(job.solver, problem.field, problem.labels,
                             np.random.default_rng([round_, 492]), beta)  # fmt: skip
             floored = _floored(problem.field, solved)
             problem = _build(
@@ -240,7 +254,7 @@ def _alternating_arm(job: Job) -> list[dict[str, Any]]:
             )
         elapsed += cost.wall_s
         rows.append({**job._asdict(), "round": round_, "seconds": elapsed,
-                     **_scored(problem.labels, problem.field, beta)})  # fmt: skip
+                     **_labelling_scores(problem.labels, problem.field, beta)})  # fmt: skip
     return rows
 
 
@@ -250,7 +264,7 @@ def _heat_bath(
     from sal.sample.potts_mcmc import anneal_potts
     from sal.sample.schedule import ConstantTempSchedule
 
-    _, graph = _graph(_HELD["capture"].spatial_weight)
+    _, graph = potts_graph(HELD["capture"].spatial_weight)
     run = anneal_potts(graph, field, ConstantTempSchedule(temperature, 20),
                        np.random.default_rng([seed, 7]), start=labels)  # fmt: skip
     return np.asarray(run.final, dtype=np.int64)
@@ -258,11 +272,11 @@ def _heat_bath(
 
 def _joint_arm(job: Job) -> list[dict[str, Any]]:
     labels, start_seconds = _start(job)
-    beta = _HELD["capture"].spatial_weight
+    beta = HELD["capture"].spatial_weight
     problem = _build(labels, job.seed)
     elapsed = start_seconds + problem.seconds
     rows = [{**job._asdict(), "step": "start", "seconds": elapsed,
-             **_scored(problem.labels, problem.field, beta)}]  # fmt: skip
+             **_labelling_scores(problem.labels, problem.field, beta)}]  # fmt: skip
     best = problem
     temperatures = TEMPERATURES if job.arm == "joint-anneal" else (1.0,) * 5
 
@@ -274,10 +288,11 @@ def _joint_arm(job: Job) -> list[dict[str, Any]]:
             )
             problem = _build(drawn, job.seed, states=(problem.log_mu, problem.p_binom))
         elapsed += cost.wall_s
-        scored = _scored(problem.labels, problem.field, beta)
+        scored = _labelling_scores(problem.labels, problem.field, beta)
         if (
             job.arm == "joint-sample"
-            and scored["loglik"] > _scored(best.labels, best.field, beta)["loglik"]
+            and scored["loglik"]
+            > _labelling_scores(best.labels, best.field, beta)["loglik"]
         ):
             best = problem
         rows.append(
@@ -291,25 +306,29 @@ def _joint_arm(job: Job) -> list[dict[str, Any]]:
 
     final = best if job.arm == "joint-sample" else problem
     with measured() as cost:
-        solved = _floored(final.field, _solve("port:alpha-rust-fuse-merge", final.field,
+        solved = _floored(final.field, solve_from("port:alpha-rust-fuse-merge", final.field,
                                               final.labels, np.random.default_rng(0), beta))  # fmt: skip
         problem = _build(solved, job.seed, states=(final.log_mu, final.p_binom))
     elapsed += cost.wall_s
     rows.append({**job._asdict(), "step": "solved", "seconds": elapsed,
-                 **_scored(problem.labels, problem.field, beta)})  # fmt: skip
+                 **_labelling_scores(problem.labels, problem.field, beta)})  # fmt: skip
     return rows
 
 
 def _beta_arm(job: Job) -> list[dict[str, Any]]:
     labels, _ = _start(job)
     problem = _build(labels, job.seed)
-    beta = _HELD["capture"].spatial_weight * job.factor
+    beta = HELD["capture"].spatial_weight * job.factor
     rows = []
     for solver in ("port:alpha-rust-fuse-merge", "sal:alpha-expansion"):
-        solved = _floored(problem.field, _solve(solver, problem.field, problem.labels,
+        solved = _floored(problem.field, solve_from(solver, problem.field, problem.labels,
                                                 np.random.default_rng(0), beta))  # fmt: skip
         rows.append(
-            {**job._asdict(), "solver": solver, **_scored(solved, problem.field, beta)}
+            {
+                **job._asdict(),
+                "solver": solver,
+                **_labelling_scores(solved, problem.field, beta),
+            }
         )
     return rows
 
@@ -364,10 +383,10 @@ def _hold(capture_path: Path) -> None:
     from port.sandbox.clone_starts.starts import STARTS
 
     capture = load(capture_path)
-    _HELD["capture"] = capture
+    HELD["capture"] = capture
     grid2 = STARTS["grid2"].run(capture, np.random.default_rng(0))
-    _HELD["grid2"] = build(capture, grid2, np.random.default_rng([0, 540]))
-    _HELD["oracle"] = build(capture, capture.planted, np.random.default_rng([0, 540]))
+    HELD["grid2"] = build(capture, grid2, np.random.default_rng([0, 540]))
+    HELD["oracle"] = build(capture, capture.planted, np.random.default_rng([0, 540]))
 
 
 def run_arms(
@@ -384,11 +403,13 @@ def run_arms(
     forked after the parent has built a problem inherits compiled thread
     pools that do not survive the fork, and died on its first job.
     """
-    from concurrent.futures import ProcessPoolExecutor, as_completed
+    from concurrent.futures import as_completed
+
+    from port.studies.stream import pool as harness_pool
 
     _hold(capture_path)
-    beta = _HELD["capture"].spatial_weight
-    oracle = _HELD["oracle"]
+    beta = HELD["capture"].spatial_weight
+    oracle = HELD["oracle"]
     jobs = _jobs(arms or list(ARMS))
     rows: list[dict[str, Any]] = []
     if retry is not None:
@@ -401,12 +422,7 @@ def run_arms(
         jobs = [j for j in jobs if tuple(j) in failed]
     print(f"{len(jobs)} jobs", flush=True)
     opened = time.perf_counter()
-    with ProcessPoolExecutor(
-        workers,
-        mp_context=multiprocessing.get_context("spawn"),
-        initializer=_hold,
-        initargs=(capture_path,),
-    ) as pool:
+    with harness_pool(workers, _hold, capture_path) as pool:
         futures = {pool.submit(_run, job): job for job in jobs}
         for done, future in enumerate(as_completed(futures), start=1):
             job = futures[future]
@@ -419,5 +435,5 @@ def run_arms(
             print(f"{done}/{len(jobs)} {job.arm} {job.start} {job.seed} {job.solver} "
                   f"{time.perf_counter() - opened:.0f} s", flush=True)  # fmt: skip
             with out.open("wb") as fh:
-                pickle.dump({"rows": rows, "oracle": _scored(oracle.labels, oracle.field, beta),
-                             "grid2_seconds": _HELD["grid2"].seconds}, fh)  # fmt: skip
+                pickle.dump({"rows": rows, "oracle": _labelling_scores(oracle.labels, oracle.field, beta),
+                             "grid2_seconds": HELD["grid2"].seconds}, fh)  # fmt: skip

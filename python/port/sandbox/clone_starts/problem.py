@@ -193,17 +193,17 @@ def profiles(
     """Each clone's Viterbi path over the states, `(bins, clones)`, and the NB size and BB concentration fitted along it.
 
     The emission is `sal`'s count pair on each clone's pseudobulk
-    (`copy_starts._channels`); the shapes start at the seam's (size 10,
+    (`copy_starts.channel_log_densities`); the shapes start at the seam's (size 10,
     concentration 1,000) and are refitted along the paths `rounds` times.
     """
-    from port.extensions.copy_starts import _channels, _fit_shapes
+    from port.extensions.copy_starts import channel_log_densities, fit_channel_shapes
     from port.patch.hmm_initialize.sal_mixture import EXPOSURE_SCALE
 
     counts, b, base, trials = pseudobulk(capture, labels)
     n_bins, n_clones = counts.shape
     observations = np.column_stack([counts.T.ravel(), b.T.ravel()])
     covariate = np.column_stack([base.T.ravel() / EXPOSURE_SCALE, trials.T.ravel()])
-    channels = _channels(observations, covariate)
+    channels = channel_log_densities(observations, covariate)
     depth, allele = channels
     rate = np.exp(np.asarray(log_mu, dtype=np.float64)) * EXPOSURE_SCALE
     share = np.clip(np.asarray(p_binom, dtype=np.float64), 1e-4, 1 - 1e-4)
@@ -218,7 +218,7 @@ def profiles(
         state = pred.T.ravel()
         onehot = np.zeros((state.size, share.size))
         onehot[np.arange(state.size), state] = 1.0
-        size, concentration, _ = _fit_shapes(
+        size, concentration, _ = fit_channel_shapes(
             channels, rate, share, onehot, concentration, 0.0
         )
     return pred, size, concentration

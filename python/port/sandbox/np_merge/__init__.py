@@ -1,5 +1,10 @@
 """CalicoST's Neyman-Pearson merge of similar clones, which `cnaster` disabled (#497): sandbox.
 
+Ticket: #497 -- the merge `cnaster` carries commented out, and its scoring.
+Measurement: under `--sal`, `dev_tree` 60 x 50 r0 clone ARI 0.9996 -> 1.0;
+  CalicoST easy 0.9861 and hard 0.8652 either way (#500).
+Exit: graduates or retires with `port.sandbox.np_merge.merge`.
+
 **Set aside, not installed by `run_cnaster_port`.** Measured under `--sal`
 before it moved here: `dev_tree` 60 x 50 r0 clone ARI 0.9996 -> 1.0, CalicoST
 easy 0.9861 either way, hard 0.8652 (5 clones) either way -- the hard RDR
