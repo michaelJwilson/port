@@ -772,13 +772,6 @@ KEY_STUDIES: dict[str, tuple[str, str, str]] = {
         "`run_study --clone-labels capture SAMPLE CAPTURE.npz`, `... run CAPTURE.npz OUT.pkl`, "
         "`run_study --clone-label-notebook OUT.pkl`",
     ),
-    "key_studies/546_population.png": (
-        "At J = 1, how many UMIs does a clone need to be detected, how long must a CNA be to be recovered, "
-        "and how often is a true-(1,1) segment called altered?",
-        "`port.studies.population_report.figures` (#544, PR #546)",
-        "`run_study --population run --seeds 0:200 --J 1 --out DIR`, then `... run --seeds 1000:1260 "
-        "--J 1 --manifest sim/manifests/population_long.toml --out DIR`, then `... report --out DIR --study2-J 1`",
-    ),
 }
 """Each key study's figure (label `key_study`) under `OUT/key_studies/`: question, source, regenerate command."""
 
@@ -838,7 +831,8 @@ intervals in `truth/` and the fitted ones in `run/`, so their contig widths diff
 ## Key studies
 
 Each figure is redrawn when its study is rerun, and stamped `data <hash> · code <sha>`.
-`key_studies/546_population.png` gives way to `pop_combined.png` with #729's rerun.
+The population study's figures are not here: its data is in `docs/studies/`, its three-panel
+figure in `docs/plots/studies/`, and `pop_combined.pdf` joins this directory with #729's rerun.
 
 | File | Question | Source | Regenerate |
 | --- | --- | --- | --- |

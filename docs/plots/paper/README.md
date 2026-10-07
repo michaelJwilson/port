@@ -4,32 +4,29 @@
 0.9335, exact altered (phase-free)
 0.8992 (phased 0.1473), from one
 `run_cnaster_port --sal --png-copies` run on `sim/manifests/dev_tree_1s_easy.toml` r0 at
-code `8bed5a1`: 127 s wall, 3.42 GB peak.
-Ledger `run_id` `8bed5a1-dev_tree_1s_easy_r0_7ba9b01f-2114` (`docs/metrics/`, fixture `dev_tree_1s_easy_r0_7ba9b01f`).
+code `9a684c7`: 106 s wall, 3.42 GB peak.
+Ledger `run_id` `9a684c7-dev_tree_1s_easy_r0-0009` (`docs/metrics/`, fixture `dev_tree_1s_easy_r0` `7ba9b01f`).
 
-Regenerate from a clean tree, so the stamp carries no `+`; it draws r0 into
+Regenerate from a clean tree, so the commit above carries no `+`; it draws r0 into
 `.cache/paper_figures/` where `--draw` is not given, and refuses any r0 not
 hashing to `7ba9b01f`:
 
     run_study --paper-figures --fixture dev_tree_1s_easy --out docs/plots/paper
 
-`--truth-only` writes `truth/` alone, with no run. Every figure is stamped
-`dev_tree_1s_easy 7ba9b01f · code <sha>`. `run/spatial.png` and `run/combined.png`
+`--truth-only` writes `truth/` alone, with no run. The figures carry no stamp
+(#743): every figure here but `solver_combined.png` is `dev_tree_1s_easy` r0 `7ba9b01f` at
+code `9a684c7`, as above. `run/spatial.png` and `run/combined.png`
 draw panel (a) on a slide mocked from the planted labels (`port.sim.he_slide`):
 the fixture has no H&E image, and the run never reads the mock.
 `truth/phase.png` is flat: this r0 plants 0 phase switches.
-Every figure here predates T- #733 and T- #740: drawn on `llncs`'s 4.80 by
-7.60 in block at 7 pt, they are included at 1.35x on the paper's 6.48 by
-8.18 in block, and `truth/truth_combined.png` and `run/combined.png` leave no
-room for a caption, until regenerated at 6.48 in, 10 pt, and 8.18 in less
-`CAPTION_ROOM` (1.5 in).
 `solver_combined.png` is not drawn from this fixture: `--solvers POTTS.record COPY.record`
 draws it from a `port.studies.potts_stream` and a `port.studies.copy_state_stream` record,
-and its stamp names both records' data hashes.
+and `solver_combined.md` beside it names both records, their data hashes and their settings.
 The genomic panels of `truth/truth_combined.png`, `truth/clones_genomic.png`,
 `truth/clone_profiles.png`, `run/genomic.png`, `run/combined.png` and
 `compare/copy_genomic_truth_vs_fit.png` draw every altered bin at 2x its extent
-(`port.extensions.genomic_axis`, T- #683), and their stamps end `· axis: altered` and the scale used.
+(`port.extensions.genomic_axis`, T- #683): each on its own segmentation, the planted
+intervals in `truth/` and the fitted ones in `run/`, so their contig widths differ.
 
 | File | Question | Source |
 | --- | --- | --- |
@@ -57,9 +54,9 @@ The genomic panels of `truth/truth_combined.png`, `truth/clones_genomic.png`,
 ## Key studies
 
 Each figure is redrawn when its study is rerun, and stamped `data <hash> · code <sha>`.
+The population study's figures are not here: its data is in `docs/studies/`, its three-panel
+figure in `docs/plots/studies/`, and `pop_combined.pdf` joins this directory with #729's rerun.
 
 | File | Question | Source | Regenerate |
 | --- | --- | --- | --- |
-| `key_studies/557_copy-states.png` | Which copy-state start, polished by `--sal` Baum-Welch, recovers the planted states at known clones? | `port.studies.copy_state_plot` (#540, PR #557) | `run_study --copy-state-stream sim/manifests/baseline/dev_tree_1s_hard.toml OUT --problems 10 --seeds 10 --held-out 3 --settings python/port/studies/copy_sampler_settings.json` |
 | `key_studies/554_clone-starts.png` | Does the clone-label start or the Potts solver decide the clones, and what does each start reach? | `docs/nb/clone_label_study.ipynb` via `port.studies.clone_label_notebook` (#541, PR #554) | `run_study --clone-labels capture SAMPLE CAPTURE.npz`, `... run CAPTURE.npz OUT.pkl`, `run_study --clone-label-notebook OUT.pkl` |
-| `key_studies/546_population.png` | At J = 1, how many UMIs does a clone need to be detected, how long must a CNA be to be recovered, and how often is a true-(1,1) segment called altered? | `port.studies.population_report.figures` (#544, PR #546) | `run_study --population run --seeds 0:200 --J 1 --out DIR`, then `... run --seeds 1000:1260 --J 1 --manifest sim/manifests/population_long.toml --out DIR`, then `... report --out DIR --study2-J 1` |

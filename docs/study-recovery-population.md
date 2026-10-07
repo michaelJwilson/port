@@ -21,8 +21,9 @@ rerun, so panel (a) of the rerun's figure is J = 1 alone, over the 193 base memb
 - **Per member** on the 433 that ran in both: 173 have identical clone scores. Spot-weighted clone completeness
   has median 0.744 → 0.759, and 697 clones are detected against 682 of 1,299. 235 members move by more than
   0.001, 101 up and 134 down. Fitted clones exceed planted by 2 in 23 members, against 5.
-- Key figure: `docs/plots/paper/key_studies/546_population.png` (`data 6daefbd0 · code f4a0cc0`). The
-  numbers below are the original's.
+- Figure: `docs/plots/studies/population_recovery.png` (`data 6daefbd0 · code f4a0cc0`); its copy
+  under `docs/plots/paper/key_studies/` is retired (#743), and `docs/plots/paper/pop_combined.pdf`
+  replaces both with #729. The numbers below are the original's.
 
 The figure, sensitivity and false positive rate, is committed as
 `plots/studies/population_recovery.png`; `run_study --population

@@ -528,8 +528,8 @@ PAGE_HEIGHT = page_size("third")[1]
 """Inches: the row of three square panels, a "third" page (`figure_style.page_size`,
 T- #740); 1.75 on `llncs`'s 4.80 in text width before."""
 
-COMBINED = "pop_combined.png"
-"""#729's 2 x 2: (a) clones by UMIs per J, (b) CNAs by `1 - t` per class at
+COMBINED = "pop_combined.pdf"
+"""#729's 2 x 2, the population study's one figure in `docs/plots/paper/` (#743): (a) clones by UMIs per J, (b) CNAs by `1 - t` per class at
 oracle clones, (c) false positives by SNP UMIs, (d) CNAs by length per class."""
 
 COMBINED_HEIGHT = 6.6
@@ -743,7 +743,8 @@ def combined(summary: dict[str, Any], into: Path) -> Path:
         _fpr(c, summary)
         _lengths(d, summary)
         _finish(fig, [a, b, c, d], [a, b, d], None)
-        _save(fig, into / COMBINED)
+        fig.savefig(into / COMBINED, format="pdf", facecolor="white",
+                    metadata={"Creator": None, "Producer": None, "CreationDate": None})  # fmt: skip
         plt.close(fig)
     return into / COMBINED
 
