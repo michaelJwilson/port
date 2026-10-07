@@ -89,10 +89,13 @@ def draws(
 ) -> tuple[np.ndarray, float]:  # fmt: skip
     """`n` labellings of `sampler` (`SAMPLERS`) on `(graph, field)` at temperature 1, after `burn_in`,
     one per `thin` sweeps, and the mean cluster a move flipped (`sal.sample_potts`)."""
+    from sal.backend import Backend
     from sal.sample.potts_mcmc import PottsMove, sample_potts
 
+    # NB the cluster pass compiled: 1.3 ms per Swendsen-Wang sweep against Python's 12.1 at 3,000
+    #    spots and 4 states; both leave the same law invariant (#751)
     chain_ = sample_potts(graph, field, PottsMove(SAMPLERS[sampler]), rng, n_sweeps=n,
-                          burn_in=burn_in, thin=thin)  # fmt: skip
+                          burn_in=burn_in, thin=thin, cluster_backend=Backend.RUST)  # fmt: skip
     return np.asarray(chain_.states, dtype=np.int64), float(chain_.mean_cluster_size)
 
 
@@ -166,6 +169,8 @@ def member(
                     max_sweeps,
                 )
                 chains.append({"J": float(coupling), **record})
+                print(f"s{seed:04d} J={coupling:.1f} {sampler}: tau {record['tau']:.1f}, "
+                      f"burn {record['burn']}, thin {record['thin']}, {record['seconds']} s", flush=True)  # fmt: skip
         planted = int(np.unique(found.planted).size)
         return {
             "seed": seed,
