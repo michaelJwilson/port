@@ -27,12 +27,10 @@ STUDIES = (
     "copy_state_plot",
     "copy_state_stream",
     "field_strength",
-    "hmm_starts",
     "metrics_history",
     "paper_figures",
     "population",
     "potts_plot",
-    "potts_solvers",
     "potts_stream",
     "recoloured_clones",
 )

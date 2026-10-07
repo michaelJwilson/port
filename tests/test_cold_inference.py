@@ -74,16 +74,21 @@ def test_the_priority_queue_solver_finds_the_planted_labelling(
     field = _field(planted)
     assignment = (planted.labels + 1) % planted.n_clones
 
+    found = assignment.copy()
     icm_sweep_pqueue(
         field,
         indptr,
         indices,
         weights,
-        assignment.copy(),
+        found,
         SPATIAL_WEIGHT,
         np.exp(field - field.max(axis=1, keepdims=True)),
         min_clone_spots=0,
     )
+    # NB from wrong at every spot to the planted labelling at every spot; before
+    #    #749 WP2 the result was discarded and nothing was asserted
+    assert np.array_equal(assignment == planted.labels, np.zeros(planted.n_spots, bool))
+    assert np.array_equal(found, planted.labels)
 
 
 @pytest.mark.snapshot
@@ -122,7 +127,8 @@ def test_the_merge_step_names_the_pair_it_would_join(
         SPATIAL_WEIGHT,
     )
 
-    assert result is not None
+    # NB `(cost, cost of the best merge, the pair)`: two clones, one pair (#749 WP2)
+    assert result[2] == (0, 1)
 
 
 @pytest.mark.oracle
