@@ -34,6 +34,7 @@ STUDIES = (
     "potts_plot",
     "potts_solvers",
     "potts_stream",
+    "recoloured_clones",
 )
 """The `port.studies` modules a flag runs; the rest are their parts."""
 

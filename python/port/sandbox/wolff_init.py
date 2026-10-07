@@ -45,7 +45,8 @@ from typing import Any
 
 import numpy as np
 import scipy.sparse as sp
-from scipy.sparse.csgraph import connected_components
+
+from port.extensions.recolour import recolour
 
 __all__ = [
     "MAX_CLONES",
@@ -67,19 +68,6 @@ class Floors:
 
     spots: int
     umis: float
-
-
-def recolour(labels: np.ndarray, adjacency: sp.csr_matrix) -> np.ndarray:
-    """Each connected patch of one label, as its own label `0..k-1`."""
-    upper = sp.triu(adjacency, k=1).tocoo()
-    same = labels[upper.row] == labels[upper.col]
-    bonds = sp.coo_matrix(
-        (np.ones(int(same.sum())), (upper.row[same], upper.col[same])),
-        shape=adjacency.shape,
-    )
-    _, patches = connected_components(bonds, directed=False)
-    patches_: np.ndarray = patches.astype(np.int64)
-    return patches_
 
 
 def _under(patches: np.ndarray, umis: np.ndarray, floors: Floors) -> np.ndarray:

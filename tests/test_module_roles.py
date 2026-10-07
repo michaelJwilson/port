@@ -61,6 +61,7 @@ ROLES: dict[str, Role] = {
     "port.extensions.adjacency": "extension",
     "port.extensions.combined_figure": "tool",
     "port.extensions.config_audit": "extension",
+    "port.extensions.recolour": "tool",
     "port.extensions.copy_errors": "extension",
     "port.extensions.copy_starts": "extension",
     "port.extensions.copy_likelihood": "extension",
@@ -110,6 +111,7 @@ ROLES: dict[str, Role] = {
     "port.studies.potts_solvers": "tool",
     "port.studies.potts_stream": "tool",
     "port.studies.records": "tool",
+    "port.studies.recoloured_clones": "tool",
     "port.studies.stage": "tool",
     "port.studies.stream": "tool",
     # patch: rows

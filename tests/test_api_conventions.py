@@ -71,6 +71,8 @@ KNOWN: dict[str, str] = {
     "port.studies.copy_start_arms:Job field seed": "G5",
     "port.studies.population:run_member arg seed": "G5",
     "port.studies.population:draw_member arg seed": "G5",
+    "port.studies.population:stay_member arg seed": "G5",
+    "port.studies.recoloured_clones:member arg seed": "G5",
     "port.studies.population_report:summarize arg seed": "G5",
 }
 """Departures found by #401's audit, keyed `module:name kind word`."""
