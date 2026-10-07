@@ -526,6 +526,15 @@ def resolve(
     return GenomicAxis.of_table(table, every=axis.every)
 
 
+STAGGERED = {"19": 0, "20": 1, "21": 0, "22": 1}
+"""The first row each short contig's name may take: 19 to 22 zigzag on every page,
+whatever their width (#745); any other name takes the first row where it clears."""
+
+
+DROPPED = {"20": 1.0, "22": 1.0}
+"""Points the second-row names 20 and 22 sit lower still, clear of 19 and 21 (#745)."""
+
+
 def name_contigs(
     ax: Any,
     starts: Sequence[float],
@@ -534,14 +543,18 @@ def name_contigs(
     size: float,
     below: float = 0.0,
 ) -> float:
-    """Every contig's name, once, centred under it, and no two overlapping.
+    """Every contig's name, once, at the start of it, and no two overlapping.
 
     A contig runs from its start to the next one's, the last to the axis's
     right limit; one with no width is not named. Each name is cut to its
-    number, "chr" dropped (`chr21` is "21"), and set on the first row under
+    number, "chr" dropped (`chr21` is "21"), left-aligned a point in from the
+    contig's start, and set on the first row under
     the axis where it clears the name before it by `CONTIG_PAD`: adjacent
     short contigs stagger onto a second row, and a third where two do not
-    clear, so no name is dropped and none is shrunk below `size` points. One "chr", right of
+    clear, so no name is dropped and none is shrunk below `size` points;
+    19 to 22 always zigzag (`STAGGERED`).
+    Each row after the first sits half a line under the one before (#743),
+    so a staggered run reads as one zigzag line rather than two. One "chr", right of
     nothing and left of the axis, names the rows. The rows start `below`
     points under the ticks: room for Mb labels where the axis draws them.
 
@@ -567,38 +580,55 @@ def name_contigs(
     for (x0, x1), name in zip(itertools.pairwise(edges), names, strict=True):
         if x1 <= x0:
             continue
+        # NB at the contig's start, a point in from its boundary (#745)
         text = ax.text(
-            (x0 + x1) / 2.0,
+            x0,
             0.0,
             str(name).removeprefix("chr"),
-            ha="center",
+            ha="left",
             va="top",
             fontsize=size,
             gid="contig",
             clip_on=False,
         )
         box = text.get_window_extent(renderer)
+        # NB 19-22 zigzag at every width: 19 and 21 on the first row, 20 and 22 under (#745)
+        first = STAGGERED.get(str(name).removeprefix("chr"), 0)
+        rights.extend([-np.inf] * (first - len(rights)))
         row = next(
-            (k for k, right in enumerate(rights) if box.x0 >= right), len(rights)
+            (k for k in range(first, len(rights)) if box.x0 >= rights[k]), len(rights)
         )
         if row == len(rights):
             rights.append(-np.inf)
         rights[row] = box.x1 + CONTIG_PAD * dpi / 72.0
+        drop = DROPPED.get(str(name).removeprefix("chr"), 0.0)
         text.set_transform(
-            offset_copy(blended, figure, 0.0, -(top + row * line), units="points")
+            offset_copy(
+                blended, figure, 1.0, -(top + row * line / 2.0 + drop), units="points"
+            )
         )
 
+    # NB "chr" left-aligned with the axis's y label (the BAF label on a track
+    #    page), or right of nothing and left of the axis where it has none (#745)
+    label = ax.yaxis.label
+    if label.get_text():
+        left = label.get_window_extent(renderer).x0
+        at, x_shift, align = (
+            ax.transAxes.inverted().transform((left, 0.0))[0],
+            0.0,
+            "left",
+        )
+    else:
+        at, x_shift, align = 0.0, -CONTIG_PAD - 1.0, "right"
     ax.text(
-        0.0,
+        at,
         0.0,
         "chr",
-        ha="right",
+        ha=align,
         va="top",
         fontsize=size,
         gid="contig-axis",
         clip_on=False,
-        transform=offset_copy(
-            ax.transAxes, figure, -CONTIG_PAD - 1.0, -top, units="points"
-        ),
+        transform=offset_copy(ax.transAxes, figure, x_shift, -top, units="points"),
     )
-    return (top + max(len(rights), 1) * line) / 72.0
+    return (top + (1.0 + (max(len(rights), 1) - 1) / 2.0) * line) / 72.0

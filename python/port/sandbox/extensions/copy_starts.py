@@ -7,8 +7,9 @@ Measurement: #540's study at the planted clones of dev_tree 60 x 50 r0 (`3381575
   the best BAF-only fit, `rdr-quantiles` 25.3 from the BAF + RDR call and
   118.7 without it, `cna-mixture++` refused by `cnaster`.
 Exit: graduate a start to `extensions/` if it beats `kmeans++x5+em`'s clone
-  and copy ARIs on dev_tree, easy and hard under `--sal`; else it stays the
-  study's comparison, for #541.
+  and copy ARIs on dev_tree, easy and hard under `--sal`; else it retires
+  with its readers, `port.studies.copy_state_stream` and `copy_start_arms`
+  (#541, which it was kept for, is closed).
 
 Set aside by #547: `port.extensions.copy_starts` runs `sal`'s mixture
 starts (`kmeans++x5+em`, `--sal`'s) and the lattice. What else #540's study

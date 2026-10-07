@@ -15,6 +15,7 @@ decoded arrays, which every scorer reads.
 from __future__ import annotations
 
 import numpy as np
+import pandas as pd
 from scipy.optimize import linear_sum_assignment
 
 __all__ = [
@@ -31,6 +32,7 @@ __all__ = [
     "overlap",
     "phase_free",
     "planted_classes",
+    "shared_ari",
     "swapped",
 ]
 
@@ -113,6 +115,18 @@ def class_ari(t: np.ndarray, ab: np.ndarray, where: np.ndarray) -> float:
     if np.unique(t[where]).size < 2:
         return float("nan")
     return round(float(adjusted_rand_score(t[where], ab[where])), 4)
+
+
+def shared_ari(planted: pd.Series, fitted: pd.Series) -> tuple[float, int]:
+    """Clone ARI over the barcodes both series index, and how many there are.
+
+    A run drops spots its filters reject, so the planted labels are read at
+    the barcodes the fit kept rather than by position.
+    """
+    from sklearn.metrics import adjusted_rand_score
+
+    common = fitted.index.intersection(planted.index)
+    return float(adjusted_rand_score(planted[common], fitted[common])), len(common)
 
 
 def exact_by_class(
