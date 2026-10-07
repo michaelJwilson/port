@@ -25,31 +25,7 @@ from port.patch.icm.alpha_expansion import (
 )
 from port.patch.icm.interface import CsrGraph
 
-from tests.adapters import lattice_adjacency
-
-
-def _lattice(
-    side: int, n_states: int, seed: int, beta: float
-) -> tuple[np.ndarray, CsrGraph, np.ndarray, float]:
-    """A field with a planted blocky labelling, plus a 4-neighbour lattice."""
-    rng = np.random.default_rng(seed)
-    n = side * side
-
-    blocks = np.zeros((side, side), dtype=np.int64)
-    blocks[: side // 2, : side // 2] = 1 % n_states
-    blocks[side // 2 :, : side // 2] = 2 % n_states
-    blocks[: side // 2, side // 2 :] = 3 % n_states
-    planted = blocks.ravel()
-
-    # NB a weak, noisy field: strong enough to carry signal, weak enough that
-    #    the coupling decides the boundaries -- which is where a single-site
-    #    descent gets stuck and an expansion move does not.
-    field = rng.normal(0.0, 1.0, size=(n, n_states))
-    field[np.arange(n), planted] += 0.6
-
-    graph = CsrGraph.from_matrix(lattice_adjacency((side, side)).sorted_indices())
-
-    return field, graph, planted, beta
+from tests.fixtures import planted_blocky_field
 
 
 @pytest.mark.oracle
@@ -61,7 +37,7 @@ def test_alpha_expansion_reaches_a_lower_energy_than_single_site_descent() -> No
     field is too strong for the coupling to matter and the fixture, not the
     algorithm, is what needs fixing.
     """
-    field, graph, _, beta = _lattice(12, 4, seed=3, beta=1.5)
+    field, graph, _, beta = planted_blocky_field(12, 4, seed=3, beta=1.5)
 
     greedy = np.zeros(field.shape[0], dtype=np.int64)
     greedy[:] = np.argmax(field, axis=1)  # the data optimum: ICM's fixed point
@@ -81,7 +57,7 @@ def test_alpha_expansion_reaches_a_lower_energy_than_single_site_descent() -> No
 @pytest.mark.oracle
 def test_the_energy_is_monotone_and_the_labelling_is_the_one_scored() -> None:
     """Upstream's two invariants, asserted here because the patch relies on them."""
-    field, graph, _, beta = _lattice(10, 3, seed=11, beta=2.0)
+    field, graph, _, beta = planted_blocky_field(10, 3, seed=11, beta=2.0)
 
     start = np.argmax(field, axis=1).astype(np.int64)
     before = potts_energy(field, graph, start, beta)
@@ -102,7 +78,7 @@ def test_each_undirected_edge_is_counted_once() -> None:
     without saying so, which would look like a tuning difference rather than
     a bug.
     """
-    field, graph, _, beta = _lattice(4, 2, seed=1, beta=1.0)
+    field, graph, _, beta = planted_blocky_field(4, 2, seed=1, beta=1.0)
     potts = potts_graph_from(graph, beta)
 
     assert len(potts.edges) == len(graph.indices) // 2
@@ -116,7 +92,7 @@ def test_each_undirected_edge_is_counted_once() -> None:
 @pytest.mark.patch
 def test_a_negative_coupling_is_refused_rather_than_clipped() -> None:
     """The bound requires a metric. Silently clipping would forfeit it."""
-    field, graph, _, _ = _lattice(4, 2, seed=1, beta=1.0)
+    field, graph, _, _ = planted_blocky_field(4, 2, seed=1, beta=1.0)
 
     with pytest.raises(ValueError, match="metric"):
         potts_graph_from(graph, spatial_weight=-1.0)
@@ -132,7 +108,7 @@ def test_the_icm_only_knobs_are_accepted_and_ignored() -> None:
     the argument keeps the two solvers interchangeable at the call site;
     ignoring it is what this pins, so nobody reads the signature as a promise.
     """
-    field, graph, _, beta = _lattice(8, 3, seed=5, beta=1.0)
+    field, graph, _, beta = planted_blocky_field(8, 3, seed=5, beta=1.0)
 
     first = np.argmax(field, axis=1).astype(np.int64)
     second = first.copy()
@@ -189,7 +165,7 @@ def test_the_energy_is_minus_cnasters_objective_up_to_a_constant() -> None:
     `beta * sum(w)`, which is the same for every labelling and so cannot
     change an ordering.
     """
-    field, graph, planted, beta = _lattice(8, 3, seed=5, beta=1.25)
+    field, graph, planted, beta = planted_blocky_field(8, 3, seed=5, beta=1.25)
     first, second, coupling = potts_graph_from(graph, beta).endpoints
 
     for labels in (planted, np.argmax(field, axis=1).astype(np.int64)):
@@ -204,12 +180,12 @@ def test_the_energy_is_minus_cnasters_objective_up_to_a_constant() -> None:
 def _forbidding(
     side: int, n_states: int, seed: int, scale: float
 ) -> tuple[np.ndarray, CsrGraph, np.ndarray, float]:
-    """`_lattice` with two allowed labels per site and `-inf` on the rest.
+    """`planted_blocky_field` with two allowed labels per site and `-inf` on the rest.
 
     `cnaster`'s field marks a label a spot may not take with `-inf`; `scale`
     sets the field's magnitude against the unit coupling (#366).
     """
-    field, graph, _, beta = _lattice(side, n_states, seed, beta=1.0)
+    field, graph, _, beta = planted_blocky_field(side, n_states, seed, beta=1.0)
     rng = np.random.default_rng(seed)
     allowed = np.zeros(field.shape, dtype=bool)
 

@@ -18,6 +18,8 @@ import pandas as pd
 import pytest
 import yaml
 
+from tests.fixtures import END_TO_END_LATTICE
+
 
 @pytest.fixture(scope="module")
 def removed(tmp_path_factory: pytest.TempPathFactory) -> dict[str, Any]:
@@ -29,14 +31,12 @@ def removed(tmp_path_factory: pytest.TempPathFactory) -> dict[str, Any]:
     from port.sim.truth import core_inference_truth
     from port.sim.unsegment import unsegment
 
-    from tests.test_run_cnaster_stages import LATTICE
-
     mpl.use("Agg")
     root = tmp_path_factory.mktemp("removed")
     truth = core_inference_truth(
         n_clones=2,
         n_states=3,
-        lattice=LATTICE,
+        lattice=END_TO_END_LATTICE,
         n_obs=40,
         n_segments=3,
         seed=11,
