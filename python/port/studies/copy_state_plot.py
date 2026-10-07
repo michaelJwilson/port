@@ -90,8 +90,13 @@ def degenerate_counts(record: dict[str, Any]) -> dict[str, int]:
     return {str(k): int(v) for k, v in rows[flagged].groupby("start").size().items()}
 
 
-def frame(record: dict[str, Any]) -> tuple[pd.DataFrame, np.ndarray]:
+def frame(
+    record: dict[str, Any], reference: dict[int, float] | None = None
+) -> tuple[pd.DataFrame, np.ndarray]:
     """The runs with their gaps to the realization's best non-degenerate run, and the truth's gaps.
+
+    `reference`, per realization, raises that best: two records drawn
+    against one another (#748) share it (`shared_best`).
 
     A degenerate run scores rows at probability 1 through `cnaster`'s negative
     binomial (`known_copy.degenerate`, before #730); as the best it would set every gap by
@@ -109,7 +114,9 @@ def frame(record: dict[str, Any]) -> tuple[pd.DataFrame, np.ndarray]:
     problems = record["problems"]
     best = rows.groupby("problem").llf.max().to_dict()
     for i in best:
-        best[i] = max(best[i], problems[i]["truth_llf"])
+        best[i] = max(
+            best[i], problems[i]["truth_llf"], (reference or {}).get(i, -np.inf)
+        )
     top = rows.problem.map(best)
     n_rows = rows.problem.map({i: p["n_rows"] for i, p in problems.items()})
     rows = rows.assign(y=(top - rows.start_llf).clip(lower=FLOOR), by=(top - rows.llf).clip(lower=FLOOR),
@@ -119,6 +126,20 @@ def frame(record: dict[str, Any]) -> tuple[pd.DataFrame, np.ndarray]:
         [max(best[i] - problems[i]["truth_llf"], FLOOR) for i in record["done"]]
     )
     return rows, truth
+
+
+def shared_best(*recorded: dict[str, Any]) -> dict[int, float]:
+    """Per realization, the best log-likelihood any run or truth reached across `recorded`: a shared `reference`."""
+    found: dict[int, float] = {}
+    for record in recorded:
+        rows, _ = frame(record)
+        for i, value in rows.groupby("problem").llf.max().items():
+            found[int(i)] = max(
+                found.get(int(i), -np.inf),
+                float(value),
+                record["problems"][i]["truth_llf"],
+            )
+    return found
 
 
 def _table(
@@ -230,17 +251,18 @@ def draw(
     record: dict[str, Any],
     key: bool = False,
     key_style: dict[str, Any] | None = None,
+    reference: dict[int, float] | None = None,
 ) -> pd.DataFrame:
     """The gap panel on `ax`: each start's runs against runtime, numbered as in `TABLE`; returns the runs drawn.
 
     `key` draws, for a figure with no table beside it (`solver_combined`, T- #660),
     a key below the axes instead of the legend: the stages' markers, then each
     start unnumbered with its missed % after Baum-Welch, `port`'s marked and
-    named in a footnote.
+    named in a footnote. `reference` is `frame`'s.
     """
     from matplotlib.ticker import FixedLocator, FuncFormatter
 
-    d, truth = frame(record)
+    d, truth = frame(record, reference)
     # NB every realization with rows counts, reused ones included; one still running is also named in progress
     n_problems = int(d.problem.nunique())
     n_partial = len(set(d.problem) - set(record.get("complete", record["done"])))

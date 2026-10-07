@@ -145,22 +145,44 @@ def seed_states(
     )
 
 
-def scored(
-    stage: Any, log_mu: Any, p_binom: Any, truth: np.ndarray, *, polish: bool
+def _fitted(
+    stage: Any, log_mu: Any, p_binom: Any, truth: np.ndarray, **replaced: Any
 ) -> dict[str, Any]:
-    """The run's Baum-Welch call at `stage` from `(log_mu, p_binom)`: fitted, or with `polish` false scored at them (`max_iter = 0`)."""
+    """The run's Baum-Welch call at `stage` from `(log_mu, p_binom)`, with `replaced` arguments."""
     shape = np.shape(stage.arguments["init_log_mu"])
     log_mu = np.asarray(log_mu, dtype=np.float64).reshape(shape)
     p_binom = np.clip(np.asarray(p_binom, dtype=np.float64), 1e-4, 1 - 1e-4).reshape(
         shape
     )
     opened = time.perf_counter()
-    result = stage.run(
-        init_log_mu=log_mu, init_p_binom=p_binom, **({} if polish else {"max_iter": 0})
-    )
+    result = stage.run(init_log_mu=log_mu, init_p_binom=p_binom, **replaced)
     label = np.asarray(result.profile.pred_cnv, dtype=np.int64).ravel()
     return {"seconds": time.perf_counter() - opened, "llf": float(result.llf), "missed": stage_module().missed(label, truth),
             "log_mu": np.ravel(result.params.new_log_mu), "p_binom": np.ravel(result.params.new_p_binom)}  # fmt: skip
+
+
+def log_likelihood_at(
+    stage: Any, log_mu: Any, p_binom: Any, truth: np.ndarray
+) -> dict[str, Any]:
+    """The run's log-likelihood at `(log_mu, p_binom)`: its Baum-Welch call with `max_iter = 0`, and the rows missed."""
+    return _fitted(stage, log_mu, p_binom, truth, max_iter=0)
+
+
+def polish_from(
+    stage: Any, log_mu: Any, p_binom: Any, truth: np.ndarray, *, method: str = "em"
+) -> dict[str, Any]:
+    """The run's Baum-Welch call fitted from `(log_mu, p_binom)` by `method` (`port.studies.forward_polish`).
+
+    `"em"` is the run's own fit; `"forward"` the same call with its EM swapped
+    for L-BFGS on the forward log-likelihood (#748). Adds what the fit spent:
+    `passes` (value-and-gradient), `lattices` (forward-backward), `iterations`, `rounds`.
+    """
+    from port.studies.forward_polish import polished
+
+    with polished(stage, method) as counts:
+        fitted = _fitted(stage, log_mu, p_binom, truth)
+    return {**fitted, "passes": counts.passes, "lattices": counts.lattices,
+            "iterations": counts.iterations, "rounds": counts.rounds}  # fmt: skip
 
 
 def stage_module() -> Any:
@@ -171,24 +193,25 @@ def stage_module() -> Any:
 
 def solve(
     stage: Any, call: Any, realization: int, name: str, seed: int,
-    setting: dict[str, float] | None = None, polish: bool = True,
+    setting: dict[str, float] | None = None, polish: bool = True, method: str = "em",
 ) -> dict[str, Any]:  # fmt: skip
-    """One start, scored by the run's Baum-Welch at its states and, with `polish`, fitted from them; a failure is a row."""
+    """One start, scored by the run's Baum-Welch at its states and, with `polish`, fitted from them by `method`; a failure is a row."""
     try:
         opened = time.perf_counter()
         log_mu, p = seed_states(name, call, np.random.default_rng([seed, 540]), setting)
         seconds = time.perf_counter() - opened
         truth = truth_label(stage)
-        at_start = scored(stage, log_mu, p, truth, polish=False)
+        at_start = log_likelihood_at(stage, log_mu, p, truth)
         if not polish:
             return {"problem": realization, "start": name, "seed": seed, "setting": setting,
                     "seconds": seconds, "start_llf": at_start["llf"]}  # fmt: skip
-        fitted = scored(stage, log_mu, p, truth, polish=True)
+        fitted = polish_from(stage, log_mu, p, truth, method=method)
         return {
             "problem": realization, "start": name, "seed": seed, "setting": setting, "seconds": seconds,
             "start_llf": at_start["llf"], "start_missed": at_start["missed"],
             "bw_seconds": fitted["seconds"], "llf": fitted["llf"], "missed": fitted["missed"],
-            "log_mu": fitted["log_mu"], "p_binom": fitted["p_binom"],
+            "log_mu": fitted["log_mu"], "p_binom": fitted["p_binom"], "method": method,
+            **{k: fitted[k] for k in ("passes", "lattices", "iterations", "rounds")},
         }  # fmt: skip
     except Exception as error:  # noqa: BLE001 -- a failed job is a result
         return {"problem": realization, "start": name, "seed": seed,
@@ -220,25 +243,17 @@ def oracle_states(stage: Any) -> tuple[np.ndarray, np.ndarray]:
     return log_mu, p_binom
 
 
-def describe(stage: Any, realization: int) -> dict[str, Any]:
-    """The realization's references: the planted states, and the run's own initializer, each scored and fitted."""
+def describe(stage: Any, realization: int, method: str = "em") -> dict[str, Any]:
+    """The realization's references: the planted states, and the run's own initializer, each scored and fitted by `method`."""
     truth = truth_label(stage)
     planted = oracle_states(stage)
-    at, fitted = (scored(stage, *planted, truth, polish=f) for f in (False, True))
-    run_at = scored(
-        stage,
-        stage.arguments["init_log_mu"],
-        stage.arguments["init_p_binom"],
-        truth,
-        polish=False,
+    run_start = (stage.arguments["init_log_mu"], stage.arguments["init_p_binom"])
+    at, fitted = (
+        log_likelihood_at(stage, *planted, truth),
+        polish_from(stage, *planted, truth, method=method),
     )
-    run_fit = scored(
-        stage,
-        stage.arguments["init_log_mu"],
-        stage.arguments["init_p_binom"],
-        truth,
-        polish=True,
-    )
+    run_at = log_likelihood_at(stage, *run_start, truth)
+    run_fit = polish_from(stage, *run_start, truth, method=method)
     return {"truth_start_llf": at["llf"], "truth_start_missed": at["missed"],
             "truth_llf": fitted["llf"], "truth_missed": fitted["missed"],
             "run_start_llf": run_at["llf"], "run_llf": run_fit["llf"], "run_missed": run_fit["missed"],
@@ -252,6 +267,7 @@ _WARM: list[str] = []
 
 def member(
     path: str, realization: int, jobs: list[tuple[str, int, dict[str, float] | None]], polish: bool, root: str,
+    method: str = "em",
 ) -> dict[str, Any]:  # fmt: skip
     """`jobs` on one realization, each against the run's Baum-Welch at its planted clones (`port.studies.stage`)."""
     import logging
@@ -269,10 +285,13 @@ def member(
             # NB untimed: a start's first call pays its compilation
             solve(found, call, realization, name, 0, None, polish=False)
             _WARM.append(name)
-        rows = [solve(found, call, realization, *job, polish=polish) for job in jobs]
+        rows = [
+            solve(found, call, realization, *job, polish=polish, method=method)
+            for job in jobs
+        ]
         return {
             "rows": rows,
-            "problem": describe(found, realization) if polish else None,
+            "problem": describe(found, realization, method) if polish else None,
         }
 
     try:
@@ -349,6 +368,7 @@ def run(
     reuse: tuple[Path, ...] = (),
     only: tuple[str, ...] = (),
     drop: tuple[str, ...] = (),
+    method: str = "em",
 ) -> Path:
     """The stream after the `held_out` realizations; returns the record it keeps current.
 
@@ -363,10 +383,11 @@ def run(
 
     logging.disable(logging.INFO)
     out_dir.mkdir(parents=True, exist_ok=True)
+    polish = "" if method == "em" else f"_{method}"
     out = out_dir / (
-        f"copy_{manifest.stem}_r{first}{records.SUFFIX}"
+        f"copy_{manifest.stem}{polish}_r{first}{records.SUFFIX}"
         if first or merge
-        else f"copy_{manifest.stem}{records.SUFFIX}"
+        else f"copy_{manifest.stem}{polish}{records.SUFFIX}"
     )
     names = list(only) if only else list(starts()) if everything else list(STARTS)
     tuned: dict[str, dict[str, float]] = {}
@@ -392,7 +413,8 @@ def run(
 
     def draw() -> None:
         record = {"manifest": str(manifest), "problems": held, "rows": rows, "done": done, "complete": list(done),
-                  "starts": names, "seeds": seeds, "tuned": tuned, "held_out": held_out}  # fmt: skip
+                  "starts": names, "seeds": seeds, "tuned": tuned, "held_out": held_out,
+                  "method": method}  # fmt: skip
         records.write(out, record)
         harness.redraw("copy-state-plot", out, merge)
 
@@ -427,7 +449,7 @@ def run(
             print(f"[{time.perf_counter() - opened:6.0f}s] drew {m.realization} ({m.hash}): reused {len(kept)} runs, "
                   f"{len(todo)} to run", flush=True)  # fmt: skip
             futures[pool.submit(member, str(m.sample.path), m.realization, todo, True,
-                                str(out_dir / ".runs" / f"r{m.realization}"))] = m.realization  # fmt: skip
+                                str(out_dir / ".runs" / f"r{m.realization}"), method)] = m.realization  # fmt: skip
             drain(block=False)
         while futures:
             drain(block=True)
@@ -543,6 +565,12 @@ def main(argv: list[str] | None = None) -> None:
         action="store_true",
         help="every start of the registry, not one per family",
     )
+    parser.add_argument(
+        "--polish",
+        choices=("em", "forward"),
+        default="em",
+        help="the fit from each start: the run's EM, or L-BFGS on the forward log-likelihood (#748)",
+    )
     arguments = parser.parse_args(argv)
     if arguments.tune:
         retune(
@@ -566,4 +594,5 @@ def main(argv: list[str] | None = None) -> None:
         tuple(arguments.reuse),
         tuple(arguments.starts),
         tuple(arguments.drop),
+        arguments.polish,
     )

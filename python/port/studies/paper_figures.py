@@ -3,6 +3,7 @@
     run_study --paper-figures [--fixture dev_tree_1s_easy] [--draw DIR]
         [--out docs/plots/paper] [--truth-only]
     run_study --paper-figures --solvers POTTS.record COPY.record [--out docs/plots/paper]
+    run_study --paper-figures --polishes EM.record FORWARD.record [--out docs/plots/paper]
 
 draws `sim/manifests/<fixture>.toml`'s r0 (or reads it from `--draw`, the
 directory holding `<fixture>/r0`), refuses it unless it hashes to the
@@ -20,7 +21,10 @@ manifest's `r0_hash`, and writes into `OUT`:
   fixture run), at the top level beside the run's pages: the spatial solvers
   (`port.studies.potts_plot`) left of the copy-state starts
   (`port.studies.copy_state_plot`), each keyed below, no table (T- #660), on
-  the text column `combined.png` is drawn on.
+  the text column `combined.png` is drawn on;
+- `solver_combined_forward.png` (`--polishes EM.record FORWARD.record`), figure 18's
+  (b) for both polishes (#748): the copy-state starts fitted by the run's EM, and by
+  L-BFGS on the forward log-likelihood (`port.studies.forward_polish`).
 
 Every figure carries `<fixture> <hash> · code <sha>`, the commit read before
 anything is written, `+` where the tree differs from it. A run is appended to
@@ -576,17 +580,36 @@ def solver_figure(potts: dict[str, Any], copies: dict[str, Any] | None) -> Any:
     `combined_figure.FONT_SIZE`, saved at 300 dpi, so it is included at
     `width=\\linewidth` with nothing scaled.
     """
+    from port.studies import copy_state_plot, potts_plot
+
+    figure, axes, style = _panels(
+        max(len(potts_plot.KEY_NAMES), len(copy_state_plot.KEY_NAMES))
+    )
+    potts_plot.draw(axes["a"], potts, key=True, centre=True, key_style=style)
+    # NB Initial, Polish and Truth mean the same in both panels: keyed once, under (a)
+    if copies is None:
+        # NB (b) drawn empty and saying so, its record still being written (#743)
+        axes["b"].set_xscale("log")
+        axes["b"].set_xlabel("Runtime [s]")
+        axes["b"].text(0.5, 0.5, "copy-state stream running", ha="center", va="center",
+                       transform=axes["b"].transAxes, color="0.5")  # fmt: skip
+    else:
+        copy_state_plot.draw(
+            axes["b"], copies, key=True, key_style={**style, "marks": False}
+        )
+    _finish(figure, axes, Path(potts["manifest"]).stem)
+    return figure
+
+
+def _panels(rows: int) -> tuple[Any, dict[str, Any], dict[str, Any]]:
+    """Figure 18's page: (a) left of (b), each keyed below in `rows` rows, and the key's style."""
     import matplotlib.pyplot as plt
-    from matplotlib.text import Text
 
     from port.extensions.combined_figure import FONT_SIZE
     from port.extensions.figure_style import PAPER_WIDTH
-    from port.studies import copy_state_plot, potts_plot
 
     width = PAPER_WIDTH
     line = FONT_SIZE * 1.5 / 72.0
-    # NB the key's rows under the x label: the longer of the two panels' methods sets the height
-    rows = max(len(potts_plot.KEY_NAMES), len(copy_state_plot.KEY_NAMES))
     above, label, foot = 0.2, 0.4, 0.12
     height = above + SOLVER_PANEL + label + line * (rows + 1) + foot
     figure = plt.figure(figsize=(width, height))
@@ -603,24 +626,20 @@ def solver_figure(potts: dict[str, Any], copies: dict[str, Any] | None) -> Any:
         "top": -label / SOLVER_PANEL,
         "columns": 1,
     }
-    potts_plot.draw(axes["a"], potts, key=True, centre=True, key_style=style)
-    # NB Initial, Polish and Truth mean the same in both panels: keyed once, under (a)
-    if copies is None:
-        # NB (b) drawn empty and saying so, its record still being written (#743)
-        axes["b"].set_xscale("log")
-        axes["b"].set_xlabel("Runtime [s]")
-        axes["b"].text(0.5, 0.5, "copy-state stream running", ha="center", va="center",
-                       transform=axes["b"].transAxes, color="0.5")  # fmt: skip
-    else:
-        copy_state_plot.draw(
-            axes["b"], copies, key=True, key_style={**style, "marks": False}
-        )
+    return figure, axes, style
+
+
+def _finish(figure: Any, axes: dict[str, Any], fixture: str) -> None:
+    """One font size, the keys' titles shortened to their counts, (b)'s y label dropped, and the panel letters."""
+    from matplotlib.text import Text
+
+    from port.extensions.combined_figure import FONT_SIZE
+
     for text in figure.findobj(Text):
         text.set_fontsize(FONT_SIZE)
     # NB each key's title names the fixture; at half the page two titles and two letters
     #    collide, so the fixture moves to `SOLVER_NOTE`, each title keeps its count and starts
     #    at its panel's left edge, the letter before it
-    fixture = Path(potts["manifest"]).stem
     for text in figure.findobj(Text):
         if text.get_text().startswith(f"{fixture}: "):
             text.set_text(text.get_text().removeprefix(f"{fixture}: ").capitalize())
@@ -628,10 +647,97 @@ def solver_figure(potts: dict[str, Any], copies: dict[str, Any] | None) -> Any:
             text.set_horizontalalignment("left")
     axes["b"].set_ylabel("")
     for k, ax in axes.items():
+        panel = ax.get_position().width * figure.get_figwidth()
         ax.tick_params(labelsize=FONT_SIZE, length=2.5, pad=1.5)
         ax.text(-0.27 / panel, 1.01, f"({k})", transform=ax.transAxes, fontsize=FONT_SIZE,
                 ha="left", va="bottom", color=INK)  # fmt: skip
+
+
+POLISHES = "solver_combined_forward.png"
+"""Figure 18's (b) for both polishes (#748): the copy-state starts fitted by the run's EM, (a), and by L-BFGS on the forward log-likelihood, (b)."""
+
+
+def polish_figure(em: dict[str, Any], forward: dict[str, Any]) -> Any:
+    """`POLISHES`: two `copy_state_plot` panels on figure 18's page, their gaps to one best per realization (`copy_state_plot.shared_best`)."""
+    from port.studies import copy_state_plot
+
+    figure, axes, style = _panels(len(copy_state_plot.KEY_NAMES))
+    reference = copy_state_plot.shared_best(em, forward)
+    for k, record in zip("ab", (em, forward), strict=True):
+        # NB Initial, Polish and Truth keyed once, under (a)
+        copy_state_plot.draw(
+            axes[k],
+            record,
+            key=True,
+            key_style={**style, "marks": k == "a"},
+            reference=reference,
+        )
+    low = min(ax.get_ylim()[0] for ax in axes.values())
+    high = max(ax.get_ylim()[1] for ax in axes.values())
+    for ax in axes.values():
+        ax.set_ylim(low, high)
+    _finish(figure, axes, Path(em["manifest"]).stem)
+    for ax, name in zip(axes.values(), POLISH_NAMES, strict=True):
+        for text in ax.texts:
+            if text.get_text().startswith("Median"):
+                text.set_text(
+                    f"{name}: {text.get_text()[0].lower()}{text.get_text()[1:]}"
+                )
     return figure
+
+
+POLISH_NAMES = ("EM", "Forward L-BFGS")
+"""`polish_figure`'s panels, as each key's title names them."""
+
+POLISH_NOTE = "solver_combined_forward.md"
+
+
+def polish_note(records: list[dict[str, Any]], digests: list[str], commit: str) -> str:
+    """`POLISH_NOTE`: what `POLISHES` was drawn from, and what each polish spent per start."""
+    import pandas as pd
+
+    lines = [
+        f"# {POLISHES}",
+        "",
+        f"Drawn at code `{commit}` from two `port.studies.copy_state_stream` records on `{records[0]['manifest']}`,",
+        "one start and seed per row in both, each problem built by `run_cnaster_port --sal` at the planted",
+        "clones (`port.studies.stage`, #730). Each gap is to the best log-likelihood either record reached on",
+        "the realization (`copy_state_plot.shared_best`). The polish is `port.studies.forward_polish` (#748).",
+        "",
+        "| Panel | Polish | Data hash | Problems | Seeds | Median polish [s] | Median passes | Median forward-backward |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- |",
+    ]
+    for k, name, record, digest in zip(
+        "ab", POLISH_NAMES, records, digests, strict=True
+    ):
+        rows = pd.DataFrame([r for r in record["rows"] if "error" not in r])
+        spent = {
+            c: f"{rows[c].median():.0f}" if c in rows else "not recorded"
+            for c in ("passes", "lattices")
+        }
+        lines.append(f"| ({k}) | {name} | `{digest}` | {len(record.get('done', []))} | {record.get('seeds')} "
+                     f"| {rows.bw_seconds.median():.2f} | {spent['passes']} | {spent['lattices']} |")  # fmt: skip
+    return "\n".join([*lines, ""])
+
+
+def polish_figures(em: Path, forward: Path, out: Path, commit: str) -> Path:
+    """`POLISHES` into `out`, and `POLISH_NOTE` beside it."""
+    import matplotlib.pyplot as plt
+
+    from port.extensions.figure_style import figure_font
+    from port.studies import records as stored
+
+    out.mkdir(parents=True, exist_ok=True)
+    records = [stored.read(em), stored.read(forward)]
+    with figure_font():
+        figure = polish_figure(*records)
+        figure.savefig(out / POLISHES, dpi=300, facecolor="white",
+                       metadata={"Software": None})  # fmt: skip
+        plt.close(figure)
+    (out / POLISH_NOTE).write_text(
+        polish_note(records, [stored.digest(r) for r in records], commit)
+    )
+    return out / POLISHES
 
 
 SOLVER_NOTE = "solver_combined.md"
@@ -711,6 +817,14 @@ QUESTIONS: dict[str, tuple[str, str]] = {
     "solver_combined.png": (
         "How far above the best does each spatial solver and each copy-state start end, and how fast?",
         "`solver_figure`: `port.studies.potts_plot.draw`, `port.studies.copy_state_plot.draw`",
+    ),
+    "solver_combined_forward.md": (
+        "What was `solver_combined_forward.png` drawn from, and what did each polish spend?",
+        "`polish_note`: both records' data hashes, median seconds, passes and forward-backward passes",
+    ),
+    "solver_combined_forward.png": (
+        "Does the copy-state starts' ranking survive fitting by L-BFGS on the forward log-likelihood in place of EM?",
+        "`polish_figure`: `port.studies.copy_state_plot.draw` on a `--polish em` and a `--polish forward` record (#748)",
     ),
 }
 """Each committed file under `OUT`: the question it answers, and its source."""
@@ -812,7 +926,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--solvers", nargs=2, type=Path, default=None,
                         metavar=("POTTS.record", "COPY.record"),
                         help="figure 18 alone, from a potts_stream and a copy_state_stream record")  # fmt: skip
+    parser.add_argument("--polishes", nargs=2, type=Path, default=None,
+                        metavar=("EM.record", "FORWARD.record"),
+                        help=f"{POLISHES} alone, from copy_state_stream records with --polish em and forward")  # fmt: skip
     arguments = parser.parse_args(argv)
+    if arguments.polishes is not None:
+        em, forward = arguments.polishes
+        print(polish_figures(em, forward, arguments.out, provenance.commit()))
+        return 0
     if arguments.solvers is not None:
         potts, copies = arguments.solvers
         # NB "-" for COPY.record draws (b) empty, while its stream runs (#743)

@@ -99,6 +99,7 @@ ROLES: dict[str, Role] = {
     "port.studies.copy_starts": "tool",
     "port.studies.copy_state_plot": "tool",
     "port.studies.copy_state_stream": "tool",
+    "port.studies.forward_polish": "tool",
     "port.studies.field_strength": "tool",
     "port.studies.figures": "tool",
     "port.studies.hmm_starts": "tool",

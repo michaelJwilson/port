@@ -74,7 +74,7 @@ def test_the_stage_is_the_runs_baum_welch_at_the_planted_clones(
     the run's own initializer (85 against 5,258 of 7,332 on r3).
     """
     from port.studies import stage
-    from port.studies.copy_state_stream import oracle_states, scored, truth_label
+    from port.studies.copy_state_stream import oracle_states, polish_from, truth_label
 
     # NB a manifest names what it extends relative to the repository, as the run reads it
     monkeypatch.chdir(Path(__file__).resolve().parents[1])
@@ -85,13 +85,12 @@ def test_the_stage_is_the_runs_baum_welch_at_the_planted_clones(
     def study(found: stage.Stage) -> tuple[float, float, int, int]:
         one, two = found.run(), found.run()
         truth = truth_label(found)
-        planted = scored(found, *oracle_states(found), truth, polish=True)
-        own = scored(
+        planted = polish_from(found, *oracle_states(found), truth)
+        own = polish_from(
             found,
             found.arguments["init_log_mu"],
             found.arguments["init_p_binom"],
             truth,
-            polish=True,
         )
         assert found.X.shape[0] == found.planted.shape[0] == found.clone.size
         assert found.n_clones == 4
