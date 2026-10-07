@@ -19,17 +19,12 @@ import pandas as pd
 import pytest
 
 from tests.adapters import drawn
-from tests.fixtures import genomic_plot_instance, integer_copies
-
-
-def _genomic_arguments() -> tuple[tuple[Any, ...], dict[str, Any]]:
-    instance = genomic_plot_instance()
-    keywords = {
-        "res_combine": instance["result"],
-        "df_cnv": integer_copies(instance["rng"], 24, 3),
-    }
-
-    return instance["arguments"], keywords
+from tests.figure_checks import (
+    genomic_plot_arguments,
+    mirror_key_holds,
+    panels_in_order,
+    recorded_combined_calls,
+)
 
 
 @pytest.mark.patch
@@ -41,7 +36,7 @@ def test_a_subfigure_draws_what_the_standalone_page_draws(cnaster_config: None) 
     import matplotlib.pyplot as plt
     from port.patch.plot_genomic import plot_clones_genomic
 
-    arguments, keywords = _genomic_arguments()
+    arguments, keywords = genomic_plot_arguments()
     page = plot_clones_genomic(*arguments, **keywords)
 
     host = plt.figure(figsize=(6.5, 4.0), layout="constrained")
@@ -90,36 +85,13 @@ def test_recording_calls_through_and_restores() -> None:
     ) == before
 
 
-def _recorded(tmp_path: Path, n_clones: int = 3, tall: float = 1.0) -> tuple[Any, Any]:
-    """A run's three recorded calls on the 3 by 3 fixture, its rows `tall`
-    times as far apart as its columns, and its slide."""
-    from cnaster.he import get_he_image
-    from port.extensions.combined_figure import Call, Recorded
-    from port.sim.he_slide import mock_he, write_he_slide
-    from port.sim.truth import clone_bands
-
-    arguments, keywords = _genomic_arguments()
-    n_spots = arguments[1].shape[2]
-    rows, columns = np.unravel_index(np.arange(n_spots), (3, 3))
-    coords = np.column_stack([rows, tall * columns]).astype(float)
-    assignment = pd.Series([f"clone {k % n_clones}" for k in range(n_spots)])
-    write_he_slide(mock_he(clone_bands(3, 3, 3), (3, 3), seed=1), tmp_path)
-    recorded = Recorded(
-        genomic=Call(arguments, keywords),
-        spatial=Call((coords, assignment), {}),
-        profile=Call((keywords["df_cnv"].assign(START=0, END=1),), {}),
-    )
-
-    return recorded, get_he_image(str(tmp_path), pos=None)
-
-
 def _figures(tmp_path: Path) -> tuple[Any, Any]:
     import matplotlib as mpl
 
     mpl.use("Agg")
     from port.extensions.combined_figure import genomic_figure, spatial_figure
 
-    recorded, frame = _recorded(tmp_path)
+    recorded, frame = recorded_combined_calls(tmp_path)
     genomic, spatial = genomic_figure(recorded), spatial_figure(recorded, frame)
 
     for figure in (genomic, spatial):
@@ -226,8 +198,6 @@ def test_the_profile_spans_the_tracks_on_one_left_column(
     head a `LABEL_GAP` over the key; the mirror key as `mirror_key_holds` says
     (PR- #701)."""
     from port.extensions.combined_figure import LABEL_GAP, NAME_INSET
-
-    from tests.test_plot_copy_number_profile_patch import mirror_key_holds
 
     figure, _ = _figures(tmp_path)
     renderer = figure.canvas.get_renderer()
@@ -344,7 +314,7 @@ def test_the_spatial_labels_are_integer_by_default_or_continuous(
     mpl.use("Agg")
     from port.extensions.combined_figure import Call, spatial_figure
 
-    recorded, frame = _recorded(tmp_path)
+    recorded, frame = recorded_combined_calls(tmp_path)
     assert recorded.profile is not None
     df_cnv = recorded.profile.args[0].copy()
 
@@ -382,7 +352,7 @@ def test_the_combined_page_is_the_two_figures_stacked(
     from port.extensions.combined_figure import combined_figure, spatial_figure
     from port.extensions.figure_style import CAPTION_ROOM, PAPER_WIDTH, TEXT_HEIGHT
 
-    recorded, frame = _recorded(tmp_path)
+    recorded, frame = recorded_combined_calls(tmp_path)
     combined = combined_figure(recorded, frame)
     spatial = spatial_figure(recorded, frame)
 
@@ -423,33 +393,6 @@ def test_the_hatch_stripes_are_one_width() -> None:
     assert pytest.approx(2.0649, abs=1e-4) == HATCH_LINEWIDTH
 
 
-def panels_in_order(letters: list[Any], panels: dict[str, list[Any]]) -> list[str]:
-    """`panels`' names top to bottom by their axes' tops, each lettered in
-    turn: the k-th letter from the head reads `(a)`, `(b)`, ... and sits
-    under the panel before its own and over the panel after it."""
-    figure = next(iter(panels.values()))[0].get_figure(root=True)
-    renderer = figure.canvas.get_renderer()
-
-    def extent(axes: list[Any]) -> tuple[float, float]:
-        boxes = [ax.get_window_extent(renderer) for ax in axes]
-        return min(b.y0 for b in boxes), max(b.y1 for b in boxes)
-
-    order = sorted(panels, key=lambda name: -extent(panels[name])[1])
-    boxes = sorted(
-        (t.get_window_extent(renderer) for t in letters), key=lambda b: -b.y1
-    )
-    texts = sorted(letters, key=lambda t: -t.get_window_extent(renderer).y1)
-
-    assert [t.get_text() for t in texts] == [f"({k})" for k in "abc"[: len(order)]]
-    for k, box in enumerate(boxes):
-        middle = (box.y0 + box.y1) / 2
-        if k > 0:
-            assert middle < extent(panels[order[k - 1]])[0]
-        if k + 1 < len(order):
-            assert middle > extent(panels[order[k + 1]])[1]
-    return order
-
-
 @pytest.mark.infra
 @pytest.mark.merge
 def test_the_combined_page_reads_clones_profile_tracks(
@@ -461,7 +404,7 @@ def test_the_combined_page_reads_clones_profile_tracks(
     import matplotlib.pyplot as plt
     from port.extensions.combined_figure import PANELS, combined_figure
 
-    recorded, frame = _recorded(tmp_path)
+    recorded, frame = recorded_combined_calls(tmp_path)
     figure = combined_figure(recorded, frame)
     profile, tracks = figure.subfigs
 
@@ -536,7 +479,7 @@ def test_the_combined_page_s_spatial_panels_are_square_keyed_clear_and_in_order(
         combined_figure,
     )
 
-    recorded, frame = _recorded(tmp_path, tall=3.0)
+    recorded, frame = recorded_combined_calls(tmp_path, tall=3.0)
     figure = combined_figure(recorded, frame)
     figure.canvas.draw()
     renderer = figure.canvas.get_renderer()

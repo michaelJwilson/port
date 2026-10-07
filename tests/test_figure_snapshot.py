@@ -17,6 +17,7 @@ import numpy as np
 import pytest
 
 from tests import TESTS
+from tests.figure_checks import recorded_combined_calls
 
 FROZEN = TESTS / "data" / "figures"
 DPI = 100
@@ -56,9 +57,7 @@ def _drawn(tmp_path: Path) -> dict[str, np.ndarray]:
         spatial_figure,
     )
 
-    from tests.test_combined_figure import _recorded
-
-    recorded, frame = _recorded(tmp_path)
+    recorded, frame = recorded_combined_calls(tmp_path)
     return {
         "genomic": _pixels(genomic_figure(recorded)),
         "spatial": _pixels(spatial_figure(recorded, frame)),

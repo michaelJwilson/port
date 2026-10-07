@@ -37,16 +37,14 @@ from typing import Any, NamedTuple
 import numpy as np
 import pandas as pd
 
-from port.extensions.figure_style import INK, MUTED, axes_style
-
-SERIES = (
-    "#2a78d6", "#eb6834", "#1baf7a", "#eda100",
-    "#e87ba4", "#008300", "#4a3aa7", "#e34948",
-)  # fmt: skip
-"""The categorical order, validated: adjacent CVD dE >= 9.1, normal >= 19.6."""
-
-NEUTRAL = "#b5b3ad"
-"""`normal`, and the `(1, 1)` state."""
+from port.extensions.figure_style import (
+    INK,
+    MUTED,
+    NEUTRAL_COLOUR,
+    SERIES,
+    axes_style,
+)
+from port.sim.files import truth_labels
 
 
 @dataclass
@@ -113,7 +111,7 @@ class Realization:
 
 def read(path: Path) -> Realization:
     """The realization at `path`, its `clones` in `tree_order` (PR- #701)."""
-    truth = pd.read_csv(path / "truth_clone_labels.tsv", sep="\t")
+    truth = truth_labels(path).reset_index()
     names = sorted(set(truth["labels"]) - {"normal"})
     r = Realization(
         path=path,
@@ -141,7 +139,7 @@ def display(clone: str, clones: tuple[str, ...]) -> str:
 def clone_colour(clone: str, clones: tuple[str, ...]) -> str:
     """`normal` grey, then the categorical slots in the clones' order."""
     if clone == "normal":
-        return NEUTRAL
+        return NEUTRAL_COLOUR
     return SERIES[[c for c in clones if c != "normal"].index(clone) % len(SERIES)]
 
 

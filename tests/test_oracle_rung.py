@@ -14,13 +14,12 @@ covariate, which upstream still refuses; the last test pins that refusal so it
 fails the day it lands.
 """
 
-from dataclasses import dataclass
-
 import numpy as np
 import pytest
 from port.sim.truth import CoreInferenceTruth, core_inference_truth
 from sal.ragged import Ragged
 
+from tests.adapters import Stacked, stacked_clones
 from tests.fixtures import circulant_transition
 
 LATTICE_SIDE = 6
@@ -60,36 +59,6 @@ def planted() -> CoreInferenceTruth:
     )
 
 
-@dataclass(frozen=True)
-class Stacked:
-    """The pseudobulk, clone-stacked exactly as `cnaster` stacks it.
-
-    `clone_stack_obs` returns six values positionally; naming them here is what
-    keeps the rung readable, since the batch shape is the whole point of it.
-    """
-
-    X: np.ndarray
-    base_nb_mean: np.ndarray
-    total_bb_RD: np.ndarray
-    lengths: np.ndarray
-    sitewise: np.ndarray
-
-
-def _stacked(truth: CoreInferenceTruth) -> Stacked:
-    """Aggregate to pseudobulk and stack the clones along the genomic axis."""
-    from cnaster.hmrf_utils import clone_stack_obs
-    from cnaster.pseudobulk import merge_pseudobulk_by_index_mix
-
-    counts = np.stack([truth.counts_nb, truth.counts_bb], axis=1)
-    X, base, total, _ = merge_pseudobulk_by_index_mix(
-        counts, truth.base_nb_mean, truth.total_bb_RD, truth.clone_index
-    )
-    stack_X, stack_base, stack_total, lengths, sitewise, _ = clone_stack_obs(
-        X, base, total, truth.lengths, np.zeros((truth.n_obs, 2)), None
-    )
-    return Stacked(stack_X, stack_base, stack_total, lengths, sitewise)
-
-
 def _emission(truth: CoreInferenceTruth, stacked: Stacked) -> np.ndarray:
     """`cnaster`'s per-state score over the stacked batch, `(n_obs, n_states)`."""
     from cnaster.hmm_nophasing import hmm_nophasing
@@ -125,7 +94,7 @@ def test_the_two_recursions_agree_on_the_clone_stacked_batch(
     from sal.likelihood.ragged import posteriors
     from scipy.special import logsumexp
 
-    stacked = _stacked(planted)
+    stacked = stacked_clones(planted)
     lengths = stacked.lengths
     density = _emission(planted, stacked)
 

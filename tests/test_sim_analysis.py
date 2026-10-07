@@ -28,7 +28,8 @@ from port.sim.draw import Drawn, draw
 from port.sim.fixtures import references
 from port.sim.truth_figure import NAME_GAP
 
-from tests.test_sim_draw import _manifest
+from tests.figure_checks import mirror_key_holds, panels_in_order
+from tests.fixtures import draw_manifest
 
 
 @pytest.fixture(scope="module")
@@ -37,7 +38,7 @@ def drawn(tmp_path_factory: pytest.TempPathFactory) -> Drawn:
     if resources is None:
         pytest.skip("CalicoST's GRCh38_resources not found; set $PORT_GRCH38")
     return draw(
-        _manifest("dev_tree"), tmp_path_factory.mktemp("qa"), resources=resources
+        draw_manifest("dev_tree"), tmp_path_factory.mktemp("qa"), resources=resources
     )
 
 
@@ -133,7 +134,7 @@ def test_a_streamed_population_holds_each_statistics_mean_and_sd(
     resources = references()
     if resources is None:
         pytest.skip("CalicoST's GRCh38_resources not found; set $PORT_GRCH38")
-    manifest = _manifest("dev_tree", {"sample": {"realizations": 2}})
+    manifest = draw_manifest("dev_tree", {"sample": {"realizations": 2}})
     written = draw(manifest, tmp_path, resources=resources)
 
     seen = []
@@ -304,7 +305,7 @@ def dense(tmp_path_factory: pytest.TempPathFactory) -> Drawn:
     if resources is None:
         pytest.skip("CalicoST's GRCh38_resources not found; set $PORT_GRCH38")
     return draw(
-        _manifest("dev_tree_1s_dense"),
+        draw_manifest("dev_tree_1s_dense"),
         tmp_path_factory.mktemp("dense"),
         resources=resources,
     )
@@ -628,7 +629,6 @@ def test_the_mirror_key_starts_on_b_s_left_edge_and_is_labelled_on_its_right(
     """(b)'s mirror swatches stacked on the profile axis's left edge (0.5 px),
     `MIRROR` right of them and centred on the white between them (0.5 px),
     clear of the colour bar's title (PR- #715)."""
-    from tests.test_plot_copy_number_profile_patch import mirror_key_holds
 
     figure, _, _ = _panels(read(drawn.path))
     _, profile, _ = figure.subfigs
@@ -643,8 +643,6 @@ def test_truth_combined_reads_clones_profile_tracks(drawn: Drawn) -> None:
     tracks: `PANELS`, the run's combined page's order (PR- #715)."""
     import matplotlib.pyplot as plt
     from port.extensions.combined_figure import PANELS
-
-    from tests.test_combined_figure import panels_in_order
 
     figure, tree_ax, genomic = _panels(read(drawn.path))
     _, profile, _ = figure.subfigs

@@ -64,15 +64,10 @@ def _inputs(extra: tuple[int, int]) -> tuple[np.ndarray, ...]:
 @contextmanager
 def _config(**caps: int) -> Iterator[None]:
     """`cnaster`'s global configuration with an `int_copy_num` section, restored after."""
-    from cnaster import config
+    from port.sim.inputs import written_config
 
-    previous = config._global_config
-    config.set_global_config(config.YAMLConfig({"int_copy_num": dict(caps)}))
-
-    try:
+    with written_config({"int_copy_num": dict(caps)}):
         yield
-    finally:
-        config.set_global_config(previous)
 
 
 def _milp(decoder: Any, extra: tuple[int, int]) -> tuple[list[tuple[int, int]], float]:
