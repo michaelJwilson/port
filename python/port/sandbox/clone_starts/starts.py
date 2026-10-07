@@ -270,6 +270,7 @@ def posterior_draw(
     Hypothesis: a draw at the run's temperature sits in the posterior's bulk
     rather than at a rectangle's edges, so a solver from it starts near the mode.
     """
+    from sal.backend import Backend
     from sal.sample.potts_mcmc import PottsMove, sample_potts
 
     from port.patch.icm.alpha_expansion import potts_graph_from
@@ -279,7 +280,17 @@ def posterior_draw(
         CsrGraph(capture.indptr, capture.indices, capture.weights),
         capture.spatial_weight,
     )
-    chain = sample_potts(graph, field, PottsMove.SWENDSEN_WANG, rng, n_sweeps=50)
+    # NB `sal`'s Python Swendsen-Wang pass, its default before
+    #    michaelJwilson/snakes_and_ladders#1283: the draws
+    #    `docs/nb/clone_label_study.ipynb` records replay at their seeds (T- #781).
+    chain = sample_potts(
+        graph,
+        field,
+        PottsMove.SWENDSEN_WANG,
+        rng,
+        n_sweeps=50,
+        cluster_backend=Backend.PYTHON,
+    )
     draws = np.asarray(chain.states)
     return np.asarray(draws[-1], dtype=np.int64).reshape(-1)
 
