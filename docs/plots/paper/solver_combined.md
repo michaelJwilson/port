@@ -1,6 +1,6 @@
 # solver_combined.png
 
-Drawn at code `4c881ac+` from two records on `sim/manifests/dev_tree_1s_hard.toml`, each problem built by
+Drawn at code `982c7c2` from two records on `sim/manifests/dev_tree_1s_hard.toml`, each problem built by
 `run_cnaster_port --sal` at the planted clones (`port.studies.stage`, #730, #742):
 
 | Panel | Record | Data hash | Problems | Starts | Samplers |
