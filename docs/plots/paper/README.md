@@ -38,6 +38,8 @@ T- #683), each on its own segmentation, so their contig widths differ.
 | `pop_combined.png` | How many UMIs does a clone need, how long must a CNA be, at each stay probability 1 - t, and how often is a true-(1, 1) segment called altered? | `port.studies.population_report.combined` on `docs/studies/population_summary_limited.json` (#745's limited rerun; #746 the full) |
 | `solver_combined.md` | What was `solver_combined.png` drawn from? | `solver_note`: both records' data hashes, their settings and the code |
 | `solver_combined.png` | How far above the best does each spatial solver and each copy-state start end, and how fast? | `solver_figure`: `port.studies.potts_plot.draw`, `port.studies.copy_state_plot.draw` |
+| `solver_combined_forward.md` | What was `solver_combined_forward.png` drawn from, and what did each polish spend? | `polish_note`: both records' data hashes, median seconds, passes and forward-backward passes |
+| `solver_combined_forward.png` | Does the copy-state starts' ranking survive fitting by L-BFGS on the forward log-likelihood in place of EM? | `polish_figure`: `port.studies.copy_state_plot.draw` on a `--polish em` and a `--polish forward` record (#748) |
 
 ## Key studies
 
