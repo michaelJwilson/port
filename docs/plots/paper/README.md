@@ -30,7 +30,10 @@ T- #683), each on its own segmentation, so their contig widths differ.
 
 | File | Question | Source |
 | --- | --- | --- |
-| `truth_combined.png` | What was planted, on one page: tree, (A, B) profile, RDR and BAF per clone? | `port.sim.truth_figure.truth_combined_figure` |
+| `truth_combined.png` | What was planted, on one page: tree, (A, B) profile, RDR and BAF per tumour clone, and the phase switches? | `port.sim.truth_figure.truth_combined_figure` |
+| `truth_combined_multisample.png` | The same, for the fixture's multi-sample counterpart: the same clones and laws on two overlapping slices, phase switch errors on? | `multisample_pages`: `truth_combined_figure` on `MULTISAMPLE[fixture]`'s r0 (`sim/manifests/dev_tree_easy.toml`) |
+| `spatial_multisample.png` | Where is each true clone on each of the counterpart's slices? | `multisample_pages`: `port.sim.analysis.plot_spatial` |
+| `he_multisample.png` | What H&E slide do the counterpart's planted clones stain, slice by slice? | `he_slices_figure`: `port.sim.he_slide.mock_he` per slice |
 | `combined.png` | What did the run fit, genome and array on one page? | `port.extensions.combined_figure.combined_figure` |
 | `pop_combined.png` | How many UMIs does a clone need, how long must a CNA be, at each stay probability 1 - t, and how often is a true-(1, 1) segment called altered? | `port.studies.population_report.combined` on `docs/studies/population_summary_limited.json` (#745's limited rerun; #746 the full) |
 | `solver_combined.md` | What was `solver_combined.png` drawn from? | `solver_note`: both records' data hashes, their settings and the code |
