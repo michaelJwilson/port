@@ -50,6 +50,7 @@ def panel_row(
     figure: Any = None,
     height: float | None = None,
     top: float = 0.0,
+    left: float = 0.0,
 ) -> tuple[Any, list[Any]]:
     """`n_panels` axes in a row, `width` inches across in all (`PAPER_WIDTH` by
     default), each `aspect` (height over width) as tall as it is wide.
@@ -57,7 +58,8 @@ def panel_row(
     On a new page unless `figure` is given, which may be a subfigure; there,
     with `height`, the row is no taller than `height` inches less the title and
     key rooms, narrower if it must be, and left-aligned; `top` inches over the
-    titles are left clear, for a panel letter.
+    titles are left clear, for a panel letter, and the row starts `left` inches
+    in, to share an edge with another panel's axes.
     """
     import matplotlib.pyplot as plt
 
@@ -77,7 +79,12 @@ def panel_row(
     bottom = box_h - top - TITLE_ROOM - tall
     axes = [
         figure.add_axes(
-            (k * (side + PANEL_GAP) / box_w, bottom / box_h, side / box_w, tall / box_h)
+            (
+                (left + k * (side + PANEL_GAP)) / box_w,
+                bottom / box_h,
+                side / box_w,
+                tall / box_h,
+            )
         )
         for k in range(n_panels)
     ]

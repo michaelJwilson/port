@@ -142,7 +142,7 @@ def truth_combined_figure(
     width = PAPER_WIDTH if width is None else width
     symbol = _symbol(r)
     genome = binned_axis(r, metric=metric, labels=False)
-    tall_of = heights(_spatial_row(r, width) if spatial else None)
+    tall_of = heights(_spatial_row(r, width - LEFT - RIGHT) if spatial else None)
     foot = ROWS[0] + (CONTIG_FOOT if spatial else 0.0)
 
     with page_style():
@@ -187,7 +187,7 @@ def truth_combined_figure(
         if spatial:
             tracks: list[list[Any]] = []
             bottom_ax = profile_ax
-            _spatial_panel(genomic_fig, r, width, tall_of["spatial"])
+            # NB drawn once (b)'s edges are fitted, across them (below)
         else:
             g = genomic_truth(r)
             plot_clones_genomic(g.lengths, g.counts, g.expected, g.trials,
@@ -273,6 +273,10 @@ def truth_combined_figure(
         names_foot = name_contigs(bottom_ax, starts, contigs, size=FONT_SIZE)
         if not spatial:
             _stack_tracks(genomic_fig, names_foot, tracks)
+        if spatial:
+            # NB (c)'s row across (b)'s genome axis: one left and one right edge
+            _spatial_panel(genomic_fig, r, LEFT, right, tall_of["spatial"])
+            set_font_size(genomic_fig, FONT_SIZE)
         place_in_inches(tree_ax, LEFT, right)
         figure.canvas.draw()
         _fit_tree(tree_ax)
@@ -296,7 +300,9 @@ def _spatial_row(r: Realization, width: float) -> float:
     return float(row_height(len(frame.slices), frame.aspect, width))
 
 
-def _spatial_panel(panel: Any, r: Realization, width: float, height: float) -> None:
+def _spatial_panel(
+    panel: Any, r: Realization, left: float, right: float, height: float
+) -> None:
     """(c) of the spatial variant: each slice's true clones in the spatial
     pages' format, keyed by the paper's names, the key under the first slice."""
     from port.extensions.spatial_page import panel_row, spatial_key
@@ -306,10 +312,11 @@ def _spatial_panel(panel: Any, r: Realization, width: float, height: float) -> N
     _, axes = panel_row(
         len(frame.slices),
         frame.aspect,
-        width,
+        right - left,
         figure=panel,
         height=height,
         top=LETTER_ROOM,
+        left=left,
     )
     present = draw_spatial(axes, r, size=4.0)
     spatial_key(axes[0], [clone_name(c, r.clones) for c in present],

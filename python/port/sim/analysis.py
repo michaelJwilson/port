@@ -456,7 +456,8 @@ def plot_spatial(r: Realization, out: Path) -> Path:
         spatial_key(axes[0], [clone_name(c, r.clones) for c in present],
                     [clone_colour(c, r.clones) for c in present])  # fmt: skip
         fit_to_content(fig)
-    return _save(fig, out / "spatial.png", tight=False)
+    # NB at the paper pages' 300 dpi, as `he_slices_figure` is written (T- #791)
+    return _save(fig, out / "spatial.png", tight=False, dpi=300)
 
 
 class Tree(NamedTuple):
@@ -977,11 +978,11 @@ def plot_coverage(r: Realization, out: Path) -> Path:
     return _save(fig, out / "coverage.png")
 
 
-def _save(fig: Any, path: Path, *, tight: bool = True) -> Path:
+def _save(fig: Any, path: Path, *, tight: bool = True, dpi: int = 150) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     if tight:
         fig.tight_layout()
-    fig.savefig(path, dpi=150, facecolor="white", metadata={"Software": None})
+    fig.savefig(path, dpi=dpi, facecolor="white", metadata={"Software": None})
     import matplotlib.pyplot as plt
 
     plt.close(fig)

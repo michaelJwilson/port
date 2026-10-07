@@ -149,7 +149,8 @@ def test_the_spatial_and_h_and_e_pages_share_one_format(
     """T- #791: `plot_spatial` and `he_slices_figure` draw each slice in one
     panel of one size, at the same limits, titled by its id alone (no
     "slice"), with the region the slices share dashed at the same place; the
-    spatial variant of `truth_combined` draws the same panels in its (c).
+    spatial variant of `truth_combined` draws the same panels in its (c),
+    across (b)'s genome axis, one left and one right edge (to a pixel).
     """
     import matplotlib.pyplot as plt
     from port.sim import analysis
@@ -159,7 +160,7 @@ def test_the_spatial_and_h_and_e_pages_share_one_format(
     r = read(drawn.path)
     caught: dict[str, Any] = {}
 
-    def keep(fig: Any, path: Path, *, tight: bool = True) -> Path:
+    def keep(fig: Any, path: Path, *, tight: bool = True, dpi: int = 150) -> Path:
         caught[path.name] = fig
         return path
 
@@ -177,6 +178,13 @@ def test_the_spatial_and_h_and_e_pages_share_one_format(
     inset = [(ax.get_xlim(), ax.get_ylim(), ax.get_title(loc="left"))
              for ax in sorted(page.subfigs[2].axes, key=lambda a: a.get_position().x0)]  # fmt: skip
     assert inset == [row[2:5] for row in spatial]
+    # NB (c)'s row across (b)'s genome axis, edge to edge, where its width binds
+    genome = page.subfigs[1].axes[-1].get_window_extent()
+    row = sorted(
+        (ax.get_window_extent() for ax in page.subfigs[2].axes), key=lambda b: b.x0
+    )
+    assert row[0].x0 == pytest.approx(genome.x0, abs=1.0)
+    assert row[-1].x1 == pytest.approx(genome.x1, abs=1.0)
     for fig in (*caught.values(), page):
         plt.close(fig)
     plt.close("all")
@@ -649,7 +657,7 @@ def test_clones_read_n_1_2_down_the_tree_and_alike_in_every_truth_figure(
 
     caught: dict[str, Any] = {}
 
-    def keep(fig: Any, path: Path, *, tight: bool = True) -> Path:
+    def keep(fig: Any, path: Path, *, tight: bool = True, dpi: int = 150) -> Path:
         caught[path.name] = fig
         return path
 
