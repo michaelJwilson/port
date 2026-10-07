@@ -16,10 +16,11 @@ from functools import cache, partial
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from tests import ROOT
+
 if TYPE_CHECKING:
     from port.pipeline import Swap
 
-ROOT = Path(__file__).resolve().parents[1]
 PACKAGE = ROOT / "python" / "port"
 TESTS = ROOT / "tests"
 

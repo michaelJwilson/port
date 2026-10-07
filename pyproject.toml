@@ -218,7 +218,7 @@ unfixable = [
 
 [tool.mypy]
 strict = true
-files = ["python", "tests"]
+files = ["python", "scripts", "tests"]
 
 [[tool.mypy.overrides]]
 module = "pytest_benchmark.*"
@@ -360,7 +360,7 @@ markers = [
     # NB at most one tier per test (#403): `critical` gates first, no tier is
     #    the gate, `merge` runs before a merge with the badges, `release` runs
     #    for a release, `deprecate` where its module changes and at a
-    #    release. `python -m tests.ci` selects by these and nothing else.
+    #    release. `python -m scripts.ci` selects by these and nothing else.
     "merge: over the gate's 5-second cap at gate size; runs before a merge, with the badges",
     "release: over the pre-merge budget -- dev, key or stress size; runs for a release",
     "deprecate: too specific to run on every change; passed where merged, runs again only where its module changes, and for a release",

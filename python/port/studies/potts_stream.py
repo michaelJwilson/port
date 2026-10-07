@@ -262,7 +262,7 @@ def _warm() -> None:
     retired = {"sal:bifurcation", "port:alpha", "port:alpha-rust-merge"}
     runnable = [s for s in arms._solvers() if s not in retired]
     for solver in [*runnable, *EXTRA, CLUSTER_TEMPERING]:
-        solve(
+        solve_labelling(
             patch,
             solver,
             0,
@@ -321,7 +321,7 @@ def _sample(solver: str, field: np.ndarray, start: np.ndarray, rng: np.random.Ge
     return np.asarray(best, dtype=np.int64)
 
 
-def solve(
+def solve_labelling(
     problem: Any, solver: str, seed: int, setting: dict[str, float] | None = None
 ) -> dict[str, Any]:
     """One run from random labels, then its two polishes; a failure is a row."""
@@ -416,11 +416,11 @@ def tune(
     bounds = {p.realization: _describe(p)["bound"] for p in held_out}
     rows: list[dict[str, Any]] = []
 
-    def run(jobs: list[tuple[str, int, dict[str, float]]]) -> pd.DataFrame:
+    def run_jobs(jobs: list[tuple[str, int, dict[str, float]]]) -> pd.DataFrame:
         # NB the longest first, so no worker idles behind one long job at a round's end
         jobs = sorted(jobs, key=lambda job: -job[2]["sweeps"])
         futures = [
-            pool.submit(solve, p, solver, seed, setting)
+            pool.submit(solve_labelling, p, solver, seed, setting)
             for solver, seed, setting in jobs
             for p in held_out
         ]
@@ -433,7 +433,7 @@ def tune(
         return frame
 
     cheap, middle, dear = sorted({g["sweeps"] for g in GRID})
-    frame = run(
+    frame = run_jobs(
         [
             (solver, 0, g)
             for solver in samplers
@@ -445,12 +445,12 @@ def tune(
     falling = [(solver, 0, g) for solver in samplers for g in grid(solver) if g["sweeps"] == dear
                and median.get((solver, (g["t_start"], middle, g["warm"])), np.inf)
                < median.get((solver, (g["t_start"], cheap, g["warm"])), np.inf) - TOLERANCE]  # fmt: skip
-    frame = run(falling)
+    frame = run_jobs(falling)
     kept = {
         str(solver): harness.halve(g, TOLERANCE)
         for solver, g in frame.groupby("solver")
     }
-    frame = run([(solver, seed, {"t_start": t, "sweeps": n, "warm": w})
+    frame = run_jobs([(solver, seed, {"t_start": t, "sweeps": n, "warm": w})
                  for solver, keys in kept.items() for t, n, w in keys for seed in range(1, TUNING_STARTS)])  # fmt: skip
     print(f"tuning: {len(rows)} runs against the full grid's "
           f"{sum(len(grid(s)) for s in samplers) * TUNING_STARTS * len(held_out)}", flush=True)  # fmt: skip
@@ -545,9 +545,9 @@ def run(
                     else None
                 )
                 for seed in range(starts):
-                    futures[pool.submit(solve, problem, solver, seed, setting)] = (
-                        problem.realization
-                    )
+                    futures[
+                        pool.submit(solve_labelling, problem, solver, seed, setting)
+                    ] = problem.realization
             drain(block=False)
         while futures:
             drain(block=True)

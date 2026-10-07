@@ -13,7 +13,7 @@ before are in history: `git show ba34716:docs/plots/<path>.png`.
 
 | figures | command |
 | --- | --- |
-| the dev instance's, below, and `lattice/` | `run_figures [--out DIR]` (`--cnaster` for plain `cnaster`), or `python -m tests.ci --figures` |
+| the dev instance's, below, and `lattice/` | `run_figures [--out DIR]` (`--cnaster` for plain `cnaster`), or `python -m scripts.ci --figures` |
 | `realizations.png`, `realizations_truth.png`, `realizations.npz` | `run_audit --errors [--output PATH]` |
 | `realizations_copies.png` | `run_audit --copy [--output PATH]` |
 | `metrics_history.png`, `metrics_history_classes.png` | `run_study --metrics-history [OUT.png [OUT_CLASSES.png]]` |

@@ -11,7 +11,7 @@ import numpy as np
 import pytest
 from port.studies.paper_figures import KEY_STUDIES, OUT, QUESTIONS, Compared
 
-ROOT = Path(__file__).resolve().parent.parent
+from tests import ROOT
 
 
 @pytest.mark.infra
