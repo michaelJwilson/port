@@ -157,9 +157,18 @@ def pseudobulk(captured: Captured) -> dict[str, np.ndarray]:
     `run_core_inference` sums each clone's spots and concatenates the clones
     along the genome (`clone_stack_obs`), so the objective is one sequence of
     `n_clones * n_obs` with `lengths` tiled. The assignment is the fit's own.
+
+    Block `c` is clone `c`, the fit's path column `c` (`pinned_objective`), so
+    a clone with no spots is refused: stacked, it would shift every later
+    clone's block onto the path of the clone before it (#749 WP0).
     """
     assignment = np.asarray(captured.res["new_assignment"], dtype=np.int64)
-    clones = np.unique(assignment)
+    clones = np.arange(np.asarray(captured.res["pred_cnv"]).shape[1])
+    empty = sorted(set(clones.tolist()) - set(np.unique(assignment).tolist()))
+
+    if empty:
+        msg = f"clones {empty} of the fit's {clones.size} have no spots, so their blocks cannot be stacked"
+        raise ValueError(msg)
 
     def summed(values: np.ndarray) -> np.ndarray:
         return np.concatenate(
