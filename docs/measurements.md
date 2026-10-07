@@ -93,6 +93,13 @@ pseudobulk bins with 220 distinct counts, and the largest 25 states over
 rounds: 91.7 to 56.1 us at the former (1.64x) and 1,589 to 430 us at the
 latter (3.69x). Bitwise (`tests/test_rises_on_distinct.py`).
 
+Since T- #781 the gather evaluates `sal`'s `log_rising`, not port's
+retired `rises`. Minimum of 3 `timeit` repeats, NumPy 2.5.2, sal
+`21f7013e`, port's form read from `83ed58b`: the gathered call goes 798 to
+1,533 us at the latter (1.92x slower) and 152 to 212 us at the former; the
+per-bin call 2,779 to 10,385 us. The two agree to within 0.16 of a bound
+stated from both forms' precision (the PR- for T- #781).
+
 ## `port.patch.hmm_nophasing.logmu_shift`
 
 ### module docstring

@@ -2,8 +2,10 @@
 
 **A row (#561).** `port.pipeline.LOG_SPACE_SWAPS` rebinds `_bb_logpmf_1d` and
 `_dense_bb_logpmf` to these wherever `cnaster` binds them, and
-`port.patch.hmrf`'s field, `dense_emission.bb_states` and the M-step
-gradient read the same arithmetic. Retire when `cnaster` and `sal` land the
+`port.patch.hmrf`'s field and `dense_emission.bb_states` read the same
+arithmetic. The NumPy callers -- the copy likelihood through
+:func:`rises_on_distinct`, the M-step gradient -- take `sal`'s
+`log_rising` and `digamma_rising` (T- #781). Retire when `cnaster` lands the
 fix.
 
 **The defect.** Upstream evaluates
@@ -39,7 +41,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 from numba import njit
-from scipy.special import digamma, gammaln
+from sal.emissions.rising import log_rising
 
 if TYPE_CHECKING:  # pragma: no cover - `prange` is `range` to a type checker
     prange = range
@@ -53,9 +55,7 @@ __all__ = [
     "_dense_bb_logpmf",
     "bb_logpmf",
     "binomial_logpmf",
-    "digamma_rise",
     "rise",
-    "rises",
     "rises_on_distinct",
 ]
 
@@ -144,65 +144,26 @@ def _dense_bb_logpmf(X_bb, total_bb_RD, p_binom, taus, EPS=DISPERSION_FLOOR):
     return out
 
 
-def rises(x: np.ndarray, m: np.ndarray) -> np.ndarray:
-    """:func:`rise`, broadcast over arrays, for the NumPy callers."""
-    x = np.asarray(x, dtype=np.float64)
-    m = np.asarray(m, dtype=np.float64)
-    large = x >= STIRLING
-    safe = np.where(large, x, STIRLING)
-    step = np.log1p(m / safe)
-    correction = (
-        np.expm1(-step) / (12.0 * safe)
-        - np.expm1(-3.0 * step) / (360.0 * safe**3)
-        + np.expm1(-5.0 * step) / (1260.0 * safe**5)
-    )
-    series = m * np.log(safe) + ((safe + m - 0.5) * step - m) + correction
-    small = gammaln(x + m) - gammaln(x)
-    return np.where(m == 0.0, 0.0, np.where(large, series, small))
-
-
 def rises_on_distinct(x: np.ndarray, m: np.ndarray) -> np.ndarray:
-    """:func:`rises`, evaluated on the distinct counts of `m` and gathered (#702).
+    """`sal`'s `log_rising`, evaluated on the distinct counts of `m` and gathered (#702).
 
     `m` is one count per bin along the last axis and `x` a shape constant
     along it -- a scalar, or one row per state as `(..., 1)`. Then a bin's
-    value depends on its count alone, so `rises(x, distinct)` gathered by
-    each bin's index is the per-bin evaluation: elementwise, so bitwise.
+    value depends on its count alone, so `log_rising(x, distinct)` gathered
+    by each bin's index is the per-bin evaluation: elementwise, so bitwise.
     Measured: `docs/measurements.md`,
-    `port.patch.hmm_nophasing.bb_logpmf.rises_on_distinct`.
+    `port.patch.hmm_nophasing.bb_logpmf.rises_on_distinct`. `sal`'s own
+    gather, `on_distinct` with `reusing_distinct`, takes tensors (T- #781).
 
     A shape that varies along the bins, or an `m` that is not one-dimensional,
-    takes :func:`rises` unchanged.
+    takes `log_rising` unchanged.
     """
     m = np.asarray(m, dtype=np.float64)
     x = np.asarray(x, dtype=np.float64)
     if m.ndim != 1 or (x.ndim > 0 and x.shape[-1] != 1):
-        return rises(x, m)
+        return log_rising(x, m)
     distinct, inverse = np.unique(m, return_inverse=True)
     if distinct.size == m.size:
-        return rises(x, m)
-    gathered: np.ndarray = rises(x, distinct)[..., inverse]
+        return log_rising(x, m)
+    gathered: np.ndarray = log_rising(x, distinct)[..., inverse]
     return gathered
-
-
-def digamma_rise(x: np.ndarray, m: np.ndarray) -> np.ndarray:
-    """`psi(x + m) - psi(x)`, broadcast, without cancellation at large `x`.
-
-    The derivative of :func:`rise` in `x`. Below `STIRLING` the two
-    `digamma`; at and above, the asymptotic series differenced as `rise`
-    differences Stirling's: `log1p(m / x)` plus the `1 / (2 y)`,
-    `1 / (12 y^2)` and `1 / (120 y^4)` terms, each from `expm1`. The
-    truncation is below `1 / (252 x^6)`, 4e-21 at 1e3.
-    """
-    x = np.asarray(x, dtype=np.float64)
-    m = np.asarray(m, dtype=np.float64)
-    large = x >= STIRLING
-    safe = np.where(large, x, STIRLING)
-    step = np.log1p(m / safe)
-    series = (
-        step
-        - np.expm1(-step) / (2.0 * safe)
-        - np.expm1(-2.0 * step) / (12.0 * safe**2)
-        + np.expm1(-4.0 * step) / (120.0 * safe**4)
-    )
-    return np.where(large, series, digamma(x + m) - digamma(x))

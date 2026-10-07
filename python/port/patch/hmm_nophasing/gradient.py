@@ -21,8 +21,8 @@ and each term's derivative is a digamma or a ratio:
   -r (psi(k + r) - psi(r) + log p) + k - (r + k) alpha mu / (1 + alpha mu)`;
 - beta-binomial, `a = max(p tau, 1e-10)`, `b = max((1 - p) tau, 1e-10)`:
   `d ell / d a = psi(k + a) - psi(n + a + b) - psi(a) + psi(a + b)`, and
-  `b`'s with `n - k` for `k`, each `digamma` pair a `bb_logpmf.digamma_rise`
-  so nothing near `log tau` cancels at a large `tau` (#561).
+  `b`'s with `n - k` for `k`, each `digamma` pair `sal`'s `digamma_rising`
+  so nothing near `log tau` cancels at a large `tau` (#561, T- #781).
 
 **Under the shift the rate is `exp(log_mu_i - S_c)`**, with
 `S_c = logsumexp_g(log_mu_{d(g)} + log lambda_g)` over clone `c`'s segments
@@ -48,9 +48,10 @@ from typing import Any
 import numpy as np
 import scipy.optimize
 from cnaster.count_encoder import CountEncoder
+from sal.emissions.rising import digamma_rising
 from scipy.special import digamma, expit
 
-from port.patch.hmm_nophasing.bb_logpmf import DISPERSION_FLOOR, digamma_rise
+from port.patch.hmm_nophasing.bb_logpmf import DISPERSION_FLOOR
 
 __all__ = [
     "DISPERSION_FLOOR",
@@ -117,9 +118,9 @@ def bb_partials(
     # NB an invalid code scores 0 and is masked below; 0 keeps its rise finite.
     k = np.where(valid, obs, 0.0)
     n = np.where(valid, total, 0.0)
-    joint = digamma_rise(a + b, n)
-    d_a = digamma_rise(a, k) - joint
-    d_b = digamma_rise(b, n - k) - joint
+    joint = digamma_rising(a + b, n)
+    d_a = digamma_rising(a, k) - joint
+    d_b = digamma_rising(b, n - k) - joint
 
     live_a = shape_a > DISPERSION_FLOOR
     live_b = shape_b > DISPERSION_FLOOR
