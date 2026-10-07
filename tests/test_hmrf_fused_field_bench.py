@@ -30,10 +30,9 @@ from collections.abc import Callable
 import numpy as np
 import pytest
 from port.patch.hmrf.field import compute_loglike_spot_assignment_strided
-from port.patch.hmrf.fused_field import fused_spot_clone_field
 from pytest_benchmark.fixture import BenchmarkFixture
 
-from tests.fixtures import SpotCloneField, spot_clone_field, tiers
+from tests.fixtures import SpotCloneField, fused_field_of, spot_clone_field, tiers
 
 GATE = {"n_states": 5, "n_obs": 400, "n_spots": 300, "n_clones": 2}
 STRESS = {"n_states": 7, "n_obs": 2000, "n_spots": 2000, "n_clones": 4}
@@ -72,25 +71,9 @@ def _two_step(fixture: SpotCloneField, weight: np.ndarray) -> np.ndarray:
     return field
 
 
-def _fused(fixture: SpotCloneField, weight: np.ndarray) -> np.ndarray:
-    field: np.ndarray = fused_spot_clone_field(
-        fixture.counts_nb,
-        fixture.base_nb_mean,
-        fixture.counts_bb,
-        fixture.total_bb_RD,
-        fixture.log_mu,
-        fixture.alphas,
-        fixture.p_binom,
-        fixture.taus,
-        fixture.pred,
-        weight,
-    )
-    return field
-
-
 @pytest.mark.benchmark
 @pytest.mark.parametrize("size", tiers(GATE, STRESS))
-@pytest.mark.parametrize("arm", [_two_step, _fused], ids=["two-step", "fused"])
+@pytest.mark.parametrize("arm", [_two_step, fused_field_of], ids=["two-step", "fused"])
 def test_field(
     benchmark: BenchmarkFixture,
     arm: Callable[[SpotCloneField, np.ndarray], np.ndarray],

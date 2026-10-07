@@ -135,15 +135,11 @@ def test_the_floor_is_off_unless_the_config_sets_it(
     quality: dict[str, object], expected: tuple[float | None, float | None]
 ) -> None:
     """Absent, `false` or `none` is off; `true` is 0.75 Mb or 300 normal UMIs; a number is itself."""
-    from cnaster.config import YAMLConfig, get_global_config, set_global_config
     from port.patch.omics.blocks import segment_floor
+    from port.sim.inputs import written_config
 
-    previous = get_global_config()
-    set_global_config(YAMLConfig({"quality": quality}))
-    try:
+    with written_config({"quality": quality}):
         assert segment_floor() == expected
-    finally:
-        set_global_config(previous)
 
 
 def _greedy_parent(

@@ -36,7 +36,8 @@ from typing import Any
 
 from port.sim.fixtures import R0_HASH, r0, realization_hash
 
-ROOT = Path(__file__).resolve().parent.parent
+from tests import ROOT
+
 CACHE = ROOT / ".cache" / "sim_stages"
 
 CAPTURED: tuple[str, ...] = (
