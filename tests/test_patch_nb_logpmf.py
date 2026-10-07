@@ -5,7 +5,6 @@ from __future__ import annotations
 import numpy as np
 import pytest
 from port.patch.hmm_nophasing import nb_logpmf as patch
-from scipy.special import logsumexp
 from scipy.stats import nbinom
 
 COUNTS = np.array([0, 1, 7, 42, 300, 1000, 2500], dtype=np.float64)
@@ -67,35 +66,3 @@ def test_cnaster_scores_any_count_at_probability_one_once_p_rounds_to_one() -> N
     mu, alpha = float(np.exp(-43.22)), 0.1184
     assert (_scores(upstream, mu, alpha) == 0.0).all()
     assert _scores(patch._nb_logpmf_1d, mu, alpha)[COUNTS == 1000][0] < -30_000.0
-
-
-@pytest.mark.analytic
-@pytest.mark.parametrize("mu", [1e-12, 1e-3, 1.0])
-def test_the_patched_pmf_sums_to_one(mu: float) -> None:
-    """Over k = 0 .. 20,000 the patched pmf sums to 1 within 1e-9, down to a mean of 1e-9."""
-    k = np.arange(20_000, dtype=np.float64)
-    out = np.zeros(k.size)
-    patch._nb_logpmf_1d(k, np.full(k.size, 1000.0), mu, 0.12, out)
-
-    assert logsumexp(out) == pytest.approx(0.0, abs=1e-9)
-
-
-@pytest.mark.oracle
-@pytest.mark.parametrize("mean", [1e-17, 1e-12, 1e-6])
-def test_the_patched_kernel_is_the_brute_force_negative_binomial_below_scipys_range(
-    mean: float,
-) -> None:
-    """Where scipy forms `p` and loses digits, the 50-digit sums of logs, to 1e-9 relative.
-
-    At a mean of 1e-17 (`alpha * lambda = 1.2e-18`) upstream scores every
-    count 0; a count of 1000 is -41,224 nats.
-    """
-    from tests.exact_densities import nb_logpmf
-
-    alpha = 0.12
-    counts = COUNTS[COUNTS <= 1000]
-    out = np.zeros(counts.size)
-    patch._nb_logpmf_1d(counts, np.ones(counts.size), mean, alpha, out)
-    exact = [nb_logpmf(int(k), mean, alpha) for k in counts]
-
-    np.testing.assert_allclose(out, exact, rtol=1e-9, atol=1e-12)

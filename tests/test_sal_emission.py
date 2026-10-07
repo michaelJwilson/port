@@ -16,6 +16,12 @@ from pathlib import Path
 import numpy as np
 import pytest
 
+from tests.fixtures import (
+    divergent_clone_instance,
+    shifted_emission_call,
+    shifted_replacement,
+)
+
 CASES = [
     (1.3, 0.05, 0.4, 30.0, 1e-10),
     (0.2, 1e-6, 1e-6, 50.0, 1e-8),
@@ -137,13 +143,12 @@ def test_the_class_under_sal_emission_scores_as_it_does_under_cnasters(
     the batched per-clone rows against the per-state `cnaster` kernels on
     the same `(clone, obs, total)` triples.
     """
-    from tests.test_shifted_emission import _call, _instance, _replacement
 
-    instance = _instance()
+    instance = divergent_clone_instance()
 
     def scored(kernels: str) -> tuple[np.ndarray, np.ndarray]:
-        model = _replacement(instance, shifted=shifted, kernels=kernels)
-        return _call(model, instance)
+        model = shifted_replacement(instance, shifted=shifted, kernels=kernels)
+        return shifted_emission_call(model, instance)
 
     theirs = scored("cnaster")
     ours = scored("sal")

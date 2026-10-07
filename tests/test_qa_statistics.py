@@ -17,6 +17,7 @@ import pytest
 from port.qa.statistics import (
     bars,
     bootstrap_interval,
+    chi_square_pvalue,
     measured,
     ranks,
     resample_weights,
@@ -38,6 +39,25 @@ def test_ranks_count_from_the_lowest_and_ties_share_the_lower() -> None:
     found = ranks({"a": 0.1, "b": 0.5, "c": 0.5, "d": 2.0, "e": float("nan")})
 
     assert found == {"a": 1, "b": 2, "c": 2, "d": 4}
+
+
+@pytest.mark.oracle
+def test_the_chi_square_pvalue_is_scipys_over_the_kept_bins() -> None:
+    """Statistic and p-value equal `scipy.stats.chisquare` over the bins at 5 or more, to 1e-12.
+
+    The fourth bin expects 2 and is dropped, so a version that kept it would
+    read a statistic 50 higher (`(12 - 2)**2 / 2`) on one more degree of freedom.
+    """
+    from scipy.stats import chisquare
+
+    observed = np.array([18.0, 31.0, 51.0, 12.0])
+    expected = np.array([20.0, 30.0, 50.0, 2.0])
+
+    chi, pvalue = chi_square_pvalue(observed, expected)
+    referee = chisquare(observed[:3], expected[:3])
+
+    assert chi == pytest.approx(referee.statistic, rel=1e-12)
+    assert pvalue == pytest.approx(referee.pvalue, rel=1e-12)
 
 
 @pytest.mark.analytic

@@ -15,26 +15,10 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from tests.fixtures import recombination_map
+
 NU = 1.0
 SHIFT = 0.0
-
-
-def _map(path: Path, contigs: range, rate: float = 1.0) -> Path:
-    """A map at `rate` cM/Mb with a jitter, markers every 500 kb to 60 Mb."""
-    rng = np.random.default_rng(11)
-    rows = []
-
-    for contig in contigs:
-        positions = np.arange(0, 60_000_001, 500_000)
-        steps = rng.uniform(0.5, 1.5, positions.size - 1) * rate * 0.5
-        cm = np.concatenate(([0.0], np.cumsum(steps)))
-        rows += [
-            {"chrom": f"chr{contig}", "pos": int(p), "pos_cm": float(c)}
-            for p, c in zip(positions, cm, strict=True)
-        ]
-
-    pd.DataFrame(rows).to_csv(path, sep="\t", index=False)
-    return path
 
 
 def _blocks(contigs: range) -> pd.DataFrame:
@@ -95,7 +79,7 @@ def test_the_kernel_is_cnasters_where_cnaster_reads_the_map(tmp_path: Path) -> N
     from port.patch.recomb import get_sitewise_transmat
 
     contigs = range(1, 3)
-    path = _map(tmp_path / "map.tsv", contigs)
+    path = recombination_map(tmp_path / "map.tsv", contigs)
     table = _blocks(contigs)
 
     theirs = upstream("block_id", table.copy(), path, NU, SHIFT)
@@ -119,7 +103,7 @@ def test_the_kernel_is_haldane_over_each_contigs_own_map(tmp_path: Path) -> None
     from port.patch.recomb import get_sitewise_transmat
 
     contigs = range(1, 23)
-    path = _map(tmp_path / "map.tsv", contigs)
+    path = recombination_map(tmp_path / "map.tsv", contigs)
     table = _blocks(contigs)
     frame = pd.read_csv(path, sep="\t")
     floor = get_global_config().phasing.min_prob
@@ -158,7 +142,7 @@ def test_cnaster_reads_chr2_to_9_as_chr1s_last_centimorgan(tmp_path: Path) -> No
     from port.patch.recomb import get_sitewise_transmat
 
     contigs = range(1, 23)
-    path = _map(tmp_path / "map.tsv", contigs)
+    path = recombination_map(tmp_path / "map.tsv", contigs)
     table = _blocks(contigs)
     floor = np.log(get_global_config().phasing.min_prob) - SHIFT
 
@@ -234,7 +218,7 @@ def test_the_kernel_takes_the_composable_law_only_when_installed(
     from port.patch.recomb import get_sitewise_transmat
 
     contigs = range(1, 3)
-    path = _map(tmp_path / "map.tsv", contigs)
+    path = recombination_map(tmp_path / "map.tsv", contigs)
     table = _blocks(contigs)
     frame = pd.read_csv(path, sep="\t")
     edges = table.groupby("block_id").agg(

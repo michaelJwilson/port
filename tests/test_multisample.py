@@ -21,6 +21,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from tests.fixtures import partition_ari
+
 N_SAMPLES = 3
 
 
@@ -63,8 +65,6 @@ def test_the_entry_point_recovers_the_shared_clones_in_every_sample(
     from port.sim.run_config import isolated_run, write_run_cnaster_config
     from port.sim.unsegment import unsegment
 
-    from tests.test_core_inference_end_to_end import _adjusted_rand_index
-
     mpl.use("Agg")
     multi = _multi()
     truth = multi.truth
@@ -105,7 +105,7 @@ def test_the_entry_point_recovers_the_shared_clones_in_every_sample(
     placed = np.vectorize(majority.get)(fitted)
 
     assert sorted(majority.values()) == list(range(truth.n_clones))
-    assert _adjusted_rand_index(truth.labels, fitted) >= 0.99
+    assert partition_ari(truth.labels, fitted) >= 0.99
 
     for sample in range(N_SAMPLES):
         here = multi.spots(sample)

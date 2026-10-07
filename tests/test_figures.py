@@ -43,8 +43,19 @@ def test_the_smoother_fills_where_there_is_no_coverage() -> None:
     data = np.array([[0.4, np.nan, 0.6, 0.5]])
     smoothed = nan_gaussian_filter1d(data, sigma=1.0, fill_value=0.5)
 
-    assert smoothed.shape == data.shape
-    assert np.isfinite(smoothed).all()
+    # NB the referee, written out: the valid values' Gaussian-weighted mean,
+    #    radius 4 sigma and the row reflected at its ends, as scipy's defaults
+    radius = int(4.0 + 0.5)
+    offsets = np.arange(-radius, radius + 1)
+    kernel = np.exp(-0.5 * offsets**2)
+    row = data[0]
+    padded = np.concatenate([row[::-1], row, row[::-1]])
+    window = padded[row.size + 1 + offsets]
+    valid = ~np.isnan(window)
+    expected = np.sum(kernel[valid] * window[valid]) / np.sum(kernel[valid])
+
+    assert smoothed[0, 1] == pytest.approx(expected, rel=1e-12)
+    assert 0.4 < smoothed[0, 1] < 0.6
 
 
 @pytest.mark.smoke

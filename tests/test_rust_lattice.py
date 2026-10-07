@@ -31,6 +31,9 @@ from typing import Any
 import numpy as np
 import pytest
 
+from tests.figure_checks import compare_run_artifacts
+from tests.fixtures import partition_ari, run_planted_core_inference
+
 CASES = [
     # (n_states, lengths, spots): gate sizes, then one above PARALLEL_WORK
     (3, (7, 11, 5), 3),
@@ -213,17 +216,15 @@ def test_the_critical_instance_recovers_its_labelling_through_rust(
     from port.patch.lattice import rust_lattices
     from port.sim.truth import critical_instance
 
-    from tests.test_core_inference_end_to_end import _adjusted_rand_index, _run
-
     truth = critical_instance()
 
     with rust_lattices():
-        result = _run(truth, max_iter_outer=1, max_iter=3)
+        result = run_planted_core_inference(truth, max_iter_outer=1, max_iter=3)
 
     fitted = np.asarray(result.assignment.new_assignment)
 
     assert np.unique(fitted).size == truth.n_clones
-    assert _adjusted_rand_index(truth.labels, fitted) == pytest.approx(1.0)
+    assert partition_ari(truth.labels, fitted) == pytest.approx(1.0)
 
 
 @pytest.mark.patch
@@ -242,8 +243,6 @@ def test_a_rust_run_reproduces_a_numba_one(tmp_path: Path) -> None:
     from port.sim.run_config import write_run_cnaster_config
     from port.sim.truth import core_inference_truth
     from port.sim.unsegment import unsegment
-
-    from tests.test_patched_entry_point import _compare
 
     truth = core_inference_truth(
         n_clones=2, n_states=3, lattice=(25, 40), n_obs=40, n_segments=3, seed=11
@@ -269,7 +268,7 @@ def test_a_rust_run_reproduces_a_numba_one(tmp_path: Path) -> None:
 
     run("--no-patch", "--rust")
 
-    same, differ = _compare(baseline, output)
+    same, differ = compare_run_artifacts(baseline, output)
 
     assert not differ, f"a Rust run did not reproduce: {differ}"
     assert len(same) >= 25, f"only {len(same)} artifacts compared"

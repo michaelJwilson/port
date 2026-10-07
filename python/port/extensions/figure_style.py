@@ -23,8 +23,9 @@ from __future__ import annotations
 import contextlib
 import tomllib
 from collections.abc import Iterator
-from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, cast
+
+from port.extensions.repository import ROOT
 
 if TYPE_CHECKING:
     from matplotlib.typing import RcKeyType
@@ -43,6 +44,7 @@ __all__ = [
     "PAPER_WIDTH",
     "STAMP_ROOM",
     "TEXT_HEIGHT",
+    "TRACK_FONT_SIZE",
     "Page",
     "apply",
     "axes_style",
@@ -82,9 +84,15 @@ nothing has to be undone at the point of inclusion.
 TEXT_HEIGHT = 11.0 - 2 * PAGE_MARGIN - HEAD_AND_FOOT
 """The text block's height, 8.18 in (590.99 pt, `pdflatex`) (T- #740)."""
 
-MIN_FONT_SIZE = 10.0
-"""Points: the submission's smallest text, and every paper figure's text
-size at 1:1 (T- #740)."""
+MIN_FONT_SIZE = 8.0
+"""Points: every paper figure's text size at 1:1 but its genomic tracks'.
+T- #740's 10 pt left 5 clones' profile labels overlapping on a page;
+relaxed to 8 pt for the paper's figures and the population study's (#743)."""
+
+TRACK_FONT_SIZE = 6.0
+"""Points: the RDR and BAF tracks' labels, ticks, clone names and state
+keys, in `truth_combined` and `combined` alike: a track is a third of an
+inch tall at 5 clones, and 8 pt crowds it (#743)."""
 
 CAPTION_ROOM = 1.5
 """Inches of the text block a figure leaves for its caption (T- #733).
@@ -113,6 +121,17 @@ FIT_MARGIN = 0.03
 STAMP_ROOM = 0.17
 """Inches `fit_to_content` leaves at a page's foot: a `MIN_FONT_SIZE` stamp's
 row, 12 pt (T- #740)."""
+
+
+SERIES = (
+    "#2a78d6", "#eb6834", "#1baf7a", "#eda100",
+    "#e87ba4", "#008300", "#4a3aa7", "#e34948",
+)  # fmt: skip
+"""The categorical order, validated: adjacent CVD dE >= 9.1, normal >= 19.6.
+Moved from `port.sim.analysis` (#749 WP9)."""
+
+NEUTRAL_COLOUR = "#b5b3ad"
+"""`normal`, and the `(1, 1)` state."""
 
 
 def page_size(page: Page = "full", columns: int = 1) -> tuple[float, float]:
@@ -174,7 +193,7 @@ def axes_style(ax: Any, *, labelsize: float = 8, grid: bool = True) -> None:
         ax.set_axisbelow(True)
 
 
-PYPROJECT = Path(__file__).resolve().parents[3] / "pyproject.toml"
+PYPROJECT = ROOT / "pyproject.toml"
 
 
 def stated() -> dict[str, str]:

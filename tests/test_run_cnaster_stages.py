@@ -31,10 +31,10 @@ from port.sim.run_config import (
 from port.sim.truth import CoreInferenceTruth, balanced_clone, core_inference_truth
 from port.sim.unsegment import unsegment
 
+from tests.fixtures import END_TO_END_LATTICE
+
 pytestmark = pytest.mark.preprocessing
 
-LATTICE = (25, 40)
-"""Rows and columns. A thousand spots, which is `icm_sweep_deque`'s floor times five."""
 
 BALANCED_STATE = 0
 """The planted diploid balanced state, which casts no phase vote (#106)."""
@@ -101,7 +101,7 @@ def planted() -> CoreInferenceTruth:
     return core_inference_truth(
         n_clones=2,
         n_states=3,
-        lattice=LATTICE,
+        lattice=END_TO_END_LATTICE,
         n_obs=40,
         n_segments=3,
         seed=11,
@@ -295,7 +295,7 @@ def flipped(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Any]:
     truth = core_inference_truth(
         n_clones=2,
         n_states=3,
-        lattice=LATTICE,
+        lattice=END_TO_END_LATTICE,
         n_obs=60,
         n_segments=2,
         events=(8, 12),

@@ -35,7 +35,7 @@ under `src/`, exposed to Python as `port.oxiport`.
 
 Ten numbers, and each is a claim rather than a decoration.
 `.badges/measurements.json` holds every value with the selection, denominator
-and commit that produced it, `python -m tests.badges` derives the badges from
+and commit that produced it, `python -m scripts.badges` derives the badges from
 it, and `tests/test_badges_agree.py` fails when the two disagree.
 
 **Four coverage guards, because one figure would answer four questions
@@ -93,7 +93,7 @@ a ratio -- and it refuses a ratio rendered while `instance` still reads `/`.
 **The badges are pinned to `main`, so a pull request does not show its own
 figures** -- the ten URLs above all read `/main/.badges/`, and a README
 cannot render a branch-relative badge without making `main`'s README wrong.
-CI closes that with a report instead (#271): `tests/badge_report.py` renders
+CI closes that with a report instead (#271): `scripts/badge_report.py` renders
 this branch's guards against its base, delta first, into the job summary and
 into one pull request comment rewritten in place on each push. It reports and
 never gates -- `tests/check_badges.py` is what fails the job on a figure that
@@ -198,12 +198,12 @@ in the same change.
 CI runs locally, through one entry point (#403). Each step prints its seconds.
 
 ```
-uv run python -m tests.ci                  # gate: ruff, mypy, critical + untiered tests; <= 60 s
-uv run python -m tests.ci --badges         # judged and drop-in coverage, --record writes them; cnamaste's gate
-uv run python -m tests.ci --full           # gate, badges, then `merge` tests and benchmarks
-uv run python -m tests.ci --release        # `release` and `oracle`
-uv run python -m tests.ci --figures        # draw the dev instance's figures into .cache/plots
-uv run python -m tests.ci --install        # once per clone: the `badges` merge driver
+uv run python -m scripts.ci                  # gate: ruff, mypy, critical + untiered tests; <= 60 s
+uv run python -m scripts.ci --badges         # judged and drop-in coverage, --record writes them; cnamaste's gate
+uv run python -m scripts.ci --full           # gate, badges, then `merge` tests and benchmarks
+uv run python -m scripts.ci --release        # `release` and `oracle`
+uv run python -m scripts.ci --figures        # draw the dev instance's figures into .cache/plots
+uv run python -m scripts.ci --install        # once per clone: the `badges` merge driver
 cargo clippy --all-targets -- -D warnings  # Rust lint
 cargo fmt --check                          # Rust format
 ```
@@ -560,6 +560,7 @@ trains a reader to ignore `git status`.
 | `python/port/qa/` | What measures and records a run: `statistics` (bars, ranks, bootstrap intervals, wall and peak memory), `provenance` (the commit, the inputs' digest, a figure's stamp), `scoring` (a fit against its planted truth), `audit` (a run scored, behind `run_audit`), `benchmark` (behind `run_benchmark` and `run_figures`) and `ledger` (`docs/metrics/`, behind `run_ledger`), one implementation each (T- #673) |
 | `python/port/studies/` | The studies, run by hand: `run_study --<study>`, each module stating what it measured and where (T- #673) |
 | `python/cnamaste/` | `cnaster`'s forward path, copied at the pin with its imports rewritten, behind `run_cnamaste`, into which T- #670 moves `port`'s replacements stage by stage; its own build (`uv build --wheel python/cnamaste`) and coverage gate (T- #670) |
+| `configs/` | Settings a script measured rather than a person chose: `run_calibrate --potts` and `--copy` write the samplers' tuned settings, which the studies and samplers read (`port.qa.provenance.calibration`, #749 WP1) |
 | `src/` | The Rust crate `oxiport`, bound as `port.oxiport` |
 | `tests/` | The suite; `testpaths` in `pyproject.toml` |
 | `sim/` | CalicoST's simulated samples, their normal fits, and `manifests/` that draw them |

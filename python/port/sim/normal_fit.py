@@ -39,7 +39,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from port.sim.files import compress, load_ids, located, read_lines
+from port.sim.files import compress, load_ids, read_lines, truth_labels
 from port.sim.laws import Law, counted
 
 LAWS = ("spot_umi", "spot_snp_umi", "snp_a", "snp_b", "snp_total")
@@ -54,7 +54,7 @@ BASELINE_COLUMNS = ("gene", "chrom", "cdsStart", "cdsEnd", "lambda")
 def normal_spots(path: Path) -> np.ndarray:
     """`(n_spots,)` bool, in `barcodes.txt`'s order: the truth calls it `normal`."""
     barcodes = read_lines(path / "barcodes.txt")
-    truth = pd.read_csv(located(path / "truth_clone_labels.tsv"), sep="\t", index_col=0)
+    truth = truth_labels(path)
     labels = truth.iloc[:, 0].reindex(barcodes)
 
     if labels.isna().any():
@@ -202,10 +202,8 @@ def fit_entries(
 
 
 def best(values: np.ndarray) -> Law:
-    """Both families fitted to `values`; the one with the smaller KS statistic."""
-    lognormal = counted(values, "lognormal")
-    negative = counted(values, "negative_binomial")
-    return lognormal if (lognormal.ks or 0.0) <= (negative.ks or 0.0) else negative
+    """Both families fitted to `values`, once each; the one with the smaller KS statistic."""
+    return counted(values, "best")
 
 
 def to_toml(laws: dict[str, Law], header: str) -> str:

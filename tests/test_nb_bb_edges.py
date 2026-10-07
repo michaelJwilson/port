@@ -42,7 +42,7 @@ def _exact(counts: np.ndarray, mean: float, alpha: float) -> np.ndarray:
 
 def _copy_likelihood(counts: np.ndarray, mean: float, alpha: float) -> np.ndarray:
     """The decode's emission with no trials, so the allele channel adds 0."""
-    from port.extensions.copy_likelihood import Pseudobulk, _emission
+    from port.extensions.copy_likelihood import Pseudobulk, pseudobulk_log_pmf
 
     zeros = np.zeros_like(counts)
     bulk = Pseudobulk(
@@ -55,7 +55,7 @@ def _copy_likelihood(counts: np.ndarray, mean: float, alpha: float) -> np.ndarra
         taus=np.inf,
     )
     bins = np.arange(counts.size)
-    return np.asarray(_emission(np.log(mean), np.array(0.5), bulk, bins))
+    return np.asarray(pseudobulk_log_pmf(np.log(mean), np.array(0.5), bulk, bins))
 
 
 def _jax(counts: np.ndarray, mean: float, alpha: float) -> np.ndarray:
