@@ -148,7 +148,7 @@ pickle. The six figures drawn for this section stay in history, as
 `dev_tree_1s_hard` r3–r27 (r0 `d2938975`), tuned on r0–r2.
 
 Every sampler at its setting tuned on 3 held-out realizations
-(`python/port/studies/potts_sampler_settings.json`); #559's field-weighted cluster
+(`configs/potts_sampler_settings.json`, `run_calibrate --potts`); #559's field-weighted cluster
 moves and `sal`'s cluster tempering joined the finished stream by
 `potts_stream --only --merge`. Gap above TRW-S's bound, median / 90th
 percentile over 25 × 50 runs, the share at the bound, the median after ICM and
@@ -255,3 +255,18 @@ exponential generation (`0330bc21`, `ed2fcda1`), which was not rerun. The known-
   - Genes are reindexed to the baseline.
   - The genomic panel shows the tumour program as tumour-clone RDR near 0.3
     against port's λ.
+
+## Tuned on the run's field (#723)
+
+**TL;DR:** the samplers were retuned on the run's own clone-assignment field (`dev_tree_1s_hard` r0–r2 held out, sal `ef2fd06`, quiet host). On the same problems, the tuned settings lower the median gap to the TRW-S bound from the default settings' for anneal (1.26 → 0.34 nats), heat-bath SW (120.5 → 66.1) and tempering (5.50 → 3.45). On `solver_combined`'s 5 realizations × 5 starts, they lower the share of spots missed after both polishes: anneal 8.6 → 6.9%, heat-bath SW 9.7 → 8.6%, tempering 9.6 → 8.5%.
+
+- **Settings:**
+
+  | Sampler | Tuned setting |
+  | --- | --- |
+  | anneal | t_start 8, 4,000 sweeps, warm 0.1 |
+  | heat-bath SW | t_start 1, 4,000 sweeps, warm 0.25 |
+  | tempering | t_start 0.5, 4,000 sweeps |
+
+- **Wolff (heat-bath)** keeps its earlier settings. Its tune ran 68 min on three workers without finishing; on this field a Wolff step costs 38–58 ms (#751). Its missed share is unchanged: 40.1% raw, 11.0% after both polishes.
+- **Rank:** the same before and after tuning. In missed share after both polishes: anneal (8.6 → 6.9%), tempering (9.6 → 8.5%), heat-bath SW (9.7 → 8.6%).

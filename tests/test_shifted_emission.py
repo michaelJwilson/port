@@ -23,88 +23,14 @@ clone is longer than the clone count.
 
 from __future__ import annotations
 
-from typing import Any
-
 import numpy as np
 import pytest
 
-
-def _instance(
-    n_states: int = 3, n_clones: int = 3, per_clone: int = 8, seed: int = 41
-) -> dict[str, Any]:
-    """A clone-stacked instance whose clones decode differently.
-
-    The clones must decode to different states for the shift to differ
-    between them -- a fixture where every clone takes the same path would
-    pass the per-clone test while indexing by clone, which is the defect
-    being pinned.
-
-    `per_clone` exceeds `n_clones`, deliberately: that is the regime where
-    `shifts[clone]` reads inside clone zero's block rather than out of
-    bounds, so a wrong index is silent rather than an `IndexError`.
-    """
-    from cnaster.count_encoder import CountEncoder
-
-    generator = np.random.default_rng(seed)
-    n_segments = n_clones * per_clone
-
-    exposure = generator.integers(20, 60, n_segments).astype(np.float64)
-    trials = generator.integers(10, 40, n_segments).astype(np.float64)
-
-    observed = generator.poisson(exposure).astype(np.float64)
-    successes = generator.binomial(trials.astype(int), 0.4).astype(np.float64)
-
-    # NB one state per clone, so the three shifts are distinct by
-    #    construction rather than by luck of the draw.
-    decode = np.repeat(np.arange(n_clones) % n_states, per_clone).astype(np.int64)
-
-    return {
-        "nbEncoder": CountEncoder(observed.reshape(-1, 1), exposure.reshape(-1, 1)),
-        "bbEncoder": CountEncoder(successes.reshape(-1, 1), trials.reshape(-1, 1)),
-        "log_mu": generator.normal(0.0, 0.3, size=(n_states, 1)),
-        "alphas": np.full((n_states, 1), 0.2),
-        "p_binom": generator.uniform(0.2, 0.8, size=(n_states, 1)),
-        "taus": np.full((n_states, 1), 25.0),
-        "normal_log_lambda": generator.normal(0.0, 0.1, size=n_segments),
-        "clone_lengths": np.full(n_clones, per_clone, dtype=np.int64),
-        "decode": decode,
-        "n_states": n_states,
-        "n_clones": n_clones,
-        "per_clone": per_clone,
-    }
-
-
-def _call(model: Any, instance: dict[str, Any]) -> tuple[np.ndarray, np.ndarray]:
-    scored: tuple[np.ndarray, np.ndarray]
-    scored = model.compute_emission_probability_nb_betabinom_coded(
-        instance["nbEncoder"],
-        instance["bbEncoder"],
-        instance["log_mu"],
-        instance["alphas"],
-        instance["p_binom"],
-        instance["taus"],
-        normal_log_lambda=instance["normal_log_lambda"],
-        clone_lengths=instance["clone_lengths"],
-    )
-    return scored
-
-
-def _replacement(
-    instance: dict[str, Any], *, shifted: bool = False, kernels: str = "cnaster"
-) -> Any:
-    """The drop-in, carrying the decode the shift is taken at.
-
-    `shifted` and `kernels` are options the `SHIFT_SWAPS` row binds (#517).
-    """
-    from port.patch.hmm_nophasing import hmm_nophasing
-    from port.pipeline import with_attributes
-
-    model = with_attributes(
-        hmm_nophasing, apply_logmu_shift=shifted, emission_kernels=kernels
-    )()
-    model.state_posteriors = np.eye(instance["n_states"])[instance["decode"]].T
-
-    return model
+from tests.fixtures import (
+    divergent_clone_instance,
+    shifted_emission_call,
+    shifted_replacement,
+)
 
 
 @pytest.mark.cnaster
@@ -117,10 +43,10 @@ def test_off_it_is_upstreams_emission_bitwise(cnaster_config: None) -> None:
     """
     from cnaster.hmm_nophasing import hmm_nophasing as upstream
 
-    instance = _instance()
+    instance = divergent_clone_instance()
 
-    their_rdr, their_baf = _call(upstream(), instance)
-    our_rdr, our_baf = _call(_replacement(instance), instance)
+    their_rdr, their_baf = shifted_emission_call(upstream(), instance)
+    our_rdr, our_baf = shifted_emission_call(shifted_replacement(instance), instance)
 
     np.testing.assert_array_equal(our_rdr, their_rdr)
     np.testing.assert_array_equal(our_baf, their_baf)
@@ -140,24 +66,30 @@ def test_off_is_the_default_and_a_missing_decode_still_delegates(
     """
     from cnaster.hmm_nophasing import hmm_nophasing as upstream
 
-    instance = _instance()
-    expected = _call(upstream(), instance)
+    instance = divergent_clone_instance()
+    expected = shifted_emission_call(upstream(), instance)
 
     # no decode at all
-    bare = _replacement(instance, shifted=True)
+    bare = shifted_replacement(instance, shifted=True)
     bare.state_posteriors = None
-    np.testing.assert_array_equal(_call(bare, instance)[0], expected[0])
+    np.testing.assert_array_equal(shifted_emission_call(bare, instance)[0], expected[0])
 
     # no exposures
     without_lambda = dict(instance, normal_log_lambda=None)
     np.testing.assert_array_equal(
-        _call(_replacement(instance, shifted=True), without_lambda)[0], expected[0]
+        shifted_emission_call(
+            shifted_replacement(instance, shifted=True), without_lambda
+        )[0],
+        expected[0],
     )
 
     # no clone lengths
     without_lengths = dict(instance, clone_lengths=None)
     np.testing.assert_array_equal(
-        _call(_replacement(instance, shifted=True), without_lengths)[0], expected[0]
+        shifted_emission_call(
+            shifted_replacement(instance, shifted=True), without_lengths
+        )[0],
+        expected[0],
     )
 
 
@@ -173,7 +105,7 @@ def test_on_it_applies_cnasters_own_shift(cnaster_config: None) -> None:
     """
     from cnaster.hmm_nophasing import _nb_logpmf_1d, compute_logmu_shifts
 
-    instance = _instance()
+    instance = divergent_clone_instance()
     per_clone = instance["per_clone"]
 
     shifts = compute_logmu_shifts(
@@ -183,7 +115,9 @@ def test_on_it_applies_cnasters_own_shift(cnaster_config: None) -> None:
         instance["clone_lengths"],
     )
 
-    rdr, _ = _call(_replacement(instance, shifted=True), instance)
+    rdr, _ = shifted_emission_call(
+        shifted_replacement(instance, shifted=True), instance
+    )
 
     observed = np.asarray(instance["nbEncoder"].obs_count).reshape(-1)
     exposure = np.asarray(instance["nbEncoder"].total_count).reshape(-1)
@@ -227,7 +161,7 @@ def test_each_clone_takes_its_own_shift(cnaster_config: None) -> None:
     """
     from cnaster.hmm_nophasing import compute_logmu_shifts
 
-    instance = _instance()
+    instance = divergent_clone_instance()
     per_clone = instance["per_clone"]
 
     shifts = compute_logmu_shifts(
@@ -243,7 +177,9 @@ def test_each_clone_takes_its_own_shift(cnaster_config: None) -> None:
         f"the fixture must give the clones different shifts, got {distinct}"
     )
 
-    rdr, _ = _call(_replacement(instance, shifted=True), instance)
+    rdr, _ = shifted_emission_call(
+        shifted_replacement(instance, shifted=True), instance
+    )
 
     # NB the same `(obs, total)` pair appears in more than one clone, which is
     #    the whole reason the encoder has to be split; those entries must now
@@ -274,16 +210,16 @@ def test_stale_clone_lengths_are_retiled_to_the_decoded_sequence() -> None:
     On #292's genome `cnaster` passes six clones of 300 while the fit is over
     three: 1,800 against 900. The shift re-derives the current count from
     the decode, and refuses lengths that do not tile it. Written to fail if
-    `cnaster` starts passing current lengths, when `_current` has nothing
+    `cnaster` starts passing current lengths, when `current_clone_lengths` has nothing
     left to repair.
     """
-    from port.patch.hmm_nophasing.shifted_emission import _current
+    from port.patch.hmm_nophasing.shifted_emission import current_clone_lengths
 
-    assert _current((300,) * 6, 900) == (300,) * 3
-    assert _current((300,) * 3, 900) == (300,) * 3
+    assert current_clone_lengths((300,) * 6, 900) == (300,) * 3
+    assert current_clone_lengths((300,) * 3, 900) == (300,) * 3
 
     with pytest.raises(ValueError, match="do not tile"):
-        _current((300, 200), 900)
+        current_clone_lengths((300, 200), 900)
 
 
 @pytest.mark.analytic
@@ -295,17 +231,19 @@ def test_a_per_bin_lambda_is_repeated_over_the_clone_stack() -> None:
     every clone shares the one normal profile. A per-segment one passes
     through, and any other length is refused.
     """
-    from port.patch.hmm_nophasing.shifted_emission import _stacked
+    from port.patch.hmm_nophasing.shifted_emission import stacked_log_lambda
 
     profile = np.log(np.array([0.2, 0.3, 0.5]))
 
-    np.testing.assert_array_equal(_stacked(profile, (3, 3)), np.tile(profile, 2))
     np.testing.assert_array_equal(
-        _stacked(np.tile(profile, 2), (3, 3)), np.tile(profile, 2)
+        stacked_log_lambda(profile, (3, 3)), np.tile(profile, 2)
+    )
+    np.testing.assert_array_equal(
+        stacked_log_lambda(np.tile(profile, 2), (3, 3)), np.tile(profile, 2)
     )
 
     with pytest.raises(ValueError, match="expected one per genome"):
-        _stacked(profile, (4, 4))
+        stacked_log_lambda(profile, (4, 4))
 
 
 @pytest.mark.analytic

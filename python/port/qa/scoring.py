@@ -15,6 +15,7 @@ decoded arrays, which every scorer reads.
 from __future__ import annotations
 
 import numpy as np
+import pandas as pd
 from scipy.optimize import linear_sum_assignment
 
 __all__ = [
@@ -31,6 +32,7 @@ __all__ = [
     "overlap",
     "phase_free",
     "planted_classes",
+    "shared_ari",
     "swapped",
 ]
 
@@ -115,6 +117,18 @@ def class_ari(t: np.ndarray, ab: np.ndarray, where: np.ndarray) -> float:
     return round(float(adjusted_rand_score(t[where], ab[where])), 4)
 
 
+def shared_ari(planted: pd.Series, fitted: pd.Series) -> tuple[float, int]:
+    """Clone ARI over the barcodes both series index, and how many there are.
+
+    A run drops spots its filters reject, so the planted labels are read at
+    the barcodes the fit kept rather than by position.
+    """
+    from sklearn.metrics import adjusted_rand_score
+
+    common = fitted.index.intersection(planted.index)
+    return float(adjusted_rand_score(planted[common], fitted[common])), len(common)
+
+
 def exact_by_class(
     t: np.ndarray, ab: np.ndarray
 ) -> dict[str, tuple[float, float, int]]:
@@ -137,8 +151,15 @@ def exact_by_class(
 
 
 def copy_states(max_total: int) -> list[tuple[int, int]]:
-    """Every `(A, B)` with `A + B <= max_total`, by total, then by `A`."""
-    return [(a, n - a) for n in range(max_total + 1) for a in range(n + 1)]
+    """Every `(A, B)` with `A + B <= max_total`, by total, then by `A`.
+
+    `copy_likelihood.candidates`, the lattice the decode searches, with
+    `(0, 0)` added and reordered for the confusion table (#749 WP7).
+    """
+    from port.extensions.copy_likelihood import candidates
+
+    pairs = [(0, 0), *((int(a), int(b)) for a, b in candidates(max_total))]
+    return sorted(pairs, key=lambda pair: (pair[0] + pair[1], pair[0]))
 
 
 def _pair(code: int) -> str:

@@ -14,6 +14,8 @@ import numpy as np
 import pytest
 import scipy.sparse as sp
 
+from tests.adapters import square_coords
+
 
 def _upper_triangle(
     graph: Any, beta: float
@@ -29,10 +31,6 @@ def _upper_triangle(
     return tuple(edges), tuple(coupling)
 
 
-def _square(side: int) -> np.ndarray:
-    return np.stack(np.unravel_index(np.arange(side * side), (side, side)), axis=1)
-
-
 @pytest.mark.patch
 @pytest.mark.parametrize("side", [6, 40])
 def test_a_symmetric_graph_converts_bitwise_as_the_loop_did(side: int) -> None:
@@ -41,7 +39,7 @@ def test_a_symmetric_graph_converts_bitwise_as_the_loop_did(side: int) -> None:
     from port.patch.icm.alpha_expansion import potts_graph_from
     from port.patch.icm.interface import CsrGraph
 
-    graph = CsrGraph.from_matrix(lattice_adjacency(_square(side), "moore"))
+    graph = CsrGraph.from_matrix(lattice_adjacency(square_coords(side, side), "moore"))
     ours = potts_graph_from(graph, 0.6)
     edges, coupling = _upper_triangle(graph, 0.6)
 
@@ -63,7 +61,7 @@ def test_a_one_way_edge_carries_half_the_coupling_cnasters_row_sum_does() -> Non
     from sal.sim.potts import energy
 
     _, directed = construct_lattice_adjacency(
-        _square(40).astype(float), unit_xsquared=1, unit_ysquared=1
+        square_coords(40, 40).astype(float), unit_xsquared=1, unit_ysquared=1
     )
     beta = 0.6
     potts = potts_graph_from(CsrGraph.from_matrix(directed), beta)
@@ -125,7 +123,7 @@ def test_from_directed_csr_builds_the_symmetrized_graph_bitwise(beta: float) -> 
     from port.patch.icm.interface import CsrGraph
 
     _, directed = construct_lattice_adjacency(
-        _square(40).astype(float), unit_xsquared=1, unit_ysquared=1
+        square_coords(40, 40).astype(float), unit_xsquared=1, unit_ysquared=1
     )
     directed = directed.tocsr()
     directed.data = np.random.default_rng(1).uniform(0.1, 3.0, directed.nnz)

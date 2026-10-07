@@ -10,29 +10,28 @@ from __future__ import annotations
 
 import subprocess
 import tomllib
-from pathlib import Path
 
 import pytest
 
-REPOSITORY = Path(__file__).resolve().parents[1]
+from tests import ROOT
 
 
 @pytest.mark.infra
 def test_no_file_exceeds_the_repository_limit() -> None:
     """Tracked files, and untracked ones `.gitignore` does not exclude."""
-    limit = tomllib.loads((REPOSITORY / "pyproject.toml").read_text())["tool"]["port"][
+    limit = tomllib.loads((ROOT / "pyproject.toml").read_text())["tool"]["port"][
         "max_file_bytes"
     ]
     listed = subprocess.run(
         ["git", "ls-files", "--cached", "--others", "--exclude-standard", "-z"],
-        cwd=REPOSITORY,
+        cwd=ROOT,
         capture_output=True,
         check=True,
     ).stdout.decode()
     sizes = {
-        name: (REPOSITORY / name).stat().st_size
+        name: (ROOT / name).stat().st_size
         for name in listed.split("\0")
-        if name and (REPOSITORY / name).is_file()
+        if name and (ROOT / name).is_file()
     }
     over = {name: size for name, size in sizes.items() if size > limit}
 

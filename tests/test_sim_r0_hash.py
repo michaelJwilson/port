@@ -18,7 +18,7 @@ from dataclasses import replace
 from pathlib import Path
 
 import pytest
-from port.sim.draw import _merge, draw, read_manifest
+from port.sim.draw import draw, merged_tables, read_manifest
 from port.sim.fixtures import R0_HASH, SIM_ROOT, realization_hash, references
 
 MANIFESTS = SIM_ROOT / "manifests"
@@ -36,7 +36,7 @@ def test_every_dev_tree_manifest_states_its_own_r0_hash() -> None:
     """Stated in the file, so an extending manifest never inherits its base's
     hash for a different draw; 8 lower-case hex; `R0_HASH` is the frozen
     `baseline/dev_tree`'s, the generation `tests.sim_stages` caches (#619)."""
-    assert len(HASHED) == 9
+    assert len(HASHED) == 10
     for path in HASHED:
         stated = _stated(path)
         assert isinstance(stated, str), path
@@ -58,7 +58,7 @@ def test_r0_draws_to_its_stated_hash(path: Path, tmp_path: Path) -> None:
 
     manifest = read_manifest(path)
     one = {"sample": {"realizations": 1}}
-    manifest = replace(manifest, tables=_merge(manifest.tables, one))
+    manifest = replace(manifest, tables=merged_tables(manifest.tables, one))
     drawn = draw(manifest, tmp_path, resources=found)
 
     assert realization_hash(drawn.realizations[0]) == _stated(path)

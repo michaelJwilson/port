@@ -18,7 +18,9 @@ from typing import Any
 import pytest
 import yaml
 
-SHIPPED = Path(__file__).parent / "data" / "zenodo_sim_config.yaml"
+from tests import TESTS
+
+SHIPPED = TESTS / "data" / "zenodo_sim_config.yaml"
 
 UNUSED = {
     ("run.bafonly", "unread"),

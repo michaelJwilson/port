@@ -202,7 +202,7 @@ full for that reason.
     is the gate, `merge` runs before a merge, `release` for a release, and
     `deprecate` where its module changes. A test over the gate's cap carries
     `merge`, over the pre-merge budget `release`; one too specific to earn a
-    run on every change, having passed where it merged, `deprecate`. `python -m tests.ci` is the only runner, so a tier it does
+    run on every change, having passed where it merged, `deprecate`. `python -m scripts.ci` is the only runner, so a tier it does
     not select is documentation.
 
 A test that cannot say what would have to be wrong for it to fail is not yet
@@ -302,16 +302,15 @@ a test.
 *   **Versioning:** `Cargo.toml` carries the version. `pyproject.toml`
     declares it dynamic and maturin reads it across, so the two cannot
     drift.
-*   **A figure carries its reference.** Every figure prints, visibly, a
-    hash of the data it plots and the commit that drew it. A figure quoted
-    in a thread, ticket or review then names what produced it, and two
-    figures that differ can be told apart without their files.
+*   **A figure carries its reference.** Every figure names the hash of the
+    data it plots and the commit that drew it: printed on a study's figure,
+    and beside a paper figure in its directory's README, which a manuscript
+    page cannot carry (#743). Two figures that differ can then be told apart
+    without their files.
 *   **Figures are PNG, regenerated rather than committed.** A PNG carries
     no timestamp, so a figure changes only when its pixels do. CI draws the
     figures and uploads them; the repository commits only the curated set
     under `docs/plots/paper/`, and a guard holds the rest out.
-    `docs/plots/studies/population_recovery.png` is the one other exception:
-    its pipeline runs survive only as `population_records.jsonl.gz`.
     A key study (label `key_study`) commits its key figure under
     `docs/plots/paper/key_studies/`, redrawn when the study is rerun.
 

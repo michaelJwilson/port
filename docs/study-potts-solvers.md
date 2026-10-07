@@ -9,7 +9,8 @@ solver is not what limits clone recovery (#497 was).
 
 ## Method
 
-`run_study --potts-solvers capture | per-call`.
+`run_study --potts-solvers capture | per-call`, retired by #749 WP6 once the
+streams superseded it; the module is in git history.
 
 1. **Capture.** One `--sal --no-plots` run per sample (#487 + #496's
    loader), pickling every problem `pipeline_clone_assignment` hands its
