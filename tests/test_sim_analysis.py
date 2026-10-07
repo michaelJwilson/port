@@ -222,7 +222,8 @@ def test_the_genome_panels_share_one_left_and_one_right_edge(drawn: Drawn) -> No
     axes = [*profile.axes, *genomic.axes]
     boxes = [ax.get_window_extent(renderer) for ax in axes]
 
-    assert len(genomic.axes) == 2 * len(read(drawn.path).clones)
+    # NB a pair per tumour clone, and the phase track in the normal clone's place (#745)
+    assert len(genomic.axes) == 2 * (len(read(drawn.path).clones) - 1) + 1
     for box in boxes:
         assert box.x0 == pytest.approx(boxes[0].x0, abs=0.5)
         assert box.x1 == pytest.approx(boxes[0].x1, abs=0.5)
@@ -265,6 +266,7 @@ def test_the_tree_spans_the_genome_panels_between_its_barcodes(drawn: Drawn) -> 
         for t in ax.texts
         if t.get_visible() and "(" in t.get_text()
     }
+    # NB but the normal clone, whose pair gives way to the phase track (#745)
     assert headed == {
         f"{n.get_text()} ({b.get_text()})"
         for n, b in zip(
@@ -272,6 +274,7 @@ def test_the_tree_spans_the_genome_panels_between_its_barcodes(drawn: Drawn) -> 
             sorted(barcodes, key=lambda t: t.get_position()[1]),
             strict=True,
         )
+        if n.get_text() != "$m_N$"
     }
 
 
@@ -336,10 +339,10 @@ def _panels(r: Any) -> tuple[Any, Any, Any]:
 
 
 def _headed_in_order(genomic: Any) -> list[str]:
-    """(c)'s clone headers, top to bottom."""
+    """(c)'s headers, top to bottom on the page."""
     return [
         t.get_text()
-        for ax in genomic.axes
+        for ax in sorted(genomic.axes, key=lambda ax: -ax.get_position().y1)
         for t in ax.texts
         if t.get_visible() and "(" in t.get_text()
     ]
@@ -375,8 +378,9 @@ def _a_is_the_tree(r: Any) -> Any:
         t.barcode[c] for c in r.clones
     }
     symbol = _symbol(r)
+    # NB the normal clone's pair gives way to the phase track, unheaded (#745)
     assert _headed(genomic) == {
-        f"{symbol(c)} ({shown(t.barcode[c])})" for c in r.clones
+        f"{symbol(c)} ({shown(t.barcode[c])})" for c in r.clones if c != "normal"
     }
     plt.close(figure)
     return tree_ax
@@ -567,7 +571,8 @@ def test_clones_read_n_1_2_down_the_tree_and_alike_in_every_truth_figure(
 
     assert [name for name, _ in leaves] == symbols
     assert [x.get_text() for x in rows][::-1] == symbols
-    assert [h.split(" (")[0] for h in _headed_in_order(genomic)] == symbols
+    # NB the phase track, unheaded, where the normal clone's pair was (#745)
+    assert [h.split(" (")[0] for h in _headed_in_order(genomic)] == symbols[1:]
     tree_figure = simulated_tree_figure(r)
     assert _leaves(tree_figure.axes[0]) == leaves
     plt.close(tree_figure)
