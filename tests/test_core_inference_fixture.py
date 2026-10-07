@@ -312,12 +312,12 @@ def test_a_spot_s_counts_come_from_its_own_stream() -> None:
     lattice, so widening it re-labels the spots that were already there.
     """
     import torch
-    from port.sim.truth import _emission_families
+    from port.sim.truth import emission_family
 
     truth = core_inference_truth()
     spot = 13
 
-    family = _emission_families(truth.log_mu, truth.alphas, truth.p_binom, truth.taus)
+    family = emission_family(truth.log_mu, truth.alphas, truth.p_binom, truth.taus)
     covariate = np.stack(
         [truth.base_nb_mean[:, spot], truth.total_bb_RD[:, spot]], axis=-1
     )

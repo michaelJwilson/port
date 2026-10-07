@@ -52,10 +52,10 @@ from port.extensions.copy_starts import (
     STAGES,
     CopyCall,
     CopyStart,
-    _log_rdr,
-    _read,
+    components_as_states,
     instance,
     lattice_start,
+    log_depth_ratio,
     polish_states,
 )
 from port.extensions.copy_starts import run_start as live_run_start
@@ -250,7 +250,7 @@ def _inside_top(q: float) -> Callable[[CopyCall], np.ndarray]:
     """Rows whose |log RDR| is outside the top `q`%: read-depth outliers left out."""
 
     def keep(call: CopyCall) -> np.ndarray:
-        value = np.abs(_log_rdr(call))
+        value = np.abs(log_depth_ratio(call))
         finite = np.isfinite(value)
         cut = np.percentile(value[finite], 100 - q) if finite.any() else np.inf
         return np.asarray(finite & (value <= cut))
@@ -579,8 +579,8 @@ EMISSION_VARIANTS: dict[str, dict[str, float]] = {
 """Port's emission++ variants (#540): `_variant_seeding`'s options, and `draws`, the best of that
 many by the HMM's NLL at each draw's states. A `setting` replaces options by name.
 
-Tuned by `port.studies.copy_state_stream --tune` on `dev_tree_1s_hard`'s held-out realizations 0-2
-(r0 `d2938975`; `python/port/studies/copy_sampler_settings.json`): median gap in start log-likelihood to the best, tuned
+Tuned by `run_calibrate --copy` on `dev_tree_1s_hard`'s held-out realizations 0-2
+(r0 `d2938975`; `configs/copy_sampler_settings.json`): median gap in start log-likelihood to the best, tuned
 against first written, `trim` 0.005 against 0.02: 234.6 / 336.2 nats; `trimx20hmm` 0.005 over 20:
 58.4 / 229.5; `lloydx5hmm` 10 rounds against 3: 49.6 / 160.7; `anchor` 10 rounds against 3:
 212.3 / 306.5; `knn` 0.3% of rows against 1%: 202.2 / 210.8. The screen below was at the first values.
@@ -741,7 +741,7 @@ def _emission_variant(
     best: tuple[float, Any] = (np.inf, None)
     for _ in range(draws):
         components = draw()
-        log_mu, p = _read(call, components)
+        log_mu, p = components_as_states(call, components)
         nll = negative_log_likelihood(
             log_mu, p, call.total, call.b, call.exposure, call.trials, call.raw["lengths"]
         )  # fmt: skip
@@ -770,7 +770,7 @@ def seed_states(
         msg = f"{name!r} takes no setting; tunable: {HMM_SAMPLERS}, {tuple(EMISSION_VARIANTS)}"
         raise ValueError(msg)
     if name in HMM_SAMPLERS:
-        # NB the sampler's states as drawn: `_read(_place(...))` would move p
+        # NB the sampler's states as drawn: `components_as_states(_place(...))` would move p
         #    to `(p n + 1/2) / (n + 1)` on the seam's common trial count `n`.
         return _hmm_sampled(name, call, rng, setting)
     if name not in (*EMISSION_VARIANTS, "prior", "hmc"):
@@ -787,9 +787,9 @@ def seed_states(
     else:
         components = _chain_best_seeding(held, rng)
     if covariate:
-        log_mu, p = _read(call, components)
+        log_mu, p = components_as_states(call, components)
     else:
-        log_mu, p = _read(
+        log_mu, p = components_as_states(
             call, components, per=float(np.median(call.exposure[call.exposure > 0]))
         )
     return np.asarray(log_mu, dtype=np.float64), np.asarray(p, dtype=np.float64)

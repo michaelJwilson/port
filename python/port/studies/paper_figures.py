@@ -105,13 +105,13 @@ def realization(fixture: str, draw: Path | None) -> Path:
         if not (path / "truth_clone_labels.tsv").is_file():
             from dataclasses import replace
 
-            from port.sim.draw import _merge, read_manifest
             from port.sim.draw import draw as drawn
+            from port.sim.draw import merged_tables, read_manifest
             from port.sim.fixtures import references
 
             manifest = read_manifest(MANIFESTS / f"{fixture}.toml")
             one = {"sample": {"realizations": 1}}
-            manifest = replace(manifest, tables=_merge(manifest.tables, one))
+            manifest = replace(manifest, tables=merged_tables(manifest.tables, one))
             drawn(manifest, draw, resources=references())
 
     path = draw / fixture / "r0"

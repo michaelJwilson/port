@@ -10,7 +10,7 @@ below are that rule made checkable, each against the import graph
 | `row` | `patch/` | defines what a swap row installs, and every such module is one |
 | `row-helper` | `patch/` | reached from a row, a pipeline entry point or `pipeline` |
 | `extension` | `extensions/` | reached from a row, a pipeline entry point or `pipeline` |
-| `oracle` | `extensions/` | imported by an `end2end` or `oracle` test |
+| `oracle` | `extensions/` | imported by an `end2end` or `oracle` test, and reached from no run |
 | `tool` | `extensions/`, `qa/`, `studies/` | reached from no row or pipeline entry point: a figure, record or measurement tool |
 | `sim`, `script`, `pipeline` | `sim/`, `scripts/`, `port.pipeline` | where they are |
 | `set aside` | `sandbox/` | installed by nothing |
@@ -54,6 +54,7 @@ ROLES: dict[str, Role] = {
     "port.scripts.run_cnaster": "script",
     "port.scripts.run_audit": "script",
     "port.scripts.run_benchmark": "script",
+    "port.scripts.run_calibrate": "script",
     "port.scripts.run_figures": "script",
     "port.scripts.run_ledger": "script",
     "port.scripts.run_study": "script",
@@ -68,14 +69,14 @@ ROLES: dict[str, Role] = {
     "port.extensions.figure_style": "extension",
     "port.extensions.repository": "extension",
     "port.extensions.genomic_axis": "extension",
-    "port.extensions.integer_copy": "oracle",
-    "port.extensions.jax_hmm": "oracle",
+    "port.extensions.integer_copy": "extension",
+    "port.extensions.jax_hmm": "extension",
     "port.extensions.jax_setup": "extension",
     "port.extensions.kronecker_posteriors": "oracle",
     "port.extensions.label_solver": "extension",
     "port.extensions.multisample": "extension",
     "port.extensions.outputs": "extension",
-    "port.extensions.parameter_errors": "oracle",
+    "port.extensions.parameter_errors": "extension",
     "port.extensions.realization_plot": "tool",
     "port.extensions.sal": "extension",
     "port.extensions.samples": "extension",
@@ -97,6 +98,7 @@ ROLES: dict[str, Role] = {
     "port.studies.cna_lengths": "tool",
     "port.studies.copy_start_arms": "tool",
     "port.studies.copy_start_notebook": "tool",
+    "port.studies.notebook": "tool",
     "port.studies.copy_starts": "tool",
     "port.studies.copy_state_plot": "tool",
     "port.studies.copy_state_stream": "tool",
@@ -171,7 +173,7 @@ ROLES: dict[str, Role] = {
     "port.sandbox.admixture.clone_mixture": "set aside",
     "port.sandbox.extensions.label_solvers": "set aside",
     "port.sandbox.extensions.segment_sets": "set aside",
-    "port.sandbox.extensions.color_merge": "set aside",
+    "port.studies.color_merge": "tool",
     "port.sandbox.admixture.probes.sim_probe": "set aside",
     "port.sandbox.admixture.variants": "set aside",
     "port.sandbox.clone_starts.problem": "set aside",
@@ -290,6 +292,8 @@ def test_live_and_set_aside_are_what_the_graph_says() -> None:
     assert _by("extension") <= live, sorted(_by("extension") - live)
     assert _by("row-helper") <= live, sorted(_by("row-helper") - live)
     assert not (_by("tool") & live), sorted(_by("tool") & live)
+    # NB an oracle the run reaches is no longer independent of what it referees (#749 WP8)
+    assert not (_by("oracle") & live), sorted(_by("oracle") & live)
     assert not (_by("set aside") & live), sorted(_by("set aside") & live)
 
 

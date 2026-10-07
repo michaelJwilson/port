@@ -22,9 +22,9 @@ import torch
 from port.patch.icm.interface import CsrGraph
 from port.sim.draw import (
     DrawManifest,
-    _merge,
     extended,
     from_document,
+    merged_tables,
 )
 from port.sim.fixtures import SIM_ROOT
 from port.sim.truth import (
@@ -1300,7 +1300,7 @@ SMALL_ARRAY = {"array": {"rows": 20, "columns": 20}}
 
 
 def draw_manifest(name: str, overrides: dict[str, Any] | None = None) -> DrawManifest:
-    document = _merge(
+    document = merged_tables(
         extended(SIM_MANIFESTS / f"{name}.toml"), SMALL_ARRAY | (overrides or {})
     )
     return from_document(document, SIM_MANIFESTS)
