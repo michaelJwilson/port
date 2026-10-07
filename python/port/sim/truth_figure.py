@@ -102,6 +102,7 @@ def truth_combined_figure(
     from port.sim.analysis import (
         binned_axis,
         binned_profile,
+        draw_phase,
         draw_tree,
         genomic_truth,
         shown,
@@ -157,6 +158,24 @@ def truth_combined_figure(
                             pointsize=0.4, linewidth=0.3, chrtext_shift=-0.9,
                             axis=genome)  # fmt: skip
         fit_track_furniture(genomic_fig)
+        # NB the normal clone's pair gives way to the phase track, in its place,
+        #    one track tall as an RDR track is (#745)
+        tracks = [
+            list(genomic_fig.axes[k : k + 2])
+            for k in range(0, len(genomic_fig.axes), 2)
+        ]
+        normal = next(i for i, (rdr, _) in enumerate(tracks)
+                      if any(t.get_text().startswith(symbol("normal")) for t in rdr.texts))  # fmt: skip
+        # NB drawn into the normal clone's RDR axes, so (c)'s axes stay in page order
+        phase_ax, baf_ax = tracks[normal]
+        phase_ax.cla()
+        draw_phase(phase_ax, r, genome, rate_size=None, ylim=1.0)
+        # NB the tracks' furniture (`fit_track_furniture`): ticks 2 pt, the label a point off them
+        phase_ax.tick_params(length=2, pad=1)
+        phase_ax.yaxis.labelpad = 1.0
+        phase_ax.set_ylabel("Switches / Mb")
+        baf_ax.remove()
+        tracks[normal] = [phase_ax]
         # NB each clone's name followed by its barcode, as (a) sets it.
         barcode = tree(r).barcode
         named = {symbol(clone): clone for clone in r.clones}
@@ -179,9 +198,9 @@ def truth_combined_figure(
             for text in ax.texts:
                 if text.get_text().startswith("chr"):
                     text.set_visible(False)
-            if ax is not genomic_fig.axes[-1]:
+            if ax is not tracks[-1][-1]:
                 ax.xaxis.set_minor_locator(NullLocator())
-        bottom_ax = genomic_fig.axes[-1]
+        bottom_ax = tracks[-1][-1]
         bottom_ax.set_xticks([])
 
         # NB the tracks at `TRACK_FONT_SIZE`, as `combined_figure` sets its own (#743)
@@ -197,7 +216,11 @@ def truth_combined_figure(
         renderer = figure.canvas.get_renderer()
         right = width - RIGHT
         for _ in range(3):
-            for ax in [legend_ax, profile_ax, *genomic_fig.axes]:
+            for ax in [
+                legend_ax,
+                profile_ax,
+                *(ax for group in tracks for ax in group),
+            ]:
                 place_in_inches(ax, LEFT, right)
             figure.canvas.draw()
             name_contigs(bottom_ax, starts, contigs, size=FONT_SIZE)
@@ -211,7 +234,7 @@ def truth_combined_figure(
             right -= overrun + LABEL_GAP / 72.0
 
         foot = name_contigs(bottom_ax, starts, contigs, size=FONT_SIZE)
-        _stack_tracks(genomic_fig, foot)
+        _stack_tracks(genomic_fig, foot, tracks)
         place_in_inches(tree_ax, LEFT, right)
         figure.canvas.draw()
         _fit_tree(tree_ax)
@@ -233,9 +256,10 @@ STATS_ROW = 0.13
 """Inches above each clone's RDR track for its name and state line."""
 
 
-def _stack_tracks(panel: Any, foot: float) -> None:
+def _stack_tracks(panel: Any, foot: float, tracks: list[list[Any]]) -> None:
     """(c)'s tracks filling its panel over `foot` inches for the contig
-    names: per clone, its name row, RDR, then BAF.
+    names: per clone, its name row, RDR, then BAF; the phase track, in the
+    normal clone's place, one track tall as an RDR track is (#745).
 
     `plot_clones_genomic` spaces the tracks for its own page, which in a
     subfigure leaves white at the head and foot; the tracks take it.
@@ -245,13 +269,12 @@ def _stack_tracks(panel: Any, foot: float) -> None:
     dpi = panel.get_figure(root=True).dpi
     box = panel.bbox
     top, bottom = box.y1 / dpi - 0.02, box.y0 / dpi + foot
-    tracks = list(panel.axes)
-    clones = len(tracks) // 2
-    height = (top - bottom - clones * (STATS_ROW + TRACK_GAP)) / len(tracks)
+    count = sum(len(group) for group in tracks)
+    height = (top - bottom - len(tracks) * (STATS_ROW + TRACK_GAP)) / count
     y = top
-    for k in range(clones):
+    for group in tracks:
         y -= STATS_ROW
-        for ax in tracks[2 * k : 2 * k + 2]:
+        for ax in group:
             y -= height
             place_in_inches(ax, y0=y, height=height)
         y -= TRACK_GAP

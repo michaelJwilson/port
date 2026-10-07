@@ -353,7 +353,7 @@ def draw(
         )
     )
     ax.set_xlabel("Runtime [s]")
-    ax.set_ylabel("Gap [nats]" if key else "Gap [Nats]")
+    ax.set_ylabel(r"$\Delta \ln \mathcal{L}$")
     if key:
         after = d.groupby("start").missed_pct.median()
         before = d.groupby("start").start_missed_pct.median()
