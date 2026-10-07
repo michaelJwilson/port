@@ -35,7 +35,12 @@ from typing import Any
 import numpy as np
 import yaml
 
-from port.sim.inputs import FILTERED_FEATURE_NAME, WrittenInputs, write_tmp_inputs
+from port.sim.inputs import (
+    FILTERED_FEATURE_NAME,
+    WrittenInputs,
+    run_paths,
+    write_tmp_inputs,
+)
 from port.sim.truth import CoreInferenceTruth, core_inference_truth
 from port.sim.unsegment import Unsegmented, unsegment
 
@@ -75,11 +80,7 @@ def run_cnaster_config(
     states = truth.n_states if n_states is None else n_states
 
     return {
-        "paths": {
-            "sample_sheet": str(written.sample_sheet),
-            "output_dir": str(written.root / "output"),
-            "perf_path": str(written.root / "cnaster.perf"),
-        },
+        "paths": run_paths(written.root),
         "preprocessing": {"normalidx_file": "None", "tumorprop_file": "None"},
         "visium": {"filtered_feature_name": FILTERED_FEATURE_NAME},
         "annotation": {"clone_label": "None", "clone_ranges": "None"},

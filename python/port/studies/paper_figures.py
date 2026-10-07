@@ -378,9 +378,9 @@ def compared(
 
 def _colours(n: int) -> list[str]:
     """`port.sim.analysis`'s clone colours: the normal grey, then the series."""
-    from port.sim.analysis import NEUTRAL, SERIES
+    from port.extensions.figure_style import NEUTRAL_COLOUR, SERIES
 
-    return [NEUTRAL, *(SERIES[k % len(SERIES)] for k in range(n - 1))]
+    return [NEUTRAL_COLOUR, *(SERIES[k % len(SERIES)] for k in range(n - 1))]
 
 
 def labels_figure(c: Compared) -> Any:
@@ -494,8 +494,8 @@ def genomic_compare_figure(c: Compared, *, metric: bool = False) -> Any:
     import matplotlib.pyplot as plt
     from matplotlib.lines import Line2D
 
+    from port.extensions.figure_style import SERIES
     from port.extensions.genomic_axis import GenomicAxis, disclose
-    from port.sim.analysis import SERIES
 
     lengths = np.diff(c.edges)
     altered = np.any(c.truth != 1, axis=(1, 2)) | np.any(c.decoded != 1, axis=(1, 2))
@@ -573,7 +573,7 @@ def exact_figure(c: Compared) -> Any:
     """17: exact recovery by planted class, phased and phase-free."""
     import matplotlib.pyplot as plt
 
-    from port.sim.analysis import SERIES
+    from port.extensions.figure_style import SERIES
 
     shares = exact_by_class(c)
     figure, ax = plt.subplots(figsize=(5.0, 2.8))
