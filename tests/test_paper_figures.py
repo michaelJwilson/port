@@ -79,7 +79,7 @@ def _texts(figure: Any) -> list[str]:
 def test_the_compare_figures_draw_what_their_inputs_hold(tmp_path: Path) -> None:
     """Figures 14-17 on a tiny truth and fit, no pipeline run: the matching in
     14 and no title (T- #660: the ARI is the README's), the confusion's shares in 15, one mark per swapped or
-    wrong bin in 16, the per-class shares in 17, each written with its stamp."""
+    wrong bin in 16, the per-class shares in 17, each written unstamped (#743)."""
     import matplotlib as mpl
 
     mpl.use("Agg")
@@ -120,7 +120,7 @@ def test_the_compare_figures_draw_what_their_inputs_hold(tmp_path: Path) -> None
     assert np.isnan(shares["unbalanced_gain"][0])
     assert shares["neutral"] == (1.0, 1.0, 13)
 
-    written = pf.compare_figures(c, tmp_path, "tiny 00000000 · code 0000000")
+    written = pf.compare_figures(c, tmp_path)
     assert [p.name for p in written] == list(pf.FIGURES)
     assert all(p.stat().st_size > 0 for p in written)
 

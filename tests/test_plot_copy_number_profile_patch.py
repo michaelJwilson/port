@@ -238,7 +238,9 @@ def mirror_key_holds(legend_ax: Any, edge_ax: Any) -> None:
         key=lambda b: -b.y0,
     )
     (mirror,) = [t for t in legend_ax.texts if t.get_text() == MIRROR]
-    (title,) = [t for t in legend_ax.texts if "CNA" in t.get_text()]
+    (title,) = [
+        t for t in legend_ax.texts if t.get_text() == r"$\mathbb{N}$-CNA (A, B)"
+    ]
     label = mirror.get_window_extent(renderer)
     left = edge_ax.get_window_extent(renderer).x0
 
