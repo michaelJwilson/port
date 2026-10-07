@@ -83,30 +83,39 @@ def clones_of(
     return found
 
 
+def draws(
+    graph: Any, field: np.ndarray, sampler: str, rng: np.random.Generator,
+    n: int, burn_in: int = 0, thin: int = 1,
+) -> tuple[np.ndarray, float]:  # fmt: skip
+    """`n` labellings of `sampler` (`SAMPLERS`) on `(graph, field)` at temperature 1, after `burn_in`,
+    one per `thin` sweeps, and the mean cluster a move flipped (`sal.sample_potts`)."""
+    from sal.sample.potts_mcmc import PottsMove, sample_potts
+
+    chain_ = sample_potts(graph, field, PottsMove(SAMPLERS[sampler]), rng, n_sweeps=n,
+                          burn_in=burn_in, thin=thin)  # fmt: skip
+    return np.asarray(chain_.states, dtype=np.int64), float(chain_.mean_cluster_size)
+
+
 def chain(
     graph: Any, field: np.ndarray, sampler: str, rng: np.random.Generator,
     adjacency: Any, umis: np.ndarray, planted: np.ndarray, max_sweeps: int = MAX_SWEEPS,
 ) -> dict[str, Any]:  # fmt: skip
     """One mixed chain of `sampler` on `(graph, field)`: its `tau`, burn-in, thinning and recoloured samples."""
-    from sal.sample.potts_mcmc import PottsMove, sample_potts
     from sal.sample.statistics import integrated_autocorrelation_time
 
-    move = PottsMove(SAMPLERS[sampler])
     opened = time.perf_counter()
-    pilot = sample_potts(graph, field, move, rng, n_sweeps=PILOT)
-    trace = _energy_trace(graph, field, pilot.states)
+    pilot, _ = draws(graph, field, sampler, rng, PILOT)
+    trace = _energy_trace(graph, field, pilot)
     tau = float(integrated_autocorrelation_time(trace[PILOT // 2 :]))
     thin = max(1, math.ceil(THIN_TAUS * tau))
     burn = max(PILOT // 2, math.ceil(BURN_TAUS * tau))
     capped = burn + thin * SAMPLES > max_sweeps
     if capped:
         thin = max(1, (max_sweeps - burn) // SAMPLES)
-    recorded = sample_potts(
-        graph, field, move, rng, n_sweeps=SAMPLES, burn_in=burn, thin=thin
-    )
-    samples = [clones_of(s, adjacency, umis, planted) for s in recorded.states]
+    recorded, cluster = draws(graph, field, sampler, rng, SAMPLES, burn, thin)
+    samples = [clones_of(s, adjacency, umis, planted) for s in recorded]
     return {"sampler": sampler, "tau": tau, "burn": burn, "thin": thin, "capped": capped,
-            "mean_cluster_size": float(recorded.mean_cluster_size),
+            "mean_cluster_size": cluster,
             "seconds": round(time.perf_counter() - opened, 2), "samples": samples}  # fmt: skip
 
 

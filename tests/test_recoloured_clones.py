@@ -89,7 +89,7 @@ def test_at_zero_coupling_neighbours_share_a_colour_at_one_over_q() -> None:
     """Heat-bath Swendsen-Wang at J = 0, no field, q = 4 on a 20 x 20 hex lattice: same-colour neighbour pairs at 1/4."""
     from port.patch.icm.alpha_expansion import potts_graph_from
     from port.patch.icm.interface import CsrGraph
-    from sal.sample.potts_mcmc import PottsMove, sample_potts
+    from port.studies.recoloured_clones import draws
 
     adjacency = _hex(20, 20)
     adjacency.sort_indices()
@@ -97,10 +97,9 @@ def test_at_zero_coupling_neighbours_share_a_colour_at_one_over_q() -> None:
         CsrGraph(adjacency.indptr, adjacency.indices, adjacency.data), 0.0
     )
     field = np.zeros((adjacency.shape[0], 4))
-    chain = sample_potts(graph, field, PottsMove("swendsen-wang-heat-bath"),
-                         np.random.default_rng(1), n_sweeps=50, burn_in=5)  # fmt: skip
+    states, _ = draws(graph, field, "sw", np.random.default_rng(1), 50, burn_in=5)
     upper = sp.triu(adjacency, k=1).tocoo()
-    same = np.array([np.mean(s[upper.row] == s[upper.col]) for s in chain.states])
+    same = np.array([np.mean(s[upper.row] == s[upper.col]) for s in states])
     pairs = upper.row.size * len(same)
     # NB 4 binomial standard errors over every recorded pair: sweeps at J = 0 are independent
     assert abs(same.mean() - 0.25) < 4 * np.sqrt(0.25 * 0.75 / pairs)
