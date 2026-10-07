@@ -25,9 +25,9 @@ from typing import Any
 import matplotlib as mpl
 import numpy as np
 import pandas as pd
-from sklearn.metrics import adjusted_rand_score
 
 from port.qa.audit import audit_sample
+from port.qa.scoring import shared_ari
 from port.sim.fixtures import load_simulated
 
 mpl.use("Agg")
@@ -38,9 +38,7 @@ def baf_ari(sample: Any, output: Path) -> float:
     labels = pd.read_csv(
         next(output.glob("*/baf_clone_labels.tsv")), sep="\t", index_col=0
     )["clone_label"]
-    truth = pd.Series(sample.labels, index=sample.barcodes)
-    common = labels.index.intersection(truth.index)
-    return float(adjusted_rand_score(truth[common], labels[common]))
+    return shared_ari(pd.Series(sample.labels, index=sample.barcodes), labels)[0]
 
 
 def normal_spots(output: Path) -> set[str]:

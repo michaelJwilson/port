@@ -40,13 +40,11 @@ STATE: dict[str, Kind] = {
     #    (T- #673 G5, from `tests/studies/`): each rebinds what it measures
     #    for its own process, or keeps what its workers share.
     "port.extensions.label_solver.sweep_for": "rebind",
-    "port.patch.hmm_initialize.distinct.gmm_init": "rebind",
     "port.patch.hmrf.core_inference.UPSTREAM": "rebind",
     "port.patch.normal_spot.determine_normal_candidates": "rebind",
     "port.studies.clone_label_arms._HELD": "run",
     "port.studies.clone_label_arms._graph": "rebind",
     "port.studies.copy_start_arms._CALLS": "run",
-    "port.studies.hmm_starts._CALL": "run",
     "port.studies.copy_state_stream._WARM": "cache",
     "port.studies.potts_stream._GRAPHS": "cache",
     # NB `port.qa.audit.audit_truth` records the normal candidates a run used,

@@ -59,7 +59,8 @@ BUDGET: dict[str, int] = {
     #    stops the run once the study has its stage. 88: #735's `stage.Field`,
     #    the run's clone-assignment problem, and `potts_stream.Problem`, one
     #    with its realization (`known_field.KnownProblem`, in `sandbox/`, gone).
-    "classes": 88,
+    #    87: #749 WP6 retired `potts_solvers` and its `PortStart`.
+    "classes": 87,
     # NB step 4: 18 records became NamedTuples; the dataclasses left carry
     #    mutable state, machinery or a `__post_init__` (#517 D). Step 8 moved
     #    7 dataclasses and 1 NamedTuple to `sandbox/`. 21: T- #418's `Samples`
@@ -70,8 +71,8 @@ BUDGET: dict[str, int] = {
     #    33: G5's three study records, moved.
     #    34: T- #683's `Ticks`, frozen: a swap row's bound option.
     #    36: #716's `WarmSchedule` and `_Warmed`, frozen: what `run_annealed`
-    #    calls `build` on.
-    "dataclasses": 36,
+    #    calls `build` on. 35: #749 WP6 retired `potts_solvers.PortStart`.
+    "dataclasses": 35,
     # NB 24: `analysis.GenomicTruth` (the truth page). 26: #540's
     #    `CopyCall` and `CopyStart` (`Row` in `sandbox/`, #547). 27: T- #617
     #    WP2's `pipeline.Default`. 28: G6's `port.sim.he_slide.Slide`, moved.
