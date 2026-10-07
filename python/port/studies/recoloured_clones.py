@@ -44,14 +44,14 @@ J_GRID = np.round(np.arange(0.4, 3.01, 0.2), 2)
 SAMPLERS = {"sw": "swendsen-wang-heat-bath", "wolff": "wolff-heat-bath"}
 """`sal`'s heat-bath cluster moves (its #1142), by the study's short name."""
 
-WOLFF_J = (1.0, 2.0, 2.8)
-"""Couplings Wolff also samples, as a check that SW mixed: both leave one law invariant, so
-mixed chains give one clone-UMI distribution. Not every coupling: on member 0 a Wolff chain
-at J = 0.4 read tau >= 385 steps, unresolved after a 6,400-step pilot, in 574 s, since a
-single cluster there is a few spots (#751)."""
+WOLFF_J: tuple[float, ...] = ()
+"""Couplings Wolff also samples, as a check that SW mixed; none (#751). Both moves leave one
+law invariant, so it would only check mixing, and it does not fit the budget at this size: on
+member 0 a Wolff chain at J = 0.4 read tau >= 385 steps, unresolved after a 6,400-step pilot,
+in 574 s, and two chains at J = 1.0 ran 40 min each without finishing."""
 
-WOLFF_MEMBERS = 3
-"""Members (seeds below this) that carry the Wolff check: a Wolff step at J >= 1 costs ~38 ms."""
+WOLFF_MEMBERS = 0
+"""Members (seeds below this) that carry the Wolff check."""
 
 PILOT = 400
 """Pilot sweeps, every one recorded, for `tau`."""
@@ -250,6 +250,8 @@ def summarize(out: Path, umi50: float) -> dict[str, Any]:
                 "median": float(np.median(logs)), "q10": float(np.quantile(logs, 0.1)),
                 "q90": float(np.quantile(logs, 0.9)), "share_above": float(np.median(above)),
                 "above_per_sample": float(np.median(counted)),
+                "pure_above": float(np.mean([k["pure"] for c in chains for s in c["samples"]
+                                             for k in s if k["umis"] >= 10**umi50] or [np.nan])),
                 "tau": float(np.median([c["tau"] for c in chains])),
                 "capped": int(sum(c["capped"] for c in chains)), "chains": len(chains),
                 "points": [float(x) for x in logs[:: max(1, logs.size // 400)]],
@@ -264,7 +266,8 @@ def summarize(out: Path, umi50: float) -> dict[str, Any]:
 
 
 def figure(summary: dict[str, Any], into: Path) -> Path:
-    """`FIGURE`: (a) SW and (b) Wolff log10 clone UMIs against J beside UMI50, (c) the share of spots above it, (d) clones above it per sample."""
+    """`FIGURE`: (a) SW log10 clone UMIs against J beside UMI50, (b) the share of clones above UMI50 within one
+    planted clone, (c) the share of spots above UMI50, (d) clones above UMI50 per sample."""
     import matplotlib as mpl
 
     mpl.use("Agg")
@@ -283,7 +286,7 @@ def figure(summary: dict[str, Any], into: Path) -> Path:
             2, 2, figsize=(PAPER_WIDTH, COMBINED_HEIGHT), dpi=300
         )
         umi50 = summary["umi50"]
-        for ax, sampler in ((a, "sw"), (b, "wolff")):
+        for ax, sampler in ((a, "sw"),):
             rows = summary["samplers"].get(sampler, [])
             js = [r["J"] for r in rows]
             for r in rows:
@@ -302,6 +305,12 @@ def figure(summary: dict[str, Any], into: Path) -> Path:
             ax.axhline(umi50, color="0.3", lw=0.8, ls="--", label="UMI50, J = 1")
             ax.set_xlabel("J")
             ax.set_ylabel(r"$\log_{10} |{\rm Clone\ UMIs}|$")
+        for sampler, rows in summary["samplers"].items():
+            b.plot([r["J"] for r in rows], [r["pure_above"] for r in rows],
+                   color=colours[sampler], label=names[sampler])  # fmt: skip
+        b.set_xlabel("J")
+        b.set_ylabel(f"Clones above UMI50 within one planted clone (≥ {PURE:.0%})")
+        b.set_ylim(-0.02, 1.02)
         for sampler, rows in summary["samplers"].items():
             js = [r["J"] for r in rows]
             c.plot(
