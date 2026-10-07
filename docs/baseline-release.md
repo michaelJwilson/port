@@ -230,3 +230,41 @@ spread of 3 runs of the old pin (T- #696).
 | `dev` | `07b82e92` | 1.0 | 1.0 | 0.9992 | — | — | — | — | 113.2 / 114.9 |
 | `dev_tree_1s_easy_r0` | `7ba9b01f` | 0.9798 | 0.9798 | 0.9326 | 0.9335 | 0.9690 | 0.1473 | 1816 | 121.6 / 114.0 |
 | `dev_tree_1s_hard_r0` | `9ec90dc2` | 0.9372 | 0.9372 | 0.7618 | 0.7614 | 0.9753 | 0.4034 | 1811 | 87.4 / 88.0 |
+
+## Main `83ed58b`, sal `ef2fd06`: every fixture, 3 repeats (#727)
+
+**TL;DR:** all 17 fixtures the `9a47d97` sweep ran reproduce its clone ARI, phase-free copy ARI and phase-free exact-altered to 4 decimals, at a 5–22% lower median wall time. One fixture is not reproducible run to run: `dev_tree_r0` `3339b9a0` gave clone ARI 0.8638 once in 3 repeats against 0.9976. The cause is `--sal`'s 160 s wall-clock polish budget (#704). Two fixtures are new since `9a47d97`: `dev_tree_1s_easy_r0` `7ba9b01f` and `dev_tree_1s_dense_r0` `33e3471e` (balanced gains, #750).
+
+- **Conditions:** `run_ledger --record --benchmark --sample NAME -- --sal --no-plots`, serial, one run at a time on a 4-core 15 GB host with nothing else running, 2026-10-07 01:47–04:23 UTC.
+  - Each fixture runs once per repeat, so the order is the same in each repeat.
+  - The sweep stopped at a 2 h job limit and resumed at the run it was in; that run completed in full.
+  - Numba caches were warm from the first run on. The uv cache had been cleared at 01:30, before the sweep.
+- **Fixtures:**
+  - CalicoST easy and hard;
+  - `sim/manifests/baseline/st_*` r0–r2 (12 fixtures), whose hashes are `9a47d97`'s;
+  - r0 of each current manifest (`dev_tree`, `dev_tree_1s`, `dev_tree_1s_easy`, `dev_tree_1s_hard`, `dev_tree_1s_dense`).
+- **Cells:** the median over 3 repeats, [min, max] where they differ, and (`9a47d97`'s value) on the same hash. The flags column marks a `9a47d97` value outside the repeats' range by more than 0.02 in a score, 25% in wall time or 15% in peak memory, or a spread over 0.02 in a score.
+
+| fixture | hash | n | clone ARI | copy ARI pf | exact altered pf | wall s | peak GB | flags |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| easy | 2d4ce9a9 | 3 | 0.9861 (0.9861) | 0.9031 (0.9031) | 0.7231 (0.7231) | 91.5 [89.3, 104.6] (99.2) | 3.2 [3.21, 3.28] (3.22) | - |
+| hard | 8797710b | 3 | 0.9829 (0.9829) | 0.9181 (0.9181) | 0.7244 (0.7244) | 98.8 [96.6, 99.1] (101.8) | 3.2 (3.22) | - |
+| dev_tree_r0 | 3339b9a0 | 3 | 0.9976 [0.8638, 0.9976] (0.9976) | 0.9876 [0.9709, 0.9876] (0.9876) | 0.9492 [0.9476, 0.9492] (0.9492) | 250.2 [248.1, 268.3] (274.2) | 6.1 [6.1, 6.5] (6.13) | clone_ari spread |
+| dev_tree_1s_r0 | df3cc0ab | 3 | 0.9973 (0.9973) | 0.9787 (0.9787) | 0.9506 (0.9506) | 131.8 [131.6, 144.4] (168.5) | 3.6 [3.62, 3.64] (3.64) | - |
+| dev_tree_1s_dense_r0 | 33e3471e | 3 | 0.9523 | 0.7044 | 0.6420 | 172.6 [172.1, 175.9] | 3.7 [3.61, 3.67] | - |
+| dev_tree_1s_easy_r0 | 7ba9b01f | 3 | 0.9798 | 0.9335 | 0.8992 | 156.8 [154.4, 166.9] | 3.6 [3.63, 3.68] | - |
+| dev_tree_1s_hard_r0 | 9ec90dc2 | 3 | 0.9372 (0.9372) | 0.7614 (0.7614) | 0.6345 (0.6345) | 113.9 [109.9, 115.5] (124) | 3.7 [3.64, 3.74] (3.65) | - |
+| dev_tree_r0 | 3381575a | 3 | 1.0000 (1) | 0.9825 (0.9825) | 0.9213 (0.9213) | 221.1 [220.8, 233.7] (253.4) | 6.1 (6.15) | - |
+| dev_tree_r1 | 563661f1 | 3 | 0.9993 (0.9993) | 0.9765 (0.9765) | 0.9572 (0.9572) | 234.6 [224.7, 275.8] (259.4) | 6.0 [6.04, 6.44] (6.05) | - |
+| dev_tree_r2 | c7f1ec6b | 3 | 0.9986 (0.9986) | 0.9784 (0.9784) | 0.9065 (0.9065) | 234.5 [232.9, 239.1] (261.5) | 6.1 (6.12) | - |
+| dev_tree_1s_r0 | 4687b541 | 3 | 0.9986 (0.9986) | 0.9744 (0.9744) | 0.8845 (0.8845) | 120.8 [118.1, 127.6] (140.1) | 3.6 [3.63, 3.65] (3.65) | - |
+| dev_tree_1s_r1 | f5585f31 | 3 | 0.9994 (0.9994) | 0.9731 (0.9731) | 0.9200 (0.92) | 123.8 [122.2, 138.1] (138.5) | 3.6 [3.64, 3.65] (3.65) | - |
+| dev_tree_1s_r2 | 479beca0 | 3 | 0.9980 (0.998) | 0.9804 [0.9799, 0.9804] (0.9804) | 0.9216 [0.9054, 0.9216] (0.9216) | 146.7 [145.6, 174.9] (164.3) | 3.6 [3.63, 3.64] (3.65) | - |
+| dev_tree_1s_easy_r0 | d08e3a1b | 3 | 0.9721 (0.9721) | 0.9752 (0.9752) | 0.9549 (0.9549) | 169.2 [166.7, 178.9] (188.2) | 3.8 (3.65) | - |
+| dev_tree_1s_easy_bb01_r1 | 8d0bbfda | 3 | 0.9710 (0.971) | 0.9643 (0.9643) | 0.9512 (0.9512) | 106.8 [104.1, 112.7] (125.2) | 3.6 (3.64) | - |
+| dev_tree_1s_easy_bb01_r2 | e2ce4e06 | 3 | 0.9710 (0.971) | 0.9888 (0.9888) | 0.9796 (0.9796) | 156.1 [150.3, 166.9] (171.4) | 3.6 (3.65) | - |
+| dev_tree_1s_hard_r0 | d2938975 | 3 | 0.2187 (0.2187) | 0.4018 (0.4018) | 0.1358 (0.1358) | 168.8 [165.1, 171.4] (177.9) | 3.6 [3.63, 3.73] (3.65) | - |
+| dev_tree_1s_hard_bb01_r1 | 764709dc | 3 | 0.2217 (0.2217) | 0.3818 (0.3818) | 0.2466 (0.2466) | 138.0 [137.9, 140.8] (139.6) | 3.6 [3.63, 3.67] (3.65) | - |
+| dev_tree_1s_hard_bb01_r2 | 3adf249a | 3 | 0.0000 (0) | 0.0000 (0) | 0.0000 (0) | 109.2 [106.2, 113.9] (116.5) | 3.7 [3.58, 3.72] (3.6) | - |
+
+The ARI and metrics history plots (`run_study --metrics-history`) were redrawn from this ledger. They plot only `HISTORY` rows, measurements at earlier merges, so this sweep's rows do not move them.
