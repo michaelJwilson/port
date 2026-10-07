@@ -123,7 +123,8 @@ def baf_stage(sample: Any, output: Path) -> dict[str, Any]:
     else the HMRF's last round in `allspots`, before that merge.
     """
     import numpy as np
-    from sklearn.metrics import adjusted_rand_score
+
+    from port.qa.scoring import shared_ari
 
     merged = sorted(output.glob("*/mergedallspots_nstates*_sp.npz"))
     unmerged = sorted(output.glob("*/allspots_nstates*_sp.npz"))
@@ -143,14 +144,12 @@ def baf_stage(sample: Any, output: Path) -> dict[str, Any]:
     planted = pd.read_csv(
         located(sample.path / "truth_clone_labels.tsv"), sep="\t", index_col=0
     )["labels"]
-    common = labels.index.intersection(planted.index)
+    ari, spots = shared_ari(planted, labels)
     return {
         "baf_stage": "merged" if merged else "before the merge",
-        "baf_stage_ari": round(
-            float(adjusted_rand_score(planted[common], labels[common])), 4
-        ),
+        "baf_stage_ari": round(ari, 4),
         "baf_stage_clones": int(labels.nunique()),
-        "baf_stage_spots": len(common),
+        "baf_stage_spots": spots,
         "written": sorted(p.name for p in output.glob("*/*.npz")),
     }
 

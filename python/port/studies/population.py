@@ -9,6 +9,7 @@ J starts just above the lattice's critical coupling (`J_CRITICAL`): below it
 the prior orders nothing, so the study reads J where it does.
 
     run_study --population run --seeds 0:40 --J 0.8 --out DIR
+    run_study --population stay --seeds 0:15 --out DIR   # #729's t arm, at the planted clones
     run_study --population report --out DIR --study2-J 0.8
 
 `run` is resumable: a `(seed, J)` with a record in `DIR/records/` is skipped.
@@ -572,28 +573,9 @@ def _neutral(
     return out
 
 
-def _kept_run(sample: Any, kept: Path) -> dict[str, Any]:
-    """`read_run`'s labels, seglevel, `a` and `b`, from a run's `KEPT` outputs."""
-    from port.qa.audit import _barcode
-
-    table = pd.read_csv(kept / "clone_labels.tsv", sep="\t", comment="#")
-    barcodes = table["barcode"] if "barcode" in table else table.iloc[:, 0]
-    by_barcode = dict(
-        zip(_barcode(barcodes), table["clone_label"].to_numpy(), strict=True)
-    )
-    labels = np.array([by_barcode.get(b, -1) for b in sample.barcodes])
-    seglevel = pd.read_csv(kept / "cnv_seglevel.tsv", sep="\t")
-    missing = np.full(len(seglevel), -1)
-    n_fitted = int(labels.max()) + 1
-    a, b = (
-        np.stack([seglevel.get(f"clone{c} {k}", missing) for c in range(n_fitted)], 1)
-        for k in ("A", "B")
-    )
-    return {"labels": labels, "seglevel": seglevel, "a": a, "b": b}
-
-
 def rescore(out: Path) -> int:
     """Add `neutral_segments` to each record scored before it, from its outputs."""
+    from port.qa.audit import read_tables
     from port.qa.scoring import matched, overlap
     from port.sim.fixtures import load_simulated
 
@@ -606,7 +588,7 @@ def rescore(out: Path) -> int:
         manifest = ROOT / "sim" / "manifests" / f"{record['manifest']}.toml"
         draws = out / "draws" / f"rescore-s{seed:04d}"
         sample = load_simulated(str(draw_member(seed, draws, manifest)))
-        run = _kept_run(sample, out / "outputs" / f"s{seed:04d}-J{j:g}")
+        run = read_tables(sample, out / "outputs" / f"s{seed:04d}-J{j:g}")
         planted, fitted = np.asarray(sample.labels), run["labels"]
         scored = fitted >= 0
         counts = overlap(planted[scored], fitted[scored], len(sample.clones),
@@ -629,6 +611,7 @@ def rescore_sets(out: Path) -> int:
     The whole record's clones and events are rebuilt by :func:`score_run`, so
     records scored by an earlier :func:`set_scores` carry the current fields.
     """
+    from port.qa.audit import read_tables
     from port.sim.fixtures import load_simulated
 
     done = 0
@@ -642,7 +625,7 @@ def rescore_sets(out: Path) -> int:
         manifest = ROOT / "sim" / "manifests" / f"{record['manifest']}.toml"
         draws = out / "draws" / f"rescore-s{seed:04d}"
         sample = load_simulated(str(draw_member(seed, draws, manifest)))
-        record |= score_run(sample, _kept_run(sample, kept), sets)
+        record |= score_run(sample, read_tables(sample, kept), sets)
         partial = path.with_suffix(".partial")
         partial.write_text(json.dumps(record) + "\n")
         partial.replace(path)
@@ -722,6 +705,110 @@ def run_member(
     shutil.rmtree(draws, ignore_errors=True)
 
 
+STAY = tuple(float(v) for v in np.logspace(-9.0, -2.0, 8))
+"""`1 - t`, the HMM's switch probability, for the stay arm (#729): 1e-9 to 1e-2,
+the configuration's 1e-7 among them."""
+
+
+def _planted_events(found: Any) -> list[tuple[np.ndarray, tuple[int, int], int]]:
+    """Each clone's runs of one planted non-`(1, 1)` pair along a contig, as
+    `(rows, pair, length)`: the events the stage's rows hold."""
+    n_bins = len(found.contig)
+    events = []
+    for clone in range(found.n_clones):
+        rows = np.arange(clone * n_bins, (clone + 1) * n_bins)
+        pairs = [(int(found.planted[r][0]), int(found.planted[r][1])) for r in rows]
+        start = 0
+        for k in range(1, n_bins + 1):
+            ends = (
+                k == n_bins
+                or pairs[k] != pairs[start]
+                or found.contig[k] != found.contig[start]
+            )
+            if not ends:
+                continue
+            pair = pairs[start]
+            if pair != (1, 1):
+                span = np.arange(start, k)
+                events.append((rows[span], pair, int(np.sum(found.length[span]))))
+            start = k
+    return events
+
+
+def _phase_free(pair: tuple[int, int]) -> tuple[int, int]:
+    return (max(pair), min(pair))
+
+
+def stay_scores(found: Any) -> list[dict[str, Any]]:
+    """Each planted event, recovered or not, by the run's Baum-Welch at each `1 - t` in `STAY`.
+
+    The call is the run's own at its RDR + BAF stage at the planted clones
+    (`port.studies.stage.at_oracle_clones`), `t` alone replaced. A fitted
+    state is read as the planted pair most of its rows hold, up to phase, and
+    an event is recovered where `RECOVERED` of its rows' states read as its
+    pair. A stated difference from the pipeline arms: those score the run's
+    integer decode; this scores the HMM's states, before integer copy.
+    """
+    events = _planted_events(found)
+    planted = [_phase_free((int(a), int(b))) for a, b in found.planted]
+    out = []
+    for omt in STAY:
+        result = found.run(t=1.0 - omt)
+        states = np.argmax(np.asarray(result["log_gamma"]), axis=0)
+        reads: dict[int, tuple[int, int]] = {}
+        for state in np.unique(states):
+            held = pd.Series([planted[r] for r in np.flatnonzero(states == state)])
+            reads[int(state)] = held.value_counts().index[0]
+        for rows, pair, length in events:
+            share = float(
+                np.mean([reads[int(states[r])] == _phase_free(pair) for r in rows])
+            )
+            out.append({"omt": omt, "class": copy_class(*pair), "length": length,
+                        "recovered": share >= RECOVERED})  # fmt: skip
+    return out
+
+
+def stay_member(seed: int, out: Path, manifest: Path = MANIFEST) -> None:
+    """Seed `seed`'s stay-arm record (#729), from the run's own stage at its planted clones."""
+    from port.sim.fixtures import load_simulated
+    from port.studies.stage import at_oracle_clones
+
+    target = out / "stay" / f"s{seed:04d}.json"
+    if target.exists():
+        return
+    draws = out / "draws" / f"stay{seed:04d}"
+    path = draw_member(seed, draws, manifest)
+    sample = load_simulated(str(path))
+    started = time.perf_counter()
+    try:
+        rows = at_oracle_clones(
+            sample, stay_scores, root=out / "runs" / f"stay{seed:04d}"
+        )
+        record: dict[str, Any] = {"seed": seed, "manifest": manifest.stem, "rows": rows,
+                                  "wall": round(time.perf_counter() - started, 1)}  # fmt: skip
+    except Exception as error:  # noqa: BLE001 -- a failed member is a result
+        record = {
+            "seed": seed,
+            "manifest": manifest.stem,
+            "rows": [],
+            "error": repr(error),
+        }
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(json.dumps(record) + "\n")
+    shutil.rmtree(out / "runs" / f"stay{seed:04d}", ignore_errors=True)
+    shutil.rmtree(draws, ignore_errors=True)
+
+
+def _stay_worker(task: tuple[int, str, str]) -> str:
+    seed, out, manifest = task
+    log = Path(out) / "logs" / f"stay{seed:04d}.log"
+    log.parent.mkdir(parents=True, exist_ok=True)
+    with log.open("a") as handle:
+        sys.stdout = sys.stderr = handle
+        stay_member(seed, Path(out), Path(manifest))
+    return f"stay s{seed}: done"
+
+
 def _worker(task: tuple[int, tuple[float, ...], str, str, str]) -> str:
     seed, js, out, manifest, arm = task
     log = Path(out) / "logs" / f"s{seed:04d}.log"
@@ -746,7 +833,9 @@ def _seeds(text: str) -> list[int]:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("command", choices=("run", "report", "rescore", "rescore-sets"))
+    parser.add_argument(
+        "command", choices=("run", "stay", "report", "rescore", "rescore-sets")
+    )
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--seeds", default="0:60", help="START:STOP")
     parser.add_argument("--J", default=",".join(f"{j:g}" for j in J_VALUES))
@@ -786,6 +875,12 @@ def main(argv: list[str] | None = None) -> int:
              for s in _seeds(arguments.seeds)]  # fmt: skip
     context = multiprocessing.get_context("spawn")
     with context.Pool(cores, maxtasksperchild=1) as pool:
+        if arguments.command == "stay":
+            stays = [(s, str(arguments.out), str(arguments.manifest))
+                     for s in _seeds(arguments.seeds)]  # fmt: skip
+            for line in pool.imap_unordered(_stay_worker, stays):
+                print(line, flush=True)
+            return 0
         for line in pool.imap_unordered(_worker, tasks):
             print(line, flush=True)
     return 0

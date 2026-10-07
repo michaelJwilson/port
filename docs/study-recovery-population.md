@@ -21,12 +21,23 @@ rerun, so panel (a) of the rerun's figure is J = 1 alone, over the 193 base memb
 - **Per member** on the 433 that ran in both: 173 have identical clone scores. Spot-weighted clone completeness
   has median 0.744 → 0.759, and 697 clones are detected against 682 of 1,299. 235 members move by more than
   0.001, 101 up and 134 down. Fitted clones exceed planted by 2 in 23 members, against 5.
-- Key figure: `docs/plots/paper/key_studies/546_population.png` (`data 6daefbd0 · code f4a0cc0`). The
-  numbers below are the original's.
+- Figure: `docs/plots/paper/pop_combined.png` (#743, #745), drawn from the **limited rerun** at the #745 code,
+  `population_summary_limited.json` (records `population_records_limited.jsonl.gz`, tables
+  `population_tables_limited.md`). That rerun has 12 members × J ∈ {0.8, 1, 1.4, 2.8}, 10 long-CNA members at J = 1,
+  and 12 members on the `t` arm (#729). It was sized to an hour, so its bands are wide; #746 is the full rerun. The
+  numbers below are the original's, at f4a0cc0 (`population_summary.json`), and the limited rerun does not replace them.
+- **Limited rerun:**
+  - UMI50 (log10) is 5.94 [5.68, 6.09], 5.87 [5.55, 6.09], 5.94 [5.75, 6.18] and 6.04 [5.91, 6.18] at J = 0.8, 1,
+    1.4 and 2.8.
+  - L50 (log10 bp) over all classes is 7.66 [7.47, 7.93] (221 events).
+  - The false-positive rate is 7.07 × 10⁻⁴ [2.93, 12.7] (54 of 76,366 segments).
+- **`t` arm (b):** CNA sensitivity by length at oracle clones, per 1 − t. L50 (log10 bp) is 7.95, 7.66, 7.68 and 8.10 at
+  1 − t = 10⁻⁸, 10⁻⁶, 10⁻⁴ and 10⁻², with 186 events each, and the intervals overlap. Over 10⁻⁹ to 10⁻², the stay
+  probability does not move sensitivity by more than this rerun resolves.
+  - A stated difference from the pipeline arms: this arm scores the HMM's states at the planted clones, before integer
+    copy (`population.stay_scores`).
 
-The figure, sensitivity and false positive rate, is committed as
-`plots/studies/population_recovery.png`; `run_study --population
-report --out DIR` redraws it into `DIR/figures/`.
+`run_study --population report --out DIR` redraws `pop_combined.png` into `DIR/figures/`.
 
 (a) Clone sensitivity against log10 clone UMIs, per J. (b) CNA sensitivity against length at J = 1, per copy-state class. (c) The false positive rate of true-(1,1) segments against the SNP-covering UMIs they hold, at J = 1.
 - A clone counts as detected when at least 90% of its spots are in its matched fitted clone.
@@ -125,7 +136,7 @@ Whether the (1,1) calls come from the HMM's states or from the integer-copy deco
 ## Data and reproduction
 
 - `studies/population_records.jsonl.gz`: every record, one JSON per run.
-- `studies/population_summary.json` and `population_tables.md`; the figure as `plots/studies/population_recovery.png` (the `.pdf` is no longer committed).
+- `studies/population_summary.json` and `population_tables.md` (f4a0cc0); `population_*_limited.*` (#745's limited rerun); the figure as `plots/paper/pop_combined.png` (#743, #745).
 
 ```
 run_study --population run --seeds 0:80 --J 0.8,1.0,1.4,2.8 --workers 4 --out DIR

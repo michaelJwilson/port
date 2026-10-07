@@ -748,51 +748,70 @@ def _snp_loci(r: Realization) -> tuple[np.ndarray, np.ndarray]:
     )
 
 
-def plot_phase(r: Realization, out: Path) -> Path:
-    """Switches accumulated along each chromosome from zero, per Mb of that chromosome.
+def draw_phase(
+    ax: Any,
+    r: Realization,
+    axis: Any = None,
+    *,
+    rate_size: float | None = 7.0,
+    ylim: float | None = None,
+) -> float:
+    """Switches accumulated along each chromosome from zero, per Mb of that chromosome, on `ax`.
 
     Each curve is divided by its chromosome's length, so it ends at that
-    chromosome's switch rate, which is printed above it.
+    chromosome's switch rate, which is printed above it at `rate_size`, or
+    not with `None`. `axis` is the `GenomicAxis` the curve is drawn on:
+    `bp_axis(r)` by default, or a page's own, so it shares the genome
+    tracks' x (#745). `ylim`, where given, is the axis' top, a curve above
+    it clipped; otherwise the highest curve's, and 1 with no switches, so
+    the axis never collapses. Returns the genome's switches per Mb.
 
     Formatted as `plot_clones_genomic` formats a track, with `cnaster`'s own
     `_format_track_axis` and `_draw_chromosome_boundaries`: black contig
-    boundaries, `chr<N>` at 45 degrees below, grey rules at the y ticks.
+    boundaries, grey rules at the y ticks.
     """
-    import matplotlib.pyplot as plt
     from cnaster.plot_genomic import _draw_chromosome_boundaries, _format_track_axis
+    from matplotlib.ticker import MaxNLocator
 
+    axis = bp_axis(r) if axis is None else axis
     chromosome, position = _snp_loci(r)
-    x = r.genome(chromosome, position)
     phase = r.phase.astype(int)
     same = np.r_[False, chromosome[1:] == chromosome[:-1]]
     switch = np.r_[False, np.diff(phase) != 0] & same
 
-    fig, ax = plt.subplots(figsize=(20, 2.6))
     top = 0.0
     for name in np.unique(chromosome):
         at = chromosome == name
         steps = np.cumsum(switch[at]) / (r.lengths[int(name) - 1] / 1e6)
         top = max(top, float(steps[-1]))
-        ax.plot(x[at], steps, color=SERIES[0], linewidth=1.2)
-    from matplotlib.ticker import MaxNLocator
+        ax.plot(axis.x(name, position[at]), steps, color=SERIES[0], linewidth=1.2)
 
+    top = ylim if ylim is not None else top if top > 0.0 else 1.0
     located = np.asarray(MaxNLocator(nbins=4).tick_values(0, top))
     ticks = located[(located >= 0) & (located <= top)]
-    _format_track_axis(ax, "switches / Mb", [-0.05 * top, 1.05 * top], ticks, True,
-                       int(r.lengths.sum()))  # fmt: skip
+    edges = np.asarray(axis.edges)
+    span = [-0.05 * top, top if ylim is not None else 1.05 * top]
+    _format_track_axis(ax, "switches / Mb", span, ticks, True, float(edges[-1]))
     _draw_chromosome_boundaries(
-        [ax], r.lengths, np.arange(1, r.lengths.size + 1), -0.25
+        [ax], np.diff(edges), np.arange(1, r.lengths.size + 1), -0.25
     )
-    bp_axis(r).draw(ax)
+    axis.draw(ax)
 
-    for c, (start, length) in enumerate(
-        zip(r.offsets, r.lengths, strict=True), start=1
-    ):
+    for c, length in enumerate(r.lengths, start=1) if rate_size is not None else ():
         rate = switch[chromosome == str(c)].sum() / (length / 1e6)
-        ax.text(start + length / 2, 1.02, f"{rate:.2f}", transform=ax.get_xaxis_transform(),
-                fontsize=7, ha="center", va="bottom")  # fmt: skip
+        ax.text(axis.x(str(c), length / 2), 1.02, f"{rate:.2f}", transform=ax.get_xaxis_transform(),
+                fontsize=rate_size, ha="center", va="bottom")  # fmt: skip
     for side in ("top", "right"):
         ax.spines[side].set_visible(False)
+    return float(switch.sum() / (r.lengths.sum() / 1e6))
+
+
+def plot_phase(r: Realization, out: Path) -> Path:
+    """`draw_phase` on its own page, in base pairs."""
+    import matplotlib.pyplot as plt
+
+    fig, ax = plt.subplots(figsize=(20, 2.6))
+    draw_phase(ax, r)
     return _save(fig, out / "phase.png")
 
 

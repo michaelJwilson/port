@@ -110,8 +110,15 @@ def _solve(
     if kind == "port":
         from port.extensions.label_solver import sweep_for
         from port.patch.icm.interface import icm_sweep
+        from port.sandbox.extensions.label_solvers import SWEEPS as SET_ASIDE
 
-        sweep = icm_sweep if name == "icm" else sweep_for(name)  # type: ignore[arg-type]
+        sweep = (
+            icm_sweep
+            if name == "icm"
+            else SET_ASIDE[name]
+            if name in SET_ASIDE
+            else sweep_for(name)  # type: ignore[arg-type]
+        )
         np.random.seed(int(rng.integers(2**31)))  # noqa: NPY002 -- cnaster's ICM reads it
         sweep(field, csr, labels, beta, min_clone_spots=0)
         return labels

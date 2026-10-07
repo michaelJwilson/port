@@ -44,6 +44,7 @@ __all__ = [
     "PAPER_WIDTH",
     "STAMP_ROOM",
     "TEXT_HEIGHT",
+    "TRACK_FONT_SIZE",
     "Page",
     "apply",
     "axes_style",
@@ -83,9 +84,15 @@ nothing has to be undone at the point of inclusion.
 TEXT_HEIGHT = 11.0 - 2 * PAGE_MARGIN - HEAD_AND_FOOT
 """The text block's height, 8.18 in (590.99 pt, `pdflatex`) (T- #740)."""
 
-MIN_FONT_SIZE = 10.0
-"""Points: the submission's smallest text, and every paper figure's text
-size at 1:1 (T- #740)."""
+MIN_FONT_SIZE = 8.0
+"""Points: every paper figure's text size at 1:1 but its genomic tracks'.
+T- #740's 10 pt left 5 clones' profile labels overlapping on a page;
+relaxed to 8 pt for the paper's figures and the population study's (#743)."""
+
+TRACK_FONT_SIZE = 6.0
+"""Points: the RDR and BAF tracks' labels, ticks, clone names and state
+keys, in `truth_combined` and `combined` alike: a track is a third of an
+inch tall at 5 clones, and 8 pt crowds it (#743)."""
 
 CAPTION_ROOM = 1.5
 """Inches of the text block a figure leaves for its caption (T- #733).
