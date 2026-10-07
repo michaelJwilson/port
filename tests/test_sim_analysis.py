@@ -444,7 +444,7 @@ def test_no_mb_label_is_drawn_and_every_contig_is_named_once_clear(
 ) -> None:
     """No minor tick label anywhere on the page (the Mb numbers). Every
     contig with any width has exactly one name, its number, under the last
-    track and centred on it, overlapping no name on its row and its half-row
+    track and left-aligned at its start (#745), overlapping no name on its row and its half-row
     neighbours by at most `CONTIG_PAD` (#743), with one "chr" for
     the rows; no other axis, nor `cnaster`'s own names, shows a contig name
     -- including the contigs `NORMAL_FLOOR` squeezes on dense (PR-
@@ -476,10 +476,11 @@ def test_no_mb_label_is_drawn_and_every_contig_is_named_once_clear(
     spans = [(a, b) for a, b in itertools.pairwise(edges.tolist()) if b > a]
 
     assert len(names) == len(spans)
-    for text, (a, b) in zip(names, spans, strict=True):
-        assert float(text.get_position()[0]) == pytest.approx((a + b) / 2)
+    for text, (a, _b) in zip(names, spans, strict=True):
+        assert float(text.get_position()[0]) == pytest.approx(a)
+        assert text.get_horizontalalignment() == "left"
         assert re.fullmatch(r"\w+", text.get_text())
-    from port.extensions.genomic_axis import CONTIG_PAD
+    from port.extensions.genomic_axis import CONTIG_PAD, STAGGERED
 
     boxes = [t.get_window_extent(renderer) for t in names]
     # NB rows step half a line (#743): names on one row never overlap, and a
@@ -488,6 +489,14 @@ def test_no_mb_label_is_drawn_and_every_contig_is_named_once_clear(
     for i, j in itertools.combinations(range(len(boxes)), 2):
         if boxes[i].y0 == pytest.approx(boxes[j].y0):
             assert not boxes[i].overlaps(boxes[j]), (
+                names[i].get_text(),
+                names[j].get_text(),
+            )
+        elif {names[i].get_text(), names[j].get_text()} <= set(STAGGERED):
+            # NB 19-22 zigzag at every width (#745): the lower clears the
+            #    upper by at least half a name's height
+            down = min(boxes[i].y1, boxes[j].y1) - max(boxes[i].y0, boxes[j].y0)
+            assert down <= boxes[i].height / 2, (
                 names[i].get_text(),
                 names[j].get_text(),
             )
