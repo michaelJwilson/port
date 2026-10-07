@@ -1,7 +1,7 @@
 """The color merge: cnaster's `merge_assignment` loop, in closed form (#556).
 
 Ticket: #556 -- cnaster's clone-merge loop in closed form, set aside for
-  the study's solvers.
+  the study's solvers; moved here from `known_field` when #735 deleted it.
 Measurement: `docs/study-field-strength.md`, the polished column: ICM plus
   the color merge from each solver's labelling, on `dev_tree_1s_hard`.
 Exit: graduate to `extensions/` if it lowers `--sal`'s energy end to end on

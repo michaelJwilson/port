@@ -19,19 +19,21 @@ seeds ends at 1.1% missed ([0.9, 4.2] over r9–r12); the run of highest likelih
 
 `run_study --copy-state-stream sim/manifests/baseline/dev_tree_1s_hard.toml OUT --problems N --seeds 10 --held-out 3 --settings python/port/studies/copy_sampler_settings.json`.
 
-1. **Problem.** Each realization of `dev_tree_1s_hard` is drawn and pseudobulked at its planted clones
-   (`port.sandbox.known_copy.problems`): 1 Mb bins under #551's 300 normal-UMI floor, phased allele
-   reads, clones stacked along the genome, 7 states. About 7,700 rows per realization.
+1. **Problem.** Since #730, the run's own: each realization of `dev_tree_1s_hard` is drawn to disk as the
+   run reads a sample, and `run_cnaster_port --sal` runs on it at its planted clones up to the RDR + BAF
+   stage's Baum-Welch (`port.studies.stage`). The run's segments, phasing, pseudobulk and exposure, clones
+   stacked along the genome; about 7,300 rows per realization. Before #730 the study rebuilt the problem
+   (`port.sandbox.known_copy`, deleted): 1 Mb bins under #551's floor and truth-phased allele reads.
 2. **Starts.** Every family in `port.sandbox.extensions.copy_starts`, each as its own algorithm's output, with no
    `sal` mixture polish. A stochastic start runs 10 seeds.
-   Since T- #660 `STARTS` holds the 9 the paper figure draws (`calicost-gmm`, `lattice`, `prior`, `kmeans++`,
-   `emission++`, `gaussian-em` and the three HMM samplers); `--all` runs the rest. The table below predates it.
-3. **Polish.** `--sal` Baum-Welch: `port.patch.hmm_nophasing` with the per-clone shift (#276, #293), `sal`
-   emission kernels, analytic gradients and the Rust lattice. Every score, a start's included, is on this
-   objective: a start is decoded, shifted per clone, and rescored.
+   Since #716 `STARTS` holds the 7 the paper figure draws (`calicost-gmm`, `lattice`, `prior`, `kmeans++`,
+   `emission++`, `tempering-hmm`, `hmc-hmm`; `gaussian-em` and `anneal-hmm` left with #716); `--all` runs the
+   rest. The table below predates it.
+3. **Polish.** The run's own `pipeline_baum_welch` call at that stage, every argument as the run built it,
+   with the start as `init_log_mu` and `init_p_binom`. A start is scored by the same call at `max_iter = 0`.
 4. **Scored.** Gap: nats below the best log-likelihood any run reached on that realization. Missed: rows
    whose state is not the planted one under the best 1-1 matching of states. Both are reported at the
-   start and after Baum-Welch. Truth is the planted states, polished by the same Baum-Welch.
+   start and after Baum-Welch. Truth is the planted states, each class's pooled depth ratio and B share, polished by the same call; the run's own initializer is recorded beside it.
 5. **Tuning.** `anneal-hmm`, `tempering-hmm`, `hmc-hmm` and the `emission++` variants are tuned on 3
    held-out realizations that are never evaluated (`copy_sampler_settings.json`).
 
@@ -75,7 +77,7 @@ compared.
 | 3 | `distinct` (#348) | 5,013 | 267 | 9.3 / 45.3 | 9 |
 
 Rows 19-21 are port's own samplers, deleted in #634 for `sal.sample.hmc`'s on the same objective
-(`port.sandbox.known_copy.hmm_objective`), tuned on r0-r2 and run on r3-r12 × 10 seeds (PR- #642,
+(`port.sandbox.extensions.hmm_objective`, formerly `known_copy.hmm_objective`), tuned on r0-r2 and run on r3-r12 × 10 seeds (PR- #642,
 n = 100 each, start and Baum-Welch seconds under the host lock with only the six sampler starts):
 
 | start | start gap | after BW | Missed after [%], median (95% bootstrap) | runs > 5% missed | s |
@@ -93,7 +95,7 @@ stamped with its data hash and code commit.
 
 `sim/manifests/dev_tree_1s_hard.toml` r3–r12 (r0 `9ec90dc2`, lognormal event lengths, #619): the same name as
 the table above, a different dataset. Record data `34aa0151`, drawn as panel (b) of
-`docs/plots/paper/solvers/solver_combined.png`. `STARTS` only, `--seeds 10 --held-out 3 --settings
+`docs/plots/paper/solver_combined.png`. `STARTS` only, `--seeds 10 --held-out 3 --settings
 tests/studies/copy_sampler_settings.json`, 3 workers under the host lock, code `9efa28d`, sal `253c84f`.
 
 Medians over realizations × seeds (`lattice` is deterministic: 10 runs). Gap columns as above; the planted
@@ -129,7 +131,7 @@ states, polished, sit 115 nats below the best and miss 2.9% of rows (median).
   (2026-10-05) sit within the interquartile range of the same starts' r8–r12 jobs.
 
 The key figure is committed as `docs/plots/paper/key_studies/557_copy-states.png` (`data 7cee0a0a ·
-code 67d8874`); `run_study --copy-state-plot OUT/<stem>.pkl` redraws it beside the pickle.
+code 67d8874`); `run_study --copy-state-plot OUT/<stem>.record` redraws it beside the record.
 
 ## Defects found, and what was done about them
 
