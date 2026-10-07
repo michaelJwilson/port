@@ -372,6 +372,11 @@ def _names(node: ast.AST) -> set[str]:
     return out
 
 
+SHARED_HELPERS = ("fixtures", "adapters", "figure_checks")
+"""The modules tests share helpers through (#749 WP10): a helper moved there
+from a test still counts for the stages it reaches."""
+
+
 @cache
 def counting_mentions() -> dict[str, frozenset[str]]:
     """Each name, to the counting tests that mention it.
@@ -379,10 +384,16 @@ def counting_mentions() -> dict[str, frozenset[str]]:
     A counting test is a test function marked `end2end` or `oracle`, by
     decorator or by the module's `pytestmark`. It mentions a name if the name
     appears in its body, in its parameters' fixtures, or in any function or
-    fixture of its own module it calls, transitively -- a test that scores a
-    stage through a helper counts for that stage.
+    fixture of its own module or of `SHARED_HELPERS` it calls, transitively --
+    a test that scores a stage through a helper counts for that stage.
     """
     out: dict[str, set[str]] = {}
+    shared = {
+        node.name: node
+        for module in SHARED_HELPERS
+        for node in _tree(TESTS / f"{module}.py").body
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
+    }
 
     for path in sorted(TESTS.rglob("test_*.py")):
         tree = _tree(path)
@@ -394,7 +405,7 @@ def counting_mentions() -> dict[str, frozenset[str]]:
             ):
                 module_marks |= _markers([node.value])
 
-        helpers = {
+        helpers = shared | {
             node.name: node
             for node in ast.walk(tree)
             if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
