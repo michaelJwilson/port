@@ -4,8 +4,8 @@
 0.9335, exact altered (phase-free)
 0.8992 (phased 0.1473), from one
 `run_cnaster_port --sal --png-copies` run on `sim/manifests/dev_tree_1s_easy.toml` r0 at
-code `9a684c7`: 106 s wall, 3.42 GB peak.
-Ledger `run_id` `9a684c7-dev_tree_1s_easy_r0-0009` (`docs/metrics/`, fixture `dev_tree_1s_easy_r0` `7ba9b01f`).
+code `335971f`: 106 s wall, 3.48 GB peak.
+Ledger `run_id` `335971f-dev_tree_1s_easy_r0-0041` (`docs/metrics/`, fixture `dev_tree_1s_easy_r0` `7ba9b01f`).
 
 Regenerate from a clean tree, so the commit above carries no `+`; it draws r0 into
 `.cache/paper_figures/` where `--draw` is not given, and refuses any r0 not
@@ -15,7 +15,7 @@ hashing to `7ba9b01f`:
 
 `--truth-only` writes `truth/` alone, with no run. The figures carry no stamp
 (#743): every figure here but `solver_combined.png` is `dev_tree_1s_easy` r0 `7ba9b01f` at
-code `9a684c7`, as above. `run/spatial.png` and `run/combined.png`
+code `335971f`, as above. `run/spatial.png` and `run/combined.png`
 draw panel (a) on a slide mocked from the planted labels (`port.sim.he_slide`):
 the fixture has no H&E image, and the run never reads the mock.
 `truth/phase.png` is flat: this r0 plants 0 phase switches.
