@@ -4,8 +4,8 @@
 0.9335, exact altered (phase-free)
 0.8992 (phased 0.1473), from one
 `run_cnaster_port --sal --png-copies` run on `sim/manifests/dev_tree_1s_easy.toml` r0 at
-code `335971f`: 106 s wall, 3.48 GB peak.
-Ledger `run_id` `335971f-dev_tree_1s_easy_r0-0041` (`docs/metrics/`, fixture `dev_tree_1s_easy_r0` `7ba9b01f`).
+code `05419ba`: 187 s wall, 3.42 GB peak.
+Ledger `run_id` `05419ba-dev_tree_1s_easy_r0-0146` (`docs/metrics/`, fixture `dev_tree_1s_easy_r0` `7ba9b01f`).
 
 Regenerate from a clean tree, so the commit above carries no `+`; it draws r0 into
 `.cache/paper_figures/` where `--draw` is not given, and refuses any r0 not
@@ -15,7 +15,7 @@ hashing to `7ba9b01f`:
 
 `--truth-only` writes `truth/` alone, with no run. The figures carry no stamp
 (#743): every figure here but `solver_combined.png` is `dev_tree_1s_easy` r0 `7ba9b01f` at
-code `335971f`, as above. `run/spatial.png` and `run/combined.png`
+code `05419ba`, as above. `run/spatial.png` and `run/combined.png`
 draw panel (a) on a slide mocked from the planted labels (`port.sim.he_slide`):
 the fixture has no H&E image, and the run never reads the mock.
 `truth/phase.png` is flat: this r0 plants 0 phase switches.
@@ -49,7 +49,7 @@ intervals in `truth/` and the fitted ones in `run/`, so their contig widths diff
 | `compare/copy_confusion.png` | Which (A, B) is each planted pair decoded as? | `confusion_figure`: `port.qa.scoring.copy_confusion` |
 | `compare/copy_genomic_truth_vs_fit.png` | Where along the genome is a matched clone's (A, B) decoded wrong, or swapped? | `genomic_compare_figure`: `score`'s clone-bins |
 | `compare/exact_by_class.png` | Which planted classes are recovered exactly, with and without phase? | `exact_figure`: `port.qa.scoring.exact_by_class` |
-| `pop_combined.png` | How many UMIs does a clone need, how long must a CNA be, how long must a CNA be at each stay probability 1 − t, and how often is a true-(1, 1) segment called altered? | `port.studies.population_report.combined` on `docs/studies/population_summary.json` |
+| `pop_combined.png` | How many UMIs does a clone need, how long must a CNA be, at each stay probability 1 - t, and how often is a true-(1, 1) segment called altered? | `port.studies.population_report.combined` on `docs/studies/population_summary_limited.json` (#745's limited rerun; #746 the full) |
 | `solver_combined.md` | What was `solver_combined.png` drawn from? | `solver_note`: both records' data hashes, their settings and the code |
 | `solver_combined.png` | How far above the best does each spatial solver and each copy-state start end, and how fast? | `solver_figure`: `port.studies.potts_plot.draw`, `port.studies.copy_state_plot.draw` |
 

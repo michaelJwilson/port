@@ -1355,10 +1355,12 @@ def combined_figure(
 
     # NB the slide and the clones are one panel here, (a), the clones'
     #    structure as the truth page's tree is: its first letter alone.
+    # NB in (b)'s and (c)'s column, as (a) now starts on their left edge (#745)
+    column = letters[0][0].get_position()[0]
     for text in spatial.texts[:1]:
-        x, y = text.get_position()
+        _, y = text.get_position()
         figure.text(
-            x,
+            column,
             (y * above + tall) / (tall + above),
             text.get_text(),
             fontsize=LABEL_SIZE,
