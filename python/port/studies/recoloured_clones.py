@@ -50,6 +50,9 @@ PILOT = 400
 BURN_TAUS, THIN_TAUS, SAMPLES = 10, 2, 20
 """Burn-in and thinning in units of `tau`, and samples kept per chain."""
 
+RESOLVED_TAUS = 50
+"""The pilot's kept half must span this many `tau` for the estimate to stand (Sokal)."""
+
 MAX_SWEEPS = 20_000
 """A chain's cap; a chain that reaches it is recorded as capped."""
 
@@ -107,17 +110,27 @@ def chain(
     from sal.sample.statistics import integrated_autocorrelation_time
 
     opened = time.perf_counter()
-    pilot, _ = draws(graph, field, sampler, rng, PILOT)
-    trace = _energy_trace(graph, field, pilot)
-    tau = float(integrated_autocorrelation_time(trace[PILOT // 2 :]))
+    # NB Sokal's estimate needs a series of 50 tau: on fewer it saturates near its window
+    #    (about 24 on 200 sweeps, every Wolff chain and SW from J = 1.4 in the first pilot);
+    #    the pilot grows four-fold until its kept half spans that, or the cap stops it
+    length = PILOT
+    while True:
+        pilot, _ = draws(graph, field, sampler, rng, length)
+        trace = _energy_trace(graph, field, pilot)
+        tau = float(integrated_autocorrelation_time(trace[length // 2 :]))
+        resolved = length // 2 >= RESOLVED_TAUS * tau
+        if resolved or 4 * length > max_sweeps:
+            break
+        length *= 4
     thin = max(1, math.ceil(THIN_TAUS * tau))
-    burn = max(PILOT // 2, math.ceil(BURN_TAUS * tau))
+    burn = max(length // 2, math.ceil(BURN_TAUS * tau))
     capped = burn + thin * SAMPLES > max_sweeps
     if capped:
         thin = max(1, (max_sweeps - burn) // SAMPLES)
     recorded, cluster = draws(graph, field, sampler, rng, SAMPLES, burn, thin)
     samples = [clones_of(s, adjacency, umis, planted) for s in recorded]
-    return {"sampler": sampler, "tau": tau, "burn": burn, "thin": thin, "capped": capped,
+    return {"sampler": sampler, "tau": tau, "resolved": resolved, "pilot": length,
+            "burn": burn, "thin": thin, "capped": capped,
             "mean_cluster_size": cluster,
             "seconds": round(time.perf_counter() - opened, 2), "samples": samples}  # fmt: skip
 
@@ -170,7 +183,8 @@ def member(
                 )
                 chains.append({"J": float(coupling), **record})
                 print(f"s{seed:04d} J={coupling:.1f} {sampler}: tau {record['tau']:.1f}, "
-                      f"burn {record['burn']}, thin {record['thin']}, {record['seconds']} s", flush=True)  # fmt: skip
+                      f"{'' if record['resolved'] else 'UNRESOLVED '}pilot {record['pilot']}, burn {record['burn']}, "
+                      f"thin {record['thin']}, {record['seconds']} s", flush=True)  # fmt: skip
         planted = int(np.unique(found.planted).size)
         return {
             "seed": seed,
