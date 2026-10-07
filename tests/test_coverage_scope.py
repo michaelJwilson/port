@@ -11,7 +11,7 @@ import tomllib
 
 import pytest
 
-PROJECT_ROOT = pathlib.Path(__file__).resolve().parent.parent
+from tests import ROOT
 
 
 @pytest.mark.infra
@@ -20,10 +20,10 @@ def test_coverage_source_is_the_installed_cnaster() -> None:
     import cnaster
 
     configured = [
-        PROJECT_ROOT / entry
-        for entry in tomllib.loads((PROJECT_ROOT / "pyproject.toml").read_text())[
-            "tool"
-        ]["coverage"]["run"]["source"]
+        ROOT / entry
+        for entry in tomllib.loads((ROOT / "pyproject.toml").read_text())["tool"][
+            "coverage"
+        ]["run"]["source"]
         if "cnaster" in entry
     ]
     assert len(configured) == 1, "expected exactly one cnaster source entry"
@@ -37,7 +37,7 @@ def test_coverage_source_is_the_installed_cnaster() -> None:
     )
 
 
-ORACLE_CONFIG = PROJECT_ROOT / ".coveragerc-oracle"
+ORACLE_CONFIG = ROOT / ".coveragerc-oracle"
 """Where the oracle surface is declared.
 
 Separate from `pyproject.toml`'s gate because the two measure different
@@ -108,7 +108,7 @@ def test_no_test_referees_against_an_undeclared_upstream_module() -> None:
     declared = _declared_oracle_modules()
     offenders: dict[str, set[str]] = {}
 
-    for path in sorted((PROJECT_ROOT / "tests").glob("*.py")):
+    for path in sorted((ROOT / "tests").glob("*.py")):
         tree = ast.parse(path.read_text())
         used: set[str] = set()
 

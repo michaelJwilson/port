@@ -6,10 +6,11 @@ import json
 import os
 import subprocess
 import sys
-from pathlib import Path
 
 import numpy as np
 import pytest
+
+from tests import ROOT
 
 SWEEP = """
 import json, numpy as np, scipy.sparse as sp
@@ -38,7 +39,7 @@ def _labels(threads: int, burn: int) -> list[int]:
         check=True,
         capture_output=True,
         text=True,
-        cwd=Path(__file__).resolve().parents[1],
+        cwd=ROOT,
     )
     return list(json.loads(out.stdout.strip().splitlines()[-1]))
 

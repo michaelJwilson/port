@@ -1,9 +1,10 @@
-"""Performance statistics: bars, ranks, bootstrap intervals, wall time and peak memory.
+"""Statistics: bars, ranks, bootstrap intervals, goodness of fit, wall time and peak memory.
 
 One home for what the audits, benchmarks and studies each computed for
 themselves (T- #673 G1): the study figures' median-and-quantile bars and
 ranks, the population study's cluster bootstrap, and the wall seconds and
-peak resident memory every audit reports.
+peak resident memory every audit reports, and the chi-square test the
+fixture tests each wrote out (#749 WP3).
 """
 
 # ruff: noqa: A005 -- T- #673 names the module; it imports the standard library's absolutely
@@ -19,11 +20,13 @@ from typing import TypeVar
 
 import numpy as np
 import pandas as pd
+from scipy import stats
 
 __all__ = [
     "Measured",
     "bars",
     "bootstrap_interval",
+    "chi_square_pvalue",
     "measured",
     "median_wall",
     "peak_gb",
@@ -69,6 +72,19 @@ def bootstrap_interval(
         rates = (weights @ sums) / (weights @ counts)
         low, high = np.nanpercentile(rates, [2.5, 97.5], axis=0)
     return low, high
+
+
+def chi_square_pvalue(
+    observed: np.ndarray, expected: np.ndarray, min_expected: float = 5.0
+) -> tuple[float, float]:
+    """Pearson's statistic and its upper-tail p-value over the bins expecting `min_expected` or more.
+
+    Bins below `min_expected` are dropped rather than pooled, and the degrees
+    of freedom are the kept bins less one: no parameter is fitted to the counts.
+    """
+    keep = expected >= min_expected
+    chi = float((((observed[keep] - expected[keep]) ** 2) / expected[keep]).sum())
+    return chi, float(stats.chi2.sf(chi, int(keep.sum()) - 1))
 
 
 def peak_gb(children: bool = False) -> float:

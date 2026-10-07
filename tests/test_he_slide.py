@@ -91,15 +91,15 @@ def test_the_brightest_pixel_takes_a_label_past_num_labels(tmp_path: Path) -> No
     assert np.sum(labels == 5) == np.sum(pixels["gray"] == pixels["gray"].max())
 
 
-@pytest.mark.analytic
+@pytest.mark.patch
 def test_ports_labels_are_the_num_labels_asked_for(tmp_path: Path) -> None:
-    """`port.patch.io.he_image(num_labels=4)` labels every pixel `1..4` (#311).
-
-    The brightest pixels, which `cnaster` labels 5, take label 4, and no
-    other label changes.
+    """`port.patch.he.he_image(num_labels=4)` reproduces `cnaster`'s labels
+    bitwise wherever they are `1..4`; the brightest pixels, which `cnaster`
+    labels 5, take label 4 -- the stated departure, binning on the inner
+    edges (#311, T- #771).
     """
     from cnaster.he import get_he_image
-    from port.patch.io import he_image
+    from port.patch.he import he_image
 
     _read(tmp_path)
     upstream = get_he_image(str(tmp_path), pos=None, num_labels=4)["label"].to_numpy()
@@ -108,3 +108,42 @@ def test_ports_labels_are_the_num_labels_asked_for(tmp_path: Path) -> None:
     assert set(np.unique(labels)) == {1, 2, 3, 4}
     np.testing.assert_array_equal(labels[upstream <= 4], upstream[upstream <= 4])
     assert (labels[upstream == 5] == 4).all()
+
+
+@pytest.mark.infra
+def test_patched_every_cnaster_caller_reads_labels_one_to_num_labels(
+    tmp_path: Path,
+) -> None:
+    """Patched, `get_he_image` is `port.patch.he.he_image` wherever `cnaster`
+    binds it -- `run_cnaster`'s figure frame among them -- and labels every
+    pixel `1..4`; `cnaster`'s own is back, and labels a fifth, on exit
+    (T- #771)."""
+    import cnaster.scripts.run_cnaster as script
+    from cnaster.he import get_he_image
+    from port.pipeline import SWAPS, patched, swap_sites
+
+    _read(tmp_path)
+    sites = {site.module for site in swap_sites(SWAPS) if site.name == "get_he_image"}
+
+    with patched():
+        labels = script.get_he_image(str(tmp_path), pos=None, num_labels=4)
+
+    assert {"cnaster.he", "cnaster.io", "cnaster.scripts.run_cnaster"} <= sites
+    assert set(np.unique(labels["label"])) == {1, 2, 3, 4}
+    assert get_he_image(str(tmp_path), pos=None, num_labels=4)["label"].max() == 5
+
+
+@pytest.mark.end2end
+def test_the_spots_h_and_e_class_darkens_away_from_normal(tmp_path: Path) -> None:
+    """`he_classes` at the spots, as `run_cnaster` reads them: every class in
+    `1..4`, and each planted clone's mean class strictly falls with the clone
+    index, normal brightest -- the planted labelling is the referee (T- #771)."""
+    from port.extensions.combined_figure import he_classes
+
+    frame, labels = _read(tmp_path)
+    coords = frame[["x", "y"]].to_numpy(dtype=np.float64)
+    classes = he_classes(str(tmp_path), coords)
+    mean = pd.Series(classes).groupby(labels).mean().to_numpy()
+
+    assert set(np.unique(classes)) == {1, 2, 3, 4}
+    assert np.all(np.diff(mean) < 0.0), f"mean class by clone: {mean}"

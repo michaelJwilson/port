@@ -11,8 +11,7 @@ from typing import Any
 import pytest
 from pytest_benchmark.fixture import BenchmarkFixture
 
-from tests.fixtures import tiers
-from tests.test_pseudobulk_patch import _inputs
+from tests.fixtures import pseudobulk_inputs, tiers
 
 GATE = {"n_obs": 300, "n_spots": 400, "n_clones": 3}
 STRESS = {"n_obs": 4000, "n_spots": 6000, "n_clones": 4}
@@ -39,7 +38,7 @@ def test_merge(
     size: dict[str, int],
 ) -> None:
     """One merge, warm."""
-    inputs = _inputs(size["n_obs"], size["n_spots"], size["n_clones"], seed=0)
+    inputs = pseudobulk_inputs(size["n_obs"], size["n_spots"], size["n_clones"], seed=0)
     function = arm()
     function(**inputs)
     benchmark(function, **inputs)
