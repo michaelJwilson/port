@@ -11,7 +11,7 @@ the lattice (#540), which fix #236. Referees, one per test:
 - `oracle`: `scipy.stats` for the dense emission; `sal`'s own EM on the
   raw exposure and trials for the moved start;
 - `bug`: #236, the GMM's equal vote per bin, against `cnaster`'s start;
-- `end2end`: the planted states of dev_tree_1s_hard r0 (`d2938975`).
+- `end2end`: the planted states of dev_tree_1s_hard r0 (`9ec90dc2`), at the run's stage.
 
 The gate instance's (`350fbd2b`) byte pin against absorbed `cnaster` is
 `test_cnamaste_copy.py`'s, unchanged: every row here is off by default.
@@ -282,7 +282,7 @@ DEFAULT = "kmeans++x5+em"
 """`--sal`'s start (#489)."""
 
 
-HARD_HASH = "d2938975"
+HARD_HASH = "9ec90dc2"
 """dev_tree_1s_hard r0's `realization_hash`, as its manifest states it."""
 
 
@@ -290,28 +290,27 @@ HARD_HASH = "d2938975"
 @pytest.mark.cnamaste
 @pytest.mark.merge
 def test_the_moved_starts_place_the_planted_states_of_dev_tree_1s_hard() -> None:
-    """dev_tree_1s_hard r0 (`d2938975`) at its planted clones: 7,688 rows,
-    7,562 neutral and 4 other phase-free states on 20 to 47 rows.
+    """dev_tree_1s_hard r0 (`9ec90dc2`) at its planted clones, as the run
+    builds it (`test_cnamaste_init.hard_call`): 7,284 rows, 6,989 neutral and
+    4 other phase-free states on 23 to 134 rows.
 
     A state is placed within 0.1 in log mu and 0.05 in folded p
     (`port.sandbox.extensions.copy_starts.found`). `kmeans++x5+em` and the
-    lattice, through `cnamaste.hmm_initialize.gmm_init`, place 1 and 2 of
-    the 5, the lattice the one-copy loss `(0, 1)` too; PR6's GMM start
-    placed 1, the neutral state.
+    lattice, through `cnamaste.hmm_initialize.gmm_init`, each place 3 of the
+    5: the neutral state, the one-copy loss `(0, 1)` and `(1, 2)`; PR6's GMM
+    start places 2, the neutral state and `(1, 2)`.
     """
     import port.sandbox.extensions.copy_starts as study
     import yaml
     from cnamaste.hmm_initialize import gmm_init
     from port.extensions.copy_starts import CopyStart
-    from port.sandbox.known_copy import problems
-    from port.studies.copy_state_stream import _call as call_of
 
-    from tests.test_cnamaste_init import HARD
+    from tests.test_cnamaste_init import HARD, hard_call
 
     assert tomllib.loads(HARD.read_text())["sample"]["r0_hash"] == HARD_HASH
-    call = call_of(next(problems(HARD, n=1)))
+    call = hard_call()
     planted = study.planted_states(call)
-    assert call.total.size == 7_688
+    assert call.total.size == 7_284
     raw = call.raw
     arguments = (
         call.n_states, raw["X"], raw["base_nb_mean"], raw["total_bb_RD"],
@@ -334,8 +333,10 @@ def test_the_moved_starts_place_the_planted_states_of_dev_tree_1s_hard() -> None
 
 
 PLACED: dict[str, list[tuple[int, int]]] = {
-    "kmeans++x5+em": [(1, 1)],
-    "lattice": [(0, 1), (1, 1)],
+    "kmeans++x5+em": [(0, 1), (1, 1), (1, 2)],
+    "lattice": [(0, 1), (1, 1), (1, 2)],
 }
-"""The planted states each start places on dev_tree_1s_hard r0: 20.9 s and
-8.6 s, against 1.3 s for the GMM's one."""
+"""The planted states each start places on dev_tree_1s_hard r0 at the run's
+stage (`9ec90dc2`): 3 of 5 each, against the GMM's 2 (`test_cnamaste_init`).
+On `port.sandbox.known_copy`'s rebuild (`d2938975`, before #730) they placed
+1 and 2, the GMM 1."""

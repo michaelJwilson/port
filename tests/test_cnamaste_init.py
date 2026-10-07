@@ -8,13 +8,14 @@ lattice, need `sal` and are not moved. Referees, one per test:
 - `patch`: `port.patch.hmm_initialize.distinct.gmm_init` and `cnaster`'s
   `gmm_init`, bitwise;
 - `bug`: #143, against `cnaster` and against the same fit given the start;
-- `end2end`: the planted states of dev_tree_1s_hard r0 (`d2938975`).
+- `end2end`: the planted states of dev_tree_1s_hard r0 (`9ec90dc2`), at the run's stage.
 
 The 300 normal-UMI segment floor's end-to-end pin is `test_cnamaste_copy.py`'s.
 """
 
 from __future__ import annotations
 
+import functools
 import tomllib
 import warnings
 from collections.abc import Iterator
@@ -26,12 +27,30 @@ import numpy as np
 import pytest
 import yaml
 
-HARD = (
-    Path(__file__).resolve().parents[1] / "sim/manifests/baseline/dev_tree_1s_hard.toml"
-)
-HARD_HASH = "d2938975"
+HARD = Path(__file__).resolve().parents[1] / "sim/manifests/dev_tree_1s_hard.toml"
+HARD_HASH = "9ec90dc2"
 """dev_tree_1s_hard r0's `realization_hash`, as the manifest states it and
 `test_sim_r0_hash.py` pins it."""
+
+
+@functools.cache
+def hard_call() -> Any:
+    """dev_tree_1s_hard r0's copy-state problem at its planted clones, as the run builds it.
+
+    `run_cnaster_port --sal` to the RDR + BAF stage's first Baum-Welch
+    (`port.studies.stage.at_oracle_clones`, #730), read as a `CopyCall`
+    (`copy_state_stream._call`): the problem the copy-state study measures.
+    Before #730 it was `port.sandbox.known_copy`'s rebuild of it.
+    """
+    import tempfile
+
+    from port.studies import stage
+    from port.studies.copy_state_stream import _call
+
+    root = Path(tempfile.mkdtemp())
+    member = next(stage.members(HARD, root / "sim", n=1))
+    assert member.hash == HARD_HASH
+    return stage.at_oracle_clones(member.sample, _call, root=root / "run")
 
 
 @contextmanager
@@ -166,28 +185,27 @@ def test_pipeline_baum_welch_initializes_itself() -> None:
 @pytest.mark.end2end
 @pytest.mark.cnamaste
 @pytest.mark.merge
-def test_the_starts_place_only_the_neutral_state_on_dev_tree_1s_hard() -> None:
-    """dev_tree_1s_hard r0 (`d2938975`) at its planted clones: 7,688 rows,
-    7,562 of them neutral, and 4 other phase-free states on 20 to 47 rows.
+def test_the_starts_place_the_planted_states_of_dev_tree_1s_hard() -> None:
+    """dev_tree_1s_hard r0 (`9ec90dc2`) at its planted clones, as the run
+    builds it (`hard_call`): 7,284 rows, 6,989 of them neutral, and 4 other
+    phase-free states on 23 to 134 rows.
 
-    `cnamaste`'s start at the study's configuration, `distinct` on or off,
-    places one of the 5 planted states, the neutral one, within 0.1 in log
-    mu and 0.05 in folded p (`port.sandbox.extensions.copy_starts.found`).
-    `distinct` merges 1 of the 14 components and returns the same 7 states
-    bit for bit. `--sal`'s `kmeans++x5+em`, which is not moved, also places
-    1 of 5 (T- #670 PR6).
+    `cnamaste`'s start at the run's configuration places the neutral state
+    and `(1, 2)` within 0.1 in log mu and 0.05 in folded p
+    (`port.sandbox.extensions.copy_starts.found`); `distinct` places `(2, 2)`
+    as well, 3 of the 5. On `port.sandbox.known_copy`'s rebuild of r0
+    (`d2938975`, before #730) both placed the neutral state alone and
+    returned the same states bit for bit; on the run's problem they differ.
     """
     import port.sandbox.extensions.copy_starts as study
     from cnamaste.hmm_initialize import gmm_init
     from port.extensions.copy_starts import CopyStart
-    from port.sandbox.known_copy import problems
-    from port.studies.copy_state_stream import _call as call_of
 
     assert tomllib.loads(HARD.read_text())["sample"]["r0_hash"] == HARD_HASH
-    call = call_of(next(problems(HARD, n=1)))
+    call = hard_call()
     planted = study.planted_states(call)
-    assert call.total.size == 7_688
-    assert planted[(1, 1)][2] == 7_562
+    assert call.total.size == 7_284
+    assert planted[(1, 1)][2] == 6_989
 
     raw = call.raw
     arguments = (
@@ -196,17 +214,20 @@ def test_the_starts_place_only_the_neutral_state_on_dev_tree_1s_hard() -> None:
     )  # fmt: skip
 
     starts = {}
-    # NB the configuration the study's calls carry, `zenodo_sim_config.yaml`.
+    # NB the run's own configuration, as its stage carries it
     with _installed(yaml.safe_load(raw["config"])), warnings.catch_warnings():
         warnings.simplefilter("ignore")
         for distinct in (False, True):
             starts[distinct] = gmm_init(*arguments, **START, distinct=distinct)
 
-    assert _same(starts[False], starts[True])
-    found = study.found(
-        CopyStart("distinct", "rdrbaf", np.ravel(starts[True][0]),
-                  np.ravel(starts[True][1]), np.nan, 0.0, 0.0),
-        planted,
-    )  # fmt: skip
-    assert [state for state, placed in found.items() if placed] == [(1, 1)]
-    assert len(found) == 5
+    placed = {}
+    for distinct, (log_mu, p_binom, *_) in starts.items():
+        found = study.found(
+            CopyStart("distinct", "rdrbaf", np.ravel(log_mu), np.ravel(p_binom),
+                      np.nan, 0.0, 0.0),
+            planted,
+        )  # fmt: skip
+        assert len(found) == 5
+        placed[distinct] = [state for state, hit in found.items() if hit]
+    assert not _same(starts[False], starts[True])
+    assert placed == {False: [(1, 1), (1, 2)], True: [(1, 1), (1, 2), (2, 2)]}
