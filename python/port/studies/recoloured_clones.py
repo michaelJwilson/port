@@ -62,8 +62,10 @@ BURN_TAUS, THIN_TAUS, SAMPLES = 10, 2, 20
 RESOLVED_TAUS = 50
 """The pilot's kept half must span this many `tau` for the estimate to stand (Sokal)."""
 
-MAX_SWEEPS = 20_000
-"""A chain's cap; a chain that reaches it is recorded as capped."""
+MAX_SWEEPS = 6_000
+"""A chain's cap; a chain that reaches it is recorded as capped. Near the transition SW slows
+critically: on member 1 at J = 1.6, tau 225 sweeps at ~58 ms each took 19 min under a 20,000
+cap, so the cap bounds the cost and the record says which chains it left unresolved (#751)."""
 
 PURE = 0.9
 """Share of a recoloured clone's spots one planted clone must hold for it to count as pure."""
