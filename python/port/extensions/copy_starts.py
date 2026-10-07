@@ -59,9 +59,6 @@ STAGES = ("baf", "rdrbaf")
 CONSTANT_TOTAL = 100.0
 """The BAF-only stage's read-depth channel: every row's total, at exposure 1."""
 
-SEED_JITTER = 1e-3
-"""The relative jitter on the constant channel in the rows a BAF-only start seeds from."""
-
 
 class CopyCall(NamedTuple):
     """One initializer call, one row per (clone, bin), clones stacked genome after genome."""
@@ -128,15 +125,9 @@ def instance(call: CopyCall, *, covariate: bool = True) -> Any:
     X = np.stack([total, call.b], axis=1)[:, :, None]
     held = instance_of(X, exposure[:, None], call.trials[:, None], call.n_states)
 
-    if call.stage == "baf":
-        # NB the constant channel has no spread, which `sal`'s Gaussian
-        #    surrogate starts refuse ("every scale must be positive"). The
-        #    rows a start seeds from carry a jitter of 1e-3 of it; the rows
-        #    it fits do not.
-        rows = np.array(held.seeding_rows, dtype=np.float64)
-        jitter = np.random.default_rng(540).standard_normal(rows.shape[0])
-        rows[:, 0] = rows[:, 0] * (1.0 + SEED_JITTER * jitter)
-        held = replace(held, seeding_rows=rows)
+    # NB the BAF-only stage's constant channel has no spread; `sal` floors a
+    #    zero-spread scale itself (michaelJwilson/snakes_and_ladders#1241,
+    #    #1245), which retired this stage's seed jitter (T- #781).
 
     if covariate:
         return held
