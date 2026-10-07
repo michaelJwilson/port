@@ -44,6 +44,15 @@ J_GRID = np.round(np.arange(0.4, 3.01, 0.2), 2)
 SAMPLERS = {"sw": "swendsen-wang-heat-bath", "wolff": "wolff-heat-bath"}
 """`sal`'s heat-bath cluster moves (its #1142), by the study's short name."""
 
+WOLFF_J = (1.0, 2.0, 2.8)
+"""Couplings Wolff also samples, as a check that SW mixed: both leave one law invariant, so
+mixed chains give one clone-UMI distribution. Not every coupling: on member 0 a Wolff chain
+at J = 0.4 read tau >= 385 steps, unresolved after a 6,400-step pilot, in 574 s, since a
+single cluster there is a few spots (#751)."""
+
+WOLFF_MEMBERS = 3
+"""Members (seeds below this) that carry the Wolff check: a Wolff step at J >= 1 costs ~38 ms."""
+
 PILOT = 400
 """Pilot sweeps, every one recorded, for `tau`."""
 
@@ -170,7 +179,11 @@ def member(
         chains = []
         for coupling in J_GRID:
             graph = potts_graph_from(csr, float(coupling))
-            for sampler in SAMPLERS:
+            for sampler in (
+                ("sw", "wolff")
+                if float(coupling) in WOLFF_J and seed < WOLFF_MEMBERS
+                else ("sw",)
+            ):
                 record = chain(
                     graph,
                     found.field,
