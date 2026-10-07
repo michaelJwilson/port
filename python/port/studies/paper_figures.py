@@ -215,18 +215,20 @@ def mock_slide(coords: np.ndarray, labels: np.ndarray, root: Path) -> Any:
     """A slide stained by the planted clones (`port.sim.he_slide`), read back as
     `run_cnaster` reads one; each lattice cell takes its nearest spot's clone.
 
-    Written beside the run's inputs, not into them, so the run never reads it.
+    Written beside the run's inputs, not into them, so the run never reads it;
+    read through `port.patch.io.he_image`, so its labels are `1..num_labels`
+    (#311, T- #771).
     """
-    from cnaster.he import get_he_image
     from scipy.spatial import cKDTree
 
+    from port.patch.io import he_image
     from port.sim.he_slide import mock_he, write_he_slide
 
     lattice = (int(coords[:, 0].max()) + 1, int(coords[:, 1].max()) + 1)
     cells = np.indices(lattice).reshape(2, -1).T
     _, nearest = cKDTree(coords).query(cells)
     write_he_slide(mock_he(labels[nearest], lattice), root / "slide")
-    return get_he_image(str(root / "slide"), res="hires", pos=None)
+    return he_image(str(root / "slide"), res="hires", pos=None)
 
 
 @dataclass
@@ -246,6 +248,7 @@ def run_figures(sample: Any, root: Path, out: Path, text: str) -> Run:
     from port.extensions.combined_figure import (
         combined_figure,
         genomic_figure,
+        he_classes,
         page_style,
         recording,
         spatial_figure,
@@ -256,14 +259,20 @@ def run_figures(sample: Any, root: Path, out: Path, text: str) -> Run:
         recovery, output = audit_sample(sample, list(FLAGS), None, root / "run")
 
     frame = mock_slide(sample.coords, sample.labels, root)
+    # NB the slide's H&E classes at the spots, as `run_cnaster` would read
+    #    them, contoured over its panel (T- #771).
+    classes = he_classes(str(root / "slide"), np.asarray(sample.coords))
 
     # NB at their declared size, not a tight box, as `run_figures`
     #    writes them: the page is included at 1:1.
     with page_style():
         for name, figure in (
             ("genomic.png", genomic_figure(recorded, metric=True)),
-            ("spatial.png", spatial_figure(recorded, frame)),
-            ("combined.png", combined_figure(recorded, frame, metric=True)),
+            ("spatial.png", spatial_figure(recorded, frame, he_labels=classes)),
+            (
+                "combined.png",
+                combined_figure(recorded, frame, metric=True, he_labels=classes),
+            ),
         ):
             stamp(figure, text, top=True)
             figure.savefig(

@@ -40,6 +40,7 @@ STAGES: tuple[tuple[str, frozenset[str]], ...] = (
         frozenset(
             {
                 "cnaster.io",
+                "cnaster.he",
                 "cnaster.reference",
                 "cnaster.omics",
                 "cnaster.recomb",

@@ -596,3 +596,37 @@ def test_the_combined_page_s_spatial_panels_are_square_keyed_clear_and_in_order(
     assert named == expected
     assert keyed == [m for m in expected if m in keyed]
     plt.close(figure)
+
+
+@pytest.mark.oracle
+def test_each_h_and_e_class_is_its_spots_pseudobulk(
+    cnaster_config: None, tmp_path: Path
+) -> None:
+    """`plot_clones_genomic_he`: each class's RDR points equal its spots'
+    summed counts over their summed baseline, against NumPy, to 1e-12; one
+    track pair per class, named by class and spot count (T- #771)."""
+    import matplotlib as mpl
+
+    mpl.use("Agg")
+    from matplotlib.collections import PathCollection
+    from port.extensions.combined_figure import plot_clones_genomic_he
+
+    recorded, _ = _recorded(tmp_path)
+    counts, baseline = recorded.genomic.args[1][:, 0, :], recorded.genomic.args[2]
+    classes = np.array([1, 1, 2, 2, 2, 3, 4, 4, 1])
+    figure = plot_clones_genomic_he(recorded, classes)
+    tracks = [ax for ax in figure.get_axes() if ax.get_visible()]
+
+    assert len(tracks) == 8
+    for k, label in enumerate((1, 2, 3, 4)):
+        spots = np.flatnonzero(classes == label)
+        expected = counts[:, spots].sum(axis=1) / baseline[:, spots].sum(axis=1)
+        points = next(
+            c for c in tracks[2 * k].collections if isinstance(c, PathCollection)
+        )
+        np.testing.assert_allclose(
+            np.asarray(points.get_offsets())[:, 1], expected, rtol=1e-12
+        )
+        assert (
+            tracks[2 * k].get_title(loc="left") == f"H&E {label} ({spots.size} spots)"
+        )
