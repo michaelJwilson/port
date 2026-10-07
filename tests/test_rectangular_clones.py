@@ -11,15 +11,15 @@ from __future__ import annotations
 
 import itertools
 import signal
-from pathlib import Path
 from typing import Any
 
 import numpy as np
 import pytest
 
+from tests import TESTS
 from tests.adapters import square_coords
 
-DATA = Path(__file__).resolve().parent / "data"
+DATA = TESTS / "data"
 
 TRY_CAP = 3_000
 """`randint` calls `cnaster`'s loop may make before a seed counts as not returning.
@@ -172,7 +172,7 @@ def test_feasibility_agrees_with_enumerating_every_assignment(n_clones: int) -> 
     floor. Enumerated outright -- `n_clones ** p ** 2` maps; 1,953,125 at
     five clones on nine blocks -- over 200 seeded block sizes per count,
     three in four drawn skewed (Dirichlet 0.3) so that blocks below the floor
-    are common. `oracle`, so `tests.ci` runs it in the release step.
+    are common. `oracle`, so `scripts.ci` runs it in the release step.
     """
     from port.patch.spatial import admits_assignment
 

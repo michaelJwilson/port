@@ -23,8 +23,9 @@ from __future__ import annotations
 import contextlib
 import tomllib
 from collections.abc import Iterator
-from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal, cast
+
+from port.extensions.repository import ROOT
 
 if TYPE_CHECKING:
     from matplotlib.typing import RcKeyType
@@ -192,7 +193,7 @@ def axes_style(ax: Any, *, labelsize: float = 8, grid: bool = True) -> None:
         ax.set_axisbelow(True)
 
 
-PYPROJECT = Path(__file__).resolve().parents[3] / "pyproject.toml"
+PYPROJECT = ROOT / "pyproject.toml"
 
 
 def stated() -> dict[str, str]:

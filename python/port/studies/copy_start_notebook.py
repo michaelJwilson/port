@@ -18,10 +18,10 @@ from typing import Any
 
 import numpy as np
 
-ROOT = Path(__file__).resolve().parents[3]
+from port.extensions.repository import ROOT
+
 DATA = ROOT / "docs" / "nb" / "data" / "copy_state_starts_r0.json"
 NOTEBOOK = ROOT / "docs" / "nb" / "copy_state_starts.ipynb"
-FIGURE = ROOT / ".cache" / "plots" / "studies" / "copy_state_starts.png"
 INTRO = ROOT / "docs" / "nb" / "copy_state_starts.md"
 """The notebook's opening cell: the result and its reading, written once the rows are in."""
 

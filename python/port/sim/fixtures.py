@@ -51,10 +51,11 @@ import numpy as np
 import pandas as pd
 import yaml
 
+from port.extensions.repository import ROOT
 from port.sim.files import decompress, load_ids, located, read_bytes, truth_labels
 from port.sim.inputs import reference_files, run_paths
 
-REPOSITORY = Path(__file__).resolve().parents[3]
+REPOSITORY = ROOT
 """The checkout: the committed samples and their configuration are its files."""
 SIM_ROOT = REPOSITORY / "sim"
 """Where the committed samples live."""

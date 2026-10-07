@@ -38,7 +38,6 @@ import numpy as np
 import pandas as pd
 
 from port.extensions.figure_style import (
-    GRID,
     INK,
     MUTED,
     NEUTRAL_COLOUR,
@@ -46,9 +45,6 @@ from port.extensions.figure_style import (
     axes_style,
 )
 from port.sim.files import truth_labels
-
-CLONE_SLOTS = 3
-"""Clones share one scatter, so all pairs are on screen: three slots validate."""
 
 
 @dataclass
@@ -145,25 +141,6 @@ def clone_colour(clone: str, clones: tuple[str, ...]) -> str:
     if clone == "normal":
         return NEUTRAL_COLOUR
     return SERIES[[c for c in clones if c != "normal"].index(clone) % len(SERIES)]
-
-
-def state_colours(states: list[list[int]]) -> dict[tuple[int, int], str]:
-    """One colour per plantable `(A, B)`, in `[cna] states`' order; `(1, 1)` grey."""
-    colours = {(1, 1): NEUTRAL_COLOUR}
-    for slot, (a, b) in enumerate(states):
-        colours[(int(a), int(b))] = SERIES[slot % len(SERIES)]
-    return colours
-
-
-def _chromosome_axis(ax: Any, r: Realization) -> None:
-    """Chromosome boundaries as thin lines, names centred below."""
-    edges = np.concatenate([r.offsets, [r.lengths.sum()]])
-    for edge in edges:
-        ax.axvline(edge, color=GRID, linewidth=0.6, zorder=0)
-    ax.set_xticks(r.offsets + r.lengths / 2)
-    ax.set_xticklabels([str(i) for i in range(1, r.lengths.size + 1)], fontsize=7)
-    ax.set_xlim(0, edges[-1])
-    ax.grid(False)
 
 
 BIN = 1_000_000
