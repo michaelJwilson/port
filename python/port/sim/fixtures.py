@@ -51,7 +51,8 @@ import numpy as np
 import pandas as pd
 import yaml
 
-from port.sim.files import decompress, load_ids, located, read_bytes
+from port.sim.files import decompress, load_ids, located, read_bytes, truth_labels
+from port.sim.inputs import reference_files, run_paths
 
 REPOSITORY = Path(__file__).resolve().parents[3]
 """The checkout: the committed samples and their configuration are its files."""
@@ -210,7 +211,7 @@ def load_simulated(name: str = EASY, root: Path = SIM_ROOT) -> SimulatedSample:
         msg = f"{path} is missing {missing}"
         raise FileNotFoundError(msg)
 
-    table = pd.read_csv(located(path / "truth_clone_labels.tsv"), sep="\t")
+    table = truth_labels(path).reset_index()
     table.columns = ["barcode", "clone", "x", "y", *table.columns[4:]]
     clones = _clone_order(table["clone"])
     index = {clone: label for label, clone in enumerate(clones)}
@@ -253,19 +254,16 @@ ZENODO_CONFIG = REPOSITORY / "tests" / "data" / "zenodo_sim_config.yaml"
 def sim_config(root: Path, resources: Path) -> dict[str, Any]:
     """`zenodo_sim_config.yaml`, reading the sample sheet under `root` and writing there."""
     document: dict[str, Any] = yaml.safe_load(ZENODO_CONFIG.read_text())
-    document["paths"] = {
-        "sample_sheet": str(root / "sample_sheet.tsv"),
-        "output_dir": str(root / "output"),
-        "perf_path": str(root / "cnaster.perf"),
-    }
+    document["paths"] = run_paths(root)
     document["references"].update(
-        {
-            "hgtable_file": str(resources / "hgTables_hg38_gencode.txt"),
-            "geneticmap_file": str(resources / "genetic_map_GRCh38_merged.tab.gz"),
-            "annotation_file": str(root / "unused.gtf.gz"),
-            "filtergenelist_file": str(resources / "ig_gene_list.txt"),
-            "filterregion_file": str(resources / "HLA_regions.bed"),
-        }
+        reference_files(
+            resources,
+            genetic_map="genetic_map_GRCh38_merged.tab.gz",
+            gene_table="hgTables_hg38_gencode.txt",
+            filter_genes="ig_gene_list.txt",
+            filter_regions="HLA_regions.bed",
+        ),
+        annotation_file=str(root / "unused.gtf.gz"),
     )
     return document
 

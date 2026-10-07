@@ -122,6 +122,17 @@ STAMP_ROOM = 0.17
 row, 12 pt (T- #740)."""
 
 
+SERIES = (
+    "#2a78d6", "#eb6834", "#1baf7a", "#eda100",
+    "#e87ba4", "#008300", "#4a3aa7", "#e34948",
+)  # fmt: skip
+"""The categorical order, validated: adjacent CVD dE >= 9.1, normal >= 19.6.
+Moved from `port.sim.analysis` (#749 WP9)."""
+
+NEUTRAL_COLOUR = "#b5b3ad"
+"""`normal`, and the `(1, 1)` state."""
+
+
 def page_size(page: Page = "full", columns: int = 1) -> tuple[float, float]:
     """Inches, width by height, of one of `columns` figures on a row `page` tall.
 
