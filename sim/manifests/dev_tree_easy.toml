@@ -9,7 +9,7 @@ extends = "dev_tree_1s_easy.toml"
 name = "dev_tree_easy"
 # NB `tests.sim_stages.realization_hash` of r0 as drawn here; a change to this
 #    manifest or to the simulator that moves it states the new one.
-r0_hash = "2786444e"
+r0_hash = "e4bbe03f"
 
 [phasing]
 switch_errors = true
@@ -21,3 +21,6 @@ clones = ["clone_0", "clone_1"]
 [[slice]]
 offset = [0.5, 0.0]
 clones = ["clone_1", "clone_2"]
+
+[cna]
+loh = "irreversible"
