@@ -4,8 +4,8 @@
 0.9730, exact altered (phase-free)
 0.9729 (phased 0.2209), from one
 `run_cnaster_port --sal --png-copies` run on `sim/manifests/dev_tree_1s_easy.toml` r0 at
-code `0686a7e`: 201 s wall, 3.48 GB peak.
-Ledger `run_id` `0686a7e-dev_tree_1s_easy_r0-1452` (`docs/metrics/`, fixture `dev_tree_1s_easy_r0` `7ba9b01f`).
+code `b816552`: 260 s wall, 3.42 GB peak.
+Ledger `run_id` `b816552-dev_tree_1s_easy_r0-1508` (`docs/metrics/`, fixture `dev_tree_1s_easy_r0` `7ba9b01f`).
 
 Regenerate from a clean tree, so the commit above carries no `+`; it draws r0 into
 `.cache/paper_figures/` where `--draw` is not given, and refuses any r0 not
@@ -18,7 +18,7 @@ headline figures alone (#745); every other page the run draws (the truth's panel
 the run's own pages, cnaster's copies and the truth-against-fit comparisons) is
 written under `.cache/plots/paper/` and regenerated on demand (`curate`). The figures
 carry no stamp (#743): `truth_combined.png` and `combined.png` are `dev_tree_1s_easy` r0
-`7ba9b01f` at code `0686a7e`, as above. `combined.png` draws panel (a) on a slide
+`7ba9b01f` at code `b816552`, as above. `combined.png` draws panel (a) on a slide
 mocked from the planted labels (`port.sim.he_slide`): the fixture has no H&E image,
 and the run never reads the mock. `solver_combined.png` is not drawn from this fixture:
 `--solvers POTTS.record COPY.record` draws it from a `port.studies.potts_stream` and a
