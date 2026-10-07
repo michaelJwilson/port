@@ -94,11 +94,14 @@ rounds: 91.7 to 56.1 us at the former (1.64x) and 1,589 to 430 us at the
 latter (3.69x). Bitwise (`tests/test_rises_on_distinct.py`).
 
 Since T- #781 the gather evaluates `sal`'s `log_rising`, not port's
-retired `rises`. Minimum of 3 `timeit` repeats, NumPy 2.5.2, sal
-`21f7013e`, port's form read from `83ed58b`: the gathered call goes 798 to
-1,533 us at the latter (1.92x slower) and 152 to 212 us at the former; the
-per-bin call 2,779 to 10,385 us. The two agree to within 0.16 of a bound
-stated from both forms' precision (the PR- for T- #781).
+retired `rises`. Minimum of 3 `timeit` repeats, port's locked environment
+(NumPy 2.5.3, sal `21f7013e`), port's form read from `83ed58b`, load1 below
+0.5: the gathered call goes 1,007 to 1,614 us at the latter (1.60x slower)
+and 135 to 227 us at the former. In one `--sal` run of dev_tree_1s r0
+(`df3cc0ab`), 10,476 calls, all inside the one `lattice_decode`, cost 2.20 s
+more: 17% of that decode (12.97 s) and 1.7% of the run (129.8 s). The two
+forms agree to within 0.16 of a bound stated from both forms' precision
+(PR- #786).
 
 ## `port.patch.hmm_nophasing.logmu_shift`
 
