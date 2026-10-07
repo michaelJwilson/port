@@ -34,7 +34,7 @@ replacement by name; **none** is a row with no direct test.
 | 23 | preprocessing | SWAPS | `cnaster/pseudobulk.py:9` `merge_pseudobulk_by_index_mix` | `port.patch.pseudobulk:merge_pseudobulk_by_index_mix` (#488) | -- | `test_pseudobulk_patch.py`, `test_pseudobulk_patch_bench.py` |
 | 24 | preprocessing | REFINEMENT_SWAPS | `cnaster/spatial.py:382` `initialize_rdr_clone_refininement` | `port.patch.hmrf.refinement:initialize_rdr_clone_refininement` (#348) | `port.patch._signature` | `test_floor_merge.py` |
 | 25 | fit chain | SWAPS | `cnaster/hmm_phased.py:78` `hmm_phased` | `port.patch.hmm_phased:hmm_phased` (#269) | `port.patch._clone_paths` | **none** |
-| 26 | fit chain | SHIFT_SWAPS | `cnaster/hmm_nophasing.py:181` `hmm_nophasing` | `port.patch.hmm_nophasing:hmm_nophasing` (#276) | `port.patch._clone_paths`, `port.patch.hmm_nophasing.dense_emission`, `port.patch.hmm_nophasing.gradient`, `port.patch.hmm_nophasing.logmu_shift` | `test_floor_merge.py`, `test_invalid_values.py`, `test_logmu_shift_bench.py`, `test_mstep_gradient.py`, `test_mstep_gradient_bench.py`, `test_outputs.py`, `test_rust_lattice.py`, `test_shift_dropins.py`, `test_shifted_emission.py` |
+| 26 | fit chain | SHIFT_SWAPS | `cnaster/hmm_nophasing.py:181` `hmm_nophasing` | `port.patch.hmm_nophasing:hmm_nophasing` (#276) | `port.patch._clone_paths`, `port.patch.hmm_nophasing.dense_emission`, `port.patch.hmm_nophasing.gradient`, `port.patch.hmm_nophasing.logmu_shift` | `test_floor_merge.py`, `test_forward_polish.py`, `test_invalid_values.py`, `test_logmu_shift_bench.py`, `test_mstep_gradient.py`, `test_mstep_gradient_bench.py`, `test_outputs.py`, `test_rust_lattice.py`, `test_shift_dropins.py`, `test_shifted_emission.py` |
 | 27 | fit chain | LOG_SPACE_SWAPS | `cnaster/hmm_nophasing.py:46` `_nb_logpmf_1d` | `port.patch.hmm_nophasing.nb_logpmf:_nb_logpmf_1d` (#560) | -- | `test_nb_bb_edges.py` |
 | 28 | fit chain | LOG_SPACE_SWAPS | `cnaster/hmm_nophasing.py:71` `_dense_nb_logpmf` | `port.patch.hmm_nophasing.nb_logpmf:_dense_nb_logpmf` (#560) | -- | **none** |
 | 29 | fit chain | LOG_SPACE_SWAPS | `cnaster/hmm_nophasing.py:62` `_bb_logpmf_1d` | `port.patch.hmm_nophasing.bb_logpmf:_bb_logpmf_1d` (#561) | -- | `test_bb_logpmf.py` |
@@ -45,3 +45,14 @@ replacement by name; **none** is a row with no direct test.
 | 34 | clone assignment | SHIFT_SWAPS | `cnaster/hmrf.py:802` `reindex_clones` | `port.patch.hmrf:reindex_clones` (#362) | `port.patch._clone_paths`, `port.patch._signature`, `port.patch.hmm_initialize.distinct`, `port.patch.hmm_initialize.sal_mixture`, `port.patch.hmm_nophasing.shifted_emission`, `port.patch.hmrf.reindex` | **none** |
 | 35 | clone assignment | COPY_SWAPS | `cnaster/integer_copy.py:571` `hill_climbing_integer_copynumber_fixdiploid_milp` | `port.patch.integer_copy:hill_climbing_integer_copynumber_fixdiploid_milp` (#313) | `port.extensions.copy_likelihood`, `port.extensions.integer_copy`, `port.patch._signature`, `port.patch.hmm_nophasing.shifted_emission`, `port.patch.hmrf.core_inference` | **none** |
 | 36 | clone assignment | COPY_SWAPS | `cnaster/integer_copy.py:101` `hill_climbing_integer_copynumber_oneclone` | `port.patch.integer_copy:hill_climbing_integer_copynumber_oneclone` (#313) | `port.extensions.copy_likelihood`, `port.extensions.integer_copy`, `port.patch._signature`, `port.patch.hmm_nophasing.shifted_emission`, `port.patch.hmrf.core_inference` | **none** |
+
+## Outside the tables
+
+Replaced other than by a swap row (`port.pipeline.OUTSIDE_TABLES`, #749 WP8).
+
+| `cnaster` | replacement | how |
+| --- | --- | --- |
+| `cnaster.hmm_nophasing.hmm_nophasing.forward_lattice, backward_lattice` | `port.patch.lattice:rust_lattices` | rebound for the run by `run_cnaster_port` (#312) |
+| `cnaster.hmm_phased.hmm_phased.forward_lattice, backward_lattice` | `port.patch.lattice:rust_lattices` | rebound for the run by `run_cnaster_port` (#312) |
+| `cnaster.hmm_initialize.gmm_init` | `port.patch.hmm_initialize.distinct:gmm_init, port.patch.hmm_initialize.sal_mixture:gmm_init` | passed as `hmm_initializer` by `port.patch.hmrf.core_inference` (#348, #489) |
+| `cnaster.he.get_he_image` | `port.patch.io:he_image` | called in its place by `port.patch.io`'s `load_input_data` row (#311) |
