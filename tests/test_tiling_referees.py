@@ -60,11 +60,13 @@ def _instance(side: int, n_tiles: int, n_states: int, seed: int) -> Any:
 
 def _solve(name: str, field: np.ndarray, graph: Any, beta: float) -> np.ndarray:
     from port.extensions.label_solver import sweep_for
+    from port.sandbox.extensions.label_solvers import SWEEPS
 
     labelling = np.zeros(field.shape[0], dtype=np.int64)
     # NB `cnaster`'s sweep draws its queue order from the legacy state (#45).
     np.random.seed(0)  # noqa: NPY002
-    sweep_for(name)(field, graph, labelling, beta, min_clone_spots=1)  # type: ignore[arg-type]
+    sweep = SWEEPS[name] if name in SWEEPS else sweep_for(name)  # type: ignore[arg-type]
+    sweep(field, graph, labelling, beta, min_clone_spots=1)
     return labelling
 
 

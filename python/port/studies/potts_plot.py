@@ -396,7 +396,7 @@ def draw(
             lambda v, _: "0" if v == FLOOR else f"$10^{{{round(np.log10(v))}}}$"
         )
     )
-    ax.set_ylabel("Gap [nats]" if key else "Gap [Nats]")
+    ax.set_ylabel(r"$\Delta \ln \mathcal{L}$")
     ax.set_xlabel("Runtime [s]")
 
     if key:
@@ -409,7 +409,7 @@ def draw(
              ({"marker": "o", "color": "0.4", "markerfacecolor": "white", "markersize": 5}, "Polish"),
              ({"marker": "D", "color": "0.4", "markerfacecolor": "white", "markersize": 4}, "Merge"),
              ({"line": True, "color": "k"}, "Truth")],
-            [(KEY_NAMES[s], tab20(NUMBER[s]), polished[s][1])
+            [(KEY_NAMES[s], tab20(NUMBER[s]), polished[s])
              for s in ordered],
             [],
             **(key_style or {}),
