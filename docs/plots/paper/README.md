@@ -1,11 +1,11 @@
 # Paper figures: dev_tree_1s_easy r0 (7ba9b01f)
 
 **TL;DR:** clone ARI 0.9798, copy ARI (phase-free)
-0.9335, exact altered (phase-free)
-0.8992 (phased 0.1473), from one
+0.9730, exact altered (phase-free)
+0.9729 (phased 0.2209), from one
 `run_cnaster_port --sal --png-copies` run on `sim/manifests/dev_tree_1s_easy.toml` r0 at
-code `05419ba`: 187 s wall, 3.42 GB peak.
-Ledger `run_id` `05419ba-dev_tree_1s_easy_r0-0146` (`docs/metrics/`, fixture `dev_tree_1s_easy_r0` `7ba9b01f`).
+code `2a6f426`: 192 s wall, 3.42 GB peak.
+Ledger `run_id` `2a6f426-dev_tree_1s_easy_r0-0433` (`docs/metrics/`, fixture `dev_tree_1s_easy_r0` `7ba9b01f`).
 
 Regenerate from a clean tree, so the commit above carries no `+`; it draws r0 into
 `.cache/paper_figures/` where `--draw` is not given, and refuses any r0 not
@@ -18,7 +18,7 @@ headline figures alone (#745); every other page the run draws (the truth's panel
 the run's own pages, cnaster's copies and the truth-against-fit comparisons) is
 written under `.cache/plots/paper/` and regenerated on demand (`curate`). The figures
 carry no stamp (#743): `truth_combined.png` and `combined.png` are `dev_tree_1s_easy` r0
-`7ba9b01f` at code `05419ba`, as above. `combined.png` draws panel (a) on a slide
+`7ba9b01f` at code `2a6f426`, as above. `combined.png` draws panel (a) on a slide
 mocked from the planted labels (`port.sim.he_slide`): the fixture has no H&E image,
 and the run never reads the mock. `solver_combined.png` is not drawn from this fixture:
 `--solvers POTTS.record COPY.record` draws it from a `port.studies.potts_stream` and a
