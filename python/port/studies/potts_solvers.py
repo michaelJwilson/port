@@ -45,8 +45,6 @@ PORT_ROWS = (
     "icm-numba",
     "alpha",
     "alpha-rust",
-    "alpha-rust-icm",
-    "alpha-rust-merge",
     "alpha-rust-fuse-merge",
 )
 SAMPLES = {"r0": "dev_tree 60 x 50", "easy": "CalicoST easy", "hard": "CalicoST hard"}

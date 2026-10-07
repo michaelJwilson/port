@@ -115,7 +115,11 @@ def sweep_for(name: Solver) -> Any:
     if name == "alpha-rust-fuse-merge":
         return fusion_then_merge
 
-    return sal_icm_sweep
+    if name == "icm-numba":
+        return sal_icm_sweep
+
+    msg = f"{name!r} is not one of {SOLVERS}"
+    raise ValueError(msg)
 
 
 def _finite(field: Any, graph: Any, spatial_weight: float) -> Any:
@@ -228,7 +232,7 @@ def fusion_then_merge(
     chosen by the roof dual, and never worse than the better proposal. The
     proposals are alpha expansion (Rust cut) from the caller's labelling and
     sal's `numba` descent from the field's argmax, which reach different
-    minima; the floor follows as in :func:`expansion_then_merge`.
+    minima; sal's floor (`merge_small_labels`) follows.
     """
     del tolerance, epsilon, cost_zeropoint, onehot_allowed_clones
 
