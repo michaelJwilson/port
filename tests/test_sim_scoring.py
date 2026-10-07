@@ -23,7 +23,7 @@ import pandas as pd
 import pytest
 from port.qa.audit import score_sample
 from port.qa.scoring import CLASSES, exact_by_class, integer_clones, matched
-from port.sim.draw import _merge, draw, extended, from_document
+from port.sim.draw import draw, extended, from_document, merged_tables
 from port.sim.fixtures import SIM_ROOT, load_simulated, references
 
 CASES = 300
@@ -198,7 +198,7 @@ def test_a_drawn_sample_scored_against_its_own_truth_scores_one(
         pytest.skip("CalicoST's GRCh38_resources not found; set $PORT_GRCH38")
 
     manifests = SIM_ROOT / "manifests"
-    document = _merge(
+    document = merged_tables(
         extended(manifests / "dev_tree_1s_easy.toml"),
         {"array": {"rows": 20, "columns": 20}, "sample": {"realizations": 1}},
     )

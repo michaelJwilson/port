@@ -230,3 +230,23 @@ def test_the_registry_names_the_samplers_the_module_runs() -> None:
     from port.sandbox.extensions.hmm_objective import SAMPLERS
 
     assert HMM_SAMPLERS == SAMPLERS
+
+
+@pytest.mark.infra
+def test_the_defaults_are_the_calibrated_settings() -> None:
+    """Each start's tuned knobs are `configs/copy_sampler_settings.json`'s, its budget `BUDGETS`' (#749 WP1).
+
+    One source: the stream's `--settings` default and the samplers' defaults
+    are the same file, which `run_calibrate --copy` writes.
+    """
+    from port.qa.provenance import CONFIGS, calibration
+    from port.sandbox.extensions.hmm_objective import BUDGETS, DEFAULTS, TUNED_KEYS
+    from port.studies import copy_state_stream, potts_stream
+
+    tuned = calibration("copy_sampler_settings")
+    for name, knobs in DEFAULTS.items():
+        assert {k: knobs[k] for k in TUNED_KEYS[name]} == {
+            k: tuned[name][k] for k in TUNED_KEYS[name]
+        }
+        assert {k: knobs[k] for k in BUDGETS[name]} == BUDGETS[name]
+    assert copy_state_stream.SETTINGS.parent == potts_stream.SETTINGS.parent == CONFIGS

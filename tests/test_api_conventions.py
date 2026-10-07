@@ -23,7 +23,8 @@ from pathlib import Path
 import pytest
 from port.extensions.vocabulary import TERMS, replaced_by
 
-ROOT = Path(__file__).resolve().parent.parent
+from tests import ROOT
+
 PORT = ROOT / "python" / "port"
 SKIPPED = {"sandbox", "deprecated", "tests", "__pycache__"}
 
@@ -65,12 +66,13 @@ KNOWN: dict[str, str] = {
     "port.sim.realizations:chosen arg seed": "G3",
     # NB G5: the studies, moved the same way; a job's `seed` is a field of
     #    the records they pickle, so renaming it breaks every earlier record.
-    "port.studies.copy_state_stream:solve arg seed": "G5",
-    "port.studies.potts_stream:solve arg seed": "G5",
+    "port.studies.copy_state_stream:solve_start arg seed": "G5",
+    "port.studies.potts_stream:solve_labelling arg seed": "G5",
     "port.studies.clone_label_arms:Job field seed": "G5",
     "port.studies.copy_start_arms:Job field seed": "G5",
     "port.studies.population:run_member arg seed": "G5",
     "port.studies.population:draw_member arg seed": "G5",
+    "port.studies.population:stay_member arg seed": "G5",
     "port.studies.population_report:summarize arg seed": "G5",
 }
 """Departures found by #401's audit, keyed `module:name kind word`."""
@@ -79,11 +81,7 @@ SIBLINGS: dict[str, tuple[str, ...]] = {
     "port.patch.icm.interface:icm_sweep": (
         "port.patch.icm.alpha_expansion:alpha_expansion_sweep",
         "port.extensions.label_solver:sal_icm_sweep",
-        "port.extensions.label_solver:expansion_then_floor",
-        "port.extensions.label_solver:expansion_then_merge",
-        "port.extensions.label_solver:sal_icm_floor_sweep",
         "port.extensions.label_solver:fusion_then_merge",
-        "port.extensions.label_solver:sal_icm_argmax_sweep",
     ),
 }
 """Entry points one setting chooses between, each against the first: the same

@@ -15,10 +15,7 @@ import numpy as np
 import pytest
 import scipy.sparse as sp
 
-
-def _square(rows: int, cols: int) -> np.ndarray:
-    r, c = np.unravel_index(np.arange(rows * cols), (rows, cols))
-    return np.stack([r, c], axis=1)
+from tests.adapters import square_coords
 
 
 def _triangular(rows: int, cols: int) -> np.ndarray:
@@ -43,9 +40,9 @@ def _brute_force(coords: np.ndarray, neighbourhood: str) -> np.ndarray:
 @pytest.mark.parametrize(
     ("kind", "neighbourhood", "build", "shape"),
     [
-        ("square", "square", _square, (7, 5)),
-        ("square", "moore", _square, (7, 5)),
-        ("square", "moore", _square, (1, 6)),
+        ("square", "square", square_coords, (7, 5)),
+        ("square", "moore", square_coords, (7, 5)),
+        ("square", "moore", square_coords, (1, 6)),
         ("triangular", "triangular", _triangular, (6, 7)),
         ("triangular", "triangular", _triangular, (3, 3)),
     ],
@@ -67,7 +64,7 @@ def test_the_lattice_neighbours_are_the_brute_force_pairs(
 @pytest.mark.analytic
 @pytest.mark.parametrize(
     ("neighbourhood", "build"),
-    [("square", _square), ("moore", _square), ("triangular", _triangular)],
+    [("square", square_coords), ("moore", square_coords), ("triangular", _triangular)],
 )
 def test_interior_edges_weigh_one_and_boundary_edges_more(
     neighbourhood: str, build: object
@@ -111,7 +108,7 @@ def test_the_guard_refuses_cnasters_directed_graph() -> None:
     from port.extensions.adjacency import AdjacencyError, validate_adjacency
 
     _, directed = construct_lattice_adjacency(
-        _square(12, 12).astype(float), unit_xsquared=1, unit_ysquared=1
+        square_coords(12, 12).astype(float), unit_xsquared=1, unit_ysquared=1
     )
 
     with pytest.raises(AdjacencyError, match="not symmetric"):
@@ -126,7 +123,7 @@ def test_the_guard_refuses_a_self_loop_and_an_unreinforced_boundary() -> None:
         validate_adjacency,
     )
 
-    adjacency = lattice_adjacency(_square(4, 4), "moore")
+    adjacency = lattice_adjacency(square_coords(4, 4), "moore")
     validate_adjacency(adjacency, 8)
 
     looped = adjacency.tolil()
@@ -157,7 +154,7 @@ def test_slices_are_assembled_block_diagonal_and_validated() -> None:
     from port.extensions.adjacency import knn_adjacency
     from port.patch.spatial import lattice_multislice_adjacency
 
-    first, second = _square(4, 4), _square(5, 3)
+    first, second = square_coords(4, 4), square_coords(5, 3)
     coords = np.concatenate([first, second])
     sample_ids = np.repeat([0, 1], [len(first), len(second)])
 
@@ -187,7 +184,7 @@ def test_the_interior_is_cnasters_graph_on_a_square_grid() -> None:
     from port.extensions.adjacency import lattice_adjacency
 
     side = 12
-    coords = _square(side, side)
+    coords = square_coords(side, side)
     _, directed = construct_lattice_adjacency(
         coords.astype(float), unit_xsquared=1, unit_ysquared=1
     )
@@ -209,7 +206,7 @@ def test_knn_moore_is_cnasters_graph_on_a_square_grid() -> None:
     from cnaster.spatial import construct_lattice_adjacency
     from port.extensions.adjacency import knn_adjacency, validate_adjacency
 
-    coords = _square(40, 40)
+    coords = square_coords(40, 40)
     _, theirs = construct_lattice_adjacency(
         coords.astype(float), unit_xsquared=1, unit_ysquared=1
     )
@@ -223,10 +220,10 @@ def test_knn_moore_is_cnasters_graph_on_a_square_grid() -> None:
 @pytest.mark.parametrize(
     ("neighbourhood", "build", "shape", "realized"),
     [
-        ("moore", _square, (40, 40), 0.987),
-        ("moore", _square, (12, 10), 0.942),
-        ("moore", _square, (4, 4), 0.781),
-        ("square", _square, (4, 5), 0.775),
+        ("moore", square_coords, (40, 40), 0.987),
+        ("moore", square_coords, (12, 10), 0.942),
+        ("moore", square_coords, (4, 4), 0.781),
+        ("square", square_coords, (4, 5), 0.775),
         ("triangular", _triangular, (40, 40), 0.975),
         ("triangular", _triangular, (4, 4), 0.792),
     ],
@@ -268,7 +265,7 @@ def test_the_knn_guard_refuses_what_is_not_a_knn_lattice() -> None:
         validate_adjacency,
     )
 
-    adjacency = knn_adjacency(_square(12, 12), "moore")
+    adjacency = knn_adjacency(square_coords(12, 12), "moore")
     validate_adjacency(adjacency, 8, construction="knn")
 
     looped = adjacency.tolil()
@@ -309,7 +306,7 @@ def test_the_swap_reproduces_cnasters_multislice_adjacency_on_square_grids() -> 
     from cnaster.spatial import construct_multislice_lattice_adjacency
     from port.patch.spatial import lattice_multislice_adjacency
 
-    first, second = _square(12, 10), _square(9, 14)
+    first, second = square_coords(12, 10), square_coords(9, 14)
     coords = np.concatenate([first, second]).astype(float)
     sample_ids = np.repeat([0, 1], [len(first), len(second)])
 

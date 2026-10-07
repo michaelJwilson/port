@@ -51,6 +51,7 @@ from port.patch.spatial import (
 )
 from pytest_benchmark.fixture import BenchmarkFixture
 
+from tests.adapters import square_coords
 from tests.fixtures import tiers
 
 pytestmark = pytest.mark.preprocessing
@@ -101,13 +102,6 @@ def hgtable(tmp_path_factory: pytest.TempPathFactory) -> Any:
     return of_size
 
 
-def _lattice(rows: int, columns: int) -> np.ndarray:
-    """Spot coordinates on a rectangular lattice, as a slide carries them."""
-    x_grid, y_grid = np.meshgrid(np.arange(rows), np.arange(columns), indexing="ij")
-
-    return np.stack([x_grid.ravel(), y_grid.ravel()], axis=1).astype(float)
-
-
 def _bins(depth: int, count: int) -> tuple[np.ndarray, np.ndarray]:
     """B-allele counts and totals for `count` bins at roughly `depth` reads."""
     generator = np.random.default_rng(11)
@@ -146,7 +140,7 @@ def test_adjacency(
     count because what is removed is quadratic in it and what is left -- the
     k-d tree query -- is not.
     """
-    coords = _lattice(*lattice)
+    coords = square_coords(*lattice).astype(float)
     sample_ids = np.zeros(len(coords), dtype=int)
 
     benchmark(arm, sample_ids, [0], coords, None, 1, 1, 1)
@@ -179,7 +173,7 @@ def test_partition(
     the spot count, which is the claim: a trial reads `x_part * y_part`
     corners of a table built once.
     """
-    coords = _lattice(*lattice)
+    coords = square_coords(*lattice).astype(float)
 
     benchmark(arm, coords, 3, 3, n_trials=n_trials)
 

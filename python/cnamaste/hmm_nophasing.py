@@ -1218,6 +1218,24 @@ refuses the next planted state, 0.42 (#293). Moved in by T- #670 PR7 for
 """
 
 
+def normal_clone(p_binom: np.ndarray, path: np.ndarray) -> tuple[int, float]:
+    """The normal clone and its share of balanced bins (#299, #389).
+
+    `port.patch.hmm_nophasing.shifted_emission.normal_clone` (#749 WP7),
+    moved in for `hmrf.clone_shifts`: the clone of `path`, `(n_obs,
+    n_clones)` state indices, with the largest share of bins in states
+    within :data:`NEUTRAL_BAF_TOLERANCE` of 0.5.
+    """
+    balanced = (
+        np.abs(np.asarray(p_binom, dtype=np.float64).reshape(-1) - 0.5)
+        <= NEUTRAL_BAF_TOLERANCE
+    )
+    decoded = np.asarray(path, dtype=np.int64)
+    share = balanced[decoded.reshape(decoded.shape[0], -1)].mean(axis=0)
+    normal = int(np.argmax(share))
+    return normal, float(share[normal])
+
+
 def neutral_state(
     log_mu: np.ndarray, p_binom: np.ndarray, path: np.ndarray | None = None
 ) -> int:

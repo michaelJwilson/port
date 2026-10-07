@@ -23,7 +23,6 @@ from port.qa.ledger import (
     CONVERTED,
     METRICS,
     NOTE_CHARS,
-    ROOT,
     TEST,
     TIMESTAMP,
     check_identity,
@@ -37,6 +36,7 @@ from port.qa.ledger import (
 )
 from port.sim import truth as sim_truth
 
+from tests import ROOT
 from tests.metrics import fixture_hash
 
 
@@ -151,7 +151,7 @@ def test_a_recorded_run_writes_one_line_per_measured_metric(
         "wall_s": "12.3",
     }
     assert read()[-1]["copy_ari"] == metrics.UNMEASURED
-    assert not (metrics.ROOT / "docs" / "metrics.md").exists()
+    assert not (ROOT / "docs" / "metrics.md").exists()
     with pytest.raises(ValueError, match="one dataset"):
         metrics.write(recovery, fixture="easy", args="", note="x", dirty=False)
 

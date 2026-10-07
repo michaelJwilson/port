@@ -147,7 +147,7 @@ class PinnedErrors(NamedTuple):
     decrement: float
 
 
-def _column(values: Any) -> np.ndarray:
+def flat_values(values: Any) -> np.ndarray:
     return np.asarray(values, dtype=np.float64).reshape(-1)
 
 
@@ -157,9 +157,18 @@ def pseudobulk(captured: Captured) -> dict[str, np.ndarray]:
     `run_core_inference` sums each clone's spots and concatenates the clones
     along the genome (`clone_stack_obs`), so the objective is one sequence of
     `n_clones * n_obs` with `lengths` tiled. The assignment is the fit's own.
+
+    Block `c` is clone `c`, the fit's path column `c` (`pinned_objective`), so
+    a clone with no spots is refused: stacked, it would shift every later
+    clone's block onto the path of the clone before it (#749 WP0).
     """
     assignment = np.asarray(captured.res["new_assignment"], dtype=np.int64)
-    clones = np.unique(assignment)
+    clones = np.arange(np.asarray(captured.res["pred_cnv"]).shape[1])
+    empty = sorted(set(clones.tolist()) - set(np.unique(assignment).tolist()))
+
+    if empty:
+        msg = f"clones {empty} of the fit's {clones.size} have no spots, so their blocks cannot be stacked"
+        raise ValueError(msg)
 
     def summed(values: np.ndarray) -> np.ndarray:
         return np.concatenate(
@@ -208,8 +217,8 @@ def pinned_objective(
     from port.extensions.jax_hmm import emission, marginal_negative_log_likelihood
 
     result = captured.res
-    n_states = _column(result["new_log_mu"]).size
-    log_startprob = _column(result["new_log_startprob"])
+    n_states = flat_values(result["new_log_mu"]).size
+    log_startprob = flat_values(result["new_log_startprob"])
     log_transmat = np.asarray(result["new_log_transmat"], dtype=np.float64)
 
     inputs = pseudobulk(captured)
@@ -382,10 +391,10 @@ def pinned_errors(captured: Captured, purity: np.ndarray | None = None) -> Pinne
     from port.patch.hmm_nophasing.shifted_emission import neutral_state
 
     result = captured.res
-    log_mu = _column(result["new_log_mu"])
-    p_binom = _column(result["new_p_binom"])
-    alpha = float(_column(result["new_alphas"])[0])
-    tau = float(_column(result["new_taus"])[0])
+    log_mu = flat_values(result["new_log_mu"])
+    p_binom = flat_values(result["new_p_binom"])
+    alpha = float(flat_values(result["new_alphas"])[0])
+    tau = float(flat_values(result["new_taus"])[0])
 
     # NB `jax_hmm`'s beta-binomial subtracts `lgamma(tau)`-sized terms; from
     #    `STABLE_TAU` its error is past the curvature this covariance reads

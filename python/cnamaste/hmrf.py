@@ -1165,30 +1165,26 @@ def pin_neutral(result):
 def clone_shifts(res, base_nb_mean, zero_normal=True):
     """Record each clone's `log Z_c` over the pinned rates in `new_log_mu_shift`; return them (#362).
 
-    The normal clone is the one with the largest share of bins in balanced
-    states; with `zero_normal` its shift is 0.
+    `log Z_c` is `logmu_shift.clone_log_normalizers`, the field's (#749
+    WP7, as `port.patch.hmrf.core_inference.clone_shifts`): bins of zero
+    baseline enter as exact zeros, at most 4.4e-15 nats from dropping them.
+    The normal clone is `hmm_nophasing.normal_clone`'s; with `zero_normal`
+    its shift is 0.
     """
+    from cnamaste.hmm_nophasing import normal_clone
+    from cnamaste.logmu_shift import clone_log_normalizers
+
     rates = state_vector(np.asarray(res["new_log_mu"]))
-    balanced = (
-        np.abs(state_vector(np.asarray(res["new_p_binom"])) - 0.5)
-        <= NEUTRAL_BAF_TOLERANCE
-    )
     path = np.asarray(res["pred_cnv"], dtype=np.int64)
     path = path.reshape(path.shape[0], -1)
 
-    with np.errstate(divide="ignore", invalid="ignore"):
-        log_lambda = np.log(np.sum(base_nb_mean, axis=1) / np.sum(base_nb_mean))
-
-    kept = np.isfinite(log_lambda)
-    shifts = np.array(
-        [
-            float(scipy.special.logsumexp(rates[path[kept, c]] + log_lambda[kept]))
-            for c in range(path.shape[1])
-        ]
-    )
+    normalizers = clone_log_normalizers(rates, path, base_nb_mean)
+    shifts = np.full(path.shape[1], -np.inf) if normalizers is None else normalizers
 
     if zero_normal:
-        shifts[int(np.argmax(balanced[path].mean(axis=0)))] = 0.0
+        shifts[normal_clone(state_vector(np.asarray(res["new_p_binom"])), path)[0]] = (
+            0.0
+        )
 
     _relocked(res, "new_log_mu_shift", shifts)
 

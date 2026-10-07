@@ -280,7 +280,10 @@ class EmGradient:
         The same four conditions `compute_emission_probability_nb_betabinom_coded`
         reads, so the gradient is of the objective actually scored.
         """
-        from port.patch.hmm_nophasing.shifted_emission import _current, shifted
+        from port.patch.hmm_nophasing.shifted_emission import (
+            current_clone_lengths,
+            shifted,
+        )
 
         model = self.model
         decode = model._decode() if hasattr(model, "_decode") else None
@@ -294,7 +297,7 @@ class EmGradient:
             return None
 
         decode = np.asarray(decode, dtype=np.int64)
-        lengths = _current(
+        lengths = current_clone_lengths(
             tuple(int(length) for length in np.asarray(self.clone_lengths)),
             int(decode.size),
         )
@@ -311,15 +314,18 @@ class EmGradient:
         lengths: tuple[int, ...],
     ) -> tuple[np.ndarray, np.ndarray]:
         """The shifted channel: rates `exp(log_mu_i - S_c)`, `S_c` moving with `log_mu`."""
-        from port.patch.hmm_nophasing.shifted_emission import _stacked, _triples
+        from port.patch.hmm_nophasing.shifted_emission import (
+            clone_count_triples,
+            stacked_log_lambda,
+        )
 
         n_states = rates.size
-        triples = _triples(encoder.obs_count, encoder.total_count, lengths)
+        triples = clone_count_triples(encoder.obs_count, encoder.total_count, lengths)
         n_codes = triples.obs.size
         n_clones = len(lengths)
 
         # NB the per-clone softmax over segments, `P[c, j]`, and `S_c` with it.
-        terms = rates[decode] + _stacked(self.normal_log_lambda, lengths)
+        terms = rates[decode] + stacked_log_lambda(self.normal_log_lambda, lengths)
         clone_of = np.repeat(np.arange(n_clones), lengths)
         shifts = np.full(n_clones, -np.inf)
         np.maximum.at(shifts, clone_of, terms)
