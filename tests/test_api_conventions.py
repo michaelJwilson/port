@@ -23,7 +23,8 @@ from pathlib import Path
 import pytest
 from port.extensions.vocabulary import TERMS, replaced_by
 
-ROOT = Path(__file__).resolve().parent.parent
+from tests import ROOT
+
 PORT = ROOT / "python" / "port"
 SKIPPED = {"sandbox", "deprecated", "tests", "__pycache__"}
 
@@ -65,8 +66,8 @@ KNOWN: dict[str, str] = {
     "port.sim.realizations:chosen arg seed": "G3",
     # NB G5: the studies, moved the same way; a job's `seed` is a field of
     #    the records they pickle, so renaming it breaks every earlier record.
-    "port.studies.copy_state_stream:solve arg seed": "G5",
-    "port.studies.potts_stream:solve arg seed": "G5",
+    "port.studies.copy_state_stream:solve_start arg seed": "G5",
+    "port.studies.potts_stream:solve_labelling arg seed": "G5",
     "port.studies.clone_label_arms:Job field seed": "G5",
     "port.studies.copy_start_arms:Job field seed": "G5",
     "port.studies.population:run_member arg seed": "G5",

@@ -12,7 +12,7 @@ which half the clones are detected (`UMI50`), and the length at which half
 the events of a class are recovered (`L50`) -- from a logistic fit on the
 log of the covariate, bootstrapped the same way.
 
-**Sufficiency is stated before the numbers are read** (`SUFFICIENT`): every
+**Sufficiency is stated before the numbers are read** (`sufficiency`): every
 bin drawn holds at least `MIN_PER_BIN` items; every crossing's 95% interval
 is at most `MAX_WIDTH_DEX` wide; and a J compared with Study 2's J either
 differs (the paired interval on the difference excludes zero) or is reported
@@ -388,7 +388,7 @@ def summarize(out: Path, study2_j: float, seed: int = 544) -> dict[str, Any]:
         "study2": study2,
         "study3": study3,
         "differences": differences,
-        "sufficient": SUFFICIENT(study1, study2),
+        "sufficient": sufficiency(study1, study2),
         "members": int(seeds.size),
         "study2_members": int(members2.size),
         "study2_J": study2_j,
@@ -413,7 +413,7 @@ def verdict(entry: dict[str, Any], lo: float, hi: float) -> str:
     return "unresolved"
 
 
-def SUFFICIENT(study1: dict[Any, Any], study2: dict[str, Any]) -> dict[str, Any]:
+def sufficiency(study1: dict[Any, Any], study2: dict[str, Any]) -> dict[str, Any]:
     """The rule stated before the numbers: per-bin counts and crossing widths.
 
     Study 1, per J: every bin holds `MIN_PER_BIN` clones, and UMI50's 95%

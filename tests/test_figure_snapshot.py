@@ -16,7 +16,9 @@ from typing import Any
 import numpy as np
 import pytest
 
-FROZEN = Path(__file__).parent / "data" / "figures"
+from tests import TESTS
+
+FROZEN = TESTS / "data" / "figures"
 DPI = 100
 
 

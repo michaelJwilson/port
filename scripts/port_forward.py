@@ -18,9 +18,10 @@ from importlib import import_module
 from pathlib import Path
 from typing import Any
 
+from port.extensions.repository import ROOT
+
 from tests.source_graph import edges, tables
 
-ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / "docs" / "port-forward.md"
 
 STAGES: tuple[tuple[str, frozenset[str]], ...] = (

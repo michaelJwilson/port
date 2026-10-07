@@ -45,8 +45,8 @@ from typing import Any
 import numpy as np
 
 from port.extensions.figure_style import GRID, INK, MUTED, axes_style
+from port.extensions.repository import ROOT
 from port.qa import provenance
-from port.qa.provenance import ROOT
 from port.qa.statistics import measured
 
 MANIFESTS = ROOT / "sim" / "manifests"
@@ -72,17 +72,6 @@ RUN_COPIED = (
     "clones_genomic.png",
     "rdr_baf_clones_genomic.png",
 )
-RUN_PAGES = ("combined.png", "genomic.png", "spatial.png")
-"""Figures 9-13, under `run/`: the pages drawn here, the rest copied."""
-
-COMPARE = (
-    "clones_truth_vs_fit.png",
-    "copy_confusion.png",
-    "copy_genomic_truth_vs_fit.png",
-    "exact_by_class.png",
-)
-"""Figures 14-17, under `compare/`."""
-
 CLASSES = {
     "loh": "LOH",
     "balanced_gain": "balanced gain",

@@ -11,13 +11,14 @@ from __future__ import annotations
 
 import itertools
 import signal
-from pathlib import Path
 from typing import Any
 
 import numpy as np
 import pytest
 
-DATA = Path(__file__).resolve().parent / "data"
+from tests import TESTS
+
+DATA = TESTS / "data"
 
 TRY_CAP = 3_000
 """`randint` calls `cnaster`'s loop may make before a seed counts as not returning.

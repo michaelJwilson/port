@@ -21,8 +21,9 @@ from pathlib import Path
 import pytest
 
 from scripts.badges import BADGES, MEASUREMENTS, UNMEASURED, badges, write
+from tests import ROOT
 
-README = Path(__file__).resolve().parent.parent / "README.md"
+README = ROOT / "README.md"
 
 ENDPOINT = re.compile(
     r"!\[[^\]]*\]\(https://img\.shields\.io/endpoint\?url=[^)]*?/\.badges/([a-z-]+)\.json\)"

@@ -12,7 +12,7 @@ import re
 
 import pytest
 
-from tests.source_graph import ROOT
+from tests import ROOT
 
 READS: dict[str, str] = {
     "python/port/extensions/adjacency.py": (

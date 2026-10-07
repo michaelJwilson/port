@@ -1360,11 +1360,6 @@ def save_npz(path: Path, matrix: Any) -> None:
                 np.lib.format.write_array(stream, np.asanyarray(array))
 
 
-def _normalized(weights: np.ndarray) -> np.ndarray:
-    """Each clone's column summing to 1: the library size is held per spot."""
-    return np.asarray(weights / weights.sum(axis=0, keepdims=True))
-
-
 def _write_slice(
     out: Path,
     counts: Any,

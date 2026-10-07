@@ -40,6 +40,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from port.extensions.repository import ROOT
 from port.qa.benchmark import BADGES, MEASUREMENTS
 
 UNMEASURED = "/"
@@ -50,7 +51,6 @@ can name, which is the staleness this module exists to prevent. `/` is the
 one rendering that asserts nothing.
 """
 
-ROOT = Path(__file__).resolve().parent.parent
 
 __all__ = [
     "BADGES",

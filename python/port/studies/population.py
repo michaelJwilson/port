@@ -66,7 +66,8 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-ROOT = Path(__file__).resolve().parents[3]
+from port.extensions.repository import ROOT
+
 MANIFEST = ROOT / "sim" / "manifests" / "population.toml"
 
 J_CRITICAL = float(np.log(2.0))

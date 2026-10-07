@@ -16,8 +16,7 @@ import pytest
 from _pytest.mark.expression import Expression
 
 from scripts import ci
-
-ROOT = Path(__file__).resolve().parent.parent
+from tests import ROOT
 
 
 def _selects(expression: str, markers: set[str]) -> bool:

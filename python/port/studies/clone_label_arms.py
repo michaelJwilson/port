@@ -139,7 +139,9 @@ def _floored(field: np.ndarray, labels: np.ndarray) -> np.ndarray:
     return labels
 
 
-def _scored(labels: np.ndarray, field: np.ndarray, beta: float) -> dict[str, Any]:
+def _labelling_scores(
+    labels: np.ndarray, field: np.ndarray, beta: float
+) -> dict[str, Any]:
     from sal.sim.potts import energy
     from sklearn.metrics import adjusted_rand_score
 
@@ -197,7 +199,13 @@ def _starts_arm(job: Job) -> list[dict[str, Any]]:
     base = {**job._asdict(), "bound": bound, "trws_energy": trws_energy,
             "trws_seconds": trws_seconds, "start_seconds": start_seconds,
             "build_seconds": problem.seconds, "states_by": problem.states_by}  # fmt: skip
-    rows = [{**base, "solver": "start", **_scored(problem.labels, problem.field, beta)}]
+    rows = [
+        {
+            **base,
+            "solver": "start",
+            **_labelling_scores(problem.labels, problem.field, beta),
+        }
+    ]
 
     if job.seed >= SOLVED:
         return rows
@@ -217,8 +225,8 @@ def _starts_arm(job: Job) -> list[dict[str, Any]]:
             floored = _floored(problem.field, solved)
             rows.append({
                 **base, "solver": solver, "solver_seed": seed, "solve_seconds": seconds,
-                **_scored(solved, problem.field, beta),
-                **{f"floored_{k}": v for k, v in _scored(floored, problem.field, beta).items()},
+                **_labelling_scores(solved, problem.field, beta),
+                **{f"floored_{k}": v for k, v in _labelling_scores(floored, problem.field, beta).items()},
             })  # fmt: skip
     return rows
 
@@ -229,7 +237,7 @@ def _alternating_arm(job: Job) -> list[dict[str, Any]]:
     problem = _build(labels, job.seed)
     elapsed = start_seconds + problem.seconds
     rows = [{**job._asdict(), "round": 0, "seconds": elapsed,
-             **_scored(problem.labels, problem.field, beta)}]  # fmt: skip
+             **_labelling_scores(problem.labels, problem.field, beta)}]  # fmt: skip
     for round_ in range(1, 5):
         with measured() as cost:
             solved = _solve(job.solver, problem.field, problem.labels,
@@ -240,7 +248,7 @@ def _alternating_arm(job: Job) -> list[dict[str, Any]]:
             )
         elapsed += cost.wall_s
         rows.append({**job._asdict(), "round": round_, "seconds": elapsed,
-                     **_scored(problem.labels, problem.field, beta)})  # fmt: skip
+                     **_labelling_scores(problem.labels, problem.field, beta)})  # fmt: skip
     return rows
 
 
@@ -262,7 +270,7 @@ def _joint_arm(job: Job) -> list[dict[str, Any]]:
     problem = _build(labels, job.seed)
     elapsed = start_seconds + problem.seconds
     rows = [{**job._asdict(), "step": "start", "seconds": elapsed,
-             **_scored(problem.labels, problem.field, beta)}]  # fmt: skip
+             **_labelling_scores(problem.labels, problem.field, beta)}]  # fmt: skip
     best = problem
     temperatures = TEMPERATURES if job.arm == "joint-anneal" else (1.0,) * 5
 
@@ -274,10 +282,11 @@ def _joint_arm(job: Job) -> list[dict[str, Any]]:
             )
             problem = _build(drawn, job.seed, states=(problem.log_mu, problem.p_binom))
         elapsed += cost.wall_s
-        scored = _scored(problem.labels, problem.field, beta)
+        scored = _labelling_scores(problem.labels, problem.field, beta)
         if (
             job.arm == "joint-sample"
-            and scored["loglik"] > _scored(best.labels, best.field, beta)["loglik"]
+            and scored["loglik"]
+            > _labelling_scores(best.labels, best.field, beta)["loglik"]
         ):
             best = problem
         rows.append(
@@ -296,7 +305,7 @@ def _joint_arm(job: Job) -> list[dict[str, Any]]:
         problem = _build(solved, job.seed, states=(final.log_mu, final.p_binom))
     elapsed += cost.wall_s
     rows.append({**job._asdict(), "step": "solved", "seconds": elapsed,
-                 **_scored(problem.labels, problem.field, beta)})  # fmt: skip
+                 **_labelling_scores(problem.labels, problem.field, beta)})  # fmt: skip
     return rows
 
 
@@ -309,7 +318,11 @@ def _beta_arm(job: Job) -> list[dict[str, Any]]:
         solved = _floored(problem.field, _solve(solver, problem.field, problem.labels,
                                                 np.random.default_rng(0), beta))  # fmt: skip
         rows.append(
-            {**job._asdict(), "solver": solver, **_scored(solved, problem.field, beta)}
+            {
+                **job._asdict(),
+                "solver": solver,
+                **_labelling_scores(solved, problem.field, beta),
+            }
         )
     return rows
 
@@ -419,5 +432,5 @@ def run_arms(
             print(f"{done}/{len(jobs)} {job.arm} {job.start} {job.seed} {job.solver} "
                   f"{time.perf_counter() - opened:.0f} s", flush=True)  # fmt: skip
             with out.open("wb") as fh:
-                pickle.dump({"rows": rows, "oracle": _scored(oracle.labels, oracle.field, beta),
+                pickle.dump({"rows": rows, "oracle": _labelling_scores(oracle.labels, oracle.field, beta),
                              "grid2_seconds": _HELD["grid2"].seconds}, fh)  # fmt: skip

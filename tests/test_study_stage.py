@@ -9,6 +9,8 @@ from typing import Any
 import numpy as np
 import pytest
 
+from tests import ROOT, TESTS
+
 
 @pytest.mark.oracle
 def test_missed_is_the_fewest_misses_over_every_matching_of_states() -> None:
@@ -46,7 +48,7 @@ def test_every_start_returns_one_state_per_planted_state(name: str) -> None:
     trials = rng.integers(20, 40, 2 * n).astype(float)
     total = rng.poisson(exposure * np.where(state == 1, 0.5, 1.0)).astype(float)
     b = rng.binomial(trials.astype(int), np.where(state == 1, 0.1, 0.5)).astype(float)
-    config = (Path(__file__).parent / "data" / "zenodo_sim_config.yaml").read_text()
+    config = (TESTS / "data" / "zenodo_sim_config.yaml").read_text()
     raw = {"X": np.stack([total, b], axis=1)[:, :, None], "base_nb_mean": exposure[:, None],
            "total_bb_RD": trials[:, None], "lengths": np.array([n, n]), "log_sitewise_transmat": np.zeros(2 * n),
            "params": "smp", "config": config}  # fmt: skip
@@ -77,7 +79,7 @@ def test_the_stage_is_the_runs_baum_welch_at_the_planted_clones(
     from port.studies.copy_state_stream import oracle_states, scored, truth_label
 
     # NB a manifest names what it extends relative to the repository, as the run reads it
-    monkeypatch.chdir(Path(__file__).resolve().parents[1])
+    monkeypatch.chdir(ROOT)
     manifest = Path("sim/manifests/dev_tree_1s_hard.toml")
     member = next(stage.members(manifest, tmp_path / "sim", n=1))
     assert member.hash == "9ec90dc2"
@@ -124,7 +126,7 @@ def test_the_field_is_cnasters_at_the_planted_clones_less_the_clone_shift(
     import scipy.sparse as sp
     from port.studies import stage
 
-    monkeypatch.chdir(Path(__file__).resolve().parents[1])
+    monkeypatch.chdir(ROOT)
     member = next(
         stage.members(
             Path("sim/manifests/dev_tree_1s_hard.toml"), tmp_path / "sim", n=1

@@ -29,11 +29,11 @@ ticket, measurement and exit, and a new one arrives with them.
 from __future__ import annotations
 
 import ast
-from pathlib import Path
 from typing import Literal
 
 import pytest
 
+from tests import ROOT
 from tests.source_graph import modules, reached, row_modules
 
 Role = Literal[
@@ -66,6 +66,7 @@ ROLES: dict[str, Role] = {
     "port.extensions.copy_likelihood": "extension",
     "port.extensions.emission_family": "oracle",
     "port.extensions.figure_style": "extension",
+    "port.extensions.repository": "extension",
     "port.extensions.genomic_axis": "extension",
     "port.extensions.integer_copy": "oracle",
     "port.extensions.jax_hmm": "oracle",
@@ -323,7 +324,7 @@ def test_no_live_module_imports_the_sandbox() -> None:
     which is each sandbox module's stated measurement, and is reached from
     no pipeline entry point (T- #673 G5), so its imports install nothing.
     """
-    package = Path(__file__).resolve().parents[1] / "python" / "port"
+    package = ROOT / "python" / "port"
     found = []
 
     for path in sorted(package.rglob("*.py")):
