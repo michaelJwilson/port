@@ -499,10 +499,10 @@ def _seeded(
     if name in seeds:
         return _place(held, call, *seeds[name](call, rng))
 
-    from sal.search.mixture_starts import BestOf, Selection, lookup
+    from sal.search.mixture_starts import lookup
 
     chosen = lookup(name)
-    if isinstance(chosen, BestOf) and chosen.select is Selection.POLISHED:
+    if chosen.polishes:
         # NB sal's best-of skips a seeding that raises and names it in the
         #    note (sal #1136), which port's `_surviving` did (T- #596, T- #632).
         _, best = chosen.polished(
