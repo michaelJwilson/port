@@ -11,7 +11,8 @@ exact altered 0.497 → 0.627. `dev_tree` 60 × 50 and easy are unchanged.
 
 ## Method
 
-`run_study --hmm-starts capture | per-call`.
+`run_study --hmm-starts capture | per-call`, retired by #749 WP6 once the
+streams superseded it; the module is in git history.
 
 1. **Capture.** One `--sal --hmm-start none` run per sample, pickling every
    initializer call. The read-depth + BAF call is the one studied:

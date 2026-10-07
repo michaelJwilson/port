@@ -8,6 +8,7 @@ from typing import Any
 
 import numpy as np
 import pytest
+import yaml
 
 
 @pytest.mark.oracle
@@ -95,6 +96,8 @@ def test_the_stage_is_the_runs_baum_welch_at_the_planted_clones(
         assert found.X.shape[0] == found.planted.shape[0] == found.clone.size
         assert found.n_clones == 4
         assert found.arguments["t"] == pytest.approx(1.0 - 1e-7)
+        # NB the run's own configuration, which `cnaster`'s initializers read globally
+        assert yaml.safe_load(found.config)["hmm"]["t"] == pytest.approx(1.0 - 1e-7)
         return float(one.llf), float(two.llf), planted["missed"], own["missed"]
 
     one, two, planted, own = stage.at_oracle_clones(

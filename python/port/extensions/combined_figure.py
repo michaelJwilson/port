@@ -1083,7 +1083,8 @@ def integer_recorded(recorded: Recorded) -> Recorded:
     """`recorded` with its clones the run's integer clones, numbered anew.
 
     Clones whose integer copy profiles in the profile call's `df_cnv` agree
-    (`port.extensions.outputs.integer_clones`, #344, #518) are one clone:
+    at the installed configuration's `merge_agreement`, as `write_outputs`
+    merges them (`port.extensions.outputs.integer_clones`, #344, #518), are one clone:
     its spots are every merged clone's, so the tracks' pseudobulk is their
     summed counts; its profile and fitted path are the group's smallest
     id's. The clones that remain are numbered 0, 1, ... in index order, so
@@ -1092,14 +1093,15 @@ def integer_recorded(recorded: Recorded) -> Recorded:
     """
     import pandas as pd
 
-    from port.extensions.outputs import integer_clones
+    from port.extensions.outputs import installed_keys, integer_clones, merge_agreement
     from port.patch._clone_paths import clone_path
 
     if recorded.profile is None:
         msg = "integer clones need the run's copy_number_profile call"
         raise ValueError(msg)
 
-    groups = integer_clones(recorded.profile.args[0])
+    # NB the run's agreement, as `write_outputs` merges `clone_labels.tsv` at it
+    groups = integer_clones(recorded.profile.args[0], merge_agreement(installed_keys()))
     kept = clone_order(set(groups.values()))
     number = {old: str(kept.index(group)) for old, group in groups.items()}
 

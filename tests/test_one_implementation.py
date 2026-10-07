@@ -59,10 +59,11 @@ BUDGET: dict[str, int] = {
     #    stops the run once the study has its stage. 88: #735's `stage.Field`,
     #    the run's clone-assignment problem, and `potts_stream.Problem`, one
     #    with its realization (`known_field.KnownProblem`, in `sandbox/`, gone).
-    #    90: #748's `forward_polish.Counts`, what one fit spent, and `_Forward`,
-    #    the forward log-likelihood as a `sal` objective over `cnaster`'s packed
-    #    parameters (its gradient carried by `hmm_objective._Carried`).
-    "classes": 90,
+    #    87: #749 WP6 retired `potts_solvers` and its `PortStart`. 89: #748's
+    #    `forward_polish.Counts`, what one fit spent, and `_Forward`, the forward
+    #    log-likelihood as a `sal` objective over `cnaster`'s packed parameters
+    #    (its gradient carried by `hmm_objective._Carried`).
+    "classes": 89,
     # NB step 4: 18 records became NamedTuples; the dataclasses left carry
     #    mutable state, machinery or a `__post_init__` (#517 D). Step 8 moved
     #    7 dataclasses and 1 NamedTuple to `sandbox/`. 21: T- #418's `Samples`
@@ -73,9 +74,9 @@ BUDGET: dict[str, int] = {
     #    33: G5's three study records, moved.
     #    34: T- #683's `Ticks`, frozen: a swap row's bound option.
     #    36: #716's `WarmSchedule` and `_Warmed`, frozen: what `run_annealed`
-    #    calls `build` on. 37: #748's `forward_polish.Counts` (mutable: a fit
-    #    fills it as it runs).
-    "dataclasses": 37,
+    #    calls `build` on. 35: #749 WP6 retired `potts_solvers.PortStart`.
+    #    36: #748's `forward_polish.Counts` (mutable: a fit fills it as it runs).
+    "dataclasses": 36,
     # NB 24: `analysis.GenomicTruth` (the truth page). 26: #540's
     #    `CopyCall` and `CopyStart` (`Row` in `sandbox/`, #547). 27: T- #617
     #    WP2's `pipeline.Default`. 28: G6's `port.sim.he_slide.Slide`, moved.
