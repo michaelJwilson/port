@@ -99,12 +99,6 @@ SWAPPED = "#4a3aa7"
 """Figure 16's marks: a bin decoded to another pair, and one decoded to the planted pair's swap."""
 
 
-def switches(path: Path) -> int:
-    """Phase switches `truth_phase.npy` plants: SNPs whose phase differs from the previous one's."""
-    phase = np.load(path / "truth_phase.npy").astype(bool)
-    return int(np.count_nonzero(phase[1:] != phase[:-1]))
-
-
 def stated_hash(fixture: str) -> str:
     """`[sample] r0_hash` as `sim/manifests/<fixture>.toml` states it."""
     document = tomllib.loads((MANIFESTS / f"{fixture}.toml").read_text())
@@ -697,81 +691,13 @@ def solver_figures(potts: Path, copies: Path | None, out: Path, commit: str) -> 
 
 
 QUESTIONS: dict[str, tuple[str, str]] = {
-    "truth/truth_combined.png": (
+    "truth_combined.png": (
         "What was planted, on one page: tree, (A, B) profile, RDR and BAF per clone?",
         "`port.sim.truth_figure.truth_combined_figure`",
     ),
-    "truth/simulated_tree.png": (
-        "Which events sit on which edge of the simulated clone tree?",
-        "`port.sim.truth_figure.simulated_tree_figure`, `truth_combined`'s panel (a) alone",
-    ),
-    "truth/spatial.png": (
-        "Which clone was each spot drawn from?",
-        "`port.sim.analysis.plot_spatial`",
-    ),
-    "truth/clones_genomic.png": (
-        "What RDR and BAF does each planted clone give along the genome?",
-        "`port.sim.analysis.plot_clones_genomic_truth`",
-    ),
-    "truth/clone_profiles.png": (
-        "What (A, B) does each clone carry along the genome?",
-        "`port.sim.analysis.plot_clone_profiles`",
-    ),
-    "truth/coverage.png": (
-        "Do spot UMI and SNP reads follow their laws?",
-        "`port.sim.analysis.plot_coverage`",
-    ),
-    "truth/phase.png": (
-        "Where does the planted phase switch?",
-        "`port.sim.analysis.plot_phase`",
-    ),
-    "truth/baseline.png": (
-        "What normal expression baseline were counts drawn from?",
-        "`port.sim.analysis.plot_baseline`",
-    ),
-    "run/combined.png": (
+    "combined.png": (
         "What did the run fit, genome and array on one page?",
         "`port.extensions.combined_figure.combined_figure`",
-    ),
-    "run/genomic.png": (
-        "What RDR, BAF and integer (A, B) did the run fit per clone?",
-        "`port.extensions.combined_figure.genomic_figure`",
-    ),
-    "run/spatial.png": (
-        "Where are the fitted clones on the array?",
-        "`port.extensions.combined_figure.spatial_figure`",
-    ),
-    "run/copy_number_profile.png": (
-        "What integer (A, B) did the run decode per clone?",
-        "the run's `plots/copy_number_profile.png`",
-    ),
-    "run/clones_spatial.png": (
-        "Which fitted clone is each spot?",
-        "the run's `plots/clones_spatial.png`",
-    ),
-    "run/clones_genomic.png": (
-        "What RDR and BAF did the run fit per clone?",
-        "the run's `plots/clones_genomic.png`",
-    ),
-    "run/rdr_baf_clones_genomic.png": (
-        "What RDR and BAF were the clones fitted to?",
-        "the run's `plots/rdr_baf_clones_genomic.png`",
-    ),
-    "compare/clones_truth_vs_fit.png": (
-        "Do the fitted clones recover the planted ones, and which matches which?",
-        "`labels_figure`: `port.qa.audit.score_sample`'s ARI and matching",
-    ),
-    "compare/copy_confusion.png": (
-        "Which (A, B) is each planted pair decoded as?",
-        "`confusion_figure`: `port.qa.scoring.copy_confusion`",
-    ),
-    "compare/copy_genomic_truth_vs_fit.png": (
-        "Where along the genome is a matched clone's (A, B) decoded wrong, or swapped?",
-        "`genomic_compare_figure`: `score`'s clone-bins",
-    ),
-    "compare/exact_by_class.png": (
-        "Which planted classes are recovered exactly, with and without phase?",
-        "`exact_figure`: `port.qa.scoring.exact_by_class`",
     ),
     "pop_combined.png": (
         "How many UMIs does a clone need, how long must a CNA be, at each stay probability 1 - t, "
@@ -789,14 +715,7 @@ QUESTIONS: dict[str, tuple[str, str]] = {
 }
 """Each committed file under `OUT`: the question it answers, and its source."""
 
-KEY_STUDIES: dict[str, tuple[str, str, str]] = {
-    "key_studies/554_clone-starts.png": (
-        "Does the clone-label start or the Potts solver decide the clones, and what does each start reach?",
-        "`docs/nb/clone_label_study.ipynb` via `port.studies.clone_label_notebook` (#541, PR #554)",
-        "`run_study --clone-labels capture SAMPLE CAPTURE.npz`, `... run CAPTURE.npz OUT.pkl`, "
-        "`run_study --clone-label-notebook OUT.pkl`",
-    ),
-}
+KEY_STUDIES: dict[str, tuple[str, str, str]] = {}
 """Each key study's figure (label `key_study`) under `OUT/key_studies/`: question, source, regenerate command."""
 
 
@@ -805,19 +724,40 @@ def ledger_name(fixture: str) -> str:
     return f"{fixture}_r0"
 
 
+SUPPORTING = provenance.PLOTS / "paper"
+"""Every page the set draws but does not commit: `truth/`, `run/` and `compare/`, untracked (#745)."""
+
+
+def curate(out: Path, into: Path = SUPPORTING) -> list[Path]:
+    """`QUESTIONS`' figures flat in `out`, every other page `out` holds moved under `into`.
+
+    The paper commits its headline figures alone (#745); the panels, the run's own
+    pages and the comparisons are regenerated on demand.
+    """
+    for page in ("truth/truth_combined.png", "run/combined.png"):
+        if (out / page).exists():
+            (out / page).replace(out / Path(page).name)
+    moved = []
+    for part in ("truth", "run", "compare"):
+        for path in sorted((out / part).glob("*")) if (out / part).is_dir() else []:
+            target = into / part / path.name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            path.replace(target)
+            moved.append(target)
+        if (out / part).is_dir():
+            (out / part).rmdir()
+    return moved
+
+
 def readme(
     fixture: str,
     digest: str,
     commit: str,
     run_id: str,
     recovery: dict[str, Any],
-    switches: int,
 ) -> str:
     """`OUT/README.md`: the run's headline metrics, then each file's question and source."""
     rows = "\n".join(f"| `{k}` | {q} | {s} |" for k, (q, s) in QUESTIONS.items())
-    studies = "\n".join(
-        f"| `{k}` | {q} | {s} | {r} |" for k, (q, s, r) in KEY_STUDIES.items()
-    )
     return f"""# Paper figures: {fixture} r0 ({digest})
 
 **TL;DR:** clone ARI {recovery["ari"]:.4f}, copy ARI (phase-free)
@@ -833,20 +773,20 @@ hashing to `{digest}`:
 
     run_study --paper-figures --fixture {fixture} --out docs/plots/paper
 
-`--truth-only` writes `truth/` alone, with no run. The figures carry no stamp
-(#743): every figure here but `solver_combined.png` is `{fixture}` r0 `{digest}` at
-code `{commit}`, as above. `run/spatial.png` and `run/combined.png`
-draw panel (a) on a slide mocked from the planted labels (`port.sim.he_slide`):
-the fixture has no H&E image, and the run never reads the mock.
-`truth/phase.png` is flat: this r0 plants {switches} phase switches.
-`solver_combined.png` is not drawn from this fixture: `--solvers POTTS.record COPY.record`
-draws it from a `port.studies.potts_stream` and a `port.studies.copy_state_stream` record,
-and `solver_combined.md` beside it names both records, their data hashes and their settings.
-The genomic panels of `truth/truth_combined.png`, `truth/clones_genomic.png`,
-`truth/clone_profiles.png`, `run/genomic.png`, `run/combined.png` and
-`compare/copy_genomic_truth_vs_fit.png` draw every altered bin at 2x its extent
-(`port.extensions.genomic_axis`, T- #683): each on its own segmentation, the planted
-intervals in `truth/` and the fitted ones in `run/`, so their contig widths differ.
+`--truth-only` draws the truth alone, with no run. This directory commits the four
+headline figures alone (#745); every other page the run draws (the truth's panels,
+the run's own pages, cnaster's copies and the truth-against-fit comparisons) is
+written under `.cache/plots/paper/` and regenerated on demand (`curate`). The figures
+carry no stamp (#743): `truth_combined.png` and `combined.png` are `{fixture}` r0
+`{digest}` at code `{commit}`, as above. `combined.png` draws panel (a) on a slide
+mocked from the planted labels (`port.sim.he_slide`): the fixture has no H&E image,
+and the run never reads the mock. `solver_combined.png` is not drawn from this fixture:
+`--solvers POTTS.record COPY.record` draws it from a `port.studies.potts_stream` and a
+`port.studies.copy_state_stream` record, and `solver_combined.md` beside it names both
+records, their data hashes and their settings. `pop_combined.png` is the population
+study's, its data in `docs/studies/`. The genomic panels of `truth_combined.png` and
+`combined.png` draw every altered bin at 2x its extent (`port.extensions.genomic_axis`,
+T- #683), each on its own segmentation, so their contig widths differ.
 
 | File | Question | Source |
 | --- | --- | --- |
@@ -854,13 +794,8 @@ intervals in `truth/` and the fitted ones in `run/`, so their contig widths diff
 
 ## Key studies
 
-Each figure is redrawn when its study is rerun, and stamped `data <hash> · code <sha>`.
-The population study's one figure is `pop_combined.png`, its data in `docs/studies/`; its
-panel (b), the `t` arm, is drawn empty until #729 runs it.
-
-| File | Question | Source | Regenerate |
-| --- | --- | --- | --- |
-{studies}
+None committed: `554_clone-starts.png` and `557_copy-states.png` are superseded by
+`solver_combined.png` (a) and (b) (#745).
 """
 
 
@@ -896,6 +831,7 @@ def main(argv: list[str] | None = None) -> int:
     for written in truth_figures(path, out / "truth"):
         print(written)
     if arguments.truth_only:
+        curate(out)
         return 0
 
     from port.qa.ledger import SIM_TEST, write
@@ -907,6 +843,7 @@ def main(argv: list[str] | None = None) -> int:
         c = compared(sample, path, run.output, run.recovery)
         for written in compare_figures(c, out / "compare"):
             print(written)
+    print(f"{len(curate(out))} supporting pages under {SUPPORTING}")
 
     recovery = {**run.recovery, "fixture_hash": digest, "peak_gb": run.peak_gb}
     run_id = write(
@@ -918,6 +855,6 @@ def main(argv: list[str] | None = None) -> int:
         test=SIM_TEST,
     )
     (out / "README.md").write_text(
-        readme(arguments.fixture, digest, commit, run_id, recovery, switches(path))
+        readme(arguments.fixture, digest, commit, run_id, recovery)
     )
     return 0

@@ -130,8 +130,8 @@ states, polished, sit 115 nats below the best and miss 2.9% of rows (median).
   reran under the lock, results identical (120 of 120), r3's median job 84 s → 59 s. #661's reused rows
   (2026-10-05) sit within the interquartile range of the same starts' r8–r12 jobs.
 
-The key figure is committed as `docs/plots/paper/key_studies/557_copy-states.png` (`data 7cee0a0a ·
-code 67d8874`); `run_study --copy-state-plot OUT/<stem>.record` redraws it beside the record.
+The key figure (`data 7cee0a0a · code 67d8874`) is retired from `docs/plots/paper/` (#745), superseded by
+`solver_combined.png` (b); `run_study --copy-state-plot OUT/<stem>.record` redraws it beside the record.
 
 ## Defects found, and what was done about them
 
