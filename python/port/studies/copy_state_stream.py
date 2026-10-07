@@ -472,7 +472,6 @@ def retune(
     root: Path | None = None,
 ) -> None:
     """`tune` of `names` on `manifest`'s first `held_out` realizations, merged into `SETTINGS` with its provenance."""
-    import json
     import logging
     import tempfile
 
@@ -488,10 +487,7 @@ def retune(
                   f"{TUNING_SEEDS} seeds per setting, at the run's Baum-Welch at oracle clones (#730); the "
                   "cheapest setting within {TOLERANCE} nats of the best median gap in log-likelihood at the "
                   "start's states (#540)").replace("{TOLERANCE}", str(TOLERANCE))  # fmt: skip
-    earlier = json.loads(SETTINGS.read_text()) if SETTINGS.exists() else {}
-    SETTINGS.write_text(
-        json.dumps({**earlier, "_provenance": provenance, **chosen}, indent=2) + "\n"
-    )
+    harness.merge_settings(SETTINGS, provenance, chosen)
 
 
 def main(argv: list[str] | None = None) -> None:

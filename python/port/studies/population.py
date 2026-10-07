@@ -67,6 +67,8 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from port.studies.stage import FLAGS
+
 ROOT = Path(__file__).resolve().parents[3]
 MANIFEST = ROOT / "sim" / "manifests" / "population.toml"
 
@@ -96,7 +98,6 @@ KEPT = ("clone_labels.tsv", "cnv_seglevel.tsv")
 KEPT_IF_WRITTEN = ("cnv_copy_sets.tsv", "cnv_segment_sets.tsv", "cnv_bin_loglik.npz")
 """Kept as `KEPT` is, where the arm's flags write them."""
 
-FLAGS = ("--sal", "--no-plots")
 
 LEVELS = {"2sigma": 0.9545, "3sigma": 0.9973}
 """The credible levels each event is scored at (#705); the arms write the

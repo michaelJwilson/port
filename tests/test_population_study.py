@@ -235,7 +235,8 @@ def test_a_known_event_s_set_folds_phase_per_bin() -> None:
 @pytest.mark.infra
 def test_every_arm_is_the_study_s_flags_plus_decode_options() -> None:
     """`ARMS` changes only the decode: each starts with `FLAGS` (#705)."""
-    from port.studies.population import ARMS, FLAGS
+    from port.studies.population import ARMS
+    from port.studies.stage import FLAGS
 
     assert ARMS["sal"] == FLAGS
     for name, flags in ARMS.items():

@@ -7,12 +7,30 @@ commit in `port.qa.provenance`.
 
 from __future__ import annotations
 
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
 
 from port.qa import provenance
 
-__all__ = ["key_below", "merged", "stamp", "tab20", "tt"]
+__all__ = [
+    "DODGE",
+    "FLOOR",
+    "gap_page",
+    "key_below",
+    "merged",
+    "merged_records",
+    "stamp",
+    "tab20",
+    "tt",
+]
+
+
+DODGE = 1.12
+"""Each polish stage drawn 12% right of its runtime, on either gap figure."""
+
+FLOOR = 1e-2
+"""The gap figures' "0": runs within `FLOOR` nats of the reference."""
 
 
 def tt(name: str) -> str:
@@ -157,3 +175,36 @@ def key_below(
             color="0.25",
             fontsize=fontsize - 0.5,
         )
+
+
+def gap_page(
+    record: dict[str, Any], out: Path, panels: Callable[[Any, Any], None]
+) -> Path:
+    """A study's gap figure: its plot left, its table right, stamped and written to `out`.
+
+    `panels(ax, tab)` draws both; `copy_state_plot` and `potts_plot` each
+    wrote out this page around their own (#749 WP6).
+    """
+    import matplotlib as mpl
+
+    mpl.use("Agg")
+    import matplotlib.pyplot as plt
+
+    plt.rcParams.update({"font.size": 9})
+    fig = plt.figure(figsize=(15.5, 6.2))
+    grid = fig.add_gridspec(1, 2, width_ratios=[1.2, 1], wspace=0.04)
+    ax, tab = fig.add_subplot(grid[0]), fig.add_subplot(grid[1])
+    tab.axis("off")
+    panels(ax, tab)
+    stamp(fig, record)
+    fig.savefig(out, dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    return out
+
+
+def merged_records(paths: Sequence[str | Path]) -> tuple[dict[str, Any], Path]:
+    """`STREAM.record [EARLIER.record ...]` merged, and the stream's path the figure goes beside."""
+    from port.studies import records
+
+    found = [Path(p) for p in paths]
+    return merged([records.read(p) for p in found]), found[0]

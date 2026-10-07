@@ -33,7 +33,7 @@ def merge_deltas(
     indptr: np.ndarray,
     indices: np.ndarray,
     weights: np.ndarray,
-    beta: float,
+    spatial_weight: float,
 ) -> np.ndarray:
     """`(q, q)` energy change of relabelling all of u to v; `inf` on the diagonal and at empty clones."""
     import scipy.sparse as sp
@@ -44,7 +44,8 @@ def merge_deltas(
     summed = np.asarray(member.T @ field)
     boundary = (member.T @ adjacency @ member).toarray()
     delta: np.ndarray = (
-        -(summed - np.diag(summed)[:, None]) - beta * (boundary + boundary.T) / 2
+        -(summed - np.diag(summed)[:, None])
+        - spatial_weight * (boundary + boundary.T) / 2
     )
     alive = np.bincount(labels, minlength=q) > 0
     delta[~alive, :] = np.inf
@@ -59,14 +60,14 @@ def color_merge(
     indptr: np.ndarray,
     indices: np.ndarray,
     weights: np.ndarray,
-    beta: float,
+    spatial_weight: float,
 ) -> tuple[np.ndarray, int]:
     """Merge the best clone pair while the energy drops; the labelling and how many merges."""
     labels = np.asarray(labels, dtype=np.int64).copy()
     merges = 0
 
     while True:
-        delta = merge_deltas(field, labels, indptr, indices, weights, beta)
+        delta = merge_deltas(field, labels, indptr, indices, weights, spatial_weight)
         u, v = np.unravel_index(int(np.argmin(delta)), delta.shape)
         if not delta[u, v] < 0:
             return labels, merges

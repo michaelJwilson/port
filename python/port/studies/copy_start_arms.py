@@ -17,14 +17,14 @@ run in forked workers, which inherit the captured calls.
 
 from __future__ import annotations
 
-import multiprocessing
 import time
 import traceback
 from collections.abc import Callable
-from concurrent.futures import ProcessPoolExecutor
 from typing import Any, NamedTuple
 
 import numpy as np
+
+from port.studies.stream import pool as harness_pool
 
 SHORTLIST = (
     "kmeans++x5+em",
@@ -252,11 +252,8 @@ def run_arms(
     ]
     progress(f"{len(jobs)} jobs over {arms}")
     rows: list[dict[str, Any]] = []
-    context = multiprocessing.get_context("fork")
     opened = time.perf_counter()
-    with ProcessPoolExecutor(
-        workers, mp_context=context, initializer=_init, initargs=(calls,)
-    ) as pool:
+    with harness_pool(workers, _init, calls, start_method="fork") as pool:
         futures = [pool.submit(_run, job, seconds) for job in jobs]
         for k, future in enumerate(futures, start=1):
             rows.append(future.result())

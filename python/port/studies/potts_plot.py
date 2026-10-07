@@ -25,8 +25,15 @@ import numpy as np
 import pandas as pd
 
 from port.qa.statistics import bars, ranks
-from port.studies import records
-from port.studies.figures import key_below, merged, stamp, tab20, tt
+from port.studies.figures import (
+    DODGE,
+    FLOOR,
+    gap_page,
+    key_below,
+    merged_records,
+    tab20,
+    tt,
+)
 
 NAMES = {
     "field_argmax": "field-argmax", "anneal": "glauber", "tempering": "parallel tempering",
@@ -62,12 +69,6 @@ NUMBER = {
     solver: k + 1 for k, solver in enumerate(s for _, rows in TABLE for s, _ in rows)
 }
 """Each solver's number: its row in the table."""
-
-DODGE = 1.12
-"""Each polish stage drawn 12% right of its runtime."""
-
-FLOOR = 1e-2
-"""The gap figure's "0": runs within `FLOOR` nats of the bound."""
 
 
 KEY_NAMES = {
@@ -439,26 +440,16 @@ def draw(
 
 def figure(record: dict[str, Any], out: Path) -> Path:
     """The gap figure and its table, written to `out`."""
-    import matplotlib as mpl
 
-    mpl.use("Agg")
-    import matplotlib.pyplot as plt
+    def panels(ax: Any, tab: Any) -> None:
+        d = draw(ax, record)
+        # NB ranked on each solver's own output: R_C by the median gap to the bound, R_M by the median Missed
+        wrong = missed(d, n_spots(record))
+        rank_cost = ranks({str(n): float(g.y.median()) for n, g in d.groupby("solver")})
+        rank_missed = ranks({n: m[0] for n, m in wrong.items()})
+        _table(tab, wrong, rank_cost, rank_missed)
 
-    plt.rcParams.update({"font.size": 9})
-    fig = plt.figure(figsize=(15.5, 6.2))
-    grid = fig.add_gridspec(1, 2, width_ratios=[1.2, 1], wspace=0.04)
-    ax, tab = fig.add_subplot(grid[0]), fig.add_subplot(grid[1])
-    tab.axis("off")
-    d = draw(ax, record)
-    # NB ranked on each solver's own output: R_C by the median gap to the bound, R_M by the median Missed
-    wrong = missed(d, n_spots(record))
-    rank_cost = ranks({str(n): float(g.y.median()) for n, g in d.groupby("solver")})
-    rank_missed = ranks({n: m[0] for n, m in wrong.items()})
-    _table(tab, wrong, rank_cost, rank_missed)
-    stamp(fig, record)
-    fig.savefig(out, dpi=150, bbox_inches="tight")
-    plt.close(fig)
-    return out
+    return gap_page(record, out, panels)
 
 
 def table_tex() -> str:
@@ -487,8 +478,6 @@ def table_tex() -> str:
 
 def main(argv: list[str] | None = None) -> None:
     """`STREAM.record [EARLIER.record ...]`: the figure beside the first, over all of them."""
-    paths = [Path(p) for p in (argv if argv is not None else sys.argv[1:])]
-    stream = paths[0]
-    record = merged([records.read(p) for p in paths])
+    record, stream = merged_records(argv if argv is not None else sys.argv[1:])
     print(figure(record, stream.with_suffix(".png")))
     stream.with_name("potts_solvers_table.tex").write_text(table_tex())
