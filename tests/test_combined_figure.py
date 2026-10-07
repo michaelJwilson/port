@@ -145,13 +145,13 @@ def test_each_figure_is_a_column_wide_with_one_text_size(
 ) -> None:
     """A text column wide, the genomic figure the text block less
     `CAPTION_ROOM` tall to 0.005 in, each lettered (a) and (b), and every text
-    at `FONT_SIZE`, the submission's `MIN_FONT_SIZE` (T- #740)."""
+    at `FONT_SIZE` but the tracks' at `TRACK_FONT_SIZE` (#743)."""
     from port.extensions.combined_figure import FONT_SIZE
     from port.extensions.figure_style import (
         CAPTION_ROOM,
-        MIN_FONT_SIZE,
         PAPER_WIDTH,
         TEXT_HEIGHT,
+        TRACK_FONT_SIZE,
         page_size,
     )
 
@@ -161,7 +161,10 @@ def test_each_figure_is_a_column_wide_with_one_text_size(
         assert figure.get_size_inches()[0] == pytest.approx(PAPER_WIDTH)
         assert [t.get_text() for t in figure.texts] == ["(a)", "(b)"]
         assert max(t.get_fontsize() for t in _texts(figure)) <= FONT_SIZE
-        assert min(t.get_fontsize() for t in _texts(figure)) >= MIN_FONT_SIZE
+        assert {t.get_fontsize() for t in _texts(figure)} <= {
+            FONT_SIZE,
+            TRACK_FONT_SIZE,
+        }
 
     assert genomic.get_size_inches()[1] == pytest.approx(
         TEXT_HEIGHT - CAPTION_ROOM, abs=0.005

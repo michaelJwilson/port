@@ -541,7 +541,9 @@ def name_contigs(
     number, "chr" dropped (`chr21` is "21"), and set on the first row under
     the axis where it clears the name before it by `CONTIG_PAD`: adjacent
     short contigs stagger onto a second row, and a third where two do not
-    clear, so no name is dropped and none is shrunk below `size` points. One "chr", right of
+    clear, so no name is dropped and none is shrunk below `size` points.
+    Each row after the first sits half a line under the one before (#743),
+    so a staggered run reads as one zigzag line rather than two. One "chr", right of
     nothing and left of the axis, names the rows. The rows start `below`
     points under the ticks: room for Mb labels where the axis draws them.
 
@@ -585,7 +587,7 @@ def name_contigs(
             rights.append(-np.inf)
         rights[row] = box.x1 + CONTIG_PAD * dpi / 72.0
         text.set_transform(
-            offset_copy(blended, figure, 0.0, -(top + row * line), units="points")
+            offset_copy(blended, figure, 0.0, -(top + row * line / 2.0), units="points")
         )
 
     ax.text(
@@ -601,4 +603,4 @@ def name_contigs(
             ax.transAxes, figure, -CONTIG_PAD - 1.0, -top, units="points"
         ),
     )
-    return (top + max(len(rights), 1) * line) / 72.0
+    return (top + (1.0 + (max(len(rights), 1) - 1) / 2.0) * line) / 72.0

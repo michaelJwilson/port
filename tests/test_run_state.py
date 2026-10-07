@@ -43,8 +43,6 @@ STATE: dict[str, Kind] = {
     "port.patch.hmm_initialize.distinct.gmm_init": "rebind",
     "port.patch.hmrf.core_inference.UPSTREAM": "rebind",
     "port.patch.normal_spot.determine_normal_candidates": "rebind",
-    "port.patch.utils.write_fig": "rebind",
-    "port.sim.analysis._save": "rebind",
     "port.studies.clone_label_arms._HELD": "run",
     "port.studies.clone_label_arms._graph": "rebind",
     "port.studies.copy_start_arms._CALLS": "run",

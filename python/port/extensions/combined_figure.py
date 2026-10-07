@@ -50,13 +50,18 @@ from typing import Any, NamedTuple
 
 import numpy as np
 
-from port.extensions.figure_style import CAPTION_ROOM, MIN_FONT_SIZE, TEXT_HEIGHT
+from port.extensions.figure_style import (
+    CAPTION_ROOM,
+    MIN_FONT_SIZE,
+    TEXT_HEIGHT,
+    TRACK_FONT_SIZE,
+)
 from port.patch.plot_copy_number_profile import KEY_GROWTH
 from port.patch.plot_copy_number_profile import LINEWIDTH as PROFILE_LINEWIDTH
 
 FONT_SIZE = MIN_FONT_SIZE
-"""Every text on the page, in points: the submission's 10 pt minimum, 7 pt
-before T- #740 (#339)."""
+"""Every text on the page, in points: `MIN_FONT_SIZE`, 8 pt (#743); 10 pt
+under T- #740, 7 pt before it (#339)."""
 
 LABEL_SIZE = FONT_SIZE
 """The panel letters, at the page's size and not bold."""
@@ -311,10 +316,10 @@ def _fit_tracks(panel: Any) -> None:
     """The genomic tracks' furniture, at a track a third of an inch tall.
 
     Upstream labels every integer of RDR and every 0.2 of BAF, which at this
-    height is a stack of overlapping numbers: the two ends and the middle
-    are kept, at one decimal as (a) and (b) are, and the gridlines stay. The
-    clone name is moved clear of the axis label, and the legend's 10 pt
-    markers are set to the page's.
+    height is a stack of overlapping numbers: the two ends are kept, as
+    `truth_figure` keeps them (#743), at one decimal as (a) and (b) are, and
+    the gridlines stay. The clone name is moved clear of the axis label, and
+    the legend's markers are set to the page's.
 
     The statistics line and the legend share one line above each clone's
     RDR track, in the gap row `clone_axes` leaves between clones, and are
@@ -325,12 +330,14 @@ def _fit_tracks(panel: Any) -> None:
         ticks = ax.get_yticks()
 
         if ticks.size > 2:
-            ends = [ticks[0], (ticks[0] + ticks[-1]) / 2, ticks[-1]]
+            # NB the two ends, as `truth_figure` labels its tracks (#743): a
+            #    middle label collides with both on a track at 8 pt.
+            ends = [ticks[0], ticks[-1]]
             ax.set_yticks(ends, [f"{tick:.1f}" for tick in ends])
 
             # NB inside the track's height: a label centred on the edge
             #    overhangs it, and the layout pads every track to make room.
-            bottom, _, top = ax.get_yticklabels()
+            bottom, top = ax.get_yticklabels()
             bottom.set_verticalalignment("bottom")
             top.set_verticalalignment("top")
 
@@ -889,8 +896,9 @@ def _genomic_page(
     for ax in top.axes[:-1]:
         ax.xaxis.set_minor_locator(NullLocator())
 
-    for panel in (top, middle):
-        _set_text(panel, FONT_SIZE)
+    # NB the tracks at `TRACK_FONT_SIZE`, as `truth_figure` sets its own (#743)
+    _set_text(top, TRACK_FONT_SIZE)
+    _set_text(middle, FONT_SIZE)
 
     # NB laid out once and frozen, then placed on the page by hand.
     figure.canvas.draw()
@@ -1077,13 +1085,14 @@ def integer_labels(assignment: Any, df_cnv: Any) -> Any:
 
 
 def _draw_spatial(
-    figure: Any, recorded: Recorded, he_frame: Any, labels: str = "integer"
+    figure: Any, recorded: Recorded, he_frame: Any, labels: str = "continuous"
 ) -> tuple[Any, Any]:
     """The slide and the clones on `figure`, drawn but not yet placed.
 
-    `labels` is "integer", the default, for clones named by their integer
-    copy profile (#344) -- which needs the run's profile call -- or
-    "continuous" for the fit's own clones.
+    `labels` is "continuous", the default, for the fit's own clones, each in
+    its colour as (b)'s integer-decoded profile names it (#743), or "integer"
+    for clones that decode alike at every bin drawn as one (#344, PR- #715),
+    which needs the run's profile call.
     """
     from cnaster.utils import cast_clone_label
 
@@ -1156,13 +1165,13 @@ def spatial_figure(
     recorded: Recorded,
     he_frame: Any,
     width: float | None = None,
-    labels: str = "integer",
+    labels: str = "continuous",
 ) -> Any:
     """(a) the H&E slide and (b) `clones_spatial`, square and as large as fit
     across `width` inches on a "third" page (T- #740), (b) keyed on its right;
     no caption.
 
-    `labels` as `_draw_spatial` takes it: "integer" (#344) or "continuous".
+    `labels` as `_draw_spatial` takes it: "continuous" (#743) or "integer" (#344).
     """
     import matplotlib.pyplot as plt
 
@@ -1200,7 +1209,7 @@ def combined_figure(
     he_frame: Any,
     width: float | None = None,
     height: float = TEXT_HEIGHT - CAPTION_ROOM,
-    labels: str = "integer",
+    labels: str = "continuous",
     *,
     metric: bool = False,
 ) -> Any:
@@ -1245,7 +1254,9 @@ def combined_figure(
     # NB (a) and (b): drawn anew in the space above and put where the spatial
     #    page puts them, `tall` higher.
     slide_ax, spatial_ax = _draw_spatial(figure, recorded, he_frame, labels)
-    _set_text(figure, FONT_SIZE)
+    # NB the maps alone: the page's tracks keep `TRACK_FONT_SIZE` (#743)
+    for ax in (slide_ax, spatial_ax):
+        _set_text(ax, FONT_SIZE)
     figure.canvas.draw()
     source = spatial.canvas.get_renderer()
     # NB the slide's axis, then the clones', as `_draw_spatial` adds them.

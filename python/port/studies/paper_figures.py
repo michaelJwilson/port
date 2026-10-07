@@ -32,12 +32,11 @@ the ledger's `fixture_hash` column (`<fixture>_ln_r0` before T- #660), and
 from __future__ import annotations
 
 import argparse
-import contextlib
 import functools
 import shutil
 import tempfile
 import tomllib
-from collections.abc import Callable, Iterator
+from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
@@ -85,11 +84,12 @@ COMPARE = (
 
 CLASSES = {
     "loh": "LOH",
-    "balanced_gain": "balanced gain",
-    "unbalanced_gain": "unbalanced gain",
-    "neutral": "neutral",
+    "balanced_gain": r"$p = 0.5,\ \mu > 1$",
+    "unbalanced_gain": r"$p \neq 0.5,\ \mu > 1$",
+    "neutral": r"$p = 0.5,\ \mu = 1$",
 }
-"""`port.qa.scoring.CLASSES`, in figure 17's order, with their labels."""
+"""`port.qa.scoring.CLASSES`, in figure 17's order, with their labels: a class by
+its BAF `p` and read-depth ratio `mu`, LOH by name (#743)."""
 
 DPI = 150
 """`port.sim.analysis`'s and `port.pipeline.FIGURE_DPI`'s."""
@@ -97,47 +97,6 @@ DPI = 150
 WRONG = "#e34948"
 SWAPPED = "#4a3aa7"
 """Figure 16's marks: a bin decoded to another pair, and one decoded to the planted pair's swap."""
-
-
-def stamp(figure: Any, text: str, *, top: bool = False) -> None:
-    """`text` in the figure's bottom-right corner, or its top-right where a
-    page fills the bottom, muted, at `MIN_FONT_SIZE`, in the stated face."""
-    from port.extensions.figure_style import MIN_FONT_SIZE, figure_font
-
-    y, va = (0.998, "top") if top else (0.002, "bottom")
-    # NB a warped genomic axis says so (`genomic_axis.disclose`, T- #683).
-    label = figure.get_label()
-    if label.startswith("axis:"):
-        text = f"{text} · {label}"
-    with figure_font():
-        figure.text(
-            0.998, y, text, ha="right", va=va, fontsize=MIN_FONT_SIZE, color=MUTED
-        )
-
-
-@contextlib.contextmanager
-def stamping(text: str) -> Iterator[None]:
-    """Stamp every figure `port.sim.analysis` saves and the run writes, for the block."""
-    from port.patch import utils
-    from port.sim import analysis
-
-    save, write_fig = analysis._save, utils.write_fig
-
-    def stamped_save(figure: Any, path: Path, **kwargs: Any) -> Path:
-        stamp(figure, text)
-        return save(figure, path, **kwargs)
-
-    def stamped_write(opath: str, fig: Any = None, *args: Any, **kwargs: Any) -> None:
-        if fig is not None:
-            stamp(fig, text)
-        write_fig(opath, fig, *args, **kwargs)
-
-    analysis._save = stamped_save  # type: ignore[assignment]
-    utils.write_fig = stamped_write
-    try:
-        yield
-    finally:
-        analysis._save, utils.write_fig = save, write_fig
 
 
 def switches(path: Path) -> int:
@@ -180,8 +139,8 @@ def realization(fixture: str, draw: Path | None) -> Path:
     return path
 
 
-def truth_figures(path: Path, out: Path, text: str) -> list[Path]:
-    """Figures 1-8 into `out`, stamped."""
+def truth_figures(path: Path, out: Path) -> list[Path]:
+    """Figures 1-8 into `out`."""
     import matplotlib.pyplot as plt
 
     from port.extensions.combined_figure import page_style
@@ -189,8 +148,7 @@ def truth_figures(path: Path, out: Path, text: str) -> list[Path]:
     from port.sim.truth_figure import simulated_tree_figure, truth_combined_figure
 
     r = analysis.read(path)
-    with stamping(text):
-        written = r.plot(out, metric=True)
+    written = r.plot(out, metric=True)
 
     # NB `mutation_tree.png` is not a paper figure: `simulated_tree.png` is
     #    `truth_combined`'s panel (a) alone (T- #660).
@@ -201,7 +159,6 @@ def truth_figures(path: Path, out: Path, text: str) -> list[Path]:
         ("simulated_tree.png", simulated_tree_figure(r)),
     )
     for name, figure in pages:
-        stamp(figure, text, top=True)
         with page_style():
             figure.savefig(
                 out / name, dpi=300, facecolor="white",
@@ -239,8 +196,8 @@ class Run:
     peak_gb: float
 
 
-def run_figures(sample: Any, root: Path, out: Path, text: str) -> Run:
-    """Figures 9-13 into `out` from one run under `root`, stamped."""
+def run_figures(sample: Any, root: Path, out: Path) -> Run:
+    """Figures 9-13 into `out` from one run under `root`."""
     import matplotlib.pyplot as plt
 
     from port.extensions.combined_figure import (
@@ -252,7 +209,7 @@ def run_figures(sample: Any, root: Path, out: Path, text: str) -> Run:
     )
     from port.qa.audit import audit_sample
 
-    with stamping(text), recording() as recorded, measured() as cost:
+    with recording() as recorded, measured() as cost:
         recovery, output = audit_sample(sample, list(FLAGS), None, root / "run")
 
     frame = mock_slide(sample.coords, sample.labels, root)
@@ -265,7 +222,6 @@ def run_figures(sample: Any, root: Path, out: Path, text: str) -> Run:
             ("spatial.png", spatial_figure(recorded, frame)),
             ("combined.png", combined_figure(recorded, frame, metric=True)),
         ):
-            stamp(figure, text, top=True)
             figure.savefig(
                 out / name, dpi=300, facecolor="white", metadata={"Software": None}
             )
@@ -594,8 +550,8 @@ FIGURES: dict[str, Callable[[Compared], Any]] = {
 }
 
 
-def compare_figures(c: Compared, out: Path, text: str) -> list[Path]:
-    """Figures 14-17 into `out`, stamped, in the stated face."""
+def compare_figures(c: Compared, out: Path) -> list[Path]:
+    """Figures 14-17 into `out`, in the stated face."""
     import matplotlib.pyplot as plt
 
     from port.extensions.figure_style import figure_font
@@ -605,7 +561,6 @@ def compare_figures(c: Compared, out: Path, text: str) -> list[Path]:
     with figure_font():
         for name, draw in FIGURES.items():
             figure = draw(c)
-            stamp(figure, text)
             figure.savefig(out / name, dpi=DPI, facecolor="white",
                            metadata={"Software": None})  # fmt: skip
             plt.close(figure)
@@ -642,7 +597,8 @@ def solver_figure(potts: dict[str, Any], copies: dict[str, Any]) -> Any:
     height = above + SOLVER_PANEL + label + line * (rows + 1) + foot
     figure = plt.figure(figsize=(width, height))
     # NB (b) shares (a)'s y label, so the gap between them holds only (b)'s tick labels
-    left, gap, right = 0.42, 0.3, 0.06
+    # NB (a)'s y label and its 10^6 ticks need half an inch; 0.42 clipped the label (#743)
+    left, gap, right = 0.5, 0.3, 0.06
     panel = (width - left - gap - right) / 2
     bottom = height - above - SOLVER_PANEL
     axes = {k: figure.add_axes(((left + i * (panel + gap)) / width, bottom / height, panel / width, SOLVER_PANEL / height))
@@ -661,8 +617,8 @@ def solver_figure(potts: dict[str, Any], copies: dict[str, Any]) -> Any:
     for text in figure.findobj(Text):
         text.set_fontsize(FONT_SIZE)
     # NB each key's title names the fixture; at half the page two titles and two letters
-    #    collide, so the fixture moves to the stamp, each title keeps its count and starts at
-    #    its panel's left edge, the letter before it
+    #    collide, so the fixture moves to `SOLVER_NOTE`, each title keeps its count and starts
+    #    at its panel's left edge, the letter before it
     fixture = Path(potts["manifest"]).stem
     for text in figure.findobj(Text):
         if text.get_text().startswith(f"{fixture}: "):
@@ -677,8 +633,36 @@ def solver_figure(potts: dict[str, Any], copies: dict[str, Any]) -> Any:
     return figure
 
 
+SOLVER_NOTE = "solver_combined.md"
+"""Figure 18's provenance beside it: the two records, their data hashes, their settings and the code."""
+
+
+def solver_note(records: list[dict[str, Any]], digests: list[str], commit: str) -> str:
+    """`SOLVER_NOTE`: what `solver_combined.png` was drawn from, as the stamp it no longer carries said."""
+    potts, copies = records
+    lines = [
+        "# solver_combined.png",
+        "",
+        f"Drawn at code `{commit}` from two records on `{potts['manifest']}`, each problem built by",
+        "`run_cnaster_port --sal` at the planted clones (`port.studies.stage`, #730, #742):",
+        "",
+        "| Panel | Record | Data hash | Problems | Starts | Samplers |",
+        "| --- | --- | --- | --- | --- | --- |",
+        f"| (a) spatial solvers | `port.studies.potts_stream` | `{digests[0]}` | {len(potts.get('done', []))} "
+        f"| {potts.get('starts')} | {'tuned' if potts.get('tuning') else 'settings file'} |",
+        f"| (b) copy-state starts | `port.studies.copy_state_stream` | `{digests[1]}` | {len(copies.get('done', []))} "
+        f"| {copies.get('seeds')} | {'tuned' if copies.get('tuning') else 'settings file'} |",
+        "",
+        "Where a sampler reads a settings file (`potts_sampler_settings.json`, `copy_sampler_settings.json`),",
+        "it was tuned before the harness, on problems the run does not solve: these panels are",
+        "untuned for the run's problems until #723 retunes them on a quiet host.",
+        "",
+    ]
+    return "\n".join(lines)
+
+
 def solver_figures(potts: Path, copies: Path, out: Path, commit: str) -> Path:
-    """Figure 18 into `out`, stamped with each record's data hash and the code."""
+    """Figure 18 into `out`, and `SOLVER_NOTE` beside it with each record's data hash and the code."""
     import matplotlib.pyplot as plt
 
     from port.extensions.figure_style import figure_font
@@ -686,17 +670,14 @@ def solver_figures(potts: Path, copies: Path, out: Path, commit: str) -> Path:
 
     out.mkdir(parents=True, exist_ok=True)
     records = [stored.read(p) for p in (potts, copies)]
-    text = (
-        f"{Path(records[0]['manifest']).stem} · potts {stored.digest(records[0])}"
-        f" · copy states {stored.digest(records[1])}"
-        f" · code {commit}"
-    )
     with figure_font():
         figure = solver_figure(*records)
-        stamp(figure, text)
         figure.savefig(out / SOLVERS, dpi=300, facecolor="white",
                        metadata={"Software": None})  # fmt: skip
         plt.close(figure)
+    (out / SOLVER_NOTE).write_text(
+        solver_note(records, [stored.digest(r) for r in records], commit)
+    )
     return out / SOLVERS
 
 
@@ -785,12 +766,6 @@ QUESTIONS: dict[str, tuple[str, str]] = {
 """Each committed file under `OUT`: the question it answers, and its source."""
 
 KEY_STUDIES: dict[str, tuple[str, str, str]] = {
-    "key_studies/557_copy-states.png": (
-        "Which copy-state start, polished by `--sal` Baum-Welch, recovers the planted states at known clones?",
-        "`port.studies.copy_state_plot` (#540, PR #557)",
-        "`run_study --copy-state-stream sim/manifests/baseline/dev_tree_1s_hard.toml OUT "
-        "--problems 10 --seeds 10 --held-out 3 --settings python/port/studies/copy_sampler_settings.json`",
-    ),
     "key_studies/554_clone-starts.png": (
         "Does the clone-label start or the Potts solver decide the clones, and what does each start reach?",
         "`docs/nb/clone_label_study.ipynb` via `port.studies.clone_label_notebook` (#541, PR #554)",
@@ -835,24 +810,26 @@ def readme(
 code `{commit}`: {recovery["wall"]:.0f} s wall, {recovery["peak_gb"]:.2f} GB peak.
 Ledger `run_id` `{run_id}` (`docs/metrics/`, fixture `{ledger_name(fixture)}` `{digest}`).
 
-Regenerate from a clean tree, so the stamp carries no `+`; it draws r0 into
+Regenerate from a clean tree, so the commit above carries no `+`; it draws r0 into
 `.cache/paper_figures/` where `--draw` is not given, and refuses any r0 not
 hashing to `{digest}`:
 
     run_study --paper-figures --fixture {fixture} --out docs/plots/paper
 
-`--truth-only` writes `truth/` alone, with no run. Every figure is stamped
-`{fixture} {digest} · code <sha>`. `run/spatial.png` and `run/combined.png`
+`--truth-only` writes `truth/` alone, with no run. The figures carry no stamp
+(#743): every figure here but `solver_combined.png` is `{fixture}` r0 `{digest}` at
+code `{commit}`, as above. `run/spatial.png` and `run/combined.png`
 draw panel (a) on a slide mocked from the planted labels (`port.sim.he_slide`):
 the fixture has no H&E image, and the run never reads the mock.
 `truth/phase.png` is flat: this r0 plants {switches} phase switches.
 `solver_combined.png` is not drawn from this fixture: `--solvers POTTS.record COPY.record`
 draws it from a `port.studies.potts_stream` and a `port.studies.copy_state_stream` record,
-and its stamp names both records' data hashes.
+and `solver_combined.md` beside it names both records, their data hashes and their settings.
 The genomic panels of `truth/truth_combined.png`, `truth/clones_genomic.png`,
 `truth/clone_profiles.png`, `run/genomic.png`, `run/combined.png` and
 `compare/copy_genomic_truth_vs_fit.png` draw every altered bin at 2x its extent
-(`port.extensions.genomic_axis`, T- #683), and their stamps end `· axis: altered` and the scale used.
+(`port.extensions.genomic_axis`, T- #683): each on its own segmentation, the planted
+intervals in `truth/` and the fitted ones in `run/`, so their contig widths differ.
 
 | File | Question | Source |
 | --- | --- | --- |
@@ -861,6 +838,7 @@ The genomic panels of `truth/truth_combined.png`, `truth/clones_genomic.png`,
 ## Key studies
 
 Each figure is redrawn when its study is rerun, and stamped `data <hash> · code <sha>`.
+`key_studies/546_population.png` gives way to `pop_combined.png` with #729's rerun.
 
 | File | Question | Source | Regenerate |
 | --- | --- | --- | --- |
@@ -891,12 +869,11 @@ def main(argv: list[str] | None = None) -> int:
     commit = provenance.commit()
     path = realization(arguments.fixture, arguments.draw)
     digest = stated_hash(arguments.fixture)
-    text = f"{arguments.fixture} {digest} · code {commit}"
     out: Path = arguments.out
     for part in ("truth", "run", "compare"):
         (out / part).mkdir(parents=True, exist_ok=True)
 
-    for written in truth_figures(path, out / "truth", text):
+    for written in truth_figures(path, out / "truth"):
         print(written)
     if arguments.truth_only:
         return 0
@@ -906,9 +883,9 @@ def main(argv: list[str] | None = None) -> int:
 
     sample = load_simulated(path.name, path.parent)
     with tempfile.TemporaryDirectory() as scratch:
-        run = run_figures(sample, Path(scratch), out / "run", text)
+        run = run_figures(sample, Path(scratch), out / "run")
         c = compared(sample, path, run.output, run.recovery)
-        for written in compare_figures(c, out / "compare", text):
+        for written in compare_figures(c, out / "compare"):
             print(written)
 
     recovery = {**run.recovery, "fixture_hash": digest, "peak_gb": run.peak_gb}

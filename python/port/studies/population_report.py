@@ -447,11 +447,12 @@ def SUFFICIENT(study1: dict[Any, Any], study2: dict[str, Any]) -> dict[str, Any]
 
 CLASS_NAMES = {
     "LOH": "LOH",
-    "balanced gain": "Balanced gain",
-    "imbalanced gain": "Imbalanced gain",
+    "balanced gain": r"$p = 0.5,\ \mu > 1$",
+    "imbalanced gain": r"$p \neq 0.5,\ \mu > 1$",
     "all": "All",
 }
-"""The legend's names for the copy-state classes."""
+"""The legend's names for the copy-state classes: a gain by its BAF `p` and
+read-depth ratio `mu`, LOH and All by name (#743)."""
 
 
 def _panel(axis: Any, entry: dict[str, Any], colour: str, label: str,
@@ -524,8 +525,140 @@ MARKER = 1.5
 """Points: an error bar at the page's rule weight, and a bin's marker."""
 
 PAGE_HEIGHT = page_size("third")[1]
-"""Inches: the row of three panels, a "third" page (`figure_style.page_size`,
+"""Inches: the row of three square panels, a "third" page (`figure_style.page_size`,
 T- #740); 1.75 on `llncs`'s 4.80 in text width before."""
+
+COMBINED = "pop_combined.png"
+"""#729's 2 x 2: (a) clones by UMIs per J, (b) CNAs by `1 - t` per class at
+oracle clones, (c) false positives by SNP UMIs, (d) CNAs by length per class."""
+
+COMBINED_HEIGHT = 6.6
+"""Inches: the 2 x 2 at the paper's width with square panels, under the text
+block less `CAPTION_ROOM` (6.68 in) (#743)."""
+
+FPR_FLOOR = 3.0
+"""The false-positive axis starts at the lowest binned rate over this: a bar
+reaching toward 0 on a log axis otherwise sets the range (#743)."""
+
+FPR_TICKS = (3e-4, 1e-3, 3e-3, 1e-2)
+
+
+def _style() -> None:
+    import matplotlib as mpl
+
+    from port.extensions.combined_figure import FONT_SIZE
+    from port.patch.plot_copy_number_profile import LINEWIDTH
+
+    mpl.rcParams.update({"font.size": FONT_SIZE, "axes.linewidth": LINEWIDTH,
+                         "xtick.major.width": LINEWIDTH,
+                         "ytick.major.width": LINEWIDTH,
+                         "xtick.minor.width": LINEWIDTH,
+                         "ytick.minor.width": LINEWIDTH,
+                         "xtick.major.size": 2, "ytick.major.size": 2,
+                         "xtick.minor.size": 1, "ytick.minor.size": 1,
+                         "legend.fontsize": FONT_SIZE,
+                         "legend.borderaxespad": 0.2})  # fmt: skip
+
+
+def _clones(axis: Any, summary: dict[str, Any]) -> None:
+    """Clone sensitivity by log10 clone UMIs, one curve per J."""
+    colours = j_colours(list(summary["study1"]))
+    series = sorted(summary["study1"].items())
+    for (j, entry), dodge in zip(series, _dodges(len(series), 0.015), strict=True):
+        _panel(axis, entry["detected"], colours[j], f"J = {j:g}", dodge, None)
+    axis.set_xlabel(r"$\log_{10} |{\rm Clone\ UMIs}|$")
+    axis.set_ylabel("Clone sensitivity")
+
+
+def _by_class(axis: Any, entries: dict[str, Any], unit: float | None) -> None:
+    # NB the gains first in the legend: they are the classes the length
+    #    curve separates.
+    order = ("imbalanced gain", "balanced gain", "LOH", "all")
+    classes = [(k, entries[k]) for k in order if k in entries]
+    for (name, entry), dodge in zip(classes, _dodges(len(classes), 0.02), strict=True):
+        _panel(axis, entry["recovered"], CLASS_COLOURS[name], CLASS_NAMES[name],
+               dodge, unit)  # fmt: skip
+    axis.set_xscale("log")
+    axis.set_ylabel("CNA sensitivity")
+
+
+def _lengths(axis: Any, summary: dict[str, Any]) -> None:
+    """CNA sensitivity by length, per class."""
+    _by_class(axis, summary["study2"], 1e6)
+    axis.set_xlabel("CNA length [Mb]")
+
+
+def _stay(axis: Any, summary: dict[str, Any]) -> None:
+    """CNA sensitivity by `1 - t` at oracle clones, per class: #729's arm,
+    `summary["t_arm"]` as `study2`'s entries with log10 `1 - t` the covariate."""
+    _by_class(axis, summary["t_arm"], 1.0)
+    axis.set_xlabel(r"$1 - t$")
+
+
+def _fpr(axis: Any, summary: dict[str, Any]) -> None:
+    """The false-positive rate by SNP UMIs, floored at the lowest binned rate over `FPR_FLOOR`."""
+    import matplotlib as mpl
+
+    entry = summary["study3"]["false_positive"]
+    _false_positives(axis, entry)
+    shown = entry.get("display") or entry
+    rates = np.array(shown["rate"], dtype=float)
+    rates = rates[np.isfinite(rates) & (rates > 0)]
+    if rates.size:
+        floor = float(rates.min()) / FPR_FLOOR
+        axis.set_ylim(floor, None)
+        ticks = [t for t in FPR_TICKS if t >= floor]
+        axis.set_yticks(ticks, [_power(t) for t in ticks])
+    axis.yaxis.set_minor_formatter(mpl.ticker.NullFormatter())
+    axis.set_xlabel(r"$\log_{10} |{\rm SNP\ UMIs\ in\ segment}|$")
+    axis.set_ylabel("False positive rate")
+
+
+def _power(value: float) -> str:
+    exponent = int(np.floor(np.log10(value)))
+    mantissa = round(value / 10**exponent)
+    return (
+        f"$10^{{{exponent}}}$"
+        if mantissa == 1
+        else f"${mantissa}\\times10^{{{exponent}}}$"
+    )
+
+
+def _finish(fig: Any, axes: list[Any], legends: list[Any], stamp: str | None) -> None:
+    """Square panels, sensitivities on [0, 1], keys inside, a letter over each panel."""
+    from port.extensions.combined_figure import FONT_SIZE, LABEL_SIZE
+
+    for axis in axes:
+        axis.set_box_aspect(1)
+    for axis in legends:
+        axis.set_ylim(-0.02, 1.02)
+        axis.set_yticks(np.linspace(0.0, 1.0, 6))
+        axis.legend(loc="upper left", frameon=True, framealpha=0.85,
+                    edgecolor="none", fancybox=False, borderpad=0.15,
+                    labelspacing=0.1, handlelength=0.8, handletextpad=0.3,
+                    fontsize=FONT_SIZE)  # fmt: skip
+    # NB constrained layout settles over draws; two, then frozen.
+    fig.canvas.draw()
+    fig.canvas.draw()
+    fig.set_layout_engine("none")
+    to_figure = fig.transFigure.inverted()
+    for axis, letter in zip(axes, "abcd", strict=False):
+        box = axis.get_tightbbox()
+        if box is None:
+            msg = "an axis with no extent: nothing drawn to place its letter beside"
+            raise ValueError(msg)
+        x0 = box.transformed(to_figure).x0
+        top = axis.get_position().y1
+        fig.text(x0, top + 0.01, f"({letter})", fontsize=LABEL_SIZE,
+                 ha="left", va="bottom")  # fmt: skip
+    if stamp is not None:
+        fig.text(0.995, 0.005, stamp, fontsize=FONT_SIZE, color="0.4",
+                 ha="right", va="bottom")  # fmt: skip
+
+
+def _save(fig: Any, path: Path) -> None:
+    fig.savefig(path, format="png", dpi=300, facecolor="white",
+                metadata={"Software": None})  # fmt: skip
 
 
 def figures(
@@ -536,8 +669,8 @@ def figures(
 
     Set as `port.extensions.combined_figure`'s spatial page is, so the row
     stands beside it in a paper: `page_style`, the paper's text width, every
-    text at `FONT_SIZE`, rules at `PROFILE_LINEWIDTH`, each letter over its
-    panel's leftmost text. Written as PNG at 300 dpi, with
+    text at `FONT_SIZE`, rules at `PROFILE_LINEWIDTH`, square panels, each
+    letter over its panel's leftmost text. Written as PNG at 300 dpi, with
     `port.patch.utils.write_fig`'s PNG options: white face, no metadata, so
     two draws differ byte for byte only when their pixels do (#452). The arm,
     the member counts and the bands' construction are stated in the study's
@@ -547,103 +680,72 @@ def figures(
 
     mpl.use("Agg")
     import matplotlib.pyplot as plt
+    from matplotlib.layout_engine import ConstrainedLayoutEngine
 
-    from port.extensions.combined_figure import FONT_SIZE, LABEL_SIZE, page_style
+    from port.extensions.combined_figure import page_style
     from port.extensions.figure_style import PAPER_WIDTH
-    from port.patch.plot_copy_number_profile import LINEWIDTH
 
     into.mkdir(parents=True, exist_ok=True)
     paths = [into / "population_recovery.png"]
 
     with page_style():
-        mpl.rcParams.update({"font.size": FONT_SIZE, "axes.linewidth": LINEWIDTH,
-                             "xtick.major.width": LINEWIDTH,
-                             "ytick.major.width": LINEWIDTH,
-                             "xtick.minor.width": LINEWIDTH,
-                             "ytick.minor.width": LINEWIDTH,
-                             "xtick.major.size": 2, "ytick.major.size": 2,
-                             "xtick.minor.size": 1, "ytick.minor.size": 1,
-                             "legend.fontsize": FONT_SIZE,
-                             "legend.borderaxespad": 0.2})  # fmt: skip
-        from matplotlib.layout_engine import ConstrainedLayoutEngine
-
+        _style()
         fig, (left, right, third) = plt.subplots(
             1, 3, figsize=(PAPER_WIDTH, PAGE_HEIGHT), dpi=300, facecolor="white"
         )
         fig.set_layout_engine(
             ConstrainedLayoutEngine(rect=(0, 0, 0.96, 0.92), w_pad=0.02, wspace=0.05)
         )
-
-        colours = j_colours(list(summary["study1"]))
-        series = sorted(summary["study1"].items())
-        for (j, entry), dodge in zip(series, _dodges(len(series), 0.015), strict=True):
-            _panel(left, entry["detected"], colours[j], f"J = {j:g}", dodge, None)
-        left.set_xlabel(r"$\log_{10} |{\rm Clone\ UMIs}|$")
-        left.set_ylabel("Sensitivity")
-
-        # NB the gains first in the legend: they are the classes the length
-        #    curve separates.
-        order = ("imbalanced gain", "balanced gain", "LOH", "all")
-        classes = [(k, summary["study2"][k]) for k in order if k in summary["study2"]]
-        for (name, entry), dodge in zip(
-            classes, _dodges(len(classes), 0.02), strict=True
-        ):
-            _panel(right, entry["recovered"], CLASS_COLOURS[name], CLASS_NAMES[name],
-                   dodge, 1e6)  # fmt: skip
-        right.set_xscale("log")
-        right.set_xlabel("CNA length [Mb]")
-        right.set_ylabel("Sensitivity")
-
-        _false_positives(third, summary["study3"]["false_positive"])
-        third.set_xlabel(r"$\log_{10} |{\rm SNP\ UMIs\ in\ segment}|$")
-        third.set_ylabel("False Positive Rate")
-
-        third.set_yticks(
-            [3e-4, 1e-3, 3e-3],
-            [r"$3\times10^{-4}$", r"$10^{-3}$", r"$3\times10^{-3}$"],
-        )
-        third.yaxis.set_minor_formatter(mpl.ticker.NullFormatter())
-        for axis in (left, right):
-            axis.set_ylim(-0.02, 1.02)
-            axis.set_yticks(np.linspace(0.0, 1.0, 6))
-            axis.legend(loc="upper left", frameon=True, framealpha=0.85,
-                        edgecolor="none", fancybox=False, borderpad=0.15,
-                        labelspacing=0.1, handlelength=0.8, handletextpad=0.3,
-                        fontsize=FONT_SIZE)  # fmt: skip
-
-        # NB the layout frozen once, then each letter set over its panel's
-        #    leftmost text -- the y label -- as the spatial page sets its own.
-        # NB constrained layout settles over draws; two, then frozen.
-        fig.canvas.draw()
-        fig.canvas.draw()
-        fig.set_layout_engine("none")
-        to_figure = fig.transFigure.inverted()
-        for axis, letter in zip((left, right, third), "abc", strict=True):
-            box = axis.get_tightbbox()
-            if box is None:
-                msg = "an axis with no extent: nothing drawn to place its letter beside"
-                raise ValueError(msg)
-            x0 = box.transformed(to_figure).x0
-            top = axis.get_position().y1
-            fig.text(x0, top + 0.03, f"({letter})", fontsize=LABEL_SIZE,
-                     ha="left", va="bottom")  # fmt: skip
-
-        if stamp is not None:
-            fig.text(
-                0.995,
-                0.005,
-                stamp,
-                fontsize=FONT_SIZE,
-                color="0.4",
-                ha="right",
-                va="bottom",
-            )
+        _clones(left, summary)
+        _lengths(right, summary)
+        _fpr(third, summary)
+        _finish(fig, [left, right, third], [left, right], stamp)
         for path in paths:
-            fig.savefig(path, format="png", dpi=300, facecolor="white",
-                        metadata={"Software": None})  # fmt: skip
+            _save(fig, path)
         plt.close(fig)
 
     return paths
+
+
+def combined(summary: dict[str, Any], into: Path) -> Path:
+    """`COMBINED` into `into`: (a) clones by UMIs per J, (b) CNAs by `1 - t` at
+    oracle clones per class (`summary["t_arm"]`, #729), (c) false positives by
+    SNP UMIs, (d) CNAs by length per class; square panels, no stamp (#743).
+
+    Raises where the summary has no `t_arm`: (b) is #729's, and an empty
+    panel is not drawn.
+    """
+    import matplotlib as mpl
+
+    mpl.use("Agg")
+    import matplotlib.pyplot as plt
+    from matplotlib.layout_engine import ConstrainedLayoutEngine
+
+    from port.extensions.combined_figure import page_style
+    from port.extensions.figure_style import PAPER_WIDTH
+
+    if "t_arm" not in summary:
+        msg = (
+            f"{COMBINED} needs #729's t arm (summary['t_arm']); (b) is not drawn empty"
+        )
+        raise ValueError(msg)
+    into.mkdir(parents=True, exist_ok=True)
+    with page_style():
+        _style()
+        fig, ((a, b), (c, d)) = plt.subplots(
+            2, 2, figsize=(PAPER_WIDTH, COMBINED_HEIGHT), dpi=300, facecolor="white"
+        )
+        fig.set_layout_engine(
+            ConstrainedLayoutEngine(rect=(0, 0, 1, 0.97), w_pad=0.02, h_pad=0.04)
+        )
+        _clones(a, summary)
+        _stay(b, summary)
+        _fpr(c, summary)
+        _lengths(d, summary)
+        _finish(fig, [a, b, c, d], [a, b, d], None)
+        _save(fig, into / COMBINED)
+        plt.close(fig)
+    return into / COMBINED
 
 
 def stamp_text(out: Path) -> str:

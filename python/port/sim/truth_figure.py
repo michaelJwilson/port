@@ -92,7 +92,7 @@ def truth_combined_figure(
         _set_text,
         page_style,
     )
-    from port.extensions.figure_style import PAPER_WIDTH
+    from port.extensions.figure_style import PAPER_WIDTH, TRACK_FONT_SIZE
     from port.extensions.genomic_axis import disclose, name_contigs
     from port.patch.plot_copy_number_profile import (
         plot_ascn_legend,
@@ -184,8 +184,10 @@ def truth_combined_figure(
         bottom_ax = genomic_fig.axes[-1]
         bottom_ax.set_xticks([])
 
-        for panel in panels:
+        # NB the tracks at `TRACK_FONT_SIZE`, as `combined_figure` sets its own (#743)
+        for panel in (tree_fig, profile_fig):
             _set_text(panel, FONT_SIZE)
+        _set_text(genomic_fig, TRACK_FONT_SIZE)
         figure.canvas.draw()
 
         # NB one left and one right edge for the key, the rows and each
