@@ -71,22 +71,6 @@ class Counts:
     trace: list[float] = field(default_factory=list)
 
 
-class _Carried(torch.autograd.Function):
-    """A value whose backward is a gradient computed elsewhere."""
-
-    @staticmethod
-    def forward(
-        ctx: Any, _theta: torch.Tensor, value: torch.Tensor, grad: torch.Tensor
-    ) -> torch.Tensor:
-        ctx.save_for_backward(grad)
-        return value.clone()
-
-    @staticmethod
-    def backward(ctx: Any, upstream: torch.Tensor) -> tuple[torch.Tensor, None, None]:
-        (grad,) = ctx.saved_tensors
-        return upstream * grad, None, None
-
-
 class _Forward:
     """`-log p(x | x_packed)` at a held decode, as a `sal.opt.objective.Objective` over `cnaster`'s packed `x`."""
 
@@ -134,6 +118,8 @@ class _Forward:
 
     def __call__(self, theta: torch.Tensor) -> torch.Tensor:
         value, grad = self.evaluate(theta.detach().numpy())
+        from port.sandbox.extensions.hmm_objective import _Carried
+
         return _Carried.apply(  # type: ignore[no-any-return]
             theta, torch.tensor(value, dtype=torch.float64), torch.from_numpy(grad)
         )
@@ -262,7 +248,9 @@ def _counted_em(counts: Counts, analytic_bfgs: Any) -> Callable[[Any], Any]:
                 kwargs["callback"] = refresh
             result = inner(counted, x0, args, **kwargs)
             counts.iterations = int(result.nit)
-            counts.termination = Termination.after(int(result.nit), converged=bool(result.success))
+            counts.termination = Termination.after(
+                int(result.nit), converged=bool(result.success)
+            )
             return result
 
         return method
