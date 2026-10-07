@@ -32,6 +32,8 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from port.sim.files import truth_labels
+
 TUMOUR_SHARE = 0.84
 """CalicoST's tumour share under the cell law: its LOH BAF, 0.915-0.928 at (0, 2) and 0.085 at (1, 0)."""
 
@@ -169,7 +171,7 @@ def calicost() -> None:
     )
     for key, name in SAMPLES.items():
         src = SIM_ROOT / name
-        truth = pd.read_csv(src / "truth_clone_labels.tsv", sep="\t", index_col=0)
+        truth = truth_labels(src)
         clones = ["normal", *sorted(set(truth.labels) - {"normal"})]
         planted = truth.labels.map({c: k for k, c in enumerate(clones)}).to_numpy()
         profile = pd.read_csv(src / "truth_acn_profile.tsv", sep="\t")

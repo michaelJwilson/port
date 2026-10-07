@@ -292,6 +292,32 @@ def write_tmp_inputs(
     )
 
 
+def run_paths(root: Path) -> dict[str, str]:
+    """A run's `paths` section: its sample sheet, outputs and perf log under `root` (#749 WP9)."""
+    return {
+        "sample_sheet": str(root / "sample_sheet.tsv"),
+        "output_dir": str(root / "output"),
+        "perf_path": str(root / "cnaster.perf"),
+    }
+
+
+def reference_files(
+    resources: Path,
+    *,
+    genetic_map: str,
+    gene_table: str,
+    filter_genes: str,
+    filter_regions: str,
+) -> dict[str, str]:
+    """A run's reference files under `resources`, by the `references` keys `cnaster` reads."""
+    return {
+        "geneticmap_file": str(resources / genetic_map),
+        "hgtable_file": str(resources / gene_table),
+        "filtergenelist_file": str(resources / filter_genes),
+        "filterregion_file": str(resources / filter_regions),
+    }
+
+
 @contextmanager
 def written_config(
     source: "WrittenInputs | Path | str | dict[str, Any]",
