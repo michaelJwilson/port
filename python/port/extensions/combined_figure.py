@@ -197,7 +197,7 @@ def slide_image(frame: Any) -> tuple[np.ndarray, tuple[float, float, float, floa
     return np.clip(image, 0.0, 1.0), extent
 
 
-def _set_text(panel: Any, size: float) -> None:
+def set_font_size(panel: Any, size: float) -> None:
     """Every text in `panel` at `size`: one size per panel, not a cap."""
     from matplotlib.text import Text
 
@@ -312,7 +312,7 @@ def _colour_by_state(top: Any, genomic: Any) -> None:
         _fractions(anchor, entries, texts, len(texts))
 
 
-def _fit_tracks(panel: Any) -> None:
+def fit_track_furniture(panel: Any) -> None:
     """The genomic tracks' furniture, at a track a third of an inch tall.
 
     Upstream labels every integer of RDR and every 0.2 of BAF, which at this
@@ -492,7 +492,7 @@ def _frame(ax: Any, x: tuple[float, float], y: tuple[float, float]) -> None:
     ax.spines["right"].set_visible(False)
 
 
-def _put(
+def place_in_inches(
     ax: Any,
     x0: float | None = None,
     x1: float | None = None,
@@ -518,7 +518,9 @@ def _up(ax: Any, inches: float) -> None:
     """Move `ax` up by `inches`, its size kept."""
     dpi = ax.get_figure(root=True).dpi
     here = ax.get_window_extent(ax.get_figure(root=True).canvas.get_renderer())
-    _put(ax, here.x0 / dpi, here.x1 / dpi, here.y0 / dpi + inches, here.height / dpi)
+    place_in_inches(
+        ax, here.x0 / dpi, here.x1 / dpi, here.y0 / dpi + inches, here.height / dpi
+    )
 
 
 def _inches(figure: Any, artists: Any, edge: str) -> list[float]:
@@ -568,7 +570,9 @@ def _cut(
         figure.canvas.draw()
 
         for ax, box in kept:
-            _put(ax, box.x0 / dpi, box.x1 / dpi, box.y0 / dpi - below, box.height / dpi)
+            place_in_inches(
+                ax, box.x0 / dpi, box.x1 / dpi, box.y0 / dpi - below, box.height / dpi
+            )
 
     def place() -> None:
         height = figure.get_size_inches()[1]
@@ -660,7 +664,7 @@ def _place_genomic(
 
     for _ in range(3):
         for ax in [*tracks, profile_ax, legend_ax]:
-            _put(ax, left, right)
+            place_in_inches(ax, left, right)
 
         figure.canvas.draw()
         name_contigs(foot_ax, *contigs, size=FONT_SIZE)
@@ -890,15 +894,15 @@ def _genomic_page(
             "axis": genome,
         },
     )
-    _fit_tracks(top)
+    fit_track_furniture(top)
     _colour_by_state(top, genomic)
 
     for ax in top.axes[:-1]:
         ax.xaxis.set_minor_locator(NullLocator())
 
     # NB the tracks at `TRACK_FONT_SIZE`, as `truth_figure` sets its own (#743)
-    _set_text(top, TRACK_FONT_SIZE)
-    _set_text(middle, FONT_SIZE)
+    set_font_size(top, TRACK_FONT_SIZE)
+    set_font_size(middle, FONT_SIZE)
 
     # NB laid out once and frozen, then placed on the page by hand.
     figure.canvas.draw()
@@ -1047,9 +1051,9 @@ def _place_spatial(
     # NB squares smaller than fit across leave the row centred on the page.
     left += (clones_right - left - SPATIAL_GAP - ticks(spatial_ax) - 2 * side) / 2
     bottom = height - side - 1.0
-    _put(slide_ax, left, left + wide, bottom, side)
+    place_in_inches(slide_ax, left, left + wide, bottom, side)
     start = left + wide + SPATIAL_GAP + ticks(spatial_ax)
-    _put(spatial_ax, start, start + wide, bottom, side)
+    place_in_inches(spatial_ax, start, start + wide, bottom, side)
     clones_right = start + wide
     right = clones_right + 2 * gap + key.get_window_extent(renderer).width / dpi
     anchor = (right - start) / wide
@@ -1252,7 +1256,7 @@ def spatial_figure(
         figure = plt.figure(figsize=(width, width), dpi=300, facecolor="white")
         slide_ax, spatial_ax = _draw_spatial(figure, recorded, he_frame, labels)
 
-        _set_text(figure, FONT_SIZE)
+        set_font_size(figure, FONT_SIZE)
         side = _place_spatial(figure, slide_ax, spatial_ax, most)
         over = float(figure.get_size_inches()[1]) - tallest
         if over <= 0.0 or attempt == 1:
@@ -1308,7 +1312,7 @@ def combined_figure(
     figure.canvas.draw()
 
     for ax, box in kept:
-        _put(ax, box.x0 / dpi, box.x1 / dpi, box.y0 / dpi, box.height / dpi)
+        place_in_inches(ax, box.x0 / dpi, box.x1 / dpi, box.y0 / dpi, box.height / dpi)
     for (text, (x, y)), letter in zip(letters, "bc", strict=True):
         text.set_position((x, y * tall / (tall + above)))
         text.set_text(f"({letter})")
@@ -1318,7 +1322,7 @@ def combined_figure(
     slide_ax, spatial_ax = _draw_spatial(figure, recorded, he_frame, labels)
     # NB the maps alone: the page's tracks keep `TRACK_FONT_SIZE` (#743)
     for ax in (slide_ax, spatial_ax):
-        _set_text(ax, FONT_SIZE)
+        set_font_size(ax, FONT_SIZE)
     figure.canvas.draw()
     source = spatial.canvas.get_renderer()
     # NB the slide's axis, then the clones', as `_draw_spatial` adds them.
@@ -1337,7 +1341,7 @@ def combined_figure(
         new.set_aspect("equal", adjustable="box")
         _frame(new, old.spines["bottom"].get_bounds(), old.spines["left"].get_bounds())
         box = old.get_window_extent(source)
-        _put(
+        place_in_inches(
             new,
             box.x0 / dpi + shift,
             box.x1 / dpi + shift,

@@ -124,7 +124,11 @@ def segment_sets(
     """
     from scipy.stats import chi2
 
-    from port.extensions.copy_likelihood import _emission, _parameters, _with
+    from port.extensions.copy_likelihood import (
+        pair_rate_and_share,
+        pseudobulk_log_pmf,
+        with_dispersions,
+    )
 
     threshold = float(chi2.ppf(level, 2))
     # NB the configured lattice and every pair the decode used: the lattice
@@ -135,7 +139,7 @@ def segment_sets(
     out = []
 
     for clone, (_, bulk, _) in enumerate(clones):
-        fitted = _with(bulk, decode.dispersion, decode.taus)
+        fitted = with_dispersions(bulk, decode.dispersion, decode.taus)
         pairs = decoded_states[np.asarray(decode.paths[clone], dtype=np.int64)]
         path = np.array([position[int(a), int(b)] for a, b in pairs], dtype=np.int64)
         ranges = segments(path, lengths)
@@ -148,8 +152,10 @@ def segment_sets(
             float(decode.purity[clone]),
             clone == normal_clone,
         ):
-            log_mu, p = _parameters(states, fraction)
-            table = _emission((log_mu - shift)[:, None], p[:, None], fitted, bins)
+            log_mu, p = pair_rate_and_share(states, fraction)
+            table = pseudobulk_log_pmf(
+                (log_mu - shift)[:, None], p[:, None], fitted, bins
+            )
             table = np.where(np.isfinite(table), table, -1e10)
             summed = np.add.reduceat(table, ranges[:, 0], axis=1).T
             held = summed[np.arange(ranges.shape[0]), assigned]
@@ -199,7 +205,11 @@ def bin_loglik(
     """`(pairs, loglik, decoded)`: each clone's per-bin NB + BB log-likelihood
     under every pair, `(n_clones, n_obs, n_pairs)`, at the decode's shift,
     fraction and dispersions, and each bin's decoded pair's index."""
-    from port.extensions.copy_likelihood import _emission, _parameters, _with
+    from port.extensions.copy_likelihood import (
+        pair_rate_and_share,
+        pseudobulk_log_pmf,
+        with_dispersions,
+    )
 
     pairs = _lattice(decode)
     position = {(int(a), int(b)): k for k, (a, b) in enumerate(pairs)}
@@ -207,11 +217,11 @@ def bin_loglik(
     tables, decoded = [], []
 
     for clone, (_, bulk, _) in enumerate(clones):
-        fitted = _with(bulk, decode.dispersion, decode.taus)
+        fitted = with_dispersions(bulk, decode.dispersion, decode.taus)
         assigned = decoded_states[np.asarray(decode.paths[clone], dtype=np.int64)]
-        log_mu, p = _parameters(pairs, float(decode.purity[clone]))
+        log_mu, p = pair_rate_and_share(pairs, float(decode.purity[clone]))
         bins = np.arange(assigned.shape[0])
-        table = _emission(
+        table = pseudobulk_log_pmf(
             (log_mu - float(decode.shifts[clone]))[:, None], p[:, None], fitted, bins
         )
         tables.append(np.where(np.isfinite(table), table, -1e10).T)

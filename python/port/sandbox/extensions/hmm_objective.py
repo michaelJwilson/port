@@ -33,7 +33,7 @@ dispersions and the shipped configuration's stickiness. No per-clone shift (#276
 **Departure from `sal`.** `sal`'s own `__call__` is autograd through its
 torch forward, its oracle route: `sal`'s samplers read potentials through
 `__call__`, so it would run a second, slower implementation beside the compiled
-gradient and differ from it at round-off. `_Carried` keeps one.
+gradient and differ from it at round-off. `CarriedGradient` keeps one.
 
 **Evaluations are passes.** `evaluations` counts the value-and-gradient
 passes run. `sal` carries `U` and `grad U` along a chain (sal #1217, #1222),
@@ -151,7 +151,7 @@ class Sampled(NamedTuple):
     evaluations: int
 
 
-class _Carried(torch.autograd.Function):
+class CarriedGradient(torch.autograd.Function):
     """The objective's value as a torch scalar whose backward is the kernel's gradient."""
 
     @staticmethod
@@ -263,7 +263,7 @@ class HmmObjective:
     def __call__(self, theta: torch.Tensor) -> torch.Tensor:
         """`U(theta)`, differentiable in `theta` through the kernel's gradient."""
         value, grad = self._evaluate(theta.detach().numpy())
-        return _Carried.apply(  # type: ignore[no-any-return]
+        return CarriedGradient.apply(  # type: ignore[no-any-return]
             theta,
             torch.tensor(value, dtype=torch.float64),
             torch.from_numpy(grad.copy()),

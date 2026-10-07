@@ -118,9 +118,9 @@ class _Forward:
 
     def __call__(self, theta: torch.Tensor) -> torch.Tensor:
         value, grad = self.evaluate(theta.detach().numpy())
-        from port.sandbox.extensions.hmm_objective import _Carried
+        from port.sandbox.extensions.hmm_objective import CarriedGradient
 
-        return _Carried.apply(  # type: ignore[no-any-return]
+        return CarriedGradient.apply(  # type: ignore[no-any-return]
             theta, torch.tensor(value, dtype=torch.float64), torch.from_numpy(grad)
         )
 

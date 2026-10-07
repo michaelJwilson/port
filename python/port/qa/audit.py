@@ -140,7 +140,7 @@ def scratch() -> Path:
     return Path(tempfile.mkdtemp())
 
 
-def _barcode(values: pd.Series) -> np.ndarray:
+def barcode_strings(values: pd.Series) -> np.ndarray:
     barcodes: np.ndarray = values.astype(str).to_numpy()
     return barcodes
 
@@ -154,7 +154,7 @@ def read_run(sample: SimulatedSample, output: Path) -> dict[str, Any]:
     #    `cnaster` as a `barcode` column.
     barcodes = table["barcode"] if "barcode" in table else table.iloc[:, 0]
     by_barcode = dict(
-        zip(_barcode(barcodes), table["clone_label"].to_numpy(), strict=True)
+        zip(barcode_strings(barcodes), table["clone_label"].to_numpy(), strict=True)
     )
     labels = np.array([by_barcode.get(b, -1) for b in sample.barcodes])
 
@@ -259,7 +259,7 @@ def score_sample(
         table = pd.read_csv(written, sep="\t", comment="#")
         by_barcode = dict(
             zip(
-                _barcode(table["barcode"]),
+                barcode_strings(table["barcode"]),
                 table["integer_clone_label"].to_numpy(),
                 strict=True,
             )
@@ -698,12 +698,13 @@ def likelihoods(truth: CoreInferenceTruth, captured: Any) -> tuple[float, float]
     import jax.numpy as jnp
     import jax.scipy.special as jsp
 
+    from port.extensions.copy_errors import flat_values
     from port.extensions.jax_hmm import emission, marginal_negative_log_likelihood
-    from port.sim.realizations import _column, pseudobulk
+    from port.sim.realizations import pseudobulk
 
     result = captured.res
-    alpha = float(_column(result["new_alphas"])[0])
-    tau = float(_column(result["new_taus"])[0])
+    alpha = float(flat_values(result["new_alphas"])[0])
+    tau = float(flat_values(result["new_taus"])[0])
     transition = np.asarray(result["new_log_transmat"], dtype=np.float64)
 
     off = transition[~np.eye(transition.shape[0], dtype=bool)]
@@ -753,7 +754,9 @@ def likelihoods(truth: CoreInferenceTruth, captured: Any) -> tuple[float, float]
 
     fitted_paths = np.asarray(result["pred_cnv"], dtype=np.int64)
     fit = nll(
-        _column(result["new_log_mu"]), _column(result["new_p_binom"]), fitted_paths
+        flat_values(result["new_log_mu"]),
+        flat_values(result["new_p_binom"]),
+        fitted_paths,
     )
 
     # NB each fitted clone's planted path is its majority planted clone's; the
