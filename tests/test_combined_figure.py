@@ -367,6 +367,43 @@ def test_the_spatial_labels_are_integer_by_default_or_continuous(
         spatial_figure(recorded, frame, labels="decoded")
 
 
+@pytest.mark.bug
+def test_the_figure_merges_clones_at_the_runs_agreement(tmp_path: Path) -> None:
+    """Two clones that agree at 23 of 24 bins (0.958) stay two at the default
+    0.99 and are one at a configured `merge_agreement` of 0.9, as
+    `write_outputs` merges `clone_labels.tsv` (#749 WP0). Before, the figure
+    merged at the default whatever the run's configuration said."""
+    import matplotlib as mpl
+
+    mpl.use("Agg")
+    from port.extensions.combined_figure import Call, spatial_figure
+    from port.sim.inputs import written_config
+
+    from tests.conftest import SHIPPED_EM_FTOL, cnaster_test_config
+
+    recorded, frame = _recorded(tmp_path)
+    assert recorded.profile is not None
+    df_cnv = recorded.profile.args[0].copy()
+    for column in ("A", "B"):
+        df_cnv[f"clone2 {column}"] = df_cnv[f"clone1 {column}"]
+    df_cnv.loc[0, "clone2 A"] = df_cnv.loc[0, "clone1 A"] + 1
+    assert len(df_cnv) == 24
+    recorded.profile = Call((df_cnv,), {})
+
+    def keyed(agreement: float) -> int:
+        document = cnaster_test_config(tmp_path, SHIPPED_EM_FTOL, 100)
+        document["int_copy_num"] = {
+            **document.get("int_copy_num", {}),
+            "merge_agreement": agreement,
+        }
+        with written_config(document):
+            figure = spatial_figure(recorded, frame)
+        return len(figure.axes[1].get_legend().get_texts())
+
+    assert keyed(0.99) == 3
+    assert keyed(0.9) == 2
+
+
 @pytest.mark.infra
 # NB too specific to run on every change (#403): it passed where it merged,
 #    and runs again where this module or the lock changes, and at a release.

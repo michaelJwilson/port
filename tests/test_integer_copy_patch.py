@@ -356,6 +356,34 @@ def test_the_drop_ins_decode_under_the_named_allele_cap(
     assert ((6, 0) in pairs) == (allele >= 6)
 
 
+@pytest.mark.bug
+def test_a_cap_passed_at_cnasters_default_is_kept(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A caller's explicit `max_allele_copy=5, max_total_copy=6`, `cnaster`'s
+    defaults, decodes under `(5, 6)` with 12 configured (#749 WP0). Before,
+    a value equal to the default read as not passed and became `(12, 12)`."""
+    from port.patch import integer_copy
+
+    received: list[tuple[int, int | None]] = []
+
+    def decode(*arguments: Any, **options: Any) -> tuple[np.ndarray, float, int]:
+        received.append((arguments[3], options["max_allele_copy"]))
+        return np.ones((1, 2), dtype=np.int64), 0.0, 2
+
+    monkeypatch.setattr(integer_copy, "decode_clone", decode)
+
+    with _config(max_total_copy=12):
+        integer_copy.hill_climbing_integer_copynumber_oneclone(
+            *_inputs(BASE[1]), max_medploidy=2, max_allele_copy=5, max_total_copy=6
+        )
+        integer_copy.hill_climbing_integer_copynumber_oneclone(
+            *_inputs(BASE[1]), max_medploidy=2
+        )
+
+    assert received == [(6, 5), (12, 12)]
+
+
 @pytest.mark.patch
 def test_cnasters_allele_cap_is_the_one_port_names() -> None:
     """`MAX_ALLELE_COPY` is `cnaster`'s signature default in both decoders, 5."""
