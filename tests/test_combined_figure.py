@@ -378,7 +378,8 @@ def test_the_combined_page_is_the_two_figures_stacked(
     (a) to (c).
 
     (a)'s slide and clones sit where the spatial figure puts them, to a
-    pixel, measured from the head: the page is the spatial figure over a
+    pixel, measured from the head, but for one shift across: the slide's left
+    edge on the genomic axes' (#745). The page is the spatial figure over a
     genomic one drawn the rest of the height.
     """
     import matplotlib.pyplot as plt
@@ -395,16 +396,23 @@ def test_the_combined_page_is_the_two_figures_stacked(
     )
     assert sorted(t.get_text() for t in combined.texts) == ["(a)", "(b)", "(c)"]
 
+    renderer = combined.canvas.get_renderer()
     placed = combined.get_axes()[-2:]
+    genomic = [ax for ax in combined.get_axes()[:-2] if ax.axison]
+    left = min(ax.get_window_extent(renderer).x0 for ax in genomic)
+    shifts = []
     for new, old in zip(placed, spatial.get_axes()[:2], strict=True):
-        here = new.get_window_extent(combined.canvas.get_renderer())
+        here = new.get_window_extent(renderer)
         there = old.get_window_extent(spatial.canvas.get_renderer())
         head = combined.bbox.height - spatial.bbox.height
+        shifts.append(here.x0 - there.x0)
         np.testing.assert_allclose(
-            (here.x0, here.y0 - head, here.width, here.height),
-            there.bounds,
+            (here.y0 - head, here.width, here.height),
+            (there.y0, there.width, there.height),
             atol=1.0,
         )
+    assert shifts[0] == pytest.approx(shifts[1], abs=1.0)
+    assert placed[0].get_window_extent(renderer).x0 == pytest.approx(left, abs=1.0)
 
     plt.close(combined)
     plt.close(spatial)
