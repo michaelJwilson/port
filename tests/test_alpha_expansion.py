@@ -25,6 +25,8 @@ from port.patch.icm.alpha_expansion import (
 )
 from port.patch.icm.interface import CsrGraph
 
+from tests.adapters import lattice_adjacency
+
 
 def _lattice(
     side: int, n_states: int, seed: int, beta: float
@@ -45,29 +47,7 @@ def _lattice(
     field = rng.normal(0.0, 1.0, size=(n, n_states))
     field[np.arange(n), planted] += 0.6
 
-    rows, cols, vals = [], [], []
-    for r in range(side):
-        for c in range(side):
-            here = r * side + c
-            for dr, dc in ((1, 0), (0, 1)):
-                rr, cc = r + dr, c + dc
-                if rr < side and cc < side:
-                    there = rr * side + cc
-                    rows += [here, there]
-                    cols += [there, here]
-                    vals += [1.0, 1.0]
-
-    row = np.asarray(rows)
-    col = np.asarray(cols)
-    val = np.asarray(vals, dtype=float)
-
-    order = np.lexsort((col, row))
-    row, col, val = row[order], col[order], val[order]
-
-    counts = np.zeros(n + 1, dtype=np.int64)
-    np.add.at(counts, row + 1, 1)
-
-    graph = CsrGraph(indptr=np.cumsum(counts), indices=col, weights=val)
+    graph = CsrGraph.from_matrix(lattice_adjacency((side, side)).sorted_indices())
 
     return field, graph, planted, beta
 

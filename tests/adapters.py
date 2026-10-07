@@ -554,7 +554,14 @@ class CnasterCoreInputs:
         }
 
 
-def lattice_adjacency(lattice: tuple[int, int]) -> object:
+def square_coords(rows: int, columns: int) -> np.ndarray:
+    """`(row, column)` of each spot of a `rows x columns` lattice, row-major, as integers."""
+    return np.stack(
+        np.unravel_index(np.arange(rows * columns), (rows, columns)), axis=1
+    )
+
+
+def lattice_adjacency(lattice: tuple[int, int]) -> "csr_matrix":
     """Four-neighbour adjacency over the fixture's lattice, as `cnaster` takes it.
 
     Symmetric CSR with unit weights. `cnaster` keeps `spatial_weight` outside
