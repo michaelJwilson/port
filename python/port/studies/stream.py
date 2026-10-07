@@ -31,13 +31,39 @@ from typing import Any
 
 import pandas as pd
 
-__all__ = ["cheapest", "finished", "halve", "pool", "redraw"]
+__all__ = ["cheapest", "finished", "halve", "merge_settings", "pool", "redraw"]
 
 
-def pool(workers: int, initializer: Callable[[], None]) -> ProcessPoolExecutor:
-    """`workers` spawned processes, each running `initializer` once."""
+def pool(
+    workers: int,
+    initializer: Callable[..., None],
+    *initargs: Any,
+    start_method: str = "spawn",
+) -> ProcessPoolExecutor:
+    """`workers` processes, started by `start_method`, each running `initializer(*initargs)` once.
+
+    `fork` is for a study that hands its workers what it already holds rather
+    than pickling it to each (`copy_start_arms`); every other study spawns.
+    """
     return ProcessPoolExecutor(
-        workers, mp_context=mp.get_context("spawn"), initializer=initializer
+        workers,
+        mp_context=mp.get_context(start_method),
+        initializer=initializer,
+        initargs=initargs,
+    )
+
+
+def merge_settings(path: Path, provenance: str, chosen: dict[str, Any]) -> None:
+    """Write `chosen` over `path`'s tuned settings, with how they were chosen (#749 WP6).
+
+    Keys `chosen` does not name keep their earlier values and their places;
+    `_provenance` is replaced. The one merge both streams' `retune` wrote out.
+    """
+    import json
+
+    earlier = json.loads(path.read_text()) if path.exists() else {}
+    path.write_text(
+        json.dumps({**earlier, "_provenance": provenance, **chosen}, indent=2) + "\n"
     )
 
 

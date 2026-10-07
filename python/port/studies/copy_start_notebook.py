@@ -10,13 +10,13 @@ only that file and draws `.cache/plots/studies/copy_state_starts.png`
 
 from __future__ import annotations
 
-import argparse
 import json
-import pickle
 from pathlib import Path
 from typing import Any
 
 import numpy as np
+
+from port.studies import notebook
 
 ROOT = Path(__file__).resolve().parents[3]
 DATA = ROOT / "docs" / "nb" / "data" / "copy_state_starts_r0.json"
@@ -198,53 +198,13 @@ joined[["gap", "d_gap", "found", "d_found", "seconds"]].round(1)""",
 ]
 
 
-def build(intro: str, out: Path) -> None:
-    """The notebook: the intro's markdown, then `CELLS`, executed in `docs/nb`."""
-    import nbformat
-    from nbclient import NotebookClient
-
-    v4: Any = nbformat.v4
-
-    notebook = v4.new_notebook()
-    # NB format 4.4: no cell ids, which are random per build and would make
-    #    every rebuild a diff.
-    notebook.nbformat_minor = 4
-    notebook.cells = [v4.new_markdown_cell(intro)] + [
-        v4.new_code_cell(source) if kind == "code" else v4.new_markdown_cell(source)
-        for kind, source in CELLS
-    ]
-    notebook.metadata["kernelspec"] = {
-        "name": "python3",
-        "display_name": "Python 3",
-        "language": "python",
-    }
-    NotebookClient(
-        notebook, timeout=600, resources={"metadata": {"path": str(out.parent)}}
-    ).execute()
-    for cell in notebook.cells:
-        cell.pop("id", None)
-        if cell.cell_type == "code":
-            cell.metadata = {}
-            cell.execution_count = None
-            for output in cell.get("outputs", []):
-                output.pop("execution_count", None)
-    writer: Any = nbformat.write
-    writer(notebook, out)
-    # NB the cells as `ruff format` sets them, so the repository's check
-    #    passes on a rebuilt notebook.
-    import shutil
-    import subprocess
-
-    ruff = shutil.which("ruff")
-    if ruff is not None:
-        subprocess.run([ruff, "format", "-q", str(out)], check=True)
-
-
 def main(argv: list[str] | None = None) -> None:
-    parser = argparse.ArgumentParser(description=(__doc__ or "").splitlines()[0])
-    parser.add_argument("results", type=Path, nargs="?")
-    arguments = parser.parse_args(argv)
-    if arguments.results is not None:
-        with arguments.results.open("rb") as fh:
-            summarize(pickle.load(fh), DATA)
-    build(INTRO.read_text(), NOTEBOOK)
+    notebook.main(
+        argv,
+        description=(__doc__ or "").splitlines()[0],
+        summarize=summarize,
+        data=DATA,
+        intro=INTRO,
+        cells=CELLS,
+        notebook=NOTEBOOK,
+    )

@@ -97,6 +97,7 @@ ROLES: dict[str, Role] = {
     "port.studies.cna_lengths": "tool",
     "port.studies.copy_start_arms": "tool",
     "port.studies.copy_start_notebook": "tool",
+    "port.studies.notebook": "tool",
     "port.studies.copy_starts": "tool",
     "port.studies.copy_state_plot": "tool",
     "port.studies.copy_state_stream": "tool",
@@ -172,7 +173,7 @@ ROLES: dict[str, Role] = {
     # sandbox
     "port.sandbox.admixture.clone_mixture": "set aside",
     "port.sandbox.extensions.segment_sets": "set aside",
-    "port.sandbox.extensions.color_merge": "set aside",
+    "port.studies.color_merge": "tool",
     "port.sandbox.admixture.probes.sim_probe": "set aside",
     "port.sandbox.admixture.variants": "set aside",
     "port.sandbox.clone_starts.problem": "set aside",

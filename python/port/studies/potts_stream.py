@@ -33,7 +33,7 @@ its numbers do not compare with these.
   pure-Python `alpha` and the floor-merge row, plus TRW-S's own decoded
   labelling, from `--starts` random labellings; the samplers at their tuned
   settings. Each run is polished twice: sal's ICM, then the color merge
-  (`port.sandbox.extensions.color_merge`, cnaster's `merge_assignment` rule).
+  (`port.studies.color_merge`, cnaster's `merge_assignment` rule).
 
 Per problem it records the planted labelling's energy, TRW-S's lower bound and its spots,
 per run the energy and the labels unlike the planted ones, raw and after each
@@ -234,15 +234,15 @@ def _init() -> None:
     """Build each problem's graph once per worker, then warm every solver up on a small patch."""
     import port.studies.clone_label_arms as arms
 
-    build = arms._graph
+    build = arms.potts_graph
 
-    def memo(beta: float) -> Any:
-        key = (arms._HELD["problem"], beta)
+    def memo(spatial_weight: float) -> Any:
+        key = (arms.HELD["problem"], spatial_weight)
         if key not in _GRAPHS:
-            _GRAPHS[key] = build(beta)
+            _GRAPHS[key] = build(spatial_weight)
         return _GRAPHS[key]
 
-    arms._graph = memo
+    arms.potts_graph = memo
     _warm()
 
 
@@ -260,7 +260,7 @@ def _warm() -> None:
                             weights=weights, spatial_weight=1.0, n_spots=100)  # fmt: skip
     # NB every solver `--only` can name, the ones T- #660 dropped from the stream included
     retired = {"sal:bifurcation", "port:alpha", "port:alpha-rust-merge"}
-    runnable = [s for s in arms._solvers() if s not in retired]
+    runnable = [s for s in arms.solver_names() if s not in retired]
     for solver in [*runnable, *EXTRA, CLUSTER_TEMPERING]:
         solve(
             patch,
@@ -273,7 +273,7 @@ def _warm() -> None:
 def _hold(index: int, problem: Any) -> None:
     import port.studies.clone_label_arms as arms
 
-    arms._HELD["capture"], arms._HELD["problem"] = problem, index
+    arms.HELD["capture"], arms.HELD["problem"] = problem, index
 
 
 def _sample(solver: str, field: np.ndarray, start: np.ndarray, rng: np.random.Generator,
@@ -328,13 +328,13 @@ def solve(
     from sal.sim.potts import energy
 
     import port.studies.clone_label_arms as arms
-    from port.sandbox.extensions.color_merge import color_merge
+    from port.studies.color_merge import color_merge
     from port.studies.stage import missed
 
     try:
         _hold(problem.realization, problem)
         field, beta = problem.field, problem.spatial_weight
-        _, graph = arms._graph(beta)
+        _, graph = arms.potts_graph(beta)
         start = np.random.default_rng([seed, 7]).integers(
             0, field.shape[1], field.shape[0]
         )
@@ -347,10 +347,12 @@ def solve(
         elif setting is not None:
             out = _sample(solver, field, start, rng, graph, setting)
         else:
-            out = arms._solve(solver, field, start, rng, beta)
+            out = arms.solve_from(solver, field, start, rng, beta)
         seconds = time.perf_counter() - opened
         opened = time.perf_counter()
-        polished = arms._solve("sal:icm", field, out, np.random.default_rng(0), beta)
+        polished = arms.solve_from(
+            "sal:icm", field, out, np.random.default_rng(0), beta
+        )
         polish_seconds = time.perf_counter() - opened
         opened = time.perf_counter()
         both, merges = color_merge(
@@ -381,7 +383,7 @@ def _describe(problem: Any) -> dict[str, Any]:
     import port.studies.clone_label_arms as arms
 
     _hold(problem.realization, problem)
-    _, graph = arms._graph(problem.spatial_weight)
+    _, graph = arms.potts_graph(problem.spatial_weight)
     bound, trws_energy, trws_seconds = arms._bound(
         problem.field, problem.spatial_weight
     )
@@ -492,7 +494,7 @@ def run(
     solvers = (
         list(only)
         if only
-        else [s for s in arms._solvers() if s not in DROPPED] + list(EXTRA)
+        else [s for s in arms.solver_names() if s not in DROPPED] + list(EXTRA)
     )
     held: dict[int, dict[str, Any]] = {}
     rows: list[dict[str, Any]] = []
@@ -566,14 +568,14 @@ def retune(
         chosen, _ = tune(
             pool, list(problems(manifest, root, held_out, states=states)), samplers
         )
-    settings = json.loads(SETTINGS.read_text())
-    settings["_provenance"] = (f"run_calibrate --potts on {manifest.name} realizations 0-{held_out - 1}, states {states}, "
+    provenance = (f"run_calibrate --potts on {manifest.name} realizations 0-{held_out - 1}, states {states}, "
                                f"{TUNING_STARTS} random starts per setting; the cheapest setting within {TOLERANCE} nats "
                                "of the best median gap to TRW-S's bound (#556, #723)")  # fmt: skip
-    for solver, setting in chosen.items():
-        settings[solver] = {"t_start": setting["t_start"], "sweeps": setting["sweeps"], "warm": setting["warm"],
-                            "median_gap": round(setting["gap"], 3), "default_median_gap": round(setting["default_gap"], 3)}  # fmt: skip
-    SETTINGS.write_text(json.dumps(settings, indent=2) + "\n")
+    harness.merge_settings(SETTINGS, provenance, {
+        solver: {"t_start": setting["t_start"], "sweeps": setting["sweeps"], "warm": setting["warm"],
+                 "median_gap": round(setting["gap"], 3), "default_median_gap": round(setting["default_gap"], 3)}
+        for solver, setting in chosen.items()
+    })  # fmt: skip
 
 
 def main(argv: list[str] | None = None) -> None:

@@ -25,8 +25,15 @@ import numpy as np
 import pandas as pd
 
 from port.qa.statistics import bars, ranks
-from port.studies import records
-from port.studies.figures import key_below, merged, stamp, tab20, tt
+from port.studies.figures import (
+    DODGE,
+    FLOOR,
+    gap_page,
+    key_below,
+    merged_records,
+    tab20,
+    tt,
+)
 
 TABLE = (
     ("CalicoST, port", (
@@ -69,9 +76,6 @@ KEY_NAMES = {
 
 COLOUR = {name: tab20(k) for name, k in NUMBER.items()}
 """One colour per start, by its number."""
-
-DODGE = 1.12
-FLOOR = 1e-2
 
 RUNTIME_FLOOR = 0.5
 """With `key`, runtimes below it are drawn at it, a left arrow marking the bound [s]."""
@@ -399,34 +403,23 @@ def draw(
 
 def figure(record: dict[str, Any], out: Path) -> Path:
     """The gap figure and its table, written to `out`."""
-    import matplotlib as mpl
 
-    mpl.use("Agg")
-    import matplotlib.pyplot as plt
+    def panels(ax: Any, tab: Any) -> None:
+        d = draw(ax, record)
+        missed = {
+            str(n): (float(g.start_missed_pct.median()), float(g.missed_pct.median()))
+            for n, g in d.groupby("start")
+        }
+        # NB ranked after Baum-Welch, the polish the study measures: R_C by the median gap, R_M by the median Missed
+        rank_cost = ranks({str(n): float(g.by.median()) for n, g in d.groupby("start")})
+        rank_missed = ranks({n: m[1] for n, m in missed.items()})
+        ran = frozenset(str(n) for n in pd.DataFrame(record["rows"]).start.unique())
+        _table(tab, missed, degenerate_counts(record), rank_cost, rank_missed, ran)
 
-    plt.rcParams.update({"font.size": 9})
-    fig = plt.figure(figsize=(15.5, 6.2))
-    grid = fig.add_gridspec(1, 2, width_ratios=[1.2, 1], wspace=0.04)
-    ax, tab = fig.add_subplot(grid[0]), fig.add_subplot(grid[1])
-    tab.axis("off")
-    d = draw(ax, record)
-    missed = {
-        str(n): (float(g.start_missed_pct.median()), float(g.missed_pct.median()))
-        for n, g in d.groupby("start")
-    }
-    # NB ranked after Baum-Welch, the polish the study measures: R_C by the median gap, R_M by the median Missed
-    rank_cost = ranks({str(n): float(g.by.median()) for n, g in d.groupby("start")})
-    rank_missed = ranks({n: m[1] for n, m in missed.items()})
-    ran = frozenset(str(n) for n in pd.DataFrame(record["rows"]).start.unique())
-    _table(tab, missed, degenerate_counts(record), rank_cost, rank_missed, ran)
-    stamp(fig, record)
-    fig.savefig(out, dpi=150, bbox_inches="tight")
-    plt.close(fig)
-    return out
+    return gap_page(record, out, panels)
 
 
 def main(argv: list[str] | None = None) -> None:
     """`STREAM.record [EARLIER.record ...]`: the figure beside the first, over all of them."""
-    paths = [Path(p) for p in (argv if argv is not None else sys.argv[1:])]
-    record = merged([records.read(p) for p in paths])
-    print(figure(record, paths[0].with_suffix(".png")))
+    record, stream = merged_records(argv if argv is not None else sys.argv[1:])
+    print(figure(record, stream.with_suffix(".png")))
