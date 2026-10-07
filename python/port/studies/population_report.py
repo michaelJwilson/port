@@ -403,7 +403,8 @@ def summarize(out: Path, study2_j: float, seed: int = 544) -> dict[str, Any]:
 
 
 def stay(out: Path, rng: np.random.Generator) -> dict[str, Any]:
-    """#729's arm per class, from `out/stay/`: CNA sensitivity against log10 `1 - t`."""
+    """#729's arm per `1 - t`, from `out/stay/`: CNA sensitivity against log10
+    event length, every class, as study 2's length curve is per J (#745)."""
     rows = []
     for path in sorted((out / "stay").glob("*.json")):
         record = json.loads(path.read_text())
@@ -411,19 +412,16 @@ def stay(out: Path, rng: np.random.Generator) -> dict[str, Any]:
     if not rows:
         return {}
     frame = pd.DataFrame(rows)
-    frame["log_omt"] = np.log10(frame["omt"])
+    frame["log_length"] = np.log10(frame["length"])
     members = np.array(sorted(frame["seed"].unique()))
     weights = resample_weights(members.size, BOOTSTRAP, rng)
     arm = {}
-    for name in ("LOH", "balanced gain", "imbalanced gain", "all"):
-        part = frame if name == "all" else frame[frame["class"] == name]
-        if part.empty:
-            continue
-        arm[name] = {
+    for omt, part in frame.groupby("omt"):
+        arm[f"{omt:g}"] = {
             "events": len(part),
             "members": int(part["seed"].nunique()),
             "recovered": curve(
-                part, "log_omt", "recovered", STAY_EDGES, members, weights
+                part, "log_length", "recovered", LENGTH_EDGES, members, weights
             ),  # fmt: skip
         }
     return arm
@@ -617,11 +615,22 @@ def _lengths(axis: Any, summary: dict[str, Any]) -> None:
     axis.set_xlabel("CNA length [Mb]")
 
 
+STAY_SHOWN = (1e-8, 1e-6, 1e-4, 1e-2)
+"""The `1 - t` drawn on (b), every other one run: four curves, as (a) has four J."""
+
+
 def _stay(axis: Any, summary: dict[str, Any]) -> None:
-    """CNA sensitivity by `1 - t` at oracle clones, per class: #729's arm,
-    `summary["t_arm"]` as `study2`'s entries with log10 `1 - t` the covariate."""
-    _by_class(axis, summary["t_arm"], 1.0)
-    axis.set_xlabel(r"$1 - t$")
+    """CNA sensitivity by length at oracle clones, one curve per `1 - t` in
+    `STAY_SHOWN`, coloured as (a)'s J are: #729's arm (`summary["t_arm"]`)."""
+    shown = [omt for omt in STAY_SHOWN if f"{omt:g}" in summary["t_arm"]]
+    colours = j_colours(shown)
+    for omt, dodge in zip(shown, _dodges(len(shown), 0.015), strict=True):
+        label = rf"$1 - t = 10^{{{round(np.log10(omt))}}}$"
+        _panel(axis, summary["t_arm"][f"{omt:g}"]["recovered"], colours[omt], label,
+               dodge, 1e6)  # fmt: skip
+    axis.set_xscale("log")
+    axis.set_xlabel("CNA length [Mb]")
+    axis.set_ylabel("CNA sensitivity")
 
 
 def _fpr(axis: Any, summary: dict[str, Any]) -> None:
@@ -683,8 +692,8 @@ def _finish(fig: Any, axes: list[Any], legends: list[Any]) -> None:
 
 
 def combined(summary: dict[str, Any], into: Path) -> Path:
-    """`COMBINED` into `into`: (a) clones by UMIs per J, (b) CNAs by `1 - t` at
-    oracle clones per class (`summary["t_arm"]`, #729), (c) false positives by
+    """`COMBINED` into `into`: (a) clones by UMIs per J, (b) CNAs by length at
+    oracle clones per `1 - t` (`summary["t_arm"]`, #729), (c) false positives by
     SNP UMIs, (d) CNAs by length per class; square panels, no stamp (#743).
 
     Where the summary has no `t_arm`, (b) is drawn empty and says so: the
