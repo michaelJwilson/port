@@ -115,6 +115,7 @@ ROLES: dict[str, Role] = {
     "port.patch.hmm_nophasing.nb_logpmf": "row",
     "port.patch.hmm_nophasing.shifted_emission": "row",
     "port.patch.hmm_phased.coded_emission": "row",
+    "port.patch.he": "row",
     "port.patch.hmrf.clone_assignment": "row",
     "port.patch.hmrf.core_inference": "row",
     "port.patch.hmrf.field": "row",

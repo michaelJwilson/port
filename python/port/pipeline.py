@@ -119,6 +119,7 @@ SWAPS: tuple[Swap, ...] = (
         446,
     ),
     Swap("cnaster.io", "get_sample_list", "port.patch.io:get_sample_list", 418),
+    Swap("cnaster.he", "get_he_image", "port.patch.he:he_image", 771),
     Swap(
         "cnaster.reference",
         "get_reference_genes",
@@ -238,6 +239,8 @@ in the regime named there (#466 lists them):
 - `get_sample_list`: slices keyed by name in first-seen order, where
   `cnaster` keys them by runs of adjacent rows and drops a slice on
   interleaved rows (#418);
+- `get_he_image`: the brightest pixel in the brightest of `num_labels`
+  classes, not a class of its own (#311, T- #771);
 - `assign_initial_blocks`: no block across two chromosomes;
 - `summarize_counts_for_bins`: the normal-spot filter's flagged genes left
   out of every bin (#177), and a chromosome with no bins left out of

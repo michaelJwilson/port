@@ -236,18 +236,20 @@ def mock_slide(coords: np.ndarray, labels: np.ndarray, root: Path) -> Any:
     """A slide stained by the planted clones (`port.sim.he_slide`), read back as
     `run_cnaster` reads one; each lattice cell takes its nearest spot's clone.
 
-    Written beside the run's inputs, not into them, so the run never reads it.
+    Written beside the run's inputs, not into them, so the run never reads it;
+    read through `port.patch.he.he_image`, so its labels are `1..num_labels`
+    (#311, T- #771).
     """
-    from cnaster.he import get_he_image
     from scipy.spatial import cKDTree
 
+    from port.patch.he import he_image
     from port.sim.he_slide import mock_he, write_he_slide
 
     lattice = (int(coords[:, 0].max()) + 1, int(coords[:, 1].max()) + 1)
     cells = np.indices(lattice).reshape(2, -1).T
     _, nearest = cKDTree(coords).query(cells)
     write_he_slide(mock_he(labels[nearest], lattice), root / "slide")
-    return get_he_image(str(root / "slide"), res="hires", pos=None)
+    return he_image(str(root / "slide"), res="hires", pos=None)
 
 
 @dataclass

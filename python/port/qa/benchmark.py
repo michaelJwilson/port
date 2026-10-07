@@ -517,19 +517,18 @@ def _write_combined(
     """The genomic and spatial figures, and both on one page (#309, #339).
 
     The slide is mocked from the planted labels and read back through
-    `cnaster.he.get_he_image`, as `run_cnaster` reads one. It is written
+    `port.patch.he.he_image`, as `run_cnaster` reads one (T- #771). It is written
     beside the run's inputs rather than into them: `load_input_data` would
     otherwise find it and refine the initial clones by it, and the figures
     would stop being the ones the dev instance's run draws.
     """
-    from cnaster.he import get_he_image
-
     from port.extensions.combined_figure import (
         combined_figure,
         genomic_figure,
         page_style,
         spatial_figure,
     )
+    from port.patch.he import he_image
     from port.patch.utils import write_fig
     from port.pipeline import FIGURE_DPI
     from port.sim.he_slide import mock_he, write_he_slide
@@ -544,7 +543,7 @@ def _write_combined(
 
     slide = mock_he(truth.labels, truth.lattice, seed=truth.seed)
     write_he_slide(slide, root / "slide")
-    frame = get_he_image(str(root / "slide"), res="hires", pos=None)
+    frame = he_image(str(root / "slide"), res="hires", pos=None)
 
     plots = next(output.rglob("clones_spatial.pdf")).parent
     # NB at its declared size, not a tight box: the page is drawn at the text

@@ -81,9 +81,11 @@ profile's clone names, the RDR and BAF labels, and the letters."""
 SPATIAL_GAP = 0.17
 """Inches between the slide and the clones' extent ticks."""
 
-FOOT = 0.6
+FOOT = 1.0
 """Inches of slack under the layout, trimmed off at the end: 0.4 before the
-10 pt contig names under the last track ran 0.007 in past it (T- #740)."""
+10 pt contig names under the last track ran 0.007 in past it on the test
+instance (T- #740), and 0.6 before the 22 autosomes' staggered names ran
+0.002 in past it on `dev_tree_1s_easy` r0, `7ba9b01f` (T- #771)."""
 
 LEGEND_BOX = 0.2
 """Inches, one box of the profile's key."""
@@ -195,6 +197,35 @@ def slide_image(frame: Any) -> tuple[np.ndarray, tuple[float, float, float, floa
     )
 
     return np.clip(image, 0.0, 1.0), extent
+
+
+HE_CLASSES = 4
+"""`cnaster.he.get_he_image`'s `num_labels`, the gray-level classes `run_cnaster` reads."""
+
+HE_PALETTE = "mako"
+"""The H&E classes' palette: blue to green, apart from the clones' `rocket`
+(T- #771)."""
+
+
+def he_classes(
+    spaceranger_dir: str, coords: np.ndarray, num_labels: int = HE_CLASSES
+) -> np.ndarray:
+    """Each spot's H&E class, `1..num_labels` from darkest to brightest, as
+    `run_cnaster` reads it: `port.patch.he.he_image` at the spots, each the
+    gray level of its nearest pixel binned at the spots' percentiles (#311,
+    T- #771)."""
+    import pandas as pd
+
+    from port.patch.he import he_image
+
+    spots = pd.DataFrame({"x": coords[:, 0], "y": coords[:, 1]})
+    frame = he_image(spaceranger_dir, res="hires", pos=spots, num_labels=num_labels)
+
+    if "label" not in frame.columns:
+        msg = f"no H&E image under {spaceranger_dir}/spatial/"
+        raise ValueError(msg)
+
+    return np.asarray(frame["label"].to_numpy(), dtype=np.int64)
 
 
 def _set_text(panel: Any, size: float) -> None:
@@ -1164,10 +1195,48 @@ def integer_recorded(recorded: Recorded) -> Recorded:
     return merged
 
 
-def _draw_spatial(
-    figure: Any, recorded: Recorded, he_frame: Any, labels: str = "integer"
+def _draw_he_spatial(
+    figure: Any, coords: np.ndarray, he_frame: Any, he_labels: np.ndarray
 ) -> tuple[Any, Any]:
-    """The slide and the clones on `figure`, drawn but not yet placed.
+    """(a) the slide and (b) each spot's H&E class, tiled as `_draw_spatial`
+    tiles the clones, in `HE_PALETTE`, keyed darkest first (T- #771)."""
+    import pandas as pd
+
+    from port.patch.plotting.spatial import draw_clones_spatial, spot_colours
+
+    classes = pd.Series([f"H&E {int(c)}" for c in he_labels])
+    slide_ax = figure.add_axes((0.0, 0.0, 0.4, 0.4))
+    spatial_ax = figure.add_axes((0.5, 0.0, 0.4, 0.4))
+    # NB no upstream key: it reads an integer clone id from each label.
+    draw_clones_spatial(
+        spatial_ax, coords, classes, None, palette=HE_PALETTE, legend=False
+    )
+    _, names, colours = spot_colours(classes, palette=HE_PALETTE)
+    _clone_key(spatial_ax, [str(n) for n in names], list(colours))
+
+    image, extent = slide_image(he_frame)
+    slide_ax.imshow(image, extent=extent, interpolation="none")
+    slide_ax.set_xlim(spatial_ax.get_xlim())
+    slide_ax.set_ylim(spatial_ax.get_ylim())
+    slide_ax.set_aspect("equal")
+
+    for ax in (slide_ax, spatial_ax):
+        _extents(ax, coords)
+    spatial_ax.tick_params(axis="y", labelleft=False)
+
+    return slide_ax, spatial_ax
+
+
+def _draw_spatial(
+    figure: Any,
+    recorded: Recorded,
+    he_frame: Any,
+    labels: str = "integer",
+    he_labels: np.ndarray | None = None,
+) -> tuple[Any, Any]:
+    """The slide and the clones on `figure`, drawn but not yet placed; with
+    `he_labels`, each spot's H&E class (`he_classes`), the classes in place
+    of the clones, in `HE_PALETTE` (T- #771).
 
     `labels` is "integer", the default, for the integer clones
     (`integer_recorded`, #344, #745), which needs the run's profile call; or
@@ -1181,6 +1250,9 @@ def _draw_spatial(
         msg = "expected recorded.spatial is not None"
         raise AssertionError(msg)
     coords, assignment = recorded.spatial.args[:2]
+
+    if he_labels is not None:
+        return _draw_he_spatial(figure, np.asarray(coords), he_frame, he_labels)
 
     if labels == "integer":
         coords, assignment = integer_recorded(recorded).spatial.args[:2]  # type: ignore[union-attr]
@@ -1228,12 +1300,16 @@ def spatial_figure(
     he_frame: Any,
     width: float | None = None,
     labels: str = "integer",
+    *,
+    he_labels: np.ndarray | None = None,
 ) -> Any:
     """(a) the H&E slide and (b) `clones_spatial`, square and as large as fit
     across `width` inches on a "third" page (T- #740), (b) keyed on its right;
     no caption.
 
-    `labels` as `_draw_spatial` takes it: "integer" (#344) or "continuous".
+    `labels` as `_draw_spatial` takes it: "integer" (#344) or "continuous";
+    with `he_labels`, each spot's class from `he_classes`, (b) shows the H&E
+    classes beside their slide in place of the clones (T- #771).
     """
     import matplotlib.pyplot as plt
 
@@ -1252,7 +1328,9 @@ def spatial_figure(
     #    page, so the row of two maps fits one (T- #740).
     for attempt in range(2):
         figure = plt.figure(figsize=(width, width), dpi=300, facecolor="white")
-        slide_ax, spatial_ax = _draw_spatial(figure, recorded, he_frame, labels)
+        slide_ax, spatial_ax = _draw_spatial(
+            figure, recorded, he_frame, labels, he_labels
+        )
 
         _set_text(figure, FONT_SIZE)
         side = _place_spatial(figure, slide_ax, spatial_ax, most)
@@ -1371,4 +1449,85 @@ def combined_figure(
 
     plt.close(spatial)
     figure.canvas.draw()
+    return figure
+
+
+@_styled
+def plot_clones_genomic_he(
+    recorded: Recorded,
+    he_labels: np.ndarray,
+    width: float | None = None,
+    height: float | None = None,
+) -> Any:
+    """RDR and BAF along the genome, one pair of tracks per H&E class, each
+    class's spots pseudobulked as `clones_genomic` pseudobulks a clone's
+    (T- #771).
+
+    The run's own `plot_clones_genomic` call, with its spots grouped by
+    `he_labels` (`he_classes`) rather than by the fitted clones, and no
+    fitted levels, since the HMM fitted none per class; each track is named
+    by its class, darkest first, and its spot count. `width` by `height`
+    inches, a "full" page (`figure_style.page_size`) by default.
+    """
+    import matplotlib.pyplot as plt
+
+    from port.extensions.figure_style import page_size
+    from port.extensions.genomic_axis import name_contigs
+    from port.patch.plot_genomic import plot_clones_genomic
+
+    if recorded.genomic is None:
+        msg = "the H&E tracks need the run's clones_genomic call"
+        raise ValueError(msg)
+
+    full_width, full_height = page_size("full")
+    width = full_width if width is None else width
+    height = full_height if height is None else height
+
+    labels = np.asarray(he_labels)
+    classes = np.unique(labels)
+    groups = [np.flatnonzero(labels == c) for c in classes]
+
+    figure = plt.figure(figsize=(width, height), dpi=300, facecolor="white")
+    arguments = recorded.genomic.args[:4]
+    # NB only the run's display options carry over: the fit's levels and
+    #    colours are per clone, and these groups are not clones.
+    keywords: dict[str, Any] = {
+        key: value
+        for key, value in recorded.genomic.kwargs.items()
+        if key
+        in {"rdr_ylim", "plot_baf_errors", "plot_rdr_errors", "known_nb_baseline"}
+    }
+    keywords |= {
+        "clone_index": groups,
+        "figure": figure,
+        "pointsize": 0.4,
+        "linewidth": 0.3,
+    }
+    plot_clones_genomic(*arguments, **keywords)
+
+    # NB the genomic page's furniture: three ticks a track, and each
+    #    group's statistics line above its RDR track, here naming its class.
+    _fit_tracks(figure)
+    tracks = [ax for ax in figure.get_axes() if ax.get_visible()]
+    per_class = len(tracks) // len(groups)
+    for k, (label, group) in enumerate(zip(classes, groups, strict=True)):
+        stats = [t for t in tracks[per_class * k].texts if t.get_rotation() == 0.0]
+        if stats:
+            stats[0].set_text(f"H&E {label} ({group.size} spots)")
+
+    _set_text(figure, FONT_SIZE)
+    # NB every contig named once, under the last track, staggered where
+    #    adjacent contigs are short, as on the genomic page.
+    lengths = np.asarray(arguments[0])
+    starts = np.concatenate([[0], np.cumsum(lengths)[:-1]]).astype(float)
+    # NB `cnaster`'s own names, one per contig in genome order, which
+    #    `_fit_tracks` hid.
+    names = [
+        t.get_text()
+        for t in sorted(tracks[-1].texts, key=lambda t: float(t.get_position()[0]))
+        if t.get_text().startswith("chr")
+    ]
+    name_contigs(tracks[-1], starts.tolist(), names, size=FONT_SIZE)
+
+    _set_text(figure, FONT_SIZE)
     return figure
