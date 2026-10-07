@@ -1,7 +1,7 @@
 """#540: `port.studies.copy_state_stream`'s runs against runtime, each start numbered as in the table beside it.
 
-`run_study --copy-state-plot STREAM.pkl` writes `<stem>.png` beside
-the pickle: each run's log-likelihood below the best any run reached on its
+`run_study --copy-state-plot STREAM.record` writes `<stem>.png` beside
+the record: each run's log-likelihood below the best any run reached on its
 realization -- there is no bound for an HMM's likelihood -- on a log axis whose
 bottom tick, "0", holds the runs at that best. A filled marker is the start's
 own states, decoded by the HMM without fitting; the open marker after the
@@ -17,7 +17,6 @@ states, the median over the same runs: at the start / after Baum-Welch.
 
 from __future__ import annotations
 
-import pickle
 import sys
 from pathlib import Path
 from typing import Any
@@ -26,7 +25,8 @@ import numpy as np
 import pandas as pd
 
 from port.qa.statistics import bars, ranks
-from port.studies.figures import merged, stamp, tab20, tt
+from port.studies import records
+from port.studies.figures import key_below, merged, stamp, tab20, tt
 
 TABLE = (
     ("CalicoST, port", (
@@ -37,16 +37,14 @@ TABLE = (
         ("prior", "Drawn from a prior on the observed range"),
         ("kmeans++", f"{tt('k-means++')} on the raw count pair"),
         ("emission++", "Seeds by the NB x BB Bregman divergence"),
-        ("gaussian-em", "Gaussian mixture on read depth, by EM"),
     )),
     ("sal, samplers on the HMM (#634)", (
-        ("anneal-hmm", "Best point of sal's HMC anneal under falling temperature"),
         ("tempering-hmm", "Best point of sal's parallel tempering, 4 HMC replicas"),
         ("hmc-hmm", "Best draw of sal's HMC chain after dual-averaging warm-up"),
     )),
 )  # fmt: skip
 """The starts drawn (T- #660). Set aside from the figure, still in the registry: `cnaster-gmm`,
-`distinct`, `lattice-em`, `rdr-quantiles`, `data`, `quantile` and the emission++ variants."""
+`distinct`, `lattice-em`, `rdr-quantiles`, `data`, `quantile`, the emission++ variants and `anneal-hmm` (#716)."""
 
 
 LABEL = {
@@ -62,16 +60,26 @@ SOURCE = {
     "calicost-gmm": "CalicoST", "lattice": "port",
 }  # fmt: skip
 """Each start's source: the package whose code it runs."""
+KEY_NAMES = {
+    "calicost-gmm": "CalicoST-GMM", "lattice": "Lattice", "prior": "Prior", "kmeans++": r"$k$-means++",
+    "emission++": "Emission++",
+    "tempering-hmm": "Parallel tempering", "hmc-hmm": "HMC",
+}  # fmt: skip
+"""The names `solver_combined`'s key prints (#716)."""
+
 COLOUR = {name: tab20(k) for name, k in NUMBER.items()}
 """One colour per start, by its number."""
 
 DODGE = 1.12
 FLOOR = 1e-2
+
+RUNTIME_FLOOR = 0.5
+"""With `key`, runtimes below it are drawn at it, a left arrow marking the bound [s]."""
 """The "0" tick: runs within `FLOOR` nats of the best."""
 
 
 def degenerate_counts(record: dict[str, Any]) -> dict[str, int]:
-    """Each start's runs flagged degenerate (`known_copy.degenerate`): `cnaster`'s NB at probability 1."""
+    """Each start's runs flagged degenerate (`known_copy.degenerate`, before #730): `cnaster`'s NB at probability 1."""
     rows = pd.DataFrame(record["rows"])
     rows = rows[rows.problem.isin(record["done"])]
     if "degenerate" not in rows:
@@ -86,7 +94,7 @@ def frame(record: dict[str, Any]) -> tuple[pd.DataFrame, np.ndarray]:
     """The runs with their gaps to the realization's best non-degenerate run, and the truth's gaps.
 
     A degenerate run scores rows at probability 1 through `cnaster`'s negative
-    binomial (`known_copy.degenerate`); as the best it would set every gap by
+    binomial (`known_copy.degenerate`, before #730); as the best it would set every gap by
     thousands of nats, so it is neither the reference nor a point.
     """
     rows = pd.DataFrame(record["rows"])
@@ -217,11 +225,18 @@ def _table(
     tab.set_ylim(0, 1)
 
 
-def draw(ax: Any, record: dict[str, Any], key: bool = False) -> pd.DataFrame:
+def draw(
+    ax: Any,
+    record: dict[str, Any],
+    key: bool = False,
+    key_style: dict[str, Any] | None = None,
+) -> pd.DataFrame:
     """The gap panel on `ax`: each start's runs against runtime, numbered as in `TABLE`; returns the runs drawn.
 
-    `key` adds each start's number and name to the legend below the axes,
-    for a figure that draws no table beside it (`solver_combined`, T- #660).
+    `key` draws, for a figure with no table beside it (`solver_combined`, T- #660),
+    a key below the axes instead of the legend: the stages' markers, then each
+    start unnumbered with its missed % after Baum-Welch, `port`'s marked and
+    named in a footnote.
     """
     from matplotlib.ticker import FixedLocator, FuncFormatter
 
@@ -241,16 +256,19 @@ def draw(ax: Any, record: dict[str, Any], key: bool = False) -> pd.DataFrame:
 
     points: list[tuple[float, float, str]] = []
     rightmost = 0.0
+    top = 0.0
     for name, g in d.groupby("start"):
         if name not in NUMBER:
             continue
         colour = COLOUR[str(name)]
-        x, xe = bars(g.seconds)
+        limited = key and float(g.seconds.median()) < RUNTIME_FLOOR
+        x, xe = bars(g.seconds.clip(lower=RUNTIME_FLOOR) if key else g.seconds)
         # NB each start displaced by its own factor, up to 0.1 decades either side, so equal runtimes do not overlap
         spread = 10 ** (0.2 * (NUMBER[str(name)] / max(NUMBER.values()) - 0.5))
         x *= spread
         xe = [[e * spread for e in side] for side in xe]
         y, ye = bars(g.y)
+        top = max(top, y + ye[1][0])
         ax.errorbar(
             x, y, xerr=xe, yerr=ye, fmt="o", color=colour, ms=5, lw=0.8, capsize=2.5
         )
@@ -278,12 +296,16 @@ def draw(ax: Any, record: dict[str, Any], key: bool = False) -> pd.DataFrame:
             lw=0.8,
             capsize=2.5,
         )
+        if limited:
+            # NB an upper limit: the median start ran in under RUNTIME_FLOOR
+            ax.annotate("", (x / 2.2, y), (x, y), arrowprops={"arrowstyle": "-|>", "color": colour, "lw": 1.0,
+                                                               "shrinkA": 4, "shrinkB": 0})  # fmt: skip
         points.append((x, y, str(name)))
         rightmost = max(rightmost, bx + bxe[1][0])
 
     # NB numbers placed left of their points, stacked upward in 0.25-decade steps where they would overlap
     placed: list[tuple[float, float]] = []
-    for x, y, name in sorted(points, key=lambda p: (p[0], p[1])):
+    for x, y, name in [] if key else sorted(points, key=lambda p: (p[0], p[1])):
         lx, ly = np.log10(x), np.log10(y)
         while any(abs(lx - px) < 0.3 and abs(ly - py) < 0.2 for px, py in placed):
             ly += 0.25
@@ -295,11 +317,13 @@ def draw(ax: Any, record: dict[str, Any], key: bool = False) -> pd.DataFrame:
     ax.set_xscale("log")
     ax.set_yscale("log")
     ax.set_xlim(
-        float(d.seconds.quantile(0.02)) * 0.5,
+        RUNTIME_FLOOR / 3 if key else float(d.seconds.quantile(0.02)) * 0.5,
         rightmost * 1.3,
     )
-    # NB one decade below the truth's median gap, three above
-    ax.set_ylim(float(np.median(truth)) / 10, float(np.median(truth)) * 1e3)
+    # NB one decade below the truth's median gap; three above, or above the highest start's error bar
+    ax.set_ylim(
+        float(np.median(truth)) / 10, max(float(np.median(truth)) * 1e3, top * 2)
+    )
     ax.yaxis.set_major_locator(FixedLocator([FLOOR, *10.0 ** np.arange(-1, 8)]))
     ax.yaxis.set_major_formatter(
         FuncFormatter(
@@ -307,7 +331,23 @@ def draw(ax: Any, record: dict[str, Any], key: bool = False) -> pd.DataFrame:
         )
     )
     ax.set_xlabel("Runtime [s]")
-    ax.set_ylabel("Gap [Nats]")
+    ax.set_ylabel("Gap [nats]" if key else "Gap [Nats]")
+    if key:
+        after = d.groupby("start").missed_pct.median()
+        ordered = sorted(set(d.start) & set(NUMBER), key=lambda n: NUMBER[n])
+        key_below(
+            ax,
+            f"{Path(record['manifest']).stem}: median of {n_problems} realization{'s' if n_problems != 1 else ''}"
+            + (f" ({n_partial} in progress)" if n_partial else ""),
+            [({"marker": "o", "color": "0.4", "markersize": 5}, "Initial"),
+             ({"marker": "o", "color": "0.4", "markerfacecolor": "white", "markersize": 5}, "Polish"),
+             ({"line": True, "color": "k"}, "Truth")],
+            [(KEY_NAMES.get(n, n), COLOUR[n], float(after[n]))
+             for n in ordered],
+            [],
+            **(key_style or {}),
+        )  # fmt: skip
+        return d
     ax.plot([], [], "o", color="0.4", label="Start")
     ax.plot([], [], "o", color="0.4", mfc="white", label="Baum-Welch")
     ax.plot([], [], color="k", lw=0.9, label="Truth")
@@ -363,7 +403,7 @@ def figure(record: dict[str, Any], out: Path) -> Path:
 
 
 def main(argv: list[str] | None = None) -> None:
-    """`STREAM.pkl [EARLIER.pkl ...]`: the figure beside the first, over all of them."""
+    """`STREAM.record [EARLIER.record ...]`: the figure beside the first, over all of them."""
     paths = [Path(p) for p in (argv if argv is not None else sys.argv[1:])]
-    record = merged([pickle.loads(p.read_bytes()) for p in paths])
+    record = merged([records.read(p) for p in paths])
     print(figure(record, paths[0].with_suffix(".png")))

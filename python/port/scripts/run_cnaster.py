@@ -836,7 +836,8 @@ def _write_copy_sets(
 
     The fit is the one of the configured `hmm.n_states` written at or after
     `since`, not the newest under `output_dir`, which may be another
-    configuration's (T- #617). With none, nothing is written, and it says so.
+    configuration's (T- #617). With none, nothing is written, and it says so,
+    as for a fit `pinned_errors` refuses (#705).
     """
     from pathlib import Path
 
@@ -870,7 +871,17 @@ def _write_copy_sets(
         )
         return
 
-    path = write_copy_sets(fits[0].parent, kept[-1])
+    # NB a refused fit (T- #599's large tau) leaves no sets and says so; the
+    #    run it follows completed, and its outputs stand (#705).
+    try:
+        path = write_copy_sets(fits[0].parent, kept[-1])
+    except ValueError as refused:
+        print(
+            f"run_cnaster_port: {refused}; cnv_copy_sets.tsv not written",
+            file=sys.stderr,
+        )
+        return
+
     print(f"run_cnaster_port: wrote {path}", file=sys.stderr)
 
 
