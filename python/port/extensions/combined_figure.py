@@ -1,6 +1,6 @@
-r"""Two figures from a run, and both on one page, at `llncs`'s width (#309, #339).
+r"""Two figures from a run, and both on one page, at the paper's text width (#309, #339, T- #740).
 
-Drawn once at their printed size, 122 mm wide, and included at
+Drawn once at their printed size, `figure_style.PAPER_WIDTH` wide, and included at
 `width=\linewidth` with nothing scaled:
 
 - `genomic_figure`, the text block's height: **(a)** `copy_number_profile`,
@@ -50,11 +50,13 @@ from typing import Any, NamedTuple
 
 import numpy as np
 
+from port.extensions.figure_style import CAPTION_ROOM, MIN_FONT_SIZE, TEXT_HEIGHT
 from port.patch.plot_copy_number_profile import KEY_GROWTH
 from port.patch.plot_copy_number_profile import LINEWIDTH as PROFILE_LINEWIDTH
 
-FONT_SIZE = 7.0
-"""Every text on the page, in points (#339)."""
+FONT_SIZE = MIN_FONT_SIZE
+"""Every text on the page, in points: the submission's 10 pt minimum, 7 pt
+before T- #740 (#339)."""
 
 LABEL_SIZE = FONT_SIZE
 """The panel letters, at the page's size and not bold."""
@@ -74,15 +76,9 @@ profile's clone names, the RDR and BAF labels, and the letters."""
 SPATIAL_GAP = 0.17
 """Inches between the slide and the clones' extent ticks."""
 
-TEXT_HEIGHT = 193.0 / 25.4
-"""`llncs`'s `\\textheight`, 193 mm in inches: the genomic figure's height."""
-
-CAPTION_ROOM = 1.5
-"""Inches left under the genomic figure for its caption: `genomic.pdf` is
-`TEXT_HEIGHT` less this, the combined page `TEXT_HEIGHT` itself."""
-
-FOOT = 0.4
-"""Inches of slack under the layout, trimmed off at the end."""
+FOOT = 0.6
+"""Inches of slack under the layout, trimmed off at the end: 0.4 before the
+10 pt contig names under the last track ran 0.007 in past it (T- #740)."""
 
 LEGEND_BOX = 0.2
 """Inches, one box of the profile's key."""
@@ -981,12 +977,18 @@ def genomic_figure(
     raise ValueError(msg)
 
 
-def _place_spatial(figure: Any, slide_ax: Any, spatial_ax: Any) -> None:
+def _place_spatial(
+    figure: Any, slide_ax: Any, spatial_ax: Any, most: float | None = None
+) -> float:
     """(a) the slide on the left, (b) right of it and (b)'s key right of
-    that; each panel's footprint square and as large as fits across, its
+    that; each panel's footprint square and as large as fits across, at most
+    `most` inches on a side, its
     data at one scale on both axes on its left and bottom axes, framed by
     those two alone; each letter over its panel's
-    top-left, on (a)'s extent ticks, and the page cut to its text (PR- #715)."""
+    top-left, on (a)'s extent ticks, and the page cut to its text (PR- #715).
+
+    Returns the side drawn, in inches.
+    """
     renderer = figure.canvas.get_renderer()
     dpi = figure.dpi
     width, height = figure.get_size_inches()
@@ -1014,6 +1016,7 @@ def _place_spatial(figure: Any, slide_ax: Any, spatial_ax: Any) -> None:
     #    scale on both, the room a square needs given to the right (or the
     #    top); the frame is drawn round the spots alone (`_frame`).
     side = (clones_right - left - SPATIAL_GAP - ticks(spatial_ax)) / 2
+    side = side if most is None else min(side, most)
     wide = side
     (x0, x1), (y0, y1) = spatial_ax.get_xlim(), spatial_ax.get_ylim()
     span = max(x1 - x0, y1 - y0)
@@ -1022,6 +1025,8 @@ def _place_spatial(figure: Any, slide_ax: Any, spatial_ax: Any) -> None:
         ax.set_ylim(y0, y0 + span)
         ax.set_aspect("equal", adjustable="box")
         _frame(ax, (x0, x1), (y0, y1))
+    # NB squares smaller than fit across leave the row centred on the page.
+    left += (clones_right - left - SPATIAL_GAP - ticks(spatial_ax) - 2 * side) / 2
     bottom = height - side - 1.0
     _put(slide_ax, left, left + wide, bottom, side)
     start = left + wide + SPATIAL_GAP + ticks(spatial_ax)
@@ -1052,6 +1057,7 @@ def _place_spatial(figure: Any, slide_ax: Any, spatial_ax: Any) -> None:
     figure.canvas.draw()
     short = right - key.get_window_extent(renderer).x1 / dpi
     key.set_bbox_to_anchor((anchor + short / wide, 0.0), transform=spatial_ax.transAxes)
+    return float(side)
 
 
 def integer_labels(assignment: Any, df_cnv: Any) -> Any:
@@ -1153,25 +1159,38 @@ def spatial_figure(
     labels: str = "integer",
 ) -> Any:
     """(a) the H&E slide and (b) `clones_spatial`, square and as large as fit
-    across `width` inches, (b) keyed on its right; no caption.
+    across `width` inches on a "third" page (T- #740), (b) keyed on its right;
+    no caption.
 
     `labels` as `_draw_spatial` takes it: "integer" (#344) or "continuous".
     """
     import matplotlib.pyplot as plt
 
-    from port.extensions.figure_style import PAPER_WIDTH
+    from port.extensions.figure_style import PAPER_WIDTH, page_size
 
     if recorded.spatial is None:
         msg = f"the run made {recorded.calls}; the spatial figure needs its clones"
         raise ValueError(msg)
 
     width = PAPER_WIDTH if width is None else width
-    # NB drawn on a page taller than it needs, and cut to its text.
-    figure = plt.figure(figsize=(width, width), dpi=300, facecolor="white")
-    slide_ax, spatial_ax = _draw_spatial(figure, recorded, he_frame, labels)
+    tallest = page_size("third")[1]
+    most = None
 
-    _set_text(figure, FONT_SIZE)
-    _place_spatial(figure, slide_ax, spatial_ax)
+    # NB drawn on a page taller than it needs, and cut to its text; drawn
+    #    again with each square smaller by what the page runs over a "third"
+    #    page, so the row of two maps fits one (T- #740).
+    for attempt in range(2):
+        figure = plt.figure(figsize=(width, width), dpi=300, facecolor="white")
+        slide_ax, spatial_ax = _draw_spatial(figure, recorded, he_frame, labels)
+
+        _set_text(figure, FONT_SIZE)
+        side = _place_spatial(figure, slide_ax, spatial_ax, most)
+        over = float(figure.get_size_inches()[1]) - tallest
+        if over <= 0.0 or attempt == 1:
+            break
+        plt.close(figure)
+        most = side - over
+
     return figure
 
 
@@ -1180,12 +1199,13 @@ def combined_figure(
     recorded: Recorded,
     he_frame: Any,
     width: float | None = None,
-    height: float = TEXT_HEIGHT,
+    height: float = TEXT_HEIGHT - CAPTION_ROOM,
     labels: str = "integer",
     *,
     metric: bool = False,
 ) -> Any:
-    """The spatial figure over the genomic one on one page, `height` tall.
+    """The spatial figure over the genomic one on one page, `height` tall, the
+    text block's less `CAPTION_ROOM` by default, as `genomic_figure` (T- #733).
 
     `labels` names the clones as `spatial_figure` does (#344); `metric` is
     `genomic_figure`'s.

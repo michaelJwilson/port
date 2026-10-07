@@ -79,15 +79,16 @@ component-wise work around `tests/test_run_cnaster_round_trip.py`.
 ## `genomic.png`, `spatial.png` and `combined.png`
 
 The final four as two figures at a text column (#309, #280, #339).
-`genomic.png` is 122 mm wide and `llncs`'s 193 mm text height less 1.5 in
+`genomic.png` is the paper's text width, 6.48 in, and its 8.18 in text height less 1.5 in
 (`CAPTION_ROOM`), so its caption fits on the page: (a)
 `copy_number_profile` under its key over (b) `clones_genomic`, (a)'s axis
 spanning (b)'s tracks so their chromosome boundaries line up, the last track
 naming every contig, staggered where adjacent contigs are short. `spatial.png`
-is 122 mm wide and about a quarter of the block tall: (a) an H&E slide and
+is 6.48 in wide and at most a "third" page tall (`page_size`, T- #740), the row centred: (a) an H&E slide and
 (b) `clones_spatial`, each in a square footprint, its spots at one scale on its left and bottom axes, which alone frame them, as large as fit across,
 (b)'s clones keyed on its right and named by their integer copy profile (#344).
-`combined.png` is both on one page, the full 122 by 193 mm: the spatial
+`combined.png` is both on one page, 6.48 in by 8.18 in less `CAPTION_ROOM`, as
+`genomic.png` (T- #733): the spatial
 figure at the head as (a), the genomic figure drawn the rest of the height
 below as (b) and (c) -- `truth_combined.png`'s order, the clones' structure,
 then the profile, then the tracks (`combined_figure.PANELS`). Its key, rows and tracks
@@ -95,7 +96,10 @@ name the clones in one order, the fitted clone index, normal first
 (`combined_figure.clone_order`); a clone merged under integer labels is
 named in its group's key entry, `$m_N$, $m_3$` (PR- #715). No captions. `port.extensions.combined_figure` redraws the run's own calls and
 writes each page at exactly its size, so it is included at
-`width=\linewidth` unscaled.
+`width=\linewidth` unscaled. A figure at a share of the page takes its size
+from `figure_style.page_size`: a "third", "half", "three_quarters" or "full"
+share of the text block less `CAPTION_ROOM`, split across `columns` figures
+on a row (T- #733).
 
 The slide is **mocked** from the planted labels (`python/port/sim/he_slide.py`) and
 read back through `cnaster.he.get_he_image`, as `run_cnaster` reads a slide.
@@ -139,7 +143,8 @@ overlapping by half) at seed 0.
   `truth_combined.pdf` by `plot`: the tree (over 10 events, no events on its edges,
   PR- #701), the profiles under their key -- the two mirror swatches stacked,
   "Local Mirror" centred between them, and the copy-number bar (PR- #715) -- the tracks and the
-  spatial map on one page at `combined.pdf`'s 122 mm by 193 mm and 7 pt, the
+  spatial map on one page at `combined.pdf`'s 6.48 in by 8.18 in less
+  `CAPTION_ROOM` (T- #733) and 10 pt (T- #740), the
   profile and tracks on one left and right edge, clones as $m_N$, $m_1$, ...;
   the 10 Mb marks, outward, and every contig's name on the last track alone,
   staggered where adjacent contigs are short, no Mb numbers, and every

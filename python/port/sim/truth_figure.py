@@ -2,7 +2,8 @@ r"""What a realization planted, on one page at `combined.pdf`'s size and type.
 
     python -m port.sim.truth_figure sim/generated/<name>/r<k> [OUT.pdf]
 
-Top to bottom, at `llncs`'s text width and height, 7 pt throughout, as
+Top to bottom, at the paper's text width and its height less `CAPTION_ROOM`
+(T- #733, T- #740), at `FONT_SIZE` throughout, as
 `port.extensions.combined_figure` sets an estimate:
 
 - **(a)** the clones' tree, each event at its time (`analysis.draw_tree`),
@@ -36,6 +37,7 @@ import argparse
 from pathlib import Path
 from typing import Any
 
+from port.extensions.figure_style import CAPTION_ROOM, TEXT_HEIGHT
 from port.patch.plot_copy_number_profile import KEY_GROWTH
 from port.sim.analysis import Realization, display, read
 
@@ -54,10 +56,10 @@ KEY_TOP = 0.075
 HEIGHTS = {
     "tree": 0.9,
     "profile": sum(ROWS) + sum(KEY) + KEY_TOP,
-    "genomic": 7.6 - 0.9 - (sum(ROWS) + sum(KEY) + KEY_TOP),
+    "genomic": TEXT_HEIGHT - CAPTION_ROOM - 0.9 - (sum(ROWS) + sum(KEY) + KEY_TOP),
 }
-"""Inches per panel, summing to `TEXT_HEIGHT` less its rounding; (a) 0.9,
-10% under its 1.0 before PR- #701."""
+"""Inches per panel, summing to `TEXT_HEIGHT` less `CAPTION_ROOM` (T- #733);
+(a) 0.9, 10% under its 1.0 before PR- #701, (b) fixed, (c) the rest."""
 
 LEFT = 0.42
 """Inches from the page's left edge to the genome panels' axes: room for the RDR and BAF labels."""
@@ -75,8 +77,8 @@ def _symbol(r: Realization) -> Any:
 def truth_combined_figure(
     r: Realization, width: float | None = None, *, metric: bool = False
 ) -> Any:
-    """The three panels on one page, `width` wide (`llncs`'s by default) and
-    `TEXT_HEIGHT` tall; on `metric`, the planted CNAs drawn wider (T- #683)."""
+    """The three panels on one page, `width` wide (the paper's text width by default) and
+    `TEXT_HEIGHT` less `CAPTION_ROOM` tall (T- #733); on `metric`, the planted CNAs drawn wider (T- #683)."""
     import matplotlib.pyplot as plt
     from matplotlib.ticker import NullLocator
 
@@ -85,7 +87,6 @@ def truth_combined_figure(
         LABEL_GAP,
         LABEL_SIZE,
         LEGEND_BOX,
-        TEXT_HEIGHT,
         _fit_tracks,
         _put,
         _set_text,
@@ -113,7 +114,7 @@ def truth_combined_figure(
 
     with page_style():
         figure: Any = plt.figure(
-            figsize=(width, TEXT_HEIGHT), dpi=300, facecolor="white"
+            figsize=(width, sum(HEIGHTS.values())), dpi=300, facecolor="white"
         )
         panels: Any = figure.subfigures(
             len(HEIGHTS), 1, height_ratios=list(HEIGHTS.values()), hspace=0.0
