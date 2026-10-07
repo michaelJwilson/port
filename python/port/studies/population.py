@@ -571,28 +571,9 @@ def _neutral(
     return out
 
 
-def _kept_run(sample: Any, kept: Path) -> dict[str, Any]:
-    """`read_run`'s labels, seglevel, `a` and `b`, from a run's `KEPT` outputs."""
-    from port.qa.audit import _barcode
-
-    table = pd.read_csv(kept / "clone_labels.tsv", sep="\t", comment="#")
-    barcodes = table["barcode"] if "barcode" in table else table.iloc[:, 0]
-    by_barcode = dict(
-        zip(_barcode(barcodes), table["clone_label"].to_numpy(), strict=True)
-    )
-    labels = np.array([by_barcode.get(b, -1) for b in sample.barcodes])
-    seglevel = pd.read_csv(kept / "cnv_seglevel.tsv", sep="\t")
-    missing = np.full(len(seglevel), -1)
-    n_fitted = int(labels.max()) + 1
-    a, b = (
-        np.stack([seglevel.get(f"clone{c} {k}", missing) for c in range(n_fitted)], 1)
-        for k in ("A", "B")
-    )
-    return {"labels": labels, "seglevel": seglevel, "a": a, "b": b}
-
-
 def rescore(out: Path) -> int:
     """Add `neutral_segments` to each record scored before it, from its outputs."""
+    from port.qa.audit import read_tables
     from port.qa.scoring import matched, overlap
     from port.sim.fixtures import load_simulated
 
@@ -605,7 +586,7 @@ def rescore(out: Path) -> int:
         manifest = ROOT / "sim" / "manifests" / f"{record['manifest']}.toml"
         draws = out / "draws" / f"rescore-s{seed:04d}"
         sample = load_simulated(str(draw_member(seed, draws, manifest)))
-        run = _kept_run(sample, out / "outputs" / f"s{seed:04d}-J{j:g}")
+        run = read_tables(sample, out / "outputs" / f"s{seed:04d}-J{j:g}")
         planted, fitted = np.asarray(sample.labels), run["labels"]
         scored = fitted >= 0
         counts = overlap(planted[scored], fitted[scored], len(sample.clones),
@@ -628,6 +609,7 @@ def rescore_sets(out: Path) -> int:
     The whole record's clones and events are rebuilt by :func:`score_run`, so
     records scored by an earlier :func:`set_scores` carry the current fields.
     """
+    from port.qa.audit import read_tables
     from port.sim.fixtures import load_simulated
 
     done = 0
@@ -641,7 +623,7 @@ def rescore_sets(out: Path) -> int:
         manifest = ROOT / "sim" / "manifests" / f"{record['manifest']}.toml"
         draws = out / "draws" / f"rescore-s{seed:04d}"
         sample = load_simulated(str(draw_member(seed, draws, manifest)))
-        record |= score_run(sample, _kept_run(sample, kept), sets)
+        record |= score_run(sample, read_tables(sample, kept), sets)
         partial = path.with_suffix(".partial")
         partial.write_text(json.dumps(record) + "\n")
         partial.replace(path)
