@@ -40,7 +40,7 @@ dependencies = [
     "pysam",
     # NB the commit `port`'s `uv.lock` resolves `[tool.uv.sources]`'s `main`
     #    to; a direct reference, since `cnamaste` ships without `port`'s lock.
-    "snakes_and_ladders @ git+https://github.com/michaelJwilson/snakes_and_ladders@9730280fd2e2f03619c7de25c8a45dded71a60dd",
+    "snakes_and_ladders @ git+https://github.com/michaelJwilson/snakes_and_ladders@ef2fd06c49d7352ab0d977835c50e226b740f8aa",
 ]
 
 [project.optional-dependencies]
