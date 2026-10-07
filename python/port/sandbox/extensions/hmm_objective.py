@@ -76,6 +76,7 @@ ALPHA, TAU = 0.5, 1_000.0
 """`hmm_nophasing.get_initial_params`' NB and beta-binomial dispersions: what an unfitted start is scored at."""
 
 __all__ = [
+    "BUDGETS",
     "DEFAULTS",
     "LEAPFROG",
     "SAMPLERS",
@@ -96,14 +97,12 @@ HMC_ADAPT = 8
 RUNGS = 4
 """`tempering-hmm`: replicas on the ladder."""
 
-DEFAULTS: dict[str, dict[str, float]] = {
-    "anneal-hmm": {"t_start": 1e2, "steps": 54, "step": 3e-3},
-    "tempering-hmm": {"t_top": 1e4, "rounds": 13, "step": 1e-3},
-    "hmc-hmm": {"temperature": 1.0, "warmup": HMC_ADAPT, "draws": 13, "step": 1e-3, "adapt": 1.0, "target": 0.65},
+BUDGETS: dict[str, dict[str, float]] = {
+    "anneal-hmm": {"steps": 54},
+    "tempering-hmm": {"rounds": 13},
+    "hmc-hmm": {"warmup": HMC_ADAPT, "draws": 13, "step": 1e-3, "adapt": 1.0, "target": 0.65},
 }  # fmt: skip
-"""Each start's knobs where no `setting` is given: the values `port.studies.copy_state_stream --tune` chose
-on `dev_tree_1s_hard`'s held-out realizations 0-2 (`python/port/studies/copy_sampler_settings.json`), 5 seeds
-per setting, over grids shaped as port's samplers' were (9 / 9 / 7 settings).
+"""Each start's fixed knobs: its budget, and `hmc`'s dual-averaging warm-up, initial step and target.
 
 Budgets are the passes port's deleted samplers spent at their tuned schedules, not exceeded: 54
 annealing steps (433 passes against 433), 13 tempering rounds (417 against 436), 12 + 13 hmc
@@ -115,6 +114,29 @@ raised on zero warm-up variance when the chain did not move in the 2 proposals i
 gap 5); `sal` #1207 regularizes that variance and reports the coordinate on `Adapted.flat` (T- #707).
 At 8 on `sal` 006e49d, realization 0 (`d2938975`), seeds 0-3: best NLL 79,704-79,802 (median 79,724)
 against 79,677-79,770 (median 79,725) at 12, at 188 passes against 220; none refused. Not re-tuned."""
+
+TUNED_KEYS: dict[str, tuple[str, ...]] = {
+    "anneal-hmm": ("t_start", "step"),
+    "tempering-hmm": ("t_top", "step"),
+    "hmc-hmm": ("temperature",),
+}
+"""The knobs `run_calibrate --copy` tunes for each start (`copy_state_stream.GRID`)."""
+
+
+def _defaults() -> dict[str, dict[str, float]]:
+    """`BUDGETS` with each start's tuned knobs from `configs/copy_sampler_settings.json` (#749 WP1)."""
+    from port.qa.provenance import calibration
+
+    tuned = calibration("copy_sampler_settings")
+    return {name: {**budget, **{k: float(tuned[name][k]) for k in TUNED_KEYS[name]}}
+            for name, budget in BUDGETS.items()}  # fmt: skip
+
+
+DEFAULTS: dict[str, dict[str, float]] = _defaults()
+"""Each start's knobs where no `setting` is given: `BUDGETS`, and the knobs `run_calibrate --copy`
+chose on `dev_tree_1s_hard`'s held-out realizations 0-2 (`configs/copy_sampler_settings.json`), 5 seeds
+per setting. Until #749 WP1 they were restated here, and stale since #723: `tempering-hmm` at
+`t_top` 1e4, step 1e-3, against the file's 100, 3e-3; `hmc-hmm` at temperature 1 against 100."""
 
 
 SAMPLERS = tuple(DEFAULTS)

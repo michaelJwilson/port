@@ -54,6 +54,7 @@ ROLES: dict[str, Role] = {
     "port.scripts.run_cnaster": "script",
     "port.scripts.run_audit": "script",
     "port.scripts.run_benchmark": "script",
+    "port.scripts.run_calibrate": "script",
     "port.scripts.run_figures": "script",
     "port.scripts.run_ledger": "script",
     "port.scripts.run_study": "script",

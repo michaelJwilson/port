@@ -1,8 +1,9 @@
 """#556: Potts solvers from random labels on a stream of the run's clone-assignment problems, the plot redrawn per problem.
 
 `run_study --potts-stream MANIFEST OUT_DIR [--problems 25] [--starts 50] [--held-out 3] [--workers 4] [--states run]`
-`run_study --potts-stream MANIFEST OUT_DIR --tune SAMPLER ...` tunes
-only the named samplers on the held-out realizations and merges them into `SETTINGS`.
+`run_calibrate --potts MANIFEST OUT_DIR --samplers SAMPLER ...` tunes the
+named samplers on the held-out realizations and merges them into `SETTINGS`
+(`tune`, `retune`); the stream itself never tunes (#749 WP1).
 `--only SOLVER ...` runs a subset, `--merge PKL ...` draws it with earlier streams.
 
 The main process draws each realization of `MANIFEST` and runs
@@ -17,10 +18,10 @@ its numbers do not compare with these.
 
 - **Warmup.** Each worker runs every solver once on a 10 x 10 patch before
   any timed job, so no compilation lands in a timing.
-- **Tuning.** The first `--held-out` realizations tune the samplers (`TUNED`)
-  and are not evaluated; with `--settings`, the samplers take that file's
-  settings (`SETTINGS`) and nothing is tuned, the held-out realizations still
-  skipped. Each sampler searches `GRID` -- the start temperature, the end fixed
+- **Tuning.** `run_calibrate --potts` tunes the samplers (`TUNED`) on the
+  first `--held-out` realizations, which the stream never evaluates; the
+  stream reads the settings it wrote (`SETTINGS`, or `--settings`). Each
+  sampler searches `GRID` -- the start temperature, the end fixed
   at `T_END` so the last sweeps are a descent, the sweep budget and the
   warm-up; for a tempering ladder, its hottest replica and its replica sweeps
   -- in three rounds (`tune`): cheap budgets first, the dearest only where
@@ -58,6 +59,7 @@ from typing import Any, NamedTuple, cast
 
 import numpy as np
 
+from port.qa.provenance import CONFIGS
 from port.studies import records
 from port.studies import stage as at
 from port.studies import stream as harness
@@ -161,11 +163,9 @@ TOLERANCE = 0.1
 REPLICAS = 6
 """sal's `N_REPLICAS`: both tempering ladders, geometric between `T_END` and the start temperature."""
 
-SETTINGS = Path(__file__).with_name("potts_sampler_settings.json")
-"""The samplers' settings tuned once on `dev_tree_1s_hard`'s first 3 realizations (r0 `d2938975`), reused by `--settings`.
-
-Tuned on the planted-law field `port.sandbox.known_field` built before #735,
-not the run's: retuning on the run's field is #723's."""
+SETTINGS = CONFIGS / "potts_sampler_settings.json"
+"""The samplers' settings, tuned by `run_calibrate --potts` on `dev_tree_1s_hard`'s first 3
+realizations at the run's clone-assignment field (#723); the stream's default `--settings`."""
 
 _GRAPHS: dict[tuple[int, float], Any] = {}
 
@@ -474,7 +474,7 @@ def run(
     starts: int,
     held_out: int,
     workers: int,
-    settings: Path | None = None,
+    settings: Path = SETTINGS,
     only: tuple[str, ...] | None = None,
     first: int = 0,
     merge: tuple[Path, ...] = (),
@@ -501,14 +501,9 @@ def run(
     futures: dict[Future[dict[str, Any]], int] = {}
     opened = time.perf_counter()
     with harness.pool(workers, _init) as pool:
-        if settings is None:
-            tuned, tuning_rows = tune(
-                pool, list(problems(manifest, out_dir, held_out, states=states))
-            )
-        else:
-            loaded = json.loads(settings.read_text())
-            tuned = {k: v for k, v in loaded.items() if not k.startswith("_")}
-            tuning_rows = []
+        loaded = json.loads(settings.read_text())
+        tuned = {k: v for k, v in loaded.items() if not k.startswith("_")}
+        tuning_rows: list[dict[str, Any]] = []
 
         def drain(block: bool) -> None:
             for index, row in harness.finished(futures, block):
@@ -572,6 +567,9 @@ def retune(
             pool, list(problems(manifest, root, held_out, states=states)), samplers
         )
     settings = json.loads(SETTINGS.read_text())
+    settings["_provenance"] = (f"run_calibrate --potts on {manifest.name} realizations 0-{held_out - 1}, states {states}, "
+                               f"{TUNING_STARTS} random starts per setting; the cheapest setting within {TOLERANCE} nats "
+                               "of the best median gap to TRW-S's bound (#556, #723)")  # fmt: skip
     for solver, setting in chosen.items():
         settings[solver] = {"t_start": setting["t_start"], "sweeps": setting["sweeps"], "warm": setting["warm"],
                             "median_gap": round(setting["gap"], 3), "default_median_gap": round(setting["default_gap"], 3)}  # fmt: skip
@@ -588,17 +586,10 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument(
         "--settings",
         type=Path,
-        default=None,
-        help=f"sampler settings to reuse, e.g. {SETTINGS}",
+        default=SETTINGS,
+        help=f"sampler settings, by default {SETTINGS}, which run_calibrate --potts writes",
     )
     parser.add_argument("--workers", type=int, default=4)
-    parser.add_argument(
-        "--tune",
-        nargs="+",
-        default=None,
-        metavar="SAMPLER",
-        help=f"tune only these on the held-out realizations, merge them into {SETTINGS.name}, and stop",
-    )
     parser.add_argument(
         "--only",
         nargs="+",
@@ -627,16 +618,6 @@ def main(argv: list[str] | None = None) -> None:
         help="the Baum-Welch before the field starts from the run's states or the planted ones",
     )
     arguments = parser.parse_args(argv)
-    if arguments.tune is not None:
-        retune(
-            arguments.manifest,
-            tuple(arguments.tune),
-            arguments.held_out,
-            arguments.workers,
-            arguments.out_dir,
-            arguments.states,
-        )
-        return
     run(arguments.manifest, arguments.out_dir, arguments.problems, arguments.starts, arguments.held_out,
         arguments.workers, arguments.settings, tuple(arguments.only) if arguments.only else None, arguments.first,
         tuple(arguments.merge), arguments.states)  # fmt: skip
