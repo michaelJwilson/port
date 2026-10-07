@@ -70,3 +70,34 @@ def test_the_run_and_the_combined_figure_draw_in_the_stated_face() -> None:
                 plt.close(figure)
 
         assert name == face, context.__name__
+
+
+@pytest.mark.analytic
+def test_each_page_share_is_its_fraction_of_the_text_block_less_its_caption() -> None:
+    """`page_size` against the paper's text block by hand, letter less 1.01 in
+    margins and `llncs`'s 58 pt head and foot, 468.31 by 590.99 TeX points as
+    `pdflatex` reports it: "full" is the block less 1.5 in, the shares 1/3, 1/2
+    and 3/4 of it, and `columns` figures on a row split its width (T- #733,
+    T- #740)."""
+    from port.extensions.figure_style import page_size
+
+    width, room = 468.31 / 72.27, 590.99 / 72.27 - 1.5
+
+    assert page_size() == pytest.approx((width, room), abs=1e-3)
+    for page, share in [("third", 1 / 3), ("half", 1 / 2), ("three_quarters", 3 / 4)]:
+        assert page_size(page)[1] == pytest.approx(share * room, abs=1e-3)  # type: ignore[arg-type]
+
+    half, height = page_size("third", columns=2)
+    assert 2 * half == pytest.approx(width, abs=1e-3)
+    assert height == pytest.approx(room / 3, abs=1e-3)
+
+
+@pytest.mark.infra
+def test_a_share_or_a_row_page_size_cannot_draw_is_refused() -> None:
+    """An unnamed share and a row of no figures raise, naming the value."""
+    from port.extensions.figure_style import page_size
+
+    with pytest.raises(ValueError, match="'quarter'"):
+        page_size("quarter")  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="columns 0"):
+        page_size("half", columns=0)

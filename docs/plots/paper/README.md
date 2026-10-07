@@ -4,8 +4,8 @@
 0.9335, exact altered (phase-free)
 0.8992 (phased 0.1473), from one
 `run_cnaster_port --sal --png-copies` run on `sim/manifests/dev_tree_1s_easy.toml` r0 at
-code `3cf5be3`: 153 s wall, 3.49 GB peak.
-Ledger `run_id` `3cf5be3-dev_tree_1s_easy_r0_7ba9b01f-0802` (`docs/metrics/`, fixture `dev_tree_1s_easy_r0_7ba9b01f`).
+code `8bed5a1`: 127 s wall, 3.42 GB peak.
+Ledger `run_id` `8bed5a1-dev_tree_1s_easy_r0_7ba9b01f-2114` (`docs/metrics/`, fixture `dev_tree_1s_easy_r0_7ba9b01f`).
 
 Regenerate from a clean tree, so the stamp carries no `+`; it draws r0 into
 `.cache/paper_figures/` where `--draw` is not given, and refuses any r0 not
@@ -18,7 +18,12 @@ hashing to `7ba9b01f`:
 draw panel (a) on a slide mocked from the planted labels (`port.sim.he_slide`):
 the fixture has no H&E image, and the run never reads the mock.
 `truth/phase.png` is flat: this r0 plants 0 phase switches.
-`solvers/solver_combined.png` is not drawn from this fixture: `--solvers POTTS.pkl COPY.pkl`
+Every figure here predates T- #733 and T- #740: drawn on `llncs`'s 4.80 by
+7.60 in block at 7 pt, they are included at 1.35x on the paper's 6.48 by
+8.18 in block, and `truth/truth_combined.png` and `run/combined.png` leave no
+room for a caption, until regenerated at 6.48 in, 10 pt, and 8.18 in less
+`CAPTION_ROOM` (1.5 in).
+`solver_combined.png` is not drawn from this fixture: `--solvers POTTS.record COPY.record`
 draws it from a `port.studies.potts_stream` and a `port.studies.copy_state_stream` record,
 and its stamp names both records' data hashes.
 The genomic panels of `truth/truth_combined.png`, `truth/clones_genomic.png`,
@@ -29,7 +34,7 @@ The genomic panels of `truth/truth_combined.png`, `truth/clones_genomic.png`,
 | File | Question | Source |
 | --- | --- | --- |
 | `truth/truth_combined.png` | What was planted, on one page: tree, (A, B) profile, RDR and BAF per clone? | `port.sim.truth_figure.truth_combined_figure` |
-| `truth/simulated_tree.png` | Which events sit on which edge of the simulated clone tree? | `port.sim.truth_figure.simulated_tree_figure`, `truth_combined`'s panel (a) |
+| `truth/simulated_tree.png` | Which events sit on which edge of the simulated clone tree? | `port.sim.truth_figure.simulated_tree_figure`, `truth_combined`'s panel (a) alone |
 | `truth/spatial.png` | Which clone was each spot drawn from? | `port.sim.analysis.plot_spatial` |
 | `truth/clones_genomic.png` | What RDR and BAF does each planted clone give along the genome? | `port.sim.analysis.plot_clones_genomic_truth` |
 | `truth/clone_profiles.png` | What (A, B) does each clone carry along the genome? | `port.sim.analysis.plot_clone_profiles` |
@@ -43,11 +48,11 @@ The genomic panels of `truth/truth_combined.png`, `truth/clones_genomic.png`,
 | `run/clones_spatial.png` | Which fitted clone is each spot? | the run's `plots/clones_spatial.png` |
 | `run/clones_genomic.png` | What RDR and BAF did the run fit per clone? | the run's `plots/clones_genomic.png` |
 | `run/rdr_baf_clones_genomic.png` | What RDR and BAF were the clones fitted to? | the run's `plots/rdr_baf_clones_genomic.png` |
-| `compare/clones_truth_vs_fit.png` | Do the fitted clones recover the planted ones, and which matches which? | `labels_figure`: `tests.sim_audit.score`'s ARI and matching |
+| `compare/clones_truth_vs_fit.png` | Do the fitted clones recover the planted ones, and which matches which? | `labels_figure`: `port.qa.audit.score_sample`'s ARI and matching |
 | `compare/copy_confusion.png` | Which (A, B) is each planted pair decoded as? | `confusion_figure`: `port.qa.scoring.copy_confusion` |
 | `compare/copy_genomic_truth_vs_fit.png` | Where along the genome is a matched clone's (A, B) decoded wrong, or swapped? | `genomic_compare_figure`: `score`'s clone-bins |
 | `compare/exact_by_class.png` | Which planted classes are recovered exactly, with and without phase? | `exact_figure`: `port.qa.scoring.exact_by_class` |
-| `solvers/solver_combined.png` | How far above the best does each spatial solver and each copy-state start end, and how fast? | `solver_figure`: `port.studies.potts_plot.draw`, `port.studies.copy_state_plot.draw` |
+| `solver_combined.png` | How far above the best does each spatial solver and each copy-state start end, and how fast? | `solver_figure`: `port.studies.potts_plot.draw`, `port.studies.copy_state_plot.draw` |
 
 ## Key studies
 

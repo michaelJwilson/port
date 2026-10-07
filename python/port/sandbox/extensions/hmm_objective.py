@@ -11,26 +11,31 @@ Exit: retire with the #540 study. Built on `sal`'s count-pair HMM objective
   since T- #707 (sal 006e49d): `Backend.JAX` costs 0.42-0.50x port's former
   jitted `jax_hmm` forward at 4 threads and 0.38-0.51x at 1 core, per value
   and gradient on PR- #672's instance, so that forward was deleted.
+  `Backend.RUST` since sal #1265 (sal 9730280): its compiled `count_hmm`
+  kernel takes this pair with a covariate per channel, 24.0 ms against
+  `Backend.JAX`'s 119.0 ms per value and gradient at 200 segments of
+  100-3,000 (328,785 positions), four states, min of 3; 9.4e-14 relative on
+  the value and 4.5e-12 of the largest gradient component apart at 5 points.
 
 **The objective.** `HmmObjective` is `sal`'s `EmissionHmmObjective`
-(`backend=Backend.JAX`, sal #1169, #1206) of a
+(`backend=Backend.RUST`, sal #1248, #1265) of a
 `RateConcentrationCountPairEmission` (sal #1205), independent form, on the
 clone-stacked rows as a `Ragged` of segments (`lengths`), exposure and
 trials as its covariate. `Restricted` varies its `mean` and `rate` blocks,
 so `theta = (log_mu, logit p_binom)`, one of each per state; the
 dispersions, the stickiness and the uniform start probabilities are held at
-`known_copy.hmm`'s `ALPHA`, `TAU` and `T` (`objective_for`), the values
-`known_copy.decode` scores a start at. No per-clone shift (#276).
+`ALPHA`, `TAU` and `T` (`objective_for`), `cnaster`'s initial
+dispersions and the shipped configuration's stickiness. No per-clone shift (#276).
 `value_and_gradient` and `energy` are declared (`sal.opt.objective`), and
-`__call__` returns the same JAX value, differentiable by a
-`torch.autograd.Function` carrying JAX's gradient.
+`__call__` returns the same value, differentiable by a
+`torch.autograd.Function` carrying the kernel's gradient.
 
 **Departure from `sal`.** `sal`'s own `__call__` is autograd through its
 torch forward, its oracle route: `sal`'s samplers read potentials through
-`__call__`, so it would run a second, slower implementation beside the JAX
+`__call__`, so it would run a second, slower implementation beside the compiled
 gradient and differ from it at round-off. `_Carried` keeps one.
 
-**Evaluations are passes.** `evaluations` counts the JAX value-and-gradient
+**Evaluations are passes.** `evaluations` counts the value-and-gradient
 passes run. `sal` carries `U` and `grad U` along a chain (sal #1217, #1222),
 so the former 64-point memo is gone; the last point's pass is kept, because
 `sample` scores the initial point and `anneal` then asks for its value and
@@ -62,6 +67,12 @@ from typing import Any, NamedTuple
 
 import numpy as np
 import torch
+
+T = 1.0 - 1e-7
+"""`hmm.t` of `tests/data/zenodo_sim_config.yaml`: the probability a clone stays in its state from one bin to the next."""
+
+ALPHA, TAU = 0.5, 1_000.0
+"""`hmm_nophasing.get_initial_params`' NB and beta-binomial dispersions: what an unfitted start is scored at."""
 
 __all__ = [
     "DEFAULTS",
@@ -119,7 +130,7 @@ class Sampled(NamedTuple):
 
 
 class _Carried(torch.autograd.Function):
-    """The objective's value as a torch scalar whose backward is JAX's gradient."""
+    """The objective's value as a torch scalar whose backward is the kernel's gradient."""
 
     @staticmethod
     def forward(
@@ -188,7 +199,7 @@ class HmmObjective:
             Ragged(np.stack(data[:2], axis=1), self.lengths),
             family,
             covariate=np.stack(data[2:], axis=1),
-            backend=Backend.JAX,
+            backend=Backend.RUST,
         )
         chain = np.full((k, k), (1.0 - stay) / max(k - 1, 1))
         np.fill_diagonal(chain, stay)
@@ -201,7 +212,7 @@ class HmmObjective:
         self._last: tuple[bytes, float, np.ndarray] | None = None
 
     def _evaluate(self, x: np.ndarray) -> tuple[float, np.ndarray]:
-        """`(U(x), dU/dx)`: one pass of `sal`'s JAX twin, or the last pass's where `x` is its point."""
+        """`(U(x), dU/dx)`: one pass of `sal`'s compiled kernel, or the last pass's where `x` is its point."""
         x = np.array(x, dtype=np.float64)
         key = x.tobytes()
         if self._last is not None and self._last[0] == key:
@@ -228,7 +239,7 @@ class HmmObjective:
         )
 
     def __call__(self, theta: torch.Tensor) -> torch.Tensor:
-        """`U(theta)`, differentiable in `theta` through JAX's gradient."""
+        """`U(theta)`, differentiable in `theta` through the kernel's gradient."""
         value, grad = self._evaluate(theta.detach().numpy())
         return _Carried.apply(  # type: ignore[no-any-return]
             theta,
@@ -288,8 +299,7 @@ def objective_for(
     n_states: int,
     start: np.ndarray,
 ) -> HmmObjective:
-    """`HmmObjective` at `known_copy.hmm`'s `ALPHA`, `TAU` and `T`, the values `decode` scores a start at."""
-    from port.sandbox.known_copy.hmm import ALPHA, TAU, T
+    """`HmmObjective` at `ALPHA`, `TAU` and `T`."""
 
     return HmmObjective(
         total, b, exposure, trials, lengths, n_states,

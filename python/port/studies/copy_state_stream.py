@@ -1,4 +1,4 @@
-"""#540: copy-state starts at known clones on a stream of drawn realizations, polished by the HMM's Baum-Welch.
+"""#540: copy-state starts at the planted clones, each scored and polished by `run_cnaster_port --sal`'s own Baum-Welch (#730).
 
 `run_study --copy-state-stream MANIFEST OUT_DIR [--problems 5] [--seeds 3] [--held-out 3] [--first 0] [--settings PATH] [--workers 4] [--all | --starts NAME ...]`
 
@@ -9,34 +9,39 @@ cheapest setting whose median gap in log-likelihood at the start's own states
 is within `TOLERANCE` of the best setting's. The held-out realizations are
 never evaluated: the stream starts after them.
 
-The main process draws each realization of `MANIFEST` and builds its problem at
-the planted clones (`port.sandbox.known_copy.problems`: 1 Mb bins under #551's
-300 normal-UMI floor, phased allele reads); the pool runs the starts while the
-next realization draws.
+Each realization is drawn to disk as the run reads a sample
+(`port.studies.stage.members`), and one pool job per realization runs
+`run_cnaster_port --sal` on it at its planted clones up to the RDR + BAF
+stage's Baum-Welch (`port.studies.stage.at_oracle_clones`, #730). There the
+run's own call, with every argument as the run built it, scores every start:
 
+- **Problem.** The run's: its segments, phasing, pseudobulk and exposure at
+  the planted clones, clones stacked along the genome. Nothing is rebuilt by
+  the study; the planted clones are the one oracle input.
 - **Starts.** `STARTS`, one per family of `port.sandbox.extensions.copy_starts`'
   registry (`--all`: every start), each seeded as `run_start` seeds it but without
   its `sal` mixture polish: the start is the algorithm's own output. A
-  stochastic start runs `--seeds` seeds, a deterministic one seed 0.
-- **Polish.** `cnaster`'s Baum-Welch on the clones stacked along the genome
-  (`known_copy.baum_welch`), from the start's states.
-- **Scored.** The log-likelihood at the start's states (`known_copy.decode`)
-  and after Baum-Welch; the rows whose state is not the planted one under the
-  best 1-1 matching of states (`known_copy.missed`), before and after.
-- **Truth.** Per realization, the planted states decoded and polished by the
-  same Baum-Welch.
+  stochastic start runs `--seeds` seeds, a deterministic one seed 0. A start's
+  first call in a worker runs once untimed: its compilation.
+- **Polish.** The run's `pipeline_baum_welch`, with the start as
+  `init_log_mu` and `init_p_binom`.
+- **Scored.** The same call with `max_iter = 0`, at the start's states, and
+  after Baum-Welch; the rows whose state is not the planted `(A, B)` under the
+  best 1-1 matching of states (`port.studies.stage.missed`), before and after.
+- **References.** Per realization, the planted states (`oracle_states`: each
+  planted class's pooled depth ratio and B share) and the run's own
+  initializer, each scored and fitted by the same call.
 
 There is no bound: the gap is to the best log-likelihood any run reached on
-that realization. When a realization's runs are all in, it pickles
-`OUT_DIR/<stem>.pkl` and redraws `OUT_DIR/<stem>.png`
-(`port.studies.copy_state_plot`). Each worker warms up on a small drawn call
-first; seconds are per job with `--workers` jobs sharing the host.
+that realization. When a realization's runs are all in, it writes
+`OUT_DIR/<stem>.record` (`port.studies.records`) and redraws `OUT_DIR/<stem>.png`
+(`port.studies.copy_state_plot`). Seconds are per job with `--workers`
+realizations sharing the host.
 """
 
 from __future__ import annotations
 
 import argparse
-import pickle
 import time
 import traceback
 from concurrent.futures import Future, ProcessPoolExecutor
@@ -45,15 +50,16 @@ from typing import Any
 
 import numpy as np
 
+from port.studies import records
 from port.studies import stream as harness
 
 STARTS = (
-    "calicost-gmm", "lattice", "prior", "kmeans++", "emission++", "gaussian-em",
-    "anneal-hmm", "tempering-hmm", "hmc-hmm",
+    "calicost-gmm", "lattice", "prior", "kmeans++", "emission++",
+    "tempering-hmm", "hmc-hmm",
 )  # fmt: skip
 """The starts the paper's initialization figure draws (T- #660). Out of the study, still in the
 registry (`--all` runs them): `cnaster-gmm`, `distinct`, `lattice-em`, `rdr-quantiles`, `data`,
-`quantile`, the emission++ variants (`EMISSION_VARIANTS`), `sal`'s surrogate `anneal`,
+`quantile`, the emission++ variants (`EMISSION_VARIANTS`), `anneal-hmm` (#716), `sal`'s surrogate `anneal`,
 `tempering`, `hmc` (snapped to observed rows, #563) and its best-of-5-with-EM starts,
 `--sal`'s `kmeans++x5+em` among them."""
 
@@ -70,7 +76,7 @@ GRID: dict[str, tuple[dict[str, float], ...]] = {
     "emission++anchor": tuple({"lloyd": r} for r in (1, 3, 10)),
     "emission++knn": tuple({"knn": k} for k in (0.003, 0.01, 0.03)),
 }  # fmt: skip
-"""Each tuned start's settings: the samplers' knobs (`port.sandbox.known_copy.hmm_objective`) and
+"""Each tuned start's settings: the samplers' knobs (`port.sandbox.extensions.hmm_objective`) and
 the emission++ variants' knobs (`port.sandbox.extensions.copy_starts.EMISSION_VARIANTS`); each untuned default is in its grid.
 
 The samplers are `sal`'s since #634, on port's deleted samplers' grid shapes, 9 / 9 / 7: the
@@ -95,46 +101,43 @@ SETTINGS = Path(__file__).with_name("copy_sampler_settings.json")
 """The settings tuned once on `dev_tree_1s_hard`'s first `--held-out` realizations (r0 `d2938975`), reused by `--settings`."""
 
 
-def _raw(problem: Any) -> dict[str, Any]:
-    """`cnaster`'s initializer arguments for `problem`: the clones stacked along the genome, one column.
-
-    What `cnaster.hmm.pipeline_baum_welch` hands `gmm_init` when it seeds
-    itself, and the arrays `known_copy.baum_welch` fits. Clones as columns
-    instead made `gmm_init` return a state per clone per state: 28 for 7
-    states on 4 clones.
-    """
-    from port.sandbox.known_copy.hmm import CONFIG
-
-    def column(values: np.ndarray) -> np.ndarray:
-        return np.asarray(values, dtype=np.float64)[:, None]
-
-    config = (Path(__file__).resolve().parents[3] / CONFIG).read_text()
-    return {"X": np.stack([problem.total, problem.b], axis=1)[:, :, None].astype(np.float64),
-            "base_nb_mean": column(problem.exposure), "total_bb_RD": column(problem.trials),
-            "lengths": np.asarray(problem.lengths), "log_sitewise_transmat": np.zeros(problem.total.size),
-            "params": "smp", "config": config}  # fmt: skip
-
-
-def _call(problem: Any) -> Any:
+def _call(stage: Any) -> Any:
+    """The run's arrays at `stage` as a `CopyCall`: one row per (clone, bin), clones stacked genome after genome."""
     from port.extensions.copy_starts import CopyCall
 
-    return CopyCall("rdrbaf", problem.n_states, problem.total, problem.b, problem.exposure, problem.trials,
-                    problem.clone, problem.contig, problem.start, problem.length, problem.planted, _raw(problem))  # fmt: skip
+    def tiled(values: Any) -> np.ndarray:
+        return np.tile(np.asarray(values), stage.n_clones)
+
+    X = stage.X
+    return CopyCall(
+        "rdrbaf", stage.n_states, X[:, 0, 0], X[:, 1, 0], stage.base_nb_mean.reshape(-1),
+        stage.total_bb_RD.reshape(-1), stage.clone, tiled(stage.contig).astype(str), tiled(stage.start),
+        tiled(stage.length), stage.planted,
+        {"X": X, "base_nb_mean": stage.base_nb_mean, "total_bb_RD": stage.total_bb_RD, "lengths": stage.lengths,
+         "log_sitewise_transmat": np.asarray(stage.args[6]), "params": str(stage.arguments["params"]),
+         "config": stage.config},
+    )  # fmt: skip
+
+
+def truth_label(stage: Any) -> np.ndarray:
+    """Each stacked row's planted state: its planted `(A, B)` as a class."""
+    _, inverse = np.unique(stage.planted, axis=0, return_inverse=True)
+    return np.asarray(inverse, dtype=np.int64).ravel()
 
 
 def seed_states(
     name: str,
-    problem: Any,
+    call: Any,
     rng: np.random.Generator,
     setting: dict[str, float] | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """`name`'s states on `problem`, seeded as `copy_starts.run_start` seeds them, before its `sal` polish."""
+    """`name`'s states on `call`, seeded as `copy_starts.run_start` seeds them, before its `sal` polish."""
     from port.sandbox.extensions.copy_starts import seed_states as seeded
     from port.sandbox.extensions.copy_starts import starts
 
     return seeded(
         name,
-        _call(problem),
+        call,
         rng,
         covariate=starts()[name].covariate,
         seconds=SECONDS,
@@ -142,105 +145,187 @@ def seed_states(
     )
 
 
-def solve(
-    problem: Any,
-    name: str,
-    seed: int,
-    setting: dict[str, float] | None = None,
-    polish: bool = True,
+def scored(
+    stage: Any, log_mu: Any, p_binom: Any, truth: np.ndarray, *, polish: bool
 ) -> dict[str, Any]:
-    """One start, scored at its states and, with `polish`, after Baum-Welch; a failure is a row."""
-    import port.sandbox.known_copy as kc
+    """The run's Baum-Welch call at `stage` from `(log_mu, p_binom)`: fitted, or with `polish` false scored at them (`max_iter = 0`)."""
+    shape = np.shape(stage.arguments["init_log_mu"])
+    log_mu = np.asarray(log_mu, dtype=np.float64).reshape(shape)
+    p_binom = np.clip(np.asarray(p_binom, dtype=np.float64), 1e-4, 1 - 1e-4).reshape(
+        shape
+    )
+    opened = time.perf_counter()
+    result = stage.run(
+        init_log_mu=log_mu, init_p_binom=p_binom, **({} if polish else {"max_iter": 0})
+    )
+    label = np.asarray(result.profile.pred_cnv, dtype=np.int64).ravel()
+    return {"seconds": time.perf_counter() - opened, "llf": float(result.llf), "missed": stage_module().missed(label, truth),
+            "log_mu": np.ravel(result.params.new_log_mu), "p_binom": np.ravel(result.params.new_p_binom)}  # fmt: skip
 
+
+def stage_module() -> Any:
+    from port.studies import stage
+
+    return stage
+
+
+def solve(
+    stage: Any, call: Any, realization: int, name: str, seed: int,
+    setting: dict[str, float] | None = None, polish: bool = True,
+) -> dict[str, Any]:  # fmt: skip
+    """One start, scored by the run's Baum-Welch at its states and, with `polish`, fitted from them; a failure is a row."""
     try:
         opened = time.perf_counter()
-        log_mu, p = seed_states(
-            name, problem, np.random.default_rng([seed, 540]), setting
-        )
+        log_mu, p = seed_states(name, call, np.random.default_rng([seed, 540]), setting)
         seconds = time.perf_counter() - opened
-        truth = problem.truth_label
-        at_start = kc.decode(problem, log_mu, p)
+        truth = truth_label(stage)
+        at_start = scored(stage, log_mu, p, truth, polish=False)
         if not polish:
-            return {"problem": problem.realization, "start": name, "seed": seed, "setting": setting,
-                    "seconds": seconds, "start_llf": at_start.log_likelihood}  # fmt: skip
-        fitted = kc.baum_welch(problem, log_mu, p)  # NB `--sal`'s Baum-Welch (#540)
+            return {"problem": realization, "start": name, "seed": seed, "setting": setting,
+                    "seconds": seconds, "start_llf": at_start["llf"]}  # fmt: skip
+        fitted = scored(stage, log_mu, p, truth, polish=True)
         return {
-            "problem": problem.realization, "start": name, "seed": seed, "setting": setting, "seconds": seconds,
-            "start_llf": at_start.log_likelihood, "start_missed": kc.missed(at_start.label, truth),
-            "bw_seconds": fitted.seconds, "llf": fitted.log_likelihood, "missed": kc.missed(fitted.label, truth),
-            "start_degenerate": at_start.degenerate, "degenerate": fitted.degenerate,
-            "log_mu": fitted.log_mu, "p_binom": fitted.p_binom,
+            "problem": realization, "start": name, "seed": seed, "setting": setting, "seconds": seconds,
+            "start_llf": at_start["llf"], "start_missed": at_start["missed"],
+            "bw_seconds": fitted["seconds"], "llf": fitted["llf"], "missed": fitted["missed"],
+            "log_mu": fitted["log_mu"], "p_binom": fitted["p_binom"],
         }  # fmt: skip
     except Exception as error:  # noqa: BLE001 -- a failed job is a result
-        return {"problem": problem.realization, "start": name, "seed": seed,
+        return {"problem": realization, "start": name, "seed": seed,
                 "error": f"{type(error).__name__}: {error}", "trace": traceback.format_exc(limit=4)}  # fmt: skip
 
 
-def _warm() -> None:
-    """Every start and the Baum-Welch once on a small call, so no compilation lands in a timing."""
-    from types import SimpleNamespace
+def oracle_states(stage: Any) -> tuple[np.ndarray, np.ndarray]:
+    """The planted states as a start: each planted `(A, B)` class's pooled depth ratio and B share, the largest first.
 
-    rng = np.random.default_rng(0)
-    n = 120
-    clone = np.repeat([0, 1], n)
-    state = np.where(np.arange(2 * n) % n < n // 2, 0, np.where(clone == 1, 1, 0))
-    exposure = np.full(2 * n, 300.0)
-    trials = rng.integers(20, 40, 2 * n).astype(float)
-    tiny = SimpleNamespace(
-        realization=-1, total=rng.poisson(exposure * np.where(state == 1, 0.5, 1.0)).astype(float),
-        b=rng.binomial(trials.astype(int), np.where(state == 1, 0.1, 0.5)).astype(float), exposure=exposure,
-        trials=trials, clone=clone, contig=np.full(2 * n, "1"), start=np.tile(np.arange(n) * 1e6, 2),
-        length=np.full(2 * n, 1e6), lengths=np.array([n, n]), planted=np.column_stack([1 - state, np.ones(2 * n, int)]),
-        n_states=2, truth_label=state,
-    )  # fmt: skip
-    for name in STARTS:
-        solve(tiny, name, 0)
-    for name, grid in GRID.items():
-        if name in STARTS:
-            solve(tiny, name, 0, grid[0], polish=False)
+    Read off the run's own arrays at the planted labels. Classes beyond the
+    run's `n_states` are dropped, the fewest rows first; a run asking for
+    more states than were planted repeats the largest class, so the start
+    has the run's shape.
+    """
+    call = _call(stage)
+    truth = truth_label(stage)
+    order = np.argsort(-np.bincount(truth))[: stage.n_states]
+    order = np.concatenate([order, np.repeat(order[:1], stage.n_states - order.size)])
+
+    def pooled(values: np.ndarray, k: int) -> float:
+        return float(values[truth == k].sum())
+
+    log_mu = np.array(
+        [np.log(pooled(call.total, k) / pooled(call.exposure, k)) for k in order]
+    )
+    p_binom = np.array(
+        [pooled(call.b, k) / max(pooled(call.trials, k), 1.0) for k in order]
+    )
+    return log_mu, p_binom
 
 
-def _init() -> None:
+def describe(stage: Any, realization: int) -> dict[str, Any]:
+    """The realization's references: the planted states, and the run's own initializer, each scored and fitted."""
+    truth = truth_label(stage)
+    planted = oracle_states(stage)
+    at, fitted = (scored(stage, *planted, truth, polish=f) for f in (False, True))
+    run_at = scored(
+        stage,
+        stage.arguments["init_log_mu"],
+        stage.arguments["init_p_binom"],
+        truth,
+        polish=False,
+    )
+    run_fit = scored(
+        stage,
+        stage.arguments["init_log_mu"],
+        stage.arguments["init_p_binom"],
+        truth,
+        polish=True,
+    )
+    return {"truth_start_llf": at["llf"], "truth_start_missed": at["missed"],
+            "truth_llf": fitted["llf"], "truth_missed": fitted["missed"],
+            "run_start_llf": run_at["llf"], "run_llf": run_fit["llf"], "run_missed": run_fit["missed"],
+            "n_rows": int(truth.size), "n_states": stage.n_states, "n_planted": int(truth.max()) + 1,
+            "realization": realization}  # fmt: skip
+
+
+_WARM: list[str] = []
+"""The starts this process has run once, untimed: numba and sal compile on the first call."""
+
+
+def member(
+    path: str, realization: int, jobs: list[tuple[str, int, dict[str, float] | None]], polish: bool, root: str,
+) -> dict[str, Any]:  # fmt: skip
+    """`jobs` on one realization, each against the run's Baum-Welch at its planted clones (`port.studies.stage`)."""
     import logging
+    import shutil
+
+    from port.sim.fixtures import load_simulated
+    from port.studies import stage as at
 
     logging.disable(logging.INFO)
-    _warm()
+    sample = load_simulated(Path(path).name, Path(path).parent)
 
+    def study(found: Any) -> dict[str, Any]:
+        call = _call(found)
+        for name in sorted({job[0] for job in jobs} - set(_WARM)):
+            # NB untimed: a start's first call pays its compilation
+            solve(found, call, realization, name, 0, None, polish=False)
+            _WARM.append(name)
+        rows = [solve(found, call, realization, *job, polish=polish) for job in jobs]
+        return {
+            "rows": rows,
+            "problem": describe(found, realization) if polish else None,
+        }
 
-def _describe(problem: Any) -> dict[str, Any]:
-    import port.sandbox.known_copy as kc
-
-    truth = problem.truth_label
-    at = kc.decode(problem, problem.truth_log_mu, problem.truth_p_binom)
-    fitted = kc.baum_welch(problem, problem.truth_log_mu, problem.truth_p_binom)
-    return {"truth_start_llf": at.log_likelihood, "truth_start_missed": kc.missed(at.label, truth),
-            "truth_llf": fitted.log_likelihood, "truth_missed": kc.missed(fitted.label, truth),
-            "n_rows": int(problem.total.size), "n_states": problem.n_states, "states": problem.states.tolist(),
-            "draw_seconds": problem.draw_seconds, "build_seconds": problem.build_seconds}  # fmt: skip
+    try:
+        return at.at_oracle_clones(sample, study, root=Path(root))
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
 
 
 def tune(
-    pool: ProcessPoolExecutor, held_out: list[Any], names: tuple[str, ...] = tuple(GRID)
+    pool: ProcessPoolExecutor, held_out: list[Any], names: tuple[str, ...], root: Path
 ) -> dict[str, dict[str, float]]:
-    """Each of `GRID`'s samplers' setting: the cheapest within `TOLERANCE` of the best median gap on `held_out`."""
+    """Each of `GRID`'s samplers' setting: the cheapest within `TOLERANCE` of the best median gap on `held_out`.
+
+    Two rounds (#716): every setting from one seed per held-out realization,
+    then the settings `harness.halve` keeps get the other `TUNING_SEEDS - 1`
+    seeds, and the choice is among those alone. The gap is to the best
+    log-likelihood any tuning run reached on that realization. Each round
+    is one job per realization, reaching its stage once (#730).
+    """
     import pandas as pd
 
-    futures = [pool.submit(solve, p, name, seed, setting, False)
-               for p in held_out for name in names for setting in GRID[name] for seed in range(TUNING_SEEDS)]  # fmt: skip
-    rows = [f.result() for f in futures]
+    rows: list[dict[str, Any]] = []
+
+    def run(jobs: list[tuple[str, int, dict[str, float] | None]]) -> pd.DataFrame:
+        futures = [pool.submit(member, str(m.sample.path), m.realization, jobs, False,
+                               str(root / f"tune_r{m.realization}")) for m in held_out]  # fmt: skip
+        for f in futures:
+            rows.extend(f.result()["rows"])
+        frame = pd.DataFrame([r for r in rows if "error" not in r])
+        top = frame.groupby("problem").start_llf.max()
+        frame["gap"] = frame.problem.map(top) - frame.start_llf
+        frame["key"] = frame.setting.map(lambda s: tuple(sorted(s.items())))
+        return frame
+
+    frame = run([(name, 0, setting) for name in names for setting in GRID[name]])
+    kept = {
+        str(name): harness.halve(g, TOLERANCE) for name, g in frame.groupby("start")
+    }
+    frame = run([(name, seed, dict(key)) for name, keys in kept.items() for key in keys
+                 for seed in range(1, TUNING_SEEDS)])  # fmt: skip
     failed = [r for r in rows if "error" in r]
     if failed:
         print(
             f"{len(failed)} tuning runs failed, e.g. {failed[0]['error'][:120]}",
             flush=True,
         )
-    frame = pd.DataFrame([r for r in rows if "error" not in r])
-    top = frame.groupby("problem").start_llf.max()
-    frame["gap"] = frame.problem.map(top) - frame.start_llf
-    frame["key"] = frame.setting.map(lambda s: tuple(sorted(s.items())))
+    print(f"tuning: {len(rows)} runs against the full grid's "
+          f"{sum(len(GRID[n]) for n in names) * TUNING_SEEDS * len(held_out)}", flush=True)  # fmt: skip
     chosen: dict[str, dict[str, float]] = {}
     for name, g in frame.groupby("start"):
-        key, best, by = harness.cheapest(g, TOLERANCE)
+        full = g.groupby("key").gap.size() == TUNING_SEEDS * len(held_out)
+        key, best, _ = harness.cheapest(g[g.key.isin(full[full].index)], TOLERANCE)
+        by = g.groupby("key").agg(gap=("gap", "median"))
         default = GRID[str(name)][UNTUNED[str(name)]]
         chosen[str(name)] = {**dict(key), "median_gap": round(float(best.gap), 3),
                              "seconds": round(float(best.seconds), 3),
@@ -265,7 +350,7 @@ def run(
     only: tuple[str, ...] = (),
     drop: tuple[str, ...] = (),
 ) -> Path:
-    """The stream after the `held_out` realizations; returns the pickle it keeps current.
+    """The stream after the `held_out` realizations; returns the record it keeps current.
 
     A start in `drop` gets no new job; its `reuse` rows are still kept, so a start can leave mid-stream
     and its realizations so far stay in the record.
@@ -273,15 +358,15 @@ def run(
     import json
     import logging
 
-    import port.sandbox.known_copy as kc
     from port.sandbox.extensions.copy_starts import starts
+    from port.studies import stage as at
 
     logging.disable(logging.INFO)
     out_dir.mkdir(parents=True, exist_ok=True)
     out = out_dir / (
-        f"copy_{manifest.stem}_r{first}.pkl"
+        f"copy_{manifest.stem}_r{first}{records.SUFFIX}"
         if first or merge
-        else f"copy_{manifest.stem}.pkl"
+        else f"copy_{manifest.stem}{records.SUFFIX}"
     )
     names = list(only) if only else list(starts()) if everything else list(STARTS)
     tuned: dict[str, dict[str, float]] = {}
@@ -294,109 +379,91 @@ def run(
     reused_rows: dict[tuple[int, str, int], dict[str, Any]] = {}
     reused_truth: dict[int, dict[str, Any]] = {}
     for path in reuse:
-        earlier = pickle.loads(path.read_bytes())
+        earlier = records.read(path)
         reused_truth |= earlier["problems"]
         for row in earlier["rows"]:
             if row["start"] in names and row["problem"] in earlier["complete"]:
                 reused_rows[(row["problem"], row["start"], row["seed"])] = row
     held: dict[int, dict[str, Any]] = {}
     rows: list[dict[str, Any]] = []
-    pending: dict[int, int] = {}
-    total_jobs: dict[int, int] = {}
     done: list[int] = []
     futures: dict[Future[dict[str, Any]], int] = {}
     opened = time.perf_counter()
 
-    drawn = [time.perf_counter()]
-
-    def draw(partial: bool) -> None:
-        shown = (
-            sorted({*done, *(i for i in pending if pending[i] < total_jobs[i])})
-            if partial
-            else done
-        )
-        record = {"manifest": str(manifest), "problems": held, "rows": rows, "done": shown, "complete": list(done),
+    def draw() -> None:
+        record = {"manifest": str(manifest), "problems": held, "rows": rows, "done": done, "complete": list(done),
                   "starts": names, "seeds": seeds, "tuned": tuned, "held_out": held_out}  # fmt: skip
-        out.write_bytes(pickle.dumps(record))
+        records.write(out, record)
         harness.redraw("copy-state-plot", out, merge)
-        drawn[0] = time.perf_counter()
 
     def drain(block: bool) -> None:
-        for index, row in harness.finished(futures, block):
-            rows.append(row)
-            pending[index] -= 1
-            if pending[index]:
-                if time.perf_counter() - drawn[0] >= REDRAW:
-                    draw(partial=True)
-                    print(
-                        f"[{time.perf_counter() - opened:6.0f}s] partial: {len(rows)} runs in; plot redrawn",
-                        flush=True,
-                    )
-                continue
+        for index, result in harness.finished(futures, block):
+            rows.extend(result["rows"])
+            held[index] = reused_truth.get(index) or result["problem"]
             done.append(index)
-            draw(partial=False)
-            record = {"rows": rows}
-            errors = sum("error" in r for r in record["rows"])
+            draw()
+            errors = sum("error" in r for r in rows)
             print(f"[{time.perf_counter() - opened:6.0f}s] problem {index} solved; {len(done)}/{n_problems} done, "
-                  f"{errors} errors; plot redrawn", flush=True)  # fmt: skip
+                  f"{errors} errors; truth after Baum-Welch missed {held[index]['truth_missed']} of "
+                  f"{held[index]['n_rows']}; plot redrawn", flush=True)  # fmt: skip
 
     with harness.pool(workers, _init) as pool:
-        total = held_out + first + n_problems
-        for problem in kc.problems(manifest, total, realizations=total):
-            if problem.realization < held_out + first:
-                continue
-            held[problem.realization] = reused_truth.get(
-                problem.realization
-            ) or _describe(problem)
-            print(f"[{time.perf_counter() - opened:6.0f}s] drew {problem.realization}: {problem.total.size} rows, "
-                  f"{problem.n_states} states; truth after Baum-Welch missed {held[problem.realization]['truth_missed']}",
-                  flush=True)  # fmt: skip
+        for m in at.members(
+            manifest, out_dir / ".sim", n=n_problems, first=held_out + first
+        ):
             jobs = [
                 (name, seed)
                 for name in names
                 for seed in (range(seeds) if registry[name].stochastic else [0])
             ]
-            kept = [reused_rows[(problem.realization, *job)] for job in jobs
-                    if (problem.realization, *job) in reused_rows]  # fmt: skip
-            rows.extend(kept)
-            jobs = [
-                j
-                for j in jobs
-                if (problem.realization, *j) not in reused_rows and j[0] not in drop
+            kept = [
+                reused_rows[(m.realization, *job)]
+                for job in jobs
+                if (m.realization, *job) in reused_rows
             ]
-            print(f"  reused {len(kept)} runs, {len(jobs)} to run", flush=True)
-            if not jobs:
-                done.append(problem.realization)
-                continue
-            pending[problem.realization] = len(jobs)
-            total_jobs[problem.realization] = len(jobs)
-            for name, seed in jobs:
-                futures[pool.submit(solve, problem, name, seed, tuned.get(name))] = (
-                    problem.realization
-                )
+            rows.extend(kept)
+            todo = [(name, seed, tuned.get(name)) for name, seed in jobs
+                    if (m.realization, name, seed) not in reused_rows and name not in drop]  # fmt: skip
+            print(f"[{time.perf_counter() - opened:6.0f}s] drew {m.realization} ({m.hash}): reused {len(kept)} runs, "
+                  f"{len(todo)} to run", flush=True)  # fmt: skip
+            futures[pool.submit(member, str(m.sample.path), m.realization, todo, True,
+                                str(out_dir / ".runs" / f"r{m.realization}"))] = m.realization  # fmt: skip
             drain(block=False)
         while futures:
             drain(block=True)
     return out
 
 
+def _init() -> None:
+    import logging
+
+    logging.disable(logging.INFO)
+
+
 def retune(
-    manifest: Path, held_out: int, workers: int, names: tuple[str, ...] = tuple(GRID)
+    manifest: Path,
+    held_out: int,
+    workers: int,
+    names: tuple[str, ...] = tuple(GRID),
+    root: Path | None = None,
 ) -> None:
     """`tune` of `names` on `manifest`'s first `held_out` realizations, merged into `SETTINGS` with its provenance."""
     import json
     import logging
+    import tempfile
 
-    import port.sandbox.known_copy as kc
+    from port.studies import stage as at
 
     logging.disable(logging.INFO)
+    root = Path(tempfile.mkdtemp()) if root is None else root
     with harness.pool(workers, _init) as pool:
         chosen = tune(
-            pool, list(kc.problems(manifest, held_out, realizations=held_out)), names
+            pool, list(at.members(manifest, root / ".sim", n=held_out)), names, root
         )
     provenance = (f"run_study --copy-state-stream --tune on {manifest.name} realizations 0-{held_out - 1}, "
-                  f"{TUNING_SEEDS} seeds per setting; the cheapest setting within {TOLERANCE} nats of the best "
-                  "median gap in log-likelihood at the start's states (#540)")  # fmt: skip
+                  f"{TUNING_SEEDS} seeds per setting, at the run's Baum-Welch at oracle clones (#730); the "
+                  "cheapest setting within {TOLERANCE} nats of the best median gap in log-likelihood at the "
+                  "start's states (#540)").replace("{TOLERANCE}", str(TOLERANCE))  # fmt: skip
     earlier = json.loads(SETTINGS.read_text()) if SETTINGS.exists() else {}
     SETTINGS.write_text(
         json.dumps({**earlier, "_provenance": provenance, **chosen}, indent=2) + "\n"

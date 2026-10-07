@@ -49,12 +49,15 @@ STATE: dict[str, Kind] = {
     "port.studies.clone_label_arms._graph": "rebind",
     "port.studies.copy_start_arms._CALLS": "run",
     "port.studies.hmm_starts._CALL": "run",
+    "port.studies.copy_state_stream._WARM": "cache",
     "port.studies.potts_stream._GRAPHS": "cache",
     # NB `port.qa.audit.audit_truth` records the normal candidates a run used,
     #    or plants the oracle's, and restores the name in its `finally`
     #    (T- #673 G3, from `tests.recovery_audit`).
     "cnaster.scripts.run_cnaster.determine_normal_candidates": "rebind",
     "cnaster.hmm_initialize.GaussianMixture": "rebind",
+    # NB #735: `port.studies.stage` wraps the installed clone assignment for one `run_core_inference` call and restores it
+    "cnaster.hmrf.pipeline_clone_assignment": "rebind",
     "port.extensions.copy_likelihood._FITS": "run",
     "port.extensions.samples._CURRENT": "run",
     "port.extensions.segments._CURRENT": "run",
