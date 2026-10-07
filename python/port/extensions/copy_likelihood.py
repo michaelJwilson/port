@@ -50,7 +50,9 @@ __all__ = [
     "captured_chain",
     "captured_clones",
     "captured_normal",
+    "clones_of",
     "lattice_decode",
+    "normal_of",
     "shared_decode",
     "viterbi_oracle",
 ]
@@ -245,46 +247,25 @@ def _viterbi(
 
     sal's compiled `likelihood.ragged.viterbi` (sal #1138, T- #632), which
     adds in :func:`viterbi_oracle`'s order and breaks a tie to the lower
-    state, so the path and the score are the oracle's bitwise. A one-bin
-    contig is decoded here, as the oracle decodes it: sal's `Ragged`
-    refuses a one-position segment (sal #666). The score is the segments'
-    maxima summed in order from zero, as the oracle sums them.
+    state, so the path and the score are the oracle's bitwise, a one-bin
+    contig included (sal #1233). The score is the segments' maxima summed in
+    order from zero, as the oracle sums them.
     """
     from sal.likelihood.ragged import viterbi
     from sal.ragged import Ragged
 
     density = np.ascontiguousarray(np.asarray(log_emission, dtype=np.float64).T)
-    start_prob = np.asarray(log_startprob, dtype=np.float64)
     sizes = np.asarray(lengths, dtype=np.int64)
-    starts = np.concatenate([[0], np.cumsum(sizes)[:-1]]).astype(np.int64)
-    single = sizes == 1
-    path = np.empty(density.shape[0], dtype=np.int64)
-    maxima = np.empty(sizes.size)
-
-    for segment in np.flatnonzero(single):
-        joint = start_prob + density[starts[segment]]
-        path[starts[segment]] = int(np.argmax(joint))
-        maxima[segment] = joint[path[starts[segment]]]
-
-    if (~single).any():
-        kept = np.concatenate(
-            [
-                np.arange(s, s + n)
-                for s, n in zip(starts[~single], sizes[~single], strict=True)
-            ]
-        )
-        decoded = viterbi(
-            Ragged(density[kept], tuple(int(n) for n in sizes[~single])),
-            start_prob,
-            np.asarray(log_transmat, dtype=np.float64),
-        )
-        path[kept] = decoded.path
-        maxima[~single] = decoded.log_joint
+    decoded = viterbi(
+        Ragged(density, tuple(int(n) for n in sizes)),
+        np.asarray(log_startprob, dtype=np.float64),
+        np.asarray(log_transmat, dtype=np.float64),
+    )
 
     total = 0.0
-    for score in maxima:
+    for score in np.asarray(decoded.log_joint):
         total += float(score)
-    return path, total
+    return np.asarray(decoded.path, dtype=np.int64), total
 
 
 @dataclass
@@ -683,6 +664,12 @@ def captured_clones() -> list[tuple[np.ndarray, Pseudobulk, float]] | None:
     if fit is None:
         return None
 
+    return clones_of(fit)
+
+
+def clones_of(captured: Any) -> list[tuple[np.ndarray, Pseudobulk, float]]:
+    """:func:`captured_clones` of a given fit (`copy_errors.Captured`)."""
+    fit = captured
     single_x, base, total, result = (
         fit.single_X,
         fit.single_base_nb_mean,
@@ -742,12 +729,18 @@ def captured_normal() -> int | None:
     diploid: on CalicoST easy and hard under `--sal` it named a tumour clone,
     held it at fraction 1 and shift 0, and decoded its LOH bins as `(1, 5)`.
     """
-    from port.patch.hmm_nophasing.shifted_emission import NEUTRAL_BAF_TOLERANCE
-
     fit = captured_fit()
 
     if fit is None:
         return None
+
+    return normal_of(fit)
+
+
+def normal_of(captured: Any) -> int:
+    """:func:`captured_normal` of a given fit (`copy_errors.Captured`)."""
+    fit = captured
+    from port.patch.hmm_nophasing.shifted_emission import NEUTRAL_BAF_TOLERANCE
 
     result = fit.res
     p_binom = np.asarray(result["new_p_binom"], dtype=np.float64).reshape(-1)

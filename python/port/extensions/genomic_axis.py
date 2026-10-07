@@ -28,8 +28,8 @@ be positive; applied there alone, `normal_scale` falls to 0 as `A` nears
 its argument, the same object, so a figure drawn through it is the linear
 axis bit for bit.
 
-**What `draw` adds.** Minor ticks, inward, every `every` base pairs, and on
-a labelled axis their values in Mb, each chromosome labelled at the least
+**What `draw` adds.** Minor ticks, outward, under the axis, every `every` base pairs, and on
+a labelled axis (`labels`, both the axis's and the call's) their values in Mb, each chromosome labelled at the least
 stride of `STRIDES` whose labels do not overlap at the size drawn. The
 chromosome boundaries and names stay each figure's own, drawn at `edges`:
 the figures style them differently, and a default-arm figure keeps
@@ -60,6 +60,7 @@ __all__ = [
     "Ticks",
     "altered_bins",
     "disclose",
+    "name_contigs",
     "resolve",
 ]
 
@@ -73,7 +74,10 @@ NORMAL_FLOOR = 0.25
 """The normal intervals' least scale, where `ALTERED_SCALE` would leave them none (T- #683)."""
 
 TICK_LENGTH = 2.0
-"""Points: a tick inside the track, clear of the points it marks."""
+"""Points: a tick under the track, outward, clear of the points it marks (PR- #715)."""
+
+CONTIG_PAD = 1.0
+"""Points between two contig names on one row of `name_contigs`."""
 
 LABEL_ADVANCE = 0.6
 """A digit's advance against the font size, an upper bound for serif and
@@ -205,7 +209,8 @@ class GenomicAxis:
     `(starts, ends)` in base pairs one per unit, says the base unit is a
     bin; `None` says it is a base pair. `altered` is `(k, 2)` intervals
     `[start, end)` of the base coordinate drawn `altered_scale` times their extent
-    (module docstring); `None` is the identity.
+    (module docstring); `None` is the identity. Without `labels`, `draw`
+    marks the ticks and labels none, whatever a plotter asks (PR- #701).
     """
 
     def __init__(
@@ -217,12 +222,14 @@ class GenomicAxis:
         bins: tuple[np.ndarray, np.ndarray] | None = None,
         names: Sequence[Any] | None = None,
         every: float = TICK_EVERY,
+        labels: bool = True,
     ) -> None:
         self.lengths = np.asarray(lengths, dtype=np.int64)
         self.names = (
             list(names) if names is not None else list(range(1, self.lengths.size + 1))
         )
         self.every = float(every)
+        self.labels = labels
         self.offsets = np.concatenate([[0], np.cumsum(self.lengths)])
         self.width = int(self.offsets[-1])
         self.bins = bins
@@ -266,6 +273,7 @@ class GenomicAxis:
         altered_scale: float = ALTERED_SCALE,
         *,
         every: float = TICK_EVERY,
+        labels: bool = True,
     ) -> GenomicAxis:
         """The axis of a bin table, `CHR START END` one row per bin, in its row order."""
         import pandas as pd
@@ -280,6 +288,7 @@ class GenomicAxis:
             bins=(table["START"].to_numpy(), table["END"].to_numpy()),
             names=names,
             every=every,
+            labels=labels,
         )
 
     @property
@@ -398,9 +407,11 @@ class GenomicAxis:
         )
 
     def draw(self, ax: Any, *, labels: bool = True) -> None:
-        """`ax`'s minor x ticks every `every` bp, inward; on `labels`, their Mb, thinned."""
+        """`ax`'s minor x ticks every `every` bp, outward; on `labels` and the
+        axis's own, their Mb, thinned."""
         from matplotlib.ticker import FixedLocator, NullFormatter
 
+        labels = labels and self.labels
         positions, chromosomes, multiples, every = self._ticks()
         texts = [f"{k * every / 1e6:g}" for k in multiples.tolist()]
         ax.xaxis.set_minor_locator(FixedLocator(positions.tolist()))
@@ -420,10 +431,10 @@ class GenomicAxis:
             axis="x",
             which="minor",
             bottom=True,
-            direction="in",
+            direction="out",
             length=TICK_LENGTH,
             width=0.5,
-            pad=TICK_LENGTH + 1.0,
+            pad=1.0,
             labelbottom=labels,
         )
 
@@ -513,3 +524,81 @@ def resolve(
         return None
 
     return GenomicAxis.of_table(table, every=axis.every)
+
+
+def name_contigs(
+    ax: Any,
+    starts: Sequence[float],
+    names: Sequence[str],
+    *,
+    size: float,
+    below: float = 0.0,
+) -> float:
+    """Every contig's name, once, centred under it, and no two overlapping.
+
+    A contig runs from its start to the next one's, the last to the axis's
+    right limit; one with no width is not named. Each name is cut to its
+    number, "chr" dropped (`chr21` is "21"), and set on the first row under
+    the axis where it clears the name before it by `CONTIG_PAD`: adjacent
+    short contigs stagger onto a second row, and a third where two do not
+    clear, so no name is dropped and none is shrunk below `size` points. One "chr", right of
+    nothing and left of the axis, names the rows. The rows start `below`
+    points under the ticks: room for Mb labels where the axis draws them.
+
+    Laid out from the axis's place on the page, so a caller names the
+    contigs after it has set the axis's x extent, and again if it moves it;
+    the names drawn before are replaced. Returns the inches the rows take
+    under the axis's foot, ticks included.
+    """
+    from matplotlib.transforms import blended_transform_factory, offset_copy
+
+    for text in [t for t in ax.texts if t.get_gid() in ("contig", "contig-axis")]:
+        text.remove()
+
+    figure = ax.get_figure(root=True)
+    renderer = figure.canvas.get_renderer()
+    dpi = figure.dpi
+    line = 1.15 * size
+    top = TICK_LENGTH + 1.0 + below
+    blended = blended_transform_factory(ax.transData, ax.transAxes)
+    edges = [*map(float, starts), float(ax.get_xlim()[1])]
+    rights: list[float] = []
+
+    for (x0, x1), name in zip(itertools.pairwise(edges), names, strict=True):
+        if x1 <= x0:
+            continue
+        text = ax.text(
+            (x0 + x1) / 2.0,
+            0.0,
+            str(name).removeprefix("chr"),
+            ha="center",
+            va="top",
+            fontsize=size,
+            gid="contig",
+            clip_on=False,
+        )
+        box = text.get_window_extent(renderer)
+        row = next(
+            (k for k, right in enumerate(rights) if box.x0 >= right), len(rights)
+        )
+        if row == len(rights):
+            rights.append(-np.inf)
+        rights[row] = box.x1 + CONTIG_PAD * dpi / 72.0
+        text.set_transform(
+            offset_copy(blended, figure, 0.0, -(top + row * line), units="points")
+        )
+
+    ax.text(
+        0.0,
+        0.0,
+        "chr",
+        ha="right",
+        va="top",
+        fontsize=size,
+        gid="contig-axis",
+        clip_on=False,
+        transform=offset_copy(
+            ax.transAxes, figure, -CONTIG_PAD - 1.0, -top, units="points"
+        ),
+    )
+    return (top + max(len(rights), 1) * line) / 72.0
