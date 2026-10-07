@@ -43,7 +43,6 @@ def kronecker_state_posteriors(
     """
     from sal.likelihood.ragged import SwitchKind, kronecker_order, posteriors
     from sal.ragged import Ragged
-    from scipy.special import logsumexp
 
     n_paired = log_emission.shape[0]
 
@@ -58,35 +57,19 @@ def kronecker_state_posteriors(
     sitewise = np.exp(np.asarray(log_sitewise_transmat, dtype=np.float64))
     switch = np.concatenate([[0.5], sitewise[:-1]])
 
-    # NB sal refuses a one-position segment (sal #666): it has no transition.
-    #    Its posterior is the start times the emission, normalized, which is
-    #    what `cnaster`'s lattices give it, so it is computed here.
+    # NB a one-position segment is sal's to score too (sal #1233): its
+    #    posterior is the start times the emission, normalized.
     lengths_array = np.asarray(lengths, dtype=np.int64)
-    starts = np.concatenate([[0], np.cumsum(lengths_array)[:-1]])
-    single = lengths_array == 1
-    log_posterior = np.empty_like(density)
-
-    for start in starts[single]:
-        joint = initial + density[start]
-        log_posterior[start] = joint - logsumexp(joint)
-
-    if (~single).any():
-        kept = np.concatenate(
-            [
-                np.arange(s, s + n)
-                for s, n in zip(starts[~single], lengths_array[~single], strict=True)
-            ]
-        )
-        result = posteriors(
-            Ragged(density[kept], tuple(int(n) for n in lengths_array[~single])),
-            initial,
-            np.asarray(log_transmat, dtype=np.float64),
-            switch=switch[kept],
-            switch_kind=(
-                SwitchKind.KRONECKER_DIAGONAL if diagonal else SwitchKind.KRONECKER
-            ),
-        )
-        log_posterior[kept] = np.asarray(result.log_posterior)
+    result = posteriors(
+        Ragged(density, tuple(int(n) for n in lengths_array)),
+        initial,
+        np.asarray(log_transmat, dtype=np.float64),
+        switch=switch,
+        switch_kind=(
+            SwitchKind.KRONECKER_DIAGONAL if diagonal else SwitchKind.KRONECKER
+        ),
+    )
+    log_posterior = np.asarray(result.log_posterior)
 
     log_gamma: np.ndarray = log_posterior[:, np.argsort(order)].T
     return log_gamma

@@ -44,9 +44,23 @@ PORT_ROWS = (
     "alpha-rust-merge",
     "alpha-rust-fuse-merge",
 )
-STARTLESS = ("field_argmax", "tempering", "max-product", "bifurcation")
-"""`sal` methods that take no start: each labelling is built from the field alone."""
-STOCHASTIC_SOLVERS = ("icm-random", "anneal", "swendsen-wang", "wolff", "tempering")
+STARTLESS = (
+    "field_argmax",
+    "tempering",
+    "tempering-mixed",
+    "max-product",
+    "bifurcation",
+)
+"""`sal` methods that take no start: each labelling is built from the field alone, or a ladder draws one per replica
+(`tempering-mixed`, which refuses a start since sal 9730280)."""
+STOCHASTIC_SOLVERS = (
+    "icm-random",
+    "anneal",
+    "swendsen-wang",
+    "wolff",
+    "tempering",
+    "tempering-mixed",
+)
 REALIZATIONS = 10
 SOLVED = 3
 """Realizations of a stochastic start every solver runs from."""
