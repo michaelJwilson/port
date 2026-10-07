@@ -13,6 +13,7 @@ field. The end-to-end run and its size are
 
 import numpy as np
 import pytest
+from port.qa.statistics import chi_square_pvalue
 from port.sim.truth import CoreInferenceTruth, core_inference_truth
 from scipy import stats
 
@@ -111,9 +112,7 @@ def test_each_entry_is_a_negative_binomial_draw() -> None:
     expected = stats.nbinom.pmf(edges, r, r / (r + rate)) * counts.size
     expected[-1] += counts.size - expected.sum()
 
-    keep = expected >= 5
-    chi = (((observed[keep] - expected[keep]) ** 2) / expected[keep]).sum()
-    pvalue = stats.chi2.sf(chi, keep.sum() - 1)
+    chi, pvalue = chi_square_pvalue(observed, expected)
 
     assert pvalue > CHI_SQUARE_ALPHA, f"chi2 = {chi:.1f}, p = {pvalue:.2e}"
 
@@ -145,9 +144,7 @@ def test_each_entry_is_a_beta_binomial_draw() -> None:
     observed = np.bincount(successes, minlength=trials + 1)[: trials + 1]
     expected = stats.betabinom.pmf(np.arange(trials + 1), trials, a, b) * successes.size
 
-    keep = expected >= 5
-    chi = (((observed[keep] - expected[keep]) ** 2) / expected[keep]).sum()
-    pvalue = stats.chi2.sf(chi, keep.sum() - 1)
+    chi, pvalue = chi_square_pvalue(observed, expected)
 
     assert pvalue > CHI_SQUARE_ALPHA, f"chi2 = {chi:.1f}, p = {pvalue:.2e}"
 
