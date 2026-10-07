@@ -391,102 +391,6 @@ def test_cnasters_kernel_scores_every_count_zero_below_the_dispersion_floor() ->
 #    than among them.
 
 
-def _bulk(counts: np.ndarray, alpha: float):  # type: ignore[no-untyped-def]
-    """A pseudobulk whose allele channel scores exactly 0: no trials, `tau = inf`."""
-    from port.extensions.copy_likelihood import Pseudobulk
-
-    zeros = np.zeros_like(counts)
-    return Pseudobulk(
-        counts_nb=counts,
-        base_nb_mean=np.ones_like(counts),
-        counts_bb=zeros,
-        total_bb_RD=zeros,
-        normal_log_lambda=zeros,
-        dispersion=alpha,
-        taus=np.inf,
-    )
-
-
-def _schemes(counts: np.ndarray, mean: float, alpha: float) -> np.ndarray:
-    from port.sandbox.integer_decoding.schemes import _emission
-
-    bins = np.arange(counts.size)
-    return np.asarray(
-        _emission(np.log(mean), np.array(0.5), _bulk(counts, alpha), bins)
-    )
-
-
-def _clone_mixture(counts: np.ndarray, mean: float, alpha: float) -> np.ndarray:
-    from port.sandbox.admixture.clone_mixture import _nb
-
-    return _nb(counts, np.full(counts.shape, mean), alpha)
-
-
-def _variants(counts: np.ndarray, mean: float, alpha: float) -> np.ndarray:
-    from port.sandbox.admixture.variants import _nb
-
-    return _nb(counts, np.full(counts.shape, mean), alpha)
-
-
-SANDBOX_KERNELS: dict[str, Scorer] = {
-    "schemes": _schemes,
-    "clone_mixture": _clone_mixture,
-    "variants": _variants,
-}
-
-
-@pytest.mark.oracle
-@pytest.mark.parametrize("name", SANDBOX_KERNELS)
-@pytest.mark.parametrize(("mean", "alpha"), NORMAL)
-def test_each_sandbox_kernel_is_the_negative_binomial(
-    name: str, mean: float, alpha: float
-) -> None:
-    """The 50-digit sums of logs, to 1e-9 relative and 1e-12 absolute."""
-    np.testing.assert_allclose(
-        SANDBOX_KERNELS[name](COUNTS, mean, alpha),
-        _exact(COUNTS, mean, alpha),
-        rtol=1e-9,
-        atol=1e-12,
-    )
-
-
-@pytest.mark.oracle
-@pytest.mark.parametrize("name", SANDBOX_KERNELS)
-def test_a_sandbox_kernel_scores_a_vanishing_mean_as_impossible(name: str) -> None:
-    """At `alpha * mean = 1e-19` a count of 1000 is -43,420 nats, and 0 is finite; 1e-9 relative."""
-    counts = np.array([0.0, 1000.0])
-    scores = SANDBOX_KERNELS[name](counts, VANISHING, 0.01)
-
-    assert scores[1] < -30_000.0
-    np.testing.assert_allclose(
-        scores, _exact(counts, VANISHING, 0.01), rtol=1e-9, atol=1e-12
-    )
-
-
-@pytest.mark.analytic
-@pytest.mark.parametrize("name", SANDBOX_KERNELS)
-@pytest.mark.parametrize("mean", [1e-3, VANISHING])
-def test_each_sandbox_kernel_sums_to_one_at_a_small_mean(
-    name: str, mean: float
-) -> None:
-    """`logsumexp` over counts 0..200 is 0 to 1e-12: a pmf, not a score of 1 per count."""
-    counts = np.arange(201, dtype=np.float64)
-
-    assert abs(logsumexp(SANDBOX_KERNELS[name](counts, mean, 0.5))) < 1e-12
-
-
-def _bound_kernel(module: str) -> float:
-    """The `_nb_logpmf_1d` `module` compiles in by name, on one degenerate bin."""
-    import importlib
-
-    log_mu, alpha, exposure, count = DEGENERATE
-    out = np.full(1, np.nan)
-    importlib.import_module(module)._nb_logpmf_1d(
-        np.array([count]), np.array([exposure]), float(np.exp(log_mu)), alpha, out
-    )
-    return float(out[0])
-
-
 def _np_merge() -> float:
     from port.sandbox.np_merge import _emissions
 
@@ -507,9 +411,6 @@ def _np_merge() -> float:
 
 SANDBOX_SITES: dict[str, Callable[[], float]] = {
     "np_merge": _np_merge,
-    "hmm_initialize_backends": lambda: _bound_kernel(
-        "port.sandbox.patch.hmm_initialize.backends"
-    ),
 }
 """The sandbox sites that compile `_nb_logpmf_1d` in by name, out of `LOG_SPACE_SWAPS`' reach."""
 

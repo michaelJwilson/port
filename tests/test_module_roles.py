@@ -168,33 +168,22 @@ ROLES: dict[str, Role] = {
     "port.sim.truth_figure": "sim",
     "port.sim.normal_fit": "sim",
     # sandbox
-    "port.sandbox.admixture.clone_mixture": "set aside",
     "port.sandbox.extensions.segment_sets": "set aside",
     "port.sandbox.extensions.color_merge": "set aside",
-    "port.sandbox.admixture.probes.sim_probe": "set aside",
-    "port.sandbox.admixture.variants": "set aside",
     "port.sandbox.clone_starts.problem": "set aside",
     "port.sandbox.clone_starts.starts": "set aside",
     "port.sandbox.extensions.copy_starts": "set aside",
-    "port.sandbox.extensions.hmm_init_trials": "set aside",
-    "port.sandbox.integer_decoding.calicost_decoders": "set aside",
-    "port.sandbox.integer_decoding.rdr_summary": "set aside",
-    "port.sandbox.integer_decoding.schemes": "set aside",
     "port.sandbox.extensions.hmm_objective": "set aside",
-    "port.sandbox.normal_candidates": "set aside",
+    "port.sandbox.np_merge": "set aside",
     "port.sandbox.np_merge.__main__": "set aside",
     "port.sandbox.np_merge.merge": "set aside",
-    "port.sandbox.patch.emission": "set aside",
-    "port.sandbox.patch.hmm_initialize.backends": "set aside",
     "port.sandbox.patch.hmm_initialize.filtering": "set aside",
-    "port.sandbox.patch.plotting.genomic": "set aside",
     "port.sandbox.patch.plotting.loh_density": "set aside",
-    "port.sandbox.sal_hmm_init": "set aside",
     "port.sandbox.sim_from_run": "set aside",
     "port.sandbox.wolff_init": "set aside",
-    "port.sandbox.wolff_umi_init": "set aside",
 }
-"""Every module that is not a package `__init__`, by role."""
+"""Every module, by role: a package `__init__` counts once it defines a function
+or class, so code cannot escape the sandbox header by living in one."""
 
 WHERE: dict[Role, tuple[str, ...]] = {
     "row": ("port.patch.",),
@@ -229,9 +218,17 @@ def _live() -> frozenset[str]:
     return reached(roots)
 
 
+def _has_role(path: Path) -> bool:
+    """A module, or a package `__init__` that defines something."""
+    return path.name != "__init__.py" or any(
+        isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef)
+        for node in ast.parse(path.read_text()).body
+    )
+
+
 @pytest.mark.infra
 def test_every_module_has_a_role() -> None:
-    found = {name for name, path in modules().items() if path.name != "__init__.py"}
+    found = {name for name, path in modules().items() if _has_role(path)}
 
     assert found == set(ROLES), (
         f"no role: {sorted(found - set(ROLES))}; gone: {sorted(set(ROLES) - found)}"

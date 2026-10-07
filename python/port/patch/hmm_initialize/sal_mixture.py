@@ -59,10 +59,10 @@ POLISH_SECONDS = 160.0
 """The seconds the start and its polish may spend, `sal`'s notebook budget."""
 
 DISPERSION = 10.0
-"""The seam's negative-binomial size, `1 / alpha` at `backends.DEFAULT_ALPHA`."""
+"""The seam's negative-binomial size, `1 / alpha` at `alpha = 0.1`."""
 
 CONCENTRATION = 1_000.0
-"""The seam's beta-binomial `alpha + beta`, `backends.DEFAULT_TAU`."""
+"""The seam's beta-binomial `alpha + beta`, `tau = 1000`."""
 
 EXPOSURE_SCALE = 100.0
 """Exposure is divided by this before `sal` reads it, so a state's rate per unit exposure is `mu` times it (#547).

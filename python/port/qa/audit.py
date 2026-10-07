@@ -809,8 +809,6 @@ def audit_truth(
     likelihood: bool = False,
     oracle_normal: bool = False,
     m_step_tol: float | None = None,
-    entry: Callable[[list[str]], Any] | None = None,
-    candidates_used: Callable[[Path], np.ndarray] | None = None,
     calicost: bool = False,
     diffexp: tuple[float, int] | None = None,
 ) -> tuple[Recovery, Path]:
@@ -833,11 +831,6 @@ def audit_truth(
     normal candidates -- an upper bound on fixing their selection, not a
     fix. `m_step_tol` sets the `ftol` and `gtol` the emission M step
     hard-codes (`hmm_nophasing.py:1007`, #30); `hmm.em_ftol` is not read there.
-    `entry` runs in place of `run_cnaster_port` on the same arguments, and
-    `candidates_used` reads the normal candidates the scored run used from
-    the run's directory where `entry` chose them itself:
-    `port.sandbox.normal_candidates.audited` passes its two passes and the
-    first pass's normal clone (#320).
     `calicost` runs `run_calicost` on the same configuration instead, with
     `flags` passed to it (#347); the `cnaster` hooks above do not apply.
     `diffexp = (fold, n_genes)` plants differential expression: the
@@ -941,7 +934,7 @@ def audit_truth(
             stack.enter_context(warnings.catch_warnings())
             warnings.simplefilter("ignore")
             cost = stack.enter_context(measured())
-            (main if entry is None else entry)([str(config), *flags])
+            main([str(config), *flags])
     finally:
         pipeline.determine_normal_candidates = determine
         scipy.optimize.minimize = minimize
@@ -950,9 +943,6 @@ def audit_truth(
     recovery = score_truth(truth, root / "output", arm, cost.wall_s)
     recovery.m_step_calls = tightened_calls[0]
     used = picked[-1]
-
-    if candidates_used is not None:
-        used = candidates_used(root)
 
     recovery.candidates = int(used.sum())
     recovery.candidates_tumor = int((used & (np.asarray(truth.labels) != 0)).sum())

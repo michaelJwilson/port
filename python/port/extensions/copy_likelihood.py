@@ -25,7 +25,8 @@ fits by copy ARI and within 0.004 on the other 2, and scores 0.97-0.99 of
 altered clone-bins exactly (phase-free) on the pure samples against about
 0.6 on the admixed ones. What it was chosen over -- tempered E-steps, EMs
 over the continuous states, fixed or relaxed dispersions, CalicoST's own
-decoders -- is in `port.sandbox.integer_decoding`.
+decoders -- was `port.sandbox.integer_decoding`, deleted once its exit was
+met (#749 WP5).
 """
 
 from __future__ import annotations
