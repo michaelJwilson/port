@@ -2,19 +2,20 @@
 
 Subcommands of `run_study --field-strength`:
 
-`pipeline CAPTURE.npz ...`
-    The pipeline's field at the planted clones: `--sal --oracle-start`'s first
-    BAF + RDR inference, captured by `port.studies.clone_labels capture`,
-    rebuilt at the planted labels (`port.sandbox.clone_starts.problem.build`).
-`known MANIFEST.toml ...`
-    The known-law field (`port.sandbox.known_field`) of each manifest's first
-    3 realizations, RDR and BAF apart.
+`pipeline SAMPLE ...`
+    The run's field at the planted clones: `run_cnaster_port --sal`'s RDR +
+    BAF clone assignment at `--oracle-start`'s clones
+    (`port.studies.stage.at_clone_assignment`, #735). `SAMPLE` is CalicoST's
+    `easy` or `hard`, or a manifest, whose realization 0 is drawn.
 `calicost`
     CalicoST easy and hard under port's laws, from their planted profiles:
-    the known-law field, RDR and BAF apart (BAF at the fitted tumour share,
-    their written phase); the expected BAF margin to the nearest clone; the
-    per-spot tumour fraction and the Gaussian random field fitted to it; the
-    tumour expression beyond copy number.
+    the event mix; the expected BAF margin to the nearest clone; the BAF
+    overdispersion by moments; the per-spot tumour fraction and the Gaussian
+    random field fitted to it; the tumour expression beyond copy number.
+
+The known-law field (`known`, and `calicost`'s RDR and BAF field lines) left
+with `port.sandbox.known_field` (#735): it was the planted law's field, not
+the run's, and `pipeline` reads the run's on the same samples.
 
 Strength is read three ways per field: the median over spots of the planted
 clone's field less the best other clone's (the margin), the fraction of spots
@@ -53,71 +54,36 @@ def _line(name: str, s: dict[str, float]) -> str:
     return f"{name:28s} median margin {s['margin']:7.1f}  10% {s['q10']:7.1f}  argmax wrong {s['wrong']:.4f}  ARI {s['ari']:.4f}"
 
 
-def pipeline(paths: list[Path]) -> None:
-    from port.sandbox.clone_starts.problem import build, load
+def pipeline(samples: list[str], root: Path) -> None:
+    from port.sim.fixtures import SAMPLES, SIM_ROOT, load_simulated
+    from port.studies.stage import at_clone_assignment, members
 
-    for path in paths:
-        capture = load(path)
-        problem = build(capture, capture.planted, np.random.default_rng([0, 540]))
+    for name in samples:
+        if name in SAMPLES:
+            path = SIM_ROOT / SAMPLES[name]
+            sample = load_simulated(path.name, path.parent)
+        else:
+            sample = next(members(Path(name), root / "sim", n=1)).sample
+        found = at_clone_assignment(sample, lambda f: f, root=root / Path(name).stem)
         print(
-            _line(path.stem, strength(problem.field, problem.labels)),
-            f"states {problem.states_by}",
+            _line(Path(name).stem, strength(found.field, found.planted)),
+            f"spots {found.n_spots}  clones {found.field.shape[1]}  {found.seconds:.0f} s",
             flush=True,
         )
 
 
-def known(paths: list[Path], n: int = 3) -> None:
-    import port.sandbox.known_field as kf
-    from port.sim import draw as d
-    from port.sim.laws import allele_share
+def overdispersion(
+    successes: np.ndarray, trials: np.ndarray, share: np.ndarray
+) -> float:
+    """Beta-binomial rho by moments: sum[(b - n p)^2 - n p (1 - p)] / sum[n (n - 1) p (1 - p)], over entries of n >= 2.
 
-    for path in paths:
-        # NB the problem's two terms apart: `known_field.problems` sums them
-        manifest = d.read_manifest(path)
-        tree = d.draw_tree(
-            manifest,
-            np.random.default_rng(np.random.SeedSequence(manifest.seed).spawn(3)[0]),
-        )
-        clones = ("normal", *manifest.tumour)
-        base = pd.read_csv(
-            manifest.resolve(manifest.reference["baseline"]), sep="\t", comment="#"
-        )
-        loci = (
-            base["chrom"].astype(str).str.removeprefix("chr").to_numpy(),
-            ((base.cdsStart + base.cdsEnd) // 2).to_numpy(),
-        )
-        weights = base["lambda"].to_numpy()[:, None] * d._depth(
-            manifest, clones, d.clone_copies(tree, clones, *loci)
-        )
-        kappa = float(manifest.model["dirichlet_concentration"])
-        alpha = np.maximum(kappa * weights / weights.sum(0, keepdims=True), 1e-300)
-        _, chrom, pos = d._snps(manifest)
-        cp = d.clone_copies(tree, clones, chrom, pos)
-        share = np.stack([allele_share(cp[:, k, 0].astype(float), cp[:, k, 1].astype(float), manifest.normal_frac(c),
-                                       manifest.model["admixture"]) for k, c in enumerate(clones)])  # fmt: skip
-        rows = []
-        for realized in itertools.islice(d.realize(manifest, None), n):
-            planted = np.asarray(realized.truth.labels[0], dtype=np.int64)
-            rdr = kf.rdr_field(realized.counts[0], alpha)
-            baf = kf.baf_field(
-                realized.a,
-                realized.b,
-                realized.phase,
-                share,
-                float(manifest.model["bb_overdispersion"]),
-            )
-            rows.append(
-                {
-                    k: strength(f, planted)
-                    for k, f in (("RDR", rdr), ("BAF", baf), ("RDR + BAF", rdr + baf))
-                }
-            )
-        for term in ("RDR", "BAF", "RDR + BAF"):
-            mean = {
-                key: float(np.mean([r[term][key] for r in rows]))
-                for key in rows[0][term]
-            }
-            print(_line(f"{path.stem} {term} (mean of {n})", mean), flush=True)
+    Unbiased for rho when `share` is each entry's true p: E[(b - n p)^2] =
+    n p (1 - p) (1 + (n - 1) rho). An entry of one read carries no rho.
+    """
+    keep = trials >= 2
+    n, b, p = trials[keep], successes[keep], share[keep]
+    excess = ((b - n * p) ** 2 - n * p * (1 - p)).sum()
+    return float(excess / (n * (n - 1) * p * (1 - p)).sum())
 
 
 def _profile_states(
@@ -193,7 +159,6 @@ def calicost() -> None:
     from scipy.optimize import curve_fit
     from scipy.spatial import cKDTree
 
-    import port.sandbox.known_field as kf
     from port.sim.fixtures import SIM_ROOT
     from port.studies.calicost_figures import SAMPLES, baseline, baseline_counts
 
@@ -223,7 +188,7 @@ def calicost() -> None:
         print(f"{key}: {len(mix)} clone-events (a shared event once per clone); rates {rates}; length Mb median "
               f"{mix.mb.median():.1f}, mean {mix.mb.mean():.1f}", flush=True)  # fmt: skip
 
-        # --- the known-law field under port's laws
+        # --- each clone's haplotype-A share under port's laws
         tumour = np.array([1.0 if c == "normal" else TUMOUR_SHARE for c in clones])
         share = np.stack(
             [
@@ -231,24 +196,10 @@ def calicost() -> None:
                 for k in range(len(clones))
             ]
         )
-        baf = kf.baf_field(a_reads, b_reads, np.zeros(ids.size, dtype=bool), share)
         counts = baseline_counts(
             anndata.read_h5ad(src / "filtered_feature_bc_matrix.h5ad"), base["gene"]
         )
         gc = _profile_states(profile, clones, *gene_loci)
-        depth = np.stack(
-            [
-                tumour[k] * gc[:, k].sum(1) / 2 + (1 - tumour[k])
-                for k in range(len(clones))
-            ],
-            axis=1,
-        )
-        w = base["lambda"].to_numpy()[:, None] * depth
-        rdr = kf.rdr_field(
-            counts, np.maximum(100.0 * w / w.sum(0, keepdims=True), 1e-300)
-        )
-        for term, f in (("RDR", rdr), ("BAF", baf), ("RDR + BAF", rdr + baf)):
-            print(_line(f"{key} {term}", strength(f, planted)), flush=True)
 
         # --- expected BAF margin to the nearest clone: mean reads x KL, summed over SNPs
         reads = np.asarray((a_reads + b_reads).mean(0)).ravel()
@@ -269,9 +220,9 @@ def calicost() -> None:
 
         normal_rows = np.flatnonzero(planted == 0)
         b_n, n_n, p_n = _entries(total, b_reads, normal_rows, np.full(ids.size, 0.5))
-        null = np.std([kf.overdispersion(np.random.default_rng(seed).binomial(n_n.astype(np.int64), 0.5).astype(float),
+        null = np.std([overdispersion(np.random.default_rng(seed).binomial(n_n.astype(np.int64), 0.5).astype(float),
                                          n_n, p_n) for seed in range(100)])  # fmt: skip
-        rhos = {"normal": kf.overdispersion(b_n, n_n, p_n)}
+        rhos = {"normal": overdispersion(b_n, n_n, p_n)}
 
         # --- per-spot tumour fraction given the truth, and its field
         fraction, pooled = np.full(len(truth), np.nan), {}
@@ -289,7 +240,7 @@ def calicost() -> None:
             pooled[clone] = float(GRID[np.argmax(loglik.sum(0))])
         for k, clone in enumerate(clones[1:], start=1):
             b_share = _cell_share(cp[:, k, 1], cp[:, k, 0], pooled[clone])
-            rhos[clone] = kf.overdispersion(
+            rhos[clone] = overdispersion(
                 *_entries(
                     total,
                     b_reads,
@@ -341,13 +292,12 @@ def calicost() -> None:
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description=(__doc__ or "").splitlines()[0])
     sub = parser.add_subparsers(dest="command", required=True)
-    sub.add_parser("pipeline").add_argument("captures", nargs="+", type=Path)
-    sub.add_parser("known").add_argument("manifests", nargs="+", type=Path)
+    run = sub.add_parser("pipeline")
+    run.add_argument("samples", nargs="+")
+    run.add_argument("--root", type=Path, default=Path(".cache/field_strength"))
     sub.add_parser("calicost")
     arguments: Any = parser.parse_args(argv)
     if arguments.command == "pipeline":
-        pipeline(arguments.captures)
-    elif arguments.command == "known":
-        known(arguments.manifests)
+        pipeline(arguments.samples, arguments.root)
     else:
         calicost()

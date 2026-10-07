@@ -409,13 +409,18 @@ def pinned_errors(captured: Captured, purity: np.ndarray | None = None) -> Pinne
     # NB what the data identify: a state no bin visits has no information,
     #    and an allele fraction at its boundary (an LOH state on a pure
     #    sample) has no curvature in its logit. Both are held.
-    free = np.array([k for k in range(n_states) if k != neutral and k in visited])
+    # NB integer even when empty: a fit visiting the neutral state alone has
+    #    no free rate, and an empty float array cannot index (#705, s1077).
+    free = np.array(
+        [k for k in range(n_states) if k != neutral and k in visited], dtype=np.int64
+    )
     shares = np.array(
         [
             k
             for k in range(n_states)
             if k in visited and BOUNDARY < p_binom[k] < 1.0 - BOUNDARY
-        ]
+        ],
+        dtype=np.int64,
     )
     held = np.clip(p_binom, EPS_P, 1.0 - EPS_P)
     objective = pinned_objective(captured, free, purity, shares, held)
@@ -554,7 +559,7 @@ def write_copy_sets(run: Path, captured: Captured, *, level: float = 0.95) -> Pa
 
     with path.open("w") as handle:
         handle.write(
-            f"# every (A, B) inside the {level:.0%} credible region of each "
+            f"# every (A, B) inside the {level:.2%} credible region of each "
             f"fitted state (#353); state {errors.neutral} is pinned to mu = 1; "
             f"Newton decrement {errors.decrement:.3e}\n"
         )

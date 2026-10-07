@@ -28,6 +28,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from port.extensions.figure_style import page_size
 from port.qa.statistics import bootstrap_interval, resample_weights
 
 BOOTSTRAP = 2000
@@ -522,8 +523,9 @@ BAR_WIDTH = 0.5
 MARKER = 1.5
 """Points: an error bar at the page's rule weight, and a bin's marker."""
 
-PAGE_HEIGHT = 1.75
-"""Inches: the row of three panels on `llncs`'s 4.80 in text width."""
+PAGE_HEIGHT = page_size("third")[1]
+"""Inches: the row of three panels, a "third" page (`figure_style.page_size`,
+T- #740); 1.75 on `llncs`'s 4.80 in text width before."""
 
 
 def figures(
@@ -533,7 +535,7 @@ def figures(
     class; (c) the `(1, 1)` segments' false positive rate by their SNP UMIs.
 
     Set as `port.extensions.combined_figure`'s spatial page is, so the row
-    stands beside it in a paper: `page_style`, `llncs`'s text width, every
+    stands beside it in a paper: `page_style`, the paper's text width, every
     text at `FONT_SIZE`, rules at `PROFILE_LINEWIDTH`, each letter over its
     panel's leftmost text. Written as PNG at 300 dpi, with
     `port.patch.utils.write_fig`'s PNG options: white face, no metadata, so
@@ -607,7 +609,7 @@ def figures(
             axis.legend(loc="upper left", frameon=True, framealpha=0.85,
                         edgecolor="none", fancybox=False, borderpad=0.15,
                         labelspacing=0.1, handlelength=0.8, handletextpad=0.3,
-                        fontsize=FONT_SIZE - (2 if axis is right else 1))  # fmt: skip
+                        fontsize=FONT_SIZE)  # fmt: skip
 
         # NB the layout frozen once, then each letter set over its panel's
         #    leftmost text -- the y label -- as the spatial page sets its own.
@@ -628,7 +630,13 @@ def figures(
 
         if stamp is not None:
             fig.text(
-                0.995, 0.005, stamp, fontsize=4, color="0.4", ha="right", va="bottom"
+                0.995,
+                0.005,
+                stamp,
+                fontsize=FONT_SIZE,
+                color="0.4",
+                ha="right",
+                va="bottom",
             )
         for path in paths:
             fig.savefig(path, format="png", dpi=300, facecolor="white",
