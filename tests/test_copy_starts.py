@@ -160,7 +160,9 @@ def test_a_state_placed_on_the_instance_reads_back_as_itself() -> None:
         held = cs.instance(call)
         log_mu = np.array([s[0] for s in STATES_RDRBAF])
         p = np.array([s[1] for s in STATES_RDRBAF])
-        read_mu, read_p = cs._read(call, cs._place(held, call, log_mu, p))
+        read_mu, read_p = cs.components_as_states(
+            call, cs._place(held, call, log_mu, p)
+        )
 
         trials = float(held.at.trials)
         np.testing.assert_allclose(
@@ -184,7 +186,7 @@ def test_the_lattice_start_places_the_states_that_drew_the_call_before_any_polis
 
 @pytest.mark.oracle
 def test_the_lattice_channels_are_sals_count_pair_density() -> None:
-    """`_channels`, at every state and at each row's own, is `sal`'s independent-form `CountPairEmission` on the instance, to 1e-10 relative."""
+    """`channel_log_densities`, at every state and at each row's own, is `sal`'s independent-form `CountPairEmission` on the instance, to 1e-10 relative."""
     import torch
     from sal.emissions import CountPairEmission
 
@@ -192,7 +194,7 @@ def test_the_lattice_channels_are_sals_count_pair_density() -> None:
         call = _call(stage)
         held = cs.instance(call)
         observations = np.asarray(held.observations, dtype=np.float64)
-        depth, allele = cs._channels(
+        depth, allele = cs.channel_log_densities(
             observations, np.asarray(held.conditioned, dtype=np.float64)
         )
         rng = np.random.default_rng(3)

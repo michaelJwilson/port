@@ -6,7 +6,7 @@
 # measuring `cnaster` and the oracle surface, unchanged; neither names this
 # directory.
 #
-# Run by `python -m tests.ci --badges` (and `--full`), with the JIT on:
+# Run by `python -m scripts.ci --badges` (and `--full`), with the JIT on:
 # `numba` reports nothing for a compiled body, so the `@njit` kernels read as
 # uncovered here however hard the whole runs exercise them. The same suite
 # under `NUMBA_DISABLE_JIT=1` reads higher and runs slower; which of the two

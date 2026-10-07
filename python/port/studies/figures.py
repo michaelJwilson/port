@@ -7,12 +7,30 @@ commit in `port.qa.provenance`.
 
 from __future__ import annotations
 
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
 
 from port.qa import provenance
 
-__all__ = ["key_below", "merged", "stamp", "tab20", "tt"]
+__all__ = [
+    "DODGE",
+    "FLOOR",
+    "gap_page",
+    "key_below",
+    "merged",
+    "merged_records",
+    "stamp",
+    "tab20",
+    "tt",
+]
+
+
+DODGE = 1.12
+"""Each polish stage drawn 12% right of its runtime, on either gap figure."""
+
+FLOOR = 1e-2
+"""The gap figures' "0": runs within `FLOOR` nats of the reference."""
 
 
 def tt(name: str) -> str:
@@ -69,11 +87,15 @@ def stamp(fig: Any, record: dict[str, Any]) -> str:
     return text
 
 
+VALUE_WIDTH = 0.11
+"""Axes fraction between a key's missed-% columns, right edge to right edge."""
+
+
 def key_below(
     ax: Any,
     title: str,
     stages: list[tuple[dict[str, Any], str]],
-    entries: list[tuple[str, Any, float]],
+    entries: list[tuple[str, Any, tuple[float, ...]]],
     notes: list[str],
     *,
     fontsize: float = 7.5,
@@ -85,7 +107,9 @@ def key_below(
     """A key under `ax`, its `title` above the axes' top right: the stages' markers in their own column, then the methods in two columns of name and missed %.
 
     `stages` are `(plot keywords, label)`, drawn as a marker or a line; `entries` are
-    `(name, colour, missed %)`, filled down the first column then the second;
+    `(name, colour, missed %)`, filled down the first column then the second, the
+    missed % one number per stage, Initial then Polish, right-aligned in columns
+    under one "[%]" (#745);
     `notes` are footnote lines under both. Coordinates are `ax`'s, so the
     figure's bottom margin must hold `top - row * (rows + notes)`.
     """
@@ -136,7 +160,11 @@ def key_below(
         y = header - row * (k % rows + 1)
         mark(left, y, {"marker": "o", "color": colour, "markersize": 5})
         text(left + (0.05 if columns == 1 else 0.025), y, name)
-        text(right, y, f"{missed:.1f}%", ha="right")
+        for j, value in enumerate(reversed(missed)):
+            text(right - j * VALUE_WIDTH, y, f"{value:.1f}", ha="right")
+    if entries:
+        for _, right in spans[: -(-len(entries) // rows)]:
+            text(right, header, "[%]", ha="right")
     bottom = header - row * (max(rows, len(stages)) + 1)
     for k, note in enumerate(notes):
         text(
@@ -147,3 +175,36 @@ def key_below(
             color="0.25",
             fontsize=fontsize - 0.5,
         )
+
+
+def gap_page(
+    record: dict[str, Any], out: Path, panels: Callable[[Any, Any], None]
+) -> Path:
+    """A study's gap figure: its plot left, its table right, stamped and written to `out`.
+
+    `panels(ax, tab)` draws both; `copy_state_plot` and `potts_plot` each
+    wrote out this page around their own (#749 WP6).
+    """
+    import matplotlib as mpl
+
+    mpl.use("Agg")
+    import matplotlib.pyplot as plt
+
+    plt.rcParams.update({"font.size": 9})
+    fig = plt.figure(figsize=(15.5, 6.2))
+    grid = fig.add_gridspec(1, 2, width_ratios=[1.2, 1], wspace=0.04)
+    ax, tab = fig.add_subplot(grid[0]), fig.add_subplot(grid[1])
+    tab.axis("off")
+    panels(ax, tab)
+    stamp(fig, record)
+    fig.savefig(out, dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    return out
+
+
+def merged_records(paths: Sequence[str | Path]) -> tuple[dict[str, Any], Path]:
+    """`STREAM.record [EARLIER.record ...]` merged, and the stream's path the figure goes beside."""
+    from port.studies import records
+
+    found = [Path(p) for p in paths]
+    return merged([records.read(p) for p in found]), found[0]

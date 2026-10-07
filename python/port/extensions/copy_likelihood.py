@@ -110,7 +110,7 @@ def candidates(max_total_copy: int, max_allele_copy: int | None = None) -> np.nd
     )
 
 
-def _emission(
+def pseudobulk_log_pmf(
     log_rate: np.ndarray, p: np.ndarray, bulk: Pseudobulk, bins: np.ndarray
 ) -> np.ndarray:
     """NB + BB log pmf per bin, in `port.extensions.jax_hmm.emission`'s terms.
@@ -172,7 +172,7 @@ def _emission(
     return np.asarray(depth + allele)
 
 
-def _parameters(
+def pair_rate_and_share(
     copies: np.ndarray, purity: float = 1.0
 ) -> tuple[np.ndarray, np.ndarray]:
     """`(log mu, p)` of each pair, in a spot `purity` tumour and the rest normal.
@@ -189,15 +189,16 @@ def _parameters(
         return np.log(depth), np.where(alleles > 0, share, 0.5)
 
 
-def _with(bulk: Pseudobulk, alpha: float, tau: float) -> Pseudobulk:
+def with_dispersions(bulk: Pseudobulk, dispersion: float, taus: float) -> Pseudobulk:
+    """`bulk` at another NB `dispersion` and beta-binomial concentration `taus`, its counts unchanged."""
     return Pseudobulk(
         bulk.counts_nb,
         bulk.base_nb_mean,
         bulk.counts_bb,
         bulk.total_bb_RD,
         bulk.normal_log_lambda,
-        alpha,
-        tau,
+        dispersion,
+        taus,
     )
 
 
@@ -304,9 +305,9 @@ def _log_emissions(
     parsimony: float,
 ) -> np.ndarray:
     """`(n_states, n_obs)` plus the prior, `-1e10` where a state cannot emit."""
-    log_mu, p = _parameters(states, purity)
+    log_mu, p = pair_rate_and_share(states, purity)
     bins = np.arange(bulk.counts_nb.size)
-    emission = _emission((log_mu - shift)[:, None], p[:, None], bulk, bins)
+    emission = pseudobulk_log_pmf((log_mu - shift)[:, None], p[:, None], bulk, bins)
     emission = np.where(np.isfinite(emission), emission, -1e10)
     return np.asarray(emission + _prior(states, parsimony)[:, None])
 
@@ -387,9 +388,9 @@ def _on_path(
     shift: float, purity: float, states: np.ndarray, bulk: Pseudobulk, path: np.ndarray
 ) -> float:
     """The clone's log-likelihood along `path`."""
-    log_mu, p = _parameters(states, purity)
+    log_mu, p = pair_rate_and_share(states, purity)
     bins = np.arange(path.size)
-    return float(np.sum(_emission(log_mu[path] - shift, p[path], bulk, bins)))
+    return float(np.sum(pseudobulk_log_pmf(log_mu[path] - shift, p[path], bulk, bins)))
 
 
 def _dispersions(
@@ -406,7 +407,7 @@ def _dispersions(
 
     def total(a: float, t: float) -> float:
         return sum(
-            _on_path(float(s), float(f), states, _with(b, a, t), z)
+            _on_path(float(s), float(f), states, with_dispersions(b, a, t), z)
             for z, b, s, f in zip(paths, bulks, shifts, purity, strict=True)
         )
 
@@ -491,7 +492,7 @@ def lattice_decode(
             purity[i], shifts[i] = _start(
                 states,
                 float(shifts[i]),
-                _with(bulk, alpha, tau),
+                with_dispersions(bulk, alpha, tau),
                 chain,
                 parsimony,
                 grid,
@@ -506,7 +507,7 @@ def lattice_decode(
                 states,
                 float(shifts[i]),
                 float(purity[i]),
-                _with(bulk, alpha, tau),
+                with_dispersions(bulk, alpha, tau),
                 parsimony,
             )
             path, score = _viterbi(emission, transmat, start, chain[2])
@@ -529,7 +530,7 @@ def lattice_decode(
                 if i == normal_clone:
                     continue
 
-                fitted = _with(bulk, alpha, tau)
+                fitted = with_dispersions(bulk, alpha, tau)
 
                 if fit_shifts:
 
@@ -614,7 +615,7 @@ def shared_decode(
     state MILP exactly. `normal` is `(1, 1)`; a state no clone visits is too.
     """
     lattice = candidates(max_total_copy, max_allele_copy)
-    log_mu, p = _parameters(lattice)
+    log_mu, p = pair_rate_and_share(lattice)
     states = np.ones((n_states, 2), dtype=np.int64)
     paths = [np.asarray(path, dtype=np.int64) for path, _, _ in clones]
     total = 0.0
@@ -629,7 +630,7 @@ def shared_decode(
             if bins.size:
                 scores += np.array(
                     [
-                        np.sum(_emission(log_mu[i] - shift, p[i], bulk, bins))
+                        np.sum(pseudobulk_log_pmf(log_mu[i] - shift, p[i], bulk, bins))
                         for i in range(len(lattice))
                     ]
                 )
@@ -739,16 +740,12 @@ def captured_normal() -> int | None:
 
 def normal_of(captured: Any) -> int:
     """:func:`captured_normal` of a given fit (`copy_errors.Captured`)."""
-    fit = captured
-    from port.patch.hmm_nophasing.shifted_emission import NEUTRAL_BAF_TOLERANCE
+    from port.patch.hmm_nophasing.shifted_emission import normal_clone
 
-    result = fit.res
+    result = captured.res
     p_binom = np.asarray(result["new_p_binom"], dtype=np.float64).reshape(-1)
     path = np.asarray(result["pred_cnv"], dtype=np.int64)
-    path = path.reshape(path.shape[0], -1) % p_binom.size
-    balanced = np.abs(p_binom - 0.5) <= NEUTRAL_BAF_TOLERANCE
-
-    return int(np.argmax(balanced[path].mean(axis=0)))
+    return normal_clone(p_binom, path.reshape(path.shape[0], -1) % p_binom.size)[0]
 
 
 def captured_chain() -> tuple[np.ndarray | None, float]:

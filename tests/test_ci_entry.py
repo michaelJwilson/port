@@ -1,4 +1,4 @@
-"""`python -m tests.ci` selects every test exactly once across its steps (#403).
+"""`python -m scripts.ci` selects every test exactly once across its steps (#403).
 
 The gate, the two coverage guards, the serial `merge` step and the release
 step are written as marker expressions. A test that no expression selects is
@@ -15,9 +15,8 @@ from pathlib import Path
 import pytest
 from _pytest.mark.expression import Expression
 
-from tests import ci
-
-ROOT = Path(__file__).resolve().parent.parent
+from scripts import ci
+from tests import ROOT
 
 
 def _selects(expression: str, markers: set[str]) -> bool:
@@ -81,13 +80,6 @@ def test_generated_files_merge_through_the_badges_driver() -> None:
 PAPER_FIGURES = "docs/plots/paper/"
 """The one tree under `docs/` allowed to track a PNG: T- #624's paper set."""
 
-POPULATION_FIGURE = "docs/plots/studies/population_recovery.png"
-"""Study result figure, regenerable only from population_records.jsonl.gz.
-
-#544's 679 pipeline runs are what drew it; `run_study --population
-report` redraws it from their records, which the repository keeps only in that
-archive."""
-
 
 @pytest.mark.infra
 def test_no_png_is_tracked_under_docs() -> None:
@@ -95,8 +87,8 @@ def test_no_png_is_tracked_under_docs() -> None:
     that draws it, into `.cache/plots/` (`port.qa.provenance.PLOTS`).
 
     The exceptions are `docs/plots/paper/`, T- #624's paper set: the figures a
-    manuscript includes, which a reader needs without running the pipeline;
-    and `POPULATION_FIGURE`. `tests/data/figures/` holds test inputs and is
+    manuscript includes, which a reader needs without running the pipeline,
+    the population study's among them (#743). `tests/data/figures/` holds test inputs and is
     outside `docs/`.
     """
     tracked = subprocess.run(
@@ -109,9 +101,7 @@ def test_no_png_is_tracked_under_docs() -> None:
     pngs = [
         path
         for path in tracked
-        if path.lower().endswith(".png")
-        and not path.startswith(PAPER_FIGURES)
-        and path != POPULATION_FIGURE
+        if path.lower().endswith(".png") and not path.startswith(PAPER_FIGURES)
     ]
     assert not pngs, f"{len(pngs)} PNG(s) tracked under docs/: {pngs[:5]}"
 

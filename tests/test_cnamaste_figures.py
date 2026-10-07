@@ -69,13 +69,13 @@ def test_write_fig_writes_ports_bytes(
     from cnamaste.utils import write_fig
     from port.patch.utils import write_fig as port_write_fig
 
-    from tests.test_figure_dpi import _figure
+    from tests.figure_checks import wide_rasterized_figure
 
     monkeypatch.setenv("SOURCE_DATE_EPOCH", "0")
 
     for side, writer in (("port", port_write_fig), ("cnamaste", write_fig)):
         (tmp_path / side).mkdir()
-        writer(str(tmp_path / side / "panel.pdf"), _figure(), **options)
+        writer(str(tmp_path / side / "panel.pdf"), wide_rasterized_figure(), **options)
 
     written = sorted(p.name for p in (tmp_path / "port").iterdir())
     assert written == sorted(p.name for p in (tmp_path / "cnamaste").iterdir())

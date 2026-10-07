@@ -46,8 +46,8 @@ jobs:
       # NB one entry point, the one a contributor runs locally (#403): lint,
       #    types and the gate, then the two coverage guards and
       #    `check_badges`. The steps, their selections and their budgets are
-      #    `tests/ci.py`'s; this file only calls it.
-      - run: uv run --no-sync python -m tests.ci --gate --badges
+      #    `scripts/ci.py`'s; this file only calls it.
+      - run: uv run --no-sync python -m scripts.ci --gate --badges
       # NB what a pull request cannot otherwise say (#271). Every badge in
       #    `README.md` is pinned to `/main/.badges/`, so a branch renders
       #    main's figures and its own live only in a JSON diff. This renders
@@ -68,7 +68,7 @@ jobs:
           git fetch --depth=1 origin "$BASE" || true
           git show FETCH_HEAD:.badges/measurements.json > /tmp/base-measurements.json || true
 
-          uv run --no-sync python -m tests.badge_report \
+          uv run --no-sync python -m scripts.badge_report \
             --base /tmp/base-measurements.json > /tmp/badge-report.md
 
           cat /tmp/badge-report.md >> "$GITHUB_STEP_SUMMARY"

@@ -59,6 +59,7 @@ __all__ = [
     "FIGURE_DPI",
     "FIGURE_SWAPS",
     "LOG_SPACE_SWAPS",
+    "OUTSIDE_TABLES",
     "PLOT_OFF_SWAPS",
     "REFINEMENT_SWAPS",
     "RUN_STATE",
@@ -119,6 +120,7 @@ SWAPS: tuple[Swap, ...] = (
         446,
     ),
     Swap("cnaster.io", "get_sample_list", "port.patch.io:get_sample_list", 418),
+    Swap("cnaster.he", "get_he_image", "port.patch.he:he_image", 771),
     Swap(
         "cnaster.reference",
         "get_reference_genes",
@@ -238,6 +240,8 @@ in the regime named there (#466 lists them):
 - `get_sample_list`: slices keyed by name in first-seen order, where
   `cnaster` keys them by runs of adjacent rows and drops a slice on
   interleaved rows (#418);
+- `get_he_image`: the brightest pixel in the brightest of `num_labels`
+  classes, not a class of its own (#311, T- #771);
 - `assign_initial_blocks`: no block across two chromosomes;
 - `summarize_counts_for_bins`: the normal-spot filter's flagged genes left
   out of every bin (#177), and a chromosome with no bins left out of
@@ -444,6 +448,25 @@ one is in place -- in `port.patch.utils` too, for the run, since `patched()`
 rebinds every module holding the original; nothing in `port` calls it there. Not a drop-in in the bitwise sense -- no file appears -- and
 for that reason a table of its own, chosen by a flag and never by default.
 """
+
+OUTSIDE_TABLES: tuple[tuple[str, str, str], ...] = (
+    ("cnaster.hmm_nophasing.hmm_nophasing.forward_lattice, backward_lattice",
+     "port.patch.lattice:rust_lattices", "rebound for the run by `run_cnaster_port` (#312)"),
+    ("cnaster.hmm_phased.hmm_phased.forward_lattice, backward_lattice",
+     "port.patch.lattice:rust_lattices", "rebound for the run by `run_cnaster_port` (#312)"),
+    ("cnaster.hmm_initialize.gmm_init",
+     "port.patch.hmm_initialize.distinct:gmm_init, port.patch.hmm_initialize.sal_mixture:gmm_init",
+     "passed as `hmm_initializer` by `port.patch.hmrf.core_inference` (#348, #489)"),
+    ("cnaster.he.get_he_image",
+     "port.patch.io:he_image", "called in its place by `port.patch.io`'s `load_input_data` row (#311)"),
+)  # fmt: skip
+"""`cnaster` functions replaced other than by a swap row: `(upstream, replacement, how)`.
+
+A table row rebinds a module attribute; these are class methods rebound for a
+block, an argument `cnaster` binds as a default, and a call inside a row.
+`docs/port-forward.md` lists them under the rows, so every replacement is
+found in one place (#749 WP8)."""
+
 
 COPY_SWAPS: tuple[Swap, ...] = (
     Swap(

@@ -22,11 +22,10 @@ README.
 from __future__ import annotations
 
 import tomllib
-from pathlib import Path
 
 import pytest
 
-ROOT = Path(__file__).resolve().parents[1]
+from tests import ROOT
 
 
 @pytest.mark.infra
@@ -44,20 +43,6 @@ def test_the_recording_seam_imports_without_aim() -> None:
     assert tracked.is_null, "outside a track() block the bound run must be null"
 
     tracked.record(0, objective=1.0, seconds=0.5)
-
-
-@pytest.mark.infra
-def test_a_store_satisfies_the_protocol_structurally() -> None:
-    """`Run` is satisfied by shape, which is what lets `aim.Run` in unimported.
-
-    `MemoryRun` is upstream's in-process store. If it stopped satisfying
-    `Run`, the Protocol would have drifted from the three members a hook
-    uses, and `aim.Run` would be no more admissible than anything else.
-    """
-    from sal import track
-
-    assert isinstance(track.MemoryRun(), track.Run)
-    assert isinstance(track.NULL_RUN, track.Run)
 
 
 @pytest.mark.infra

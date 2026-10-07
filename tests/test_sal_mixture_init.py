@@ -8,6 +8,8 @@ from typing import Any
 import numpy as np
 import pytest
 
+from tests import ROOT
+
 #: Planted `(log mu, p)`: neutral, a one-copy loss (LOH), a one-copy gain,
 #: copy-neutral LOH. The LOH states sit at a small p, not 0, as a mixture
 #: with normal spots leaves them.
@@ -290,13 +292,12 @@ def test_sal_survives_the_call_it_refused_on_hard_with_the_filter_off() -> None:
     raised, and port's `_surviving` dropped seeding 1. Referee: `sal`'s
     `polished` on the same stream; port's start is its components.
     """
-    from pathlib import Path
 
     from port.extensions import copy_starts
     from port.patch.hmm_initialize import sal_mixture
     from sal.search.mixture_starts import lookup
 
-    saved = np.load(Path(__file__).parents[1] / REFUSED)
+    saved = np.load(ROOT / REFUSED)
     arguments = {
         "X": saved["X"],
         "base_nb_mean": saved["base"],

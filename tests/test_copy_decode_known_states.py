@@ -24,7 +24,11 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
-from port.extensions.copy_likelihood import Pseudobulk, _emission, shared_decode
+from port.extensions.copy_likelihood import (
+    Pseudobulk,
+    pseudobulk_log_pmf,
+    shared_decode,
+)
 from port.sim.truth import COPY_LATTICE, CoreInferenceTruth, core_inference_truth
 from scipy.optimize import minimize_scalar
 
@@ -61,7 +65,7 @@ def _fit_dispersions(
         return -sum(
             float(
                 np.sum(
-                    _emission(
+                    pseudobulk_log_pmf(
                         log_mu[path],
                         p[path],
                         bulk._replace(dispersion=alpha, taus=tau),

@@ -17,7 +17,7 @@ seeds ends at 1.1% missed ([0.9, 4.2] over r9–r12); the run of highest likelih
 
 ## Method
 
-`run_study --copy-state-stream sim/manifests/baseline/dev_tree_1s_hard.toml OUT --problems N --seeds 10 --held-out 3 --settings python/port/studies/copy_sampler_settings.json`.
+`run_study --copy-state-stream sim/manifests/baseline/dev_tree_1s_hard.toml OUT --problems N --seeds 10 --held-out 3 --settings configs/copy_sampler_settings.json` (the default; `run_calibrate --copy` writes it).
 
 1. **Problem.** Since #730, the run's own: each realization of `dev_tree_1s_hard` is drawn to disk as the
    run reads a sample, and `run_cnaster_port --sal` runs on it at its planted clones up to the RDR + BAF
@@ -130,8 +130,8 @@ states, polished, sit 115 nats below the best and miss 2.9% of rows (median).
   reran under the lock, results identical (120 of 120), r3's median job 84 s → 59 s. #661's reused rows
   (2026-10-05) sit within the interquartile range of the same starts' r8–r12 jobs.
 
-The key figure is committed as `docs/plots/paper/key_studies/557_copy-states.png` (`data 7cee0a0a ·
-code 67d8874`); `run_study --copy-state-plot OUT/<stem>.record` redraws it beside the record.
+The key figure (`data 7cee0a0a · code 67d8874`) is retired from `docs/plots/paper/` (#745), superseded by
+`solver_combined.png` (b); `run_study --copy-state-plot OUT/<stem>.record` redraws it beside the record.
 
 ## Defects found, and what was done about them
 
@@ -184,3 +184,15 @@ and ends at 59.3% on one screened realization.
 there would need a clone-indexed rate offset in its NB emission and a registry of HMM starts. The samplers
 on the HMM's NLL would need `sal` to sample the HMM objective rather than its Gaussian surrogate (#563). sal b61dfba's
 `hmc`, `anneal` and `tempering` seedings now sample the mixture's own likelihood (sal #1136), not the HMM's.
+
+## Tuned at the run's Baum-Welch (#723)
+
+**TL;DR:** `tempering-hmm` and `hmc-hmm` were retuned at the run's Baum-Welch at the planted clones (#730), on `dev_tree_1s_hard` r0–r2 held out. Their median gap at the start's states falls from the default settings' 722.7 to 100.6 nats (tempering) and 170.3 to 131.6 (HMC). After Baum-Welch the two move in opposite directions on `solver_combined`'s 5 realizations × 5 seeds:
+
+| start | rows missed after BW, untuned → tuned | median gap after BW (nats), untuned → tuned |
+| --- | --- | --- |
+| `hmc-hmm` | 2.6 → 2.4% | 127 → 175 |
+| `tempering-hmm` | 2.6 → 2.9% | 136 → 120 |
+
+- **Settings:** `hmc-hmm` temperature 1 → 100; `tempering-hmm` step 0.001 → 0.003, top temperature 10,000 → 100.
+- **Why they diverge:** the tune ranks settings by the gap at the start's states, before Baum-Welch. A better start does not predict a better fit (this doc's *Why good starts end badly*).
