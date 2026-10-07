@@ -235,7 +235,7 @@ spread of 3 runs of the old pin (T- #696).
 
 **TL;DR:** all 17 fixtures the `9a47d97` sweep ran reproduce its clone ARI, phase-free copy ARI and phase-free exact-altered to 4 decimals, at a 5–22% lower median wall time. One fixture is not reproducible run to run: `dev_tree_r0` `3339b9a0` gave clone ARI 0.8638 once in 3 repeats against 0.9976. The cause is `--sal`'s 160 s wall-clock polish budget (#704). Two fixtures are new since `9a47d97`: `dev_tree_1s_easy_r0` `7ba9b01f` and `dev_tree_1s_dense_r0` `33e3471e` (balanced gains, #750).
 
-- **Conditions:** `run_ledger --record --benchmark --sample NAME -- --sal --no-plots`, serial, one run at a time on a 4-core 15 GB host with nothing else running, 2026-10-07 01:47–04:23 UTC.
+- **Conditions:** `run_ledger --record --sample NAME -- --sal --no-plots`, serial; repeat 1 is recorded `--benchmark`, the sweep `last_benchmark` returns, and repeats 2 and 3 are timing replicates (`benchmark` false, note `rep 2` / `rep 3`). Runs went one run at a time on a 4-core 15 GB host with nothing else running, 2026-10-07 01:47–04:23 UTC.
   - Each fixture runs once per repeat, so the order is the same in each repeat.
   - The sweep stopped at a 2 h job limit and resumed at the run it was in; that run completed in full.
   - Numba caches were warm from the first run on. The uv cache had been cleared at 01:30, before the sweep.
