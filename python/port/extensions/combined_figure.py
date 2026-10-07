@@ -200,12 +200,12 @@ def he_classes(
     spaceranger_dir: str, coords: np.ndarray, num_labels: int = HE_CLASSES
 ) -> np.ndarray:
     """Each spot's H&E class, `1..num_labels` from darkest to brightest, as
-    `run_cnaster` reads it: `port.patch.io.he_image` at the spots, each the
+    `run_cnaster` reads it: `port.patch.he.he_image` at the spots, each the
     gray level of its nearest pixel binned at the spots' percentiles (#311,
     T- #771)."""
     import pandas as pd
 
-    from port.patch.io import he_image
+    from port.patch.he import he_image
 
     spots = pd.DataFrame({"x": coords[:, 0], "y": coords[:, 1]})
     frame = he_image(spaceranger_dir, res="hires", pos=spots, num_labels=num_labels)

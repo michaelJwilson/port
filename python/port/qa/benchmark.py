@@ -518,7 +518,7 @@ def _write_combined(
     """The genomic and spatial figures, and both on one page (#309, #339).
 
     The slide is mocked from the planted labels and read back through
-    `port.patch.io.he_image`, as `run_cnaster` reads one (T- #771). It is written
+    `port.patch.he.he_image`, as `run_cnaster` reads one (T- #771). It is written
     beside the run's inputs rather than into them: `load_input_data` would
     otherwise find it and refine the initial clones by it, and the figures
     would stop being the ones the dev instance's run draws.
@@ -529,7 +529,7 @@ def _write_combined(
         page_style,
         spatial_figure,
     )
-    from port.patch.io import he_image
+    from port.patch.he import he_image
     from port.patch.utils import write_fig
     from port.pipeline import FIGURE_DPI
     from port.sim.he_slide import mock_he, write_he_slide

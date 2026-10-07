@@ -216,12 +216,12 @@ def mock_slide(coords: np.ndarray, labels: np.ndarray, root: Path) -> Any:
     `run_cnaster` reads one; each lattice cell takes its nearest spot's clone.
 
     Written beside the run's inputs, not into them, so the run never reads it;
-    read through `port.patch.io.he_image`, so its labels are `1..num_labels`
+    read through `port.patch.he.he_image`, so its labels are `1..num_labels`
     (#311, T- #771).
     """
     from scipy.spatial import cKDTree
 
-    from port.patch.io import he_image
+    from port.patch.he import he_image
     from port.sim.he_slide import mock_he, write_he_slide
 
     lattice = (int(coords[:, 0].max()) + 1, int(coords[:, 1].max()) + 1)

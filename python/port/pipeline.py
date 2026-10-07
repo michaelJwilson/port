@@ -119,7 +119,7 @@ SWAPS: tuple[Swap, ...] = (
         446,
     ),
     Swap("cnaster.io", "get_sample_list", "port.patch.io:get_sample_list", 418),
-    Swap("cnaster.he", "get_he_image", "port.patch.io:he_image", 771),
+    Swap("cnaster.he", "get_he_image", "port.patch.he:he_image", 771),
     Swap(
         "cnaster.reference",
         "get_reference_genes",

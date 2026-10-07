@@ -93,13 +93,13 @@ def test_the_brightest_pixel_takes_a_label_past_num_labels(tmp_path: Path) -> No
 
 @pytest.mark.analytic
 def test_ports_labels_are_the_num_labels_asked_for(tmp_path: Path) -> None:
-    """`port.patch.io.he_image(num_labels=4)` labels every pixel `1..4` (#311).
+    """`port.patch.he.he_image(num_labels=4)` labels every pixel `1..4` (#311).
 
     The brightest pixels, which `cnaster` labels 5, take label 4, and no
     other label changes.
     """
     from cnaster.he import get_he_image
-    from port.patch.io import he_image
+    from port.patch.he import he_image
 
     _read(tmp_path)
     upstream = get_he_image(str(tmp_path), pos=None, num_labels=4)["label"].to_numpy()
@@ -114,7 +114,7 @@ def test_ports_labels_are_the_num_labels_asked_for(tmp_path: Path) -> None:
 def test_patched_every_cnaster_caller_reads_labels_one_to_num_labels(
     tmp_path: Path,
 ) -> None:
-    """Patched, `get_he_image` is `port.patch.io.he_image` wherever `cnaster`
+    """Patched, `get_he_image` is `port.patch.he.he_image` wherever `cnaster`
     binds it -- `run_cnaster`'s figure frame among them -- and labels every
     pixel `1..4`; `cnaster`'s own is back, and labels a fifth, on exit
     (T- #771)."""
