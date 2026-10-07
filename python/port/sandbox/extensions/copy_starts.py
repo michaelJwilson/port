@@ -578,8 +578,8 @@ EMISSION_VARIANTS: dict[str, dict[str, float]] = {
 """Port's emission++ variants (#540): `_variant_seeding`'s options, and `draws`, the best of that
 many by the HMM's NLL at each draw's states. A `setting` replaces options by name.
 
-Tuned by `port.studies.copy_state_stream --tune` on `dev_tree_1s_hard`'s held-out realizations 0-2
-(r0 `d2938975`; `python/port/studies/copy_sampler_settings.json`): median gap in start log-likelihood to the best, tuned
+Tuned by `run_calibrate --copy` on `dev_tree_1s_hard`'s held-out realizations 0-2
+(r0 `d2938975`; `configs/copy_sampler_settings.json`): median gap in start log-likelihood to the best, tuned
 against first written, `trim` 0.005 against 0.02: 234.6 / 336.2 nats; `trimx20hmm` 0.005 over 20:
 58.4 / 229.5; `lloydx5hmm` 10 rounds against 3: 49.6 / 160.7; `anchor` 10 rounds against 3:
 212.3 / 306.5; `knn` 0.3% of rows against 1%: 202.2 / 210.8. The screen below was at the first values.

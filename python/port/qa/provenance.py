@@ -15,10 +15,13 @@ from __future__ import annotations
 import hashlib
 import subprocess
 from pathlib import Path
+from typing import Any
 
 __all__ = [
+    "CONFIGS",
     "INPUTS",
     "ROOT",
+    "calibration",
     "commit",
     "digest",
     "dirty",
@@ -37,7 +40,21 @@ draws it, and `tests/test_ci_entry.py` guards that no PNG is tracked under
 `docs/`. Laid out as `docs/plots/` was at `ba34716`; moved from
 `port.qa.provenance.PLOTS` (T- #673 G3)."""
 
-INPUTS = ("python", "src", "tests", "pyproject.toml", "uv.lock", "Cargo.lock")
+CONFIGS = ROOT / "configs"
+"""Settings a script measured rather than a person chose: each `<name>.json`
+is written by `run_calibrate` and read by the studies and samplers that use it
+(#749 WP1). Beside `python/`, so a calibration is a reviewed change to a file
+and never a constant in a test or a study."""
+
+INPUTS = (
+    "python",
+    "src",
+    "tests",
+    "configs",
+    "pyproject.toml",
+    "uv.lock",
+    "Cargo.lock",
+)
 """What a measured figure is a function of: the code, the tests, the locks and
 the configuration that selects them. The ledger refuses a run while these
 differ from the commit; the badges skip a pass while their digest holds."""
@@ -62,6 +79,18 @@ def dirty(*paths: str, untracked: bool = False) -> bool:
     """
     flags = () if untracked else ("--untracked-files=no",)
     return bool(_git("status", "--porcelain", *flags, "--", *(paths or (".",))))
+
+
+def calibration(name: str) -> dict[str, Any]:
+    """`CONFIGS/<name>.json`, as `run_calibrate` wrote it; its `_provenance` says how."""
+    import json
+
+    path = CONFIGS / f"{name}.json"
+    if not path.exists():
+        msg = f"no calibration {path}: run_calibrate writes it"
+        raise FileNotFoundError(msg)
+    found: dict[str, Any] = json.loads(path.read_text())
+    return found
 
 
 def commit(*paths: str) -> str:
