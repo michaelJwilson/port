@@ -351,7 +351,7 @@ def test_the_figure_merges_clones_at_the_runs_agreement(tmp_path: Path) -> None:
 
     from tests.conftest import SHIPPED_EM_FTOL, cnaster_test_config
 
-    recorded, frame = _recorded(tmp_path)
+    recorded, frame = recorded_combined_calls(tmp_path)
     assert recorded.profile is not None
     df_cnv = recorded.profile.args[0].copy()
     for column in ("A", "B"):
