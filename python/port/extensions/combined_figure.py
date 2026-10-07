@@ -76,9 +76,11 @@ profile's clone names, the RDR and BAF labels, and the letters."""
 SPATIAL_GAP = 0.17
 """Inches between the slide and the clones' extent ticks."""
 
-FOOT = 0.6
+FOOT = 1.0
 """Inches of slack under the layout, trimmed off at the end: 0.4 before the
-10 pt contig names under the last track ran 0.007 in past it (T- #740)."""
+10 pt contig names under the last track ran 0.007 in past it on the test
+instance (T- #740), and 0.6 before the 22 autosomes' staggered names ran
+0.002 in past it on `dev_tree_1s_easy` r0, `7ba9b01f` (T- #771)."""
 
 LEGEND_BOX = 0.2
 """Inches, one box of the profile's key."""
