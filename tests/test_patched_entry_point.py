@@ -22,6 +22,8 @@ import port.pipeline
 import pytest
 from port.pipeline import SWAPS, Swap, instrumented, patched, swap_sites
 
+from tests.figure_checks import compare_run_artifacts
+
 mpl.use("Agg")
 
 CREATION_DATE = re.compile(rb"/CreationDate \(D:\d+Z?\)")
@@ -215,35 +217,6 @@ def test_listing_the_swaps_needs_no_configuration(capsys: Any) -> None:
         assert f"{swap.module}.{swap.name}" in printed
 
 
-def _compare(baseline: Path, patched_output: Path) -> tuple[list[str], list[str]]:
-    """Every artifact of two runs, as (bitwise, differing) names.
-
-    A PDF counts as reproduced when it agrees with its creation timestamp
-    removed; everything else has to agree raw.
-    """
-    same: list[str] = []
-    differ: list[str] = []
-
-    for left in sorted(path for path in baseline.rglob("*") if path.is_file()):
-        right = patched_output / left.relative_to(baseline)
-
-        if not right.exists():
-            differ.append(f"{left.name} (missing)")
-            continue
-
-        first, second = left.read_bytes(), right.read_bytes()
-
-        if left.suffix == ".pdf":
-            first, second = (
-                CREATION_DATE.sub(b"", first),
-                CREATION_DATE.sub(b"", second),
-            )
-
-        (same if first == second else differ).append(left.name)
-
-    return same, differ
-
-
 @pytest.mark.patch
 @pytest.mark.release
 def test_a_patched_run_reproduces_an_unpatched_one(
@@ -300,7 +273,7 @@ def test_a_patched_run_reproduces_an_unpatched_one(
 
     run("--no-figure-swaps", "--no-shift", "--no-copy-cap")
 
-    same, differ = _compare(baseline, output)
+    same, differ = compare_run_artifacts(baseline, output)
 
     assert not differ, f"a patched run did not reproduce: {differ}"
     assert len(same) >= 25, f"only {len(same)} artifacts compared"

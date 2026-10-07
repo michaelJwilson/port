@@ -151,8 +151,15 @@ def exact_by_class(
 
 
 def copy_states(max_total: int) -> list[tuple[int, int]]:
-    """Every `(A, B)` with `A + B <= max_total`, by total, then by `A`."""
-    return [(a, n - a) for n in range(max_total + 1) for a in range(n + 1)]
+    """Every `(A, B)` with `A + B <= max_total`, by total, then by `A`.
+
+    `copy_likelihood.candidates`, the lattice the decode searches, with
+    `(0, 0)` added and reordered for the confusion table (#749 WP7).
+    """
+    from port.extensions.copy_likelihood import candidates
+
+    pairs = [(0, 0), *((int(a), int(b)) for a, b in candidates(max_total))]
+    return sorted(pairs, key=lambda pair: (pair[0] + pair[1], pair[0]))
 
 
 def _pair(code: int) -> str:

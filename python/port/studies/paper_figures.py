@@ -32,12 +32,11 @@ the ledger's `fixture_hash` column (`<fixture>_ln_r0` before T- #660), and
 from __future__ import annotations
 
 import argparse
-import contextlib
 import functools
 import shutil
 import tempfile
 import tomllib
-from collections.abc import Callable, Iterator
+from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
@@ -85,11 +84,12 @@ COMPARE = (
 
 CLASSES = {
     "loh": "LOH",
-    "balanced_gain": "balanced gain",
-    "unbalanced_gain": "unbalanced gain",
-    "neutral": "neutral",
+    "balanced_gain": r"$p = 0.5,\ \mu > 1$",
+    "unbalanced_gain": r"$p \neq 0.5,\ \mu > 1$",
+    "neutral": r"$p = 0.5,\ \mu = 1$",
 }
-"""`port.qa.scoring.CLASSES`, in figure 17's order, with their labels."""
+"""`port.qa.scoring.CLASSES`, in figure 17's order, with their labels: a class by
+its BAF `p` and read-depth ratio `mu`, LOH by name (#743)."""
 
 DPI = 150
 """`port.sim.analysis`'s and `port.pipeline.FIGURE_DPI`'s."""
@@ -97,53 +97,6 @@ DPI = 150
 WRONG = "#e34948"
 SWAPPED = "#4a3aa7"
 """Figure 16's marks: a bin decoded to another pair, and one decoded to the planted pair's swap."""
-
-
-def stamp(figure: Any, text: str, *, top: bool = False) -> None:
-    """`text` in the figure's bottom-right corner, or its top-right where a
-    page fills the bottom, muted, at `MIN_FONT_SIZE`, in the stated face."""
-    from port.extensions.figure_style import MIN_FONT_SIZE, figure_font
-
-    y, va = (0.998, "top") if top else (0.002, "bottom")
-    # NB a warped genomic axis says so (`genomic_axis.disclose`, T- #683).
-    label = figure.get_label()
-    if label.startswith("axis:"):
-        text = f"{text} · {label}"
-    with figure_font():
-        figure.text(
-            0.998, y, text, ha="right", va=va, fontsize=MIN_FONT_SIZE, color=MUTED
-        )
-
-
-@contextlib.contextmanager
-def stamping(text: str) -> Iterator[None]:
-    """Stamp every figure `port.sim.analysis` saves and the run writes, for the block."""
-    from port.patch import utils
-    from port.sim import analysis
-
-    save, write_fig = analysis._save, utils.write_fig
-
-    def stamped_save(figure: Any, path: Path, **kwargs: Any) -> Path:
-        stamp(figure, text)
-        return save(figure, path, **kwargs)
-
-    def stamped_write(opath: str, fig: Any = None, *args: Any, **kwargs: Any) -> None:
-        if fig is not None:
-            stamp(fig, text)
-        write_fig(opath, fig, *args, **kwargs)
-
-    analysis._save = stamped_save  # type: ignore[assignment]
-    utils.write_fig = stamped_write
-    try:
-        yield
-    finally:
-        analysis._save, utils.write_fig = save, write_fig
-
-
-def switches(path: Path) -> int:
-    """Phase switches `truth_phase.npy` plants: SNPs whose phase differs from the previous one's."""
-    phase = np.load(path / "truth_phase.npy").astype(bool)
-    return int(np.count_nonzero(phase[1:] != phase[:-1]))
 
 
 def stated_hash(fixture: str) -> str:
@@ -180,8 +133,78 @@ def realization(fixture: str, draw: Path | None) -> Path:
     return path
 
 
-def truth_figures(path: Path, out: Path, text: str) -> list[Path]:
-    """Figures 1-8 into `out`, stamped."""
+MULTISAMPLE = {"dev_tree_1s_easy": "dev_tree_easy"}
+"""Each fixture's multi-sample counterpart, otherwise equivalent: its manifest
+extends the fixture's and replaces only the slices (#745)."""
+
+MULTISAMPLE_PAGES = (
+    "truth_combined_multisample.png",
+    "spatial_multisample.png",
+    "he_multisample.png",
+)
+"""For `MULTISAMPLE[fixture]`'s r0, beside the fixture's own: what was planted
+(`truth_combined`), each spot's true clone per slice (`analysis.plot_spatial`),
+and the slide each slice's planted clones stain (`port.sim.he_slide`)."""
+
+
+def he_slices_figure(r: Any) -> Any:
+    """Each slice's mocked H&E, stained by its spots' planted clones (`mock_he`), side by side."""
+    import matplotlib.pyplot as plt
+    from scipy.spatial import cKDTree
+
+    from port.extensions.combined_figure import FONT_SIZE
+    from port.extensions.figure_style import PAPER_WIDTH
+    from port.sim.he_slide import mock_he
+
+    index = {clone: k for k, clone in enumerate(r.clones)}
+    samples = list(dict.fromkeys(r.truth["sample_id"]))
+    figure, axes = plt.subplots(
+        1, len(samples), figsize=(PAPER_WIDTH, PAPER_WIDTH / len(samples))
+    )
+    for ax, sample in zip(np.atleast_1d(axes), samples, strict=True):
+        spots = r.truth[r.truth["sample_id"] == sample]
+        # NB rows down the page and columns across, as `plot_spatial` draws x and y
+        coords = spots[["y", "x"]].to_numpy()
+        labels = spots["labels"].map(index).to_numpy()
+        lattice = (int(coords[:, 0].max()) + 1, int(coords[:, 1].max()) + 1)
+        cells = np.indices(lattice).reshape(2, -1).T
+        _, nearest = cKDTree(coords).query(cells)
+        ax.imshow(mock_he(labels[nearest], lattice).image)
+        ax.set_title(f"slice {sample}", fontsize=FONT_SIZE)
+        ax.set_axis_off()
+    return figure
+
+
+def multisample_pages(fixture: str, draw: Path | None, out: Path) -> list[Path]:
+    """`MULTISAMPLE_PAGES` into `out` from the fixture's multi-sample counterpart's r0, if it has one."""
+    import shutil
+    import tempfile
+
+    import matplotlib.pyplot as plt
+
+    from port.extensions.combined_figure import page_style
+    from port.sim import analysis
+    from port.sim.truth_figure import truth_combined_figure
+
+    counterpart = MULTISAMPLE.get(fixture)
+    if counterpart is None:
+        return []
+    r = analysis.read(realization(counterpart, draw))
+    truth, spatial, he = (out / name for name in MULTISAMPLE_PAGES)
+    pages = ((truth_combined_figure(r, metric=True), truth), (he_slices_figure(r), he))
+    for figure, path in pages:
+        with page_style():
+            figure.savefig(
+                path, dpi=300, facecolor="white", metadata={"Software": None}
+            )
+        plt.close(figure)
+    with tempfile.TemporaryDirectory() as scratch:
+        shutil.move(analysis.plot_spatial(r, Path(scratch)), spatial)
+    return [truth, spatial, he]
+
+
+def truth_figures(path: Path, out: Path) -> list[Path]:
+    """Figures 1-8 into `out`."""
     import matplotlib.pyplot as plt
 
     from port.extensions.combined_figure import page_style
@@ -189,8 +212,7 @@ def truth_figures(path: Path, out: Path, text: str) -> list[Path]:
     from port.sim.truth_figure import simulated_tree_figure, truth_combined_figure
 
     r = analysis.read(path)
-    with stamping(text):
-        written = r.plot(out, metric=True)
+    written = r.plot(out, metric=True)
 
     # NB `mutation_tree.png` is not a paper figure: `simulated_tree.png` is
     #    `truth_combined`'s panel (a) alone (T- #660).
@@ -201,7 +223,6 @@ def truth_figures(path: Path, out: Path, text: str) -> list[Path]:
         ("simulated_tree.png", simulated_tree_figure(r)),
     )
     for name, figure in pages:
-        stamp(figure, text, top=True)
         with page_style():
             figure.savefig(
                 out / name, dpi=300, facecolor="white",
@@ -239,8 +260,8 @@ class Run:
     peak_gb: float
 
 
-def run_figures(sample: Any, root: Path, out: Path, text: str) -> Run:
-    """Figures 9-13 into `out` from one run under `root`, stamped."""
+def run_figures(sample: Any, root: Path, out: Path) -> Run:
+    """Figures 9-13 into `out` from one run under `root`."""
     import matplotlib.pyplot as plt
 
     from port.extensions.combined_figure import (
@@ -252,7 +273,7 @@ def run_figures(sample: Any, root: Path, out: Path, text: str) -> Run:
     )
     from port.qa.audit import audit_sample
 
-    with stamping(text), recording() as recorded, measured() as cost:
+    with recording() as recorded, measured() as cost:
         recovery, output = audit_sample(sample, list(FLAGS), None, root / "run")
 
     frame = mock_slide(sample.coords, sample.labels, root)
@@ -265,7 +286,6 @@ def run_figures(sample: Any, root: Path, out: Path, text: str) -> Run:
             ("spatial.png", spatial_figure(recorded, frame)),
             ("combined.png", combined_figure(recorded, frame, metric=True)),
         ):
-            stamp(figure, text, top=True)
             figure.savefig(
                 out / name, dpi=300, facecolor="white", metadata={"Software": None}
             )
@@ -594,8 +614,8 @@ FIGURES: dict[str, Callable[[Compared], Any]] = {
 }
 
 
-def compare_figures(c: Compared, out: Path, text: str) -> list[Path]:
-    """Figures 14-17 into `out`, stamped, in the stated face."""
+def compare_figures(c: Compared, out: Path) -> list[Path]:
+    """Figures 14-17 into `out`, in the stated face."""
     import matplotlib.pyplot as plt
 
     from port.extensions.figure_style import figure_font
@@ -605,7 +625,6 @@ def compare_figures(c: Compared, out: Path, text: str) -> list[Path]:
     with figure_font():
         for name, draw in FIGURES.items():
             figure = draw(c)
-            stamp(figure, text)
             figure.savefig(out / name, dpi=DPI, facecolor="white",
                            metadata={"Software": None})  # fmt: skip
             plt.close(figure)
@@ -620,7 +639,7 @@ SOLVER_PANEL = 2.2
 """Inches: each panel's axes height. (a) left of (b), each keyed below in one column, on one text-column page."""
 
 
-def solver_figure(potts: dict[str, Any], copies: dict[str, Any]) -> Any:
+def solver_figure(potts: dict[str, Any], copies: dict[str, Any] | None) -> Any:
     """18: the spatial solvers' gap panel left of the copy-state starts', each keyed below its axes (`figures.key_below`).
 
     Sized as `combined.png` is: the paper's text column, every text at
@@ -642,7 +661,8 @@ def solver_figure(potts: dict[str, Any], copies: dict[str, Any]) -> Any:
     height = above + SOLVER_PANEL + label + line * (rows + 1) + foot
     figure = plt.figure(figsize=(width, height))
     # NB (b) shares (a)'s y label, so the gap between them holds only (b)'s tick labels
-    left, gap, right = 0.42, 0.3, 0.06
+    # NB (a)'s y label and its 10^6 ticks need half an inch; 0.42 clipped the label (#743)
+    left, gap, right = 0.5, 0.3, 0.06
     panel = (width - left - gap - right) / 2
     bottom = height - above - SOLVER_PANEL
     axes = {k: figure.add_axes(((left + i * (panel + gap)) / width, bottom / height, panel / width, SOLVER_PANEL / height))
@@ -655,14 +675,21 @@ def solver_figure(potts: dict[str, Any], copies: dict[str, Any]) -> Any:
     }
     potts_plot.draw(axes["a"], potts, key=True, centre=True, key_style=style)
     # NB Initial, Polish and Truth mean the same in both panels: keyed once, under (a)
-    copy_state_plot.draw(
-        axes["b"], copies, key=True, key_style={**style, "marks": False}
-    )
+    if copies is None:
+        # NB (b) drawn empty and saying so, its record still being written (#743)
+        axes["b"].set_xscale("log")
+        axes["b"].set_xlabel("Runtime [s]")
+        axes["b"].text(0.5, 0.5, "copy-state stream running", ha="center", va="center",
+                       transform=axes["b"].transAxes, color="0.5")  # fmt: skip
+    else:
+        copy_state_plot.draw(
+            axes["b"], copies, key=True, key_style={**style, "marks": False}
+        )
     for text in figure.findobj(Text):
         text.set_fontsize(FONT_SIZE)
     # NB each key's title names the fixture; at half the page two titles and two letters
-    #    collide, so the fixture moves to the stamp, each title keeps its count and starts at
-    #    its panel's left edge, the letter before it
+    #    collide, so the fixture moves to `SOLVER_NOTE`, each title keeps its count and starts
+    #    at its panel's left edge, the letter before it
     fixture = Path(potts["manifest"]).stem
     for text in figure.findobj(Text):
         if text.get_text().startswith(f"{fixture}: "):
@@ -677,105 +704,91 @@ def solver_figure(potts: dict[str, Any], copies: dict[str, Any]) -> Any:
     return figure
 
 
-def solver_figures(potts: Path, copies: Path, out: Path, commit: str) -> Path:
-    """Figure 18 into `out`, stamped with each record's data hash and the code."""
+SOLVER_NOTE = "solver_combined.md"
+"""Figure 18's provenance beside it: the two records, their data hashes, their settings and the code."""
+
+
+def solver_note(
+    records: list[dict[str, Any] | None], digests: list[str | None], commit: str
+) -> str:
+    """`SOLVER_NOTE`: what `solver_combined.png` was drawn from, as the stamp it no longer carries said."""
+    potts, copies = records
+    if potts is None:  # invariant
+        msg = "expected the Potts record"
+        raise AssertionError(msg)
+    copies = copies or {}
+    lines = [
+        "# solver_combined.png",
+        "",
+        f"Drawn at code `{commit}` from two records on `{potts['manifest']}`, each problem built by",
+        "`run_cnaster_port --sal` at the planted clones (`port.studies.stage`, #730, #742):",
+        "",
+        "| Panel | Record | Data hash | Problems | Starts | Samplers |",
+        "| --- | --- | --- | --- | --- | --- |",
+        f"| (a) spatial solvers | `port.studies.potts_stream` | `{digests[0]}` | {len(potts.get('done', []))} "
+        f"| {potts.get('starts')} | {'tuned' if potts.get('tuning') else 'settings file'} |",
+        f"| (b) copy-state starts | `port.studies.copy_state_stream` | `{digests[1]}` | {len(copies.get('done', []))} "
+        f"| {copies.get('seeds')} | {'tuned' if copies.get('tuning') else 'settings file'} |",
+        "",
+        "Each sampler reads its settings file (`potts_sampler_settings.json`, `copy_sampler_settings.json`),",
+        "tuned by #723 on the run's own problems, realizations 0-2 held out from these panels, on a quiet",
+        "host; Wolff keeps the settings tuned before the harness, since its tune ran 68 min unfinished.",
+        "",
+    ]
+    return "\n".join(lines)
+
+
+def solver_figures(potts: Path, copies: Path | None, out: Path, commit: str) -> Path:
+    """Figure 18 into `out`, and `SOLVER_NOTE` beside it with each record's data hash and the code."""
     import matplotlib.pyplot as plt
 
     from port.extensions.figure_style import figure_font
     from port.studies import records as stored
 
     out.mkdir(parents=True, exist_ok=True)
-    records = [stored.read(p) for p in (potts, copies)]
-    text = (
-        f"{Path(records[0]['manifest']).stem} · potts {stored.digest(records[0])}"
-        f" · copy states {stored.digest(records[1])}"
-        f" · code {commit}"
-    )
+    records = [stored.read(potts), None if copies is None else stored.read(copies)]
     with figure_font():
-        figure = solver_figure(*records)
-        stamp(figure, text)
+        figure = solver_figure(stored.read(potts), records[1])
         figure.savefig(out / SOLVERS, dpi=300, facecolor="white",
                        metadata={"Software": None})  # fmt: skip
         plt.close(figure)
+    (out / SOLVER_NOTE).write_text(
+        solver_note(
+            records, [None if r is None else stored.digest(r) for r in records], commit
+        )
+    )
     return out / SOLVERS
 
 
 QUESTIONS: dict[str, tuple[str, str]] = {
-    "truth/truth_combined.png": (
-        "What was planted, on one page: tree, (A, B) profile, RDR and BAF per clone?",
+    "truth_combined.png": (
+        "What was planted, on one page: tree, (A, B) profile, RDR and BAF per tumour clone, and the phase switches?",
         "`port.sim.truth_figure.truth_combined_figure`",
     ),
-    "truth/simulated_tree.png": (
-        "Which events sit on which edge of the simulated clone tree?",
-        "`port.sim.truth_figure.simulated_tree_figure`, `truth_combined`'s panel (a) alone",
+    "truth_combined_multisample.png": (
+        "The same, for the fixture's multi-sample counterpart: the same clones and laws on two overlapping slices, phase switch errors on?",
+        "`multisample_pages`: `truth_combined_figure` on `MULTISAMPLE[fixture]`'s r0 (`sim/manifests/dev_tree_easy.toml`)",
     ),
-    "truth/spatial.png": (
-        "Which clone was each spot drawn from?",
-        "`port.sim.analysis.plot_spatial`",
+    "spatial_multisample.png": (
+        "Where is each true clone on each of the counterpart's slices?",
+        "`multisample_pages`: `port.sim.analysis.plot_spatial`",
     ),
-    "truth/clones_genomic.png": (
-        "What RDR and BAF does each planted clone give along the genome?",
-        "`port.sim.analysis.plot_clones_genomic_truth`",
+    "he_multisample.png": (
+        "What H&E slide do the counterpart's planted clones stain, slice by slice?",
+        "`he_slices_figure`: `port.sim.he_slide.mock_he` per slice",
     ),
-    "truth/clone_profiles.png": (
-        "What (A, B) does each clone carry along the genome?",
-        "`port.sim.analysis.plot_clone_profiles`",
-    ),
-    "truth/coverage.png": (
-        "Do spot UMI and SNP reads follow their laws?",
-        "`port.sim.analysis.plot_coverage`",
-    ),
-    "truth/phase.png": (
-        "Where does the planted phase switch?",
-        "`port.sim.analysis.plot_phase`",
-    ),
-    "truth/baseline.png": (
-        "What normal expression baseline were counts drawn from?",
-        "`port.sim.analysis.plot_baseline`",
-    ),
-    "run/combined.png": (
+    "combined.png": (
         "What did the run fit, genome and array on one page?",
         "`port.extensions.combined_figure.combined_figure`",
     ),
-    "run/genomic.png": (
-        "What RDR, BAF and integer (A, B) did the run fit per clone?",
-        "`port.extensions.combined_figure.genomic_figure`",
+    "pop_combined.png": (
+        "How many UMIs does a clone need, how long must a CNA be, at each stay probability 1 - t, "
+        "and how often is a true-(1, 1) segment called altered?",
+        "`port.studies.population_report.combined` on `docs/studies/population_summary_limited.json` (#745's limited rerun; #746 the full)",
     ),
-    "run/spatial.png": (
-        "Where are the fitted clones on the array?",
-        "`port.extensions.combined_figure.spatial_figure`",
-    ),
-    "run/copy_number_profile.png": (
-        "What integer (A, B) did the run decode per clone?",
-        "the run's `plots/copy_number_profile.png`",
-    ),
-    "run/clones_spatial.png": (
-        "Which fitted clone is each spot?",
-        "the run's `plots/clones_spatial.png`",
-    ),
-    "run/clones_genomic.png": (
-        "What RDR and BAF did the run fit per clone?",
-        "the run's `plots/clones_genomic.png`",
-    ),
-    "run/rdr_baf_clones_genomic.png": (
-        "What RDR and BAF were the clones fitted to?",
-        "the run's `plots/rdr_baf_clones_genomic.png`",
-    ),
-    "compare/clones_truth_vs_fit.png": (
-        "Do the fitted clones recover the planted ones, and which matches which?",
-        "`labels_figure`: `port.qa.audit.score_sample`'s ARI and matching",
-    ),
-    "compare/copy_confusion.png": (
-        "Which (A, B) is each planted pair decoded as?",
-        "`confusion_figure`: `port.qa.scoring.copy_confusion`",
-    ),
-    "compare/copy_genomic_truth_vs_fit.png": (
-        "Where along the genome is a matched clone's (A, B) decoded wrong, or swapped?",
-        "`genomic_compare_figure`: `score`'s clone-bins",
-    ),
-    "compare/exact_by_class.png": (
-        "Which planted classes are recovered exactly, with and without phase?",
-        "`exact_figure`: `port.qa.scoring.exact_by_class`",
+    "solver_combined.md": (
+        "What was `solver_combined.png` drawn from?",
+        "`solver_note`: both records' data hashes, their settings and the code",
     ),
     "solver_combined.png": (
         "How far above the best does each spatial solver and each copy-state start end, and how fast?",
@@ -784,27 +797,7 @@ QUESTIONS: dict[str, tuple[str, str]] = {
 }
 """Each committed file under `OUT`: the question it answers, and its source."""
 
-KEY_STUDIES: dict[str, tuple[str, str, str]] = {
-    "key_studies/557_copy-states.png": (
-        "Which copy-state start, polished by `--sal` Baum-Welch, recovers the planted states at known clones?",
-        "`port.studies.copy_state_plot` (#540, PR #557)",
-        "`run_study --copy-state-stream sim/manifests/baseline/dev_tree_1s_hard.toml OUT "
-        "--problems 10 --seeds 10 --held-out 3 --settings python/port/studies/copy_sampler_settings.json`",
-    ),
-    "key_studies/554_clone-starts.png": (
-        "Does the clone-label start or the Potts solver decide the clones, and what does each start reach?",
-        "`docs/nb/clone_label_study.ipynb` via `port.studies.clone_label_notebook` (#541, PR #554)",
-        "`run_study --clone-labels capture SAMPLE CAPTURE.npz`, `... run CAPTURE.npz OUT.pkl`, "
-        "`run_study --clone-label-notebook OUT.pkl`",
-    ),
-    "key_studies/546_population.png": (
-        "At J = 1, how many UMIs does a clone need to be detected, how long must a CNA be to be recovered, "
-        "and how often is a true-(1,1) segment called altered?",
-        "`port.studies.population_report.figures` (#544, PR #546)",
-        "`run_study --population run --seeds 0:200 --J 1 --out DIR`, then `... run --seeds 1000:1260 "
-        "--J 1 --manifest sim/manifests/population_long.toml --out DIR`, then `... report --out DIR --study2-J 1`",
-    ),
-}
+KEY_STUDIES: dict[str, tuple[str, str, str]] = {}
 """Each key study's figure (label `key_study`) under `OUT/key_studies/`: question, source, regenerate command."""
 
 
@@ -813,19 +806,44 @@ def ledger_name(fixture: str) -> str:
     return f"{fixture}_r0"
 
 
+SUPPORTING = provenance.PLOTS / "paper"
+"""Every page the set draws but does not commit: `truth/`, `run/` and `compare/`, untracked (#745)."""
+
+
+def curate(out: Path, into: Path = SUPPORTING) -> list[Path]:
+    """`QUESTIONS`' figures flat in `out`, every other page `out` holds moved under `into`.
+
+    The paper commits its headline figures alone (#745); the panels, the run's own
+    pages and the comparisons are regenerated on demand.
+    """
+    for page in (
+        "truth/truth_combined.png",
+        *(f"truth/{p}" for p in MULTISAMPLE_PAGES),
+        "run/combined.png",
+    ):
+        if (out / page).exists():
+            (out / page).replace(out / Path(page).name)
+    moved = []
+    for part in ("truth", "run", "compare"):
+        for path in sorted((out / part).glob("*")) if (out / part).is_dir() else []:
+            target = into / part / path.name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            path.replace(target)
+            moved.append(target)
+        if (out / part).is_dir():
+            (out / part).rmdir()
+    return moved
+
+
 def readme(
     fixture: str,
     digest: str,
     commit: str,
     run_id: str,
     recovery: dict[str, Any],
-    switches: int,
 ) -> str:
     """`OUT/README.md`: the run's headline metrics, then each file's question and source."""
     rows = "\n".join(f"| `{k}` | {q} | {s} |" for k, (q, s) in QUESTIONS.items())
-    studies = "\n".join(
-        f"| `{k}` | {q} | {s} | {r} |" for k, (q, s, r) in KEY_STUDIES.items()
-    )
     return f"""# Paper figures: {fixture} r0 ({digest})
 
 **TL;DR:** clone ARI {recovery["ari"]:.4f}, copy ARI (phase-free)
@@ -835,24 +853,26 @@ def readme(
 code `{commit}`: {recovery["wall"]:.0f} s wall, {recovery["peak_gb"]:.2f} GB peak.
 Ledger `run_id` `{run_id}` (`docs/metrics/`, fixture `{ledger_name(fixture)}` `{digest}`).
 
-Regenerate from a clean tree, so the stamp carries no `+`; it draws r0 into
+Regenerate from a clean tree, so the commit above carries no `+`; it draws r0 into
 `.cache/paper_figures/` where `--draw` is not given, and refuses any r0 not
 hashing to `{digest}`:
 
     run_study --paper-figures --fixture {fixture} --out docs/plots/paper
 
-`--truth-only` writes `truth/` alone, with no run. Every figure is stamped
-`{fixture} {digest} · code <sha>`. `run/spatial.png` and `run/combined.png`
-draw panel (a) on a slide mocked from the planted labels (`port.sim.he_slide`):
-the fixture has no H&E image, and the run never reads the mock.
-`truth/phase.png` is flat: this r0 plants {switches} phase switches.
-`solver_combined.png` is not drawn from this fixture: `--solvers POTTS.record COPY.record`
-draws it from a `port.studies.potts_stream` and a `port.studies.copy_state_stream` record,
-and its stamp names both records' data hashes.
-The genomic panels of `truth/truth_combined.png`, `truth/clones_genomic.png`,
-`truth/clone_profiles.png`, `run/genomic.png`, `run/combined.png` and
-`compare/copy_genomic_truth_vs_fit.png` draw every altered bin at 2x its extent
-(`port.extensions.genomic_axis`, T- #683), and their stamps end `· axis: altered` and the scale used.
+`--truth-only` draws the truth alone, with no run. This directory commits the four
+headline figures alone (#745); every other page the run draws (the truth's panels,
+the run's own pages, cnaster's copies and the truth-against-fit comparisons) is
+written under `.cache/plots/paper/` and regenerated on demand (`curate`). The figures
+carry no stamp (#743): `truth_combined.png` and `combined.png` are `{fixture}` r0
+`{digest}` at code `{commit}`, as above. `combined.png` draws panel (a) on a slide
+mocked from the planted labels (`port.sim.he_slide`): the fixture has no H&E image,
+and the run never reads the mock. `solver_combined.png` is not drawn from this fixture:
+`--solvers POTTS.record COPY.record` draws it from a `port.studies.potts_stream` and a
+`port.studies.copy_state_stream` record, and `solver_combined.md` beside it names both
+records, their data hashes and their settings. `pop_combined.png` is the population
+study's, its data in `docs/studies/`. The genomic panels of `truth_combined.png` and
+`combined.png` draw every altered bin at 2x its extent (`port.extensions.genomic_axis`,
+T- #683), each on its own segmentation, so their contig widths differ.
 
 | File | Question | Source |
 | --- | --- | --- |
@@ -860,11 +880,8 @@ The genomic panels of `truth/truth_combined.png`, `truth/clones_genomic.png`,
 
 ## Key studies
 
-Each figure is redrawn when its study is rerun, and stamped `data <hash> · code <sha>`.
-
-| File | Question | Source | Regenerate |
-| --- | --- | --- | --- |
-{studies}
+None committed: `554_clone-starts.png` and `557_copy-states.png` are superseded by
+`solver_combined.png` (a) and (b) (#745).
 """
 
 
@@ -884,6 +901,8 @@ def main(argv: list[str] | None = None) -> int:
     arguments = parser.parse_args(argv)
     if arguments.solvers is not None:
         potts, copies = arguments.solvers
+        # NB "-" for COPY.record draws (b) empty, while its stream runs (#743)
+        copies = None if str(copies) == "-" else copies
         print(solver_figures(potts, copies, arguments.out, provenance.commit()))
         return 0
 
@@ -891,14 +910,16 @@ def main(argv: list[str] | None = None) -> int:
     commit = provenance.commit()
     path = realization(arguments.fixture, arguments.draw)
     digest = stated_hash(arguments.fixture)
-    text = f"{arguments.fixture} {digest} · code {commit}"
     out: Path = arguments.out
     for part in ("truth", "run", "compare"):
         (out / part).mkdir(parents=True, exist_ok=True)
 
-    for written in truth_figures(path, out / "truth", text):
+    for written in truth_figures(path, out / "truth"):
+        print(written)
+    for written in multisample_pages(arguments.fixture, arguments.draw, out / "truth"):
         print(written)
     if arguments.truth_only:
+        curate(out)
         return 0
 
     from port.qa.ledger import SIM_TEST, write
@@ -906,10 +927,11 @@ def main(argv: list[str] | None = None) -> int:
 
     sample = load_simulated(path.name, path.parent)
     with tempfile.TemporaryDirectory() as scratch:
-        run = run_figures(sample, Path(scratch), out / "run", text)
+        run = run_figures(sample, Path(scratch), out / "run")
         c = compared(sample, path, run.output, run.recovery)
-        for written in compare_figures(c, out / "compare", text):
+        for written in compare_figures(c, out / "compare"):
             print(written)
+    print(f"{len(curate(out))} supporting pages under {SUPPORTING}")
 
     recovery = {**run.recovery, "fixture_hash": digest, "peak_gb": run.peak_gb}
     run_id = write(
@@ -921,6 +943,6 @@ def main(argv: list[str] | None = None) -> int:
         test=SIM_TEST,
     )
     (out / "README.md").write_text(
-        readme(arguments.fixture, digest, commit, run_id, recovery, switches(path))
+        readme(arguments.fixture, digest, commit, run_id, recovery)
     )
     return 0

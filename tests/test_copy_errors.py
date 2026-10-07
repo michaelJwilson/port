@@ -148,3 +148,36 @@ def test_copy_errors_refuse_a_fit_where_jax_hmms_beta_binomial_is_unstable(
 
     with pytest.raises(ValueError, match="T- #599"):
         pinned_errors(captured)
+
+
+@pytest.mark.bug
+def test_the_pseudobulk_refuses_a_clone_with_no_spots() -> None:
+    """Three path columns and spots in clones 0 and 2 only: refused (#749 WP0).
+
+    Stacked, clone 2's spots filled block 1, which `pinned_objective` scores
+    on clone 1's path; with every clone present the stack is as before.
+    """
+    import numpy as np
+    from port.extensions.copy_errors import Captured, pseudobulk
+
+    def captured(assignment: list[int]) -> Captured:
+        result = {
+            "new_assignment": np.array(assignment),
+            "pred_cnv": np.zeros((4, 3), dtype=int),
+        }
+        n_spots = len(assignment)
+        single_x = np.arange(4 * 2 * n_spots, dtype=float).reshape(4, 2, n_spots)
+        return Captured(
+            single_x,
+            np.array([4]),
+            np.ones((4, n_spots)),
+            np.ones((4, n_spots)),
+            result,
+        )
+
+    with pytest.raises(ValueError, match=r"clones \[1\]"):
+        pseudobulk(captured([0, 2, 2]))
+
+    stacked = pseudobulk(captured([0, 1, 2]))
+    assert stacked["counts_nb"].shape == (12,)
+    assert int(stacked["n_clones"]) == 3

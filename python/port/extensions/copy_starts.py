@@ -36,6 +36,7 @@ from typing import Any, NamedTuple
 
 import numpy as np
 
+from port.extensions.copy_likelihood import PURITY_GRID
 from port.patch.hmm_initialize.sal_mixture import EXPOSURE_SCALE
 
 __all__ = [
@@ -166,8 +167,10 @@ def _log_rdr(call: CopyCall) -> np.ndarray:
     return log_rdr
 
 
-LATTICE_PURITY = (1.0, 0.9, 0.8, 0.7, 0.6, 0.5)
-"""Tumour fractions the lattice start tries, as `copy_likelihood.PURITY_GRID` does."""
+LATTICE_PURITY = PURITY_GRID[: PURITY_GRID.index(0.5) + 1]
+"""Tumour fractions the lattice start tries: `copy_likelihood.PURITY_GRID` down
+to 0.5. The decode's grid continues to 0.3 and this one stops; nothing
+records why, so the cut is stated here rather than drifting (#749 WP7)."""
 
 LATTICE_SCALE = tuple(float(v) for v in np.exp(np.linspace(-0.15, 0.15, 7)))
 """Read-depth scales it tries: the call's baseline need not sit at the clones' neutral."""

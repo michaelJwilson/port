@@ -64,15 +64,10 @@ def _inputs(extra: tuple[int, int]) -> tuple[np.ndarray, ...]:
 @contextmanager
 def _config(**caps: int) -> Iterator[None]:
     """`cnaster`'s global configuration with an `int_copy_num` section, restored after."""
-    from cnaster import config
+    from port.sim.inputs import written_config
 
-    previous = config._global_config
-    config.set_global_config(config.YAMLConfig({"int_copy_num": dict(caps)}))
-
-    try:
+    with written_config({"int_copy_num": dict(caps)}):
         yield
-    finally:
-        config.set_global_config(previous)
 
 
 def _milp(decoder: Any, extra: tuple[int, int]) -> tuple[list[tuple[int, int]], float]:
@@ -354,6 +349,34 @@ def test_the_drop_ins_decode_under_the_named_allele_cap(
     total, allele = expected
     pairs = {(int(a), int(b)) for a, b in candidates(total, allele)}
     assert ((6, 0) in pairs) == (allele >= 6)
+
+
+@pytest.mark.bug
+def test_a_cap_passed_at_cnasters_default_is_kept(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A caller's explicit `max_allele_copy=5, max_total_copy=6`, `cnaster`'s
+    defaults, decodes under `(5, 6)` with 12 configured (#749 WP0). Before,
+    a value equal to the default read as not passed and became `(12, 12)`."""
+    from port.patch import integer_copy
+
+    received: list[tuple[int, int | None]] = []
+
+    def decode(*arguments: Any, **options: Any) -> tuple[np.ndarray, float, int]:
+        received.append((arguments[3], options["max_allele_copy"]))
+        return np.ones((1, 2), dtype=np.int64), 0.0, 2
+
+    monkeypatch.setattr(integer_copy, "decode_clone", decode)
+
+    with _config(max_total_copy=12):
+        integer_copy.hill_climbing_integer_copynumber_oneclone(
+            *_inputs(BASE[1]), max_medploidy=2, max_allele_copy=5, max_total_copy=6
+        )
+        integer_copy.hill_climbing_integer_copynumber_oneclone(
+            *_inputs(BASE[1]), max_medploidy=2
+        )
+
+    assert received == [(6, 5), (12, 12)]
 
 
 @pytest.mark.patch
