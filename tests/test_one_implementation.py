@@ -61,7 +61,7 @@ BUDGET: dict[str, int] = {
     #    with its realization (`known_field.KnownProblem`, in `sandbox/`, gone).
     #    90: #748's `forward_polish.Counts`, what one fit spent, and `_Forward`,
     #    the forward log-likelihood as a `sal` objective over `cnaster`'s packed
-    #    parameters (its gradient carried by `hmm_objective._Carried`).
+    #    parameters (its gradient carried by `hmm_objective.CarriedGradient`).
     "classes": 90,
     # NB step 4: 18 records became NamedTuples; the dataclasses left carry
     #    mutable state, machinery or a `__post_init__` (#517 D). Step 8 moved

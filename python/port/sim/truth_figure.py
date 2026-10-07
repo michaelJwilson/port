@@ -87,10 +87,10 @@ def truth_combined_figure(
         LABEL_GAP,
         LABEL_SIZE,
         LEGEND_BOX,
-        _fit_tracks,
-        _put,
-        _set_text,
+        fit_track_furniture,
         page_style,
+        place_in_inches,
+        set_font_size,
     )
     from port.extensions.figure_style import PAPER_WIDTH, TRACK_FONT_SIZE
     from port.extensions.genomic_axis import disclose, name_contigs
@@ -156,7 +156,7 @@ def truth_combined_figure(
                             clone_index=g.groups, figure=genomic_fig,
                             pointsize=0.4, linewidth=0.3, chrtext_shift=-0.9,
                             axis=genome)  # fmt: skip
-        _fit_tracks(genomic_fig)
+        fit_track_furniture(genomic_fig)
         # NB each clone's name followed by its barcode, as (a) sets it.
         barcode = tree(r).barcode
         named = {symbol(clone): clone for clone in r.clones}
@@ -186,8 +186,8 @@ def truth_combined_figure(
 
         # NB the tracks at `TRACK_FONT_SIZE`, as `combined_figure` sets its own (#743)
         for panel in (tree_fig, profile_fig):
-            _set_text(panel, FONT_SIZE)
-        _set_text(genomic_fig, TRACK_FONT_SIZE)
+            set_font_size(panel, FONT_SIZE)
+        set_font_size(genomic_fig, TRACK_FONT_SIZE)
         figure.canvas.draw()
 
         # NB one left and one right edge for the key, the rows and each
@@ -198,7 +198,7 @@ def truth_combined_figure(
         right = width - RIGHT
         for _ in range(3):
             for ax in [legend_ax, profile_ax, *genomic_fig.axes]:
-                _put(ax, LEFT, right)
+                place_in_inches(ax, LEFT, right)
             figure.canvas.draw()
             name_contigs(bottom_ax, starts, contigs, size=FONT_SIZE)
             names = [t for t in bottom_ax.texts if t.get_gid() == "contig"]
@@ -212,7 +212,7 @@ def truth_combined_figure(
 
         foot = name_contigs(bottom_ax, starts, contigs, size=FONT_SIZE)
         _stack_tracks(genomic_fig, foot)
-        _put(tree_ax, LEFT, right)
+        place_in_inches(tree_ax, LEFT, right)
         figure.canvas.draw()
         _fit_tree(tree_ax)
         plot_ascn_legend(legend_ax, box_w=LEGEND_BOX, box_h=0.8, tick_len=0.1,
@@ -240,7 +240,7 @@ def _stack_tracks(panel: Any, foot: float) -> None:
     `plot_clones_genomic` spaces the tracks for its own page, which in a
     subfigure leaves white at the head and foot; the tracks take it.
     """
-    from port.extensions.combined_figure import _put
+    from port.extensions.combined_figure import place_in_inches
 
     dpi = panel.get_figure(root=True).dpi
     box = panel.bbox
@@ -253,7 +253,7 @@ def _stack_tracks(panel: Any, foot: float) -> None:
         y -= STATS_ROW
         for ax in tracks[2 * k : 2 * k + 2]:
             y -= height
-            _put(ax, y0=y, height=height)
+            place_in_inches(ax, y0=y, height=height)
         y -= TRACK_GAP
 
 
@@ -317,7 +317,7 @@ def simulated_tree_figure(r: Realization, width: float | None = None) -> Any:
     """The simulated clone tree, `width` wide, at any event count: `truth_combined_figure`'s panel (a) alone (T- #660, PR- #701)."""
     import matplotlib.pyplot as plt
 
-    from port.extensions.combined_figure import FONT_SIZE, _put, page_style
+    from port.extensions.combined_figure import FONT_SIZE, page_style, place_in_inches
     from port.extensions.figure_style import PAPER_WIDTH
     from port.sim.analysis import draw_tree
 
@@ -329,7 +329,7 @@ def simulated_tree_figure(r: Realization, width: float | None = None) -> Any:
         ax = figure.add_axes((0.02, 0.02, 0.96, 0.88))
         draw_tree(ax, r, event_size=FONT_SIZE, node_size=FONT_SIZE, dot=18.0,
                   name=_symbol(r), ancestors=False, edges=True)  # fmt: skip
-        _put(ax, LEFT, width - 0.05)
+        place_in_inches(ax, LEFT, width - 0.05)
         figure.canvas.draw()
         _fit_tree(ax)
     return figure

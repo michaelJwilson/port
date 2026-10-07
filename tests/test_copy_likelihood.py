@@ -91,9 +91,9 @@ def test_the_shared_decode_recovers_every_planted_pair(shift: bool) -> None:
 def test_the_shared_decode_is_each_states_likelihood_maximum() -> None:
     """With the path held, no other pair for any one state raises the likelihood."""
     from port.extensions.copy_likelihood import (
-        _emission,
-        _parameters,
         candidates,
+        pair_rate_and_share,
+        pseudobulk_log_pmf,
         shared_decode,
     )
 
@@ -107,9 +107,11 @@ def test_the_shared_decode_is_each_states_likelihood_maximum() -> None:
     )
 
     def likelihood(copies: np.ndarray) -> float:
-        log_mu, p = _parameters(copies)
+        log_mu, p = pair_rate_and_share(copies)
         bins = np.arange(path.size)
-        return float(np.sum(_emission(log_mu[path] - shift, p[path], bulk, bins)))
+        return float(
+            np.sum(pseudobulk_log_pmf(log_mu[path] - shift, p[path], bulk, bins))
+        )
 
     best = likelihood(fitted.states)
     assert best == pytest.approx(fitted.log_likelihood, rel=1e-12)

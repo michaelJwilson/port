@@ -25,7 +25,7 @@ from typing import Any
 import numpy as np
 import pytest
 import torch
-from port.sim.truth import _emission_families, dev_instance
+from port.sim.truth import dev_instance, emission_family
 from pytest_benchmark.fixture import BenchmarkFixture
 
 from tests.adapters import from_core_inference_truth
@@ -65,7 +65,7 @@ def _upstream_inputs(truth: Any) -> tuple[Any, torch.Tensor, torch.Tensor]:
     covariate = torch.as_tensor(
         np.stack([exposure, trials], axis=-1), dtype=torch.float64
     )
-    family = _emission_families(truth.log_mu, truth.alphas, truth.p_binom, truth.taus)
+    family = emission_family(truth.log_mu, truth.alphas, truth.p_binom, truth.taus)
     return family, observations, covariate
 
 

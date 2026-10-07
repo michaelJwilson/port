@@ -18,7 +18,7 @@ from dataclasses import replace
 from pathlib import Path
 
 import pytest
-from port.sim.draw import _merge, draw, read_manifest
+from port.sim.draw import draw, merged_tables, read_manifest
 from port.sim.fixtures import R0_HASH, SIM_ROOT, realization_hash, references
 
 MANIFESTS = SIM_ROOT / "manifests"
@@ -58,7 +58,7 @@ def test_r0_draws_to_its_stated_hash(path: Path, tmp_path: Path) -> None:
 
     manifest = read_manifest(path)
     one = {"sample": {"realizations": 1}}
-    manifest = replace(manifest, tables=_merge(manifest.tables, one))
+    manifest = replace(manifest, tables=merged_tables(manifest.tables, one))
     drawn = draw(manifest, tmp_path, resources=found)
 
     assert realization_hash(drawn.realizations[0]) == _stated(path)

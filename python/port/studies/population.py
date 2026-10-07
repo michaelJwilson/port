@@ -133,11 +133,11 @@ def draw_member(seed: int, into: Path, manifest_path: Path = MANIFEST) -> Path:
     """Seed `seed` of a population manifest, written under `into`; its sample path."""
     from dataclasses import replace
 
-    from port.sim.draw import _merge, draw, read_manifest
+    from port.sim.draw import draw, merged_tables, read_manifest
 
     manifest = read_manifest(manifest_path)
     manifest = replace(
-        manifest, tables=_merge(manifest.tables, {"sample": {"seed": seed}})
+        manifest, tables=merged_tables(manifest.tables, {"sample": {"seed": seed}})
     )
     return draw(manifest, into).realizations[0]
 
@@ -574,12 +574,12 @@ def _neutral(
 
 def _kept_run(sample: Any, kept: Path) -> dict[str, Any]:
     """`read_run`'s labels, seglevel, `a` and `b`, from a run's `KEPT` outputs."""
-    from port.qa.audit import _barcode
+    from port.qa.audit import barcode_strings
 
     table = pd.read_csv(kept / "clone_labels.tsv", sep="\t", comment="#")
     barcodes = table["barcode"] if "barcode" in table else table.iloc[:, 0]
     by_barcode = dict(
-        zip(_barcode(barcodes), table["clone_label"].to_numpy(), strict=True)
+        zip(barcode_strings(barcodes), table["clone_label"].to_numpy(), strict=True)
     )
     labels = np.array([by_barcode.get(b, -1) for b in sample.barcodes])
     seglevel = pd.read_csv(kept / "cnv_seglevel.tsv", sep="\t")

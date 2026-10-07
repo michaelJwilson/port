@@ -274,7 +274,7 @@ def extended(path: Path) -> dict[str, Any]:
     base = extended(path.parent / parent)
     if "law" in document.get("cna", {}).get("length", {}) and "cna" in base:
         base["cna"] = {k: v for k, v in base["cna"].items() if k != "length"}
-    return _merge(base, document)
+    return merged_tables(base, document)
 
 
 PATH_KEYS = (
@@ -304,11 +304,11 @@ def _anchored(document: dict[str, Any], directory: Path) -> dict[str, Any]:
     return document
 
 
-def _merge(base: dict[str, Any], over: dict[str, Any]) -> dict[str, Any]:
+def merged_tables(base: dict[str, Any], over: dict[str, Any]) -> dict[str, Any]:
     out = dict(base)
     for key, value in over.items():
         if isinstance(value, dict) and isinstance(out.get(key), dict):
-            out[key] = _merge(out[key], value)
+            out[key] = merged_tables(out[key], value)
         else:
             out[key] = value
     return out
@@ -1516,7 +1516,7 @@ def main(argv: list[str] | None = None) -> int:
         from dataclasses import replace
 
         seed = {"sample": {"seed": arguments.seed}}
-        manifest = replace(manifest, tables=_merge(manifest.tables, seed))
+        manifest = replace(manifest, tables=merged_tables(manifest.tables, seed))
     drawn = draw(manifest, None if arguments.into is None else Path(arguments.into))
     print(
         f"wrote {len(drawn.realizations)} realizations of {len(drawn.sample_ids)} "

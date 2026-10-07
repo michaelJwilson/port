@@ -25,7 +25,7 @@ def _planted(
     seed: int, pairs: np.ndarray = PAIRS, purity: float = 1.0
 ) -> tuple[list[np.ndarray], list[Pseudobulk]]:
     """A normal clone and a tumour clone of `purity`, both over `pairs`' states."""
-    from port.extensions.copy_likelihood import _parameters
+    from port.extensions.copy_likelihood import pair_rate_and_share
 
     rng = np.random.default_rng(seed)
     runs = np.repeat(np.arange(8) % 4, N_OBS // 8)
@@ -34,7 +34,7 @@ def _planted(
     bulks = []
 
     for path, shift, fraction in zip(paths, (0.0, SHIFT), (1.0, purity), strict=True):
-        log_mu, share_of = _parameters(pairs, fraction)
+        log_mu, share_of = pair_rate_and_share(pairs, fraction)
         mean = DEPTH * np.exp(log_mu[path] - shift)
         counts = rng.negative_binomial(1.0 / ALPHA, 1.0 / (1.0 + ALPHA * mean))
         p = np.clip(share_of[path], 1e-6, 1.0 - 1e-6)
@@ -79,10 +79,10 @@ def test_half_purity_mimics_every_pair_with_both_alleles(pair: tuple[int, int]) 
     So the fraction is not identifiable from states that all carry both
     alleles; LOH, whose mimic would need `-1` copies, is what pins it.
     """
-    from port.extensions.copy_likelihood import _parameters
+    from port.extensions.copy_likelihood import pair_rate_and_share
 
-    pure = _parameters(np.array([pair]), 1.0)
-    mimic = _parameters(np.array([[2 * pair[0] - 1, 2 * pair[1] - 1]]), 0.5)
+    pure = pair_rate_and_share(np.array([pair]), 1.0)
+    mimic = pair_rate_and_share(np.array([[2 * pair[0] - 1, 2 * pair[1] - 1]]), 0.5)
 
     np.testing.assert_allclose(mimic, pure, rtol=1e-12)
 

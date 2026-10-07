@@ -32,7 +32,7 @@ from scipy.optimize import linear_sum_assignment
 from port.extensions import copy_errors as _copy_errors
 from port.extensions.copy_errors import Captured
 from port.sim.run_config import run_written
-from port.sim.truth import CoreInferenceTruth, _emission_families, core_inference_truth
+from port.sim.truth import CoreInferenceTruth, core_inference_truth, emission_family
 
 GENOME: dict[str, Any] = {
     "n_clones": 3,
@@ -147,7 +147,7 @@ def realize(truth: CoreInferenceTruth, seed: int) -> CoreInferenceTruth:
     this draws it from `default_rng([genome_seed, seed, s])`, so no
     realization shares a stream with the genome's own draw or with another.
     """
-    family = _emission_families(truth.log_mu, truth.alphas, truth.p_binom, truth.taus)
+    family = emission_family(truth.log_mu, truth.alphas, truth.p_binom, truth.taus)
     counts_nb = np.empty_like(truth.counts_nb)
     counts_bb = np.empty_like(truth.counts_bb)
 
@@ -203,7 +203,7 @@ class Fit(NamedTuple):
     realization's data: the error bars the truth would carry."""
 
 
-_column = _copy_errors._column
+_column = _copy_errors.flat_values
 pseudobulk = _copy_errors.pseudobulk
 
 

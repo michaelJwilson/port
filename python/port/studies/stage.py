@@ -161,7 +161,9 @@ def members(
     if n is not None:
         drawn = replace(
             drawn,
-            tables=d._merge(drawn.tables, {"sample": {"realizations": first + n}}),
+            tables=d.merged_tables(
+                drawn.tables, {"sample": {"realizations": first + n}}
+            ),
         )
     out = root / Path(manifest).stem
     for realized in d.realize(drawn, out):

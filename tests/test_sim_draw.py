@@ -22,12 +22,12 @@ import scipy.sparse
 from port.sim.draw import (
     DrawManifest,
     Drawn,
-    _merge,
     draw,
     extended,
     from_document,
     hex_array,
     layout,
+    merged_tables,
     square_array,
 )
 from port.sim.files import located
@@ -41,7 +41,9 @@ SMALL = {"array": {"rows": 20, "columns": 20}}
 
 
 def _manifest(name: str, overrides: dict[str, Any] | None = None) -> DrawManifest:
-    document = _merge(extended(MANIFESTS / f"{name}.toml"), SMALL | (overrides or {}))
+    document = merged_tables(
+        extended(MANIFESTS / f"{name}.toml"), SMALL | (overrides or {})
+    )
     return from_document(document, MANIFESTS)
 
 
