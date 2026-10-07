@@ -1,5 +1,12 @@
 # Study: clone-field strength, dev_tree against CalicoST (#556)
 
+**#735:** the run's own clone-assignment field at the planted clones is 5–10x
+weaker than the planted law's on `dev_tree_1s_hard` r0 (`9ec90dc2`): a median
+margin of 0.18 nats (0.38 from the planted states) against 1.7, field-argmax
+wrong on 47% (46%) of spots against 22%. Every number below the next section
+is the planted-law field's, `port.sandbox.known_field`, which #735 deleted;
+the Potts study now solves the run's (*The run's field*).
+
 **TL;DR:** at the planted clones, the pipeline's clone field is 10x stronger
 on dev_tree than on CalicoST easy and hard: a median per-spot margin of
 9.2–9.8 nats against 0.8 and 0.2. Field-argmax misassigns 2.5–2.9% of
@@ -20,13 +27,16 @@ here is the gamma sampler's: the hashes are `docs/baseline-release.md`'s.
 
 ## Method
 
-`run_study --field-strength pipeline | known | calicost`,
+`run_study --field-strength pipeline | calicost`,
 `run_study --potts-stream`, `run_study --calicost-figures`.
 
-- **Pipeline field.** `--sal --oracle-start`'s first BAF + RDR inference,
-  captured (`port.studies.clone_labels capture`) and rebuilt at the planted
-  labels (`port.sandbox.clone_starts.problem.build`). β = 1, 6 neighbours.
-- **Known-law field.** `port.sandbox.known_field`: each realization drawn
+- **Pipeline field.** Before #735, `--sal --oracle-start`'s first BAF + RDR
+  inference, captured (`port.studies.clone_labels capture`) and rebuilt at
+  the planted labels (`port.sandbox.clone_starts.problem.build`). Since, the
+  field `run_cnaster_port --sal`'s clone assignment computes at the RDR +
+  BAF stage, at the planted clones (`port.studies.stage.at_clone_assignment`).
+  β = 1, 6 neighbours.
+- **Known-law field** (retired by #735, `known` with it). `port.sandbox.known_field`: each realization drawn
   in memory and scored under the draw's own law at its planted states.
   - Gene UMIs are Dirichlet-multinomial.
   - Haplotype-A reads are beta-binomial.
@@ -87,7 +97,7 @@ from CalicoST's planted truth. The manifests carry them.
     field's sd is read off the covariance at lags ≥ 1 spot.
   - Easy's is flat to 19 spots: per-clone offsets, not a spatial field.
 - **ρ.** The moment estimator, unbiased at the true share
-  (`known_field.overdispersion`, pinned by a test). Its null sd is 0.009 on
+  (`field_strength.overdispersion`, pinned by a test). Its null sd is 0.009 on
   these read counts; the 8 groups pool to 0.009.
 - **Expression.** CalicoST's tumour spots follow a gene program of their
   own. Their normal spots follow port's λ to sd 0.35, their tumour spots to
@@ -129,7 +139,7 @@ ICM and the color merge. Numbers are the table's in the figures.
 The figures, energy less the planted labelling's and the gap above TRW-S's
 bound per manifest, are not committed. `run_study --potts-stream
 MANIFEST OUT_DIR` draws `OUT_DIR/<stem>.png` as each problem finishes, and
-`run_study --potts-plot OUT_DIR/<stem>.pkl` redraws it from the
+`run_study --potts-plot OUT_DIR/<stem>.record` redraws it from the
 pickle. The six figures drawn for this section stay in history, as
 `potts_dev_tree_1s*.png` under `ba34716:docs/plots/studies/` (`git show`).
 
@@ -168,12 +178,37 @@ the color merge, Missed raw / polished, and the median runtime.
   without closing gap.
 - **Wolff's budget counts single clusters,** as `sal`'s does, so 4,000 steps
   relabel few spots in a field this strong.
-- The two kernels keep the Boltzmann law exactly on a 4-site enumeration
-  (`tests/test_known_field_cluster.py`).
+- The two kernels kept the Boltzmann law exactly on a 4-site enumeration.
+  They and their test left with #735: `sal`'s heat-bath Swendsen-Wang and
+  Wolff (its #1142) draw a cluster's label from its summed field, as these
+  did, and replaced them in the stream with #716.
 
 The figure is not committed: `run_study --potts-plot
-OUT_DIR/<stem>.pkl` redraws it from the merged stream
+OUT_DIR/<stem>.record` redraws it from the merged stream
 (`git show ba34716:docs/plots/studies/potts_dev_tree_1s_hard_tuned.png`).
+
+## The run's field (#735)
+
+`dev_tree_1s_hard` r0 (`9ec90dc2`), 3,000 spots, 4 clones, β = 1, 6
+neighbours: `run_study --field-strength pipeline` (states from the run) and
+`port.studies.stage.at_clone_assignment(..., states="planted")`.
+
+| field | median margin [nats] | argmax wrong | argmax ARI | to the field [s] |
+| --- | --- | --- | --- | --- |
+| planted law (`known_field`, before #735) | 1.7 | 0.217 | 0.524 | — |
+| the run's, from its own initial states | 0.18 | 0.468 | 0.148 | 77 |
+| the run's, from the planted states | 0.38 | 0.457 | 0.163 | 46 |
+
+- **The run solves a weaker problem than the planted law.** The field is
+  each spot's likelihood under each clone's decoded segment states, with
+  the channels weighted by their non-zero segment counts (`cnaster`'s
+  `compute_loglike_spot_assignment`, which says so), not the draw's own
+  law at the planted states. Starting the Baum-Welch at the planted states
+  doubles the margin and leaves the argmax nearly as wrong.
+- **Which is right is not settled here.** The planted law is the
+  information the data carries; the run's field is what the run uses of it.
+  The gap is a finding about `cnaster`'s field, stated where the work is,
+  not corrected.
 
 ## The lognormal-length generation (#619)
 
@@ -211,7 +246,7 @@ exponential generation (`0330bc21`, `ed2fcda1`), which was not rerun. The known-
   adds `boundary_gain[u, v]`, one direction of the u–v boundary, to a
   merge's gain. Its own cost counts both, so it scores a merge's spatial
   gain at half the energy the merge removes.
-  - `tests/test_known_field.py` pins this as a `bug` test.
+  - `tests/test_color_merge.py` pins this as a `bug` test.
   - The color merge follows the energy.
 - **CalicoST's figures.** `port.studies.calicost_figures` stages CalicoST's
   samples as `port.sim` realizations and draws them.
