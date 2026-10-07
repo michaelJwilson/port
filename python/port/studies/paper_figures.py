@@ -774,9 +774,9 @@ QUESTIONS: dict[str, tuple[str, str]] = {
         "`exact_figure`: `port.qa.scoring.exact_by_class`",
     ),
     "pop_combined.png": (
-        "How many UMIs does a clone need, how long must a CNA be, at what stay probability is it "
-        "found, and how often is a true-(1, 1) segment called altered?",
-        "`port.studies.population_report.combined` on `docs/studies/population_summary.json`",
+        "How many UMIs does a clone need, how long must a CNA be, at each stay probability 1 - t, "
+        "and how often is a true-(1, 1) segment called altered?",
+        "`port.studies.population_report.combined` on `docs/studies/population_summary_limited.json` (#745's limited rerun; #746 the full)",
     ),
     "solver_combined.md": (
         "What was `solver_combined.png` drawn from?",
