@@ -1085,14 +1085,14 @@ def integer_labels(assignment: Any, df_cnv: Any) -> Any:
 
 
 def _draw_spatial(
-    figure: Any, recorded: Recorded, he_frame: Any, labels: str = "continuous"
+    figure: Any, recorded: Recorded, he_frame: Any, labels: str = "integer"
 ) -> tuple[Any, Any]:
     """The slide and the clones on `figure`, drawn but not yet placed.
 
-    `labels` is "continuous", the default, for the fit's own clones, each in
-    its colour as (b)'s integer-decoded profile names it (#743), or "integer"
-    for clones that decode alike at every bin drawn as one (#344, PR- #715),
-    which needs the run's profile call.
+    `labels` is "integer", the default, for the integer-decoded clones: clones
+    that decode alike at every bin are one colour, keyed by every name they
+    hold (`m_N, m_3`) (#344, PR- #715, kept by #743), which needs the run's
+    profile call; or "continuous" for the fit's own clones.
     """
     from cnaster.utils import cast_clone_label
 
@@ -1165,13 +1165,13 @@ def spatial_figure(
     recorded: Recorded,
     he_frame: Any,
     width: float | None = None,
-    labels: str = "continuous",
+    labels: str = "integer",
 ) -> Any:
     """(a) the H&E slide and (b) `clones_spatial`, square and as large as fit
     across `width` inches on a "third" page (T- #740), (b) keyed on its right;
     no caption.
 
-    `labels` as `_draw_spatial` takes it: "continuous" (#743) or "integer" (#344).
+    `labels` as `_draw_spatial` takes it: "integer" (#344) or "continuous".
     """
     import matplotlib.pyplot as plt
 
@@ -1209,7 +1209,7 @@ def combined_figure(
     he_frame: Any,
     width: float | None = None,
     height: float = TEXT_HEIGHT - CAPTION_ROOM,
-    labels: str = "continuous",
+    labels: str = "integer",
     *,
     metric: bool = False,
 ) -> Any:

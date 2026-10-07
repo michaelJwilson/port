@@ -45,6 +45,9 @@ LENGTH_EDGES = np.round(np.arange(6.0, 8.51, 0.25), 2)
 """log10 event length in bp, 1 Mb to about 300 Mb."""
 
 LENGTH_DISPLAY = np.round(np.arange(6.0, 8.51, 0.125), 3)
+
+STAY_EDGES = np.arange(-9.5, -1.4, 1.0)
+"""log10 `1 - t`: one bin per value of `population.STAY` (#729)."""
 """The figure's finer bins; the rule reads `LENGTH_EDGES`."""
 
 SNP_EDGES = np.round(np.arange(0.5, 3.51, 0.5), 2)
@@ -382,7 +385,7 @@ def summarize(out: Path, study2_j: float, seed: int = 544) -> dict[str, Any]:
             "resolved": bool(change.size and (interval[0] > 0 or interval[1] < 0)),
         }
 
-    return {
+    summary = {
         "study1": study1,
         "study2": study2,
         "study3": study3,
@@ -393,6 +396,37 @@ def summarize(out: Path, study2_j: float, seed: int = 544) -> dict[str, Any]:
         "study2_J": study2_j,
         "failures": {f"{j:g}": runs for j, runs in failures(out).items()},
     }
+    arm = stay(out, rng)
+    if arm:
+        summary["t_arm"] = arm
+    return summary
+
+
+def stay(out: Path, rng: np.random.Generator) -> dict[str, Any]:
+    """#729's arm per class, from `out/stay/`: CNA sensitivity against log10 `1 - t`."""
+    rows = []
+    for path in sorted((out / "stay").glob("*.json")):
+        record = json.loads(path.read_text())
+        rows += [{"seed": record["seed"], **r} for r in record["rows"]]
+    if not rows:
+        return {}
+    frame = pd.DataFrame(rows)
+    frame["log_omt"] = np.log10(frame["omt"])
+    members = np.array(sorted(frame["seed"].unique()))
+    weights = resample_weights(members.size, BOOTSTRAP, rng)
+    arm = {}
+    for name in ("LOH", "balanced gain", "imbalanced gain", "all"):
+        part = frame if name == "all" else frame[frame["class"] == name]
+        if part.empty:
+            continue
+        arm[name] = {
+            "events": len(part),
+            "members": int(part["seed"].nunique()),
+            "recovered": curve(
+                part, "log_omt", "recovered", STAY_EDGES, members, weights
+            ),  # fmt: skip
+        }
+    return arm
 
 
 def verdict(entry: dict[str, Any], lo: float, hi: float) -> str:
