@@ -22,7 +22,6 @@ import scipy.sparse
 from port.sim.draw import (
     DrawManifest,
     Drawn,
-    _merge,
     draw,
     extended,
     from_document,
@@ -33,16 +32,10 @@ from port.sim.draw import (
 from port.sim.files import located
 from port.sim.fixtures import EASY, HARD, SIM_ROOT, references
 
-MANIFESTS = SIM_ROOT / "manifests"
+from tests.fixtures import SIM_MANIFESTS, draw_manifest
+
 SIGMAS = 4.0
 """Tolerances are this many standard errors of the statistic compared."""
-
-SMALL = {"array": {"rows": 20, "columns": 20}}
-
-
-def _manifest(name: str, overrides: dict[str, Any] | None = None) -> DrawManifest:
-    document = _merge(extended(MANIFESTS / f"{name}.toml"), SMALL | (overrides or {}))
-    return from_document(document, MANIFESTS)
 
 
 @pytest.fixture(scope="module")
@@ -56,14 +49,14 @@ def resources() -> Path:
 @pytest.fixture(scope="module")
 def tree_draw(resources: Path, tmp_path_factory: pytest.TempPathFactory) -> Drawn:
     """Two slices on a tree, with phase switches at `cnaster`'s assumed rate."""
-    manifest = _manifest("dev_tree")
+    manifest = draw_manifest("dev_tree")
     return draw(manifest, tmp_path_factory.mktemp("tree"), resources=resources)
 
 
 @pytest.fixture(scope="module")
 def star_draw(resources: Path, tmp_path_factory: pytest.TempPathFactory) -> Drawn:
     """One slice, CalicoST's shared.unique, no phase switches."""
-    manifest = _manifest("dev_shared_unique")
+    manifest = draw_manifest("dev_shared_unique")
     return draw(manifest, tmp_path_factory.mktemp("star"), resources=resources)
 
 
@@ -110,31 +103,31 @@ def test_lambda_is_each_genes_share_of_normal_spot_umi() -> None:
 )  # fmt: skip
 def test_a_manifest_that_omits_an_assumption_is_refused(table: str, key: str) -> None:
     """Nothing the draw assumes has a default in code (#445)."""
-    document = extended(MANIFESTS / "dev_tree.toml")
+    document = extended(SIM_MANIFESTS / "dev_tree.toml")
     del document[table][key]
 
     with pytest.raises(ValueError, match=rf"\[{table}\] {key}"):
-        from_document(document, MANIFESTS)
+        from_document(document, SIM_MANIFESTS)
 
 
 @pytest.mark.infra
 def test_an_unknown_counts_sampler_is_refused() -> None:
     """`[model] counts_sampler` names one of `COUNT_SAMPLERS` (#549)."""
-    document = extended(MANIFESTS / "dev_tree.toml")
+    document = extended(SIM_MANIFESTS / "dev_tree.toml")
     document["model"]["counts_sampler"] = "dirichlet"
 
     with pytest.raises(ValueError, match=r"\[model\] counts_sampler: one of"):
-        from_document(document, MANIFESTS)
+        from_document(document, SIM_MANIFESTS)
 
 
 @pytest.mark.infra
 def test_an_unknown_array_kind_is_refused() -> None:
     """`[array] kind` names one of `ARRAYS`: `hex` or `square` (#569)."""
-    document = extended(MANIFESTS / "dev_tree.toml")
+    document = extended(SIM_MANIFESTS / "dev_tree.toml")
     document["array"]["kind"] = "triangle"
 
     with pytest.raises(ValueError, match=r"\[array\] kind 'triangle': one of"):
-        from_document(document, MANIFESTS)
+        from_document(document, SIM_MANIFESTS)
 
 
 @pytest.mark.analytic
@@ -201,7 +194,7 @@ def test_clones_sit_in_one_frame_and_a_shared_clone_is_imaged_by_both_slices() -
     Every listed clone claims spots, no spot is claimed twice, and a stated
     overlap or a clone on two slices that do not overlap is refused.
     """
-    manifest = _manifest("dev_tree")
+    manifest = draw_manifest("dev_tree")
     _, _, points = hex_array(20, 20)
     labels, shapes = layout(manifest, points, np.random.default_rng(3))
 
@@ -213,7 +206,7 @@ def test_clones_sit_in_one_frame_and_a_shared_clone_is_imaged_by_both_slices() -
             assert np.any(lab == manifest.tumour.index(clone)), clone
 
     region = {"center": [0.5, 0.5], "radius": 0.3}
-    clash = _manifest(
+    clash = draw_manifest(
         "dev_tree",
         {
             "slice": [
@@ -231,7 +224,7 @@ def test_clones_sit_in_one_frame_and_a_shared_clone_is_imaged_by_both_slices() -
     with pytest.raises(ValueError, match="overlaps"):
         layout(clash, points, np.random.default_rng(3))
 
-    apart = _manifest(
+    apart = draw_manifest(
         "dev_tree",
         {
             "slice": [
@@ -402,17 +395,11 @@ def test_the_patched_loader_puts_every_spot_in_the_slice_it_was_drawn_on(
     tree_draw: Drawn,
 ) -> None:
     """Both slices load, each spot under the `sample_id` its barcode was written with."""
-    from cnaster.config import YAMLConfig, get_global_config, set_global_config
     from port.patch.io import load_input_data
+    from port.sim.inputs import written_config
 
-    previous = get_global_config()
-    set_global_config(None)
-    set_global_config(YAMLConfig.from_file(tree_draw.path / "config.yaml"))
-    try:
-        loaded = load_input_data(get_global_config(), min_snp_umis=1)
-    finally:
-        set_global_config(None)
-        set_global_config(previous)
+    with written_config(tree_draw.path / "config.yaml") as config:
+        loaded = load_input_data(config, min_snp_umis=1)
 
     obs = loaded.adata.obs
     suffix = obs.index.to_series().str.rsplit("_", n=1).str[-1]
@@ -432,9 +419,9 @@ def test_realizations_share_the_clones_and_redraw_counts_and_phase(
     import anndata
     from port.sim.fixtures import load_simulated
 
-    one = draw(_manifest("dev_tree"), tmp_path / "one", resources=resources)
+    one = draw(draw_manifest("dev_tree"), tmp_path / "one", resources=resources)
     two = draw(
-        _manifest("dev_tree", {"sample": {"realizations": 2}}),
+        draw_manifest("dev_tree", {"sample": {"realizations": 2}}),
         tmp_path / "two",
         resources=resources,
     )
@@ -466,7 +453,7 @@ def test_streamed_realizations_are_the_written_ones(
     import scipy.sparse
     from port.sim.draw import realize
 
-    manifest = _manifest("dev_tree", {"sample": {"realizations": 2}})
+    manifest = draw_manifest("dev_tree", {"sample": {"realizations": 2}})
     streamed = list(realize(manifest, None, resources=resources))
     written = draw(manifest, tmp_path, resources=resources)
 
@@ -489,7 +476,7 @@ def test_a_manifest_extended_from_elsewhere_keeps_its_base_paths(
     child = tmp_path / "elsewhere" / "child.toml"
     child.parent.mkdir()
     child.write_text(
-        f'version = 3\nextends = "{MANIFESTS / "dev_tree.toml"}"\n'
+        f'version = 3\nextends = "{SIM_MANIFESTS / "dev_tree.toml"}"\n'
         '[sample]\nname = "child"\n'
     )
     manifest = from_document(extended(child), child.parent)
@@ -500,9 +487,9 @@ def test_a_manifest_extended_from_elsewhere_keeps_its_base_paths(
 
 def _sized(law: dict[str, Any]) -> DrawManifest:
     """`population` at its own 60 x 50, with `[layout.size]` replaced by `law`."""
-    document = extended(MANIFESTS / "population.toml")
+    document = extended(SIM_MANIFESTS / "population.toml")
     document["layout"]["size"] = law
-    return from_document(document, MANIFESTS)
+    return from_document(document, SIM_MANIFESTS)
 
 
 @pytest.mark.analytic
@@ -607,7 +594,7 @@ def test_the_map_cache_returns_the_parse_and_follows_the_file(
 
 def _felsenstein(leaves: int, expected: float) -> DrawManifest:
     """`dev_tree_1s_easy`'s `[cna]` and genome at `leaves` clones, opted into `felsenstein`; no resources read."""
-    manifest = from_document(extended(MANIFESTS / "dev_tree_1s_easy.toml"))
+    manifest = from_document(extended(SIM_MANIFESTS / "dev_tree_1s_easy.toml"))
     cna = {**manifest.tables["cna"], "mode": "felsenstein", "n_clones": leaves,
            "expected_cnas": expected}  # fmt: skip
     return DrawManifest({**manifest.tables, "cna": cna}, manifest.slices, manifest.root)
@@ -648,7 +635,7 @@ def test_felsenstein_trees_are_uniform_over_rooted_shapes_with_the_expected_even
 @pytest.mark.infra
 def test_felsenstein_refuses_fewer_expected_events_than_clones() -> None:
     """`expected_cnas` below `n_clones` cannot hold one event per leaf edge."""
-    document = extended(MANIFESTS / "dev_tree_1s_easy.toml")
+    document = extended(SIM_MANIFESTS / "dev_tree_1s_easy.toml")
     document["cna"]["expected_cnas"] = 2
     with pytest.raises(ValueError, match="felsenstein"):
         from_document(document)

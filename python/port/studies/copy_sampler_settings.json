@@ -1,5 +1,5 @@
 {
-  "_provenance": "tests.studies.copy_state_stream --tune on baseline/dev_tree_1s_hard.toml realizations 0-2, 5 seeds per setting; the cheapest setting within 1.0 nats of the best median gap in log-likelihood at the start's states (#540); the *-hmm samplers retuned as sal's at sal b61dfba under the host lock (#634)",
+  "_provenance": "run_study --copy-state-stream --tune on dev_tree_1s_hard.toml realizations 0-2, 5 seeds per setting, at the run's Baum-Welch at oracle clones (#730); the cheapest setting within 1.0 nats of the best median gap in log-likelihood at the start's states (#540)",
   "anneal-hmm": {
     "step": 0.003,
     "t_start": 100.0,
@@ -8,17 +8,17 @@
     "default_median_gap": 2093.539
   },
   "hmc-hmm": {
-    "temperature": 1.0,
-    "median_gap": 99.141,
-    "seconds": 5.491,
-    "default_median_gap": 112.749
+    "temperature": 100.0,
+    "median_gap": 131.643,
+    "seconds": 1.387,
+    "default_median_gap": 170.278
   },
   "tempering-hmm": {
-    "step": 0.001,
-    "t_top": 10000.0,
-    "median_gap": 109.369,
-    "seconds": 11.103,
-    "default_median_gap": 2093.539
+    "step": 0.003,
+    "t_top": 100.0,
+    "median_gap": 100.571,
+    "seconds": 3.26,
+    "default_median_gap": 722.677
   },
   "emission++trim": {
     "trim": 0.005,

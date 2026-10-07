@@ -9,6 +9,7 @@ with two or more planted pairs, and a class planted as one pair is NaN.
 from __future__ import annotations
 
 import numpy as np
+import pandas as pd
 import pytest
 from port.qa.scoring import (
     OTHER,
@@ -18,6 +19,7 @@ from port.qa.scoring import (
     copy_states,
     phase_free,
     planted_classes,
+    shared_ari,
 )
 from sklearn.metrics import adjusted_rand_score
 
@@ -164,3 +166,20 @@ def test_the_sampled_table_drops_unplanted_rows_and_undecoded_columns() -> None:
         "| 0,1", "| 1,0", "| 0,2", "| 1,1", "| 2,1"
     ]  # fmt: skip
     assert sampled[0] == "| planted \\ decoded | 0,1 | 1,0 | 0,2 | 1,1 | 1,2 | 2,1 |"
+
+
+@pytest.mark.analytic
+def test_shared_ari_reads_the_planted_labels_at_the_fits_barcodes() -> None:
+    """A relabelled, reordered fit missing one spot scores 1 over the 5 it kept.
+
+    Read by position, the reversed order would pair spot `e`'s fit with spot
+    `a`'s truth and score below 1.
+    """
+    planted = pd.Series([0, 0, 1, 1, 2, 2], index=list("abcdef"))
+    fitted = pd.Series([5, 3, 3, 7, 7], index=list("edcba"))
+
+    ari, spots = shared_ari(planted, fitted)
+
+    assert spots == 5
+    assert ari == pytest.approx(1.0, abs=1e-12)
+    assert adjusted_rand_score(planted.iloc[:5], fitted) < 1.0
