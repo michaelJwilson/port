@@ -39,7 +39,7 @@ from typing import Any
 
 from port.extensions.figure_style import CAPTION_ROOM, TEXT_HEIGHT
 from port.patch.plot_copy_number_profile import KEY_GROWTH
-from port.sim.analysis import Realization, display, read
+from port.sim.analysis import Realization, clone_name, read
 
 __all__ = ["truth_combined_figure", "write_truth_combined"]
 
@@ -61,6 +61,29 @@ HEIGHTS = {
 """Inches per panel, summing to `TEXT_HEIGHT` less `CAPTION_ROOM` (T- #733);
 (a) 0.9, 10% under its 1.0 before PR- #701, (b) fixed, (c) the rest."""
 
+CONTIG_FOOT = 0.3
+"""Inches under (b)'s rows for the contig names where (b) is the page's last
+genome panel: the spatial variant (T- #791)."""
+
+
+LETTER_ROOM = 0.15
+"""Inches over the spatial variant's (c) titles for the panel letter."""
+
+
+def heights(spatial: float | None = None) -> dict[str, float]:
+    """`HEIGHTS`, or with `spatial`, (c)'s row height (`spatial_page.row_height`),
+    (b) `CONTIG_FOOT` taller and (c) that row under `LETTER_ROOM`, no taller than
+    the rest of the page: the page as tall as it draws (T- #791)."""
+    if spatial is None:
+        return dict(HEIGHTS)
+    room = HEIGHTS["genomic"] - CONTIG_FOOT
+    return {
+        "tree": HEIGHTS["tree"],
+        "profile": HEIGHTS["profile"] + CONTIG_FOOT,
+        "spatial": min(room, LETTER_ROOM + spatial),
+    }
+
+
 LEFT = 0.42
 """Inches from the page's left edge to the genome panels' axes: room for the RDR and BAF labels."""
 
@@ -69,16 +92,23 @@ RIGHT = 0.06
 
 
 def _symbol(r: Realization) -> Any:
-    from port.extensions.combined_figure import clone_symbol
-
-    return lambda clone: clone_symbol(display(clone, r.clones))
+    return lambda clone: clone_name(clone, r.clones)
 
 
 def truth_combined_figure(
-    r: Realization, width: float | None = None, *, metric: bool = False
+    r: Realization,
+    width: float | None = None,
+    *,
+    metric: bool = False,
+    spatial: bool = False,
 ) -> Any:
     """The three panels on one page, `width` wide (the paper's text width by default) and
-    `TEXT_HEIGHT` less `CAPTION_ROOM` tall (T- #733); on `metric`, the planted CNAs drawn wider (T- #683)."""
+    `TEXT_HEIGHT` less `CAPTION_ROOM` tall (T- #733); on `metric`, the planted CNAs drawn wider (T- #683).
+
+    With `spatial`, (c) is each spot's true clone per slice in the spatial
+    pages' format (`analysis.draw_spatial`, `port.extensions.spatial_page`)
+    in place of RDR and BAF per clone, and (b) names the contigs (T- #791).
+    """
     import matplotlib.pyplot as plt
     from matplotlib.ticker import NullLocator
 
@@ -112,13 +142,15 @@ def truth_combined_figure(
     width = PAPER_WIDTH if width is None else width
     symbol = _symbol(r)
     genome = binned_axis(r, metric=metric, labels=False)
+    tall_of = heights(_spatial_row(r, width) if spatial else None)
+    foot = ROWS[0] + (CONTIG_FOOT if spatial else 0.0)
 
     with page_style():
         figure: Any = plt.figure(
-            figsize=(width, sum(HEIGHTS.values())), dpi=300, facecolor="white"
+            figsize=(width, sum(tall_of.values())), dpi=300, facecolor="white"
         )
         panels: Any = figure.subfigures(
-            len(HEIGHTS), 1, height_ratios=list(HEIGHTS.values()), hspace=0.0
+            len(tall_of), 1, height_ratios=list(tall_of.values()), hspace=0.0
         )
         tree_fig, profile_fig, genomic_fig = panels
 
@@ -128,11 +160,11 @@ def truth_combined_figure(
                   dot=18.0, name=symbol, ancestors=False, edges=True)  # fmt: skip
 
         # (b): the key, then the rows, as `combined.pdf` draws its profile.
-        tall = HEIGHTS["profile"]
+        tall = tall_of["profile"]
         legend_ax = profile_fig.add_axes(
-            (0.0, (sum(ROWS) + KEY[0]) / tall, 1.0, KEY[1] / tall)
+            (0.0, (foot + ROWS[1] + KEY[0]) / tall, 1.0, KEY[1] / tall)
         )
-        profile_ax = profile_fig.add_axes((0.0, ROWS[0] / tall, 1.0, ROWS[1] / tall))
+        profile_ax = profile_fig.add_axes((0.0, foot / tall, 1.0, ROWS[1] / tall))
         # NB rows in (a)'s order, `r.clones`', as (c)'s tracks are (PR- #701).
         plot_copy_number_profile(binned_profile(r), ax=profile_ax, axis=genome,
                                  rows=[str(k) for k in range(len(r.clones))])  # fmt: skip
@@ -152,61 +184,66 @@ def truth_combined_figure(
         profile_ax.xaxis.set_minor_locator(NullLocator())
 
         # (c)
-        g = genomic_truth(r)
-        plot_clones_genomic(g.lengths, g.counts, g.expected, g.trials,
-                            clone_index=g.groups, figure=genomic_fig,
-                            pointsize=0.4, linewidth=0.3, chrtext_shift=-0.9,
-                            axis=genome)  # fmt: skip
-        fit_track_furniture(genomic_fig)
-        # NB the normal clone's pair gives way to the phase track, in its place,
-        #    one track tall as an RDR track is (#745)
-        tracks = [
-            list(genomic_fig.axes[k : k + 2])
-            for k in range(0, len(genomic_fig.axes), 2)
-        ]
-        normal = next(i for i, (rdr, _) in enumerate(tracks)
-                      if any(t.get_text().startswith(symbol("normal")) for t in rdr.texts))  # fmt: skip
-        # NB drawn into the normal clone's RDR axes, so (c)'s axes stay in page order
-        phase_ax, baf_ax = tracks[normal]
-        phase_ax.cla()
-        draw_phase(phase_ax, r, genome, rate_size=None, ylim=1.0)
-        # NB the tracks' furniture (`fit_track_furniture`): ticks 2 pt, the label a point off them
-        phase_ax.tick_params(length=2, pad=1)
-        phase_ax.yaxis.labelpad = 1.0
-        phase_ax.set_ylabel("Switches / Mb")
-        baf_ax.remove()
-        tracks[normal] = [phase_ax]
-        # NB each clone's name followed by its barcode, as (a) sets it.
-        barcode = tree(r).barcode
-        named = {symbol(clone): clone for clone in r.clones}
-        for ax in genomic_fig.axes:
-            for text in ax.texts:
-                clone = named.get(text.get_text())
-                if clone is not None and text.get_visible():
-                    text.set_text(f"{symbol(clone)} ({shown(barcode[clone])})")
-        for ax in genomic_fig.axes:
-            ticks = ax.get_yticks()
-            if ticks.size > 2:
-                ends = [ticks[0], ticks[-1]]
-                ax.set_yticks(ends, [f"{tick:.1f}" for tick in ends])
-                bottom, top = ax.get_yticklabels()
-                bottom.set_verticalalignment("bottom")
-                top.set_verticalalignment("top")
-            ax.set_ylabel(ax.get_ylabel(), rotation=90, ha="center", va="bottom")
-            # NB `cnaster`'s names, 10 pt at 45 degrees, give way to the
-            #    last track's ticks; the marks stay on the last track alone.
-            for text in ax.texts:
-                if text.get_text().startswith("chr"):
-                    text.set_visible(False)
-            if ax is not tracks[-1][-1]:
-                ax.xaxis.set_minor_locator(NullLocator())
-        bottom_ax = tracks[-1][-1]
-        bottom_ax.set_xticks([])
+        if spatial:
+            tracks: list[list[Any]] = []
+            bottom_ax = profile_ax
+            _spatial_panel(genomic_fig, r, width, tall_of["spatial"])
+        else:
+            g = genomic_truth(r)
+            plot_clones_genomic(g.lengths, g.counts, g.expected, g.trials,
+                                clone_index=g.groups, figure=genomic_fig,
+                                pointsize=0.4, linewidth=0.3, chrtext_shift=-0.9,
+                                axis=genome)  # fmt: skip
+            fit_track_furniture(genomic_fig)
+            # NB the normal clone's pair gives way to the phase track, in its place,
+            #    one track tall as an RDR track is (#745)
+            tracks = [
+                list(genomic_fig.axes[k : k + 2])
+                for k in range(0, len(genomic_fig.axes), 2)
+            ]
+            normal = next(i for i, (rdr, _) in enumerate(tracks)
+                          if any(t.get_text().startswith(symbol("normal")) for t in rdr.texts))  # fmt: skip
+            # NB drawn into the normal clone's RDR axes, so (c)'s axes stay in page order
+            phase_ax, baf_ax = tracks[normal]
+            phase_ax.cla()
+            draw_phase(phase_ax, r, genome, rate_size=None, ylim=1.0)
+            # NB the tracks' furniture (`fit_track_furniture`): ticks 2 pt, the label a point off them
+            phase_ax.tick_params(length=2, pad=1)
+            phase_ax.yaxis.labelpad = 1.0
+            phase_ax.set_ylabel("Switches / Mb")
+            baf_ax.remove()
+            tracks[normal] = [phase_ax]
+            # NB each clone's name followed by its barcode, as (a) sets it.
+            barcode = tree(r).barcode
+            named = {symbol(clone): clone for clone in r.clones}
+            for ax in genomic_fig.axes:
+                for text in ax.texts:
+                    clone = named.get(text.get_text())
+                    if clone is not None and text.get_visible():
+                        text.set_text(f"{symbol(clone)} ({shown(barcode[clone])})")
+            for ax in genomic_fig.axes:
+                ticks = ax.get_yticks()
+                if ticks.size > 2:
+                    ends = [ticks[0], ticks[-1]]
+                    ax.set_yticks(ends, [f"{tick:.1f}" for tick in ends])
+                    bottom, top = ax.get_yticklabels()
+                    bottom.set_verticalalignment("bottom")
+                    top.set_verticalalignment("top")
+                ax.set_ylabel(ax.get_ylabel(), rotation=90, ha="center", va="bottom")
+                # NB `cnaster`'s names, 10 pt at 45 degrees, give way to the
+                #    last track's ticks; the marks stay on the last track alone.
+                for text in ax.texts:
+                    if text.get_text().startswith("chr"):
+                        text.set_visible(False)
+                if ax is not tracks[-1][-1]:
+                    ax.xaxis.set_minor_locator(NullLocator())
+            bottom_ax = tracks[-1][-1]
+            bottom_ax.set_xticks([])
 
         # NB the tracks at `TRACK_FONT_SIZE`, as `combined_figure` sets its own (#743)
         for panel in (tree_fig, profile_fig):
             set_font_size(panel, FONT_SIZE)
-        set_font_size(genomic_fig, TRACK_FONT_SIZE)
+        set_font_size(genomic_fig, FONT_SIZE if spatial else TRACK_FONT_SIZE)
         figure.canvas.draw()
 
         # NB one left and one right edge for the key, the rows and each
@@ -233,8 +270,9 @@ def truth_combined_figure(
                 break
             right -= overrun + LABEL_GAP / 72.0
 
-        foot = name_contigs(bottom_ax, starts, contigs, size=FONT_SIZE)
-        _stack_tracks(genomic_fig, foot, tracks)
+        names_foot = name_contigs(bottom_ax, starts, contigs, size=FONT_SIZE)
+        if not spatial:
+            _stack_tracks(genomic_fig, names_foot, tracks)
         place_in_inches(tree_ax, LEFT, right)
         figure.canvas.draw()
         _fit_tree(tree_ax)
@@ -247,6 +285,35 @@ def truth_combined_figure(
         figure.canvas.draw()
     disclose(figure, genome)
     return figure
+
+
+def _spatial_row(r: Realization, width: float) -> float:
+    """Inches (c)'s row of slices takes across `width`, as `_spatial_panel` draws it."""
+    from port.extensions.spatial_page import row_height
+    from port.sim.analysis import slice_frame
+
+    frame = slice_frame(r)
+    return float(row_height(len(frame.slices), frame.aspect, width))
+
+
+def _spatial_panel(panel: Any, r: Realization, width: float, height: float) -> None:
+    """(c) of the spatial variant: each slice's true clones in the spatial
+    pages' format, keyed by the paper's names, the key under the first slice."""
+    from port.extensions.spatial_page import panel_row, spatial_key
+    from port.sim.analysis import clone_colour, draw_spatial, slice_frame
+
+    frame = slice_frame(r)
+    _, axes = panel_row(
+        len(frame.slices),
+        frame.aspect,
+        width,
+        figure=panel,
+        height=height,
+        top=LETTER_ROOM,
+    )
+    present = draw_spatial(axes, r, size=4.0)
+    spatial_key(axes[0], [clone_name(c, r.clones) for c in present],
+                [clone_colour(c, r.clones) for c in present])  # fmt: skip
 
 
 TRACK_GAP = 0.02

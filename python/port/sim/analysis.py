@@ -363,15 +363,36 @@ def outline(
     return corner, float(upper[0] - lower[0] + 1), float(upper[1] - lower[1] + 1)
 
 
-def draw_spatial(
-    axes: Any, r: Realization, *, size: float = 9.0, fontsize: float = 9.0
-) -> list[str]:
-    """Each slice on its own axis in `axes`, at its place in the shared frame; the region they share dashed.
+def clone_name(clone: str, clones: tuple[str, ...]) -> str:
+    """The paper's name for `clone`: $m_N$ for `normal`, $m_k$ for `clone_k`'s numeral (T- #791)."""
+    from port.extensions.combined_figure import clone_symbol
 
-    Returns the clones drawn, in `r.clones`' order, for the caller's key.
-    """
-    from matplotlib.patches import Rectangle
+    return str(clone_symbol(display(clone, clones)))
 
+
+class SliceFrame(NamedTuple):
+    """Each slice's place in the frame the slices share, as the spatial pages draw it."""
+
+    slices: list[str]
+    origins: list[np.ndarray]
+    extent: np.ndarray
+    """Frame units: one slice's width and height."""
+    shared: tuple[np.ndarray, np.ndarray] | None
+
+    def limits(self, k: int) -> tuple[tuple[float, float], tuple[float, float]]:
+        """Slice `k`'s panel limits, `(x, -y)` as spots are drawn, a spacing clear."""
+        x, y = self.origins[k], self.extent
+        return (x[0] - 1, x[0] + y[0] + 1), (-(x[1] + y[1] + 1), -x[1] + 1)
+
+    @property
+    def aspect(self) -> float:
+        """A panel's height over its width."""
+        return float((self.extent[1] + 2) / (self.extent[0] + 2))
+
+
+def slice_frame(r: Realization) -> SliceFrame:
+    """Each slice at its manifest offset in one frame: x across from `y / 2`,
+    y down from `x * sqrt(3) / 2`, hex rows at sqrt(3) / 2."""
     slices = list(dict.fromkeys(r.truth["sample_id"]))
     offsets = [tuple(p["offset"]) for p in r.manifest["slice"]]
     first = r.truth[r.truth["sample_id"] == slices[0]]
@@ -379,31 +400,40 @@ def draw_spatial(
     y0 = first["x"].to_numpy() * np.sqrt(3.0) / 2.0
     extent = np.array([x0.max() - x0.min(), y0.max() - y0.min()])
     origins = [np.array(o) * extent for o in offsets]
-    shared = common_region(origins, extent)
+    return SliceFrame(slices, origins, extent, common_region(origins, extent))
 
-    for k, (ax, sid) in enumerate(zip(axes, slices, strict=True)):
+
+def frame_panels(axes: Any, frame: SliceFrame, *, fontsize: float = 8.0) -> None:
+    """Each slice's panel in the shared format (`port.extensions.spatial_page`):
+    its limits, its id as title, and the region the slices share dashed."""
+    from port.extensions.spatial_page import format_panel, overlap_box
+
+    for k, (ax, sid) in enumerate(zip(axes, frame.slices, strict=True)):
+        if frame.shared is not None:
+            overlap_box(ax, *outline(*frame.shared))
+        # NB each panel its own slice, in frame coordinates: the dashed box
+        #    says where the slices meet without the frame's empty margin.
+        format_panel(ax, str(sid), *frame.limits(k), fontsize=fontsize)
+
+
+def draw_spatial(
+    axes: Any, r: Realization, *, size: float = 9.0, fontsize: float = 8.0
+) -> list[str]:
+    """Each slice on its own axis in `axes`, at its place in the shared frame; the region they share dashed.
+
+    Returns the clones drawn, in `r.clones`' order, for the caller's key.
+    """
+    frame = slice_frame(r)
+    for k, (ax, sid) in enumerate(zip(axes, frame.slices, strict=True)):
         spots = r.truth[r.truth["sample_id"] == sid]
-        x = spots["y"].to_numpy() / 2.0 + origins[k][0]
-        y = spots["x"].to_numpy() * np.sqrt(3.0) / 2.0 + origins[k][1]
-        if shared is not None:
-            corner, width, height = outline(*shared)
-            ax.add_patch(Rectangle(corner, width, height, fill=False, linestyle="--",
-                                   edgecolor=MUTED, linewidth=0.8))  # fmt: skip
+        x = spots["y"].to_numpy() / 2.0 + frame.origins[k][0]
+        y = spots["x"].to_numpy() * np.sqrt(3.0) / 2.0 + frame.origins[k][1]
         for clone in r.clones:
             on = spots["labels"].to_numpy() == clone
             if on.any():
                 ax.scatter(x[on], -y[on], s=size, color=clone_colour(clone, r.clones),
                            edgecolors="white", linewidths=0.3 * size / 9.0)  # fmt: skip
-        # NB each panel its own slice, in frame coordinates: the dashed box
-        #    says where the slices meet without the frame's empty margin.
-        ax.set_xlim(origins[k][0] - 1, origins[k][0] + extent[0] + 1)
-        ax.set_ylim(-(origins[k][1] + extent[1] + 1), -origins[k][1] + 1)
-        ax.set_aspect("equal")
-        ax.set_xticks([])
-        ax.set_yticks([])
-        for side in ax.spines.values():
-            side.set_visible(False)
-        ax.set_title(sid, loc="left", fontsize=fontsize, color=INK)
+    frame_panels(axes, frame, fontsize=fontsize)
     return [c for c in r.clones if (r.truth["labels"] == c).any()]
 
 
@@ -412,36 +442,20 @@ def plot_spatial(r: Realization, out: Path) -> Path:
 
     Slices that overlap image one piece of tissue, so a clone on both shows
     inside the dashed region in both panels. Clones are named by the key
-    alone: a name on the tissue covers the spots it names.
+    alone, as the paper names them (`clone_name`): a name on the tissue covers
+    the spots it names. Drawn in `port.extensions.spatial_page`'s format.
     """
-    import matplotlib.pyplot as plt
-    from matplotlib.lines import Line2D
-
+    from port.extensions.combined_figure import page_style
     from port.extensions.figure_style import fit_to_content
+    from port.extensions.spatial_page import panel_row, spatial_key
 
-    slices = list(dict.fromkeys(r.truth["sample_id"]))
-    first = r.truth[r.truth["sample_id"] == slices[0]]
-    aspect = (np.ptp(first["x"].to_numpy()) * np.sqrt(3.0) / 2.0) / (
-        np.ptp(first["y"].to_numpy()) / 2.0
-    )
-    fig, axes = plt.subplots(1, len(slices), squeeze=False,
-                             figsize=(3.3 * len(slices), 3.3 * aspect + 0.7))  # fmt: skip
-    fig.subplots_adjust(left=0.01, right=0.99, top=0.9, bottom=0.14, wspace=0.03)
-    present = draw_spatial(axes[0], r)
-
-    # NB one legend for every slice, in the clones' order, under the first
-    #    slice and anchored to it, so the page is cut to the axes and their
-    #    key with no band left (`fit_to_content`, PR- #715).
-    handles = [
-        Line2D([], [], marker="o", linestyle="", markersize=5,
-               color=clone_colour(c, r.clones), label=display(c, r.clones))
-        for c in present
-    ]  # fmt: skip
-    axes[0][0].legend(handles=handles, loc="upper left", bbox_to_anchor=(0.0, 0.0),
-                      ncol=len(handles), frameon=False, fontsize=8,
-                      handletextpad=0.2, columnspacing=1.0,
-                      borderaxespad=0.2)  # fmt: skip
-    fit_to_content(fig)
+    frame = slice_frame(r)
+    with page_style():
+        fig, axes = panel_row(len(frame.slices), frame.aspect)
+        present = draw_spatial(axes, r, size=4.0)
+        spatial_key(axes[0], [clone_name(c, r.clones) for c in present],
+                    [clone_colour(c, r.clones) for c in present])  # fmt: skip
+        fit_to_content(fig)
     return _save(fig, out / "spatial.png", tight=False)
 
 

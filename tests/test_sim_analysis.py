@@ -123,6 +123,65 @@ def test_the_shared_region_bounds_the_spots_both_slices_image(drawn: Drawn) -> N
         assert not np.any(boxed[~near])
 
 
+def _panels_of(figure: Any) -> list[tuple[Any, ...]]:
+    """Each panel's size in inches, limits, title and dashed boxes, left to right."""
+    from matplotlib.patches import Rectangle
+
+    figure.canvas.draw()
+    dpi = figure.dpi
+    rows = []
+    for ax in sorted(figure.axes, key=lambda a: a.get_position().x0):
+        at = ax.get_window_extent()
+        boxes = sorted(
+            (p.get_xy(), p.get_width(), p.get_height())
+            for p in ax.patches
+            if isinstance(p, Rectangle) and p.get_linestyle() == "--"
+        )
+        rows.append((round(at.width / dpi, 2), round(at.height / dpi, 2),
+                     ax.get_xlim(), ax.get_ylim(), ax.get_title(loc="left"), boxes))  # fmt: skip
+    return rows
+
+
+@pytest.mark.infra
+def test_the_spatial_and_h_and_e_pages_share_one_format(
+    drawn: Drawn, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """T- #791: `plot_spatial` and `he_slices_figure` draw each slice in one
+    panel of one size, at the same limits, titled by its id alone (no
+    "slice"), with the region the slices share dashed at the same place; the
+    spatial variant of `truth_combined` draws the same panels in its (c).
+    """
+    import matplotlib.pyplot as plt
+    from port.sim import analysis
+    from port.sim.truth_figure import truth_combined_figure
+    from port.studies.paper_figures import he_slices_figure
+
+    r = read(drawn.path)
+    caught: dict[str, Any] = {}
+
+    def keep(fig: Any, path: Path, *, tight: bool = True) -> Path:
+        caught[path.name] = fig
+        return path
+
+    monkeypatch.setattr(analysis, "_save", keep)
+    analysis.plot_spatial(r, Path("unwritten"))
+    spatial = _panels_of(caught["spatial.png"])
+    he = _panels_of(he_slices_figure(r))
+
+    assert [row[4] for row in spatial] == [str(s) for s in drawn.sample_ids]
+    assert he == spatial
+    assert all(len(row[5]) == 1 for row in spatial)
+
+    page = truth_combined_figure(r, spatial=True)
+    page.canvas.draw()
+    inset = [(ax.get_xlim(), ax.get_ylim(), ax.get_title(loc="left"))
+             for ax in sorted(page.subfigs[2].axes, key=lambda a: a.get_position().x0)]  # fmt: skip
+    assert inset == [row[2:5] for row in spatial]
+    for fig in (*caught.values(), page):
+        plt.close(fig)
+    plt.close("all")
+
+
 @pytest.mark.analytic
 def test_a_streamed_population_holds_each_statistics_mean_and_sd(
     tmp_path: Path,
@@ -298,7 +357,7 @@ def test_the_truth_page_writes_byte_for_byte_at_its_size(
     assert first == second
     assert box is not None
     assert float(box.group(1)) == pytest.approx(468.31 / 72.27 * 72.0, abs=0.1)
-    assert float(box.group(2)) == pytest.approx((590.99 / 72.27 - 1.5) * 72.0, abs=0.1)
+    assert float(box.group(2)) == pytest.approx((590.99 / 72.27 - 1.0) * 72.0, abs=0.1)
 
 
 @pytest.fixture(scope="module")
@@ -600,10 +659,12 @@ def test_clones_read_n_1_2_down_the_tree_and_alike_in_every_truth_figure(
         plotter(r, Path("unwritten"))
 
     (key,) = [ax.get_legend() for ax in caught["spatial.png"].axes if ax.get_legend()]
+    # NB the spatial page names clones as the paper does, $m_N$ first (T- #791)
+    assert [t.get_text() for t in key.get_texts()] == [
+        symbols[r.clones.index(c)] for c in r.clones if (r.truth["labels"] == c).any()
+    ]
     for text, handle in zip(key.get_texts(), key.legend_handles, strict=True):
-        assert (
-            mcolors.to_rgba(handle.get_color()) == colour[clone_symbol(text.get_text())]
-        )
+        assert mcolors.to_rgba(handle.get_color()) == colour[text.get_text()]
     profile = caught["clone_profiles.png"].axes[0].get_yticklabels()
     assert [clone_symbol(x.get_text()) for x in profile][::-1] == symbols
     named = [x for ax in caught["clones_genomic.png"].axes for x in ax.texts
