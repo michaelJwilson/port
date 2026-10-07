@@ -68,6 +68,7 @@ import numpy as np
 import pandas as pd
 
 from port.extensions.repository import ROOT
+from port.studies.stage import FLAGS
 
 MANIFEST = ROOT / "sim" / "manifests" / "population.toml"
 
@@ -97,7 +98,6 @@ KEPT = ("clone_labels.tsv", "cnv_seglevel.tsv")
 KEPT_IF_WRITTEN = ("cnv_copy_sets.tsv", "cnv_segment_sets.tsv", "cnv_bin_loglik.npz")
 """Kept as `KEPT` is, where the arm's flags write them."""
 
-FLAGS = ("--sal", "--no-plots")
 
 LEVELS = {"2sigma": 0.9545, "3sigma": 0.9973}
 """The credible levels each event is scored at (#705); the arms write the
@@ -134,11 +134,11 @@ def draw_member(seed: int, into: Path, manifest_path: Path = MANIFEST) -> Path:
     """Seed `seed` of a population manifest, written under `into`; its sample path."""
     from dataclasses import replace
 
-    from port.sim.draw import _merge, draw, read_manifest
+    from port.sim.draw import draw, merged_tables, read_manifest
 
     manifest = read_manifest(manifest_path)
     manifest = replace(
-        manifest, tables=_merge(manifest.tables, {"sample": {"seed": seed}})
+        manifest, tables=merged_tables(manifest.tables, {"sample": {"seed": seed}})
     )
     return draw(manifest, into).realizations[0]
 

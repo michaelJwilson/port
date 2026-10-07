@@ -4,7 +4,7 @@
 `_log_emissions` scores every state in one broadcast call instead of one
 call per state. Both claim the previous code's output bitwise, ties
 included, so the referee is that code (`oracle`); the per-state emission is
-rebuilt here from `_emission` one state at a time, as `_log_emissions` did.
+rebuilt here from `pseudobulk_log_pmf` one state at a time, as `_log_emissions` did.
 """
 
 from __future__ import annotations
@@ -71,21 +71,24 @@ def test_the_compiled_viterbi_is_the_numpy_recursion_bitwise(
 def test_the_broadcast_emission_is_each_states_row_bitwise(
     alpha: float, tau: float
 ) -> None:
-    """Every state's row, at a purity below 1 and a shift, equals `_emission` called for that state alone."""
+    """Every state's row, at a purity below 1 and a shift, equals `pseudobulk_log_pmf` called for that state alone."""
     from port.extensions.copy_likelihood import (
-        _emission,
         _log_emissions,
-        _parameters,
         _prior,
         candidates,
+        pair_rate_and_share,
+        pseudobulk_log_pmf,
     )
 
     bulk = _bulk(np.random.default_rng(7), 400, alpha, tau)
     states = candidates(6)
-    log_mu, p = _parameters(states, 0.8)
+    log_mu, p = pair_rate_and_share(states, 0.8)
     bins = np.arange(400)
     rows = np.stack(
-        [_emission(log_mu[k] - 0.1, p[k], bulk, bins) for k in range(len(states))]  # type: ignore[arg-type]
+        [
+            pseudobulk_log_pmf(log_mu[k] - 0.1, p[k], bulk, bins)  # type: ignore[arg-type]
+            for k in range(len(states))
+        ]
     )
     expected = np.where(np.isfinite(rows), rows, -1e10) + _prior(states, 0.5)[:, None]
 

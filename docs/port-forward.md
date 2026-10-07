@@ -46,3 +46,14 @@ replacement by name; **none** is a row with no direct test.
 | 35 | clone assignment | SHIFT_SWAPS | `cnaster/hmrf.py:802` `reindex_clones` | `port.patch.hmrf:reindex_clones` (#362) | `port.patch._clone_paths`, `port.patch._signature`, `port.patch.hmm_initialize.distinct`, `port.patch.hmm_initialize.sal_mixture`, `port.patch.hmm_nophasing.logmu_shift`, `port.patch.hmm_nophasing.shifted_emission`, `port.patch.hmrf.reindex` | **none** |
 | 36 | clone assignment | COPY_SWAPS | `cnaster/integer_copy.py:571` `hill_climbing_integer_copynumber_fixdiploid_milp` | `port.patch.integer_copy:hill_climbing_integer_copynumber_fixdiploid_milp` (#313) | `port.extensions.copy_likelihood`, `port.extensions.integer_copy`, `port.patch._signature`, `port.patch.hmm_nophasing.shifted_emission`, `port.patch.hmrf.core_inference` | **none** |
 | 37 | clone assignment | COPY_SWAPS | `cnaster/integer_copy.py:101` `hill_climbing_integer_copynumber_oneclone` | `port.patch.integer_copy:hill_climbing_integer_copynumber_oneclone` (#313) | `port.extensions.copy_likelihood`, `port.extensions.integer_copy`, `port.patch._signature`, `port.patch.hmm_nophasing.shifted_emission`, `port.patch.hmrf.core_inference` | **none** |
+
+## Outside the tables
+
+Replaced other than by a swap row (`port.pipeline.OUTSIDE_TABLES`, #749 WP8).
+
+| `cnaster` | replacement | how |
+| --- | --- | --- |
+| `cnaster.hmm_nophasing.hmm_nophasing.forward_lattice, backward_lattice` | `port.patch.lattice:rust_lattices` | rebound for the run by `run_cnaster_port` (#312) |
+| `cnaster.hmm_phased.hmm_phased.forward_lattice, backward_lattice` | `port.patch.lattice:rust_lattices` | rebound for the run by `run_cnaster_port` (#312) |
+| `cnaster.hmm_initialize.gmm_init` | `port.patch.hmm_initialize.distinct:gmm_init, port.patch.hmm_initialize.sal_mixture:gmm_init` | passed as `hmm_initializer` by `port.patch.hmrf.core_inference` (#348, #489) |
+| `cnaster.he.get_he_image` | `port.patch.io:he_image` | called in its place by `port.patch.io`'s `load_input_data` row (#311) |

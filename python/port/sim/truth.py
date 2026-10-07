@@ -226,7 +226,7 @@ class CoreInferenceTruth:
         return 2.0 * self.n_states * self.n_obs * self.n_spots * 8 / 1e9
 
 
-def _emission_families(
+def emission_family(
     log_mu: np.ndarray, alphas: np.ndarray, p_binom: np.ndarray, taus: np.ndarray
 ) -> EmissionFamily:
     """`cnaster`'s parameters as upstream's two-channel family.
@@ -708,7 +708,7 @@ def core_inference_truth(
     switch_prob = rng.uniform(*switch, n_obs)
 
     counts_nb, counts_bb = spot_counts(
-        _emission_families(log_mu, alphas, p_binom, taus),
+        emission_family(log_mu, alphas, p_binom, taus),
         states[labels],
         base_nb_mean,
         total_bb_RD,

@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any
 
 from port.extensions.repository import ROOT
+from port.pipeline import OUTSIDE_TABLES
 
 from tests.source_graph import edges, tables
 
@@ -146,6 +147,19 @@ def render() -> str:
         "| ---: | --- | --- | --- | --- | --- | --- |",
     ]
     lines += ["| " + " | ".join(row) + " |" for row in rows()]
+    lines += [
+        "",
+        "## Outside the tables",
+        "",
+        "Replaced other than by a swap row (`port.pipeline.OUTSIDE_TABLES`, #749 WP8).",
+        "",
+        "| `cnaster` | replacement | how |",
+        "| --- | --- | --- |",
+    ]
+    lines += [
+        f"| `{upstream}` | `{replacement}` | {how} |"
+        for upstream, replacement, how in OUTSIDE_TABLES
+    ]
     return "\n".join(lines) + "\n"
 
 

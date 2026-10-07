@@ -9,7 +9,7 @@ which no run called. These pin:
 
 - the buffer is contiguous and **is** the channel, clone after clone, for
   unequal clone lengths (`patch`);
-- `_triples` built from it is bitwise what the pre-#349 build was (`patch`);
+- `clone_count_triples` built from it is bitwise what the pre-#349 build was (`patch`);
 - `compute_logmu_shifts`' `start_idx` walk is the per-clone `logsumexp`
   (`patch`), and upstream still does not call it (`bug`).
 """
@@ -19,7 +19,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 from cnaster.hmm_nophasing import compute_logmu_shifts
-from port.patch.hmm_nophasing.shifted_emission import _clone_major, _triples
+from port.patch.hmm_nophasing.shifted_emission import _clone_major, clone_count_triples
 
 
 def _stacked(lengths: tuple[int, ...], seed: int = 17) -> np.ndarray:
@@ -60,7 +60,7 @@ def test_lengths_that_do_not_tile_the_channel_are_refused() -> None:
 
 @pytest.mark.patch
 def test_the_triples_are_bitwise_the_pre_fold_build(cnaster_config: None) -> None:
-    """`_triples` on the strided channel, against #276's build verbatim.
+    """`clone_count_triples` on the strided channel, against #276's build verbatim.
 
     Float counts, so the configured rounding runs on both sides as it does in
     a fit (`CountEncoder` is built on `X`, which is float).
@@ -77,7 +77,7 @@ def test_the_triples_are_bitwise_the_pre_fold_build(cnaster_config: None) -> Non
     )
     counts = counts.round(decimals=get_global_config().hmm.compression_decimals)
     unique, inverse = np.unique(counts, axis=0, return_inverse=True)
-    triples = _triples(obs, total, lengths)
+    triples = clone_count_triples(obs, total, lengths)
 
     np.testing.assert_array_equal(triples.obs, unique[:, 1])
     np.testing.assert_array_equal(triples.total, unique[:, 2])
