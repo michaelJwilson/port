@@ -17,7 +17,7 @@ from port.sandbox.sim_from_run import read_run, to_toml
 from port.sim.draw import Drawn, draw, extended, from_document
 from port.sim.fixtures import SIM_ROOT, references
 
-from tests.test_sim_draw import _manifest
+from tests.fixtures import draw_manifest
 
 MANIFESTS = SIM_ROOT / "manifests"
 
@@ -66,7 +66,7 @@ def test_a_manifest_from_a_run_recovers_the_one_that_planted_it(
     resources = references()
     if resources is None:
         pytest.skip("CalicoST's GRCh38_resources not found; set $PORT_GRCH38")
-    source = _manifest("dev_shared_unique")
+    source = draw_manifest("dev_shared_unique")
     drawn = draw(source, tmp_path / "drawn", resources=resources)
 
     text = to_toml(read_run(_as_run(drawn, tmp_path / "run")))

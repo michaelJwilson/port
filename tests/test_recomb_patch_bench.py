@@ -16,8 +16,7 @@ import pandas as pd
 import pytest
 from pytest_benchmark.fixture import BenchmarkFixture
 
-from tests.fixtures import tiers
-from tests.test_recomb_patch import _map
+from tests.fixtures import recombination_map, tiers
 
 GATE = {"per_contig": 100}
 STRESS = {"per_contig": 1_500}
@@ -67,6 +66,6 @@ def test_kernel(
     tmp_path: Path,
 ) -> None:
     table = _table(**size)
-    path = _map(tmp_path / "map.tsv", range(1, 23))
+    path = recombination_map(tmp_path / "map.tsv", range(1, 23))
     arm("block_id", table.copy(), path, 1.0, -2.0)
     benchmark(arm, "block_id", table.copy(), path, 1.0, -2.0)

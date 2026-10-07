@@ -15,7 +15,7 @@ import numpy as np
 import pytest
 
 from tests.adapters import clone_assignment_arguments
-from tests.fixtures import spot_clone_field
+from tests.fixtures import spot_clone_field, two_clone_stacked_instance
 
 
 @pytest.mark.cnaster
@@ -63,30 +63,6 @@ def test_a_shifted_clone_is_scored_as_upstream_scores_its_rescaled_exposure() ->
     np.testing.assert_allclose(ours, theirs, rtol=1e-9)
 
 
-def _stacked_instance(seed: int = 4) -> dict[str, Any]:
-    """Two clones of 30 bins, stacked as `clone_stack_obs` stacks them."""
-    rng = np.random.default_rng(seed)
-    n_obs, n_clones = 30, 2
-    n_segments = n_obs * n_clones
-
-    base = rng.uniform(40.0, 80.0, (n_segments, 1))
-    states = rng.integers(0, 2, n_segments)
-    means = base[:, 0] * np.array([1.0, 2.0])[states]
-
-    X = np.zeros((n_segments, 2, 1))
-    X[:, 0, 0] = rng.poisson(means)
-    X[:, 1, 0] = rng.binomial(20, np.array([0.5, 0.25])[states])
-
-    return {
-        "X": X,
-        "lengths": np.array([n_obs] * n_clones),
-        "base": base,
-        "total": np.full((n_segments, 1), 20.0),
-        "normal_lambda": base[:n_obs, 0] / base[:n_obs, 0].sum(),
-        "clone_lengths": np.array([n_obs] * n_clones),
-    }
-
-
 @pytest.mark.cnaster
 @pytest.mark.patch
 @pytest.mark.usefixtures("cnaster_config")
@@ -105,7 +81,7 @@ def test_the_fit_is_upstreams_off_and_decodes_under_its_own_shift_on() -> None:
     from port.patch.hmm_nophasing import hmm_nophasing
     from port.pipeline import with_attributes
 
-    instance = _stacked_instance()
+    instance = two_clone_stacked_instance()
     kwargs = {
         "init_log_mu": np.log(np.array([[1.0], [2.0]])),
         "init_p_binom": np.array([[0.5], [0.25]]),

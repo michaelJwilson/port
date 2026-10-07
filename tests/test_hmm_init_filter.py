@@ -30,6 +30,8 @@ from port.sandbox.patch.hmm_initialize.filtering import (
 from port.sim.truth import CoreInferenceTruth, core_inference_truth
 from sklearn.mixture import GaussianMixture
 
+from tests.adapters import stacked_clones
+
 MIN_BINOM, MAX_BINOM = 0.01, 0.99
 """The bounds `tests/conftest.py` configures, which `gmm_init` reads globally."""
 
@@ -44,26 +46,18 @@ def planted() -> CoreInferenceTruth:
 def _stacked(truth: CoreInferenceTruth) -> tuple[Any, ...]:
     """`gmm_init`'s positional arguments, as `run_core_inference` builds them."""
     from cnaster.hmm_nophasing import get_log_transmat
-    from cnaster.hmrf_utils import clone_stack_obs
-    from cnaster.pseudobulk import merge_pseudobulk_by_index_mix
 
-    counts = np.stack([truth.counts_nb, truth.counts_bb], axis=1)
-    X, base, total, _ = merge_pseudobulk_by_index_mix(
-        counts, truth.base_nb_mean, truth.total_bb_RD, truth.clone_index
-    )
-    stack_X, stack_base, stack_total, lengths, sitewise, _ = clone_stack_obs(
-        X, base, total, truth.lengths, np.zeros((truth.n_obs, 2)), None
-    )
+    stacked = stacked_clones(truth)
 
     return (
         truth.n_states,
-        stack_X,
-        stack_base,
-        stack_total,
+        stacked.X,
+        stacked.base_nb_mean,
+        stacked.total_bb_RD,
         "smp",
-        lengths,
+        stacked.lengths,
         get_log_transmat(truth.n_states, 1.0 - 1e-6),
-        sitewise,
+        stacked.sitewise,
     )
 
 
