@@ -7,7 +7,8 @@ Measurement: `port.studies.copy_state_stream` on
   `sim/manifests/baseline/dev_tree_1s_hard.toml` r3-r12, 10 seeds (PR #642):
   median rows missed after Baum-Welch 1.14 / 1.12 / 1.14% against port's
   1.19 / 1.17 / 1.10% (anneal / tempering / hmc), n = 100 each.
-Exit: retire with the #540 study. Built on `sal`'s count-pair HMM objective
+Exit: retire with its readers, `port.studies.copy_state_stream` and the
+  #748 forward polish (#540, its first, is closed). Built on `sal`'s count-pair HMM objective
   since T- #707 (sal 006e49d): `Backend.JAX` costs 0.42-0.50x port's former
   jitted `jax_hmm` forward at 4 threads and 0.38-0.51x at 1 core, per value
   and gradient on PR- #672's instance, so that forward was deleted.

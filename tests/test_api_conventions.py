@@ -79,11 +79,7 @@ SIBLINGS: dict[str, tuple[str, ...]] = {
     "port.patch.icm.interface:icm_sweep": (
         "port.patch.icm.alpha_expansion:alpha_expansion_sweep",
         "port.extensions.label_solver:sal_icm_sweep",
-        "port.extensions.label_solver:expansion_then_floor",
-        "port.extensions.label_solver:expansion_then_merge",
-        "port.extensions.label_solver:sal_icm_floor_sweep",
         "port.extensions.label_solver:fusion_then_merge",
-        "port.extensions.label_solver:sal_icm_argmax_sweep",
     ),
 }
 """Entry points one setting chooses between, each against the first: the same
