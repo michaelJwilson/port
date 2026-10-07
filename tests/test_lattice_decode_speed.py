@@ -86,9 +86,9 @@ def test_the_broadcast_emission_is_each_states_row_bitwise(
     bins = np.arange(400)
     rows = np.stack(
         [
-            pseudobulk_log_pmf(log_mu[k] - 0.1, p[k], bulk, bins)
+            pseudobulk_log_pmf(log_mu[k] - 0.1, p[k], bulk, bins)  # type: ignore[arg-type]
             for k in range(len(states))
-        ]  # type: ignore[arg-type]
+        ]
     )
     expected = np.where(np.isfinite(rows), rows, -1e10) + _prior(states, 0.5)[:, None]
 
