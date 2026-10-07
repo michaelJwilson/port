@@ -219,17 +219,21 @@ def _live() -> frozenset[str]:
     return reached(roots)
 
 
-def _has_role(path: Path) -> bool:
+def _has_role(name: str, source: str) -> bool:
     """A module, or a package `__init__` that defines something."""
-    return path.name != "__init__.py" or any(
+    return name != "__init__.py" or any(
         isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef)
-        for node in ast.parse(path.read_text()).body
+        for node in ast.parse(source).body
     )
 
 
 @pytest.mark.infra
 def test_every_module_has_a_role() -> None:
-    found = {name for name, path in modules().items() if _has_role(path)}
+    found = {
+        name
+        for name, path in modules().items()
+        if _has_role(path.name, path.read_text())
+    }
 
     assert found == set(ROLES), (
         f"no role: {sorted(found - set(ROLES))}; gone: {sorted(set(ROLES) - found)}"
