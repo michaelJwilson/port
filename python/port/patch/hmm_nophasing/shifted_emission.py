@@ -107,6 +107,7 @@ __all__ = [
     "UPSTREAM",
     "hmm_nophasing",
     "neutral_state",
+    "normal_clone",
     "release",
     "shifted",
 ]
@@ -244,6 +245,24 @@ def _stacked(normal_log_lambda: Any, lengths: tuple[int, ...]) -> np.ndarray:
     raise ValueError(msg)
 
 
+def normal_clone(p_binom: np.ndarray, path: np.ndarray) -> tuple[int, float]:
+    """The normal clone and its share of balanced bins (#299, #389).
+
+    The clone of `path`, `(n_obs, n_clones)` state indices, with the largest
+    share of bins in states within :data:`NEUTRAL_BAF_TOLERANCE` of 0.5; the
+    one rule `neutral_state`, `core_inference.clone_shifts` and
+    `copy_likelihood.normal_of` each wrote out (#749 WP7).
+    """
+    balanced = (
+        np.abs(np.asarray(p_binom, dtype=np.float64).reshape(-1) - 0.5)
+        <= NEUTRAL_BAF_TOLERANCE
+    )
+    decoded = np.asarray(path, dtype=np.int64)
+    share = balanced[decoded.reshape(decoded.shape[0], -1)].mean(axis=0)
+    normal = int(np.argmax(share))
+    return normal, float(share[normal])
+
+
 def neutral_state(
     log_mu: np.ndarray, p_binom: np.ndarray, path: np.ndarray | None = None
 ) -> int:
@@ -274,10 +293,9 @@ def neutral_state(
     if path is not None:
         decoded = np.asarray(path, dtype=np.int64)
         decoded = decoded.reshape(decoded.shape[0], -1)
-        share = balanced[decoded].mean(axis=0)
-        normal = int(np.argmax(share))
+        normal, share = normal_clone(p_binom, decoded)
 
-        if share[normal] > 0.0:
+        if share > 0.0:
             counts = np.bincount(decoded[:, normal], minlength=rates.size)
             counts = np.where(balanced, counts, -1)
 
