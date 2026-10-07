@@ -248,7 +248,6 @@ def run_figures(sample: Any, root: Path, out: Path, text: str) -> Run:
     from port.extensions.combined_figure import (
         combined_figure,
         genomic_figure,
-        he_classes,
         page_style,
         recording,
         spatial_figure,
@@ -259,20 +258,14 @@ def run_figures(sample: Any, root: Path, out: Path, text: str) -> Run:
         recovery, output = audit_sample(sample, list(FLAGS), None, root / "run")
 
     frame = mock_slide(sample.coords, sample.labels, root)
-    # NB the slide's H&E classes at the spots, as `run_cnaster` would read
-    #    them, contoured over its panel (T- #771).
-    classes = he_classes(str(root / "slide"), np.asarray(sample.coords))
 
     # NB at their declared size, not a tight box, as `run_figures`
     #    writes them: the page is included at 1:1.
     with page_style():
         for name, figure in (
             ("genomic.png", genomic_figure(recorded, metric=True)),
-            ("spatial.png", spatial_figure(recorded, frame, he_labels=classes)),
-            (
-                "combined.png",
-                combined_figure(recorded, frame, metric=True, he_labels=classes),
-            ),
+            ("spatial.png", spatial_figure(recorded, frame)),
+            ("combined.png", combined_figure(recorded, frame, metric=True)),
         ):
             stamp(figure, text, top=True)
             figure.savefig(

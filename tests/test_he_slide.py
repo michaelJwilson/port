@@ -147,34 +147,3 @@ def test_the_spots_h_and_e_class_darkens_away_from_normal(tmp_path: Path) -> Non
 
     assert set(np.unique(classes)) == {1, 2, 3, 4}
     assert np.all(np.diff(mean) < 0.0), f"mean class by clone: {mean}"
-
-
-@pytest.mark.analytic
-def test_each_contour_is_its_level_between_successive_classes(tmp_path: Path) -> None:
-    """One contour per boundary, at `k + 1/2`, and every vertex at its level
-    to 1e-9 under linear interpolation of the classes on the spots at
-    `(x, -y)`, where `draw_clones_spatial` tiles them (T- #771)."""
-    import matplotlib as mpl
-
-    mpl.use("Agg")
-    import matplotlib.pyplot as plt
-    from matplotlib.tri import LinearTriInterpolator, Triangulation
-    from port.extensions.combined_figure import draw_he_contours, he_classes
-
-    frame, _ = _read(tmp_path)
-    coords = frame[["x", "y"]].to_numpy(dtype=np.float64)
-    classes = he_classes(str(tmp_path), coords)
-    _, ax = plt.subplots()
-    contours = draw_he_contours(ax, coords, classes)
-    surface = LinearTriInterpolator(
-        Triangulation(coords[:, 0], -coords[:, 1]), classes.astype(np.float64)
-    )
-
-    np.testing.assert_array_equal(contours.levels, [1.5, 2.5, 3.5])
-    for level, segments in zip(contours.levels, contours.allsegs, strict=True):
-        vertices = np.concatenate(segments)
-        assert vertices.size > 0, level
-        np.testing.assert_allclose(
-            surface(vertices[:, 0], vertices[:, 1]), level, atol=1e-9
-        )
-    plt.close("all")

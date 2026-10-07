@@ -604,7 +604,8 @@ def test_each_h_and_e_class_is_its_spots_pseudobulk(
 ) -> None:
     """`plot_clones_genomic_he`: each class's RDR points equal its spots'
     summed counts over their summed baseline, against NumPy, to 1e-12; one
-    track pair per class, named by class and spot count (T- #771)."""
+    track pair per class, its statistics line naming class and spot count
+    (T- #771)."""
     import matplotlib as mpl
 
     mpl.use("Agg")
@@ -627,6 +628,39 @@ def test_each_h_and_e_class_is_its_spots_pseudobulk(
         np.testing.assert_allclose(
             np.asarray(points.get_offsets())[:, 1], expected, rtol=1e-12
         )
-        assert (
-            tracks[2 * k].get_title(loc="left") == f"H&E {label} ({spots.size} spots)"
-        )
+        named = [t.get_text() for t in tracks[2 * k].texts if t.get_rotation() == 0.0]
+        assert named[0] == f"H&E {label} ({spots.size} spots)"
+
+
+@pytest.mark.smoke
+@pytest.mark.merge
+def test_the_h_and_e_page_tiles_each_spot_by_its_class(
+    cnaster_config: None, tmp_path: Path
+) -> None:
+    """`spatial_figure(he_labels=)`: (b) tiles every spot in its H&E class's
+    `HE_PALETTE` colour, none of them a `rocket` clone colour, keyed
+    `H&E 1..4` (T- #771)."""
+    import matplotlib as mpl
+
+    mpl.use("Agg")
+    import matplotlib.colors as mcolors
+    from matplotlib.collections import PolyCollection
+    from port.extensions.combined_figure import HE_PALETTE, spatial_figure
+    from port.patch.plotting.spatial import spot_colours
+
+    recorded, frame = _recorded(tmp_path)
+    classes = np.array([1, 1, 2, 2, 2, 3, 4, 4, 1])
+    figure = spatial_figure(recorded, frame, he_labels=classes)
+    tiles = next(c for c in figure.axes[1].collections if isinstance(c, PolyCollection))
+    _, _, palette = spot_colours(
+        pd.Series([f"H&E {c}" for c in (1, 2, 3, 4)]), palette=HE_PALETTE
+    )
+    _, _, clones = spot_colours(pd.Series(["clone 0", "clone 1", "clone 2"]))
+    expected = np.array([mcolors.to_rgb(palette[c - 1]) for c in classes])
+
+    np.testing.assert_allclose(np.asarray(tiles.get_facecolor())[:, :3], expected)
+    assert not {mcolors.to_hex(c) for c in palette} & {
+        mcolors.to_hex(c) for c in clones
+    }
+    key = figure.axes[1].get_legend()
+    assert [t.get_text() for t in key.get_texts()] == [f"H&E {c}" for c in (1, 2, 3, 4)]
