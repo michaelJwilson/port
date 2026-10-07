@@ -1,8 +1,9 @@
 """#556: Potts solvers from random labels on a stream of the run's clone-assignment problems, the plot redrawn per problem.
 
 `run_study --potts-stream MANIFEST OUT_DIR [--problems 25] [--starts 50] [--held-out 3] [--workers 4] [--states run]`
-`run_study --potts-stream MANIFEST OUT_DIR --tune SAMPLER ...` tunes
-only the named samplers on the held-out realizations and merges them into `SETTINGS`.
+`run_calibrate --potts MANIFEST OUT_DIR --samplers SAMPLER ...` tunes the
+named samplers on the held-out realizations and merges them into `SETTINGS`
+(`tune`, `retune`); the stream itself never tunes (#749 WP1).
 `--only SOLVER ...` runs a subset, `--merge PKL ...` draws it with earlier streams.
 
 The main process draws each realization of `MANIFEST` and runs
@@ -17,10 +18,10 @@ its numbers do not compare with these.
 
 - **Warmup.** Each worker runs every solver once on a 10 x 10 patch before
   any timed job, so no compilation lands in a timing.
-- **Tuning.** The first `--held-out` realizations tune the samplers (`TUNED`)
-  and are not evaluated; with `--settings`, the samplers take that file's
-  settings (`SETTINGS`) and nothing is tuned, the held-out realizations still
-  skipped. Each sampler searches `GRID` -- the start temperature, the end fixed
+- **Tuning.** `run_calibrate --potts` tunes the samplers (`TUNED`) on the
+  first `--held-out` realizations, which the stream never evaluates; the
+  stream reads the settings it wrote (`SETTINGS`, or `--settings`). Each
+  sampler searches `GRID` -- the start temperature, the end fixed
   at `T_END` so the last sweeps are a descent, the sweep budget and the
   warm-up; for a tempering ladder, its hottest replica and its replica sweeps
   -- in three rounds (`tune`): cheap budgets first, the dearest only where
@@ -32,7 +33,7 @@ its numbers do not compare with these.
   pure-Python `alpha` and the floor-merge row, plus TRW-S's own decoded
   labelling, from `--starts` random labellings; the samplers at their tuned
   settings. Each run is polished twice: sal's ICM, then the color merge
-  (`port.sandbox.extensions.color_merge`, cnaster's `merge_assignment` rule).
+  (`port.studies.color_merge`, cnaster's `merge_assignment` rule).
 
 Per problem it records the planted labelling's energy, TRW-S's lower bound and its spots,
 per run the energy and the labels unlike the planted ones, raw and after each
@@ -58,6 +59,7 @@ from typing import Any, NamedTuple, cast
 
 import numpy as np
 
+from port.qa.provenance import CONFIGS
 from port.studies import records
 from port.studies import stage as at
 from port.studies import stream as harness
@@ -161,11 +163,9 @@ TOLERANCE = 0.1
 REPLICAS = 6
 """sal's `N_REPLICAS`: both tempering ladders, geometric between `T_END` and the start temperature."""
 
-SETTINGS = Path(__file__).with_name("potts_sampler_settings.json")
-"""The samplers' settings tuned once on `dev_tree_1s_hard`'s first 3 realizations (r0 `d2938975`), reused by `--settings`.
-
-Tuned on the planted-law field `port.sandbox.known_field` built before #735,
-not the run's: retuning on the run's field is #723's."""
+SETTINGS = CONFIGS / "potts_sampler_settings.json"
+"""The samplers' settings, tuned by `run_calibrate --potts` on `dev_tree_1s_hard`'s first 3
+realizations at the run's clone-assignment field (#723); the stream's default `--settings`."""
 
 _GRAPHS: dict[tuple[int, float], Any] = {}
 
@@ -234,15 +234,15 @@ def _init() -> None:
     """Build each problem's graph once per worker, then warm every solver up on a small patch."""
     import port.studies.clone_label_arms as arms
 
-    build = arms._graph
+    build = arms.potts_graph
 
-    def memo(beta: float) -> Any:
-        key = (arms._HELD["problem"], beta)
+    def memo(spatial_weight: float) -> Any:
+        key = (arms.HELD["problem"], spatial_weight)
         if key not in _GRAPHS:
-            _GRAPHS[key] = build(beta)
+            _GRAPHS[key] = build(spatial_weight)
         return _GRAPHS[key]
 
-    arms._graph = memo
+    arms.potts_graph = memo
     _warm()
 
 
@@ -260,9 +260,9 @@ def _warm() -> None:
                             weights=weights, spatial_weight=1.0, n_spots=100)  # fmt: skip
     # NB every solver `--only` can name, the ones T- #660 dropped from the stream included
     retired = {"sal:bifurcation", "port:alpha", "port:alpha-rust-merge"}
-    runnable = [s for s in arms._solvers() if s not in retired]
+    runnable = [s for s in arms.solver_names() if s not in retired]
     for solver in [*runnable, *EXTRA, CLUSTER_TEMPERING]:
-        solve(
+        solve_labelling(
             patch,
             solver,
             0,
@@ -273,7 +273,7 @@ def _warm() -> None:
 def _hold(index: int, problem: Any) -> None:
     import port.studies.clone_label_arms as arms
 
-    arms._HELD["capture"], arms._HELD["problem"] = problem, index
+    arms.HELD["capture"], arms.HELD["problem"] = problem, index
 
 
 def _sample(solver: str, field: np.ndarray, start: np.ndarray, rng: np.random.Generator,
@@ -321,20 +321,20 @@ def _sample(solver: str, field: np.ndarray, start: np.ndarray, rng: np.random.Ge
     return np.asarray(best, dtype=np.int64)
 
 
-def solve(
+def solve_labelling(
     problem: Any, solver: str, seed: int, setting: dict[str, float] | None = None
 ) -> dict[str, Any]:
     """One run from random labels, then its two polishes; a failure is a row."""
     from sal.sim.potts import energy
 
     import port.studies.clone_label_arms as arms
-    from port.sandbox.extensions.color_merge import color_merge
+    from port.studies.color_merge import color_merge
     from port.studies.stage import missed
 
     try:
         _hold(problem.realization, problem)
         field, beta = problem.field, problem.spatial_weight
-        _, graph = arms._graph(beta)
+        _, graph = arms.potts_graph(beta)
         start = np.random.default_rng([seed, 7]).integers(
             0, field.shape[1], field.shape[0]
         )
@@ -347,10 +347,12 @@ def solve(
         elif setting is not None:
             out = _sample(solver, field, start, rng, graph, setting)
         else:
-            out = arms._solve(solver, field, start, rng, beta)
+            out = arms.solve_from(solver, field, start, rng, beta)
         seconds = time.perf_counter() - opened
         opened = time.perf_counter()
-        polished = arms._solve("sal:icm", field, out, np.random.default_rng(0), beta)
+        polished = arms.solve_from(
+            "sal:icm", field, out, np.random.default_rng(0), beta
+        )
         polish_seconds = time.perf_counter() - opened
         opened = time.perf_counter()
         both, merges = color_merge(
@@ -381,7 +383,7 @@ def _describe(problem: Any) -> dict[str, Any]:
     import port.studies.clone_label_arms as arms
 
     _hold(problem.realization, problem)
-    _, graph = arms._graph(problem.spatial_weight)
+    _, graph = arms.potts_graph(problem.spatial_weight)
     bound, trws_energy, trws_seconds = arms._bound(
         problem.field, problem.spatial_weight
     )
@@ -416,11 +418,11 @@ def tune(
     bounds = {p.realization: _describe(p)["bound"] for p in held_out}
     rows: list[dict[str, Any]] = []
 
-    def run(jobs: list[tuple[str, int, dict[str, float]]]) -> pd.DataFrame:
+    def run_jobs(jobs: list[tuple[str, int, dict[str, float]]]) -> pd.DataFrame:
         # NB the longest first, so no worker idles behind one long job at a round's end
         jobs = sorted(jobs, key=lambda job: -job[2]["sweeps"])
         futures = [
-            pool.submit(solve, p, solver, seed, setting)
+            pool.submit(solve_labelling, p, solver, seed, setting)
             for solver, seed, setting in jobs
             for p in held_out
         ]
@@ -433,7 +435,7 @@ def tune(
         return frame
 
     cheap, middle, dear = sorted({g["sweeps"] for g in GRID})
-    frame = run(
+    frame = run_jobs(
         [
             (solver, 0, g)
             for solver in samplers
@@ -445,12 +447,12 @@ def tune(
     falling = [(solver, 0, g) for solver in samplers for g in grid(solver) if g["sweeps"] == dear
                and median.get((solver, (g["t_start"], middle, g["warm"])), np.inf)
                < median.get((solver, (g["t_start"], cheap, g["warm"])), np.inf) - TOLERANCE]  # fmt: skip
-    frame = run(falling)
+    frame = run_jobs(falling)
     kept = {
         str(solver): harness.halve(g, TOLERANCE)
         for solver, g in frame.groupby("solver")
     }
-    frame = run([(solver, seed, {"t_start": t, "sweeps": n, "warm": w})
+    frame = run_jobs([(solver, seed, {"t_start": t, "sweeps": n, "warm": w})
                  for solver, keys in kept.items() for t, n, w in keys for seed in range(1, TUNING_STARTS)])  # fmt: skip
     print(f"tuning: {len(rows)} runs against the full grid's "
           f"{sum(len(grid(s)) for s in samplers) * TUNING_STARTS * len(held_out)}", flush=True)  # fmt: skip
@@ -474,7 +476,7 @@ def run(
     starts: int,
     held_out: int,
     workers: int,
-    settings: Path | None = None,
+    settings: Path = SETTINGS,
     only: tuple[str, ...] | None = None,
     first: int = 0,
     merge: tuple[Path, ...] = (),
@@ -492,7 +494,7 @@ def run(
     solvers = (
         list(only)
         if only
-        else [s for s in arms._solvers() if s not in DROPPED] + list(EXTRA)
+        else [s for s in arms.solver_names() if s not in DROPPED] + list(EXTRA)
     )
     held: dict[int, dict[str, Any]] = {}
     rows: list[dict[str, Any]] = []
@@ -501,14 +503,9 @@ def run(
     futures: dict[Future[dict[str, Any]], int] = {}
     opened = time.perf_counter()
     with harness.pool(workers, _init) as pool:
-        if settings is None:
-            tuned, tuning_rows = tune(
-                pool, list(problems(manifest, out_dir, held_out, states=states))
-            )
-        else:
-            loaded = json.loads(settings.read_text())
-            tuned = {k: v for k, v in loaded.items() if not k.startswith("_")}
-            tuning_rows = []
+        loaded = json.loads(settings.read_text())
+        tuned = {k: v for k, v in loaded.items() if not k.startswith("_")}
+        tuning_rows: list[dict[str, Any]] = []
 
         def drain(block: bool) -> None:
             for index, row in harness.finished(futures, block):
@@ -545,9 +542,9 @@ def run(
                     else None
                 )
                 for seed in range(starts):
-                    futures[pool.submit(solve, problem, solver, seed, setting)] = (
-                        problem.realization
-                    )
+                    futures[
+                        pool.submit(solve_labelling, problem, solver, seed, setting)
+                    ] = problem.realization
             drain(block=False)
         while futures:
             drain(block=True)
@@ -571,11 +568,14 @@ def retune(
         chosen, _ = tune(
             pool, list(problems(manifest, root, held_out, states=states)), samplers
         )
-    settings = json.loads(SETTINGS.read_text())
-    for solver, setting in chosen.items():
-        settings[solver] = {"t_start": setting["t_start"], "sweeps": setting["sweeps"], "warm": setting["warm"],
-                            "median_gap": round(setting["gap"], 3), "default_median_gap": round(setting["default_gap"], 3)}  # fmt: skip
-    SETTINGS.write_text(json.dumps(settings, indent=2) + "\n")
+    provenance = (f"run_calibrate --potts on {manifest.name} realizations 0-{held_out - 1}, states {states}, "
+                               f"{TUNING_STARTS} random starts per setting; the cheapest setting within {TOLERANCE} nats "
+                               "of the best median gap to TRW-S's bound (#556, #723)")  # fmt: skip
+    harness.merge_settings(SETTINGS, provenance, {
+        solver: {"t_start": setting["t_start"], "sweeps": setting["sweeps"], "warm": setting["warm"],
+                 "median_gap": round(setting["gap"], 3), "default_median_gap": round(setting["default_gap"], 3)}
+        for solver, setting in chosen.items()
+    })  # fmt: skip
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -588,17 +588,10 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument(
         "--settings",
         type=Path,
-        default=None,
-        help=f"sampler settings to reuse, e.g. {SETTINGS}",
+        default=SETTINGS,
+        help=f"sampler settings, by default {SETTINGS}, which run_calibrate --potts writes",
     )
     parser.add_argument("--workers", type=int, default=4)
-    parser.add_argument(
-        "--tune",
-        nargs="+",
-        default=None,
-        metavar="SAMPLER",
-        help=f"tune only these on the held-out realizations, merge them into {SETTINGS.name}, and stop",
-    )
     parser.add_argument(
         "--only",
         nargs="+",
@@ -627,16 +620,6 @@ def main(argv: list[str] | None = None) -> None:
         help="the Baum-Welch before the field starts from the run's states or the planted ones",
     )
     arguments = parser.parse_args(argv)
-    if arguments.tune is not None:
-        retune(
-            arguments.manifest,
-            tuple(arguments.tune),
-            arguments.held_out,
-            arguments.workers,
-            arguments.out_dir,
-            arguments.states,
-        )
-        return
     run(arguments.manifest, arguments.out_dir, arguments.problems, arguments.starts, arguments.held_out,
         arguments.workers, arguments.settings, tuple(arguments.only) if arguments.only else None, arguments.first,
         tuple(arguments.merge), arguments.states)  # fmt: skip

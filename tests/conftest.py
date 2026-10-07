@@ -13,6 +13,8 @@ from typing import Any
 
 import pytest
 
+from tests import TESTS
+
 COMPRESSION_DECIMALS = 6
 """Places `CountEncoder` rounds to before deduplicating.
 
@@ -243,9 +245,7 @@ def collected_items() -> list[pytest.Item]:
     """
     items = list(_COLLECTED)
     collected_modules = {item.nodeid.split("::")[0] for item in items}
-    on_disk = {
-        f"tests/{path.name}" for path in (Path(__file__).parent).glob("test_*.py")
-    }
+    on_disk = {f"tests/{path.name}" for path in TESTS.glob("test_*.py")}
 
     missing = on_disk - collected_modules
     if missing:

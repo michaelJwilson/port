@@ -21,6 +21,8 @@ from __future__ import annotations
 import copy
 import importlib
 import tempfile
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -42,29 +44,32 @@ def _dense(x: Any) -> np.ndarray:
     return np.asarray(x.toarray() if sp.issparse(x) else x)
 
 
-def _config(sample: Any, root: Path, on: bool) -> tuple[Any, dict[str, Any]]:
-    """`sample`'s config with the outlier filter `on`, set global, and the loader's arguments."""
+@contextmanager
+def _config(sample: Any, root: Path, on: bool) -> Iterator[tuple[Any, dict[str, Any]]]:
+    """`sample`'s config with the outlier filter `on`, global while open, and the loader's arguments."""
     import yaml
-    from cnaster.config import YAMLConfig, set_global_config
     from port.sim.fixtures import write_sim_inputs
+    from port.sim.inputs import written_config
 
     path = write_sim_inputs(sample, root, {"quality.local_outlier_filter": on})
-    config = YAMLConfig(yaml.safe_load(path.read_text()))
-    set_global_config(config)
-    return config, {
-        "filter_gene_file": config.references.filtergenelist_file,
-        "filter_range_file": config.references.filterregion_file,
-        "min_snp_umis": config.quality.spot_min_snp_umis,
-        "min_percent_expressed_spots": config.quality.min_percent_expressed_spots,
-    }
+    with written_config(yaml.safe_load(path.read_text())) as config:
+        yield (
+            config,
+            {
+                "filter_gene_file": config.references.filtergenelist_file,
+                "filter_range_file": config.references.filterregion_file,
+                "min_snp_umis": config.quality.spot_min_snp_umis,
+                "min_percent_expressed_spots": config.quality.min_percent_expressed_spots,
+            },
+        )
 
 
 def _raw(sample: Any) -> Any:
     """Easy's AnnData from `cnaster`'s loader with the outlier filter off."""
     from cnaster.io import load_input_data
 
-    config, arguments = _config(sample, Path(tempfile.mkdtemp()), False)
-    return load_input_data(config, **arguments).adata
+    with _config(sample, Path(tempfile.mkdtemp()), False) as (config, arguments):
+        return load_input_data(config, **arguments).adata
 
 
 def _zeroed(counts: np.ndarray, raw: np.ndarray) -> np.ndarray:
@@ -89,24 +94,24 @@ def test_the_loaders_zero_the_outlier_genes_and_no_other(
     from port.patch.io import load_input_data
 
     raw = _raw(easy)
-    config, arguments = _config(easy, tmp_path, True)
-    theirs = upstream(config, **arguments).adata
-    counts = _dense(theirs.layers["count"])
-    reference = _dense(
-        raw[list(theirs.obs.index), list(theirs.var.index)].layers["count"]
-    )
-    zeroed = _zeroed(counts, reference)
+    with _config(easy, tmp_path, True) as (config, arguments):
+        theirs = upstream(config, **arguments).adata
+        counts = _dense(theirs.layers["count"])
+        reference = _dense(
+            raw[list(theirs.obs.index), list(theirs.var.index)].layers["count"]
+        )
+        zeroed = _zeroed(counts, reference)
 
-    assert zeroed.size == OUTLIERS
-    np.testing.assert_array_equal(
-        np.delete(counts, zeroed, 1), np.delete(reference, zeroed, 1)
-    )
+        assert zeroed.size == OUTLIERS
+        np.testing.assert_array_equal(
+            np.delete(counts, zeroed, 1), np.delete(reference, zeroed, 1)
+        )
 
-    for sparse in (False, True):
-        ours = load_input_data(config, **arguments, sparse_counts=sparse).adata
-        assert list(ours.var.index) == list(theirs.var.index)
-        assert list(ours.obs.index) == list(theirs.obs.index)
-        np.testing.assert_array_equal(_dense(ours.layers["count"]), counts)
+        for sparse in (False, True):
+            ours = load_input_data(config, **arguments, sparse_counts=sparse).adata
+            assert list(ours.var.index) == list(theirs.var.index)
+            assert list(ours.obs.index) == list(theirs.obs.index)
+            np.testing.assert_array_equal(_dense(ours.layers["count"]), counts)
 
 
 @pytest.mark.merge
@@ -122,26 +127,26 @@ def test_with_the_flag_off_the_loaders_keep_every_outlier_gene(
     from cnaster.io import load_input_data as upstream
     from port.patch.io import load_input_data
 
-    on, on_arguments = _config(easy, tmp_path / "on", True)
-    flagged = upstream(on, **on_arguments).adata
-    config, arguments = _config(easy, tmp_path / "off", False)
-    theirs = upstream(config, **arguments).adata
-    counts = _dense(theirs.layers["count"])
-    zeroed = _zeroed(
-        _dense(flagged.layers["count"]),
-        _dense(
-            theirs[list(flagged.obs.index), list(flagged.var.index)].layers["count"]
-        ),
-    )
+    with _config(easy, tmp_path / "on", True) as (on, on_arguments):
+        flagged = upstream(on, **on_arguments).adata
+    with _config(easy, tmp_path / "off", False) as (config, arguments):
+        theirs = upstream(config, **arguments).adata
+        counts = _dense(theirs.layers["count"])
+        zeroed = _zeroed(
+            _dense(flagged.layers["count"]),
+            _dense(
+                theirs[list(flagged.obs.index), list(flagged.var.index)].layers["count"]
+            ),
+        )
 
-    assert zeroed.size == OUTLIERS
-    assert (counts[:, zeroed].sum(axis=0) > 0).all()
+        assert zeroed.size == OUTLIERS
+        assert (counts[:, zeroed].sum(axis=0) > 0).all()
 
-    for sparse in (False, True):
-        ours = load_input_data(config, **arguments, sparse_counts=sparse).adata
-        assert list(ours.var.index) == list(theirs.var.index)
-        assert list(ours.obs.index) == list(theirs.obs.index)
-        np.testing.assert_array_equal(_dense(ours.layers["count"]), counts)
+        for sparse in (False, True):
+            ours = load_input_data(config, **arguments, sparse_counts=sparse).adata
+            assert list(ours.var.index) == list(theirs.var.index)
+            assert list(ours.obs.index) == list(theirs.obs.index)
+            np.testing.assert_array_equal(_dense(ours.layers["count"]), counts)
 
 
 @pytest.fixture(scope="module")

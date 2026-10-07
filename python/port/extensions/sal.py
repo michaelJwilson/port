@@ -60,8 +60,9 @@ SAL_ROWS: tuple[SalRow, ...] = (
         ticket=410,
     ),
 )
-"""The admitted rows. Measured and not admitted, selectable through
-`PORT_LABEL_SOLVER`:
+"""The admitted rows. Measured and not admitted: `alpha-rust` and `icm-numba`
+selectable through `PORT_LABEL_SOLVER`, the rest set aside in
+`port.sandbox.extensions.label_solvers` (#749 WP5):
 
 - `alpha-rust`: the lowest energy per call, and ARI 0.386 end to end;
 - `icm-numba`: the same descent 39 to 61 times faster at stress, within

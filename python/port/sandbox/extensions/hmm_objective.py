@@ -7,7 +7,8 @@ Measurement: `port.studies.copy_state_stream` on
   `sim/manifests/baseline/dev_tree_1s_hard.toml` r3-r12, 10 seeds (PR #642):
   median rows missed after Baum-Welch 1.14 / 1.12 / 1.14% against port's
   1.19 / 1.17 / 1.10% (anneal / tempering / hmc), n = 100 each.
-Exit: retire with the #540 study. Built on `sal`'s count-pair HMM objective
+Exit: retire with its readers, `port.studies.copy_state_stream` and the
+  #748 forward polish (#540, its first, is closed). Built on `sal`'s count-pair HMM objective
   since T- #707 (sal 006e49d): `Backend.JAX` costs 0.42-0.50x port's former
   jitted `jax_hmm` forward at 4 threads and 0.38-0.51x at 1 core, per value
   and gradient on PR- #672's instance, so that forward was deleted.
@@ -33,7 +34,7 @@ dispersions and the shipped configuration's stickiness. No per-clone shift (#276
 **Departure from `sal`.** `sal`'s own `__call__` is autograd through its
 torch forward, its oracle route: `sal`'s samplers read potentials through
 `__call__`, so it would run a second, slower implementation beside the compiled
-gradient and differ from it at round-off. `_Carried` keeps one.
+gradient and differ from it at round-off. `CarriedGradient` keeps one.
 
 **Evaluations are passes.** `evaluations` counts the value-and-gradient
 passes run. `sal` carries `U` and `grad U` along a chain (sal #1217, #1222),
@@ -75,6 +76,7 @@ ALPHA, TAU = 0.5, 1_000.0
 """`hmm_nophasing.get_initial_params`' NB and beta-binomial dispersions: what an unfitted start is scored at."""
 
 __all__ = [
+    "BUDGETS",
     "DEFAULTS",
     "LEAPFROG",
     "SAMPLERS",
@@ -95,14 +97,12 @@ HMC_ADAPT = 8
 RUNGS = 4
 """`tempering-hmm`: replicas on the ladder."""
 
-DEFAULTS: dict[str, dict[str, float]] = {
-    "anneal-hmm": {"t_start": 1e2, "steps": 54, "step": 3e-3},
-    "tempering-hmm": {"t_top": 1e4, "rounds": 13, "step": 1e-3},
-    "hmc-hmm": {"temperature": 1.0, "warmup": HMC_ADAPT, "draws": 13, "step": 1e-3, "adapt": 1.0, "target": 0.65},
+BUDGETS: dict[str, dict[str, float]] = {
+    "anneal-hmm": {"steps": 54},
+    "tempering-hmm": {"rounds": 13},
+    "hmc-hmm": {"warmup": HMC_ADAPT, "draws": 13, "step": 1e-3, "adapt": 1.0, "target": 0.65},
 }  # fmt: skip
-"""Each start's knobs where no `setting` is given: the values `port.studies.copy_state_stream --tune` chose
-on `dev_tree_1s_hard`'s held-out realizations 0-2 (`python/port/studies/copy_sampler_settings.json`), 5 seeds
-per setting, over grids shaped as port's samplers' were (9 / 9 / 7 settings).
+"""Each start's fixed knobs: its budget, and `hmc`'s dual-averaging warm-up, initial step and target.
 
 Budgets are the passes port's deleted samplers spent at their tuned schedules, not exceeded: 54
 annealing steps (433 passes against 433), 13 tempering rounds (417 against 436), 12 + 13 hmc
@@ -114,6 +114,29 @@ raised on zero warm-up variance when the chain did not move in the 2 proposals i
 gap 5); `sal` #1207 regularizes that variance and reports the coordinate on `Adapted.flat` (T- #707).
 At 8 on `sal` 006e49d, realization 0 (`d2938975`), seeds 0-3: best NLL 79,704-79,802 (median 79,724)
 against 79,677-79,770 (median 79,725) at 12, at 188 passes against 220; none refused. Not re-tuned."""
+
+TUNED_KEYS: dict[str, tuple[str, ...]] = {
+    "anneal-hmm": ("t_start", "step"),
+    "tempering-hmm": ("t_top", "step"),
+    "hmc-hmm": ("temperature",),
+}
+"""The knobs `run_calibrate --copy` tunes for each start (`copy_state_stream.GRID`)."""
+
+
+def _defaults() -> dict[str, dict[str, float]]:
+    """`BUDGETS` with each start's tuned knobs from `configs/copy_sampler_settings.json` (#749 WP1)."""
+    from port.qa.provenance import calibration
+
+    tuned = calibration("copy_sampler_settings")
+    return {name: {**budget, **{k: float(tuned[name][k]) for k in TUNED_KEYS[name]}}
+            for name, budget in BUDGETS.items()}  # fmt: skip
+
+
+DEFAULTS: dict[str, dict[str, float]] = _defaults()
+"""Each start's knobs where no `setting` is given: `BUDGETS`, and the knobs `run_calibrate --copy`
+chose on `dev_tree_1s_hard`'s held-out realizations 0-2 (`configs/copy_sampler_settings.json`), 5 seeds
+per setting. Until #749 WP1 they were restated here, and stale since #723: `tempering-hmm` at
+`t_top` 1e4, step 1e-3, against the file's 100, 3e-3; `hmc-hmm` at temperature 1 against 100."""
 
 
 SAMPLERS = tuple(DEFAULTS)
@@ -129,7 +152,7 @@ class Sampled(NamedTuple):
     evaluations: int
 
 
-class _Carried(torch.autograd.Function):
+class CarriedGradient(torch.autograd.Function):
     """The objective's value as a torch scalar whose backward is the kernel's gradient."""
 
     @staticmethod
@@ -241,7 +264,7 @@ class HmmObjective:
     def __call__(self, theta: torch.Tensor) -> torch.Tensor:
         """`U(theta)`, differentiable in `theta` through the kernel's gradient."""
         value, grad = self._evaluate(theta.detach().numpy())
-        return _Carried.apply(  # type: ignore[no-any-return]
+        return CarriedGradient.apply(  # type: ignore[no-any-return]
             theta,
             torch.tensor(value, dtype=torch.float64),
             torch.from_numpy(grad.copy()),

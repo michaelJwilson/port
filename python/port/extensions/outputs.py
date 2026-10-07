@@ -437,6 +437,26 @@ def config_keys(config: Path | None) -> dict[str, Any]:
 
     import yaml
 
+    return _wanted(yaml.safe_load(Path(config).read_text()))
+
+
+def installed_keys() -> dict[str, Any]:
+    """`config_keys` of the configuration the run installed (`cnaster.config`), `{}` where none is."""
+    from cnaster.config import YAMLConfig, get_global_config
+
+    def plain(node: Any) -> Any:
+        return (
+            {k: plain(v) for k, v in vars(node).items()}
+            if isinstance(node, YAMLConfig)
+            else node
+        )
+
+    installed = get_global_config()
+    return {} if installed is None else _wanted(plain(installed))
+
+
+def _wanted(document: Any) -> dict[str, Any]:
+    """The keys `config_keys` reads, wherever they sit in `document`."""
     wanted = {"n_states", "max_total_copy", "merge_agreement", "ploidy", "output_dir"}
     found: dict[str, Any] = {}
 
@@ -447,8 +467,14 @@ def config_keys(config: Path | None) -> dict[str, Any]:
                     found[key] = value
                 walk(value)
 
-    walk(yaml.safe_load(Path(config).read_text()))
+    walk(document)
     return found
+
+
+def merge_agreement(keys: dict[str, Any]) -> float:
+    """`int_copy_num.merge_agreement` from `config_keys`, `MERGE_AGREEMENT` where unset (#518)."""
+    stated = keys.get("merge_agreement")
+    return MERGE_AGREEMENT if stated is None else float(stated)
 
 
 def write_outputs(
@@ -481,8 +507,7 @@ def write_outputs(
     n_states = config_keys(config).get("n_states")
     seglevel, perstate, fit = _load(run, None if n_states is None else int(n_states))
     written = []
-    stated = config_keys(config).get("merge_agreement")
-    agreement = MERGE_AGREEMENT if stated is None else float(stated)
+    agreement = merge_agreement(config_keys(config))
 
     tables = [
         ("cnv_states.tsv", states(seglevel, perstate, fit)),

@@ -53,6 +53,10 @@ run_calicost = "port.scripts.run_calicost:main"
 # view, or query the best value (T- #673). A QA tool entry point, not a
 # pipeline one: it reaches `port.qa`, and no pipeline entry point does.
 run_ledger = "port.scripts.run_ledger:main"
+# The settings the studies read, measured on held-out realizations and written
+# to `configs/` (#749 WP1): `--potts` for the Potts samplers, `--copy` for the
+# copy-state starts. A QA tool entry point; studies never tune inline.
+run_calibrate = "port.scripts.run_calibrate:main"
 # A run scored against its planted truth: `--sim`, `--recovery`, `--copy` or
 # `--errors` (T- #673). A QA tool entry point, as `run_ledger` is.
 run_audit = "port.scripts.run_audit:main"
@@ -257,7 +261,7 @@ unfixable = [
 
 [tool.mypy]
 strict = true
-files = ["python", "tests"]
+files = ["python", "scripts", "tests"]
 # NB `cnamaste`'s untyped `cnaster` code, read as `cnaster` is (below): the
 #    modules `[tool.ruff]` excludes, `CNAMASTE_UNLINTED` in `test_module_roles`.
 exclude = [
@@ -411,7 +415,7 @@ markers = [
     # NB at most one tier per test (#403): `critical` gates first, no tier is
     #    the gate, `merge` runs before a merge with the badges, `release` runs
     #    for a release, `deprecate` where its module changes and at a
-    #    release. `python -m tests.ci` selects by these and nothing else.
+    #    release. `python -m scripts.ci` selects by these and nothing else.
     "merge: over the gate's 5-second cap at gate size; runs before a merge, with the badges",
     "release: over the pre-merge budget -- dev, key or stress size; runs for a release",
     "deprecate: too specific to run on every change; passed where merged, runs again only where its module changes, and for a release",

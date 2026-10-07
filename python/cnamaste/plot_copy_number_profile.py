@@ -442,7 +442,12 @@ def plot_ascn_legend(
     phase_end = start + box_w
     mirror = ax.text(phase_end + gap, box_h / 2, MIRROR, ha="left", va="center", **text)
     title = ax.text(
-        0.0, box_h / 2, r"$\mathbb{N}$-CNA", ha="right", va="center_baseline", **text
+        0.0,
+        box_h / 2,
+        r"$\mathbb{N}$-CNA (A, B)",
+        ha="right",
+        va="center_baseline",
+        **text,
     )
 
     bar = len(ordered_acn) * box_w

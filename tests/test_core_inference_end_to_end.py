@@ -22,12 +22,10 @@ own pull request.
 """
 
 import warnings
-from typing import Any
 
 import numpy as np
 import pytest
 from port.sim.truth import (
-    CoreInferenceTruth,
     core_inference_truth,
     critical_instance,
     dev_instance,
@@ -35,6 +33,7 @@ from port.sim.truth import (
 )
 
 from tests.adapters import from_core_inference_truth
+from tests.fixtures import partition_ari, run_planted_core_inference
 
 DECLARED_SPOTS = 5_000
 """`S` at the scale #87 names, and the one the inference does not fit in."""
@@ -45,47 +44,6 @@ MIN_CLONE_SPOTS = 200
 A clone smaller than this is emptied into another during the label solve, so a
 fixture below it measures the merge and not the solver.
 """
-
-
-def _run(truth: CoreInferenceTruth, **kwargs: object) -> Any:
-    from cnaster.hmm_nophasing import hmm_nophasing
-    from cnaster.hmrf import run_core_inference
-
-    with warnings.catch_warnings():
-        # `scipy` rejects the `ftol` the shipped solver options pass (#46); the
-        # warning is that defect firing on the live path, not this test's.
-        warnings.simplefilter("ignore")
-        return run_core_inference(
-            **from_core_inference_truth(truth).as_kwargs(),
-            hmmclass=hmm_nophasing,
-            **kwargs,
-        )
-
-
-def _adjusted_rand_index(planted: np.ndarray, fitted: np.ndarray) -> float:
-    """Agreement between two partitions, invariant to how either is labelled.
-
-    Written here rather than taken from `scikit-learn`: it is `cnaster`'s
-    dependency and not this repository's, and a referee that arrives through
-    the subject is not independent of it.
-
-    Ten classes have 3.6 million permutations, so the exact-permutation
-    accuracy below does not scale; this counts agreeing pairs instead and
-    corrects for the agreement expected by chance.
-    """
-    from math import comb
-
-    table = np.zeros((int(planted.max()) + 1, int(fitted.max()) + 1), dtype=np.int64)
-    np.add.at(table, (planted, fitted), 1)
-
-    pairs = sum(comb(int(n), 2) for n in table.ravel())
-    by_planted = sum(comb(int(n), 2) for n in table.sum(axis=1))
-    by_fitted = sum(comb(int(n), 2) for n in table.sum(axis=0))
-    total = comb(int(planted.size), 2)
-
-    expected = by_planted * by_fitted / total
-    maximum = 0.5 * (by_planted + by_fitted)
-    return float((pairs - expected) / (maximum - expected))
 
 
 def _best_permutation_accuracy(fitted: np.ndarray, planted: np.ndarray) -> float:
@@ -168,7 +126,7 @@ def test_a_clone_below_the_solver_s_floor_is_merged_away(cnaster_config: None) -
         normal_clone=False,
     )
 
-    result = _run(truth, max_iter_outer=1, max_iter=5)
+    result = run_planted_core_inference(truth, max_iter_outer=1, max_iter=5)
     fitted = np.asarray(result.assignment.new_assignment)
 
     assert truth.clone_index[0].size < MIN_CLONE_SPOTS
@@ -189,7 +147,7 @@ def test_the_run_recovers_the_planted_labelling(cnaster_config: None) -> None:
     )
     assert min(index.size for index in truth.clone_index) >= MIN_CLONE_SPOTS
 
-    result = _run(truth, max_iter_outer=2, max_iter=10)
+    result = run_planted_core_inference(truth, max_iter_outer=2, max_iter=10)
     fitted = np.asarray(result.assignment.new_assignment)
 
     accuracy = _best_permutation_accuracy(fitted, truth.labels)
@@ -226,7 +184,7 @@ def test_the_run_recovers_every_planted_state_on_a_mostly_neutral_genome(
         n_clones=2, n_states=3, lattice=(30, 20), n_obs=300, n_segments=4
     )
 
-    result = _run(truth, max_iter_outer=2, max_iter=10)
+    result = run_planted_core_inference(truth, max_iter_outer=2, max_iter=10)
     fitted_mu = np.sort(np.exp(np.asarray(result.params.new_log_mu).ravel()))
     fitted_p = np.sort(np.asarray(result.params.new_p_binom).ravel())
     planted_mu = np.sort(np.exp(truth.log_mu))
@@ -312,11 +270,11 @@ def test_the_dev_instance_recovers_its_labelling(cnaster_config: None) -> None:
     assert (truth.n_obs, truth.n_spots) == (1_000, 1_600)
     assert min(index.size for index in truth.clone_index) >= MIN_CLONE_SPOTS
 
-    result = _run(truth, max_iter_outer=1, max_iter=3)
+    result = run_planted_core_inference(truth, max_iter_outer=1, max_iter=3)
     fitted = np.asarray(result.assignment.new_assignment)
 
     assert np.unique(fitted).size == truth.n_clones
-    assert _adjusted_rand_index(truth.labels, fitted) == pytest.approx(1.0)
+    assert partition_ari(truth.labels, fitted) == pytest.approx(1.0)
 
 
 @pytest.mark.end2end
@@ -336,8 +294,8 @@ def test_the_critical_instance_recovers_its_labelling(cnaster_config: None) -> N
     assert (truth.n_obs, truth.n_spots) == (1_000, 500)
     assert min(index.size for index in truth.clone_index) >= MIN_CLONE_SPOTS
 
-    result = _run(truth, max_iter_outer=1, max_iter=3)
+    result = run_planted_core_inference(truth, max_iter_outer=1, max_iter=3)
     fitted = np.asarray(result.assignment.new_assignment)
 
     assert np.unique(fitted).size == truth.n_clones
-    assert _adjusted_rand_index(truth.labels, fitted) == pytest.approx(1.0)
+    assert partition_ari(truth.labels, fitted) == pytest.approx(1.0)

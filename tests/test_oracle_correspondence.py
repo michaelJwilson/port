@@ -23,8 +23,9 @@ from pathlib import Path
 
 import pytest
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-ORACLE_CONFIG = PROJECT_ROOT / ".coveragerc-oracle"
+from tests import ROOT
+
+ORACLE_CONFIG = ROOT / ".coveragerc-oracle"
 
 CORRESPONDENCE: dict[str, tuple[str, ...]] = {
     "sal.emissions": ("cnaster.hmm_nophasing", "cnaster.hmm_emission"),

@@ -14,7 +14,7 @@ Three append-only, tab-separated files, each with a header line:
 `run_ledger` (`port.scripts.run_ledger`) records, renders and queries it;
 this module is its table API, moved from `tests.metrics` (T- #673 G2). A
 run is recorded against `provenance.head`, so the files live in the
-checkout `provenance.ROOT` names. `.gitattributes` merges them as `union`,
+checkout `port.extensions.repository.ROOT` names. `.gitattributes` merges them as `union`,
 so two branches that each append a run both keep theirs.
 
 A dataset is the pair `fixture`, `fixture_hash`: the name a run was asked
@@ -33,9 +33,9 @@ from collections.abc import Iterable, Sequence
 from pathlib import Path
 from typing import Any
 
+from port.extensions.repository import ROOT
 from port.qa import provenance
 
-ROOT = provenance.ROOT
 LEDGER_DIR = ROOT / "docs" / "metrics"
 LEDGER = LEDGER_DIR / "ledger.tsv"
 RUNS = LEDGER_DIR / "runs.tsv"

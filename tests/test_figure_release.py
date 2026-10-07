@@ -20,7 +20,7 @@ from typing import Any
 import matplotlib as mpl
 import pytest
 
-from tests.test_figure_dpi import CREATION_DATE, _figure
+from tests.figure_checks import CREATION_DATE, wide_rasterized_figure
 
 mpl.use("Agg")
 
@@ -37,7 +37,7 @@ def _pinned(writer: Callable[..., None], path: Path, **keywords: Any) -> int:
     gc.disable()
     try:
         before = {id(live) for live in gc.get_objects() if isinstance(live, PdfFile)}
-        figure = _figure()
+        figure = wide_rasterized_figure()
         writer(str(path), figure, **keywords)
         buffers: dict[int, int] = {}
         for live in gc.get_objects():

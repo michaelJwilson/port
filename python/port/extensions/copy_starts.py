@@ -11,7 +11,7 @@ state's read-depth ratio `mu` and B-allele frequency `p`.
   `"baf"` (`params` without `m`) or `"rdrbaf"`.
 - **The start** (`lattice_start`): every integer `(A, B)` up to the rows'
   read-depth ceiling, placed at a tumour fraction and depth scale, the
-  rows assigned by `sal`'s IID count-pair likelihood (`_channels`), and the
+  rows assigned by `sal`'s IID count-pair likelihood (`channel_log_densities`), and the
   `n_states` most occupied states kept.
 - **The polish** (`polish_states`): `sal`'s EM on the whole call from those
   states; the result (`CopyStart`) carries each state's `log_mu` and
@@ -36,6 +36,7 @@ from typing import Any, NamedTuple
 
 import numpy as np
 
+from port.extensions.copy_likelihood import PURITY_GRID
 from port.patch.hmm_initialize.sal_mixture import EXPOSURE_SCALE
 
 __all__ = [
@@ -157,7 +158,7 @@ def _place(held: Any, call: CopyCall, log_mu: Any, p_binom: Any) -> Any:
     return held.at(np.column_stack([mu * EXPOSURE_SCALE, p * float(held.at.trials)]))
 
 
-def _read(
+def components_as_states(
     call: CopyCall, components: Any, *, per: float = EXPOSURE_SCALE
 ) -> tuple[np.ndarray, np.ndarray]:
     """Components as `(log mu, p)`: the mean rate over `per`, 0 for BAF only."""
@@ -169,14 +170,16 @@ def _read(
     return log_mu, p
 
 
-def _log_rdr(call: CopyCall) -> np.ndarray:
+def log_depth_ratio(call: CopyCall) -> np.ndarray:
     with np.errstate(divide="ignore", invalid="ignore"):
         log_rdr: np.ndarray = np.log(call.total / call.exposure)
     return log_rdr
 
 
-LATTICE_PURITY = (1.0, 0.9, 0.8, 0.7, 0.6, 0.5)
-"""Tumour fractions the lattice start tries, as `copy_likelihood.PURITY_GRID` does."""
+LATTICE_PURITY = PURITY_GRID[: PURITY_GRID.index(0.5) + 1]
+"""Tumour fractions the lattice start tries: `copy_likelihood.PURITY_GRID` down
+to 0.5. The decode's grid continues to 0.3 and this one stops; nothing
+records why, so the cut is stated here rather than drifting (#749 WP7)."""
 
 LATTICE_SCALE = tuple(float(v) for v in np.exp(np.linspace(-0.15, 0.15, 7)))
 """Read-depth scales it tries: the call's baseline need not sit at the clones' neutral."""
@@ -196,7 +199,7 @@ def _lattice_ceiling(call: CopyCall) -> int:
     """
     if call.stage != "rdrbaf":
         return 4
-    log_rdr = _log_rdr(call)
+    log_rdr = log_depth_ratio(call)
     finite = log_rdr[np.isfinite(log_rdr)]
     ceiling = float(np.exp(np.percentile(finite, 99.5))) if finite.size else 2.0
     return int(np.clip(np.ceil(2.0 * ceiling), 3, 8))
@@ -212,7 +215,7 @@ Channel = Callable[..., np.ndarray]
 """One channel's log density: `(rows, states)` at a parameter per state, or `(rows,)` at `parameter[state]`."""
 
 
-def _channels(
+def channel_log_densities(
     observations: np.ndarray, covariate: np.ndarray
 ) -> tuple[Channel, Channel]:
     """`sal`'s `CountPairEmission` in its independent form on one instance, by channel, in NumPy (#540).
@@ -269,7 +272,7 @@ def _channels(
     return depth, allele
 
 
-def _fit_shapes(
+def fit_channel_shapes(
     channels: tuple[Channel, Channel],
     rate: np.ndarray,
     p: np.ndarray,
@@ -358,9 +361,9 @@ def lattice_start(
     """`n_states` of the integer `(A, B)` lattice, as `lattice_decode` places them, chosen by the rows (#540).
 
     Every `(A, B)` with `0 < A + B` up to `_lattice_ceiling` is placed at
-    its `(mu, p)` (`copy_likelihood._parameters`) and scored by the IID
+    its `(mu, p)` (`copy_likelihood.pair_rate_and_share`) and scored by the IID
     emission the mixture fit itself uses, `sal`'s `CountPairEmission` on
-    `instance(call)` as `_channels` evaluates it, each row on its own with its
+    `instance(call)` as `channel_log_densities` evaluates it, each row on its own with its
     exposure and trials.
 
     - Rows are assigned by likelihood plus log occupancy, iterated, the
@@ -379,10 +382,10 @@ def lattice_start(
     - The `n_states` states of highest weight are kept. For BAF only the
       depth channel is a constant, so the lattice is its allele shares.
     """
-    from port.extensions.copy_likelihood import _parameters, candidates
+    from port.extensions.copy_likelihood import candidates, pair_rate_and_share
 
     held = instance(call)
-    channels = _channels(
+    channels = channel_log_densities(
         np.asarray(held.observations, dtype=np.float64),
         np.asarray(held.conditioned, dtype=np.float64),
     )
@@ -394,7 +397,7 @@ def lattice_start(
             return np.exp(log_mu) * EXPOSURE_SCALE
         return np.full(log_mu.size, CONSTANT_TOTAL * EXPOSURE_SCALE)
 
-    def scored(
+    def log_density(
         log_mu: np.ndarray, p: np.ndarray, size: float, concentration: float
     ) -> np.ndarray:
         """`(rows, states)` log density."""
@@ -413,33 +416,33 @@ def lattice_start(
     ]
 
     def placed(purity: float, scale: float) -> tuple[np.ndarray, np.ndarray]:
-        log_mu, p = _parameters(copies, purity)
+        log_mu, p = pair_rate_and_share(copies, purity)
         return log_mu + np.log(scale), p
 
     def fitted(grid_point: tuple[float, float]) -> float:
         """The criterion at this fraction and scale, once its shapes and error rate are fitted."""
         log_mu, p = placed(*grid_point)
         responsibility, _, _ = fitted_weights(
-            scored(log_mu, with_error(p, error), size, concentration)
+            log_density(log_mu, with_error(p, error), size, concentration)
         )
-        r, c, e = _fit_shapes(
+        r, c, e = fit_channel_shapes(
             channels, rates(log_mu), p, responsibility, concentration, error
         )
-        return fitted_weights(scored(log_mu, with_error(p, e), r, c))[2]
+        return fitted_weights(log_density(log_mu, with_error(p, e), r, c))[2]
 
     purity, scale = max(grid, key=fitted)
     log_mu, p = placed(purity, scale)
 
     for _ in range(rounds):
         responsibility, _, _ = fitted_weights(
-            scored(log_mu, with_error(p, error), size, concentration)
+            log_density(log_mu, with_error(p, error), size, concentration)
         )
-        size, concentration, error = _fit_shapes(
+        size, concentration, error = fit_channel_shapes(
             channels, rates(log_mu), p, responsibility, concentration, error
         )
 
     p = with_error(p, error)
-    _, log_weight, _ = fitted_weights(scored(log_mu, p, size, concentration))
+    _, log_weight, _ = fitted_weights(log_density(log_mu, p, size, concentration))
     picked = np.argsort(-log_weight, kind="stable")[: call.n_states]
     return log_mu[picked], p[picked]
 
@@ -465,7 +468,7 @@ def polish_states(
     polished = polish(
         full, _place(full, call, log_mu, p_binom), seconds=seconds, tolerance=1e-6
     )
-    fitted_mu, p = _read(call, polished.components)
+    fitted_mu, p = components_as_states(call, polished.components)
     return CopyStart(
         name=name,
         stage=call.stage,
@@ -535,9 +538,9 @@ def seed_states(
         name, call, instance(call, covariate=covariate), rng, seconds, chosen
     )
     if covariate or name in chosen:
-        log_mu, p = _read(call, components)
+        log_mu, p = components_as_states(call, components)
     else:
-        log_mu, p = _read(
+        log_mu, p = components_as_states(
             call, components, per=float(np.median(call.exposure[call.exposure > 0]))
         )
     return np.asarray(log_mu, dtype=np.float64), np.asarray(p, dtype=np.float64)
@@ -586,11 +589,11 @@ def run_start(
         fitted = polish(
             held, _place(held, fit_on, log_mu, p), seconds=left / 2.0, tolerance=1e-6
         )
-        log_mu, p = _read(fit_on, fitted.components)
+        log_mu, p = components_as_states(fit_on, fitted.components)
 
     left = max(seconds - (time.perf_counter() - opened), 1.0)
     polished = polish(full, _place(full, call, log_mu, p), seconds=left, tolerance=1e-6)
-    log_mu, p = _read(call, polished.components)
+    log_mu, p = components_as_states(call, polished.components)
     return CopyStart(
         name=name,
         stage=call.stage,

@@ -15,6 +15,8 @@ from typing import Any
 import numpy as np
 import pytest
 
+from tests.fixtures import two_clone_stacked_instance
+
 
 def _problem(
     *, shifted: bool, shared: bool, seed: int = 5, silent: float | None = None
@@ -216,8 +218,6 @@ def test_the_closed_form_fit_is_cnasters_fit_to_a_stated_tolerance(
     from port.patch.hmm_nophasing import hmm_nophasing
     from port.patch.hmm_nophasing.gradient import EmGradient
 
-    from tests.test_shift_dropins import _stacked_instance
-
     assert hmm_nophasing.analytic_gradient
     assert EmGradient is not None
 
@@ -227,7 +227,7 @@ def test_the_closed_form_fit_is_cnasters_fit_to_a_stated_tolerance(
     #    compares the gradients, not the optimizers.
     monkeypatch.setattr(get_global_config().hmm, "solver", "BFGS")
 
-    instance = _stacked_instance()
+    instance = two_clone_stacked_instance()
     kwargs = {
         "init_log_mu": np.log(np.array([[1.0], [2.0]])),
         "init_p_binom": np.array([[0.5], [0.25]]),

@@ -23,31 +23,13 @@ import inspect
 
 import numpy as np
 import pytest
-from scipy.sparse import csr_matrix
+
+from tests.adapters import lattice_adjacency
 
 FLOOR = 200
 """`icm_sweep_deque`'s `min_clone_spots` default, and the subject of #81."""
 
 SEED = 4_211
-
-
-def _lattice(side: int) -> csr_matrix:
-    """A four-neighbour lattice, which is the graph the pipeline builds."""
-    n_spots = side * side
-    rows, cols, data = [], [], []
-
-    for spot in range(n_spots):
-        row, column = divmod(spot, side)
-
-        for delta_row, delta_column in ((-1, 0), (1, 0), (0, -1), (0, 1)):
-            neighbour_row, neighbour_column = row + delta_row, column + delta_column
-
-            if 0 <= neighbour_row < side and 0 <= neighbour_column < side:
-                rows.append(spot)
-                cols.append(neighbour_row * side + neighbour_column)
-                data.append(1.0)
-
-    return csr_matrix((data, (rows, cols)), shape=(n_spots, n_spots))
 
 
 def _bands(side: int, sizes: tuple[int, ...]) -> np.ndarray:
@@ -92,7 +74,7 @@ def test_the_sweep_writes_its_callers_labelling_in_place() -> None:
 
     side = 12
     labels = _bands(side, (72, 72))
-    graph = _lattice(side)
+    graph = lattice_adjacency((side, side))
 
     passed = labels.copy()
     scrambled = (passed + 1) % 2
@@ -141,7 +123,7 @@ def test_a_clone_under_the_floor_is_dissolved_into_random_neighbours() -> None:
     side = 24
     small = 100
     labels = _bands(side, (side * side - small, small))
-    graph = _lattice(side)
+    graph = lattice_adjacency((side, side))
 
     assert np.bincount(labels).min() == small < FLOOR
 
@@ -178,7 +160,7 @@ def test_the_same_clone_survives_once_it_clears_the_floor() -> None:
     side = 24
     small = FLOOR + 1
     labels = _bands(side, (side * side - small, small))
-    graph = _lattice(side)
+    graph = lattice_adjacency((side, side))
 
     solved = labels.copy()
 

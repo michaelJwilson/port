@@ -30,6 +30,8 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from port.sim.files import truth_labels
+
 SAMPLES = {
     "easy": "numcnas1.2_cnasize5e7_ploidy2_random0",
     "hard": "numcnas6.3_cnasize1e7_ploidy2_random0",
@@ -102,7 +104,7 @@ def stage(key: str, out: Path) -> Path:
     (root / SID).mkdir(parents=True, exist_ok=True)
     (root / "snp").mkdir(exist_ok=True)
     adata = anndata.read_h5ad(src / "filtered_feature_bc_matrix.h5ad")
-    truth = pd.read_csv(src / "truth_clone_labels.tsv", sep="\t", index_col=0)
+    truth = truth_labels(src)
     # NB the counts, the SNP matrices and the truth share one spot order: checked, since every figure reads it
     if list(adata.obs_names) != list(truth.index) or (
         src / "barcodes.txt"

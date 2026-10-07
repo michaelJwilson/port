@@ -15,6 +15,7 @@ import shutil
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 
 SUFFIX = ".gz"
 
@@ -60,3 +61,8 @@ def decompress(source: Path, target: Path) -> Path:
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_bytes(read_bytes(source))
     return target
+
+
+def truth_labels(path: Path) -> pd.DataFrame:
+    """A drawn sample's `truth_clone_labels.tsv` (or `.gz`), indexed by barcode (#749 WP9)."""
+    return pd.read_csv(located(path / "truth_clone_labels.tsv"), sep="\t", index_col=0)

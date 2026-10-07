@@ -161,7 +161,7 @@ def _emission(
     """NB + BB log pmf per bin, in `port.extensions.jax_hmm.emission`'s terms.
 
     `alpha = 0` is the Poisson and `tau = inf` the binomial, exactly. The
-    negative binomial is in log space, as `copy_likelihood._emission` scores
+    negative binomial is in log space, as `copy_likelihood.pseudobulk_log_pmf` scores
     it (#560): `p = 1 / (1 + alpha * mean)` rounded to 1 at a vanishing mean.
     """
     x = bulk.counts_nb[bins]

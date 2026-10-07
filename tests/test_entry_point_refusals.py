@@ -8,10 +8,11 @@ referee is the parser's own contract, not a run.
 from __future__ import annotations
 
 import re
-from pathlib import Path
 from typing import Any
 
 import pytest
+
+from tests import ROOT
 
 REFUSALS = {
     ("--no-figure-swaps", "--genomic-colours", "integer"): "--genomic-colours needs",
@@ -80,7 +81,7 @@ def test_the_readme_option_table_is_the_parser() -> None:
         for option in action.option_strings
         if option.startswith("--") and option != "--help"
     }
-    lines = (Path(__file__).resolve().parents[1] / "README.md").read_text().splitlines()
+    lines = (ROOT / "README.md").read_text().splitlines()
     start = next(
         i for i, line in enumerate(lines) if line.startswith("| Option | Default")
     )
