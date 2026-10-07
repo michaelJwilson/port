@@ -7,7 +7,7 @@ untracked; the paths below are relative to it. `lattice/`, `sim/` and
 `sim_qa/` exist only there now.
 `tests/test_ci_entry.py` guards that `docs/` tracks no PNG outside
 `docs/plots/paper/`, T- #624's paper set. The population study's one figure is
-`docs/plots/paper/pop_combined.pdf` (#743); its three-panel predecessor,
+`docs/plots/paper/pop_combined.png` (#743); its three-panel predecessor,
 `docs/plots/studies/population_recovery.png`, is retired. The figures committed
 before are in history: `git show ba34716:docs/plots/<path>.png`.
 
@@ -22,7 +22,7 @@ before are in history: `git show ba34716:docs/plots/<path>.png`.
 | `studies/potts_*.png` | `run_study --potts-plot STREAM.record` (`docs/study-field-strength.md`) |
 | `studies/copy_states_*.png` | `run_study --copy-state-plot STREAM.record` (`docs/study-copy-states.md`) |
 | `studies/copy_state_starts.png`, `studies/clone_label_study.png` | `run_study --copy-start-notebook RESULTS.pkl`, `run_study --clone-label-notebook RESULTS.pkl` |
-| `pop_combined.pdf` (into `DIR/figures/`) | `run_study --population report --out DIR` |
+| `pop_combined.png` (into `DIR/figures/`) | `run_study --population report --out DIR` |
 
 **CI draws the dev instance's and the realization figures on every pull
 request and uploads them** as a workflow artifact

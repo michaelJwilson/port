@@ -773,7 +773,7 @@ QUESTIONS: dict[str, tuple[str, str]] = {
         "Which planted classes are recovered exactly, with and without phase?",
         "`exact_figure`: `port.qa.scoring.exact_by_class`",
     ),
-    "pop_combined.pdf": (
+    "pop_combined.png": (
         "How many UMIs does a clone need, how long must a CNA be, at what stay probability is it "
         "found, and how often is a true-(1, 1) segment called altered?",
         "`port.studies.population_report.combined` on `docs/studies/population_summary.json`",
@@ -855,7 +855,7 @@ intervals in `truth/` and the fitted ones in `run/`, so their contig widths diff
 ## Key studies
 
 Each figure is redrawn when its study is rerun, and stamped `data <hash> · code <sha>`.
-The population study's one figure is `pop_combined.pdf`, its data in `docs/studies/`; its
+The population study's one figure is `pop_combined.png`, its data in `docs/studies/`; its
 panel (b), the `t` arm, is drawn empty until #729 runs it.
 
 | File | Question | Source | Regenerate |

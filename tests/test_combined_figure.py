@@ -339,9 +339,9 @@ def test_the_spatial_labels_are_integer_by_default_or_continuous(
     cnaster_config: None, tmp_path: Path
 ) -> None:
     """Two clones that decode alike at every bin are one clone under the
-    default "integer" labels -- two entries, $m_N$ and "$m_1$, $m_2$", the
-    merged clone named in its group's entry (PR- #715) -- and stay two under
-    "continuous": three keyed, as the fit found them (#344)."""
+    default "integer" labels -- two entries, $m_N$ and $m_1$, the merged
+    clone renumbered with no gap (#745) -- and stay two under "continuous":
+    three keyed, as the fit found them (#344)."""
     import matplotlib as mpl
 
     mpl.use("Agg")
@@ -361,7 +361,7 @@ def test_the_spatial_labels_are_integer_by_default_or_continuous(
         return [t.get_text() for t in figure.axes[1].get_legend().get_texts()]
 
     assert keyed("continuous") == ["$m_N$", "$m_1$", "$m_2$"]
-    assert keyed("integer") == ["$m_N$", "$m_1$, $m_2$"]
+    assert keyed("integer") == ["$m_N$", "$m_1$"]
 
     with pytest.raises(ValueError, match="integer"):
         spatial_figure(recorded, frame, labels="decoded")

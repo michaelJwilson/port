@@ -21,12 +21,12 @@ rerun, so panel (a) of the rerun's figure is J = 1 alone, over the 193 base memb
 - **Per member** on the 433 that ran in both: 173 have identical clone scores. Spot-weighted clone completeness
   has median 0.744 → 0.759, and 697 clones are detected against 682 of 1,299. 235 members move by more than
   0.001, 101 up and 134 down. Fitted clones exceed planted by 2 in 23 members, against 5.
-- Figure: `docs/plots/paper/pop_combined.pdf` (#743), drawn from `population_summary.json`;
+- Figure: `docs/plots/paper/pop_combined.png` (#743), drawn from `population_summary.json`;
   (b), the `t` arm, is #729's and empty until it runs. The three-panel
   `docs/plots/studies/population_recovery.png` (`data 6daefbd0 · code f4a0cc0`) is retired. The
   numbers below are the original's.
 
-`run_study --population report --out DIR` redraws `pop_combined.pdf` into `DIR/figures/`.
+`run_study --population report --out DIR` redraws `pop_combined.png` into `DIR/figures/`.
 
 (a) Clone sensitivity against log10 clone UMIs, per J. (b) CNA sensitivity against length at J = 1, per copy-state class. (c) The false positive rate of true-(1,1) segments against the SNP-covering UMIs they hold, at J = 1.
 - A clone counts as detected when at least 90% of its spots are in its matched fitted clone.
@@ -125,7 +125,7 @@ Whether the (1,1) calls come from the HMM's states or from the integer-copy deco
 ## Data and reproduction
 
 - `studies/population_records.jsonl.gz`: every record, one JSON per run.
-- `studies/population_summary.json` and `population_tables.md`; the figure as `plots/paper/pop_combined.pdf` (#743).
+- `studies/population_summary.json` and `population_tables.md`; the figure as `plots/paper/pop_combined.png` (#743).
 
 ```
 run_study --population run --seeds 0:80 --J 0.8,1.0,1.4,2.8 --workers 4 --out DIR

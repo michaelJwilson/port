@@ -409,7 +409,7 @@ def draw(
              ({"marker": "o", "color": "0.4", "markerfacecolor": "white", "markersize": 5}, "Polish"),
              ({"marker": "D", "color": "0.4", "markerfacecolor": "white", "markersize": 4}, "Merge"),
              ({"line": True, "color": "k"}, "Truth")],
-            [(KEY_NAMES[s], tab20(NUMBER[s]), polished[s][1])
+            [(KEY_NAMES[s], tab20(NUMBER[s]), polished[s])
              for s in ordered],
             [],
             **(key_style or {}),

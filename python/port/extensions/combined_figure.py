@@ -949,10 +949,13 @@ def genomic_figure(
     height: float = TEXT_HEIGHT - CAPTION_ROOM,
     *,
     metric: bool = False,
+    labels: str = "integer",
 ) -> Any:
     """(a) `clones_genomic` over (b) `copy_number_profile`, `width` by
     `height` inches, the text block's less `CAPTION_ROOM` by default; no
-    caption. On `metric`, every bin `df_cnv` decodes altered in any clone is
+    caption. `labels` as `_draw_spatial` takes it: under "integer", the
+    default, a row and a track per integer clone, its pseudobulk the merged
+    clones' summed counts (`integer_recorded`, #745). On `metric`, every bin `df_cnv` decodes altered in any clone is
     drawn wider (`port.extensions.genomic_axis`, T- #683).
 
     Everything but the tracks and the profile's rows is fixed in points, so
@@ -966,7 +969,15 @@ def genomic_figure(
         raise ValueError(msg)
 
     width = PAPER_WIDTH if width is None else width
+    if labels == "integer":
+        recorded = integer_recorded(recorded)
+    elif labels != "continuous":
+        msg = f'labels is "integer" or "continuous", not {labels!r}'
+        raise ValueError(msg)
     genomic, profile = recorded.genomic, recorded.profile
+    if genomic is None or profile is None:  # invariant
+        msg = "expected the genomic and profile calls"
+        raise AssertionError(msg)
     scales = [1.0]
     heights = [_genomic_page(genomic, profile, width, 1.0, metric).get_size_inches()[1]]
     scales.append(height / heights[0])
@@ -1068,20 +1079,87 @@ def _place_spatial(
     return float(side)
 
 
-def integer_labels(assignment: Any, df_cnv: Any) -> Any:
-    """`assignment`'s "clone {c}" labels, each clone named by its integer
-    copy profile in `df_cnv` (`port.extensions.outputs.integer_clones`):
-    clones that decode alike at every bin take the smallest id among them."""
+def integer_recorded(recorded: Recorded) -> Recorded:
+    """`recorded` with its clones the run's integer clones, numbered anew.
+
+    Clones whose integer copy profiles in the profile call's `df_cnv` agree
+    (`port.extensions.outputs.integer_clones`, #344, #518) are one clone:
+    its spots are every merged clone's, so the tracks' pseudobulk is their
+    summed counts; its profile and fitted path are the group's smallest
+    id's. The clones that remain are numbered 0, 1, ... in index order, so
+    the normal clone keeps `m_N` and the key reads $m_1$, $m_2$, ... without
+    gaps (#745). Idempotent: merged clones agree with no other.
+    """
+    import pandas as pd
+
     from port.extensions.outputs import integer_clones
+    from port.patch._clone_paths import clone_path
 
-    merged = integer_clones(df_cnv)
+    if recorded.profile is None:
+        msg = "integer clones need the run's copy_number_profile call"
+        raise ValueError(msg)
 
-    def name(label: Any) -> Any:
-        if not isinstance(label, str) or label.split()[-1] not in merged:
-            return label
-        return f"clone {merged[label.split()[-1]]}"
+    groups = integer_clones(recorded.profile.args[0])
+    kept = clone_order(set(groups.values()))
+    number = {old: str(kept.index(group)) for old, group in groups.items()}
 
-    return assignment.map(name)
+    def frame(table: Any) -> Any:
+        keep = [
+            c
+            for c in table.columns
+            if not c.startswith("clone") or c.split()[0][len("clone") :] in kept
+        ]
+
+        def name(column: str) -> str:
+            head, _, tail = column.partition(" ")
+            if not head.startswith("clone"):
+                return column
+            return f"clone{number[head[len('clone') :]]} {tail}"
+
+        return table[keep].rename(columns=name)
+
+    def label(value: Any) -> Any:
+        if isinstance(value, str) and value.split()[-1] in number:
+            return f"{value.rsplit(' ', 1)[0]} {number[value.split()[-1]]}"
+        return value
+
+    merged = Recorded(calls=dict(recorded.calls))
+    profile = recorded.profile
+    merged.profile = Call((frame(profile.args[0]), *profile.args[1:]), profile.kwargs)
+
+    if recorded.spatial is not None:
+        coords, assignment, *rest = recorded.spatial.args
+        merged.spatial = Call(
+            (coords, pd.Series(assignment).map(label), *rest), recorded.spatial.kwargs
+        )
+
+    if recorded.genomic is not None:
+        kwargs = dict(recorded.genomic.kwargs)
+        fit = dict(kwargs["res_combine"])
+        n_obs = int(np.asarray(recorded.genomic.args[1]).shape[0])
+        fitted = [str(c) for c in np.sort(np.unique(fit["new_assignment"]))]
+        # NB the group's path, by its fitted index, in either layout
+        #    `fitted_clone_path` reads: a column per clone, or concatenated.
+        pred = np.asarray(fit["pred_cnv"])
+        index = [fitted.index(c) for c in kept]
+        fit["pred_cnv"] = (
+            pred[:, index]
+            if pred.ndim == 2 and pred.shape[1] > 1
+            else np.concatenate([clone_path(pred, i, n_obs) for i in index])
+        )
+        fit["new_assignment"] = np.array(
+            [int(number[str(c)]) for c in np.asarray(fit["new_assignment"])]
+        )
+        shift = fit.get("new_log_mu_shift")
+        if shift is not None and np.size(shift) == len(fitted):
+            shift = np.asarray(shift).reshape(-1)
+            fit["new_log_mu_shift"] = shift[index]
+        kwargs["res_combine"] = fit
+        if kwargs.get("df_cnv") is not None:
+            kwargs["df_cnv"] = frame(kwargs["df_cnv"])
+        merged.genomic = Call(recorded.genomic.args, kwargs)
+
+    return merged
 
 
 def _draw_spatial(
@@ -1089,14 +1167,12 @@ def _draw_spatial(
 ) -> tuple[Any, Any]:
     """The slide and the clones on `figure`, drawn but not yet placed.
 
-    `labels` is "integer", the default, for the integer-decoded clones: clones
-    that decode alike at every bin are one colour, keyed by every name they
-    hold (`m_N, m_3`) (#344, PR- #715, kept by #743), which needs the run's
-    profile call; or "continuous" for the fit's own clones.
+    `labels` is "integer", the default, for the integer clones
+    (`integer_recorded`, #344, #745), which needs the run's profile call; or
+    "continuous" for the fit's own clones.
     """
     from cnaster.utils import cast_clone_label
 
-    from port.extensions.outputs import integer_clones
     from port.patch.plotting.spatial import draw_clones_spatial, spot_colours
 
     if recorded.spatial is None:  # invariant
@@ -1105,10 +1181,7 @@ def _draw_spatial(
     coords, assignment = recorded.spatial.args[:2]
 
     if labels == "integer":
-        if recorded.profile is None:
-            msg = "integer clone labels need the run's copy_number_profile call"
-            raise ValueError(msg)
-        assignment = integer_labels(assignment, recorded.profile.args[0])
+        coords, assignment = integer_recorded(recorded).spatial.args[:2]  # type: ignore[union-attr]
     elif labels != "continuous":
         msg = f'labels is "integer" or "continuous", not {labels!r}'
         raise ValueError(msg)
@@ -1127,22 +1200,9 @@ def _draw_spatial(
     if upstream_key is not None:
         upstream_key.remove()
     _, clone_ids, colours = spot_colours(assignment)
-    # NB in index order; under "integer" labels, a clone whose integer copy
-    #    profile matches an earlier one's at every bin has its spots drawn
-    #    as that clone's and is named in that clone's entry (PR- #715).
-    members: dict[str, list[str]] = {}
-    if labels == "integer" and recorded.profile is not None:
-        for clone, group in integer_clones(recorded.profile.args[0]).items():
-            members.setdefault(group, []).append(clone)
     keyed = dict(zip((str(c) for c in clone_ids), colours, strict=True))
     order = clone_order(keyed)
-    names = [
-        ", ".join(
-            clone_symbol(cast_clone_label(f"clone {m}"))
-            for m in clone_order(members.get(clone.split()[-1], [clone.split()[-1]]))
-        )
-        for clone in order
-    ]
+    names = [clone_symbol(cast_clone_label(f"clone {c.split()[-1]}")) for c in order]
     _clone_key(spatial_ax, names, [keyed[c] for c in order])
 
     image, extent = slide_image(he_frame)
@@ -1230,7 +1290,9 @@ def combined_figure(
 
     spatial = spatial_figure(recorded, he_frame, width, labels)
     above = float(spatial.get_size_inches()[1])
-    figure = genomic_figure(recorded, width, height - above, metric=metric)
+    figure = genomic_figure(
+        recorded, width, height - above, metric=metric, labels=labels
+    )
     dpi = figure.dpi
     wide, tall = figure.get_size_inches()
 
@@ -1262,6 +1324,11 @@ def combined_figure(
     # NB the slide's axis, then the clones', as `_draw_spatial` adds them.
     old_axes = spatial.get_axes()[:2]
 
+    # NB (a)'s slide on the genomic axes' left edge, the clones with it, so
+    #    the page has one left edge (#745).
+    left = min(box.x0 for ax, box in kept if ax.axison) / dpi
+    shift = left - old_axes[0].get_window_extent(source).x0 / dpi
+
     # NB the spatial page's square limits too: without them each new axis
     #    holds its aspect on the spots' own extent, and shrinks to it.
     for new, old in zip((slide_ax, spatial_ax), old_axes, strict=True):
@@ -1270,7 +1337,13 @@ def combined_figure(
         new.set_aspect("equal", adjustable="box")
         _frame(new, old.spines["bottom"].get_bounds(), old.spines["left"].get_bounds())
         box = old.get_window_extent(source)
-        _put(new, box.x0 / dpi, box.x1 / dpi, box.y0 / dpi + tall, box.height / dpi)
+        _put(
+            new,
+            box.x0 / dpi + shift,
+            box.x1 / dpi + shift,
+            box.y0 / dpi + tall,
+            box.height / dpi,
+        )
 
     old_key, new_key = old_axes[1].get_legend(), spatial_ax.get_legend()
     anchor = old_key.get_bbox_to_anchor()

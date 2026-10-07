@@ -69,11 +69,15 @@ def stamp(fig: Any, record: dict[str, Any]) -> str:
     return text
 
 
+VALUE_WIDTH = 0.11
+"""Axes fraction between a key's missed-% columns, right edge to right edge."""
+
+
 def key_below(
     ax: Any,
     title: str,
     stages: list[tuple[dict[str, Any], str]],
-    entries: list[tuple[str, Any, float]],
+    entries: list[tuple[str, Any, tuple[float, ...]]],
     notes: list[str],
     *,
     fontsize: float = 7.5,
@@ -85,7 +89,9 @@ def key_below(
     """A key under `ax`, its `title` above the axes' top right: the stages' markers in their own column, then the methods in two columns of name and missed %.
 
     `stages` are `(plot keywords, label)`, drawn as a marker or a line; `entries` are
-    `(name, colour, missed %)`, filled down the first column then the second;
+    `(name, colour, missed %)`, filled down the first column then the second, the
+    missed % one number per stage, Initial then Polish, right-aligned in columns
+    under one "[%]" (#745);
     `notes` are footnote lines under both. Coordinates are `ax`'s, so the
     figure's bottom margin must hold `top - row * (rows + notes)`.
     """
@@ -136,7 +142,11 @@ def key_below(
         y = header - row * (k % rows + 1)
         mark(left, y, {"marker": "o", "color": colour, "markersize": 5})
         text(left + (0.05 if columns == 1 else 0.025), y, name)
-        text(right, y, f"{missed:.1f}%", ha="right")
+        for j, value in enumerate(reversed(missed)):
+            text(right - j * VALUE_WIDTH, y, f"{value:.1f}", ha="right")
+    if entries:
+        for _, right in spans[: -(-len(entries) // rows)]:
+            text(right, header, "[%]", ha="right")
     bottom = header - row * (max(rows, len(stages)) + 1)
     for k, note in enumerate(notes):
         text(

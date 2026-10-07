@@ -334,6 +334,7 @@ def draw(
     ax.set_ylabel("Gap [nats]" if key else "Gap [Nats]")
     if key:
         after = d.groupby("start").missed_pct.median()
+        before = d.groupby("start").start_missed_pct.median()
         ordered = sorted(set(d.start) & set(NUMBER), key=lambda n: NUMBER[n])
         key_below(
             ax,
@@ -342,7 +343,7 @@ def draw(
             [({"marker": "o", "color": "0.4", "markersize": 5}, "Initial"),
              ({"marker": "o", "color": "0.4", "markerfacecolor": "white", "markersize": 5}, "Polish"),
              ({"line": True, "color": "k"}, "Truth")],
-            [(KEY_NAMES.get(n, n), COLOUR[n], float(after[n]))
+            [(KEY_NAMES.get(n, n), COLOUR[n], (float(before[n]), float(after[n])))
              for n in ordered],
             [],
             **(key_style or {}),

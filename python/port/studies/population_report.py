@@ -557,7 +557,7 @@ BAR_WIDTH = 0.5
 MARKER = 1.5
 """Points: an error bar at the page's rule weight, and a bin's marker."""
 
-COMBINED = "pop_combined.pdf"
+COMBINED = "pop_combined.png"
 """#729's 2 x 2, the population study's one figure in `docs/plots/paper/` (#743): (a) clones by UMIs per J, (b) CNAs by `1 - t` per class at
 oracle clones, (c) false positives by SNP UMIs, (d) CNAs by length per class."""
 
@@ -722,8 +722,10 @@ def combined(summary: dict[str, Any], into: Path) -> Path:
         _lengths(d, summary)
         _finish(fig, [a, b, c, d], [a, b, d] if "t_arm" in summary else [a, d])
         b.set_ylim(-0.02, 1.02)
-        fig.savefig(into / COMBINED, format="pdf", facecolor="white",
-                    metadata={"Creator": None, "Producer": None, "CreationDate": None})  # fmt: skip
+        # NB a PNG at 300 dpi, as the paper's other figures are (#745)
+        fig.savefig(
+            into / COMBINED, dpi=300, facecolor="white", metadata={"Software": None}
+        )
         plt.close(fig)
     return into / COMBINED
 
