@@ -11,7 +11,7 @@ the lattice (#540), which fix #236. Referees, one per test:
 - `oracle`: `scipy.stats` for the dense emission; `sal`'s own EM on the
   raw exposure and trials for the moved start;
 - `bug`: #236, the GMM's equal vote per bin, against `cnaster`'s start;
-- `end2end`: the planted states of dev_tree_1s_hard r0 (`d2938975`).
+- `end2end`: the planted states of dev_tree_1s_hard r0 (`9ec90dc2`), at the run's stage.
 
 The gate instance's (`350fbd2b`) byte pin against absorbed `cnaster` is
 `test_cnamaste_copy.py`'s, unchanged: every row here is off by default.
