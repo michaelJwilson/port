@@ -396,7 +396,7 @@ def draw(
             lambda v, _: "0" if v == FLOOR else f"$10^{{{round(np.log10(v))}}}$"
         )
     )
-    ax.set_ylabel("Gap [nats]" if key else "Gap [Nats]")
+    ax.set_ylabel(r"$\Delta \ln \mathcal{L}$")
     ax.set_xlabel("Runtime [s]")
 
     if key:
