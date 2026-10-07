@@ -86,8 +86,8 @@ def test_the_sequence_keeps_cnasters_clone_floor() -> None:
     so the sequence keeps the floor exactly as far as `cnaster` does, and
     this coupling is chosen where `cnaster` applies it.
     """
-    from port.extensions.label_solver import expansion_then_floor
     from port.patch.icm.alpha_expansion import alpha_expansion_sweep
+    from port.sandbox.extensions.label_solvers import expansion_then_floor
 
     field, graph, _, beta = _lattice(40, 16, seed=9, beta=0.6)
     start = np.arange(1600, dtype=np.int64) % 16
@@ -115,8 +115,8 @@ def test_the_merge_keeps_cnasters_clone_floor_without_cnaster() -> None:
     to 84 spots: sal's `merge_small_labels` dissolves each, and no global RNG
     is touched because none of `cnaster`'s sweep runs.
     """
-    from port.extensions.label_solver import expansion_then_merge
     from port.patch.icm.alpha_expansion import alpha_expansion_sweep
+    from port.sandbox.extensions.label_solvers import expansion_then_merge
 
     field, graph, _, beta = _lattice(40, 16, seed=9, beta=0.6)
     start = np.arange(1600, dtype=np.int64) % 16
@@ -184,7 +184,7 @@ def test_the_argmax_descent_is_the_argmax_without_coupling() -> None:
     which is where the descent starts, so it takes no step; a floor of one
     spot dissolves nothing. Against `np.argmax` directly.
     """
-    from port.extensions.label_solver import sal_icm_argmax_sweep
+    from port.sandbox.extensions.label_solvers import sal_icm_argmax_sweep
 
     field, graph, start, _ = _lattice(20, 5, seed=4, beta=0.6)
     labelling = start.copy()
@@ -196,7 +196,7 @@ def test_the_argmax_descent_is_the_argmax_without_coupling() -> None:
 @pytest.mark.smoke
 def test_the_argmax_descent_keeps_the_clone_floor() -> None:
     """No clone the argmax row returns is under `min_clone_spots`."""
-    from port.extensions.label_solver import sal_icm_argmax_sweep
+    from port.sandbox.extensions.label_solvers import sal_icm_argmax_sweep
 
     field, graph, start, beta = _lattice(40, 16, seed=9, beta=0.6)
     labelling = start.copy()

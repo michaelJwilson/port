@@ -739,16 +739,12 @@ def captured_normal() -> int | None:
 
 def normal_of(captured: Any) -> int:
     """:func:`captured_normal` of a given fit (`copy_errors.Captured`)."""
-    fit = captured
-    from port.patch.hmm_nophasing.shifted_emission import NEUTRAL_BAF_TOLERANCE
+    from port.patch.hmm_nophasing.shifted_emission import normal_clone
 
-    result = fit.res
+    result = captured.res
     p_binom = np.asarray(result["new_p_binom"], dtype=np.float64).reshape(-1)
     path = np.asarray(result["pred_cnv"], dtype=np.int64)
-    path = path.reshape(path.shape[0], -1) % p_binom.size
-    balanced = np.abs(p_binom - 0.5) <= NEUTRAL_BAF_TOLERANCE
-
-    return int(np.argmax(balanced[path].mean(axis=0)))
+    return normal_clone(p_binom, path.reshape(path.shape[0], -1) % p_binom.size)[0]
 
 
 def captured_chain() -> tuple[np.ndarray | None, float]:

@@ -190,3 +190,9 @@ a2b7cfa-dev_tree_1s_easy_r0_7ba9b01f-1845	2026-10-06T18:45Z	a2b7cfa	--sal --png-
 83ed58b-dev_tree_1s_hard_r0-0420	2026-10-07T04:20Z	83ed58b	-- --sal --no-plots	tests/sim_audit.py::main	#727 benchmark rep 3: dev_tree_1s_hard_r0 d2938975, --sal	false
 83ed58b-dev_tree_1s_hard_bb01_r1-0423	2026-10-07T04:23Z	83ed58b	-- --sal --no-plots	tests/sim_audit.py::main	#727 benchmark rep 3: dev_tree_1s_hard_bb01_r1 764709dc, --sal	false
 83ed58b-dev_tree_1s_hard_bb01_r2-0425	2026-10-07T04:25Z	83ed58b	-- --sal --no-plots	tests/sim_audit.py::main	#727 benchmark rep 3: dev_tree_1s_hard_bb01_r2 3adf249a, --sal	false
+9a684c7-dev_tree_1s_easy_r0-0009	2026-10-07T00:09Z	9a684c7	--sal --png-copies	tests/sim_audit.py::main	#624 paper figures: dev_tree_1s_easy r0 7ba9b01f, --sal	false
+335971f-dev_tree_1s_easy_r0-0041	2026-10-07T00:41Z	335971f	--sal --png-copies	tests/sim_audit.py::main	#624 paper figures: dev_tree_1s_easy r0 7ba9b01f, --sal	false
+05419ba-dev_tree_1s_easy_r0-0146	2026-10-07T01:46Z	05419ba	--sal --png-copies	tests/sim_audit.py::main	#624 paper figures: dev_tree_1s_easy r0 7ba9b01f, --sal	false
+2a6f426-dev_tree_1s_easy_r0-0433	2026-10-07T04:33Z	2a6f426	--sal --png-copies	tests/sim_audit.py::main	#624 paper figures: dev_tree_1s_easy r0 7ba9b01f, --sal	false
+0686a7e-dev_tree_1s_easy_r0-1452	2026-10-07T14:52Z	0686a7e	--sal --png-copies	tests/sim_audit.py::main	#624 paper figures: dev_tree_1s_easy r0 7ba9b01f, --sal	false
+b816552-dev_tree_1s_easy_r0-1508	2026-10-07T15:08Z	b816552	--sal --png-copies	tests/sim_audit.py::main	#624 paper figures: dev_tree_1s_easy r0 7ba9b01f, --sal	false

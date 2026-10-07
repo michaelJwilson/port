@@ -71,6 +71,7 @@ KNOWN: dict[str, str] = {
     "port.studies.copy_start_arms:Job field seed": "G5",
     "port.studies.population:run_member arg seed": "G5",
     "port.studies.population:draw_member arg seed": "G5",
+    "port.studies.population:stay_member arg seed": "G5",
     "port.studies.population_report:summarize arg seed": "G5",
 }
 """Departures found by #401's audit, keyed `module:name kind word`."""
@@ -79,11 +80,7 @@ SIBLINGS: dict[str, tuple[str, ...]] = {
     "port.patch.icm.interface:icm_sweep": (
         "port.patch.icm.alpha_expansion:alpha_expansion_sweep",
         "port.extensions.label_solver:sal_icm_sweep",
-        "port.extensions.label_solver:expansion_then_floor",
-        "port.extensions.label_solver:expansion_then_merge",
-        "port.extensions.label_solver:sal_icm_floor_sweep",
         "port.extensions.label_solver:fusion_then_merge",
-        "port.extensions.label_solver:sal_icm_argmax_sweep",
     ),
 }
 """Entry points one setting chooses between, each against the first: the same

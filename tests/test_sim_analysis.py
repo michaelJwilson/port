@@ -171,14 +171,14 @@ def test_the_truth_page_is_combined_pdfs_page_with_everything_on_it(
     drawn: Drawn,
 ) -> None:
     """The text block less `CAPTION_ROOM`, lettered (a) to (c), every text at
-    `FONT_SIZE`, the submission's `MIN_FONT_SIZE` (T- #740), and every text and
+    `FONT_SIZE` but (c)'s tracks at `TRACK_FONT_SIZE` (#743), and every text and
     legend on the page to half a pixel."""
     from port.extensions.combined_figure import FONT_SIZE
     from port.extensions.figure_style import (
         CAPTION_ROOM,
-        MIN_FONT_SIZE,
         PAPER_WIDTH,
         TEXT_HEIGHT,
+        TRACK_FONT_SIZE,
     )
     from port.sim.truth_figure import truth_combined_figure
 
@@ -199,7 +199,7 @@ def test_the_truth_page_is_combined_pdfs_page_with_everything_on_it(
         f"({k})" for k in "abc"
     ]
     assert max(t.get_fontsize() for t in texts) <= FONT_SIZE
-    assert min(t.get_fontsize() for t in texts) >= MIN_FONT_SIZE
+    assert {t.get_fontsize() for t in texts} <= {FONT_SIZE, TRACK_FONT_SIZE}
 
     for artist in [*texts, *legends]:
         extent = artist.get_window_extent(renderer)
@@ -222,7 +222,8 @@ def test_the_genome_panels_share_one_left_and_one_right_edge(drawn: Drawn) -> No
     axes = [*profile.axes, *genomic.axes]
     boxes = [ax.get_window_extent(renderer) for ax in axes]
 
-    assert len(genomic.axes) == 2 * len(read(drawn.path).clones)
+    # NB a pair per tumour clone, and the phase track in the normal clone's place (#745)
+    assert len(genomic.axes) == 2 * (len(read(drawn.path).clones) - 1) + 1
     for box in boxes:
         assert box.x0 == pytest.approx(boxes[0].x0, abs=0.5)
         assert box.x1 == pytest.approx(boxes[0].x1, abs=0.5)
@@ -265,6 +266,7 @@ def test_the_tree_spans_the_genome_panels_between_its_barcodes(drawn: Drawn) -> 
         for t in ax.texts
         if t.get_visible() and "(" in t.get_text()
     }
+    # NB but the normal clone, whose pair gives way to the phase track (#745)
     assert headed == {
         f"{n.get_text()} ({b.get_text()})"
         for n, b in zip(
@@ -272,6 +274,7 @@ def test_the_tree_spans_the_genome_panels_between_its_barcodes(drawn: Drawn) -> 
             sorted(barcodes, key=lambda t: t.get_position()[1]),
             strict=True,
         )
+        if n.get_text() != "$m_N$"
     }
 
 
@@ -336,10 +339,10 @@ def _panels(r: Any) -> tuple[Any, Any, Any]:
 
 
 def _headed_in_order(genomic: Any) -> list[str]:
-    """(c)'s clone headers, top to bottom."""
+    """(c)'s headers, top to bottom on the page."""
     return [
         t.get_text()
-        for ax in genomic.axes
+        for ax in sorted(genomic.axes, key=lambda ax: -ax.get_position().y1)
         for t in ax.texts
         if t.get_visible() and "(" in t.get_text()
     ]
@@ -375,8 +378,9 @@ def _a_is_the_tree(r: Any) -> Any:
         t.barcode[c] for c in r.clones
     }
     symbol = _symbol(r)
+    # NB the normal clone's pair gives way to the phase track, unheaded (#745)
     assert _headed(genomic) == {
-        f"{symbol(c)} ({shown(t.barcode[c])})" for c in r.clones
+        f"{symbol(c)} ({shown(t.barcode[c])})" for c in r.clones if c != "normal"
     }
     plt.close(figure)
     return tree_ax
@@ -440,7 +444,8 @@ def test_no_mb_label_is_drawn_and_every_contig_is_named_once_clear(
 ) -> None:
     """No minor tick label anywhere on the page (the Mb numbers). Every
     contig with any width has exactly one name, its number, under the last
-    track and centred on it, overlapping no other name, with one "chr" for
+    track and left-aligned at its start (#745), overlapping no name on its row and its half-row
+    neighbours by at most `CONTIG_PAD` (#743), with one "chr" for
     the rows; no other axis, nor `cnaster`'s own names, shows a contig name
     -- including the contigs `NORMAL_FLOOR` squeezes on dense (PR-
     #715)."""
@@ -471,15 +476,33 @@ def test_no_mb_label_is_drawn_and_every_contig_is_named_once_clear(
     spans = [(a, b) for a, b in itertools.pairwise(edges.tolist()) if b > a]
 
     assert len(names) == len(spans)
-    for text, (a, b) in zip(names, spans, strict=True):
-        assert float(text.get_position()[0]) == pytest.approx((a + b) / 2)
+    for text, (a, _b) in zip(names, spans, strict=True):
+        assert float(text.get_position()[0]) == pytest.approx(a)
+        assert text.get_horizontalalignment() == "left"
         assert re.fullmatch(r"\w+", text.get_text())
+    from port.extensions.genomic_axis import CONTIG_PAD, STAGGERED
+
     boxes = [t.get_window_extent(renderer) for t in names]
+    # NB rows step half a line (#743): names on one row never overlap, and a
+    #    name half a line under its neighbour may meet it within `CONTIG_PAD`
+    pad = CONTIG_PAD * figure.dpi / 72.0
     for i, j in itertools.combinations(range(len(boxes)), 2):
-        assert not boxes[i].overlaps(boxes[j]), (
-            names[i].get_text(),
-            names[j].get_text(),
-        )
+        if boxes[i].y0 == pytest.approx(boxes[j].y0):
+            assert not boxes[i].overlaps(boxes[j]), (
+                names[i].get_text(),
+                names[j].get_text(),
+            )
+        elif {names[i].get_text(), names[j].get_text()} <= set(STAGGERED):
+            # NB 19-22 zigzag at every width (#745): the lower clears the
+            #    upper by at least half a name's height
+            down = min(boxes[i].y1, boxes[j].y1) - max(boxes[i].y0, boxes[j].y0)
+            assert down <= boxes[i].height / 2, (
+                names[i].get_text(),
+                names[j].get_text(),
+            )
+        else:
+            across = min(boxes[i].x1, boxes[j].x1) - max(boxes[i].x0, boxes[j].x0)
+            assert across <= pad, (names[i].get_text(), names[j].get_text())
     assert [t.get_text() for t in last.texts if t.get_gid() == "contig-axis"] == ["chr"]
     # NB (a)'s barcodes and the key's copy numbers are digits too; (b)'s
     #    rows and (c) name nothing else so.
@@ -557,7 +580,8 @@ def test_clones_read_n_1_2_down_the_tree_and_alike_in_every_truth_figure(
 
     assert [name for name, _ in leaves] == symbols
     assert [x.get_text() for x in rows][::-1] == symbols
-    assert [h.split(" (")[0] for h in _headed_in_order(genomic)] == symbols
+    # NB the phase track, unheaded, where the normal clone's pair was (#745)
+    assert [h.split(" (")[0] for h in _headed_in_order(genomic)] == symbols[1:]
     tree_figure = simulated_tree_figure(r)
     assert _leaves(tree_figure.axes[0]) == leaves
     plt.close(tree_figure)
