@@ -184,3 +184,15 @@ and ends at 59.3% on one screened realization.
 there would need a clone-indexed rate offset in its NB emission and a registry of HMM starts. The samplers
 on the HMM's NLL would need `sal` to sample the HMM objective rather than its Gaussian surrogate (#563). sal b61dfba's
 `hmc`, `anneal` and `tempering` seedings now sample the mixture's own likelihood (sal #1136), not the HMM's.
+
+## Tuned at the run's Baum-Welch (#723)
+
+**TL;DR:** `tempering-hmm` and `hmc-hmm` were retuned at the run's Baum-Welch at the planted clones (#730), on `dev_tree_1s_hard` r0–r2 held out. Their median gap at the start's states falls from the default settings' 722.7 to 100.6 nats (tempering) and 170.3 to 131.6 (HMC). After Baum-Welch the two move in opposite directions on `solver_combined`'s 5 realizations × 5 seeds:
+
+| start | rows missed after BW, untuned → tuned | median gap after BW (nats), untuned → tuned |
+| --- | --- | --- |
+| `hmc-hmm` | 2.6 → 2.4% | 127 → 175 |
+| `tempering-hmm` | 2.6 → 2.9% | 136 → 120 |
+
+- **Settings:** `hmc-hmm` temperature 1 → 100; `tempering-hmm` step 0.001 → 0.003, top temperature 10,000 → 100.
+- **Why they diverge:** the tune ranks settings by the gap at the start's states, before Baum-Welch. A better start does not predict a better fit (this doc's *Why good starts end badly*).
