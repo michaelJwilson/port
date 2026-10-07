@@ -167,6 +167,7 @@ ROLES: dict[str, Role] = {
     "port.sim.normal_fit": "sim",
     # sandbox
     "port.sandbox.admixture.clone_mixture": "set aside",
+    "port.sandbox.extensions.label_solvers": "set aside",
     "port.sandbox.extensions.segment_sets": "set aside",
     "port.sandbox.extensions.color_merge": "set aside",
     "port.sandbox.admixture.probes.sim_probe": "set aside",
@@ -180,6 +181,7 @@ ROLES: dict[str, Role] = {
     "port.sandbox.integer_decoding.schemes": "set aside",
     "port.sandbox.extensions.hmm_objective": "set aside",
     "port.sandbox.normal_candidates": "set aside",
+    "port.sandbox.np_merge": "set aside",
     "port.sandbox.np_merge.__main__": "set aside",
     "port.sandbox.np_merge.merge": "set aside",
     "port.sandbox.patch.emission": "set aside",
@@ -192,7 +194,8 @@ ROLES: dict[str, Role] = {
     "port.sandbox.wolff_init": "set aside",
     "port.sandbox.wolff_umi_init": "set aside",
 }
-"""Every module that is not a package `__init__`, by role."""
+"""Every module, by role: a package `__init__` counts once it defines a function
+or class, so code cannot escape the sandbox header by living in one."""
 
 WHERE: dict[Role, tuple[str, ...]] = {
     "row": ("port.patch.",),
@@ -227,9 +230,21 @@ def _live() -> frozenset[str]:
     return reached(roots)
 
 
+def _has_role(name: str, source: str) -> bool:
+    """A module, or a package `__init__` that defines something."""
+    return name != "__init__.py" or any(
+        isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef)
+        for node in ast.parse(source).body
+    )
+
+
 @pytest.mark.infra
 def test_every_module_has_a_role() -> None:
-    found = {name for name, path in modules().items() if path.name != "__init__.py"}
+    found = {
+        name
+        for name, path in modules().items()
+        if _has_role(path.name, path.read_text())
+    }
 
     assert found == set(ROLES), (
         f"no role: {sorted(found - set(ROLES))}; gone: {sorted(set(ROLES) - found)}"

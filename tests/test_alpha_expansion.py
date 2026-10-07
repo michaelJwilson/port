@@ -15,6 +15,8 @@ being right.
 
 from __future__ import annotations
 
+from typing import Any
+
 import numpy as np
 import pytest
 from port.extensions.label_solver import SOLVERS, Solver, sweep_for
@@ -332,19 +334,26 @@ def test_every_solver_row_reaches_a_local_minimum_on_a_forbidding_field(
             )
 
 
-EXPANDING: tuple[Solver, ...] = (
+EXPANDING: tuple[str, ...] = (
     "alpha",
     "alpha-rust",
     "alpha-rust-icm",
     "alpha-rust-merge",
     "alpha-rust-fuse-merge",
 )
-"""The rows whose first step is alpha expansion from the caller's labelling."""
+"""The rows whose first step is alpha expansion from the caller's labelling,
+live or set aside (`port.sandbox.extensions.label_solvers`)."""
+
+
+def _expanding(name: str) -> Any:
+    from port.sandbox.extensions.label_solvers import SWEEPS
+
+    return SWEEPS[name] if name in SWEEPS else sweep_for(name)  # type: ignore[arg-type]
 
 
 @pytest.mark.analytic
 @pytest.mark.parametrize("name", EXPANDING)
-def test_every_expanding_row_ends_at_or_below_the_expansion(name: Solver) -> None:
+def test_every_expanding_row_ends_at_or_below_the_expansion(name: str) -> None:
     """A row that expands first, then descends or fuses, ends no higher (#466).
 
     Descent, merge and fusion never raise the energy, so each row ends at or
@@ -357,7 +366,7 @@ def test_every_expanding_row_ends_at_or_below_the_expansion(name: Solver) -> Non
     expanded = start.copy()
     alpha_expansion_sweep(field, graph, expanded, beta)
     labelling = start.copy()
-    sweep_for(name)(field, graph, labelling, beta, min_clone_spots=1)
+    _expanding(name)(field, graph, labelling, beta, min_clone_spots=1)
 
     assert (
         potts_energy(field, graph, labelling, beta)
