@@ -22,7 +22,11 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from tests.test_alpha_expansion import _lattice
+from tests.fixtures import (
+    partition_ari,
+    planted_blocky_field,
+    run_planted_core_inference,
+)
 
 
 @pytest.mark.backend
@@ -32,7 +36,7 @@ def test_the_rust_cut_returns_the_python_cuts_labelling(n_states: int) -> None:
     from port.patch.icm.alpha_expansion import alpha_expansion_sweep
     from sal.backend import Backend
 
-    field, graph, start, beta = _lattice(30, n_states, seed=4, beta=0.6)
+    field, graph, start, beta = planted_blocky_field(30, n_states, seed=4, beta=0.6)
     python, rust = start.copy(), start.copy()
 
     alpha_expansion_sweep(field, graph, python, beta, backend=Backend.PYTHON)
@@ -53,7 +57,7 @@ def test_the_numba_descent_returns_the_python_descents_labelling() -> None:
     from sal.backend import Backend
     from sal.search.icm import iterated_conditional_modes
 
-    field, graph, start, beta = _lattice(30, 4, seed=2, beta=0.6)
+    field, graph, start, beta = planted_blocky_field(30, 4, seed=2, beta=0.6)
     compiled = start.copy()
     sal_icm_sweep(field, graph, compiled, beta)
 
@@ -89,7 +93,7 @@ def test_the_sequence_keeps_cnasters_clone_floor() -> None:
     from port.patch.icm.alpha_expansion import alpha_expansion_sweep
     from port.sandbox.extensions.label_solvers import expansion_then_floor
 
-    field, graph, _, beta = _lattice(40, 16, seed=9, beta=0.6)
+    field, graph, _, beta = planted_blocky_field(40, 16, seed=9, beta=0.6)
     start = np.arange(1600, dtype=np.int64) % 16
 
     alone = start.copy()
@@ -118,7 +122,7 @@ def test_the_merge_keeps_cnasters_clone_floor_without_cnaster() -> None:
     from port.patch.icm.alpha_expansion import alpha_expansion_sweep
     from port.sandbox.extensions.label_solvers import expansion_then_merge
 
-    field, graph, _, beta = _lattice(40, 16, seed=9, beta=0.6)
+    field, graph, _, beta = planted_blocky_field(40, 16, seed=9, beta=0.6)
     start = np.arange(1600, dtype=np.int64) % 16
 
     alone = start.copy()
@@ -149,7 +153,7 @@ def test_the_fusion_is_no_worse_than_either_proposal() -> None:
     from sal.search.icm import iterated_conditional_modes
     from sal.sim.potts import energy
 
-    field, graph, _, beta = _lattice(40, 16, seed=9, beta=0.6)
+    field, graph, _, beta = planted_blocky_field(40, 16, seed=9, beta=0.6)
     start = np.arange(1600, dtype=np.int64) % 16
     potts = potts_graph_from(graph, beta)
     values = np.asarray(field, dtype=np.float64)
@@ -186,7 +190,7 @@ def test_the_argmax_descent_is_the_argmax_without_coupling() -> None:
     """
     from port.sandbox.extensions.label_solvers import sal_icm_argmax_sweep
 
-    field, graph, start, _ = _lattice(20, 5, seed=4, beta=0.6)
+    field, graph, start, _ = planted_blocky_field(20, 5, seed=4, beta=0.6)
     labelling = start.copy()
     sal_icm_argmax_sweep(field, graph, labelling, 0.0, min_clone_spots=1)
 
@@ -198,7 +202,7 @@ def test_the_argmax_descent_keeps_the_clone_floor() -> None:
     """No clone the argmax row returns is under `min_clone_spots`."""
     from port.sandbox.extensions.label_solvers import sal_icm_argmax_sweep
 
-    field, graph, start, beta = _lattice(40, 16, seed=9, beta=0.6)
+    field, graph, start, beta = planted_blocky_field(40, 16, seed=9, beta=0.6)
     labelling = start.copy()
     sal_icm_argmax_sweep(field, graph, labelling, beta, min_clone_spots=200)
     sizes = np.bincount(labelling, minlength=16)
@@ -253,8 +257,6 @@ def test_sal_recovers_the_critical_instance(cnaster_config: None) -> None:
     from port.pipeline import SWAPS, patched, with_options
     from port.sim.truth import critical_instance
 
-    from tests.test_core_inference_end_to_end import _adjusted_rand_index, _run
-
     truth = critical_instance()
     row = with_options(
         tuple(swap for swap in SWAPS if swap.name == "pipeline_clone_assignment"),
@@ -263,12 +265,12 @@ def test_sal_recovers_the_critical_instance(cnaster_config: None) -> None:
     )
 
     with patched(row):
-        result = _run(truth, max_iter_outer=1, max_iter=3)
+        result = run_planted_core_inference(truth, max_iter_outer=1, max_iter=3)
 
     fitted = np.asarray(result.assignment.new_assignment)
 
     assert np.unique(fitted).size == truth.n_clones
-    assert _adjusted_rand_index(truth.labels, fitted) == pytest.approx(1.0)
+    assert partition_ari(truth.labels, fitted) == pytest.approx(1.0)
 
 
 @pytest.mark.end2end

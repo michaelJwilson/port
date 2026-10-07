@@ -34,11 +34,15 @@ import numpy as np
 import pytest
 
 from tests.adapters import cnaster_icm_labelling, upstream_potts_energy
-from tests.fixtures import PottsLabels, enumerate_minimum_energy, potts_labels
+from tests.fixtures import (
+    PottsLabels,
+    enumerate_minimum_energy,
+    potts_labels,
+    scaled_graph,
+)
 
 if TYPE_CHECKING:
     from sal.search.alpha_expansion import ExpansionResult
-    from sal.sim.graph import PottsGraph
 
 BOUND_TOLERANCE = 1e-9
 """Float slack on an inequality between two sums of the same terms.
@@ -49,17 +53,11 @@ the order of summation.
 """
 
 
-def _upstream_graph(fixture: PottsLabels) -> "PottsGraph":
-    from tests.fixtures import _scaled_graph
-
-    return _scaled_graph(fixture)
-
-
 def _upstream_icm(fixture: PottsLabels, seed: int = 0) -> tuple[np.ndarray, float]:
     from sal.search.icm import iterated_conditional_modes
 
     result = iterated_conditional_modes(
-        _upstream_graph(fixture), fixture.field, np.random.default_rng(seed)
+        scaled_graph(fixture), fixture.field, np.random.default_rng(seed)
     )
     return np.asarray(result.labelling), float(result.energy)
 
@@ -72,7 +70,7 @@ def _upstream_expansion(
 
     # NB PYTHON was the default before e0aeb19 made it RUST (#410).
     return alpha_expansion(
-        _upstream_graph(fixture),
+        scaled_graph(fixture),
         fixture.field,
         start=None if start is None else np.asarray(start, dtype=np.int64),
         backend=Backend.PYTHON,

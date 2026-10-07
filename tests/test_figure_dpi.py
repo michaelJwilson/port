@@ -16,47 +16,20 @@ from pathlib import Path
 from typing import Any
 
 import matplotlib as mpl
-import numpy as np
 import pytest
+
+from tests.figure_checks import CREATION_DATE, wide_rasterized_figure
 
 mpl.use("Agg")
 
-CREATION_DATE = re.compile(rb"/CreationDate \(D:\d+Z?\)")
-"""matplotlib writes a clock into every PDF; #103 owns pinning it."""
 
 MEDIA_BOX = re.compile(rb"/MediaBox \[([^\]]*)\]")
 """The page geometry, which a resolution change must not move."""
 
 
-def _figure() -> Any:
-    """A panel of the shape the genomic plots write: wide, and rasterized.
-
-    Rasterized because that is what puts the PDF backend into mixed mode,
-    where it allocates a full-figure `RendererAgg` per rasterizing group --
-    the allocation the dpi decides the size of.
-    """
-    import matplotlib.pyplot as plt
-
-    generator = np.random.default_rng(7)
-    figure, axes = plt.subplots(figsize=(20, 4), dpi=300, facecolor="white")
-
-    for _ in range(4):
-        axes.scatter(
-            generator.random(2_000),
-            generator.random(2_000),
-            s=2,
-            rasterized=True,
-        )
-
-    axes.set_xlabel("position")
-    axes.set_title("a panel of the shape the genomic plots write")
-
-    return figure
-
-
 def _written(tmp_path: Path, name: str, writer: Any, **keywords: Any) -> bytes:
     path = tmp_path / f"{name}.pdf"
-    writer(str(path), _figure(), **keywords)
+    writer(str(path), wide_rasterized_figure(), **keywords)
 
     return CREATION_DATE.sub(b"", path.read_bytes())
 
@@ -151,11 +124,11 @@ def test_png_copies_are_the_same_bytes_on_every_write(tmp_path: Path) -> None:
     """
     from port.patch.utils import write_fig
 
-    write_fig(str(tmp_path / "plain.pdf"), _figure())
+    write_fig(str(tmp_path / "plain.pdf"), wide_rasterized_figure())
     assert not (tmp_path / "plain.png").exists()
 
-    write_fig(str(tmp_path / "one.pdf"), _figure(), png_copy=True)
-    write_fig(str(tmp_path / "two.pdf"), _figure(), png_copy=True)
+    write_fig(str(tmp_path / "one.pdf"), wide_rasterized_figure(), png_copy=True)
+    write_fig(str(tmp_path / "two.pdf"), wide_rasterized_figure(), png_copy=True)
 
     one, two = (tmp_path / "one.png").read_bytes(), (tmp_path / "two.png").read_bytes()
     assert one[:8] == b"\x89PNG\r\n\x1a\n"

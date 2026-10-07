@@ -19,6 +19,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from tests.figure_checks import mirror_key_holds
+
 mpl.use("Agg")
 
 
@@ -223,33 +225,3 @@ def test_the_mirror_key_starts_on_the_axis_and_is_labelled_on_its_right(
     page.canvas.draw()
     mirror_key_holds(page.axes[1], page.axes[1])
     plt.close(page)
-
-
-def mirror_key_holds(legend_ax: Any, edge_ax: Any) -> None:
-    """The mirror key's geometry on `legend_ax`: its two swatches one above
-    the other, not overlapping, their left edges on `edge_ax`'s (0.5 px);
-    `MIRROR` right of them, its centre on the white between them (0.5 px),
-    and left of the colour bar's title (PR- #715)."""
-    from port.patch.plot_copy_number_profile import MIRROR
-
-    renderer = legend_ax.figure.canvas.get_renderer()
-    upper, lower = sorted(
-        (p.get_window_extent(renderer) for p in legend_ax.patches[:4:2]),
-        key=lambda b: -b.y0,
-    )
-    (mirror,) = [t for t in legend_ax.texts if t.get_text() == MIRROR]
-    (title,) = [
-        t for t in legend_ax.texts if t.get_text() == r"$\mathbb{N}$-CNA (A, B)"
-    ]
-    label = mirror.get_window_extent(renderer)
-    left = edge_ax.get_window_extent(renderer).x0
-
-    assert MIRROR == "Local Mirror"
-    assert upper.x0 == pytest.approx(left, abs=0.5)
-    assert lower.x0 == pytest.approx(left, abs=0.5)
-    assert lower.y1 < upper.y0
-    assert (label.y0 + label.y1) / 2 == pytest.approx(
-        (lower.y1 + upper.y0) / 2, abs=0.5
-    )
-    assert label.x0 > max(upper.x1, lower.x1)
-    assert label.x1 < title.get_window_extent(renderer).x0

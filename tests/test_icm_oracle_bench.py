@@ -24,7 +24,7 @@ import pytest
 from pytest_benchmark.fixture import BenchmarkFixture
 
 from tests.adapters import cnaster_icm_labelling
-from tests.fixtures import PottsLabels, potts_labels, tiers
+from tests.fixtures import PottsLabels, potts_labels, scaled_graph, tiers
 
 if TYPE_CHECKING:
     from sal.sim.graph import PottsGraph
@@ -34,12 +34,6 @@ GATE_SHAPE = (20, 20)
 
 STRESS_SHAPE = (60, 60)
 """3,600 nodes, an order of magnitude up, where a move set's cost shows."""
-
-
-def _graph(fixture: PottsLabels) -> "PottsGraph":
-    from tests.fixtures import _scaled_graph
-
-    return _scaled_graph(fixture)
 
 
 def _cnaster_sweep(fixture: PottsLabels, _: "PottsGraph", start: np.ndarray) -> Any:
@@ -65,13 +59,13 @@ def _upstream_expansion(
 @pytest.fixture(scope="module")
 def gate() -> tuple[PottsLabels, "PottsGraph", np.ndarray]:
     fixture = potts_labels(shape=GATE_SHAPE, n_clones=3)
-    return fixture, _graph(fixture), np.zeros(fixture.n_nodes, dtype=np.int64)
+    return fixture, scaled_graph(fixture), np.zeros(fixture.n_nodes, dtype=np.int64)
 
 
 @pytest.fixture(scope="module")
 def stress() -> tuple[PottsLabels, "PottsGraph", np.ndarray]:
     fixture = potts_labels(shape=STRESS_SHAPE, n_clones=3)
-    return fixture, _graph(fixture), np.zeros(fixture.n_nodes, dtype=np.int64)
+    return fixture, scaled_graph(fixture), np.zeros(fixture.n_nodes, dtype=np.int64)
 
 
 @pytest.mark.benchmark

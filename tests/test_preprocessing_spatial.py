@@ -20,17 +20,12 @@ import numpy as np
 import pytest
 import scipy.sparse as sp
 
+from tests.adapters import square_coords
+
 pytestmark = pytest.mark.preprocessing
 
 LATTICES = [(25, 40), (50, 50)]
 """`(rows, columns)` spot lattices: the dev instance, and 2,500 spots."""
-
-
-def _lattice(rows: int, columns: int) -> np.ndarray:
-    """Spot coordinates on a rectangular lattice, as a slide carries them."""
-    x_grid, y_grid = np.meshgrid(np.arange(rows), np.arange(columns), indexing="ij")
-
-    return np.stack([x_grid.ravel(), y_grid.ravel()], axis=1).astype(float)
 
 
 @pytest.mark.patch
@@ -46,7 +41,7 @@ def test_the_sparse_adjacency_is_the_dense_one(rows: int, columns: int) -> None:
     from cnaster.spatial import construct_multislice_lattice_adjacency as upstream
     from port.patch.spatial import construct_multislice_lattice_adjacency as patched
 
-    coords = _lattice(rows, columns)
+    coords = square_coords(rows, columns).astype(float)
     sample_ids = np.zeros(len(coords), dtype=int)
 
     reference = upstream(sample_ids, [0], coords, None, 1, 1, 1)
@@ -69,7 +64,9 @@ def test_the_sparse_adjacency_joins_slices_the_same_way() -> None:
     from cnaster.spatial import construct_multislice_lattice_adjacency as upstream
     from port.patch.spatial import construct_multislice_lattice_adjacency as patched
 
-    coords = np.concatenate([_lattice(12, 10), _lattice(9, 8)])
+    coords = np.concatenate(
+        [square_coords(12, 10).astype(float), square_coords(9, 8).astype(float)]
+    )
     sample_ids = np.concatenate([np.zeros(120, dtype=int), np.ones(72, dtype=int)])
 
     reference = upstream(sample_ids, [0, 1], coords, None, 1, 1, 1)
@@ -86,7 +83,7 @@ def test_the_across_slice_term_is_still_added() -> None:
     from cnaster.spatial import construct_multislice_lattice_adjacency as upstream
     from port.patch.spatial import construct_multislice_lattice_adjacency as patched
 
-    coords = _lattice(10, 10)
+    coords = square_coords(10, 10).astype(float)
     sample_ids = np.zeros(len(coords), dtype=int)
     across = sp.random(100, 100, density=0.02, format="csr", random_state=5)
 
@@ -112,7 +109,7 @@ def test_the_partition_keeps_the_trial_cnaster_keeps(rows: int, columns: int) ->
     from cnaster.spatial import best_equal_partition as upstream
     from port.patch.spatial import best_equal_partition as patched
 
-    coords = _lattice(rows, columns)
+    coords = square_coords(rows, columns).astype(float)
 
     reference_index, reference_assignment = upstream(coords, 3, 3, n_trials=200)
     realized_index, realized_assignment = patched(coords, 3, 3, n_trials=200)
@@ -162,7 +159,7 @@ def test_the_partition_agrees_under_a_tumour_proportion() -> None:
     from cnaster.spatial import best_equal_partition as upstream
     from port.patch.spatial import best_equal_partition as patched
 
-    coords = _lattice(25, 40)
+    coords = square_coords(25, 40).astype(float)
     proportion = np.random.default_rng(7).uniform(0, 1, size=len(coords))
 
     reference_index, reference_assignment = upstream(
