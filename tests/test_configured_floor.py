@@ -13,7 +13,9 @@ from typing import Any
 
 import pytest
 
-MANIFESTS = Path(__file__).resolve().parents[1] / "sim" / "manifests"
+from tests import ROOT
+
+MANIFESTS = ROOT / "sim" / "manifests"
 
 
 @pytest.mark.end2end

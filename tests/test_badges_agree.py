@@ -20,9 +20,10 @@ from pathlib import Path
 
 import pytest
 
-from tests.badges import BADGES, MEASUREMENTS, UNMEASURED, badges, write
+from scripts.badges import BADGES, MEASUREMENTS, UNMEASURED, badges, write
+from tests import ROOT
 
-README = Path(__file__).resolve().parent.parent / "README.md"
+README = ROOT / "README.md"
 
 ENDPOINT = re.compile(
     r"!\[[^\]]*\]\(https://img\.shields\.io/endpoint\?url=[^)]*?/\.badges/([a-z-]+)\.json\)"
@@ -41,10 +42,10 @@ def test_every_badge_file_is_what_the_measurements_produce() -> None:
     for badge in badges():
         path = BADGES / f"{badge.name}.json"
 
-        assert path.exists(), f"{path.name} is missing; run `python -m tests.badges`"
+        assert path.exists(), f"{path.name} is missing; run `python -m scripts.badges`"
 
         assert json.loads(path.read_text()) == badge.payload(), (
-            f"{path.name} is stale; run `python -m tests.badges`"
+            f"{path.name} is stale; run `python -m scripts.badges`"
         )
 
 

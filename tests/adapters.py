@@ -554,7 +554,14 @@ class CnasterCoreInputs:
         }
 
 
-def lattice_adjacency(lattice: tuple[int, int]) -> object:
+def square_coords(rows: int, columns: int) -> np.ndarray:
+    """`(row, column)` of each spot of a `rows x columns` lattice, row-major, as integers."""
+    return np.stack(
+        np.unravel_index(np.arange(rows * columns), (rows, columns)), axis=1
+    )
+
+
+def lattice_adjacency(lattice: tuple[int, int]) -> "csr_matrix":
     """Four-neighbour adjacency over the fixture's lattice, as `cnaster` takes it.
 
     Symmetric CSR with unit weights. `cnaster` keeps `spatial_weight` outside
@@ -708,11 +715,11 @@ def upstream_potts_energy(fixture: PottsLabels, labelling: np.ndarray) -> float:
     import numpy as np
     from sal.sim.potts import energy
 
-    from tests.fixtures import _scaled_graph
+    from tests.fixtures import scaled_graph
 
     return float(
         energy(
-            _scaled_graph(fixture),
+            scaled_graph(fixture),
             fixture.field,
             np.asarray(labelling, dtype=np.int64),
         )
@@ -903,3 +910,33 @@ def clone_assignment_arguments(fixture: SpotCloneField, width: int) -> dict[str,
         "sample_ids": np.zeros(n_spots, dtype=np.int64),
         "spatial_weight": 1.5,
     }
+
+
+@dataclass(frozen=True)
+class Stacked:
+    """The pseudobulk, clone-stacked exactly as `cnaster` stacks it.
+
+    `clone_stack_obs` returns six values positionally; naming them here is what
+    keeps the rung readable, since the batch shape is the whole point of it.
+    """
+
+    X: np.ndarray
+    base_nb_mean: np.ndarray
+    total_bb_RD: np.ndarray
+    lengths: np.ndarray
+    sitewise: np.ndarray
+
+
+def stacked_clones(truth: CoreInferenceTruth) -> Stacked:
+    """Aggregate to pseudobulk and stack the clones along the genomic axis."""
+    from cnaster.hmrf_utils import clone_stack_obs
+    from cnaster.pseudobulk import merge_pseudobulk_by_index_mix
+
+    counts = np.stack([truth.counts_nb, truth.counts_bb], axis=1)
+    X, base, total, _ = merge_pseudobulk_by_index_mix(
+        counts, truth.base_nb_mean, truth.total_bb_RD, truth.clone_index
+    )
+    stack_X, stack_base, stack_total, lengths, sitewise, _ = clone_stack_obs(
+        X, base, total, truth.lengths, np.zeros((truth.n_obs, 2)), None
+    )
+    return Stacked(stack_X, stack_base, stack_total, lengths, sitewise)

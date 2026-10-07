@@ -10,13 +10,27 @@ the first: a single chain, no spatial layer and no factored state space,
 which is the one rung whose correspondence with `cnaster` is exact today.
 """
 
+import warnings
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
+import pandas as pd
 import pytest
 import torch
-from port.sim.truth import DEFAULT_SEED
+from port.patch.icm.interface import CsrGraph
+from port.sim.draw import (
+    DrawManifest,
+    extended,
+    from_document,
+    merged_tables,
+)
+from port.sim.fixtures import SIM_ROOT
+from port.sim.truth import (
+    DEFAULT_SEED,
+    CoreInferenceTruth,
+)
 from sal.emissions import (
     BetaBinomialEmission,
     NegativeBinomialEmission,
@@ -946,7 +960,7 @@ def enumerate_minimum_energy(fixture: PottsLabels) -> tuple[np.ndarray, float]:
     from sal.enumeration import enumerated_optimum
     from sal.sim.potts import energy
 
-    graph = _scaled_graph(fixture)
+    graph = scaled_graph(fixture)
 
     def negated(configuration: tuple[int, ...]) -> float:
         labelling = np.array(configuration[::-1], dtype=np.int64)
@@ -956,7 +970,7 @@ def enumerate_minimum_energy(fixture: PottsLabels) -> tuple[np.ndarray, float]:
     return np.array(optimum[::-1], dtype=np.int64), -best
 
 
-def _scaled_graph(fixture: PottsLabels) -> "PottsGraph":
+def scaled_graph(fixture: PottsLabels) -> "PottsGraph":
     """The fixture's graph with `spatial_weight` folded into the coupling.
 
     `cnaster` carries the weight outside the adjacency and multiplies at
@@ -1049,3 +1063,244 @@ def integer_copies(rng: np.random.Generator, n_obs: int, n_clones: int) -> Any:
         frame[f"clone{clone} B"] = minor
 
     return pd.DataFrame(frame)
+
+
+def fused_field_of(fixture: SpotCloneField, weight: np.ndarray) -> np.ndarray:
+    """`port`'s fused spot-by-clone field on `fixture`, weighted by `weight`."""
+    from port.patch.hmrf.fused_field import fused_spot_clone_field
+
+    field: np.ndarray = fused_spot_clone_field(
+        fixture.counts_nb,
+        fixture.base_nb_mean,
+        fixture.counts_bb,
+        fixture.total_bb_RD,
+        fixture.log_mu,
+        fixture.alphas,
+        fixture.p_binom,
+        fixture.taus,
+        fixture.pred,
+        weight,
+    )
+    return field
+
+
+def partition_ari(planted: np.ndarray, fitted: np.ndarray) -> float:
+    """Agreement between two partitions, invariant to how either is labelled.
+
+    Written here rather than taken from `scikit-learn`: it is `cnaster`'s
+    dependency and not this repository's, and a referee that arrives through
+    the subject is not independent of it.
+
+    Ten classes have 3.6 million permutations, so the exact-permutation
+    accuracy below does not scale; this counts agreeing pairs instead and
+    corrects for the agreement expected by chance.
+    """
+    from math import comb
+
+    table = np.zeros((int(planted.max()) + 1, int(fitted.max()) + 1), dtype=np.int64)
+    np.add.at(table, (planted, fitted), 1)
+
+    pairs = sum(comb(int(n), 2) for n in table.ravel())
+    by_planted = sum(comb(int(n), 2) for n in table.sum(axis=1))
+    by_fitted = sum(comb(int(n), 2) for n in table.sum(axis=0))
+    total = comb(int(planted.size), 2)
+
+    expected = by_planted * by_fitted / total
+    maximum = 0.5 * (by_planted + by_fitted)
+    return float((pairs - expected) / (maximum - expected))
+
+
+def run_planted_core_inference(truth: CoreInferenceTruth, **kwargs: object) -> Any:
+    from cnaster.hmm_nophasing import hmm_nophasing
+    from cnaster.hmrf import run_core_inference
+
+    from tests.adapters import from_core_inference_truth
+
+    with warnings.catch_warnings():
+        # `scipy` rejects the `ftol` the shipped solver options pass (#46); the
+        # warning is that defect firing on the live path, not this test's.
+        warnings.simplefilter("ignore")
+        return run_core_inference(
+            **from_core_inference_truth(truth).as_kwargs(),
+            hmmclass=hmm_nophasing,
+            **kwargs,
+        )
+
+
+def two_clone_stacked_instance(seed: int = 4) -> dict[str, Any]:
+    """Two clones of 30 bins, stacked as `clone_stack_obs` stacks them."""
+    rng = np.random.default_rng(seed)
+    n_obs, n_clones = 30, 2
+    n_segments = n_obs * n_clones
+
+    base = rng.uniform(40.0, 80.0, (n_segments, 1))
+    states = rng.integers(0, 2, n_segments)
+    means = base[:, 0] * np.array([1.0, 2.0])[states]
+
+    X = np.zeros((n_segments, 2, 1))
+    X[:, 0, 0] = rng.poisson(means)
+    X[:, 1, 0] = rng.binomial(20, np.array([0.5, 0.25])[states])
+
+    return {
+        "X": X,
+        "lengths": np.array([n_obs] * n_clones),
+        "base": base,
+        "total": np.full((n_segments, 1), 20.0),
+        "normal_lambda": base[:n_obs, 0] / base[:n_obs, 0].sum(),
+        "clone_lengths": np.array([n_obs] * n_clones),
+    }
+
+
+def pseudobulk_inputs(
+    n_obs: int, n_spots: int, n_clones: int, seed: int
+) -> dict[str, Any]:
+    rng = np.random.default_rng(seed)
+    labels = rng.integers(0, n_clones, n_spots)
+    return {
+        "single_X": rng.poisson(3.0, (n_obs, 2, n_spots)).astype(np.float64),
+        # NB not integral, so the order of the sum decides its last bit.
+        "single_base_nb_mean": rng.gamma(2.0, 0.37, (n_obs, n_spots)),
+        "single_total_bb_RD": rng.poisson(5.0, (n_obs, n_spots)).astype(np.float64),
+        "clone_index": [np.flatnonzero(labels == k) for k in range(n_clones)],
+    }
+
+
+def recombination_map(path: Path, contigs: range, rate: float = 1.0) -> Path:
+    """A map at `rate` cM/Mb with a jitter, markers every 500 kb to 60 Mb."""
+    rng = np.random.default_rng(11)
+    rows = []
+
+    for contig in contigs:
+        positions = np.arange(0, 60_000_001, 500_000)
+        steps = rng.uniform(0.5, 1.5, positions.size - 1) * rate * 0.5
+        cm = np.concatenate(([0.0], np.cumsum(steps)))
+        rows += [
+            {"chrom": f"chr{contig}", "pos": int(p), "pos_cm": float(c)}
+            for p, c in zip(positions, cm, strict=True)
+        ]
+
+    pd.DataFrame(rows).to_csv(path, sep="\t", index=False)
+    return path
+
+
+END_TO_END_LATTICE = (25, 40)
+"""Rows and columns. A thousand spots, which is `icm_sweep_deque`'s floor times five."""
+
+
+def divergent_clone_instance(
+    n_states: int = 3, n_clones: int = 3, per_clone: int = 8, seed: int = 41
+) -> dict[str, Any]:
+    """A clone-stacked instance whose clones decode differently.
+
+    The clones must decode to different states for the shift to differ
+    between them -- a fixture where every clone takes the same path would
+    pass the per-clone test while indexing by clone, which is the defect
+    being pinned.
+
+    `per_clone` exceeds `n_clones`, deliberately: that is the regime where
+    `shifts[clone]` reads inside clone zero's block rather than out of
+    bounds, so a wrong index is silent rather than an `IndexError`.
+    """
+    from cnaster.count_encoder import CountEncoder
+
+    generator = np.random.default_rng(seed)
+    n_segments = n_clones * per_clone
+
+    exposure = generator.integers(20, 60, n_segments).astype(np.float64)
+    trials = generator.integers(10, 40, n_segments).astype(np.float64)
+
+    observed = generator.poisson(exposure).astype(np.float64)
+    successes = generator.binomial(trials.astype(int), 0.4).astype(np.float64)
+
+    # NB one state per clone, so the three shifts are distinct by
+    #    construction rather than by luck of the draw.
+    decode = np.repeat(np.arange(n_clones) % n_states, per_clone).astype(np.int64)
+
+    return {
+        "nbEncoder": CountEncoder(observed.reshape(-1, 1), exposure.reshape(-1, 1)),
+        "bbEncoder": CountEncoder(successes.reshape(-1, 1), trials.reshape(-1, 1)),
+        "log_mu": generator.normal(0.0, 0.3, size=(n_states, 1)),
+        "alphas": np.full((n_states, 1), 0.2),
+        "p_binom": generator.uniform(0.2, 0.8, size=(n_states, 1)),
+        "taus": np.full((n_states, 1), 25.0),
+        "normal_log_lambda": generator.normal(0.0, 0.1, size=n_segments),
+        "clone_lengths": np.full(n_clones, per_clone, dtype=np.int64),
+        "decode": decode,
+        "n_states": n_states,
+        "n_clones": n_clones,
+        "per_clone": per_clone,
+    }
+
+
+def shifted_emission_call(
+    model: Any, instance: dict[str, Any]
+) -> tuple[np.ndarray, np.ndarray]:
+    scored: tuple[np.ndarray, np.ndarray]
+    scored = model.compute_emission_probability_nb_betabinom_coded(
+        instance["nbEncoder"],
+        instance["bbEncoder"],
+        instance["log_mu"],
+        instance["alphas"],
+        instance["p_binom"],
+        instance["taus"],
+        normal_log_lambda=instance["normal_log_lambda"],
+        clone_lengths=instance["clone_lengths"],
+    )
+    return scored
+
+
+def shifted_replacement(
+    instance: dict[str, Any], *, shifted: bool = False, kernels: str = "cnaster"
+) -> Any:
+    """The drop-in, carrying the decode the shift is taken at.
+
+    `shifted` and `kernels` are options the `SHIFT_SWAPS` row binds (#517).
+    """
+    from port.patch.hmm_nophasing import hmm_nophasing
+    from port.pipeline import with_attributes
+
+    model = with_attributes(
+        hmm_nophasing, apply_logmu_shift=shifted, emission_kernels=kernels
+    )()
+    model.state_posteriors = np.eye(instance["n_states"])[instance["decode"]].T
+
+    return model
+
+
+def planted_blocky_field(
+    side: int, n_states: int, seed: int, beta: float
+) -> tuple[np.ndarray, CsrGraph, np.ndarray, float]:
+    """A field with a planted blocky labelling, plus a 4-neighbour lattice."""
+    from tests.adapters import lattice_adjacency
+
+    rng = np.random.default_rng(seed)
+    n = side * side
+
+    blocks = np.zeros((side, side), dtype=np.int64)
+    blocks[: side // 2, : side // 2] = 1 % n_states
+    blocks[side // 2 :, : side // 2] = 2 % n_states
+    blocks[: side // 2, side // 2 :] = 3 % n_states
+    planted = blocks.ravel()
+
+    # NB a weak, noisy field: strong enough to carry signal, weak enough that
+    #    the coupling decides the boundaries -- which is where a single-site
+    #    descent gets stuck and an expansion move does not.
+    field = rng.normal(0.0, 1.0, size=(n, n_states))
+    field[np.arange(n), planted] += 0.6
+
+    graph = CsrGraph.from_matrix(lattice_adjacency((side, side)).sorted_indices())
+
+    return field, graph, planted, beta
+
+
+SIM_MANIFESTS = SIM_ROOT / "manifests"
+
+
+SMALL_ARRAY = {"array": {"rows": 20, "columns": 20}}
+
+
+def draw_manifest(name: str, overrides: dict[str, Any] | None = None) -> DrawManifest:
+    document = merged_tables(
+        extended(SIM_MANIFESTS / f"{name}.toml"), SMALL_ARRAY | (overrides or {})
+    )
+    return from_document(document, SIM_MANIFESTS)

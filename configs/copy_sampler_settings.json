@@ -1,0 +1,54 @@
+{
+  "_provenance": "run_calibrate --copy on dev_tree_1s_hard.toml realizations 0-2, 5 seeds per setting, at the run's Baum-Welch at oracle clones (#730); the cheapest setting within 1.0 nats of the best median gap in log-likelihood at the start's states (#540)",
+  "anneal-hmm": {
+    "step": 0.003,
+    "t_start": 100.0,
+    "median_gap": 88.473,
+    "seconds": 11.763,
+    "default_median_gap": 2093.539
+  },
+  "hmc-hmm": {
+    "temperature": 100.0,
+    "median_gap": 131.643,
+    "seconds": 1.387,
+    "default_median_gap": 170.278
+  },
+  "tempering-hmm": {
+    "step": 0.003,
+    "t_top": 100.0,
+    "median_gap": 100.571,
+    "seconds": 3.26,
+    "default_median_gap": 722.677
+  },
+  "emission++trim": {
+    "trim": 0.005,
+    "median_gap": 234.619,
+    "seconds": 0.579,
+    "default_median_gap": 336.246
+  },
+  "emission++lloydx5hmm": {
+    "lloyd": 10,
+    "median_gap": 49.591,
+    "seconds": 27.381,
+    "default_median_gap": 160.684
+  },
+  "emission++trimx20hmm": {
+    "draws": 20,
+    "trim": 0.005,
+    "median_gap": 58.403,
+    "seconds": 6.151,
+    "default_median_gap": 229.495
+  },
+  "emission++knn": {
+    "knn": 0.003,
+    "median_gap": 202.236,
+    "seconds": 0.521,
+    "default_median_gap": 210.807
+  },
+  "emission++anchor": {
+    "lloyd": 10,
+    "median_gap": 212.311,
+    "seconds": 2.688,
+    "default_median_gap": 306.541
+  }
+}

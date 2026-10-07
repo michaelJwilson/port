@@ -123,37 +123,31 @@ def clone_shifts(
 ) -> np.ndarray:
     """Record each clone's `log Z_c` over the pinned rates; return them.
 
+    `log Z_c` is `logmu_shift.clone_log_normalizers`, the field's and the
+    genomic figure's (#749 WP7). Its one axis-0 reduction keeps the bins of
+    zero baseline as exact zeros where this once dropped them, which moves
+    the sum by at most 4.4e-15 nats (200 random instances, up to 3,000 bins).
+
     Sets `res["new_log_mu_shift"]` to `(n_clones,)` and leaves
     `new_log_mu` the pinned, shared table. The normal clone is the one with
     the largest share of bins in balanced states, as `neutral_state` chooses
     it; with `zero_normal` its shift is 0.
     """
-    from scipy.special import logsumexp
-
     from port.patch._clone_paths import state_vector
-    from port.patch.hmm_nophasing.shifted_emission import NEUTRAL_BAF_TOLERANCE
+    from port.patch.hmm_nophasing.logmu_shift import clone_log_normalizers
+    from port.patch.hmm_nophasing.shifted_emission import normal_clone
 
     rates = state_vector(np.asarray(res["new_log_mu"]))
-    balanced = (
-        np.abs(state_vector(np.asarray(res["new_p_binom"])) - 0.5)
-        <= NEUTRAL_BAF_TOLERANCE
-    )
     path = np.asarray(res["pred_cnv"], dtype=np.int64)
     path = path.reshape(path.shape[0], -1)
 
-    with np.errstate(divide="ignore", invalid="ignore"):
-        log_lambda = np.log(np.sum(base_nb_mean, axis=1) / np.sum(base_nb_mean))
-
-    kept = np.isfinite(log_lambda)
-    shifts = np.array(
-        [
-            float(logsumexp(rates[path[kept, c]] + log_lambda[kept]))
-            for c in range(path.shape[1])
-        ]
-    )
+    normalizers = clone_log_normalizers(rates, path, base_nb_mean)
+    shifts = np.full(path.shape[1], -np.inf) if normalizers is None else normalizers
 
     if zero_normal:
-        shifts[int(np.argmax(balanced[path].mean(axis=0)))] = 0.0
+        shifts[normal_clone(state_vector(np.asarray(res["new_p_binom"])), path)[0]] = (
+            0.0
+        )
 
     locked = bool(getattr(res, "_locked", False))
 

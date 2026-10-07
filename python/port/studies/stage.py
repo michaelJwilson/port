@@ -161,7 +161,9 @@ def members(
     if n is not None:
         drawn = replace(
             drawn,
-            tables=d._merge(drawn.tables, {"sample": {"realizations": first + n}}),
+            tables=d.merged_tables(
+                drawn.tables, {"sample": {"realizations": first + n}}
+            ),
         )
     out = root / Path(manifest).stem
     for realized in d.realize(drawn, out):
@@ -251,7 +253,8 @@ def _drive(
         held["fitted"] = True
         n_clones = len(held["oracle"])
         rows = int(np.asarray(args[1]).shape[0])
-        config = Path(held["root"]) / "output" / "config.yaml"
+        # NB the run writes its configuration at its root, beside `output/`
+        config = Path(held["root"]) / "config.yaml"
         planted, level = _planted(sample, lineage, rows, n_clones)
         found = Stage(
             stage, baum_welch, args, arguments, planted, np.repeat(np.arange(n_clones), rows // n_clones),

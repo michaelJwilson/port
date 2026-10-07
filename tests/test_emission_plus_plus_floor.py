@@ -91,38 +91,3 @@ def test_sals_scores_are_the_exact_divergence() -> None:
 
     assert (raw >= 0.0).all()
     np.testing.assert_allclose(raw[near], exact, rtol=0, atol=2e-14)
-
-
-def _port_floor(score: Any) -> Any:
-    """The `_seed_scores` patch T- #632 retired: each divergence floored at 0."""
-
-    def nonnegative(seed: float, candidates: np.ndarray) -> np.ndarray:
-        return np.asarray(np.maximum(score(seed, candidates), 0.0))
-
-    return nonnegative
-
-
-@pytest.mark.patch
-def test_sals_draw_is_the_retired_floors_draw() -> None:
-    """sal's own D-squared draw against the same draw under port's retired floor: equal rows on 20 generators.
-
-    sal #1136 floors each divergence at 0 before the running minimum, where
-    port's patch floored it, so retiring the patch moves no seed.
-    """
-    from sal.opt.emission_mixture import seed_scores
-    from sal.opt.mixture import emission_mixture_plus_plus
-
-    rows = _rows()
-    indices = np.arange(rows.shape[0], dtype=np.float64)
-
-    for seed in range(20):
-        sals = emission_mixture_plus_plus(
-            indices, 3, seed_scores(rows, _seam()), np.random.default_rng(seed)
-        )
-        ported = emission_mixture_plus_plus(
-            indices,
-            3,
-            _port_floor(seed_scores(rows, _seam())),
-            np.random.default_rng(seed),
-        )
-        np.testing.assert_array_equal(sals, ported)
