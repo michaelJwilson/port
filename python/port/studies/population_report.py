@@ -28,7 +28,6 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from port.extensions.figure_style import page_size
 from port.qa.statistics import bootstrap_interval, resample_weights
 
 BOOTSTRAP = 2000
@@ -524,10 +523,6 @@ BAR_WIDTH = 0.5
 MARKER = 1.5
 """Points: an error bar at the page's rule weight, and a bin's marker."""
 
-PAGE_HEIGHT = page_size("third")[1]
-"""Inches: the row of three square panels, a "third" page (`figure_style.page_size`,
-T- #740); 1.75 on `llncs`'s 4.80 in text width before."""
-
 COMBINED = "pop_combined.pdf"
 """#729's 2 x 2, the population study's one figure in `docs/plots/paper/` (#743): (a) clones by UMIs per J, (b) CNAs by `1 - t` per class at
 oracle clones, (c) false positives by SNP UMIs, (d) CNAs by length per class."""
@@ -624,7 +619,7 @@ def _power(value: float) -> str:
     )
 
 
-def _finish(fig: Any, axes: list[Any], legends: list[Any], stamp: str | None) -> None:
+def _finish(fig: Any, axes: list[Any], legends: list[Any]) -> None:
     """Square panels, sensitivities on [0, 1], keys inside, a letter over each panel."""
     from port.extensions.combined_figure import FONT_SIZE, LABEL_SIZE
 
@@ -651,60 +646,6 @@ def _finish(fig: Any, axes: list[Any], legends: list[Any], stamp: str | None) ->
         top = axis.get_position().y1
         fig.text(x0, top + 0.01, f"({letter})", fontsize=LABEL_SIZE,
                  ha="left", va="bottom")  # fmt: skip
-    if stamp is not None:
-        fig.text(0.995, 0.005, stamp, fontsize=FONT_SIZE, color="0.4",
-                 ha="right", va="bottom")  # fmt: skip
-
-
-def _save(fig: Any, path: Path) -> None:
-    fig.savefig(path, format="png", dpi=300, facecolor="white",
-                metadata={"Software": None})  # fmt: skip
-
-
-def figures(
-    summary: dict[str, Any], into: Path, stamp: str | None = None
-) -> list[Path]:
-    """(a) clone sensitivity by UMIs per J; (b) CNA sensitivity by length per
-    class; (c) the `(1, 1)` segments' false positive rate by their SNP UMIs.
-
-    Set as `port.extensions.combined_figure`'s spatial page is, so the row
-    stands beside it in a paper: `page_style`, the paper's text width, every
-    text at `FONT_SIZE`, rules at `PROFILE_LINEWIDTH`, square panels, each
-    letter over its panel's leftmost text. Written as PNG at 300 dpi, with
-    `port.patch.utils.write_fig`'s PNG options: white face, no metadata, so
-    two draws differ byte for byte only when their pixels do (#452). The arm,
-    the member counts and the bands' construction are stated in the study's
-    document rather than on the figure.
-    """
-    import matplotlib as mpl
-
-    mpl.use("Agg")
-    import matplotlib.pyplot as plt
-    from matplotlib.layout_engine import ConstrainedLayoutEngine
-
-    from port.extensions.combined_figure import page_style
-    from port.extensions.figure_style import PAPER_WIDTH
-
-    into.mkdir(parents=True, exist_ok=True)
-    paths = [into / "population_recovery.png"]
-
-    with page_style():
-        _style()
-        fig, (left, right, third) = plt.subplots(
-            1, 3, figsize=(PAPER_WIDTH, PAGE_HEIGHT), dpi=300, facecolor="white"
-        )
-        fig.set_layout_engine(
-            ConstrainedLayoutEngine(rect=(0, 0, 0.96, 0.92), w_pad=0.02, wspace=0.05)
-        )
-        _clones(left, summary)
-        _lengths(right, summary)
-        _fpr(third, summary)
-        _finish(fig, [left, right, third], [left, right], stamp)
-        for path in paths:
-            _save(fig, path)
-        plt.close(fig)
-
-    return paths
 
 
 def combined(summary: dict[str, Any], into: Path) -> Path:
@@ -712,8 +653,8 @@ def combined(summary: dict[str, Any], into: Path) -> Path:
     oracle clones per class (`summary["t_arm"]`, #729), (c) false positives by
     SNP UMIs, (d) CNAs by length per class; square panels, no stamp (#743).
 
-    Raises where the summary has no `t_arm`: (b) is #729's, and an empty
-    panel is not drawn.
+    Where the summary has no `t_arm`, (b) is drawn empty and says so: the
+    other three panels are current, and (b) is #729's arm.
     """
     import matplotlib as mpl
 
@@ -739,29 +680,29 @@ def combined(summary: dict[str, Any], into: Path) -> Path:
             ConstrainedLayoutEngine(rect=(0, 0, 1, 0.97), w_pad=0.02, h_pad=0.04)
         )
         _clones(a, summary)
-        _stay(b, summary)
+        if "t_arm" in summary:
+            _stay(b, summary)
+        else:
+            b.set_xscale("log")
+            b.set_xlim(1e-9, 1e-2)
+            b.set_xlabel(r"$1 - t$")
+            b.set_ylabel("CNA sensitivity")
+            b.text(0.5, 0.5, "not yet run (#729)", ha="center", va="center",
+                   transform=b.transAxes, color="0.5")  # fmt: skip
         _fpr(c, summary)
         _lengths(d, summary)
-        _finish(fig, [a, b, c, d], [a, b, d], None)
+        _finish(fig, [a, b, c, d], [a, b, d] if "t_arm" in summary else [a, d])
+        b.set_ylim(-0.02, 1.02)
         fig.savefig(into / COMBINED, format="pdf", facecolor="white",
                     metadata={"Creator": None, "Producer": None, "CreationDate": None})  # fmt: skip
         plt.close(fig)
     return into / COMBINED
 
 
-def stamp_text(out: Path) -> str:
-    """`data <hash> · code <sha>`: SHA-256 over `out`'s records, and the repository's commit, `+` if dirty."""
-    from port.qa import provenance
-
-    records = sorted((out / "records").glob("*.json"))
-    data = b"".join(r.name.encode() + r.read_bytes() for r in records)
-    return provenance.stamp(provenance.digest(data), "python", "tests")
-
-
 def report(out: Path, study2_j: float) -> dict[str, Any]:
     """Summarize `out`'s records, write the summary and figures beside them."""
     summary = summarize(out, study2_j)
-    figures(summary, out / "figures", stamp_text(out))
+    combined(summary, out / "figures")
     slim: dict[str, Any] = json.loads(json.dumps(summary, default=float))
     for entry in slim["study1"].values():
         for key in ("detected", "completeness"):

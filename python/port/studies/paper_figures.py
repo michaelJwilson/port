@@ -575,7 +575,7 @@ SOLVER_PANEL = 2.2
 """Inches: each panel's axes height. (a) left of (b), each keyed below in one column, on one text-column page."""
 
 
-def solver_figure(potts: dict[str, Any], copies: dict[str, Any]) -> Any:
+def solver_figure(potts: dict[str, Any], copies: dict[str, Any] | None) -> Any:
     """18: the spatial solvers' gap panel left of the copy-state starts', each keyed below its axes (`figures.key_below`).
 
     Sized as `combined.png` is: the paper's text column, every text at
@@ -611,9 +611,16 @@ def solver_figure(potts: dict[str, Any], copies: dict[str, Any]) -> Any:
     }
     potts_plot.draw(axes["a"], potts, key=True, centre=True, key_style=style)
     # NB Initial, Polish and Truth mean the same in both panels: keyed once, under (a)
-    copy_state_plot.draw(
-        axes["b"], copies, key=True, key_style={**style, "marks": False}
-    )
+    if copies is None:
+        # NB (b) drawn empty and saying so, its record still being written (#743)
+        axes["b"].set_xscale("log")
+        axes["b"].set_xlabel("Runtime [s]")
+        axes["b"].text(0.5, 0.5, "copy-state stream running", ha="center", va="center",
+                       transform=axes["b"].transAxes, color="0.5")  # fmt: skip
+    else:
+        copy_state_plot.draw(
+            axes["b"], copies, key=True, key_style={**style, "marks": False}
+        )
     for text in figure.findobj(Text):
         text.set_fontsize(FONT_SIZE)
     # NB each key's title names the fixture; at half the page two titles and two letters
@@ -637,9 +644,15 @@ SOLVER_NOTE = "solver_combined.md"
 """Figure 18's provenance beside it: the two records, their data hashes, their settings and the code."""
 
 
-def solver_note(records: list[dict[str, Any]], digests: list[str], commit: str) -> str:
+def solver_note(
+    records: list[dict[str, Any] | None], digests: list[str | None], commit: str
+) -> str:
     """`SOLVER_NOTE`: what `solver_combined.png` was drawn from, as the stamp it no longer carries said."""
     potts, copies = records
+    if potts is None:  # invariant
+        msg = "expected the Potts record"
+        raise AssertionError(msg)
+    copies = copies or {}
     lines = [
         "# solver_combined.png",
         "",
@@ -661,7 +674,7 @@ def solver_note(records: list[dict[str, Any]], digests: list[str], commit: str) 
     return "\n".join(lines)
 
 
-def solver_figures(potts: Path, copies: Path, out: Path, commit: str) -> Path:
+def solver_figures(potts: Path, copies: Path | None, out: Path, commit: str) -> Path:
     """Figure 18 into `out`, and `SOLVER_NOTE` beside it with each record's data hash and the code."""
     import matplotlib.pyplot as plt
 
@@ -669,14 +682,16 @@ def solver_figures(potts: Path, copies: Path, out: Path, commit: str) -> Path:
     from port.studies import records as stored
 
     out.mkdir(parents=True, exist_ok=True)
-    records = [stored.read(p) for p in (potts, copies)]
+    records = [stored.read(potts), None if copies is None else stored.read(copies)]
     with figure_font():
-        figure = solver_figure(*records)
+        figure = solver_figure(stored.read(potts), records[1])
         figure.savefig(out / SOLVERS, dpi=300, facecolor="white",
                        metadata={"Software": None})  # fmt: skip
         plt.close(figure)
     (out / SOLVER_NOTE).write_text(
-        solver_note(records, [stored.digest(r) for r in records], commit)
+        solver_note(
+            records, [None if r is None else stored.digest(r) for r in records], commit
+        )
     )
     return out / SOLVERS
 
@@ -758,6 +773,15 @@ QUESTIONS: dict[str, tuple[str, str]] = {
         "Which planted classes are recovered exactly, with and without phase?",
         "`exact_figure`: `port.qa.scoring.exact_by_class`",
     ),
+    "pop_combined.pdf": (
+        "How many UMIs does a clone need, how long must a CNA be, at what stay probability is it "
+        "found, and how often is a true-(1, 1) segment called altered?",
+        "`port.studies.population_report.combined` on `docs/studies/population_summary.json`",
+    ),
+    "solver_combined.md": (
+        "What was `solver_combined.png` drawn from?",
+        "`solver_note`: both records' data hashes, their settings and the code",
+    ),
     "solver_combined.png": (
         "How far above the best does each spatial solver and each copy-state start end, and how fast?",
         "`solver_figure`: `port.studies.potts_plot.draw`, `port.studies.copy_state_plot.draw`",
@@ -831,8 +855,8 @@ intervals in `truth/` and the fitted ones in `run/`, so their contig widths diff
 ## Key studies
 
 Each figure is redrawn when its study is rerun, and stamped `data <hash> · code <sha>`.
-The population study's figures are not here: its data is in `docs/studies/`, its three-panel
-figure in `docs/plots/studies/`, and `pop_combined.pdf` joins this directory with #729's rerun.
+The population study's one figure is `pop_combined.pdf`, its data in `docs/studies/`; its
+panel (b), the `t` arm, is drawn empty until #729 runs it.
 
 | File | Question | Source | Regenerate |
 | --- | --- | --- | --- |
@@ -856,6 +880,8 @@ def main(argv: list[str] | None = None) -> int:
     arguments = parser.parse_args(argv)
     if arguments.solvers is not None:
         potts, copies = arguments.solvers
+        # NB "-" for COPY.record draws (b) empty, while its stream runs (#743)
+        copies = None if str(copies) == "-" else copies
         print(solver_figures(potts, copies, arguments.out, provenance.commit()))
         return 0
 
