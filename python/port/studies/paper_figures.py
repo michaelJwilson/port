@@ -660,9 +660,9 @@ def solver_note(
         f"| (b) copy-state starts | `port.studies.copy_state_stream` | `{digests[1]}` | {len(copies.get('done', []))} "
         f"| {copies.get('seeds')} | {'tuned' if copies.get('tuning') else 'settings file'} |",
         "",
-        "Where a sampler reads a settings file (`potts_sampler_settings.json`, `copy_sampler_settings.json`),",
-        "it was tuned before the harness, on problems the run does not solve: these panels are",
-        "untuned for the run's problems until #723 retunes them on a quiet host.",
+        "Each sampler reads its settings file (`potts_sampler_settings.json`, `copy_sampler_settings.json`),",
+        "tuned by #723 on the run's own problems, realizations 0-2 held out from these panels, on a quiet",
+        "host; Wolff keeps the settings tuned before the harness, since its tune ran 68 min unfinished.",
         "",
     ]
     return "\n".join(lines)
