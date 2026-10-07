@@ -1,10 +1,11 @@
 {
   "_provenance": "tests.studies.potts_stream tuning on sim/manifests/dev_tree_1s_hard.toml realizations 0-2, 5 random starts per setting, grid t_start 0.25-32 x 250-4,000 sweeps, t_end 0.05; the cheapest setting within 0.1 nats of the best median gap to TRW-S's bound (#556)",
   "sal:anneal": {
-    "t_start": 0.5,
-    "sweeps": 250,
-    "median_gap": 0.0,
-    "default_median_gap": 0.0
+    "t_start": 8.0,
+    "sweeps": 4000,
+    "warm": 0.1,
+    "median_gap": 0.34,
+    "default_median_gap": 1.261
   },
   "sal:swendsen-wang": {
     "t_start": 1.0,
@@ -13,10 +14,11 @@
     "default_median_gap": 39.62
   },
   "sal:tempering": {
-    "t_start": 1.0,
-    "sweeps": 250,
-    "median_gap": 0.081,
-    "default_median_gap": 0.0
+    "t_start": 0.5,
+    "sweeps": 4000,
+    "warm": 0.0,
+    "median_gap": 3.451,
+    "default_median_gap": 5.501
   },
   "sal:wolff": {
     "t_start": 0.25,
@@ -53,5 +55,12 @@
     "sweeps": 4000,
     "median_gap": 8.265,
     "default_median_gap": 168.251
+  },
+  "sal:swendsen-wang-heat-bath": {
+    "t_start": 1.0,
+    "sweeps": 4000,
+    "warm": 0.25,
+    "median_gap": 66.143,
+    "default_median_gap": 120.548
   }
 }
