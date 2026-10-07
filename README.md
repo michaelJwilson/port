@@ -35,7 +35,7 @@ under `src/`, exposed to Python as `port.oxiport`.
 
 Ten numbers, and each is a claim rather than a decoration.
 `.badges/measurements.json` holds every value with the selection, denominator
-and commit that produced it, `python -m tests.badges` derives the badges from
+and commit that produced it, `python -m scripts.badges` derives the badges from
 it, and `tests/test_badges_agree.py` fails when the two disagree.
 
 **Four coverage guards, because one figure would answer four questions
@@ -93,7 +93,7 @@ a ratio -- and it refuses a ratio rendered while `instance` still reads `/`.
 **The badges are pinned to `main`, so a pull request does not show its own
 figures** -- the ten URLs above all read `/main/.badges/`, and a README
 cannot render a branch-relative badge without making `main`'s README wrong.
-CI closes that with a report instead (#271): `tests/badge_report.py` renders
+CI closes that with a report instead (#271): `scripts/badge_report.py` renders
 this branch's guards against its base, delta first, into the job summary and
 into one pull request comment rewritten in place on each push. It reports and
 never gates -- `tests/check_badges.py` is what fails the job on a figure that
@@ -198,12 +198,12 @@ in the same change.
 CI runs locally, through one entry point (#403). Each step prints its seconds.
 
 ```
-uv run python -m tests.ci                  # gate: ruff, mypy, critical + untiered tests; <= 60 s
-uv run python -m tests.ci --badges         # judged and drop-in coverage; --record writes them
-uv run python -m tests.ci --full           # gate, badges, then `merge` tests and benchmarks
-uv run python -m tests.ci --release        # `release` and `oracle`
-uv run python -m tests.ci --figures        # draw the dev instance's figures into .cache/plots
-uv run python -m tests.ci --install        # once per clone: the `badges` merge driver
+uv run python -m scripts.ci                  # gate: ruff, mypy, critical + untiered tests; <= 60 s
+uv run python -m scripts.ci --badges         # judged and drop-in coverage; --record writes them
+uv run python -m scripts.ci --full           # gate, badges, then `merge` tests and benchmarks
+uv run python -m scripts.ci --release        # `release` and `oracle`
+uv run python -m scripts.ci --figures        # draw the dev instance's figures into .cache/plots
+uv run python -m scripts.ci --install        # once per clone: the `badges` merge driver
 cargo clippy --all-targets -- -D warnings  # Rust lint
 cargo fmt --check                          # Rust format
 ```

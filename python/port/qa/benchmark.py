@@ -45,7 +45,7 @@ TIMEOUT = 1800
 
 BADGES = ROOT / ".badges"
 MEASUREMENTS = BADGES / "measurements.json"
-"""Where the badges' measured figures live; `tests.badges` renders them."""
+"""Where the badges' measured figures live; `scripts.badges` renders them."""
 
 STAGED = "staged.json"
 """Under a kept `root`: the staged configuration and whether it is joint, so a rerun resumes."""

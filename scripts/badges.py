@@ -6,7 +6,7 @@ and refuses a claim with no number behind it; a shields badge has room for
 neither, so this module is where the number and its conditions are kept and
 the badge is what is derived.
 
-Run as `python -m tests.badges` to rewrite `.badges/*.json` from
+Run as `python -m scripts.badges` to rewrite `.badges/*.json` from
 `.badges/measurements.json`. `tests/test_badges_agree.py` is what refuses a
 drift between the two.
 

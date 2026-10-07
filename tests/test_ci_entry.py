@@ -1,4 +1,4 @@
-"""`python -m tests.ci` selects every test exactly once across its steps (#403).
+"""`python -m scripts.ci` selects every test exactly once across its steps (#403).
 
 The gate, the two coverage guards, the serial `merge` step and the release
 step are written as marker expressions. A test that no expression selects is
@@ -15,7 +15,7 @@ from pathlib import Path
 import pytest
 from _pytest.mark.expression import Expression
 
-from tests import ci
+from scripts import ci
 
 ROOT = Path(__file__).resolve().parent.parent
 

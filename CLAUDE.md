@@ -201,7 +201,7 @@ full for that reason.
     is the gate, `merge` runs before a merge, `release` for a release, and
     `deprecate` where its module changes. A test over the gate's cap carries
     `merge`, over the pre-merge budget `release`; one too specific to earn a
-    run on every change, having passed where it merged, `deprecate`. `python -m tests.ci` is the only runner, so a tier it does
+    run on every change, having passed where it merged, `deprecate`. `python -m scripts.ci` is the only runner, so a tier it does
     not select is documentation.
 
 A test that cannot say what would have to be wrong for it to fail is not yet

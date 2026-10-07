@@ -29,7 +29,7 @@ from pathlib import Path
 
 from port.qa.provenance import inputs_hash
 
-from tests.badges import MEASUREMENTS, load, write
+from scripts.badges import MEASUREMENTS, load, write
 
 TOLERANCE = 0.005
 """How far a recorded figure may sit from the measured one, in points.
@@ -99,7 +99,7 @@ def main(argv: list[str] | None = None) -> int:
     """
     arguments = sys.argv[1:] if argv is None else argv
     record = "--record" in arguments
-    # NB `tests.ci --badges` passes `--skip` for a guard whose recorded input
+    # NB `scripts.ci --badges` passes `--skip` for a guard whose recorded input
     #    hash matches the tree, and did not re-measure it (#403).
     skipped = {
         name
@@ -157,7 +157,7 @@ def main(argv: list[str] | None = None) -> int:
             print(
                 f"{name} coverage is {current:.2f}% and .badges/measurements.json "
                 f"records {guard['percent']:.2f}%.\n"
-                "Update it and run `python -m tests.badges`, so the README's badge "
+                "Update it and run `python -m scripts.badges`, so the README's badge "
                 "arrives in the same diff as the change that moved it."
             )
             failed += 1

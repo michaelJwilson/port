@@ -1,6 +1,6 @@
 # Generated files keep this branch's copy on a merge rather than stopping it
-# (#403). `python -m tests.ci --install` defines the `badges` driver;
-# `python -m tests.ci --badges --record` then re-measures what the merged
+# (#403). `python -m scripts.ci --install` defines the `badges` driver;
+# `python -m scripts.ci --badges --record` then re-measures what the merged
 # tree reads. Without the driver installed git falls back to its ordinary
 # merge, so nothing breaks, it only conflicts. `docs/plots/` tracks no
 # generated figure, so it has no line here.
