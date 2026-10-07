@@ -91,12 +91,12 @@ def test_the_brightest_pixel_takes_a_label_past_num_labels(tmp_path: Path) -> No
     assert np.sum(labels == 5) == np.sum(pixels["gray"] == pixels["gray"].max())
 
 
-@pytest.mark.analytic
+@pytest.mark.patch
 def test_ports_labels_are_the_num_labels_asked_for(tmp_path: Path) -> None:
-    """`port.patch.he.he_image(num_labels=4)` labels every pixel `1..4` (#311).
-
-    The brightest pixels, which `cnaster` labels 5, take label 4, and no
-    other label changes.
+    """`port.patch.he.he_image(num_labels=4)` reproduces `cnaster`'s labels
+    bitwise wherever they are `1..4`; the brightest pixels, which `cnaster`
+    labels 5, take label 4 -- the stated departure, binning on the inner
+    edges (#311, T- #771).
     """
     from cnaster.he import get_he_image
     from port.patch.he import he_image
