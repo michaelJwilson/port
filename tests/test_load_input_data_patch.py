@@ -23,6 +23,7 @@ from port.sim.inputs import WrittenInputs, written_config
 from port.sim.run_config import PlantedInstance
 from port.sim.truth import balanced_clone
 
+from tests import ROOT
 from tests.adapters import range_filter_loop
 from tests.fixtures import synthetic_ranges
 
@@ -763,7 +764,7 @@ def test_the_patched_loader_is_cnasters_on_a_drawn_sample(tmp_path: Path) -> Non
     from port.sim.fixtures import load_simulated
     from port.sim.inputs import written_config
 
-    manifests = Path(__file__).resolve().parents[1] / "sim" / "manifests"
+    manifests = ROOT / "sim" / "manifests"
     manifest = tmp_path / "dev_tree.toml"
     manifest.write_text(
         (manifests / "dev_tree.toml")

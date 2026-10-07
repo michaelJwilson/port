@@ -109,6 +109,7 @@ import pandas as pd
 
 from port.sim.entries import COUNT_SAMPLERS, independent, nodes, snp_law
 from port.sim.files import load_ids
+from port.sim.inputs import reference_files, run_paths
 from port.sim.laws import ADMIXTURE_LAWS, Event, Law, allele_share
 
 MANIFEST_VERSION = 3
@@ -1360,11 +1361,6 @@ def save_npz(path: Path, matrix: Any) -> None:
                 np.lib.format.write_array(stream, np.asanyarray(array))
 
 
-def _normalized(weights: np.ndarray) -> np.ndarray:
-    """Each clone's column summing to 1: the library size is held per spot."""
-    return np.asarray(weights / weights.sum(axis=0, keepdims=True))
-
-
 def _write_slice(
     out: Path,
     counts: Any,
@@ -1488,17 +1484,14 @@ def write_inputs(
         document.setdefault(section, {}).update(values)
 
     reference = manifest.reference
-    document["paths"] = {
-        "sample_sheet": str((out / "sample_sheet.tsv").resolve()),
-        "output_dir": str((out / "output").resolve()),
-        "perf_path": str((out / "cnaster.perf").resolve()),
-    }
-    document["references"] |= {
-        "geneticmap_file": str(resources / reference["genetic_map"]),
-        "hgtable_file": str(resources / reference["gene_table"]),
-        "filtergenelist_file": str(resources / reference["filter_genes"]),
-        "filterregion_file": str(resources / reference["filter_regions"]),
-    }
+    document["paths"] = run_paths(out.resolve())
+    document["references"] |= reference_files(
+        resources,
+        genetic_map=reference["genetic_map"],
+        gene_table=reference["gene_table"],
+        filter_genes=reference["filter_genes"],
+        filter_regions=reference["filter_regions"],
+    )
     path = out / "config.yaml"
     path.write_text(yaml.safe_dump(document, sort_keys=False))
     return path

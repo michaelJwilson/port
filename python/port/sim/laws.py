@@ -80,13 +80,19 @@ def fit_negative_binomial(values: np.ndarray) -> tuple[float, float, float]:
 
 
 def counted(values: np.ndarray, prefer: str) -> Law:
-    """Both families fitted to `values`; `prefer` is the one returned."""
+    """Both families fitted to `values`, once each; `prefer` is the one returned.
+
+    `prefer = "best"` returns the family with the smaller KS statistic, the
+    lognormal on a tie.
+    """
     mu, sigma, ks_log = fit_lognormal(values)
     mean, dispersion, ks_nb = fit_negative_binomial(values)
     lognormal = Law("lognormal", {"mu": mu, "sigma": sigma}, ks_log, ks_nb)
     negative = Law(
         "negative_binomial", {"mean": mean, "dispersion": dispersion}, ks_nb, ks_log
     )
+    if prefer == "best":
+        prefer = "lognormal" if (ks_log or 0.0) <= (ks_nb or 0.0) else prefer
     chosen = lognormal if prefer == "lognormal" else negative
     return chosen._replace(n=int(np.asarray(values).size))
 

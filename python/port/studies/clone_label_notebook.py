@@ -18,7 +18,8 @@ from typing import Any
 
 import numpy as np
 
-ROOT = Path(__file__).resolve().parents[3]
+from port.extensions.repository import ROOT
+
 DATA = ROOT / "docs" / "nb" / "data" / "clone_label_study_r0.json"
 NOTEBOOK = ROOT / "docs" / "nb" / "clone_label_study.ipynb"
 INTRO = ROOT / "docs" / "nb" / "clone_label_study.md"

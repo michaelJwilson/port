@@ -18,7 +18,7 @@ statement a reviewer needs is what this branch changed, which needs the base
 to compare against -- so the base file is an input, and the report says so
 when it is missing rather than inventing a zero.
 
-Run as `python -m tests.badge_report --base <path>`; CI writes the result to
+Run as `python -m scripts.badge_report --base <path>`; CI writes the result to
 the job summary and to one upserted pull request comment.
 """
 
@@ -31,7 +31,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from tests.badges import MEASUREMENTS, UNMEASURED
+from scripts.badges import MEASUREMENTS, UNMEASURED
 
 __all__ = ["Row", "render", "rows"]
 

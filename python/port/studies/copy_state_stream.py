@@ -94,9 +94,6 @@ TUNING_SEEDS = 5
 TOLERANCE = 1.0
 """Nats: a setting within this of the best median gap is as good, and the cheapest of those is kept."""
 
-REDRAW = 0.0
-"""Seconds between redraws from the runs finished so far, a realization in progress included: 0, after every job."""
-
 SETTINGS = Path(__file__).with_name("copy_sampler_settings.json")
 """The settings tuned once on `dev_tree_1s_hard`'s first `--held-out` realizations (r0 `d2938975`), reused by `--settings`."""
 
@@ -169,7 +166,7 @@ def stage_module() -> Any:
     return stage
 
 
-def solve(
+def solve_start(
     stage: Any, call: Any, realization: int, name: str, seed: int,
     setting: dict[str, float] | None = None, polish: bool = True,
 ) -> dict[str, Any]:  # fmt: skip
@@ -267,9 +264,11 @@ def member(
         call = _call(found)
         for name in sorted({job[0] for job in jobs} - set(_WARM)):
             # NB untimed: a start's first call pays its compilation
-            solve(found, call, realization, name, 0, None, polish=False)
+            solve_start(found, call, realization, name, 0, None, polish=False)
             _WARM.append(name)
-        rows = [solve(found, call, realization, *job, polish=polish) for job in jobs]
+        rows = [
+            solve_start(found, call, realization, *job, polish=polish) for job in jobs
+        ]
         return {
             "rows": rows,
             "problem": describe(found, realization) if polish else None,
@@ -296,7 +295,7 @@ def tune(
 
     rows: list[dict[str, Any]] = []
 
-    def run(jobs: list[tuple[str, int, dict[str, float] | None]]) -> pd.DataFrame:
+    def run_jobs(jobs: list[tuple[str, int, dict[str, float] | None]]) -> pd.DataFrame:
         futures = [pool.submit(member, str(m.sample.path), m.realization, jobs, False,
                                str(root / f"tune_r{m.realization}")) for m in held_out]  # fmt: skip
         for f in futures:
@@ -307,11 +306,11 @@ def tune(
         frame["key"] = frame.setting.map(lambda s: tuple(sorted(s.items())))
         return frame
 
-    frame = run([(name, 0, setting) for name in names for setting in GRID[name]])
+    frame = run_jobs([(name, 0, setting) for name in names for setting in GRID[name]])
     kept = {
         str(name): harness.halve(g, TOLERANCE) for name, g in frame.groupby("start")
     }
-    frame = run([(name, seed, dict(key)) for name, keys in kept.items() for key in keys
+    frame = run_jobs([(name, seed, dict(key)) for name, keys in kept.items() for key in keys
                  for seed in range(1, TUNING_SEEDS)])  # fmt: skip
     failed = [r for r in rows if "error" in r]
     if failed:

@@ -31,7 +31,8 @@ from typing import Any, Literal
 
 import pytest
 
-from tests.source_graph import ROOT, state_writes
+from tests import ROOT
+from tests.source_graph import state_writes
 
 Kind = Literal["switch", "run", "cache", "rebind"]
 

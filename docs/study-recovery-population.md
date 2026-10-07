@@ -62,7 +62,7 @@ The page is set as `combined.pdf`'s spatial row: 4.80 in wide, 7 pt text.
   - Clones are matched by overlap on `clone_labels.tsv`.
   - CNAs are scored on the matched clone's integer copies in `cnv_seglevel.tsv`.
   - True-(1,1) segments are scored as called (1,1) or not, with the SNP A + B reads they hold in the planted clone's spots.
-- **Sufficiency (`SUFFICIENT`, stated before any number was read).** Every rule bin holds ≥ 20 items, and each crossing's 95% interval is ≤ 0.3 dex wide.
+- **Sufficiency (`sufficiency`, stated before any number was read).** Every rule bin holds ≥ 20 items, and each crossing's 95% interval is ≤ 0.3 dex wide.
 
 | Stage | Seeds | Manifest | J | Records |
 | --- | --- | --- | --- | --- |
