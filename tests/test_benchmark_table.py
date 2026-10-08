@@ -57,3 +57,26 @@ def test_calicosts_committed_outputs_score_as_532(tmp_path: Path) -> None:
 
     row = calicost_row(drawn(tmp_path))
     assert {k: row[k] for k in CALICOST} == CALICOST
+
+
+@pytest.mark.snapshot
+def test_the_supported_table_is_the_ledgers_last_sweep() -> None:
+    """`--supported` renders the latest benchmark sweep from the ledger: a row per run, its fixture and hash named."""
+    from port.qa import ledger
+    from port.studies.benchmark_table import render_supported, swept
+
+    commit, rows = swept()
+    tex = render_supported(rows, commit=commit, sal="5d59752c")
+
+    assert len(rows) == len(ledger.last_benchmark())
+    assert tex.count(r"\texttt{") == 2 * len(rows)
+    for _fixture, digest, scores in rows:
+        assert f"(\\texttt{{{digest}}})" in tex
+        assert set(scores) == {
+            "ari",
+            "ari_integer",
+            "state_ari",
+            "copy_ari_pf",
+            "exact_altered_minor",
+            "wall",
+        }
