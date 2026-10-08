@@ -322,6 +322,8 @@ def sal_emission_backend(
         detail={
             "log_likelihood": fit.log_likelihood,
             "iterations": fit.termination.iterations,
+            # NB `Stop.DEGENERATE` where a count fit hit a degeneracy, which raised before sal #1346
+            "reason": fit.termination.reason.name,
             "at_boundary": fit.at_boundary,
         },
     )

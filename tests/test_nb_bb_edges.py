@@ -161,11 +161,13 @@ def test_the_closed_form_gradient_is_the_exact_derivative(
     """
     from port.patch.hmm_nophasing.gradient import nb_partials as closed_form
 
-    d_eta, d_alpha = closed_form(COUNTS, np.full(COUNTS.shape, mean), np.array(alpha))
+    d_eta, d_alpha = closed_form(
+        COUNTS, np.ones(COUNTS.shape), np.log([mean]), np.array([alpha])
+    )
     exact = np.array([nb_partials(int(k), mean, alpha) for k in COUNTS])
 
-    np.testing.assert_allclose(d_eta, exact[:, 0], rtol=1e-9, atol=1e-9)
-    np.testing.assert_allclose(d_alpha, exact[:, 1], rtol=1e-9, atol=1e-9)
+    np.testing.assert_allclose(d_eta[0], exact[:, 0], rtol=1e-9, atol=1e-9)
+    np.testing.assert_allclose(d_alpha[0], exact[:, 1], rtol=1e-9, atol=1e-9)
 
 
 # --- the field -------------------------------------------------------------

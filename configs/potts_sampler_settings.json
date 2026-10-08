@@ -12,13 +12,6 @@
     "median_gap": 19.848,
     "default_median_gap": 39.62
   },
-  "sal:tempering": {
-    "t_start": 0.5,
-    "sweeps": 4000,
-    "warm": 0.0,
-    "median_gap": 3.451,
-    "default_median_gap": 5.501
-  },
   "sal:wolff": {
     "t_start": 0.25,
     "sweeps": 4000,
@@ -48,12 +41,6 @@
     "sweeps": 250,
     "median_gap": 0.0,
     "default_median_gap": 0.0
-  },
-  "sal:cluster-tempering": {
-    "t_start": 1.0,
-    "sweeps": 4000,
-    "median_gap": 8.265,
-    "default_median_gap": 168.251
   },
   "sal:swendsen-wang-heat-bath": {
     "shape": "linear",

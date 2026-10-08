@@ -31,16 +31,20 @@ its numbers do not compare with these.
   of `SWEEPS` first, the better half kept and the steps doubled), from
   common random numbers, and ranked by the energy after sal's ICM from each
   pilot's best (`Criterion.POLISHED_GAP`), the figure's Polish. Every annealed
-  sampler, Wolff included, gets the same `SWEEPS`. The tempering ladder is
-  sal's too: `temperatures="auto"`, `adapt_ladder` to a 0.2-0.3 exchange
-  rate from `REPLICAS` rungs geometric from the settings file's top
-  (`LADDER_REPLICAS`), its pilots charged to the run.
+  sampler, Wolff included, spends the same `SWEEPS` of site visits: sal's
+  `anneal_potts(budget=...)` charges each step what it visited (sal #1344).
 - **Evaluation.** The next `--problems` realizations run every solver of
   #541's harness (`port.studies.clone_label_arms`) but bifurcation, port's
   pure-Python `alpha` and the floor-merge row, plus TRW-S's own decoded
   labelling, from `--starts` random labellings; the samplers at their tuned
   settings. Each run is polished twice: sal's ICM, then the color merge
-  (`port.studies.color_merge`, cnaster's `merge_assignment` rule).
+  (`port.studies.color_merge`, cnaster's `merge_assignment` rule). A
+  sampler's ICM is sal's own, run to its fixed point inside the anneal
+  (`Polish.ICM`, sal #1363, #1368), so its raw and polished energies are one;
+  every other solver's is `sal:icm` from its output.
+- **Backends.** sal's defaults: the anneal loop, Wolff and heat-bath
+  Swendsen-Wang in Rust (sal #1362, #1364, #1368). Their streams differ from
+  the Python loop's, so a figure before the bump does not replay at its seeds.
 
 Per problem it records the planted labelling's energy, TRW-S's lower bound and its spots,
 per run the energy and the labels unlike the planted ones, raw and after each
@@ -72,40 +76,28 @@ from port.studies import stream as harness
 DROPPED = frozenset({
     "sal:bifurcation", "port:alpha", "port:alpha-rust-merge",
     "port:alpha-rust", "port:alpha-rust-icm", "port:icm-numba", "port:icm",
-    "sal:swendsen-wang", "sal:wolff", "sal:tempering",
+    "sal:swendsen-wang", "sal:wolff",
 })  # fmt: skip
 """Out of the stream: bifurcation (#541), `alpha` (Alpha-rust's pure-Python twin), the deprecated floor merge,
 and, for the paper's figure (T- #660), `alpha-rust` and `alpha-rust-icm` (`alpha-rust-fuse-merge` stays),
 `icm-numba` and cnaster's `icm`; and the uniform-proposal cluster moves, their heat-bath variants in their
-place (#716); and parallel tempering, deprecated from the studies for now (T- #807). `clone_label_arms`
-still runs them, and `--only` names any."""
+place (#716). `clone_label_arms` still runs them, and `--only` names any. Parallel and cluster tempering
+are out of port: sal moved `parallel_tempering` to its sandbox (sal #1352)."""
 
 EXTRA = ("sal:trws",)
-"""Entries beyond the harness's: TRW-S's decoded labelling. `CLUSTER_TEMPERING` left the stream with
-T- #660, and `TEMPERING` with T- #807; `--only` still runs either."""
+"""Entries beyond the harness's: TRW-S's decoded labelling."""
 
 SAMPLERS = {
     "sal:anneal": "single-site",
     "sal:swendsen-wang-heat-bath": "swendsen-wang-heat-bath",
     "sal:wolff-heat-bath": "wolff-heat-bath",
 }
-"""sal's annealed chains (`run_annealed`), by `sal`'s move set. The cluster moves are sal's heat-bath
+"""sal's annealed chains (`anneal_potts`), by `sal`'s move set. The cluster moves are sal's heat-bath
 variants (its #1142): each cluster's label drawn from its summed field, where the uniform proposal
 of `swendsen-wang` and `wolff` is accepted on that field and freezes in a field of this size."""
 
-
-TEMPERING = "sal:tempering"
-"""sal's `parallel_tempering`: a ladder of single-site heat-bath replicas, swapped."""
-
-CLUSTER_TEMPERING = "sal:cluster-tempering"
-"""sal's `cluster_tempering` (its #1090): `TEMPERING`'s ladder, one Swendsen-Wang pass per replica per step and
-Houdayer moves between replicas."""
-
 TUNED = tuple(SAMPLERS)
-"""The entries whose schedule `sal` tunes (`tune`)."""
-
-SET = (*SAMPLERS, TEMPERING, CLUSTER_TEMPERING)
-"""Every entry that runs at a setting from `SETTINGS`: the tuned schedules and the tempering ladders' tops."""
+"""The entries whose schedule `sal` tunes (`tune`), and every entry that runs at a setting from `SETTINGS`."""
 
 T_END = 0.05
 """sal's `ANNEAL_END`: cold enough that the last sweeps are a descent."""
@@ -143,14 +135,6 @@ start."""
 
 POLISH_SWEEPS = 1000
 """The ICM a pilot's best is polished by before it is ranked: the figure's Polish, `clone_label_arms.SWEEPS`."""
-
-LADDER_REPLICAS, LADDER_SHARE, LADDER_SWEEPS = 12, 0.25, 5
-"""sal's `LadderTuning` for the tempering entries: at most 12 rungs, its pilots a quarter of the run's
-replica sweeps at 5 sweeps a measurement (16 measurements of 12 rungs at 4,000), the exchange rate between
-neighbours in sal's default band, 0.2-0.3."""
-
-REPLICAS = 6
-"""sal's `N_REPLICAS`: both tempering ladders, geometric between `T_END` and the start temperature."""
 
 SETTINGS = CONFIGS / "potts_sampler_settings.json"
 """The samplers' settings, tuned by `run_calibrate --potts` at the run's clone-assignment field
@@ -251,12 +235,12 @@ def _warm() -> None:
     # NB every solver `--only` can name, the ones T- #660 dropped from the stream included
     retired = {"sal:bifurcation", "port:alpha", "port:alpha-rust-merge"}
     runnable = [s for s in arms.solver_names() if s not in retired]
-    for solver in [*runnable, *EXTRA, CLUSTER_TEMPERING]:
+    for solver in [*runnable, *EXTRA]:
         solve_labelling(
             patch,
             solver,
             0,
-            {"t_start": 2.0, "sweeps": 10} if solver in SET else None,
+            {"t_start": 2.0, "sweeps": 10} if solver in TUNED else None,
         )
 
 
@@ -267,59 +251,27 @@ def _hold(index: int, problem: Any) -> None:
 
 
 def _sample(solver: str, field: np.ndarray, start: np.ndarray, rng: np.random.Generator,
-            graph: Any, setting: dict[str, float]) -> np.ndarray:  # fmt: skip
-    """A sampler at `setting`: an annealed chain on its schedule, or a tempering ladder topped at `t_start`.
+            graph: Any, setting: dict[str, float]) -> Any:  # fmt: skip
+    """An annealed chain at `setting`, polished by sal's ICM to its fixed point in the same call.
 
-    A ladder runs ``sweeps // REPLICAS`` steps of `REPLICAS` replicas, so
-    `sweeps` counts replica sweeps for every entry.
+    `SWEEPS` sweeps of site visits for every move set: sal's step loop
+    charges each step what it visited and stops at the budget (sal #1344),
+    so a Wolff run, whose cluster flips cost less than a sweep, takes the
+    steps that spend it, where a pilot used to count them.
     """
     from sal.cost import Cost
     from sal.opt.budget import Budget
-    from sal.sample.potts_mcmc.chains import cluster_tempering, parallel_tempering
-    from sal.sample.potts_mcmc.moves import PottsMove
+    from sal.sample.potts_mcmc import PottsMove, Recolour
+    from sal.sample.potts_mcmc.chains import anneal_potts
+    from sal.sample.schedule import Polish
     from sal.search.ground_state import Problem as SalProblem
-    from sal.search.ground_state import run_annealed
 
-    t_start, sweeps = float(setting["t_start"]), int(setting["sweeps"])
-    steps = max(1, sweeps // REPLICAS)
-    best: Any
-    if solver == CLUSTER_TEMPERING:
-        # NB coldest first, as sal's cluster_tempering requires
-        ladder = tuple(float(t) for t in np.geomspace(T_END, t_start, REPLICAS))
-        best = cluster_tempering(graph, field, ladder, rng, steps).best
-    elif solver == TEMPERING:
-        ladder = tuple(float(t) for t in np.geomspace(t_start, T_END, REPLICAS))
-        from sal.sample.potts_mcmc.chains import adapt_ladder_potts
-        from sal.sample.tune import LadderTuning
-
-        # NB sal's ladder adapted from `REPLICAS` rungs (#1337), as `temperatures="auto"` adapts it, then run
-        #    with every rung from the run's random start (T- #777), which "auto" cannot take
-        tuning = LadderTuning(Budget(Cost.SWEEPS, max(1, int(LADDER_SHARE * sweeps))), LADDER_REPLICAS, ladder,
-                              n_sweeps=LADDER_SWEEPS)  # fmt: skip
-        adapted = adapt_ladder_potts(graph, field, ladder, rng.spawn(1)[0], tuning.n_sweeps, tuning.band,
-                                     tuning.max_iterations, tuning.max_replicas)  # fmt: skip
-        rungs = adapted.temperatures
-        best = parallel_tempering(
-            graph, field, rungs, rng, steps, start=np.tile(start, (len(rungs), 1))
-        ).best
-    else:
-        problem = SalProblem(graph, field, field.shape[1])
-        budget = Budget(Cost.SITE_VISITS, sweeps * problem.visits_per_sweep)
-        move = PottsMove(SAMPLERS[solver])
-        calibrated: int | None = None
-        if solver == "sal:wolff-heat-bath":
-            # NB sal budgets a Wolff step at a sweep's visits and flips one cluster, so it spends a
-            #    fraction of the budget; a pilot measures the visits a step costs, and the run takes
-            #    as many steps as spend the budget the other samplers get. The pilot is timed too.
-            #    A shorter pilot is not: on dev_tree_1s_hard r3 from a random start, a tenth-length
-            #    one calibrates 267,525 steps against the full one's 15,104 (#716), since a cluster
-            #    grows with the cooling a short schedule compresses.
-            pilot = run_annealed(problem, budget, np.random.default_rng(rng.integers(2**63)), move,
-                                 schedule=schedule(setting), start=start)  # fmt: skip
-            calibrated = max(1, round(sweeps * budget.size / max(pilot.spent, 1)))
-        best = run_annealed(problem, budget, rng, move, schedule=schedule(setting), steps=calibrated,
-                            start=start).labelling  # fmt: skip
-    return np.asarray(best, dtype=np.int64)
+    sweeps = int(setting["sweeps"])
+    problem = SalProblem(graph, field, field.shape[1])
+    budget = Budget(Cost.SITE_VISITS, sweeps * problem.visits_per_sweep)
+    # NB the arm is the move alone under the uniform recolour, as sal's `run_annealed` runs it (sal #1323)
+    return anneal_potts(graph, field, schedule(setting).build(sweeps), rng, move=(PottsMove(SAMPLERS[solver]),),
+                        recolour=Recolour.UNIFORM, start=start, budget=budget, polish=Polish.ICM)  # fmt: skip
 
 
 def solve_labelling(
@@ -346,13 +298,17 @@ def solve_labelling(
 
             out = np.asarray(trws(graph, field).labelling, dtype=np.int64)
         elif setting is not None:
-            out = _sample(solver, field, start, rng, graph, setting)
+            run = _sample(solver, field, start, rng, graph, setting)
+            out = np.asarray(run.best, dtype=np.int64)
         else:
             out = arms.solve_from(solver, field, start, rng, beta)
         seconds = time.perf_counter() - opened
         opened = time.perf_counter()
-        polished = arms.solve_from(
-            "sal:icm", field, out, np.random.default_rng(0), beta
+        # NB a sampler's run ends at sal's ICM fixed point (`Polish.ICM`), timed in `seconds`
+        polished = (
+            out
+            if setting is not None
+            else arms.solve_from("sal:icm", field, out, np.random.default_rng(0), beta)
         )
         polish_seconds = time.perf_counter() - opened
         opened = time.perf_counter()

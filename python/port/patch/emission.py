@@ -22,9 +22,10 @@ They now share `sal`'s one construction (sal #1334, #1336; `sal.emissions`'
   is the binomial at `p`.
 
 `T` and the three `S` depend on an integer count and a shape alone, so each
-site tabulates them over its distinct counts (:func:`nb_table`,
-:func:`bb_tables`) and completes each entry in the order above. The fit does
-so in `sal`'s Rust (`dense_emission`); the copy decode and the starts in
+site tabulates them over its distinct counts with `sal`'s
+`scaled_rising_table` (sal #1341; :func:`nb_table`, :func:`bb_tables`) and
+completes each entry in the order above. The fit does so in `sal`'s Rust
+(`sal.emissions.coded`, `dense_emission`); the copy decode and the starts in
 NumPy here, which is `sal`'s NumPy pmf bit for bit (`tests/test_emission.py`);
 the field and `cnaster`'s rows in `numba` (:func:`nb_complete`,
 :func:`bb_complete`), the same expressions, equal to rounding: `numba`'s
@@ -35,79 +36,24 @@ replaces: a rate or exposure `<= 0` and a zero trial count score 0, as does
 `z > n` or a negative count, where `sal` scores `-inf`; `a` and `b` are
 floored at `DISPERSION_FLOOR`.
 
-The M-step's partials are this density's: :func:`nb_partials` and
-:func:`bb_partials` difference no two `digamma` at one large argument
-(`sal.emissions.rising.digamma_rising`).
+The M-step's partials are this density's, `sal`'s
+`coded.log_emission_partials` in Rust (sal #1353): :func:`nb_partials` and
+:func:`bb_partials` carry them to port's coordinates and floors.
 """
 
 from __future__ import annotations
 
-import math
 from typing import Any
 
 import numpy as np
 from numba import njit
 from numpy.typing import ArrayLike
-from sal.emissions import rising
-from sal.emissions.rising import digamma_rising, scaled_rising_array
+from sal.emissions.rising import (
+    digamma_rising,
+    scaled_rising_array,
+    scaled_rising_table,
+)
 from scipy.special import gammaln
-
-# NB `sal`'s compiled `S` and the `gammaln` pointer it reads, bound as globals
-#    at compile time: `_kernels()` sets `rising._gammaln` to `scipy`'s.
-_sal_scaled, _ = rising._kernels()
-_gammaln = rising._gammaln
-_SERIES_FROM = rising._SERIES_FROM
-_SMALL_T = rising._SMALL_T
-_PLAIN_ERROR = rising._PLAIN_ERROR
-_LOG_PROMISE = rising._LOG_PROMISE
-_TERM_FLOOR = rising._TERM_FLOOR
-_LGAMMA_SERIES = rising._LGAMMA_SERIES
-_DIGAMMA_SERIES = rising._DIGAMMA_SERIES
-
-
-@njit(nogil=True, error_model="numpy")
-def _scaled_series(xi: float, mi: float) -> float:
-    """`S(xi, mi)` by `sal`'s series route of `_log_rising_kernel` at `scaled=True`, operation for operation.
-
-    The route `sal` takes wherever its plain difference misses the 1e-14
-    promise, and at an infinite shape, where it is 0. Held to `sal`'s kernel
-    bitwise (`tests/test_emission.py`).
-    """
-    y = xi
-    recurrence = 0.0
-    while y < _SERIES_FROM:
-        recurrence += -math.log1p(mi / y)
-        y += 1.0
-    t = mi / y
-    step = math.log1p(t)
-    if abs(t) < _SMALL_T:
-        h = t * (-0.5 + t * (1.0 / 3.0 + t * (-0.25 + t * 0.2)))
-    else:
-        h = (math.log1p(t) - t) / t
-    inverse = 1.0 / y
-    gap = -t / (y + mi)
-    upper = inverse + gap
-    upper_square = upper * upper
-    inverse_square = inverse * inverse
-    both = upper + inverse
-    power = inverse
-    p = 1.0
-    total = _LGAMMA_SERIES[0] * p
-    terms = 1
-    while (
-        terms < 8
-        and abs(_DIGAMMA_SERIES[terms - 1]) * 2.0 * terms * inverse ** (2 * terms - 1)
-        >= _TERM_FLOOR
-    ):
-        terms += 1
-    for k in range(1, terms):
-        p = p * upper_square + power * both
-        total += _LGAMMA_SERIES[k] * p
-        power *= inverse_square
-    series = mi * h + (mi - 0.5) * step + total * gap
-    moved = mi * math.log1p((y - xi) / xi) if y != xi else 0.0
-    return (series + moved) + recurrence
-
 
 DISPERSION_FLOOR = 1e-10
 """`cnaster`'s floor on `alpha` in `_nb_logpmf_1d` and on `a`, `b` in
@@ -123,12 +69,14 @@ __all__ = [
     "BetaBinomialTables",
     "bb_complete",
     "bb_log_pmf",
+    "bb_partial_sums",
     "bb_partials",
     "bb_tables",
     "log_factorial",
     "nb_complete",
     "nb_log_pmf",
     "nb_log_pmf_size",
+    "nb_partial_sums",
     "nb_partials",
     "nb_size",
     "nb_table",
@@ -144,50 +92,6 @@ def nb_size(dispersion: ArrayLike) -> np.ndarray:
         return np.where(
             alpha_ <= 0.0, np.inf, 1.0 / np.maximum(alpha_, DISPERSION_FLOOR)
         )
-
-
-@njit(nogil=True, error_model="numpy")
-def _scaled_table(shapes, counts, out):
-    """`out[i, j] = S(shapes[i], counts[j])`, `sal`'s `scaled_rising_array` bit for bit.
-
-    `sal`'s kernel takes `gammaln(x)` and `log x` per element; along a row
-    they are one value, so they are taken once. Its plain route is repeated
-    here, operation for operation, and an entry it would hand to the series
-    is :func:`_scaled_series`.
-    """
-    for i in range(shapes.size):
-        x = shapes[i]
-        finite = x < np.inf
-        base = _gammaln(x) if finite else 0.0
-        log_x = math.log(x) if finite else 0.0
-        for j in range(counts.size):
-            m = counts[j]
-            if m == 0.0:
-                out[i, j] = 0.0
-                continue
-            if finite:
-                rise = _gammaln(x + m)
-                plain = rise - base
-                bound = _PLAIN_ERROR * (max(abs(rise), 1.0) + max(abs(base), 1.0))
-                shift = m * log_x
-                value = plain - shift
-                if bound + _PLAIN_ERROR * abs(shift) <= _LOG_PROMISE * max(
-                    abs(value), 1.0
-                ):
-                    out[i, j] = value
-                    continue
-            out[i, j] = _scaled_series(x, m)
-
-
-def _scaled_rising_table(shapes: np.ndarray, counts: np.ndarray) -> np.ndarray:
-    """`S` at every `(shape, count)` pair, `(shapes.size, counts.size)` (:func:`_scaled_table`)."""
-    out = np.empty((shapes.size, counts.size))
-    _scaled_table(
-        np.ascontiguousarray(shapes, dtype=np.float64),
-        np.ascontiguousarray(counts, dtype=np.float64),
-        out,
-    )
-    return out
 
 
 def _on_distinct(
@@ -237,14 +141,14 @@ def _count_factor(x: np.ndarray, m: np.ndarray) -> np.ndarray:
 def _count_factor_table(shapes: np.ndarray, counts: np.ndarray) -> np.ndarray:
     """:func:`_count_factor` at every `(shape, count)` pair, `lgamma(m + 1)` once per count."""
     out: np.ndarray = (
-        _scaled_rising_table(shapes, counts) - gammaln(counts + 1.0)[None, :]
+        scaled_rising_table(shapes, counts) - gammaln(counts + 1.0)[None, :]
     )
     return out
 
 
 def scaled_rising(x: ArrayLike, m: ArrayLike) -> np.ndarray:
     """`S(x, m)`, broadcast: `sal`'s `scaled_rising_array` on the distinct shapes and counts (:func:`_on_distinct`)."""
-    return _on_distinct(scaled_rising_array, x, m, _scaled_rising_table)
+    return _on_distinct(scaled_rising_array, x, m, scaled_rising_table)
 
 
 def rising_digamma(x: ArrayLike, m: ArrayLike) -> np.ndarray:
@@ -414,60 +318,139 @@ def bb_complete(
     return (((log_choose + hits) + misses + success) + failure) - trial
 
 
-def nb_partials(
-    obs: np.ndarray, mean: np.ndarray, dispersion: np.ndarray
+def _coded(obs: ArrayLike, covariate: ArrayLike) -> Any:
+    """`obs` with `covariate` per observation, coded by `sal` (`sal.emissions.coded.encode`); a zero covariate is unobserved."""
+    from sal.emissions.coded import encode
+
+    return encode(
+        np.asarray(obs, dtype=np.float64).reshape(-1),
+        np.asarray(covariate, dtype=np.float64).reshape(-1),
+    )
+
+
+def _nb_family(
+    rate: ArrayLike, dispersion: ArrayLike
+) -> tuple[Any, np.ndarray, np.ndarray]:
+    """`sal`'s negative binomial at mean `exp(rate)` and `r = 1 / max(alpha, floor)`; with `alpha` and `r`."""
+    from sal.emissions.counts import NegativeBinomialEmission
+
+    alpha = np.asarray(dispersion, dtype=np.float64).reshape(-1)
+    size = 1.0 / np.maximum(alpha, DISPERSION_FLOOR)
+    mean = np.exp(np.asarray(rate, dtype=np.float64).reshape(-1))
+    return NegativeBinomialEmission(size, mean), alpha, size
+
+
+def _nb_coordinates(
+    partials: dict[str, np.ndarray],
+    alpha: np.ndarray,
+    size: np.ndarray,
+    mean: np.ndarray,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """`d ell / d log mean` and `d ell / d log alpha` of :func:`nb_log_pmf`, broadcast.
-
-    With `q = alpha * mean`: `(y - mean) / (1 + q)` and
-    `-r (D(r, y) - log1p(q)) + (y - mean) / (1 + q)`, `D` sal's
-    `digamma_rising`, which differences no two `digamma` at `r` (up to
-    1e10). A rate `<= 0` has zero derivative; below the floor `r` is a
-    constant and `alpha` moves nothing.
-    """
-    alpha = np.asarray(dispersion, dtype=np.float64)
-    floored = np.maximum(alpha, DISPERSION_FLOOR)
-    size = 1.0 / floored
-    scaled = floored * mean
-    live = mean > 0.0
-
-    with np.errstate(divide="ignore", invalid="ignore"):
-        pull = (size + obs) * scaled / (1.0 + scaled)
-        d_eta = np.where(live, obs - pull, 0.0)
-        through_size = np.where(
-            alpha > DISPERSION_FLOOR,
-            -size * (rising_digamma(size, obs) - np.log1p(scaled)),
-            0.0,
-        )
-        d_alpha = np.where(
-            live & (alpha > DISPERSION_FLOOR), through_size + obs - pull, 0.0
-        )
-
+    """`sal`'s `d/dmu`, `d/dr` to `d/d log mu = mu d/dmu` and `d/d log alpha = -r d/dr`, 0 at or below the floor."""
+    shape = (-1,) + (1,) * (partials["mean"].ndim - 1)
+    d_eta = mean.reshape(shape) * partials["mean"]
+    d_alpha = np.where(
+        (alpha > DISPERSION_FLOOR).reshape(shape),
+        -size.reshape(shape) * partials["dispersion"],
+        0.0,
+    )
     return d_eta, d_alpha
 
 
-def bb_partials(
-    obs: np.ndarray, total: np.ndarray, p_binom: np.ndarray, taus: np.ndarray
+def nb_partials(
+    obs: ArrayLike, exposure: ArrayLike, rate: ArrayLike, dispersion: ArrayLike
 ) -> tuple[np.ndarray, np.ndarray]:
-    """`d ell / d p` and `d ell / d log tau` of :func:`bb_log_pmf`, broadcast.
+    """`d ell / d log mu` and `d ell / d log alpha` of :func:`nb_log_pmf`, `(K, n)`, at mean `exposure * exp(rate)`.
 
-    A floored `a` or `b` is a constant, so contributes nothing; a code
-    scored 0 (`z > n`) has zero derivative.
+    `sal`'s `coded.log_emission_partials` (sal #1353), whose `d/dr`
+    differences no two `digamma` at `r` (up to 1e10): `r (y - lambda) /
+    (r + lambda)` and `-r (D(r, y) - log1p(q)) + r (y - lambda) / (r +
+    lambda)`. A zero exposure has zero derivative; below the floor `r` is a
+    constant and `alpha` moves nothing.
     """
-    tau = taus
-    shape_a = p_binom * tau
-    shape_b = (1.0 - p_binom) * tau
+    from sal.emissions.coded import log_emission_partials
+
+    family, alpha, size = _nb_family(rate, dispersion)
+    partials = log_emission_partials(family, _coded(obs, exposure))
+    return _nb_coordinates(partials, alpha, size, family.mean.numpy())
+
+
+def nb_partial_sums(
+    obs: ArrayLike,
+    exposure: ArrayLike,
+    rate: ArrayLike,
+    dispersion: ArrayLike,
+    weights: ArrayLike,
+) -> tuple[np.ndarray, np.ndarray]:
+    """:func:`nb_partials` summed per state at `weights`, `(K, n)`: `sal`'s `log_emission_partials_sum`, `(K,)` each."""
+    from sal.emissions.coded import log_emission_partials_sum
+
+    family, alpha, size = _nb_family(rate, dispersion)
+    sums = log_emission_partials_sum(
+        family, _coded(obs, exposure), np.asarray(weights, dtype=np.float64)
+    )
+    return _nb_coordinates(sums, alpha, size, family.mean.numpy())
+
+
+def _bb_family(
+    p_binom: ArrayLike, taus: ArrayLike
+) -> tuple[Any, np.ndarray, np.ndarray, np.ndarray]:
+    """`sal`'s beta-binomial at port's floored `a`, `b`; with `tau` and the unfloored shapes."""
+    from sal.emissions.counts import BetaBinomialEmission
+
+    p = np.asarray(p_binom, dtype=np.float64).reshape(-1)
+    tau = np.asarray(taus, dtype=np.float64).reshape(-1)
+    shape_a, shape_b = p * tau, (1.0 - p) * tau
     a = np.maximum(shape_a, DISPERSION_FLOOR)
     b = np.maximum(shape_b, DISPERSION_FLOOR)
+    return BetaBinomialEmission(np.ones(p.size), a, b), tau, shape_a, shape_b
 
-    valid = (obs >= 0) & (total >= 0) & (obs <= total)
-    k = np.where(valid, obs, 0.0)
-    n = np.where(valid, total, 0.0)
-    joint = rising_digamma(a + b, n)
-    d_a = rising_digamma(a, k) - joint
-    d_b = rising_digamma(b, n - k) - joint
 
-    d_a = np.where(valid & (shape_a > DISPERSION_FLOOR), d_a, 0.0)
-    d_b = np.where(valid & (shape_b > DISPERSION_FLOOR), d_b, 0.0)
+def _bb_coordinates(
+    partials: dict[str, np.ndarray],
+    tau: np.ndarray,
+    shape_a: np.ndarray,
+    shape_b: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray]:
+    """`sal`'s `d/da`, `d/db` to `d/dp = tau (d/da - d/db)` and `d/d log tau = a d/da + b d/db`; a floored shape contributes 0."""
+    shape = (-1,) + (1,) * (partials["alpha"].ndim - 1)
+    d_a = np.where((shape_a > DISPERSION_FLOOR).reshape(shape), partials["alpha"], 0.0)
+    d_b = np.where((shape_b > DISPERSION_FLOOR).reshape(shape), partials["beta"], 0.0)
+    t = tau.reshape(shape)
+    return d_a * t - d_b * t, d_a * shape_a.reshape(shape) + d_b * shape_b.reshape(
+        shape
+    )
 
-    return d_a * tau - d_b * tau, d_a * shape_a + d_b * shape_b
+
+def bb_partials(
+    obs: ArrayLike, total: ArrayLike, p_binom: ArrayLike, taus: ArrayLike
+) -> tuple[np.ndarray, np.ndarray]:
+    """`d ell / d p` and `d ell / d log tau` of :func:`bb_log_pmf`, `(K, n)`.
+
+    `sal`'s `coded.log_emission_partials` at `a = max(p tau, floor)`,
+    `b = max((1 - p) tau, floor)` (sal #1353). A floored `a` or `b` is a
+    constant, so contributes nothing; a zero trial count, or `z > n`, has
+    zero derivative.
+    """
+    from sal.emissions.coded import log_emission_partials
+
+    family, tau, shape_a, shape_b = _bb_family(p_binom, taus)
+    partials = log_emission_partials(family, _coded(obs, total))
+    return _bb_coordinates(partials, tau, shape_a, shape_b)
+
+
+def bb_partial_sums(
+    obs: ArrayLike,
+    total: ArrayLike,
+    p_binom: ArrayLike,
+    taus: ArrayLike,
+    weights: ArrayLike,
+) -> tuple[np.ndarray, np.ndarray]:
+    """:func:`bb_partials` summed per state at `weights`, `(K, n)`: `sal`'s `log_emission_partials_sum`, `(K,)` each."""
+    from sal.emissions.coded import log_emission_partials_sum
+
+    family, tau, shape_a, shape_b = _bb_family(p_binom, taus)
+    sums = log_emission_partials_sum(
+        family, _coded(obs, total), np.asarray(weights, dtype=np.float64)
+    )
+    return _bb_coordinates(sums, tau, shape_a, shape_b)

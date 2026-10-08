@@ -29,12 +29,13 @@ binomial. Equal to :func:`~port.patch.emission.nb_log_pmf` and
 :func:`~port.patch.emission.bb_log_pmf` summed per bin to rounding: `numba`'s
 `log` and NumPy's may differ in the last place.
 
-**Why not sal's kernels.** `sal.emissions.dense.log_emission` scores every
+**Why not sal's kernels.** `sal.emissions.coded.log_emission` scores every
 state at every observation, where the field reads one per `(bin, clone)`;
-its negative binomial completes the exposure term in its own order (262.9 ulp
-under `Order.TABULATED`); and `oxisal.external_field` sums both channels
-with one weight, where `cnaster` weighs read depth per spot
-(`rel_valid_emision_weight`). The measurement is in the pull request.
+and `oxisal.external_field` sums both channels with one weight, where
+`cnaster` weighs read depth per spot (`rel_valid_emision_weight`). The third
+reason, sal's negative binomial completing the exposure term in another
+order, is gone: sal #1336 made one order on every route and #1340 removed
+`Order`.
 
 Counts that are not non-negative integers cannot index a table, and
 :func:`spot_clone_field` hands those to the fused kernel unchanged.

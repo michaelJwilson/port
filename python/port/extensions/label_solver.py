@@ -184,7 +184,7 @@ def sal_icm_sweep(
     cost_zeropoint: float = 0.0,
     onehot_allowed_clones: Any = None,
 ) -> IcmResult:
-    """`icm_sweep`'s signature, upstream's single-site descent in `numba`.
+    """`icm_sweep`'s signature, upstream's single-site descent: sal's Rust ICM, bitwise its `numba` one (sal #1368).
 
     The same move set as `cnaster`'s `icm_sweep_deque`, so what differs is
     the implementation and the visit order: index order every sweep, where
@@ -202,12 +202,11 @@ def sal_icm_sweep(
     del tolerance, epsilon, min_clone_spots, cost_zeropoint, onehot_allowed_clones
 
     import numpy as np
-    from sal.backend import Backend
     from sal.search.icm import iterated_conditional_modes
 
     def search(potts: Any, values: Any, start: Any) -> tuple[Any, int, Any]:
         result = iterated_conditional_modes(
-            potts, values, np.random.default_rng(0), start=start, backend=Backend.NUMBA
+            potts, values, np.random.default_rng(0), start=start
         )
         return result.labelling, 1, result.termination
 
@@ -231,7 +230,7 @@ def fusion_then_merge(
     sal #1125's fusion move: per site, one proposal's label or the other's,
     chosen by the roof dual, and never worse than the better proposal. The
     proposals are alpha expansion (Rust cut) from the caller's labelling and
-    sal's `numba` descent from the field's argmax, which reach different
+    sal's descent (its Rust ICM, bitwise its `numba` one, sal #1368) from the field's argmax, which reach different
     minima; sal's floor (`merge_small_labels`) follows.
     """
     del tolerance, epsilon, cost_zeropoint, onehot_allowed_clones
@@ -250,7 +249,6 @@ def fusion_then_merge(
             values,
             np.random.default_rng(0),
             start=np.argmax(values, axis=1).astype(np.int64),
-            backend=Backend.NUMBA,
         ).labelling
         fused = fuse(
             potts,
@@ -265,7 +263,6 @@ def fusion_then_merge(
             np.asarray(fused, dtype=np.int64),
             np.random.default_rng(0),
             min_sites=max(int(min_clone_spots), 1),
-            backend=Backend.NUMBA,
         )
         return result.labelling, result.sweeps, result.termination
 
