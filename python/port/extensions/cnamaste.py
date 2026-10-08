@@ -244,9 +244,9 @@ GROUPS: tuple[Group, ...] = (
 """`cnamaste.h5`, in run order."""
 
 
-def _only(group: Group, *names: str, attrs: tuple[str, ...] = ()) -> Group:
+def _only(group: Group, *names: str, attrs: tuple[str, ...], meaning: str) -> Group:
     kept = tuple(d for d in group.datasets if d.name in names)
-    return group._replace(datasets=kept, attrs=attrs)
+    return group._replace(datasets=kept, attrs=attrs, meaning=meaning)
 
 
 def _group(path: str, groups: tuple[Group, ...] = GROUPS) -> Group:
@@ -254,11 +254,45 @@ def _group(path: str, groups: tuple[Group, ...] = GROUPS) -> Group:
 
 
 TRUTH_GROUPS: tuple[Group, ...] = (
-    _only(_group("inputs"), "barcodes", "sample_ids", "coords", attrs=("manifest",)),
-    _only(_group("segments/genes"), "contig", "start", "end", "key"),
-    _only(_group("clone_assignment"), "assignment", attrs=("clones",)),
-    _only(_group("integer_copy"), "A", "B", attrs=("level",)),
-    _only(_group("integer_clones"), "map", "assignment", "A", "B", attrs=("level",)),
+    _only(
+        _group("inputs"),
+        "barcodes",
+        "sample_ids",
+        "coords",
+        attrs=("manifest",),
+        meaning="the sample, and the manifest that drew it",
+    ),
+    _only(
+        _group("segments/genes"),
+        "contig",
+        "start",
+        "end",
+        "key",
+        attrs=(),
+        meaning="the genes the planted copies are at",
+    ),
+    _only(
+        _group("clone_assignment"),
+        "assignment",
+        attrs=("clones",),
+        meaning="the planted clone per spot; `clones` names them",
+    ),
+    _only(
+        _group("integer_copy"),
+        "A",
+        "B",
+        attrs=("level",),
+        meaning='the planted copies per gene per clone, `level = "genes"`',
+    ),
+    _only(
+        _group("integer_clones"),
+        "map",
+        "assignment",
+        "A",
+        "B",
+        attrs=("level",),
+        meaning="the planted clones that share a profile, merged",
+    ),
     Group(
         "phase",
         (

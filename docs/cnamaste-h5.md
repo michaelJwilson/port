@@ -77,21 +77,21 @@
 ## `truth.h5`
 | Group | Dataset | Axes | Type | Holds |
 | --- | --- | --- | --- | --- |
-| `/inputs` | | | | the sample and the run's configuration (YAML) and flags; attributes `manifest` |
+| `/inputs` | | | | the sample, and the manifest that drew it; attributes `manifest` |
 | | `barcodes` | (n_spots) | str | spot barcodes: every spot axis's order |
 | | `sample_ids` | (n_spots) | str | sample per spot |
 | | `coords` | (n_spots, xy) | float64 | spot positions |
-| `/segments/genes` | | | | the genes every level labels; attributes none |
+| `/segments/genes` | | | | the genes the planted copies are at; attributes none |
 | | `contig` | (n_genes) | str | the root: `df_gene_snp`'s gene rows, sorted |
 | | `start` | (n_genes) | int64 | gene start |
 | | `end` | (n_genes) | int64 | gene end |
 | | `key` | (n_genes) | str | gene index label |
-| `/clone_assignment` | | | | the final clone assignment; attributes `clones` |
+| `/clone_assignment` | | | | the planted clone per spot; `clones` names them; attributes `clones` |
 | | `assignment` | (n_spots) | int64 | clone per spot |
-| `/integer_copy` | | | | integer copy states, and every `[int_copy_num]` key the decode read; attributes `level` |
+| `/integer_copy` | | | | the planted copies per gene per clone, `level = "genes"`; attributes `level` |
 | | `A` | (n_obs, n_clones) | int16 | copies of allele A per bin per clone |
 | | `B` | (n_obs, n_clones) | int16 | copies of allele B per bin per clone |
-| `/integer_clones` | | | | integer clones, and their counts summed over their spots; attributes `level` |
+| `/integer_clones` | | | | the planted clones that share a profile, merged; attributes `level` |
 | | `map` | (n_clones) | int64 | integer clone of each fitted clone |
 | | `assignment` | (n_spots) | int64 | integer clone per spot |
 | | `A` | (n_obs, n_integer_clones) | int16 | copies of A per integer clone |
@@ -108,8 +108,6 @@
 | | `end` | (n_events) | int64 | event end |
 | | `A` | (n_events) | int16 | allele A copies after the event |
 | | `B` | (n_events) | int16 | allele B copies after the event |
-
-`truth.h5`'s `integer_copy` is at the genes (`level = "genes"`). Its `clone_assignment` is the planted clones.
 
 ## Not in either file
 `CalicoST`'s files: `clone_labels.tsv`, `cnv_seglevel.tsv`, `cnv_genelevel.tsv` and `rdrbaf_final_*.npz`. They are written from these arrays at the end of a run, under `CalicoST`'s names and layouts, and nothing in `port` reads them back.
