@@ -103,6 +103,7 @@ at the run's Baum-Welch (#723); the stream's default `--settings`."""
 def _call(stage: Any) -> Any:
     """The run's arrays at `stage` as a `CopyCall`: one row per (clone, bin), clones stacked genome after genome."""
     from port.extensions.copy_starts import CopyCall
+    from port.sandbox.extensions.hmm_objective import held_by
 
     def tiled(values: Any) -> np.ndarray:
         return np.tile(np.asarray(values), stage.n_clones)
@@ -114,7 +115,7 @@ def _call(stage: Any) -> Any:
         tiled(stage.length), stage.planted,
         {"X": X, "base_nb_mean": stage.base_nb_mean, "total_bb_RD": stage.total_bb_RD, "lengths": stage.lengths,
          "log_sitewise_transmat": np.asarray(stage.args[6]), "params": str(stage.arguments["params"]),
-         "config": stage.config},
+         "config": stage.config, "held": held_by(stage.arguments)},
     )  # fmt: skip
 
 
