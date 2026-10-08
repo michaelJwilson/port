@@ -687,6 +687,15 @@ def main(argv: Sequence[str] | None = None) -> int:
             #    the figure swaps put in place.
             selected = selected + PLOT_OFF_SWAPS
 
+        # NB the run's last genomic, spatial and profile calls, kept for the
+        #    pages drawn after it (T- #817); entered before the swaps install,
+        #    which resolve the recording wrappers as the replacements.
+        pages = None
+        if figures and not arguments.no_plots and not arguments.no_patch:
+            from port.extensions.combined_figure import recording as page_calls
+
+            pages = stack.enter_context(page_calls())
+
         if selected:
             sites = stack.enter_context(patched(selected))
             print(
@@ -788,6 +797,10 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     # NB after the run and outside its timer, and off with `--no-patch`: a
     #    baseline arm writes what `cnaster` writes and nothing beside it.
+    if pages is not None:
+        _write_pages(
+            arguments.config, pages, since=since, png_copy=arguments.png_copies
+        )
     if not (arguments.no_outputs or arguments.no_patch):
         _write_outputs(arguments.config, since=since, cnamaste_file=opened)
     if opened is not None:
@@ -799,6 +812,27 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     print(f"run_cnaster_port: {wall:.2f}s", file=sys.stderr)
     return 0
+
+
+def _write_pages(
+    config: str, pages: Any, *, since: float | None, png_copy: bool
+) -> None:
+    """`genomic.pdf`, `spatial.pdf` and `combined.pdf` into each run directory's `plots/`, beside `cnaster`'s (T- #817).
+
+    Drawn from the run's own last plotting calls (`combined_figure.recording`)
+    and the slide it read (`combined_figure.run_slide`), as the run's other
+    pages are drawn from its arrays.
+    """
+    from port.extensions.combined_figure import run_slide, write_pages
+    from port.extensions.outputs import config_keys, run_directories
+
+    output_dir = config_keys(Path(config)).get("output_dir")
+    if output_dir is None:
+        return
+    slide = run_slide(Path(config))
+    for run in run_directories(Path(output_dir), since):
+        for page in write_pages(pages, run / "plots", slide, png_copy=png_copy):
+            print(f"run_cnaster_port: wrote {page}", file=sys.stderr)
 
 
 def _open_cnamaste(config: str, flags: dict[str, Any]) -> Any:

@@ -14,6 +14,8 @@ from tests import ROOT
 
 MANIFEST = Path("sim/manifests/dev_tree_1s_hard.toml")
 SAMPLES: dict[Path, object] = {}
+RECORDED: dict[Path, object] = {}
+"""The run's last genomic, spatial and profile calls, recorded from outside it."""
 """The drawn sample of each fixture run, for the audits' truth."""
 
 
@@ -31,7 +33,11 @@ def output(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Path]:
     try:
         member = next(stage.members(MANIFEST, root / "sim", n=1))
         assert member.hash == "9ec90dc2"
-        main(["--sal", str(drawn_config(member.sample, root / "run", {}))])
+        from port.extensions.combined_figure import recording
+
+        with recording() as recorded:
+            main(["--sal", str(drawn_config(member.sample, root / "run", {}))])
+        RECORDED[root / "run" / "output"] = recorded
         SAMPLES[root / "run" / "output"] = member.sample
         yield root / "run" / "output"
     finally:
@@ -52,7 +58,12 @@ def test_run_plots_draws_every_page_the_run_wrote_byte_for_byte(
 
     assert main([str(output / "cnamaste.h5"), "--out", str(tmp_path)]) == 0
 
-    wrote = sorted(p.relative_to(output) for p in output.rglob("*.pdf"))
+    from port.extensions.combined_figure import PAGES
+
+    # NB the run's own pages after `cnaster`'s (`combined_figure.PAGES`) are drawn from its calls, not the file
+    wrote = sorted(
+        p.relative_to(output) for p in output.rglob("*.pdf") if p.stem not in PAGES
+    )
     drawn = sorted(p.relative_to(tmp_path) for p in tmp_path.rglob("*.pdf"))
     assert len(wrote) == 19
     assert drawn == wrote
@@ -199,3 +210,25 @@ def test_the_audits_score_the_file_as_they_scored_the_tables(
     held, attrs = cnamaste.read(output / cnamaste.FILE, "integer_clones")
     assert attrs["merge_agreement"] == 0.99
     assert ours["n_integer_clones_99"] == held["integer_ids"].size
+
+
+@pytest.mark.merge
+@pytest.mark.backend
+def test_the_run_draws_the_paper_pages_from_its_own_calls(
+    output: Path, tmp_path: Path
+) -> None:
+    """`genomic.pdf`, `spatial.pdf`, `combined.pdf` in the run's `plots/`, the same bytes as
+    `combined_figure.write_pages` on the calls recorded from outside the run (T- #817).
+
+    dev_tree_1s_hard has no slide, so `run_slide` is `None` and the slide panel is left empty.
+    """
+    from port.extensions.combined_figure import PAGES, run_slide, write_pages
+
+    plots = next(output.glob("clone*")) / "plots"
+    config = output.parent / "config.yaml"
+    assert run_slide(config) is None
+    redrawn = write_pages(RECORDED[output], tmp_path, None)  # type: ignore[arg-type]
+
+    assert [p.name for p in redrawn] == [f"{n}.pdf" for n in PAGES]
+    for page in redrawn:
+        assert (plots / page.name).read_bytes() == page.read_bytes(), page.name

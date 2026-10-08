@@ -46,6 +46,7 @@ import contextlib
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from itertools import pairwise
+from pathlib import Path
 from typing import Any, NamedTuple
 
 import numpy as np
@@ -129,16 +130,17 @@ class Recorded:
 def recording() -> Iterator[Recorded]:
     """Keep the arguments of the run's plotting calls for the block.
 
-    Wraps `port.patch.plot_genomic.plot_clones_genomic` and
-    `port.patch.plotting.plot_clones_spatial` where the swap tables name them, so
-    the swaps `run_cnaster_port` installs are the wrappers, and `cnaster`'s
-    `plot_copy_number_profile`, which nothing swaps, where the script binds
-    it. Each wrapper calls through, so the run's figures are
+    Wraps `port.patch.plot_genomic.plot_clones_genomic`,
+    `port.patch.plotting.plot_clones_spatial` and
+    `port.patch.plot_copy_number_profile.plot_copy_number_profile` where the
+    swap tables name them, so the swaps `run_cnaster_port` installs are the
+    wrappers. Each wrapper calls through, so the run's figures are
     unchanged. Enter before the run: `port.pipeline.patched` resolves the
-    replacement when it installs it.
+    replacement when it installs it. The profile was wrapped where
+    `cnaster`'s script binds it, which left the swap unable to replace it,
+    and the run drew `cnaster`'s profile (T- #817).
     """
-    import cnaster.scripts.run_cnaster as script
-
+    import port.patch.plot_copy_number_profile as profile
     import port.patch.plot_genomic as genomic
     import port.patch.plotting as spatial
 
@@ -160,9 +162,20 @@ def recording() -> Iterator[Recorded]:
         setattr(module, name, wrapper)
 
     try:
-        wrap(genomic, "plot_clones_genomic", "genomic", lambda kw: "df_cnv" in kw)
+        # NB a call drawing into another page's axes (`figure=`, `ax=`) is a page's part, not the run's
+        wrap(
+            genomic,
+            "plot_clones_genomic",
+            "genomic",
+            lambda kw: "df_cnv" in kw and kw.get("figure") is None,
+        )
         wrap(spatial, "plot_clones_spatial", "spatial")
-        wrap(script, "plot_copy_number_profile", "profile")
+        wrap(
+            profile,
+            "plot_copy_number_profile",
+            "profile",
+            lambda kw: kw.get("ax") is None,
+        )
         yield recorded
     finally:
         for module, name, original in reversed(undo):
@@ -1220,8 +1233,10 @@ def he_segmentation_figure(
         class_ax, coords, classes, None, palette=HE_PALETTE, legend=False
     )
     _, names, colours = spot_colours(classes, palette=HE_PALETTE)
-    image, extent = slide_image(he_frame)
-    slide_ax.imshow(image, extent=extent, interpolation="none")
+    # NB a run with no slide (`figure_record.he_frame` is `None`) keeps the panel, empty
+    if he_frame is not None:
+        image, extent = slide_image(he_frame)
+        slide_ax.imshow(image, extent=extent, interpolation="none")
     # NB the section (b) shows, so a boundary sits at the same place in both.
     limits = class_ax.get_xlim(), class_ax.get_ylim()
     format_panel(slide_ax, "H&E", *limits, fontsize=FONT_SIZE)
@@ -1278,8 +1293,10 @@ def _draw_spatial(
     names = [clone_symbol(cast_clone_label(f"clone {c.split()[-1]}")) for c in order]
     _clone_key(spatial_ax, names, [keyed[c] for c in order])
 
-    image, extent = slide_image(he_frame)
-    slide_ax.imshow(image, extent=extent, interpolation="none")
+    # NB a run with no slide (`figure_record.he_frame` is `None`) keeps the panel, empty
+    if he_frame is not None:
+        image, extent = slide_image(he_frame)
+        slide_ax.imshow(image, extent=extent, interpolation="none")
     # NB the section (b) shows, so a boundary sits at the same place in both.
     slide_ax.set_xlim(spatial_ax.get_xlim())
     slide_ax.set_ylim(spatial_ax.get_ylim())
@@ -1287,6 +1304,8 @@ def _draw_spatial(
 
     for ax in (slide_ax, spatial_ax):
         _extents(ax, np.asarray(coords))
+    if he_frame is None:
+        slide_ax.set_axis_off()
     # NB (b) shares (a)'s rows, so its row labels are (a)'s; its ticks stay.
     spatial_ax.tick_params(axis="y", labelleft=False)
 
@@ -1534,3 +1553,65 @@ def plot_clones_genomic_he(
 
     set_font_size(figure, FONT_SIZE)
     return figure
+
+
+PAGES = ("genomic", "spatial", "combined")
+"""The pages `run_cnaster_port --sal` draws after `cnaster`'s own, as `<name>.pdf` in its `plots/` (T- #817)."""
+
+
+def run_slide(config: Path) -> Any:
+    """The slide the run read: `preprocessing.spaceranger_dir`'s, as `run_cnaster` reads it; `None` without one.
+
+    `run_cnaster` reads it only where the slice's positions carry an H&E
+    label (`port.patch.io`), from `spatial/tissue_hires_image.png` and its
+    scale factors; a run without them refines no clone by a slide, and its
+    pages show none.
+    """
+    import yaml
+
+    from port.patch.he import he_image
+
+    stated = (yaml.safe_load(Path(config).read_text()) or {}).get("preprocessing") or {}
+    directory = stated.get("spaceranger_dir")
+    if (
+        directory in (None, "None")
+        or not (Path(str(directory)) / "spatial" / "tissue_hires_image.png").is_file()
+    ):
+        return None
+    frame = he_image(str(directory), res="hires", pos=None)
+    return frame if {"red", "green", "blue"} <= set(frame.columns) else None
+
+
+def write_pages(
+    recorded: Recorded, plots: Path, he_frame: Any, *, png_copy: bool = False
+) -> list[Path]:
+    """`genomic.pdf`, `spatial.pdf` and `combined.pdf` into `plots`, from the run's own last plotting calls.
+
+    `recorded` is what `recording()` kept while the run drew `clones_genomic`,
+    `clones_spatial` and `copy_number_profile`; `he_frame` the slide the run
+    read (`run_slide`), its panel left empty without one. Written as
+    `FIGURE_SWAPS` writes, at each page's declared size: a page is drawn at
+    the text width and included at 1:1 (#309).
+    """
+    from port.patch.utils import write_fig
+    from port.pipeline import FIGURE_DPI
+
+    if recorded.genomic is None or recorded.spatial is None or recorded.profile is None:
+        msg = f"the run made {recorded.calls}; the pages need its clones_genomic, clones_spatial and profile calls"
+        raise ValueError(msg)
+    write: dict[str, Any] = {
+        "bbox_inches": None,
+        "dpi": FIGURE_DPI,
+        "group_rasters": True,
+        "png_copy": png_copy,
+    }
+    drawn = {"genomic": lambda: genomic_figure(recorded), "spatial": lambda: spatial_figure(recorded, he_frame),
+             "combined": lambda: combined_figure(recorded, he_frame)}  # fmt: skip
+    written = []
+    # NB written as drawn: the run has set seaborn's theme, which a page written under it would follow
+    with page_style():
+        for name in PAGES:
+            target = plots / f"{name}.pdf"
+            write_fig(str(target), drawn[name](), **write)
+            written.append(target)
+    return written
