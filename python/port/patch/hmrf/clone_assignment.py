@@ -303,7 +303,7 @@ def pipeline_clone_assignment(
 
     `label_solver` names the solver (`port.extensions.label_solver.SOLVERS`;
     `"icm"` is `cnaster`'s) and `floor_merge` replaces the ICM's floor with
-    :func:`port.patch.icm.floor.enforce_floor`. `run_cnaster_port` binds
+    :func:`port.patch.icm.floor.floor_clones`. `run_cnaster_port` binds
     both at install, `--sal` and `--floor-merge` (#517), and `log_space`
     with `port.pipeline.LOG_SPACE_SWAPS`: the field's kernels are then that
     table's (#560, #561).
@@ -322,7 +322,7 @@ def pipeline_clone_assignment(
     from port.patch.hmrf.adjacency import adjacency_coo
     from port.patch.hmrf.refinement import MASK_PENALTY, compact, mask_for
     from port.patch.hmrf.tabulated_field import field_kernel, spot_clone_field
-    from port.patch.icm.floor import configured_floor, enforce_floor
+    from port.patch.icm.floor import configured_floor, floor_clones
     from port.patch.icm.interface import CsrGraph, fold_unary, icm_sweep
 
     reason = _delegates(single_tumor_prop)
@@ -515,7 +515,7 @@ def pipeline_clone_assignment(
         result = sweep(folded, graph, new_assignment, spatial_weight, **knobs)
 
         if floor_merge:
-            emptied = enforce_floor(folded, new_assignment, configured_floor())
+            emptied = floor_clones(folded, new_assignment, configured_floor())
 
             if emptied:
                 logger.info(
@@ -523,7 +523,7 @@ def pipeline_clone_assignment(
                     "smallest first (#348)."
                 )
                 result = sweep(folded, graph, new_assignment, spatial_weight, **knobs)
-                enforce_floor(folded, new_assignment, configured_floor())
+                floor_clones(folded, new_assignment, configured_floor())
 
         niter, new_cost = result.niter, result.cost
 

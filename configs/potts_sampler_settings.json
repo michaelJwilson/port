@@ -1,11 +1,10 @@
 {
-  "_provenance": "run_calibrate --potts (before #749 WP1: run_study --potts-stream --tune) on sim/manifests/dev_tree_1s_hard.toml realizations 0-2, 5 random starts per setting, grid t_start 0.25-32 x 250-4,000 sweeps, t_end 0.05; the cheapest setting within 0.1 nats of the best median gap to TRW-S's bound (#556)",
+  "_provenance": "run_calibrate --potts on dev_tree_1s_hard.toml realizations 0-4, states run: sal's tune_schedule on their union, each 2 times, 108 schedules (shape x t_start x warm, t_end 0.05) at 4000 sweeps, raced, common random numbers, ranked by the energy after 1000 ICM sweeps (#556, #723, T- #777)",
   "sal:anneal": {
-    "t_start": 8.0,
-    "sweeps": 4000,
+    "shape": "exponential",
+    "t_start": 1.0,
     "warm": 0.1,
-    "median_gap": 0.34,
-    "default_median_gap": 1.261
+    "sweeps": 4000
   },
   "sal:swendsen-wang": {
     "t_start": 1.0,
@@ -57,10 +56,15 @@
     "default_median_gap": 168.251
   },
   "sal:swendsen-wang-heat-bath": {
+    "shape": "linear",
     "t_start": 1.0,
-    "sweeps": 4000,
     "warm": 0.25,
-    "median_gap": 66.143,
-    "default_median_gap": 120.548
+    "sweeps": 4000
+  },
+  "sal:wolff-heat-bath": {
+    "shape": "logarithmic",
+    "t_start": 0.25,
+    "warm": 0.25,
+    "sweeps": 4000
   }
 }
