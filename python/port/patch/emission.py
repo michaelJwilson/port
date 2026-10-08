@@ -42,11 +42,25 @@ The M-step's partials are this density's: :func:`nb_partials` and
 
 from __future__ import annotations
 
+import math
+from typing import Any
+
 import numpy as np
 from numba import njit
 from numpy.typing import ArrayLike
+from sal.emissions import rising
 from sal.emissions.rising import digamma_rising, scaled_rising_array
 from scipy.special import gammaln
+
+# NB `sal`'s compiled `S` and the `gammaln` pointer it reads, bound as globals
+#    at compile time: `_kernels()` sets `rising._gammaln` to `scipy`'s.
+_sal_scaled, _ = rising._kernels()
+_gammaln = rising._gammaln
+_SERIES_FROM = rising._SERIES_FROM
+_SMALL_T = rising._SMALL_T
+_PLAIN_ERROR = rising._PLAIN_ERROR
+_LOG_PROMISE = rising._LOG_PROMISE
+_TERM_FLOOR = rising._TERM_FLOOR
 
 DISPERSION_FLOOR = 1e-10
 """`cnaster`'s floor on `alpha` in `_nb_logpmf_1d` and on `a`, `b` in
@@ -71,6 +85,7 @@ __all__ = [
     "nb_partials",
     "nb_size",
     "nb_table",
+    "rising_digamma",
     "scaled_rising",
 ]
 
@@ -84,22 +99,121 @@ def nb_size(dispersion: ArrayLike) -> np.ndarray:
         )
 
 
-def scaled_rising(x: ArrayLike, m: ArrayLike) -> np.ndarray:
-    """`S(x, m)`, broadcast, on the distinct values of a one-dimensional `m` and gathered.
+@njit(nogil=True, error_model="numpy")
+def _scaled_table(shapes, counts, out):  # type: ignore[no-untyped-def]
+    """`out[i, j] = S(shapes[i], counts[j])`, `sal`'s `scaled_rising_array` bit for bit.
 
-    `x` constant along `m`'s axis -- a scalar, or `(..., 1)` -- makes a
-    value a function of its count alone, so the gather is the elementwise
-    evaluation, bitwise (#702). Anything else is evaluated as given.
+    `sal`'s kernel takes `gammaln(x)` and `log x` per element; along a row
+    they are one value, so they are taken once. Its plain route is repeated
+    here, operation for operation; an entry it would hand to the series, and
+    an infinite shape, is scored by `sal`'s kernel itself.
+    """
+    rows, columns = shapes.size, counts.size
+    pending_shape = np.empty(rows * columns)
+    pending_count = np.empty(rows * columns)
+    pending_at = np.empty(rows * columns, dtype=np.int64)
+    pending = 0
+    for i in range(rows):
+        x = shapes[i]
+        finite = x < np.inf
+        base = _gammaln(x) if finite else 0.0
+        log_x = math.log(x) if finite else 0.0
+        for j in range(columns):
+            m = counts[j]
+            if m == 0.0:
+                out[i, j] = 0.0
+                continue
+            if finite:
+                rise = _gammaln(x + m)
+                plain = rise - base
+                bound = _PLAIN_ERROR * (max(abs(rise), 1.0) + max(abs(base), 1.0))
+                shift = m * log_x
+                value = plain - shift
+                if bound + _PLAIN_ERROR * abs(shift) <= _LOG_PROMISE * max(
+                    abs(value), 1.0
+                ):
+                    out[i, j] = value
+                    continue
+            pending_shape[pending] = x
+            pending_count[pending] = m
+            pending_at[pending] = i * columns + j
+            pending += 1
+    if pending:
+        series = np.empty(pending)
+        _sal_scaled(
+            pending_shape[:pending],
+            pending_count[:pending],
+            series,
+            _SERIES_FROM,
+            _SMALL_T,
+            _PLAIN_ERROR,
+            _LOG_PROMISE,
+            _TERM_FLOOR,
+            True,
+        )
+        flat = out.reshape(-1)
+        for k in range(pending):
+            flat[pending_at[k]] = series[k]
+
+
+def _scaled_rising_table(shapes: np.ndarray, counts: np.ndarray) -> np.ndarray:
+    """`S` at every `(shape, count)` pair, `(shapes.size, counts.size)` (:func:`_scaled_table`)."""
+    out = np.empty((shapes.size, counts.size))
+    _scaled_table(
+        np.ascontiguousarray(shapes, dtype=np.float64),
+        np.ascontiguousarray(counts, dtype=np.float64),
+        out,
+    )
+    return out
+
+
+def _on_distinct(
+    kernel: Any, x: ArrayLike, m: ArrayLike, table: Any = None
+) -> np.ndarray:
+    """`kernel(x, m)`, broadcast, evaluated once per distinct `(x, m)` pair and gathered (#702, T- #776).
+
+    Where `m` varies along its last axis alone and `x` is constant along it
+    -- a scalar, or `(..., 1)`, one value per state -- a value is a function
+    of its shape and count alone. The kernel is then run on the distinct
+    shapes against the distinct counts and gathered: elementwise, so bitwise.
+    States that share a shape, as a dispersion shared across states makes
+    them, are one row. Anything else, or nothing to share, is evaluated as
+    given.
     """
     x_ = np.asarray(x, dtype=np.float64)
     m_ = np.asarray(m, dtype=np.float64)
-    if m_.ndim != 1 or (x_.ndim > 0 and x_.shape[-1] != 1):
-        return scaled_rising_array(x_, m_)
-    distinct, inverse = np.unique(m_, return_inverse=True)
-    if distinct.size == m_.size:
-        return scaled_rising_array(x_, m_)
-    gathered: np.ndarray = scaled_rising_array(x_, distinct)[..., inverse]
-    return gathered
+    if (
+        m_.ndim == 0
+        or (x_.ndim > 0 and x_.shape[-1] != 1)
+        or any(size != 1 for size in m_.shape[:-1])
+    ):
+        out: np.ndarray = kernel(x_, m_)
+        return out
+    shapes, counts = x_.reshape(-1), m_.reshape(-1)
+    distinct_shapes, by_shape = np.unique(shapes, return_inverse=True)
+    distinct_counts, by_count = np.unique(counts, return_inverse=True)
+    if table is None and (
+        distinct_shapes.size * distinct_counts.size >= shapes.size * counts.size
+    ):
+        out = kernel(x_, m_)
+        return out
+    values = (
+        kernel(distinct_shapes[:, None], distinct_counts[None, :])
+        if table is None
+        else table(distinct_shapes, distinct_counts)
+    )
+    gathered: np.ndarray = values[by_shape[:, None], by_count[None, :]]
+    return gathered.reshape(np.broadcast_shapes(x_.shape, m_.shape))
+
+
+def scaled_rising(x: ArrayLike, m: ArrayLike) -> np.ndarray:
+    """`S(x, m)`, broadcast: `sal`'s `scaled_rising_array` on the distinct shapes and counts (:func:`_on_distinct`)."""
+    return _on_distinct(scaled_rising_array, x, m, _scaled_rising_table)
+
+
+def rising_digamma(x: ArrayLike, m: ArrayLike) -> np.ndarray:
+    """`psi(x + m) - psi(x)`, broadcast: `sal`'s `digamma_rising` on the distinct shapes and counts (:func:`_on_distinct`)."""
+    return _on_distinct(digamma_rising, x, m)
 
 
 def log_factorial(extent: int) -> np.ndarray:
@@ -123,14 +237,20 @@ def nb_log_pmf_size(y: ArrayLike, r: ArrayLike, rate: ArrayLike) -> np.ndarray:
     r_ = np.asarray(r, dtype=np.float64)
     rate_ = np.asarray(rate, dtype=np.float64)
     dead = rate_ <= 0.0
+    any_dead = bool(dead.any())
     with np.errstate(divide="ignore", invalid="ignore"):
-        safe = np.where(dead, 1.0, rate_)
+        safe = np.where(dead, 1.0, rate_) if any_dead else rate_
         q = safe / r_
-        decay = np.where(q == 0.0, safe, r_ * np.log1p(q))
-        rated = np.where(y_ == 0.0, 0.0, y_ * np.log(safe / (1.0 + q)))
+        decay = r_ * np.log1p(q)
+        poisson = q == 0.0
+        if poisson.any():
+            decay = np.where(poisson, safe, decay)
+        # NB `y log(...)` at `y = 0` is a signed zero where `sal` writes 0: a
+        #    sum it enters is unchanged.
+        rated = y_ * np.log(safe / (1.0 + q))
     table = scaled_rising(r_, y_) - gammaln(y_ + 1.0)
     out = (table + rated) - decay
-    return np.where(dead, 0.0, out)
+    return np.where(dead, 0.0, out) if any_dead else out
 
 
 def _shapes(p: np.ndarray, tau: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
@@ -170,25 +290,34 @@ def bb_log_pmf(z: ArrayLike, n: ArrayLike, p: ArrayLike, taus: ArrayLike) -> np.
         np.asarray(p, dtype=np.float64), np.asarray(taus, dtype=np.float64)
     )
     valid = (z_ >= 0.0) & (n_ >= 0.0) & (z_ <= n_)
-    zz, nn = np.where(valid, z_, 0.0), np.where(valid, n_, 0.0)
+    all_valid = bool(valid.all())
+    zz, nn = (
+        (z_, n_) if all_valid else (np.where(valid, z_, 0.0), np.where(valid, n_, 0.0))
+    )
     a, b = _shapes(p_, tau_)
     log_p, log_q = _log_rates(p_, tau_, a, b)
+    failures = nn - zz
     with np.errstate(invalid="ignore"):
-        hits = np.where(zz == 0.0, 0.0, zz * log_p)
-        misses = np.where(nn - zz == 0.0, 0.0, (nn - zz) * log_q)
-    choose = (gammaln(nn + 1.0) - gammaln(zz + 1.0)) - gammaln(nn - zz + 1.0)
+        if np.isfinite(log_p).all() and np.isfinite(log_q).all():
+            # NB a count of 0 times a finite log rate is a signed zero, where
+            #    `sal` writes 0: a sum it enters is unchanged.
+            hits, misses = zz * log_p, failures * log_q
+        else:
+            hits = np.where(zz == 0.0, 0.0, zz * log_p)
+            misses = np.where(failures == 0.0, 0.0, failures * log_q)
+    choose = (gammaln(nn + 1.0) - gammaln(zz + 1.0)) - gammaln(failures + 1.0)
     binomial = (choose + hits) + misses
     out = (
-        (binomial + scaled_rising(a, zz)) + scaled_rising(b, nn - zz)
+        (binomial + scaled_rising(a, zz)) + scaled_rising(b, failures)
     ) - scaled_rising(a + b, nn)
-    return np.where(valid, out, 0.0)
+    return out if all_valid else np.where(valid, out, 0.0)
 
 
 def nb_table(alphas: ArrayLike, extent: int) -> tuple[np.ndarray, np.ndarray]:
     """`(T, r)`: `T[s, y] = S(r_s, y) - lgamma(y + 1)` for `y < extent`, `(K, extent)`, and each state's `r`."""
     r = nb_size(np.asarray(alphas, dtype=np.float64).reshape(-1))
     y = np.arange(extent, dtype=np.float64)
-    table = scaled_rising_array(r[:, None], y[None, :]) - gammaln(y + 1.0)[None, :]
+    table = scaled_rising(r[:, None], y) - gammaln(y + 1.0)[None, :]
     return np.ascontiguousarray(table), r
 
 
@@ -202,10 +331,10 @@ class BetaBinomialTables:
         p_ = np.asarray(p, dtype=np.float64).reshape(-1)
         tau_ = np.asarray(taus, dtype=np.float64).reshape(-1)
         a, b = _shapes(p_, tau_)
-        j = np.arange(extent, dtype=np.float64)[None, :]
-        self.success = np.ascontiguousarray(scaled_rising_array(a[:, None], j))
-        self.failure = np.ascontiguousarray(scaled_rising_array(b[:, None], j))
-        self.trial = np.ascontiguousarray(scaled_rising_array((a + b)[:, None], j))
+        j = np.arange(extent, dtype=np.float64)
+        self.success = np.ascontiguousarray(scaled_rising(a[:, None], j))
+        self.failure = np.ascontiguousarray(scaled_rising(b[:, None], j))
+        self.trial = np.ascontiguousarray(scaled_rising((a + b)[:, None], j))
         self.log_p, self.log_q = _log_rates(p_, tau_, a, b)
         self.log_factorial = log_factorial(extent)
 
@@ -265,7 +394,7 @@ def nb_partials(
         d_eta = np.where(live, obs - pull, 0.0)
         through_size = np.where(
             alpha > DISPERSION_FLOOR,
-            -size * (digamma_rising(size, obs) - np.log1p(scaled)),
+            -size * (rising_digamma(size, obs) - np.log1p(scaled)),
             0.0,
         )
         d_alpha = np.where(
@@ -292,9 +421,9 @@ def bb_partials(
     valid = (obs >= 0) & (total >= 0) & (obs <= total)
     k = np.where(valid, obs, 0.0)
     n = np.where(valid, total, 0.0)
-    joint = digamma_rising(a + b, n)
-    d_a = digamma_rising(a, k) - joint
-    d_b = digamma_rising(b, n - k) - joint
+    joint = rising_digamma(a + b, n)
+    d_a = rising_digamma(a, k) - joint
+    d_b = rising_digamma(b, n - k) - joint
 
     d_a = np.where(valid & (shape_a > DISPERSION_FLOOR), d_a, 0.0)
     d_b = np.where(valid & (shape_b > DISPERSION_FLOOR), d_b, 0.0)

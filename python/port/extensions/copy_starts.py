@@ -237,20 +237,22 @@ def channel_log_densities(
     total, b = observations[:, 0], observations[:, 1]
     exposure, trials = covariate[:, 0], covariate[:, 1]
 
-    def columns(state: Any, *arrays: np.ndarray) -> list[np.ndarray]:
-        return [a[:, None] if state is None else a for a in arrays]
-
+    # NB every state is scored state-major, `(states, rows)`, and returned
+    #    transposed: the counts then run along the last axis, so each rising
+    #    factorial is taken once per distinct count (`emission.scaled_rising`).
     def depth(rate: np.ndarray, size: float, state: Any = None) -> np.ndarray:
-        n, e = columns(state, total, exposure)
-        mean = (rate if state is None else rate[state]) * e
-        return nb_log_pmf_size(n, size, mean)
+        if state is not None:
+            return nb_log_pmf_size(total, size, rate[state] * exposure)
+        mean = np.asarray(rate, dtype=np.float64)[:, None] * exposure
+        return nb_log_pmf_size(total, size, mean).T
 
     def allele(
         share: np.ndarray, concentration: float, state: Any = None
     ) -> np.ndarray:
-        k, n = columns(state, b, trials)
-        p = share if state is None else share[state]
-        return bb_log_pmf(k, n, p, concentration)
+        if state is not None:
+            return bb_log_pmf(b, trials, share[state], concentration)
+        p = np.asarray(share, dtype=np.float64)[:, None]
+        return bb_log_pmf(b, trials, p, concentration).T
 
     return depth, allele
 

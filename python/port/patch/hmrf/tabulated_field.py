@@ -43,7 +43,7 @@ Counts that are not non-negative integers cannot index a table, and
 from __future__ import annotations
 
 from functools import partial
-from math import lgamma, log
+from math import lgamma, log, log1p
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -53,7 +53,6 @@ from port.patch.emission import (
     DISPERSION_FLOOR,
     bb_complete,
     bb_tables,
-    nb_complete,
     nb_table,
 )
 from port.patch.hmrf.fused_field import fused_spot_clone_field
@@ -168,11 +167,13 @@ def _tabulated_kernel(
     #    lgamma(r)) - lgamma(k + 1)`.
     nb_coefficient = np.empty((n_states, nb_extent))
     sizes = np.empty(n_states)
+    inverse_sizes = np.zeros(n_states)
 
     for s in prange(n_states):
         if log_space:
             # NB `port.patch.emission.nb_table`, built before the pass.
             sizes[s] = sizes_log_space[s]
+            inverse_sizes[s] = 1.0 / sizes_log_space[s]
             for k in range(nb_extent):
                 nb_coefficient[s, k] = counted[s, k]
             continue
@@ -240,7 +241,14 @@ def _tabulated_kernel(
                 if log_space:
                     # NB `port.patch.emission.nb_complete`: 0 at a rate <= 0.
                     k = counts_nb[o, spot]
-                    rdr = nb_complete(nb_coefficient[state, int(k)], k, lambda_i, r)
+                    # NB `nb_complete`'s order with `q = lambda / r` taken as
+                    #    `lambda * (1 / r)`, `1 / r` once per state: one
+                    #    division a score where it takes two (T- #776).
+                    if lambda_i > 0.0:
+                        q = lambda_i * inverse_sizes[state]
+                        decay = lambda_i if q == 0.0 else r * log1p(q)
+                        rated = 0.0 if k == 0.0 else k * log(lambda_i / (1.0 + q))
+                        rdr = (nb_coefficient[state, int(k)] + rated) - decay
                 elif lambda_i > 0.0:
                     p = 1.0 / (1.0 + alpha * lambda_i)
                     k = counts_nb[o, spot]
@@ -260,7 +268,10 @@ def _tabulated_kernel(
                 k = counts_bb[o, spot]
                 n = total_bb_RD[o, spot]
 
-                if n >= 0.0 and k >= 0.0 and k <= n:
+                if log_space and n == 0.0:
+                    # NB no trials: every term of the score is 0.
+                    baf = 0.0
+                elif n >= 0.0 and k >= 0.0 and k <= n:
                     kk = int(k)
                     nn = int(n)
                     binomial = (
