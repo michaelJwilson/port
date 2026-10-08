@@ -61,6 +61,53 @@ _SMALL_T = rising._SMALL_T
 _PLAIN_ERROR = rising._PLAIN_ERROR
 _LOG_PROMISE = rising._LOG_PROMISE
 _TERM_FLOOR = rising._TERM_FLOOR
+_LGAMMA_SERIES = rising._LGAMMA_SERIES
+_DIGAMMA_SERIES = rising._DIGAMMA_SERIES
+
+
+@njit(nogil=True, error_model="numpy")
+def _scaled_series(xi: float, mi: float) -> float:
+    """`S(xi, mi)` by `sal`'s series route of `_log_rising_kernel` at `scaled=True`, operation for operation.
+
+    The route `sal` takes wherever its plain difference misses the 1e-14
+    promise, and at an infinite shape, where it is 0. Held to `sal`'s kernel
+    bitwise (`tests/test_emission.py`).
+    """
+    y = xi
+    recurrence = 0.0
+    while y < _SERIES_FROM:
+        recurrence += -math.log1p(mi / y)
+        y += 1.0
+    t = mi / y
+    step = math.log1p(t)
+    if abs(t) < _SMALL_T:
+        h = t * (-0.5 + t * (1.0 / 3.0 + t * (-0.25 + t * 0.2)))
+    else:
+        h = (math.log1p(t) - t) / t
+    inverse = 1.0 / y
+    gap = -t / (y + mi)
+    upper = inverse + gap
+    upper_square = upper * upper
+    inverse_square = inverse * inverse
+    both = upper + inverse
+    power = inverse
+    p = 1.0
+    total = _LGAMMA_SERIES[0] * p
+    terms = 1
+    while (
+        terms < 8
+        and abs(_DIGAMMA_SERIES[terms - 1]) * 2.0 * terms * inverse ** (2 * terms - 1)
+        >= _TERM_FLOOR
+    ):
+        terms += 1
+    for k in range(1, terms):
+        p = p * upper_square + power * both
+        total += _LGAMMA_SERIES[k] * p
+        power *= inverse_square
+    series = mi * h + (mi - 0.5) * step + total * gap
+    moved = mi * math.log1p((y - xi) / xi) if y != xi else 0.0
+    return (series + moved) + recurrence
+
 
 DISPERSION_FLOOR = 1e-10
 """`cnaster`'s floor on `alpha` in `_nb_logpmf_1d` and on `a`, `b` in
@@ -105,20 +152,15 @@ def _scaled_table(shapes, counts, out):  # type: ignore[no-untyped-def]
 
     `sal`'s kernel takes `gammaln(x)` and `log x` per element; along a row
     they are one value, so they are taken once. Its plain route is repeated
-    here, operation for operation; an entry it would hand to the series, and
-    an infinite shape, is scored by `sal`'s kernel itself.
+    here, operation for operation, and an entry it would hand to the series
+    is :func:`_scaled_series`.
     """
-    rows, columns = shapes.size, counts.size
-    pending_shape = np.empty(rows * columns)
-    pending_count = np.empty(rows * columns)
-    pending_at = np.empty(rows * columns, dtype=np.int64)
-    pending = 0
-    for i in range(rows):
+    for i in range(shapes.size):
         x = shapes[i]
         finite = x < np.inf
         base = _gammaln(x) if finite else 0.0
         log_x = math.log(x) if finite else 0.0
-        for j in range(columns):
+        for j in range(counts.size):
             m = counts[j]
             if m == 0.0:
                 out[i, j] = 0.0
@@ -134,26 +176,7 @@ def _scaled_table(shapes, counts, out):  # type: ignore[no-untyped-def]
                 ):
                     out[i, j] = value
                     continue
-            pending_shape[pending] = x
-            pending_count[pending] = m
-            pending_at[pending] = i * columns + j
-            pending += 1
-    if pending:
-        series = np.empty(pending)
-        _sal_scaled(
-            pending_shape[:pending],
-            pending_count[:pending],
-            series,
-            _SERIES_FROM,
-            _SMALL_T,
-            _PLAIN_ERROR,
-            _LOG_PROMISE,
-            _TERM_FLOOR,
-            True,
-        )
-        flat = out.reshape(-1)
-        for k in range(pending):
-            flat[pending_at[k]] = series[k]
+            out[i, j] = _scaled_series(x, m)
 
 
 def _scaled_rising_table(shapes: np.ndarray, counts: np.ndarray) -> np.ndarray:

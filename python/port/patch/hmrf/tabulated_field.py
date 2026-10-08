@@ -47,7 +47,7 @@ from math import lgamma, log, log1p
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
-from numba import njit
+from numba import get_num_threads, njit
 
 from port.patch.emission import (
     DISPERSION_FLOOR,
@@ -220,87 +220,118 @@ def _tabulated_kernel(
 
     field = out
 
-    for c in prange(n_clones):
-        accumulated_rdr = np.zeros(n_spots)
-        accumulated_baf = np.zeros(n_spots)
+    # NB clones decoded to one state in a bin score the same terms at every
+    #    spot, so each distinct state of a bin is scored once and added to
+    #    every clone that holds it (T- #776). Each accumulator still adds
+    #    over the bins in order, so the field is bitwise the per-clone
+    #    loop's. Threads take blocks of spots, each its own rows.
+    accumulated_rdr = np.zeros((n_spots, n_clones))
+    accumulated_baf = np.zeros((n_spots, n_clones))
+    n_blocks = max(1, min(n_spots, get_num_threads()))
+
+    for block in prange(n_blocks):
+        lo = block * n_spots // n_blocks
+        hi = (block + 1) * n_spots // n_blocks
+
+        held = np.empty(n_clones, dtype=np.int64)
 
         for o in range(n_obs):
-            state = pred[o, c]
-            mu = np.exp(log_mu[state])
-            alpha = max(alphas[state], DISPERSION_FLOOR) if log_space else alphas[state]
-            r = sizes[state]
-            denom = denominator[state]
+            for c in range(n_clones):
+                state = pred[o, c]
+                seen = False
+                for earlier in range(c):
+                    if pred[o, earlier] == state:
+                        seen = True
+                        break
+                if seen:
+                    continue
+                n_held = 0
+                for holder in range(c, n_clones):
+                    if pred[o, holder] == state:
+                        held[n_held] = holder
+                        n_held += 1
 
-            for spot in range(n_spots):
-                # NB `_nb_logpmf_1d`: no baseline, or `p` rounded to 0 or 1,
-                #    scores 0; otherwise the coefficient, then `r log p`, then
-                #    `k log(1 - p)`, summed in that order.
-                rdr = 0.0
-                lambda_i = base_nb_mean[o, spot] * mu
+                mu = np.exp(log_mu[state])
+                alpha = (
+                    max(alphas[state], DISPERSION_FLOOR) if log_space else alphas[state]
+                )
+                r = sizes[state]
+                denom = denominator[state]
 
-                if log_space:
-                    # NB `port.patch.emission.nb_complete`: 0 at a rate <= 0.
-                    k = counts_nb[o, spot]
-                    # NB `nb_complete`'s order with `q = lambda / r` taken as
-                    #    `lambda * (1 / r)`, `1 / r` once per state: one
-                    #    division a score where it takes two (T- #776).
-                    if lambda_i > 0.0:
-                        q = lambda_i * inverse_sizes[state]
-                        decay = lambda_i if q == 0.0 else r * log1p(q)
-                        rated = 0.0 if k == 0.0 else k * log(lambda_i / (1.0 + q))
-                        rdr = (nb_coefficient[state, int(k)] + rated) - decay
-                elif lambda_i > 0.0:
-                    p = 1.0 / (1.0 + alpha * lambda_i)
-                    k = counts_nb[o, spot]
+                for spot in range(lo, hi):
+                    # NB `_nb_logpmf_1d`: no baseline, or `p` rounded to 0 or
+                    #    1, scores 0; otherwise the coefficient, then `r log p`,
+                    #    then `k log(1 - p)`, summed in that order.
+                    rdr = 0.0
+                    lambda_i = base_nb_mean[o, spot] * mu
 
-                    if 0.0 < p < 1.0 and k >= 0.0:
-                        rdr = (
-                            nb_coefficient[state, int(k)]
-                            + r * log(p)
-                            + k * log(1.0 - p)
-                        )
-
-                accumulated_rdr[spot] += rdr
-
-                # NB `betabinom_logpmf_numba`: `(binomial + numerator) -
-                #    denominator`, each as upstream groups it.
-                baf = 0.0
-                k = counts_bb[o, spot]
-                n = total_bb_RD[o, spot]
-
-                if log_space and n == 0.0:
-                    # NB no trials: every term of the score is 0.
-                    baf = 0.0
-                elif n >= 0.0 and k >= 0.0 and k <= n:
-                    kk = int(k)
-                    nn = int(n)
-                    binomial = (
-                        log_factorial[nn] - log_factorial[kk] - log_factorial[nn - kk]
-                    )
                     if log_space:
-                        # NB `port.patch.emission.bb_complete`'s order.
-                        baf = bb_complete(
-                            binomial,
-                            k,
-                            n,
-                            rates[0, state],
-                            rates[1, state],
-                            first[state, kk],
-                            second[state, nn - kk],
-                            joint[state, nn],
-                        )
-                    else:
-                        numerator = (
-                            first[state, kk] + second[state, nn - kk] - joint[state, nn]
-                        )
-                        baf = binomial + numerator - denom
+                        # NB `nb_complete`'s order with `q = lambda / r` taken
+                        #    as `lambda * (1 / r)`, `1 / r` once per state: one
+                        #    division a score where it takes two (T- #776).
+                        k = counts_nb[o, spot]
+                        if lambda_i > 0.0:
+                            q = lambda_i * inverse_sizes[state]
+                            decay = lambda_i if q == 0.0 else r * log1p(q)
+                            rated = 0.0 if k == 0.0 else k * log(lambda_i / (1.0 + q))
+                            rdr = (nb_coefficient[state, int(k)] + rated) - decay
+                    elif lambda_i > 0.0:
+                        p = 1.0 / (1.0 + alpha * lambda_i)
+                        k = counts_nb[o, spot]
 
-                accumulated_baf[spot] += baf
+                        if 0.0 < p < 1.0 and k >= 0.0:
+                            rdr = (
+                                nb_coefficient[state, int(k)]
+                                + r * log(p)
+                                + k * log(1.0 - p)
+                            )
 
-        for spot in range(n_spots):
+                    # NB `betabinom_logpmf_numba`: `(binomial + numerator) -
+                    #    denominator`, each as upstream groups it.
+                    baf = 0.0
+                    k = counts_bb[o, spot]
+                    n = total_bb_RD[o, spot]
+
+                    if log_space and n == 0.0:
+                        # NB no trials: every term of the score is 0.
+                        baf = 0.0
+                    elif n >= 0.0 and k >= 0.0 and k <= n:
+                        kk = int(k)
+                        nn = int(n)
+                        binomial = (
+                            log_factorial[nn]
+                            - log_factorial[kk]
+                            - log_factorial[nn - kk]
+                        )
+                        if log_space:
+                            # NB `port.patch.emission.bb_complete`'s order.
+                            baf = bb_complete(
+                                binomial,
+                                k,
+                                n,
+                                rates[0, state],
+                                rates[1, state],
+                                first[state, kk],
+                                second[state, nn - kk],
+                                joint[state, nn],
+                            )
+                        else:
+                            numerator = (
+                                first[state, kk]
+                                + second[state, nn - kk]
+                                - joint[state, nn]
+                            )
+                            baf = binomial + numerator - denom
+
+                    for h in range(n_held):
+                        accumulated_rdr[spot, held[h]] += rdr
+                        accumulated_baf[spot, held[h]] += baf
+
+    for spot in range(n_spots):
+        for c in range(n_clones):
             field[spot, c] = (
-                rel_valid_emision_weight[spot] * accumulated_rdr[spot]
-                + accumulated_baf[spot]
+                rel_valid_emision_weight[spot] * accumulated_rdr[spot, c]
+                + accumulated_baf[spot, c]
             )
 
     return field
