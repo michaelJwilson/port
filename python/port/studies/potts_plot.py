@@ -57,14 +57,13 @@ TABLE = (
         ("sal:anneal", "Single-site heat bath, annealed"),
         ("sal:swendsen-wang-heat-bath", "Every bonded cluster relabelled by its field's heat bath, annealed"),
         ("sal:wolff-heat-bath", "One grown cluster relabelled by its field's heat bath, annealed"),
-        ("sal:tempering", f"{tt('glauber')} replicas on a temperature ladder, swapped"),
         ("sal:max-product", "Loopy max-product belief propagation"),
         ("sal:trws", "Tree-reweighted message passing: its decode"),
     )),
 )  # fmt: skip
 """The solvers drawn (T- #660). Set aside from the figure, still in `clone_label_arms` or `--only`:
-`alpha-rust`, `alpha-rust-icm`, `icm-numba`, cnaster's `icm`, the four field-weighted cluster moves
-and cluster tempering."""
+`alpha-rust`, `alpha-rust-icm`, `icm-numba`, cnaster's `icm`, the four field-weighted cluster moves,
+cluster tempering, and parallel tempering (deprecated from the studies for now, T- #807)."""
 NUMBER = {
     solver: k + 1 for k, solver in enumerate(s for _, rows in TABLE for s, _ in rows)
 }
@@ -75,7 +74,7 @@ KEY_NAMES = {
     "sal:alpha-expansion": "Alpha-expansion", "sal:alpha-beta-swap": "Alpha-beta-swap",
     "sal:icm": "ICM", "sal:field_argmax": "Field-argmax",
     "sal:anneal": "Glauber", "sal:swendsen-wang-heat-bath": "Swendsen-Wang", "sal:wolff-heat-bath": "Wolff",
-    "sal:tempering": "Parallel tempering", "sal:trws": "TRW-S",
+    "sal:trws": "TRW-S",
 }  # fmt: skip
 """The names `solver_combined`'s key prints, and the solvers it draws: `alpha-rust-fuse`,
 `icm-random` and `max-product` are not among them (deprecated from the figure, #716)."""

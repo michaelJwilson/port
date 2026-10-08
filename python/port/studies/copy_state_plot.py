@@ -46,12 +46,12 @@ TABLE = (
         ("emission++", "Seeds by the NB x BB Bregman divergence"),
     )),
     ("sal, samplers on the HMM (#634)", (
-        ("tempering-hmm", "Best point of sal's parallel tempering, 4 HMC replicas"),
         ("hmc-hmm", "Best draw of sal's HMC chain after dual-averaging warm-up"),
     )),
 )  # fmt: skip
 """The starts drawn (T- #660). Set aside from the figure, still in the registry: `cnaster-gmm`,
-`distinct`, `lattice-em`, `rdr-quantiles`, `data`, `quantile`, the emission++ variants and `anneal-hmm` (#716)."""
+`distinct`, `lattice-em`, `rdr-quantiles`, `data`, `quantile`, the emission++ variants, `anneal-hmm` (#716)
+and `tempering-hmm` (deprecated from the studies for now, T- #807)."""
 
 
 LABEL = {
@@ -70,7 +70,7 @@ SOURCE = {
 KEY_NAMES = {
     "calicost-gmm": "CalicoST-GMM", "lattice": "Lattice", "prior": "Prior", "kmeans++": r"$k$-means++",
     "emission++": "Emission++",
-    "tempering-hmm": "Parallel tempering", "hmc-hmm": "HMC",
+    "hmc-hmm": "HMC",
 }  # fmt: skip
 """The names `solver_combined`'s key prints (#716)."""
 
