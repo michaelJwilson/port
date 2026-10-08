@@ -195,8 +195,7 @@ def _on_distinct(
     if table is None and (
         distinct_shapes.size * distinct_counts.size >= shapes.size * counts.size
     ):
-        out = kernel(x_, m_)
-        return out
+        return np.asarray(kernel(x_, m_))
     values = (
         kernel(distinct_shapes[:, None], distinct_counts[None, :])
         if table is None
