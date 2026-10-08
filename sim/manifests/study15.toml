@@ -1,14 +1,14 @@
-# The studies' one draw (T- #807): the Potts stream, the copy-state stream and the population
-# study each read it. One seed is one member; `vary = "truth"` gives each realization after r0
+# The studies' draw at a 15 Mb CNA length median (T- #807): the Potts stream, the copy-state
+# stream and the population study read it, or `study10.toml`, the same at 10 Mb. One seed is one member; `vary = "truth"` gives each realization after r0
 # its own tree, clone sizes and layout, so a stream's held-out and evaluated problems differ in
 # truth, and a population member is r0 of its own seed.
 version = 3
 extends = "calicost_grch38.toml"
 
 [sample]
-name = "study"
+name = "study15"
 # NB `tests.sim_stages.realization_hash` of r0 as drawn here (`tests/test_sim_r0_hash.py`).
-r0_hash = "74439768"
+r0_hash = "7739e11e"
 seed = 0
 output = "../generated"
 # NB one per draw: `port.studies.population.draw_member` draws r0 of each seed, and a stream's
@@ -78,10 +78,11 @@ states = [
 ]
 
 [cna.length]
-# NB lognormal at a 20 Mb median, floored at 1 Mb (about one bin); 10% of events below half
-#    the median: port.sim.laws.lognormal_sigma(0.10, 0.5).
+# NB lognormal at a 15 Mb median, floored at 1 Mb (about one bin); 10% of events below half
+#    the median: port.sim.laws.lognormal_sigma(0.10, 0.5). At r0 the run's clone field misplaces
+#    22% of spots by argmax, against 19% at 20 Mb, 42% at 10 Mb and CalicoST hard's 45% (T- #807).
 law = "lognormal"
-median = 2e7
+median = 1.5e7
 sigma = 0.541
 minimum = 1e6
 

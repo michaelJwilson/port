@@ -90,7 +90,8 @@ def test_every_lognormal_manifest_states_the_derived_sigma() -> None:
         "dev_tree_1s_dense.toml",
         "dev_tree_1s_easy.toml",
         "dev_tree_1s_hard.toml",
-        "study.toml",
+        "study10.toml",
+        "study15.toml",
     ]
     for path in paths:
         length = tomllib.loads(path.read_text())["cna"]["length"]

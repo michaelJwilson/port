@@ -488,7 +488,7 @@ def test_a_manifest_extended_from_elsewhere_keeps_its_base_paths(
 def _sized(law: dict[str, Any]) -> DrawManifest:
     """`study` at its own 60 x 50, with `[layout.size]` replaced by `law`: three named clones,
     each placed or the draw refused, so the size law is all that varies (T- #807)."""
-    document = extended(SIM_MANIFESTS / "study.toml")
+    document = extended(SIM_MANIFESTS / "study15.toml")
     document["cna"]["n_clones"] = 3
     document["slice"] = [
         {"offset": [0.0, 0.0], "clones": ["clone_0", "clone_1", "clone_2"]}
@@ -556,7 +556,7 @@ def test_a_seed_draws_the_same_sizes_and_an_unknown_law_is_refused() -> None:
 
 @pytest.mark.analytic
 def test_a_clipped_clone_keeps_what_lands_on_the_array() -> None:
-    """`edge = "clip"` on `study.toml`'s sizes, 200 seeds x 3 clones (T- #807).
+    """`edge = "clip"` on `study15.toml`'s sizes, 200 seeds x 3 clones (T- #807).
 
     A clone is sized on the array continued past its edge, so it claims at most
     its target (5% over for the lattice's ties) and one that runs off keeps
@@ -694,7 +694,7 @@ def test_a_clone_count_law_draws_a_zero_truncated_poisson() -> None:
     """
     from port.sim.draw import read_manifest, resolved
 
-    manifest = read_manifest(SIM_MANIFESTS / "study.toml")
+    manifest = read_manifest(SIM_MANIFESTS / "study15.toml")
     rng = np.random.default_rng(807)
     counts = np.array([len(resolved(manifest, rng).tumour) for _ in range(4000)])
 
@@ -713,7 +713,7 @@ def test_a_clone_that_does_not_fit_ends_the_layout() -> None:
     with spots, and a later clone is never placed past an unplaced one (T- #807)."""
     from port.sim.draw import read_manifest, resolved
 
-    manifest = read_manifest(SIM_MANIFESTS / "study.toml")
+    manifest = read_manifest(SIM_MANIFESTS / "study15.toml")
     _, _, points = hex_array(60, 50)
     stopped = 0
     for seed in range(60):

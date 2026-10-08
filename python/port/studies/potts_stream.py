@@ -1,7 +1,7 @@
 """#556: Potts solvers from random labels on a stream of the run's clone-assignment problems, the plot redrawn per problem.
 
 `run_study --potts-stream MANIFEST OUT_DIR [--problems 25] [--starts 50] [--held-out 5] [--workers 4] [--states run]`
-`MANIFEST` is `sim/manifests/study.toml`, the studies' one draw (T- #807).
+`MANIFEST` is `sim/manifests/study15.toml`, or `study10.toml`, the studies' draws (T- #807).
 `run_calibrate --potts MANIFEST OUT_DIR --samplers SAMPLER ...` tunes the
 named samplers on the held-out realizations and merges them into `SETTINGS`
 (`tune`, `retune`); the stream itself never tunes (#749 WP1).

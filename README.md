@@ -512,8 +512,9 @@ new manifest.
 `dev_tree*` manifests draw lognormal lengths at `sigma = 0.541`,
 `port.sim.laws.lognormal_sigma(0.10, 0.5)`: 10% of events below half the
 median, against 29-35% under the exponential (#619;
-`run_study --cna-lengths` draws both laws). `study.toml` is the one draw the Potts stream, the copy-state stream and the
-population study read: CNA lengths lognormal at a 20 Mb median; every (A, B)
+`run_study --cna-lengths` draws both laws). `study15.toml` is the draw the Potts stream, the copy-state stream and the
+population study read, and `study10.toml` the same at 10 Mb (`study15_2s.toml` on two
+slices, for figures): CNA lengths lognormal at a 15 Mb median; every (A, B)
 up to a total of 6, uniform; a zero-truncated Poisson(3) count of clones
 (`[cna] n_clones` as a law), each sized lognormal at a 632-spot median and
 clipped at the array's edge (`[layout.size] edge = "clip"`), the layout ending at
