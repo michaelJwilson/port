@@ -49,12 +49,12 @@ def test_the_streams_share_one_draw_and_one_run_per_realization(
                 str(field) if keep else None,
             )  # fmt: skip
             assert field.is_file() == keep
-            found.append([{k: v for k, v in r.items() if k != "seconds"} for r in result["rows"]])
+            found.append(
+                [{k: v for k, v in r.items() if k != "seconds"} for r in result["rows"]]
+            )
         return found  # fmt: skip
 
-    alone = [
-        _arrays(p) for p in potts_stream.problems(MANIFEST, tmp_path / "potts", 2)
-    ]
+    alone = [_arrays(p) for p in potts_stream.problems(MANIFEST, tmp_path / "potts", 2)]
     assert [p["hash"] for p in alone] == ["9ec90dc2", "3e993c71"]
     copied = rows(tmp_path / "copy", keep=False)
 
@@ -62,7 +62,8 @@ def test_the_streams_share_one_draw_and_one_run_per_realization(
     assert rows(shared, keep=True) == copied
 
     def refused(*_: Any, **__: Any) -> Any:
-        raise AssertionError("the Potts stream drew or ran what the copy-state stream had")
+        msg = "the Potts stream drew or ran what the copy-state stream had"
+        raise AssertionError(msg)
 
     monkeypatch.setattr(d, "realize", refused)
     monkeypatch.setattr(at, "at_clone_assignment", refused)
@@ -74,6 +75,7 @@ def test_the_streams_share_one_draw_and_one_run_per_realization(
             np.testing.assert_array_equal(one[key], two[key], strict=True)
 
 
+@pytest.mark.merge
 @pytest.mark.patch
 def test_realize_draws_only_what_is_wanted(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -90,8 +92,11 @@ def test_realize_draws_only_what_is_wanted(
         manifest,
         tables=d.merged_tables(manifest.tables, {"sample": {"realizations": 3}}),
     )
-    every = {r.index: realization_hash(r.path) for r in d.realize(manifest, tmp_path / "every")}
-    alone = [(r.index, realization_hash(r.path)) for r in d.realize(manifest, tmp_path / "alone", wanted={2})]  # fmt: skip
+    every = {
+        r.index: realization_hash(Path(str(r.path)))
+        for r in d.realize(manifest, tmp_path / "every")
+    }
+    alone = [(r.index, realization_hash(Path(str(r.path)))) for r in d.realize(manifest, tmp_path / "alone", wanted={2})]  # fmt: skip
 
     assert alone == [(2, every[2])]
     assert sorted(p.name for p in (tmp_path / "alone").iterdir()) == ["r2"]
