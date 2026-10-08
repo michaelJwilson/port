@@ -167,7 +167,12 @@ class Problem(NamedTuple):
 def problems(
     manifest: Path, root: Path, n: int, first: int = 0, states: str = "run"
 ) -> Iterator[Problem]:
-    """Realizations `first`, ..., `first + n - 1` of `manifest`, each drawn and run to its field only when asked for."""
+    """Realizations `first`, ..., `first + n - 1` of `manifest`, each drawn and run to its field only when asked for.
+
+    A field already under `root/.stage` (`stage.field_path`), which
+    `copy_state_stream` writes from its own run, is read rather than rerun
+    (T- #814); one this stream runs is kept there.
+    """
     import shutil
 
     drawn = at.members(manifest, root / ".sim", n=n, first=first)
@@ -177,13 +182,18 @@ def problems(
         if member is None:
             return
         draw_seconds = time.perf_counter() - opened
-        scratch = root / f".run_r{member.realization}"
-        try:
-            found = at.at_clone_assignment(
-                member.sample, lambda f: f, states=states, root=scratch
-            )
-        finally:
-            shutil.rmtree(scratch, ignore_errors=True)
+        kept = at.field_path(root / ".stage", member, states=states)
+        if kept.is_file():
+            found = at.load_field(kept)
+        else:
+            scratch = root / f".run_r{member.realization}"
+            try:
+                found = at.at_clone_assignment(
+                    member.sample, lambda f: f, states=states, root=scratch
+                )
+            finally:
+                shutil.rmtree(scratch, ignore_errors=True)
+            at.save_field(kept, found)
         yield Problem(member.realization, member.hash, found.field, found.planted, found.indptr, found.indices,
                       found.weights, found.spatial_weight, states, draw_seconds, found.seconds)  # fmt: skip
 

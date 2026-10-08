@@ -100,7 +100,7 @@ import functools
 import itertools
 import os
 import tomllib
-from collections.abc import Iterator
+from collections.abc import Container, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, NamedTuple
@@ -1426,8 +1426,9 @@ def realize(
     into: Path | None = None,
     *,
     resources: Path | None = None,
+    wanted: Container[int] | None = None,
 ) -> Iterator[Realized]:
-    """Each realization of `manifest` in turn, written under `into/r<k>/` if given.
+    """Each realization of `manifest` in turn (those in `wanted`, if given), written under `into/r<k>/` if given.
 
     The barcodes are drawn once, and so, under `[sample] vary = "counts"`
     (the default), are the tree, the clones' sizes and their layout. Each of
@@ -1436,7 +1437,8 @@ def realize(
     realization 0, which keeps the manifest's (#800); a realization does not
     change when more are asked for. Nothing is held between realizations, so
     a population of them can be streamed through an analysis without writing
-    one (`into=None`).
+    one (`into=None`). A realization left out of `wanted` is not drawn, and
+    the others do not change (T- #814).
     """
     tree_rng, layout_rng, id_rng = (
         np.random.default_rng(s) for s in np.random.SeedSequence(manifest.seed).spawn(3)
@@ -1525,6 +1527,8 @@ def realize(
 
     width = len(str(len(realization_seeds) - 1))
     for k, seed in enumerate(realization_seeds):
+        if wanted is not None and k not in wanted:
+            continue
         # NB `spawn(4)`'s first two children are `spawn(2)`'s: the counts and phase
         #    streams are the same under either mode
         streams = seed.spawn(4 if vary == "truth" else 2)

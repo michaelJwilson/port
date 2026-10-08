@@ -43,6 +43,7 @@ realizations sharing the host.
 from __future__ import annotations
 
 import argparse
+import functools
 import time
 import traceback
 from concurrent.futures import Future, ProcessPoolExecutor
@@ -255,8 +256,13 @@ _WARM: list[str] = []
 
 def member(
     path: str, realization: int, jobs: list[tuple[str, int, dict[str, float] | None]], polish: bool, root: str,
+    field: str | None = None,
 ) -> dict[str, Any]:  # fmt: skip
-    """`jobs` on one realization, each against the run's Baum-Welch at its planted clones (`port.studies.stage`)."""
+    """`jobs` on one realization, each against the run's Baum-Welch at its planted clones (`port.studies.stage`).
+
+    With `field`, the run goes on to its clone-assignment `Field`, kept at
+    that path for `potts_stream` to read rather than rerun (T- #814).
+    """
     import logging
     import shutil
 
@@ -281,7 +287,8 @@ def member(
         }
 
     try:
-        return at.at_oracle_clones(sample, study, root=Path(root))
+        keep = None if field is None else functools.partial(at.save_field, Path(field))
+        return at.at_oracle_clones(sample, study, root=Path(root), then=keep)
     finally:
         shutil.rmtree(root, ignore_errors=True)
 
@@ -434,8 +441,10 @@ def run(
                     if (m.realization, name, seed) not in reused_rows and name not in drop]  # fmt: skip
             print(f"[{time.perf_counter() - opened:6.0f}s] drew {m.realization} ({m.hash}): reused {len(kept)} runs, "
                   f"{len(todo)} to run", flush=True)  # fmt: skip
+            field = at.field_path(out_dir / ".stage", m)
             futures[pool.submit(member, str(m.sample.path), m.realization, todo, True,
-                                str(out_dir / ".runs" / f"r{m.realization}"))] = m.realization  # fmt: skip
+                                str(out_dir / ".runs" / f"r{m.realization}"),
+                                None if field.is_file() else str(field))] = m.realization  # fmt: skip
             drain(block=False)
         while futures:
             drain(block=True)
