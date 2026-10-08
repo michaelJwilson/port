@@ -225,3 +225,21 @@ def test_the_mirror_key_starts_on_the_axis_and_is_labelled_on_its_right(
     page.canvas.draw()
     mirror_key_holds(page.axes[1], page.axes[1])
     plt.close(page)
+
+
+@pytest.mark.patch
+def test_the_colour_bars_title_is_upstreams() -> None:
+    """T- #794: the patched key titles its colour bar as `cnaster`'s does,
+    $\\mathbb{N}$-CNA, with no "(A, B)"; fails if the two titles differ."""
+    import matplotlib.pyplot as plt
+    from cnaster.plot_copy_number_profile import plot_ascn_legend as upstream
+    from port.patch.plot_copy_number_profile import TITLE, plot_ascn_legend
+
+    figure, (theirs, ours) = plt.subplots(2)
+    upstream(theirs)
+    plot_ascn_legend(ours)
+    (title,) = [t.get_text() for t in theirs.texts if "CNA" in t.get_text()]
+
+    assert title == TITLE
+    assert [t.get_text() for t in ours.texts if "CNA" in t.get_text()] == [title]
+    plt.close(figure)
