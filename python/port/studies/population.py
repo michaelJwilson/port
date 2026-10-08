@@ -57,7 +57,7 @@ import numpy as np
 import pandas as pd
 
 from port.extensions.repository import ROOT
-from port.studies.stage import FLAGS
+from port.qa.stage import FLAGS
 
 MANIFEST = ROOT / "sim" / "manifests" / "study15.toml"
 
@@ -402,7 +402,7 @@ def stay_scores(found: Any) -> list[dict[str, Any]]:
     """Each planted event, recovered or not, by the run's Baum-Welch at each `1 - t` in `STAY`.
 
     The call is the run's own at its RDR + BAF stage at the planted clones
-    (`port.studies.stage.at_oracle_clones`), `t` alone replaced. A fitted
+    (`port.qa.stage.at_oracle_clones`), `t` alone replaced. A fitted
     state is read as the planted pair most of its rows hold, up to phase, and
     an event is recovered where `RECOVERED` of its rows' states read as its
     pair. A stated difference from the pipeline arms: those score the run's
@@ -429,8 +429,8 @@ def stay_scores(found: Any) -> list[dict[str, Any]]:
 
 def stay_member(seed: int, out: Path, manifest: Path = MANIFEST) -> None:
     """Seed `seed`'s stay-arm record (#729), from the run's own stage at its planted clones."""
+    from port.qa.stage import at_oracle_clones
     from port.sim.fixtures import load_simulated
-    from port.studies.stage import at_oracle_clones
 
     target = out / "stay" / f"s{seed:04d}.json"
     if target.exists():

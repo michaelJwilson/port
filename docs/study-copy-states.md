@@ -21,7 +21,7 @@ seeds ends at 1.1% missed ([0.9, 4.2] over r9–r12); the run of highest likelih
 
 1. **Problem.** Since #730, the run's own: each realization of `dev_tree_1s_hard` is drawn to disk as the
    run reads a sample, and `run_cnaster_port --sal` runs on it at its planted clones up to the RDR + BAF
-   stage's Baum-Welch (`port.studies.stage`). The run's segments, phasing, pseudobulk and exposure, clones
+   stage's Baum-Welch (`port.qa.stage`). The run's segments, phasing, pseudobulk and exposure, clones
    stacked along the genome; about 7,300 rows per realization. Before #730 the study rebuilt the problem
    (`port.sandbox.known_copy`, deleted): 1 Mb bins under #551's floor and truth-phased allele reads.
 2. **Starts.** Every family in `port.sandbox.extensions.copy_starts`, each as its own algorithm's output, with no

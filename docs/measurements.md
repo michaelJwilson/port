@@ -88,7 +88,7 @@ the copy-state starts and the M-step gradient (T- #776): `sal`'s scaled
 rising factorials (sal #1334, #1336) tabulated per distinct (shape, count)
 and completed in `sal`'s order. Each site's call is timed warm, the minimum
 of 7 (3 for the field), on the fit's arrays at the planted clones of the
-stream's r0 (`port.studies.stage.members`, `at_oracle_clones`), the field
+stream's r0 (`port.qa.stage.members`, `at_oracle_clones`), the field
 at 3,000 spots over the fit's decoded states. Base is PR- #786's head
 (`132dc56`) on its sal `72428f3b`; new is `claude/776-emission` on sal
 `681b6455`; one process per arm, alternated twice, minimum over both; load
@@ -451,7 +451,7 @@ limit.
 ## `port.patch.count_encoder`
 
 `CountEncoder` against `cnaster`'s, on the fit's arrays at the planted
-clones of the stream's r0 (`port.studies.stage.members`, `at_oracle_clones`),
+clones of the stream's r0 (`port.qa.stage.members`, `at_oracle_clones`),
 7 states, one process, warm, minimum of 9; cnaster / port (T- #799):
 
 | | dev_tree_1s_easy (`7ba9b01f`), n 7,244 | dev_tree (`3339b9a0`), n 10,484 |

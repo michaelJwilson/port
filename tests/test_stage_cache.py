@@ -30,8 +30,8 @@ def test_the_streams_share_one_draw_and_one_run_per_realization(
 ) -> None:
     """On dev_tree_1s_hard r0, r1 the shared cache matches each stream alone, bitwise."""
     import port.sim.draw as d
+    from port.qa import stage as at
     from port.studies import copy_state_stream, potts_stream
-    from port.studies import stage as at
 
     monkeypatch.chdir(ROOT)
 

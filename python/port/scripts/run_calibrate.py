@@ -20,7 +20,7 @@ from pathlib import Path
 
 def main(argv: Sequence[str] | None = None) -> int:
     """Calibrate what the first argument names; 0 once its file is written."""
-    from port.studies.stream import HELD_OUT
+    from port.qa.stream import HELD_OUT
 
     parser = argparse.ArgumentParser(description=(__doc__ or "").splitlines()[0])
     kind = parser.add_mutually_exclusive_group(required=True)

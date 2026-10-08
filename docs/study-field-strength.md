@@ -34,7 +34,7 @@ here is the gamma sampler's: the hashes are `docs/baseline-release.md`'s.
   inference, captured (`port.studies.clone_labels capture`) and rebuilt at
   the planted labels (`port.sandbox.clone_starts.problem.build`). Since, the
   field `run_cnaster_port --sal`'s clone assignment computes at the RDR +
-  BAF stage, at the planted clones (`port.studies.stage.at_clone_assignment`).
+  BAF stage, at the planted clones (`port.qa.stage.at_clone_assignment`).
   β = 1, 6 neighbours.
 - **Known-law field** (retired by #735, `known` with it). `port.sandbox.known_field`: each realization drawn
   in memory and scored under the draw's own law at its planted states.
@@ -191,7 +191,7 @@ OUT_DIR/<stem>.record` redraws it from the merged stream
 
 `dev_tree_1s_hard` r0 (`9ec90dc2`), 3,000 spots, 4 clones, β = 1, 6
 neighbours: `run_study --field-strength pipeline` (states from the run) and
-`port.studies.stage.at_clone_assignment(..., states="planted")`.
+`port.qa.stage.at_clone_assignment(..., states="planted")`.
 
 | field | median margin [nats] | argmax wrong | argmax ARI | to the field [s] |
 | --- | --- | --- | --- | --- |

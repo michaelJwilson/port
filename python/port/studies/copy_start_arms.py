@@ -24,7 +24,7 @@ from typing import Any, NamedTuple
 
 import numpy as np
 
-from port.studies.stream import pool as harness_pool
+from port.qa.stream import pool as harness_pool
 
 SHORTLIST = (
     "kmeans++x5+em",

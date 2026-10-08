@@ -33,7 +33,7 @@ STATE: dict[str, Kind] = {
     # NB `audit_truth` restores the name in its `finally` (T- #673 G3).
     "cnaster.scripts.run_cnaster.determine_normal_candidates": "rebind",
     "cnaster.hmm_initialize.GaussianMixture": "rebind",
-    # NB #735: `port.studies.stage` wraps one `run_core_inference` call and restores it.
+    # NB #735: `port.qa.stage` wraps one `run_core_inference` call and restores it.
     "cnaster.hmrf.pipeline_clone_assignment": "rebind",
     "port.extensions.copy_likelihood._FITS": "run",
     "port.extensions.cnamaste._ACTIVE": "run",

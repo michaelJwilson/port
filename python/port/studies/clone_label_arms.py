@@ -401,7 +401,7 @@ def run_arms(
     """
     from concurrent.futures import as_completed
 
-    from port.studies.stream import pool as harness_pool
+    from port.qa.stream import pool as harness_pool
 
     _hold(capture_path)
     beta = HELD["capture"].spatial_weight

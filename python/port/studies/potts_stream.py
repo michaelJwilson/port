@@ -9,7 +9,7 @@ named samplers on the held-out realizations and merges them into `SETTINGS`
 
 The main process draws each realization of `MANIFEST` and runs
 `run_cnaster_port --sal` on it to the RDR + BAF stage's clone assignment, at
-the planted clones (`port.studies.stage.at_clone_assignment`, #735): the
+the planted clones (`port.qa.stage.at_clone_assignment`, #735): the
 field, graph and coupling are the ones the run's solver is handed there. The
 Baum-Welch before it starts from the run's own initial states, or with
 `--states planted` from the planted ones, a second oracle input. The pool
@@ -49,7 +49,7 @@ its numbers do not compare with these.
 Per problem it records the planted labelling's energy, TRW-S's lower bound and its spots,
 per run the energy and the labels unlike the planted ones, raw and after each
 polish. When a problem's runs are all in it writes `OUT_DIR/<stem>.record`
-(`port.studies.records`: Parquet and JSON) and redraws `OUT_DIR/<stem>.png` (`port.studies.potts_plot`).
+(`port.qa.records`: Parquet and JSON) and redraws `OUT_DIR/<stem>.png` (`port.studies.potts_plot`).
 
 Timing: the graph is built once per worker per problem, outside the timed
 solve; seconds are per job with `--workers` jobs sharing the host.
@@ -68,10 +68,10 @@ from typing import Any, NamedTuple
 
 import numpy as np
 
+from port.qa import records
+from port.qa import stage as at
+from port.qa import stream as harness
 from port.qa.provenance import CONFIGS
-from port.studies import records
-from port.studies import stage as at
-from port.studies import stream as harness
 
 DROPPED = frozenset({
     "sal:bifurcation", "port:alpha", "port:alpha-rust-merge",
@@ -145,7 +145,7 @@ _GRAPHS: dict[tuple[int, float], Any] = {}
 
 
 class Problem(NamedTuple):
-    """One realization's clone-assignment problem, the run's (`port.studies.stage.Field`)."""
+    """One realization's clone-assignment problem, the run's (`port.qa.stage.Field`)."""
 
     realization: int
     hash: str
@@ -291,8 +291,8 @@ def solve_labelling(
     from sal.sim.potts import energy
 
     import port.studies.clone_label_arms as arms
+    from port.qa.stage import missed
     from port.studies.color_merge import color_merge
-    from port.studies.stage import missed
 
     try:
         _hold(problem.realization, problem)

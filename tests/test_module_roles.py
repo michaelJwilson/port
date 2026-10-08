@@ -95,9 +95,9 @@ ROLES: dict[str, Role] = {
     "port.studies.population_report": "tool",
     "port.studies.potts_plot": "tool",
     "port.studies.potts_stream": "tool",
-    "port.studies.records": "tool",
-    "port.studies.stage": "tool",
-    "port.studies.stream": "tool",
+    "port.qa.records": "tool",
+    "port.qa.stage": "tool",
+    "port.qa.stream": "tool",
     # patch: rows
     "port.patch.hmm_nophasing.bb_logpmf": "row",
     "port.patch.hmm_nophasing.nb_logpmf": "row",

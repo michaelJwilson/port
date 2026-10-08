@@ -18,9 +18,9 @@ MANIFEST = Path("sim/manifests/dev_tree_1s_hard.toml")
 @pytest.fixture(scope="module")
 def output(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Path]:
     """Run `run_cnaster_port --sal` on dev_tree_1s_hard r0 (`9ec90dc2`) at `SOURCE_DATE_EPOCH=0`."""
+    from port.qa import stage
     from port.qa.audit import drawn_config
     from port.scripts.run_cnaster import main
-    from port.studies import stage
 
     root = tmp_path_factory.mktemp("run_plots")
     here, epoch = Path.cwd(), os.environ.get("SOURCE_DATE_EPOCH")

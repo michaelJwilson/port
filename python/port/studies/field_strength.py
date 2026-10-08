@@ -5,7 +5,7 @@ Subcommands of `run_study --field-strength`:
 `pipeline SAMPLE ...`
     The run's field at the planted clones: `run_cnaster_port --sal`'s RDR +
     BAF clone assignment at `--oracle-start`'s clones
-    (`port.studies.stage.at_clone_assignment`, #735). `SAMPLE` is CalicoST's
+    (`port.qa.stage.at_clone_assignment`, #735). `SAMPLE` is CalicoST's
     `easy` or `hard`, or a manifest, whose realization 0 is drawn.
 `calicost`
     CalicoST easy and hard under port's laws, from their planted profiles:
@@ -57,8 +57,8 @@ def _line(name: str, s: dict[str, float]) -> str:
 
 
 def pipeline(samples: list[str], root: Path) -> None:
+    from port.qa.stage import at_clone_assignment, members
     from port.sim.fixtures import SAMPLES, SIM_ROOT, load_simulated
-    from port.studies.stage import at_clone_assignment, members
 
     for name in samples:
         if name in SAMPLES:

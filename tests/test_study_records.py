@@ -1,4 +1,4 @@
-"""`port.studies.records`: a study record as Parquet and JSON, read back as written."""
+"""`port.qa.records`: a study record as Parquet and JSON, read back as written."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ import pytest
 @pytest.mark.infra
 def test_a_record_reads_back_as_written_with_arrays_as_lists(tmp_path: Path) -> None:
     """Rows with sparse keys and a dict setting, problems by realization, settings as JSON."""
-    from port.studies import records
+    from port.qa import records
 
     record = {
         "manifest": "sim/manifests/dev_tree_1s_hard.toml",
