@@ -21,8 +21,10 @@ the fused kernel's order, so `np.array_equal` is the bar against it.
 `port.pipeline.LOG_SPACE_SWAPS`' kernels (#560, #561): the negative binomial
 reads `-r log1p(a) + k (log a - log1p(a))` with `a = alpha lambda`, and the
 beta-binomial's tables hold the rising factorials `R(x, j) = lgamma(x + j) -
-lgamma(x)` from `bb_logpmf.rise`, so no `lgamma(tau)` is subtracted. Bitwise
-the fused kernel's `log_space=True` path again.
+lgamma(x)`, `sal`'s `log_rising` built before the compiled pass
+(:func:`rising_tables`, T- #781), so no `lgamma(tau)` is subtracted. Bitwise
+the fused kernel's `log_space=True` path again: `log_rising` chooses its
+route per element.
 
 **Why not sal's kernels.** `sal.emissions.dense.log_emission` scores every
 state at every observation, where the field reads one per `(bin, clone)`;
@@ -43,8 +45,8 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 from numba import njit
+from sal.emissions.rising import log_rising
 
-from port.patch.hmm_nophasing.bb_logpmf import rise
 from port.patch.hmm_nophasing.gradient import DISPERSION_FLOOR
 from port.patch.hmrf.fused_field import fused_spot_clone_field
 
@@ -65,8 +67,73 @@ LIMIT = 2**24
 """The largest count a table is built to; beyond it the fused kernel scores."""
 
 
-@njit(nogil=True, cache=True, parallel=True, error_model="numpy")
+def _extent(counts_bb: np.ndarray, total_bb_RD: np.ndarray) -> int:
+    """The beta-binomial tables' length: the largest count or total, plus one."""
+    if not counts_bb.size:
+        return 1
+    return int(max(counts_bb.max(), total_bb_RD.max())) + 1
+
+
+def rising_tables(
+    p_binom: np.ndarray, taus: np.ndarray, extent: int, EPS: float = EPS
+) -> np.ndarray:
+    """`(3, n_states, extent)`: `R(a, j)`, `R(b, j)`, `R(a + b, j)` for `j` from
+    0, `a = max(p tau, EPS)` and `b = max((1 - p) tau, EPS)`, by `sal`'s
+    `log_rising` (T- #781)."""
+    p = np.asarray(p_binom, dtype=np.float64).reshape(-1)
+    tau = np.asarray(taus, dtype=np.float64).reshape(-1)
+    a = np.maximum(p * tau, EPS)[:, None]
+    b = np.maximum((1.0 - p) * tau, EPS)[:, None]
+    j = np.arange(extent, dtype=np.float64)[None, :]
+    return np.stack([log_rising(a, j), log_rising(b, j), log_rising(a + b, j)])
+
+
 def tabulated_spot_clone_field(
+    counts_nb: np.ndarray,
+    base_nb_mean: np.ndarray,
+    counts_bb: np.ndarray,
+    total_bb_RD: np.ndarray,
+    log_mu: np.ndarray,
+    alphas: np.ndarray,
+    p_binom: np.ndarray,
+    taus: np.ndarray,
+    pred: np.ndarray,
+    rel_valid_emision_weight: np.ndarray,
+    out: np.ndarray,
+    log_space: bool = False,
+) -> np.ndarray:
+    """`fused_spot_clone_field`'s `(n_spots, n_clones)` field, from tables.
+
+    Takes what the fused kernel takes, with integer-valued counts: the
+    caller checks that (:func:`spot_clone_field`), because a count that is not
+    an integer would index the wrong row rather than fail. Under `log_space`
+    the rising factorials are `sal`'s (:func:`rising_tables`), built here.
+    """
+    rises = (
+        rising_tables(p_binom, taus, _extent(counts_bb, total_bb_RD))
+        if log_space
+        else np.empty((3, 0, 0))
+    )
+    field: np.ndarray = _tabulated_kernel(
+        counts_nb,
+        base_nb_mean,
+        counts_bb,
+        total_bb_RD,
+        log_mu,
+        alphas,
+        p_binom,
+        taus,
+        pred,
+        rel_valid_emision_weight,
+        out,
+        rises,
+        log_space,
+    )
+    return field
+
+
+@njit(nogil=True, cache=True, parallel=True, error_model="numpy")
+def _tabulated_kernel(
     counts_nb,
     base_nb_mean,
     counts_bb,
@@ -78,14 +145,9 @@ def tabulated_spot_clone_field(
     pred,
     rel_valid_emision_weight,
     out,
-    log_space=False,
+    rises,
+    log_space,
 ):
-    """`fused_spot_clone_field`'s `(n_spots, n_clones)` field, from tables.
-
-    Takes what the fused kernel takes, with integer-valued counts: the
-    caller checks that (:func:`spot_clone_field`), because a count that is not
-    an integer would index the wrong row rather than fail.
-    """
     n_obs, n_spots = counts_nb.shape
     n_states = log_mu.shape[0]
     n_clones = pred.shape[1]
@@ -125,13 +187,13 @@ def tabulated_spot_clone_field(
         b = max((1.0 - p_binom[s]) * taus[s], EPS)
 
         if log_space:
-            # NB `bb_logpmf.bb_logpmf`'s rising factorials, `j` from 0.
+            # NB `sal`'s rising factorials, `j` from 0 (`rising_tables`).
             denominator[s] = 0.0
 
             for j in range(bb_extent):
-                first[s, j] = rise(a, float(j))
-                second[s, j] = rise(b, float(j))
-                joint[s, j] = rise(a + b, float(j))
+                first[s, j] = rises[0, s, j]
+                second[s, j] = rises[1, s, j]
+                joint[s, j] = rises[2, s, j]
             continue
 
         denominator[s] = lgamma(a) + lgamma(b) - lgamma(a + b)
