@@ -281,6 +281,11 @@ def curve(
     }
 
 
+LONG_ARM = "population_long"
+"""The long-event arm's manifest (#544): Study 1 reads every other manifest's members as the
+base population, `population`'s records and `study`'s since T- #807."""
+
+
 def summarize(out: Path, study2_j: float, seed: int = 544) -> dict[str, Any]:
     """Study 1 per J and Study 2 per class, with the sufficiency verdict."""
     clones, events = load(out)
@@ -293,7 +298,7 @@ def summarize(out: Path, study2_j: float, seed: int = 544) -> dict[str, Any]:
     #    difference is paired.
     # NB Study 1 reads the base population alone: the long-event arm alters
     #    more of each clone's genome, which bears on detection.
-    base_clones = clones[clones["manifest"] == "population"]
+    base_clones = clones[clones["manifest"] != LONG_ARM]
     js = sorted(base_clones["J"].unique())
     at = base_clones.groupby("J")["seed"].apply(set)
     seeds = np.array(sorted(set.intersection(*(at[j] for j in js))))
