@@ -130,10 +130,11 @@ def instance(call: CopyCall, *, covariate: bool = True) -> Any:
     held = instance_of(X, exposure[:, None], call.trials[:, None], call.n_states)
 
     if call.stage == "baf":
-        # NB the constant channel has no spread, which `sal`'s Gaussian
-        #    surrogate starts refuse ("every scale must be positive"). The
-        #    rows a start seeds from carry a jitter of 1e-3 of it; the rows
-        #    it fits do not.
+        # NB the constant channel has no spread. sal now floors a zero
+        #    scale, but `gaussian-em` seeds from column 0, and constant it
+        #    collapses every component onto one state (T- #792). The rows a
+        #    start seeds from carry a jitter of 1e-3 of it; the rows it fits
+        #    do not. It goes when a start can leave the channel out.
         rows = np.array(held.seeding_rows, dtype=np.float64)
         jitter = np.random.default_rng(540).standard_normal(rows.shape[0])
         rows[:, 0] = rows[:, 0] * (1.0 + SEED_JITTER * jitter)
@@ -502,10 +503,10 @@ def _seeded(
     if name in seeds:
         return _place(held, call, *seeds[name](call, rng))
 
-    from sal.search.mixture_starts import BestOf, Selection, lookup
+    from sal.search.mixture_starts import lookup
 
     chosen = lookup(name)
-    if isinstance(chosen, BestOf) and chosen.select is Selection.POLISHED:
+    if chosen.polishes:
         # NB sal's best-of skips a seeding that raises and names it in the
         #    note (sal #1136), which port's `_surviving` did (T- #596, T- #632).
         _, best = chosen.polished(

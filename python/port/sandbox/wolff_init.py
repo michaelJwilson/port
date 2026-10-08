@@ -116,16 +116,23 @@ def draw(
     one Wolff step flips one cluster, which near and above the transition
     spans most of the lattice, so a Wolff burn-in of whole-lattice clusters
     costs a Swendsen-Wang sweep each. Both leave the same law invariant.
+    The cluster pass is `sal`'s Python oracle, the default before
+    michaelJwilson/snakes_and_ladders#1283, run as the move alone with the
+    uniform recolour, the meaning of a bare move before #1323, so the draws
+    `docs/nb/clone_label_study.ipynb` records replay at their seeds (T- #781).
     """
-    from sal.sample.potts_mcmc import PottsMove, sample_potts
+    from sal.backend import Backend
+    from sal.sample.potts_mcmc import PottsMove, Recolour, sample_potts
 
     chain = sample_potts(
         _graph(adjacency, coupling),
         np.zeros(n_colours),
-        PottsMove(move),
+        [PottsMove(move)],
         rng,
         n_sweeps=1,
         burn_in=steps,
+        recolour=Recolour.UNIFORM,
+        cluster_backend=Backend.PYTHON,
     )
     return recolour(np.asarray(chain.states[-1], dtype=np.int64), adjacency)
 

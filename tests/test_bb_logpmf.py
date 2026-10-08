@@ -160,8 +160,8 @@ def test_the_copy_decode_scores_a_large_concentration_exactly(tau: float) -> Non
 @pytest.mark.parametrize("m", [0, 1, 7, 100, 2500])
 @pytest.mark.parametrize("x", [1e-10, 0.4, 999.0, 1e3, 3e4, 1e8, 1e12, 1e16])
 def test_the_digamma_rise_is_the_sum_of_reciprocals(x: float, m: int) -> None:
-    """`psi(x + m) - psi(x)` against `sum_{j < m} 1 / (x + j)` at 50 digits, to 1e-12 relative."""
-    from port.patch.hmm_nophasing.bb_logpmf import digamma_rise as ours
+    """`sal`'s `digamma_rising`, the gradient's, against `sum_{j < m} 1 / (x + j)` at 50 digits, to 1e-12 relative."""
+    from sal.emissions.rising import digamma_rising as ours
 
     np.testing.assert_allclose(
         float(ours(np.array(x), np.array(float(m)))),

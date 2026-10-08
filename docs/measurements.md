@@ -93,6 +93,35 @@ pseudobulk bins with 220 distinct counts, and the largest 25 states over
 rounds: 91.7 to 56.1 us at the former (1.64x) and 1,589 to 430 us at the
 latter (3.69x). Bitwise (`tests/test_rises_on_distinct.py`).
 
+Since T- #781 the gather evaluates `sal`'s `log_rising`, not port's
+retired `rises`. At sal `72428f3b` (its #1330: the plain `lgamma`
+difference wherever its bound meets 1e-14, one compiled pass per element),
+`tests/test_rises_on_distinct_bench.py`, minimum of rounds, load1 1.05: the
+gathered call is 382 us at the latter and 51.7 us at the former, against
+1,614 and 227 us at sal `21f7013e` and 1,007 and 135 us for port's form
+(`83ed58b`). The compile is its own cost, paid once per process and not
+cached: 0.78-0.88 s for `log_rising` and 0.19-0.23 s for `digamma_rising`
+on the first call (3 processes).
+
+### `_bb_logpmf_1d`, `_dense_bb_logpmf`, the field's rise tables
+
+Every beta-binomial rise is `sal`'s `log_rising` since T- #781; port's
+numba `rise` is gone. One process per arm on the same host and `sal`
+(`72428f3b`), main's port kernels against these, `log_space=True`, warm,
+minimum of 3, gate `5 x 400 x 300 x 2` and stress `7 x 3,000 x 5,000 x 4`
+(states x bins x spots x clones):
+
+| Call | Gate (s) | Stress (s) |
+| --- | --- | --- |
+| `tabulated_field`, the run's | 0.0052 -> 0.0034 | 0.884 -> 0.821 |
+| `fused_field`, non-integer counts only | 0.032 -> 0.070 | 8.09 -> 10.28 (1.27x slower) |
+| `_dense_bb_logpmf` | 0.066 -> 0.081 | 10.86 -> 31.07 (2.86x slower) |
+
+`_dense_bb_logpmf` was a 4-thread `prange` over states; it is now one
+thread over `sal`'s kernel. The values agree with port's former kernels to
+2.7e-14 over `max(|f|, 1)` (field 2.7e-15), inside `log_rising`'s 1e-14
+promise summed over three rises (PR- #786).
+
 ## `port.patch.hmm_nophasing.logmu_shift`
 
 ### module docstring

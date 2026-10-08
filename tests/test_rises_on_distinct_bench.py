@@ -12,15 +12,16 @@ from collections.abc import Callable
 
 import numpy as np
 import pytest
-from port.patch.hmm_nophasing.bb_logpmf import rises, rises_on_distinct
+from port.patch.hmm_nophasing.bb_logpmf import rises_on_distinct
 from pytest_benchmark.fixture import BenchmarkFixture
+from sal.emissions.rising import log_rising
 
 GATE = (4, 655, 220, 685)
 STRESS = (25, 2_829, 594, 2_797)
 """(states, bins, distinct counts, largest count)."""
 
 FORMS: dict[str, Callable[[np.ndarray, np.ndarray], np.ndarray]] = {
-    "per-bin": lambda x, m: rises(x, m),
+    "per-bin": log_rising,
     "distinct": rises_on_distinct,
 }
 

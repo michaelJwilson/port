@@ -45,7 +45,11 @@ from cnaster.hmm_nophasing import _bb_logpmf_1d as cnaster_bb_logpmf_1d
 from cnaster.hmm_nophasing import _nb_logpmf_1d as cnaster_nb_logpmf_1d
 from numba import njit
 
-from port.patch.hmm_nophasing.bb_logpmf import _bb_logpmf_1d as log_space_bb_logpmf_1d
+from port.patch.hmm_nophasing.bb_logpmf import (
+    DISPERSION_FLOOR,
+    bb_logpmf,
+    binomial_logpmf,
+)
 from port.patch.hmm_nophasing.nb_logpmf import _nb_logpmf_1d as log_space_nb_logpmf_1d
 
 if TYPE_CHECKING:  # pragma: no cover - `prange` is `range` to a type checker
@@ -65,21 +69,45 @@ __all__ = ["fused_spot_clone_field"]
 #    first compiled under the table would be cached with the table's kernel.
 
 
-@njit(nogil=True, cache=True, parallel=True, error_model="numpy")
+def _log_space_baf(counts_bb, total_bb_RD, p_binom, taus, pred):
+    """`(n_spots, n_clones)`: each clone's beta-binomial log pmf summed over the
+    bins in order, `sal`'s rising factorials (`bb_logpmf`, T- #781).
+
+    Summed over `o` one bin at a time, as the compiled pass sums, so the
+    field is bitwise the per-bin rows'.
+    """
+    n_obs, n_spots = counts_bb.shape
+    p = np.asarray(p_binom, dtype=np.float64).reshape(-1)
+    tau = np.asarray(taus, dtype=np.float64).reshape(-1)
+    a = np.maximum(p * tau, DISPERSION_FLOOR)
+    b = np.maximum((1.0 - p) * tau, DISPERSION_FLOOR)
+    accumulated = np.zeros((n_spots, pred.shape[1]))
+    for o in range(n_obs):
+        states = pred[o]
+        k, n = counts_bb[o][:, None], total_bb_RD[o][:, None]
+        row = bb_logpmf(k, n, a[states][None, :], b[states][None, :])
+        binomial = tau[states] == np.inf
+        if binomial.any():
+            for c in np.flatnonzero(binomial):
+                row[:, c] = binomial_logpmf(k[:, 0], n[:, 0], p[states[c]])
+        accumulated += row
+    return accumulated
+
+
 def fused_spot_clone_field(
-    counts_nb,
-    base_nb_mean,
-    counts_bb,
-    total_bb_RD,
-    log_mu,
-    alphas,
-    p_binom,
-    taus,
-    pred,
-    rel_valid_emision_weight,
-    out=None,
-    log_space=False,
-):
+    counts_nb: np.ndarray,
+    base_nb_mean: np.ndarray,
+    counts_bb: np.ndarray,
+    total_bb_RD: np.ndarray,
+    log_mu: np.ndarray,
+    alphas: np.ndarray,
+    p_binom: np.ndarray,
+    taus: np.ndarray,
+    pred: np.ndarray,
+    rel_valid_emision_weight: np.ndarray,
+    out: np.ndarray | None = None,
+    log_space: bool = False,
+) -> np.ndarray:
     """The `(n_spots, n_clones)` field, without an emission array.
 
     Replaces the pair at `cnaster.hmrf`'s call site rather than either
@@ -102,8 +130,48 @@ def fused_spot_clone_field(
     written before it is read, so a reused buffer needs no clearing.
 
     `log_space` scores with `LOG_SPACE_SWAPS`' kernels (#560, #561) rather
-    than `cnaster`'s.
+    than `cnaster`'s; its beta-binomial is `sal`'s rising factorials, summed
+    before the compiled pass (:func:`_log_space_baf`, T- #781).
     """
+    baf = (
+        _log_space_baf(counts_bb, total_bb_RD, p_binom, taus, pred)
+        if log_space
+        else np.empty((0, 0))
+    )
+    field: np.ndarray = _fused_kernel(
+        counts_nb,
+        base_nb_mean,
+        counts_bb,
+        total_bb_RD,
+        log_mu,
+        alphas,
+        p_binom,
+        taus,
+        pred,
+        rel_valid_emision_weight,
+        out,
+        log_space,
+        baf,
+    )
+    return field
+
+
+@njit(nogil=True, cache=True, parallel=True, error_model="numpy")
+def _fused_kernel(
+    counts_nb,
+    base_nb_mean,
+    counts_bb,
+    total_bb_RD,
+    log_mu,
+    alphas,
+    p_binom,
+    taus,
+    pred,
+    rel_valid_emision_weight,
+    out,
+    log_space,
+    baf,
+):
     n_obs, n_spots = counts_nb.shape
     n_clones = pred.shape[1]
 
@@ -143,15 +211,7 @@ def fused_spot_clone_field(
                 )
             accumulated_rdr += scratch
 
-            if log_space:
-                log_space_bb_logpmf_1d(
-                    counts_bb[o, :],
-                    total_bb_RD[o, :],
-                    p_binom[copy_state],
-                    taus[copy_state],
-                    scratch,
-                )
-            else:
+            if not log_space:
                 cnaster_bb_logpmf_1d(
                     counts_bb[o, :],
                     total_bb_RD[o, :],
@@ -159,7 +219,10 @@ def fused_spot_clone_field(
                     taus[copy_state],
                     scratch,
                 )
-            accumulated_baf += scratch
+                accumulated_baf += scratch
+
+        if log_space:
+            accumulated_baf[:] = baf[:, c]
 
         for spot in range(n_spots):
             field[spot, c] = (
