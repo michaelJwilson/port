@@ -93,7 +93,9 @@ def bb_states(
     trials_extent = int(per_observation.max()) + 1 if per_observation.size else 1
     tables = bb_tables(p, taus, max(success_extent, trials_extent))
     out = np.empty(p.size * successes.size)
-    oxisal.dense_log_emission(
+    # NB `sal`'s stub still names `log_rate` `log_beta`; its own `dense.py`
+    #    passes `log_rate`, as the compiled function takes (sal #1334).
+    oxisal.dense_log_emission(  # type: ignore[call-arg]
         p.size,
         True,
         out,

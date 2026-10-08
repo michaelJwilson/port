@@ -36,8 +36,20 @@ realized 0.073-0.111 (T- #776)."""
 
 TAUS = [10.0, 28.0, 1e3, 4.4e3, 1e5, 1e12, 1e16]
 
+CONDITION = 1e-14
+"""Tolerance per unit of the terms summed, `1 + |f| + lgamma(count + 1)`: a
+log-pmf of -10 at a count of 18,842 sums terms near 1.7e5, so its rounding
+is that size's, not the result's (`sal`'s pmf, bitwise this one, shares it)."""
 
-def _scaled(x: np.ndarray, m: np.ndarray) -> np.ndarray:
+
+def _scale(f: np.ndarray, counts: np.ndarray) -> np.ndarray:
+    from scipy.special import gammaln
+
+    scale: np.ndarray = 1.0 + np.abs(f) + gammaln(np.asarray(counts) + 1.0)
+    return scale
+
+
+def _scaled(x: float | np.ndarray, m: np.ndarray) -> np.ndarray:
     from sal.emissions.rising import scaled_rising_array
 
     out: np.ndarray = scaled_rising_array(x, m)
@@ -96,7 +108,7 @@ def test_the_beta_binomial_is_sals_pmf_bitwise(tau: float) -> None:
 @pytest.mark.oracle
 @pytest.mark.parametrize("alpha", ALPHAS)
 def test_the_negative_binomial_meets_the_exact_density(alpha: float) -> None:
-    """`nb_log_pmf` within rtol 1e-12 of the 50-digit density, `alpha` down to the floor.
+    """`nb_log_pmf` within `CONDITION` of the 50-digit density, `alpha` down to the floor.
 
     Every port kernel lost 1.3e-5 nats at `alpha = 1e-10` before (T- #776).
     """
@@ -105,9 +117,8 @@ def test_the_negative_binomial_meets_the_exact_density(alpha: float) -> None:
     counts = np.array([0.0, 1.0, 7.0, 42.0, 300.0, 2_500.0, 18_842.0])
     for mean in (1e-3, 2.0, 600.0, 3e4):
         exact = np.array([exact_nb(int(k), mean, alpha) for k in counts])
-        np.testing.assert_allclose(
-            nb_log_pmf(counts, alpha, mean), exact, rtol=1e-12, atol=1e-12
-        )
+        error = np.abs(nb_log_pmf(counts, alpha, mean) - exact)
+        assert np.all(error <= CONDITION * _scale(exact, counts)), error
 
 
 @pytest.mark.oracle
@@ -151,7 +162,7 @@ def test_the_limits_are_the_binomial_and_the_poisson() -> None:
 
 @pytest.mark.backend
 def test_the_numba_completions_are_the_numpy_form_to_rounding() -> None:
-    """`nb_complete` and `bb_complete` from the module's tables: its NumPy form within 1e-15 over `max(|f|, 1)`."""
+    """`nb_complete` and `bb_complete` from the module's tables: its NumPy form within `CONDITION`."""
     from port.patch.emission import (
         bb_complete,
         bb_log_pmf,
@@ -173,7 +184,7 @@ def test_the_numba_completions_are_the_numpy_form_to_rounding() -> None:
             ]
         )
         numpy = nb_log_pmf(y, alpha, rate)
-        assert np.max(np.abs(numba - numpy) / np.maximum(np.abs(numpy), 1.0)) < 1e-15
+        assert np.all(np.abs(numba - numpy) <= CONDITION * _scale(numpy, y))
 
     n = rng.integers(0, 1_500, 2_000).astype(float)
     z = np.floor(n * rng.random(n.size))
@@ -196,7 +207,7 @@ def test_the_numba_completions_are_the_numpy_form_to_rounding() -> None:
             ]
         )
         numpy = bb_log_pmf(z, n, 0.3, tau)
-        assert np.max(np.abs(numba - numpy) / np.maximum(np.abs(numpy), 1.0)) < 1e-15
+        assert np.all(np.abs(numba - numpy) <= CONDITION * _scale(numpy, n))
 
 
 @pytest.mark.oracle
@@ -216,8 +227,8 @@ def test_the_fit_is_sals_dense_emission_bitwise() -> None:
         np.full(7, 0.073),
         np.array([1e-10, 1e-3, 0.07, 0.1, 0.5, 2.0, 0.0]),
     ):
-        family = NegativeBinomialEmission(dispersion=nb_size(alphas), mean=mu)
-        expected = log_emission(family, y, exposure[:, None], order=Order.FAMILY)
+        depth = NegativeBinomialEmission(dispersion=nb_size(alphas), mean=mu)
+        expected = log_emission(depth, y, exposure[:, None], order=Order.FAMILY)
         assert np.array_equal(nb_states(y, exposure, mu, alphas), expected)
 
     n = rng.integers(0, 2_805, 6_000).astype(float)
@@ -232,11 +243,13 @@ def test_the_fit_is_sals_dense_emission_bitwise() -> None:
 
 
 @pytest.mark.backend
+@pytest.mark.merge
 def test_the_field_is_the_modules_per_bin_sums() -> None:
     """The tabulated and fused fields under `log_space`: the module's NumPy densities summed per bin, to 1e-12 relative, finite at `tau = inf`.
 
     The tabulated pass scores each distinct state of a bin once; clones are
-    drawn sharing states so that path is taken.
+    drawn sharing states so that path is taken. `merge`: 11 s, most of it
+    compiling the fused kernel, which `numba` cannot cache.
     """
     from port.patch.emission import bb_log_pmf, nb_log_pmf
     from port.patch.hmrf.fused_field import fused_spot_clone_field

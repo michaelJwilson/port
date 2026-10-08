@@ -147,7 +147,7 @@ def nb_size(dispersion: ArrayLike) -> np.ndarray:
 
 
 @njit(nogil=True, error_model="numpy")
-def _scaled_table(shapes, counts, out):  # type: ignore[no-untyped-def]
+def _scaled_table(shapes, counts, out):
     """`out[i, j] = S(shapes[i], counts[j])`, `sal`'s `scaled_rising_array` bit for bit.
 
     `sal`'s kernel takes `gammaln(x)` and `log x` per element; along a row
@@ -228,6 +228,20 @@ def _on_distinct(
     return gathered.reshape(np.broadcast_shapes(x_.shape, m_.shape))
 
 
+def _count_factor(x: np.ndarray, m: np.ndarray) -> np.ndarray:
+    """`T(x, m) = S(x, m) - lgamma(m + 1)`, the negative binomial's table, broadcast."""
+    out: np.ndarray = scaled_rising_array(x, m) - gammaln(m + 1.0)
+    return out
+
+
+def _count_factor_table(shapes: np.ndarray, counts: np.ndarray) -> np.ndarray:
+    """:func:`_count_factor` at every `(shape, count)` pair, `lgamma(m + 1)` once per count."""
+    out: np.ndarray = (
+        _scaled_rising_table(shapes, counts) - gammaln(counts + 1.0)[None, :]
+    )
+    return out
+
+
 def scaled_rising(x: ArrayLike, m: ArrayLike) -> np.ndarray:
     """`S(x, m)`, broadcast: `sal`'s `scaled_rising_array` on the distinct shapes and counts (:func:`_on_distinct`)."""
     return _on_distinct(scaled_rising_array, x, m, _scaled_rising_table)
@@ -260,18 +274,24 @@ def nb_log_pmf_size(y: ArrayLike, r: ArrayLike, rate: ArrayLike) -> np.ndarray:
     rate_ = np.asarray(rate, dtype=np.float64)
     dead = rate_ <= 0.0
     any_dead = bool(dead.any())
+    shape = np.broadcast_shapes(y_.shape, r_.shape, rate_.shape)
     with np.errstate(divide="ignore", invalid="ignore"):
         safe = np.where(dead, 1.0, rate_) if any_dead else rate_
-        q = safe / r_
-        decay = r_ * np.log1p(q)
+        q = np.divide(safe, r_)
+        decay = np.log1p(q)
+        decay *= r_
         poisson = q == 0.0
         if poisson.any():
             decay = np.where(poisson, safe, decay)
         # NB `y log(...)` at `y = 0` is a signed zero where `sal` writes 0: a
-        #    sum it enters is unchanged.
-        rated = y_ * np.log(safe / (1.0 + q))
-    table = scaled_rising(r_, y_) - gammaln(y_ + 1.0)
-    out = (table + rated) - decay
+        #    sum it enters is unchanged. In place, the same operations.
+        rated = np.broadcast_to(np.add(q, 1.0), shape).copy()
+        np.divide(safe, rated, out=rated)
+        np.log(rated, out=rated)
+        rated *= y_
+    table = _on_distinct(_count_factor, r_, y_, _count_factor_table)
+    out = np.add(table, rated, out=rated)
+    out -= decay
     return np.where(dead, 0.0, out) if any_dead else out
 
 
@@ -339,7 +359,7 @@ def nb_table(alphas: ArrayLike, extent: int) -> tuple[np.ndarray, np.ndarray]:
     """`(T, r)`: `T[s, y] = S(r_s, y) - lgamma(y + 1)` for `y < extent`, `(K, extent)`, and each state's `r`."""
     r = nb_size(np.asarray(alphas, dtype=np.float64).reshape(-1))
     y = np.arange(extent, dtype=np.float64)
-    table = scaled_rising(r[:, None], y) - gammaln(y + 1.0)[None, :]
+    table = _count_factor_table(r, y)
     return np.ascontiguousarray(table), r
 
 
