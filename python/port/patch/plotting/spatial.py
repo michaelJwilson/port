@@ -52,6 +52,7 @@ __all__ = [
     "draw_clones_spatial",
     "pitch",
     "plot_clones_spatial",
+    "spatial_page",
 ]
 
 
@@ -201,8 +202,36 @@ def plot_clones_spatial(
 
     `sample_layout`, or unset `preferred_sample_layout`, draws one panel per
     sample; it needs `sample_ids`, and the preference is skipped for a run
-    of one sample.
+    of one sample. The page carries its inputs for `cnamaste.h5` (T- #817).
     """
+    from port.extensions import figure_record
+
+    options: dict[str, Any] = {"base_width": base_width, "base_height": base_height, "palette": palette,
+                               "sample_layout": sample_layout, "preferred_sample_layout": preferred_sample_layout}  # fmt: skip
+    figure = spatial_page(
+        coords, assignment, single_tumor_prop, sample_list, sample_ids, **options
+    )
+    figure_record.attach(
+        figure, "spatial",
+        figure_record.spatial(coords, assignment, single_tumor_prop, sample_list, sample_ids), options,
+    )  # fmt: skip
+    return figure
+
+
+def spatial_page(
+    coords: np.ndarray,
+    assignment: Any,
+    single_tumor_prop: np.ndarray | None = None,
+    sample_list: list[str] | None = None,
+    sample_ids: np.ndarray | None = None,
+    base_width: float = 4,
+    base_height: float = 4,
+    palette: str = "rocket",
+    *,
+    sample_layout: tuple[int, int] | None = None,
+    preferred_sample_layout: tuple[int, int] | None = None,
+) -> Any:
+    """`plot_clones_spatial`'s page."""
     import matplotlib.pyplot as plt
 
     several = sample_ids is not None and np.unique(sample_ids).size > 1

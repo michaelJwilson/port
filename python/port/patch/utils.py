@@ -150,6 +150,12 @@ def write_fig(
         fig = plt.figure()
         fig.add_subplot(111)
 
+    from port.extensions.figure_record import keep
+
+    # NB the page's record into the run's `cnamaste.h5`, before the groups collapse (T- #817)
+    keep(fig, opath, {"transparent": transparent, "bbox_inches": bbox_inches, "dpi": dpi,
+                      "group_rasters": group_rasters, "group_strategy": group_strategy})  # fmt: skip
+
     if group_rasters:
         collapsed, folded = collapse_rasterizing_groups(fig, group_strategy)
 
@@ -188,9 +194,9 @@ def write_fig(
 def discard_fig(
     opath: str,
     fig: Any = None,
-    transparent: bool = True,  # noqa: ARG001 -- cnaster's signature
-    bbox_inches: str | None = "tight",  # noqa: ARG001
-    dpi: int = 300,  # noqa: ARG001
+    transparent: bool = True,
+    bbox_inches: str | None = "tight",
+    dpi: int = 300,  # noqa: ARG001 -- cnaster's signature
 ) -> None:
     """`write_fig` under `run_cnaster_port --no-plots` (#403): close, write nothing.
 
@@ -201,6 +207,11 @@ def discard_fig(
     """
     import matplotlib.pyplot as plt
 
-    del opath
     if fig is not None:
+        from port.extensions.figure_record import keep
+        from port.pipeline import FIGURE_DPI
+
+        # NB kept as `write_fig` keeps it, written as `FIGURE_SWAPS` writes: `run_plots` draws it later (T- #817)
+        keep(fig, opath, {"transparent": transparent, "bbox_inches": bbox_inches, "dpi": FIGURE_DPI,
+                          "group_rasters": True, "group_strategy": "sink"})  # fmt: skip
         plt.close(fig)

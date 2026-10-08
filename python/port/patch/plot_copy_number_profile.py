@@ -53,6 +53,7 @@ __all__ = [
     "hatch_of",
     "plot_ascn_legend",
     "plot_copy_number_profile",
+    "profile_page",
     "swatch",
 ]
 
@@ -220,6 +221,45 @@ def hatch_of(ax: Any, fill: Rectangle) -> tuple[int, Any] | None:
 
 
 def plot_copy_number_profile(
+    df_cnv: pd.DataFrame,
+    ax: Any = None,
+    height: float = 1.0,
+    title: Any = None,
+    show_clone_name: bool = True,
+    plot_chrname: bool = True,
+    figsize: Any = None,
+    palette_name: str = "chisel_single",
+    *,
+    axis: GenomicAxis | Ticks | None = None,
+    rows: list[str] | None = None,
+) -> Any:
+    """`cnaster`'s profile, one row per clone, aberrations hatched A then B.
+
+    `rows`, the clone ids of `df_cnv`'s `clone<id> A` columns top to bottom,
+    sets the rows' order; `None` is `cnaster`'s, least aberrant first
+    (PR- #701).
+
+    `axis`, a `port.extensions.genomic_axis.GenomicAxis` on `df_cnv`'s bins
+    or a `Ticks` made on them, draws the segments and boundaries on its
+    coordinate and ticks every 10 Mb, unlabelled: the chromosome names hold
+    the line below the rows (T- #683). `None` is `cnaster`'s axis. A page of
+    its own carries its inputs for `cnamaste.h5` (T- #817).
+    """
+    from port.extensions import figure_record
+
+    figure = profile_page(
+        df_cnv, ax, height, title, show_clone_name, plot_chrname, figsize, palette_name,
+        axis=axis, rows=rows,
+    )  # fmt: skip
+    if ax is None:
+        options = {"height": height, "title": title, "show_clone_name": show_clone_name,
+                   "plot_chrname": plot_chrname, "figsize": figsize, "palette_name": palette_name,
+                   "axis": figure_record.axis_option(axis), "rows": rows}  # fmt: skip
+        figure_record.attach(figure, "profile", figure_record.profile(df_cnv), options)
+    return figure
+
+
+def profile_page(
     df_cnv: pd.DataFrame,
     ax: Any = None,
     height: float = 1.0,

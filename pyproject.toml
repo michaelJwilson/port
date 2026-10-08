@@ -68,6 +68,9 @@ run_audit = "port.scripts.run_audit:main"
 # badge's share; `run_figures`: the dev instance's figures (T- #673).
 run_benchmark = "port.scripts.run_benchmark:main"
 run_figures = "port.scripts.run_figures:main"
+# A run's figures drawn again from its `cnamaste.h5`, the bytes `--sal` wrote
+# (T- #817): reads the run's file and nothing else.
+run_plots = "port.scripts.run_plots:main"
 # `run_study --<study> ...`: one of `port.studies`, run by hand (T- #673).
 run_study = "port.scripts.run_study:main"
 

@@ -31,6 +31,7 @@ import sys
 import time
 from collections.abc import Sequence
 from contextlib import ExitStack
+from pathlib import Path
 from typing import Any, NamedTuple
 
 from port.pipeline import (
@@ -482,6 +483,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         file=sys.stderr,
     )
 
+    opened: Any = None
     with ExitStack() as stack:
         # NB `--figure-swaps` is additive rather than a third mode, and it composes
         #    with `--no-patch`: what a reader needs to know about a run is
@@ -760,6 +762,25 @@ def main(argv: Sequence[str] | None = None) -> int:
 
         sampled = stack.enter_context(sampling.recording())
 
+        # NB the run's one file, which each stage and page adds to as the run
+        #    reaches it (T- #817); off with `--no-patch`, as the outputs are.
+        if not (arguments.no_outputs or arguments.no_patch):
+            opened = _open_cnamaste(arguments.config, vars(arguments))
+            if opened is not None:
+                import json
+
+                from port.extensions import cnamaste
+                from port.extensions.run_record import tapping
+
+                stack.enter_context(cnamaste.writing(opened))
+                stack.enter_context(
+                    tapping(
+                        pipeline,
+                        Path(arguments.config),
+                        json.dumps(vars(arguments), default=str),
+                    )
+                )
+
         # NB the wall clock the run's files are dated by, so outputs go to
         #    the directories this run wrote and not an earlier one's (T- #617).
         since = time.time()
@@ -786,12 +807,55 @@ def main(argv: Sequence[str] | None = None) -> int:
             lineage.table(),
             sampled,
             since=since,
+            cnamaste_file=opened,
         )
+    if opened is not None:
+        from port.extensions.run_record import release
+
+        release()
     if kept is not None:
         _write_copy_sets(arguments.config, kept, since=since)
 
     print(f"run_cnaster_port: {wall:.2f}s", file=sys.stderr)
     return 0
+
+
+def _open_cnamaste(config: str, flags: dict[str, Any]) -> Any:
+    """`<output_dir>/cnamaste.h5`, made with its root attributes; `None` without an `output_dir`."""
+    import json
+    from importlib.metadata import PackageNotFoundError, version
+    from pathlib import Path
+
+    from port.extensions import cnamaste
+    from port.extensions.outputs import config_keys
+    from port.extensions.repository import commit as checkout
+    from port.sim.fixtures import realization_hash
+
+    output_dir = config_keys(Path(config)).get("output_dir")
+    if output_dir is None:
+        return None
+
+    def installed(name: str) -> str:
+        try:
+            return version(name)
+        except PackageNotFoundError:
+            return "not installed"
+
+    try:
+        commit = checkout()
+    except Exception:  # noqa: BLE001 -- a wheel install has no checkout to name
+        commit = "unknown"
+    import yaml
+
+    paths = (yaml.safe_load(Path(config).read_text()) or {}).get("paths") or {}
+    sheet = Path(paths.get("sample_sheet") or Path(config).parent / "sample_sheet.tsv")
+    path = Path(output_dir) / cnamaste.FILE
+    cnamaste.create(
+        path, commit=commit, port=installed("port"), cnaster=installed("cnaster"),
+        sal=installed("snakes_and_ladders"), sample_hash=realization_hash(sheet.parent),
+        flags=json.dumps(flags, default=str),
+    )  # fmt: skip
+    return path
 
 
 def _write_outputs(
@@ -801,6 +865,7 @@ def _write_outputs(
     samples: Any = None,
     *,
     since: float | None = None,
+    cnamaste_file: Any = None,
 ) -> None:
     """`port.extensions.outputs` into each run directory the run wrote.
 
@@ -826,6 +891,11 @@ def _write_outputs(
         write_outputs(run, Path(config), flags, samples)
         if len(segments):
             segments.to_csv(run / "gene_segments.tsv", sep="\t", index=False)
+        if cnamaste_file is not None:
+            from port.extensions.run_record import integer_groups
+
+            # NB the integer stages, from the copies the run wrote and its spots (T- #817)
+            integer_groups(cnamaste_file, run, Path(config))
         print(f"run_cnaster_port: outputs written to {run}", file=sys.stderr)
 
 

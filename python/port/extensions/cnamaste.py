@@ -34,7 +34,8 @@ derives -- contig, start, length, `lengths` -- is not stored (#438).
 from __future__ import annotations
 
 import fnmatch
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, NamedTuple
 
@@ -49,12 +50,15 @@ __all__ = [
     "TRUTH_SCHEMA",
     "Dataset",
     "Group",
+    "active",
     "create",
     "levels",
     "read",
     "render",
+    "stage",
     "stages",
     "write",
+    "writing",
 ]
 
 FILE = "cnamaste.h5"
@@ -71,7 +75,11 @@ ROOT_ATTRS = ("schema", "commit", "port", "cnaster", "sal", "sample_hash")
 TRUTH_ROOT_ATTRS = ("schema", "sample_hash")
 """What `create` requires of `truth.h5`: the hash a scorer joins the two files on."""
 
-DTYPES = ("int64", "int16", "float64", "bool", "str", "csr")
+DTYPES = ("int64", "int16", "float64", "numeric", "bool", "str", "csr")
+"""`numeric` keeps an integer or float array's own type, int64 or float64, where a page's input may be either."""
+
+ANY = ("...",)
+"""The dims of an array whose rank is its caller's (a fit's `pred_cnv`, one column or one per clone)."""
 
 
 class Dataset(NamedTuple):
@@ -121,21 +129,55 @@ _FIT = (
     _d("alphas", ("n_states",), "float64", "final fit: negative binomial dispersion"),
     _d("taus", ("n_states",), "float64", "final fit: beta-binomial concentration"),
     _d("logmu_shift", ("n_clones",), "float64", "final fit: per-clone log rate shift (#362)", optional=True),
-    _d("pred_cnv", ("n_obs", "n_clones"), "int64", "final fit: state per bin per clone"),
-    _d("llf", ("n_iterations",), "float64", "log-likelihood per iteration"),
-    _d("field", ("n_spots", "n_clones"), "float64", "the stage's clone-assignment field: log-likelihood per spot per clone"),
+    _d("pred_cnv", ("n_obs", "n_clones"), "int64", "final fit: state per bin per clone, clones unstacked"),
+    _d("field", ("n_spots", "n_field_clones"), "float64", "the stage's last clone-assignment field: log-likelihood per spot per clone it assigned to"),
+    _d("assignment", ("n_spots",), "int64", "the stage's clone per spot, before any merge or reindex"),
 )  # fmt: skip
 
-_FIT_ATTRS = ("level", "n_states", "t", "spatial_weight", "termination")
+_FIT_ATTRS = ("level", "n_states", "t", "spatial_weight", "llf", "total_llf")
 
-_PATHS = (
-    "sample_sheet",
-    "cell_snp_Aallele",
-    "cell_snp_Ballele",
-    "unique_snp_ids",
-    "snp_barcodes",
+_TABLE = (
+    _d("contig", ("n_obs",), "str", "each bin's `CHR`, named", optional=True),
+    _d("contig_int", ("n_obs",), "int64", "each bin's `CHR`, numbered", optional=True),
+    _d("start", ("n_obs",), "int64", "each bin's `START`", optional=True),
+    _d("end", ("n_obs",), "int64", "each bin's `END`", optional=True),
+    _d(
+        "cnv_clones",
+        ("n_cnv_clones",),
+        "str",
+        "the table's clone ids, in column order",
+        optional=True,
+    ),
+    _d(
+        "float_columns",
+        ("n_cnv_clones",),
+        "bool",
+        "clones whose A and B columns are floats",
+        optional=True,
+    ),
+    _d(
+        "A",
+        ("n_obs", "n_cnv_clones"),
+        "float64",
+        "each clone's `A` column",
+        optional=True,
+    ),
+    _d(
+        "B",
+        ("n_obs", "n_cnv_clones"),
+        "float64",
+        "each clone's `B` column",
+        optional=True,
+    ),
 )
-"""The SNP inputs' paths, as CalicoST names the files; absolute, as the run resolved them."""
+"""A page's integer-copy table (`df_cnv`): `figure_record` keeps its columns' dtypes."""
+
+_PAGE_ATTRS = ("file", "options", "write")
+"""Where the run wrote the page, relative to the file; its plotter's options and `write_fig`'s, as JSON."""
+
+_PATHS = ("cell_snp_Aallele", "cell_snp_Ballele", "unique_snp_ids", "snp_barcodes")
+"""Each slice's SNP inputs, as CalicoST names the files, absolute paths as the run resolved them."""
+
 
 GROUPS: tuple[Group, ...] = (
     Group(
@@ -148,7 +190,7 @@ GROUPS: tuple[Group, ...] = (
                 "spot barcodes: every spot axis's order",
             ),
             _d("sample_ids", ("n_spots",), "str", "sample per spot"),
-            _d("coords", ("n_spots", "xy"), "float64", "spot positions"),
+            _d("coords", ("n_spots", "xy"), "numeric", "spot positions"),
             _d(
                 "single_tumor_prop",
                 ("n_spots",),
@@ -166,12 +208,16 @@ GROUPS: tuple[Group, ...] = (
                 "anndata",
                 ("n_samples",),
                 "str",
-                "each slice's count matrix (`filtered_feature_bc_matrix.h5ad`), absolute path",
+                "each slice's count matrix (`<filtered_feature_name>.h5` or `.h5ad`)",
+            ),
+            *(
+                _d(name, ("n_samples",), "str", f"each slice's `{name}`")
+                for name in _PATHS
             ),
         ),
-        ("config", "flags", *_PATHS, "references.*", "preprocessing.*"),
-        "the sample, its input files, and the run's configuration (YAML) and flags; `references.*` and "
-        "`preprocessing.*` are the configured reference and annotation files",
+        ("config", "flags", "sample_sheet", "references.*", "preprocessing.*"),
+        "the sample, its input files (absolute paths), and the run's configuration (YAML) and flags; "
+        "`references.*` and `preprocessing.*` are the configured reference and annotation files",
     ),  # fmt: skip
     Group(
         "adjacency",
@@ -223,12 +269,18 @@ GROUPS: tuple[Group, ...] = (
     Group(
         "clone_assignment",
         (_d("assignment", ("n_spots",), "int64", "clone per spot"),),
-        ("level", "stage", "solver", "termination"),
-        "the run's final clones; `stage` names the group whose `field` they were solved on",
+        ("level", "stage"),
+        "the run's final clones (`reindex_clones`); `stage` names the group whose `field` they were solved on",
     ),  # fmt: skip
     Group(
         "integer_copy",
         (
+            _d(
+                "clones",
+                ("n_clones",),
+                "int64",
+                "each column's clone, as `/clone_assignment` numbers it",
+            ),
             _d(
                 "A",
                 ("n_obs", "n_clones"),
@@ -248,8 +300,21 @@ GROUPS: tuple[Group, ...] = (
     Group(
         "integer_clones",
         (
-            _d("map", ("n_clones",), "int64", "integer clone of each fitted clone"),
-            _d("assignment", ("n_spots",), "int64", "integer clone per spot"),
+            _d(
+                "map",
+                ("n_clones",),
+                "int64",
+                "integer clone of each `/integer_copy` column",
+            ),
+            _d(
+                "assignment", ("n_spots",), "int64", "integer clone per spot, `-1` none"
+            ),
+            _d(
+                "integer_ids",
+                ("n_integer_clones",),
+                "int64",
+                "each integer clone's id, its smallest member's",
+            ),
             _d(
                 "A",
                 ("n_obs", "n_integer_clones"),
@@ -264,11 +329,90 @@ GROUPS: tuple[Group, ...] = (
             ),
             *_pooled("n_integer_clones"),
         ),
-        ("level", "int_copy_num.*"),
+        ("level", "merge_agreement"),
         "integer clones, and their counts summed over their spots",
     ),  # fmt: skip
+    Group(
+        "figures/genomic/*",
+        (
+            _d("lengths", ("n_contigs",), "numeric", "bins per contig"),
+            _d("labels", ("n_clones",), "str", "each row pair's clone label"),
+            _d("sizes", ("n_clones",), "int64", "spots per clone"),
+            *_pooled("n_clones"),
+            _d(
+                "tumor_prop",
+                ("n_clones",),
+                "float64",
+                "mean tumour proportion of the pooled spots",
+                optional=True,
+            ),
+            _d(
+                "profile",
+                ("n_obs",),
+                "float64",
+                "the baseline summed over spots: the shifted line's lambda",
+            ),
+            _d("pred_cnv", ANY, "numeric", "the drawn fit's states", optional=True),
+            _d(
+                "new_log_mu", ANY, "float64", "the drawn fit's log rates", optional=True
+            ),
+            _d(
+                "new_p_binom",
+                ANY,
+                "float64",
+                "the drawn fit's B allele probabilities",
+                optional=True,
+            ),
+            _d(
+                "sample_list",
+                ("n_samples",),
+                "str",
+                "the page's sample names",
+                optional=True,
+            ),
+            *_TABLE,
+        ),
+        _PAGE_ATTRS,
+        "a genomic page (`plot_clones_genomic`), as `run_cnaster_port --sal` drew it",
+    ),  # fmt: skip
+    Group(
+        "figures/spatial/*",
+        (
+            _d("coords", ("n_spots", "xy"), "numeric", "spot positions"),
+            _d(
+                "assignment",
+                ("n_spots",),
+                "str",
+                "each spot's label, `''` where missing",
+            ),
+            _d("missing", ("n_spots",), "bool", "spots with no label"),
+            _d(
+                "tumor_prop",
+                ("n_spots",),
+                "float64",
+                "tumour proportion per spot",
+                optional=True,
+            ),
+            _d("sample_list", ("n_samples",), "str", "sample names", optional=True),
+            _d(
+                "sample_ids",
+                ("n_spots",),
+                "numeric",
+                "each spot's sample code",
+                optional=True,
+            ),
+        ),
+        _PAGE_ATTRS,
+        "a spatial page (`plot_clones_spatial`), as `run_cnaster_port --sal` drew it",
+    ),  # fmt: skip
+    Group(
+        "figures/profile/*",
+        _TABLE,
+        _PAGE_ATTRS,
+        "a copy-number profile (`plot_copy_number_profile`)",
+    ),
 )
-"""`cnamaste.h5`, in run order."""
+"""`cnamaste.h5`, in run order; each `figures/` group is written as its page is."""
 
 
 def _only(group: Group, *names: str, attrs: tuple[str, ...], meaning: str) -> Group:
@@ -288,7 +432,8 @@ TRUTH_GROUPS: tuple[Group, ...] = (
         "coords",
         "samples",
         "anndata",
-        attrs=("manifest", *_PATHS),
+        *_PATHS,
+        attrs=("manifest", "sample_sheet"),
         meaning="the sample as drawn, its files, and the manifest that drew it",
     ),
     _only(
@@ -308,6 +453,7 @@ TRUTH_GROUPS: tuple[Group, ...] = (
     ),
     _only(
         _group("integer_copy"),
+        "clones",
         "A",
         "B",
         attrs=("level",),
@@ -317,6 +463,7 @@ TRUTH_GROUPS: tuple[Group, ...] = (
         _group("integer_clones"),
         "map",
         "assignment",
+        "integer_ids",
         "A",
         "B",
         attrs=("level",),
@@ -366,6 +513,31 @@ def _spec(path: str, schema: str) -> Group:
 
 def _attr_declared(name: str, declared: tuple[str, ...]) -> bool:
     return any(fnmatch.fnmatchcase(name, pattern) for pattern in declared)
+
+
+_ACTIVE: list[Path] = []
+"""The file `stage` writes to: `writing`'s, innermost last."""
+
+
+@contextmanager
+def writing(path: Path) -> Iterator[Path]:
+    """`stage` writes into `path` inside the block: the run's `cnamaste.h5`, which `create` has made."""
+    _ACTIVE.append(Path(path))
+    try:
+        yield Path(path)
+    finally:
+        _ACTIVE.pop()
+
+
+def active() -> Path | None:
+    """The file `stage` writes to, or `None` outside `writing`."""
+    return _ACTIVE[-1] if _ACTIVE else None
+
+
+def stage(group: str, arrays: Mapping[str, Any], **attrs: Any) -> None:
+    """`write` into the open file; nothing outside `writing`, so a stage's hook costs nothing without one."""
+    if _ACTIVE:
+        write(_ACTIVE[-1], group, arrays, **attrs)
 
 
 def create(path: Path, *, schema: str = SCHEMA, **attrs: Any) -> None:
@@ -472,13 +644,20 @@ def _checked(group: str, spec: Dataset, value: Any, sizes: dict[str, int]) -> An
         if want is not None and array.dtype.kind != want:
             msg = f"{group}/{spec.name}: {spec.dtype} wanted, got {array.dtype}"
             raise TypeError(msg)
-        if want is None:
+        if spec.dtype == "numeric":
+            if array.dtype.kind not in "iuf":
+                msg = f"{group}/{spec.name}: numeric wanted, got {array.dtype}"
+                raise TypeError(msg)
+            array = array.astype(np.float64 if array.dtype.kind == "f" else np.int64)
+        elif want is None:
             cast = array.astype(spec.dtype)
             if not np.array_equal(cast, array, equal_nan=array.dtype.kind == "f"):
                 msg = f"{group}/{spec.name}: {array.dtype} does not cast to {spec.dtype} exactly"
                 raise TypeError(msg)
             array = cast
         shape = array.shape
+    if spec.dims == ANY:
+        return array
     if len(shape) != len(spec.dims):
         msg = f"{group}/{spec.name}: dims {spec.dims}, shape {shape}"
         raise ValueError(msg)

@@ -12,16 +12,28 @@ import pytest
 from tests import ROOT
 
 SIZES = {"n_samples": 2, "n_spots": 7, "n_genes": 11, "channel": 2, "xy": 2, "n_obs": 5, "n_clones": 3,
-         "n_states": 4, "n_integer_clones": 2, "n_segments": 5, "n_iterations": 6,
+         "n_states": 4, "n_integer_clones": 2, "n_segments": 5, "n_field_clones": 4, "n_contigs": 2,
+         "n_cnv_clones": 3,
          "n_snps": 9, "n_nodes": 3, "n_events": 4}  # fmt: skip
-PATHS = {k: f"/data/{k}" for k in ("sample_sheet", "cell_snp_Aallele", "cell_snp_Ballele", "unique_snp_ids",
-                                    "snp_barcodes")} | {"config": "", "flags": [], "references.geneticmap_file": "/g"}  # fmt: skip
+PATHS = {
+    "sample_sheet": "/data/sample_sheet.tsv",
+    "config": "",
+    "flags": "{}",
+    "references.geneticmap_file": "/g",
+}
+FILES = (
+    "anndata",
+    "cell_snp_Aallele",
+    "cell_snp_Ballele",
+    "unique_snp_ids",
+    "snp_barcodes",
+)
 
 
 def _inputs(n: int, **replaced: Any) -> dict[str, Any]:
     """A valid `/inputs` of `n` spots, one slice, with `replaced` datasets (`None` drops one)."""
     arrays = {"barcodes": np.array(["a"] * n), "sample_ids": np.array(["s"] * n), "coords": np.zeros((n, 2)),
-              "samples": np.array(["s"]), "anndata": np.array(["/data/s/filtered_feature_bc_matrix.h5ad"])}  # fmt: skip
+              "samples": np.array(["s"])} | {f: np.array([f"/data/s/{f}"]) for f in FILES}  # fmt: skip
     return {k: v for k, v in (arrays | replaced).items() if v is not None}
 
 
@@ -31,7 +43,7 @@ ROOT_ATTRS = {"commit": "6a1d215", "port": "0.0", "cnaster": "0.0", "sal": "0.3.
 def _array(spec: Any, rng: np.random.Generator) -> Any:
     import scipy.sparse as sp
 
-    shape = tuple(SIZES[a] for a in spec.dims)
+    shape = (3,) if spec.dims == ("...",) else tuple(SIZES[a] for a in spec.dims)
     if spec.dtype == "csr":
         return sp.random(*shape, density=0.3, format="csr", random_state=1)
     if spec.dtype == "str":
@@ -40,6 +52,8 @@ def _array(spec: Any, rng: np.random.Generator) -> Any:
         return rng.random(shape) < 0.5
     if spec.dtype == "float64":
         return rng.normal(size=shape)
+    if spec.dtype == "numeric":
+        return rng.integers(-1, 6, size=shape).astype(np.int64)
     return rng.integers(-1, 6, size=shape).astype(spec.dtype)
 
 
@@ -54,6 +68,10 @@ def _group(
     }
     if "int_copy_num.*" in group.attrs:
         attrs["int_copy_num.max_total_copy"] = 6
+    # NB a group's family is a pattern: `contig` and `contig_int` are one column, two types
+    arrays.pop(
+        "contig_int", None
+    ) if "contig" in arrays and "contig_int" in arrays else None
     return arrays, attrs
 
 
@@ -148,10 +166,11 @@ def test_levels_keep_the_order_the_run_recorded(tmp_path: Path) -> None:
         ("inputs", _inputs(1, extra=np.zeros(1)), PATHS, "undeclared datasets \\['extra'\\]"),
         ("inputs", _inputs(1, sample_ids=None), PATHS, "missing \\['sample_ids'\\]"),
         ("inputs", _inputs(1, coords=np.zeros((1, 3))), PATHS, "xy is 2, got 3"),
-        ("inputs", _inputs(1), {k: v for k, v in PATHS.items() if k != "cell_snp_Aallele"},
-         "missing \\['cell_snp_Aallele'\\]"),
+        ("inputs", _inputs(1, cell_snp_Aallele=None), PATHS, "missing \\['cell_snp_Aallele'\\]"),
+        ("inputs", _inputs(1), {k: v for k, v in PATHS.items() if k != "sample_sheet"},
+         "missing \\['sample_sheet'\\]"),
         ("inputs", _inputs(1), PATHS | {"references": "/g"}, "undeclared attributes \\['references'\\]"),
-        ("integer_copy", {"A": np.full((2, 1), 1.5), "B": np.ones((2, 1))}, {"level": "bins", "objective": "x"},
+        ("integer_copy", {"clones": np.zeros(1, dtype=np.int64), "A": np.full((2, 1), 1.5), "B": np.ones((2, 1))}, {"level": "bins", "objective": "x"},
          "does not cast to int16 exactly"),
         ("phase", {}, {}, "declares no group 'phase'"),
     ],
