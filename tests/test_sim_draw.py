@@ -504,7 +504,9 @@ def test_clone_sizes_follow_the_stated_law_across_seeds() -> None:
     from port.sim.draw import clone_size
     from scipy.stats import kstest
 
-    manifest = _sized({"law": "loguniform", "minimum": 25, "maximum": 1000})
+    manifest = _sized(
+        {"law": "loguniform", "minimum": 25, "maximum": 1000, "edge": "grow"}
+    )
     _, _, points = hex_array(60, 50)
     sizes, ratios = [], []
 
@@ -530,7 +532,7 @@ def test_clone_sizes_follow_the_stated_law_across_seeds() -> None:
 @pytest.mark.infra
 def test_a_seed_draws_the_same_sizes_and_an_unknown_law_is_refused() -> None:
     """The layout is a function of the seed; `[layout.size]` names a law it has."""
-    manifest = _sized({"law": "lognormal", "median": 200, "sigma": 0.5})
+    manifest = _sized({"law": "lognormal", "median": 200, "sigma": 0.5, "edge": "grow"})
     _, _, points = hex_array(60, 50)
     first, _ = layout(manifest, points, np.random.default_rng(7))
     second, _ = layout(manifest, points, np.random.default_rng(7))
@@ -538,9 +540,45 @@ def test_a_seed_draws_the_same_sizes_and_an_unknown_law_is_refused() -> None:
     np.testing.assert_array_equal(first[0], second[0])
 
     with pytest.raises(ValueError, match=r"\[layout.size\] law"):
-        _sized({"law": "uniform", "minimum": 1, "maximum": 2})
+        _sized({"law": "uniform", "minimum": 1, "maximum": 2, "edge": "grow"})
     with pytest.raises(ValueError, match=r"\[layout.size\] sigma"):
-        _sized({"law": "lognormal", "median": 200})
+        _sized({"law": "lognormal", "median": 200, "edge": "grow"})
+    with pytest.raises(ValueError, match=r"\[layout.size\] edge"):
+        _sized({"law": "lognormal", "median": 200, "sigma": 0.5})
+    with pytest.raises(ValueError, match=r"\[layout.size\] edge 'shrink'"):
+        _sized({"law": "lognormal", "median": 200, "sigma": 0.5, "edge": "shrink"})
+
+
+@pytest.mark.analytic
+def test_a_clipped_clone_keeps_what_lands_on_the_array() -> None:
+    """`edge = "clip"` on `study.toml`'s sizes, 200 seeds x 3 clones (T- #807).
+
+    A clone is sized on the array continued past its edge, so it claims at most
+    its target (5% over for the lattice's ties) and one that runs off keeps
+    fewer spots: measured, the realized share of the target has median 0.85.
+    Every seed places every clone, where `grow` refused 6 of the 200 (the three
+    targets can sum to 2,245 of the slice's 3,000 spots).
+    """
+    from port.sim.draw import clone_size
+
+    manifest = _sized(
+        {"law": "loguniform", "minimum": 100, "maximum": 1000, "edge": "clip"}
+    )
+    _, _, points = hex_array(60, 50)
+    ratios = []
+
+    for seed in range(200):
+        labels, _ = layout(manifest, points, np.random.default_rng(seed))
+        rng = np.random.default_rng(seed)
+        targets = {
+            c: clone_size(manifest.layout["size"], rng) for c in sorted(manifest.tumour)
+        }
+        for clone, target in targets.items():
+            size = int(np.sum(np.concatenate(labels) == manifest.tumour.index(clone)))
+            ratios.append(size / target)
+
+    assert max(ratios) <= 1.05, max(ratios)
+    assert np.mean(np.array(ratios) < 0.9) > 0.05, np.quantile(ratios, [0.05, 0.25])
 
 
 @pytest.mark.bug
