@@ -91,6 +91,7 @@ ROLES: dict[str, Role] = {
     "port.qa.scoring": "tool",
     "port.qa.statistics": "tool",
     # studies: measurements run by hand (T- #673 G5), reached from `run_study`
+    "port.studies.benchmark_table": "tool",
     "port.studies.calicost_figures": "tool",
     "port.studies.clone_label_arms": "tool",
     "port.studies.clone_label_notebook": "tool",

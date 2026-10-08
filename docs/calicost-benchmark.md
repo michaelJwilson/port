@@ -39,6 +39,11 @@ fixtures are in `docs/baseline-release.md`.
 
 Run it alone on the host; `LOCK=<file>` holds a flock.
 
+`run_study --benchmark-table [--repeats 3]` writes the paper's table,
+`docs/benchmark.tex`, on the same fixture: CalicoST from its committed outputs
+(`tests/data/benchmarks/dev_tree_r0/calicost.tar.xz`, not rerun) and port
+`--sal` run at the current commit, which the file names with the sal pin.
+
 ## Results, capped at 1,800 s
 
 | sample | clone ARI | wall | peak |

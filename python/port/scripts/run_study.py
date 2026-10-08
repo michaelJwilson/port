@@ -17,6 +17,7 @@ import sys
 from collections.abc import Sequence
 
 STUDIES = (
+    "benchmark_table",
     "calicost_figures",
     "clone_label_notebook",
     "clone_labels",
