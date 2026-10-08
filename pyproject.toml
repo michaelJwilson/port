@@ -11,6 +11,10 @@ license = "MIT"
 requires-python = ">=3.12.2"
 readme = "README.md"
 dependencies = [
+    # `cnamaste.h5`, the run's one output port reads (T- #817), which the
+    # owner allowed. Already installed through `anndata`; BSD-3-Clause, ~2k
+    # stars on `h5py/h5py`.
+    "h5py>=3.11",
     "matplotlib>=3.9.0",
     "numba>=0.61.0",
     "numpy>=1.26.0",
@@ -226,6 +230,11 @@ files = ["python", "scripts", "tests"]
 
 [[tool.mypy.overrides]]
 module = "pytest_benchmark.*"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# h5py ships no py.typed marker; `port.extensions.cnamaste` is its one importer (T- #817).
+module = "h5py.*"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]

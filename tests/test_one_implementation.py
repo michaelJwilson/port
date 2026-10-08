@@ -65,8 +65,9 @@ BUDGET: dict[str, int] = {
     #    `ScheduleParams(warm=)` (sal #1324), which states the warm-up. 87:
     #    T- #776's `emission.BetaBinomialTables`, the beta-binomial's tables
     #    every site completes. 88: T- #799's `count_encoder.CountEncoder`, the
-    #    row in place of `cnaster`'s, which it must be to install.
-    "classes": 88,
+    #    row in place of `cnaster`'s, which it must be to install. 90: T- #817's
+    #    `cnamaste.Dataset` and `Group` (NamedTuples), the run file's schema.
+    "classes": 90,
     # NB step 4: 18 records became NamedTuples; the dataclasses left carry
     #    mutable state, machinery or a `__post_init__` (#517 D). Step 8 moved
     #    7 dataclasses and 1 NamedTuple to `sandbox/`. 21: T- #418's `Samples`
@@ -86,7 +87,8 @@ BUDGET: dict[str, int] = {
     #    30: G3's `Fit` and `Summary`, moved. 32: G5's two `Job`s, moved.
     #    34: #730's `Stage` and `Member`. 36: #735's `Field` and `Problem`.
     #    37: T- #791's `SliceFrame`, recorded under T- #794.
-    "NamedTuples": 37,
+    #    39: T- #817's `cnamaste.Dataset` and `Group`.
+    "NamedTuples": 39,
 }
 """`python/port` outside `sandbox/`."""
 

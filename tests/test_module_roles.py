@@ -61,6 +61,8 @@ ROLES: dict[str, Role] = {
     # extensions
     "port.extensions.adjacency": "extension",
     "port.extensions.combined_figure": "tool",
+    # NB a tool until the run writes it (T- #817 sub-ticket 2), then an extension
+    "port.extensions.cnamaste": "tool",
     "port.extensions.config_audit": "extension",
     "port.extensions.copy_errors": "extension",
     "port.extensions.copy_starts": "extension",
