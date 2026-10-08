@@ -1,0 +1,139 @@
+"""`cnaster.count_encoder.CountEncoder`, its codes gathered and summed by index (T- #799).
+
+**A row (T- #799).** `cnaster` maps each spot's entries to their distinct
+`(obs, total)` pairs through a one-hot float64 CSR matrix, `(n_obs,
+n_unique)`, about 16 bytes an entry, and decodes and encodes by sparse
+matmul. The `inverse` that `np.unique(..., return_inverse=True)` already
+returns is that map: decoding is `array[..., inverse]` and encoding a
+`bincount` by it, 4 bytes an entry. The codes are `cnaster`'s: the same
+rounding to `hmm.compression_decimals` (T- #798 decides whether it stays),
+the same collapse of a zero total, the same order.
+
+**Referee.** `cnaster`'s encoder (`tests/test_count_encoder.py`): the codes
+equal, decode bitwise -- the one-hot product sums one term, `value * 1.0`
+-- and encode to 1e-12 relative, the order its sums are taken in being the
+only difference. The CSR matrices are built only where `mapping_matrices`
+is read; no live reader does.
+
+**Ratio.** In `docs/measurements.md`, `port.patch.count_encoder`.
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+import numpy as np
+from cnaster.count_encoder import CountEncoder as _UPSTREAM_COUNT_ENCODER
+
+__all__ = ["CountEncoder"]
+
+
+def _codes(
+    obs: np.ndarray, total: np.ndarray, *, common_zero_depth: bool
+) -> tuple[np.ndarray, np.ndarray]:
+    """One spot's distinct `(obs, total)` pairs and each entry's index into them, as `cnaster` codes them."""
+    o, t = obs.copy(), total.copy()
+    if common_zero_depth:
+        zero = t == 0
+        o[zero] = 0
+        t[zero] = 0
+    counts = np.vstack([o, t]).T
+    if not np.issubdtype(total.dtype, np.integer):
+        from cnaster.config import get_global_config
+
+        counts = counts.round(decimals=get_global_config().hmm.compression_decimals)
+    pairs, inverse = np.unique(counts, axis=0, return_inverse=True)
+    return pairs, np.ascontiguousarray(inverse.reshape(-1), dtype=np.intp)
+
+
+class CountEncoder:
+    """`cnaster`'s encoder, its signature and attributes, decoding by gather and encoding by `bincount`."""
+
+    def __init__(
+        self, obs_count: Any, total_count: Any, common_zero_depth: bool = False
+    ) -> None:
+        self.obs_count = obs_count
+        self.total_count = total_count
+        self.n_obs = obs_count.shape[0]
+        self.n_spots = obs_count.shape[1]
+        self.common_zero_depth = common_zero_depth
+        self.unique_counts: list[np.ndarray] = []
+        self.inverses: list[np.ndarray] = []
+        for spot in range(self.n_spots):
+            pairs, inverse = _codes(
+                np.asarray(obs_count[:, spot]),
+                np.asarray(total_count[:, spot]),
+                common_zero_depth=common_zero_depth,
+            )
+            self.unique_counts.append(pairs)
+            self.inverses.append(inverse)
+        self._mapping: list[Any] | None = None
+
+    def encode_array(self, array: Any, spot: int) -> np.ndarray:
+        """`[..., n_obs]` or `[n_obs, ...]` summed into `[..., n_unique]` or `[n_unique, ...]` by code."""
+        inverse = self.inverses[spot]
+        n_unique = self.unique_counts[spot].shape[0]
+        values = np.asarray(array, dtype=np.float64)
+        if values.shape[-1] == inverse.size:
+            rows = values.reshape(-1, inverse.size)
+            out = np.empty((rows.shape[0], n_unique))
+            for i in range(rows.shape[0]):
+                out[i] = np.bincount(inverse, weights=rows[i], minlength=n_unique)
+            return out.reshape(*values.shape[:-1], n_unique)
+        if values.shape[0] == inverse.size:
+            return np.moveaxis(
+                self.encode_array(np.moveaxis(values, 0, -1), spot), -1, 0
+            )
+        msg = f"Array shape {values.shape} not compatible with {inverse.size} observations."
+        raise ValueError(msg)
+
+    def decode_array(self, array: Any, spot: int) -> np.ndarray:
+        """`[..., n_unique]` or `[n_unique, ...]` gathered to `[..., n_obs]` or `[n_obs, ...]`."""
+        inverse = self.inverses[spot]
+        n_unique = self.unique_counts[spot].shape[0]
+        values = np.asarray(array)
+        if values.shape[-1] == n_unique:
+            return np.take(values, inverse, axis=-1)
+        if values.shape[0] == n_unique:
+            return np.take(values, inverse, axis=0)
+        msg = f"Array shape {values.shape} not compatible with {n_unique} codes."
+        raise ValueError(msg)
+
+    def get_unique_obs(self, spot: int) -> np.ndarray:
+        return self.unique_counts[spot][:, 0]
+
+    def get_unique_total(self, spot: int) -> np.ndarray:
+        return self.unique_counts[spot][:, 1]
+
+    @property
+    def compression_rate(self) -> float:
+        total = self.n_obs * self.n_spots
+        if total == 0:
+            return 0.0
+        return 1.0 - sum(u.shape[0] for u in self.unique_counts) / total
+
+    @property
+    def mapping_matrices(self) -> list[Any]:
+        """`cnaster`'s one-hot CSR maps, built on first read: no live reader reads them."""
+        if self._mapping is None:
+            import scipy.sparse
+
+            self._mapping = [
+                scipy.sparse.csr_matrix(
+                    (np.ones(inverse.size), (np.arange(inverse.size), inverse)),
+                    shape=(inverse.size, pairs.shape[0]),
+                )
+                for pairs, inverse in zip(
+                    self.unique_counts, self.inverses, strict=True
+                )
+            ]
+        return self._mapping
+
+    @staticmethod
+    def construct_unique_encoding(
+        obs_count: Any, total_count: Any, common_zero_depth: bool = True
+    ) -> tuple[list[np.ndarray], list[Any]]:
+        """`cnaster`'s own: the pairs and the CSR maps, as `hmm_utils.construct_unique_matrix` returns them."""
+        return _UPSTREAM_COUNT_ENCODER.construct_unique_encoding(
+            obs_count, total_count, common_zero_depth=common_zero_depth
+        )

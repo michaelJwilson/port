@@ -61,7 +61,9 @@ BUDGET: dict[str, int] = {
     #    with its realization (`known_field.KnownProblem`, in `sandbox/`, gone).
     #    87: #749 WP6 retired `potts_solvers` and its `PortStart`. 88: T- #791's
     #    `analysis.SliceFrame`, the slices' one frame the spatial pages share.
-    "classes": 88,
+    #    89: T- #799's `count_encoder.CountEncoder`, the row in place of
+    #    `cnaster`'s, which it must be to install.
+    "classes": 89,
     # NB step 4: 18 records became NamedTuples; the dataclasses left carry
     #    mutable state, machinery or a `__post_init__` (#517 D). Step 8 moved
     #    7 dataclasses and 1 NamedTuple to `sandbox/`. 21: T- #418's `Samples`
