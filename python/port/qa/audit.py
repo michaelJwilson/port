@@ -153,12 +153,82 @@ def clone_labels(directory: Path) -> pd.Series:
     )
 
 
+def run_file(directory: Path) -> Path | None:
+    """The `cnamaste.h5` of the run whose outputs are in `directory` (or its `output_dir`), if it wrote one."""
+    from port.extensions.cnamaste import FILE
+
+    for where in (directory, directory.parent):
+        if (where / FILE).is_file():
+            return where / FILE
+    return None
+
+
+def run_tables(directory: Path) -> tuple[pd.Series, pd.DataFrame, dict[str, Any]]:
+    """A run's clone labels by barcode, its integer table and its final fit: from `cnamaste.h5` (T- #817).
+
+    The labels are the run's reported clones, its integer clones where the
+    merge joined any, as `clone_labels.tsv` reports them; the table is
+    `cnv_seglevel.tsv`'s `CHR`, `START`, `END` and each clone's `A`, `B`; the
+    fit is the RDR+BAF stage's, its clones in `reindex_clones`' order, as
+    the final npz holds it. A run that wrote no file -- `cnaster`'s,
+    CalicoST's, a kept population output -- is read from those files.
+    """
+    from port.extensions import cnamaste
+
+    path = run_file(directory)
+    if path is None:
+        table = pd.read_csv(directory / "clone_labels.tsv", sep="\t", comment="#")
+        barcodes = table["barcode"] if "barcode" in table else table.iloc[:, 0]
+        labels = pd.Series(
+            table["clone_label"].to_numpy(), index=pd.Index(barcodes.astype(str))
+        )
+        seglevel = pd.read_csv(directory / "cnv_seglevel.tsv", sep="\t")
+        npz = next(directory.glob("rdrbaf_final_nstates*_smp.npz"), None)
+        fit: dict[str, Any] = {}
+        if npz is not None:
+            with np.load(npz, allow_pickle=True) as held:
+                fit = {
+                    k: np.asarray(held[k])
+                    for k in ("new_log_mu", "new_p_binom", "pred_cnv")
+                    if k in held.files
+                }
+        return labels, seglevel, fit
+
+    spots, _ = cnamaste.read(path, "inputs")
+    final, _ = cnamaste.read(path, "clone_assignment")
+    merged, _ = cnamaste.read(path, "integer_clones")
+    reported = np.where(
+        merged["assignment"] >= 0,
+        merged["integer_ids"][merged["assignment"]],
+        final["assignment"],
+    )
+    labels = pd.Series(reported, index=pd.Index(spots["barcodes"]))
+    copies, attrs = cnamaste.read(path, "integer_copy")
+    columns: dict[str, Any] = {
+        "CHR": copies["contig"].astype(np.int64) if attrs["contig_numeric"] else copies["contig"].astype(object),
+        "START": copies["start"], "END": copies["end"],
+    }  # fmt: skip
+    for k, clone in enumerate(copies["clones"]):
+        columns[f"clone{clone} A"] = copies["A"][:, k].astype(np.int64)
+        columns[f"clone{clone} B"] = copies["B"][:, k].astype(np.int64)
+    stage, shape = cnamaste.read(path, "rdrbaf")
+    # NB the stage's clones before `reindex_clones`, the final ones after: one permutation
+    order = dict(
+        zip(final["assignment"].tolist(), stage["assignment"].tolist(), strict=True)
+    )
+    pred = stage["pred_cnv"][:, [order[k] for k in range(stage["pred_cnv"].shape[1])]]
+    fit = {"new_log_mu": stage["log_mu"].reshape(shape["mu_shape"]),
+           "new_p_binom": stage["p_binom"].reshape(shape["mu_shape"]),
+           "pred_cnv": pred.T.ravel() if shape["pred_layout"] == "stacked" else pred}  # fmt: skip
+    return labels, pd.DataFrame(columns), fit
+
+
 def read_tables(sample: SimulatedSample, directory: Path) -> dict[str, Any]:
     """Fitted labels per truth spot (`-1` where the run dropped it), and the
-    `cnv_seglevel.tsv` rows with each fitted clone's `A` and `B` per bin.
+    integer table's rows with each fitted clone's `A` and `B` per bin (`run_tables`).
     """
-    labels = clone_labels(directory).reindex(sample.barcodes, fill_value=-1)
-    seglevel = pd.read_csv(directory / "cnv_seglevel.tsv", sep="\t")
+    found, seglevel, _ = run_tables(directory)
+    labels = found.reindex(sample.barcodes, fill_value=-1)
     n_fitted = int(labels.max()) + 1
     # NB CalicoST leaves out the column of a clone whose integer fit it
     #    skipped (#494); its bins read as -1, never as a planted pair.
@@ -172,11 +242,15 @@ def read_tables(sample: SimulatedSample, directory: Path) -> dict[str, Any]:
     return {"labels": labels.to_numpy(), "seglevel": seglevel, "a": a, "b": b}
 
 
+def _run_directory(output: Path) -> Path:
+    return next(output.rglob("cnv_seglevel.tsv")).parent
+
+
 def read_run(sample: SimulatedSample, output: Path) -> dict[str, Any]:
     """`read_tables`, with the decoded state `Z` per bin and fitted clone."""
-    run = next(output.rglob("rdrbaf_final_nstates*_smp.npz"))
-    fit = np.load(run, allow_pickle=True)
-    tables = read_tables(sample, run.parent)
+    directory = _run_directory(output)
+    _, _, fit = run_tables(directory)
+    tables = read_tables(sample, directory)
     n_fitted = tables["a"].shape[1]
     n_states = np.asarray(fit["new_log_mu"]).shape[0]
     pred = np.asarray(fit["pred_cnv"]).reshape(len(tables["seglevel"]), -1) % n_states
@@ -256,9 +330,25 @@ def score_sample(
     ari = float(adjusted_rand_score(sample.labels[scored], fitted[scored]))
     merged = integer_clones(run["a"], run["b"])
     integer = merged[fitted[scored]]
-    written = next(output.rglob("clone_labels_integer.tsv"), None)
+    held = run_file(_run_directory(output))
+    written = (
+        None
+        if held is not None
+        else next(output.rglob("clone_labels_integer.tsv"), None)
+    )
 
-    if written is not None:
+    if held is not None:
+        # NB the run's own integer clones, from its file (T- #817)
+        from port.extensions import cnamaste
+
+        spots, _ = cnamaste.read(held, "inputs")
+        clones, _ = cnamaste.read(held, "integer_clones")
+        by_barcode = pd.Series(
+            clones["integer_ids"][clones["assignment"]],
+            index=pd.Index(spots["barcodes"]),
+        )
+        integer = by_barcode.loc[sample.barcodes[scored]].to_numpy()
+    elif written is not None:
         # NB the run's own integer clones, under the merge agreement its
         #    configuration states (#518); the exact rule where none is written.
         table = pd.read_csv(written, sep="\t", comment="#")
@@ -511,10 +601,8 @@ def _copies(
 
 
 def read_cnaster(truth: CoreInferenceTruth, output: Path) -> Reading:
-    """A `run_cnaster` or `run_cnaster_port` run's outputs."""
-    run = next(output.rglob("rdrbaf_final_nstates*_smp.npz"))
-    fit = np.load(run, allow_pickle=True)
-    labels = clone_labels(run.parent)
+    """A `run_cnaster` or `run_cnaster_port` run's outputs: its `cnamaste.h5` where it wrote one (`run_tables`)."""
+    labels, seglevel, fit = run_tables(_run_directory(output))
     fitted = np.empty(truth.labels.size, dtype=np.int64)
     fitted[_spots(labels.index.to_series())] = labels.to_numpy()
     n_fitted = int(fitted.max()) + 1
@@ -525,7 +613,6 @@ def read_cnaster(truth: CoreInferenceTruth, output: Path) -> Reading:
     p_binom = p_binom.reshape(p_binom.shape[0], -1)[:, :1]
     n_states = log_mu.shape[0]
 
-    seglevel = pd.read_csv(run.parent / "cnv_seglevel.tsv", sep="\t")
     rows = planted_rows(seglevel, truth)
     pred = np.where(
         rows[:, None] >= 0, np.asarray(fit["pred_cnv"])[rows] % n_states, -1

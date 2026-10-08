@@ -13,6 +13,8 @@ import pytest
 from tests import ROOT
 
 MANIFEST = Path("sim/manifests/dev_tree_1s_hard.toml")
+SAMPLES: dict[Path, object] = {}
+"""The drawn sample of each fixture run, for the audits' truth."""
 
 
 @pytest.fixture(scope="module")
@@ -30,6 +32,7 @@ def output(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Path]:
         member = next(stage.members(MANIFEST, root / "sim", n=1))
         assert member.hash == "9ec90dc2"
         main(["--sal", str(drawn_config(member.sample, root / "run", {}))])
+        SAMPLES[root / "run" / "output"] = member.sample
         yield root / "run" / "output"
     finally:
         os.chdir(here)
@@ -129,3 +132,51 @@ def test_the_stages_are_what_the_run_wrote(output: Path) -> None:
     integer, _ = c.read(h5, "integer_clones")
     at = pd.Index(spots["barcodes"]).get_indexer(merged["barcode"].astype(str))
     np.testing.assert_array_equal(integer["integer_ids"][integer["assignment"]][at], merged["integer_clone_label"].to_numpy())  # fmt: skip
+
+
+@pytest.mark.merge
+@pytest.mark.patch
+def test_the_audits_score_the_file_as_they_scored_the_tables(
+    output: Path, tmp_path: Path
+) -> None:
+    """`run_audit --sim`'s every metric from `cnamaste.h5` against the same from the CalicoST tables, exactly.
+
+    The run's directory copied without its file is read the way a run that
+    wrote none is, from `clone_labels.tsv`, `clone_labels_integer.tsv`,
+    `cnv_seglevel.tsv` and the final fit's npz: the hand-rolled readers the
+    file replaces (T- #817).
+    """
+    import dataclasses
+    import shutil
+
+    from port.extensions.cnamaste import FILE
+    from port.qa.audit import run_tables, score_sample
+
+    tables = tmp_path / "output"
+    shutil.copytree(output, tables, ignore=shutil.ignore_patterns(FILE, "plots"))
+    run = next(output.glob("clone*"))
+
+    labels, seglevel, fit = run_tables(run)
+    their_labels, their_seglevel, their_fit = run_tables(next(tables.glob("clone*")))
+    assert labels.loc[their_labels.index].tolist() == their_labels.tolist()
+    # NB `cnv_seglevel.tsv` writes copies as floats; the file holds them as the integers they are
+    assert (
+        seglevel["CHR"].astype(str).tolist()
+        == their_seglevel["CHR"].astype(str).tolist()
+    )
+    for column in seglevel.columns.drop("CHR"):
+        np.testing.assert_array_equal(
+            seglevel[column].to_numpy(dtype=float),
+            their_seglevel[column].to_numpy(dtype=float),
+        )
+    for key in fit:
+        np.testing.assert_array_equal(
+            fit[key], np.asarray(their_fit[key]).reshape(fit[key].shape)
+        )
+
+    sample = SAMPLES[output]
+    ours = dataclasses.asdict(score_sample(sample, output, "sal", 0.0))  # type: ignore[arg-type]
+    theirs = dataclasses.asdict(score_sample(sample, tables, "sal", 0.0))  # type: ignore[arg-type]
+    assert ours.keys() == theirs.keys()
+    for key in ours:
+        assert repr(ours[key]) == repr(theirs[key]), key
