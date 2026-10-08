@@ -1,21 +1,21 @@
 {
-  "_provenance": "run_calibrate --potts on dev_tree_1s_hard.toml realizations 0-4, states run: sal's tune_schedule on their union, each 2 times, 108 schedules (shape x t_start x warm, t_end 0.05) at 4000 sweeps, raced, common random numbers, ranked by the energy after 1000 ICM sweeps (#556, #723, T- #777)",
+  "_provenance": "run_calibrate --potts on study15.toml realizations 0-4, states run: sal's tune_schedule on their union, each 2 times, 108 schedules (shape x t_start x warm, t_end 0.05) at 4000 sweeps, raced, common random numbers, ranked by the energy after ICM and the merge (#556, #723, T- #777, T- #829)",
   "sal:anneal": {
-    "shape": "exponential",
-    "t_start": 1.0,
-    "warm": 0.1,
+    "shape": "power",
+    "t_start": 8.0,
+    "warm": 0.25,
     "sweeps": 4000
   },
   "sal:swendsen-wang-heat-bath": {
-    "shape": "linear",
-    "t_start": 1.0,
-    "warm": 0.25,
+    "shape": "power",
+    "t_start": 32.0,
+    "warm": 0.1,
     "sweeps": 4000
   },
   "sal:wolff-heat-bath": {
-    "shape": "logarithmic",
-    "t_start": 0.25,
-    "warm": 0.25,
+    "shape": "inverse_linear",
+    "t_start": 8.0,
+    "warm": 0.0,
     "sweeps": 4000
   }
 }
