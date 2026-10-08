@@ -24,7 +24,8 @@ Its clones, events, layout and counts are drawn from what the manifest states:
     [phasing]     switch_errors, nu, unit
     [layout]      overlap, radius, vertices, jitter
     [layout.size] optional: law = "loguniform" (minimum, maximum) or
-                  "lognormal" (median, sigma), in spots (#544)
+                  "lognormal" (median, sigma), in spots (#544); edge = "grow"
+                  or "clip" (`EDGES`)
     [[slice]]     clones, offset = [x, y], regions = [{clone, center, ...}]
 
 **The generative model**, per slice and spot `s` of clone `c`, from the
@@ -163,6 +164,13 @@ than one, and none more than 7 (T- #698)."""
 SIZE_LAWS = {"loguniform": ("minimum", "maximum"), "lognormal": ("median", "sigma")}
 """`[layout.size]`: each drawn clone's size in spots, per seed (#544). Optional:
 without it every drawn clone takes `[layout] radius`, as before."""
+
+EDGES = ("grow", "clip")
+"""`[layout.size] edge`, what a clone's size target means at the array's edge:
+`grow`, the polygon grows until it claims its target on the array, however much
+of it the edge clips (#544); `clip`, the polygon is sized on the array continued
+past its edge, so a clone that runs off it keeps only the spots, and so the
+UMIs, that land on it (T- #807)."""
 
 
 def references(directory: Path, names: tuple[str, ...]) -> Path:
@@ -408,8 +416,10 @@ def _check(manifest: DrawManifest) -> None:
         if size.get("law") not in SIZE_LAWS:
             problems.append(f"[layout.size] law: one of {sorted(SIZE_LAWS)}")
         else:
-            absent = [k for k in SIZE_LAWS[size["law"]] if k not in size]
+            absent = [k for k in (*SIZE_LAWS[size["law"]], "edge") if k not in size]
             problems += [f"[layout.size] {k}" for k in absent]
+            if "edge" in size and size["edge"] not in EDGES:
+                problems.append(f"[layout.size] edge {size['edge']!r}: one of {EDGES}")
     if manifest.phasing["unit"] not in UNITS:
         problems.append(f"[phasing] unit: one of {sorted(UNITS)}")
     if manifest.array["kind"] not in ARRAYS:
@@ -787,29 +797,48 @@ def sized_polygon(
     points: np.ndarray,
     target: int,
     rng: np.random.Generator,
+    sized_on: np.ndarray | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     """`(vertices, claimed)`: the shape `polygon` draws, scaled to claim `target` spots.
 
     The phase and jitter are drawn once, then the radius is bisected: scaling
     a star-shaped polygon about its centre nests the spots it claims, so the
     count is monotone in the radius. The smallest radius claiming at least
-    `target` is kept; a polygon clipped by the array's edge claims fewer, and
-    the caller reads the realized count, not the target.
+    `target` of `sized_on` (`points` unless given) is kept, and `claimed` is
+    what it claims of `points`: on `points` a polygon clipped by the array's
+    edge grows until it claims `target`; on `unbounded`'s continuation it
+    claims fewer, and the caller reads the realized count, not the target.
     """
+    reference = points if sized_on is None else sized_on
     unit = polygon(region._replace(radius=1.0), np.zeros(2), 1.0, rng)
-    low, high = 0.0, float(np.ptp(points, axis=0).max()) / scale
+    low, high = 0.0, float(np.ptp(reference, axis=0).max()) / scale
 
-    def claimed(radius: float) -> np.ndarray:
-        return _inside(center + unit * radius * scale, points)
+    def inside(radius: float, on: np.ndarray) -> np.ndarray:
+        return _inside(center + unit * radius * scale, on)
 
     for _ in range(40):
         middle = 0.5 * (low + high)
-        if int(claimed(middle).sum()) >= target:
+        if int(inside(middle, reference).sum()) >= target:
             high = middle
         else:
             low = middle
 
-    return center + unit * high * scale, claimed(high)
+    return center + unit * high * scale, inside(high, points)
+
+
+def unbounded(frame: np.ndarray) -> np.ndarray:
+    """`frame`, an array's points, continued one period past each edge: 3 x 3 copies.
+
+    The period is the array's own: its points per row times their spacing,
+    its rows times theirs, so a hex array of even rows tiles without a seam.
+    `sized_polygon` sizes a clone on it, so the edge clips a clone rather than
+    growing it (`[layout.size] edge = "clip"`).
+    """
+    ys = np.unique(frame[:, 1])
+    row = np.sort(frame[frame[:, 1] == ys[0], 0])
+    period = np.array([row.size * np.diff(row).min(), ys.size * np.diff(ys).min()])
+    shifts = [np.array([i, j]) * period for i in (-1, 0, 1) for j in (-1, 0, 1)]
+    return np.concatenate([frame + shift for shift in shifts])
 
 
 def _inside(vertices: np.ndarray, points: np.ndarray) -> np.ndarray:
@@ -857,6 +886,12 @@ def layout(
     # NB drawn before any placement, in clone order, so a clone's size does
     #    not depend on how many placements another took.
     targets = {} if size is None else {c: clone_size(size, rng) for c in sorted(listed)}
+    # NB with `edge = "clip"` a clone is sized on the arrays continued past their edges
+    sized_on = (
+        np.concatenate([unbounded(frame) for frame in frames])
+        if size is not None and size["edge"] == "clip"
+        else None
+    )
     labels = np.full(everything.shape[0], -1, dtype=np.int64)
     shapes: dict[str, np.ndarray] = {}
 
@@ -888,7 +923,7 @@ def layout(
                 center = rng.uniform(box[0], box[1])
             if box is not None and size is not None:
                 vertices, claimed = sized_polygon(
-                    region, center, scale, everything, targets[clone], rng
+                    region, center, scale, everything, targets[clone], rng, sized_on
                 )
             else:
                 vertices = polygon(region, center, scale, rng)

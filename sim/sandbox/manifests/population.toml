@@ -35,6 +35,8 @@ vertices = 6
 law = "loguniform"
 minimum = 100
 maximum = 1000
+# NB as the committed records drew it: a clipped clone grows to its target (T- #807)
+edge = "grow"
 
 [cna]
 mode = "tree"
