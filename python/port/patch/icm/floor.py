@@ -13,14 +13,20 @@ absorb the rest. Measured on `port.sim.truth.calicost_instance`: 16 read-depth
 sub-clones of about 100 spots each, one of which reached 200, and 1,509 of
 1,600 spots were moved into it; the run ended with one clone.
 
-`enforce_floor` keeps the floor and changes how it is met:
+The floor is kept and the way it is met changed: one clone at a time, the
+smallest first, so merging stops as soon as every clone left clears the
+floor; each spot to its best remaining clone by the field, not at random;
+and a spot with no allowed clone left (the mask is `-inf` in the field)
+keeps its own, so the merge is not forced across a BAF clone.
 
-- **one clone at a time, the smallest first**, so merging stops as soon as
-  every clone that is left clears the floor, rather than as soon as the few
-  that already did have absorbed everything;
-- **each spot to its best remaining clone** by the field, not at random. The
-  field carries the allowed-clone mask as `-inf`, so a spot with no allowed
-  clone left keeps its own and the merge is not forced across a BAF clone.
+**The rule is `sal`'s** (T- #777): `FloorPolicy.SMALLEST_FIRST_BEST_FIELD`,
+whose floor alone is `sal.search.icm.numba.floor_smallest_first`, its Python
+oracle `sal.search.icm._floor_smallest_first` (sal #1324). Port's
+`enforce_floor`, which `sal` took up, is retired: on 3,000 random problems
+(2-8 clones, 5-300 spots, `-inf` masks, floors to half the spots) the three
+returned identical assignments (`tests/test_floor_merge.py`).
+`merge_small_labels(policy=...)` is not used: it descends by ICM after the
+floor, where the run sweeps with its own solver.
 
 The floor is `hmrf.min_spots_per_clone` where the configuration sets it,
 else `cnaster`'s 200. `floor_merge` installs it for a block: the ICM runs
@@ -31,7 +37,7 @@ from __future__ import annotations
 
 import numpy as np
 
-__all__ = ["configured_floor", "enforce_floor"]
+__all__ = ["configured_floor", "floor_clones"]
 
 CNASTER_FLOOR = 200
 """`icm_sweep_deque`'s default `min_clone_spots`, which no key reaches (#81)."""
@@ -47,42 +53,17 @@ def configured_floor() -> int:
     return CNASTER_FLOOR if floor is None else int(floor)
 
 
-def enforce_floor(field: np.ndarray, assignment: np.ndarray, floor: int) -> int:
-    """Merge clones under `floor`, smallest first, into their spots' best clones.
+def floor_clones(field: np.ndarray, assignment: np.ndarray, floor: int) -> int:
+    """`sal`'s smallest-first, best-field floor on `assignment`, in place; the clones it emptied.
 
     `field` is the unary score per `(spot, clone)`, higher better, with any
-    allowed-clone mask already `-inf`. `assignment` is updated in place.
-    Returns how many clones were emptied. A clone whose spots have no allowed
-    alternative keeps them, and is left under the floor rather than forced
-    across the mask.
+    allowed-clone mask already `-inf`. A clone whose spots have no allowed
+    alternative keeps them, and is left under the floor.
     """
-    n_clones = field.shape[1]
-    counts = np.bincount(assignment, minlength=n_clones)
-    emptied = 0
-    stuck: set[int] = set()
+    from sal.search.icm.numba import floor_smallest_first
 
-    while True:
-        alive = np.flatnonzero(counts > 0)
-        small = [c for c in alive if counts[c] < floor and c not in stuck]
-
-        if not small or alive.size <= 1:
-            return emptied
-
-        smallest = min(small, key=lambda c: (counts[c], c))
-        spots = np.flatnonzero(assignment == smallest)
-        others = np.setdiff1d(alive, [smallest])
-        scores = field[np.ix_(spots, others)]
-        best = others[np.argmax(scores, axis=1)]
-        movable = np.isfinite(scores.max(axis=1))
-
-        if not movable.any():
-            stuck.add(int(smallest))
-            continue
-
-        assignment[spots[movable]] = best[movable]
-        counts = np.bincount(assignment, minlength=n_clones)
-
-        if counts[smallest] == 0:
-            emptied += 1
-        else:
-            stuck.add(int(smallest))
+    before = np.unique(assignment).size
+    labels = np.ascontiguousarray(assignment, dtype=np.int64)
+    floor_smallest_first(labels, np.ascontiguousarray(field, dtype=np.float64), floor)
+    assignment[:] = labels
+    return int(before - np.unique(assignment).size)

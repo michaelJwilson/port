@@ -138,10 +138,10 @@ def solve_from(
 
 def _floored(field: np.ndarray, labels: np.ndarray) -> np.ndarray:
     """`--sal`'s floor merge: clones under the floor emptied, smallest first."""
-    from port.patch.icm.floor import enforce_floor
+    from port.patch.icm.floor import floor_clones
 
     labels = np.asarray(labels, dtype=np.int64).copy()
-    enforce_floor(field, labels, HELD["capture"].floor)
+    floor_clones(field, labels, HELD["capture"].floor)
     return labels
 
 
