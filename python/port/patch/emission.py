@@ -1,44 +1,10 @@
 r"""One NB/BB emission evaluation for every site that scores one (T- #776).
 
-The fit's E-step, the clone field, the copy decode, the copy-state starts
-and the M-step gradient score the same two densities. Each did so its own
-way: `lgamma` differences, `betaln`, port's Stirling rises, sal's tables.
-They now share `sal`'s one construction (sal #1334, #1336; `sal.emissions`'
-`CLAUDE.md`):
-
-- **The scaled rising factorial** `S(x, m) = lgamma(x + m) - lgamma(x) -
-  m log x` (`sal.emissions.rising.scaled_rising_array`): the plain `lgamma`
-  difference where its bound meets 1e-14 over `max(|S|, 1)`, a differenced
-  series elsewhere, `0` at `x = inf`. No difference of two large `lgamma` is
-  formed, at any `x`.
-- **The negative binomial**, `r = 1 / max(alpha, DISPERSION_FLOOR)`, rate
-  `lambda = exposure * mu`, `q = lambda / r`:
-  `((T(r, y) + y log(lambda / (1 + q))) - D)`, `T = S(r, y) - lgamma(y + 1)`,
-  `D = r log1p(q)`, and `D = lambda` at `q = 0` (`sal.emissions.nb`).
-  `alpha <= 0` is the Poisson, `r = inf`.
-- **The beta-binomial**, `a = max(p tau, floor)`, `b = max((1 - p) tau,
-  floor)`: `((((log C(n, z) + z log(a / (a + b))) + (n - z) log(b / (a + b)))
-  + S(a, z)) + S(b, n - z)) - S(a + b, n)` (`sal.emissions.bb`); `tau = inf`
-  is the binomial at `p`.
-
-`T` and the three `S` depend on an integer count and a shape alone, so each
-site tabulates them over its distinct counts with `sal`'s
-`scaled_rising_table` (sal #1341; :func:`nb_table`, :func:`bb_tables`) and
-completes each entry in the order above. The fit does so in `sal`'s Rust
-(`sal.emissions.coded`, `dense_emission`); the copy decode and the starts in
-NumPy here, which is `sal`'s NumPy pmf bit for bit (`tests/test_emission.py`);
-the field and `cnaster`'s rows in `numba` (:func:`nb_complete`,
-:func:`bb_complete`), the same expressions, equal to rounding: `numba`'s
-`log` and NumPy's may differ in the last place.
-
-**`cnaster`'s conventions at the boundary**, kept from the rows this
-replaces: a rate or exposure `<= 0` and a zero trial count score 0, as does
-`z > n` or a negative count, where `sal` scores `-inf`; `a` and `b` are
-floored at `DISPERSION_FLOOR`.
-
-The M-step's partials are this density's, `sal`'s
-`coded.log_emission_partials` in Rust (sal #1353): :func:`nb_partials` and
-:func:`bb_partials` carry them to port's coordinates and floors.
+Built on `sal`'s scaled rising factorial `S(x, m) = lgamma(x + m) - lgamma(x) - m log x`
+(no large `lgamma` difference is formed). NB: `r = 1 / max(alpha, DISPERSION_FLOOR)`,
+`alpha <= 0` the Poisson; BB: `a = max(p tau, floor)`, `b = max((1 - p) tau, floor)`,
+`tau = inf` the binomial. `cnaster`'s boundary kept: rate or exposure `<= 0`, zero
+trials, `z > n` or a negative count score 0 (where `sal` scores `-inf`).
 """
 
 from __future__ import annotations
@@ -56,12 +22,10 @@ from sal.emissions.rising import (
 from scipy.special import gammaln
 
 DISPERSION_FLOOR = 1e-10
-"""`cnaster`'s floor on `alpha` in `_nb_logpmf_1d` and on `a`, `b` in
-`_bb_logpmf_1d`: the one statement (T- #617, T- #776); every site reads it here."""
+"""`cnaster`'s floor on `alpha` (`_nb_logpmf_1d`) and `a`, `b` (`_bb_logpmf_1d`) (T- #617)."""
 
 MIRRORS = ("cnaster.hmm_nophasing", "cnaster.hmm_phased", "cnaster.hmrf")
-"""The `cnaster` modules whose emission this one evaluation stands in for:
-`hmm_nophasing`'s and `hmm_phased`'s rows and `hmrf`'s field (T- #776)."""
+"""The `cnaster` modules whose emission this evaluation stands in for (T- #776)."""
 
 __all__ = [
     "DISPERSION_FLOOR",
@@ -97,15 +61,10 @@ def nb_size(dispersion: ArrayLike) -> np.ndarray:
 def _on_distinct(
     kernel: Any, x: ArrayLike, m: ArrayLike, table: Any = None
 ) -> np.ndarray:
-    """`kernel(x, m)`, broadcast, evaluated once per distinct `(x, m)` pair and gathered (#702, T- #776).
+    """`kernel(x, m)`, broadcast, evaluated once per distinct `(x, m)` pair and gathered, bitwise (#702).
 
-    Where `m` varies along its last axis alone and `x` is constant along it
-    -- a scalar, or `(..., 1)`, one value per state -- a value is a function
-    of its shape and count alone. The kernel is then run on the distinct
-    shapes against the distinct counts and gathered: elementwise, so bitwise.
-    States that share a shape, as a dispersion shared across states makes
-    them, are one row. Anything else, or nothing to share, is evaluated as
-    given.
+    Applies where `m` varies along its last axis only and `x` is constant
+    along it; otherwise evaluated as given.
     """
     x_ = np.asarray(x, dtype=np.float64)
     m_ = np.asarray(m, dtype=np.float64)
@@ -170,8 +129,7 @@ def nb_log_pmf(y: ArrayLike, dispersion: ArrayLike, rate: ArrayLike) -> np.ndarr
 def nb_log_pmf_size(y: ArrayLike, r: ArrayLike, rate: ArrayLike) -> np.ndarray:
     """The negative binomial's log pmf at size `r` (`inf` the Poisson), broadcast; 0 where the rate is `<= 0`.
 
-    `sal.emissions.nb.negative_binomial_log_pmf`, bit for bit, with `T` taken
-    on the distinct counts where `r` is constant along them.
+    `sal.emissions.nb.negative_binomial_log_pmf`, bit for bit.
     """
     y_ = np.asarray(y, dtype=np.float64)
     r_ = np.asarray(r, dtype=np.float64)
@@ -187,8 +145,7 @@ def nb_log_pmf_size(y: ArrayLike, r: ArrayLike, rate: ArrayLike) -> np.ndarray:
         poisson = q == 0.0
         if poisson.any():
             decay = np.where(poisson, safe, decay)
-        # NB `y log(...)` at `y = 0` is a signed zero where `sal` writes 0: a
-        #    sum it enters is unchanged. In place, the same operations.
+        # NB `y log(...)` at `y = 0` is a signed zero where `sal` writes 0: sums agree.
         rated = np.broadcast_to(np.add(q, 1.0), shape).copy()
         np.divide(safe, rated, out=rated)
         np.log(rated, out=rated)
@@ -223,12 +180,8 @@ def _log_rates(
 def bb_log_pmf(z: ArrayLike, n: ArrayLike, p: ArrayLike, taus: ArrayLike) -> np.ndarray:
     """The beta-binomial's log pmf at rate `p` and concentration `tau`, broadcast.
 
-    `sal.emissions.bb.beta_binomial_log_pmf` at `a = max(p tau, floor)`,
-    `b = max((1 - p) tau, floor)`, bit for bit; `tau = inf` the binomial,
-    whose `S` are 0. `z > n`, a negative count and `n = 0` score 0. The
-    shapes keep `p` and `tau`'s own shape, so where those are constant along
-    one-dimensional counts each `S` is taken on the distinct counts
-    (:func:`scaled_rising`).
+    `sal.emissions.bb.beta_binomial_log_pmf`, bit for bit; `tau = inf` the
+    binomial; `z > n`, a negative count and `n = 0` score 0.
     """
     z_ = np.asarray(z, dtype=np.float64)
     n_ = np.asarray(n, dtype=np.float64)
@@ -245,8 +198,7 @@ def bb_log_pmf(z: ArrayLike, n: ArrayLike, p: ArrayLike, taus: ArrayLike) -> np.
     failures = nn - zz
     with np.errstate(invalid="ignore"):
         if np.isfinite(log_p).all() and np.isfinite(log_q).all():
-            # NB a count of 0 times a finite log rate is a signed zero, where
-            #    `sal` writes 0: a sum it enters is unchanged.
+            # NB `0 * log rate` is a signed zero where `sal` writes 0: sums agree.
             hits, misses = zz * log_p, failures * log_q
         else:
             hits = np.where(zz == 0.0, 0.0, zz * log_p)
@@ -362,11 +314,8 @@ def nb_partials(
 ) -> tuple[np.ndarray, np.ndarray]:
     """`d ell / d log mu` and `d ell / d log alpha` of :func:`nb_log_pmf`, `(K, n)`, at mean `exposure * exp(rate)`.
 
-    `sal`'s `coded.log_emission_partials` (sal #1353), whose `d/dr`
-    differences no two `digamma` at `r` (up to 1e10): `r (y - lambda) /
-    (r + lambda)` and `-r (D(r, y) - log1p(q)) + r (y - lambda) / (r +
-    lambda)`. A zero exposure has zero derivative; below the floor `r` is a
-    constant and `alpha` moves nothing.
+    `sal`'s `coded.log_emission_partials` (sal #1353). Zero exposure, or
+    `alpha` at or below the floor, has zero derivative.
     """
     from sal.emissions.coded import log_emission_partials
 
@@ -425,12 +374,9 @@ def _bb_coordinates(
 def bb_partials(
     obs: ArrayLike, total: ArrayLike, p_binom: ArrayLike, taus: ArrayLike
 ) -> tuple[np.ndarray, np.ndarray]:
-    """`d ell / d p` and `d ell / d log tau` of :func:`bb_log_pmf`, `(K, n)`.
+    """`d ell / d p` and `d ell / d log tau` of :func:`bb_log_pmf`, `(K, n)` (sal #1353).
 
-    `sal`'s `coded.log_emission_partials` at `a = max(p tau, floor)`,
-    `b = max((1 - p) tau, floor)` (sal #1353). A floored `a` or `b` is a
-    constant, so contributes nothing; a zero trial count, or `z > n`, has
-    zero derivative.
+    A floored `a` or `b` contributes nothing; zero trials or `z > n` have zero derivative.
     """
     from sal.emissions.coded import log_emission_partials
 

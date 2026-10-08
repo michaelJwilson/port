@@ -1,19 +1,7 @@
-"""The names `port`'s own API uses, and where each one comes from.
+"""The names `port`'s own API uses: `cnaster`'s for application concepts, `sal`'s otherwise.
 
-`CLAUDE.md`'s **API Conventions** refer here. A concept particular to the
-application takes `cnaster`'s name for it; a concept that is not takes
-`snakes_and_ladders`' (`sal`). Neither is coined here where one of the two
-already names it, so a reader moving between the three repositories reads
-one word for one thing.
-
-A drop-in is exempt: a name `cnaster` defines keeps `cnaster`'s signature,
-argument for argument, because rebinding it is how it installs. The terms
-govern what `port` owns -- its extensions, its seams and its results.
-
-`replaces` lists the words `port` has used for a term's concept. Its own API
-does not use them; `tests/test_api_conventions.py` reads the source and
-refuses a new one, and lists every current use with the ticket converging
-it.
+Drop-ins keep `cnaster`'s signatures. `replaces` lists retired words, which
+`tests/test_api_conventions.py` refuses in new code.
 """
 
 from __future__ import annotations

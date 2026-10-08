@@ -1,35 +1,8 @@
-"""`cnaster.plotting.plot_clones_spatial`, each spot drawn as a tile (#309).
+"""Replaces `cnaster.plotting.plot_clones_spatial`: each spot a tile of `TILE` the lattice pitch, in data units (#309).
 
-Upstream sizes its markers by count alone -- `s = clip(12000 / n, 0.1, 25)`
-points squared -- so how much of the section a spot covers depends on the
-figure size and the lattice. On the dev instance's 40 x 40 at 4 in a dot
-is 0.53 of the pitch across, 2.74 pt against 5.20 pt, and the page reads as
-white space with colour in it.
-
-Here each spot is a square in **data units**, `TILE` of the lattice pitch
-on a side, so the section is covered and a gap of `1 - TILE` of the pitch
-stays between neighbours. The pitch is the median nearest-neighbour
-distance, and a tile in data units is the same fraction of the pitch at any
-figure size, which is what lets `port.extensions.combined_figure` draw it
-into a 3.1 in panel.
-
-Colours, opacity, clone order, legend entries and multi-sample offsets are
-upstream's, with a square legend marker for cnaster's round one and equal
-axes: `tests/test_plot_spatial_patch.py` pins each spot's colour
-against `cnaster`'s.
-
-**`sample_layout`, `(rows, columns)`, splits the samples into panels (#328).**
-Upstream offsets each sample along `x` on one axis, which shifts twice a
-sample already placed on a shared grid. With a layout each sample is drawn
-in its own panel, in its own coordinates, with white space between, and
-every panel colours the clones as the whole run does. Unset -- the default --
-is upstream's single axis exactly. `run_cnaster_port --sample-layout 3,1`
-binds `preferred_sample_layout` at install.
-
-**The page is cut to its axes (PR- #715).** Departure from
-upstream: its `base_width` by `base_height` page leaves white bands where
-the section's aspect does not fill it; here the page is cut to what the
-axes draw (`figure_style.fit_to_content`), each axis at its size.
+Colours, opacity, clone order and legend are upstream's. Departures:
+`sample_layout` draws one panel per sample (#328); the page is cut to its axes
+(PR- #715).
 """
 
 from __future__ import annotations
@@ -86,10 +59,8 @@ def spot_colours(
 ) -> tuple[np.ndarray, np.ndarray, list[str]]:
     """RGBA per spot, the clone ids in upstream's order, and their colours.
 
-    A spot with no clone is transparent, as upstream leaves it undrawn. Tumour
-    proportion is the opacity, a NaN taken as 0.5, as upstream. `clone_ids`,
-    when given, fixes the colours to a wider set than the spots carry, so a
-    panel of one sample colours as the whole run does.
+    Unassigned spots are transparent; tumour proportion is opacity (NaN as 0.5).
+    `clone_ids` fixes colours to a wider set than the spots carry.
     """
     values = np.asarray(assignment.values)
     missing = assignment.isnull().to_numpy()
@@ -198,11 +169,9 @@ def plot_clones_spatial(
     sample_layout: tuple[int, int] | None = None,
     preferred_sample_layout: tuple[int, int] | None = None,
 ) -> Any:
-    """Upstream's signature and page, each spot a tile of `TILE` the pitch.
+    """Upstream's signature and page, each spot a tile; `sample_layout` draws a panel per sample.
 
-    `sample_layout`, or unset `preferred_sample_layout`, draws one panel per
-    sample; it needs `sample_ids`, and the preference is skipped for a run
-    of one sample. The page carries its inputs for `cnamaste.h5` (T- #817).
+    Unset, `preferred_sample_layout` applies for runs of more than one sample.
     """
     from port.extensions import figure_record
 
@@ -284,8 +253,7 @@ def spatial_page(
 
 
 def _key_within(ax: Any) -> None:
-    """The key under `ax` wrapped onto rows until it is no wider than `ax`,
-    so the page cut to its content is the section's width (PR- #715)."""
+    """Wrap the key under `ax` onto rows until no wider than `ax` (PR- #715)."""
     legend = ax.get_legend()
     if legend is None:
         return

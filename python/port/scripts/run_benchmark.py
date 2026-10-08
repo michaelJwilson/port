@@ -1,16 +1,11 @@
-"""`run_benchmark`: one tool on one sample, or the patched share (#494, #302; T- #673 G4).
+"""`run_benchmark`: one tool on one sample, or the patched share (#494, #302).
 
     run_benchmark --final SAMPLE {port,calicost} [--repeats N] [--timeout S]
                   [--n-clones K] [--root DIR]
     run_benchmark --patched-share
 
-`--final` prints one `BENCH` JSON line: clone ARI (clones), copy ARI, exact
-altered and its phase-free form, wall and the child's peak RSS. `--timeout 0`
-runs CalicoST uncapped, and `--root` keeps its working directory so a rerun
-resumes from its checkpoints (PR- #677). `--patched-share` measures the share
-of executed `cnaster` lines `run_cnaster_port` replaces and records it in
-`.badges/measurements.json`; `python -m scripts.badges` renders the badge. What
-each measures is `port.qa.benchmark`'s.
+`--final` prints one `BENCH` JSON line; `--patched-share` records the share of
+executed `cnaster` lines replaced in `.badges/measurements.json`.
 """
 
 from __future__ import annotations

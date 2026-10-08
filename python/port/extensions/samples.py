@@ -1,27 +1,10 @@
 """The samples (slices) of a run, by name, with a code per spot (#418).
 
-`cnaster` carries a run's slices as a pair, `(sample_list, sample_ids)`, built
-by `cnaster.io.get_sample_list` from runs of equal adjacent
-`adata.obs["sample"]`. Its comment says it assumes the rows sorted by sample,
-and nothing checks it: on `A, B, A` it returns `[A, B, A]`, every `A` spot
-takes code 2, and code 0 has no spot.
-
-`Samples` is the pair built by name instead:
-
-- `names`: the distinct sample names, in the order rows first name them;
-- `ids`: `int64`, one per `obs` row, the codes of
-  `pd.Categorical(obs["sample"], categories=names)`.
-
-First-seen order is `cnaster`'s own on contiguous rows, so the pair is
-`cnaster`'s there, bitwise, sorted or not. Every code has a spot, so
-`cnaster.hmrf.run_core_inference`'s `np.unique` re-map of `ids` is the
-identity, and `names[k]` and code `k` name one slice everywhere a consumer
-indexes by either. A slice need not be contiguous: interleaved rows keep one
-name each.
-
-`recording()` keeps the `Samples` a run builds, so what is written after it
-(`port.extensions.outputs`) carries each spot's sample from the run rather
-than from its barcode.
+Departs from `cnaster.io.get_sample_list`, which codes runs of equal adjacent
+`adata.obs["sample"]` and so mis-codes interleaved rows (`A, B, A`). Here
+`names` is first-seen order and `ids` the `int64` categorical codes; on
+contiguous rows the pair is `cnaster`'s, bitwise. `recording()` keeps the
+`Samples` a run builds for `port.extensions.outputs`.
 """
 
 from __future__ import annotations
@@ -42,11 +25,7 @@ __all__ = ["Recorded", "Samples", "current", "observe", "recording", "samples_of
 class Samples:
     """A run's sample names, in first-seen order, and each spot's code into them.
 
-    Raises
-    ------
-    ValueError
-        At construction, if `names` are not unique, or a code is
-        outside `0..len(names) - 1`, or a name has no spot.
+    Raises ValueError if names repeat, a code is out of range, or a name has no spot.
     """
 
     names: tuple[str, ...]
@@ -81,12 +60,7 @@ class Samples:
 
     @property
     def enum(self) -> type[IntEnum]:
-        """`IntEnum("Sample")`, member `names[k]` with value `k`.
-
-        Members keep the names verbatim. A name that is not an identifier --
-        `port.sim.draw` writes hexadecimal ones such as `1e808694` -- is
-        reached as `Sample["1e808694"]`, and `Sample(k).name` recovers any.
-        """
+        """`IntEnum("Sample")`, member `names[k]` with value `k`; names kept verbatim."""
         members = [(name, k) for k, name in enumerate(self.names)]
         # NB through `Any`: mypy types the functional API only on a literal.
         functional: Any = IntEnum
@@ -98,11 +72,7 @@ class Samples:
 
 
 def samples_of(adata: Any) -> Samples:
-    """`Samples` from `adata.obs["sample"]`, by name.
-
-    Names are read as `str`: `cnaster` reads the sample sheet with `pandas`,
-    which types a numeric `sample_id` as an integer.
-    """
+    """`Samples` from `adata.obs["sample"]`, by name, read as `str`."""
     values = adata.obs["sample"].astype(str).to_numpy()
     names = tuple(str(name) for name in pd.unique(values))
     ids = pd.Categorical(values, categories=list(names)).codes.astype(np.int64)

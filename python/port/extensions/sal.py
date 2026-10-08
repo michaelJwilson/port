@@ -1,18 +1,7 @@
-"""`--sal`: `snakes_and_ladders` routines where `port` measured a gain (#312).
+"""`--sal`: opt-in `snakes_and_ladders` routines where `port` measured a gain (#312).
 
-A row is admitted on `port`'s own measurement and on nothing else -- at
-least 2x runtime at a stress size, a stated memory reduction, or a lower
-Potts energy or better recovery against a planted truth -- with `cnaster`'s
-path kept as the oracle. A row that stops clearing its bar is removed, and
-the test that pinned it records the number that removed it.
-
-**Off by default.** No row reproduces `cnaster`, which is what `SWAPS`
-promises; the flag is how a run opts in, and `--list` prints what it adds.
-
-The rows are settings rather than name rebinds: the clone labelling is
-chosen through `port.extensions.label_solver`, which `port`'s
-`pipeline_clone_assignment` (a `SWAPS` row) reads. So `--sal` needs that
-swap installed, and `run_cnaster_port --no-patch --sal` installs it alone.
+Off by default, since no row reproduces `cnaster`. Rows are settings read by
+`pipeline_clone_assignment` (a `SWAPS` row), not name rebinds.
 """
 
 from __future__ import annotations
@@ -60,31 +49,7 @@ SAL_ROWS: tuple[SalRow, ...] = (
         ticket=410,
     ),
 )
-"""The admitted rows. Measured and not admitted: `alpha-rust` and `icm-numba`
-selectable through `PORT_LABEL_SOLVER`, the rest set aside in
-`port.sandbox.extensions.label_solvers` (#749 WP5):
-
-- `alpha-rust`: the lowest energy per call, and ARI 0.386 end to end;
-- `icm-numba`: the same descent 39 to 61 times faster at stress, within
-  31 nats either way per call, and ARI 0.827 end to end, having no floor;
-- `icm-numba-floor`: that descent with sal's floor (#1114), ARI 0.3385 and
-  two clones for four on the dev instance -- the index-order descent from
-  the RDR stage's start dissolves clones the expansion keeps;
-- `alpha-rust-icm`: the row `alpha-rust-merge` replaced;
-- `alpha-rust-merge`: the expansion alone before the floor, which the fused
-  row replaced on energy (#1125);
-- `icm-argmax-floor` (#410, sal #1121): the `numba` descent from the field's
-  argmax with the floor. Dev instance: clone ARI 1.000, copy ARI 0.9971,
-  wall 22.5 s end to end. Per call at 10,000 spots and ten clones, 0.034 s
-  against the admitted row's 0.124 s under #421 -- 3.7x -- but at a Potts
-  energy 295 nats higher (-19,335 against -19,630); at 1,600 spots and four
-  clones, 0.0049 against 0.0102 s and 54 nats higher. Not admitted: the
-  speed is bought with a worse minimum, and the label step is 2.3 s of the
-  run;
-- TRW-S (#1061) then the floor: 0.6 nats from its own bound at 10,000
-  spots, at 3.2 s per call, 38x the fused row's. A certificate, not a row.
-
-#312's R7, the label merge in sal, landed as `merge_small_labels`."""
+"""The admitted rows; measured alternatives are in `port.sandbox.extensions.label_solvers` (#749)."""
 
 
 def sal_options(

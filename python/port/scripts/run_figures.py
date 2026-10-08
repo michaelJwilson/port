@@ -2,11 +2,8 @@
 
     run_figures [--out DIR] [--cnaster]
 
-Runs `run_cnaster_port` on the dev instance and on its copy lattice
-(`DIR/lattice/`) and copies the PNGs it drew into `DIR`; `--cnaster` runs
-plain `cnaster` instead, for a comparison. CI runs it on every pull request
-and uploads the result (`.github/workflows/figures.yml`). What it draws is
-`port.qa.benchmark.figures`'; it was `python -m tests.generate_plots`.
+Runs `run_cnaster_port` (or plain `cnaster` with `--cnaster`) on the dev
+instance and its copy lattice and copies the PNGs into `DIR`.
 """
 
 from __future__ import annotations

@@ -1,16 +1,8 @@
-"""`cnaster.icm`'s solver, its reduced interface, and the choice between them (#250).
+"""Re-exports `cnaster.icm`'s solver patches and the choice between them (#250).
 
-`interface` is `icm_sweep_deque` reduced to the problem it solves (#206),
-`alpha_expansion` is upstream's solver behind that same signature (#246), and
-`label_solver` is which of the two the call site takes; it lives in
-`port.extensions` and is re-exported here, because choosing between two
-solvers replaces no `cnaster` function -- it is a setting, and #274's
-four-job rule puts what has no counterpart under `extensions/` (#281).
-Two modules here, one
-`cnaster` module, one package name.
-
-The submodules keep the split; this re-exports them so a swap row can name
-`port.patch.icm` and a reader can open `cnaster.icm` and find it.
+`interface` is `icm_sweep_deque` reduced to its problem (#206); `alpha_expansion`
+is the same signature's alternative solver (#246); `label_solver` (in
+`port.extensions`, #281) chooses between them.
 """
 
 from __future__ import annotations

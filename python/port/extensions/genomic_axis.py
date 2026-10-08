@@ -1,42 +1,10 @@
 r"""One genomic axis for every genomic figure: 10 Mb ticks, and a metric (T- #683).
 
-A genomic figure draws along a *base* coordinate: a bin index where a
-figure plots bins (`plot_clones_genomic`, `plot_copy_number_profile`), base
-pairs where it plots loci (`port.sim.analysis`). `GenomicAxis` maps it to
-the drawn coordinate, and puts ticks every `every` base pairs, labelled in
-Mb, within each chromosome.
-
-**The metric.** With `altered`, the axis is piecewise linear with two
-slopes: every altered interval of the base coordinate is drawn
-`altered_scale` (T- #683's alpha) times its extent, and every normal one
-`normal_scale` (its beta) times,
-
-    normal_scale = (W - altered_scale A) / N,
-
-with `W` the axis's extent and `A` and `N` the altered and normal
-extents, so `altered_scale A + normal_scale N = W` and the axis keeps its
-width. One scale per class, so within each class the ratio of two extents
-is unchanged. `altered_scale` is `ALTERED_SCALE` = 2 wherever that leaves
-`normal_scale >= NORMAL_FLOOR`, i.e. `A <= 3W/7`; beyond, it falls to the
-largest value that does, `(W - NORMAL_FLOOR N) / A`, which is at least 1.
-T- #683 states the fallback where `2A >= W`, where `normal_scale` would not
-be positive; applied there alone, `normal_scale` falls to 0 as `A` nears
-`W / 2` and jumps back to the floor past it, so the floor holds throughout.
-`label` states the scale used, for a figure's stamp.
-
-**The identity.** With `altered=None` (or nothing altered) `warp` returns
-its argument, the same object, so a figure drawn through it is the linear
-axis bit for bit.
-
-**What `draw` adds.** Minor ticks, outward, under the axis, every `every` base pairs, and on
-a labelled axis (`labels`, both the axis's and the call's) their values in Mb, each chromosome labelled at the least
-stride of `STRIDES` whose labels do not overlap at the size drawn. The
-chromosome boundaries and names stay each figure's own, drawn at `edges`:
-the figures style them differently, and a default-arm figure keeps
-`cnaster`'s.
-
-Departure from `cnaster`: none by default -- the drop-ins take `axis`
-keyword-only, `None` drawing `cnaster`'s axis.
+`GenomicAxis` maps a base coordinate (bin index or base pair) to the drawn one.
+With `altered`, altered intervals are drawn `altered_scale` times their extent
+and normal ones `normal_scale = (W - altered_scale A) / N`, keeping the width;
+`altered_scale` falls so `normal_scale >= NORMAL_FLOOR`. With `altered=None`,
+`warp` is the identity. No departure from `cnaster` by default (`axis=None`).
 """
 
 from __future__ import annotations
@@ -80,38 +48,23 @@ CONTIG_PAD = 1.0
 """Points between two contig names on one row of `name_contigs`."""
 
 LABEL_ADVANCE = 0.6
-"""A digit's advance against the font size, an upper bound for serif and
-sans faces; a label's width is its digits times this, with one more as the
-gap to the next."""
+"""Upper bound on a digit's advance per point of font size, for label widths."""
 
 
 @dataclass(frozen=True)
 class Ticks:
-    """Ticks every `every` base pairs, on whatever bins a plotter draws.
-
-    The data-free form of a `GenomicAxis`: what `run_cnaster_port` binds at
-    install, where the bins are not yet known. `resolve` makes the axis.
-    """
+    """Ticks every `every` base pairs: a data-free `GenomicAxis`, made concrete by `resolve`."""
 
     every: float = TICK_EVERY
 
 
 @functools.cache
 def _thinned() -> type:
-    """`_Thinned`, made on first use: `port.pipeline` binds `Ticks` without
-    importing matplotlib."""
+    """`_Thinned`, made on first use so importing this module skips matplotlib."""
     from matplotlib.ticker import Formatter
 
     class _Thinned(Formatter):
-        """Each tick's Mb, labelled every `stride` ticks of its chromosome.
-
-        Per chromosome, the least of `STRIDES` whose labels clear each other
-        by a digit at the size drawn, so a chromosome drawn wider -- longer,
-        or altered under the metric -- is labelled finer. A label running
-        into the previous chromosome's last, or into a visible text on its
-        row (a chromosome name), is dropped. Laid out at draw time from the
-        axis's transform.
-        """
+        """Each tick's Mb, at the least of `STRIDES` per chromosome whose labels clear; overlaps dropped."""
 
         def __init__(self, labels: dict[float, tuple[int, int, str]]) -> None:
             self.labels = labels
@@ -160,8 +113,7 @@ def _thinned() -> type:
 
 
 def _obstacles(ax: Any, size: float) -> list[tuple[float, float]]:
-    """The x extents of `ax`'s visible texts that reach the Mb labels' row:
-    the chromosome names a figure sets under its axis."""
+    """The x extents of `ax`'s visible texts on the Mb labels' row."""
     dpi = ax.figure.dpi
     top = ax.bbox.y0 - (TICK_LENGTH + 1.0) * dpi / 72.0
     bottom = top - 1.2 * size * dpi / 72.0
@@ -205,12 +157,9 @@ def _stride(
 class GenomicAxis:
     """A genome's drawn coordinate, its 10 Mb ticks, and an optional metric.
 
-    `lengths` is each chromosome's extent in the base coordinate. `bins`,
-    `(starts, ends)` in base pairs one per unit, says the base unit is a
-    bin; `None` says it is a base pair. `altered` is `(k, 2)` intervals
-    `[start, end)` of the base coordinate drawn `altered_scale` times their extent
-    (module docstring); `None` is the identity. Without `labels`, `draw`
-    marks the ticks and labels none, whatever a plotter asks (PR- #701).
+    `lengths`: each chromosome's extent in base units. `bins`: `(starts, ends)`
+    in bp per unit, or `None` for bp units. `altered`: `(k, 2)` intervals
+    `[start, end)`, or `None` for the identity. `labels=False` labels no ticks (PR- #701).
     """
 
     def __init__(
@@ -370,11 +319,7 @@ class GenomicAxis:
         return [self.names[i] for i in index], bp
 
     def ticks(self, every: float | None = None) -> tuple[np.ndarray, list[str]]:
-        """Drawn positions and Mb labels of a tick every `every` bp in each chromosome.
-
-        At `every, 2 every, ...` from each chromosome's 0, within its bins'
-        span (a base pair axis spans its length).
-        """
+        """Drawn positions and Mb labels of a tick every `every` bp in each chromosome, within its span."""
         positions, _, multiples, every = self._ticks(every)
         return positions, [f"{k * every / 1e6:g}" for k in multiples.tolist()]
 
@@ -407,8 +352,7 @@ class GenomicAxis:
         )
 
     def draw(self, ax: Any, *, labels: bool = True) -> None:
-        """`ax`'s minor x ticks every `every` bp, outward; on `labels` and the
-        axis's own, their Mb, thinned."""
+        """`ax`'s minor x ticks every `every` bp, outward, labelled in Mb when both `labels` allow."""
         from matplotlib.ticker import FixedLocator, NullFormatter
 
         labels = labels and self.labels
@@ -460,14 +404,12 @@ def _merged(altered: np.ndarray | None, width: int) -> np.ndarray:
 def _scales(
     altered_scale: float, altered: float, normal: float, width: float
 ) -> tuple[float, float]:
-    """`(altered_scale, normal_scale)`: `altered_scale` where it leaves `normal_scale >= NORMAL_FLOOR`, else the
-    largest `altered_scale` that does, `(W - NORMAL_FLOOR N) / A`."""
+    """`(altered_scale, normal_scale)`, `altered_scale` capped so `normal_scale >= NORMAL_FLOOR`."""
     if altered == 0.0 or normal == 0.0:
         return 1.0, 1.0
 
-    # NB `altered_scale` held to `normal_scale >= NORMAL_FLOOR` wherever `ALTERED_SCALE` would break it,
-    #    not only where `altered_scale A >= W`: under the latter alone `normal_scale` falls to
-    #    0 as `A` nears `W / 2` and jumps back to the floor past it.
+    # NB capped wherever the floor would break, not only where `altered_scale A >= W`,
+    #    or `normal_scale` would fall to 0 near `A = W / 2` and jump back.
     altered_scale = min(altered_scale, (width - NORMAL_FLOOR * normal) / altered)
 
     return float(altered_scale), float((width - altered_scale * altered) / normal)
@@ -483,11 +425,7 @@ def _inside(starts: np.ndarray, intervals: np.ndarray) -> np.ndarray:
 
 
 def altered_bins(*tables: pd.DataFrame) -> np.ndarray:
-    """Bin intervals `[i, j)` where any clone of any table is not `(1, 1)`.
-
-    Each table has `clone<k> A` and `clone<k> B` columns, one row per bin, on
-    the same bins: a planted, a decoded, or both for their union.
-    """
+    """Bin intervals `[i, j)` where any clone of any table (`clone<k> A`/`B` per bin) is not `(1, 1)`."""
     mask: np.ndarray | None = None
 
     for table in tables:
@@ -503,8 +441,7 @@ def altered_bins(*tables: pd.DataFrame) -> np.ndarray:
 
 
 def disclose(figure: Any, axis: GenomicAxis | None) -> None:
-    """`axis.label` as `figure`'s label, where the axis is warped: the stamp
-    a figure carries appends it, so a warped figure says so (T- #683)."""
+    """Set `axis.label` as `figure`'s label where the axis is warped, for its stamp (T- #683)."""
     if axis is not None and axis.label is not None:
         figure.set_label(axis.label)
 
@@ -512,8 +449,7 @@ def disclose(figure: Any, axis: GenomicAxis | None) -> None:
 def resolve(
     axis: GenomicAxis | Ticks | None, table: pd.DataFrame | None, width: int
 ) -> GenomicAxis | None:
-    """The axis a plotter draws on `width` bins: `axis` itself, `Ticks` made on
-    `table`'s bins, or `None` -- `cnaster`'s axis -- where `table` has no `START`."""
+    """The axis for `width` bins: `axis`, `Ticks` made on `table`'s bins, or `None` (`cnaster`'s axis)."""
     if axis is None or isinstance(axis, GenomicAxis):
         if axis is not None and axis.width != width:
             msg = f"an axis {axis.width} wide for {width} bins"
@@ -527,8 +463,7 @@ def resolve(
 
 
 STAGGERED = {"19": 0, "20": 1, "21": 0, "22": 1}
-"""The first row each short contig's name may take: 19 to 22 zigzag on every page,
-whatever their width (#745); any other name takes the first row where it clears."""
+"""The first row each short contig's name may take, so 19 to 22 zigzag (#745)."""
 
 
 DROPPED = {"20": 1.0, "22": 1.0}
@@ -543,25 +478,12 @@ def name_contigs(
     size: float,
     below: float = 0.0,
 ) -> float:
-    """Every contig's name, once, at the start of it, and no two overlapping.
+    """Every contig's name, once, at its start, with no two overlapping (#743, #745).
 
-    A contig runs from its start to the next one's, the last to the axis's
-    right limit; one with no width is not named. Each name is cut to its
-    number, "chr" dropped (`chr21` is "21"), left-aligned a point in from the
-    contig's start, and set on the first row under
-    the axis where it clears the name before it by `CONTIG_PAD`: adjacent
-    short contigs stagger onto a second row, and a third where two do not
-    clear, so no name is dropped and none is shrunk below `size` points;
-    19 to 22 always zigzag (`STAGGERED`).
-    Each row after the first sits half a line under the one before (#743),
-    so a staggered run reads as one zigzag line rather than two. One "chr", right of
-    nothing and left of the axis, names the rows. The rows start `below`
-    points under the ticks: room for Mb labels where the axis draws them.
-
-    Laid out from the axis's place on the page, so a caller names the
-    contigs after it has set the axis's x extent, and again if it moves it;
-    the names drawn before are replaced. Returns the inches the rows take
-    under the axis's foot, ticks included.
+    Names (without "chr") take the first row under the axis where they clear
+    by `CONTIG_PAD`, each row half a line lower; rows start `below` points
+    under the ticks. Call after setting the x extent; earlier names are
+    replaced. Returns the inches the rows take under the axis, ticks included.
     """
     from matplotlib.transforms import blended_transform_factory, offset_copy
 
@@ -592,7 +514,6 @@ def name_contigs(
             clip_on=False,
         )
         box = text.get_window_extent(renderer)
-        # NB 19-22 zigzag at every width: 19 and 21 on the first row, 20 and 22 under (#745)
         first = STAGGERED.get(str(name).removeprefix("chr"), 0)
         rights.extend([-np.inf] * (first - len(rights)))
         row = next(
@@ -608,8 +529,7 @@ def name_contigs(
             )
         )
 
-    # NB "chr" left-aligned with the axis's y label (the BAF label on a track
-    #    page), or right of nothing and left of the axis where it has none (#745)
+    # NB "chr" aligned with the y label, else left of the axis (#745)
     label = ax.yaxis.label
     if label.get_text():
         left = label.get_window_extent(renderer).x0

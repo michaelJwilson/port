@@ -1,42 +1,10 @@
-"""`reindex_clones`, making the one-column contract hold (#278, #269).
+"""Replaces `cnaster.hmrf.reindex_clones`, enforcing the one-column contract (#278, #269).
 
-**This is how `scripts/run_cnaster.py:1366` gets patched without forking it.**
-
-That line reads
-
-    idx = s if res_combine["new_log_mu"].shape[1] > 1 else 0
-
-and sits inside `run_cnaster`, which is 1,648 lines. A drop-in replacement
-for that is a fork, not a patch. But the line is a *read* of a contract
-established elsewhere: `reindex_clones` is called at `run_cnaster.py:1269`,
-ninety-seven lines earlier, and it is 87 lines. Establish the contract there
-and the branch below is provably dead -- `idx` is `0` because it cannot be
-anything else, rather than because nothing has produced a second column yet.
-
-## What changes
-
-`cnaster` already asserts the contract for one of the four parameters::
-
-    assert res_combine["new_p_binom"].shape[1] == 1
-
-and then, forty lines later, reorders all four **as though it did not**::
-
-    for key in ["new_log_mu", "new_alphas", "new_p_binom", "new_taus"]:
-        if res_combine[key].shape[1] > 1:
-            new_res_combine[key] = res_combine[key][:, reidx]
-
-One function, both readings. The assert makes the branch unreachable for the
-parameter it names and leaves it reachable in principle for the other three,
-which is the shape of #267's finding in miniature.
-
-This extends the check to all four and drops the reorder. The check raises
-rather than asserts: `assert` vanishes under `python -O`, and a contract that
-disappears when optimizations are on is not one.
-
-**`pred_cnv` is untouched.** Reindexing a path by clone order is a different
-job from reading a state parameter, and upstream's handling of both layouts
-there is deliberate. The narrowing is the parameter axis only, which is what
-the deprecation is about.
+Upstream asserts `new_p_binom.shape[1] == 1` yet reorders all four state
+parameters under `shape[1] > 1`. This checks all four (raising, not asserting,
+so `python -O` keeps it) and drops the reorder, which makes
+`run_cnaster.py`'s `idx = s if ... shape[1] > 1 else 0` dead. `pred_cnv` keeps
+both of upstream's layouts.
 """
 
 from __future__ import annotations
@@ -62,17 +30,7 @@ EPS_BAF = 0.05
 
 
 def _state_parameters(res_combine: dict[str, Any]) -> None:
-    """Every fitted parameter is one value per state, or the run stops.
-
-    `clone_stack_obs` reshapes observations to `(-1, n_comp, 1)` and
-    `get_initial_params` refuses `n_spots != 1`, so a second column means the
-    fit changed. Every consumer downstream reads one value per state -- #267
-    found three incompatible readings of what another column would mean -- so
-    stopping here is the only behaviour that cannot be silently wrong.
-
-    `state_vector` is the one guard, and it carries the message. Restating
-    the check here would make two places to keep in agreement.
-    """
+    """Raise unless every fitted parameter is one value per state (#267)."""
     for key in PARAMETERS:
         state_vector(res_combine[key], key)
 
@@ -100,9 +58,7 @@ def reindex_clones(
 
     n_obs = len(pred_cnv) // n_clones if is_concatenated else pred_cnv.shape[0]
 
-    # NB the path keeps both of upstream's layouts, for the reason the module
-    #    docstring gives; what narrows is the parameter read beside it, from
-    #    `new_p_binom[path, 0]` to one value per state.
+    # NB the path keeps both upstream layouts; only the parameter read narrows.
     probabilities = res_combine["new_p_binom"]
 
     baf_profiles = np.stack(
@@ -142,10 +98,8 @@ def reindex_clones(
 
     new_res_combine["new_assignment"] = palette[assignments]
 
-    # NB upstream reorders the four parameters by clone here, under
-    #    `if shape[1] > 1`. `_state_parameters` above is what makes that branch
-    #    unreachable, so it is gone rather than left as an unreachable
-    #    reading of an axis that has one meaning.
+    # NB upstream's per-clone reorder of the four parameters is unreachable
+    #    after `_state_parameters`, so it is gone.
 
     if is_concatenated:
         concat_idx = np.concatenate(
@@ -154,8 +108,7 @@ def reindex_clones(
 
         new_res_combine["pred_cnv"] = pred_cnv[concat_idx]
 
-        # NB `.keys()`, as upstream reads it: `CnaHMRFResult` defines no
-        #    `__contains__`, and `in` falls back to indexing it by position.
+        # NB `.keys()`, as upstream: `CnaHMRFResult` defines no `__contains__`.
         if "log_gamma" in res_combine.keys():  # noqa: SIM118
             new_res_combine["log_gamma"] = res_combine["log_gamma"][:, concat_idx]
 

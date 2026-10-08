@@ -1,30 +1,8 @@
 """`cnaster.omics.summarize_blocks`, computed rather than looped (#191).
 
-**0.465 s of `assign_initial_blocks`' 1.183 s, twice over, and the function
-returns nothing: every figure it computes exists to be logged.**
-
-`cnaster` builds its summary with a `groupby(...).agg(...)` over four Python
-lambdas and then loops the blocks, taking a fancy-indexed column slice of the
-full count matrix per block:
-
-```python
-block_sum = count_matrix[:, gene_idx].sum()
-snp_umis[idx] = cell_snp_Aallele[:, snp_idx].sum() + cell_snp_Ballele[:, snp_idx].sum()
-```
-
-Each of those is a segment sum of per-gene and per-SNP column totals, so all
-of them together are two passes over the matrices and a `bincount`.
-
-**The log lines are the contract here, not a return value**, so that is what
-the equivalence test compares: `tests/test_summaries_patch.py` captures both
-functions' output and asserts the lines are identical.
-
-Two details that a faster summary gets wrong if it is not looking for them:
-
-*   the genes of a block are taken as a **set**, so a gene name appearing on
-    two rows of one block contributes its UMIs once;
-*   the SNPs are taken as a **list**, so a repeated `snp_id` contributes
-    twice. The two are not symmetric and upstream's aggregation says so.
+Replaces the per-block column slices with segment sums (`bincount`). The log
+lines are the contract (`tests/test_summaries_patch.py`). Genes in a block are
+a set (a repeated gene counts once); SNPs a list (a repeated `snp_id` counts twice).
 """
 
 from __future__ import annotations
@@ -74,10 +52,7 @@ def block_summary(
     start = gene_snp_table.START.to_numpy()
     end = gene_snp_table.END.to_numpy()
 
-    # NB an object column carrying both `None` and `NaN`, so the test is
-    #    `pd.notna` rather than a comparison -- upstream's `notna().sum()`
-    #    and `[s for s in x if s is not None]` differ on a `NaN`, and this
-    #    reproduces each where it is used.
+    # NB `snp_id` holds both `None` and `NaN`; upstream's tests differ on `NaN`.
     has_snp = pd.notna(snp_id)
 
     summary = pd.DataFrame(
@@ -209,11 +184,7 @@ def summarize_blocks(
     )
     logger.info("-" * 136)
 
-    # NB `itertuples`, not `iterrows`: a row Series takes one dtype for the
-    #    whole row, so an all-numeric frame prints its integers as floats.
-    #    Upstream's frame carries two list columns and is therefore object,
-    #    which keeps them integers -- the same lines, from a different
-    #    accident. This is the deliberate version of it.
+    # NB `itertuples`, not `iterrows`, which would print integers as floats.
     for index, row in enumerate(summary.itertuples(index=True)):
         logger.info(
             f"{row.Index:<10}\t{row.chr:>4}\t{row.start:>12}\t"

@@ -1,44 +1,9 @@
-"""`cnaster.hmm_nophasing._nb_logpmf_1d`, in log space so a vanishing mean cannot score a count at probability 1 (#560).
+"""Replaces `cnaster.hmm_nophasing._nb_logpmf_1d` (and `_dense_nb_logpmf`) in log space (#560).
 
-**A row (#560).** `port.pipeline.LOG_SPACE_SWAPS` rebinds `_nb_logpmf_1d`
-and, since `cnaster`'s compiled `_dense_nb_logpmf` binds it as a global at
-compile time, `_dense_nb_logpmf` beside it, wherever `cnaster` binds them.
-`port.patch.hmrf`'s field, the M-step gradient, `copy_likelihood` and
-`jax_hmm` score the same arithmetic. Retire when `cnaster` lands the fix.
-
-**The defect.** Upstream forms `p = 1 / (1 + alpha * lambda)` and calls
-`nbinom_logpmf_numba(k, r, p)`, which returns `0.0` -- probability 1, for
-any count -- when `p >= 1.0`. In float64 `p` rounds to exactly 1.0 once
-`alpha * lambda` is below about 1.1e-16, so a state whose mean falls far
-enough scores every row it holds at probability 1. Baum-Welch finds it: on
-`dev_tree_1s_hard` r0 one fit drove a state to `log mu = -43.22`, gave it
-7,632 of 7,688 rows, and reported -23,359 nats against the planted states'
--76,306.
-
-**The fix.** `port.patch.emission`'s negative binomial, the one every site
-scores (T- #776): `((T(r, y) + y log(lambda / (1 + q))) - r log1p(q))`,
-`T = S(r, y) - lgamma(y + 1)` with `S` `sal`'s scaled rising factorial and
-`q = lambda / r`, so no probability is formed and none rounds, and no
-`lgamma(r)`-sized term is cancelled at `r` up to 1e10 (1.3e-5 nats at
-`alpha = 1e-10` before). `S` is `sal`'s compiled kernel and `lgamma` its
-`gammaln`, called from this one, so the row is
-:func:`~port.patch.emission.nb_log_pmf`'s arithmetic to the rounding of
-`numba`'s `log` against NumPy's. `lambda <= 0` still scores 0, upstream's convention for an
-unobserved bin. `alpha` is floored in `a` as upstream floors it in `r`;
-upstream leaves `p` unfloored, which is the same defect reached through
-`alpha < 1.1e-16 / lambda`.
-
-**Referee.** `scipy.stats.nbinom.logpmf` where scipy is exact
-(`alpha * lambda >= 1e-4`), `mpmath` at 50 digits below it, and upstream's
-kernel where its `p < 1`, each to 1e-9 relative
-(`tests/test_patch_nb_logpmf.py`, `tests/test_log_space_sites.py`). Not
-bitwise: `log1p` and `log` of a sum differ from `log` of a quotient in the
-last place, so this is its own table, not a `SWAPS` row.
-
-**Ratio.** Not an optimization: `S`'s two `gammaln` per score where upstream
-took three `lgamma`, and its series where those would cancel. Cached by
-`numba`: `sal` binds `gammaln` by a registered symbol rather than a pointer
-(sal #1342), so a second process loads the row rather than compiling it.
+Upstream's `p = 1 / (1 + alpha lambda)` rounds to 1 for a vanishing mean and
+scores any count at probability 1. This scores `port.patch.emission`'s negative
+binomial (T- #776) without forming `p`; `lambda <= 0` still scores 0. Agrees to
+1e-9 relative, not bitwise, so installed by `LOG_SPACE_SWAPS`, not `SWAPS`.
 """
 
 from __future__ import annotations
@@ -58,9 +23,8 @@ else:
 
 __all__ = ["_dense_nb_logpmf", "_nb_logpmf_1d"]
 
-# NB `sal`'s compiled `S` and its `gammaln`, bound as globals at compile time;
-#    `_kernels()` binds `rising._gammaln` to `scipy`'s by symbol (sal #1342).
-#    No scalar compiled form is public in `sal`, so the private names stay.
+# NB `sal`'s compiled `S` and `gammaln`, bound as globals at compile time (sal #1342);
+#    no public scalar compiled form, so the private names stay.
 _scaled, _, _ = rising._kernels()
 _gammaln = rising._gammaln
 _SERIES_FROM = rising._SERIES_FROM

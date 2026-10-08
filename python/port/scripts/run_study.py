@@ -1,13 +1,7 @@
-"""`run_study --<study> [ARGS ...]`: one study, by hand, outside the suite (#489, #492; T- #673 G5).
+"""`run_study --<study> [ARGS ...]`: run one `port.studies` module by hand, outside the suite (#489, #492; T- #673 G5).
 
-A study measures `snakes_and_ladders`' machinery or `port`'s on problems port
-captured or drew, and states the document its numbers are in. Each is a
-module of `port.studies` whose `main(argv)` takes the arguments after its
-flag with its own parser; `run_study --<study> --help` prints them.
-
-    run_study --potts-stream MANIFEST OUT_DIR [--problems N] ...
-    run_study --copy-state-plot STREAM.record [EARLIER.record ...]
-    run_study --population run MANIFEST OUT ...
+Each study's `main(argv)` parses the arguments after its flag;
+`run_study --<study> --help` prints them.
 """
 
 from __future__ import annotations

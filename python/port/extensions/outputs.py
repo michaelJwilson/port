@@ -1,62 +1,12 @@
 """What a run fitted and what it decoded, written side by side (#331).
 
-`run_cnaster` records the continuous fit and the integer copies only through
-the fitted state index `Z` of `cnv_seglevel.tsv`: several of `K` fitted states
-decode to one integer `(A, B)`, and the map between the two views is left
-implicit. This writes the seam explicitly, beside `cnaster`'s own files --
-all but `clone_labels.tsv`, below -- in each run directory that holds a
-`cnv_seglevel.tsv` and its `rdrbaf_final_nstates{K}_smp.npz`:
-
-- `cnv_states.tsv`: one row per fitted state and clone -- the state's
-  `logmu` and `p`, the `(A, B)` it decodes to in that clone, and the
-  share of the clone's bins it holds. The map from the oversampled states
-  to the deduplicated integer copies.
-- `cnv_segments.tsv`: per clone, the runs of equal `(A, B)` within a
-  chromosome, their first and last bin, the fitted states they span, and
-  the mean `mu` and posterior-mean `p` over the run. The deduplicated view.
-- `cnv_binlevel.tsv`: per bin and clone, the fitted state `Z`, its rate
-  `mu` and the posterior-mean `p` under `log_gamma`. The continuous view.
-- `clone_labels_integer.tsv`: `clone_labels.tsv` with each spot's clone
-  also named by its integer copy profile (`integer_clones`, #344): clones
-  whose `(A, B)` agree at no less than `int_copy_num.merge_agreement` of
-  bins, 0.99 unless stated, are one clone (#518).
-- `clone_labels.tsv` itself, where that merge joins clones: `clone_label`
-  becomes the merged clone and `cnaster_clone_label` keeps `cnaster`'s. The
-  one file of `cnaster`'s this module rewrites, because the merge replaces
-  the Neyman-Pearson merge `--sal` no longer installs (#497), and that merge
-  wrote its clones there.
-- `manifest.json`: the run's shape and provenance -- states, clones,
-  likelihoods, the shift, the configuration's copy caps and ploidy, the
-  sample names in code order, and what `run_cnaster_port` was asked for.
-
-**A bin's `mu` is its state's rate in its clone** (#613): `clone{c} mu =
-exp(logmu[Z_c] - shift_c)`, with `logmu` the state's in `cnv_states.tsv`,
-`Z_c` the bin's `clone{c} Z` and `shift_c` the clone's HMM log-rate shift,
-`new_log_mu_shift` in the `.npz` and `log_mu_shift` in `manifest.json`;
-zero where the run records none: `mu / Z_c`, the rate the shifted emission
-(`port.patch.hmm_nophasing`) and the lattice decode
-(`port.extensions.copy_likelihood`) evaluate. Not the integer decode's
-shift. It was the
-posterior mean of the state rates, a rate of no state. `cnaster`'s own
-`clone{c} logmu` in `cnv_seglevel.tsv` is `logmu[Z_c]`, without the shift.
-
-**Each spot's sample is the run's, not its barcode's** (#418, #365). Given
-the run's `port.extensions.samples` recording, the per-spot tables --
-`clone_labels.tsv`, `clone_labels_integer.tsv`, `baf_clone_labels.tsv` --
-carry `sample_id` as the run assigned it: in code a sample is its enum
-(`Samples.enum`), and on file that enum decoded to the sample's name, which
-the manifest's `samples` lists in code order. `cnaster` writes `sample_id` as the text after the barcode's last
-`_`, which names one sample per spot on barcodes such as `spot_N`. Without a
-recording the tables are as before.
-
-**A clone's columns are matched by content, not position.** The table's
-`clone{c}` columns carry `cnaster`'s clone id, and `pred_cnv` and `log_gamma`
-are indexed by the clone's position among the final clones; each column is
-matched to the position whose decoded path is its `Z`.
-
-What the run does not keep is not reconstructed: the observed pseudobulk RDR
-and BAF per bin, per-state errors and the decoder's own loss are not in
-either file (#331 lists them).
+Per run directory with `cnv_seglevel.tsv` and its `.npz`, writes
+`cnv_states.tsv` (per state and clone: fit, `(A, B)`, bin share),
+`cnv_segments.tsv` (runs of equal `(A, B)`), `cnv_binlevel.tsv` (per bin `Z`,
+`mu`, posterior-mean `p`), `clone_labels_integer.tsv` (#344, #518),
+`manifest.json`, and rewrites `clone_labels.tsv` where the integer merge joins
+clones (#497). A bin's `mu` is `exp(logmu[Z_c] - shift_c)` (#613); per-spot
+`sample_id` is the run's recorded sample, not the barcode suffix (#418, #365).
 """
 
 from __future__ import annotations
@@ -92,13 +42,7 @@ __all__ = [
 
 
 def run_directories(output_dir: Path, since: float | None = None) -> Iterator[Path]:
-    """Each directory under `output_dir` holding a finished run's tables.
-
-    Given `since`, a `time.time()`, only those whose `cnv_seglevel.tsv` was
-    written at or after it: `output_dir` is shared by every configuration
-    that names it, and a directory an earlier run left is not this run's
-    (T- #617).
-    """
+    """Each directory under `output_dir` with a finished run; only those written at/after `since` (T- #617)."""
     for table in sorted(Path(output_dir).rglob("cnv_seglevel.tsv")):
         if since is not None and table.stat().st_mtime < since:
             continue
@@ -107,18 +51,9 @@ def run_directories(output_dir: Path, since: float | None = None) -> Iterator[Pa
 
 
 def final_fit(run: Path, n_states: int | None = None) -> Path:
-    """The run's `rdrbaf_final_nstates{K}_smp.npz`, of `n_states` where given.
+    """The run's `rdrbaf_final_nstates{K}_smp.npz`, of `n_states` where given (T- #617).
 
-    `cnaster` names its fit by `K` and nothing else, so two fits of
-    different `K` share one directory, and `cnv_seglevel.tsv` there is the
-    last one's. Without `n_states` only a lone fit is unambiguous (T- #617).
-
-    Raises
-    ------
-    FileNotFoundError
-        If `run` holds no such fit.
-    ValueError
-        If it holds several and `n_states` does not say which.
+    Raises FileNotFoundError if absent, ValueError if several and `n_states` is None.
     """
     run = Path(run)
 
@@ -155,11 +90,7 @@ def _load(
 
 
 def clone_columns(seglevel: pd.DataFrame, pred_cnv: np.ndarray) -> dict[str, int]:
-    """`cnaster`'s clone id -> its position in `pred_cnv`, by decoded path.
-
-    Two clones with one path are told apart by order, which is `cnaster`'s
-    own: its columns are written in the order of the final clones.
-    """
+    """`cnaster`'s clone id -> its position in `pred_cnv`, by decoded path; ties by order."""
     ids = [c.split()[0][len("clone") :] for c in seglevel.columns if c.endswith(" Z")]
     free = list(range(pred_cnv.shape[1]))
     found: dict[str, int] = {}
@@ -179,11 +110,7 @@ def clone_columns(seglevel: pd.DataFrame, pred_cnv: np.ndarray) -> dict[str, int
 
 
 def _rates(fit: dict[str, Any], position: int, path: np.ndarray) -> np.ndarray:
-    """`exp(logmu[Z] - shift)` per bin of one clone: its state's rate, shifted.
-
-    The shift is `new_log_mu_shift` at the clone's position, zero where the
-    run records none.
-    """
+    """`exp(logmu[Z] - shift)` per bin of one clone; shift zero where none recorded."""
     # NB `cnaster` without the shift stores None, read here as NaN.
     recorded = np.ravel(
         np.asarray(fit.get("new_log_mu_shift", np.nan), dtype=np.float64)
@@ -205,9 +132,7 @@ def _posterior_means(fit: dict[str, Any], position: int) -> np.ndarray:
 def states(
     seglevel: pd.DataFrame, perstate: pd.DataFrame, fit: dict[str, Any]
 ) -> pd.DataFrame:
-    """One row per fitted state and clone: its fit, the `(A, B)` the clone's
-    decoder gave it (`cnv_perstate.tsv`), and the share of the clone's bins
-    it holds -- zero for a state the clone decodes but never visits."""
+    """One row per fitted state and clone: its fit, its decoded `(A, B)`, and its bin share."""
     rows = []
 
     for clone in clone_columns(seglevel, fit["pred_cnv"]):
@@ -230,11 +155,7 @@ def states(
 
 
 def binlevel(seglevel: pd.DataFrame, fit: dict[str, Any]) -> pd.DataFrame:
-    """Per bin and clone: the fitted state `Z`, its rate `mu` and the posterior-mean `p`.
-
-    `clone{c} mu = exp(logmu[Z] - shift_c)`: the state's rate with the
-    clone's HMM shift (#613).
-    """
+    """Per bin and clone: state `Z`, rate `mu = exp(logmu[Z] - shift_c)` (#613), posterior-mean `p`."""
     frame = seglevel[["CHR", "START", "END"]].copy()
 
     for clone, position in clone_columns(seglevel, fit["pred_cnv"]).items():
@@ -248,12 +169,7 @@ def binlevel(seglevel: pd.DataFrame, fit: dict[str, Any]) -> pd.DataFrame:
 
 
 def segments(seglevel: pd.DataFrame, fit: dict[str, Any]) -> pd.DataFrame:
-    """Per clone, the runs of equal `(A, B)` within a chromosome.
-
-    `mu` is the mean over the run's bins of `exp(logmu[Z] - shift_c)`: the
-    single state's rate where the run spans one state, as `states` lists
-    (#613).
-    """
+    """Per clone, the runs of equal `(A, B)` within a chromosome; `mu` is the run's mean rate (#613)."""
     rows = []
     chromosome = seglevel["CHR"].to_numpy()
 
@@ -292,12 +208,7 @@ def segments(seglevel: pd.DataFrame, fit: dict[str, Any]) -> pd.DataFrame:
 
 
 MERGE_AGREEMENT = 0.99
-"""The share of bins at which two integer profiles must agree to be one clone, unset.
-
-0.99 because the split pair it exists to join agrees at 0.9993 on `dev_tree`
-and every distinct pair on CalicoST easy, hard and `dev_tree` at 0.9863 or
-less (#518); 1.0 joins only identical profiles (#344).
-"""
+"""Default share of bins at which two integer profiles must agree to be one clone (#518)."""
 
 
 def integer_clones(
@@ -305,16 +216,9 @@ def integer_clones(
 ) -> dict[str, str]:
     """Each clone id -> the smallest id whose integer copy profile it matches.
 
-    `frame` is `cnv_seglevel.tsv`, or any table with `clone{c} A` and
-    `clone{c} B` per bin. In id order, each clone joins the first earlier
-    named clone whose `(A, B)` agree with its own at no less than
-    `agreement` of the bins, and names itself otherwise; the smallest id
-    names a group, so the normal clone keeps `0`. At 1.0, every bin (#344).
-
-    Below 1.0 it is #518's merge: on `dev_tree` 60 x 50 without the
-    Neyman-Pearson merge, one planted clone split by slice decodes alike at
-    0.9993 of 2,895 bins, while every distinct pair on CalicoST easy, hard
-    and `dev_tree` agrees at 0.9863 or less.
+    `frame` has `clone{c} A`/`clone{c} B` per bin. In id order, a clone joins
+    the first earlier group agreeing at >= `agreement` of bins (1.0: identical,
+    #344; below: #518's merge), so the normal clone keeps `0`.
     """
     if not 0.0 < agreement <= 1.0:
         msg = f"merge agreement must be in (0, 1], got {agreement!r}"
@@ -379,10 +283,9 @@ def clone_labels_integer(
 
 
 def merged_clone_labels(integer: pd.DataFrame) -> pd.DataFrame | None:
-    """`clone_labels.tsv` with the merged clone as `clone_label`, or `None`.
+    """`clone_labels.tsv` with the merged clone as `clone_label`, or `None` if nothing merges.
 
-    `None` where the merge joins no clones, so the file stays `cnaster`'s
-    byte for byte; else `cnaster`'s clone moves to `cnaster_clone_label`.
+    `cnaster`'s clone moves to `cnaster_clone_label`.
     """
     same = (
         integer["integer_clone_label"]
@@ -403,15 +306,8 @@ def merged_clone_labels(integer: pd.DataFrame) -> pd.DataFrame | None:
 def with_samples(labels: pd.DataFrame, spots: pd.DataFrame) -> pd.DataFrame:
     """`labels` with `sample_id` the run assigned each barcode, decoded to its name (#418).
 
-    `spots` is `port.extensions.samples.Recorded.table()`: one row per spot
-    of the run, indexed by barcode, whose `sample` is the spot's enum decoded
-    to the sample's name. `sample_id` keeps its column, or goes after
-    `barcode`, and takes that name; a `sample` column is dropped.
-
-    Raises
-    ------
-    ValueError
-        If a barcode of `labels` is not a spot of the run.
+    `spots` is `Recorded.table()`; a `sample` column is dropped. Raises
+    ValueError if a barcode is not a spot of the run.
     """
     barcodes = labels["barcode"]
     missing = ~barcodes.isin(spots.index)
@@ -485,10 +381,7 @@ def write_outputs(
 ) -> list[Path]:
     """Write the files into `run`; return their paths.
 
-    `samples` is the run's recording (`port.extensions.samples.recording`);
-    given one, the per-spot tables carry each spot's `sample_id` from it,
-    decoded to the sample's name, and `clone_labels.tsv` and `baf_clone_labels.tsv`
-    are rewritten to carry them.
+    Given `samples` (the run's recording), per-spot tables carry its `sample_id`.
     """
     from importlib.metadata import PackageNotFoundError, version
 

@@ -1,24 +1,10 @@
 """`run_ledger`: record a run into the metrics ledger, render it, or query it (#409, #620).
 
-`run_ledger --record --note "..." [--instance dev] [--lattice] -- [flags]`
-runs `run_audit --recovery` in its own process, so `peak_gb` is that run's
-(`--sample easy` runs `run_audit --sim` instead), appends the `runs` line and
-one `ledger` line per measured metric under its latest definition. The note
-is at most `NOTE_CHARS` characters, written as a commit subject, stating what
-change the run measures.
-
-`--benchmark` marks a recorded run as one of a sweep over every fixture, and
-`--last-benchmark` prints the latest sweep's runs. `run_ledger --best
-clone_ari [--fixture dev [--fixture-hash H]]` prints the ledger line, joined
-to its run, that maximizes a metric under its latest definition. `--render
-[--out PATH]` prints the wide view, one row per run and one column per
-metric, `—` where a run has no line, to stdout or to `PATH`. Nothing commits
-it: the ledger is the record, and the view is generated on demand.
-
-A run is recorded against a commit, so the inputs must be committed first
-(`--dirty` records anyway and marks the commit `+`). A new metric appends a
-definition and adds lines, not columns. The table API is `port.qa.ledger`;
-this was `python -m tests.metrics` until T- #673 G2.
+`run_ledger --record --note "..." [--instance dev] [--lattice] [--benchmark] -- [flags]`
+runs `run_audit --recovery` (or `--sim` with `--sample`) in its own process and
+appends its `runs` and `ledger` lines; inputs must be committed unless `--dirty`.
+`run_ledger --best clone_ari [--fixture dev [--fixture-hash H]]`,
+`run_ledger --last-benchmark`, `run_ledger --render [--out PATH]`.
 """
 
 from __future__ import annotations
@@ -89,13 +75,10 @@ def record(arguments: argparse.Namespace) -> int:
 
 
 def record_sample(arguments: argparse.Namespace, *, dirty: bool) -> int:
-    """A run on a simulated sample: `run_audit --sim` in its own process (#467).
+    """Record a run on a simulated sample via `run_audit --sim` (#467).
 
-    `r0` is `dev_tree`'s realization 0, drawn if absent and refused unless it
-    is the one `port.sim.fixtures.R0_HASH` names; `easy` and `hard` are CalicoST's.
-    The fixture hash is the sample's content hash (`realization_hash`), in its
-    own column beside the sample's name, and a hash the ledger holds under
-    another name is refused before the run (`check_identity`).
+    `r0` must match `port.sim.fixtures.R0_HASH`; a content hash the ledger
+    holds under another name is refused before the run.
     """
     from port.sim.fixtures import SAMPLES, SIM_ROOT, r0, realization_hash
 
@@ -106,8 +89,7 @@ def record_sample(arguments: argparse.Namespace, *, dirty: bool) -> int:
         sample = SAMPLES.get(arguments.sample, arguments.sample)
         path = SIM_ROOT / sample
 
-    # NB checked before the run as well as at the write, so a refused name
-    #    costs no run
+    # NB checked before the run too, so a refused name costs no run
     digest = realization_hash(path)
     ledger.check_identity(arguments.sample, digest, ledger.ledger())
 

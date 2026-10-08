@@ -1,35 +1,8 @@
-r"""Fitted `(mu, p)` over realizations of one planted genome (#291).
+r"""Fitted `(mu, p)` over realizations of one planted genome (#291); an extension (#274).
 
-**What a stated error is for, drawn beside what it claims.**
-`port.qa.parameter_errors` gives one fit's covariance. That covariance
-is a prediction: refit the same genome from fresh counts and the estimates
-should scatter inside it. This draws the prediction and the test of it on one
-axis per copy state:
-
-- one realization, with 1-sigma error bars and its 1- and 2-sigma contours;
-- every other realization, as a point without error bars;
-- the planted truth.
-
-`mu` is the rate relative to normal coverage, compared unshifted: the planted
-`mu` realizes UMIs against the normal baseline, and the fit's `exp(log_mu)`
-estimates the same thing. `logmu_shift` would take either to `mubar`, a
-different quantity, and is applied to neither.
-
-A fit whose contours hold the other realizations and the truth is calibrated
-and unbiased. One whose other realizations sit inside its contours but whose
-truth does not is **precise and biased**, and a panel is the quickest way to
-tell the two apart.
-
-**The contours are Mahalanobis radii, not credible levels.** Radius `r` is the
-set `(x - m)' S^-1 (x - m) = r^2`. In two dimensions that holds 39.3 and 86.5
-per cent of a Gaussian at `r = 1, 2`, not the 68 and 95 a reader carries over
-from one; the legend says radius so neither is implied.
-
-One panel per state, because the states sit a decade apart in `mu` and the
-contours are a few thousandths wide: a shared axis draws every ellipse as a
-point.
-
-An extension, per #274: `cnaster` draws nothing of the kind.
+One panel per copy state: one realization with 1-sigma bars and Mahalanobis
+contours (radii, not credible levels), the other realizations as points, and
+the truth. `mu` is relative to normal coverage, unshifted (no `logmu_shift`).
 """
 
 from __future__ import annotations
@@ -53,11 +26,7 @@ def contour(
 ) -> np.ndarray:
     """`(n_points, 2)` on the ellipse `(x - m)' S^-1 (x - m) = radius^2`.
 
-    `m + radius * L u` for `u` on the unit circle and `L` the Cholesky factor
-    of `S`: `(L u)' S^-1 (L u) = u' u = 1`, so every point is exactly on the
-    contour. Cholesky rather than an eigendecomposition because it refuses a
-    covariance that is not positive definite, which is the one a contour
-    cannot be drawn for.
+    Uses the Cholesky factor of `S`, so a non-positive-definite `S` raises.
     """
     centre = np.asarray(mean, dtype=np.float64).reshape(2)
     factor = np.linalg.cholesky(np.asarray(covariance, dtype=np.float64))
@@ -78,8 +47,7 @@ def _errors(
 ) -> bool:
     """Contours and 1-sigma bars around `centre`; whether its `mu` is pinned.
 
-    A pinned state's `mu` is exact, so its covariance is singular and has no
-    ellipse: its error is the bar on `p` alone.
+    A pinned `mu` has singular covariance: only the bar on `p` is drawn.
     """
     pinned = bool(covariance[0, 0] <= 0.0)
 
@@ -116,26 +84,12 @@ def plot_realizations(
     labels: Sequence[str] | None = None,
     planted_covariance: np.ndarray | None = None,
 ) -> Any:
-    """One panel per copy state, in `(mu, p)`.
+    """One panel per copy state, in `(mu, p)`; returns the figure.
 
-    Parameters
-    ----------
-    planted
-        `(mu, p)` per state, the truth.
-    single
-        `(mu, p, covariance)` for one realization; `covariance` is
-        `(n_states, 2, 2)` in `(mu, p)`, or `None` to draw it as a point.
-    others
-        `(mu, p)` per state for each remaining realization.
-    labels
-        A title per state. Defaults to the state index.
-    planted_covariance
-        `(n_states, 2, 2)` to draw the errors on the truth instead: the
-        likelihood's covariance evaluated at the planted parameters.
-
-    Returns
-    -------
-    matplotlib.figure.Figure
+    `planted` and each of `others` are `(mu, p)` per state; `single` is
+    `(mu, p, covariance)` with covariance `(n_states, 2, 2)` or `None`;
+    `planted_covariance` (`(n_states, 2, 2)`) draws errors on the truth instead.
+    `labels` default to the state index.
     """
     import matplotlib.pyplot as plt
 

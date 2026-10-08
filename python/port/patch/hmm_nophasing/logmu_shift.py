@@ -1,45 +1,9 @@
-"""`compute_logmu_shifts` as an axis reduction, and the decision it is waiting on.
+"""`cnaster.hmm_nophasing.compute_logmu_shifts` as a per-clone reduction (#234), and `clone_log_normalizers`.
 
-**#234 PR 2.** `cnaster.hmm_nophasing.compute_logmu_shifts` computes a
-per-clone `logsumexp` and broadcasts it back over that clone's entries, using
-a hand-rolled two-pass max-then-sum-exp over `start_idx`. Its own docstring
-carries the vectorized form it replaced:
-
-```
-return scipy.special.logsumexp(
-    log_mu[clone_copy_states, :] + normal_log_lambda.reshape(-1, 1),
-    axis=0,
-)
-```
-
-`shifts` is that reduction, returning **one value per clone** where upstream
-returns one per segment -- see its docstring for why the shape is the point.
-It stays a `numba` kernel: what this removes is the broadcast write, not the
-loop. Measured: `docs/measurements.md`, `port.patch.hmm_nophasing.logmu_shift`.
-
-## It is not installed, and that is the point
-
-`hmm_nophasing.py:279` comments out the only call and logs
-`"logmu_shifts are not currently supported."` So this replaces a function that
-does not run, and installing it would not change any run -- but *enabling* it
-would, because the shift debiases `log_mu` and every downstream number moves.
-
-**Those are two different claims and only the first is made here.** This
-module is pinned bitwise against the existing loop, which says the rewrite is
-faithful. Whether the shift should be applied at all is a scientific question
-about the library normalization it corrects for, and it needs the planted
-truth as its referee rather than a loop nobody calls.
-`tests/test_clone_stack.py::test_the_consumer_this_accessor_is_for_does_not_run`
-fails the day that decision is taken elsewhere, so it cannot be taken
-silently.
-
-## Unequal clones are admitted, and are why there is no rectangular path
-
-`clone_stack_obs` tiles `lengths` to `[A, B, A, B]`, so every clone in a
-stacked run carries the same total. `compute_logmu_shifts` nonetheless takes
-`clone_lengths` and walks them individually, which admits unequal clones, and
-this walks them the same way rather than detecting the rectangular case.
-One loop, both cases.
+`shifts` returns one value per clone where upstream returns one per segment;
+`np.repeat(shifts(...), clone_lengths)` is upstream's array, bitwise. Not
+installed: upstream's only call is commented out (`hmm_nophasing.py:279`).
+Unequal clone lengths are admitted.
 """
 
 from __future__ import annotations
@@ -54,12 +18,7 @@ __all__ = ["clone_log_normalizers", "shifts"]
 
 @njit(nogil=True, cache=True, parallel=False, error_model="numpy")
 def _per_clone(means, states, lambdas, lengths):
-    """Upstream's two passes, writing one value per clone rather than per segment.
-
-    Kept as `numba` and kept as upstream's shape of loop. The compiled
-    two-pass is not the thing worth replacing; the write is. Measured:
-    `docs/measurements.md`, `port.patch.hmm_nophasing.logmu_shift._per_clone`.
-    """
+    """Upstream's two-pass logsumexp, writing one value per clone rather than per segment."""
     n_clones = lengths.size
     out = np.empty(n_clones, dtype=np.float64)
 
@@ -72,9 +31,7 @@ def _per_clone(means, states, lambdas, lengths):
         for i in range(length):
             value = means[states[start + i]] + lambdas[start + i]
 
-            # NB `max` rather than the branch PLR1730 asks for: `numba`
-            #    compiles the comparison, and the builtin on two floats is
-            #    what upstream's own loop avoids for the same reason.
+            # NB `max` rather than the branch PLR1730 asks for, under `numba`.
             largest = max(largest, value)
 
         if np.isinf(largest):
@@ -98,39 +55,11 @@ def shifts(
     normal_log_lambda: np.ndarray,
     clone_lengths: Sequence[int] | np.ndarray,
 ) -> np.ndarray:
-    """Per-clone `logsumexp` of `log_mus[state] + normal_log_lambda`.
+    """Per-clone `logsumexp` of `log_mus[copy_states] + normal_log_lambda`, `(n_clones,)`.
 
-    **`(n_clones,)`, where upstream returns `(n_segments,)`.** That is the
-    one stated difference from `compute_logmu_shifts`, and it is a shape
-    rather than a value: upstream writes each clone's shift across every one
-    of that clone's segments, so its return carries `n_clones` distinct
-    numbers in `n_segments` floats. `np.repeat(shifts(...), clone_lengths)`
-    is upstream's array exactly, and
-    `tests/test_logmu_shift.py::test_it_reproduces_cnasters_loop` is what
-    holds that.
-
-    The shape is the point rather than the bytes. A per-segment return has to
-    be indexed by a running offset, and indexing it by clone -- which is what
-    it looks like it wants -- silently hands every clone the first clone's
-    shift, with no exception and no warning. One value per clone cannot be
-    read that way. Measured: `docs/measurements.md`,
-    `port.patch.hmm_nophasing.logmu_shift.shifts`.
-
-    Reproduces the values `compute_logmu_shifts` computes, including its
-    handling of a clone whose every term is `-inf`: the loop leaves `max_val`
-    at `-inf` and returns it rather than computing `log(0)`, and
-    `scipy.special.logsumexp` returns `-inf` there too.
-
-    Parameters
-    ----------
-    log_mus
-        Per-state log means, indexed by `copy_states`.
-    copy_states
-        One state index per segment, over every clone concatenated.
-    normal_log_lambda
-        One value per segment, added to its state's `log_mu`.
-    clone_lengths
-        Segments per clone, in order. Their sum is the segment count.
+    `copy_states` and `normal_log_lambda` have one entry per segment, clones
+    concatenated; `clone_lengths` sums to the segment count. Upstream returns
+    `(n_segments,)`. An all-`-inf` clone gives `-inf`, as upstream.
     """
     states = np.asarray(copy_states, dtype=np.int64).reshape(-1)
     lambdas = np.asarray(normal_log_lambda, dtype=np.float64).reshape(-1)
@@ -155,14 +84,11 @@ def shifts(
 def clone_log_normalizers(
     log_mu: np.ndarray, paths: np.ndarray, single_base_nb_mean: np.ndarray
 ) -> np.ndarray | None:
-    """`log Z_c = log sum_g lambda_g mu_{s_c(g)}`, one per column of `paths`.
+    """`log Z_c = log sum_g lambda_g mu_{s_c(g)}`, one per column of `paths` (#517).
 
-    `lambda` is built as `hmrf.py:476` builds `normal_lambda`: the baseline
-    summed over spots, normalized. `paths` is `(n_obs, n_clones)` state
-    indices into `log_mu`; `None` where the baseline has no mass. The one
-    implementation behind the clone assignment's field and the genomic
-    figure's levels (#517). One reduction along axis 0, so a single column
-    is bitwise the 1-D sum.
+    `lambda` is the normalized spot-summed baseline (`hmrf.py:476`); `paths`
+    is `(n_obs, n_clones)` state indices into `log_mu`. `None` where the
+    baseline has no mass.
     """
     import scipy.special
 

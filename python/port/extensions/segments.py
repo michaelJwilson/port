@@ -1,35 +1,9 @@
 r"""Genomic segments as labellings of the gene rows (#438).
 
-`cnaster` re-derives its segments at every step -- rows into blocks, blocks
-into bins, bins filtered, bins merged -- by `groupby` on an id column, and
-recomputes `lengths` and every per-segment array (the phase-switch kernel
-four times) from whatever order that `groupby` returns. Nothing carries what
-a segment *is* in terms of the data it came from, so an array can be aligned
-to the wrong step, or to the right step in the wrong order, with no error:
-the kernel was right on chr1 and chr10-22 and wrong on chr2-9 for exactly
-that reason (#438 D1).
-
-**The root is the gene rows of `df_gene_snp`**, sorted by `(CHR, START)`:
-every SNP row belongs to the gene that contains it, every block and bin
-holds at least one gene, and a gene is the unit read depth is counted over.
-**Every coarser segmentation is one label per gene** -- `(0, 1, 1, 2, 2, 2)`
--- with `-1` for a gene the segmentation drops. So each segment at every
-level is defined against the same original rows, two levels compare by
-their label arrays, and coarsening is a lookup `label[fine]` rather than a
-chain of parents.
-
-**What is derived and never stored.** A segment's contig, `start` (its first
-gene's `START`), `end` (its last gene's `END`), `length` (`end - start`) and
-`gene` (its first gene's index label); `lengths`, segments per
-contig -- the grid every lattice restarts on -- which cannot disagree with
-the labels and is never zero (#438 D5); and `boundary`, each contig's last
-segment. Moving an array between genes and segments is a `reduceat` or a
-gather, O(n_genes).
-
-**What is refused.** A label whose kept genes are not one run among the
-kept genes, that spans two contigs, or whose id order is not genomic order: each is a way the rows and
-a per-segment array silently disagree (#438 D3, D6). A segment with no gene
-cannot be a labelling of the genes, and is refused where it is built.
+Every segmentation is one label per gene of `df_gene_snp` (sorted by
+`(CHR, START)`), `-1` where dropped; coordinates, `lengths` and `boundary` are
+derived, never stored. Labels that are not contiguous runs, span two contigs,
+or are out of genomic order are refused (#438 D3, D6).
 """
 
 from __future__ import annotations
@@ -117,12 +91,9 @@ class Segmentation:
     def from_table(
         cls, table: Any, key: str, genes: Genes | None = None
     ) -> Segmentation:
-        """`table[key]` read at the gene rows, labels in id order.
+        """`table[key]` read at the gene rows, labels in id (and genomic) order.
 
-        Id order is the order `cnaster` indexes its arrays in
-        (`groupby(key, sort=True)`), so it has to be genomic order too, or the
-        two would disagree. An id carried only by SNP rows has no gene and is
-        refused.
+        Raises `ValueError` for an id held only by SNP rows or a negative id.
         """
         import pandas as pd
 
@@ -130,8 +101,7 @@ class Segmentation:
         column = pd.Series(np.asarray(table[key]))
         is_gene = np.asarray(table["is_interval"], dtype=bool)
 
-        # NB the table's gene rows located among the root's by index label: a
-        #    later table may have dropped rows, never added a gene.
+        # NB located by index label: a later table may drop rows, never add a gene.
         where = pd.Index(genes.key).get_indexer(np.asarray(table.index)[is_gene])
         if np.any(where < 0):
             msg = f"{key}: the table holds genes the root does not"
@@ -139,11 +109,8 @@ class Segmentation:
 
         every = column.dropna().unique()
 
-        # NB `assign_initial_blocks`' known-range path writes -1 for every row
-        #    no range covers (`omics.py:528-530`): rows across the genome under
-        #    one id, which `summarize_counts_for_blocks` then writes into the
-        #    *last* row of its counts while `groupby` puts it first (#438 D3).
-        #    It is not a segment, and is refused by name rather than as a gap.
+        # NB the known-range path's -1 covers rows across the genome
+        #    (`omics.py:528-530`); refused, not a segment (#438 D3).
         if np.issubdtype(np.asarray(every).dtype, np.number) and np.any(
             np.asarray(every) < 0
         ):
@@ -191,10 +158,7 @@ class Segmentation:
             msg = f"{name}: a segment spans two contigs"
             raise ValueError(msg)
 
-        # NB a dropped gene may fall inside a segment: `cnaster`'s second
-        #    binning merges surviving bins across the ones the normal-BAF
-        #    filter dropped (`run_cnaster.py:983`). The segment is its kept
-        #    genes; its extent runs from the first to the last.
+        # NB a dropped gene may lie inside a segment (`run_cnaster.py:983`).
         return cls(
             genes=genes,
             label=label,
@@ -292,10 +256,7 @@ class Segmentation:
     # -- the floor (#551) ----------------------------------------------------
 
     def short(self, min_length: float, weight: Any, min_weight: float) -> np.ndarray:
-        """Each segment spanning under `min_length` bp or holding under `min_weight` of a per-gene `weight`.
-
-        A contig's only segment is never short: it has nothing to merge with.
-        """
+        """Segments under `min_length` bp or `min_weight` of per-gene `weight`; a contig's only segment never is."""
         alone = np.repeat(self.lengths == 1, self.lengths)
         held = self.aggregate(np.asarray(weight, dtype=np.float64))
         below = (self.end - self.start < min_length) | (held < min_weight)
@@ -305,15 +266,10 @@ class Segmentation:
     def floored(
         self, min_length: float, weight: Any, min_weight: float, *, name: str
     ) -> Segmentation:
-        """Adjacent segments merged within each contig until none is `short` (#551).
+        """Adjacent segments merged greedily within each contig until none is `short` (#551).
 
-        Greedy along each contig, as `cnaster`'s `greedy_binning_nobreak`
-        merges blocks: a merged segment closes once it spans `min_length` bp,
-        first gene's `START` to last gene's `END`, and holds `min_weight`; a
-        contig's unclosed remainder joins the segment before it. Unlike
-        `cnaster`'s, the merge crosses the BAF breakpoints, which bound
-        `cnaster`'s own and so leave a run of short segments short.
-        The greedy rule is sal's `Ragged.floored` (T- #632).
+        Unlike `cnaster`'s `greedy_binning_nobreak`, crosses BAF breakpoints;
+        sal's `Ragged.floored` rule (T- #632).
         """
         held = self.aggregate(np.asarray(weight, dtype=np.float64))
         parent = np.zeros(0, dtype=np.int64)
@@ -321,8 +277,7 @@ class Segmentation:
         if self.n_segments:
             from sal.ragged import floor_lengths
 
-            # NB sal's greedy floor (sal #1141) on lengths alone (sal #1233): it
-            #    reads the extent, the weight and the groups, and no values.
+            # NB sal's greedy floor on lengths alone (sal #1141, #1233).
             _, parent = floor_lengths(
                 (1,) * self.n_segments,
                 min_length,
@@ -364,12 +319,7 @@ class Segmentation:
         return out
 
     def stacked(self, values: Any, n_clones: int) -> np.ndarray:
-        """A per-segment array over `n_clones` clones stacked genome after genome.
-
-        `cnaster.hmrf_utils.clone_stack_obs`'s layout: row `c * n + g` is
-        segment `g` of clone `c`, and the stacked `lengths` is this one's
-        tiled, so a contig's last segment stays last in every clone.
-        """
+        """A per-segment array tiled over `n_clones` clones (`clone_stack_obs` layout)."""
         return np.tile(np.asarray(values), n_clones)
 
     # -- the phase-switch kernel ---------------------------------------------
@@ -385,26 +335,10 @@ class Segmentation:
     ) -> np.ndarray:
         """`cnaster`'s `log_sitewise_transmat` over this segmentation, contig by contig.
 
-        `composable` is #449's law, :meth:`_composable_switch`, which no run
-        installs yet: `port.patch.recomb.get_sitewise_transmat(..., composable=True)`.
-
-        Entry `k` is the log probability of a phase switch between segment `k`
-        and `k + 1`: Haldane's `(1 - exp(-2 nu d)) / 2` over the centimorgan
-        distance `d` from the end of `k` to the start of `k + 1`, floored at
-        `min_prob`, shifted by `logphase_shift` and capped at `log 1/2`, as
-        `recomb.py:158-172` computes it.
-
-        Three things differ, stated in #438:
-
-        - centimorgans are read from each contig's own rows of the map, so no
-          contig inherits another's (D1: `cnaster` gives chr2-9 chr1's last
-          value, distance 0, `min_prob`);
-        - a contig's last segment is `log 1/2`, independence, where `cnaster`
-          writes `min_prob`, near-certain continuity (D2). Every lattice
-          restarts there and never reads it;
-        - a segment ends at its last *gene's* `END`, where `cnaster` takes the
-          last *row's*, which is a SNP inside that gene on every block of the
-          dev instance.
+        Entry `k`: Haldane switch probability from the end of `k` to the start
+        of `k + 1`, as `recomb.py:158-172`. Departures (#438): centimorgans per
+        contig (D1); a contig's last segment is `log 1/2` (D2); a segment ends
+        at its last gene's `END`. `composable` selects #449's law.
         """
         cm_start = genetic_map.centimorgans(self.contig, self.start)
         cm_end = genetic_map.centimorgans(self.contig, self.end)
@@ -436,14 +370,8 @@ class Segmentation:
     ) -> np.ndarray:
         """`(1 - exp(-2 nu' d)) / 2` with `nu' = nu exp(-logphase_shift)` (#449).
 
-        `cnaster` multiplies each bin's probability by `exp(-logphase_shift)`
-        and floors it at `min_prob`, so the switch probability between two
-        SNPs depends on how many bins lie between them. Folding the factor
-        into the rate keeps its small-distance value -- `nu' d` is `cnaster`'s
-        `e^2 nu d` -- and composes over any binning: `(1 - 2 p_ab)(1 - 2
-        p_bc) = 1 - 2 p_ac`. No floor but `NUMERIC_FLOOR`, which only keeps
-        a zero distance finite. A distance the map cannot place is
-        independence, `1/2`, as at a contig's end.
+        Composes over any binning; floored only at `NUMERIC_FLOOR`; an unplaced
+        distance is `1/2`.
         """
         log_switch = np.full(self.n_segments, np.log(0.5))
         log_switch[:-1][within] = composable_log_switch(
@@ -463,12 +391,7 @@ class GeneticMap:
 
     @classmethod
     def from_frame(cls, frame: Any) -> GeneticMap:
-        """From `cnaster.reference.get_reference_recomb_rates`' frame, keyed by integer contig.
-
-        That frame is sorted by `chrom` as a *string*; each contig's rows are
-        taken on their own and sorted by position, so the order across
-        contigs no longer matters.
-        """
+        """From `cnaster.reference.get_reference_recomb_rates`' frame, keyed by integer contig, sorted by position."""
         chrom = np.asarray(frame["chrom"]).astype(int)
         position = np.asarray(frame["pos"])
         centimorgan = np.asarray(frame["pos_cm"], dtype=np.float64)
@@ -487,9 +410,7 @@ class GeneticMap:
     def centimorgans(self, contig: np.ndarray, position: np.ndarray) -> np.ndarray:
         """Each `(contig, position)`'s centimorgans, `NaN` where the map has no contig.
 
-        `assign_centiMorgans`' own arithmetic (`recomb.py:94-105`), so a contig
-        it reads correctly agrees to the bit: linear between the map rows
-        either side, from the origin before the first row, flat past the last.
+        `assign_centiMorgans`' interpolation (`recomb.py:94-105`).
         """
         out = np.full(position.shape, np.nan)
 
@@ -519,14 +440,7 @@ class GeneticMap:
 
 @dataclass
 class Lineage:
-    """Every segmentation one run makes, in order, over one root of genes.
-
-    The run's steps each read `df_gene_snp` by an id column and each re-derive
-    what they need from it; recording each one's labelling here keeps every
-    level after the table's columns are overwritten -- `create_bin_ranges`
-    writes `bin_id` over `block_id` (#438 D7) -- so a per-segment array at
-    any step can be read at any other through the genes.
-    """
+    """Every segmentation one run makes, in order, over one root of genes (#438 D7)."""
 
     genes: Genes | None = None
     levels: dict[str, Segmentation] = field(default_factory=dict)
@@ -536,12 +450,7 @@ class Lineage:
     """`(min_length, weight, min_weight)` every level recorded after the floor must meet (#551)."""
 
     def record(self, segmentation: Segmentation, name: str) -> Segmentation:
-        """Keep `segmentation` under `name`, suffixed `.2`, `.3` if the name repeats.
-
-        Every step is kept, identical to the last or not: that a step changed
-        nothing is itself what the lineage records. Once a floor is set, a
-        level with a `short` segment is refused.
-        """
+        """Keep `segmentation` under `name`, suffixed `.2`, `.3` on repeats; refuse `short` levels once a floor is set."""
         if self.floor is not None:
             short = segmentation.short(*self.floor)
             if short.any():
@@ -618,12 +527,7 @@ def _stage(lineage: Lineage, level: Segmentation) -> None:
 
 @contextmanager
 def recording() -> Iterator[Lineage]:
-    """Record every segmentation :func:`observe` sees for the block.
-
-    Joins a lineage already recording rather than opening a second, so a
-    caller that records around `run_cnaster_port`'s `main` sees what the
-    run recorded.
-    """
+    """Record every segmentation :func:`observe` sees for the block; joins an open lineage."""
     if _CURRENT:
         yield _CURRENT[-1]
         return
@@ -645,12 +549,8 @@ def current() -> Lineage | None:
 def observe(table: Any, key: str, name: str | None = None) -> Segmentation:
     """`table[key]` as a labelling of the genes, recorded under `name` while recording.
 
-    The first table seen while recording sets the root; every later one is
-    read onto it by index label, so a step that drops rows or overwrites a
-    column still labels the same genes. Without a `name` nothing is recorded,
-    and the last recorded level with the same labelling is returned: a
-    quantity computed *on* a step's segments reads them rather than making a
-    step of its own.
+    The first table sets the root. Without `name`, returns the last recorded
+    level with the same labelling.
     """
     lineage = current()
 

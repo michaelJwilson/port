@@ -1,26 +1,10 @@
 """Integer copies by the likelihood the HMM maximised (#327, #362).
 
-`cnaster` decodes a clone's integer copies with an L1 cost on its fitted
-`(mu, p)` (`integer_copy.py`). Here they are fitted by the pseudobulk NB/BB
-likelihood itself, on the same counts, the same normal baseline and each
-clone's `logmu_shift`. :func:`lattice_decode`: one HMM state per `(A, B)` with
-  `A + B <= max_total_copy`, decoded per clone by Viterbi, in an EM whose
-  M-step fits each clone's shift and tumour fraction and the shared
-  dispersions. A tumour clone's spots are a fraction `rho` tumour and the
-  rest normal: depth `rho (A + B) / 2 + 1 - rho`, allele share
-  `(rho A + 1 - rho) / (rho (A + B) + 2 (1 - rho))`. A per-bin log-prior
-  `-parsimony |A + B - 2|` decides among pairs the counts cannot separate:
-  where read depth barely fixes the total, a fraction and a total trade, and
-  `(0, 3)` at 0.78 has `(0, 1)`'s allele share at 0.92.
-#327's per-state `shared_decode` is set aside (`port.sandbox.extensions.shared_decode`, T- #831).
-
-Measured on CalicoST's simulated samples (#362), pure and admixed, easy and
-hard, with planted and fitted clones: the lattice decode is best on 6 of 8
-fits by copy ARI and within 0.004 on the other 2, and scores 0.97-0.99 of
-altered clone-bins exactly (phase-free) on the pure samples against about
-0.6 on the admixed ones. What it was chosen over -- tempered E-steps, EMs
-over the continuous states, fixed or relaxed dispersions, CalicoST's own
-decoders -- is in `port.sandbox.integer_decoding`.
+Replaces `cnaster`'s L1 cost on fitted `(mu, p)` with :func:`lattice_decode`:
+one HMM state per `(A, B)`, `A + B <= max_total_copy`, Viterbi per clone in an
+EM fitting each clone's shift and tumour fraction `rho` and shared dispersions.
+Depth `rho (A + B) / 2 + 1 - rho`, share `(rho A + 1 - rho) / (rho (A + B) + 2 (1 - rho))`,
+log-prior `-parsimony |A + B - 2|` per bin. Alternatives: `port.sandbox.integer_decoding`.
 """
 
 from __future__ import annotations
@@ -59,13 +43,7 @@ TAU_BOUNDS = (0.0, np.log(1e8))
 """Where `tau` is searched, in logs: from binomial to a flat allele share."""
 
 SHIFT_WINDOW = 0.35
-"""How far the start moves a clone's shift: less than `log 2`.
-
-`(2A, 2B)` at `shift + log 2` has `(A, B)`'s depth and allele share exactly,
-so a clone's ploidy is not identifiable under a free per-clone shift; a
-window under `log 2` keeps the continuous fit's scale rather than doubling
-it. On the pure easy fixture an unbounded search found the doubled genome.
-"""
+"""How far the start moves a clone's shift: under `log 2`, since `(2A, 2B)` at `shift + log 2` is indistinguishable."""
 
 PURITY_GRID = (1.0, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3)
 """Where the start looks for a clone's tumour fraction."""
@@ -84,12 +62,7 @@ class Pseudobulk(NamedTuple):
 
 
 def candidates(max_total_copy: int, max_allele_copy: int | None = None) -> np.ndarray:
-    """Every `(A, B)` with `0 < A + B <= max_total_copy` and `A, B <= max_allele_copy`.
-
-    `(n, 2)`, in `A`-major order. `max_allele_copy=None` bounds each allele
-    by the total alone, which is the same lattice as `max_allele_copy =
-    max_total_copy`.
-    """
+    """Every `(A, B)` with `0 < A + B <= max_total_copy` and `A, B <= max_allele_copy`, `(n, 2)`, `A`-major."""
     allele = max_total_copy if max_allele_copy is None else max_allele_copy
     return np.array(
         [
@@ -105,17 +78,11 @@ def candidates(max_total_copy: int, max_allele_copy: int | None = None) -> np.nd
 def pseudobulk_log_pmf(
     log_rate: np.ndarray, p: np.ndarray, bulk: Pseudobulk, bins: np.ndarray
 ) -> np.ndarray:
-    """NB + BB log pmf per bin: `port.patch.emission`'s, the one evaluation every site scores (T- #776).
+    """NB + BB log pmf per bin, via `port.patch.emission` (T- #776).
 
-    `log_rate` and `p` broadcast against the bins: a leading state axis gives
-    every state's row at once. The negative binomial is
-    :func:`~port.patch.emission.nb_log_pmf` at `mean = exposure exp(log_rate)`,
-    its table taken once on the distinct counts, `alpha <= 0` the Poisson and
-    a mean `<= 0` scoring 0; the beta-binomial
-    :func:`~port.patch.emission.bb_log_pmf`, `tau = inf` the binomial, its
-    rising factorials on the distinct counts. At `tau = inf` the share is
-    clipped to `[DISPERSION_FLOOR, 1 - DISPERSION_FLOOR]`, as the finite
-    shapes are floored, so a lost allele scores finitely.
+    `log_rate` and `p` broadcast against the bins (a leading state axis
+    scores every state). At `tau = inf` the share is clipped to
+    `[DISPERSION_FLOOR, 1 - DISPERSION_FLOOR]`, so a lost allele scores finitely.
     """
     x = bulk.counts_nb[bins]
     mean = bulk.base_nb_mean[bins] * np.exp(log_rate)
@@ -136,12 +103,7 @@ def pseudobulk_log_pmf(
 def pair_rate_and_share(
     copies: np.ndarray, purity: float = 1.0
 ) -> tuple[np.ndarray, np.ndarray]:
-    """`(log mu, p)` of each pair, in a spot `purity` tumour and the rest normal.
-
-    Depth `purity (A + B) / 2 + (1 - purity)`; allele share
-    `(purity A + 1 - purity) / (purity (A + B) + 2 (1 - purity))`, 0.5 where
-    there are no copies at all.
-    """
+    """`(log mu, p)` of each pair at tumour fraction `purity`; `p` is 0.5 with no copies at all."""
     total = copies.sum(axis=1).astype(np.float64)
     depth = purity * total / 2.0 + (1.0 - purity)
     alleles = purity * total + 2.0 * (1.0 - purity)
@@ -207,11 +169,7 @@ def _viterbi(
 ) -> tuple[np.ndarray, float]:
     """`(n_states, n_obs)` emissions; the best path, restarted at each length.
 
-    sal's compiled `likelihood.ragged.viterbi` (sal #1138, T- #632), which
-    adds in :func:`viterbi_oracle`'s order and breaks a tie to the lower
-    state, so the path and the score are the oracle's bitwise, a one-bin
-    contig included (sal #1233). The score is the segments' maxima summed in
-    order from zero, as the oracle sums them.
+    sal's `likelihood.ragged.viterbi` (sal #1138, T- #632), bitwise :func:`viterbi_oracle`.
     """
     from sal.likelihood.ragged import viterbi
     from sal.ragged import Ragged
@@ -245,12 +203,7 @@ class CopyFit:
     taus: float
     log_likelihood: float
     termination: Termination = field(kw_only=True)
-    """Whether and why the decode stopped (T- #617).
-
-    `lattice_decode`: converged where its last EM iteration left the paths
-    and the parameters where it found them; its `iterations` otherwise, the
-    budget.
-    """
+    """Whether the last EM iteration left paths and parameters unchanged (T- #617)."""
 
 
 def _prior(states: np.ndarray, parsimony: float) -> np.ndarray:
@@ -296,13 +249,7 @@ def _start(
     grid: tuple[float, ...] = PURITY_GRID,
     window: float = SHIFT_WINDOW,
 ) -> tuple[float, float]:
-    """A tumour clone's `(purity, shift)` jointly, before any E-step.
-
-    The fraction and the shift trade against each other, so fitting either
-    alone from a wrong start settles wherever the first E-step left the
-    paths: each fraction on :data:`PURITY_GRID` gets its own best shift
-    within :data:`SHIFT_WINDOW`, and the best pair starts the EM.
-    """
+    """A tumour clone's `(purity, shift)` jointly: the best shift within `window` per fraction on `grid`."""
     from scipy.optimize import minimize_scalar
 
     found = []
@@ -330,14 +277,7 @@ def _monotone(
     bounds: tuple[float, float],
     grid: tuple[float, ...] = (),
 ) -> float:
-    """The lowest of `current`, a bounded Brent search, and `grid`: never uphill.
-
-    The fraction's objective is a best path, piecewise in the fraction and
-    not convex, and a bounded search never scores its endpoints: on the
-    critical instance it returned `0.20` at 11,424 against `1.0`'s 11,078
-    (#371). Scoring the current value and the grid beside it keeps each
-    M-step from raising the objective, and reaches fraction 1 exactly.
-    """
+    """The lowest of `current`, a bounded Brent search, and `grid`: never uphill (#371)."""
     from scipy.optimize import minimize_scalar
 
     found = minimize_scalar(objective, bounds=bounds, method="bounded")
@@ -409,24 +349,14 @@ def lattice_decode(
     iterations: int = 5,
     max_inner: int = 10,
 ) -> CopyFit:
-    """Each clone's per-bin `(A, B)`: the default decode (module docstring).
+    """Each clone's per-bin `(A, B)` (module docstring).
 
-    `clones` holds each clone's continuous path (read for its length),
-    pseudobulk and shift, in the fit's order; `normal_clone` is held at
-    shift 0 and fraction 1. Transitions are `stay` on the diagonal and the
-    rest even.
-
-    Start: each tumour clone's fraction (on :data:`PURITY_GRID`, or 1
-    without `fit_purity`) and shift (within :data:`SHIFT_WINDOW`, or the
-    continuous fit's without `fit_shifts`), jointly, by :func:`_start`. Then,
-    with `em`, `iterations` times: each clone's Viterbi path (E-step); then
-    its shift and fraction and the shared `alpha` and `tau`, until none moves
-    or `max_inner` times (M-step). Without `em`, one Viterbi pass at the
-    start. `dispersion`: `"fit"` in the M-step, `"held"` at the continuous
-    fit's, `"poisson"` at the Poisson and binomial limits.
-
-    The flags are the simplifications the #362 audit measured; the defaults
-    are the decode it adopted.
+    `clones`: each clone's continuous path, pseudobulk and shift; `normal_clone`
+    is held at shift 0 and fraction 1. Transitions: `stay` on the diagonal.
+    Starts by :func:`_start`, then with `em` runs `iterations` of Viterbi
+    E-step and an M-step (shift, fraction, `alpha`, `tau`) of up to
+    `max_inner` rounds. `dispersion`: `"fit"`, `"held"`, or `"poisson"`. The
+    flags are #362's simplifications; the defaults are the adopted decode.
     """
     states = candidates(max_total_copy, max_allele_copy)
     n = len(states)
@@ -544,8 +474,7 @@ def lattice_decode(
             np.array_equal(old, new)
             for old, new in zip(before_paths, paths, strict=True)
         )
-        # NB no early exit on `settled`: the iterations run as before, so
-        #    the decode is bitwise; the flag reports the last one.
+        # NB no early exit on `settled`, so the decode stays bitwise.
 
     return CopyFit(
         [states[path] for path in paths],
@@ -582,12 +511,9 @@ class Captured(NamedTuple):
 
 @contextlib.contextmanager
 def captured_fits() -> Iterator[list[Captured]]:
-    """Every `params="smp"` fit `port`'s `run_core_inference` returns in the block.
+    """Every `params="smp"` fit `port`'s `run_core_inference` returns in the block (#517).
 
-    Wraps `port.patch.hmrf.run_core_inference`, so it is entered **before**
-    `patched`, which then installs the wrapper. The BAF-only stage calls it
-    too, with `params="sp"`; the fit kept is the one that also fits `mu`. The
-    one capture shim (#517): the copy decode and the tests' harnesses read it.
+    Enter **before** `patched`, which then installs the wrapper.
     """
     import port.patch.hmrf as patch
 
@@ -680,12 +606,7 @@ def captured_fit() -> Any:
 def captured_normal() -> int | None:
     """The captured fit's normal clone: the largest share of balanced bins (#389).
 
-    The rule `run_core_inference` zeroes a clone's shift by
-    (`core_inference.clone_shifts`), so the clone the decode holds at
-    `(1, 1)`, shift 0 and fraction 1 is the one whose shift was zeroed.
-    `argmin |shift|`, the rule it replaces, ties among every clone near
-    diploid: on CalicoST easy and hard under `--sal` it named a tumour clone,
-    held it at fraction 1 and shift 0, and decoded its LOH bins as `(1, 5)`.
+    The same rule `core_inference.clone_shifts` zeroes a shift by.
     """
     fit = captured_fit()
 
@@ -706,12 +627,7 @@ def normal_of(captured: Any) -> int:
 
 
 def captured_chain() -> tuple[np.ndarray | None, float]:
-    """The captured fit's `(lengths, stay)`: the chain `lattice_decode` runs on.
-
-    `stay` is the mean of the fitted transition matrix's diagonal, as #370's
-    measurements took it; `1 - 1e-7`, `lattice_decode`'s default, without a
-    captured fit.
-    """
+    """The captured fit's `(lengths, stay)`, `stay` the mean fitted diagonal (#370), else `1 - 1e-7`."""
     fit = captured_fit()
 
     if fit is None:
@@ -731,11 +647,7 @@ def captured_chain() -> tuple[np.ndarray | None, float]:
 
 @contextlib.contextmanager
 def capture() -> Iterator[None]:
-    """Keep the RDR+BAF fit's inputs and result, for the decoder that follows.
-
-    `captured_fits` for the block; the decode
-    reads the last `params="smp"` fit through :func:`captured_fit`.
-    """
+    """Keep the RDR+BAF fit's inputs and result for :func:`captured_fit`."""
     with captured_fits() as kept:
         _FITS.append(kept)
 

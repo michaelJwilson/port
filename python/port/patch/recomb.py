@@ -1,16 +1,8 @@
-"""`cnaster.recomb.get_sitewise_transmat`, computed from a :class:`Segmentation` (#438).
+"""Replaces `cnaster.recomb.get_sitewise_transmat`, computed from a `Segmentation` (#438).
 
-The drop-in keeps `cnaster`'s signature and its kernel, and fixes two things
-in it, both stated in `port.extensions.segments.Segmentation.log_phase_switch`:
-centimorgans are read per contig (chr2-9 no longer inherit chr1's last value),
-and a contig's last segment is independence rather than continuity.
-
-The segments are `df_gene_snp`'s gene rows labelled by `segment_key`, in id
-order, which is the order `summarize_counts_for_blocks` and
-`summarize_counts_for_bins` index their rows in; a labelling whose id order
-is not genomic order, whose genes are not contiguous, or with a segment that
-holds no gene, is refused rather than returned misaligned. A segment ends at
-its last gene's `END`, where `cnaster` reads the last row's, a SNP.
+Fixes: centimorgans read per contig, and a contig's last segment is
+independence. A segment ends at its last gene's `END`, not a SNP's.
+Misaligned or non-contiguous labellings are refused.
 """
 
 from __future__ import annotations
@@ -32,11 +24,7 @@ def get_sitewise_transmat(
     *,
     composable: bool = False,
 ) -> np.ndarray:
-    """`log_sitewise_transmat`, one entry per `segment_key` segment.
-
-    `composable` is #449's composable phase-switch law, off as `cnaster` is;
-    a row binds it at install where a run asks for it.
-    """
+    """`log_sitewise_transmat`, one entry per `segment_key` segment; `composable` is #449's law."""
     from cnaster.config import get_global_config
 
     from port.extensions.segments import observe
@@ -54,23 +42,14 @@ def get_sitewise_transmat(
 
 
 def _genetic_map(path: str) -> Any:
-    """The map at `path`, read once per file version (#438 D4).
-
-    `run_cnaster` asks for the kernel four times and `cnaster` re-reads the
-    map each time. Keyed on the path and its modification time, so a map
-    rewritten between runs in one process is read again.
-    """
+    """The map at `path`, cached by path and modification time (#438 D4)."""
     from pathlib import Path
 
     return _read_map(path, Path(path).stat().st_mtime_ns)
 
 
 def release() -> None:
-    """Drop the maps read this run; `port.pipeline.patched` calls this on exit (T- #617).
-
-    The cache is keyed by path and version, so a later run would read the
-    same map; it is dropped so that nothing a run read outlives it.
-    """
+    """Drop the cached maps; `port.pipeline.patched` calls this on exit (#617)."""
     _read_map.cache_clear()
 
 

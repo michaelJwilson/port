@@ -1,16 +1,7 @@
-"""`cnaster.pseudobulk.merge_pseudobulk_by_index_mix`, summing a block of bins at a time.
+"""Replaces `cnaster.pseudobulk.merge_pseudobulk_by_index_mix`, summing `BLOCK` bins at a time (#488).
 
-**Proposed for `cnaster`, written here.** Upstream gathers every spot of a
-clone, `single_X[:, :, idx]`, into a fresh `(n_obs, 2, len(idx))` array and
-then sums it: at 6,000 spots the gather streams the whole count matrix through
-memory once per clone and call, and the profile of #487's `--sal` run puts
-24.4 s of self time over 31 calls here (#488). Gathering and summing
-`BLOCK` bins at a time keeps the gathered block in cache. Every entry is the
-same `np.sum` over the same spots in the same order, so the return is
-**bitwise** upstream's, which `tests/test_pseudobulk_patch.py` pins.
-
-The body is otherwise upstream's, line for line, logging through `cnaster`'s
-own logger, so a run's log is unchanged.
+Keeps the gathered block in cache; each entry is the same sum in the same
+order, so the return is bitwise upstream's. The body is otherwise upstream's.
 """
 
 # ruff: noqa: G004, E501, N806, N803, PLR2004, PLW2901, B007, PLR1736
@@ -31,12 +22,9 @@ BLOCK = 256
 
 
 def _blocks(n_obs: int) -> Iterator[slice]:
-    """`BLOCK`-bin slices covering `range(n_obs)`, none of one bin unless all are.
+    """`BLOCK`-bin slices covering `range(n_obs)`; a trailing single bin joins the previous block.
 
-    NB numpy sums a `(1, n)` block as one flat vector, in another order than
-    the rows of a taller block, and the last bit differs (3.6e-15 at 257
-    bins, `tests/test_pseudobulk_patch.py`); every height from 2 to 39 was
-    measured equal. A trailing bin therefore joins the block before it.
+    NB numpy sums a `(1, n)` block in another order, so its last bit differs.
     """
     starts = list(range(0, n_obs, BLOCK))
 
@@ -87,9 +75,7 @@ def merge_pseudobulk_by_index_mix(
             # NB assumes mean tumor proportion for all spots assigned to this clone.
             tumor_prop[k] = np.mean(single_tumor_prop[idx]) if len(idx) > 0 else 0.0  # type: ignore[index]
 
-        # NB upstream's `np.sum(x[..., idx], axis=-1)`, a block of rows at a
-        #    time: each entry is the same sum over the same `idx` in the same
-        #    order, and the gathered block stays in cache (#488).
+        # NB upstream's `np.sum(x[..., idx], axis=-1)`, a block of rows at a time (#488).
         for rows in _blocks(n_obs):
             X[rows, :, k] = np.sum(single_X[rows, :, idx], axis=-1)
             total_bb_RD[rows, k] = np.sum(single_total_bb_RD[rows, idx], axis=1)

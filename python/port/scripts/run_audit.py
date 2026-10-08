@@ -4,13 +4,8 @@
     run_audit --recovery [--instance dev] [--lattice] [--set K=V] [-- flags]
     run_audit --errors [--realizations 8] [--output PATH]
 
-`--sim` prints one `SIM` line of JSON and the copy confusion on stderr;
-`--recovery` one `RECOVERY` line, with the fixture's `fixture_hash`;
-`--errors` the realizations figure. A
-`<name>` is under `sim/`, so a sample `port.sim.draw` wrote is
-`generated/<name>/r<k>`, run on its own `config.yaml`. What each mode scores
-is `port.qa.audit`'s; `run_ledger --record` runs `--recovery` or `--sim` and
-appends the line it prints.
+`--sim` prints a `SIM` JSON line (copy confusion on stderr), `--recovery` a
+`RECOVERY` line, `--errors` the realizations figure; scoring is `port.qa.audit`'s.
 """
 
 from __future__ import annotations

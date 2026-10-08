@@ -1,28 +1,8 @@
-"""`cnaster.normal_spot.normal_baf_bin_filter`, without the quantile inversion; and `filter_normal_diffexp`, fixed and reconnected (#440, at the end).
+"""Replaces `cnaster.normal_spot.normal_baf_bin_filter` and `filter_normal_diffexp`.
 
-**Proposed for `cnaster`, written here.** #174: the filter decides which bins to
-drop by inverting a beta-binomial quantile at each bin, and `scipy` has no
-closed form for that inverse -- `betabinom.ppf` falls back to a per-element
-bisection whose every step sums the probability mass function in Python. It is
-**93.6 per cent of the whole preprocessing chain** at 2,500 spots and 400 bins,
-and the test it computes needs no inverse at all.
-
-For a discrete law the inversion is unnecessary by an identity, not by an
-approximation:
-
-```
-x <  ppf(q)   <=>   cdf(x)     <  q
-x >  ppf(q)   <=>   cdf(x - 1) >= q
-```
-
-both because `ppf(q) = min{k : cdf(k) >= q}`. So the same mask comes from two
-distribution-function evaluations rather than from two searches, and it is the
-**same mask**, bitwise, rather than one within a tolerance.
-
-`port` cannot land the change (`CLAUDE.md`, **Working against a repository you
-do not own**), so it is written here with its referee beside it. The whole
-function is reproduced because its return is what can be compared bitwise; the
-change itself is the two lines in `removal_indicator`.
+The bin filter tests `cdf(x) < q` and `cdf(x - 1) >= q` in place of comparing
+against `betabinom.ppf(q)`: equal for a discrete law, so the mask is bitwise
+(#174). `filter_normal_diffexp` is fixed and reconnected (#440).
 """
 
 from __future__ import annotations
@@ -44,33 +24,18 @@ from cnaster.spatio_genomic_counts import SpatioGenomicCounts
 from port.extensions.segments import observe
 
 _UPSTREAM_CANDIDATES = cnaster.normal_spot.determine_normal_candidates
-"""`cnaster`'s own, bound at import (#479).
-
-Before `pipeline.patched()` rebinds the name to `determine_normal_candidates`
-below: resolved at call time it is that function, and the delegation
-recursed until the stack ran out.
-"""
+"""`cnaster`'s own, bound at import, before `patched()` rebinds the name (#479)."""
 
 logger = get_logger(__name__, start_time=start_time)
 
 MIN_BETABINOM_TAU = 30
-"""`cnaster`'s floor on the fitted concentration, carried across unchanged.
-
-The fit's success probability is discarded and replaced by 0.5 and its
-concentration is floored here, both in `cnaster` and in this patch: #38 owns
-whether that is the right prior, and a patch that changed it would be
-answering a different question from the one it is measuring.
-"""
+"""`cnaster`'s floor on the fitted concentration, unchanged (#38)."""
 
 
 def _log_mass(
     index: np.ndarray, totals: np.ndarray, alpha: float, beta: float
 ) -> np.ndarray:
-    """`scipy`'s own beta-binomial log mass function, evaluated elementwise.
-
-    Written out rather than called because `scipy` reaches it one
-    distribution at a time; the formula is `betabinom._logpmf`, unchanged.
-    """
+    """`scipy`'s `betabinom._logpmf`, evaluated elementwise."""
     return np.asarray(
         -np.log(totals + 1)
         - scipy.special.betaln(totals - index + 1, index + 1)
@@ -80,24 +45,9 @@ def _log_mass(
 
 
 TERM_BUDGET = 1 << 16
-"""How many mass-function terms are held at once: 65,536, about 5 MB of peak.
+"""Mass-function terms held at once; bins are grouped under it, results unchanged.
 
-The summation covers every bin, so its intermediate is the whole ragged
-evaluation -- `sum(min(k, n - k))` terms, which at a slide's read depth is
-tens of millions and hundreds of megabytes. Bins are taken in groups under
-this budget instead, which bounds the peak at a constant and leaves the
-arithmetic identical: `np.add.reduceat` never sums across bins, so where the
-groups fall cannot change a result, and the values are bitwise the same at
-every budget measured.
-
-**The small budget is also the fast one.** At 20,000 reads per bin: 112 ms and
-167 MB at four million terms, 72.7 ms and 4.6 MB at this one. The working set
-fits in cache, so chunking buys time rather than trading it for memory --
-which is why the budget is set here rather than at the largest size that fits.
-
-One bin whose own range exceeds the budget is still evaluated whole.
-Splitting it would mean summing its parts and adding them, which is a
-different association from what the values are reported against.
+A bin whose own range exceeds the budget is evaluated whole.
 """
 
 
@@ -117,25 +67,7 @@ def _chunks(lengths: np.ndarray) -> Iterator[np.ndarray]:
 
 
 def _log_tables(max_total: int, alpha: float, beta: float) -> tuple[np.ndarray, ...]:
-    """Log-factorial and log-rising-factorial tables up to `max_total`.
-
-    Every term of a beta-binomial mass function is four log-gamma values at
-    integer offsets from `1`, `alpha` and `beta`:
-
-    ```
-    log pmf(i) = logGamma(n + 1)  - logGamma(i + 1)     - logGamma(n - i + 1)
-               + logGamma(i + a)  + logGamma(n - i + b) - logGamma(n + a + b)
-               - betaln(a, b)
-    ```
-
-    Those offsets are consecutive integers, so each family is a cumulative sum
-    of logarithms built once in `O(max_total)` and read thereafter by index.
-    `scipy` evaluates `betaln` twice per term instead, which is six log-gamma
-    calls where this is four gathers.
-
-    The tables are `(max_total + 2)` doubles each, three of them -- half a
-    megabyte at a slide's read depth, against the sum itself.
-    """
+    """Log-factorial and log-rising-factorial (from `alpha`, `beta`) tables to `max_total`."""
     steps = np.arange(1, max_total + 2, dtype=float)
 
     log_factorial = np.concatenate(([0.0], np.cumsum(np.log(steps))))
@@ -154,11 +86,7 @@ def _log_mass_tabulated(
     beta: float,
     tables: tuple[np.ndarray, ...],
 ) -> np.ndarray:
-    """`_log_mass`, read off the tables rather than evaluated.
-
-    `logGamma(a) + logGamma(b) - betaln(a, b)` is `logGamma(a + b)`, which is
-    why neither appears below: the two constants cancel into one.
-    """
+    """`_log_mass`, read off `_log_tables`."""
     log_factorial, rising_alpha, rising_beta = tables
     complement = totals - index
 
@@ -176,12 +104,7 @@ def _log_mass_tabulated(
 def _ragged_index(
     starts: np.ndarray, lengths: np.ndarray
 ) -> tuple[np.ndarray, np.ndarray]:
-    """One flat index array over ragged ranges, and which range each came from.
-
-    `[start_j, start_j + length_j)` laid end to end, so the whole ragged
-    evaluation is one `numpy` call and one segmented sum instead of one call
-    per bin.
-    """
+    """Concatenated `[start_j, start_j + length_j)` ranges, and each element's range."""
     offsets = np.concatenate(([0], np.cumsum(lengths)))
     segment = np.repeat(np.arange(len(lengths)), lengths)
     flat = (
@@ -196,40 +119,8 @@ def cumulative_and_mass(
 ) -> tuple[np.ndarray, np.ndarray]:
     """`cdf(counts)` and `pmf(counts)` for every bin, in one vectorized sweep.
 
-    **`scipy` has no vectorized beta-binomial distribution function.**
-    `betabinom.cdf` goes through `_cdf_single`, which sums the mass function
-    from zero for one element at a time under `np.vectorize`, so a call over
-    `B` bins is `B` Python-level calls. After #175 removed the quantile
-    inversion, these two calls are **90 per cent of what the filter costs**:
-    2.50 s of 2.76 s at 2,500 spots and 400 bins.
-
-    Three things change and none of them is the arithmetic:
-
-    *   **One call.** Every bin's summation range is laid end to end, the mass
-        function is evaluated once over the concatenation, and the sums come
-        back from `np.add.reduceat`.
-    *   **Tabulated log-gammas.** The mass function's four log-gamma values
-        sit at integer offsets from `1`, `alpha` and `beta`, so each family is
-        one cumulative sum of logarithms and every term is four gathers. That
-        is what makes the ratio hold as the read depth grows, where the single
-        call alone does not.
-    *   **A bounded intermediate.** The bins are taken in groups under
-        `TERM_BUDGET`, so the peak is a constant rather than the whole ragged
-        evaluation. `scipy` holds one bin's range at a time, and a vectorized
-        rewrite that held every bin's at once would buy time with memory.
-    *   **The shorter tail.** `cdf(k) = 1 - sf(k)`, so a bin sums
-        `min(k + 1, n - k)` terms rather than `k + 1`. The B-allele count of a
-        diploid bin sits near `n / 2`, which is exactly where the saving is
-        least and where it is still a factor of two on any bin above it.
-    *   **One sweep for both.** The caller needs `cdf(k)` and `cdf(k - 1)`,
-        which differ by `pmf(k)`, so the second comes from the first for the
-        cost of one term rather than a second summation.
-
-    **This is a tolerance and not an identity.** The terms are summed in a
-    different order and, on the upper branch, subtracted from one, so the
-    values agree to floating point rather than bitwise. The **mask** the
-    caller builds from them is asserted bitwise against `cnaster`; the values
-    are asserted to `1e-12`.
+    Sums the shorter tail from tabulated log-gammas, bins grouped under
+    `TERM_BUDGET`. Agrees with `scipy` to `1e-12`, not bitwise.
     """
     counts = np.asarray(counts, dtype=np.int64)
     totals = np.asarray(totals, dtype=np.int64)
@@ -275,21 +166,7 @@ def cumulative_and_mass(
 
 
 DECISION_MARGIN = 1.0e-8
-"""How close to a threshold a bin has to be before `scipy` decides it.
-
-`cumulative_and_mass` sums the mass function in a different order from
-`scipy`, so its values agree to floating point rather than bitwise --
-`3e-9` at the deepest size measured. Both comparisons below are **strict**,
-so a bin whose distribution function sits within that of a threshold could
-fall either way on rounding alone, and the mask is what decides whether a
-genomic bin survives.
-
-The margin is wider than the largest error measured, and the bins inside it
-are recomputed with `scipy` itself, so the answer is `cnaster`'s wherever the
-decision is close and the fast path's wherever it is not. On the fixtures here
-the margin catches nothing; the case it exists for is an exact tie, which a
-symmetric beta-binomial reaches at its midpoint against a threshold of `0.5`.
-"""
+"""Bins whose distribution function is this close to a threshold are decided by `scipy`."""
 
 
 def _settle_near_thresholds(
@@ -301,12 +178,7 @@ def _settle_near_thresholds(
     below: np.ndarray,
     at_or_below: np.ndarray,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Re-decide the bins within `DECISION_MARGIN` of a threshold, with `scipy`.
-
-    One `scipy` call over the uncertain bins, which is empty on every instance
-    measured -- so this costs a comparison and buys back the one thing the
-    faster summation could change.
-    """
+    """Re-decide the bins within `DECISION_MARGIN` of a threshold, with `scipy`."""
     uncertain = np.flatnonzero(
         (np.abs(below - confidence_interval[0]) <= DECISION_MARGIN)
         | (np.abs(at_or_below - confidence_interval[1]) <= DECISION_MARGIN)
@@ -338,35 +210,10 @@ def removal_indicator(
     beta: float,
     confidence_interval: tuple[float, float],
 ) -> np.ndarray:
-    """Which bins fall outside the interval, without inverting the quantile.
+    """Which bins fall outside `confidence_interval`, without inverting the quantile.
 
-    `cnaster` writes
-
-    ```python
-    counts < scipy.stats.betabinom.ppf(lo, totals, alpha, beta)
-    counts > scipy.stats.betabinom.ppf(hi, totals, alpha, beta)
-    ```
-
-    and `scipy` has no closed-form inverse for a beta-binomial, so each element
-    goes through `_drv2_ppfsingle`, a bisection whose every step evaluates the
-    distribution function by summing the mass function from zero. On the dev
-    instance's 40 bins the two calls make **1,219** mass-function evaluations
-    and cost 1.44 s.
-
-    The two comparisons below are the same predicates. For a discrete law
-    `ppf(q) = min{k : cdf(k) >= q}`, so `x < ppf(q)` is exactly `cdf(x) < q`,
-    and `x <= ppf(q)` is exactly `cdf(x - 1) < q`, whose negation is the
-    second. **Both are equalities rather than approximations**, which is why
-    the mask is bitwise `cnaster`'s and not within a tolerance -- the
-    equivalence test asserts exactly that.
-
-    **Except at a closed end, which is taken from `scipy`'s support instead
-    (#332).** `ppf(1) = n` and `ppf(0) = -1`, so at `hi >= 1` or `lo <= 0`
-    `cnaster` removes nothing on that side. The distribution function does
-    not know that: an upper tail of `1e-50` rounds `cdf(x - 1)` to exactly
-    `1.0 >= hi`, and on a normal pool diluted by an LOH clone the patch
-    removed 6 bins `cnaster` kept, whose genes then carried a NaN `bin_id`
-    into `run_cnaster`'s gene-level writer.
+    Bitwise `cnaster`'s mask; a closed end (`lo <= 0`, `hi >= 1`) removes
+    nothing on that side, as `scipy`'s support does (#332).
     """
     below, mass = cumulative_and_mass(counts, totals, alpha, beta)
     at_or_below = np.clip(below - mass, 0.0, 1.0)
@@ -393,11 +240,7 @@ def determine_normal_candidates(
 ) -> Any:
     """`cnaster`'s, returning the named spots when `normalidx_file` is set (#479).
 
-    `cnaster` returns `None` on that branch (`normal_spot.py:100`), and
-    `run_cnaster` then calls `np.where(None)` and raises, so a configuration
-    that names its normal spots cannot run. The loader has annotated them;
-    `port.patch.io.load_input_data` keeps the annotation per spot, and this
-    returns it. Every other branch is `cnaster`'s call, unchanged.
+    Upstream returns `None` there; this returns `port.patch.io.NORMAL_SPOTS`.
     """
     if config.preprocessing.normalidx_file is None:
         return _UPSTREAM_CANDIDATES(
@@ -434,24 +277,11 @@ def normal_baf_bin_filter(
     confidence_interval: tuple[float, float] | None = None,
     min_betabinom_tau: int = MIN_BETABINOM_TAU,
 ) -> tuple[Any, SpatioGenomicCounts]:
-    """What `cnaster`'s returns, with the quantile inversion replaced.
+    """`cnaster`'s, with the quantile inversion replaced by `removal_indicator`.
 
-    Everything but `removal_indicator` is `cnaster`'s, in its order: the pooled
-    counts, the one-state fit, the two patched parameters, the renumbering of
-    the survivors and the per-chromosome lengths, except that a chromosome
-    whose bins are all removed is left out of `lengths` where `cnaster` writes
-    a 0 (#466). `nu`, `logphase_shift` and
-    `geneticmap_file` are accepted and unused, as upstream -- the docstring
-    promises a `log_sitewise_transmat` the function has never returned, and
-    `run_cnaster` calls `get_sitewise_transmat` itself on the next line.
-
-    **One addition (#105):** a gene whose bin is removed is marked
-    `is_interval = False`. Upstream leaves it `True` with `bin_id` null, and
-    `run_cnaster`'s gene-level output casts every interval gene's `bin_id`
-    to `int` (`run_cnaster.py:1476`), so one removed bin ends the run with
-    an `IndexError` after every other table is written. `is_interval` is read
-    nowhere else after this filter. Where no bin is removed the frame is
-    upstream's, bitwise.
+    Departures: a chromosome with every bin removed is absent from `lengths`
+    rather than 0 (#466); a removed bin's genes get `is_interval = False` (#105).
+    `nu`, `logphase_shift` and `geneticmap_file` are unused, as upstream.
     """
     if confidence_interval is None:
         confidence_interval = ast.literal_eval(
@@ -473,8 +303,7 @@ def normal_baf_bin_filter(
     )
     fitted = model.fit(**get_em_solver_params())
 
-    # NB the fitted success probability is discarded for 0.5 and the
-    #    concentration floored, both as upstream. #38 owns whether it should be.
+    # NB success probability set to 0.5 and concentration floored, as upstream (#38).
     fitted.params[0] = 0.5
     fitted.params[-1] = max(fitted.params[-1], min_betabinom_tau)
 
@@ -517,8 +346,7 @@ def normal_baf_bin_filter(
     single_base_nb_mean = single_base_nb_mean[index_remaining, :]
     single_total_bb_RD = single_total_bb_RD[index_remaining, :]
 
-    # NB the surviving bins as a labelling of the genes (#438): a contig whose
-    #    every bin was removed is absent rather than zero (D5).
+    # NB a contig with every bin removed is absent rather than zero (#438).
     lengths = observe(df_gene_snp, "bin_id", "bins-filtered").lengths
 
     if df_gene_snp["bin_id"].nunique(dropna=True) != single_X.shape[0]:  # invariant
@@ -535,32 +363,10 @@ def normal_baf_bin_filter(
 
 # -- `filter_normal_diffexp` (#440) ----------------------------------------
 #
-# `cnaster.normal_spot.filter_normal_diffexp`, with its two defects fixed (#440).
-#
-# The filter drops genes whose expression differs between the normal
-# candidates and the rest -- `|logFC| > 2` against spots it cannot call, or
-# `> 4` against tumour spots, among genes above the 80th percentile of UMIs --
-# because such a gene moves a bin's read depth without a copy-number change.
-# `cnaster` ships it with two defects that together make it inert:
-#
-# - **#165.** It reads a bin's genes with `split(" ")` from a column the binner
-#   writes with `",".join` (`omics.py:261`), so every bin holding more than one
-#   gene is summed over no gene at all: 82 per cent of the read depth on the
-#   dev fixture.
-# - **#177.** `run_cnaster` binds the result to `copy_single_X_rdr` and
-#   overwrites it before any read (`run_cnaster.py:969`, `:1031`); CalicoST uses
-#   it at once (`calicost_main.py:145-155`).
-#
-# The selection below is `cnaster`'s, restated so the flagged genes can be
-# returned: `cnaster`'s function keeps them in a local. The bin sums split on
-# the separator the binner writes. And the flagged genes are recorded on the
-# run's lineage, where :func:`port.patch.omics.summarize_counts_for_bins`
-# leaves them out of every bin it sums after the filter -- the final bins,
-# which `create_bin_ranges` re-cuts between the filter and its consumer, so a
-# bin-level array could not have been reconnected.
-#
-# **Referee:** `cnaster`'s own function on bins of one gene each, where its
-# separator defect cannot bite -- bitwise (`tests/test_diffexp.py`).
+# Fixes `cnaster`'s two defects: genes split on `" "` where the binner joins
+# with `","` (#165), and a result `run_cnaster` overwrites unread (#177). The
+# flagged genes are recorded on the run's lineage, which excludes them from
+# later bin sums.
 
 
 def flagged_genes(
@@ -685,13 +491,9 @@ def filter_normal_diffexp(
 ) -> np.ndarray:
     """`(n_bins, n_spots)` read depth without the flagged genes; the genes recorded.
 
-    `cnaster`'s signature and return. The flagged genes are also recorded on
-    the run's lineage, which is what reconnects the filter (#177).
-
-    **Only inside `port.extensions.segments.recording()`**, which
-    `run_cnaster_port` enters (T- #617). Outside one there is no lineage, the
-    genes are not left out of the bins, and the run is `cnaster`'s: the
-    filter inert, as #177 found it.
+    `cnaster`'s signature and return. Genes are recorded only inside
+    `port.extensions.segments.recording()` (#177, #617); outside it the
+    filter is inert, as in `cnaster`.
     """
     import scipy.sparse as sp
 

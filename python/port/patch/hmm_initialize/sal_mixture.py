@@ -1,34 +1,9 @@
-"""The HMM's copy-state start from `sal`'s mixture starts or the integer lattice, polished by `sal`'s EM (#489, #540, #547).
+"""Replaces `cnaster.hmm_initialize.gmm_init` on the BAF + RDR stage with `sal`'s mixture starts (#489, #540, #547).
 
-`cnaster`'s start, and `distinct`'s (#348), fit Gaussians to log depth ratios
-and BAFs. These fit the mixture **in the family the data came from**: a
-negative binomial on each bin's total with its `base_nb_mean` as exposure,
-times a beta-binomial on its B count out of `total_bb_RD`, each bin's
-exposure and trials its covariate (sal #933/#1083). A start is seeded,
-polished by `sal`'s EM and handed to the HMM as `(log_mu, p_binom)`, through
-`port.extensions.copy_starts.run_start`.
-
-Options, bound at install from `run_cnaster_port`'s flags:
-
-- `start`: the BAF + RDR stage's start. `--sal` installs `kmeans++x5+em`
-  (#489); `lattice` places the integer `(A, B)` lattice instead (#540).
-
-`only_minor=True` calls, the phasing's, keep the start they had.
-
-**Seeding (#547).** `sal`'s `CountPairSeeding` floors a component's
-negative-binomial mean at 1 and reads a row's second column as successes over
-the instance's common trial count, as `sal.sim.count_pairs.rate_space` writes
-it. `instance_of` divides the exposure by `EXPOSURE_SCALE`, so a loss's rate
-is above that floor, and writes the B column over the common trial count.
-The likelihood is the same model; only where a start can place a state
-changes. Before #547 every BAF was seeded near 0.01 and no read-depth state
-below neutral.
-
-**`emission++` scores floored at 0 (#562).** A D-squared draw handed
-`rng.choice` a round-off negative divergence (`-1.6e-15`) and the start was
-refused. sal #1136 floors each divergence at 0 in the draw itself, where
-port's patch of `_seed_scores` floored it, so the patch is retired (T- #632)
-and the draws are unchanged.
+Fits an NB-on-total times BB-on-B mixture, conditioned on each bin's exposure
+and trials, seeded by `start` (`kmeans++x5+em` under `--sal`, or `lattice`),
+polished by `sal`'s EM and returned as `(log_mu, p_binom)`. `only_minor` calls
+keep their start.
 """
 
 from __future__ import annotations
@@ -62,16 +37,11 @@ CONCENTRATION = 1_000.0
 """The seam's beta-binomial `alpha + beta`, `backends.DEFAULT_TAU`."""
 
 EXPOSURE_SCALE = 100.0
-"""Exposure is divided by this before `sal` reads it, so a state's rate per unit exposure is `mu` times it (#547).
-
-`sal`'s seeding floors a component's negative-binomial mean at 1, which on
-`cnaster`'s `base_nb_mean` -- `mu` of order 1 -- would seed a loss (`mu`
-0.5) at neutral. The mean at each row is rate times exposure, so the
-likelihood is unchanged."""
+"""Exposure divisor before `sal` reads it, so seeding's mean floor of 1 can place losses (#547)."""
 
 
 def checked(start: str) -> str:
-    """`start`, refused here if no copy-state start has that name rather than hours in: the lattice's, or `sal`'s."""
+    """`start`, refused unless a lattice or `sal` copy-state start has that name."""
     from sal.search.mixture_starts import lookup
 
     from port.extensions.copy_starts import LATTICE
@@ -90,10 +60,8 @@ def instance_of(
 ) -> Any:
     """The call's pseudobulk as `sal`'s `MixtureInstance`, conditioned on exposure and trials.
 
-    Bins with zero exposure are left out, as `cnaster` scores their totals as
-    uninformative. Starts seed in `sal`'s rate space (`rate_space`): the
-    total per unit of exposure over `EXPOSURE_SCALE`, and the B fraction over
-    the common trial count, a bin of no trials read at the pooled fraction.
+    Zero-exposure bins are left out. Seeding rows are total per exposure (over
+    `EXPOSURE_SCALE`) and the B fraction times the common trial count.
     """
     from sal.opt.emission_mixture import CountPairSeeding
     from sal.search.mixture_starts import MixtureInstance
@@ -173,9 +141,7 @@ def _call(arguments: dict[str, Any], stage: str) -> Any:
 def gmm_init(arguments: dict[str, Any], options: dict[str, Any]) -> Any:
     """`cnaster`'s initializer signature; `start` on the BAF + RDR call.
 
-    Elsewhere, and without it, `cnaster`'s initializer, or
-    `port.patch.hmm_initialize.distinct`'s where `distinct` is set.
-    `port.patch.hmrf.run_core_inference` binds the options from its own.
+    Otherwise `cnaster`'s initializer, or `distinct`'s where `distinct` is set.
     """
     from port.extensions.copy_starts import run_start
     from port.patch.hmm_initialize import distinct

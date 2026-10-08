@@ -1,28 +1,8 @@
-"""`hmm_phased`'s coded emission, reading the parameter column it has (#269).
+"""Replaces `hmm_phased`'s coded emission, reading parameters by state (#269).
 
-**Upstream cannot score the shape the fit returns.** Its body opens:
-
-    n_states, n_spots = log_mu.shape   # the parameter's column count
-    n_spots = nbEncoder.n_spots        # discarded, replaced by the data's
-    for s in range(n_spots):           # bound from the data
-        ... log_mu[i, s] ...           # index into the parameter
-
-Line two throws away what line one just bound. The loop then runs over the
-*data's* spot axis and indexes the *parameter's* column axis with it, so any
-instance with more than one spot raises::
-
-    IndexError: index 1 is out of bounds for axis 1 with size 1
-
-Every fit returns `(n_states, 1)`, so this fires wherever the emission is
-scored against pooled spots -- `hmrf.py:248`, the clone-assignment step.
-`run_core_inference` defaults to `hmm_phased`; the shipped script passes
-`hmm_nophasing` at all four of its call sites, which is the only reason it
-is not a production failure.
-
-`hmm_nophasing`'s dense kernels take `log_mu[i, 0]` and broadcast over the
-spots. That is the reading this takes, because it is the one the parameter's
-shape admits: the column axis and the spot axis are different things, and
-#267 is the audit of what follows from confusing them.
+Upstream indexes the `(n_states, 1)` parameter's column by the data's spot,
+raising `IndexError` for more than one spot. This reads `log_mu[i, 0]`
+broadcast over spots, as `hmm_nophasing`'s dense kernels do (#267).
 """
 
 from __future__ import annotations
@@ -124,12 +104,7 @@ def compute_emission_probability_nb_betabinom_coded(
 
 
 class hmm_phased(UPSTREAM):  # type: ignore[misc]
-    """`cnaster.hmm_phased`, scoring the coded emission by state (#269, #517).
-
-    Every live call scores one spot, where this equals upstream's; the
-    class is installed so that a caller scoring pooled spots gets a number
-    rather than the `IndexError` above.
-    """
+    """`cnaster.hmm_phased`, scoring the coded emission by state (#269, #517); equal on one spot."""
 
     compute_emission_probability_nb_betabinom_coded = staticmethod(
         compute_emission_probability_nb_betabinom_coded

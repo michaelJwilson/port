@@ -1,44 +1,9 @@
-"""One forward/backward recursion, with the phased state space as an argument.
+"""Replaces `cnaster`'s four `forward_lattice`/`backward_lattice` with one pair (#205).
 
-**#205's second step.** `cnaster` carries the recursion twice.
-`hmm_nophasing.forward_lattice` runs a `K`-state chain under a transition
-that does not move along it; `hmm_phased.forward_lattice` overrides it to run
-a `2K`-state chain under a transition rebuilt per site from the same `K x K`
-base and a two-element phase kernel. The same is true of `backward_lattice`.
-Between them that is four recursions where the difference is **two
-arguments**: how wide the state space is, and whether the transition depends
-on the site.
-
-This is the pair they collapse to. `n_states` says which chain is being run
--- `log_emission.shape[0] == n_states` is the unphased one, `== 2 * n_states`
-the phased one -- and the site-dependent transition is built into a buffer
-the loop reuses rather than into a second function.
-
-**Offered as a simplification, and held to the bar `CLAUDE.md` sets for one:
-evidence of equivalence.** All four of `cnaster`'s recursions are reproduced
-**bitwise**, which is available here because nothing is reassociated: the
-same `logsumexp` runs over the same `buf` in the same order, and the
-transition each step reads is the same matrix `cnaster` would have read.
-`tests/test_unified_lattice.py` is where that is asserted.
-
-It is not offered as a speedup and does not measure as one: 0.96x to
-1.18x at `K = 7`, `G = 3,000`, `S = 50` (`docs/measurements.md`,
-`port.patch.lattice`).
-
-**Who would maintain it.** `snakes_and_ladders` carries this job already, and
-carries it further: `sal.oxisal.ragged_posteriors` runs the
-ragged recursion in Rust and writes posteriors, transition counts and the
-evidence in place. What upstream does **not** carry is a transition that
-varies along the chain, which is exactly the phased half here -- `#32`'s
-covariate gap in its transition form. So this is `port` code today and
-upstream functionality once that lands, and the phased lattice is the
-concrete thing that would use it.
-
-**What is deliberately not changed.** `PEANLIZE_PHASE_ONLY_ON_SAME_CNV` is
-read from `cnaster` rather than restated, and `update_combined_transmat` is
-`cnaster`'s own kernel, imported. A patch that reimplemented the phase kernel
-would be comparing two implementations of the kernel as well as two of the
-recursion, and the bitwise claim would then be about the wrong thing.
+`n_states` and `phased` select the unphased (`K`-state) or phased (`2K`,
+per-site transition via `cnaster`'s `update_combined_transmat`) chain.
+Bitwise `cnaster`'s; a simplification, not a speedup. Also `rust_lattices`,
+the `port.oxiport` versions (#318).
 """
 
 from __future__ import annotations
@@ -56,13 +21,7 @@ MIRRORS: tuple[str, ...] = (
     "cnaster.hmm_nophasing",
     "cnaster.hmm_phased",
 )
-"""**Two**, and that is the finding: `forward_lattice` and `backward_lattice` are defined in both, so one recursion here replaces a duplicate pair rather than a module.
-
-The `cnaster` module this stands in for, or `()` where it stands in for
-none (#250). Declared rather than inferred: a reader holding a `cnaster`
-module open should be able to find `port`'s answer to it, and
-`tests/test_module_correspondence.py` reads this to check that every swap
-row lands in a module that admits to its target."""
+"""The `cnaster` modules this stands in for (#250); both define the lattices."""
 
 __all__ = [
     "RUST_LATTICES",
@@ -96,26 +55,14 @@ def _row_spot_sum(block):
 
 
 def spot_sums_agree(block: np.ndarray) -> bool:
-    """Whether `cnaster`'s two spot sums are the same floats, on this block.
-
-    The licence for :func:`forward_lattice` initializing both chains one
-    way. `numba` compiles the two reductions separately and nothing
-    guarantees they associate identically, so this is measured on the shapes
-    the recursion sees rather than assumed -- and
-    `tests/test_unified_lattice.py` is where it is asserted, so a `numba`
-    release that changed it fails there rather than moving a likelihood.
-    """
+    """Whether `cnaster`'s two spot sums give the same floats on `block` (licenses one init)."""
     return bool(np.array_equal(_axis_spot_sum(block), _row_spot_sum(block)))
 
 
 def is_phased(log_emission: np.ndarray, n_states: int) -> bool:
-    """Which chain `log_emission` describes, read off its state axis.
+    """Whether `log_emission` (`n_states` or `2 * n_states` rows) is the phased chain.
 
-    `n_states` is the copy-state count either way. The phased chain pairs
-    each copy state with a phase, so its emission carries `2 * n_states`
-    rows, and `cnaster` recovers `n_states` from that by halving -- here it
-    is passed, because a recursion that infers its own state space cannot be
-    asked to run the unphased chain on an even number of states.
+    `n_states` is the copy-state count, passed rather than inferred; raises ValueError otherwise.
     """
     rows = int(log_emission.shape[0])
 
@@ -142,46 +89,14 @@ def forward_lattice(
     phased,
     penalize_phase_only_on_same_cnv=PEANLIZE_PHASE_ONLY_ON_SAME_CNV,
 ):
-    """`log alpha`, for either chain.
+    """`log alpha`, `(n_paired_states, n_obs)`, for either chain.
 
-    Parameters
-    ----------
-    lengths : np.ndarray
-        Segment lengths, summing to `log_emission.shape[1]`. The recursion
-        restarts at each one, which is what makes the genome ragged rather
-        than one chain.
-    log_transmat : np.ndarray
-        The `(n_states, n_states)` copy-state transition. Read directly on
-        the unphased chain and as the base of the paired one.
-    log_startprob : np.ndarray
-        `(n_states,)`. Halved across the phases when `phased`.
-    log_emission : np.ndarray
-        `(n_paired_states, n_obs, n_spots)`, summed over spots as `cnaster`
-        sums it: the spot axis is treated as independent.
-    log_sitewise_transmat : np.ndarray
-        The per-site switch probability. Read only when `phased`.
-    n_states : int
-        Copy states, not paired states. See :func:`is_phased`.
-    phased : bool
-        Whether the transition moves along the chain.
-
-    Returns
-    -------
-    np.ndarray
-        `(n_paired_states, n_obs)`.
-
-    Notes
-    -----
-    **A hypothesis died here and is recorded rather than carried forward.**
-    `cnaster` initializes the two chains differently -- the unphased one sums
-    the spot axis with `np.sum(..., axis=1)` over the whole state block, the
-    phased one sums one state's row at a time -- and floating-point addition
-    is not associative, so an earlier draft kept both forms to protect the
-    bitwise claim. It did not need to: under `numba` the two reductions agree
-    **bitwise**, contiguous or strided, which
-    `tests/test_unified_lattice.py::test_the_two_spot_sums_agree_bitwise`
-    measures. One form serves both chains, and the branch that would have
-    made this two recursions wearing one name is gone.
+    `lengths` are segment lengths (the recursion restarts at each);
+    `log_transmat` is `(n_states, n_states)`, the base of the paired one when
+    `phased`; `log_startprob` is `(n_states,)`, halved across phases;
+    `log_emission` is `(n_paired_states, n_obs, n_spots)`, summed over spots;
+    `log_sitewise_transmat` is read only when `phased`. One spot-sum form
+    serves both chains (see `spot_sums_agree`).
     """
     n_paired_states, n_obs, _ = log_emission.shape
 
@@ -240,9 +155,7 @@ def forward_lattice(
 def backward_lattice(
     lengths,
     log_transmat,
-    # NB accepted and unread, which is `cnaster`'s signature: the two passes
-    #    are interchangeable at a call site only if they take the same
-    #    arguments. `tests/test_unified_lattice.py` pins that it is unread.
+    # NB unread, as in `cnaster`'s signature.
     log_startprob,  # noqa: ARG001
     log_emission,
     log_sitewise_transmat,
@@ -250,14 +163,7 @@ def backward_lattice(
     phased,
     penalize_phase_only_on_same_cnv=PEANLIZE_PHASE_ONLY_ON_SAME_CNV,
 ):
-    """`log beta`, for either chain.
-
-    The mirror of :func:`forward_lattice`, and the same two arguments decide
-    it. `log_startprob` is accepted and unread on both chains -- `cnaster`'s
-    signature, kept so the two are interchangeable at a call site, and
-    `tests/test_unified_lattice.py` pins that it is unread rather than
-    leaving a reader to infer it from the body.
-    """
+    """`log beta`, for either chain; mirror of :func:`forward_lattice`."""
     n_paired_states, n_obs, _ = log_emission.shape
 
     log_beta = np.zeros((n_paired_states, n_obs))
@@ -313,14 +219,9 @@ RUST_LATTICES: tuple[tuple[str, str], ...] = (
     ("cnaster.hmm_nophasing", "hmm_nophasing"),
     ("cnaster.hmm_phased", "hmm_phased"),
 )
-"""The two classes whose `forward_lattice` and `backward_lattice`
-:func:`rust_lattices` replaces with `port.oxiport`'s (#318).
+"""The classes whose `@staticmethod` lattices :func:`rust_lattices` replaces (#318).
 
-**Why a class attribute rather than a `SWAPS` row.** `cnaster` defines the
-four recursions as `@staticmethod`s and calls them as `hmmclass.forward_lattice`
-or `self.forward_lattice`, so there is no module-level name to rebind. `port`'s
-own `hmm_nophasing` (in `SHIFT_SWAPS`) subclasses `cnaster`'s and inherits
-whatever the class carries, so installing on these two reaches every caller.
+A class attribute, not a `SWAPS` row: `cnaster` calls them via the class.
 """
 
 
@@ -413,10 +314,8 @@ _RUST = {
 def rust_lattices() -> Iterator[None]:
     """Replace `cnaster`'s four lattices with `port.oxiport`'s for the block.
 
-    Bitwise `cnaster`'s (`tests/test_rust_lattice.py`), with no compile on
-    first call: `hmm_nophasing`'s two are `@njit` without `cache=True`, so
-    every process compiled them, 9.75 s of a 40 s dev run (#312, O1).
-    Restored on the way out, so a test comparing the two sees both.
+    Bitwise `cnaster`'s, without the per-process `@njit` compile (#312);
+    restored on exit.
     """
     import importlib
 

@@ -1,25 +1,9 @@
-"""The read-depth stage's GMM initializer, choosing distinct states (#348).
+"""Replaces `cnaster.hmm_initialize.gmm_init`, choosing distinct states (#348).
 
-`cnaster.hmm_initialize.gmm_init` fits `2K` Gaussian components to BAF-mirrored
-data and, with `only_minor=False` (the read-depth stage), keeps the `K` with
-the most posterior mass (`hmm_initialize.py:444`). Mass is where the data is:
-on a genome that is mostly normal, the most populated components are slices
-of the normal cluster and their mirror images, which at `p = 0.5` are the
-same point. Measured on `port.sim.truth.calicost_instance`: six of the eight
-initial states at `p` 0.497 to 0.503 and `log mu` -0.25 to 0.07, two for
-eight planted events, and the fit kept three planted states in one fitted
-state (copy-state ARI 0.896 against CalicoST's 0.999, which fits eight states
-per clone).
-
-`run_core_inference` calls it with `only_minor=False` in both stages, BAF
-and read-depth (`hmrf.py:522`), so both are affected.
-
-`gmm_init` here is upstream's with one change, made where the selection reads
-its weights: components within one standard deviation of a heavier one
-(Mahalanobis, under their mean covariance) are merged into it, mass and all,
-before the top `K` are taken. So the selection is still by mass, among
-components that differ. With `only_minor=True`, which groups the `2K` into
-`K` by k-means on the folded means, it is upstream's unchanged.
+With `only_minor=False`, upstream keeps the `K` heaviest of `2K` components,
+which on a mostly normal genome are near-duplicates of the normal cluster.
+Here components within :data:`RADIUS` (Mahalanobis) of a heavier one are merged
+into it first. With `only_minor=True` it is upstream's unchanged.
 """
 
 from __future__ import annotations
@@ -44,11 +28,7 @@ RADIUS = 1.0
 def distinct_weights(
     means: np.ndarray, covariances: np.ndarray, posteriors: np.ndarray
 ) -> np.ndarray:
-    """`posteriors` with each component's mass moved onto a heavier twin.
-
-    Greedy by total mass: a component within :data:`RADIUS` of one already
-    kept gives its column to it and keeps zeros. The row sums are unchanged.
-    """
+    """`posteriors` with each component's mass moved onto a heavier twin; row sums unchanged."""
     merged = np.array(posteriors, dtype=np.float64, copy=True)
     order = np.argsort(-merged.sum(axis=0), kind="stable")
     kept: list[int] = []
@@ -97,10 +77,8 @@ def _distinct_mixture() -> Iterator[None]:
 def gmm_init(arguments: dict[str, Any]) -> Any:
     """Upstream's, choosing among distinct components when `only_minor=False`.
 
-    `cnaster.hmrf.run_core_inference` binds its initializer as a default
-    argument (`hmm_initializer=gmm_init`, `hmrf.py:425`), which rebinding the
-    module name does not reach; `port.patch.hmrf.run_core_inference` passes
-    this one explicitly under its `distinct_init` option.
+    `cnaster` binds `gmm_init` as a default argument (`hmrf.py:425`), so
+    `port.patch.hmrf.run_core_inference` passes this explicitly (`distinct_init`).
     """
     if arguments.get("only_minor", True):
         return UPSTREAM(**arguments)

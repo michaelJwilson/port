@@ -1,41 +1,10 @@
-"""`cnaster.integer_copy`'s two decoders, both replaced by one: the HMM's likelihood.
+"""Replaces `cnaster.integer_copy`'s two decoders with the HMM's likelihood (#362, #370, #371).
 
-`run_cnaster` calls `hill_climbing_integer_copynumber_oneclone` or
-`hill_climbing_integer_copynumber_fixdiploid_milp` once per clone, handing it
-the fitted `log mu` and `p`, the clone's pseudobulk baseline and its decode.
-Both do the same job with an L1 cost on `(mu, p)` and a ploidy search, and
-both re-derive the normal state per clone as the balanced state whose raw
-`mu` is closest to 1 (`integer_copy.py:84`) -- on CalicoST's easy simulated
-sample that chose the pinned state for every tumour clone and decoded their
-`(2, 2)` gains as `(1, 1)` (#362).
-
-**One decode** (#362, #370, #371): `copy_likelihood.lattice_decode`, by the
-pseudobulk NB/BB likelihood the HMM fitted, each clone's own path over every
-`(A, B)` with `A + B <= total`, with its tumour fraction, shift and the
-dispersions refitted. Its pairs are **per bin**: two bins in one continuous
-state may differ. The normal state is `(1, 1)` by definition: the pinned one,
-shared by every clone (`port.patch.hmrf.core_inference`). #327's per-state
-`shared` decode is set aside (`port.sandbox.extensions.shared_decode`, T- #831).
-
-**How a per-bin decode reaches `cnaster`'s files** (#371). `cnaster`'s
-decoders return one pair per state, and `run_cnaster.py` reads them in two
-ways: by state (`copies[:, 0]`, the per-state table) and through the clone's
-path (`copies[this_pred_cnv, 0]` for the segment table and figures,
-`copies[pred_cnv[:, s]][bin_ids]` for the gene table). :class:`PairsByBin`
-answers the second with the lattice decode's pair at each bin, and the first
-with each state's most frequent pair on this clone. So every file and figure
-that reads `A` and `B` per bin carries the lattice decode, with no change to
-`cnaster`'s writer, whose gene-to-bin map exists only inside its loop.
-
-The copy caps are `int_copy_num.max_total_copy` from the configuration, for
-the total and each allele (#313). Without the key the total is `cnaster`'s
-`A + B <= 6` and each allele is :data:`UNCONFIGURED_MAX_ALLELE_COPY`, 6, not
-`cnaster`'s 5: a stated difference (T- #617), so `(6, 0)` and `(0, 6)` are
-decodable where `cnaster`'s lattice excludes them.
-
-The clone's counts come from `copy_likelihood.capture`, which
-`run_cnaster_port` installs with these rows; a clone it cannot identify is an
-error, not a fallback to another decoder.
+`copy_likelihood.lattice_decode` decodes each clone's `(A, B)` per bin, with
+`(1, 1)` as the shared normal state; `PairsByBin` carries the per-bin pairs
+through `cnaster`'s per-state writer. Caps come from
+`int_copy_num.max_total_copy` (#313); unconfigured, each allele is capped at 6,
+not `cnaster`'s 5 (#617). Requires `copy_likelihood.capture`.
 """
 
 from __future__ import annotations
@@ -73,10 +42,7 @@ _RECORDERS: list[list[Any]] = []
 
 @contextlib.contextmanager
 def recorded() -> Iterator[list[Any]]:
-    """Each decode's `port.extensions.copy_likelihood.CopyFit` in the block, in call order.
-
-    The list is the caller's; the module keeps nothing once the block ends (#517).
-    """
+    """Each decode's `CopyFit` in the block, in call order; nothing kept after it (#517)."""
     decodes: list[Any] = []
     _RECORDERS.append(decodes)
 
@@ -93,28 +59,13 @@ MAX_TOTAL_COPY = DEFAULT_MAX_TOTAL_COPY
 """`cnaster`'s default, in both signatures (`port.extensions.integer_copy`)."""
 
 UNCONFIGURED_MAX_ALLELE_COPY = 6
-"""The decode's per-allele cap where no `int_copy_num.max_total_copy` is stated.
-
-**A stated difference from `cnaster`** (T- #617). `cnaster`'s decoders bound
-each allele at `max_allele_copy=5` (`cnaster/integer_copy.py:106`, `:576`)
-and `run_cnaster` passes no other. `port`'s decode bounds each allele by the
-total, 6, so its lattice is `cnaster`'s 25 pairs and `(6, 0)`, `(0, 6)`: 27.
-Every `tests.sim_audit` ledger row was measured with it, and its scorer's
-lattice (`port.qa.scoring.copy_states`) is the same `A + B <= 6`. No sim
-manifest or CalicoST sample plants an allele above 3, nor
-`port.sim.truth.COPY_LATTICE` one above 5, so no planted state referees the
-choice. 6 is kept by the user's decision on T- #617, over that ticket's plan
-to restore `cnaster`'s 5, which is `MAX_ALLELE_COPY`.
-"""
+"""Per-allele cap where no `max_total_copy` is configured: 6, not `cnaster`'s 5 (#617)."""
 
 
 def stated_total(value: Any) -> int | None:
-    """`int_copy_num.max_total_copy` as a cap, `None` where no cap is stated.
+    """`int_copy_num.max_total_copy` as a cap, `None` where none is stated.
 
-    `None` and `"none"` state none. Anything else must be an integer of at
-    least 2, the diploid `(1, 1)`: below it the MILP returns `(0, 0)` at
-    infinite loss and the hill climber a state above the cap (#466). A
-    fraction is refused rather than truncated.
+    Raises `ValueError` unless an integer >= 2 (#466).
     """
     if value is None or (isinstance(value, str) and value.lower() == "none"):
         return None
@@ -161,12 +112,7 @@ def decode_caps() -> tuple[int, int]:
 
 
 def _caps(arguments: dict[str, Any]) -> tuple[int, int]:
-    """The caps to decode under: each the caller passed, `decode_caps()`'s where it passed none.
-
-    `arguments` are a row's, as given (`as_upstream`), so a cap passed at
-    `cnaster`'s default value is still a cap passed; `cnaster`'s own call
-    passes neither (`run_cnaster.py:1393,1406`).
-    """
+    """The caps the caller passed, as given, else `decode_caps()`'s."""
     allele, total = decode_caps()
 
     return (
@@ -180,21 +126,14 @@ _SHARED: dict[str, Any] = {}
 
 
 def release() -> None:
-    """Drop the run's decode; `port.pipeline.patched` calls this on exit (#517).
-
-    Keyed by `id()`, so a decode left behind could be served to a later run
-    whose fit was allocated at the same address.
-    """
+    """Drop the run's `id()`-keyed decode; `port.pipeline.patched` calls this on exit (#517)."""
     _SHARED.clear()
 
 
 class PairsByBin(np.ndarray):
-    """One clone's `(n_states, 2)` pairs that answer its own path per bin (#371).
+    """One clone's `(n_states, 2)` per-state pairs that return per-bin pairs when indexed by its path (#371).
 
-    Indexed by anything but the clone's path, this is the per-state array:
-    each state's most frequent lattice pair on this clone. Indexed by the
-    path, alone or with a column, it returns the lattice decode's pair at
-    each bin, which is what `cnaster` writes per bin.
+    Per-state rows are each state's most frequent pair on this clone.
     """
 
     bins: np.ndarray | None
@@ -240,11 +179,7 @@ def _modal(pairs: np.ndarray, path: np.ndarray, n_states: int) -> np.ndarray:
 
 
 def _clone_of(clones: list[Any], path: np.ndarray, calls: dict[bytes, int]) -> int:
-    """The captured clone `cnaster` is decoding: the one whose path this is.
-
-    `cnaster` calls once per clone in the fit's order, passing its path. Two
-    clones with one path are told apart by call order.
-    """
+    """The captured clone whose path `cnaster` passed; ties broken by call order."""
     matches = [c for c, (own, _, _) in enumerate(clones) if np.array_equal(own, path)]
 
     if not matches:
@@ -297,12 +232,10 @@ def decode_clone(
 ) -> tuple[np.ndarray, float, int]:
     """One clone's `(copies, loss, ploidy)`, as `cnaster`'s decoders return them.
 
-    Decoded once, from the captured fit, at the first clone's call, by the
-    lattice decode: this clone's :class:`PairsByBin`, under the log-prior
-    `-parsimony |A + B - 2|` per bin, flat at `0`.
-    `loss` is the negative log-likelihood reached; `ploidy` the median total
-    copy over this clone's bins. Each allele is at most `max_allele_copy`,
-    and at most `total` where it is `None`.
+    Decoded once per fit by the lattice decode under the log-prior
+    `-parsimony |A + B - 2|` per bin. `loss` is the negative log-likelihood;
+    `ploidy` the median total copy. Alleles are capped at `max_allele_copy`,
+    or `total` where `None`.
     """
     from port.extensions.copy_likelihood import (
         captured_chain,
@@ -312,8 +245,7 @@ def decode_clone(
         lattice_decode,
     )
 
-    # NB refused before the capture is read: after it, a bad prior was
-    #    reported as a missing capture and never reached (T- #617).
+    # NB refused before the capture is read (#617).
     if not parsimony >= 0.0:
         msg = f"parsimony {parsimony!r} is not a non-negative number"
         raise ValueError(msg)

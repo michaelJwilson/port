@@ -1,15 +1,8 @@
 """`cnaster.utils.write_fig`, at a resolution and a group count a run can afford (#195).
 
-**This patch changes its output**, in two ways: a coarser raster, and
-gridlines that paint under the data instead of over it. That is why it is in
-`port.pipeline.FIGURE_SWAPS` rather than `SWAPS`, which `run_cnaster_port`
-installs unless `--no-figure-swaps` or `--no-patch` is given. At `dpi=300, group_rasters=False` it is
-`cnaster`'s function byte for byte, which `tests/test_figure_dpi.py` holds it
-to.
-
-It lowers the resolution (`FIGURE_DPI`), collapses rasterizing groups
-(:func:`collapse_rasterizing_groups`), and keeps rasterizing and
-`bbox_inches="tight"`. Measured: `docs/measurements.md`, `port.patch.utils`.
+Changes output (coarser raster, gridlines under the data), so it is a
+`FIGURE_SWAPS` row. At `dpi=300, group_rasters=False` it is `cnaster`'s byte
+for byte (`tests/test_figure_dpi.py`).
 """
 
 from __future__ import annotations
@@ -28,44 +21,11 @@ logger = get_logger(__name__, start_time=start_time)
 def collapse_rasterizing_groups(fig: Any, strategy: str = "sink") -> tuple[int, int]:
     """One rasterizing group per axes rather than two (#195 item 2).
 
-    `matplotlib`'s `allow_rasterization` starts
-    rasterizing at the first rasterized artist and stops at the first one
-    that is **not**, so a run of consecutive rasterized artists shares one
-    buffer.
-
-    What splits `cnaster`'s runs is a gridline. `_format_track_axis` adds
-    `ax.axhline(..., c="lightgray", linewidth=0.5, zorder=0)` per y tick
-    (`plot_genomic.py:70`), and those land between the rasterized errorbar at
-    zorder 0 and the rasterized scatter at zorder 1. Two groups per axes.
-    Measured: `docs/measurements.md`,
-    `port.patch.utils.collapse_rasterizing_groups`.
-
-    So the floor is one group per axes, not one per figure, and reaching it
-    costs a change to the drawing either way:
-
-    ``sink``
-        Move the interleaved vector artists **below** the rasterized run.
-        Nothing that was vector becomes raster; the gridlines paint under the
-        error bars instead of over them. This is the default, because the
-        loss is a paint order that was arguably backwards and the other
-        strategy's loss is resolution.
-    ``sweep``
-        Rasterize them with `Axes.set_rasterization_zorder`. The drawing
-        order is untouched and the gridlines become raster at the figure's
-        dpi -- a 0.5 pt line is one pixel at 150.
-    ``strict``
-        Refuse. Collapse only where nothing vector is in the way, which on
-        `cnaster`'s own figures is **never**.
-
-    Returns
-    -------
-    tuple[int, int]
-        Axes collapsed, and rasterized artists in them.
-
-    Raises
-    ------
-    ValueError
-        On an unknown strategy.
+    `cnaster`'s gridlines split each axes' rasterized run in two. `strategy`:
+    ``sink`` moves interleaved vector artists below the run (default);
+    ``sweep`` rasterizes them via `set_rasterization_zorder`; ``strict`` skips
+    any axes with vector artists in the way. Returns (axes collapsed,
+    rasterized artists in them); raises ValueError on an unknown strategy.
     """
     if strategy not in {"sink", "sweep", "strict"}:
         msg = f"unknown strategy {strategy!r}"
@@ -83,8 +43,7 @@ def collapse_rasterizing_groups(fig: Any, strategy: str = "sink") -> tuple[int, 
         ceiling = max(child.get_zorder() for child in rasterized)
         floor = min(child.get_zorder() for child in rasterized)
 
-        # NB only what is drawn *between* two rasterized artists splits the
-        #    run. A vector artist above the ceiling never entered it.
+        # NB only a vector artist between two rasterized ones splits the run.
         interleaved = [
             child
             for child in children
@@ -122,29 +81,13 @@ def write_fig(
     group_strategy: str = "sink",
     png_copy: bool = False,
 ) -> None:
-    """What `cnaster.utils.write_fig` does, with rasterizing groups collapsed on request.
+    """`cnaster.utils.write_fig`, with rasterizing groups collapsed on request.
 
-    A drop-in: `cnaster`'s signature and defaults, and at those defaults its
-    function byte for byte, which `tests/test_figure_dpi.py` holds it to.
-    `FIGURE_SWAPS` binds `dpi=FIGURE_DPI` and `group_rasters=True` at install
-    (#195, #517): `group_rasters` collapses the groups by `group_strategy`.
-
-    `png_copy` also writes `<name>.png` beside the PDF, without metadata, for
-    figures compared across runs (#452): a matplotlib PDF
-    carries its creation time, so two runs of the same code differ byte for
-    byte and a PNG written without metadata does not.
-    `run_cnaster_port --png-copies` binds it.
-
-    **Departure: the written figure keeps no renderer (T- #692).** Every
-    `Text` caches the renderer that last drew it. After a PDF write that is
-    the `MixedModeRenderer`, which holds the `PdfFile`, which holds each
-    rasterizing group's image as a view of that group's full-page
-    `RendererAgg` buffer. `cnaster`'s function leaves them for as long as the
-    figure lives: its caller's reference, then a reference cycle until a
-    full collection. Here each `Text` is reset to the `None` it starts with,
-    as `matplotlib` does on pickling, and the buffers are freed on return.
-    The file written is the same. Measured: `docs/measurements.md`,
-    `port.patch.utils.write_fig`.
+    At the defaults, `cnaster`'s byte for byte; `FIGURE_SWAPS` binds
+    `dpi=FIGURE_DPI` and `group_rasters=True` (#195, #517). `png_copy` also
+    writes a metadata-free `<name>.png` for cross-run comparison (#452).
+    Departure: each `Text`'s cached renderer is cleared, freeing the PDF's
+    raster buffers (T- #692).
     """
     if fig is None:
         fig = plt.figure()
@@ -198,13 +141,7 @@ def discard_fig(
     bbox_inches: str | None = "tight",
     dpi: int = 300,  # noqa: ARG001 -- cnaster's signature
 ) -> None:
-    """`write_fig` under `run_cnaster_port --no-plots` (#403): close, write nothing.
-
-    Every figure a run draws is still built -- the plotting code runs, and a
-    coverage guard still reads it -- and only the rendering is skipped. For a
-    run whose claim is not a figure. Measured: `docs/measurements.md`,
-    `port.patch.utils.discard_fig`.
-    """
+    """`write_fig` under `run_cnaster_port --no-plots` (#403): close, write nothing."""
     import matplotlib.pyplot as plt
 
     if fig is not None:

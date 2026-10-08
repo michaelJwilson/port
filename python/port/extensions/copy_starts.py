@@ -1,31 +1,10 @@
 """The HMM's copy-state start: the integer lattice, placed by the rows and polished by `sal` (#540, #547).
 
-A start places the HMM's `n_states` copy states before its first fit: each
-state's read-depth ratio `mu` and B-allele frequency `p`.
-`port.patch.hmm_initialize.sal_mixture` runs one through `run_start`: `sal`'s
-`kmeans++x5+em` under `--sal` (#489), or the lattice (`--hmm-start lattice`):
-
-- **The call** (`CopyCall`): the clone-stacked pseudobulk an HMM initializer
-  is handed, one row per (clone, bin), with each row's exposure
-  `base_nb_mean` and trials `total_bb_RD` -- the covariate. `stage` is
-  `"baf"` (`params` without `m`) or `"rdrbaf"`.
-- **The start** (`lattice_start`): every integer `(A, B)` up to the rows'
-  read-depth ceiling, placed at a tumour fraction and depth scale, the
-  rows assigned by `sal`'s IID count-pair likelihood (`channel_log_densities`), and the
-  `n_states` most occupied states kept.
-- **The polish** (`polish_states`): `sal`'s EM on the whole call from those
-  states; the result (`CopyStart`) carries each state's `log_mu` and
-  `p_binom`, the log-likelihood reached and the seconds.
-
-**The BAF-only stage** has no read depth: `cnaster` zeroes it first. Its call
-is given a constant read-depth channel -- the same total and exposure in
-every row -- so every state fits the same `mu` and the channel adds one
-constant to every likelihood (`instance(call)`).
-
-The other starts #540 compared -- `cnaster`'s initializers, port's
-`distinct` as a start, `rdr-quantiles` -- and the study's masks, smoothing,
-outliers and records are in `port.sandbox.extensions.copy_starts`
-(`docs/nb/copy_state_starts.ipynb`).
+A start places each of `n_states` copy states at `(mu, p)` before the first
+fit. `lattice_start` places integer `(A, B)` at a tumour fraction and depth
+scale and keeps the most occupied; `polish_states`/`run_start` polish with
+`sal`'s EM on the whole call. The BAF-only stage gets a constant read-depth
+channel. Other starts compared in #540: `port.sandbox.extensions.copy_starts`.
 """
 
 from __future__ import annotations
@@ -84,8 +63,7 @@ class CopyCall(NamedTuple):
     planted: np.ndarray
     """Each row's planted `(A, B)`, `-1` where none is known."""
     raw: dict[str, Any]
-    """What `cnaster`'s initializers are called with: `X`, `base_nb_mean`,
-    `total_bb_RD`, `lengths`, `log_sitewise_transmat`, `params`."""
+    """`cnaster`'s initializer arguments: `X`, `base_nb_mean`, `total_bb_RD`, `lengths`, `log_sitewise_transmat`, `params`."""
 
     @property
     def n_rows(self) -> int:
@@ -106,17 +84,11 @@ class CopyStart(NamedTuple):
 
 
 def instance(call: CopyCall, *, covariate: bool = True) -> Any:
-    """The call as `sal`'s `MixtureInstance`, conditioned on exposure and trials.
+    """The call as `sal`'s `MixtureInstance`, conditioned on exposure and trials (#547).
 
-    `port.patch.hmm_initialize.sal_mixture.instance_of`'s instance, whose
-    seeding reads `sal`'s rate space (#547): exposure over `EXPOSURE_SCALE`,
-    the B column over the common trial count. For `"baf"`, a constant
-    read-depth channel. Without `covariate`, the totals as observed, and the
-    B column still the fraction over the common trial count: the seam reads
-    a row's successes over that count (`(b + 1/2) / (trials + 1)`), so a raw
-    B count above it is a rate above 1 and a negative beta-binomial beta,
-    which refused `anneal`, `tempering`, `quantile` and `gaussian-em` on the
-    dev_tree calls (#540).
+    For `"baf"`, a constant read-depth channel. Without `covariate`, the
+    observed totals, with the B column still a fraction of the common trial
+    count (#540).
     """
     from dataclasses import replace
 
@@ -130,11 +102,8 @@ def instance(call: CopyCall, *, covariate: bool = True) -> Any:
     held = instance_of(X, exposure[:, None], call.trials[:, None], call.n_states)
 
     if call.stage == "baf":
-        # NB the constant channel has no spread. sal now floors a zero
-        #    scale, but `gaussian-em` seeds from column 0, and constant it
-        #    collapses every component onto one state (T- #792). The rows a
-        #    start seeds from carry a jitter of 1e-3 of it; the rows it fits
-        #    do not. It goes when a start can leave the channel out.
+        # NB jitter the seeding rows only: a constant column 0 collapses
+        #    `gaussian-em` onto one state (T- #792).
         rows = np.array(held.seeding_rows, dtype=np.float64)
         jitter = np.random.default_rng(540).standard_normal(rows.shape[0])
         rows[:, 0] = rows[:, 0] * (1.0 + SEED_JITTER * jitter)
@@ -178,9 +147,7 @@ def log_depth_ratio(call: CopyCall) -> np.ndarray:
 
 
 LATTICE_PURITY = PURITY_GRID[: PURITY_GRID.index(0.5) + 1]
-"""Tumour fractions the lattice start tries: `copy_likelihood.PURITY_GRID` down
-to 0.5. The decode's grid continues to 0.3 and this one stops; nothing
-records why, so the cut is stated here rather than drifting (#749 WP7)."""
+"""Tumour fractions the lattice start tries: `PURITY_GRID` down to 0.5 (#749 WP7)."""
 
 LATTICE_SCALE = tuple(float(v) for v in np.exp(np.linspace(-0.15, 0.15, 7)))
 """Read-depth scales it tries: the call's baseline need not sit at the clones' neutral."""
@@ -193,11 +160,7 @@ LATTICE_ROUNDS = 3
 
 
 def _lattice_ceiling(call: CopyCall) -> int:
-    """The largest total copy the lattice holds: twice the 99.5th percentile of RDR, 3 to 8.
-
-    `mu = (A + B) / 2` at purity 1, so the states reach the highest read
-    depth the rows carry and no further (`cna_mixture_init`'s `max_rdr`).
-    """
+    """The largest total copy the lattice holds: twice the 99.5th percentile of RDR, 3 to 8."""
     if call.stage != "rdrbaf":
         return 4
     log_rdr = log_depth_ratio(call)
@@ -219,27 +182,20 @@ Channel = Callable[..., np.ndarray]
 def channel_log_densities(
     observations: np.ndarray, covariate: np.ndarray
 ) -> tuple[Channel, Channel]:
-    """`sal`'s `CountPairEmission` in its independent form on one instance, by channel (#540).
+    """`sal`'s `CountPairEmission` in its independent form, by channel (#540, T- #776).
 
-    `depth(rate, size, state=None)` is a negative binomial on each row's
-    total at `rate x exposure`; `allele(share, concentration, state=None)` a
-    beta-binomial on its B count out of its trials; a zero exposure or zero
-    trials scores 0, `sal`'s unobserved (issue #933). Each is
-    `port.patch.emission`'s, the one evaluation every site scores (T- #776):
-    :func:`~port.patch.emission.nb_log_pmf_size` and
-    :func:`~port.patch.emission.bb_log_pmf`. A channel is scored on its own,
-    at every state or at each row's own (`state`): what the lattice's shape
-    fits need, where `sal`'s density scores both channels at every state
-    (`test_copy_starts`, against it).
+    `depth(rate, size, state=None)`: NB on each row's total at `rate x
+    exposure`; `allele(share, concentration, state=None)`: BB on its B count.
+    Zero exposure or trials scores 0. `(rows, states)`, or `(rows,)` at each
+    row's own `state`.
     """
     from port.patch.emission import bb_log_pmf, nb_log_pmf_size
 
     total, b = observations[:, 0], observations[:, 1]
     exposure, trials = covariate[:, 0], covariate[:, 1]
 
-    # NB every state is scored state-major, `(states, rows)`, and returned
-    #    transposed: the counts then run along the last axis, so each rising
-    #    factorial is taken once per distinct count (`emission.scaled_rising`).
+    # NB scored state-major and transposed, so each rising factorial is
+    #    taken once per distinct count (`emission.scaled_rising`).
     def depth(rate: np.ndarray, size: float, state: Any = None) -> np.ndarray:
         if state is not None:
             return nb_log_pmf_size(total, size, rate[state] * exposure)
@@ -265,13 +221,9 @@ def fit_channel_shapes(
     concentration: float,
     error: float,
 ) -> tuple[float, float, float]:
-    """The NB size, the BB concentration, then the BAF error rate, each maximizing the rows' likelihood weighted by `responsibility`.
+    """The NB size, BB concentration, then BAF error rate maximizing the `responsibility`-weighted likelihood.
 
-    `responsibility` is `(rows, states)`: one-hot for a hard assignment, the
-    E step's posteriors for EM, whose M step this is. The size moves the
-    depth channel alone and the concentration and error rate the allele
-    channel alone, so each is fitted on its own channel; under a hard
-    assignment, at each row's own state.
+    `responsibility` is `(rows, states)`, one-hot (hard) or posteriors (EM).
     """
     from scipy.optimize import minimize_scalar
 
@@ -320,12 +272,9 @@ Weights = Callable[[np.ndarray, int], tuple[np.ndarray, np.ndarray, float]]
 def classified(
     density: np.ndarray, iterations: int = 3
 ) -> tuple[np.ndarray, np.ndarray, float]:
-    """Each row's state by likelihood plus log weight, iterated: the classification likelihood a mixture's weights give.
+    """Each row's state by likelihood plus log weight, iterated.
 
-    Without the weights every row takes whichever state suits it, so the
-    tail of the depth distribution takes the gains and the bulk's scale
-    drifts below its median. Returns the hard responsibilities, the log
-    weights and the classification log-likelihood, the lattice held fixed.
+    Returns hard responsibilities, log weights and the classification log-likelihood.
     """
     n, k = density.shape
     log_weight = np.full(k, -np.log(k))
@@ -343,29 +292,11 @@ def classified(
 def lattice_start(
     call: CopyCall, *, rounds: int = LATTICE_ROUNDS, weights: Weights = classified
 ) -> tuple[np.ndarray, np.ndarray]:
-    """`n_states` of the integer `(A, B)` lattice, as `lattice_decode` places them, chosen by the rows (#540).
+    """`n_states` of the integer `(A, B)` lattice, chosen by the rows (#540).
 
-    Every `(A, B)` with `0 < A + B` up to `_lattice_ceiling` is placed at
-    its `(mu, p)` (`copy_likelihood.pair_rate_and_share`) and scored by the IID
-    emission the mixture fit itself uses, `sal`'s `CountPairEmission` on
-    `instance(call)` as `channel_log_densities` evaluates it, each row on its own with its
-    exposure and trials.
-
-    - Rows are assigned by likelihood plus log occupancy, iterated, the
-      classification likelihood a mixture's weights give (`classified`).
-      `weights` replaces that assignment: the sandbox's `lattice-em` passes
-      the E step's posteriors (`port.sandbox.extensions.copy_starts`, T- #660).
-    - The tumour fraction (`LATTICE_PURITY`) and read-depth scale
-      (`LATTICE_SCALE`) are those of the highest classification likelihood
-      once each point's NB size, BB concentration and error rate are fitted
-      to its assignment.
-    - At those, each row is assigned its most likely state, then the shared
-      NB size, BB concentration and BAF error rate (`with_error`) are fitted
-      by the likelihood along that assignment, `rounds` times. The error
-      rate is what reads a lost allele at a few percent, as sequencing and
-      phasing errors do, rather than at a lower tumour fraction.
-    - The `n_states` states of highest weight are kept. For BAF only the
-      depth channel is a constant, so the lattice is its allele shares.
+    Picks the purity and depth scale of highest classification likelihood
+    (`weights`, default `classified`), fits NB size, BB concentration and BAF
+    error rate `rounds` times, then keeps the `n_states` highest-weight states.
     """
     from port.extensions.copy_likelihood import candidates, pair_rate_and_share
 
@@ -441,11 +372,7 @@ def polish_states(
     seconds: float = 60.0,
     handover: float = 0.0,
 ) -> CopyStart:
-    """Given states polished by `sal`'s EM on the whole call and scored there: a start from anywhere.
-
-    How a state fit found elsewhere -- another stage's call, a label start in
-    #541 -- enters the same comparison. `handover` is the seconds it cost.
-    """
+    """Given states polished by `sal`'s EM on the whole call and scored; `handover` is their prior cost in seconds."""
     from sal.search.mixture_starts import polish
 
     full = instance(call)
@@ -471,8 +398,7 @@ Seed = Callable[[CopyCall, np.random.Generator], tuple[Any, Any]]
 LATTICE: dict[str, Seed] = {
     "lattice": lambda call, _rng: lattice_start(call),
 }
-"""port's start that runs live: the lattice, by classification. Its EM twin,
-`lattice-em`, is the sandbox's (T- #660)."""
+"""port's live start: the lattice, by classification (T- #660)."""
 
 
 def _seeded(
@@ -491,8 +417,6 @@ def _seeded(
 
     chosen = lookup(name)
     if chosen.polishes:
-        # NB sal's best-of skips a seeding that raises and names it in the
-        #    note (sal #1136), which port's `_surviving` did (T- #596, T- #632).
         _, best = chosen.polished(
             held, rng, seconds=seconds / 2.0, passes=None, tolerance=1e-6
         )
@@ -509,14 +433,10 @@ def seed_states(
     seconds: float = 60.0,
     seeds: dict[str, Seed] | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """`name`'s states `(log mu, p)` on `call`, before any polish: what `run_start` hands its polish.
+    """`name`'s states `(log mu, p)` on `call`, before any polish.
 
-    Port's own starts (`seeds`) are placed by `_place` at `EXPOSURE_SCALE`
-    per unit rate whichever instance holds them, and read back at it. A
-    `sal` start fitted on raw totals has its rate at the typical exposure:
-    the median. Reading a port start at the median put `cnaster-gmm`'s and
-    `distinct`'s states 2.3 below in log mu on dev_tree_1s_hard, and
-    `cnaster`'s Baum-Welch overflowed from them (#540).
+    Port's starts are read back at `EXPOSURE_SCALE`; a `sal` start on raw
+    totals at the median exposure (#540).
     """
     chosen = LATTICE if seeds is None else seeds
     components = _seeded(
@@ -547,13 +467,10 @@ def run_start(
     seeds: dict[str, Seed] | None = None,
     seeder: Seeder | None = None,
 ) -> CopyStart:
-    """`name` seeded on `seed_on` (default the call), polished on `fit_on` if given, then on the whole call, and scored there.
+    """`name` seeded on `seed_on`, polished on `fit_on` if given, then on the whole call, and scored there.
 
-    `name` is one of `sal`'s mixture starts (`sal.search.mixture_starts`;
-    `kmeans++x5+em` is `--sal`'s, #489) or of `seeds`, by default
-    `LATTICE`; `seeder`, given, seeds in place of `seed_states`. Every
-    start ends in the same polish on the same instance, so two starts'
-    log-likelihoods compare; `seconds` covers the whole cell.
+    `name` is a `sal.search.mixture_starts` start or a key of `seeds`
+    (default `LATTICE`); `seeder` replaces `seed_states`; `seconds` covers all.
     """
     from sal.search.mixture_starts import polish
 

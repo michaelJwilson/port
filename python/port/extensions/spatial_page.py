@@ -1,18 +1,8 @@
 """One format for the spatial pages: a row of panels, one per slice or map (T- #791).
 
-`spatial_multisample.png` (`port.sim.analysis.plot_spatial`),
-`he_multisample.png` (`port.studies.paper_figures.he_slices_figure`), the
-H&E segmentation page (`combined_figure.spatial_figure(he_labels=)`) and
-`truth_combined_spatial`'s panel (c) draw through it, so a panel is one
-size, one frame and one title on each:
-
-- panels `PAPER_WIDTH` across in all, `PANEL_GAP` apart, each as tall as its
-  data's aspect makes it (`panel_row`);
-- no ticks and no spines, the aspect equal, the title its name alone at the
-  panel's left (`format_panel`);
-- the region the slices share dashed in `MUTED` (`overlap_box`);
-- one key, a row under the first panel and anchored to it (`spatial_key`),
-  so `fit_to_content` cuts the page to the panels and their key.
+Panels `PAPER_WIDTH` across in all, `PANEL_GAP` apart, no ticks or spines,
+equal aspect, left titles, shared region dashed in `MUTED`, one key under the
+first panel.
 """
 
 from __future__ import annotations
@@ -52,14 +42,10 @@ def panel_row(
     top: float = 0.0,
     left: float = 0.0,
 ) -> tuple[Any, list[Any]]:
-    """`n_panels` axes in a row, `width` inches across in all (`PAPER_WIDTH` by
-    default), each `aspect` (height over width) as tall as it is wide.
+    """`n_panels` axes in a row `width` inches across, each `aspect` (height/width).
 
-    On a new page unless `figure` is given, which may be a subfigure; there,
-    with `height`, the row is no taller than `height` inches less the title and
-    key rooms, narrower if it must be, and left-aligned; `top` inches over the
-    titles are left clear, for a panel letter, and the row starts `left` inches
-    in, to share an edge with another panel's axes.
+    New page unless `figure` is given; `height` caps the row (titles and key
+    included), `top` inches are left clear above, and the row starts `left` in.
     """
     import matplotlib.pyplot as plt
 

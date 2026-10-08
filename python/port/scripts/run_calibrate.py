@@ -1,23 +1,13 @@
 """`run_calibrate --potts|--copy MANIFEST ...`: measure the settings the studies read, into `configs/` (#749 WP1).
 
-A calibration is a measurement whose output is a setting, not a result: a
-sampler's start temperature, step or sweep budget, chosen on held-out
-realizations so the realizations a study evaluates never chose it. It runs
-here, by hand, and writes `port.qa.provenance.CONFIGS/<name>.json` with the
-command that produced it; a study or a sampler reads the file
-(`port.qa.provenance.calibration`) and never tunes inline.
+Tunes on held-out realizations and merges the result into
+`port.qa.provenance.CONFIGS/<name>.json`, keeping other entries.
 
     run_calibrate --potts MANIFEST OUT_DIR [--samplers SAMPLER ...] [--held-out 5] [--workers 4] [--states run]
     run_calibrate --copy MANIFEST [--starts NAME ...] [--held-out 5] [--workers 2]
 
-- `--potts` writes `potts_sampler_settings.json`: the Potts samplers on the
-  run's clone-assignment field (`port.studies.potts_stream.retune`, #556).
-- `--copy` writes `copy_sampler_settings.json`: the copy-state starts at the
-  run's Baum-Welch (`port.studies.copy_state_stream.retune`, #540), which
-  `port.sandbox.extensions.hmm_objective.DEFAULTS` also reads.
-
-Each merges what it tunes into the file and keeps the rest, so one sampler is
-retuned without moving the others.
+`--potts` writes `potts_sampler_settings.json` (#556); `--copy` writes
+`copy_sampler_settings.json` (#540).
 """
 
 from __future__ import annotations
