@@ -158,7 +158,7 @@ def _parser() -> argparse.ArgumentParser:
         "--hmm-start",
         default=None,
         metavar="START",
-        help="the read-depth HMM's copy-state start, a sal mixture start, lattice, or a clustering: ward, average, complete, connectivity-ward, hdbscan (#489, #547, #824); none, kmeans++x5+em with --sal",
+        help="the read-depth HMM's copy-state start, a sal mixture start, lattice, or a linkage: ward, average, complete (#489, #547, #824); none, kmeans++x5+em with --sal",
     )
     parser.add_argument(
         "--baf-start",

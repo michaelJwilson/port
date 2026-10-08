@@ -28,9 +28,7 @@ def _call(levels: tuple[tuple[float, float, int], ...], n_states: int, seed: int
 
 
 @pytest.mark.oracle
-@pytest.mark.parametrize(
-    "method", ["ward", "average", "complete", "connectivity-ward", "hdbscan"]
-)
+@pytest.mark.parametrize("method", ["ward", "average", "complete"])
 def test_a_linkage_start_keeps_the_rare_level(method: str) -> None:
     """Each planted level, the 30-row one included, has a state within 0.05 in log mu and 0.03 in p."""
     from port.extensions.copy_starts import hierarchical_states
