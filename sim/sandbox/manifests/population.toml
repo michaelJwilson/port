@@ -3,12 +3,12 @@
 # tree, the events, the layout and the counts are all drawn from it, so a
 # clone's size and an event's length vary across members.
 version = 3
-extends = "calicost_grch38.toml"
+extends = "../../manifests/calicost_grch38.toml"
 
 [sample]
 name = "population"
 seed = 0
-output = "../generated"
+output = "../../generated"
 realizations = 1
 
 [array]
@@ -53,12 +53,9 @@ states = [
 ]
 
 [cna.length]
-# NB lognormal at a 20 Mb median, floored at 1 Mb (about one bin), as the live fixtures draw
-#    (#619, T- #807): 10% of events below half the median, port.sim.laws.lognormal_sigma(0.10, 0.5).
-#    Exponential at a 20 Mb mean until T- #807.
-law = "lognormal"
-median = 2e7
-sigma = 0.541
+law = "exponential"
+# NB mean 20 Mb, floor 1 Mb (about one bin), so the short end is populated.
+mean = 2e7
 minimum = 1e6
 
 [phasing]

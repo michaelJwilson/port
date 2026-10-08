@@ -1,7 +1,7 @@
 """#540: copy-state starts at the planted clones, each scored and polished by `run_cnaster_port --sal`'s own Baum-Welch (#730).
 
 `run_study --copy-state-stream MANIFEST OUT_DIR [--problems 5] [--seeds 3] [--held-out 5] [--first 0] [--settings PATH] [--workers 4] [--all | --starts NAME ...]`
-`MANIFEST` is `sim/manifests/dev_tree_1s_stream.toml`, lognormal lengths at a 20 Mb median (T- #807).
+`MANIFEST` is `sim/manifests/study.toml`, the studies' one draw (T- #807).
 
 `run_calibrate --copy MANIFEST [--starts NAME ...]` tunes the samplers on the HMM (`anneal-hmm`, `tempering-hmm`,
 `hmc-hmm`, `sal`'s since #634) on the `--held-out` realizations and writes `SETTINGS` (#749 WP1), as
@@ -56,12 +56,12 @@ from port.studies import records
 from port.studies import stream as harness
 
 STARTS = (
-    "calicost-gmm", "lattice", "prior", "kmeans++", "emission++",
-    "tempering-hmm", "hmc-hmm",
+    "calicost-gmm", "lattice", "prior", "kmeans++", "emission++", "hmc-hmm",
 )  # fmt: skip
 """The starts the paper's initialization figure draws (T- #660). Out of the study, still in the
 registry (`--all` runs them): `cnaster-gmm`, `distinct`, `lattice-em`, `rdr-quantiles`, `data`,
-`quantile`, the emission++ variants (`EMISSION_VARIANTS`), `anneal-hmm` (#716), `sal`'s surrogate `anneal`,
+`quantile`, the emission++ variants (`EMISSION_VARIANTS`), `anneal-hmm` (#716), `tempering-hmm`
+(deprecated from the studies for now, T- #807), `sal`'s surrogate `anneal`,
 `tempering`, `hmc` (snapped to observed rows, #563) and its best-of-5-with-EM starts,
 `--sal`'s `kmeans++x5+em` among them."""
 

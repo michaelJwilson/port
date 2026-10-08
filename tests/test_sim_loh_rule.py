@@ -26,8 +26,6 @@ REVERSIBLE = frozenset(
         "dev_tree_1s.toml",
         "dev_tree_1s_easy.toml",
         "dev_tree_1s_hard.toml",
-        "population.toml",
-        "population_long.toml",
     }
 )
 """The manifests that predate T- #698 and keep the reversible default."""

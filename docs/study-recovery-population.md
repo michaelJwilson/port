@@ -50,13 +50,13 @@ The page is set as `combined.pdf`'s spatial row: 4.80 in wide, 7 pt text.
 
 `run_study --population run | rescore | report` (#546).
 
-- **Members.** One member is one seed of `sim/manifests/population.toml`: a 60 × 50 slice with 3 tumour clones.
+- **Members.** One member is one seed of `sim/sandbox/manifests/population.toml` (`sim/manifests/population.toml` until T- #807): a 60 × 50 slice with 3 tumour clones. Since T- #807 the study draws `sim/manifests/study.toml`, which differs as stated below; the records and figure here are the earlier manifest's.
   - Each clone's size is drawn log-uniform over 100–1,000 spots (`[layout.size]`).
   - The tree has 1 trunk event, 4 per leaf and 1 per internal node, with class-balanced copy states.
-  - CNA lengths are lognormal at a 20 Mb median (σ 0.541) with a floor of 1 Mb, since T- #807. Every record and
-    figure in this document drew the earlier law, exponential with mean 20 Mb, and has not been rerun.
+  - CNA lengths are exponential with mean 20 Mb and a floor of 1 Mb. `study.toml` draws them lognormal at a 20 Mb
+    median (σ 0.541), adds BAF overdispersion 0.01 and irreversible LOH, and varies truth per realization.
   - Counts come from the Pólya urn (#549).
-  - `population_long.toml` is the same at a 60 Mb median (a 60 Mb exponential mean before T- #807).
+  - `population_long.toml` is the same with a mean length of 60 Mb; `study.toml` has no long arm.
   - A member's hash is `port.sim.fixtures.realization_hash` of its drawn r0; the table names the first seed's of each manifest.
 - **Runs.** Each member runs `run_cnaster_port --sal --no-plots` once per `hmrf.spatial_weight` J. J_c = ln 2 is the critical coupling of the q = 4 Potts model on the triangular lattice; J runs from 1.15 to 4 × J_c.
 - **Scoring.**
@@ -143,7 +143,7 @@ Whether the (1,1) calls come from the HMM's states or from the integer-copy deco
 run_study --population run --seeds 0:80 --J 0.8,1.0,1.4,2.8 --workers 4 --out DIR
 run_study --population run --seeds 80:200 --J 1.0 --workers 4 --out DIR
 run_study --population run --seeds 1000:1260 --J 1.0 --workers 4 \
-    --manifest sim/manifests/population_long.toml --out DIR
+    --manifest sim/sandbox/manifests/population_long.toml --out DIR
 run_study --population report --out DIR --study2-J 1.0
 ```
 

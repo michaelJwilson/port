@@ -22,8 +22,8 @@ from port.sim.draw import draw, merged_tables, read_manifest
 from port.sim.fixtures import R0_HASH, SIM_ROOT, realization_hash, references
 
 MANIFESTS = SIM_ROOT / "manifests"
-HASHED = sorted(MANIFESTS.rglob("dev_tree*.toml"))
-"""Every `dev_tree` manifest, `baseline/dev_tree`'s included; the retired
+HASHED = sorted([*MANIFESTS.rglob("dev_tree*.toml"), MANIFESTS / "study.toml"])
+"""Every `dev_tree` manifest, `baseline/dev_tree`'s included, and the studies' `study.toml`; the retired
 exponential copies under `sim/sandbox/manifests/` are not read (T- #807)."""
 
 

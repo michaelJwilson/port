@@ -486,8 +486,8 @@ def test_a_manifest_extended_from_elsewhere_keeps_its_base_paths(
 
 
 def _sized(law: dict[str, Any]) -> DrawManifest:
-    """`population` at its own 60 x 50, with `[layout.size]` replaced by `law`."""
-    document = extended(SIM_MANIFESTS / "population.toml")
+    """`study` at its own 60 x 50, with `[layout.size]` replaced by `law`."""
+    document = extended(SIM_MANIFESTS / "study.toml")
     document["layout"]["size"] = law
     return from_document(document, SIM_MANIFESTS)
 
