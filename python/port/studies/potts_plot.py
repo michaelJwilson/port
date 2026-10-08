@@ -8,10 +8,10 @@ range).
 
 Each point is a solver's median over realizations x random starts, its error
 bars the 10-90% range on both axes; an open marker is the same runs after sal's
-ICM, a diamond after the color merge that follows it. Polish stages are drawn
+ICM, a diamond after the label merge that follows it (sal's `merge_labels`). Polish stages are drawn
 `DODGE` to the right of their runtime so stages do not overlap. The table's
 last column, Missed, is the percentage of labels that differ from the planted
-ones, the median over the same runs as the points: raw / after ICM and the color merge
+ones, the median over the same runs as the points: raw / after ICM and the label merge
 (`missed`).
 """
 
@@ -56,8 +56,8 @@ TABLE = (
     )),
     ("Sampling", (
         ("sal:anneal", "Single-site heat bath, annealed"),
-        ("sal:wolff-heat-bath", "One grown cluster relabelled by its field's heat bath, annealed"),
-        ("sal:swendsen-wang-heat-bath", "Every bonded cluster relabelled by its field's heat bath, annealed"),
+        ("sal:wolff-heat-bath", "One grown cluster relabelled by its field's heat bath, then a Gibbs sweep, annealed"),
+        ("sal:swendsen-wang-heat-bath", "Every bonded cluster relabelled by its field's heat bath, then a Gibbs sweep, annealed"),
     )),
 )  # fmt: skip
 """The solvers drawn (T- #660). Set aside from the figure, still in `clone_label_arms` or `--only`:

@@ -29,19 +29,20 @@ its numbers do not compare with these.
   sal's declared shapes, the start temperature, the warm-up, the end fixed
   at `T_END` so the last sweeps are a descent -- raced (sal #1337: a quarter
   of `SWEEPS` first, the better half kept and the steps doubled), from
-  common random numbers, and ranked by the energy after sal's ICM from each
-  pilot's best (`Criterion.POLISHED_GAP`), the figure's Polish. Every annealed
+  common random numbers, and ranked by the energy after ICM and the merge
+  from each pilot's best (`Criterion.POLISHED_GAP`), the figure's polish
+  (T- #829). Every annealed
   sampler, Wolff included, spends the same `SWEEPS` of site visits: sal's
   `anneal_potts(budget=...)` charges each step what it visited (sal #1344).
 - **Evaluation.** The next `--problems` realizations run every solver of
   #541's harness (`port.studies.clone_label_arms`) but bifurcation, port's
   pure-Python `alpha` and the floor-merge row, plus TRW-S's own decoded
   labelling, from `--starts` random labellings; the samplers at their tuned
-  settings. Each run is polished twice: sal's ICM, then the color merge
-  (`port.studies.color_merge`, cnaster's `merge_assignment` rule). A
-  sampler's ICM is sal's own, run to its fixed point inside the anneal
-  (`Polish.ICM`, sal #1363, #1368), so its raw and polished energies are one;
-  every other solver's is `sal:icm` from its output.
+  settings. Each run is polished twice: sal's ICM, then sal's merge
+  (`merge_labels`, cnaster's `merge_assignment` rule). A sampler's polish
+  runs inside the anneal (`Polish.ICM_MERGE`, sal #1373, #1375), each stage
+  recorded; every other solver's is `sal:icm`, then the merge, from its
+  output.
 - **Backends.** sal's defaults: the anneal loop, Wolff and heat-bath
   Swendsen-Wang in Rust (sal #1362, #1364, #1368). Their streams differ from
   the Python loop's, so a figure before the bump does not replay at its seeds.
@@ -89,12 +90,12 @@ EXTRA = ("sal:trws",)
 
 SAMPLERS = {
     "sal:anneal": "single-site",
-    "sal:swendsen-wang-heat-bath": "swendsen-wang-heat-bath",
-    "sal:wolff-heat-bath": "wolff-heat-bath",
+    "sal:swendsen-wang-heat-bath": "swendsen-wang",
+    "sal:wolff-heat-bath": "wolff",
 }
-"""sal's annealed chains (`anneal_potts`), by `sal`'s move set. The cluster moves are sal's heat-bath
-variants (its #1142): each cluster's label drawn from its summed field, where the uniform proposal
-of `swendsen-wang` and `wolff` is accepted on that field and freezes in a field of this size."""
+"""sal's annealed chains (`anneal_potts`), by `sal`'s move. A bare cluster move is the move and a Gibbs
+sweep per step (sal #1323), each cluster's label drawn from its summed field (`Recolour.PER_MOVE`): the
+move alone relabels only whole same-label regions (T- #829)."""
 
 TUNED = tuple(SAMPLERS)
 """The entries whose schedule `sal` tunes (`tune`), and every entry that runs at a setting from `SETTINGS`."""
@@ -133,8 +134,8 @@ PILOT_SEEDS = 2
 """Copies of each held-out realization (`harness.HELD_OUT` of them) in the tuned union, each from its own
 start."""
 
-POLISH_SWEEPS = 1000
-"""The ICM a pilot's best is polished by before it is ranked: the figure's Polish, `clone_label_arms.SWEEPS`."""
+ICM_CAP = 100_000
+"""The tuning polish's sweep cap, never reached: ICM stops at its fixed point, as `Polish.ICM` does."""
 
 SETTINGS = CONFIGS / "potts_sampler_settings.json"
 """The samplers' settings, tuned by `run_calibrate --potts` at the run's clone-assignment field
@@ -262,7 +263,7 @@ def _hold(index: int, problem: Any) -> None:
 
 def _sample(solver: str, field: np.ndarray, start: np.ndarray, rng: np.random.Generator,
             graph: Any, setting: dict[str, float]) -> Any:  # fmt: skip
-    """An annealed chain at `setting`, polished by sal's ICM to its fixed point in the same call.
+    """An annealed chain at `setting`, then ICM and the merge to their fixed points, in one call.
 
     `SWEEPS` sweeps of site visits for every move set: sal's step loop
     charges each step what it visited and stops at the budget (sal #1344),
@@ -271,7 +272,7 @@ def _sample(solver: str, field: np.ndarray, start: np.ndarray, rng: np.random.Ge
     """
     from sal.cost import Cost
     from sal.opt.budget import Budget
-    from sal.sample.potts_mcmc import PottsMove, Recolour
+    from sal.sample.potts_mcmc import PottsMove
     from sal.sample.potts_mcmc.chains import anneal_potts
     from sal.sample.schedule import Polish
     from sal.search.ground_state import Problem as SalProblem
@@ -279,19 +280,28 @@ def _sample(solver: str, field: np.ndarray, start: np.ndarray, rng: np.random.Ge
     sweeps = int(setting["sweeps"])
     problem = SalProblem(graph, field, field.shape[1])
     budget = Budget(Cost.SITE_VISITS, sweeps * problem.visits_per_sweep)
-    # NB the arm is the move alone under the uniform recolour, as sal's `run_annealed` runs it (sal #1323)
-    return anneal_potts(graph, field, schedule(setting).build(sweeps), rng, move=(PottsMove(SAMPLERS[solver]),),
-                        recolour=Recolour.UNIFORM, start=start, budget=budget, polish=Polish.ICM)  # fmt: skip
+    return anneal_potts(graph, field, schedule(setting).build(sweeps), rng, move=PottsMove(SAMPLERS[solver]),
+                        start=start, budget=budget, polish=Polish.ICM_MERGE)  # fmt: skip
+
+
+STAGES = ("init", "polish", "merge")
+"""`Polish.ICM_MERGE`'s stages of an annealed run: the anneal's best, after ICM, after the merge."""
+
+
+def merged(graph: Any, field: np.ndarray, labels: np.ndarray) -> np.ndarray:
+    """`labels` after sal's merge (`merge_labels`, cnaster's `merge_assignment` rule) to its fixed point."""
+    from sal.search.icm import merge_labels
+
+    return np.asarray(merge_labels(graph, field, labels).labelling, dtype=np.int64)
 
 
 def solve_labelling(
     problem: Any, solver: str, seed: int, setting: dict[str, float] | None = None
 ) -> dict[str, Any]:
-    """One run from random labels, then its two polishes; a failure is a row."""
+    """One run from random labels, then ICM and the merge; a failure is a row."""
     from sal.sim.potts import energy
 
     import port.studies.clone_label_arms as arms
-    from port.studies.color_merge import color_merge
     from port.studies.stage import missed
 
     try:
@@ -303,29 +313,33 @@ def solve_labelling(
         )
         rng = np.random.default_rng([seed, 492])
         opened = time.perf_counter()
-        if solver == "sal:trws":
-            from sal.search.trws import trws
-
-            out = np.asarray(trws(graph, field).labelling, dtype=np.int64)
-        elif setting is not None:
+        if setting is not None:
             run = _sample(solver, field, start, rng, graph, setting)
-            out = np.asarray(run.best, dtype=np.int64)
+            if tuple(stage.name for stage in run.stages) != STAGES:
+                msg = f"anneal_potts stages {[stage.name for stage in run.stages]}, expected {STAGES}"
+                raise RuntimeError(msg)
+            out, polished, both = (
+                np.asarray(stage.best, dtype=np.int64) for stage in run.stages
+            )
+            polish_seconds, merge_seconds = run.stages[1].seconds, run.stages[2].seconds
+            seconds = time.perf_counter() - opened - polish_seconds - merge_seconds
         else:
-            out = arms.solve_from(solver, field, start, rng, beta)
-        seconds = time.perf_counter() - opened
-        opened = time.perf_counter()
-        # NB a sampler's run ends at sal's ICM fixed point (`Polish.ICM`), timed in `seconds`
-        polished = (
-            out
-            if setting is not None
-            else arms.solve_from("sal:icm", field, out, np.random.default_rng(0), beta)
-        )
-        polish_seconds = time.perf_counter() - opened
-        opened = time.perf_counter()
-        both, merges = color_merge(
-            field, polished, problem.indptr, problem.indices, problem.weights, beta
-        )
-        merge_seconds = time.perf_counter() - opened
+            if solver == "sal:trws":
+                from sal.search.trws import trws
+
+                out = np.asarray(trws(graph, field).labelling, dtype=np.int64)
+            else:
+                out = arms.solve_from(solver, field, start, rng, beta)
+            seconds = time.perf_counter() - opened
+            opened = time.perf_counter()
+            polished = arms.solve_from(
+                "sal:icm", field, out, np.random.default_rng(0), beta
+            )
+            polish_seconds = time.perf_counter() - opened
+            opened = time.perf_counter()
+            both = merged(graph, field, polished)
+            merge_seconds = time.perf_counter() - opened
+        merges = int(np.unique(polished).size - np.unique(both).size)
         planted = problem.planted
         return {
             "problem": problem.realization, "solver": solver, "seed": seed, "setting": setting,
@@ -392,7 +406,8 @@ def pilots(
     held_out: list[Any], solver: str, rng: np.random.Generator
 ) -> dict[str, Any]:
     """`sal`'s `tune_schedule` for `solver` on the held-out `union`: raced, common random numbers, ranked by
-    the energy after ICM. Returns the chosen setting and every candidate's last pilot."""
+    the energy after ICM and the merge, as `_sample` polishes. Returns the chosen setting and every
+    candidate's last pilot."""
     from sal.cost import Cost
     from sal.opt.budget import Budget
     from sal.sample.potts_mcmc import PottsMove, Recolour
@@ -403,13 +418,17 @@ def pilots(
     grid = tuple(schedule(c) for c in SCHEDULES)
 
     def polish(labels: np.ndarray) -> np.ndarray:
-        polished = iterated_conditional_modes(graph, field, np.random.default_rng(0), start=labels,
-                                              max_iterations=POLISH_SWEEPS)  # fmt: skip
-        return np.asarray(polished.labelling, dtype=np.int64)
+        # NB `Polish.ICM_MERGE`'s pair: ICM in index order to its fixed point, then the merge. A callable
+        #    until sal #1398 lets `tune_schedule` take the member itself.
+        settled = iterated_conditional_modes(graph, field, np.random.default_rng(0), start=labels,
+                                             max_iterations=ICM_CAP)  # fmt: skip
+        if not settled.termination.converged:
+            msg = f"ICM did not reach a fixed point in {ICM_CAP} sweeps"
+            raise RuntimeError(msg)
+        return merged(graph, field, np.asarray(settled.labelling, dtype=np.int64))
 
     opened = time.perf_counter()
-    # NB the arm is the move alone under the uniform recolour, as `run_annealed` runs it (sal #1323)
-    tuned = tune_schedule(graph, field, move=(PottsMove(SAMPLERS[solver]),), recolour=Recolour.UNIFORM,
+    tuned = tune_schedule(graph, field, move=PottsMove(SAMPLERS[solver]), recolour=Recolour.PER_MOVE,
                           budget=Budget(Cost.SITE_VISITS, len(grid) * SWEEPS * graph.n_nodes),
                           criterion=Criterion.POLISHED_GAP, rng=rng, grid=grid, racing=True, common=True,
                           polish=polish)  # fmt: skip
@@ -540,7 +559,7 @@ def retune(
     provenance = (f"run_calibrate --potts on {manifest.name} realizations 0-{held_out - 1}, states {states}: "
                   f"sal's tune_schedule on their union, each {PILOT_SEEDS} times, {len(SCHEDULES)} schedules "
                   f"(shape x t_start x warm, t_end {T_END}) at {SWEEPS} sweeps, raced, common random numbers, "
-                  f"ranked by the energy after {POLISH_SWEEPS} ICM sweeps (#556, #723, T- #777)")  # fmt: skip
+                  f"ranked by the energy after ICM and the merge (#556, #723, T- #777, T- #829)")  # fmt: skip
     harness.merge_settings(SETTINGS, provenance, chosen)
 
 

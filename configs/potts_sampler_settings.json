@@ -6,42 +6,6 @@
     "warm": 0.1,
     "sweeps": 4000
   },
-  "sal:swendsen-wang": {
-    "t_start": 1.0,
-    "sweeps": 4000,
-    "median_gap": 19.848,
-    "default_median_gap": 39.62
-  },
-  "sal:wolff": {
-    "t_start": 0.25,
-    "sweeps": 4000,
-    "median_gap": 3301.979,
-    "default_median_gap": 7412.566
-  },
-  "port:sw-field": {
-    "t_start": 1.0,
-    "sweeps": 4000,
-    "median_gap": 11.774,
-    "default_median_gap": 29.492
-  },
-  "port:sw-field-glauber": {
-    "t_start": 1.0,
-    "sweeps": 250,
-    "median_gap": 0.0,
-    "default_median_gap": 0.034
-  },
-  "port:wolff-field": {
-    "t_start": 0.5,
-    "sweeps": 4000,
-    "median_gap": 2045.078,
-    "default_median_gap": 5787.235
-  },
-  "port:wolff-field-glauber": {
-    "t_start": 32.0,
-    "sweeps": 250,
-    "median_gap": 0.0,
-    "default_median_gap": 0.0
-  },
   "sal:swendsen-wang-heat-bath": {
     "shape": "linear",
     "t_start": 1.0,

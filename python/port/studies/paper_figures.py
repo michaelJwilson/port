@@ -751,7 +751,7 @@ def solver_note(
         "its problem (nats of the clone-assignment field). (b): the log-likelihood of the run's Baum-Welch at",
         "a start, less the best any run or the planted states reached. **Each key's two numbers** are the",
         "percent of spots (a) or rows (b) unlike the planted ones: before and after, where after is ICM",
-        "then the colour merge in (a), and Baum-Welch in (b).",
+        "then the label merge in (a), and Baum-Welch in (b).",
         "",
     ]
     return "\n".join(lines)
