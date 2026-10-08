@@ -43,7 +43,7 @@ def _codes(
 
         counts = counts.round(decimals=get_global_config().hmm.compression_decimals)
     pairs, inverse = np.unique(counts, axis=0, return_inverse=True)
-    return pairs, np.ascontiguousarray(inverse.reshape(-1), dtype=np.intp)
+    return pairs, np.ascontiguousarray(inverse.reshape(-1), dtype=np.int32)
 
 
 class CountEncoder:
@@ -107,10 +107,11 @@ class CountEncoder:
 
     @property
     def compression_rate(self) -> float:
-        total = self.n_obs * self.n_spots
+        total = int(self.n_obs) * int(self.n_spots)
         if total == 0:
             return 0.0
-        return 1.0 - sum(u.shape[0] for u in self.unique_counts) / total
+        coded = sum(int(u.shape[0]) for u in self.unique_counts)
+        return 1.0 - coded / total
 
     @property
     def mapping_matrices(self) -> list[Any]:
@@ -134,6 +135,7 @@ class CountEncoder:
         obs_count: Any, total_count: Any, common_zero_depth: bool = True
     ) -> tuple[list[np.ndarray], list[Any]]:
         """`cnaster`'s own: the pairs and the CSR maps, as `hmm_utils.construct_unique_matrix` returns them."""
-        return _UPSTREAM_COUNT_ENCODER.construct_unique_encoding(
+        pairs, maps = _UPSTREAM_COUNT_ENCODER.construct_unique_encoding(
             obs_count, total_count, common_zero_depth=common_zero_depth
         )
+        return list(pairs), list(maps)

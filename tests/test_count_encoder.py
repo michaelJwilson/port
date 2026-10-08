@@ -9,14 +9,12 @@ integer totals, with and without the zero-depth collapse.
 
 from __future__ import annotations
 
-from collections.abc import Iterator
-
 import numpy as np
 import pytest
 
 
 @pytest.fixture
-def decimals(cnaster_config: None) -> Iterator[int]:
+def decimals(cnaster_config: None) -> int:
     from cnaster.config import get_global_config
 
     return int(get_global_config().hmm.compression_decimals)
@@ -86,3 +84,33 @@ def test_the_row_rebinds_every_cnaster_binding() -> None:
     with patched(rows):
         for module in (cnaster.hmm_nophasing, cnaster.hmm_phased, gradient):
             assert module.CountEncoder is CountEncoder
+
+
+@pytest.mark.oracle
+def test_the_encoder_is_the_brute_force_map(decimals: int) -> None:
+    """`CountEncoder` against enumeration: each entry's pair looked up in a
+    dictionary of the distinct pairs, and each code's sum taken entry by
+    entry; decode exactly, encode to 1e-12 relative."""
+    from port.patch.count_encoder import CountEncoder
+
+    obs, total = _counts(800, integer=True)
+    encoder = CountEncoder(obs, total)
+    rng = np.random.default_rng(2)
+    for spot in range(obs.shape[1]):
+        pairs = encoder.unique_counts[spot]
+        index = {(float(o), float(t)): i for i, (o, t) in enumerate(pairs)}
+        codes = [
+            index[(float(o), float(t))]
+            for o, t in zip(obs[:, spot], total[:, spot], strict=True)
+        ]
+        assert len(index) == pairs.shape[0]
+
+        scores = rng.normal(size=(3, pairs.shape[0]))
+        expected = np.array([[row[c] for c in codes] for row in scores])
+        assert np.array_equal(encoder.decode_array(scores, spot), expected)
+
+        gamma = rng.random((3, obs.shape[0]))
+        sums = np.zeros((3, pairs.shape[0]))
+        for entry, code in enumerate(codes):
+            sums[:, code] += gamma[:, entry]
+        np.testing.assert_allclose(encoder.encode_array(gamma, spot), sums, rtol=1e-12)

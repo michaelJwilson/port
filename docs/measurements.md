@@ -406,3 +406,23 @@ kernel** on the second. That is a size the two-step cannot run and this can,
 which is a capability rather than a ratio -- and the kill is worth naming,
 because an OOM death reads as infrastructure breaking rather than as a stated
 limit.
+
+## `port.patch.count_encoder`
+
+`CountEncoder` against `cnaster`'s, on the fit's arrays at the planted
+clones of the stream's r0 (`port.studies.stage.members`, `at_oracle_clones`),
+7 states, one process, warm, minimum of 9; cnaster / port (T- #799):
+
+| | dev_tree_1s_easy (`7ba9b01f`), n 7,244 | dev_tree (`3339b9a0`), n 10,484 |
+| --- | --- | --- |
+| NB codes | 6,799 | 9,844 |
+| BB codes | 3,842 | 6,017 |
+| Construct, ms (NB, BB) | 4.38 / 4.11, 4.82 / 4.48 | 6.89 / 6.47, 7.09 / 6.64 |
+| Decode (7 x codes), ms | 0.120 / 0.039, 0.097 / 0.039 | 0.173 / 0.055, 0.145 / 0.055 |
+| Encode (7 x n), ms | 0.112 / 0.109, 0.108 / 0.099 | 0.169 / 0.162, 0.154 / 0.143 |
+| Map, bytes | 115,908 / 28,976 | 167,748 / 41,936 |
+
+Decode bitwise, encode equal on both fixtures (0 difference). The decode is
+3.1x at dev_tree, the map a quarter the bytes (an `int32` index against
+float64 data, `int32` indices and an `indptr`); construction and encode are
+within 10%: a simplification, not offered as a speedup.
