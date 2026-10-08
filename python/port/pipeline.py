@@ -906,7 +906,8 @@ def _kernels() -> tuple[tuple[str, Any], ...]:
             (_tiny(1), _tiny(1), 0.5, 1.0, _tiny(1)),
         ),
         (
-            "port.patch.hmrf.fused_field:fused_spot_clone_field",
+            # NB the compiled pass; `fused_spot_clone_field` wraps it (T- #781)
+            "port.patch.hmrf.fused_field:_fused_kernel",
             (
                 # the four observation arrays are `(n_obs, n_spots)` ...
                 _tiny(1, 1),
@@ -920,6 +921,9 @@ def _kernels() -> tuple[tuple[str, Any], ...]:
                 _tiny(1),
                 np.zeros((1, 1), dtype=np.int64),
                 _tiny(1),
+                np.empty((1, 1)),
+                False,
+                np.empty((0, 0)),
             ),
         ),
     )

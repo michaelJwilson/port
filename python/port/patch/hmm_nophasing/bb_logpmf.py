@@ -115,13 +115,12 @@ def _bb_logpmf_1d(
     total: Any,
     p_binom: float,
     tau: float,
-    out: np.ndarray | None = None,
+    out: np.ndarray,
     EPS: float = DISPERSION_FLOOR,
 ) -> np.ndarray:
-    """`cnaster`'s row: each bin's beta-binomial log pmf into `out`, and returned.
+    """`cnaster`'s row, its signature: each bin's beta-binomial log pmf into `out`, and returned.
 
-    `tau = inf` is the binomial (T- #617). `cnaster` passes `out` but for one
-    caller that reads the return; both are served.
+    `tau = inf` is the binomial (T- #617).
     """
     obs = np.asarray(obs, dtype=np.float64)
     if tau == np.inf:
@@ -130,8 +129,6 @@ def _bb_logpmf_1d(
         alpha = max(p_binom * tau, EPS)
         beta = max((1.0 - p_binom) * tau, EPS)
         row = bb_logpmf(obs, total, alpha, beta)
-    if out is None:
-        return row
     out[:] = row
     return out
 
