@@ -465,7 +465,8 @@ the paths from the YAML; a sheet of several slices takes
 `configuration_cna_multi`. `docs/calicost-benchmark.md` records its runs.
 `docs/baseline-release.md` states what `--sal` recovers at the baseline
 release, on CalicoST's samples and the drawn `dev_tree` family
-(`sim/manifests/baseline/`).
+(`sim/manifests/baseline/dev_tree.toml`; the rest retired to
+`sim/sandbox/manifests/baseline/`, T- #807).
 
 **`port.sim.draw`** (#445) draws new samples from a version-3 manifest:
 clones from CalicoST's `shared.unique` counts or a mutation tree
@@ -492,7 +493,8 @@ committed realization) or as a Pólya urn (`urn`, `O(UMIs)` per spot, #549);
 `[array] kind` is `hex` (Visium) or `square` (Visium HD, #569).
 `dev_tree_1s{,_easy,_hard}` put `dev_tree`'s clones on one slice under the
 urn, with CalicoST easy's and hard's event laws and admixture (#556, #581);
-`sim/manifests/baseline/` keeps the gamma copies the baseline ran.
+The gamma copies the baseline ran, exponential, are retired to
+`sim/sandbox/manifests/baseline/` (T- #807).
 `dev_tree_1s_dense` (r0 `33e3471e`, T- #698) is `dev_tree_1s_easy` at 60
 expected events of lognormal mean 150 Mb. Its 64 events sum to 2.38 genomes
 and cover 0.920 of it: `port.sim.draw.altered_share`, the bp share where
@@ -510,8 +512,12 @@ new manifest.
 `dev_tree*` manifests draw lognormal lengths at `sigma = 0.541`,
 `port.sim.laws.lognormal_sigma(0.10, 0.5)`: 10% of events below half the
 median, against 29-35% under the exponential (#619;
-`run_study --cna-lengths` draws both laws). `baseline/` and `population*.toml` stay
-exponential; `baseline/dev_tree.toml` freezes `dev_tree`'s exponential
+`run_study --cna-lengths` draws both laws). `study.toml` is the one draw the Potts stream, the copy-state stream and the
+population study read: lognormal at a 20 Mb median, class-balanced states,
+clone sizes swept log-uniform over 100-1,000 spots, BAF overdispersion,
+phase switches, irreversible LOH, truth varied per realization, and no normal
+admixture until T- #809 (T- #807; `population*.toml` retired to `sim/sandbox/manifests/`);
+`baseline/dev_tree.toml`, the one exponential fixture kept, freezes `dev_tree`'s exponential
 generation (`3381575a`), which `tests.sim_stages` caches as r0.
 Each `dev_tree*` manifest states `[sample] r0_hash`, its realization 0's
 `port.sim.fixtures.realization_hash`, so a result names the generation it was

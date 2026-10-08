@@ -1,7 +1,7 @@
 # dev_tree on one slice (#556): the three tumour clones and normal on one 60 x 50 array.
 # `python -m port.sim.draw sim/manifests/dev_tree_1s.toml`
 version = 3
-extends = "../calicost_grch38.toml"
+extends = "../../../manifests/calicost_grch38.toml"
 
 [sample]
 name = "dev_tree_1s"
@@ -10,7 +10,7 @@ name = "dev_tree_1s"
 #    names the generation (`tests/test_sim_r0_hash.py`).
 r0_hash = "4687b541"
 seed = 0
-output = "../../generated"
+output = "../../../generated"
 # NB count draws of the same clones, layout and phase, written as r0, r1, ...
 realizations = 5
 

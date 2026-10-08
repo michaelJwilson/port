@@ -1,6 +1,7 @@
 """#556: Potts solvers from random labels on a stream of the run's clone-assignment problems, the plot redrawn per problem.
 
 `run_study --potts-stream MANIFEST OUT_DIR [--problems 25] [--starts 50] [--held-out 5] [--workers 4] [--states run]`
+`MANIFEST` is `sim/manifests/study.toml`, the studies' one draw (T- #807).
 `run_calibrate --potts MANIFEST OUT_DIR --samplers SAMPLER ...` tunes the
 named samplers on the held-out realizations and merges them into `SETTINGS`
 (`tune`, `retune`); the stream itself never tunes (#749 WP1).
@@ -71,16 +72,17 @@ from port.studies import stream as harness
 DROPPED = frozenset({
     "sal:bifurcation", "port:alpha", "port:alpha-rust-merge",
     "port:alpha-rust", "port:alpha-rust-icm", "port:icm-numba", "port:icm",
-    "sal:swendsen-wang", "sal:wolff",
+    "sal:swendsen-wang", "sal:wolff", "sal:tempering",
 })  # fmt: skip
 """Out of the stream: bifurcation (#541), `alpha` (Alpha-rust's pure-Python twin), the deprecated floor merge,
 and, for the paper's figure (T- #660), `alpha-rust` and `alpha-rust-icm` (`alpha-rust-fuse-merge` stays),
 `icm-numba` and cnaster's `icm`; and the uniform-proposal cluster moves, their heat-bath variants in their
-place (#716). `clone_label_arms` still runs them."""
+place (#716); and parallel tempering, deprecated from the studies for now (T- #807). `clone_label_arms`
+still runs them, and `--only` names any."""
 
 EXTRA = ("sal:trws",)
 """Entries beyond the harness's: TRW-S's decoded labelling. `CLUSTER_TEMPERING` left the stream with
-T- #660; `--only` still runs it."""
+T- #660, and `TEMPERING` with T- #807; `--only` still runs either."""
 
 SAMPLERS = {
     "sal:anneal": "single-site",
@@ -151,8 +153,9 @@ REPLICAS = 6
 """sal's `N_REPLICAS`: both tempering ladders, geometric between `T_END` and the start temperature."""
 
 SETTINGS = CONFIGS / "potts_sampler_settings.json"
-"""The samplers' settings, tuned by `run_calibrate --potts` on `dev_tree_1s_hard`'s first 3
-realizations at the run's clone-assignment field (#723); the stream's default `--settings`."""
+"""The samplers' settings, tuned by `run_calibrate --potts` at the run's clone-assignment field
+(#723) on the realizations `HELD_OUT` names, of the manifest the file's `_provenance` states; the
+stream's default `--settings`."""
 
 _GRAPHS: dict[tuple[int, float], Any] = {}
 

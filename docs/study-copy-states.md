@@ -17,7 +17,7 @@ seeds ends at 1.1% missed ([0.9, 4.2] over r9–r12); the run of highest likelih
 
 ## Method
 
-`run_study --copy-state-stream sim/manifests/baseline/dev_tree_1s_hard.toml OUT --problems N --seeds 10 --held-out 3 --settings configs/copy_sampler_settings.json` (the default; `run_calibrate --copy` writes it).
+`run_study --copy-state-stream sim/sandbox/manifests/baseline/dev_tree_1s_hard.toml OUT --problems N --seeds 10 --held-out 3 --settings configs/copy_sampler_settings.json` (the default; `run_calibrate --copy` writes it).
 
 1. **Problem.** Since #730, the run's own: each realization of `dev_tree_1s_hard` is drawn to disk as the
    run reads a sample, and `run_cnaster_port --sal` runs on it at its planted clones up to the RDR + BAF

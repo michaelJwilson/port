@@ -19,7 +19,7 @@ peak ≤ 6.15 GB; against `efdebfd` on 14 shared fixtures the wall ratio is
 - `python -m tests.sim_audit --sample SAMPLE --root ROOT -- --sal --no-plots`,
   scored by `tests.sim_audit.score`. Peak is the child's maximum RSS.
 - CalicoST easy and hard are the shipped samples. `dev_tree*` are drawn by
-  `python -m port.sim.draw sim/manifests/baseline/st_*.toml` (r0–r2) and,
+  `python -m port.sim.draw sim/sandbox/manifests/baseline/st_*.toml` (r0–r2) and,
   for the lognormal segment lengths of #621, by `sim/manifests/<name>.toml`
   (r0). The hash is `port.sim.fixtures.realization_hash`; the 12 `st_*`
   draws reproduce the hashes recorded at `ac00498`, and
@@ -241,7 +241,7 @@ spread of 3 runs of the old pin (T- #696).
   - Numba caches were warm from the first run on. The uv cache had been cleared at 01:30, before the sweep.
 - **Fixtures:**
   - CalicoST easy and hard;
-  - `sim/manifests/baseline/st_*` r0–r2 (12 fixtures), whose hashes are `9a47d97`'s;
+  - `sim/sandbox/manifests/baseline/st_*` r0–r2 (12 fixtures), whose hashes are `9a47d97`'s;
   - r0 of each current manifest (`dev_tree`, `dev_tree_1s`, `dev_tree_1s_easy`, `dev_tree_1s_hard`, `dev_tree_1s_dense`).
 - **Cells:** the median over 3 repeats, [min, max] where they differ, and (`9a47d97`'s value) on the same hash. The flags column marks a `9a47d97` value outside the repeats' range by more than 0.02 in a score, 25% in wall time or 15% in peak memory, or a spread over 0.02 in a score.
 

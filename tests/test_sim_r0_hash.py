@@ -22,8 +22,9 @@ from port.sim.draw import draw, merged_tables, read_manifest
 from port.sim.fixtures import R0_HASH, SIM_ROOT, realization_hash, references
 
 MANIFESTS = SIM_ROOT / "manifests"
-HASHED = sorted(MANIFESTS.rglob("dev_tree*.toml"))
-"""Every `dev_tree` manifest, `baseline/`'s included."""
+HASHED = sorted([*MANIFESTS.rglob("dev_tree*.toml"), MANIFESTS / "study.toml"])
+"""Every `dev_tree` manifest, `baseline/dev_tree`'s included, and the studies' `study.toml`; the retired
+exponential copies under `sim/sandbox/manifests/` are not read (T- #807)."""
 
 
 def _stated(path: Path) -> object:
@@ -36,7 +37,7 @@ def test_every_dev_tree_manifest_states_its_own_r0_hash() -> None:
     """Stated in the file, so an extending manifest never inherits its base's
     hash for a different draw; 8 lower-case hex; `R0_HASH` is the frozen
     `baseline/dev_tree`'s, the generation `tests.sim_stages` caches (#619)."""
-    assert len(HASHED) == 10
+    assert len(HASHED) == 8
     for path in HASHED:
         stated = _stated(path)
         assert isinstance(stated, str), path

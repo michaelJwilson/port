@@ -4,7 +4,7 @@ Ticket: #634 -- `sal.sample.hmc`'s `sample`, `anneal` and
   `parallel_tempering` replaced port's own samplers on this objective
   (`hmm_samplers`, deleted) after matching them at equal evaluations.
 Measurement: `port.studies.copy_state_stream` on
-  `sim/manifests/baseline/dev_tree_1s_hard.toml` r3-r12, 10 seeds (PR #642):
+  `sim/sandbox/manifests/baseline/dev_tree_1s_hard.toml` r3-r12, 10 seeds (PR #642):
   median rows missed after Baum-Welch 1.14 / 1.12 / 1.14% against port's
   1.19 / 1.17 / 1.10% (anneal / tempering / hmc), n = 100 each.
 Exit: retire with its readers, `port.studies.copy_state_stream` and the

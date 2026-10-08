@@ -486,8 +486,8 @@ def test_a_manifest_extended_from_elsewhere_keeps_its_base_paths(
 
 
 def _sized(law: dict[str, Any]) -> DrawManifest:
-    """`population` at its own 60 x 50, with `[layout.size]` replaced by `law`."""
-    document = extended(SIM_MANIFESTS / "population.toml")
+    """`study` at its own 60 x 50, with `[layout.size]` replaced by `law`."""
+    document = extended(SIM_MANIFESTS / "study.toml")
     document["layout"]["size"] = law
     return from_document(document, SIM_MANIFESTS)
 
@@ -515,7 +515,8 @@ def test_clone_sizes_follow_the_stated_law_across_seeds() -> None:
             c: clone_size(manifest.layout["size"], rng) for c in sorted(manifest.tumour)
         }
         for clone, target in targets.items():
-            size = int(np.sum(labels[0] == manifest.tumour.index(clone)))
+            # NB over every slice: a clone's target counts its spots on each slice it is on
+            size = int(np.sum(np.concatenate(labels) == manifest.tumour.index(clone)))
             sizes.append(size)
             ratios.append(size / target)
 

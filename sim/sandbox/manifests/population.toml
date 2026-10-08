@@ -3,12 +3,12 @@
 # tree, the events, the layout and the counts are all drawn from it, so a
 # clone's size and an event's length vary across members.
 version = 3
-extends = "calicost_grch38.toml"
+extends = "../../manifests/calicost_grch38.toml"
 
 [sample]
 name = "population"
 seed = 0
-output = "../generated"
+output = "../../generated"
 realizations = 1
 
 [array]

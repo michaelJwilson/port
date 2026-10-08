@@ -1,6 +1,6 @@
 """Population study: clone detection against UMIs, CNA detection against length (#544).
 
-One member is one seed of `sim/manifests/population.toml`: its tree, events,
+One member is one seed of `sim/manifests/study.toml` (`population.toml` until T- #807): its tree, events,
 layout (each clone's size drawn from `[layout.size]`) and counts all come
 from that seed, so clone sizes and event lengths vary across members. Each
 member is run once per analysis coupling `J` (`hmrf.spatial_weight`, read by
@@ -70,7 +70,7 @@ import pandas as pd
 from port.extensions.repository import ROOT
 from port.studies.stage import FLAGS
 
-MANIFEST = ROOT / "sim" / "manifests" / "population.toml"
+MANIFEST = ROOT / "sim" / "manifests" / "study.toml"
 
 J_CRITICAL = float(np.log(2.0))
 """The q = 4 Potts model's critical coupling on the triangular lattice.
