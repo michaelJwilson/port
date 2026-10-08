@@ -683,7 +683,7 @@ def solver_figure(potts: dict[str, Any], copies: dict[str, Any] | None) -> Any:
         "top": -label / SOLVER_PANEL,
         "columns": 1,
     }
-    potts_plot.draw(axes["a"], potts, key=True, centre=True, key_style=style)
+    potts_plot.draw(axes["a"], potts, key=True, key_style=style)
     # NB Initial, Polish and Truth mean the same in both panels: keyed once, under (a)
     if copies is None:
         # NB (b) drawn empty and saying so, its record still being written (#743)
@@ -795,6 +795,14 @@ QUESTIONS: dict[str, tuple[str, str]] = {
     "truth_combined_spatial_multisample.png": (
         "The same with where each true clone lies, for the counterpart: each slice, the region they share dashed?",
         "`multisample_pages`: `truth_combined_figure(spatial=True)` on `MULTISAMPLE[fixture]`'s r0",
+    ),
+    "study/truth_combined_spatial_15_2s_r0.png": (
+        "What does the studies' draw plant on two samples, `study15_2s.toml` r0: its truth on the slices' shared space?",
+        "`truth_combined_figure(spatial=True)` on `sim/manifests/study15_2s.toml` r0 (T- #810)",
+    ),
+    "study/truth_combined_spatial_15_2s_r1.png": (
+        "The same at r1: does the next realization redraw its truth, its clone count and layout with it?",
+        "`truth_combined_figure(spatial=True)` on `sim/manifests/study15_2s.toml` r1 (T- #810)",
     ),
     "spatial_multisample.png": (
         "Where is each true clone on each of the counterpart's slices?",

@@ -24,7 +24,8 @@ Its clones, events, layout and counts are drawn from what the manifest states:
     [phasing]     switch_errors, nu, unit
     [layout]      overlap, radius, vertices, jitter
     [layout.size] optional: law = "loguniform" (minimum, maximum) or
-                  "lognormal" (median, sigma), in spots (#544)
+                  "lognormal" (median, sigma), in spots (#544); edge = "grow"
+                  or "clip" (`EDGES`)
     [[slice]]     clones, offset = [x, y], regions = [{clone, center, ...}]
 
 **The generative model**, per slice and spot `s` of clone `c`, from the
@@ -129,7 +130,9 @@ REQUIRED: dict[str, tuple[str, ...]] = {
     ),
     "cna": ("mode", "n_clones", "states", "length"),
     "phasing": ("switch_errors", "nu", "unit"),
-    "layout": ("overlap", "radius", "vertices", "jitter", "max_placements"),
+    "layout": (
+        "shape", "overlap", "radius", "vertices", "jitter", "max_placements", "unplaced",
+    ),
     "config": ("base",),
 }  # fmt: skip
 """Every table and key a manifest must state. Nothing the draw assumes has a
@@ -153,6 +156,33 @@ manifest's draw before it: one truth, each realization its counts and phase. `"t
 realization after the first also draws its own tree, clone sizes and layout; the barcodes are
 shared, and realization 0 keeps the manifest's truth, so `r0_hash` reads the same in both."""
 
+CLONE_COUNTS = {"poisson": ("mean", "minimum"), "uniform": ("minimum", "maximum")}
+"""`[cna] n_clones` as a table in place of an integer: the tumour clones of each truth, drawn
+(T- #807). `poisson`: `Poisson(mean)` redrawn until at least `minimum`, so zero-truncated at
+`minimum = 1`; `uniform`: every count from `minimum` to `maximum` alike. Every slice then lists `clones = "all"`, the clones the draw gives it."""
+
+RADIUS_LAWS = {"normal": ("mean", "sd", "minimum")}
+"""`[layout] radius` as a table in place of a number (T- #807): each drawn clone's radius, in
+fractions of the shorter extent, drawn in clone order before any placement. `normal`:
+`max(minimum, Normal(mean, sd))`. A number is every clone's radius, as before."""
+
+SHAPES = ("polygons", "rectangles")
+"""`[layout] shape` (T- #807): `polygons`, each clone a jittered polygon placed in turn; or
+`rectangles`, the slices' shared frame cut into a `p x p` grid, `p = ceil(sqrt(n + 1))` for
+normal and `n` tumour clones, block `b` holding group `b % (n + 1)` and group 0 normal, whose
+block takes `[layout] normal_share` of each side squared -- CalicoST's
+`rectangle_initialize_initial_clone` layout (`port.sim.truth.clone_quadrants`). The layout's
+generator assigns the tumour clones to groups; `[layout.size]` is not stated."""
+
+UNPLACED = ("refuse", "stop", "drop")
+"""`[layout] unplaced`, what `layout` does with a drawn clone no placement clears in
+`max_placements` (T- #807): `refuse` the draw; `stop` -- the layout is final with the clones
+placed so far; or `drop` that clone and place the next. Under `stop` and `drop` the truth is
+drawn on the clones placed, renumbered `clone_0, ...` in the order they were drawn."""
+
+ALL = "all"
+"""`[[slice]] clones = "all"`: every tumour clone, however many the truth has (T- #807)."""
+
 LOH_RULES = ("reversible", "irreversible")
 """`[cna] loh`, optional: what an event may plant over its lineage (T- #698).
 Absent reads as `"reversible"`, the draw of every manifest before it."""
@@ -163,6 +193,13 @@ than one, and none more than 7 (T- #698)."""
 SIZE_LAWS = {"loguniform": ("minimum", "maximum"), "lognormal": ("median", "sigma")}
 """`[layout.size]`: each drawn clone's size in spots, per seed (#544). Optional:
 without it every drawn clone takes `[layout] radius`, as before."""
+
+EDGES = ("grow", "clip")
+"""`[layout.size] edge`, what a clone's size target means at the array's edge:
+`grow`, the polygon grows until it claims its target on the array, however much
+of it the edge clips (#544); `clip`, the polygon is sized on the array continued
+past its edge, so a clone that runs off it keeps only the spots, and so the
+UMIs, that land on it (T- #807)."""
 
 
 def references(directory: Path, names: tuple[str, ...]) -> Path:
@@ -237,7 +274,11 @@ class DrawManifest:
 
     @property
     def tumour(self) -> tuple[str, ...]:
-        return tuple(f"clone_{k}" for k in range(int(self.tables["cna"]["n_clones"])))
+        count = self.tables["cna"]["n_clones"]
+        if isinstance(count, dict):
+            msg = "[cna] n_clones is a law: `resolved` draws the count before the clones are named"
+            raise ValueError(msg)
+        return tuple(f"clone_{k}" for k in range(int(count)))
 
     def normal_frac(self, clone: str) -> float:
         value = self.tables["model"]["normal_frac"]
@@ -343,6 +384,16 @@ def _missing(document: dict[str, Any]) -> list[str]:
     return missing
 
 
+def _region_radius(region: dict[str, Any], layout: dict[str, Any]) -> float:
+    """A stated region's radius: its own, else `[layout] radius` where that is a number."""
+    if "radius" in region:
+        return float(region["radius"])
+    if isinstance(layout["radius"], dict):
+        msg = "[[slice]] regions state their radius where [layout] radius is a law"
+        raise ValueError(msg)
+    return float(layout["radius"])
+
+
 def from_document(document: dict[str, Any], root: Path = Path()) -> DrawManifest:
     missing = _missing(document)
     if missing:
@@ -352,13 +403,13 @@ def from_document(document: dict[str, Any], root: Path = Path()) -> DrawManifest
     layout = document["layout"]
     slices = tuple(
         Slice(
-            clones=tuple(s["clones"]),
+            clones=(ALL,) if s["clones"] == ALL else tuple(s["clones"]),
             offset=(float(s["offset"][0]), float(s["offset"][1])),
             regions=tuple(
                 Region(
                     clone=r["clone"],
                     center=None if "center" not in r else tuple(r["center"]),
-                    radius=float(r.get("radius", layout["radius"])),
+                    radius=_region_radius(r, layout),
                     vertices=int(r.get("vertices", layout["vertices"])),
                     jitter=float(r.get("jitter", layout["jitter"])),
                 )
@@ -370,7 +421,62 @@ def from_document(document: dict[str, Any], root: Path = Path()) -> DrawManifest
     tables = {k: v for k, v in document.items() if isinstance(v, dict)}
     manifest = DrawManifest(tables, slices, root)
     _check(manifest)
+    if not isinstance(tables["cna"]["n_clones"], dict):
+        manifest = _named(manifest, manifest.tumour)
     return manifest
+
+
+def _named(manifest: DrawManifest, tumour: tuple[str, ...]) -> DrawManifest:
+    """`manifest` with `tumour` its clones: `n_clones` their count; an `"all"` slice lists them."""
+    tables = {
+        **manifest.tables,
+        "cna": {**manifest.tables["cna"], "n_clones": len(tumour)},
+    }
+    return DrawManifest(tables, manifest.slices, manifest.root)
+
+
+def _lists(piece: Slice, clone: str) -> bool:
+    """Whether `piece` lists `clone`: by name, or as `"all"`."""
+    return piece.clones == (ALL,) or clone in piece.clones
+
+
+def _placed(
+    manifest: DrawManifest, placed: tuple[str, ...], spots: list[np.ndarray]
+) -> tuple[DrawManifest, list[np.ndarray]]:
+    """`manifest` and `spots` with `placed` as all its clones, renumbered `clone_0, ...` in
+    their order: each slice lists those it did, and each spot's label follows its clone."""
+    if len(placed) == len(manifest.tumour):
+        return manifest, spots
+    name = {old: f"clone_{k}" for k, old in enumerate(placed)}
+    tables = {
+        **manifest.tables,
+        "cna": {**manifest.tables["cna"], "n_clones": len(placed)},
+    }
+    slices = tuple(
+        piece
+        if piece.clones == (ALL,)
+        else piece._replace(clones=tuple(name[c] for c in piece.clones if c in name))
+        for piece in manifest.slices
+    )
+    index = np.full(len(manifest.tumour) + 1, -1, dtype=np.int64)
+    for old, new in name.items():
+        index[manifest.tumour.index(old)] = int(new.removeprefix("clone_"))
+    return DrawManifest(tables, slices, manifest.root), [index[lab] for lab in spots]
+
+
+def resolved(manifest: DrawManifest, rng: np.random.Generator) -> DrawManifest:
+    """`manifest` at one truth's clone count, drawn from `rng` where `[cna] n_clones` is a law
+    (`CLONE_COUNTS`); a fixed count draws nothing, so its realizations are what they were."""
+    law = manifest.tables["cna"]["n_clones"]
+    if not isinstance(law, dict):
+        return manifest
+    if law["law"] == "uniform":
+        count = int(rng.integers(int(law["minimum"]), int(law["maximum"]) + 1))
+    else:
+        count = 0
+        while count < int(law["minimum"]):
+            count = int(rng.poisson(float(law["mean"])))
+    return _named(manifest, tuple(f"clone_{k}" for k in range(count)))
 
 
 def _check(manifest: DrawManifest) -> None:
@@ -379,8 +485,22 @@ def _check(manifest: DrawManifest) -> None:
 
     if mode not in BY_MODE:
         problems.append(f"[cna] mode {mode!r}: one of {sorted(BY_MODE)}")
-    elif mode == "felsenstein":
-        leaves = int(manifest.cna["n_clones"])
+    count = manifest.cna["n_clones"]
+    if isinstance(count, dict):
+        if count.get("law") not in CLONE_COUNTS:
+            problems.append(f"[cna] n_clones law: one of {sorted(CLONE_COUNTS)}")
+        else:
+            problems += [
+                f"[cna] n_clones {k}"
+                for k in CLONE_COUNTS[count["law"]]
+                if k not in count
+            ]
+        if any(piece.clones != (ALL,) for piece in manifest.slices):
+            problems.append(
+                f'[cna] n_clones is a law: every [[slice]] lists clones = "{ALL}"'
+            )
+    if mode == "felsenstein":
+        leaves = int(count["minimum"]) if isinstance(count, dict) else int(count)
         if leaves < 2 or float(manifest.cna["expected_cnas"]) < leaves:
             problems.append(
                 f"[cna] felsenstein: n_clones >= 2 and expected_cnas >= n_clones, "
@@ -408,17 +528,43 @@ def _check(manifest: DrawManifest) -> None:
         if size.get("law") not in SIZE_LAWS:
             problems.append(f"[layout.size] law: one of {sorted(SIZE_LAWS)}")
         else:
-            absent = [k for k in SIZE_LAWS[size["law"]] if k not in size]
+            absent = [k for k in (*SIZE_LAWS[size["law"]], "edge") if k not in size]
             problems += [f"[layout.size] {k}" for k in absent]
+            if "edge" in size and size["edge"] not in EDGES:
+                problems.append(f"[layout.size] edge {size['edge']!r}: one of {EDGES}")
+    radius = manifest.layout["radius"]
+    if isinstance(radius, dict):
+        if radius.get("law") not in RADIUS_LAWS:
+            problems.append(f"[layout] radius law: one of {sorted(RADIUS_LAWS)}")
+        else:
+            problems += [
+                f"[layout] radius {k}"
+                for k in RADIUS_LAWS[radius["law"]]
+                if k not in radius
+            ]
+    if manifest.layout["shape"] not in SHAPES:
+        problems.append(f"[layout] shape {manifest.layout['shape']!r}: one of {SHAPES}")
+    elif manifest.layout["shape"] == "rectangles":
+        if "normal_share" not in manifest.layout:
+            problems.append('[layout] normal_share, which shape = "rectangles" reads')
+        if "size" in manifest.layout:
+            problems.append(
+                '[layout.size] with shape = "rectangles", which sizes by the grid'
+            )
+    if manifest.layout["unplaced"] not in UNPLACED:
+        problems.append(
+            f"[layout] unplaced {manifest.layout['unplaced']!r}: one of {UNPLACED}"
+        )
     if manifest.phasing["unit"] not in UNITS:
         problems.append(f"[phasing] unit: one of {sorted(UNITS)}")
     if manifest.array["kind"] not in ARRAYS:
         kind = manifest.array["kind"]
         problems.append(f"[array] kind {kind!r}: one of {sorted(ARRAYS)}")
 
-    known = set(manifest.tumour)
+    known = set() if isinstance(count, dict) else set(manifest.tumour)
     for index, piece in enumerate(manifest.slices):
-        unknown = (set(piece.clones) | {r.clone for r in piece.regions}) - known
+        named = set() if piece.clones == (ALL,) else set(piece.clones)
+        unknown = (named | {r.clone for r in piece.regions}) - known
         if unknown:
             problems.append(f"slice {index} names unknown clones {sorted(unknown)}")
 
@@ -787,29 +933,48 @@ def sized_polygon(
     points: np.ndarray,
     target: int,
     rng: np.random.Generator,
+    sized_on: np.ndarray | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     """`(vertices, claimed)`: the shape `polygon` draws, scaled to claim `target` spots.
 
     The phase and jitter are drawn once, then the radius is bisected: scaling
     a star-shaped polygon about its centre nests the spots it claims, so the
     count is monotone in the radius. The smallest radius claiming at least
-    `target` is kept; a polygon clipped by the array's edge claims fewer, and
-    the caller reads the realized count, not the target.
+    `target` of `sized_on` (`points` unless given) is kept, and `claimed` is
+    what it claims of `points`: on `points` a polygon clipped by the array's
+    edge grows until it claims `target`; on `unbounded`'s continuation it
+    claims fewer, and the caller reads the realized count, not the target.
     """
+    reference = points if sized_on is None else sized_on
     unit = polygon(region._replace(radius=1.0), np.zeros(2), 1.0, rng)
-    low, high = 0.0, float(np.ptp(points, axis=0).max()) / scale
+    low, high = 0.0, float(np.ptp(reference, axis=0).max()) / scale
 
-    def claimed(radius: float) -> np.ndarray:
-        return _inside(center + unit * radius * scale, points)
+    def inside(radius: float, on: np.ndarray) -> np.ndarray:
+        return _inside(center + unit * radius * scale, on)
 
     for _ in range(40):
         middle = 0.5 * (low + high)
-        if int(claimed(middle).sum()) >= target:
+        if int(inside(middle, reference).sum()) >= target:
             high = middle
         else:
             low = middle
 
-    return center + unit * high * scale, claimed(high)
+    return center + unit * high * scale, inside(high, points)
+
+
+def unbounded(frame: np.ndarray) -> np.ndarray:
+    """`frame`, an array's points, continued one period past each edge: 3 x 3 copies.
+
+    The period is the array's own: its points per row times their spacing,
+    its rows times theirs, so a hex array of even rows tiles without a seam.
+    `sized_polygon` sizes a clone on it, so the edge clips a clone rather than
+    growing it (`[layout.size] edge = "clip"`).
+    """
+    ys = np.unique(frame[:, 1])
+    row = np.sort(frame[frame[:, 1] == ys[0], 0])
+    period = np.array([row.size * np.diff(row).min(), ys.size * np.diff(ys).min()])
+    shifts = [np.array([i, j]) * period for i in (-1, 0, 1) for j in (-1, 0, 1)]
+    return np.concatenate([frame + shift for shift in shifts])
 
 
 def _inside(vertices: np.ndarray, points: np.ndarray) -> np.ndarray:
@@ -819,7 +984,9 @@ def _inside(vertices: np.ndarray, points: np.ndarray) -> np.ndarray:
 
 
 def layout(
-    manifest: DrawManifest, points: np.ndarray, rng: np.random.Generator
+    manifest: DrawManifest,
+    points: np.ndarray,
+    rng: np.random.Generator,
 ) -> tuple[list[np.ndarray], dict[str, np.ndarray]]:
     """Clone per spot of every slice, `-1` for normal, and each clone's polygon.
 
@@ -850,13 +1017,29 @@ def layout(
                 raise ValueError(msg)
             stated[region.clone] = (region, origin)
 
-    listed = [c for c in manifest.tumour if any(c in p.clones for p in manifest.slices)]
+    listed = [c for c in manifest.tumour if any(_lists(p, c) for p in manifest.slices)]
     listed += [c for c in stated if c not in listed]
+    if manifest.layout["shape"] == "rectangles":
+        return _rectangles(manifest, everything, len(frames), listed, rng)
     overlap = bool(manifest.layout["overlap"])
     size = manifest.layout.get("size")
     # NB drawn before any placement, in clone order, so a clone's size does
     #    not depend on how many placements another took.
     targets = {} if size is None else {c: clone_size(size, rng) for c in sorted(listed)}
+    law = manifest.layout["radius"]
+    # NB a drawn radius per clone, in clone order, where `[layout] radius` is a law
+    radii = (
+        {c: max(float(law["minimum"]), float(rng.normal(law["mean"], law["sd"])))
+         for c in sorted(listed)}
+        if isinstance(law, dict)
+        else dict.fromkeys(listed, float(law))
+    )  # fmt: skip
+    # NB with `edge = "clip"` a clone is sized on the arrays continued past their edges
+    sized_on = (
+        np.concatenate([unbounded(frame) for frame in frames])
+        if size is not None and size["edge"] == "clip"
+        else None
+    )
     labels = np.full(everything.shape[0], -1, dtype=np.int64)
     shapes: dict[str, np.ndarray] = {}
 
@@ -868,13 +1051,20 @@ def layout(
             region = Region(
                 clone=clone,
                 center=None,
-                radius=float(manifest.layout["radius"]),
+                radius=radii[clone],
                 vertices=int(manifest.layout["vertices"]),
                 jitter=float(manifest.layout["jitter"]),
             )
-            covering = [o for p, o in zip(manifest.slices, origins, strict=True)
-                        if clone in p.clones]  # fmt: skip
-            box = (np.max(covering, axis=0), np.min(covering, axis=0) + extent)
+            listing = [(p, o) for p, o in zip(manifest.slices, origins, strict=True)
+                       if _lists(p, clone)]  # fmt: skip
+            covering = [o for _, o in listing]
+            # NB named on slices: anywhere they all cover; listed by `"all"` alone: anywhere
+            #    any of them covers, the slices' shared space (T- #807)
+            box = (
+                (np.min(covering, axis=0), np.max(covering, axis=0) + extent)
+                if all(p.clones == (ALL,) for p, _ in listing)
+                else (np.max(covering, axis=0), np.min(covering, axis=0) + extent)
+            )
             if np.any(box[0] > box[1]):
                 msg = f"{clone} is listed on slices whose arrays do not overlap"
                 raise ValueError(msg)
@@ -888,7 +1078,7 @@ def layout(
                 center = rng.uniform(box[0], box[1])
             if box is not None and size is not None:
                 vertices, claimed = sized_polygon(
-                    region, center, scale, everything, targets[clone], rng
+                    region, center, scale, everything, targets[clone], rng, sized_on
                 )
             else:
                 vertices = polygon(region, center, scale, rng)
@@ -899,6 +1089,12 @@ def layout(
                 msg = f"region of {clone} overlaps another and [layout] overlap = false"
                 raise ValueError(msg)
         else:
+            if manifest.layout["unplaced"] == "drop":
+                # NB this clone is left out; the next is placed
+                continue
+            if manifest.layout["unplaced"] == "stop":
+                # NB final with the clones placed so far: this one and every later one are left out
+                break
             msg = (
                 f"no placement of {clone} in {manifest.layout['max_placements']} "
                 "clears the others"
@@ -908,6 +1104,50 @@ def layout(
         shapes[clone] = vertices
 
     return list(np.split(labels, len(frames))), shapes
+
+
+def _rectangles(
+    manifest: DrawManifest,
+    everything: np.ndarray,
+    n_frames: int,
+    listed: list[str],
+    rng: np.random.Generator,
+) -> tuple[list[np.ndarray], dict[str, np.ndarray]]:
+    """`[layout] shape = "rectangles"`: the shared frame's `p x p` grid (`SHAPES`), each block's
+    corners as its clone's shape -- the first block a clone holds."""
+    groups = len(listed) + 1
+    p = int(np.ceil(np.sqrt(groups)))
+    lower, upper = everything.min(axis=0), everything.max(axis=0)
+    first = np.sqrt(float(manifest.layout["normal_share"])) if groups > 1 else 1.0 / p
+
+    def cuts(axis: int) -> np.ndarray:
+        rest = np.linspace(first, 1.0, p)[1:-1] if p > 2 else np.array([])
+        edges = np.concatenate(([first], rest))[: p - 1] if p > 1 else np.array([])
+        return np.asarray(lower[axis] + edges * (upper[axis] - lower[axis]))
+
+    x_cuts, y_cuts = cuts(0), cuts(1)
+    block = np.searchsorted(
+        y_cuts, everything[:, 1], side="right"
+    ) * p + np.searchsorted(x_cuts, everything[:, 0], side="right")
+    order = [listed[k] for k in rng.permutation(len(listed))]
+    group = block % groups
+    labels = np.full(everything.shape[0], -1, dtype=np.int64)
+    shapes: dict[str, np.ndarray] = {}
+    xs = np.concatenate(([lower[0]], x_cuts, [upper[0]]))
+    ys = np.concatenate(([lower[1]], y_cuts, [upper[1]]))
+    for k, clone in enumerate(order, start=1):
+        labels[group == k] = manifest.tumour.index(clone)
+        b = int(np.flatnonzero(np.arange(p * p) % groups == k)[0])
+        (i, j) = divmod(b, p)
+        shapes[clone] = np.array(
+            [
+                [xs[j], ys[i]],
+                [xs[j + 1], ys[i]],
+                [xs[j + 1], ys[i + 1]],
+                [xs[j], ys[i + 1]],
+            ]
+        )
+    return list(np.split(labels, n_frames)), shapes
 
 
 def barcodes(
@@ -1207,7 +1447,6 @@ def realize(
     resources = resources or manifest.resources()
     vary = manifest.sample.get("vary", "counts")
 
-    clones = ("normal", *manifest.tumour)
     laws = _laws(manifest)
 
     baseline = pd.read_csv(
@@ -1251,9 +1490,18 @@ def realize(
         tree_rng: np.random.Generator, layout_rng: np.random.Generator
     ) -> tuple[Truth, np.ndarray, np.ndarray, np.ndarray]:
         """A truth, and what its counts are drawn from: gene weights, library, allele shares."""
-        tree = draw_tree(manifest, tree_rng)
+        # NB its clones first, where `[cna] n_clones` is a law: a fixed count draws nothing
+        drawn = resolved(manifest, tree_rng)
+        # NB laid out before the tree is drawn (their generators are separate): under
+        #    `[layout] unplaced = "stop"` the truth has the clones the layout placed
+        spots, shapes = layout(drawn, points, layout_rng)
+        drawn, spots = _placed(
+            drawn, tuple(c for c in drawn.tumour if c in shapes), spots
+        )
+        clones = ("normal", *drawn.tumour)
+        tree = draw_tree(drawn, tree_rng)
         depth_factor = _depth(
-            manifest, clones, clone_copies(tree, clones, gene_chrom, gene_pos)
+            drawn, clones, clone_copies(tree, clones, gene_chrom, gene_pos)
         )
         snp_copies = clone_copies(tree, clones, snp_chrom, snp_pos)
         share = np.stack(
@@ -1261,15 +1509,13 @@ def realize(
                 allele_share(
                     snp_copies[:, label, 0].astype(np.float64),
                     snp_copies[:, label, 1].astype(np.float64),
-                    manifest.normal_frac(clone),
-                    manifest.model["admixture"],
+                    drawn.normal_frac(clone),
+                    drawn.model["admixture"],
                 )
                 for label, clone in enumerate(clones)
             ]
         )
-        labels = [
-            lab + 1 for lab in layout(manifest, points, layout_rng)[0]
-        ]  # NB `normal` is 0.
+        labels = [lab + 1 for lab in spots]  # NB `normal` is 0.
         profile = truth_profile(tree, clones, manifest.genome["chromosome_lengths"])
         truth = Truth(clones, tree, profile, labels, ids, combined, rows, cols,
                       baseline["gene"].to_numpy(), snp_ids, p_switch)  # fmt: skip
@@ -1344,7 +1590,7 @@ def write(
     #    in `unique_snp_ids.npy`'s order; a switch is a change within a chromosome.
     np.save(out / "truth_phase.npy", realized.phase)
     write_inputs(manifest, out, t.sample_ids, resources)
-    write_manifest(manifest, out, resources, realized.index)
+    write_manifest(_named(manifest, t.clones[1:]), out, resources, realized.index)
     return out
 
 

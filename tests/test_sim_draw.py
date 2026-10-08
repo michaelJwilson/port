@@ -486,9 +486,17 @@ def test_a_manifest_extended_from_elsewhere_keeps_its_base_paths(
 
 
 def _sized(law: dict[str, Any]) -> DrawManifest:
-    """`study` at its own 60 x 50, with `[layout.size]` replaced by `law`."""
-    document = extended(SIM_MANIFESTS / "study.toml")
-    document["layout"]["size"] = law
+    """`study` at its own 60 x 50, with `[layout.size]` replaced by `law`: three named clones,
+    each placed or the draw refused, so the size law is all that varies (T- #807)."""
+    document = extended(SIM_MANIFESTS / "study15.toml")
+    document["cna"]["n_clones"] = 3
+    document["slice"] = [
+        {"offset": [0.0, 0.0], "clones": ["clone_0", "clone_1", "clone_2"]}
+    ]
+    document["layout"] |= {
+        "shape": "polygons", "radius": 0.2, "max_placements": 1000, "unplaced": "refuse",
+        "size": law,
+    }  # fmt: skip
     return from_document(document, SIM_MANIFESTS)
 
 
@@ -504,7 +512,9 @@ def test_clone_sizes_follow_the_stated_law_across_seeds() -> None:
     from port.sim.draw import clone_size
     from scipy.stats import kstest
 
-    manifest = _sized({"law": "loguniform", "minimum": 25, "maximum": 1000})
+    manifest = _sized(
+        {"law": "loguniform", "minimum": 25, "maximum": 1000, "edge": "grow"}
+    )
     _, _, points = hex_array(60, 50)
     sizes, ratios = [], []
 
@@ -530,7 +540,7 @@ def test_clone_sizes_follow_the_stated_law_across_seeds() -> None:
 @pytest.mark.infra
 def test_a_seed_draws_the_same_sizes_and_an_unknown_law_is_refused() -> None:
     """The layout is a function of the seed; `[layout.size]` names a law it has."""
-    manifest = _sized({"law": "lognormal", "median": 200, "sigma": 0.5})
+    manifest = _sized({"law": "lognormal", "median": 200, "sigma": 0.5, "edge": "grow"})
     _, _, points = hex_array(60, 50)
     first, _ = layout(manifest, points, np.random.default_rng(7))
     second, _ = layout(manifest, points, np.random.default_rng(7))
@@ -538,9 +548,45 @@ def test_a_seed_draws_the_same_sizes_and_an_unknown_law_is_refused() -> None:
     np.testing.assert_array_equal(first[0], second[0])
 
     with pytest.raises(ValueError, match=r"\[layout.size\] law"):
-        _sized({"law": "uniform", "minimum": 1, "maximum": 2})
+        _sized({"law": "uniform", "minimum": 1, "maximum": 2, "edge": "grow"})
     with pytest.raises(ValueError, match=r"\[layout.size\] sigma"):
-        _sized({"law": "lognormal", "median": 200})
+        _sized({"law": "lognormal", "median": 200, "edge": "grow"})
+    with pytest.raises(ValueError, match=r"\[layout.size\] edge"):
+        _sized({"law": "lognormal", "median": 200, "sigma": 0.5})
+    with pytest.raises(ValueError, match=r"\[layout.size\] edge 'shrink'"):
+        _sized({"law": "lognormal", "median": 200, "sigma": 0.5, "edge": "shrink"})
+
+
+@pytest.mark.analytic
+def test_a_clipped_clone_keeps_what_lands_on_the_array() -> None:
+    """`edge = "clip"` on `study15.toml`'s sizes, 200 seeds x 3 clones (T- #807).
+
+    A clone is sized on the array continued past its edge, so it claims at most
+    its target (5% over for the lattice's ties) and one that runs off keeps
+    fewer spots: measured, the realized share of the target has median 0.85.
+    Every seed places every clone, where `grow` refused 6 of the 200 (the three
+    targets can sum to 2,245 of the slice's 3,000 spots).
+    """
+    from port.sim.draw import clone_size
+
+    manifest = _sized(
+        {"law": "loguniform", "minimum": 100, "maximum": 1000, "edge": "clip"}
+    )
+    _, _, points = hex_array(60, 50)
+    ratios = []
+
+    for seed in range(200):
+        labels, _ = layout(manifest, points, np.random.default_rng(seed))
+        rng = np.random.default_rng(seed)
+        targets = {
+            c: clone_size(manifest.layout["size"], rng) for c in sorted(manifest.tumour)
+        }
+        for clone, target in targets.items():
+            size = int(np.sum(np.concatenate(labels) == manifest.tumour.index(clone)))
+            ratios.append(size / target)
+
+    assert max(ratios) <= 1.05, max(ratios)
+    assert np.mean(np.array(ratios) < 0.9) > 0.05, np.quantile(ratios, [0.05, 0.25])
 
 
 @pytest.mark.bug
@@ -640,3 +686,102 @@ def test_felsenstein_refuses_fewer_expected_events_than_clones() -> None:
     document["cna"]["expected_cnas"] = 2
     with pytest.raises(ValueError, match="felsenstein"):
         from_document(document)
+
+
+@pytest.mark.analytic
+def test_a_clone_count_law_draws_its_counts() -> None:
+    """`[cna] n_clones` as a law, 6,000 draws each (T- #807).
+
+    `uniform` 2-4 (`study15`): each count within 0.03 of 1/3 (about 5 standard errors);
+    `poisson` at mean 3, minimum 1: at least 1, the mean 3 / (1 - e^-3) = 3.157 to 0.06.
+    A fixed count consumes nothing from the generator.
+    """
+    from port.sim.draw import read_manifest, resolved
+
+    manifest = read_manifest(SIM_MANIFESTS / "study15.toml")
+    rng = np.random.default_rng(807)
+    counts = np.array([len(resolved(manifest, rng).tumour) for _ in range(6000)])
+
+    assert set(counts) == {2, 3, 4}
+    assert np.all(np.abs(np.bincount(counts)[2:] / counts.size - 1 / 3) < 0.03)
+
+    document = extended(SIM_MANIFESTS / "study15.toml")
+    document["cna"]["n_clones"] = {"law": "poisson", "mean": 3, "minimum": 1}
+    poisson = from_document(document, SIM_MANIFESTS)
+    counts = np.array([len(resolved(poisson, rng).tumour) for _ in range(6000)])
+
+    assert counts.min() >= 1
+    assert abs(counts.mean() - 3 / (1 - np.exp(-3))) < 0.06, counts.mean()
+
+    fixed = read_manifest(SIM_MANIFESTS / "dev_tree_1s.toml")
+    rng = np.random.default_rng(0)
+    assert resolved(fixed, rng) is fixed
+    assert rng.random() == np.random.default_rng(0).random()
+
+
+@pytest.mark.analytic
+def test_a_dropped_clone_leaves_the_rest_numbered_in_order() -> None:
+    """`[layout] unplaced = "drop"` on `study15` (T- #807): the truth's clones are
+    `clone_0 ...` with no gap, every one with spots, whichever drawn clone was dropped (12 realizations)."""
+    from dataclasses import replace
+
+    from port.sim.draw import merged_tables, read_manifest, realize
+
+    manifest = read_manifest(SIM_MANIFESTS / "study15.toml")
+    manifest = replace(
+        manifest,
+        tables=merged_tables(manifest.tables, {"sample": {"realizations": 12}}),
+    )
+    for realized in realize(manifest):
+        truth = realized.truth
+        n = len(truth.clones) - 1
+
+        assert truth.clones[1:] == tuple(f"clone_{k}" for k in range(n))
+        assert set(np.unique(truth.labels[0])) == set(range(n + 1))
+
+
+@pytest.mark.analytic
+def test_a_clone_that_does_not_fit_ends_the_layout() -> None:
+    """`[layout] unplaced = "stop"`: the placed clones are a prefix of the drawn, every one
+    with spots, and a later clone is never placed past an unplaced one (T- #807)."""
+    from port.sim.draw import resolved
+
+    document = extended(SIM_MANIFESTS / "study15.toml")
+    document["layout"] |= {"shape": "polygons", "max_placements": 10, "unplaced": "stop",
+                           "size": {"law": "lognormal", "median": 1896, "sigma": 0.665,
+                                    "edge": "clip"}}  # fmt: skip
+    manifest = from_document(document, SIM_MANIFESTS)
+    _, _, points = hex_array(60, 50)
+    stopped = 0
+    for seed in range(60):
+        drawn = resolved(manifest, np.random.default_rng(seed))
+        labels, shapes = layout(drawn, points, np.random.default_rng(10_000 + seed))
+        placed = [c for c in drawn.tumour if c in shapes]
+
+        assert placed == list(drawn.tumour[: len(placed)])
+        assert all(np.any(labels[0] == k) for k in range(len(placed)))
+        assert not np.any(labels[0] >= len(placed))
+        stopped += len(placed) < len(drawn.tumour)
+
+    assert stopped > 0
+
+
+@pytest.mark.analytic
+def test_rectangles_partition_the_frame_by_the_clone_count() -> None:
+    """`[layout] shape = "rectangles"` (T- #807): every spot in one block of a `p x p` grid,
+    `p = ceil(sqrt(n + 1))`, each tumour clone holding a block, normal the top-left one and
+    at least `normal_share` of the slice; against `port.sim.truth.clone_quadrants`' counts."""
+    from port.sim.draw import resolved
+
+    document = extended(SIM_MANIFESTS / "study15.toml")
+    document["layout"] |= {"shape": "rectangles", "normal_share": 0.3}
+    manifest = from_document(document, SIM_MANIFESTS)
+    _, _, points = hex_array(60, 50)
+    for seed in range(40):
+        drawn = resolved(manifest, np.random.default_rng(seed))
+        labels, shapes = layout(drawn, points, np.random.default_rng(seed))
+        n = len(drawn.tumour)
+
+        assert sorted(shapes) == sorted(drawn.tumour)
+        assert set(np.unique(labels[0])) == {-1, *range(n)}
+        assert np.mean(labels[0] == -1) >= float(manifest.layout["normal_share"]) - 0.02

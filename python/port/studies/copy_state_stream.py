@@ -1,7 +1,7 @@
 """#540: copy-state starts at the planted clones, each scored and polished by `run_cnaster_port --sal`'s own Baum-Welch (#730).
 
 `run_study --copy-state-stream MANIFEST OUT_DIR [--problems 5] [--seeds 3] [--held-out 5] [--first 0] [--settings PATH] [--workers 4] [--all | --starts NAME ...]`
-`MANIFEST` is `sim/manifests/study.toml`, the studies' one draw (T- #807).
+`MANIFEST` is `sim/manifests/study15.toml`, or `study10.toml`, the studies' draws (T- #807).
 
 `run_calibrate --copy MANIFEST [--starts NAME ...]` tunes the samplers on the HMM (`anneal-hmm`, `tempering-hmm`,
 `hmc-hmm`, `sal`'s since #634) on the `--held-out` realizations and writes `SETTINGS` (#749 WP1), as

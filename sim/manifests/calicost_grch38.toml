@@ -86,11 +86,15 @@ nu = 1.0
 unit = "centimorgan"
 
 [layout]
+# NB each clone a jittered polygon placed in turn (`port.sim.draw.SHAPES`)
+shape = "polygons"
 overlap = false
 radius = 0.3
 vertices = 6
 jitter = 0.2
 max_placements = 1000
+# NB a clone no placement clears refuses the draw (`port.sim.draw.UNPLACED`)
+unplaced = "refuse"
 
 [config]
 # NB the configuration shipped with CalicoST's sims;

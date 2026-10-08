@@ -7,6 +7,7 @@ commit in `port.qa.provenance`.
 
 from __future__ import annotations
 
+import math
 from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
@@ -16,6 +17,7 @@ from port.qa import provenance
 __all__ = [
     "DODGE",
     "FLOOR",
+    "decade_above",
     "gap_page",
     "key_below",
     "merged",
@@ -31,6 +33,11 @@ DODGE = 1.12
 
 FLOOR = 1e-2
 """The gap figures' "0": runs within `FLOOR` nats of the reference."""
+
+
+def decade_above(value: float) -> float:
+    """The gap axes' top: the next power of ten above `value`, the highest point drawn."""
+    return float(10.0 ** (math.floor(math.log10(value)) + 1))
 
 
 def tt(name: str) -> str:
