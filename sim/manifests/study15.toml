@@ -8,7 +8,7 @@ extends = "calicost_grch38.toml"
 [sample]
 name = "study15"
 # NB `tests.sim_stages.realization_hash` of r0 as drawn here (`tests/test_sim_r0_hash.py`).
-r0_hash = "2008ae3a"
+r0_hash = "784e4ebf"
 seed = 0
 output = "../generated"
 # NB one per draw: `port.studies.population.draw_member` draws r0 of each seed, and a stream's
@@ -33,21 +33,21 @@ admixture = "cell"
 normal_frac = 0.14
 
 [layout]
-# NB CalicoST easy's and hard's layout: the slice cut into a p x p grid of rectangles,
-#    p = ceil(sqrt(n + 1)) for normal and the n tumour clones the truth draws, normal's block
-#    at least 0.3 of the slice (`port.sim.draw.SHAPES`, T- #807). A clone's spots, and so its
-#    UMIs, follow from the count.
-shape = "rectangles"
-normal_share = 0.3
+# NB dev_tree's polygons: each clone a jittered hexagon, its radius drawn Normal(0.3, 0.1) of the
+#    slice's shorter side, floored at 0.05, placed where no earlier clone is; one that 1,000
+#    centres do not clear is dropped and the next placed (T- #807).
+shape = "polygons"
 overlap = false
-radius = 0.2
+radius = { law = "normal", mean = 0.3, sd = 0.1, minimum = 0.05 }
 vertices = 6
+max_placements = 1000
+unplaced = "drop"
 
 [cna]
 mode = "tree"
-# NB tumour clones per truth: Poisson at mean 3, zero-truncated (T- #807): mean 3.16, P(1) = 0.16.
-#    The run's `hmrf.n_clones` stays the configuration's, whatever the draw gives.
-n_clones = { law = "poisson", mean = 3, minimum = 1 }
+# NB tumour clones per truth: 3 - 1, 3 or 3 + 1, alike (T- #807). The run's `hmrf.n_clones`
+#    stays the configuration's, whatever the draw gives.
+n_clones = { law = "uniform", minimum = 2, maximum = 4 }
 # NB a clone carries 1 + 4 + (0 or 1) events: enough per member for the length curve
 #    without covering the genome.
 trunk = 1

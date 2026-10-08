@@ -515,9 +515,9 @@ median, against 29-35% under the exponential (#619;
 `run_study --cna-lengths` draws both laws). `study15.toml` is the draw the Potts stream, the copy-state stream and the
 population study read, and `study10.toml` the same at 10 Mb (`study15_2s.toml` on two
 slices, for figures): CNA lengths lognormal at a 15 Mb median; every (A, B)
-up to a total of 6, uniform; a zero-truncated Poisson(3) count of clones
-(`[cna] n_clones` as a law), laid out as CalicoST easy's and hard's: the slice
-cut into a grid of rectangles by that count (`[layout] shape = "rectangles"`); CalicoST
+up to a total of 6, uniform; 2, 3 or 4 tumour clones alike (`[cna] n_clones` as a
+law), each a jittered hexagon of radius Normal(0.3, 0.1), a clone that 1,000 centres do not
+clear dropped (`[layout] unplaced = "drop"`); CalicoST
 hard's admixture (0.14, `cell`), BAF overdispersion, phase switches,
 irreversible LOH, and truth varied per realization (T- #807; `population*.toml`
 retired to `sim/sandbox/manifests/`);

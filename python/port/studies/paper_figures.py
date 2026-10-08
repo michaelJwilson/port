@@ -797,7 +797,7 @@ QUESTIONS: dict[str, tuple[str, str]] = {
         "`multisample_pages`: `truth_combined_figure(spatial=True)` on `MULTISAMPLE[fixture]`'s r0",
     ),
     "study/truth_combined_spatial_15_2s_r0.png": (
-        "What does the studies' draw plant on two samples, `study15_2s.toml` r0: CalicoST's rectangles by a Poisson clone count?",
+        "What does the studies' draw plant on two samples, `study15_2s.toml` r0: its truth on the slices' shared space?",
         "`truth_combined_figure(spatial=True)` on `sim/manifests/study15_2s.toml` r0 (T- #810)",
     ),
     "study/truth_combined_spatial_15_2s_r1.png": (

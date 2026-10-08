@@ -494,7 +494,8 @@ def _sized(law: dict[str, Any]) -> DrawManifest:
         {"offset": [0.0, 0.0], "clones": ["clone_0", "clone_1", "clone_2"]}
     ]
     document["layout"] |= {
-        "shape": "polygons", "max_placements": 1000, "unplaced": "refuse", "size": law,
+        "shape": "polygons", "radius": 0.2, "max_placements": 1000, "unplaced": "refuse",
+        "size": law,
     }  # fmt: skip
     return from_document(document, SIM_MANIFESTS)
 
@@ -688,17 +689,26 @@ def test_felsenstein_refuses_fewer_expected_events_than_clones() -> None:
 
 
 @pytest.mark.analytic
-def test_a_clone_count_law_draws_a_zero_truncated_poisson() -> None:
-    """`[cna] n_clones = {law = "poisson", mean = 3, minimum = 1}`, 4,000 draws (T- #807).
+def test_a_clone_count_law_draws_its_counts() -> None:
+    """`[cna] n_clones` as a law, 6,000 draws each (T- #807).
 
-    The count is at least 1, its mean the zero-truncated Poisson's, 3 / (1 - e^-3) = 3.157,
-    to 0.06 (about 4 standard errors), and a fixed count consumes nothing from the generator.
+    `uniform` 2-4 (`study15`): each count within 0.03 of 1/3 (about 5 standard errors);
+    `poisson` at mean 3, minimum 1: at least 1, the mean 3 / (1 - e^-3) = 3.157 to 0.06.
+    A fixed count consumes nothing from the generator.
     """
     from port.sim.draw import read_manifest, resolved
 
     manifest = read_manifest(SIM_MANIFESTS / "study15.toml")
     rng = np.random.default_rng(807)
-    counts = np.array([len(resolved(manifest, rng).tumour) for _ in range(4000)])
+    counts = np.array([len(resolved(manifest, rng).tumour) for _ in range(6000)])
+
+    assert set(counts) == {2, 3, 4}
+    assert np.all(np.abs(np.bincount(counts)[2:] / counts.size - 1 / 3) < 0.03)
+
+    document = extended(SIM_MANIFESTS / "study15.toml")
+    document["cna"]["n_clones"] = {"law": "poisson", "mean": 3, "minimum": 1}
+    poisson = from_document(document, SIM_MANIFESTS)
+    counts = np.array([len(resolved(poisson, rng).tumour) for _ in range(6000)])
 
     assert counts.min() >= 1
     assert abs(counts.mean() - 3 / (1 - np.exp(-3))) < 0.06, counts.mean()
@@ -707,6 +717,27 @@ def test_a_clone_count_law_draws_a_zero_truncated_poisson() -> None:
     rng = np.random.default_rng(0)
     assert resolved(fixed, rng) is fixed
     assert rng.random() == np.random.default_rng(0).random()
+
+
+@pytest.mark.analytic
+def test_a_dropped_clone_leaves_the_rest_numbered_in_order() -> None:
+    """`[layout] unplaced = "drop"` on `study15` (T- #807): the truth's clones are
+    `clone_0 ...` with no gap, every one with spots, whichever drawn clone was dropped (12 realizations)."""
+    from dataclasses import replace
+
+    from port.sim.draw import merged_tables, read_manifest, realize
+
+    manifest = read_manifest(SIM_MANIFESTS / "study15.toml")
+    manifest = replace(
+        manifest,
+        tables=merged_tables(manifest.tables, {"sample": {"realizations": 12}}),
+    )
+    for realized in realize(manifest):
+        truth = realized.truth
+        n = len(truth.clones) - 1
+
+        assert truth.clones[1:] == tuple(f"clone_{k}" for k in range(n))
+        assert set(np.unique(truth.labels[0])) == set(range(n + 1))
 
 
 @pytest.mark.analytic
@@ -740,9 +771,11 @@ def test_rectangles_partition_the_frame_by_the_clone_count() -> None:
     """`[layout] shape = "rectangles"` (T- #807): every spot in one block of a `p x p` grid,
     `p = ceil(sqrt(n + 1))`, each tumour clone holding a block, normal the top-left one and
     at least `normal_share` of the slice; against `port.sim.truth.clone_quadrants`' counts."""
-    from port.sim.draw import read_manifest, resolved
+    from port.sim.draw import resolved
 
-    manifest = read_manifest(SIM_MANIFESTS / "study15.toml")
+    document = extended(SIM_MANIFESTS / "study15.toml")
+    document["layout"] |= {"shape": "rectangles", "normal_share": 0.3}
+    manifest = from_document(document, SIM_MANIFESTS)
     _, _, points = hex_array(60, 50)
     for seed in range(40):
         drawn = resolved(manifest, np.random.default_rng(seed))
