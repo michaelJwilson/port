@@ -94,13 +94,14 @@ TRACK_FONT_SIZE = 6.0
 keys, in `truth_combined` and `combined` alike: a track is a third of an
 inch tall at 5 clones, and 8 pt crowds it (#743)."""
 
-CAPTION_ROOM = 1.5
+CAPTION_ROOM = 1.0
 """Inches of the text block a figure leaves for its caption (T- #733).
 
 A page drawn `PAPER_WIDTH` by `TEXT_HEIGHT` and included at
 `width=\\linewidth` under a one-line `\\caption` is too large for the page,
-by 23.0 pt on `llncs`'s 122 by 193 mm block (`pdflatex`); 1.5 in leaves a
-caption of several lines with `\\textfloatsep`.
+by 23.0 pt on `llncs`'s 122 by 193 mm block (`pdflatex`); 1.0 in (72.27 pt)
+leaves 49.3 pt past that for the caption's further lines and
+`\\textfloatsep`, 1.5 in until T- #791.
 """
 
 Page = Literal["third", "half", "three_quarters", "full"]

@@ -55,6 +55,7 @@ FLAGS = ("--sal", "--png-copies")
 
 TRUTH = (
     "truth_combined.png",
+    "truth_combined_spatial.png",
     "simulated_tree.png",
     "spatial.png",
     "clones_genomic.png",
@@ -128,39 +129,49 @@ extends the fixture's and replaces only the slices (#745)."""
 
 MULTISAMPLE_PAGES = (
     "truth_combined_multisample.png",
+    "truth_combined_spatial_multisample.png",
     "spatial_multisample.png",
     "he_multisample.png",
 )
 """For `MULTISAMPLE[fixture]`'s r0, beside the fixture's own: what was planted
-(`truth_combined`), each spot's true clone per slice (`analysis.plot_spatial`),
+(`truth_combined`, and with each slice's true clones in place of RDR and BAF),
+each spot's true clone per slice (`analysis.plot_spatial`),
 and the slide each slice's planted clones stain (`port.sim.he_slide`)."""
 
 
 def he_slices_figure(r: Any) -> Any:
-    """Each slice's mocked H&E, stained by its spots' planted clones (`mock_he`), side by side."""
-    import matplotlib.pyplot as plt
+    """Each slice's mocked H&E, stained by its spots' planted clones (`mock_he`),
+    in the spatial page's format and frame (`port.extensions.spatial_page`,
+    `analysis.slice_frame`): one panel per slice, the region they share dashed
+    (T- #791)."""
     from scipy.spatial import cKDTree
 
-    from port.extensions.combined_figure import FONT_SIZE
-    from port.extensions.figure_style import PAPER_WIDTH
+    from port.extensions.combined_figure import page_style
+    from port.extensions.figure_style import fit_to_content
+    from port.extensions.spatial_page import panel_row
+    from port.sim.analysis import frame_panels, slice_frame
     from port.sim.he_slide import mock_he
 
-    index = {clone: k for k, clone in enumerate(r.clones)}
-    samples = list(dict.fromkeys(r.truth["sample_id"]))
-    figure, axes = plt.subplots(
-        1, len(samples), figsize=(PAPER_WIDTH, PAPER_WIDTH / len(samples))
-    )
-    for ax, sample in zip(np.atleast_1d(axes), samples, strict=True):
-        spots = r.truth[r.truth["sample_id"] == sample]
-        # NB rows down the page and columns across, as `plot_spatial` draws x and y
-        coords = spots[["y", "x"]].to_numpy()
-        labels = spots["labels"].map(index).to_numpy()
-        lattice = (int(coords[:, 0].max()) + 1, int(coords[:, 1].max()) + 1)
-        cells = np.indices(lattice).reshape(2, -1).T
-        _, nearest = cKDTree(coords).query(cells)
-        ax.imshow(mock_he(labels[nearest], lattice).image)
-        ax.set_title(f"slice {sample}", fontsize=FONT_SIZE)
-        ax.set_axis_off()
+    with page_style():
+        index = {clone: k for k, clone in enumerate(r.clones)}
+        frame = slice_frame(r)
+        figure, axes = panel_row(len(frame.slices), frame.aspect)
+        for k, (ax, sample) in enumerate(zip(axes, frame.slices, strict=True)):
+            spots = r.truth[r.truth["sample_id"] == sample]
+            # NB lattice rows are `y`, columns `x`; `mock_he` transposes, so the
+            #    image runs `y` across and `x` down, as `draw_spatial` draws them.
+            coords = spots[["y", "x"]].to_numpy()
+            labels = spots["labels"].map(index).to_numpy()
+            lattice = (int(coords[:, 0].max()) + 1, int(coords[:, 1].max()) + 1)
+            cells = np.indices(lattice).reshape(2, -1).T
+            _, nearest = cKDTree(coords).query(cells)
+            ox, oy = frame.origins[k]
+            extent = (ox, ox + lattice[0] / 2.0,
+                      -(oy + lattice[1] * np.sqrt(3.0) / 2.0), -oy)  # fmt: skip
+            ax.imshow(mock_he(labels[nearest], lattice).image, extent=extent,
+                      interpolation="none")  # fmt: skip
+        frame_panels(axes, frame)
+        fit_to_content(figure)
     return figure
 
 
@@ -179,8 +190,12 @@ def multisample_pages(fixture: str, draw: Path | None, out: Path) -> list[Path]:
     if counterpart is None:
         return []
     r = analysis.read(realization(counterpart, draw))
-    truth, spatial, he = (out / name for name in MULTISAMPLE_PAGES)
-    pages = ((truth_combined_figure(r, metric=True), truth), (he_slices_figure(r), he))
+    truth, truth_spatial, spatial, he = (out / name for name in MULTISAMPLE_PAGES)
+    pages = (
+        (truth_combined_figure(r, metric=True), truth),
+        (truth_combined_figure(r, metric=True, spatial=True), truth_spatial),
+        (he_slices_figure(r), he),
+    )
     for figure, path in pages:
         with page_style():
             figure.savefig(
@@ -189,7 +204,7 @@ def multisample_pages(fixture: str, draw: Path | None, out: Path) -> list[Path]:
         plt.close(figure)
     with tempfile.TemporaryDirectory() as scratch:
         shutil.move(analysis.plot_spatial(r, Path(scratch)), spatial)
-    return [truth, spatial, he]
+    return [truth, truth_spatial, spatial, he]
 
 
 def truth_figures(path: Path, out: Path) -> list[Path]:
@@ -209,6 +224,10 @@ def truth_figures(path: Path, out: Path) -> list[Path]:
     written = [w for w in written if w.name != "mutation_tree.png"]
     pages = (
         ("truth_combined.png", truth_combined_figure(r, metric=True)),
+        (
+            "truth_combined_spatial.png",
+            truth_combined_figure(r, metric=True, spatial=True),
+        ),
         ("simulated_tree.png", simulated_tree_figure(r)),
     )
     for name, figure in pages:
@@ -756,9 +775,17 @@ QUESTIONS: dict[str, tuple[str, str]] = {
         "What was planted, on one page: tree, (A, B) profile, RDR and BAF per tumour clone, and the phase switches?",
         "`port.sim.truth_figure.truth_combined_figure`",
     ),
+    "truth_combined_spatial.png": (
+        "The same, with where each true clone lies in place of RDR and BAF per clone?",
+        "`port.sim.truth_figure.truth_combined_figure(spatial=True)`",
+    ),
     "truth_combined_multisample.png": (
         "The same, for the fixture's multi-sample counterpart: the same clones and laws on two overlapping slices, phase switch errors on?",
         "`multisample_pages`: `truth_combined_figure` on `MULTISAMPLE[fixture]`'s r0 (`sim/manifests/dev_tree_easy.toml`)",
+    ),
+    "truth_combined_spatial_multisample.png": (
+        "The same with where each true clone lies, for the counterpart: each slice, the region they share dashed?",
+        "`multisample_pages`: `truth_combined_figure(spatial=True)` on `MULTISAMPLE[fixture]`'s r0",
     ),
     "spatial_multisample.png": (
         "Where is each true clone on each of the counterpart's slices?",
@@ -809,6 +836,7 @@ def curate(out: Path, into: Path = SUPPORTING) -> list[Path]:
     """
     for page in (
         "truth/truth_combined.png",
+        "truth/truth_combined_spatial.png",
         *(f"truth/{p}" for p in MULTISAMPLE_PAGES),
         "run/combined.png",
     ):

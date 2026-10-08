@@ -1199,36 +1199,37 @@ def integer_recorded(recorded: Recorded) -> Recorded:
     return merged
 
 
-def _draw_he_spatial(
-    figure: Any, coords: np.ndarray, he_frame: Any, he_labels: np.ndarray
-) -> tuple[Any, Any]:
+def he_segmentation_figure(
+    coords: np.ndarray, he_frame: Any, he_labels: np.ndarray, width: float | None = None
+) -> Any:
     """(a) the slide and (b) each spot's H&E class, tiled as `_draw_spatial`
-    tiles the clones, in `HE_PALETTE`, keyed darkest first (T- #771)."""
+    tiles the clones, in `HE_PALETTE`, keyed darkest first under (b) (T- #771);
+    in the spatial pages' format (`port.extensions.spatial_page`, T- #791).
+    """
     import pandas as pd
 
+    from port.extensions.figure_style import fit_to_content
+    from port.extensions.spatial_page import format_panel, panel_row, spatial_key
     from port.patch.plotting.spatial import draw_clones_spatial, spot_colours
 
+    coords = np.asarray(coords)
     classes = pd.Series([f"H&E {int(c)}" for c in he_labels])
-    slide_ax = figure.add_axes((0.0, 0.0, 0.4, 0.4))
-    spatial_ax = figure.add_axes((0.5, 0.0, 0.4, 0.4))
+    figure, (slide_ax, class_ax) = panel_row(2, 1.0, width)
     # NB no upstream key: it reads an integer clone id from each label.
     draw_clones_spatial(
-        spatial_ax, coords, classes, None, palette=HE_PALETTE, legend=False
+        class_ax, coords, classes, None, palette=HE_PALETTE, legend=False
     )
     _, names, colours = spot_colours(classes, palette=HE_PALETTE)
-    _clone_key(spatial_ax, [str(n) for n in names], list(colours))
-
     image, extent = slide_image(he_frame)
     slide_ax.imshow(image, extent=extent, interpolation="none")
-    slide_ax.set_xlim(spatial_ax.get_xlim())
-    slide_ax.set_ylim(spatial_ax.get_ylim())
-    slide_ax.set_aspect("equal")
-
-    for ax in (slide_ax, spatial_ax):
-        _extents(ax, coords)
-    spatial_ax.tick_params(axis="y", labelleft=False)
-
-    return slide_ax, spatial_ax
+    # NB the section (b) shows, so a boundary sits at the same place in both.
+    limits = class_ax.get_xlim(), class_ax.get_ylim()
+    format_panel(slide_ax, "H&E", *limits, fontsize=FONT_SIZE)
+    format_panel(class_ax, "H&E class", *limits, fontsize=FONT_SIZE)
+    spatial_key(class_ax, [str(n) for n in names], list(colours), marker="s",
+                fontsize=FONT_SIZE)  # fmt: skip
+    fit_to_content(figure)
+    return figure
 
 
 def _draw_spatial(
@@ -1236,11 +1237,8 @@ def _draw_spatial(
     recorded: Recorded,
     he_frame: Any,
     labels: str = "integer",
-    he_labels: np.ndarray | None = None,
 ) -> tuple[Any, Any]:
-    """The slide and the clones on `figure`, drawn but not yet placed; with
-    `he_labels`, each spot's H&E class (`he_classes`), the classes in place
-    of the clones, in `HE_PALETTE` (T- #771).
+    """The slide and the clones on `figure`, drawn but not yet placed.
 
     `labels` is "integer", the default, for the integer clones
     (`integer_recorded`, #344, #745), which needs the run's profile call; or
@@ -1254,9 +1252,6 @@ def _draw_spatial(
         msg = "expected recorded.spatial is not None"
         raise AssertionError(msg)
     coords, assignment = recorded.spatial.args[:2]
-
-    if he_labels is not None:
-        return _draw_he_spatial(figure, np.asarray(coords), he_frame, he_labels)
 
     if labels == "integer":
         coords, assignment = integer_recorded(recorded).spatial.args[:2]  # type: ignore[union-attr]
@@ -1312,8 +1307,9 @@ def spatial_figure(
     no caption.
 
     `labels` as `_draw_spatial` takes it: "integer" (#344) or "continuous";
-    with `he_labels`, each spot's class from `he_classes`, (b) shows the H&E
-    classes beside their slide in place of the clones (T- #771).
+    with `he_labels`, each spot's class from `he_classes`, the page is
+    `he_segmentation_figure`: the H&E classes beside their slide in place of
+    the clones (T- #771), in the spatial pages' format (T- #791).
     """
     import matplotlib.pyplot as plt
 
@@ -1322,6 +1318,11 @@ def spatial_figure(
     if recorded.spatial is None:
         msg = f"the run made {recorded.calls}; the spatial figure needs its clones"
         raise ValueError(msg)
+
+    if he_labels is not None:
+        return he_segmentation_figure(
+            recorded.spatial.args[0], he_frame, he_labels, width
+        )
 
     width = PAPER_WIDTH if width is None else width
     tallest = page_size("third")[1]
@@ -1332,9 +1333,7 @@ def spatial_figure(
     #    page, so the row of two maps fits one (T- #740).
     for attempt in range(2):
         figure = plt.figure(figsize=(width, width), dpi=300, facecolor="white")
-        slide_ax, spatial_ax = _draw_spatial(
-            figure, recorded, he_frame, labels, he_labels
-        )
+        slide_ax, spatial_ax = _draw_spatial(figure, recorded, he_frame, labels)
 
         set_font_size(figure, FONT_SIZE)
         side = _place_spatial(figure, slide_ax, spatial_ax, most)
