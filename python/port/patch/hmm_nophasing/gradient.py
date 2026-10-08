@@ -13,12 +13,17 @@ posteriors the fit is holding and `u` a unique `(obs, total)` code,
     f(x) = -\sum_{i,u} W_{iu} \left[\ell^{NB}_{iu} + \ell^{BB}_{iu}\right],
     \qquad W_{iu} = \sum_{g \to u} \gamma_{ig},
 
-and each term's derivative is a digamma or a ratio:
+and each term's derivative is a rising digamma or a ratio, the partials of
+`port.patch.emission`'s densities, the one evaluation every site scores
+(T- #776; :func:`~port.patch.emission.nb_partials`,
+:func:`~port.patch.emission.bb_partials`):
 
 - negative binomial, `r = 1 / max(alpha, 1e-10)`, `mu = c exp(eta)`,
   `p = 1 / (1 + max(alpha, 1e-10) mu)`, logged as `-log1p` (#560): `d ell / d eta = k - (r + k) alpha mu / (1 + alpha mu)`,
   and, where `alpha` is above the floor, `d ell / d log alpha =
-  -r (psi(k + r) - psi(r) + log p) + k - (r + k) alpha mu / (1 + alpha mu)`;
+  -r (psi(k + r) - psi(r) + log p) + k - (r + k) alpha mu / (1 + alpha mu)`,
+  the `psi` pair `sal`'s `digamma_rising`, so nothing cancels at `r` up to
+  1e10;
 - beta-binomial, `a = max(p tau, 1e-10)`, `b = max((1 - p) tau, 1e-10)`:
   `d ell / d a = psi(k + a) - psi(n + a + b) - psi(a) + psi(a + b)`, and
   `b`'s with `n - k` for `k`, each `digamma` pair `sal`'s `digamma_rising`
@@ -48,10 +53,9 @@ from typing import Any
 import numpy as np
 import scipy.optimize
 from cnaster.count_encoder import CountEncoder
-from sal.emissions.rising import digamma_rising
-from scipy.special import digamma, expit
+from scipy.special import expit
 
-from port.patch.hmm_nophasing.bb_logpmf import DISPERSION_FLOOR
+from port.patch.emission import DISPERSION_FLOOR, bb_partials, nb_partials
 
 __all__ = [
     "DISPERSION_FLOOR",
@@ -62,73 +66,6 @@ __all__ = [
     "configured_solver",
     "nb_partials",
 ]
-
-
-def nb_partials(
-    obs: np.ndarray, mean: np.ndarray, dispersion: np.ndarray
-) -> tuple[np.ndarray, np.ndarray]:
-    """`d ell / d log mean` and `d ell / d log alpha` of the negative binomial.
-
-    Broadcasts. A bin with no exposure scores 0 and has zero derivative.
-
-    The derivative of the log-space score (`nb_logpmf`, #560), with
-    `a = max(alpha, 1e-10) * mean` and `log p = -log1p(a)`. `cnaster`'s
-    kernel also scores 0 where `p` rounds to 1 (`a` below about 1.1e-16),
-    and floors `alpha` in `r` but not in `p`; this follows neither, so below
-    the floor `alpha` moves nothing.
-    """
-    alpha = np.asarray(dispersion, dtype=np.float64)
-    floored = np.maximum(alpha, DISPERSION_FLOOR)
-    size = 1.0 / floored
-    scaled = floored * mean
-    live = mean > 0.0
-
-    with np.errstate(divide="ignore", invalid="ignore"):
-        pull = (size + obs) * scaled / (1.0 + scaled)
-        d_eta = np.where(live, obs - pull, 0.0)
-
-        # NB below the floor `r` is a constant and only `p` moves with alpha.
-        through_size = np.where(
-            alpha > DISPERSION_FLOOR,
-            -size * (digamma(obs + size) - digamma(size) - np.log1p(scaled)),
-            0.0,
-        )
-        d_alpha = np.where(
-            live & (alpha > DISPERSION_FLOOR), through_size + obs - pull, 0.0
-        )
-
-    return d_eta, d_alpha
-
-
-def bb_partials(
-    obs: np.ndarray, total: np.ndarray, p_binom: np.ndarray, taus: np.ndarray
-) -> tuple[np.ndarray, np.ndarray]:
-    """`d ell / d p` and `d ell / d log tau` of `cnaster`'s beta-binomial.
-
-    A floored `a` or `b` is a constant, so contributes nothing; a code
-    `cnaster` scores 0 (`k > n`) has zero derivative.
-    """
-    tau = taus
-    shape_a = p_binom * tau
-    shape_b = (1.0 - p_binom) * tau
-    a = np.maximum(shape_a, DISPERSION_FLOOR)
-    b = np.maximum(shape_b, DISPERSION_FLOOR)
-
-    valid = (obs >= 0) & (total >= 0) & (obs <= total)
-    # NB an invalid code scores 0 and is masked below; 0 keeps its rise finite.
-    k = np.where(valid, obs, 0.0)
-    n = np.where(valid, total, 0.0)
-    joint = digamma_rising(a + b, n)
-    d_a = digamma_rising(a, k) - joint
-    d_b = digamma_rising(b, n - k) - joint
-
-    live_a = shape_a > DISPERSION_FLOOR
-    live_b = shape_b > DISPERSION_FLOOR
-
-    d_a = np.where(valid & live_a, d_a, 0.0)
-    d_b = np.where(valid & live_b, d_b, 0.0)
-
-    return d_a * tau - d_b * tau, d_a * shape_a + d_b * shape_b
 
 
 @dataclass

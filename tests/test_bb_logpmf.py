@@ -119,14 +119,14 @@ def test_the_dense_kernel_is_the_per_state_kernel() -> None:
 @pytest.mark.parametrize("tau", [5e3, 1e5, 1e12, 1e16])
 def test_the_sal_emission_scores_a_large_concentration_exactly(tau: float) -> None:
     """`dense_emission.bb_states`, the HMM's beta-binomial under `--sal`, against `mpmath` to 1e-11 at every
-    concentration: sal's tables hold rising factorials (sal #1332), so no state is handed to port's
+    concentration: sal's tables hold rising factorials (sal #1332), completed by
+    `port.patch.emission.bb_tables` (T- #776), so no state is handed to port's
     kernel any more (T- #777; 1e-9 below 1e5 and port's kernel above until then)."""
     from port.patch.hmm_nophasing.dense_emission import bb_states
 
     scores = bb_states(
         COUNTS, np.full(COUNTS.size, float(TRIALS)), np.array([0.3]), np.array([tau])
     )
-
     np.testing.assert_allclose(scores[0], _exact(0.3, tau), rtol=0, atol=1e-11)
 
 
@@ -212,6 +212,28 @@ def test_cnasters_beta_binomial_is_not_a_pmf_at_a_large_concentration() -> None:
     assert abs(logsumexp(out)) > 1.0
 
 
+@pytest.mark.analytic
+def test_sals_beta_binomial_is_a_pmf_at_a_large_concentration() -> None:
+    """`sal`'s dense beta-binomial at `tau = 1e16`, `p = 0.3`, `n = 100` sums to 1 within 1e-12.
+
+    Pinned `e^-60` while sal filled its tables with `lgamma`; sal #1334's
+    scaled rising factorials fix it (T- #776). Fails if the cancellation
+    returns.
+    """
+    from sal.emissions import BetaBinomialEmission
+    from sal.emissions.dense import Order, log_emission
+
+    k = np.arange(TRIALS + 1, dtype=np.float64)
+    family = BetaBinomialEmission(
+        alpha=np.array([0.3e16]), beta=np.array([0.7e16]), trials=np.ones(1)
+    )
+    scores = log_emission(
+        family, k, np.full((k.size, 1), float(TRIALS)), order=Order.FAMILY
+    )
+
+    assert abs(logsumexp(scores[0])) < 1e-12
+
+
 def _binomial_exact(p: float) -> np.ndarray:
     """The binomial log pmf from its definition, in `decimal` at 50 digits."""
     from decimal import Decimal, getcontext
@@ -251,7 +273,7 @@ def test_the_limit_is_continuous_in_the_concentration() -> None:
 def test_the_limit_at_a_share_of_zero_or_one_excludes_the_other_allele(
     p: float, count: float
 ) -> None:
-    from port.patch.hmm_nophasing.bb_logpmf import binomial_logpmf
+    from port.patch.emission import bb_log_pmf
 
-    assert binomial_logpmf(count, 1.0, p) == -np.inf
-    assert binomial_logpmf(1.0 - count, 1.0, p) == 0.0
+    assert bb_log_pmf(count, 1.0, p, np.inf) == -np.inf
+    assert bb_log_pmf(1.0 - count, 1.0, p, np.inf) == 0.0

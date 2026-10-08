@@ -11,10 +11,11 @@ family's own completion order (`Order.FAMILY`). The same edge behaviour as
   `alpha`, `beta` floored at `EPS`;
 - a non-positive rate `mu` scores 0 everywhere, as `exposure * mu <= 0` does.
 
-Every concentration is sal's: its tables hold rising factorials since sal
-#1332 and #1335, within 1e-14 of `mpmath` to `tau = 1e16`, so the states at
-`tau >= 1e5` that port scored with its own kernel until T- #777 (#561: sal
-then lost `eps tau log tau`, 3.4e-3 nats at 1e12) are sal's too.
+sal's tables are `port.patch.emission`'s, the one evaluation every site
+scores (T- #776): scaled rising factorials completed in sal's order (sal
+#1334, #1336). The beta-binomial is that module's bit for bit at every
+concentration, so no state is rescored (the `STABLE_TAU` hand-off of #561
+is retired); the negative binomial is within 8.9e-14 over `max(|f|, 1)`.
 
 To a tolerance, not bitwise, so it is `--sal`'s rather than a `SWAPS` row;
 #244 is why a tolerance is measured end to end before it is anything else.
@@ -22,11 +23,6 @@ Selected by the `hmm_nophasing` row's `emission_kernels="sal"` option, not a
 name rebind: `cnaster`'s compiled kernels call `_nb_logpmf_1d` as a global.
 :func:`coded_emission` is upstream's coded method with every state scored in
 one call per spot, which is where the speed is.
-
-**The distinct counts are sal's.** sal scores each family on the distinct
-counts of the observations and finds them itself, once per call (sal #1332,
-#1335); port's held `torch.unique` cache (#702), which sal's tables no
-longer read, is retired (T- #777).
 """
 
 from __future__ import annotations
@@ -35,7 +31,7 @@ from typing import Any
 
 import numpy as np
 
-from port.patch.hmm_nophasing.gradient import DISPERSION_FLOOR
+from port.patch.emission import bb_tables, nb_table
 
 __all__ = ["bb_states", "coded_emission", "nb_states"]
 
@@ -46,23 +42,31 @@ def nb_states(
     mu: np.ndarray,
     dispersions: np.ndarray,
 ) -> np.ndarray:
-    """`(K, n)`: every state's `_nb_logpmf_1d` in one call; a rate <= 0 scores 0."""
-    from sal.emissions import NegativeBinomialEmission
-    from sal.emissions.dense import Order, log_emission
+    """`(K, n)`: every state's `_nb_logpmf_1d` in one call; a rate <= 0 scores 0.
+
+    `sal.emissions.dense.log_emission`'s kernel on `sal`'s table, built here
+    once per distinct dispersion (`port.patch.emission.nb_table`): bitwise
+    `log_emission`, which builds a row per state (T- #776).
+    """
+    from sal import oxisal
+    from sal.emissions.dense import _counts
 
     mu = np.asarray(mu, dtype=np.float64)
     dead = mu <= 0.0
-    family = NegativeBinomialEmission(
-        dispersion=1.0
-        / np.maximum(np.asarray(dispersions, dtype=np.float64), DISPERSION_FLOOR),
-        mean=np.where(dead, 1.0, mu),
+    counts = _counts(np.asarray(obs), "count")
+    table, sizes = nb_table(dispersions, int(counts.max()) + 1 if counts.size else 1)
+    out = np.empty(mu.size * counts.size)
+    oxisal.dense_log_emission(
+        mu.size,
+        True,
+        out,
+        totals=counts,
+        total_table=np.ascontiguousarray(table.T).reshape(-1),
+        exposure=np.ascontiguousarray(exposure, dtype=np.float64).reshape(-1),
+        dispersion=np.ascontiguousarray(sizes),
+        mean=np.ascontiguousarray(np.where(dead, 1.0, mu)),
     )
-    scores = log_emission(
-        family,
-        np.asarray(obs, dtype=np.float64),
-        np.asarray(exposure, dtype=np.float64)[:, None],
-        order=Order.FAMILY,
-    )
+    scores = out.reshape(mu.size, counts.size)
     scores[dead] = 0.0
     return scores
 
@@ -73,22 +77,43 @@ def bb_states(
     p_binom: np.ndarray,
     taus: np.ndarray,
 ) -> np.ndarray:
-    """`(K, n)`: every state's `_bb_logpmf_1d` in one call."""
-    from sal.emissions import BetaBinomialEmission
-    from sal.emissions.dense import Order, log_emission
+    """`(K, n)`: every state's `_bb_logpmf_1d` in one call.
 
-    p = np.asarray(p_binom, dtype=np.float64)
-    t = np.asarray(taus, dtype=np.float64)
-    successes = np.asarray(obs, dtype=np.float64)
-    total = np.asarray(trials, dtype=np.float64)
-    family = BetaBinomialEmission(
-        alpha=np.maximum(p * t, DISPERSION_FLOOR),
-        beta=np.maximum((1.0 - p) * t, DISPERSION_FLOOR),
-        trials=np.ones_like(p),
+    `sal.emissions.dense.log_emission`'s kernel on `sal`'s tables
+    (`port.patch.emission.bb_tables`), each rising factorial taken once per
+    distinct shape: bitwise `log_emission` (T- #776).
+    """
+    from sal import oxisal
+    from sal.emissions.dense import _counts
+
+    p = np.asarray(p_binom, dtype=np.float64).reshape(-1)
+    successes = _counts(np.asarray(obs), "success count")
+    per_observation = _counts(np.asarray(trials), "trial count")
+    success_extent = int(successes.max()) + 1 if successes.size else 1
+    trials_extent = int(per_observation.max()) + 1 if per_observation.size else 1
+    tables = bb_tables(p, taus, max(success_extent, trials_extent))
+    out = np.empty(p.size * successes.size)
+    # NB `sal`'s stub still names `log_rate` `log_beta`; its own `dense.py`
+    #    passes `log_rate`, as the compiled function takes (sal #1334).
+    oxisal.dense_log_emission(  # type: ignore[call-arg]
+        p.size,
+        True,
+        out,
+        successes=successes,
+        success_table=np.ascontiguousarray(
+            tables.success[:, :success_extent].T
+        ).reshape(-1),
+        trials=per_observation,
+        failure_table=np.ascontiguousarray(tables.failure[:, :trials_extent].T).reshape(
+            -1
+        ),
+        trial_table=np.ascontiguousarray(tables.trial[:, :trials_extent].T).reshape(-1),
+        log_factorial=tables.log_factorial[:trials_extent],
+        log_rate=np.ascontiguousarray(np.stack([tables.log_p, tables.log_q])).reshape(
+            -1
+        ),
     )
-    return np.asarray(
-        log_emission(family, successes, total[:, None], order=Order.FAMILY)
-    )
+    return out.reshape(p.size, successes.size)
 
 
 def coded_emission(

@@ -17,14 +17,17 @@ argument, built in the same order of operations as `cnaster`'s
 `lgamma((n + a) + b)`, as upstream writes it -- and the per-bin sums run in
 the fused kernel's order, so `np.array_equal` is the bar against it.
 
-**Under `log_space=True`** the tables are those of
-`port.pipeline.LOG_SPACE_SWAPS`' kernels (#560, #561): the negative binomial
-reads `-r log1p(a) + k (log a - log1p(a))` with `a = alpha lambda`, and the
-beta-binomial's tables hold the rising factorials `R(x, j) = lgamma(x + j) -
-lgamma(x)`, `sal`'s `log_rising` built before the compiled pass
-(:func:`rising_tables`, T- #781), so no `lgamma(tau)` is subtracted. Bitwise
-the fused kernel's `log_space=True` path again: `log_rising` chooses its
-route per element.
+**Under `log_space=True`** the tables are `port.patch.emission`'s, the one
+evaluation every site scores (T- #776): the negative binomial's
+`T(r, y) = S(r, y) - lgamma(y + 1)` (:func:`~port.patch.emission.nb_table`)
+and the beta-binomial's three scaled rising factorials and log rates
+(:func:`~port.patch.emission.bb_tables`), built before the compiled pass and
+completed per entry by :func:`~port.patch.emission.nb_complete` and
+:func:`~port.patch.emission.bb_complete`, in `sal`'s order. No
+`lgamma(r)`- or `lgamma(tau)`-sized term is cancelled, and `tau = inf` is the
+binomial. Equal to :func:`~port.patch.emission.nb_log_pmf` and
+:func:`~port.patch.emission.bb_log_pmf` summed per bin to rounding: `numba`'s
+`log` and NumPy's may differ in the last place.
 
 **Why not sal's kernels.** `sal.emissions.dense.log_emission` scores every
 state at every observation, where the field reads one per `(bin, clone)`;
@@ -44,10 +47,14 @@ from math import lgamma, log, log1p
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
-from numba import njit
-from sal.emissions.rising import log_rising
+from numba import get_num_threads, njit
 
-from port.patch.hmm_nophasing.gradient import DISPERSION_FLOOR
+from port.patch.emission import (
+    DISPERSION_FLOOR,
+    bb_complete,
+    bb_tables,
+    nb_table,
+)
 from port.patch.hmrf.fused_field import fused_spot_clone_field
 
 if TYPE_CHECKING:  # pragma: no cover - `prange` is `range` to a type checker
@@ -74,20 +81,6 @@ def _extent(counts_bb: np.ndarray, total_bb_RD: np.ndarray) -> int:
     return int(max(counts_bb.max(), total_bb_RD.max())) + 1
 
 
-def rising_tables(
-    p_binom: np.ndarray, taus: np.ndarray, extent: int, EPS: float = EPS
-) -> np.ndarray:
-    """`(3, n_states, extent)`: `R(a, j)`, `R(b, j)`, `R(a + b, j)` for `j` from
-    0, `a = max(p tau, EPS)` and `b = max((1 - p) tau, EPS)`, by `sal`'s
-    `log_rising` (T- #781)."""
-    p = np.asarray(p_binom, dtype=np.float64).reshape(-1)
-    tau = np.asarray(taus, dtype=np.float64).reshape(-1)
-    a = np.maximum(p * tau, EPS)[:, None]
-    b = np.maximum((1.0 - p) * tau, EPS)[:, None]
-    j = np.arange(extent, dtype=np.float64)[None, :]
-    return np.stack([log_rising(a, j), log_rising(b, j), log_rising(a + b, j)])
-
-
 def tabulated_spot_clone_field(
     counts_nb: np.ndarray,
     base_nb_mean: np.ndarray,
@@ -107,13 +100,18 @@ def tabulated_spot_clone_field(
     Takes what the fused kernel takes, with integer-valued counts: the
     caller checks that (:func:`spot_clone_field`), because a count that is not
     an integer would index the wrong row rather than fail. Under `log_space`
-    the rising factorials are `sal`'s (:func:`rising_tables`), built here.
+    the tables are `port.patch.emission`'s, built here.
     """
-    rises = (
-        rising_tables(p_binom, taus, _extent(counts_bb, total_bb_RD))
-        if log_space
-        else np.empty((3, 0, 0))
-    )
+    if log_space:
+        nb_extent = int(counts_nb.max()) + 1 if counts_nb.size else 1
+        counted, sizes = nb_table(alphas, nb_extent)
+        tables = bb_tables(p_binom, taus, _extent(counts_bb, total_bb_RD))
+        rises = np.stack([tables.success, tables.failure, tables.trial])
+        rates = np.stack([tables.log_p, tables.log_q])
+        log_factorial = tables.log_factorial
+    else:
+        counted, sizes = np.empty((0, 0)), np.empty(0)
+        rises, rates, log_factorial = np.empty((3, 0, 0)), np.empty((2, 0)), np.empty(0)
     field: np.ndarray = _tabulated_kernel(
         counts_nb,
         base_nb_mean,
@@ -126,7 +124,11 @@ def tabulated_spot_clone_field(
         pred,
         rel_valid_emision_weight,
         out,
+        counted,
+        sizes,
         rises,
+        rates,
+        log_factorial,
         log_space,
     )
     return field
@@ -145,7 +147,11 @@ def _tabulated_kernel(
     pred,
     rel_valid_emision_weight,
     out,
+    counted,
+    sizes_log_space,
     rises,
+    rates,
+    log_factorial_log_space,
     log_space,
 ):
     n_obs, n_spots = counts_nb.shape
@@ -161,8 +167,17 @@ def _tabulated_kernel(
     #    lgamma(r)) - lgamma(k + 1)`.
     nb_coefficient = np.empty((n_states, nb_extent))
     sizes = np.empty(n_states)
+    inverse_sizes = np.zeros(n_states)
 
     for s in prange(n_states):
+        if log_space:
+            # NB `port.patch.emission.nb_table`, built before the pass.
+            sizes[s] = sizes_log_space[s]
+            inverse_sizes[s] = 1.0 / sizes_log_space[s]
+            for k in range(nb_extent):
+                nb_coefficient[s, k] = counted[s, k]
+            continue
+
         r = 1.0 / max(alphas[s], DISPERSION_FLOOR)
         sizes[s] = r
 
@@ -175,7 +190,7 @@ def _tabulated_kernel(
     log_factorial = np.empty(bb_extent)
 
     for j in range(bb_extent):
-        log_factorial[j] = lgamma(j + 1)
+        log_factorial[j] = log_factorial_log_space[j] if log_space else lgamma(j + 1)
 
     first = np.empty((n_states, bb_extent))
     second = np.empty((n_states, bb_extent))
@@ -187,7 +202,7 @@ def _tabulated_kernel(
         b = max((1.0 - p_binom[s]) * taus[s], EPS)
 
         if log_space:
-            # NB `sal`'s rising factorials, `j` from 0 (`rising_tables`).
+            # NB `port.patch.emission.bb_tables`' scaled rising factorials.
             denominator[s] = 0.0
 
             for j in range(bb_extent):
@@ -205,79 +220,118 @@ def _tabulated_kernel(
 
     field = out
 
-    for c in prange(n_clones):
-        accumulated_rdr = np.zeros(n_spots)
-        accumulated_baf = np.zeros(n_spots)
+    # NB clones decoded to one state in a bin score the same terms at every
+    #    spot, so each distinct state of a bin is scored once and added to
+    #    every clone that holds it (T- #776). Each accumulator still adds
+    #    over the bins in order, so the field is bitwise the per-clone
+    #    loop's. Threads take blocks of spots, each its own rows.
+    accumulated_rdr = np.zeros((n_spots, n_clones))
+    accumulated_baf = np.zeros((n_spots, n_clones))
+    n_blocks = max(1, min(n_spots, get_num_threads()))
+
+    for block in prange(n_blocks):
+        lo = block * n_spots // n_blocks
+        hi = (block + 1) * n_spots // n_blocks
+
+        held = np.empty(n_clones, dtype=np.int64)
 
         for o in range(n_obs):
-            state = pred[o, c]
-            mu = np.exp(log_mu[state])
-            alpha = max(alphas[state], DISPERSION_FLOOR) if log_space else alphas[state]
-            r = sizes[state]
-            denom = denominator[state]
+            for c in range(n_clones):
+                state = pred[o, c]
+                seen = False
+                for earlier in range(c):
+                    if pred[o, earlier] == state:
+                        seen = True
+                        break
+                if seen:
+                    continue
+                n_held = 0
+                for holder in range(c, n_clones):
+                    if pred[o, holder] == state:
+                        held[n_held] = holder
+                        n_held += 1
 
-            for spot in range(n_spots):
-                # NB `_nb_logpmf_1d`: no baseline, or `p` rounded to 0 or 1,
-                #    scores 0; otherwise the coefficient, then `r log p`, then
-                #    `k log(1 - p)`, summed in that order.
-                rdr = 0.0
-                lambda_i = base_nb_mean[o, spot] * mu
+                mu = np.exp(log_mu[state])
+                alpha = (
+                    max(alphas[state], DISPERSION_FLOOR) if log_space else alphas[state]
+                )
+                r = sizes[state]
+                denom = denominator[state]
 
-                if lambda_i > 0.0 and log_space:
-                    # NB `nb_logpmf._nb_logpmf_1d` (#560): the coefficient,
-                    #    then `- r log1p(a)`, then `k (log a - log1p(a))`.
-                    a = alpha * lambda_i
-                    k = counts_nb[o, spot]
-                    rdr = (
-                        nb_coefficient[state, int(k)]
-                        - r * log1p(a)
-                        + k * (log(a) - log1p(a))
-                    )
-                elif lambda_i > 0.0:
-                    p = 1.0 / (1.0 + alpha * lambda_i)
-                    k = counts_nb[o, spot]
+                for spot in range(lo, hi):
+                    # NB `_nb_logpmf_1d`: no baseline, or `p` rounded to 0 or
+                    #    1, scores 0; otherwise the coefficient, then `r log p`,
+                    #    then `k log(1 - p)`, summed in that order.
+                    rdr = 0.0
+                    lambda_i = base_nb_mean[o, spot] * mu
 
-                    if 0.0 < p < 1.0 and k >= 0.0:
-                        rdr = (
-                            nb_coefficient[state, int(k)]
-                            + r * log(p)
-                            + k * log(1.0 - p)
-                        )
-
-                accumulated_rdr[spot] += rdr
-
-                # NB `betabinom_logpmf_numba`: `(binomial + numerator) -
-                #    denominator`, each as upstream groups it.
-                baf = 0.0
-                k = counts_bb[o, spot]
-                n = total_bb_RD[o, spot]
-
-                if n >= 0.0 and k >= 0.0 and k <= n:
-                    kk = int(k)
-                    nn = int(n)
-                    binomial = (
-                        log_factorial[nn] - log_factorial[kk] - log_factorial[nn - kk]
-                    )
                     if log_space:
-                        # NB `bb_logpmf.bb_logpmf`'s order.
-                        baf = (
-                            binomial
-                            + first[state, kk]
-                            + second[state, nn - kk]
-                            - joint[state, nn]
-                        )
-                    else:
-                        numerator = (
-                            first[state, kk] + second[state, nn - kk] - joint[state, nn]
-                        )
-                        baf = binomial + numerator - denom
+                        # NB `nb_complete`'s order with `q = lambda / r` taken
+                        #    as `lambda * (1 / r)`, `1 / r` once per state: one
+                        #    division a score where it takes two (T- #776).
+                        k = counts_nb[o, spot]
+                        if lambda_i > 0.0:
+                            q = lambda_i * inverse_sizes[state]
+                            decay = lambda_i if q == 0.0 else r * log1p(q)
+                            rated = 0.0 if k == 0.0 else k * log(lambda_i / (1.0 + q))
+                            rdr = (nb_coefficient[state, int(k)] + rated) - decay
+                    elif lambda_i > 0.0:
+                        p = 1.0 / (1.0 + alpha * lambda_i)
+                        k = counts_nb[o, spot]
 
-                accumulated_baf[spot] += baf
+                        if 0.0 < p < 1.0 and k >= 0.0:
+                            rdr = (
+                                nb_coefficient[state, int(k)]
+                                + r * log(p)
+                                + k * log(1.0 - p)
+                            )
 
-        for spot in range(n_spots):
+                    # NB `betabinom_logpmf_numba`: `(binomial + numerator) -
+                    #    denominator`, each as upstream groups it.
+                    baf = 0.0
+                    k = counts_bb[o, spot]
+                    n = total_bb_RD[o, spot]
+
+                    if log_space and n == 0.0:
+                        # NB no trials: every term of the score is 0.
+                        baf = 0.0
+                    elif n >= 0.0 and k >= 0.0 and k <= n:
+                        kk = int(k)
+                        nn = int(n)
+                        binomial = (
+                            log_factorial[nn]
+                            - log_factorial[kk]
+                            - log_factorial[nn - kk]
+                        )
+                        if log_space:
+                            # NB `port.patch.emission.bb_complete`'s order.
+                            baf = bb_complete(
+                                binomial,
+                                k,
+                                n,
+                                rates[0, state],
+                                rates[1, state],
+                                first[state, kk],
+                                second[state, nn - kk],
+                                joint[state, nn],
+                            )
+                        else:
+                            numerator = (
+                                first[state, kk]
+                                + second[state, nn - kk]
+                                - joint[state, nn]
+                            )
+                            baf = binomial + numerator - denom
+
+                    for h in range(n_held):
+                        accumulated_rdr[spot, held[h]] += rdr
+                        accumulated_baf[spot, held[h]] += baf
+
+    for spot in range(n_spots):
+        for c in range(n_clones):
             field[spot, c] = (
-                rel_valid_emision_weight[spot] * accumulated_rdr[spot]
-                + accumulated_baf[spot]
+                rel_valid_emision_weight[spot] * accumulated_rdr[spot, c]
+                + accumulated_baf[spot, c]
             )
 
     return field

@@ -62,8 +62,10 @@ BUDGET: dict[str, int] = {
     #    87: #749 WP6 retired `potts_solvers` and its `PortStart`. 88: T- #791's
     #    `analysis.SliceFrame`, the slices' one frame the spatial pages share.
     #    86: T- #777 retired `WarmSchedule` and `_Warmed` for sal's
-    #    `ScheduleParams(warm=)` (sal #1324), which states the warm-up.
-    "classes": 86,
+    #    `ScheduleParams(warm=)` (sal #1324), which states the warm-up. 87:
+    #    T- #776's `emission.BetaBinomialTables`, the beta-binomial's tables
+    #    every site completes.
+    "classes": 87,
     # NB step 4: 18 records became NamedTuples; the dataclasses left carry
     #    mutable state, machinery or a `__post_init__` (#517 D). Step 8 moved
     #    7 dataclasses and 1 NamedTuple to `sandbox/`. 21: T- #418's `Samples`

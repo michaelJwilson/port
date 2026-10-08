@@ -1,4 +1,4 @@
-"""Rising factorials and dense emission scored on the distinct counts (#702).
+"""`port.patch.emission.scaled_rising`: the scaled rising factorials on the distinct counts (#702, T- #776).
 
 The referee is the per-element evaluation each one replaces, bitwise: a
 value taken on the distinct counts and gathered is the same arithmetic at
@@ -9,8 +9,8 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
-from port.patch.hmm_nophasing.bb_logpmf import rises_on_distinct
-from sal.emissions.rising import log_rising
+from port.patch.emission import scaled_rising as rises_on_distinct
+from sal.emissions.rising import scaled_rising_array as log_rising
 
 
 def _counts(
@@ -27,7 +27,7 @@ def _counts(
     ids=["states", "few-states", "one", "scalar"],
 )
 def test_distinct_counts_give_the_per_bin_rises_bitwise(shape: tuple[int, ...]) -> None:
-    """A shape constant along the bins, below and above `log_rising`'s series threshold (10): equal to it."""
+    """A shape constant along the bins, below and above the series threshold (10): equal to `scaled_rising_array`."""
     rng = np.random.default_rng(702)
     m = _counts(rng, 2_829, 594, 2_797)
     x = np.asarray(rng.uniform(0.5, 4e3, shape) if shape else 37.5)
@@ -37,7 +37,7 @@ def test_distinct_counts_give_the_per_bin_rises_bitwise(shape: tuple[int, ...]) 
 
 @pytest.mark.patch
 def test_a_shape_that_varies_along_the_bins_takes_rises_unchanged() -> None:
-    """Per-bin shapes, a 2-D count array and all-distinct counts: `log_rising` itself."""
+    """Per-bin shapes, a 2-D count array and all-distinct counts: `scaled_rising_array` itself."""
     rng = np.random.default_rng(703)
     m = _counts(rng, 600, 50, 400)
     per_bin = rng.uniform(1.0, 100.0, (3, m.size))

@@ -139,6 +139,7 @@ ROLES: dict[str, Role] = {
     "port.patch.utils": "row",
     # patch: helpers
     "port.patch._signature": "row-helper",
+    "port.patch.emission": "row-helper",
     "port.patch._clone_paths": "row-helper",
     "port.patch.hmm_initialize.distinct": "row-helper",
     "port.patch.hmm_initialize.sal_mixture": "row-helper",

@@ -15,9 +15,15 @@ enough scores every row it holds at probability 1. Baum-Welch finds it: on
 7,632 of 7,688 rows, and reported -23,359 nats against the planted states'
 -76,306.
 
-**The fix.** With `a = max(alpha, 1e-10) * lambda`: `log p = -log1p(a)` and
-`log(1 - p) = log(a) - log1p(a)`, so no probability is formed and none
-rounds. `lambda <= 0` still scores 0, upstream's convention for an
+**The fix.** `port.patch.emission`'s negative binomial, the one every site
+scores (T- #776): `((T(r, y) + y log(lambda / (1 + q))) - r log1p(q))`,
+`T = S(r, y) - lgamma(y + 1)` with `S` `sal`'s scaled rising factorial and
+`q = lambda / r`, so no probability is formed and none rounds, and no
+`lgamma(r)`-sized term is cancelled at `r` up to 1e10 (1.3e-5 nats at
+`alpha = 1e-10` before). `S` is `sal`'s compiled kernel and `lgamma` its
+`gammaln`, called from this one, so the row is
+:func:`~port.patch.emission.nb_log_pmf`'s arithmetic to the rounding of
+`numba`'s `log` against NumPy's. `lambda <= 0` still scores 0, upstream's convention for an
 unobserved bin. `alpha` is floored in `a` as upstream floors it in `r`;
 upstream leaves `p` unfloored, which is the same defect reached through
 `alpha < 1.1e-16 / lambda`.
@@ -29,17 +35,21 @@ kernel where its `p < 1`, each to 1e-9 relative
 bitwise: `log1p` and `log` of a sum differ from `log` of a quotient in the
 last place, so this is its own table, not a `SWAPS` row.
 
-**Ratio.** Not an optimization: one `log1p` and one `log` per score, where
-upstream took one `log` of `p` and one of `1 - p`.
+**Ratio.** Not an optimization: `S`'s two `gammaln` per score where upstream
+took three `lgamma`, and its series where those would cancel. Not cached by
+`numba`: `sal`'s `gammaln` pointer keeps a kernel that calls it out of the
+cache, so the row compiles once per process.
 """
 
 from __future__ import annotations
 
-from math import lgamma, log, log1p
 from typing import TYPE_CHECKING
 
 import numpy as np
 from numba import njit
+from sal.emissions import rising
+
+from port.patch.emission import DISPERSION_FLOOR, nb_complete
 
 if TYPE_CHECKING:  # pragma: no cover - `prange` is `range` to a type checker
     prange = range
@@ -48,28 +58,44 @@ else:
 
 __all__ = ["_dense_nb_logpmf", "_nb_logpmf_1d"]
 
+# NB `sal`'s compiled `S` and its `gammaln`, bound as globals at compile time;
+#    `_kernels()` sets `rising._gammaln` to the `scipy` pointer.
+_scaled, _ = rising._kernels()
+_gammaln = rising._gammaln
+_SERIES_FROM = rising._SERIES_FROM
+_SMALL_T = rising._SMALL_T
+_PLAIN_ERROR = rising._PLAIN_ERROR
+_LOG_PROMISE = rising._LOG_PROMISE
+_TERM_FLOOR = rising._TERM_FLOOR
 
-@njit(nogil=True, cache=True, error_model="numpy")
+
+@njit(nogil=True, error_model="numpy")
 def _nb_logpmf_1d(obs, exposure, mu, alpha, out):
-    alpha = max(alpha, 1.0e-10)
-    r = 1.0 / alpha
-    for i in range(len(obs)):
-        k = obs[i]
-        lambda_i = exposure[i] * mu
-        if lambda_i <= 0.0:
-            out[i] = 0.0
-            continue
-        a = alpha * lambda_i
-        out[i] = (
-            lgamma(k + r)
-            - lgamma(r)
-            - lgamma(k + 1.0)
-            - r * log1p(a)
-            + k * (log(a) - log1p(a))
+    r = np.inf if alpha <= 0.0 else 1.0 / max(alpha, DISPERSION_FLOOR)
+    n = len(obs)
+    shape = np.full(n, r)
+    counts = np.empty(n)
+    for i in range(n):
+        counts[i] = obs[i]
+    scaled = np.empty(n)
+    _scaled(
+        shape,
+        counts,
+        scaled,
+        _SERIES_FROM,
+        _SMALL_T,
+        _PLAIN_ERROR,
+        _LOG_PROMISE,
+        _TERM_FLOOR,
+        True,
+    )
+    for i in range(n):
+        out[i] = nb_complete(
+            scaled[i] - _gammaln(counts[i] + 1.0), counts[i], exposure[i] * mu, r
         )
 
 
-@njit(nogil=True, cache=True, parallel=True, error_model="numpy")
+@njit(nogil=True, parallel=True, error_model="numpy")
 def _dense_nb_logpmf(X_nb, base_nb_mean, log_mu, alphas):
     n_states = log_mu.shape[0]
     n_obs, n_spots = X_nb.shape

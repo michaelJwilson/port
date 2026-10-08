@@ -15,8 +15,10 @@ Two packages are exceptions and declare `MIRRORS` because a name cannot
 carry what they do: `cnaster` defines `forward_lattice` and
 `backward_lattice` in both `hmm_nophasing` and `hmm_phased`, so `lattice`
 unifies a duplicate pair, and `plotting`'s path helpers serve both
-`cnaster.plot_genomic` and `cnaster.plotting`. `emission`, the third, is set
-aside under `sandbox/patch/` (#517 step 8).
+`cnaster.plot_genomic` and `cnaster.plotting`. `emission` is the one NB/BB
+evaluation that `hmm_nophasing`'s and `hmm_phased`'s rows and `hmrf`'s field
+all score (T- #776); its predecessor of the same name is set aside under
+`sandbox/patch/` (#517 step 8).
 
 `infra`: these assert `port`'s own layout. None says anything about a
 scientific result, and none can fail because `cnaster` changed.
@@ -39,8 +41,8 @@ from port.pipeline import (
 
 from tests import ROOT
 
-UNIFIERS = ("lattice", "plotting")
-"""The two patches that replace a pair of `cnaster` modules rather than one.
+UNIFIERS = ("emission", "lattice", "plotting")
+"""The patches that replace several of `cnaster` modules rather than one.
 
 Named here rather than inferred so that adding a third is a decision someone
 makes in a diff, not a name that quietly stops meaning anything.
