@@ -3003,6 +3003,7 @@ name = "port"
 source = { editable = "." }
 dependencies = [
     { name = "cnaster" },
+    { name = "h5py" },
     { name = "jax" },
     { name = "matplotlib" },
     { name = "numba" },
@@ -3048,6 +3049,7 @@ requires-dist = [
     { name = "aim", marker = "extra == 'track'", specifier = ">=3.29,<4" },
     { name = "calicost", marker = "extra == 'calicost'", git = "https://github.com/raphael-group/CalicoST?rev=c1abcae" },
     { name = "cnaster", git = "https://github.com/michaelJwilson/cnaster?branch=finish_annotation_mushift3" },
+    { name = "h5py", specifier = ">=3.11" },
     { name = "ipykernel", marker = "extra == 'notebooks'", specifier = ">=6.29" },
     { name = "jax", specifier = ">=0.11.2" },
     { name = "matplotlib", specifier = ">=3.9.0" },

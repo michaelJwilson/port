@@ -64,12 +64,15 @@ __all__ = [
     "UPSTREAM",
     "UPSTREAM_WIDTH",
     "Levels",
+    "Pooled",
     "bin_colours",
     "clone_axes",
     "clone_groups",
+    "draw_genomic",
     "fitted_clone_path",
     "fitted_levels",
     "plot_clones_genomic",
+    "pool_genomic",
 ]
 
 POINT_COLOUR = "#4C72B0"
@@ -393,6 +396,64 @@ def plot_clones_genomic(
             preferred_colour_by if possible and res_combine is not None else None
         )
 
+    pooled = pool_genomic(
+        single_X, single_base_nb_mean, single_total_bb_RD, res_combine, clone_index,
+        single_tumor_prop, known_nb_baseline,
+    )  # fmt: skip
+
+    page = draw_genomic(
+        lengths, pooled, df_cnv, res_combine, sample_list,
+        remove_xticks=remove_xticks, rdr_ylim=rdr_ylim, chrtext_shift=chrtext_shift,
+        base_height=base_height, pointsize=pointsize, linewidth=linewidth,
+        palette_name=palette_name, plot_baf_errors=plot_baf_errors,
+        plot_rdr_errors=plot_rdr_errors, phased_integer_copies=phased_integer_copies,
+        figure=figure, colour_by=colour_by, logmu_shift=logmu_shift, axis=axis,
+    )  # fmt: skip
+
+    if figure is None:
+        from port.extensions import figure_record
+
+        figure_record.attach(
+            page, "genomic", figure_record.genomic(lengths, pooled, df_cnv, res_combine, clone_index, single_tumor_prop,
+                                  known_nb_baseline, sample_list,
+                                  (single_X, single_base_nb_mean, single_total_bb_RD)),
+            {"remove_xticks": remove_xticks, "rdr_ylim": rdr_ylim, "chrtext_shift": chrtext_shift,
+             "base_height": base_height, "pointsize": pointsize, "linewidth": linewidth,
+             "palette_name": palette_name, "plot_baf_errors": plot_baf_errors,
+             "plot_rdr_errors": plot_rdr_errors, "phased_integer_copies": phased_integer_copies,
+             "colour_by": colour_by, "logmu_shift": logmu_shift, "axis": figure_record.axis_option(axis)},
+        )  # fmt: skip
+
+    return page
+
+
+class Pooled(NamedTuple):
+    """What the genomic page reads of the spots: each clone's pooled counts, its size and the baseline profile.
+
+    `profile` is `single_base_nb_mean` summed over spots, all `fitted_levels`
+    reads of it (`clone_log_normalizers`), so a page drawn from a `Pooled`
+    is the page drawn from the spots (T- #817).
+    """
+
+    labels: list[str]
+    sizes: np.ndarray
+    X: np.ndarray
+    base_nb_mean: np.ndarray
+    total_bb_RD: np.ndarray
+    tumor_prop: np.ndarray | None
+    profile: np.ndarray
+
+
+def pool_genomic(
+    single_X: np.ndarray,
+    single_base_nb_mean: np.ndarray,
+    single_total_bb_RD: np.ndarray,
+    res_combine: Any,
+    clone_index: list[np.ndarray] | None,
+    single_tumor_prop: np.ndarray | None,
+    known_nb_baseline: np.ndarray | None,
+) -> Pooled:
+    """The spots pooled per clone, as `plot_clones_genomic` pools them."""
     labels, groups = clone_groups(res_combine, clone_index)
 
     X, base_nb_mean, total_bb_RD, tumor_prop = merge_pseudobulk_by_index_mix(
@@ -405,6 +466,39 @@ def plot_clones_genomic(
 
     if known_nb_baseline is not None:
         base_nb_mean = known_nb_baseline.copy()
+
+    sizes = np.array([len(g) for g in groups], dtype=np.int64)
+    profile = np.asarray(single_base_nb_mean, dtype=np.float64).sum(axis=1)
+    return Pooled(labels, sizes, X, base_nb_mean, total_bb_RD, tumor_prop, profile)
+
+
+def draw_genomic(
+    lengths: np.ndarray,
+    pooled: Pooled,
+    df_cnv: pd.DataFrame | None,
+    res_combine: Any,
+    sample_list: list[str] | None,
+    *,
+    remove_xticks: bool = True,
+    rdr_ylim: float = 6.0,
+    chrtext_shift: float = -0.25,
+    base_height: float = 3.2,
+    pointsize: float = 3.0,
+    linewidth: float = 1.0,
+    palette_name: str = "chisel",
+    plot_baf_errors: str = "beta",
+    plot_rdr_errors: str = "poisson",
+    phased_integer_copies: bool = False,
+    figure: Any = None,
+    colour_by: str | None = None,
+    logmu_shift: bool = False,
+    axis: GenomicAxis | Ticks | None = None,
+) -> Any:
+    """`plot_clones_genomic`'s page from `pooled`: what `run_plots` redraws from `cnamaste.h5`."""
+    labels = pooled.labels
+    X, base_nb_mean, total_bb_RD = pooled.X, pooled.base_nb_mean, pooled.total_bb_RD
+    tumor_prop = pooled.tumor_prop
+    single_base_nb_mean = pooled.profile[:, None]
 
     has_rdr = base_nb_mean is not None and np.max(base_nb_mean) > 0
     shifted = logmu_shift and has_rdr
@@ -530,10 +624,10 @@ def plot_clones_genomic(
         _annotate_clone_stats(
             ax_rdr if ax_rdr is not None else ax_baf,
             label,
-            len(groups[clone]),
+            int(pooled.sizes[clone]),
             np.sum(counts),
             np.sum(trials),
-            tumor_prop[clone] if single_tumor_prop is not None else None,
+            tumor_prop[clone] if tumor_prop is not None else None,
             paired_ax=ax_baf if ax_rdr is not None else None,
         )
 

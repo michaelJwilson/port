@@ -558,6 +558,7 @@ class Lineage:
 
         kept = replace(segmentation, name=unique)
         self.levels[unique] = kept
+        _stage(self, kept)
         return kept
 
     def latest(self, segmentation: Segmentation) -> Segmentation:
@@ -589,6 +590,30 @@ class Lineage:
 
 
 _CURRENT: list[Lineage] = []
+
+
+def _stage(lineage: Lineage, level: Segmentation) -> None:
+    """`level`, and the genes with the floor and exclusions so far, into the run's `cnamaste.h5` (T- #817)."""
+    from port.extensions import cnamaste
+
+    genes = lineage.genes
+    if cnamaste.active() is None or genes is None:
+        return
+    floor = lineage.floor
+    weight = None if floor is None else np.asarray(floor[1], dtype=np.float64)
+    cnamaste.stage(
+        "segments/genes",
+        {"contig": np.asarray(genes.contig).astype(str), "start": np.asarray(genes.start, dtype=np.int64),
+         "end": np.asarray(genes.end, dtype=np.int64), "key": np.asarray(genes.key).astype(str),
+         "floor_weight": weight if weight is not None and weight.shape == (genes.n_genes,) else None},
+        excluded_genes=sorted(lineage.excluded_genes),
+        floor_min_length=float("nan") if floor is None else float(floor[0]),
+        floor_min_weight=float("nan") if floor is None else float(floor[2]),
+    )  # fmt: skip
+    cnamaste.stage(
+        f"segments/levels/{cnamaste.level_name(level.name)}",
+        {"label": level.label, "ids": level.ids},
+    )
 
 
 @contextmanager

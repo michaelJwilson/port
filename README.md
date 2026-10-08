@@ -593,6 +593,7 @@ not carry, not before.
 | --- | --- |
 | [CLAUDE.md](CLAUDE.md) | The rules |
 | [Issues](https://github.com/michaelJwilson/port/issues) | What is filed and not done |
+| [docs/cnamaste-h5.md](docs/cnamaste-h5.md) | `cnamaste.h5`, the one run output port reads, written by `run_cnaster_port` stage by stage, each quantity once, and redrawn by `run_plots`; `truth.h5`, a simulated sample's truth: every group, dataset, axis and type, rendered from `port.extensions.cnamaste` (T- #818) |
 | [docs/measurements.md](docs/measurements.md) | The timings, ratios and histories the package docstrings cited, by module and object (#517) |
 | [docs/metrics/](docs/metrics/) | The metrics ledger, append-only TSVs: `ledger.tsv` one measured value per line, `runs.tsv` one line per run (commit, timestamp, arguments, test, note), `definitions.tsv` what each metric means, versioned (#409, #620). A dataset is a `fixture` name and its `fixture_hash`, two columns; a name holds one hash per generation. `runs.tsv`'s `benchmark` marks a sweep over every fixture; `run_ledger --last-benchmark` lists the latest. `run_ledger --record` appends (`port.qa.ledger`); `--render [--out PATH]` prints the wide table, which is not committed; `run_study --metrics-history` draws `.cache/plots/metrics_history*.png` from it |
 | [docs/study-recovery-population.md](docs/study-recovery-population.md) | `--sal` sensitivity against clone UMIs and CNA length, and the false positive rate, over 679 simulated runs (#544) |

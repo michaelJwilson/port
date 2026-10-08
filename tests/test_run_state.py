@@ -56,6 +56,8 @@ STATE: dict[str, Kind] = {
     # NB #735: `port.studies.stage` wraps the installed clone assignment for one `run_core_inference` call and restores it
     "cnaster.hmrf.pipeline_clone_assignment": "rebind",
     "port.extensions.copy_likelihood._FITS": "run",
+    "port.extensions.cnamaste._ACTIVE": "run",
+    "port.extensions.run_record._HELD": "run",
     "port.extensions.samples._CURRENT": "run",
     "port.extensions.segments._CURRENT": "run",
     "port.patch.hmm_nophasing.shifted_emission.hmm_nophasing._row_shift": "run",

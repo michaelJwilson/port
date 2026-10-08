@@ -13,11 +13,10 @@ ledger, the audits and the studies run.
 from __future__ import annotations
 
 import hashlib
-import subprocess
 from pathlib import Path
 from typing import Any
 
-from port.extensions.repository import ROOT
+from port.extensions.repository import ROOT, commit, dirty, head
 
 __all__ = [
     "CONFIGS",
@@ -59,27 +58,6 @@ the configuration that selects them. The ledger refuses a run while these
 differ from the commit; the badges skip a pass while their digest holds."""
 
 
-def _git(*arguments: str) -> str:
-    return subprocess.run(
-        ["git", *arguments], cwd=ROOT, capture_output=True, text=True, check=True
-    ).stdout.strip()
-
-
-def head() -> str:
-    """The checkout's commit, 7 hex digits; raises outside a repository."""
-    return _git("rev-parse", "--short=7", "HEAD")
-
-
-def dirty(*paths: str, untracked: bool = False) -> bool:
-    """Whether the tree differs from `head` under `paths` (all of it if none).
-
-    An untracked file counts only where `untracked` says so: the ledger's
-    inputs count one, a figure's stamp does not.
-    """
-    flags = () if untracked else ("--untracked-files=no",)
-    return bool(_git("status", "--porcelain", *flags, "--", *(paths or (".",))))
-
-
 def calibration(name: str) -> dict[str, Any]:
     """`CONFIGS/<name>.json`, as `run_calibrate` wrote it; its `_provenance` says how."""
     import json
@@ -90,11 +68,6 @@ def calibration(name: str) -> dict[str, Any]:
         raise FileNotFoundError(msg)
     found: dict[str, Any] = json.loads(path.read_text())
     return found
-
-
-def commit(*paths: str) -> str:
-    """`head`, with `+` where tracked files under `paths` differ from it."""
-    return head() + ("+" if dirty(*paths) else "")
 
 
 def digest(payload: bytes) -> str:
