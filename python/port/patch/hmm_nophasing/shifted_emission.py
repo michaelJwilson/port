@@ -91,7 +91,7 @@ from math import exp
 from typing import Any, NamedTuple
 
 import numpy as np
-from cnaster.config import start_time
+from cnaster.config import get_global_config, start_time
 from cnaster.hmm_nophasing import _bb_logpmf_1d, _nb_logpmf_1d
 from cnaster.hmm_nophasing import hmm_nophasing as UPSTREAM
 from cnaster.logger import get_logger
@@ -174,19 +174,19 @@ def clone_count_triples(
     duplication it admits is the minimum the shift requires rather than a
     re-encoding of the genome per clone.
 
-    **No rounding (T- #776).** `CountEncoder.construct_unique_encoding`
-    rounds a non-integer total to `hmm.compression_decimals` before the
-    compare, and `port`'s run configuration sets 0: every exposure was scored
-    as the nearest integer. The exposure is the negative binomial's
-    covariate, applied per entry after its table, so it enters each code
-    exactly; codes fall only where `(clone, obs, total)` repeat exactly. The
-    emission and the gradient both read these triples, so the objective and
-    its gradient stay one.
+    Rounding follows `CountEncoder.construct_unique_encoding`: non-integer
+    counts are rounded to the configured decimals before the compare, so two
+    entries that upstream would collapse are not separated here by a float
+    the encoder never looked at.
     """
     obs, clones = _clone_major(obs_count, lengths)
     total, _ = _clone_major(total_count, lengths)
 
     counts = np.column_stack([clones.astype(np.float64), obs, total])
+
+    if not np.issubdtype(total.dtype, np.integer):
+        counts = counts.round(decimals=get_global_config().hmm.compression_decimals)
+
     unique, inverse = np.unique(counts, axis=0, return_inverse=True)
 
     return _Triples(
