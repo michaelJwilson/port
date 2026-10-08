@@ -39,6 +39,7 @@ from the run is a difference the study names.
 
 from __future__ import annotations
 
+import functools
 import tempfile
 from collections.abc import Callable, Iterator
 from pathlib import Path
@@ -151,7 +152,13 @@ class Field(NamedTuple):
 def members(
     manifest: Path, root: Path, n: int | None = None, first: int = 0
 ) -> Iterator[Member]:
-    """`manifest`'s realizations `first`, `first + 1`, ... (`n` of them if given), drawn under `root`."""
+    """`manifest`'s realizations `first`, `first + 1`, ... (`n` of them if given), drawn under `root`.
+
+    Only those realizations are drawn (T- #814), and one already on disk under
+    `root` from the same manifest and code (`drawn_key`) is read, not redrawn,
+    so two streams sharing a `root` draw each realization once.
+    """
+    import shutil
     from dataclasses import replace
 
     from port.sim import draw as d
@@ -165,16 +172,79 @@ def members(
                 drawn.tables, {"sample": {"realizations": first + n}}
             ),
         )
+    total = int(drawn.sample["realizations"])
     out = root / Path(manifest).stem
-    for realized in d.realize(drawn, out):
-        if realized.index < first:
-            continue
-        (path,) = out.glob(f"r*{realized.index}")
-        yield Member(
-            realized.index,
-            load_simulated(path.name, path.parent),
-            realization_hash(path),
-        )
+    # NB `realize`'s directory names: the width is the realization count's
+    paths = {k: out / f"r{k:0{len(str(total - 1))}d}" for k in range(first, total)}
+    key = drawn_key(manifest)
+    missing = [k for k, path in paths.items() if not _drawn(path, key)]
+    for k in missing:
+        shutil.rmtree(paths[k], ignore_errors=True)
+        _mark(paths[k]).unlink(missing_ok=True)
+    fresh = d.realize(drawn, out, wanted=set(missing)) if missing else iter(())
+    for k, path in paths.items():
+        if k in missing:
+            realized = next(fresh)
+            assert realized.index == k  # noqa: S101 -- `realize` yields in order
+            _mark(path).write_text(key)
+        yield Member(k, load_simulated(path.name, path.parent), realization_hash(path))
+
+
+def drawn_key(manifest: Path) -> str:
+    """What a realization on disk is a function of: the manifest's bytes and the code (`provenance.inputs_hash`)."""
+    from port.qa import provenance
+
+    return provenance.digest(Path(manifest).read_bytes() + _code().encode())
+
+
+@functools.cache
+def _code() -> str:
+    """`provenance.inputs_hash`, once a process: the code a process imported does not change under it."""
+    from port.qa import provenance
+
+    return provenance.inputs_hash()
+
+
+def _mark(path: Path) -> Path:
+    """Beside the realization, so its hash does not read it."""
+    return path.with_name(f"{path.name}.drawn")
+
+
+def _drawn(path: Path, key: str) -> bool:
+    mark = _mark(path)
+    return path.is_dir() and mark.is_file() and mark.read_text() == key
+
+
+def field_path(cache: Path, member: Member, stage: str = "rdrbaf", states: str = "run",
+               overrides: dict[str, Any] | None = None) -> Path:  # fmt: skip
+    """Where `member`'s `Field` at `stage` is kept under `cache`: keyed by its hash, the code, `FLAGS` and `overrides`."""
+    import json
+
+    from port.qa import provenance
+
+    key = json.dumps([_code(), FLAGS, overrides or {}, stage, states],
+                     sort_keys=True, default=str)  # fmt: skip
+    return cache / f"{member.hash}-{provenance.digest(key.encode())}.npz"
+
+
+def save_field(path: Path, field: Field) -> None:
+    """`field` to `path`, whole or not at all: a reader in another process never sees half of it."""
+    import os
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    partial = path.with_name(f".{path.name}.{os.getpid()}")
+    with partial.open("wb") as handle:
+        np.savez(handle, **field._asdict())
+    partial.replace(path)
+
+
+def load_field(path: Path) -> Field:
+    """`save_field`'s `Field`, its arrays bitwise."""
+    with np.load(path) as kept:
+        return Field(
+            str(kept["name"]), kept["field"], kept["planted"], kept["indptr"], kept["indices"],
+            kept["weights"], float(kept["spatial_weight"]), str(kept["states"]), float(kept["seconds"]),
+        )  # fmt: skip
 
 
 class _Done(Exception):
@@ -287,13 +357,37 @@ def at_oracle_clones(
     stage: str = "rdrbaf",
     overrides: dict[str, Any] | None = None,
     root: Path | None = None,
+    then: Callable[[Field], Any] | None = None,
 ) -> _T:
     """`study` on `stage`'s `pipeline_baum_welch` call of `run_cnaster_port --sal` on `sample` at its planted clones.
 
     `stage` is `"baf"` (`params` without `m`) or `"rdrbaf"`. `overrides` sets
     configuration keys, `section.key` to a value, as `run_audit --set` does.
+    With `then`, the run goes on from the call, as the run made it, to
+    `at_clone_assignment`'s `Field` at the run's states, which `then` is
+    handed: one run serves both (T- #814). The `Field`'s `seconds` leave out
+    the study's.
     """
-    return cast(_T, _drive(sample, stage, overrides, root, study, None))
+    import time
+
+    if then is None:
+        return cast(_T, _drive(sample, stage, overrides, root, study, None))
+    opened = time.perf_counter()
+    held: dict[str, Any] = {}
+
+    def fit(found: Stage) -> dict[str, Any]:
+        started = time.perf_counter()
+        held["result"] = study(found)
+        held["seconds"] = time.perf_counter() - started
+        return {}
+
+    def assigned(field: Field) -> None:
+        then(field._replace(seconds=field.seconds - held["seconds"]))
+
+    _drive(
+        sample, stage, overrides, root, fit, _capture(stage, "run", opened, assigned)
+    )
+    return cast(_T, held["result"])
 
 
 def at_clone_assignment(
@@ -325,6 +419,25 @@ def at_clone_assignment(
         log_mu, p_binom = oracle_states(found)
         return {"init_log_mu": log_mu, "init_p_binom": p_binom}
 
+    return cast(
+        _T,
+        _drive(
+            sample,
+            stage,
+            overrides,
+            root,
+            start,
+            _capture(stage, states, opened, study),
+        ),
+    )
+
+
+def _capture(
+    stage: str, states: str, opened: float, study: Callable[[Field], _T]
+) -> Callable[[tuple[Any, ...], dict[str, Any], Callable[..., Any]], _T]:
+    """`_drive`'s `on_assignment`: `study` on the `Field` the installed clone assignment builds."""
+    import time
+
     def capture(
         args: tuple[Any, ...], arguments: dict[str, Any], installed: Callable[..., Any]
     ) -> _T:
@@ -344,7 +457,7 @@ def at_clone_assignment(
                   time.perf_counter() - opened)
         )  # fmt: skip
 
-    return cast(_T, _drive(sample, stage, overrides, root, start, capture))
+    return capture
 
 
 def _bind(args: tuple[Any, ...], arguments: dict[str, Any]) -> dict[str, Any]:
