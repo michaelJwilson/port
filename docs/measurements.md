@@ -8,7 +8,7 @@ passage came from; that docstring points back here. A figure is as current
 as the commit that recorded it, and re-measuring one updates it here rather
 than in the code.
 
-## `port.extensions.parameter_errors`
+## `port.qa.parameter_errors`
 
 ### module docstring
 

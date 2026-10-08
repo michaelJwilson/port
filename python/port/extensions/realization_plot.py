@@ -1,7 +1,7 @@
 r"""Fitted `(mu, p)` over realizations of one planted genome (#291).
 
 **What a stated error is for, drawn beside what it claims.**
-`port.extensions.parameter_errors` gives one fit's covariance. That covariance
+`port.qa.parameter_errors` gives one fit's covariance. That covariance
 is a prediction: refit the same genome from fresh counts and the estimates
 should scatter inside it. This draws the prediction and the test of it on one
 axis per copy state:

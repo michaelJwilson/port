@@ -158,14 +158,14 @@ def test_a_zero_exposure_bin_leaves_the_jax_gradient_finite() -> None:
     """
     import jax
     import jax.numpy as jnp
-    from port.extensions.jax_hmm import emission
+    from port.qa.jax_hmm import emission
 
     arguments = _jax_arguments()
 
     def total(log_mu: Any) -> Any:
         return emission(log_mu, **arguments).sum()
 
-    # NB float64 throughout: `port.extensions.jax_setup` enables x64 on import.
+    # NB float64 throughout: `port.qa.jax_setup` enables x64 on import.
     log_mu = jnp.array([[0.1], [-0.2]])
     step = 1e-6
     bump = jnp.array([[step], [0.0]])

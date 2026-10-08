@@ -36,7 +36,7 @@ def test_the_covariance_of_a_gaussian_is_its_variance() -> None:
     a 2x2 inverse rather than a contract.
     """
     import jax.numpy as jnp
-    from port.extensions.parameter_errors import parameter_errors
+    from port.qa.parameter_errors import parameter_errors
 
     covariance = np.array([[4.0, 1.0], [1.0, 9.0]])
     precision = np.linalg.inv(covariance)
@@ -65,7 +65,7 @@ def test_a_flat_direction_is_refused_rather_than_inverted() -> None:
     caller has no way to recognize as "not estimable".
     """
     import jax.numpy as jnp
-    from port.extensions.parameter_errors import parameter_errors
+    from port.qa.parameter_errors import parameter_errors
 
     def flat(theta: jnp.ndarray) -> jnp.ndarray:
         # NB curved in the sum, flat in the difference: the classic
@@ -87,7 +87,7 @@ def test_a_saddle_is_refused() -> None:
     silently.
     """
     import jax.numpy as jnp
-    from port.extensions.parameter_errors import parameter_errors
+    from port.qa.parameter_errors import parameter_errors
 
     def saddle(theta: jnp.ndarray) -> jnp.ndarray:
         return 0.5 * theta[0] ** 2 - 0.5 * theta[1] ** 2
@@ -115,7 +115,7 @@ def test_the_shift_weights_sum_to_one() -> None:
     The property everything below rests on: `w` is a distribution, so
     `J = I - 1 w'` annihilates the constant vector.
     """
-    from port.extensions.parameter_errors import shift_weights
+    from port.qa.parameter_errors import shift_weights
 
     log_mus, copy_states, normal_log_lambda = _weights_case()
 
@@ -133,7 +133,7 @@ def test_the_shift_weights_are_the_jax_derivative() -> None:
     The weights are written by hand here because the covariance propagation
     needs them as a matrix, and a hand-written derivative is exactly the
     thing to referee. `jax` differentiates
-    `port.extensions.jax_hmm.shifted_rates`' reduction directly.
+    `port.qa.jax_hmm.shifted_rates`' reduction directly.
 
     Realized **1.11e-16** absolute against a stated 1e-12, and the weights
     sum to one exactly.
@@ -141,7 +141,7 @@ def test_the_shift_weights_are_the_jax_derivative() -> None:
     import jax
     import jax.numpy as jnp
     import jax.scipy.special as jsp
-    from port.extensions.parameter_errors import shift_weights
+    from port.qa.parameter_errors import shift_weights
 
     log_mus, copy_states, normal_log_lambda = _weights_case()
 
@@ -169,7 +169,7 @@ def test_the_propagated_covariance_is_singular_with_null_direction_w() -> None:
     full rank, giving the debiased rates a scale uncertainty the debiasing
     exists to remove.
     """
-    from port.extensions.parameter_errors import (
+    from port.qa.parameter_errors import (
         shift_jacobian,
         shift_weights,
         shifted_covariance,
@@ -223,8 +223,8 @@ def test_the_propagated_covariance_is_the_delta_method() -> None:
     5e-02 over 2,000 draws -- a Monte Carlo tolerance, stated as one, and
     the reason it is not tighter is the draw count rather than the method.
     """
-    from port.extensions.jax_hmm import shifted_rates
-    from port.extensions.parameter_errors import shift_weights, shifted_covariance
+    from port.qa.jax_hmm import shifted_rates
+    from port.qa.parameter_errors import shift_weights, shifted_covariance
 
     log_mus, copy_states, normal_log_lambda = _weights_case(n_states=3, n_segments=12)
     n_states = log_mus.size
@@ -260,7 +260,7 @@ def test_a_copy_state_block_is_what_decode_copy_state_reads() -> None:
     off-diagonal as a modelling statement -- at a fixed state posterior the
     two channels factorize -- so it is zero here rather than absent.
     """
-    from port.extensions.parameter_errors import copy_state_covariance
+    from port.qa.parameter_errors import copy_state_covariance
 
     rates = np.diag([0.04, 0.09, 0.16])
     alleles = np.diag([0.0025, 0.01, 0.0225])
@@ -350,7 +350,7 @@ def test_a_fit_s_errors_decode_the_planted_integer_copies() -> None:
     debiasing has something to remove.
 
     *The fit.* The marginal negative log-likelihood of
-    `port.extensions.jax_hmm`, maximized by `scipy`'s BFGS over `log_mu`, the
+    `port.qa.jax_hmm`, maximized by `scipy`'s BFGS over `log_mu`, the
     logit of the two interior `p_binom`, and a shared `log alpha` and
     `log tau`. The deletion's `p_binom` is fixed at 1: it sits on the
     boundary, where the observed information is not the covariance of
@@ -379,14 +379,14 @@ def test_a_fit_s_errors_decode_the_planted_integer_copies() -> None:
     import jax
     import jax.numpy as jnp
     from port.extensions.integer_copy import decode_copy_state
-    from port.extensions.jax_hmm import emission, marginal_negative_log_likelihood
-    from port.extensions.parameter_errors import (
+    from port.patch.hmm_nophasing import shifts
+    from port.qa.jax_hmm import emission, marginal_negative_log_likelihood
+    from port.qa.parameter_errors import (
         copy_state_covariance,
         parameter_errors,
         shift_weights,
         shifted_covariance,
     )
-    from port.patch.hmm_nophasing import shifts
     from scipy.optimize import minimize
 
     genome = _planted_genome()

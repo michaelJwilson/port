@@ -124,7 +124,7 @@ def test_credible_set_coverage_counts_bins_by_their_states_set() -> None:
     set size (2 + 2 + 1 + 0) / 4; its 3 misses are 2 ambiguous, 1 empty.
     """
     import pandas as pd
-    from port.studies.population import clone_sets, credible_sets, set_scores
+    from port.sandbox.population_sets import clone_sets, credible_sets, set_scores
 
     table = pd.DataFrame(
         {"state": [0, 0, 1, 2], "A": [1, 2, 2, pd.NA], "B": [1, 1, 1, pd.NA]}
@@ -151,7 +151,7 @@ def test_a_narrower_level_keeps_the_pairs_within_its_threshold() -> None:
     5 is within 1 degree of freedom's 3 sigma (9.0) and outside its 2 sigma.
     """
     import pandas as pd
-    from port.studies.population import clone_sets, credible_sets
+    from port.sandbox.population_sets import clone_sets, credible_sets
 
     table = pd.DataFrame(
         {
@@ -184,7 +184,7 @@ def test_segment_sets_read_per_bin_folded_at_a_level() -> None:
     folded to (2, 1). Clone 1 is absent and reads as no sets.
     """
     import pandas as pd
-    from port.studies.population import segment_bins
+    from port.sandbox.population_sets import segment_bins
 
     table = pd.DataFrame(
         {
@@ -215,7 +215,7 @@ def test_a_known_event_s_set_folds_phase_per_bin() -> None:
     deviance of 2 * 6 = 12, outside 3 sigma (11.8); (2, 2) at -1 each, 4,
     inside 2 sigma (6.18). Without the per-bin fold, (2, 1) would pay 3.
     """
-    from port.studies.population import known_set
+    from port.sandbox.population_sets import known_set
 
     pairs = np.array([(1, 1), (1, 2), (2, 1), (2, 2)])
     loglik = np.array([[-3.0, 0.0, -3.0, -1.0], [-3.0, -3.0, 0.0, -1.0], [9, 9, 9, 9]])
@@ -230,17 +230,3 @@ def test_a_known_event_s_set_folds_phase_per_bin() -> None:
     assert found["deviance_truth"] == 0.0
     assert found["deviance_neutral"] == 12.0
     assert known_set(pairs, loglik, visible, (1, 2), 0.9545)["set_size"] == 2
-
-
-@pytest.mark.infra
-def test_every_arm_is_the_study_s_flags_plus_decode_options() -> None:
-    """`ARMS` changes only the decode: each starts with `FLAGS` (#705)."""
-    from port.studies.population import ARMS
-    from port.studies.stage import FLAGS
-
-    assert ARMS["sal"] == FLAGS
-    for name, flags in ARMS.items():
-        assert flags[: len(FLAGS)] == FLAGS, name
-    assert all(
-        "--copy-errors" in flags for name, flags in ARMS.items() if name != "sal"
-    )

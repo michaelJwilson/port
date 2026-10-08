@@ -60,7 +60,7 @@ def _copy_likelihood(counts: np.ndarray, mean: float, alpha: float) -> np.ndarra
 
 def _jax(counts: np.ndarray, mean: float, alpha: float) -> np.ndarray:
     """`jax_hmm.emission` with no trials, so the beta-binomial adds 0 to within 1e-15."""
-    from port.extensions.jax_hmm import emission
+    from port.qa.jax_hmm import emission
 
     zeros = np.zeros_like(counts)
     scores = emission(

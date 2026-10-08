@@ -38,7 +38,7 @@ weight clone `c`'s segments decoded to `j` carry. That term is what makes
 the shifted likelihood flat along `log_mu -> log_mu + c`, and the gradient
 here has zero sum over states there, as it must.
 
-**Referee:** `port.extensions.jax_hmm`, the same objective differentiated by
+**Referee:** `port.qa.jax_hmm`, the same objective differentiated by
 `jax` (`tests/test_mstep_gradient.py`). Nothing here is a second route to a
 fit: `cnaster`'s own `cost_fn` still computes every value BFGS reads, and
 its own callback still updates the posteriors.

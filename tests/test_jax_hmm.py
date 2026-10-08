@@ -3,7 +3,7 @@
 **This is the test that makes the extension honest.** A `jax` rewrite of an
 objective is only worth having if it is the *same* objective; otherwise the
 Hessian it yields describes a model nobody fitted.
-`port.extensions.jax_hmm` is never used to fit anything, so nothing else
+`port.qa.jax_hmm` is never used to fit anything, so nothing else
 would notice a divergence.
 
 `oracle`, not `patch`: two independent implementations of one quantity, and
@@ -49,7 +49,7 @@ def test_the_jax_emission_is_cnasters() -> None:
     tighter than the realized figure.
     """
     from cnaster.hmm_nophasing import _bb_logpmf_1d, _nb_logpmf_1d
-    from port.extensions.jax_hmm import emission
+    from port.qa.jax_hmm import emission
 
     instance = _instance()
     n_states = instance["log_mu"].shape[0]
@@ -107,7 +107,7 @@ def test_the_jax_forward_is_cnasters() -> None:
     1.79e-13 rather than compounding it.
     """
     from cnaster.hmm_nophasing import _bb_logpmf_1d, _nb_logpmf_1d, hmm_nophasing
-    from port.extensions.jax_hmm import emission, marginal_negative_log_likelihood
+    from port.qa.jax_hmm import emission, marginal_negative_log_likelihood
     from scipy.special import logsumexp
 
     instance = _instance()
@@ -189,8 +189,8 @@ def test_the_jax_shift_is_the_patched_one() -> None:
     and `scipy.special.logsumexp` agreeing to the last bit on this fixture
     is not a contract either library offers.
     """
-    from port.extensions.jax_hmm import shifted_rates
     from port.patch.hmm_nophasing import shifts
+    from port.qa.jax_hmm import shifted_rates
 
     generator = np.random.default_rng(13)
     n_states, lengths = 4, np.array([9, 5, 11], dtype=np.int64)
@@ -223,7 +223,7 @@ def test_the_shift_removes_the_overall_scale() -> None:
     `log Z_c` moves with `log_mu`, so the difference does not. Checked on
     the model rather than on either implementation.
     """
-    from port.extensions.jax_hmm import shifted_rates
+    from port.qa.jax_hmm import shifted_rates
 
     generator = np.random.default_rng(23)
     n_states, lengths = 3, np.array([7, 7], dtype=np.int64)

@@ -215,11 +215,6 @@ def _parser() -> argparse.ArgumentParser:
         help="snakes_and_ladders' labelling (#312) and the HMM start kmeans++x5+em (#489)",
     )
     parser.add_argument(
-        "--copy-errors",
-        action="store_true",
-        help="write cnv_copy_sets.tsv, each state's 95 per cent credible (A, B) (#353); needs the shift",
-    )
-    parser.add_argument(
         "--copy-decode",
         choices=("lattice", "shared"),
         default="lattice",
@@ -341,14 +336,10 @@ def _refusals(arguments: argparse.Namespace, settings: Settings) -> list[str]:
         if asked and not settings.figures
     ]
 
-    # NB the decode compares `(A + B) / 2` against the pinned rates; an
-    #    unshifted fit's rates carry the baseline's per-clone scale (#353).
-    if arguments.copy_errors and not settings.shift:
-        refused.append("--copy-errors needs the shift; drop --no-shift")
     # NB the copy rows decode the fit the shift's `run_core_inference` row
     #    captures; without it the decode stopped hours in, with no captured
     #    fit (#576). Refused here, naming the way out.
-    elif settings.copy_cap and not settings.shift:
+    if settings.copy_cap and not settings.shift:
         refused.append(
             "--no-shift leaves the copy decode no captured fit; add --no-copy-cap"
         )
@@ -515,12 +506,6 @@ def main(argv: Sequence[str] | None = None) -> int:
             from port.patch.lattice import rust_lattices
 
             stack.enter_context(rust_lattices())
-
-        # NB before the swaps, so `patched` installs the capturing wrapper and
-        #    the fit kept is the pinned one.
-        from port.extensions.copy_errors import captured_fits
-
-        kept = stack.enter_context(captured_fits()) if arguments.copy_errors else None
 
         selected = SWAPS if not arguments.no_patch else ()
 
@@ -813,8 +798,6 @@ def main(argv: Sequence[str] | None = None) -> int:
         from port.extensions.run_record import release
 
         release()
-    if kept is not None:
-        _write_copy_sets(arguments.config, kept, since=since)
 
     print(f"run_cnaster_port: {wall:.2f}s", file=sys.stderr)
     return 0
@@ -897,62 +880,6 @@ def _write_outputs(
             # NB the integer stages, from the copies the run wrote and its spots (T- #817)
             integer_groups(cnamaste_file, run, Path(config))
         print(f"run_cnaster_port: outputs written to {run}", file=sys.stderr)
-
-
-def _write_copy_sets(
-    config: str, kept: list[Any], *, since: float | None = None
-) -> None:
-    """Write the credible sets beside the final fit this run wrote.
-
-    The fit is the one of the configured `hmm.n_states` written at or after
-    `since`, not the newest under `output_dir`, which may be another
-    configuration's (T- #617). With none, nothing is written, and it says so,
-    as for a fit `pinned_errors` refuses (#705).
-    """
-    from pathlib import Path
-
-    import yaml
-
-    from port.extensions.copy_errors import write_copy_sets
-
-    if not kept:
-        print("run_cnaster_port: --copy-errors kept no fit", file=sys.stderr)
-        return
-
-    stated = yaml.safe_load(Path(config).read_text())
-    output = Path(stated["paths"]["output_dir"])
-    n_states = (stated.get("hmm") or {}).get("n_states")
-    pattern = (
-        "rdrbaf_final_nstates*_smp.npz"
-        if n_states is None
-        else f"rdrbaf_final_nstates{int(n_states)}_smp.npz"
-    )
-    fits = [
-        fit
-        for fit in output.rglob(pattern)
-        if since is None or fit.stat().st_mtime >= since
-    ]
-
-    if len(fits) != 1:
-        print(
-            f"run_cnaster_port: --copy-errors found {len(fits)} fits this run "
-            f"wrote under {output}; cnv_copy_sets.tsv not written",
-            file=sys.stderr,
-        )
-        return
-
-    # NB a refused fit (T- #599's large tau) leaves no sets and says so; the
-    #    run it follows completed, and its outputs stand (#705).
-    try:
-        path = write_copy_sets(fits[0].parent, kept[-1])
-    except ValueError as refused:
-        print(
-            f"run_cnaster_port: {refused}; cnv_copy_sets.tsv not written",
-            file=sys.stderr,
-        )
-        return
-
-    print(f"run_cnaster_port: wrote {path}", file=sys.stderr)
 
 
 def _report(spent: dict[str, Spent], wall: float, *, patched: bool) -> None:

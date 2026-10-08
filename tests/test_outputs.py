@@ -574,8 +574,7 @@ def test_copy_sets_go_beside_the_fit_this_run_wrote(
     """Not beside the newest fit under `output_dir`, another K's (T- #617)."""
     import os
 
-    from port.extensions import copy_errors
-    from port.scripts.run_cnaster import _write_copy_sets
+    from port.sandbox.extensions import copy_errors
 
     ours, other = (
         tmp_path / "clone3_rectangle0_w1.0",
@@ -598,10 +597,10 @@ def test_copy_sets_go_beside_the_fit_this_run_wrote(
     config = tmp_path / "config.yaml"
     config.write_text(f"paths:\n  output_dir: {tmp_path}\nhmm:\n  n_states: 4\n")
 
-    _write_copy_sets(str(config), ["fit"], since=1_500.0)
+    copy_errors.write_beside_final_fit(str(config), ["fit"], since=1_500.0)
     assert placed == [ours]
 
-    _write_copy_sets(str(config), ["fit"], since=2_500.0)
+    copy_errors.write_beside_final_fit(str(config), ["fit"], since=2_500.0)
     assert placed == [ours]
 
 
@@ -612,8 +611,7 @@ def test_a_refused_fit_leaves_the_run_and_says_so(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     """T- #599's refusal writes no sets and does not fail the run it follows (#705)."""
-    from port.extensions import copy_errors
-    from port.scripts.run_cnaster import _write_copy_sets
+    from port.sandbox.extensions import copy_errors
 
     (tmp_path / "rdrbaf_final_nstates4_smp.npz").write_bytes(b"")
 
@@ -625,7 +623,7 @@ def test_a_refused_fit_leaves_the_run_and_says_so(
     config = tmp_path / "config.yaml"
     config.write_text(f"paths:\n  output_dir: {tmp_path}\nhmm:\n  n_states: 4\n")
 
-    _write_copy_sets(str(config), ["fit"])
+    copy_errors.write_beside_final_fit(str(config), ["fit"])
 
     assert "T- #599); refused; cnv_copy_sets.tsv not written" in capsys.readouterr().err
 

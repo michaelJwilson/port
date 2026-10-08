@@ -635,8 +635,63 @@ def captured_clones() -> list[tuple[np.ndarray, Pseudobulk, float]] | None:
     return clones_of(fit)
 
 
+class Captured(NamedTuple):
+    """What `run_core_inference` was given, and what it returned."""
+
+    single_X: np.ndarray
+    lengths: np.ndarray
+    single_base_nb_mean: np.ndarray
+    single_total_bb_RD: np.ndarray
+    res: Any
+
+
+@contextlib.contextmanager
+def captured_fits() -> Iterator[list[Captured]]:
+    """Every `params="smp"` fit `port`'s `run_core_inference` returns in the block.
+
+    Wraps `port.patch.hmrf.run_core_inference`, so it is entered **before**
+    `patched`, which then installs the wrapper. The BAF-only stage calls it
+    too, with `params="sp"`; the fit kept is the one that also fits `mu`. The
+    one capture shim (#517): the copy decode and the tests' harnesses read it.
+    """
+    import port.patch.hmrf as patch
+
+    kept: list[Captured] = []
+    original = patch.run_core_inference
+
+    def keep(
+        single_X: Any,
+        lengths: Any,
+        base: Any,
+        total: Any,
+        *rest: Any,
+        **kw: Any,
+    ) -> Any:
+        result = original(single_X, lengths, base, total, *rest, **kw)
+
+        if kw.get("params") == "smp":
+            kept.append(
+                Captured(
+                    np.array(single_X, dtype=np.float64),
+                    np.asarray(lengths, dtype=np.int64),
+                    np.array(base, dtype=np.float64),
+                    np.array(total, dtype=np.float64),
+                    result,
+                )
+            )
+
+        return result
+
+    patch.run_core_inference = keep
+
+    try:
+        yield kept
+    finally:
+        patch.run_core_inference = original
+
+
 def clones_of(captured: Any) -> list[tuple[np.ndarray, Pseudobulk, float]]:
-    """:func:`captured_clones` of a given fit (`copy_errors.Captured`)."""
+    """:func:`captured_clones` of a given fit (`Captured`)."""
     fit = captured
     single_x, base, total, result = (
         fit.single_X,
@@ -679,7 +734,7 @@ def clones_of(captured: Any) -> list[tuple[np.ndarray, Pseudobulk, float]]:
 
 
 _FITS: list[list[Any]] = []
-"""The fits each open `capture()` block collects (`copy_errors.captured_fits`)."""
+"""The fits each open `capture()` block collects (`captured_fits`)."""
 
 
 def captured_fit() -> Any:
@@ -706,7 +761,7 @@ def captured_normal() -> int | None:
 
 
 def normal_of(captured: Any) -> int:
-    """:func:`captured_normal` of a given fit (`copy_errors.Captured`)."""
+    """:func:`captured_normal` of a given fit (`Captured`)."""
     from port.patch.hmm_nophasing.shifted_emission import normal_clone
 
     result = captured.res
@@ -743,11 +798,9 @@ def captured_chain() -> tuple[np.ndarray | None, float]:
 def capture() -> Iterator[None]:
     """Keep the RDR+BAF fit's inputs and result, for the decoder that follows.
 
-    `port.extensions.copy_errors.captured_fits` for the block; the decode
+    `captured_fits` for the block; the decode
     reads the last `params="smp"` fit through :func:`captured_fit`.
     """
-    from port.extensions.copy_errors import captured_fits
-
     with captured_fits() as kept:
         _FITS.append(kept)
 

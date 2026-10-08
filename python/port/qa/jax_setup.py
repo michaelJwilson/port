@@ -3,8 +3,8 @@
 **The flag is process-wide and takes effect only before the first array is
 made**, so it cannot be set inside the function that needs it. It lives in a
 module of its own because two modules need it and each has to be correct on
-its own: `port.extensions.parameter_errors` differentiates objectives that
-are not necessarily `port.extensions.jax_hmm`'s, so it cannot rely on that
+its own: `port.qa.parameter_errors` differentiates objectives that
+are not necessarily `port.qa.jax_hmm`'s, so it cannot rely on that
 module having been imported first.
 
 That is not hypothetical. Without this, `parameter_errors` used on its own

@@ -18,7 +18,6 @@ REFUSALS = {
     ("--no-figure-swaps", "--genomic-colours", "integer"): "--genomic-colours needs",
     ("--no-figure-swaps", "--png-copies"): "--png-copies needs",
     ("--no-figure-swaps", "--sample-layout", "3,1"): "--sample-layout needs",
-    ("--no-shift", "--copy-errors"): "--copy-errors needs the shift",
     ("--no-shift",): "--no-shift leaves the copy decode no captured fit",
     ("--no-parsimony-decode", "--copy-decode", "shared"): "--no-parsimony-decode needs",
     ("--no-shift", "--no-copy-cap", "--sal-emission"): "--sal-emission is read by",

@@ -1,7 +1,7 @@
 """The M step's closed-form gradient against `jax`'s, on the objective `cnaster` scores (#433).
 
 `port.patch.hmm_nophasing.gradient` differentiates the EM objective by hand;
-`port.extensions.jax_hmm` writes the same emission in `jax`, which
+`port.qa.jax_hmm` writes the same emission in `jax`, which
 differentiates it by itself. Two implementations of one derivative, so the
 referee is `oracle`. The objective's *value* is pinned first against
 `cnaster`'s own coded emission, so the `jax` form is the objective BFGS
@@ -98,7 +98,7 @@ def _jax_objective(model: Any, gradient: Any, data: dict[str, Any]) -> Any:
     """The same objective in `jax`, from `jax_hmm`'s emission and shifted rates."""
     import jax.numpy as jnp
     from jax.scipy.special import expit
-    from port.extensions.jax_hmm import emission, shifted_rates
+    from port.qa.jax_hmm import emission, shifted_rates
 
     n_states = gradient.n_states
     flags = gradient.flags

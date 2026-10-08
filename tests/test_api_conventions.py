@@ -42,7 +42,7 @@ KNOWN: dict[str, str] = {
     "port.patch.normal_spot:removal_indicator arg beta": "F2",
     "port.extensions.integer_copy:success_probability_variance arg alpha": "F3",
     "port.extensions.integer_copy:success_probability_variance arg beta": "F2",
-    "port.extensions.parameter_errors:shift_weights arg log_mus": "F5",
+    "port.qa.parameter_errors:shift_weights arg log_mus": "F5",
     "port.patch.hmm_nophasing.logmu_shift:shifts arg log_mus": "F5",
     "port.extensions.outputs:states arg fit": "F6",
     "port.extensions.outputs:binlevel arg fit": "F6",

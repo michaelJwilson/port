@@ -62,7 +62,7 @@ def test_the_adapter_is_cnasters_forward_and_ports_nll() -> None:
     """
     import torch
     from cnaster.hmm_nophasing import _bb_logpmf_1d, _nb_logpmf_1d, hmm_nophasing
-    from port.extensions.jax_hmm import emission, marginal_negative_log_likelihood
+    from port.qa.jax_hmm import emission, marginal_negative_log_likelihood
     from port.sandbox.extensions.hmm_objective import ALPHA, TAU, T
     from scipy.special import logsumexp
 
