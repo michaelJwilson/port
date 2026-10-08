@@ -51,7 +51,7 @@ from __future__ import annotations
 import numpy as np
 from sal.emissions import CountPairEmission
 
-from port.patch.hmm_nophasing.gradient import DISPERSION_FLOOR
+from port.patch.emission import DISPERSION_FLOOR
 
 __all__ = [
     "CovariateNotConstant",

@@ -118,19 +118,17 @@ def test_the_dense_kernel_is_the_per_state_kernel() -> None:
 @pytest.mark.oracle
 @pytest.mark.parametrize("tau", [5e3, 1e12])
 def test_the_sal_emission_scores_a_large_concentration_exactly(tau: float) -> None:
-    """`dense_emission.bb_states`, the HMM's beta-binomial under `--sal`: 1e-9 at 5e3, 1e-11 at 1e12.
+    """`dense_emission.bb_states`, the HMM's beta-binomial under `--sal`, to 1e-11 at 5e3 and 1e12.
 
-    Below `STABLE_TAU` it is sal's table (1.9e-10 at 1e5); at and above, port's
-    kernel.
+    sal's tables of scaled rising factorials at every concentration (T- #776);
+    the `STABLE_TAU` hand-off to port's kernel is retired.
     """
-    from port.patch.hmm_nophasing.dense_emission import STABLE_TAU, bb_states
+    from port.patch.hmm_nophasing.dense_emission import bb_states
 
     scores = bb_states(
         COUNTS, np.full(COUNTS.size, float(TRIALS)), np.array([0.3]), np.array([tau])
     )
-    tolerance = 1e-11 if tau >= STABLE_TAU else 1e-9
-
-    np.testing.assert_allclose(scores[0], _exact(0.3, tau), rtol=0, atol=tolerance)
+    np.testing.assert_allclose(scores[0], _exact(0.3, tau), rtol=0, atol=1e-11)
 
 
 @pytest.mark.oracle
@@ -215,12 +213,13 @@ def test_cnasters_beta_binomial_is_not_a_pmf_at_a_large_concentration() -> None:
     assert abs(logsumexp(out)) > 1.0
 
 
-@pytest.mark.bug
-def test_sals_beta_binomial_is_not_a_pmf_at_a_large_concentration() -> None:
-    """`sal`'s dense beta-binomial at `tau = 1e16`, `p = 0.3`, `n = 100` sums to about `e^-60`, not 1.
+@pytest.mark.analytic
+def test_sals_beta_binomial_is_a_pmf_at_a_large_concentration() -> None:
+    """`sal`'s dense beta-binomial at `tau = 1e16`, `p = 0.3`, `n = 100` sums to 1 within 1e-12.
 
-    The same `lgamma` cancellation; `bb_states` scores such a state with
-    port's kernel instead.
+    Pinned `e^-60` while sal filled its tables with `lgamma`; sal #1334's
+    scaled rising factorials fix it (T- #776). Fails if the cancellation
+    returns.
     """
     from sal.emissions import BetaBinomialEmission
     from sal.emissions.dense import Order, log_emission
@@ -233,7 +232,7 @@ def test_sals_beta_binomial_is_not_a_pmf_at_a_large_concentration() -> None:
         family, k, np.full((k.size, 1), float(TRIALS)), order=Order.FAMILY
     )
 
-    assert abs(logsumexp(scores[0])) > 1.0
+    assert abs(logsumexp(scores[0])) < 1e-12
 
 
 def _binomial_exact(p: float) -> np.ndarray:
@@ -275,7 +274,7 @@ def test_the_limit_is_continuous_in_the_concentration() -> None:
 def test_the_limit_at_a_share_of_zero_or_one_excludes_the_other_allele(
     p: float, count: float
 ) -> None:
-    from port.patch.hmm_nophasing.bb_logpmf import binomial_logpmf
+    from port.patch.emission import bb_log_pmf
 
-    assert binomial_logpmf(count, 1.0, p) == -np.inf
-    assert binomial_logpmf(1.0 - count, 1.0, p) == 0.0
+    assert bb_log_pmf(count, 1.0, p, np.inf) == -np.inf
+    assert bb_log_pmf(1.0 - count, 1.0, p, np.inf) == 0.0

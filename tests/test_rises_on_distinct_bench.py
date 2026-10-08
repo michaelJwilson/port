@@ -1,4 +1,4 @@
-"""What the integer-copy likelihood's rising factorials cost on the distinct counts (#702).
+"""What `port.patch.emission.scaled_rising` costs on the distinct counts (#702, T- #776).
 
 Shapes from a dev_tree `--sal` run's 7,287 calls: the median call is 4 states
 over 655 pseudobulk bins with 220 distinct counts, the largest 25 states over
@@ -12,9 +12,9 @@ from collections.abc import Callable
 
 import numpy as np
 import pytest
-from port.patch.hmm_nophasing.bb_logpmf import rises_on_distinct
+from port.patch.emission import scaled_rising as rises_on_distinct
 from pytest_benchmark.fixture import BenchmarkFixture
-from sal.emissions.rising import log_rising
+from sal.emissions.rising import scaled_rising_array as log_rising
 
 GATE = (4, 655, 220, 685)
 STRESS = (25, 2_829, 594, 2_797)

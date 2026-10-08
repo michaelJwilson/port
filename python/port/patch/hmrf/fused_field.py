@@ -45,11 +45,7 @@ from cnaster.hmm_nophasing import _bb_logpmf_1d as cnaster_bb_logpmf_1d
 from cnaster.hmm_nophasing import _nb_logpmf_1d as cnaster_nb_logpmf_1d
 from numba import njit
 
-from port.patch.hmm_nophasing.bb_logpmf import (
-    DISPERSION_FLOOR,
-    bb_logpmf,
-    binomial_logpmf,
-)
+from port.patch.emission import bb_log_pmf
 from port.patch.hmm_nophasing.nb_logpmf import _nb_logpmf_1d as log_space_nb_logpmf_1d
 
 if TYPE_CHECKING:  # pragma: no cover - `prange` is `range` to a type checker
@@ -71,7 +67,8 @@ __all__ = ["fused_spot_clone_field"]
 
 def _log_space_baf(counts_bb, total_bb_RD, p_binom, taus, pred):
     """`(n_spots, n_clones)`: each clone's beta-binomial log pmf summed over the
-    bins in order, `sal`'s rising factorials (`bb_logpmf`, T- #781).
+    bins in order, `port.patch.emission.bb_log_pmf` (T- #776); `tau = inf`
+    the binomial.
 
     Summed over `o` one bin at a time, as the compiled pass sums, so the
     field is bitwise the per-bin rows'.
@@ -79,18 +76,11 @@ def _log_space_baf(counts_bb, total_bb_RD, p_binom, taus, pred):
     n_obs, n_spots = counts_bb.shape
     p = np.asarray(p_binom, dtype=np.float64).reshape(-1)
     tau = np.asarray(taus, dtype=np.float64).reshape(-1)
-    a = np.maximum(p * tau, DISPERSION_FLOOR)
-    b = np.maximum((1.0 - p) * tau, DISPERSION_FLOOR)
     accumulated = np.zeros((n_spots, pred.shape[1]))
     for o in range(n_obs):
         states = pred[o]
         k, n = counts_bb[o][:, None], total_bb_RD[o][:, None]
-        row = bb_logpmf(k, n, a[states][None, :], b[states][None, :])
-        binomial = tau[states] == np.inf
-        if binomial.any():
-            for c in np.flatnonzero(binomial):
-                row[:, c] = binomial_logpmf(k[:, 0], n[:, 0], p[states[c]])
-        accumulated += row
+        accumulated += bb_log_pmf(k, n, p[states][None, :], tau[states][None, :])
     return accumulated
 
 
@@ -156,7 +146,9 @@ def fused_spot_clone_field(
     return field
 
 
-@njit(nogil=True, cache=True, parallel=True, error_model="numpy")
+# NB not cached: the log-space row calls `sal`'s `gammaln` pointer, which
+#    keeps a kernel that reaches it out of `numba`'s cache (T- #776).
+@njit(nogil=True, parallel=True, error_model="numpy")
 def _fused_kernel(
     counts_nb,
     base_nb_mean,

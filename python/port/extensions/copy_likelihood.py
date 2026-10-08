@@ -37,10 +37,8 @@ from typing import Any, Literal, NamedTuple
 
 import numpy as np
 from sal.opt.termination import Termination
-from scipy.special import gammaln, xlogy
 
-from port.patch.hmm_nophasing.bb_logpmf import rises_on_distinct
-from port.patch.hmm_nophasing.gradient import DISPERSION_FLOOR
+from port.patch.emission import DISPERSION_FLOOR, bb_log_pmf, nb_log_pmf
 
 __all__ = [
     "CopyFit",
@@ -113,61 +111,30 @@ def candidates(max_total_copy: int, max_allele_copy: int | None = None) -> np.nd
 def pseudobulk_log_pmf(
     log_rate: np.ndarray, p: np.ndarray, bulk: Pseudobulk, bins: np.ndarray
 ) -> np.ndarray:
-    """NB + BB log pmf per bin, in `port.extensions.jax_hmm.emission`'s terms.
+    """NB + BB log pmf per bin: `port.patch.emission`'s, the one evaluation every site scores (T- #776).
 
-    `alpha = 0` is the Poisson and `tau = inf` the binomial, exactly.
     `log_rate` and `p` broadcast against the bins: a leading state axis gives
-    every state's row at once. The terms that do not depend on the state are
-    computed once, in the order the sum reads them, so each element is the
-    per-state expression's bitwise (#512).
-
-    The negative binomial is in log space with `a = alpha * mean`:
-    `log p = -log1p(a)`, `log(1 - p) = log(a) - log1p(a)` (#560). Forming
-    `p = 1 / (1 + a)` rounded `p` to 1 below `a` of about 1.1e-16, where a
-    count of 0 scored NaN and a count of 1000 `-inf` (truth -43,420 at
-    `a = 1e-19`), and lost digits of `log(1 - p)` below about 1e-4. `alpha`
-    is floored in `a` as in `r`, as `port.patch.hmm_nophasing.nb_logpmf`
-    does.
+    every state's row at once. The negative binomial is
+    :func:`~port.patch.emission.nb_log_pmf` at `mean = exposure exp(log_rate)`,
+    its table taken once on the distinct counts, `alpha <= 0` the Poisson and
+    a mean `<= 0` scoring 0; the beta-binomial
+    :func:`~port.patch.emission.bb_log_pmf`, `tau = inf` the binomial, its
+    rising factorials on the distinct counts. At `tau = inf` the share is
+    clipped to `[DISPERSION_FLOOR, 1 - DISPERSION_FLOOR]`, as the finite
+    shapes are floored, so a lost allele scores finitely.
     """
     x = bulk.counts_nb[bins]
-    exposure = bulk.base_nb_mean[bins]
-    mean = exposure * np.exp(log_rate)
-
-    with np.errstate(divide="ignore", invalid="ignore"):
-        if bulk.dispersion <= 0.0:
-            depth = np.where(
-                mean <= 0.0, 0.0, x * np.log(mean) - mean - gammaln(x + 1.0)
-            )
-        else:
-            dispersion = max(bulk.dispersion, DISPERSION_FLOOR)
-            size = 1.0 / dispersion
-            scaled = dispersion * mean
-            fixed = gammaln(x + size) - gammaln(size) - gammaln(x + 1.0)
-            depth = np.where(
-                mean <= 0.0,
-                0.0,
-                fixed - (size + x) * np.log1p(scaled) + xlogy(x, scaled),
-            )
+    mean = bulk.base_nb_mean[bins] * np.exp(log_rate)
+    depth = nb_log_pmf(x, bulk.dispersion, mean)
 
     k = bulk.counts_bb[bins]
     n = bulk.total_bb_RD[bins]
-    choose = gammaln(n + 1.0) - gammaln(k + 1.0) - gammaln(n - k + 1.0)
-
-    if not np.isfinite(bulk.taus):
-        share = np.clip(p, DISPERSION_FLOOR, 1.0 - DISPERSION_FLOOR)
-        allele = choose + k * np.log(share) + (n - k) * np.log1p(-share)
-    else:
-        a = np.maximum(p * bulk.taus, DISPERSION_FLOOR)
-        b = np.maximum((1.0 - p) * bulk.taus, DISPERSION_FLOOR)
-        # NB rising factorials (#561): the `lgamma` form subtracts values
-        #    near `tau log tau` and loses 5e-3 nats at `tau = 1e12`. Each is
-        #    taken on the distinct counts and gathered, bitwise (#702).
-        allele = (
-            choose
-            + rises_on_distinct(a, k)
-            + rises_on_distinct(b, n - k)
-            - rises_on_distinct(a + b, n)
-        )
+    share = (
+        np.clip(p, DISPERSION_FLOOR, 1.0 - DISPERSION_FLOOR)
+        if not np.isfinite(bulk.taus)
+        else p
+    )
+    allele = bb_log_pmf(k, n, share, bulk.taus)
 
     return np.asarray(depth + allele)
 
