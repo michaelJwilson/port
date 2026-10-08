@@ -18,7 +18,7 @@ def mirror_key_holds(legend_ax: Any, edge_ax: Any) -> None:
     the other, not overlapping, their left edges on `edge_ax`'s (0.5 px);
     `MIRROR` right of them, its centre on the white between them (0.5 px),
     and left of the colour bar's title (PR- #715)."""
-    from port.patch.plot_copy_number_profile import MIRROR
+    from port.patch.plot_copy_number_profile import MIRROR, TITLE
 
     renderer = legend_ax.figure.canvas.get_renderer()
     upper, lower = sorted(
@@ -26,9 +26,7 @@ def mirror_key_holds(legend_ax: Any, edge_ax: Any) -> None:
         key=lambda b: -b.y0,
     )
     (mirror,) = [t for t in legend_ax.texts if t.get_text() == MIRROR]
-    (title,) = [
-        t for t in legend_ax.texts if t.get_text() == r"$\mathbb{N}$-CNA (A, B)"
-    ]
+    (title,) = [t for t in legend_ax.texts if t.get_text() == TITLE]
     label = mirror.get_window_extent(renderer)
     left = edge_ax.get_window_extent(renderer).x0
 

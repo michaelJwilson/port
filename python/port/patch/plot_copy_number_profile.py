@@ -369,6 +369,9 @@ def plot_copy_number_profile(
 MIRROR = "Local Mirror"
 """The mirror swatches' label, right of them in every figure that draws the key (PR- #701)."""
 
+TITLE = r"$\mathbb{N}$-CNA"
+"""The colour bar's title, `cnaster`'s own: the "(A, B)" port appended is dropped (T- #794)."""
+
 MIRROR_GAP = 0.15
 """The white between the stacked mirror swatches, against a box's height."""
 
@@ -434,7 +437,7 @@ def plot_ascn_legend(
     title = ax.text(
         0.0,
         box_h / 2,
-        r"$\mathbb{N}$-CNA (A, B)",
+        TITLE,
         ha="right",
         va="center_baseline",
         **text,

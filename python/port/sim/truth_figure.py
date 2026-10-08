@@ -22,8 +22,9 @@ unlabelled (T- #683, PR- #701). The page's last track alone carries the
 contigs are short (`genomic_axis.name_contigs`); every track and (b) keep
 the chromosome boundaries.
 
-The true clone of each spot is not drawn here: `analysis.plot_spatial` draws
-it as its own figure, `truth/spatial.png` (T- #660).
+With `spatial`, (c) is the true clone of each spot per slice in place of
+the tracks (T- #791), and the phase track moves under (b), where it names
+the contigs and carries the 10 Mb marks (T- #794).
 
 (b) and (c) share one left and one right edge, so a chromosome boundary is
 at one place on the page in both. Clones
@@ -66,20 +67,29 @@ CONTIG_FOOT = 0.3
 genome panel: the spatial variant (T- #791)."""
 
 
+PHASE_TRACK = 0.65
+"""Inches: the spatial variant's phase track under (b), as tall as the RDR
+and BAF variant's tracks draw on `dev_tree_1s_easy` r0 (`7ba9b01f`), 0.654 in (T- #794)."""
+
+PHASE_GAP = 0.06
+"""Inches between (b)'s rows and the spatial variant's phase track."""
+
 LETTER_ROOM = 0.15
 """Inches over the spatial variant's (c) titles for the panel letter."""
 
 
 def heights(spatial: float | None = None) -> dict[str, float]:
     """`HEIGHTS`, or with `spatial`, (c)'s row height (`spatial_page.row_height`),
-    (b) `CONTIG_FOOT` taller and (c) that row under `LETTER_ROOM`, no taller than
-    the rest of the page: the page as tall as it draws (T- #791)."""
+    (b) taller by its phase track and `CONTIG_FOOT` (T- #794) and (c) that row
+    under `LETTER_ROOM`, no taller than the rest of the page: the page as tall
+    as it draws (T- #791)."""
     if spatial is None:
         return dict(HEIGHTS)
-    room = HEIGHTS["genomic"] - CONTIG_FOOT
+    under = PHASE_GAP + PHASE_TRACK + CONTIG_FOOT
+    room = HEIGHTS["genomic"] - under
     return {
         "tree": HEIGHTS["tree"],
-        "profile": HEIGHTS["profile"] + CONTIG_FOOT,
+        "profile": HEIGHTS["profile"] + under,
         "spatial": min(room, LETTER_ROOM + spatial),
     }
 
@@ -107,7 +117,9 @@ def truth_combined_figure(
 
     With `spatial`, (c) is each spot's true clone per slice in the spatial
     pages' format (`analysis.draw_spatial`, `port.extensions.spatial_page`)
-    in place of RDR and BAF per clone, and (b) names the contigs (T- #791).
+    in place of RDR and BAF per clone (T- #791); (b) carries the phase track
+    under its rows, which names the contigs and carries the genome's marks
+    (T- #794).
     """
     import matplotlib.pyplot as plt
     from matplotlib.ticker import NullLocator
@@ -132,7 +144,6 @@ def truth_combined_figure(
     from port.sim.analysis import (
         binned_axis,
         binned_profile,
-        draw_phase,
         draw_tree,
         genomic_truth,
         shown,
@@ -143,7 +154,7 @@ def truth_combined_figure(
     symbol = _symbol(r)
     genome = binned_axis(r, metric=metric, labels=False)
     tall_of = heights(_spatial_row(r, width - LEFT - RIGHT) if spatial else None)
-    foot = ROWS[0] + (CONTIG_FOOT if spatial else 0.0)
+    foot = ROWS[0] + (CONTIG_FOOT + PHASE_TRACK + PHASE_GAP if spatial else 0.0)
 
     with page_style():
         figure: Any = plt.figure(
@@ -185,9 +196,17 @@ def truth_combined_figure(
 
         # (c)
         if spatial:
-            tracks: list[list[Any]] = []
-            bottom_ax = profile_ax
-            # NB drawn once (b)'s edges are fitted, across them (below)
+            # NB the phase track under (b)'s rows, as the RDR and BAF variant
+            #    draws it in (c) (T- #794); the slices drawn once (b)'s edges
+            #    are fitted, across them (below)
+            phase_ax = profile_fig.add_axes(
+                (0.0, CONTIG_FOOT / tall, 1.0, PHASE_TRACK / tall)
+            )
+            _phase_track(phase_ax, r, genome)
+            _end_ticks(phase_ax)
+            tracks: list[list[Any]] = [[phase_ax]]
+            bottom_ax = phase_ax
+            bottom_ax.set_xticks([])
         else:
             g = genomic_truth(r)
             plot_clones_genomic(g.lengths, g.counts, g.expected, g.trials,
@@ -206,11 +225,7 @@ def truth_combined_figure(
             # NB drawn into the normal clone's RDR axes, so (c)'s axes stay in page order
             phase_ax, baf_ax = tracks[normal]
             phase_ax.cla()
-            draw_phase(phase_ax, r, genome, rate_size=None, ylim=1.0)
-            # NB the tracks' furniture (`fit_track_furniture`): ticks 2 pt, the label a point off them
-            phase_ax.tick_params(length=2, pad=1)
-            phase_ax.yaxis.labelpad = 1.0
-            phase_ax.set_ylabel("Switches / Mb")
+            _phase_track(phase_ax, r, genome)
             baf_ax.remove()
             tracks[normal] = [phase_ax]
             # NB each clone's name followed by its barcode, as (a) sets it.
@@ -222,14 +237,7 @@ def truth_combined_figure(
                     if clone is not None and text.get_visible():
                         text.set_text(f"{symbol(clone)} ({shown(barcode[clone])})")
             for ax in genomic_fig.axes:
-                ticks = ax.get_yticks()
-                if ticks.size > 2:
-                    ends = [ticks[0], ticks[-1]]
-                    ax.set_yticks(ends, [f"{tick:.1f}" for tick in ends])
-                    bottom, top = ax.get_yticklabels()
-                    bottom.set_verticalalignment("bottom")
-                    top.set_verticalalignment("top")
-                ax.set_ylabel(ax.get_ylabel(), rotation=90, ha="center", va="bottom")
+                _end_ticks(ax)
                 # NB `cnaster`'s names, 10 pt at 45 degrees, give way to the
                 #    last track's ticks; the marks stay on the last track alone.
                 for text in ax.texts:
@@ -243,6 +251,8 @@ def truth_combined_figure(
         # NB the tracks at `TRACK_FONT_SIZE`, as `combined_figure` sets its own (#743)
         for panel in (tree_fig, profile_fig):
             set_font_size(panel, FONT_SIZE)
+        for group in tracks if spatial else ():
+            set_font_size(group[0], TRACK_FONT_SIZE)
         set_font_size(genomic_fig, FONT_SIZE if spatial else TRACK_FONT_SIZE)
         figure.canvas.draw()
 
@@ -289,6 +299,35 @@ def truth_combined_figure(
         figure.canvas.draw()
     disclose(figure, genome)
     return figure
+
+
+def _phase_track(ax: Any, r: Realization, genome: Any) -> None:
+    """The phase switches per Mb on `ax`, on the page's genome axis, its top 1
+    (`analysis.draw_phase`), in the tracks' furniture (`fit_track_furniture`):
+    ticks 2 pt, the label a point off them (#745)."""
+    from port.sim.analysis import draw_phase
+
+    draw_phase(ax, r, genome, rate_size=None, ylim=1.0)
+    ax.tick_params(length=2, pad=1)
+    ax.yaxis.labelpad = 1.0
+    ax.set_ylabel("Switches / Mb")
+    # NB `cnaster`'s names give way to the page's own (`name_contigs`)
+    for text in ax.texts:
+        if text.get_text().startswith("chr"):
+            text.set_visible(False)
+
+
+def _end_ticks(ax: Any) -> None:
+    """A track's y ticks at its two ends alone, each label inside the axis,
+    its label upright on its left."""
+    ticks = ax.get_yticks()
+    if ticks.size > 2:
+        ends = [ticks[0], ticks[-1]]
+        ax.set_yticks(ends, [f"{tick:.1f}" for tick in ends])
+        bottom, top = ax.get_yticklabels()
+        bottom.set_verticalalignment("bottom")
+        top.set_verticalalignment("top")
+    ax.set_ylabel(ax.get_ylabel(), rotation=90, ha="center", va="bottom")
 
 
 def _spatial_row(r: Realization, width: float) -> float:
