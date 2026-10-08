@@ -7,7 +7,7 @@ extends = "study.toml"
 [sample]
 name = "study_2s"
 # NB `tests.sim_stages.realization_hash` of r0 as drawn here (`tests/test_sim_r0_hash.py`).
-r0_hash = "0abf60fc"
+r0_hash = "088e4b38"
 
 [[slice]]
 offset = [0.0, 0.0]
