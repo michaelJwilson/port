@@ -513,8 +513,7 @@ new manifest.
 `port.sim.laws.lognormal_sigma(0.10, 0.5)`: 10% of events below half the
 median, against 29-35% under the exponential (#619;
 `run_study --cna-lengths` draws both laws). `study.toml` is the one draw the Potts stream, the copy-state stream and the
-population study read: two slices overlapping by half an array, one clone on
-both, lognormal at a 20 Mb median, class-balanced states,
+population study read: lognormal at a 20 Mb median, class-balanced states,
 clone sizes swept log-uniform over 100-1,000 spots, BAF overdispersion,
 phase switches, irreversible LOH, truth varied per realization, and no normal
 admixture until T- #809 (T- #807; `population*.toml` retired to `sim/sandbox/manifests/`);

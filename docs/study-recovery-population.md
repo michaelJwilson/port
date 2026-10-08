@@ -54,8 +54,7 @@ The page is set as `combined.pdf`'s spatial row: 4.80 in wide, 7 pt text.
   - Each clone's size is drawn log-uniform over 100–1,000 spots (`[layout.size]`).
   - The tree has 1 trunk event, 4 per leaf and 1 per internal node, with class-balanced copy states.
   - CNA lengths are exponential with mean 20 Mb and a floor of 1 Mb. `study.toml` draws them lognormal at a 20 Mb
-    median (σ 0.541), draws two slices overlapping by half an array (`clone_1` on both), adds BAF
-    overdispersion 0.01 and irreversible LOH, and varies truth per realization.
+    median (σ 0.541), adds BAF overdispersion 0.01 and irreversible LOH, and varies truth per realization.
   - Counts come from the Pólya urn (#549).
   - `population_long.toml` is the same with a mean length of 60 Mb; `study.toml` has no long arm.
   - A member's hash is `port.sim.fixtures.realization_hash` of its drawn r0; the table names the first seed's of each manifest.
