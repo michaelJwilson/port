@@ -52,8 +52,13 @@ DISPERSION_FLOOR = 1e-10
 """`cnaster`'s floor on `alpha` in `_nb_logpmf_1d` and on `a`, `b` in
 `_bb_logpmf_1d`: the one statement (T- #617, T- #776); every site reads it here."""
 
+MIRRORS = ("cnaster.hmm_nophasing", "cnaster.hmm_phased", "cnaster.hmrf")
+"""The `cnaster` modules whose emission this one evaluation stands in for:
+`hmm_nophasing`'s and `hmm_phased`'s rows and `hmrf`'s field (T- #776)."""
+
 __all__ = [
     "DISPERSION_FLOOR",
+    "MIRRORS",
     "BetaBinomialTables",
     "bb_complete",
     "bb_log_pmf",
@@ -70,9 +75,9 @@ __all__ = [
 ]
 
 
-def nb_size(alpha: ArrayLike) -> np.ndarray:
-    """`r = 1 / max(alpha, DISPERSION_FLOOR)`, and `inf` (the Poisson) where `alpha <= 0`."""
-    alpha_ = np.asarray(alpha, dtype=np.float64)
+def nb_size(dispersion: ArrayLike) -> np.ndarray:
+    """`r = 1 / max(alpha, DISPERSION_FLOOR)` at `alpha = dispersion`, and `inf` (the Poisson) where `alpha <= 0`."""
+    alpha_ = np.asarray(dispersion, dtype=np.float64)
     with np.errstate(divide="ignore"):
         return np.where(
             alpha_ <= 0.0, np.inf, 1.0 / np.maximum(alpha_, DISPERSION_FLOOR)
@@ -103,9 +108,9 @@ def log_factorial(extent: int) -> np.ndarray:
     return out
 
 
-def nb_log_pmf(y: ArrayLike, alpha: ArrayLike, rate: ArrayLike) -> np.ndarray:
+def nb_log_pmf(y: ArrayLike, dispersion: ArrayLike, rate: ArrayLike) -> np.ndarray:
     """The negative binomial's log pmf at dispersion `alpha`, broadcast: :func:`nb_log_pmf_size` at `r = nb_size(alpha)`."""
-    return nb_log_pmf_size(y, nb_size(alpha), rate)
+    return nb_log_pmf_size(y, nb_size(dispersion), rate)
 
 
 def nb_log_pmf_size(y: ArrayLike, r: ArrayLike, rate: ArrayLike) -> np.ndarray:
@@ -149,7 +154,7 @@ def _log_rates(
     return log_p, log_q
 
 
-def bb_log_pmf(z: ArrayLike, n: ArrayLike, p: ArrayLike, tau: ArrayLike) -> np.ndarray:
+def bb_log_pmf(z: ArrayLike, n: ArrayLike, p: ArrayLike, taus: ArrayLike) -> np.ndarray:
     """The beta-binomial's log pmf at rate `p` and concentration `tau`, broadcast.
 
     `sal.emissions.bb.beta_binomial_log_pmf` at `a = max(p tau, floor)`,
@@ -162,7 +167,7 @@ def bb_log_pmf(z: ArrayLike, n: ArrayLike, p: ArrayLike, tau: ArrayLike) -> np.n
     z_ = np.asarray(z, dtype=np.float64)
     n_ = np.asarray(n, dtype=np.float64)
     p_, tau_ = np.broadcast_arrays(
-        np.asarray(p, dtype=np.float64), np.asarray(tau, dtype=np.float64)
+        np.asarray(p, dtype=np.float64), np.asarray(taus, dtype=np.float64)
     )
     valid = (z_ >= 0.0) & (n_ >= 0.0) & (z_ <= n_)
     zz, nn = np.where(valid, z_, 0.0), np.where(valid, n_, 0.0)
@@ -193,9 +198,9 @@ class BetaBinomialTables:
 
     __slots__ = ("failure", "log_factorial", "log_p", "log_q", "success", "trial")
 
-    def __init__(self, p: ArrayLike, tau: ArrayLike, extent: int) -> None:
+    def __init__(self, p: ArrayLike, taus: ArrayLike, extent: int) -> None:
         p_ = np.asarray(p, dtype=np.float64).reshape(-1)
-        tau_ = np.asarray(tau, dtype=np.float64).reshape(-1)
+        tau_ = np.asarray(taus, dtype=np.float64).reshape(-1)
         a, b = _shapes(p_, tau_)
         j = np.arange(extent, dtype=np.float64)[None, :]
         self.success = np.ascontiguousarray(scaled_rising_array(a[:, None], j))
@@ -205,9 +210,9 @@ class BetaBinomialTables:
         self.log_factorial = log_factorial(extent)
 
 
-def bb_tables(p: ArrayLike, tau: ArrayLike, extent: int) -> BetaBinomialTables:
+def bb_tables(p: ArrayLike, taus: ArrayLike, extent: int) -> BetaBinomialTables:
     """:class:`BetaBinomialTables` to counts below `extent`."""
-    return BetaBinomialTables(p, tau, extent)
+    return BetaBinomialTables(p, taus, extent)
 
 
 @njit(nogil=True, cache=True, error_model="numpy")
