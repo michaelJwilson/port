@@ -2,8 +2,8 @@
 
 `run_study --copy-state-stream MANIFEST OUT_DIR [--problems 5] [--seeds 3] [--held-out 3] [--first 0] [--settings PATH] [--workers 4] [--all | --starts NAME ...]`
 
-`... --tune` tunes the samplers on the HMM (`anneal-hmm`, `tempering-hmm`,
-`hmc-hmm`, `sal`'s since #634) on the `--held-out` realizations and writes `SETTINGS`, as
+`run_calibrate --copy MANIFEST [--starts NAME ...]` tunes the samplers on the HMM (`anneal-hmm`, `tempering-hmm`,
+`hmc-hmm`, `sal`'s since #634) on the `--held-out` realizations and writes `SETTINGS` (#749 WP1), as
 `potts_stream` tunes its samplers: a grid per sampler (`GRID`), `TUNING_SEEDS` seeds per setting, the
 cheapest setting whose median gap in log-likelihood at the start's own states
 is within `TOLERANCE` of the best setting's. The held-out realizations are
@@ -50,6 +50,7 @@ from typing import Any
 
 import numpy as np
 
+from port.qa.provenance import CONFIGS
 from port.studies import records
 from port.studies import stream as harness
 
@@ -94,8 +95,9 @@ TUNING_SEEDS = 5
 TOLERANCE = 1.0
 """Nats: a setting within this of the best median gap is as good, and the cheapest of those is kept."""
 
-SETTINGS = Path(__file__).with_name("copy_sampler_settings.json")
-"""The settings tuned once on `dev_tree_1s_hard`'s first `--held-out` realizations (r0 `d2938975`), reused by `--settings`."""
+SETTINGS = CONFIGS / "copy_sampler_settings.json"
+"""The starts' settings, tuned by `run_calibrate --copy` on `dev_tree_1s_hard`'s first 3 realizations
+at the run's Baum-Welch (#723); the stream's default `--settings`."""
 
 
 def _call(stage: Any) -> Any:
@@ -344,7 +346,7 @@ def run(
     first: int = 0,
     merge: tuple[Path, ...] = (),
     held_out: int = 3,
-    settings: Path | None = None,
+    settings: Path | None = SETTINGS,
     reuse: tuple[Path, ...] = (),
     only: tuple[str, ...] = (),
     drop: tuple[str, ...] = (),
@@ -447,7 +449,6 @@ def retune(
     root: Path | None = None,
 ) -> None:
     """`tune` of `names` on `manifest`'s first `held_out` realizations, merged into `SETTINGS` with its provenance."""
-    import json
     import logging
     import tempfile
 
@@ -459,14 +460,11 @@ def retune(
         chosen = tune(
             pool, list(at.members(manifest, root / ".sim", n=held_out)), names, root
         )
-    provenance = (f"run_study --copy-state-stream --tune on {manifest.name} realizations 0-{held_out - 1}, "
+    provenance = (f"run_calibrate --copy on {manifest.name} realizations 0-{held_out - 1}, "
                   f"{TUNING_SEEDS} seeds per setting, at the run's Baum-Welch at oracle clones (#730); the "
                   "cheapest setting within {TOLERANCE} nats of the best median gap in log-likelihood at the "
                   "start's states (#540)").replace("{TOLERANCE}", str(TOLERANCE))  # fmt: skip
-    earlier = json.loads(SETTINGS.read_text()) if SETTINGS.exists() else {}
-    SETTINGS.write_text(
-        json.dumps({**earlier, "_provenance": provenance, **chosen}, indent=2) + "\n"
-    )
+    harness.merge_settings(SETTINGS, provenance, chosen)
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -515,20 +513,8 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument(
         "--settings",
         type=Path,
-        default=None,
-        help=f"tuned sampler settings, e.g. {SETTINGS}",
-    )
-    parser.add_argument(
-        "--tune",
-        action="store_true",
-        help=f"tune on the held-out realizations, write {SETTINGS.name}, stop",
-    )
-    parser.add_argument(
-        "--tune-starts",
-        nargs="+",
-        default=list(GRID),
-        choices=list(GRID),
-        help="with --tune, only these starts; the others' settings are kept",
+        default=SETTINGS,
+        help=f"tuned start settings, by default {SETTINGS}, which run_calibrate --copy writes",
     )
     parser.add_argument(
         "--starts",
@@ -543,14 +529,6 @@ def main(argv: list[str] | None = None) -> None:
         help="every start of the registry, not one per family",
     )
     arguments = parser.parse_args(argv)
-    if arguments.tune:
-        retune(
-            arguments.manifest,
-            arguments.held_out,
-            arguments.workers,
-            tuple(arguments.tune_starts),
-        )
-        return
     run(
         arguments.manifest,
         arguments.out_dir,

@@ -147,7 +147,7 @@ class PinnedErrors(NamedTuple):
     decrement: float
 
 
-def _column(values: Any) -> np.ndarray:
+def flat_values(values: Any) -> np.ndarray:
     return np.asarray(values, dtype=np.float64).reshape(-1)
 
 
@@ -217,8 +217,8 @@ def pinned_objective(
     from port.extensions.jax_hmm import emission, marginal_negative_log_likelihood
 
     result = captured.res
-    n_states = _column(result["new_log_mu"]).size
-    log_startprob = _column(result["new_log_startprob"])
+    n_states = flat_values(result["new_log_mu"]).size
+    log_startprob = flat_values(result["new_log_startprob"])
     log_transmat = np.asarray(result["new_log_transmat"], dtype=np.float64)
 
     inputs = pseudobulk(captured)
@@ -391,10 +391,10 @@ def pinned_errors(captured: Captured, purity: np.ndarray | None = None) -> Pinne
     from port.patch.hmm_nophasing.shifted_emission import neutral_state
 
     result = captured.res
-    log_mu = _column(result["new_log_mu"])
-    p_binom = _column(result["new_p_binom"])
-    alpha = float(_column(result["new_alphas"])[0])
-    tau = float(_column(result["new_taus"])[0])
+    log_mu = flat_values(result["new_log_mu"])
+    p_binom = flat_values(result["new_p_binom"])
+    alpha = float(flat_values(result["new_alphas"])[0])
+    tau = float(flat_values(result["new_taus"])[0])
 
     # NB `jax_hmm`'s beta-binomial subtracts `lgamma(tau)`-sized terms; from
     #    `STABLE_TAU` its error is past the curvature this covariance reads

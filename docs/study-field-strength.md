@@ -148,7 +148,7 @@ pickle. The six figures drawn for this section stay in history, as
 `dev_tree_1s_hard` r3–r27 (r0 `d2938975`), tuned on r0–r2.
 
 Every sampler at its setting tuned on 3 held-out realizations
-(`python/port/studies/potts_sampler_settings.json`); #559's field-weighted cluster
+(`configs/potts_sampler_settings.json`, `run_calibrate --potts`); #559's field-weighted cluster
 moves and `sal`'s cluster tempering joined the finished stream by
 `potts_stream --only --merge`. Gap above TRW-S's bound, median / 90th
 percentile over 25 × 50 runs, the share at the bound, the median after ICM and

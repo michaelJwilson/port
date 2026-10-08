@@ -33,8 +33,8 @@ from port.extensions.copy_errors import Captured
 from port.sim.run_config import run_written
 from port.sim.truth import (
     CoreInferenceTruth,
-    _emission_families,
     core_inference_truth,
+    emission_family,
     spot_counts,
 )
 
@@ -152,7 +152,7 @@ def realize(truth: CoreInferenceTruth, seed: int) -> CoreInferenceTruth:
     realization shares a stream with the genome's own draw or with another.
     """
     counts_nb, counts_bb = spot_counts(
-        _emission_families(truth.log_mu, truth.alphas, truth.p_binom, truth.taus),
+        emission_family(truth.log_mu, truth.alphas, truth.p_binom, truth.taus),
         truth.states[truth.labels],
         truth.base_nb_mean,
         truth.total_bb_RD,
@@ -199,7 +199,7 @@ class Fit(NamedTuple):
     realization's data: the error bars the truth would carry."""
 
 
-_column = _copy_errors._column
+_column = _copy_errors.flat_values
 pseudobulk = _copy_errors.pseudobulk
 
 

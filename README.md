@@ -549,6 +549,7 @@ trains a reader to ignore `git status`.
 | `python/port/` | The Python package; `python-source` in `pyproject.toml` |
 | `python/port/qa/` | What measures and records a run: `statistics` (bars, ranks, bootstrap intervals, wall and peak memory), `provenance` (the commit, the inputs' digest, a figure's stamp), `scoring` (a fit against its planted truth), `audit` (a run scored, behind `run_audit`), `benchmark` (behind `run_benchmark` and `run_figures`) and `ledger` (`docs/metrics/`, behind `run_ledger`), one implementation each (T- #673) |
 | `python/port/studies/` | The studies, run by hand: `run_study --<study>`, each module stating what it measured and where (T- #673) |
+| `configs/` | Settings a script measured rather than a person chose: `run_calibrate --potts` and `--copy` write the samplers' tuned settings, which the studies and samplers read (`port.qa.provenance.calibration`, #749 WP1) |
 | `src/` | The Rust crate `oxiport`, bound as `port.oxiport` |
 | `tests/` | The suite; `testpaths` in `pyproject.toml` |
 | `sim/` | CalicoST's simulated samples, their normal fits, and `manifests/` that draw them |

@@ -157,7 +157,7 @@ def _clone_major(
     return values, clones
 
 
-def _triples(
+def clone_count_triples(
     obs_count: np.ndarray, total_count: np.ndarray, lengths: tuple[int, ...]
 ) -> _Triples:
     """Compress `(clone, obs, total)` once over the whole genome.
@@ -197,7 +197,7 @@ def _triples(
     )
 
 
-def _current(lengths: tuple[int, ...], n_segments: int) -> tuple[int, ...]:
+def current_clone_lengths(lengths: tuple[int, ...], n_segments: int) -> tuple[int, ...]:
     """The clone lengths of the sequence actually being fitted.
 
     **`cnaster` passes stale ones once clones merge.** `hmrf.py:564` sets
@@ -218,7 +218,7 @@ def _current(lengths: tuple[int, ...], n_segments: int) -> tuple[int, ...]:
     raise ValueError(msg)
 
 
-def _stacked(normal_log_lambda: Any, lengths: tuple[int, ...]) -> np.ndarray:
+def stacked_log_lambda(normal_log_lambda: Any, lengths: tuple[int, ...]) -> np.ndarray:
     """`log lambda` over the clone-stacked sequence the decode indexes.
 
     **`cnaster` passes it per genome bin.** `hmrf.py:476` builds
@@ -364,7 +364,7 @@ class hmm_nophasing(UPSTREAM):  # type: ignore[misc]
         if key not in cache:
             cache[key] = (
                 encoder,
-                _triples(encoder.obs_count, encoder.total_count, lengths),
+                clone_count_triples(encoder.obs_count, encoder.total_count, lengths),
             )
 
         return cache[key][1]
@@ -514,14 +514,16 @@ class hmm_nophasing(UPSTREAM):  # type: ignore[misc]
         rates = state_vector(res["new_log_mu"])
 
         n_segments = int(np.asarray(X).shape[0])
-        current = _current(
+        current = current_clone_lengths(
             tuple(int(length) for length in np.asarray(clone_lengths)), n_segments
         )
 
         shifts = logmu_shifts(
             rates,
             np.asarray(decode, dtype=np.int64),
-            _stacked(np.log(np.asarray(normal_lambda, dtype=np.float64)), current),
+            stacked_log_lambda(
+                np.log(np.asarray(normal_lambda, dtype=np.float64)), current
+            ),
             np.asarray(current, dtype=np.int64),
         )
         hmm_nophasing._row_shift = np.repeat(shifts, current)
@@ -645,7 +647,7 @@ class hmm_nophasing(UPSTREAM):  # type: ignore[misc]
         concentrations = state_vector(taus)
 
         n_states = rates.shape[0]
-        lengths = _current(
+        lengths = current_clone_lengths(
             tuple(int(length) for length in np.asarray(clone_lengths)),
             int(np.asarray(decode).size),
         )
@@ -663,7 +665,7 @@ class hmm_nophasing(UPSTREAM):  # type: ignore[misc]
         shifts = logmu_shifts(
             rates,
             np.asarray(decode, dtype=np.int64),
-            _stacked(normal_log_lambda, lengths),
+            stacked_log_lambda(normal_log_lambda, lengths),
             np.asarray(lengths, dtype=np.int64),
         )
 

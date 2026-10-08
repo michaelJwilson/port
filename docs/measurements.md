@@ -85,7 +85,7 @@ nothing to say the fit is fifty-six chi-square units from explaining it.
 
 ### `rises_on_distinct`
 
-The integer-copy likelihood (`port.extensions.copy_likelihood._emission`)
+The integer-copy likelihood (`port.extensions.copy_likelihood.pseudobulk_log_pmf`)
 takes three rising factorials per `(state, bin)`. Over the 7,287 calls of a
 dev_tree r0 `--sal` run (#702), the median call is 4 states over 655
 pseudobulk bins with 220 distinct counts, and the largest 25 states over

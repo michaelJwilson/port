@@ -1,6 +1,6 @@
 """#556: the color merge, the hex graph and the BAF overdispersion estimator, each against an independent answer.
 
-`potts_stream` polishes with this merge (`port.sandbox.extensions.color_merge`);
+`potts_stream` polishes with this merge (`port.studies.color_merge`);
 these pin that its closed form is the energy change it claims to be, and where
 `cnaster`'s own merge differs from it. The known-law field these sat beside is
 retired with `port.sandbox.known_field` (#735).
@@ -11,7 +11,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 import scipy.sparse as sp
-from port.sandbox.extensions.color_merge import color_merge, merge_deltas
+from port.studies.color_merge import color_merge, merge_deltas
 from port.studies.field_strength import overdispersion
 from port.studies.potts_stream import hex_graph
 

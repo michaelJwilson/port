@@ -1,5 +1,5 @@
 {
-  "_provenance": "tests.studies.potts_stream tuning on sim/manifests/dev_tree_1s_hard.toml realizations 0-2, 5 random starts per setting, grid t_start 0.25-32 x 250-4,000 sweeps, t_end 0.05; the cheapest setting within 0.1 nats of the best median gap to TRW-S's bound (#556)",
+  "_provenance": "run_calibrate --potts (before #749 WP1: run_study --potts-stream --tune) on sim/manifests/dev_tree_1s_hard.toml realizations 0-2, 5 random starts per setting, grid t_start 0.25-32 x 250-4,000 sweeps, t_end 0.05; the cheapest setting within 0.1 nats of the best median gap to TRW-S's bound (#556)",
   "sal:anneal": {
     "t_start": 8.0,
     "sweeps": 4000,

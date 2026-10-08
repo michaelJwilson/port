@@ -136,8 +136,8 @@ def test_the_sal_emission_scores_a_large_concentration_exactly(tau: float) -> No
 @pytest.mark.oracle
 @pytest.mark.parametrize("tau", [5e3, 1e12])
 def test_the_copy_decode_scores_a_large_concentration_exactly(tau: float) -> None:
-    """`copy_likelihood._emission`'s allele channel, no depth: the sums of logs to 1e-11."""
-    from port.extensions.copy_likelihood import Pseudobulk, _emission
+    """`copy_likelihood.pseudobulk_log_pmf`'s allele channel, no depth: the sums of logs to 1e-11."""
+    from port.extensions.copy_likelihood import Pseudobulk, pseudobulk_log_pmf
 
     zeros = np.zeros(COUNTS.size)
     bulk = Pseudobulk(
@@ -149,7 +149,9 @@ def test_the_copy_decode_scores_a_large_concentration_exactly(tau: float) -> Non
         dispersion=0.1,
         taus=tau,
     )
-    scores = _emission(np.array(0.0), np.array(0.3), bulk, np.arange(COUNTS.size))
+    scores = pseudobulk_log_pmf(
+        np.array(0.0), np.array(0.3), bulk, np.arange(COUNTS.size)
+    )
 
     np.testing.assert_allclose(scores, _exact(0.3, tau), rtol=0, atol=1e-11)
 
