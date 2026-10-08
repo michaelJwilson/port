@@ -130,7 +130,7 @@ REQUIRED: dict[str, tuple[str, ...]] = {
     ),
     "cna": ("mode", "n_clones", "states", "length"),
     "phasing": ("switch_errors", "nu", "unit"),
-    "layout": ("overlap", "radius", "vertices", "jitter", "max_placements"),
+    "layout": ("overlap", "radius", "vertices", "jitter", "max_placements", "unplaced"),
     "config": ("base",),
 }  # fmt: skip
 """Every table and key a manifest must state. Nothing the draw assumes has a
@@ -153,6 +153,19 @@ VARY = ("counts", "truth")
 manifest's draw before it: one truth, each realization its counts and phase. `"truth"`: each
 realization after the first also draws its own tree, clone sizes and layout; the barcodes are
 shared, and realization 0 keeps the manifest's truth, so `r0_hash` reads the same in both."""
+
+CLONE_COUNTS = {"poisson": ("mean", "minimum")}
+"""`[cna] n_clones` as a table in place of an integer: the tumour clones of each truth, drawn
+(T- #807). `poisson`: `Poisson(mean)` redrawn until at least `minimum`, so zero-truncated at
+`minimum = 1`. Every slice then lists `clones = "all"`, the clones the draw gives it."""
+
+UNPLACED = ("refuse", "stop")
+"""`[layout] unplaced`, what `layout` does with a drawn clone no placement clears in
+`max_placements` (T- #807): `refuse` the draw, or `stop` -- the layout is final with the
+clones placed so far, and the truth is drawn on those."""
+
+ALL = "all"
+"""`[[slice]] clones = "all"`: every tumour clone, however many the truth has (T- #807)."""
 
 LOH_RULES = ("reversible", "irreversible")
 """`[cna] loh`, optional: what an event may plant over its lineage (T- #698).
@@ -245,7 +258,11 @@ class DrawManifest:
 
     @property
     def tumour(self) -> tuple[str, ...]:
-        return tuple(f"clone_{k}" for k in range(int(self.tables["cna"]["n_clones"])))
+        count = self.tables["cna"]["n_clones"]
+        if isinstance(count, dict):
+            msg = "[cna] n_clones is a law: `resolved` draws the count before the clones are named"
+            raise ValueError(msg)
+        return tuple(f"clone_{k}" for k in range(int(count)))
 
     def normal_frac(self, clone: str) -> float:
         value = self.tables["model"]["normal_frac"]
@@ -360,7 +377,7 @@ def from_document(document: dict[str, Any], root: Path = Path()) -> DrawManifest
     layout = document["layout"]
     slices = tuple(
         Slice(
-            clones=tuple(s["clones"]),
+            clones=(ALL,) if s["clones"] == ALL else tuple(s["clones"]),
             offset=(float(s["offset"][0]), float(s["offset"][1])),
             regions=tuple(
                 Region(
@@ -378,7 +395,49 @@ def from_document(document: dict[str, Any], root: Path = Path()) -> DrawManifest
     tables = {k: v for k, v in document.items() if isinstance(v, dict)}
     manifest = DrawManifest(tables, slices, root)
     _check(manifest)
+    if not isinstance(tables["cna"]["n_clones"], dict):
+        manifest = _named(manifest, manifest.tumour)
     return manifest
+
+
+def _named(manifest: DrawManifest, tumour: tuple[str, ...]) -> DrawManifest:
+    """`manifest` with `tumour` its clones: `n_clones` their count, each `"all"` slice listing them."""
+    tables = {
+        **manifest.tables,
+        "cna": {**manifest.tables["cna"], "n_clones": len(tumour)},
+    }
+    slices = tuple(
+        piece._replace(clones=tumour) if piece.clones == (ALL,) else piece
+        for piece in manifest.slices
+    )
+    return DrawManifest(tables, slices, manifest.root)
+
+
+def _placed(manifest: DrawManifest, placed: tuple[str, ...]) -> DrawManifest:
+    """`manifest` with `placed`, its first clones, as all its clones: each slice lists those it did."""
+    if len(placed) == len(manifest.tumour):
+        return manifest
+    tables = {
+        **manifest.tables,
+        "cna": {**manifest.tables["cna"], "n_clones": len(placed)},
+    }
+    slices = tuple(
+        piece._replace(clones=tuple(c for c in piece.clones if c in placed))
+        for piece in manifest.slices
+    )
+    return DrawManifest(tables, slices, manifest.root)
+
+
+def resolved(manifest: DrawManifest, rng: np.random.Generator) -> DrawManifest:
+    """`manifest` at one truth's clone count, drawn from `rng` where `[cna] n_clones` is a law
+    (`CLONE_COUNTS`); a fixed count draws nothing, so its realizations are what they were."""
+    law = manifest.tables["cna"]["n_clones"]
+    if not isinstance(law, dict):
+        return manifest
+    count = 0
+    while count < int(law["minimum"]):
+        count = int(rng.poisson(float(law["mean"])))
+    return _named(manifest, tuple(f"clone_{k}" for k in range(count)))
 
 
 def _check(manifest: DrawManifest) -> None:
@@ -387,8 +446,22 @@ def _check(manifest: DrawManifest) -> None:
 
     if mode not in BY_MODE:
         problems.append(f"[cna] mode {mode!r}: one of {sorted(BY_MODE)}")
-    elif mode == "felsenstein":
-        leaves = int(manifest.cna["n_clones"])
+    count = manifest.cna["n_clones"]
+    if isinstance(count, dict):
+        if count.get("law") not in CLONE_COUNTS:
+            problems.append(f"[cna] n_clones law: one of {sorted(CLONE_COUNTS)}")
+        else:
+            problems += [
+                f"[cna] n_clones {k}"
+                for k in CLONE_COUNTS[count["law"]]
+                if k not in count
+            ]
+        if any(piece.clones != (ALL,) for piece in manifest.slices):
+            problems.append(
+                f'[cna] n_clones is a law: every [[slice]] lists clones = "{ALL}"'
+            )
+    if mode == "felsenstein":
+        leaves = int(count["minimum"]) if isinstance(count, dict) else int(count)
         if leaves < 2 or float(manifest.cna["expected_cnas"]) < leaves:
             problems.append(
                 f"[cna] felsenstein: n_clones >= 2 and expected_cnas >= n_clones, "
@@ -420,15 +493,20 @@ def _check(manifest: DrawManifest) -> None:
             problems += [f"[layout.size] {k}" for k in absent]
             if "edge" in size and size["edge"] not in EDGES:
                 problems.append(f"[layout.size] edge {size['edge']!r}: one of {EDGES}")
+    if manifest.layout["unplaced"] not in UNPLACED:
+        problems.append(
+            f"[layout] unplaced {manifest.layout['unplaced']!r}: one of {UNPLACED}"
+        )
     if manifest.phasing["unit"] not in UNITS:
         problems.append(f"[phasing] unit: one of {sorted(UNITS)}")
     if manifest.array["kind"] not in ARRAYS:
         kind = manifest.array["kind"]
         problems.append(f"[array] kind {kind!r}: one of {sorted(ARRAYS)}")
 
-    known = set(manifest.tumour)
+    known = set() if isinstance(count, dict) else set(manifest.tumour)
     for index, piece in enumerate(manifest.slices):
-        unknown = (set(piece.clones) | {r.clone for r in piece.regions}) - known
+        named = set() if piece.clones == (ALL,) else set(piece.clones)
+        unknown = (named | {r.clone for r in piece.regions}) - known
         if unknown:
             problems.append(f"slice {index} names unknown clones {sorted(unknown)}")
 
@@ -934,6 +1012,9 @@ def layout(
                 msg = f"region of {clone} overlaps another and [layout] overlap = false"
                 raise ValueError(msg)
         else:
+            if manifest.layout["unplaced"] == "stop":
+                # NB final with the clones placed so far: this one and every later one are left out
+                break
             msg = (
                 f"no placement of {clone} in {manifest.layout['max_placements']} "
                 "clears the others"
@@ -1242,7 +1323,6 @@ def realize(
     resources = resources or manifest.resources()
     vary = manifest.sample.get("vary", "counts")
 
-    clones = ("normal", *manifest.tumour)
     laws = _laws(manifest)
 
     baseline = pd.read_csv(
@@ -1286,9 +1366,16 @@ def realize(
         tree_rng: np.random.Generator, layout_rng: np.random.Generator
     ) -> tuple[Truth, np.ndarray, np.ndarray, np.ndarray]:
         """A truth, and what its counts are drawn from: gene weights, library, allele shares."""
-        tree = draw_tree(manifest, tree_rng)
+        # NB its clones first, where `[cna] n_clones` is a law: a fixed count draws nothing
+        drawn = resolved(manifest, tree_rng)
+        # NB laid out before the tree is drawn (their generators are separate): under
+        #    `[layout] unplaced = "stop"` the truth has the clones the layout placed
+        spots, shapes = layout(drawn, points, layout_rng)
+        drawn = _placed(drawn, tuple(c for c in drawn.tumour if c in shapes))
+        clones = ("normal", *drawn.tumour)
+        tree = draw_tree(drawn, tree_rng)
         depth_factor = _depth(
-            manifest, clones, clone_copies(tree, clones, gene_chrom, gene_pos)
+            drawn, clones, clone_copies(tree, clones, gene_chrom, gene_pos)
         )
         snp_copies = clone_copies(tree, clones, snp_chrom, snp_pos)
         share = np.stack(
@@ -1296,15 +1383,13 @@ def realize(
                 allele_share(
                     snp_copies[:, label, 0].astype(np.float64),
                     snp_copies[:, label, 1].astype(np.float64),
-                    manifest.normal_frac(clone),
-                    manifest.model["admixture"],
+                    drawn.normal_frac(clone),
+                    drawn.model["admixture"],
                 )
                 for label, clone in enumerate(clones)
             ]
         )
-        labels = [
-            lab + 1 for lab in layout(manifest, points, layout_rng)[0]
-        ]  # NB `normal` is 0.
+        labels = [lab + 1 for lab in spots]  # NB `normal` is 0.
         profile = truth_profile(tree, clones, manifest.genome["chromosome_lengths"])
         truth = Truth(clones, tree, profile, labels, ids, combined, rows, cols,
                       baseline["gene"].to_numpy(), snp_ids, p_switch)  # fmt: skip
@@ -1379,7 +1464,7 @@ def write(
     #    in `unique_snp_ids.npy`'s order; a switch is a change within a chromosome.
     np.save(out / "truth_phase.npy", realized.phase)
     write_inputs(manifest, out, t.sample_ids, resources)
-    write_manifest(manifest, out, resources, realized.index)
+    write_manifest(_named(manifest, t.clones[1:]), out, resources, realized.index)
     return out
 
 

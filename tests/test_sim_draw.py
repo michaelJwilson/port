@@ -486,9 +486,14 @@ def test_a_manifest_extended_from_elsewhere_keeps_its_base_paths(
 
 
 def _sized(law: dict[str, Any]) -> DrawManifest:
-    """`study` at its own 60 x 50, with `[layout.size]` replaced by `law`."""
+    """`study` at its own 60 x 50, with `[layout.size]` replaced by `law`: three named clones,
+    each placed or the draw refused, so the size law is all that varies (T- #807)."""
     document = extended(SIM_MANIFESTS / "study.toml")
-    document["layout"]["size"] = law
+    document["cna"]["n_clones"] = 3
+    document["slice"] = [
+        {"offset": [0.0, 0.0], "clones": ["clone_0", "clone_1", "clone_2"]}
+    ]
+    document["layout"] |= {"max_placements": 1000, "unplaced": "refuse", "size": law}
     return from_document(document, SIM_MANIFESTS)
 
 
@@ -678,3 +683,47 @@ def test_felsenstein_refuses_fewer_expected_events_than_clones() -> None:
     document["cna"]["expected_cnas"] = 2
     with pytest.raises(ValueError, match="felsenstein"):
         from_document(document)
+
+
+@pytest.mark.analytic
+def test_a_clone_count_law_draws_a_zero_truncated_poisson() -> None:
+    """`[cna] n_clones = {law = "poisson", mean = 3, minimum = 1}`, 4,000 draws (T- #807).
+
+    The count is at least 1, its mean the zero-truncated Poisson's, 3 / (1 - e^-3) = 3.157,
+    to 0.06 (about 4 standard errors), and a fixed count consumes nothing from the generator.
+    """
+    from port.sim.draw import read_manifest, resolved
+
+    manifest = read_manifest(SIM_MANIFESTS / "study.toml")
+    rng = np.random.default_rng(807)
+    counts = np.array([len(resolved(manifest, rng).tumour) for _ in range(4000)])
+
+    assert counts.min() >= 1
+    assert abs(counts.mean() - 3 / (1 - np.exp(-3))) < 0.06, counts.mean()
+
+    fixed = read_manifest(SIM_MANIFESTS / "dev_tree_1s.toml")
+    rng = np.random.default_rng(0)
+    assert resolved(fixed, rng) is fixed
+    assert rng.random() == np.random.default_rng(0).random()
+
+
+@pytest.mark.analytic
+def test_a_clone_that_does_not_fit_ends_the_layout() -> None:
+    """`[layout] unplaced = "stop"`: the placed clones are a prefix of the drawn, every one
+    with spots, and a later clone is never placed past an unplaced one (T- #807)."""
+    from port.sim.draw import read_manifest, resolved
+
+    manifest = read_manifest(SIM_MANIFESTS / "study.toml")
+    _, _, points = hex_array(60, 50)
+    stopped = 0
+    for seed in range(60):
+        drawn = resolved(manifest, np.random.default_rng(seed))
+        labels, shapes = layout(drawn, points, np.random.default_rng(10_000 + seed))
+        placed = [c for c in drawn.tumour if c in shapes]
+
+        assert placed == list(drawn.tumour[: len(placed)])
+        assert all(np.any(labels[0] == k) for k in range(len(placed)))
+        assert not np.any(labels[0] >= len(placed))
+        stopped += len(placed) < len(drawn.tumour)
+
+    assert stopped > 0

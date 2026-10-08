@@ -513,10 +513,14 @@ new manifest.
 `port.sim.laws.lognormal_sigma(0.10, 0.5)`: 10% of events below half the
 median, against 29-35% under the exponential (#619;
 `run_study --cna-lengths` draws both laws). `study.toml` is the one draw the Potts stream, the copy-state stream and the
-population study read: lognormal at a 20 Mb median, class-balanced states,
-clone sizes swept log-uniform over 100-1,000 spots, BAF overdispersion,
-phase switches, irreversible LOH, truth varied per realization, and no normal
-admixture until T- #809 (T- #807; `population*.toml` retired to `sim/sandbox/manifests/`);
+population study read: CNA lengths lognormal at a 20 Mb median; every (A, B)
+up to a total of 6, uniform; a zero-truncated Poisson(3) count of clones
+(`[cna] n_clones` as a law), each sized lognormal at a 632-spot median and
+clipped at the array's edge (`[layout.size] edge = "clip"`), the layout ending at
+the first clone 10 centres do not clear (`[layout] unplaced = "stop"`); CalicoST
+hard's admixture (0.14, `cell`), BAF overdispersion, phase switches,
+irreversible LOH, and truth varied per realization (T- #807; `population*.toml`
+retired to `sim/sandbox/manifests/`);
 `baseline/dev_tree.toml`, the one exponential fixture kept, freezes `dev_tree`'s exponential
 generation (`3381575a`), which `tests.sim_stages` caches as r0.
 Each `dev_tree*` manifest states `[sample] r0_hash`, its realization 0's
