@@ -1,9 +1,5 @@
-"""`port.patch.pseudobulk` against `cnaster.pseudobulk`, bitwise (#488).
-
-Referee: `cnaster.pseudobulk.merge_pseudobulk_by_index_mix`, called on the
-same inputs. Every return, every entry, `np.array_equal`: the patch sums the
-same spots in the same order a block of bins at a time, so a tolerance would
-hide exactly the reordering it must not make.
+"""`port.patch.pseudobulk` against `cnaster.pseudobulk.merge_pseudobulk_by_index_mix`,
+bitwise (#488).
 """
 
 from __future__ import annotations

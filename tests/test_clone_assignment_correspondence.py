@@ -1,23 +1,4 @@
-"""`pipeline_clone_assignment` against `cnaster`'s, at a gate size (#281).
-
-**The largest drop-in in the repository was compared only on the release
-tier.** `tests/test_patched_entry_point.py` puts two whole `run_cnaster`
-runs side by side, which is the stronger claim and the slower one; it
-carries `release`, so the per-pull-request tier never ran the function's
-body at all. 56 of its 104 statements were unreached, which is how #281's
-guard found it.
-
-This is the same claim at a size the gate can afford: one call, one
-fixture, the three returned values against upstream's. It does not replace
-the whole-run comparison -- that one says twelve replacements compose --
-it says this one replacement is right before the composition is asked
-about.
-
-**Referee: `cnaster.hmrf.pipeline_clone_assignment`, called.** Not
-transcribed: the field is a sum over bins in a fixed order on the same
-doubles, so `np.array_equal` is the bar and a tolerance would hide a
-reordering.
-"""
+"""`pipeline_clone_assignment` against `cnaster.hmrf`'s, called, bitwise, at gate size (#281)."""
 
 from typing import Any
 
@@ -29,12 +10,7 @@ from tests.fixtures import spot_clone_field
 
 
 def _both(arguments: dict[str, Any]) -> tuple[Any, Any]:
-    """Upstream's and the replacement's, on inputs neither may mutate.
-
-    Each arm gets its own copy of `prev_assignment`: the function writes
-    into it, so sharing one would let whichever ran first decide what the
-    second was asked.
-    """
+    """Return upstream's and the replacement's results, each on its own `prev_assignment`."""
     from cnaster.hmm_nophasing import hmm_nophasing
     from port.patch.hmrf.clone_assignment import UPSTREAM, pipeline_clone_assignment
 
@@ -62,13 +38,7 @@ def _both(arguments: dict[str, Any]) -> tuple[Any, Any]:
 def test_the_replacement_assigns_what_upstream_assigns(
     n_states: int, n_clones: int
 ) -> None:
-    """The assignment, the field and the likelihood, all three.
-
-    All three because each can be right while another is wrong: the field
-    is what the fused kernel computes, the assignment is what the solver
-    makes of it, and the likelihood reads both back through the graph. A
-    test on the assignment alone passes a field that is wrong by a constant.
-    """
+    """Assignment, field and likelihood equal upstream's, bitwise."""
     fixture = spot_clone_field(
         n_states=n_states, n_obs=60, n_spots=36, n_clones=n_clones
     )
@@ -90,14 +60,7 @@ def test_the_replacement_assigns_what_upstream_assigns(
 @pytest.mark.patch
 @pytest.mark.usefixtures("cnaster_config")
 def test_the_tumour_mixed_call_goes_to_cnaster_unchanged() -> None:
-    """The one branch the fused field does not cover, delegated rather than guessed.
-
-    `single_tumor_prop is not None` is a different quantity -- #135 finds the
-    E step accepts the proportion and never reads it -- so the replacement
-    hands the call over. Identity of the result is the claim: a delegation
-    that recomputed anything would be a second implementation of the branch
-    it is avoiding.
-    """
+    """With `single_tumor_prop` the call is delegated: results equal upstream's (#135)."""
     from cnaster.hmm_nophasing import hmm_nophasing
     from port.patch.hmrf.clone_assignment import UPSTREAM, pipeline_clone_assignment
 
@@ -133,18 +96,7 @@ def test_the_tumour_mixed_call_goes_to_cnaster_unchanged() -> None:
 @pytest.mark.patch
 @pytest.mark.usefixtures("cnaster_config")
 def test_the_merge_loop_merges_what_upstream_merges() -> None:
-    """`merge=True`, which is a quarter of the function and a separate claim.
-
-    The merge loop calls `cnaster.hmrf.merge_assignment` on a COO triple the
-    replacement builds with three array expressions where upstream runs two
-    pure-Python passes over every non-zero (#59 item 3). Same consumer, same
-    decision, so the assignment it converges on is the referee -- and the
-    loop is where a wrong triple shows up, because on `merge=False` the
-    round trip is computed and discarded.
-
-    Four clones on sixteen spots, so there is a merge worth making: with two
-    the loop can only take one step before the graph is one clone.
-    """
+    """With `merge=True` all three returns equal upstream's, bitwise (#59)."""
     from cnaster.hmm_nophasing import hmm_nophasing
     from port.patch.hmrf.clone_assignment import UPSTREAM, pipeline_clone_assignment
 
@@ -179,12 +131,7 @@ def test_the_merge_loop_merges_what_upstream_merges() -> None:
 @pytest.mark.patch
 @pytest.mark.usefixtures("cnaster_config")
 def test_self_only_pooling_assigns_what_upstream_assigns() -> None:
-    """With each spot pooling itself alone, the unpooled path (#488, #513).
-
-    Referee: upstream's call with the same `smooth_mat`, whose numba pooling
-    loop port no longer runs; all three returns bitwise. The pooled arrays
-    upstream builds equal the unpooled counts port reads.
-    """
+    """Self-only `smooth_mat` gives upstream's three returns, bitwise (#488, #513)."""
     import cnaster.hmrf
     import scipy.sparse as sp
     from cnaster.hmm_nophasing import hmm_nophasing

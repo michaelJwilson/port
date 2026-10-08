@@ -1,11 +1,8 @@
 """The shift's three drop-ins, each against the `cnaster` code it replaces (#293).
 
-The per-clone `logmu_shift` reaches a run through `SHIFT_SWAPS` and through
-`pipeline_clone_assignment`'s shifted branch. Each is pinned here against
-`cnaster`'s own function, fed the input the shift says it should see:
-the exposure rescaled by `exp(-shift)`. Tolerances rather than bitwise,
-because the replacement forms `exp(log_mu - shift)` from recentred factors
-and upstream from the raw ones, so the last bits of the product differ.
+Referee: `cnaster`'s own function on the exposure rescaled by `exp(-shift)`; to
+tolerance,
+since the product is formed from recentred factors.
 """
 
 import inspect
@@ -22,12 +19,8 @@ from tests.fixtures import spot_clone_field, two_clone_stacked_instance
 @pytest.mark.patch
 @pytest.mark.usefixtures("cnaster_config")
 def test_a_shifted_clone_is_scored_as_upstream_scores_its_rescaled_exposure() -> None:
-    """One clone, so upstream's single exposure can carry the clone's shift.
-
-    `port`'s shifted field against `cnaster.hmrf.pipeline_clone_assignment`
-    handed `base * exp(-shift)`, with `shift = log sum_g lambda_g mu_{s(g)}`
-    and `lambda` from the unscaled baseline, as the replacement builds it.
-    Stated to 1e-9 relative.
+    """One clone's shifted field against `pipeline_clone_assignment` on `base *
+    exp(-shift)`, to 1e-9 relative.
     """
     import scipy.special
     from port.patch.hmm_nophasing import hmm_nophasing
@@ -67,15 +60,8 @@ def test_a_shifted_clone_is_scored_as_upstream_scores_its_rescaled_exposure() ->
 @pytest.mark.patch
 @pytest.mark.usefixtures("cnaster_config")
 def test_the_fit_is_upstreams_off_and_decodes_under_its_own_shift_on() -> None:
-    """`optimize`, off and on.
-
-    Off, and under `cnaster`'s finite-difference gradient, the replacement
-    returns what `cnaster`'s class returns, bitwise; the closed-form gradient
-    (#433) is pinned to it in `tests/test_mstep_gradient.py`.
-    On, its `log_gamma` is `cnaster`'s own `get_state_posteriors` on the
-    emission of the rescaled exposure `base * exp(-shift)`, with the shift
-    the replacement recorded, to 1e-9 -- so the decode it returns is the one
-    its shift describes, which `hmm_nophasing.py:1085` alone would not give.
+    """`optimize` off is `cnaster`'s bitwise (#433); on, `log_gamma` is
+    `get_state_posteriors` at the recorded shift, to 1e-9.
     """
     from cnaster.hmm_nophasing import hmm_nophasing as upstream
     from port.patch.hmm_nophasing import hmm_nophasing
@@ -129,11 +115,8 @@ def test_the_fit_is_upstreams_off_and_decodes_under_its_own_shift_on() -> None:
 
 @pytest.mark.patch
 def test_the_pin_applies_to_a_shifted_rate_fit_only() -> None:
-    """`run_core_inference` pins after upstream's inference, and only then.
-
-    A shifted fit of `mu` is pinned so the balanced, lowest-`mu` state is 1;
-    an unshifted one, or a fit with no `mu` (`params="sp"`, the BAF-only
-    stage), is returned as upstream returned it.
+    """`run_core_inference` pins only a shifted `mu` fit; unshifted or BAF-only fits are
+    upstream's.
     """
     import port.patch.hmrf.core_inference as module
     from port.patch.hmm_nophasing import hmm_nophasing

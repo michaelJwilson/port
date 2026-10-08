@@ -1,8 +1,8 @@
-"""The phase-switch kernel: `cnaster`'s Python walk against the lineage's vectorized one (#438).
+"""The phase-switch kernel: cnaster's Python walk against the lineage's vectorized one
+(#438).
 
-Both read the same map file each call, as `run_cnaster` does. Median:
-2,200 blocks 29.4 ms against 10.3 ms; 33,000 blocks (stress) 272.8 ms
-against 26.8 ms, 10.2x.
+Both read the map file each call, as `run_cnaster` does; 2,200 and 33,000 (stress)
+blocks.
 """
 
 from __future__ import annotations

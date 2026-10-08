@@ -1,16 +1,9 @@
-"""#560 on the live path: every port site that scores the negative binomial, at a vanishing mean.
+"""Every port site scoring the negative binomial at a vanishing mean, on the live path
+(#560).
 
-`p = 1 / (1 + a)`, `a = alpha * mean`, rounds to exactly 1 in float64 below
-`a` of about 1.1e-16. `cnaster`'s kernel then scores every count 0; port's
-NumPy and `jax` copies scored a count of 0 NaN and any other `-inf`, and lost
-digits of `log(1 - p)` below `a` of about 1e-4. Each site `run_cnaster_port
---sal` reaches is judged here against `tests.exact_densities`, the density
-as 50-digit sums of logs:
-
-- the HMM emission, `LOG_SPACE_SWAPS`' rows wherever `cnaster` binds them,
-  and `dense_emission.nb_states` (sal's kernel) under `--sal`;
-- the clone field, which compiles its kernel in and takes `log_space`;
-- the M-step gradient, the copy decode and the `--copy-errors` `jax` model.
+`p = 1 / (1 + alpha * mean)` rounds to 1 below about 1.1e-16. Each site
+`run_cnaster_port --sal` reaches is judged against `tests.exact_densities` (50-digit
+sums of logs).
 """
 
 from __future__ import annotations
@@ -104,7 +97,9 @@ KERNELS: dict[str, Scorer] = {
 NORMAL = [
     (mean, alpha) for mean in (0.5, 30.0, 1000.0) for alpha in (1e-3, 0.07, 0.5, 3.0)
 ] + [(1e-10, 0.01)]
-"""Realistic means and dispersions, and `a = 1e-12`, where forming `p` lost 0.089 nats at a count of 1000."""
+"""Realistic means and dispersions, and `a = 1e-12`, where forming `p` lost 0.089 nats at
+count 1000.
+"""
 
 
 @pytest.mark.oracle
@@ -125,10 +120,8 @@ def test_each_live_kernel_is_the_negative_binomial(
 @pytest.mark.oracle
 @pytest.mark.parametrize("name", KERNELS)
 def test_a_vanishing_mean_scores_a_large_count_as_impossible(name: str) -> None:
-    """At `alpha * mean = 1e-19` a count of 1000 is -43,420 nats, and 0 is finite; 1e-9 relative.
-
-    The old NumPy form scored the count `-inf` and 0 NaN; `cnaster`'s scores
-    both 0.
+    """At `alpha * mean = 1e-19` a count of 1000 is -43,420 nats and 0 is finite, to 1e-9
+    relative.
     """
     counts = np.array([0.0, 1000.0])
     scores = KERNELS[name](counts, VANISHING, 0.01)
@@ -154,11 +147,7 @@ def test_each_live_kernel_sums_to_one_at_a_small_mean(name: str, mean: float) ->
 def test_the_closed_form_gradient_is_the_exact_derivative(
     mean: float, alpha: float
 ) -> None:
-    """`nb_partials` against 50-digit central differences, to 1e-9 relative, 1e-9 absolute.
-
-    At the vanishing mean `d ell / d log mean` is the count, 1000 for 1000,
-    where the old gradient read 0 because `cnaster`'s score does not move.
-    """
+    """`nb_partials` against 50-digit central differences, to 1e-9 relative and absolute."""
     from port.patch.hmm_nophasing.gradient import nb_partials as closed_form
 
     d_eta, d_alpha = closed_form(
@@ -196,10 +185,8 @@ def _degenerate_field(kernel: Any, *, log_space: bool) -> float:
 @pytest.mark.oracle
 @pytest.mark.parametrize("name", ["fused", "tabulated"])
 def test_the_field_scores_the_degenerate_state_exactly_in_log_space(name: str) -> None:
-    """At `log mu = -43.22`, exposure 1000, a count of 1000 is -38,403.9 nats, to 1e-9 relative.
-
-    Without `log_space` the field is `cnaster`'s, bitwise, and scores it 0 --
-    probability 1 -- because `p` rounds to 1 (`a = 2.0e-17`).
+    """At `log mu = -43.22`, exposure 1000, count 1000 scores -38,403.9 nats in log space,
+    to 1e-9 relative.
     """
     from port.patch.hmrf.fused_field import fused_spot_clone_field
     from port.patch.hmrf.tabulated_field import tabulated_spot_clone_field
@@ -215,7 +202,9 @@ def test_the_field_scores_the_degenerate_state_exactly_in_log_space(name: str) -
 
 
 def _two_step_under_the_table(fixture: SpotCloneField) -> np.ndarray:
-    """`cnaster`'s producer under `LOG_SPACE_SWAPS`, then the field: what the fused kernel replaces."""
+    """`cnaster`'s producer under `LOG_SPACE_SWAPS`, then the field: what the fused kernel
+    replaces.
+    """
     import cnaster.hmm_nophasing as upstream
     from port.patch.hmrf.field import compute_loglike_spot_assignment_strided
     from port.pipeline import LOG_SPACE_SWAPS, patched
@@ -258,9 +247,8 @@ def _two_step_under_the_table(fixture: SpotCloneField) -> np.ndarray:
 def test_the_log_space_field_is_bitwise_the_two_step_under_the_table(
     n_states: int, n_clones: int
 ) -> None:
-    """Fused and tabulated with `log_space=True`, against `cnaster`'s two steps under the rows: identical.
-
-    The chain the default field keeps with `cnaster`, kept with the table.
+    """Fused and tabulated `log_space=True` field against `cnaster`'s two steps under the
+    rows: identical.
     """
     from port.patch.hmrf.fused_field import fused_spot_clone_field
     from port.patch.hmrf.tabulated_field import tabulated_spot_clone_field
@@ -297,10 +285,8 @@ def test_the_log_space_field_is_bitwise_the_two_step_under_the_table(
 
 @pytest.mark.infra
 def test_the_rows_reach_every_binding_called_from_python_and_restore_it() -> None:
-    """`cnaster`'s two modules and port's two Python callers; not the compiled field.
-
-    The field imports `cnaster`'s kernels under other names, so a first
-    compile under the table cannot cache the table's kernel into it.
+    """The rows reach `cnaster`'s two modules and port's two Python callers, and are
+    restored.
     """
     # NB a site is a module once imported; a run imports both.
     import port.patch.hmm_nophasing.shifted_emission
@@ -372,12 +358,8 @@ def test_run_cnaster_installs_the_rows_and_the_field_option_with_the_shift(
 
 @pytest.mark.bug
 def test_cnasters_kernel_scores_every_count_zero_below_the_dispersion_floor() -> None:
-    """At `alpha = 1e-17`, `mu = 10`, counts 0 and 1000 score 0; exact: -10.0 and -3,619.5.
-
-    The #560 defect reached through `alpha` rather than the mean: `r` is
-    floored at `1 / 1e-10` but `p = 1 / (1 + alpha * lambda)` takes the raw
-    `alpha` and rounds to 1. `cnaster` passes `bounds=None` to BFGS, so
-    `log alpha` is unbounded. The row floors `alpha` in both.
+    """At `alpha = 1e-17`, `mu = 10`, `cnaster` scores counts 0 and 1000 as 0; exact: -10.0
+    and -3,619.5.
     """
     from cnaster.hmm_nophasing import _nb_logpmf_1d
 
@@ -388,9 +370,7 @@ def test_cnasters_kernel_scores_every_count_zero_below_the_dispersion_floor() ->
 
 
 # --- sandbox ---------------------------------------------------------------
-# NB `port.sandbox`'s own copies of the negative binomial (#540): no console
-#    script reaches them, so they are judged here beside the live sites rather
-#    than among them.
+# NB `port.sandbox`'s copies (#540): no console script reaches them.
 
 
 def _bulk(counts: np.ndarray, alpha: float):  # type: ignore[no-untyped-def]
@@ -455,7 +435,9 @@ def test_each_sandbox_kernel_is_the_negative_binomial(
 @pytest.mark.oracle
 @pytest.mark.parametrize("name", SANDBOX_KERNELS)
 def test_a_sandbox_kernel_scores_a_vanishing_mean_as_impossible(name: str) -> None:
-    """At `alpha * mean = 1e-19` a count of 1000 is -43,420 nats, and 0 is finite; 1e-9 relative."""
+    """At `alpha * mean = 1e-19` a count of 1000 is -43,420 nats and 0 is finite, to 1e-9
+    relative.
+    """
     counts = np.array([0.0, 1000.0])
     scores = SANDBOX_KERNELS[name](counts, VANISHING, 0.01)
 
@@ -521,10 +503,8 @@ SANDBOX_SITES: dict[str, Callable[[], float]] = {
 def test_every_sandbox_site_scores_the_degenerate_state_in_log_space(
     site: str,
 ) -> None:
-    """At `log mu = -43.22`, `alpha = 0.1184`, exposure 1000, a count of 1000 is -38,403.9 nats, to 1e-9.
-
-    `cnaster`'s kernel scores it 0 -- probability 1 -- because `p` rounds to
-    1 (`a = 2.0e-17`); each site imports the log-space kernel (#560) instead.
+    """At `log mu = -43.22`, exposure 1000, each sandbox site scores count 1000 as
+    -38,403.9 nats, to 1e-9 (#560).
     """
     log_mu, alpha, exposure, count = DEGENERATE
     score = SANDBOX_SITES[site]()

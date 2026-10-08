@@ -1,17 +1,4 @@
-"""Recombination distances and the phase-switch kernel they produce.
-
-`cnaster` turns a genetic distance into the per-position probability that
-the phase flips, which is the sitewise kernel `hmm_phased.forward_lattice`
-consumes and which `tests/fixtures.phased_chains` currently supplies as a
-constant. This is the code that makes it vary, so pinning it is what lets
-anything be said about the regime where the upstream correspondence ends:
-upstream's recursion takes one transition for a whole chain.
-
-The referee is the closed form. `compute_numbat_phase_switch_prob` is
-Haldane's mapping function, `p = (1 - exp(-2 nu d)) / 2`, so the expected
-values are analytic rather than recorded, and the limits it has to satisfy
-are properties of that function rather than of this implementation.
-"""
+"""`cnaster.recomb` against Haldane's mapping function, `p = (1 - exp(-2 nu d)) / 2`."""
 
 import numpy as np
 import pandas as pd
@@ -23,12 +10,12 @@ TOLERANCE = 1e-12
 
 
 def haldane(distance_cM: np.ndarray, nu: float) -> np.ndarray:
-    """The mapping function, stated independently of `cnaster`."""
+    """Return Haldane's mapping, stated independently of `cnaster`."""
     return (1.0 - np.exp(-2.0 * nu * distance_cM)) / 2.0
 
 
 def one_chromosome(n_positions: int) -> list[tuple[int, int]]:
-    """`(chromosome, position)` pairs that never cross a boundary."""
+    """Return `(chromosome, position)` pairs on one chromosome."""
     return [(1, 100 * (i + 1)) for i in range(n_positions)]
 
 
@@ -36,7 +23,7 @@ def one_chromosome(n_positions: int) -> list[tuple[int, int]]:
 @pytest.mark.critical
 @pytest.mark.parametrize("nu", [0.5, 1.0, 2.0])
 def test_switch_probability_is_the_mapping_function(nu: float) -> None:
-    """Interior positions take the closed form exactly."""
+    """Interior positions equal the closed form, to `TOLERANCE`."""
     from cnaster.recomb import compute_numbat_phase_switch_prob
 
     position_cM = np.array([0.0, 0.1, 1.0, 3.0, 10.0])
@@ -54,14 +41,7 @@ def test_switch_probability_is_the_mapping_function(nu: float) -> None:
 
 @pytest.mark.analytic
 def test_switch_probability_respects_the_limits() -> None:
-    """Zero distance gives zero, unbounded distance gives one half.
-
-    The two ends of the mapping function: adjacent markers never recombine
-    and distant ones are independent, at which point the phase carries no
-    information. A kernel exceeding one half would be a model in which a
-    flip is more likely than not, which the assembly in `hmm_phased` treats
-    as the off-diagonal block.
-    """
+    """Zero distance gives the floor, unbounded distance one half."""
     from cnaster.recomb import compute_numbat_phase_switch_prob
 
     position_cM = np.array([0.0, 0.0, 1.0e6])
@@ -77,7 +57,7 @@ def test_switch_probability_respects_the_limits() -> None:
 @pytest.mark.analytic
 @pytest.mark.parametrize("nu", [0.5, 1.0, 2.0])
 def test_switch_probability_increases_with_distance(nu: float) -> None:
-    """Further apart is more likely to have switched, at every rate."""
+    """The switch probability increases with distance at every rate."""
     from cnaster.recomb import compute_numbat_phase_switch_prob
 
     position_cM = np.cumsum(np.array([0.0, 0.2, 0.5, 1.0, 2.0, 4.0]))
@@ -94,12 +74,7 @@ def test_switch_probability_increases_with_distance(nu: float) -> None:
 
 @pytest.mark.smoke
 def test_a_chromosome_boundary_carries_no_distance() -> None:
-    """Across contigs the kernel falls to its floor.
-
-    Genetic distance is undefined between chromosomes, so the phase of one
-    says nothing about the next. A kernel that interpolated across the
-    boundary would tie two independent contigs together.
-    """
+    """Across chromosomes the kernel falls to its floor."""
     from cnaster.recomb import compute_numbat_phase_switch_prob
 
     position_cM = np.array([0.0, 1.0, 2.0, 3.0])
@@ -114,7 +89,7 @@ def test_a_chromosome_boundary_carries_no_distance() -> None:
 
 @pytest.mark.smoke
 def test_an_unknown_distance_carries_no_distance() -> None:
-    """A missing centimorgan value falls to the floor rather than propagating."""
+    """A missing centimorgan value falls to the floor, not NaN."""
     from cnaster.recomb import compute_numbat_phase_switch_prob
 
     position_cM = np.array([0.0, np.nan, 2.0, 3.0])
@@ -130,7 +105,7 @@ def test_an_unknown_distance_carries_no_distance() -> None:
 
 @pytest.mark.smoke
 def test_the_last_position_has_no_successor() -> None:
-    """Nothing follows the final position, so it takes the floor."""
+    """The final position takes the floor."""
     from cnaster.recomb import compute_numbat_phase_switch_prob
 
     position_cM = np.array([0.0, 5.0, 10.0])
@@ -155,7 +130,7 @@ def test_the_floor_defaults_to_the_configured_one() -> None:
 
 
 def reference_table() -> pd.DataFrame:
-    """A two-chromosome genetic map, with a known value at every row."""
+    """Return a two-chromosome genetic map with known values."""
     return pd.DataFrame(
         {
             "chrom": [1, 1, 1, 2, 2],
@@ -168,7 +143,7 @@ def reference_table() -> pd.DataFrame:
 @pytest.mark.oracle
 @pytest.mark.critical
 def test_centimorgans_are_exact_at_reference_positions() -> None:
-    """A position in the table returns that row's value."""
+    """A position in the table returns that row's value, to `TOLERANCE`."""
     from cnaster.recomb import assign_centiMorgans
 
     assigned = assign_centiMorgans([(1, 200), (1, 400), (2, 300)], reference_table())
@@ -179,11 +154,9 @@ def test_centimorgans_are_exact_at_reference_positions() -> None:
 @pytest.mark.oracle
 @pytest.mark.critical
 def test_centimorgans_interpolate_linearly_between_them() -> None:
-    """Halfway between two rows is halfway between their values."""
+    """Midway between two rows is midway between their values, to `TOLERANCE`."""
     from cnaster.recomb import assign_centiMorgans
 
-    # NB 150 sits midway between 100 (1.0 cM) and 200 (3.0 cM); 300 midway
-    #    between 200 (3.0) and 400 (5.0).
     assigned = assign_centiMorgans([(1, 150), (1, 300)], reference_table())
 
     np.testing.assert_allclose(assigned, [2.0, 4.0], rtol=0.0, atol=TOLERANCE)
@@ -191,13 +164,7 @@ def test_centimorgans_interpolate_linearly_between_them() -> None:
 
 @pytest.mark.smoke
 def test_centimorgans_sort_their_input_in_place() -> None:
-    """The call reorders the list it is given.
-
-    A side effect rather than a returned value, and the returned distances
-    follow the sorted order rather than the caller's. Pinned because a
-    caller holding that list afterwards has a different object than it
-    passed, and because `get_sitewise_transmat` relies on the ordering.
-    """
+    """`assign_centiMorgans` sorts its input list in place."""
     from cnaster.recomb import assign_centiMorgans
 
     positions = [(2, 300), (1, 200)]

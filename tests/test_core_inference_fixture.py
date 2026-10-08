@@ -1,14 +1,8 @@
-"""The planted instance `run_core_inference` is validated against (issue #4).
+"""The planted instance `run_core_inference` is validated against (#4).
 
-#66 decides the draw: **one negative binomial per `(segment, spot)` for the
-total and one beta-binomial for the successes**, independently, through
-`snakes_and_ladders`' own families. These tests pin that it is that draw and
-not something with the same marginals, that `cnaster` scores it as upstream
-does, and that the planted labels and states are recoverable from it.
-
-Component-wise, in the order #14's ladder puts them: the draw, the score, the
-field. The end-to-end run and its size are
-`tests/test_core_inference_at_scale.py`.
+One negative binomial per `(segment, spot)` and one beta-binomial, through
+`snakes_and_ladders`'
+families (#66): pinned as that draw, scored as upstream does, and recoverable.
 """
 
 import numpy as np
@@ -20,22 +14,12 @@ from scipy import stats
 from tests.adapters import from_core_inference_truth
 
 CHI_SQUARE_ALPHA = 0.001
-"""Rejection level for the goodness-of-fit tests.
-
-Loose on purpose: these run at a fixed seed, so a level that rejects one draw
-in twenty would be a test that fails for being run. At 0.001 a false rejection
-is a fixture that changed, and `test_the_draw_is_a_function_of_the_seed_and_the_spot`
-is what says whether it did.
-"""
+"""Rejection level for the goodness-of-fit tests; loose because they run at a fixed seed."""
 
 
 def _recover(truth: CoreInferenceTruth) -> dict[str, np.ndarray]:
-    """Moment estimates of the planted parameters, per state.
-
-    `Var(X_i) = lambda_i mu + alpha (lambda_i mu)^2` and
-    `Var(y_i) = n_i p (1-p) [1 + (n_i - 1) rho]` are the two relations that
-    make these count models, so inverting them is a referee independent of the
-    sampler that drew them.
+    """Moment estimates of the planted parameters per state, by inverting the NB and beta-
+    binomial variances.
     """
     per_spot = truth.states[truth.labels].T  # (n_obs, n_spots)
     mu = np.empty(truth.n_states)
@@ -65,12 +49,7 @@ def _recover(truth: CoreInferenceTruth) -> dict[str, np.ndarray]:
 @pytest.mark.end2end
 @pytest.mark.critical
 def test_the_draw_recovers_the_planted_parameters() -> None:
-    """Every planted parameter is recovered from the counts it generated.
-
-    The weakest of these tests and the one that has to pass first: a fixture
-    that does not recover its own parameters is not truth, and every referee
-    above it would be scoring against a mislabelled instance.
-    """
+    """Every planted parameter is recovered from the counts by moments."""
     truth = core_inference_truth(n_obs=3000, lattice=(20, 20), n_segments=6)
     got = _recover(truth)
 
@@ -82,13 +61,8 @@ def test_the_draw_recovers_the_planted_parameters() -> None:
 
 @pytest.mark.smoke
 def test_each_entry_is_a_negative_binomial_draw() -> None:
-    """Not a mixture whose marginals are negative binomial -- the draw itself.
-
-    At a constant exposure every entry in a state shares one distribution, so
-    the pooled counts are testable against `nbinom(r, r / (r + lambda mu))`
-    directly. This is the assertion that separates the decided draw from a
-    hierarchical one: those agree on this test and disagree on the clone sums,
-    which is #78.
+    """Pooled counts per state against `nbinom(r, r / (r + lambda mu))` by goodness of fit
+    (#78).
     """
     truth = core_inference_truth(
         n_obs=3000,
@@ -119,12 +93,7 @@ def test_each_entry_is_a_negative_binomial_draw() -> None:
 
 @pytest.mark.smoke
 def test_each_entry_is_a_beta_binomial_draw() -> None:
-    """The same for the success channel, against `betabinom(n, a, b)`.
-
-    A binomial draw at the planted `p` would pass a mean check and fail here,
-    which is what makes the overdispersion part of the planted truth rather
-    than an accident of the sampler.
-    """
+    """Pooled successes per state against `betabinom(n, a, b)` by goodness of fit."""
     truth = core_inference_truth(
         n_obs=3000,
         lattice=(20, 20),
@@ -152,12 +121,8 @@ def test_each_entry_is_a_beta_binomial_draw() -> None:
 @pytest.mark.oracle
 @pytest.mark.critical
 def test_cnaster_scores_the_fixture_as_upstream_does() -> None:
-    """Two implementations of the emission, on the instance one of them drew.
-
-    Scored at the **planted** parameters, which removes the optimizer and the
-    convergence criterion, so a disagreement is a defect in one of the two and
-    can be nothing else. The realized agreement is asserted rather than a
-    tolerance chosen in advance.
+    """`cnaster` and upstream score the fixture at the planted parameters to the realized
+    agreement.
     """
     import torch
     from cnaster.hmm_nophasing import _bb_logpmf_1d, _nb_logpmf_1d
@@ -218,12 +183,8 @@ def test_cnaster_scores_the_fixture_as_upstream_does() -> None:
 
 @pytest.mark.end2end
 def test_the_field_recovers_the_planted_clone_assignment() -> None:
-    """At the planted states, every spot's own clone wins its field row.
-
-    `compute_loglike_spot_assignment` is the seam the label solver optimizes,
-    so if the planted labelling is not its argmax at the planted states, no
-    solver above it can recover the labelling and a failure further up would
-    be unattributable.
+    """At the planted states every spot's own clone wins its
+    `compute_loglike_spot_assignment` row.
     """
     from cnaster.hmm_nophasing import _dense_bb_logpmf, _dense_nb_logpmf
     from cnaster.hmrf import compute_loglike_spot_assignment
@@ -261,13 +222,7 @@ def test_the_field_recovers_the_planted_clone_assignment() -> None:
 
 @pytest.mark.end2end
 def test_the_pseudobulk_recovers_the_mean_and_not_the_dispersion() -> None:
-    """#78, on the fixture rather than on a standalone draw.
-
-    The exposure is summed with the counts, so `mu` survives aggregation. The
-    dispersion does not: a sum of independent negative binomials at unequal
-    exposures is not negative binomial, and what `cnaster` fits to the
-    aggregate is smaller than the per-spot value by roughly the clone's size.
-    """
+    """The pseudobulk fit recovers the planted `mu` but not the per-spot dispersion (#78)."""
     from cnaster.pseudobulk import merge_pseudobulk_by_index_mix
 
     truth = core_inference_truth(n_obs=3000, lattice=(20, 20), n_segments=6)
@@ -303,14 +258,7 @@ def test_the_pseudobulk_recovers_the_mean_and_not_the_dispersion() -> None:
 
 @pytest.mark.smoke
 def test_a_spot_s_counts_come_from_its_own_stream() -> None:
-    """Column `s` is drawn from `default_rng([seed, s])` and nothing else.
-
-    So the order spots are visited in cannot move the data, and a rebuild is
-    bitwise. Asserted by drawing one column directly from the family and
-    matching it, which is the claim; a **prefix** property is not claimed and
-    does not hold, because the bands and the shared draws both depend on the
-    lattice, so widening it re-labels the spots that were already there.
-    """
+    """Column `s` equals a direct draw from `default_rng([seed, s])`."""
     import torch
     from port.sim.truth import emission_family
 
@@ -347,11 +295,7 @@ def test_the_fixture_is_bitwise_reproducible() -> None:
 def test_every_size_plants_a_normal_clone_of_at_least_thirty_per_cent(
     lattice: tuple[int, int], n_clones: int
 ) -> None:
-    """Clone 0 is all state 0 and holds at least 30 per cent of the spots (#298).
-
-    At three sizes, the dev instance's among them. Checked against the
-    fixture's own construction, hence `smoke`.
-    """
+    """Clone 0 is all state 0 and holds at least 30% of the spots, at three sizes (#298)."""
     from port.sim.truth import NORMAL_SHARE
 
     truth = core_inference_truth(

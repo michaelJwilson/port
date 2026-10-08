@@ -1,28 +1,4 @@
-"""Every drop-in is compared with what it replaces, or says why not (#281).
-
-**Guard 4 measures how much of the drop-in surface its correspondence tests
-reach. This measures whether they exist at all**, which coverage cannot: a
-module reached incidentally by an `end2end` run reads as covered, and a
-module nobody compared with `cnaster` reads the same way.
-
-Two halves, because a replacement can fail in two directions.
-
-*A replacement nobody compared.* Every module under `python/port/patch`
-carries at least one test in guard 4's selection -- `patch or cnaster` --
-that names it. Both markers mean the same comparison: `patch` is a port
-patch reproducing the call it replaces, and `cnaster` is that comparison
-made under another referee, as the loader tests parametrized over both
-implementations make it. A module neither imports is one whose agreement
-with `cnaster` is an assumption.
-
-*A replacement nobody installed.* Four of them were, when this was written:
-`reindex_clones`, `plot_clones_genomic`, `plot_loh_density` and
-`compute_emission_probability_nb_betabinom_coded` appeared in no swap table.
-#517 step 8 installed the first and last (the `reindex_clones` row reorders
-through `hmrf.reindex`; `hmm_phased` is a `SWAPS` row) and moved the two
-figures to `sandbox/patch/plotting/`. The next one is declared below with
-its reason, which makes it a decision rather than a default.
-"""
+"""Every drop-in in `port.patch` has a correspondence test or a stated reason (#281, #517)."""
 
 from __future__ import annotations
 
@@ -35,21 +11,11 @@ from tests import ROOT, TESTS
 PATCH = ROOT / "python" / "port" / "patch"
 
 UNINSTALLED: dict[str, str] = {}
-"""Drop-ins deliberately in no swap table, and why.
-
-A declaration rather than an exemption: each says what would put it in one.
-`PRIVATE_SURFACE` in `tests/test_module_correspondence.py` carries the same
-shape, for the same reason -- what is written down can be reviewed, and what
-is merely absent cannot.
-"""
+"""Drop-ins deliberately in no swap table, each with what would put it in one."""
 
 
 def _modules() -> set[str]:
-    """Every drop-in module, by import path.
-
-    `__init__.py` is excluded: a package root re-exports rather than
-    replaces, so it has nothing of its own to compare.
-    """
+    """Every drop-in module by import path, package roots excluded."""
     found = set()
 
     for path in PATCH.rglob("*.py"):
@@ -64,26 +30,13 @@ def _modules() -> set[str]:
 
 
 def _imported_by_marked_tests() -> set[str]:
-    """What the `cnaster`-marked tests import, read off the source.
-
-    Read statically rather than by running them: a test that reaches a
-    module through three layers of pipeline has not *compared* it, and the
-    import is the honest signal of what a file is about. Both `import a.b`
-    and `from a.b import c` count, and a prefix match is enough -- importing
-    one name from a module is comparing that module.
-    """
+    """Modules the `patch`- or `cnaster`-marked tests import, read statically."""
     imported: set[str] = set()
 
     for path in TESTS.glob("test_*.py"):
         source = path.read_text()
 
-        # NB `patch` counts as well as `cnaster`, and the two together are
-        #    guard 4's selection. `patch` already means "a port patch
-        #    reproduces the cnaster call it replaces", so it *is* a
-        #    correspondence marker; `cnaster` exists for the tests that make
-        #    the same comparison under another referee -- the loader tests
-        #    parametrized over both implementations are `end2end`, and the
-        #    comparison is no less real for it.
+        # NB `patch` and `cnaster` together are guard 4's correspondence selection.
         if not any(
             f"pytest.mark.{marker}" in source for marker in ("patch", "cnaster")
         ):
@@ -99,15 +52,7 @@ def _imported_by_marked_tests() -> set[str]:
 
 
 def _reexported_by(names: set[str]) -> set[str]:
-    """The submodules a package import actually reaches.
-
-    `tests/test_hmm_phased_coded_emission.py` writes `from
-    port.patch.hmm_phased import ...`, and the package re-exports from
-    `coded_emission.py`; the string alone would report that module as
-    unrefereed while its correspondence test compares it line by line. Same
-    resolution `_installed` makes, for the same reason `CLAUDE.md` gives:
-    trace the live import to the definition.
-    """
+    """Submodules a package import reaches through its re-exports."""
     from importlib import import_module
 
     reached = set()
@@ -131,16 +76,7 @@ def _reexported_by(names: set[str]) -> set[str]:
 
 
 def _installed() -> set[str]:
-    """Every module a swap actually installs, traced to the definition.
-
-    **Not the module the table names.** A swap reads
-    `port.patch.hmrf:pipeline_clone_assignment`, and `port/patch/hmrf/
-    __init__.py` re-exports that from `clone_assignment.py`, so matching the
-    string would report the submodule as uninstalled while it runs on every
-    call. `CLAUDE.md` states the rule this follows: scope is decided by
-    tracing the live import to the definition, not by matching the
-    identifier.
-    """
+    """Every module a swap installs, traced through re-exports to the definition."""
     from importlib import import_module
 
     from port.pipeline import (
@@ -178,12 +114,7 @@ def _installed() -> set[str]:
 
 @pytest.mark.infra
 def test_every_dropin_has_a_correspondence_test() -> None:
-    """A replacement with no `cnaster`-marked test is one nobody compared.
-
-    **This is the half coverage cannot make.** Guard 4 would read a module
-    as covered when an `end2end` run happened to execute it, which says the
-    pipeline ran and not that the replacement agrees with what it replaced.
-    """
+    """Each drop-in is imported by a `patch`- or `cnaster`-marked test."""
     imported = _imported_by_marked_tests()
 
     unrefereed = sorted(
@@ -201,21 +132,7 @@ def test_every_dropin_has_a_correspondence_test() -> None:
 
 @pytest.mark.infra
 def test_no_declared_drop_in_is_quietly_installed() -> None:
-    """A declaration must not outlive the reason for it.
-
-    The four below reach no run, and each says what would put it in a table.
-    The day one is installed the declaration becomes a false statement about
-    a module that now runs, which is worse than no declaration at all --
-    this is what refuses it.
-
-    The converse -- every drop-in either installed or declared -- is **not**
-    asserted here, and deliberately. `python/port/patch` holds the pieces
-    the replacements are built from as well as the replacements themselves
-    (`hmrf/invariants`, `icm/interface`, `plotting/clone_
-    paths`), and those are reached through an installed swap rather than
-    being one. Separating the two needs a `cnaster` counterpart per module,
-    which is #281's remaining half.
-    """
+    """No declared drop-in is installed by a swap table (#281)."""
     stale = sorted(_installed() & set(UNINSTALLED))
 
     assert not stale, (
@@ -226,12 +143,7 @@ def test_no_declared_drop_in_is_quietly_installed() -> None:
 
 @pytest.mark.infra
 def test_every_declaration_names_a_module_that_exists() -> None:
-    """A declaration for a module that moved is a reason nobody can check.
-
-    `integer_copy.py` is why this is here: it left `patch/` on #281 because
-    it replaces nothing, and a stale entry for it would have read as a
-    reviewed decision about a drop-in that no longer existed.
-    """
+    """Every declaration names an existing module."""
     missing = sorted(set(UNINSTALLED) - _modules())
 
     assert not missing, f"UNINSTALLED names {missing}, which are not drop-ins"

@@ -1,12 +1,7 @@
-"""T- #698: overlapping events, the altered share, and `dev_tree_1s_dense`.
+"""Overlapping events, the altered share and `dev_tree_1s_dense` (#698).
 
-An event plants an absolute `(A, B)`; a clone's state at a locus is the last
-event on its root-to-leaf path that covers it. Under `[cna] loh =
-"irreversible"` an event keeps the haplotypes its lineage has lost at 0 and
-changes its clone somewhere in its span. The referees: the truth and the
-share recomputed from the event list by a second, independent computation
-(`oracle`), the rule's properties on every event drawn (`analytic`), and the
-defect the rule removes, pinned on a manifest drawn without it (`bug`).
+Referees: independent recomputation from the event list, the LOH rule's properties, and
+a `bug` pin.
 """
 
 from __future__ import annotations
@@ -55,7 +50,7 @@ def _composed(tree: CloneTree, clone: str, chromosome: str, at: int) -> tuple[in
 
 
 def _union(tree: CloneTree, lengths: list[int]) -> int:
-    """bp covered by any event on any edge: every edge lies on some leaf's path."""
+    """bp covered by any event on any edge."""
     covered = 0
     for index in range(1, len(lengths) + 1):
         spans = sorted(
@@ -80,11 +75,7 @@ def dense() -> DrawManifest:
 def test_the_altered_share_is_the_union_of_event_spans_and_exceeds_four_fifths(
     dense: DrawManifest,
 ) -> None:
-    """`altered_share` equals the merged union of event spans in bp, exactly,
-    on 100 seeded trees: no state of `[cna] states` is `(1, 1)`, so a locus
-    is altered exactly where an event covers it, and overlaps count once.
-    It is at most the sum of event lengths, and below it wherever events
-    overlap. The fixture's own tree, seed 0, is above 0.80."""
+    """`altered_share` equals the merged union of event spans on 100 trees; seed 0 exceeds 0.80."""
     lengths = [int(n) for n in dense.genome["chromosome_lengths"]]
     assert [1, 1] not in dense.cna["states"]
     overlapped = 0
@@ -102,11 +93,7 @@ def test_the_altered_share_is_the_union_of_event_spans_and_exceeds_four_fifths(
 
 @pytest.mark.oracle
 def test_the_altered_share_agrees_with_a_grid_of_loci(dense: DrawManifest) -> None:
-    """On a 100 kb grid, each cell weighted by its extent and read at its first
-    base by walking every clone's path, the altered share agrees with
-    `altered_share` within the bound the grid allows: a cell is misread only
-    where an altered/normal boundary falls inside it, so by at most `GRID` bp
-    per boundary."""
+    """`altered_share` agrees with a 100 kb grid walk within `GRID` bp per boundary."""
     lengths = [int(n) for n in dense.genome["chromosome_lengths"]]
     for seed in range(3):
         tree = _tree(dense, seed)
@@ -131,12 +118,7 @@ def test_the_altered_share_agrees_with_a_grid_of_loci(dense: DrawManifest) -> No
 @pytest.mark.oracle
 @pytest.mark.parametrize("name", ["dev_tree_1s_dense", "dev_tree_1s_easy", "dev_tree"])
 def test_the_truth_is_the_composition_of_each_lineages_events(name: str) -> None:
-    """`truth_profile` against a walk of each clone's path, on 100 seeded trees.
-
-    Its segments tile each chromosome, and every clone's state is the walk's
-    at each segment's first and last base: no event boundary falls inside a
-    segment, and nested, abutting and cross-branch overlaps all compose as
-    the last covering event on the clone's own path."""
+    """`truth_profile` equals a walk of each clone's path on 100 seeded trees."""
     manifest = read_manifest(MANIFESTS / f"{name}.toml")
     lengths = [int(n) for n in manifest.genome["chromosome_lengths"]]
 
@@ -164,10 +146,7 @@ def test_the_truth_is_the_composition_of_each_lineages_events(name: str) -> None
 def test_an_irreversible_lineage_never_regains_a_lost_haplotype(
     dense: DrawManifest,
 ) -> None:
-    """Every event of 100 seeded dense trees, over the state its lineage had
-    when it arose: a haplotype at 0 stays 0, the state is one of `[cna]
-    states` and so non-negative, and the event changes its clone somewhere
-    in its span. Overlaps on one lineage occur on every tree."""
+    """Under irreversible LOH no lineage regains a lost haplotype, on 100 dense trees."""
     states = {tuple(s) for s in dense.cna["states"]}
     stacked = 0
 
@@ -208,9 +187,9 @@ def test_admissible_states_on_hand_built_lineages() -> None:
     assert lineage_states(lineage, "1", 90, 110) == [(1, 0), (0, 2)]
     assert lineage_states(lineage, "1", 200, 300) == [(1, 1)]
     assert lineage_states(lineage, "2", 0, 10) == [(1, 1)]
-    # NB B lost over [0, 40) and [60, 100): only (1, 0), which is no change there but is at [40, 60)
+    # NB B lost over [0, 40) and [60, 100): only (1, 0) changes something, at [40, 60).
     assert admissible(states, [(1, 0), (2, 2), (1, 0)]) == [(1, 0)]
-    # NB A lost on one piece and B on the other: nothing keeps both lost
+    # NB A lost on one piece and B on the other: nothing keeps both lost.
     assert admissible(states, [(1, 0), (0, 2)]) == []
     assert admissible(states, [(1, 0)]) == []
     assert admissible(states, [(1, 1)]) == states
@@ -218,10 +197,7 @@ def test_admissible_states_on_hand_built_lineages() -> None:
 
 @pytest.mark.bug
 def test_a_reversible_lineage_regains_lost_haplotypes() -> None:
-    """Without `[cna] loh`, as every manifest before T- #698 draws,
-    `dev_tree_1s_easy` plants `A > 0` or `B > 0` over a lineage that lost it:
-    11 of the 679 events on 100 seeded trees. Fails once the default is
-    irreversible, which moves every existing `r0_hash`."""
+    """Without `[cna] loh`, `dev_tree_1s_easy` regains lost haplotypes; fails when fixed."""
     manifest = from_document(extended(MANIFESTS / "dev_tree_1s_easy.toml"))
     assert "loh" not in manifest.cna
     regained = events = 0
@@ -269,9 +245,7 @@ def _pairs(tree: CloneTree) -> int:
 
 @pytest.mark.analytic
 def test_branches_overlap_without_touching_each_other(dense: DrawManifest) -> None:
-    """An event on one leaf edge leaves its siblings' states unchanged: each
-    clone's profile is the composition of its own path's events alone, on
-    trees whose leaf edges overlap one another."""
+    """An event on one leaf edge leaves its siblings' profiles unchanged."""
     lengths = [int(n) for n in dense.genome["chromosome_lengths"]]
     crossing = 0
     for seed in range(20):

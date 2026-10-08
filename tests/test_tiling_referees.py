@@ -1,23 +1,6 @@
-"""The label solvers against planted noisy tilings, certified by TRW-S (#410, sal #1074/#1061).
+"""Label solvers on sal's planted noisy tilings, certified by TRW-S's bound (#410, sal #1074/#1061).
 
-sal's tiling fixture: a lattice split into Voronoi tiles, each rewarding one
-planted state, with spatially smoothed noise over the field. The planted
-states are the truth a labelling is read against, and TRW-S's lower bound
-certifies how far a labelling's Potts energy can be from the ground state.
-Neither referee is a solver under test.
-
-Realized at the gate instance (1,600 sites, 6 tiles, 4 states, coupling
-0.6, noise 0.5), energy minus the bound, and agreement with the planted:
-
-| solver | gap (nats) | agreement |
-| --- | --- | --- |
-| `alpha-rust` | 0.0 | 0.9950 |
-| `alpha-rust-icm` | 0.0 | 0.9950 |
-| `icm` (`cnaster`'s) | 5.3 | 0.9850 |
-| `icm-numba` | 6.3 | 0.9831 |
-
-At 10,000 sites, 12 tiles and 6 states, alpha expansion's gap is still 0.0
-(agreement 0.9975) and the ICMs' 60.9 to 78.6: the stress tier below.
+Referees: the planted tile states and TRW-S's lower bound on the Potts energy.
 """
 
 from __future__ import annotations
@@ -63,7 +46,7 @@ def _solve(name: str, field: np.ndarray, graph: Any, beta: float) -> np.ndarray:
     from port.sandbox.extensions.label_solvers import SWEEPS
 
     labelling = np.zeros(field.shape[0], dtype=np.int64)
-    # NB `cnaster`'s sweep draws its queue order from the legacy state (#45).
+    # NB `cnaster`'s sweep draws its queue order from the legacy state (#45)
     np.random.seed(0)  # noqa: NPY002
     sweep = SWEEPS[name] if name in SWEEPS else sweep_for(name)  # type: ignore[arg-type]
     sweep(field, graph, labelling, beta, min_clone_spots=1)
@@ -91,7 +74,7 @@ def _gap_and_agreement(
 @pytest.mark.oracle
 @pytest.mark.parametrize("name", ["alpha-rust", "alpha-rust-icm"])
 def test_alpha_expansion_reaches_the_certified_ground_state(name: str) -> None:
-    """Energy equal to TRW-S's lower bound, so no labelling is lower; 0.995 planted."""
+    """Alpha expansion's energy equals TRW-S's bound, to 1e-6; >= 0.99 agree with planted."""
     gap, agreement = _gap_and_agreement(name, 40, 6, 4)
 
     assert abs(gap) < 1e-6, f"{name} is {gap:.3f} nats above the bound"
@@ -101,7 +84,7 @@ def test_alpha_expansion_reaches_the_certified_ground_state(name: str) -> None:
 @pytest.mark.oracle
 @pytest.mark.parametrize("name", ["icm", "icm-numba"])
 def test_single_site_descent_stays_within_its_measured_gap(name: str) -> None:
-    """Above the bound, as a local search must be, and by the gap measured here."""
+    """ICM lies above the bound by under 10 nats; >= 0.98 agree with planted."""
     gap, agreement = _gap_and_agreement(name, 40, 6, 4)
 
     assert 0.0 <= gap < 10.0, f"{name} gap {gap:.3f}"
@@ -111,7 +94,7 @@ def test_single_site_descent_stays_within_its_measured_gap(name: str) -> None:
 @pytest.mark.oracle
 @pytest.mark.release
 def test_alpha_expansion_is_certified_at_the_stress_size() -> None:
-    """10,000 sites, 12 tiles, 6 states: still the ground state, 0.9975 planted."""
+    """At 10,000 sites alpha expansion is at the bound, to 1e-6; >= 0.99 agree with planted."""
     gap, agreement = _gap_and_agreement("alpha-rust", 100, 12, 6)
 
     assert abs(gap) < 1e-6, f"alpha-rust is {gap:.3f} nats above the bound"

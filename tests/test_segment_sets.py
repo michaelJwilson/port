@@ -1,15 +1,4 @@
-"""Each decoded segment's set by the point decode's likelihood, set aside for version 2 (#705).
-
-What is pinned here:
-
-- segments are runs of one pair, split at contigs (`analytic`);
-- counts drawn at their expectation recover the planted pair alone, and a
-  thousandth of the depth widens the set to hold it among others
-  (`analytic`);
-- each set's deviance is the brute-force refit's: the clone's
-  log-likelihood maximized over the same grid by a plain loop (`oracle`);
-- the per-bin table is the emission each bin's pair scores (`oracle`).
-"""
+"""Each decoded segment's likelihood set, against analytic cases and a brute-force refit (#705)."""
 
 from __future__ import annotations
 
@@ -78,7 +67,7 @@ def _planted() -> np.ndarray:
 def test_counts_at_their_expectation_recover_the_planted_pair_alone(
     cnaster_config: None,
 ) -> None:
-    """At 1e4 reads a bin, (1, 2)'s 20 bins admit (1, 2) only; at 10, more, (1, 2) among them."""
+    """At 1e4 reads a bin only (1, 2) is admitted; at 10 reads the set widens but holds it."""
     from port.sandbox.extensions.segment_sets import segment_sets
 
     pairs = _planted()
@@ -103,7 +92,7 @@ def test_counts_at_their_expectation_recover_the_planted_pair_alone(
 
 @pytest.mark.oracle
 def test_each_deviance_is_the_brute_force_refit_s(cnaster_config: None) -> None:
-    """Clone 1 at fraction 0.8: every candidate's deviance against a plain loop over the grid."""
+    """Clone 1 at 0.8: every candidate's deviance against a plain loop over the grid."""
     from port.extensions.copy_likelihood import (
         pair_rate_and_share,
         pseudobulk_log_pmf,
@@ -154,7 +143,7 @@ def test_each_deviance_is_the_brute_force_refit_s(cnaster_config: None) -> None:
 
 @pytest.mark.oracle
 def test_the_per_bin_table_is_each_bin_s_emission(cnaster_config: None) -> None:
-    """`bin_loglik` at clone 1's fraction 0.8, bin by bin, against `pseudobulk_log_pmf` per pair."""
+    """`bin_loglik` at clone 1's 0.8, bin by bin, against `pseudobulk_log_pmf` per pair."""
     from port.extensions.copy_likelihood import (
         pair_rate_and_share,
         pseudobulk_log_pmf,

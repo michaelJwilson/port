@@ -1,15 +1,6 @@
-"""The LOH density figure, against the one `cnaster` draws (#281).
+"""The LOH density figure against the one `cnaster` draws (#281).
 
-`tests/test_clone_paths.py` refereed the **model** half -- the nine lines
-that decode a clone's path and read its BAF. This referees the rest: the
-empirical channel, the alpha ramp, the axis remapping and the two-panel
-layout, which together are 41 of the module's 67 statements and had no
-referee at all.
-
-**Drawn artists, not pixels.** The figure is a 3-D scatter, so what it
-asserts is the point cloud: the offsets each `Path3DCollection` holds and
-the RGBA it holds them with. A pixel comparison would fail on a font or a
-backend version and pass a rewiring that moved a clone.
+Compares drawn artists (each `Path3DCollection`'s offsets and RGBA), not pixels.
 """
 
 from typing import Any
@@ -21,11 +12,8 @@ import pytest
 def _instance(
     n_bins: int = 12, n_spots: int = 9, n_clones: int = 3, n_states: int = 4
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, dict[str, Any]]:
-    """A three-clone instance whose clones hold different spots.
-
-    Three rather than one, for the reason `test_the_loh_model_matches_
-    upstreams_loop` gives: a single clone cannot tell the concatenated decode
-    apart from a per-column one, which is the guard `clone_paths` removed.
+    """A three-clone instance whose clones hold different spots, so a per-column decode
+    would differ.
     """
     rng = np.random.default_rng(11)
 
@@ -46,14 +34,7 @@ def _instance(
 
 
 def _cloud(figure: Any) -> list[tuple[np.ndarray, np.ndarray]]:
-    """Every point a panel put in space, and the colour it put there.
-
-    Both halves matter and for different reasons. The offsets say which
-    `(bin, spot)` survived the visibility cut; the RGBA says what the LOH
-    signal was, which is the quantity the figure exists to show. Checking
-    one alone would pass a patch that drew the right points in the wrong
-    colour.
-    """
+    """Every point a panel placed and its RGBA colour."""
     drawn = []
 
     for axis in figure.axes:
@@ -67,13 +48,7 @@ def _cloud(figure: Any) -> list[tuple[np.ndarray, np.ndarray]]:
 @pytest.mark.cnaster
 @pytest.mark.patch
 def test_the_replacement_draws_the_density_upstream_draws() -> None:
-    """Both figures, one instance, every point and colour compared bitwise.
-
-    Nothing is reassociated between the two, so the same arithmetic on the
-    same inputs gives the same doubles and a tolerance would only hide a
-    rewiring. The claim is that replacing the clone loop with `clone_paths`
-    changed the loop and not the figure.
-    """
+    """Both figures on one instance: every point and colour equal bitwise."""
     import matplotlib as mpl
 
     mpl.use("Agg")
@@ -103,12 +78,7 @@ def test_the_replacement_draws_the_density_upstream_draws() -> None:
 @pytest.mark.patch
 @pytest.mark.parametrize("plot_type", ["empirical", "model"])
 def test_each_panel_alone_is_upstreams(plot_type: str) -> None:
-    """One channel at a time, because `both` would hide a swap between them.
-
-    The empirical channel comes from the smoothed BAF and the model channel
-    from the decoded path, and the two-panel figure draws them in order. A
-    patch that exchanged them would reproduce `both` as a set and fail here.
-    """
+    """Each channel alone equals upstream's, so a swap between them would fail."""
     import matplotlib as mpl
 
     mpl.use("Agg")
@@ -136,12 +106,7 @@ def test_each_panel_alone_is_upstreams(plot_type: str) -> None:
 @pytest.mark.cnaster
 @pytest.mark.patch
 def test_a_clone_holding_no_spots_leaves_its_column_alone() -> None:
-    """Upstream skips an empty clone rather than writing from an empty mask.
-
-    The replacement carries that, and it is worth its own test because the
-    two ways of being wrong -- writing zeros, or raising on the empty
-    reduction -- both look like a working figure until a clone empties.
-    """
+    """An empty clone's column is skipped, as upstream skips it."""
     import matplotlib as mpl
 
     mpl.use("Agg")
@@ -151,8 +116,7 @@ def test_a_clone_holding_no_spots_leaves_its_column_alone() -> None:
 
     coords, single_X, total_bb_RD, result = _instance()
 
-    # NB clone 2 keeps its states in `pred_cnv` and loses every spot, which
-    #    is the case `new_assignment` and `pred_cnv` disagreeing produces.
+    # NB clone 2 keeps its states in `pred_cnv` but loses every spot.
     result["new_assignment"] = np.where(
         result["new_assignment"] == 2, 0, result["new_assignment"]
     )

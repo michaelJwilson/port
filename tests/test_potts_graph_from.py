@@ -1,9 +1,6 @@
-"""`potts_graph_from` through sal's `from_csr`, one-way edges at half (#410 step 3, sal #1113).
+"""`potts_graph_from` via sal's `from_csr`, one-way edges at half (#410 step 3, sal #1113).
 
-Referees: the upper-triangle loop it replaces, bitwise on symmetric graphs;
-and, on `cnaster`'s directed kNN graph, the coupling `cnaster`'s ICM sums --
-each spot's own row -- which a `PottsGraph` must carry at half, as it
-carries every symmetric graph.
+Referees: the replaced upper-triangle loop, bitwise; `cnaster`'s ICM row-sum coupling.
 """
 
 from __future__ import annotations
@@ -20,7 +17,7 @@ from tests.adapters import square_coords
 def _upper_triangle(
     graph: Any, beta: float
 ) -> tuple[tuple[Any, ...], tuple[float, ...]]:
-    """The loop `from_csr` replaced: each edge once, from the upper triangle."""
+    """Return edges and couplings by the replaced loop: each edge once, upper triangle."""
     edges, coupling = [], []
     for site in range(graph.indptr.size - 1):
         for slot in range(int(graph.indptr[site]), int(graph.indptr[site + 1])):
@@ -50,11 +47,7 @@ def test_a_symmetric_graph_converts_bitwise_as_the_loop_did(side: int) -> None:
 @pytest.mark.analytic
 @pytest.mark.cnaster
 def test_a_one_way_edge_carries_half_the_coupling_cnasters_row_sum_does() -> None:
-    """Zero field, any labelling: `-E = beta / 2 * sum_i sum_{j in row i} [s_i = s_j]`.
-
-    On `cnaster`'s own kNN graph (40 x 40, eight per row, one-way only at
-    the boundary), for five random labellings.
-    """
+    """Zero-field energy equals half `cnaster`'s row-sum coupling on its kNN graph, to 1e-12."""
     from cnaster.spatial import construct_lattice_adjacency
     from port.patch.icm.alpha_expansion import potts_graph_from
     from port.patch.icm.interface import CsrGraph
@@ -80,11 +73,7 @@ def test_a_one_way_edge_carries_half_the_coupling_cnasters_row_sum_does() -> Non
 
 @pytest.mark.patch
 def test_a_mostly_one_way_graph_is_refused() -> None:
-    """Eight random targets per spot: almost nothing reciprocated, under 0.6.
-
-    `patch`, as `test_alpha_expansion`'s negative-coupling refusal is: the
-    conversion's contract, where the loop it replaced accepted anything.
-    """
+    """A graph with under 0.6 of edges reciprocated is refused."""
     from port.extensions.adjacency import AdjacencyError
     from port.patch.icm.alpha_expansion import potts_graph_from
     from port.patch.icm.interface import CsrGraph
@@ -103,7 +92,7 @@ def test_a_mostly_one_way_graph_is_refused() -> None:
 
 
 def _symmetrized_from_csr(graph: Any, beta: float) -> Any:
-    """The construction `from_directed_csr` replaced (T- #632): `(A + A^T) * beta / 2` through `from_csr`."""
+    """Return the replaced construction (T- #632): `(A + A^T) * beta / 2` via `from_csr`."""
     from sal.sim.graph import PottsGraph
 
     n = int(graph.indptr.size - 1)
@@ -117,7 +106,7 @@ def _symmetrized_from_csr(graph: Any, beta: float) -> Any:
 @pytest.mark.patch
 @pytest.mark.parametrize("beta", [0.6, 1.3, 7.0])
 def test_from_directed_csr_builds_the_symmetrized_graph_bitwise(beta: float) -> None:
-    """`cnaster`'s directed kNN graph (40 x 40) with random weights: same edges, same couplings."""
+    """On `cnaster`'s directed kNN graph, edges and couplings equal `_symmetrized_from_csr`'s."""
     from cnaster.spatial import construct_lattice_adjacency
     from port.patch.icm.alpha_expansion import potts_graph_from
     from port.patch.icm.interface import CsrGraph

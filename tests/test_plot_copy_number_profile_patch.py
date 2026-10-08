@@ -1,13 +1,6 @@
-"""`port.patch.plot_copy_number_profile` against `cnaster`'s profile (#309).
+"""`port.patch.plot_copy_number_profile` against `cnaster`'s profile, per segment (#309).
 
-The patch changes the drawing -- one row per clone, A's fill under B's
-hatch -- and not what is drawn. So what `cnaster` asserts is compared segment
-by segment: the same clones in the same order, and every segment at the same
-position and width with A's colour and B's colour from the same palette,
-`COPY_COLOURS` read for `cnaster`'s copies 2 to 7+.
-The drawing is then held to its own claims: a normal segment is not hatched,
-and the hatch turns with the major allele, so a mirrored pair hatches in
-opposite directions.
+Same clones, positions and allele colours via `COPY_COLOURS`; the hatch's own claims.
 """
 
 from __future__ import annotations
@@ -46,21 +39,13 @@ def _profile() -> pd.DataFrame:
 
 
 def _alleles(ax: Any, *, halves: bool) -> dict[tuple[int, int, str], tuple[float, ...]]:
-    """`(row, bin, allele) -> RGB`, from rectangles drawn over a unit-height axis.
-
-    Upstream draws each clone as two half-rows, B below A (`halves`); the
-    patch draws one row, A's colour as the fill and B's as the hatch, and a
-    normal segment in one colour for both. Compared per bin, because upstream
-    also splits a run of one state wherever another clone's mirror flag
-    changes, which moves rectangle boundaries without changing a colour.
-    """
+    """Return `(row, bin, allele) -> RGB` from rectangles, upstream halves or patch hatch."""
     from matplotlib.colors import to_rgba
     from matplotlib.patches import Rectangle
     from port.patch.plot_copy_number_profile import NORMAL_OPACITY, hatch_of
 
     def seen(colour: Any) -> tuple[float, ...]:
-        # NB a translucent face read over white at the patch's opacity:
-        #    upstream fades copy 1 by 0.25, the patch by `NORMAL_OPACITY`.
+        # NB translucent faces read over white: upstream fades copy 1 by 0.25
         rgba = np.asarray(to_rgba(colour))
         alpha = 1.0 if rgba[3] == 1 else NORMAL_OPACITY
         return tuple(np.round(alpha * rgba[:3] + 1.0 - alpha, 6))
@@ -95,11 +80,7 @@ def _alleles(ax: Any, *, halves: bool) -> dict[tuple[int, int, str], tuple[float
 
 @pytest.mark.patch
 def test_every_bin_has_upstreams_alleles_in_upstreams_row() -> None:
-    """A's colour and B's colour at every (clone, bin), as upstream draws them.
-
-    As seen over white: upstream fades an allele at copy 1 by opacity, and
-    the patch draws it opaque in its legend box's colour, at `NORMAL_OPACITY`.
-    """
+    """A's and B's colour at every (clone, bin) equal upstream's, to 1e-6, seen over white."""
     from cnaster.plot_copy_number_profile import plot_copy_number_profile as upstream
     from port.patch.plot_copy_number_profile import plot_copy_number_profile
 
@@ -155,12 +136,7 @@ def test_the_hatch_turns_with_the_major_allele_and_normal_is_plain() -> None:
 
 @pytest.mark.infra
 def test_the_hatch_is_clipped_to_its_segment_at_its_angle_and_spacing() -> None:
-    """Every line inside its segment's extent, at `HATCH_ANGLE`, `HATCH_SPACING` apart.
-
-    The lines are matplotlib's only after a draw, and a `Rectangle` clip is
-    silently replaced by the axis's own: before that was fixed the lines of
-    one segment crossed every row below it.
-    """
+    """Hatch lines are clipped to their segment, at `HATCH_ANGLE`, `HATCH_SPACING` apart."""
     from matplotlib.collections import LineCollection
     from matplotlib.transforms import TransformedPath
     from port.patch.plot_copy_number_profile import (
@@ -203,11 +179,7 @@ def test_the_hatch_is_clipped_to_its_segment_at_its_angle_and_spacing() -> None:
 def test_the_mirror_key_starts_on_the_axis_and_is_labelled_on_its_right(
     span: float | None,
 ) -> None:
-    """Every caller's key, sized by `span` or by its own text, and the
-    standalone profile's: the swatches
-    stacked, apart, on the axis's left edge (0.5 px), `MIRROR` right of them,
-    centred on the white between them (0.5 px) and clear of the colour bar's
-    title (PR- #715)."""
+    """The mirror key sits on the axis's left edge, labelled right, to 0.5 px (PR- #715)."""
     import matplotlib.pyplot as plt
     from port.patch.plot_copy_number_profile import (
         plot_ascn_legend,
@@ -229,8 +201,7 @@ def test_the_mirror_key_starts_on_the_axis_and_is_labelled_on_its_right(
 
 @pytest.mark.patch
 def test_the_colour_bars_title_is_upstreams() -> None:
-    """T- #794: the patched key titles its colour bar as `cnaster`'s does,
-    $\\mathbb{N}$-CNA, with no "(A, B)"; fails if the two titles differ."""
+    """T- #794: the colour bar's title equals `cnaster`'s."""
     import matplotlib.pyplot as plt
     from cnaster.plot_copy_number_profile import plot_ascn_legend as upstream
     from port.patch.plot_copy_number_profile import TITLE, plot_ascn_legend

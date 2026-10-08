@@ -1,16 +1,4 @@
-"""What the loader allocates that its answer does not need (#186).
-
-**Three materializations are 62% of the patched loader's 1,826 ms, and
-`sparse_counts=True` removes them: 1,173 ms and 1.41x less peak.** This module
-is the equivalence that lets that be a cost decision -- the same integers, the
-same spots, the same genes, in a container that is not dense.
-
-The two rewritten filters are the risk, and neither is exercised by the
-loader's own tests: `quality.local_outlier_filter` flags nothing on this
-fixture and `quality.normalize_gene_outliers` misses its threshold by 2.5%, so
-both branches run and change nothing. They are put to a referee directly here
-instead, on inputs where they do fire.
-"""
+"""The loader's `sparse_counts=True` path against its dense return and the planted counts (#186)."""
 
 from typing import Any
 
@@ -26,7 +14,7 @@ SHAPES = [(60, 25, 0.4), (400, 137, 0.05)]
 
 
 def _counts(rows: int, columns: int, density: float, seed: int) -> np.ndarray:
-    """A dense integer count matrix with the spread a gene filter reacts to."""
+    """Return a dense integer count matrix with a spread gene filters react to."""
     generator = np.random.default_rng(seed)
     dense = np.zeros((rows, columns), dtype=np.int64)
     drawn = generator.random((rows, columns)) < density
@@ -40,12 +28,7 @@ def _counts(rows: int, columns: int, density: float, seed: int) -> np.ndarray:
 def test_the_gene_totals_agree_across_the_container(
     rows: int, columns: int, density: float
 ) -> None:
-    """`_gene_umis` reads the same per-gene totals from either form.
-
-    Both filters key every decision off this vector -- the outlier labels, the
-    percentile, the target -- so a difference here is a different set of genes
-    touched rather than a different number reported.
-    """
+    """`_gene_umis` returns the same per-gene totals from sparse and dense."""
     from port.patch.io import _gene_umis
 
     dense = _counts(rows, columns, density, seed=3)
@@ -58,17 +41,7 @@ def test_the_gene_totals_agree_across_the_container(
 def test_scaling_a_column_truncates_the_same_way_in_both_forms(
     rows: int, columns: int, density: float
 ) -> None:
-    """**The downsampler's truncation, which is where the two could disagree.**
-
-    `cnaster` assigns a float product back into an `int64` array, so every
-    scaled count truncates toward zero. The sparse form assigns into `.data`,
-    which is the same dtype -- but only because it is *built* as the same
-    dtype, and a cast that promoted it to float would pass a test comparing
-    totals and fail this one, which compares entries.
-
-    The factors below are deliberately non-terminating in binary (a third, a
-    seventh) so a count that truncates differs from one that rounds.
-    """
+    """`_scaled_columns` truncates entry for entry alike in both forms, keeping the int dtype."""
     from port.patch.io import _scaled_columns
 
     dense = _counts(rows, columns, density, seed=5)
@@ -89,12 +62,7 @@ def test_scaling_a_column_truncates_the_same_way_in_both_forms(
 
 @pytest.mark.patch
 def test_zeroing_a_column_removes_it_from_the_stored_values() -> None:
-    """A gene the outlier filter zeroes is gone from `.data`, not stored as 0.
-
-    Which is the whole point of doing it sparsely: a zeroed column that stayed
-    in the structure would keep its memory and would make `getnnz` count it as
-    expressed. The second is a wrong answer and not only a wasted byte.
-    """
+    """Zeroing a column removes it from the sparse `.data`, in place."""
     from port.patch.io import _gene_umis, _scaled_columns
 
     dense = _counts(80, 12, 0.5, seed=11)
@@ -106,8 +74,7 @@ def test_zeroing_a_column_removes_it_from_the_stored_values() -> None:
     stored = sparse.nnz
     scaled = _scaled_columns(sparse, factors)
 
-    # NB in place, and deliberately: the caller assigns the result back over
-    #    its input, and copying would reinstate the allocation this removes.
+    # NB in place: the caller assigns the result back over its input
     assert scaled is sparse
     assert scaled.nnz == stored - int((dense[:, [2, 7]] > 0).sum())
     assert _gene_umis(scaled)[[2, 7]].tolist() == [0.0, 0.0]
@@ -118,7 +85,7 @@ def test_zeroing_a_column_removes_it_from_the_stored_values() -> None:
 
 @pytest.fixture(scope="module")
 def both_returns(gate_config: Any) -> tuple[Any, Any]:
-    """The loader run once each way, on one instance."""
+    """Run the loader once dense and once sparse on one instance."""
     from port.patch.io import load_input_data
 
     return load_input_data(gate_config), load_input_data(
@@ -130,13 +97,7 @@ def both_returns(gate_config: Any) -> tuple[Any, Any]:
 def test_the_sparse_return_carries_every_field_the_dense_one_does(
     both_returns: tuple[Any, Any],
 ) -> None:
-    """**Same integers, same selection, different container.**
-
-    Every field, because the risk is not the counts: `_gene_umis` and
-    `_scaled_columns` feed the gene filters, so a difference would show as a
-    different *set* of genes with entirely correct counts in it. The gene
-    index and the barcodes are what catch that.
-    """
+    """Every sparse field equals the dense return's, including genes and barcodes."""
     dense, sparse = both_returns
 
     assert sp.issparse(sparse.cell_snp_Aallele)
@@ -170,17 +131,7 @@ def test_the_sparse_loader_returns_the_planted_counts(
     planted_instance: PlantedInstance,
     both_returns: tuple[Any, Any],
 ) -> None:
-    """**What the sparse path loads is what the fixture planted.**
-
-    Two containers agreeing says nothing about whether either is right, so the
-    sparse return is put to the referee the loader is already held to: the
-    planted per-gene counts, aligned by name and barcode.
-
-    This is the test that would fail if the integer cast moved: casting
-    `.data` where `cnaster` casts the dense array is the one arithmetic step
-    the container change touches, and a promotion to float would pass every
-    comparison above and still return non-integers here.
-    """
+    """The sparse return equals the planted counts, integer dtype, aligned by name."""
     _, pre_image, written, _ = planted_instance
     _, sparse = both_returns
 

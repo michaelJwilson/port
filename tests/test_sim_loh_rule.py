@@ -1,10 +1,6 @@
-"""T- #698: `[cna] loh = "irreversible"` is opt-in, but required of new manifests.
+"""`[cna] loh = "irreversible"` is required of new manifests (T- #698).
 
-`"reversible"`, the default, lets an event give back a haplotype its lineage
-lost, which no lineage can do. Moving the manifests that predate T- #698
-would re-hash every fixture they draw, so they are kept as a declared list
-that can only shrink; any other manifest must resolve, through `extends`,
-to `"irreversible"`.
+Older manifests stay in a declared list that can only shrink.
 """
 
 from __future__ import annotations
@@ -58,8 +54,7 @@ def test_every_new_manifest_draws_irreversible_loh() -> None:
 
 @pytest.mark.infra
 def test_the_reversible_list_only_names_reversible_manifests() -> None:
-    """Every entry exists and still resolves to `"reversible"`: a manifest
-    moved to the rule leaves the list, so it can only shrink."""
+    """Every listed manifest exists and still resolves to `"reversible"`."""
     manifests = _manifests()
 
     assert manifests.keys() >= REVERSIBLE

@@ -1,24 +1,7 @@
-"""The emission with the library normalizer folded in (#276).
+"""The emission with the library normalizer `compute_logmu_shifts` folded in (#276).
 
-`cnaster` computes the shift at `hmm_nophasing.py:133` and discards it: the
-only call site is commented out at `:279` under a `# TODO fold in
-logmu_shifts`. `port.patch.hmm_nophasing.hmm_nophasing` applies it, behind a
-flag that is off by default.
-
-Three claims, and they are different claims:
-
-*Off, it is upstream.* Bitwise, through the same encoder, so the default path
-is the one upstream refereed rather than a re-derivation that happens to
-agree.
-
-*On, it is upstream's own shift.* `compute_logmu_shifts` is called rather
-than reimplemented, so what is checked is that the quantity reaches the
-kernel -- `exp(log_mu - log Z_c)` against the rate scored by hand.
-
-*On, each clone gets its own.* The one that matters, because the failure is
-silent: `compute_logmu_shifts` returns one value per **segment**, and reading
-it per clone hands every clone clone zero's shift on any instance whose first
-clone is longer than the clone count.
+Referee: `cnaster`'s own `compute_logmu_shifts` and `_nb_logpmf_1d`. Off it is upstream
+bitwise; on, each clone takes its own per-segment shift.
 """
 
 from __future__ import annotations
@@ -36,11 +19,7 @@ from tests.fixtures import (
 @pytest.mark.cnaster
 @pytest.mark.patch
 def test_off_it_is_upstreams_emission_bitwise(cnaster_config: None) -> None:
-    """The default path is upstream's, not a re-derivation that agrees.
-
-    Bitwise: the flag off means the call reaches `super()`, so the only way
-    this fails is if the override computed something on the way past.
-    """
+    """With the flag off the emission is upstream's, bitwise."""
     from cnaster.hmm_nophasing import hmm_nophasing as upstream
 
     instance = divergent_clone_instance()
@@ -57,12 +36,8 @@ def test_off_it_is_upstreams_emission_bitwise(cnaster_config: None) -> None:
 def test_off_is_the_default_and_a_missing_decode_still_delegates(
     cnaster_config: None,
 ) -> None:
-    """Three ways to be unable to shift, each handed on rather than guessed.
-
-    Upstream warns rather than guessing when it cannot compute the shift;
-    this carries that, and the test is here because a patch that defaulted
-    any of the three would produce a number nobody asked for and it would
-    look like a working run.
+    """A missing decode, exposure or clone lengths delegates to upstream rather than
+    guessing.
     """
     from cnaster.hmm_nophasing import hmm_nophasing as upstream
 
@@ -96,12 +71,8 @@ def test_off_is_the_default_and_a_missing_decode_still_delegates(
 @pytest.mark.cnaster
 @pytest.mark.patch
 def test_on_it_applies_cnasters_own_shift(cnaster_config: None) -> None:
-    """`exp(log_mu - log Z_c)`, against the rate scored by hand.
-
-    The referee is `cnaster`'s `compute_logmu_shifts` and `_nb_logpmf_1d`,
-    both called directly here, so what is checked is that the quantity
-    reaches the kernel rather than that two implementations of it agree.
-    Bitwise, because nothing is reassociated between the two.
+    """`exp(log_mu - log Z_c)` against `cnaster`'s `compute_logmu_shifts` and
+    `_nb_logpmf_1d`, bitwise.
     """
     from cnaster.hmm_nophasing import _nb_logpmf_1d, compute_logmu_shifts
 
@@ -146,18 +117,8 @@ def test_on_it_applies_cnasters_own_shift(cnaster_config: None) -> None:
 
 @pytest.mark.bug
 def test_each_clone_takes_its_own_shift(cnaster_config: None) -> None:
-    """**Written to fail if the shift is indexed by clone rather than segment.**
-
-    `compute_logmu_shifts` returns one value per segment, constant within a
-    clone. Indexing it as `shifts[clone]` reads indices 0, 1, 2 -- all inside
-    clone zero's block whenever the first clone is longer than the clone
-    count -- and hands every clone clone zero's shift. No exception, no
-    warning, and the fit reports debiased rates that were all debiased by the
-    same wrong constant.
-
-    The fixture's clones decode to different states, so the three shifts are
-    distinct; a patch with the wrong index makes the three clones' rates
-    equal where they should differ.
+    """Each clone scores under its own shift, not clone zero's: fails if indexed by clone
+    rather than segment.
     """
     from cnaster.hmm_nophasing import compute_logmu_shifts
 
@@ -181,10 +142,8 @@ def test_each_clone_takes_its_own_shift(cnaster_config: None) -> None:
         shifted_replacement(instance, shifted=True), instance
     )
 
-    # NB the same `(obs, total)` pair appears in more than one clone, which is
-    #    the whole reason the encoder has to be split; those entries must now
-    #    score differently, and equal scores are the signature of one shift
-    #    having been used for all three.
+    # NB the same `(obs, total)` pair in several clones must score differently;
+    #    equal scores mean one shift was used for all three.
     observed = np.asarray(instance["nbEncoder"].obs_count).reshape(-1)
     exposure = np.asarray(instance["nbEncoder"].total_count).reshape(-1)
 
@@ -205,13 +164,8 @@ def test_each_clone_takes_its_own_shift(cnaster_config: None) -> None:
 
 @pytest.mark.bug
 def test_stale_clone_lengths_are_retiled_to_the_decoded_sequence() -> None:
-    """`hmrf.py:564` sets `clone_lengths` once, before clones merge (#293).
-
-    On #292's genome `cnaster` passes six clones of 300 while the fit is over
-    three: 1,800 against 900. The shift re-derives the current count from
-    the decode, and refuses lengths that do not tile it. Written to fail if
-    `cnaster` starts passing current lengths, when `current_clone_lengths` has nothing
-    left to repair.
+    """Stale `clone_lengths` from `hmrf.py:564` are retiled to the decode, or refused
+    (#293, #292).
     """
     from port.patch.hmm_nophasing.shifted_emission import current_clone_lengths
 
@@ -224,12 +178,8 @@ def test_stale_clone_lengths_are_retiled_to_the_decoded_sequence() -> None:
 
 @pytest.mark.analytic
 def test_a_per_bin_lambda_is_repeated_over_the_clone_stack() -> None:
-    """`hmrf.py:476` builds `normal_lambda` per genome bin (#293).
-
-    The reduction walks the stacked sequence without bounds checks, so the
-    per-bin profile is repeated clone after clone, which is exact because
-    every clone shares the one normal profile. A per-segment one passes
-    through, and any other length is refused.
+    """A per-bin `normal_lambda` (`hmrf.py:476`) is repeated over the clone stack; other
+    lengths are refused (#293).
     """
     from port.patch.hmm_nophasing.shifted_emission import stacked_log_lambda
 
@@ -248,12 +198,7 @@ def test_a_per_bin_lambda_is_repeated_over_the_clone_stack() -> None:
 
 @pytest.mark.analytic
 def test_the_neutral_state_is_the_balanced_one_with_the_lowest_mu() -> None:
-    """Balanced within 0.05 of 0.5, in either allele's convention, then lowest.
-
-    A gain that is balanced is not neutral when a lower balanced state
-    exists, and an unbalanced state at a low `mu` is never chosen while a
-    balanced one is available (#293).
-    """
+    """The neutral state is balanced within 0.05 of 0.5, then lowest `mu` (#293)."""
     from port.patch.hmm_nophasing.shifted_emission import neutral_state
 
     log_mu = np.log(np.array([2.0, 0.9, 0.5, 1.1]))
@@ -265,10 +210,8 @@ def test_the_neutral_state_is_the_balanced_one_with_the_lowest_mu() -> None:
 
 @pytest.mark.analytic
 def test_the_pin_leaves_every_shifted_rate_as_it_was() -> None:
-    """`mu -> c mu` changes no shifted rate, so the pin changes no emission.
-
-    `log mu - log sum lambda mu` against the same after the pin, to 1e-12,
-    and the pinned state reads exactly 0 in log.
+    """The pin `mu -> c mu` leaves every shifted rate unchanged to 1e-12; the pinned state
+    reads 0 in log.
     """
     from port.patch.hmm_nophasing.logmu_shift import shifts
     from port.patch.hmrf.core_inference import pin_neutral
@@ -303,13 +246,8 @@ def test_the_pin_leaves_every_shifted_rate_as_it_was() -> None:
 def test_the_dense_emission_applies_the_recorded_shift_to_the_mean(
     offset: float,
 ) -> None:
-    """`base * exp(log_mu - shift)`, finite at any common offset of the two.
-
-    Against upstream called on the shifted mean directly -- exposure
-    `base * exp(log_mu_k - shift_g)` per state, with `log_mu = 0` -- to
-    1e-9 relative. The offset is the gauge the fit drifts along: at -7,024,
-    which #292's realization 3 reached, forming `exp(-shift)` and
-    `exp(log_mu)` separately is `inf * 0`. Unshifted when the flag is off.
+    """`base * exp(log_mu - shift)` against upstream on the shifted mean, to 1e-9 relative,
+    finite at offset -7,024 (#292).
     """
     from cnaster.hmm_nophasing import hmm_nophasing as upstream
     from port.patch.hmm_nophasing import hmm_nophasing
@@ -369,11 +307,8 @@ def test_the_dense_emission_applies_the_recorded_shift_to_the_mean(
 
 @pytest.mark.analytic
 def test_each_candidate_clone_is_scored_under_its_own_normalizer() -> None:
-    """`_clone_shifts` is `log sum_g lambda_g mu_{s_c(g)}`, per clone.
-
-    Against the sum written out, to 1e-12, with `lambda` the baseline summed
-    over spots and normalized as `hmrf.py:476` builds it; `None` when the fit
-    was not shifted, so the unshifted path is the fused field as before.
+    """`_clone_shifts` against `log sum_g lambda_g mu_{s_c(g)}` written out, to 1e-12;
+    `None` when unshifted.
     """
     from port.patch.hmm_nophasing import hmm_nophasing
     from port.patch.hmrf.clone_assignment import _clone_shifts
@@ -400,12 +335,8 @@ def test_each_candidate_clone_is_scored_under_its_own_normalizer() -> None:
 
 @pytest.mark.analytic
 def test_the_pinned_state_is_the_normal_clones_dominant_one() -> None:
-    """Not the lowest balanced `mu`: the state the normal clone decodes to.
-
-    The dev instance's case (#299): a small balanced state below the neutral
-    one, occupying a few bins, and the neutral state filling the normal
-    clone. Lowest-`mu` picks the small one; the normal clone's dominant
-    balanced state is the neutral one.
+    """The pinned state is the normal clone's dominant balanced state, not the lowest `mu`
+    (#299).
     """
     from port.patch.hmm_nophasing.shifted_emission import neutral_state
 

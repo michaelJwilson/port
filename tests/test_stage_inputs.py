@@ -1,9 +1,4 @@
-"""`port.sim.fixtures.stage` writes into its target, never into the sample (#492).
-
-A CalicoST sample loaded by absolute path carried the path as its name, and
-`into / name` resolved to the sample itself: staging unlinked every committed
-input and linked it to itself.
-"""
+"""`port.sim.fixtures.stage` writes into its target, never into the sample (#492)."""
 
 from __future__ import annotations
 

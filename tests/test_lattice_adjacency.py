@@ -1,12 +1,9 @@
-"""The spatial adjacencies and their guard (#417).
+"""Spatial adjacencies `knn` and `lattice` and their guard (#417).
 
-Two constructions over three neighbourhoods (square 4, Moore 8, triangular
-6). `knn` -- the default -- is `cnaster`'s directed construction with `k`
-the neighbourhood's coordination; on a square grid with `k = 8` it is
-`cnaster`'s graph entry for entry. `lattice` is the neighbourhood's offsets,
-symmetric, boundary edges reinforced. Patterns are refereed by brute force
-(pairs at the neighbourhood's distances), weights by the reinforcement
-rule's properties, and the guard by the graphs it must refuse.
+Patterns refereed by brute force at the neighbourhood's distances; `knn` on a square
+grid
+against `cnaster`'s graph; weights by the reinforcement rule; the guard by graphs it
+must refuse.
 """
 
 from __future__ import annotations
@@ -84,9 +81,7 @@ def test_interior_edges_weigh_one_and_boundary_edges_more(
     assert np.all(coo.data[~interior] > 1.0)
     assert degree.max() == z
 
-    # NB a spot whose neighbours are all interior feels exactly `z`; one next
-    #    to the boundary shares a reinforced edge and feels a little more; a
-    #    boundary spot is lifted above its own neighbour count.
+    # NB interior spots feel exactly `z`; boundary-adjacent spots a little more.
     weighted = np.asarray(adjacency.sum(axis=1)).ravel()
     deep = np.array(
         [
@@ -172,13 +167,8 @@ def test_slices_are_assembled_block_diagonal_and_validated() -> None:
 
 @pytest.mark.patch
 def test_the_interior_is_cnasters_graph_on_a_square_grid() -> None:
-    """Away from the boundary, the Moore lattice's rows are `cnaster`'s kNN rows.
-
-    `construct_lattice_adjacency` takes eight nearest neighbours; on a unit
-    square grid those are the four axis and four diagonal spots, so its
-    interior rows and the lattice's agree entry for entry. At the boundary
-    the kNN reaches farther to make up eight, which is the directed part this
-    replaces -- so the comparison is over rows two or more spots in.
+    """Rows two or more spots from the boundary equal `cnaster`'s kNN rows, entry for
+    entry.
     """
     from cnaster.spatial import construct_lattice_adjacency
     from port.extensions.adjacency import lattice_adjacency
@@ -192,9 +182,7 @@ def test_the_interior_is_cnasters_graph_on_a_square_grid() -> None:
     rows, cols = coords[:, 0], coords[:, 1]
     inner = (rows >= 2) & (rows < side - 2) & (cols >= 2) & (cols < side - 2)
 
-    # NB `cnaster`'s own rows, not the union: a boundary spot's kNN reaches two
-    #    spots in to make up eight, so the union adds those edges to inner rows
-    #    too, and they are exactly the directed part this replaces.
+    # NB `cnaster`'s own rows, not the union: boundary kNN rows reach inward.
     theirs = (directed.toarray() > 0)[inner]
     np.testing.assert_array_equal((ours.toarray() > 0)[inner], theirs)
     np.testing.assert_array_equal(ours.toarray()[inner][theirs], 1.0)
@@ -231,12 +219,8 @@ def test_knn_moore_is_cnasters_graph_on_a_square_grid() -> None:
 def test_knn_is_symmetric_away_from_the_boundary(
     neighbourhood: str, build: object, shape: tuple[int, int], realized: float
 ) -> None:
-    """Every interior spot's edges are reciprocated; the asymmetry is at the edge.
-
-    A spot two or more rows from every edge has `k` neighbours at the
-    lattice spacing, each of which names it back, so its row is symmetric.
-    The share of reciprocated edges is pinned at its realized value, which
-    is what `RECIPROCATED` (0.6) is set under.
+    """Interior rows are symmetric; the reciprocated share stays above `RECIPROCATED`
+    (0.6).
     """
     from port.extensions.adjacency import RECIPROCATED, knn_adjacency
 
@@ -296,12 +280,8 @@ def test_the_knn_guard_refuses_what_is_not_a_knn_lattice() -> None:
 
 @pytest.mark.patch
 def test_the_swap_reproduces_cnasters_multislice_adjacency_on_square_grids() -> None:
-    """The run's default: `cnaster`'s builder's return, bitwise, for square slices.
-
-    Two slices of different shapes through `cnaster`'s
-    `construct_multislice_lattice_adjacency` and through the swap, at the
-    fixtures' isotropic units: the same adjacency entry for entry, and the
-    same identity pooling matrix.
+    """The swap equals `cnaster`'s `construct_multislice_lattice_adjacency` bitwise on two
+    square slices.
     """
     from cnaster.spatial import construct_multislice_lattice_adjacency
     from port.patch.spatial import lattice_multislice_adjacency

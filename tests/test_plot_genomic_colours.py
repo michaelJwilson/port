@@ -1,10 +1,6 @@
-"""`plot_clones_genomic`'s `colour_by`: integer copies deduplicated, or states.
+"""`plot_clones_genomic`'s `colour_by` against the planted oversampled states.
 
-The instance oversamples: five fitted states over three integer pairs, two
-of them at `(2, 1)` and two at `(1, 1)`. The referee is that construction
-(`analytic`): `"integer"` draws one colour per distinct pair, three;
-`"states"` one per fitted state, five, each labelled with its own `2 mu`
-and `p`; and unset is upstream's choice, pinned against it (`patch`).
+Five fitted states over three integer pairs; unset is pinned against upstream.
 """
 
 from __future__ import annotations
@@ -133,8 +129,7 @@ def test_a_mode_without_its_input_is_refused() -> None:
 
 @pytest.mark.infra
 def test_the_preference_reaches_a_figure_and_falls_back_where_it_cannot() -> None:
-    """Preferring "states" recolours the df_cnv figure; "integer" leaves a
-    figure without df_cnv coloured by state rather than refusing it."""
+    """Preferring "states" recolours the figure; "integer" without `df_cnv` falls back to states."""
     import matplotlib as mpl
 
     mpl.use("Agg")

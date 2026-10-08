@@ -1,7 +1,6 @@
-"""#445: the fitted laws and admixture share `port.sim.draw` and `normal_fit` use.
+"""Fitted laws and admixture via `port.sim.draw` (#445).
 
-The fitters are judged by recovering planted parameters, and `allele_share`
-by its analytic values at the planted copies.
+Fitters recover planted parameters; `allele_share` matches its analytic values.
 """
 
 from __future__ import annotations
@@ -13,10 +12,7 @@ from port.sim.laws import allele_share, counted, fit_lognormal, fit_negative_bin
 
 @pytest.mark.end2end
 def test_the_fitters_recover_planted_laws() -> None:
-    """20,000 draws: lognormal `(mu, sigma)` and NB `(mean, dispersion)` to 4 SE.
-
-    The SE of the NB dispersion by moments is taken from 200 repeat fits.
-    """
+    """Recovers planted lognormal and NB parameters from 20,000 draws to 4 SE."""
     rng = np.random.default_rng(1)
     n = 20_000
     mu, sigma, ks = fit_lognormal(rng.lognormal(6.0, 0.4, n))

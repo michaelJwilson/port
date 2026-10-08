@@ -13,11 +13,8 @@ WINDOW = (35.0, 70.0, 26.0, 38.0)
 
 @pytest.mark.infra
 def test_a_crop_keeps_the_window_every_input_in_step(tmp_path: Path) -> None:
-    """The window's spots and no others, in every per-spot input alike.
-
-    Spots, SNP rows, expression rows and positions all count the window's
-    210; the truth's labels are the original ones; and a window holding one
-    clone alone is refused rather than written.
+    """A crop keeps the window's 210 spots in every per-spot input; a one-clone window is
+    refused.
     """
     import anndata as ad
     import scipy.sparse as sp
@@ -48,17 +45,8 @@ def test_a_crop_keeps_the_window_every_input_in_step(tmp_path: Path) -> None:
 @pytest.mark.release
 @pytest.mark.analytic
 def test_a_planted_normal_fraction_sets_the_loh_allele_share(tmp_path: Path) -> None:
-    """Where clone `c` has lost allele A, its pooled BAF is the admixed share.
-
-    At a SNP where the truth plants `(0, B)` in clone `c`, a normal fraction
-    `f` makes the A share `f / ((1 - f) B + 2 f)`: `f / 2` at the shared
-    copy-neutral LOH, `f / (1 + f)` at clone 2's nested loss. Pooled over
-    those SNPs and clone `c`'s spots, the observed share is the read-weighted
-    expected one to 0.005 for `f = 0.04, 0.08, 0.12`, on the 1,200-spot
-    window `(20, 80, 10, 50)`; the normal spots are untouched.
-
-    `release`: `purify` takes about 2 minutes, most of it outside the spot
-    loop, over the per-PR budget.
+    """Pooled LOH-allele BAF equals the admixed share `f / ((1 - f) B + 2 f)` to 0.005, for
+    three `f`.
     """
     import scipy.sparse as sp
     from port.sim.fixtures import SAMPLES, crop, load_simulated, purify, references

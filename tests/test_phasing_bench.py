@@ -1,26 +1,6 @@
-"""What the phasing stage costs, on the dev instance (#96, #104, #122).
+"""Phasing stage cost on the dev instance; baselines, no ratio asserted (#96, #104, #122, #137).
 
-**It is the most expensive stage of the prep chain, and #122 measures that it
-returns nothing.** At the whole dev instance it is **6.45 s to phase**, spent
-producing a `phase_indicator` that is identically zero -- more than the file
-write, the load and the block summary together.
-
-Re-measured on the square lattice (#137): the instance went from 1,000 spots
-on a 10:1 strip to 1,600 on a 40 x 40 square, and the stage went 3.78 s ->
-6.45 s, close to the 1.6x in spots.
-
-That pairing is the reason these live beside the attribution tests rather than
-in an audit: a stage that is wrong is a defect, and a stage that is wrong
-*and* dominant is a defect with a cost attached. Whoever fixes #122 needs the
-number to know whether a fix that costs more is affordable.
-
-Sized on `dev_instance`, as `CLAUDE.md`'s *develop against* instance: the key
-instance does not fit (#90) and the critical instance is sized to gate in
-seconds rather than to measure. The gate reduces its bin axis and keeps `M`,
-`K` and `S`; the stress pair is the whole of it.
-
-No ratio is asserted. These are baselines -- the numbers #104 reports against
-when it names the round trip's sinks.
+Gate reduces the bin axis; stress is the whole instance.
 """
 
 from collections.abc import Iterator
@@ -40,36 +20,14 @@ from port.sim.unsegment import unsegment
 from pytest_benchmark.fixture import BenchmarkFixture
 
 pytestmark = [pytest.mark.preprocessing, pytest.mark.release]
-"""`release`, and the reason is a defect rather than the duration.
-
-Run in the per-pull-request tier this module costs `cnaster/phasing.py` ten
-statements of subject coverage -- 100.00 to 82.14 per cent -- reproducibly,
-and the loss is in `test_run_cnaster_stages.py`'s run rather than here:
-collected alone that module reaches 53 of 56 statements, and collected after
-this one it reaches 46. Coverage is a union, so a later module covering
-**less** because an earlier one ran is one fixture changing another test's
-execution, and it is not understood. #132 carries it.
-
-So the tier is a quarantine, not a budget: 1.0 s and 4.2 s would both fit.
-The stress figure is the one #104 wants, and it is unaffected.
-"""
+"""`release` as a quarantine: running here costs `phasing.py` subject coverage elsewhere (#132)."""
 
 GATE_OBS = 200
-"""The dev instance's bin axis, reduced. Its `M = 4`, `K = 10`, `S = 1,000` stand."""
+"""The dev instance's bin axis, reduced; `M`, `K`, `S` unchanged."""
 
 
 def _blocks(truth: Any, root: Path) -> Iterator[Any]:
-    """The block-level pre-image `run_cnaster` hands the phasing.
-
-    Built through the files rather than from the fixture, so the arrays are the
-    ones `cnaster` derives and the timing is of the stage as it runs.
-
-    The configuration stays installed for the benchmark -- `phasing.py:293`
-    reads the global for its refinement thresholds -- and is **restored on the
-    way out**. Leaving it in place cost ten statements of subject coverage on
-    its first run: later tests took a different branch because a stale global
-    was still installed, which is a fixture changing another test's answer.
-    """
+    """The block-level input `run_cnaster` hands the phasing; restores the global config on exit."""
     pre_image = unsegment(
         truth, blocks_per_bin=(1, 2), unassigned_genes=0, flip_every=FLIP_EVERY
     )
@@ -123,19 +81,13 @@ def stress_blocks(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Any]:
 
 @pytest.mark.benchmark
 def test_phasing_gate(benchmark: BenchmarkFixture, gate_blocks: Any) -> None:
-    """The dev instance over 200 bins. Realized **1,191 ms** minimum, 1,226 mean."""
+    """The dev instance over 200 bins."""
     truth, blocks = gate_blocks
     benchmark(_phase, truth, blocks)
 
 
 @pytest.mark.benchmark
 def test_phasing_stress(benchmark: BenchmarkFixture, stress_blocks: Any) -> None:
-    """The whole dev instance, 1,000 bins. Realized **6,448 ms** minimum.
-
-    Five times the bins for **5.41 times** the wall, so the stage is close to
-    linear in blocks over this range -- which is what makes it the chain's
-    dominant cost at any size rather than at one. A stage that grew
-    super-linearly would be a different ticket from #122.
-    """
+    """The whole dev instance, 1,000 bins."""
     truth, blocks = stress_blocks
     benchmark(_phase, truth, blocks)

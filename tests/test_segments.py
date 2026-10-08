@@ -89,7 +89,7 @@ def test_each_level_labels_the_genes_as_the_table_does() -> None:
 
 @pytest.mark.oracle
 def test_aggregate_is_a_groupby_and_broadcast_undoes_it() -> None:
-    """Sums over each block's genes equal pandas' `groupby`; broadcast gives each gene its block."""
+    """Block sums equal pandas' `groupby`; broadcast gives each gene its block."""
     table, blocks, _, _ = _levels()
     genes = table[table.is_interval]
     values = np.random.default_rng(9).normal(size=(len(genes), 2))
@@ -131,7 +131,7 @@ def test_lengths_are_the_contig_runs_and_never_zero() -> None:
 def test_a_labelling_that_would_misalign_rows_is_refused(
     defect: str, message: str
 ) -> None:
-    """Non-contiguous genes, a segment over two contigs, ids out of order, or a gene-less segment."""
+    """Refuses non-contiguous genes, cross-contig segments, out-of-order ids and gene-less segments."""
     from port.extensions.segments import Segmentation
 
     table = _table()
@@ -158,7 +158,7 @@ def test_a_labelling_that_would_misalign_rows_is_refused(
 
 @pytest.mark.analytic
 def test_the_known_range_paths_minus_one_is_refused_by_name() -> None:
-    """`block_id = -1` marks rows no known range covers; it is refused as that, not as a gap."""
+    """`block_id = -1` (uncovered rows) is refused by that name, not as a gap."""
     from port.extensions.segments import Segmentation
 
     table = _table()

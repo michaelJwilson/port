@@ -1,11 +1,4 @@
-"""`hmrf.fixed_assignment` holds the clones where they started (#362).
-
-`cnaster` reads the flag in its label solve (`hmrf.py:287`) and `port`'s
-`pipeline_clone_assignment` in its own (`clone_assignment.py:424`): set, no
-ICM move, floor merge, pairwise merge or clone loss runs. The oracle arm of
-`tests.sim_audit` rests on it, so it is pinned here on a start that is
-deliberately not the planted labelling -- a solve that ran would move it.
-"""
+"""`hmrf.fixed_assignment` returns the starting clones, in `cnaster` and port (#362)."""
 
 from __future__ import annotations
 
@@ -23,7 +16,7 @@ from tests.adapters import from_core_inference_truth
 
 @contextmanager
 def _fixed() -> Iterator[None]:
-    """`hmrf.fixed_assignment` set on the installed configuration, restored after."""
+    """Set `hmrf.fixed_assignment` on the installed configuration, restored after."""
     from cnaster.config import get_global_config
 
     hmrf = get_global_config().hmrf

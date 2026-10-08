@@ -1,9 +1,4 @@
-"""The blocked pseudobulk merge against `cnaster`'s (#488).
-
-Bitwise equal (`tests/test_pseudobulk_patch.py`), so the rows are a ratio and
-nothing else. The stress size is #487's 60 x 50 `dev_tree` sample: 6,000
-spots, four clones.
-"""
+"""Blocked pseudobulk merge against `cnaster`'s, at #487's 6,000-spot sample (#488)."""
 
 from collections.abc import Callable
 from typing import Any

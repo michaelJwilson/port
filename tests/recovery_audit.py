@@ -1,10 +1,7 @@
-"""`tests/recovery_audit.py::main`, kept because the ledger's runs name it (#313, T- #673 G3).
+"""`tests/recovery_audit.py::main` and `score`, kept because the metrics ledger names
+them (#313, T- #673 G3).
 
-The audit is `port.qa.audit` behind `run_audit --recovery`. `docs/metrics/runs.tsv`
-is append-only and its `--record` rows name this `main` as their
-`test`, which `tests/test_metrics_table.py` resolves; `definitions.tsv` names
-`tests.recovery_audit.score` as the scorer of their metrics. Both stay here,
-delegating.
+Both delegate to `port.qa.audit` (`run_audit --recovery`).
 """
 
 from __future__ import annotations

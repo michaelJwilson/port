@@ -1,16 +1,8 @@
-"""`dev_tree` r0 through `run_cnaster_port --sal`, one stage at a time (#467).
+"""`dev_tree` r0 through `run_cnaster_port --sal`, one stage at a time, against r0's
+truth (#467).
 
-Each test judges one stage against r0's truth, so a failure names the stage.
-The runs come from `tests.sim_stages`: one run per configuration, cached, so
-the stages after the first cost a read.
-
-- **Input:** the drawn counts carry each event's read-depth ratio. The
-  referee for every later stage: a stage cannot recover what the data does
-  not hold.
-- **Clones:** `--sal` recovers the planted clones.
-- **HMM:** with the planted clones held (`--oracle-start`), each event's
-  fitted `log mu` is its planted depth. It is not: single-copy losses are
-  fitted at copy-neutral LOH's depth (#471), pinned below.
+Input carries each event's depth ratio; `--sal` recovers the clones; with planted clones
+held, single-copy losses fit at LOH depth (#471, pinned).
 """
 
 from __future__ import annotations
@@ -104,15 +96,8 @@ def depth(r0: Any) -> dict[tuple[int, int, int, str], tuple[int, float]]:
 def test_the_r0_counts_carry_each_event_s_depth(
     r0: Any, depth: dict[tuple[int, int, int, str], tuple[int, float]]
 ) -> None:
-    """Each event's log read-depth ratio is `log((A + B) / 2)`, to 0.2.
-
-    Measured on r0 (`3381575a`, 60 x 50 per slice): losses -0.784 to -0.630,
-    LOH -0.026 to +0.048, the chr11 gain +0.684. The worst is clone_2's chr7
-    loss, 193 genes, 0.091 beyond `log(1/2)` (at 42 x 42 it was chr18's
-    loss, 0.135). 0.2 is under
-    a third of the 0.693 separating a loss from LOH, which is what the later
-    stages need the data to carry. chr15's `(3, 1)` holds no gene (the
-    acrocentric arm) and chr16's 31, so `MIN_GENES` leaves both out.
+    """Each event's log read-depth ratio is `log((A + B) / 2)`, to 0.2 (a third of loss-
+    LOH separation).
     """
     judged = 0
 
@@ -168,13 +153,8 @@ def _fitted(run: Any, truth: Any) -> dict[tuple[int, int, int, str], float]:
 def test_the_hmm_fits_r0_s_losses_at_the_depth_of_its_loh(
     r0: Any, depth: dict[tuple[int, int, int, str], tuple[int, float]]
 ) -> None:
-    """**#471:** with the planted clones held, a one-copy loss and a
-    copy-neutral LOH share one fitted state.
-
-    The counts separate them by 0.7 in `log` depth (above). The fit puts both
-    within 0.1 of each other, near -0.14, at every state count and transition
-    tried (7 and 5 states; `t` 0.9999999 and 0.9999), so the decode calls
-    every loss `(0, 2)`. Fails when the fit separates them.
+    """#471: with planted clones held, a one-copy loss and copy-neutral LOH share one
+    fitted state.
     """
     from tests.sim_stages import stages
 

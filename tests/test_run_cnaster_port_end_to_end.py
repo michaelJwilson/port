@@ -1,13 +1,7 @@
-"""`run_cnaster_port`, the script a user invokes, judged against the truth (#324).
+"""`run_cnaster_port` with its defaults, judged against the planted clone labels (#324).
 
-`CLAUDE.md` asks for the pipeline twice over: stage by stage, and once as the
-script. `tests/test_run_cnaster_round_trip.py` runs `cnaster`'s entry point and
-checks that every stage completes (`smoke`); this runs `port`'s, with its
-defaults -- the swaps, the figure table, the shift, the config audit -- and
-judges what it wrote against the labels that generated the data.
-
-The instance is the round trip's: two clones of 500 spots over 40 bins, the
-smallest that clears the ICM's 200-spot floor (#81), so it is per-PR sized.
+Two clones of 500 spots over 40 bins, the smallest clearing the ICM's 200-spot floor
+(#81).
 """
 
 from __future__ import annotations
@@ -55,11 +49,8 @@ def test_the_entry_point_recovers_the_planted_clones(tmp_path: Path) -> None:
     fitted = np.empty(truth.labels.size, dtype=np.int64)
     fitted[spots] = labels["clone_label"].to_numpy()
 
-    # NB each fitted clone read as the planted clone most of its spots carry.
-    #    Two of 1,000 is the stated tolerance: on the CI runner the seeded run
-    #    places one boundary spot in the other clone (ARI 0.996, #326, #325
-    #    at 7627acc), where the same seed here places none; the ICM's ties
-    #    fall on floating-point sums whose order the platform decides.
+    # NB each fitted clone is read as its majority planted clone; 2 of 1,000 allows the
+    #    platform-dependent ICM tie seen on CI (ARI 0.996, #326, #325).
     majority = {
         clone: np.bincount(truth.labels[fitted == clone]).argmax()
         for clone in np.unique(fitted)

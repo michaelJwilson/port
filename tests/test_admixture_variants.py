@@ -10,10 +10,8 @@ from tests.test_clone_mixture import ALPHA, MU, TAU, P, _planted
 
 @pytest.mark.analytic
 def test_a_cap_bounds_the_mixing_and_binds_on_a_larger_blend() -> None:
-    """A 25 per cent blend under a 0.2 cap: the row's off-diagonal mass is 0.2.
-
-    The cap is `sum_{j != i} W_ij <= cap`; the likelihood wants 0.25, so the
-    bound binds, and the weight goes to the planted contaminant alone.
+    """A 25% blend under a 0.2 cap binds at 0.2 off-diagonal mass, all on the planted
+    contaminant.
     """
     from port.sandbox.admixture.variants import fit_mixture
 

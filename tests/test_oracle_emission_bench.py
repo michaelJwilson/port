@@ -1,21 +1,7 @@
-"""Baselines for the two **matched** emission families, on the dev fixture (#128).
+"""Timings of `cnaster`'s NB and beta-binomial emission against upstream's on
+`dev_instance` (#128).
 
-`emissions.py` is the largest module on the oracle surface and most of it is
-unreachable: `cnaster` implements a negative binomial and a beta-binomial and
-nothing else, so those two families are the only ones a rung can referee
-against, and the only ones it is meaningful to time. That is the one-way rule
-from `tests/test_oracle_correspondence.py` showing up in a benchmark table --
-a family with no counterpart has no baseline because it has no comparison.
-
-Measured on `dev_instance`, which is what `CLAUDE.md`'s *develop against*
-instance is for: the key instance does not fit (#90) and the critical instance
-is sized to gate in seconds, not to measure. The gate pair reduces its bin
-axis and keeps everything else; the stress pair is the whole of it.
-
-These assert no ratio. `CLAUDE.md` puts the bar for acting on one at a stress
-size and on a claim someone is making; what these are is the number #128's
-rungs report against, so that "the fit-level rung costs X" is a measurement
-rather than an impression.
+Gate: `GATE_OBS` bins; stress: the whole instance. No ratio is asserted.
 """
 
 from collections.abc import Callable
@@ -50,10 +36,8 @@ def _cnaster_inputs(truth: Any) -> dict[str, Any]:
 
 
 def _upstream_inputs(truth: Any) -> tuple[Any, torch.Tensor, torch.Tensor]:
-    """The same instance as upstream's two-channel family and its observations.
-
-    The exposure and the trial counts ride as the covariate, which is where
-    upstream puts a per-observation quantity the family does not carry.
+    """The same instance as upstream's two-channel family, exposure and trials as the
+    covariate.
     """
     kwargs = from_core_inference_truth(truth).as_kwargs()
     single_X = np.asarray(kwargs["single_X"])
@@ -120,12 +104,7 @@ def test_emission(
     arm: Callable[[Any], Callable[[], Any]],
     size: str,
 ) -> None:
-    """`cnaster`'s two matched families against upstream's, same parameters.
-
-    Realized **376 ms** minimum against upstream's 128 ms at the gate, a
-    ratio of 2.9, and **1,977 ms** against 930 ms at the stress size, 2.1.
-    The gap narrows with size, which is the encoder's constant factor being
-    amortized. `upstream` rather than `upstream_oracle`: this times the
-    referee, it does not consult it. The agreement claim is #9's, at 2.5e-11.
+    """`cnaster`'s two matched families against upstream's at the same parameters
+    (agreement: #9).
     """
     benchmark(arm(request.getfixturevalue(size)))

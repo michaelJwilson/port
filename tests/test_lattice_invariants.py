@@ -1,15 +1,4 @@
-"""Properties of the lattice that hold without a second implementation.
-
-`CLAUDE.md` asks every test to name what it is checked against. These are
-checked against analytic identities rather than against upstream, which is
-what makes them the cheapest rung available: they need no adapter, no
-correspondence and no regime statement.
-
-They also cover what the upstream comparisons cannot. Only the forward
-recursion is exercised by a likelihood, so a sign or an index error in
-`backward_lattice` is invisible to every test in `test_hmm_single_chain`;
-the first identity below is the one that would catch it.
-"""
+"""Lattice properties checked against analytic identities rather than a second implementation."""
 
 import numpy as np
 import pytest
@@ -45,15 +34,7 @@ def emission_and_inputs(**kwargs: object) -> tuple[np.ndarray, CnasterChainInput
 def test_forward_and_backward_agree_at_every_position(
     n_states: int, n_sequences: int
 ) -> None:
-    """`logsumexp(alpha + beta)` is the total likelihood, at every position.
-
-    The identity that ties the two recursions together: marginalizing the
-    state at any one position gives the same number, and that number is what
-    the forward recursion reports at the end. It holds by construction and
-    fails under a sign error, a transposed transition or an off-by-one in
-    either sweep — none of which any likelihood comparison can see, because
-    a likelihood only uses the forward pass.
-    """
+    """`logsumexp(alpha + beta)` equals the forward total at every position."""
     from cnaster.hmm_nophasing import hmm_nophasing
 
     log_emission, inputs = emission_and_inputs(
@@ -71,8 +52,7 @@ def test_forward_and_backward_agree_at_every_position(
 
     marginal = logsumexp(log_alpha + log_beta, axis=0)
 
-    # NB the chains are independent and each carries its own total, so the
-    #    identity holds within a chain rather than across the concatenation.
+    # NB chains are independent, so the identity holds per chain, not across them.
     start = 0
     for length in inputs.lengths:
         within = marginal[start : start + length]
@@ -100,19 +80,12 @@ def test_state_posteriors_normalise(n_states: int) -> None:
 
 @pytest.mark.smoke
 def test_copy_states_fold_the_phase_only_when_asked() -> None:
-    """`includes_phased` decides whether a phase index is folded away.
-
-    The default is not to fold, over a space that may be paired, so a caller
-    that forgets it receives a phase index where a copy state is meant. #9
-    records that nothing pins which callers pass it; this pins what the two
-    settings do.
-    """
+    """`includes_phased` folds the phase index only when set (#9)."""
     from cnaster.hmm_nophasing import hmm_nophasing
 
     n_copy_states = 3
     log_gamma = np.full((2 * n_copy_states, 4), -np.inf)
-    # NB argmax per position: copy state 0 phase 0, then 1 phase 1, 2 phase 0,
-    #    0 phase 1 -- one of each phase, so folding is observable.
+    # NB one of each phase, so folding is observable.
     for position, state in enumerate([0, 1 + n_copy_states, 2, 0 + n_copy_states]):
         log_gamma[state, position] = 0.0
 

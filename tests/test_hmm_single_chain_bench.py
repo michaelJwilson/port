@@ -1,11 +1,7 @@
-"""Baselines for the single-chain path, recorded so a later change has one.
+"""Single-chain baselines for cnaster and `snakes_and_ladders` on one gate-size fixture
+(#9).
 
-These measure `cnaster` and `snakes_and_ladders` on the same fixture at the
-same size. They assert nothing about the ratio: a benchmark that fails on a
-machine's speed is a flaky test, and `CLAUDE.md` puts the bar for acting on
-a ratio at a stress size, which these are not. What they are is the number a
-proposal has to beat, and the number issue #9's crossover measurement
-reports against.
+No ratio is asserted.
 """
 
 from collections.abc import Callable
@@ -113,10 +109,7 @@ def test_phased_forward(
     phased: PhasedChains,
     arm: Callable[[PhasedChains], Callable[[], object]],
 ) -> None:
-    """`cnaster`'s phased lattice against upstream's at the assembled transition.
-
-    `cnaster` reassembles its transfer matrix per position. The gap between
-    the two is the cost of reassembling a `2K x 2K` matrix at every position
-    where the kernel is constant and one matrix would do.
+    """cnaster's per-position phased lattice against upstream's at the assembled
+    transition.
     """
     benchmark(arm(phased))

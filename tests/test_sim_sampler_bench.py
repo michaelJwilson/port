@@ -1,10 +1,6 @@
-"""What a spot's gene counts cost: the Polya urn against normalized gammas (#549).
+"""Cost per realization of a spot's gene counts: Polya urn against normalized gammas (#549).
 
-`tests/test_sim_entries.py` establishes the two draw one law; these say what
-the law costs per realization. The stress size is `population.toml`'s: a
-60 x 50 slice, 20,000 genes, depth lognormal around 3,000 UMIs, 4 clones.
-The urn's cost follows depth, the gammas' follows genes, so the ratio grows
-with genes per UMI.
+Stress size is `population.toml`'s: 60 x 50 spots, 20,000 genes, 4 clones.
 """
 
 from __future__ import annotations

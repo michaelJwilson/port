@@ -1,22 +1,8 @@
 """LOH and mirrored LOH in the copy-lattice fixture (`loh=True`).
 
-A mirrored event is one set of bins whose LOH loses allele `B` in one clone
-and allele `A` in another: same `mu`, `p` reflected about one half. Phasing
-is shared across clones, so the pair is exactly what a clone-shared phase
-has to carry, and what an unphased model folds into one state.
-
-What is pinned:
-
-- the planted `(mu, p)` of each LOH state is `(A, B)`'s, `p` held
-  `LOH_EPSILON = 1e-5` from 0 and 1 (`analytic`);
-- every mirrored pair covers the same bins in two tumor clones, with
-  `p_clone + p_mirror = 1` exactly and `mu` equal (`analytic`);
-- the drawn allele fraction in those bins is the planted one: above
-  `1 - 1e-3` in one clone and below `1e-3` in the other (`analytic`). At
-  `tau = 30` the lost allele's beta shape is `3e-4`, so the expected lost
-  fraction is `1e-5`, the worst drawn 2.1e-5, and the tolerance 1e-3;
-- `loh=False` draws what it drew, and `loh` refuses a fixture it cannot
-  mirror (`snapshot`, `infra`).
+Referees: the planted `(A, B)` with `p` held `LOH_EPSILON` from 0 and 1, `p_clone +
+p_mirror = 1`,
+and drawn allele fractions within 1e-3 (`analytic`); `loh=False` unchanged (`snapshot`).
 """
 
 from __future__ import annotations

@@ -1,15 +1,7 @@
-"""What one recursion costs against `cnaster`'s four (#205).
+"""One recursion's cost against cnaster's four, at gate and stress (`K = 7` phased)
+sizes (#205).
 
-**The claim is that it costs nothing**, which is what makes the collapse a
-simplification rather than a trade. `CLAUDE.md` splits the two: a patch that
-makes existing code plainer lands on its evidence of equivalence, and that
-evidence is `tests/test_unified_lattice.py`'s four bitwise claims. These rows
-exist to catch the case where one implementation for four turned out to cost
-something, not to argue for it.
-
-The gate pair runs per pull request and decides nothing. The stress pair
-carries `release`: the phased chain at `K = 7` is a 14-state lattice over
-3,000 bins, and the recursion is `O(G * S^2)` in the state space.
+No speedup is claimed; equivalence is `test_unified_lattice.py`'s.
 """
 
 from typing import Any
@@ -97,12 +89,7 @@ def test_the_recursion(
     implementation: str,
     size: dict[str, int],
 ) -> None:
-    """Both arms, warm, at the gate size and at the size the ratio is read at.
-
-    The gate baseline argues nothing either way. Both arms are called once
-    outside the timer, because both are `numba` kernels with a cold cache on
-    a fresh host and a first call is compilation rather than work (#204).
-    """
+    """Both arms, warm (compilation outside the timer, #204), at gate and stress sizes."""
     inputs = _inputs(**size, phased=phased)
 
     if implementation == "cnaster":

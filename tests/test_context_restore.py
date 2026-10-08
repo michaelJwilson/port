@@ -1,10 +1,7 @@
-"""Every context manager that changes module state puts it back when its block raises (#408).
+"""Every context manager that changes module state restores it when its block raises
+(#408).
 
-A flag, a rebinding or a kept list left behind by a failed block changes
-every later call in the process -- in a test run, every later test. The
-check is by snapshot, not by reading: every attribute of every loaded `port`
-and `cnaster` module, and the contents of every module-level list, dict and
-set, before the block and after it raised.
+Checked by snapshot of every loaded `port`/`cnaster` module attribute and container.
 """
 
 from __future__ import annotations
@@ -54,8 +51,8 @@ def test_a_raising_block_leaves_no_module_state_behind(index: int) -> None:
     from port.pipeline import release
 
     name, manager = _managers()[index]
-    # NB `patched` releases each run's state on exit (#517), so what an
-    #    earlier test left is dropped first rather than read as a change.
+    # NB `patched` releases run state on exit (#517); earlier tests' leftovers are
+    # dropped first.
     release()
     before = _snapshot()
 

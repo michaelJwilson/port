@@ -1,9 +1,7 @@
-"""`port.extensions.outputs`: the fitted and the decoded views of a run (#331).
+"""`port.extensions.outputs`: fitted and decoded views of a run (#331).
 
-A synthetic run directory in `cnaster`'s formats -- `cnv_seglevel.tsv`,
-`cnv_perstate.tsv` and the `.npz` -- whose clone ids are not their positions,
-so each claim below is read against a layout the writer has to resolve rather
-than one it can assume.
+Read against a synthetic `cnaster` run directory whose clone ids are not their
+positions.
 """
 
 from __future__ import annotations
@@ -17,8 +15,7 @@ import pandas as pd
 import pytest
 
 N_STATES, N_BINS = 4, 30
-# NB `cnaster`'s clone ids, in column order, and their positions in
-#    `pred_cnv`: not the identity, so a positional reading fails.
+# NB clone ids in column order and their `pred_cnv` positions: not the identity.
 IDS, POSITIONS = ("0", "2", "5"), (1, 2, 0)
 
 
@@ -104,8 +101,7 @@ def test_each_clone_is_matched_to_its_column_by_its_path(tmp_path: Path) -> None
 
 @pytest.mark.analytic
 def test_the_segments_expand_back_to_every_bin_s_pair(tmp_path: Path) -> None:
-    """Each clone's runs tile its bins without gap or overlap, never cross a
-    chromosome, and carry the `(A, B)` and states of every bin they span."""
+    """Each clone's runs tile its bins within chromosomes and carry every bin's pair and state."""
     from port.extensions.outputs import segments
 
     seglevel, _, fit = _load(_run(tmp_path))
@@ -132,8 +128,7 @@ def test_the_segments_expand_back_to_every_bin_s_pair(tmp_path: Path) -> None:
                 str(s) for s in np.unique(span[f"clone{clone} Z"])
             )
 
-        # NB adjacent runs on one chromosome differ in their pair: runs are
-        #    maximal.
+        # NB runs are maximal: adjacent runs on one chromosome differ in their pair.
         same = runs.CHR.to_numpy()[1:] == runs.CHR.to_numpy()[:-1]
         differ = np.any(
             runs[["A", "B"]].to_numpy()[1:] != runs[["A", "B"]].to_numpy()[:-1], axis=1
@@ -143,9 +138,7 @@ def test_the_segments_expand_back_to_every_bin_s_pair(tmp_path: Path) -> None:
 
 @pytest.mark.analytic
 def test_the_states_carry_the_fit_the_decoding_and_the_shares(tmp_path: Path) -> None:
-    """Per clone, one row per state: `logmu` and `p` from the `.npz`, `(A, B)`
-    from `cnv_perstate.tsv`, agreeing with every bin the state holds, and
-    shares summing to one."""
+    """One row per clone and state, agreeing with `.npz`, `cnv_perstate.tsv` and every bin."""
     from port.extensions.outputs import states
 
     seglevel, perstate, fit = _load(_run(tmp_path))
@@ -168,9 +161,7 @@ def test_the_states_carry_the_fit_the_decoding_and_the_shares(tmp_path: Path) ->
 
 @pytest.mark.analytic
 def test_the_posterior_means_lie_within_the_states(tmp_path: Path) -> None:
-    """A posterior mean is the posterior's weights on the states' `p`, to
-    1e-12 against the weights taken from the `.npz` directly, and so lies
-    within the states' range."""
+    """Posterior means match the `.npz` weights on the states' `p` to 1e-12."""
     from port.extensions.outputs import binlevel
 
     seglevel, _, fit = _load(_run(tmp_path))
@@ -191,8 +182,7 @@ def test_the_posterior_means_lie_within_the_states(tmp_path: Path) -> None:
 def test_the_writer_leaves_cnaster_s_files_and_writes_valid_json(
     tmp_path: Path,
 ) -> None:
-    """Four files beside `cnaster`'s, which are byte for byte untouched; the
-    manifest is strict JSON, `total_llf`'s NaN written as null."""
+    """Writes four files, leaves `cnaster`'s byte for byte; the manifest is strict JSON."""
     from port.extensions.outputs import run_directories, write_outputs
 
     run = _run(tmp_path)
@@ -219,8 +209,7 @@ def test_the_writer_leaves_cnaster_s_files_and_writes_valid_json(
 
 @pytest.mark.analytic
 def test_clones_that_decode_alike_are_one_integer_clone() -> None:
-    """Equal `(A, B)` at every bin is one clone, named by its smallest id;
-    one differing bin keeps two clones apart."""
+    """Equal `(A, B)` at every bin is one clone, named by its smallest id."""
     from port.extensions.outputs import integer_clones
 
     base = np.array([[1, 1], [2, 1], [1, 0], [1, 1]])
@@ -236,8 +225,7 @@ def test_clones_that_decode_alike_are_one_integer_clone() -> None:
 
 @pytest.mark.infra
 def test_the_integer_labels_keep_every_spot_s_fitted_label(tmp_path: Path) -> None:
-    """`clone_labels_integer.tsv` is `clone_labels.tsv` column for column,
-    plus each spot's integer clone; a spot with no clone keeps none."""
+    """`clone_labels_integer.tsv` is `clone_labels.tsv` plus each spot's integer clone."""
     from port.extensions.outputs import integer_clones, write_outputs
 
     run = _run(tmp_path)
@@ -269,12 +257,7 @@ def test_the_integer_labels_keep_every_spot_s_fitted_label(tmp_path: Path) -> No
 
 @pytest.mark.infra
 def test_a_merge_rewrites_clone_labels_and_keeps_cnaster_s(tmp_path: Path) -> None:
-    """Merged clones are `clone_labels.tsv`'s `clone_label`; `cnaster`'s is kept.
-
-    Run twice, the writer reads `cnaster`'s labels back rather than its own,
-    so the file is the same after the second pass (#518). Where nothing
-    merges, `clone_labels.tsv` is `cnaster`'s byte for byte.
-    """
+    """Merged clones rewrite `clone_label`, keeping `cnaster`'s; idempotent over two passes (#518)."""
     from port.extensions.outputs import CNASTER_LABEL, write_outputs
 
     run = _run(tmp_path)
@@ -324,29 +307,13 @@ def _truth() -> Any:
 def test_a_run_s_outputs_recover_the_planted_clones_and_the_flat_normal(
     cnaster_config: None, tmp_path: Path
 ) -> None:
-    """The writer on a whole `run_cnaster` run, read against the planted truth.
-
-    The round trip's instance (two clones, three states, 40 bins). Each
-    fitted clone's spots are one planted clone to 95 per cent (1.000 on this
-    host), and the planted normal clone reads flat in `cnv_binlevel.tsv`:
-    `mu`, its state's rate with the clone's shift, constant to 1 per cent
-    about its own mean -- `run_cnaster` leaves `mu`'s scale unpinned -- and
-    `p` 1/2 to 0.02 (0.499 here, 0.487 on CI's
-    runner). The segments reproduce `cnaster`'s own table bin for bin.
-
-    The tumour clone's amplification is not judged here: at this run's three
-    iterations its recovery differs by machine -- `mu` ratio 4.41 on this
-    host, 1.18 on CI's runner, and its BAF likewise -- which is `run_cnaster`'s
-    fit (#293), not the writer. `test_the_writer_returns_the_planted_states_
-    of_a_perfect_decode` judges the writer on the amplification, exactly.
-    """
+    """On a whole run, fitted clones are planted ones to 95% and the normal reads flat (#293)."""
     from port.extensions.outputs import run_directories, write_outputs
     from port.sim.inputs import GENE_SPACING
     from port.sim.run_config import run_written
 
     truth = _truth()
-    # NB `cnaster`'s ICM draws from numpy's global generator unseeded, so the
-    #    run is seeded here and the generator put back after.
+    # NB `cnaster`'s ICM draws from numpy's global generator; seeded and restored.
     state = np.random.get_state()  # noqa: NPY002
     np.random.seed(11)  # noqa: NPY002
     try:
@@ -393,13 +360,7 @@ def test_a_run_s_outputs_recover_the_planted_clones_and_the_flat_normal(
 def test_the_writer_returns_the_planted_states_of_a_perfect_decode(
     tmp_path: Path,
 ) -> None:
-    """A run directory written from the planted truth itself -- each clone's
-    path its planted states, the posterior one-hot on them, one `(A, B)` per
-    state, a shift per clone -- is read back as the truth: every bin's `p`
-    the planted state's, its `logmu` through `Z` in `cnv_states.tsv` the
-    planted state's, and its and its segment's `mu` the planted rate over
-    `exp(shift)`, the amplification's `mu` 5.0 and `p` 0.88 exactly, and the
-    segments the planted runs of state within each chromosome."""
+    """A planted-truth run directory reads back as the truth, exactly."""
     from port.extensions.outputs import binlevel, segments, states
 
     truth = _truth()
@@ -486,12 +447,7 @@ def _profiles(disagreeing: dict[str, int], n_bins: int = 1000) -> pd.DataFrame:
 
 @pytest.mark.analytic
 def test_the_agreement_rule_joins_what_agrees_and_no_less() -> None:
-    """At 0.99, profiles differing at 7 of 1,000 bins are one; at 14, two (#518).
-
-    `dev_tree`'s slice-split clone differs at 2 of 2,895 bins (0.9993) and
-    the closest distinct pair on the fixtures at 0.9863, so the thresholds
-    below bracket both. 0.99 is the default; 1.0 is the exact rule (#344).
-    """
+    """At 0.99 agreement, profiles differing at 7 of 1,000 bins are one; at 14, two (#518, #344)."""
     from port.extensions.outputs import integer_clones
 
     frame = _profiles({"0": 0, "1": 7, "2": 14})
@@ -504,7 +460,7 @@ def test_the_agreement_rule_joins_what_agrees_and_no_less() -> None:
 @pytest.mark.infra
 @pytest.mark.parametrize("agreement", [0.0, -0.1, 1.5])
 def test_an_agreement_outside_the_unit_interval_is_refused(agreement: float) -> None:
-    """A share of bins must be in (0, 1]; 0 would merge every clone into one."""
+    """A merge agreement outside (0, 1] is refused."""
     from port.extensions.outputs import integer_clones
 
     with pytest.raises(ValueError, match="merge agreement"):
@@ -524,7 +480,7 @@ def test_the_configured_agreement_is_what_write_outputs_uses(tmp_path: Path) -> 
 
 @pytest.mark.infra
 def test_a_directory_an_earlier_run_left_is_not_this_run_s(tmp_path: Path) -> None:
-    """`since` keeps the directories written at or after it (T- #617)."""
+    """`since` keeps the directories written at or after it (#617)."""
     import os
 
     from port.extensions.outputs import run_directories
@@ -542,7 +498,7 @@ def test_a_directory_an_earlier_run_left_is_not_this_run_s(tmp_path: Path) -> No
 def test_two_fits_of_different_k_in_one_directory_are_told_apart(
     tmp_path: Path,
 ) -> None:
-    """`n_states` names the fit; without it two fits are refused, not guessed."""
+    """`n_states` names the fit; two fits without it are refused."""
     import shutil
 
     from port.extensions.outputs import final_fit, write_outputs
@@ -571,7 +527,7 @@ def test_two_fits_of_different_k_in_one_directory_are_told_apart(
 def test_copy_sets_go_beside_the_fit_this_run_wrote(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Not beside the newest fit under `output_dir`, another K's (T- #617)."""
+    """Copy sets go beside this run's fit, not the newest under `output_dir` (#617)."""
     import os
 
     from port.sandbox.extensions import copy_errors
@@ -610,7 +566,7 @@ def test_a_refused_fit_leaves_the_run_and_says_so(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """T- #599's refusal writes no sets and does not fail the run it follows (#705)."""
+    """A refused fit (#599) writes no sets and does not fail the run (#705)."""
     from port.sandbox.extensions import copy_errors
 
     (tmp_path / "rdrbaf_final_nstates4_smp.npz").write_bytes(b"")
@@ -628,7 +584,7 @@ def test_a_refused_fit_leaves_the_run_and_says_so(
     assert "T- #599); refused; cnv_copy_sets.tsv not written" in capsys.readouterr().err
 
 
-# NB per position in `pred_cnv`, as `new_log_mu_shift` is: nonzero, distinct.
+# NB per `pred_cnv` position, nonzero and distinct.
 SHIFT = np.array([0.0, 0.11, -0.07])
 
 
@@ -636,10 +592,7 @@ SHIFT = np.array([0.0, 0.11, -0.07])
 def test_a_bin_s_mu_is_its_state_s_rate_with_the_clone_s_shift(
     tmp_path: Path,
 ) -> None:
-    """`clone{c} mu` is `exp(logmu[Z] - shift_c)` to 1e-12, from the `.npz`
-    directly, and differs from the posterior mean of the state rates where
-    the posterior splits; a segment's `mu` is that rate's mean over its bins
-    (#613)."""
+    """`clone{c} mu` is `exp(logmu[Z] - shift_c)` to 1e-12; a segment's is its bins' mean (#613)."""
     from port.extensions.outputs import binlevel, segments
 
     seglevel, _, fit = _load(_run(tmp_path, shift=SHIFT))
@@ -669,10 +622,7 @@ def test_a_bin_s_mu_is_its_state_s_rate_with_the_clone_s_shift(
 
 @pytest.mark.infra
 def test_written_mu_joins_cnv_states_and_the_manifest_shift(tmp_path: Path) -> None:
-    """On file, `clone{c} mu` is `exp(logmu - log_mu_shift)`: `logmu` from
-    `cnv_states.tsv` joined on `(clone, state)` with `clone{c} Z`, the shift
-    from `manifest.json` at the clone's position; a run recording no shift
-    writes `exp(logmu)` (#613)."""
+    """Written `clone{c} mu` is `exp(logmu - log_mu_shift)` from the files (#613)."""
     from port.extensions.outputs import write_outputs
 
     for name, shift in (("shifted", SHIFT), ("unshifted", None)):
@@ -697,9 +647,7 @@ def test_written_mu_joins_cnv_states_and_the_manifest_shift(tmp_path: Path) -> N
 def test_a_bin_s_mu_is_the_rate_the_shifted_emission_evaluates(
     tmp_path: Path,
 ) -> None:
-    """Per clone, port's shifted emission of each bin's state scores the bin
-    as `cnaster`'s unshifted emission does at exposure `base * clone{c} mu`
-    and `log_mu = 0`: the written `mu` is the rate the fit used (#613)."""
+    """Written `mu` is the shifted emission's rate, against `cnaster`'s unshifted one (#613)."""
     from cnaster.hmm_nophasing import hmm_nophasing as upstream
     from port.extensions.outputs import binlevel
     from port.patch.hmm_nophasing import hmm_nophasing

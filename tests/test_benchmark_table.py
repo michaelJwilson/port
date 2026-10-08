@@ -1,4 +1,4 @@
-"""`port.studies.benchmark_table`: the paper's CalicoST against port table on `3381575a`."""
+"""`port.studies.benchmark_table` against the paper's CalicoST and port rows on `3381575a`."""
 
 from __future__ import annotations
 
@@ -12,12 +12,12 @@ CALICOST = {"ari": 0.8538, "ari_integer": 0.8538, "state_ari": 0.0889, "copy_ari
 
 PORT = {"ari": 0.8612, "ari_integer": 1.0, "state_ari": 0.0682, "copy_ari_pf": 0.9829,
         "exact_altered_minor": 0.9348, "wall": 153.6, "cores": 4}  # fmt: skip
-"""The committed port archive (`tests/data/benchmarks/dev_tree_r0/port.tar.xz`, 95940e5) scored phase-free."""
+"""The committed port archive (`dev_tree_r0/port.tar.xz`, 95940e5), phase-free."""
 
 
 @pytest.mark.snapshot
 def test_the_table_reproduces_the_papers_rows() -> None:
-    """The two archives' rows, phase-free: three decimals half up, minutes to one, the fixture's hash in the header."""
+    """Reproduces both archives' rows, phase-free, at the table's rounding."""
     from port.studies.benchmark_table import render
 
     tex = render(
@@ -52,7 +52,7 @@ def test_the_sal_pin_is_the_lockfiles() -> None:
 @pytest.mark.snapshot
 @pytest.mark.release
 def test_calicosts_committed_outputs_score_as_532(tmp_path: Path) -> None:
-    """CalicoST's archive scored against a fresh draw of `3381575a`: #532's row, phase-free, to 4 decimals."""
+    """CalicoST's archive scores #532's row against a fresh `3381575a` draw, to 4 decimals."""
     from port.studies.benchmark_table import calicost_row, drawn
 
     row = calicost_row(drawn(tmp_path))
@@ -61,7 +61,7 @@ def test_calicosts_committed_outputs_score_as_532(tmp_path: Path) -> None:
 
 @pytest.mark.snapshot
 def test_the_supported_table_is_the_ledgers_last_sweep() -> None:
-    """`--supported` renders the latest benchmark sweep from the ledger: a row per run, its fixture and hash named."""
+    """`--supported` renders the ledger's latest sweep, one row per run."""
     from port.qa import ledger
     from port.studies.benchmark_table import render_supported, swept
 

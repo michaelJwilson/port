@@ -14,10 +14,7 @@ from tests.fixtures import genomic_plot_instance, integer_copies
 
 
 def mirror_key_holds(legend_ax: Any, edge_ax: Any) -> None:
-    """The mirror key's geometry on `legend_ax`: its two swatches one above
-    the other, not overlapping, their left edges on `edge_ax`'s (0.5 px);
-    `MIRROR` right of them, its centre on the white between them (0.5 px),
-    and left of the colour bar's title (PR- #715)."""
+    """Mirror key geometry on `legend_ax` within 0.5 px (#715)."""
     from port.patch.plot_copy_number_profile import MIRROR, TITLE
 
     renderer = legend_ax.figure.canvas.get_renderer()
@@ -46,12 +43,7 @@ CREATION_DATE = re.compile(rb"/CreationDate \(D:\d+Z?\)")
 
 
 def wide_rasterized_figure() -> Any:
-    """A panel of the shape the genomic plots write: wide, and rasterized.
-
-    Rasterized because that is what puts the PDF backend into mixed mode,
-    where it allocates a full-figure `RendererAgg` per rasterizing group --
-    the allocation the dpi decides the size of.
-    """
+    """A wide rasterized panel, the shape the genomic plots write."""
     import matplotlib.pyplot as plt
 
     generator = np.random.default_rng(7)
@@ -84,8 +76,7 @@ def genomic_plot_arguments() -> tuple[tuple[Any, ...], dict[str, Any]]:
 def recorded_combined_calls(
     tmp_path: Path, n_clones: int = 3, tall: float = 1.0
 ) -> tuple[Any, Any]:
-    """A run's three recorded calls on the 3 by 3 fixture, its rows `tall`
-    times as far apart as its columns, and its slide."""
+    """A run's three recorded calls on the 3 by 3 fixture, rows `tall` times apart, and its slide."""
     from cnaster.he import get_he_image
     from port.extensions.combined_figure import Call, Recorded
     from port.sim.he_slide import mock_he, write_he_slide
@@ -107,9 +98,7 @@ def recorded_combined_calls(
 
 
 def panels_in_order(letters: list[Any], panels: dict[str, list[Any]]) -> list[str]:
-    """`panels`' names top to bottom by their axes' tops, each lettered in
-    turn: the k-th letter from the head reads `(a)`, `(b)`, ... and sits
-    under the panel before its own and over the panel after it."""
+    """`panels`' names top to bottom, each lettered in turn under its predecessor."""
     figure = next(iter(panels.values()))[0].get_figure(root=True)
     renderer = figure.canvas.get_renderer()
 
@@ -136,11 +125,7 @@ def panels_in_order(letters: list[Any], panels: dict[str, list[Any]]) -> list[st
 def compare_run_artifacts(
     baseline: Path, patched_output: Path
 ) -> tuple[list[str], list[str]]:
-    """Every artifact of two runs, as (bitwise, differing) names.
-
-    A PDF counts as reproduced when it agrees with its creation timestamp
-    removed; everything else has to agree raw.
-    """
+    """Every artifact of two runs as (bitwise, differing) names; PDFs compared without timestamps."""
     same: list[str] = []
     differ: list[str] = []
 

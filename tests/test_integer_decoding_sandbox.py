@@ -1,10 +1,6 @@
-"""The schemes `port.sandbox.integer_decoding.schemes` keeps, as they were pinned (#362).
+"""The schemes `port.sandbox.integer_decoding.schemes` keeps, as pinned when moved (#362).
 
-Moved with the code when `port.extensions.copy_likelihood` kept only the
-default: the tempered E-step's zero-temperature limit, the Poisson/binomial
-dispersion limit, the EM over the continuous fit's states, and the
-Poisson-start dispersion modes. The fixtures are `tests.test_copy_likelihood`'s
-and `tests.test_integer_em`'s.
+Fixtures: `tests.test_copy_likelihood`'s and `tests.test_integer_em`'s.
 """
 
 from __future__ import annotations

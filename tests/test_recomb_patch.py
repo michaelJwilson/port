@@ -1,10 +1,7 @@
-"""The phase-switch kernel from the segment lineage, against `cnaster`'s (#438).
+"""The phase-switch kernel from the segment lineage, against cnaster's (#438).
 
-Three referees. Where `cnaster` reads the map correctly -- contigs whose
-string order is their numeric order -- the drop-in is `cnaster`'s kernel
-bitwise away from contig boundaries (`patch`). On a 22-chromosome map it is
-a per-pair computation written from the definition (`oracle`). And
-`cnaster`'s reading of chr2-9 is pinned as the defect it is (`bug`).
+`patch`: bitwise to cnaster's where its contig order is numeric. `oracle`: a per-pair
+Haldane computation on 22 chromosomes. `bug`: cnaster's chr2-9 reading.
 """
 
 from __future__ import annotations
@@ -22,13 +19,7 @@ SHIFT = 0.0
 
 
 def _blocks(contigs: range) -> pd.DataFrame:
-    """Twenty blocks per contig, 50-150 kb wide, every 1-3 Mb.
-
-    Each block is a gene, a SNP inside it, and a second gene, so its first
-    and last rows are genes: the extent `cnaster` reads from its rows and the
-    one read here from its genes are the same, and the comparison is of the
-    map alone.
-    """
+    """Twenty gene-SNP-gene blocks per contig, 50-150 kb wide, every 1-3 Mb."""
     rng = np.random.default_rng(13)
     rows = []
     block = 0
@@ -70,10 +61,8 @@ def _blocks(contigs: range) -> pd.DataFrame:
 @pytest.mark.patch
 @pytest.mark.usefixtures("cnaster_config")
 def test_the_kernel_is_cnasters_where_cnaster_reads_the_map(tmp_path: Path) -> None:
-    """Contigs 1 and 2 sort alike as strings and integers: every within-contig entry equal.
-
-    The contig's last entry differs by design: `log 1/2` here, `cnaster`'s
-    `min_prob` there.
+    """Contigs 1 and 2: every within-contig entry equals cnaster's; the last differs by
+    design.
     """
     from cnaster.recomb import get_sitewise_transmat as upstream
     from port.patch.recomb import get_sitewise_transmat
@@ -132,10 +121,8 @@ def test_the_kernel_is_haldane_over_each_contigs_own_map(tmp_path: Path) -> None
 @pytest.mark.bug
 @pytest.mark.usefixtures("cnaster_config")
 def test_cnaster_reads_chr2_to_9_as_chr1s_last_centimorgan(tmp_path: Path) -> None:
-    """`get_reference_recomb_rates` sorts `chrom` as strings; the cursor assumes integers.
-
-    Every within-contig entry on chr2-9 is `cnaster`'s floor, and on no other
-    contig; the drop-in's are Haldane's there as everywhere.
+    """cnaster sorts `chrom` as strings: chr2-9 within-contig entries are its floor; the
+    drop-in's are Haldane's.
     """
     from cnaster.config import get_global_config
     from cnaster.recomb import get_sitewise_transmat as upstream
@@ -194,11 +181,8 @@ def test_the_composable_law_composes_over_any_binning() -> None:
 def test_cnasters_law_depends_on_the_binning(
     distance: float, one_bin: float, two_bins: float
 ) -> None:
-    """With `cnaster`'s shift of -2 and floor of 0.01, two bins imply another switch rate (#449).
-
-    Fails when the law composes. The `e^2` factor lowers the composed
-    probability (0.05 cM: 0.352 in one bin, 0.295 in two); the floor raises
-    it (0.002 cM: 0.074 in one bin, 0.137 in two).
+    """cnaster's shift of -2 and floor of 0.01 make two bins imply another switch rate
+    (#449).
     """
     whole = _cnaster_log_switch(np.array([distance]), -2.0, 0.01)
     half = _cnaster_log_switch(np.array([distance / 2]), -2.0, 0.01)

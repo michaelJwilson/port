@@ -1,26 +1,13 @@
-"""cnaster's sitewise rates as the varying kernel upstream now takes (#70).
+"""`cnaster`'s sitewise rates as upstream's `(T - 1, K, K)` kernel (#70, #656, #660).
 
-`cnaster` never materializes a transition kernel. It rebuilds a `(2K, 2K)`
-block per position inside its forward and backward passes, from two things:
-the copy-state kernel `get_log_transmat(n_states, t)`, constant along the
-chain, and the per-site phase-switch probability `get_sitewise_transmat`
-derives from a genetic map.
-
-Upstream's `forward_backward` and `baum_welch_family` take `(T - 1, K, K)`
-since #656 and #660. This builds the array that carries `cnaster`'s model
-across that signature, and referees it against `cnaster`'s own builder so the
-bridge is pinned rather than assumed.
-
-The referee is `update_combined_transmat` (`hmm_phased.py:44`) and the bar is
-bitwise: the same two terms are added in the same order, so nothing may move.
+Referee: `update_combined_transmat` (`hmm_phased.py:44`), bitwise.
 """
 
 import numpy as np
 import pytest
 
 SELF_TRANSITION = 1.0 - 1e-4
-"""The copy-state diagonal. `run_core_inference` ships `1 - 1e-6`; this is
-looser so the off-diagonal is representable and a wrong block shows."""
+"""The copy-state diagonal, looser than the shipped `1 - 1e-6` so a wrong block shows."""
 
 
 def sitewise_kernel(
@@ -29,23 +16,8 @@ def sitewise_kernel(
     *,
     penalize_phase_only_on_same_cnv: bool = False,
 ) -> np.ndarray:
-    """`(T - 1, 2K, 2K)`, one block per transition, in upstream's layout.
-
-    Parameters
-    ----------
-    log_transmat : np.ndarray
-        `(K, K)`, the copy-state kernel, constant along the chain.
-    switch_prob : np.ndarray
-        Per-site phase-switch probability, `(T,)`. Only the first `T - 1`
-        entries are transitions; `cnaster` indexes it the same way, `idx`
-        running over the steps rather than the positions.
-
-    Notes
-    -----
-    The doubling is the phase latent: state `k` and state `k + K` are the same
-    copy state on opposite haplotypes, which is the `2K` representation
-    `cnaster` already uses (`n_paired_states = 2 * n_states`) and the one #70
-    settles on rather than adding a field.
+    """`(T - 1, 2K, 2K)` from the `(K, K)` copy kernel and per-site `switch_prob`; step `s`
+    reads site `s`.
     """
     from cnaster.hmm_phased import update_combined_transmat
 
@@ -73,13 +45,7 @@ def sitewise_kernel(
 @pytest.mark.snapshot
 @pytest.mark.parametrize("n_states", [2, 5])
 def test_every_block_is_cnasters_own(n_states: int) -> None:
-    """Each slice is what `cnaster` builds at that site, bitwise.
-
-    Built through `cnaster`'s own function rather than reimplemented, so what
-    this pins is the **indexing**: that step `s` of the kernel carries site
-    `s`'s switch probability and not `s + 1`'s, which is the error a
-    reimplementation would make and a shape check would miss.
-    """
+    """Each slice is `cnaster`'s block at that site, bitwise."""
     from cnaster.hmm_nophasing import get_log_transmat
 
     rng = np.random.default_rng(7)
@@ -109,13 +75,7 @@ def test_every_block_is_cnasters_own(n_states: int) -> None:
 @pytest.mark.analytic
 @pytest.mark.parametrize("n_states", [2, 5])
 def test_every_block_is_a_transition_kernel(n_states: int) -> None:
-    """Each row exponentiates to one, at every site.
-
-    The property upstream's recursion assumes and never checks: a row that did
-    not normalize would give a likelihood that drifts with the chain's length
-    rather than a wrong answer at one position, which is the failure hardest
-    to attribute later.
-    """
+    """Each row exponentiates to one, at every site."""
     from cnaster.hmm_nophasing import get_log_transmat
 
     rng = np.random.default_rng(11)
@@ -129,12 +89,7 @@ def test_every_block_is_a_transition_kernel(n_states: int) -> None:
 
 @pytest.mark.smoke
 def test_a_constant_rate_gives_a_constant_kernel() -> None:
-    """With one switch probability everywhere, every step is the same block.
-
-    So the varying signature reduces to the constant one exactly, which is
-    what makes a `(T - 1, K, K)` fit comparable with the `(K, K)` fit it
-    replaces rather than merely similar.
-    """
+    """A constant switch probability gives the same block at every step."""
     from cnaster.hmm_nophasing import get_log_transmat
 
     switch_prob = np.full(25, 0.07)
@@ -146,13 +101,8 @@ def test_a_constant_rate_gives_a_constant_kernel() -> None:
 
 @pytest.mark.smoke
 def test_upstream_accepts_the_kernel_and_scores_with_it() -> None:
-    """The array reaches upstream's recursion, and the rate changes the answer.
-
-    `forward_log_likelihood_from_density` takes `(length - 1, K, K)` since
-    #656. Accepting it is half the claim; the other half is that the sitewise
-    rate is **read**, so the same emission under a different genetic map gives
-    a different evidence. A signature that accepted the array and ignored it
-    would pass the first and fail this.
+    """Upstream's recursion accepts the kernel, and a different genetic map changes the
+    evidence.
     """
     import torch
     from cnaster.hmm_nophasing import get_log_transmat

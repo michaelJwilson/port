@@ -1,10 +1,4 @@
-"""The tabulated field against the fused one, bitwise (#433).
-
-`fused_spot_clone_field` is pinned bitwise to `cnaster`'s two-step in
-`tests/test_hmrf_fused_field.py`; this pins the tabulated kernel bitwise to
-the fused one, so the chain reaches `cnaster` without a tolerance. The
-referee is the call it replaces, so the marker is `patch`.
-"""
+"""Tabulated field against the fused one, bitwise (#433); the referee is the call it replaces."""
 
 from __future__ import annotations
 
@@ -66,11 +60,7 @@ def test_the_tabulated_field_is_bitwise_the_fused_one(
 
 @pytest.mark.patch
 def test_the_edges_cnaster_scores_zero_are_zero_here_too() -> None:
-    """No baseline, no trials, and more successes than trials: each scores 0.
-
-    Put where they are read -- the first bin of every spot -- so a kernel that
-    tabulated past them, or indexed a negative `n - k`, would differ or fail.
-    """
+    """No baseline, no trials, and successes over trials each score 0, as in `cnaster`."""
     fixture = spot_clone_field(n_states=4, n_clones=2)
     fixture.base_nb_mean[0, ::3] = 0.0
     fixture.total_bb_RD[0, 1::3] = 0.0

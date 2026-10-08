@@ -1,12 +1,7 @@
-"""#561: the beta-binomial at a large concentration, against 50-digit sums of logs.
+"""Beta-binomial at large concentration against `tests.exact_densities`' 50 digits (#561).
 
-`a = p tau` and `b = (1 - p) tau`. `cnaster` subtracts `lgamma` values near
-`tau log tau`; `sal`'s `log_rising` forms each rising factorial without that
-subtraction, on every route since sal #1332, and port builds on it. The referee is
-`tests.exact_densities`, the density written from its definition in
-`decimal`. Every port site on the live path is judged here: the kernel the
-`LOG_SPACE_SWAPS` rows install, `dense_emission.bb_states` (the HMM under
-`--sal`), the M-step gradient and `copy_likelihood`'s decode.
+Covers every live port site: the swap kernel, `bb_states`, the M-step gradient and
+`copy_likelihood`.
 """
 
 from __future__ import annotations
@@ -47,17 +42,14 @@ def _kernel(p: float, tau: float) -> np.ndarray:
 def test_the_kernel_is_the_beta_binomial_at_every_concentration(
     tau: float, p: float
 ) -> None:
-    """The 50-digit sums of logs, to 1e-11 absolute; measured worst 8e-13, at 1e16.
-
-    `cnaster`'s kernel is 5e-3 nats off at 1e12 and 1e2 at 1e16.
-    """
+    """Matches the 50-digit sums of logs to 1e-11 absolute at every concentration."""
     np.testing.assert_allclose(_kernel(p, tau), _exact(p, tau), rtol=0, atol=1e-11)
 
 
 @pytest.mark.analytic
 @pytest.mark.parametrize("tau", [1e8, 1e12, 1e16])
 def test_the_kernel_is_a_pmf_at_a_large_concentration(tau: float) -> None:
-    """Over `k = 0..100` the pmf sums to 1 within 1e-10, where `cnaster`'s sums to `e^132`."""
+    """Over `k = 0..100` the pmf sums to 1 within 1e-10."""
     from port.patch.hmm_nophasing.bb_logpmf import _bb_logpmf_1d
 
     k = np.arange(TRIALS + 1, dtype=np.float64)
@@ -71,11 +63,7 @@ def test_the_kernel_is_a_pmf_at_a_large_concentration(tau: float) -> None:
 @pytest.mark.parametrize("p", [*SHARES, 0.0, 1.0, -0.2, 1.3])
 @pytest.mark.parametrize("tau", [10.0, 999.0, 5e3, 1e5])
 def test_the_kernel_is_cnasters_where_cnaster_is_exact(tau: float, p: float) -> None:
-    """Up to `tau = 1e5`, where `cnaster`'s own loss is 1.3e-10, its kernel to 1e-9 absolute.
-
-    Including the floored `p` at and beyond 0 and 1, and `k > n`, which both
-    score 0.
-    """
+    """Matches `cnaster`'s kernel to 1e-9 absolute up to `tau = 1e5`, edge cases included."""
     from cnaster.hmm_nophasing import _bb_logpmf_1d as upstream
     from port.patch.hmm_nophasing.bb_logpmf import _bb_logpmf_1d
 
@@ -118,10 +106,7 @@ def test_the_dense_kernel_is_the_per_state_kernel() -> None:
 @pytest.mark.oracle
 @pytest.mark.parametrize("tau", [5e3, 1e5, 1e12, 1e16])
 def test_the_sal_emission_scores_a_large_concentration_exactly(tau: float) -> None:
-    """`dense_emission.bb_states`, the HMM's beta-binomial under `--sal`, against `mpmath` to 1e-11 at every
-    concentration: sal's tables hold rising factorials (sal #1332), completed by
-    `port.patch.emission.bb_tables` (T- #776), so no state is handed to port's
-    kernel any more (T- #777; 1e-9 below 1e5 and port's kernel above until then)."""
+    """`dense_emission.bb_states` under `--sal` matches the exact sums to 1e-11 (#776, #777)."""
     from port.patch.hmm_nophasing.dense_emission import bb_states
 
     scores = bb_states(
@@ -133,7 +118,7 @@ def test_the_sal_emission_scores_a_large_concentration_exactly(tau: float) -> No
 @pytest.mark.oracle
 @pytest.mark.parametrize("tau", [5e3, 1e12])
 def test_the_copy_decode_scores_a_large_concentration_exactly(tau: float) -> None:
-    """`copy_likelihood.pseudobulk_log_pmf`'s allele channel, no depth: the sums of logs to 1e-11."""
+    """`copy_likelihood.pseudobulk_log_pmf`'s allele channel matches the exact sums to 1e-11."""
     from port.extensions.copy_likelihood import Pseudobulk, pseudobulk_log_pmf
 
     zeros = np.zeros(COUNTS.size)
@@ -157,7 +142,7 @@ def test_the_copy_decode_scores_a_large_concentration_exactly(tau: float) -> Non
 @pytest.mark.parametrize("m", [0, 1, 7, 100, 2500])
 @pytest.mark.parametrize("x", [1e-10, 0.4, 999.0, 1e3, 3e4, 1e8, 1e12, 1e16])
 def test_the_digamma_rise_is_the_sum_of_reciprocals(x: float, m: int) -> None:
-    """`sal`'s `digamma_rising`, the gradient's, against `sum_{j < m} 1 / (x + j)` at 50 digits, to 1e-12 relative."""
+    """`sal`'s `digamma_rising` matches the 50-digit reciprocal sum to 1e-12 relative."""
     from sal.emissions.rising import digamma_rising as ours
 
     np.testing.assert_allclose(
@@ -171,11 +156,7 @@ def test_the_digamma_rise_is_the_sum_of_reciprocals(x: float, m: int) -> None:
 @pytest.mark.oracle
 @pytest.mark.parametrize("tau", [50.0, 5e3, 1e8, 1e12])
 def test_the_closed_form_gradient_is_the_exact_derivative(tau: float) -> None:
-    """`bb_partials` against `d ell / d a = sum 1 / (a + j) - sum 1 / (a + b + j)`, to 1e-9 relative, 1e-11 absolute.
-
-    At 1e12 `d ell / d log tau` is of order `n^2 / tau`; differencing
-    `digamma` there was off by 6e-3.
-    """
+    """`bb_partials` matches the exact derivative to 1e-9 relative, 1e-11 absolute."""
     from port.patch.hmm_nophasing.gradient import bb_partials
 
     p = 0.3
@@ -197,12 +178,7 @@ def test_the_closed_form_gradient_is_the_exact_derivative(tau: float) -> None:
 
 @pytest.mark.bug
 def test_cnasters_beta_binomial_is_not_a_pmf_at_a_large_concentration() -> None:
-    """At `tau = 1e16`, `p = 0.3`, `n = 100` `cnaster`'s pmf sums to about `e^132`, not 1.
-
-    `lgamma(n - k + b) - lgamma(n + a + b)` cancels values near 3.6e17,
-    whose spacing is 64. `cnaster` passes `bounds=None` to its M step, so
-    `log tau` is unbounded; fits so far stop at 6e4 to 8e4.
-    """
+    """`cnaster`'s pmf at `tau = 1e16` sums to about `e^132`, not 1 (`bug`)."""
     from cnaster.hmm_nophasing import _bb_logpmf_1d
 
     k = np.arange(TRIALS + 1, dtype=np.float64)
@@ -214,12 +190,7 @@ def test_cnasters_beta_binomial_is_not_a_pmf_at_a_large_concentration() -> None:
 
 @pytest.mark.analytic
 def test_sals_beta_binomial_is_a_pmf_at_a_large_concentration() -> None:
-    """`sal`'s coded beta-binomial at `tau = 1e16`, `p = 0.3`, `n = 100` sums to 1 within 1e-12.
-
-    Pinned `e^-60` while sal filled its tables with `lgamma`; sal #1334's
-    scaled rising factorials fix it (T- #776). Fails if the cancellation
-    returns.
-    """
+    """`sal`'s coded beta-binomial at `tau = 1e16` sums to 1 within 1e-12 (#776)."""
     from sal.emissions import BetaBinomialEmission
     from sal.emissions.coded import Dense, log_emission
 
@@ -254,7 +225,7 @@ def _binomial_exact(p: float) -> np.ndarray:
 @pytest.mark.oracle
 @pytest.mark.parametrize("p", [0.3, 0.5, 1e-3])
 def test_the_kernel_at_an_infinite_concentration_is_the_binomial(p: float) -> None:
-    """`tau = inf` scored NaN (T- #617); it is the binomial, to 1e-11 absolute."""
+    """`tau = inf` is the binomial to 1e-11 absolute (#617)."""
     np.testing.assert_allclose(
         _kernel(p, np.inf), _binomial_exact(p), rtol=0, atol=1e-11
     )

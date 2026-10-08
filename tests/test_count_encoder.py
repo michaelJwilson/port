@@ -1,10 +1,6 @@
-"""`port.patch.count_encoder` against `cnaster`'s encoder it replaces (T- #799).
+"""`port.patch.count_encoder` against cnaster's encoder (T- #799).
 
-The codes are `cnaster`'s, so the referee is `cnaster` itself (`patch`):
-the same distinct pairs in the same order, decode bitwise -- the one-hot
-product sums one term -- and encode to 1e-12 relative, the order of the
-sums being the only difference. Float totals at `cnaster`'s rounding and
-integer totals, with and without the zero-depth collapse.
+Same pairs in the same order; decode bitwise, encode to 1e-12 relative.
 """
 
 from __future__ import annotations
@@ -88,9 +84,7 @@ def test_the_row_rebinds_every_cnaster_binding() -> None:
 
 @pytest.mark.oracle
 def test_the_encoder_is_the_brute_force_map(decimals: int) -> None:
-    """`CountEncoder` against enumeration: each entry's pair looked up in a
-    dictionary of the distinct pairs, and each code's sum taken entry by
-    entry; decode exactly, encode to 1e-12 relative."""
+    """`CountEncoder` against enumeration: decode exactly, encode to 1e-12 relative."""
     from port.patch.count_encoder import CountEncoder
 
     obs, total = _counts(800, integer=True)

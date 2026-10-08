@@ -1,15 +1,4 @@
-"""The GMM initializer chooses among distinct components (#348).
-
-On `calicost_instance`, `cnaster`'s top-`K`-by-mass selection started the
-read-depth fit from six slices of the normal cluster and two event states;
-choosing among distinct components started it from three and five, and the
-integer copy-state ARI went from 0.896 to 0.997 (CalicoST 0.999). Pinned:
-
-- mirror images and near-duplicates are merged into the heavier, mass and
-  all, and distinct components are kept (`analytic`);
-- `port.patch.hmrf.run_core_inference` hands the initializer to `cnaster`
-  only under its `distinct_init` option (`infra`).
-"""
+"""The distinct-component GMM initializer against analytic merges and `cnaster`'s `gmm_init` (#348)."""
 
 from __future__ import annotations
 
@@ -107,11 +96,7 @@ def test_the_initializer_is_upstreams_bitwise_with_only_minor() -> None:
 def test_at_radius_zero_the_mixed_phase_initializer_is_upstreams_bitwise(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """`only_minor=False` with nothing merged: the same parameters, bit for bit.
-
-    The one change is the merge; with the radius at zero no two components
-    are one, and what is left must be upstream's selection exactly.
-    """
+    """At `RADIUS = 0`, `only_minor=False` returns upstream's parameters, bitwise."""
     import cnaster.hmm_initialize as upstream
     from port.patch.hmm_initialize import distinct
 

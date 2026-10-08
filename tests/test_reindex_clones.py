@@ -1,13 +1,8 @@
-"""`reindex_clones`, which is where the one-column contract gets established (#278).
+"""`reindex_clones` against cnaster's, and the one-column contract it establishes
+(#278).
 
-`scripts/run_cnaster.py:1366` reads `shape[1] > 1` on a parameter, inside a
-1,648-line function no patch can reach. `reindex_clones` runs ninety-seven
-lines earlier and is 87 lines, so the contract is established there and the
-branch below is dead by construction rather than by luck.
-
-`patch`, because the claim is that the replacement reorders clones exactly as
-`cnaster` does. The contract itself is `bug`: it pins that upstream holds two
-readings of one axis in one function.
+The reorder is `patch`; the contract is `bug`, pinning upstream's two readings of one
+axis.
 """
 
 from __future__ import annotations
@@ -47,13 +42,7 @@ def _result(n_states: int = 4, n_obs: int = 12, n_clones: int = 3) -> dict[str, 
 
 @pytest.mark.patch
 def test_the_replacement_reindexes_as_upstream_does() -> None:
-    """Same normal clone, same order, same reindexed arrays.
-
-    Refereed against `cnaster.hmrf.reindex_clones` on an instance where the
-    reorder is non-trivial: the balanced clone is not already first, and the
-    remaining two differ in spot count, so both halves of the ordering rule
-    are exercised.
-    """
+    """Same normal clone, order and reindexed arrays as `cnaster.hmrf.reindex_clones`."""
     from cnaster.hmrf import reindex_clones as upstream
 
     theirs, _ = upstream(_result(), posterior=None, single_tumor_prop=None)
@@ -69,12 +58,8 @@ def test_the_replacement_reindexes_as_upstream_does() -> None:
 
 @pytest.mark.bug
 def test_every_parameter_is_checked_not_only_p_binom() -> None:
-    """Upstream asserts one column for one of the four, then reorders all four.
-
-    **Written to fail when `cnaster` reconciles the two.** The assert at
-    `hmrf.py:821` makes the reorder at `:859` unreachable for `new_p_binom`
-    and leaves it reachable in principle for the other three -- #267's
-    finding in miniature, inside a single function.
+    """Upstream asserts one column for `new_p_binom` only, then reorders all four
+    (#267).
     """
     for key in ("new_log_mu", "new_alphas", "new_taus"):
         widened = _result()
@@ -86,13 +71,7 @@ def test_every_parameter_is_checked_not_only_p_binom() -> None:
 
 @pytest.mark.bug
 def test_upstream_accepts_the_widths_it_cannot_mean() -> None:
-    """The three upstream lets through, which is why the check is here.
-
-    `cnaster`'s assert names `new_p_binom` alone, so a widened `new_log_mu`
-    reaches the reorder and is silently permuted by clone -- and every
-    consumer downstream still reads column zero. Pinned against
-    `cnaster.hmrf` directly so a swap row cannot make it pass.
-    """
+    """The three parameters upstream lets through widened are refused here."""
     from cnaster.hmrf import reindex_clones as upstream
 
     widened = _result()
@@ -107,12 +86,8 @@ def test_upstream_accepts_the_widths_it_cannot_mean() -> None:
 
 @pytest.mark.patch
 def test_the_contract_makes_the_entry_point_branch_dead() -> None:
-    """`idx = s if shape[1] > 1 else 0` can only take the `else`.
-
-    That line is `scripts/run_cnaster.py:1366`, ninety-seven lines after
-    `reindex_clones` is called. This is the whole reason the contract is
-    established here: the branch is unreachable because the shape cannot
-    reach it, not because nothing has produced one yet.
+    """`idx = s if shape[1] > 1 else 0` (`run_cnaster.py:1366`) can only take the
+    `else`.
     """
     reindexed, _ = reindex_clones(_result(), posterior=None, single_tumor_prop=None)
 
@@ -123,14 +98,8 @@ def test_the_contract_makes_the_entry_point_branch_dead() -> None:
 @pytest.mark.cnaster
 @pytest.mark.patch
 def test_the_deconcatenated_path_is_reindexed_as_upstream_does() -> None:
-    """`pred_cnv` at `(n_obs, n_clones)`, which the other branch never reaches.
-
-    The module narrows the *parameter* axis and leaves `pred_cnv`'s two
-    layouts alone, because reindexing a path by clone order is a different
-    job from reading a state parameter. That decision is only worth making
-    if the layout it keeps is refereed, and this is the half the
-    concatenated fixture above cannot reach: `log_gamma` picks up a third
-    axis here and is permuted along it rather than along the genome.
+    """`pred_cnv` at `(n_obs, n_clones)`: `log_gamma` is permuted along its clone axis,
+    as upstream.
     """
     from cnaster.hmrf import reindex_clones as upstream
 
@@ -155,13 +124,7 @@ def test_the_deconcatenated_path_is_reindexed_as_upstream_does() -> None:
 @pytest.mark.cnaster
 @pytest.mark.patch
 def test_a_posterior_is_permuted_with_the_clones() -> None:
-    """The third return, which travels with the reorder and is easy to forget.
-
-    A posterior column belongs to a clone, so an ordering applied to the
-    clones and not to it silently attributes every spot's probability to its
-    neighbour. Refereed against upstream rather than asserted, because what
-    is being checked is that the replacement permutes it the *same* way.
-    """
+    """The posterior is permuted as upstream permutes it."""
     from cnaster.hmrf import reindex_clones as upstream
 
     n_clones = 3
@@ -177,11 +140,8 @@ def test_a_posterior_is_permuted_with_the_clones() -> None:
 
 
 def _by_rule(res: dict[str, Any], n_obs: int) -> tuple[np.ndarray, list[int]]:
-    """The rule `reindex_clones` states, written as loops: an independent reference.
-
-    The normal clone is the one whose path's BAF lies least outside
-    `0.5 +- 0.05`, summed over bins; it becomes clone 0, and the rest follow
-    in increasing spot count.
+    """The normal clone (BAF least outside `0.5 +- 0.05`) first, then by increasing spot
+    count.
     """
     labels = sorted(set(res["new_assignment"].tolist()))
     p = res["new_p_binom"][:, 0]
@@ -236,12 +196,8 @@ def _live(res: dict[str, Any], n_obs: int, n_clones: int) -> Any:
 
 @pytest.mark.oracle
 def test_the_reorder_is_the_stated_rule_on_random_fits() -> None:
-    """**`reindex_clones` against the rule written out as loops**, over 50 draws.
-
-    Random paths, BAF parameters and clone sizes, distinct so the order is
-    determined; the assignment, the path and `log_gamma` must all be
-    permuted as the rule says, exactly, both as a concatenated `dict` and as
-    the `CnaHMRFResult` a run passes.
+    """`reindex_clones` permutes as the loop rule says, exactly, over 50 draws, for
+    `dict` and `CnaHMRFResult`.
     """
     rng = np.random.default_rng(517)
 
@@ -268,8 +224,8 @@ def test_the_reorder_is_the_stated_rule_on_random_fits() -> None:
             reindexed["log_gamma"], res["log_gamma"][:, columns]
         )
 
-        # NB the live type and layout: a `CnaHMRFResult`, the path
-        #    `(n_obs, n_clones)` and `log_gamma` `(n_states, n_obs, n_clones)`.
+        # NB the live type and layout: path `(n_obs, n_clones)`, `log_gamma` `(n_states,
+        # n_obs, n_clones)`.
         stacked = _live(res, n_obs, n_clones)
         paths = np.array(stacked["pred_cnv"])
         gamma = np.array(stacked["log_gamma"])

@@ -39,10 +39,8 @@ def _planted(
 
 @pytest.mark.oracle
 def test_the_pure_mixture_is_cnasters_emission() -> None:
-    """At `W = I` each clone's score is `cnaster`'s NB + BB at its own path.
-
-    `cnaster`'s dense kernels at the library-normalized exposure
-    `base / sum(lambda mu)`, which is the shifted emission's mean (#276).
+    """At `W = I` each clone's score is `cnaster`'s NB + BB at the shifted-emission mean
+    (#276).
     """
     from cnaster.hmm_nophasing import _dense_bb_logpmf, _dense_nb_logpmf
     from port.sandbox.admixture.clone_mixture import mixed_parameters, score
@@ -73,11 +71,7 @@ def test_the_pure_mixture_is_cnasters_emission() -> None:
 
 @pytest.mark.end2end
 def test_the_fit_recovers_a_planted_blend_and_never_goes_downhill() -> None:
-    """Three clones, clone 1's pseudobulk 25 per cent clone 2's spots.
-
-    From `W = I` and the pure paths, the fit finds the off-diagonal weight to
-    0.05 and ends at a log-likelihood no lower than it started.
-    """
+    """The fit recovers a planted 25% blend to 0.05 and never lowers the log-likelihood."""
     from port.sandbox.admixture.clone_mixture import fit_mixture
 
     planted = np.eye(3)
@@ -98,12 +92,7 @@ def test_the_fit_recovers_a_planted_blend_and_never_goes_downhill() -> None:
 
 @pytest.mark.analytic
 def test_the_identity_is_the_start_and_a_pure_sample_stays_there() -> None:
-    """No blend planted: the fit keeps `W` within 0.03 of the identity.
-
-    Not exact: the entropy penalty at `ENTROPY_WEIGHT = 1` leaves 0.015 to
-    0.021 of noise off the diagonal on this draw, where the BIC variant in
-    `port.sandbox.admixture` leaves exact zeros (#380).
-    """
+    """With no blend planted, the fit keeps `W` within 0.03 of the identity (#380)."""
     from port.sandbox.admixture.clone_mixture import fit_mixture
 
     paths, bulks = _planted(np.eye(3), seed=5)
@@ -120,17 +109,8 @@ def test_the_identity_is_the_start_and_a_pure_sample_stays_there() -> None:
 
 @pytest.mark.end2end
 def test_the_lattice_finds_a_uniform_normal_admixture() -> None:
-    """Three clones on integer pairs, the tumour ones 8 per cent normal.
-
-    Continuous states would absorb a uniform admixture; integer pairs cannot,
-    so the fit has to put it in `W`. From every path at `(1, 1)`, with a
-    fourth, diploid column no clone owns, each tumour row's diploid weight is
-    0.08 to 0.03 and the pure pairs are the planted ones. Clone 0 is itself
-    diploid, so how its row splits between itself and the column is free.
-
-    To 0.03, not 0.02: the entropy penalty shrinks the LOH clone's 0.08 to
-    0.058 on this draw, where the BIC variant in `port.sandbox.admixture`
-    recovers it to 0.02 (#380).
+    """On integer pairs each tumour clone's diploid weight is 0.08 to 0.03 and its pure
+    pair planted (#380).
     """
     from port.sandbox.admixture.clone_mixture import (
         ADMIXTURE_STARTS,

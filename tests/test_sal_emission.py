@@ -1,12 +1,7 @@
-"""sal's dense log-emission as `cnaster`'s 1-D kernels (#425, sal #1132).
+"""sal's dense log-emission against cnaster's 1-D kernels (#425, sal #1132).
 
-Referees: `cnaster.hmm_nophasing._nb_logpmf_1d` and `_bb_logpmf_1d`
-themselves, over counts with zero exposures and zero trials, at parameters
-from the fit's bounds. Realized at most 3.2e-12 absolute at typical
-dispersions and 3.5e-9 at the fit's lower bound `alpha = 1e-6`, where
-`lgamma(k + r) - lgamma(r)` cancels at `r = 1e6`. Measured once against the
-density at 50 digits (#425's pull request, not a test dependency): sal is
-the nearer of the two in every case, 1.6e-9 against 2.6e-9 at that bound.
+Referees: `cnaster.hmm_nophasing._nb_logpmf_1d` and `_bb_logpmf_1d`, over zero exposures
+and trials, at parameters from the fit's bounds.
 """
 
 from __future__ import annotations
@@ -28,8 +23,9 @@ CASES = [
     (0.0, 0.1, 0.5, 5.0, 1e-10),
     (3.0, 2.0, 0.999, 1000.0, 1e-10),
 ]
-"""`(mu, alpha, p_binom, tau, atol)`: typical, at the fit's lower bounds
-(`min_alpha = 1e-6`), a zero rate, and heavy dispersion near the boundary."""
+"""`(mu, alpha, p_binom, tau, atol)`: typical, the fit's lower bounds, a zero rate,
+heavy dispersion.
+"""
 
 
 def _counts() -> tuple[np.ndarray, ...]:
@@ -54,7 +50,7 @@ def test_the_sal_kernels_are_cnasters_to_a_stated_tolerance(
 
     mu, alpha, p_binom, tau, atol = case
     totals, exposure, successes, trials = _counts()
-    # NB two states, the case's and a typical one, so a row is read per state.
+    # NB two states, so a row is read per state.
     mus, alphas = np.array([mu, 1.0]), np.array([alpha, 0.1])
     ps, taus = np.array([p_binom, 0.5]), np.array([tau, 20.0])
 
@@ -74,12 +70,8 @@ def test_the_sal_kernels_are_cnasters_to_a_stated_tolerance(
 
 @pytest.mark.bug
 def test_cnasters_nb_mean_is_not_lambda_below_its_dispersion_floor() -> None:
-    """`r = 1 / max(alpha, 1e-10)` but `p = 1 / (1 + alpha * lambda)`, unfloored.
-
-    Below the floor the implied mean `r (1 - p) / p` is `alpha / 1e-10 *
-    lambda`: at `alpha = 1e-12`, a hundredth of the exposure's. sal's family
-    keeps the mean at `lambda`, which is why the swap departs from `cnaster`
-    there. Unreachable from a fit: the optimizer bounds `alpha` at 1e-6.
+    """Below `alpha = 1e-10` cnaster floors `r` but not `p`; sal keeps the mean at
+    `lambda`.
     """
     alpha, exposure = 1e-12, 150.0
     r = 1.0 / max(alpha, 1.0e-10)
@@ -95,11 +87,7 @@ def test_cnasters_nb_mean_is_not_lambda_below_its_dispersion_floor() -> None:
 def test_the_coded_emission_is_upstreams_to_a_stated_tolerance(
     clone_stack: bool, cnaster_config: None
 ) -> None:
-    """Upstream's coded method against sal's, through real `CountEncoder`s.
-
-    Two spots, eight states, a zero-rate state and zero-exposure bins: each
-    entry of both channels to 1e-10, and the shapes upstream returns.
-    """
+    """Upstream's coded method against sal's through real `CountEncoder`s, to 1e-10."""
     from cnaster.count_encoder import CountEncoder
     from cnaster.hmm_nophasing import hmm_nophasing as upstream
     from port.patch.hmm_nophasing.dense_emission import coded_emission
@@ -137,12 +125,7 @@ def test_the_coded_emission_is_upstreams_to_a_stated_tolerance(
 def test_the_class_under_sal_emission_scores_as_it_does_under_cnasters(
     shifted: bool, cnaster_config: None
 ) -> None:
-    """The swapped class, both branches, with the option on against off, to 1e-10.
-
-    Unshifted: `coded_emission` against upstream's coded method. Shifted:
-    the batched per-clone rows against the per-state `cnaster` kernels on
-    the same `(clone, obs, total)` triples.
-    """
+    """The swapped class, shifted and unshifted, option on against off, to 1e-10."""
 
     instance = divergent_clone_instance()
 
@@ -175,10 +158,8 @@ def test_run_cnaster_scores_with_sal_s_kernels_where_the_shift_reads_them(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """`--sal-emission` and `--distinct-init` follow the shift rows that read them.
-
-    Under `--no-shift` both were entered and neither read (#466); the run
-    said "distinct initial states" regardless.
+    """`--sal-emission` and `--distinct-init` follow the shift rows that read them
+    (#466).
     """
     import cnaster.hmm_nophasing
     import cnaster.hmrf
@@ -193,7 +174,7 @@ def test_run_cnaster_scores_with_sal_s_kernels_where_the_shift_reads_them(
         "run_cnaster",
         lambda *_: seen.append(
             (
-                # NB `cnaster`'s class, where no shift row installed port's.
+                # NB cnaster's class, where no shift row installed port's.
                 getattr(
                     cnaster.hmm_nophasing.hmm_nophasing, "emission_kernels", "cnaster"
                 ),

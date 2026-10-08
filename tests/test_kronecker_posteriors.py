@@ -1,13 +1,7 @@
 """The phased HMM's posteriors from sal's Kronecker-switch ragged kernel (#426, sal #1133).
 
-Referee: `cnaster.hmm_phased`'s own forward and backward lattices,
-normalized as `get_state_posteriors` normalizes them, under both switch
-variants. Realized 2.0e-13 (`KRONECKER`) and 2.3e-13 (`KRONECKER_DIAGONAL`)
-at the gate instance, 4.3e-10 at 10,000 positions, ten states and twenty
-spots; stated at 1e-9.
-
-Not on the run's path: at that stress size it takes 0.212 s against the Rust
-lattices' 0.033 s the run already uses (#318), and `cnaster`'s 0.125 s.
+Referee: `cnaster.hmm_phased`'s forward and backward lattices normalized as
+`get_state_posteriors` does, to 1e-9. Not on the run's path (#318).
 """
 
 from __future__ import annotations

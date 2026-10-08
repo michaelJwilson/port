@@ -1,9 +1,7 @@
-"""#556: the color merge, the hex graph and the BAF overdispersion estimator, each against an independent answer.
+"""The color merge, hex graph and BAF overdispersion estimator, each against an independent
+answer (#556).
 
-`potts_stream` polishes with this merge (`port.studies.color_merge`);
-these pin that its closed form is the energy change it claims to be, and where
-`cnaster`'s own merge differs from it. The known-law field these sat beside is
-retired with `port.sandbox.known_field` (#735).
+The known-law field is retired with `port.sandbox.known_field` (#735).
 """
 
 from __future__ import annotations
@@ -25,7 +23,9 @@ def _hex(n_side: int = 12) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarr
 
 @pytest.mark.oracle
 def test_the_merge_closed_form_is_the_energy_change_sal_computes() -> None:
-    """Every pair's delta against `sal.sim.potts.energy` of the merged labelling, to 1e-9 nats."""
+    """Every pair's delta against `sal.sim.potts.energy` of the merged labelling, to 1e-9
+    nats.
+    """
     from port.patch.icm.alpha_expansion import potts_graph_from
     from port.patch.icm.interface import CsrGraph
     from sal.sim.potts import energy
@@ -64,10 +64,8 @@ def _cnaster_gain(
 
 @pytest.mark.oracle
 def test_the_color_merges_field_term_is_cnasters() -> None:
-    """At beta = 1e-9, against `cnaster.icm.merge_assignment`: its gain is the drop the closed form gives, its pair the argmin.
-
-    cnaster scores only pairs that share a boundary, so beta is not 0; random
-    labels put every pair on one, and the boundary term is then below 1e-6.
+    """At beta = 1e-9, `cnaster.icm.merge_assignment`'s gain is the closed-form drop and
+    its pair the argmin.
     """
     _, indptr, indices, weights = _hex()
     rng = np.random.default_rng(3)
@@ -84,13 +82,8 @@ def test_the_color_merges_field_term_is_cnasters() -> None:
 
 @pytest.mark.bug
 def test_cnaster_scores_a_merges_boundary_at_half_the_energy_it_removes() -> None:
-    """`cnaster.icm.merge_assignment` adds `boundary_gain[u, v]`, one direction of the u-v boundary, to its gain.
-
-    Its own cost (`calc_assignment_cost`) counts beta w / 2 per directed edge,
-    beta w per undirected one, so merging u into v removes beta (B[u, v] +
-    B[v, u]) / 2 of energy: twice what it scores. It merges less than its own
-    cost would, and can pick another pair. Fails when cnaster adds both
-    directions.
+    """`merge_assignment` scores half the boundary energy a merge removes; fails when
+    `cnaster` adds both directions.
     """
     _, indptr, indices, weights = _hex()
     rng = np.random.default_rng(3)
@@ -135,7 +128,9 @@ def test_the_hex_graph_gives_interior_points_six_neighbours() -> None:
 
 @pytest.mark.analytic
 def test_the_moment_overdispersion_recovers_the_rho_it_was_drawn_at() -> None:
-    """Beta-binomial draws at rho 0 and 0.05 on 20,000 entries of 2-4 reads: recovered within 0.01."""
+    """Beta-binomial draws at rho 0 and 0.05 on 20,000 entries of 2-4 reads: recovered
+    within 0.01.
+    """
     rng = np.random.default_rng(6)
     n = rng.integers(2, 5, size=20_000).astype(float)
     p = rng.uniform(0.2, 0.8, size=n.size)

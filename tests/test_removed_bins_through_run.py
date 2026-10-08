@@ -1,11 +1,7 @@
-"""A run whose normal-BAF filter removes bins completes, and says which genes it lost (#438 D8, #105).
+"""A run whose normal-BAF filter removes bins completes and lists the genes it kept (#438
+D8, #105).
 
-The stages instance at the shipped interval, `(0.01, 0.99)`: the filter
-removes the 8 bins the normal clone carries an event in, and `cnaster`'s
-gene-level writer used to cast their missing `bin_id` to `INT_MIN` and fail.
-The referee is the run's own lineage: the genes the gene-level output lists
-are exactly those the merged bins keep, and the ones it omits are exactly
-those the filter removed.
+Referee: the run's own lineage from the merged bins to the gene-level output.
 """
 
 from __future__ import annotations

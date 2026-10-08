@@ -1,9 +1,7 @@
-"""One realization of `port.sim.realizations`' genome, through `run_cnaster_port` (#291).
+"""One realization (4 of 8, seed 12) of `port.sim.realizations`' genome through
+`run_cnaster_port` (#291).
 
-`release`: each realization is a whole pipeline run, 35 to 40 s, in its own
-process because a run peaks at 4.7 GB. The figure is
-`run_audit --errors`; these two tests pin what its drawn
-realization (4 of 8, seed 12) says, at the planted genome it is drawn for.
+`release`: each realization is a whole run in its own process.
 """
 
 from __future__ import annotations
@@ -37,15 +35,8 @@ def first(tmp_path_factory: pytest.TempPathFactory) -> First:
 def test_the_rebuilt_objective_is_at_its_optimum_where_the_pipeline_stopped(
     first: First,
 ) -> None:
-    """The Newton decrement of the `jax` objective at `cnaster`'s fit.
-
-    The covariance is the curvature of an objective rebuilt from
-    `run_core_inference`'s captured inputs, not the one `cnaster` optimized.
-    If the two were different objectives, the pipeline's point would not be
-    an optimum of the rebuilt one and the decrement would say so. Stated
-    below 5e-2 in chi-square units, a fifth of a standard error, because the
-    pipeline's EM stops at `tol = 1e-3` rather than at the optimum; realized
-    2.4e-02 with the shift on.
+    """The Newton decrement of the `jax` objective at cnaster's fit is below 5e-2 (EM
+    stops at `tol = 1e-3`).
     """
     _, fit = first
 
@@ -55,17 +46,8 @@ def test_the_rebuilt_objective_is_at_its_optimum_where_the_pipeline_stopped(
 
 @pytest.mark.bug
 def test_the_fit_is_many_standard_errors_from_the_planted_rates(first: First) -> None:
-    """With the shift on, `p` is recovered and `mu` still reads low.
-
-    Realization 4, pinned so the neutral state is 1: `mu` 1.340 and 2.525
-    against planted 1.5 and 3, at -6.5 and -11.2 standard errors; `p` within
-    0.5 sigma in every state. **Not a local optimum**: on realization 1,
-    which lands in the same place, the shifted likelihood prefers the fit
-    to the planted parameters by 67 nats. Two of eight realizations recover
-    `(1.5, 3)` to 0.5 per cent.
-
-    Undiagnosed (#293), and pinned as found: written to fail when every
-    unpinned `mu` is within five of its standard errors of truth.
+    """With the shift on, `p` is within 0.5 sigma and `mu` reads low; pinned as found
+    (#293).
     """
     from port.sim.realizations import planted_minor, planted_mu
 

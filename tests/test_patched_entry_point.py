@@ -1,14 +1,7 @@
-"""`run_cnaster_port`: the pipeline with `port`'s replacements rebound into it.
+"""`run_cnaster_port`: installing every replacement changes no output.
 
-**The claim is that installing every replacement changes nothing.** A whole
-`run_cnaster` run through the patched entry point writes the same five tables
-and the same final `.npz` byte for byte, and the same nineteen figures byte
-for byte once the PDF creation timestamp -- the one thing in them that is a
-clock rather than a result -- is removed.
-
-That is what makes the entry point worth shipping rather than keeping as a
-scratch monkeypatch: a component benchmark says a stage is faster, and only a
-whole run says the pipeline still computes what it computed.
+A whole run writes the same tables and `.npz` byte for byte, and the same figures once
+the PDF creation timestamp is removed.
 """
 
 import inspect
@@ -27,20 +20,11 @@ from tests.figure_checks import compare_run_artifacts
 mpl.use("Agg")
 
 CREATION_DATE = re.compile(rb"/CreationDate \(D:\d+Z?\)")
-"""matplotlib writes a clock into every PDF, so two runs never agree raw.
-
-Pinning it is #103's, and until that lands this is what lets a figure be
-compared at all: everything else in the file is the drawing.
-"""
+"""matplotlib's PDF creation clock, removed before comparing (#103)."""
 
 
 def _accepts(function: Any) -> list[tuple[str, Any, Any]]:
-    """A signature as (name, kind, default), with annotations dropped.
-
-    `port`'s replacements are annotated and `cnaster`'s are not, so comparing
-    `inspect.signature` directly reports every row as different and says
-    nothing about whether the call is a drop-in.
-    """
+    """A signature as (name, kind, default), annotations dropped."""
     return [
         (parameter.name, parameter.kind, parameter.default)
         for parameter in inspect.signature(function).parameters.values()
@@ -73,23 +57,13 @@ TABLES: dict[str, tuple[Swap, ...]] = {
 ROWS = [(table, swap) for table, swaps in TABLES.items() for swap in swaps]
 
 DEPARTURES: dict[tuple[str, str], str] = {}
-"""The rows that do not yet accept what they replace: none since #517 step 1.
-
-Declared rather than skipped, so the list can only shrink: an undeclared
-departure fails, and so does a declared one that has been fixed, until its
-entry is removed in the same diff.
-"""
+"""Rows that do not yet accept what they replace; may only shrink (#517 step 1)."""
 
 
 def _departure(swap: Swap) -> str | None:
-    """How a replacement's signature differs from `cnaster`'s, or `None`.
+    """How a replacement's signature differs from cnaster's, or `None`.
 
-    Defaults are compared with names and kinds: a changed default changes
-    what every caller that omits the argument gets, which is the silent
-    behaviour change `CLAUDE.md` forbids. Extra parameters are allowed only
-    as keyword-only with a default -- `load_input_data` grows
-    `sparse_counts` that way (#186) -- because a caller that does not know
-    about one is unaffected by it.
+    Defaults must match; extra parameters only keyword-only with a default (#186).
     """
     upstream, replacement = (
         _accepts(_original(swap)),
@@ -113,11 +87,7 @@ def _departure(swap: Swap) -> str | None:
 
 @pytest.mark.infra
 def test_every_replacement_accepts_what_it_replaces() -> None:
-    """A swap installs by rebinding a name, so the call has to survive it.
-
-    Every table, not `SWAPS` alone: a row in `FIGURE_SWAPS` is installed by
-    the entry point's default as surely as one in `SWAPS` is (#517 E1).
-    """
+    """Every swap table's replacement accepts its original's call (#517 E1)."""
     departing = {
         (table, swap.name): found
         for table, swap in ROWS
@@ -140,12 +110,7 @@ def test_every_declared_departure_is_a_row() -> None:
 
 @pytest.mark.infra
 def test_the_swaps_reach_the_entry_point_and_not_only_the_definition() -> None:
-    """`run_cnaster` does `from cnaster.omics import ...`, so it holds its own.
-
-    The regression this pins is a patch installed at the definition site
-    alone: every import in this list is a binding that would still call
-    `cnaster` while the table claimed it had been replaced.
-    """
+    """Each `from cnaster.omics import ...` binding in `run_cnaster` is rebound."""
     import cnaster.scripts.run_cnaster  # noqa: F401  -- imported for its bindings
 
     sites = swap_sites()
@@ -165,12 +130,7 @@ def test_the_swaps_reach_the_entry_point_and_not_only_the_definition() -> None:
 
 @pytest.mark.infra
 def test_the_context_manager_restores_every_binding() -> None:
-    """Left installed, a swap would make every later comparison vacuous.
-
-    `port`'s own tests put a patch to the function it replaces. If `patched()`
-    leaked, those would compare `port` with `port` and pass for the wrong
-    reason -- which is the failure this exists to make impossible.
-    """
+    """`patched()` restores every original on exit."""
     import sys
 
     import cnaster.scripts.run_cnaster  # noqa: F401  -- imported for its bindings
@@ -192,12 +152,7 @@ def test_the_context_manager_restores_every_binding() -> None:
 
 @pytest.mark.infra
 def test_the_table_names_a_ticket_for_every_replacement() -> None:
-    """A row without a measurement behind it is a claim nobody made.
-
-    `CLAUDE.md`: an optimization arrives with its patch, its validation and
-    its numbers. The ticket is where the last two are, so the table carries
-    the number rather than restating it.
-    """
+    """Every row cites its measurement."""
     assert SWAPS, "the table is empty"
 
     for swap in SWAPS:
@@ -224,28 +179,9 @@ def test_a_patched_run_reproduces_an_unpatched_one(
 ) -> None:
     """Two whole runs, one flag apart, compared artifact by artifact.
 
-    `release` because it is two pipelines end to end. Nothing smaller makes
-    this claim: the component tests each put one replacement to the call it
-    replaces, and what they cannot say is that twelve of them installed at
-    once still compose into the same run.
-
-    **Each arm is its own process**, through the console entry point rather
-    than by importing the pipeline here. Two pipelines in one interpreter
-    peak past this host's 15 GB and the run is killed -- exit 137, no output,
-    which reads exactly like a hang. It is also what production does: the
-    entry point is what ships, so running it is a stronger claim than
-    importing what it calls.
-
-    **The patched arm passes `--no-figure-swaps --no-shift --no-copy-cap`**,
-    because those tables are in the entry point's default and none makes this
-    claim: a figure at a different dpi is a different file by design (#195),
-    the shift changes every fitted rate (#276), and a stated cap changes the
-    decode (#313). `--no-shift` also leaves out the sal emission and the
-    distinct init its rows read. `SWAPS` is the table that reproduces
-    `cnaster`, so the flags select the claim being tested rather than weaken
-    it; without them 14 files differed, on main as here (#466). A row whose agreement is a tolerance
-    cannot live in `SWAPS` without making this assertion false; the one that
-    did, `--approx`'s vectorized log-pmf (#240), was retired (#466).
+    Each arm is its own process (two in one interpreter exceed 15 GB). The patched arm
+    passes `--no-figure-swaps --no-shift --no-copy-cap`, since those change outputs by
+    design (#195, #276, #313, #466).
     """
     import subprocess
     import sys
@@ -281,12 +217,7 @@ def test_a_patched_run_reproduces_an_unpatched_one(
 
 @pytest.mark.infra
 def test_the_timer_reports_every_swapped_name(tmp_path: Path) -> None:
-    """`--time-stages` is how a run says what the replacements cost in it.
-
-    Pinned because the table is the entry point's reason to exist beside the
-    component benchmarks: those measure a stage against a stage, and this
-    measures it against the run that contains it.
-    """
+    """`--time-stages` reports each replacement's cost within the run."""
     from cnaster import omics
 
     with instrumented() as spent:

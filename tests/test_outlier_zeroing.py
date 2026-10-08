@@ -1,19 +1,8 @@
-"""CalicoST easy (`2d4ce9a9`): 223 outlier genes, from the loader to the bins (T- #574).
+"""CalicoST easy (`2d4ce9a9`): 223 outlier genes followed from the loader to the bins (T-
+#574).
 
-`quality.local_outlier_filter` flags 223 genes carrying 49.4% of easy's UMIs.
-Each test follows them one stage further, against `cnaster`'s own call:
-
-- **Loader:** port's dense and sparse reads zero exactly those genes, and
-  leave every other gene's counts equal to the unfiltered read.
-- **Binning:** both `create_bin_ranges` calls of a `--sal` run see the same
-  zeroed counts and cut the same bins as `cnaster`'s own function, 1,847 then
-  1,690. Restoring the 223 genes' counts moves neither, so the bin count is
-  decided upstream of binning, by the read depth the filter leaves.
-- **Outputs:** the filter off reproduces PR- #487's head exactly, 1,716 bins
-  and phase-free exact altered 0.750; on reads 1,690 and 0.630. The 0.750 was
-  an unfiltered run, not a binning departure.
-- **Default:** the filter stays on, as `cnaster` and the shipped config set
-  it: after PR- #553 it leads on every copy metric (T- #593).
+Referee: `cnaster`'s own loader and `create_bin_ranges`; off reproduces PR- #487's head
+(T- #593).
 """
 
 from __future__ import annotations
@@ -46,7 +35,9 @@ def _dense(x: Any) -> np.ndarray:
 
 @contextmanager
 def _config(sample: Any, root: Path, on: bool) -> Iterator[tuple[Any, dict[str, Any]]]:
-    """`sample`'s config with the outlier filter `on`, global while open, and the loader's arguments."""
+    """`sample`'s config with the outlier filter `on`, global while open, and the loader's
+    arguments.
+    """
     import yaml
     from port.sim.fixtures import write_sim_inputs
     from port.sim.inputs import written_config
@@ -119,10 +110,8 @@ def test_the_loaders_zero_the_outlier_genes_and_no_other(
 def test_with_the_flag_off_the_loaders_keep_every_outlier_gene(
     easy: Any, tmp_path: Path
 ) -> None:
-    """`local_outlier_filter: false`: dense and sparse reads equal `cnaster`'s, the 223 genes counted.
-
-    The flag, not the loader, decides the zeroing: the genes the filter flags
-    when on carry their counts when off, in port's reads as in `cnaster`'s.
+    """With the filter off, dense and sparse reads equal `cnaster`'s with the 223 genes
+    counted.
     """
     from cnaster.io import load_input_data as upstream
     from port.patch.io import load_input_data
@@ -160,8 +149,7 @@ def binned(easy: Any) -> tuple[Any, list[tuple[Any, Any, Any]]]:
     current = getattr(driver, BINNING)
     calls: list[tuple[Any, Any, Any]] = []
 
-    # NB the inputs are copied before the call: `create_bin_ranges` writes
-    #    `bin_id` into the table it is given.
+    # NB copied first: `create_bin_ranges` writes `bin_id` into its input.
     def capture(*args: Any, **kwargs: Any) -> Any:
         inputs = (copy.deepcopy(args), copy.deepcopy(kwargs))
         result = current(*args, **kwargs)
@@ -185,9 +173,8 @@ def binned(easy: Any) -> tuple[Any, list[tuple[Any, Any, Any]]]:
 def test_both_binning_calls_cut_cnaster_s_bins_on_the_zeroed_counts(
     easy: Any, binned: tuple[Any, list[tuple[Any, Any, Any]]]
 ) -> None:
-    """Each call: 223 genes zeroed, `cnaster`'s bins, and the same bins with them restored.
-
-    1,847 bins at the phased segmentation, 1,690 after the normal-UMI merge.
+    """Each binning call sees 223 genes zeroed and cuts `cnaster`'s bins (1,847, then
+    1,690), unchanged if restored.
     """
     from cnaster.omics import create_bin_ranges as upstream
 
@@ -222,14 +209,8 @@ def test_both_binning_calls_cut_cnaster_s_bins_on_the_zeroed_counts(
 def test_the_outlier_filter_moves_easy_s_recovery_by_its_stated_amounts(
     easy: Any, binned: tuple[Any, list[tuple[Any, Any, Any]]]
 ) -> None:
-    """CalicoST easy (`2d4ce9a9`): off reproduces PR- #487's head; on is `cnaster`'s.
-
-    Clones are recovered either way.
-
-    | filter | bins | copy ARI | exact altered | phase-free |
-    | --- | --- | --- | --- | --- |
-    | off | 1,716 | 0.884 | 0.369 | 0.750 |
-    | on  | 1,690 | 0.898 | 0.252 | 0.630 |
+    """Filter off reproduces PR- #487's head (1,716 bins, phase-free 0.750); on gives 1,690
+    and 0.630.
     """
     from port.qa.audit import audit_sample
 

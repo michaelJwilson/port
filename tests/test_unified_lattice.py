@@ -1,22 +1,7 @@
-"""One recursion for `cnaster`'s four, bitwise (#205).
+"""`port.patch.lattice`'s one recursion against cnaster's four, bitwise (#205).
 
-**Four recursions, two arguments.** `hmm_nophasing` runs a `K`-state chain
-under a transition that does not move along it; `hmm_phased` overrides both
-passes to run a `2K`-state chain under a transition rebuilt per site. The
-difference is how wide the state space is and whether the transition depends
-on the site, and `port.patch.lattice` takes both as arguments.
-
-**Bitwise is the bar and it is reached**, which is what makes this a
-simplification rather than a rewrite: nothing is reassociated, so the same
-`logsumexp` runs over the same buffer in the same order.
-
-One hypothesis died on the way and is recorded rather than carried
-forward. `cnaster` initializes its two chains with different spot sums --
-one over the whole state block, one row at a time -- and floating-point
-addition is not associative, so an earlier draft kept both forms to protect
-the bitwise claim. Under `numba` the two reductions agree to the bit, so one
-form serves both and `test_the_two_spot_sums_agree_bitwise` is what would
-catch a release that changed it.
+State-space width and site-dependence of the transition are arguments; nothing is
+reassociated, so the same `logsumexp` runs in the same order.
 """
 
 from dataclasses import dataclass
@@ -25,7 +10,7 @@ import numpy as np
 import pytest
 
 SPOTS = 3
-"""More than one, because a single spot makes both spot sums trivial."""
+"""More than one, so both spot sums are non-trivial."""
 
 
 @dataclass(frozen=True)
@@ -41,12 +26,7 @@ class LatticeInputs:
 
 
 def _inputs(n_states: int, *, phased: bool, seed: int = 5) -> LatticeInputs:
-    """Ragged segments, a proper transition, and a switch kernel that moves.
-
-    The sitewise probability is drawn rather than held constant: a constant
-    one would make the phased transition site-independent, and the phased
-    half of the claim would hold for the wrong reason.
-    """
+    """Ragged segments, a proper transition, and a drawn (site-varying) switch kernel."""
     generator = np.random.default_rng(seed)
 
     lengths = np.array([7, 11, 5], dtype=np.int64)
@@ -110,13 +90,7 @@ def _unified(which: str, inputs: LatticeInputs, *, phased: bool) -> np.ndarray:
 def test_the_unified_recursion_is_cnasters_bitwise(
     which: str, phased: bool, n_states: int
 ) -> None:
-    """All four of `cnaster`'s recursions, from one kernel, to the last bit.
-
-    Bitwise rather than to a tolerance, and that is the whole claim: a
-    tolerance would leave open whether the unified form reassociated
-    something, which is the one thing a recursion collapsing four cases must
-    not do.
-    """
+    """All four of cnaster's recursions from one kernel, bitwise."""
     inputs = _inputs(n_states, phased=phased)
 
     expected = _cnaster(which, inputs, phased=phased)
@@ -131,12 +105,8 @@ def test_the_unified_recursion_is_cnasters_bitwise(
 @pytest.mark.smoke
 @pytest.mark.parametrize("n_states", [2, 5])
 def test_the_state_axis_decides_which_chain_is_being_run(n_states: int) -> None:
-    """`is_phased` reads the chain off the emission, and refuses the rest.
-
-    `cnaster` recovers `n_states` from the emission by halving it, which
-    cannot express an unphased chain on an even number of states. Passing
-    `n_states` instead makes the two cases distinguishable, and a state axis
-    that is neither is a caller error rather than a silent halving.
+    """`is_phased` reads the chain from `n_states` and the emission, and refuses a
+    mismatch.
     """
     from port.patch.lattice import is_phased
 
@@ -153,25 +123,7 @@ def test_the_state_axis_decides_which_chain_is_being_run(n_states: int) -> None:
 @pytest.mark.smoke
 @pytest.mark.parametrize("n_states", [2, 5])
 def test_the_two_spot_sums_agree_bitwise(n_states: int) -> None:
-    """Why the unified recursion needs one initialization and not two.
-
-    `cnaster` initializes its two chains differently: `hmm_nophasing` sums
-    the spot axis with `np.sum(..., axis=1)` over the whole state block,
-    `hmm_phased` sums one state's row at a time. Floating-point addition is
-    not associative, so an earlier draft of `port.patch.lattice` kept both
-    forms rather than risk the bitwise claim on a reassociation.
-
-    It did not need to. Under `numba` the two reductions agree to the bit,
-    on the contiguous block the unphased chain hands them and on the strided
-    view the phased one does. The hypothesis is recorded here rather than
-    carried forward, and this test is what would catch a `numba` release
-    that changed it -- which would break the four bitwise claims above
-    without touching `port`.
-
-    `smoke` because the referee is the implementation itself: two of
-    `numba`'s reductions agreeing says nothing about whether either is the
-    sum `cnaster` should be taking.
-    """
+    """cnaster's whole-block and per-row spot sums agree bitwise under `numba`."""
     from port.patch.lattice import spot_sums_agree
 
     inputs = _inputs(n_states, phased=True)
@@ -182,13 +134,7 @@ def test_the_two_spot_sums_agree_bitwise(n_states: int) -> None:
 
 @pytest.mark.smoke
 def test_the_backward_pass_does_not_read_the_start_probability() -> None:
-    """`log_startprob` is in the signature and out of the recursion.
-
-    `cnaster` takes it in both passes and reads it in one. Kept so the two
-    are interchangeable at a call site, and pinned here so a reader does not
-    have to infer it from the body -- and so a future edit that started
-    reading it would fail rather than change a number quietly.
-    """
+    """`log_startprob` is accepted but unread, as in cnaster."""
     inputs = _inputs(4, phased=True)
 
     with_start = _unified("backward_lattice", inputs, phased=True)

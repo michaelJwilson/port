@@ -1,11 +1,4 @@
-"""`port.extensions.genomic_axis` against the properties T- #683 states (T- #683).
-
-The metric is two constant scales: every altered interval drawn `altered_scale` times
-its extent, every normal one `normal_scale` times, `altered_scale A + normal_scale N = W`. Each
-property below holds of that definition whatever the implementation does,
-so each is `analytic`; the figure test pins that the 10 Mb ticks are the
-only thing a default-arm figure gains, so it is a `snapshot`.
-"""
+"""`port.extensions.genomic_axis` against the properties #683 states, and a `snapshot`."""
 
 from __future__ import annotations
 
@@ -78,8 +71,7 @@ def test_monotone_and_the_width_preserved() -> None:
 
 @pytest.mark.analytic
 def test_one_alpha_one_beta_and_the_axis_filled() -> None:
-    """Every altered interval drawn `altered_scale` times its extent and every normal
-    one `normal_scale` times, to 1e-12 relative; `altered_scale A + normal_scale N = W` to 1e-12."""
+    """Altered and normal intervals drawn at their scales and filling `W`, to 1e-12."""
     rng = np.random.default_rng(7)
     width = int(LENGTHS.sum())
     axis = GenomicAxis(LENGTHS, _intervals(rng, width, 25, 8_000_000))
@@ -98,10 +90,7 @@ def test_one_alpha_one_beta_and_the_axis_filled() -> None:
 
 @pytest.mark.analytic
 def test_alpha_is_two_until_beta_would_fall_below_its_floor() -> None:
-    """`altered_scale = 2` exactly where `normal_scale = (W - 2A)/N >= 0.25`, i.e. `A <= 3W/7`,
-    which holds for every `2A < W` short of that; beyond it, and wherever
-    `2A >= W`, the largest `altered_scale` keeping `normal_scale >= 0.25`: `normal_scale = 0.25` to
-    1e-12 and `1 <= altered_scale < 2`."""
+    """`altered_scale = 2` while `normal_scale >= 0.25`; beyond, `normal_scale = 0.25` to 1e-12."""
     width = int(LENGTHS.sum())
 
     for share in (0.001, 0.2, 0.4):
@@ -123,8 +112,7 @@ def test_alpha_is_two_until_beta_would_fall_below_its_floor() -> None:
 
 @pytest.mark.analytic
 def test_x_and_its_inverse_round_trip_to_a_base_pair() -> None:
-    """`position(x(c, bp)) == (c, bp)` within 1 bp, on a base-pair axis and on
-    contiguous 1 Mb bins, linear and warped."""
+    """`position(x(c, bp)) == (c, bp)` within 1 bp, linear and warped."""
     rng = np.random.default_rng(11)
     table = _bins()
     width_bp = int(LENGTHS.sum())
@@ -157,8 +145,7 @@ def test_x_and_its_inverse_round_trip_to_a_base_pair() -> None:
 
 @pytest.mark.analytic
 def test_ticks_land_on_exact_10_mb_multiples() -> None:
-    """Each tick, mapped back, is `k 10 Mb` on its chromosome, to 1e-6 bp,
-    for `k = 1 .. floor(L / 10 Mb)`, labelled `10 k`."""
+    """Each tick maps back to `k 10 Mb` on its chromosome within 1e-6 bp, labelled `10 k`."""
     table = _bins()
     rng = np.random.default_rng(3)
 
@@ -190,8 +177,7 @@ def test_ticks_land_on_exact_10_mb_multiples() -> None:
 
 @pytest.mark.infra
 def test_an_unlabelled_axis_marks_its_ticks_and_labels_none() -> None:
-    """`labels=False` on the axis draws every 10 Mb mark and no Mb label,
-    whatever `draw` asks; the default labels them (PR- #701)."""
+    """`labels=False` draws every 10 Mb mark and no label; the default labels them (#701)."""
     import matplotlib.pyplot as plt
 
     expected = int(np.sum(LENGTHS // 10_000_000))
@@ -226,8 +212,7 @@ def test_altered_bins_are_the_union_over_clones_and_tables() -> None:
 
 
 def _pixels(figure: Any, strip: bool = False) -> np.ndarray:
-    """`figure` as `write_fig` writes it, a tight box at 50 dpi; `strip` drops
-    every minor x tick first."""
+    """`figure` as `write_fig` writes it at 50 dpi; `strip` drops minor x ticks first."""
     import matplotlib.image as mimage
     from matplotlib.ticker import NullLocator
 
@@ -245,8 +230,7 @@ def _pixels(figure: Any, strip: bool = False) -> np.ndarray:
 def test_ticks_are_all_a_default_arm_figure_gains(
     cnaster_config: None, figure: str
 ) -> None:
-    """`axis=Ticks()`, as `FIGURE_SWAPS` binds it, with its minor ticks removed
-    is `axis=None` bitwise: same size, every channel of every pixel."""
+    """`axis=Ticks()` less its minor ticks is `axis=None` bitwise, pixel for pixel."""
     import matplotlib as mpl
     import matplotlib.pyplot as plt
 
@@ -285,9 +269,7 @@ def test_ticks_are_all_a_default_arm_figure_gains(
 
 @pytest.mark.analytic
 def test_on_the_metric_a_cna_is_drawn_at_twice_its_extent() -> None:
-    """A 3-bin CNA among 24 bins: its profile segment drawn 6 bins wide, each
-    normal segment `(W - 2A) / N` times its bins, and a segment spanning both
-    the sum of the two, to 1e-12."""
+    """A 3-bin CNA among 24 bins is drawn 6 bins wide, normal segments scaled, to 1e-12."""
     import matplotlib as mpl
     import matplotlib.pyplot as plt
     from matplotlib.colors import to_rgba
@@ -320,8 +302,8 @@ def test_on_the_metric_a_cna_is_drawn_at_twice_its_extent() -> None:
     normal_scale = (n - 2 * 3) / (n - 3)
 
     assert genome.altered_scale == ALTERED_SCALE
-    # NB clone0's chr1 and chr2, the CNA's bins in the latter; clone1's chr1,
-    #    and its chr2's normal runs either side of the CNA, and the CNA.
+    # NB clone0's chr1 and chr2 (CNA in chr2); clone1's chr1, chr2's normal runs, and
+    # the CNA.
     expected = [12 * normal_scale, 9 * normal_scale + 6.0, 12 * normal_scale]
     expected += [3 * normal_scale, 6.0, 6 * normal_scale]
     np.testing.assert_allclose(widths, sorted(expected), rtol=1e-12)
@@ -330,9 +312,7 @@ def test_on_the_metric_a_cna_is_drawn_at_twice_its_extent() -> None:
 
 @pytest.mark.infra
 def test_a_warped_figure_states_its_scale_in_its_label() -> None:
-    """`disclose` labels a figure `axis: altered` times the scale where the axis is
-    warped, and leaves a linear one unlabelled; `paper_figures` puts it in the
-    README rather than a stamp (#743)."""
+    """`disclose` labels a warped figure with its scale and leaves a linear one unlabelled (#743)."""
     import matplotlib as mpl
     import matplotlib.pyplot as plt
 

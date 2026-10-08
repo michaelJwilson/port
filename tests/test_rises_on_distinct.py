@@ -1,8 +1,6 @@
-"""`port.patch.emission.scaled_rising`: the scaled rising factorials on the distinct counts (#702, T- #776).
+"""`port.patch.emission.scaled_rising` on the distinct counts (#702, T- #776).
 
-The referee is the per-element evaluation each one replaces, bitwise: a
-value taken on the distinct counts and gathered is the same arithmetic at
-the same arguments, so `np.array_equal` is the bar (`patch`).
+Referee: the per-element evaluation it replaces, bitwise (`patch`).
 """
 
 from __future__ import annotations

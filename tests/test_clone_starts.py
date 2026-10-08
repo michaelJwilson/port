@@ -1,10 +1,4 @@
-"""#541: a clone-assignment problem built from a labelling, and the starts that read it, on spots drawn here.
-
-The study's numbers are in `docs/nb/clone_label_study.ipynb`; these pin what
-its problem builder must do for them to mean anything: the pseudobulk is the
-spots' sum, the profile is the most likely path, and the field a labelling
-gives separates the clones that drew the counts.
-"""
+"""The clone-assignment problem builder and its starts, on spots drawn here (#541)."""
 
 from __future__ import annotations
 
@@ -18,7 +12,9 @@ STATES = ((0.0, 0.5), (np.log(0.5), 0.02), (np.log(1.5), 1.0 / 3.0))
 
 
 def _capture(n_side: int = 20, n_bins: int = 120, seed: int = 0) -> pr.Capture:
-    """Two clones side by side on an `n_side` square lattice; clone 1 carries a loss then a gain over the second half of the bins."""
+    """Two clones side by side on an `n_side` lattice; clone 1 carries a loss then a
+    gain.
+    """
     import scipy.sparse as sp
 
     rng = np.random.default_rng(seed)
@@ -110,7 +106,9 @@ def test_the_profile_path_is_the_most_likely_one_and_restarts_at_each_contig() -
 def test_the_field_the_planted_labels_give_places_each_spot_in_the_clone_that_drew_it() -> (
     None
 ):
-    """From the drawing states, polished: the field's argmax agrees with the planted clone on 95% of spots."""
+    """From the drawing states, the field's argmax agrees with the planted clone on 95%
+    of spots.
+    """
     capture = _capture()
     states = (
         np.array([s[0] for s in STATES]),
@@ -125,7 +123,7 @@ def test_the_field_the_planted_labels_give_places_each_spot_in_the_clone_that_dr
 
 @pytest.mark.analytic
 def test_mean_field_corrects_isolated_spots_the_argmax_misplaces() -> None:
-    """A field favouring the planted halves, with 10% of spots flipped alone: mean field at coupling 1 restores every flipped spot."""
+    """With 10% of spots flipped, mean field at coupling 1 restores every one."""
     capture = _capture()
     rng = np.random.default_rng(3)
     field = np.zeros((capture.n_spots, 2))

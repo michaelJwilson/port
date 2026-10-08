@@ -1,16 +1,4 @@
-"""`port.patch.reference.get_reference_genes` against `cnaster`'s (#185).
-
-**13.3x and 55.2 MB to 23.3 MB at 250,000 transcripts, bitwise.** `cnaster`
-reads the reference table with `pandas`, builds a frame whose every column is
-then taken out again with `.to_numpy()`, and converts the contig names with a
-Python loop -- `[int(x[3:]) for x in ...]`, once per transcript.
-
-Read with `polars` and the frame in the middle never exists. What has to be
-pinned is that the six columns come back identical: the values, the order, and
-the dtypes, since `snp_id` is an all-`None` object column and `CHR` an
-integer, and a reader that returned strings or `NaN` would pass a comparison
-of values alone.
-"""
+"""`port.patch.reference.get_reference_genes` against `cnaster`'s, bitwise (#185)."""
 
 from pathlib import Path
 from typing import Any
@@ -28,7 +16,7 @@ def test_the_reference_table_is_cnasters_table(
     planted_instance: PlantedInstance,
     gate_config: Any,
 ) -> None:
-    """Every column, every dtype, and the index, as a frame."""
+    """Every column, dtype and the index equal `cnaster`'s frame."""
     from cnaster.reference import get_reference_genes as upstream
     from port.patch.reference import get_reference_genes as patched
 
@@ -44,14 +32,7 @@ def test_the_reader_drops_what_cnaster_drops(
     tmp_path: Path,
     gate_config: Any,
 ) -> None:
-    """**Only chr1 to chr22 survive, and a written table proves it.**
-
-    The fixture's reference carries autosomes alone, so a reader that kept
-    everything would agree with `cnaster` on it and disagree on a real one.
-    `chrX`, `chrY` and `chrM` are written here for that reason, and the
-    contig column is checked as integers rather than as strings -- the parse
-    is the other thing the Python loop was doing.
-    """
+    """Drops chrX, chrY and chrM as `cnaster` does, with contigs parsed as integers."""
     from cnaster.reference import get_reference_genes as upstream
     from port.patch.reference import get_reference_genes as patched
 

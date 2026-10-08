@@ -1,24 +1,8 @@
-"""`run_core_inference` on a planted instance (issue #4).
+"""`run_core_inference` on a planted instance (#4, top of #14's ladder).
 
-The top of #14's ladder. Every rung below it is refereed alone, so a failure
-here is attributable: the draw is pinned in `test_core_inference_fixture.py`,
-the emission against upstream, and the field at the planted states.
-
-**Two things the fixture established about the entry point itself**, both
-recorded as tests rather than as prose:
-
-*   At its own default `hmmclass=hmm_phased` it cannot complete one outer
-    iteration on any instance with more than one spot.
-*   `icm_sweep_deque`'s `min_clone_spots` defaults to 200 and
-    `pipeline_clone_assignment` does not pass one, so every clone below that
-    size is merged away and no labelling can be recovered under it.
-
-`dev_instance` is what these run against: 35.4 s, and it recovers its
-labelling exactly, so a failure here is a failure of the code rather than of
-the instance. `key_instance` is the declared scale, `M = K = 10`, `G = 10,000`,
-`S = 5,000`. Its fixture is exercised here; **the inference on it is not**,
-because it does not fit in memory (#90). That run is its own change and its
-own pull request.
+Referee: the planted labelling and states. `key_instance`'s inference is not run: it
+does
+not fit in memory (#90).
 """
 
 import warnings
@@ -36,23 +20,16 @@ from tests.adapters import from_core_inference_truth
 from tests.fixtures import partition_ari, run_planted_core_inference
 
 DECLARED_SPOTS = 5_000
-"""`S` at the scale #87 names, and the one the inference does not fit in."""
+"""`S` at the scale #87 names, which the inference does not fit in."""
 
 MIN_CLONE_SPOTS = 200
-"""`icm_sweep_deque`'s default, which `run_core_inference` does not expose.
-
-A clone smaller than this is emptied into another during the label solve, so a
-fixture below it measures the merge and not the solver.
+"""`icm_sweep_deque`'s default `min_clone_spots`, which `run_core_inference` does not
+expose.
 """
 
 
 def _best_permutation_accuracy(fitted: np.ndarray, planted: np.ndarray) -> float:
-    """Labelling accuracy up to a permutation of clone names.
-
-    Clone indices are arbitrary -- the model is invariant to relabelling them
-    -- so a comparison that fixes them measures the ordering and not the
-    partition.
-    """
+    """Labelling accuracy up to a permutation of clone names."""
     from itertools import permutations
 
     classes = int(planted.max()) + 1
@@ -66,19 +43,8 @@ def _best_permutation_accuracy(fitted: np.ndarray, planted: np.ndarray) -> float
 def test_the_default_hmm_class_cannot_complete_an_outer_iteration(
     cnaster_config: None,
 ) -> None:
-    """`hmm_phased`, the default, indexes `log_mu` past its own shape.
-
-    `run_core_inference` fits the **clone-stacked** pseudobulk, which has one
-    column, so `new_log_mu` is `(n_states, 1)`.
-    `compute_emission_probability_nb_betabinom_coded` then reads
-    `n_states, n_spots = log_mu.shape` and immediately overwrites `n_spots`
-    with the encoder's, while still indexing `log_mu[i, s]` over that larger
-    range (`hmm_phased.py:118-145`).
-
-    So the shipped default raises for any instance with more than one spot,
-    and it raises in `pipeline_clone_assignment` after the whole HMM fit has
-    run. Pinned so that a fix upstream turns this red rather than passing
-    unnoticed.
+    """The default `hmm_phased` indexes `log_mu` past its shape and raises
+    (`hmm_phased.py:118-145`).
     """
     from cnaster.hmrf import run_core_inference
 
@@ -99,23 +65,8 @@ def test_the_default_hmm_class_cannot_complete_an_outer_iteration(
 @pytest.mark.warning
 @pytest.mark.merge
 def test_a_clone_below_the_solver_s_floor_is_merged_away(cnaster_config: None) -> None:
-    """Under 200 spots a clone cannot survive, whatever the data says.
-
-    `pipeline_clone_assignment` calls `icm_sweep_deque` without
-    `min_clone_spots`, so the default of 200 applies and the enforcement
-    reassigns every spot of any smaller clone. The planted labelling here is
-    separable -- the field recovers it exactly in
-    `test_core_inference_fixture.py` -- and the run still returns one clone.
-
-    **On equal bands with events in both clones** (`normal_clone=False`).
-    With #298's normal clone the same 30 spots return **two** clones, so
-    "whatever the data says" is not what the solver does: the floor held on
-    this data and not on that. Pinned on the layout it was measured on, and
-    the contradiction reported on #298.
-
-    **Kept at 6 x 5 when the other small fixtures moved to 6 x 6 (#417):** at
-    6 x 6 the same draw returns two clones -- the floor is not reached again
-    -- so the layout is part of what this pins.
+    """A separable clone under 200 spots is merged away, on equal bands at 6 x 5 (#298,
+    #417).
     """
     truth = core_inference_truth(
         n_clones=2,
@@ -136,12 +87,7 @@ def test_a_clone_below_the_solver_s_floor_is_merged_away(cnaster_config: None) -
 @pytest.mark.end2end
 @pytest.mark.release
 def test_the_run_recovers_the_planted_labelling(cnaster_config: None) -> None:
-    """Above the floor, the labelling comes back up to a permutation.
-
-    `release` because it is over the per-pull-request budget: the clone floor
-    forces at least `200 * n_clones` spots before the label solve is a solve
-    at all, and the emission grows with the product of every extent.
-    """
+    """Above the clone floor the labelling is recovered up to a permutation."""
     truth = core_inference_truth(
         n_clones=2, n_states=3, lattice=(30, 20), n_obs=300, n_segments=4
     )
@@ -159,26 +105,8 @@ def test_the_run_recovers_the_planted_labelling(cnaster_config: None) -> None:
 def test_the_run_recovers_every_planted_state_on_a_mostly_neutral_genome(
     cnaster_config: None,
 ) -> None:
-    """**It recovers all of them, and that reverses #82 and #86.**
-
-    Planted `p` of `[0.5, 0.58, 0.88]` comes back as `[0.500, 0.581, 0.881]`;
-    planted `mu` of `[1, 1.5, 5]` comes back as `[0.997, 1.513, 4.871]`, a
-    worst relative error of **0.026**.
-
-    On the fixture this replaces -- a Markov chain visiting three states
-    roughly equally -- the same call reached a worst `mu` error of **1.131**,
-    and the middle allele state landed on the top one, leaving two of three
-    indistinguishable. Ten times the budget left it at 0.775.
-
-    So what #82 and #86 measured was the **fixture**, not `cnaster`. A genome
-    whose states are visited uniformly under an exposure varying along the bin
-    axis defeats the fit; a mostly-neutral genome carrying events -- the
-    realistic one, #120 -- does not, at the same exposure and the same budget.
-    Both tickets carry the correction.
-
-    The occupancy is what changed: `[0.860, 0.063, 0.077]` here against three
-    states near a third each before. Long neutral runs give the initializer a
-    baseline to place the others against, which is what a real sample has.
+    """On a mostly neutral genome all planted `p` and `mu` are recovered, worst relative
+    error 0.026 (#82, #86, #120).
     """
     truth = core_inference_truth(
         n_clones=2, n_states=3, lattice=(30, 20), n_obs=300, n_segments=4
@@ -199,11 +127,8 @@ def test_the_run_recovers_every_planted_state_on_a_mostly_neutral_genome(
 @pytest.mark.end2end
 @pytest.mark.release
 def test_the_declared_scale_plants_and_recovers_its_parameters() -> None:
-    """`M = K = 10`, `G = 10,000`, `S = 5,000`: the fixture, and its truth.
-
-    The instance builds in about 17 s at 2.1 GB and every planted parameter is
-    recovered from the counts it generated. What is **not** asserted here is
-    `run_core_inference` on it, for the reason the next test measures.
+    """At `M = K = 10`, `G = 10,000`, `S = 5,000` the fixture recovers its planted
+    parameters by moments.
     """
     truth = key_instance(n_segments=20)
 
@@ -226,13 +151,8 @@ def test_the_declared_scale_plants_and_recovers_its_parameters() -> None:
 
 @pytest.mark.smoke
 def test_the_declared_scale_is_out_of_reach_of_a_single_run_here() -> None:
-    """Why the scale above validates the fixture and not the inference.
-
-    `cnaster` materializes `(n_states, n_obs, n_spots)` twice per outer
-    iteration. At the declared extents that is 8.00 GB before the pooled
-    copies, against a profile that peaked at 4.5x its emission array at
-    `K = 7`, `G = 3,000`, `S = 2,500`. Recorded as a number so the decision to
-    mark the run `release` is a measurement rather than a preference.
+    """At the declared scale `cnaster`'s two `(n_states, n_obs, n_spots)` arrays need 8.00
+    GB.
     """
     truth = core_inference_truth(
         n_clones=10, n_states=10, lattice=(20, 5), n_obs=100, n_segments=2
@@ -246,23 +166,8 @@ def test_the_declared_scale_is_out_of_reach_of_a_single_run_here() -> None:
 @pytest.mark.end2end
 @pytest.mark.release
 def test_the_dev_instance_recovers_its_labelling(cnaster_config: None) -> None:
-    """The dev instance, and it recovers the labelling exactly.
-
-    `M = 4`, `K = 10`, `G = 1,000`, `S = 1,600`: 35.4 s against the key
-    instance's 310 s, at an adjusted Rand index of **1.000**.
-
-    `S` is 1,600 rather than 1,000 because the lattice is square (#137): four
-    bands of 400 spots over `40 x 40`, at 120 boundary edges and a
-    perimeter-to-area of **0.300**, against the old strip's 300 edges and
-    1.200. The recovery is exact on both, so what squaring bought is not a
-    better number -- it is a number measured where the spatial prior is not
-    being asked to hold a ribbon. That combination is what makes it worth having -- an instance
-    that failed to recover would give a developer nothing to work against, and
-    one that took five minutes would stop them looking.
-
-    Marked `release` with the key one because both drive the whole pipeline;
-    the difference is that this is the one to run by hand while changing
-    something.
+    """The dev instance (`M = 4`, `K = 10`, `G = 1,000`, `S = 1,600`) recovers its
+    labelling at ARI 1.000 (#137).
     """
     truth = dev_instance()
 
@@ -280,13 +185,8 @@ def test_the_dev_instance_recovers_its_labelling(cnaster_config: None) -> None:
 @pytest.mark.end2end
 @pytest.mark.critical
 def test_the_critical_instance_recovers_its_labelling(cnaster_config: None) -> None:
-    """The early gate's end-to-end run: `M = K = 2`, `G = 1,000`, `S = 500`.
-
-    The same claim as the dev instance's -- the planted labelling comes back
-    exactly, adjusted Rand index **1.000** -- at the smallest instance that
-    still clears the solver's clone floor. It is what `-m critical` runs so
-    that a broken pipeline is found in seconds; the dev and key instances say
-    whether it still holds at scale, and they are the tier for that.
+    """The critical instance (`M = K = 2`, `G = 1,000`, `S = 500`) recovers its labelling
+    at ARI 1.000.
     """
     truth = critical_instance()
 

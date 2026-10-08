@@ -1,10 +1,7 @@
-"""`port`'s source read as data: modules, import edges, state writes, test markers.
+"""`port`'s source as data, from the AST: modules, import edges, state writes, test
+markers (#517).
 
-The #517 guards (E2, E3, E5) each ask a question of the source rather than of
-a run -- which module reaches which, what is written after import, which
-tests count -- and answer it here, once, from the AST. Nothing is imported
-but `port.pipeline`, so a guard built on this cannot fail because a module's
-import has a side effect.
+Only `port.pipeline` is imported, so import side effects cannot fail a guard.
 """
 
 from __future__ import annotations
@@ -122,13 +119,8 @@ def _target(base: str, name: str) -> str:
 
 @cache
 def edges(module: str) -> frozenset[str]:
-    """Every `port` module `module` imports, at any depth of its body.
-
-    A `from package import name` is followed through the package's
-    `__init__` to the module that defines `name`, so a package that
-    re-exports does not make everything it re-exports look used. A
-    `"port.x:y"` string is an edge too: it is how a swap row names what it
-    installs.
+    """Every `port` module `module` imports, following package re-exports and
+    `"port.x:y"` strings.
     """
     known = modules()
     out: set[str] = set()
@@ -203,13 +195,8 @@ def row_modules() -> frozenset[str]:
 
 
 def state_writes() -> dict[str, frozenset[str]]:
-    """Every module-level name `port` writes after import, with where.
-
-    A write is a `global` rebinding, an attribute store or `setattr` on an
-    imported `port`/`cnaster` module or class or on one this module
-    defines, and an item store or mutating call on a module-level name.
-    Keyed by the name written, as `module.name` or `module.Class.name`.
-    Excludes `sandbox/`, which installs nothing.
+    """Every module-level name `port` writes after import, keyed `module.name`; excludes
+    `sandbox/`.
     """
     found: dict[str, set[str]] = {}
 
@@ -373,19 +360,13 @@ def _names(node: ast.AST) -> set[str]:
 
 
 SHARED_HELPERS = ("fixtures", "adapters", "figure_checks")
-"""The modules tests share helpers through (#749 WP10): a helper moved there
-from a test still counts for the stages it reaches."""
+"""Modules tests share helpers through (#749 WP10)."""
 
 
 @cache
 def counting_mentions() -> dict[str, frozenset[str]]:
-    """Each name, to the counting tests that mention it.
-
-    A counting test is a test function marked `end2end` or `oracle`, by
-    decorator or by the module's `pytestmark`. It mentions a name if the name
-    appears in its body, in its parameters' fixtures, or in any function or
-    fixture of its own module or of `SHARED_HELPERS` it calls, transitively --
-    a test that scores a stage through a helper counts for that stage.
+    """Each name, to the `end2end`/`oracle` tests that mention it, transitively through
+    helpers.
     """
     out: dict[str, set[str]] = {}
     shared = {

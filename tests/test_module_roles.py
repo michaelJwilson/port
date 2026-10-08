@@ -1,29 +1,7 @@
-"""Every `port` module has one role, and lives where its role says (#517 E3).
+"""Every `port` module has one declared role and lives where it says (#517 E3).
 
-`CLAUDE.md`: `patch/` replaces a named `cnaster` function, `extensions/` adds
-what has no counterpart, and `sandbox/` holds what is set aside. The roles
-below are that rule made checkable, each against the import graph
-`tests.source_graph` reads from the source:
-
-| role | where | checked |
-| --- | --- | --- |
-| `row` | `patch/` | defines what a swap row installs, and every such module is one |
-| `row-helper` | `patch/` | reached from a row, a pipeline entry point or `pipeline` |
-| `extension` | `extensions/` | reached from a row, a pipeline entry point or `pipeline` |
-| `oracle` | `extensions/` | imported by an `end2end` or `oracle` test, and reached from no run |
-| `tool` | `extensions/`, `qa/`, `studies/` | reached from no row or pipeline entry point: a figure, record or measurement tool |
-| `sim`, `script`, `pipeline` | `sim/`, `scripts/`, `port.pipeline` | where they are |
-| `set aside` | `sandbox/` | installed by nothing |
-
-**Live** is what the pipeline entry points reach: `PIPELINE` (`run_cnaster_port`,
-`run_calicost`), `port.pipeline` and the rows. The QA entry points
-(`run_ledger`, `run_audit`, `run_benchmark`, `run_figures`, `run_study`, T- #673) are `script`s too, but tools: they may reach `tool`
-modules, and no pipeline entry point may.
-
-A module reached by nothing lives in `sandbox/`, mirroring the tree it left
-(`sandbox/patch/...`, `sandbox/extensions/...`), so graduating is a move
-back; #517 step 8 moved the last of them. Every sandbox module states its
-ticket, measurement and exit, and a new one arrives with them.
+Roles are checked against the import graph `tests.source_graph` reads; live is
+what `PIPELINE`, `port.pipeline` and the patch rows reach (T- #673).
 """
 
 from __future__ import annotations
@@ -87,7 +65,7 @@ ROLES: dict[str, Role] = {
     "port.extensions.samples": "extension",
     "port.extensions.segments": "extension",
     "port.extensions.vocabulary": "tool",
-    # qa: what measures and records a run (T- #673), reached from no row or script
+    # qa: run measurement and records (T- #673)
     "port.qa.audit": "tool",
     "port.qa.errors": "tool",
     "port.qa.benchmark": "tool",
@@ -95,7 +73,7 @@ ROLES: dict[str, Role] = {
     "port.qa.provenance": "tool",
     "port.qa.scoring": "tool",
     "port.qa.statistics": "tool",
-    # studies: measurements run by hand (T- #673 G5), reached from `run_study`
+    # studies: run by hand from `run_study` (T- #673 G5)
     "port.studies.benchmark_table": "tool",
     "port.studies.calicost_figures": "tool",
     "port.studies.clone_label_arms": "tool",
@@ -210,8 +188,7 @@ ROLES: dict[str, Role] = {
     "port.sandbox.extensions.shared_decode": "set aside",
     "port.sandbox.wolff_umi_init": "set aside",
 }
-"""Every module, by role: a package `__init__` counts once it defines a function
-or class, so code cannot escape the sandbox header by living in one."""
+"""Every module by role; a package `__init__` counts once it defines something."""
 
 WHERE: dict[Role, tuple[str, ...]] = {
     "row": ("port.patch.",),
@@ -237,8 +214,7 @@ def _by(role: Role) -> set[str]:
 
 
 PIPELINE = frozenset({"port.scripts.run_calicost", "port.scripts.run_cnaster"})
-"""The pipeline entry points: what a user runs to infer copy numbers. Every
-other `script` is a QA tool entry point (T- #673)."""
+"""The pipeline entry points; every other `script` is a QA tool (T- #673)."""
 
 
 def _live() -> frozenset[str]:
@@ -247,7 +223,7 @@ def _live() -> frozenset[str]:
 
 
 def _has_role(name: str, source: str) -> bool:
-    """A module, or a package `__init__` that defines something."""
+    """Whether a file has a role: any module, or an `__init__` defining something."""
     return name != "__init__.py" or any(
         isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef)
         for node in ast.parse(source).body
@@ -280,11 +256,7 @@ def test_every_module_lives_where_its_role_says() -> None:
 
 @pytest.mark.infra
 def test_the_rows_are_the_modules_the_tables_install_from() -> None:
-    """Replaces the three hard-coded names #517 E found: every row, both ways.
-
-    An extension installed over a `cnaster` name is a patch that has not
-    admitted to being one; a `row` no table installs from replaces nothing.
-    """
+    """Rows equal the modules the swap tables install from, both ways (#517 E)."""
     assert row_modules() == _by("row"), (
         f"installed, not a row: {sorted(row_modules() - _by('row'))}; "
         f"a row nothing installs: {sorted(_by('row') - row_modules())}"
@@ -293,18 +265,14 @@ def test_the_rows_are_the_modules_the_tables_install_from() -> None:
 
 @pytest.mark.infra
 def test_live_and_set_aside_are_what_the_graph_says() -> None:
-    """`extension` and `row-helper` are reached; `tool` and `set aside` are not.
-
-    A `tool` reached from a script is an extension, and a `set aside` module
-    reached from a run has graduated without saying so.
-    """
+    """`extension` and `row-helper` are reached from live roots; others are not."""
     live = _live()
 
     assert _by("script") >= PIPELINE, sorted(PIPELINE - _by("script"))
     assert _by("extension") <= live, sorted(_by("extension") - live)
     assert _by("row-helper") <= live, sorted(_by("row-helper") - live)
     assert not (_by("tool") & live), sorted(_by("tool") & live)
-    # NB an oracle the run reaches is no longer independent of what it referees (#749 WP8)
+    # NB an oracle the run reaches is not independent of it (#749 WP8)
     assert not (_by("oracle") & live), sorted(_by("oracle") & live)
     assert not (_by("set aside") & live), sorted(_by("set aside") & live)
 
@@ -348,12 +316,7 @@ def test_every_sandbox_module_states_its_ticket_measurement_and_exit() -> None:
 
 @pytest.mark.infra
 def test_no_live_module_imports_the_sandbox() -> None:
-    """`sandbox/` is installed by nothing, so nothing outside it imports it (T- #617).
-
-    A study is the exception: `studies/` measures what `sandbox/` set aside,
-    which is each sandbox module's stated measurement, and is reached from
-    no pipeline entry point (T- #673 G5), so its imports install nothing.
-    """
+    """No module outside `sandbox/` and `studies/` imports the sandbox (T- #617, #673)."""
     package = ROOT / "python" / "port"
     found = []
 

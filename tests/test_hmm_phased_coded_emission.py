@@ -1,13 +1,7 @@
-"""`hmm_phased`'s coded emission, which cannot score what the fit returns (#269).
+"""`hmm_phased`'s coded emission raises on the `(n_states, 1)` parameter a fit returns (#269).
 
-Upstream binds `n_spots` from the parameter's column count, overwrites it
-with the encoder's spot count, then indexes the parameter with the loop
-variable. The two are different axes, so any instance with more than one spot
-raises `IndexError` against the `(n_states, 1)` every fit produces.
-
-Two claims, marked apart. That upstream raises is `bug` -- it pins a defect
-and is written to fail when `cnaster` fixes it. That the replacement agrees
-with upstream wherever upstream *can* run is `patch`.
+`bug` pins the defect; `patch` pins the replacement against upstream where upstream
+runs.
 """
 
 from __future__ import annotations
@@ -43,12 +37,7 @@ def _encoders(n_obs: int, n_spots: int, seed: int) -> tuple[Any, Any, dict[str, 
 def test_upstream_cannot_score_a_one_column_parameter_over_many_spots(
     cnaster_config: None,
 ) -> None:
-    """The defect, pinned. **Written to fail when `cnaster` fixes it.**
-
-    Refereed against `cnaster.hmm_phased` directly rather than the installed
-    name, so a swap row cannot make this pass by replacing the thing it is
-    about.
-    """
+    """`cnaster.hmm_phased` raises on many spots; written to fail when fixed."""
     from cnaster.hmm_phased import hmm_phased
 
     nb, bb, parameters = _encoders(n_obs=20, n_spots=4, seed=0)
@@ -61,12 +50,7 @@ def test_upstream_cannot_score_a_one_column_parameter_over_many_spots(
 def test_the_replacement_matches_upstream_where_upstream_runs(
     cnaster_config: None,
 ) -> None:
-    """One spot is the only width upstream survives, so it is the referee.
-
-    Bitwise: the replacement reads column zero where upstream reads column
-    `s`, and at one spot those are the same column. Nothing else changes, so
-    nothing else may move.
-    """
+    """Bitwise equal to upstream at one spot, the only width upstream runs."""
     from cnaster.hmm_phased import hmm_phased
     from port.patch.hmm_phased import (
         compute_emission_probability_nb_betabinom_coded as replacement,
@@ -87,13 +71,7 @@ def test_the_replacement_matches_upstream_where_upstream_runs(
 def test_the_replacement_broadcasts_the_one_column_over_many_spots(
     cnaster_config: None,
 ) -> None:
-    """Where upstream raises, this scores every spot against the same states.
-
-    That is `hmm_nophasing`'s dense semantics -- `log_mu[i, 0]` broadcast --
-    and it is the reading the parameter's shape admits. Checked by scoring
-    each spot alone and comparing, so the claim is that the broadcast is a
-    broadcast and not merely that it returns an array.
-    """
+    """Over many spots, matches scoring each spot alone (broadcast semantics)."""
     from port.patch.hmm_phased import (
         compute_emission_probability_nb_betabinom_coded as replacement,
     )

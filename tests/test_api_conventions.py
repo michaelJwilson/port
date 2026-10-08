@@ -1,13 +1,6 @@
-"""`CLAUDE.md`'s API Conventions, read from the source.
+"""`CLAUDE.md`'s API conventions, read from the source of what `port` owns.
 
-A convention without a guard drifts, so each one that can be read from an
-annotation, a name or a field is read here. Only what `port` owns is held to
-them: a name `cnaster` defines is a drop-in and keeps `cnaster`'s signature.
-
-`KNOWN` is every current departure, each with the finding in #401 that
-converges it. It only shrinks: an entry that no longer occurs fails, so the
-fix and the deletion land together. A new departure fails with the term that
-replaces it.
+`KNOWN` lists current departures with their #401 finding; it only shrinks.
 """
 
 from __future__ import annotations
@@ -49,23 +42,18 @@ KNOWN: dict[str, str] = {
     "port.extensions.outputs:segments arg fit": "F6",
     "port.patch.hmrf.core_inference:pin_neutral arg result": "F6",
     # --- T- #673 G6: the simulation machinery, moved from `tests/` ----------
-    # NB `SKIPPED` hid these under `tests/`. `CoreInferenceTruth.seed` is a
-    #    field `tests.metrics.fixture_hash` hashes by name, so renaming it
-    #    moves every recorded dev fixture (`07b82e92`); the builders' `seed`
-    #    and `max_iter` follow it and `cnaster`'s configuration key.
+    # NB renaming `CoreInferenceTruth.seed` moves every recorded dev fixture (`07b82e92`).
     "port.sim.truth:CoreInferenceTruth field seed": "G6",
     "port.sim.truth:core_inference_truth arg seed": "G6",
     "port.sim.he_slide:mock_he arg seed": "G6",
     "port.sim.fixtures:purify arg seed": "G6",
     "port.sim.run_config:run_cnaster_config arg max_iter": "G6",
-    # NB G3: the audits and realizations, moved the same way; `max_iter` is
-    #    `run_cnaster_config`'s, which `audit_truth` passes through.
+    # NB G3: audits and realizations; `max_iter` is `run_cnaster_config`'s.
     "port.qa.audit:audit_truth arg max_iter": "G3",
     "port.qa.audit:audit_errors arg seed": "G3",
     "port.sim.realizations:realize arg seed": "G3",
     "port.sim.realizations:chosen arg seed": "G3",
-    # NB G5: the studies, moved the same way; a job's `seed` is a field of
-    #    the records they pickle, so renaming it breaks every earlier record.
+    # NB G5: the studies; a job's `seed` is a field of pickled records.
     "port.studies.copy_state_stream:solve_start arg seed": "G5",
     "port.studies.potts_stream:solve_labelling arg seed": "G5",
     "port.studies.clone_label_arms:Job field seed": "G5",
@@ -84,8 +72,7 @@ SIBLINGS: dict[str, tuple[str, ...]] = {
         "port.extensions.label_solver:fusion_then_merge",
     ),
 }
-"""Entry points one setting chooses between, each against the first: the same
-arguments in the same order, and the same result."""
+"""Entry points one setting chooses between: same arguments, order and result as the first."""
 
 ITERATION_FIELDS = {"niter", "iterations", "n_iter", "passes", "cycles", "converged"}
 """A result carrying one of these reports an iterative run."""

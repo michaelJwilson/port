@@ -1,4 +1,4 @@
-"""T- #817: a `--sal` run's `cnamaste.h5` holds its stages as its own outputs state them, and `run_plots` draws its pages again byte for byte."""
+"""T- #817: a `--sal` run's `cnamaste.h5` against the run's own outputs; `run_plots` redraws them byte for byte."""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ MANIFEST = Path("sim/manifests/dev_tree_1s_hard.toml")
 
 @pytest.fixture(scope="module")
 def output(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Path]:
-    """`run_cnaster_port --sal` on dev_tree_1s_hard r0 (`9ec90dc2`), its PDFs dated by `SOURCE_DATE_EPOCH=0`."""
+    """Run `run_cnaster_port --sal` on dev_tree_1s_hard r0 (`9ec90dc2`) at `SOURCE_DATE_EPOCH=0`."""
     from port.qa.audit import drawn_config
     from port.scripts.run_cnaster import main
     from port.studies import stage
@@ -44,7 +44,7 @@ def output(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Path]:
 def test_run_plots_draws_every_page_the_run_wrote_byte_for_byte(
     output: Path, tmp_path: Path
 ) -> None:
-    """All 19 PDFs of a `--sal` run, from the file alone, against the run's own: the same bytes."""
+    """`run_plots` redraws all 19 PDFs of the run from the file alone, byte for byte."""
     from port.scripts.run_plots import main
 
     assert main([str(output / "cnamaste.h5"), "--out", str(tmp_path)]) == 0
@@ -61,13 +61,7 @@ def test_run_plots_draws_every_page_the_run_wrote_byte_for_byte(
 @pytest.mark.merge
 @pytest.mark.smoke
 def test_the_stages_are_what_the_run_wrote(output: Path) -> None:
-    """Each stage group against the file the run wrote for it, exactly, and every group in run order.
-
-    `/clone_assignment` is `clone_labels.tsv`'s `cnaster` clone, `/integer_copy`
-    `cnv_seglevel.tsv`'s `A`, `B`, `/rdrbaf` the final fit's npz up to
-    `reindex_clones`' permutation, and
-    `/integer_clones` `clone_labels_integer.tsv`'s merged clone.
-    """
+    """Each stage group equals the file the run wrote for it, in run order."""
     from port.extensions import cnamaste as c
 
     h5 = output / c.FILE
@@ -84,7 +78,7 @@ def test_the_stages_are_what_the_run_wrote(output: Path) -> None:
         "normal_candidates",
     ]
     assert sum(g.startswith("figures/") for g in found) == 19
-    # NB a page holds references, not data, and each level's counts are written once
+    # NB pages hold references, not data; each level's counts are written once
     assert all(not c.read(h5, g)[0] for g in found if g.startswith("figures/"))
     assert sorted(g for g in found if g.startswith("counts/")) == [
         "counts/normal_candidates",
@@ -111,8 +105,7 @@ def test_the_stages_are_what_the_run_wrote(output: Path) -> None:
     ) as written:
         for ours, theirs in (("log_mu", "new_log_mu"), ("p_binom", "new_p_binom")):
             np.testing.assert_array_equal(fit[ours], np.ravel(written[theirs]))
-        # NB the stage's clones before `reindex_clones`, the npz's after: one permutation, which
-        #    the stage's assignment against `/clone_assignment` states
+        # NB the stage's clones precede `reindex_clones`: one permutation apart
         pairs = {
             (int(b), int(a))
             for b, a in zip(fit["assignment"], final["assignment"], strict=True)

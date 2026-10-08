@@ -1,18 +1,6 @@
-"""`run_cnaster` runs to completion on a fixture written as temporary files.
+"""`run_cnaster` completes on a planted fixture written as files (#87; found #105, #106).
 
-The whole of #87: a planted instance is unsegmented into the genes, SNPs and
-coordinates `cnaster` reads, a configuration in the shape of the shipped
-`zenodo_sim_config.yaml` points at them, and the console entry point runs
-every stage from the files to the figures.
-
-**What this claims is completion, not correctness.** The pipeline reaches the
-end and writes the tables and figures it promises; no number here is compared
-against the planted truth. The component-wise claims are the tests around
-this one, and what the round trip adds is that they are reachable from the
-files at all -- and that a stage nobody had run does not raise.
-
-Two defects and one fixture gap were found by getting this far: #105, #106,
-and the widened confidence interval `python/port/sim/run_config.py` states.
+`smoke`: claims completion and the promised outputs, not correctness.
 """
 
 from pathlib import Path
@@ -57,12 +45,7 @@ FIGURES = frozenset(
         "real_clones_genomic",
     }
 )
-"""The nineteen figures one run writes, by name rather than by count.
-
-Named because a count says only that nineteen files appeared: it passes when
-one figure is written twice and another not at all, which is the failure a
-pipeline that plots at every stage can actually have.
-"""
+"""The nineteen figures one run writes, by name so a duplicate cannot stand in for a missing one."""
 
 
 def _artifacts(output: Path) -> tuple[set[str], list[Path]]:
@@ -81,13 +64,7 @@ def _artifacts(output: Path) -> tuple[set[str], list[Path]]:
 def test_the_pipeline_completes_from_files(
     planted_instance: PlantedInstance, tmp_path: Path
 ) -> None:
-    """Every stage runs, on the smallest instance that clears the floors.
-
-    Small in the genome and not in the slice: `icm_sweep_deque` merges any
-    clone under 200 spots and does not expose the threshold (#81), so a
-    thousand spots over two clones is the floor this can be run at whatever
-    the bin count is.
-    """
+    """Every stage runs on the smallest instance clearing the 200-spot clone floor (#81)."""
     output = run_written(
         planted_instance[0], tmp_path, port=False, max_iter_outer=1, max_iter=3
     )
@@ -105,24 +82,7 @@ def test_the_pipeline_completes_from_files(
 @pytest.mark.preprocessing
 @pytest.mark.release
 def test_the_pipeline_completes_on_the_dev_instance(tmp_path: Path) -> None:
-    """The same, at the instance the component-wise tests are written against.
-
-    `M = 4`, `K = 10`, `G = 1,000`, `S = 1,000`, ten unequal chromosomes.
-    **31 s at a peak of 5.89 GB**, fitting five states.
-
-    Five and not the planted ten because ten does not fit: the kernel kills
-    the run, and 15 GB is what this host has (#90). Five is therefore also a
-    statement about `cnaster` -- the fit is asked for fewer states than the
-    data carries, which is what a real run does and is why the copy-number
-    output is worth looking at rather than assuming.
-
-    It reaches the end only because state zero is planted diploid and
-    balanced. Without one `find_diploid_balanced_state` raises, which is how
-    #106 was found.
-
-    The figures this writes are the ones `run_figures`
-    draws, the same call with the copy into `.cache/plots/`.
-    """
+    """Completes on the dev instance (M = 4, K = 10, G = S = 1,000) fitting five states (#90, #106)."""
     output = run_written(
         dev_instance(), tmp_path, port=False, max_iter_outer=1, max_iter=3, n_states=5
     )

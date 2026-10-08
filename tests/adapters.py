@@ -1,20 +1,7 @@
 """Conversions from a `snakes_and_ladders` instance to `cnaster`'s arguments.
 
-The adapter is the reusable half of every test in this repository: the
-assertions are short once the conversion exists, and a second test of the
-same entry point extends this module rather than restating it.
-
-**The correspondence this module rests on.** `cnaster` conditions on
-`base_nb_mean` and `total_bb_RD` as data and never fits them, so any arrays
-supplied here are a valid instance of its likelihood. Two consequences are
-load-bearing and each is pinned by a test rather than assumed:
-
-* A *constant* exposure is exact, absorbed as `log_mu - log(c)`, because
-  `cnaster` forms `lam = exposure * mu` per observation while the upstream
-  family carries one mean per state. Exposure that varies along a chain has
-  no upstream form today and is out of scope here.
-* A zero `total_bb_RD` makes the beta-binomial channel contribute exactly
-  zero, which is what isolates the count channel.
+A constant exposure is exact, absorbed as `log_mu - log(c)`; a zero `total_bb_RD`
+silences the beta-binomial channel. Tests pin both.
 """
 
 from dataclasses import dataclass
@@ -46,11 +33,8 @@ BAF_CHANNEL = 1
 
 @dataclass(frozen=True)
 class CnasterChainInputs:
-    """`cnaster`'s arguments for a chain, and the parameters to score it at.
-
-    The chains are laid end to end along the genomic axis and `lengths`
-    restarts the recursion at each boundary, which is how `cnaster` carries
-    more than one sequence through one lattice.
+    """`cnaster`'s arguments for chains laid end to end, split by `lengths`, and the
+    parameters to score at.
     """
 
     single_X: np.ndarray
@@ -81,19 +65,8 @@ def from_negative_binomial_chains(
     *,
     exposure: float = 1.0,
 ) -> CnasterChainInputs:
-    """Lay the fixture's chains out as `cnaster` expects them.
-
-    Parameters
-    ----------
-    exposure : float
-        The constant `base_nb_mean`. Absorbed into `log_mu` so the scored
-        model is unchanged; varying it is what the upstream count family
-        cannot yet express, so it is a scalar here and not an array.
-
-    Raises
-    ------
-    ValueError
-        If `exposure` is not strictly positive, where the mean is undefined.
+    """Lay the fixture's chains out as `cnaster` expects; a constant `exposure` > 0 is
+    absorbed into `log_mu`.
     """
     if exposure <= 0.0:
         msg = f"exposure must be strictly positive, got {exposure}"
@@ -107,19 +80,14 @@ def from_negative_binomial_chains(
     single_X = np.zeros((n_obs, N_CHANNELS, 1), dtype=np.float64)
     single_X[:, RDR_CHANNEL, 0] = observations.reshape(-1)
 
-    # NB the beta-binomial channel is inert at zero depth, which is what
-    #    leaves the count channel alone under test; `test_hmm_single_chain`
-    #    pins that rather than trusting it.
+    # NB zero depth makes the beta-binomial channel inert (pinned by `test_hmm_single_chain`).
     base_nb_mean = np.full((n_obs, 1), exposure, dtype=np.float64)
     total_bb_RD = np.zeros((n_obs, 1), dtype=np.float64)
 
-    # NB `lam = exposure * exp(log_mu)`, so a constant exposure moves into
-    #    log_mu and the mean each state scores at is unchanged.
     log_mu = (np.log(fixture.mean) - np.log(exposure))[:, None]
     alphas = (1.0 / fixture.dispersion)[:, None]
 
-    # NB unused where the depth is zero; declared at the balanced point so a
-    #    leak into the score would be visible rather than plausible.
+    # NB balanced point, so a leak into the score is visible rather than plausible.
     p_binom = np.full((n_states, 1), 0.5, dtype=np.float64)
     taus = np.full((n_states, 1), 100.0, dtype=np.float64)
 
@@ -139,12 +107,7 @@ def from_negative_binomial_chains(
 
 
 def cnaster_emission(inputs: CnasterChainInputs) -> np.ndarray:
-    """`cnaster`'s per-state emission score, shape `(n_states, n_obs)`.
-
-    Both channels summed, as `pipeline_baum_welch` sums them before the
-    recursion, and the trailing spot axis dropped: one spot is what a chain
-    with no spatial layer has.
-    """
+    """`cnaster`'s per-state emission, both channels summed, shape `(n_states, n_obs)`."""
     from cnaster.hmm_nophasing import hmm_nophasing
 
     log_emit_rdr, log_emit_baf = (
@@ -163,13 +126,7 @@ def cnaster_emission(inputs: CnasterChainInputs) -> np.ndarray:
 
 
 def cnaster_total_log_likelihood(inputs: CnasterChainInputs) -> float:
-    """The summed forward log-likelihood over the fixture's chains.
-
-    `forward_lattice` returns `log alpha` over the concatenated axis, so the
-    total is the marginal at each chain's last position, summed: the chains
-    are independent and the recursion restarts at every boundary `lengths`
-    declares.
-    """
+    """The summed forward log-likelihood: `log alpha` at each chain's last position."""
     from cnaster.hmm_nophasing import hmm_nophasing
     from scipy.special import logsumexp
 
@@ -212,16 +169,8 @@ def upstream_total_log_likelihood(fixture: NegativeBinomialChains) -> float:
 
 @dataclass(frozen=True)
 class CnasterPhasedInputs:
-    """`cnaster`'s arguments for the phased lattice.
-
-    `hmm_phased.forward_lattice` takes the `K x K` base and assembles the
-    `2K x 2K` matrix per position from the sitewise kernel, so the base and
-    the kernel are carried separately here rather than pre-combined.
-
-    The emission arrives as an array. That is the lattice's own contract,
-    and it is also what keeps this rung testable: `cnaster`'s phased emission
-    raises before it returns (issue #9), so supplying the scores directly is
-    what separates the transfer matrix from a defect below it.
+    """`cnaster`'s phased-lattice arguments; the emission is an array because `cnaster`'s
+    phased emission raises (issue #9).
     """
 
     log_emission: np.ndarray
@@ -242,16 +191,8 @@ def from_phased_chains(
     *,
     switch: float | None = None,
 ) -> CnasterPhasedInputs:
-    """Lay a phased fixture out as `hmm_phased.forward_lattice` expects it.
-
-    Parameters
-    ----------
-    switch : float | None
-        Overrides the fixture's constant phase kernel, so a test can show
-        the lattice reads it. `None` keeps the one the draw used, which is
-        the only value the upstream comparison is valid at: a kernel that
-        varies by position, or differs from the one that generated the data,
-        is not the matrix upstream was handed.
+    """Lay a phased fixture out for `hmm_phased.forward_lattice`; `switch` overrides the
+    phase kernel.
     """
     import torch
 
@@ -296,10 +237,8 @@ def cnaster_phased_total_log_likelihood(inputs: CnasterPhasedInputs) -> float:
 def upstream_phased_total_log_likelihood(
     fixture: PhasedChains, inputs: CnasterPhasedInputs
 ) -> float:
-    """The same total from upstream, at the assembled constant transition.
-
-    The paired start is the copy-state initial halved across the phases,
-    which is what `hmm_phased.forward_lattice` builds for itself.
+    """The same total from upstream, with the paired start the initial halved across
+    phases.
     """
     n_sequences = inputs.lengths.size
     sequence_length = int(inputs.lengths[0])
@@ -321,29 +260,10 @@ def upstream_phased_total_log_likelihood(
 
 @dataclass(frozen=True)
 class MStepResult:
-    """One re-estimation, at the parameterization both sides share.
+    """One re-estimation: the fields both `Reestimate` and `OptimizationResult` carry.
 
-    `snakes_and_ladders` returns a `Reestimate` carrying what its inner
-    solve had to report; `cnaster` returns an `OptimizationResult` carrying
-    a different set. This is the intersection, so a comparison reads as one
-    table rather than two.
-
-    Parameters
-    ----------
-    alpha, beta : np.ndarray
-        The re-estimated pair, shape `(n_states,)`.
-    converged : bool
-        Whether the inner solve settled. Both sides report it; neither
-        reports it the same way, which is why it is carried rather than
-        asserted inside the adapter.
-    iterations : int
-        Iterations the solve took, or `-1` where the implementation does not
-        say. Never compared -- the two solve by different methods, so the
-        counts are not commensurate and only their finiteness means anything.
-    seconds : float
-        Wall time for the call, for the benchmark. Measured here so the
-        comparison times the same span on both sides: the solve and nothing
-        around it.
+    `iterations` is `-1` where unreported and never compared; `seconds` times the solve
+    alone.
     """
 
     alpha: np.ndarray
@@ -366,12 +286,7 @@ class MStepResult:
 def upstream_beta_binomial_m_step(
     fixture: BetaBinomialChains, posterior: np.ndarray
 ) -> MStepResult:
-    """`BetaBinomialEmission.reestimate`, as the referee.
-
-    The family is rebuilt at the fixture's planted parameters rather than
-    reused, so the starting point is stated here and a caller cannot leave a
-    previous step's answer in it.
-    """
+    """`BetaBinomialEmission.reestimate`, the referee, rebuilt at the planted parameters."""
     import time
 
     import torch
@@ -400,21 +315,8 @@ def upstream_beta_binomial_m_step(
 def cnaster_beta_binomial_design(
     fixture: BetaBinomialChains, posterior: np.ndarray
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    """`(endog, exog, weights, exposure)` for `Weighted_BetaBinom_mix`.
-
-    `cnaster` takes the M step as a *regression*: one row per
-    `(observation, state)` pair, the state written into a one-hot `exog`, and
-    the posterior for that pair as the row's weight. The upstream family
-    takes the same problem as an array of observations and a posterior with
-    a trailing state axis. Flattening one into the other is the whole of the
-    correspondence, and it is exact rather than approximate -- the two
-    objectives are the same sum, written with the state index in a different
-    place.
-
-    The row order is `(observation, state)`, so `weights` is the posterior
-    read in C order and needs no permutation. Stated because getting it
-    wrong permutes the states rather than failing: the fit would still
-    converge, to the wrong assignment.
+    """`(endog, exog, weights, exposure)` for `Weighted_BetaBinom_mix`: one row per
+    `(observation, state)`, C order.
     """
     observations = np.asarray(fixture.dataset.observations).reshape(-1)
     n_obs, n_states = observations.size, fixture.n_states
@@ -433,23 +335,11 @@ def cnaster_beta_binomial_m_step(
     *,
     shared_dispersion: bool = False,
 ) -> MStepResult:
-    """`Weighted_BetaBinom_mix.fit`, driven as the live caller drives it.
+    """`Weighted_BetaBinom_mix.fit` with `get_em_solver_params`, as the live caller drives
+    it.
 
-    The solver options come from `cnaster.hmm_utils.get_em_solver_params`,
-    which is what `normal_spot.normal_baf_bin_filter` splats into `fit` on
-    the `run_cnaster` path. Passing them rather than relying on `fit`'s own
-    defaults is not a convenience: `fit` reads `kwargs.get("ftol", None)` and
-    hands `None` to `L-BFGS-B`, which divides by it. The live route never
-    hits that because it always supplies the settings, and neither does this.
-
-    Parameters
-    ----------
-    shared_dispersion : bool
-        `False` gives one `tau` per state, which is the upstream family's
-        shape and the only branch the comparison can be exact on. `cnaster`
-        defaults to `True`; the live caller fits one state, where the two
-        branches are the same parameter, so neither is the more live of the
-        two.
+    `fit`'s own defaults pass `ftol=None` to `L-BFGS-B`. `shared_dispersion=False`
+    matches the upstream shape.
     """
     import time
 
@@ -489,11 +379,8 @@ def cnaster_beta_binomial_objective(
     alpha: np.ndarray,
     beta: np.ndarray,
 ) -> float:
-    """`cnaster`'s weighted negative log-likelihood at a given `(alpha, beta)`.
-
-    The objective its M step minimises, evaluated through `cnaster`'s own
-    `nloglikeobs` so a monotonicity claim is made against the function that
-    was optimized rather than against a restatement of it.
+    """`cnaster`'s weighted negative log-likelihood at `(alpha, beta)`, through its own
+    `nloglikeobs`.
     """
     from cnaster.hmm_emission import Weighted_BetaBinom_mix, betabinom_logpmf_zp
 
@@ -515,15 +402,9 @@ def cnaster_beta_binomial_objective(
 
 @dataclass(frozen=True)
 class CnasterCoreInputs:
-    """A planted instance as `cnaster.hmrf.run_core_inference`'s arguments.
+    """A planted instance as `cnaster.hmrf.run_core_inference`'s arguments (#4, #14).
 
-    Issue #4. The adapter is the reusable artefact: every rung of #14 converts
-    the same truth, so a disagreement is attributable to the rung and not to
-    two fixtures that differ.
-
-    `single_X` is `(n_obs, 2, n_spots)` with channel 0 the total and channel 1
-    the successes, which is the layout `hmrf.py` reads and `pseudobulk.py`
-    sums over.
+    `single_X` is `(n_obs, 2, n_spots)`: channel 0 the total, channel 1 the successes.
     """
 
     single_X: np.ndarray
@@ -555,18 +436,15 @@ class CnasterCoreInputs:
 
 
 def square_coords(rows: int, columns: int) -> np.ndarray:
-    """`(row, column)` of each spot of a `rows x columns` lattice, row-major, as integers."""
+    """`(row, column)` of each spot of a `rows x columns` lattice, row-major."""
     return np.stack(
         np.unravel_index(np.arange(rows * columns), (rows, columns)), axis=1
     )
 
 
 def lattice_adjacency(lattice: tuple[int, int]) -> "csr_matrix":
-    """Four-neighbour adjacency over the fixture's lattice, as `cnaster` takes it.
-
-    Symmetric CSR with unit weights. `cnaster` keeps `spatial_weight` outside
-    the matrix, so the couplings here are 1 and the temperature is the caller's
-    (#44 pinned that correspondence).
+    """Four-neighbour symmetric CSR adjacency with unit weights; `spatial_weight` stays the
+    caller's (#44).
     """
     from scipy.sparse import coo_matrix
 
@@ -590,11 +468,8 @@ def lattice_adjacency(lattice: tuple[int, int]) -> "csr_matrix":
 
 
 def from_core_inference_truth(truth: CoreInferenceTruth) -> CnasterCoreInputs:
-    """Convert a `CoreInferenceTruth` without moving a single number.
-
-    The counts, the exposure and the trial count are handed over as drawn:
-    `cnaster` conditions on all three and fits none of them, so the instance it
-    sees is the instance that was planted.
+    """Convert a `CoreInferenceTruth` with counts, exposure and trial count handed over as
+    drawn.
     """
     from scipy.sparse import eye as sparse_eye
 
@@ -608,9 +483,7 @@ def from_core_inference_truth(truth: CoreInferenceTruth) -> CnasterCoreInputs:
         initial_clone_index=truth.clone_index,
         n_states=truth.n_states,
         log_sitewise_transmat=np.log(truth.switch_prob),
-        # Identity smoothing: the fixture plants what it wants scored, and a
-        # neighbourhood that pooled counts would make the planted truth a
-        # statement about the pooled data rather than about the draw.
+        # Identity smoothing, so the planted truth describes the draw rather than pooled counts.
         smooth_mat=sparse_eye(truth.n_spots, format="csr"),
         adjacency_mat=lattice_adjacency(truth.lattice),
         sample_ids=np.zeros(truth.n_spots, dtype=int),
@@ -618,23 +491,11 @@ def from_core_inference_truth(truth: CoreInferenceTruth) -> CnasterCoreInputs:
 
 
 def cnaster_potts_adjacency(fixture: PottsLabels) -> "csr_matrix":
-    """The fixture's graph as `cnaster`'s symmetric CSR adjacency.
+    """The fixture's graph as `cnaster`'s symmetric CSR, both directions of every edge
+    present.
 
-    `icm_sweep_deque` walks `adj_indptr[i]` to `adj_indptr[i + 1]` and reads
-    `adj_indices[k]`, so **both directions of every edge must be present**:
-    the row for `i` is the whole of what that node knows about its
-    neighbourhood. Upstream's `PottsGraph.edges` carries each undirected edge
-    once, so the conversion doubles the entries and does not double the
-    physics -- `calc_assignment_cost` divides its pairwise term by two for
-    exactly this reason.
-
-    Getting that wrong is silent in both directions. Emitting one direction
-    halves every neighbourhood and biases the solver toward the field;
-    forgetting the `/ 2` doubles every coupling. A test pins the edge set and
-    another pins the energy, because neither catches both.
-
-    The data carry `coupling` alone. `spatial_weight` stays outside, where
-    `cnaster` keeps it and applies it as `spatial_temp_factor`.
+    `calc_assignment_cost` halves its pairwise term to compensate; `spatial_weight`
+    stays outside.
     """
     import numpy as np
     from scipy.sparse import coo_matrix
@@ -660,13 +521,8 @@ def cnaster_potts_adjacency(fixture: PottsLabels) -> "csr_matrix":
 def cnaster_potts_coo(
     fixture: PottsLabels,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """`(adj_spots, adj_neighbors, adj_weights)`, the form `calc_assignment_cost` takes.
-
-    `cnaster` carries two adjacency representations and the label path uses
-    both: `icm_sweep_deque` takes CSR, `calc_assignment_cost` takes parallel
-    arrays it masks with `adj_spots == i`. They are the same graph, and this
-    derives the second from the first so a test cannot compare a solver
-    against a cost function built on a different edge set.
+    """`(adj_spots, adj_neighbors, adj_weights)` for `calc_assignment_cost`, derived from
+    the CSR.
     """
     import numpy as np
 
@@ -679,15 +535,8 @@ def cnaster_potts_coo(
 
 
 def cnaster_assignment_cost(fixture: PottsLabels, labelling: np.ndarray) -> float:
-    """`cnaster`'s objective at a labelling, through its own `calc_assignment_cost`.
-
-    Evaluated through `cnaster`'s function rather than a restatement of it,
-    so an agreement claim is made against the thing the solver maximises.
-
-    `cnaster` **maximises**: the pairwise term is added where neighbours
-    agree. Upstream's `energy` is the negation, and a test pins the two
-    equal and opposite rather than either implementation's sign being
-    asserted here.
+    """`cnaster`'s maximised objective at a labelling, through its own
+    `calc_assignment_cost`.
     """
     import numpy as np
     from cnaster.icm import calc_assignment_cost
@@ -707,10 +556,8 @@ def cnaster_assignment_cost(fixture: PottsLabels, labelling: np.ndarray) -> floa
 
 
 def upstream_potts_energy(fixture: PottsLabels, labelling: np.ndarray) -> float:
-    """Upstream's `energy` at a labelling, with `spatial_weight` folded in.
-
-    `-sum_i h_i[s_i] - sum_(ij) J_ij [s_i == s_j]`, which is the negation of
-    what `cnaster_assignment_cost` returns.
+    """Upstream's `energy` at a labelling with `spatial_weight` folded in; the negation of
+    `cnaster`'s cost.
     """
     import numpy as np
     from sal.sim.potts import energy
@@ -733,39 +580,16 @@ def cnaster_icm_labelling(
     min_clone_spots: int = 0,
     seed: int = 0,
 ) -> tuple[np.ndarray, float, int]:
-    """Run `icm_sweep_deque`, returning `(labelling, reported cost, iterations)`.
+    """Run `icm_sweep_deque` on a copy of `start`, seeding the global RNG; returns
+    `(labelling, cost, iterations)`.
 
-    Two things the caller cannot avoid knowing, both properties of the
-    solver rather than of this adapter.
-
-    **It mutates its input.** `new_assignment` is updated in place and the
-    return value carries only the cost and the iteration count, so `start` is
-    copied here and the copy is what comes back.
-
-    **It draws from the global `numpy` RNG.** `np.random.shuffle` sets the
-    visit order and is reseeded nowhere, so two runs of the same instance
-    return different labellings unless the caller seeds the legacy global
-    state. This does, and records the seed, because a solver comparison whose
-    result depends on unrecorded global state is not a comparison.
-
-    Parameters
-    ----------
-    min_clone_spots : int
-        Defaults to **zero**, not to `cnaster`'s 200. The default exceeds the
-        node count of every fixture here, so the occupancy guard would fire
-        on every call and the solver would be measured enforcing a constraint
-        rather than minimising an energy. Issue #8 takes the same position
-        for the same reason: the constraint is a global cardinality term,
-        outside the metric condition the comparison rests on, so the
-        comparison is made where it is slack and the slackness is asserted.
+    `min_clone_spots` defaults to 0, not 200, so the occupancy guard stays slack (as in
+    #8).
     """
     import numpy as np
     from cnaster.icm import icm_sweep_deque
 
-    # NB the legacy global generator on purpose: `icm_sweep_deque` calls
-    #    `np.random.shuffle`, so seeding a `Generator` would leave the solver
-    #    reading whatever global state the process already had. NPY002's
-    #    advice is right in general and is the defect being reported here.
+    # NB `icm_sweep_deque` calls `np.random.shuffle`, so only the legacy global seed reaches it.
     np.random.seed(seed)  # noqa: NPY002
 
     adjacency = cnaster_potts_adjacency(fixture)
@@ -785,12 +609,8 @@ def cnaster_icm_labelling(
 
 
 def range_filter_loop(unique_snp_ids: np.ndarray, ranges: Any) -> np.ndarray:
-    """`cnaster.io.load_input_data`'s range filter, transcribed verbatim.
-
-    Lines 740-772 of `io.py`, as the call the patch replaces. Transcribed
-    rather than imported because it is inline in a 480-line function behind a
-    configuration key, so there is no way to call it on its own -- which is
-    also why nothing had ever run it.
+    """`cnaster.io.load_input_data`'s range filter (`io.py` lines 740-772), transcribed
+    verbatim.
     """
     num_ranges = ranges.shape[0]
     indicator_filter = np.array([True] * len(unique_snp_ids))
@@ -821,11 +641,8 @@ def range_filter_loop(unique_snp_ids: np.ndarray, ranges: Any) -> np.ndarray:
 
 
 def drawn(figure: Any, *, colours: bool = True) -> list[np.ndarray]:
-    """Every point and segment a figure put on its axes, in drawing order.
-
-    Scatter offsets, with their face colours unless `colours` is off, and
-    `LineCollection` segments: the figure's data rather than its pixels, so a
-    comparison fails only if a number changed and not on a font or a backend.
+    """Every scatter point (with face colours unless `colours` is off) and segment a figure
+    drew, in order.
     """
     out: list[np.ndarray] = []
 
@@ -847,13 +664,7 @@ def drawn(figure: Any, *, colours: bool = True) -> list[np.ndarray]:
 
 
 def grid_adjacency(n_spots: int, width: int) -> Any:
-    """A four-neighbour grid, as `construct_multislice_lattice_adjacency` builds.
-
-    Built here rather than drawn, because the claim is about the solver
-    reading one graph and the graph should be one a reader can check by
-    inspection: spot `i` neighbours `i - 1`, `i + 1`, `i - width` and
-    `i + width` where those exist.
-    """
+    """A four-neighbour grid, as `construct_multislice_lattice_adjacency` builds."""
     from scipy.sparse import coo_matrix
 
     rows: list[int] = []
@@ -878,11 +689,8 @@ def grid_adjacency(n_spots: int, width: int) -> Any:
 
 
 def clone_assignment_arguments(fixture: SpotCloneField, width: int) -> dict[str, Any]:
-    """`pipeline_clone_assignment`'s arguments, built once so two arms cannot differ.
-
-    `pred` is the concatenated path the fit returns and `res` the four
-    parameters beside it, at `(n_states, 1)` -- the shape `cnaster` reads
-    and the only one a fit produces (#278).
+    """`pipeline_clone_assignment`'s arguments at `(n_states, 1)`, built once so two arms
+    cannot differ (#278).
     """
     n_obs, n_spots = fixture.counts_nb.shape
 
@@ -914,11 +722,7 @@ def clone_assignment_arguments(fixture: SpotCloneField, width: int) -> dict[str,
 
 @dataclass(frozen=True)
 class Stacked:
-    """The pseudobulk, clone-stacked exactly as `cnaster` stacks it.
-
-    `clone_stack_obs` returns six values positionally; naming them here is what
-    keeps the rung readable, since the batch shape is the whole point of it.
-    """
+    """The pseudobulk, clone-stacked as `cnaster`'s `clone_stack_obs` stacks it."""
 
     X: np.ndarray
     base_nb_mean: np.ndarray

@@ -1,10 +1,8 @@
-"""The lattice decode's prior, `PARSIMONY` at install and flat at `0` (T- #471).
+"""The lattice decode's parsimony prior `-parsimony |A + B - 2|`, `PARSIMONY` by default
+(T- #471).
 
-`lattice_decode` scores each `(A, B)` with the log-prior
-`-parsimony |A + B - 2|`; the copy rows default to `PARSIMONY`. Pinned: at `0`
-the prior is zero for every state (`analytic`); the rows' default decode is
-bitwise `lattice_decode`'s default call, and `0` reaches it (`patch`); a
-negative weight is refused (`infra`).
+`analytic`: zero at `0`; `patch`: the rows' default equals `lattice_decode`'s; `infra`:
+negative refused.
 """
 
 from __future__ import annotations
@@ -82,7 +80,7 @@ def _decode(clones: list[Any], **options: Any) -> list[dict[str, Any]]:
 
 @pytest.mark.analytic
 def test_a_parsimony_of_zero_is_a_flat_prior() -> None:
-    """`-0 |A + B - 2|` is zero for every pair on the lattice, `(0, 0)` to totals of 6."""
+    """At `parsimony=0` the prior is zero for every pair up to total 6."""
     from port.extensions.copy_likelihood import _prior
 
     states = np.array([(a, b) for a in range(7) for b in range(7 - a)])

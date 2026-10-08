@@ -1,9 +1,4 @@
-"""#460: the committed compressed sample files, and the helpers that read them.
-
-The referee for the compressed files is the bytes they held before
-compression, pinned by SHA-256; for `compress`, its own round trip and a
-second write of the same input.
-"""
+"""#460: committed compressed sample files against their pre-compression SHA-256, and `compress`."""
 
 from __future__ import annotations
 
@@ -43,8 +38,7 @@ def test_each_compressed_file_holds_the_bytes_it_replaced(name: str) -> None:
 def test_compression_round_trips_and_writes_the_same_bytes_twice(
     tmp_path: Path,
 ) -> None:
-    """No name and no timestamp in the header: two writes are equal, and `located`
-    reads the plain file where both exist."""
+    """`compress` is deterministic and round-trips; `located` prefers the plain file."""
     source = tmp_path / "table.tsv"
     source.write_bytes(b"gene\tlambda\n" * 1000)
     first = compress(source, tmp_path / "first.tsv.gz").read_bytes()

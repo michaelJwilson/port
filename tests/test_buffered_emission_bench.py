@@ -1,18 +1,7 @@
-"""What one emission entry point costs against `cnaster`'s two (#205).
+"""One buffered emission entry point against `cnaster`'s two, at gate and stress sizes (#205, #90).
 
-**The claim is the allocation, not the ratio.** `cnaster` builds
-`(n_states, n_obs, n_spots)` per channel on every call and the phased class
-doubles the state axis; `port.sandbox.patch.emission.emission_into` writes into
-buffers the caller keeps. At the stress size below that is 1.34 GB the
-phased entry point allocates per call and this one does not, twice per outer
-iteration (#90).
-
-So these rows are here to catch the case where writing into a buffer cost
-something, not to argue a speedup. `tests/test_buffered_emission.py` carries
-the bitwise evidence that makes it a simplification.
-
-The stress pair carries `release`: the phased arm at `K = 7`, `G = 3,000`,
-`S = 2,000` allocates 1.34 GB in `cnaster`'s arm alone.
+Stress (`release`): K = 7, G = 3,000, S = 2,000; bitwise evidence in
+`test_buffered_emission.py`.
 """
 
 from typing import Any
@@ -24,22 +13,17 @@ from pytest_benchmark.fixture import BenchmarkFixture
 from tests.fixtures import tiers
 
 Inputs = dict[str, Any]
-"""The arrays one arm is handed, named so both arms take the same thing."""
+"""The arrays one arm is handed, shared by both arms."""
 
 GATE = {"n_states": 5, "n_obs": 400, "n_spots": 300}
-"""Small enough for the per-pull-request budget; decides no ratio."""
+"""Gate size; decides no ratio."""
 
 STRESS = {"n_states": 7, "n_obs": 3_000, "n_spots": 2_000}
-"""336 MB per channel unphased, 1.34 GB across both channels phased."""
+"""Stress size: 1.34 GB allocated per phased call in `cnaster`'s arm."""
 
 
 def _inputs(n_states: int, n_obs: int, n_spots: int) -> Inputs:
-    """Both parameter shapes, so neither arm shapes an array inside the timer.
-
-    The kernel reads `(n_states,)`, which is what a fit produces (#278);
-    `cnaster` indexes `[i, 0]`. Building both here keeps the difference out
-    of the measurement.
-    """
+    """Both parameter shapes, built outside the timer (#278)."""
     generator = np.random.default_rng(29)
 
     exposure = generator.integers(20, 45, (n_obs, n_spots)).astype(np.float64)
@@ -105,12 +89,7 @@ def _run_buffered(inputs: Inputs, buffers: tuple[np.ndarray, np.ndarray]) -> Non
 def test_the_emission(
     benchmark: BenchmarkFixture, implementation: str, size: dict[str, int]
 ) -> None:
-    """Both arms, warm, at the gate size and at the size the allocation tells at.
-
-    The gate baseline argues nothing either way. Both arms are called once
-    outside the timer: both are `numba` kernels and a first call on a cold
-    cache is compilation rather than work (#204).
-    """
+    """Both arms, warm, at gate and stress sizes (#204)."""
     from port.sandbox.patch.emission import emission_buffers
 
     inputs = _inputs(**size)

@@ -1,14 +1,5 @@
-"""Unequal chromosomes, and a chain that restarts at each one.
-
-Before #667 upstream had no shape that could carry a batch of unequal
-chains, so the fixture planted `np.full(n_segments, n_obs // n_segments)` and
-required `n_segments` to divide `n_obs`. Worse, the segmentation was a label
-rather than the truth: one Markov chain ran the length of the genome and
-`lengths` was handed to `cnaster` beside it, so the planted model and the
-fitted one disagreed at every boundary.
-
-`Ragged` is what both halves are checked against here -- the shape by
-constructing it, the floor by driving its refusal.
+"""Ragged chromosome lengths and per-chromosome segmentation, checked against `Ragged`
+(#667).
 """
 
 import numpy as np
@@ -22,22 +13,13 @@ from port.sim.truth import (
 from sal.ragged import Ragged
 
 BOUNDARY_SEGMENTS = 200
-"""Segments in the instance that measures the restart.
-
-Each boundary is one observation of "does the chain carry across", so the
-count is the sample size, and 200 segments over three clones gives 597.
-"""
+"""Segments in the restart instance: 200 over three clones gives 597 boundaries."""
 
 
 @pytest.mark.end2end
 @pytest.mark.critical
 def test_the_dev_instance_plants_unequal_chromosomes() -> None:
-    """Ten chromosomes, 50 to 182 bins, summing to the genome.
-
-    Pinned as the realized partition rather than as "they differ": a draw
-    that collapsed towards equal would still satisfy the weaker claim, and
-    equal chromosomes are what this fixture exists to stop planting.
-    """
+    """Ten chromosomes, 50 to 182 bins, summing to the genome, pinned as realized."""
     truth = dev_instance()
 
     np.testing.assert_array_equal(
@@ -49,18 +31,7 @@ def test_the_dev_instance_plants_unequal_chromosomes() -> None:
 
 @pytest.mark.smoke
 def test_upstream_accepts_the_planted_genome() -> None:
-    """The partition is a `Ragged`, and constructing it is the check.
-
-    `Ragged` refuses a `lengths` that does not tile its values and a segment
-    below the floor, so this is upstream validating the shape `port` plants
-    rather than `port` asserting it about itself.
-
-    Not in the early gate, though it is fast and it does catch a wrong answer:
-    `upstream` is not an external referee under the rule the gate runs on, and
-    the two tests around this one cover the same partition against the planted
-    truth and against `cnaster`. The guard refused this marker before review
-    did.
-    """
+    """The partition constructs as upstream's `Ragged`."""
     truth = dev_instance()
     batch = truth.ragged
 
@@ -72,12 +43,7 @@ def test_upstream_accepts_the_planted_genome() -> None:
 
 @pytest.mark.smoke
 def test_a_chromosome_below_the_floor_is_refused() -> None:
-    """Upstream admits one bin since sal #1233; the fixture's floor stays two, its own.
-
-    `Ragged` scores a one-position segment as its start times its emission,
-    so it constructs; `ragged_lengths` plants no chromosome below
-    `MINIMUM_SEGMENT`, and refuses a genome the floor does not fit.
-    """
+    """Upstream admits one bin since sal #1233; `ragged_lengths` keeps its floor of two."""
     assert Ragged(values=np.zeros(4), lengths=(1, 3)).n_segments == 2
     assert MINIMUM_SEGMENT == 2
 
@@ -85,8 +51,7 @@ def test_a_chromosome_below_the_floor_is_refused() -> None:
     with pytest.raises(ValueError, match="do not fit"):
         ragged_lengths(3, 4, rng=rng)
 
-    # NB the draw itself never reaches the floor from above: a thousand
-    #    partitions of a genome barely wider than the floor, all legal.
+    # NB a genome barely wider than the floor: no draw goes below it.
     for seed in range(1000):
         drawn = ragged_lengths(30, 10, rng=np.random.default_rng(seed))
         assert drawn.min() >= MINIMUM_SEGMENT
@@ -106,24 +71,7 @@ def test_the_partition_is_exact_and_reproducible() -> None:
 
 @pytest.mark.end2end
 def test_no_event_crosses_a_chromosome_boundary() -> None:
-    """What `lengths` means once the path is events on a neutral backbone.
-
-    This replaces a measurement of chain restart, and the replacement is
-    forced: #120 stopped drawing the path from a Markov chain, so there is no
-    transition rate for a boundary to disagree with. What survives is the
-    claim the restart was evidence for -- **a chromosome boundary is a real
-    boundary** -- and for a piecewise-constant path that means no event spans
-    one.
-
-    Asserted against the placed events rather than the path, because the path
-    cannot be read back into them: two events on adjacent chromosomes that
-    draw the same state abut, and an abutment looks exactly like a crossing.
-    That is why `place_events` returns what it placed.
-
-    Events here are long enough to cross if nothing stopped them -- up to 40
-    bins against chromosomes of 10 and up -- so a placement ignoring `lengths`
-    fails within a few draws.
-    """
+    """No placed event spans a chromosome boundary (#120)."""
     truth = core_inference_truth(
         n_clones=3,
         n_states=4,
@@ -152,11 +100,8 @@ def test_no_event_crosses_a_chromosome_boundary() -> None:
 
 @pytest.mark.snapshot
 def test_the_clone_stacked_lengths_are_cnasters_own() -> None:
-    """`stacked_lengths` is what `clone_stack_obs` builds, for a ragged genome.
-
-    `cnaster` tiles the segmentation with the clones, so the fit runs over
-    `n_clones * n_segments` chains. With unequal chromosomes that stacked
-    vector is ragged too, and it is the shape #97's rung has to hand upstream.
+    """`stacked_lengths` tiles the ragged segmentation per clone, as `clone_stack_obs`
+    does (#97).
     """
     from cnaster.hmrf_utils import clone_stack_obs
 
@@ -179,13 +124,7 @@ def test_the_clone_stacked_lengths_are_cnasters_own() -> None:
 
 @pytest.mark.end2end
 def test_the_equal_mode_is_still_reachable_and_still_refuses() -> None:
-    """A rectangular genome is a mode, not the default.
-
-    #97's rung retreats to equal lengths where the correspondence needs it, so
-    the old behaviour stays available and stays named -- and it keeps the
-    divisibility check, which is a property of that mode rather than of the
-    fixture.
-    """
+    """Rectangular lengths remain a named mode and keep the divisibility check (#97)."""
     truth = core_inference_truth(n_obs=240, n_segments=4, segmentation="equal", seed=5)
 
     np.testing.assert_array_equal(truth.lengths, [60, 60, 60, 60])

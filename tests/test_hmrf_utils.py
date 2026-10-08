@@ -1,10 +1,4 @@
-"""Clone bookkeeping: the helpers the spatial layer is written in.
-
-Pure transformations of arrays, so the referees are identities rather than a
-second implementation. They are the vocabulary #8 and #13 use, and an error
-here would surface there as a labelling that is wrong for reasons having
-nothing to do with the solver under test.
-"""
+"""Clone bookkeeping helpers of the spatial layer, checked against identities (#8, #13)."""
 
 import numpy as np
 import pytest
@@ -14,12 +8,7 @@ from scipy.sparse import csr_matrix
 @pytest.mark.smoke
 @pytest.mark.parametrize("n_clones", [1, 2, 4])
 def test_indices_and_assignment_invert_each_other(n_clones: int) -> None:
-    """Grouping spots by clone and regrouping them returns the assignment.
-
-    The round trip that matters: the pipeline moves between a per-spot label
-    and a per-clone index list many times per outer iteration, and a lossy
-    conversion silently relabels spots.
-    """
+    """Grouping spots by clone and regrouping returns the assignment."""
     from cnaster.hmrf_utils import get_clone_assignment, get_clone_indices
 
     rng = np.random.default_rng(3)
@@ -46,11 +35,7 @@ def test_indices_partition_the_spots() -> None:
 
 @pytest.mark.smoke
 def test_contiguous_clone_ids_are_accepted_and_gaps_are_not() -> None:
-    """Ids must be `0..n-1`, because downstream indexes by them.
-
-    A gap is not a cosmetic problem: the clone id is used as a position, so
-    a missing one shifts every clone above it.
-    """
+    """Ids `0..n-1` are accepted and a gap is refused."""
     from cnaster.hmrf_utils import validate_clone_ids
 
     assert validate_clone_ids(np.array([0, 1, 2, 1, 0]))
@@ -62,13 +47,7 @@ def test_contiguous_clone_ids_are_accepted_and_gaps_are_not() -> None:
 @pytest.mark.smoke
 @pytest.mark.parametrize("n_clones", [1, 3])
 def test_stacking_lays_clones_end_to_end(n_clones: int) -> None:
-    """Each clone's observations appear as a contiguous block, in order.
-
-    The stacked form is what the lattice sees when clones are concatenated
-    along the genomic axis, so the block order is the thing `lengths`
-    restarts on. A transpose taken the wrong way round would interleave the
-    clones and the recursion would tie them together.
-    """
+    """Each clone's observations form a contiguous block, in clone order."""
     from cnaster.hmrf_utils import clone_stack_obs
 
     rng = np.random.default_rng(11)

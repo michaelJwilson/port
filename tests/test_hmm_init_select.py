@@ -1,18 +1,7 @@
-"""Several initializers, one referee, and the best of them.
+"""Initializer backends scored by one referee, and the selection over them (#229 stages 3, 4; #230).
 
-**#229 stages 3 and 4.** `cnaster` picks an initializer by a default argument
-and has never compared it to anything. These pin the machinery that makes a
-comparison possible: one score every backend is judged by, and a selection
-that reports what it chose from.
-
-The markers split on what each test judges. The round trip and the referee's
-properties are `patch` -- they say two implementations agree, not that either
-is right. `test_the_sal_backend_recovers_the_planted_states` is `oracle`: the
-referee is `snakes_and_ladders`, and the claim is about where the states are.
-
-**Which backend is better is #230**, which judges on recovery of planted truth
-under a matched budget. Nothing here decides that, and `Selection.__str__`
-says so on every line it prints.
+`patch` tests check agreement; the sal recovery tests are `oracle` against planted
+states.
 """
 
 from __future__ import annotations
@@ -62,7 +51,7 @@ def _candidate(name: str, log_mu: list[float], p_binom: list[float]) -> Candidat
 def test_the_referee_prefers_the_state_the_data_came_from(
     drawn: tuple[np.ndarray, np.ndarray, np.ndarray],
 ) -> None:
-    """The yardstick has to rank the truth first, or ranking by it selects nothing."""
+    """The referee ranks the generating state first."""
     X, exposure, trials = drawn
 
     truth = _candidate("truth", [0.0], [0.32])
@@ -77,11 +66,7 @@ def test_the_referee_prefers_the_state_the_data_came_from(
 def test_the_referee_is_indifferent_to_the_space_a_backend_fitted_in(
     drawn: tuple[np.ndarray, np.ndarray, np.ndarray],
 ) -> None:
-    """Two candidates with identical parameters score identically.
-
-    Trivial to state and the whole point: a backend cannot win by reporting
-    a bigger number in its own units, because its own number is never read.
-    """
+    """Candidates with identical parameters score identically, whatever backend fitted them."""
     X, exposure, trials = drawn
 
     one = _candidate("gaussian_space", [0.0], [0.32])
@@ -96,7 +81,7 @@ def test_the_referee_is_indifferent_to_the_space_a_backend_fitted_in(
 def test_select_takes_the_best_and_reports_what_it_chose_from(
     drawn: tuple[np.ndarray, np.ndarray, np.ndarray],
 ) -> None:
-    """Selection is in-sample maximization, so the count travels with the score."""
+    """`select` takes the best and reports how many it chose from."""
     X, exposure, trials = drawn
 
     candidates = [
@@ -119,7 +104,7 @@ def test_select_takes_the_best_and_reports_what_it_chose_from(
 
 @pytest.mark.patch
 def test_selecting_from_nothing_is_refused() -> None:
-    """A run with no initializer is a configuration error, caught here."""
+    """Selecting from no initializers is refused."""
     with pytest.raises(ValueError, match="no candidates"):
         select([], lambda _c: 0.0)
 
@@ -128,14 +113,7 @@ def test_selecting_from_nothing_is_refused() -> None:
 def test_the_parameter_map_round_trips(
     drawn: tuple[np.ndarray, np.ndarray, np.ndarray],
 ) -> None:
-    """`count_pair_family` and the backend's inverse undo each other.
-
-    The backend reads `rate`, `concentration` and `total.dispersion` back out
-    of a fitted family. If those are not the inverse of what
-    `count_pair_family` puts in, every `sal_emission` candidate is scored on
-    parameters that are not the ones it fitted -- silently, because the
-    referee would still return a number.
-    """
+    """`count_pair_family` and the backend's inverse round-trip the parameters."""
     log_mu = np.array([-0.3, 0.0, 0.45])
     alphas = np.array([0.08, 0.12, 0.05])
     p_binom = np.array([0.50, 0.32, 0.18])
@@ -160,12 +138,7 @@ def test_the_parameter_map_round_trips(
 def test_the_sal_backend_recovers_the_planted_states(
     drawn: tuple[np.ndarray, np.ndarray, np.ndarray],
 ) -> None:
-    """Upstream's mixture, fitted in the family, judged against the truth.
-
-    No log, no standardization, no inverse: #229's steps 2, 3 and 11 do not
-    exist on this path. What is checked is that the fit lands where the data
-    were drawn from, in `cnaster`'s parameters.
-    """
+    """Upstream's mixture recovers the planted state in `cnaster`'s parameters."""
     X, exposure, trials = drawn
 
     candidate = sal_emission_backend(X, exposure, trials, n_states=2, seed=5)
@@ -174,8 +147,7 @@ def test_the_sal_backend_recovers_the_planted_states(
     assert candidate.n_states == 2
     assert candidate.detail["iterations"] >= 1
 
-    # NB the data come from one state, so at least one component must sit on
-    #    it. The other is free to go anywhere the likelihood allows.
+    # NB data come from one state, so at least one component must sit on it.
     assert np.min(np.abs(candidate.log_mu - 0.0)) < 0.25, (
         f"log_mu {candidate.log_mu} misses the planted 0.0"
     )
@@ -188,12 +160,7 @@ def test_the_sal_backend_recovers_the_planted_states(
 def test_the_sal_backend_beats_a_deliberately_wrong_start(
     drawn: tuple[np.ndarray, np.ndarray, np.ndarray],
 ) -> None:
-    """The fit is worth something, measured on the shared referee.
-
-    `CLAUDE.md` forbids a test that only asserts something ran. This is the
-    cheapest claim that is not that: the fitted parameters score higher under
-    `cnaster`'s own density than a start that is plainly wrong.
-    """
+    """The fit scores higher than a deliberately wrong start under `cnaster`'s density."""
     X, exposure, trials = drawn
 
     fitted = sal_emission_backend(X, exposure, trials, n_states=2, seed=5)
@@ -206,14 +173,7 @@ def test_the_sal_backend_beats_a_deliberately_wrong_start(
 
 @pytest.mark.oracle
 def test_sals_density_with_a_covariate_is_cnasters() -> None:
-    """Per-observation exposure and trials (sal #1083): cnaster's NB and BB, bin for bin.
-
-    What makes a varying exposure fittable: sal scores the total against each
-    bin's `base_nb_mean` and the successes out of its `total_bb_RD`, with
-    `cnaster`'s parameterization -- `r = 1 / alpha`, mean `exposure * mu` --
-    so the two densities are one model. Realized 2.9e-13 absolute over 1,200
-    entries, zero-trial bins included; stated at 1e-10.
-    """
+    """sal's covariate density equals `cnaster`'s NB and BB bin for bin, within 1e-10 (sal #1083)."""
     import torch
     from cnaster.hmm_nophasing import _bb_logpmf_1d, _nb_logpmf_1d
     from sal.emissions import CountPairEmission
@@ -278,12 +238,7 @@ def _varying() -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarr
 def test_the_sal_backend_outscores_cnasters_gmm_under_cnasters_density(
     cnaster_config: None,
 ) -> None:
-    """On varying exposure, sal's fit beats `gmm_init`'s under the shared referee.
-
-    Both initializers on the same bins, both scored by `referee_score` --
-    `cnaster`'s own NB times BB, so neither wins by its fitting space.
-    Realized -23,609.1 against -23,913.4: 304 nats.
-    """
+    """On varying exposure, sal's fit outscores `gmm_init` under `cnaster`'s density."""
     X, exposure, trials, _, _ = _varying()
     n_obs = X.shape[0]
 
@@ -307,14 +262,7 @@ def test_the_sal_backend_outscores_cnasters_gmm_under_cnasters_density(
 
 @pytest.mark.end2end
 def test_the_sal_backend_recovers_states_under_a_varying_exposure() -> None:
-    """Three planted states, each bin its own exposure and trial count.
-
-    Before sal #1083 this raised (#236): the family had one exposure per
-    state. Recovery against the planted parameters, states matched by rate:
-    realized `log_mu` within 0.0331 and `p` within 0.0099 at 3,000 bins,
-    converged in 138 EM iterations;
-    stated at 0.1 and 0.05.
-    """
+    """Recovers planted states under varying exposure: `log_mu` to 0.1, `p` to 0.05 (#236)."""
     X, exposure, trials, log_mu, p_binom = _varying()
 
     candidate = sal_emission_backend(X, exposure, trials, n_states=3, seed=1)

@@ -1,10 +1,4 @@
-"""The field from tables against the fused kernel's `lgamma` (#433).
-
-Bitwise equal (`tests/test_hmrf_tabulated_field.py`), so the rows are a
-ratio and nothing else. Tables cost `n_states x max count` `lgamma` once per
-call, so at the gate size they are overhead; the stress size is where the
-`n_obs x n_spots x n_clones` scores dominate.
-"""
+"""Field from tables against the fused kernel's `lgamma`, at gate and stress sizes (#433)."""
 
 from collections.abc import Callable
 

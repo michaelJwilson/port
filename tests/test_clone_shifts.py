@@ -1,9 +1,6 @@
-"""Each clone's `logmu_shift`, recorded, permuted with its clone, and found (#362).
+"""Each clone's `logmu_shift`: recorded, permuted with its clone, and found (#362).
 
-`port.patch.hmrf.core_inference` records `log Z_c` per clone after the pin,
-permutes it when `cnaster` reindexes the clones, and hands it to the integer
-decode by matching the clone's path. Pinned here against the formula written
-out, and against a reindex that reverses the clones.
+Referee: the formula written out, and a reindex that reverses the clones.
 """
 
 from __future__ import annotations
@@ -122,10 +119,8 @@ def test_without_shifts_the_reindex_is_the_reorders(
 def test_the_reindex_carries_each_shift_on_cnasters_result(
     clean: None, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """On `cnaster`'s locked `CnaHMRFResult`, which has no `get` (#501).
-
-    The dict test above passed while every real run left the shifts
-    unpermuted: the shifts were read through `res.get`, which only a dict has.
+    """On `cnaster`'s `CnaHMRFResult` (no `get`), each shift follows its clone through the
+    reindex (#501).
     """
     import copy
 

@@ -1,10 +1,4 @@
-"""The population study's scorer and aggregation (#544).
-
-The referees: a planted logistic curve the report must recover, with its
-cluster-bootstrap interval covering the planted crossing (`end2end` -- the
-truth that generated the records), and the tree's events composed along a
-path as `port.sim.draw` composes them (`analytic`).
-"""
+"""Population study scorer and aggregation, against a planted logistic and tree (#544)."""
 
 from __future__ import annotations
 
@@ -43,12 +37,7 @@ def test_a_clone_carries_every_event_on_its_path_root_first(tmp_path: Path) -> N
 def test_the_report_recovers_a_planted_crossing_within_its_interval(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Records drawn from a logistic with UMI50 = 10^5.5: the fit and interval hold it.
-
-    60 members x 3 clones, log UMIs uniform on [4.8, 6.6], detection with
-    slope 6 per dex. The point estimate is within 0.15 dex of 5.5 and the
-    95% interval, over resampled members, contains it.
-    """
+    """Recovers a planted UMI50 = 10^5.5 within 0.15 dex, inside its 95% bootstrap interval."""
     import port.studies.population_report as report
 
     monkeypatch.setattr(report, "BOOTSTRAP", 300)
@@ -82,12 +71,7 @@ def test_the_report_recovers_a_planted_crossing_within_its_interval(
 
 @pytest.mark.analytic
 def test_counted_rows_read_as_the_rows_they_stand_for() -> None:
-    """`curve` on rows carrying `count` equals `curve` on those rows repeated.
-
-    Study 3 counts its ~2,000 segments per clone rather than listing them;
-    the rates, their resampled intervals and the fit must not see the
-    difference.
-    """
+    """`curve` on counted rows equals `curve` on those rows repeated."""
     import pandas as pd
     import port.studies.population_report as report
     from port.qa.statistics import resample_weights
@@ -115,14 +99,7 @@ def test_counted_rows_read_as_the_rows_they_stand_for() -> None:
 
 @pytest.mark.analytic
 def test_credible_set_coverage_counts_bins_by_their_states_set() -> None:
-    """Folded planted pairs against each bin's state's set, and why each miss was (#705).
-
-    State 0's set holds (1, 1) and (2, 1); state 1's holds (2, 1) alone;
-    state 2's is empty, written as `copy_set_table` writes one. A planted
-    (1, 2) over bins in states [0, 0, 1, 2], the point decode right on the
-    third alone, is covered on 3 of 4, ambiguous on 2, empty on 1, at a mean
-    set size (2 + 2 + 1 + 0) / 4; its 3 misses are 2 ambiguous, 1 empty.
-    """
+    """Credible-set coverage of planted pairs per bin, with miss reasons, computed by hand (#705)."""
     import pandas as pd
     from port.sandbox.population_sets import clone_sets, credible_sets, set_scores
 
@@ -144,12 +121,7 @@ def test_credible_set_coverage_counts_bins_by_their_states_set() -> None:
 
 @pytest.mark.analytic
 def test_a_narrower_level_keeps_the_pairs_within_its_threshold() -> None:
-    """Read at 2 sigma from a 3 sigma table: `chi2(0.9545, 2) = 6.18`, `chi2(0.9545, 1) = 4.0`.
-
-    Clone 1's state 4 holds (2, 1) at distance 1 and (3, 1) at 8: both at
-    3 sigma (11.8), (2, 1) alone at 2 sigma. The neutral state's (2, 0) at
-    5 is within 1 degree of freedom's 3 sigma (9.0) and outside its 2 sigma.
-    """
+    """A 3 sigma table read at 2 sigma keeps only pairs within `chi2(0.9545, dof)`."""
     import pandas as pd
     from port.sandbox.population_sets import clone_sets, credible_sets
 
@@ -177,12 +149,7 @@ def test_a_narrower_level_keeps_the_pairs_within_its_threshold() -> None:
 
 @pytest.mark.analytic
 def test_segment_sets_read_per_bin_folded_at_a_level() -> None:
-    """`cnv_segment_sets.tsv` read at 2 sigma from 3 sigma: `chi2(0.9545, 2) = 6.18`.
-
-    Clone 0's bins [0, 3) hold (2, 1) at deviance 0 and (1, 1) at 8: both at
-    3 sigma (11.8), the first alone at 2 sigma. Bins [3, 5) hold (1, 2),
-    folded to (2, 1). Clone 1 is absent and reads as no sets.
-    """
+    """`cnv_segment_sets.tsv` read at 2 sigma from 3 sigma, folded, by hand."""
     import pandas as pd
     from port.sandbox.population_sets import segment_bins
 
@@ -209,12 +176,7 @@ def test_segment_sets_read_per_bin_folded_at_a_level() -> None:
 
 @pytest.mark.analytic
 def test_a_known_event_s_set_folds_phase_per_bin() -> None:
-    """Two bins prefer (1, 2) and (2, 1) by 3 nats each, phase switched between them.
-
-    Folded per bin, (2, 1) scores 0 on both; (1, 1) scores -3 on each, a
-    deviance of 2 * 6 = 12, outside 3 sigma (11.8); (2, 2) at -1 each, 4,
-    inside 2 sigma (6.18). Without the per-bin fold, (2, 1) would pay 3.
-    """
+    """Phase is folded per bin before summing deviance, by hand."""
     from port.sandbox.population_sets import known_set
 
     pairs = np.array([(1, 1), (1, 2), (2, 1), (2, 2)])

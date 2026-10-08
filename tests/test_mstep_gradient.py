@@ -1,11 +1,7 @@
-"""The M step's closed-form gradient against `jax`'s, on the objective `cnaster` scores (#433).
+"""The M step's closed-form gradient against `jax`'s autodiff of the same objective
+(#433).
 
-`port.patch.hmm_nophasing.gradient` differentiates the EM objective by hand;
-`port.qa.jax_hmm` writes the same emission in `jax`, which
-differentiates it by itself. Two implementations of one derivative, so the
-referee is `oracle`. The objective's *value* is pinned first against
-`cnaster`'s own coded emission, so the `jax` form is the objective BFGS
-actually reads and not a neighbour of it.
+The objective's value is first pinned against cnaster's coded emission.
 """
 
 from __future__ import annotations
@@ -33,10 +29,8 @@ def _problem(
     trials = generator.integers(0, 40, n_segments).astype(np.float64)
     observed = generator.poisson(exposure).astype(np.float64)
 
-    # NB a bin with no baseline, which `cnaster` scores 0 whatever its count.
-    #    Not in the `jax` comparison: `jnp.where`'s untaken branch takes
-    #    `log(0)` there and returns `nan` for the gradient, a defect of the
-    #    referee rather than of either objective.
+    # NB a zero-baseline bin, which cnaster scores 0; excluded from `jax`, whose
+    # untaken `jnp.where` branch gives a `nan` gradient.
     if silent is not None:
         exposure[3] = 0.0
         observed[3] = silent
@@ -191,11 +185,7 @@ def test_the_shifted_gradient_has_no_component_along_the_flat_direction(
 
 @pytest.mark.analytic
 def test_a_bin_without_baseline_moves_no_gradient(cnaster_config: None) -> None:
-    """`cnaster` scores such a bin 0 at any count, so its count cannot move `d f / d x`.
-
-    To 1e-12 rather than bitwise: the count changes the encoder's codes, and
-    with them the order the weights are summed in (3.1e-16 realized).
-    """
+    """A zero-baseline bin's count cannot move the gradient, to 1e-12 (summation order)."""
     _, gradient, x, _ = _problem(shifted=False, shared=True, silent=0.0)
     _, other, _, _ = _problem(shifted=False, shared=True, silent=500.0)
 
@@ -207,12 +197,8 @@ def test_a_bin_without_baseline_moves_no_gradient(cnaster_config: None) -> None:
 def test_the_closed_form_fit_is_cnasters_fit_to_a_stated_tolerance(
     cnaster_config: None, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """`cnaster`'s class, finite differences, against `port`'s, closed form, at `max_iter=20`.
-
-    Both run `cnaster`'s `cost_fn` and callback; only the gradient differs, and
-    the finite difference is the less exact of the two. So the fits agree to
-    the finite difference's own error, carried through twenty iterations
-    (1.1e-5 relative realized, on `p`), and not bitwise.
+    """cnaster's finite-difference fit matches `port`'s closed-form one to 1e-5 relative
+    at `max_iter=20`.
     """
     from cnaster.hmm_nophasing import hmm_nophasing as upstream
     from port.patch.hmm_nophasing import hmm_nophasing
@@ -223,8 +209,7 @@ def test_the_closed_form_fit_is_cnasters_fit_to_a_stated_tolerance(
 
     from cnaster.config import get_global_config
 
-    # NB BFGS on both sides: the configured solver is #448's, and this
-    #    compares the gradients, not the optimizers.
+    # NB BFGS on both sides, so only the gradients differ.
     monkeypatch.setattr(get_global_config().hmm, "solver", "BFGS")
 
     instance = two_clone_stacked_instance()
@@ -248,11 +233,8 @@ def test_the_closed_form_fit_is_cnasters_fit_to_a_stated_tolerance(
 
 @pytest.mark.patch
 def test_the_m_step_passes_bfgs_only_its_own_options() -> None:
-    """`cnaster`'s `ftol` reaches no BFGS call, and the fit is BFGS's without it (#448).
-
-    Referee: `scipy`'s BFGS given the same gradient and only the options it
-    reads, bitwise. `cnaster` builds `{"maxiter", "ftol", "gtol", "disp"}`
-    (`hmm_nophasing.py:1005`), and BFGS warns on `ftol` and drops it.
+    """cnaster's `ftol` reaches no BFGS call; bitwise against scipy BFGS without it
+    (#448).
     """
     import warnings
 
@@ -296,11 +278,8 @@ def test_the_m_step_passes_bfgs_only_its_own_options() -> None:
 def test_the_m_step_runs_the_configured_solver_at_its_tolerances(
     solver: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """`hmm.solver` and its `em_*` keys reach the M step (#448).
-
-    Referee: `scipy.optimize.minimize` with that method, the same gradient,
-    and the options `cnaster.hmm_utils.get_em_solver_params` maps the solver
-    to, bitwise. `cnaster` runs BFGS whatever the configuration says.
+    """`hmm.solver` and `em_*` keys reach the M step, bitwise against scipy with the
+    mapped options (#448).
     """
     from types import SimpleNamespace
 

@@ -1,9 +1,7 @@
 """`port.qa.scoring`'s copy-state ARI per planted class (#511).
 
-`class_ari` over `planted_classes` is the copy ARI on one class's clone-bins.
-The referee is sklearn's `adjusted_rand_score` on bins selected by hand, by
-index, not by `planted_classes`; a perfect decode scores 1 in every class
-with two or more planted pairs, and a class planted as one pair is NaN.
+Referee: sklearn's `adjusted_rand_score` on bins selected by hand; a one-pair class is
+NaN.
 """
 
 from __future__ import annotations
@@ -59,8 +57,7 @@ def test_each_class_ari_is_sklearns_on_that_class_bins_alone() -> None:
         assert class_ari(TRUTH, DECODE, classes[name]) == pytest.approx(
             expected, abs=5e-5
         )
-    # NB the subsets differ from the whole: each decode error above is
-    #    priced against its class, not against the neutral bins
+    # NB each decode error is priced against its class, not the neutral bins
     whole = adjusted_rand_score(TRUTH, DECODE)
     assert all(
         abs(class_ari(TRUTH, DECODE, classes[n]) - whole) > 0.01
@@ -78,8 +75,7 @@ def test_a_perfect_decode_scores_one_in_every_class_with_two_planted_pairs() -> 
 @pytest.mark.infra
 def test_a_class_planted_as_one_pair_or_not_at_all_is_nan() -> None:
     classes = planted_classes(TRUTH)
-    # NB neutral is one pair by definition: sklearn would read 1 for a
-    #    constant decode and 0 otherwise, neither a measurement
+    # NB neutral is one pair: sklearn's 1 or 0 would not be a measurement
     assert adjusted_rand_score(TRUTH[12:], DECODE[12:]) == 0.0
     assert np.isnan(class_ari(TRUTH, DECODE, classes["neutral"]))
 
@@ -91,11 +87,7 @@ def test_a_class_planted_as_one_pair_or_not_at_all_is_nan() -> None:
 
 @pytest.mark.oracle
 def test_each_phase_free_class_ari_is_sklearns_on_hand_sorted_pairs() -> None:
-    """Phase-free: the pairs sorted by hand to `(min, max)`, then sklearn per class.
-
-    The unbalanced gain's swaps `(2, 1) -> (1, 2)` and `(1, 3) -> (2, 1)` are
-    one consistent and one not; phase-free, the first is a hit.
-    """
+    """Phase-free class ARI against sklearn on pairs sorted by hand to `(min, max)`."""
 
     def by_hand(codes: np.ndarray) -> np.ndarray:
         return np.array(
@@ -120,11 +112,7 @@ def test_each_phase_free_class_ari_is_sklearns_on_hand_sorted_pairs() -> None:
 
 @pytest.mark.oracle
 def test_the_confusion_is_sklearns_row_normalised_matrix_within_the_cap() -> None:
-    """Planted rows against `confusion_matrix(normalize="true")`, to 5e-5.
-
-    At cap 3, `(1, 3)`, `(3, 3)` and `(2, 2)` lie outside: their planted rows
-    are dropped, and a decode to one of them is `other`.
-    """
+    """Planted rows against `confusion_matrix(normalize="true")` at cap 3, to 5e-5."""
     from sklearn.metrics import confusion_matrix
 
     cap = 3
@@ -152,10 +140,7 @@ def test_the_confusion_is_sklearns_row_normalised_matrix_within_the_cap() -> Non
 
 @pytest.mark.analytic
 def test_the_sampled_table_drops_unplanted_rows_and_undecoded_columns() -> None:
-    """At cap 3: full is 10 rows by 10 pairs and `other`; sampled keeps the
-    5 planted rows and the 6 pairs decoded from them, and no `other`, as the
-    one decode outside the cap is of a row outside it.
-    """
+    """At cap 3 the sampled table keeps the 5 planted rows and 6 decoded pairs, no `other`."""
     confusion = copy_confusion(TRUTH, DECODE, 3)
     full = confusion_table(confusion, 3).splitlines()
     sampled = confusion_table(confusion, 3, sampled=True).splitlines()
@@ -170,10 +155,8 @@ def test_the_sampled_table_drops_unplanted_rows_and_undecoded_columns() -> None:
 
 @pytest.mark.analytic
 def test_shared_ari_reads_the_planted_labels_at_the_fits_barcodes() -> None:
-    """A relabelled, reordered fit missing one spot scores 1 over the 5 it kept.
-
-    Read by position, the reversed order would pair spot `e`'s fit with spot
-    `a`'s truth and score below 1.
+    """A relabelled, reordered fit missing one spot scores 1 over the 5 it kept, read by
+    barcode.
     """
     planted = pd.Series([0, 0, 1, 1, 2, 2], index=list("abcdef"))
     fitted = pd.Series([5, 3, 3, 7, 7], index=list("edcba"))

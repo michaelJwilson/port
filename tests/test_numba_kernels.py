@@ -1,15 +1,4 @@
-"""The compiled kernels, against scipy.
-
-**These exist because coverage cannot see them.** `numba` reports no line
-information, so every function below reads as uncovered however hard the
-rest of the suite exercises it — `forward_lattice` and the logpmf kernels
-run in almost every test in this repository and appear in no report.
-`CLAUDE.md` requires them tested anyway, and against an independent source
-rather than against each other.
-
-The referee is `scipy.stats`, which is a second implementation of the same
-densities and not a rearrangement of `cnaster`'s.
-"""
+"""`cnaster`'s compiled kernels against `scipy.stats`, since coverage cannot see `numba`."""
 
 import numpy as np
 import pytest
@@ -54,12 +43,7 @@ def test_beta_binomial_kernel_matches_scipy(
 @pytest.mark.oracle
 @pytest.mark.critical
 def test_numba_logsumexp_matches_scipy() -> None:
-    """`numba_logsumexp` is stable where a naive sum is not.
-
-    The `-inf` case is the one that separates the two: an implementation
-    subtracting its maximum without guarding an all-`-inf` input returns
-    `nan` where the answer is `-inf`.
-    """
+    """`numba_logsumexp` matches scipy, including the all-`-inf` case."""
     from cnaster.hmm_nophasing import numba_logsumexp
 
     for values in (
@@ -75,12 +59,7 @@ def test_numba_logsumexp_matches_scipy() -> None:
 
 @pytest.mark.backend
 def test_dense_and_single_observation_kernels_agree() -> None:
-    """The dense kernels compute what the one-dimensional ones compute.
-
-    Two compiled implementations of one density, which is `cnaster`'s own
-    pairing rather than an imported reference; the scipy comparisons above
-    are what makes either of them right.
-    """
+    """Dense kernels match the one-dimensional ones (`cnaster`'s own pairing)."""
     from cnaster.hmm_nophasing import _dense_nb_logpmf, _nb_logpmf_1d
 
     rng = np.random.default_rng(4)
@@ -106,12 +85,7 @@ def test_dense_and_single_observation_kernels_agree() -> None:
 
 @pytest.mark.analytic
 def test_negative_binomial_kernel_is_normalised() -> None:
-    """The density sums to one over its support.
-
-    An invariant rather than a comparison: a kernel agreeing with scipy at
-    the points tried could still be wrong between them, and a normalisation
-    check covers the whole support at once.
-    """
+    """The negative binomial density sums to one over its support."""
     from cnaster.hmm_nophasing import _nb_logpmf_1d
 
     support = np.arange(0, 400, dtype=np.float64)

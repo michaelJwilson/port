@@ -1,15 +1,7 @@
-"""Every swap row has a counting referee, or is declared without one (#517 E5).
+"""Every swap row has a counting referee (`end2end` or `oracle` naming it), or is declared
+without one (#517 E5).
 
-`CLAUDE.md`: only `end2end` and `oracle` count, and they are aimed at the
-whole of `run_cnaster` component by component. A row is refereed if a test
-carrying one of the two reaches it by name -- in its body, or in a function of
-its own module it calls (`tests.source_graph.counting_mentions`). A whole-run
-test reaches every row and names none, so it does not count here: it cannot
-say which stage was right.
-
-Report first, then gating: `UNCOUNTED` is the rows with no referee today, so
-this fails only when the set changes. A new row arrives with a referee or
-with an entry here; a referee written lands with its entry removed.
+`UNCOUNTED` lists rows without one today; the test fails when that set changes.
 """
 
 from __future__ import annotations

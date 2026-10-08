@@ -1,13 +1,8 @@
-"""`write_fig` leaves no written figure holding its PDF's rasters (T- #692 part 2).
+"""`write_fig` leaves no written figure holding its PDF's raster buffers (T- #692 part
+2).
 
-Every `Text` caches the renderer that last drew it. After a PDF write that is
-the `MixedModeRenderer`, which holds the `PdfFile`, which holds each
-rasterizing group's image as a view of that group's full-page `RendererAgg`
-buffer. `cnaster`'s `write_fig` leaves them for as long as the figure lives,
-and `run_cnaster` keeps each figure in a local and then in a reference cycle.
-
-The figure stays referenced and the collector stays off while the buffers are
-counted: the state a figure is in after `run_cnaster` writes it.
+Buffers are counted with the figure referenced and the collector off, as after
+`run_cnaster`.
 """
 
 from __future__ import annotations
@@ -26,11 +21,7 @@ mpl.use("Agg")
 
 
 def _pinned(writer: Callable[..., None], path: Path, **keywords: Any) -> int:
-    """Bytes of raster buffer the `PdfFile`s `writer` left live hold after it returns.
-
-    Only those it created: a `PdfFile` an earlier test on the same worker left
-    live is that test's, not `writer`'s.
-    """
+    """Bytes of raster buffer held by the `PdfFile`s `writer` created."""
     from matplotlib.backends.backend_pdf import PdfFile
 
     gc.collect()
@@ -57,11 +48,8 @@ def _pinned(writer: Callable[..., None], path: Path, **keywords: Any) -> int:
 
 @pytest.mark.bug
 def test_cnasters_write_fig_leaves_the_rasters_resident(tmp_path: Path) -> None:
-    """Four consecutive rasterized scatters, one group, on a 20 x 4 inch page.
-
-    One full-page RGBA buffer at 300 dpi stays pinned: 22,602,720 bytes,
-    under the untrimmed 20 * 4 * 300**2 * 4 = 28,800,000 because the tight
-    box trims the page. Fails once `cnaster` or `matplotlib` releases it.
+    """cnaster pins one full-page RGBA buffer (22,602,720 bytes) for four rasterized
+    scatters.
     """
     from cnaster.utils import write_fig
 
@@ -77,9 +65,9 @@ def test_cnasters_write_fig_leaves_the_rasters_resident(tmp_path: Path) -> None:
 def test_ports_write_fig_releases_them_and_writes_the_same_file(
     tmp_path: Path, keywords: dict[str, Any]
 ) -> None:
-    """Zero bytes pinned on return, at `cnaster`'s defaults and at the options
-    `FIGURE_SWAPS` binds; at `cnaster`'s defaults the file is `cnaster`'s,
-    byte for byte once the creation date is removed."""
+    """Zero bytes pinned, at cnaster's defaults and `FIGURE_SWAPS`' options; cnaster's
+    file byte for byte.
+    """
     from cnaster.utils import write_fig as upstream
     from port.patch.utils import write_fig
 

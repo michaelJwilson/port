@@ -1,12 +1,4 @@
-"""The segment lineage through a whole `run_cnaster_port` run (#438).
-
-One run of the entry point on the end-to-end instance, recording every
-segmentation the patched stages make and every phase-switch kernel the run
-asks for. Checked against the run itself: each kernel is computed on the
-level it belongs to, is independence at every contig boundary, and is
-Haldane's over its own contig's map everywhere else; the levels nest as the
-pipeline builds them; and the table the run writes is the lineage.
-"""
+"""Segment lineage through one `run_cnaster_port` run, checked against the run itself (#438)."""
 
 from __future__ import annotations
 
@@ -76,7 +68,7 @@ def run(tmp_path_factory: pytest.TempPathFactory) -> dict[str, Any]:
 def test_every_kernel_is_independence_at_every_contig_boundary(
     run: dict[str, Any],
 ) -> None:
-    """Four kernels, each one entry per segment of its level, `log 1/2` at each contig end."""
+    """Each kernel has one entry per segment, `log 1/2` at each contig end."""
     lineage = run["lineage"]
     kernels = run["kernels"]
 
@@ -97,11 +89,7 @@ def test_every_kernel_is_independence_at_every_contig_boundary(
 @pytest.mark.merge
 @pytest.mark.xdist_group("pipeline")
 def test_the_levels_nest_as_the_pipeline_builds_them(run: dict[str, Any]) -> None:
-    """Blocks refine bins; filtering keeps a subset; the merge coarsens what survived.
-
-    And `lengths` of every level sums to its segment count with no zero -- the
-    grid the HMM restarts on.
-    """
+    """Blocks refine bins, filtering subsets, the merge coarsens; `lengths` sum to segment counts."""
     levels = run["lineage"].levels
     names = list(levels)
 
@@ -123,7 +111,7 @@ def test_the_levels_nest_as_the_pipeline_builds_them(run: dict[str, Any]) -> Non
 @pytest.mark.merge
 @pytest.mark.xdist_group("pipeline")
 def test_the_run_writes_its_lineage(run: dict[str, Any]) -> None:
-    """`gene_segments.tsv` is the recorded lineage: coordinates and one label column per level."""
+    """`gene_segments.tsv` is the recorded lineage, one label column per level."""
     lineage = run["lineage"]
     table = run["table"]
     expected = lineage.table()

@@ -1,11 +1,8 @@
-"""One M-step fit, closed-form gradient against `cnaster`'s finite differences (#433).
+"""One `hmm_nophasing.optimize` fit, closed-form gradient against `cnaster`'s finite
+differences (#433).
 
-The fit is `hmm_nophasing.optimize` as `pipeline_baum_welch` calls it: eight
-states, shared dispersions, `max_iter=3`, the shift on. Both arms run the same
-`cost_fn` and callback; only the gradient differs, so the ratio is the objective
-calls finite differences spend per gradient -- one per packed coordinate.
-
-The stress pair carries `release`: 10 clones of 3,000 bins.
+Eight states, shared dispersions, `max_iter=3`, shift on. Stress (`release`): 10 clones
+of 3,000 bins.
 """
 
 from __future__ import annotations

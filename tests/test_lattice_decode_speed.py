@@ -1,11 +1,4 @@
-"""The lattice decode's compiled Viterbi and broadcast emission, against the NumPy they replace (#512).
-
-`copy_likelihood._viterbi` is sal's compiled ragged Viterbi (T- #632) and
-`_log_emissions` scores every state in one broadcast call instead of one
-call per state. Both claim the previous code's output bitwise, ties
-included, so the referee is that code (`oracle`); the per-state emission is
-rebuilt here from `pseudobulk_log_pmf` one state at a time, as `_log_emissions` did.
-"""
+"""The lattice decode's compiled Viterbi and broadcast emission against the replaced NumPy, bitwise (#512, T- #632)."""
 
 from __future__ import annotations
 
@@ -46,7 +39,7 @@ def _bulk(rng: np.random.Generator, n_obs: int, alpha: float, tau: float) -> obj
 def test_the_compiled_viterbi_is_the_numpy_recursion_bitwise(
     n_states: int, rounded: bool
 ) -> None:
-    """Path and score equal, over three contigs, one of a single bin; rounding plants ties, where the first maximum wins."""
+    """Path and score equal `viterbi_oracle`'s over three contigs, ties included."""
     from port.extensions.copy_likelihood import _viterbi, viterbi_oracle
 
     rng = np.random.default_rng(n_states + rounded)
@@ -71,7 +64,7 @@ def test_the_compiled_viterbi_is_the_numpy_recursion_bitwise(
 def test_the_broadcast_emission_is_each_states_row_bitwise(
     alpha: float, tau: float
 ) -> None:
-    """Every state's row, at a purity below 1 and a shift, equals `pseudobulk_log_pmf` called for that state alone."""
+    """Each state's row equals `pseudobulk_log_pmf` for that state alone, bitwise."""
     from port.extensions.copy_likelihood import (
         _log_emissions,
         _prior,

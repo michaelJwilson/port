@@ -1,25 +1,8 @@
-"""`cnaster`'s four lattices from `oxiport`, bitwise (#318).
+"""`cnaster`'s four lattices from `oxiport`, bitwise against `cnaster`'s `@njit` kernels
+(#318).
 
-**The claim is equality to the bit, not a tolerance.** The Rust recursions
-run `cnaster`'s arithmetic in `cnaster`'s order -- the same sequential spot
-sums, the same `max + ln(sum(exp(a - max)))` over the same buffer -- so any
-difference is a defect rather than round-off. `cnaster`'s `@njit` kernels are
-the referee; `numba` compiles without `fastmath`, so it does not reassociate.
-
-What moves is where the compile happens (`maturin build`, once) and how the
-contigs are scheduled: above `PARALLEL_WORK` they run on separate threads,
-each into its own buffer. The stress case here is above that threshold, so
-the parallel path is what it pins.
-
-**Under `NUMBA_DISABLE_JIT=1`**, which the drop-in coverage guard sets, the
-referee is no longer `cnaster`'s compiled arithmetic: its kernels run as
-NumPy, whose reductions accumulate eight-wide and whose `exp`/`log` may be
-SIMD. There the claim is 1e-14 relative, against a measured worst of 5.8e-16
-over these cases, with non-finite entries still equal; `_agree` says which
-applies.
-
-`patch`: each test puts a replacement to the call it replaces. The whole-run
-form of the same claim is `test_a_rust_run_reproduces_a_numba_one`.
+Under `NUMBA_DISABLE_JIT=1` the referee runs as NumPy and the claim is 1e-14 relative.
+The whole-run form is `test_a_rust_run_reproduces_a_numba_one`.
 """
 
 from __future__ import annotations
@@ -55,8 +38,7 @@ def _inputs(
     log_transmat = np.log(generator.dirichlet(np.ones(n_states), n_states))
     log_startprob = np.log(generator.dirichlet(np.ones(n_states)))
     log_emission = generator.normal(-5.0, 3.0, (rows, n_obs, spots))
-    # NB an impossible state at some sites, which is what a zero-count BAF
-    #    bin gives `cnaster`: the recursion must carry `-inf` as it does.
+    # NB an impossible state at some sites, as a zero-count BAF bin gives `cnaster`.
     log_emission[0, :: max(n_obs // 7, 1), 0] = -np.inf
     log_sitewise = np.log(generator.uniform(1e-4, 0.3, n_obs))
 
@@ -139,10 +121,8 @@ def test_a_strided_emission_is_read_as_cnaster_reads_it() -> None:
 @pytest.mark.patch
 @pytest.mark.parametrize("phased", [False, True], ids=["unphased", "phased"])
 def test_installed_every_call_form_returns_cnasters_lattice(phased: bool) -> None:
-    """`hmmclass.forward_lattice` and `self.forward_lattice`, before and after.
-
-    `cnaster` reaches the lattices both ways -- `hmm.py` through the class,
-    `optimize` through the instance -- so the installer is judged on each.
+    """`hmmclass.forward_lattice` and `self.forward_lattice` both return `cnaster`'s
+    lattice once installed.
     """
     from cnaster.hmm_nophasing import hmm_nophasing
     from cnaster.hmm_phased import hmm_phased
@@ -207,11 +187,8 @@ def test_the_installer_reaches_both_classes_and_restores_them() -> None:
 def test_the_critical_instance_recovers_its_labelling_through_rust(
     cnaster_config: None,
 ) -> None:
-    """ARI 1.000 against the planted clones, every lattice call from Rust.
-
-    `tests/test_core_inference_end_to_end.py`'s critical claim -- `M = K = 2`,
-    `G = 1,000`, `S = 500` -- with `rust_lattices()` installed, so the truth
-    that generated the data is the referee rather than `cnaster`'s kernel.
+    """ARI 1.000 against the planted clones with every lattice call from Rust (`M = K = 2`,
+    `S = 500`).
     """
     from port.patch.lattice import rust_lattices
     from port.sim.truth import critical_instance
@@ -230,11 +207,8 @@ def test_the_critical_instance_recovers_its_labelling_through_rust(
 @pytest.mark.patch
 @pytest.mark.release
 def test_a_rust_run_reproduces_a_numba_one(tmp_path: Path) -> None:
-    """Two whole `--no-patch` runs, one with `--rust`, artifact by artifact.
-
-    `--no-patch` so the Rust lattices are the only difference between the
-    arms; each arm its own process, as `test_patched_entry_point` does and
-    for its reason.
+    """Two whole `--no-patch` runs, one with `--rust`, equal artifact by artifact, each in
+    its own process.
     """
     import subprocess
     import sys

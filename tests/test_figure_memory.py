@@ -1,30 +1,6 @@
-"""What one genomic figure costs in memory to draw and to write (T- #692 part 2).
+"""Peak memory writing one genomic figure, port's `write_fig` row against `cnaster`'s (#692).
 
-**The peak is `write_fig`'s, not `plot_clones_genomic`'s, and port's row
-takes it from +1,577 MB to +311 MB, 5.1x.** Measured on CalicoST easy
-(`2d4ce9a9`): the `merged_rdr_baf_clones_genomic` call captured from an
-unpatched run, replayed alone, peak RSS over the process's own baseline:
-
-| drawn by | written by | draw | draw and write |
-| --- | --- | ---: | ---: |
-| `cnaster` | `cnaster` (300 dpi, a group per artist) | +116 MB | +1,577 MB |
-| `cnaster` | 150 dpi | +115 MB | +486 MB |
-| `cnaster` | 300 dpi, a group per axes | +115 MB | +871 MB |
-| `cnaster` | port's row (150 dpi, a group per axes) | +116 MB | +311 MB |
-| port | `cnaster` | +116 MB | +1,577 MB |
-| port | port's row | +116 MB | +311 MB |
-
-Both draws cost the same; the write is the peak, and each of the row's two
-defaults removes part of it. Four captured calls replayed twice in one
-process leave +42 to +94 MB after each under `cnaster`, +45 to +48 MB under
-port, and +22 MB with `malloc_trim`: **no figure is retained**, and none
-ratchets. So `cnaster`'s 11.8 to 13.9 GB arms on easy and dev are the run's
-own arrays plus `write_fig`'s 1.6 GB, not figures left open, and
-`plot_clones_genomic` needs no change. `cnaster` is read only; the defect is
-reported on T- #692 with these numbers.
-
-Pinned here at the dev instance's size (2,624 bins, 3,000 spots, 3 clones),
-each arm in its own process, since peak RSS is a property of a process.
+Dev size (2,624 bins, 3,000 spots, 3 clones), each arm in its own process.
 """
 
 from __future__ import annotations
@@ -93,12 +69,7 @@ def _over_base(arm: str, out: Path) -> int:
 def test_port_writes_a_dev_sized_genomic_figure_in_under_half_cnasters_memory(
     tmp_path: Path,
 ) -> None:
-    """Port's `write_fig` row against `cnaster`'s on the same figure: at least 2x less peak.
-
-    Measured here, twice: +900 and +901 MB under `cnaster`'s writer, +213 MB
-    under port's (4.2x). The bar is `CLAUDE.md`'s 2x; the figure is drawn by port's
-    `plot_clones_genomic` in both arms, so the writer is the only difference.
-    """
+    """Port's `write_fig` row peaks at least 2x lower than `cnaster`'s on the same figure."""
     theirs = _over_base("cnaster", tmp_path / "cnaster.pdf")
     ours = _over_base("port", tmp_path / "port.pdf")
 

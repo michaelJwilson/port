@@ -1,9 +1,4 @@
-"""`as_upstream`: a wrapper that takes exactly what its `cnaster` function takes (#517).
-
-Referee: `cnaster.hmrf.reindex_clones` and its own signature. The wrapper
-must accept every call the original accepts, refuse every call it refuses,
-and hand the body the arguments as given, by name.
-"""
+"""`as_upstream` binds and refuses exactly as `cnaster.hmrf.reindex_clones`'s signature does (#517)."""
 
 from __future__ import annotations
 

@@ -1,19 +1,4 @@
-"""The clone-size floor and the refinement mask (#348).
-
-`calicost_instance` lost every clone at the read-depth refinement: 16
-sub-clones of about 100 spots met `icm_sweep_deque`'s 200-spot floor, which
-empties every clone under it at once and moves its spots to a clone drawn at
-random from those over it; one was, and took 1,509 of 1,600 spots. What is
-pinned here:
-
-- `cnaster`'s floor collapses a problem where one clone clears it (`bug`,
-  written to fail when it stops doing so);
-- `floor_clones` merges smallest first into each spot's best clone, stops
-  once every clone clears the floor, and never crosses a `-inf` entry
-  (`patch`);
-- `mask_for` hands the refinement's mask only to the problem it describes
-  (`infra`).
-"""
+"""Clone-size floor and refinement mask (#348): `cnaster`'s collapse and port's merge."""
 
 from __future__ import annotations
 
@@ -35,7 +20,7 @@ def _problem(sizes: list[int], seed: int = 7) -> tuple[np.ndarray, np.ndarray]:
 
 @pytest.mark.bug
 def test_cnasters_floor_moves_every_undersized_clone_into_the_one_over_it() -> None:
-    """25 spots in one clone, 9 in each of 15: a floor of 20 leaves one clone."""
+    """`cnaster`'s floor of 20 over 25 + 15 x 9 spots leaves one clone; fails when fixed."""
     from port.patch.icm.interface import CsrGraph, icm_sweep
     from scipy.sparse import csr_matrix
 
@@ -50,7 +35,7 @@ def test_cnasters_floor_moves_every_undersized_clone_into_the_one_over_it() -> N
 
 @pytest.mark.patch
 def test_the_floor_merges_smallest_first_and_stops_when_every_clone_clears_it() -> None:
-    """The same problem keeps seven clones, each at least 20 spots."""
+    """`floor_clones` on the same problem keeps seven clones of at least 20 spots."""
     from port.patch.icm.floor import floor_clones
 
     field, assignment = _problem([25] + [9] * 15)
@@ -65,11 +50,10 @@ def test_the_floor_merges_smallest_first_and_stops_when_every_clone_clears_it() 
 
 @pytest.mark.patch
 def test_the_floor_does_not_cross_a_masked_boundary() -> None:
-    """Two groups: an undersized clone with no allowed partner keeps its spots."""
+    """An undersized clone with no unmasked partner keeps its spots."""
     from port.patch.icm.floor import floor_clones
 
     field, assignment = _problem([30, 5, 30])
-    # NB clone 1 may only be clone 1: every other entry of its spots is -inf.
     field[assignment == 1, 0] = -np.inf
     field[assignment == 1, 2] = -np.inf
 
@@ -136,8 +120,7 @@ def test_the_refinement_start_is_upstreams_and_its_mask_is_kept() -> None:
 @pytest.mark.patch
 @pytest.mark.usefixtures("cnaster_config")
 def test_the_floor_is_cnasters_unless_the_config_sets_one() -> None:
-    """With no `hmrf.min_spots_per_clone`, the floor is `icm_sweep_deque`'s own
-    default; the merge is an option of the row, off unless bound (#348, #403, #517)."""
+    """Unset `hmrf.min_spots_per_clone` keeps `cnaster`'s floor (#348, #403, #517)."""
     import inspect
 
     from cnaster.config import get_global_config
@@ -158,8 +141,7 @@ def test_the_floor_is_cnasters_unless_the_config_sets_one() -> None:
 
 @pytest.mark.patch
 def test_the_mask_keeps_the_columns_cnaster_relabels_survivors_to() -> None:
-    """`run_core_inference` relabels survivors by `np.unique(..., return_inverse)`,
-    ascending; `compact` keeps the mask's columns in that order."""
+    """`compact` keeps mask columns in `run_core_inference`'s ascending relabel order."""
     from port.patch.hmrf import refinement
 
     mask = np.eye(4, dtype=bool)
@@ -182,11 +164,7 @@ def test_the_mask_keeps_the_columns_cnaster_relabels_survivors_to() -> None:
 def test_no_patch_refuses_a_flag_nothing_would_read(
     flag: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Only port's `pipeline_clone_assignment` reads either (#466).
-
-    Under `--no-patch` it is not installed, and the run went ahead with the
-    mask kept or the floor set and neither applied.
-    """
+    """`--no-patch` refuses the mask and floor flags, which only port's assignment reads (#466)."""
     import cnaster.scripts.run_cnaster as pipeline
     from port.scripts.run_cnaster import main
 
@@ -206,7 +184,7 @@ def test_no_patch_refuses_a_flag_nothing_would_read(
 def test_a_delegated_assignment_says_it_drops_the_mask_floor_or_shift(
     flag: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """With a tumour proportion the call is `cnaster`'s, which reads none of them (#466)."""
+    """With a tumour proportion the call delegates to `cnaster` and says what it drops (#466)."""
     import contextlib
 
     from port.patch.hmm_nophasing import hmm_nophasing
@@ -244,13 +222,7 @@ def test_a_delegated_assignment_says_it_drops_the_mask_floor_or_shift(
 def test_sal_recovers_dev_where_the_hard_mask_froze_the_baf_boundary(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """`--sal`, which now implies both clone flags, recovers `dev` (#467).
-
-    `dev`'s BAF stage places 69 normal spots with clone 3 and 15 of clone 3's
-    with normal. With the mask at `-inf` and the floor merge on, the
-    read-depth stage cannot move them across the BAF boundary: clone ARI
-    0.8683, reproduced twice. At `MASK_PENALTY` it moves them: 1.000.
-    """
+    """`--sal` recovers `dev`'s planted clones where the hard mask froze the BAF boundary (#467)."""
     import numpy as np
     from port.patch.hmrf import refinement
     from port.qa.audit import audit_truth
@@ -268,9 +240,7 @@ def test_sal_recovers_dev_where_the_hard_mask_froze_the_baf_boundary(
 
 @pytest.mark.oracle
 def test_the_floor_is_sals_oracle_on_random_problems() -> None:
-    """`floor_clones` against `sal`'s Python oracle, `_floor_smallest_first`
-    (T- #777): identical assignments on 300 problems of 2-8 clones and 5-300
-    spots, a third of the entries `-inf` at most, floors to half the spots."""
+    """`floor_clones` equals `sal`'s oracle `_floor_smallest_first` on 300 random problems (#777)."""
     from port.patch.icm.floor import floor_clones
     from sal.search.icm import _floor_smallest_first
 

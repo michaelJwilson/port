@@ -1,9 +1,5 @@
-"""What `port.patch.emission.scaled_rising` costs on the distinct counts (#702, T- #776).
-
-Shapes from a dev_tree `--sal` run's 7,287 calls: the median call is 4 states
-over 655 pseudobulk bins with 220 distinct counts, the largest 25 states over
-2,829 bins with 594. `tests/test_rises_on_distinct.py` establishes the two
-agree bitwise; these say what that costs.
+"""`port.patch.emission.scaled_rising`'s cost on distinct counts, at a dev_tree run's
+median and largest call (#702, T- #776).
 """
 
 from __future__ import annotations

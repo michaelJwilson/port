@@ -1,16 +1,4 @@
-"""`cnaster.spatial`, the stage that decides which spots are neighbours (#160).
-
-Three functions `run_cnaster` calls inline and nothing here had refereed: the
-multi-slice adjacency the Potts prior is written over, the equal partition the
-BAF clones start from, and the refinement that splits them with the read
-depth. 156 statements missed under the judged guard, of which these reach 118.
-
-The fixture plants the lattice and the clone bands, so what a neighbourhood
-and a partition **should** be is known before anything runs. That is what
-makes the adjacency claims below judgements rather than descriptions: a test
-that read the neighbour count back off the matrix would pass whatever the
-construction did.
-"""
+"""`cnaster.spatial` adjacency, equal partition and refinement, against the planted lattice and bands (#160)."""
 
 from typing import Any
 
@@ -25,30 +13,14 @@ LATTICE = (25, 40)
 """A thousand spots, as the other stage modules use."""
 
 COORDINATION_NUMBER = 8
-"""`construct_lattice_adjacency`'s default, and what it queries the tree for.
-
-Restated because every claim below is about it: the construction is
-`k`-nearest-neighbour with `k` fixed, not a distance rule, so this is the
-out-degree of **every** spot rather than an upper bound on it.
-"""
+"""`construct_lattice_adjacency`'s default `k`: every spot's out-degree."""
 
 ISOTROPIC = {"unit_xsquared": 1, "unit_ysquared": 1}
-"""What `python/port/sim/run_config.py` sets, against the shipped 9 and 3.
-
-The shipped pair scales `x` and `y` differently, for Visium's hexagonal
-packing. The fixture's lattice is square, so the isotropic pair is the one
-under which "the eight nearest spots" and "the eight lattice neighbours" are
-the same set and the comparison below has an answer.
-"""
+"""`run_config.py`'s isotropic units, under which k-nearest equals the 8 lattice neighbours."""
 
 
 def _coordinates(truth: CoreInferenceTruth) -> np.ndarray:
-    """The lattice the fixture planted, in `(row, column)` order.
-
-    `python/port/sim/inputs.py` writes the lattice row as `x`, so a spot's index is
-    `row * columns + column` and the geometry is recoverable from the index
-    alone -- which is what lets a neighbourhood be predicted rather than read.
-    """
+    """Return the planted lattice coordinates in `(row, column)` order."""
     rows, columns = truth.lattice
 
     return np.stack(
@@ -80,13 +52,7 @@ def planted(planted_instance: PlantedInstance) -> CoreInferenceTruth:
 
 @pytest.fixture(scope="module")
 def adjacency(planted: CoreInferenceTruth) -> tuple[np.ndarray, np.ndarray]:
-    """`construct_multislice_lattice_adjacency` on one slice, run once.
-
-    One slice, because that is what the fixture writes and what the block
-    diagonal degenerates to. What the multi-slice path adds is the block
-    structure and the inter-slice term, and neither can be judged against a
-    fixture with one slice -- stated rather than skipped quietly.
-    """
+    """Run `construct_multislice_lattice_adjacency` once on the one planted slice."""
     from cnaster.spatial import construct_multislice_lattice_adjacency
 
     result = construct_multislice_lattice_adjacency(
@@ -108,17 +74,7 @@ def adjacency(planted: CoreInferenceTruth) -> tuple[np.ndarray, np.ndarray]:
 def test_the_adjacency_is_the_planted_lattice_away_from_its_edges(
     planted: CoreInferenceTruth, adjacency: tuple[np.ndarray, np.ndarray]
 ) -> None:
-    """**Every interior spot's neighbours are its eight lattice neighbours (#160).**
-
-    The Potts prior is written over this matrix, so what counts as a neighbour
-    decides what the spatial term rewards. The fixture plants a square lattice
-    and lays its clones in bands over it, so the neighbourhood is known: the
-    eight spots surrounding it.
-
-    Asserted as set equality over all 874 interior spots rather than as a
-    degree, because a `k`-nearest-neighbour query returns eight neighbours
-    whatever the geometry -- the content of the claim is **which** eight.
-    """
+    """Every interior spot's neighbours are its eight lattice neighbours (#160)."""
     matrix, _ = adjacency
     rows, columns = planted.lattice
 
@@ -140,25 +96,7 @@ def test_the_adjacency_is_the_planted_lattice_away_from_its_edges(
 def test_the_boundary_reaches_further_and_the_adjacency_is_not_symmetric(
     planted: CoreInferenceTruth, adjacency: tuple[np.ndarray, np.ndarray]
 ) -> None:
-    """**A fixed coordination number makes the edge spots reach past the lattice.**
-
-    `construct_lattice_adjacency` queries a KD-tree for `coordination_num + 1`
-    neighbours and drops the self, so **every** spot gets eight however few it
-    has. A corner has three lattice neighbours and is given eight, the extra
-    five coming from the second ring.
-
-    Two consequences, and both are modelling statements rather than bugs:
-
-    * the neighbourhood is not the lattice's at the boundary, so the prior
-      couples spots the geometry does not;
-    * the matrix is **asymmetric** -- 284 of its 8,000 ordered edges hold one
-      way only -- so a Potts energy summed over it weights those pairs once
-      rather than twice, and which of the two spots carries the edge depends on
-      the `k`-nearest-neighbour tie-breaking rather than on the model.
-
-    Pinned rather than asserted away: the numbers are this lattice's, and what
-    they say is that the neighbourhood is a construction choice nothing states.
-    """
+    """Every spot gets 8 neighbours, so edges reach past the lattice; 284 edges one-way."""
     matrix, _ = adjacency
     rows, columns = planted.lattice
 
@@ -179,19 +117,7 @@ def test_the_boundary_reaches_further_and_the_adjacency_is_not_symmetric(
 def test_the_pooling_matrix_is_the_identity_whatever_is_asked_for(
     planted: CoreInferenceTruth, adjacency: tuple[np.ndarray, np.ndarray]
 ) -> None:
-    """**`maxspots_pooling` is accepted and discarded.**
-
-    `construct_lattice_adjacency` takes it, never reads it, and returns
-    `scipy.sparse.identity` with `logger.warning("Assuming identity smooth
-    mat.")` beside it. `run_cnaster` passes 1 with `# DEPRECATE` on the line,
-    so the call agrees with the behaviour today -- but the parameter is in the
-    signature, and a caller that asked for pooling would get none and be told
-    only in a log line.
-
-    The matrix is what every later stage smooths its BAF profiles with, so
-    "no pooling" is a decision the configuration appears to expose and does
-    not.
-    """
+    """`maxspots_pooling` is discarded: the smoothing matrix is the identity."""
     from cnaster.spatial import construct_lattice_adjacency
 
     _, smooth = adjacency
@@ -209,25 +135,10 @@ def test_the_pooling_matrix_is_the_identity_whatever_is_asked_for(
 def test_the_equal_partition_recovers_the_planted_bands(
     planted: CoreInferenceTruth,
 ) -> None:
-    """**The partition that minimizes size variance is the planted one (#160).**
-
-    `best_equal_partition` draws `n_trials` rectangular partitions and keeps
-    the one whose group sizes vary least. The fixture lays its clones in
-    horizontal bands, so a partition cut along that axis **is** the planted
-    labelling, and the strongest available claim is that it comes back exactly
-    rather than approximately.
-
-    `run_cnaster` calls it with `x_part, y_part = 3, 3` -- nine groups
-    regardless of `n_clones` -- and 10,000 trials, which is 4.3 s on this
-    fixture at 0.43 ms a trial. Fifty trials are used here: the claim is what
-    the partition is, not how long the search takes, and the search's cost is
-    a separate measurement.
-    """
+    """`best_equal_partition` returns the planted bands exactly (#160)."""
     from cnaster.spatial import best_equal_partition
 
-    # NB equal bands (`normal_clone=False`): the claim is that the equal
-    #    partition *is* the planted one, which holds only where the planted
-    #    bands are equal. #298's normal clone takes 30 per cent of the rows.
+    # NB equal bands: #298's normal clone would make the planted bands unequal
     planted = core_inference_truth(
         n_clones=2,
         n_states=3,
@@ -259,26 +170,7 @@ def test_the_equal_partition_recovers_the_planted_bands(
 def test_the_read_depth_refinement_splits_clones_without_mixing_them(
     planted: CoreInferenceTruth,
 ) -> None:
-    """**Every refined clone lies inside one planted clone (#160).**
-
-    `initialize_rdr_clone_refininement` takes the BAF-only assignment and
-    splits each of its clones into `n_clones_rdr` spatial pieces, which is
-    where a run stops being able to recover from a bad BAF partition: a
-    refinement that moved a spot across clones would be correcting the earlier
-    stage, and this one cannot.
-
-    Given the planted labels as the BAF assignment, the claim is therefore that
-    the refinement **refines**: four clones out of two, each a subset of one
-    planted clone, and each spot allowed exactly the two clones its own BAF
-    clone was split into. `allowed_clones` is the mask the solver searches
-    under, so a spot allowed a clone outside its block could be assigned across
-    the boundary later even though the initialization was clean.
-
-    The splits are uneven -- 455 against 65, and 415 against 65 -- which is the
-    initializer's own floor at work: `initialize_rectangular_clones` accepts
-    any split giving each clone more than 20 per cent of an equal share, so a
-    seven-to-one split is within specification.
-    """
+    """Each refined clone lies inside one planted clone, allowed its own two (#160)."""
     from cnaster.spatial import initialize_rdr_clone_refininement
 
     config = _refinement_config(n_clones_rdr=2)
@@ -310,12 +202,7 @@ def test_the_read_depth_refinement_splits_clones_without_mixing_them(
 
 
 def _refinement_config(*, n_clones_rdr: int) -> Any:
-    """The two configuration values the refinement reads, and nothing else.
-
-    A stub rather than a written YAML: the function takes `config` and touches
-    `hmrf.n_clones_rdr` and `hmm.gmm_random_state`, so a full configuration
-    would say the test depends on fields it does not.
-    """
+    """Return a stub with the two configuration values the refinement reads."""
 
     class Hmrf:
         pass

@@ -1,14 +1,7 @@
 """One implementation per concept, and a budget for flags and classes (#517 E4).
 
-`CLAUDE.md`: complexity outside the drop-ins is budgeted, and a flag,
-constant or class names the measurement that earned it. The counts below are
-what `python/port` and `tests/` hold today, read from the AST. Each must
-equal its declared value, so a count moves only in a diff that edits this
-file: up with the reason in the PR, down as #517 steps 3, 4, 5 and 7 land.
-
-Only concepts a definition can identify are counted. The rest of #517 E
-(`log Z_c`, the shift gate, the dispersion floor) are expressions, not
-definitions, and step 3 merges them by reading.
+Counts read from the AST of `python/port` and `tests/` must equal the declared
+values; a change moves them with its reason in the PR.
 """
 
 from __future__ import annotations
@@ -22,98 +15,24 @@ import pytest
 from tests.source_graph import PACKAGE, TESTS
 
 BUDGET: dict[str, int] = {
-    # NB 23: #520 removed --np-merge; `--png-copies` binds what the
-    #    `_PNG_COPIES` switch held (#517 step 1). 24: #547's `--baf-start`,
-    #    the BAF-only stage's copy-state start. 25: `--no-parsimony-decode`, the
-    #    lattice decode's flat prior, opt-in (T- #471). 26: T- #617 WP2's
-    #    `--min-segment-normal-umi`, the floor off `--sal` (T- #667). 22: T- #831
-    #    set aside `--copy-errors`, `--copy-decode`, `--no-parsimony-decode`
-    #    and `--baf-start`, which no `--sal` run takes.
+    # NB 22 since T- #831 set aside four flags no `--sal` run takes
     "run_cnaster_port flags": 22,
-    # NB 53: step 1 removed the two `_Selection` slots behind the decoder and
-    #    solver switches; step 5 added `Settings`, the entry point's one
-    #    resolution of its tri-state flags; step 8 added the `hmm_phased` row
-    #    and moved 8 classes to `sandbox/` with their modules. 54: the truth
-    #    page's `analysis.GenomicTruth`, the tracks' arguments that
-    #    `clones_genomic.png` and `truth_combined` both draw. 56: #540's
-    #    copy-start records, `CopyCall` and `CopyStart`; #547 moved `Row`,
-    #    the registry of the starts set aside, to `sandbox/`. 58: T- #418's
-    #    `Samples`, checked at construction, and `Recorded`, a run's samples.
-    #    59: T- #617 WP2's `pipeline.Default`, a flag's default and its off flag.
-    #    60: T- #673 G1's `port.qa.statistics.Measured`, the wall seconds and
-    #    peak memory every audit and study read for itself. 66: T- #673 G6
-    #    moved the simulation machinery from `tests/` into `port.sim`:
-    #    `CoreInferenceTruth`, `SimulatedSample`, `WrittenInputs`, `Binned`,
-    #    `Unsegmented` (frozen dataclasses) and `Slide` (a NamedTuple). 71:
-    #    G3 moved the audits' `SimRecovery`, `Recovery` and `Reading`
-    #    (dataclasses) and `port.sim.realizations`' `Fit` and `Summary`
-    #    (NamedTuples) from `tests/`. 77: G5 moved the studies, with
-    #    `paper_figures`' `Run` and `Compared`, `potts_solvers.PortStart`
-    #    (dataclasses), the two `Job`s (NamedTuples) and `clone_labels`' shim.
-    #    80: T- #683's `GenomicAxis`, `Ticks`, `_Thinned`: the one genomic
-    #    axis, its data-free form a swap row binds, and its Mb labels.
-    #    81: T- #692's `RectangularClones`, `cnaster`'s two-tuple carrying the
-    #    rectangular init's `Termination`. 83: #716's `potts_stream.WarmSchedule`
-    #    and `_Warmed`, sal's exponential schedule held at `t_start` for a
-    #    warm-up, which sal's `ScheduleParams` cannot state (#721). 86: #730's
-    #    `port.studies.stage.Stage` and `Member` (NamedTuples), the run's call
-    #    at a stage and a realization on disk, and `_Done`, the exception that
-    #    stops the run once the study has its stage. 88: #735's `stage.Field`,
-    #    the run's clone-assignment problem, and `potts_stream.Problem`, one
-    #    with its realization (`known_field.KnownProblem`, in `sandbox/`, gone).
-    #    87: #749 WP6 retired `potts_solvers` and its `PortStart`. 88: T- #791's
-    #    `analysis.SliceFrame`, the slices' one frame the spatial pages share.
-    #    86: T- #777 retired `WarmSchedule` and `_Warmed` for sal's
-    #    `ScheduleParams(warm=)` (sal #1324), which states the warm-up. 87:
-    #    T- #776's `emission.BetaBinomialTables`, the beta-binomial's tables
-    #    every site completes. 88: T- #799's `count_encoder.CountEncoder`, the
-    #    row in place of `cnaster`'s, which it must be to install. 90: T- #817's
-    #    `cnamaste.Dataset` and `Group` (NamedTuples), the run file's schema. 91:
-    #    `plot_genomic.Pooled`, what the genomic page reads of the spots.
     "classes": 91,
-    # NB step 4: 18 records became NamedTuples; the dataclasses left carry
-    #    mutable state, machinery or a `__post_init__` (#517 D). Step 8 moved
-    #    7 dataclasses and 1 NamedTuple to `sandbox/`. 21: T- #418's `Samples`
-    #    (a `__post_init__`) and `Recorded` (mutable state). 22: T- #673 G1's
-    #    `Measured` (mutable state: filled when its block exits). 27: G6's five
-    #    frozen records, moved with the machinery rather than added. 30: G3's
-    #    three audit records (mutable: an arm fills `peak_gb` and candidates).
-    #    33: G5's three study records, moved.
-    #    34: T- #683's `Ticks`, frozen: a swap row's bound option.
-    #    36: #716's `WarmSchedule` and `_Warmed`, frozen: what `run_annealed`
-    #    calls `build` on. 35: #749 WP6 retired `potts_solvers.PortStart`.
-    #    33: T- #777 retired `WarmSchedule` and `_Warmed`.
+    # NB dataclasses carry mutable state, machinery or `__post_init__` (#517 D)
     "dataclasses": 33,
-    # NB 24: `analysis.GenomicTruth` (the truth page). 26: #540's
-    #    `CopyCall` and `CopyStart` (`Row` in `sandbox/`, #547). 27: T- #617
-    #    WP2's `pipeline.Default`. 28: G6's `port.sim.he_slide.Slide`, moved.
-    #    30: G3's `Fit` and `Summary`, moved. 32: G5's two `Job`s, moved.
-    #    34: #730's `Stage` and `Member`. 36: #735's `Field` and `Problem`.
-    #    37: T- #791's `SliceFrame`, recorded under T- #794.
-    #    39: T- #817's `cnamaste.Dataset` and `Group`. 40: its `Pooled`.
     "NamedTuples": 40,
 }
 """`python/port` outside `sandbox/`."""
 
 CONCEPTS: dict[str, int] = {
-    # NB 2: `port.qa.scoring.matched` pairs labels by overlap for every scorer
-    #    (step 7); `port.sim.realizations.match_states` pairs states by
-    #    responsibility distance, a different cost.
+    # NB labels by overlap (`qa.scoring.matched`); states by responsibility distance
     "Hungarian matcher": 2,
-    # NB 2: `port.qa.audit.audit_truth` runs an in-memory instance with its
-    #    hooks (normal oracle, M-step tolerance, an `entry` and its
-    #    candidates), `audit_sample` a sample on disk with its overrides; they
-    #    share `timed`, `overridden` and the matcher, not the arm (T- #673 G3,
-    #    from the two `run_arm`s).
+    # NB in-memory instance vs sample on disk (T- #673 G3)
     "audit arm": 2,
     "clone_path": 1,
-    # NB 2: `combined_figure` records plotting arguments, `segments` a
-    #    segmentation lineage; `tests.sim_stages`'s wrapper is `logged`. 3:
-    #    `samples` records a run's slices for its outputs (T- #418).
+    # NB `combined_figure`, `segments`, `samples` (T- #418)
     "recording": 3,
-    # NB 1 each since T- #673 G1, from 7 and 4: `port.qa.provenance.head`
-    #    runs `git rev-parse` for 7 functions and a notebook cell, and
-    #    `port.qa.statistics.peak_gb` reads `ru_maxrss` for 4 functions.
+    # NB 1 each since T- #673 G1
     "commit reader": 1,
     "peak memory reader": 1,
 }
@@ -141,7 +60,7 @@ def _referenced(node: ast.AST) -> set[str]:
 
 
 def _arguments(node: ast.AST) -> set[str]:
-    """The string literals a call inside `node` takes positionally, alone or in a list."""
+    """Return string literals passed positionally to calls in `node`, alone or in a list."""
     return {
         item.value
         for sub in ast.walk(node)

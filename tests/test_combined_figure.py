@@ -1,12 +1,7 @@
 """`port.extensions.combined_figure`: two figures from a run (#309, #339).
 
-Two claims a reader relies on. **Drawing into a subfigure changes the layout
-and nothing drawn**: every point, segment and colour of the tracks is the
-one the standalone `clones_genomic` page carries. **Recording does not touch
-the run**: each wrapper calls through, returns what it wraps, and is removed
-on exit. The pages are checked for what #280 and #339 ask of them -- a text
-column wide, one text size, panels on shared edges -- which is `smoke` and
-`infra`: they say the pages compose, not that anything on them is right.
+Subfigure tracks match the standalone `clones_genomic` page bitwise; recording wrappers
+call through and are removed on exit. Page-layout checks are `smoke`.
 """
 
 from __future__ import annotations
@@ -115,9 +110,9 @@ def _texts(figure: Any) -> list[Any]:
 def test_each_figure_is_a_column_wide_with_one_text_size(
     cnaster_config: None, tmp_path: Path
 ) -> None:
-    """A text column wide, the genomic figure the text block less
-    `CAPTION_ROOM` tall to 0.005 in, each lettered (a) and (b), and every text
-    at `FONT_SIZE` but the tracks' at `TRACK_FONT_SIZE` (#743)."""
+    """Text-column width, genomic height to 0.005 in, letters (a)/(b), fonts at
+    `FONT_SIZE` (#743).
+    """
     from port.extensions.combined_figure import FONT_SIZE
     from port.extensions.figure_style import (
         CAPTION_ROOM,
@@ -149,12 +144,8 @@ def test_each_figure_is_a_column_wide_with_one_text_size(
 def test_each_page_is_written_at_its_size_with_nothing_past_it(
     cnaster_config: None, tmp_path: Path
 ) -> None:
-    """Each PDF's MediaBox is its figure's size to 0.1 pt, and every text and
-    legend is on the page to half a pixel.
-
-    The paper fixes `\\textwidth` at `PAPER_WIDTH`, so a page written wider is scaled
-    down by `\\includegraphics[width=\\linewidth]` and its text shrinks with
-    it. At a tight bounding box the page grew to 6.66 in at 6.5 (#339).
+    """Each PDF's MediaBox is its figure size to 0.1 pt; all text on the page to 0.5 px
+    (#339).
     """
     import re
 
@@ -194,12 +185,9 @@ def test_each_page_is_written_at_its_size_with_nothing_past_it(
 def test_the_profile_spans_the_tracks_on_one_left_column(
     cnaster_config: None, tmp_path: Path
 ) -> None:
-    """(a)'s axis and key have (b)'s left and right edges to 1.5 px, so bin `i`
-    is over bin `i`; (a)'s names and (b)'s RDR and BAF labels start on the
-    column `NAME_INSET` in, clear of the axes; (a)'s letter level with its
-    key and (b)'s over its first statistics line, both on the column; the
-    head a `LABEL_GAP` over the key; the mirror key as `mirror_key_holds` says
-    (PR- #701)."""
+    """(a) and (b) share left/right edges to 1.5 px; labels on the `NAME_INSET` column
+    (PR- #701).
+    """
     from port.extensions.combined_figure import LABEL_GAP, NAME_INSET
 
     figure, _ = _figures(tmp_path)
@@ -245,14 +233,9 @@ def test_the_profile_spans_the_tracks_on_one_left_column(
 def test_the_spatial_panels_are_square_keyed_on_the_right_and_centred(
     cnaster_config: None, tmp_path: Path
 ) -> None:
-    """(a) the slide and (b) the clones, of one size, each box square and its
-    data at one scale on both axes to 1%; (b)'s key one
-    column on the page's right edge, a `LABEL_GAP` in, its bottom on (b)'s,
-    each clone named $m$; (b)'s rows labelled by (a)'s alone; each letter
-    over its panel's top-left text or corner, the head a `LABEL_GAP` over
-    them. The squares capped to a "third" page, the row is centred: the white
-    right of the key, less a `LABEL_GAP`, is the white left of (a)'s tick
-    labels, less `NAME_INSET`, to 2 px (T- #740)."""
+    """(a) slide and (b) clones are equal squares at one scale to 1%; key and margins to
+    2 px (T- #740).
+    """
     from port.extensions.combined_figure import LABEL_GAP, NAME_INSET
 
     _, figure = _figures(tmp_path)
@@ -308,10 +291,9 @@ def test_the_spatial_panels_are_square_keyed_on_the_right_and_centred(
 def test_the_spatial_labels_are_integer_by_default_or_continuous(
     cnaster_config: None, tmp_path: Path
 ) -> None:
-    """Two clones that decode alike at every bin are one clone under the
-    default "integer" labels -- two entries, $m_N$ and $m_1$, the merged
-    clone renumbered with no gap (#745) -- and stay two under "continuous":
-    three keyed, as the fit found them (#344)."""
+    """Clones decoding alike merge under "integer" labels (#745) and stay two under
+    "continuous" (#344).
+    """
     import matplotlib as mpl
 
     mpl.use("Agg")
@@ -339,10 +321,9 @@ def test_the_spatial_labels_are_integer_by_default_or_continuous(
 
 @pytest.mark.bug
 def test_the_figure_merges_clones_at_the_runs_agreement(tmp_path: Path) -> None:
-    """Two clones that agree at 23 of 24 bins (0.958) stay two at the default
-    0.99 and are one at a configured `merge_agreement` of 0.9, as
-    `write_outputs` merges `clone_labels.tsv` (#749 WP0). Before, the figure
-    merged at the default whatever the run's configuration said."""
+    """Clones agreeing at 23/24 bins merge at `merge_agreement=0.9`, not at 0.99 (#749
+    WP0).
+    """
     import matplotlib as mpl
 
     mpl.use("Agg")
@@ -375,19 +356,13 @@ def test_the_figure_merges_clones_at_the_runs_agreement(tmp_path: Path) -> None:
 
 
 @pytest.mark.infra
-# NB too specific to run on every change (#403): it passed where it merged,
-#    and runs again where this module or the lock changes, and at a release.
+# NB too specific for every change (#403); runs where this module or the lock changes.
 @pytest.mark.deprecate
 def test_the_combined_page_is_the_two_figures_stacked(
     cnaster_config: None, tmp_path: Path
 ) -> None:
-    """One page, the text block less `CAPTION_ROOM` to 0.005 in, lettered
-    (a) to (c).
-
-    (a)'s slide and clones sit where the spatial figure puts them, to a
-    pixel, measured from the head, but for one shift across: the slide's left
-    edge on the genomic axes' (#745). The page is the spatial figure over a
-    genomic one drawn the rest of the height.
+    """One page, text block less `CAPTION_ROOM` to 0.005 in, (a)-(c); (a) placed as in
+    the spatial figure to 1 px (#745).
     """
     import matplotlib.pyplot as plt
     from port.extensions.combined_figure import combined_figure, spatial_figure
@@ -427,8 +402,7 @@ def test_the_combined_page_is_the_two_figures_stacked(
 
 @pytest.mark.analytic
 def test_the_hatch_stripes_are_one_width() -> None:
-    """B's lines are half the hatch's period measured across them, so A's
-    stripes between them are as wide: 2.065 pt at 0.10 in and 35 degrees."""
+    """B's lines are half the hatch period apart: 2.065 pt at 0.10 in and 35 degrees."""
     from port.patch.plot_copy_number_profile import (
         HATCH_ANGLE,
         HATCH_LINEWIDTH,
@@ -446,9 +420,9 @@ def test_the_hatch_stripes_are_one_width() -> None:
 def test_the_combined_page_reads_clones_profile_tracks(
     cnaster_config: None, tmp_path: Path
 ) -> None:
-    """The run's page is (a) the slide and the clones, (b) the profile under
-    its key, (c) the tracks: `PANELS`, `truth_combined`'s order (PR-
-    #715)."""
+    """The run's page is (a) slide and clones, (b) profile, (c) tracks, in `PANELS`
+    order (PR- #715).
+    """
     import matplotlib.pyplot as plt
     from port.extensions.combined_figure import PANELS, combined_figure
 
@@ -474,11 +448,9 @@ def test_the_combined_page_reads_clones_profile_tracks(
 
 @pytest.mark.infra
 def test_a_spatial_page_is_cut_to_its_axes() -> None:
-    """`plot_clones_spatial` on a tall 4 by 10 section: equal x and y scale,
-    the tiles' box at the section's aspect to 1%, the key wrapped no wider
-    than the tiles, and the page's content
-    `FIT_MARGIN` from the head and sides and `STAMP_ROOM` from the foot to
-    a pixel, so no band of white is left (PR- #715)."""
+    """`plot_clones_spatial` on a 4x10 section: equal scale, box aspect to 1%, margins
+    to 1 px (PR- #715).
+    """
     import matplotlib as mpl
 
     mpl.use("Agg")
@@ -514,12 +486,9 @@ def test_a_spatial_page_is_cut_to_its_axes() -> None:
 def test_the_combined_page_s_spatial_panels_are_square_keyed_clear_and_in_order(
     cnaster_config: None, tmp_path: Path
 ) -> None:
-    """On the rendered page, for a section 3 times as tall as wide: (a)'s
-    slide and clone map each a square footprint (1 px) with square limits,
-    the spots on the left and bottom axes, the frame -- the left and bottom
-    spines alone -- within the spots' extent (1 px), the clone key clear of
-    both; and (a)'s key, (b)'s rows and (c)'s tracks
-    name the clones in one order, `clone_order`'s (PR- #715)."""
+    """3:1 section: square footprints to 1 px, frame within the spots, one clone order
+    across panels (PR- #715).
+    """
     import matplotlib.pyplot as plt
     from port.extensions.combined_figure import (
         clone_order,
@@ -593,10 +562,9 @@ def test_the_combined_page_s_spatial_panels_are_square_keyed_clear_and_in_order(
 def test_each_h_and_e_class_is_its_spots_pseudobulk(
     cnaster_config: None, tmp_path: Path
 ) -> None:
-    """`plot_clones_genomic_he`: each class's RDR points equal its spots'
-    summed counts over their summed baseline, against NumPy, to 1e-12; one
-    track pair per class, its statistics line naming class and spot count
-    (T- #771)."""
+    """`plot_clones_genomic_he`: class RDR equals summed counts over summed baseline to
+    1e-12 vs NumPy (T- #771).
+    """
     import matplotlib as mpl
 
     mpl.use("Agg")
@@ -628,9 +596,9 @@ def test_each_h_and_e_class_is_its_spots_pseudobulk(
 def test_the_h_and_e_page_tiles_each_spot_by_its_class(
     cnaster_config: None, tmp_path: Path
 ) -> None:
-    """`spatial_figure(he_labels=)`: (b) tiles every spot in its H&E class's
-    `HE_PALETTE` colour, none of them a `rocket` clone colour, keyed
-    `H&E 1..4` (T- #771)."""
+    """`spatial_figure(he_labels=)`: (b) tiles spots in `HE_PALETTE`, keyed `H&E 1..4`
+    (T- #771).
+    """
     import matplotlib as mpl
 
     mpl.use("Agg")

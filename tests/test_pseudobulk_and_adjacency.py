@@ -1,9 +1,5 @@
-"""Pseudobulk aggregation and the spatial graph.
-
-Two inputs to `run_core_inference` that are pure functions of what they are
-given. #13 wants to know what the aggregation costs per outer iteration and
-#12 wants the graph's edge set comparable to `PottsGraph`; both need these
-callable and pinned first.
+"""Pseudobulk aggregation and the spatial graph, against definitions and invariants
+(#12, #13).
 """
 
 import numpy as np
@@ -14,12 +10,7 @@ import pytest
 @pytest.mark.critical
 @pytest.mark.parametrize("n_clones", [1, 3])
 def test_pseudobulk_sums_the_spots_of_each_clone(n_clones: int) -> None:
-    """A clone's column is the sum over the spots assigned to it.
-
-    Stated as the definition rather than recorded from a run: the merge is
-    what turns per-spot counts into the per-clone counts the HMM scores, so
-    a wrong index here changes the data the model sees.
-    """
+    """A clone's column is the sum over the spots assigned to it."""
     from cnaster.pseudobulk import merge_pseudobulk_by_index_mix
 
     rng = np.random.default_rng(6)
@@ -44,13 +35,7 @@ def test_pseudobulk_sums_the_spots_of_each_clone(n_clones: int) -> None:
 
 @pytest.mark.analytic
 def test_pseudobulk_conserves_the_total_over_a_partition() -> None:
-    """Summing the clones returns the sum over every spot.
-
-    The invariant a partition has to satisfy: aggregation moves counts
-    between columns and creates none. It holds whatever the assignment, so
-    it catches a spot counted twice or dropped, which the per-clone check
-    above would only catch for the assignment it happened to draw.
-    """
+    """Summing the clones returns the sum over every spot."""
     from cnaster.pseudobulk import merge_pseudobulk_by_index_mix
 
     rng = np.random.default_rng(8)
@@ -77,12 +62,7 @@ def square_grid(side: int, offset: float = 0.0) -> np.ndarray:
 
 @pytest.mark.analytic
 def test_adjacency_is_symmetric_and_has_no_self_edges() -> None:
-    """Neighbourhood is mutual, and a spot is not its own neighbour.
-
-    Both are assumptions the Potts term rests on: an asymmetric graph makes
-    the pairwise energy depend on the order the edge is read, and a self
-    edge adds a constant that moves with the labelling.
-    """
+    """Neighbourhood is symmetric with no self-edges."""
     from cnaster.adjacency import multislice_adjacency
 
     coords = square_grid(5)
@@ -96,11 +76,7 @@ def test_adjacency_is_symmetric_and_has_no_self_edges() -> None:
 
 @pytest.mark.smoke
 def test_adjacency_does_not_join_slices_by_default() -> None:
-    """Two slices far apart share no edge unless one is supplied.
-
-    The across-slice matrix is a separate argument precisely because
-    proximity in the plane does not mean adjacency across sections.
-    """
+    """Two distant slices share no edge unless one is supplied."""
     from cnaster.adjacency import multislice_adjacency
 
     first = square_grid(4)
@@ -114,11 +90,7 @@ def test_adjacency_does_not_join_slices_by_default() -> None:
 
 @pytest.mark.smoke
 def test_lattice_type_sets_the_coordination_number() -> None:
-    """Naming a lattice is naming its neighbour count.
-
-    `square` is four and `triangular` six, so the two graphs differ; a
-    `lattice_type` that was ignored would make them identical.
-    """
+    """`square` gives four neighbours and `triangular` six."""
     from cnaster.adjacency import multislice_adjacency
 
     coords = square_grid(6)

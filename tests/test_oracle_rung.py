@@ -1,17 +1,6 @@
-"""`cnaster`'s recursion against upstream's, on the shape the pipeline fits.
+"""`cnaster`'s forward recursion against upstream's ragged one, clone-stacked (#97, #667).
 
-#97, half of it. `cnaster` stacks clones along the genomic axis and tiles the
-segmentation with them -- `clone_stack_lengths = np.tile(lengths, n_clones)`
-(`hmrf_utils.py:51`) -- so the fit runs over `n_clones * n_chromosomes`
-chains of unequal length. #667 gave upstream a shape that can hold that, and
-this is the first rung that hands it one.
-
-**What is refereed here is the E step, not the fit.** Both sides are given the
-same parameters and the same data, so the comparison is between two
-implementations of one recursion rather than between two optimizers' local
-optima. The fit-level rung needs `fit_spatio_sequential` under a per-channel
-covariate, which upstream still refuses; the last test pins that refusal so it
-fails the day it lands.
+E step only; the fit-level rung waits on upstream (last test).
 """
 
 import numpy as np
@@ -38,11 +27,7 @@ FIT_ACCURACY = 0.9
 """What the label solver recovers of the planted labelling."""
 
 TOLERANCE = 1e-9
-"""Absolute agreement required between the two recursions.
-
-Both work in log space over the same doubles, so the difference is summation
-order rather than algorithm; the realized figure is in the test's message.
-"""
+"""Absolute agreement required between the two recursions (summation order only)."""
 
 
 @pytest.fixture(scope="module")
@@ -83,13 +68,7 @@ def _emission(truth: CoreInferenceTruth, stacked: Stacked) -> np.ndarray:
 def test_the_two_recursions_agree_on_the_clone_stacked_batch(
     planted: CoreInferenceTruth,
 ) -> None:
-    """The total log-likelihood, `cnaster`'s forward against upstream's ragged one.
-
-    `cnaster` walks the concatenated axis and restarts at each boundary
-    `lengths` declares; upstream walks the segments of a `Ragged` and returns
-    one evidence per segment. Two implementations of the same recursion over
-    the same fifteen chains of unequal length, and the agreement is the claim.
-    """
+    """Total log-likelihood: `cnaster`'s forward against upstream's ragged one, within `ATOL`."""
     from cnaster.hmm_nophasing import hmm_nophasing
     from sal.likelihood.ragged import posteriors
     from scipy.special import logsumexp
@@ -130,24 +109,7 @@ def test_the_two_recursions_agree_on_the_clone_stacked_batch(
 def test_a_covariate_carrying_its_own_channel_axis_is_refused_with_a_singleton() -> (
     None
 ):
-    """The shape `m_step` used to build, and why the fit-level rung is not here.
-
-    #77 item 1: `search/spatio_sequential.py`'s `m_step` appended a trailing
-    singleton unconditionally, so an `(S, V, 2)` covariate -- one that already
-    names the family's two channels -- arrived as `(S, V, 2, 1)`, whose last
-    axis names nothing. This pins that the family refuses it.
-
-    **The fix has landed and this still passes, which is correct.** Upstream's
-    #674 changed the *caller*: `m_step` now calls `covariate_block` and moves
-    the axis, with a comment naming the defect, and the pin carries it.
-    Refusing a covariate whose last axis names no channel is right either way,
-    so what this guards now is the regression rather than the defect.
-
-    The rung #674 unblocks is #109 and is not here yet: a first covaried
-    ragged instance built from scratch reaches the negative binomial's M step
-    with `mean and weight must be positive, got nan and 0.0`, which is a
-    fixture-construction problem on this side rather than an upstream one.
-    """
+    """Upstream refuses an `(S, V, 2, 1)` covariate, guarding #674 (#77 item 1, #109)."""
     import torch
     from sal.emissions import (
         BetaBinomialEmission,

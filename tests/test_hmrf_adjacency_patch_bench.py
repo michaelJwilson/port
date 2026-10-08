@@ -1,18 +1,4 @@
-"""What the adjacency round trip costs (issue #59 item 3).
-
-Recorded rather than argued: the ratio is large and the saving is not.
-
-| spots | non-zeros | `cast_csr` + `unpack_adjacency` | `adjacency_coo` | ratio |
-| ---: | ---: | ---: | ---: | ---: |
-| 1,200 | 7,192 | 2.8 ms | 0.014 ms | 202 |
-| 5,000 | 29,987 | 11.4 ms | 0.040 ms | 282 |
-| 20,000 | 119,994 | 52.7 ms | 0.951 ms | 55 |
-
-11 ms per outer iteration against a boundary costing about 16 s is under a
-tenth of a per cent, so this lands as a simplification and the numbers are
-here to stop anyone claiming otherwise. `CLAUDE.md` separates the two cases
-and this is the first.
-"""
+"""Cost of the adjacency round trip against `adjacency_coo`, 1,200 to 20,000 spots (#59 item 3)."""
 
 from collections.abc import Callable
 
@@ -55,8 +41,5 @@ def _cnaster_round_trip(matrix: csr_matrix) -> tuple[np.ndarray, ...]:
 def test_adjacency(
     benchmark: BenchmarkFixture, arm: Callable[[csr_matrix], object], n_spots: int
 ) -> None:
-    """Two Python passes over the non-zeros, against three `numpy` expressions.
-
-    At 20,000 spots the Python loop is 52.7 ms and the patch 0.951 ms.
-    """
+    """Two Python passes over the non-zeros against three `numpy` expressions."""
     benchmark(arm, _graph(n_spots))

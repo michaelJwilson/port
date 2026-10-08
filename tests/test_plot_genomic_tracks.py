@@ -1,16 +1,7 @@
-"""What `plot_clones_genomic` asserts, separated from how it draws it (#278).
+"""`plot_clones_genomic`'s quantities as functions, against cnaster's expressions
+(#278).
 
-`cnaster` renders as it computes: the read-depth ratio, its Poisson error,
-the B-allele frequency, its Beta posterior error and the Viterbi segment
-levels are all expressions inside 338 lines of `matplotlib`, and none of them
-can be asked for on its own. `port.sandbox.patch.plotting.genomic` makes each a
-function, which is what lets any of this be checked.
-
-Two kinds of claim, marked differently. Reproducing upstream's expression is
-`patch` -- it says the replacement agrees with `cnaster`, not that `cnaster`
-is right. The Beta error is `analytic`: it is the standard deviation of a
-named distribution, so it is checked against the distribution rather than
-against the line of code, and that one *would* catch a defect upstream.
+Reproducing upstream is `patch`; the Beta posterior error is `analytic`, against scipy.
 """
 
 from __future__ import annotations
@@ -53,12 +44,8 @@ def test_the_rdr_track_matches_upstreams_expression() -> None:
 
 @pytest.mark.bug
 def test_a_zero_baseline_scrubs_the_error_and_not_the_value() -> None:
-    """Upstream's asymmetry, reproduced rather than tidied.
-
-    `std_err_rdr[~np.isfinite(std_err_rdr)] = 0.0` scrubs the error; the
-    *value* keeps its `inf` or `nan` and is dropped by `matplotlib` at draw
-    time. Tidying that here would change a figure, which is out of scope --
-    so it is pinned instead, and this test says which half is deliberate.
+    """The error's non-finite entries are scrubbed and the value's kept, as upstream
+    does.
     """
     X, base_nb_mean, _ = _instance()
     base_nb_mean[3, 0] = 0.0
@@ -91,15 +78,8 @@ def test_the_baf_track_matches_upstreams_expression() -> None:
 
 @pytest.mark.analytic
 def test_the_baf_error_is_the_beta_posterior_standard_deviation() -> None:
-    """Checked against the distribution, not against the line of code.
-
-    The error bar claims to be the spread of `Beta(k + 1, n - k + 1)` -- the
-    posterior for a binomial proportion under a uniform prior. `scipy` knows
-    that distribution's standard deviation, so this is the one assertion here
-    that would catch a defect in `cnaster` rather than a divergence from it.
-
-    Exact, because both sides evaluate the same closed form in double
-    precision; a tolerance would only hide a real disagreement.
+    """The BAF error equals scipy's `Beta(k + 1, n - k + 1)` standard deviation,
+    exactly.
     """
     from scipy.stats import beta as beta_distribution
 
@@ -114,11 +94,7 @@ def test_the_baf_error_is_the_beta_posterior_standard_deviation() -> None:
 
 @pytest.mark.patch
 def test_the_segment_levels_match_upstreams_lines() -> None:
-    """`exp(new_log_mu[:, idx])[lbl]` and `new_p_binom[:, idx][lbl]`.
-
-    On a three-clone instance, so the `0 if shape[1] == 1 else c` guard the
-    replacement drops is exercised at a clone that is not zero.
-    """
+    """`exp(new_log_mu[:, idx])[lbl]` and `new_p_binom[:, idx][lbl]`, on three clones."""
     from cnaster.utils import get_intervals
 
     rng = np.random.default_rng(7)
@@ -146,13 +122,7 @@ def test_the_segment_levels_match_upstreams_lines() -> None:
 
 @pytest.mark.bug
 def test_the_segment_levels_refuse_a_second_parameter_column() -> None:
-    """Upstream indexes column `c`; this refuses, per #267.
-
-    **Written to fail when the fit changes.** `0 if shape[1] == 1 else c`
-    would quietly read a per-clone column that no part of `cnaster` agrees on
-    the meaning of; raising is the only behaviour that cannot be silently
-    wrong.
-    """
+    """A per-clone parameter column raises where upstream reads column `c` (#267)."""
     rng = np.random.default_rng(8)
     n_obs, n_states = 20, 4
 
@@ -168,17 +138,7 @@ def test_the_segment_levels_refuse_a_second_parameter_column() -> None:
 
 @pytest.mark.patch
 def test_the_replacement_draws_what_upstream_draws(cnaster_config: None) -> None:
-    """Both figures, one input, every drawn point and segment compared.
-
-    **This is the claim a drop-in replacement owes.** The four extracted
-    functions are refereed against upstream's expressions above; this checks
-    that they are wired into the figure the same way -- that the RDR track
-    reaches the RDR axis, the Viterbi levels reach the right collection, and
-    the clone loop visits clones in the same order.
-
-    Bitwise: nothing is reassociated, so the same arithmetic on the same
-    inputs gives the same doubles, and a tolerance would only hide a rewiring.
-    """
+    """Every drawn point and segment equals upstream's figure, bitwise."""
     import matplotlib as mpl
 
     mpl.use("Agg")
@@ -229,21 +189,7 @@ def test_the_replacement_draws_what_upstream_draws(cnaster_config: None) -> None
 def test_the_integer_copy_colouring_is_upstreams(
     cnaster_config: None, phased_integer_copies: bool, palette_name: str
 ) -> None:
-    """The `df_cnv` branch, which is a third of the function and had no referee.
-
-    Passing integer copies takes a different path through every clone: the
-    hue comes from `(A, B)` through the palette's map rather than from the
-    decoded state, and `chisel` alone gives the balanced state its reduced
-    opacity. Both knobs are parametrized because each selects a branch the
-    other cannot reach, and the `False` case is the one that takes the
-    maximum and minimum rather than the alleles as given -- a patch that
-    dropped that ordering would draw the same points in exchanged colours.
-
-    Colours as well as offsets, for the reason
-    `tests/test_plot_loh_density.py` gives: the point cloud alone passes a
-    replacement that coloured it wrongly, and colour is the whole of what
-    this branch decides.
-    """
+    """The `df_cnv` branch's offsets and colours equal upstream's, under both knobs."""
     import matplotlib as mpl
 
     mpl.use("Agg")
@@ -272,9 +218,7 @@ def test_the_integer_copy_colouring_is_upstreams(
         "new_p_binom": rng.uniform(0.15, 0.85, size=(n_states, 1)),
     }
 
-    # NB the balanced state is planted explicitly: `(1, 1)` is what the
-    #    `chisel` opacity rule and `default_idx` both key on, so a fixture
-    #    drawing only unbalanced pairs would exercise neither.
+    # NB `(1, 1)` planted: the `chisel` opacity and `default_idx` both key on it.
     frame = {"CHR": np.ones(n_obs, dtype=int)}
 
     for clone in range(n_clones):

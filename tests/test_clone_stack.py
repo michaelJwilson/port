@@ -1,17 +1,6 @@
-"""The clone-stacked layout the shifted emission reads, and the loop it replaced.
+"""`shifted_emission`'s clone-major buffer against the strided channel (#234, #349).
 
-**#234 PR 1**, folded into the `hmm_nophasing` patch by #349. `CountEncoder`
-keeps a view of the clone-stacked `X`, `(n_clones * n_obs, 2, 1)`, so one
-channel walks at a stride of two elements; `shifted_emission._clone_major`
-copies it to one contiguous clone-major buffer and tags each entry with its
-clone. It replaced `port.patch.hmrf_utils` (`CloneStack`, `channels_of`),
-which no run called. These pin:
-
-- the buffer is contiguous and **is** the channel, clone after clone, for
-  unequal clone lengths (`patch`);
-- `clone_count_triples` built from it is bitwise what the pre-#349 build was (`patch`);
-- `compute_logmu_shifts`' `start_idx` walk is the per-clone `logsumexp`
-  (`patch`), and upstream still does not call it (`bug`).
+`compute_logmu_shifts`' loop is reproduced (`patch`); upstream never calls it (`bug`).
 """
 
 from __future__ import annotations
@@ -34,11 +23,7 @@ def _stacked(lengths: tuple[int, ...], seed: int = 17) -> np.ndarray:
 
 @pytest.mark.patch
 def test_the_buffer_is_the_channel_contiguous_and_clone_tagged() -> None:
-    """Unequal lengths, so an off-by-one in the tiling cannot cancel (#234).
-
-    The encoder's channel is strided by two; the buffer is contiguous, equal
-    to it entry for entry, and entry `t` of clone `c`'s block carries `c`.
-    """
+    """Buffer is contiguous, equals the channel entry for entry, and is clone-tagged (#234)."""
     lengths = (40, 25, 55)
     stacked = _stacked(lengths)
     channel = stacked[:, 0, :]
@@ -60,11 +45,7 @@ def test_lengths_that_do_not_tile_the_channel_are_refused() -> None:
 
 @pytest.mark.patch
 def test_the_triples_are_bitwise_the_pre_fold_build(cnaster_config: None) -> None:
-    """`clone_count_triples` on the strided channel, against #276's build verbatim.
-
-    Float counts, so the configured rounding runs on both sides as it does in
-    a fit (`CountEncoder` is built on `X`, which is float).
-    """
+    """`clone_count_triples` is bitwise #276's build on float counts."""
     from cnaster.config import get_global_config
 
     lengths = (300, 300, 300)
@@ -89,12 +70,7 @@ def test_the_triples_are_bitwise_the_pre_fold_build(cnaster_config: None) -> Non
 
 @pytest.mark.patch
 def test_the_per_clone_reduction_reproduces_cnasters_loop() -> None:
-    """`logsumexp(axis=1)` against `compute_logmu_shifts`'s `start_idx` walk.
-
-    The clone lengths are deliberately **unequal**. With equal lengths the
-    index arithmetic is a multiplication and any off-by-one cancels, so the
-    referee would be vacuous — which is the trap #234's plan names.
-    """
+    """`logsumexp(axis=1)` reproduces `compute_logmu_shifts`'s walk at unequal clone lengths."""
     import scipy.special
 
     rng = np.random.default_rng(17)
@@ -110,8 +86,7 @@ def test_the_per_clone_reduction_reproduces_cnasters_loop() -> None:
         log_mus, copy_states, normal_log_lambda, clone_lengths
     )
 
-    # NB the same quantity via one clone at a time because the lengths
-    #    differ, which is the case a rectangular view cannot hold.
+    # NB per clone, since unequal lengths admit no rectangular view.
     ours = np.empty(n_segments)
     start = 0
 
@@ -130,17 +105,7 @@ def test_the_per_clone_reduction_reproduces_cnasters_loop() -> None:
 
 @pytest.mark.bug
 def test_the_consumer_this_accessor_is_for_does_not_run() -> None:
-    """`compute_logmu_shifts` is dead code, and #234 PR 2 has to decide it.
-
-    `hmm_nophasing.py:279` comments out the only call and logs
-    `"logmu_shifts are not currently supported."` So the per-clone shift
-    upstream defines is computed nowhere in an unpatched run.
-
-    Written as a `bug` pin against `cnaster`'s own contract -- the function is
-    defined, documented and unreachable -- so it **fails** the day the call is
-    restored, which is when PR 2 must judge the shift against the planted
-    truth rather than merely reproducing a loop.
-    """
+    """`compute_logmu_shifts` is never called upstream (#234); fails when the call is restored."""
     import inspect
 
     import cnaster.hmm_nophasing as nophasing

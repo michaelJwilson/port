@@ -1,14 +1,6 @@
-"""The H&E path and the clone annotations, which `run_cnaster` never takes.
+"""The H&E path and clone annotations, which `run_cnaster` never takes (#111).
 
-#111. `he.py` is gated off by a configuration that names an image the
-fixture does not write, and the annotation loaders by one that names no
-labels. Each is given the planted fixture's own arrays.
-
-**Four of `plotting.py`'s entry points have no test here** --
-`plot_adjacency`, `plot_gene_snp_spatial`, `plot_recombination_rates` and
-`plot_copy_states`. Their render-only tests asserted `is not None`, a
-directory's existence or nothing, which `CLAUDE.md` forbids, and were dropped
-on #355. What a figure test would be is #103's.
+Given the planted fixture's arrays. Render-only entry points have no test (#355, #103).
 """
 
 import json
@@ -61,19 +53,12 @@ def written(
 
 
 @pytest.mark.smoke
-# NB one figure's form (#403): passed where it merged; runs again where this
-#    module or the lock changes, and at a release.
+# NB one figure's form (#403); runs where this module or the lock changes.
 @pytest.mark.deprecate
 def test_the_he_image_loads_and_renders(
     written: tuple[Any, Any], planted: CoreInferenceTruth
 ) -> None:
-    """`get_he_image` reads a mocked slide, and `plot_he` draws it.
-
-    The loader warns `Could not find H&E image or scalefactors` and returns
-    the positions unchanged when they are absent, which is what the round trip
-    sees. Writing the two files it names is what takes this path instead --
-    a `scalefactors_json.json` carrying `tissue_hires_scalef`, and a PNG.
-    """
+    """`get_he_image` reads a mocked slide, and `plot_he` draws it."""
     import matplotlib.pyplot as plt
     from cnaster.he import get_he_image
     from cnaster.plotting import plot_he
@@ -97,25 +82,18 @@ def test_the_he_image_loads_and_renders(
             "y": np.arange(planted.n_spots) // LATTICE[1],
         }
     )
-    # NB the loader returns its argument untouched when the files are absent,
-    #    which is what the round trip sees and what the warning says.
+    # NB absent files: the loader returns its argument untouched.
     missing = inputs.root / "no-slide-here"
     assert get_he_image(str(missing), pos=positions) is positions
 
-    # With the files present it reads the slide and returns the merged frame.
-    # **That is new, and it is a side effect rather than a fix**: `he.py:125`
-    # calls `to_pandas()` on a polars frame, which needs `pyarrow`, and until
-    # #185 declared `pyarrow` for the reference read this raised. The path is
-    # reachable here because `port` installs it, and stays unreachable for
-    # anyone installing `cnaster` alone -- which is now pinned as a statement
-    # about `cnaster`'s metadata rather than about this environment, below.
+    # With the files present it returns the merged frame; reachable only because
+    # `port` installs `pyarrow` (#185).
     slide = get_he_image(str(inputs.root / "spaceranger"), pos=positions)
 
     assert isinstance(slide, pd.DataFrame)
     assert {"x", "y", "red", "green", "blue", "label"} <= set(slide.columns)
 
-    # The drawing is still reachable: `plot_he` converts only when handed a
-    # polars frame, so an equivalent pandas one takes the same path.
+    # `plot_he` converts only polars frames, so a pandas one takes the same path.
     pixels = pd.DataFrame(
         {
             "x": np.repeat(np.arange(IMAGE_SIDE), IMAGE_SIDE),
@@ -134,18 +112,7 @@ def test_the_he_image_loads_and_renders(
 def test_the_clone_annotations_load_and_assign(
     written: tuple[Any, Any], planted: CoreInferenceTruth, tmp_path: Path
 ) -> None:
-    """`annotation.py`, the module `run_cnaster` takes only when told to.
-
-    Three functions, and the whole module was cold: the configuration names
-    `clone_label` and `clone_ranges` as `None`, so the branch that reads them
-    is never taken. They are the path a run with known truth takes, which is
-    what a validation harness would use.
-
-    `load_clone_labels` shifts its labels by one so that `normal` is zero:
-    the file says `clone_0`, `clone_1`, `normal`, and the returned index
-    groups them as 1, 2, 0. Asserted, because an off-by-one there silently
-    renames every clone.
-    """
+    """`annotation.py`'s loaders; `load_clone_labels` shifts labels so `normal` is 0."""
     from cnaster.annotation import (
         assign_clone_ranges,
         load_clone_labels,
@@ -198,19 +165,7 @@ def test_the_clone_annotations_load_and_assign(
 
 @pytest.mark.bug
 def test_cnaster_needs_pyarrow_for_its_he_path_and_does_not_declare_it() -> None:
-    """`he.py` calls `to_pandas()`; the package's own dependency list does not.
-
-    The finding `test_the_he_image_loads_and_renders` used to carry as a
-    raised `ModuleNotFoundError`. It cannot be pinned that way any more --
-    #185 declares `pyarrow` for the reference read, so the import now
-    succeeds here -- and the defect is unchanged: an environment built from
-    `cnaster`'s requirements alone cannot reach `get_he_image`'s return.
-
-    Pinned against the installed metadata rather than against an import, so
-    it says what is wrong (the declaration) instead of what this repository
-    happens to have installed. Written to fail when `cnaster` declares
-    `pyarrow`, or stops needing it.
-    """
+    """`he.py` calls `to_pandas()` but cnaster's metadata does not declare `pyarrow`."""
     import importlib.metadata
 
     declared = importlib.metadata.requires("cnaster") or []

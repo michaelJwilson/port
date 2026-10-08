@@ -1,17 +1,7 @@
-"""`port.patch.emission`: the one NB/BB evaluation every site scores (T- #776).
+"""`port.patch.emission`, the shared NB/BB evaluation (T- #776).
 
-Referees, one per test:
-
-- `sal`'s own NumPy pmfs and kernels (`oracle`): the module is `sal`'s
-  construction, so its NumPy forms, its tables and the fit's Rust call are
-  held to `sal` bit for bit;
-- `tests.exact_densities`, the densities as 50-digit sums of logs
-  (`oracle`), across the limits that decide the evaluation: `alpha` down to
-  `DISPERSION_FLOOR`, `tau` to 1e16;
-- the module's own NumPy form (`backend`), for its `numba` completions and
-  the field's compiled pass, to rounding;
-- the limits themselves (`analytic`): `tau = inf` the binomial, `alpha = 0`
-  the Poisson.
+Referees: `sal`'s pmfs and kernels (bitwise), 50-digit densities in
+`tests.exact_densities`, the module's NumPy form, and the binomial/Poisson limits.
 """
 
 from __future__ import annotations
@@ -27,19 +17,15 @@ from tests.exact_densities import nb_partials as exact_nb_partials
 SHAPES = np.array(
     [1e-10, 0.3, 5.0, 9.99, 10.0, 12.8, 28.0, 1e3, 4.4e3, 1e5, 1e12, 1e16, np.inf]
 )
-"""Below, at and above `sal`'s series threshold (10), the realized
-dispersions and concentrations (12.8, 28, 1e3, 4.4e3), and the limits."""
+"""Shapes around `sal`'s series threshold (10), realized values, and the limits."""
 
 ALPHAS = [1e-10, 1e-6, 1e-3, 0.073, 0.111, 2.0]
-"""`DISPERSION_FLOOR`, the gap below `test_nb_bb_edges`' 1e-3, and the
-realized 0.073-0.111 (T- #776)."""
+"""From `DISPERSION_FLOOR` to the realized 0.073-0.111 (T- #776)."""
 
 TAUS = [10.0, 28.0, 1e3, 4.4e3, 1e5, 1e12, 1e16]
 
 CONDITION = 1e-14
-"""Tolerance per unit of the terms summed, `1 + |f| + lgamma(count + 1)`: a
-log-pmf of -10 at a count of 18,842 sums terms near 1.7e5, so its rounding
-is that size's, not the result's (`sal`'s pmf, bitwise this one, shares it)."""
+"""Tolerance per unit of `1 + |f| + lgamma(count + 1)`, the size of the summed terms."""
 
 
 def _scale(f: np.ndarray, counts: np.ndarray) -> np.ndarray:
@@ -58,11 +44,7 @@ def _scaled(x: float | np.ndarray, m: np.ndarray) -> np.ndarray:
 
 @pytest.mark.oracle
 def test_the_scaled_rising_table_is_sals_kernel_bitwise() -> None:
-    """`scaled_rising` on distinct shapes and counts, its row kernel and inlined series: `sal`'s `scaled_rising_array`, bitwise.
-
-    Fails if the hoisted plain route or the copied series departs from `sal`'s
-    by an ulp anywhere on the grid.
-    """
+    """`scaled_rising` equals `sal`'s `scaled_rising_array`, bitwise."""
     from port.patch.emission import scaled_rising
 
     counts = np.arange(0.0, 4000.0)
@@ -77,7 +59,7 @@ def test_the_scaled_rising_table_is_sals_kernel_bitwise() -> None:
 @pytest.mark.oracle
 @pytest.mark.parametrize("alpha", ALPHAS)
 def test_the_negative_binomial_is_sals_pmf_bitwise(alpha: float) -> None:
-    """`nb_log_pmf` is `sal.emissions.nb.negative_binomial_log_pmf` at `r = 1 / alpha`, bitwise."""
+    """`nb_log_pmf` equals `sal`'s `negative_binomial_log_pmf` at `r = 1 / alpha`, bitwise."""
     from port.patch.emission import nb_log_pmf
     from sal.emissions.nb import negative_binomial_log_pmf
 
@@ -92,7 +74,7 @@ def test_the_negative_binomial_is_sals_pmf_bitwise(alpha: float) -> None:
 @pytest.mark.oracle
 @pytest.mark.parametrize("tau", TAUS)
 def test_the_beta_binomial_is_sals_pmf_bitwise(tau: float) -> None:
-    """`bb_log_pmf` is `sal.emissions.bb.beta_binomial_log_pmf` at `a = p tau`, `b = (1 - p) tau`, bitwise."""
+    """`bb_log_pmf` equals `sal`'s `beta_binomial_log_pmf`, bitwise."""
     from port.patch.emission import bb_log_pmf
     from sal.emissions.bb import beta_binomial_log_pmf
 
@@ -108,10 +90,7 @@ def test_the_beta_binomial_is_sals_pmf_bitwise(tau: float) -> None:
 @pytest.mark.oracle
 @pytest.mark.parametrize("alpha", ALPHAS)
 def test_the_negative_binomial_meets_the_exact_density(alpha: float) -> None:
-    """`nb_log_pmf` within `CONDITION` of the 50-digit density, `alpha` down to the floor.
-
-    Every port kernel lost 1.3e-5 nats at `alpha = 1e-10` before (T- #776).
-    """
+    """`nb_log_pmf` is within `CONDITION` of the 50-digit density, to the floor (T- #776)."""
     from port.patch.emission import nb_log_pmf
 
     counts = np.array([0.0, 1.0, 7.0, 42.0, 300.0, 2_500.0, 18_842.0])
@@ -143,7 +122,7 @@ def test_the_beta_binomial_meets_the_exact_density(tau: float) -> None:
 
 @pytest.mark.analytic
 def test_the_limits_are_the_binomial_and_the_poisson() -> None:
-    """`tau = inf` is `scipy`'s binomial, `alpha = 0` its Poisson, to 1e-12; a zero rate or zero trials score 0."""
+    """`tau = inf` is `scipy`'s binomial, `alpha = 0` its Poisson, to 1e-12."""
     from port.patch.emission import bb_log_pmf, nb_log_pmf
 
     n = np.arange(0.0, 60.0)
@@ -162,7 +141,7 @@ def test_the_limits_are_the_binomial_and_the_poisson() -> None:
 
 @pytest.mark.backend
 def test_the_numba_completions_are_the_numpy_form_to_rounding() -> None:
-    """`nb_complete` and `bb_complete` from the module's tables: its NumPy form within `CONDITION`."""
+    """`nb_complete` and `bb_complete` equal the NumPy form within `CONDITION`."""
     from port.patch.emission import (
         bb_complete,
         bb_log_pmf,
@@ -212,13 +191,7 @@ def test_the_numba_completions_are_the_numpy_form_to_rounding() -> None:
 
 @pytest.mark.oracle
 def test_the_fit_is_sals_numpy_pmf_to_its_rounding() -> None:
-    """`dense_emission.nb_states` and `bb_states`, `sal`'s coded Rust route: the module's NumPy pmfs within `CONDITION`.
-
-    The NumPy forms are `sal`'s NumPy pmfs bit for bit; the coded route
-    builds its tables at the distinct counts and completes them in Rust
-    (sal #1340). A zero exposure or trial count, a rate `<= 0`, `alpha = 0`
-    and `tau = inf` score as the NumPy form does.
-    """
+    """`nb_states` and `bb_states` (Rust, sal #1340) equal the NumPy pmfs within `CONDITION`."""
     from port.patch.emission import bb_log_pmf, nb_log_pmf
     from port.patch.hmm_nophasing.dense_emission import bb_states, nb_states
 
@@ -256,12 +229,7 @@ def test_the_fit_is_sals_numpy_pmf_to_its_rounding() -> None:
 @pytest.mark.backend
 @pytest.mark.merge
 def test_the_field_is_the_modules_per_bin_sums() -> None:
-    """The tabulated and fused fields under `log_space`: the module's NumPy densities summed per bin, to 1e-12 relative, finite at `tau = inf`.
-
-    The tabulated pass scores each distinct state of a bin once; clones are
-    drawn sharing states so that path is taken. `merge`: 11 s, most of it
-    compiling the fused kernel, which `numba` cannot cache.
-    """
+    """Tabulated and fused fields equal per-bin NumPy sums, to 1e-12 relative."""
     from port.patch.emission import bb_log_pmf, nb_log_pmf
     from port.patch.hmrf.fused_field import fused_spot_clone_field
     from port.patch.hmrf.tabulated_field import tabulated_spot_clone_field
@@ -305,11 +273,7 @@ def test_the_field_is_the_modules_per_bin_sums() -> None:
 def test_the_negative_binomial_partials_meet_the_exact_derivatives(
     alpha: float,
 ) -> None:
-    """`nb_partials` within rtol 1e-9 of the 50-digit central differences, `alpha` down to the floor.
-
-    `digamma_rising` in place of `digamma(k + r) - digamma(r)`, which
-    cancels at `r` up to 1e10 (T- #776).
-    """
+    """`nb_partials` meets 50-digit central differences, rtol 1e-9 (T- #776)."""
     from port.patch.emission import nb_partials
 
     counts = np.array([0.0, 1.0, 42.0, 1_000.0])

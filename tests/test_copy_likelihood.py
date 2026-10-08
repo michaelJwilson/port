@@ -1,11 +1,7 @@
 """`port.extensions.copy_likelihood` against pseudobulks drawn from its own model (#327).
 
-The shared decode claims that, with the path held, the pseudobulk
-likelihood the EM fits identifies each state's integer `(A, B)`. So the
-referee is the truth the counts were drawn from: a clone-sized pseudobulk
-under the shifted NB/BB model, planted `(A, B)` including totals above
-`cnaster`'s 6 (`end2end` against the planted pairs). The decode is held to
-be the likelihood's own maximum over single-state moves (`analytic`).
+Referees: the planted `(A, B)` including totals above `cnaster`'s 6 (`end2end`), and the
+likelihood's own maximum over single-state moves (`analytic`).
 """
 
 from __future__ import annotations
@@ -137,9 +133,9 @@ def test_the_candidates_are_every_pair_under_the_cap() -> None:
 def _entry_point_run(
     tmp_path: Path, argv: tuple[str, ...]
 ) -> tuple[Any, list[Any], Any]:
-    """`run_cnaster_port` on the two-state copy lattice: the critical instance
-    with `(1, 1)` and `(1, 2)` planted. Returns the written segment table, the
-    decodes it made, and the run's output directory."""
+    """`run_cnaster_port` on the critical instance with `(1, 1)` and `(1, 2)` planted:
+    segment table, decodes, output dir.
+    """
     import warnings
 
     import matplotlib as mpl
@@ -171,17 +167,8 @@ def _entry_point_run(
 def test_the_entry_point_decodes_the_planted_pair_through_the_likelihood(
     tmp_path: Path,
 ) -> None:
-    """The default decode, `lattice` (#370), written per bin to the files (#371).
-
-    Every clone-bin of the segment table is the planted pair, phase folded;
-    each clone's `A` and `B` columns are the lattice decode's pairs bin for
-    bin, so the file carries the per-bin decode rather than a per-state
-    summary of it; and `copy_decode.tsv` records the fractions it fitted,
-    both 1 on this pure instance.
-
-    This is the test that found #371's M-step defect: the fraction's bounded
-    search returned 0.546 and wrote `(1, 3)`, 3,363 nats below the planted
-    `(1, 2)` at fraction 1.
+    """The default `lattice` decode (#370) writes the planted pair per clone-bin, at fitted
+    fractions 1 (#371).
     """
     import pandas as pd
 
@@ -208,12 +195,8 @@ def test_the_entry_point_decodes_the_planted_pair_through_the_likelihood(
 
 @pytest.mark.analytic
 def test_the_fraction_step_never_goes_uphill() -> None:
-    """A bounded search on an objective whose minimum is its endpoint.
-
-    `f(x) = min((x - 0.2)^2 + 0.05, 1 - x)` is least at `x = 1`, with a
-    shallower basin at 0.2 that a bounded Brent search settles in, since it
-    never scores the endpoint. The step returns the endpoint, and from any
-    start never a value above the start's (#371).
+    """The bounded fraction step never returns a value above its start's, on a minimum at
+    the endpoint (#371).
     """
     from port.extensions.copy_likelihood import PURITY_GRID, _monotone
 

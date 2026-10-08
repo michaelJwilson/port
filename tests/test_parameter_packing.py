@@ -1,18 +1,4 @@
-"""`cnaster`'s parameter vector, round-tripped.
-
-The optimizer works on a flat unconstrained vector and the model works on
-named arrays, so `pack_params` and `unpack_params` are the seam between
-them. A packing that loses a parameter, orders one wrongly or inverts a
-transform asymmetrically does not raise: it fits a different model and
-reports the fit as a success.
-
-Checked against an identity rather than against upstream: unpacking what was
-packed returns what went in, whatever the flags. That holds by construction
-and needs no correspondence.
-
-The same vector is what #6 would take a Hessian of, so its layout is the
-thing an error bar is attached to.
-"""
+"""cnaster's `pack_params`/`unpack_params` round trip, against the identity."""
 
 import numpy as np
 import pytest
@@ -50,11 +36,8 @@ def named_parameters(n_states: int, n_spots: int = 1) -> dict[str, np.ndarray]:
 def test_unpacking_what_was_packed_returns_it(
     flags: dict[str, bool], n_states: int
 ) -> None:
-    """The round trip is the identity on every parameter it carries.
-
-    Where a dispersion is shared the packed vector holds one value for all
-    states, so the recovered array is that value repeated; the identity is
-    asserted against what was packed rather than against the draw.
+    """The round trip is the identity on every parameter it carries; shared dispersions
+    repeat.
     """
     from cnaster.hmm_nophasing import hmm_nophasing
 
@@ -99,12 +82,7 @@ def test_unpacking_what_was_packed_returns_it(
 @pytest.mark.parametrize("flags", FLAG_SETS)
 @pytest.mark.parametrize("n_states", [1, 3])
 def test_bounds_match_the_packed_vector(flags: dict[str, bool], n_states: int) -> None:
-    """One bound per packed coordinate, each an interval containing it.
-
-    A bound array of the wrong length silently misaligns every limit with
-    the parameter it constrains, and the optimizer then holds the wrong one
-    fixed. Length and containment together are what rule that out.
-    """
+    """One bound per packed coordinate, each an interval containing it."""
     from cnaster.hmm_nophasing import hmm_nophasing
 
     model = hmm_nophasing()

@@ -1,23 +1,7 @@
-"""`cnaster`'s emission and its mixture, refereed by `snakes_and_ladders`.
+"""`cnaster`'s emission and mixture, refereed by upstream's `CountPairEmission` (#232, #229, #69).
 
-**#232, and the rung #229 stage 4 needs before it can have a backend.**
-`cnaster` writes its own negative-binomial and beta-binomial densities and
-its own mixture initializer on top of them. Upstream ships the same model as
-`emissions.CountPairEmission` and fits a mixture of it in
-`opt/emission_mixture`. Until now nothing here compared the two, so
-`CLAUDE.md`'s "reach for what `snakes_and_ladders` already carries" had never
-been tested at this seam.
-
-`oracle` throughout: upstream decides the expected value, and `cnaster` is
-judged against it. That is what moves `CountPairEmission` out of
-`UNMATCHED_FAMILIES` -- it referees now, where before it only drew (#69).
-
-**The regime is stated because it is not the whole problem.** The
-correspondence is exact only where `base_nb_mean` and `total_bb_RD` are
-constant across bins: upstream carries one mean and one trial count per
-state, `cnaster` carries one of each per bin. That is #57 and #65 reaching
-the initializer, and `port.extensions.emission_family.constant_covariate` refuses
-rather than approximates outside it.
+Exact only at constant `base_nb_mean` and `total_bb_RD`; varying covariates are refused
+(#57, #65).
 """
 
 from __future__ import annotations
@@ -47,12 +31,7 @@ P_BINOM = np.array([0.50, 0.32, 0.18])
 TAUS = np.array([30.0, 22.0, 45.0])
 
 ROUND_OFF = 1e-9
-"""What a different summation order costs, not what the model is worth.
-
-Realized 1.4e-13 over 600 values; the bound is four orders looser so a
-`lgamma` implementation changing under a dependency bump is not a red test
-about nothing. A real disagreement is not small.
-"""
+"""Summation-order tolerance; realized 1.4e-13, bound four orders looser."""
 
 
 def _cnaster_log_density(observations: np.ndarray) -> np.ndarray:
@@ -90,12 +69,7 @@ def observations() -> np.ndarray:
 def test_cnasters_emission_is_upstreams_count_pair_family(
     observations: np.ndarray,
 ) -> None:
-    """The same model, parameterized differently, agreeing to round-off.
-
-    `r = 1/alpha`, `lambda = exposure * exp(log_mu)`, `a = p * tau`,
-    `b = (1 - p) * tau`. If this fails, one of those four is wrong, and the
-    per-state maxima below say which state.
-    """
+    """`cnaster`'s density equals upstream's family within `ROUND_OFF` (1e-9)."""
     theirs = _cnaster_log_density(observations)
 
     family = count_pair_family(
@@ -118,13 +92,7 @@ def test_cnasters_emission_is_upstreams_count_pair_family(
 def test_upstreams_mixture_recovers_the_planted_state(
     observations: np.ndarray,
 ) -> None:
-    """`opt/emission_mixture` fits the family `cnaster` would have GMM'd.
-
-    The data are drawn from one state, so a two-component fit has to put its
-    mass on a component whose mean is that state's. This is the claim
-    `cnaster`'s initializer makes and never checks: that the mixture finds
-    where the data are.
-    """
+    """Upstream's two-component fit puts mass on the planted state's mean, both channels."""
     rng = np.random.default_rng(11)
     seeding = CountPairSeeding(
         dispersion=1.0 / ALPHAS[1], concentration=TAUS[1], joint=False, trials=TRIALS
@@ -137,10 +105,7 @@ def test_upstreams_mixture_recovers_the_planted_state(
     assert fit.termination.iterations >= 1
     assert fit.log_likelihood <= 0.0, "a discrete likelihood is a probability"
 
-    # NB `mean` is per state and per channel: column 0 the negative
-    #    binomial's, column 1 the beta-binomial's. Both are checked, because
-    #    a fit that finds the depth and misses the allele fraction has found
-    #    half the state.
+    # NB column 0 is the NB mean, column 1 the beta-binomial's; both checked.
     components = fit.components
 
     assert isinstance(components, CountPairEmission), (
@@ -169,12 +134,7 @@ def test_upstreams_mixture_recovers_the_planted_state(
 def test_the_fit_beats_a_wrong_state_on_its_own_referee(
     observations: np.ndarray,
 ) -> None:
-    """The planted state scores higher than the others under `cnaster`'s density.
-
-    Cheap, and it is the property an initializer exists to get right: the
-    referee the selection in #229 uses has to rank the truth first, or
-    ranking by it selects nothing.
-    """
+    """The planted state scores highest under `cnaster`'s density (#229)."""
     totals = _cnaster_log_density(observations).sum(axis=1)
 
     assert int(np.argmax(totals)) == 1, f"per-state totals {totals}"
@@ -184,12 +144,7 @@ def test_the_fit_beats_a_wrong_state_on_its_own_referee(
 def test_a_varying_covariate_is_refused_rather_than_approximated(
     observations: np.ndarray,
 ) -> None:
-    """Outside the regime there is no upstream form, and that is #57/#65.
-
-    A family fitted to a mean that ignores a varying exposure answers a
-    different question, so reporting it beside `cnaster`'s would compare two
-    answers to two questions.
-    """
+    """A varying covariate is refused rather than approximated (#57, #65)."""
     varying = np.linspace(EXPOSURE, 2.0 * EXPOSURE, 200)
 
     with pytest.raises(CovariateNotConstant, match="base_nb_mean varies"):

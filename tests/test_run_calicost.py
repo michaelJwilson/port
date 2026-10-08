@@ -1,14 +1,7 @@
 """`run_calicost`: CalicoST on `run_cnaster_port`'s configuration (#347).
 
-What is pinned here:
-
-- the translated configuration carries the `run_cnaster` value of every key
-  the two programs share, and CalicoST's own reader reads it back (`infra`);
-- the scorer maps CalicoST's bins back to the planted ones, and merges clones
-  by their integer profile (`analytic`);
-- a whole CalicoST run on the dev instance recovers the planted clones
-  (`end2end`, `release`: it needs the `calicost` extra, which CI does not
-  install, and runs for minutes).
+Config translation (`infra`), the scorer's bin and clone mapping (`analytic`), and
+recovery (`end2end`).
 """
 
 from __future__ import annotations
@@ -115,7 +108,7 @@ def test_calicost_reads_back_the_written_configuration(tmp_path: Path) -> None:
 
 @pytest.mark.infra
 def test_a_colon_in_a_value_is_refused(tmp_path: Path) -> None:
-    """CalicoST splits every line on `:`, so such a value would be read cut short."""
+    """A value containing `:` is refused, since CalicoST splits lines on it."""
     from port.scripts.run_calicost import write_calicost_config
 
     with pytest.raises(ValueError, match="cannot read a ':'"):
@@ -184,10 +177,7 @@ def test_clones_of_one_integer_profile_merge_to_the_smallest() -> None:
 @pytest.mark.end2end
 @pytest.mark.release
 def test_calicost_recovers_the_planted_clones_of_the_dev_instance() -> None:
-    """CalicoST, aligned, on the dev instance at the figures' configuration.
-
-    Tolerances are set from the measured run in #347's pull request.
-    """
+    """CalicoST, aligned, recovers the dev instance's planted clones (tolerances from #347's PR)."""
     pytest.importorskip("calicost")
     import matplotlib as mpl
     from port.qa.audit import audit_truth
@@ -209,13 +199,7 @@ def _l_shaped() -> np.ndarray:
 @pytest.mark.bug
 @pytest.mark.release
 def test_calicosts_initializer_does_not_terminate_on_an_l_shaped_clone() -> None:
-    """`rectangle_initialize_initial_clone` loops forever on an L of 300 spots.
-
-    Four clones get four blocks, so every redraw is a permutation and the
-    empty block is always some clone's (`utils_hmrf.py:216`). Run in a child
-    with a 20 s limit, because the defect is that it never returns; written
-    to fail the day it does. `cnaster` #248 is the same defect.
-    """
+    """CalicoST's initializer does not return on a 300-spot L within 20 s; fails when fixed."""
     import subprocess
     import sys
 
@@ -341,11 +325,7 @@ def test_the_shipped_configuration_keeps_every_value_but_the_paths(
 
 @pytest.mark.infra
 def test_a_sheet_of_several_slices_takes_the_joint_file(tmp_path: Path) -> None:
-    """Two slices: `input_filelist` as CalicoST's joint loader reads it (#494).
-
-    The single-slice file is refused on that sheet, and the joint file on one
-    slice, since each names an input key the other lacks.
-    """
+    """Two slices take the joint `input_filelist`; each file is refused on the other's sheet (#494)."""
     from port.scripts.run_calicost import input_filelist, shipped_config
 
     document, _ = _document(tmp_path)

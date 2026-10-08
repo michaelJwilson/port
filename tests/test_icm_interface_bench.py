@@ -1,28 +1,7 @@
-"""What the interface reduction costs (issue #59 item 5).
+"""The ICM interface reduction's cost, fold included, at 400 and 20,000 spots (#59 item
+5).
 
-Recorded so the simplification is not mistaken for a free lunch, and not
-mistaken for a regression either. Folding `log_persample_weights` into the
-field replaces one indexed add per clone per spot **visit** with one
-vectorized add per clone per spot **sweep**, so the trade depends on how many
-times the solver revisits a spot.
-
-Both columns include the fold, which is the honest comparison: the caller
-pays it.
-
-| spots | clones | `cnaster`, 15 arguments | reduced, 8 | ratio |
-| ---: | ---: | ---: | ---: | ---: |
-| 400 | 4 | 4.74 ms | 3.97 ms | 1.19 |
-| 20,000 | 4 | 234 ms | 169 ms | 1.38 |
-
-**1.38x at the stress size does not clear `CLAUDE.md`'s 2x bar, so no
-speedup is claimed.** This lands as a simplification, on the bitwise
-equivalence in `test_icm_interface.py`; the ratio is reported because
-measuring it was the only way to establish that the fold does not cost
-anything, and it happens to be positive.
-
-The sweep draws its queue order from the global `numpy` RNG, so each round
-seeds it -- otherwise the benchmark measures a different number of epochs on
-every round and reports the variance as noise.
+No speedup is claimed; each round seeds the global RNG the sweep draws from.
 """
 
 from collections.abc import Callable
@@ -81,8 +60,7 @@ def _cnaster_call(problem: Problem) -> None:
     """Fifteen arguments, with the weights indexed inside the inner loop."""
     from cnaster.icm import icm_sweep_deque
 
-    # NPY002 is the finding, not the violation: `cnaster`'s sweep shuffles
-    # its queue with the legacy global RNG, so a `Generator` cannot reach it.
+    # NPY002: cnaster's sweep shuffles with the legacy global RNG.
     np.random.seed(SEED)  # noqa: NPY002
     icm_sweep_deque(
         single_llf=problem.field,
@@ -100,8 +78,7 @@ def _cnaster_call(problem: Problem) -> None:
 
 def _patched_call(problem: Problem) -> None:
     """Eight parameters, with the fold charged to this column."""
-    # NPY002 is the finding, not the violation: `cnaster`'s sweep shuffles
-    # its queue with the legacy global RNG, so a `Generator` cannot reach it.
+    # NPY002: cnaster's sweep shuffles with the legacy global RNG.
     np.random.seed(SEED)  # noqa: NPY002
     icm_sweep(
         fold_unary(problem.field, problem.weights, problem.sample_ids),

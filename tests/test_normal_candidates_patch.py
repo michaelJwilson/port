@@ -1,9 +1,4 @@
-"""`determine_normal_candidates`, which `cnaster` leaves unwritten for a named file (#479).
-
-With `preprocessing.normalidx_file` set, `cnaster` returns `None` and
-`run_cnaster` raises on `np.where(None)`. port returns the spots the loader
-annotated; every other branch is `cnaster`'s call.
-"""
+"""`determine_normal_candidates` with a named normal-spot file, against `cnaster` and the planted spots (#479)."""
 
 from __future__ import annotations
 
@@ -50,11 +45,7 @@ def test_without_a_file_it_is_cnasters_call(monkeypatch: pytest.MonkeyPatch) -> 
 @pytest.mark.cnaster
 @pytest.mark.patch
 def test_the_delegation_reaches_cnaster_while_the_swap_is_installed() -> None:
-    """Under `patched()` the name is port's, and the delegation still `cnaster`'s (#479).
-
-    Resolved at call time, `cnaster.normal_spot.determine_normal_candidates`
-    is the swap itself, and the delegation recursed until the stack ran out.
-    """
+    """Under `patched()` the name is port's and the delegation reaches `cnaster` (#479)."""
     import cnaster.normal_spot
     import port.patch.normal_spot as patch
     from port.pipeline import SWAPS, patched
@@ -107,12 +98,7 @@ def test_a_named_file_with_nothing_loaded_is_refused_by_name() -> None:
 def test_the_configured_file_reaches_the_loader_and_the_candidates(
     planted_instance: Any, gate_config: Any
 ) -> None:
-    """`preprocessing.normalidx_file` alone, as `run_cnaster` sets it (#479).
-
-    `run_cnaster` calls the loader without `normal_idx_file`, so the key
-    reached nothing. Named here through the configuration only: the planted
-    balanced clone's spots come back annotated and as the candidates.
-    """
+    """`preprocessing.normalidx_file` alone marks the planted balanced clone's spots (#479)."""
     from port.patch import io
     from port.patch.io import load_input_data
     from port.sim.truth import balanced_clone

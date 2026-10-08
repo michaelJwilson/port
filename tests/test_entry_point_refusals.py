@@ -1,8 +1,6 @@
-"""`run_cnaster_port`'s refusals, one test each (T- #617 WP5).
+"""`run_cnaster_port`'s refusals, one test each (T- #617 WP5, #466).
 
-Each flag asked for where nothing would read it is an argument error (#466);
-a refusal no test reaches is one nobody knows still fires. `infra`: the
-referee is the parser's own contract, not a run.
+`infra`: the referee is the parser's own contract.
 """
 
 from __future__ import annotations

@@ -1,10 +1,6 @@
-"""#455: the per-entry laws and the samplers `port.sim.draw` builds on them.
+"""#455: per-entry laws and samplers of `port.sim.draw`, against pmfs and analytic moments.
 
-`Mixture.draw` samples the SNP law exactly; its referee is the law's own pmf
-by `scipy.stats`. `dirichlet_multinomial_urn`, the Polya urn (#549), is
-pinned against `dirichlet_multinomial`'s normalized gammas per gene; both by
-the law's analytic moments, and `fit_genes` by recovering a planted
-concentration.
+`Mixture.draw` against `scipy.stats`; the Polya urn (#549) against normalized gammas.
 """
 
 from __future__ import annotations
@@ -33,12 +29,7 @@ def _law(alpha: float) -> Mixture:
 @pytest.mark.oracle
 @pytest.mark.parametrize("alpha", [0.0, 1.0, 12.0])
 def test_the_exact_sampler_draws_the_laws_pmf(alpha: float) -> None:
-    """400,000 independent entries against `Mixture.pmf` by `scipy.stats`.
-
-    Nonzero share within 4 binomial SE; the nonzero values by a chi-square
-    test over every `k` expected 5 times or more, the rest pooled in a tail
-    bin, at p > 1e-3.
-    """
+    """400,000 entries match `Mixture.pmf`: nonzero share to 4 SE, chi-square p > 1e-3."""
     from scipy.stats import chisquare
 
     law = _law(alpha)
@@ -62,10 +53,7 @@ def test_the_exact_sampler_draws_the_laws_pmf(alpha: float) -> None:
     "sampler", [dirichlet_multinomial, dirichlet_multinomial_urn], ids=["gamma", "urn"]
 )
 def test_the_dirichlet_multinomial_has_its_moments(sampler: Any) -> None:
-    """20,000 rows at `N = 400`, `kappa = 30`: rows sum to `N` exactly, and per
-    column mean `N q` and variance `N q (1 - q) (N + kappa) / (1 + kappa)` to
-    4 SE (the variance's SE from the draw's own fourth moment).
-    """
+    """Rows sum to `N`; column mean and variance match the analytic moments to 4 SE."""
     rng = np.random.default_rng(3)
     q = np.array([0.5, 0.3, 0.15, 0.05])
     n, total, kappa = 20_000, 400, 30.0
@@ -110,14 +98,7 @@ def test_the_concentration_is_recovered_from_a_draw_at_it() -> None:
 
 @pytest.mark.oracle
 def test_the_urn_draws_the_gamma_samplers_law() -> None:
-    """The urn against normalized gammas: each gene's count pmf, per clone.
-
-    30,000 spots split over two clones with different `q` and a zero-depth
-    spot in each; depth 40, `kappa = 3`, so the overdispersion is strong. Per
-    clone and gene a two-sample chi-square over every count seen 5 times or
-    more in both draws, the rest pooled in a tail bin, at p > 1e-3; the
-    zero-depth spots are empty rows in both.
-    """
+    """The urn's per-clone, per-gene count pmf matches normalized gammas, chi-square p > 1e-3."""
     from scipy.stats import chi2_contingency
 
     q = np.array([[0.55, 0.05], [0.25, 0.15], [0.15, 0.3], [0.05, 0.5]])

@@ -1,14 +1,7 @@
-"""`write_fig` at a resolution the figures are read at (#195).
+"""Patched `write_fig` against `cnaster`'s, byte for byte at its defaults (#195).
 
-**The one `port` replacement that changes its output**, so the claim here is
-in two halves. At the same `dpi`, with the grouping put back, it is
-`cnaster`'s function byte for byte -- which is what says the patch is two
-defaults and not a rewrite. At its own defaults it writes the same page with
-a coarser raster, which is the 4.39x.
-
-The second default -- one rasterizing group per axes rather than one per
-artist -- is `tests/test_figure_groups.py`, because its referee is a pixel
-comparison rather than a byte one.
+At `FIGURE_DPI` the page geometry stays and the raster coarsens; pixels are
+`tests/test_figure_groups.py`'s.
 """
 
 import re
@@ -35,18 +28,10 @@ def _written(tmp_path: Path, name: str, writer: Any, **keywords: Any) -> bytes:
 
 
 @pytest.mark.patch
-# NB one figure's form (#403): passed where it merged; runs again where this
-#    module or the lock changes, and at a release.
+# NB one figure's form (#403): reruns where this module or the lock changes
 @pytest.mark.deprecate
 def test_at_its_defaults_it_is_cnasters_function_byte_for_byte(tmp_path: Path) -> None:
-    """The patch is two options bound at install, not a rewrite (#517).
-
-    Called as `cnaster` calls it, the two write identical files, so every
-    difference a run sees comes from the options `FIGURE_SWAPS` binds and
-    none from the code. That is what makes the change reviewable as two
-    numbers rather than as a diff, and what would catch a patch that quietly
-    dropped `transparent` or the tight bounding box along with them.
-    """
+    """Called as `cnaster` calls it, the patch writes `cnaster`'s bytes (#517)."""
     from cnaster.utils import write_fig as upstream
     from port.patch.utils import write_fig as patched
 
@@ -59,14 +44,7 @@ def test_at_its_defaults_it_is_cnasters_function_byte_for_byte(tmp_path: Path) -
 def test_the_default_writes_the_same_page_with_a_coarser_raster(
     tmp_path: Path,
 ) -> None:
-    """The page is where it was; the raster behind it is a quarter the pixels.
-
-    Pinned as `snapshot` because it judges nothing scientific: it records
-    that the only thing the default moves is the resolution. The page
-    geometry is the load-bearing part -- a dpi that changed the `MediaBox`
-    would be cropping the figure rather than sampling it, and the difference
-    is invisible in a file size.
-    """
+    """At `FIGURE_DPI` the `MediaBox` is unchanged and the file is smaller."""
     from cnaster.utils import write_fig as upstream
     from port.patch.utils import write_fig as patched
     from port.pipeline import FIGURE_DPI
@@ -87,23 +65,7 @@ def test_the_default_writes_the_same_page_with_a_coarser_raster(
 
 @pytest.mark.infra
 def test_the_figure_swap_is_kept_out_of_the_default_table() -> None:
-    """`CLAUDE.md` forbids a silent behaviour change, and this is one.
-
-    Every row of `SWAPS` reproduces `cnaster` bitwise, which is what the
-    whole-run test asserts. A figure written at half the dpi is a different
-    file by design, so it lives in `FIGURE_SWAPS`.
-
-    **The entry point installs it by default now**, and this test is what
-    stops that becoming a merge of the two tables. The default decides what
-    a user gets; the table decides what can still be claimed. Keeping them
-    apart is what lets `run_cnaster_port` be 47 per cent faster while
-    `SWAPS` remains the set that reproduces `cnaster` -- and `--no-figure-swaps`
-    is the arm that does.
-
-    The table has a second row since #299, `plot_clones_genomic`, which
-    changes the figure for the same reason, so what is pinned is that
-    `write_fig` is in it with its ticket and that no row is in both tables.
-    """
+    """`write_fig` is in `FIGURE_SWAPS` (#195), not `SWAPS`, and no row is in both."""
     from port.pipeline import FIGURE_SWAPS, SWAPS
 
     names = {swap.name for swap in SWAPS}
@@ -116,12 +78,7 @@ def test_the_figure_swap_is_kept_out_of_the_default_table() -> None:
 
 @pytest.mark.infra
 def test_png_copies_are_the_same_bytes_on_every_write(tmp_path: Path) -> None:
-    """With `png_copy` a PNG lands beside the PDF, and two writes are identical (#452).
-
-    The committed figures are these PNGs because the PDF beside them carries
-    a clock; without the option no PNG is written, so `cnaster`'s behaviour
-    is unchanged.
-    """
+    """With `png_copy` a PNG lands beside the PDF, byte-identical across writes (#452)."""
     from port.patch.utils import write_fig
 
     write_fig(str(tmp_path / "plain.pdf"), wide_rasterized_figure())

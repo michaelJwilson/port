@@ -1,14 +1,4 @@
-"""Each `dev_tree*` manifest names the generation it draws by r0's hash (#583).
-
-A manifest states `[sample] r0_hash`: `port.sim.fixtures.realization_hash` of
-its realization 0. A change to the manifest or to the simulator that moves
-r0 must state the new hash in the same change, so a study, a table or a
-ticket can say which draw it ran on, and a draw from an older checkout is
-told apart from the current one.
-
-`r0` does not depend on `[sample] realizations` (`port.sim.draw.realize`
-spawns one stream per realization), so each is drawn here at 1.
-"""
+"""Each `dev_tree*` manifest names the realization 0 it draws by its hash (#583)."""
 
 from __future__ import annotations
 
@@ -23,8 +13,7 @@ from port.sim.fixtures import R0_HASH, SIM_ROOT, realization_hash, references
 
 MANIFESTS = SIM_ROOT / "manifests"
 HASHED = sorted([*MANIFESTS.rglob("dev_tree*.toml"), *MANIFESTS.glob("study*.toml")])
-"""Every `dev_tree` manifest, `baseline/dev_tree`'s included, and the studies' `study*.toml`; the retired
-exponential copies under `sim/sandbox/manifests/` are not read (T- #807)."""
+"""Every `dev_tree` manifest and the studies' `study*.toml`; sandbox copies excluded (#807)."""
 
 
 def _stated(path: Path) -> object:
@@ -34,9 +23,7 @@ def _stated(path: Path) -> object:
 
 @pytest.mark.infra
 def test_every_dev_tree_manifest_states_its_own_r0_hash() -> None:
-    """Stated in the file, so an extending manifest never inherits its base's
-    hash for a different draw; 8 lower-case hex; `R0_HASH` is the frozen
-    `baseline/dev_tree`'s, the generation `tests.sim_stages` caches (#619)."""
+    """Each manifest states its own 8-hex `r0_hash`; `R0_HASH` is the frozen baseline's (#619)."""
     assert len(HASHED) == 10
     for path in HASHED:
         stated = _stated(path)

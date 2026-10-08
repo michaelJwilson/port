@@ -1,17 +1,7 @@
-"""What the two recursions cost, `cnaster` against upstream (#140).
+"""Forward, backward and posterior timings, `cnaster` against upstream (#140).
 
-The forward pass, the backward pass and the posterior, timed on the same
-chains both implementations score in `tests/test_hmm_oracle.py`. Those
-establish they agree; these say what the agreement costs.
-
-`cnaster`'s lattices are `njit` and take the concatenated batch in one call;
-upstream's `forward_backward` is a `numpy` recursion over one chain, so the
-batch is a Python loop over chains here. That is the comparison as it exists
-rather than a like-for-like kernel benchmark, and the docstrings say which is
-which so a reader does not take the ratio for a kernel ratio.
-
-No ratio is asserted. These are the baselines the fit-level rung (#77, #97)
-will report against when it lands.
+Upstream loops over chains in Python, so the ratio is not a kernel ratio. No ratio is
+asserted.
 """
 
 from collections.abc import Callable
@@ -153,10 +143,5 @@ def test_forward_backward(
     arm: Callable[[Any], Callable[[], Any]],
     size: str,
 ) -> None:
-    """Both passes and the posterior, which is what the driver runs per iteration.
-
-    Upstream's is looped over chains. `upstream` rather than
-    `upstream_oracle`: this times the referee, it does not consult it. The
-    agreement claims are in `test_hmm_oracle.py`.
-    """
+    """Both passes and the posterior; upstream looped over chains."""
     benchmark(arm(request.getfixturevalue(size)))

@@ -46,8 +46,7 @@ def test_a_face_matplotlib_cannot_find_is_refused(
 
 @pytest.mark.infra
 def test_the_run_and_the_combined_figure_draw_in_the_stated_face() -> None:
-    """Text drawn under `figure_font` and under `page_style` resolves to the stated
-    face, after `cnaster.plotting` and seaborn have set their own."""
+    """Text under `figure_font` and `page_style` resolves to the stated face."""
     import matplotlib as mpl
 
     mpl.use("Agg")
@@ -74,11 +73,7 @@ def test_the_run_and_the_combined_figure_draw_in_the_stated_face() -> None:
 
 @pytest.mark.analytic
 def test_each_page_share_is_its_fraction_of_the_text_block_less_its_caption() -> None:
-    """`page_size` against the paper's text block by hand, letter less 1.01 in
-    margins and `llncs`'s 58 pt head and foot, 468.31 by 590.99 TeX points as
-    `pdflatex` reports it: "full" is the block less 1.0 in, the shares 1/3, 1/2
-    and 3/4 of it, and `columns` figures on a row split its width (T- #733,
-    T- #740, T- #791)."""
+    """`page_size` against the `llncs` text block computed by hand (#733, #740, #791)."""
     from port.extensions.figure_style import page_size
 
     width, room = 468.31 / 72.27, 590.99 / 72.27 - 1.0

@@ -1,16 +1,7 @@
-"""`port.patch.omics.blocks.form_gene_snp_table` against `cnaster`'s (#190).
+"""`port.patch.omics.blocks.form_gene_snp_table` against cnaster's, bitwise (#190).
 
-**The same table, bitwise, without the per-SNP `pandas` write.** `cnaster`
-assigns each SNP to its gene by walking backwards through the sorted table in
-Python and writing the result with `df_gene_snp.iloc[i, 4] = ...`, which is
-two `pandas` scalar accesses per SNP and 66% of the function at 782 of them.
-
-The window search is what the referee has to pin, because it is the part with
-semantics rather than mechanics: the nearest **preceding** gene, at most
-`num_preceeding_rows` rows back, on the same chromosome, whose interval
-contains the SNP. Four ways to get that wrong -- the nearest following gene,
-an unbounded window, across a chromosome, or a containment test that is
-inclusive at the end -- and each of them changes which SNPs survive.
+The window search -- nearest preceding gene within `num_preceeding_rows` rows, same
+chromosome, containing the SNP -- is also checked against the intervals.
 """
 
 from typing import Any
@@ -42,13 +33,7 @@ def both_tables(
 
 @pytest.mark.patch
 def test_the_table_is_cnasters_table(both_tables: tuple[Any, Any]) -> None:
-    """**Every column, every row, in order.**
-
-    Compared as a frame rather than column by column so the index comes with
-    it: the rows are sorted by `(CHR, START)` and not renumbered, and a patch
-    that reset the index would leave every value right and every downstream
-    `iloc` range wrong.
-    """
+    """Every column, row and index entry equals cnaster's frame."""
     reference, realized = both_tables
 
     pd.testing.assert_frame_equal(realized, reference)
@@ -58,11 +43,8 @@ def test_the_table_is_cnasters_table(both_tables: tuple[Any, Any]) -> None:
 def test_every_snp_kept_got_the_gene_that_contains_it(
     both_tables: tuple[Any, Any],
 ) -> None:
-    """**The assignment, checked against the intervals rather than each other.**
-
-    Two implementations agreeing is not the claim; the claim is the window
-    search. So each surviving SNP is taken back to the gene rows of the table
-    and the result recomputed from the containment condition alone.
+    """Each surviving SNP's gene satisfies the containment condition, recomputed from
+    the intervals.
     """
     _, realized = both_tables
 
@@ -86,24 +68,11 @@ def test_every_snp_kept_got_the_gene_that_contains_it(
 
 @pytest.mark.analytic
 def test_the_window_takes_the_nearest_preceding_gene_and_stops_at_the_edges() -> None:
-    """**The four ways the search can be wrong, on a table built to catch them.**
+    """The nearest preceding containing gene is chosen and the search stops at the
+    chromosome.
 
-    Rows in sorted order, with `is_interval` marking the genes:
-
-    | row | CHR | START | END | gene |
-    | --- | --- | --- | --- | --- |
-    | 0 | 1 | 100 | 400 | outer |
-    | 1 | 1 | 200 | 300 | inner |
-    | 2 | 1 | 250 | 251 | *the SNP* |
-    | 3 | 1 | 260 | 900 | later |
-    | 4 | 2 | 250 | 251 | *a SNP on the next chromosome* |
-
-    Row 2 is inside `outer`, `inner` and nothing else preceding; the nearest
-    preceding is `inner`, so an implementation taking the first match forwards
-    would say `outer` and one taking any match would be ambiguous. Row 4 is
-    inside nothing on its own chromosome, and `later` contains its position
-    numerically -- so an implementation that did not stop at the chromosome
-    would assign it.
+    Row 2 (the SNP) lies in `outer` and `inner`; row 4, on chromosome 2, lies in `later`
+    numerically only.
     """
     from port.patch.omics.blocks import preceding_gene
 
@@ -120,13 +89,7 @@ def test_the_window_takes_the_nearest_preceding_gene_and_stops_at_the_edges() ->
 
 @pytest.mark.analytic
 def test_the_window_does_not_reach_past_its_own_length() -> None:
-    """A gene further back than `num_preceeding_rows` is not found.
-
-    `cnaster`'s window is a row count and not a distance, so a SNP separated
-    from its gene by many other rows loses it. That is upstream's behaviour
-    and the patch reproduces it: the alternative would be a different table,
-    not a faster one.
-    """
+    """A gene further back than `num_preceeding_rows` rows is not found, as in cnaster."""
     from port.patch.omics.blocks import preceding_gene
 
     filler = 8
@@ -146,13 +109,7 @@ def test_the_window_does_not_reach_past_its_own_length() -> None:
 
 
 MIN_UMIS = [1, 500, 500_000, 5_000_000]
-"""SNP-UMI thresholds the block assignment is compared at.
-
-The first two leave every merged gene interval standing alone on this
-instance; the last two force the second-level loop to grow a run and then to
-merge it backwards, which is the branch that decides where a genome segment
-ends. A comparison run only at the shipped threshold would exercise neither.
-"""
+"""SNP-UMI thresholds; the last two exercise the second-level grow-and-merge branch."""
 
 
 @pytest.fixture(scope="module")
@@ -178,11 +135,9 @@ def staged(
 def test_the_blocks_are_cnasters_blocks(
     staged: tuple[Any, Any, Any], min_umi: int
 ) -> None:
-    """**Every block id, bitwise, at four thresholds.**
+    """Every block id equals cnaster's at four thresholds, bitwise.
 
-    A fresh copy per call, because `cnaster` writes both of its block columns
-    by position and a second call on one frame writes into the wrong one
-    (#189). That is also why this cannot be a fixture returning one result.
+    A fresh copy per call: cnaster writes its block columns by position (#189).
     """
     from cnaster.omics import assign_initial_blocks as upstream
     from port.patch.omics.blocks import assign_initial_blocks as patched
@@ -202,17 +157,8 @@ def test_the_blocks_are_cnasters_blocks(
 
 @pytest.mark.analytic
 def test_the_merge_sweep_restarts_at_every_chromosome() -> None:
-    """**Positions restart per chromosome, and the running reach must too.**
-
-    The defect this pins was real: a single `np.maximum.accumulate` over the
-    gene rows carries the last chromosome's largest end onto the next one,
-    where every start is below it, so the whole chromosome merges into one
-    interval. On the dev instance that turned 400 merged intervals into 223
-    and was invisible in any single-chromosome check.
-
-    Two chromosomes below, each with two disjoint genes. The second
-    chromosome's genes sit **inside** the first chromosome's span by position,
-    so an unreset sweep yields two intervals where the answer is four.
+    """The running reach resets per chromosome, so the second chromosome yields two
+    intervals.
     """
     from port.patch.omics.blocks import merged_gene_intervals
 
@@ -227,12 +173,8 @@ def test_the_merge_sweep_restarts_at_every_chromosome() -> None:
 
 @pytest.mark.analytic
 def test_the_merge_sweep_joins_a_chain_of_overlaps() -> None:
-    """A gene overlapping only the one before it still joins the same run.
-
-    The run's reach is the largest end seen in it, not the last one, so
-    `(0, 100), (50, 60), (70, 200)` is one interval: the third overlaps the
-    first even though it misses the second. A sweep comparing against the
-    previous row's end alone would split it.
+    """The run's reach is its largest end, so `(0, 100), (50, 60), (70, 200)` is one
+    interval.
     """
     from port.patch.omics.blocks import merged_gene_intervals
 
@@ -247,12 +189,8 @@ def test_the_merge_sweep_joins_a_chain_of_overlaps() -> None:
 def test_a_known_segmentation_is_cnasters_under_the_swaps(
     staged: tuple[Any, Any, Any],
 ) -> None:
-    """With `known_id`, the swapped name returns what `cnaster` does (#466).
-
-    Port hands a known segmentation to upstream. Under `patched()` upstream's
-    name is port's own function, so the hand-off recursed without end on any
-    run with `annotation.clone_ranges`. Two known segments on the staged
-    instance, one per half of the table.
+    """With `known_id`, the swapped name returns what cnaster does, without recursing
+    (#466).
     """
     from cnaster.omics import assign_initial_blocks as upstream
     from port.pipeline import SWAPS, patched

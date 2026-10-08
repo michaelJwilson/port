@@ -1,16 +1,4 @@
-"""Integer copies from the error bars: every `(A, B)` they admit (#353).
-
-What is pinned here:
-
-- a state's set is the lattice points its covariance admits, the planted one
-  among them, and it widens with the covariance (`analytic`);
-- the neutral state, pinned to `mu = 1`, decodes on total 2 alone, by its
-  allele fraction (`analytic`);
-- `--copy-errors` refuses an unshifted fit, whose scale is not the pin's
-  (`infra`);
-- one realization of the integer genome: each planted pair is in its fitted
-  state's set (`end2end`, `release`: a whole run).
-"""
+"""Integer copy sets from the fit's error bars, against planted lattice pairs (#353)."""
 
 from __future__ import annotations
 
@@ -74,7 +62,7 @@ def test_a_wider_error_admits_more_and_keeps_the_planted_pair(
 def test_the_neutral_state_decodes_on_total_two_by_its_allele_fraction(
     cnaster_config: None,
 ) -> None:
-    """`mu = 1` exactly: balanced reads `(1, 1)`; a lost allele reads `(2, 0)`."""
+    """At `mu = 1` balanced reads `(1, 1)` and a lost allele `(2, 0)`."""
     from port.sandbox.extensions.copy_errors import copy_sets
 
     balanced = copy_sets(_errors([1.0], [0.49], (0.0, 0.01)))  # type: ignore[arg-type]
@@ -89,7 +77,7 @@ def test_the_neutral_state_decodes_on_total_two_by_its_allele_fraction(
 def test_the_copy_decode_without_the_shift_is_refused(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """`--no-shift` with the copy rows on is refused at the command line, not hours into the run (#576)."""
+    """`--no-shift` with the copy rows on is refused at the command line (#576)."""
     from port.scripts.run_cnaster import main
 
     config = tmp_path / "config.yaml"
@@ -104,10 +92,7 @@ def test_the_copy_decode_without_the_shift_is_refused(
 @pytest.mark.end2end
 @pytest.mark.release
 def test_each_planted_pair_is_in_its_state_s_set(tmp_path: Path) -> None:
-    """One realization of the integer genome, decoded from its error bars.
-
-    Tolerance and realized value are in #353's pull request.
-    """
+    """Each planted pair lies in its fitted state's set on one realization (#353)."""
     from port.sandbox.copy_audit import decode_one
 
     score = decode_one(0, tmp_path)
@@ -120,11 +105,7 @@ def test_each_planted_pair_is_in_its_state_s_set(tmp_path: Path) -> None:
 def test_copy_errors_refuse_a_fit_where_jax_hmms_beta_binomial_is_unstable(
     tau: float,
 ) -> None:
-    """**T- #599:** at `tau >= JAX_TAU_LIMIT` `--copy-errors` refuses rather than returning a wrong covariance.
-
-    `jax_hmm`'s beta-binomial subtracts `lgamma(tau)`-sized terms. Fails when
-    T- #599 fixes it and the guard is lifted.
-    """
+    """T- #599: at `tau >= JAX_TAU_LIMIT` `--copy-errors` refuses the fit."""
     import numpy as np
     from port.extensions.copy_likelihood import Captured
     from port.qa.errors import pinned_errors
@@ -145,11 +126,7 @@ def test_copy_errors_refuse_a_fit_where_jax_hmms_beta_binomial_is_unstable(
 
 @pytest.mark.bug
 def test_the_pseudobulk_refuses_a_clone_with_no_spots() -> None:
-    """Three path columns and spots in clones 0 and 2 only: refused (#749 WP0).
-
-    Stacked, clone 2's spots filled block 1, which `pinned_objective` scores
-    on clone 1's path; with every clone present the stack is as before.
-    """
+    """A pseudobulk with an empty clone is refused (#749 WP0)."""
     import numpy as np
     from port.extensions.copy_likelihood import Captured
     from port.qa.errors import pseudobulk

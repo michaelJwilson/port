@@ -1,18 +1,6 @@
-"""`--sal`: the rows `run_cnaster_port` substitutes from `snakes_and_ladders` (#312).
+"""`--sal` rows `run_cnaster_port` substitutes from `snakes_and_ladders` (#312).
 
-One row is admitted, the clone labelling. `snakes_and_ladders`' alpha
-expansion finds the lower-energy basin, then `cnaster`'s ICM applies its
-200-spot floor. What pins it:
-
-- the Rust minimum cut returns the Python cut's labelling, so the speed it
-  buys changes no answer (`backend`);
-- the sequence keeps `cnaster`'s floor, the property alpha expansion alone
-  lacks and the one the whole-run recovery depends on (`smoke`: it reaches
-  `cnaster`, and the floor is `cnaster`'s contract);
-- end to end on the dev instance, `--sal` recovers the planted clones at
-  ARI 1.000 against the default's 0.919 (`end2end`, `release`);
-- the same on the critical instance, per pull request (`end2end`);
-- the flag's own mechanics (`infra`).
+Backend equivalence, `cnaster`'s clone floor, and recovery of planted clones (ARI).
 """
 
 from __future__ import annotations
@@ -32,7 +20,7 @@ from tests.fixtures import (
 @pytest.mark.backend
 @pytest.mark.parametrize("n_states", [3, 6])
 def test_the_rust_cut_returns_the_python_cuts_labelling(n_states: int) -> None:
-    """Bitwise, on a 30 x 30 lattice at three and six labels."""
+    """Rust cut equals the Python cut bitwise on 30 x 30 at three and six labels."""
     from port.patch.icm.alpha_expansion import alpha_expansion_sweep
     from sal.backend import Backend
 
@@ -47,11 +35,7 @@ def test_the_rust_cut_returns_the_python_cuts_labelling(n_states: int) -> None:
 
 @pytest.mark.backend
 def test_the_numba_descent_returns_the_python_descents_labelling() -> None:
-    """`icm-numba`, measured and selectable, against sal's Python sweep.
-
-    sal states the compiled sweep bitwise with its Python loop (#264); this
-    pins that through `port`'s adapter, on 30 x 30 and four labels.
-    """
+    """`icm-numba` equals sal's Python sweep bitwise through port's adapter (#264)."""
     from port.extensions.label_solver import sal_icm_sweep
     from port.patch.icm.alpha_expansion import potts_graph_from
     from sal.backend import Backend
@@ -75,21 +59,7 @@ def test_the_numba_descent_returns_the_python_descents_labelling() -> None:
 @pytest.mark.smoke
 @pytest.mark.merge
 def test_the_sequence_keeps_cnasters_clone_floor() -> None:
-    """No clone the sequence returns is under `min_clone_spots`.
-
-    Sixteen labels over 1,600 spots start the problem with clones of 100,
-    under the 200-spot floor, which is how the RDR stage starts on the dev
-    instance. At coupling 0.6 alpha expansion alone leaves four clones over
-    it and twelve of 38 to 84 spots; the ICM that follows merges them into
-    three, as `cnaster` does. The global RNG is seeded because `cnaster`'s
-    sweep draws from it (#45).
-
-    **The floor is `cnaster`'s only when its sweep edits.** At coupling 1.0
-    and above the first ICM epoch changes nothing, the merge is never
-    reached, and clones of 1 to 19 spots survive `icm_sweep_deque` itself --
-    so the sequence keeps the floor exactly as far as `cnaster` does, and
-    this coupling is chosen where `cnaster` applies it.
-    """
+    """No returned clone is under `min_clone_spots` at coupling 0.6 (#45)."""
     from port.patch.icm.alpha_expansion import alpha_expansion_sweep
     from port.sandbox.extensions.label_solvers import expansion_then_floor
 
@@ -113,12 +83,7 @@ def test_the_sequence_keeps_cnasters_clone_floor() -> None:
 
 @pytest.mark.smoke
 def test_the_merge_keeps_cnasters_clone_floor_without_cnaster() -> None:
-    """`alpha-rust-merge` leaves no clone under `min_clone_spots`, from sal alone.
-
-    The fixture above, where alpha expansion alone leaves twelve clones of 38
-    to 84 spots: sal's `merge_small_labels` dissolves each, and no global RNG
-    is touched because none of `cnaster`'s sweep runs.
-    """
+    """`alpha-rust-merge` leaves no clone under `min_clone_spots`, using sal alone."""
     from port.patch.icm.alpha_expansion import alpha_expansion_sweep
     from port.sandbox.extensions.label_solvers import expansion_then_merge
 
@@ -139,13 +104,7 @@ def test_the_merge_keeps_cnasters_clone_floor_without_cnaster() -> None:
 
 @pytest.mark.analytic
 def test_the_fusion_is_no_worse_than_either_proposal() -> None:
-    """Before the floor, the fused labelling's energy is at most both proposals'.
-
-    The roof dual's labelled part is an autarky (sal #1125), so
-    `E(fuse(a, b)) <= min(E(a), E(b))` whatever the two are. Checked on the
-    floor fixture with a floor of one spot, so the merge dissolves nothing
-    and only descends further from the fusion.
-    """
+    """The fused labelling's energy is at most both proposals' (sal #1125)."""
     from port.extensions.label_solver import fusion_then_merge
     from port.patch.icm.alpha_expansion import potts_graph_from
     from sal.backend import Backend
@@ -182,12 +141,7 @@ def test_the_fusion_is_no_worse_than_either_proposal() -> None:
 
 @pytest.mark.analytic
 def test_the_argmax_descent_is_the_argmax_without_coupling() -> None:
-    """At `beta = 0` the MAP labelling is each site's best clone, and nothing moves it.
-
-    With no coupling every site's conditional mode is its own field argmax,
-    which is where the descent starts, so it takes no step; a floor of one
-    spot dissolves nothing. Against `np.argmax` directly.
-    """
+    """At `beta = 0` the descent returns `np.argmax` of the field."""
     from port.sandbox.extensions.label_solvers import sal_icm_argmax_sweep
 
     field, graph, start, _ = planted_blocky_field(20, 5, seed=4, beta=0.6)
@@ -246,13 +200,7 @@ def test_list_prints_the_sal_row(capsys: pytest.CaptureFixture[str]) -> None:
 
 @pytest.mark.end2end
 def test_sal_recovers_the_critical_instance(cnaster_config: None) -> None:
-    """ARI 1.000 on the early gate's instance, with the row's labelling installed.
-
-    `M = K = 2`, `G = 1,000`, `S = 500`, through `run_core_inference` with
-    `port`'s `pipeline_clone_assignment` (the `SWAPS` row `--sal` reads) and
-    `sal_options()` bound, so alpha expansion and `cnaster`'s floor label every
-    spot. The per-pull-request form of the dev claim below.
-    """
+    """ARI 1.000 against the planted clones on the critical instance (M = K = 2, S = 500)."""
     from port.extensions.sal import sal_options
     from port.pipeline import SWAPS, patched, with_options
     from port.sim.truth import critical_instance
@@ -276,15 +224,7 @@ def test_sal_recovers_the_critical_instance(cnaster_config: None) -> None:
 @pytest.mark.end2end
 @pytest.mark.release
 def test_sal_recovers_the_planted_clones_on_the_dev_instance(tmp_path: Path) -> None:
-    """ARI 1.000 against the planted labels, stated at 0.99.
-
-    The dev instance at the figures' configuration (one outer iteration,
-    three EM iterations, five states). Realized three times in three runs
-    (#312); stated at 0.99 so a spot or two of drift fails no-one. The
-    default arm was pinned below 0.99 while it reached 0.919; it reaches 1.0
-    on main at sal `3ad4b04` and `b61dfba` alike (PR #633), so that pin and
-    its run are retired (T- #632).
-    """
+    """ARI at least 0.99 against the planted labels on the dev instance (#312, #632)."""
     import warnings
 
     import pandas as pd

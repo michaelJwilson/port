@@ -1,27 +1,6 @@
-"""`python/port/patch/` is named for `cnaster`, so the replacement is obvious.
+"""`port.patch` modules are named for the `cnaster` module they replace (#250).
 
-**#250.** A reader holding `cnaster/hmrf.py` open should find `port`'s answer
-to it at `port/patch/hmrf`, without grepping a swap table or a declaration.
-Before this, 17 of the 21 modules that stood in for exactly one `cnaster`
-module were named for the ticket that produced them instead.
-
-The rule: **a module under `port.patch` is named for the `cnaster` module it
-replaces.** Where several patches address one `cnaster` module they are a
-package under that name, and its `__init__` re-exports them so a swap row
-names the package. Where a patch replaces nothing, it does not live under
-`patch/` at all.
-
-Two packages are exceptions and declare `MIRRORS` because a name cannot
-carry what they do: `cnaster` defines `forward_lattice` and
-`backward_lattice` in both `hmm_nophasing` and `hmm_phased`, so `lattice`
-unifies a duplicate pair, and `plotting`'s path helpers serve both
-`cnaster.plot_genomic` and `cnaster.plotting`. `emission` is the one NB/BB
-evaluation that `hmm_nophasing`'s and `hmm_phased`'s rows and `hmrf`'s field
-all score (T- #776); its predecessor of the same name is set aside under
-`sandbox/patch/` (#517 step 8).
-
-`infra`: these assert `port`'s own layout. None says anything about a
-scientific result, and none can fail because `cnaster` changed.
+Unifiers declare `MIRRORS` (T- #776, #517 step 8). `infra`: port's own layout.
 """
 
 from __future__ import annotations
@@ -42,46 +21,25 @@ from port.pipeline import (
 from tests import ROOT
 
 UNIFIERS = ("emission", "lattice", "plotting")
-"""The patches that replace several of `cnaster` modules rather than one.
-
-Named here rather than inferred so that adding a third is a decision someone
-makes in a diff, not a name that quietly stops meaning anything.
-"""
+"""Patches replacing several `cnaster` modules, named so adding one is explicit."""
 
 PRIVATE_SURFACE = frozenset(
     {
         ("cnaster.hmm_nophasing", "_bb_logpmf_1d"),
         ("cnaster.hmm_nophasing", "_nb_logpmf_1d"),
         ("cnaster.hmm_phased", "_switch_betabinom_1d"),
-        # The four layout helpers `plot_clones_genomic` is built from (#278).
-        # `port.sandbox.patch.plotting.genomic` replaces that function and imports
-        # these rather than copying them: they draw the gridspec, the axis
-        # furniture and the chromosome boundaries, and a copy would be 130
-        # lines whose only job is to stay identical. Importing them is what
-        # keeps the replacement's figure upstream's figure.
+        # The four `plot_genomic` layout helpers the sandbox replacement imports (#278)
         ("cnaster.plot_genomic", "_annotate_clone_stats"),
         ("cnaster.plot_genomic", "_create_clone_gridspec"),
         ("cnaster.plot_genomic", "_draw_chromosome_boundaries"),
         ("cnaster.plot_genomic", "_format_track_axis"),
     }
 )
-"""Every underscore-prefixed `cnaster` name `port` depends on, reviewed.
-
-`cnaster` publishes none of these, so each is a contract it never offered.
-Failure is loud rather than silent -- `pipeline.install` does a `getattr` and
-an absent name raises -- but nothing listed what `port` would lose if one
-were renamed, which is the gap this closes.
-
-The four `plot_genomic` entries are the largest single addition and the one
-worth arguing with: a drop-in replacement that imports four private helpers
-is four more names that can be renamed underneath it. The alternative is
-copying them, which trades that risk for a divergence nobody would notice
-until a figure changed. Reviewed, and chosen.
-"""
+"""Every underscore-prefixed `cnaster` name `port` imports, reviewed."""
 
 
 def _top_level() -> list[str]:
-    """Every name directly under `port.patch`, module or package."""
+    """Return every public name directly under `port.patch`."""
     return sorted(
         info.name
         for info in pkgutil.iter_modules(port.patch.__path__)
@@ -91,10 +49,7 @@ def _top_level() -> list[str]:
 
 @pytest.mark.infra
 def test_every_patch_is_named_for_the_cnaster_module_it_replaces() -> None:
-    """Importing the target rather than matching a string is what makes this
-    bite: a plausible-looking name that `cnaster` does not carry --
-    `hmrf_field`, `normal_baf`, `input_data` were all of them -- fails here.
-    """
+    """Each non-unifier patch name imports as `cnaster.<name>`."""
     for name in _top_level():
         if name in UNIFIERS:
             continue
@@ -104,12 +59,7 @@ def test_every_patch_is_named_for_the_cnaster_module_it_replaces() -> None:
 
 @pytest.mark.infra
 def test_a_unifier_declares_the_pair_it_replaces() -> None:
-    """The exception, held to the reason it exists.
-
-    A module exempt from the naming rule must say what it stands in for and
-    it must be **more than one** -- otherwise it is not a unifier, it is a
-    module that should have been renamed.
-    """
+    """Each unifier's `MIRRORS` names more than one importable target."""
     for name in UNIFIERS:
         module = importlib.import_module(f"port.patch.{name}")
 
@@ -124,12 +74,7 @@ def test_a_unifier_declares_the_pair_it_replaces() -> None:
 
 @pytest.mark.infra
 def test_every_swap_lands_in_the_module_named_for_its_target() -> None:
-    """All 16 rows: `cnaster.X` is replaced from `port.patch.X`.
-
-    The load-bearing one. A swap moved to a different module, or a module
-    renamed without its rows, fails here -- and both are how a layout stops
-    meaning what it claims once nothing reads it.
-    """
+    """Every swap row replaces `cnaster.X` from `port.patch.X`."""
     for swap in SWAPS + FIGURE_SWAPS + SHIFT_SWAPS + COPY_SWAPS:
         target, _, _ = swap.replacement.partition(":")
         expected = f"port.patch.{swap.module.rpartition('.')[2]}"
@@ -143,12 +88,7 @@ def test_every_swap_lands_in_the_module_named_for_its_target() -> None:
 
 @pytest.mark.infra
 def test_the_private_cnaster_surface_is_the_reviewed_one() -> None:
-    """Every `_`-prefixed `cnaster` name `port` imports, against the list above.
-
-    A new private dependence binds `port` to something `cnaster` never
-    published, so it arrives in a diff that edits `PRIVATE_SURFACE` and is
-    read, rather than in one that edits an import line and is not.
-    """
+    """The `_`-prefixed `cnaster` names imported equal `PRIVATE_SURFACE`."""
     found = set()
 
     for path in (ROOT / "python" / "port").rglob("*.py"):
@@ -170,25 +110,7 @@ def test_the_private_cnaster_surface_is_the_reviewed_one() -> None:
 
 @pytest.mark.infra
 def test_every_module_has_one_of_the_four_jobs() -> None:
-    """`CLAUDE.md`'s shape rule, asserted rather than left to review.
-
-    Four jobs: `patch/` replaces a named `cnaster` function or class,
-    `extensions/` adds what has no counterpart, `sim/` simulates, and
-    everything else realizes `run_cnaster_port` with those in place. `qa/`
-    measures and records runs of the four (T- #673): the audits' and
-    studies' statistics and provenance, reached from no row or pipeline;
-    `studies/` holds the studies themselves, run by hand. A module
-    with none of them goes to `sandbox/`.
-
-    **This is the test the refactor exists for.** Moving four modules is an
-    afternoon; keeping them where they belong is what needed a referee, and
-    without one the next module lands at `port.` top level because that is
-    where the last one was.
-
-    `sandbox/` is deliberately not exempted from anything else -- it is
-    outside the coverage denominator and outside the claims, which is the
-    whole of what it means -- so it simply does not appear here.
-    """
+    """Only allowed job directories under `port/`, and no stray top-level modules (T- #673)."""
     allowed = {"patch", "extensions", "sim", "scripts", "sandbox", "qa", "studies"}
 
     package = ROOT / "python" / "port"
@@ -196,8 +118,7 @@ def test_every_module_has_one_of_the_four_jobs() -> None:
 
     for path in sorted(package.glob("*.py")):
         if path.name in {"__init__.py", "pipeline.py"}:
-            # `pipeline.py` *is* realizing `run_cnaster_port`: it is the swap
-            # table and the context manager that installs it.
+            # `pipeline.py` is the swap table and its installer
             continue
 
         stray.append(path.name)

@@ -1,16 +1,7 @@
-"""Several realizations of one genome, as samples on one grid (#328).
+"""Several realizations of one genome as samples side by side on one grid (#328).
 
-A multi-sample fixture whose samples share their clones by construction:
-`port.sim.realizations.realize` redraws the counts of one planted genome, so
-states, labels, segmentation and exposure are common and only the draw
-differs. Sample 0 is the genome's own draw.
-
-The samples sit side by side on a **compressed shared grid**: sample `k`'s
-column `c` is written at `c + k (columns + gap)`, so one horizontal slice
-holds all of them with `gap` empty columns between. Spatial edges are
-within a sample only -- `cnaster` builds the lattice adjacency per sample --
-and `port.extensions.multisample.cross_sample_adjacency` is the placeholder
-for the edges between them.
+Sample `k`'s column `c` sits at `c + k (columns + gap)`; spatial edges stay within a
+sample.
 """
 
 from __future__ import annotations
@@ -24,12 +15,7 @@ from port.sim.truth import CoreInferenceTruth
 
 @dataclass(frozen=True)
 class MultiSample:
-    """The concatenated truth, and each spot's sample and grid position.
-
-    `sample_label` is the integer label of each spot's sample, `0..k-1` in
-    spot order, on the constructed grid `positions` indexes; `grid()` is the
-    same labelling as a `(rows, columns)` array, `-1` in the gaps.
-    """
+    """The concatenated truth, each spot's `sample_label` and grid position."""
 
     truth: CoreInferenceTruth
     sample_label: np.ndarray
@@ -53,12 +39,8 @@ class MultiSample:
 def multi_sample_truth(
     truth: CoreInferenceTruth, n_samples: int, *, gap: int = 1
 ) -> MultiSample:
-    """`n_samples` realizations of `truth`, concatenated along the spots.
-
-    Realization `k > 0` draws from `realize(truth, k)`; the exposure and trial
-    counts are the genome's in every sample, so the samples share `lambda`
-    and differ in their counts alone, the regime #328's audit found `cnaster`
-    correct for.
+    """`n_samples` realizations of `truth` concatenated along spots, sharing exposure and
+    trials (#328).
     """
     from port.sim.realizations import realize
 

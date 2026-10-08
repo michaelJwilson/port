@@ -1,14 +1,6 @@
-"""What `oxiport`'s lattices cost against `cnaster`'s `@njit` ones (#318).
+"""`oxiport`'s lattices against `cnaster`'s `@njit` ones, warm (#318, #204).
 
-Warm, both arms called once outside the timer: `cnaster`'s unphased pair is
-not cached, so its first call is a compile (4,051 ms and 510 ms measured on
-the stress case, against ~0.5 ms for Rust), and that is a separate number
-from the recursion's cost (#204). The first call is what `--rust` removes
-from every process; these rows are what it does to the calls after.
-
-The gate rows run per pull request and decide nothing. The stress rows carry
-`release`: `K = 10` states over ten contigs of 1,000 bins and 20 spots,
-which is above `PARALLEL_WORK`, so the Rust arm runs its contigs in parallel.
+Gate rows decide nothing; stress rows (`release`): K = 10, 10 x 1,000 bins, 20 spots.
 """
 
 from typing import Any
@@ -18,10 +10,10 @@ import pytest
 from pytest_benchmark.fixture import BenchmarkFixture
 
 GATE = {"n_states": 5, "n_contigs": 10, "per_contig": 100, "n_spots": 4}
-"""Small enough for the per-pull-request budget; decides no ratio."""
+"""Gate size; decides no ratio."""
 
 STRESS = {"n_states": 10, "n_contigs": 10, "per_contig": 1_000, "n_spots": 20}
-"""Where the ratio is read."""
+"""Stress size, where the ratio is read."""
 
 
 def _inputs(
@@ -74,7 +66,7 @@ def _bench(
 def test_the_gate_lattice(
     benchmark: BenchmarkFixture, which: str, phased: bool, implementation: str
 ) -> None:
-    """A baseline at a gate size, which argues nothing either way."""
+    """Gate-size baseline."""
     _bench(benchmark, GATE, which, phased, implementation)
 
 
@@ -86,5 +78,5 @@ def test_the_gate_lattice(
 def test_the_stress_lattice(
     benchmark: BenchmarkFixture, which: str, phased: bool, implementation: str
 ) -> None:
-    """The size the ratio is read at, warm."""
+    """Stress-size ratio, warm."""
     _bench(benchmark, STRESS, which, phased, implementation)

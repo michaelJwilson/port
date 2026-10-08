@@ -10,9 +10,8 @@ import pytest
 
 from tests import ROOT
 
-#: Planted `(log mu, p)`: neutral, a one-copy loss (LOH), a one-copy gain,
-#: copy-neutral LOH. The LOH states sit at a small p, not 0, as a mixture
-#: with normal spots leaves them.
+#: Planted `(log mu, p)`: neutral, one-copy loss, one-copy gain, copy-neutral LOH.
+#: LOH states sit at a small p, as a mixture with normal spots leaves them.
 PLANTED = np.array(
     [[0.0, 0.5], [np.log(0.5), 0.05], [np.log(1.5), 1.0 / 3.0], [0.0, 0.05]]
 )
@@ -63,11 +62,8 @@ def _near(fitted: np.ndarray, planted: np.ndarray) -> bool:
 
 @pytest.mark.oracle
 def test_the_lattice_start_recovers_the_planted_states() -> None:
-    """Every planted state is a fitted one, to 0.05 in log mu and 0.03 in p.
-
-    Referee: the parameters the bins were drawn at. The exposure and trials
-    vary per bin, so a start that ignored the covariate would read the
-    depth's spread as states.
+    """Every planted state is fitted to 0.05 in log mu and 0.03 in p, against the
+    drawing parameters.
     """
     fitted = _fitted("lattice")
 
@@ -77,13 +73,8 @@ def test_the_lattice_start_recovers_the_planted_states() -> None:
 
 @pytest.mark.bug
 def test_the_default_start_merges_the_loss_into_copy_neutral_loh() -> None:
-    """`kmeans++x5+em`, `--sal`'s, fits no state at the one-copy loss: #471.
-
-    Seeded in `sal`'s rate space (#547), its polish merges the loss (log mu
-    -0.69, p 0.05) with copy-neutral LOH (0, 0.05) into one state near
-    (-0.28, 0.05) and splits neutral in two; the lattice, from the same
-    bins, fits all four. This pins the defect: it fails once the default
-    start separates them, and #471 closes with it.
+    """`kmeans++x5+em` fits no state at the one-copy loss, merging it with LOH (#471,
+    #547).
     """
     from port.patch.hmm_initialize.sal_mixture import DEFAULT
 
@@ -135,10 +126,7 @@ def test_the_start_is_handed_over_only_under_its_option(
 def test_the_baf_only_and_minor_calls_keep_upstreams_start(
     params: str, only_minor: bool
 ) -> None:
-    """Without exposure to condition on, the call is `cnaster`'s `gmm_init`, bitwise.
-
-    Referee: `cnaster.hmm_initialize.gmm_init` on the same arguments.
-    """
+    """Without exposure, the call equals cnaster's `hmm_initialize.gmm_init`, bitwise."""
     from port.patch.hmm_initialize.distinct import UPSTREAM
     from port.patch.hmm_initialize.sal_mixture import DEFAULT, gmm_init
 
@@ -174,10 +162,8 @@ def _call(n_obs: int = 3000, seed: int = 0) -> Any:
 def _refusing(
     monkeypatch: pytest.MonkeyPatch, rng: np.random.Generator, refused: set[int]
 ) -> None:
-    """`sal`'s seeding, raising as its M step does on the streams `rng` spawns at `refused`.
-
-    Keyed by stream, not by call order, so a seeding is refused wherever it
-    runs: in `sal`'s best-of or in port's rerun of the survivors.
+    """`sal`'s seeding, raising as its M step does on the streams `rng` spawns at
+    `refused`, keyed by stream.
     """
     import sal.search.mixture_starts as starts
     from port.patch.hmm_initialize import sal_mixture
@@ -212,13 +198,8 @@ def _refusing(
 def test_a_refused_seeding_is_dropped_and_the_best_survivor_kept(
     monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
-    """T- #596: one seeding of five refused, the start is the best of the other four.
-
-    Referee: those four seedings run alone, each on the stream `sal`'s
-    best-of spawns for it and polished to convergence, the best by final
-    log-likelihood. Since sal #1136 `sal`'s best-of skips the refused
-    seeding itself, and T- #632 PR B retired port's fallback, which logged
-    "seeding 2 dropped" at sal `3ad4b04`.
+    """One of five seedings refused: the start is the best of the other four run alone
+    (T- #596).
     """
     import logging
 
@@ -276,20 +257,16 @@ def test_the_start_fails_only_when_every_seeding_is_refused(
 
 
 REFUSED = "tests/data/sal_seeding_refused_hard.npz"
-"""The read-depth + BAF start's call on CalicoST hard (`8797710b`) with the
-outlier filter off (T- #596): `X`, `base`, `total`, `n_states` and
-`random_state` as `gmm_init` received them, 10,448 bins and 7 states."""
+"""The read-depth + BAF start's `gmm_init` call on CalicoST hard (`8797710b`): 10,448
+bins, 7 states (T- #596).
+"""
 
 
 @pytest.mark.release
 @pytest.mark.patch
 def test_sal_survives_the_call_it_refused_on_hard_with_the_filter_off() -> None:
-    """**T- #596**, retired by sal #1136 (T- #632): `sal`'s best-of returns on the call, and port hands over its best.
-
-    At sal `3ad4b04` the beta-binomial M step refused a component EM
-    collapsed to weight 1e-17 at a weighted trial count of 1.02, the best-of
-    raised, and port's `_surviving` dropped seeding 1. Referee: `sal`'s
-    `polished` on the same stream; port's start is its components.
+    """On the T- #596 call, port's start is `sal`'s `polished` best-of on the same
+    stream (T- #632).
     """
 
     from port.extensions import copy_starts

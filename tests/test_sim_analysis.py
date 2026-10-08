@@ -1,9 +1,6 @@
-"""#452: the truth figures of a `port.sim.draw` realization.
+"""Truth figures of a `port.sim.draw` realization, checked against the draw (#452).
 
-The figures are read off the written realization; what they must say is
-checked against the draw that wrote it: the profile rows merge segments
-without moving a breakpoint or changing a state, and each leaf's barcode is
-the events on its path from `normal`.
+Profile rows keep the planted breakpoints and states; barcodes are the path events.
 """
 
 from __future__ import annotations
@@ -69,11 +66,7 @@ def test_merged_runs_tile_each_chromosome_with_the_planted_states(
 
 @pytest.mark.analytic
 def test_barcodes_set_the_bits_of_each_nodes_path_founder_first(drawn: Drawn) -> None:
-    """A node's barcode has a 1 exactly at the events on its path; the founder's is the lead.
-
-    Events are ordered by their time since `normal`, so every tumour clone's
-    barcode starts with the trunk's events and `normal`'s is all zeros.
-    """
+    """A barcode has a 1 exactly at its path's events, trunk first, against the draw."""
     t = tree(read(drawn.path))
 
     assert set(t.barcode["normal"]) == {"0"}
@@ -89,12 +82,7 @@ def test_barcodes_set_the_bits_of_each_nodes_path_founder_first(drawn: Drawn) ->
 
 @pytest.mark.analytic
 def test_the_shared_region_bounds_the_spots_both_slices_image(drawn: Drawn) -> None:
-    """#454: the dashed box is the slices' overlap, at `(x, -y)` like the spots.
-
-    `dev_tree`'s second slice sits half an array to the right, so the shared
-    region is the first slice's right half: every spot of either slice inside
-    it lies within the box, and no spot more than half a spacing outside it.
-    """
+    """#454: the dashed box bounds the spots both slices image, at `(x, -y)`."""
     r = read(drawn.path)
     frames, origins, extent = [], [], None
     for k, sid in enumerate(drawn.sample_ids):
@@ -146,12 +134,7 @@ def _panels_of(figure: Any) -> list[tuple[Any, ...]]:
 def test_the_spatial_and_h_and_e_pages_share_one_format(
     drawn: Drawn, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """T- #791: `plot_spatial` and `he_slices_figure` draw each slice in one
-    panel of one size, at the same limits, titled by its id alone (no
-    "slice"), with the region the slices share dashed at the same place; the
-    spatial variant of `truth_combined` draws the same panels in its (c),
-    across (b)'s genome axis, one left and one right edge (to a pixel).
-    """
+    """T- #791: spatial and H&E pages share one panel format; (c) spans (b) to 1 px."""
     import matplotlib.pyplot as plt
     from port.sim import analysis
     from port.sim.truth_figure import truth_combined_figure
@@ -178,7 +161,6 @@ def test_the_spatial_and_h_and_e_pages_share_one_format(
     inset = [(ax.get_xlim(), ax.get_ylim(), ax.get_title(loc="left"))
              for ax in sorted(page.subfigs[2].axes, key=lambda a: a.get_position().x0)]  # fmt: skip
     assert inset == [row[2:5] for row in spatial]
-    # NB (c)'s row across (b)'s genome axis, edge to edge, where its width binds
     genome = page.subfigs[1].axes[-1].get_window_extent()
     row = sorted(
         (ax.get_window_extent() for ax in page.subfigs[2].axes), key=lambda b: b.x0
@@ -194,11 +176,7 @@ def test_the_spatial_and_h_and_e_pages_share_one_format(
 def test_the_spatial_variant_carries_the_phase_track_and_the_genomes_marks(
     drawn: Drawn,
 ) -> None:
-    """T- #794: the spatial variant draws the RDR and BAF variant's phase
-    track under (b), the same curves at the same height to 0.01 in, and that
-    track is the page's last genome axis: the same 10 Mb marks and contig
-    names as the other variant's last track. Fails if the track is missing,
-    draws other data, or the marks or names are dropped."""
+    """T- #794: the spatial variant's phase track equals the flat one's, to 0.01 in."""
     import matplotlib.pyplot as plt
     from port.sim.truth_figure import truth_combined_figure
 
@@ -267,7 +245,7 @@ def test_a_streamed_population_holds_each_statistics_mean_and_sd(
 
 @pytest.mark.smoke
 def test_every_figure_is_written(drawn: Drawn) -> None:
-    """One PNG per figure and the page, nonempty; what each shows is the two tests above."""
+    """One nonempty PNG per figure, plus the page (no content check)."""
     written = plot(drawn.path)
 
     assert len(written) == len(PLOTS) + 1
@@ -287,9 +265,7 @@ def _visible_texts(figure: Any) -> list[Any]:
 def test_the_truth_page_is_combined_pdfs_page_with_everything_on_it(
     drawn: Drawn,
 ) -> None:
-    """The text block less `CAPTION_ROOM`, lettered (a) to (c), every text at
-    `FONT_SIZE` but (c)'s tracks at `TRACK_FONT_SIZE` (#743), and every text and
-    legend on the page to half a pixel."""
+    """Page is the text block less `CAPTION_ROOM`; fonts and texts on it to 0.5 px (#743)."""
     from port.extensions.combined_figure import FONT_SIZE
     from port.extensions.figure_style import (
         CAPTION_ROOM,
@@ -329,8 +305,7 @@ def test_the_truth_page_is_combined_pdfs_page_with_everything_on_it(
 @pytest.mark.infra
 @pytest.mark.merge
 def test_the_genome_panels_share_one_left_and_one_right_edge(drawn: Drawn) -> None:
-    """(b)'s key and rows and (c)'s tracks start and end at one x, so a
-    chromosome boundary is at one place in both."""
+    """(b)'s and (c)'s axes share one left and right edge, to 0.5 px."""
     from port.sim.truth_figure import truth_combined_figure
 
     figure = truth_combined_figure(read(drawn.path))
@@ -339,7 +314,7 @@ def test_the_genome_panels_share_one_left_and_one_right_edge(drawn: Drawn) -> No
     axes = [*profile.axes, *genomic.axes]
     boxes = [ax.get_window_extent(renderer) for ax in axes]
 
-    # NB a pair per tumour clone, and the phase track in the normal clone's place (#745)
+    # NB a pair per tumour clone, plus the phase track in the normal's place (#745)
     assert len(genomic.axes) == 2 * (len(read(drawn.path).clones) - 1) + 1
     for box in boxes:
         assert box.x0 == pytest.approx(boxes[0].x0, abs=0.5)
@@ -349,9 +324,7 @@ def test_the_genome_panels_share_one_left_and_one_right_edge(drawn: Drawn) -> No
 @pytest.mark.infra
 @pytest.mark.merge
 def test_the_tree_spans_the_genome_panels_between_its_barcodes(drawn: Drawn) -> None:
-    """(a) spans (c)'s width: its unlabelled root sits `NAME_GAP` in from (c)'s
-    left edge and every leaf's barcode ends on its right; no name runs into a
-    barcode or past its node's side."""
+    """(a) spans (c): root `NAME_GAP` in, barcodes on the right edge, to 0.5 px."""
     from port.sim.truth_figure import truth_combined_figure
 
     figure = truth_combined_figure(read(drawn.path))
@@ -366,7 +339,6 @@ def test_the_tree_spans_the_genome_panels_between_its_barcodes(drawn: Drawn) -> 
 
     assert len(barcodes) == len(names) == len(read(drawn.path).clones)
     assert tree.x0 == pytest.approx(track.x0, abs=0.5)
-    # NB the root is at event time 0.
     assert tree_ax.transData.transform((0.0, 0.0))[0] == pytest.approx(
         track.x0 + NAME_GAP * figure.dpi / 72.0, abs=0.5
     )
@@ -376,14 +348,13 @@ def test_the_tree_spans_the_genome_panels_between_its_barcodes(drawn: Drawn) -> 
         box = name.get_window_extent(renderer)
         assert not any(box.overlaps(b) for b in boxes)
 
-    # NB (c) names each clone with the barcode (a) gives it.
     headed = {
         t.get_text()
         for ax in genomic.axes
         for t in ax.texts
         if t.get_visible() and "(" in t.get_text()
     }
-    # NB but the normal clone, whose pair gives way to the phase track (#745)
+    # NB the normal clone's pair gives way to the phase track (#745)
     assert headed == {
         f"{n.get_text()} ({b.get_text()})"
         for n, b in zip(
@@ -400,8 +371,7 @@ def test_the_tree_spans_the_genome_panels_between_its_barcodes(drawn: Drawn) -> 
 def test_the_truth_page_writes_byte_for_byte_at_its_size(
     drawn: Drawn, tmp_path: Path
 ) -> None:
-    """Two writes are one file: no creation date (#452); its MediaBox is the page,
-    the text block less `CAPTION_ROOM` tall (T- #733, T- #740), to 0.1 pt."""
+    """Two writes are byte-equal (#452); MediaBox is the page, to 0.1 pt (T- #733, #740)."""
     import re
 
     from port.sim.truth_figure import write_truth_combined
@@ -432,9 +402,7 @@ def dense(tmp_path_factory: pytest.TempPathFactory) -> Drawn:
 
 @pytest.mark.infra
 def test_a_barcode_over_10_bits_keeps_4_bits_at_each_end() -> None:
-    """`shown` keeps a barcode of up to `MANY_EVENTS` (10) bits whole and cuts
-    a longer one to its first and last `BARCODE_SHOWN // 2` (4) bits around
-    "…" (PR- #701)."""
+    """`shown` keeps up to 10 bits whole, else 4 bits each side of "..." (PR- #701)."""
     from port.sim.analysis import BARCODE_SHOWN, MANY_EVENTS, shown
 
     assert (MANY_EVENTS, BARCODE_SHOWN) == (10, 8)
@@ -475,8 +443,7 @@ def _headed(genomic: Any) -> set[str]:
 
 
 def _a_is_the_tree(r: Any) -> Any:
-    """(a) against `draw_tree(edges=True)` on its own axis, text for text and
-    line for line; (c)'s headers each clone's name and `shown` barcode."""
+    """Assert (a) equals `draw_tree(edges=True)` and (c) heads each clone with its barcode."""
     import matplotlib.pyplot as plt
     from port.extensions.combined_figure import FONT_SIZE
     from port.sim.analysis import draw_tree, shown
@@ -506,9 +473,7 @@ def _a_is_the_tree(r: Any) -> Any:
 @pytest.mark.infra
 @pytest.mark.merge
 def test_at_10_events_or_fewer_a_is_the_tree(drawn: Drawn) -> None:
-    """At `MANY_EVENTS` or fewer, (a) is `draw_tree`'s tree, text for text and
-    line for line, each event on its edge, and (c) heads each clone with its
-    whole barcode (PR- #701)."""
+    """At <= `MANY_EVENTS`, (a) is `draw_tree`'s tree with events (PR- #701)."""
     from port.sim.analysis import MANY_EVENTS
 
     r = read(drawn.path)
@@ -529,10 +494,7 @@ def _marks(ax: Any) -> list[Any]:
 @pytest.mark.infra
 @pytest.mark.merge
 def test_only_the_last_track_marks_every_10_mb_at_paper_width(drawn: Drawn) -> None:
-    """The page's last track carries one visible minor tick mark per 10 Mb
-    multiple of each chromosome, `floor(L / 10 Mb)` summed, outward under the
-    axis, 2 pt long and 0.5 pt wide (`genomic_axis.draw`); (b) and every
-    other track of (c) carry none (PR- #701, PR- #715)."""
+    """Only the last track marks every 10 Mb, 2 pt x 0.5 pt (PR- #701, PR- #715)."""
     import matplotlib.pyplot as plt
     from matplotlib.markers import TICKDOWN
 
@@ -559,13 +521,7 @@ def test_only_the_last_track_marks_every_10_mb_at_paper_width(drawn: Drawn) -> N
 def test_no_mb_label_is_drawn_and_every_contig_is_named_once_clear(
     which: str, request: pytest.FixtureRequest
 ) -> None:
-    """No minor tick label anywhere on the page (the Mb numbers). Every
-    contig with any width has exactly one name, its number, under the last
-    track and left-aligned at its start (#745), overlapping no name on its row and its half-row
-    neighbours by at most `CONTIG_PAD` (#743), with one "chr" for
-    the rows; no other axis, nor `cnaster`'s own names, shows a contig name
-    -- including the contigs `NORMAL_FLOOR` squeezes on dense (PR-
-    #715)."""
+    """No Mb labels; each contig named once under the last track (#743, #745, PR- #715)."""
     import re
 
     import matplotlib.pyplot as plt
@@ -581,8 +537,7 @@ def test_no_mb_label_is_drawn_and_every_contig_is_named_once_clear(
     for ax in axes:
         ticks = ax.xaxis.get_minor_ticks(len(ax.xaxis.get_minorticklocs()))
         assert not [t for t in ticks if t.label1.get_visible() and t.label1.get_text()]
-    # NB a `cnaster` contig name is `chr` and its name; (a)'s events start
-    #    `chr` too, and carry `::`.
+    # NB a `cnaster` contig name is `chr` plus its name
     assert not [t for t in _visible_texts(figure)
                 if re.fullmatch(r"chr\w+", t.get_text())]  # fmt: skip
     names = sorted(
@@ -600,8 +555,7 @@ def test_no_mb_label_is_drawn_and_every_contig_is_named_once_clear(
     from port.extensions.genomic_axis import CONTIG_PAD, STAGGERED
 
     boxes = [t.get_window_extent(renderer) for t in names]
-    # NB rows step half a line (#743): names on one row never overlap, and a
-    #    name half a line under its neighbour may meet it within `CONTIG_PAD`
+    # NB rows step half a line (#743): neighbours may meet within `CONTIG_PAD`
     pad = CONTIG_PAD * figure.dpi / 72.0
     for i, j in itertools.combinations(range(len(boxes)), 2):
         if boxes[i].y0 == pytest.approx(boxes[j].y0):
@@ -610,8 +564,7 @@ def test_no_mb_label_is_drawn_and_every_contig_is_named_once_clear(
                 names[j].get_text(),
             )
         elif {names[i].get_text(), names[j].get_text()} <= set(STAGGERED):
-            # NB 19-22 zigzag at every width (#745): the lower clears the
-            #    upper by at least half a name's height
+            # NB 19-22 zigzag (#745): the lower clears the upper by half a height
             down = min(boxes[i].y1, boxes[j].y1) - max(boxes[i].y0, boxes[j].y0)
             assert down <= boxes[i].height / 2, (
                 names[i].get_text(),
@@ -621,8 +574,7 @@ def test_no_mb_label_is_drawn_and_every_contig_is_named_once_clear(
             across = min(boxes[i].x1, boxes[j].x1) - max(boxes[i].x0, boxes[j].x0)
             assert across <= pad, (names[i].get_text(), names[j].get_text())
     assert [t.get_text() for t in last.texts if t.get_gid() == "contig-axis"] == ["chr"]
-    # NB (a)'s barcodes and the key's copy numbers are digits too; (b)'s
-    #    rows and (c) name nothing else so.
+    # NB barcodes and copy numbers are digits too; only contig names elsewhere
     assert all(
         t.get_gid() in ("contig", "contig-axis")
         for ax in [*figure.subfigs[1].axes[1:], *genomic.axes]
@@ -635,9 +587,7 @@ def test_no_mb_label_is_drawn_and_every_contig_is_named_once_clear(
 @pytest.mark.infra
 @pytest.mark.merge
 def test_above_10_events_a_is_the_tree_without_events(dense: Drawn) -> None:
-    """Above `MANY_EVENTS`, (a) is `draw_tree`'s tree, text for text and line
-    for line, its edges with no event, each leaf named with its whole
-    barcode; (c)'s headers cut it by `shown` to 4 bits, "…", 4 (PR- #701)."""
+    """Above `MANY_EVENTS`, (a) has no events and (c) cuts barcodes by `shown` (PR- #701)."""
     from port.sim.analysis import MANY_EVENTS, shown
 
     r = read(dense.path)
@@ -677,10 +627,7 @@ def _leaves(ax: Any) -> list[tuple[str, tuple[float, ...]]]:
 def test_clones_read_n_1_2_down_the_tree_and_alike_in_every_truth_figure(
     fixture: str, request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """(a)'s leaves, (b)'s rows and (c)'s headers read $m_N$, $m_1$, $m_2$, ...
-    top to bottom; `simulated_tree`, `spatial`, `clone_profiles` and
-    `clones_genomic` give each clone (by its colour, and its spot count) the
-    same name. The truth files' clone names are not read (PR- #701)."""
+    """Clones read $m_N$, $m_1$, ... top down and match by colour in every figure (PR- #701)."""
     import matplotlib.colors as mcolors
     import matplotlib.pyplot as plt
     from port.extensions.combined_figure import clone_symbol
@@ -697,7 +644,7 @@ def test_clones_read_n_1_2_down_the_tree_and_alike_in_every_truth_figure(
 
     assert [name for name, _ in leaves] == symbols
     assert [x.get_text() for x in rows][::-1] == symbols
-    # NB the phase track, unheaded, where the normal clone's pair was (#745)
+    # NB the phase track, unheaded, replaces the normal clone's pair (#745)
     assert [h.split(" (")[0] for h in _headed_in_order(genomic)] == symbols[1:]
     tree_figure = simulated_tree_figure(r)
     assert _leaves(tree_figure.axes[0]) == leaves
@@ -716,7 +663,6 @@ def test_clones_read_n_1_2_down_the_tree_and_alike_in_every_truth_figure(
         plotter(r, Path("unwritten"))
 
     (key,) = [ax.get_legend() for ax in caught["spatial.png"].axes if ax.get_legend()]
-    # NB the spatial page names clones as the paper does, $m_N$ first (T- #791)
     assert [t.get_text() for t in key.get_texts()] == [
         symbols[r.clones.index(c)] for c in r.clones if (r.truth["labels"] == c).any()
     ]
@@ -744,8 +690,7 @@ def test_clones_read_n_1_2_down_the_tree_and_alike_in_every_truth_figure(
 def test_the_tree_s_edges_carry_events_up_to_10_and_none_above(
     drawn: Drawn, dense: Drawn
 ) -> None:
-    """`draw_tree` labels and ticks each event on its edge at `MANY_EVENTS` or
-    fewer; above, it draws the topology, nodes, names and barcodes alone (PR- #701)."""
+    """`draw_tree` puts events on edges at <= `MANY_EVENTS`, none above (PR- #701)."""
     import matplotlib.pyplot as plt
     from port.sim.analysis import MANY_EVENTS, draw_tree
 
@@ -768,9 +713,7 @@ def test_the_tree_s_edges_carry_events_up_to_10_and_none_above(
 def test_the_mirror_key_starts_on_b_s_left_edge_and_is_labelled_on_its_right(
     drawn: Drawn,
 ) -> None:
-    """(b)'s mirror swatches stacked on the profile axis's left edge (0.5 px),
-    `MIRROR` right of them and centred on the white between them (0.5 px),
-    clear of the colour bar's title (PR- #715)."""
+    """(b)'s mirror key: on the left edge, labelled right, to 0.5 px (PR- #715)."""
 
     figure, _, _ = _panels(read(drawn.path))
     _, profile, _ = figure.subfigs
@@ -781,8 +724,7 @@ def test_the_mirror_key_starts_on_b_s_left_edge_and_is_labelled_on_its_right(
 @pytest.mark.infra
 @pytest.mark.merge
 def test_truth_combined_reads_clones_profile_tracks(drawn: Drawn) -> None:
-    """The truth page is (a) the tree, (b) the profile under its key, (c) the
-    tracks: `PANELS`, the run's combined page's order (PR- #715)."""
+    """The truth page's panels follow `PANELS`, the run page's order (PR- #715)."""
     import matplotlib.pyplot as plt
     from port.extensions.combined_figure import PANELS
 

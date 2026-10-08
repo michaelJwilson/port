@@ -1,4 +1,4 @@
-"""T- #814: the two solver streams draw and run each realization once, and read what they share bitwise."""
+"""The two solver streams draw and run each realization once and share it bitwise (#814)."""
 
 from __future__ import annotations
 
@@ -28,12 +28,7 @@ def _arrays(problem: Any) -> dict[str, Any]:
 def test_the_streams_share_one_draw_and_one_run_per_realization(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """On dev_tree_1s_hard r0, r1: the copy-state stream's run keeps the field, and the Potts stream reads it.
-
-    Against each stream alone: the copy-state rows and every array of the
-    Potts problems bitwise, the realizations' hashes unchanged, and in the
-    shared root no realization redrawn and no run of the Potts stream.
-    """
+    """On dev_tree_1s_hard r0, r1 the shared cache matches each stream alone, bitwise."""
     import port.sim.draw as d
     from port.studies import copy_state_stream, potts_stream
     from port.studies import stage as at

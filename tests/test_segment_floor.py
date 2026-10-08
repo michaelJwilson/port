@@ -1,9 +1,4 @@
-"""The read-depth segment floor (#551): a minimum length and normal UMI per segment.
-
-Referees: the floor's own definition, checked segment by segment
-(`analytic`), and a brute-force sum of the normal spots' counts over each
-merged bin's genes (`oracle`).
-"""
+"""Read-depth segment floor (#551), against its definition and a brute-force normal-UMI sum."""
 
 from __future__ import annotations
 
@@ -57,7 +52,7 @@ def _floored(
 def test_every_floored_segment_meets_both_minimums_but_a_contigs_only_one(
     min_length: float, min_weight: float
 ) -> None:
-    """Each merged segment spans `min_length` bp and holds `min_weight`, save a contig's only segment; the bins refine it and no segment crosses a contig."""
+    """Merged segments meet both minimums within contigs, a contig's only segment excepted."""
     bins, weight, floored = _floored(min_length, min_weight)
     held = floored.aggregate(weight)
     alone = np.repeat(floored.lengths == 1, floored.lengths)
@@ -80,7 +75,7 @@ def test_a_floor_of_zero_is_the_segmentation_itself() -> None:
 
 @pytest.mark.analytic
 def test_the_lineage_refuses_a_level_under_its_floor_once_set() -> None:
-    """Before the floor any level records; after it, the unfloored bins are refused and the floored ones kept."""
+    """After the floor is set, the lineage refuses unfloored bins and keeps floored ones."""
     from port.extensions.segments import Lineage
 
     bins, weight, floored = _floored(7.5e5, 100.0)
@@ -95,7 +90,7 @@ def test_the_lineage_refuses_a_level_under_its_floor_once_set() -> None:
 
 @pytest.mark.oracle
 def test_floor_bins_counts_normal_umi_as_a_sum_over_the_normal_spots() -> None:
-    """`floor_bins`' merged bins each hold 150 normal UMIs by a brute-force sum over normal spots and genes, and every row keeps a bin."""
+    """`floor_bins` holds 150 normal UMIs per merged bin by a brute-force sum."""
     import anndata
     import scipy.sparse as sp
     from port.patch.omics.blocks import floor_bins
@@ -134,7 +129,7 @@ def test_floor_bins_counts_normal_umi_as_a_sum_over_the_normal_spots() -> None:
 def test_the_floor_is_off_unless_the_config_sets_it(
     quality: dict[str, object], expected: tuple[float | None, float | None]
 ) -> None:
-    """Absent, `false` or `none` is off; `true` is 0.75 Mb or 300 normal UMIs; a number is itself."""
+    """Off when absent, `false` or `none`; `true` is 0.75 Mb or 300 UMIs; a number is itself."""
     from port.patch.omics.blocks import segment_floor
     from port.sim.inputs import written_config
 
@@ -145,7 +140,7 @@ def test_the_floor_is_off_unless_the_config_sets_it(
 def _greedy_parent(
     bins: Segmentation, weight: np.ndarray, min_length: float, min_weight: float
 ) -> np.ndarray:
-    """The loop `Ragged.floored` replaced (T- #632): each segment's merged parent."""
+    """Greedy loop `Ragged.floored` replaced (#632): each segment's merged parent."""
     contig, start, end = bins.contig, bins.start, bins.end
     held = bins.aggregate(np.asarray(weight, dtype=np.float64))
     parent = np.zeros(bins.n_segments, dtype=np.int64)
@@ -174,7 +169,7 @@ def _greedy_parent(
 def test_sals_floor_merges_as_the_loop_it_replaces(
     seed: int, min_length: float, min_weight: float
 ) -> None:
-    """sal #1141's `Ragged.floored` against port's greedy loop: the same parent for every segment."""
+    """sal #1141's `Ragged.floored` matches port's greedy loop on every segment."""
     from port.extensions.segments import Segmentation
 
     bins = Segmentation.from_table(_table(seed), "bin_id")

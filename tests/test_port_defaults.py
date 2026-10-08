@@ -1,9 +1,7 @@
 """`run_cnaster_port`'s defaults of port's own (`port.pipeline.DEFAULTS`, T- #617 rule 8).
 
-`--sal` selects sal's labelling, the `kmeans++x5+em` start and the segment
-floor; the refinement mask and the floor merge are on in every patched arm,
-each with an off flag. The floor stays `--sal`'s (PR- #645). What is pinned: each arm's settings
-(`infra`), and that the `--sal` arm resolves as it did before the move.
+Pins each arm's settings (`infra`) and that `--sal` resolves as before the move (PR-
+#645).
 """
 
 from __future__ import annotations

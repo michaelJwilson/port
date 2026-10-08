@@ -1,19 +1,6 @@
-"""`port.patch.spatial` against the `cnaster` functions it replaces (#190).
+"""`port.patch.spatial` against the `cnaster` functions it replaces, bitwise (#190).
 
-**13x and 72x less peak on the adjacency at 2,500 spots, 67x and 289x at
-10,000; 8.8x and 17x on the partition at the same two sizes.** Both returns
-are bitwise what `cnaster` returns, which is what makes the ratios a cost
-decision rather than a different answer.
-
-The two are here together because they are the same defect twice: a quantity
-computed in a representation larger than it needs. `cnaster` densifies a
-k-nearest-neighbour graph to block-diagonalize it, and builds every trial
-partition's index lists to measure the sizes it will discard.
-
-**What is not claimed:** that either function is right. Both are `cnaster`'s
-algorithm reproduced, and the adjacency's own defects -- an asymmetric kNN
-graph, a discarded `maxspots_pooling` -- are #180's and are carried across
-unchanged rather than fixed here.
+`cnaster`'s own defects (#180) are carried across unchanged.
 """
 
 import numpy as np
@@ -31,13 +18,7 @@ LATTICES = [(25, 40), (50, 50)]
 @pytest.mark.patch
 @pytest.mark.parametrize(("rows", "columns"), LATTICES)
 def test_the_sparse_adjacency_is_the_dense_one(rows: int, columns: int) -> None:
-    """**Same graph, same weights, same dtype -- and no `n_spots^2` array.**
-
-    The dtype is asserted because it is the one thing a sparse assembly can
-    change silently: `scipy.linalg.block_diag` promotes to the common type of
-    its inputs, and a promotion would leave every value equal and every
-    downstream buffer twice the size.
-    """
+    """The sparse adjacency equals `cnaster`'s dense one: graph, weights and dtype."""
     from cnaster.spatial import construct_multislice_lattice_adjacency as upstream
     from port.patch.spatial import construct_multislice_lattice_adjacency as patched
 
@@ -55,12 +36,7 @@ def test_the_sparse_adjacency_is_the_dense_one(rows: int, columns: int) -> None:
 
 @pytest.mark.patch
 def test_the_sparse_adjacency_joins_slices_the_same_way() -> None:
-    """Two slices, so the block diagonal has something to do.
-
-    A one-slice instance is the case where `block_diag` is the identity, and
-    the fixtures in this repository are all one slice. The join is where an
-    offset can be wrong, so it is exercised deliberately.
-    """
+    """Two slices join into the same block diagonal as `cnaster`'s."""
     from cnaster.spatial import construct_multislice_lattice_adjacency as upstream
     from port.patch.spatial import construct_multislice_lattice_adjacency as patched
 
@@ -96,16 +72,7 @@ def test_the_across_slice_term_is_still_added() -> None:
 @pytest.mark.patch
 @pytest.mark.parametrize(("rows", "columns"), LATTICES)
 def test_the_partition_keeps_the_trial_cnaster_keeps(rows: int, columns: int) -> None:
-    """**The same trial wins, so the same clones come out.**
-
-    `cnaster` compares strictly, so the earliest trial attaining the minimum
-    variance wins; a patch that compared with `<=`, or that reordered the
-    draws within a trial, would return a different partition from the same
-    seed and every clone downstream would differ.
-
-    The index lists are compared and not only the assignment vector, because
-    they are separate returns and the caller uses both.
-    """
+    """The partition keeps `cnaster`'s winning trial: same indices and assignment."""
     from cnaster.spatial import best_equal_partition as upstream
     from port.patch.spatial import best_equal_partition as patched
 
@@ -123,13 +90,7 @@ def test_the_partition_keeps_the_trial_cnaster_keeps(rows: int, columns: int) ->
 
 @pytest.mark.patch
 def test_the_partition_agrees_where_the_summed_area_table_is_declined() -> None:
-    """**Scattered coordinates take the fallback, and agree there too.**
-
-    The table is `distinct x` by `distinct y`, which is about `n_spots` for a
-    lattice and `n_spots^2` for scattered points, so it is declined for the
-    second. That branch is unreachable from any fixture in this repository --
-    every one of them is a lattice -- so it is reached directly here.
-    """
+    """Scattered coordinates take the non-table fallback and equal `cnaster`'s."""
     from cnaster.spatial import best_equal_partition as upstream
     from port.patch.spatial import _rectangle_counts
     from port.patch.spatial import best_equal_partition as patched
@@ -149,13 +110,7 @@ def test_the_partition_agrees_where_the_summed_area_table_is_declined() -> None:
 
 @pytest.mark.patch
 def test_the_partition_agrees_under_a_tumour_proportion() -> None:
-    """The `single_tumor_prop` branch, which moves the grid and not the spots.
-
-    The threshold selects which spots set the partition's extent, while every
-    spot is still assigned to a cell. Reading that the wrong way round would
-    leave the tumour spots correctly partitioned and everything else silently
-    dropped, so it is pinned separately.
-    """
+    """Under `single_tumor_prop` the partition equals `cnaster`'s."""
     from cnaster.spatial import best_equal_partition as upstream
     from port.patch.spatial import best_equal_partition as patched
 

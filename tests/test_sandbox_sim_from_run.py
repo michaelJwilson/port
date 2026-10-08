@@ -1,10 +1,4 @@
-"""#460: a version-3 manifest written from a run's outputs recovers what planted them.
-
-`port.sandbox.sim_from_run` reads a run's `clone_labels.tsv` and
-`cnv_segments.tsv`. Here those are written from a draw's own truth, so the
-referee is the manifest the draw was made from: its clone count, its shared
-and unique events, its states, its array and which clones each slice holds.
-"""
+"""#460: a manifest written from a run's outputs, against the manifest that planted them."""
 
 from __future__ import annotations
 
@@ -23,7 +17,7 @@ MANIFESTS = SIM_ROOT / "manifests"
 
 
 def _as_run(drawn: Drawn, into: Path) -> Path:
-    """The draw's truth in a run's `clone_labels.tsv` and `cnv_segments.tsv`."""
+    """Write the draw's truth as a run's `clone_labels.tsv` and `cnv_segments.tsv`."""
     truth = pd.read_csv(drawn.path / "truth_clone_labels.tsv", sep="\t")
     profile = pd.read_csv(drawn.path / "truth_acn_profile.tsv", sep="\t")
     number = {clone: k for k, clone in enumerate(drawn.clones)}
@@ -58,11 +52,7 @@ def _as_run(drawn: Drawn, into: Path) -> Path:
 def test_a_manifest_from_a_run_recovers_the_one_that_planted_it(
     tmp_path: Path,
 ) -> None:
-    """dev_shared_unique on a 20 x 20 array: 3 clones, 1 shared and 2 unique events.
-
-    With its offsets stated, the written manifest is one `port.sim.draw`
-    reads, and every recovered state is one the source can plant.
-    """
+    """dev_shared_unique's clone count, events, states, array and slices are recovered."""
     resources = references()
     if resources is None:
         pytest.skip("CalicoST's GRCh38_resources not found; set $PORT_GRCH38")

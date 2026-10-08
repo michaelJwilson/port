@@ -1,10 +1,5 @@
-"""`python -m scripts.ci` selects every test exactly once across its steps (#403).
-
-The gate, the two coverage guards, the serial `merge` step and the release
-step are written as marker expressions. A test that no expression selects is
-never run; one that two select is run twice and pays for it in the budget.
-This evaluates the expressions against the collected suite rather than
-trusting that they were written to partition it.
+"""`python -m scripts.ci`'s marker expressions select every collected test exactly once
+(#403).
 """
 
 from __future__ import annotations
@@ -83,14 +78,7 @@ PAPER_FIGURES = "docs/plots/paper/"
 
 @pytest.mark.infra
 def test_no_png_is_tracked_under_docs() -> None:
-    """`docs/` tracks no PNG: a figure is regenerated on demand by the command
-    that draws it, into `.cache/plots/` (`port.qa.provenance.PLOTS`).
-
-    The exceptions are `docs/plots/paper/`, T- #624's paper set: the figures a
-    manuscript includes, which a reader needs without running the pipeline,
-    the population study's among them (#743). `tests/data/figures/` holds test inputs and is
-    outside `docs/`.
-    """
+    """`docs/` tracks no PNG outside `docs/plots/paper/` (T- #624, #743)."""
     tracked = subprocess.run(
         ["git", "ls-files", "-z", "--", "docs"],
         cwd=ROOT,
@@ -108,8 +96,7 @@ def test_no_png_is_tracked_under_docs() -> None:
 
 @pytest.mark.infra
 def test_the_input_hash_moves_with_an_input_and_not_otherwise(tmp_path: Path) -> None:
-    """A skipped badge pass is only as safe as this: an edit moves the digest,
-    a badge write does not."""
+    """An edit moves the input digest; a badge write does not."""
     from port.qa.provenance import inputs_hash
 
     (tmp_path / "python").mkdir()

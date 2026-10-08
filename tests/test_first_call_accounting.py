@@ -1,15 +1,4 @@
-"""A compiled kernel's first call, kept apart from its cost (#204).
-
-`port`'s field kernel compiles in 2.9 s and runs in 0.006 s. Summed into one
-row that reads as a kernel five hundred times slower than it is, and the
-first comparison this repository published -- 2.503 s against `cnaster`'s
-0.167 s -- was **compilation against a warm cache**, because every earlier
-test run had filled `cnaster`'s and none had filled `port`'s.
-
-`CLAUDE.md`: a measurement carries the conditions that decided it, and where
-a first call *is* the cost it is reported as its own number rather than
-buried inside the stage that paid it.
-"""
+"""A compiled kernel's first call is recorded apart from its warm calls (#204)."""
 
 import time
 from typing import Any
@@ -20,12 +9,7 @@ from port.pipeline import Spent, Swap, instrumented
 
 @pytest.mark.infra
 def test_the_first_call_is_recorded_apart_from_the_rest() -> None:
-    """One slow call and three fast ones is not four medium ones.
-
-    The arithmetic the report rests on: `first` is the first call alone and
-    `warm` is everything after it, so a stage's per-call cost is measured
-    over the calls that did not pay for compilation.
-    """
+    """One slow call then three fast: `first` is 1.0, `warm` averages 0.1333."""
     entry = Spent()
 
     for elapsed in (1.0, 0.1, 0.1, 0.2):
@@ -43,12 +27,7 @@ def test_the_first_call_is_recorded_apart_from_the_rest() -> None:
 
 @pytest.mark.infra
 def test_a_single_call_reports_no_warm_average() -> None:
-    """A stage called once has a first call and nothing to average.
-
-    Pinned because the alternative -- dividing by zero, or calling the first
-    call an average -- is exactly the confusion this accounting exists to
-    remove.
-    """
+    """A single call has a first call and no warm average."""
     entry = Spent(calls=1, seconds=2.5, first=2.5)
 
     assert entry.warm == pytest.approx(0.0)
@@ -59,12 +38,7 @@ def test_a_single_call_reports_no_warm_average() -> None:
 def test_the_timer_attributes_the_first_call_to_the_first_call(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """`instrumented` measures a real function and splits its first call.
-
-    Driven through a stand-in rather than a kernel: what is under test is the
-    accounting, and a `numba` function would make the test a compiler
-    benchmark whose first call is whatever the on-disk cache happens to hold.
-    """
+    """`instrumented` charges a real function's slow first call to `first`."""
     import sys
 
     class Stub:

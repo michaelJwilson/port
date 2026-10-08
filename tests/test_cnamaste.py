@@ -1,4 +1,4 @@
-"""T- #817: `cnamaste.h5` and `truth.h5` hold what their schema declares, staged, and refuse the rest."""
+"""`cnamaste.h5` and `truth.h5` hold what their schema declares, staged, and refuse the rest (#817)."""
 
 from __future__ import annotations
 
@@ -68,7 +68,7 @@ def _group(
     }
     if "int_copy_num.*" in group.attrs:
         attrs["int_copy_num.max_total_copy"] = 6
-    # NB a group's family is a pattern: `contig` and `contig_int` are one column, two types
+    # NB a family is a pattern: `contig` and `contig_int` are one column, two types.
     arrays.pop(
         "contig_int", None
     ) if "contig" in arrays and "contig_int" in arrays else None
@@ -93,7 +93,7 @@ def _equal(one: Any, two: Any) -> bool:
 @pytest.mark.infra
 @pytest.mark.parametrize("truth", [False, True])
 def test_every_declared_group_reads_back_bitwise(tmp_path: Path, truth: bool) -> None:
-    """Every group of `GROUPS` (`TRUTH_GROUPS`), every dataset at its declared type, read back equal."""
+    """Every declared group and dataset reads back equal at its declared type."""
     from port.extensions import cnamaste as c
 
     groups, schema = (c.TRUTH_GROUPS, c.TRUTH_SCHEMA) if truth else (c.GROUPS, c.SCHEMA)
@@ -118,7 +118,7 @@ def test_every_declared_group_reads_back_bitwise(tmp_path: Path, truth: bool) ->
 
 @pytest.mark.infra
 def test_a_stage_never_completed_is_not_read(tmp_path: Path) -> None:
-    """A run killed inside `/rdrbaf`: every earlier group reads, `/rdrbaf` does not, nothing later exists."""
+    """A run killed in `/rdrbaf`: earlier groups read, `/rdrbaf` does not, nothing later exists."""
     import h5py
     from port.extensions import cnamaste as c
 
@@ -183,7 +183,7 @@ def test_what_the_schema_does_not_declare_is_refused(
     attrs: dict[str, Any],
     error: str,
 ) -> None:
-    """An undeclared or missing dataset or attribute, a wrong axis, an inexact cast, a truth-only group."""
+    """Refuses undeclared or missing fields, wrong axes, inexact casts and truth-only groups."""
     from port.extensions import cnamaste as c
 
     path = tmp_path / c.FILE

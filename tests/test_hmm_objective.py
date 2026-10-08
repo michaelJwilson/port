@@ -1,19 +1,8 @@
 """The copy-state HMM's NLL as a `sal` `Objective`, and `sal`'s samplers on it (#634).
 
-- `oracle`: the adapter's value is `cnaster`'s forward lattice normalizer at
-  the same states, an independent implementation, and port's JAX NLL
-  (`jax_hmm`'s emission and forward, unjitted), a second one.
-- `oracle`: its value and gradient are `sal`'s `EmissionHmmObjective` of a
-  `RateConcentrationCountPairEmission` restricted to `mean` and `rate`
-  (sal #1169, #1205; T- #671, T- #707) on its `RUST` route, a third
-  implementation beside the adapter's `JAX` twin.
-- `analytic`: its gradient is the central difference of its value, and
-  `sal`'s autograd route through `__call__` returns the declared gradient.
-- `analytic`: each `sal` start, seeded, reports the NLL of the states it
-  returns, spends no more forward-backward passes than port's deleted
-  sampler did, reproduces itself from the same seed, and, where it counts
-  its initial point (`anneal`, `tempering`), is no worse than it.
-- `infra`: the registry's literal `HMM_SAMPLERS` names the module's.
+Referees: `cnaster`'s forward lattice, port's JAX NLL and `sal`'s `EmissionHmmObjective`
+(T- #707);
+central differences; sampler bookkeeping and budgets.
 """
 
 from __future__ import annotations
@@ -53,12 +42,8 @@ def _objective(rows: dict[str, Any], theta: np.ndarray) -> Any:
 
 @pytest.mark.oracle
 def test_the_adapter_is_cnasters_forward_and_ports_nll() -> None:
-    """At 5 random states: `cnaster`'s `forward_lattice` to 1e-9 relative, port's JAX NLL to 1e-12.
-
-    `cnaster`'s emission and recursion are `numba` (`test_jax_hmm` realizes
-    1e-15 relative on the forward); port's NLL is `jax_hmm`'s JAX, and the
-    adapter `sal`'s JAX twin since T- #707. Realized 4.2e-14 against port
-    and 7.7e-14 against `cnaster` (sal 006e49d), on NLLs 2,222-6,453.
+    """At 5 random states: `cnaster`'s `forward_lattice` to 1e-9 relative, port's JAX NLL
+    to 1e-12.
     """
     import torch
     from cnaster.hmm_nophasing import _bb_logpmf_1d, _nb_logpmf_1d, hmm_nophasing
@@ -106,16 +91,8 @@ def test_the_adapter_is_cnasters_forward_and_ports_nll() -> None:
 
 @pytest.mark.oracle
 def test_the_adapter_is_sals_count_pair_hmm_objective() -> None:
-    """At 5 random states: `sal`'s `EmissionHmmObjective` value to 1e-12 relative, gradient to 1e-10 of the norm.
-
-    `sal`'s `RateConcentrationCountPairEmission` (sal #1205) names the
-    beta-binomial by `rate` and `concentration`, and `Restricted` varies
-    `mean` and `rate` with the dispersions, the uniform start and `T` held,
-    so its `theta` is port's `(log_mu, logit p_binom)` and no map or chain
-    rule is written here. The adapter is that objective's JAX twin; this is
-    its default `RUST` route, the compiled E step and a torch backward.
-    Realized 4.8e-14 and 5.6e-12 (sal 006e49d, T- #707), on NLLs
-    2,244-6,507.
+    """At 5 random states: `sal`'s `EmissionHmmObjective` value to 1e-12 relative, gradient
+    to 1e-10 of the norm (T- #707).
     """
     import torch
     from port.sandbox.extensions.hmm_objective import ALPHA, TAU, T
@@ -155,12 +132,8 @@ def test_the_adapter_is_sals_count_pair_hmm_objective() -> None:
 
 @pytest.mark.analytic
 def test_the_gradient_is_the_central_difference() -> None:
-    """At 3 random states, each coordinate to 1e-6 relative of the gradient's norm (step 1e-5).
-
-    The central difference's truncation error is O(h^2) times the third
-    derivative; at h = 1e-5 on an NLL of about 4e3 that is below 1e-6 of the
-    gradient; realized 1.9e-8. `sal`'s autograd route (`autograd_value_and_gradient` through
-    `__call__`) must return the declared gradient bitwise.
+    """Gradient against central differences (step 1e-5), to 1e-6 of its norm; `sal`'s
+    autograd route bitwise.
     """
     import torch
     from sal.opt.objective import autograd_value_and_gradient, value_and_gradient
@@ -190,13 +163,8 @@ def test_the_gradient_is_the_central_difference() -> None:
 @pytest.mark.analytic
 @pytest.mark.parametrize("name", ["hmc-hmm", "anneal-hmm", "tempering-hmm"])
 def test_the_starts_keep_their_best_within_budget(name: str) -> None:
-    """Seeds 0-2: the NLL re-evaluated at the returned states is the one reported, passes within budget, reproducible.
-
-    The budget is what port's deleted samplers spent at their tuned
-    schedules: 9 gradients per trajectory plus each chain's initial point --
-    433 for `anneal-hmm`, 436 for `tempering-hmm`, 217 for `hmc-hmm`.
-    `anneal` and `tempering` count the initial point among their best, so
-    neither ends above it; `hmc` keeps the best of its draws alone.
+    """Seeds 0-2: the reported NLL is the re-evaluated one, within the deleted samplers'
+    budget, reproducible.
     """
     from port.sandbox.extensions.hmm_objective import negative_log_likelihood, sample
 
@@ -225,7 +193,7 @@ def test_the_starts_keep_their_best_within_budget(name: str) -> None:
 
 @pytest.mark.infra
 def test_the_registry_names_the_samplers_the_module_runs() -> None:
-    """`sandbox.extensions.copy_starts.HMM_SAMPLERS` is a literal, so importing it imports no sampler; it must match `SAMPLERS`."""
+    """`HMM_SAMPLERS` is a literal that matches `SAMPLERS`."""
     from port.sandbox.extensions.copy_starts import HMM_SAMPLERS
     from port.sandbox.extensions.hmm_objective import SAMPLERS
 
@@ -234,10 +202,8 @@ def test_the_registry_names_the_samplers_the_module_runs() -> None:
 
 @pytest.mark.infra
 def test_the_defaults_are_the_calibrated_settings() -> None:
-    """Each start's tuned knobs are `configs/copy_sampler_settings.json`'s, its budget `BUDGETS`' (#749 WP1).
-
-    One source: the stream's `--settings` default and the samplers' defaults
-    are the same file, which `run_calibrate --copy` writes.
+    """Each start's defaults are `configs/copy_sampler_settings.json`'s, its budget
+    `BUDGETS`' (#749 WP1).
     """
     from port.qa.provenance import CONFIGS, calibration
     from port.sandbox.extensions.hmm_objective import BUDGETS, DEFAULTS, TUNED_KEYS
@@ -256,9 +222,9 @@ def test_the_defaults_are_the_calibrated_settings() -> None:
 def test_a_start_is_sampled_at_the_runs_own_stickiness_and_dispersions(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """T- #777: `held_by` reads the run's Baum-Welch call -- its `t`, its
-    shared initial dispersions, `cnaster`'s defaults where none -- and `sample`
-    builds its objective at them."""
+    """`held_by` reads the run's stickiness and dispersions, and `sample` builds its
+    objective at them (T- #777).
+    """
     import port.sandbox.extensions.hmm_objective as module
 
     assert module.held_by({"t": 0.999}) == {

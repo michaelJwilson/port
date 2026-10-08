@@ -1,9 +1,6 @@
 """`port.sim.fixtures.realization_hash` reads decoded content, not storage (#595).
 
-A sample's files may be committed plain, as `.gz`, or both. The hash keys
-each file by its name without `.gz` and hashes its decompressed bytes, so
-the three layouts of one fixture read one hash. A name whose plain and `.gz`
-copies decode differently is refused.
+Referee: SHA-256 over stripped names and plain bytes, computed here.
 """
 
 from __future__ import annotations
@@ -36,8 +33,9 @@ def _write(root: Path, *, plain: bool, packed: bool) -> Path:
 
 @pytest.mark.snapshot
 def test_plain_gzipped_and_both_read_one_hash(tmp_path: Path) -> None:
-    """Plain, `.gz` and both layouts hash alike, and to SHA-256 over each
-    file's stripped name and plain bytes in `os.walk` order, computed here."""
+    """Plain, `.gz` and both layouts hash alike, to SHA-256 over stripped names and plain
+    bytes computed here.
+    """
     layouts = {
         "plain": (True, False),
         "packed": (False, True),

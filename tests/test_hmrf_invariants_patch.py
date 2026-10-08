@@ -1,24 +1,8 @@
-"""The boundary's loop invariants, pinned bitwise against `cnaster`.
+"""`port.patch.hmrf.invariants` against `cnaster`'s per-iteration counts and weight,
+bitwise (#59 item 4).
 
-Issue #59 item 4. `cnaster.hmrf.pipeline_clone_assignment` recomputes, on
-every outer iteration::
-
-    num_valid_nb_spotwise = (single_base_nb_mean > 0).sum(axis=0)   # :262
-    num_valid_bb_spotwise = (single_total_bb_RD > 0).sum(axis=0)    # :263
-
-and `compute_loglike_spot_assignment` then rebuilds
-`rel_valid_emision_weight` from them, per call, inside its own `prange`.
-`port.patch.hmrf.invariants` computes all three once.
-
-**Two claims, and they are separate tests.** That the patch computes what
-`cnaster` computes is a bitwise comparison against `cnaster` itself. That the
-result may be hoisted at all is the claim that the outer loop cannot change
-it, and the only way that fails is if the iteration writes to the two data
-arrays -- so the test drives the iteration's own read paths and checks they
-do not.
-
-The benchmark is `test_hmrf_invariants_patch_bench.py`. These tests assert no
-ratio.
+Also checks the outer loop cannot change them, so hoisting is legal. Benchmark:
+`test_hmrf_invariants_patch_bench.py`.
 """
 
 import numpy as np
@@ -34,15 +18,8 @@ DROPOUT_SEED = 8_101
 def _with_dropout(
     fixture: SpotCloneField, nb_rate: float, bb_rate: float
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Zero a fraction of each channel, in **different** places.
-
-    The fixture's generative model gives a positive baseline and a positive
-    read depth in every bin, so the two counts would agree at `n_obs` and the
-    weight would be one everywhere -- a test of the weight that could not
-    fail. Real data is not like that: `single_base_nb_mean` is zero where a
-    bin carries no baseline and `single_total_bb_RD` is zero where it carries
-    no phased SNP, and those are different bins. The independent masks here
-    are what makes the ratio bite.
+    """Zero a fraction of each channel in different places, so the weight is not one
+    everywhere.
     """
     rng = np.random.default_rng(DROPOUT_SEED)
 
@@ -56,11 +33,8 @@ def _with_dropout(
 
 
 def _smooth_matrix(n_spots: int, seed: int) -> csr_matrix:
-    """A smoothing neighbourhood with an uneven degree, self included.
-
-    Uneven on purpose: an equal degree makes every spot pool the same number
-    of neighbours, and a weight bug that dropped the pooling loop entirely
-    would still give the right answer up to a constant.
+    """A smoothing neighbourhood with uneven degree, self included, so a dropped pooling
+    loop shows.
     """
     rng = np.random.default_rng(seed)
 
@@ -87,17 +61,8 @@ def _cnaster_weight(
     smooth: csr_matrix,
     single_tumor_prop: np.ndarray | None,
 ) -> np.ndarray:
-    """`rel_valid_emision_weight`, read back out of the field it multiplies.
-
-    `compute_loglike_spot_assignment` does not return the weight, so it is
-    recovered rather than inspected: with the allele channel identically zero
-    and the read-depth channel one in a single bin, the field it returns is::
-
-        weight[spot] * 1.0 + 0.0
-
-    for every clone. The inner sum is exactly one in floating point whatever
-    `pred` decodes to -- every state carries the same value -- so what comes
-    back is the weight itself and not an approximation of it.
+    """`rel_valid_emision_weight`, recovered from the field with one unit read-depth bin
+    and a zero allele channel.
     """
     from cnaster.hmrf import compute_loglike_spot_assignment
 
@@ -130,12 +95,8 @@ def _cnaster_weight(
 @pytest.mark.patch
 @pytest.mark.parametrize(("nb_rate", "bb_rate"), [(0.0, 0.0), (0.1, 0.4), (0.8, 0.3)])
 def test_the_counts_are_bitwise_cnasters(nb_rate: float, bb_rate: float) -> None:
-    """Identical counts and identical dtype, across the dropout the data has.
-
-    The dtype is part of the claim. `num_valid_*_spotwise` is consumed by
-    `compute_loglike_spot_assignment`, which is `@njit`: an `int32` count
-    would specialize that kernel differently from `cnaster`'s `int64` while
-    comparing equal on value.
+    """Counts equal `cnaster`'s in value and dtype (`int64` specializes the `@njit`
+    consumer).
     """
     fixture = spot_clone_field()
     base, total = _with_dropout(fixture, nb_rate, bb_rate)
@@ -152,21 +113,8 @@ def test_the_counts_are_bitwise_cnasters(nb_rate: float, bb_rate: float) -> None
 
 @pytest.mark.patch
 def test_the_counts_survive_the_iteration() -> None:
-    """The hoist is legal: the iteration's read paths do not touch the data.
-
-    This is the claim the patch rests on, so it is driven rather than
-    asserted. `pool_spatio_genomic_counts` and
-    `compute_loglike_spot_assignment` are what the outer loop runs between
-    one recomputation of the counts and the next; both are called here with a
-    re-drawn `pred`, and afterwards the two data arrays are compared bitwise
-    against copies taken before. If either wrote through its argument the
-    counts would differ between iterations and hoisting them would be a bug
-    -- that is what would have to be wrong for this to fail.
-
-    `single_X`, `single_base_nb_mean` and `single_total_bb_RD` are read by
-    `load_input_data` and conditioned on throughout; `cnaster` fits
-    `log_mu`, `alphas`, `p_binom`, `taus` and the assignment, none of which
-    enter either count.
+    """Pooling and the field leave the data arrays bitwise unchanged under a redrawn
+    `pred`, so the hoist is legal.
     """
     from cnaster.hmrf import compute_loglike_spot_assignment, pool_spatio_genomic_counts
 
@@ -217,12 +165,7 @@ def test_the_counts_survive_the_iteration() -> None:
 @pytest.mark.patch
 @pytest.mark.parametrize("seed", [17, 23])
 def test_the_weight_is_bitwise_the_fields(seed: int) -> None:
-    """`relative_channel_weight` is the weight the field applies, exactly.
-
-    Bitwise rather than close: both pool the same integers into a `float64`
-    accumulator and divide once, so no arithmetic moves and a tolerance would
-    be covering for a difference that should not exist.
-    """
+    """`relative_channel_weight` equals the weight the field applies, bitwise."""
     fixture = spot_clone_field()
     base, total = _with_dropout(fixture, 0.1, 0.4)
     smooth = _smooth_matrix(fixture.n_spots, seed=seed)
@@ -237,12 +180,8 @@ def test_the_weight_is_bitwise_the_fields(seed: int) -> None:
 
 @pytest.mark.patch
 def test_the_weight_is_bitwise_the_fields_under_a_mixed_tumor_proportion() -> None:
-    """Including the branch that skips `nan` neighbours.
-
-    `is_tumor_mixed` changes which neighbours are pooled, so it changes the
-    weight. Exercised because a patch that ignored the mask would agree
-    everywhere else and be wrong exactly where `cnaster` is used on mixed
-    tissue.
+    """The weight equals the field's bitwise under `is_tumor_mixed`, which skips `nan`
+    neighbours.
     """
     fixture = spot_clone_field()
     base, total = _with_dropout(fixture, 0.1, 0.4)
@@ -265,12 +204,7 @@ def test_the_weight_is_bitwise_the_fields_under_a_mixed_tumor_proportion() -> No
 
 @pytest.mark.oracle
 def test_the_counts_match_a_per_spot_loop() -> None:
-    """A brute-force referee, independent of `numpy`'s reduction.
-
-    `CLAUDE.md` asks for an independent source rather than the vectorized
-    expression restated. Counting positives one bin at a time is that source,
-    and it is affordable at the gate fixture's 240 by 160.
-    """
+    """Counts against a per-bin brute-force loop."""
     fixture = spot_clone_field()
     base, total = _with_dropout(fixture, 0.2, 0.5)
 
@@ -286,25 +220,14 @@ def test_the_counts_match_a_per_spot_loop() -> None:
 
 @pytest.mark.smoke
 def test_a_shape_mismatch_is_refused() -> None:
-    """Two arrays of different shape cannot describe one `(n_obs, n_spots)`.
-
-    Silent broadcasting here would return a count vector of the wrong length
-    and the field would index past the spots it has.
-    """
+    """Arrays of different shape are refused rather than broadcast."""
     with pytest.raises(ValueError, match="shapes must agree"):
         boundary_invariants(np.ones((4, 3)), np.ones((4, 5)))
 
 
 @pytest.mark.smoke
 def test_the_planted_dropout_makes_the_weight_bite() -> None:
-    """Guards the fixture: without dropout every test above is vacuous.
-
-    At the generative model's own counts both channels are positive in every
-    bin, the two counts equal `n_obs`, and the weight is one everywhere -- so
-    a patch that returned `np.ones` would pass. Pinned so that a change to
-    the fixture which removed the dropout would fail here rather than quietly
-    empty the weight tests.
-    """
+    """The planted dropout makes the weight differ from one (guards the fixture)."""
     fixture = spot_clone_field()
     smooth = _smooth_matrix(fixture.n_spots, seed=17)
 
