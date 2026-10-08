@@ -512,7 +512,9 @@ new manifest.
 `dev_tree*` manifests draw lognormal lengths at `sigma = 0.541`,
 `port.sim.laws.lognormal_sigma(0.10, 0.5)`: 10% of events below half the
 median, against 29-35% under the exponential (#619;
-`run_study --cna-lengths` draws both laws). `population*.toml` stay exponential;
+`run_study --cna-lengths` draws both laws). `population*.toml` draw lognormal lengths at 20 and 60 Mb medians, and
+`dev_tree_1s_stream.toml`, the solver streams' draw, is `dev_tree_1s_hard` at a 20 Mb median
+(T- #807);
 `baseline/dev_tree.toml`, the one exponential fixture kept, freezes `dev_tree`'s exponential
 generation (`3381575a`), which `tests.sim_stages` caches as r0.
 Each `dev_tree*` manifest states `[sample] r0_hash`, its realization 0's

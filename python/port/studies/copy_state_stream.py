@@ -1,6 +1,7 @@
 """#540: copy-state starts at the planted clones, each scored and polished by `run_cnaster_port --sal`'s own Baum-Welch (#730).
 
 `run_study --copy-state-stream MANIFEST OUT_DIR [--problems 5] [--seeds 3] [--held-out 5] [--first 0] [--settings PATH] [--workers 4] [--all | --starts NAME ...]`
+`MANIFEST` is `sim/manifests/dev_tree_1s_stream.toml`, lognormal lengths at a 20 Mb median (T- #807).
 
 `run_calibrate --copy MANIFEST [--starts NAME ...]` tunes the samplers on the HMM (`anneal-hmm`, `tempering-hmm`,
 `hmc-hmm`, `sal`'s since #634) on the `--held-out` realizations and writes `SETTINGS` (#749 WP1), as
@@ -97,8 +98,9 @@ TOLERANCE = 1.0
 """Nats: a setting within this of the best median gap is as good, and the cheapest of those is kept."""
 
 SETTINGS = CONFIGS / "copy_sampler_settings.json"
-"""The starts' settings, tuned by `run_calibrate --copy` on `dev_tree_1s_hard`'s first 3 realizations
-at the run's Baum-Welch (#723); the stream's default `--settings`."""
+"""The starts' settings, tuned by `run_calibrate --copy` at the run's Baum-Welch (#723) on the
+realizations `HELD_OUT` names, of the manifest the file's `_provenance` states; the stream's default
+`--settings`."""
 
 
 def _call(stage: Any) -> Any:

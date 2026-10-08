@@ -1,6 +1,7 @@
 """#556: Potts solvers from random labels on a stream of the run's clone-assignment problems, the plot redrawn per problem.
 
 `run_study --potts-stream MANIFEST OUT_DIR [--problems 25] [--starts 50] [--held-out 5] [--workers 4] [--states run]`
+`MANIFEST` is `sim/manifests/dev_tree_1s_stream.toml`, lognormal lengths at a 20 Mb median (T- #807).
 `run_calibrate --potts MANIFEST OUT_DIR --samplers SAMPLER ...` tunes the
 named samplers on the held-out realizations and merges them into `SETTINGS`
 (`tune`, `retune`); the stream itself never tunes (#749 WP1).
@@ -151,8 +152,9 @@ REPLICAS = 6
 """sal's `N_REPLICAS`: both tempering ladders, geometric between `T_END` and the start temperature."""
 
 SETTINGS = CONFIGS / "potts_sampler_settings.json"
-"""The samplers' settings, tuned by `run_calibrate --potts` on `dev_tree_1s_hard`'s first 3
-realizations at the run's clone-assignment field (#723); the stream's default `--settings`."""
+"""The samplers' settings, tuned by `run_calibrate --potts` at the run's clone-assignment field
+(#723) on the realizations `HELD_OUT` names, of the manifest the file's `_provenance` states; the
+stream's default `--settings`."""
 
 _GRAPHS: dict[tuple[int, float], Any] = {}
 
