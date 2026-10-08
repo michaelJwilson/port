@@ -190,6 +190,55 @@ def test_the_spatial_and_h_and_e_pages_share_one_format(
     plt.close("all")
 
 
+@pytest.mark.infra
+def test_the_spatial_variant_carries_the_phase_track_and_the_genomes_marks(
+    drawn: Drawn,
+) -> None:
+    """T- #794: the spatial variant draws the RDR and BAF variant's phase
+    track under (b), the same curves at the same height to 0.01 in, and that
+    track is the page's last genome axis: the same 10 Mb marks and contig
+    names as the other variant's last track. Fails if the track is missing,
+    draws other data, or the marks or names are dropped."""
+    import matplotlib.pyplot as plt
+    from port.sim.truth_figure import truth_combined_figure
+
+    r = read(drawn.path)
+    pages = [truth_combined_figure(r, metric=True, spatial=s) for s in (False, True)]
+
+    def phase(page: Any, panel: int) -> Any:
+        (ax,) = [ax for ax in page.subfigs[panel].axes
+                 if ax.get_ylabel() == "Switches / Mb"]  # fmt: skip
+        return ax
+
+    def last(page: Any, panel: int) -> Any:
+        return min(page.subfigs[panel].axes, key=lambda ax: ax.get_position().y0)
+
+    for page in pages:
+        page.canvas.draw()
+    flat, spatial = phase(pages[0], 2), phase(pages[1], 1)
+    assert spatial is last(pages[1], 1)
+    lines = [[np.c_[line.get_xdata(), line.get_ydata()] for line in ax.lines]
+             for ax in (flat, spatial)]  # fmt: skip
+    assert len(lines[1]) == len(lines[0]) > 0
+    for ours, theirs in zip(*lines, strict=True):
+        np.testing.assert_array_equal(ours, theirs)
+    tall = [ax.get_window_extent().height / page.dpi
+            for ax, page in zip((flat, spatial), pages, strict=True)]  # fmt: skip
+    assert tall[1] == pytest.approx(tall[0], abs=0.01)
+    bottom = last(pages[0], 2)
+    np.testing.assert_array_equal(
+        spatial.xaxis.get_minorticklocs(), bottom.xaxis.get_minorticklocs()
+    )
+    assert spatial.xaxis.get_minorticklocs().size > 0
+
+    def names(ax: Any) -> list[str]:
+        return [t.get_text() for t in ax.texts if t.get_gid() == "contig"]
+
+    assert names(spatial) == names(bottom) != []
+    for page in pages:
+        plt.close(page)
+
+
 @pytest.mark.analytic
 def test_a_streamed_population_holds_each_statistics_mean_and_sd(
     tmp_path: Path,

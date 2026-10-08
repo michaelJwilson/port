@@ -772,11 +772,11 @@ def solver_figures(potts: Path, copies: Path | None, out: Path, commit: str) -> 
 
 QUESTIONS: dict[str, tuple[str, str]] = {
     "truth_combined.png": (
-        "What was planted, on one page: tree, (A, B) profile, RDR and BAF per tumour clone, and the phase switches?",
+        "What was planted, on one page: tree, copy-number profile, RDR and BAF per tumour clone, and the phase switches?",
         "`port.sim.truth_figure.truth_combined_figure`",
     ),
     "truth_combined_spatial.png": (
-        "The same, with where each true clone lies in place of RDR and BAF per clone?",
+        "The same, with where each true clone lies in place of RDR and BAF per clone, the phase switches under (b)?",
         "`port.sim.truth_figure.truth_combined_figure(spatial=True)`",
     ),
     "truth_combined_multisample.png": (

@@ -60,7 +60,7 @@ BUDGET: dict[str, int] = {
     #    the run's clone-assignment problem, and `potts_stream.Problem`, one
     #    with its realization (`known_field.KnownProblem`, in `sandbox/`, gone).
     #    87: #749 WP6 retired `potts_solvers` and its `PortStart`. 88: T- #791's
-    #    `analysis.SliceFrame`, each slice's place in the spatial pages' frame.
+    #    `analysis.SliceFrame`, the slices' one frame the spatial pages share.
     "classes": 88,
     # NB step 4: 18 records became NamedTuples; the dataclasses left carry
     #    mutable state, machinery or a `__post_init__` (#517 D). Step 8 moved
@@ -79,7 +79,7 @@ BUDGET: dict[str, int] = {
     #    WP2's `pipeline.Default`. 28: G6's `port.sim.he_slide.Slide`, moved.
     #    30: G3's `Fit` and `Summary`, moved. 32: G5's two `Job`s, moved.
     #    34: #730's `Stage` and `Member`. 36: #735's `Field` and `Problem`.
-    #    37: T- #791's `analysis.SliceFrame`.
+    #    37: T- #791's `SliceFrame`, recorded under T- #794.
     "NamedTuples": 37,
 }
 """`python/port` outside `sandbox/`."""
