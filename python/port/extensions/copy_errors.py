@@ -72,6 +72,10 @@ VARIANCE_FLOOR = 1e-12
 BOUNDARY = 1e-3
 """An allele fraction this close to 0 or 1 is held rather than estimated."""
 
+STABLE_TAU = 1e5
+"""The concentration from which `jax_hmm`'s beta-binomial, which subtracts `lgamma(tau)`-sized terms,
+loses more than this covariance's curvature (T- #599); moved here from `dense_emission` (T- #777)."""
+
 EPS_P = 1e-6
 """How close to 0 or 1 an allele fraction is taken, for a finite logit."""
 

@@ -93,12 +93,12 @@ def potts_graph_from(graph: CsrGraph, spatial_weight: float) -> PottsGraph:
     replaces; a one-way pair enters at half, where the upper-triangle read
     kept it whole when `i < j` and dropped it when `i > j` (#417).
 
-    Built by sal's `PottsGraph.from_directed_csr` (sal #1140), which halves
-    `A_ij + A_ji`, then scaled by `spatial_weight` once: bitwise the symmetrized
-    `from_csr` call it replaces (T- #632). Refused: a negative coupling -- alpha
-    expansion's bound requires a metric -- and a graph whose reciprocated
-    share of edges is under `port.extensions.adjacency.RECIPROCATED`, where
-    one-way edges are no longer the boundary's.
+    Built by sal's `PottsGraph.from_directed_csr(..., scale=spatial_weight)`
+    (sal #1140, #1324), which halves `A_ij + A_ji` and scales once, and
+    refuses a negative coupling -- alpha expansion's bound requires a metric
+    (T- #777). Port keeps one rule of its own: a graph whose reciprocated
+    share of edges is under `port.extensions.adjacency.RECIPROCATED` is
+    refused, since one-way edges are then no longer the boundary's.
     """
     import scipy.sparse as sp
 
@@ -115,14 +115,6 @@ def potts_graph_from(graph: CsrGraph, spatial_weight: float) -> PottsGraph:
     )
     matrix.eliminate_zeros()
 
-    if matrix.nnz and matrix.data.min() * float(spatial_weight) < 0.0:
-        msg = (
-            f"a coupling of {matrix.data.min() * float(spatial_weight)}; alpha expansion's "
-            "bound requires a metric, so a negative coupling is refused rather "
-            "than clipped"
-        )
-        raise ValueError(msg)
-
     # NB an empty graph -- every coupling zero -- is symmetric, not one-way.
     reciprocated = matrix.multiply(matrix.T).nnz / matrix.nnz if matrix.nnz else 1.0
 
@@ -133,13 +125,8 @@ def potts_graph_from(graph: CsrGraph, spatial_weight: float) -> PottsGraph:
         )
         raise AdjacencyError(msg)
 
-    # NB scaled after the halving, as `(A + A^T) * (spatial_weight / 2)` rounded: one
-    #    product per edge either way, so the couplings agree bitwise.
-    halved = PottsGraph.from_directed_csr(matrix.indptr, matrix.indices, matrix.data)
-    return PottsGraph(
-        halved.n_nodes,
-        halved.edges,
-        tuple((halved.edge_coupling * float(spatial_weight)).tolist()),
+    return PottsGraph.from_directed_csr(
+        matrix.indptr, matrix.indices, matrix.data, scale=float(spatial_weight)
     )
 
 

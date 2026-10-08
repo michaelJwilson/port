@@ -1,6 +1,6 @@
 """#540: copy-state starts at the planted clones, each scored and polished by `run_cnaster_port --sal`'s own Baum-Welch (#730).
 
-`run_study --copy-state-stream MANIFEST OUT_DIR [--problems 5] [--seeds 3] [--held-out 3] [--first 0] [--settings PATH] [--workers 4] [--all | --starts NAME ...]`
+`run_study --copy-state-stream MANIFEST OUT_DIR [--problems 5] [--seeds 3] [--held-out 5] [--first 0] [--settings PATH] [--workers 4] [--all | --starts NAME ...]`
 
 `run_calibrate --copy MANIFEST [--starts NAME ...]` tunes the samplers on the HMM (`anneal-hmm`, `tempering-hmm`,
 `hmc-hmm`, `sal`'s since #634) on the `--held-out` realizations and writes `SETTINGS` (#749 WP1), as
@@ -91,7 +91,8 @@ UNTUNED = {"anneal-hmm": 2, "tempering-hmm": 2, "hmc-hmm": 2, "emission++trim": 
            "emission++lloydx5hmm": 1, "emission++anchor": 1, "emission++knn": 1}  # fmt: skip
 """Each grid's index of the schedule the samplers were written with, reported beside the tuned one."""
 
-TUNING_SEEDS = 5
+TUNING_SEEDS = 2
+"""Seeds per setting on each of `harness.HELD_OUT` realizations: one in the first round, both in the second."""
 TOLERANCE = 1.0
 """Nats: a setting within this of the best median gap is as good, and the cheapest of those is kept."""
 
@@ -103,6 +104,7 @@ at the run's Baum-Welch (#723); the stream's default `--settings`."""
 def _call(stage: Any) -> Any:
     """The run's arrays at `stage` as a `CopyCall`: one row per (clone, bin), clones stacked genome after genome."""
     from port.extensions.copy_starts import CopyCall
+    from port.sandbox.extensions.hmm_objective import held_by
 
     def tiled(values: Any) -> np.ndarray:
         return np.tile(np.asarray(values), stage.n_clones)
@@ -114,7 +116,7 @@ def _call(stage: Any) -> Any:
         tiled(stage.length), stage.planted,
         {"X": X, "base_nb_mean": stage.base_nb_mean, "total_bb_RD": stage.total_bb_RD, "lengths": stage.lengths,
          "log_sitewise_transmat": np.asarray(stage.args[6]), "params": str(stage.arguments["params"]),
-         "config": stage.config},
+         "config": stage.config, "held": held_by(stage.arguments)},
     )  # fmt: skip
 
 
@@ -289,8 +291,10 @@ def tune(
 
     Two rounds (#716): every setting from one seed per held-out realization,
     then the settings `harness.halve` keeps get the other `TUNING_SEEDS - 1`
-    seeds, and the choice is among those alone. The gap is to the best
-    log-likelihood any tuning run reached on that realization. Each round
+    seeds, and the choice is among those alone. The gap is each run's
+    log-likelihood after the run's Baum-Welch from its start -- what the figure
+    reports, not the start's own (T- #777) -- to the best any tuning run
+    reached on that realization. Each round
     is one job per realization, reaching its stage once (#730).
     """
     import pandas as pd
@@ -298,13 +302,14 @@ def tune(
     rows: list[dict[str, Any]] = []
 
     def run_jobs(jobs: list[tuple[str, int, dict[str, float] | None]]) -> pd.DataFrame:
-        futures = [pool.submit(member, str(m.sample.path), m.realization, jobs, False,
+        # NB each setting scored after the run's Baum-Welch, what the figure reports (T- #777)
+        futures = [pool.submit(member, str(m.sample.path), m.realization, jobs, True,
                                str(root / f"tune_r{m.realization}")) for m in held_out]  # fmt: skip
         for f in futures:
             rows.extend(f.result()["rows"])
         frame = pd.DataFrame([r for r in rows if "error" not in r])
-        top = frame.groupby("problem").start_llf.max()
-        frame["gap"] = frame.problem.map(top) - frame.start_llf
+        top = frame.groupby("problem").llf.max()
+        frame["gap"] = frame.problem.map(top) - frame.llf
         frame["key"] = frame.setting.map(lambda s: tuple(sorted(s.items())))
         return frame
 
@@ -345,7 +350,7 @@ def run(
     everything: bool,
     first: int = 0,
     merge: tuple[Path, ...] = (),
-    held_out: int = 3,
+    held_out: int = harness.HELD_OUT,
     settings: Path | None = SETTINGS,
     reuse: tuple[Path, ...] = (),
     only: tuple[str, ...] = (),
@@ -507,7 +512,7 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument(
         "--held-out",
         type=int,
-        default=3,
+        default=harness.HELD_OUT,
         help="realizations the tuning reads, never evaluated",
     )
     parser.add_argument(

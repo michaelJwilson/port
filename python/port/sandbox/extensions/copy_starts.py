@@ -618,9 +618,10 @@ def _hmm_sampled(
     """`HMM_SAMPLERS`' states on the call's rows: `(log mu, p)`, not snapped; `setting` in place of the sampler's defaults."""
     from port.sandbox.extensions.hmm_objective import sample
 
+    # NB at the run's own `t` and dispersions where the call carries them (T- #777)
     sampled = sample(
         name, call.total, call.b, call.exposure, call.trials, call.raw["lengths"],
-        call.n_states, rng, setting,
+        call.n_states, rng, setting, call.raw.get("held"),
     )  # fmt: skip
     return sampled.log_mu, sampled.p_binom
 
@@ -720,7 +721,8 @@ def _emission_variant(
     """`EMISSION_VARIANTS[name]`: one draw, or the best of `draws` by the HMM's NLL at each draw's states, nothing fitted.
 
     Scored by `port.sandbox.extensions.hmm_objective.negative_log_likelihood`
-    (`sal`'s compiled forward recursion at `hmm_objective.ALPHA`, `TAU`, `T`) on
+    (`sal`'s compiled forward recursion at the run's `t` and dispersions,
+    `hmm_objective.held_by`; `ALPHA`, `TAU`, `T` where the call has none) on
     the call's rows, each draw's states read as `seed_states` reads them. A
     variant with no seeding change draws `sal`'s own `emission_seeding`.
     """
@@ -743,7 +745,8 @@ def _emission_variant(
         components = draw()
         log_mu, p = components_as_states(call, components)
         nll = negative_log_likelihood(
-            log_mu, p, call.total, call.b, call.exposure, call.trials, call.raw["lengths"]
+            log_mu, p, call.total, call.b, call.exposure, call.trials, call.raw["lengths"],
+            call.raw.get("held"),
         )  # fmt: skip
         if best[1] is None or nll < best[0]:
             best = (nll, components)

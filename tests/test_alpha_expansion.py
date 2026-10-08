@@ -93,10 +93,11 @@ def test_each_undirected_edge_is_counted_once() -> None:
 
 @pytest.mark.patch
 def test_a_negative_coupling_is_refused_rather_than_clipped() -> None:
-    """The bound requires a metric. Silently clipping would forfeit it."""
+    """The bound requires a metric. Silently clipping would forfeit it; `sal`'s
+    `from_directed_csr(scale=)` refuses it (T- #777)."""
     field, graph, _, _ = planted_blocky_field(4, 2, seed=1, beta=1.0)
 
-    with pytest.raises(ValueError, match="metric"):
+    with pytest.raises(ValueError, match="coupling"):
         potts_graph_from(graph, spatial_weight=-1.0)
 
 

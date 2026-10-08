@@ -1,8 +1,8 @@
 """#561: the beta-binomial at a large concentration, against 50-digit sums of logs.
 
-`a = p tau` and `b = (1 - p) tau`. `cnaster` and `sal` subtract `lgamma`
-values near `tau log tau`; `port.patch.hmm_nophasing.bb_logpmf` forms each
-rising factorial without that subtraction. The referee is
+`a = p tau` and `b = (1 - p) tau`. `cnaster` subtracts `lgamma` values near
+`tau log tau`; `sal`'s `log_rising` forms each rising factorial without that
+subtraction, on every route since sal #1332, and port builds on it. The referee is
 `tests.exact_densities`, the density written from its definition in
 `decimal`. Every port site on the live path is judged here: the kernel the
 `LOG_SPACE_SWAPS` rows install, `dense_emission.bb_states` (the HMM under
@@ -116,13 +116,12 @@ def test_the_dense_kernel_is_the_per_state_kernel() -> None:
 
 
 @pytest.mark.oracle
-@pytest.mark.parametrize("tau", [5e3, 1e12])
+@pytest.mark.parametrize("tau", [5e3, 1e5, 1e12, 1e16])
 def test_the_sal_emission_scores_a_large_concentration_exactly(tau: float) -> None:
-    """`dense_emission.bb_states`, the HMM's beta-binomial under `--sal`, to 1e-11 at 5e3 and 1e12.
-
-    sal's tables of scaled rising factorials at every concentration (T- #776);
-    the `STABLE_TAU` hand-off to port's kernel is retired.
-    """
+    """`dense_emission.bb_states`, the HMM's beta-binomial under `--sal`, against `mpmath` to 1e-11 at every
+    concentration: sal's tables hold rising factorials (sal #1332), completed by
+    `port.patch.emission.bb_tables` (T- #776), so no state is handed to port's
+    kernel any more (T- #777; 1e-9 below 1e5 and port's kernel above until then)."""
     from port.patch.hmm_nophasing.dense_emission import bb_states
 
     scores = bb_states(
