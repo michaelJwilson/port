@@ -40,9 +40,6 @@ TABLE = (
     ("CalicoST, port", (
         ("calicost-gmm", f"CalicoST's {tt('initialization_by_gmm')}, clones stacked"),
         ("lattice", "Integer (A, B) lattice, chosen by the rows"),
-        ("ward", "Ward linkage on (log RDR, BAF), cut at the states"),
-        ("average", "Average linkage on (log RDR, BAF), cut at the states"),
-        ("complete", "Complete linkage on (log RDR, BAF), cut at the states"),
     )),
     ("sal, one draw", (
         ("prior", "Drawn from a prior on the observed range"),
@@ -61,7 +58,6 @@ and `tempering-hmm` (deprecated from the studies for now, T- #807)."""
 LABEL = {
     "calicost-gmm": "calicost-gmm", "lattice": "lattice", "prior": "prior", "kmeans++": "k-means++",
     "emission++": "emission++", "gaussian-em": "gaussian-em",
-    "ward": "ward", "average": "average linkage", "complete": "complete linkage",
     "anneal-hmm": "anneal", "tempering-hmm": "parallel tempering", "hmc-hmm": "hmc",
 }  # fmt: skip
 """A start's label."""
@@ -69,12 +65,12 @@ NUMBER = {name: k + 1 for k, name in enumerate(n for _, rows in TABLE for n, _ i
 NUMBER_TEXT = {name: str(k) for name, k in NUMBER.items()}
 SOURCE = {
     **{name: "sal" for _, rows in TABLE for name, _ in rows},
-    "calicost-gmm": "CalicoST", "lattice": "port", "ward": "port", "average": "port", "complete": "port",
+    "calicost-gmm": "CalicoST", "lattice": "port",
 }  # fmt: skip
 """Each start's source: the package whose code it runs."""
 KEY_NAMES = {
     "calicost-gmm": "CalicoST-GMM", "lattice": "Lattice", "prior": "Prior", "kmeans++": r"$k$-means++",
-    "emission++": "Emission++", "ward": "Ward", "average": "Average linkage", "complete": "Complete linkage",
+    "emission++": "Emission++",
     "hmc-hmm": "HMC",
 }  # fmt: skip
 """The names `solver_combined`'s key prints (#716)."""

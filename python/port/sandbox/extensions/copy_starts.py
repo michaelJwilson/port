@@ -49,12 +49,11 @@ from typing import Any, NamedTuple
 import numpy as np
 
 from port.extensions.copy_starts import (
-    HIERARCHICAL,
+    SEED_JITTER,
     STAGES,
     CopyCall,
     CopyStart,
     components_as_states,
-    hierarchical_states,
     instance,
     lattice_start,
     log_depth_ratio,
@@ -65,6 +64,7 @@ from port.extensions.copy_starts import seed_states as live_seed_states
 
 __all__ = [
     "EMISSION_VARIANTS",
+    "HIERARCHICAL",
     "HMM_SAMPLERS",
     "MASKS",
     "STAGES",
@@ -75,6 +75,7 @@ __all__ = [
     "corrupted",
     "fold",
     "found",
+    "hierarchical_states",
     "instance",
     "lattice_start",
     "masked",
@@ -483,6 +484,77 @@ def _calicost_row(call: CopyCall, rng: np.random.Generator) -> tuple[Any, Any]:
         random_state=int(rng.integers(2**31)), in_log_space=False, only_minor=False,
     )  # fmt: skip
     return log_mu, p
+
+
+HIERARCHICAL = ("ward", "average", "complete")
+"""The linkages `hierarchical_states` runs, `scipy.cluster.hierarchy.linkage`'s `method` (#824).
+
+Set aside in the sandbox: on `study15` (10 realizations) average linkage left 1.5% of rows missed after
+Baum-Welch against the lattice's 1.1% and HMC's 1.4%, Ward 27.9% and complete 28.5% (PR #825)."""
+
+HIERARCHICAL_ROWS = 4000
+"""At most this many rows enter the linkage, drawn by the start's generator: its memory is quadratic in rows."""
+
+
+def _robust(values: np.ndarray) -> np.ndarray:
+    """`values` centred on the median and scaled by the MAD (to sigma), or the standard deviation where the MAD is 0."""
+    centred = values - np.median(values)
+    scale = 1.4826 * float(np.median(np.abs(centred)))
+    scale = scale if scale > 0 else float(np.std(values)) or 1.0
+    out: np.ndarray = centred / scale
+    return out
+
+
+def hierarchical_states(
+    call: CopyCall, method: str, rng: np.random.Generator
+) -> tuple[np.ndarray, np.ndarray]:
+    """`n_states` states by a `method` linkage on the rows, each cluster's rows pooled (#824).
+
+    Features: each row's `log(total / exposure)` and `b / trials`, each
+    robust-scaled (`_robust`); the B share alone at the BAF-only stage, whose
+    depth is a constant. Rows with no exposure or no allele reads are left
+    out; at most `HIERARCHICAL_ROWS` enter, drawn by `rng`. The tree is cut
+    at `n_states` clusters (`fcluster`, `maxclust`), and each cluster's
+    state is its rows pooled: depth by exposure, B share by allele reads.
+    A cut with fewer clusters is padded with its largest cluster's state,
+    the B share moved by `SEED_JITTER` per copy, so `n_states` states remain.
+    """
+    from scipy.cluster.hierarchy import fcluster, linkage
+
+    if method not in HIERARCHICAL:
+        msg = f"no linkage {method!r}: one of {HIERARCHICAL}"
+        raise ValueError(msg)
+    depth = call.stage == "rdrbaf"
+    seen = (call.trials > 0) & (
+        (call.exposure > 0) & (call.total > 0) if depth else True
+    )
+    rows = np.flatnonzero(seen)
+    if rows.size > HIERARCHICAL_ROWS:
+        rows = np.sort(rng.choice(rows, HIERARCHICAL_ROWS, replace=False))
+    share = call.b[rows] / call.trials[rows]
+    features = (
+        np.column_stack(
+            [_robust(np.log(call.total[rows] / call.exposure[rows])), _robust(share)]
+        )
+        if depth
+        else _robust(share)[:, None]
+    )
+    labels = fcluster(
+        linkage(features, method=method), t=call.n_states, criterion="maxclust"
+    )
+    clusters = sorted(np.unique(labels), key=lambda c: -int((labels == c).sum()))
+    log_mu, p = [], []
+    for cluster in clusters:
+        members = rows[labels == cluster]
+        rate = (
+            call.total[members].sum() / call.exposure[members].sum() if depth else 1.0
+        )
+        log_mu.append(float(np.log(rate)) if depth else 0.0)
+        p.append(float(call.b[members].sum() / call.trials[members].sum()))
+    for k in range(call.n_states - len(clusters)):
+        log_mu.append(log_mu[0])
+        p.append(float(np.clip(p[0] + SEED_JITTER * (k + 1), 1e-4, 1 - 1e-4)))
+    return np.array(log_mu), np.array(p)
 
 
 def _port_starts() -> dict[

@@ -1,4 +1,4 @@
-"""`port.extensions.copy_starts.hierarchical_states`: the linkage starts (#824)."""
+"""`port.sandbox.extensions.copy_starts.hierarchical_states`: the linkage starts, set aside (#824)."""
 
 from __future__ import annotations
 
@@ -31,7 +31,7 @@ def _call(levels: tuple[tuple[float, float, int], ...], n_states: int, seed: int
 @pytest.mark.parametrize("method", ["ward", "average", "complete"])
 def test_a_linkage_start_keeps_the_rare_level(method: str) -> None:
     """Each planted level, the 30-row one included, has a state within 0.05 in log mu and 0.03 in p."""
-    from port.extensions.copy_starts import hierarchical_states
+    from port.sandbox.extensions.copy_starts import hierarchical_states
 
     log_mu, p = hierarchical_states(_call(LEVELS, 3), method, np.random.default_rng(1))
 
@@ -44,7 +44,7 @@ def test_a_linkage_start_keeps_the_rare_level(method: str) -> None:
 @pytest.mark.analytic
 def test_one_cluster_is_the_rows_pooled() -> None:
     """At one state the start is every row pooled: depth by exposure, B share by allele reads."""
-    from port.extensions.copy_starts import hierarchical_states
+    from port.sandbox.extensions.copy_starts import hierarchical_states
 
     call = _call(LEVELS, 1)
     log_mu, p = hierarchical_states(call, "ward", np.random.default_rng(1))
@@ -58,7 +58,8 @@ def test_one_cluster_is_the_rows_pooled() -> None:
 @pytest.mark.analytic
 def test_a_short_cut_is_padded_to_the_states() -> None:
     """Asked for more states than distinct rows give, the start still returns `n_states`, the extras beside the largest."""
-    from port.extensions.copy_starts import SEED_JITTER, hierarchical_states
+    from port.extensions.copy_starts import SEED_JITTER
+    from port.sandbox.extensions.copy_starts import hierarchical_states
 
     log_mu, p = hierarchical_states(
         _call(((1.0, 0.5, 5),), 9), "average", np.random.default_rng(1)
