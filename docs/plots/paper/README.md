@@ -4,8 +4,8 @@
 0.9335, exact altered (phase-free)
 0.8992 (phased 0.1473), from one
 `run_cnaster_port --sal --png-copies` run on `sim/manifests/dev_tree_1s_easy.toml` r0 at
-code `10a9e27`: 219 s wall, 3.53 GB peak.
-Ledger `run_id` `10a9e27-dev_tree_1s_easy_r0-2151` (`docs/metrics/`, fixture `dev_tree_1s_easy_r0` `7ba9b01f`).
+code `24ef258`: 127 s wall, 3.52 GB peak.
+Ledger `run_id` `24ef258-dev_tree_1s_easy_r0-0120` (`docs/metrics/`, fixture `dev_tree_1s_easy_r0` `7ba9b01f`).
 
 Regenerate from a clean tree, so the commit above carries no `+`; it draws r0 into
 `.cache/paper_figures/` where `--draw` is not given, and refuses any r0 not
@@ -18,7 +18,7 @@ headline figures alone (#745); every other page the run draws (the truth's panel
 the run's own pages, cnaster's copies and the truth-against-fit comparisons) is
 written under `.cache/plots/paper/` and regenerated on demand (`curate`). The figures
 carry no stamp (#743): `truth_combined.png` and `combined.png` are `dev_tree_1s_easy` r0
-`7ba9b01f` at code `10a9e27`, as above. `combined.png` draws panel (a) on a slide
+`7ba9b01f` at code `24ef258`, as above. `combined.png` draws panel (a) on a slide
 mocked from the planted labels (`port.sim.he_slide`): the fixture has no H&E image,
 and the run never reads the mock. `solver_combined.png` is not drawn from this fixture:
 `--solvers POTTS.record COPY.record` draws it from a `port.studies.potts_stream` and a
@@ -30,8 +30,8 @@ T- #683), each on its own segmentation, so their contig widths differ.
 
 | File | Question | Source |
 | --- | --- | --- |
-| `truth_combined.png` | What was planted, on one page: tree, (A, B) profile, RDR and BAF per tumour clone, and the phase switches? | `port.sim.truth_figure.truth_combined_figure` |
-| `truth_combined_spatial.png` | The same, with where each true clone lies in place of RDR and BAF per clone? | `port.sim.truth_figure.truth_combined_figure(spatial=True)` |
+| `truth_combined.png` | What was planted, on one page: tree, copy-number profile, RDR and BAF per tumour clone, and the phase switches? | `port.sim.truth_figure.truth_combined_figure` |
+| `truth_combined_spatial.png` | The same, with where each true clone lies in place of RDR and BAF per clone, the phase switches under (b)? | `port.sim.truth_figure.truth_combined_figure(spatial=True)` |
 | `truth_combined_multisample.png` | The same, for the fixture's multi-sample counterpart: the same clones and laws on two overlapping slices, phase switch errors on? | `multisample_pages`: `truth_combined_figure` on `MULTISAMPLE[fixture]`'s r0 (`sim/manifests/dev_tree_easy.toml`) |
 | `truth_combined_spatial_multisample.png` | The same with where each true clone lies, for the counterpart: each slice, the region they share dashed? | `multisample_pages`: `truth_combined_figure(spatial=True)` on `MULTISAMPLE[fixture]`'s r0 |
 | `spatial_multisample.png` | Where is each true clone on each of the counterpart's slices? | `multisample_pages`: `port.sim.analysis.plot_spatial` |
