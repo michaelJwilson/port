@@ -15,7 +15,8 @@ posteriors the fit is holding and `u` a unique `(obs, total)` code,
 
 and each term's derivative is a rising digamma or a ratio, the partials of
 `port.patch.emission`'s densities, the one evaluation every site scores
-(T- #776; :func:`~port.patch.emission.nb_partials`,
+(T- #776, `sal`'s Rust `coded.log_emission_partials` since sal #1353;
+:func:`~port.patch.emission.nb_partials`,
 :func:`~port.patch.emission.bb_partials`):
 
 - negative binomial, `r = 1 / max(alpha, 1e-10)`, `mu = c exp(eta)`,
@@ -55,7 +56,13 @@ import scipy.optimize
 from cnaster.count_encoder import CountEncoder
 from scipy.special import expit
 
-from port.patch.emission import DISPERSION_FLOOR, bb_partials, nb_partials
+from port.patch.emission import (
+    DISPERSION_FLOOR,
+    bb_partial_sums,
+    bb_partials,
+    nb_partial_sums,
+    nb_partials,
+)
 
 __all__ = [
     "DISPERSION_FLOOR",
@@ -181,11 +188,15 @@ class EmGradient:
         total = self.bb.get_unique_total(0)
         weight = np.asarray(self.bb.encode_array(gamma, 0))
 
-        d_p, d_tau = bb_partials(
-            obs[None, :], total[None, :], p_binom[:, :1], taus[:, :1]
+        d_p, d_tau = bb_partial_sums(
+            obs,
+            total,
+            p_binom[:, 0],
+            taus[:, 0],
+            np.broadcast_to(weight, (p_binom.shape[0], obs.size)),
         )
 
-        return -np.sum(weight * d_p, axis=1), -np.sum(weight * d_tau, axis=1)
+        return -d_p, -d_tau
 
     def _depth(
         self,
@@ -196,7 +207,7 @@ class EmGradient:
     ) -> tuple[np.ndarray, np.ndarray]:
         """Per-state `d f / d log mu` and `d f / d log alpha`, shifted or not."""
         rates = np.asarray(log_mu, dtype=np.float64)[:, 0]
-        dispersions = np.asarray(alphas, dtype=np.float64)[:, :1]
+        dispersions = np.asarray(alphas, dtype=np.float64)[:, 0]
 
         shifted = self._shift_inputs()
 
@@ -204,11 +215,16 @@ class EmGradient:
             obs = encoder.get_unique_obs(0)
             exposure = encoder.get_unique_total(0)
             weight = np.asarray(encoder.encode_array(gamma, 0))
-            mean = exposure[None, :] * np.exp(rates)[:, None]
 
-            d_eta, d_alpha = nb_partials(obs[None, :], mean, dispersions)
+            d_eta, d_alpha = nb_partial_sums(
+                obs,
+                exposure,
+                rates,
+                dispersions,
+                np.broadcast_to(weight, (rates.size, obs.size)),
+            )
 
-            return -np.sum(weight * d_eta, axis=1), -np.sum(weight * d_alpha, axis=1)
+            return -d_eta, -d_alpha
 
         return self._shifted_depth(encoder, gamma, rates, dispersions, *shifted)
 
@@ -287,10 +303,10 @@ class EmGradient:
                 triples.inverse, weights=gamma[state], minlength=n_codes
             )
 
-        log_rate = rates[:, None] - shifts[code_clone][None, :]
-        mean = triples.total[None, :] * np.exp(log_rate)
+        # NB the clone's shift enters as the exposure `total exp(-S_c)`, the rate `exp(log_mu)` per state
+        exposure = triples.total * np.exp(-shifts[code_clone])
 
-        d_eta, d_alpha = nb_partials(triples.obs[None, :], mean, dispersions)
+        d_eta, d_alpha = nb_partials(triples.obs, exposure, rates, dispersions)
         per_clone = np.zeros((n_states, n_clones))
 
         for state in range(n_states):

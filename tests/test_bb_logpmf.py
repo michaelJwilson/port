@@ -181,15 +181,15 @@ def test_the_closed_form_gradient_is_the_exact_derivative(tau: float) -> None:
     p = 0.3
     a, b = _shapes(p, tau)
     d_p, d_log_tau = bb_partials(
-        COUNTS, np.full(COUNTS.size, float(TRIALS)), np.array(p), np.array(tau)
+        COUNTS, np.full(COUNTS.size, float(TRIALS)), np.array([p]), np.array([tau])
     )
 
     joint = [digamma_rise(a + b, TRIALS) for _ in COUNTS]
     d_a = np.array([digamma_rise(a, int(k)) for k in COUNTS]) - joint
     d_b = np.array([digamma_rise(b, TRIALS - int(k)) for k in COUNTS]) - joint
 
-    np.testing.assert_allclose(d_p, tau * (d_a - d_b), rtol=1e-9, atol=1e-11)
-    np.testing.assert_allclose(d_log_tau, a * d_a + b * d_b, rtol=1e-9, atol=1e-11)
+    np.testing.assert_allclose(d_p[0], tau * (d_a - d_b), rtol=1e-9, atol=1e-11)
+    np.testing.assert_allclose(d_log_tau[0], a * d_a + b * d_b, rtol=1e-9, atol=1e-11)
 
 
 # --- the dependencies' kernels --------------------------------------------
@@ -214,22 +214,20 @@ def test_cnasters_beta_binomial_is_not_a_pmf_at_a_large_concentration() -> None:
 
 @pytest.mark.analytic
 def test_sals_beta_binomial_is_a_pmf_at_a_large_concentration() -> None:
-    """`sal`'s dense beta-binomial at `tau = 1e16`, `p = 0.3`, `n = 100` sums to 1 within 1e-12.
+    """`sal`'s coded beta-binomial at `tau = 1e16`, `p = 0.3`, `n = 100` sums to 1 within 1e-12.
 
     Pinned `e^-60` while sal filled its tables with `lgamma`; sal #1334's
     scaled rising factorials fix it (T- #776). Fails if the cancellation
     returns.
     """
     from sal.emissions import BetaBinomialEmission
-    from sal.emissions.dense import Order, log_emission
+    from sal.emissions.coded import Dense, log_emission
 
     k = np.arange(TRIALS + 1, dtype=np.float64)
     family = BetaBinomialEmission(
         alpha=np.array([0.3e16]), beta=np.array([0.7e16]), trials=np.ones(1)
     )
-    scores = log_emission(
-        family, k, np.full((k.size, 1), float(TRIALS)), order=Order.FAMILY
-    )
+    scores = log_emission(family, Dense(k, np.full(k.size, float(TRIALS))))
 
     assert abs(logsumexp(scores[0])) < 1e-12
 

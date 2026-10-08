@@ -60,7 +60,7 @@ TABLE = (
 )  # fmt: skip
 """The solvers drawn (T- #660). Set aside from the figure, still in `clone_label_arms` or `--only`:
 `alpha-rust`, `alpha-rust-icm`, `icm-numba`, cnaster's `icm`, the four field-weighted cluster moves,
-cluster tempering, parallel tempering (deprecated from the studies for now, T- #807), and
+cluster and parallel tempering (out of port since sal moved them to its sandbox, sal #1352), and
 `alpha-rust-fuse`, `icm-random` and `max-product`: the table draws `solver_combined`'s solvers,
 under its names (T- #807)."""
 NUMBER = {

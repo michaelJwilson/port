@@ -211,35 +211,46 @@ def test_the_numba_completions_are_the_numpy_form_to_rounding() -> None:
 
 
 @pytest.mark.oracle
-def test_the_fit_is_sals_dense_emission_bitwise() -> None:
-    """`dense_emission.nb_states` and `bb_states`, tables built here: `sal`'s `dense.log_emission`, bitwise."""
-    from port.patch.emission import nb_size
+def test_the_fit_is_sals_numpy_pmf_to_its_rounding() -> None:
+    """`dense_emission.nb_states` and `bb_states`, `sal`'s coded Rust route: the module's NumPy pmfs within `CONDITION`.
+
+    The NumPy forms are `sal`'s NumPy pmfs bit for bit; the coded route
+    builds its tables at the distinct counts and completes them in Rust
+    (sal #1340). A zero exposure or trial count, a rate `<= 0`, `alpha = 0`
+    and `tau = inf` score as the NumPy form does.
+    """
+    from port.patch.emission import bb_log_pmf, nb_log_pmf
     from port.patch.hmm_nophasing.dense_emission import bb_states, nb_states
-    from sal.emissions import BetaBinomialEmission, NegativeBinomialEmission
-    from sal.emissions.dense import Order, log_emission
 
     rng = np.random.default_rng(4)
     y = rng.negative_binomial(10, 10 / 3010, 6_000).astype(float)
     exposure = rng.uniform(100.0, 3_000.0, y.size)
     exposure[:5] = 0.0
     mu = np.linspace(0.7, 1.44, 7)
+    mu[3] = 0.0
     for alphas in (
         np.full(7, 0.073),
         np.array([1e-10, 1e-3, 0.07, 0.1, 0.5, 2.0, 0.0]),
     ):
-        depth = NegativeBinomialEmission(dispersion=nb_size(alphas), mean=mu)
-        expected = log_emission(depth, y, exposure[:, None], order=Order.FAMILY)
-        assert np.array_equal(nb_states(y, exposure, mu, alphas), expected)
+        expected = nb_log_pmf(y, alphas[:, None], exposure * mu[:, None])
+        got = nb_states(y, exposure, mu, alphas)
+        assert np.all(np.abs(got - expected) <= CONDITION * _scale(expected, y))
 
     n = rng.integers(0, 2_805, 6_000).astype(float)
     z = np.floor(n * rng.random(n.size))
     p = rng.uniform(0.25, 0.95, 7)
-    for taus in (np.full(7, 28.0), np.array([10.0, 28.0, 1e3, 4.4e3, 1e5, 1e12, 1e16])):
-        family = BetaBinomialEmission(
-            alpha=p * taus, beta=(1 - p) * taus, trials=np.ones(7)
-        )
-        expected = log_emission(family, z, n[:, None], order=Order.FAMILY)
-        assert np.array_equal(bb_states(z, n, p, taus), expected)
+    for taus in (
+        np.full(7, 28.0),
+        np.array([10.0, 28.0, 1e3, 4.4e3, 1e5, 1e16, np.inf]),
+    ):
+        expected = bb_log_pmf(z, n, p[:, None], taus[:, None])
+        got = bb_states(z, n, p, taus)
+        assert np.all(np.abs(got - expected) <= CONDITION * _scale(expected, n))
+
+    # NB nothing observed scores 0, where sal's coded route raises
+    assert not nb_states(y[:5], exposure[:5], mu, alphas).any()
+    assert not bb_states(z[:5], np.zeros(5), p, taus).any()
+    assert nb_states(y[:0], exposure[:0], mu, alphas).shape == (7, 0)
 
 
 @pytest.mark.backend
@@ -304,9 +315,9 @@ def test_the_negative_binomial_partials_meet_the_exact_derivatives(
     counts = np.array([0.0, 1.0, 42.0, 1_000.0])
     for mean in (0.5, 300.0):
         d_mean, d_alpha = nb_partials(
-            counts, np.full(counts.size, mean), np.array(alpha)
+            counts, np.ones(counts.size), np.log([mean]), np.array([alpha])
         )
         exact = np.array([exact_nb_partials(int(k), mean, alpha) for k in counts])
-        np.testing.assert_allclose(d_mean, exact[:, 0], rtol=1e-9, atol=1e-9)
+        np.testing.assert_allclose(d_mean[0], exact[:, 0], rtol=1e-9, atol=1e-9)
         if alpha > 1e-10:
-            np.testing.assert_allclose(d_alpha, exact[:, 1], rtol=1e-9, atol=1e-9)
+            np.testing.assert_allclose(d_alpha[0], exact[:, 1], rtol=1e-9, atol=1e-9)

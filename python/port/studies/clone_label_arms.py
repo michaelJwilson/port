@@ -45,20 +45,16 @@ PORT_ROWS = (
 )
 STARTLESS = (
     "field_argmax",
-    "tempering",
-    "tempering-mixed",
     "max-product",
     "bifurcation",
 )
-"""`sal` methods that take no start: each labelling is built from the field alone, or a ladder draws one per replica
-(`tempering-mixed`, which refuses a start since sal 9730280)."""
+"""`sal` methods that take no start: each labelling is built from the field alone. The tempering arms left
+sal's `METHODS` for its sandbox (sal #1352)."""
 STOCHASTIC_SOLVERS = (
     "icm-random",
     "anneal",
     "swendsen-wang",
     "wolff",
-    "tempering",
-    "tempering-mixed",
 )
 REALIZATIONS = 10
 SOLVED = 3
@@ -128,7 +124,7 @@ def solve_from(
 
     problem = Problem(graph, field, field.shape[1])
     budget = Budget(Cost.SITE_VISITS, SWEEPS * problem.visits_per_sweep)
-    # NB `field_argmax`, `tempering` and `max-product` take no start by
+    # NB `field_argmax`, `max-product` and `bifurcation` take no start by
     #    design: each runs from its own, and its rows say so (`startless`).
     start = None if name in STARTLESS else labels
     return np.asarray(

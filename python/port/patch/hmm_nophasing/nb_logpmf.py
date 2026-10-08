@@ -36,9 +36,9 @@ bitwise: `log1p` and `log` of a sum differ from `log` of a quotient in the
 last place, so this is its own table, not a `SWAPS` row.
 
 **Ratio.** Not an optimization: `S`'s two `gammaln` per score where upstream
-took three `lgamma`, and its series where those would cancel. Not cached by
-`numba`: `sal`'s `gammaln` pointer keeps a kernel that calls it out of the
-cache, so the row compiles once per process.
+took three `lgamma`, and its series where those would cancel. Cached by
+`numba`: `sal` binds `gammaln` by a registered symbol rather than a pointer
+(sal #1342), so a second process loads the row rather than compiling it.
 """
 
 from __future__ import annotations
@@ -59,8 +59,9 @@ else:
 __all__ = ["_dense_nb_logpmf", "_nb_logpmf_1d"]
 
 # NB `sal`'s compiled `S` and its `gammaln`, bound as globals at compile time;
-#    `_kernels()` sets `rising._gammaln` to the `scipy` pointer.
-_scaled, _ = rising._kernels()
+#    `_kernels()` binds `rising._gammaln` to `scipy`'s by symbol (sal #1342).
+#    No scalar compiled form is public in `sal`, so the private names stay.
+_scaled, _, _ = rising._kernels()
 _gammaln = rising._gammaln
 _SERIES_FROM = rising._SERIES_FROM
 _SMALL_T = rising._SMALL_T
@@ -69,7 +70,7 @@ _LOG_PROMISE = rising._LOG_PROMISE
 _TERM_FLOOR = rising._TERM_FLOOR
 
 
-@njit(nogil=True, error_model="numpy")
+@njit(nogil=True, cache=True, error_model="numpy")
 def _nb_logpmf_1d(obs, exposure, mu, alpha, out):
     r = np.inf if alpha <= 0.0 else 1.0 / max(alpha, DISPERSION_FLOOR)
     n = len(obs)
@@ -95,7 +96,7 @@ def _nb_logpmf_1d(obs, exposure, mu, alpha, out):
         )
 
 
-@njit(nogil=True, parallel=True, error_model="numpy")
+@njit(nogil=True, parallel=True, cache=True, error_model="numpy")
 def _dense_nb_logpmf(X_nb, base_nb_mean, log_mu, alphas):
     n_states = log_mu.shape[0]
     n_obs, n_spots = X_nb.shape

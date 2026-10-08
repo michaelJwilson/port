@@ -146,9 +146,9 @@ def fused_spot_clone_field(
     return field
 
 
-# NB not cached: the log-space row calls `sal`'s `gammaln` pointer, which
-#    keeps a kernel that reaches it out of `numba`'s cache (T- #776).
-@njit(nogil=True, parallel=True, error_model="numpy")
+# NB cached: the log-space row reaches `sal`'s `gammaln` by a registered
+#    symbol, not a pointer, so `numba` can cache it (sal #1342).
+@njit(nogil=True, parallel=True, cache=True, error_model="numpy")
 def _fused_kernel(
     counts_nb,
     base_nb_mean,
