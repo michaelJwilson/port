@@ -516,9 +516,8 @@ median, against 29-35% under the exponential (#619;
 population study read, and `study10.toml` the same at 10 Mb (`study15_2s.toml` on two
 slices, for figures): CNA lengths lognormal at a 15 Mb median; every (A, B)
 up to a total of 6, uniform; a zero-truncated Poisson(3) count of clones
-(`[cna] n_clones` as a law), each sized lognormal at a 632-spot median and
-clipped at the array's edge (`[layout.size] edge = "clip"`), the layout ending at
-the first clone 10 centres do not clear (`[layout] unplaced = "stop"`); CalicoST
+(`[cna] n_clones` as a law), laid out as CalicoST easy's and hard's: the slice
+cut into a grid of rectangles by that count (`[layout] shape = "rectangles"`); CalicoST
 hard's admixture (0.14, `cell`), BAF overdispersion, phase switches,
 irreversible LOH, and truth varied per realization (T- #807; `population*.toml`
 retired to `sim/sandbox/manifests/`);

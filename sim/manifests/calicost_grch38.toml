@@ -86,6 +86,8 @@ nu = 1.0
 unit = "centimorgan"
 
 [layout]
+# NB each clone a jittered polygon placed in turn (`port.sim.draw.SHAPES`)
+shape = "polygons"
 overlap = false
 radius = 0.3
 vertices = 6

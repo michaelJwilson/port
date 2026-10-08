@@ -8,7 +8,7 @@ extends = "calicost_grch38.toml"
 [sample]
 name = "study15"
 # NB `tests.sim_stages.realization_hash` of r0 as drawn here (`tests/test_sim_r0_hash.py`).
-r0_hash = "7739e11e"
+r0_hash = "2008ae3a"
 seed = 0
 output = "../generated"
 # NB one per draw: `port.studies.population.draw_member` draws r0 of each seed, and a stream's
@@ -33,26 +33,15 @@ admixture = "cell"
 normal_frac = 0.14
 
 [layout]
+# NB CalicoST easy's and hard's layout: the slice cut into a p x p grid of rectangles,
+#    p = ceil(sqrt(n + 1)) for normal and the n tumour clones the truth draws, normal's block
+#    at least 0.3 of the slice (`port.sim.draw.SHAPES`, T- #807). A clone's spots, and so its
+#    UMIs, follow from the count.
+shape = "rectangles"
+normal_share = 0.3
 overlap = false
 radius = 0.2
 vertices = 6
-# NB a clone that 10 centres do not clear ends the layout: the truth is drawn on the clones
-#    placed before it (T- #807)
-max_placements = 10
-unplaced = "stop"
-
-[layout.size]
-# NB the UMIs per clone the population study sweeps, about the detection threshold (#544:
-#    about 10^6 UMIs, 300 spots, at J = 0.8). Lognormal at the log-centre and log-spread of
-#    a log-uniform over 200-2,000 spots: median sqrt(200 x 2,000) = 632, sigma ln(10) / sqrt(12)
-#    = 0.665 (T- #807). A clone the edge does not clip claims its target; 632 spots is about
-#    2e6 UMIs at the fitted spot law.
-law = "lognormal"
-median = 632
-sigma = 0.665
-# NB a clone is sized on the array continued past its edge: one that runs off it keeps only
-#    the spots, and so the UMIs, that land on it (T- #807)
-edge = "clip"
 
 [cna]
 mode = "tree"

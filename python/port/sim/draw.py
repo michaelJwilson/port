@@ -130,7 +130,7 @@ REQUIRED: dict[str, tuple[str, ...]] = {
     ),
     "cna": ("mode", "n_clones", "states", "length"),
     "phasing": ("switch_errors", "nu", "unit"),
-    "layout": ("overlap", "radius", "vertices", "jitter", "max_placements", "unplaced"),
+    "layout": ("shape", "overlap", "radius", "vertices", "jitter", "max_placements", "unplaced"),
     "config": ("base",),
 }  # fmt: skip
 """Every table and key a manifest must state. Nothing the draw assumes has a
@@ -158,6 +158,14 @@ CLONE_COUNTS = {"poisson": ("mean", "minimum")}
 """`[cna] n_clones` as a table in place of an integer: the tumour clones of each truth, drawn
 (T- #807). `poisson`: `Poisson(mean)` redrawn until at least `minimum`, so zero-truncated at
 `minimum = 1`. Every slice then lists `clones = "all"`, the clones the draw gives it."""
+
+SHAPES = ("polygons", "rectangles")
+"""`[layout] shape` (T- #807): `polygons`, each clone a jittered polygon placed in turn; or
+`rectangles`, the slices' shared frame cut into a `p x p` grid, `p = ceil(sqrt(n + 1))` for
+normal and `n` tumour clones, block `b` holding group `b % (n + 1)` and group 0 normal, whose
+block takes `[layout] normal_share` of each side squared -- CalicoST's
+`rectangle_initialize_initial_clone` layout (`port.sim.truth.clone_quadrants`). The layout's
+generator assigns the tumour clones to groups; `[layout.size]` is not stated."""
 
 UNPLACED = ("refuse", "stop")
 """`[layout] unplaced`, what `layout` does with a drawn clone no placement clears in
@@ -493,6 +501,15 @@ def _check(manifest: DrawManifest) -> None:
             problems += [f"[layout.size] {k}" for k in absent]
             if "edge" in size and size["edge"] not in EDGES:
                 problems.append(f"[layout.size] edge {size['edge']!r}: one of {EDGES}")
+    if manifest.layout["shape"] not in SHAPES:
+        problems.append(f"[layout] shape {manifest.layout['shape']!r}: one of {SHAPES}")
+    elif manifest.layout["shape"] == "rectangles":
+        if "normal_share" not in manifest.layout:
+            problems.append('[layout] normal_share, which shape = "rectangles" reads')
+        if "size" in manifest.layout:
+            problems.append(
+                '[layout.size] with shape = "rectangles", which sizes by the grid'
+            )
     if manifest.layout["unplaced"] not in UNPLACED:
         problems.append(
             f"[layout] unplaced {manifest.layout['unplaced']!r}: one of {UNPLACED}"
@@ -959,6 +976,8 @@ def layout(
 
     listed = [c for c in manifest.tumour if any(c in p.clones for p in manifest.slices)]
     listed += [c for c in stated if c not in listed]
+    if manifest.layout["shape"] == "rectangles":
+        return _rectangles(manifest, everything, len(frames), listed, rng)
     overlap = bool(manifest.layout["overlap"])
     size = manifest.layout.get("size")
     # NB drawn before any placement, in clone order, so a clone's size does
@@ -1024,6 +1043,50 @@ def layout(
         shapes[clone] = vertices
 
     return list(np.split(labels, len(frames))), shapes
+
+
+def _rectangles(
+    manifest: DrawManifest,
+    everything: np.ndarray,
+    n_frames: int,
+    listed: list[str],
+    rng: np.random.Generator,
+) -> tuple[list[np.ndarray], dict[str, np.ndarray]]:
+    """`[layout] shape = "rectangles"`: the shared frame's `p x p` grid (`SHAPES`), each block's
+    corners as its clone's shape -- the first block a clone holds."""
+    groups = len(listed) + 1
+    p = int(np.ceil(np.sqrt(groups)))
+    lower, upper = everything.min(axis=0), everything.max(axis=0)
+    first = np.sqrt(float(manifest.layout["normal_share"])) if groups > 1 else 1.0 / p
+
+    def cuts(axis: int) -> np.ndarray:
+        rest = np.linspace(first, 1.0, p)[1:-1] if p > 2 else np.array([])
+        edges = np.concatenate(([first], rest))[: p - 1] if p > 1 else np.array([])
+        return np.asarray(lower[axis] + edges * (upper[axis] - lower[axis]))
+
+    x_cuts, y_cuts = cuts(0), cuts(1)
+    block = np.searchsorted(
+        y_cuts, everything[:, 1], side="right"
+    ) * p + np.searchsorted(x_cuts, everything[:, 0], side="right")
+    order = [listed[k] for k in rng.permutation(len(listed))]
+    group = block % groups
+    labels = np.full(everything.shape[0], -1, dtype=np.int64)
+    shapes: dict[str, np.ndarray] = {}
+    xs = np.concatenate(([lower[0]], x_cuts, [upper[0]]))
+    ys = np.concatenate(([lower[1]], y_cuts, [upper[1]]))
+    for k, clone in enumerate(order, start=1):
+        labels[group == k] = manifest.tumour.index(clone)
+        b = int(np.flatnonzero(np.arange(p * p) % groups == k)[0])
+        (i, j) = divmod(b, p)
+        shapes[clone] = np.array(
+            [
+                [xs[j], ys[i]],
+                [xs[j + 1], ys[i]],
+                [xs[j + 1], ys[i + 1]],
+                [xs[j], ys[i + 1]],
+            ]
+        )
+    return list(np.split(labels, n_frames)), shapes
 
 
 def barcodes(

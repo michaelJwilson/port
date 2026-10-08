@@ -493,7 +493,9 @@ def _sized(law: dict[str, Any]) -> DrawManifest:
     document["slice"] = [
         {"offset": [0.0, 0.0], "clones": ["clone_0", "clone_1", "clone_2"]}
     ]
-    document["layout"] |= {"max_placements": 1000, "unplaced": "refuse", "size": law}
+    document["layout"] |= {
+        "shape": "polygons", "max_placements": 1000, "unplaced": "refuse", "size": law,
+    }  # fmt: skip
     return from_document(document, SIM_MANIFESTS)
 
 
@@ -711,9 +713,13 @@ def test_a_clone_count_law_draws_a_zero_truncated_poisson() -> None:
 def test_a_clone_that_does_not_fit_ends_the_layout() -> None:
     """`[layout] unplaced = "stop"`: the placed clones are a prefix of the drawn, every one
     with spots, and a later clone is never placed past an unplaced one (T- #807)."""
-    from port.sim.draw import read_manifest, resolved
+    from port.sim.draw import resolved
 
-    manifest = read_manifest(SIM_MANIFESTS / "study15.toml")
+    document = extended(SIM_MANIFESTS / "study15.toml")
+    document["layout"] |= {"shape": "polygons", "max_placements": 10, "unplaced": "stop",
+                           "size": {"law": "lognormal", "median": 1896, "sigma": 0.665,
+                                    "edge": "clip"}}  # fmt: skip
+    manifest = from_document(document, SIM_MANIFESTS)
     _, _, points = hex_array(60, 50)
     stopped = 0
     for seed in range(60):
@@ -727,3 +733,22 @@ def test_a_clone_that_does_not_fit_ends_the_layout() -> None:
         stopped += len(placed) < len(drawn.tumour)
 
     assert stopped > 0
+
+
+@pytest.mark.analytic
+def test_rectangles_partition_the_frame_by_the_clone_count() -> None:
+    """`[layout] shape = "rectangles"` (T- #807): every spot in one block of a `p x p` grid,
+    `p = ceil(sqrt(n + 1))`, each tumour clone holding a block, normal the top-left one and
+    at least `normal_share` of the slice; against `port.sim.truth.clone_quadrants`' counts."""
+    from port.sim.draw import read_manifest, resolved
+
+    manifest = read_manifest(SIM_MANIFESTS / "study15.toml")
+    _, _, points = hex_array(60, 50)
+    for seed in range(40):
+        drawn = resolved(manifest, np.random.default_rng(seed))
+        labels, shapes = layout(drawn, points, np.random.default_rng(seed))
+        n = len(drawn.tumour)
+
+        assert sorted(shapes) == sorted(drawn.tumour)
+        assert set(np.unique(labels[0])) == {-1, *range(n)}
+        assert np.mean(labels[0] == -1) >= float(manifest.layout["normal_share"]) - 0.02

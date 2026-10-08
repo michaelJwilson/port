@@ -6,7 +6,7 @@ extends = "study15.toml"
 [sample]
 name = "study10"
 # NB `tests.sim_stages.realization_hash` of r0 as drawn here (`tests/test_sim_r0_hash.py`).
-r0_hash = "0e960448"
+r0_hash = "cde71315"
 
 [cna.length]
 law = "lognormal"
