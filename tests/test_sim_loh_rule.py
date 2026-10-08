@@ -20,13 +20,6 @@ MANIFESTS = SIM_ROOT / "manifests"
 REVERSIBLE = frozenset(
     {
         "baseline/dev_tree.toml",
-        "baseline/dev_tree_1s.toml",
-        "baseline/dev_tree_1s_easy.toml",
-        "baseline/dev_tree_1s_hard.toml",
-        "baseline/st_dt.toml",
-        "baseline/st_dt1s.toml",
-        "baseline/st_easy_bb01.toml",
-        "baseline/st_hard_bb01.toml",
         "calicost_grch38.toml",
         "dev_shared_unique.toml",
         "dev_tree.toml",
