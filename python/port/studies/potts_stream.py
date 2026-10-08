@@ -21,16 +21,19 @@ its numbers do not compare with these.
 - **Tuning.** `run_calibrate --potts` tunes the annealed samplers (`TUNED`)
   on the first `--held-out` realizations, which the stream never evaluates;
   the stream reads the settings it wrote (`SETTINGS`, or `--settings`). The
-  schedule is `sal`'s to choose (T- #777): per realization and pilot seed,
-  `sal.sample.tune.tune_schedule` anneals every candidate of `SCHEDULES` --
-  each `ScheduleShape`, the start temperature, the warm-up, the end fixed at
-  `T_END` so the last sweeps are a descent -- for `SWEEPS` sweeps and ranks
-  them by the lowest energy reached. Across problems port keeps the candidate
-  whose median gap to the best pilot on the same problem is least: no other
-  solver enters the choice (TRW-S's bound is the figure's referee, not the
-  tuner's). Every annealed sampler, Wolff included, gets the same `SWEEPS`. The
-  tempering ladders keep the settings file's top temperature: `sal` has no
-  ladder tuner.
+  schedule is `sal`'s to choose (T- #777): `sal.sample.tune.tune_schedule`
+  on one problem, the disjoint union of the held-out realizations, each
+  `PILOT_SEEDS` times (`union`), whose energy is the sum of theirs, so sal
+  ranks across problems itself. Its candidates are `SCHEDULES` -- each of
+  sal's declared shapes, the start temperature, the warm-up, the end fixed
+  at `T_END` so the last sweeps are a descent -- raced (sal #1337: a quarter
+  of `SWEEPS` first, the better half kept and the steps doubled), from
+  common random numbers, and ranked by the energy after sal's ICM from each
+  pilot's best (`Criterion.POLISHED_GAP`), the figure's Polish. Every annealed
+  sampler, Wolff included, gets the same `SWEEPS`. The tempering ladder is
+  sal's too: `temperatures="auto"`, `adapt_ladder` to a 0.2-0.3 exchange
+  rate from `REPLICAS` rungs geometric from the settings file's top
+  (`LADDER_REPLICAS`), its pilots charged to the run.
 - **Evaluation.** The next `--problems` realizations run every solver of
   #541's harness (`port.studies.clone_label_arms`) but bifurcation, port's
   pure-Python `alpha` and the floor-merge row, plus TRW-S's own decoded
@@ -108,9 +111,14 @@ T_END = 0.05
 SWEEPS = 4000
 """Every annealed sampler's budget, in sweeps of site visits: what #723 chose for three of four."""
 
+SHAPES = ("exponential", "linear", "cosine", "inverse_linear", "power", "logarithmic")
+"""sal's declared ramps (#1333). `thermodynamic` is not among them: it is placed from a measured
+`sigma_E(T)`, which sal builds from no pilot of its own yet; Huang's `adaptive` schedule runs online and is
+no grid candidate."""
+
 SCHEDULES = tuple(
     {"shape": shape, "t_start": t, "warm": w}
-    for shape in ("exponential", "linear", "cosine")
+    for shape in SHAPES
     for t in (0.25, 0.5, 1.0, 2.0, 8.0, 32.0)
     for w in (0.0, 0.1, 0.25)
 )
@@ -128,8 +136,16 @@ def schedule(setting: dict[str, Any]) -> Any:
 
 
 PILOT_SEEDS = 2
-"""`tune_schedule` runs per held-out realization (`harness.HELD_OUT` of them): each anneals every candidate
-from its own random start."""
+"""Copies of each held-out realization (`harness.HELD_OUT` of them) in the tuned union, each from its own
+start."""
+
+POLISH_SWEEPS = 1000
+"""The ICM a pilot's best is polished by before it is ranked: the figure's Polish, `clone_label_arms.SWEEPS`."""
+
+LADDER_REPLICAS, LADDER_SHARE, LADDER_SWEEPS = 12, 0.25, 5
+"""sal's `LadderTuning` for the tempering entries: at most 12 rungs, its pilots a quarter of the run's
+replica sweeps at 5 sweeps a measurement (16 measurements of 12 rungs at 4,000), the exchange rate between
+neighbours in sal's default band, 0.2-0.3."""
 
 REPLICAS = 6
 """sal's `N_REPLICAS`: both tempering ladders, geometric between `T_END` and the start temperature."""
@@ -270,9 +286,19 @@ def _sample(solver: str, field: np.ndarray, start: np.ndarray, rng: np.random.Ge
         best = cluster_tempering(graph, field, ladder, rng, steps).best
     elif solver == TEMPERING:
         ladder = tuple(float(t) for t in np.geomspace(t_start, T_END, REPLICAS))
-        # NB every rung from the run's random start, as every other solver (T- #777)
-        rungs = np.tile(start, (REPLICAS, 1))
-        best = parallel_tempering(graph, field, ladder, rng, steps, start=rungs).best
+        from sal.sample.potts_mcmc.chains import adapt_ladder_potts
+        from sal.sample.tune import LadderTuning
+
+        # NB sal's ladder adapted from `REPLICAS` rungs (#1337), as `temperatures="auto"` adapts it, then run
+        #    with every rung from the run's random start (T- #777), which "auto" cannot take
+        tuning = LadderTuning(Budget(Cost.SWEEPS, max(1, int(LADDER_SHARE * sweeps))), LADDER_REPLICAS, ladder,
+                              n_sweeps=LADDER_SWEEPS)  # fmt: skip
+        adapted = adapt_ladder_potts(graph, field, ladder, rng.spawn(1)[0], tuning.n_sweeps, tuning.band,
+                                     tuning.max_iterations, tuning.max_replicas)  # fmt: skip
+        rungs = adapted.temperatures
+        best = parallel_tempering(
+            graph, field, rungs, rng, steps, start=np.tile(start, (len(rungs), 1))
+        ).best
     else:
         problem = SalProblem(graph, field, field.shape[1])
         budget = Budget(Cost.SITE_VISITS, sweeps * problem.visits_per_sweep)
@@ -366,60 +392,79 @@ def _describe(problem: Any) -> dict[str, Any]:
             "argmax_ari": adjusted_rand_score(problem.planted, problem.field.argmax(1))}  # fmt: skip
 
 
-def pilots(problem: Any, solver: str, rng: np.random.Generator) -> list[dict[str, Any]]:
-    """`sal`'s `tune_schedule` for `solver` on `problem`: one anneal per `SCHEDULES` candidate, `SWEEPS` each."""
+def union(held_out: list[Any], copies: int) -> tuple[Any, np.ndarray]:
+    """The held-out problems, each `copies` times, as one Potts problem: block-diagonal couplings and stacked
+    fields, padded with `-inf` to the most clones. Its energy is the sum of the problems'."""
+    from sal.sim.graph import PottsGraph
+
+    from port.patch.icm.alpha_expansion import potts_graph_from
+    from port.patch.icm.interface import CsrGraph
+
+    q = max(int(p.field.shape[1]) for p in held_out)
+    edges: list[tuple[int, int]] = []
+    coupling: list[float] = []
+    fields, offset = [], 0
+    for p in [p for p in held_out for _ in range(copies)]:
+        graph = potts_graph_from(
+            CsrGraph(p.indptr, p.indices, p.weights), p.spatial_weight
+        )
+        edges += [(i + offset, j + offset) for i, j in graph.edges]
+        coupling += list(graph.coupling)
+        fields.append(
+            np.pad(
+                p.field, ((0, 0), (0, q - p.field.shape[1])), constant_values=-np.inf
+            )
+        )
+        offset += graph.n_nodes
+    return PottsGraph(offset, tuple(edges), tuple(coupling)), np.vstack(fields)
+
+
+def pilots(
+    held_out: list[Any], solver: str, rng: np.random.Generator
+) -> dict[str, Any]:
+    """`sal`'s `tune_schedule` for `solver` on the held-out `union`: raced, common random numbers, ranked by
+    the energy after ICM. Returns the chosen setting and every candidate's last pilot."""
     from sal.cost import Cost
     from sal.opt.budget import Budget
     from sal.sample.potts_mcmc import PottsMove, Recolour
     from sal.sample.tune import Criterion, tune_schedule
+    from sal.search.icm import iterated_conditional_modes
 
-    import port.studies.clone_label_arms as arms
-
-    _hold(problem.realization, problem)
-    _, graph = arms.potts_graph(problem.spatial_weight)
+    graph, field = union(held_out, PILOT_SEEDS)
     grid = tuple(schedule(c) for c in SCHEDULES)
+
+    def polish(labels: np.ndarray) -> np.ndarray:
+        polished = iterated_conditional_modes(graph, field, np.random.default_rng(0), start=labels,
+                                              max_iterations=POLISH_SWEEPS)  # fmt: skip
+        return np.asarray(polished.labelling, dtype=np.int64)
+
     opened = time.perf_counter()
     # NB the arm is the move alone under the uniform recolour, as `run_annealed` runs it (sal #1323)
-    tuned = tune_schedule(graph, problem.field, move=(PottsMove(SAMPLERS[solver]),), recolour=Recolour.UNIFORM,
+    tuned = tune_schedule(graph, field, move=(PottsMove(SAMPLERS[solver]),), recolour=Recolour.UNIFORM,
                           budget=Budget(Cost.SITE_VISITS, len(grid) * SWEEPS * graph.n_nodes),
-                          criterion=Criterion.LOWEST_ENERGY, rng=rng, grid=grid)  # fmt: skip
-    seconds = time.perf_counter() - opened
-    return [{"problem": problem.realization, "solver": solver, **c, "energy": run.lowest_energy,
-             "spent": run.spent, "seconds": seconds / len(grid)}
-            for c, run in zip(SCHEDULES, tuned.candidates, strict=True)]  # fmt: skip
+                          criterion=Criterion.POLISHED_GAP, rng=rng, grid=grid, racing=True, common=True,
+                          polish=polish)  # fmt: skip
+    index = grid.index(tuned.params)
+    return {"solver": solver, **SCHEDULES[index], "sweeps": SWEEPS, "seconds": time.perf_counter() - opened,
+            "rounds": [list(r) for r in tuned.rounds],
+            "candidates": [{**c, "lowest": run.lowest_energy, "polished": run.polished_energy, "spent": run.spent}
+                           for c, run in zip(SCHEDULES, tuned.candidates, strict=True)]}  # fmt: skip
 
 
 def tune(
     pool: ProcessPoolExecutor, held_out: list[Any], samplers: tuple[str, ...] = TUNED
 ) -> tuple[dict[str, dict[str, Any]], list[dict[str, Any]]]:
-    """Each of `samplers`' schedule: the `SCHEDULES` candidate of least median gap to the best pilot.
-
-    The pilots are `sal`'s (`pilots`, `tune_schedule`, ranked by lowest
-    energy), `PILOT_SEEDS` per held-out realization. A pilot's gap is its
-    lowest energy less the lowest any candidate of the same sampler reached on
-    the same realization, so the choice reads only the pilots; the median over
-    realizations and seeds is port's, since `sal` ranks one problem at a time.
-    Ties go to `SCHEDULES`' order. `default_gap` is sal's default schedule's
-    median, exponential 2 -> `T_END` unheld.
-    """
-    import pandas as pd
-
-    futures = [pool.submit(pilots, p, solver, np.random.default_rng([seed, 777]))
-               for solver in samplers for p in held_out for seed in range(PILOT_SEEDS)]  # fmt: skip
-    rows = [row for f in futures for row in f.result()]
-    frame = pd.DataFrame(rows)
-    frame["gap"] = frame.energy - frame.groupby(["solver", "problem"]).energy.transform(
-        "min"
-    )
-    chosen: dict[str, dict[str, Any]] = {}
-    for solver, g in frame.groupby("solver", sort=False):
-        median = g.groupby(["shape", "t_start", "warm"], sort=False).gap.median()
-        shape, t_start, warm = median.idxmin()
-        chosen[str(solver)] = {"shape": str(shape), "t_start": float(t_start), "sweeps": SWEEPS,
-                               "warm": float(warm), "gap": float(median.min()),
-                               "default_gap": float(median.get(("exponential", 2.0, 0.0), np.nan))}  # fmt: skip
-        print(f"tuned {solver}: {shape} T0 {t_start}, warm {warm}, {SWEEPS} sweeps, median gap to the best "
-              f"pilot {median.min():.2f} nats; sal's default {chosen[str(solver)]['default_gap']:.2f}", flush=True)  # fmt: skip
+    """Each of `samplers`' schedule, `sal`'s choice on the held-out union (`pilots`); one job per sampler."""
+    futures = [pool.submit(pilots, held_out, solver, np.random.default_rng([777, k]))
+               for k, solver in enumerate(samplers)]  # fmt: skip
+    rows = [f.result() for f in futures]
+    chosen = {
+        row["solver"]: {k: row[k] for k in ("shape", "t_start", "warm", "sweeps")}
+        for row in rows
+    }
+    for row in rows:
+        print(f"tuned {row['solver']}: {row['shape']} T0 {row['t_start']}, warm {row['warm']}, {SWEEPS} sweeps, "
+              f"rounds {row['rounds']}, {row['seconds']:.0f} s", flush=True)  # fmt: skip
     return chosen, rows
 
 
@@ -524,15 +569,10 @@ def retune(
             pool, list(problems(manifest, root, held_out, states=states)), samplers
         )
     provenance = (f"run_calibrate --potts on {manifest.name} realizations 0-{held_out - 1}, states {states}: "
-                  f"sal's tune_schedule, {PILOT_SEEDS} pilot seeds per realization, {len(SCHEDULES)} schedules "
-                  f"(shape x t_start x warm, t_end {T_END}) at {SWEEPS} sweeps, ranked by lowest energy; the "
-                  "least median gap to the best pilot on the same realization (#556, #723, T- #777)")  # fmt: skip
-    harness.merge_settings(SETTINGS, provenance, {
-        solver: {"shape": setting["shape"], "t_start": setting["t_start"], "sweeps": setting["sweeps"],
-                 "warm": setting["warm"], "median_gap": round(setting["gap"], 3),
-                 "default_median_gap": round(setting["default_gap"], 3)}
-        for solver, setting in chosen.items()
-    })  # fmt: skip
+                  f"sal's tune_schedule on their union, each {PILOT_SEEDS} times, {len(SCHEDULES)} schedules "
+                  f"(shape x t_start x warm, t_end {T_END}) at {SWEEPS} sweeps, raced, common random numbers, "
+                  f"ranked by the energy after {POLISH_SWEEPS} ICM sweeps (#556, #723, T- #777)")  # fmt: skip
+    harness.merge_settings(SETTINGS, provenance, chosen)
 
 
 def main(argv: list[str] | None = None) -> None:

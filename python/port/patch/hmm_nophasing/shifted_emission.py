@@ -369,17 +369,6 @@ class hmm_nophasing(UPSTREAM):  # type: ignore[misc]
 
         return cache[key][1]
 
-    def _distinct(self) -> dict[Any, Any]:
-        """sal's distinct-count cache for this instance's dense emission (#702).
-
-        Held on the instance as `_triple_cache` is: one fit scores the same
-        observations every iteration, and sal verifies each hit against the
-        values, so a stale entry is a miss rather than a wrong score.
-        """
-        cache: dict[Any, Any] = getattr(self, "_distinct_cache", None) or {}
-        self._distinct_cache = cache
-        return cache
-
     def _decode(self) -> np.ndarray | None:
         """The hard decode the shift is taken at, or `None` if unavailable.
 
@@ -612,7 +601,6 @@ class hmm_nophasing(UPSTREAM):  # type: ignore[misc]
                     p_binom,
                     taus,
                     clone_stack=clone_stack,
-                    distinct=self._distinct(),
                 )
 
             unshifted: tuple[np.ndarray, np.ndarray]
@@ -686,7 +674,6 @@ class hmm_nophasing(UPSTREAM):  # type: ignore[misc]
                 bb_exposure,
                 probabilities,
                 concentrations,
-                distinct=self._distinct(),
             )
         else:
             for state in range(n_states):
@@ -721,7 +708,6 @@ class hmm_nophasing(UPSTREAM):  # type: ignore[misc]
                     triples.total[first:last],
                     np.exp(rates - shifts[clone]),
                     dispersions,
-                    distinct=self._distinct(),
                 )
                 continue
 
