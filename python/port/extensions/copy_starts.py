@@ -441,11 +441,20 @@ def lattice_start(
     return log_mu[picked], p[picked]
 
 
-HIERARCHICAL = ("ward", "average", "complete")
-"""The linkages `hierarchical_states` runs, `scipy.cluster.hierarchy.linkage`'s `method` (#824)."""
+LINKAGES = ("ward", "average", "complete")
+"""The plain linkages, `scipy.cluster.hierarchy.linkage`'s `method` (#824)."""
+
+HIERARCHICAL = (*LINKAGES, "connectivity-ward", "hdbscan")
+"""Every linkage start: the plain three, Ward constrained to the genome's adjacency, and HDBSCAN (#824)."""
 
 HIERARCHICAL_ROWS = 4000
-"""At most this many rows enter the linkage, drawn by the start's generator: its memory is quadratic in rows."""
+"""At most this many rows enter a plain linkage or HDBSCAN, drawn by the start's generator: memory is quadratic in rows."""
+
+SEGMENT_ROWS = 5
+"""`connectivity-ward`'s first stage: about one segment per this many rows of a clone's genome."""
+
+HDBSCAN_MIN_ROWS = 10
+"""HDBSCAN's `min_cluster_size`: the fewest rows a copy level needs to be a cluster."""
 
 
 def _robust(values: np.ndarray) -> np.ndarray:
@@ -457,19 +466,93 @@ def _robust(values: np.ndarray) -> np.ndarray:
     return out
 
 
+def _features(call: CopyCall, rows: np.ndarray) -> np.ndarray:
+    """`rows`' robust-scaled `(log RDR, B share)`; the B share alone at the BAF-only stage."""
+    share = call.b[rows] / call.trials[rows]
+    if call.stage != "rdrbaf":
+        return _robust(share)[:, None]
+    return np.column_stack(
+        [_robust(np.log(call.total[rows] / call.exposure[rows])), _robust(share)]
+    )
+
+
+def _pooled(call: CopyCall, groups: list[np.ndarray]) -> tuple[np.ndarray, np.ndarray]:
+    """Each group of rows as a state, largest first: depth by exposure, B share by allele reads;
+    padded to `n_states` beside the largest group's state, the B share moved by `SEED_JITTER` per copy."""
+    groups = sorted(groups, key=lambda g: -g.size)[: call.n_states]
+    depth = call.stage == "rdrbaf"
+    log_mu = [
+        float(np.log(call.total[g].sum() / call.exposure[g].sum())) if depth else 0.0
+        for g in groups
+    ]
+    p = [float(call.b[g].sum() / call.trials[g].sum()) for g in groups]
+    for k in range(call.n_states - len(groups)):
+        log_mu.append(log_mu[0])
+        p.append(float(np.clip(p[0] + SEED_JITTER * (k + 1), 1e-4, 1 - 1e-4)))
+    return np.array(log_mu), np.array(p)
+
+
+def _merged(features: np.ndarray, labels: np.ndarray, n_states: int) -> np.ndarray:
+    """`labels` merged to at most `n_states` by average linkage on the clusters' mean features; -1 kept."""
+    from scipy.cluster.hierarchy import fcluster, linkage
+
+    clusters = np.unique(labels[labels >= 0])
+    if clusters.size <= n_states:
+        return labels
+    centres = np.array([features[labels == c].mean(axis=0) for c in clusters])
+    joined = fcluster(
+        linkage(centres, method="average"), t=n_states, criterion="maxclust"
+    )
+    lookup = dict(zip(clusters.tolist(), joined.tolist(), strict=True))
+    return np.array([lookup.get(int(c), -1) for c in labels])
+
+
+def _segments(call: CopyCall, rows: np.ndarray) -> np.ndarray:
+    """`connectivity-ward`'s first stage: each row's segment, Ward merging only genome neighbours of one clone and contig."""
+    from scipy.sparse import coo_matrix
+    from sklearn.cluster import AgglomerativeClustering
+
+    order = np.lexsort((call.start[rows], call.contig[rows], call.clone[rows]))
+    ordered = rows[order]
+    same = (call.clone[ordered][1:] == call.clone[ordered][:-1]) & (
+        call.contig[ordered][1:] == call.contig[ordered][:-1]
+    )
+    left, right = np.flatnonzero(same), np.flatnonzero(same) + 1
+    n = ordered.size
+    adjacency = coo_matrix(
+        (np.ones(2 * left.size), (np.r_[left, right], np.r_[right, left])), shape=(n, n)
+    )
+    n_segments = int(min(n, max(call.n_states, n // SEGMENT_ROWS)))
+    found = AgglomerativeClustering(
+        n_clusters=n_segments, linkage="ward", connectivity=adjacency.tocsr()
+    )
+    labels = np.empty(n, dtype=np.int64)
+    labels[order] = found.fit_predict(_features(call, ordered))
+    return labels
+
+
 def hierarchical_states(
     call: CopyCall, method: str, rng: np.random.Generator
 ) -> tuple[np.ndarray, np.ndarray]:
-    """`n_states` states by a `method` linkage on the rows, each cluster's rows pooled (#824).
+    """`n_states` states by a clustering of the rows, each cluster's rows pooled (#824).
 
     Features: each row's `log(total / exposure)` and `b / trials`, each
-    robust-scaled (`_robust`); the B share alone at the BAF-only stage, whose
-    depth is a constant. Rows with no exposure or no allele reads are left
-    out; at most `HIERARCHICAL_ROWS` enter, drawn by `rng`. The tree is cut
-    at `n_states` clusters (`fcluster`, `maxclust`), and each cluster's
-    state is its rows pooled: depth by exposure, B share by allele reads.
-    A cut with fewer clusters is padded with its largest cluster's state,
-    the B share moved by `SEED_JITTER` per copy, so `n_states` states remain.
+    robust-scaled (`_features`); rows with no exposure or no allele reads
+    are left out.
+
+    - `ward`, `average`, `complete`: a scipy linkage on at most
+      `HIERARCHICAL_ROWS` rows drawn by `rng`, cut at `n_states`.
+    - `connectivity-ward`: every row; Ward merging only genome neighbours of
+      one clone and contig into about one segment per `SEGMENT_ROWS` rows,
+      then Ward on the segments' pooled features, each segment one point, cut
+      at `n_states`. A rare event is one segment, not many rows outvoted by
+      the neutral ones.
+    - `hdbscan`: scikit-learn's HDBSCAN at `min_cluster_size`
+      `HDBSCAN_MIN_ROWS` on at most `HIERARCHICAL_ROWS` rows, noise left out,
+      its clusters merged to `n_states` by average linkage on their means
+      where it finds more.
+
+    A cut with fewer groups is padded (`_pooled`).
     """
     from scipy.cluster.hierarchy import fcluster, linkage
 
@@ -481,32 +564,59 @@ def hierarchical_states(
         (call.exposure > 0) & (call.total > 0) if depth else True
     )
     rows = np.flatnonzero(seen)
+
+    if method == "connectivity-ward":
+        segment = _segments(call, rows)
+        members = [rows[segment == k] for k in np.unique(segment)]
+        # NB pooled in `members`' order: `_pooled` sorts by size, which would mislabel the cut
+        share = np.array([call.b[m].sum() / call.trials[m].sum() for m in members])
+        points = (
+            np.column_stack(
+                [
+                    _robust(
+                        np.log(
+                            np.array(
+                                [
+                                    call.total[m].sum() / call.exposure[m].sum()
+                                    for m in members
+                                ]
+                            )
+                        )
+                    ),
+                    _robust(share),
+                ]
+            )
+            if depth
+            else _robust(share)[:, None]
+        )
+        cut = fcluster(
+            linkage(points, method="ward"), t=call.n_states, criterion="maxclust"
+        )
+        return _pooled(
+            call,
+            [
+                np.concatenate([members[k] for k in np.flatnonzero(cut == c)])
+                for c in np.unique(cut)
+            ],
+        )
+
     if rows.size > HIERARCHICAL_ROWS:
         rows = np.sort(rng.choice(rows, HIERARCHICAL_ROWS, replace=False))
-    share = call.b[rows] / call.trials[rows]
-    features = (
-        np.column_stack(
-            [_robust(np.log(call.total[rows] / call.exposure[rows])), _robust(share)]
+    features = _features(call, rows)
+    if method == "hdbscan":
+        from sklearn.cluster import HDBSCAN
+
+        labels = _merged(
+            features,
+            HDBSCAN(min_cluster_size=HDBSCAN_MIN_ROWS, copy=True).fit_predict(features),
+            call.n_states,
         )
-        if depth
-        else _robust(share)[:, None]
-    )
+        groups = [rows[labels == c] for c in np.unique(labels) if c >= 0]
+        return _pooled(call, groups or [rows])
     labels = fcluster(
         linkage(features, method=method), t=call.n_states, criterion="maxclust"
     )
-    clusters = sorted(np.unique(labels), key=lambda c: -int((labels == c).sum()))
-    log_mu, p = [], []
-    for cluster in clusters:
-        members = rows[labels == cluster]
-        rate = (
-            call.total[members].sum() / call.exposure[members].sum() if depth else 1.0
-        )
-        log_mu.append(float(np.log(rate)) if depth else 0.0)
-        p.append(float(call.b[members].sum() / call.trials[members].sum()))
-    for k in range(call.n_states - len(clusters)):
-        log_mu.append(log_mu[0])
-        p.append(float(np.clip(p[0] + SEED_JITTER * (k + 1), 1e-4, 1 - 1e-4)))
-    return np.array(log_mu), np.array(p)
+    return _pooled(call, [rows[labels == c] for c in np.unique(labels)])
 
 
 def polish_states(
