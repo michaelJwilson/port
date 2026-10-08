@@ -45,26 +45,30 @@ def test_each_polish_stage_never_raises_the_energy(
 
 
 @pytest.mark.oracle
-@pytest.mark.parametrize("move", ["wolff", "swendsen-wang", "single-site"])
-def test_an_annealed_runs_merge_stage_is_sals_merge_of_its_icm_stage(move: str) -> None:
-    """`Polish.ICM_MERGE`'s merge stage is `merge_labels` of its ICM stage, bitwise: the one merge, in or out of the anneal."""
+@pytest.mark.parametrize(
+    "solver", ["sal:wolff-heat-bath", "sal:swendsen-wang-heat-bath", "sal:anneal"]
+)
+def test_an_annealed_runs_merge_stage_is_sals_merge_of_its_icm_stage(
+    solver: str,
+) -> None:
+    """`_sample`'s merge stage (`Polish.ICM_MERGE`) is `merged` of its ICM stage, bitwise: one merge, in or out of the anneal."""
     from port.patch.icm.alpha_expansion import potts_graph_from
     from port.patch.icm.interface import CsrGraph
-    from port.studies.potts_stream import STAGES, merged, schedule
-    from sal.cost import Cost
-    from sal.opt.budget import Budget
-    from sal.sample.potts_mcmc import PottsMove
-    from sal.sample.potts_mcmc.chains import anneal_potts
-    from sal.sample.schedule import Polish
+    from port.studies.potts_stream import STAGES, _sample, merged
 
     patch = _patch(2)
     graph = potts_graph_from(
         CsrGraph(patch.indptr, patch.indices, patch.weights), patch.spatial_weight
     )
     start = np.random.default_rng(3).integers(0, 4, 100)
-    run = anneal_potts(graph, patch.field, schedule({"t_start": 2.0}).build(40), np.random.default_rng(4),
-                       move=PottsMove(move), start=start, budget=Budget(Cost.SITE_VISITS, 4000),
-                       polish=Polish.ICM_MERGE)  # fmt: skip
+    run = _sample(
+        solver,
+        patch.field,
+        start,
+        np.random.default_rng(4),
+        graph,
+        {"t_start": 2.0, "sweeps": 40},
+    )
 
     assert tuple(stage.name for stage in run.stages) == STAGES
     np.testing.assert_array_equal(
