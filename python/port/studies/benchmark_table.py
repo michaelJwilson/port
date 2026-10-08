@@ -14,9 +14,11 @@ it unless it hashes to `fixtures.R0_HASH` (`3381575a`), then writes `OUT`:
   tree must be clean, so the commit names the code that ran.
 
 Columns: clone ARI on the fitted clones (R) and after the integer merge (N);
-copy-state ARI of the HMM state (R) and of the decoded integer `(A, B)` (N);
-CNA, `exact_altered`, the share of altered clone-bins decoded to their
-planted `(A, B)`; and the wall in minutes. The macros (`\\tablesize`,
+copy-state ARI of the HMM state (R) and of the decoded integer `(A, B)`,
+phase-free (N, `copy_ari_pf`); CNA, phase-free (`exact_altered_minor`), the
+share of altered clone-bins decoded to their planted `(A, B)` or `(B, A)`;
+and the wall in minutes. `(A, B)` and `(B, A)` are one state in both phase-free
+columns, as the paper's integer copy number is. The macros (`\\tablesize`,
 `\\calicost`, `\\cnamaste`, `\\mathbbm`) are the paper's.
 """
 
@@ -58,10 +60,10 @@ Method (\texttt{{{fixture}}}) & \multicolumn{{4}}{{c}}{{ARI}} & CNA & Runtime \\
 \end{{table}}
 """
 
-ROW = r"{name:<28} & {ari} & {ari_integer} & {state_ari} & {copy_ari} & {exact_altered} & {minutes:>10} \\"
+ROW = r"{name:<28} & {ari} & {ari_integer} & {state_ari} & {copy_ari_pf} & {exact_altered_minor} & {minutes:>10} \\"
 """One method's row; the values are `half_up`'s strings."""
 
-SCORES = ("ari", "ari_integer", "state_ari", "copy_ari", "exact_altered")
+SCORES = ("ari", "ari_integer", "state_ari", "copy_ari_pf", "exact_altered_minor")
 
 
 def half_up(value: float, places: int) -> str:

@@ -6,18 +6,18 @@ from pathlib import Path
 
 import pytest
 
-CALICOST = {"ari": 0.8538, "ari_integer": 0.8538, "state_ari": 0.0889, "copy_ari": 0.9075,
-            "exact_altered": 0.7095, "wall": 20243.0, "cores": 3}  # fmt: skip
-"""#532's CalicoST row (`docs/calicost-benchmark.md`)."""
+CALICOST = {"ari": 0.8538, "ari_integer": 0.8538, "state_ari": 0.0889, "copy_ari_pf": 0.9075,
+            "exact_altered_minor": 0.7095, "wall": 20243.0, "cores": 3}  # fmt: skip
+"""#532's CalicoST row (`docs/calicost-benchmark.md`), phase-free."""
 
-PORT = {"ari": 0.8612, "ari_integer": 1.0, "state_ari": 0.0682, "copy_ari": 0.9828,
-        "exact_altered": 0.9197, "wall": 153.6, "cores": 4}  # fmt: skip
-"""The committed port row of `tests/data/benchmarks/dev_tree_r0/README.md`."""
+PORT = {"ari": 0.8612, "ari_integer": 1.0, "state_ari": 0.0682, "copy_ari_pf": 0.9829,
+        "exact_altered_minor": 0.9348, "wall": 153.6, "cores": 4}  # fmt: skip
+"""The committed port archive (`tests/data/benchmarks/dev_tree_r0/port.tar.xz`, 95940e5) scored phase-free."""
 
 
 @pytest.mark.snapshot
 def test_the_table_reproduces_the_papers_rows() -> None:
-    """The paper's two rows, from #532's scores: three decimals, minutes to one, the fixture's hash in the header."""
+    """The two archives' rows, phase-free: three decimals half up, minutes to one, the fixture's hash in the header."""
     from port.studies.benchmark_table import render
 
     tex = render(
@@ -30,7 +30,7 @@ def test_the_table_reproduces_the_papers_rows() -> None:
         in tex
     )
     assert (
-        r"\cnamaste{}                  & 0.861 & 1.000 & 0.068 & 0.983 & 0.920 &        2.6 \\"
+        r"\cnamaste{}                  & 0.861 & 1.000 & 0.068 & 0.983 & 0.935 &        2.6 \\"
         in tex
     )
     assert tex.startswith(
@@ -52,7 +52,7 @@ def test_the_sal_pin_is_the_lockfiles() -> None:
 @pytest.mark.snapshot
 @pytest.mark.release
 def test_calicosts_committed_outputs_score_as_532(tmp_path: Path) -> None:
-    """CalicoST's archive scored against a fresh draw of `3381575a`: #532's row, to the ledger's 4 decimals."""
+    """CalicoST's archive scored against a fresh draw of `3381575a`: #532's row, phase-free, to 4 decimals."""
     from port.studies.benchmark_table import calicost_row, drawn
 
     row = calicost_row(drawn(tmp_path))

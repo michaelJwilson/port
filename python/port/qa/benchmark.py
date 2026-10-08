@@ -109,6 +109,7 @@ def port(name: str, repeats: int) -> dict[str, Any]:
         "integer_clones": row["n_integer_clones"],
         "state_ari": row["state_ari"],
         "copy_ari": row["copy_ari"],
+        "copy_ari_pf": row["copy_ari_pf"],
         "exact_altered": row["exact_altered"],
         "exact_altered_minor": row["exact_altered_minor"],
         "wall": round(wall, 1),
