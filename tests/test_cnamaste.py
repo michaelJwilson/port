@@ -183,7 +183,7 @@ def test_a_global_axis_holds_across_groups(tmp_path: Path) -> None:
     c.create(path, **ROOT_ATTRS)
     c.write(path, "inputs", _inputs(2), **PATHS)
     with pytest.raises(ValueError, match="n_spots is 2, got 3"):
-        c.write(path, "adjacency", {"adjacency_mat": sp.eye(3, format="csr")})
+        c.write(path, "adjacency", {"adjacency": sp.eye(3, format="csr")})
 
 
 @pytest.mark.infra

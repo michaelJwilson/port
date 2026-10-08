@@ -177,21 +177,14 @@ GROUPS: tuple[Group, ...] = (
         "adjacency",
         (
             _d(
-                "adjacency_mat",
+                "adjacency",
                 ("n_spots", "n_spots"),
                 "csr",
-                "spot adjacency, every stage's graph",
-            ),
-            _d(
-                "smooth_mat",
-                ("n_spots", "n_spots"),
-                "csr",
-                "spot pooling weights",
-                optional=True,
+                "spot adjacency (`adjacency_mat`), every stage's graph",
             ),
         ),
         (),
-        "the spots' graph",
+        "the spots' one graph, stored as the group itself",
     ),  # fmt: skip
     Group(
         "segments/genes",
@@ -500,7 +493,8 @@ def _put(node: Any, spec: Dataset, value: Any) -> None:
     import h5py
 
     if spec.dtype == "csr":
-        sub = node.create_group(spec.name)
+        # NB a matrix named for its group is the group: `/adjacency/{data,indices,indptr}`
+        sub = node if _is_group(node, spec) else node.create_group(spec.name)
         for part in ("data", "indices", "indptr"):
             sub.create_dataset(part, data=getattr(value, part))
         sub.attrs["shape"] = value.shape
@@ -553,10 +547,11 @@ def read(path: Path, group: str) -> tuple[dict[str, Any], dict[str, Any]]:
         node = handle[group]
         arrays: dict[str, Any] = {}
         for d in spec.datasets:
-            if d.name not in node:
+            whole = _is_group(node, d)
+            if d.name not in node and not whole:
                 continue
             if d.dtype == "csr":
-                sub = node[d.name]
+                sub = node if whole else node[d.name]
                 arrays[d.name] = sp.csr_matrix(
                     (sub["data"][()], sub["indices"][()], sub["indptr"][()]),
                     shape=tuple(sub.attrs["shape"]),
@@ -565,8 +560,17 @@ def read(path: Path, group: str) -> tuple[dict[str, Any], dict[str, Any]]:
                 arrays[d.name] = np.asarray(node[d.name].asstr()[()], dtype=str)
             else:
                 arrays[d.name] = node[d.name][()]
-        attrs = {k: _plain(v) for k, v in node.attrs.items() if k != "complete"}
+        hidden = {"complete"} | (
+            {"shape", "dims"}
+            if any(_is_group(node, d) for d in spec.datasets)
+            else set()
+        )
+        attrs = {k: _plain(v) for k, v in node.attrs.items() if k not in hidden}
         return arrays, attrs
+
+
+def _is_group(node: Any, spec: Dataset) -> bool:
+    return bool(spec.dtype == "csr" and node.name.rsplit("/", 1)[-1] == spec.name)
 
 
 def _plain(value: Any) -> Any:

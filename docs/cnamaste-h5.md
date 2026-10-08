@@ -15,7 +15,7 @@
 - **Storage.** Every dataset is chunked and deflated at level 1. Values are stored as computed, never rounded.
 - **Segments.** `/segments/levels/<name>` is one level of the run's hierarchy (`segments.Lineage`, #438): a label per gene and the segment ids. Levels are appended as the run records them and keep their `order` attribute. A stage's `level` names the level its `n_obs` axis is on. What a level derives (contig, start, length, `lengths`) is not stored.
 - **Inputs.** `/inputs` records each slice's `anndata` path and the SNP files' (`cell_snp_Aallele`, `cell_snp_Ballele`, `unique_snp_ids`, `snp_barcodes`, `sample_sheet`) as the run resolved them, absolute, with the configured reference files as `references.*` and `preprocessing.*`.
-- **Graph and fields.** `/adjacency` is the spots' one graph. Each stage keeps its own clone-assignment `field`; `/clone_assignment` is the run's final clones, and its `stage` names the field they were solved on.
+- **Graph and fields.** `/adjacency` is the spots' one graph, the CSR matrix stored as the group itself (`data`, `indices`, `indptr`, with `shape`). Each stage keeps its own clone-assignment `field`; `/clone_assignment` is the run's final clones, and its `stage` names the field they were solved on.
 - **Final fit only.** `/baf` and `/rdrbaf` keep the final fit and the `llf` trace, not each iteration.
 - **Thresholds.** `integer_copy` and `integer_clones` carry every `[int_copy_num]` key they read, as `int_copy_num.<key>`.
 
@@ -29,9 +29,8 @@
 | | `single_tumor_prop` | (n_spots) | float64 | tumour proportion per spot (optional) |
 | | `samples` | (n_samples) | str | each slice's sample id, in `sample_sheet`'s order |
 | | `anndata` | (n_samples) | str | each slice's count matrix (`filtered_feature_bc_matrix.h5ad`), absolute path |
-| `/adjacency` | | | | the spots' graph; attributes none |
-| | `adjacency_mat` | (n_spots, n_spots) | csr | spot adjacency, every stage's graph |
-| | `smooth_mat` | (n_spots, n_spots) | csr | spot pooling weights (optional) |
+| `/adjacency` | | | | the spots' one graph, stored as the group itself; attributes none |
+| | `adjacency` | (n_spots, n_spots) | csr | spot adjacency (`adjacency_mat`), every stage's graph |
 | `/segments/genes` | | | | the genes every level labels; attributes `excluded_genes`, `floor_min_length`, `floor_min_weight` |
 | | `contig` | (n_genes) | str | the root: `df_gene_snp`'s gene rows, sorted |
 | | `start` | (n_genes) | int64 | gene start |
