@@ -25,8 +25,13 @@ clone-stacked rows as a `Ragged` of segments (`lengths`), exposure and
 trials as its covariate. `Restricted` varies its `mean` and `rate` blocks,
 so `theta = (log_mu, logit p_binom)`, one of each per state; the
 dispersions, the stickiness and the uniform start probabilities are held at
-`ALPHA`, `TAU` and `T` (`objective_for`), `cnaster`'s initial
-dispersions and the shipped configuration's stickiness. No per-clone shift (#276).
+the run's own Baum-Welch call's (T- #777): its `t` and its initial
+dispersions, `cnaster`'s `ALPHA` and `TAU` where the call passes none
+(`hmm_nophasing.get_initial_params`). The objective is that call's forward
+log-likelihood, `cnaster`'s lattice normalizer to 1e-9 relative
+(`tests/test_hmm_objective.py`), so a start is sampled on what the run's
+Baum-Welch scores it by; the Baum-Welch polish then fits the dispersions as
+the run does. No per-clone shift (#276).
 `value_and_gradient` and `energy` are declared (`sal.opt.objective`), and
 `__call__` returns the same value, differentiable by a
 `torch.autograd.Function` carrying the kernel's gradient.
@@ -82,6 +87,7 @@ __all__ = [
     "SAMPLERS",
     "HmmObjective",
     "Sampled",
+    "held_by",
     "initial_point",
     "negative_log_likelihood",
     "objective_for",
@@ -304,12 +310,15 @@ def negative_log_likelihood(
     exposure: np.ndarray,
     trials: np.ndarray,
     lengths: Any,
+    held: Mapping[str, float] | None = None,
 ) -> float:
     """The objective the starts sample, at given states: `p_binom` clipped to `[1e-4, 1 - 1e-4]` as `decode` clips it."""
     log_mu = np.asarray(log_mu, dtype=np.float64).ravel()
     p = np.clip(np.asarray(p_binom, dtype=np.float64).ravel(), 1e-4, 1 - 1e-4)
     theta = np.concatenate([log_mu, np.log(p / (1.0 - p))])
-    objective = objective_for(total, b, exposure, trials, lengths, log_mu.size, theta)
+    objective = objective_for(
+        total, b, exposure, trials, lengths, log_mu.size, theta, held
+    )
     return objective.energy(theta)
 
 
@@ -321,13 +330,34 @@ def objective_for(
     lengths: Any,
     n_states: int,
     start: np.ndarray,
+    held: Mapping[str, float] | None = None,
 ) -> HmmObjective:
-    """`HmmObjective` at `ALPHA`, `TAU` and `T`."""
-
+    """`HmmObjective` at `held`'s `stay`, `alpha` and `tau`, the run's (`held_by`); `T`, `ALPHA`, `TAU` absent."""
+    held = held or {}
     return HmmObjective(
         total, b, exposure, trials, lengths, n_states,
-        alpha=ALPHA, tau=TAU, stay=T, start=start,
+        alpha=float(held.get("alpha", ALPHA)), tau=float(held.get("tau", TAU)),
+        stay=float(held.get("stay", T)), start=start,
     )  # fmt: skip
+
+
+def held_by(arguments: Mapping[str, Any]) -> dict[str, float]:
+    """What the run's Baum-Welch call holds while a start is sampled: its `t`, and its
+    initial dispersions, `ALPHA` and `TAU` where it passes none. Shared dispersions only:
+    an unshared one is refused, since the objective holds one of each."""
+
+    def shared(value: Any, default: float, name: str) -> float:
+        if value is None:
+            return default
+        values = np.unique(np.asarray(value, dtype=np.float64))
+        if values.size != 1:
+            msg = f"the run's {name} differ by state ({values}); the sampled objective holds one"
+            raise ValueError(msg)
+        return float(values[0])
+
+    return {"stay": float(arguments.get("t", T)),
+            "alpha": shared(arguments.get("init_alphas"), ALPHA, "init_alphas"),
+            "tau": shared(arguments.get("init_taus"), TAU, "init_taus")}  # fmt: skip
 
 
 def sample(
@@ -340,6 +370,7 @@ def sample(
     n_states: int,
     rng: np.random.Generator,
     setting: dict[str, float] | None = None,
+    held: Mapping[str, float] | None = None,
 ) -> Sampled:
     """`name`'s best states `(log_mu, p_binom)` by `sal`'s sampler, one of `SAMPLERS`; `setting` in place of `DEFAULTS[name]`.
 
@@ -357,7 +388,9 @@ def sample(
         raise ValueError(msg)
     knobs = {**DEFAULTS[name], **(setting or {})}
     theta0 = initial_point(total, exposure, n_states, rng)
-    objective = objective_for(total, b, exposure, trials, lengths, n_states, theta0)
+    objective = objective_for(
+        total, b, exposure, trials, lengths, n_states, theta0, held
+    )
     initial = objective.energy(theta0)
     step = float(knobs["step"])
     if name == "hmc-hmm":

@@ -18,10 +18,6 @@ PACKAGE = Path(__file__).resolve().parents[1] / "python" / "port"
 
 ADMITTED: dict[tuple[str, str], str] = {
     (
-        "port.patch.hmm_nophasing.bb_logpmf",
-        "_bb_logpmf_1d",
-    ): "cnaster's own name, which the row replaces",
-    (
         "port.patch.hmm_nophasing.nb_logpmf",
         "_nb_logpmf_1d",
     ): "cnaster's own name, which the row replaces",

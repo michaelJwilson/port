@@ -1,8 +1,8 @@
 """#561: the beta-binomial at a large concentration, against 50-digit sums of logs.
 
-`a = p tau` and `b = (1 - p) tau`. `cnaster` and `sal` subtract `lgamma`
-values near `tau log tau`; `port.patch.hmm_nophasing.bb_logpmf` forms each
-rising factorial without that subtraction. The referee is
+`a = p tau` and `b = (1 - p) tau`. `cnaster` subtracts `lgamma` values near
+`tau log tau`; `sal`'s `log_rising` forms each rising factorial without that
+subtraction, on every route since sal #1332, and port builds on it. The referee is
 `tests.exact_densities`, the density written from its definition in
 `decimal`. Every port site on the live path is judged here: the kernel the
 `LOG_SPACE_SWAPS` rows install, `dense_emission.bb_states` (the HMM under
@@ -116,21 +116,18 @@ def test_the_dense_kernel_is_the_per_state_kernel() -> None:
 
 
 @pytest.mark.oracle
-@pytest.mark.parametrize("tau", [5e3, 1e12])
+@pytest.mark.parametrize("tau", [5e3, 1e5, 1e12, 1e16])
 def test_the_sal_emission_scores_a_large_concentration_exactly(tau: float) -> None:
-    """`dense_emission.bb_states`, the HMM's beta-binomial under `--sal`: 1e-9 at 5e3, 1e-11 at 1e12.
-
-    Below `STABLE_TAU` it is sal's table (1.9e-10 at 1e5); at and above, port's
-    kernel.
-    """
-    from port.patch.hmm_nophasing.dense_emission import STABLE_TAU, bb_states
+    """`dense_emission.bb_states`, the HMM's beta-binomial under `--sal`, against `mpmath` to 1e-11 at every
+    concentration: sal's tables hold rising factorials (sal #1332), so no state is handed to port's
+    kernel any more (T- #777; 1e-9 below 1e5 and port's kernel above until then)."""
+    from port.patch.hmm_nophasing.dense_emission import bb_states
 
     scores = bb_states(
         COUNTS, np.full(COUNTS.size, float(TRIALS)), np.array([0.3]), np.array([tau])
     )
-    tolerance = 1e-11 if tau >= STABLE_TAU else 1e-9
 
-    np.testing.assert_allclose(scores[0], _exact(0.3, tau), rtol=0, atol=tolerance)
+    np.testing.assert_allclose(scores[0], _exact(0.3, tau), rtol=0, atol=1e-11)
 
 
 @pytest.mark.oracle
@@ -213,27 +210,6 @@ def test_cnasters_beta_binomial_is_not_a_pmf_at_a_large_concentration() -> None:
     _bb_logpmf_1d(k, np.full(k.size, float(TRIALS)), 0.3, 1e16, out)
 
     assert abs(logsumexp(out)) > 1.0
-
-
-@pytest.mark.bug
-def test_sals_beta_binomial_is_not_a_pmf_at_a_large_concentration() -> None:
-    """`sal`'s dense beta-binomial at `tau = 1e16`, `p = 0.3`, `n = 100` sums to about `e^-60`, not 1.
-
-    The same `lgamma` cancellation; `bb_states` scores such a state with
-    port's kernel instead.
-    """
-    from sal.emissions import BetaBinomialEmission
-    from sal.emissions.dense import Order, log_emission
-
-    k = np.arange(TRIALS + 1, dtype=np.float64)
-    family = BetaBinomialEmission(
-        alpha=np.array([0.3e16]), beta=np.array([0.7e16]), trials=np.ones(1)
-    )
-    scores = log_emission(
-        family, k, np.full((k.size, 1), float(TRIALS)), order=Order.FAMILY
-    )
-
-    assert abs(logsumexp(scores[0])) > 1.0
 
 
 def _binomial_exact(p: float) -> np.ndarray:

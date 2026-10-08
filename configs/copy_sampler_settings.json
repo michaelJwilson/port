@@ -1,5 +1,5 @@
 {
-  "_provenance": "run_calibrate --copy on dev_tree_1s_hard.toml realizations 0-2, 5 seeds per setting, at the run's Baum-Welch at oracle clones (#730); the cheapest setting within 1.0 nats of the best median gap in log-likelihood at the start's states (#540)",
+  "_provenance": "run_calibrate --copy on dev_tree_1s_hard.toml realizations 0-4, 2 seeds per setting, at the run's Baum-Welch at oracle clones (#730); the cheapest setting within 1.0 nats of the best median gap in log-likelihood at the start's states (#540)",
   "anneal-hmm": {
     "step": 0.003,
     "t_start": 100.0,
@@ -9,16 +9,16 @@
   },
   "hmc-hmm": {
     "temperature": 100.0,
-    "median_gap": 131.643,
-    "seconds": 1.387,
-    "default_median_gap": 170.278
+    "median_gap": 78.034,
+    "seconds": 1.118,
+    "default_median_gap": 128.025
   },
   "tempering-hmm": {
     "step": 0.003,
     "t_top": 100.0,
-    "median_gap": 100.571,
-    "seconds": 3.26,
-    "default_median_gap": 722.677
+    "median_gap": 87.915,
+    "seconds": 2.838,
+    "default_median_gap": 133.056
   },
   "emission++trim": {
     "trim": 0.005,

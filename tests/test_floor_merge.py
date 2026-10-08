@@ -8,7 +8,7 @@ pinned here:
 
 - `cnaster`'s floor collapses a problem where one clone clears it (`bug`,
   written to fail when it stops doing so);
-- `enforce_floor` merges smallest first into each spot's best clone, stops
+- `floor_clones` merges smallest first into each spot's best clone, stops
   once every clone clears the floor, and never crosses a `-inf` entry
   (`patch`);
 - `mask_for` hands the refinement's mask only to the problem it describes
@@ -51,10 +51,10 @@ def test_cnasters_floor_moves_every_undersized_clone_into_the_one_over_it() -> N
 @pytest.mark.patch
 def test_the_floor_merges_smallest_first_and_stops_when_every_clone_clears_it() -> None:
     """The same problem keeps seven clones, each at least 20 spots."""
-    from port.patch.icm.floor import enforce_floor
+    from port.patch.icm.floor import floor_clones
 
     field, assignment = _problem([25] + [9] * 15)
-    emptied = enforce_floor(field, assignment, 20)
+    emptied = floor_clones(field, assignment, 20)
     counts = np.bincount(assignment)
     kept = counts[counts > 0]
 
@@ -66,14 +66,14 @@ def test_the_floor_merges_smallest_first_and_stops_when_every_clone_clears_it() 
 @pytest.mark.patch
 def test_the_floor_does_not_cross_a_masked_boundary() -> None:
     """Two groups: an undersized clone with no allowed partner keeps its spots."""
-    from port.patch.icm.floor import enforce_floor
+    from port.patch.icm.floor import floor_clones
 
     field, assignment = _problem([30, 5, 30])
     # NB clone 1 may only be clone 1: every other entry of its spots is -inf.
     field[assignment == 1, 0] = -np.inf
     field[assignment == 1, 2] = -np.inf
 
-    enforce_floor(field, assignment, 20)
+    floor_clones(field, assignment, 20)
 
     assert (assignment[30:35] == 1).all()
 
@@ -264,3 +264,25 @@ def test_sal_recovers_dev_where_the_hard_mask_froze_the_baf_boundary(
     hard, _ = audit_truth(sim_truth.dev_instance(), ["--sal"])
 
     assert hard.ari < 0.9, hard.ari
+
+
+@pytest.mark.oracle
+def test_the_floor_is_sals_oracle_on_random_problems() -> None:
+    """`floor_clones` against `sal`'s Python oracle, `_floor_smallest_first`
+    (T- #777): identical assignments on 300 problems of 2-8 clones and 5-300
+    spots, a third of the entries `-inf` at most, floors to half the spots."""
+    from port.patch.icm.floor import floor_clones
+    from sal.search.icm import _floor_smallest_first
+
+    rng = np.random.default_rng(0)
+    for _ in range(300):
+        n, q = int(rng.integers(5, 300)), int(rng.integers(2, 9))
+        field = rng.normal(size=(n, q)) * rng.choice([0.1, 1.0, 10.0])
+        field[rng.random((n, q)) < rng.uniform(0.0, 0.33)] = -np.inf
+        start = rng.choice(q, n, p=rng.dirichlet(np.full(q, 0.3)))
+        floor = int(rng.integers(1, max(2, n // 2)))
+        ours, theirs = start.copy(), start.copy()
+        floor_clones(field, ours, floor)
+        _floor_smallest_first(theirs, field, floor)
+
+        np.testing.assert_array_equal(ours, theirs)
