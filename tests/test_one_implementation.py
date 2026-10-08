@@ -61,7 +61,9 @@ BUDGET: dict[str, int] = {
     #    with its realization (`known_field.KnownProblem`, in `sandbox/`, gone).
     #    87: #749 WP6 retired `potts_solvers` and its `PortStart`. 88: T- #791's
     #    `analysis.SliceFrame`, the slices' one frame the spatial pages share.
-    "classes": 88,
+    #    86: T- #777 retired `WarmSchedule` and `_Warmed` for sal's
+    #    `ScheduleParams(warm=)` (sal #1324), which states the warm-up.
+    "classes": 86,
     # NB step 4: 18 records became NamedTuples; the dataclasses left carry
     #    mutable state, machinery or a `__post_init__` (#517 D). Step 8 moved
     #    7 dataclasses and 1 NamedTuple to `sandbox/`. 21: T- #418's `Samples`
@@ -73,7 +75,8 @@ BUDGET: dict[str, int] = {
     #    34: T- #683's `Ticks`, frozen: a swap row's bound option.
     #    36: #716's `WarmSchedule` and `_Warmed`, frozen: what `run_annealed`
     #    calls `build` on. 35: #749 WP6 retired `potts_solvers.PortStart`.
-    "dataclasses": 35,
+    #    33: T- #777 retired `WarmSchedule` and `_Warmed`.
+    "dataclasses": 33,
     # NB 24: `analysis.GenomicTruth` (the truth page). 26: #540's
     #    `CopyCall` and `CopyStart` (`Row` in `sandbox/`, #547). 27: T- #617
     #    WP2's `pipeline.Default`. 28: G6's `port.sim.he_slide.Slide`, moved.

@@ -18,16 +18,19 @@ its numbers do not compare with these.
 
 - **Warmup.** Each worker runs every solver once on a 10 x 10 patch before
   any timed job, so no compilation lands in a timing.
-- **Tuning.** `run_calibrate --potts` tunes the samplers (`TUNED`) on the
-  first `--held-out` realizations, which the stream never evaluates; the
-  stream reads the settings it wrote (`SETTINGS`, or `--settings`). Each
-  sampler searches `GRID` -- the start temperature, the end fixed
-  at `T_END` so the last sweeps are a descent, the sweep budget and the
-  warm-up; for a tempering ladder, its hottest replica and its replica sweeps
-  -- in three rounds (`tune`): cheap budgets first, the dearest only where
-  more sweeps still help, then `TUNING_STARTS` starts for the settings that
-  survive a one-start round. It keeps the cheapest of those whose median gap
-  to TRW-S's bound is within `TOLERANCE` nats of the best's.
+- **Tuning.** `run_calibrate --potts` tunes the annealed samplers (`TUNED`)
+  on the first `--held-out` realizations, which the stream never evaluates;
+  the stream reads the settings it wrote (`SETTINGS`, or `--settings`). The
+  schedule is `sal`'s to choose (T- #777): per realization and pilot seed,
+  `sal.sample.tune.tune_schedule` anneals every candidate of `SCHEDULES` --
+  each `ScheduleShape`, the start temperature, the warm-up, the end fixed at
+  `T_END` so the last sweeps are a descent -- for `SWEEPS` sweeps and ranks
+  them by the lowest energy reached. Across problems port keeps the candidate
+  whose median gap to the best pilot on the same problem is least: no other
+  solver enters the choice (TRW-S's bound is the figure's referee, not the
+  tuner's). Every annealed sampler, Wolff included, gets the same `SWEEPS`. The
+  tempering ladders keep the settings file's top temperature: `sal` has no
+  ladder tuner.
 - **Evaluation.** The next `--problems` realizations run every solver of
   #541's harness (`port.studies.clone_label_arms`) but bifurcation, port's
   pure-Python `alpha` and the floor-merge row, plus TRW-S's own decoded
@@ -47,15 +50,13 @@ solve; seconds are per job with `--workers` jobs sharing the host.
 from __future__ import annotations
 
 import argparse
-import itertools
 import json
 import time
 import traceback
 from collections.abc import Iterator
 from concurrent.futures import Future, ProcessPoolExecutor
-from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, NamedTuple, cast
+from typing import Any, NamedTuple
 
 import numpy as np
 
@@ -95,70 +96,39 @@ CLUSTER_TEMPERING = "sal:cluster-tempering"
 """sal's `cluster_tempering` (its #1090): `TEMPERING`'s ladder, one Swendsen-Wang pass per replica per step and
 Houdayer moves between replicas."""
 
-TUNED = (*SAMPLERS, TEMPERING, CLUSTER_TEMPERING)
-"""Every entry that runs at a tuned annealing setting."""
+TUNED = tuple(SAMPLERS)
+"""The entries whose schedule `sal` tunes (`tune`)."""
+
+SET = (*SAMPLERS, TEMPERING, CLUSTER_TEMPERING)
+"""Every entry that runs at a setting from `SETTINGS`: the tuned schedules and the tempering ladders' tops."""
 
 T_END = 0.05
 """sal's `ANNEAL_END`: cold enough that the last sweeps are a descent."""
 
-GRID = tuple(
-    {"t_start": t, "sweeps": s, "warm": w}
-    for t, s, w in itertools.product(
-        (0.25, 0.5, 1.0, 2.0, 8.0, 32.0), (250, 1000, 4000), (0.0, 0.1, 0.25)
-    )
+SWEEPS = 4000
+"""Every annealed sampler's budget, in sweeps of site visits: what #723 chose for three of four."""
+
+SCHEDULES = tuple(
+    {"shape": shape, "t_start": t, "warm": w}
+    for shape in ("exponential", "linear", "cosine")
+    for t in (0.25, 0.5, 1.0, 2.0, 8.0, 32.0)
+    for w in (0.0, 0.1, 0.25)
 )
-"""Start temperature x sweep budget x warm-up. sal's default is T = 2, 1,000 sweeps, no warm-up; the
-field's margins run to 18 nats. `warm` is the fraction of the steps held at the start temperature
-before the exponential ramp (:class:`WarmSchedule`); a tempering ladder has no ramp and takes `warm` 0."""
+"""`tune_schedule`'s candidates: shape x start temperature x warm-up, each ending at `T_END`. `warm` is the
+fraction of the steps held at the start temperature before the ramp (`sal`'s `ScheduleParams.warm`,
+#1324). sal's default, exponential 2 -> 0.05 unheld, is among them."""
 
 
-@dataclass(frozen=True)
-class _Warmed:
-    """A schedule held at `t_start` for its first `held` steps, then `ramp`."""
+def schedule(setting: dict[str, Any]) -> Any:
+    """`setting`'s `sal.sample.schedule.ScheduleParams`: exponential and unheld where it names neither."""
+    from sal.sample.schedule import ScheduleParams, ScheduleShape
 
-    n_steps: int
-    t_start: float
-    held: int
-    ramp: Any
-
-    def __call__(self, step: int) -> float:
-        return self.t_start if step < self.held else float(self.ramp(step - self.held))
+    return ScheduleParams(ScheduleShape(setting.get("shape", "exponential")),
+                          float(setting["t_start"]), T_END, warm=float(setting.get("warm", 0.0)))  # fmt: skip
 
 
-@dataclass(frozen=True)
-class WarmSchedule:
-    """sal's exponential `ScheduleParams` with a warm-up: `warm` of the steps at `t_start` first.
-
-    The chain equilibrates at its hottest temperature before it cools, so the
-    ramp starts from a sample of that temperature rather than from the random
-    labelling. sal's `ScheduleParams` holds only at the end; `run_annealed`
-    calls `build(n_steps)` on whatever it is given.
-    """
-
-    t_start: float
-    t_end: float
-    warm: float = 0.0
-
-    def build(self, n_steps: int) -> _Warmed:
-        from sal.sample.schedule import ScheduleParams, ScheduleShape
-
-        held = min(int(self.warm * n_steps), n_steps - 1)
-        ramp = ScheduleParams(
-            ScheduleShape.EXPONENTIAL, self.t_start, self.t_end
-        ).build(n_steps - held)
-        return _Warmed(n_steps, self.t_start, held, ramp)
-
-
-def grid(solver: str) -> tuple[dict[str, float], ...]:
-    """`GRID` for `solver`: a tempering ladder's without the warm-up it has no use for."""
-    if solver in (TEMPERING, CLUSTER_TEMPERING):
-        return tuple(g for g in GRID if g["warm"] == 0.0)
-    return GRID
-
-
-TUNING_STARTS = 5
-TOLERANCE = 0.1
-"""Nats: a setting within this of the best median gap is as good, and the cheapest of those is kept."""
+PILOT_SEEDS = 3
+"""`tune_schedule` runs per held-out realization: each anneals every candidate from its own random start."""
 
 REPLICAS = 6
 """sal's `N_REPLICAS`: both tempering ladders, geometric between `T_END` and the start temperature."""
@@ -266,7 +236,7 @@ def _warm() -> None:
             patch,
             solver,
             0,
-            {"t_start": 2.0, "sweeps": 10} if solver in TUNED else None,
+            {"t_start": 2.0, "sweeps": 10} if solver in SET else None,
         )
 
 
@@ -291,7 +261,6 @@ def _sample(solver: str, field: np.ndarray, start: np.ndarray, rng: np.random.Ge
     from sal.search.ground_state import run_annealed
 
     t_start, sweeps = float(setting["t_start"]), int(setting["sweeps"])
-    schedule = WarmSchedule(t_start, T_END, float(setting.get("warm", 0.0)))
     steps = max(1, sweeps // REPLICAS)
     best: Any
     if solver == CLUSTER_TEMPERING:
@@ -300,7 +269,9 @@ def _sample(solver: str, field: np.ndarray, start: np.ndarray, rng: np.random.Ge
         best = cluster_tempering(graph, field, ladder, rng, steps).best
     elif solver == TEMPERING:
         ladder = tuple(float(t) for t in np.geomspace(t_start, T_END, REPLICAS))
-        best = parallel_tempering(graph, field, ladder, rng, steps).best
+        # NB every rung from the run's random start, as every other solver (T- #777)
+        rungs = np.tile(start, (REPLICAS, 1))
+        best = parallel_tempering(graph, field, ladder, rng, steps, start=rungs).best
     else:
         problem = SalProblem(graph, field, field.shape[1])
         budget = Budget(Cost.SITE_VISITS, sweeps * problem.visits_per_sweep)
@@ -314,9 +285,9 @@ def _sample(solver: str, field: np.ndarray, start: np.ndarray, rng: np.random.Ge
             #    one calibrates 267,525 steps against the full one's 15,104 (#716), since a cluster
             #    grows with the cooling a short schedule compresses.
             pilot = run_annealed(problem, budget, np.random.default_rng(rng.integers(2**63)), move,
-                                 schedule=cast(Any, schedule), start=start)  # fmt: skip
+                                 schedule=schedule(setting), start=start)  # fmt: skip
             calibrated = max(1, round(sweeps * budget.size / max(pilot.spent, 1)))
-        best = run_annealed(problem, budget, rng, move, schedule=cast(Any, schedule), steps=calibrated,
+        best = run_annealed(problem, budget, rng, move, schedule=schedule(setting), steps=calibrated,
                             start=start).labelling  # fmt: skip
     return np.asarray(best, dtype=np.int64)
 
@@ -394,78 +365,60 @@ def _describe(problem: Any) -> dict[str, Any]:
             "argmax_ari": adjusted_rand_score(problem.planted, problem.field.argmax(1))}  # fmt: skip
 
 
+def pilots(problem: Any, solver: str, rng: np.random.Generator) -> list[dict[str, Any]]:
+    """`sal`'s `tune_schedule` for `solver` on `problem`: one anneal per `SCHEDULES` candidate, `SWEEPS` each."""
+    from sal.cost import Cost
+    from sal.opt.budget import Budget
+    from sal.sample.potts_mcmc import PottsMove, Recolour
+    from sal.sample.tune import Criterion, tune_schedule
+
+    import port.studies.clone_label_arms as arms
+
+    _hold(problem.realization, problem)
+    _, graph = arms.potts_graph(problem.spatial_weight)
+    grid = tuple(schedule(c) for c in SCHEDULES)
+    opened = time.perf_counter()
+    # NB the arm is the move alone under the uniform recolour, as `run_annealed` runs it (sal #1323)
+    tuned = tune_schedule(graph, problem.field, move=(PottsMove(SAMPLERS[solver]),), recolour=Recolour.UNIFORM,
+                          budget=Budget(Cost.SITE_VISITS, len(grid) * SWEEPS * graph.n_nodes),
+                          criterion=Criterion.LOWEST_ENERGY, rng=rng, grid=grid)  # fmt: skip
+    seconds = time.perf_counter() - opened
+    return [{"problem": problem.realization, "solver": solver, **c, "energy": run.lowest_energy,
+             "spent": run.spent, "seconds": seconds / len(grid)}
+            for c, run in zip(SCHEDULES, tuned.candidates, strict=True)]  # fmt: skip
+
+
 def tune(
     pool: ProcessPoolExecutor, held_out: list[Any], samplers: tuple[str, ...] = TUNED
-) -> tuple[dict[str, dict[str, float]], list[dict[str, Any]]]:
-    """Each of `samplers`' setting: the cheapest in `GRID` within `TOLERANCE` of the best median gap on `held_out`.
+) -> tuple[dict[str, dict[str, Any]], list[dict[str, Any]]]:
+    """Each of `samplers`' schedule: the `SCHEDULES` candidate of least median gap to the best pilot.
 
-    Three rounds rather than the whole grid at every start (#716):
-
-    1. every start temperature and warm-up at the two cheaper sweep budgets,
-       one start per held-out realization;
-    2. the dearest budget only where the middle one still beat the cheapest by
-       more than `TOLERANCE` -- the gap falls with sweeps, so where it has
-       stopped falling the dearest budget is not run;
-    3. the settings `harness.halve` keeps from rounds 1-2 get the remaining
-       `TUNING_STARTS - 1` starts, and the choice is among those alone.
-
-    Each round submits its longest jobs first. `default_gap` is sal's default
-    setting's median over the runs it got: one start per realization unless it
-    went on to round 3.
+    The pilots are `sal`'s (`pilots`, `tune_schedule`, ranked by lowest
+    energy), `PILOT_SEEDS` per held-out realization. A pilot's gap is its
+    lowest energy less the lowest any candidate of the same sampler reached on
+    the same realization, so the choice reads only the pilots; the median over
+    realizations and seeds is port's, since `sal` ranks one problem at a time.
+    Ties go to `SCHEDULES`' order. `default_gap` is sal's default schedule's
+    median, exponential 2 -> `T_END` unheld.
     """
     import pandas as pd
 
-    bounds = {p.realization: _describe(p)["bound"] for p in held_out}
-    rows: list[dict[str, Any]] = []
-
-    def run_jobs(jobs: list[tuple[str, int, dict[str, float]]]) -> pd.DataFrame:
-        # NB the longest first, so no worker idles behind one long job at a round's end
-        jobs = sorted(jobs, key=lambda job: -job[2]["sweeps"])
-        futures = [
-            pool.submit(solve_labelling, p, solver, seed, setting)
-            for solver, seed, setting in jobs
-            for p in held_out
-        ]
-        rows.extend(f.result() for f in futures)
-        frame = pd.DataFrame([r for r in rows if "error" not in r])
-        frame["gap"] = frame.energy - frame.problem.map(bounds)
-        frame["key"] = frame.setting.map(
-            lambda s: (s["t_start"], s["sweeps"], s.get("warm", 0.0))
-        )
-        return frame
-
-    cheap, middle, dear = sorted({g["sweeps"] for g in GRID})
-    frame = run_jobs(
-        [
-            (solver, 0, g)
-            for solver in samplers
-            for g in grid(solver)
-            if g["sweeps"] != dear
-        ]
+    futures = [pool.submit(pilots, p, solver, np.random.default_rng([seed, 777]))
+               for solver in samplers for p in held_out for seed in range(PILOT_SEEDS)]  # fmt: skip
+    rows = [row for f in futures for row in f.result()]
+    frame = pd.DataFrame(rows)
+    frame["gap"] = frame.energy - frame.groupby(["solver", "problem"]).energy.transform(
+        "min"
     )
-    median = frame.groupby(["solver", "key"]).gap.median()
-    falling = [(solver, 0, g) for solver in samplers for g in grid(solver) if g["sweeps"] == dear
-               and median.get((solver, (g["t_start"], middle, g["warm"])), np.inf)
-               < median.get((solver, (g["t_start"], cheap, g["warm"])), np.inf) - TOLERANCE]  # fmt: skip
-    frame = run_jobs(falling)
-    kept = {
-        str(solver): harness.halve(g, TOLERANCE)
-        for solver, g in frame.groupby("solver")
-    }
-    frame = run_jobs([(solver, seed, {"t_start": t, "sweeps": n, "warm": w})
-                 for solver, keys in kept.items() for t, n, w in keys for seed in range(1, TUNING_STARTS)])  # fmt: skip
-    print(f"tuning: {len(rows)} runs against the full grid's "
-          f"{sum(len(grid(s)) for s in samplers) * TUNING_STARTS * len(held_out)}", flush=True)  # fmt: skip
-    chosen: dict[str, dict[str, float]] = {}
-    for solver, g in frame.groupby("solver"):
-        full = g.groupby("key").gap.size() == TUNING_STARTS * len(held_out)
-        key, best, _ = harness.cheapest(g[g.key.isin(full[full].index)], TOLERANCE)
-        by = g.groupby("key").gap.median()
-        t_start, sweeps, warm = key
-        chosen[str(solver)] = {"t_start": float(t_start), "sweeps": int(sweeps), "warm": float(warm),
-                               "gap": float(best.gap), "default_gap": float(by.get((2.0, 1000, 0.0), np.nan))}  # fmt: skip
-        print(f"tuned {solver}: T0 {t_start}, {sweeps} sweeps, warm {warm}, median gap {best.gap:.2f} nats "
-              f"({best.seconds:.2f} s); sal's default {chosen[str(solver)]['default_gap']:.2f}", flush=True)  # fmt: skip
+    chosen: dict[str, dict[str, Any]] = {}
+    for solver, g in frame.groupby("solver", sort=False):
+        median = g.groupby(["shape", "t_start", "warm"], sort=False).gap.median()
+        shape, t_start, warm = median.idxmin()
+        chosen[str(solver)] = {"shape": str(shape), "t_start": float(t_start), "sweeps": SWEEPS,
+                               "warm": float(warm), "gap": float(median.min()),
+                               "default_gap": float(median.get(("exponential", 2.0, 0.0), np.nan))}  # fmt: skip
+        print(f"tuned {solver}: {shape} T0 {t_start}, warm {warm}, {SWEEPS} sweeps, median gap to the best "
+              f"pilot {median.min():.2f} nats; sal's default {chosen[str(solver)]['default_gap']:.2f}", flush=True)  # fmt: skip
     return chosen, rows
 
 
@@ -535,8 +488,9 @@ def run(
             for solver in solvers:
                 setting = (
                     {
-                        k: tuned[solver].get(k, 0.0)
-                        for k in ("t_start", "sweeps", "warm")
+                        k: tuned[solver][k]
+                        for k in ("shape", "t_start", "sweeps", "warm")
+                        if k in tuned[solver]
                     }
                     if solver in tuned
                     else None
@@ -568,12 +522,14 @@ def retune(
         chosen, _ = tune(
             pool, list(problems(manifest, root, held_out, states=states)), samplers
         )
-    provenance = (f"run_calibrate --potts on {manifest.name} realizations 0-{held_out - 1}, states {states}, "
-                               f"{TUNING_STARTS} random starts per setting; the cheapest setting within {TOLERANCE} nats "
-                               "of the best median gap to TRW-S's bound (#556, #723)")  # fmt: skip
+    provenance = (f"run_calibrate --potts on {manifest.name} realizations 0-{held_out - 1}, states {states}: "
+                  f"sal's tune_schedule, {PILOT_SEEDS} pilot seeds per realization, {len(SCHEDULES)} schedules "
+                  f"(shape x t_start x warm, t_end {T_END}) at {SWEEPS} sweeps, ranked by lowest energy; the "
+                  "least median gap to the best pilot on the same realization (#556, #723, T- #777)")  # fmt: skip
     harness.merge_settings(SETTINGS, provenance, {
-        solver: {"t_start": setting["t_start"], "sweeps": setting["sweeps"], "warm": setting["warm"],
-                 "median_gap": round(setting["gap"], 3), "default_median_gap": round(setting["default_gap"], 3)}
+        solver: {"shape": setting["shape"], "t_start": setting["t_start"], "sweeps": setting["sweeps"],
+                 "warm": setting["warm"], "median_gap": round(setting["gap"], 3),
+                 "default_median_gap": round(setting["default_gap"], 3)}
         for solver, setting in chosen.items()
     })  # fmt: skip
 
