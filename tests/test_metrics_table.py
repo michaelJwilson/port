@@ -93,6 +93,9 @@ def test_definitions_are_numbered_from_one_and_cover_every_metric() -> None:
         assert found == list(range(1, len(found) + 1)), metric
 
 
+ADDED = frozenset({"clone_ari_int_99"})
+"""Metrics added after the conversion (T- #817): no converted run measured them."""
+
 CONVERTED_ROWS = 73
 CONVERTED_SHA256 = "0bcb7c57193ac696ed08cca106200ab817914289c3900ba35187373810b44e10"
 """The SHA-256 of the 73 data lines of the hand-edited `docs/metrics.md` at
@@ -108,10 +111,13 @@ def test_the_render_rebuilds_the_converted_rows() -> None:
     later `benchmark` column aside."""
     rows = parse(render())[:CONVERTED_ROWS]
     kept = {"note": lambda v: v.split(CONVERTED)[0]}
+    # NB the converted table's columns: a metric added since (`ADDED`) has none
     lines = [
         "| "
         + " | ".join(
-            kept.get(c, lambda v: v)(row[c]) for c in COLUMNS if c != "benchmark"
+            kept.get(c, lambda v: v)(row[c])
+            for c in COLUMNS
+            if c != "benchmark" and c not in ADDED
         )
         + " |"
         for row in rows

@@ -80,7 +80,7 @@ LEVELS = {
 """Each segment level's name in the file: the step that makes it. `assign_initial_blocks` to
 `quality.phasing_min_snp_umis`; `create_bin_ranges` to `quality.secondary_min_umi`; `normal_baf_bin_filter`;
 the floor of #551 (`min_segment_normal_umi`); `create_bin_ranges` again on the normal candidates. The run's
-lineage, and `gene_segments.tsv`, keep `port.extensions.segments`' names."""
+lineage keeps `port.extensions.segments`' names."""
 
 
 def level_name(name: str) -> str:

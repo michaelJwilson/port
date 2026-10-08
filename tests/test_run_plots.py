@@ -66,10 +66,11 @@ def test_run_plots_draws_every_page_the_run_wrote_byte_for_byte(
 def test_the_stages_are_what_the_run_wrote(output: Path) -> None:
     """Each stage group against the file the run wrote for it, exactly, and every group in run order.
 
-    `/clone_assignment` is `clone_labels.tsv`'s `cnaster` clone, `/integer_copy`
+    `/clone_assignment` is `cnaster`'s `clone_labels.tsv`, `/integer_copy`
     `cnv_seglevel.tsv`'s `A`, `B`, `/rdrbaf` the final fit's npz up to
-    `reindex_clones`' permutation, and
-    `/integer_clones` `clone_labels_integer.tsv`'s merged clone.
+    `reindex_clones`' permutation, and `/integer_clones` the run's rule,
+    `outputs.integer_clones`, on `cnv_seglevel.tsv` at its `merge_agreement`.
+    Port writes no table of its own beside them (T- #817).
     """
     from port.extensions import cnamaste as c
 
@@ -99,8 +100,16 @@ def test_the_stages_are_what_the_run_wrote(output: Path) -> None:
     labels = pd.read_csv(run / "clone_labels.tsv", sep="\t", comment="#")
     at = pd.Index(spots["barcodes"]).get_indexer(labels["barcode"].astype(str))
     final, final_attrs = c.read(h5, "clone_assignment")
-    column = "cnaster_clone_label" if "cnaster_clone_label" in labels else "clone_label"
-    np.testing.assert_array_equal(final["assignment"][at], labels[column].to_numpy())
+    assert "cnaster_clone_label" not in labels, (
+        "port rewrote cnaster's clone_labels.tsv"
+    )
+    np.testing.assert_array_equal(
+        final["assignment"][at], labels["clone_label"].to_numpy()
+    )
+    written = {p.name for p in run.iterdir()}
+    for name in ("cnv_states.tsv", "cnv_segments.tsv", "cnv_binlevel.tsv", "clone_labels_integer.tsv",
+                 "gene_segments.tsv", "manifest.json"):  # fmt: skip
+        assert name not in written, f"port wrote {name}"
 
     seglevel = pd.read_csv(run / "cnv_seglevel.tsv", sep="\t", comment="#")
     copies, _ = c.read(h5, "integer_copy")
@@ -128,10 +137,14 @@ def test_the_stages_are_what_the_run_wrote(output: Path) -> None:
     assert fit_attrs["level"] == final_attrs["level"] == "normal_candidates"
     assert fit["pred_cnv"].shape[0] == len(seglevel)
 
-    merged = pd.read_csv(run / "clone_labels_integer.tsv", sep="\t", comment="#")
-    integer, _ = c.read(h5, "integer_clones")
-    at = pd.Index(spots["barcodes"]).get_indexer(merged["barcode"].astype(str))
-    np.testing.assert_array_equal(integer["integer_ids"][integer["assignment"]][at], merged["integer_clone_label"].to_numpy())  # fmt: skip
+    from port.extensions.outputs import integer_clones
+
+    integer, integer_attrs = c.read(h5, "integer_clones")
+    names = integer_clones(seglevel, integer_attrs["merge_agreement"])
+    expected = np.array([int(names[str(k)]) for k in final["assignment"]])
+    np.testing.assert_array_equal(
+        integer["integer_ids"][integer["assignment"]], expected
+    )
 
 
 @pytest.mark.merge
@@ -142,13 +155,15 @@ def test_the_audits_score_the_file_as_they_scored_the_tables(
     """`run_audit --sim`'s every metric from `cnamaste.h5` against the same from the CalicoST tables, exactly.
 
     The run's directory copied without its file is read the way a run that
-    wrote none is, from `clone_labels.tsv`, `clone_labels_integer.tsv`,
-    `cnv_seglevel.tsv` and the final fit's npz: the hand-rolled readers the
-    file replaces (T- #817).
+    wrote none is, from `clone_labels.tsv`, `cnv_seglevel.tsv` and the final
+    fit's npz: the hand-rolled readers the file replaces (T- #817). Every
+    field is equal, both integer ARIs included, and the 0.99 merge QA scores
+    holds as many clones as the run's own `/integer_clones`.
     """
     import dataclasses
     import shutil
 
+    from port.extensions import cnamaste
     from port.extensions.cnamaste import FILE
     from port.qa.audit import run_tables, score_sample
 
@@ -180,3 +195,7 @@ def test_the_audits_score_the_file_as_they_scored_the_tables(
     assert ours.keys() == theirs.keys()
     for key in ours:
         assert repr(ours[key]) == repr(theirs[key]), key
+    # NB the 0.99 merge QA scores is the run's own, its default `merge_agreement`
+    held, attrs = cnamaste.read(output / cnamaste.FILE, "integer_clones")
+    assert attrs["merge_agreement"] == 0.99
+    assert ours["n_integer_clones_99"] == held["integer_ids"].size

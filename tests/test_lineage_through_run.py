@@ -14,7 +14,6 @@ import warnings
 from typing import Any
 
 import numpy as np
-import pandas as pd
 import pytest
 
 
@@ -60,13 +59,10 @@ def run(tmp_path_factory: pytest.TempPathFactory) -> dict[str, Any]:
     finally:
         recomb.get_sitewise_transmat = original
 
-    written_table = pd.read_csv(
-        next((written.root / "output").rglob("gene_segments.tsv")), sep="\t"
-    )
     return {
         "lineage": lineage,
         "kernels": kernels,
-        "table": written_table,
+        "file": written.root / "output" / "cnamaste.h5",
     }
 
 
@@ -123,10 +119,20 @@ def test_the_levels_nest_as_the_pipeline_builds_them(run: dict[str, Any]) -> Non
 @pytest.mark.merge
 @pytest.mark.xdist_group("pipeline")
 def test_the_run_writes_its_lineage(run: dict[str, Any]) -> None:
-    """`gene_segments.tsv` is the recorded lineage: coordinates and one label column per level."""
-    lineage = run["lineage"]
-    table = run["table"]
-    expected = lineage.table()
+    """`cnamaste.h5`'s `/segments` is the recorded lineage: its genes and every level, in order, bitwise (T- #817)."""
+    from port.extensions import cnamaste
 
-    assert list(table.columns) == list(expected.columns)
-    pd.testing.assert_frame_equal(table, expected, check_dtype=False)
+    lineage = run["lineage"]
+    path = run["file"]
+    genes, _ = cnamaste.read(path, "segments/genes")
+    np.testing.assert_array_equal(
+        genes["key"], np.asarray(lineage.genes.key).astype(str)
+    )
+    np.testing.assert_array_equal(genes["start"], np.asarray(lineage.genes.start))
+    levels = cnamaste.levels(path)
+
+    assert list(levels) == [cnamaste.level_name(n) for n in lineage.levels]
+    for name, level in lineage.levels.items():
+        arrays, _ = levels[cnamaste.level_name(name)]
+        np.testing.assert_array_equal(arrays["label"], level.label)
+        np.testing.assert_array_equal(arrays["ids"], level.ids)

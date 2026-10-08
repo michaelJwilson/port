@@ -110,7 +110,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--no-outputs",
         action="store_true",
-        help="skip port's fitted and decoded tables beside cnaster's (#331); off with --no-patch",
+        help="write no cnamaste.h5 (T- #817); off with --no-patch",
     )
     parser.add_argument(
         "--no-patch",
@@ -751,16 +751,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
 
         # NB every segmentation the patched stages make, as labellings of the
-        #    same genes (#438); empty under `--no-patch`, which records nothing.
+        #    same genes (#438), each staged into `cnamaste.h5` as it is recorded;
+        #    empty under `--no-patch`, which records nothing.
         from port.extensions.segments import recording
 
-        lineage = stack.enter_context(recording())
-
-        # NB the slices `get_sample_list` builds, by name, for the per-spot
-        #    outputs (#418); empty under `--no-patch`.
-        from port.extensions import samples as sampling
-
-        sampled = stack.enter_context(sampling.recording())
+        stack.enter_context(recording())
 
         # NB the run's one file, which each stage and page adds to as the run
         #    reaches it (T- #817); off with `--no-patch`, as the outputs are.
@@ -794,21 +789,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     # NB after the run and outside its timer, and off with `--no-patch`: a
     #    baseline arm writes what `cnaster` writes and nothing beside it.
     if not (arguments.no_outputs or arguments.no_patch):
-        _write_outputs(
-            arguments.config,
-            {
-                "figures": figures,
-                "shift": shift,
-                "copy_decode": f"lattice_decode ({arguments.copy_decode})"
-                if copy_cap
-                else "cnaster",
-                "parsimony": settings.parsimony if copy_cap else None,
-            },
-            lineage.table(),
-            sampled,
-            since=since,
-            cnamaste_file=opened,
-        )
+        _write_outputs(arguments.config, since=since, cnamaste_file=opened)
     if opened is not None:
         from port.extensions.run_record import release
 
@@ -859,44 +840,27 @@ def _open_cnamaste(config: str, flags: dict[str, Any]) -> Any:
 
 
 def _write_outputs(
-    config: str,
-    flags: dict[str, Any],
-    segments: Any,
-    samples: Any = None,
-    *,
-    since: float | None = None,
-    cnamaste_file: Any = None,
+    config: str, *, since: float | None = None, cnamaste_file: Any = None
 ) -> None:
-    """`port.extensions.outputs` into each run directory the run wrote.
+    """The integer stages into the run's `cnamaste.h5`, for each run directory the run wrote (T- #817).
 
-    `segments` is the run's lineage, one row per gene and one label column
-    per segmentation (#438), written beside them as `gene_segments.tsv`.
-    `samples` is the run's `port.extensions.samples` recording (#418).
-    `since` excludes the directories an earlier run left (T- #617).
+    Port writes no table beside `cnaster`'s: what it wrote here before is in
+    the file. `since` excludes the directories an earlier run left (T- #617).
     """
-    from pathlib import Path
-
-    from port.extensions.outputs import config_keys, run_directories, write_outputs
+    from port.extensions.outputs import config_keys, run_directories
+    from port.extensions.run_record import integer_groups
 
     output_dir = config_keys(Path(config)).get("output_dir")
 
-    if output_dir is None:
-        print(
-            "run_cnaster_port: no output_dir in the config; outputs skipped",
-            file=sys.stderr,
-        )
+    if output_dir is None or cnamaste_file is None:
         return
 
     for run in run_directories(Path(output_dir), since):
-        write_outputs(run, Path(config), flags, samples)
-        if len(segments):
-            segments.to_csv(run / "gene_segments.tsv", sep="\t", index=False)
-        if cnamaste_file is not None:
-            from port.extensions.run_record import integer_groups
-
-            # NB the integer stages, from the copies the run wrote and its spots (T- #817)
-            integer_groups(cnamaste_file, run, Path(config))
-        print(f"run_cnaster_port: outputs written to {run}", file=sys.stderr)
+        integer_groups(cnamaste_file, run, Path(config))
+        print(
+            f"run_cnaster_port: integer stages written to {cnamaste_file}",
+            file=sys.stderr,
+        )
 
 
 def _write_copy_sets(

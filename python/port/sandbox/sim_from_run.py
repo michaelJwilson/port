@@ -17,9 +17,9 @@ that as a manifest `port.sim.draw` reads, so the problem a run found can be
 planted and drawn again with known truth. It replaces the YAML record of a
 run's inputs (#116), which described the data but could not be drawn.
 
-    python -m port.sandbox.sim_from_run <run dir> > sim/manifests/<name>.toml
+    python -m port.sandbox.sim_from_run <output_dir>/cnamaste.h5 > sim/manifests/<name>.toml
 
-From `clone_labels.tsv` and `cnv_segments.tsv` of the run directory:
+From the run's `cnamaste.h5` (T- #817): its spots, final clones and integer copies:
 
 - `[cna]`: the clones with any segment other than `(1, 1)` are the tumour
   clones, the rest are `normal`; `shared` counts the first tumour clone's
@@ -65,12 +65,29 @@ class Run:
 
 
 def read_run(path: Path) -> Run:
-    """The run in `path`, a directory holding `clone_labels.tsv` and `cnv_segments.tsv`."""
-    return Run(
-        name=path.name,
-        labels=pd.read_csv(path / "clone_labels.tsv", sep="\t"),
-        segments=pd.read_csv(path / "cnv_segments.tsv", sep="\t", comment="#"),
-    )
+    """The run whose `cnamaste.h5` is `path`: `/inputs`' spots, `/clone_assignment`'s clones, `/integer_copy`'s runs."""
+    from port.extensions import cnamaste
+
+    spots, _ = cnamaste.read(path, "inputs")
+    final, _ = cnamaste.read(path, "clone_assignment")
+    copies, _ = cnamaste.read(path, "integer_copy")
+    labels = pd.DataFrame({"barcode": spots["barcodes"], "sample_id": spots["sample_ids"],
+                           "x": spots["coords"][:, 0], "y": spots["coords"][:, 1],
+                           "clone_label": final["assignment"]})  # fmt: skip
+    rows = []
+    for k, clone in enumerate(copies["clones"]):
+        pair = copies["A"][:, k].astype(np.int64) * 1_000 + copies["B"][:, k]
+        change = np.flatnonzero(
+            np.r_[
+                True,
+                (pair[1:] != pair[:-1])
+                | (copies["contig"][1:] != copies["contig"][:-1]),
+            ]
+        )
+        for first, last in zip(change, np.r_[change[1:], pair.size] - 1, strict=True):
+            rows.append({"clone": int(clone), "CHR": copies["contig"][first], "START": int(copies["start"][first]),
+                         "END": int(copies["end"][last]), "A": int(copies["A"][first, k]), "B": int(copies["B"][first, k])})  # fmt: skip
+    return Run(name=path.parent.name, labels=labels, segments=pd.DataFrame(rows))
 
 
 def events(run: Run) -> dict[int, pd.DataFrame]:
@@ -214,7 +231,7 @@ def to_toml(run: Run) -> str:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("run", help="a run directory holding clone_labels.tsv")
+    parser.add_argument("run", help="a run's cnamaste.h5")
     arguments = parser.parse_args(argv)
     print(to_toml(read_run(Path(arguments.run))), end="")
     return 0

@@ -7,9 +7,9 @@ compared as pairs coded `A * 1_000 + B`, by planted class (#511).
 
 `tests.scoring`, `tests.sim_audit`, `tests.recovery_audit.integer_clones`
 and `port.studies.paper_figures.exact_by_class` each held a part of this.
-`port.extensions.outputs.integer_clones` merges a run's written table under
-an agreement threshold; `integer_clones` here is its exact rule (1.0) on
-decoded arrays, which every scorer reads.
+Integer clones are not scored here: `port.qa.audit.merged_clones` reads the
+run's own (`cnamaste.h5`), or `port.extensions.outputs.integer_clones` at 1.0
+for a run with no merge (T- #817).
 """
 
 from __future__ import annotations
@@ -27,7 +27,6 @@ __all__ = [
     "copy_confusion",
     "copy_states",
     "exact_by_class",
-    "integer_clones",
     "matched",
     "overlap",
     "phase_free",
@@ -59,22 +58,6 @@ def matched(counts: np.ndarray) -> dict[int, int]:
     """Each planted label's fitted label, one to one, maximizing total overlap."""
     rows, columns = linear_sum_assignment(-counts)
     return dict(zip(rows.tolist(), columns.tolist(), strict=True))
-
-
-def integer_clones(a: np.ndarray, b: np.ndarray) -> np.ndarray:
-    """Each fitted clone's label after merging clones of one `(A, B)` profile.
-
-    Index `c` holds the smallest clone whose decoded `(A, B)` equals clone
-    `c`'s at every bin (#344), so the normal clone keeps `0`.
-    """
-    merged = np.arange(a.shape[1])
-    seen: dict[bytes, int] = {}
-
-    for clone in range(a.shape[1]):
-        profile = np.stack([a[:, clone], b[:, clone]]).astype(np.int64)
-        merged[clone] = seen.setdefault(profile.tobytes(), clone)
-
-    return merged
 
 
 def planted_classes(t: np.ndarray) -> dict[str, np.ndarray]:
