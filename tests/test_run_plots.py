@@ -77,13 +77,20 @@ def test_the_stages_are_what_the_run_wrote(output: Path) -> None:
     order = [found.index(g) for g in ("inputs", "adjacency", "baf", "rdrbaf", "clone_assignment", "integer_copy", "integer_clones")]  # fmt: skip
     assert order == sorted(order)
     assert list(c.levels(h5)) == [
-        "blocks",
-        "bins",
-        "bins-filtered",
-        "bins-floored",
-        "bins.2",
+        "phasing_min_snp_umis",
+        "secondary_min_umi",
+        "normal_baf_filter",
+        "min_segment_normal_umi",
+        "normal_candidates",
     ]
     assert sum(g.startswith("figures/") for g in found) == 19
+    # NB a page holds references, not data, and each level's counts are written once
+    assert all(not c.read(h5, g)[0] for g in found if g.startswith("figures/"))
+    assert sorted(g for g in found if g.startswith("counts/")) == [
+        "counts/normal_candidates",
+        "counts/phasing_min_snp_umis",
+        "counts/secondary_min_umi",
+    ]
 
     spots, _ = c.read(h5, "inputs")
     labels = pd.read_csv(run / "clone_labels.tsv", sep="\t", comment="#")
@@ -115,8 +122,8 @@ def test_the_stages_are_what_the_run_wrote(output: Path) -> None:
         for b, a in pairs:
             reindexed[:, a] = fit["pred_cnv"][:, b]
         np.testing.assert_array_equal(reindexed, np.asarray(written["pred_cnv"]))
-    assert fit_attrs["level"] == final_attrs["level"] == "bins.2"
-    assert fit["X"].shape[0] == len(seglevel)
+    assert fit_attrs["level"] == final_attrs["level"] == "normal_candidates"
+    assert fit["pred_cnv"].shape[0] == len(seglevel)
 
     merged = pd.read_csv(run / "clone_labels_integer.tsv", sep="\t", comment="#")
     integer, _ = c.read(h5, "integer_clones")

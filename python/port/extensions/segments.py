@@ -611,7 +611,8 @@ def _stage(lineage: Lineage, level: Segmentation) -> None:
         floor_min_weight=float("nan") if floor is None else float(floor[2]),
     )  # fmt: skip
     cnamaste.stage(
-        f"segments/levels/{level.name}", {"label": level.label, "ids": level.ids}
+        f"segments/levels/{cnamaste.level_name(level.name)}",
+        {"label": level.label, "ids": level.ids},
     )
 
 

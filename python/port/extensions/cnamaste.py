@@ -15,8 +15,8 @@ its group, which sets `complete` last and appends the group to the root's
 early leaves every finished stage readable. A stage rewritten replaces its
 group whole.
 
-**Storage.** Every dataset is deflated at level 1, chunked; values are
-stored as computed, never rounded.
+**Storage.** Every dataset is chunked, byte-shuffled and deflated at level 4;
+values are stored as computed, never rounded.
 
 **Axes.** Every dataset carries `dims`. `GLOBAL` axes (`n_spots`, `n_genes`,
 `channel`, `xy`) take one size across the file, the first group to write one
@@ -52,6 +52,7 @@ __all__ = [
     "Group",
     "active",
     "create",
+    "level_name",
     "levels",
     "read",
     "render",
@@ -68,6 +69,24 @@ TRUTH_SCHEMA = "cnamaste-truth/1"
 
 GLOBAL = {"n_spots": None, "n_genes": None, "channel": 2, "xy": 2}
 """Axes one size across a file; `None` until a group fixes it."""
+
+LEVELS = {
+    "blocks": "phasing_min_snp_umis",
+    "bins": "secondary_min_umi",
+    "bins-filtered": "normal_baf_filter",
+    "bins-floored": "min_segment_normal_umi",
+    "bins.2": "normal_candidates",
+}
+"""Each segment level's name in the file: the step that makes it. `assign_initial_blocks` to
+`quality.phasing_min_snp_umis`; `create_bin_ranges` to `quality.secondary_min_umi`; `normal_baf_bin_filter`;
+the floor of #551 (`min_segment_normal_umi`); `create_bin_ranges` again on the normal candidates. The run's
+lineage, and `gene_segments.tsv`, keep `port.extensions.segments`' names."""
+
+
+def level_name(name: str) -> str:
+    """`name`, a lineage level, as the file names it; a level `LEVELS` does not name keeps its own."""
+    return LEVELS.get(name, name)
+
 
 ROOT_ATTRS = ("schema", "commit", "port", "cnaster", "sal", "sample_hash")
 """What `create` requires of `cnamaste.h5`; `stages` is the writer's."""
@@ -107,73 +126,28 @@ def _d(
     return Dataset(name, dims, dtype, meaning, optional)
 
 
-_PSEUDOBULK = (
-    _d("X", ("n_obs", "channel", "{clones}"), "float64", "counts pooled over each clone's spots: read depth, B allele"),
-    _d("base_nb_mean", ("n_obs", "{clones}"), "float64", "negative binomial exposure, pooled"),
-    _d("total_bb_RD", ("n_obs", "{clones}"), "float64", "beta-binomial trials, pooled"),
-)  # fmt: skip
-
-
-def _pooled(clones: str) -> tuple[Dataset, ...]:
-    return tuple(
-        d._replace(dims=tuple(clones if a == "{clones}" else a for a in d.dims))
-        for d in _PSEUDOBULK
-    )
-
-
 _FIT = (
-    _d("clone_index", ("n_spots",), "int64", "the stage's initial clone per spot, `-1` none"),
-    *_pooled("n_clones"),
+    _d("pred_cnv", ("n_obs", "n_clones"), "int64", "final fit: state per bin per clone, a fit stacked along the genome unstacked"),
     _d("log_mu", ("n_states",), "float64", "final fit: log rate per state"),
     _d("p_binom", ("n_states",), "float64", "final fit: B allele probability per state"),
-    _d("alphas", ("n_states",), "float64", "final fit: negative binomial dispersion"),
-    _d("taus", ("n_states",), "float64", "final fit: beta-binomial concentration"),
+    _d("alphas", ("n_states",), "float64", "final fit: negative binomial dispersion", optional=True),
+    _d("taus", ("n_states",), "float64", "final fit: beta-binomial concentration", optional=True),
     _d("logmu_shift", ("n_clones",), "float64", "final fit: per-clone log rate shift (#362)", optional=True),
-    _d("pred_cnv", ("n_obs", "n_clones"), "int64", "final fit: state per bin per clone, clones unstacked"),
-    _d("field", ("n_spots", "n_field_clones"), "float64", "the stage's last clone-assignment field: log-likelihood per spot per clone it assigned to"),
+)  # fmt: skip
+"""A fit as `cnaster` returns it, one column per clone."""
+
+_FIT_ATTRS = ("level", "counts", "pred_layout", "mu_shape")
+"""The fit's level, the `/counts` its clones sum, and how `cnaster` shaped `pred_cnv` (`stacked` or
+`columns`) and `new_log_mu`: what a page reads it back as."""
+
+_STAGE = (
+    _d("clone_index", ("n_spots",), "int64", "the stage's initial clones, where not `/initial_clones`", optional=True),
     _d("assignment", ("n_spots",), "int64", "the stage's clone per spot, before any merge or reindex"),
+    _d("field", ("n_spots", "n_field_clones"), "float64", "the stage's last clone-assignment field"),
+    *_FIT,
 )  # fmt: skip
 
-_FIT_ATTRS = ("level", "n_states", "t", "spatial_weight", "llf", "total_llf")
-
-_TABLE = (
-    _d("contig", ("n_obs",), "str", "each bin's `CHR`, named", optional=True),
-    _d("contig_int", ("n_obs",), "int64", "each bin's `CHR`, numbered", optional=True),
-    _d("start", ("n_obs",), "int64", "each bin's `START`", optional=True),
-    _d("end", ("n_obs",), "int64", "each bin's `END`", optional=True),
-    _d(
-        "cnv_clones",
-        ("n_cnv_clones",),
-        "str",
-        "the table's clone ids, in column order",
-        optional=True,
-    ),
-    _d(
-        "float_columns",
-        ("n_cnv_clones",),
-        "bool",
-        "clones whose A and B columns are floats",
-        optional=True,
-    ),
-    _d(
-        "A",
-        ("n_obs", "n_cnv_clones"),
-        "float64",
-        "each clone's `A` column",
-        optional=True,
-    ),
-    _d(
-        "B",
-        ("n_obs", "n_cnv_clones"),
-        "float64",
-        "each clone's `B` column",
-        optional=True,
-    ),
-)
-"""A page's integer-copy table (`df_cnv`): `figure_record` keeps its columns' dtypes."""
-
-_PAGE_ATTRS = ("file", "options", "write")
-"""Where the run wrote the page, relative to the file; its plotter's options and `write_fig`'s, as JSON."""
+_STAGE_ATTRS = (*_FIT_ATTRS, "n_states", "t", "spatial_weight", "llf", "total_llf")
 
 _PATHS = ("cell_snp_Aallele", "cell_snp_Ballele", "unique_snp_ids", "snp_barcodes")
 """Each slice's SNP inputs, as CalicoST names the files, absolute paths as the run resolved them."""
@@ -264,8 +238,103 @@ GROUPS: tuple[Group, ...] = (
         ("order",),
         "one level of the hierarchy, in the order the run recorded it",
     ),  # fmt: skip
-    Group("baf", _FIT, _FIT_ATTRS, "the BAF stage at its final fit"),
-    Group("rdrbaf", _FIT, _FIT_ATTRS, "the RDR+BAF stage at its final fit"),
+    Group(
+        "counts/*",
+        (
+            _d(
+                "X",
+                ("n_obs", "channel", "n_spots"),
+                "numeric",
+                "each spot's counts per bin: read depth, B allele",
+            ),
+            _d(
+                "total_bb_RD",
+                ("n_obs", "n_spots"),
+                "numeric",
+                "each spot's beta-binomial trials per bin",
+            ),
+            _d(
+                "normal_rdr",
+                ("n_obs",),
+                "float64",
+                "the baseline's per-bin factor (`determine_normal_baseline`)",
+                optional=True,
+            ),
+            _d(
+                "coverage",
+                ("n_spots",),
+                "numeric",
+                "the baseline's per-spot factor, each spot's read-depth total",
+                optional=True,
+            ),
+            _d(
+                "base_nb_mean",
+                ("n_obs", "n_spots"),
+                "float64",
+                "the baseline, where its factors do not reproduce it",
+                optional=True,
+            ),
+        ),
+        ("level", "base"),
+        "the spots' counts at a level, once: every stage's and page's summed counts are these summed over a "
+        "labelling (`merge_pseudobulk_by_index_mix`). `base` is `zero`, `factors` (`normal_rdr @ coverage`) or `full`",
+    ),  # fmt: skip
+    Group(
+        "initial_clones",
+        (
+            _d(
+                "clone_index",
+                ("n_spots",),
+                "int64",
+                "each spot's initial clone, `-1` none",
+            ),
+        ),
+        (),
+        "the run's initial clones, which phasing and the BAF stage start from unless their own `clone_index` says otherwise",
+    ),  # fmt: skip
+    Group(
+        "phasing",
+        (
+            _d(
+                "clone_index",
+                ("n_spots",),
+                "int64",
+                "the clones phasing is given, where not `/initial_clones`",
+                optional=True,
+            ),
+            *_FIT,
+        ),
+        _FIT_ATTRS,
+        "the phasing fit (`initial_phase_given_partition`) on the initial clones",
+    ),  # fmt: skip
+    Group("baf", _STAGE, _STAGE_ATTRS, "the BAF stage at its final fit"),
+    Group(
+        "baf_merged",
+        (
+            _d(
+                "assignment",
+                ("n_spots",),
+                "int64",
+                "clone per spot after `merge_by_minspots`",
+            ),
+        ),
+        ("level", "counts"),
+        "the BAF stage after `merge_by_minspots`; its fit is `/baf`'s, its kept clones' columns",
+    ),  # fmt: skip
+    Group("rdrbaf", _STAGE, _STAGE_ATTRS, "the RDR+BAF stage at its final fit"),
+    Group(
+        "rdrbaf_merged",
+        (
+            _d(
+                "assignment",
+                ("n_spots",),
+                "int64",
+                "clone per spot after `merge_by_minspots`",
+            ),
+        ),
+        ("level", "counts"),
+        "the RDR+BAF stage after `merge_by_minspots`; its fit is `/rdrbaf`'s, its kept clones' columns",
+    ),  # fmt: skip
     Group(
         "clone_assignment",
         (_d("assignment", ("n_spots",), "int64", "clone per spot"),),
@@ -281,6 +350,14 @@ GROUPS: tuple[Group, ...] = (
                 "int64",
                 "each column's clone, as `/clone_assignment` numbers it",
             ),
+            _d("contig", ("n_obs",), "str", "each bin's `CHR`"),
+            _d(
+                "start",
+                ("n_obs",),
+                "int64",
+                "each bin's `START`, its first row's, SNP rows included",
+            ),
+            _d("end", ("n_obs",), "int64", "each bin's `END`, its last row's"),
             _d(
                 "A",
                 ("n_obs", "n_clones"),
@@ -294,8 +371,8 @@ GROUPS: tuple[Group, ...] = (
                 "copies of allele B per bin per clone",
             ),
         ),
-        ("level", "objective", "int_copy_num.*"),
-        "integer copy states, and every `[int_copy_num]` key the decode read",
+        ("level", "objective", "contig_numeric", "int_copy_num.*"),
+        "integer copy states (`cnv_seglevel.tsv`'s), and every `[int_copy_num]` key the decode read",
     ),  # fmt: skip
     Group(
         "integer_clones",
@@ -319,7 +396,7 @@ GROUPS: tuple[Group, ...] = (
                 "A",
                 ("n_obs", "n_integer_clones"),
                 "int16",
-                "copies of A per integer clone",
+                "copies of A per integer clone, its naming clone's",
             ),
             _d(
                 "B",
@@ -327,92 +404,19 @@ GROUPS: tuple[Group, ...] = (
                 "int16",
                 "copies of B per integer clone",
             ),
-            *_pooled("n_integer_clones"),
         ),
-        ("level", "merge_agreement"),
-        "integer clones, and their counts summed over their spots",
+        ("level", "merge_agreement", "counts"),
+        "integer clones; their counts are `counts` summed over `assignment`",
     ),  # fmt: skip
     Group(
-        "figures/genomic/*",
-        (
-            _d("lengths", ("n_contigs",), "numeric", "bins per contig"),
-            _d("labels", ("n_clones",), "str", "each row pair's clone label"),
-            _d("sizes", ("n_clones",), "int64", "spots per clone"),
-            *_pooled("n_clones"),
-            _d(
-                "tumor_prop",
-                ("n_clones",),
-                "float64",
-                "mean tumour proportion of the pooled spots",
-                optional=True,
-            ),
-            _d(
-                "profile",
-                ("n_obs",),
-                "float64",
-                "the baseline summed over spots: the shifted line's lambda",
-            ),
-            _d("pred_cnv", ANY, "numeric", "the drawn fit's states", optional=True),
-            _d(
-                "new_log_mu", ANY, "float64", "the drawn fit's log rates", optional=True
-            ),
-            _d(
-                "new_p_binom",
-                ANY,
-                "float64",
-                "the drawn fit's B allele probabilities",
-                optional=True,
-            ),
-            _d(
-                "sample_list",
-                ("n_samples",),
-                "str",
-                "the page's sample names",
-                optional=True,
-            ),
-            *_TABLE,
-        ),
-        _PAGE_ATTRS,
-        "a genomic page (`plot_clones_genomic`), as `run_cnaster_port --sal` drew it",
+        "figures/*",
+        (),
+        ("kind", "file", "sources", "options", "write"),
+        "a page as `run_cnaster_port --sal` drew it, no data of its own: `sources` names the groups it "
+        "reads (JSON), `options` its plotter's keywords and `write` `write_fig`'s",
     ),  # fmt: skip
-    Group(
-        "figures/spatial/*",
-        (
-            _d("coords", ("n_spots", "xy"), "numeric", "spot positions"),
-            _d(
-                "assignment",
-                ("n_spots",),
-                "str",
-                "each spot's label, `''` where missing",
-            ),
-            _d("missing", ("n_spots",), "bool", "spots with no label"),
-            _d(
-                "tumor_prop",
-                ("n_spots",),
-                "float64",
-                "tumour proportion per spot",
-                optional=True,
-            ),
-            _d("sample_list", ("n_samples",), "str", "sample names", optional=True),
-            _d(
-                "sample_ids",
-                ("n_spots",),
-                "numeric",
-                "each spot's sample code",
-                optional=True,
-            ),
-        ),
-        _PAGE_ATTRS,
-        "a spatial page (`plot_clones_spatial`), as `run_cnaster_port --sal` drew it",
-    ),  # fmt: skip
-    Group(
-        "figures/profile/*",
-        _TABLE,
-        _PAGE_ATTRS,
-        "a copy-number profile (`plot_copy_number_profile`)",
-    ),
 )
-"""`cnamaste.h5`, in run order; each `figures/` group is written as its page is."""
+"""`cnamaste.h5`, in run order; a level's counts are written when first read."""
 
 
 def _only(group: Group, *names: str, attrs: tuple[str, ...], meaning: str) -> Group:
@@ -680,9 +684,9 @@ def _put(node: Any, spec: Dataset, value: Any) -> None:
         sub.attrs["dims"] = list(spec.dims)
         return
     data = value.astype(h5py.string_dtype()) if spec.dtype == "str" else value
-    # NB deflated at level 1, as `port.sim.draw` writes counts: lossless, and chunking needs a nonzero size
+    # NB byte-shuffled and deflated at level 4: integer counts shrink 5-10x; chunking needs a nonzero size
     deflate = (
-        {"chunks": True, "compression": "gzip", "compression_opts": 1}
+        {"chunks": True, "shuffle": True, "compression": "gzip", "compression_opts": 4}
         if value.size
         else {}
     )

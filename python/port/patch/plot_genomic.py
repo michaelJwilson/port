@@ -414,7 +414,9 @@ def plot_clones_genomic(
         from port.extensions import figure_record
 
         figure_record.attach(
-            page, "genomic", figure_record.genomic(lengths, pooled, df_cnv, res_combine, sample_list),
+            page, "genomic", figure_record.genomic(lengths, pooled, df_cnv, res_combine, clone_index, single_tumor_prop,
+                                  known_nb_baseline, sample_list,
+                                  (single_X, single_base_nb_mean, single_total_bb_RD)),
             {"remove_xticks": remove_xticks, "rdr_ylim": rdr_ylim, "chrtext_shift": chrtext_shift,
              "base_height": base_height, "pointsize": pointsize, "linewidth": linewidth,
              "palette_name": palette_name, "plot_baf_errors": plot_baf_errors,
