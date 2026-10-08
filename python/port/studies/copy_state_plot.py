@@ -37,16 +37,16 @@ from port.studies.figures import (
 )
 
 TABLE = (
-    ("CalicoST, port", (
-        ("calicost-gmm", f"CalicoST's {tt('initialization_by_gmm')}, clones stacked"),
+    ("Placed", (
+        ("prior", "Drawn from a prior on the observed range"),
         ("lattice", "Integer (A, B) lattice, chosen by the rows"),
     )),
-    ("sal, one draw", (
-        ("prior", "Drawn from a prior on the observed range"),
+    ("Clustered", (
         ("kmeans++", f"{tt('k-means++')} on the raw count pair"),
         ("emission++", "Seeds by the NB x BB Bregman divergence"),
     )),
-    ("sal, samplers on the HMM (#634)", (
+    ("Fitted", (
+        ("calicost-gmm", f"CalicoST's {tt('initialization_by_gmm')}, clones stacked"),
         ("hmc-hmm", "Best draw of sal's HMC chain after dual-averaging warm-up"),
     )),
 )  # fmt: skip
@@ -243,7 +243,7 @@ def draw(
     start unnumbered with its missed % after Baum-Welch, `port`'s marked and
     named in a footnote.
     """
-    from matplotlib.ticker import FixedLocator, FuncFormatter
+    from matplotlib.ticker import FixedLocator, FuncFormatter, NullFormatter
 
     d, truth = frame(record)
     # NB every realization with rows counts, reused ones included; one still running is also named in progress
@@ -338,7 +338,9 @@ def draw(
         )
     )
     ax.set_xlabel("Runtime [s]")
-    ax.set_ylabel(r"$\Delta \ln \mathcal{L}$")
+    # NB a span under a decade has matplotlib label the minor ticks, which collide: decades only
+    ax.xaxis.set_minor_formatter(NullFormatter())
+    ax.set_ylabel(r"$\Delta \mathcal{C}$")
     if key:
         after = d.groupby("start").missed_pct.median()
         before = d.groupby("start").start_missed_pct.median()
