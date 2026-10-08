@@ -123,9 +123,19 @@ _FIT = (
     _d("logmu_shift", ("n_clones",), "float64", "final fit: per-clone log rate shift (#362)", optional=True),
     _d("pred_cnv", ("n_obs", "n_clones"), "int64", "final fit: state per bin per clone"),
     _d("llf", ("n_iterations",), "float64", "log-likelihood per iteration"),
+    _d("field", ("n_spots", "n_clones"), "float64", "the stage's clone-assignment field: log-likelihood per spot per clone"),
 )  # fmt: skip
 
 _FIT_ATTRS = ("level", "n_states", "t", "spatial_weight", "termination")
+
+_PATHS = (
+    "sample_sheet",
+    "cell_snp_Aallele",
+    "cell_snp_Ballele",
+    "unique_snp_ids",
+    "snp_barcodes",
+)
+"""The SNP inputs' paths, as CalicoST names the files; absolute, as the run resolved them."""
 
 GROUPS: tuple[Group, ...] = (
     Group(
@@ -146,9 +156,42 @@ GROUPS: tuple[Group, ...] = (
                 "tumour proportion per spot",
                 optional=True,
             ),
+            _d(
+                "samples",
+                ("n_samples",),
+                "str",
+                "each slice's sample id, in `sample_sheet`'s order",
+            ),
+            _d(
+                "anndata",
+                ("n_samples",),
+                "str",
+                "each slice's count matrix (`filtered_feature_bc_matrix.h5ad`), absolute path",
+            ),
         ),
-        ("config", "flags"),
-        "the sample and the run's configuration (YAML) and flags",
+        ("config", "flags", *_PATHS, "references.*", "preprocessing.*"),
+        "the sample, its input files, and the run's configuration (YAML) and flags; `references.*` and "
+        "`preprocessing.*` are the configured reference and annotation files",
+    ),  # fmt: skip
+    Group(
+        "adjacency",
+        (
+            _d(
+                "adjacency_mat",
+                ("n_spots", "n_spots"),
+                "csr",
+                "spot adjacency, every stage's graph",
+            ),
+            _d(
+                "smooth_mat",
+                ("n_spots", "n_spots"),
+                "csr",
+                "spot pooling weights",
+                optional=True,
+            ),
+        ),
+        (),
+        "the spots' graph",
     ),  # fmt: skip
     Group(
         "segments/genes",
@@ -186,18 +229,9 @@ GROUPS: tuple[Group, ...] = (
     Group("rdrbaf", _FIT, _FIT_ATTRS, "the RDR+BAF stage at its final fit"),
     Group(
         "clone_assignment",
-        (
-            _d(
-                "field",
-                ("n_spots", "n_clones"),
-                "float64",
-                "log-likelihood per spot per clone",
-            ),
-            _d("adjacency_mat", ("n_spots", "n_spots"), "csr", "spot adjacency"),
-            _d("assignment", ("n_spots",), "int64", "clone per spot"),
-        ),
-        ("level", "spatial_weight", "solver", "termination"),
-        "the final clone assignment",
+        (_d("assignment", ("n_spots",), "int64", "clone per spot"),),
+        ("level", "stage", "solver", "termination"),
+        "the run's final clones; `stage` names the group whose `field` they were solved on",
     ),  # fmt: skip
     Group(
         "integer_copy",
@@ -259,8 +293,10 @@ TRUTH_GROUPS: tuple[Group, ...] = (
         "barcodes",
         "sample_ids",
         "coords",
-        attrs=("manifest",),
-        meaning="the sample, and the manifest that drew it",
+        "samples",
+        "anndata",
+        attrs=("manifest", *_PATHS),
+        meaning="the sample as drawn, its files, and the manifest that drew it",
     ),
     _only(
         _group("segments/genes"),

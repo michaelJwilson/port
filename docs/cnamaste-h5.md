@@ -14,17 +14,24 @@
 - **Types.** `int64`, `int16` (copy numbers), `float64`, `bool` and UTF-8 `str`. A sparse matrix (`csr`) is a subgroup holding `data`, `indices` and `indptr`, with `shape`. A value is written only where it casts to its type exactly.
 - **Storage.** Every dataset is chunked and deflated at level 1. Values are stored as computed, never rounded.
 - **Segments.** `/segments/levels/<name>` is one level of the run's hierarchy (`segments.Lineage`, #438): a label per gene and the segment ids. Levels are appended as the run records them and keep their `order` attribute. A stage's `level` names the level its `n_obs` axis is on. What a level derives (contig, start, length, `lengths`) is not stored.
+- **Inputs.** `/inputs` records each slice's `anndata` path and the SNP files' (`cell_snp_Aallele`, `cell_snp_Ballele`, `unique_snp_ids`, `snp_barcodes`, `sample_sheet`) as the run resolved them, absolute, with the configured reference files as `references.*` and `preprocessing.*`.
+- **Graph and fields.** `/adjacency` is the spots' one graph. Each stage keeps its own clone-assignment `field`; `/clone_assignment` is the run's final clones, and its `stage` names the field they were solved on.
 - **Final fit only.** `/baf` and `/rdrbaf` keep the final fit and the `llf` trace, not each iteration.
 - **Thresholds.** `integer_copy` and `integer_clones` carry every `[int_copy_num]` key they read, as `int_copy_num.<key>`.
 
 ## `cnamaste.h5`
 | Group | Dataset | Axes | Type | Holds |
 | --- | --- | --- | --- | --- |
-| `/inputs` | | | | the sample and the run's configuration (YAML) and flags; attributes `config`, `flags` |
+| `/inputs` | | | | the sample, its input files, and the run's configuration (YAML) and flags; `references.*` and `preprocessing.*` are the configured reference and annotation files; attributes `config`, `flags`, `sample_sheet`, `cell_snp_Aallele`, `cell_snp_Ballele`, `unique_snp_ids`, `snp_barcodes`, `references.*`, `preprocessing.*` |
 | | `barcodes` | (n_spots) | str | spot barcodes: every spot axis's order |
 | | `sample_ids` | (n_spots) | str | sample per spot |
 | | `coords` | (n_spots, xy) | float64 | spot positions |
 | | `single_tumor_prop` | (n_spots) | float64 | tumour proportion per spot (optional) |
+| | `samples` | (n_samples) | str | each slice's sample id, in `sample_sheet`'s order |
+| | `anndata` | (n_samples) | str | each slice's count matrix (`filtered_feature_bc_matrix.h5ad`), absolute path |
+| `/adjacency` | | | | the spots' graph; attributes none |
+| | `adjacency_mat` | (n_spots, n_spots) | csr | spot adjacency, every stage's graph |
+| | `smooth_mat` | (n_spots, n_spots) | csr | spot pooling weights (optional) |
 | `/segments/genes` | | | | the genes every level labels; attributes `excluded_genes`, `floor_min_length`, `floor_min_weight` |
 | | `contig` | (n_genes) | str | the root: `df_gene_snp`'s gene rows, sorted |
 | | `start` | (n_genes) | int64 | gene start |
@@ -46,6 +53,7 @@
 | | `logmu_shift` | (n_clones) | float64 | final fit: per-clone log rate shift (#362) (optional) |
 | | `pred_cnv` | (n_obs, n_clones) | int64 | final fit: state per bin per clone |
 | | `llf` | (n_iterations) | float64 | log-likelihood per iteration |
+| | `field` | (n_spots, n_clones) | float64 | the stage's clone-assignment field: log-likelihood per spot per clone |
 | `/rdrbaf` | | | | the RDR+BAF stage at its final fit; attributes `level`, `n_states`, `t`, `spatial_weight`, `termination` |
 | | `clone_index` | (n_spots) | int64 | the stage's initial clone per spot, `-1` none |
 | | `X` | (n_obs, channel, n_clones) | float64 | counts pooled over each clone's spots: read depth, B allele |
@@ -58,9 +66,8 @@
 | | `logmu_shift` | (n_clones) | float64 | final fit: per-clone log rate shift (#362) (optional) |
 | | `pred_cnv` | (n_obs, n_clones) | int64 | final fit: state per bin per clone |
 | | `llf` | (n_iterations) | float64 | log-likelihood per iteration |
-| `/clone_assignment` | | | | the final clone assignment; attributes `level`, `spatial_weight`, `solver`, `termination` |
-| | `field` | (n_spots, n_clones) | float64 | log-likelihood per spot per clone |
-| | `adjacency_mat` | (n_spots, n_spots) | csr | spot adjacency |
+| | `field` | (n_spots, n_clones) | float64 | the stage's clone-assignment field: log-likelihood per spot per clone |
+| `/clone_assignment` | | | | the run's final clones; `stage` names the group whose `field` they were solved on; attributes `level`, `stage`, `solver`, `termination` |
 | | `assignment` | (n_spots) | int64 | clone per spot |
 | `/integer_copy` | | | | integer copy states, and every `[int_copy_num]` key the decode read; attributes `level`, `objective`, `int_copy_num.*` |
 | | `A` | (n_obs, n_clones) | int16 | copies of allele A per bin per clone |
@@ -77,10 +84,12 @@
 ## `truth.h5`
 | Group | Dataset | Axes | Type | Holds |
 | --- | --- | --- | --- | --- |
-| `/inputs` | | | | the sample, and the manifest that drew it; attributes `manifest` |
+| `/inputs` | | | | the sample as drawn, its files, and the manifest that drew it; attributes `manifest`, `sample_sheet`, `cell_snp_Aallele`, `cell_snp_Ballele`, `unique_snp_ids`, `snp_barcodes` |
 | | `barcodes` | (n_spots) | str | spot barcodes: every spot axis's order |
 | | `sample_ids` | (n_spots) | str | sample per spot |
 | | `coords` | (n_spots, xy) | float64 | spot positions |
+| | `samples` | (n_samples) | str | each slice's sample id, in `sample_sheet`'s order |
+| | `anndata` | (n_samples) | str | each slice's count matrix (`filtered_feature_bc_matrix.h5ad`), absolute path |
 | `/segments/genes` | | | | the genes the planted copies are at; attributes none |
 | | `contig` | (n_genes) | str | the root: `df_gene_snp`'s gene rows, sorted |
 | | `start` | (n_genes) | int64 | gene start |
