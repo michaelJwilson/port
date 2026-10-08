@@ -1,23 +1,16 @@
-"""`run_cnaster_port --no-parsimony-decode`: the lattice decode's prior, on by default.
+"""The lattice decode's prior, `PARSIMONY` at install and flat at `0` (T- #471).
 
 `lattice_decode` scores each `(A, B)` with the log-prior
-`-parsimony |A + B - 2|`. The entry point binds `parsimony` on the copy rows
-at install: `PARSIMONY` without the flag, and `0`, a flat prior, with it. What
-is pinned:
-
-- at `0` the prior is zero for every state (`analytic`);
-- without the flag the decode is bitwise `lattice_decode`'s default call, the
-  decode before this option, and with it `0` reaches `lattice_decode`
-  (`patch`);
-- the flag where no lattice decode reads it, and a negative weight, are
-  refused (`infra`).
+`-parsimony |A + B - 2|`; the copy rows default to `PARSIMONY`. Pinned: at `0`
+the prior is zero for every state (`analytic`); the rows' default decode is
+bitwise `lattice_decode`'s default call, and `0` reaches it (`patch`); a
+negative weight is refused (`infra`).
 """
 
 from __future__ import annotations
 
 from collections.abc import Iterator
 from contextlib import contextmanager
-from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -100,7 +93,7 @@ def test_a_parsimony_of_zero_is_a_flat_prior() -> None:
 
 @pytest.mark.patch
 def test_with_the_flag_zero_reaches_the_lattice_decode() -> None:
-    """`--no-parsimony-decode` binds `parsimony=0`, and the decode receives it."""
+    """`parsimony=0` reaches the lattice decode."""
     calls = _decode(_clones(), parsimony=0.0)
 
     assert len(calls) == 1
@@ -124,34 +117,6 @@ def test_without_the_flag_the_decode_is_bitwise_the_default_lattice_decode() -> 
     )
     assert np.array_equal(after.purity, before.purity)
     assert after.log_likelihood == before.log_likelihood
-
-
-@pytest.mark.infra
-def test_the_entry_point_binds_zero_only_when_asked(tmp_path: Path) -> None:
-    """`Settings.parsimony`: `PARSIMONY` by default, `0` with `--no-parsimony-decode`."""
-    from port.scripts.run_cnaster import _parser, _settings
-
-    config = str(tmp_path / "config.yaml")
-
-    assert _settings(_parser().parse_args([config])).parsimony == PARSIMONY
-    assert (
-        _settings(_parser().parse_args([config, "--no-parsimony-decode"])).parsimony
-        == 0.0
-    )
-
-
-@pytest.mark.infra
-@pytest.mark.parametrize(
-    "extra", [["--copy-decode", "shared"], ["--no-copy-cap"], ["--no-patch"]], ids=str
-)
-def test_the_flag_where_no_lattice_decode_reads_it_is_refused(
-    tmp_path: Path, extra: list[str], capsys: pytest.CaptureFixture[str]
-) -> None:
-    from port.scripts.run_cnaster import main
-
-    with pytest.raises(SystemExit):
-        main([str(tmp_path / "config.yaml"), "--no-parsimony-decode", *extra])
-    assert "needs the lattice copy decode" in capsys.readouterr().err
 
 
 @pytest.mark.infra
