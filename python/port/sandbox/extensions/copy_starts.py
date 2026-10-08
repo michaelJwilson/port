@@ -49,10 +49,12 @@ from typing import Any, NamedTuple
 import numpy as np
 
 from port.extensions.copy_starts import (
+    HIERARCHICAL,
     STAGES,
     CopyCall,
     CopyStart,
     components_as_states,
+    hierarchical_states,
     instance,
     lattice_start,
     log_depth_ratio,
@@ -516,6 +518,16 @@ def _port_starts() -> dict[
             Row("rdr-quantiles", "port (#540)", both, covariate=True, stochastic=False),
             lambda call, _rng: rdr_quantile_states(call),
         ),
+        **{
+            method: (
+                Row(method, "port (#824)", both, covariate=True, stochastic=True),
+                functools.partial(
+                    lambda call, rng, method: hierarchical_states(call, method, rng),
+                    method=method,
+                ),
+            )
+            for method in HIERARCHICAL
+        },
         "cna-mixture++": (
             Row(
                 "cna-mixture++", "cnaster", ("rdrbaf",), covariate=True, stochastic=True

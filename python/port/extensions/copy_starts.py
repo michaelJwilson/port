@@ -22,6 +22,13 @@ is given a constant read-depth channel -- the same total and exposure in
 every row -- so every state fits the same `mu` and the channel adds one
 constant to every likelihood (`instance(call)`).
 
+- **The linkage starts** (`hierarchical_states`, #824): Ward, average or
+  complete linkage on each row's robust-scaled `(log RDR, BAF)`, cut at
+  `n_states`, each cluster's rows pooled into a state. A cut separates
+  groups by distance rather than mass, so a small group at its own depth
+  can keep a state where k-means++ and EM spend it on the neutral rows
+  (#823).
+
 The other starts #540 compared -- `cnaster`'s initializers, port's
 `distinct` as a start, `rdr-quantiles` -- and the study's masks, smoothing,
 outliers and records are in `port.sandbox.extensions.copy_starts`
@@ -30,6 +37,7 @@ outliers and records are in `port.sandbox.extensions.copy_starts`
 
 from __future__ import annotations
 
+import functools
 import time
 from collections.abc import Callable
 from typing import Any, NamedTuple
@@ -46,6 +54,7 @@ __all__ = [
     "CopyStart",
     "Weights",
     "classified",
+    "hierarchical_states",
     "instance",
     "lattice_start",
     "polish_states",
@@ -432,6 +441,74 @@ def lattice_start(
     return log_mu[picked], p[picked]
 
 
+HIERARCHICAL = ("ward", "average", "complete")
+"""The linkages `hierarchical_states` runs, `scipy.cluster.hierarchy.linkage`'s `method` (#824)."""
+
+HIERARCHICAL_ROWS = 4000
+"""At most this many rows enter the linkage, drawn by the start's generator: its memory is quadratic in rows."""
+
+
+def _robust(values: np.ndarray) -> np.ndarray:
+    """`values` centred on the median and scaled by the MAD (to sigma), or the standard deviation where the MAD is 0."""
+    centred = values - np.median(values)
+    scale = 1.4826 * float(np.median(np.abs(centred)))
+    scale = scale if scale > 0 else float(np.std(values)) or 1.0
+    out: np.ndarray = centred / scale
+    return out
+
+
+def hierarchical_states(
+    call: CopyCall, method: str, rng: np.random.Generator
+) -> tuple[np.ndarray, np.ndarray]:
+    """`n_states` states by a `method` linkage on the rows, each cluster's rows pooled (#824).
+
+    Features: each row's `log(total / exposure)` and `b / trials`, each
+    robust-scaled (`_robust`); the B share alone at the BAF-only stage, whose
+    depth is a constant. Rows with no exposure or no allele reads are left
+    out; at most `HIERARCHICAL_ROWS` enter, drawn by `rng`. The tree is cut
+    at `n_states` clusters (`fcluster`, `maxclust`), and each cluster's
+    state is its rows pooled: depth by exposure, B share by allele reads.
+    A cut with fewer clusters is padded with its largest cluster's state,
+    the B share moved by `SEED_JITTER` per copy, so `n_states` states remain.
+    """
+    from scipy.cluster.hierarchy import fcluster, linkage
+
+    if method not in HIERARCHICAL:
+        msg = f"no linkage {method!r}: one of {HIERARCHICAL}"
+        raise ValueError(msg)
+    depth = call.stage == "rdrbaf"
+    seen = (call.trials > 0) & (
+        (call.exposure > 0) & (call.total > 0) if depth else True
+    )
+    rows = np.flatnonzero(seen)
+    if rows.size > HIERARCHICAL_ROWS:
+        rows = np.sort(rng.choice(rows, HIERARCHICAL_ROWS, replace=False))
+    share = call.b[rows] / call.trials[rows]
+    features = (
+        np.column_stack(
+            [_robust(np.log(call.total[rows] / call.exposure[rows])), _robust(share)]
+        )
+        if depth
+        else _robust(share)[:, None]
+    )
+    labels = fcluster(
+        linkage(features, method=method), t=call.n_states, criterion="maxclust"
+    )
+    clusters = sorted(np.unique(labels), key=lambda c: -int((labels == c).sum()))
+    log_mu, p = [], []
+    for cluster in clusters:
+        members = rows[labels == cluster]
+        rate = (
+            call.total[members].sum() / call.exposure[members].sum() if depth else 1.0
+        )
+        log_mu.append(float(np.log(rate)) if depth else 0.0)
+        p.append(float(call.b[members].sum() / call.trials[members].sum()))
+    for k in range(call.n_states - len(clusters)):
+        log_mu.append(log_mu[0])
+        p.append(float(np.clip(p[0] + SEED_JITTER * (k + 1), 1e-4, 1 - 1e-4)))
+    return np.array(log_mu), np.array(p)
+
+
 def polish_states(
     name: str,
     call: CopyCall,
@@ -470,9 +547,16 @@ Seed = Callable[[CopyCall, np.random.Generator], tuple[Any, Any]]
 
 LATTICE: dict[str, Seed] = {
     "lattice": lambda call, _rng: lattice_start(call),
+    **{
+        method: functools.partial(
+            lambda call, rng, method: hierarchical_states(call, method, rng),
+            method=method,
+        )
+        for method in HIERARCHICAL
+    },
 }
-"""port's start that runs live: the lattice, by classification. Its EM twin,
-`lattice-em`, is the sandbox's (T- #660)."""
+"""port's starts that run live: the lattice, by classification, and the three linkages (#824). The
+lattice's EM twin, `lattice-em`, is the sandbox's (T- #660)."""
 
 
 def _seeded(

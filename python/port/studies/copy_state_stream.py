@@ -56,9 +56,9 @@ from port.studies import records
 from port.studies import stream as harness
 
 STARTS = (
-    "calicost-gmm", "lattice", "prior", "kmeans++", "emission++", "hmc-hmm",
+    "calicost-gmm", "lattice", "ward", "average", "complete", "prior", "kmeans++", "emission++", "hmc-hmm",
 )  # fmt: skip
-"""The starts the paper's initialization figure draws (T- #660). Out of the study, still in the
+"""The starts the paper's initialization figure draws (T- #660), with the three linkage starts (#824). Out of the study, still in the
 registry (`--all` runs them): `cnaster-gmm`, `distinct`, `lattice-em`, `rdr-quantiles`, `data`,
 `quantile`, the emission++ variants (`EMISSION_VARIANTS`), `anneal-hmm` (#716), `tempering-hmm`
 (deprecated from the studies for now, T- #807), `sal`'s surrogate `anneal`,
