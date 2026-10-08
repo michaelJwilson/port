@@ -1,6 +1,6 @@
 """#556: Potts solvers from random labels on a stream of the run's clone-assignment problems, the plot redrawn per problem.
 
-`run_study --potts-stream MANIFEST OUT_DIR [--problems 25] [--starts 50] [--held-out 3] [--workers 4] [--states run]`
+`run_study --potts-stream MANIFEST OUT_DIR [--problems 25] [--starts 50] [--held-out 5] [--workers 4] [--states run]`
 `run_calibrate --potts MANIFEST OUT_DIR --samplers SAMPLER ...` tunes the
 named samplers on the held-out realizations and merges them into `SETTINGS`
 (`tune`, `retune`); the stream itself never tunes (#749 WP1).
@@ -127,8 +127,9 @@ def schedule(setting: dict[str, Any]) -> Any:
                           float(setting["t_start"]), T_END, warm=float(setting.get("warm", 0.0)))  # fmt: skip
 
 
-PILOT_SEEDS = 3
-"""`tune_schedule` runs per held-out realization: each anneals every candidate from its own random start."""
+PILOT_SEEDS = 2
+"""`tune_schedule` runs per held-out realization (`harness.HELD_OUT` of them): each anneals every candidate
+from its own random start."""
 
 REPLICAS = 6
 """sal's `N_REPLICAS`: both tempering ladders, geometric between `T_END` and the start temperature."""
@@ -540,7 +541,7 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("out_dir", type=Path)
     parser.add_argument("--problems", type=int, default=25)
     parser.add_argument("--starts", type=int, default=50)
-    parser.add_argument("--held-out", type=int, default=3)
+    parser.add_argument("--held-out", type=int, default=harness.HELD_OUT)
     parser.add_argument(
         "--settings",
         type=Path,

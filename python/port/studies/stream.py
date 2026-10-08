@@ -34,6 +34,11 @@ import pandas as pd
 __all__ = ["cheapest", "finished", "halve", "merge_settings", "pool", "redraw"]
 
 
+HELD_OUT = 5
+"""Realizations a calibration reads and a stream never evaluates: 5, each read at 2 seeds, since the
+spread between problems dominates the spread between seeds (T- #777; 3 at 5 seeds until then)."""
+
+
 def pool(
     workers: int,
     initializer: Callable[..., None],
