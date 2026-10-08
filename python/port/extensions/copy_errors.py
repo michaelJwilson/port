@@ -56,6 +56,12 @@ __all__ = [
     "write_copy_sets",
 ]
 
+JAX_TAU_LIMIT = 1e5
+"""The concentration from which `jax_hmm`'s beta-binomial, nine `gammaln`, loses
+precision past the curvature `--copy-errors` reads (T- #599): 1.9e-10 nats at
+1e5. `jax_hmm` stays an independent route from `port.patch.emission` (T- #776),
+so the limit is its own."""
+
 
 BASE_FLOOR = 1e-12
 """The least expected depth a bin is given, so a zero baseline differentiates."""
@@ -65,6 +71,10 @@ VARIANCE_FLOOR = 1e-12
 
 BOUNDARY = 1e-3
 """An allele fraction this close to 0 or 1 is held rather than estimated."""
+
+STABLE_TAU = 1e5
+"""The concentration from which `jax_hmm`'s beta-binomial, which subtracts `lgamma(tau)`-sized terms,
+loses more than this covariance's curvature (T- #599); moved here from `dense_emission` (T- #777)."""
 
 EPS_P = 1e-6
 """How close to 0 or 1 an allele fraction is taken, for a finite logit."""
@@ -387,7 +397,6 @@ def pinned_errors(captured: Captured, purity: np.ndarray | None = None) -> Pinne
     function, on the same path, so the coordinates held fixed are the ones
     the pin fixed.
     """
-    from port.patch.hmm_nophasing.dense_emission import STABLE_TAU
     from port.patch.hmm_nophasing.shifted_emission import neutral_state
 
     result = captured.res
@@ -397,11 +406,11 @@ def pinned_errors(captured: Captured, purity: np.ndarray | None = None) -> Pinne
     tau = float(flat_values(result["new_taus"])[0])
 
     # NB `jax_hmm`'s beta-binomial subtracts `lgamma(tau)`-sized terms; from
-    #    `STABLE_TAU` its error is past the curvature this covariance reads
+    #    `JAX_TAU_LIMIT` its error is past the curvature this covariance reads
     #    (T- #599). Refused until it is fixed, rather than a wrong error bar.
-    if tau >= STABLE_TAU:
+    if tau >= JAX_TAU_LIMIT:
         msg = (
-            f"--copy-errors: the fit's tau {tau:.3g} >= {STABLE_TAU:g}, where "
+            f"--copy-errors: the fit's tau {tau:.3g} >= {JAX_TAU_LIMIT:g}, where "
             "jax_hmm's beta-binomial loses precision (T- #599); refused"
         )
         raise ValueError(msg)

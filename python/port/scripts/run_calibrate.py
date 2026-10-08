@@ -7,8 +7,8 @@ here, by hand, and writes `port.qa.provenance.CONFIGS/<name>.json` with the
 command that produced it; a study or a sampler reads the file
 (`port.qa.provenance.calibration`) and never tunes inline.
 
-    run_calibrate --potts MANIFEST OUT_DIR [--samplers SAMPLER ...] [--held-out 3] [--workers 4] [--states run]
-    run_calibrate --copy MANIFEST [--starts NAME ...] [--held-out 3] [--workers 2]
+    run_calibrate --potts MANIFEST OUT_DIR [--samplers SAMPLER ...] [--held-out 5] [--workers 4] [--states run]
+    run_calibrate --copy MANIFEST [--starts NAME ...] [--held-out 5] [--workers 2]
 
 - `--potts` writes `potts_sampler_settings.json`: the Potts samplers on the
   run's clone-assignment field (`port.studies.potts_stream.retune`, #556).
@@ -30,6 +30,8 @@ from pathlib import Path
 
 def main(argv: Sequence[str] | None = None) -> int:
     """Calibrate what the first argument names; 0 once its file is written."""
+    from port.studies.stream import HELD_OUT
+
     parser = argparse.ArgumentParser(description=(__doc__ or "").splitlines()[0])
     kind = parser.add_mutually_exclusive_group(required=True)
     kind.add_argument("--potts", action="store_true", help="the Potts samplers")
@@ -42,7 +44,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         default=None,
         help="--potts: where the held-out realizations are drawn and run",
     )
-    parser.add_argument("--held-out", type=int, default=3)
+    parser.add_argument("--held-out", type=int, default=HELD_OUT)
     parser.add_argument("--workers", type=int, default=None)
     parser.add_argument(
         "--samplers", nargs="+", default=None, help="--potts: these alone"

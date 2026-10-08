@@ -11,9 +11,11 @@ family's own completion order (`Order.FAMILY`). The same edge behaviour as
   `alpha`, `beta` floored at `EPS`;
 - a non-positive rate `mu` scores 0 everywhere, as `exposure * mu <= 0` does.
 
-A state with `tau >= STABLE_TAU` is scored by `bb_logpmf._bb_logpmf_1d`
-instead (#561): sal fills its tables with `lgamma` and loses
-`eps tau log tau`, 1.9e-10 nats at 1e5 and 3.4e-3 at 1e12 against `mpmath`.
+sal's tables are `port.patch.emission`'s, the one evaluation every site
+scores (T- #776): scaled rising factorials completed in sal's order (sal
+#1334, #1336). The beta-binomial is that module's bit for bit at every
+concentration, so no state is rescored (the `STABLE_TAU` hand-off of #561
+is retired); the negative binomial is within 8.9e-14 over `max(|f|, 1)`.
 
 To a tolerance, not bitwise, so it is `--sal`'s rather than a `SWAPS` row;
 #244 is why a tolerance is measured end to end before it is anything else.
@@ -21,47 +23,17 @@ Selected by the `hmm_nophasing` row's `emission_kernels="sal"` option, not a
 name rebind: `cnaster`'s compiled kernels call `_nb_logpmf_1d` as a global.
 :func:`coded_emission` is upstream's coded method with every state scored in
 one call per spot, which is where the speed is.
-
-**The distinct counts are kept across calls where the caller holds a cache**
-(#702). sal scores each family on the distinct counts of the observations
-(sal #924) and finds them with a `torch.unique` per call; an EM scores the
-same observations every iteration, so `distinct`, given, is installed as
-sal's `reusing_distinct` cache and each array's distinct values are found
-once. A hit is verified by `torch.equal`, so the scores are bitwise those
-without it.
 """
 
 from __future__ import annotations
 
-import contextlib
-from collections.abc import Iterator
 from typing import Any
 
 import numpy as np
 
-from port.patch.hmm_nophasing.gradient import DISPERSION_FLOOR
+from port.patch.emission import bb_tables, nb_table
 
-__all__ = ["STABLE_TAU", "bb_states", "coded_emission", "nb_states"]
-
-Distinct = dict[Any, Any]
-"""sal's `DistinctCache`: held by the caller, installed per call (#702)."""
-
-
-@contextlib.contextmanager
-def _reusing(distinct: Distinct | None) -> Iterator[None]:
-    """sal's `reusing_distinct(distinct)`, or nothing when no cache is held."""
-    if distinct is None:
-        yield
-        return
-
-    from sal.emissions.rising import reusing_distinct
-
-    with reusing_distinct(distinct):
-        yield
-
-
-STABLE_TAU = 1e5
-"""The concentration from which a state's beta-binomial is port's (#561), not sal's."""
+__all__ = ["bb_states", "coded_emission", "nb_states"]
 
 
 def nb_states(
@@ -69,27 +41,32 @@ def nb_states(
     exposure: np.ndarray,
     mu: np.ndarray,
     dispersions: np.ndarray,
-    *,
-    distinct: Distinct | None = None,
 ) -> np.ndarray:
-    """`(K, n)`: every state's `_nb_logpmf_1d` in one call; a rate <= 0 scores 0."""
-    from sal.emissions import NegativeBinomialEmission
-    from sal.emissions.dense import Order, log_emission
+    """`(K, n)`: every state's `_nb_logpmf_1d` in one call; a rate <= 0 scores 0.
+
+    `sal.emissions.dense.log_emission`'s kernel on `sal`'s table, built here
+    once per distinct dispersion (`port.patch.emission.nb_table`): bitwise
+    `log_emission`, which builds a row per state (T- #776).
+    """
+    from sal import oxisal
+    from sal.emissions.dense import _counts
 
     mu = np.asarray(mu, dtype=np.float64)
     dead = mu <= 0.0
-    family = NegativeBinomialEmission(
-        dispersion=1.0
-        / np.maximum(np.asarray(dispersions, dtype=np.float64), DISPERSION_FLOOR),
-        mean=np.where(dead, 1.0, mu),
+    counts = _counts(np.asarray(obs), "count")
+    table, sizes = nb_table(dispersions, int(counts.max()) + 1 if counts.size else 1)
+    out = np.empty(mu.size * counts.size)
+    oxisal.dense_log_emission(
+        mu.size,
+        True,
+        out,
+        totals=counts,
+        total_table=np.ascontiguousarray(table.T).reshape(-1),
+        exposure=np.ascontiguousarray(exposure, dtype=np.float64).reshape(-1),
+        dispersion=np.ascontiguousarray(sizes),
+        mean=np.ascontiguousarray(np.where(dead, 1.0, mu)),
     )
-    with _reusing(distinct):
-        scores = log_emission(
-            family,
-            np.asarray(obs, dtype=np.float64),
-            np.asarray(exposure, dtype=np.float64)[:, None],
-            order=Order.FAMILY,
-        )
+    scores = out.reshape(mu.size, counts.size)
     scores[dead] = 0.0
     return scores
 
@@ -99,40 +76,44 @@ def bb_states(
     trials: np.ndarray,
     p_binom: np.ndarray,
     taus: np.ndarray,
-    *,
-    distinct: Distinct | None = None,
 ) -> np.ndarray:
-    """`(K, n)`: every state's `_bb_logpmf_1d` in one call; `tau >= STABLE_TAU` by port's kernel."""
-    from sal.emissions import BetaBinomialEmission
-    from sal.emissions.dense import Order, log_emission
+    """`(K, n)`: every state's `_bb_logpmf_1d` in one call.
 
-    from port.patch.hmm_nophasing.bb_logpmf import _bb_logpmf_1d
+    `sal.emissions.dense.log_emission`'s kernel on `sal`'s tables
+    (`port.patch.emission.bb_tables`), each rising factorial taken once per
+    distinct shape: bitwise `log_emission` (T- #776).
+    """
+    from sal import oxisal
+    from sal.emissions.dense import _counts
 
-    p = np.asarray(p_binom, dtype=np.float64)
-    t = np.asarray(taus, dtype=np.float64)
-    successes = np.asarray(obs, dtype=np.float64)
-    total = np.asarray(trials, dtype=np.float64)
-    family = BetaBinomialEmission(
-        alpha=np.maximum(p * t, DISPERSION_FLOOR),
-        beta=np.maximum((1.0 - p) * t, DISPERSION_FLOOR),
-        trials=np.ones_like(p),
+    p = np.asarray(p_binom, dtype=np.float64).reshape(-1)
+    successes = _counts(np.asarray(obs), "success count")
+    per_observation = _counts(np.asarray(trials), "trial count")
+    success_extent = int(successes.max()) + 1 if successes.size else 1
+    trials_extent = int(per_observation.max()) + 1 if per_observation.size else 1
+    tables = bb_tables(p, taus, max(success_extent, trials_extent))
+    out = np.empty(p.size * successes.size)
+    # NB `sal`'s stub still names `log_rate` `log_beta`; its own `dense.py`
+    #    passes `log_rate`, as the compiled function takes (sal #1334).
+    oxisal.dense_log_emission(  # type: ignore[call-arg]
+        p.size,
+        True,
+        out,
+        successes=successes,
+        success_table=np.ascontiguousarray(
+            tables.success[:, :success_extent].T
+        ).reshape(-1),
+        trials=per_observation,
+        failure_table=np.ascontiguousarray(tables.failure[:, :trials_extent].T).reshape(
+            -1
+        ),
+        trial_table=np.ascontiguousarray(tables.trial[:, :trials_extent].T).reshape(-1),
+        log_factorial=tables.log_factorial[:trials_extent],
+        log_rate=np.ascontiguousarray(np.stack([tables.log_p, tables.log_q])).reshape(
+            -1
+        ),
     )
-    with _reusing(distinct):
-        scores = np.asarray(
-            log_emission(family, successes, total[:, None], order=Order.FAMILY)
-        )
-
-    for state in np.flatnonzero(t >= STABLE_TAU):
-        _bb_logpmf_1d(
-            successes,
-            total,
-            float(p[state]),
-            float(t[state]),
-            scores[state],
-            DISPERSION_FLOOR,
-        )
-
-    return scores
+    return out.reshape(p.size, successes.size)
 
 
 def coded_emission(
@@ -144,7 +125,6 @@ def coded_emission(
     taus: np.ndarray,
     *,
     clone_stack: bool = True,
-    distinct: Distinct | None = None,
 ) -> tuple[np.ndarray, np.ndarray]:
     """`hmm_nophasing.compute_emission_probability_nb_betabinom_coded`, unshifted.
 
@@ -170,8 +150,8 @@ def coded_emission(
         bb_endog = np.asarray(bbEncoder.get_unique_obs(spot), dtype=np.float64)
         bb_trials = np.asarray(bbEncoder.get_unique_total(spot), dtype=np.float64)
 
-        rdr_unique = nb_states(nb_endog, nb_exposure, mu, alpha, distinct=distinct)
-        baf_unique = bb_states(bb_endog, bb_trials, p, tau, distinct=distinct)
+        rdr_unique = nb_states(nb_endog, nb_exposure, mu, alpha)
+        baf_unique = bb_states(bb_endog, bb_trials, p, tau)
 
         rdr.append(nbEncoder.decode_array(rdr_unique, spot))
         baf.append(bbEncoder.decode_array(baf_unique, spot))

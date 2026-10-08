@@ -147,6 +147,12 @@ BY_LAW = {
 }
 LOGNORMAL_KEYS = ("mean", "median")
 """`[cna.length] law = "lognormal"` states exactly one of these (#619)."""
+VARY = ("counts", "truth")
+"""`[sample] vary`, optional: what a realization redraws (#800). `"counts"`, the default and every
+manifest's draw before it: one truth, each realization its counts and phase. `"truth"`: each
+realization after the first also draws its own tree, clone sizes and layout; the barcodes are
+shared, and realization 0 keeps the manifest's truth, so `r0_hash` reads the same in both."""
+
 LOH_RULES = ("reversible", "irreversible")
 """`[cna] loh`, optional: what an event may plant over its lineage (T- #698).
 Absent reads as `"reversible"`, the draw of every manifest before it."""
@@ -380,6 +386,8 @@ def _check(manifest: DrawManifest) -> None:
                 f"[cna] felsenstein: n_clones >= 2 and expected_cnas >= n_clones, "
                 f"not {leaves} and {manifest.cna['expected_cnas']}"
             )
+    if manifest.sample.get("vary", "counts") not in VARY:
+        problems.append(f"[sample] vary {manifest.sample['vary']!r}: one of {VARY}")
     if manifest.cna.get("loh", "reversible") not in LOH_RULES:
         problems.append(f"[cna] loh {manifest.cna['loh']!r}: one of {LOH_RULES}")
     if manifest.model["admixture"] not in ADMIXTURE_LAWS:
@@ -1065,7 +1073,9 @@ class Drawn:
     sample_ids: list[str]
     clones: tuple[str, ...]
     labels: list[np.ndarray]
+    """Realization 0's; under `[sample] vary = "truth"` each realization writes its own (#800)."""
     tree: CloneTree
+    """Realization 0's, as `labels`."""
     switched: list[np.ndarray]
     """Each realization's phase: True where `A` and `B` are exchanged."""
     switch_p: np.ndarray
@@ -1135,7 +1145,7 @@ def draw(
 
 
 class Truth(NamedTuple):
-    """What every realization of a manifest shares: the clones and where they are."""
+    """A realization's truth: the clones and where they are; every realization's under `vary = "counts"`."""
 
     clones: tuple[str, ...]
     tree: CloneTree
@@ -1179,12 +1189,14 @@ def realize(
 ) -> Iterator[Realized]:
     """Each realization of `manifest` in turn, written under `into/r<k>/` if given.
 
-    The clones, their layout and the barcodes are drawn once. Each of
+    The barcodes are drawn once, and so, under `[sample] vary = "counts"`
+    (the default), are the tree, the clones' sizes and their layout. Each of
     `[sample] realizations` then draws, from its own stream, the counts and
-    the phase; a
-    realization does not change when more are asked for. Nothing is held
-    between realizations, so a population of them can be streamed through
-    an analysis without writing one (`into=None`).
+    the phase, and under `vary = "truth"` its own tree and layout too, but for
+    realization 0, which keeps the manifest's (#800); a realization does not
+    change when more are asked for. Nothing is held between realizations, so
+    a population of them can be streamed through an analysis without writing
+    one (`into=None`).
     """
     tree_rng, layout_rng, id_rng = (
         np.random.default_rng(s) for s in np.random.SeedSequence(manifest.seed).spawn(3)
@@ -1193,8 +1205,8 @@ def realize(
         int(manifest.sample["realizations"])
     )
     resources = resources or manifest.resources()
+    vary = manifest.sample.get("vary", "counts")
 
-    tree = draw_tree(manifest, tree_rng)
     clones = ("normal", *manifest.tumour)
     laws = _laws(manifest)
 
@@ -1204,27 +1216,10 @@ def realize(
     lam = baseline["lambda"].to_numpy()
     gene_chrom = baseline["chrom"].astype(str).str.removeprefix("chr").to_numpy()
     gene_pos = ((baseline["cdsStart"] + baseline["cdsEnd"]) // 2).to_numpy()
-    depth_factor = _depth(
-        manifest, clones, clone_copies(tree, clones, gene_chrom, gene_pos)
-    )
-    gene_weights = lam[:, None] * depth_factor
-    library = lam @ depth_factor
     kappa = float(manifest.model["dirichlet_concentration"])
     sample_counts = COUNT_SAMPLERS[manifest.model["counts_sampler"]]
 
     snp_ids, snp_chrom, snp_pos = _snps(manifest)
-    snp_copies = clone_copies(tree, clones, snp_chrom, snp_pos)
-    share = np.stack(
-        [
-            allele_share(
-                snp_copies[:, label, 0].astype(np.float64),
-                snp_copies[:, label, 1].astype(np.float64),
-                manifest.normal_frac(clone),
-                manifest.model["admixture"],
-            )
-            for label, clone in enumerate(clones)
-        ]
-    )
     if manifest.model["snp_depth_follows_copies"]:
         msg = "SNP entries are drawn independently of copies (#455)"
         raise ValueError(msg)
@@ -1250,22 +1245,54 @@ def realize(
     codes = manifest.barcodes
     whitelist = barcodes(rows.size, int(codes["length"]), codes["suffix"], id_rng)
     ids = sample_ids(len(manifest.slices), int(codes["sample_id_bytes"]), id_rng)
-    labels = [
-        lab + 1 for lab in layout(manifest, points, layout_rng)[0]
-    ]  # NB `normal` is 0.
     combined = [np.array([f"{b}_{sid}" for b in whitelist]) for sid in ids]
-    profile = truth_profile(tree, clones, manifest.genome["chromosome_lengths"])
-    shared = Truth(clones, tree, profile, labels, ids, combined, rows, cols,
-                   baseline["gene"].to_numpy(), snp_ids, p_switch)  # fmt: skip
+
+    def truth_from(
+        tree_rng: np.random.Generator, layout_rng: np.random.Generator
+    ) -> tuple[Truth, np.ndarray, np.ndarray, np.ndarray]:
+        """A truth, and what its counts are drawn from: gene weights, library, allele shares."""
+        tree = draw_tree(manifest, tree_rng)
+        depth_factor = _depth(
+            manifest, clones, clone_copies(tree, clones, gene_chrom, gene_pos)
+        )
+        snp_copies = clone_copies(tree, clones, snp_chrom, snp_pos)
+        share = np.stack(
+            [
+                allele_share(
+                    snp_copies[:, label, 0].astype(np.float64),
+                    snp_copies[:, label, 1].astype(np.float64),
+                    manifest.normal_frac(clone),
+                    manifest.model["admixture"],
+                )
+                for label, clone in enumerate(clones)
+            ]
+        )
+        labels = [
+            lab + 1 for lab in layout(manifest, points, layout_rng)[0]
+        ]  # NB `normal` is 0.
+        profile = truth_profile(tree, clones, manifest.genome["chromosome_lengths"])
+        truth = Truth(clones, tree, profile, labels, ids, combined, rows, cols,
+                      baseline["gene"].to_numpy(), snp_ids, p_switch)  # fmt: skip
+        return truth, lam[:, None] * depth_factor, lam @ depth_factor, share
+
+    shared = truth_from(tree_rng, layout_rng)
 
     width = len(str(len(realization_seeds) - 1))
     for k, seed in enumerate(realization_seeds):
-        count_seed, phase_seed = seed.spawn(2)
+        # NB `spawn(4)`'s first two children are `spawn(2)`'s: the counts and phase
+        #    streams are the same under either mode
+        streams = seed.spawn(4 if vary == "truth" else 2)
+        count_seed, phase_seed = streams[:2]
+        truth, gene_weights, library, share = (
+            truth_from(*(np.random.default_rng(s) for s in streams[2:]))
+            if vary == "truth" and k > 0
+            else shared
+        )
         rng = np.random.default_rng(count_seed)
         switched = phased(p_switch, snp_chrom, np.random.default_rng(phase_seed))
         counts, a_blocks, b_blocks = [], [], []
 
-        for lab in labels:
+        for lab in truth.labels:
             totals = np.rint(_lognormal(laws["spot_umi"], lab.size, rng) * library[lab])
             counts.append(sample_counts(totals, gene_weights, lab, kappa, rng))
             trials = independent(snp_entries, (lab.size, snp_ids.size), rng)
@@ -1276,7 +1303,7 @@ def realize(
         import scipy.sparse
 
         realized = Realized(
-            k, shared, counts,
+            k, truth, counts,
             scipy.sparse.vstack(a_blocks, format="csr").astype(np.int64),
             scipy.sparse.vstack(b_blocks, format="csr").astype(np.int64),
             switched,

@@ -128,7 +128,7 @@ def test_each_planted_pair_is_in_its_state_s_set(tmp_path: Path) -> None:
 def test_copy_errors_refuse_a_fit_where_jax_hmms_beta_binomial_is_unstable(
     tau: float,
 ) -> None:
-    """**T- #599:** at `tau >= STABLE_TAU` `--copy-errors` refuses rather than returning a wrong covariance.
+    """**T- #599:** at `tau >= JAX_TAU_LIMIT` `--copy-errors` refuses rather than returning a wrong covariance.
 
     `jax_hmm`'s beta-binomial subtracts `lgamma(tau)`-sized terms. Fails when
     T- #599 fixes it and the guard is lifted.

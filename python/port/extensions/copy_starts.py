@@ -219,56 +219,40 @@ Channel = Callable[..., np.ndarray]
 def channel_log_densities(
     observations: np.ndarray, covariate: np.ndarray
 ) -> tuple[Channel, Channel]:
-    """`sal`'s `CountPairEmission` in its independent form on one instance, by channel, in NumPy (#540).
+    """`sal`'s `CountPairEmission` in its independent form on one instance, by channel (#540).
 
     `depth(rate, size, state=None)` is a negative binomial on each row's
     total at `rate x exposure`; `allele(share, concentration, state=None)` a
     beta-binomial on its B count out of its trials; a zero exposure or zero
-    trials scores 0, `sal`'s unobserved (issue #933). Each channel's
-    parameter-free terms are computed once, `log B(a, b)` once per state,
-    and a channel is scored on its own, at every state or at each row's own
-    (`state`): what the lattice's shape fits need, where `sal`'s density
-    scores both channels at every state (`test_copy_starts`, against it).
+    trials scores 0, `sal`'s unobserved (issue #933). Each is
+    `port.patch.emission`'s, the one evaluation every site scores (T- #776):
+    :func:`~port.patch.emission.nb_log_pmf_size` and
+    :func:`~port.patch.emission.bb_log_pmf`. A channel is scored on its own,
+    at every state or at each row's own (`state`): what the lattice's shape
+    fits need, where `sal`'s density scores both channels at every state
+    (`test_copy_starts`, against it).
     """
-    from scipy.special import betaln, gammaln
+    from port.patch.emission import bb_log_pmf, nb_log_pmf_size
 
     total, b = observations[:, 0], observations[:, 1]
     exposure, trials = covariate[:, 0], covariate[:, 1]
-    counted, sampled = exposure > 0, trials > 0
-    unit = np.where(counted, exposure, 1.0)
-    depth_constant = np.where(counted, -gammaln(total + 1.0), 0.0)
-    allele_constant = np.where(
-        sampled,
-        gammaln(trials + 1.0) - gammaln(b + 1.0) - gammaln(trials - b + 1.0),
-        0.0,
-    )
 
-    def columns(state: Any, *arrays: np.ndarray) -> list[np.ndarray]:
-        return [a[:, None] if state is None else a for a in arrays]
-
+    # NB every state is scored state-major, `(states, rows)`, and returned
+    #    transposed: the counts then run along the last axis, so each rising
+    #    factorial is taken once per distinct count (`emission.scaled_rising`).
     def depth(rate: np.ndarray, size: float, state: Any = None) -> np.ndarray:
-        n, e, keep, constant = columns(state, total, unit, counted, depth_constant)
-        mean = (rate if state is None else rate[state]) * e
-        scores = (
-            gammaln(n + size)
-            - gammaln(size)
-            + size * np.log(size / (size + mean))
-            + n * np.log(mean / (size + mean))
-        )
-        out: np.ndarray = np.where(keep, scores + constant, 0.0)
-        return out
+        if state is not None:
+            return nb_log_pmf_size(total, size, rate[state] * exposure)
+        mean = np.asarray(rate, dtype=np.float64)[:, None] * exposure
+        return nb_log_pmf_size(total, size, mean).T
 
     def allele(
         share: np.ndarray, concentration: float, state: Any = None
     ) -> np.ndarray:
-        alpha, beta = share * concentration, (1.0 - share) * concentration
-        normalizer = betaln(alpha, beta)
         if state is not None:
-            alpha, beta, normalizer = alpha[state], beta[state], normalizer[state]
-        k, n, keep, constant = columns(state, b, trials, sampled, allele_constant)
-        scores = betaln(k + alpha, n - k + beta) - normalizer
-        out: np.ndarray = np.where(keep, scores + constant, 0.0)
-        return out
+            return bb_log_pmf(b, trials, share[state], concentration)
+        p = np.asarray(share, dtype=np.float64)[:, None]
+        return bb_log_pmf(b, trials, p, concentration).T
 
     return depth, allele
 

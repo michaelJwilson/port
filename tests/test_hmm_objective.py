@@ -250,3 +250,41 @@ def test_the_defaults_are_the_calibrated_settings() -> None:
         }
         assert {k: knobs[k] for k in BUDGETS[name]} == BUDGETS[name]
     assert copy_state_stream.SETTINGS.parent == potts_stream.SETTINGS.parent == CONFIGS
+
+
+@pytest.mark.infra
+def test_a_start_is_sampled_at_the_runs_own_stickiness_and_dispersions(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """T- #777: `held_by` reads the run's Baum-Welch call -- its `t`, its
+    shared initial dispersions, `cnaster`'s defaults where none -- and `sample`
+    builds its objective at them."""
+    import port.sandbox.extensions.hmm_objective as module
+
+    assert module.held_by({"t": 0.999}) == {
+        "stay": 0.999,
+        "alpha": module.ALPHA,
+        "tau": module.TAU,
+    }
+    assert module.held_by({"t": 0.9, "init_alphas": np.full((3, 1), 0.2), "init_taus": [50.0] * 3}) == {
+        "stay": 0.9, "alpha": 0.2, "tau": 50.0}  # fmt: skip
+    with pytest.raises(ValueError, match="differ by state"):
+        module.held_by({"t": 0.9, "init_alphas": [0.1, 0.2]})
+
+    seen: dict[str, Any] = {}
+    built = module.objective_for
+
+    def spy(*arguments: Any) -> Any:
+        seen["held"] = arguments[-1]
+        return built(*arguments)
+
+    monkeypatch.setattr(module, "objective_for", spy)
+    rng = np.random.default_rng(0)
+    n, k = 60, 2
+    total = rng.poisson(50.0, n).astype(np.float64)
+    trials = rng.poisson(20.0, n).astype(np.float64)
+    held = {"stay": 0.99, "alpha": 0.3, "tau": 200.0}
+    module.sample("hmc-hmm", total, np.floor(trials / 2), np.full(n, 50.0), trials, [n], k, rng,
+                  {"draws": 1, "warmup": 1, "adapt": 0.0}, held)  # fmt: skip
+
+    assert seen["held"] == held

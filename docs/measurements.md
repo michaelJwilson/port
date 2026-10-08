@@ -81,9 +81,50 @@ That is the argument for the one-to-many map in one line: an argmin-only
 decoder returns the correct pair at a twenty per cent scale error with
 nothing to say the fit is fifty-six chi-square units from explaining it.
 
+## `port.patch.emission`
+
+One NB/BB evaluation for the fit's E-step, the clone field, the copy decode,
+the copy-state starts and the M-step gradient (T- #776): `sal`'s scaled
+rising factorials (sal #1334, #1336) tabulated per distinct (shape, count)
+and completed in `sal`'s order. Each site's call is timed warm, the minimum
+of 7 (3 for the field), on the fit's arrays at the planted clones of the
+stream's r0 (`port.studies.stage.members`, `at_oracle_clones`), the field
+at 3,000 spots over the fit's decoded states. Base is PR- #786's head
+(`132dc56`) on its sal `72428f3b`; new is `claude/776-emission` on sal
+`681b6455`; one process per arm, alternated twice, minimum over both; load
+1.4-1.6 on 4 cores.
+
+| Site, ms | dev_tree_1s_easy (`7ba9b01f`) base / new | dev_tree (`3339b9a0`), stress, base / new |
+| --- | --- | --- |
+| Fit NB, 7 states x 6,812 / 9,876 codes | 2.41 / 2.12 | 3.58 / 3.54 (0.99) |
+| Fit BB, 7 x 3,842 / 6,017 codes | 1.08 / 1.16 | 1.80 / 1.52 (0.84) |
+| Gradient NB | 1.39 / 1.10 | 1.97 / 1.52 (0.77) |
+| Gradient BB | 2.21 / 1.05 | 5.86 / 1.64 (0.28) |
+| Copy decode, 27 candidates x 1,811 / 2,621 bins | 2.71 / 2.63 | 3.87 / 3.40 (0.88) |
+| Starts, depth, 7 states x M G rows | 0.83 / 0.87 | 1.41 / 1.31 (0.93) |
+| Starts, allele | 2.12 / 1.86 | 6.42 / 2.51 (0.39) |
+| Clone field, G x 3,000 spots x 4 clones | 122.4 / 121.2 | 210.2 / 151.3 (0.72) |
+
+What carries it, each bitwise the per-element evaluation: `S` and the
+rising digamma taken once per distinct (shape, count), a dispersion shared
+across states one row (`_on_distinct`); `gammaln(x)` and `log x` once per
+table row, `sal`'s series inlined (`_scaled_table`, `_scaled_series`); the
+field scoring each distinct state of a bin once for every clone holding it.
+The field's NB completion takes `q = lambda * (1 / r)`, one division a score,
+within 2.7e-16 of the module's sums. Before these, the same sites ran 1.06-
+4.15x slower than base: sal's tables evaluate `S` per (state, count) where
+`lgamma` tables cost less per element.
+
+End to end, `run_cnaster_port --sal` on the same members, base / new: clone
+ARI 0.9798 / 0.9789, 0.9372 / 0.9372, 0.9026 / 0.9026 (dev_tree_1s_easy,
+dev_tree_1s_hard `9ec90dc2`, dev_tree_easy `e4bbe03f`); every copy metric
+equal; wall 145 / 142, 99 / 101, 159 / 150 s.
+
 ## `port.patch.hmm_nophasing.bb_logpmf`
 
 ### `rises_on_distinct`
+
+Superseded by `port.patch.emission.scaled_rising` (T- #776), measured above.
 
 The integer-copy likelihood (`port.extensions.copy_likelihood.pseudobulk_log_pmf`)
 takes three rising factorials per `(state, bin)`. Over the 7,287 calls of a
