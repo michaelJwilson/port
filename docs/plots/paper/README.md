@@ -38,7 +38,7 @@ T- #683), each on its own segmentation, so their contig widths differ.
 | `he_multisample.png` | What H&E slide do the counterpart's planted clones stain, slice by slice? | `he_slices_figure`: `port.sim.he_slide.mock_he` per slice |
 | `combined.png` | What did the run fit, genome and array on one page? | `port.extensions.combined_figure.combined_figure` |
 | `pop_combined.png` | How many UMIs does a clone need, how long must a CNA be, at each stay probability 1 - t, and how often is a true-(1, 1) segment called altered? | `port.studies.population_report.combined` on `docs/studies/population_summary_limited.json` (#745's limited rerun; #746 the full) |
-| `study/truth_combined_spatial_r0.png`, `study/truth_combined_spatial_r1.png` | What do the studies' draw (`sim/manifests/study.toml`, r0 `30493df3`, r1 `4cd9407f`) plant, and does each realization redraw its truth? | `truth_combined_figure(spatial=True)` on each realization, as `truth_figures` draws the fixture's (T- #810) |
+| `study/truth_combined_spatial_2s_r0.png`, `study/truth_combined_spatial_2s_r1.png` | What does the studies' draw plant, on two samples (`sim/manifests/study_2s.toml`: `study.toml` on two slices overlapping by half an array, r0 `0abf60fc`, r1 `2539a28e`), and does each realization redraw its truth? | `truth_combined_figure(spatial=True)` on each realization, as `truth_figures` draws the fixture's (T- #810) |
 | `solver_combined.md` | What was `solver_combined.png` drawn from? | `solver_note`: both records' data hashes, their settings and the code |
 | `solver_combined.png` | How far above the best does each spatial solver and each copy-state start end, and how fast? | `solver_figure`: `port.studies.potts_plot.draw`, `port.studies.copy_state_plot.draw` |
 
