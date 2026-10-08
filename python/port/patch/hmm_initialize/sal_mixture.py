@@ -12,9 +12,6 @@ Options, bound at install from `run_cnaster_port`'s flags:
 
 - `start`: the BAF + RDR stage's start. `--sal` installs `kmeans++x5+em`
   (#489); `lattice` places the integer `(A, B)` lattice instead (#540).
-- `baf_start`: the BAF-only stage's start, which otherwise keeps
-  `distinct`'s where it is installed and `cnaster`'s elsewhere. That stage
-  has no read depth, so its depth channel is a constant.
 
 `only_minor=True` calls, the phasing's, keep the start they had.
 
@@ -172,11 +169,11 @@ def _call(arguments: dict[str, Any], stage: str) -> Any:
     )
 
 
-@as_upstream(UPSTREAM, start=None, distinct=False, baf_start=None)
+@as_upstream(UPSTREAM, start=None, distinct=False)
 def gmm_init(arguments: dict[str, Any], options: dict[str, Any]) -> Any:
-    """`cnaster`'s initializer signature; `start` on the BAF + RDR call, `baf_start` on the BAF-only one.
+    """`cnaster`'s initializer signature; `start` on the BAF + RDR call.
 
-    Elsewhere, and with neither, `cnaster`'s initializer, or
+    Elsewhere, and without it, `cnaster`'s initializer, or
     `port.patch.hmm_initialize.distinct`'s where `distinct` is set.
     `port.patch.hmrf.run_core_inference` binds the options from its own.
     """
@@ -185,7 +182,7 @@ def gmm_init(arguments: dict[str, Any], options: dict[str, Any]) -> Any:
 
     params = str(arguments.get("params", ""))
     stage = "rdrbaf" if "m" in params else "baf"
-    chosen = options["start"] if stage == "rdrbaf" else options["baf_start"]
+    chosen = options["start"] if stage == "rdrbaf" else None
 
     if chosen is None or arguments.get("only_minor", True):
         fallback = distinct.gmm_init if options["distinct"] else distinct.UPSTREAM

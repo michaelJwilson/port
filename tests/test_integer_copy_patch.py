@@ -122,7 +122,7 @@ def test_the_likelihood_decodes_the_planted_pairs_under_a_cap_of_twelve(
     extra: tuple[int, int],
 ) -> None:
     """Every planted pair exactly, at a stated cap of 12 and the shift held at 0."""
-    from port.extensions.copy_likelihood import shared_decode
+    from port.sandbox.extensions.shared_decode import shared_decode
 
     bulk, path = _bulk(extra)
     decoded = shared_decode(
@@ -138,7 +138,7 @@ def test_the_likelihood_decodes_the_planted_pairs_under_a_cap_of_twelve(
 @pytest.mark.analytic
 def test_the_normal_state_is_one_one_by_definition() -> None:
     """Named normal, a state decodes `(1, 1)` though its counts say `(2, 1)`."""
-    from port.extensions.copy_likelihood import shared_decode
+    from port.sandbox.extensions.shared_decode import shared_decode
 
     bulk, path = _bulk(HIGH[0])
     decoded = shared_decode(
@@ -199,7 +199,7 @@ def test_a_clone_the_capture_cannot_identify_is_an_error() -> None:
     log_mu, base, p_binom, path = _inputs(HIGH[0])
 
     with pytest.raises(RuntimeError, match="capture"):
-        decode_clone(log_mu, p_binom, path, 12)
+        decode_clone(log_mu, path, 12)
 
 
 @pytest.mark.infra
@@ -327,7 +327,7 @@ def test_the_drop_ins_decode_under_the_named_allele_cap(
     received: list[tuple[int, int | None]] = []
 
     def decode(*arguments: Any, **options: Any) -> tuple[np.ndarray, float, int]:
-        received.append((arguments[3], options["max_allele_copy"]))
+        received.append((arguments[2], options["max_allele_copy"]))
         return np.ones((1, 2), dtype=np.int64), 0.0, 2
 
     monkeypatch.setattr(integer_copy, "decode_clone", decode)
@@ -363,7 +363,7 @@ def test_a_cap_passed_at_cnasters_default_is_kept(
     received: list[tuple[int, int | None]] = []
 
     def decode(*arguments: Any, **options: Any) -> tuple[np.ndarray, float, int]:
-        received.append((arguments[3], options["max_allele_copy"]))
+        received.append((arguments[2], options["max_allele_copy"]))
         return np.ones((1, 2), dtype=np.int64), 0.0, 2
 
     monkeypatch.setattr(integer_copy, "decode_clone", decode)

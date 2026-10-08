@@ -26,8 +26,10 @@ BUDGET: dict[str, int] = {
     #    `_PNG_COPIES` switch held (#517 step 1). 24: #547's `--baf-start`,
     #    the BAF-only stage's copy-state start. 25: `--no-parsimony-decode`, the
     #    lattice decode's flat prior, opt-in (T- #471). 26: T- #617 WP2's
-    #    `--min-segment-normal-umi`, the floor off `--sal` (T- #667).
-    "run_cnaster_port flags": 26,
+    #    `--min-segment-normal-umi`, the floor off `--sal` (T- #667). 22: T- #831
+    #    set aside `--copy-errors`, `--copy-decode`, `--no-parsimony-decode`
+    #    and `--baf-start`, which no `--sal` run takes.
+    "run_cnaster_port flags": 22,
     # NB 53: step 1 removed the two `_Selection` slots behind the decoder and
     #    solver switches; step 5 added `Settings`, the entry point's one
     #    resolution of its tri-state flags; step 8 added the `hmm_phased` row

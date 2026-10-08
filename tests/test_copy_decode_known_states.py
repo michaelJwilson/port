@@ -27,8 +27,8 @@ import pytest
 from port.extensions.copy_likelihood import (
     Pseudobulk,
     pseudobulk_log_pmf,
-    shared_decode,
 )
+from port.sandbox.extensions.shared_decode import shared_decode
 from port.sim.truth import COPY_LATTICE, CoreInferenceTruth, core_inference_truth
 from scipy.optimize import minimize_scalar
 

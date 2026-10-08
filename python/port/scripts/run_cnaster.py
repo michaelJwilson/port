@@ -162,12 +162,6 @@ def _parser() -> argparse.ArgumentParser:
         help="the read-depth HMM's copy-state start, a sal mixture start or lattice (#489, #547); none, kmeans++x5+em with --sal",
     )
     parser.add_argument(
-        "--baf-start",
-        default=None,
-        metavar="START",
-        help="the BAF-only HMM's copy-state start, a sal mixture start or lattice (#540); none keeps distinct's",
-    )
-    parser.add_argument(
         "--distinct-init",
         action=argparse.BooleanOptionalAction,
         default=None,
@@ -213,17 +207,6 @@ def _parser() -> argparse.ArgumentParser:
         "--sal",
         action="store_true",
         help="snakes_and_ladders' labelling (#312) and the HMM start kmeans++x5+em (#489)",
-    )
-    parser.add_argument(
-        "--copy-decode",
-        choices=("lattice", "shared"),
-        default="lattice",
-        help="lattice, per clone (#370), or shared, one pair per state (#327)",
-    )
-    parser.add_argument(
-        "--no-parsimony-decode",
-        action="store_true",
-        help="a flat prior for the lattice decode, not -0.5 |A + B - 2| per bin (T- #471)",
     )
     parser.add_argument(
         "--warm-up",
@@ -276,10 +259,6 @@ class Settings(NamedTuple):
     """The distinct initializer: on where the shift is, off with `--no-patch`."""
     hmm_start: str
     """The read-depth HMM's copy-state start: `none`, `kmeans++x5+em` with `--sal` (#489)."""
-    baf_start: str
-    """The BAF-only stage's start: `none`, `distinct`'s kept (#540)."""
-    parsimony: float
-    """The lattice decode's prior weight: `PARSIMONY`, `0`, flat, with `--no-parsimony-decode`."""
 
 
 def _settings(arguments: argparse.Namespace) -> Settings:
@@ -287,8 +266,6 @@ def _settings(arguments: argparse.Namespace) -> Settings:
 
     def asked(value: Any, default: Any) -> Any:
         return default if value is None else value
-
-    from port.extensions.copy_likelihood import PARSIMONY
 
     patch = not arguments.no_patch
     shift = bool(asked(arguments.shift, patch))
@@ -315,8 +292,6 @@ def _settings(arguments: argparse.Namespace) -> Settings:
                 "kmeans++x5+em" if arguments.sal and shift else "none",
             )
         ),
-        baf_start=str(asked(arguments.baf_start, "none")),
-        parsimony=0.0 if arguments.no_parsimony_decode else PARSIMONY,
     )
 
 
@@ -344,13 +319,6 @@ def _refusals(arguments: argparse.Namespace, settings: Settings) -> list[str]:
             "--no-shift leaves the copy decode no captured fit; add --no-copy-cap"
         )
 
-    # NB the prior is the lattice decode's alone; `shared` and `cnaster`'s
-    #    decoders take none.
-    if arguments.no_parsimony_decode and not (
-        settings.copy_cap and arguments.copy_decode == "lattice"
-    ):
-        refused.append("--no-parsimony-decode needs the lattice copy decode")
-
     # NB read by the `SHIFT_SWAPS` rows alone -- port's `hmm_nophasing` class
     #    and `run_core_inference`.
     refused += [
@@ -358,7 +326,6 @@ def _refusals(arguments: argparse.Namespace, settings: Settings) -> list[str]:
         for flag, asked in (
             ("--sal-emission", arguments.sal_emission),
             ("--distinct-init", arguments.distinct_init),
-            ("--baf-start", arguments.baf_start),
             ("--hmm-start", arguments.hmm_start),
         )
         if asked and not settings.shift
@@ -584,10 +551,6 @@ def main(argv: Sequence[str] | None = None) -> int:
             from port.patch.hmm_initialize.sal_mixture import checked
 
             inference["hmm_start"] = checked(hmm_start)
-        if settings.baf_start != "none":
-            from port.patch.hmm_initialize.sal_mixture import checked
-
-            inference["baf_start"] = checked(settings.baf_start)
 
         # NB the copy rows decode by the HMM's likelihood only (#362), which
         #    reads each clone's counts from the fit this captures; entered
@@ -597,14 +560,6 @@ def main(argv: Sequence[str] | None = None) -> int:
             from port.extensions.copy_likelihood import capture
 
             stack.enter_context(capture())
-
-            for swap in COPY_SWAPS:
-                selected = with_options(
-                    selected,
-                    swap.replacement,
-                    decoder=arguments.copy_decode,
-                    parsimony=settings.parsimony,
-                )
         if shift:
             selected = selected + SHIFT_SWAPS + LOG_SPACE_SWAPS
 
@@ -679,18 +634,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                 f"{len(sites)} bindings"
                 + (", figures included" if figures else "")
                 + (", copy caps from the config" if copy_cap else "")
-                + (
-                    f", parsimony {settings.parsimony}"
-                    if arguments.no_parsimony_decode
-                    else ""
-                )
                 + (", refinement mask" if refinement_mask else "")
                 + (f", HMM start {hmm_start}" if hmm_start != "none" else "")
-                + (
-                    f", BAF start {settings.baf_start}"
-                    if settings.baf_start != "none"
-                    else ""
-                )
                 + (", floor merged smallest first" if floor else "")
                 + (", distinct initial states" if distinct else "")
                 + (", shift included" if shift else "")
@@ -779,15 +724,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     # NB after the run and outside its timer, and off with `--no-patch`: a
     #    baseline arm writes what `cnaster` writes and nothing beside it.
     if not (arguments.no_outputs or arguments.no_patch):
+        from port.extensions.copy_likelihood import PARSIMONY
+
         _write_outputs(
             arguments.config,
             {
                 "figures": figures,
                 "shift": shift,
-                "copy_decode": f"lattice_decode ({arguments.copy_decode})"
-                if copy_cap
-                else "cnaster",
-                "parsimony": settings.parsimony if copy_cap else None,
+                "copy_decode": "lattice_decode (lattice)" if copy_cap else "cnaster",
+                "parsimony": PARSIMONY if copy_cap else None,
             },
             lineage.table(),
             sampled,

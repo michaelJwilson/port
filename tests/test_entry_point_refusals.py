@@ -19,10 +19,8 @@ REFUSALS = {
     ("--no-figure-swaps", "--png-copies"): "--png-copies needs",
     ("--no-figure-swaps", "--sample-layout", "3,1"): "--sample-layout needs",
     ("--no-shift",): "--no-shift leaves the copy decode no captured fit",
-    ("--no-parsimony-decode", "--copy-decode", "shared"): "--no-parsimony-decode needs",
     ("--no-shift", "--no-copy-cap", "--sal-emission"): "--sal-emission is read by",
     ("--no-shift", "--no-copy-cap", "--distinct-init"): "--distinct-init is read by",
-    ("--no-shift", "--no-copy-cap", "--baf-start", "lattice"): "--baf-start is read by",
     ("--no-shift", "--no-copy-cap", "--hmm-start", "lattice"): "--hmm-start is read by",
     ("--no-patch", "--refinement-mask"): "--refinement-mask and --floor-merge need",
     ("--no-patch", "--floor-merge"): "--refinement-mask and --floor-merge need",
@@ -51,22 +49,16 @@ def test_no_refusal_for_an_arm_as_it_comes(arm: tuple[str, ...]) -> None:
 
 
 @pytest.mark.infra
-@pytest.mark.parametrize(
-    ("keyword", "value"), [("decoder", "milp"), ("parsimony", -1.0)]
-)
+@pytest.mark.parametrize(("keyword", "value"), [("parsimony", -1.0)])
 def test_the_decode_refuses_its_arguments_before_reading_the_capture(
     keyword: str, value: Any
 ) -> None:
-    """A bad decoder or prior was reported as a missing capture."""
+    """A bad prior was reported as a missing capture."""
     import numpy as np
     from port.patch.integer_copy import decode_clone
 
-    with pytest.raises(
-        ValueError, match=keyword if keyword == "parsimony" else "decoder"
-    ):
-        decode_clone(
-            np.zeros((2, 1)), np.full((2, 1), 0.5), np.zeros(4), 6, **{keyword: value}
-        )
+    with pytest.raises(ValueError, match=keyword):
+        decode_clone(np.zeros((2, 1)), np.zeros(4), 6, **{keyword: value})
 
 
 @pytest.mark.infra

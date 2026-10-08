@@ -237,8 +237,6 @@ run_cnaster_port --sal config.yaml           # snakes_and_ladders routines where
 run_cnaster_port --no-copy-cap config.yaml   # cnaster's integer copy caps, A + B <= 6, whatever the config states
 run_cnaster_port --sample-layout 3,1 config.yaml  # clone spatial plots, one panel per sample
 run_cnaster_port --genomic-colours states config.yaml  # clones_genomic coloured per fitted state, not per integer pair
-run_cnaster_port --copy-decode shared config.yaml  # one integer pair per fitted state; default: lattice Viterbi per clone
-run_cnaster_port --no-parsimony-decode config.yaml  # a flat prior for the lattice decode; default: -0.5 |A + B - 2|
 run_cnaster_port --time-stages config.yaml   # what the replacements cost in the run
 run_cnaster_port --floor-merge --refinement-mask config.yaml  # #348's clone patches, opt-in; --no-distinct-init drops the third
 python -m port.sandbox.np_merge config.yaml # sandbox: CalicoST's Neyman-Pearson merge of clones that decode alike (#497), not installed by default
@@ -262,15 +260,12 @@ follows the arm unless asked: on in a patched run, off with `--no-patch`.
 | `--sal-emission` | on where the shift is | sal's dense log-emission for the coded NB/BB (#425) | 3.2e-12 of `cnaster`'s kernels, 3.5e-9 at the dispersion floor; no faster end to end |
 | `--distinct-init` | on where the shift is | the HMM starts from distinct GMM components (#348) | copy-state ARI 0.896 to 0.997 on `calicost_instance` |
 | `--copy-cap` | on; off with `--no-patch` | the likelihood decode under the configured cap (#313, #362) | `cnaster`'s decoders read no cap: A + B <= 6 |
-| `--copy-decode` | `lattice` | per-clone lattice Viterbi with tumour fraction (#370), or one pair per state, `shared` (#327) | |
-| `--no-parsimony-decode` | off: the prior on | a flat prior for the lattice decode, in place of its log-prior `-0.5 \|A + B - 2\|` per bin; refused without the lattice decode | PR- #609, `--sal`: copy ARI with the prior 0.9035 / 0.9181, flat 0.7213 / 0.068 on CalicoST easy (`2d4ce9a9`) / hard (`8797710b`) |
 | `--rust` | on; off with `--no-patch` | `cnaster`'s four lattices from `oxiport` (#318) | bitwise; compiled at build, not per process |
 | `--sal` | off | alpha expansion with the Rust cut for the labelling (#312), and `--hmm-start kmeans++x5+em` | a lower Potts energy on every problem measured |
 | `--refinement-mask` | on; off with `--no-patch` unless `--sal` | each read-depth sub-clone kept in its BAF clone, a 100-nat penalty (#348, #467) | with the floor merge, CalicoST hard clone ARI 0.303 to 0.982 |
 | `--floor-merge` | on; off with `--no-patch` unless `--sal` | the clone-size floor met smallest first (#348) | alone, #338's three-sample instance: 2 planted clones fitted as 6 |
 | `--min-segment-normal-umi` | off; on with `--sal`; refused with `--no-patch` | read-depth segments floored at 300 normal UMI where no `quality` key is stated (#551) | see below |
 | `--hmm-start` | `none`; `kmeans++x5+em` with `--sal` and the shift; refused without the shift | the read-depth HMM's copy states: a sal mixture start (#489), seeded in sal's rate space (#547), or `lattice`, the integer `(A, B)` lattice; `emission++` scores floored at 0 (#562) | #547: dev_tree r0 (`3381575a`) clone ARI 0.8612 (5) to 1.0 (4); with the segment floor, CalicoST hard (`8797710b`) copy ARI 0.9055 to 0.9181 |
-| `--baf-start` | `none` | the BAF-only HMM's copy states from the lattice (#540) | |
 | `--png-copies` | off | a PNG without metadata beside each PDF, for figures compared across runs (#452) | two runs of the same code write the same bytes |
 | `--sample-layout`, `--genomic-colours` | unset | one panel per sample (#328); bins coloured per fitted state | |
 | `--warm-up` | off | compile every kernel before the clock starts (#211) | |
@@ -378,8 +373,7 @@ shift and tumour fraction `rho` against a diploid normal. So a loss and an
 LOH the HMM fitted as one state still decode apart by depth, and admixed
 normal cells no longer read as balanced states. The normal clone, held at
 `(1, 1)`, shift 0 and `rho = 1`, is the one with the largest share of
-balanced bins, as `clone_shifts` names it (#389). `--copy-decode shared`
-keeps one pair per fitted state (#327). `dev_tree` r0 at 60 x 50 under
+balanced bins, as `clone_shifts` names it (#389). `dev_tree` r0 at 60 x 50 under
 `--sal`: copy ARI 0.981, 0.936 of altered bins exact up to phase, against
 cnaster's decoder's 0.956 and 0.707 at 42 x 42.
 

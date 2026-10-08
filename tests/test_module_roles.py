@@ -207,6 +207,7 @@ ROLES: dict[str, Role] = {
     "port.sandbox.wolff_init": "set aside",
     "port.sandbox.copy_audit": "set aside",
     "port.sandbox.population_sets": "set aside",
+    "port.sandbox.extensions.shared_decode": "set aside",
     "port.sandbox.wolff_umi_init": "set aside",
 }
 """Every module, by role: a package `__init__` counts once it defines a function

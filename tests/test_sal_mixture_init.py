@@ -125,7 +125,6 @@ def test_the_start_is_handed_over_only_under_its_option(
     assert seen[1].keywords == {
         "start": sal_mixture.DEFAULT,
         "distinct": True,
-        "baf_start": None,
     }
 
 

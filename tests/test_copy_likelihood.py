@@ -73,7 +73,7 @@ def _offset(path: np.ndarray, bulk: Pseudobulk) -> float:
 @pytest.mark.parametrize("shift", [True, False], ids=["shifted", "unshifted"])
 def test_the_shared_decode_recovers_every_planted_pair(shift: bool) -> None:
     """All six states exactly, `(4, 6)` and `(5, 4)` above cnaster's cap included."""
-    from port.extensions.copy_likelihood import shared_decode
+    from port.sandbox.extensions.shared_decode import shared_decode
 
     path, bulk = _draw(shift=shift)
     fitted = shared_decode(
@@ -94,8 +94,8 @@ def test_the_shared_decode_is_each_states_likelihood_maximum() -> None:
         candidates,
         pair_rate_and_share,
         pseudobulk_log_pmf,
-        shared_decode,
     )
+    from port.sandbox.extensions.shared_decode import shared_decode
 
     path, bulk = _draw()
     shift = _offset(path, bulk)
@@ -204,25 +204,6 @@ def test_the_entry_point_decodes_the_planted_pair_through_the_likelihood(
     fitted = pd.read_csv(output / "copy_decode.tsv", sep="\t")
 
     assert fitted["tumour_fraction"].to_list() == pytest.approx([1.0, 1.0])
-
-
-@pytest.mark.patch
-def test_the_shared_decode_is_still_one_flag_away(tmp_path: Path) -> None:
-    """`--copy-decode shared` writes #327's per-state pairs through the path.
-
-    Each clone's written `A` and `B` are the shared decode's state pairs
-    indexed by that clone's `Z`, as before #371: the flag restores the
-    previous output rather than approximating it.
-    """
-    copies, seen, _ = _entry_point_run(tmp_path, ("--copy-decode", "shared"))
-
-    assert len(seen) == 1
-    states = seen[0].states
-
-    for column in ("clone0", "clone1"):
-        path = copies[f"{column} Z"].to_numpy().astype(np.int64) % len(states)
-        written = copies[[f"{column} A", f"{column} B"]].to_numpy()
-        np.testing.assert_array_equal(written, states[path])
 
 
 @pytest.mark.analytic

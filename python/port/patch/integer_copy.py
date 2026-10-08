@@ -9,21 +9,13 @@ both re-derive the normal state per clone as the balanced state whose raw
 sample that chose the pinned state for every tumour clone and decoded their
 `(2, 2)` gains as `(1, 1)` (#362).
 
-**Two decodes, one a setting** (#362, #371), both by the pseudobulk NB/BB
-likelihood the HMM fitted:
-
-- `lattice`, the default (#370): `copy_likelihood.lattice_decode`, each
-  clone's own path over every `(A, B)` with `A + B <= total`, with its tumour
-  fraction, shift and the dispersions refitted. Its pairs are **per bin**:
-  two bins in one continuous state may differ.
-- `shared`: `copy_likelihood.shared_decode` (#327), one pair per continuous
-  state for every clone, with the pinned `mu`, each clone's `logmu_shift`
-  and the fitted dispersions held.
-
-The normal state is `(1, 1)` by definition either way: the pinned one,
-shared by every clone (`port.patch.hmrf.core_inference`). Both of
-`cnaster`'s names return the selected decode, their signatures kept so the
-swap is a drop-in.
+**One decode** (#362, #370, #371): `copy_likelihood.lattice_decode`, by the
+pseudobulk NB/BB likelihood the HMM fitted, each clone's own path over every
+`(A, B)` with `A + B <= total`, with its tumour fraction, shift and the
+dispersions refitted. Its pairs are **per bin**: two bins in one continuous
+state may differ. The normal state is `(1, 1)` by definition: the pinned one,
+shared by every clone (`port.patch.hmrf.core_inference`). #327's per-state
+`shared` decode is set aside (`port.sandbox.extensions.shared_decode`, T- #831).
 
 **How a per-bin decode reaches `cnaster`'s files** (#371). `cnaster`'s
 decoders return one pair per state, and `run_cnaster.py` reads them in two
@@ -63,7 +55,6 @@ from port.extensions.integer_copy import (
 from port.patch._signature import as_upstream
 
 __all__ = [
-    "DECODERS",
     "UNCONFIGURED_MAX_ALLELE_COPY",
     "PairsByBin",
     "configured_caps",
@@ -197,10 +188,6 @@ def release() -> None:
     _SHARED.clear()
 
 
-DECODERS = ("lattice", "shared")
-"""`lattice`, the default (#370), then `shared` (#327)."""
-
-
 class PairsByBin(np.ndarray):
     """One clone's `(n_states, 2)` pairs that answer its own path per bin (#371).
 
@@ -302,21 +289,17 @@ def _write_decode(decoded: Any, normal_clone: int, parsimony: float) -> None:
 
 def decode_clone(
     new_log_mu: Any,
-    new_p_binom: Any,
     pred_cnv: Any,
     total: int,
     *,
     max_allele_copy: int | None = None,
-    decoder: str = "lattice",
     parsimony: float = PARSIMONY,
 ) -> tuple[np.ndarray, float, int]:
     """One clone's `(copies, loss, ploidy)`, as `cnaster`'s decoders return them.
 
     Decoded once, from the captured fit, at the first clone's call, by the
-    selected `decoder`. `shared` returns its per-state
-    pairs to every clone; `lattice` returns this clone's :class:`PairsByBin`,
-    under the log-prior `-parsimony |A + B - 2|` per bin: `PARSIMONY`, the
-    default, and flat at `0` with `--no-parsimony-decode`.
+    lattice decode: this clone's :class:`PairsByBin`, under the log-prior
+    `-parsimony |A + B - 2|` per bin, flat at `0`.
     `loss` is the negative log-likelihood reached; `ploidy` the median total
     copy over this clone's bins. Each allele is at most `max_allele_copy`,
     and at most `total` where it is `None`.
@@ -327,16 +310,10 @@ def decode_clone(
         captured_fit,
         captured_normal,
         lattice_decode,
-        shared_decode,
     )
-    from port.patch.hmm_nophasing.shifted_emission import neutral_state
-    from port.patch.hmrf.core_inference import shift_for
 
-    # NB refused before the capture is read: after it, a bad decoder or
-    #    prior was reported as a missing capture and never reached (T- #617).
-    if decoder not in DECODERS:
-        msg = f"copy decoder {decoder!r} is not one of {DECODERS}"
-        raise ValueError(msg)
+    # NB refused before the capture is read: after it, a bad prior was
+    #    reported as a missing capture and never reached (T- #617).
     if not parsimony >= 0.0:
         msg = f"parsimony {parsimony!r} is not a non-negative number"
         raise ValueError(msg)
@@ -359,48 +336,30 @@ def decode_clone(
         _SHARED.get("key") != key
         or _SHARED.get("total") != total
         or _SHARED.get("allele") != max_allele_copy
-        or _SHARED.get("decoder") != decoder
         or _SHARED.get("parsimony") != parsimony
     ):
-        if decoder == "lattice":
-            named = captured_normal()
-            normal_clone = (
-                int(np.argmin(np.abs([shift for _, _, shift in clones])))
-                if named is None
-                else named
-            )
-            lengths, stay = captured_chain()
-            decoded = lattice_decode(
-                clones,
-                normal_clone=normal_clone,
-                max_total_copy=total,
-                max_allele_copy=max_allele_copy,
-                lengths=lengths,
-                stay=stay,
-                parsimony=parsimony,
-            )
-            _write_decode(decoded, normal_clone, parsimony)
-        else:
-            _, normal = shift_for(pred_cnv)
-
-            if normal is None:
-                normal = neutral_state(
-                    log_mu, np.asarray(new_p_binom).reshape(-1), path[:, None]
-                )
-
-            decoded = shared_decode(
-                clones,
-                n_states=log_mu.size,
-                normal=normal,
-                max_total_copy=total,
-                max_allele_copy=max_allele_copy,
-            )
+        named = captured_normal()
+        normal_clone = (
+            int(np.argmin(np.abs([shift for _, _, shift in clones])))
+            if named is None
+            else named
+        )
+        lengths, stay = captured_chain()
+        decoded = lattice_decode(
+            clones,
+            normal_clone=normal_clone,
+            max_total_copy=total,
+            max_allele_copy=max_allele_copy,
+            lengths=lengths,
+            stay=stay,
+            parsimony=parsimony,
+        )
+        _write_decode(decoded, normal_clone, parsimony)
 
         _SHARED.update(
             key=key,
             total=total,
             allele=max_allele_copy,
-            decoder=decoder,
             parsimony=parsimony,
             decoded=decoded,
         )
@@ -410,10 +369,6 @@ def decode_clone(
 
     decoded = _SHARED["decoded"]
 
-    if decoder == "shared":
-        ploidy = int(np.rint(np.median(decoded.states[path].sum(axis=1))))
-        return decoded.states, -decoded.log_likelihood, ploidy
-
     clone = _clone_of(clones, path, _SHARED["calls"])
     bins = np.asarray(decoded.pairs[clone], dtype=np.int64)
     states = _modal(bins, path, log_mu.size)
@@ -422,59 +377,29 @@ def decode_clone(
     return PairsByBin(states, bins, path), -decoded.log_likelihood, ploidy
 
 
+def _decoded(arguments: dict[str, Any], options: dict[str, Any]) -> Any:
+    """:func:`decode_clone` under the configured caps; `base_nb_mean` and the hill climb's keywords go unused."""
+    allele, total = _caps(arguments)
+    return decode_clone(arguments["new_log_mu"], arguments["pred_cnv"], total,
+                        max_allele_copy=allele, parsimony=options["parsimony"])  # fmt: skip
+
+
 @as_upstream(
-    cnaster.integer_copy.hill_climbing_integer_copynumber_oneclone,
-    decoder="lattice",
-    parsimony=PARSIMONY,
+    cnaster.integer_copy.hill_climbing_integer_copynumber_oneclone, parsimony=PARSIMONY
 )
 def hill_climbing_integer_copynumber_oneclone(
     arguments: dict[str, Any], options: dict[str, Any]
 ) -> Any:
-    """`cnaster`'s name and signature, decoding by :func:`decode_clone`.
-
-    `base_nb_mean` and the hill climb's own keywords are accepted and unused:
-    the capture carries the fit the decode reads. `decoder` is one of
-    `DECODERS`; `run_cnaster_port --copy-decode` binds it at install.
-    `parsimony` is the lattice decode's prior weight, `PARSIMONY` unless
-    `run_cnaster_port --no-parsimony-decode` binds `0` at install.
-    """
-    allele, total = _caps(arguments)
-
-    return decode_clone(
-        arguments["new_log_mu"],
-        arguments["new_p_binom"],
-        arguments["pred_cnv"],
-        total,
-        max_allele_copy=allele,
-        decoder=options["decoder"],
-        parsimony=options["parsimony"],
-    )
+    """`cnaster`'s name and signature, decoding by :func:`decode_clone`."""
+    return _decoded(arguments, options)
 
 
 @as_upstream(
     cnaster.integer_copy.hill_climbing_integer_copynumber_fixdiploid_milp,
-    decoder="lattice",
     parsimony=PARSIMONY,
 )
 def hill_climbing_integer_copynumber_fixdiploid_milp(
     arguments: dict[str, Any], options: dict[str, Any]
 ) -> Any:
-    """`cnaster`'s name and signature, decoding by :func:`decode_clone`.
-
-    `base_nb_mean` and the hill climb's own keywords are accepted and unused:
-    the capture carries the fit the decode reads. `decoder` is one of
-    `DECODERS`; `run_cnaster_port --copy-decode` binds it at install.
-    `parsimony` is the lattice decode's prior weight, `PARSIMONY` unless
-    `run_cnaster_port --no-parsimony-decode` binds `0` at install.
-    """
-    allele, total = _caps(arguments)
-
-    return decode_clone(
-        arguments["new_log_mu"],
-        arguments["new_p_binom"],
-        arguments["pred_cnv"],
-        total,
-        max_allele_copy=allele,
-        decoder=options["decoder"],
-        parsimony=options["parsimony"],
-    )
+    """`cnaster`'s name and signature, decoding by :func:`decode_clone`."""
+    return _decoded(arguments, options)

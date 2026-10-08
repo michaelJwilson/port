@@ -82,7 +82,7 @@ def _decode(clones: list[Any], **options: Any) -> list[dict[str, Any]]:
     log_mu = np.zeros(len(PLANTED))
 
     with _spied(clones) as calls:
-        decode_clone(log_mu, np.full(len(PLANTED), 0.5), path, 6, **options)
+        decode_clone(log_mu, path, 6, **options)
 
     return calls
 

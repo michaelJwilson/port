@@ -3,9 +3,7 @@
 `cnaster` decodes a clone's integer copies with an L1 cost on its fitted
 `(mu, p)` (`integer_copy.py`). Here they are fitted by the pseudobulk NB/BB
 likelihood itself, on the same counts, the same normal baseline and each
-clone's `logmu_shift`. Two entry points:
-
-- :func:`lattice_decode`, the default: one HMM state per `(A, B)` with
+clone's `logmu_shift`. :func:`lattice_decode`: one HMM state per `(A, B)` with
   `A + B <= max_total_copy`, decoded per clone by Viterbi, in an EM whose
   M-step fits each clone's shift and tumour fraction and the shared
   dispersions. A tumour clone's spots are a fraction `rho` tumour and the
@@ -14,10 +12,7 @@ clone's `logmu_shift`. Two entry points:
   `-parsimony |A + B - 2|` decides among pairs the counts cannot separate:
   where read depth barely fixes the total, a fraction and a total trade, and
   `(0, 3)` at 0.78 has `(0, 1)`'s allele share at 0.92.
-- :func:`shared_decode`, the pipeline's: the continuous fit's states and
-  paths held, each state's pair the one maximizing the likelihood summed over
-  every clone's bins in it. It is what `cnaster`'s per-state interface can
-  carry (`port.patch.integer_copy`).
+#327's per-state `shared_decode` is set aside (`port.sandbox.extensions.shared_decode`, T- #831).
 
 Measured on CalicoST's simulated samples (#362), pure and admixed, easy and
 hard, with planted and fitted clones: the lattice decode is best on 6 of 8
@@ -51,7 +46,6 @@ __all__ = [
     "clones_of",
     "lattice_decode",
     "normal_of",
-    "shared_decode",
     "viterbi_oracle",
 ]
 
@@ -255,7 +249,7 @@ class CopyFit:
 
     `lattice_decode`: converged where its last EM iteration left the paths
     and the parameters where it found them; its `iterations` otherwise, the
-    budget. `shared_decode` solves exactly, in one pass.
+    budget.
     """
 
 
@@ -563,65 +557,6 @@ def lattice_decode(
         tau,
         total,
         termination=Termination.after(done, converged=settled),
-    )
-
-
-def shared_decode(
-    clones: list[tuple[np.ndarray, Pseudobulk, float]],
-    *,
-    n_states: int,
-    normal: int,
-    max_total_copy: int,
-    max_allele_copy: int | None = None,
-) -> CopyFit:
-    """Each continuous state's `(A, B)`, one pair shared by every clone.
-
-    The continuous paths, shifts and dispersions are held, so the
-    likelihood is a sum over states of terms each depending on one state's
-    pair, and each state's argmax over the lattice solves the one-pair-per-
-    state MILP exactly. `normal` is `(1, 1)`; a state no clone visits is too.
-    """
-    lattice = candidates(max_total_copy, max_allele_copy)
-    log_mu, p = pair_rate_and_share(lattice)
-    states = np.ones((n_states, 2), dtype=np.int64)
-    paths = [np.asarray(path, dtype=np.int64) for path, _, _ in clones]
-    total = 0.0
-
-    for k in np.unique(np.concatenate(paths)):
-        state = int(k)
-        scores = np.zeros(len(lattice))
-
-        for path, (_, bulk, shift) in zip(paths, clones, strict=True):
-            bins = np.flatnonzero(path == state)
-
-            if bins.size:
-                scores += np.array(
-                    [
-                        np.sum(pseudobulk_log_pmf(log_mu[i] - shift, p[i], bulk, bins))
-                        for i in range(len(lattice))
-                    ]
-                )
-
-        best = (
-            int(np.flatnonzero((lattice[:, 0] == 1) & (lattice[:, 1] == 1))[0])
-            if state == normal
-            else int(np.argmax(scores))
-        )
-        states[state] = lattice[best]
-        total += float(scores[best])
-
-    bulks = [bulk for _, bulk, _ in clones]
-    return CopyFit(
-        [states[path] for path in paths],
-        states,
-        paths,
-        np.array([shift for _, _, shift in clones], dtype=np.float64),
-        np.ones(len(clones)),
-        bulks[0].dispersion,
-        bulks[0].taus,
-        total,
-        # NB exact: each state's argmax over the lattice is the MILP's.
-        termination=Termination.after(1, converged=True),
     )
 
 
