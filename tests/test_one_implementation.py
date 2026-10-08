@@ -64,8 +64,9 @@ BUDGET: dict[str, int] = {
     #    86: T- #777 retired `WarmSchedule` and `_Warmed` for sal's
     #    `ScheduleParams(warm=)` (sal #1324), which states the warm-up. 87:
     #    T- #776's `emission.BetaBinomialTables`, the beta-binomial's tables
-    #    every site completes.
-    "classes": 87,
+    #    every site completes. 88: T- #799's `count_encoder.CountEncoder`, the
+    #    row in place of `cnaster`'s, which it must be to install.
+    "classes": 88,
     # NB step 4: 18 records became NamedTuples; the dataclasses left carry
     #    mutable state, machinery or a `__post_init__` (#517 D). Step 8 moved
     #    7 dataclasses and 1 NamedTuple to `sandbox/`. 21: T- #418's `Samples`

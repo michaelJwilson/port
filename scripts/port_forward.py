@@ -52,7 +52,12 @@ STAGES: tuple[tuple[str, frozenset[str]], ...] = (
             }
         ),
     ),
-    ("fit chain", frozenset({"cnaster.hmm_nophasing", "cnaster.hmm_phased"})),
+    (
+        "fit chain",
+        frozenset(
+            {"cnaster.count_encoder", "cnaster.hmm_nophasing", "cnaster.hmm_phased"}
+        ),
+    ),
     ("clone assignment", frozenset({"cnaster.hmrf", "cnaster.integer_copy"})),
 )
 """Each stage and the `cnaster` modules whose rows it holds, in series order."""
