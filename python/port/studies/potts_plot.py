@@ -43,21 +43,19 @@ NAMES = {
 
 
 TABLE = (
-    ("Local descent", (
-        ("sal:field_argmax", "Each spot's best clone, neighbours ignored"),
-        ("sal:icm", "Each spot to its best clone given neighbours, in order"),
-    )),
     ("Graph cuts", (
         ("sal:alpha-expansion", "Each clone in turn claims spots by a min cut"),
         ("sal:alpha-beta-swap", "Min-cut swaps between two clones at a time"),
     )),
-    ("Message passing", (
-        ("sal:trws", "Tree-reweighted message passing: its decode"),
+    ("Local descent", (
+        ("sal:icm", "Each spot to its best clone given neighbours, in order"),
+        ("sal:field_argmax", "Each spot's best clone, neighbours ignored"),
     )),
-    ("Sampling", (
+    ("Sampling, message passing", (
         ("sal:anneal", "Single-site heat bath, annealed"),
-        ("sal:wolff-heat-bath", "One grown cluster relabelled by its field's heat bath, annealed"),
         ("sal:swendsen-wang-heat-bath", "Every bonded cluster relabelled by its field's heat bath, annealed"),
+        ("sal:wolff-heat-bath", "One grown cluster relabelled by its field's heat bath, annealed"),
+        ("sal:trws", "Tree-reweighted message passing: its decode"),
     )),
 )  # fmt: skip
 """The solvers drawn (T- #660). Set aside from the figure, still in `clone_label_arms` or `--only`:
@@ -397,7 +395,7 @@ def draw(
             lambda v, _: "0" if v == FLOOR else f"$10^{{{round(np.log10(v))}}}$"
         )
     )
-    ax.set_ylabel(r"$\Delta \mathcal{C}$")
+    ax.set_ylabel(r"$\Delta \ln \mathcal{L}$")
     ax.set_xlabel("Runtime [s]")
 
     if key:
