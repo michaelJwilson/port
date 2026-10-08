@@ -683,7 +683,7 @@ def solver_figure(potts: dict[str, Any], copies: dict[str, Any] | None) -> Any:
         "top": -label / SOLVER_PANEL,
         "columns": 1,
     }
-    potts_plot.draw(axes["a"], potts, key=True, centre=True, key_style=style)
+    potts_plot.draw(axes["a"], potts, key=True, key_style=style)
     # NB Initial, Polish and Truth mean the same in both panels: keyed once, under (a)
     if copies is None:
         # NB (b) drawn empty and saying so, its record still being written (#743)

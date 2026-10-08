@@ -28,6 +28,7 @@ from port.qa.statistics import bars, ranks
 from port.studies.figures import (
     DODGE,
     FLOOR,
+    decade_above,
     gap_page,
     key_below,
     merged_records,
@@ -182,7 +183,7 @@ def _table(
             tab.text(
                 0.09,
                 y,
-                LABEL.get(name, name),
+                KEY_NAMES.get(name, LABEL.get(name, name)),
                 fontsize=8,
                 family="monospace",
                 transform=tab.transAxes,
@@ -282,6 +283,7 @@ def draw(
         bspread = spread**3
         bx *= DODGE * bspread
         bxe = [[e * bspread for e in side] for side in bxe]
+        top = max(top, by + bye[1][0])
         ax.annotate(
             "",
             (bx, by),
@@ -324,9 +326,10 @@ def draw(
         RUNTIME_FLOOR / 3 if key else float(d.seconds.quantile(0.02)) * 0.5,
         rightmost * 1.3,
     )
-    # NB one decade below the truth's median gap; three above, or above the highest start's error bar
+    # NB one decade below the truth's median gap; the decade above the highest point drawn
     ax.set_ylim(
-        float(np.median(truth)) / 10, max(float(np.median(truth)) * 1e3, top * 2)
+        float(np.median(truth)) / 10,
+        decade_above(max(top, float(np.quantile(truth, 0.9)))),
     )
     ax.yaxis.set_major_locator(FixedLocator([FLOOR, *10.0 ** np.arange(-1, 8)]))
     ax.yaxis.set_major_formatter(
@@ -370,7 +373,7 @@ def draw(
                 [],
                 "o",
                 color=COLOUR[name],
-                label=f"{NUMBER[name]} {LABEL.get(name, name)}",
+                label=f"{NUMBER[name]} {KEY_NAMES.get(name, LABEL.get(name, name))}",
             )
     ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.1), ncol=3, fontsize=7.5, frameon=False,
               title=f"{Path(record['manifest']).stem}: Median for {n_problems} realization{'s' if n_problems != 1 else ''}"

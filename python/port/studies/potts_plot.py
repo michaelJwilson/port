@@ -28,11 +28,11 @@ from port.qa.statistics import bars, ranks
 from port.studies.figures import (
     DODGE,
     FLOOR,
+    decade_above,
     gap_page,
     key_below,
     merged_records,
     tab20,
-    tt,
 )
 
 NAMES = {
@@ -46,24 +46,23 @@ TABLE = (
     ("Graph cuts", (
         ("sal:alpha-expansion", "Each clone in turn claims spots by a min cut"),
         ("sal:alpha-beta-swap", "Min-cut swaps between two clones at a time"),
-        ("port:alpha-rust-fuse-merge", f"Rust {tt('alpha-expansion')} fused with argmax descent (--sal)"),
     )),
     ("Local descent", (
         ("sal:icm", "Each spot to its best clone given neighbours, in order"),
-        ("sal:icm-random", f"{tt('icm')} in a random order: heat bath at T = 0"),
         ("sal:field_argmax", "Each spot's best clone, neighbours ignored"),
     )),
     ("Sampling, message passing", (
         ("sal:anneal", "Single-site heat bath, annealed"),
         ("sal:swendsen-wang-heat-bath", "Every bonded cluster relabelled by its field's heat bath, annealed"),
         ("sal:wolff-heat-bath", "One grown cluster relabelled by its field's heat bath, annealed"),
-        ("sal:max-product", "Loopy max-product belief propagation"),
         ("sal:trws", "Tree-reweighted message passing: its decode"),
     )),
 )  # fmt: skip
 """The solvers drawn (T- #660). Set aside from the figure, still in `clone_label_arms` or `--only`:
 `alpha-rust`, `alpha-rust-icm`, `icm-numba`, cnaster's `icm`, the four field-weighted cluster moves,
-cluster tempering, and parallel tempering (deprecated from the studies for now, T- #807)."""
+cluster tempering, parallel tempering (deprecated from the studies for now, T- #807), and
+`alpha-rust-fuse`, `icm-random` and `max-product`: the table draws `solver_combined`'s solvers,
+under its names (T- #807)."""
 NUMBER = {
     solver: k + 1 for k, solver in enumerate(s for _, rows in TABLE for s, _ in rows)
 }
@@ -81,7 +80,9 @@ KEY_NAMES = {
 
 
 def label(solver: str) -> str:
-    """The name printed for `solver`, its `sal:`/`port:` source dropped."""
+    """The name printed for `solver`: `solver_combined`'s (`KEY_NAMES`), else its own, source dropped."""
+    if solver in KEY_NAMES:
+        return KEY_NAMES[solver]
     name = solver.split(":", 1)[1]
     return NAMES.get(name, name)
 
@@ -238,7 +239,6 @@ def draw(
     ax: Any,
     record: dict[str, Any],
     key: bool = False,
-    centre: bool = False,
     key_style: dict[str, Any] | None = None,
 ) -> pd.DataFrame:
     """The gap panel on `ax`: each solver's runs against runtime, numbered as in `TABLE`; returns the runs drawn.
@@ -247,8 +247,8 @@ def draw(
     a key below the axes instead of the legend: the stages' markers, then each
     solver unnumbered with its missed % after both polishes, `port`'s marked
     and named in a footnote; every solver a circle.
-    `centre` widens the gap axis, in decades, until the truth's median is its
-    midpoint; no limit narrows, so no point is clipped.
+    The gap axis tops out at the decade above the highest point drawn, error
+    bars and the truth's band included (`decade_above`).
     """
     from matplotlib.ticker import FixedLocator, FuncFormatter
 
@@ -276,6 +276,7 @@ def draw(
         zorder=0,
     )
     ax.axhline(float(np.median(truths)), color="k", lw=0.9, zorder=0)
+    highest = float(np.quantile(truths, 0.9))
 
     lowest = float(d.groupby("solver").y.median().min())
     crowded: list[tuple[float, float, str]] = []
@@ -288,6 +289,7 @@ def draw(
         x *= spread
         xe = [[e * spread for e in side] for side in xe]
         y, ye = bars(g.y)
+        highest = max(highest, y + ye[1][0])
         ax.errorbar(
             x, y, xerr=xe, yerr=ye, fmt=marker, color=colour, ms=5, lw=0.8, capsize=2.5
         )
@@ -296,6 +298,7 @@ def draw(
         px *= DODGE * spread
         pxe = [[e * spread for e in side] for side in pxe]
         if (g.y - g.py).abs().max() > 0.5:
+            highest = max(highest, py + pye[1][0])
             ax.annotate(
                 "",
                 (px, py),
@@ -324,6 +327,7 @@ def draw(
         bx *= DODGE**2 * spread
         bxe = [[e * spread for e in side] for side in bxe]
         if (g.py - g.by).abs().max() > 0.5:
+            highest = max(highest, by + bye[1][0])
             ax.annotate(
                 "",
                 (bx, by),
@@ -384,12 +388,7 @@ def draw(
         float(d.groupby("solver").seconds.quantile(0.1).min()) * 0.6, slowest * 1.3
     )
     ax.set_yscale("log")
-    low, high = FLOOR * 0.5, float(d.y.max()) * 3
-    if centre:
-        truth = float(np.median(truths))
-        reach = max(truth / low, high / truth)
-        low, high = truth / reach, truth * reach
-    ax.set_ylim(low, high)
+    ax.set_ylim(FLOOR * 0.5, decade_above(highest))
     ax.yaxis.set_major_locator(FixedLocator([FLOOR, *10.0 ** np.arange(-1, 7)]))
     ax.yaxis.set_major_formatter(
         FuncFormatter(
