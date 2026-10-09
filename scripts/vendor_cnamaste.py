@@ -36,6 +36,7 @@ DEPARTED: dict[str, str] = {
     "normal_spot.py": "PR1, #105: a removed bin's genes leave the gene-level output",
     "spatial.py": "PR1, #692: rectangular clones that admit no assignment are banded",
     "scripts/run_cnamaste.py": "K1, #313 #362: integer copies by copy_decode.lattice_decode",
+    "utils.py": "PR1, T- #692: write_fig releases each Text's cached renderer",
 }
 """Copied file -> the T- #836 PR that edits it. Only grows."""
 
