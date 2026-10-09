@@ -7,38 +7,17 @@ from typing import Any
 import numpy as np
 import pytest
 
-from tests.fixtures import SpotCloneField, spot_clone_field
-
-
-def _arguments(fixture: SpotCloneField, weight: np.ndarray) -> tuple[np.ndarray, ...]:
-    return (
-        fixture.counts_nb,
-        fixture.base_nb_mean,
-        fixture.counts_bb,
-        fixture.total_bb_RD,
-        fixture.log_mu,
-        fixture.alphas,
-        fixture.p_binom,
-        fixture.taus,
-        fixture.pred,
-        weight,
-    )
+from tests.fixtures import (
+    SpotCloneField,
+    fused_field_arguments,
+    fused_field_of,
+    spot_clone_field,
+)
 
 
 def _both(fixture: SpotCloneField, weight: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    from port.patch.hmrf.fused_field import fused_spot_clone_field
-    from port.patch.hmrf.tabulated_field import tabulated_spot_clone_field
-
-    # NB `Any`: the kernels are `numba` dispatchers, whose stubs take no
-    #    positional unpacking.
-    fused: Any = fused_spot_clone_field
-    tabulated: Any = tabulated_spot_clone_field
-    shape = (fixture.n_spots, fixture.n_clones)
-    arguments = _arguments(fixture, weight)
-
-    return (
-        fused(*arguments, np.empty(shape)),
-        tabulated(*arguments, np.empty(shape)),
+    return fused_field_of(fixture, weight), fused_field_of(
+        fixture, weight, tabulated=True
     )
 
 
@@ -87,6 +66,6 @@ def test_counts_that_cannot_index_a_table_go_to_the_fused_kernel() -> None:
     shape = (fixture.n_spots, fixture.n_clones)
 
     np.testing.assert_array_equal(
-        dispatched(*_arguments(fixture, weight), np.empty(shape)),
-        fused(*_arguments(fixture, weight), np.empty(shape)),
+        dispatched(*fused_field_arguments(fixture, weight), np.empty(shape)),
+        fused(*fused_field_arguments(fixture, weight), np.empty(shape)),
     )

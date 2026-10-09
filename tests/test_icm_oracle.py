@@ -4,60 +4,31 @@ Bounds `energy(cnaster) >= energy(alpha_expansion) >= energy(exact)`, all scored
 `upstream_potts_energy`, the negation of `cnaster`'s `calc_assignment_cost`.
 """
 
-from typing import TYPE_CHECKING
-
 import numpy as np
 import pytest
 
-from tests.adapters import cnaster_icm_labelling, upstream_potts_energy
+from tests.adapters import (
+    cnaster_icm_labelling,
+    upstream_expansion,
+    upstream_icm,
+    upstream_potts_energy,
+)
 from tests.fixtures import (
     PottsLabels,
     enumerate_minimum_energy,
     potts_labels,
-    scaled_graph,
 )
-
-if TYPE_CHECKING:
-    from sal.search.alpha_expansion import ExpansionResult
 
 BOUND_TOLERANCE = 1e-9
 """Float slack for summation order on an inequality between sums of the same terms."""
 
 
 def _upstream_icm(fixture: PottsLabels, seed: int = 0) -> tuple[np.ndarray, float]:
-    from sal.search.icm import iterated_conditional_modes
-
-    result = iterated_conditional_modes(
-        scaled_graph(fixture), fixture.field, np.random.default_rng(seed)
-    )
+    result = upstream_icm(fixture, seed=seed)
     return np.asarray(result.labelling), float(result.energy)
 
 
-def _upstream_expansion(
-    fixture: PottsLabels, start: np.ndarray | None = None
-) -> "ExpansionResult":
-    from sal.backend import Backend
-    from sal.search.alpha_expansion import alpha_expansion
-
-    # NB PYTHON was the default before e0aeb19 made it RUST (#410).
-    return alpha_expansion(
-        scaled_graph(fixture),
-        fixture.field,
-        start=None if start is None else np.asarray(start, dtype=np.int64),
-        backend=Backend.PYTHON,
-    )
-
-
-@pytest.fixture(scope="module")
-def lattice() -> PottsLabels:
-    """A `6 x 6` lattice at the fixture's defaults, three clones."""
-    return potts_labels()
-
-
-@pytest.fixture(scope="module")
-def enumerable() -> PottsLabels:
-    """Ten nodes and three clones: 59,049 labellings, searched exhaustively."""
-    return potts_labels(shape=(5, 2), n_clones=3, signal=0.6, noise=1.0)
+_upstream_expansion = upstream_expansion
 
 
 @pytest.mark.oracle

@@ -9,6 +9,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from tests.fixtures import end_to_end_truth
+
 
 @pytest.fixture(scope="module")
 def run(tmp_path_factory: pytest.TempPathFactory) -> dict[str, Any]:
@@ -17,20 +19,12 @@ def run(tmp_path_factory: pytest.TempPathFactory) -> dict[str, Any]:
     from port.extensions.segments import recording
     from port.patch import recomb
     from port.scripts.run_cnaster import main
-    from port.sim.inputs import write_tmp_inputs
-    from port.sim.run_config import isolated_run, write_run_cnaster_config
-    from port.sim.truth import core_inference_truth
-    from port.sim.unsegment import unsegment
+    from port.sim.run_config import isolated_run, write_for_run
 
     mpl.use("Agg")
     root = tmp_path_factory.mktemp("lineage")
-    truth = core_inference_truth(
-        n_clones=2, n_states=3, lattice=(25, 40), n_obs=40, n_segments=3, seed=11
-    )
-    written = write_tmp_inputs(
-        truth, unsegment(truth, flip_every=0, unassigned_genes=0), root
-    )
-    config = write_run_cnaster_config(written, truth, max_iter_outer=1, max_iter=3)
+    truth = end_to_end_truth()
+    written, config = write_for_run(truth, root, max_iter_outer=1, max_iter=3)
 
     kernels: list[tuple[str, int, np.ndarray]] = []
     original = recomb.get_sitewise_transmat

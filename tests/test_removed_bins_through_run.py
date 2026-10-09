@@ -14,7 +14,7 @@ import pandas as pd
 import pytest
 import yaml
 
-from tests.fixtures import END_TO_END_LATTICE
+from tests.fixtures import end_to_end_truth
 
 
 @pytest.fixture(scope="module")
@@ -24,20 +24,11 @@ def removed(tmp_path_factory: pytest.TempPathFactory) -> dict[str, Any]:
     from port.scripts.run_cnaster import main
     from port.sim.inputs import write_tmp_inputs
     from port.sim.run_config import isolated_run, write_run_cnaster_config
-    from port.sim.truth import core_inference_truth
     from port.sim.unsegment import unsegment
 
     mpl.use("Agg")
     root = tmp_path_factory.mktemp("removed")
-    truth = core_inference_truth(
-        n_clones=2,
-        n_states=3,
-        lattice=END_TO_END_LATTICE,
-        n_obs=40,
-        n_segments=3,
-        seed=11,
-        normal_clone=False,
-    )
+    truth = end_to_end_truth(normal_clone=False)
     written = write_tmp_inputs(truth, unsegment(truth, flip_every=0), root)
     config = write_run_cnaster_config(written, truth, max_iter_outer=1, max_iter=3)
 

@@ -1,46 +1,17 @@
 """`port.patch.hmrf.field` (spot innermost) against `cnaster`'s field, bitwise (#59 item 1)."""
 
+from functools import partial
+
 import numpy as np
 import pytest
 from port.patch.hmrf.field import compute_loglike_spot_assignment_strided
 
-from tests.fixtures import SpotCloneField, spot_clone_field
+from tests.fixtures import cnaster_field_of, spot_clone_field
 
-
-def _cnaster_field(fixture: SpotCloneField) -> np.ndarray:
-    """`cnaster`'s own field, at `cnaster`'s own layout."""
-    from cnaster.hmrf import compute_loglike_spot_assignment
-
-    field: np.ndarray = compute_loglike_spot_assignment(
-        fixture.n_spots,
-        np.ones(fixture.n_spots),
-        np.ones(fixture.n_spots),
-        np.empty(0),
-        False,
-        fixture.log_emission_rdr,
-        fixture.log_emission_baf,
-        fixture.pred,
-        fixture.n_obs,
-        fixture.n_clones,
-    )
-    return field
-
-
-def _patched_field(fixture: SpotCloneField) -> np.ndarray:
-    """The patch at `cnaster`'s layout; only the loop order differs."""
-    field: np.ndarray = compute_loglike_spot_assignment_strided(
-        fixture.n_spots,
-        np.ones(fixture.n_spots),
-        np.ones(fixture.n_spots),
-        np.empty(0),
-        False,
-        fixture.log_emission_rdr,
-        fixture.log_emission_baf,
-        fixture.pred,
-        fixture.n_obs,
-        fixture.n_clones,
-    )
-    return field
+_cnaster_field = cnaster_field_of
+_patched_field = partial(
+    cnaster_field_of, kernel=compute_loglike_spot_assignment_strided
+)
 
 
 @pytest.mark.patch

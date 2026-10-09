@@ -7,7 +7,6 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
-import numpy as np
 import pytest
 from port.sim.inputs import read_to_bins, write_tmp_inputs, written_config
 from port.sim.run_config import (
@@ -18,6 +17,8 @@ from port.sim.run_config import (
 from port.sim.truth import dev_instance
 from port.sim.unsegment import unsegment
 from pytest_benchmark.fixture import BenchmarkFixture
+
+from tests.adapters import cnaster_initial_phase
 
 pytestmark = [pytest.mark.preprocessing, pytest.mark.release]
 """`release` as a quarantine: running here costs `phasing.py` subject coverage elsewhere (#132)."""
@@ -39,30 +40,7 @@ def _blocks(truth: Any, root: Path) -> Iterator[Any]:
 
 def _phase(truth: Any, blocks: Any) -> Any:
     """`run_cnaster:360`'s call, at the self-transition the shipped config sets."""
-    from cnaster.hmm_nophasing import get_log_transmat
-    from cnaster.phasing import initial_phase_given_partition
-
-    return initial_phase_given_partition(
-        blocks.X,
-        blocks.lengths,
-        np.zeros_like(blocks.total_bb_RD),
-        blocks.total_bb_RD,
-        None,
-        truth.clone_index,
-        truth.n_states,
-        get_log_transmat(truth.n_states, SHIPPED_T_PHASEING),
-        np.zeros(blocks.X.shape[0]),
-        "sp",
-        SHIPPED_T_PHASEING,
-        0,
-        fix_NB_dispersion=False,
-        shared_NB_dispersion=True,
-        fix_BB_dispersion=False,
-        shared_BB_dispersion=True,
-        max_iter=100,
-        tol=1e-3,
-        threshold=0.5,
-    )
+    return cnaster_initial_phase(truth, blocks, SHIPPED_T_PHASEING)
 
 
 @pytest.fixture(scope="module")

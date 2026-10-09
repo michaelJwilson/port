@@ -6,12 +6,14 @@ Haldane computation on 22 chromosomes. `bug`: cnaster's chr2-9 reading.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import pytest
 
+from tests.builders import gene_snp_blocks
 from tests.fixtures import recombination_map
 
 NU = 1.0
@@ -21,40 +23,12 @@ SHIFT = 0.0
 def _blocks(contigs: range) -> pd.DataFrame:
     """Twenty gene-SNP-gene blocks per contig, 50-150 kb wide, every 1-3 Mb."""
     rng = np.random.default_rng(13)
-    rows = []
-    block = 0
 
-    for contig in contigs:
-        starts = np.cumsum(rng.integers(1_000_000, 3_000_000, 20))
-        for start in starts:
-            width = int(rng.integers(50_000, 150_000))
-            s = int(start)
-            rows += [
-                {
-                    "CHR": contig,
-                    "START": s,
-                    "END": s + 10,
-                    "is_interval": True,
-                    "block_id": block,
-                },
-                {
-                    "CHR": contig,
-                    "START": s + 5,
-                    "END": s + 6,
-                    "is_interval": False,
-                    "block_id": block,
-                },
-                {
-                    "CHR": contig,
-                    "START": s + width - 10,
-                    "END": s + width,
-                    "is_interval": True,
-                    "block_id": block,
-                },
-            ]
-            block += 1
+    def drawn(contig: int) -> Iterator[tuple[int, int, int]]:
+        for start in np.cumsum(rng.integers(1_000_000, 3_000_000, 20)):
+            yield contig, int(start), int(rng.integers(50_000, 150_000))
 
-    return pd.DataFrame(rows)
+    return gene_snp_blocks(block for contig in contigs for block in drawn(contig))
 
 
 @pytest.mark.cnaster

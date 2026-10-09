@@ -5,87 +5,29 @@ Three claims are `patch` (implementations agree); the switch term as the allele 
 the `oracle`, against scipy.
 """
 
-from dataclasses import dataclass
-from typing import Any
-
 import numpy as np
 import pytest
 import scipy.stats
+
+from tests.builders import EmissionInputs, cnaster_emission_pair, emission_inputs
 
 SWAP_TOLERANCE = 1.0e-12
 """Switch term vs scipy tolerance; realized 6.0e-14 (reassociation only)."""
 
 
-@dataclass(frozen=True)
-class EmissionInputs:
-    """Both channels live; with no allele data the phased relations hold vacuously."""
-
-    single_X: np.ndarray
-    base_nb_mean: np.ndarray
-    total_bb_RD: np.ndarray
-    log_mu: np.ndarray
-    alphas: np.ndarray
-    p_binom: np.ndarray
-    taus: np.ndarray
-
-
 def _inputs(n_states: int, *, n_obs: int = 60, n_spots: int = 1) -> EmissionInputs:
     """Counts and parameters at `cnaster`'s shapes, with repeats to deduplicate."""
-    generator = np.random.default_rng(17)
-
-    exposure = generator.integers(20, 60, (n_obs, n_spots)).astype(np.float64)
-    trials = generator.integers(5, 40, (n_obs, n_spots)).astype(np.float64)
-
-    single_X = np.zeros((n_obs, 2, n_spots))
-    single_X[:, 0, :] = generator.poisson(exposure)
-    single_X[:, 1, :] = generator.binomial(trials.astype(int), 0.45)
-
-    def column(values: np.ndarray) -> np.ndarray:
-        """One value per state, repeated across the spot axis."""
-        return np.tile(np.asarray(values)[:, None], (1, n_spots))
-
-    return EmissionInputs(
-        single_X=single_X,
-        base_nb_mean=exposure,
-        total_bb_RD=trials,
-        log_mu=column(np.linspace(-0.4, 0.4, n_states)),
-        alphas=column(np.linspace(0.1, 0.6, n_states)),
-        p_binom=column(np.linspace(0.2, 0.83, n_states)),
-        taus=column(np.linspace(7.5, 30.0, n_states)),
-    )
+    return emission_inputs(n_states, n_obs, n_spots, seed=17, exposure=(20, 60), trials=(5, 40), share=0.45,
+                           ranges=((-0.4, 0.4), (0.1, 0.6), (0.2, 0.83), (7.5, 30.0))).columns(n_spots)  # fmt: skip
 
 
 def _phased_emission(
-    inputs: "EmissionInputs", *, clone_stack: bool = False
-) -> "tuple[Any, Any]":
-    from cnaster.hmm_phased import hmm_phased
-
-    scored: tuple[Any, Any] = hmm_phased.compute_emission_probability_nb_betabinom(
-        inputs.single_X,
-        inputs.base_nb_mean,
-        inputs.log_mu,
-        inputs.alphas,
-        inputs.total_bb_RD,
-        inputs.p_binom,
-        inputs.taus,
-        clone_stack=clone_stack,
-    )
-    return scored
+    inputs: EmissionInputs, *, clone_stack: bool = False
+) -> tuple[np.ndarray, np.ndarray]:
+    return cnaster_emission_pair(inputs, phased=True, clone_stack=clone_stack)
 
 
-def _unphased_emission(inputs: "EmissionInputs") -> "tuple[Any, Any]":
-    from cnaster.hmm_nophasing import hmm_nophasing
-
-    scored: tuple[Any, Any] = hmm_nophasing.compute_emission_probability_nb_betabinom(
-        inputs.single_X,
-        inputs.base_nb_mean,
-        inputs.log_mu,
-        inputs.alphas,
-        inputs.total_bb_RD,
-        inputs.p_binom,
-        inputs.taus,
-    )
-    return scored
+_unphased_emission = cnaster_emission_pair
 
 
 @pytest.mark.oracle

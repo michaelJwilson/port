@@ -10,11 +10,17 @@ from typing import Any
 
 import numpy as np
 import pytest
-import torch
 from pytest_benchmark.fixture import BenchmarkFixture
 
-from tests.adapters import CnasterChainInputs, from_negative_binomial_chains
-from tests.fixtures import NegativeBinomialChains, negative_binomial_chains, tiers
+from tests.adapters import (
+    CnasterChainInputs,
+    cnaster_lattice_arguments,
+    cnaster_log_emission,
+    cnaster_posterior,
+    from_negative_binomial_chains,
+    upstream_chain_densities,
+)
+from tests.fixtures import negative_binomial_chains, tiers
 
 GATE = {"n_states": 5, "sequence_length": 200, "n_sequences": 8}
 """1,600 positions over eight chains: the per-pull-request size."""
@@ -23,49 +29,16 @@ STRESS = {"n_states": 7, "sequence_length": 3_000, "n_sequences": 8}
 """24,000 positions, the order `run_cnaster` reaches on the dev instance."""
 
 
-def _emission(inputs: CnasterChainInputs) -> np.ndarray:
-    from cnaster.hmm_nophasing import hmm_nophasing
-
-    rdr, baf = hmm_nophasing.compute_emission_probability_nb_betabinom(
-        inputs.single_X,
-        inputs.base_nb_mean,
-        inputs.log_mu,
-        inputs.alphas,
-        inputs.total_bb_RD,
-        inputs.p_binom,
-        inputs.taus,
-    )
-    scored: np.ndarray = rdr + baf
-    return scored
-
-
 def _cnaster_forward(inputs: CnasterChainInputs, emission: np.ndarray) -> np.ndarray:
     from cnaster.hmm_nophasing import hmm_nophasing
 
     forward: np.ndarray = hmm_nophasing.forward_lattice(
-        inputs.lengths,
-        inputs.log_transmat,
-        inputs.log_startprob,
-        emission,
-        inputs.log_sitewise_transmat,
+        *cnaster_lattice_arguments(inputs, emission)
     )
     return forward
 
 
-def _cnaster_both(inputs: CnasterChainInputs, emission: np.ndarray) -> np.ndarray:
-    from cnaster.hmm import compute_copy_state_posterior
-    from cnaster.hmm_nophasing import hmm_nophasing
-
-    alpha = _cnaster_forward(inputs, emission)
-    beta = hmm_nophasing.backward_lattice(
-        inputs.lengths,
-        inputs.log_transmat,
-        inputs.log_startprob,
-        emission,
-        inputs.log_sitewise_transmat,
-    )
-    posterior: np.ndarray = compute_copy_state_posterior(alpha, beta)
-    return posterior
+_cnaster_both = cnaster_posterior
 
 
 def _upstream_both(
@@ -79,17 +52,7 @@ def _upstream_both(
     )
 
 
-def _densities(fixture: NegativeBinomialChains) -> list[np.ndarray]:
-    observations = np.asarray(fixture.dataset.observations)
-    return [
-        np.asarray(
-            fixture.family.log_density(
-                torch.as_tensor(observations[chain], dtype=torch.float64)
-            ),
-            dtype=float,
-        )
-        for chain in range(observations.shape[0])
-    ]
+_densities = upstream_chain_densities
 
 
 def _instance(settings: dict[str, int]) -> Any:
@@ -98,7 +61,7 @@ def _instance(settings: dict[str, int]) -> Any:
     return (
         fixture,
         inputs,
-        _emission(inputs),
+        cnaster_log_emission(inputs),
         _densities(fixture),
         np.log(np.asarray(fixture.dataset.initial, dtype=float)),
         np.log(np.asarray(fixture.dataset.transition, dtype=float)),

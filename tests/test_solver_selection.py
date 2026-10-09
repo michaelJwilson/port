@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 from scipy.special import logsumexp
 
-from tests.adapters import from_negative_binomial_chains
+from tests.adapters import cnaster_lattice_arguments, from_negative_binomial_chains
 from tests.fixtures import negative_binomial_chains
 
 
@@ -39,24 +39,7 @@ def test_copy_state_posterior_normalises_the_lattice(n_states: int) -> None:
 
     fixture = negative_binomial_chains(n_states=n_states, sequence_length=30)
     inputs = from_negative_binomial_chains(fixture)
-    log_emit_rdr, log_emit_baf = (
-        hmm_nophasing.compute_emission_probability_nb_betabinom(
-            inputs.single_X,
-            inputs.base_nb_mean,
-            inputs.log_mu,
-            inputs.alphas,
-            inputs.total_bb_RD,
-            inputs.p_binom,
-            inputs.taus,
-        )
-    )
-    args = (
-        inputs.lengths,
-        inputs.log_transmat,
-        inputs.log_startprob,
-        log_emit_rdr + log_emit_baf,
-        inputs.log_sitewise_transmat,
-    )
+    args = cnaster_lattice_arguments(inputs)
     log_alpha = hmm_nophasing.forward_lattice(*args)
     log_beta = hmm_nophasing.backward_lattice(*args)
 

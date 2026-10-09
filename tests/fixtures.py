@@ -23,6 +23,7 @@ from port.sim.fixtures import SIM_ROOT
 from port.sim.truth import (
     DEFAULT_SEED,
     CoreInferenceTruth,
+    core_inference_truth,
 )
 from sal.emissions import (
     BetaBinomialEmission,
@@ -708,15 +709,15 @@ def synthetic_ranges(
     return snp_ids, ranges
 
 
-def genomic_plot_instance(seed: int = 17, n_states: int = 4) -> dict[str, Any]:
+def genomic_plot_instance(
+    seed: int = 17, n_states: int = 4, n_obs: int = 24, n_spots: int = 9
+) -> dict[str, Any]:
     """`plot_clones_genomic`'s arguments and a fit result: 24 bins, 9 spots, 3 clones."""
-    rng = np.random.default_rng(seed)
-    n_obs, n_spots, n_clones = 24, 9, 3
+    from tests.builders import allele_counts
 
-    total = rng.integers(20, 80, size=(n_obs, n_spots)).astype(float)
-    X = np.zeros((n_obs, 2, n_spots))
-    X[:, 0, :] = rng.poisson(150, size=(n_obs, n_spots))
-    X[:, 1, :] = rng.binomial(total.astype(int), 0.45)
+    rng = np.random.default_rng(seed)
+    n_clones = 3
+    X, _, total = allele_counts(rng, (n_obs, n_spots), (20, 80), 0.45, 150)
 
     return {
         "arguments": (
@@ -751,11 +752,11 @@ def integer_copies(rng: np.random.Generator, n_obs: int, n_clones: int) -> Any:
     return pd.DataFrame(frame)
 
 
-def fused_field_of(fixture: SpotCloneField, weight: np.ndarray) -> np.ndarray:
-    """`port`'s fused spot-by-clone field on `fixture`, weighted by `weight`."""
-    from port.patch.hmrf.fused_field import fused_spot_clone_field
-
-    field: np.ndarray = fused_spot_clone_field(
+def fused_field_arguments(
+    fixture: SpotCloneField, weight: np.ndarray
+) -> tuple[np.ndarray, ...]:
+    """The fused and tabulated field kernels' arguments on `fixture`, but `out`."""
+    return (
         fixture.counts_nb,
         fixture.base_nb_mean,
         fixture.counts_bb,
@@ -766,6 +767,96 @@ def fused_field_of(fixture: SpotCloneField, weight: np.ndarray) -> np.ndarray:
         fixture.taus,
         fixture.pred,
         weight,
+    )
+
+
+def fused_field_of(
+    fixture: SpotCloneField, weight: np.ndarray, *, tabulated: bool = False
+) -> np.ndarray:
+    """`port`'s fused (or tabulated) spot-by-clone field on `fixture`, weighted by `weight`."""
+    from port.patch.hmrf.fused_field import fused_spot_clone_field
+    from port.patch.hmrf.tabulated_field import tabulated_spot_clone_field
+
+    # NB `Any`: `numba` dispatchers, whose stubs take no positional unpacking.
+    kernel: Any = tabulated_spot_clone_field if tabulated else fused_spot_clone_field
+    field: np.ndarray = kernel(
+        *fused_field_arguments(fixture, weight),
+        np.empty((fixture.n_spots, fixture.n_clones)),
+    )
+    return field
+
+
+def two_step_field_of(
+    fixture: SpotCloneField,
+    valid_nb: np.ndarray,
+    valid_bb: np.ndarray,
+    kernel: Any,
+    *,
+    smooth: bool = True,
+    swaps: Any = None,
+) -> np.ndarray:
+    """`cnaster`'s dense producer (under `swaps`), then `kernel`'s field: what the fused kernel replaces."""
+    from contextlib import nullcontext
+
+    import cnaster.hmm_nophasing as upstream
+    from port.pipeline import patched
+    from scipy.sparse import eye as sparse_eye
+
+    # NB `_dense_*_logpmf` indexes `[i, 0]`; the fused kernel takes `(n_states,)` (#278).
+    with nullcontext() if swaps is None else patched(swaps):
+        rdr = upstream._dense_nb_logpmf(
+            fixture.counts_nb,
+            fixture.base_nb_mean,
+            fixture.log_mu[:, None],
+            fixture.alphas[:, None],
+        )
+        baf = upstream._dense_bb_logpmf(
+            fixture.counts_bb,
+            fixture.total_bb_RD,
+            fixture.p_binom[:, None],
+            fixture.taus[:, None],
+        )
+
+    neighbourhood: dict[str, np.ndarray] = {}
+    if smooth:
+        identity = sparse_eye(fixture.n_spots, format="csr")
+        neighbourhood = {
+            "smooth_indices": identity.indices,
+            "smooth_indptr": identity.indptr,
+        }
+
+    field: np.ndarray = kernel(
+        fixture.n_spots,
+        valid_nb,
+        valid_bb,
+        np.empty(0),
+        False,
+        rdr,
+        baf,
+        fixture.pred,
+        fixture.n_obs,
+        fixture.n_clones,
+        **neighbourhood,
+    )
+    return field
+
+
+def cnaster_field_of(fixture: SpotCloneField, kernel: Any = None) -> np.ndarray:
+    """`cnaster`'s spot-by-clone field on `fixture`, unweighted, or `kernel`'s in its place."""
+    from cnaster.hmrf import compute_loglike_spot_assignment
+
+    kernel = compute_loglike_spot_assignment if kernel is None else kernel
+    field: np.ndarray = kernel(
+        fixture.n_spots,
+        np.ones(fixture.n_spots),
+        np.ones(fixture.n_spots),
+        np.empty(0),
+        False,
+        fixture.log_emission_rdr,
+        fixture.log_emission_baf,
+        fixture.pred,
+        fixture.n_obs,
+        fixture.n_clones,
     )
     return field
 
@@ -866,6 +957,13 @@ END_TO_END_LATTICE = (25, 40)
 """Rows and columns. A thousand spots, which is `icm_sweep_deque`'s floor times five."""
 
 
+def end_to_end_truth(**overrides: Any) -> CoreInferenceTruth:
+    """Two clones and three states over 40 bins and `END_TO_END_LATTICE`, seed 11."""
+    settings: dict[str, Any] = {"n_clones": 2, "n_states": 3, "lattice": END_TO_END_LATTICE,
+                                "n_obs": 40, "n_segments": 3, "seed": 11}  # fmt: skip
+    return core_inference_truth(**settings | overrides)
+
+
 def divergent_clone_instance(
     n_states: int = 3, n_clones: int = 3, per_clone: int = 8, seed: int = 41
 ) -> dict[str, Any]:
@@ -876,14 +974,15 @@ def divergent_clone_instance(
     """
     from cnaster.count_encoder import CountEncoder
 
+    from tests.builders import allele_counts
+
     generator = np.random.default_rng(seed)
     n_segments = n_clones * per_clone
 
-    exposure = generator.integers(20, 60, n_segments).astype(np.float64)
-    trials = generator.integers(10, 40, n_segments).astype(np.float64)
-
-    observed = generator.poisson(exposure).astype(np.float64)
-    successes = generator.binomial(trials.astype(int), 0.4).astype(np.float64)
+    X, exposure, trials = allele_counts(
+        generator, (n_segments,), (10, 40), 0.4, (20, 60)
+    )
+    observed, successes = X[:, 0], X[:, 1]
 
     # NB one state per clone, so the shifts are distinct by construction.
     decode = np.repeat(np.arange(n_clones) % n_states, per_clone).astype(np.int64)

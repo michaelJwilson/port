@@ -4,83 +4,28 @@ State-space width and site-dependence of the transition are arguments; nothing i
 reassociated, so the same `logsumexp` runs in the same order.
 """
 
-from dataclasses import dataclass
+from dataclasses import replace
 
 import numpy as np
 import pytest
+
+from tests.builders import (
+    LatticeInputs,
+    cnaster_lattice,
+    random_lattice,
+    unified_lattice,
+)
 
 SPOTS = 3
 """More than one, so both spot sums are non-trivial."""
 
 
-@dataclass(frozen=True)
-class LatticeInputs:
-    """What either recursion takes, at `cnaster`'s shapes."""
-
-    lengths: np.ndarray
-    log_transmat: np.ndarray
-    log_startprob: np.ndarray
-    log_emission: np.ndarray
-    log_sitewise_transmat: np.ndarray
-    n_states: int
-
-
 def _inputs(n_states: int, *, phased: bool, seed: int = 5) -> LatticeInputs:
     """Ragged segments, a proper transition, and a drawn (site-varying) switch kernel."""
-    generator = np.random.default_rng(seed)
-
-    lengths = np.array([7, 11, 5], dtype=np.int64)
-    n_obs = int(lengths.sum())
-    rows = 2 * n_states if phased else n_states
-
-    transition = generator.random((n_states, n_states)) + 0.5
-    transition /= transition.sum(axis=1, keepdims=True)
-
-    start = generator.random(n_states) + 0.5
-    start /= start.sum()
-
-    return LatticeInputs(
-        lengths=lengths,
-        log_transmat=np.log(transition),
-        log_startprob=np.log(start),
-        log_emission=generator.normal(-2.0, 1.5, (rows, n_obs, SPOTS)),
-        log_sitewise_transmat=np.log(generator.uniform(1e-4, 0.4, n_obs)),
-        n_states=n_states,
-    )
+    return random_lattice(n_states, (7, 11, 5), SPOTS, phased=phased, seed=seed)
 
 
-def _cnaster(which: str, inputs: LatticeInputs, *, phased: bool) -> np.ndarray:
-    from cnaster.hmm_nophasing import hmm_nophasing
-    from cnaster.hmm_phased import hmm_phased
-
-    klass = hmm_phased if phased else hmm_nophasing
-    recursion = getattr(klass, which)
-
-    result: np.ndarray = recursion(
-        inputs.lengths,
-        inputs.log_transmat,
-        inputs.log_startprob,
-        inputs.log_emission,
-        inputs.log_sitewise_transmat,
-    )
-    return result
-
-
-def _unified(which: str, inputs: LatticeInputs, *, phased: bool) -> np.ndarray:
-    from port.patch import lattice
-
-    recursion = getattr(lattice, which)
-
-    result: np.ndarray = recursion(
-        inputs.lengths,
-        inputs.log_transmat,
-        inputs.log_startprob,
-        inputs.log_emission,
-        inputs.log_sitewise_transmat,
-        inputs.n_states,
-        phased,
-    )
-    return result
+_cnaster, _unified = cnaster_lattice, unified_lattice
 
 
 @pytest.mark.patch
@@ -139,14 +84,7 @@ def test_the_backward_pass_does_not_read_the_start_probability() -> None:
 
     with_start = _unified("backward_lattice", inputs, phased=True)
 
-    scrambled = LatticeInputs(
-        lengths=inputs.lengths,
-        log_transmat=inputs.log_transmat,
-        log_startprob=inputs.log_startprob[::-1].copy(),
-        log_emission=inputs.log_emission,
-        log_sitewise_transmat=inputs.log_sitewise_transmat,
-        n_states=inputs.n_states,
-    )
+    scrambled = replace(inputs, log_startprob=inputs.log_startprob[::-1].copy())
 
     assert np.array_equal(
         with_start, _unified("backward_lattice", scrambled, phased=True)

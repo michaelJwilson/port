@@ -8,6 +8,8 @@ from typing import Any
 import numpy as np
 import pytest
 
+from tests.builders import allele_counts
+
 
 def _instance(
     n_bins: int = 12, n_spots: int = 9, n_clones: int = 3, n_states: int = 4
@@ -18,11 +20,9 @@ def _instance(
     rng = np.random.default_rng(11)
 
     coords = rng.uniform(0.0, 10.0, size=(n_spots, 2))
-    total_bb_RD = rng.integers(15, 60, size=(n_bins, n_spots)).astype(float)
-
-    single_X = np.zeros((n_bins, 2, n_spots))
-    single_X[:, 0, :] = rng.poisson(120, size=(n_bins, n_spots))
-    single_X[:, 1, :] = rng.binomial(total_bb_RD.astype(int), 0.38)
+    single_X, _, total_bb_RD = allele_counts(
+        rng, (n_bins, n_spots), (15, 60), 0.38, 120
+    )
 
     result = {
         "new_assignment": np.tile(np.arange(n_clones), n_spots // n_clones),

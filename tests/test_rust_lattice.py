@@ -14,8 +14,13 @@ from typing import Any
 import numpy as np
 import pytest
 
+from tests.builders import random_lattice
 from tests.figure_checks import compare_run_artifacts
-from tests.fixtures import partition_ari, run_planted_core_inference
+from tests.fixtures import (
+    end_to_end_truth,
+    partition_ari,
+    run_planted_core_inference,
+)
 
 CASES = [
     # (n_states, lengths, spots): gate sizes, then one above PARALLEL_WORK
@@ -30,19 +35,12 @@ def _inputs(
     n_states: int, lengths: tuple[int, ...], spots: int, *, phased: bool, seed: int
 ) -> tuple[np.ndarray, ...]:
     """A proper transition, a switch kernel that moves, and some `-inf` sites."""
-    generator = np.random.default_rng(seed)
-    lengths_array = np.asarray(lengths, dtype=np.int64)
-    n_obs = int(lengths_array.sum())
-    rows = 2 * n_states if phased else n_states
-
-    log_transmat = np.log(generator.dirichlet(np.ones(n_states), n_states))
-    log_startprob = np.log(generator.dirichlet(np.ones(n_states)))
-    log_emission = generator.normal(-5.0, 3.0, (rows, n_obs, spots))
+    inputs = random_lattice(
+        n_states, lengths, spots, phased=phased, seed=seed, dirichlet=True
+    )
     # NB an impossible state at some sites, as a zero-count BAF bin gives `cnaster`.
-    log_emission[0, :: max(n_obs // 7, 1), 0] = -np.inf
-    log_sitewise = np.log(generator.uniform(1e-4, 0.3, n_obs))
-
-    return lengths_array, log_transmat, log_startprob, log_emission, log_sitewise
+    inputs.log_emission[0, :: max(inputs.log_emission.shape[1] // 7, 1), 0] = -np.inf
+    return inputs.arguments
 
 
 def _agree(rust: np.ndarray, cnaster: np.ndarray) -> None:
@@ -213,18 +211,11 @@ def test_a_rust_run_reproduces_a_numba_one(tmp_path: Path) -> None:
     import subprocess
     import sys
 
-    from port.sim.inputs import write_tmp_inputs
-    from port.sim.run_config import write_run_cnaster_config
-    from port.sim.truth import core_inference_truth
-    from port.sim.unsegment import unsegment
+    from port.sim.run_config import write_for_run
 
-    truth = core_inference_truth(
-        n_clones=2, n_states=3, lattice=(25, 40), n_obs=40, n_segments=3, seed=11
+    written, config = write_for_run(
+        end_to_end_truth(), tmp_path, max_iter_outer=1, max_iter=3
     )
-    written = write_tmp_inputs(
-        truth, unsegment(truth, flip_every=0, unassigned_genes=0), tmp_path
-    )
-    config = write_run_cnaster_config(written, truth, max_iter_outer=1, max_iter=3)
     output = written.root / "output"
 
     def run(*flags: str) -> None:

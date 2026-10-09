@@ -17,7 +17,7 @@ import pytest
 from scipy.special import logsumexp
 
 from tests.exact_densities import nb_logpmf, nb_partials
-from tests.fixtures import SpotCloneField, spot_clone_field
+from tests.fixtures import SpotCloneField, spot_clone_field, two_step_field_of
 
 COUNTS = np.array([0, 1, 7, 42, 300, 1000, 2500], dtype=np.float64)
 VANISHING = 1e-17
@@ -205,41 +205,12 @@ def _two_step_under_the_table(fixture: SpotCloneField) -> np.ndarray:
     """`cnaster`'s producer under `LOG_SPACE_SWAPS`, then the field: what the fused kernel
     replaces.
     """
-    import cnaster.hmm_nophasing as upstream
     from port.patch.hmrf.field import compute_loglike_spot_assignment_strided
-    from port.pipeline import LOG_SPACE_SWAPS, patched
-    from scipy.sparse import eye as sparse_eye
+    from port.pipeline import LOG_SPACE_SWAPS
 
-    with patched(LOG_SPACE_SWAPS):
-        rdr = upstream._dense_nb_logpmf(
-            fixture.counts_nb,
-            fixture.base_nb_mean,
-            fixture.log_mu[:, None],
-            fixture.alphas[:, None],
-        )
-        baf = upstream._dense_bb_logpmf(
-            fixture.counts_bb,
-            fixture.total_bb_RD,
-            fixture.p_binom[:, None],
-            fixture.taus[:, None],
-        )
-
-    smooth = sparse_eye(fixture.n_spots, format="csr")
-    field: np.ndarray = compute_loglike_spot_assignment_strided(
-        fixture.n_spots,
-        np.ones(fixture.n_spots),
-        np.ones(fixture.n_spots),
-        np.empty(0),
-        False,
-        rdr,
-        baf,
-        fixture.pred,
-        fixture.n_obs,
-        fixture.n_clones,
-        smooth_indices=smooth.indices,
-        smooth_indptr=smooth.indptr,
-    )
-    return field
+    ones = np.ones(fixture.n_spots)
+    kernel = compute_loglike_spot_assignment_strided
+    return two_step_field_of(fixture, ones, ones.copy(), kernel, swaps=LOG_SPACE_SWAPS)
 
 
 @pytest.mark.patch

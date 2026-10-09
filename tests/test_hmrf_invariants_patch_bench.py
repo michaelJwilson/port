@@ -10,6 +10,8 @@ from port.patch.hmrf.invariants import BoundaryInvariants, boundary_invariants
 from pytest_benchmark.fixture import BenchmarkFixture
 from scipy.sparse import csr_matrix
 
+from tests.adapters import cnaster_valid_counts
+from tests.builders import regular_graph
 from tests.fixtures import tiers
 
 GATE = (240, 160)
@@ -36,20 +38,11 @@ def _counts_inputs(shape: tuple[int, int]) -> tuple[np.ndarray, np.ndarray]:
     return base, total
 
 
-def _cnaster_counts(
-    base: np.ndarray, total: np.ndarray
-) -> tuple[np.ndarray, np.ndarray]:
-    """`cnaster.hmrf:262-263`, verbatim: what the patch removes from the loop."""
-    return (base > 0).sum(axis=0), (total > 0).sum(axis=0)
+_cnaster_counts = cnaster_valid_counts
 
 
 def _smooth(n_spots: int) -> csr_matrix:
-    rng = np.random.default_rng(17)
-    rows = np.repeat(np.arange(n_spots), NEIGHBOURS)
-    cols = rng.integers(0, n_spots, NEIGHBOURS * n_spots)
-    return csr_matrix(
-        (np.ones(NEIGHBOURS * n_spots), (rows, cols)), shape=(n_spots, n_spots)
-    )
+    return regular_graph(np.random.default_rng(17), n_spots, NEIGHBOURS)
 
 
 def _weight_inputs(n_spots: int) -> tuple[BoundaryInvariants, csr_matrix]:

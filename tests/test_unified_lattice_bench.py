@@ -4,16 +4,16 @@ sizes (#205).
 No speedup is claimed; equivalence is `test_unified_lattice.py`'s.
 """
 
-from typing import Any
-
-import numpy as np
 import pytest
 from pytest_benchmark.fixture import BenchmarkFixture
 
+from tests.builders import (
+    LatticeInputs,
+    cnaster_lattice,
+    random_lattice,
+    unified_lattice,
+)
 from tests.fixtures import tiers
-
-Inputs = dict[str, Any]
-"""The arrays one arm is handed, named so both arms take the same thing."""
 
 GATE = {"n_states": 3, "n_obs": 300, "n_spots": 4}
 """Small enough for the per-pull-request budget; decides no ratio."""
@@ -22,59 +22,11 @@ STRESS = {"n_states": 7, "n_obs": 3_000, "n_spots": 50}
 """Where the `S^2` inner loop and the per-site transition tell."""
 
 
-def _inputs(n_states: int, n_obs: int, n_spots: int, *, phased: bool) -> Inputs:
-    generator = np.random.default_rng(31)
-    rows = 2 * n_states if phased else n_states
-
-    transition = generator.random((n_states, n_states)) + 0.5
-    transition /= transition.sum(axis=1, keepdims=True)
-
-    start = generator.random(n_states) + 0.5
-    start /= start.sum()
-
-    return {
-        "lengths": np.array([n_obs], dtype=np.int64),
-        "log_transmat": np.log(transition),
-        "log_startprob": np.log(start),
-        "log_emission": generator.normal(-2.0, 1.5, (rows, n_obs, n_spots)),
-        "log_sitewise_transmat": np.log(generator.uniform(1e-4, 0.4, n_obs)),
-    }
+def _inputs(n_states: int, n_obs: int, n_spots: int, *, phased: bool) -> LatticeInputs:
+    return random_lattice(n_states, [n_obs], n_spots, phased=phased, seed=31)
 
 
-def _cnaster(which: str, phased: bool) -> Any:
-    from cnaster.hmm_nophasing import hmm_nophasing
-    from cnaster.hmm_phased import hmm_phased
-
-    return getattr(hmm_phased if phased else hmm_nophasing, which)
-
-
-def _run_cnaster(which: str, inputs: Inputs, *, phased: bool) -> np.ndarray:
-    recursion = _cnaster(which, phased)
-    result: np.ndarray = recursion(
-        inputs["lengths"],
-        inputs["log_transmat"],
-        inputs["log_startprob"],
-        inputs["log_emission"],
-        inputs["log_sitewise_transmat"],
-    )
-    return result
-
-
-def _run_unified(
-    which: str, inputs: Inputs, n_states: int, *, phased: bool
-) -> np.ndarray:
-    from port.patch import lattice
-
-    result: np.ndarray = getattr(lattice, which)(
-        inputs["lengths"],
-        inputs["log_transmat"],
-        inputs["log_startprob"],
-        inputs["log_emission"],
-        inputs["log_sitewise_transmat"],
-        n_states,
-        phased,
-    )
-    return result
+_run_cnaster, _run_unified = cnaster_lattice, unified_lattice
 
 
 @pytest.mark.benchmark
@@ -96,5 +48,5 @@ def test_the_recursion(
         _run_cnaster(which, inputs, phased=phased)
         benchmark(_run_cnaster, which, inputs, phased=phased)
     else:
-        _run_unified(which, inputs, size["n_states"], phased=phased)
-        benchmark(_run_unified, which, inputs, size["n_states"], phased=phased)
+        _run_unified(which, inputs, phased=phased)
+        benchmark(_run_unified, which, inputs, phased=phased)

@@ -11,7 +11,13 @@ import numpy as np
 import pytest
 import torch
 
-from tests.adapters import CnasterChainInputs, from_negative_binomial_chains
+from tests.adapters import (
+    CnasterChainInputs,
+    cnaster_lattice_arguments,
+    cnaster_posterior,
+    from_negative_binomial_chains,
+    upstream_chain_densities,
+)
 from tests.fixtures import NegativeBinomialChains, negative_binomial_chains
 
 if TYPE_CHECKING:
@@ -24,44 +30,7 @@ POSTERIOR_TOLERANCE = 1e-10
 """Tighter: a normalized posterior loses the evidence's magnitude."""
 
 
-def _cnaster_emission(inputs: CnasterChainInputs) -> np.ndarray:
-    from cnaster.hmm_nophasing import hmm_nophasing
-
-    rdr, baf = hmm_nophasing.compute_emission_probability_nb_betabinom(
-        inputs.single_X,
-        inputs.base_nb_mean,
-        inputs.log_mu,
-        inputs.alphas,
-        inputs.total_bb_RD,
-        inputs.p_binom,
-        inputs.taus,
-    )
-    emission: np.ndarray = rdr + baf
-    return emission
-
-
-def _cnaster_posterior(inputs: CnasterChainInputs) -> np.ndarray:
-    """Return `log gamma` over the concatenated axis via `compute_copy_state_posterior`."""
-    from cnaster.hmm import compute_copy_state_posterior
-    from cnaster.hmm_nophasing import hmm_nophasing
-
-    emission = _cnaster_emission(inputs)
-    log_alpha = hmm_nophasing.forward_lattice(
-        inputs.lengths,
-        inputs.log_transmat,
-        inputs.log_startprob,
-        emission,
-        inputs.log_sitewise_transmat,
-    )
-    log_beta = hmm_nophasing.backward_lattice(
-        inputs.lengths,
-        inputs.log_transmat,
-        inputs.log_startprob,
-        emission,
-        inputs.log_sitewise_transmat,
-    )
-    posterior: np.ndarray = compute_copy_state_posterior(log_alpha, log_beta)
-    return posterior
+_cnaster_posterior = cnaster_posterior
 
 
 def _upstream_forward_backward(
@@ -71,13 +40,9 @@ def _upstream_forward_backward(
     from sal.likelihood.forward_backward import forward_backward
 
     # NB upstream takes one row per chain; `cnaster` concatenates them
-    observations = np.asarray(fixture.dataset.observations)[chain]
-
-    density = fixture.family.log_density(
-        torch.as_tensor(observations, dtype=torch.float64)
-    )
+    density = upstream_chain_densities(fixture)[chain]
     return forward_backward(
-        np.asarray(density, dtype=float),
+        density,
         np.log(np.asarray(fixture.dataset.initial, dtype=float)),
         np.log(np.asarray(fixture.dataset.transition, dtype=float)),
     )
@@ -131,13 +96,7 @@ def test_the_evidence_agrees_over_a_rectangular_batch(n_sequences: int) -> None:
     from cnaster.hmm_nophasing import hmm_nophasing
     from scipy.special import logsumexp
 
-    log_alpha = hmm_nophasing.forward_lattice(
-        inputs.lengths,
-        inputs.log_transmat,
-        inputs.log_startprob,
-        _cnaster_emission(inputs),
-        inputs.log_sitewise_transmat,
-    )
+    log_alpha = hmm_nophasing.forward_lattice(*cnaster_lattice_arguments(inputs))
     ends = np.cumsum(inputs.lengths) - 1
     theirs = sum(
         float(_upstream_forward_backward(fixture, chain).log_evidence)
@@ -161,51 +120,20 @@ def _upstream_evidence_at(
         torch.as_tensor(1.0 / np.asarray(alphas).ravel(), dtype=torch.float64),
         torch.as_tensor(np.exp(np.asarray(log_mu).ravel()), dtype=torch.float64),
     )
-    observations = np.asarray(fixture.dataset.observations)
     log_initial = np.log(np.asarray(fixture.dataset.initial, dtype=float))
     log_transition = np.log(np.asarray(fixture.dataset.transition, dtype=float))
 
-    total = 0.0
-    for chain in range(observations.shape[0]):
-        density = family.log_density(
-            torch.as_tensor(observations[chain], dtype=torch.float64)
-        )
-        total += float(
-            forward_backward(
-                np.asarray(density, dtype=float), log_initial, log_transition
-            ).log_evidence
-        )
-    return total
+    return sum(
+        float(forward_backward(density, log_initial, log_transition).log_evidence)
+        for density in upstream_chain_densities(fixture, family)
+    )
 
 
 def _fit(fixture: NegativeBinomialChains, inputs: CnasterChainInputs, max_iter: int):  # type: ignore[no-untyped-def]
     """Run `pipeline_baum_welch` at a budget with the fixture's transition (#80)."""
-    import warnings
-
-    from cnaster.hmm import pipeline_baum_welch
-    from cnaster.hmm_nophasing import hmm_nophasing
-
     # NB the start is supplied: the driver's own initializer raises (#143)
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        return pipeline_baum_welch(
-            None,
-            inputs.single_X,
-            inputs.lengths,
-            inputs.n_states,
-            inputs.base_nb_mean,
-            inputs.total_bb_RD,
-            inputs.log_sitewise_transmat,
-            hmmclass=hmm_nophasing,
-            params="sp",
-            t=float(np.exp(inputs.log_transmat[0, 0])),
-            init_log_mu=np.asarray(inputs.log_mu, dtype=float).reshape(-1, 1),
-            init_p_binom=np.asarray(inputs.p_binom, dtype=float).reshape(-1, 1),
-            init_alphas=np.asarray(inputs.alphas, dtype=float).reshape(-1, 1),
-            init_taus=np.asarray(inputs.taus, dtype=float).reshape(-1, 1),
-            max_iter=max_iter,
-            tol=1e-12,
-        )
+    self_transition = float(np.exp(inputs.log_transmat[0, 0]))
+    return _fit_at(fixture, inputs, self_transition, max_iter, params="sp")
 
 
 @pytest.mark.oracle
@@ -293,18 +221,12 @@ def _paper_transition_update(
     """Return the paper's transition M step from upstream's pairwise posterior, row-normalized."""
     from sal.likelihood.forward_backward import forward_backward
 
-    observations = np.asarray(fixture.dataset.observations)
     log_initial = np.log(np.asarray(fixture.dataset.initial, dtype=float))
 
     counts = np.zeros(log_transition.shape, dtype=float)
-    for chain in range(observations.shape[0]):
-        density = fixture.family.log_density(
-            torch.as_tensor(observations[chain], dtype=torch.float64)
-        )
+    for density in upstream_chain_densities(fixture):
         counts += np.asarray(
-            forward_backward(
-                np.asarray(density, dtype=float), log_initial, log_transition
-            ).pairwise
+            forward_backward(density, log_initial, log_transition).pairwise
         ).sum(axis=0)
     updated: np.ndarray = counts / counts.sum(axis=1, keepdims=True)
     return updated
@@ -315,8 +237,9 @@ def _fit_at(  # type: ignore[no-untyped-def]
     inputs: CnasterChainInputs,
     self_transition: float,
     max_iter: int,
+    params: str = "stp",
 ):
-    """`_fit` with the self-transition imposed and `params="stp"`."""
+    """`pipeline_baum_welch` from the planted parameters, at `self_transition`."""
     import warnings
 
     from cnaster.hmm import pipeline_baum_welch
@@ -333,7 +256,7 @@ def _fit_at(  # type: ignore[no-untyped-def]
             inputs.total_bb_RD,
             inputs.log_sitewise_transmat,
             hmmclass=hmm_nophasing,
-            params="stp",
+            params=params,
             t=self_transition,
             init_log_mu=np.asarray(inputs.log_mu, dtype=float).reshape(-1, 1),
             init_p_binom=np.asarray(inputs.p_binom, dtype=float).reshape(-1, 1),

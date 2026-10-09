@@ -11,7 +11,13 @@ import pytest
 from port.patch.hmrf.field import compute_loglike_spot_assignment_strided
 from pytest_benchmark.fixture import BenchmarkFixture
 
-from tests.fixtures import SpotCloneField, fused_field_of, spot_clone_field, tiers
+from tests.fixtures import (
+    SpotCloneField,
+    fused_field_of,
+    spot_clone_field,
+    tiers,
+    two_step_field_of,
+)
 
 GATE = {"n_states": 5, "n_obs": 400, "n_spots": 300, "n_clones": 2}
 STRESS = {"n_states": 7, "n_obs": 2000, "n_spots": 2000, "n_clones": 4}
@@ -19,34 +25,9 @@ STRESS = {"n_states": 7, "n_obs": 2000, "n_spots": 2000, "n_clones": 4}
 
 
 def _two_step(fixture: SpotCloneField, weight: np.ndarray) -> np.ndarray:
-    from cnaster.hmm_nophasing import _dense_bb_logpmf, _dense_nb_logpmf
-
-    # NB `_dense_*_logpmf` indexes `[i, 0]`; the fused kernel takes `(n_states,)` (#278).
-    rdr = _dense_nb_logpmf(
-        fixture.counts_nb,
-        fixture.base_nb_mean,
-        fixture.log_mu[:, None],
-        fixture.alphas[:, None],
+    return two_step_field_of(
+        fixture, weight, weight, compute_loglike_spot_assignment_strided, smooth=False
     )
-    baf = _dense_bb_logpmf(
-        fixture.counts_bb,
-        fixture.total_bb_RD,
-        fixture.p_binom[:, None],
-        fixture.taus[:, None],
-    )
-    field: np.ndarray = compute_loglike_spot_assignment_strided(
-        fixture.n_spots,
-        weight,
-        weight,
-        np.empty(0),
-        False,
-        rdr,
-        baf,
-        fixture.pred,
-        fixture.n_obs,
-        fixture.n_clones,
-    )
-    return field
 
 
 @pytest.mark.benchmark

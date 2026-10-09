@@ -21,12 +21,6 @@ MAX_RANGE_LENGTH = 1_000_000
 
 
 @pytest.fixture(scope="module")
-def planted(planted_instance: PlantedInstance) -> CoreInferenceTruth:
-    """The session's gate instance: both stages are pure functions of it."""
-    return planted_instance[0]
-
-
-@pytest.fixture(scope="module")
 def written(planted_instance: PlantedInstance) -> WrittenInputs:
     """The gate instance as files."""
     return planted_instance[2]

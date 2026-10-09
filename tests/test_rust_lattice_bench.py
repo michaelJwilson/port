@@ -5,9 +5,10 @@ Gate rows decide nothing; stress rows (`release`): K = 10, 10 x 1,000 bins, 20 s
 
 from typing import Any
 
-import numpy as np
 import pytest
 from pytest_benchmark.fixture import BenchmarkFixture
+
+from tests.builders import random_lattice
 
 GATE = {"n_states": 5, "n_contigs": 10, "per_contig": 100, "n_spots": 4}
 """Gate size; decides no ratio."""
@@ -19,17 +20,14 @@ STRESS = {"n_states": 10, "n_contigs": 10, "per_contig": 1_000, "n_spots": 20}
 def _inputs(
     n_states: int, n_contigs: int, per_contig: int, n_spots: int, *, phased: bool
 ) -> tuple[Any, ...]:
-    generator = np.random.default_rng(31)
-    n_obs = n_contigs * per_contig
-    rows = 2 * n_states if phased else n_states
-
-    return (
-        np.full(n_contigs, per_contig, dtype=np.int64),
-        np.log(generator.dirichlet(np.ones(n_states), n_states)),
-        np.log(generator.dirichlet(np.ones(n_states))),
-        generator.normal(-5.0, 3.0, (rows, n_obs, n_spots)),
-        np.log(generator.uniform(1e-4, 0.3, n_obs)),
-    )
+    return random_lattice(
+        n_states,
+        [per_contig] * n_contigs,
+        n_spots,
+        phased=phased,
+        seed=31,
+        dirichlet=True,
+    ).arguments
 
 
 def _recursion(which: str, *, phased: bool, implementation: str) -> Any:

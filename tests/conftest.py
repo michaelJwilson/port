@@ -111,6 +111,28 @@ def planted_instance(tmp_path_factory: pytest.TempPathFactory) -> Any:
     return planted_and_written(tmp_path_factory.mktemp("gate"))
 
 
+@pytest.fixture
+def lattice() -> Any:
+    """The default Potts draw: a 6x6 open lattice, three clones, 60 edges."""
+    from tests.fixtures import potts_labels
+
+    return potts_labels()
+
+
+@pytest.fixture
+def enumerable() -> Any:
+    """A 10-site, three-clone Potts lattice with weak signal: 59,049 labellings."""
+    from tests.fixtures import potts_labels
+
+    return potts_labels(shape=(5, 2), n_clones=3, signal=0.6, noise=1.0)
+
+
+@pytest.fixture(scope="session")
+def planted(planted_instance: Any) -> Any:
+    """The gate instance's truth; a module planting its own overrides it."""
+    return planted_instance[0]
+
+
 @pytest.fixture(scope="module")
 def gate_config(planted_instance: Any) -> Iterator[Any]:
     """The gate instance's run configuration, installed for the module."""
@@ -118,6 +140,17 @@ def gate_config(planted_instance: Any) -> Iterator[Any]:
 
     with written_config(planted_instance[3]) as config:
         yield config
+
+
+@pytest.fixture(scope="module")
+def gate_table(planted_instance: Any, gate_config: Any) -> tuple[Any, Any]:
+    """The gate instance as `load_input_data` returns it, and `cnaster`'s gene-SNP table."""
+    from cnaster.io import load_input_data
+    from cnaster.omics import form_gene_snp_table
+
+    loaded = load_input_data(gate_config)
+    hgtable = str(planted_instance[2].hgtable)
+    return loaded, form_gene_snp_table(loaded.unique_snp_ids, hgtable, loaded.adata)
 
 
 _COLLECTED: list[pytest.Item] = []

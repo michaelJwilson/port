@@ -10,6 +10,9 @@ import pytest
 from port.patch.icm.interface import CsrGraph, fold_unary, icm_sweep
 from scipy.sparse import csr_matrix
 
+from tests.adapters import cnaster_sweep
+from tests.builders import random_graph
+
 N_SPOTS = 400
 N_CLONES = 4
 N_SAMPLES = 3
@@ -25,52 +28,14 @@ def _problem(
 
     field = rng.normal(-50.0, 5.0, (N_SPOTS, N_CLONES))
 
-    rows, cols, data = [], [], []
-    for spot in range(N_SPOTS):
-        for neighbour in rng.choice(
-            N_SPOTS, size=int(rng.integers(2, 8)), replace=False
-        ):
-            rows.append(spot)
-            cols.append(int(neighbour))
-            data.append(float(rng.uniform(0.5, 2.0)))
-
-    graph = csr_matrix((data, (rows, cols)), shape=(N_SPOTS, N_SPOTS))
+    graph = random_graph(rng, N_SPOTS, (2, 8))
     assignment = rng.integers(0, N_CLONES, N_SPOTS)
     sample_ids = rng.integers(0, N_SAMPLES, N_SPOTS)
 
     return field, graph, assignment, sample_ids
 
 
-def _cnaster_sweep(
-    field: np.ndarray,
-    graph: csr_matrix,
-    assignment: np.ndarray,
-    spatial_weight: float,
-    *,
-    seed: int,
-    posterior: np.ndarray | None = None,
-    **kwargs: object,
-) -> tuple[np.ndarray, int, float]:
-    """The fifteen-argument call, as `hmrf.py:307` makes it."""
-    from cnaster.icm import icm_sweep_deque
-
-    # NPY002: cnaster's sweep shuffles with the legacy global RNG.
-    np.random.seed(seed)  # noqa: NPY002
-    labels = assignment.copy()
-
-    niter, cost = icm_sweep_deque(
-        single_llf=field,
-        adj_indptr=graph.indptr,
-        adj_indices=graph.indices,
-        adj_weights=graph.data,
-        new_assignment=labels,
-        spatial_weight=spatial_weight,
-        posterior=posterior,
-        min_clone_spots=0,
-        **kwargs,
-    )
-
-    return labels, int(niter), float(cost)
+_cnaster_sweep = cnaster_sweep
 
 
 def _patched_sweep(

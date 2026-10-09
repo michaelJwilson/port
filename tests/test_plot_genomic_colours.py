@@ -11,19 +11,15 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from tests.fixtures import genomic_plot_instance
+
 PAIRS = [(1, 1), (1, 1), (2, 1), (2, 1), (3, 0)]
 """State `k`'s decoded `(A, B)`: states 0/1 and 2/3 oversample one pair each."""
 
 
 def _instance() -> dict[str, Any]:
-    rng = np.random.default_rng(5)
     n_obs, n_spots = 40, 4
     path = np.repeat(np.arange(len(PAIRS)), n_obs // len(PAIRS))
-
-    total = rng.integers(20, 80, size=(n_obs, n_spots)).astype(float)
-    X = np.zeros((n_obs, 2, n_spots))
-    X[:, 0, :] = rng.poisson(150, size=(n_obs, n_spots))
-    X[:, 1, :] = rng.binomial(total.astype(int), 0.45)
     frame = {
         "CHR": np.ones(n_obs, dtype=int),
         "clone0 A": np.array([PAIRS[k][0] for k in path]),
@@ -31,12 +27,9 @@ def _instance() -> dict[str, Any]:
     }
 
     return {
-        "arguments": (
-            np.array([n_obs]),
-            X,
-            rng.uniform(100.0, 200.0, size=(n_obs, n_spots)),
-            total,
-        ),
+        "arguments": genomic_plot_instance(5, n_obs=n_obs, n_spots=n_spots)[
+            "arguments"
+        ],
         "result": {
             "new_assignment": np.zeros(n_spots, dtype=np.int64),
             "pred_cnv": path[:, None],

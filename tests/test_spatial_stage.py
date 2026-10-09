@@ -4,7 +4,6 @@ from typing import Any
 
 import numpy as np
 import pytest
-from port.sim.run_config import PlantedInstance
 from port.sim.truth import CoreInferenceTruth, core_inference_truth
 
 pytestmark = pytest.mark.preprocessing
@@ -42,12 +41,6 @@ def _moore_neighbourhood(spot: int, rows: int, columns: int) -> set[int]:
         for dc in (-1, 0, 1)
         if (dr or dc) and 0 <= row + dr < rows and 0 <= column + dc < columns
     }
-
-
-@pytest.fixture(scope="module")
-def planted(planted_instance: PlantedInstance) -> CoreInferenceTruth:
-    """The session's gate instance."""
-    return planted_instance[0]
 
 
 @pytest.fixture(scope="module")

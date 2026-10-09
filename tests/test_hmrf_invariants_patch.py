@@ -10,6 +10,8 @@ import pytest
 from port.patch.hmrf.invariants import BoundaryInvariants, boundary_invariants
 from scipy.sparse import csr_matrix
 
+from tests.adapters import cnaster_valid_counts
+from tests.builders import random_graph
 from tests.fixtures import SpotCloneField, spot_clone_field
 
 DROPOUT_SEED = 8_101
@@ -36,23 +38,12 @@ def _smooth_matrix(n_spots: int, seed: int) -> csr_matrix:
     """A smoothing neighbourhood with uneven degree, self included, so a dropped pooling
     loop shows.
     """
-    rng = np.random.default_rng(seed)
-
-    rows, cols = [], []
-    for spot in range(n_spots):
-        neighbours = rng.choice(n_spots, size=int(rng.integers(1, 7)), replace=False)
-        for neighbour in [spot, *neighbours.tolist()]:
-            rows.append(spot)
-            cols.append(int(neighbour))
-
-    return csr_matrix((np.ones(len(rows)), (rows, cols)), shape=(n_spots, n_spots))
+    return random_graph(
+        np.random.default_rng(seed), n_spots, (1, 7), weighted=False, loops=True
+    )
 
 
-def _cnaster_counts(
-    base: np.ndarray, total: np.ndarray
-) -> tuple[np.ndarray, np.ndarray]:
-    """`cnaster.hmrf:262-263`, verbatim."""
-    return (base > 0).sum(axis=0), (total > 0).sum(axis=0)
+_cnaster_counts = cnaster_valid_counts
 
 
 def _cnaster_weight(

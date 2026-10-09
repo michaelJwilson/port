@@ -142,18 +142,13 @@ def _entry_point_run(
     import pandas as pd
     from port.patch import integer_copy
     from port.scripts.run_cnaster import main
-    from port.sim.inputs import write_tmp_inputs
-    from port.sim.run_config import isolated_run, write_run_cnaster_config
+    from port.sim.run_config import isolated_run, write_for_run
     from port.sim.truth import critical_instance
-    from port.sim.unsegment import unsegment
 
     mpl.use("Agg")
     truth = critical_instance(copy_lattice=True)
-    written = write_tmp_inputs(
-        truth, unsegment(truth, flip_every=0, unassigned_genes=0), tmp_path
-    )
-    config = write_run_cnaster_config(
-        written, truth, max_iter_outer=1, max_iter=3, n_states=2
+    written, config = write_for_run(
+        truth, tmp_path, max_iter_outer=1, max_iter=3, n_states=2
     )
     with isolated_run(), warnings.catch_warnings(), integer_copy.recorded() as decodes:
         warnings.simplefilter("ignore")

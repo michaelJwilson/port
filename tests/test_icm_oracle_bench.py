@@ -10,7 +10,7 @@ import numpy as np
 import pytest
 from pytest_benchmark.fixture import BenchmarkFixture
 
-from tests.adapters import cnaster_icm_labelling
+from tests.adapters import cnaster_icm_labelling, upstream_expansion, upstream_icm
 from tests.fixtures import PottsLabels, potts_labels, scaled_graph, tiers
 
 if TYPE_CHECKING:
@@ -28,31 +28,28 @@ def _cnaster_sweep(fixture: PottsLabels, _: "PottsGraph", start: np.ndarray) -> 
 
 
 def _upstream_icm(fixture: PottsLabels, graph: "PottsGraph", _: np.ndarray) -> Any:
-    from sal.search.icm import iterated_conditional_modes
-
-    return iterated_conditional_modes(graph, fixture.field, np.random.default_rng(0))
+    return upstream_icm(fixture, graph)
 
 
 def _upstream_expansion(
     fixture: PottsLabels, graph: "PottsGraph", _: np.ndarray
 ) -> Any:
-    from sal.backend import Backend
-    from sal.search.alpha_expansion import alpha_expansion
+    return upstream_expansion(fixture, graph)
 
-    # NB PYTHON was the default before e0aeb19 made it RUST (#410)
-    return alpha_expansion(graph, fixture.field, backend=Backend.PYTHON)
+
+def _sized(shape: tuple[int, int]) -> tuple[PottsLabels, "PottsGraph", np.ndarray]:
+    fixture = potts_labels(shape=shape, n_clones=3)
+    return fixture, scaled_graph(fixture), np.zeros(fixture.n_nodes, dtype=np.int64)
 
 
 @pytest.fixture(scope="module")
 def gate() -> tuple[PottsLabels, "PottsGraph", np.ndarray]:
-    fixture = potts_labels(shape=GATE_SHAPE, n_clones=3)
-    return fixture, scaled_graph(fixture), np.zeros(fixture.n_nodes, dtype=np.int64)
+    return _sized(GATE_SHAPE)
 
 
 @pytest.fixture(scope="module")
 def stress() -> tuple[PottsLabels, "PottsGraph", np.ndarray]:
-    fixture = potts_labels(shape=STRESS_SHAPE, n_clones=3)
-    return fixture, scaled_graph(fixture), np.zeros(fixture.n_nodes, dtype=np.int64)
+    return _sized(STRESS_SHAPE)
 
 
 @pytest.mark.benchmark

@@ -48,16 +48,11 @@ SHARED = {
 
 
 def _document(tmp_path: Path) -> tuple[dict[str, Any], Path]:
-    from port.sim.inputs import write_tmp_inputs
-    from port.sim.run_config import write_run_cnaster_config
+    from port.sim.run_config import write_for_run
     from port.sim.truth import core_inference_truth
-    from port.sim.unsegment import unsegment
 
     truth = core_inference_truth(n_obs=40, lattice=(6, 6), seed=3)
-    written = write_tmp_inputs(
-        truth, unsegment(truth, flip_every=0, unassigned_genes=0), tmp_path
-    )
-    config = write_run_cnaster_config(written, truth)
+    _, config = write_for_run(truth, tmp_path)
     return yaml.safe_load(config.read_text()), config
 
 

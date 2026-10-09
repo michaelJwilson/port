@@ -19,9 +19,11 @@ from tests.fixtures import (
     PhasedChains,
     PottsLabels,
     SpotCloneField,
+    scaled_graph,
 )
 
 if TYPE_CHECKING:
+    from sal.search.alpha_expansion import ExpansionResult
     from scipy.sparse import csr_matrix
 
 N_CHANNELS = 2
@@ -106,8 +108,8 @@ def from_negative_binomial_chains(
     )
 
 
-def cnaster_emission(inputs: CnasterChainInputs) -> np.ndarray:
-    """`cnaster`'s per-state emission, both channels summed, shape `(n_states, n_obs)`."""
+def cnaster_log_emission(inputs: CnasterChainInputs) -> np.ndarray:
+    """`cnaster`'s per-state emission, both channels summed, `(n_states, n_obs, 1)`."""
     from cnaster.hmm_nophasing import hmm_nophasing
 
     log_emit_rdr, log_emit_baf = (
@@ -121,8 +123,41 @@ def cnaster_emission(inputs: CnasterChainInputs) -> np.ndarray:
             inputs.taus,
         )
     )
-    emission: np.ndarray = (log_emit_rdr + log_emit_baf)[:, :, 0]
+    emission: np.ndarray = log_emit_rdr + log_emit_baf
     return emission
+
+
+def cnaster_emission(inputs: CnasterChainInputs) -> np.ndarray:
+    """`cnaster_log_emission` of the one spot, shape `(n_states, n_obs)`."""
+    return cnaster_log_emission(inputs)[:, :, 0]
+
+
+def cnaster_lattice_arguments(
+    inputs: CnasterChainInputs, emission: np.ndarray | None = None
+) -> tuple[np.ndarray, ...]:
+    """The five arguments `cnaster`'s lattices take, at `cnaster_log_emission` unless given."""
+    return (
+        inputs.lengths,
+        inputs.log_transmat,
+        inputs.log_startprob,
+        cnaster_log_emission(inputs) if emission is None else emission,
+        inputs.log_sitewise_transmat,
+    )
+
+
+def cnaster_posterior(
+    inputs: CnasterChainInputs, emission: np.ndarray | None = None
+) -> np.ndarray:
+    """`log gamma` over the concatenated axis via `compute_copy_state_posterior`."""
+    from cnaster.hmm import compute_copy_state_posterior
+    from cnaster.hmm_nophasing import hmm_nophasing
+
+    arguments = cnaster_lattice_arguments(inputs, emission)
+    posterior: np.ndarray = compute_copy_state_posterior(
+        hmm_nophasing.forward_lattice(*arguments),
+        hmm_nophasing.backward_lattice(*arguments),
+    )
+    return posterior
 
 
 def cnaster_total_log_likelihood(inputs: CnasterChainInputs) -> float:
@@ -130,27 +165,23 @@ def cnaster_total_log_likelihood(inputs: CnasterChainInputs) -> float:
     from cnaster.hmm_nophasing import hmm_nophasing
     from scipy.special import logsumexp
 
-    log_emit_rdr, log_emit_baf = (
-        hmm_nophasing.compute_emission_probability_nb_betabinom(
-            inputs.single_X,
-            inputs.base_nb_mean,
-            inputs.log_mu,
-            inputs.alphas,
-            inputs.total_bb_RD,
-            inputs.p_binom,
-            inputs.taus,
-        )
-    )
-    log_alpha = hmm_nophasing.forward_lattice(
-        inputs.lengths,
-        inputs.log_transmat,
-        inputs.log_startprob,
-        log_emit_rdr + log_emit_baf,
-        inputs.log_sitewise_transmat,
-    )
+    log_alpha = hmm_nophasing.forward_lattice(*cnaster_lattice_arguments(inputs))
 
     ends = np.cumsum(inputs.lengths) - 1
     return float(sum(logsumexp(log_alpha[:, end]) for end in ends))
+
+
+def upstream_chain_densities(
+    fixture: NegativeBinomialChains, family: Any = None
+) -> list[np.ndarray]:
+    """Upstream's per-state log density of each chain, under `family` or the fixture's."""
+    family = fixture.family if family is None else family
+    return [
+        np.asarray(
+            family.log_density(torch.as_tensor(row, dtype=torch.float64)), dtype=float
+        )
+        for row in np.asarray(fixture.dataset.observations)
+    ]
 
 
 def upstream_total_log_likelihood(fixture: NegativeBinomialChains) -> float:
@@ -435,6 +466,24 @@ class CnasterCoreInputs:
         }
 
 
+def cnaster_valid_counts(
+    base: np.ndarray, total: np.ndarray
+) -> tuple[np.ndarray, np.ndarray]:
+    """`cnaster.hmrf:262-263`, verbatim: each spot's bins with read depth, and with alleles."""
+    return (base > 0).sum(axis=0), (total > 0).sum(axis=0)
+
+
+def cnaster_adjacency_triple(
+    matrix: "csr_matrix",
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """`cnaster`'s `unpack_adjacency(cast_csr(matrix))`: spots, neighbours, weights."""
+    from cnaster.hmrf_utils import cast_csr
+    from cnaster.icm import unpack_adjacency
+
+    spots, neighbors, weights = unpack_adjacency(cast_csr(matrix))
+    return spots, neighbors, weights
+
+
 def square_coords(rows: int, columns: int) -> np.ndarray:
     """`(row, column)` of each spot of a `rows x columns` lattice, row-major."""
     return np.stack(
@@ -573,6 +622,36 @@ def upstream_potts_energy(fixture: PottsLabels, labelling: np.ndarray) -> float:
     )
 
 
+def cnaster_sweep(
+    field: np.ndarray,
+    graph: "csr_matrix",
+    assignment: np.ndarray,
+    spatial_weight: float,
+    *,
+    seed: int,
+    posterior: np.ndarray | None = None,
+    **kwargs: object,
+) -> tuple[np.ndarray, int, float]:
+    """The fifteen-argument call on a copy of `assignment`, as `hmrf.py:307` makes it."""
+    from cnaster.icm import icm_sweep_deque
+
+    # NB `icm_sweep_deque` calls `np.random.shuffle`, so only the legacy global seed reaches it.
+    np.random.seed(seed)  # noqa: NPY002
+    labels = assignment.copy()
+
+    niter, cost = icm_sweep_deque(
+        single_llf=field,
+        adj_indptr=graph.indptr,
+        adj_indices=graph.indices,
+        adj_weights=graph.data,
+        new_assignment=labels,
+        spatial_weight=spatial_weight,
+        posterior=posterior,
+        **{"min_clone_spots": 0} | kwargs,
+    )
+    return labels, int(niter), float(cost)
+
+
 def cnaster_icm_labelling(
     fixture: PottsLabels,
     start: np.ndarray,
@@ -586,26 +665,69 @@ def cnaster_icm_labelling(
     `min_clone_spots` defaults to 0, not 200, so the occupancy guard stays slack (as in
     #8).
     """
-    import numpy as np
-    from cnaster.icm import icm_sweep_deque
-
-    # NB `icm_sweep_deque` calls `np.random.shuffle`, so only the legacy global seed reaches it.
-    np.random.seed(seed)  # noqa: NPY002
-
-    adjacency = cnaster_potts_adjacency(fixture)
-    assignment = np.array(start, dtype=np.int64, copy=True)
-
-    iterations, cost = icm_sweep_deque(
-        single_llf=fixture.field,
-        adj_indptr=adjacency.indptr,
-        adj_indices=adjacency.indices,
-        adj_weights=adjacency.data,
-        new_assignment=assignment,
-        spatial_weight=fixture.spatial_weight,
-        posterior=None,
+    assignment, iterations, cost = cnaster_sweep(
+        fixture.field,
+        cnaster_potts_adjacency(fixture),
+        np.asarray(start, dtype=np.int64),
+        fixture.spatial_weight,
+        seed=seed,
         min_clone_spots=min_clone_spots,
     )
-    return assignment, float(cost), int(iterations)
+    return assignment, cost, iterations
+
+
+def upstream_icm(fixture: PottsLabels, graph: Any = None, seed: int = 0) -> Any:
+    """`sal`'s ICM on `fixture`'s field from `seed`, over `graph` or the fixture's own."""
+    from sal.search.icm import iterated_conditional_modes
+
+    graph = scaled_graph(fixture) if graph is None else graph
+    return iterated_conditional_modes(graph, fixture.field, np.random.default_rng(seed))
+
+
+def upstream_expansion(
+    fixture: PottsLabels, graph: Any = None, start: np.ndarray | None = None
+) -> "ExpansionResult":
+    """`sal`'s alpha expansion on `fixture`'s field, over `graph` or the fixture's own."""
+    from sal.backend import Backend
+    from sal.search.alpha_expansion import alpha_expansion
+
+    # NB PYTHON was the default before e0aeb19 made it RUST (#410).
+    return alpha_expansion(
+        scaled_graph(fixture) if graph is None else graph,
+        fixture.field,
+        start=None if start is None else np.asarray(start, dtype=np.int64),
+        backend=Backend.PYTHON,
+    )
+
+
+def cnaster_initial_phase(truth: CoreInferenceTruth, blocks: Any, t: float) -> Any:
+    """`run_cnaster:360`'s `initial_phase_given_partition` call on `blocks`, at `t`."""
+    from cnaster.hmm_nophasing import get_log_transmat
+    from cnaster.phasing import initial_phase_given_partition
+
+    return initial_phase_given_partition(
+        blocks.X,
+        blocks.lengths,
+        # NB BAF only: `run_cnaster` passes a zero `(n_obs, n_spots)` exposure here too.
+        np.zeros_like(blocks.total_bb_RD),
+        blocks.total_bb_RD,
+        None,
+        # NB one clone over every spot would wash out the imbalance the vote reads.
+        truth.clone_index,
+        truth.n_states,
+        get_log_transmat(truth.n_states, t),
+        np.zeros(blocks.X.shape[0]),
+        "sp",
+        t,
+        0,
+        fix_NB_dispersion=False,
+        shared_NB_dispersion=True,
+        fix_BB_dispersion=False,
+        shared_BB_dispersion=True,
+        max_iter=100,
+        tol=1e-3,
+        threshold=0.5,
+    )
 
 
 def range_filter_loop(unique_snp_ids: np.ndarray, ranges: Any) -> np.ndarray:
@@ -686,6 +808,23 @@ def grid_adjacency(n_spots: int, width: int) -> Any:
     data = np.ones(len(rows))
 
     return coo_matrix((data, (rows, columns)), shape=(n_spots, n_spots)).tocsr()
+
+
+CLONE_ASSIGNMENT_POSITIONAL = ("single_X", "single_base_nb_mean", "single_total_bb_RD", "res", "pred",
+                               "adjacency_mat", "prev_assignment", "sample_ids", "spatial_weight")  # fmt: skip
+"""`pipeline_clone_assignment`'s positional arguments, in order."""
+
+
+def clone_assignment_call(
+    function: Any, arguments: dict[str, Any], **keywords: Any
+) -> Any:
+    """`function` called as `run_core_inference` calls it, on a copy of `prev_assignment`."""
+    from cnaster.hmm_nophasing import hmm_nophasing
+
+    given = arguments | {"prev_assignment": arguments["prev_assignment"].copy()}
+    given |= {k: keywords.pop(k) for k in CLONE_ASSIGNMENT_POSITIONAL if k in keywords}
+    positional = (given[name] for name in CLONE_ASSIGNMENT_POSITIONAL)
+    return function(*positional, **{"hmmclass": hmm_nophasing} | keywords)
 
 
 def clone_assignment_arguments(fixture: SpotCloneField, width: int) -> dict[str, Any]:

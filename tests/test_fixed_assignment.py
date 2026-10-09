@@ -9,9 +9,9 @@ from typing import Any
 
 import numpy as np
 import pytest
-from port.sim.truth import core_inference_truth
 
 from tests.adapters import from_core_inference_truth
+from tests.fixtures import end_to_end_truth
 
 
 @contextmanager
@@ -33,9 +33,7 @@ def _run(start: list[np.ndarray], port: bool) -> Any:
     from cnaster.hmm_nophasing import hmm_nophasing
     from port.pipeline import SWAPS, patched
 
-    truth = core_inference_truth(
-        n_clones=3, n_states=4, lattice=(25, 40), n_obs=40, n_segments=3, seed=11
-    )
+    truth = end_to_end_truth(n_clones=3, n_states=4)
     kwargs = from_core_inference_truth(truth).as_kwargs()
     kwargs["initial_clone_index"] = start
 

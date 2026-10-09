@@ -14,6 +14,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from tests.fixtures import end_to_end_truth
+
 N_STATES, N_BINS = 4, 30
 # NB clone ids in column order and their `pred_cnv` positions: not the identity.
 IDS, POSITIONS = ("0", "2", "5"), (1, 2, 0)
@@ -292,14 +294,6 @@ def test_a_merge_rewrites_clone_labels_and_keeps_cnaster_s(tmp_path: Path) -> No
     np.testing.assert_array_equal(rewritten[CNASTER_LABEL], labels.clone_label)
 
 
-def _truth() -> Any:
-    from port.sim.truth import core_inference_truth
-
-    return core_inference_truth(
-        n_clones=2, n_states=3, lattice=(25, 40), n_obs=40, n_segments=3, seed=11
-    )
-
-
 @pytest.mark.end2end
 @pytest.mark.merge
 # NB one whole run at a time: four at once exceed 15 GB (#403).
@@ -312,7 +306,7 @@ def test_a_run_s_outputs_recover_the_planted_clones_and_the_flat_normal(
     from port.sim.inputs import GENE_SPACING
     from port.sim.run_config import run_written
 
-    truth = _truth()
+    truth = end_to_end_truth()
     # NB `cnaster`'s ICM draws from numpy's global generator; seeded and restored.
     state = np.random.get_state()  # noqa: NPY002
     np.random.seed(11)  # noqa: NPY002
@@ -363,7 +357,7 @@ def test_the_writer_returns_the_planted_states_of_a_perfect_decode(
     """A planted-truth run directory reads back as the truth, exactly."""
     from port.extensions.outputs import binlevel, segments, states
 
-    truth = _truth()
+    truth = end_to_end_truth()
     n_states, n_bins = len(np.ravel(truth.log_mu)), truth.states.shape[1]
     chromosome = np.repeat(np.arange(1, len(truth.lengths) + 1), truth.lengths)
     start = np.concatenate([np.arange(n) for n in truth.lengths]) * 1000
@@ -383,7 +377,7 @@ def test_the_writer_returns_the_planted_states_of_a_perfect_decode(
     for clone in range(truth.states.shape[0]):
         gamma[truth.states[clone], np.arange(n_bins), clone] = 1.0
 
-    fit = {
+    fit: dict[str, Any] = {
         "n_states": n_states,
         "new_log_mu": np.ravel(truth.log_mu)[:, None],
         "new_p_binom": np.ravel(truth.p_binom)[:, None],

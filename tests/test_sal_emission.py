@@ -28,13 +28,16 @@ heavy dispersion.
 """
 
 
-def _counts() -> tuple[np.ndarray, ...]:
-    rng = np.random.default_rng(0)
-    n = 5000
-    exposure = rng.uniform(0, 150, n)
-    exposure[::50] = 0.0
+def _counts(
+    rng: np.random.Generator | None = None,
+    shape: int | tuple[int, int] = 5000,
+    every: int = 50,
+) -> tuple[np.ndarray, ...]:
+    rng = np.random.default_rng(0) if rng is None else rng
+    exposure = rng.uniform(0, 150, shape)
+    exposure[::every] = 0.0
     totals = rng.poisson(exposure).astype(float)
-    trials = rng.integers(0, 60, n).astype(float)
+    trials = rng.integers(0, 60, shape).astype(float)
     successes = np.minimum(rng.poisson(trials * 0.4), trials).astype(float)
     return totals, exposure, successes, trials
 
@@ -94,11 +97,7 @@ def test_the_coded_emission_is_upstreams_to_a_stated_tolerance(
 
     rng = np.random.default_rng(3)
     n_obs, n_spots, n_states = 400, 2, 8
-    exposure = rng.uniform(0, 150, (n_obs, n_spots))
-    exposure[::40] = 0.0
-    totals = rng.poisson(exposure).astype(float)
-    trials = rng.integers(0, 60, (n_obs, n_spots)).astype(float)
-    successes = np.minimum(rng.poisson(trials * 0.4), trials).astype(float)
+    totals, exposure, successes, trials = _counts(rng, (n_obs, n_spots), 40)
 
     nb_encoder = CountEncoder(totals, exposure)
     bb_encoder = CountEncoder(successes, trials)

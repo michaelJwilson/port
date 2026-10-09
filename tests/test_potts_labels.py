@@ -20,18 +20,6 @@ SIGN_TOLERANCE = 1e-12
 """Absolute tolerance on `cost + energy == 0`: float64 reassociation (measured 7.1e-15)."""
 
 
-@pytest.fixture
-def lattice() -> PottsLabels:
-    """The default draw: a 6x6 open lattice, three clones, 60 edges."""
-    return potts_labels()
-
-
-@pytest.fixture
-def enumerable() -> PottsLabels:
-    """A 10-site, three-clone lattice with weak signal, small enough to enumerate."""
-    return potts_labels(shape=(5, 2), n_clones=3, signal=0.6, noise=1.0)
-
-
 @pytest.mark.smoke
 def test_the_edge_set_survives_the_csr_conversion(lattice: PottsLabels) -> None:
     """The CSR adjacency holds each undirected edge twice, symmetric, no self-loops (#12)."""

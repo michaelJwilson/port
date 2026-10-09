@@ -11,7 +11,7 @@ from typing import Any
 import numpy as np
 import pytest
 
-from tests.adapters import clone_assignment_arguments
+from tests.adapters import clone_assignment_arguments, clone_assignment_call
 from tests.fixtures import spot_clone_field, two_clone_stacked_instance
 
 
@@ -35,17 +35,8 @@ def test_a_shifted_clone_is_scored_as_upstream_scores_its_rescaled_exposure() ->
     shift = scipy.special.logsumexp(fixture.log_mu[fixture.pred[0]] + log_lambda)
 
     def call(function: Any, base: np.ndarray, hmmclass: Any) -> Any:
-        return function(
-            arguments["single_X"],
-            base,
-            arguments["single_total_bb_RD"],
-            arguments["res"],
-            arguments["pred"],
-            arguments["adjacency_mat"],
-            arguments["prev_assignment"].copy(),
-            arguments["sample_ids"],
-            arguments["spatial_weight"],
-            hmmclass=hmmclass,
+        return clone_assignment_call(
+            function, arguments, single_base_nb_mean=base, hmmclass=hmmclass
         )
 
     shifted = with_attributes(hmm_nophasing, apply_logmu_shift=True)

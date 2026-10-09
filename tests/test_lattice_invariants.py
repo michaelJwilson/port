@@ -4,28 +4,20 @@ import numpy as np
 import pytest
 from scipy.special import logsumexp
 
-from tests.adapters import CnasterChainInputs, from_negative_binomial_chains
+from tests.adapters import (
+    CnasterChainInputs,
+    cnaster_lattice_arguments,
+    cnaster_log_emission,
+    from_negative_binomial_chains,
+)
 from tests.fixtures import negative_binomial_chains
 
 
 def emission_and_inputs(**kwargs: object) -> tuple[np.ndarray, CnasterChainInputs]:
     """The scores and the arguments they were computed from."""
-    from cnaster.hmm_nophasing import hmm_nophasing
-
     fixture = negative_binomial_chains(**kwargs)  # type: ignore[arg-type]
     inputs = from_negative_binomial_chains(fixture)
-    log_emit_rdr, log_emit_baf = (
-        hmm_nophasing.compute_emission_probability_nb_betabinom(
-            inputs.single_X,
-            inputs.base_nb_mean,
-            inputs.log_mu,
-            inputs.alphas,
-            inputs.total_bb_RD,
-            inputs.p_binom,
-            inputs.taus,
-        )
-    )
-    return log_emit_rdr + log_emit_baf, inputs
+    return cnaster_log_emission(inputs), inputs
 
 
 @pytest.mark.analytic
@@ -40,13 +32,7 @@ def test_forward_and_backward_agree_at_every_position(
     log_emission, inputs = emission_and_inputs(
         n_states=n_states, n_sequences=n_sequences, sequence_length=40
     )
-    args = (
-        inputs.lengths,
-        inputs.log_transmat,
-        inputs.log_startprob,
-        log_emission,
-        inputs.log_sitewise_transmat,
-    )
+    args = cnaster_lattice_arguments(inputs, log_emission)
     log_alpha = hmm_nophasing.forward_lattice(*args)
     log_beta = hmm_nophasing.backward_lattice(*args)
 
@@ -68,11 +54,7 @@ def test_state_posteriors_normalise(n_states: int) -> None:
 
     log_emission, inputs = emission_and_inputs(n_states=n_states, sequence_length=30)
     log_gamma = hmm_nophasing().get_state_posteriors(
-        inputs.lengths,
-        inputs.log_transmat,
-        inputs.log_startprob,
-        log_emission,
-        inputs.log_sitewise_transmat,
+        *cnaster_lattice_arguments(inputs, log_emission)
     )
 
     np.testing.assert_allclose(np.exp(log_gamma).sum(axis=0), 1.0, rtol=0.0, atol=1e-9)

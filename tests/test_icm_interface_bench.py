@@ -13,6 +13,8 @@ from port.patch.icm.interface import CsrGraph, fold_unary, icm_sweep
 from pytest_benchmark.fixture import BenchmarkFixture
 from scipy.sparse import csr_matrix
 
+from tests.adapters import cnaster_sweep
+from tests.builders import regular_graph
 from tests.fixtures import tiers
 
 GATE_SPOTS = 400
@@ -40,16 +42,9 @@ def _problem(n_spots: int) -> Problem:
 
     field = rng.normal(-50.0, 5.0, (n_spots, N_CLONES))
 
-    rows = np.repeat(np.arange(n_spots), NEIGHBOURS)
-    cols = rng.integers(0, n_spots, NEIGHBOURS * n_spots)
-    graph = csr_matrix(
-        (rng.uniform(0.5, 2.0, NEIGHBOURS * n_spots), (rows, cols)),
-        shape=(n_spots, n_spots),
-    )
-
     return Problem(
         field=field,
-        graph=graph,
+        graph=regular_graph(rng, n_spots, NEIGHBOURS, weighted=True),
         assignment=rng.integers(0, N_CLONES, n_spots),
         sample_ids=rng.integers(0, N_SAMPLES, n_spots),
         weights=rng.normal(0.0, 2.0, (N_CLONES, N_SAMPLES)),
@@ -58,21 +53,14 @@ def _problem(n_spots: int) -> Problem:
 
 def _cnaster_call(problem: Problem) -> None:
     """Fifteen arguments, with the weights indexed inside the inner loop."""
-    from cnaster.icm import icm_sweep_deque
-
-    # NPY002: cnaster's sweep shuffles with the legacy global RNG.
-    np.random.seed(SEED)  # noqa: NPY002
-    icm_sweep_deque(
-        single_llf=problem.field,
-        adj_indptr=problem.graph.indptr,
-        adj_indices=problem.graph.indices,
-        adj_weights=problem.graph.data,
-        new_assignment=problem.assignment.copy(),
-        spatial_weight=BETA,
-        posterior=None,
+    cnaster_sweep(
+        problem.field,
+        problem.graph,
+        problem.assignment,
+        BETA,
+        seed=SEED,
         log_persample_weights=problem.weights,
         sample_ids=problem.sample_ids,
-        min_clone_spots=0,
     )
 
 

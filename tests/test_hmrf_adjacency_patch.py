@@ -5,28 +5,15 @@ import pytest
 from port.patch.hmrf.adjacency import adjacency_coo
 from scipy.sparse import csr_matrix
 
+from tests.adapters import cnaster_adjacency_triple
+from tests.builders import random_graph
 
-def _cnaster_triple(matrix: csr_matrix) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    from cnaster.hmrf_utils import cast_csr
-    from cnaster.icm import unpack_adjacency
-
-    spots, neighbors, weights = unpack_adjacency(cast_csr(matrix))
-    return spots, neighbors, weights
+_cnaster_triple = cnaster_adjacency_triple
 
 
 def _lattice(n_side: int, seed: int) -> csr_matrix:
     """Return a seeded sparse graph with uneven degree."""
-    rng = np.random.default_rng(seed)
-    n_nodes = n_side * n_side
-
-    rows, cols, data = [], [], []
-    for node in range(n_nodes):
-        for neighbor in rng.choice(n_nodes, size=rng.integers(1, 7), replace=False):
-            rows.append(node)
-            cols.append(int(neighbor))
-            data.append(float(rng.uniform(0.5, 2.0)))
-
-    return csr_matrix((data, (rows, cols)), shape=(n_nodes, n_nodes))
+    return random_graph(np.random.default_rng(seed), n_side * n_side, (1, 7))
 
 
 @pytest.mark.patch

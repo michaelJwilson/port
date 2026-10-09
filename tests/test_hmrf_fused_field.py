@@ -8,7 +8,12 @@ import numpy as np
 import pytest
 from port.patch.hmrf.field import compute_loglike_spot_assignment_strided
 
-from tests.fixtures import SpotCloneField, fused_field_of, spot_clone_field
+from tests.fixtures import (
+    SpotCloneField,
+    fused_field_of,
+    spot_clone_field,
+    two_step_field_of,
+)
 
 
 def _cnaster_two_step(
@@ -18,43 +23,13 @@ def _cnaster_two_step(
     valid_bb: np.ndarray | None = None,
 ) -> np.ndarray:
     """`cnaster`'s producer then field; an identity neighbourhood makes the weight exact."""
-    from cnaster.hmm_nophasing import _dense_bb_logpmf, _dense_nb_logpmf
-    from scipy.sparse import eye as sparse_eye
-
-    # NB `_dense_*_logpmf` indexes `[i, 0]`; the fused kernel takes `(n_states,)`
-    # (#278).
-    rdr = _dense_nb_logpmf(
-        fixture.counts_nb,
-        fixture.base_nb_mean,
-        fixture.log_mu[:, None],
-        fixture.alphas[:, None],
-    )
-    baf = _dense_bb_logpmf(
-        fixture.counts_bb,
-        fixture.total_bb_RD,
-        fixture.p_binom[:, None],
-        fixture.taus[:, None],
-    )
     if valid_nb is None or valid_bb is None:
         valid_nb = np.ones(fixture.n_spots)
         valid_bb = weight
 
-    smooth = sparse_eye(fixture.n_spots, format="csr")
-    field: np.ndarray = compute_loglike_spot_assignment_strided(
-        fixture.n_spots,
-        valid_nb,
-        valid_bb,
-        np.empty(0),
-        False,
-        rdr,
-        baf,
-        fixture.pred,
-        fixture.n_obs,
-        fixture.n_clones,
-        smooth_indices=smooth.indices,
-        smooth_indptr=smooth.indptr,
+    return two_step_field_of(
+        fixture, valid_nb, valid_bb, compute_loglike_spot_assignment_strided
     )
-    return field
 
 
 @pytest.mark.patch

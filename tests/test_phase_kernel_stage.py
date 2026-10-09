@@ -27,12 +27,6 @@ SATURATED = np.log(0.5)
 
 
 @pytest.fixture(scope="module")
-def planted(planted_instance: PlantedInstance) -> CoreInferenceTruth:
-    """The session's gate instance."""
-    return planted_instance[0]
-
-
-@pytest.fixture(scope="module")
 def binned_genome(
     planted_instance: PlantedInstance,
 ) -> Iterator[tuple[WrittenInputs, Any, np.ndarray]]:

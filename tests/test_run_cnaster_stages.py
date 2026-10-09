@@ -25,7 +25,8 @@ from port.sim.run_config import (
 from port.sim.truth import CoreInferenceTruth, balanced_clone, core_inference_truth
 from port.sim.unsegment import unsegment
 
-from tests.fixtures import END_TO_END_LATTICE
+from tests.adapters import cnaster_initial_phase
+from tests.fixtures import END_TO_END_LATTICE, end_to_end_truth
 
 pytestmark = pytest.mark.preprocessing
 
@@ -52,15 +53,7 @@ PHASING_EPS_BAF = 0.1
 @pytest.fixture(scope="module")
 def planted() -> CoreInferenceTruth:
     """One planted instance for the module: equal bands, events in both clones (#298)."""
-    return core_inference_truth(
-        n_clones=2,
-        n_states=3,
-        lattice=END_TO_END_LATTICE,
-        n_obs=40,
-        n_segments=3,
-        seed=11,
-        normal_clone=False,
-    )
+    return end_to_end_truth(normal_clone=False)
 
 
 @pytest.fixture(scope="module")
@@ -208,35 +201,9 @@ def flipped(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Any]:
 @pytest.fixture(scope="module")
 def phased(flipped: Any) -> Any:
     """`initial_phase_given_partition` on the flipped instance, run once."""
-    from cnaster.hmm_nophasing import get_log_transmat
-    from cnaster.phasing import initial_phase_given_partition
-
     truth, pre_image, loaded, written = flipped
     blocks = read_to_bins(written, loaded=loaded, through="blocks").blocks
-
-    res, recovered, refined = initial_phase_given_partition(
-        blocks.X,
-        blocks.lengths,
-        # NB BAF only: `run_cnaster` passes a zero `(n_obs, n_spots)` exposure here too.
-        np.zeros_like(blocks.total_bb_RD),
-        blocks.total_bb_RD,
-        None,
-        # NB one clone over every spot would wash out the imbalance the vote reads.
-        truth.clone_index,
-        truth.n_states,
-        get_log_transmat(truth.n_states, 1.0 - 1e-6),
-        np.zeros(blocks.X.shape[0]),
-        "sp",
-        1.0 - 1e-6,
-        0,
-        fix_NB_dispersion=False,
-        shared_NB_dispersion=True,
-        fix_BB_dispersion=False,
-        shared_BB_dispersion=True,
-        max_iter=100,
-        tol=1e-3,
-        threshold=0.5,
-    )
+    res, recovered, refined = cnaster_initial_phase(truth, blocks, 1.0 - 1e-6)
 
     return truth, pre_image, blocks, res, recovered, refined
 

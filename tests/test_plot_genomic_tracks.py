@@ -6,23 +6,22 @@ Reproducing upstream is `patch`; the Beta posterior error is `analytic`, against
 
 from __future__ import annotations
 
+from typing import Any
+
 import numpy as np
 import pytest
 from port.sandbox.patch.plotting.genomic import baf_track, rdr_track, segment_levels
 
 from tests.adapters import drawn
+from tests.builders import allele_counts
+from tests.fixtures import genomic_plot_instance, integer_copies
 
 
 def _instance(
     n_obs: int = 40, n_clones: int = 3, seed: int = 0
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     rng = np.random.default_rng(seed)
-
-    total_bb_RD = rng.integers(10, 60, size=(n_obs, n_clones)).astype(float)
-    X = np.zeros((n_obs, 2, n_clones))
-    X[:, 0, :] = rng.poisson(120, size=(n_obs, n_clones))
-    X[:, 1, :] = rng.binomial(total_bb_RD.astype(int), 0.4)
-
+    X, _, total_bb_RD = allele_counts(rng, (n_obs, n_clones), (10, 60), 0.4, 120)
     base_nb_mean = rng.uniform(80.0, 140.0, size=(n_obs, n_clones))
 
     return X, base_nb_mean, total_bb_RD
@@ -146,28 +145,10 @@ def test_the_replacement_draws_what_upstream_draws(cnaster_config: None) -> None
     from cnaster.plot_genomic import plot_clones_genomic as upstream
     from port.sandbox.patch.plotting.genomic import plot_clones_genomic as replacement
 
-    rng = np.random.default_rng(17)
-    n_obs, n_spots, n_clones, n_states = 24, 9, 3, 4
-
-    lengths = np.array([n_obs])
-    total_bb_RD = rng.integers(20, 80, size=(n_obs, n_spots)).astype(float)
-
-    single_X = np.zeros((n_obs, 2, n_spots))
-    single_X[:, 0, :] = rng.poisson(150, size=(n_obs, n_spots))
-    single_X[:, 1, :] = rng.binomial(total_bb_RD.astype(int), 0.45)
-
-    single_base_nb_mean = rng.uniform(100.0, 200.0, size=(n_obs, n_spots))
-
-    assignment = np.tile(np.arange(n_clones), n_spots // n_clones)
-
-    result = {
-        "new_assignment": assignment,
-        "pred_cnv": rng.integers(0, n_states, size=n_obs * n_clones),
-        "new_log_mu": rng.normal(0.0, 0.2, size=(n_states, 1)),
-        "new_p_binom": rng.uniform(0.15, 0.85, size=(n_states, 1)),
-    }
-
-    arguments = (lengths, single_X, single_base_nb_mean, total_bb_RD)
+    instance = genomic_plot_instance(17)
+    arguments: tuple[Any, Any, Any, Any] = instance["arguments"]
+    result = instance["result"]
+    result["pred_cnv"] = result["pred_cnv"].ravel()
 
     theirs = drawn(upstream(*arguments, res_combine=result), colours=False)
     ours = drawn(replacement(*arguments, res_combine=result), colours=False)
@@ -194,44 +175,15 @@ def test_the_integer_copy_colouring_is_upstreams(
 
     mpl.use("Agg")
 
-    import pandas as pd
     from cnaster.plot_genomic import plot_clones_genomic as upstream
     from port.sandbox.patch.plotting.genomic import plot_clones_genomic as replacement
 
-    rng = np.random.default_rng(29)
-    n_obs, n_spots, n_clones, n_states = 24, 9, 3, 4
-
-    lengths = np.array([n_obs])
-    total_bb_RD = rng.integers(20, 80, size=(n_obs, n_spots)).astype(float)
-
-    single_X = np.zeros((n_obs, 2, n_spots))
-    single_X[:, 0, :] = rng.poisson(150, size=(n_obs, n_spots))
-    single_X[:, 1, :] = rng.binomial(total_bb_RD.astype(int), 0.45)
-
-    single_base_nb_mean = rng.uniform(100.0, 200.0, size=(n_obs, n_spots))
-    assignment = np.tile(np.arange(n_clones), n_spots // n_clones)
-
-    result = {
-        "new_assignment": assignment,
-        "pred_cnv": rng.integers(0, n_states, size=n_obs * n_clones),
-        "new_log_mu": rng.normal(0.0, 0.2, size=(n_states, 1)),
-        "new_p_binom": rng.uniform(0.15, 0.85, size=(n_states, 1)),
-    }
-
+    instance = genomic_plot_instance(29)
+    arguments: tuple[Any, Any, Any, Any] = instance["arguments"]
+    result = instance["result"]
+    result["pred_cnv"] = result["pred_cnv"].ravel()
     # NB `(1, 1)` planted: the `chisel` opacity and `default_idx` both key on it.
-    frame = {"CHR": np.ones(n_obs, dtype=int)}
-
-    for clone in range(n_clones):
-        major = rng.integers(1, 4, size=n_obs)
-        minor = rng.integers(0, 2, size=n_obs)
-        major[:4], minor[:4] = 1, 1
-
-        frame[f"clone{clone} A"] = major
-        frame[f"clone{clone} B"] = minor
-
-    df_cnv = pd.DataFrame(frame)
-
-    arguments = (lengths, single_X, single_base_nb_mean, total_bb_RD)
+    df_cnv = integer_copies(instance["rng"], 24, 3)
     keywords = {
         "df_cnv": df_cnv,
         "res_combine": result,

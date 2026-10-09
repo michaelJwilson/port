@@ -8,6 +8,8 @@ from port.patch.hmrf.adjacency import adjacency_coo
 from pytest_benchmark.fixture import BenchmarkFixture
 from scipy.sparse import csr_matrix
 
+from tests.adapters import cnaster_adjacency_triple
+from tests.builders import regular_graph
 from tests.fixtures import tiers
 
 GATE_SPOTS = 1_200
@@ -17,20 +19,10 @@ NEIGHBOURS = 6
 
 
 def _graph(n_spots: int) -> csr_matrix:
-    rng = np.random.default_rng(11)
-    rows = np.repeat(np.arange(n_spots), NEIGHBOURS)
-    cols = rng.integers(0, n_spots, NEIGHBOURS * n_spots)
-    return csr_matrix(
-        (np.ones(NEIGHBOURS * n_spots), (rows, cols)), shape=(n_spots, n_spots)
-    )
+    return regular_graph(np.random.default_rng(11), n_spots, NEIGHBOURS)
 
 
-def _cnaster_round_trip(matrix: csr_matrix) -> tuple[np.ndarray, ...]:
-    from cnaster.hmrf_utils import cast_csr
-    from cnaster.icm import unpack_adjacency
-
-    spots, neighbors, weights = unpack_adjacency(cast_csr(matrix))
-    return spots, neighbors, weights
+_cnaster_round_trip = cnaster_adjacency_triple
 
 
 @pytest.mark.benchmark

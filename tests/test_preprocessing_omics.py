@@ -114,20 +114,10 @@ MIN_UMIS = [1, 500, 500_000, 5_000_000]
 
 @pytest.fixture(scope="module")
 def staged(
-    planted_instance: PlantedInstance,
-    gate_config: Any,
+    planted_instance: PlantedInstance, gate_table: tuple[Any, Any]
 ) -> tuple[Any, Any, Any]:
     """The loaded instance and its gene-SNP table, once for the module."""
-    from cnaster.io import load_input_data
-    from cnaster.omics import form_gene_snp_table
-
-    _, _, written, _ = planted_instance
-    loaded = load_input_data(gate_config)
-    table = form_gene_snp_table(
-        loaded.unique_snp_ids, str(written.hgtable), loaded.adata
-    )
-
-    return loaded, table, written
+    return *gate_table, planted_instance[2]
 
 
 @pytest.mark.patch

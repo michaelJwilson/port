@@ -229,18 +229,13 @@ def test_sal_recovers_the_planted_clones_on_the_dev_instance(tmp_path: Path) -> 
 
     import pandas as pd
     from port.scripts.run_cnaster import main
-    from port.sim.inputs import write_tmp_inputs
-    from port.sim.run_config import write_run_cnaster_config
+    from port.sim.run_config import write_for_run
     from port.sim.truth import dev_instance
-    from port.sim.unsegment import unsegment
     from sklearn.metrics import adjusted_rand_score
 
     truth = dev_instance()
-    written = write_tmp_inputs(
-        truth, unsegment(truth, flip_every=0, unassigned_genes=0), tmp_path
-    )
-    config = write_run_cnaster_config(
-        written, truth, max_iter_outer=1, max_iter=3, n_states=5
+    written, config = write_for_run(
+        truth, tmp_path, max_iter_outer=1, max_iter=3, n_states=5
     )
 
     with warnings.catch_warnings():

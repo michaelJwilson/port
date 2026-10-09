@@ -8,7 +8,6 @@ import logging
 from typing import Any
 
 import pytest
-from port.sim.run_config import PlantedInstance
 
 pytestmark = pytest.mark.preprocessing
 
@@ -19,20 +18,11 @@ block.
 
 
 @pytest.fixture(scope="module")
-def blocked(
-    planted_instance: PlantedInstance,
-    gate_config: Any,
-) -> tuple[Any, Any]:
+def blocked(gate_table: tuple[Any, Any]) -> tuple[Any, Any]:
     """A table carrying both block columns, and the instance it came from."""
-    from cnaster.io import load_input_data
-    from cnaster.omics import form_gene_snp_table
     from port.patch.omics.blocks import assign_initial_blocks
 
-    _, _, written, _ = planted_instance
-    loaded = load_input_data(gate_config)
-    table = form_gene_snp_table(
-        loaded.unique_snp_ids, str(written.hgtable), loaded.adata
-    )
+    loaded, table = gate_table
 
     # NB the patched blocker keeps `initial_block_id` off the return.
     assign_initial_blocks(

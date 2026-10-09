@@ -5,28 +5,16 @@ from typing import Any
 import numpy as np
 import pytest
 
-from tests.adapters import clone_assignment_arguments
+from tests.adapters import clone_assignment_arguments, clone_assignment_call
 from tests.fixtures import spot_clone_field
 
 
 def _both(arguments: dict[str, Any]) -> tuple[Any, Any]:
     """Return upstream's and the replacement's results, each on its own `prev_assignment`."""
-    from cnaster.hmm_nophasing import hmm_nophasing
     from port.patch.hmrf.clone_assignment import UPSTREAM, pipeline_clone_assignment
 
     def call(function: Any) -> Any:
-        return function(
-            arguments["single_X"],
-            arguments["single_base_nb_mean"],
-            arguments["single_total_bb_RD"],
-            arguments["res"],
-            arguments["pred"],
-            arguments["adjacency_mat"],
-            arguments["prev_assignment"].copy(),
-            arguments["sample_ids"],
-            arguments["spatial_weight"],
-            hmmclass=hmm_nophasing,
-        )
+        return clone_assignment_call(function, arguments)
 
     return call(UPSTREAM), call(pipeline_clone_assignment)
 
@@ -61,7 +49,6 @@ def test_the_replacement_assigns_what_upstream_assigns(
 @pytest.mark.usefixtures("cnaster_config")
 def test_the_tumour_mixed_call_goes_to_cnaster_unchanged() -> None:
     """With `single_tumor_prop` the call is delegated: results equal upstream's (#135)."""
-    from cnaster.hmm_nophasing import hmm_nophasing
     from port.patch.hmrf.clone_assignment import UPSTREAM, pipeline_clone_assignment
 
     fixture = spot_clone_field(n_states=3, n_obs=40, n_spots=16, n_clones=2)
@@ -69,19 +56,7 @@ def test_the_tumour_mixed_call_goes_to_cnaster_unchanged() -> None:
     proportion = np.full(16, 0.7)
 
     def call(function: Any) -> Any:
-        return function(
-            arguments["single_X"],
-            arguments["single_base_nb_mean"],
-            arguments["single_total_bb_RD"],
-            arguments["res"],
-            arguments["pred"],
-            arguments["adjacency_mat"],
-            arguments["prev_assignment"].copy(),
-            arguments["sample_ids"],
-            arguments["spatial_weight"],
-            single_tumor_prop=proportion,
-            hmmclass=hmm_nophasing,
-        )
+        return clone_assignment_call(function, arguments, single_tumor_prop=proportion)
 
     their_assignment, their_field, their_likelihood = call(UPSTREAM)
     our_assignment, our_field, our_likelihood = call(pipeline_clone_assignment)
@@ -97,26 +72,13 @@ def test_the_tumour_mixed_call_goes_to_cnaster_unchanged() -> None:
 @pytest.mark.usefixtures("cnaster_config")
 def test_the_merge_loop_merges_what_upstream_merges() -> None:
     """With `merge=True` all three returns equal upstream's, bitwise (#59)."""
-    from cnaster.hmm_nophasing import hmm_nophasing
     from port.patch.hmrf.clone_assignment import UPSTREAM, pipeline_clone_assignment
 
     fixture = spot_clone_field(n_states=4, n_obs=40, n_spots=16, n_clones=4)
     arguments = clone_assignment_arguments(fixture, width=4)
 
     def call(function: Any) -> Any:
-        return function(
-            arguments["single_X"],
-            arguments["single_base_nb_mean"],
-            arguments["single_total_bb_RD"],
-            arguments["res"],
-            arguments["pred"],
-            arguments["adjacency_mat"],
-            arguments["prev_assignment"].copy(),
-            arguments["sample_ids"],
-            arguments["spatial_weight"],
-            hmmclass=hmm_nophasing,
-            merge=True,
-        )
+        return clone_assignment_call(function, arguments, merge=True)
 
     their_assignment, their_field, their_likelihood = call(UPSTREAM)
     our_assignment, our_field, our_likelihood = call(pipeline_clone_assignment)
@@ -134,7 +96,6 @@ def test_self_only_pooling_assigns_what_upstream_assigns() -> None:
     """Self-only `smooth_mat` gives upstream's three returns, bitwise (#488, #513)."""
     import cnaster.hmrf
     import scipy.sparse as sp
-    from cnaster.hmm_nophasing import hmm_nophasing
     from port.patch.hmrf.clone_assignment import (
         UPSTREAM,
         _self_only,
@@ -168,19 +129,7 @@ def test_self_only_pooling_assigns_what_upstream_assigns() -> None:
         np.testing.assert_array_equal(arguments[name], theirs)
 
     def call(function: Any) -> Any:
-        return function(
-            arguments["single_X"],
-            arguments["single_base_nb_mean"],
-            arguments["single_total_bb_RD"],
-            arguments["res"],
-            arguments["pred"],
-            arguments["adjacency_mat"],
-            arguments["prev_assignment"].copy(),
-            arguments["sample_ids"],
-            arguments["spatial_weight"],
-            smooth_mat=identity,
-            hmmclass=hmm_nophasing,
-        )
+        return clone_assignment_call(function, arguments, smooth_mat=identity)
 
     theirs, ours = call(UPSTREAM), call(pipeline_clone_assignment)
 
@@ -194,7 +143,6 @@ def test_self_only_pooling_assigns_what_upstream_assigns() -> None:
 def test_a_smooth_matrix_that_pools_neighbours_is_refused() -> None:
     """A `smooth_mat` pooling a spot with a neighbour raises; port does not pool (#513)."""
     import scipy.sparse as sp
-    from cnaster.hmm_nophasing import hmm_nophasing
     from port.patch.hmrf.clone_assignment import (
         PooledSmoothing,
         pipeline_clone_assignment,
@@ -205,16 +153,4 @@ def test_a_smooth_matrix_that_pools_neighbours_is_refused() -> None:
     pooling = sp.identity(36, format="csr") + sp.eye(36, k=1, format="csr")
 
     with pytest.raises(PooledSmoothing, match="#513"):
-        pipeline_clone_assignment(
-            arguments["single_X"],
-            arguments["single_base_nb_mean"],
-            arguments["single_total_bb_RD"],
-            arguments["res"],
-            arguments["pred"],
-            arguments["adjacency_mat"],
-            arguments["prev_assignment"].copy(),
-            arguments["sample_ids"],
-            arguments["spatial_weight"],
-            smooth_mat=pooling,
-            hmmclass=hmm_nophasing,
-        )
+        clone_assignment_call(pipeline_clone_assignment, arguments, smooth_mat=pooling)
