@@ -6,11 +6,11 @@ from pathlib import Path
 
 import pytest
 
-CALICOST = {"ari": 0.8538, "ari_integer": 0.8538, "state_ari": 0.0889, "copy_ari_pf": 0.9075,
+CALICOST = {"ari": 0.8538, "ari_integer_99": 0.8565, "state_ari": 0.0889, "copy_ari_pf": 0.9075,
             "exact_altered_minor": 0.7095, "wall": 20243.0, "cores": 3}  # fmt: skip
 """#532's CalicoST row (`docs/calicost-benchmark.md`), phase-free."""
 
-PORT = {"ari": 0.8612, "ari_integer": 1.0, "state_ari": 0.0682, "copy_ari_pf": 0.9829,
+PORT = {"ari": 0.8612, "ari_integer_99": 1.0, "state_ari": 0.0682, "copy_ari_pf": 0.9829,
         "exact_altered_minor": 0.9348, "wall": 153.6, "cores": 4}  # fmt: skip
 """The committed port archive (`tests/data/benchmarks/dev_tree_r0/port.tar.xz`, 95940e5) scored phase-free."""
 
@@ -26,7 +26,7 @@ def test_the_table_reproduces_the_papers_rows() -> None:
 
     assert r"Method\phantom{\texttt{xxxxxxxxxxxxxxxx}} & Hash &" in tex
     assert (
-        r"\calicost{}                    & \texttt{3381575a} & 0.854 & 0.854 & 0.089 & 0.908 & 0.710 &      337.4 \\"
+        r"\calicost{}                    & \texttt{3381575a} & 0.854 & 0.857 & 0.089 & 0.908 & 0.710 &      337.4 \\"
         in tex
     )
     assert (
@@ -85,7 +85,7 @@ def test_calicosts_committed_outputs_score_as_532(tmp_path: Path) -> None:
     assert {k: row[k] for k in CALICOST} == CALICOST
 
 
-CNASTER = {"ari": 0.9599, "ari_integer": 0.9599, "state_ari": 0.0871, "copy_ari_pf": 0.9717,
+CNASTER = {"ari": 0.9599, "ari_integer_99": 1.0, "state_ari": 0.0871, "copy_ari_pf": 0.9717,
            "exact_altered_minor": 0.7324, "wall": 749.1, "cores": 4}  # fmt: skip
 """`cnaster` 4adad4d's archive (`tests/data/benchmarks/dev_tree_r0_cnaster/`, T- #833) as its run scored itself."""
 
@@ -118,7 +118,7 @@ def test_the_supported_table_is_the_ledgers_last_sweep() -> None:
         assert f"& \\texttt{{{digest}}} &" in tex
         assert set(scores) == {
             "ari",
-            "ari_integer",
+            "ari_integer_99",
             "state_ari",
             "copy_ari_pf",
             "exact_altered_minor",

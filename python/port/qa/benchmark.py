@@ -107,6 +107,8 @@ def port(name: str, repeats: int) -> dict[str, Any]:
         "clones": row["n_clones"],
         "ari_integer": row["ari_integer"],
         "integer_clones": row["n_integer_clones"],
+        "ari_integer_99": row["ari_integer_99"],
+        "integer_clones_99": row["n_integer_clones_99"],
         "state_ari": row["state_ari"],
         "copy_ari": row["copy_ari"],
         "copy_ari_pf": row["copy_ari_pf"],
