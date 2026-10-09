@@ -2,14 +2,32 @@
 
 import numpy as np
 import pytest
-from port.sandbox.patch.emission import emission_buffers
+from port.sandbox.patch.emission import emission_buffers, emission_into
 
 from tests.builders import (
     EmissionInputs,
-    buffered_emission,
     cnaster_emission_pair,
     emission_inputs,
 )
+
+
+def buffered_emission(
+    inputs: EmissionInputs, buffers: tuple[np.ndarray, np.ndarray], phased: bool
+) -> None:
+    """`port`'s buffered emission on `inputs`, written into `buffers`."""
+
+    emission_into(
+        inputs.single_X[:, 0, :],
+        inputs.base_nb_mean,
+        inputs.single_X[:, 1, :],
+        inputs.total_bb_RD,
+        inputs.log_mu,
+        inputs.alphas,
+        inputs.p_binom,
+        inputs.taus,
+        *buffers,
+        phased,
+    )
 
 
 def _inputs(n_states: int, *, n_obs: int = 60, n_spots: int = 4) -> EmissionInputs:

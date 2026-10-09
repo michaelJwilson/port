@@ -21,6 +21,9 @@ if TYPE_CHECKING:
 PACKAGE = ROOT / "python" / "port"
 TESTS = ROOT / "tests"
 
+SANDBOX_TESTS = TESTS / "sandbox"
+"""Tests of set-aside code: never a referee for live code (#851)."""
+
 COUNTING = frozenset({"end2end", "oracle"})
 """The two markers `CLAUDE.md` says count."""
 
@@ -361,7 +364,10 @@ SHARED_HELPERS = ("fixtures", "adapters", "figure_checks")
 
 @cache
 def counting_mentions() -> dict[str, frozenset[str]]:
-    """Each name, to the `end2end`/`oracle` tests that mention it, transitively through helpers."""
+    """Each name, to the `end2end`/`oracle` tests that mention it, transitively through helpers.
+
+    `SANDBOX_TESTS` are left out: a test of set-aside code referees no live row.
+    """
     out: dict[str, set[str]] = {}
     shared = {
         node.name: node
@@ -371,6 +377,9 @@ def counting_mentions() -> dict[str, frozenset[str]]:
     }
 
     for path in sorted(TESTS.rglob("test_*.py")):
+        if path.is_relative_to(SANDBOX_TESTS):
+            continue
+
         tree = _tree(path)
         module_marks: set[str] = set()
 

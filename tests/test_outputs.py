@@ -21,7 +21,6 @@ from port.extensions import cnamaste
 from port.extensions.outputs import config_keys, integer_clones, run_directories
 from port.patch.hmm_nophasing import hmm_nophasing
 from port.pipeline import with_attributes
-from port.sandbox.extensions import copy_errors
 from port.sim.run_config import run_written
 from port.sim.truth import core_inference_truth
 
@@ -231,63 +230,6 @@ def test_a_directory_an_earlier_run_left_is_not_this_run_s(tmp_path: Path) -> No
     assert list(run_directories(tmp_path)) == [run]
     assert list(run_directories(tmp_path, since=1_000.0)) == [run]
     assert list(run_directories(tmp_path, since=1_001.0)) == []
-
-
-@pytest.mark.infra
-def test_copy_sets_go_beside_the_fit_this_run_wrote(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Not beside the newest fit under `output_dir`, another K's (T- #617)."""
-
-    ours, other = (
-        tmp_path / "clone3_rectangle0_w1.0",
-        tmp_path / "clone4_rectangle0_w1.0",
-    )
-    ours.mkdir()
-    other.mkdir()
-    (ours / "rdrbaf_final_nstates4_smp.npz").write_bytes(b"")
-    (other / "rdrbaf_final_nstates7_smp.npz").write_bytes(b"")
-    os.utime(ours / "rdrbaf_final_nstates4_smp.npz", (2_000.0, 2_000.0))
-    os.utime(other / "rdrbaf_final_nstates7_smp.npz", (3_000.0, 3_000.0))
-
-    placed: list[Path] = []
-
-    def write(run: Path, captured: object, **_: object) -> Path:
-        placed.append(Path(run))
-        return Path(run) / "cnv_copy_sets.tsv"
-
-    monkeypatch.setattr(copy_errors, "write_copy_sets", write)
-    config = tmp_path / "config.yaml"
-    config.write_text(f"paths:\n  output_dir: {tmp_path}\nhmm:\n  n_states: 4\n")
-
-    copy_errors.write_beside_final_fit(str(config), ["fit"], since=1_500.0)
-    assert placed == [ours]
-
-    copy_errors.write_beside_final_fit(str(config), ["fit"], since=2_500.0)
-    assert placed == [ours]
-
-
-@pytest.mark.infra
-def test_a_refused_fit_leaves_the_run_and_says_so(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    """T- #599's refusal writes no sets and does not fail the run it follows (#705)."""
-
-    (tmp_path / "rdrbaf_final_nstates4_smp.npz").write_bytes(b"")
-
-    def refuse(run: Path, captured: object, **_: object) -> Path:
-        msg = "--copy-errors: the fit's tau 6e+05 >= 100000 (T- #599); refused"
-        raise ValueError(msg)
-
-    monkeypatch.setattr(copy_errors, "write_copy_sets", refuse)
-    config = tmp_path / "config.yaml"
-    config.write_text(f"paths:\n  output_dir: {tmp_path}\nhmm:\n  n_states: 4\n")
-
-    copy_errors.write_beside_final_fit(str(config), ["fit"])
-
-    assert "T- #599); refused; cnv_copy_sets.tsv not written" in capsys.readouterr().err
 
 
 # NB per position in `pred_cnv`, as `new_log_mu_shift` is: nonzero, distinct.

@@ -211,8 +211,9 @@ cargo fmt --check                          # Rust format
 Every test sits in at most one tier -- `critical`, none, `merge`, `release`,
 `deprecate` -- and each step selects one, so no step repeats another's tests.
 A `deprecate` test runs only in the change that touches its module (against
-`--base`, `origin/main`) and at a release. The gate
-is `pytest -n 4`; a whole-pipeline test (`xdist_group("pipeline")`) runs one
+`--base`, `origin/main`) and at a release.
+`tests/sandbox/` tests set-aside code (`sandbox` marker): the gate deselects it and `--release` runs it.
+The gate is `pytest -n 4`; a whole-pipeline test (`xdist_group("pipeline")`) runs one
 at a time, since four exceed 15 GB. Badges are measured and recorded locally
 by the change that moves them. `.gitattributes` sends `.badges/*.json` to
 the `badges` driver, which keeps the branch's copy on a merge; `--badges

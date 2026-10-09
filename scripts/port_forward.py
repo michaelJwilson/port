@@ -96,6 +96,7 @@ def _pinning() -> dict[tuple[str, str], list[str]]:
     """`(module, name)` -> the test files that import it by name."""
     found: dict[tuple[str, str], list[str]] = {}
 
+    # NB `glob`, not `rglob`: a `tests/sandbox/` test pins no live row (#851)
     for path in sorted((ROOT / "tests").glob("test_*.py")):
         for node in ast.walk(ast.parse(path.read_text())):
             if isinstance(node, ast.ImportFrom) and node.module:

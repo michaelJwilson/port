@@ -93,7 +93,7 @@ def baf_track(
     The error is the standard deviation of `Beta(k + 1, n - k + 1)` -- the
     posterior under a uniform prior, given `k` B-allele reads of `n`. Its
     closed form is `sqrt(ab / ((a + b)^2 (a + b + 1)))`, which is what
-    upstream writes inline and what `tests/test_plot_genomic_tracks.py`
+    upstream writes inline and what `tests/sandbox/test_plot_genomic_tracks.py`
     checks against the distribution rather than against the expression.
     """
     with np.errstate(divide="ignore", invalid="ignore"):

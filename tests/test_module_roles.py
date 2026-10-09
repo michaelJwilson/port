@@ -12,7 +12,14 @@ from typing import Literal
 import pytest
 
 from tests import ROOT
-from tests.source_graph import COUNTING, TESTS, modules, reached, row_modules
+from tests.source_graph import (
+    COUNTING,
+    SANDBOX_TESTS,
+    TESTS,
+    modules,
+    reached,
+    row_modules,
+)
 
 Role = Literal[
     "row",
@@ -282,6 +289,10 @@ def test_every_oracle_referees_a_counting_test() -> None:
     referred: set[str] = set()
 
     for path in TESTS.rglob("test_*.py"):
+        # NB a test of set-aside code referees nothing live (#851)
+        if path.is_relative_to(SANDBOX_TESTS):
+            continue
+
         source = path.read_text()
 
         if not any(f"mark.{marker}" in source for marker in COUNTING):

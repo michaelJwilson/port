@@ -29,7 +29,6 @@ from port.patch.integer_copy import (
     stated_total,
 )
 from port.pipeline import COPY_SWAPS, patched
-from port.sandbox.extensions.shared_decode import shared_decode
 from port.sim.inputs import written_config
 
 BASE = ((1, 1), (2, 1), (3, 1), (2, 2))
@@ -119,40 +118,6 @@ def _bulk(extra: tuple[int, int]) -> tuple[Pseudobulk, np.ndarray]:
         taus=1.0e5,
     )
     return bulk, path
-
-
-@pytest.mark.end2end
-@pytest.mark.parametrize("extra", HIGH, ids=str)
-def test_the_likelihood_decodes_the_planted_pairs_under_a_cap_of_twelve(
-    extra: tuple[int, int],
-) -> None:
-    """Every planted pair exactly, at a stated cap of 12 and the shift held at 0."""
-
-    bulk, path = _bulk(extra)
-    decoded = shared_decode(
-        [(path, bulk, 0.0)],
-        n_states=5,
-        normal=0,
-        max_total_copy=12,
-    )
-
-    assert [(int(a), int(b)) for a, b in decoded.states] == [*BASE, extra]
-
-
-@pytest.mark.analytic
-def test_the_normal_state_is_one_one_by_definition() -> None:
-    """A state named normal decodes `(1, 1)` though its counts say `(2, 1)`."""
-
-    bulk, path = _bulk(HIGH[0])
-    decoded = shared_decode(
-        [(path, bulk, 0.0)],
-        n_states=5,
-        normal=1,
-        max_total_copy=12,
-    )
-
-    assert tuple(decoded.states[1]) == (1, 1)
-    assert tuple(decoded.states[0]) == (1, 1)
 
 
 @contextmanager

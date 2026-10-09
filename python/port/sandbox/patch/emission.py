@@ -5,7 +5,7 @@ Ticket: #205 -- one buffered emission entry point, superseded by
 Measurement: bitwise against both `cnaster` entry points; 0 bytes allocated
   per call against 672 MB (unphased) and 1.34 GB (phased) at `K = 7`,
   `G = 3,000`, `S = 2,000`; 1.07x wall.
-Exit: retire, with `tests/test_buffered_emission.py` and its benchmark;
+Exit: retire, with `tests/sandbox/test_buffered_emission.py` and its benchmark;
   superseded, it has no graduate path.
 
 **#205's first and third steps, which turned out to be one module.** The
@@ -47,7 +47,7 @@ reported rather than claimed -- the kernels are `cnaster`'s own and the loop
 around them does the same work. What changes is the allocation.
 
 **Referee: bitwise**, against `hmm_nophasing.compute_emission_probability_nb_betabinom`
-and against `hmm_phased`'s, in `tests/test_buffered_emission.py`. That is
+and against `hmm_phased`'s, in `tests/sandbox/test_buffered_emission.py`. That is
 available because the kernels are `cnaster`'s own, imported rather than
 restated -- a module that reimplemented the densities would be comparing two
 implementations of the emission as well as two of the loop over it.

@@ -29,7 +29,7 @@ the run's own Baum-Welch call's (T- #777): its `t` and its initial
 dispersions, `cnaster`'s `ALPHA` and `TAU` where the call passes none
 (`hmm_nophasing.get_initial_params`). The objective is that call's forward
 log-likelihood, `cnaster`'s lattice normalizer to 1e-9 relative
-(`tests/test_hmm_objective.py`), so a start is sampled on what the run's
+(`tests/sandbox/test_hmm_objective.py`), so a start is sampled on what the run's
 Baum-Welch scores it by; the Baum-Welch polish then fits the dispersions as
 the run does. No per-clone shift (#276).
 `value_and_gradient` and `energy` are declared (`sal.opt.objective`), and
