@@ -20,53 +20,14 @@ from cnaster.cna_hmrf_result import (
 from cnaster.hmrf import reindex_clones as upstream
 from port.patch.hmrf.reindex import reindex_clones
 
-
-def _result(n_states: int = 4, n_obs: int = 12, n_clones: int = 3) -> dict[str, Any]:
-    rng = np.random.default_rng(5)
-
-    # clone 1 is the balanced one, so the reorder has something to do
-    p_binom = np.array([[0.2], [0.5], [0.8], [0.35]])[:n_states]
-    paths = np.concatenate(
-        [
-            np.full(n_obs, 0),  # clone 0: p = 0.2, far from balanced
-            np.full(n_obs, 1),  # clone 1: p = 0.5, the normal one
-            np.full(n_obs, 2),  # clone 2: p = 0.8
-        ][:n_clones]
-    )
-
-    assignments = np.repeat(np.arange(n_clones), [5, 3, 7][:n_clones])
-
-    return {
-        "new_assignment": assignments,
-        "pred_cnv": paths,
-        "new_p_binom": p_binom,
-        "new_log_mu": rng.normal(size=(n_states, 1)),
-        "new_alphas": np.full((n_states, 1), 0.25),
-        "new_taus": np.full((n_states, 1), 30.0),
-        "log_gamma": rng.normal(size=(n_states, n_obs * n_clones)),
-    }
-
-
-@pytest.mark.patch
-def test_the_replacement_reindexes_as_upstream_does() -> None:
-    """Same normal clone, order and reindexed arrays as `cnaster.hmrf.reindex_clones`."""
-
-    theirs, _ = upstream(_result(), posterior=None, single_tumor_prop=None)
-    ours, _ = reindex_clones(_result(), posterior=None, single_tumor_prop=None)
-
-    assert set(ours) == set(theirs)
-
-    for key in sorted(theirs):
-        np.testing.assert_array_equal(
-            np.asarray(ours[key]), np.asarray(theirs[key]), err_msg=key
-        )
+from tests.builders import reindex_result
 
 
 @pytest.mark.bug
 def test_every_parameter_is_checked_not_only_p_binom() -> None:
     """Upstream asserts one column for `new_p_binom` only, then reorders all four (#267)."""
     for key in ("new_log_mu", "new_alphas", "new_taus"):
-        widened = _result()
+        widened = reindex_result()
         widened[key] = np.tile(widened[key], (1, 3))
 
         with pytest.raises(ValueError, match=f"{key} has shape"):
@@ -77,7 +38,7 @@ def test_every_parameter_is_checked_not_only_p_binom() -> None:
 def test_upstream_accepts_the_widths_it_cannot_mean() -> None:
     """The three parameters upstream lets through widened are refused here."""
 
-    widened = _result()
+    widened = reindex_result()
     widened["new_log_mu"] = np.tile(widened["new_log_mu"], (1, 3))
 
     reindexed, _ = upstream(widened, posterior=None, single_tumor_prop=None)
@@ -90,50 +51,12 @@ def test_upstream_accepts_the_widths_it_cannot_mean() -> None:
 @pytest.mark.patch
 def test_the_contract_makes_the_entry_point_branch_dead() -> None:
     """`idx = s if shape[1] > 1 else 0` (`run_cnaster.py:1366`) can only take the `else`."""
-    reindexed, _ = reindex_clones(_result(), posterior=None, single_tumor_prop=None)
+    reindexed, _ = reindex_clones(
+        reindex_result(), posterior=None, single_tumor_prop=None
+    )
 
     for key in ("new_log_mu", "new_alphas", "new_p_binom", "new_taus"):
         assert np.asarray(reindexed[key]).shape[1] == 1, key
-
-
-@pytest.mark.cnaster
-@pytest.mark.patch
-def test_the_deconcatenated_path_is_reindexed_as_upstream_does() -> None:
-    """`pred_cnv` at `(n_obs, n_clones)`: `log_gamma` is permuted along its clone axis, as upstream."""
-
-    n_states, n_obs, n_clones = 4, 12, 3
-    rng = np.random.default_rng(13)
-
-    result = _result(n_states, n_obs, n_clones)
-    result["pred_cnv"] = np.asarray(result["pred_cnv"]).reshape(n_clones, n_obs).T
-    result["log_gamma"] = rng.normal(size=(n_states, n_obs, n_clones))
-
-    theirs, _ = upstream(dict(result), posterior=None, single_tumor_prop=None)
-    ours, _ = reindex_clones(dict(result), posterior=None, single_tumor_prop=None)
-
-    assert set(ours) == set(theirs)
-
-    for key in sorted(theirs):
-        np.testing.assert_array_equal(
-            np.asarray(ours[key]), np.asarray(theirs[key]), err_msg=key
-        )
-
-
-@pytest.mark.cnaster
-@pytest.mark.patch
-def test_a_posterior_is_permuted_with_the_clones() -> None:
-    """The posterior is permuted as upstream permutes it."""
-
-    n_clones = 3
-    rng = np.random.default_rng(17)
-    posterior = rng.uniform(size=(15, n_clones))
-
-    result = _result(n_clones=n_clones)
-
-    _, theirs = upstream(dict(result), posterior=posterior.copy())
-    _, ours = reindex_clones(dict(result), posterior=posterior.copy())
-
-    np.testing.assert_array_equal(np.asarray(ours), np.asarray(theirs))
 
 
 def _by_rule(res: dict[str, Any], n_obs: int) -> tuple[np.ndarray, list[int]]:

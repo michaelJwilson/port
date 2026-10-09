@@ -6,45 +6,9 @@ Referee is `cnaster`'s producer, not the fixture's emission (agrees only to 2.5e
 
 import numpy as np
 import pytest
-from port.patch.hmrf.field import compute_loglike_spot_assignment_strided
 
-from tests.fixtures import (
-    SpotCloneField,
-    fused_field_of,
-    spot_clone_field,
-    two_step_field_of,
-)
-
-
-def _cnaster_two_step(
-    fixture: SpotCloneField,
-    weight: np.ndarray,
-    valid_nb: np.ndarray | None = None,
-    valid_bb: np.ndarray | None = None,
-) -> np.ndarray:
-    """`cnaster`'s producer then field; an identity neighbourhood makes the weight exact."""
-    if valid_nb is None or valid_bb is None:
-        valid_nb = np.ones(fixture.n_spots)
-        valid_bb = weight
-
-    return two_step_field_of(
-        fixture, valid_nb, valid_bb, compute_loglike_spot_assignment_strided
-    )
-
-
-@pytest.mark.patch
-@pytest.mark.parametrize(
-    ("n_states", "n_clones"),
-    [pytest.param(7, 3, marks=pytest.mark.merge), (5, 5), (3, 1)],
-)
-def test_the_fused_field_is_bitwise_the_two_step(n_states: int, n_clones: int) -> None:
-    """Bitwise equal to the two-step, including `n_clones == n_states`."""
-    fixture = spot_clone_field(n_states=n_states, n_clones=n_clones)
-    weight = np.ones(fixture.n_spots)
-
-    np.testing.assert_array_equal(
-        _cnaster_two_step(fixture, weight), fused_field_of(fixture, weight)
-    )
+from tests.fixtures import cnaster_two_step as _cnaster_two_step
+from tests.fixtures import fused_field_of, spot_clone_field
 
 
 @pytest.mark.patch

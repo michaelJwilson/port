@@ -13,41 +13,18 @@ import pytest
 import sal.search.mixture_starts as starts
 from port.extensions import copy_starts
 from port.patch.hmm_initialize import distinct, sal_mixture
-from port.patch.hmm_initialize.distinct import UPSTREAM
 from port.patch.hmm_initialize.sal_mixture import DEFAULT, gmm_init
 from port.patch.hmm_initialize.sal_mixture import _call as call_of
 from sal.search.mixture_starts import lookup, polish
 
 from tests import ROOT
-
-#: Planted `(log mu, p)`: neutral, one-copy loss, one-copy gain, copy-neutral LOH.
-#: LOH states sit at a small p, as a mixture with normal spots leaves them.
-PLANTED = np.array(
-    [[0.0, 0.5], [np.log(0.5), 0.05], [np.log(1.5), 1.0 / 3.0], [0.0, 0.05]]
-)
-WEIGHTS = np.array([0.55, 0.15, 0.15, 0.15])
-
-
-def _draw(n_obs: int = 3000, seed: int = 0) -> tuple[np.ndarray, ...]:
-    """Bins from the model's own family: NB totals over exposure, beta-binomial B counts."""
-    rng = np.random.default_rng(seed)
-    state = rng.choice(len(PLANTED), size=n_obs, p=WEIGHTS)
-    exposure = rng.uniform(200.0, 400.0, n_obs)
-    trials = rng.integers(20, 60, n_obs).astype(float)
-    mean = exposure * np.exp(PLANTED[state, 0])
-    # NB alpha 0.02, a clone pseudobulk's dispersion rather than a spot's.
-    size = 50.0
-    totals = rng.negative_binomial(size, size / (size + mean))
-    p = rng.beta(PLANTED[state, 1] * 1000.0, (1.0 - PLANTED[state, 1]) * 1000.0)
-    successes = rng.binomial(trials.astype(int), p)
-    X = np.stack([totals, successes], axis=1).astype(float).reshape(n_obs, 2, 1)
-    return X, exposure.reshape(-1, 1), trials.reshape(-1, 1)
+from tests.builders import PLANTED, mixture_draw
 
 
 def _fitted(start: str) -> np.ndarray:
-    """`gmm_init`'s states under `start` on `_draw`'s bins, `(log mu, p)` per row."""
+    """`gmm_init`'s states under `start` on `mixture_draw`'s bins, `(log mu, p)` per row."""
 
-    X, base, trials = _draw()
+    X, base, trials = mixture_draw()
     log_mu, p_binom, _, _ = gmm_init(
         len(PLANTED),
         X,
@@ -119,34 +96,10 @@ def test_the_start_is_handed_over_only_under_its_option(
     }
 
 
-@pytest.mark.patch
-@pytest.mark.cnaster
-@pytest.mark.usefixtures("cnaster_config")
-@pytest.mark.parametrize(("params", "only_minor"), [("sp", False), ("smp", True)])
-def test_the_baf_only_and_minor_calls_keep_upstreams_start(
-    params: str, only_minor: bool
-) -> None:
-    """Without exposure, the call equals cnaster's `hmm_initialize.gmm_init`, bitwise."""
-
-    X, base, trials = _draw(400, seed=1)
-    arguments = (4, X, base, trials, params, np.array([400]), None, None)
-    keywords = {"random_state": 0, "in_log_space": False, "only_minor": only_minor}
-
-    theirs = UPSTREAM(*arguments, **keywords)
-
-    ours = gmm_init(*arguments, **keywords, start=DEFAULT)
-
-    for mine, their in zip(ours, theirs, strict=True):
-        if their is None:
-            assert mine is None
-        else:
-            np.testing.assert_array_equal(mine, their)
-
-
 def _call(n_obs: int = 3000, seed: int = 0) -> Any:
-    """`_draw`'s bins as the start's `CopyCall`, read-depth + BAF stage."""
+    """`mixture_draw`'s bins as the start's `CopyCall`, read-depth + BAF stage."""
 
-    X, base, trials = _draw(n_obs, seed)
+    X, base, trials = mixture_draw(n_obs, seed)
     arguments = {
         "X": X,
         "base_nb_mean": base,

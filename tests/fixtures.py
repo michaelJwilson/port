@@ -19,6 +19,7 @@ from cnaster.count_encoder import CountEncoder
 from cnaster.hmm_nophasing import hmm_nophasing
 from cnaster.hmrf import compute_loglike_spot_assignment, run_core_inference
 from port.patch.hmm_nophasing import hmm_nophasing as port_hmm_nophasing
+from port.patch.hmrf.field import compute_loglike_spot_assignment_strided
 from port.patch.hmrf.fused_field import fused_spot_clone_field
 from port.patch.hmrf.tabulated_field import tabulated_spot_clone_field
 from port.patch.icm.interface import CsrGraph
@@ -828,6 +829,22 @@ def two_step_field_of(
         **neighbourhood,
     )
     return field
+
+
+def cnaster_two_step(
+    fixture: SpotCloneField,
+    weight: np.ndarray,
+    valid_nb: np.ndarray | None = None,
+    valid_bb: np.ndarray | None = None,
+) -> np.ndarray:
+    """`cnaster`'s producer then field; an identity neighbourhood makes the weight exact."""
+    if valid_nb is None or valid_bb is None:
+        valid_nb = np.ones(fixture.n_spots)
+        valid_bb = weight
+
+    return two_step_field_of(
+        fixture, valid_nb, valid_bb, compute_loglike_spot_assignment_strided
+    )
 
 
 def cnaster_field_of(fixture: SpotCloneField, kernel: Any = None) -> np.ndarray:

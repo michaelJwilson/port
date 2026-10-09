@@ -29,14 +29,6 @@ def _equal(theirs: Any, ours: Any) -> None:
 
 @pytest.mark.patch
 @pytest.mark.cnaster
-@pytest.mark.parametrize("n_obs", [1, 2, 255, 256, 257, 513, 700])
-def test_the_blocked_merge_is_upstreams_bitwise(n_obs: int) -> None:
-    """Across block edges: fewer bins than a block, one short, one exact, one over."""
-    _equal(*_both(pseudobulk_inputs(n_obs, 90, 3, seed=n_obs)))
-
-
-@pytest.mark.patch
-@pytest.mark.cnaster
 def test_the_tumour_threshold_and_normal_rescaling_are_upstreams() -> None:
     """With `single_tumor_prop` trimming spots and `normal_clone_index` rescaling."""
     inputs = pseudobulk_inputs(300, 120, 4, seed=7)

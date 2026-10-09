@@ -6,10 +6,13 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
+from cnaster.count_encoder import CountEncoder
 from cnaster.hmm_nophasing import hmm_nophasing
 from cnaster.hmm_phased import hmm_phased
 from port.patch import lattice
 from scipy.sparse import csr_matrix
+
+from tests import TESTS
 
 
 @dataclass(frozen=True)
@@ -226,3 +229,101 @@ def regular_graph(
     cols = rng.integers(0, n_nodes, degree * n_nodes)
     data = rng.uniform(0.5, 2.0, rows.size) if weighted else np.ones(rows.size)
     return csr_matrix((data, (rows, cols)), shape=(n_nodes, n_nodes))
+
+
+def masked_lattice(
+    n_states: int, lengths: tuple[int, ...], spots: int, *, phased: bool, seed: int
+) -> tuple[np.ndarray, ...]:
+    """A proper transition, a switch kernel that moves, and some `-inf` sites."""
+    inputs = random_lattice(
+        n_states, lengths, spots, phased=phased, seed=seed, dirichlet=True
+    )
+    # NB an impossible state at some sites, as a zero-count BAF bin gives `cnaster`.
+    inputs.log_emission[0, :: max(inputs.log_emission.shape[1] // 7, 1), 0] = -np.inf
+    return inputs.arguments
+
+
+NB_COUNTS = np.array([0, 1, 7, 42, 300, 1000, 2500], dtype=np.float64)
+"""Counts the negative-binomial kernels score at an exposure of 1,000 (#560)."""
+
+
+def coded_encoders(
+    n_obs: int, n_spots: int, seed: int
+) -> tuple[Any, Any, dict[str, Any]]:
+    """`cnaster`'s two encoders and three states' `(n_states, 1)` parameters (#269)."""
+    rng = np.random.default_rng(seed)
+
+    counts = rng.poisson(60, size=(n_obs, n_spots)).astype(float)
+    exposure = np.full((n_obs, n_spots), 60.0)
+    alleles = rng.binomial(40, 0.4, size=(n_obs, n_spots)).astype(float)
+    depth = np.full((n_obs, n_spots), 40.0)
+
+    n_states = 3
+    parameters = {
+        "log_mu": rng.normal(0.0, 0.2, size=(n_states, 1)),
+        "alphas": np.full((n_states, 1), 0.25),
+        "p_binom": rng.uniform(0.2, 0.8, size=(n_states, 1)),
+        "taus": np.full((n_states, 1), 30.0),
+    }
+
+    return CountEncoder(counts, exposure), CountEncoder(alleles, depth), parameters
+
+
+def reindex_result(
+    n_states: int = 4, n_obs: int = 12, n_clones: int = 3
+) -> dict[str, Any]:
+    """A fit for `reindex_clones` whose balanced clone is clone 1 (#278)."""
+    rng = np.random.default_rng(5)
+
+    # clone 1 is the balanced one, so the reorder has something to do
+    p_binom = np.array([[0.2], [0.5], [0.8], [0.35]])[:n_states]
+    paths = np.concatenate(
+        [
+            np.full(n_obs, 0),  # clone 0: p = 0.2, far from balanced
+            np.full(n_obs, 1),  # clone 1: p = 0.5, the normal one
+            np.full(n_obs, 2),  # clone 2: p = 0.8
+        ][:n_clones]
+    )
+
+    assignments = np.repeat(np.arange(n_clones), [5, 3, 7][:n_clones])
+
+    return {
+        "new_assignment": assignments,
+        "pred_cnv": paths,
+        "new_p_binom": p_binom,
+        "new_log_mu": rng.normal(size=(n_states, 1)),
+        "new_alphas": np.full((n_states, 1), 0.25),
+        "new_taus": np.full((n_states, 1), 30.0),
+        "log_gamma": rng.normal(size=(n_states, n_obs * n_clones)),
+    }
+
+
+#: Planted `(log mu, p)`: neutral, one-copy loss, one-copy gain, copy-neutral LOH.
+#: LOH states sit at a small p, as a mixture with normal spots leaves them.
+PLANTED = np.array(
+    [[0.0, 0.5], [np.log(0.5), 0.05], [np.log(1.5), 1.0 / 3.0], [0.0, 0.05]]
+)
+WEIGHTS = np.array([0.55, 0.15, 0.15, 0.15])
+
+
+def mixture_draw(n_obs: int = 3000, seed: int = 0) -> tuple[np.ndarray, ...]:
+    """Bins from the model's own family: NB totals over exposure, beta-binomial B counts."""
+    rng = np.random.default_rng(seed)
+    state = rng.choice(len(PLANTED), size=n_obs, p=WEIGHTS)
+    exposure = rng.uniform(200.0, 400.0, n_obs)
+    trials = rng.integers(20, 60, n_obs).astype(float)
+    mean = exposure * np.exp(PLANTED[state, 0])
+    # NB alpha 0.02, a clone pseudobulk's dispersion rather than a spot's.
+    size = 50.0
+    totals = rng.negative_binomial(size, size / (size + mean))
+    p = rng.beta(PLANTED[state, 1] * 1000.0, (1.0 - PLANTED[state, 1]) * 1000.0)
+    successes = rng.binomial(trials.astype(int), p)
+    X = np.stack([totals, successes], axis=1).astype(float).reshape(n_obs, 2, 1)
+    return X, exposure.reshape(-1, 1), trials.reshape(-1, 1)
+
+
+def rectangular_coords(name: str) -> np.ndarray:
+    """The dev run's captured `initialize_rectangular_clones` coordinates (#298)."""
+    coords: np.ndarray = np.load(TESTS / "data" / f"{name}.npz")["coords"]
+
+    return coords

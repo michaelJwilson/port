@@ -13,7 +13,6 @@ import pytest
 import scipy.sparse as sp
 from cnaster.spatial import (
     construct_lattice_adjacency,
-    construct_multislice_lattice_adjacency,
 )
 from port.extensions.adjacency import (
     COORDINATION,
@@ -261,22 +260,3 @@ def test_the_knn_guard_refuses_what_is_not_a_knn_lattice() -> None:
     )
     with pytest.raises(AdjacencyError, match="reciprocated"):
         validate_adjacency(one_way, 8, construction="knn")
-
-
-@pytest.mark.patch
-def test_the_swap_reproduces_cnasters_multislice_adjacency_on_square_grids() -> None:
-    """The swap equals `cnaster`'s `construct_multislice_lattice_adjacency` bitwise on two square slices."""
-
-    first, second = square_coords(12, 10), square_coords(9, 14)
-    coords = np.concatenate([first, second]).astype(float)
-    sample_ids = np.repeat([0, 1], [len(first), len(second)])
-
-    theirs = construct_multislice_lattice_adjacency(
-        sample_ids, ["A", "B"], coords, None, 1, unit_xsquared=1, unit_ysquared=1
-    )
-    ours = lattice_multislice_adjacency(
-        sample_ids, ["A", "B"], coords, None, 1, unit_xsquared=1, unit_ysquared=1
-    )
-
-    assert (ours.adjacency_mat != theirs.adjacency_mat).nnz == 0
-    assert (ours.smooth_mat != theirs.smooth_mat).nnz == 0

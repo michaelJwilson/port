@@ -17,20 +17,6 @@ def _lattice(n_side: int, seed: int) -> csr_matrix:
 
 
 @pytest.mark.patch
-@pytest.mark.parametrize("n_side", [3, 8, 20])
-def test_the_triple_is_bitwise_cnasters(n_side: int) -> None:
-    """All three arrays and their dtypes equal `cnaster`'s (dtype decides `@njit` specialization)."""
-    matrix = _lattice(n_side, seed=11)
-
-    expected = _cnaster_triple(matrix)
-    actual = adjacency_coo(matrix)
-
-    for reference, patched in zip(expected, actual, strict=True):
-        np.testing.assert_array_equal(reference, patched)
-        assert reference.dtype == patched.dtype
-
-
-@pytest.mark.patch
 def test_the_triple_survives_an_empty_row() -> None:
     """An isolated spot contributes no entry, as in `cnaster`'s."""
     matrix = csr_matrix(([1.0, 2.0], ([0, 2], [2, 0])), shape=(3, 3))
