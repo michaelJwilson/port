@@ -723,7 +723,7 @@ def load_input_data(
         indicator_filter = ~np.isin(adata.var.index, genes_to_filter)
 
         logger.info(
-            f"Removing {len(filter_gene_file)} genes based on input file={filter_gene_file}."
+            f"Removing {len(genes_to_filter)} genes based on input file={filter_gene_file}."
         )
 
         # for to_print in genes_to_filter[np.isin(genes_to_filter, adata.var.index)]:
@@ -935,7 +935,7 @@ def get_sample_list(adata):
     # NB loop through rows (barcodes x samples) and collect sample names;
     #    assumes sorted by sample and is unique in this case.
     for i in range(1, adata.shape[0]):
-        if adata.obs["sample"].iloc[i] != sample_list[-1]:
+        if adata.obs["sample"].iloc[i] not in sample_list:
             logger.warning(
                 f"Appending sample_id={adata.obs['sample'].iloc[i]} to sample list."
             )

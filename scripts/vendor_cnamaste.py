@@ -35,6 +35,9 @@ ENTRY = "cnaster.scripts.run_cnaster"
 DEPARTED: dict[str, str] = {
     "normal_spot.py": "PR1, #105: a removed bin's genes leave the gene-level output",
     "spatial.py": "PR1, #692: rectangular clones that admit no assignment are banded",
+    "recomb.py": "D4: the genetic map in integer contig order, not string order",
+    "io.py": "D4: the gene filter logs genes, not path characters; samples deduplicated",
+    "he.py": "D4, #311: H&E labels 1..num_labels, the brightest pixel included",
 }
 """Copied file -> the T- #836 PR that edits it. Only grows."""
 

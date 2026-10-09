@@ -110,7 +110,9 @@ def get_he_image(spaceranger_dir, res="hires", pos=None, num_labels=4):
     percentiles = np.linspace(0.0, 100.0, 1 + num_labels)
     bins = np.percentile(np.sort(cropped_gray.flatten()), percentiles)
 
-    labels = np.digitize(cropped_gray, bins=bins)
+    # NB binned on the inner edges: against all of them the brightest pixel, equal to the last
+    #    edge, took label `num_labels + 1` (T- #836 D4, #311); elsewhere labels are unchanged.
+    labels = np.digitize(cropped_gray, bins=bins[1:-1]) + 1
 
     # TODO rename he_label.
     # NB 0.0 < x < 83_339.869; 0 < y < 53_009.165
