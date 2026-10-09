@@ -459,6 +459,22 @@ def _sized(law: dict[str, Any]) -> DrawManifest:
     return from_document(document, SIM_MANIFESTS)
 
 
+def _placed(manifest: DrawManifest, seeds: int) -> tuple[np.ndarray, np.ndarray]:
+    """Each clone's placed spots and drawn target on a 60 x 50 hex array, over `seeds` seeds."""
+    _, _, points = hex_array(60, 50)
+    sizes, targets = [], []
+
+    for seed in range(seeds):
+        labels, _ = layout(manifest, points, np.random.default_rng(seed))
+        rng = np.random.default_rng(seed)
+        for clone in sorted(manifest.tumour):
+            # NB a clone's target counts its spots on every slice it is on
+            targets.append(clone_size(manifest.layout["size"], rng))
+            sizes.append(np.sum(np.concatenate(labels) == manifest.tumour.index(clone)))
+
+    return np.array(sizes, dtype=np.int64), np.array(targets)
+
+
 @pytest.mark.analytic
 def test_clone_sizes_follow_the_stated_law_across_seeds() -> None:
     """Clone sizes against loguniform on [25, 1,000], KS at 1%, each within 10% below its draw (#544)."""
@@ -466,20 +482,8 @@ def test_clone_sizes_follow_the_stated_law_across_seeds() -> None:
     manifest = _sized(
         {"law": "loguniform", "minimum": 25, "maximum": 1000, "edge": "grow"}
     )
-    _, _, points = hex_array(60, 50)
-    sizes, ratios = [], []
-
-    for seed in range(100):
-        labels, _ = layout(manifest, points, np.random.default_rng(seed))
-        rng = np.random.default_rng(seed)
-        targets = {
-            c: clone_size(manifest.layout["size"], rng) for c in sorted(manifest.tumour)
-        }
-        for clone, target in targets.items():
-            # NB a clone's target counts its spots on every slice it is on
-            size = int(np.sum(np.concatenate(labels) == manifest.tumour.index(clone)))
-            sizes.append(size)
-            ratios.append(size / target)
+    sizes, targets = _placed(manifest, 100)
+    ratios = sizes / targets
 
     low, high = np.log(25), np.log(1000)
     statistic = kstest((np.log(sizes) - low) / (high - low), "uniform")
@@ -515,18 +519,8 @@ def test_a_clipped_clone_keeps_what_lands_on_the_array() -> None:
     manifest = _sized(
         {"law": "loguniform", "minimum": 100, "maximum": 1000, "edge": "clip"}
     )
-    _, _, points = hex_array(60, 50)
-    ratios = []
-
-    for seed in range(200):
-        labels, _ = layout(manifest, points, np.random.default_rng(seed))
-        rng = np.random.default_rng(seed)
-        targets = {
-            c: clone_size(manifest.layout["size"], rng) for c in sorted(manifest.tumour)
-        }
-        for clone, target in targets.items():
-            size = int(np.sum(np.concatenate(labels) == manifest.tumour.index(clone)))
-            ratios.append(size / target)
+    sizes, targets = _placed(manifest, 200)
+    ratios = sizes / targets
 
     assert max(ratios) <= 1.05, max(ratios)
     assert np.mean(np.array(ratios) < 0.9) > 0.05, np.quantile(ratios, [0.05, 0.25])

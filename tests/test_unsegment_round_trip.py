@@ -10,8 +10,15 @@ from typing import Any
 import numpy as np
 import pytest
 from cnaster.omics import summarize_counts_for_bins
-from port.sim.truth import core_inference_truth
+from port.sim.truth import CoreInferenceTruth, core_inference_truth
 from port.sim.unsegment import Unsegmented, unsegment
+
+
+def _truth(n_obs: int, n_segments: int) -> CoreInferenceTruth:
+    """Two clones and three states on a 6 x 6 lattice."""
+    return core_inference_truth(
+        n_clones=2, n_states=3, lattice=(6, 6), n_obs=n_obs, n_segments=n_segments
+    )
 
 
 def _rebin(pre_image: Unsegmented) -> Any:
@@ -35,9 +42,7 @@ def _rebin(pre_image: Unsegmented) -> Any:
 @pytest.mark.parametrize("n_obs", [60, 240])
 def test_the_round_trip_returns_the_binned_fixture(n_obs: int) -> None:
     """Both channels come back bitwise, at two bin counts."""
-    truth = core_inference_truth(
-        n_clones=2, n_states=3, lattice=(6, 6), n_obs=n_obs, n_segments=2
-    )
+    truth = _truth(n_obs, 2)
     rebinned = _rebin(unsegment(truth))
 
     np.testing.assert_array_equal(rebinned.X[:, 0, :], truth.counts_nb.astype(np.int64))
@@ -51,9 +56,7 @@ def test_the_round_trip_returns_the_binned_fixture(n_obs: int) -> None:
 @pytest.mark.preprocessing
 def test_the_round_trip_returns_the_segmentation() -> None:
     """`lengths` comes back (#67)."""
-    truth = core_inference_truth(
-        n_clones=2, n_states=3, lattice=(6, 6), n_obs=240, n_segments=4
-    )
+    truth = _truth(240, 4)
     rebinned = _rebin(unsegment(truth))
 
     np.testing.assert_array_equal(rebinned.lengths, truth.lengths)
@@ -63,9 +66,7 @@ def test_the_round_trip_returns_the_segmentation() -> None:
 @pytest.mark.preprocessing
 def test_the_unassigned_genes_never_reach_a_bin() -> None:
     """Counts outside the table's assignment are dropped, not summed."""
-    truth = core_inference_truth(
-        n_clones=2, n_states=3, lattice=(6, 6), n_obs=60, n_segments=2
-    )
+    truth = _truth(60, 2)
     pre_image = unsegment(truth)
 
     unassigned = pre_image.df_gene_snp.bin_id.isnull().sum()
@@ -83,9 +84,7 @@ def test_the_unassigned_genes_never_reach_a_bin() -> None:
 def test_the_flipped_blocks_are_unflipped_by_the_binner() -> None:
     """`phase_indicator` is read: forcing it true changes the result."""
 
-    truth = core_inference_truth(
-        n_clones=2, n_states=3, lattice=(6, 6), n_obs=60, n_segments=2
-    )
+    truth = _truth(60, 2)
     pre_image = unsegment(truth)
     assert not pre_image.phase_indicator.all(), "no block is flipped"
 
@@ -102,9 +101,7 @@ def test_the_flipped_blocks_are_unflipped_by_the_binner() -> None:
 @pytest.mark.preprocessing
 def test_the_pre_image_is_a_partition_and_not_a_copy() -> None:
     """Each bin is split across several genes and blocks, with varying counts."""
-    truth = core_inference_truth(
-        n_clones=2, n_states=3, lattice=(6, 6), n_obs=240, n_segments=4
-    )
+    truth = _truth(240, 4)
     table = unsegment(truth).df_gene_snp
     assigned = table[table.bin_id.notnull()]
 

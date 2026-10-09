@@ -19,16 +19,22 @@ FLAG_SETS = [
 ]
 
 
-def named_parameters(n_states: int, n_spots: int = 1) -> dict[str, np.ndarray]:
-    """A parameter set in the model's own terms, seeded and in range."""
+def named_parameters(n_states: int, flags: dict[str, bool]) -> dict[str, np.ndarray]:
+    """A parameter set in the model's own terms, seeded, in range, one dispersion where shared."""
     rng = np.random.default_rng(17)
-    return {
+    params = {
         "log_startprob": np.log(np.full(n_states, 1.0 / n_states)),
-        "log_mu": rng.normal(scale=0.3, size=(n_states, n_spots)),
-        "p_binom": rng.uniform(0.15, 0.85, size=(n_states, n_spots)),
-        "alphas": rng.uniform(0.05, 0.5, size=(n_states, n_spots)),
-        "taus": rng.uniform(20.0, 500.0, size=(n_states, n_spots)),
+        "log_mu": rng.normal(scale=0.3, size=(n_states, 1)),
+        "p_binom": rng.uniform(0.15, 0.85, size=(n_states, 1)),
+        "alphas": rng.uniform(0.05, 0.5, size=(n_states, 1)),
+        "taus": rng.uniform(20.0, 500.0, size=(n_states, 1)),
     }
+    if flags.get("shared_NB_dispersion"):
+        params["alphas"][:] = params["alphas"][0]
+    if flags.get("shared_BB_dispersion"):
+        params["taus"][:] = params["taus"][0]
+
+    return params
 
 
 @pytest.mark.smoke
@@ -40,12 +46,7 @@ def test_unpacking_what_was_packed_returns_it(
     """The round trip is the identity on every parameter it carries; shared dispersions repeat."""
 
     model = hmm_nophasing()
-    params = named_parameters(n_states)
-
-    if flags.get("shared_NB_dispersion"):
-        params["alphas"][:] = params["alphas"][0]
-    if flags.get("shared_BB_dispersion"):
-        params["taus"][:] = params["taus"][0]
+    params = named_parameters(n_states, flags)
 
     packed = model.pack_params(**params, **flags)
     assert np.all(np.isfinite(packed))
@@ -83,11 +84,7 @@ def test_bounds_match_the_packed_vector(flags: dict[str, bool], n_states: int) -
     """One bound per packed coordinate, each an interval containing it."""
 
     model = hmm_nophasing()
-    params = named_parameters(n_states)
-    if flags.get("shared_NB_dispersion"):
-        params["alphas"][:] = params["alphas"][0]
-    if flags.get("shared_BB_dispersion"):
-        params["taus"][:] = params["taus"][0]
+    params = named_parameters(n_states, flags)
 
     packed = model.pack_params(**params, **flags)
     bounds = model.get_bounds(n_states, **flags)

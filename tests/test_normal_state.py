@@ -6,6 +6,8 @@ paper's
 normalization differs and is stated in the last test.
 """
 
+from typing import Any
+
 import numpy as np
 import pytest
 from cnaster.integer_copy import find_diploid_balanced_state
@@ -45,6 +47,17 @@ def test_the_planted_normal_state_is_normal_by_cnasters_definition(
     assert distances[NORMAL_STATE] == 0.0
 
 
+def _chosen(planted: CoreInferenceTruth, path: np.ndarray) -> Any:
+    """`find_diploid_balanced_state` on `path` at the planted parameters."""
+    return find_diploid_balanced_state(
+        planted.log_mu,
+        planted.p_binom,
+        path,
+        min_prop_threshold=MIN_PROPORTION,
+        EPS_BAF=EPS_BAF,
+    )
+
+
 @pytest.mark.end2end
 @pytest.mark.critical
 def test_the_planted_normal_state_is_the_candidate_it_selects(
@@ -58,13 +71,7 @@ def test_the_planted_normal_state_is_the_candidate_it_selects(
     assert occupancy[NORMAL_STATE] == pytest.approx(0.944, abs=5e-3)
     assert occupancy[NORMAL_STATE] > MIN_PROPORTION
 
-    chosen = find_diploid_balanced_state(
-        planted.log_mu,
-        planted.p_binom,
-        path,
-        min_prop_threshold=MIN_PROPORTION,
-        EPS_BAF=EPS_BAF,
-    )
+    chosen = _chosen(planted, path)
 
     assert chosen == NORMAL_STATE
 
@@ -82,13 +89,7 @@ def test_a_mostly_diploid_genome_is_the_candidate_it_wants(
         rng.integers(1, planted.n_states, planted.n_obs),
     )
 
-    chosen = find_diploid_balanced_state(
-        planted.log_mu,
-        planted.p_binom,
-        path,
-        min_prop_threshold=MIN_PROPORTION,
-        EPS_BAF=EPS_BAF,
-    )
+    chosen = _chosen(planted, path)
 
     assert chosen == NORMAL_STATE
 

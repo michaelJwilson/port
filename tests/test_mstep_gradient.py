@@ -28,7 +28,7 @@ from port.patch.hmm_nophasing.gradient import (
 )
 from port.qa.jax_hmm import emission, shifted_rates
 
-from tests.fixtures import two_clone_stacked_instance
+from tests.fixtures import two_clone_optimize_arguments, two_clone_stacked_instance
 
 
 def _problem(
@@ -217,16 +217,7 @@ def test_the_closed_form_fit_is_cnasters_fit_to_a_stated_tolerance(
     monkeypatch.setattr(get_global_config().hmm, "solver", "BFGS")
 
     instance = two_clone_stacked_instance()
-    kwargs = {
-        "init_log_mu": np.log(np.array([[1.0], [2.0]])),
-        "init_p_binom": np.array([[0.5], [0.25]]),
-        "max_iter": 20,
-        "normal_lambda": instance["normal_lambda"],
-        "clone_lengths": instance["clone_lengths"],
-        "shared_NB_dispersion": True,
-        "shared_BB_dispersion": True,
-    }
-    args = (instance["X"], instance["lengths"], 2, instance["base"], instance["total"])
+    args, kwargs = two_clone_optimize_arguments(instance)
 
     theirs = upstream(params="smp", t=0.99).optimize(*args, **kwargs)
     ours = hmm_nophasing(params="smp", t=0.99).optimize(*args, **kwargs)

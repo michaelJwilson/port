@@ -39,6 +39,27 @@ def _field(labels: np.ndarray, n_clones: int, margin: float = 40.0) -> np.ndarra
     return field
 
 
+def _swept(labels: np.ndarray, side: int) -> np.ndarray:
+    """`icm_sweep_deque` at its default floor from `labels`, under a field preferring them."""
+    graph = lattice_adjacency((side, side))
+    solved = labels.copy()
+
+    # NPY002 is the finding: the sweep shuffles with the legacy global RNG (#45).
+    np.random.seed(SEED)  # noqa: NPY002
+
+    icm_sweep_deque(
+        single_llf=_field(labels, 2),
+        adj_indptr=graph.indptr,
+        adj_indices=graph.indices,
+        adj_weights=graph.data,
+        new_assignment=solved,
+        spatial_weight=1.0,
+        posterior=None,
+    )
+
+    return solved
+
+
 @pytest.mark.bug
 def test_the_sweep_writes_its_callers_labelling_in_place() -> None:
     """`icm_sweep_deque` rewrites the caller's labelling in place (#45)."""
@@ -81,24 +102,10 @@ def test_a_clone_under_the_floor_is_dissolved_into_random_neighbours() -> None:
     side = 24
     small = 100
     labels = _bands(side, (side * side - small, small))
-    graph = lattice_adjacency((side, side))
 
     assert np.bincount(labels).min() == small < FLOOR
 
-    solved = labels.copy()
-
-    # NPY002 is the finding: the sweep shuffles with the legacy global RNG (#45).
-    np.random.seed(SEED)  # noqa: NPY002
-
-    icm_sweep_deque(
-        single_llf=_field(labels, 2),
-        adj_indptr=graph.indptr,
-        adj_indices=graph.indices,
-        adj_weights=graph.data,
-        new_assignment=solved,
-        spatial_weight=1.0,
-        posterior=None,
-    )
+    solved = _swept(labels, side)
 
     assert (solved == 1).sum() == 0, (
         f"{(solved == 1).sum()} spots survived in the clone under the floor"
@@ -112,22 +119,8 @@ def test_the_same_clone_survives_once_it_clears_the_floor() -> None:
     side = 24
     small = FLOOR + 1
     labels = _bands(side, (side * side - small, small))
-    graph = lattice_adjacency((side, side))
 
-    solved = labels.copy()
-
-    # NPY002 is the finding: the sweep shuffles with the legacy global RNG (#45).
-    np.random.seed(SEED)  # noqa: NPY002
-
-    icm_sweep_deque(
-        single_llf=_field(labels, 2),
-        adj_indptr=graph.indptr,
-        adj_indices=graph.indices,
-        adj_weights=graph.data,
-        new_assignment=solved,
-        spatial_weight=1.0,
-        posterior=None,
-    )
+    solved = _swept(labels, side)
 
     assert (solved == 1).sum() >= FLOOR
 

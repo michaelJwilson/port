@@ -903,6 +903,28 @@ def two_clone_stacked_instance(seed: int = 4) -> dict[str, Any]:
     }
 
 
+def two_clone_optimize_arguments(
+    instance: dict[str, Any],
+) -> tuple[tuple[Any, ...], dict[str, Any]]:
+    """`optimize`'s arguments on `two_clone_stacked_instance`: 20 iterations, shared dispersions."""
+    kwargs = {
+        "init_log_mu": np.log(np.array([[1.0], [2.0]])),
+        "init_p_binom": np.array([[0.5], [0.25]]),
+        "max_iter": 20,
+        "normal_lambda": instance["normal_lambda"],
+        "clone_lengths": instance["clone_lengths"],
+        "shared_NB_dispersion": True,
+        "shared_BB_dispersion": True,
+    }
+    return (
+        instance["X"],
+        instance["lengths"],
+        2,
+        instance["base"],
+        instance["total"],
+    ), kwargs
+
+
 def pseudobulk_inputs(
     n_obs: int, n_spots: int, n_clones: int, seed: int
 ) -> dict[str, Any]:

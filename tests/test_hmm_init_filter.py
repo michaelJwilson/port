@@ -51,6 +51,13 @@ def _stacked(truth: CoreInferenceTruth) -> tuple[Any, ...]:
     )
 
 
+def _filtered(arguments: tuple[Any, ...]) -> Any:
+    """`filter_observations` over `gmm_init`'s arguments, at the configured bounds."""
+    return filter_observations(
+        *arguments[1:5], min_binom=MIN_BINOM, max_binom=MAX_BINOM
+    )
+
+
 def _capture_design(monkeypatch: pytest.MonkeyPatch, arguments: tuple[Any, ...]) -> Any:
     """Run `gmm_init` and return the array it passed to `GaussianMixture.fit`."""
 
@@ -78,17 +85,7 @@ def test_the_staged_filter_reproduces_the_design_matrix_bitwise(
     """The staged design matrix equals the top (unaugmented) half of what reaches `fit`, bitwise."""
     arguments = _stacked(planted)
     captured = _capture_design(monkeypatch, arguments)
-
-    _, stack_X, stack_base, stack_total, params, *_ = arguments
-
-    observations = filter_observations(
-        stack_X,
-        stack_base,
-        stack_total,
-        params,
-        min_binom=MIN_BINOM,
-        max_binom=MAX_BINOM,
-    )
+    observations = _filtered(arguments)
     design, standardize, record = design_matrix(observations)
 
     assert design.shape[0] == record.rows_kept
@@ -113,17 +110,7 @@ def test_the_staged_filter_reproduces_the_design_matrix_bitwise(
 @pytest.mark.usefixtures("cnaster_config", "cnaster_perf_sink")
 def test_the_transform_inverts_itself(planted: CoreInferenceTruth) -> None:
     """The inverse transform undoes the forward one (`cnaster` lines 351 and 519)."""
-    arguments = _stacked(planted)
-    _, stack_X, stack_base, stack_total, params, *_ = arguments
-
-    observations = filter_observations(
-        stack_X,
-        stack_base,
-        stack_total,
-        params,
-        min_binom=MIN_BINOM,
-        max_binom=MAX_BINOM,
-    )
+    observations = _filtered(_stacked(planted))
 
     assert observations.rdr is not None
 
@@ -143,17 +130,7 @@ def test_the_record_counts_what_the_filters_did(
     planted: CoreInferenceTruth,
 ) -> None:
     """The record counts what each filter did (#230)."""
-    arguments = _stacked(planted)
-    _, stack_X, stack_base, stack_total, params, *_ = arguments
-
-    observations = filter_observations(
-        stack_X,
-        stack_base,
-        stack_total,
-        params,
-        min_binom=MIN_BINOM,
-        max_binom=MAX_BINOM,
-    )
+    observations = _filtered(_stacked(planted))
     _, _, record = design_matrix(observations)
 
     assert record.rows_kept + record.rows_dropped == record.n_bins
@@ -175,17 +152,7 @@ def test_imputation_none_is_a_policy_rather_than_a_step(
     planted: CoreInferenceTruth,
 ) -> None:
     """Imputation `"none"` agrees with `cnaster` on a fixture with no missing data."""
-    arguments = _stacked(planted)
-    _, stack_X, stack_base, stack_total, params, *_ = arguments
-
-    observations = filter_observations(
-        stack_X,
-        stack_base,
-        stack_total,
-        params,
-        min_binom=MIN_BINOM,
-        max_binom=MAX_BINOM,
-    )
+    observations = _filtered(_stacked(planted))
 
     filled, _, filled_record = design_matrix(observations, imputation="ffill_bfill")
     bare, _, bare_record = design_matrix(observations, imputation="none")

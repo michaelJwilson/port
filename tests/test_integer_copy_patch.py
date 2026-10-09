@@ -59,6 +59,19 @@ def _inputs(extra: tuple[int, int]) -> tuple[np.ndarray, ...]:
     )
 
 
+def _recorded_caps(monkeypatch: pytest.MonkeyPatch) -> list[tuple[int, int | None]]:
+    """Replace `decode_clone` with a stub recording each call's `(total, allele)` caps."""
+    received: list[tuple[int, int | None]] = []
+
+    def decode(*arguments: Any, **options: Any) -> tuple[np.ndarray, float, int]:
+        received.append((arguments[2], options["max_allele_copy"]))
+        return np.ones((1, 2), dtype=np.int64), 0.0, 2
+
+    monkeypatch.setattr(integer_copy, "decode_clone", decode)
+
+    return received
+
+
 @contextmanager
 def _config(**caps: int) -> Iterator[None]:
     """`cnaster`'s global configuration with an `int_copy_num` section, restored after."""
@@ -274,13 +287,7 @@ def test_the_drop_ins_decode_under_the_named_allele_cap(
     """Both rows pass the configured allele cap to the decode (T- #617)."""
 
     monkeypatch.setattr(integer_copy, "UNCONFIGURED_MAX_ALLELE_COPY", unconfigured)
-    received: list[tuple[int, int | None]] = []
-
-    def decode(*arguments: Any, **options: Any) -> tuple[np.ndarray, float, int]:
-        received.append((arguments[2], options["max_allele_copy"]))
-        return np.ones((1, 2), dtype=np.int64), 0.0, 2
-
-    monkeypatch.setattr(integer_copy, "decode_clone", decode)
+    received = _recorded_caps(monkeypatch)
     caps = {} if stated is None else {"max_total_copy": stated}
 
     with _config(**caps):
@@ -307,13 +314,7 @@ def test_a_cap_passed_at_cnasters_default_is_kept(
 ) -> None:
     """An explicit `(5, 6)` is kept with 12 configured, not read as unset (#749 WP0)."""
 
-    received: list[tuple[int, int | None]] = []
-
-    def decode(*arguments: Any, **options: Any) -> tuple[np.ndarray, float, int]:
-        received.append((arguments[2], options["max_allele_copy"]))
-        return np.ones((1, 2), dtype=np.int64), 0.0, 2
-
-    monkeypatch.setattr(integer_copy, "decode_clone", decode)
+    received = _recorded_caps(monkeypatch)
 
     with _config(max_total_copy=12):
         integer_copy.hill_climbing_integer_copynumber_oneclone(

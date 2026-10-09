@@ -18,7 +18,11 @@ from port.patch.hmrf.clone_assignment import UPSTREAM, pipeline_clone_assignment
 from port.pipeline import with_attributes
 
 from tests.adapters import clone_assignment_arguments, clone_assignment_call
-from tests.fixtures import spot_clone_field, two_clone_stacked_instance
+from tests.fixtures import (
+    spot_clone_field,
+    two_clone_optimize_arguments,
+    two_clone_stacked_instance,
+)
 
 
 @pytest.mark.cnaster
@@ -54,16 +58,7 @@ def test_the_fit_is_upstreams_off_and_decodes_under_its_own_shift_on() -> None:
     """`optimize` off is `cnaster`'s bitwise (#433); on, `log_gamma` is `get_state_posteriors` at the recorded shift, to 1e-9."""
 
     instance = two_clone_stacked_instance()
-    kwargs = {
-        "init_log_mu": np.log(np.array([[1.0], [2.0]])),
-        "init_p_binom": np.array([[0.5], [0.25]]),
-        "max_iter": 20,
-        "normal_lambda": instance["normal_lambda"],
-        "clone_lengths": instance["clone_lengths"],
-        "shared_NB_dispersion": True,
-        "shared_BB_dispersion": True,
-    }
-    args = (instance["X"], instance["lengths"], 2, instance["base"], instance["total"])
+    args, kwargs = two_clone_optimize_arguments(instance)
 
     theirs = upstream(params="smp", t=0.99).optimize(*args, **kwargs)
     differenced = with_attributes(hmm_nophasing, analytic_gradient=False)

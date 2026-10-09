@@ -13,7 +13,7 @@ from scipy.special import logsumexp
 def _instance(
     n_states: int = 4, n_obs: int = 60, seed: int = 31
 ) -> dict[str, np.ndarray]:
-    """One clone-stacked sequence, with the parameters at the fit's shape."""
+    """One clone-stacked sequence, with the parameters at the fit's shape, in `emission`'s order."""
     generator = np.random.default_rng(seed)
 
     exposure = generator.integers(20, 120, n_obs).astype(np.float64)
@@ -31,20 +31,13 @@ def _instance(
     }
 
 
-@pytest.mark.oracle
-def test_the_jax_emission_is_cnasters() -> None:
-    """Both channels match `_nb_logpmf_1d` and `_bb_logpmf_1d` within 1e-10 absolute."""
-
-    instance = _instance()
-    n_states = instance["log_mu"].shape[0]
-    n_obs = instance["counts_nb"].size
-
+def _cnaster_emission(instance: dict[str, np.ndarray]) -> np.ndarray:
+    """Per-state `_nb_logpmf_1d` plus `_bb_logpmf_1d`, `(n_states, n_obs)`."""
+    n_states, n_obs = instance["log_mu"].shape[0], instance["counts_nb"].size
     theirs = np.zeros((n_states, n_obs))
 
     for state in range(n_states):
-        read_depth = np.zeros(n_obs)
-        allele = np.zeros(n_obs)
-
+        read_depth, allele = np.zeros(n_obs), np.zeros(n_obs)
         _nb_logpmf_1d(
             instance["counts_nb"],
             instance["base_nb_mean"],
@@ -59,21 +52,18 @@ def test_the_jax_emission_is_cnasters() -> None:
             float(instance["taus"][state, 0]),
             allele,
         )
-
         theirs[state] = read_depth + allele
 
-    ours = np.asarray(
-        emission(
-            instance["log_mu"],
-            instance["alphas"],
-            instance["p_binom"],
-            instance["taus"],
-            instance["counts_nb"],
-            instance["base_nb_mean"],
-            instance["counts_bb"],
-            instance["total_bb_RD"],
-        )
-    )
+    return theirs
+
+
+@pytest.mark.oracle
+def test_the_jax_emission_is_cnasters() -> None:
+    """Both channels match `_nb_logpmf_1d` and `_bb_logpmf_1d` within 1e-10 absolute."""
+
+    instance = _instance()
+    theirs = _cnaster_emission(instance)
+    ours = np.asarray(emission(*instance.values()))
 
     assert ours.shape == theirs.shape
 
@@ -89,26 +79,7 @@ def test_the_jax_forward_is_cnasters() -> None:
     n_obs = instance["counts_nb"].size
     lengths = np.array([n_obs // 2, n_obs - n_obs // 2], dtype=np.int64)
 
-    dense = np.zeros((n_states, n_obs))
-
-    for state in range(n_states):
-        read_depth, allele = np.zeros(n_obs), np.zeros(n_obs)
-
-        _nb_logpmf_1d(
-            instance["counts_nb"],
-            instance["base_nb_mean"],
-            float(np.exp(instance["log_mu"][state, 0])),
-            float(instance["alphas"][state, 0]),
-            read_depth,
-        )
-        _bb_logpmf_1d(
-            instance["counts_bb"],
-            instance["total_bb_RD"],
-            float(instance["p_binom"][state, 0]),
-            float(instance["taus"][state, 0]),
-            allele,
-        )
-        dense[state] = read_depth + allele
+    dense = _cnaster_emission(instance)
 
     generator = np.random.default_rng(3)
     log_startprob = np.log(np.full(n_states, 1.0 / n_states))
@@ -129,16 +100,7 @@ def test_the_jax_forward_is_cnasters() -> None:
     ends = np.cumsum(lengths) - 1
     theirs = -float(np.sum(logsumexp(np.asarray(lattice)[:, ends], axis=0)))
 
-    scores = emission(
-        instance["log_mu"],
-        instance["alphas"],
-        instance["p_binom"],
-        instance["taus"],
-        instance["counts_nb"],
-        instance["base_nb_mean"],
-        instance["counts_bb"],
-        instance["total_bb_RD"],
-    )
+    scores = emission(*instance.values())
 
     ours = float(
         marginal_negative_log_likelihood(scores, log_startprob, log_transmat, lengths)

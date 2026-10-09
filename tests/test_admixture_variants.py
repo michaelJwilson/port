@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 from port.sandbox.admixture.variants import annealed, fit_mixture
 
-from tests.test_clone_mixture import ALPHA, MU, TAU, P, _planted
+from tests.test_clone_mixture import ALPHA, MU, TAU, P, _planted, _sticky
 
 
 @pytest.mark.analytic
@@ -16,10 +16,7 @@ def test_a_cap_bounds_the_mixing_and_binds_on_a_larger_blend() -> None:
     planted = np.eye(3)
     planted[1] = [0.0, 0.75, 0.25]
     paths, bulks = _planted(planted, seed=3)
-    n = MU.size
-    transmat = np.log(
-        np.full((n, n), 0.01 / (n - 1)) + np.eye(n) * (0.99 - 0.01 / (n - 1))
-    )
+    transmat = _sticky(MU.size)
 
     fit = fit_mixture(bulks, MU, P, ALPHA, TAU, paths, transmat, cap=0.2)
 

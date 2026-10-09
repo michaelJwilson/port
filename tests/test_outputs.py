@@ -238,6 +238,22 @@ def test_clones_that_decode_alike_are_one_integer_clone() -> None:
     assert integer_clones(frame) == {"5": "2", "0": "0", "2": "2", "7": "0"}
 
 
+def _labels(run: Path) -> pd.DataFrame:
+    """Five spots' `clone_labels.tsv` over clones 0, 2 and 5, one unlabelled, written to `run`."""
+    labels = pd.DataFrame(
+        {
+            "barcode": [f"BC{k}" for k in range(5)],
+            "sample_id": "S1",
+            "x": range(5),
+            "y": 0,
+            "clone_label": [0, 2, 5, np.nan, 5],
+        }
+    )
+    labels.to_csv(run / "clone_labels.tsv", sep="\t", index=False)
+
+    return labels
+
+
 @pytest.mark.infra
 def test_the_integer_labels_keep_every_spot_s_fitted_label(tmp_path: Path) -> None:
     """`clone_labels_integer.tsv` is `clone_labels.tsv` plus each spot's integer clone."""
@@ -249,16 +265,7 @@ def test_the_integer_labels_keep_every_spot_s_fitted_label(tmp_path: Path) -> No
         seglevel[f"clone5 {column}"] = seglevel[f"clone0 {column}"]
     seglevel.to_csv(run / "cnv_seglevel.tsv", sep="\t", index=False)
 
-    labels = pd.DataFrame(
-        {
-            "barcode": [f"BC{k}" for k in range(5)],
-            "sample_id": "S1",
-            "x": range(5),
-            "y": 0,
-            "clone_label": [0, 2, 5, np.nan, 5],
-        }
-    )
-    labels.to_csv(run / "clone_labels.tsv", sep="\t", index=False)
+    labels = _labels(run)
     write_outputs(run)
     written = pd.read_csv(run / "clone_labels_integer.tsv", sep="\t")
 
@@ -274,16 +281,7 @@ def test_a_merge_rewrites_clone_labels_and_keeps_cnaster_s(tmp_path: Path) -> No
     """Merged clones rewrite `clone_label`, keeping `cnaster`'s; idempotent over two passes (#518)."""
 
     run = _run(tmp_path)
-    labels = pd.DataFrame(
-        {
-            "barcode": [f"BC{k}" for k in range(5)],
-            "sample_id": "S1",
-            "x": range(5),
-            "y": 0,
-            "clone_label": [0, 2, 5, np.nan, 5],
-        }
-    )
-    labels.to_csv(run / "clone_labels.tsv", sep="\t", index=False)
+    labels = _labels(run)
     untouched = (run / "clone_labels.tsv").read_bytes()
 
     write_outputs(run)

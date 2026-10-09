@@ -32,12 +32,10 @@ def _draws(size: int = 500) -> tuple[np.ndarray, ...]:
     )
 
 
-@pytest.mark.patch
-def test_the_hmm_and_the_m_step_score_the_same_density() -> None:
-    """The HMM's and M step's beta-binomials agree within `IMPLEMENTATION_TOLERANCE` (#205, #9)."""
-
-    successes, totals, alpha, beta = _draws()
-
+def _scored(
+    successes: np.ndarray, totals: np.ndarray, alpha: np.ndarray, beta: np.ndarray
+) -> tuple[np.ndarray, np.ndarray]:
+    """The HMM's and the M step's log densities at each draw."""
     scored = np.array(
         [
             betabinom_logpmf_numba(successes[i], totals[i], alpha[i], beta[i])
@@ -47,6 +45,15 @@ def test_the_hmm_and_the_m_step_score_the_same_density() -> None:
     optimized = betabinom_logpmf(
         successes, totals, alpha, beta, betabinom_logpmf_zp(successes, totals)
     )
+
+    return scored, optimized
+
+
+@pytest.mark.patch
+def test_the_hmm_and_the_m_step_score_the_same_density() -> None:
+    """The HMM's and M step's beta-binomials agree within `IMPLEMENTATION_TOLERANCE` (#205, #9)."""
+
+    scored, optimized = _scored(*_draws())
 
     realized = float(np.abs(scored - optimized).max())
     assert realized < IMPLEMENTATION_TOLERANCE, f"the two differ by {realized:.3g}"
@@ -56,18 +63,9 @@ def test_the_hmm_and_the_m_step_score_the_same_density() -> None:
 def test_both_agree_with_scipy_at_integer_counts() -> None:
     """Both agree with `scipy.stats.betabinom` within `SCIPY_TOLERANCE` at integer counts."""
 
-    successes, totals, alpha, beta = _draws()
-    expected = scipy.stats.betabinom.logpmf(successes, totals, alpha, beta)
-
-    scored = np.array(
-        [
-            betabinom_logpmf_numba(successes[i], totals[i], alpha[i], beta[i])
-            for i in range(successes.size)
-        ]
-    )
-    optimized = betabinom_logpmf(
-        successes, totals, alpha, beta, betabinom_logpmf_zp(successes, totals)
-    )
+    draws = _draws()
+    expected = scipy.stats.betabinom.logpmf(*draws)
+    scored, optimized = _scored(*draws)
 
     assert float(np.abs(scored - expected).max()) < SCIPY_TOLERANCE
     assert float(np.abs(optimized - expected).max()) < SCIPY_TOLERANCE
