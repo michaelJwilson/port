@@ -190,6 +190,31 @@ def integer_labels(a: np.ndarray, b: np.ndarray, agreement: float = 1.0) -> np.n
     return np.array([int(names[str(c)]) for c in range(a.shape[1])], dtype=np.int64)
 
 
+def surviving(fitted: np.ndarray, merged: np.ndarray) -> list[int]:
+    """The fitted clone each merged clone keeps the column of, by `merge_by_minspots`' rule (T- #855).
+
+    `cnaster` keeps the clones that pass its floor in sorted order, appends
+    each failed clone to one of them, and labels the group of the `i`-th
+    survivor `i`; `pred_cnv` keeps the survivors' columns. So the survivors
+    are the one increasing choice of one fitted clone per merged group,
+    refused where the groups admit none or more than one.
+    """
+    import itertools
+
+    groups = [
+        sorted(set(fitted[merged == i].tolist())) for i in range(int(merged.max()) + 1)
+    ]
+    found = [
+        c
+        for c in itertools.product(*groups)
+        if all(a < b for a, b in itertools.pairwise(c))
+    ]
+    if len(found) != 1:
+        msg = f"merge_by_minspots' groups {groups} admit {len(found)} choices of survivors, not one"
+        raise ValueError(msg)
+    return [int(c) for c in found[0]]
+
+
 def run_tables(directory: Path) -> tuple[pd.Series, pd.DataFrame, dict[str, Any]]:
     """A run's clone labels by barcode, its integer table and its final fit: from `cnamaste.h5` (T- #817).
 
@@ -234,11 +259,13 @@ def run_tables(directory: Path) -> tuple[pd.Series, pd.DataFrame, dict[str, Any]
         columns[f"clone{clone} A"] = copies["A"][:, k].astype(np.int64)
         columns[f"clone{clone} B"] = copies["B"][:, k].astype(np.int64)
     stage, shape = cnamaste.read(path, "rdrbaf")
-    # NB the stage's clones before `reindex_clones`, the final ones after: one permutation
+    merged, _ = cnamaste.read(path, "rdrbaf_merged")
+    kept = surviving(stage["assignment"], merged["assignment"])
+    # NB the merged clones before `reindex_clones`, the final ones after: one permutation
     order = dict(
-        zip(final["assignment"].tolist(), stage["assignment"].tolist(), strict=True)
+        zip(final["assignment"].tolist(), merged["assignment"].tolist(), strict=True)
     )
-    pred = stage["pred_cnv"][:, [order[k] for k in range(stage["pred_cnv"].shape[1])]]
+    pred = stage["pred_cnv"][:, [kept[order[k]] for k in range(len(kept))]]
     fit = {"new_log_mu": stage["log_mu"].reshape(shape["mu_shape"]),
            "new_p_binom": stage["p_binom"].reshape(shape["mu_shape"]),
            "pred_cnv": pred.T.ravel() if shape["pred_layout"] == "stacked" else pred}  # fmt: skip
