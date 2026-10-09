@@ -38,12 +38,14 @@ DEPARTED: dict[str, str] = {
     "hmm_nophasing.py": "K3, #276: the read-depth mean divided by each clone's log Z_c",
     "hmm.py": "K3, #276: the final rescore with the fit's log Z_c",
     "hmrf.py": "K3, #293 #299: the shifted fit's neutral state pinned to mu = 1",
+    "hmm_initialize.py": "K4, #540 #547 #348: the lattice start for read depth; distinct components otherwise",
     "scripts/run_cnamaste.py": "K1, #313 #362: integer copies by copy_decode.lattice_decode",
 }
 """Copied file -> the T- #836 PR that edits it. Only grows."""
 
 ADDED: dict[str, str] = {
     "copy_decode.py": "K1 #313 #362, K2 T- #817: the lattice decode and integer clones, from port c17cd26",
+    "lattice_start.py": "K4, #540 #547: the read-depth HMM's lattice start, from port c17cd26",
 }
 """File cnamaste owns beyond the copy -> the T- #836 PR that adds it."""
 
