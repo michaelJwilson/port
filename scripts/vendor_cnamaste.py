@@ -39,6 +39,7 @@ DEPARTED: dict[str, str] = {
     "hmm_nophasing.py": "D2, #413: an all -inf posterior column is the named error",
     "hmrf.py": "D2, #411: logsumexp of all -inf is -inf",
     "icm.py": "D2, #411: logsumexp of all -inf is -inf",
+    "utils.py": "PR1, T- #692: write_fig releases each Text's cached renderer",
 }
 """Copied file -> the T- #836 PR that edits it. Only grows."""
 

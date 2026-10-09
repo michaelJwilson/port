@@ -9,6 +9,7 @@ from pathlib import Path
 import anndata
 import h5py
 import matplotlib.pyplot as plt
+from matplotlib.text import Text
 import numpy as np
 import pandas as pd
 import scipy
@@ -286,6 +287,12 @@ def write_fig(opath, fig=None, transparent=True, bbox_inches="tight", dpi=300):
         dpi=dpi,
     )
     plt.close(fig)
+
+    # NB the renderer each `Text` cached holds the PDF's rasters: a run's figures reached 11.8 GiB on
+    #    CalicoST easy (`2d4ce9a9`) and the run was killed at this host's 14.3 GB (T- #836 PR1,
+    #    port T- #692, 4.2 GiB after). Copied from port c17cd26 `python/port/patch/utils.py:132`.
+    for text in fig.findobj(Text):
+        text._renderer = None
 
 
 @njit
