@@ -35,6 +35,7 @@ ENTRY = "cnaster.scripts.run_cnaster"
 DEPARTED: dict[str, str] = {
     "normal_spot.py": "PR1, #105: a removed bin's genes leave the gene-level output",
     "spatial.py": "PR1, #692: rectangular clones that admit no assignment are banded",
+    "hmm_nophasing.py": "D3, #560 #561: NB and BB log pmfs exact where p rounds to 1 or tau is large",
 }
 """Copied file -> the T- #836 PR that edits it. Only grows."""
 

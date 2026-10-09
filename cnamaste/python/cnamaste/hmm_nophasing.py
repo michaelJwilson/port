@@ -55,6 +55,23 @@ def _nb_logpmf_1d(obs, exposure, mu, alpha, out):
             out[i] = 0.0
             continue
 
+        q = max(alpha, 1.0e-10) * lambda_i  # NB floored as `r` is, so the two agree.
+
+        # NB below q ~ 1.1e-16 `p` rounds to 1 and `nbinom_logpmf_numba` scores any count at
+        #    probability 1; a fit drove a state there on dev_tree_1s_hard r0 (T- #836 D3, #560).
+        #    Below 1e-4 the log terms are formed from `log1p(q)` rather than `p`; above, unchanged.
+        if q < 1.0e-4:
+            log_p = -np.log1p(q)
+            # NB `lgamma(k + r) - lgamma(r)` cancels `r log r`-sized terms; above `r = 1e5` summed.
+            if r > 1.0e5:
+                rising = 0.0
+                for j in range(int(k)):
+                    rising += log(r + j)
+            else:
+                rising = lgamma(k + r) - lgamma(r)
+            out[i] = rising - lgamma(k + 1) + r * log_p + k * (np.log(q) + log_p)
+            continue
+
         p = 1.0 / (1.0 + alpha * lambda_i)
         out[i] = nbinom_logpmf_numba(k, r, p)
 
@@ -64,8 +81,27 @@ def _bb_logpmf_1d(obs, total, p_binom, tau, out, EPS=1e-10):
     alpha = max(p_binom * tau, EPS)
     beta = max((1.0 - p_binom) * tau, EPS)
 
+    # NB each `lgamma` is near `tau log tau`, so their sum loses `eps tau log tau`: at `tau = 1e16`
+    #    the pmf over `n = 100` sums to `e^132` (T- #836 D3, #561). Above `tau = 1e5`, where that
+    #    loss passes 1e-10 nats, the ratios of gammas are summed as rising factorials instead.
+    if alpha + beta <= 1.0e5:
+        for i in range(len(obs)):
+            out[i] = betabinom_logpmf_numba(obs[i], total[i], alpha, beta)
+        return
+
     for i in range(len(obs)):
-        out[i] = betabinom_logpmf_numba(obs[i], total[i], alpha, beta)
+        k, n = obs[i], total[i]
+        if n < 0 or k < 0 or k > n:
+            out[i] = 0.0
+            continue
+        rising = 0.0
+        for j in range(int(k)):
+            rising += log(alpha + j)
+        for j in range(int(n - k)):
+            rising += log(beta + j)
+        for j in range(int(n)):
+            rising -= log(alpha + beta + j)
+        out[i] = lgamma(n + 1) - lgamma(k + 1) - lgamma(n - k + 1) + rising
 
 
 @njit(nogil=True, cache=True, parallel=True, error_model="numpy")
