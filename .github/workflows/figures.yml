@@ -8,7 +8,7 @@ name: Figures
 # beside it.
 #
 # Nothing is committed. `docs/` tracks no PNG outside two exceptions
-# (`tests/test_ci_entry.py`), and both generators write to `.cache/plots/`
+# (`tests/test_rules.py`, `docs-png`), and both generators write to `.cache/plots/`
 # (`port.qa.provenance.PLOTS`), untracked. The commit step #296 added, and the
 # stacked-branch check (#350) that existed only to decide it, are removed.
 

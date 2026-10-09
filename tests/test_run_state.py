@@ -1,8 +1,7 @@
-"""Module-level state `port` writes after import, declared in `STATE` and held to a run
-(#517 E2).
+"""Module-level state `port` writes after import, held to a run (#517 E2).
 
-Kinds: `switch` (none remain), `run`, `cache`, `rebind`. `OUTLIVES` may only shrink.
-`infra` for the declaration, `smoke` for the run.
+`STATE` and `OUTLIVES` are declared, and checked against the source, in
+`tests/test_rules.py` (`state-writes`, `state-outlives`).
 """
 
 from __future__ import annotations
@@ -14,66 +13,14 @@ import pickle
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 
 import port.scripts.run_cnaster as entry_point
 import pytest
 from port.sim.run_config import write_for_run
 
 from tests import ROOT
-from tests.source_graph import state_writes
-
-Kind = Literal["switch", "run", "cache", "rebind"]
-
-STATE: dict[str, Kind] = {
-    # NB studies run by hand, reached from no entry point (T- #673 G5).
-    "port.extensions.label_solver.sweep_for": "rebind",
-    "port.patch.hmrf.core_inference.UPSTREAM": "rebind",
-    "port.patch.normal_spot.determine_normal_candidates": "rebind",
-    "port.studies.clone_label_arms.HELD": "run",
-    "port.studies.clone_label_arms.potts_graph": "rebind",
-    "port.studies.copy_start_arms._CALLS": "run",
-    "port.studies.copy_state_stream._WARM": "cache",
-    "port.studies.potts_stream._GRAPHS": "cache",
-    # NB `audit_truth` restores the name in its `finally` (T- #673 G3).
-    "cnaster.scripts.run_cnaster.determine_normal_candidates": "rebind",
-    "cnaster.hmm_initialize.GaussianMixture": "rebind",
-    # NB #735: `port.qa.stage` wraps one `run_core_inference` call and restores it.
-    "cnaster.hmrf.pipeline_clone_assignment": "rebind",
-    "port.extensions.copy_likelihood._FITS": "run",
-    "port.extensions.cnamaste._ACTIVE": "run",
-    "port.extensions.run_record._HELD": "run",
-    "port.extensions.samples._CURRENT": "run",
-    "port.extensions.segments._CURRENT": "run",
-    "port.patch.hmm_nophasing.shifted_emission.hmm_nophasing._row_shift": "run",
-    "port.patch.hmrf.clone_assignment._BOUNDARY": "cache",
-    "port.patch.hmrf.core_inference._NORMAL": "run",
-    "port.patch.hmrf.core_inference._PROPAGATED": "run",
-    "port.patch.hmrf.refinement._KEPT": "run",
-    "port.patch.hmrf.run_core_inference": "rebind",
-    "port.patch.integer_copy._RECORDERS": "run",
-    "port.patch.integer_copy._SHARED": "cache",
-    "port.patch.io.NORMAL_SPOTS": "run",
-}
-"""Every name `port` writes after import, by kind; no `switch` since #517 steps 1-2."""
-
-OUTLIVES: frozenset[str] = frozenset()
-"""What a whole run leaves changed: nothing since #517 step 1."""
-
-
-@pytest.mark.infra
-def test_every_name_written_after_import_is_declared() -> None:
-    """The source's writes match `STATE`, both ways."""
-    found = set(state_writes())
-
-    assert found == set(STATE), (
-        f"undeclared {sorted(found - set(STATE))}, stale {sorted(set(STATE) - found)}"
-    )
-
-
-@pytest.mark.infra
-def test_what_outlives_a_run_is_declared_state() -> None:
-    assert set(OUTLIVES) <= set(STATE), sorted(OUTLIVES - set(STATE))
+from tests.test_rules import OUTLIVES, STATE
 
 
 def _value(name: str) -> Any:

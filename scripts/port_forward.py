@@ -5,7 +5,7 @@ what it depends on, and the tests that pin it (T- #617 WP11, goal 3).
 `port.pipeline`'s tables, in the order a future series against a `cnaster`
 copy would apply them: standalone rows first, then preprocessing, the fit
 chain and clone assignment, with the shift before the extensions that sit on
-it. It opens no pull request against `cnaster`; `test_port_forward` checks
+it. It opens no pull request against `cnaster`; the `port-forward` rule checks
 that the committed table is what this writes.
 """
 

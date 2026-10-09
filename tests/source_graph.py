@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import ast
 import sys
+import warnings
 from collections.abc import Callable, Iterable
 from functools import cache, partial
 from pathlib import Path
@@ -49,10 +50,12 @@ __all__ = [
     "counting_mentions",
     "edges",
     "modules",
+    "parse",
     "reached",
     "row_modules",
     "state_writes",
     "tables",
+    "text",
 ]
 
 
@@ -70,8 +73,17 @@ def modules() -> dict[str, Path]:
 
 
 @cache
-def _tree(path: Path) -> ast.Module:
-    return ast.parse(path.read_text())
+def text(path: Path) -> str:
+    """`path`'s text, read once a session."""
+    return path.read_text()
+
+
+@cache
+def parse(path: Path) -> ast.Module:
+    """`path`'s AST, parsed once a session; `cnaster` carries an invalid escape."""
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", SyntaxWarning)
+        return ast.parse(text(path), str(path))
 
 
 def _base(module: str, node: ast.ImportFrom) -> str:
@@ -97,7 +109,7 @@ def _exports(package: str) -> dict[str, str]:
     if path is None or path.name != "__init__.py":
         return out
 
-    for node in _tree(path).body:
+    for node in parse(path).body:
         if isinstance(node, ast.ImportFrom):
             base = _base(package, node)
 
@@ -126,7 +138,7 @@ def edges(module: str) -> frozenset[str]:
     known = modules()
     out: set[str] = set()
 
-    for node in ast.walk(_tree(known[module])):
+    for node in ast.walk(parse(known[module])):
         if isinstance(node, ast.ImportFrom):
             base = _base(module, node)
             out |= {_target(base, alias.name) for alias in node.names}
@@ -203,7 +215,7 @@ def state_writes() -> dict[str, frozenset[str]]:
         if ".sandbox" in module:
             continue
 
-        tree = _tree(path)
+        tree = parse(path)
         resolve = partial(_owner, module, _imports(module, tree), _toplevel(tree))
 
         for function in ast.walk(tree):
@@ -372,7 +384,7 @@ def counting_mentions() -> dict[str, frozenset[str]]:
     shared = {
         node.name: node
         for module in SHARED_HELPERS
-        for node in _tree(TESTS / f"{module}.py").body
+        for node in parse(TESTS / f"{module}.py").body
         if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef)
     }
 
@@ -380,7 +392,7 @@ def counting_mentions() -> dict[str, frozenset[str]]:
         if path.is_relative_to(SANDBOX_TESTS):
             continue
 
-        tree = _tree(path)
+        tree = parse(path)
         module_marks: set[str] = set()
 
         for node in tree.body:

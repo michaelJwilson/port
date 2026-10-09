@@ -1,7 +1,7 @@
 """The names `port`'s own API uses: `cnaster`'s for application concepts, `sal`'s otherwise.
 
 Drop-ins keep `cnaster`'s signatures. `replaces` lists retired words, which
-`tests/test_api_conventions.py` refuses in new code.
+rule `api-vocabulary` (`tests/test_rules.py`) refuses in new code.
 """
 
 from __future__ import annotations

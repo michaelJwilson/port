@@ -36,7 +36,7 @@ under `src/`, exposed to Python as `port.oxiport`.
 Ten numbers, and each is a claim rather than a decoration.
 `.badges/measurements.json` holds every value with the selection, denominator
 and commit that produced it, `python -m scripts.badges` derives the badges from
-it, and `tests/test_badges_agree.py` fails when the two disagree.
+it, and the `badge-*` rules in `tests/test_rules.py` fail when the two disagree.
 
 **Four coverage guards, because one figure would answer four questions
 badly** (#159, #281). Three measure a dependency this repository does not
@@ -85,10 +85,10 @@ configuration and commit are in `measurements.json`. Not per pull request,
 since each is a whole run; orange, a fixed colour that no threshold
 decides.
 
-`tests/test_badges_agree.py` is what keeps them together. It refuses a
+`tests/test_rules.py`'s `badge-*` rules keep them together. They refuse a
 recorded ratio that does not name its instance, carry exactly two arms, and
 show both arms exiting 0 -- a ratio from an arm that did not complete is not
-a ratio -- and it refuses a ratio rendered while `instance` still reads `/`.
+a ratio -- and they refuse a ratio rendered while `instance` still reads `/`.
 
 **The badges are pinned to `main`, so a pull request does not show its own
 figures** -- the ten URLs above all read `/main/.badges/`, and a README
@@ -219,7 +219,7 @@ by the change that moves them. `.gitattributes` sends `.badges/*.json` to
 the `badges` driver, which keeps the branch's copy on a merge; `--badges
 --record` then regenerates them. Figures are not committed: every generator
 writes to `.cache/plots/` by default (untracked), and `docs/plots/` tracks no
-PNG outside `docs/plots/paper/` (`tests/test_ci_entry.py`).
+PNG outside `docs/plots/paper/` (`tests/test_rules.py`, `docs-png`).
 
 `mypy` reads its paths from `pyproject.toml` (`python/`, `tests/`). The
 compiled extension is typed by the hand-written stub
@@ -525,7 +525,7 @@ the manifest draws only once the offsets are stated:
 
     python -m port.sandbox.sim_from_run <run dir> > sim/manifests/<name>.toml
 
-`tests/test_file_sizes.py` refuses a tracked or addable file above
+`tests/test_rules.py`'s `file-sizes` rule refuses a tracked or addable file above
 `[tool.port] max_file_bytes` (5 MB): GitHub rejects 100 MiB, and a clone keeps
 every version. CalicoST's samples and `sim/normal_baseline.txt.gz` are
 stored compressed (`port.sim.files`, deterministic gzip where the format is
@@ -570,7 +570,7 @@ not carry, not before.
 | Two CI jobs | A stale `uv.lock`, a lint or format failure, an untyped definition, a failing test, a `clippy` warning |
 | Registered markers | A test not checked against exactly one of `end2end`, `oracle`, `analytic`, `patch`, `backend`, `bug`, `warning`, `snapshot`, `smoke`, `infra` (#157), plus the second axes `critical` and `cnaster`, and the tiers `release`, `preprocessing` and `benchmark`. Only `end2end` and `oracle` count toward coverage, and CI runs neither the `oracle` tests nor their guard while #282 holds |
 | `--cov-fail-under` over the whole of `cnaster` | A figure that rises for importing less. The denominator is the dependency, so the number says how much of the subject is validated |
-| [`tests/test_coverage_scope.py`](tests/test_coverage_scope.py) | A gate silently measuring a fraction of the subject after a Python version bump |
+| [`tests/test_rules.py`](tests/test_rules.py) `coverage-source` | A gate silently measuring a fraction of the subject after a Python version bump |
 | [`.github/pull_request_template.md`](.github/pull_request_template.md) | A ratio with no pinned output, a patch with no ratio, an unstated difference between the references |
 
 ## The documents

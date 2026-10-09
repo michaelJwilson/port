@@ -407,7 +407,7 @@ markers = [
     #    What it selects is guard 4's denominator in use: every drop-in under
     #    `python/port/patch/`, driven on a fixture against the `cnaster`
     #    function it replaces. A replacement with no such test is one nobody
-    #    compared, and `tests/test_dropin_correspondence.py` refuses it.
+    #    compared, and `tests/test_rules.py`'s `dropin-refereed` refuses it.
     "cnaster: compares a drop-in replacement with the cnaster implementation it replaces, on a fixture",
 ]
 
@@ -437,7 +437,7 @@ markers = [
 # subdirectory named as its own source root, and the floor recut against the
 # larger denominator.
 #
-# `tests/test_coverage_scope.py` fails if this path stops being the
+# `tests/test_rules.py`'s `coverage-source` fails if this path stops being the
 # installed package, so a Python version bump is a red test rather than a
 # gate silently measuring a fraction of the subject.
 source = [
@@ -537,7 +537,7 @@ exclude_lines = [
 ]
 
 [tool.port]
-# NB the largest file the repository takes, in bytes; `tests/test_file_sizes.py`
+# NB the largest file the repository takes, in bytes; `tests/test_rules.py`'s `file-sizes`
 #    refuses a tracked or addable file above it. GitHub warns at 50 MiB and
 #    rejects 100 MiB; 5 MB keeps generated outputs out and fixtures compressed.
 max_file_bytes = 5_000_000

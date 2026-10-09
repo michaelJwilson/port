@@ -11,14 +11,7 @@ import pytest
 import seaborn as sns  # type: ignore[import-untyped]
 from port.extensions import figure_style
 from port.extensions.combined_figure import page_style
-from port.extensions.figure_style import DEFAULT, figure_font, page_size, stated
-
-
-@pytest.mark.infra
-def test_the_shipped_default_is_the_stated_face() -> None:
-    """`DEFAULT`, used where no `pyproject.toml` is found, equals `[tool.port.figures]`."""
-
-    assert stated() == DEFAULT
+from port.extensions.figure_style import figure_font, page_size, stated
 
 
 @pytest.mark.infra

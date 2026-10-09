@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import re
-import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -13,29 +12,7 @@ import numpy as np
 import pytest
 from port.studies import paper_figures as pf
 from port.studies import potts_plot
-from port.studies.paper_figures import KEY_STUDIES, OUT, QUESTIONS, Compared
-
-from tests import ROOT
-
-
-@pytest.mark.infra
-def test_the_paper_readme_lists_exactly_the_committed_files() -> None:
-    """The paper README lists every tracked file once, matching `QUESTIONS | KEY_STUDIES`."""
-    tracked = subprocess.run(
-        ["git", "ls-files", "--", OUT.relative_to(ROOT).as_posix()],
-        cwd=ROOT,
-        capture_output=True,
-        text=True,
-        check=True,
-    ).stdout.split()
-    prefix = OUT.relative_to(ROOT).as_posix() + "/"
-    committed = sorted(p.removeprefix(prefix) for p in tracked)
-    committed.remove("README.md")
-    listed = re.findall(r"^\| `([^`]+)` \|", (OUT / "README.md").read_text(), re.M)
-
-    assert len(listed) == len(set(listed))
-    assert sorted(listed) == committed
-    assert sorted(QUESTIONS | KEY_STUDIES) == committed
+from port.studies.paper_figures import Compared
 
 
 def _tiny() -> Compared:

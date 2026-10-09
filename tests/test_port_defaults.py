@@ -1,6 +1,6 @@
 """`run_cnaster_port`'s defaults of port's own (`port.pipeline.DEFAULTS`, T- #617 rule 8).
 
-Pins each arm's settings (`infra`) and that `--sal` resolves as before the move (PR-
+Pins each arm's settings and that `--sal` resolves as before the move (PR-
 #645).
 """
 
@@ -13,8 +13,8 @@ from typing import Any
 import cnaster.scripts.run_cnaster as pipeline
 import port.scripts.run_cnaster as entry
 import pytest
-from port.pipeline import DEFAULTS, SWAPS, with_options
-from port.scripts.run_cnaster import GENOMIC_FIGURE, Settings
+from port.pipeline import SWAPS, with_options
+from port.scripts.run_cnaster import GENOMIC_FIGURE
 
 ARMS = {
     (): (False, True, True, "none"),
@@ -46,17 +46,6 @@ def _settings(*flags: str) -> tuple[bool, bool, bool, str]:
 def test_each_arm_resolves_port_defaults(flags: tuple[str, ...]) -> None:
     """On in every patched arm, off with its flag; `--sal` adds only its start."""
     assert _settings(*flags) == ARMS[flags]
-
-
-@pytest.mark.infra
-def test_the_defaults_table_names_settings_and_flags() -> None:
-    """Every `DEFAULTS` row is a `Settings` field with a flag that turns it off."""
-
-    for default in DEFAULTS:
-        assert default.setting in Settings._fields
-        off = f"--no-{default.flag.removeprefix('--')}"
-        settings = entry._settings(entry._parser().parse_args(["config.yaml", off]))
-        assert getattr(settings, default.setting) is False
 
 
 @pytest.mark.warning

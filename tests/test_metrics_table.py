@@ -2,10 +2,7 @@
 built now (#409, #620).
 """
 
-import ast
-import datetime
 import hashlib
-import re
 from pathlib import Path
 from typing import Any
 
@@ -15,19 +12,11 @@ from matplotlib.figure import Figure
 from port.qa import ledger as metrics
 from port.qa.ledger import (
     COLUMNS,
-    CONVERTED,
-    METRICS,
     NOTE_CHARS,
-    TEST,
-    TIMESTAMP,
     check_identity,
     check_note,
-    definitions,
     ledger,
-    parse,
     read,
-    render,
-    runs,
 )
 from port.sim import truth as sim_truth
 from port.sim.fixtures import SAMPLES, SIM_ROOT, realization_hash
@@ -36,86 +25,6 @@ from port.studies.metrics_history import SKIP, axis, label, ticks
 
 from tests import ROOT
 from tests.metrics import fixture_hash
-
-
-@pytest.mark.infra
-def test_every_run_parses_and_is_in_timestamp_order() -> None:
-    every = runs()
-    assert every, "docs/metrics/runs.tsv has no runs"
-
-    ids = [run["run_id"] for run in every]
-    assert len(ids) == len(set(ids)), "a run_id appears twice"
-    for run in every:
-        assert re.fullmatch(r"[0-9a-f]{7}\+?", run["commit"]), run
-        assert run["run_id"].startswith(f"{run['commit']}-"), run
-        datetime.datetime.strptime(run["timestamp"], TIMESTAMP).replace(
-            tzinfo=datetime.UTC
-        )
-        check_note(run["note"].split(CONVERTED)[0])
-
-    stamps = [run["timestamp"] for run in every]
-    assert stamps == sorted(stamps)
-
-
-@pytest.mark.infra
-def test_every_ledger_line_names_a_run_and_a_definition() -> None:
-    """Each line's `run_id` is in `runs`, its `(metric, definition)` in `definitions`, its value a number."""
-    ids = {run["run_id"] for run in runs()}
-    defined = {(d["metric"], d["definition"]) for d in definitions()}
-    lines = ledger()
-    assert lines, "docs/metrics/ledger.tsv has no lines"
-
-    assert {line["run_id"] for line in lines} - ids == set()
-    assert {(line["metric"], line["definition"]) for line in lines} - defined == set()
-    for line in lines:
-        assert re.fullmatch(r"[0-9a-f]{8}", line["fixture_hash"]), line
-        float(line["value"])
-    keys = [(line["run_id"], line["metric"]) for line in lines]
-    assert len(keys) == len(set(keys)), "a run measures a metric twice"
-
-
-@pytest.mark.infra
-def test_definitions_are_numbered_from_one_and_cover_every_metric() -> None:
-    """Definition versions run 1, 2, ... per metric, and every `METRICS` key has one."""
-    numbers: dict[str, list[int]] = {}
-    for d in definitions():
-        numbers.setdefault(d["metric"], []).append(int(d["definition"]))
-        assert d["since"], d
-        assert d["scorer"], d
-        assert d["meaning"], d
-
-    assert set(METRICS) <= set(numbers)
-    for metric, found in numbers.items():
-        assert found == list(range(1, len(found) + 1)), metric
-
-
-ADDED = frozenset({"clone_ari_int_99"})
-"""Metrics added after the conversion (T- #817): no converted run measured them."""
-
-CONVERTED_ROWS = 73
-CONVERTED_SHA256 = "0bcb7c57193ac696ed08cca106200ab817914289c3900ba35187373810b44e10"
-"""SHA-256 of the 73 data lines of `docs/metrics.md` at ef2261d, read from git (#620)."""
-
-
-@pytest.mark.infra
-def test_the_render_rebuilds_the_converted_rows() -> None:
-    """`--render`'s first 73 rows, in the old table's form, hash to `TABLE_HASH`."""
-    rows = parse(render())[:CONVERTED_ROWS]
-    kept = {"note": lambda v: v.split(CONVERTED)[0]}
-    # NB the converted table's columns: a metric added since (`ADDED`) has none
-    lines = [
-        "| "
-        + " | ".join(
-            kept.get(c, lambda v: v)(row[c])
-            for c in COLUMNS
-            if c != "benchmark" and c not in ADDED
-        )
-        + " |"
-        for row in rows
-    ]
-
-    assert len(lines) == CONVERTED_ROWS
-    assert hashlib.sha256("\n".join(lines).encode()).hexdigest() == CONVERTED_SHA256
 
 
 @pytest.mark.smoke
@@ -152,24 +61,6 @@ def test_a_recorded_run_writes_one_line_per_measured_metric(
         metrics.write(recovery, fixture="easy", args="", note="x", dirty=False)
 
 
-def _defines(test: str) -> bool:
-    path, _, name = test.partition("::")
-    source = Path(ROOT, path)
-    if not source.is_file():
-        return False
-    tree = ast.parse(source.read_text())
-    return any(
-        isinstance(node, ast.FunctionDef) and node.name == name for node in tree.body
-    )
-
-
-@pytest.mark.infra
-def test_every_run_names_a_test_that_exists() -> None:
-    assert _defines(TEST), TEST
-    missing = {run["test"] for run in runs() if not _defines(run["test"])}
-    assert not missing, f"no such path::function: {sorted(missing)}"
-
-
 @pytest.mark.warning
 @pytest.mark.parametrize(
     "note",
@@ -179,19 +70,6 @@ def test_a_note_that_is_not_one_short_line_is_refused(note: str) -> None:
     check_note("x" * NOTE_CHARS)
     with pytest.raises(ValueError, match="note"):
         check_note(note)
-
-
-@pytest.mark.infra
-def test_the_latest_dev_run_is_the_dev_fixture_built_now() -> None:
-    recorded = [row for row in read() if row["fixture"] == "dev"]
-    assert recorded, "no dev run: run_ledger --record"
-
-    built = fixture_hash(sim_truth.dev_instance())
-
-    assert built == recorded[-1]["fixture_hash"], (
-        f"dev_instance now builds {built}, the latest dev run is "
-        f"{recorded[-1]['fixture_hash']}: record a run on the new data"
-    )
 
 
 @pytest.mark.analytic
@@ -226,13 +104,6 @@ def test_the_calicost_runs_carry_the_shipped_samples_hash() -> None:
         assert recorded == {realization_hash(SIM_ROOT / sample)}, name
 
 
-@pytest.mark.infra
-def test_no_fixture_name_carries_its_hash() -> None:
-    """The hash is the `fixture_hash` column, not a suffix of the name (#739)."""
-    for line in ledger():
-        assert re.search(r"_[0-9a-f]{8}$", line["fixture"]) is None, line
-
-
 @pytest.mark.smoke
 def test_best_takes_a_name_alone_only_where_it_holds_one_hash() -> None:
     """`easy` holds one hash; `dev_tree_1s_hard_r0` holds two generations."""
@@ -244,24 +115,6 @@ def test_best_takes_a_name_alone_only_where_it_holds_one_hash() -> None:
     found = metrics.best("clone_ari", "dev_tree_1s_hard_r0", "9ec90dc2")
     assert found is not None
     assert found["fixture_hash"] == "9ec90dc2"
-
-
-@pytest.mark.infra
-def test_the_last_benchmark_is_one_run_per_fixture_at_one_commit() -> None:
-    """`benchmark` is a boolean; the latest sweep's runs share a commit and each names a dataset."""
-    assert {r["benchmark"] for r in runs()} <= {"true", "false"}
-    sweep = metrics.last_benchmark()
-    assert sweep
-    assert len({r["commit"] for r in sweep}) == 1
-    keys = [
-        next(
-            (line["fixture"], line["fixture_hash"])
-            for line in ledger()
-            if line["run_id"] == r["run_id"]
-        )
-        for r in sweep
-    ]
-    assert len(keys) == len(set(keys))
 
 
 @pytest.mark.warning
@@ -355,15 +208,3 @@ def test_a_run_of_unchanged_merges_keeps_its_first_and_last_tick(
     assert text == SKIP
     assert 0 < x < 1
     assert rotation == 0
-
-
-@pytest.mark.infra
-def test_the_cnaster_ledger_is_its_own_in_the_same_format() -> None:
-    """`docs/metrics/cnaster/` (T- #833): its lines name its runs and a shared definition, its runs are the arm's, and no run is port's."""
-    runs = metrics.runs(metrics.CNASTER_DIR)
-    lines = metrics.ledger(metrics.CNASTER_DIR)
-    current = metrics.latest()
-    assert {line["run_id"] for line in lines} <= {r["run_id"] for r in runs}
-    assert all(current[line["metric"]] == line["definition"] for line in lines)
-    assert all(r["arm"].startswith("-- --no-patch") for r in runs)
-    assert not {r["run_id"] for r in runs} & {r["run_id"] for r in metrics.runs()}
