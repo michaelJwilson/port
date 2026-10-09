@@ -1,6 +1,6 @@
-"""`port.patch.lattice`'s one recursion against cnaster's four, bitwise (#205).
+"""`port.patch.lattice`'s one recursion: its chain, spot sums and unread start (#205).
 
-State-space width and site-dependence of the transition are arguments; nothing is
+Against cnaster's four, bitwise, it is a `tests.correspondence` row: nothing is
 reassociated, so the same `logsumexp` runs in the same order.
 """
 
@@ -10,12 +10,7 @@ import numpy as np
 import pytest
 from port.patch.lattice import is_phased, spot_sums_agree
 
-from tests.builders import (
-    LatticeInputs,
-    cnaster_lattice,
-    random_lattice,
-    unified_lattice,
-)
+from tests.builders import LatticeInputs, random_lattice, unified_lattice
 
 SPOTS = 3
 """More than one, so both spot sums are non-trivial."""
@@ -26,26 +21,7 @@ def _inputs(n_states: int, *, phased: bool, seed: int = 5) -> LatticeInputs:
     return random_lattice(n_states, (7, 11, 5), SPOTS, phased=phased, seed=seed)
 
 
-_cnaster, _unified = cnaster_lattice, unified_lattice
-
-
-@pytest.mark.patch
-@pytest.mark.parametrize("which", ["forward_lattice", "backward_lattice"])
-@pytest.mark.parametrize("phased", [False, True], ids=["unphased", "phased"])
-@pytest.mark.parametrize("n_states", [2, 5])
-def test_the_unified_recursion_is_cnasters_bitwise(
-    which: str, phased: bool, n_states: int
-) -> None:
-    """All four of cnaster's recursions from one kernel, bitwise."""
-    inputs = _inputs(n_states, phased=phased)
-
-    expected = _cnaster(which, inputs, phased=phased)
-    actual = _unified(which, inputs, phased=phased)
-
-    assert actual.shape == expected.shape
-    assert np.array_equal(actual, expected), (
-        f"{which} differs by at most {np.abs(actual - expected).max():.3e}"
-    )
+_unified = unified_lattice
 
 
 @pytest.mark.warning

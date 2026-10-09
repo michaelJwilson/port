@@ -11,20 +11,18 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any
 
-import numba
 import numpy as np
 import pytest
 from cnaster.hmm_nophasing import hmm_nophasing
 from cnaster.hmm_phased import hmm_phased
-from port.patch import lattice
 from port.patch.hmm_nophasing import hmm_nophasing as shifted
 from port.patch.lattice import forward_lattice_rust, rust_lattices
 from port.sim.run_config import write_for_run
 from port.sim.truth import critical_instance
 
-from tests.builders import random_lattice
+from tests.builders import masked_lattice
+from tests.correspondence import lattice_agree
 from tests.figure_checks import compare_run_artifacts
 from tests.fixtures import (
     end_to_end_truth,
@@ -32,86 +30,19 @@ from tests.fixtures import (
     run_planted_core_inference,
 )
 
-CASES = [
-    # (n_states, lengths, spots): gate sizes, then one above PARALLEL_WORK
-    (3, (7, 11, 5), 3),
-    (5, (1, 40, 2, 17), 4),
-    (4, (60,), 1),
-    (10, (1000,) * 10, 20),
-]
-
-
-def _inputs(
-    n_states: int, lengths: tuple[int, ...], spots: int, *, phased: bool, seed: int
-) -> tuple[np.ndarray, ...]:
-    """A proper transition, a switch kernel that moves, and some `-inf` sites."""
-    inputs = random_lattice(
-        n_states, lengths, spots, phased=phased, seed=seed, dirichlet=True
-    )
-    # NB an impossible state at some sites, as a zero-count BAF bin gives `cnaster`.
-    inputs.log_emission[0, :: max(inputs.log_emission.shape[1] // 7, 1), 0] = -np.inf
-    return inputs.arguments
-
-
-def _agree(rust: np.ndarray, cnaster: np.ndarray) -> None:
-    """Bitwise against compiled `cnaster`; 1e-14 when `numba` is disabled."""
-
-    if not getattr(numba.config, "DISABLE_JIT"):  # noqa: B009 -- numba sets it at import
-        np.testing.assert_array_equal(rust, cnaster)
-        return
-
-    finite = np.isfinite(cnaster)
-    np.testing.assert_array_equal(np.isfinite(rust), finite)
-    np.testing.assert_array_equal(rust[~finite], cnaster[~finite])
-    np.testing.assert_allclose(rust[finite], cnaster[finite], rtol=1e-14, atol=0.0)
-
-
-def _ids(case: tuple[Any, ...]) -> str:
-    n_states, lengths, spots = case
-    return f"K{n_states}-G{sum(lengths)}-S{spots}"
-
-
-@pytest.mark.patch
-@pytest.mark.parametrize("case", CASES, ids=_ids)
-@pytest.mark.parametrize("which", ["forward_lattice", "backward_lattice"])
-def test_the_unphased_lattice_is_cnasters_bitwise(
-    case: tuple[Any, ...], which: str
-) -> None:
-    """Every entry equal, `-inf` included, at four shapes."""
-
-    arguments = _inputs(*case, phased=False, seed=3)
-    rust = getattr(lattice, f"{which}_rust")
-
-    _agree(rust(*arguments), getattr(hmm_nophasing, which)(*arguments))
-
-
-@pytest.mark.patch
-@pytest.mark.parametrize("penalize", [False, True])
-@pytest.mark.parametrize("case", CASES, ids=_ids)
-@pytest.mark.parametrize("which", ["forward_lattice", "backward_lattice"])
-def test_the_phased_lattice_is_cnasters_bitwise(
-    case: tuple[Any, ...], which: str, penalize: bool
-) -> None:
-    """Both settings of `cnaster`'s phase penalty, which builds two transitions."""
-
-    arguments = _inputs(*case, phased=True, seed=4)
-    rust = getattr(lattice, which.replace("_lattice", "_lattice_phased") + "_rust")
-
-    _agree(rust(*arguments, penalize), getattr(hmm_phased, which)(*arguments, penalize))
-
 
 @pytest.mark.patch
 def test_a_strided_emission_is_read_as_cnaster_reads_it() -> None:
     """A non-contiguous view is copied, not refused and not misread."""
 
-    lengths, log_transmat, log_startprob, wide, log_sitewise = _inputs(
+    lengths, log_transmat, log_startprob, wide, log_sitewise = masked_lattice(
         3, (9, 6), 6, phased=False, seed=8
     )
     strided = wide[:, :, ::2]
 
     assert not strided.flags.c_contiguous
 
-    _agree(
+    lattice_agree(
         forward_lattice_rust(lengths, log_transmat, log_startprob, strided, None),
         hmm_nophasing.forward_lattice(
             lengths, log_transmat, log_startprob, strided, log_sitewise
@@ -125,7 +56,7 @@ def test_installed_every_call_form_returns_cnasters_lattice(phased: bool) -> Non
     """`hmmclass.forward_lattice` and `self.forward_lattice` both return `cnaster`'s lattice once installed."""
 
     cls = hmm_phased if phased else hmm_nophasing
-    arguments = _inputs(4, (13, 8), 3, phased=phased, seed=6)
+    arguments = masked_lattice(4, (13, 8), 3, phased=phased, seed=6)
     expected = [
         getattr(cls, w)(*arguments) for w in ("forward_lattice", "backward_lattice")
     ]
@@ -137,14 +68,14 @@ def test_installed_every_call_form_returns_cnasters_lattice(phased: bool) -> Non
             for which, reference in zip(
                 ("forward_lattice", "backward_lattice"), expected, strict=True
             ):
-                _agree(getattr(owner, which)(*arguments), reference)
+                lattice_agree(getattr(owner, which)(*arguments), reference)
 
 
 @pytest.mark.warning
 def test_lengths_that_do_not_cover_the_emission_are_refused() -> None:
     """`cnaster` would index past the end; the binding says why instead."""
 
-    lengths, log_transmat, log_startprob, log_emission, log_sitewise = _inputs(
+    lengths, log_transmat, log_startprob, log_emission, log_sitewise = masked_lattice(
         3, (5, 5), 2, phased=False, seed=1
     )
 

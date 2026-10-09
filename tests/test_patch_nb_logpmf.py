@@ -8,7 +8,7 @@ from cnaster.hmm_nophasing import _nb_logpmf_1d as upstream
 from port.patch.hmm_nophasing import nb_logpmf as patch
 from scipy.stats import nbinom
 
-COUNTS = np.array([0, 1, 7, 42, 300, 1000, 2500], dtype=np.float64)
+from tests.builders import NB_COUNTS as COUNTS
 
 
 def _scores(kernel, mu: float, alpha: float, exposure: float = 1000.0) -> np.ndarray:  # type: ignore[no-untyped-def]
@@ -37,21 +37,6 @@ def test_the_patched_kernel_is_scipys_negative_binomial(
 
     np.testing.assert_allclose(
         _scores(patch._nb_logpmf_1d, mu, alpha), exact, rtol=1e-9, atol=1e-9
-    )
-
-
-@pytest.mark.patch
-@pytest.mark.parametrize("mu", [1e-5, 0.3, 1.0, 2.7])
-def test_the_patched_kernel_is_cnasters_where_cnasters_p_is_below_one(
-    mu: float,
-) -> None:
-    """Where `alpha * lambda >= 1e-8`, upstream's kernel to 1e-9 relative: the patch changes only the rounding regime."""
-
-    np.testing.assert_allclose(
-        _scores(patch._nb_logpmf_1d, mu, 0.12),
-        _scores(upstream, mu, 0.12),
-        rtol=1e-9,
-        atol=1e-9,
     )
 
 

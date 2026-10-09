@@ -23,6 +23,7 @@ import re
 import subprocess
 import sys
 import tomllib
+from collections import Counter
 from collections.abc import Callable, Collection, Iterable, Iterator, Mapping
 from dataclasses import dataclass
 from functools import cache
@@ -61,6 +62,7 @@ from port.studies.paper_figures import OUT as PAPER
 from scripts import ci, port_forward
 from scripts.badges import BADGES, MEASUREMENTS, UNMEASURED, badges
 from tests import ROOT
+from tests.correspondence import ROWS
 from tests.metrics import fixture_hash
 from tests.source_graph import (
     COUNTING,
@@ -836,10 +838,11 @@ def dropins() -> set[str]:
     }
 
 
-@rule("dropin-refereed", "tests/test_*.py")
+@rule("dropin-refereed", "tests.correspondence, tests/test_*.py")
 def _dropin_refereed() -> Found:
-    """Each drop-in is imported by a `patch`- or `cnaster`-marked test, or it belongs under `extensions/`."""
-    imported: set[str] = set()
+    """Each drop-in is a correspondence row's `ours`, or imported by a `patch`- or `cnaster`-marked test, or it belongs under `extensions/`."""
+    imported = {getattr(row.ours, "func", row.ours).__module__ for row in ROWS}
+    # NB the scan, for a drop-in whose test is not a plain correspondence (#850)
     for path in TESTS.glob("test_*.py"):
         # NB `patch` and `cnaster` together are guard 4's correspondence selection.
         if any(
@@ -860,6 +863,20 @@ def _dropin_refereed() -> Found:
             if origin is not None:
                 imported.add(origin)
     return {m for m in dropins() if not any(name.startswith(m) for name in imported)}
+
+
+@rule("correspondence-rows", COLLECTION)
+def _correspondence_rows(items: list[pytest.Item]) -> Iterator[str]:
+    """Every row runs exactly once, and no two rows replace the same test (#850)."""
+    ran = Counter(
+        id(item.callspec.params["row"])
+        for item in items
+        if isinstance(item, pytest.Function)
+        and item.nodeid.startswith("tests/test_correspondence.py")
+    )
+    yield from (f"{r.origin}: ran {ran[id(r)]} times" for r in ROWS if ran[id(r)] != 1)
+    origins = Counter(row.origin for row in ROWS)
+    yield from (f"{origin}: {n} rows" for origin, n in origins.items() if n > 1)
 
 
 @rule("dropin-uninstalled", "the swap tables")
@@ -1730,7 +1747,7 @@ BUDGET = {
     "run": 14842,
     "qa": 17339,
     "sandbox": 7843,
-    "tests": 26512,
+    "tests": 26437,
     "tests_sandbox": 2499,
 }
 """Non-blank lines per tree (T- #831), comments and docstrings included, lowered as packages

@@ -1,7 +1,7 @@
 """One recursion's cost against cnaster's four, at gate and stress (`K = 7` phased)
 sizes (#205).
 
-No speedup is claimed; equivalence is `test_unified_lattice.py`'s.
+No speedup is claimed; equivalence is `tests.correspondence`'s.
 """
 
 import pytest

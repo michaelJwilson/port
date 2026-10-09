@@ -1,36 +1,12 @@
 """`port.patch.hmrf.field` (spot innermost) against `cnaster`'s field, bitwise (#59 item 1)."""
 
-from functools import partial
-from typing import Any
-
 import numpy as np
 import pytest
 from cnaster.hmrf import compute_loglike_spot_assignment
 from port.patch.hmrf.field import compute_loglike_spot_assignment_strided
 from scipy.sparse import eye as sparse_eye
 
-from tests.fixtures import cnaster_field_of, spot_clone_field
-
-_cnaster_field = cnaster_field_of
-_patched_field = partial(
-    cnaster_field_of, kernel=compute_loglike_spot_assignment_strided
-)
-
-
-@pytest.mark.patch
-@pytest.mark.parametrize(
-    "field",
-    [
-        *({"self_transition": s} for s in (0.999, 0.99, 0.9)),
-        *({"n_states": s, "n_clones": c} for s, c in ((2, 1), (5, 5), (7, 3))),
-    ],
-    ids=lambda field: "-".join(f"{k}={v}" for k, v in field.items()),
-)
-def test_the_patch_is_bitwise_cnaster(field: dict[str, Any]) -> None:
-    """Bitwise equal to `cnaster` across profile segmentations, and across state and clone counts, including `n_clones == n_states`."""
-    fixture = spot_clone_field(**field)
-
-    np.testing.assert_array_equal(_cnaster_field(fixture), _patched_field(fixture))
+from tests.fixtures import spot_clone_field
 
 
 @pytest.mark.patch

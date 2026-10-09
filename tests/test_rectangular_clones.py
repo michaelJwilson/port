@@ -20,10 +20,8 @@ from port.patch.spatial import (
 from port.patch.spatial import initialize_rectangular_clones as replacement
 from sal.opt.termination import Stop
 
-from tests import TESTS
 from tests.adapters import square_coords
-
-DATA = TESTS / "data"
+from tests.builders import rectangular_coords
 
 TRY_CAP = 3_000
 """`randint` calls before a seed counts as not returning (false miss < 1e-16 at 4 clones)."""
@@ -34,12 +32,6 @@ SEEDS = 120
 
 N_CLONES = (2, 3, 4, 5, 6)
 """Clone counts in the sweep: four blocks to three, nine blocks from five."""
-
-
-def _coords(name: str) -> np.ndarray:
-    coords: np.ndarray = np.load(DATA / f"{name}.npz")["coords"]
-
-    return coords
 
 
 def _assert_same(ours: Any, theirs: Any) -> None:
@@ -78,33 +70,6 @@ def _upstream_capped(
 
 @pytest.mark.cnaster
 @pytest.mark.patch
-@pytest.mark.parametrize(
-    ("coords", "n_clones", "seed"),
-    [
-        ("returns", 4, 0),
-        ("grid", 4, 1),
-        ("grid", 2, 3),
-        ("grid", 3, 0),
-        ("grid", 1, 0),
-    ],
-)
-def test_where_cnaster_returns_it_returns_the_same(
-    coords: str, n_clones: int, seed: int
-) -> None:
-    """Bitwise equal to `cnaster` where it returns: the dev first call and a 12 x 40 band."""
-
-    points = (
-        _coords("rectangular_returns") if coords == "returns" else square_coords(12, 40)
-    )
-
-    _assert_same(
-        replacement(points, n_clones, random_state=seed),
-        upstream(points, n_clones, random_state=seed),
-    )
-
-
-@pytest.mark.cnaster
-@pytest.mark.patch
 @pytest.mark.merge
 def test_bitwise_on_every_seed_cnaster_returns(
     monkeypatch: pytest.MonkeyPatch,
@@ -112,8 +77,8 @@ def test_bitwise_on_every_seed_cnaster_returns(
     """1,800 seeds: bitwise where `cnaster` returns, a redraw exactly where it cannot."""
 
     inputs = {
-        "hang": _coords("rectangular_hang"),
-        "returns": _coords("rectangular_returns"),
+        "hang": rectangular_coords("rectangular_hang"),
+        "returns": rectangular_coords("rectangular_returns"),
         "grid": square_coords(12, 40),
     }
     returned = refused = 0
@@ -194,7 +159,7 @@ def _within(seconds: int, call: Any) -> bool:
 def test_cnaster_does_not_return_on_the_captured_input() -> None:
     """`cnaster` runs past 5 s on the third captured call; fails when fixed."""
 
-    points = _coords("rectangular_hang")
+    points = rectangular_coords("rectangular_hang")
 
     assert not _within(5, lambda: upstream(points, 4, random_state=0))
 
@@ -205,7 +170,7 @@ def test_the_dev_blocks_are_refused_and_a_redraw_passes() -> None:
 
     assert not admits_assignment(np.array([194, 3, 77, 23]), 4, 0.2 * 297 / 4)
 
-    points = _coords("rectangular_hang")
+    points = rectangular_coords("rectangular_hang")
     returned: list[Any] = []
 
     assert _within(
