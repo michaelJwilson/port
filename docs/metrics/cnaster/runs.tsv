@@ -1,1 +1,3 @@
 run_id	timestamp	commit	arm	test	note	benchmark
+e0eb1d8-easy-0128	2026-10-09T01:28Z	e0eb1d8	-- --no-patch --no-plots	tests/sim_audit.py::main	cnaster sweep: 4adad4d, --no-patch with #105's row (T- #833)	true
+e0eb1d8-hard-0131	2026-10-09T01:31Z	e0eb1d8	-- --no-patch --no-plots	tests/sim_audit.py::main	cnaster sweep: 4adad4d, --no-patch with #105's row (T- #833)	true
