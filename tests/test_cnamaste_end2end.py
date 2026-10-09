@@ -134,4 +134,5 @@ def test_a_supported_fixture_scores_its_row(fixture: str, tmp_path: Path) -> Non
         sample, tmp_path / "run" / "output", "cnamaste", run_cnamaste(config)
     )
 
-    assert {k: getattr(scored, k) for k in SCORES} == expected
+    # NB `assert_equal` holds NaN equal to NaN: a class a fixture does not plant scores NaN.
+    np.testing.assert_equal({k: getattr(scored, k) for k in SCORES}, expected)
