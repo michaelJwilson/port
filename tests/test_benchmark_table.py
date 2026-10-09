@@ -24,7 +24,7 @@ def test_the_table_reproduces_the_papers_rows() -> None:
         CALICOST, PORT, fixture="3381575a", commit="abc1234", sal="5d59752c", repeats=3
     )
 
-    assert r"Method\phantom{\texttt{xxxxxxxxxxxxxxxxxxxxxxxxx}} & Hash &" in tex
+    assert r"Method\phantom{\texttt{xxxxxxxxxxxxxxxx}} & Hash &" in tex
     assert (
         r"\calicost{}                    & \texttt{3381575a} & 0.854 & 0.854 & 0.089 & 0.908 & 0.710 &      337.4 \\"
         in tex
@@ -138,5 +138,5 @@ def test_both_tables_set_the_name_column_alike() -> None:
     assert width in supported
     assert short("dev_tree_1s_dense_r0") == "tree_1s_dense"
     assert len(short("dev_" + "x" * SHORT + "_r0")) == SHORT
-    with pytest.raises(ValueError, match="over 25"):
+    with pytest.raises(ValueError, match="over 16"):
         short("dev_" + "x" * (SHORT + 1) + "_r0")
