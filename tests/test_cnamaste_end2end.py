@@ -112,14 +112,14 @@ def drawn(source: str, root: Path) -> Any:
 @pytest.mark.parametrize("fixture", list(SUPPORTED))
 def test_a_supported_fixture_scores_its_row(fixture: str, tmp_path: Path) -> None:
     """`run_cnamaste` on each supported fixture: it completes, and its scores are the row's to 4 decimals."""
-    from port.qa.audit import drawn_config, score_sample
+    from port.qa.audit import sample_config, score_sample
     from port.sim.fixtures import realization_hash
 
     source, digest, expected = SUPPORTED[fixture]
     sample = drawn(source, tmp_path / "sim")
     assert realization_hash(sample.path) == digest
 
-    config = drawn_config(sample, tmp_path / "run", {})
+    config = sample_config(sample, tmp_path / "run", {})
     scored = score_sample(
         sample, tmp_path / "run" / "output", "cnamaste", run_cnamaste(config)
     )
