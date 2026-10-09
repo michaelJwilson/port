@@ -125,7 +125,7 @@ def test_a_stage_never_completed_is_not_read(tmp_path: Path) -> None:
         g
         for g in c.GROUPS
         if g.path
-        not in ("rdrbaf", "clone_assignment", "integer_copy", "integer_clones")
+        not in ("rdrbaf", "clone_assignment", "copy_int", "clone_assignment_int")
     ]
     for group in before:
         arrays, attrs = _group(group, rng)
@@ -165,7 +165,7 @@ def test_levels_keep_the_order_the_run_recorded(tmp_path: Path) -> None:
         ("inputs", _inputs(1), {k: v for k, v in PATHS.items() if k != "sample_sheet"},
          "missing \\['sample_sheet'\\]"),
         ("inputs", _inputs(1), PATHS | {"references": "/g"}, "undeclared attributes \\['references'\\]"),
-        ("integer_copy", {"clones": np.zeros(1, dtype=np.int64), "contig": np.array(["1", "1"]), "start": np.zeros(2, dtype=np.int64),
+        ("copy_int", {"clones": np.zeros(1, dtype=np.int64), "contig": np.array(["1", "1"]), "start": np.zeros(2, dtype=np.int64),
           "end": np.ones(2, dtype=np.int64), "A": np.full((2, 1), 1.5), "B": np.ones((2, 1))}, {"level": "bins", "objective": "x", "contig_numeric": False},
          "does not cast to int16 exactly"),
         ("phase", {}, {}, "declares no group 'phase'"),

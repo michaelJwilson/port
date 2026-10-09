@@ -19,10 +19,10 @@
 | --- | --- | --- |
 | a spot's counts at a level | `/counts/<level>`: `X`, `total_bb_RD`; the baseline as its two factors, `normal_rdr @ coverage`, as `determine_normal_baseline` builds it | every stage and page at that level; `counts/<level>:rdr=0` is the same with read depth and baseline zero, as the BAF stage reads it |
 | counts summed over clones | not stored: `/counts` summed over a labelling (`merge_pseudobulk_by_index_mix`) | every stage and page |
-| a labelling | the stage that made it: `/initial_clones`, `/baf/assignment`, `/baf_merged/assignment`, `/rdrbaf/assignment`, `/rdrbaf_merged/assignment`, `/clone_assignment`, `/integer_clones/assignment`; a stage's `clone_index` only where it is not `/initial_clones` | the spatial pages and the summed counts |
+| a labelling | the stage that made it: `/initial_clones`, `/baf/assignment`, `/baf_merged/assignment`, `/rdrbaf/assignment`, `/rdrbaf_merged/assignment`, `/clone_assignment`, `/clone_assignment_int/assignment`; a stage's `clone_index` only where it is not `/initial_clones` | the spatial pages and the summed counts |
 | a fit | `/phasing`, `/baf`, `/rdrbaf`: one column per clone, with how `cnaster` shaped it (`pred_layout`, `mu_shape`) | a merged stage's fit is its parent's kept columns; the final pages' is `/rdrbaf`'s, columns in `reindex_clones`' order |
 | bins along the genome | `/segments`: a label per gene per level; `lengths` derived | every genomic page |
-| integer copies | `/integer_copy`, with the bins' `CHR`, `START`, `END` (`START` and `END` include SNP rows, so `/segments`' genes do not give them) | `clones_genomic`, `copy_number_profile`, `/integer_clones` |
+| integer copies | `/copy_int`, with the bins' `CHR`, `START`, `END` (`START` and `END` include SNP rows, so `/segments`' genes do not give them) | `clones_genomic`, `copy_number_profile`, `/clone_assignment_int` |
 | a page | `/figures/<name>`: attributes only, `sources` (which of the above, as JSON), `options` (the plotter's keywords) and `write` (`write_fig`'s) | `run_plots` |
 
 On dev_tree_1s_hard r0 (`9ec90dc2`, 3,000 spots) the file is 14 MB: the three levels' counts are 13 MB of it, and the sample's inputs are 11 MB.
@@ -40,7 +40,7 @@ On dev_tree_1s_hard r0 (`9ec90dc2`, 3,000 spots) the file is 14 MB: the three le
 - **Inputs.** `/inputs` records each slice's `anndata` path and SNP files (`cell_snp_Aallele`, `cell_snp_Ballele`, `unique_snp_ids`, `snp_barcodes`), absolute, with `sample_sheet` and the configured reference files as `references.*` and `preprocessing.*`.
 - **Fields.** `/baf` and `/rdrbaf` each keep their last clone-assignment `field`; `/clone_assignment` is the run's final clones, and its `stage` names the field they were solved on.
 - **Final fit only.** A fit is its final iteration; the HMRF keeps no trace, so `llf` and `total_llf` are attributes.
-- **Thresholds.** `/integer_copy` carries every `[int_copy_num]` key the decode read, as `int_copy_num.<key>`; `/integer_clones` its `merge_agreement`.
+- **Thresholds.** `/copy_int` carries every `[int_copy_num]` key the decode read, as `int_copy_num.<key>`; `/clone_assignment_int` its `merge_agreement`.
 
 ## `cnamaste.h5`
 | Group | Dataset | Axes | Type | Holds |
@@ -109,15 +109,15 @@ On dev_tree_1s_hard r0 (`9ec90dc2`, 3,000 spots) the file is 14 MB: the three le
 | | `assignment` | (n_spots) | int64 | clone per spot after `merge_by_minspots` |
 | `/clone_assignment` | | | | the run's final clones (`reindex_clones`); `stage` names the group whose `field` they were solved on; attributes `level`, `stage` |
 | | `assignment` | (n_spots) | int64 | clone per spot |
-| `/integer_copy` | | | | integer copy states (`cnv_seglevel.tsv`'s), and every `[int_copy_num]` key the decode read; attributes `level`, `objective`, `contig_numeric`, `int_copy_num.*` |
+| `/copy_int` | | | | integer copy states (`cnv_seglevel.tsv`'s), and every `[int_copy_num]` key the decode read; attributes `level`, `objective`, `contig_numeric`, `int_copy_num.*` |
 | | `clones` | (n_clones) | int64 | each column's clone, as `/clone_assignment` numbers it |
 | | `contig` | (n_obs) | str | each bin's `CHR` |
 | | `start` | (n_obs) | int64 | each bin's `START`, its first row's, SNP rows included |
 | | `end` | (n_obs) | int64 | each bin's `END`, its last row's |
 | | `A` | (n_obs, n_clones) | int16 | copies of allele A per bin per clone |
 | | `B` | (n_obs, n_clones) | int16 | copies of allele B per bin per clone |
-| `/integer_clones` | | | | integer clones; their counts are `counts` summed over `assignment`; attributes `level`, `merge_agreement`, `counts` |
-| | `map` | (n_clones) | int64 | integer clone of each `/integer_copy` column |
+| `/clone_assignment_int` | | | | integer clones; their counts are `counts` summed over `assignment`; attributes `level`, `merge_agreement`, `counts` |
+| | `map` | (n_clones) | int64 | integer clone of each `/copy_int` column |
 | | `assignment` | (n_spots) | int64 | integer clone per spot, `-1` none |
 | | `integer_ids` | (n_integer_clones) | int64 | each integer clone's id, its smallest member's |
 | | `A` | (n_obs, n_integer_clones) | int16 | copies of A per integer clone, its naming clone's |
@@ -144,12 +144,12 @@ On dev_tree_1s_hard r0 (`9ec90dc2`, 3,000 spots) the file is 14 MB: the three le
 | | `key` | (n_genes) | str | gene index label |
 | `/clone_assignment` | | | | the planted clone per spot; `clones` names them; attributes `clones` |
 | | `assignment` | (n_spots) | int64 | clone per spot |
-| `/integer_copy` | | | | the planted copies per gene per clone, `level = "genes"`; attributes `level` |
+| `/copy_int` | | | | the planted copies per gene per clone, `level = "genes"`; attributes `level` |
 | | `clones` | (n_clones) | int64 | each column's clone, as `/clone_assignment` numbers it |
 | | `A` | (n_obs, n_clones) | int16 | copies of allele A per bin per clone |
 | | `B` | (n_obs, n_clones) | int16 | copies of allele B per bin per clone |
-| `/integer_clones` | | | | the planted clones that share a profile, merged; attributes `level` |
-| | `map` | (n_clones) | int64 | integer clone of each `/integer_copy` column |
+| `/clone_assignment_int` | | | | the planted clones that share a profile, merged; attributes `level` |
+| | `map` | (n_clones) | int64 | integer clone of each `/copy_int` column |
 | | `assignment` | (n_spots) | int64 | integer clone per spot, `-1` none |
 | | `integer_ids` | (n_integer_clones) | int64 | each integer clone's id, its smallest member's |
 | | `A` | (n_obs, n_integer_clones) | int16 | copies of A per integer clone, its naming clone's |
@@ -168,4 +168,4 @@ On dev_tree_1s_hard r0 (`9ec90dc2`, 3,000 spots) the file is 14 MB: the three le
 | | `B` | (n_events) | int16 | allele B copies after the event |
 
 ## Not in either file
-`CalicoST`'s files: `clone_labels.tsv`, `cnv_seglevel.tsv`, `cnv_genelevel.tsv` and `rdrbaf_final_*.npz`, under `CalicoST`'s names and layouts. `port` reads none back, but for `cnv_seglevel.tsv` where no page wrote `/integer_copy` (`--no-figure-swaps`).
+`CalicoST`'s files: `clone_labels.tsv`, `cnv_seglevel.tsv`, `cnv_genelevel.tsv` and `rdrbaf_final_*.npz`, under `CalicoST`'s names and layouts. `port` reads none back, but for `cnv_seglevel.tsv` where no page wrote `/copy_int` (`--no-figure-swaps`).

@@ -81,9 +81,9 @@ def test_run_plots_draws_every_page_the_run_wrote_byte_for_byte(
 def test_the_stages_are_what_the_run_wrote(output: Path) -> None:
     """Each stage group against the file the run wrote for it, exactly, and every group in run order.
 
-    `/clone_assignment` is `cnaster`'s `clone_labels.tsv`, `/integer_copy`
+    `/clone_assignment` is `cnaster`'s `clone_labels.tsv`, `/copy_int`
     `cnv_seglevel.tsv`'s `A`, `B`, `/rdrbaf` the final fit's npz up to
-    `reindex_clones`' permutation, and `/integer_clones` the run's rule,
+    `reindex_clones`' permutation, and `/clone_assignment_int` the run's rule,
     `outputs.integer_clones`, on `cnv_seglevel.tsv` at its `merge_agreement`.
     Port writes no table of its own beside them (T- #817).
     """
@@ -92,7 +92,7 @@ def test_the_stages_are_what_the_run_wrote(output: Path) -> None:
     run = next(output.glob("clone*"))
     found = c.stages(h5)
     assert found[0] == "inputs"
-    order = [found.index(g) for g in ("inputs", "adjacency", "baf", "rdrbaf", "clone_assignment", "integer_copy", "integer_clones")]  # fmt: skip
+    order = [found.index(g) for g in ("inputs", "adjacency", "baf", "rdrbaf", "clone_assignment", "copy_int", "clone_assignment_int")]  # fmt: skip
     assert order == sorted(order)
     assert list(c.levels(h5)) == [
         "phasing_min_snp_umis",
@@ -126,7 +126,7 @@ def test_the_stages_are_what_the_run_wrote(output: Path) -> None:
         assert name not in written, f"port wrote {name}"
 
     seglevel = pd.read_csv(run / "cnv_seglevel.tsv", sep="\t", comment="#")
-    copies, _ = c.read(h5, "integer_copy")
+    copies, _ = c.read(h5, "copy_int")
     for allele in ("A", "B"):
         expected = seglevel[[f"clone{k} {allele}" for k in copies["clones"]]].to_numpy()
         np.testing.assert_array_equal(copies[allele], expected)
@@ -150,7 +150,7 @@ def test_the_stages_are_what_the_run_wrote(output: Path) -> None:
     assert fit_attrs["level"] == final_attrs["level"] == "normal_candidates"
     assert fit["pred_cnv"].shape[0] == len(seglevel)
 
-    integer, integer_attrs = c.read(h5, "integer_clones")
+    integer, integer_attrs = c.read(h5, "clone_assignment_int")
     names = integer_clones(seglevel, integer_attrs["merge_agreement"])
     expected = np.array([int(names[str(k)]) for k in final["assignment"]])
     np.testing.assert_array_equal(
@@ -169,7 +169,7 @@ def test_the_audits_score_the_file_as_they_scored_the_tables(
     wrote none is, from `clone_labels.tsv`, `cnv_seglevel.tsv` and the final
     fit's npz: the hand-rolled readers the file replaces (T- #817). Every
     field is equal, both integer ARIs included, and the 0.99 merge QA scores
-    holds as many clones as the run's own `/integer_clones`.
+    holds as many clones as the run's own `/clone_assignment_int`.
     """
 
     tables = tmp_path / "output"
@@ -201,7 +201,7 @@ def test_the_audits_score_the_file_as_they_scored_the_tables(
     for key in ours:
         assert repr(ours[key]) == repr(theirs[key]), key
     # NB the 0.99 merge QA scores is the run's own, its default `merge_agreement`
-    held, attrs = c.read(output / FILE, "integer_clones")
+    held, attrs = c.read(output / FILE, "clone_assignment_int")
     assert attrs["merge_agreement"] == 0.99
     assert ours["n_integer_clones_99"] == held["integer_ids"].size
 

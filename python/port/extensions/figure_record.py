@@ -38,7 +38,7 @@ _UNNAMED = "unnamed"
 
 _ASSIGNMENTS = ("initial_clones/clone_index", "phasing/clone_index", "baf/clone_index", "baf/assignment", "baf_merged/assignment",
                 "rdrbaf/clone_index", "rdrbaf/assignment", "rdrbaf_merged/assignment",
-                "clone_assignment/assignment", "integer_clones/assignment")  # fmt: skip
+                "clone_assignment/assignment", "clone_assignment_int/assignment")  # fmt: skip
 """Where a page's clones are found; clones drawn before any stage are written as `/initial_clones`."""
 
 
@@ -114,21 +114,21 @@ def _samples(path: Path) -> tuple[list[str], np.ndarray]:
 
 
 def _table(path: Path, df_cnv: pd.DataFrame, level: str) -> None:
-    """`/integer_copy` is `df_cnv`: written from it if absent, else checked equal."""
-    from port.extensions.run_record import integer_copy
+    """`/copy_int` is `df_cnv`: written from it if absent, else checked equal."""
+    from port.extensions.run_record import copy_int
 
-    integer_copy(path, df_cnv, level)
+    copy_int(path, df_cnv, level)
     _require(
         _equal(_frame(path), df_cnv[_frame(path).columns]),
-        "the integer table is not /integer_copy",
+        "the integer table is not /copy_int",
     )
 
 
 def _frame(path: Path) -> pd.DataFrame:
-    """`/integer_copy` as the run's integer table: `CHR`, `START`, `END`, then each clone's `A` and `B`."""
+    """`/copy_int` as the run's integer table: `CHR`, `START`, `END`, then each clone's `A` and `B`."""
     from port.extensions import cnamaste
 
-    copies, attrs = cnamaste.read(path, "integer_copy")
+    copies, attrs = cnamaste.read(path, "copy_int")
     contig = (
         copies["contig"].astype(np.int64)
         if attrs["contig_numeric"]

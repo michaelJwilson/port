@@ -6,11 +6,11 @@ Port writes no table beside `cnaster`'s: what `cnv_states.tsv`,
 (`docs/cnamaste-h5.md`), and `clone_labels.tsv` is left as `cnaster` writes
 it. A reader derives what those tables tabulated from the file: a bin's rate
 in its clone is `exp(log_mu[Z] - logmu_shift)` of `/rdrbaf` (#613), the
-integer clones are `/integer_clones`.
+integer clones are `/clone_assignment_int`.
 
 `integer_clones` is the one rule merging clones by their decoded `(A, B)`: at
 `int_copy_num.merge_agreement` of bins, 0.99 unless configured, for the run's
-`/integer_clones` (#518); at 1.0 for a run with no merge of its own
+`/clone_assignment_int` (#518); at 1.0 for a run with no merge of its own
 (`port.qa.audit.merged_clones`, #344).
 """
 

@@ -250,7 +250,7 @@ def run_tables(directory: Path) -> tuple[pd.Series, pd.DataFrame, dict[str, Any]
     spots, _ = cnamaste.read(path, "inputs")
     final, _ = cnamaste.read(path, "clone_assignment")
     labels = pd.Series(final["assignment"], index=pd.Index(spots["barcodes"]))
-    copies, attrs = cnamaste.read(path, "integer_copy")
+    copies, attrs = cnamaste.read(path, "copy_int")
     columns: dict[str, Any] = {
         "CHR": copies["contig"].astype(np.int64) if attrs["contig_numeric"] else copies["contig"].astype(object),
         "START": copies["start"], "END": copies["end"],
