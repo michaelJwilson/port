@@ -56,8 +56,8 @@ TABLE = (
     )),
     ("Sampling", (
         ("sal:anneal", "Single-site heat bath, annealed"),
-        ("sal:wolff-heat-bath", "One grown cluster relabelled by its field's heat bath, then a Gibbs sweep, annealed"),
-        ("sal:swendsen-wang-heat-bath", "Every bonded cluster relabelled by its field's heat bath, then a Gibbs sweep, annealed"),
+        ("sal:wolff", "One grown cluster relabelled by its field's heat bath, then a Gibbs sweep, annealed"),
+        ("sal:swendsen-wang", "Every bonded cluster relabelled by its field's heat bath, then a Gibbs sweep, annealed"),
     )),
 )  # fmt: skip
 """The solvers drawn (T- #660). Set aside from the figure, still in `clone_label_arms` or `--only`:
@@ -74,7 +74,7 @@ NUMBER = {
 KEY_NAMES = {
     "sal:alpha-expansion": "Alpha-expansion", "sal:alpha-beta-swap": "Alpha-beta-swap",
     "sal:icm": "ICM", "sal:field_argmax": "Field-argmax",
-    "sal:anneal": "Glauber", "sal:swendsen-wang-heat-bath": "Swendsen-Wang", "sal:wolff-heat-bath": "Wolff",
+    "sal:anneal": "Glauber", "sal:swendsen-wang": "Swendsen-Wang", "sal:wolff": "Wolff",
     "sal:trws": "TRW-S",
 }  # fmt: skip
 """The names `solver_combined`'s key prints, and the solvers it draws: `alpha-rust-fuse`,

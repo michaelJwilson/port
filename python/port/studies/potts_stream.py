@@ -39,10 +39,12 @@ its numbers do not compare with these.
   pure-Python `alpha` and the floor-merge row, plus TRW-S's own decoded
   labelling, from `--starts` random labellings; the samplers at their tuned
   settings. Each run is polished twice: sal's ICM, then sal's merge
-  (`merge_labels`, cnaster's `merge_assignment` rule). A sampler's polish
-  runs inside the anneal (`Polish.ICM_MERGE`, sal #1373, #1375), each stage
-  recorded; every other solver's is `sal:icm`, then the merge, from its
-  output.
+  (`merge_labels`). The merge counts a boundary coupling once, the energy's
+  change; **a stated departure from `cnaster`**, whose `merge_assignment`
+  counts half of it (`cnaster/icm.py:169`, sal #1415, T- #854). A sampler's
+  polish runs inside the anneal (`Polish.ICM_MERGE`, sal #1373, #1375), each
+  stage recorded; every other solver's is `sal:icm`, then the merge, from its
+  output, but alpha-expansion's (`EXPANSIONS`), which is the merge alone.
 - **Backends.** sal's defaults: the anneal loop, Wolff and heat-bath
   Swendsen-Wang in Rust (sal #1362, #1364, #1368). Their streams differ from
   the Python loop's, so a figure before the bump does not replay at its seeds.
@@ -77,12 +79,12 @@ from port.qa.provenance import CONFIGS
 DROPPED = frozenset({
     "sal:bifurcation", "port:alpha", "port:alpha-rust-merge",
     "port:alpha-rust", "port:alpha-rust-icm", "port:icm-numba", "port:icm",
-    "sal:swendsen-wang", "sal:wolff",
+    "sal:swendsen-wang-heat-bath", "sal:wolff-heat-bath",
 })  # fmt: skip
 """Out of the stream: bifurcation (#541), `alpha` (Alpha-rust's pure-Python twin), the deprecated floor merge,
 and, for the paper's figure (T- #660), `alpha-rust` and `alpha-rust-icm` (`alpha-rust-fuse-merge` stays),
-`icm-numba` and cnaster's `icm`; and the uniform-proposal cluster moves, their heat-bath variants in their
-place (#716). `clone_label_arms` still runs them, and `--only` names any. Parallel and cluster tempering
+`icm-numba` and cnaster's `icm`; and sal's deprecated `*-heat-bath` cluster moves, which run without the
+Gibbs sweep the bare moves compose (sal #1317, #1323, T- #854). `clone_label_arms` still runs them, and `--only` names any. Parallel and cluster tempering
 are out of port: sal moved `parallel_tempering` to its sandbox (sal #1352)."""
 
 EXTRA = ("sal:trws",)
@@ -90,12 +92,16 @@ EXTRA = ("sal:trws",)
 
 SAMPLERS = {
     "sal:anneal": "single-site",
-    "sal:swendsen-wang-heat-bath": "swendsen-wang",
-    "sal:wolff-heat-bath": "wolff",
+    "sal:swendsen-wang": "swendsen-wang",
+    "sal:wolff": "wolff",
 }
-"""sal's annealed chains (`anneal_potts`), by `sal`'s move. A bare cluster move is the move and a Gibbs
-sweep per step (sal #1323), each cluster's label drawn from its summed field (`Recolour.PER_MOVE`): the
-move alone relabels only whole same-label regions (T- #829)."""
+"""sal's annealed chains (`anneal_potts`), each under sal's name for its method and move (T- #854). A bare
+cluster move is the move and a Gibbs sweep per step (sal #1323), each cluster's label drawn from its summed
+field (`Recolour.PER_MOVE`): the move alone relabels only whole same-label regions (T- #829)."""
+
+EXPANSIONS = ("sal:alpha-expansion",)
+"""The entries polished by the merge alone: a converged expansion is a fixed point of every single-site
+move, so ICM after it moved 0 nats in sal's 16 of 16 runs (T- #854)."""
 
 TUNED = tuple(SAMPLERS)
 """The entries whose schedule `sal` tunes (`tune`), and every entry that runs at a setting from `SETTINGS`."""
@@ -289,7 +295,7 @@ STAGES = ("init", "polish", "merge")
 
 
 def merged(graph: Any, field: np.ndarray, labels: np.ndarray) -> np.ndarray:
-    """`labels` after sal's merge (`merge_labels`, cnaster's `merge_assignment` rule) to its fixed point."""
+    """`labels` after sal's merge (`merge_labels`) to its fixed point: each boundary coupling once, where `cnaster`'s counts half (T- #854)."""
     from sal.search.icm import merge_labels
 
     return np.asarray(merge_labels(graph, field, labels).labelling, dtype=np.int64)
@@ -332,8 +338,12 @@ def solve_labelling(
                 out = arms.solve_from(solver, field, start, rng, beta)
             seconds = time.perf_counter() - opened
             opened = time.perf_counter()
-            polished = arms.solve_from(
-                "sal:icm", field, out, np.random.default_rng(0), beta
+            polished = (
+                out
+                if solver in EXPANSIONS
+                else arms.solve_from(
+                    "sal:icm", field, out, np.random.default_rng(0), beta
+                )
             )
             polish_seconds = time.perf_counter() - opened
             opened = time.perf_counter()

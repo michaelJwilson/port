@@ -25,8 +25,8 @@ def _patch(seed: int) -> Any:
 @pytest.mark.parametrize(
     ("solver", "setting"),
     [
-        ("sal:wolff-heat-bath", {"t_start": 2.0, "sweeps": 40}),
-        ("sal:swendsen-wang-heat-bath", {"t_start": 2.0, "sweeps": 40}),
+        ("sal:wolff", {"t_start": 2.0, "sweeps": 40}),
+        ("sal:swendsen-wang", {"t_start": 2.0, "sweeps": 40}),
         ("sal:anneal", {"t_start": 2.0, "sweeps": 40}),
         ("sal:trws", None),
     ],
@@ -45,9 +45,7 @@ def test_each_polish_stage_never_raises_the_energy(
 
 
 @pytest.mark.oracle
-@pytest.mark.parametrize(
-    "solver", ["sal:wolff-heat-bath", "sal:swendsen-wang-heat-bath", "sal:anneal"]
-)
+@pytest.mark.parametrize("solver", ["sal:wolff", "sal:swendsen-wang", "sal:anneal"])
 def test_an_annealed_runs_merge_stage_is_sals_merge_of_its_icm_stage(
     solver: str,
 ) -> None:
@@ -74,3 +72,17 @@ def test_an_annealed_runs_merge_stage_is_sals_merge_of_its_icm_stage(
     np.testing.assert_array_equal(
         run.stages[2].best, merged(graph, patch.field, np.asarray(run.stages[1].best))
     )
+
+
+@pytest.mark.analytic
+def test_alpha_expansion_is_polished_by_the_merge_alone() -> None:
+    """`EXPANSIONS` skip ICM (T- #854): the ICM stage is the expansion's labelling, and the merge still runs after it."""
+    from port.studies.potts_stream import EXPANSIONS, solve_labelling
+
+    assert EXPANSIONS == ("sal:alpha-expansion",)
+    row = solve_labelling(_patch(1), "sal:alpha-expansion", 0, None)
+
+    assert "error" not in row, row.get("trace")
+    assert row["polished"] == row["energy"]
+    assert row["polished_wrong"] == row["wrong"]
+    assert row["both"] <= row["polished"] + 1e-9
