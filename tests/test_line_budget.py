@@ -22,7 +22,7 @@ TREES = {
 }
 """Each budgeted tree's paths under `python/port`; `tests` is the repository's `tests/`."""
 
-BUDGET = {"run": 16_159, "qa": 16_309, "sandbox": 7_827, "tests": 30_934}
+BUDGET = {"run": 14_547, "qa": 17_921, "sandbox": 7_827, "tests": 30_934}
 """Non-blank lines per tree (T- #831), lowered as packages land; a move between trees transfers its lines."""
 
 SLACK = 0.02
@@ -66,14 +66,10 @@ def test_the_tests_are_within_twice_port() -> None:
 
 
 @pytest.mark.infra
-@pytest.mark.xfail(
-    reason="T- #831: the run path is 1.43x cnaster; the packages bring it to 1x",
-    strict=True,
-)
 def test_the_run_path_is_at_most_cnasters_size() -> None:
     """The run path at most `TARGET` x cnaster's non-blank lines, its `sandbox/` and `deprecated/` excluded."""
     import cnaster
 
-    upstream = [p for p in Path(cnaster.__file__).parent.rglob("*.py")
+    upstream = [p for p in Path(next(iter(cnaster.__path__))).rglob("*.py")
                 if not {"sandbox", "deprecated"} & set(p.parts)]  # fmt: skip
     assert counted("run") <= TARGET * lines(upstream)

@@ -1,4 +1,4 @@
-"""`port.extensions.combined_figure`: two figures from a run (#309, #339).
+"""`port.qa.combined_figure`: two figures from a run (#309, #339).
 
 Subfigure tracks match the standalone `clones_genomic` page bitwise; recording wrappers
 call through and are removed on exit. Page-layout checks are `smoke`.
@@ -56,7 +56,7 @@ def test_recording_calls_through_and_restores() -> None:
     import cnaster.scripts.run_cnaster as script
     import port.patch.plot_genomic as genomic
     import port.patch.plotting as spatial
-    from port.extensions.combined_figure import recording
+    from port.qa.combined_figure import recording
 
     before = (
         genomic.plot_clones_genomic,
@@ -84,7 +84,7 @@ def _figures(tmp_path: Path) -> tuple[Any, Any]:
     import matplotlib as mpl
 
     mpl.use("Agg")
-    from port.extensions.combined_figure import genomic_figure, spatial_figure
+    from port.qa.combined_figure import genomic_figure, spatial_figure
 
     recorded, frame = recorded_combined_calls(tmp_path)
     genomic, spatial = genomic_figure(recorded), spatial_figure(recorded, frame)
@@ -113,7 +113,6 @@ def test_each_figure_is_a_column_wide_with_one_text_size(
     """Text-column width, genomic height to 0.005 in, letters (a)/(b), fonts at
     `FONT_SIZE` (#743).
     """
-    from port.extensions.combined_figure import FONT_SIZE
     from port.extensions.figure_style import (
         CAPTION_ROOM,
         PAPER_WIDTH,
@@ -121,6 +120,7 @@ def test_each_figure_is_a_column_wide_with_one_text_size(
         TRACK_FONT_SIZE,
         page_size,
     )
+    from port.qa.combined_figure import FONT_SIZE
 
     genomic, spatial = _figures(tmp_path)
 
@@ -188,7 +188,7 @@ def test_the_profile_spans_the_tracks_on_one_left_column(
     """(a) and (b) share left/right edges to 1.5 px; labels on the `NAME_INSET` column
     (PR- #701).
     """
-    from port.extensions.combined_figure import LABEL_GAP, NAME_INSET
+    from port.qa.combined_figure import LABEL_GAP, NAME_INSET
 
     figure, _ = _figures(tmp_path)
     renderer = figure.canvas.get_renderer()
@@ -236,7 +236,7 @@ def test_the_spatial_panels_are_square_keyed_on_the_right_and_centred(
     """(a) slide and (b) clones are equal squares at one scale to 1%; key and margins to
     2 px (T- #740).
     """
-    from port.extensions.combined_figure import LABEL_GAP, NAME_INSET
+    from port.qa.combined_figure import LABEL_GAP, NAME_INSET
 
     _, figure = _figures(tmp_path)
     renderer = figure.canvas.get_renderer()
@@ -297,7 +297,7 @@ def test_the_spatial_labels_are_integer_by_default_or_continuous(
     import matplotlib as mpl
 
     mpl.use("Agg")
-    from port.extensions.combined_figure import Call, spatial_figure
+    from port.qa.combined_figure import Call, spatial_figure
 
     recorded, frame = recorded_combined_calls(tmp_path)
     assert recorded.profile is not None
@@ -327,7 +327,7 @@ def test_the_figure_merges_clones_at_the_runs_agreement(tmp_path: Path) -> None:
     import matplotlib as mpl
 
     mpl.use("Agg")
-    from port.extensions.combined_figure import Call, spatial_figure
+    from port.qa.combined_figure import Call, spatial_figure
     from port.sim.inputs import written_config
 
     from tests.conftest import SHIPPED_EM_FTOL, cnaster_test_config
@@ -365,8 +365,8 @@ def test_the_combined_page_is_the_two_figures_stacked(
     the spatial figure to 1 px (#745).
     """
     import matplotlib.pyplot as plt
-    from port.extensions.combined_figure import combined_figure, spatial_figure
     from port.extensions.figure_style import CAPTION_ROOM, PAPER_WIDTH, TEXT_HEIGHT
+    from port.qa.combined_figure import combined_figure, spatial_figure
 
     recorded, frame = recorded_combined_calls(tmp_path)
     combined = combined_figure(recorded, frame)
@@ -424,7 +424,7 @@ def test_the_combined_page_reads_clones_profile_tracks(
     order (PR- #715).
     """
     import matplotlib.pyplot as plt
-    from port.extensions.combined_figure import PANELS, combined_figure
+    from port.qa.combined_figure import PANELS, combined_figure
 
     recorded, frame = recorded_combined_calls(tmp_path)
     figure = combined_figure(recorded, frame)
@@ -490,7 +490,7 @@ def test_the_combined_page_s_spatial_panels_are_square_keyed_clear_and_in_order(
     across panels (PR- #715).
     """
     import matplotlib.pyplot as plt
-    from port.extensions.combined_figure import (
+    from port.qa.combined_figure import (
         clone_order,
         clone_symbol,
         combined_figure,
@@ -569,7 +569,7 @@ def test_each_h_and_e_class_is_its_spots_pseudobulk(
 
     mpl.use("Agg")
     from matplotlib.collections import PathCollection
-    from port.extensions.combined_figure import plot_clones_genomic_he
+    from port.qa.combined_figure import plot_clones_genomic_he
 
     recorded, _ = recorded_combined_calls(tmp_path)
     counts, baseline = recorded.genomic.args[1][:, 0, :], recorded.genomic.args[2]
@@ -604,8 +604,8 @@ def test_the_h_and_e_page_tiles_each_spot_by_its_class(
     mpl.use("Agg")
     import matplotlib.colors as mcolors
     from matplotlib.collections import PolyCollection
-    from port.extensions.combined_figure import HE_PALETTE, spatial_figure
     from port.patch.plotting.spatial import spot_colours
+    from port.qa.combined_figure import HE_PALETTE, spatial_figure
 
     recorded, frame = recorded_combined_calls(tmp_path)
     classes = np.array([1, 1, 2, 2, 2, 3, 4, 4, 1])

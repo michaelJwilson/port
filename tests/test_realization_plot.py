@@ -11,7 +11,7 @@ import pytest
 @pytest.mark.analytic
 def test_every_contour_point_is_at_its_mahalanobis_radius() -> None:
     """Every contour point is at its Mahalanobis radius within 1e-12 relative."""
-    from port.extensions.realization_plot import contour
+    from port.qa.realization_plot import contour
 
     mean = np.array([1.2, 0.3])
     covariance = np.array([[4e-4, -1.5e-5], [-1.5e-5, 2e-6]])
@@ -81,7 +81,7 @@ def test_the_figure_has_one_panel_per_state_and_every_series() -> None:
 
     mpl.use("Agg")
 
-    from port.extensions.realization_plot import plot_realizations
+    from port.qa.realization_plot import plot_realizations
 
     covariance = np.tile(np.array([[1e-4, 0.0], [0.0, 1e-6]]), (3, 1, 1))
     figure = plot_realizations(
@@ -107,7 +107,7 @@ def test_the_truth_can_carry_the_errors_instead() -> None:
 
     mpl.use("Agg")
 
-    from port.extensions.realization_plot import plot_realizations
+    from port.qa.realization_plot import plot_realizations
 
     covariance = np.tile(np.array([[1e-4, 0.0], [0.0, 1e-6]]), (3, 1, 1))
     covariance[0, 0, 0] = 0.0

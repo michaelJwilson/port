@@ -123,7 +123,7 @@ def test_the_spots_h_and_e_class_darkens_away_from_normal(tmp_path: Path) -> Non
     """`he_classes` lie in `1..4` and each planted clone's mean class falls with clone
     index (T- #771).
     """
-    from port.extensions.combined_figure import he_classes
+    from port.qa.combined_figure import he_classes
 
     frame, labels = _read(tmp_path)
     coords = frame[["x", "y"]].to_numpy(dtype=np.float64)

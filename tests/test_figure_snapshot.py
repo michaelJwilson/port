@@ -24,7 +24,7 @@ def _pixels(figure: Any) -> np.ndarray:
     import io
 
     import matplotlib.image as mimage
-    from port.extensions.combined_figure import page_style
+    from port.qa.combined_figure import page_style
 
     buffer = io.BytesIO()
 
@@ -45,7 +45,7 @@ def _drawn(tmp_path: Path) -> dict[str, np.ndarray]:
     # NB as `cnaster.plot_validation_stats` sets it
     sns.set_context("paper", font_scale=0.9)
     sns.set_style("ticks")
-    from port.extensions.combined_figure import (
+    from port.qa.combined_figure import (
         combined_figure,
         genomic_figure,
         spatial_figure,

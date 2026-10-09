@@ -38,7 +38,7 @@ from port.sim.files import located
 from port.sim.truth import COPY_LATTICE, CoreInferenceTruth, dev_instance
 
 if TYPE_CHECKING:
-    from port.extensions.combined_figure import Recorded
+    from port.qa.combined_figure import Recorded
 
 TIMEOUT = 1800
 """CalicoST's budget per case, in seconds (#494)."""
@@ -524,15 +524,15 @@ def _write_combined(
     otherwise find it and refine the initial clones by it, and the figures
     would stop being the ones the dev instance's run draws.
     """
-    from port.extensions.combined_figure import (
+    from port.patch.he import he_image
+    from port.patch.utils import write_fig
+    from port.pipeline import FIGURE_DPI
+    from port.qa.combined_figure import (
         combined_figure,
         genomic_figure,
         page_style,
         spatial_figure,
     )
-    from port.patch.he import he_image
-    from port.patch.utils import write_fig
-    from port.pipeline import FIGURE_DPI
     from port.sim.he_slide import mock_he, write_he_slide
 
     # NB what the run's `FIGURE_SWAPS` row and `--png-copies` bind (#517).
@@ -594,7 +594,7 @@ def figures(out: Path, *, cnaster: bool = False) -> list[Path]:
     import matplotlib as mpl
 
     mpl.use("Agg")
-    from port.extensions.combined_figure import recording
+    from port.qa.combined_figure import recording
     from port.sim.run_config import run_written
 
     written = []

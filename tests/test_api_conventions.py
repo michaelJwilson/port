@@ -14,7 +14,7 @@ from functools import cache
 from pathlib import Path
 
 import pytest
-from port.extensions.vocabulary import TERMS, replaced_by
+from port.qa.vocabulary import TERMS, replaced_by
 
 from tests import ROOT
 

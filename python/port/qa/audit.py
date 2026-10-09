@@ -983,7 +983,7 @@ def audit_errors(
     likelihood at the planted parameters on that realization's data; the
     numbers beside them in `<stem>.npz`.
     """
-    from port.extensions.realization_plot import plot_realizations
+    from port.qa.realization_plot import plot_realizations
 
     index = chosen(n_realizations, seed)
 

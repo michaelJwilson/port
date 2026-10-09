@@ -78,7 +78,7 @@ def recorded_combined_calls(
 ) -> tuple[Any, Any]:
     """A run's three recorded calls on the 3 by 3 fixture, rows `tall` times apart, and its slide."""
     from cnaster.he import get_he_image
-    from port.extensions.combined_figure import Call, Recorded
+    from port.qa.combined_figure import Call, Recorded
     from port.sim.he_slide import mock_he, write_he_slide
     from port.sim.truth import clone_bands
 

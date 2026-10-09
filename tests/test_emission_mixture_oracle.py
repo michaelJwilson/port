@@ -10,7 +10,7 @@ import numpy as np
 import pytest
 import torch
 from cnaster.hmm_nophasing import _bb_logpmf_1d, _nb_logpmf_1d
-from port.extensions.emission_family import (
+from port.qa.emission_family import (
     CovariateNotConstant,
     constant_covariate,
     count_pair_family,

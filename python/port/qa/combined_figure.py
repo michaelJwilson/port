@@ -1029,8 +1029,8 @@ def he_segmentation_figure(
     import pandas as pd
 
     from port.extensions.figure_style import fit_to_content
-    from port.extensions.spatial_page import format_panel, panel_row, spatial_key
     from port.patch.plotting.spatial import draw_clones_spatial, spot_colours
+    from port.qa.spatial_page import format_panel, panel_row, spatial_key
 
     coords = np.asarray(coords)
     classes = pd.Series([f"H&E {int(c)}" for c in he_labels])

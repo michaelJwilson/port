@@ -41,7 +41,7 @@ def test_the_kronecker_posteriors_are_cnasters_lattices(
 ) -> None:
     """Both variants, including a one-position segment, to 1e-9."""
     import cnaster.hmm_phased as phased
-    from port.extensions.kronecker_posteriors import kronecker_state_posteriors
+    from port.qa.kronecker_posteriors import kronecker_state_posteriors
 
     arguments = _instance(*shape)
     model = phased.hmm_phased()

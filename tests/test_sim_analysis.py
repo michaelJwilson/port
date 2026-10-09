@@ -266,13 +266,13 @@ def test_the_truth_page_is_combined_pdfs_page_with_everything_on_it(
     drawn: Drawn,
 ) -> None:
     """Page is the text block less `CAPTION_ROOM`; fonts and texts on it to 0.5 px (#743)."""
-    from port.extensions.combined_figure import FONT_SIZE
     from port.extensions.figure_style import (
         CAPTION_ROOM,
         PAPER_WIDTH,
         TEXT_HEIGHT,
         TRACK_FONT_SIZE,
     )
+    from port.qa.combined_figure import FONT_SIZE
     from port.sim.truth_figure import truth_combined_figure
 
     figure = truth_combined_figure(read(drawn.path))
@@ -445,7 +445,7 @@ def _headed(genomic: Any) -> set[str]:
 def _a_is_the_tree(r: Any) -> Any:
     """Assert (a) equals `draw_tree(edges=True)` and (c) heads each clone with its barcode."""
     import matplotlib.pyplot as plt
-    from port.extensions.combined_figure import FONT_SIZE
+    from port.qa.combined_figure import FONT_SIZE
     from port.sim.analysis import draw_tree, shown
     from port.sim.truth_figure import _symbol
 
@@ -630,7 +630,7 @@ def test_clones_read_n_1_2_down_the_tree_and_alike_in_every_truth_figure(
     """Clones read $m_N$, $m_1$, ... top down and match by colour in every figure (PR- #701)."""
     import matplotlib.colors as mcolors
     import matplotlib.pyplot as plt
-    from port.extensions.combined_figure import clone_symbol
+    from port.qa.combined_figure import clone_symbol
     from port.sim import analysis
     from port.sim.truth_figure import simulated_tree_figure
 
@@ -726,7 +726,7 @@ def test_the_mirror_key_starts_on_b_s_left_edge_and_is_labelled_on_its_right(
 def test_truth_combined_reads_clones_profile_tracks(drawn: Drawn) -> None:
     """The truth page's panels follow `PANELS`, the run page's order (PR- #715)."""
     import matplotlib.pyplot as plt
-    from port.extensions.combined_figure import PANELS
+    from port.qa.combined_figure import PANELS
 
     figure, tree_ax, genomic = _panels(read(drawn.path))
     _, profile, _ = figure.subfigs

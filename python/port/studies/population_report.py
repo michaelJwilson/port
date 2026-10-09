@@ -578,8 +578,8 @@ FPR_TICKS = (3e-4, 1e-3, 3e-3, 1e-2)
 def _style() -> None:
     import matplotlib as mpl
 
-    from port.extensions.combined_figure import FONT_SIZE
     from port.patch.plot_copy_number_profile import LINEWIDTH
+    from port.qa.combined_figure import FONT_SIZE
 
     mpl.rcParams.update({"font.size": FONT_SIZE, "axes.linewidth": LINEWIDTH,
                          "xtick.major.width": LINEWIDTH,
@@ -669,7 +669,7 @@ def _power(value: float) -> str:
 
 def _finish(fig: Any, axes: list[Any], legends: list[Any]) -> None:
     """Square panels, sensitivities on [0, 1], keys inside, a letter over each panel."""
-    from port.extensions.combined_figure import FONT_SIZE, LABEL_SIZE
+    from port.qa.combined_figure import FONT_SIZE, LABEL_SIZE
 
     for axis in axes:
         axis.set_box_aspect(1)
@@ -710,8 +710,8 @@ def combined(summary: dict[str, Any], into: Path) -> Path:
     import matplotlib.pyplot as plt
     from matplotlib.layout_engine import ConstrainedLayoutEngine
 
-    from port.extensions.combined_figure import page_style
     from port.extensions.figure_style import PAPER_WIDTH
+    from port.qa.combined_figure import page_style
 
     into.mkdir(parents=True, exist_ok=True)
     with page_style():

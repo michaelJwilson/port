@@ -52,8 +52,8 @@ def test_the_run_and_the_combined_figure_draw_in_the_stated_face() -> None:
     mpl.use("Agg")
     import matplotlib.pyplot as plt
     import seaborn as sns  # type: ignore[import-untyped]
-    from port.extensions.combined_figure import page_style
     from port.extensions.figure_style import figure_font, stated
+    from port.qa.combined_figure import page_style
 
     face = stated()["font"]
 
