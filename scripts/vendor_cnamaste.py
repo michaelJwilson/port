@@ -39,6 +39,7 @@ DEPARTED: dict[str, str] = {
     "hmm.py": "K3, #276: the final rescore with the fit's log Z_c",
     "hmrf.py": "K3, #293 #299: the shifted fit's neutral state pinned to mu = 1",
     "scripts/run_cnamaste.py": "K1, #313 #362: integer copies by copy_decode.lattice_decode",
+    "utils.py": "PR1, T- #692: write_fig releases each Text's cached renderer",
 }
 """Copied file -> the T- #836 PR that edits it. Only grows."""
 
