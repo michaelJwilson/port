@@ -114,7 +114,7 @@ def calicost_row(path: Path) -> dict[str, Any]:
 
 
 def cnaster_row(path: Path) -> dict[str, Any]:
-    """`cnaster` at its pin, nothing rebound (T- #833): its committed outputs scored against the draw at `path`; the archive's wall."""
+    """`cnaster` at its pin, #105's row alone rebound (T- #833): its committed outputs scored against the draw at `path`; the archive's wall."""
     return _archived(path, CNASTER, "cnaster")
 
 
@@ -167,7 +167,7 @@ def render(calicost: dict[str, Any], port: dict[str, Any], *, fixture: str, comm
     rows = [(r"\calicost{}", calicost), (r"\cnamaste{}", port)]
     if cnaster is not None:
         rows.insert(1, (r"\cnaster{}", cnaster))
-        note += (f" cnaster {cnaster['commit'][:7]}, nothing rebound, from its committed outputs "
+        note += (f" cnaster {cnaster['commit'][:7]}, #105's row alone rebound, from its committed outputs "
                  f"({cnaster['cores']} cores).")  # fmt: skip
     return TEMPLATE.format(rows=_rows(rows), mode=" --cnaster" if cnaster is not None else "",
                            first=rf"Method (\texttt{{{fixture}}})", label="benchmark", note=note,
