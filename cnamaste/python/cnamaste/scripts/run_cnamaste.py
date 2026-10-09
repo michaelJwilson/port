@@ -17,7 +17,9 @@ from cnamaste.hmrf import merge_by_minspots, reindex_clones, run_core_inference
 from cnamaste.hmrf_utils import get_clone_assignment, get_clone_indices
 from cnamaste.copy_decode import (
     MAX_COPY,
+    MERGE_AGREEMENT,
     Pseudobulk,
+    integer_clones,
     lattice_decode,
     modal_pairs,
     normal_clone,
@@ -1605,6 +1607,21 @@ def run_cnamaste(config_path, over_rides=None):
         index=True,
         index_label="barcode",
         prefix="inferred clone labels",
+    )
+
+    # NB clones of one integer copy profile, on >= `int_copy_num.merge_agreement` of bins, are one
+    #    integer clone, named by its smallest id (T- #836 K2, port T- #817, #518).
+    stated = getattr(config.int_copy_num, "merge_agreement", None)
+    merged = integer_clones(df_seglevel_cnv, MERGE_AGREEMENT if stated is None else float(stated))
+    df_clone_label["integer_clone_label"] = df_clone_label["clone_label"].map(merged)
+
+    write_tsv(
+        f"{output_dir}/clone_labels_integer.tsv",
+        df_clone_label,
+        header=True,
+        index=True,
+        index_label="barcode",
+        prefix="inferred clone labels, merged by integer copy profile",
     )
 
     # NB assumes a ploidy constraint, currently defaults to last, e.g. "tetraploid".

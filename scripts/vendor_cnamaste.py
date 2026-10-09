@@ -40,7 +40,7 @@ DEPARTED: dict[str, str] = {
 """Copied file -> the T- #836 PR that edits it. Only grows."""
 
 ADDED: dict[str, str] = {
-    "copy_decode.py": "K1, #313 #362: the lattice decode, copied from port c17cd26",
+    "copy_decode.py": "K1 #313 #362, K2 T- #817: the lattice decode and integer clones, from port c17cd26",
 }
 """File cnamaste owns beyond the copy -> the T- #836 PR that adds it."""
 

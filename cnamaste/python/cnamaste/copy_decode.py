@@ -239,3 +239,31 @@ def modal_pairs(pairs, path, n_states):
         rows, counts = np.unique(pairs[path == state], axis=0, return_counts=True)
         out[state] = rows[int(np.argmax(counts))]
     return out
+
+
+MERGE_AGREEMENT = 0.99
+"""Share of bins two clones' `(A, B)` must agree on to be one integer clone, where the config
+states no `int_copy_num.merge_agreement` (port #518, T- #817)."""
+
+
+def integer_clones(seglevel, agreement=MERGE_AGREEMENT):
+    """Each clone id -> the smallest id whose integer copy profile it matches (T- #836 K2).
+
+    `seglevel` has `clone{c} A`/`clone{c} B` per bin. In id order, a clone joins the first
+    earlier group agreeing on `>= agreement` of bins, so the normal clone keeps 0. Copied from
+    port c17cd26 (PR- #832) `python/port/extensions/outputs.py:214`.
+    """
+    if not 0.0 < agreement <= 1.0:
+        raise ValueError(f"merge agreement must be in (0, 1], got {agreement!r}")
+
+    ids = sorted(int(c.split()[0][len("clone"):]) for c in seglevel.columns if c.endswith(" A"))
+    named, names = [], {}
+    for clone in ids:
+        profile = seglevel[[f"clone{clone} A", f"clone{clone} B"]].to_numpy(dtype=int)
+        match = next((name for name, other in named
+                      if float(np.mean(np.all(profile == other, axis=1))) >= agreement), None)  # fmt: skip
+        if match is None:
+            named.append((clone, profile))
+            match = clone
+        names[clone] = match
+    return names
