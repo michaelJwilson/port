@@ -13,7 +13,8 @@ with `port.sim.run_config.ENTRY_POINT_SEED` first, as `isolated_run` seeds
 `cnaster`'s.
 
 The gate instance is `port.sim.run_config.planted_and_written`'s, two clones
-of 500 spots, scored as `tests/test_run_cnaster_port_end_to_end.py` scores it.
+of 500 spots, scored as `tests/test_run_cnaster_port_end_to_end.py` scores it;
+`merge`, as one run with its environment is 53.6 s of the gate's 60.
 The rest are `docs/metrics/fixtures.md`'s supported fixtures, drawn, run on
 their own `config.yaml` and scored by `port.qa.audit.score_sample`.
 """
@@ -67,14 +68,15 @@ def run_cnamaste(config: Path) -> float:
 
 
 @pytest.mark.end2end
+@pytest.mark.merge
 @pytest.mark.xdist_group("pipeline")
 def test_the_gate_instance_recovers_the_planted_clones(tmp_path: Path) -> None:
     """Gate (`350fbd2b`): both planted clones, at most 2 of 1,000 spots misplaced."""
-    from port.sim.fixtures import realization_hash
     from port.sim.run_config import planted_and_written
+    from port.sim.truth import fixture_hash
 
     truth, _, written, config = planted_and_written(tmp_path)
-    assert realization_hash(written.root) == "350fbd2b"
+    assert fixture_hash(truth) == "350fbd2b"
     run_cnamaste(config)
 
     labels = pd.read_csv(
