@@ -1,3 +1,12 @@
 run_id	timestamp	commit	arm	test	note	benchmark
 e0eb1d8-easy-0128	2026-10-09T01:28Z	e0eb1d8	-- --no-patch --no-plots	tests/sim_audit.py::main	cnaster sweep: 4adad4d, --no-patch with #105's row (T- #833)	true
 e0eb1d8-hard-0131	2026-10-09T01:31Z	e0eb1d8	-- --no-patch --no-plots	tests/sim_audit.py::main	cnaster sweep: 4adad4d, --no-patch with #105's row (T- #833)	true
+9a63d1d-dev_tree_r0-0142	2026-10-09T01:42Z	9a63d1d	-- --no-patch --no-plots	tests/sim_audit.py::main	cnaster sweep: 4adad4d, --no-patch with #105's row (T- #833)	true
+9a63d1d-dev_tree_r0-0154	2026-10-09T01:54Z	9a63d1d	-- --no-patch --no-plots	tests/sim_audit.py::main	cnaster sweep: 4adad4d, --no-patch with #105's row (T- #833)	true
+9a63d1d-dev_tree_1s_r0-0159	2026-10-09T01:59Z	9a63d1d	-- --no-patch --no-plots	tests/sim_audit.py::main	cnaster sweep: 4adad4d, --no-patch with #105's row (T- #833)	true
+9a63d1d-dev_tree_1s_easy_r0-0208	2026-10-09T02:08Z	9a63d1d	-- --no-patch --no-plots	tests/sim_audit.py::main	cnaster sweep: 4adad4d, --no-patch with #105's row (T- #833)	true
+9a63d1d-dev_tree_1s_hard_r0-0212	2026-10-09T02:12Z	9a63d1d	-- --no-patch --no-plots	tests/sim_audit.py::main	cnaster sweep: 4adad4d, --no-patch with #105's row (T- #833)	true
+9a63d1d-dev_tree_1s_dense_r0-0217	2026-10-09T02:17Z	9a63d1d	-- --no-patch --no-plots	tests/sim_audit.py::main	cnaster sweep: 4adad4d, --no-patch with #105's row (T- #833)	true
+9a63d1d-study15_r0-0221	2026-10-09T02:21Z	9a63d1d	-- --no-patch --no-plots	tests/sim_audit.py::main	cnaster sweep: 4adad4d, --no-patch with #105's row (T- #833)	true
+9a63d1d-easy-0225	2026-10-09T02:25Z	9a63d1d	-- --no-patch --no-plots	tests/sim_audit.py::main	cnaster sweep: 4adad4d, --no-patch with #105's row (T- #833)	true
+9a63d1d-hard-0229	2026-10-09T02:29Z	9a63d1d	-- --no-patch --no-plots	tests/sim_audit.py::main	cnaster sweep: 4adad4d, --no-patch with #105's row (T- #833)	true
