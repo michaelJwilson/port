@@ -328,7 +328,7 @@ def test_the_spatial_labels_are_integer_by_default_or_continuous(
 def test_the_figure_merges_clones_at_the_runs_agreement(tmp_path: Path) -> None:
     """Two clones that agree at 23 of 24 bins (0.958) stay two at the default
     0.99 and are one at a configured `merge_agreement` of 0.9, as
-    the run's `/integer_clones` merges (#749 WP0, T- #817). Before, the figure
+    the run's `/clone_assignment_int` merges (#749 WP0, T- #817). Before, the figure
     merged at the default whatever the run's configuration said."""
 
     mpl.use("Agg")

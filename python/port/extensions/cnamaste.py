@@ -338,7 +338,7 @@ GROUPS: tuple[Group, ...] = (
         "integer copy states (`cnv_seglevel.tsv`'s), and every `[int_copy_num]` key the decode read",
     ),  # fmt: skip
     Group(
-        "integer_clones",
+        "clone_assignment_int",
         (
             _d(
                 "map",
@@ -427,7 +427,7 @@ TRUTH_GROUPS: tuple[Group, ...] = (
         meaning='the planted copies per gene per clone, `level = "genes"`',
     ),
     _only(
-        _group("integer_clones"),
+        _group("clone_assignment_int"),
         "map",
         "assignment",
         "integer_ids",

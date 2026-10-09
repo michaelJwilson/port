@@ -38,7 +38,7 @@ _UNNAMED = "unnamed"
 
 _ASSIGNMENTS = ("initial_clones/clone_index", "phasing/clone_index", "baf/clone_index", "baf/assignment", "baf_merged/assignment",
                 "rdrbaf/clone_index", "rdrbaf/assignment", "rdrbaf_merged/assignment",
-                "clone_assignment/assignment", "integer_clones/assignment")  # fmt: skip
+                "clone_assignment/assignment", "clone_assignment_int/assignment")  # fmt: skip
 """Where a page's clones are found; clones drawn before any stage are written as `/initial_clones`."""
 
 

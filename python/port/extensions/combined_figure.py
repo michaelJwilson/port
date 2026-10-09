@@ -893,7 +893,7 @@ def integer_recorded(recorded: Recorded) -> Recorded:
         msg = "integer clones need the run's copy_number_profile call"
         raise ValueError(msg)
 
-    # NB the run's agreement, as `/integer_clones` merges at it (T- #817)
+    # NB the run's agreement, as `/clone_assignment_int` merges at it (T- #817)
     groups = integer_clones(recorded.profile.args[0], merge_agreement(installed_keys()))
     kept = clone_order(set(groups.values()))
     number = {old: str(kept.index(group)) for old, group in groups.items()}

@@ -32,7 +32,7 @@ INDIRECT: frozenset[tuple[str, str]] = frozenset(
 
 PORT_READS: dict[tuple[str, str], str] = {
     ("int_copy_num", "max_total_copy"): "--copy-cap (#313)",
-    ("int_copy_num", "merge_agreement"): "cnamaste.h5 /integer_clones (#518)",
+    ("int_copy_num", "merge_agreement"): "cnamaste.h5 /clone_assignment_int (#518)",
     ("quality", "min_segment_mb"): "the read-depth segment floor (#551)",
     ("quality", "min_segment_normal_umi"): "the read-depth segment floor (#551)",
 }

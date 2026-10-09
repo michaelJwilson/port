@@ -432,7 +432,7 @@ def integer_copy(path: Path, df_cnv: Any, level: str) -> None:
 
 
 def integer_groups(path: Path, run: Path, config: Path) -> None:
-    """`/integer_copy` if absent, and `/integer_clones`, from the run directory `run` and its spots."""
+    """`/integer_copy` if absent, and `/clone_assignment_int`, from the run directory `run` and its spots."""
     import pandas as pd
 
     from port.extensions import cnamaste
@@ -465,7 +465,7 @@ def integer_groups(path: Path, run: Path, config: Path) -> None:
         dtype=np.int64,
     )
     first = [ids.index(str(n)) for n in named]
-    cnamaste.write(path, "integer_clones", {
+    cnamaste.write(path, "clone_assignment_int", {
         "map": mapping, "assignment": assignment, "integer_ids": np.array(named, dtype=np.int64),
         "A": copies["A"][:, first], "B": copies["B"][:, first],
     }, level=level, merge_agreement=float(agreement), counts=stage_counts)  # fmt: skip

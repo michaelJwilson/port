@@ -125,7 +125,7 @@ def test_a_stage_never_completed_is_not_read(tmp_path: Path) -> None:
         g
         for g in c.GROUPS
         if g.path
-        not in ("rdrbaf", "clone_assignment", "integer_copy", "integer_clones")
+        not in ("rdrbaf", "clone_assignment", "integer_copy", "clone_assignment_int")
     ]
     for group in before:
         arrays, attrs = _group(group, rng)
