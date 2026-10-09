@@ -129,7 +129,6 @@ def get_log_transmat(n_states, t):
     return log_transmat
 
 
-@njit(nogil=True, cache=True, parallel=False, error_model="numpy")
 def segment_shifts(log_mu, copy_states, normal_log_lambda, clone_lengths):
     """`compute_logmu_shifts` over the clone-stacked segments `copy_states` decodes, and the clone
     lengths used (T- #836 K3).
@@ -158,6 +157,7 @@ def logmu_shift(model, log_mu, normal_log_lambda, clone_lengths, n_spots):
                           clone_lengths)[0]  # fmt: skip
 
 
+@njit(nogil=True, cache=True, parallel=False, error_model="numpy")
 def compute_logmu_shifts(log_mus, copy_states, normal_log_lambda, clone_lengths):
     # NB per-clone shift in log_mu due to (clone) library normalization, used to
     #    debias inferred mus; assumes clones concatenate along the genomic axis.
