@@ -15,9 +15,12 @@ from cnamaste.hmm_nophasing import hmm_nophasing, get_log_transmat
 
 from cnamaste.hmrf import merge_by_minspots, reindex_clones, run_core_inference
 from cnamaste.hmrf_utils import get_clone_assignment, get_clone_indices
-from cnamaste.integer_copy import (
-    hill_climbing_integer_copynumber_fixdiploid_milp,
-    hill_climbing_integer_copynumber_oneclone,
+from cnamaste.copy_decode import (
+    MAX_COPY,
+    Pseudobulk,
+    lattice_decode,
+    modal_pairs,
+    normal_clone,
 )
 from cnamaste.io import (
     construct_df_clone_label,
@@ -1322,6 +1325,19 @@ def run_cnamaste(config_path, over_rides=None):
         int_ploidy_map[key] for key in config.int_copy_num.ploidy.split(",")
     ]
 
+    # NB integer copies by the fit's likelihood, decoded once and shared by every ploidy, in place
+    #    of the per-clone hill climbs (T- #836 K1, port #313, #362): caps from
+    #    `int_copy_num.max_total_copy` for the total and each allele, else `MAX_COPY`.
+    stated = getattr(config.int_copy_num, "max_total_copy", None)
+    max_copy = MAX_COPY if stated is None else int(stated)
+    n_states = res_combine["new_log_mu"].shape[0]
+    try:
+        transmat = np.asarray(res_combine["new_log_transmat"], dtype=np.float64)
+        stay = float(np.exp(np.diagonal(transmat.reshape(-1, *transmat.shape[-2:])[0])).mean())
+    except (KeyError, TypeError, ValueError):
+        stay = 1.0 - 1e-7
+    decoded = None
+
     # TODO solution for each ploidy, enumerated by "o".
     for o, max_medploidy in enumerate(int_ploidy):
         logger.info(
@@ -1343,6 +1359,18 @@ def run_cnamaste(config_path, over_rides=None):
             single_tumor_prop,
             threshold=config.hmrf.tumorprop_threshold,
         )
+
+        if decoded is None:
+            paths = res_combine["pred_cnv"].reshape(n_obs, -1) % n_states
+            bulks = [
+                Pseudobulk(X[:, 0, c], base_nb_mean[:, c], X[:, 1, c], total_bb_RD[:, c],
+                           float(res_combine["new_alphas"].flat[0]), float(res_combine["new_taus"].flat[0]))
+                for c in range(len(final_clone_ids))
+            ]  # fmt: skip
+            decoded = lattice_decode(
+                bulks, np.zeros(len(bulks)), normal=normal_clone(res_combine["new_p_binom"], paths),
+                lengths=lengths, stay=stay, max_total_copy=max_copy, max_allele_copy=max_copy,
+            )  # fmt: skip
 
         # NB loop over clone (given max. ploidy).
         for s, cid in enumerate(final_clone_ids):
@@ -1384,38 +1412,10 @@ def run_cnamaste(config_path, over_rides=None):
                 f"For clone {cid}, normalized log mu to sum_bin lambda * np.exp(log_mu) = 1.; yielding new mu=\n{np.exp(adjusted_log_mu)}\ngiven mu=\n{np.exp(res_combine["new_log_mu"][:, idx])}."
             )
 
-            # TODO finalize integer copy number determination.
-            #
-            # NB converts inferred (rdr, baf) profiles for this clone to integer copy numbers given (max) ploidy assumption
-            #    and fixed normal state as (1,1).
-            if max_medploidy is not None:
-                best_integer_copies, loss, best_ploidy = (
-                    hill_climbing_integer_copynumber_oneclone(
-                        adjusted_log_mu,
-                        base_nb_mean[:, s],
-                        res_combine["new_p_binom"][:, idx],
-                        this_pred_cnv,
-                        max_medploidy=max_medploidy,
-                    )
-                )
-            else:
-                (
-                    best_integer_copies,
-                    loss,
-                    best_ploidy,
-                ) = hill_climbing_integer_copynumber_fixdiploid_milp(
-                    adjusted_log_mu,
-                    base_nb_mean[:, s],
-                    res_combine["new_p_binom"][:, idx],
-                    this_pred_cnv,
-                    nonbalance_bafdist=config.int_copy_num.nonbalance_bafdist,
-                    nondiploid_rdrdist=config.int_copy_num.nondiploid_rdrdist,
-                    # min_prop_threshold=0.02,  # MAGIC
-                )
-
-                # TODO HACK
-                # finding_distate_failed = True
-                # continue
+            # NB per bin from the lattice decode; per state, each state's most frequent pair (T- #836 K1).
+            bin_copies = decoded.pairs[s]
+            best_integer_copies = modal_pairs(bin_copies, this_pred_cnv % n_states, n_states)
+            loss, best_ploidy = -decoded.log_likelihood, int(np.rint(np.median(bin_copies.sum(axis=1))))
 
             logger.info(
                 f"Solved for (max. med ploidy, clone) = ({max_medploidy}, {s}) with integer copy number loss = {loss:.4e} and best ploidy = {best_ploidy}"
@@ -1431,12 +1431,8 @@ def run_cnamaste(config_path, over_rides=None):
                     res_combine["new_p_binom"][
                         this_pred_cnv, idx
                     ],  # NB best model baf for each clone and each ploidy.
-                    best_integer_copies[
-                        this_pred_cnv, 0
-                    ],  # NB best integer A-copies for each clone and each ploidy.
-                    best_integer_copies[
-                        this_pred_cnv, 1
-                    ],  # NB best integer B-copies for each clone and each ploidy.
+                    bin_copies[:, 0],  # NB integer A-copies per bin (T- #836 K1).
+                    bin_copies[:, 1],  # NB integer B-copies per bin (T- #836 K1).
                 ],
             ):
                 allele_specific_copy.append(
@@ -1475,7 +1471,7 @@ def run_cnamaste(config_path, over_rides=None):
             df_genes = df_gene_snp[df_gene_snp.is_interval]
             bin_ids = df_genes["bin_id"].to_numpy(dtype=int)
 
-            clone_copies = best_integer_copies[res_combine["pred_cnv"][:, s]]
+            clone_copies = bin_copies  # NB per bin (T- #836 K1)
 
             tmpdf = pd.DataFrame(
                 {

@@ -15,7 +15,7 @@ without, so the copy installs as a regular package. The project around it,
 writes nothing and exits 1 where a file differs from the copy without a
 declaration, where a declared file no longer differs, or where a file is
 missing or extra: the committed tree is this script's output plus the declared
-edits.
+edits. `ADDED` declares each file a PR adds that is not a copy.
 """
 
 from __future__ import annotations
@@ -35,8 +35,14 @@ ENTRY = "cnaster.scripts.run_cnaster"
 DEPARTED: dict[str, str] = {
     "normal_spot.py": "PR1, #105: a removed bin's genes leave the gene-level output",
     "spatial.py": "PR1, #692: rectangular clones that admit no assignment are banded",
+    "scripts/run_cnamaste.py": "K1, #313 #362: integer copies by copy_decode.lattice_decode",
 }
 """Copied file -> the T- #836 PR that edits it. Only grows."""
+
+ADDED: dict[str, str] = {
+    "copy_decode.py": "K1, #313 #362: the lattice decode, copied from port c17cd26",
+}
+"""File cnamaste owns beyond the copy -> the T- #836 PR that adds it."""
 
 
 def pinned() -> tuple[str, Path]:
@@ -113,7 +119,8 @@ def check(tree: dict[str, str]) -> list[str]:
         for p in OUT.rglob("*")
         if p.is_file() and "__pycache__" not in p.parts
     }
-    problems = [f"extra: {p}" for p in sorted(found - set(tree))]
+    problems = [f"extra: {p}" for p in sorted(found - set(tree) - set(ADDED))]
+    problems += [f"added but missing: {p}" for p in sorted(set(ADDED) - found)]
     problems += [f"missing: {p}" for p in sorted(set(tree) - found)]
     for path in sorted(set(tree) & found):
         differs = (OUT / path).read_text() != tree[path]
