@@ -9,7 +9,7 @@ import pytest
 from port.sandbox.extensions.hmm_init_trials import HMMInit
 
 
-@pytest.mark.infra
+@pytest.mark.smoke
 def test_it_records_every_run_of_every_backend() -> None:
     harness = HMMInit(
         backends={
@@ -27,7 +27,7 @@ def test_it_records_every_run_of_every_backend() -> None:
     assert [t.seed for t in trials.for_backend("rising")] == [0, 1, 2]
 
 
-@pytest.mark.infra
+@pytest.mark.smoke
 def test_best_reads_the_referee_score_not_the_backends_own() -> None:
     """`best` ranks by the referee score, not a backend's own units."""
 
@@ -53,7 +53,7 @@ def test_best_reads_the_referee_score_not_the_backends_own() -> None:
     assert best.backend == "a", "best must follow the scorer, not the value"
 
 
-@pytest.mark.infra
+@pytest.mark.smoke
 def test_a_backend_that_raises_is_recorded_rather_than_fatal() -> None:
     """A raising backend is recorded as a failure, not fatal (#230)."""
 
@@ -78,7 +78,7 @@ def test_a_backend_that_raises_is_recorded_rather_than_fatal() -> None:
     assert "failed 1" in str(trials)
 
 
-@pytest.mark.infra
+@pytest.mark.smoke
 def test_str_reports_a_spread_and_says_the_best_is_biased() -> None:
     """`str` reports a spread and flags the best as biased."""
     harness = HMMInit(
@@ -92,7 +92,7 @@ def test_str_reports_a_spread_and_says_the_best_is_biased() -> None:
     assert "n=4" in rendered
 
 
-@pytest.mark.infra
+@pytest.mark.warning
 def test_zero_runs_is_refused() -> None:
     with pytest.raises(ValueError, match="at least 1"):
         HMMInit(backends={}, scorer=float, n_runs=0).run()

@@ -224,7 +224,7 @@ def test_a_reversible_lineage_regains_lost_haplotypes() -> None:
     assert (regained, events) == (11, 679)
 
 
-@pytest.mark.infra
+@pytest.mark.warning
 def test_an_unknown_loh_rule_is_refused() -> None:
     document = extended(DENSE)
     document["cna"]["loh"] = "sometimes"

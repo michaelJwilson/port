@@ -74,7 +74,7 @@ def test_the_figure_swap_is_kept_out_of_the_default_table() -> None:
     assert not names & set(figures), f"in both tables: {names & set(figures)}"
 
 
-@pytest.mark.infra
+@pytest.mark.analytic
 def test_png_copies_are_the_same_bytes_on_every_write(tmp_path: Path) -> None:
     """With `png_copy` a PNG lands beside the PDF, byte-identical across writes (#452)."""
 

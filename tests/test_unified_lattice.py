@@ -48,7 +48,7 @@ def test_the_unified_recursion_is_cnasters_bitwise(
     )
 
 
-@pytest.mark.smoke
+@pytest.mark.warning
 @pytest.mark.parametrize("n_states", [2, 5])
 def test_the_state_axis_decides_which_chain_is_being_run(n_states: int) -> None:
     """`is_phased` reads the chain from `n_states` and the emission, and refuses a mismatch."""
@@ -63,7 +63,7 @@ def test_the_state_axis_decides_which_chain_is_being_run(n_states: int) -> None:
         is_phased(np.zeros((3 * n_states, 4, 1)), n_states)
 
 
-@pytest.mark.smoke
+@pytest.mark.backend
 @pytest.mark.parametrize("n_states", [2, 5])
 def test_the_two_spot_sums_agree_bitwise(n_states: int) -> None:
     """cnaster's whole-block and per-row spot sums agree bitwise under `numba`."""
@@ -74,7 +74,7 @@ def test_the_two_spot_sums_agree_bitwise(n_states: int) -> None:
     assert spot_sums_agree(np.ascontiguousarray(inputs.log_emission[:, 0, :]))
 
 
-@pytest.mark.smoke
+@pytest.mark.analytic
 def test_the_backward_pass_does_not_read_the_start_probability() -> None:
     """`log_startprob` is accepted but unread, as in cnaster."""
     inputs = _inputs(4, phased=True)

@@ -196,7 +196,7 @@ def test_the_counts_match_a_per_spot_loop() -> None:
         assert int(invariants.num_valid_bb_spotwise[spot]) == bb_positive
 
 
-@pytest.mark.smoke
+@pytest.mark.warning
 def test_a_shape_mismatch_is_refused() -> None:
     """Arrays of different shape are refused rather than broadcast."""
     with pytest.raises(ValueError, match="shapes must agree"):

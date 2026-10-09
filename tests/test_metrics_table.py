@@ -118,7 +118,7 @@ def test_the_render_rebuilds_the_converted_rows() -> None:
     assert hashlib.sha256("\n".join(lines).encode()).hexdigest() == CONVERTED_SHA256
 
 
-@pytest.mark.infra
+@pytest.mark.smoke
 def test_a_recorded_run_writes_one_line_per_measured_metric(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -170,7 +170,7 @@ def test_every_run_names_a_test_that_exists() -> None:
     assert not missing, f"no such path::function: {sorted(missing)}"
 
 
-@pytest.mark.infra
+@pytest.mark.warning
 @pytest.mark.parametrize(
     "note",
     ["", "   ", "a | b", "a\tb", "one\ntwo", "x" * (NOTE_CHARS + 1)],
@@ -194,7 +194,7 @@ def test_the_latest_dev_run_is_the_dev_fixture_built_now() -> None:
     )
 
 
-@pytest.mark.infra
+@pytest.mark.analytic
 def test_the_hash_is_of_the_data_and_moves_with_it() -> None:
     truth = sim_truth.critical_instance()
 
@@ -233,7 +233,7 @@ def test_no_fixture_name_carries_its_hash() -> None:
         assert re.search(r"_[0-9a-f]{8}$", line["fixture"]) is None, line
 
 
-@pytest.mark.infra
+@pytest.mark.smoke
 def test_best_takes_a_name_alone_only_where_it_holds_one_hash() -> None:
     """`easy` holds one hash; `dev_tree_1s_hard_r0` holds two generations."""
     found = metrics.best("clone_ari", "easy")
@@ -264,7 +264,7 @@ def test_the_last_benchmark_is_one_run_per_fixture_at_one_commit() -> None:
     assert len(keys) == len(set(keys))
 
 
-@pytest.mark.infra
+@pytest.mark.warning
 def test_a_hash_under_another_name_is_refused() -> None:
     """A new generation under a held name is a new dataset; a held hash under a new name is refused."""
     rows = [{"fixture": "easy", "fixture_hash": "2d4ce9a9"}]
@@ -278,7 +278,7 @@ def test_a_hash_under_another_name_is_refused() -> None:
         check_identity("easy", "2d4ce9a", rows)
 
 
-@pytest.mark.infra
+@pytest.mark.smoke
 def test_the_history_plots_draw_from_the_ledger(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -313,7 +313,7 @@ def _history_row(commit: str, fixture: str, clone_ari: str) -> dict[str, str]:
     return row | {"note": f"HISTORY #{commit} x", "clone_ari": clone_ari}
 
 
-@pytest.mark.infra
+@pytest.mark.smoke
 def test_a_run_of_unchanged_merges_keeps_its_first_and_last_tick(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

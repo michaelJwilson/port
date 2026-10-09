@@ -128,7 +128,7 @@ def test_the_top_hat_sum_is_a_sliding_window(planted: CoreInferenceTruth) -> Non
     np.testing.assert_array_equal(top_hat_sum(vector, width), np.atleast_2d(vector))
 
 
-@pytest.mark.smoke
+@pytest.mark.warning
 def test_the_clone_label_cast_refuses_what_it_says_it_refuses() -> None:
     """`cast_clone_label` names the normal clone and bounds the rest."""
 

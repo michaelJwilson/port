@@ -59,7 +59,7 @@ def test_state_posteriors_normalise(n_states: int) -> None:
     np.testing.assert_allclose(np.exp(log_gamma).sum(axis=0), 1.0, rtol=0.0, atol=1e-9)
 
 
-@pytest.mark.smoke
+@pytest.mark.analytic
 def test_copy_states_fold_the_phase_only_when_asked() -> None:
     """`includes_phased` folds the phase index only when set (#9)."""
 

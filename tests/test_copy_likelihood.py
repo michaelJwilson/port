@@ -25,7 +25,7 @@ from port.sim.run_config import isolated_run, write_for_run
 from port.sim.truth import critical_instance
 
 
-@pytest.mark.infra
+@pytest.mark.analytic
 def test_the_candidates_are_every_pair_under_the_cap() -> None:
     lattice = candidates(12)
 

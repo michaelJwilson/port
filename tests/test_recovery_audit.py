@@ -46,7 +46,7 @@ def test_the_default_grid_is_unchanged() -> None:
     )
 
 
-@pytest.mark.infra
+@pytest.mark.warning
 def test_a_state_count_beyond_the_lattice_is_refused() -> None:
     with pytest.raises(ValueError, match="copy lattice has"):
         dev_instance(n_states=len(COPY_LATTICE) + 1, copy_lattice=True)

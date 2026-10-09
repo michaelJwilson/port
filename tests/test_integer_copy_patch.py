@@ -149,7 +149,7 @@ def test_installed_the_swap_decodes_by_likelihood_once() -> None:
     assert np.isfinite(loss)
 
 
-@pytest.mark.infra
+@pytest.mark.warning
 def test_a_clone_the_capture_cannot_identify_is_an_error() -> None:
     """No captured fit: `decode_clone` raises rather than decoding another way."""
 
@@ -161,7 +161,7 @@ def test_a_clone_the_capture_cannot_identify_is_an_error() -> None:
         decode_clone(log_mu, path, 12)
 
 
-@pytest.mark.infra
+@pytest.mark.smoke
 def test_one_key_sets_both_caps() -> None:
     """`max_total_copy` alone; `cnaster`'s `(5, 6)` where it is not stated."""
 
@@ -172,7 +172,7 @@ def test_one_key_sets_both_caps() -> None:
         assert configured_caps() == (12, 12)
 
 
-@pytest.mark.infra
+@pytest.mark.smoke
 @pytest.mark.parametrize(
     ("value", "total"), [(None, None), ("none", None), (12, 12), ("12", 12), (2, 2)]
 )
@@ -185,7 +185,7 @@ def test_a_stated_cap_is_read_as_the_audit_reads_it(value: Any, total: Any) -> N
     assert not [f for f in findings if f.kind == "invalid"]
 
 
-@pytest.mark.infra
+@pytest.mark.warning
 @pytest.mark.parametrize("value", [0, 1, 12.7, True, "twelve"], ids=str)
 def test_a_cap_below_the_diploid_or_fractional_is_refused(value: Any) -> None:
     """A cap below 2 or non-integer is refused by decode and audit (#466)."""
@@ -243,7 +243,7 @@ def test_the_lattice_is_every_pair_within_both_caps(allele: int | None) -> None:
     assert _lattice_size(6, 6) == 27
 
 
-@pytest.mark.infra
+@pytest.mark.smoke
 @pytest.mark.parametrize("unconfigured", [5, 6])
 @pytest.mark.parametrize("stated", [None, 6, 12])
 def test_the_drop_ins_decode_under_the_named_allele_cap(

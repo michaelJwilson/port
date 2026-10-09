@@ -89,7 +89,7 @@ def _equal(one: Any, two: Any) -> bool:
     )
 
 
-@pytest.mark.infra
+@pytest.mark.analytic
 @pytest.mark.parametrize("truth", [False, True])
 def test_every_declared_group_reads_back_bitwise(tmp_path: Path, truth: bool) -> None:
     """Every declared group and dataset reads back equal at its declared type."""
@@ -114,7 +114,7 @@ def test_every_declared_group_reads_back_bitwise(tmp_path: Path, truth: bool) ->
         assert {k: v for k, v in found_attrs.items() if k != "order"} == attrs
 
 
-@pytest.mark.infra
+@pytest.mark.smoke
 def test_a_stage_never_completed_is_not_read(tmp_path: Path) -> None:
     """A run killed in `/rdrbaf`: earlier groups read, `/rdrbaf` does not, nothing later exists."""
 
@@ -138,7 +138,7 @@ def test_a_stage_never_completed_is_not_read(tmp_path: Path) -> None:
         c.read(path, "rdrbaf")
 
 
-@pytest.mark.infra
+@pytest.mark.smoke
 def test_levels_keep_the_order_the_run_recorded(tmp_path: Path) -> None:
     """Levels read in recording order; one rewritten keeps its place and its new labels."""
 
@@ -154,7 +154,7 @@ def test_levels_keep_the_order_the_run_recorded(tmp_path: Path) -> None:
     np.testing.assert_array_equal(found["blocks"][0]["label"], label // 2)
 
 
-@pytest.mark.infra
+@pytest.mark.warning
 @pytest.mark.parametrize(
     ("group", "arrays", "attrs", "error"),
     [
@@ -187,7 +187,7 @@ def test_what_the_schema_does_not_declare_is_refused(
     assert c.stages(path) == []
 
 
-@pytest.mark.infra
+@pytest.mark.warning
 def test_a_global_axis_holds_across_groups(tmp_path: Path) -> None:
     """`n_spots` fixed by `/inputs` refuses an `/adjacency` of another size."""
 

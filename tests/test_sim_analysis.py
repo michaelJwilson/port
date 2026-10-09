@@ -158,7 +158,7 @@ def _panels_of(figure: Any) -> list[tuple[Any, ...]]:
     return rows
 
 
-@pytest.mark.infra
+@pytest.mark.smoke
 def test_the_spatial_and_h_and_e_pages_share_one_format(
     drawn: Drawn, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -196,7 +196,7 @@ def test_the_spatial_and_h_and_e_pages_share_one_format(
     plt.close("all")
 
 
-@pytest.mark.infra
+@pytest.mark.smoke
 def test_the_spatial_variant_carries_the_phase_track_and_the_genomes_marks(
     drawn: Drawn,
 ) -> None:
@@ -278,7 +278,7 @@ def _visible_texts(figure: Any) -> list[Any]:
     return [t for t in figure.findobj(Text) if t.get_visible() and t.get_text().strip()]
 
 
-@pytest.mark.infra
+@pytest.mark.smoke
 @pytest.mark.merge
 def test_the_truth_page_is_combined_pdfs_page_with_everything_on_it(
     drawn: Drawn,
@@ -312,7 +312,7 @@ def test_the_truth_page_is_combined_pdfs_page_with_everything_on_it(
         assert extent.y1 <= page.y1 + 0.5, artist
 
 
-@pytest.mark.infra
+@pytest.mark.smoke
 @pytest.mark.merge
 def test_the_genome_panels_share_one_left_and_one_right_edge(drawn: Drawn) -> None:
     """(b)'s and (c)'s axes share one left and right edge, to 0.5 px."""
@@ -330,7 +330,7 @@ def test_the_genome_panels_share_one_left_and_one_right_edge(drawn: Drawn) -> No
         assert box.x1 == pytest.approx(boxes[0].x1, abs=0.5)
 
 
-@pytest.mark.infra
+@pytest.mark.smoke
 @pytest.mark.merge
 def test_the_tree_spans_the_genome_panels_between_its_barcodes(drawn: Drawn) -> None:
     """(a) spans (c): root `NAME_GAP` in, barcodes on the right edge, to 0.5 px."""
@@ -374,7 +374,7 @@ def test_the_tree_spans_the_genome_panels_between_its_barcodes(drawn: Drawn) -> 
     }
 
 
-@pytest.mark.infra
+@pytest.mark.analytic
 @pytest.mark.merge
 def test_the_truth_page_writes_byte_for_byte_at_its_size(
     drawn: Drawn, tmp_path: Path
@@ -405,7 +405,7 @@ def dense(tmp_path_factory: pytest.TempPathFactory) -> Drawn:
     )
 
 
-@pytest.mark.infra
+@pytest.mark.smoke
 def test_a_barcode_over_10_bits_keeps_4_bits_at_each_end() -> None:
     """`shown` keeps up to 10 bits whole, else 4 bits each side of "..." (PR- #701)."""
 
@@ -468,7 +468,7 @@ def _a_is_the_tree(r: Any) -> Any:
     return tree_ax
 
 
-@pytest.mark.infra
+@pytest.mark.smoke
 @pytest.mark.merge
 def test_at_10_events_or_fewer_a_is_the_tree(drawn: Drawn) -> None:
     """At <= `MANY_EVENTS`, (a) is `draw_tree`'s tree with events (PR- #701)."""
@@ -488,7 +488,7 @@ def _marks(ax: Any) -> list[Any]:
             if t.tick1line.get_visible() and lo <= t.get_loc() <= hi]  # fmt: skip
 
 
-@pytest.mark.infra
+@pytest.mark.smoke
 @pytest.mark.merge
 def test_only_the_last_track_marks_every_10_mb_at_paper_width(drawn: Drawn) -> None:
     """Only the last track marks every 10 Mb, 2 pt x 0.5 pt (PR- #701, PR- #715)."""
@@ -510,7 +510,7 @@ def test_only_the_last_track_marks_every_10_mb_at_paper_width(drawn: Drawn) -> N
     plt.close(figure)
 
 
-@pytest.mark.infra
+@pytest.mark.smoke
 @pytest.mark.merge
 @pytest.mark.parametrize("which", ["drawn", "dense"])
 def test_no_mb_label_is_drawn_and_every_contig_is_named_once_clear(
@@ -574,7 +574,7 @@ def test_no_mb_label_is_drawn_and_every_contig_is_named_once_clear(
     plt.close(figure)
 
 
-@pytest.mark.infra
+@pytest.mark.smoke
 @pytest.mark.merge
 def test_above_10_events_a_is_the_tree_without_events(dense: Drawn) -> None:
     """Above `MANY_EVENTS`, (a) has no events and (c) cuts barcodes by `shown` (PR- #701)."""
@@ -610,7 +610,7 @@ def _leaves(ax: Any) -> list[tuple[str, tuple[float, ...]]]:
     return [(x.get_text(), dots[tuple(np.round(x.xy, 6))]) for x in names]
 
 
-@pytest.mark.infra
+@pytest.mark.smoke
 @pytest.mark.merge
 @pytest.mark.parametrize("fixture", ["drawn", "dense"])
 def test_clones_read_n_1_2_down_the_tree_and_alike_in_every_truth_figure(
@@ -669,7 +669,7 @@ def test_clones_read_n_1_2_down_the_tree_and_alike_in_every_truth_figure(
         plt.close(fig)
 
 
-@pytest.mark.infra
+@pytest.mark.smoke
 @pytest.mark.merge
 def test_the_tree_s_edges_carry_events_up_to_10_and_none_above(
     drawn: Drawn, dense: Drawn
@@ -690,7 +690,7 @@ def test_the_tree_s_edges_carry_events_up_to_10_and_none_above(
         plt.close(figure)
 
 
-@pytest.mark.infra
+@pytest.mark.smoke
 @pytest.mark.merge
 def test_the_mirror_key_starts_on_b_s_left_edge_and_is_labelled_on_its_right(
     drawn: Drawn,
@@ -703,7 +703,7 @@ def test_the_mirror_key_starts_on_b_s_left_edge_and_is_labelled_on_its_right(
     mirror_key_holds(legend_ax, profile_ax)
 
 
-@pytest.mark.infra
+@pytest.mark.smoke
 @pytest.mark.merge
 def test_truth_combined_reads_clones_profile_tracks(drawn: Drawn) -> None:
     """The truth page's panels follow `PANELS`, the run page's order (PR- #715)."""

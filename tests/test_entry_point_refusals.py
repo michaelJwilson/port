@@ -36,19 +36,19 @@ def _refused(*flags: str) -> list[str]:
     return _refusals(arguments, _settings(arguments))
 
 
-@pytest.mark.infra
+@pytest.mark.warning
 @pytest.mark.parametrize("flags", list(REFUSALS), ids=" ".join)
 def test_each_refusal_fires(flags: tuple[str, ...]) -> None:
     assert any(refusal.startswith(REFUSALS[flags]) for refusal in _refused(*flags))
 
 
-@pytest.mark.infra
+@pytest.mark.smoke
 @pytest.mark.parametrize("arm", [(), ("--sal",), ("--no-patch",)], ids=" ".join)
 def test_no_refusal_for_an_arm_as_it_comes(arm: tuple[str, ...]) -> None:
     assert _refused(*arm) == []
 
 
-@pytest.mark.infra
+@pytest.mark.warning
 @pytest.mark.parametrize(("keyword", "value"), [("parsimony", -1.0)])
 def test_the_decode_refuses_its_arguments_before_reading_the_capture(
     keyword: str, value: Any

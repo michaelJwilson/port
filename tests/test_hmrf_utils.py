@@ -12,7 +12,7 @@ from cnaster.hmrf_utils import (
 from scipy.sparse import csr_matrix
 
 
-@pytest.mark.smoke
+@pytest.mark.analytic
 @pytest.mark.parametrize("n_clones", [1, 2, 4])
 def test_indices_and_assignment_invert_each_other(n_clones: int) -> None:
     """Grouping spots by clone and regrouping returns the assignment."""
@@ -27,7 +27,7 @@ def test_indices_and_assignment_invert_each_other(n_clones: int) -> None:
     np.testing.assert_array_equal(recovered, assignment)
 
 
-@pytest.mark.smoke
+@pytest.mark.analytic
 def test_indices_partition_the_spots() -> None:
     """Every spot lands in exactly one clone."""
 
@@ -48,7 +48,7 @@ def test_contiguous_clone_ids_are_accepted_and_gaps_are_not() -> None:
         validate_clone_ids(np.array([0, 2, 3]))
 
 
-@pytest.mark.smoke
+@pytest.mark.analytic
 @pytest.mark.parametrize("n_clones", [1, 3])
 def test_stacking_lays_clones_end_to_end(n_clones: int) -> None:
     """Each clone's observations form a contiguous block, in clone order."""
@@ -76,7 +76,7 @@ def test_stacking_lays_clones_end_to_end(n_clones: int) -> None:
     assert stacked_sitewise.size == n_obs * n_clones
 
 
-@pytest.mark.smoke
+@pytest.mark.analytic
 def test_casting_a_sparse_matrix_keeps_its_non_zeros() -> None:
     """The row-wise form carries exactly the stored entries."""
 

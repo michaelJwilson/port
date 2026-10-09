@@ -79,14 +79,14 @@ def test_the_test_config_carries_only_what_it_states(tmp_path: Path) -> None:
     }
 
 
-@pytest.mark.infra
+@pytest.mark.smoke
 def test_a_start_params_length_that_disagrees_with_n_states_is_reported() -> None:
     document = {"hmm": {"n_states": 5}, "betabinom": {"start_params": "0.5,0.5"}}
 
     assert ("betabinom.start_params", "length") in _kinds(document, check_paths=False)
 
 
-@pytest.mark.infra
+@pytest.mark.smoke
 def test_audit_config_lists_the_findings_and_runs_nothing(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

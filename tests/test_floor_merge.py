@@ -81,7 +81,7 @@ def test_the_floor_does_not_cross_a_masked_boundary() -> None:
     assert (assignment[30:35] == 1).all()
 
 
-@pytest.mark.infra
+@pytest.mark.smoke
 def test_the_mask_is_handed_only_to_the_problem_it_describes() -> None:
     mask = np.zeros((4, 3), dtype=bool)
     mask[:2, :2] = True
@@ -161,7 +161,7 @@ def test_the_mask_keeps_the_columns_cnaster_relabels_survivors_to() -> None:
     assert kept.shape[1] == relabelled.max() + 1
 
 
-@pytest.mark.infra
+@pytest.mark.smoke
 @pytest.mark.parametrize("flag", ["--refinement-mask", "--floor-merge"])
 def test_no_patch_refuses_a_flag_nothing_would_read(
     flag: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -179,7 +179,7 @@ def test_no_patch_refuses_a_flag_nothing_would_read(
     assert not ran
 
 
-@pytest.mark.smoke
+@pytest.mark.warning
 @pytest.mark.parametrize("flag", ["mask", "floor", "shift"])
 def test_a_delegated_assignment_says_it_drops_the_mask_floor_or_shift(
     flag: str, monkeypatch: pytest.MonkeyPatch

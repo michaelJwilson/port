@@ -166,7 +166,7 @@ def test_the_table_names_a_ticket_for_every_replacement() -> None:
         assert ":" in swap.replacement, swap.replacement
 
 
-@pytest.mark.infra
+@pytest.mark.smoke
 def test_listing_the_swaps_needs_no_configuration(capsys: Any) -> None:
     """`--list` is what a reader runs to find out what a patched run changes."""
 
@@ -216,7 +216,7 @@ def test_a_patched_run_reproduces_an_unpatched_one(
     assert len(same) >= 25, f"only {len(same)} artifacts compared"
 
 
-@pytest.mark.infra
+@pytest.mark.smoke
 def test_the_timer_reports_every_swapped_name(tmp_path: Path) -> None:
     """`--time-stages` reports each replacement's cost within the run."""
 
@@ -227,7 +227,7 @@ def test_the_timer_reports_every_swapped_name(tmp_path: Path) -> None:
         assert spent["summarize_blocks"].calls == 0
 
 
-@pytest.mark.infra
+@pytest.mark.warning
 def test_an_option_the_replacement_does_not_take_is_refused_at_install() -> None:
     """A typo in a bound option fails when the row installs, not at its first call."""
 

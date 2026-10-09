@@ -52,7 +52,7 @@ def _write(run: Path, *, calicost: bool) -> None:
     pd.DataFrame(seglevel).to_csv(run / "cnv_seglevel.tsv", sep="\t", index=False)
 
 
-@pytest.mark.infra
+@pytest.mark.analytic
 def test_both_label_layouts_read_alike_and_a_skipped_clone_reads_as_minus_one(
     tmp_path: Path,
 ) -> None:

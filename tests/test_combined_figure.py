@@ -159,7 +159,7 @@ def test_each_figure_is_a_column_wide_with_one_text_size(
     assert spatial.get_size_inches()[1] <= page_size("third")[1] + 0.005
 
 
-@pytest.mark.infra
+@pytest.mark.smoke
 @pytest.mark.merge
 def test_each_page_is_written_at_its_size_with_nothing_past_it(
     cnaster_config: None, tmp_path: Path
@@ -195,7 +195,7 @@ def test_each_page_is_written_at_its_size_with_nothing_past_it(
         assert float(box.group(2)) == pytest.approx(height, abs=0.1)
 
 
-@pytest.mark.infra
+@pytest.mark.smoke
 @pytest.mark.merge
 def test_the_profile_spans_the_tracks_on_one_left_column(
     cnaster_config: None, tmp_path: Path
@@ -240,7 +240,7 @@ def test_the_profile_spans_the_tracks_on_one_left_column(
     mirror_key_holds(key, profile)
 
 
-@pytest.mark.infra
+@pytest.mark.smoke
 @pytest.mark.merge
 def test_the_spatial_panels_are_square_keyed_on_the_right_and_centred(
     cnaster_config: None, tmp_path: Path
@@ -296,7 +296,7 @@ def test_the_spatial_panels_are_square_keyed_on_the_right_and_centred(
     assert figure.bbox.y1 - highest == pytest.approx(gap, abs=1.5)
 
 
-@pytest.mark.infra
+@pytest.mark.smoke
 def test_the_spatial_labels_are_integer_by_default_or_continuous(
     cnaster_config: None, tmp_path: Path
 ) -> None:
@@ -356,7 +356,7 @@ def test_the_figure_merges_clones_at_the_runs_agreement(tmp_path: Path) -> None:
     assert keyed(0.9) == 2
 
 
-@pytest.mark.infra
+@pytest.mark.smoke
 # NB too specific for every change (#403); runs where this module or the lock changes.
 @pytest.mark.deprecate
 def test_the_combined_page_is_the_two_figures_stacked(
@@ -406,7 +406,7 @@ def test_the_hatch_stripes_are_one_width() -> None:
     assert pytest.approx(2.0649, abs=1e-4) == HATCH_LINEWIDTH
 
 
-@pytest.mark.infra
+@pytest.mark.smoke
 @pytest.mark.merge
 def test_the_combined_page_reads_clones_profile_tracks(
     cnaster_config: None, tmp_path: Path
@@ -433,7 +433,7 @@ def test_the_combined_page_reads_clones_profile_tracks(
     plt.close(figure)
 
 
-@pytest.mark.infra
+@pytest.mark.smoke
 def test_a_spatial_page_is_cut_to_its_axes() -> None:
     """`plot_clones_spatial` on a 4x10 section: equal scale, box aspect to 1%, margins to 1 px (PR- #715)."""
 
@@ -462,7 +462,7 @@ def test_a_spatial_page_is_cut_to_its_axes() -> None:
     plt.close(figure)
 
 
-@pytest.mark.infra
+@pytest.mark.smoke
 @pytest.mark.merge
 def test_the_combined_page_s_spatial_panels_are_square_keyed_clear_and_in_order(
     cnaster_config: None, tmp_path: Path

@@ -72,7 +72,7 @@ def test_a_perfect_decode_scores_one_in_every_class_with_two_planted_pairs() -> 
         assert class_ari(TRUTH, TRUTH, classes[name]) == 1.0
 
 
-@pytest.mark.infra
+@pytest.mark.smoke
 def test_a_class_planted_as_one_pair_or_not_at_all_is_nan() -> None:
     classes = planted_classes(TRUTH)
     # NB neutral is one pair: sklearn's 1 or 0 would not be a measurement

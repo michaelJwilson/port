@@ -123,7 +123,7 @@ def test_self_only_pooling_assigns_what_upstream_assigns() -> None:
     assert ours[2] == theirs[2]
 
 
-@pytest.mark.infra
+@pytest.mark.warning
 @pytest.mark.usefixtures("cnaster_config")
 def test_a_smooth_matrix_that_pools_neighbours_is_refused() -> None:
     """A `smooth_mat` pooling a spot with a neighbour raises; port does not pool (#513)."""

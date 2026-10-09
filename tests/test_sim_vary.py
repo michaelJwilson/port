@@ -39,7 +39,7 @@ def _same(a: Realized, b: Realized) -> bool:
     )
 
 
-@pytest.mark.infra
+@pytest.mark.analytic
 def test_counts_is_the_default_and_shares_one_truth() -> None:
     """Absent `vary` is `"counts"`, bitwise; its realizations share labels, tree and barcodes."""
     absent, counts = _realized(None), _realized("counts")
@@ -49,7 +49,7 @@ def test_counts_is_the_default_and_shares_one_truth() -> None:
         assert r.truth is counts[0].truth
 
 
-@pytest.mark.infra
+@pytest.mark.smoke
 def test_truth_redraws_the_tree_and_layout_after_realization_0() -> None:
     """`"truth"`: r0 equals `"counts"`' bitwise; r1, r2 differ in tree and labels; barcodes are shared."""
     counts, truth = _realized("counts"), _realized("truth")

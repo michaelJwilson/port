@@ -111,7 +111,7 @@ def test_a_wider_covariance_admits_more() -> None:
     assert sizes[-1] > sizes[0]
 
 
-@pytest.mark.smoke
+@pytest.mark.analytic
 def test_no_integer_pair_explains_an_impossible_fit() -> None:
     """A mean far from every lattice point gives an empty set and `consistent_with_data` False."""
     impossible = np.array([1.5, 0.5])
@@ -134,7 +134,7 @@ def test_the_threshold_is_the_chi_square_quantile() -> None:
     assert result.threshold == pytest.approx(5.9914645, abs=1e-6)
 
 
-@pytest.mark.smoke
+@pytest.mark.warning
 def test_it_refuses_a_covariance_that_identifies_nothing() -> None:
     """A singular covariance is refused."""
     mean = acn_observables([PLANTED])[0]

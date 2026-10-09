@@ -13,7 +13,7 @@ from sal import track
 from tests import ROOT
 
 
-@pytest.mark.infra
+@pytest.mark.smoke
 def test_the_recording_seam_imports_without_aim() -> None:
     """`record` through the seam runs without `aim`, using its null store."""
 

@@ -109,7 +109,7 @@ def test_floor_bins_counts_normal_umi_as_a_sum_over_the_normal_spots() -> None:
     assert np.all(alone | (per_bin >= 150))
 
 
-@pytest.mark.infra
+@pytest.mark.smoke
 @pytest.mark.parametrize(
     ("quality", "expected"),
     [

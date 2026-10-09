@@ -13,7 +13,7 @@ from port.patch.utils import discard_fig, write_fig
 from port.pipeline import FIGURE_SWAPS, PLOT_OFF_SWAPS, patched
 
 
-@pytest.mark.smoke
+@pytest.mark.patch
 @pytest.mark.parametrize("given", [True, False])
 def test_the_figure_is_closed_as_cnasters_closes_it_and_no_file_is_written(
     tmp_path: Path, given: bool

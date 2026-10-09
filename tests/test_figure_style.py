@@ -31,7 +31,7 @@ def test_the_stated_face_is_found_without_fallback() -> None:
     assert fm.FontProperties(fname=path).get_name() == face
 
 
-@pytest.mark.infra
+@pytest.mark.warning
 def test_a_face_matplotlib_cannot_find_is_refused(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -47,7 +47,7 @@ def test_a_face_matplotlib_cannot_find_is_refused(
         figure_style.figure_rc()
 
 
-@pytest.mark.infra
+@pytest.mark.smoke
 def test_the_run_and_the_combined_figure_draw_in_the_stated_face() -> None:
     """Text under `figure_font` and `page_style` resolves to the stated face."""
 
@@ -84,7 +84,7 @@ def test_each_page_share_is_its_fraction_of_the_text_block_less_its_caption() ->
     assert height == pytest.approx(room / 3, abs=1e-3)
 
 
-@pytest.mark.infra
+@pytest.mark.warning
 def test_a_share_or_a_row_page_size_cannot_draw_is_refused() -> None:
     """An unnamed share and a row of no figures raise, naming the value."""
 

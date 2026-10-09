@@ -91,7 +91,7 @@ def test_the_default_start_merges_the_loss_into_copy_neutral_loh() -> None:
     assert _near(fitted, PLANTED[2]), fitted
 
 
-@pytest.mark.infra
+@pytest.mark.smoke
 def test_the_start_is_handed_over_only_under_its_option(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -224,7 +224,7 @@ def test_a_refused_seeding_is_dropped_and_the_best_survivor_kept(
     assert [r.getMessage() for r in caplog.records] == []
 
 
-@pytest.mark.smoke
+@pytest.mark.warning
 def test_the_start_fails_only_when_every_seeding_is_refused(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -19,6 +19,7 @@ from port.sim.truth import (
 )
 
 from tests.adapters import from_core_inference_truth
+from tests.builders import cnaster_emission_pair, emission_inputs
 from tests.fixtures import partition_ari, run_planted_core_inference
 
 DECLARED_SPOTS = 5_000
@@ -139,9 +140,9 @@ def test_the_declared_scale_plants_and_recovers_its_parameters() -> None:
         )
 
 
-@pytest.mark.smoke
+@pytest.mark.patch
 def test_the_declared_scale_is_out_of_reach_of_a_single_run_here() -> None:
-    """At the declared scale `cnaster`'s two `(n_states, n_obs, n_spots)` arrays need 8.00 GB."""
+    """At the declared scale `cnaster`'s two `(n_states, n_obs, n_spots)` arrays need 8.00 GB, by its returned pair."""
     truth = core_inference_truth(
         n_clones=10, n_states=10, lattice=(20, 5), n_obs=100, n_segments=2
     )
@@ -149,6 +150,14 @@ def test_the_declared_scale_is_out_of_reach_of_a_single_run_here() -> None:
 
     assert truth.emission_gigabytes < 0.01
     assert declared == pytest.approx(8.0), f"{declared:.2f} GB"
+
+    # NB `emission_gigabytes` is what `cnaster` returns at the truth's shape
+    rdr, baf = cnaster_emission_pair(
+        emission_inputs(truth.n_states, truth.n_obs, truth.n_spots, seed=0).columns(
+            truth.n_spots
+        )
+    )
+    assert (rdr.nbytes + baf.nbytes) / 1e9 == truth.emission_gigabytes
 
 
 @pytest.mark.end2end

@@ -200,7 +200,7 @@ def test_the_agreement_rule_joins_what_agrees_and_no_less() -> None:
     assert integer_clones(frame, 0.985) == {"0": "0", "1": "0", "2": "0"}
 
 
-@pytest.mark.infra
+@pytest.mark.warning
 @pytest.mark.parametrize("agreement", [0.0, -0.1, 1.5])
 def test_an_agreement_outside_the_unit_interval_is_refused(agreement: float) -> None:
     """A share of bins must be in (0, 1]; 0 would merge every clone into one."""
@@ -209,7 +209,7 @@ def test_an_agreement_outside_the_unit_interval_is_refused(agreement: float) -> 
         integer_clones(_profiles({"0": 0}), agreement)
 
 
-@pytest.mark.infra
+@pytest.mark.smoke
 def test_the_configured_agreement_is_what_config_keys_reads(tmp_path: Path) -> None:
     """`int_copy_num.merge_agreement` reaches `config_keys` (#518)."""
 
@@ -219,7 +219,7 @@ def test_the_configured_agreement_is_what_config_keys_reads(tmp_path: Path) -> N
     assert config_keys(config)["merge_agreement"] == 0.99
 
 
-@pytest.mark.infra
+@pytest.mark.smoke
 def test_a_directory_an_earlier_run_left_is_not_this_run_s(tmp_path: Path) -> None:
     """`since` keeps the directories written at or after it (T- #617)."""
 

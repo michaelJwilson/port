@@ -75,7 +75,7 @@ def test_the_modulus_is_applied_only_when_asked() -> None:
     np.testing.assert_array_equal(clone_path(pred_cnv, 0, 4, 5), pred_cnv % 5)
 
 
-@pytest.mark.smoke
+@pytest.mark.analytic
 def test_every_clone_comes_back_in_order() -> None:
     """`clone_paths` matches the per-clone loop, in order."""
     n_obs, n_clones = 15, 4

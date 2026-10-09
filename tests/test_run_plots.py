@@ -77,7 +77,7 @@ def test_run_plots_draws_every_page_the_run_wrote_byte_for_byte(
 
 
 @pytest.mark.merge
-@pytest.mark.smoke
+@pytest.mark.patch
 def test_the_stages_are_what_the_run_wrote(output: Path) -> None:
     """Each stage group against the file the run wrote for it, exactly, and every group in run order.
 

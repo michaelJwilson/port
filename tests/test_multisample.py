@@ -141,7 +141,7 @@ def test_the_grid_labels_each_sample_and_leaves_the_gaps_empty() -> None:
     assert (grid >= 0).sum() == multi.truth.n_spots
 
 
-@pytest.mark.infra
+@pytest.mark.smoke
 def test_the_cross_sample_placeholder_has_no_edge_inside_a_sample() -> None:
     """Empty today; the invariant an implementation keeps is no within-sample entry."""
 
@@ -154,7 +154,7 @@ def test_the_cross_sample_placeholder_has_no_edge_inside_a_sample() -> None:
     assert adjacency.toarray()[same].sum() == 0.0
 
 
-@pytest.mark.infra
+@pytest.mark.smoke
 def test_a_layout_places_the_samples_row_by_row_and_refuses_too_few_panels() -> None:
     labels = np.repeat([0, 1, 2], 4)
     panels = sample_panels(labels, (3, 1))
@@ -166,7 +166,7 @@ def test_a_layout_places_the_samples_row_by_row_and_refuses_too_few_panels() -> 
         sample_panels(labels, (1, 2))
 
 
-@pytest.mark.infra
+@pytest.mark.smoke
 def test_sample_layout_draws_a_panel_per_sample_in_the_runs_colours() -> None:
     """Three panels, each in its own coordinates; a clone absent from one sample keeps its colour in the others; unset, one axis as upstream."""
 

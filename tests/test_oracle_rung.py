@@ -111,7 +111,7 @@ def test_the_two_recursions_agree_on_the_clone_stacked_batch(
     )
 
 
-@pytest.mark.smoke
+@pytest.mark.warning
 def test_a_covariate_carrying_its_own_channel_axis_is_refused_with_a_singleton() -> (
     None
 ):

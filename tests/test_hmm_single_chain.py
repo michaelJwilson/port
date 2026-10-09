@@ -81,7 +81,7 @@ def test_total_log_likelihood_matches_upstream(chains: dict[str, Any]) -> None:
     )
 
 
-@pytest.mark.smoke
+@pytest.mark.warning
 def test_drift_outside_the_unit_interval_is_refused() -> None:
     """The fixture refuses a drift that is not a share."""
     with pytest.raises(ValueError, match="drift"):
@@ -128,7 +128,7 @@ def test_transition_matches_cnaster_construction(n_states: int) -> None:
     np.testing.assert_allclose(mine, theirs, rtol=0.0, atol=1e-15)
 
 
-@pytest.mark.smoke
+@pytest.mark.warning
 def test_separation_below_one_is_refused() -> None:
     """The fixture refuses a separation that does not order the state means."""
     with pytest.raises(ValueError, match="separation"):

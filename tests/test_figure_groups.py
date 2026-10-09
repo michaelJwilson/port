@@ -231,7 +231,7 @@ def test_an_axes_with_one_rasterized_artist_is_left_alone() -> None:
     plt.close(figure)
 
 
-@pytest.mark.smoke
+@pytest.mark.warning
 def test_an_unknown_strategy_is_refused() -> None:
     """An unknown strategy is refused."""
 

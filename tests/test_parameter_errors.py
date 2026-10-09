@@ -168,7 +168,7 @@ def test_the_propagated_covariance_is_the_delta_method() -> None:
     np.testing.assert_allclose(realized, predicted, rtol=0.0, atol=5e-2 * scale)
 
 
-@pytest.mark.smoke
+@pytest.mark.analytic
 def test_a_copy_state_block_is_what_decode_copy_state_reads() -> None:
     """The `(2, 2)` `(mubar, p)` block with zero off-diagonal, as `decode_copy_state` reads."""
 

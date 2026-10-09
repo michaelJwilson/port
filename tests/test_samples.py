@@ -114,7 +114,7 @@ def test_every_spot_is_coded_by_its_own_name_in_any_order(order: str) -> None:
     )
 
 
-@pytest.mark.infra
+@pytest.mark.warning
 def test_a_pair_the_unique_remap_would_renumber_is_refused() -> None:
     """Pairs `np.unique` would renumber, and invalid `Samples`, are refused."""
 

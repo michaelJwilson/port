@@ -8,7 +8,7 @@ import pytest
 from port.sim.fixtures import EASY, SIM_ROOT, load_simulated, stage
 
 
-@pytest.mark.infra
+@pytest.mark.smoke
 def test_a_sample_loaded_by_absolute_path_stages_into_the_target(
     tmp_path: Path,
 ) -> None:

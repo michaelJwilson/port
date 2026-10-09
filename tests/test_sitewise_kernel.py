@@ -84,7 +84,7 @@ def test_every_block_is_a_transition_kernel(n_states: int) -> None:
     np.testing.assert_allclose(rows, 1.0, rtol=0, atol=1e-12)
 
 
-@pytest.mark.smoke
+@pytest.mark.analytic
 def test_a_constant_rate_gives_a_constant_kernel() -> None:
     """A constant switch probability gives the same block at every step."""
 

@@ -14,7 +14,7 @@ WINDOW = (35.0, 70.0, 26.0, 38.0)
 """210 spots of the easy sample holding every clone, 49 to 58 each."""
 
 
-@pytest.mark.infra
+@pytest.mark.analytic
 def test_a_crop_keeps_the_window_every_input_in_step(tmp_path: Path) -> None:
     """A crop keeps the window's 210 spots in every per-spot input; a one-clone window is refused."""
 
